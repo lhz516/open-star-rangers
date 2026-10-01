@@ -1,0 +1,19 @@
+{
+  "name": "open-star-rangers",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Star Rangers Remaster",
+  "keywords": [
+    "dos",
+    "game"
+  ],
+  "license": "MIT",
+  "author": "Hanz",
+  "type": "module",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

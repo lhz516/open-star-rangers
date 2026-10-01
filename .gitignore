@@ -1,0 +1,28 @@
+# Original game content, disc images and local research output. Never commit.
+/local/
+*.ccd
+*.img
+*.sub
+*.cue
+*.iso
+*.mdf
+*.mds
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editor
+.DS_Store
+Thumbs.db
+*.log
