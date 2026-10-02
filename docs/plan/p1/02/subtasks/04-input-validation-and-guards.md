@@ -23,7 +23,7 @@ updated: 2026-10-01
 - 同样在修改前完成的数值守卫：
   - **位置：** 预先计算新 X，非有限时抛错。
   - **tick：** `tick + 1` 须不超过 `Number.MAX_SAFE_INTEGER`。
-  - **ID：** 只按标记是否存在模拟命令序列，统计本批会成功的添加次数（不抽 RNG）；最后分配的 ID 须不超过 `Number.MAX_SAFE_INTEGER`。
+  - **ID：** 只按标记是否存在为整批命令预先决定结果（不抽 RNG），统计会成功的添加次数；分配后的 `nextEntityId` 须仍是安全整数。
 - 校验与守卫全部通过后才进入 03 的处理流程，因此异常不会留下半个 tick。异常后实例仍可继续使用，结果等同于没有发生那次非法调用。
 - 新增 `src/core/synthetic-scene-input.test.ts`：
   - 每类非法输入抛 `CoreInputError`，`path` 正确：缺失/null/数组/额外键的 tickInput 与 input；NaN、Infinity、-Infinity、超出 ±1、字符串 `'1'` 的 moveX；非数组、含 null 或非对象元素的 commands；未知 type 与命令上的额外键。
@@ -45,11 +45,11 @@ updated: 2026-10-01
 
 ## 验收标准
 
-- [ ] AC-06：所列非法 TickInput 全部抛 `CoreInputError`，`path` 正确，不做强制转换，额外键被拒绝。
-- [ ] AC-06：整批原子性与对照实例一致性成立；非法调用后实例可继续使用。
-- [ ] AC-06：极小频率的位置溢出在修改前被拒绝，有自动测试。
-- [ ] 技术决定 7：tick/ID 守卫已实现且在修改前执行，审阅证据已写入完成证据。
-- [ ] `pnpm exec vitest run src/core` 与 `pnpm check` 通过；01–03 的测试仍然通过。
+- [x] AC-06：所列非法 TickInput 全部抛 `CoreInputError`，`path` 正确，不做强制转换，额外键被拒绝。
+- [x] AC-06：整批原子性与对照实例一致性成立；非法调用后实例可继续使用。
+- [x] AC-06：极小频率的位置溢出在修改前被拒绝，有自动测试。
+- [x] 技术决定 7：tick/ID 守卫已实现且在修改前执行，审阅证据已写入完成证据。
+- [x] `pnpm exec vitest run src/core` 与 `pnpm check` 通过；01–03 的测试仍然通过。
 
 ## 验证方法
 
@@ -58,3 +58,31 @@ updated: 2026-10-01
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- 2026-10-01：[synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 的 `step()` 依次执行：
+  1. `readTickInput` 严格校验整批输入并返回 `moveX` 与命令类型的脱离副本，之后不再读取调用方对象。
+  2. `planCommands` 只按标记是否存在为每条命令决定结果，不抽 RNG。
+  3. 三个守卫。
+  4. 状态修改：`#commit` 执行计划好的结果，然后写入 mover 位置与 tick。
+  - 命令类型用类型守卫 `isCommandType` 判定。
+- [synthetic-scene-input.test.ts](../../../../../src/core/synthetic-scene-input.test.ts) 28 个测试：
+  - 22 种非法输入各抛 `CoreInputError`，`path` 准确，调用前后 `inspect()` 相同：tickInput 与 input 为 undefined/null/数组/缺失或带额外键；moveX 为缺失、NaN、±Infinity、1.0000001、-1.5 或字符串 `'1'`；commands 缺失、非数组、含 null/字符串元素或稀疏空洞；命令缺 type、type 未知或带额外的 `position` 字段。
+  - 整批原子性：add, add 之后跟非法命令，或 moveX=2 配合 add，均无标记、`rngState` 与 `nextEntityId` 不变。
+  - 恢复：非法调用后三次合法调用的事件与 `inspect()` 与从未出错的对照实例逐次相等。
+  - 边界：moveX 为 -1、1、-0 与全冻结输入可正常使用。
+  - 位置溢出：`tickRateHz = 1e-308` 时 moveX=±1 第一个 tick 到达 ±1e308，第二个 tick（同时带 add）抛错，路径为 `tickInput.input.moveX`，状态完全不变。
+- **技术决定 7 的代码审阅证据**（tick/ID 上限，正常运行不可达，不为测试添加状态注入接口）：
+  - 校验与计划在 `step()` 开头（第 214–215 行）。
+  - tick 守卫 `Number.isSafeInteger(tick)` 在第 217 行。
+  - ID 守卫 `Number.isSafeInteger(this.#nextEntityId + adds)` 在第 219 行，adds 来自不抽 RNG 的 `planCommands`。
+  - 位置守卫在第 224 行。
+  - 第一处状态修改是第 228 行的 `#commit`，之后是第 230–231 行写入位置与 tick。
+  - 三个守卫都在任何修改之前，抛错时场景不变。
+  - 上限无法构造：60 Hz 下 tick 到达 `Number.MAX_SAFE_INTEGER` 约需 480 万年，ID 每次成功添加只加一，且 P1-02 没有恢复或注入状态的入口。
+- `pnpm exec vitest run src/core`：4 文件/94 测试通过（含 03 的全部 step 行为测试，重构后行为不变）。`pnpm check` 退出码 0：类型检查、lint、7 文件/143 测试、build 全部通过。
+- simplify 四视角：
+  - altitude、reuse 与 efficiency 一致指出 `#countSuccessfulAdds` 重复了 `#apply` 的标记规则。已重构为单一的 `planCommands`（标记规则只存在于此）与只执行计划的 `#commit`，同时去掉每 tick 的 `map` 回调。
+  - simplification 指出 `COMMAND_TYPES` 被拓宽为 `string[]` 并需要类型断言，已改为类型守卫；另删除一条冗余断言。
+  - **跳过** reuse 建议把两行测试夹具（`add`、`tick`）抽成共享文件：新增文件的成本高于收益。
+  - 修正后重跑上述检查通过。
+- 未新增依赖、未接入消费者、未读取原版文件。

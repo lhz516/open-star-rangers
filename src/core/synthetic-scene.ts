@@ -101,7 +101,11 @@ export interface SyntheticRenderState {
 
 /** Every read returns deeply frozen plain data, detached from internal state, that later ticks never change. */
 export interface SyntheticScene {
-  /** Advances exactly one tick: commands in array order, then movement. Returns that tick's events. */
+  /**
+   * Advances exactly one tick: commands in array order, then movement. Returns that tick's events.
+   * Throws CoreInputError, leaving the scene unchanged, if the input breaks the contract or the
+   * tick would leave the safe numeric range.
+   */
   step(tickInput: TickInput): readonly DomainEvent[];
   inspect(): SyntheticSceneState;
   uiProjection(): SyntheticUiProjection;
@@ -145,6 +149,51 @@ function requireRecord(value: unknown, path: string, allowed: readonly string[])
   return value as Record<string, unknown>;
 }
 
+function isCommandType(value: unknown): value is Command['type'] {
+  return value === 'add-marker' || value === 'remove-marker';
+}
+
+/** Validates the whole tick input and returns a detached copy, so the caller's objects are never read again. */
+function readTickInput(value: unknown): { moveX: number; commandTypes: Command['type'][] } {
+  const { input, commands } = requireRecord(value, 'tickInput', ['input', 'commands']);
+  const { moveX } = requireRecord(input, 'tickInput.input', ['moveX']);
+  // The range check also rejects NaN and ±Infinity.
+  if (typeof moveX !== 'number' || !(moveX >= -1 && moveX <= 1)) {
+    throw new CoreInputError('tickInput.input.moveX', 'must be a number from -1 to 1');
+  }
+  if (!Array.isArray(commands)) throw new CoreInputError('tickInput.commands', 'must be an array');
+  const commandTypes: Command['type'][] = [];
+  // An index loop, unlike forEach, also visits holes in sparse arrays.
+  for (let index = 0; index < commands.length; index++) {
+    const path = `tickInput.commands[${index}]`;
+    const { type } = requireRecord(commands[index], path, ['type']);
+    if (!isCommandType(type)) throw new CoreInputError(`${path}.type`, 'must be add-marker or remove-marker');
+    commandTypes.push(type);
+  }
+  return { moveX, commandTypes };
+}
+
+/** What a command will do once committed. */
+type CommandOutcome = 'add' | 'remove' | CommandRejectedEvent['reason'];
+
+/**
+ * Decides each command's outcome in order from marker presence alone. This is the only place the
+ * marker rules live; deciding before any draw lets step() check every outcome before changing state.
+ */
+function planCommands(commandTypes: readonly Command['type'][], hasMarker: boolean): CommandOutcome[] {
+  const outcomes: CommandOutcome[] = [];
+  for (const type of commandTypes) {
+    if (type === 'add-marker') {
+      outcomes.push(hasMarker ? 'marker-already-exists' : 'add');
+      hasMarker = true;
+    } else {
+      outcomes.push(hasMarker ? 'remove' : 'marker-not-found');
+      hasMarker = false;
+    }
+  }
+  return outcomes;
+}
+
 class Scene implements SyntheticScene {
   readonly #seed: number;
   readonly #tickRateHz: number;
@@ -161,25 +210,45 @@ class Scene implements SyntheticScene {
   }
 
   step(tickInput: TickInput): readonly DomainEvent[] {
+    // Everything that can fail is checked before the first state change.
+    const { moveX, commandTypes } = readTickInput(tickInput);
+    const outcomes = planCommands(commandTypes, this.#marker !== null);
     const tick = this.#tick + 1;
-    const events = tickInput.commands.map(({ type }, commandIndex) => this.#apply(type, tick, commandIndex));
-    this.#mover.position.x += (tickInput.input.moveX * SYNTHETIC_MOVE_SPEED) / this.#tickRateHz;
+    if (!Number.isSafeInteger(tick)) throw new CoreInputError('tickInput', 'would advance the tick past the safe integer range');
+    const adds = outcomes.filter((outcome) => outcome === 'add').length;
+    if (!Number.isSafeInteger(this.#nextEntityId + adds)) {
+      throw new CoreInputError('tickInput.commands', 'would allocate entity IDs past the safe integer range');
+    }
+    // Commands never move the mover, so its new position can be computed up front.
+    const x = this.#mover.position.x + (moveX * SYNTHETIC_MOVE_SPEED) / this.#tickRateHz;
+    if (!Number.isFinite(x)) throw new CoreInputError('tickInput.input.moveX', 'would move the mover to a non-finite position');
+
+    const events: DomainEvent[] = [];
+    for (let commandIndex = 0; commandIndex < outcomes.length; commandIndex++) {
+      events.push(this.#commit(outcomes[commandIndex], commandTypes[commandIndex], tick, commandIndex));
+    }
+    this.#mover.position.x = x;
     this.#tick = tick;
     return Object.freeze(events);
   }
 
-  #apply(type: Command['type'], tick: number, commandIndex: number): DomainEvent {
-    if (type === 'add-marker') {
-      if (this.#marker) return rejected(type, 'marker-already-exists', tick, commandIndex);
-      // Property initialisers run in source order, so the draws are X, then Y, then Z.
-      const marker = { id: this.#nextEntityId++, position: { x: this.#drawCoordinate(), y: this.#drawCoordinate(), z: this.#drawCoordinate() } };
-      this.#marker = marker;
-      return Object.freeze({ type: 'marker-added', tick, commandIndex, entityId: marker.id, position: freezeVec(marker.position) });
+  #commit(outcome: CommandOutcome, commandType: Command['type'], tick: number, commandIndex: number): DomainEvent {
+    switch (outcome) {
+      case 'add': {
+        // Property initialisers run in source order, so the draws are X, then Y, then Z.
+        const marker = { id: this.#nextEntityId++, position: { x: this.#drawCoordinate(), y: this.#drawCoordinate(), z: this.#drawCoordinate() } };
+        this.#marker = marker;
+        return Object.freeze({ type: 'marker-added', tick, commandIndex, entityId: marker.id, position: freezeVec(marker.position) });
+      }
+      case 'remove': {
+        // planCommands only removes when a marker exists.
+        const { id, position } = this.#marker!;
+        this.#marker = null;
+        return Object.freeze({ type: 'marker-removed', tick, commandIndex, entityId: id, position: freezeVec(position) });
+      }
+      default:
+        return rejected(commandType, outcome, tick, commandIndex);
     }
-    const marker = this.#marker;
-    if (!marker) return rejected(type, 'marker-not-found', tick, commandIndex);
-    this.#marker = null;
-    return Object.freeze({ type: 'marker-removed', tick, commandIndex, entityId: marker.id, position: freezeVec(marker.position) });
   }
 
   #drawCoordinate(): number {

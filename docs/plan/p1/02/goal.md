@@ -64,7 +64,7 @@ updated: 2026-10-01
 | [01-seeded-rng.md](./subtasks/01-seeded-rng.md) | — | completed |
 | [02-scene-contract-and-outputs.md](./subtasks/02-scene-contract-and-outputs.md) | 01 | completed |
 | [03-step-behavior.md](./subtasks/03-step-behavior.md) | 02 | completed |
-| [04-input-validation-and-guards.md](./subtasks/04-input-validation-and-guards.md) | 03 | pending |
+| [04-input-validation-and-guards.md](./subtasks/04-input-validation-and-guards.md) | 03 | completed |
 | [05-final-alignment.md](./subtasks/05-final-alignment.md) | 01, 02, 03, 04 | pending |
 
 依赖是真实前提：02 的状态检查副本包含 RNG 状态；03 需要场景状态；04 的校验包在 `step()` 前面。03 只处理类型合法的输入，04 补全非法输入的拒绝与原子性。03 提交后到 04 完成前的中间状态不对非法输入作任何保证，不得被视为可交付。ID 保持稳定；最终对齐发现缺口时新增修复项，插在 05 之前并加入其依赖，不复用编号。
