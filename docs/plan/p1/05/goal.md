@@ -81,7 +81,7 @@ updated: 2026-10-02
 | [03-browser-session-host.md](./subtasks/03-browser-session-host.md) | 01 | completed |
 | [04-session-controls-scheduler.md](./subtasks/04-session-controls-scheduler.md) | 01, 02 | completed |
 | [05-consumer-boundaries-cleanup.md](./subtasks/05-consumer-boundaries-cleanup.md) | 04 | completed |
-| [06-failure-recovery-replay.md](./subtasks/06-failure-recovery-replay.md) | 05 | pending |
+| [06-failure-recovery-replay.md](./subtasks/06-failure-recovery-replay.md) | 05 | completed |
 | [07-browser-lifecycle-evidence.md](./subtasks/07-browser-lifecycle-evidence.md) | 03, 06 | pending |
 | [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 

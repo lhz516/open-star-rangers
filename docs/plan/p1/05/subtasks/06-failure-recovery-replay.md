@@ -35,12 +35,12 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-10：所有指定故障 phase、原原因与附加清理原因有序、一边界一错误出口；onError 抛出双方 AggregateError，当前循环已停止。
-- [ ] AC-06/09/11：先请求 exit 再抛错仍收尾；cleanupFailed 持续且不新建运行，无失败时安全重启，故障只读状态/记录可取。
-- [ ] AC-03/04/05：取消失败的迟到请求不能推进，错误输入/时间与未执行命令不入成功记录，重锚/折叠不回退。
-- [ ] AC-11：初始化监听部分失败由宿主撤销；首 request 失败保留有 owner 的控制器监听但无循环；dispose 全部尝试，不虚报资源回收。
-- [ ] AC-12：间隔 1/4 的跨生命周期输入、事件、检查点及 JSON replay 全部匹配；restart tick0、新 run、新记录，旧导出不变。
-- [ ] AC-14：目标测试、pnpm check、既有回归通过；工程和使用文档描述故障/清理阻断，无沉默默认。
+- [x] AC-10：所有指定故障 phase、原原因与附加清理原因有序、一边界一错误出口；onError 抛出双方 AggregateError，当前循环已停止。
+- [x] AC-06/09/11：先请求 exit 再抛错仍收尾；cleanupFailed 持续且不新建运行，无失败时安全重启，故障只读状态/记录可取。
+- [x] AC-03/04/05：取消失败的迟到请求不能推进，错误输入/时间与未执行命令不入成功记录，重锚/折叠不回退。
+- [x] AC-11：初始化监听部分失败由宿主撤销；首 request 失败保留有 owner 的控制器监听但无循环；dispose 全部尝试，不虚报资源回收。
+- [x] AC-12：间隔 1/4 的跨生命周期输入、事件、检查点及 JSON replay 全部匹配；restart tick0、新 run、新记录，旧导出不变。
+- [x] AC-14：目标测试、pnpm check、既有回归通过；工程和使用文档描述故障/清理阻断，无沉默默认。
 
 ## 验证方法
 
@@ -50,3 +50,11 @@ updated: 2026-10-02
 - rubber-duck 后 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 仅本项变更 hunks/两新测试。同步更新 [engineering](../../../../engineering/README.md) 的最终错误契约，guide 具体操作留待 07 真实验证。
 
 ## 完成证据
+
+- 2026-10-02：[故障测试](../../../../../src/app/synthetic-session-fault.test.ts) 22 项、[replay 测试](../../../../../src/app/synthetic-session-replay.test.ts) 3 项，与既有 session 共 74 项通过；最终 `pnpm check` typecheck/lint/27 文件 598 测试/build 成功。
+- 真实 Core 的 step 前故障 1/2 成功前缀、listener-failed、无成功 onFrame、折叠故障状态、非法时间/read/request/cancel、创建失败 idle 与首次请求 faulted 均有精确断言。cancel 的 scheduler 错同时置 cleanupFailed；保留一个物理请求的场景实际送达后无法推进/续排，并只尝试取消一次。
+- Consumer→取消 consumer→逆序 cleanup→状态 consumer 的原错有序进入唯一末尾 onError；失败状态观察者取消，其他观察者继续。先请求 exit/restart 再抛错仍收尾；正常故障允许 restart，资源/宿主独立撤销全尝试、exit idle/dispose disposed 均保留错误且不重试已尝试项。
+- 排队 resume 的 request 失败保留异步来源，不抛给同步 pause 调用者；onError 自身失败停止健康 control-only 运行，AggregateError 包含原会话错、出口错与额外 cleanup 错，不再报告第二次。没有 broad catch 或成功形状 fallback。
+- 间隔 1/4 明确手写四 tick 输入对照，不包含取消命令；JSON replay 与独立裸 Runtime 的事件/哈希/检查点相等，录制关闭/开启世界等价，restart tick 0 与旧冻结导出保持不变。修复原配置副本对非枚举/继承 getter 的遗漏；同样单次取值，合法 Runtime 配置不被误拒绝，未改契约。
+- rubber-duck 通过，建议的出口失败追加清理原因用例已补并通过。simplify 四角度并行，仅移除无效测试赋值，其他无适用清理，重验全部通过。
+- 文档影响：engineering 更新最终 phase 映射、排队来源、错误出口/清理阻断及 replay 约定；初始化浏览器部分注册回滚复用 [03 的真实证据](./03-browser-session-host.md#完成证据)，完整浏览器观测在 07，研究 guides/原版事实/冻结决定不变。

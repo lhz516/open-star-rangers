@@ -64,12 +64,18 @@ function runtimeArgument(cause: GameRuntimeError, path = cause.path ?? 'runtime'
 function copyOptions(options: SyntheticRuntimeOptions): SyntheticRuntimeOptions {
   object(options, 'runtimeOptions');
   try {
-    const { scene, recording, ...rest } = options;
+    const { scene, recording, maxTicksPerFrame, ...rest } = options;
     object(scene, 'runtimeOptions.scene');
     if (recording !== undefined) object(recording, 'runtimeOptions.recording');
+    const { seed, tickRateHz, ...sceneRest } = scene;
+    let recordingCopy: SyntheticRuntimeOptions['recording'];
+    if (recording !== undefined) {
+      const { checkpointInterval, ...recordingRest } = recording;
+      recordingCopy = Object.freeze({ ...recordingRest, checkpointInterval });
+    }
     const copy = {
-      ...rest, scene: Object.freeze({ ...scene }),
-      ...(recording === undefined ? {} : { recording: Object.freeze({ ...recording }) }),
+      ...rest, maxTicksPerFrame, scene: Object.freeze({ ...sceneRest, seed, tickRateHz }),
+      ...(recordingCopy === undefined ? {} : { recording: recordingCopy }),
     };
     createSyntheticRuntime(copy);
     return Object.freeze(copy);
@@ -190,6 +196,7 @@ class Session implements SyntheticSession {
   #cleanupFailed = false;
   #error: GameSessionError | null = null;
   #request: Request | null = null;
+  #requestSynchronous = false;
   #busy = false;
   #mode: CallbackMode = 'open';
   #synchronous = false;
@@ -309,7 +316,11 @@ class Session implements SyntheticSession {
       if (asyncFailures.length > 0) {
         const error = new GameSessionError({ kind: 'operation-failed', failures: asyncFailures }); this.#error = error;
         try { this.#withMode('restricted', () => this.#onError(error)); } catch (cause) {
-          throw new AggregateError([error, cause], 'Session error outlet failed', { cause });
+          const before = this.#errors.length;
+          this.#synchronous = false;
+          this.#fault('consumer', cause); this.#drain();
+          const additional = this.#errors.slice(before + 1).map(entry => entry.failure.cause);
+          throw new AggregateError([error, cause, ...additional], 'Session error outlet failed', { cause });
         }
       }
       if (directFailed) throw directError;
@@ -370,6 +381,7 @@ class Session implements SyntheticSession {
     try { this.#visible = this.#readVisibility(); } catch (cause) { this.#fault('scheduler', cause); return; }
     if (!this.status().environmentVisible) throw this.#stateError(type, 'resume requires a visible paused run');
     this.#run?.runtime?.resetClock(); this.#phase = 'running'; this.#pauseReason = null;
+    this.#requestSynchronous = this.#synchronous;
   }
   #canAllocate(operation: string): void {
     if (this.#cleanupFailed) throw this.#stateError(operation, 'cleanup previously failed');
@@ -382,6 +394,7 @@ class Session implements SyntheticSession {
     try { runtime = createSyntheticRuntime(this.#options); } catch (cause) { this.#fault('runtime', cause); return; }
     const data = new RunData(this, runtime, this.#nextId++);
     this.#run = data; this.#error = null;
+    this.#requestSynchronous = this.#synchronous;
     this.#phase = this.status().environmentVisible ? 'running' : 'paused';
     this.#pauseReason = this.#phase === 'paused' ? 'hidden' : null;
   }
@@ -423,7 +436,7 @@ class Session implements SyntheticSession {
     const handle = request?.handle;
     if (handle !== null && handle !== undefined) {
       try { this.#host.cancelFrame(handle); } catch (cause) {
-        this.#cleanupFailed = true; this.#fault('cleanup', cause);
+        this.#cleanupFailed = true; this.#fault('scheduler', cause);
       }
     }
   }
@@ -431,15 +444,18 @@ class Session implements SyntheticSession {
     if (this.#phase !== 'running' || this.#request || !this.#run) return;
     const request: Request = { run: this.#run, handle: null };
     this.#request = request;
+    const previous = this.#synchronous; this.#synchronous = this.#requestSynchronous;
     try {
       const handle = this.#host.requestFrame(now => { this.#frame(request, now); });
       if (!Number.isSafeInteger(handle) || handle < 0) throw new TypeError('requestFrame must return a nonnegative safe integer');
       request.handle = handle;
     } catch (cause) { this.#request = null; this.#fault('scheduler', cause); }
+    finally { this.#synchronous = previous; }
   }
   #frame(request: Request, nowMs: number): void {
     if (request !== this.#request || request.run !== this.#run || this.#phase !== 'running') return;
     this.#request = null;
+    this.#requestSynchronous = false;
     this.#boundary(() => {
       try { this.#visible = this.#readVisibility(); } catch (cause) { this.#fault('scheduler', cause); return; }
       if (!this.status().environmentVisible) { this.#pause('hidden'); return; }
