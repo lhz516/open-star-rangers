@@ -167,8 +167,11 @@ function isCommandType(value: unknown): value is Command['type'] {
   return value === 'add-marker' || value === 'remove-marker';
 }
 
-/** Validates the whole tick input and returns a detached copy, so the caller's objects are never read again. */
-function readTickInput(value: unknown): { moveX: number; commandTypes: Command['type'][] } {
+/**
+ * Validates the whole tick input and returns a detached copy, so the caller's objects are never read again.
+ * Exported for Core modules that must record exactly what a step executed; not part of SyntheticScene.
+ */
+export function readTickInput(value: unknown): { moveX: number; commandTypes: Command['type'][] } {
   const { input, commands } = requireRecord(value, 'tickInput', ['input', 'commands']);
   const { moveX } = requireRecord(input, 'tickInput.input', ['moveX']);
   // The range check also rejects NaN and ±Infinity.
