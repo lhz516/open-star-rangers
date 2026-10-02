@@ -1,4 +1,5 @@
 import { CoreInputError } from '../core/errors.ts';
+import { createSyntheticRecordingSession, type SyntheticRecording, type SyntheticRecordingSession } from '../core/synthetic-replay.ts';
 import {
   createSyntheticScene, readTickInput,
   type Command, type DomainEvent, type MoveInput, type SyntheticScene,
@@ -11,6 +12,7 @@ import { SyntheticEventBus, type EventListener, type PendingDelivery } from './s
 export interface SyntheticRuntimeOptions {
   readonly scene: SyntheticSceneConfig;
   readonly maxTicksPerFrame?: number;
+  readonly recording?: { readonly checkpointInterval: number };
 }
 
 export interface RenderFrame {
@@ -27,17 +29,17 @@ export interface SyntheticRuntime {
   onAny(listener: EventListener): () => void;
   renderFrame(): RenderFrame;
   uiProjection(): SyntheticUiProjection;
-  exportRecording(): null;
+  exportRecording(): SyntheticRecording | null;
 }
 
 function invalid(path: string, reason: string): never {
   throw new GameRuntimeError({ kind: 'invalid-argument', path, reason });
 }
 
-function optionsRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) invalid('options', 'must be an object');
+function optionsRecord(value: unknown, path: string, fields: readonly string[]): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) invalid(path, 'must be an object');
   for (const key of Object.keys(value)) {
-    if (key !== 'scene' && key !== 'maxTicksPerFrame') invalid(`options.${key}`, 'is not a known field');
+    if (!fields.includes(key)) invalid(`${path}.${key}`, 'is not a known field');
   }
   return value as Record<string, unknown>;
 }
@@ -61,7 +63,7 @@ interface QueuedCommand {
 }
 
 class Runtime implements SyntheticRuntime {
-  readonly #scene: SyntheticScene;
+  readonly #scene: SyntheticScene | SyntheticRecordingSession;
   readonly #clock: FixedStepClock;
   readonly #bus = new SyntheticEventBus();
   #input: MoveInput = Object.freeze({ moveX: 0 });
@@ -73,7 +75,7 @@ class Runtime implements SyntheticRuntime {
   #inFrame = false;
   #fault: GameRuntimeError | undefined;
 
-  constructor(scene: SyntheticScene, maxTicksPerFrame: number) {
+  constructor(scene: SyntheticScene | SyntheticRecordingSession, maxTicksPerFrame: number) {
     this.#scene = scene;
     this.#clock = new FixedStepClock(scene.uiProjection().tickRateHz, maxTicksPerFrame);
     this.#previous = this.#current = scene.renderState();
@@ -143,8 +145,8 @@ class Runtime implements SyntheticRuntime {
     return this.#scene.uiProjection();
   }
 
-  exportRecording(): null {
-    return null;
+  exportRecording(): SyntheticRecording | null {
+    return 'exportRecording' in this.#scene ? this.#scene.exportRecording() : null;
   }
 
   #fail(cause: unknown): GameRuntimeError {
@@ -158,9 +160,19 @@ class Runtime implements SyntheticRuntime {
 }
 
 export function createSyntheticRuntime(options: SyntheticRuntimeOptions): SyntheticRuntime {
-  const { scene: config, maxTicksPerFrame = 5 } = optionsRecord(options);
+  const { scene: config, maxTicksPerFrame = 5, recording } = optionsRecord(options, 'options', ['scene', 'maxTicksPerFrame', 'recording']);
   if (typeof maxTicksPerFrame !== 'number' || !Number.isSafeInteger(maxTicksPerFrame) || maxTicksPerFrame < 1) {
     invalid('options.maxTicksPerFrame', 'must be a positive safe integer');
+  }
+  if (recording !== undefined) {
+    const { checkpointInterval } = optionsRecord(recording, 'options.recording', ['checkpointInterval']);
+    if (typeof checkpointInterval !== 'number' || !Number.isSafeInteger(checkpointInterval) || checkpointInterval < 1) {
+      invalid('options.recording.checkpointInterval', 'must be a positive safe integer');
+    }
+    const session = coreInput(
+      () => createSyntheticRecordingSession(config as SyntheticSceneConfig, checkpointInterval), 'config', 'options.scene',
+    );
+    return new Runtime(session, maxTicksPerFrame);
   }
   const scene = coreInput(() => createSyntheticScene(config as SyntheticSceneConfig), 'config', 'options.scene');
   return new Runtime(scene, maxTicksPerFrame);

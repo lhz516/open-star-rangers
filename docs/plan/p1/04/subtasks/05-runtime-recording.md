@@ -38,14 +38,14 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-01：完整录制参数的合法/非法/undefined/null 路径准确，保留 Core cause；创建配置 getter 与普通模式一样只使用同次取值。
-- [ ] AC-04：非法时间和换算溢出前后导出完全相同；随后有效帧与未进行非法调用的实例相同。
-- [ ] AC-09、AC-10：监听器抛错不回滚已成功的记录；任意读取与导出不改变检查点；早期导出在后续运行后不变。
-- [ ] AC-11：间隔 1、4，各覆盖 moveX=−1/0/0.5/1、add/remove 成功、两种业务拒绝、0 tick 与 capped 帧；记录恰含实际成功的逐 tick 输入。JSON 往返后 replay 与导出结果一致，并另行比较事件与检查点。
-- [ ] AC-11：无 Core 故障时，全程未取消的一个 onAny 所收到事件与 result.events 相同；record/event 无 commandId 或帧时间。相同调用序列下开启/关闭录制的帧报告、状态对、projection 和通知完全等价。
-- [ ] AC-12：50 Hz、0→60 ms、第二次 step 在推进前失败，只导出 tick 1 及其 added 事件，监听器无本帧通知，previous/current 为 0/1、alpha=0；该导出 replay 一致。首 step 失败则只有初始检查点和空输入/事件。
-- [ ] AC-12：故障后拒绝 frame/submit/setInput，读取/导出/取消仍可用，解除测试注入也不恢复；原 cause 保留。
-- [ ] AC-13：旧 Core 测试文件不变；针对性测试、`pnpm check` 和限定范围清理复验通过。
+- [x] AC-01：完整录制参数的合法/非法/undefined/null 路径准确，保留 Core cause；创建配置 getter 与普通模式一样只使用同次取值。
+- [x] AC-04：非法时间和换算溢出前后导出完全相同；随后有效帧与未进行非法调用的实例相同。
+- [x] AC-09、AC-10：监听器抛错不回滚已成功的记录；任意读取与导出不改变检查点；早期导出在后续运行后不变。
+- [x] AC-11：间隔 1、4，各覆盖 moveX=−1/0/0.5/1、add/remove 成功、两种业务拒绝、0 tick 与 capped 帧；记录恰含实际成功的逐 tick 输入。JSON 往返后 replay 与导出结果一致，并另行比较事件与检查点。
+- [x] AC-11：无 Core 故障时，全程未取消的一个 onAny 所收到事件与 result.events 相同；record/event 无 commandId 或帧时间。相同调用序列下开启/关闭录制的帧报告、状态对、projection 和通知完全等价。
+- [x] AC-12：50 Hz、0→60 ms、第二次 step 在推进前失败，只导出 tick 1 及其 added 事件，监听器无本帧通知，previous/current 为 0/1、alpha=0；该导出 replay 一致。首 step 失败则只有初始检查点和空输入/事件。
+- [x] AC-12：故障后拒绝 frame/submit/setInput，读取/导出/取消仍可用，解除测试注入也不恢复；原 cause 保留。
+- [x] AC-13：旧 Core 测试文件不变；针对性测试、`pnpm check` 和限定范围清理复验通过。
 
 ## 验证方法
 
@@ -56,3 +56,8 @@ updated: 2026-10-02
 - 无浏览器、实机、原版或存储迁移要求；浏览器复用记录由 P1-10 验证。
 
 ## 完成证据
+
+- 2026-10-02：[录制集成测试](../../../../../src/app/synthetic-runtime-recording.test.ts) 12 项、[故障测试](../../../../../src/app/synthetic-runtime-fault.test.ts) 4 项通过；最终 `pnpm check` 21 文件、513 项通过，typecheck/lint/build 成功。
+- rubber-duck 确认只有一份场景、成功 step 才入记录、故障注入在真实提交之前；按建议强化 recording.* 错误路径、录制创建的 Core cause 和非法调用后的独立对照实例。
+- 随后执行 simplify 四个独立角度检查。移除冗余 recording 引用/双参数，Runtime 只保留一个场景，通过实际能力导出。保留创建前的三行间隔校验（unknown → number 的边界且在分配场景前失败）；不删除 spec 明确要求的 checkpoint/replay/冻结集成断言，避免把必需验收当作重复测试删掉。
+- 文档检查：更新 [engineering](../../../../engineering/README.md#合成-runtime) 的开启方式、内存边界与故障导出语义；没有新的持久化/浏览器操作，guides 无需新增步骤。
