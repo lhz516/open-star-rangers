@@ -61,10 +61,10 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-08（比对）：录制结果与 replay 结果比对一致，JSON 往返后仍一致。
-- [ ] AC-09：每类合法偏差都报告正确的 tick 与类别；采样边界反例和 `-0`/`0` 两种情况比对一致；同 tick 两种差异时优先报告 `events`。
-- [ ] AC-10（结果）：每类非法结果都抛 `CoreInputError`，`expected` 与 `actual` 的 `path` 均正确；只有结构合法时才进入比较。
-- [ ] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
+- [x] AC-08（比对）：录制结果与 replay 结果比对一致，JSON 往返后仍一致。
+- [x] AC-09：每类合法偏差都报告正确的 tick 与类别；采样边界反例和 `-0`/`0` 两种情况比对一致；同 tick 两种差异时优先报告 `events`。
+- [x] AC-10（结果）：每类非法结果都抛 `CoreInputError`，`expected` 与 `actual` 的 `path` 均正确；只有结构合法时才进入比较。
+- [x] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -72,3 +72,34 @@ updated: 2026-10-02
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic-replay.ts) 新增类型 `SyntheticReplayComparison` 与 `compareSyntheticReplayResults(expected, actual)`。
+  - **结构校验：** 先对两份结果分别执行 `readResult`，路径前缀为 `expected` 或 `actual`。
+    - 要求自有属性并拒绝额外字段；数组无缺失项。
+    - 检查点非空，首个 tick 为 0，严格递增，hash 为 16 位小写十六进制；最后一个检查点即最终 tick。
+    - 事件按 `EVENT_FIELDS` 校验精确字段，该表以 `satisfies` 绑定 `DomainEvent` 联合，新增事件类型时会编译失败；tick 在 1 至最终 tick 之间，`commandIndex` 非负，`entityId ≥ 2`，坐标在 `[-5,5)`，`commandType`/`reason` 只允许两种配对。
+    - 事件按 tick 非递减；同 tick 内 `commandIndex` 从 0 连续递增。
+    - 每个不受信字段只读取一次，返回规范化（`-0` 为 `0`）的分离副本。
+  - **比较：** 用四个游标顺序遍历两份已按 tick 排序的事件与检查点，逐字段比较事件，与对象身份和键序无关；同一 tick 先比较事件再比较检查点。差异作为冻结的数据返回。
+  - [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 把 `NumberRule`、`readNumber`、`readVec`、`MARKER_COORDINATE`、`NON_NEGATIVE_SAFE_INTEGER`、`ENTITY_ID` 改为 Core 内部导出（后两者由原私有规则改名而来），恢复行为不变。replay 的 `ticks` 缺失项检查改用同一个 `requireDenseArray`。
+- **测试：** [synthetic-replay-compare.test.ts](../../../../../src/core/synthetic-replay-compare.test.ts)，共 81 项。
+  - **AC-08（比对）：** 60/120 Hz × 间隔 1/4 下，录制结果与 replay 结果比对为 `{ match: true }`，记录与结果都经 JSON 往返后仍一致。
+  - **AC-09：** 全部用分别生成的结果比对。
+    - 间隔 1：
+      - 改变 `moveX` → `{2, checkpoint}`；插入命令 → `{2, events}`；删除命令 → `{1, events}`（同 tick 哈希也不同，仍报告 `events`）；调换命令 → `{6, events}`。
+      - 截短到有事件的 tick 之前 → `{10, events}`；截短到无事件的 tick 之前 → `{8, checkpoint}`；延长 → `{12, checkpoint}`。
+      - 篡改期望结果的事件坐标 → `{1, events}`；篡改其哈希 → `{3, checkpoint}`。
+    - 不同 seed 或不同 `tickRateHz` → `{0, checkpoint}`。
+    - 间隔 4：持续的状态偏差在检查点报告 `{4, checkpoint}`；没有检查点的 tick 3 上出现的事件差异报告 `{3, events}`。
+    - 键序整体反转的结果比对一致；检查点 hash 的 getter 只被读取一次。
+    - 采样边界回归：间隔 2 下 `[0,0]` 与 `[1,-1]` 一致，间隔 1 下在 tick 1 报告 `checkpoint`；注释说明这是采样粒度，不是哈希碰撞。
+    - `moveX` 为 `-0` 与 `0` 的记录比对一致。
+  - **AC-10（结果）：**
+    - 29 个负向用例分别作为 `expected` 与 `actual` 运行（共 58 次），断言 `CoreInputError` 与带前缀的 `path`。覆盖非对象、顶层额外或缺失字段、非数组、稀疏的事件与检查点、空检查点、首个检查点非 0、非递增、小数 tick、检查点额外字段、大写/过短/数字 hash、未知事件类型、非对象事件、事件字段缺失或额外、`entityId = 1`、坐标等于 5、position 额外字段、负 `commandIndex`、未知 `commandType`、`reason` 不配对、事件 tick 为 0 或超过最终 tick、事件乱序、`commandIndex` 跳号或不从 0 开始。
+    - 另有两项：两份结果本身不同但 `actual` 非法时，先抛出结构错误；结构合法但不可能由 replay 产生的结果被接受（不重演历史）。
+- **检查：** `pnpm exec vitest run src/core` 通过；最终 `pnpm check` 通过（typecheck、lint、14 个测试文件共 420 项、build）。
+- **审阅：**
+  - rubber-duck 发现检查点 hash 被读取三次，getter 可以让未经校验的值进入比较，已改为只读一次并补测。另补测了无检查点 tick 上的事件差异和键序无关。
+  - simplify：
+    - 已采纳：用逐字段的类型化比较器和游标合并，取代按 tick 生成 JSON 加排序；tick 规则只构造一次；`readEvent` 先按判别字段选出字段表，共同字段只读取一次；`EVENT_FIELDS` 绑定事件联合；与恢复共用整数规则和 `requireDenseArray`；测试中的嵌套三元式改为 `if`。
+    - 未采纳：另建独立校验模块（goal 已固定文件布局，导出已注明为 Core 内部）；与 `planCommands` 共享拒绝原因映射（需要改动 P1-02 规则代码）；共享 hash 格式谓词（价值低）。

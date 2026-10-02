@@ -80,7 +80,7 @@ updated: 2026-10-02
 | [03-strict-restore.md](./subtasks/03-strict-restore.md) | 02 | completed |
 | [04-recording-session.md](./subtasks/04-recording-session.md) | 02 | completed |
 | [05-replay.md](./subtasks/05-replay.md) | 04 | completed |
-| [06-result-comparison.md](./subtasks/06-result-comparison.md) | 05 | pending |
+| [06-result-comparison.md](./subtasks/06-result-comparison.md) | 05 | completed |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
 
 依赖都是真实前提：

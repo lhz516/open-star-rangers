@@ -342,23 +342,26 @@ export function createSyntheticScene(config: SyntheticSceneConfig): SyntheticSce
   });
 }
 
+// The NumberRule readers and rules below are exported for other Core validators; they are not part
+// of SyntheticScene.
+
 /** A validity check on a number and the message used when it fails. */
-type NumberRule = readonly [valid: (value: number) => boolean, rule: string];
+export type NumberRule = readonly [valid: (value: number) => boolean, rule: string];
 
 const FINITE: NumberRule = [Number.isFinite, 'must be a finite number'];
 const ZERO: NumberRule = [(value) => value === 0, 'must be 0'];
-const MARKER_COORDINATE: NumberRule = [
+export const MARKER_COORDINATE: NumberRule = [
   (value) => value >= SYNTHETIC_MARKER_MIN && value < SYNTHETIC_MARKER_MAX,
   `must be a number in [${SYNTHETIC_MARKER_MIN}, ${SYNTHETIC_MARKER_MAX})`,
 ];
 
 /** Returns `value` with -0 normalised to +0 (`-0 + 0` is `+0`), or throws if it is not a number passing `rule`. */
-function readNumber(value: unknown, path: string, [valid, rule]: NumberRule): number {
+export function readNumber(value: unknown, path: string, [valid, rule]: NumberRule): number {
   if (typeof value !== 'number' || !valid(value)) throw new CoreInputError(path, rule);
   return value + 0;
 }
 
-function readVec(value: unknown, path: string, x: NumberRule, y: NumberRule, z: NumberRule): Vec3 {
+export function readVec(value: unknown, path: string, x: NumberRule, y: NumberRule, z: NumberRule): Vec3 {
   const position = requireExactRecord(value, path, ['x', 'y', 'z']);
   return { x: readNumber(position.x, `${path}.x`, x), y: readNumber(position.y, `${path}.y`, y), z: readNumber(position.z, `${path}.z`, z) };
 }
@@ -379,8 +382,9 @@ function readMarker(value: unknown, path: string, nextEntityId: EntityId): Synth
   return { id: markerId, position: readVec(position, `${path}.position`, MARKER_COORDINATE, MARKER_COORDINATE, MARKER_COORDINATE) };
 }
 
-const TICK: NumberRule = [(value) => Number.isSafeInteger(value) && value >= 0, 'must be a non-negative safe integer'];
-const NEXT_ENTITY_ID: NumberRule = [
+export const NON_NEGATIVE_SAFE_INTEGER: NumberRule = [(value) => Number.isSafeInteger(value) && value >= 0, 'must be a non-negative safe integer'];
+/** Any marker ID, and the allocator, which is always above the mover's ID. */
+export const ENTITY_ID: NumberRule = [
   (value) => Number.isSafeInteger(value) && value > SYNTHETIC_MOVER_ID,
   `must be a safe integer of at least ${SYNTHETIC_MOVER_ID + 1}`,
 ];
@@ -390,11 +394,11 @@ function readSnapshotState(value: unknown): SyntheticSceneState {
   const path = 'snapshot.state';
   const state = requireExactRecord(value, path, STATE_FIELDS);
   if (state.scenario !== 'synthetic') throw new CoreInputError(`${path}.scenario`, 'must be synthetic');
-  const tick = readNumber(state.tick, `${path}.tick`, TICK);
+  const tick = readNumber(state.tick, `${path}.tick`, NON_NEGATIVE_SAFE_INTEGER);
   const tickRateHz = readNumber(state.tickRateHz, `${path}.tickRateHz`, [isTickRate, TICK_RATE_RULE]);
   const seed = readNumber(state.seed, `${path}.seed`, [isUint32, UINT32_RULE]);
   const rngState = readNumber(state.rngState, `${path}.rngState`, [isUint32, UINT32_RULE]);
-  const nextEntityId = readNumber(state.nextEntityId, `${path}.nextEntityId`, NEXT_ENTITY_ID);
+  const nextEntityId = readNumber(state.nextEntityId, `${path}.nextEntityId`, ENTITY_ID);
   const mover = readMover(state.mover, `${path}.mover`);
   const marker = readMarker(state.marker, `${path}.marker`, nextEntityId);
   return { scenario: 'synthetic', tick, tickRateHz, seed, rngState, nextEntityId, mover, marker };
