@@ -88,7 +88,7 @@ updated: 2026-10-02
 |---|---|---|
 | [01-runtime-errors.md](./subtasks/01-runtime-errors.md) | — | completed |
 | [02-fixed-step-clock.md](./subtasks/02-fixed-step-clock.md) | 01 | completed |
-| [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | pending |
+| [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | completed |
 | [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | pending |
 | [05-runtime-recording.md](./subtasks/05-runtime-recording.md) | 04 | pending |
 | [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |
