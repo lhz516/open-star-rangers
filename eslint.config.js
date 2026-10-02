@@ -3,8 +3,8 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-const browserOnly = ['react', 'react-dom', 'react-dom/*', 'zustand', 'zustand/*', 'three', 'three/*', 'idb', 'idb-keyval'];
-const appLayers = ['**/app/**', '**/render/**', '**/ui/**', '**/platform/**', '**/workers/**'];
+const browserOnly = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyval'];
+const appLayers = ['app', 'render', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]);
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage'] },
@@ -28,15 +28,15 @@ export default tseslint.config(
   },
   {
     // Pure modules: no UI, rendering, or browser storage libraries, and no app layers.
-    files: ['src/core/**/*.ts', 'src/original-data/**/*.ts', 'src/content/**/*.ts'],
+    files: ['src/core/**/*.{ts,tsx}', 'src/original-data/**/*.{ts,tsx}', 'src/content/**/*.{ts,tsx}'],
     ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: browserOnly.filter((p) => !p.includes('*')).map((name) => ({ name, message: 'Pure modules must not depend on UI, rendering, or storage libraries.' })),
+          paths: browserOnly.map((name) => ({ name, message: 'Pure modules must not depend on UI, rendering, or storage libraries.' })),
           patterns: [
-            { group: browserOnly.filter((p) => p.includes('*')), message: 'Pure modules must not depend on UI, rendering, or storage libraries.' },
+            { group: browserOnly.map((name) => `${name}/*`), message: 'Pure modules must not depend on UI, rendering, or storage libraries.' },
             { group: appLayers, message: 'Pure modules must not import app layers.' },
           ],
         },
@@ -45,7 +45,7 @@ export default tseslint.config(
   },
   {
     // Core determinism: randomness and time come from the tick input, never from the host.
-    files: ['src/core/**/*.ts'],
+    files: ['src/core/**/*.{ts,tsx}'],
     ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-properties': [
@@ -61,7 +61,11 @@ export default tseslint.config(
         { name: 'setInterval', message: 'Core is synchronous.' },
         { name: 'requestAnimationFrame', message: 'Scheduling belongs to GameRuntime.' },
       ],
-      'no-restricted-syntax': ['error', { selector: 'AwaitExpression', message: 'Core is synchronous.' }],
+      'no-restricted-syntax': [
+        'error',
+        { selector: 'AwaitExpression', message: 'Core is synchronous.' },
+        { selector: ':function[async=true]', message: 'Core is synchronous.' },
+      ],
     },
   },
 );

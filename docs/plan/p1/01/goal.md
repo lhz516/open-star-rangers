@@ -54,7 +54,7 @@ updated: 2026-10-01
 |---|---|---|
 | [01-toolchain-baseline.md](./subtasks/01-toolchain-baseline.md) | — | completed |
 | [02-type-environment-regression.md](./subtasks/02-type-environment-regression.md) | 01 | completed |
-| [03-lint-boundary-regression.md](./subtasks/03-lint-boundary-regression.md) | 02 | pending |
+| [03-lint-boundary-regression.md](./subtasks/03-lint-boundary-regression.md) | 02 | completed |
 | [04-check-chain-failure-contract.md](./subtasks/04-check-chain-failure-contract.md) | 03 | pending |
 | [05-local-shell-evidence.md](./subtasks/05-local-shell-evidence.md) | 04 | pending |
 | [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |

@@ -37,12 +37,12 @@ updated: 2026-10-01
 
 ## 验收标准
 
-- [ ] AC-03：三个纯模块位置及 `.ts`/`.tsx` 对应样本受目标 lint 限制；规则未应用/ignored/解析失败不能替代目标 ruleId。
-- [ ] AC-03：包根/子路径的值、类型导入和 re-export 以及应用层入口/子模块被拒绝；已知缺口均有用例。
-- [ ] AC-03：Core 所列直接 host API、await 和所有 async 函数形式被对应规则拒绝，不以“类型报错”替代。
-- [ ] AC-04：允许依赖方向、app `.tsx`、测试例外和消费层 host API 对照无相关误报。
-- [ ] AC-09：只使用静态合成输入，未产生生产临时源或运行其中逻辑。
-- [ ] 针对性 `pnpm test -- tools/engineering-boundaries.test.ts` 与完整 `pnpm check` 通过；02 用例保持有效。
+- [x] AC-03：三个纯模块位置及 `.ts`/`.tsx` 对应样本受目标 lint 限制；规则未应用/ignored/解析失败不能替代目标 ruleId。
+- [x] AC-03：包根/子路径的值、类型导入和 re-export 以及应用层入口/子模块被拒绝；已知缺口均有用例。
+- [x] AC-03：Core 所列直接 host API、await 和所有 async 函数形式被对应规则拒绝，不以“类型报错”替代。
+- [x] AC-04：允许依赖方向、app `.tsx`、测试例外和消费层 host API 对照无相关误报。
+- [x] AC-09：只使用静态合成输入，未产生生产临时源或运行其中逻辑。
+- [x] 针对性 `pnpm test -- tools/engineering-boundaries.test.ts` 与完整 `pnpm check` 通过；02 用例保持有效。
 
 ## 验证方法
 
@@ -51,3 +51,9 @@ updated: 2026-10-01
 - 不进行浏览器/原版验证。STATUS 不成立勾选保持至 05 完成证据汇总。
 
 ## 完成证据
+
+- 2026-10-01：[ESLint 配置](../../../../../eslint.config.js) 扩展纯模块/Core 作用域到 ts/tsx，包名单生成根/子路径限制，应用层补目录入口，使用 `:function[async=true]` 拒绝 async 声明/表达式/箭头/对象与类方法。
+- [回归文件](../../../../../tools/engineering-boundaries.test.ts) 保留 02 的 6 用例，新增 16 个 lint 矩阵/对照用例。六个纯层/扩展名逻辑位置分别验证 6 包 × 3 路径 × 4 导入形式、5 应用层 × 3 路径 × 4 形式；Core 两种扩展名覆盖 13 个 host/异步操作，均断言目标 ruleId，排除 parser/ignored 诊断。
+- 正向用例覆盖纯依赖方向、确定性计算、app TSX JSX、app/platform 的 host 能力及 core/tools 的 test 例外；预期错误集合为空，不靠缺失依赖报错通过。
+- 针对性 CLI：22 个用例通过；`pnpm check`：3 文件/43 用例、TS/lint/build 全通过，既有 21 个解析器用例保持原样。未新增依赖或游戏代码。
+- simplify 四视角只读审阅本项 diff，无需要修正的清理项。静态 lintText 未写生产样本，也未执行任何 host 操作；Promise 链仍为检测限制。
