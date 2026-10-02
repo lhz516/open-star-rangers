@@ -43,9 +43,9 @@ docs/plan/
 | [generate-spec](../../.agents/skills/generate-spec/SKILL.md) | 与用户澄清需求，创建或修订 spec | `/generate-spec p1/02 最小 Core` |
 | [review-spec](../../.agents/skills/review-spec/SKILL.md) | 审阅并修正 spec，向用户确认影响契约的选择 | `/review-spec docs/plan/p1/02/spec.md` |
 | [generate-goal](../../.agents/skills/generate-goal/SKILL.md) | 从已批准 spec 生成 goal 与 subtasks | `/generate-goal docs/plan/p1/02/spec.md` |
-| [execute-goal](../../.agents/skills/execute-goal/SKILL.md) | 按依赖持续实现、验证、更新记录并逐项本地提交 | `/execute-goal docs/plan/p1/02/goal.md` |
+| [execute-goal](../../.agents/skills/execute-goal/SKILL.md) | 按依赖持续实现、rubber-duck 审查、文档对齐、验证并逐项本地提交 | `/execute-goal docs/plan/p1/02/goal.md` |
 | [browser-testing](../../.agents/skills/browser-testing/SKILL.md) | 用合成内容验证浏览器交互、渲染、生命周期与本地存储 | `/browser-testing docs/plan/p1/02/subtasks/03-final-alignment.md` |
-| [simplify](../../.agents/skills/simplify/SKILL.md) | 清理当前实现范围内的复用、复杂度与效率问题 | 由 execute-goal 在代码验证后调用 |
+| [simplify](../../.agents/skills/simplify/SKILL.md) | 清理当前实现范围内的复用、复杂度与效率问题 | 由 execute-goal 在 rubber-duck 审查后调用 |
 | [run-task](../../.agents/skills/run-task/SKILL.md) | 按[自动编排](#自动编排)串联前四个 skills，在人工关卡停下 | `/run-task p1/03`、`/run-task p1/04 --plan-only` |
 
 生成、审阅、分解和执行是独立入口，不自动越过用户批准进入下一阶段；run-task 只负责把它们串起来，同样不越过批准。前四个 skills 与 run-task 仅显式调用；browser-testing 可在相关验证工作中调用。保留参考 skills 中已有的 `agents/openai.yaml`。
@@ -131,6 +131,8 @@ generate-spec → review-spec → ⏸ approve-spec → generate-goal → ⏸ app
 - 浏览器检查覆盖相关 DOM 交互和 Canvas/WebGL 结果；仅看到 Canvas 或 HTTP 200 不代表玩法、渲染或指令闭环通过。
 - 合成按键不能证明浏览器/系统快捷键拦截有效；全屏、Pointer Lock、Keyboard Lock、音频解锁和真实性能按需要保留实机验证。
 - 先跑针对性检查；TypeScript/app 变更按[工程约定](./README.md)运行 `pnpm check`。Python/Ghidra 的检查单独执行。文档修改检查链接、元数据与结构，不运行无关构建。
+- 每个 subtask 在 simplify 或完成前，用 rubber-duck subagent 按当前项 diff、契约和验收标准做一次审查；处理适用问题并重跑受影响检查，不重复委派同一审查。
+- 每个 subtask 完成前检查文档影响；接口、命令、检查规则或操作步骤变化时同步 `engineering/`、`guides/` 等直接相关文档，无需修改时在完成证据中说明原因。
 - 明确调用 execute-goal 授权逐项本地 commit，不授权 push、云资源修改、部署或破坏性操作。当前仅创建这些 skills，不等于调用 execute-goal。
 - 已批准 spec 要求的实机、原版对照或部署结果若尚未验证，仍是未完成验收，不可用本地代理检查替代后宣称完成；任务范围之外的后续操作才可以作为残余事项记录。
 - 执行不为已决定的事项反复提问；出现新的行为歧义或契约冲突时先记录阻塞，必要时向用户澄清，不能为了长时间无人值守而猜测。

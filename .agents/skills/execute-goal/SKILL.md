@@ -1,6 +1,6 @@
 ---
 name: execute-goal
-description: 'Execute or resume an approved Open Star Rangers goal at docs/plan/<phase>/<task>/goal.md. Work through dependency-tracked subtasks, game-specific tests, browser-testing and simplify, acceptance evidence, and one local commit per verified subtask. Use only when explicitly asked to execute-goal.'
+description: 'Execute or resume an approved Open Star Rangers goal at docs/plan/<phase>/<task>/goal.md. Work through dependency-tracked subtasks, game-specific tests, browser-testing, rubber-duck review, simplify, documentation alignment, acceptance evidence, and one local commit per verified subtask. Use only when explicitly asked to execute-goal.'
 argument-hint: 'p1/01, or docs/plan/p1/01/goal.md'
 disable-model-invocation: true
 ---
@@ -74,15 +74,27 @@ Run the checks required by the subtask and repository:
 
 Do not mark green while a required check is failing, skipped, or running. For a pre-existing failure, establish baseline evidence and report it; do not hide it or silently lower acceptance.
 
+### Rubber-duck review
+
+For every subtask, before `simplify` or completion, launch one `rubber-duck` subagent to review the complete current-subtask diff against its cited spec requirements and acceptance criteria. Give it the exact current-subtask files/hunks, relevant contract references, and validation results. Ask for meaningful bugs, logic errors, and design flaws rather than style feedback or unrelated improvements.
+
+Address every applicable finding within the approved scope and rerun affected validation. Record rejected findings only when the reason matters to acceptance. Do not use the review as a substitute for tests, broaden it to branch history, or launch another agent to repeat the same review.
+
 ### Simplify and reverify
 
 For implementation-code changes, invoke simplify with the explicit current-subtask diff/file scope, not the entire branch history. Include new untracked implementation files in that scope.
 
 Apply relevant cleanup, preserve behavior, and rerun affected validation. Verification-only or documentation-only subtasks with no implementation change do not need a code cleanup pass.
 
+### Check documentation impact
+
+For every subtask, after review and cleanup are stable but before marking it complete, check whether the change affects maintained documentation. Inspect the relevant surfaces rather than updating docs mechanically: engineering conventions, commands and test rules in `docs/engineering/`; operator or contributor procedures in `docs/guides/`; architecture and frozen decisions; original-game facts and unknowns; phase navigation, evidence, priorities, and blockers.
+
+Update directly affected docs in the same subtask, including each changed doc's `updated` date. Use an ADR for frozen-decision changes, keep original-game facts in `docs/original/`, and update STATUS only for project/phase evidence, priority, or blockers. If existing documentation remains accurate, record that the check found no required update and why.
+
 ### Record evidence
 
-Compare every acceptance checkbox with the actual result. Check only satisfied items and append concise evidence under `完成证据`: test/command, assertion or observed behavior, and relevant file references.
+Compare every acceptance checkbox with the actual result. Check only satisfied items and append concise evidence under `完成证据`: test/command, assertion or observed behavior, rubber-duck disposition, documentation-impact result, and relevant file references.
 
 Keep task execution state only in the goal tracker. Update the phase index only for navigation, and STATUS only when project/phase evidence, priority, or blockers change.
 
@@ -92,7 +104,7 @@ Use goal `执行记录` for material deviation or blockers, not every routine op
 
 After every required acceptance/check passes:
 
-1. Mark the row `completed`, update metadata, and prepare its code/tests/evidence/tracker changes together.
+1. Mark the row `completed`, update metadata, and prepare its code/tests/directly affected docs/evidence/tracker changes together.
 2. Inspect the complete and staged diffs. Stage only current-subtask work and approved goal planning artifacts.
 3. If unrelated same-file hunks cannot be separated safely, do not commit them; record a blocker.
 4. Create one focused, non-interactive local commit. Follow active commit-trailer requirements. Never push.
