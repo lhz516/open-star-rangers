@@ -35,6 +35,10 @@ export class SyntheticEventBus {
     return this.#add(listener);
   }
 
+  clear(): void {
+    this.#listeners.clear();
+  }
+
   dispatch(batch: readonly PendingDelivery[]): void {
     const listeners = [...this.#listeners];
     const errors: unknown[] = [];

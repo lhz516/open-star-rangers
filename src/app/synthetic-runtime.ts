@@ -30,6 +30,10 @@ export interface SyntheticRuntime {
   renderFrame(): RenderFrame;
   uiProjection(): SyntheticUiProjection;
   exportRecording(): SyntheticRecording | null;
+  resetClock(): void;
+  clearIntent(): readonly number[];
+  foldRenderState(): void;
+  clearSubscriptions(): void;
 }
 
 function invalid(path: string, reason: string): never {
@@ -147,6 +151,34 @@ class Runtime implements SyntheticRuntime {
 
   exportRecording(): SyntheticRecording | null {
     return 'exportRecording' in this.#scene ? this.#scene.exportRecording() : null;
+  }
+
+  resetClock(): void {
+    this.#requireOutsideFrame();
+    this.#clock.reset();
+  }
+
+  clearIntent(): readonly number[] {
+    this.#requireOutsideFrame();
+    const ids = Object.freeze(this.#commands.map(entry => entry.id));
+    this.#commands = [];
+    this.#input = Object.freeze({ moveX: 0 });
+    return ids;
+  }
+
+  foldRenderState(): void {
+    this.#requireOutsideFrame();
+    this.#previous = this.#current;
+    this.#alpha = 0;
+  }
+
+  clearSubscriptions(): void {
+    this.#requireOutsideFrame();
+    this.#bus.clear();
+  }
+
+  #requireOutsideFrame(): void {
+    if (this.#inFrame) throw new GameRuntimeError({ kind: 'reentrant-call' });
   }
 
   #fail(cause: unknown): GameRuntimeError {

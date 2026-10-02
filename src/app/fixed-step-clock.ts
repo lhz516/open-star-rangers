@@ -19,6 +19,11 @@ export class FixedStepClock {
     this.#maxTicksPerFrame = maxTicksPerFrame;
   }
 
+  reset(): void {
+    this.#base = this.#last = undefined;
+    this.#ran = 0;
+  }
+
   advance(nowMs: number): FrameTiming {
     if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) this.#invalid('must be a finite number');
     if (this.#last !== undefined && nowMs < this.#last) this.#invalid('must not move backwards');
