@@ -15,7 +15,7 @@ updated: 2026-10-01
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表已确认；调色板、TEX 已能解码；BITM 部分可解码；MESH 顶点为 32 位浮点 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[mesh](./formats/mesh.md) | P0 |
+| U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表、调色板、TEX、MESH、MODL 已确认（全部条目解析通过）；BITM 27/28 可解析；SCEN 结构已确认；音频等其余类型待研究 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[mesh](./formats/mesh.md)、[scenario](./formats/scenario.md) | P0（结构）/ P2（切片所需类型） |
 | U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 已确认（内容） | 任务内容（对象名、编组名、任务内文字、坐标、战役顺序）全部在 `SCENARIO.NOB`；EXE 中没有任务文字。EXE 是否有针对特定任务的硬编码逻辑见 U-022 | [scenario](./formats/scenario.md)、[executable](./formats/executable.md) | P0 |
 | U-003 | 任务总数与分支结构 | 高概率 52 个 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个任务，其余 51 个各不相同。推测为 3 个战役各 17 个任务加 1 个共用开场任务；顺序是否即游玩顺序、是否有分支未确认 | [scenario](./formats/scenario.md) | P0 |
 | U-004 | 音乐与音效编码 | 未确认 | `SND` 37 个、`SONG` 12 个、`MUSC` 5 个；EXE 链接了 Miles AIL | [imfat](./formats/imfat.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
@@ -26,8 +26,10 @@ updated: 2026-10-01
 | U-022 | `SCEN` 各段与 132 字节记录的字段含义；EXE 是否有特定任务的硬编码逻辑 | 进行中 | 头部与 7 个段的位置已确认；字段含义需要 EXE 的加载代码或试玩对照 | [scenario](./formats/scenario.md) | P0（结构）/ P2（切片任务的字段） |
 | U-023 | `SCCT` 中 5 条 132 字节记录的用途 | 未确认 | 与 `SCEN` 第 1 段的记录类型相同；可能是战役级对象，例如可选僚机 | [scenario](./formats/scenario.md) | P2 |
 | U-024 | 地图边框两侧按钮的功能；地图打开时飞行与武器按键是否有效 | 已确认 | 按钮不能点击，只是装饰；地图打开时飞行按键无效 | [B-001](./behavior/B-001-strategic-map.md) | P0 |
-| U-025 | 战争迷雾的计算规则 | 未确认 | 已探明区域像多个圆形范围的并集，可能是友方的探测范围 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
+| U-025 | 战争迷雾的计算规则 | 部分确认 | 基础显示与敌机可见性规则已确认；探测半径、范围边界判定与历史探索保留规则未确认，研究计划见 B-001 | [B-001](./behavior/B-001-strategic-map.md#战争迷雾与敌机可见性基础规则已确认u-025)（2026-10-01 用户补充试玩反馈与截图） | P3 |
 | U-026 | 跃迁能量消耗的显示与计算 | 部分确认 | 显示已确认：地图上选取框旁显示“E: 百分比”，距离越远越大；左侧状态窗口的能量数值是当前能量。计算公式与百分比基准未确认 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
+| U-027 | MODL 第 1、2 部件列表、部件标志与 5 个音效槽的含义 | 高概率（部分） | 第 1 列表像被摧毁后的残骸碎片；第 2 列表是单色凸包，可能是碰撞体或护盾受击效果；标志与音效槽未确认 | [mesh](./formats/mesh.md) | P2 |
+| U-028 | 运行时贴图选择与着色；舰船类型与 MODL 的对应关系 | 未确认 | 几何形状与无贴图部件的颜色已与截图吻合；带贴图表面在原版中偏暖棕色，按各部件自带 TEX 渲染则偏橄榄、灰或蓝。可能是 `CRAFT.NOB` 的 `CINF` 按机型替换贴图（部分 `CINF` 直接引用 TEX，唯一偏暖棕色的 TEX 只被 `CINF` 引用），加上光照色阶。玩家座机与部分敌机对应哪个 MODL，需从 `CINF` 解析 | [mesh](./formats/mesh.md) | P2 |
 
 ## 画面
 
@@ -48,8 +50,8 @@ updated: 2026-10-01
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-011 | 完整原版键位（含飞行方向与横滚） | 部分确认 | README 中的键位已列入键位表 | [key-map](./input/key-map.md) | P0 |
-| U-012 | 是否支持鼠标飞行 | 未确认 | | 待试玩 | P0 |
+| U-011 | 完整原版键位（含飞行方向与横滚） | 部分确认 | README 中的键位已列入键位表；F1–F9 九种视角已由试玩截图确认；飞行方向与横滚键待确认 | [key-map](./input/key-map.md) | P0 |
+| U-012 | 是否支持鼠标飞行 | 已确认 | 结论与试玩证据见键位表 | [key-map](./input/key-map.md#鼠标飞行已确认u-012)（2026-10-01 用户试玩反馈） | P0 |
 
 ## 存档
 
@@ -62,7 +64,7 @@ updated: 2026-10-01
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-015 | 是否有拷贝保护（光盘检测、手册问答） | 未确认 | | 待试玩 | P0 |
+| U-015 | 是否有拷贝保护（光盘检测、手册问答） | 部分确认 | 已确认：正常试玩中未观察到任何验证环节，仅限已试玩流程，不能据此断言整个游戏无拷贝保护。光盘检测仍未确认。研究计划：保留安装目录，用临时配置对比挂载与不挂载光盘时的启动、进入任务行为；若失败，区分资源缺失与保护检查 | 用户试玩反馈（2026-10-01）；当前基准配置自动挂载光盘，见 [baseline-environment](../guides/baseline-environment.md#运行原版) | P0 |
 | U-016 | 参考音乐设备 | 高概率为 OPL3 | 原安装的 Miles 配置为 `SBPRO2.MDI` | [baseline-environment](../guides/baseline-environment.md) | P0 |
 | U-017 | 是否存在官方补丁 | 未确认 | 安装版 EXE 与光盘逐字节一致 | [manifest](./manifest.md) | P0 |
 | U-021 | 基准 DOSBox-X cycles 值 | 进行中 | 初始值 `fixed 40000`，待根据流畅度校准后冻结 | [baseline-environment](../guides/baseline-environment.md) | P0 |

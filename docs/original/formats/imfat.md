@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-09-30
+updated: 2026-10-01
 related: [U-001, U-020]
 ---
 
@@ -71,8 +71,8 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 | DATA | Global 256-colour VGA palette | Confirmed | [textures](./textures.md) |
 | TEX | Texture with its own small palette | Confirmed | [textures](./textures.md) |
 | BITM | 8-bit bitmap, sometimes with its own palette | Likely | [textures](./textures.md) |
-| MESH | Polygon mesh with float vertices | Partly confirmed | [mesh](./mesh.md) |
-| MODL | Model composed of meshes | Unconfirmed (counts suggest it) | |
+| MESH | Triangle mesh: float positions, UVs, normals | Confirmed | [mesh](./mesh.md) |
+| MODL | Model: three part lists of {MESH, TEX, colour} plus five SND IDs | Structure Confirmed | [mesh](./mesh.md) |
 | SND / SONG / MUSC | Digital sound / music (possibly XMIDI) / mission music configuration | Unconfirmed (names; Miles drivers) | |
 | CCKD / MFDD | Cockpit images / multi-function display images | Unconfirmed (names, large sizes) | |
 | ANIM / EXPL / EXIC | Animation / explosion / explosion-related | Unconfirmed (names) | |

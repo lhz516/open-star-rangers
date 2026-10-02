@@ -43,16 +43,18 @@ updated: 2026-10-01
 ### 可行性评审
 
 - [x] 列出全部 `.NOB` 封包条目 → [imfat](./original/formats/imfat.md)
-- [ ] 还原一个舰船模型 → [mesh](./original/formats/mesh.md)、U-001
+- [x] 还原舰船模型：19 个 MODL、486 个 MESH 全部解析，带贴图渲染出可辨认的外形 → [mesh](./original/formats/mesh.md)
+- [x] 渲染结果与原版 HI 模式截图对照：几何形状与无贴图部件颜色吻合；贴图颜色与机型对应关系转入 U-028（P2） → [mesh](./original/formats/mesh.md) §3
 - [ ] 还原一个任务的结构：头部、7 个段与战役表已确认；132 字节记录等字段含义待研究 → [scenario](./original/formats/scenario.md)、U-022
 - [x] 确认任务数据是否嵌在 EXE 中：任务内容在 `SCENARIO.NOB`，EXE 中没有任务文字 → [scenario](./original/formats/scenario.md)、U-002
 - [ ] 写出评审记录 `reviews/P0-feasibility.md`
 
 ## 下一步
 
-1. 解析 MESH 的面、法线和 UV，以及 MODL 如何组合 MESH，导出一个舰船模型与原版截图对照。
-2. 在 Ghidra 中配置 Watcom 调用约定，定位 `SCEN` 的加载代码，确定 132 字节记录的字段含义（U-022）。
-3. 试玩（用户）：回答 U-011、U-012、U-013、U-015，并反馈流畅度以校准 cycles（U-021）。U-006、U-007、U-024 已完成。
+1. 在 Ghidra 中配置 Watcom 调用约定，定位 `SCEN` 的加载代码，确定 132 字节记录的字段含义（U-022），完成“还原一个任务的结构”。
+2. 写出可行性评审记录 `reviews/P0-feasibility.md`。
+3. 试玩（用户）：回答 U-011、U-013，并反馈流畅度以校准 cycles（U-021）。U-006、U-007、U-024 已完成；U-012 已确认 → [key-map](./original/input/key-map.md#鼠标飞行已确认u-012)；U-025 部分确认，剩余计算细节在 P3 继续研究 → [B-001](./original/behavior/B-001-strategic-map.md#待确认)。
+4. U-015 部分确认，正常试玩观察已记录；剩余验证计划见 [unknowns](./original/unknowns.md#环境与其他)。
 
 ## 阻塞项
 

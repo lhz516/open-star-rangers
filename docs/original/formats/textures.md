@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-09-30
+updated: 2026-10-01
 related: [U-001, U-006, U-018, U-019]
 ---
 
@@ -43,4 +43,6 @@ Pixels are 1 byte each, stored row by row with no padding.
 - 21 entries have no embedded palette; displayed with DATA their colours are clearly wrong, so their palette lives elsewhere (Unconfirmed, U-018).
 - Observed sizes: 48×48, 96×96, 128×128, 640×316. The 640×316 entries are full-screen scenes, consistent with a 640-wide high-resolution mode (U-006).
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped for texture mapping (Unconfirmed, U-019).
-- One BITM's pixel data extends past its block, so its structure differs (Unconfirmed).
+- One BITM (entry 10163) has pixel data extending past its block, so its structure differs (Unconfirmed). `tools/nob-check.ts` reports it as the only image failure.
+
+Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseImage`, `parseVgaPalette`).

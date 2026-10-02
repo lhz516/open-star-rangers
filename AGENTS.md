@@ -34,6 +34,9 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 # List the directory of IMFAT (.NOB) archives (structure only, never contents)
 node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]
 
+# Parse every TEX/BITM/MESH/MODL entry and check cross-references (counts only)
+node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
+
 # Run the original game in the baseline emulator (from the repo root)
 ~/Tools/bin/dosbox-x -conf local/StarRang/star-rangers-dosbox-x-mac.conf
 
