@@ -46,7 +46,7 @@ updated: 2026-10-02
 
 - **P1-02 已完成：** [最终对齐证据](../02/subtasks/05-final-alignment.md#完成证据)与现有 Core 类型/行为是直接前提。
 - **P1-03 已完成：** [最终对齐证据](../03/subtasks/07-final-alignment.md#完成证据)记录 420 项测试与完整工程检查通过，最终提交为 `d71d184`。录制接线使其成为本目标的真实直接前提，阶段索引同步记录此依赖。
-- **审批：** [spec 审批](./spec.md#审批)明确覆盖全部范围、14 项验收和技术决定 1–14；本 goal 尚待批准。
+- **审批：** [spec 审批](./spec.md#审批)明确覆盖全部范围、14 项验收和技术决定 1–14；本 goal 已通过下方执行授权获批，完成状态仍以 tracker 为准。
 - **工具链已存在：** [package.json](../../../../package.json)固定 Node/pnpm 和 `pnpm check`；[Vitest 配置](../../../../vite.config.ts)在 Node 环境发现 `src/**/*.test.ts`。[app](../../../../tsconfig.app.json)与 [node](../../../../tsconfig.node.json)类型程序均检查 Runtime，其中后者没有 DOM 声明。不新增 runner、依赖或配置。
 - **检查：** 各实现子任务先跑所列目标测试，再运行 `pnpm check`；清理用 [simplify](../../../../.agents/skills/simplify/SKILL.md)，只覆盖该子任务列出的新文件及改动。06 核验最终完整检查和证据。
 - **原版与外部前提：** 无原版资源、实机、浏览器、云凭据或部署前提。[U-008](../../../original/unknowns.md)仍未确认，本目标不采纳原版时钟推断。合成 Node 验证不能替代 P1-05/P1-10 的浏览器生命周期验收，也不声称跨运行时逐位一致。
@@ -89,7 +89,7 @@ updated: 2026-10-02
 | [01-runtime-errors.md](./subtasks/01-runtime-errors.md) | — | completed |
 | [02-fixed-step-clock.md](./subtasks/02-fixed-step-clock.md) | 01 | completed |
 | [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | completed |
-| [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | pending |
+| [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | completed |
 | [05-runtime-recording.md](./subtasks/05-runtime-recording.md) | 04 | pending |
 | [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |
 

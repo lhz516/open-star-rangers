@@ -40,15 +40,15 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-01（未录制）：所有创建参数错误准确，undefined/null 行为一致；配置 getter 不被重复取值，实例互不干扰，调用者对象未修改/冻结。
-- [ ] AC-02 至 AC-04：真实 Core 的 tick 与 02 时钟一致；非法时间不改输入、队列、场景、旧 Render State 或时间基准。三种无截断帧切分在相同逐 tick 输入下等价；宿主 30 ms 改轴的反例仍得到 0.02/0.04，而非错误承诺相同。
-- [ ] AC-05：add/add/remove 全在首 tick，delivery.commandId=1/2/3，added/removed 的 entityId 均为 2；未知类型、额外字段或非对象不入队且不耗 ID；修改原命令或变化 getter 不改变执行值。
-- [ ] AC-06：默认轴不移动；50 Hz 下满轴两 tick 后 X=0.04，再以 −0.5 两 tick 后 X=0.02；非法轴保留旧值，输入对象隔离。
-- [ ] AC-07、AC-10：每 tick 保留前后状态；回调读到本帧最后 tick 和 alpha（50 Hz、0→65 ms 时为 3/0.25）；0/1/多 tick 的状态对与裸场景对照，旧输出深冻结且不变。
-- [ ] AC-08、AC-09：分发期命令/输入只影响后续实际 tick，0 tick 不消费；重入捕获/未捕获两条路径和订阅变更正确；监听器抛错前副作用保留，取消失败监听器后同时间戳不重发，下一 tick 只执行一次。
-- [ ] AC-12（未录制）：首 tick 与第二个 tick 的受控失败都进入终止状态；后者只保留 tick 1，不通知 added，alpha=0；解除测试注入也不能恢复模拟，原 cause 不被后续非法参数覆盖。
-- [ ] AC-14：有分配前安全整数守卫；明确审阅 `MAX_SAFE_INTEGER` 分支、耗尽终止和分发期的汇总路径，未引入测试后门。
-- [ ] AC-13：目标测试、`pnpm check`、限定范围清理复验通过；同帧跨 tick 事件收集顺序有代码审阅证据，不虚构该场景不存在的多 tick 发事件用例。
+- [x] AC-01（未录制）：所有创建参数错误准确，undefined/null 行为一致；配置 getter 不被重复取值，实例互不干扰，调用者对象未修改/冻结。
+- [x] AC-02 至 AC-04：真实 Core 的 tick 与 02 时钟一致；非法时间不改输入、队列、场景、旧 Render State 或时间基准。三种无截断帧切分在相同逐 tick 输入下等价；宿主 30 ms 改轴的反例仍得到 0.02/0.04，而非错误承诺相同。
+- [x] AC-05：add/add/remove 全在首 tick，delivery.commandId=1/2/3，added/removed 的 entityId 均为 2；未知类型、额外字段或非对象不入队且不耗 ID；修改原命令或变化 getter 不改变执行值。
+- [x] AC-06：默认轴不移动；50 Hz 下满轴两 tick 后 X=0.04，再以 −0.5 两 tick 后 X=0.02；非法轴保留旧值，输入对象隔离。
+- [x] AC-07、AC-10：每 tick 保留前后状态；回调读到本帧最后 tick 和 alpha（50 Hz、0→65 ms 时为 3/0.25）；0/1/多 tick 的状态对与裸场景对照，旧输出深冻结且不变。
+- [x] AC-08、AC-09：分发期命令/输入只影响后续实际 tick，0 tick 不消费；重入捕获/未捕获两条路径和订阅变更正确；监听器抛错前副作用保留，取消失败监听器后同时间戳不重发，下一 tick 只执行一次。
+- [x] AC-12（未录制）：首 tick 与第二个 tick 的受控失败都进入终止状态；后者只保留 tick 1，不通知 added，alpha=0；解除测试注入也不能恢复模拟，原 cause 不被后续非法参数覆盖。
+- [x] AC-14：有分配前安全整数守卫；明确审阅 `MAX_SAFE_INTEGER` 分支、耗尽终止和分发期的汇总路径，未引入测试后门。
+- [x] AC-13：目标测试、`pnpm check`、限定范围清理复验通过；同帧跨 tick 事件收集顺序有代码审阅证据，不虚构该场景不存在的多 tick 发事件用例。
 
 ## 验证方法
 
@@ -59,3 +59,10 @@ updated: 2026-10-02
 - `pnpm check`；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 只清理本项四个新增文件及 diff。无浏览器、实机或原版要求。
 
 ## 完成证据
+
+- 2026-10-02：[Runtime](../../../../../src/app/synthetic-runtime.ts)及三个目标测试文件 45 项通过；最终 `pnpm check` 20 文件、499 项通过。过程中修复表驱动用例的 tuple 类型和 mock 的 type-import lint，最终 typecheck/lint/build 全部成功。
+- [帧与状态测试](../../../../../src/app/synthetic-runtime.test.ts)覆盖默认/非法配置、getter、连续输入、50/60 Hz、0/1/多 tick、采样反例与旧输出；[事件测试](../../../../../src/app/synthetic-runtime-events.test.ts)覆盖 FIFO、关联 ID、延后意图、重入和同步失败副作用；[故障测试](../../../../../src/app/synthetic-runtime-fault.test.ts)用真实场景包装验证成功前缀和终止状态。
+- rubber-duck 先审阅并确认主要不变量；补入故障前 alpha=0.5 的帧，使置零断言可证伪。随后 simplify 限定四个代码文件：复用 Core 校验和统一路径包装，避免 0 tick 帧复制整条队列；不新增通用注入层。
+- **AC-14 审阅：** `submitCommand` 在结构读取与递增之前检查 `nextCommandId === MAX_SAFE_INTEGER`；最后可签发 MAX_SAFE_INTEGER−1。`#fail` 缓存第一原因，之后优先抛 faulted。监听器提交触发耗尽时，总线捕获该异常、继续当前批次，再汇总 listener-failed；无 ID 回绕或公开分配器后门。
+- **跨 tick 顺序审阅：** frame 按 tick 循环，按 Core 返回数组顺序 push 到 pending，循环结束才 dispatch；只有首 tick 获得命令，现有场景后续 tick 没有事件。这是代码证据，不伪装成多 tick 事件的 Runtime 测试。
+- 文档检查并更新 [engineering 的合成 Runtime 约定](../../../../engineering/README.md#合成-runtime)：时间来源、命令关联、同步监听器、失败不可重试与测试入口。guides 无浏览器或原版操作变化，不新增占位流程。
