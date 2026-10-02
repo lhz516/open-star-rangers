@@ -1,6 +1,6 @@
 ---
 type: plan
-status: draft
+status: accepted
 phase: P1
 task: "04"
 updated: 2026-10-02
@@ -86,7 +86,7 @@ updated: 2026-10-02
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-runtime-errors.md](./subtasks/01-runtime-errors.md) | — | pending |
+| [01-runtime-errors.md](./subtasks/01-runtime-errors.md) | — | completed |
 | [02-fixed-step-clock.md](./subtasks/02-fixed-step-clock.md) | 01 | pending |
 | [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | pending |
 | [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | pending |
@@ -101,4 +101,4 @@ updated: 2026-10-02
 
 ## 审批
 
-待用户确认。用户明确批准本 goal，或明确调用 execute-goal 后，记录批准日期与范围并将 front matter 的 status 改为 accepted。这不代表实现完成，也不替代 spec 批准。
+**2026-10-02 用户批准完整 Goal 并授权执行。** 用户调用 execute-goal 并写明“approve goal”，批准六个子任务及覆盖关系；另要求各代码子任务在 simplify 前先做 rubber-duck 审阅，并在每项完成时检查相关文档。批准不表示实现完成；只授权本地提交，不包含 push 或部署。
