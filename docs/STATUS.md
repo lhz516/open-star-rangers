@@ -23,7 +23,7 @@ updated: 2026-10-01
 | [P5 Classic 1.0 发布](./plan/p5/tasks.md) | 未开始 | — |
 | [P6 Enhanced 美化](./plan/p6/tasks.md) | 未开始 | — |
 
-P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/tasks.md)，尚未生成各任务的 spec/goal。按用户确认的 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与部署移出 P1、由 [P5](./plan/p5/tasks.md)承接；其余阶段尚未拆分任务。工作流入口见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。任务规划不代表运行骨架或阶段验收完成。
+P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/tasks.md)。P1-01 的契约与 goal 已批准，工程骨架的持久回归和本地应用壳证据已建立；细粒度执行状态只见其 [goal](./plan/p1/01/goal.md)。按用户确认的 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与部署移出 P1、由 [P5](./plan/p5/tasks.md)承接；其余阶段尚未拆分任务。工作流入口见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。工程骨架通过不代表运行骨架或整个 P1 验收完成。
 
 ## P1 退出条件
 
@@ -31,9 +31,9 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 
 ### 工程骨架
 
-- [x] Vite + React + TS（strict）项目，目录结构按总计划 §4.1；`src/original-data` 与 `tools/` 纳入构建与类型检查；[AGENTS.md](../AGENTS.md) 要求代码任务先读[工程约定](./engineering/README.md)
-- [ ] 目录边界与确定性 lint：原有规则尚有扩展名、子路径、目录入口和 async 缺口，复核已取消整体通过勾选 → [P1-01 基线证据](./plan/p1/01/subtasks/01-toolchain-baseline.md#完成证据)。修正与持久回归通过后再恢复
-- [x] Vitest 单元测试；原版格式解析器的测试使用代码生成的合成样本（21 个测试，含驾驶舱字体目录）；CLI 复用共享解析器 → [payloads.test.ts](../src/original-data/payloads.test.ts)、[engineering](./engineering/README.md#测试)
+- [x] Vite + React + TS（strict）项目、纯模块/浏览器/Node 检查环境；现有解析器/TS 工具纳入静态检查，JS 配置由 lint 覆盖；本地 build/dev/生产壳刷新通过 → [基线](./plan/p1/01/subtasks/01-toolchain-baseline.md#完成证据)、[本地壳验证](./plan/p1/01/subtasks/05-local-shell-evidence.md#完成证据)
+- [x] 目录边界与确定性 lint：ts/tsx、包子路径、应用层目录入口和 async 缺口已修正，纯模块类型环境无 DOM/Node 声明；持久正负回归通过 → [回归源码](../tools/engineering-boundaries.test.ts)、[lint 验证](./plan/p1/01/subtasks/03-lint-boundary-regression.md#完成证据)。静态检测限制见[工程约定](./engineering/README.md#lint-规则eslintconfigjs)
+- [x] Vitest 单元测试和合成格式样本；既有解析器用例保持原样，新工程回归及隔离预期失败验证进入现有检查链，Python XML 测试单独通过 → [检查链证据](./plan/p1/01/subtasks/04-check-chain-failure-contract.md#完成证据)、[工程测试](./engineering/README.md#测试)
 
 ### 运行骨架
 
@@ -87,7 +87,7 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 
 ## 下一步
 
-1. P1：先为 [P1-01 工程骨架基线复核](./plan/p1/tasks.md#p1-01-工程骨架基线复核) 生成 spec，验证归档已有工程交付；随后为 [P1-02 最小纯 Core](./plan/p1/tasks.md#p1-02-最小纯-core-与合成场景契约) 明确契约，不直接跳到实现。
+1. P1：工程骨架基线证据已由 [P1-01](./plan/p1/01/goal.md) 建立；下一项为 [P1-02 最小纯 Core](./plan/p1/tasks.md#p1-02-最小纯-core-与合成场景契约) 生成 spec、明确契约，不直接跳到实现。
 2. P1：按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)规划后续本地任务；本地合规自检可并行推进。CI/部署由 P5 跟踪，不索取云凭据，也不作为 P1 阻塞；细粒度状态只放各任务 goal。
 3. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 4. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
