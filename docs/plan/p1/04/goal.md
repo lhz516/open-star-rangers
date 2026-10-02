@@ -91,13 +91,16 @@ updated: 2026-10-02
 | [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | completed |
 | [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | completed |
 | [05-runtime-recording.md](./subtasks/05-runtime-recording.md) | 04 | completed |
-| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |
+| [07-scoped-cleanup-verification.md](./subtasks/07-scoped-cleanup-verification.md) | 01, 02, 03, 04, 05 | completed |
+| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05, 07 | pending |
 
 02 与 03 只需要 01 的错误契约，彼此无依赖；04 需要错误、时钟与总线才能建立完整帧边界；05 复用 04 的唯一 step 路径接入录制，而非另开循环。
 
 最后一行始终为仅验证的最终对齐，依赖所有其他子任务。ID 保持稳定；新增修复项使用新 ID，插在 06 之前并加入其依赖，不在最终对齐中实现功能。
 
 ## 执行记录
+
+- **2026-10-02 — 补齐清理检查流程：** 01–04 已在 rubber-duck 后调用 simplify 并做本地检查，但漏掉其四路独立审阅。05 已执行四路检查。新增 07，仅针对前四项各自原提交范围补齐独立复核与证据；不把补做时间记成原提交前已完成，不改变 spec。
 
 ## 审批
 
