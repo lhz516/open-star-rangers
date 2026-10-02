@@ -76,7 +76,7 @@ updated: 2026-10-02
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-host-error-contracts.md](./subtasks/01-host-error-contracts.md) | — | pending |
+| [01-host-error-contracts.md](./subtasks/01-host-error-contracts.md) | — | completed |
 | [02-runtime-lifecycle-primitives.md](./subtasks/02-runtime-lifecycle-primitives.md) | — | pending |
 | [03-browser-session-host.md](./subtasks/03-browser-session-host.md) | 01 | pending |
 | [04-session-controls-scheduler.md](./subtasks/04-session-controls-scheduler.md) | 01, 02 | pending |
