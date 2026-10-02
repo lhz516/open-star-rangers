@@ -22,4 +22,8 @@ updated: 2026-10-01
 
 Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <脚本> <参数>` 运行；输出文件必须放在 `local/` 下。
 
+`DumpAt` 与 `DumpFromStrings` 共用同目录下的 `FunctionTraversal.java`（按深度遍历被调用函数），复制脚本时也需带上它。反编译脚本只请求 C 文本，不生成未使用的语法树；结束后释放反编译器与输出文件。
+
+编译器规范补丁按 XML 结构修改，不依赖原文件的缩进和换行；验证命令：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`。
+
 新增脚本时，在本表补充一行。

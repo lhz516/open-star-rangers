@@ -39,28 +39,30 @@ public class DumpAt extends GhidraScript {
   }
   public void run() throws Exception {
     String[] a = getScriptArgs();
-    PrintWriter out = new PrintWriter(new FileWriter(a[0]));
     int depth = Integer.parseInt(a[1]);
-    Set<Function> roots = new LinkedHashSet<>();
-    for (int i = 2; i < a.length; i++) {
-      Function f = ensure(toAddr(a[i]));
-      out.println("// " + a[i] + " -> " + (f == null ? "none" : f.getName() + " @ " + f.getEntryPoint() + " size " + f.getBody().getNumAddresses()));
-      if (f != null) roots.add(f);
+    int count;
+    try (PrintWriter out = new PrintWriter(new FileWriter(a[0]))) {
+      Set<Function> roots = new LinkedHashSet<>();
+      for (int i = 2; i < a.length; i++) {
+        Function f = ensure(toAddr(a[i]));
+        out.println("// " + a[i] + " -> " + (f == null ? "none" : f.getName() + " @ " + f.getEntryPoint() + " size " + f.getBody().getNumAddresses()));
+        if (f != null) roots.add(f);
+      }
+      Set<Function> all = FunctionTraversal.collectCallees(roots, depth, monitor);
+      count = all.size();
+      DecompInterface di = new DecompInterface();
+      try {
+        di.toggleSyntaxTree(false);
+        di.openProgram(currentProgram);
+        for (Function f : all) {
+          DecompileResults r = di.decompileFunction(f, 120, monitor);
+          out.println("\n// ===== " + f.getName() + " @ " + f.getEntryPoint() + (roots.contains(f) ? " [root]" : ""));
+          out.println(r.decompileCompleted() ? r.getDecompiledFunction().getC() : "// decompile failed: " + r.getErrorMessage());
+        }
+      } finally {
+        di.dispose();
+      }
     }
-    Set<Function> all = new LinkedHashSet<>(roots), frontier = new LinkedHashSet<>(roots);
-    for (int d = 0; d < depth; d++) {
-      Set<Function> next = new LinkedHashSet<>();
-      for (Function f : frontier) for (Function c : f.getCalledFunctions(monitor)) if (all.add(c)) next.add(c);
-      frontier = next;
-    }
-    DecompInterface di = new DecompInterface();
-    di.openProgram(currentProgram);
-    for (Function f : all) {
-      DecompileResults r = di.decompileFunction(f, 120, monitor);
-      out.println("\n// ===== " + f.getName() + " @ " + f.getEntryPoint() + (roots.contains(f) ? " [root]" : ""));
-      out.println(r.decompileCompleted() ? r.getDecompiledFunction().getC() : "// decompile failed: " + r.getErrorMessage());
-    }
-    out.close();
-    println("wrote " + all.size() + " functions");
+    println("wrote " + count + " functions");
   }
 }

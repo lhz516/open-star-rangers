@@ -10,9 +10,12 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 
 1. [`docs/STATUS.md`](docs/STATUS.md): current phase, exit-criteria checklist, next actions. **Start here.**
 2. [`docs/README.md`](docs/README.md): documentation map and writing conventions (front matter, IDs, status labels).
-3. [`docs/plan/master-plan.md`](docs/plan/master-plan.md): frozen product and architecture decisions (Chinese). Read only the sections relevant to your task.
-4. [`docs/original/`](docs/original/): everything known about the original game (file formats, unknowns register, behavior specs, key map).
-5. [`docs/decisions/`](docs/decisions/): ADRs explaining why decisions were made or changed.
+3. **Before changing code**, read [`docs/engineering/README.md`](docs/engineering/README.md): toolchain, TypeScript configuration, module boundaries, and testing conventions.
+4. [`docs/plan/master-plan.md`](docs/plan/master-plan.md): frozen product and architecture decisions. Read only the sections relevant to your task; planned features are not evidence of implemented behavior.
+5. **For original-game research or compatibility work**, consult [`docs/original/unknowns.md`](docs/original/unknowns.md) and the relevant [format](docs/original/formats/), [behavior](docs/original/behavior/), or [input](docs/original/input/key-map.md) document.
+6. Consult relevant [ADRs](docs/decisions/) and [reviews](docs/reviews/) for decision history. Accepted records are historical: supersede them with a new record rather than rewriting their conclusions.
+
+Keep this entry point short. Detailed engineering rules belong in the engineering guide; progress belongs only in `docs/STATUS.md`.
 
 ## Hard rules
 
@@ -22,7 +25,9 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 - **Frozen decisions change only through an ADR.** Add `docs/decisions/ADR-NNNN-*.md`, then update the master plan.
 - **Mark confidence.** Every research claim is labeled *Confirmed*, *Likely*, or *Unconfirmed* (Chinese docs: 已确认 / 高概率 / 未确认) with its evidence.
 - **Dependency licenses:** permissive licenses are allowed; LGPL only as a separately loaded module; no GPL/AGPL in the shipped web build (see master plan §9.2).
-- **`src/core` must stay pure:** no React, Zustand, Three.js, DOM, IndexedDB, `Math.random`, `Date.now`, or `performance.now` (master plan §4.1, §5).
+- **`src/core` must stay pure:** no React, Zustand, Three.js, DOM, IndexedDB, `Math.random`, `Date.now`, or `performance.now` (master plan §4.1, §5). `pnpm typecheck` and `pnpm lint` enforce this.
+- **Keep state and side effects separate:** Core owns game state and returns domain events; Runtime owns scheduling, command queues, and Event Bus dispatch. UI and rendering must not mutate Core state (master plan §4–5).
+- **Automated tests and public CI never read original files.** Build format test data with [`src/original-data/synthetic.ts`](src/original-data/synthetic.ts). Local reference experiments may use original files, but their output stays in `local/`.
 
 ## Languages
 
@@ -31,29 +36,35 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 
 ## Commands
 
+Run from the repository root. Use the Node version in [`.nvmrc`](.nvmrc) subject to the minimum in [`package.json`](package.json), and the pnpm version in its `packageManager` field. Keep [`pnpm-lock.yaml`](pnpm-lock.yaml) in sync with dependency changes. Do not upgrade the toolchain just because a newer release exists; compatibility constraints are in the engineering guide.
+
 ```sh
+# Initial setup when dependencies are missing
+pnpm install --frozen-lockfile
+pnpm dev          # dev server
+pnpm check        # TypeScript + ESLint + Vitest + production build
+
+# Targeted TypeScript tests
+pnpm test -- src/original-data/payloads.test.ts
+
+# Python tool tests (not included in pnpm check)
+python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'
+
 # List the directory of IMFAT (.NOB) archives (structure only, never contents)
-node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]
+node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
+# Append --entries to include individual directory entries.
 
 # Parse every TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and check cross-references (counts only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
-
-# Run the original game in the baseline emulator (from the repo root)
-~/Tools/bin/dosbox-x -conf local/StarRang/star-rangers-dosbox-x-mac.conf
-
-# Ghidra (LE loader installed; apply the Watcom calling convention once)
-python3 tools/ghidra/patch-watcom-cspec.py ~/Tools/ghidra_12.0.1_PUBLIC
-~/Tools/bin/ghidra-headless local/ghidra srangers -import local/StarRang/SRANGERS/MAIN/SRANGERS.EXE -overwrite
-~/Tools/bin/ghidra-headless local/ghidra srangers -process SRANGERS.EXE -noanalysis -readOnly \
-  -scriptPath tools/ghidra -postScript <Script>.java <args>   # write output under local/
 ```
 
-Node 22 runs `.ts` files directly; there is no build step yet (the Vite project arrives in P1). Environment setup: [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md).
+Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and research commands are in [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md); script usage is in [`docs/guides/tools.md`](docs/guides/tools.md). Those tools and original data may be absent on other machines. Prefer read-only Ghidra analysis; reimporting with `-overwrite` is an explicit setup operation, not a routine validation step.
 
 ## Before you finish a task
 
-1. Tick or update items in `docs/STATUS.md`, linking to the evidence (doc, test, or commit).
-2. Record new facts in `docs/original/` and update the status of affected `U-###` items in `docs/original/unknowns.md`.
-3. Update the `updated:` date in the front matter of every doc you changed.
-4. If you changed a frozen decision, make sure an ADR exists for it.
-5. Confirm that `git status` shows nothing under `local/` and that no original content was added to tracked files.
+1. Validate the changed surface: focused tests while iterating, `pnpm check` for TypeScript/app changes, and the guide's checks for Python/Ghidra changes. Documentation-only work needs link and metadata checks, not a build. Report any checks you could not run.
+2. Update `docs/STATUS.md` with evidence (doc, test, or commit). Tick an exit criterion only when its required outcome has been verified, not when an implementation merely exists.
+3. Record new facts in `docs/original/` and update the status of affected `U-###` items in `docs/original/unknowns.md`.
+4. Update the `updated:` date in the front matter of every doc you changed.
+5. If you changed a frozen decision, make sure an ADR exists for it.
+6. Inspect `git status` and the diff; when committing, also inspect the staged file list. Do not force-add ignored files. Confirm no original content or research output is tracked, and leave unrelated worktree changes intact.

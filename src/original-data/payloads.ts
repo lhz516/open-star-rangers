@@ -126,15 +126,13 @@ export function parseVgaPalette(block: Uint8Array): Uint8Array {
 export function parseMfdImages(block: Uint8Array): [IndexedImage[], IndexedImage[]] {
   const v = view(block);
   need(block, 16, 'MFD header');
-  const lists: IndexedImage[][] = [];
+  const lists: [IndexedImage[], IndexedImage[]] = [[], []];
   for (let l = 0; l < 2; l++) {
     const offset = v.getUint32(l * 8, true);
     const count = v.getUint32(l * 8 + 4, true);
-    const images: IndexedImage[] = [];
-    for (let i = 0; i < count; i++) images.push(parseImage(block, offset + i * IMAGE_RECORD_SIZE));
-    lists.push(images);
+    for (let i = 0; i < count; i++) lists[l].push(parseImage(block, offset + i * IMAGE_RECORD_SIZE));
   }
-  return lists as [IndexedImage[], IndexedImage[]];
+  return lists;
 }
 
 export interface BitmapFont {
@@ -158,6 +156,23 @@ export function parseBitmapFont(table: Uint8Array): BitmapFont {
     throw new PayloadError('unexpected font table layout');
   }
   return { width, height, glyphs: table.subarray(4) };
+}
+
+export function parseCockpitFonts(block: Uint8Array): BitmapFont[] {
+  const v = view(block);
+  need(block, 8, 'cockpit font header');
+  const directory = v.getUint32(0, true);
+  const count = v.getUint32(4, true);
+  need(block, directory + count * 8, 'cockpit font directory');
+  const fonts: BitmapFont[] = [];
+  for (let i = 0; i < count; i++) {
+    const at = directory + i * 8;
+    const offset = v.getUint32(at, true);
+    const size = v.getUint32(at + 4, true);
+    need(block, offset + size, 'cockpit font table');
+    fonts.push(parseBitmapFont(block.subarray(offset, offset + size)));
+  }
+  return fonts;
 }
 
 /** {u32 offset, u32 count} at 0x00 followed by `count` u32 entry IDs (M2ID, NEBC). */

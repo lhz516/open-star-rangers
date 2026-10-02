@@ -20,7 +20,7 @@ updated: 2026-09-30
 | [original/formats/](./original/formats/) | 文件格式规范 | 参考类 | **英文** |
 | [original/behavior/](./original/behavior/) | 行为规范 `B-###`，带测量方法与容差 | 参考类 | 中文 |
 | [original/input/key-map.md](./original/input/key-map.md) | 原版键位与浏览器冲突表 | 参考类 | 中文 |
-| engineering/ | 本项目代码的架构现状、约定、测试说明（P1 起创建） | 参考类 | 中文 |
+| [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |
 

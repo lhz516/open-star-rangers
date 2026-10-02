@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { entryData, parseImfat } from '../src/original-data/imfat.ts';
-import { parseBitmapFont, parseIdList, parseImage, parseMesh, parseMfdImages, parseModel } from '../src/original-data/payloads.ts';
+import { parseCockpitFonts, parseIdList, parseImage, parseMesh, parseMfdImages, parseModel } from '../src/original-data/payloads.ts';
 
 const file = process.argv[2];
 if (!file) {
@@ -31,16 +31,9 @@ for (const entry of archive.entries) {
       case 'MFDD':
         parseMfdImages(block);
         break;
-      case 'CCKD': {
-        // The three header tables are bitmap fonts.
-        const v = new DataView(block.buffer, block.byteOffset, block.byteLength);
-        const at = v.getUint32(0, true);
-        for (let t = 0; t < v.getUint32(4, true); t++) {
-          const offset = v.getUint32(at + t * 8, true);
-          parseBitmapFont(block.subarray(offset, offset + v.getUint32(at + t * 8 + 4, true)));
-        }
+      case 'CCKD':
+        parseCockpitFonts(block);
         break;
-      }
       case 'M2ID':
       case 'NEBC': {
         const expected = entry.type === 'M2ID' ? 'MODL' : 'BITM';

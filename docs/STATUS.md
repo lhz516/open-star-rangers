@@ -29,9 +29,9 @@ updated: 2026-10-01
 
 ### 工程骨架
 
-- [ ] Vite + React + TS（strict）项目，目录结构按总计划 §4.1；`src/original-data` 与 `tools/` 纳入构建与类型检查
-- [ ] 目录边界与确定性 lint：`src/core` 等不得导入 React、Zustand、Three.js、DOM、IndexedDB，不得使用 `Math.random`、`Date.now`、`performance.now`
-- [ ] Vitest 单元测试；原版格式解析器的测试使用代码生成的合成样本
+- [x] Vite + React + TS（strict）项目，目录结构按总计划 §4.1；`src/original-data` 与 `tools/` 纳入构建与类型检查；[AGENTS.md](../AGENTS.md) 要求代码任务先读[工程约定](./engineering/README.md)
+- [x] 目录边界与确定性 lint：`src/core` 等不得导入 React、Zustand、Three.js、DOM、IndexedDB，不得使用 `Math.random`、`Date.now`、`performance.now`；已用违规文件验证 → [engineering](./engineering/README.md#lint-规则eslintconfigjs)
+- [x] Vitest 单元测试；原版格式解析器的测试使用代码生成的合成样本（21 个测试，含驾驶舱字体目录）；CLI 复用共享解析器 → [payloads.test.ts](../src/original-data/payloads.test.ts)、[engineering](./engineering/README.md#测试)
 
 ### 运行骨架
 
@@ -77,8 +77,8 @@ updated: 2026-10-01
 
 ## 下一步
 
-1. P1：初始化 Vite + React + TS 项目骨架，把现有解析器与工具纳入构建、类型检查与测试。
-2. P1：目录边界与确定性 lint；Core 与 GameRuntime 的最小可运行版本。
+1. P1：Core 的最小可运行版本：`step(tickInput)` 返回事件、带种子的随机数、状态哈希与 replay 测试。
+2. P1：GameRuntime（固定步长、命令队列、Event Bus、运行时控制通道），以及 Three.js 合成场景。
 3. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 4. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 

@@ -1,0 +1,9 @@
+{
+  // Node-side code: build config, research tools, and tests.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "eslint.config.js", "tools/**/*.ts", "src/**/*.test.ts"]
+}

@@ -9,9 +9,9 @@ __watcall the default prototype and keeps the original file as *.orig.
 Usage: python3 tools/ghidra/patch-watcom-cspec.py ~/Tools/ghidra_12.0.1_PUBLIC
 Re-run after reinstalling or upgrading Ghidra, then re-import the program.
 """
-import re
 import shutil
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 WATCALL = """  <default_proto>
@@ -41,19 +41,26 @@ def main() -> int:
         print(__doc__)
         return 1
     cspec = Path(sys.argv[1]) / "Ghidra/Processors/x86/data/languages/x86borland.cspec"
-    text = cspec.read_text()
-    if "__watcall" in text:
+    tree = ET.parse(cspec, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
+    root = tree.getroot()
+    if root.find(".//prototype[@name='__watcall']") is not None:
         print("already patched:", cspec)
         return 0
     backup = cspec.with_suffix(".cspec.orig")
     if not backup.exists():
         shutil.copy2(cspec, backup)
-    match = re.search(r'  <default_proto>\n(    <prototype name="__fastcall".*?</prototype>\n)  </default_proto>\n', text, re.S)
-    if not match:
+    default = root.find("default_proto")
+    prototype = default.find("prototype[@name='__fastcall']") if default is not None else None
+    if prototype is None:
         print("unexpected cspec layout; not patched")
         return 1
     # Keep the old default (__fastcall) as an ordinary prototype.
-    cspec.write_text(text[: match.start()] + WATCALL + match.group(1) + text[match.end():])
+    position = list(root).index(default)
+    root.remove(default)
+    root.insert(position, ET.fromstring(WATCALL))
+    root.insert(position + 1, prototype)
+    ET.indent(tree, space="  ")
+    tree.write(cspec, encoding="UTF-8", xml_declaration=True)
     print("patched:", cspec)
     return 0
 
