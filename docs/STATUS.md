@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 项目进度
@@ -23,7 +23,7 @@ updated: 2026-10-01
 | [P5 Classic 1.0 发布](./plan/p5/tasks.md) | 未开始 | — |
 | [P6 Enhanced 美化](./plan/p6/tasks.md) | 未开始 | — |
 
-P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/tasks.md)。P1-01 的契约与 goal 已批准，工程骨架的持久回归和本地应用壳证据已建立；细粒度执行状态只见其 [goal](./plan/p1/01/goal.md)。按用户确认的 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与部署移出 P1、由 [P5](./plan/p5/tasks.md)承接；其余阶段尚未拆分任务。工作流入口见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。工程骨架通过不代表运行骨架或整个 P1 验收完成。
+P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/tasks.md)。P1-01 已建立工程骨架的持久回归和本地应用壳证据；P1-02 已交付合成纯 Core（`step()` 返回事件，Node 测试覆盖）。细粒度执行状态只见各自的 goal（[P1-01](./plan/p1/01/goal.md)、[P1-02](./plan/p1/02/goal.md)）。按用户确认的 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与部署移出 P1、由 [P5](./plan/p5/tasks.md)承接；其余阶段尚未拆分任务。工作流入口见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。工程骨架通过不代表运行骨架或整个 P1 验收完成。
 
 ## P1 退出条件
 
@@ -37,7 +37,7 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 
 ### 运行骨架
 
-- [ ] 独立 Core：`step(tickInput)` 返回 `DomainEvent[]`，可在 Node 中无浏览器运行
+- [x] 独立 Core：`step(tickInput)` 返回 `DomainEvent[]`，可在 Node 中无浏览器运行；当前为合成演示场景，不是原版规则 → [P1-02 最终对齐](./plan/p1/02/subtasks/05-final-alignment.md#完成证据)、[Core 源码](../src/core/synthetic-scene.ts)
 - [ ] GameRuntime：固定步长调度、命令队列、Event Bus、运行时控制通道（暂停/继续/退出）
 - [ ] UI projection 与 Zustand 桥接；React 指令经 Core 反馈
 - [ ] Three.js 合成场景在浏览器运行，按 Render State 插值
@@ -87,7 +87,7 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 
 ## 下一步
 
-1. P1：工程骨架基线证据已由 [P1-01](./plan/p1/01/goal.md) 建立；下一项为 [P1-02 最小纯 Core](./plan/p1/tasks.md#p1-02-最小纯-core-与合成场景契约) 生成 spec、明确契约，不直接跳到实现。
+1. P1：[P1-01](./plan/p1/01/goal.md) 与 [P1-02](./plan/p1/02/goal.md) 已完成。下一步可分别为 [P1-03 replay](./plan/p1/tasks.md#p1-03-快照状态哈希与输入-replay) 与 [P1-04 Runtime](./plan/p1/tasks.md#p1-04-runtime-调度命令与事件分发) 生成 spec，二者都只依赖 P1-02 的 Core 契约；[P1-12 本地合规检查](./plan/p1/tasks.md#p1-12-本地原版隔离与许可检查)只依赖 P1-01，也可开始。
 2. P1：按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)规划后续本地任务；本地合规自检可并行推进。CI/部署由 P5 跟踪，不索取云凭据，也不作为 P1 阻塞；细粒度状态只放各任务 goal。
 3. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 4. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
