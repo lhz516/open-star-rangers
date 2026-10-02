@@ -12,7 +12,7 @@ updated: 2026-10-02
 
 落实 [已批准 spec](./spec.md#审批) 的 S-01 至 S-08、AC-01 至 AC-14：在现有合成 Runtime 之上建立独立控制通道、唯一帧循环、身份隔离、后台暂停、资源清理和可观察错误。行为及技术决定以 spec 为准，本文件不重定规则。
 
-浏览器验收是必需交付，不以 Node 代理通过。全部通过后可勾选 GameRuntime 退出项；真实 React StrictMode/HMR、键盘/UI/GPU 的联合生命周期仍属于 P1-10。
+浏览器验收是必需交付，不以 Node 代理通过。按 [ADR-0014](../../../decisions/ADR-0014-status-summary-only.md)，全部通过后的证据留在本 goal/subtask，供 P1 阶段评审核对，不再更新 STATUS 退出项；真实 React StrictMode/HMR、键盘/UI/GPU 的联合生命周期仍属于 P1-10。
 
 ## 代码现状与前提
 

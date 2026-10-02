@@ -88,15 +88,15 @@ Apply relevant cleanup, preserve behavior, and rerun affected validation. Verifi
 
 ### Check documentation impact
 
-For every subtask, after review and cleanup are stable but before marking it complete, check whether the change affects maintained documentation. Inspect the relevant surfaces rather than updating docs mechanically: engineering conventions, commands and test rules in `docs/engineering/`; operator or contributor procedures in `docs/guides/`; architecture and frozen decisions; original-game facts and unknowns; phase navigation, evidence, priorities, and blockers.
+For every subtask, after review and cleanup are stable but before marking it complete, check whether the change affects maintained documentation. Inspect the relevant surfaces rather than updating docs mechanically: engineering conventions, commands and test rules in `docs/engineering/`; operator or contributor procedures in `docs/guides/`; architecture and frozen decisions; original-game facts and unknowns; phase navigation, summary, priorities, next actions, and blockers.
 
-Update directly affected docs in the same subtask, including each changed doc's `updated` date. Use an ADR for frozen-decision changes, keep original-game facts in `docs/original/`, and update STATUS only for project/phase evidence, priority, or blockers. If existing documentation remains accurate, record that the check found no required update and why.
+Update directly affected docs in the same subtask, including each changed doc's `updated` date. Use an ADR for frozen-decision changes, keep original-game facts in `docs/original/`, and update STATUS only for the phase summary, task-index links, priority, next actions, or project-level blockers. Never add exit-condition tracking or evidence checklists to STATUS. If existing documentation remains accurate, record that the check found no required update and why.
 
 ### Record evidence
 
 Compare every acceptance checkbox with the actual result. Check only satisfied items and append concise evidence under `完成证据`: test/command, assertion or observed behavior, rubber-duck disposition, documentation-impact result, and relevant file references.
 
-Keep task execution state only in the goal tracker. Update the phase index only for navigation, and STATUS only when project/phase evidence, priority, or blockers change.
+Keep task execution state only in the goal tracker. Update the phase index for planning and navigation, and STATUS only when its phase summary, task-index links, priority, next actions, or project-level blockers change.
 
 Use goal `执行记录` for material deviation or blockers, not every routine operation. Do not paste original bytes, images, extracted text/audio, decompiled output, secrets, or private paths.
 

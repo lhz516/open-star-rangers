@@ -1,13 +1,15 @@
 ---
 id: ADR-0011
 type: adr
-status: accepted
+status: superseded
 phase: all
-updated: 2026-10-01
-related: [ADR-0001, ADR-0010]
+updated: 2026-10-02
+related: [ADR-0001, ADR-0010, ADR-0014]
 ---
 
 # ADR-0011：Spec、Goal 与分层任务跟踪
+
+本记录已被 [ADR-0014](./ADR-0014-status-summary-only.md) 取代。任务布局、审批、执行、验证与安全边界决定由 ADR-0014 继续沿用；STATUS 与阶段退出验收的分工以新记录为准。
 
 ## 背景
 

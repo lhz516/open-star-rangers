@@ -8,7 +8,7 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 
 ## Reading order
 
-1. [`docs/STATUS.md`](docs/STATUS.md): current phase, exit-criteria checklist, next actions. **Start here.**
+1. [`docs/STATUS.md`](docs/STATUS.md): current phase summary, phase task-index links, next actions, and project-level blockers. **Start here.**
 2. [`docs/README.md`](docs/README.md): documentation map and writing conventions (front matter, IDs, status labels).
 3. **Before changing code**, read [`docs/engineering/README.md`](docs/engineering/README.md): toolchain, TypeScript configuration, module boundaries, and testing conventions.
 4. [`docs/plan/master-plan.md`](docs/plan/master-plan.md): frozen product and architecture decisions. Read only the sections relevant to your task; planned features are not evidence of implemented behavior.
@@ -16,7 +16,7 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 5. **For original-game research or compatibility work**, consult [`docs/original/unknowns.md`](docs/original/unknowns.md) and the relevant [format](docs/original/formats/), [behavior](docs/original/behavior/), or [input](docs/original/input/key-map.md) document.
 6. Consult relevant [ADRs](docs/decisions/) and [reviews](docs/reviews/) for decision history. Accepted records are historical: supersede them with a new record rather than rewriting their conclusions.
 
-Keep this entry point short. Detailed rules belong in the engineering guides. `docs/STATUS.md` owns project/phase progress; the selected `goal.md` owns subtask execution status, and subtask documents own acceptance evidence. Do not duplicate these trackers.
+Keep this entry point short. Detailed rules belong in the engineering guides. `docs/STATUS.md` owns the project/phase summary, each phase `tasks.md` owns planning and navigation, the selected `goal.md` owns subtask execution status, subtask documents own acceptance evidence, and phase reviews own exit decisions. Do not duplicate these trackers.
 
 ## Hard rules
 
@@ -67,7 +67,7 @@ Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and resear
 ## Before you finish a task
 
 1. Validate the changed surface: focused tests while iterating, `pnpm check` for TypeScript/app changes, and the guide's checks for Python/Ghidra changes. Documentation-only work needs link and metadata checks, not a build. Report any checks you could not run.
-2. Update the affected goal tracker and subtask evidence. Update `docs/STATUS.md` when phase-level evidence, priorities, or blockers change. Tick an exit criterion only when its required outcome has been verified, not when an implementation merely exists.
+2. Update the affected goal tracker and subtask evidence. Update `docs/STATUS.md` only when the phase summary, priorities, next actions, or project-level blockers change. Do not track exit criteria there; phase reviews make the final exit decision against the master plan.
 3. Record new facts in `docs/original/` and update the status of affected `U-###` items in `docs/original/unknowns.md`.
 4. Update the `updated:` date in the front matter of every doc you changed.
 5. If you changed a frozen decision, make sure an ADR exists for it.

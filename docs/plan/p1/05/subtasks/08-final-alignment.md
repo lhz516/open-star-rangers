@@ -21,7 +21,7 @@ updated: 2026-10-02
 - 清理失败计数不是回收成功证明；检查 cleanupFailed 与后续错误独立、重复退出/销毁不重复清理、旧回调/句柄无新世界权限、无异步回调偷偷吞错。
 - 复核 runId MAX_SAFE_INTEGER 分配前守卫的代码证据，不新增公共恢复/编辑接口。
 - 检查目标范围、提交文件与数据隐私：无原版内容/读取、无新依赖/runner、无 App/main 接线、无存储/云/部署。工程及指南与最终 API/方法一致。
-- 全部验收通过后在 [STATUS](../../../../STATUS.md#运行骨架)勾选 GameRuntime 并链接 P1-04 与本项证据；含 React StrictMode/HMR 的联合无重复循环项及其他消费者退出项仍不得勾选。
+- 全部验收通过后在本项记录 P1-04 与本任务的最终证据，供 P1 阶段评审核对；按 [ADR-0014](../../../../decisions/ADR-0014-status-summary-only.md)，不更新 STATUS 退出项。含 React StrictMode/HMR 的联合无重复循环及其他消费者要求仍由后续任务提供证据。
 - 只做验证/文档；发现缺口新增稳定新 ID 的修复项，插在本项前、加依赖，不在此写功能或修改 spec。
 
 ## 不包含
@@ -33,7 +33,7 @@ updated: 2026-10-02
 
 - [spec](../spec.md)、[goal](../goal.md)与01–07文档。
 - 01–06 计划交付的 app/platform 文件及 [Core](../../../../../src/core/synthetic-scene.ts)、[replay](../../../../../src/core/synthetic-replay.ts)（只读核验）。
-- [工程约定](../../../../engineering/README.md)、07 实际更新的操作说明、[STATUS](../../../../STATUS.md)。
+- [工程约定](../../../../engineering/README.md)、07 实际更新的操作说明、[阶段索引](../../tasks.md)与 [ADR-0014](../../../../decisions/ADR-0014-status-summary-only.md)。
 
 ## 验收标准
 
@@ -42,7 +42,7 @@ updated: 2026-10-02
 - [ ] 生命周期、通知、错误、资源与录制不变量一致，无第二循环或错误成功 fallback。
 - [ ] 实际 Chromium hidden/rAF/监听证据齐全；没有混同模拟/BFCache/StrictMode/HMR/发布设备结论。
 - [ ] 范围/文档/隐私检查通过，自有临时验证资源已清理，所有交付有对应证据。
-- [ ] STATUS 仅勾选已满足的 GameRuntime 项，联合退出项保持未通过。
+- [ ] 本项完整记录 GameRuntime 证据且未修改 STATUS 退出条件；联合要求明确留给后续任务和 P1 阶段评审。
 
 ## 验证方法
 

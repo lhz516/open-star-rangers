@@ -3,12 +3,12 @@ type: guide
 status: active
 phase: all
 updated: 2026-10-02
-related: [ADR-0011, ADR-0013]
+related: [ADR-0013, ADR-0014]
 ---
 
 # Agent 任务工作流
 
-本项目的阶段任务通过 spec → review → goal → execute 推进。路径与进度分工由 [ADR-0011](../decisions/ADR-0011-spec-goal-workflow.md) 决定；产品、架构和阶段退出条件仍以[总计划](../plan/master-plan.md)为准。
+本项目的阶段任务通过 spec → review → goal → execute 推进。路径与进度分工由 [ADR-0014](../decisions/ADR-0014-status-summary-only.md) 决定；产品、架构和阶段退出条件仍以[总计划](../plan/master-plan.md)为准。
 
 当前 P1 只要求本地验证；CI 与云部署已由 [ADR-0012](../decisions/ADR-0012-local-p1-defer-ci-deployment.md) 归入 P5，不为 P1 goal 加入远端验收或凭据前提。
 
@@ -63,15 +63,16 @@ goal tracker 的状态为 `pending` / `in-progress` / `blocked` / `completed`。
 
 | 信息 | 唯一权威位置 |
 |---|---|
-| 项目阶段、阶段退出验收、项目级优先项与阻塞 | [STATUS.md](../STATUS.md) |
-| 阶段计划与任务导航 | 各阶段 `tasks.md`，不复制 subtask 状态 |
+| 项目阶段摘要、任务索引入口、项目级优先项与阻塞 | [STATUS.md](../STATUS.md) |
+| 阶段计划、任务导航与退出条件责任覆盖 | 各阶段 `tasks.md`，不复制 subtask 状态 |
 | 任务契约 | 该任务的 `spec.md` |
 | subtask 依赖与执行状态 | 该任务的 `goal.md` |
 | 单项验收结果与证据 | 相应 subtask 文档 |
+| 阶段退出判定 | [reviews/](../reviews/) 中相应阶段评审 |
 | 原版事实与置信度 | [original/](../original/) |
 | 冻结决定及其变更 | [decisions/](../decisions/) |
 
-任务生成时可更新所属 `tasks.md` 的导航链接。只有阶段级证据、优先项或阻塞发生变化时才更新 STATUS；不要把每个 subtask 的状态复制进去。任务完成不自动等于阶段验收通过。
+任务生成时可更新所属 `tasks.md` 的导航链接。只有阶段摘要、任务入口、优先项、下一步或项目级阻塞发生变化时才更新 STATUS；不要在其中维护退出条件、证据清单、任务实现过程或 subtask 状态。任务完成不自动等于阶段验收通过，阶段评审依据总计划和各任务证据作最终判定。
 
 ## 自动编排
 

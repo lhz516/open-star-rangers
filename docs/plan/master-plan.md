@@ -2,8 +2,8 @@
 type: plan
 status: active
 phase: all
-updated: 2026-10-01
-related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012]
+updated: 2026-10-02
+related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014]
 ---
 
 # Star Rangers 重制版：架构与开发总计划
@@ -365,9 +365,9 @@ Playwright 可覆盖多个浏览器引擎，但它的 WebKit 不是正式 Safari
 
 ## 12. 开发阶段与验收条件
 
-按通过验收推进，不先承诺日历工期。项目阶段与退出验收记录在 [STATUS.md](../STATUS.md)，任务内的 subtask 执行状态记录在其 goal tracker，阶段结束时的评审记录在 [reviews/](../reviews/)。逆向的不确定性优先消除；P0 可行性评审前，工程工作只限于不依赖原版格式的骨架和公开合成资源预览。
+按通过验收推进，不先承诺日历工期。本节唯一定义阶段范围与退出条件；各阶段 `tasks.md` 负责责任覆盖，任务内的 subtask 执行状态记录在其 goal tracker，阶段结束时由 [reviews/](../reviews/) 逐项核对并给出退出判定。[STATUS.md](../STATUS.md) 只维护项目阶段摘要、任务入口、下一步和项目级阻塞。逆向的不确定性优先消除；P0 可行性评审前，工程工作只限于不依赖原版格式的骨架和公开合成资源预览。
 
-P1–P6 的阶段计划与任务索引分别放在 `plan/p1/`–`plan/p6/` 的 `tasks.md`；任务按编号目录组织，例如 `plan/p1/01/spec.md`、`goal.md` 与 `subtasks/`。阶段索引承载执行拆分，不改变本节的阶段交付与退出条件。路径、审批和进度分工见 [ADR-0011](../decisions/ADR-0011-spec-goal-workflow.md) 与[Agent 任务工作流](../engineering/agent-workflow.md)。
+P1–P6 的阶段计划与任务索引分别放在 `plan/p1/`–`plan/p6/` 的 `tasks.md`；任务按编号目录组织，例如 `plan/p1/01/spec.md`、`goal.md` 与 `subtasks/`。阶段索引承载执行拆分，不改变本节的阶段交付与退出条件。路径、审批和进度分工见 [ADR-0014](../decisions/ADR-0014-status-summary-only.md) 与[Agent 任务工作流](../engineering/agent-workflow.md)。
 
 **P3 越早出现越好。** P2 与 P3 可以重叠：P1 完成后即可用明确标记的临时替代资源搭建 P3 的玩法框架，P2 每交付一项原版资源就替换一项。重叠只影响开工时间，不放宽退出条件——P3 仍须使用原版内容走通闭环。P2 只做玩法切片需要的内容，其余导入格式、视频、音乐和内容补全分别放在 P4 与 P5。视频与音乐的实现 spike（§3.4）不属于任何阶段的退出条件，在 P4 之前完成即可。
 

@@ -23,6 +23,7 @@ updated: 2026-10-02
 | [ADR-0008](./ADR-0008-mit-and-dependency-licenses.md) | 默认 MIT 许可证与依赖许可证政策 | accepted |
 | [ADR-0009](./ADR-0009-window-scaling-widescreen.md) | 窗口自适应：等比缩放为默认，宽屏为可选 | accepted |
 | [ADR-0010](./ADR-0010-phase-task-documents.md) | 阶段计划与任务文档 | superseded by ADR-0011 |
-| [ADR-0011](./ADR-0011-spec-goal-workflow.md) | Spec、Goal 与分层任务跟踪 | accepted |
+| [ADR-0011](./ADR-0011-spec-goal-workflow.md) | Spec、Goal 与分层任务跟踪 | superseded by ADR-0014 |
 | [ADR-0012](./ADR-0012-local-p1-defer-ci-deployment.md) | P1 只做本地验证，CI 与部署移至 P5 | accepted |
 | [ADR-0013](./ADR-0013-task-graph-orchestration.md) | 用确定性路由编排任务工作流图 | accepted |
+| [ADR-0014](./ADR-0014-status-summary-only.md) | STATUS 只维护项目摘要 | accepted |
