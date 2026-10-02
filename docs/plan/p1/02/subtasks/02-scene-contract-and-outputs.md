@@ -36,7 +36,7 @@ updated: 2026-10-01
   - 默认频率与显式 120 Hz、seed 0 与上界下的完整 `inspect()` 及两种投影。
   - 每种非法配置（缺失、null、数组、额外键、非整数/负数/超界/NaN/字符串 seed、0/负数/Infinity/NaN/字符串频率、倒数溢出的极小频率）抛 `CoreInputError` 且 `path` 正确。
   - 创建后改动 config 不影响实例。
-  - 写入冻结输出抛 `TypeError`；两次读取得到相等但不同的对象；读取前后 `inspect()` 相同；输出经 JSON 往返后相等。
+  - 写入冻结输出抛 `TypeError`；重复读取未变化的状态得到相等结果；读取前后 `inspect()` 相同；输出经 JSON 往返后相等。输出与内部状态脱离、后续变化不影响旧输出的验证在 03（需要 `step()` 才能改变状态）。
 
 ## 不包含
 
@@ -52,11 +52,11 @@ updated: 2026-10-01
 
 ## 验收标准
 
-- [ ] AC-01：只用显式配置在纯模块中创建；默认/显式频率、seed=0 与上界的初始检查结果、ID、场景标识及两种投影完全符合契约。
-- [ ] AC-06（配置）：所列非法配置全部抛 `CoreInputError`，`path` 定位正确，不做强制转换。
-- [ ] AC-08（初始）：输出冻结，写入抛错；两次读取互不共享对象；config 改动不影响实例。
-- [ ] AC-09（初始）：UI 与 Render 一致，Render 实体按 ID 升序；读取前后 `inspect()` 不变。
-- [ ] `pnpm exec vitest run src/core` 与 `pnpm check`（含工程边界回归）通过；没有新依赖或消费者接线。
+- [x] AC-01：只用显式配置在纯模块中创建；默认/显式频率、seed=0 与上界的初始检查结果、ID、场景标识及两种投影完全符合契约。
+- [x] AC-06（配置）：所列非法配置全部抛 `CoreInputError`，`path` 定位正确，不做强制转换。
+- [x] AC-08（初始）：输出冻结，写入抛错；config 改动不影响实例。（脱离内部状态的验证见 03。）
+- [x] AC-09（初始）：UI 与 Render 一致，Render 实体按 ID 升序；读取前后 `inspect()` 不变。
+- [x] `pnpm exec vitest run src/core` 与 `pnpm check`（含工程边界回归）通过；没有新依赖或消费者接线。
 
 ## 验证方法
 
@@ -65,3 +65,9 @@ updated: 2026-10-01
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- 2026-10-01：新增 [errors.ts](../../../../../src/core/errors.ts)（`CoreInputError`，只读 `path`）与 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts)（常量、类型、`createSyntheticScene`、私有字段的 `Scene` 类，以及 `inspect`/`uiProjection`/`renderState`）。`step()` 尚未加入。
+- [synthetic-scene.test.ts](../../../../../src/core/synthetic-scene.test.ts) 27 个测试：seed 0 默认 60 Hz 的完整 `inspect()`、UI 与 Render 精确值；120 Hz 与 seed 上界；显式 `undefined` 频率取默认、seed `-0` 归一为 0；相同配置初始状态相同；创建后修改 config 不影响实例；17 种非法配置（含 null/数组/字符串、缺失/负数/小数/超界/NaN/字符串 seed，0/负/Infinity/NaN/字符串/倒数溢出频率，额外字段）均抛 `CoreInputError` 且 `path` 准确；冻结输出写入抛 `TypeError`；重复读取结果相等；读取不改变状态；UI/Render 与检查副本一致；三种输出可 JSON 往返。
+- `pnpm exec vitest run src/core`：2 文件/35 测试通过。`pnpm check` 退出码 0：三个 TS 项目（core 程序现含 `src/core/*.ts`）、lint（纯模块与 Core 规则）、5 文件/84 测试、build 全部通过。
+- simplify 四视角：reuse 无发现。efficiency 与 simplification 指出 `renderState()`、`inspect()` 先建冻结对象再展开丢弃，已改为直接构造。altitude 指出 `CoreInputError` 注释承诺“不改变状态”属于具体操作而非错误类型，已移除（原子性由 04 在 `step()` 上保证）；另指出“每次读取必须是不同对象”超出 spec，已删除该身份测试并改为脱离性在 03 验证。修正后重跑上述检查通过。
+- 未接入 App 或其他消费者，无新依赖，未读取原版文件。

@@ -26,7 +26,7 @@ updated: 2026-10-01
   - `src/core/synthetic-scene.test.ts`、`src/core/synthetic-scene-step.test.ts`、`src/core/synthetic-scene-input.test.ts`：按子任务划分的测试，避免多个子任务反复修改同一测试文件。
 - **spec 授权 goal 决定的实现选择：**
   - **PRNG 为 Mulberry32。** 状态是单个 uint32，初始状态等于 seed；每次抽取先令状态加 `0x6D2B79F5`（模 2^32），再经整数混合输出 uint32，结果 `r = output / 2^32 ∈ [0, 1)`。理由：只用 `Math.imul` 与位运算，状态是一个纯数据数字，seed=0 合法，无需依赖；按公开算法描述自行实现，不是加密随机数。坐标上界：`r` 最大为 `1 - 2^-32`，`-5 + 10r` 的最大值约 4.9999999977，满足 `< 5`。
-  - **输出所有权：** 事件、UI projection、Render State 和状态检查副本每次都是新建的纯数据对象，并递归 `Object.freeze`。ES 模块为严格模式，外部写入会抛 `TypeError`；后续 tick 也不会改动旧对象。
+  - **输出所有权：** 事件、UI projection、Render State 和状态检查副本都是与内部状态脱离的纯数据对象，并递归 `Object.freeze`；当前实现每次读取新建，但契约不要求对象身份不同。ES 模块为严格模式，外部写入会抛 `TypeError`；后续 tick 也不会改动旧对象。
   - **错误定位：** `CoreInputError` 带只读 `path: string`，例如 `config.seed`、`tickInput.input.moveX`、`tickInput.commands[2].type`、`tickInput.commands[1].extra`。
   - **对外入口：** `createSyntheticScene(config)` 返回 `SyntheticScene`，提供 `step(tickInput)`、`inspect()`、`uiProjection()`、`renderState()`。内部状态为私有可变字段，不暴露引用。
 - **跨任务前提：** P1-01 已完成，证据见其 [最终对齐](../01/subtasks/06-final-alignment.md#完成证据)。[spec](./spec.md) 已于 2026-10-01 批准。
@@ -62,7 +62,7 @@ updated: 2026-10-01
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-seeded-rng.md](./subtasks/01-seeded-rng.md) | — | completed |
-| [02-scene-contract-and-outputs.md](./subtasks/02-scene-contract-and-outputs.md) | 01 | pending |
+| [02-scene-contract-and-outputs.md](./subtasks/02-scene-contract-and-outputs.md) | 01 | completed |
 | [03-step-behavior.md](./subtasks/03-step-behavior.md) | 02 | pending |
 | [04-input-validation-and-guards.md](./subtasks/04-input-validation-and-guards.md) | 03 | pending |
 | [05-final-alignment.md](./subtasks/05-final-alignment.md) | 01, 02, 03, 04 | pending |
@@ -72,6 +72,8 @@ updated: 2026-10-01
 ## 执行记录
 
 - **2026-10-01 — Subtask 01 范围调整：** simplify 审阅指出场景坐标公式 `-5 + 10r < 5` 的上界检查属于场景而非 RNG；已从 `rng.test.ts` 移除，改由 03 的 AC-05 测试覆盖。覆盖关系不变。
+
+- **2026-10-01 — Subtask 02 验收措辞调整：** simplify altitude 指出“两次读取互不共享对象”超出 spec（spec 只要求脱离内部状态、不被后续读取覆写）。已删除对象身份测试，02 只验证冻结与相等，脱离性由 03 在 tick 改变状态后验证；goal 中输出所有权的描述同步修正。
 
 ## 审批
 
