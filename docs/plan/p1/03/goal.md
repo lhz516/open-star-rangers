@@ -76,7 +76,7 @@ updated: 2026-10-02
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-fnv1a64.md](./subtasks/01-fnv1a64.md) | — | completed |
-| [02-snapshot-and-hash.md](./subtasks/02-snapshot-and-hash.md) | 01 | pending |
+| [02-snapshot-and-hash.md](./subtasks/02-snapshot-and-hash.md) | 01 | completed |
 | [03-strict-restore.md](./subtasks/03-strict-restore.md) | 02 | pending |
 | [04-recording-session.md](./subtasks/04-recording-session.md) | 02 | pending |
 | [05-replay.md](./subtasks/05-replay.md) | 04 | pending |

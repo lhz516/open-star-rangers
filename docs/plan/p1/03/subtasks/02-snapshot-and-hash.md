@@ -49,10 +49,10 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-01：两种场景的快照完整且精确；快照深冻结、与其他读取隔离、读取无副作用；JSON 往返后相等。
-- [ ] AC-02（规范文本）：两个手写字面量完全匹配；键序无关；`-0` 写作 `0`；哈希格式正确，且等于规范文本的 FNV-1a 64。
-- [ ] `SyntheticScene` 接口与 P1-02 现有测试未改动；`synthetic-snapshot.ts` 不在运行时导入 `synthetic-scene.ts`。
-- [ ] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
+- [x] AC-01：两种场景的快照完整且精确；快照深冻结、与其他读取隔离、读取无副作用；JSON 往返后相等。
+- [x] AC-02（规范文本）：两个手写字面量完全匹配；键序无关；`-0` 写作 `0`；哈希格式正确，且等于规范文本的 FNV-1a 64。
+- [x] `SyntheticScene` 接口与 P1-02 现有测试未改动；`synthetic-snapshot.ts` 不在运行时导入 `synthetic-scene.ts`。
+- [x] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -61,3 +61,24 @@ updated: 2026-10-02
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- **实现：** [synthetic-snapshot.ts](../../../../../src/core/synthetic-snapshot.ts) 导出：
+  - 常量 `SYNTHETIC_SNAPSHOT_FORMAT`、`SYNTHETIC_SNAPSHOT_VERSION` 与类型 `SyntheticSnapshot`；
+  - `takeSyntheticSnapshot(scene)`：基于 `inspect()`，每次新建并深冻结；
+  - `canonicalSnapshotText(snapshot)`：按 spec 字段顺序重建对象后用 `JSON.stringify`，`-0` 写作 `0`；
+  - `hashSyntheticSnapshot(snapshot)` 与 `hashSyntheticScene(scene)`：规范文本的 `fnv1a64`。
+  
+  该文件只以 `import type` 引用 `synthetic-scene.ts`；`synthetic-scene.ts` 与 `SyntheticScene` 接口未改动。
+- **测试：** [synthetic-snapshot.test.ts](../../../../../src/core/synthetic-snapshot.test.ts)，共 12 项。
+  - **AC-01：**
+    - seed 0 初始快照与完整字面量相等；有标记场景的快照与 `{format, version, state: inspect()}` 严格相等，并含标记、RNG 状态与分配器。
+    - 两次读取的根对象与每个嵌套对象都不是同一对象，且全部冻结；写入嵌套字段或 `version` 抛 `TypeError`，场景与另一份读取不变；场景继续 step 后，已保留的快照不变。
+    - 与不读取快照的对照场景并行运行三个 tick，读取快照和哈希前后 `inspect()` 相同，事件与最终状态一致。
+    - JSON 往返后相等。
+  - **AC-02（规范文本）：**
+    - seed 0 初始状态与一个手写有标记快照的规范文本，与测试中手写的字面量完全相同。
+    - 各层键序打乱后，规范文本与哈希相同。
+    - `-0` 写作 `0`，文本不含 `-0`。
+    - 哈希符合 `^[0-9a-f]{16}$`，且等于 `fnv1a64(手写字面量)`；场景哈希等于其快照哈希。
+- **检查：** `pnpm exec vitest run src/core` 通过；最终 `pnpm check` 通过（typecheck、lint、10 个测试文件共 185 项、build）。
+- **审阅：** rubber-duck 指出隔离测试未覆盖全部嵌套对象，也未验证场景前进后快照不变，已补测。simplify 去掉了重复的 seed 0 用例和重复的哈希断言。未采纳的建议有两条：JSON 往返属 AC-01 必需，保留；增量哈希对很小的状态不值得做。
