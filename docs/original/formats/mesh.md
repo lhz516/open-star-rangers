@@ -68,10 +68,10 @@ Part lists (meaning Unconfirmed, U-027):
 Compared against HI-resolution screenshots of all nine views (`local/StarRang/captures/srangers_006.png`–`014.png`, `018.png`):
 
 - **Geometry matches.** The friendly transponder craft seen close up matches MODL 11399: same hourglass of two hexagonal frustums, and its untextured parts have the same grey as the part colour (Confirmed).
-- **Texture colours do not match yet.** Textured surfaces that look warm tan in the original render olive, grey, or blue with each part's own TEX. Quantising to the global palette moves colours only slightly. Likely causes: per-craft texture replacement from `CRAFT.NOB` `CINF` entries (some reference TEX entries directly, and the only warm-tan TEX is referenced only from `CINF`), plus a lighting ramp. Unconfirmed (U-028).
-- **Which model each craft uses is not yet known.** Matching by eye was unreliable for the player's craft and for one enemy craft. The mapping should come from `CINF` (U-028).
+- **Texture colours match once palettes are read correctly.** Embedded texture palettes are stored in BGR order, and the game maps texture colours to the nearest colours of the global DATA palette ([textures](./textures.md) §3). Rendered this way, the player craft (tan hull, purple panels) and the transponder craft's textured centre (tan) match the screenshots (Confirmed). Earlier mismatches came from reading the palettes as RGB.
+- **Craft-to-model mapping comes from M2ID** (see [hud](./hud.md) §3). Slot 0 and 1 name MODL 10743, which matches the player craft in the chase-plane view in shape (striped nose spine, wide wings with panels); slot 14 names MODL 11399, the transponder craft (Confirmed for these two). Earlier eye-matching of the player craft to another model was wrong.
 
 ## 4. Open questions
 
 - Meaning of part lists 1 and 2, part flags, and the five sound slots (U-027).
-- Runtime texture selection, lighting, and the craft-to-model mapping (U-028).
+- How lighting selects shades (U-028); which craft type each M2ID slot is.

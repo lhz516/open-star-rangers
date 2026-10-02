@@ -70,18 +70,19 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 |---|---|---|---|
 | DATA | Global 256-colour VGA palette | Confirmed | [textures](./textures.md) |
 | TEX | Texture with its own small palette | Confirmed | [textures](./textures.md) |
-| BITM | 8-bit bitmap, sometimes with its own palette | Likely | [textures](./textures.md) |
+| BITM | 8-bit bitmap, sometimes with its own palette | Confirmed structure | [textures](./textures.md) |
 | MESH | Triangle mesh: float positions, UVs, normals | Confirmed | [mesh](./mesh.md) |
 | MODL | Model: three part lists of {MESH, TEX, colour} plus five SND IDs | Structure Confirmed | [mesh](./mesh.md) |
-| SND / SONG / MUSC | Digital sound / music (possibly XMIDI) / mission music configuration | Unconfirmed (names; Miles drivers) | |
-| CCKD / MFDD | Cockpit images / multi-function display images | Unconfirmed (names, large sizes) | |
-| ANIM / EXPL / EXIC | Animation / explosion / explosion-related | Unconfirmed (names) | |
+| SND / SONG / MUSC | Raw PCM sound effect / music (Likely XMIDI) / mission music | SND Confirmed; SONG and MUSC Unconfirmed | [audio](./audio.md) |
+| CCKD / MFDD | Cockpit layouts (positioned sprites) / multi-function display images | Element and image structure Confirmed; CCKD group table Unconfirmed | [cockpit](./cockpit.md) |
+| ANIM / EXPL / EXIC | Animation (frames use image encoding 1) / explosion / explosion-related | Unconfirmed | [textures](./textures.md) §2 |
 | SCEN / SCCT | Missions (52) / campaign table | Structure Confirmed, field meanings partly Unconfirmed | [scenario](./scenario.md) |
 | CINF | Craft info, 24 craft | Unconfirmed (file name `CRAFT`) | |
 | MESC | Menu scene | Unconfirmed (large; in `OPTIONS`) | |
 | CMOV | Comm-screen face animation | Unconfirmed (file name `COMMFACE`; the two files may hold two resolutions) | |
 | DFPG / AICO | AI data | Unconfirmed (file name `AISTUFF`) | |
-| TABL | Generic table, used in several files | Unconfirmed (name) | |
+| TABL | Generic container: ID lists, HUD image groups, fonts, and other tables, depending on the entry | Per entry, see hud | [hud](./hud.md) §2 |
+| M2ID / NEBC / EXIC | ID lists: craft type → MODL / nebula BITMs / explosion EXPLs | Confirmed structure | [hud](./hud.md) §3 |
 
 ## 6. Open questions
 

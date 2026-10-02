@@ -47,14 +47,27 @@ related: [U-016, U-021]
 
 ## 静态分析
 
+首次准备（在仓库根目录运行）：
+
 ```sh
-~/Tools/bin/ghidra                       # 图形界面
-~/Tools/bin/ghidra-headless <项目目录> <项目名> -import <文件> -noanalysis
+# 1. 给 Ghidra 加入 Watcom 调用约定（__watcall），设为默认；原文件备份为 *.orig
+python3 tools/ghidra/patch-watcom-cspec.py ~/Tools/ghidra_12.0.1_PUBLIC
+
+# 2. 导入并完整自动分析，项目保存在 local/ghidra/srangers（约 35 秒，约 1800 个函数）
+~/Tools/bin/ghidra-headless local/ghidra srangers -import local/StarRang/SRANGERS/MAIN/SRANGERS.EXE -overwrite
 ```
 
-- Ghidra 项目放在 `local/ghidra/`。
-- 已验证可载入 `SRANGERS.EXE`，识别出 4 个 LE object。
-- Ghidra 默认选择 Borland 调用约定，但程序由 Watcom 编译（EAX、EDX、EBX、ECX 寄存器传参）。代码分析前需要自定义调用约定，否则反编译出的参数会是错的。
+之后用图形界面打开（`~/Tools/bin/ghidra`），或用 `tools/ghidra/` 中的脚本做无界面分析，例如：
+
+```sh
+~/Tools/bin/ghidra-headless local/ghidra srangers -process SRANGERS.EXE -noanalysis -readOnly \
+  -scriptPath tools/ghidra -postScript DumpCallers.java "$PWD/local/research/callers.c" 0x6affc
+```
+
+- Ghidra 项目与脚本输出只放在 `local/`。反编译结果属于原版程序的衍生内容，不得提交或粘贴进文档；文档只记录函数地址与作用。
+- `SRANGERS.EXE` 载入后为 4 个 LE object；地址与已知函数见 [executable](../original/formats/executable.md) §4。
+- 补丁之前 Ghidra 默认使用 Borland 调用约定，反编译出的参数是错的。升级或重装 Ghidra 后需要重新运行补丁脚本，并重新导入程序。
+- 部分代码已经反汇编但没有归入函数（例如调试命令处理），可用 `DumpAt.java` 在指定地址补建函数后再反编译。
 
 ## 首次运行可能遇到的问题
 

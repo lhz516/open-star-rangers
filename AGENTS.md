@@ -17,6 +17,7 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 ## Hard rules
 
 - **Never commit or paste original game content.** Original files live only in `local/` (git-ignored). Tracked files must not contain bytes, hex dumps, images, text, audio, or decoded output from the original game. Format docs describe structure only. File names, sizes, hashes, and counts are fine.
+- **Never commit or paste disassembly or decompiled code** of the original program. Keep Ghidra projects and script output in `local/`; docs record only function addresses and what they do.
 - **One fact, one place.** Facts about the original game go in `docs/original/`; other docs link to them instead of repeating them.
 - **Frozen decisions change only through an ADR.** Add `docs/decisions/ADR-NNNN-*.md`, then update the master plan.
 - **Mark confidence.** Every research claim is labeled *Confirmed*, *Likely*, or *Unconfirmed* (Chinese docs: 已确认 / 高概率 / 未确认) with its evidence.
@@ -34,14 +35,17 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 # List the directory of IMFAT (.NOB) archives (structure only, never contents)
 node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]
 
-# Parse every TEX/BITM/MESH/MODL entry and check cross-references (counts only)
+# Parse every TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and check cross-references (counts only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 
 # Run the original game in the baseline emulator (from the repo root)
 ~/Tools/bin/dosbox-x -conf local/StarRang/star-rangers-dosbox-x-mac.conf
 
-# Headless Ghidra (LE loader installed)
-~/Tools/bin/ghidra-headless <project-dir> <project-name> -import <file> -noanalysis
+# Ghidra (LE loader installed; apply the Watcom calling convention once)
+python3 tools/ghidra/patch-watcom-cspec.py ~/Tools/ghidra_12.0.1_PUBLIC
+~/Tools/bin/ghidra-headless local/ghidra srangers -import local/StarRang/SRANGERS/MAIN/SRANGERS.EXE -overwrite
+~/Tools/bin/ghidra-headless local/ghidra srangers -process SRANGERS.EXE -noanalysis -readOnly \
+  -scriptPath tools/ghidra -postScript <Script>.java <args>   # write output under local/
 ```
 
 Node 22 runs `.ts` files directly; there is no build step yet (the Vite project arrives in P1). Environment setup: [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md).

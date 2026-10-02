@@ -1,48 +1,65 @@
 ---
 type: format
-status: draft
+status: verified
 phase: P0
 updated: 2026-10-01
-related: [U-001, U-006, U-018, U-019]
+related: [U-001, U-006, U-018, U-019, U-029]
 ---
 
-# Palettes, textures, and bitmaps (DATA, TEX, BITM)
+# Palettes and images (DATA, image record, TEX, BITM)
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
+- Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseVgaPalette`, `parseImage`, `decodeSpriteRle`)
+- Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all TEX (59), BITM (28), and MFDD (3) entries.
+
 ## 1. DATA: global palette (Confirmed)
 
-768 bytes: 256 × RGB, each component a 6-bit VGA value (0–63). Scale to 8 bits for display.
+768 bytes: 256 × RGB, each component a 6-bit VGA value (0–63). Expand to 8 bits by bit replication, `(c << 2) | (c >> 4)`; with this rule every pixel of four in-flight DOSBox-X screenshots matches a DATA colour exactly (Confirmed). This is the palette in effect during flight; the forward cockpit graphics display with correct colours using it (see [cockpit](./cockpit.md)).
 
-## 2. Image header shared by TEX and BITM (Confirmed for TEX, Likely for BITM)
+## 2. Image record, 36 bytes (Confirmed)
 
-The first u32 of the block is an offset to the image header:
+Every image in `SR.NOB` uses the same record: TEX and BITM entries start with it at offset 0, and MFDD, CCKD, ANIM, and some TABL entries embed it.
 
-| Field | Type | Meaning |
+| Offset | Type | Meaning |
 |---|---|---|
-| width | u32 | Pixels |
-| height | u32 | Pixels |
-| reserved | u32 | 0 |
-| paletteOffset | u32 | Offset of the embedded palette (relocated pointer) |
-| paletteCount | u32 | Number of colours in the embedded palette; 0 = none |
-| pixelOffset | u32 | Offset of the pixel data (relocated pointer) |
+| +0 | u32 | Bits per pixel; always 8 |
+| +4 | u32 | Encoding: 0 raw, 1 animation (ANIM only, not decoded), 2 sprite RLE |
+| +8 | u32 | Width |
+| +12 | u32 | Height |
+| +16 | u32 | 0 |
+| +20 | u32 | Offset of the embedded palette (relocated pointer); unused when the count is 0. Colours are 8-bit **BGR** triplets (see §3) |
+| +24 | u32 | Number of colours in the embedded palette; 0 = none |
+| +28 | u32 | Offset of the pixel data (relocated pointer) |
+| +32 | u32 | Pixel data size in bytes |
 
-Pixels are 1 byte each, stored row by row with no padding.
+Pixels are 8-bit palette indices.
+
+### Encoding 0: raw (Confirmed)
+
+`width × height` bytes, row by row, no padding. The size field equals `width × height`.
+
+### Encoding 2: sprite RLE (Confirmed on all 55 instances)
+
+Each row is a sequence of u16 run lengths that alternate between transparent and opaque, starting with a transparent run (which may be 0). Each opaque run length is followed by that many pixel bytes. A row ends when its runs add up to the width; a fully transparent row is a single transparent run equal to the width. Decoding every encoding-2 image consumes exactly its stated size.
+
+Used by 21 cockpit images (CCKD), 33 TABL images, and one BITM (entry 10163, 320×200).
+
+### Encoding 1: animation (Unconfirmed)
+
+Used only by the 186 ANIM frames; the data is smaller than `width × height`, so it is compressed, possibly as deltas between frames. Not needed before P4 (explosions and similar effects may need it in P3).
 
 ## 3. TEX: textures (Confirmed)
 
-- Pixel values are shade indices into the texture's own palette, typically 0–15.
-- Each texture embeds a small palette (usually 16 colours) of **8-bit RGB** values (0–255), not 6-bit VGA values.
+- Pixel values index the texture's own palette, usually 16 colours, stored as 8-bit **BGR** triplets (0–255), not RGB and not 6-bit VGA values (Confirmed).
+- **In game, texture colours are mapped to the nearest DATA colours.** Evidence: for the three textures of the player craft, 16 of 16, 8 of 14, and 4 of 5 palette colours, read as BGR and quantised to DATA, occur in a screenshot of that craft; read as RGB, almost none do. Rendered this way the craft matches the screenshot in colour (Confirmed).
+- How lighting chooses brighter or darker shades is Unconfirmed (U-028).
 - Observed sizes: 32×32, 64×64, 128×128, 256×256.
-- 58 of 59 TEX entries decode correctly as hull-plating style textures with this rule; one has no embedded palette.
+- 58 of 59 TEX entries embed a palette; one has none.
 
-## 4. BITM: bitmaps (Likely)
+## 4. BITM: bitmaps (Confirmed structure)
 
-- Pixel values are 8-bit palette indices.
-- 6 entries embed a 256-colour palette (8-bit RGB) and decode correctly.
-- 21 entries have no embedded palette; displayed with DATA their colours are clearly wrong, so their palette lives elsewhere (Unconfirmed, U-018).
-- Observed sizes: 48×48, 96×96, 128×128, 640×316. The 640×316 entries are full-screen scenes, consistent with a 640-wide high-resolution mode (U-006).
-- At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped for texture mapping (Unconfirmed, U-019).
-- One BITM (entry 10163) has pixel data extending past its block, so its structure differs (Unconfirmed). `tools/nob-check.ts` reports it as the only image failure.
-
-Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseImage`, `parseVgaPalette`).
+- 6 entries embed a 256-colour palette, also BGR: read that way, a portrait shows natural skin tones instead of blue (Likely).
+- 22 entries have no embedded palette. Displayed with DATA, their colours are clearly wrong, so their palette lives elsewhere (Unconfirmed, U-018).
+- Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes.
+- At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
