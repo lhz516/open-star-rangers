@@ -36,13 +36,13 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-01：idle 初始化、非法输入无宿主残留、getter 取值副本、多实例隔离；runId 守卫在销毁旧 run 前拒绝 MAX_SAFE_INTEGER，代码审阅准确。
-- [ ] AC-02：表驱动状态/幂等、pause 时不靠 tick 执行控制、新身份/commandId 重置、旧句柄读写注册拒绝。
-- [ ] AC-03：稳定成功状态最多一个实际请求，0/重复/复用/迟到凭证都不能推进或续排旧循环；exit/dispose 正常后请求为 0。
-- [ ] AC-04：1000/1020/1040/1050→暂停→100000/100020 为原样 spec 结果，折叠对 2/2 不倒退、下一 tick 2/3；较早新时间戳允许。
-- [ ] AC-05/07：清空轴/队列、不重置世界，paused 拒绝游戏输入；hidden/pagehide 保持挂起到显式 resume，user 原因不被覆盖。
-- [ ] AC-08/11 基础：正常 0 tick 通知与状态读取可靠；首次 request 失败有可读 faulted，初始化失败无无主监听；不自动重试。
-- [ ] AC-14：目标测试、pnpm check 通过，模块无 DOM 依赖、真实 Core、无 App/main 接线。
+- [x] AC-01：idle 初始化、非法输入无宿主残留、getter 取值副本、多实例隔离；runId 守卫在销毁旧 run 前拒绝 MAX_SAFE_INTEGER，代码审阅准确。
+- [x] AC-02：表驱动状态/幂等、pause 时不靠 tick 执行控制、新身份/commandId 重置、旧句柄读写注册拒绝。
+- [x] AC-03：稳定成功状态最多一个实际请求，0/重复/复用/迟到凭证都不能推进或续排旧循环；exit/dispose 正常后请求为 0。
+- [x] AC-04：1000/1020/1040/1050→暂停→100000/100020 为原样 spec 结果，折叠对 2/2 不倒退、下一 tick 2/3；较早新时间戳允许。
+- [x] AC-05/07：清空轴/队列、不重置世界，paused 拒绝游戏输入；hidden/pagehide 保持挂起到显式 resume，user 原因不被覆盖。
+- [x] AC-08/11 基础：正常 0 tick 通知与状态读取可靠；首次 request 失败有可读 faulted，初始化失败无无主监听；不自动重试。
+- [x] AC-14：目标测试、pnpm check 通过，模块无 DOM 依赖、真实 Core、无 App/main 接线。
 
 ## 验证方法
 
@@ -52,3 +52,9 @@ updated: 2026-10-02
 - rubber-duck 后 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 仅上述三个新文件；工程使用说明同步，不新增未实现媒体流程。实际浏览器验收在 07。
 
 ## 完成证据
+
+- 2026-10-02：[控制/调度测试](../../../../../src/app/synthetic-session.test.ts) 26 项通过，加 Runtime 生命周期 7 项共 33；清理后重跑 `pnpm check`，typecheck/lint/24 文件 550 测试/build 全通过。
+- 精确 AC-04 时序与较早锚 -100 通过；暂停丢弃轴/排队命令，记录仅三 tick，paused 拒绝不耗 ID；0/复用/重复/迟到请求按对象身份隔离。独立实例与一次性六个配置 getter、旧 run 全部读写/注册失效均有断言；负向类型不暴露 frame/world/dispatch 或异步帧监听器。
+- rubber-duck 逐项追踪并通过；身份耗尽/cleanupFailed 守卫在 restart 的旧运行收尾之前，未设置生产测试后门。尚未交付的 05 FIFO/取消消费者/资源与 06 组合故障未计为完整 AC，通过后再补。
+- simplify 四角度并行：合并 Runtime 参数错误翻译，无帧订阅时不创建额外视图，flatten 生命周期分支；重验全通过。
+- 文档影响：engineering 新增实际 controller/run 权限、唯一调度与暂停恢复约定，明确未接页面/React/HMR 与后续范围；研究 guides 无新增流程，原版事实/冻结决定不变，无阶段退出勾选。
