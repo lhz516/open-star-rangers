@@ -9,7 +9,7 @@ updated: 2026-10-01
 
 **当前阶段：P1 工程与运行骨架**（P0 可行性评审已通过；P0 其余项目并行收尾）
 
-本文件是唯一的进度入口。勾选项对应总计划 §12 的退出条件，每一项都链接到证据。阶段结束时，在 [reviews/](./reviews/) 写评审记录，再把本文件切换到下一阶段。
+本文件是项目总进度入口，记录阶段验收、优先项与项目级阻塞；具体任务的 subtask 状态只记录在其 goal tracker，验收证据记录在 subtask 文档。勾选项对应总计划 §12 的退出条件，每一项都链接到证据。阶段结束时，在 [reviews/](./reviews/) 写评审记录，再把本文件切换到下一阶段。
 
 ## 阶段总览
 
@@ -23,7 +23,7 @@ updated: 2026-10-01
 | [P5 Classic 1.0 发布](./plan/p5/tasks.md) | 未开始 | — |
 | [P6 Enhanced 美化](./plan/p6/tasks.md) | 未开始 | — |
 
-P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体任务；文档组织见 [ADR-0010](./decisions/ADR-0010-phase-task-documents.md)。
+P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体任务。项目专用的五个 skills 与 spec/goal/subtasks 路径已配置，保留已有 simplify；使用方式见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。工作流配置不代表运行骨架或阶段验收完成。
 
 ## P1 退出条件
 

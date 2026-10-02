@@ -1,13 +1,15 @@
 ---
 id: ADR-0010
 type: adr
-status: accepted
+status: superseded
 phase: all
 updated: 2026-10-01
 related: [ADR-0001]
 ---
 
 # ADR-0010：阶段计划与任务文档
+
+> 已由 [ADR-0011](./ADR-0011-spec-goal-workflow.md) 取代。阶段索引仍使用 tasks.md；任务布局和进度规则以新记录为准。以下正文保留原始决定。
 
 ## 背景
 

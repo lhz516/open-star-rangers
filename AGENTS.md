@@ -12,10 +12,11 @@ Open Star Rangers is an independent, browser-based re-implementation of the 1995
 2. [`docs/README.md`](docs/README.md): documentation map and writing conventions (front matter, IDs, status labels).
 3. **Before changing code**, read [`docs/engineering/README.md`](docs/engineering/README.md): toolchain, TypeScript configuration, module boundaries, and testing conventions.
 4. [`docs/plan/master-plan.md`](docs/plan/master-plan.md): frozen product and architecture decisions. Read only the sections relevant to your task; planned features are not evidence of implemented behavior.
+   For task-based work, read [`docs/engineering/agent-workflow.md`](docs/engineering/agent-workflow.md) and the selected task's spec, goal, and subtask.
 5. **For original-game research or compatibility work**, consult [`docs/original/unknowns.md`](docs/original/unknowns.md) and the relevant [format](docs/original/formats/), [behavior](docs/original/behavior/), or [input](docs/original/input/key-map.md) document.
 6. Consult relevant [ADRs](docs/decisions/) and [reviews](docs/reviews/) for decision history. Accepted records are historical: supersede them with a new record rather than rewriting their conclusions.
 
-Keep this entry point short. Detailed engineering rules belong in the engineering guide; progress belongs only in `docs/STATUS.md`.
+Keep this entry point short. Detailed rules belong in the engineering guides. `docs/STATUS.md` owns project/phase progress; the selected `goal.md` owns subtask execution status, and subtask documents own acceptance evidence. Do not duplicate these trackers.
 
 ## Hard rules
 
@@ -31,7 +32,7 @@ Keep this entry point short. Detailed engineering rules belong in the engineerin
 
 ## Languages
 
-- English: `AGENTS.md`, `docs/original/formats/`, code, code comments, identifiers, file names.
+- English: `AGENTS.md`, agent customization instructions, `docs/original/formats/`, code, code comments, identifiers, file names.
 - Chinese: the master plan, status, ADRs, guides, reviews, unknowns register, behavior specs, and other docs.
 
 ## Commands
@@ -63,7 +64,7 @@ Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and resear
 ## Before you finish a task
 
 1. Validate the changed surface: focused tests while iterating, `pnpm check` for TypeScript/app changes, and the guide's checks for Python/Ghidra changes. Documentation-only work needs link and metadata checks, not a build. Report any checks you could not run.
-2. Update `docs/STATUS.md` with evidence (doc, test, or commit). Tick an exit criterion only when its required outcome has been verified, not when an implementation merely exists.
+2. Update the affected goal tracker and subtask evidence. Update `docs/STATUS.md` when phase-level evidence, priorities, or blockers change. Tick an exit criterion only when its required outcome has been verified, not when an implementation merely exists.
 3. Record new facts in `docs/original/` and update the status of affected `U-###` items in `docs/original/unknowns.md`.
 4. Update the `updated:` date in the front matter of every doc you changed.
 5. If you changed a frozen decision, make sure an ADR exists for it.

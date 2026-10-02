@@ -3,11 +3,13 @@ id: ADR-0001
 type: adr
 status: accepted
 phase: all
-updated: 2026-09-30
+updated: 2026-10-01
 related: []
 ---
 
 # ADR-0001：文档结构与进度跟踪
+
+> “进度只记录在 STATUS”的条款已由 [ADR-0011](./ADR-0011-spec-goal-workflow.md) 更新为分层跟踪；长期知识组织等其余决定保留。以下正文保留原始决定。
 
 ## 背景
 

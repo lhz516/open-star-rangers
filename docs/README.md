@@ -11,9 +11,9 @@ updated: 2026-10-01
 
 | 位置 | 内容 | 生命周期 | 语言 |
 |---|---|---|---|
-| [STATUS.md](./STATUS.md) | 当前阶段、各阶段退出条件勾选表、下一步、阻塞项。**唯一的进度入口** | 活文档，随时更新 | 中文 |
+| [STATUS.md](./STATUS.md) | 当前阶段、各阶段退出条件勾选表、下一步、项目级阻塞项。**项目总进度入口**，不复制 subtask 状态 | 活文档，随时更新 | 中文 |
 | [plan/master-plan.md](./plan/master-plan.md) | 总计划：产品方向、技术选型、架构、阶段与验收 | 稳定，只能通过 ADR 修改 | 中文 |
-| [plan/](./plan/) 下的 `p1/`–`p6/` | 各阶段的 `tasks.md` 合并承载阶段计划与任务索引；小任务文档与索引同目录。目前仅有占位文档 | 活文档，随阶段规划更新 | 中文 |
+| [plan/](./plan/) 下的 `p1/`–`p6/` | `tasks.md` 合并承载阶段计划与导航；任务号目录内的 spec、goal 与 subtasks 分别记录契约、执行状态和验收证据。目前阶段索引仍为占位 | 活文档，随阶段规划更新 | 中文 |
 | [decisions/](./decisions/) | 架构决策记录 `ADR-NNNN` | 只追加；被取代时标记 `superseded` | 中文 |
 | [original/](./original/) | 关于原版游戏的一切知识：待确认登记表、文件清单、格式、行为规范、键位 | 参考类，核实后更新 | 见下 |
 | [original/unknowns.md](./original/unknowns.md) | 待确认事项登记表 `U-###` | 活文档 | 中文 |
@@ -22,6 +22,7 @@ updated: 2026-10-01
 | [original/behavior/](./original/behavior/) | 行为规范 `B-###`，带测量方法与容差 | 参考类 | 中文 |
 | [original/input/key-map.md](./original/input/key-map.md) | 原版键位与浏览器冲突表 | 参考类 | 中文 |
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
+| [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |
 
@@ -30,7 +31,7 @@ updated: 2026-10-01
 ## 原则
 
 1. **一个事实只写在一处。** 原版游戏的事实写在 `original/`；总计划、STATUS 和其他文档只写结论并链接过去。
-2. **长期知识按生命周期组织，执行计划按阶段组织。** 阶段会结束，知识会一直被使用。阶段计划与小任务文档放在 `plan/p1/`–`plan/p6/`，不把原版知识、工程约定或指南搬入阶段目录；进度仍只记录在 STATUS。见 [ADR-0010](./decisions/ADR-0010-phase-task-documents.md)。
+2. **长期知识按生命周期组织，执行计划按阶段组织。** 阶段会结束，知识会一直被使用。阶段计划与任务文档放在 `plan/p1/`–`plan/p6/`，不把原版知识、工程约定或指南搬入阶段目录；STATUS 管阶段验收，goal 管 subtask 状态，subtask 文档记录验收证据。见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。
 3. **改动冻结的决定必须先写 ADR**，再修改总计划。
 4. **不包含原版内容。** 任何受版权保护的字节、图片、文本、音频或解码结果都不进入文档；文件名、大小、哈希、数量和结构描述可以写。
 
@@ -41,12 +42,13 @@ updated: 2026-10-01
 | `U-###` | 待确认事项 | [original/unknowns.md](./original/unknowns.md) |
 | `B-###` | 行为规范 | `original/behavior/B-###-<slug>.md` |
 | `ADR-NNNN` | 架构决策 | `decisions/ADR-NNNN-<slug>.md` |
+| `P<阶段号>-<任务号>` | 阶段任务，例如 `P1-01` | `plan/p1/01/` 中的 spec、goal 与 subtasks |
 
 ID 一经分配不再复用。提交说明、代码注释和 STATUS 中引用 ID，而不是标题或文件路径。
 
 ## 文档元数据
 
-除 `AGENTS.md` 外，每篇文档以 YAML front matter 开头：
+`docs/` 中每篇文档以 YAML front matter 开头（agent 指令、skill 模板和 `openai.yaml` 使用各自格式）：
 
 ```yaml
 ---
@@ -61,6 +63,7 @@ related: [U-001, ADR-0002]
 
 - `verified`：内容已用证据核实（格式文档在全部原版文件上验证通过、行为规范完成测量）。
 - `superseded`：已被取代，正文开头注明取代者。
+- spec 与 goal 的 `draft` / `accepted` 表示待批准 / 用户已批准，不表示实现完成；subtask 状态只写 goal tracker。可用 `task: '01'` 和 `subtask: '02'` 补充任务编号。细则见[任务工作流](./engineering/agent-workflow.md#审批与状态)。
 
 ## 置信度标记
 
