@@ -57,7 +57,7 @@ updated: 2026-10-01
 | [03-lint-boundary-regression.md](./subtasks/03-lint-boundary-regression.md) | 02 | completed |
 | [04-check-chain-failure-contract.md](./subtasks/04-check-chain-failure-contract.md) | 03 | completed |
 | [05-local-shell-evidence.md](./subtasks/05-local-shell-evidence.md) | 04 | completed |
-| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |
+| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | completed |
 
 02、03、04 依次扩展同一回归文件和实际规则，形成各自可验证的切片，避免独立 worker 同时修改检查机制。ID 保持稳定；最终对齐发现缺口时新增修复项，插到 06 行之前并更新其依赖，不复用编号。
 
