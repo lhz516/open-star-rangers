@@ -55,12 +55,12 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-03：四种来源恢复后完全等价，并行继续运行的事件与哈希逐 tick 相同；与输入对象隔离。
-- [ ] AC-02（恢复部分）：键序无关。
-- [ ] AC-04：每条恢复规则都有负向用例，错误类型与 `path` 正确；`-0` 被规范化。
-- [ ] AC-05：逐字段的规范文本与哈希敏感性用例通过；重复读取哈希不变。
-- [ ] AC-06：tick 与 ID 上限的边界测试通过，且有原子性证据，补全 P1-02 技术决定 7 原本仅有的审阅证据。
-- [ ] P1-02 现有测试全部原样通过；`pnpm exec vitest run src/core` 与 `pnpm check` 通过。
+- [x] AC-03：四种来源恢复后完全等价，并行继续运行的事件与哈希逐 tick 相同；与输入对象隔离。
+- [x] AC-02（恢复部分）：键序无关。
+- [x] AC-04：每条恢复规则都有负向用例，错误类型与 `path` 正确；`-0` 被规范化。
+- [x] AC-05：逐字段的规范文本与哈希敏感性用例通过；重复读取哈希不变。
+- [x] AC-06：tick 与 ID 上限的边界测试通过，且有原子性证据，补全 P1-02 技术决定 7 原本仅有的审阅证据。
+- [x] P1-02 现有测试全部原样通过；`pnpm exec vitest run src/core` 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -68,3 +68,35 @@ updated: 2026-10-02
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- **实现：** [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts)
+  - 新增导出 `restoreSyntheticScene(snapshot: unknown): SyntheticScene`。
+  - 私有 `Scene` 构造函数改为接收已校验的 `SyntheticSceneState` 并复制一份；`createSyntheticScene` 用初始状态调用它，行为、错误路径与消息不变。
+  - 恢复专用的 `requireExactRecord` 在拒绝额外字段之外，还要求每个字段都是自有属性，原型链上的继承值视为缺失。
+  - 数值通过 `readNumber` 加规则元组校验，`-0` 经 `value + 0` 规范化为 `+0`；`readVec` 统一读取 mover 与 marker 的坐标。
+  - 只做结构和不变量校验，不检查历史可达性。快照格式常量运行时从 `synthetic-snapshot.ts` 导入，后者只做类型导入，因此没有运行时循环。
+- **测试：** [synthetic-scene-restore.test.ts](../../../../../src/core/synthetic-scene-restore.test.ts)，共 87 项。
+  - **AC-03：**
+    - 初始、有标记（120 Hz）、移除后（seed 4294967295）、JSON 往返四种来源，恢复后的 `inspect`、两种投影、快照与哈希都与来源严格相同。
+    - 随后并行执行 6 个 tick（移动、添加、两种拒绝、移除、同 tick add/remove/add），逐 tick 比较事件与哈希。
+    - 修改输入对象、来源场景继续运行，都不影响恢复的场景。
+  - **AC-02：** 各层键序打乱的快照数据，恢复后规范文本与哈希相同。
+  - **AC-04：**
+    - 60 个负向用例逐条覆盖校验表，逐项断言 `CoreInputError` 与 `path`，含 BigInt、数字字符串、NaN/Infinity、`1e-320` 频率、`mover.id = 2`、`y/z ≠ 0`、`marker.id` 为 1/等于/大于 `nextEntityId`、坐标 `-5.0000001` 与 `5`。
+    - 继承字段视为缺失；边界值被接受；9 个可为 0 的数值字段传入 `-0` 后都规范化为 `+0`。
+    - getter 计数用例证明每个字段只读一次，且使用的就是校验过的值。
+  - **AC-05：** 对 11 个可变字段（含 `marker` 有无、`id` 与三个坐标），各构造一个与基准只差该字段的合法快照，规范文本与哈希都不同；注释写明有限用例不构成无碰撞证明。重复读取快照、投影与哈希，哈希不变。
+  - **AC-06：**
+    - `tick = MAX_SAFE_INTEGER - 1`：一次 step 后到达上限，之后 idle 与带添加的 step 都抛 `CoreInputError`（`tickInput`）。
+    - `nextEntityId = MAX_SAFE_INTEGER - 1`：添加得到 ID `MAX_SAFE_INTEGER - 1`，分配器到达上限；已有标记时被拒的添加不分配 ID，仍可执行；移除后再添加，以及 remove+add，都抛错（`tickInput.commands`）。
+    - 每次被拒的调用前后快照与哈希都相同；不分配 ID 的 tick 继续推进到 tick 5。
+- **检查：** `pnpm exec vitest run src/core` 通过；P1-02 的三个测试文件未改动且全部通过；最终 `pnpm check` 通过（typecheck、lint、11 个测试文件共 272 项、build）。
+- **审阅：**
+  - rubber-duck 指出三点，处理如下：
+    - 继承字段会被当作存在：已改为要求自有属性并补测。
+    - getter 场景未被测试：已补测。
+    - “不构造场景”用例无法证伪：已删除。
+    - 多个错误同时存在时，报告哪一个取决于键序：spec 没有要求先后顺序，未改。
+  - simplify：
+    - 已采纳：合并 mover/marker 的重复坐标读取，改用模块级数值规则；为负向用例表引入构造 helper。
+    - 未采纳：抽取共享的测试 helper（需要改动 P1-02 测试文件，超出范围）；构造时的二次复制（恢复很少发生，开销可忽略）；为 replay 导出校验 helper（留到 05 实际需要时再做）。

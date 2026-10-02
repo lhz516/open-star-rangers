@@ -5,6 +5,7 @@
  */
 import { CoreInputError } from './errors.ts';
 import { nextRandom, type RngState } from './rng.ts';
+import { SYNTHETIC_SNAPSHOT_FORMAT, SYNTHETIC_SNAPSHOT_VERSION } from './synthetic-snapshot.ts';
 
 export const SYNTHETIC_DEFAULT_TICK_RATE_HZ = 60;
 export const SYNTHETIC_MOVER_ID = 1;
@@ -117,6 +118,10 @@ interface MutableEntity {
   readonly position: { x: number; y: number; z: number };
 }
 
+function mutableEntity({ id, position: { x, y, z } }: SyntheticEntity): MutableEntity {
+  return { id, position: { x, y, z } };
+}
+
 function freezeVec({ x, y, z }: Vec3): Vec3 {
   return Object.freeze({ x, y, z });
 }
@@ -147,6 +152,15 @@ function requireRecord(value: unknown, path: string, allowed: readonly string[])
     if (!allowed.includes(key)) throw new CoreInputError(`${path}.${key}`, 'is not a known field');
   }
   return value as Record<string, unknown>;
+}
+
+/** Like requireRecord, but every field must also be present as an own property. */
+function requireExactRecord(value: unknown, path: string, fields: readonly string[]): Record<string, unknown> {
+  const record = requireRecord(value, path, fields);
+  for (const field of fields) {
+    if (!Object.hasOwn(record, field)) throw new CoreInputError(`${path}.${field}`, 'is required');
+  }
+  return record;
 }
 
 function isCommandType(value: unknown): value is Command['type'] {
@@ -197,16 +211,21 @@ function planCommands(commandTypes: readonly Command['type'][], hasMarker: boole
 class Scene implements SyntheticScene {
   readonly #seed: number;
   readonly #tickRateHz: number;
-  #tick = 0;
+  #tick: number;
   #rngState: RngState;
-  #nextEntityId: EntityId = SYNTHETIC_MOVER_ID + 1;
-  readonly #mover: MutableEntity = { id: SYNTHETIC_MOVER_ID, position: { x: 0, y: 0, z: 0 } };
-  #marker: MutableEntity | null = null;
+  #nextEntityId: EntityId;
+  readonly #mover: MutableEntity;
+  #marker: MutableEntity | null;
 
-  constructor(seed: number, tickRateHz: number) {
-    this.#seed = seed;
-    this.#tickRateHz = tickRateHz;
-    this.#rngState = seed;
+  /** `state` must already satisfy every invariant; the scene keeps its own copy. */
+  constructor(state: SyntheticSceneState) {
+    this.#seed = state.seed;
+    this.#tickRateHz = state.tickRateHz;
+    this.#tick = state.tick;
+    this.#rngState = state.rngState;
+    this.#nextEntityId = state.nextEntityId;
+    this.#mover = mutableEntity(state.mover);
+    this.#marker = state.marker && mutableEntity(state.marker);
   }
 
   step(tickInput: TickInput): readonly DomainEvent[] {
@@ -288,14 +307,101 @@ class Scene implements SyntheticScene {
   }
 }
 
+function isUint32(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= SEED_MAX;
+}
+
+function isTickRate(value: number): boolean {
+  return value > 0 && Number.isFinite(value) && Number.isFinite(1 / value);
+}
+
+const UINT32_RULE = `must be an integer from 0 to ${SEED_MAX}`;
+const TICK_RATE_RULE = 'must be a finite positive number with a finite reciprocal';
+
 export function createSyntheticScene(config: SyntheticSceneConfig): SyntheticScene {
   const { seed, tickRateHz = SYNTHETIC_DEFAULT_TICK_RATE_HZ } = requireRecord(config, 'config', ['seed', 'tickRateHz']);
-  if (typeof seed !== 'number' || !Number.isInteger(seed) || seed < 0 || seed > SEED_MAX) {
-    throw new CoreInputError('config.seed', `must be an integer from 0 to ${SEED_MAX}`);
-  }
-  if (typeof tickRateHz !== 'number' || !(tickRateHz > 0) || !Number.isFinite(tickRateHz) || !Number.isFinite(1 / tickRateHz)) {
-    throw new CoreInputError('config.tickRateHz', 'must be a finite positive number with a finite reciprocal');
-  }
+  if (typeof seed !== 'number' || !isUint32(seed)) throw new CoreInputError('config.seed', UINT32_RULE);
+  if (typeof tickRateHz !== 'number' || !isTickRate(tickRateHz)) throw new CoreInputError('config.tickRateHz', TICK_RATE_RULE);
   // `>>> 0` keeps a uint32 and turns -0 into 0, the same seed.
-  return new Scene(seed >>> 0, tickRateHz);
+  const uint32Seed = seed >>> 0;
+  return new Scene({
+    scenario: 'synthetic',
+    tick: 0,
+    tickRateHz,
+    seed: uint32Seed,
+    rngState: uint32Seed,
+    nextEntityId: SYNTHETIC_MOVER_ID + 1,
+    mover: { id: SYNTHETIC_MOVER_ID, position: { x: 0, y: 0, z: 0 } },
+    marker: null,
+  });
+}
+
+/** A validity check on a number and the message used when it fails. */
+type NumberRule = readonly [valid: (value: number) => boolean, rule: string];
+
+const FINITE: NumberRule = [Number.isFinite, 'must be a finite number'];
+const ZERO: NumberRule = [(value) => value === 0, 'must be 0'];
+const MARKER_COORDINATE: NumberRule = [
+  (value) => value >= SYNTHETIC_MARKER_MIN && value < SYNTHETIC_MARKER_MAX,
+  `must be a number in [${SYNTHETIC_MARKER_MIN}, ${SYNTHETIC_MARKER_MAX})`,
+];
+
+/** Returns `value` with -0 normalised to +0 (`-0 + 0` is `+0`), or throws if it is not a number passing `rule`. */
+function readNumber(value: unknown, path: string, [valid, rule]: NumberRule): number {
+  if (typeof value !== 'number' || !valid(value)) throw new CoreInputError(path, rule);
+  return value + 0;
+}
+
+function readVec(value: unknown, path: string, x: NumberRule, y: NumberRule, z: NumberRule): Vec3 {
+  const position = requireExactRecord(value, path, ['x', 'y', 'z']);
+  return { x: readNumber(position.x, `${path}.x`, x), y: readNumber(position.y, `${path}.y`, y), z: readNumber(position.z, `${path}.z`, z) };
+}
+
+function readMover(value: unknown, path: string): SyntheticEntity {
+  const { id, position } = requireExactRecord(value, path, ['id', 'position']);
+  if (id !== SYNTHETIC_MOVER_ID) throw new CoreInputError(`${path}.id`, `must be ${SYNTHETIC_MOVER_ID}`);
+  return { id: SYNTHETIC_MOVER_ID, position: readVec(position, `${path}.position`, FINITE, ZERO, ZERO) };
+}
+
+function readMarker(value: unknown, path: string, nextEntityId: EntityId): SyntheticEntity | null {
+  if (value === null) return null;
+  const { id, position } = requireExactRecord(value, path, ['id', 'position']);
+  const markerId = readNumber(id, `${path}.id`, [
+    (n) => Number.isSafeInteger(n) && n > SYNTHETIC_MOVER_ID && n < nextEntityId,
+    `must be a safe integer from ${SYNTHETIC_MOVER_ID + 1} to below nextEntityId`,
+  ]);
+  return { id: markerId, position: readVec(position, `${path}.position`, MARKER_COORDINATE, MARKER_COORDINATE, MARKER_COORDINATE) };
+}
+
+const TICK: NumberRule = [(value) => Number.isSafeInteger(value) && value >= 0, 'must be a non-negative safe integer'];
+const NEXT_ENTITY_ID: NumberRule = [
+  (value) => Number.isSafeInteger(value) && value > SYNTHETIC_MOVER_ID,
+  `must be a safe integer of at least ${SYNTHETIC_MOVER_ID + 1}`,
+];
+const STATE_FIELDS = ['scenario', 'tick', 'tickRateHz', 'seed', 'rngState', 'nextEntityId', 'mover', 'marker'] as const;
+
+function readSnapshotState(value: unknown): SyntheticSceneState {
+  const path = 'snapshot.state';
+  const state = requireExactRecord(value, path, STATE_FIELDS);
+  if (state.scenario !== 'synthetic') throw new CoreInputError(`${path}.scenario`, 'must be synthetic');
+  const tick = readNumber(state.tick, `${path}.tick`, TICK);
+  const tickRateHz = readNumber(state.tickRateHz, `${path}.tickRateHz`, [isTickRate, TICK_RATE_RULE]);
+  const seed = readNumber(state.seed, `${path}.seed`, [isUint32, UINT32_RULE]);
+  const rngState = readNumber(state.rngState, `${path}.rngState`, [isUint32, UINT32_RULE]);
+  const nextEntityId = readNumber(state.nextEntityId, `${path}.nextEntityId`, NEXT_ENTITY_ID);
+  const mover = readMover(state.mover, `${path}.mover`);
+  const marker = readMarker(state.marker, `${path}.marker`, nextEntityId);
+  return { scenario: 'synthetic', tick, tickRateHz, seed, rngState, nextEntityId, mover, marker };
+}
+
+/**
+ * Restores an independent scene from snapshot data, e.g. after a JSON round trip. Validates
+ * structure and invariants only, not whether some history could reach the state; throws
+ * CoreInputError at a `snapshot…` path without building a scene if anything is invalid.
+ */
+export function restoreSyntheticScene(snapshot: unknown): SyntheticScene {
+  const { format, version, state } = requireExactRecord(snapshot, 'snapshot', ['format', 'version', 'state']);
+  if (format !== SYNTHETIC_SNAPSHOT_FORMAT) throw new CoreInputError('snapshot.format', `must be ${SYNTHETIC_SNAPSHOT_FORMAT}`);
+  if (version !== SYNTHETIC_SNAPSHOT_VERSION) throw new CoreInputError('snapshot.version', `must be ${SYNTHETIC_SNAPSHOT_VERSION}`);
+  return new Scene(readSnapshotState(state));
 }
