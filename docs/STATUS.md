@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # 项目进度
@@ -44,15 +44,15 @@ updated: 2026-09-30
 
 - [x] 列出全部 `.NOB` 封包条目 → [imfat](./original/formats/imfat.md)
 - [ ] 还原一个舰船模型 → [mesh](./original/formats/mesh.md)、U-001
-- [ ] 还原一个任务的结构 → U-002、U-003
-- [ ] 确认任务数据是否嵌在 EXE 中 → U-002
+- [ ] 还原一个任务的结构：头部、7 个段与战役表已确认；132 字节记录等字段含义待研究 → [scenario](./original/formats/scenario.md)、U-022
+- [x] 确认任务数据是否嵌在 EXE 中：任务内容在 `SCENARIO.NOB`，EXE 中没有任务文字 → [scenario](./original/formats/scenario.md)、U-002
 - [ ] 写出评审记录 `reviews/P0-feasibility.md`
 
 ## 下一步
 
 1. 解析 MESH 的面、法线和 UV，以及 MODL 如何组合 MESH，导出一个舰船模型与原版截图对照。
-2. 解析一个 `SCEN` 的结构。
-3. 首轮试玩：回答 U-007、U-011、U-012、U-013、U-015，并反馈流畅度以校准 cycles（U-021）。
+2. 在 Ghidra 中配置 Watcom 调用约定，定位 `SCEN` 的加载代码，确定 132 字节记录的字段含义（U-022）。
+3. 试玩（用户）：回答 U-011、U-012、U-013、U-015，并反馈流畅度以校准 cycles（U-021）。U-006、U-007、U-024 已完成。
 
 ## 阻塞项
 

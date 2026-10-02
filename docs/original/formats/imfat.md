@@ -76,7 +76,7 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 | SND / SONG / MUSC | Digital sound / music (possibly XMIDI) / mission music configuration | Unconfirmed (names; Miles drivers) | |
 | CCKD / MFDD | Cockpit images / multi-function display images | Unconfirmed (names, large sizes) | |
 | ANIM / EXPL / EXIC | Animation / explosion / explosion-related | Unconfirmed (names) | |
-| SCEN / SCCT | Missions (52) / mission or campaign table | Unconfirmed (names, count) | |
+| SCEN / SCCT | Missions (52) / campaign table | Structure Confirmed, field meanings partly Unconfirmed | [scenario](./scenario.md) |
 | CINF | Craft info, 24 craft | Unconfirmed (file name `CRAFT`) | |
 | MESC | Menu scene | Unconfirmed (large; in `OPTIONS`) | |
 | CMOV | Comm-screen face animation | Unconfirmed (file name `COMMFACE`; the two files may hold two resolutions) | |
@@ -86,4 +86,4 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 ## 6. Open questions
 
 - Meaning of `flags` (U-020).
-- Whether blocks reference other entries by ID, and how cross-file references work.
+- Cross-entry references: at least `SCCT` refers to `SCEN` and `MUSC` entries by **entry ID** (Confirmed, see [scenario](./scenario.md) §4). Whether other types do the same, and how references across files work, is Unconfirmed.

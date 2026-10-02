@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P0
-updated: 2026-09-30
+updated: 2026-10-01
 related: [U-016, U-021]
 ---
 
@@ -42,7 +42,8 @@ related: [U-016, U-021]
 
 - CPU：`cputype=pentium`，`cycles=fixed 40000`。初始值，待校准后冻结（U-021）。
 - 声卡：Sound Blaster 16；音效 `SB16.DIG`，音乐 `SBPRO2.MDI`（OPL3，Nuked 精确模拟）。沿用原安装的 Miles 配置（U-016）。
-- 录像、截图、录音：菜单 **Capture**，输出到 `local/StarRang/captures/`。
+- 游戏内画面设置：全部取最高，即过场 HI、背景细节 ON、Gouraud 着色 ON、贴图 ON、游戏分辨率 HI。设置界面的 7 个选项与 `SRANGER.CFG` 中的 `SOUND_LEVEL`、`MUSIC_LEVEL`、`CINEMATIC`、`DETAIL`、`SHADING`、`TEXTURE`、`GAMEHIRES` 一一对应。初始快照中 `DETAIL=FALSE`（首次运行时游戏按机器性能自动选择），基准应为 TRUE。
+- 录像、截图、录音：菜单 **Capture**，输出到 `local/StarRang/captures/`。截图是游戏原始像素，可用于判断分辨率。
 
 ## 静态分析
 

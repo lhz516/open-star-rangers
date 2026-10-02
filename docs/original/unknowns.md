@@ -2,7 +2,7 @@
 type: register
 status: active
 phase: all
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # 待确认事项登记表
@@ -16,27 +16,32 @@ updated: 2026-09-30
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
 | U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表已确认；调色板、TEX 已能解码；BITM 部分可解码；MESH 顶点为 32 位浮点 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[mesh](./formats/mesh.md) | P0 |
-| U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 高概率在 `SCENARIO.NOB` | 有 52 个 `SCEN` 条目，待解析验证 | [imfat](./formats/imfat.md) | P0 |
-| U-003 | 任务总数与分支结构 | 未确认 | 可能为 52 个任务 | 同上 | P0 |
-| U-004 | 音乐与音效编码 | 未确认 | `SND` 37 个、`SONG` 12 个、`MUSC` 5 个 | 同上 | P2（音效）/ P4（音乐） |
+| U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 已确认（内容） | 任务内容（对象名、编组名、任务内文字、坐标、战役顺序）全部在 `SCENARIO.NOB`；EXE 中没有任务文字。EXE 是否有针对特定任务的硬编码逻辑见 U-022 | [scenario](./formats/scenario.md)、[executable](./formats/executable.md) | P0 |
+| U-003 | 任务总数与分支结构 | 高概率 52 个 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个任务，其余 51 个各不相同。推测为 3 个战役各 17 个任务加 1 个共用开场任务；顺序是否即游玩顺序、是否有分支未确认 | [scenario](./formats/scenario.md) | P0 |
+| U-004 | 音乐与音效编码 | 未确认 | `SND` 37 个、`SONG` 12 个、`MUSC` 5 个；EXE 链接了 Miles AIL | [imfat](./formats/imfat.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
 | U-005 | 原版存档格式 | 未确认 | 原版存档兼容是可选工作 | | P4 之后 |
 | U-018 | 不带调色板的 BITM 所用调色板 | 未确认 | 21 个 BITM 用全局调色板显示颜色不对 | [textures](./formats/textures.md) | P2 |
 | U-019 | 部分 BITM 显示为上下颠倒 | 未确认 | 可能按行倒序存储，也可能是贴图本身的朝向 | 同上 | P2 |
 | U-020 | IMFAT 目录项 `flags` 字段含义 | 未确认 | 观察到 0、0x10、0x50 | [imfat](./formats/imfat.md) | P2 |
+| U-022 | `SCEN` 各段与 132 字节记录的字段含义；EXE 是否有特定任务的硬编码逻辑 | 进行中 | 头部与 7 个段的位置已确认；字段含义需要 EXE 的加载代码或试玩对照 | [scenario](./formats/scenario.md) | P0（结构）/ P2（切片任务的字段） |
+| U-023 | `SCCT` 中 5 条 132 字节记录的用途 | 未确认 | 与 `SCEN` 第 1 段的记录类型相同；可能是战役级对象，例如可选僚机 | [scenario](./formats/scenario.md) | P2 |
+| U-024 | 地图边框两侧按钮的功能；地图打开时飞行与武器按键是否有效 | 已确认 | 按钮不能点击，只是装饰；地图打开时飞行按键无效 | [B-001](./behavior/B-001-strategic-map.md) | P0 |
+| U-025 | 战争迷雾的计算规则 | 未确认 | 已探明区域像多个圆形范围的并集，可能是友方的探测范围 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
+| U-026 | 跃迁能量消耗的显示与计算 | 部分确认 | 显示已确认：地图上选取框旁显示“E: 百分比”，距离越远越大；左侧状态窗口的能量数值是当前能量。计算公式与百分比基准未确认 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
 
 ## 画面
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-006 | 内部分辨率与显示模式 | 高概率有两种 | `SRANGER.CFG` 中有 `GAMEHIRES=TRUE`、`CINEMATIC=HIGHRES`；有 640×316 的全屏 BITM | 配置文件、[textures](./formats/textures.md) | P0 |
-| U-007 | 战略地图的结构与交互 | 未确认 | | 待试玩 | P0 |
+| U-006 | 内部分辨率与显示模式 | 已确认 | 设置界面有“游戏分辨率 HI/LO”和“过场 HI/LO”。HI 为 640×480；LO 为 320×240（截图中整个画面，包括 3D、驾驶舱和文字，都是精确的 2×2 像素块）。两者都是 4:3 方形像素。菜单为 640×480。`COMMFACE.NOB` 与 `COMMFAC2.NOB` 是否对应过场的两种分辨率未确认 | 截图像素统计、设置截图、配置文件 | P0 |
+| U-007 | 战略地图的结构与交互 | 已确认 | 整屏固定布局、不暂停、飞行按键无效、`m` 开关、光标限制在地图内、实时放大窗口、战争迷雾、侧边按钮仅为装饰；遗留问题见 U-025、U-026 | [B-001](./behavior/B-001-strategic-map.md) | P0 |
 
 ## 玩法与数值
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
 | U-008 | 精确运动模型 | 未确认 | | 待行为实验 | P0 / P3 |
-| U-009 | 是否使用定点数与三角函数查表 | 未确认 | 网格顶点以 32 位浮点存储，原版至少部分使用浮点 | [mesh](./formats/mesh.md) | P0 / P3 |
+| U-009 | 是否使用定点数与三角函数查表 | 部分确认 | 网格顶点以 32 位浮点存储；但渲染器内部使用定点数（断言文字中有定点转整数的宏）；任务坐标为 int32。是否有三角函数查表未确认 | [mesh](./formats/mesh.md)、[executable](./formats/executable.md)、[scenario](./formats/scenario.md) | P0 / P3 |
 | U-010 | 起降、Warp 与过场动画的衔接 | 未确认 | 光盘有 `LAUNCH`、`LANDING`、`FLYTO`、`FLYFROM` 等 Smacker 视频 | [manifest](./manifest.md) | P0 |
 
 ## 输入
@@ -50,7 +55,7 @@ updated: 2026-09-30
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-013 | 存档时机与存档槽数量 | 未确认 | | 待试玩 | P0 |
+| U-013 | 存档时机与存档槽数量 | 未确认 | 线索：试玩后 `SRANGER.CFG` 中的 `CURR_LEVEL` 从 `0 0` 变为 `0 17`，含义未知（用户也不确定）。之后可在开始战役、完成任务前后各对比一次配置文件 | 配置文件对比 | P0 |
 | U-014 | 战役存档内容与高分榜 | 未确认 | 高分榜文件为 `SRHISCOR.RAW`（1176 字节） | [manifest](./manifest.md) | P0 |
 
 ## 环境与其他
