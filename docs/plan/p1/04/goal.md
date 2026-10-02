@@ -92,7 +92,7 @@ updated: 2026-10-02
 | [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | completed |
 | [05-runtime-recording.md](./subtasks/05-runtime-recording.md) | 04 | completed |
 | [07-scoped-cleanup-verification.md](./subtasks/07-scoped-cleanup-verification.md) | 01, 02, 03, 04, 05 | completed |
-| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05, 07 | pending |
+| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05, 07 | completed |
 
 02 与 03 只需要 01 的错误契约，彼此无依赖；04 需要错误、时钟与总线才能建立完整帧边界；05 复用 04 的唯一 step 路径接入录制，而非另开循环。
 
