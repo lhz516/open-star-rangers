@@ -36,12 +36,12 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-05：每种取消 reason、ID 集合、已执行拒绝不再取消准确；暂停输入无旧意图入未来 tick。
-- [ ] AC-06：首域事件请求 exit/restart，当前其余事件/帧仍来自旧 run；pause→resume、静止帧控制、宿主通知 FIFO、非法排队控制的显式错误均准确。
-- [ ] AC-08：0 tick 与静止帧 shape、冻结/旧输出、注册顺序/下一批新增/即时取消、状态变化通知符合契约；权限负向类型成立。
-- [ ] AC-09：资源 C/B/A、提前 release B、C 抛仍执行 A；每项至多一次，清理失败不建新运行，订阅/宿主清理分别计数。
-- [ ] AC-02/10：cleanupFailed 在 error 覆盖后仍阻断，release 失败的反馈与“仍在运行”分开验证；错误通知不吞掉，也不递归调用控制。
-- [ ] AC-14：目标测试、pnpm check 与现有会话回归通过，文档更新实际消费者所有权。
+- [x] AC-05：每种取消 reason、ID 集合、已执行拒绝不再取消准确；暂停输入无旧意图入未来 tick。
+- [x] AC-06：首域事件请求 exit/restart，当前其余事件/帧仍来自旧 run；pause→resume、静止帧控制、宿主通知 FIFO、非法排队控制的显式错误均准确。
+- [x] AC-08：0 tick 与静止帧 shape、冻结/旧输出、注册顺序/下一批新增/即时取消、状态变化通知符合契约；权限负向类型成立。
+- [x] AC-09：资源 C/B/A、提前 release B、C 抛仍执行 A；每项至多一次，清理失败不建新运行，订阅/宿主清理分别计数。
+- [x] AC-02/10：cleanupFailed 在 error 覆盖后仍阻断，release 失败的反馈与“仍在运行”分开验证；错误通知不吞掉，也不递归调用控制。
+- [x] AC-14：目标测试、pnpm check 与现有会话回归通过，文档更新实际消费者所有权。
 
 ## 验证方法
 
@@ -51,3 +51,10 @@ updated: 2026-10-02
 - rubber-duck 后 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 限定本项 Runtime 消费者 hunks/新测试/必要 test-support 修改。更新 [engineering](../../../../engineering/README.md)，检查 guides 有无新操作；无真实 GPU/输入或浏览器证据声明。
 
 ## 完成证据
+
+- 2026-10-02：[消费者测试](../../../../../src/app/synthetic-session-consumers.test.ts) 23 项，基础控制 26 项共 49 项通过；`pnpm check` typecheck/lint/25 文件 573 测试/build 成功。所有六种 reason、已业务拒绝不取消、冻结 FIFO、空集合不通知都有断言。
+- 真实 add/add/remove 旧域批次与三 tick 的旧帧全部完成后才 restart/exit；静止帧内控制、pause→resume、宿主通知 FIFO 与非法排队 control 不 fault 均通过。帧/状态订阅固定批次，即时取消；状态接线新运行、禁止递归控制、已结束权限与正常 dispose/runId=null 有明确测试。
+- C/B/A、提前 release、失败仍全部尝试、每项至多一次和 cleanupFailed 持续阻断通过。消费者失败按“剩余帧消费者→failure 取消→清理→faulted 状态→唯一错误出口”精确核验；未声称真实 GPU/媒体/输入已释放。
+- rubber-duck 提出的“所有 consumer 或 release 错都经 onError、同步/排队错误合并”不采纳：spec 明确同步公开操作失败直接抛，排队控制独立报告，error 只保留最近值。新增测试证明直接 pause 的通知失败与排队 control 分别反馈；帧内 release 被调用者捕获时不重复 onError，之后的 consumer 错可替换 error 而 cleanupFailed 仍保留。裸 Runtime 生命周期操作均在批次外且不抛正常收尾错，不为不可达的推测添加 broad catch。
+- simplify 四角度并行，应用释放 token 的 owner/run/cleanup 引用清空，避免保留无效 disposer 牵连新世界；重验全通过。
+- 文档影响：engineering 更新完整消费者/资源/FIFO 与同步错误来源说明；guides 仍仅研究流程，原版事实和冻结决定无变化，阶段完整浏览器证据尚待 07，未勾 STATUS。
