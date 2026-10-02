@@ -82,7 +82,7 @@ updated: 2026-10-02
 | [04-session-controls-scheduler.md](./subtasks/04-session-controls-scheduler.md) | 01, 02 | completed |
 | [05-consumer-boundaries-cleanup.md](./subtasks/05-consumer-boundaries-cleanup.md) | 04 | completed |
 | [06-failure-recovery-replay.md](./subtasks/06-failure-recovery-replay.md) | 05 | completed |
-| [07-browser-lifecycle-evidence.md](./subtasks/07-browser-lifecycle-evidence.md) | 03, 06 | pending |
+| [07-browser-lifecycle-evidence.md](./subtasks/07-browser-lifecycle-evidence.md) | 03, 06 | blocked |
 | [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 
 01 与 02 互不依赖；03 只依赖宿主契约，04 的可控调度不依赖浏览器适配器。05 使用已成立的运行身份/控制器边界，06 验证完整消费者清理与错误恢复，07 才联合真实宿主和完整会话。
@@ -90,6 +90,11 @@ updated: 2026-10-02
 08 仅验证，不实现功能；后续修复使用新 ID，插在 08 前并加入其依赖，不重编号或复用 ID。
 
 ## 执行记录
+
+- **2026-10-02 — Subtask 07 blocked:** 当前 Chromium 工具不能提供真实标签页隐藏，手动观测也不可得。
+  Evidence: 实际切换标签页与目标窗口最小化均仍返回 visibilityState=visible、visibilityLog=[]；默认 headed 启动缺 runner 浏览器，随后用现有二进制/临时 profile 的 headed 与移除后台抑制参数两种尝试仍为 visible；未新增依赖/下载，问题工具返回用户不在场。其余真实 rAF、身份、暂停恢复和监听收尾见 [07](./subtasks/07-browser-lifecycle-evidence.md#完成证据)。
+  Affected acceptance: AC-07/13 的真实 hidden→visible、返回仍 paused；08 不可执行。
+  Resume when: 隔离 Chromium 能实际切换至 hidden，或用户提供按工程步骤取得的真实 Chromium 观测；重新核验此项后才能完成 07/08。已完成 01–06 按各项证据本地提交，不推送。
 
 ## 审批
 

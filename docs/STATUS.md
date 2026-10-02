@@ -27,6 +27,8 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 
 P1-04 已交付宿主无关的合成 Runtime：固定步长与补跑上限、输入/命令队列、帧末类型化事件分发、两份 Render State、可选录制及故障导出。Node 契约与完整工程检查证据见 [P1-04 最终对齐](./plan/p1/04/subtasks/06-final-alignment.md#完成证据)，使用约定见 [engineering](./engineering/README.md#合成-runtime)。尚未接入浏览器时钟、控制通道或页面，不能据此宣称运行骨架整体完成。
 
+P1-05 已交付会话控制器、真实浏览器宿主、输入取消、资源所有权与故障恢复/replay，完整工程检查通过（27 文件、598 测试），见 [故障/录制证据](./plan/p1/05/subtasks/06-failure-recovery-replay.md#完成证据)。真实 Chromium rAF、暂停恢复、重启/退出/销毁重建与三监听撤销已观测；当前工具无法触发实际 hidden，手动观测也不可得，[浏览器证据](./plan/p1/05/subtasks/07-browser-lifecycle-evidence.md#完成证据)保留该阻塞。因此尚未完成最终对齐，不勾 GameRuntime，更不宣称 StrictMode/HMR 或整个运行骨架通过。
+
 ## P1 退出条件
 
 对应总计划 §12 的 P1 行。
@@ -40,7 +42,7 @@ P1-04 已交付宿主无关的合成 Runtime：固定步长与补跑上限、输
 ### 运行骨架
 
 - [x] 独立 Core：`step(tickInput)` 返回 `DomainEvent[]`，可在 Node 中无浏览器运行；当前为合成演示场景，不是原版规则 → [P1-02 最终对齐](./plan/p1/02/subtasks/05-final-alignment.md#完成证据)、[Core 源码](../src/core/synthetic-scene.ts)
-- [ ] GameRuntime：固定步长调度、命令队列、Event Bus、运行时控制通道（暂停/继续/退出）——前半部分已由 [P1-04](./plan/p1/04/subtasks/06-final-alignment.md#完成证据)验证；控制通道与生命周期待 P1-05
+- [ ] GameRuntime：固定步长调度、命令队列、Event Bus、运行时控制通道（暂停/继续/退出）——[P1-04](./plan/p1/04/subtasks/06-final-alignment.md#完成证据) 与 [P1-05 Node 证据](./plan/p1/05/subtasks/06-failure-recovery-replay.md#完成证据)已交付；P1-05 仍待真实 hidden 证据及最终对齐
 - [ ] UI projection 与 Zustand 桥接；React 指令经 Core 反馈
 - [ ] Three.js 合成场景在浏览器运行，按 Render State 插值
 - [ ] 重启、暂停、返回菜单不产生重复游戏循环（含 React StrictMode 与热更新）
@@ -89,11 +91,11 @@ P1-04 已交付宿主无关的合成 Runtime：固定步长与补跑上限、输
 
 ## 下一步
 
-1. P1：[P1-01](./plan/p1/01/goal.md)、[P1-02](./plan/p1/02/goal.md)、[P1-03](./plan/p1/03/goal.md) 与 [P1-04](./plan/p1/04/goal.md) 已完成。下一步可为 [P1-05 会话与浏览器生命周期](./plan/p1/tasks.md#p1-05-会话与浏览器生命周期)生成 spec，接入浏览器时钟、暂停/继续/退出和清理；[P1-12 本地合规检查](./plan/p1/tasks.md#p1-12-本地原版隔离与许可检查)只依赖 P1-01，也可开始。
+1. P1：[P1-01](./plan/p1/01/goal.md)、[P1-02](./plan/p1/02/goal.md)、[P1-03](./plan/p1/03/goal.md) 与 [P1-04](./plan/p1/04/goal.md) 已完成。下一步为 [P1-05](./plan/p1/05/goal.md#执行记录)补齐实际 Chromium hidden 证据并最终对齐；复现见 [engineering](./engineering/README.md#浏览器生命周期复现)。[P1-12 本地合规检查](./plan/p1/tasks.md#p1-12-本地原版隔离与许可检查)只依赖 P1-01，也可开始。
 2. P1：按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)规划后续本地任务；本地合规自检可并行推进。CI/部署由 P5 跟踪，不索取云凭据，也不作为 P1 阻塞；细粒度状态只放各任务 goal。
 3. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 4. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 
 ## 阻塞项
 
-无。
+- P1-05 的必需真实 Chromium hidden→visible 观测尚未取得：工具切标签页/最小化仍为 visible；默认 runner 浏览器缺失，现有二进制的隔离 headed 尝试也仍为 visible，用户当前不在场。需要可产生真实隐藏的隔离 Chromium 或手动观测；不得以 Node/合成事件免除。见 [浏览器证据及恢复条件](./plan/p1/05/subtasks/07-browser-lifecycle-evidence.md#完成证据)。
