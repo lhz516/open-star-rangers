@@ -53,7 +53,7 @@ updated: 2026-10-01
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-toolchain-baseline.md](./subtasks/01-toolchain-baseline.md) | — | completed |
-| [02-type-environment-regression.md](./subtasks/02-type-environment-regression.md) | 01 | pending |
+| [02-type-environment-regression.md](./subtasks/02-type-environment-regression.md) | 01 | completed |
 | [03-lint-boundary-regression.md](./subtasks/03-lint-boundary-regression.md) | 02 | pending |
 | [04-check-chain-failure-contract.md](./subtasks/04-check-chain-failure-contract.md) | 03 | pending |
 | [05-local-shell-evidence.md](./subtasks/05-local-shell-evidence.md) | 04 | pending |
@@ -62,6 +62,8 @@ updated: 2026-10-01
 02、03、04 依次扩展同一回归文件和实际规则，形成各自可验证的切片，避免独立 worker 同时修改检查机制。ID 保持稳定；最终对齐发现缺口时新增修复项，插到 06 行之前并更新其依赖，不复用编号。
 
 ## 执行记录
+
+- **2026-10-01 — Subtask 02 实现方式调整：** TypeScript 样本使用自有临时项目而非纯内存虚拟文件，配置逐字复制自仓库，保留编译器真实 include/exclude、扩展名发现与依赖解析；符合 spec 的隔离临时环境边界。ESLint 样本仍使用虚拟源，生产目录没有探测文件。验证时发现同 basename 的 ts/tsx 被 TS 去重，样本已改为独立 basename。
 
 ## 审批
 

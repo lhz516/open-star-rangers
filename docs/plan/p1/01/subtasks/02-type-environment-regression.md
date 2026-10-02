@@ -35,11 +35,11 @@ updated: 2026-10-01
 
 ## 验收标准
 
-- [ ] AC-02：真实纯模块程序文件集不包含 DOM/Node 声明，有用例确保污染不能悄悄通过。
-- [ ] AC-03：三个纯模块位置的全部类型环境负向能力产生正确的样本诊断，没有空程序或无关错误假通过。
-- [ ] AC-04：纯数据/app/Node/test 对照通过，保留测试与生产边界；不执行输入中的文件读写。
-- [ ] AC-09：源样本在内存或独立自有临时环境，结束无生产占位文件/原版访问。
-- [ ] `pnpm test -- tools/engineering-boundaries.test.ts` 发现新用例且通过；`pnpm check` 通过，原有测试行为不变。
+- [x] AC-02：真实纯模块程序文件集不包含 DOM/Node 声明，有用例确保污染不能悄悄通过。
+- [x] AC-03：三个纯模块位置的全部类型环境负向能力产生正确的样本诊断，没有空程序或无关错误假通过。
+- [x] AC-04：纯数据/app/Node/test 对照通过，保留测试与生产边界；不执行输入中的文件读写。
+- [x] AC-09：源样本在内存或独立自有临时环境，结束无生产占位文件/原版访问。
+- [x] `pnpm test -- tools/engineering-boundaries.test.ts` 发现新用例且通过；`pnpm check` 通过，原有测试行为不变。
 
 ## 验证方法
 
@@ -49,3 +49,10 @@ updated: 2026-10-01
 - 无浏览器、真实 Ghidra、原版或存储验证。
 
 ## 完成证据
+
+- 2026-10-01：[engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts) 新增 6 个 Vitest 用例；三个纯层 × `.ts`/`.tsx` × 7 种 host 能力共 42 个负向样本均命中准确类型诊断。DOM 缺声明为 TS2584/2304，Node 名称及 `node:fs` 在此版本为 TS2591。
+- 合法对照使用相同源码在真实 app/node 配置中编译；测试例外被 Node 项目发现、被 core 排除；纯模块相互导入与 `.tsx` 纯数据样本通过。实际 core 程序无 DOM lib/Node 声明。
+- `runTests` 未发现本仓库测试，使用已有 CLI 验证：`pnpm exec vitest run tools/engineering-boundaries.test.ts` 为 1 文件/6 用例通过；`pnpm check` 为 3 文件/27 用例及三个类型项目、lint、build 全通过。
+- 初次运行揭示 `.ts`/`.tsx` 同 basename 会使 TS 自动发现只取其中一种；fixture 改为不同 basename，不绕过发现检查。Node 模块诊断采用实际 TS2591，不接受无关错误。
+- simplify 四个只读视角完成：合并样本构建/验证的重复遍历；其余无必要清理。再次 `pnpm check` 全通过。
+- 使用复制真实配置的自有临时目录与现有 node_modules 链接，`finally` 清理；不运行样本，不读取原版文件，不产生生产目录或存储副作用。
