@@ -96,4 +96,6 @@ Re-read the complete spec and check:
 - Metadata, approval record, and relative links are correct; `updated:` reflects the change.
 - Only the selected spec changed during this review.
 
+When the pass is complete (every finding fixed, answered, or recorded under `未决事项`), make one last edit: run `node tools/task-state.ts <spec-path> --mark-reviewed`. This writes a `reviewed:` hash of the exact spec text, which later edits invalidate. The marker means "reviewed"; it is not approval. Do not write it when you stop part-way through a review.
+
 Report the reviewed path, concerns covered, meaningful corrections, and unresolved decisions. Do not automatically generate a goal or commit.

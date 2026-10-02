@@ -57,6 +57,9 @@ node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
 
 # Parse every TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and check cross-references (counts only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
+
+# Next spec/review/goal/execute workflow node for a task (reads planning docs only)
+node tools/task-state.ts p1/03 [--json]
 ```
 
 Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and research commands are in [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md); script usage is in [`docs/guides/tools.md`](docs/guides/tools.md). Those tools and original data may be absent on other machines. Prefer read-only Ghidra analysis; reimporting with `-overwrite` is an explicit setup operation, not a routine validation step.

@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 文档索引与写作约定
@@ -63,7 +63,7 @@ related: [U-001, ADR-0002]
 
 - `verified`：内容已用证据核实（格式文档在全部原版文件上验证通过、行为规范完成测量）。
 - `superseded`：已被取代，正文开头注明取代者。
-- spec 与 goal 的 `draft` / `accepted` 表示待批准 / 用户已批准，不表示实现完成；subtask 状态只写 goal tracker。可用 `task: '01'` 和 `subtask: '02'` 补充任务编号。细则见[任务工作流](./engineering/agent-workflow.md#审批与状态)。
+- spec 与 goal 的 `draft` / `accepted` 表示待批准 / 用户已批准，不表示实现完成；subtask 状态只写 goal tracker。可用 `task: '01'` 和 `subtask: '02'` 补充任务编号。spec 另有 `reviewed: sha256:…`，由 review-spec 完成审阅后用 `tools/task-state.ts --mark-reviewed` 写入，是所审阅文本的哈希，之后任何修改都会让它失效；不得手写，也不表示批准。细则见[任务工作流](./engineering/agent-workflow.md#审批与状态)。
 
 ## 置信度标记
 

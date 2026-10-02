@@ -2,8 +2,8 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-01
-related: [ADR-0011]
+updated: 2026-10-02
+related: [ADR-0011, ADR-0013]
 ---
 
 # Agent 任务工作流
@@ -46,8 +46,9 @@ docs/plan/
 | [execute-goal](../../.agents/skills/execute-goal/SKILL.md) | 按依赖持续实现、验证、更新记录并逐项本地提交 | `/execute-goal docs/plan/p1/02/goal.md` |
 | [browser-testing](../../.agents/skills/browser-testing/SKILL.md) | 用合成内容验证浏览器交互、渲染、生命周期与本地存储 | `/browser-testing docs/plan/p1/02/subtasks/03-final-alignment.md` |
 | [simplify](../../.agents/skills/simplify/SKILL.md) | 清理当前实现范围内的复用、复杂度与效率问题 | 由 execute-goal 在代码验证后调用 |
+| [run-task](../../.agents/skills/run-task/SKILL.md) | 按[自动编排](#自动编排)串联前四个 skills，在人工关卡停下 | `/run-task p1/03`、`/run-task p1/04 --plan-only` |
 
-生成、审阅、分解和执行是独立入口，不自动越过用户批准进入下一阶段。前四个 skills 仅显式调用；browser-testing 可在相关验证工作中调用。保留参考 skills 中已有的 `agents/openai.yaml`。
+生成、审阅、分解和执行是独立入口，不自动越过用户批准进入下一阶段；run-task 只负责把它们串起来，同样不越过批准。前四个 skills 与 run-task 仅显式调用；browser-testing 可在相关验证工作中调用。保留参考 skills 中已有的 `agents/openai.yaml`。
 
 ## 审批与状态
 
@@ -71,6 +72,39 @@ goal tracker 的状态为 `pending` / `in-progress` / `blocked` / `completed`。
 | 冻结决定及其变更 | [decisions/](../decisions/) |
 
 任务生成时可更新所属 `tasks.md` 的导航链接。只有阶段级证据、优先项或阻塞发生变化时才更新 STATUS；不要把每个 subtask 的状态复制进去。任务完成不自动等于阶段验收通过。
+
+## 自动编排
+
+[run-task](../../.agents/skills/run-task/SKILL.md) 把一个任务的流程当作状态图执行，决定见 [ADR-0013](../decisions/ADR-0013-task-graph-orchestration.md)：
+
+- **状态：** 只有该任务的 spec、goal 与 subtasks 文档，不另设编排状态文件。中断后重新调用即从文档恢复。
+- **路由：** [tools/task-state.ts](../../tools/task-state.ts) 只读这些文档，确定性地给出下一节点，不由模型判断。
+- **节点：** 现有四个 skills，各自的边界不变。agent 节点尽量各用一个新的子 agent 运行，避免上下文累积。
+
+```text
+generate-spec → review-spec → ⏸ approve-spec → generate-goal → ⏸ approve-goal → execute-goal → done
+                    ↑    修订 ↙                      ↑ 覆盖与 spec 不一致              ↓ 只剩 blocked
+                    └── spec 修改使审阅标记失效         └── goal 过期                   ⏸ resolve-blocker
+```
+
+| 文档状态 | 路由结果 |
+|---|---|
+| 没有 spec | `generate-spec` |
+| spec 为 draft，`reviewed` 标记缺失或与当前文本不符 | `review-spec` |
+| spec 为 draft 且审阅标记有效 | ⏸ `approve-spec`；同时列出未决事项 |
+| spec 为 accepted 但未决事项不为“无”或缺少批准记录 | ⏸ `repair-plan` |
+| spec 已批准，没有 goal，或 goal 覆盖表的 S/AC 与 spec 不一致 | `generate-goal` |
+| tracker 结构无效（ID、文件、依赖、环、最终对齐） | ⏸ `repair-plan` |
+| goal 为 draft | ⏸ `approve-goal` |
+| 有依赖已完成的 in-progress 行，否则有依赖已完成的 pending 行 | `execute-goal`，并给出编号最小的子任务 |
+| 只剩 blocked 行 | ⏸ `resolve-blocker` |
+| 全部 completed | `done` |
+
+⏸ 为人工关卡。spec 与 goal 的批准只能来自用户对关卡问题的明确回答，run-task 只在这时写入批准记录。其他文档修改都由节点 skill 完成，提交仍只由 execute-goal 进行。
+
+审阅标记由 review-spec 完成审阅后调用 `node tools/task-state.ts <spec> --mark-reviewed` 写入。它是所审阅文本的哈希，之后对 spec 的任何修改都会让它失效，因此修订后必然重新审阅。
+
+编排在以下情况停下：节点运行后图状态指纹不变；同一次调用中 review-spec 将运行第三次；节点数超过上限。`--plan-only` 在进入 `execute-goal` 前停止。
 
 ## 数据模型的定位
 
