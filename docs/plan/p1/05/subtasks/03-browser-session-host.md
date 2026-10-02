@@ -32,9 +32,9 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-03：实际 rAF 返回句柄并异步送毫秒时间，取消后不调用有效消费者；不自行续排。
-- [ ] AC-07/13：三种真实事件绑定映射正确；监听安装/逐项撤销计数可观测，重复撤销不重复删除；导入时无监听。
-- [ ] AC-14：模块按现有 app 类型环境检查，目标 typecheck/lint/build 与 pnpm check 通过，无新增依赖/配置。
+- [x] AC-03：实际 rAF 返回句柄并异步送毫秒时间，取消后不调用有效消费者；不自行续排。
+- [x] AC-07/13：三种真实事件绑定映射正确；监听安装/逐项撤销计数可观测，重复撤销不重复删除；导入时无监听。
+- [x] AC-14：模块按现有 app 类型环境检查，目标 typecheck/lint/build 与 pnpm check 通过，无新增依赖/配置。
 
 ## 验证方法
 
@@ -44,3 +44,18 @@ updated: 2026-10-02
 - 检查 [engineering](../../../../engineering/README.md) 的平台使用说明；临时探针/自有服务器结束清理，无生产页面交付。
 
 ## 完成证据
+
+- 2026-10-02：`pnpm check` typecheck/lint/23 文件 524 测试/build 全通过。platform 仅由原 app DOM 类型环境检查，Core/Node 配置与依赖未改。
+- 浏览器：独立 Chromium 154.0.8037.95 context，1000×700，实际 origin `http://127.0.0.1:5173/`；公共模块经 Vite 导入，探针先包装真实 add/remove API，无应用代码改动。
+
+| 判据 | Setup/action | Expected | Observed | Result |
+|---|---|---|---|---|
+| AC-03 | 请求真实 rAF，另请求后取消，跨两个真实 rAF 等待 | 异步交付毫秒，无自动续排，取消不回调 | handle=1、now=140、returned=true；被取消回调 0 次 | passed |
+| AC-07/13 | 导入后注册，派发三类浏览器事件 | 导入零监听，三类正确映射 | importLog=[]；visibility=visible、pagehide、pageshow=visible | passed |
+| AC-09/13 适配部分 | off 两次，再派发 pagehide | 各监听仅移除一次，不再通知 | add/remove 各三项（document visibilitychange / window pagehide/pageshow）；通知仍为 3 | passed |
+| 注册回滚 | 第三项 add 抛合成 Error | 回收此前已安装两项，原错可见 | 两项 remove，错误为 injected registration failure | passed |
+
+- 派发事件只证明绑定，不证明 BFCache 或真实 hidden；真实隐藏与完整 controller 由 07 验证。没有模块/业务控制台错误；既有页面 favicon 请求 404 与验收无关，未改应用。
+- rubber-duck 通过；double-failure 的有序 errors 保留注册/回滚两个原错，cause 指向直接捕获的回滚错（符合 lint）。simplify 四角度并行，无适用清理。
+- 清理：探针 context 与初始工具页已关闭；自有附着 Vite 进程已停止，两个自有工具日志/快照已删除。未写存储或改 App/main。
+- 文档影响：engineering 记录实际平台入口及类型边界；研究 guides 无需更新，冻结决定/原版事实不变，完整生命周期阶段证据尚未满足，不改 STATUS。

@@ -78,7 +78,7 @@ updated: 2026-10-02
 |---|---|---|
 | [01-host-error-contracts.md](./subtasks/01-host-error-contracts.md) | — | completed |
 | [02-runtime-lifecycle-primitives.md](./subtasks/02-runtime-lifecycle-primitives.md) | — | completed |
-| [03-browser-session-host.md](./subtasks/03-browser-session-host.md) | 01 | pending |
+| [03-browser-session-host.md](./subtasks/03-browser-session-host.md) | 01 | completed |
 | [04-session-controls-scheduler.md](./subtasks/04-session-controls-scheduler.md) | 01, 02 | pending |
 | [05-consumer-boundaries-cleanup.md](./subtasks/05-consumer-boundaries-cleanup.md) | 04 | pending |
 | [06-failure-recovery-replay.md](./subtasks/06-failure-recovery-replay.md) | 05 | pending |
