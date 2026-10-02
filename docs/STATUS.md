@@ -16,12 +16,14 @@ updated: 2026-10-01
 | 阶段 | 状态 | 评审记录 |
 |---|---|---|
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | [P0-feasibility](./reviews/P0-feasibility.md) |
-| P1 工程与运行骨架 | 进行中 | — |
-| P2 玩法所需资源管线 | 未开始 | — |
-| P3 完整玩法切片 | 未开始（可与 P2 重叠） | — |
-| P4 Classic 内容完成 | 未开始 | — |
-| P5 Classic 1.0 发布 | 未开始 | — |
-| P6 Enhanced 美化 | 未开始 | — |
+| [P1 工程与运行骨架](./plan/p1/tasks.md) | 进行中 | — |
+| [P2 玩法所需资源管线](./plan/p2/tasks.md) | 未开始 | — |
+| [P3 完整玩法切片](./plan/p3/tasks.md) | 未开始（可与 P2 重叠） | — |
+| [P4 Classic 内容完成](./plan/p4/tasks.md) | 未开始 | — |
+| [P5 Classic 1.0 发布](./plan/p5/tasks.md) | 未开始 | — |
+| [P6 Enhanced 美化](./plan/p6/tasks.md) | 未开始 | — |
+
+P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体任务；文档组织见 [ADR-0010](./decisions/ADR-0010-phase-task-documents.md)。
 
 ## P1 退出条件
 

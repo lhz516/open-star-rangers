@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # 架构决策记录（ADR）
@@ -22,3 +22,4 @@ updated: 2026-09-30
 | [ADR-0007](./ADR-0007-narrow-p2-overlap-p3.md) | P2 收窄为玩法所需资源，P2 与 P3 可重叠 | accepted |
 | [ADR-0008](./ADR-0008-mit-and-dependency-licenses.md) | 默认 MIT 许可证与依赖许可证政策 | accepted |
 | [ADR-0009](./ADR-0009-window-scaling-widescreen.md) | 窗口自适应：等比缩放为默认，宽屏为可选 | accepted |
+| [ADR-0010](./ADR-0010-phase-task-documents.md) | 阶段计划与任务文档 | accepted |
