@@ -52,10 +52,10 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-08：两种频率、两种间隔、两个 seed 下，replay 结果与录制结果精确相等；最终检查点规则正确；空记录、JSON 往返、导出后继续录制与重复 replay 的条件都满足。
-- [ ] AC-08：特征锁定的检查点哈希与测试字面量一致。
-- [ ] AC-10（记录）：每类非法记录抛 `CoreInputError`，`path` 正确，没有部分结果。
-- [ ] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
+- [x] AC-08：两种频率、两种间隔、两个 seed 下，replay 结果与录制结果精确相等；最终检查点规则正确；空记录、JSON 往返、导出后继续录制与重复 replay 的条件都满足。
+- [x] AC-08：特征锁定的检查点哈希与测试字面量一致。
+- [x] AC-10（记录）：每类非法记录抛 `CoreInputError`，`path` 正确，没有部分结果。
+- [x] `pnpm exec vitest run src/core` 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -63,3 +63,28 @@ updated: 2026-10-02
 - 无浏览器、实机或原版对照。
 
 ## 完成证据
+
+- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic-replay.ts) 新增 `replaySyntheticRecord(record: unknown): SyntheticReplayResult`。
+  - 依次校验顶层字段（`requireExactRecord`，要求自有属性、拒绝额外字段）、格式与版本、`config`（`tickRateHz` 必填）、`checkpointInterval`（经 `createSyntheticRecordingSession`）、`ticks` 数组和缺失项。
+  - 然后把每个 tick 规范化为深冻结副本（`canonicalTickInput`，与录制会话的 step 共用），全部结构校验通过后，才在新建的录制会话上逐 tick step，导出其结果。检查点规则因此与录制完全相同。
+  - 错误改写为 `record` 前缀：配置与间隔为 `record.config.*` 与 `record.checkpointInterval`；tick 内的错误和数值守卫错误由 `tickPath` 统一移到 `record.ticks[i]` 下（`ticks[0]` 即模拟 tick 1）。
+  - 为改写路径，[errors.ts](../../../../../src/core/errors.ts) 的 `CoreInputError` 新增只读字段 `reason`（`message` 不变）；[synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 把 `requireExactRecord` 改为 Core 内部导出。
+- **测试：** [synthetic-replay.test.ts](../../../../../src/core/synthetic-replay.test.ts)，共 37 项。
+  - **AC-08：**
+    - 固定 11 tick 记录覆盖 `moveX` -1/0/0.5/1、成功的添加与移除、两种拒绝和同 tick add/remove/add。在 60/120 Hz × seed 0/4294967295 × 间隔 1/4 下，replay 结果与录制结果严格相等。
+    - 间隔 1 的检查点为 0–11，不重复；间隔 4 的为 `[0, 4, 8, 11]`，跨两个完整间隔并补上最终 tick；同时断言事件类型序列。
+    - 空记录只有 tick 0 检查点（等于新场景的哈希），没有事件。
+    - 记录与结果 JSON 往返后一致。
+    - 原会话导出后继续运行不影响 replay；两次 replay 结果相等，且不是同一对象。
+    - `-0` 的 seed 与 `moveX` 等同于 `0`。
+  - **特征锁定：** seed 0、60 Hz、间隔 4 的检查点哈希固定为测试字面量。注释写明它只是回归锁，有意修改时须在同一改动中更新并说明原因。
+  - **AC-10（记录）：**
+    - 22 个负向用例逐项断言 `CoreInputError` 与 `path`，覆盖非对象、格式、版本、缺失与额外字段、`config` 非对象、缺少或为 `undefined` 的 `tickRateHz`、额外配置字段、非法 seed 与频率、非法间隔、`ticks` 非数组、稀疏数组（`record.ticks[1]`）、null tick、tick 额外字段、缺少 `commands`、越界 `moveX`，以及 `record.ticks[12].commands[0].type`。
+    - `tickRateHz = 1e-308` 时第二个 tick 位置溢出，报告 `record.ticks[1].input.moveX` 和原始原因。
+    - 先出现溢出、后出现结构错误时，报告的是后一个 tick 的结构错误，证明全部结构在 step 之前已校验。
+- **检查：** `pnpm exec vitest run src/core` 通过；最终 `pnpm check` 通过（typecheck、lint、13 个测试文件共 339 项、build）。
+- **审阅：**
+  - rubber-duck 指出 tick 结构原本在 step 过程中才校验，不满足“先校验整个记录”。已改为先完成全部规范化，并补了顺序回归测试。
+  - simplify：
+    - 已采纳：用 try/catch 循环和 `repathed`/`tickPath` 取代每个 tick 的闭包与正则；`tickPath` 保证 `record.ticks[i]` 前缀，不会静默失效。
+    - 未采纳：取消 replay 中的二次规范化（需要会话提供不复制的录制入口，会削弱记录的不可变性，而本任务不设性能阈值）；在 P1-03 测试文件之间共享 helper；把完整组合矩阵改为两两组合（完整矩阵与验收描述一一对应）。

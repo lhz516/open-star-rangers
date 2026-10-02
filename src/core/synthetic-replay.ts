@@ -8,6 +8,7 @@ import { CoreInputError } from './errors.ts';
 import {
   createSyntheticScene,
   readTickInput,
+  requireExactRecord,
   type DomainEvent,
   type SyntheticScene,
   type SyntheticSceneConfig,
@@ -66,6 +67,16 @@ export interface SyntheticRecordingSession extends SyntheticScene {
   exportRecording(): SyntheticRecording;
 }
 
+/** Validates tick input like SyntheticScene.step and returns a deeply frozen copy with only the contract fields. */
+function canonicalTickInput(value: unknown): TickInput {
+  const { moveX, commandTypes } = readTickInput(value);
+  return Object.freeze({
+    // `+ 0` records -0 as 0, which moves the mover identically.
+    input: Object.freeze({ moveX: moveX + 0 }),
+    commands: Object.freeze(commandTypes.map((type) => Object.freeze({ type }))),
+  });
+}
+
 function checkpointOf(scene: SyntheticScene, tick: number): SyntheticReplayCheckpoint {
   return Object.freeze({ tick, hash: hashSyntheticScene(scene) });
 }
@@ -88,12 +99,7 @@ class RecordingSession implements SyntheticRecordingSession {
 
   step(tickInput: TickInput): readonly DomainEvent[] {
     // Read the caller's objects once and step with that copy, so the record is exactly what ran.
-    const { moveX, commandTypes } = readTickInput(tickInput);
-    const executed: TickInput = Object.freeze({
-      // `+ 0` records -0 as 0, which moves the mover identically.
-      input: Object.freeze({ moveX: moveX + 0 }),
-      commands: Object.freeze(commandTypes.map((type) => Object.freeze({ type }))),
-    });
+    const executed = canonicalTickInput(tickInput);
     const events = this.#scene.step(executed);
     this.#ticks.push(executed);
     for (const event of events) this.#events.push(event);
@@ -144,4 +150,61 @@ export function createSyntheticRecordingSession(config: SyntheticSceneConfig, ch
     throw new CoreInputError('checkpointInterval', 'must be a positive safe integer');
   }
   return new RecordingSession(scene, checkpointInterval);
+}
+
+/** For rethrowing: a CoreInputError moved to the path `rewrite` gives; any other error unchanged. */
+function repathed(error: unknown, rewrite: (path: string) => string): unknown {
+  return error instanceof CoreInputError ? new CoreInputError(rewrite(error.path), error.reason) : error;
+}
+
+const TICK_INPUT_PATH = 'tickInput';
+
+/** Moves a scene input error path, rooted at `tickInput`, under `record.ticks[index]`. */
+function tickPath(index: number, path: string): string {
+  const field = path.startsWith(TICK_INPUT_PATH) ? path.slice(TICK_INPUT_PATH.length) : `.${path}`;
+  return `record.ticks[${index}]${field}`;
+}
+
+const RECORD_FIELDS = ['format', 'version', 'config', 'checkpointInterval', 'ticks'];
+
+/**
+ * Replays a record on a new scene and returns the same result shape as recording. The whole record
+ * structure is validated before the first step; any invalid content, including a tick that a Core
+ * guard rejects, throws CoreInputError at a `record…` path, e.g. `record.ticks[12].commands[0].type`,
+ * and no partial result is returned.
+ */
+export function replaySyntheticRecord(record: unknown): SyntheticReplayResult {
+  const { format, version, config, checkpointInterval, ticks } = requireExactRecord(record, 'record', RECORD_FIELDS);
+  if (format !== SYNTHETIC_REPLAY_FORMAT) throw new CoreInputError('record.format', `must be ${SYNTHETIC_REPLAY_FORMAT}`);
+  if (version !== SYNTHETIC_REPLAY_VERSION) throw new CoreInputError('record.version', `must be ${SYNTHETIC_REPLAY_VERSION}`);
+  const { seed, tickRateHz } = requireExactRecord(config, 'record.config', ['seed', 'tickRateHz']);
+  // Required here, although createSyntheticScene would default it.
+  if (tickRateHz === undefined) throw new CoreInputError('record.config.tickRateHz', 'is required');
+  let session: SyntheticRecordingSession;
+  try {
+    session = createSyntheticRecordingSession({ seed, tickRateHz } as SyntheticSceneConfig, checkpointInterval as number);
+  } catch (error) {
+    // Session errors are at `config.*` or `checkpointInterval`.
+    throw repathed(error, (path) => `record.${path}`);
+  }
+  if (!Array.isArray(ticks)) throw new CoreInputError('record.ticks', 'must be an array');
+  const inputs: TickInput[] = [];
+  for (let index = 0; index < ticks.length; index++) {
+    // A hole is not an idle tick.
+    if (!Object.hasOwn(ticks, index)) throw new CoreInputError(`record.ticks[${index}]`, 'is missing');
+    try {
+      inputs.push(canonicalTickInput(ticks[index]));
+    } catch (error) {
+      throw repathed(error, (path) => tickPath(index, path));
+    }
+  }
+  // Every tick is structurally valid now; only state-dependent guards can still fail.
+  for (let index = 0; index < inputs.length; index++) {
+    try {
+      session.step(inputs[index]);
+    } catch (error) {
+      throw repathed(error, (path) => tickPath(index, path));
+    }
+  }
+  return session.exportRecording().result;
 }

@@ -154,8 +154,11 @@ function requireRecord(value: unknown, path: string, allowed: readonly string[])
   return value as Record<string, unknown>;
 }
 
-/** Like requireRecord, but every field must also be present as an own property. */
-function requireExactRecord(value: unknown, path: string, fields: readonly string[]): Record<string, unknown> {
+/**
+ * Like requireRecord, but every field must also be present as an own property.
+ * Exported for other Core validators; not part of SyntheticScene.
+ */
+export function requireExactRecord(value: unknown, path: string, fields: readonly string[]): Record<string, unknown> {
   const record = requireRecord(value, path, fields);
   for (const field of fields) {
     if (!Object.hasOwn(record, field)) throw new CoreInputError(`${path}.${field}`, 'is required');
