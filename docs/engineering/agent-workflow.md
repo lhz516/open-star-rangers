@@ -10,6 +10,8 @@ related: [ADR-0011]
 
 本项目的阶段任务通过 spec → review → goal → execute 推进。路径与进度分工由 [ADR-0011](../decisions/ADR-0011-spec-goal-workflow.md) 决定；产品、架构和阶段退出条件仍以[总计划](../plan/master-plan.md)为准。
 
+当前 P1 只要求本地验证；CI 与云部署已由 [ADR-0012](../decisions/ADR-0012-local-p1-defer-ci-deployment.md) 归入 P5，不为 P1 goal 加入远端验收或凭据前提。
+
 ## 路径
 
 所有路径从仓库根目录起算。阶段使用小写 `p1`–`p6`，任务号使用补零的数字（例如 `01`），已有编号不得复用。
@@ -32,17 +34,17 @@ docs/plan/
 - `goal.md` 记录实现现状、验收覆盖、依赖图与唯一的 subtask 状态表。
 - `subtasks/NN-<slug>.md` 记录单项工作范围、依赖、验收标准与证据。
 - 不再创建阶段目录下的 `p1-01.md` 等平铺任务文件，也不增加前置需求文档或单独的测试报告阶段。
-- 当前只建立工作流与阶段索引占位；以上任务目录是路径示例，不表示任务已经创建。
+- 阶段任务按需规划；以上目录树是路径示例，不表示任务契约或执行记录已经创建。实际任务号与标题以所属阶段索引为准。
 
 ## 入口 skills
 
 | Skill | 职责 | 示例 |
 |---|---|---|
-| [generate-spec](../../.agents/skills/generate-spec/SKILL.md) | 与用户澄清需求，创建或修订 spec | `/generate-spec p1/01 最小 Core` |
-| [review-spec](../../.agents/skills/review-spec/SKILL.md) | 审阅并修正 spec，向用户确认影响契约的选择 | `/review-spec docs/plan/p1/01/spec.md` |
-| [generate-goal](../../.agents/skills/generate-goal/SKILL.md) | 从已批准 spec 生成 goal 与 subtasks | `/generate-goal docs/plan/p1/01/spec.md` |
-| [execute-goal](../../.agents/skills/execute-goal/SKILL.md) | 按依赖持续实现、验证、更新记录并逐项本地提交 | `/execute-goal docs/plan/p1/01/goal.md` |
-| [browser-testing](../../.agents/skills/browser-testing/SKILL.md) | 用合成内容验证浏览器交互、渲染、生命周期与本地存储 | `/browser-testing docs/plan/p1/01/subtasks/03-final-alignment.md` |
+| [generate-spec](../../.agents/skills/generate-spec/SKILL.md) | 与用户澄清需求，创建或修订 spec | `/generate-spec p1/02 最小 Core` |
+| [review-spec](../../.agents/skills/review-spec/SKILL.md) | 审阅并修正 spec，向用户确认影响契约的选择 | `/review-spec docs/plan/p1/02/spec.md` |
+| [generate-goal](../../.agents/skills/generate-goal/SKILL.md) | 从已批准 spec 生成 goal 与 subtasks | `/generate-goal docs/plan/p1/02/spec.md` |
+| [execute-goal](../../.agents/skills/execute-goal/SKILL.md) | 按依赖持续实现、验证、更新记录并逐项本地提交 | `/execute-goal docs/plan/p1/02/goal.md` |
+| [browser-testing](../../.agents/skills/browser-testing/SKILL.md) | 用合成内容验证浏览器交互、渲染、生命周期与本地存储 | `/browser-testing docs/plan/p1/02/subtasks/03-final-alignment.md` |
 | [simplify](../../.agents/skills/simplify/SKILL.md) | 清理当前实现范围内的复用、复杂度与效率问题 | 由 execute-goal 在代码验证后调用 |
 
 生成、审阅、分解和执行是独立入口，不自动越过用户批准进入下一阶段。前四个 skills 仅显式调用；browser-testing 可在相关验证工作中调用。保留参考 skills 中已有的 `agents/openai.yaml`。

@@ -24,3 +24,4 @@ updated: 2026-10-01
 | [ADR-0009](./ADR-0009-window-scaling-widescreen.md) | 窗口自适应：等比缩放为默认，宽屏为可选 | accepted |
 | [ADR-0010](./ADR-0010-phase-task-documents.md) | 阶段计划与任务文档 | superseded by ADR-0011 |
 | [ADR-0011](./ADR-0011-spec-goal-workflow.md) | Spec、Goal 与分层任务跟踪 | accepted |
+| [ADR-0012](./ADR-0012-local-p1-defer-ci-deployment.md) | P1 只做本地验证，CI 与部署移至 P5 | accepted |

@@ -32,7 +32,7 @@ Accept an existing spec path, a task selector such as `p1/01`, or a description.
 Examples:
 
 ```text
-/generate-spec p1/01 最小 Core 与事件返回契约
+/generate-spec p1/02 最小 Core 与事件返回契约
 /generate-spec docs/plan/p1/01/spec.md
 ```
 

@@ -23,7 +23,7 @@ updated: 2026-10-01
 | [P5 Classic 1.0 发布](./plan/p5/tasks.md) | 未开始 | — |
 | [P6 Enhanced 美化](./plan/p6/tasks.md) | 未开始 | — |
 
-P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体任务。项目专用的五个 skills 与 spec/goal/subtasks 路径已配置，保留已有 simplify；使用方式见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。工作流配置不代表运行骨架或阶段验收完成。
+P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/tasks.md)，尚未生成各任务的 spec/goal。按用户确认的 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与部署移出 P1、由 [P5](./plan/p5/tasks.md)承接；其余阶段尚未拆分任务。工作流入口见[Agent 任务工作流](./engineering/agent-workflow.md)，进度分工见 [ADR-0011](./decisions/ADR-0011-spec-goal-workflow.md)。任务规划不代表运行骨架或阶段验收完成。
 
 ## P1 退出条件
 
@@ -44,12 +44,20 @@ P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体
 - [ ] 重启、暂停、返回菜单不产生重复游戏循环（含 React StrictMode 与热更新）
 - [ ] 同一输入记录 replay 后事件流与状态哈希一致
 
-### 交付与 CI
+### 本地交付与合规
 
 - [ ] React 导入/菜单原型（导入流程只需界面占位，P2 接入真实解析）
-- [ ] GitHub Actions：lint、typecheck、test、build
-- [ ] CI 原版文件哈希扫描（依据 [manifest](./original/manifest.md)）与依赖许可证检查
-- [ ] SWA 预览环境可部署
+- [ ] 最小键盘输入适配，区分连续输入、离散命令与 Runtime 控制；菜单/失焦不遗留瞬时输入
+- [ ] 集成后的本地工程检查、构建与合成浏览器验证通过
+- [ ] 本地原版文件哈希扫描（依据 [manifest](./original/manifest.md)）与依赖许可证检查通过，第三方声明进入本地构建
+
+## P5 承接的 CI 与部署要求（未开始）
+
+本节记录 [ADR-0012](./decisions/ADR-0012-local-p1-defer-ci-deployment.md) 从 P1 迁入的阶段级要求，不替代总计划中其余 P5 退出条件，也不维护 subtask 状态。
+
+- [ ] GitHub Actions：lint、typecheck、test、build 与合成浏览器检查
+- [ ] CI 原版文件哈希扫描与依赖许可门禁，基于本地检查入口
+- [ ] 仓库检查保护、部署凭据隔离与 SWA 预览/正式发布实测
 
 ## P0 退出条件（并行收尾）
 
@@ -79,8 +87,8 @@ P1–P6 的阶段计划与任务索引已建立占位文档，尚未拆分具体
 
 ## 下一步
 
-1. P1：Core 的最小可运行版本：`step(tickInput)` 返回事件、带种子的随机数、状态哈希与 replay 测试。
-2. P1：GameRuntime（固定步长、命令队列、Event Bus、运行时控制通道），以及 Three.js 合成场景。
+1. P1：先为 [P1-01 工程骨架基线复核](./plan/p1/tasks.md#p1-01-工程骨架基线复核) 生成 spec，验证归档已有工程交付；随后为 [P1-02 最小纯 Core](./plan/p1/tasks.md#p1-02-最小纯-core-与合成场景契约) 明确契约，不直接跳到实现。
+2. P1：按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)规划后续本地任务；本地合规自检可并行推进。CI/部署由 P5 跟踪，不索取云凭据，也不作为 P1 阻塞；细粒度状态只放各任务 goal。
 3. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 4. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 
