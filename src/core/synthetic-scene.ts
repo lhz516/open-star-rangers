@@ -4,7 +4,7 @@
  * exercise the architecture and are not original-game behaviour. Contract: docs/plan/p1/02/spec.md.
  */
 import { CoreInputError } from './errors.ts';
-import type { RngState } from './rng.ts';
+import { nextRandom, type RngState } from './rng.ts';
 
 export const SYNTHETIC_DEFAULT_TICK_RATE_HZ = 60;
 export const SYNTHETIC_MOVER_ID = 1;
@@ -101,6 +101,8 @@ export interface SyntheticRenderState {
 
 /** Every read returns deeply frozen plain data, detached from internal state, that later ticks never change. */
 export interface SyntheticScene {
+  /** Advances exactly one tick: commands in array order, then movement. Returns that tick's events. */
+  step(tickInput: TickInput): readonly DomainEvent[];
   inspect(): SyntheticSceneState;
   uiProjection(): SyntheticUiProjection;
   renderState(): SyntheticRenderState;
@@ -121,6 +123,15 @@ function freezeEntity({ id, position }: MutableEntity): SyntheticEntity {
 
 function freezeRenderEntity({ id, position }: MutableEntity, kind: SyntheticRenderEntity['kind']): SyntheticRenderEntity {
   return Object.freeze({ id, kind, position: freezeVec(position) });
+}
+
+function rejected(
+  commandType: Command['type'],
+  reason: CommandRejectedEvent['reason'],
+  tick: number,
+  commandIndex: number,
+): CommandRejectedEvent {
+  return Object.freeze({ type: 'command-rejected', tick, commandIndex, commandType, reason });
 }
 
 /** Checks that `value` is a non-array object whose own keys are all in `allowed`. */
@@ -147,6 +158,34 @@ class Scene implements SyntheticScene {
     this.#seed = seed;
     this.#tickRateHz = tickRateHz;
     this.#rngState = seed;
+  }
+
+  step(tickInput: TickInput): readonly DomainEvent[] {
+    const tick = this.#tick + 1;
+    const events = tickInput.commands.map(({ type }, commandIndex) => this.#apply(type, tick, commandIndex));
+    this.#mover.position.x += (tickInput.input.moveX * SYNTHETIC_MOVE_SPEED) / this.#tickRateHz;
+    this.#tick = tick;
+    return Object.freeze(events);
+  }
+
+  #apply(type: Command['type'], tick: number, commandIndex: number): DomainEvent {
+    if (type === 'add-marker') {
+      if (this.#marker) return rejected(type, 'marker-already-exists', tick, commandIndex);
+      // Property initialisers run in source order, so the draws are X, then Y, then Z.
+      const marker = { id: this.#nextEntityId++, position: { x: this.#drawCoordinate(), y: this.#drawCoordinate(), z: this.#drawCoordinate() } };
+      this.#marker = marker;
+      return Object.freeze({ type: 'marker-added', tick, commandIndex, entityId: marker.id, position: freezeVec(marker.position) });
+    }
+    const marker = this.#marker;
+    if (!marker) return rejected(type, 'marker-not-found', tick, commandIndex);
+    this.#marker = null;
+    return Object.freeze({ type: 'marker-removed', tick, commandIndex, entityId: marker.id, position: freezeVec(marker.position) });
+  }
+
+  #drawCoordinate(): number {
+    const { value, state } = nextRandom(this.#rngState);
+    this.#rngState = state;
+    return SYNTHETIC_MARKER_MIN + (SYNTHETIC_MARKER_MAX - SYNTHETIC_MARKER_MIN) * value;
   }
 
   inspect(): SyntheticSceneState {

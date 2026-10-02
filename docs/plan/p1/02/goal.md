@@ -50,7 +50,7 @@ updated: 2026-10-01
 | AC-04 | 03 | add/add/remove/add 精确序列，反向顺序及跨 tick 对照 |
 | AC-05 | 01、03 | 01 独立参考实现 KAT；03 抽取次数、非消耗操作不移位、ID 不复用 |
 | AC-06 | 02、04 | 02 配置非法输入；04 TickInput 非法输入、整批原子性、位置溢出测试、tick/ID 守卫审阅 |
-| AC-07 | 03 | 两个独立实例逐 tick 一致；JSON 往返；`step` 无回调参数 |
+| AC-07 | 03 | 两个独立实例逐 tick 一致；JSON 往返；`step` 签名与代码审阅证明无回调/无 Event Bus |
 | AC-08 | 02、03 | 冻结写入抛错；旧事件/投影在后续 tick、增删后不变 |
 | AC-09 | 02、03 | 初始/有标记/移除/同 tick 增删时 UI 与 Render 一致；读取无副作用 |
 | AC-10 | 01–04 | 05 汇总：`pnpm check`、无新依赖、无消费者接线、无原版读取 |
@@ -63,7 +63,7 @@ updated: 2026-10-01
 |---|---|---|
 | [01-seeded-rng.md](./subtasks/01-seeded-rng.md) | — | completed |
 | [02-scene-contract-and-outputs.md](./subtasks/02-scene-contract-and-outputs.md) | 01 | completed |
-| [03-step-behavior.md](./subtasks/03-step-behavior.md) | 02 | pending |
+| [03-step-behavior.md](./subtasks/03-step-behavior.md) | 02 | completed |
 | [04-input-validation-and-guards.md](./subtasks/04-input-validation-and-guards.md) | 03 | pending |
 | [05-final-alignment.md](./subtasks/05-final-alignment.md) | 01, 02, 03, 04 | pending |
 
