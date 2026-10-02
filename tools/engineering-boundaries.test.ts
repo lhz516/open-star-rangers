@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -73,12 +74,17 @@ describe('TypeScript module environments', () => {
   });
 
   async function lint(source: string, filePath: string): Promise<ESLint.LintResult> {
+    expect(source.trim().length, `${filePath} fixture must not be empty`).toBeGreaterThan(0);
     const results = await eslint.lintText(source, { filePath });
     expect(results, `ESLint must check ${filePath}`).toHaveLength(1);
     const result = results[0];
     expect(result.fatalErrorCount, `${filePath} parser errors`).toBe(0);
     expect(result.messages.some((message) => message.ruleId === null), `${filePath} ignored/configuration warnings`).toBe(false);
     return result;
+  }
+
+  function expectRule(result: ESLint.LintResult, rule: string, source: string): void {
+    expect(result.messages.map((message) => message.ruleId), `${result.filePath}: ${source}`).toContain(rule);
   }
 
   const importForms = [
@@ -114,12 +120,72 @@ describe('TypeScript module environments', () => {
           for (const form of importForms) {
             const source = form(specifier);
             const result = await lint(source, file);
-            expect(result.messages.map((message) => message.ruleId), `${file}: ${source}`).toContain('no-restricted-imports');
+            expectRule(result, 'no-restricted-imports', source);
           }
         }
       }
       const result = await lint("export { jsx } from 'react/jsx-runtime';", file);
-      expect(result.messages.map((message) => message.ruleId), file).toContain('no-restricted-imports');
+      expectRule(result, 'no-restricted-imports', "export { jsx } from 'react/jsx-runtime';");
+    });
+
+    describe('Boundary checker failure contract', () => {
+      it('requires non-empty capability and syntax matrices', () => {
+        for (const [name, cases] of Object.entries({
+          pureLayers, hostCapabilities, pureFiles, importForms, forbiddenPackages, forbiddenLayers, hostOperations,
+        })) {
+          expect(cases.length, `${name} cases must not be empty`).toBeGreaterThan(0);
+        }
+      });
+
+      it('rejects an empty TypeScript project instead of passing without inputs', () => {
+        withFixtures({}, (directory) => {
+          expect(() => configuration('core', directory)).toThrow(/configuration diagnostics/);
+        });
+      });
+
+      it('propagates fixture callback failures', () => {
+        expect(() => withFixtures({}, () => {
+          throw new Error('synthetic checker failure');
+        })).toThrow('synthetic checker failure');
+      });
+
+      it('rejects empty, ignored and unparseable lint samples', async () => {
+        await expect(lint('', 'src/core/probe.ts')).rejects.toThrow(/must not be empty/);
+        await expect(lint('export const value = 1;', 'local/probe.ts')).rejects.toThrow(/ignored\/configuration warnings/);
+        await expect(lint('export const = ;', 'src/core/probe.ts')).rejects.toThrow(/parser errors/);
+      });
+
+      it('fails mismatched negative and positive expectations', async () => {
+        const legal = await lint('export const value = 1;', 'src/core/probe.ts');
+        expect(() => expectRule(legal, 'no-restricted-imports', 'export const value = 1;')).toThrow();
+        const illegal = await lint('export const value = Math.random();', 'src/core/probe.ts');
+        expect(() => expect(illegal.messages).toEqual([])).toThrow();
+      });
+
+      it('returns a nonzero Vitest exit for a real unmet boundary assertion', () => {
+        withFixtures({
+          'failure.config.ts': `import actual from ${JSON.stringify(join(root, 'vite.config.ts'))};
+    export default { ...actual, root: import.meta.dirname, test: { ...actual.test, include: ['failure.test.ts'] } };`,
+          'failure.test.ts': `import { ESLint } from 'eslint';
+    import { expect, it } from 'vitest';
+    it('boundary expectation deliberately unmet', async () => {
+      const eslint = new ESLint({ cwd: ${JSON.stringify(root)} });
+      const [result] = await eslint.lintText('export const value = 1;', { filePath: 'src/core/probe.ts' });
+      expect(result.messages.map(message => message.ruleId)).toContain('no-restricted-imports');
+    });`,
+        }, (directory) => {
+          const result = spawnSync(process.execPath, [
+            join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', join(directory, 'failure.config.ts'),
+          ], { cwd: root, encoding: 'utf8', timeout: 20_000 });
+          if (result.error) throw result.error;
+          expect(result.signal, 'Failure probe must finish normally').toBeNull();
+          expect(result.status).toBe(1);
+          const output = result.stdout + result.stderr;
+          expect(output).toContain('boundary expectation deliberately unmet');
+          expect(output).toContain('AssertionError');
+          expect(output).toContain('no-restricted-imports');
+        });
+      });
     });
 
     it.each(pureFiles)('rejects application entrypoints and nested imports in %s', async (file) => {
@@ -128,7 +194,7 @@ describe('TypeScript module environments', () => {
           for (const form of importForms) {
             const source = form(specifier);
             const result = await lint(source, file);
-            expect(result.messages.map((message) => message.ruleId), `${file}: ${source}`).toContain('no-restricted-imports');
+            expectRule(result, 'no-restricted-imports', source);
           }
         }
       }
@@ -138,7 +204,7 @@ describe('TypeScript module environments', () => {
       for (const { source, rule } of hostOperations) {
         const file = `src/core/probe.${extension}`;
         const result = await lint(source, file);
-        expect(result.messages.map((message) => message.ruleId), `${file}: ${source}`).toContain(rule);
+        expectRule(result, rule, source);
       }
     });
 
