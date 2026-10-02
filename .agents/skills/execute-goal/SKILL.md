@@ -82,7 +82,7 @@ Address every applicable finding within the approved scope and rerun affected va
 
 ### Simplify and reverify
 
-For implementation-code changes, invoke simplify with the explicit current-subtask diff/file scope, not the entire branch history. Include new untracked implementation files in that scope.
+For implementation-code changes, invoke `simplify` skill with the explicit current-subtask diff/file scope, not the entire branch history. Include new untracked implementation files in that scope.
 
 Apply relevant cleanup, preserve behavior, and rerun affected validation. Verification-only or documentation-only subtasks with no implementation change do not need a code cleanup pass.
 
