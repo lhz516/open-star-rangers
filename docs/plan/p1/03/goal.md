@@ -81,7 +81,7 @@ updated: 2026-10-02
 | [04-recording-session.md](./subtasks/04-recording-session.md) | 02 | completed |
 | [05-replay.md](./subtasks/05-replay.md) | 04 | completed |
 | [06-result-comparison.md](./subtasks/06-result-comparison.md) | 05 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | completed |
 
 依赖都是真实前提：
 
@@ -94,6 +94,10 @@ updated: 2026-10-02
 03 与 04 互不依赖，但都可能修改 `synthetic-scene.ts`，因此仍按编号顺序执行。最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插在 07 之前并加入其依赖。
 
 ## 执行记录
+
+- **2026-10-02 — 实现层面偏离计划的文件清单：** 不改变 spec 行为，也不改变 `SyntheticScene` 接口。
+  - 05 为把 Core 错误改写到 `record.*` 路径，给 [errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError` 新增只读字段 `reason`，`message` 不变。
+  - 03–06 把 `synthetic-scene.ts` 中的若干校验 helper 改为 Core 内部导出（`readTickInput`、`requireExactRecord`、`NumberRule`、`readNumber`、`readVec`、`MARKER_COORDINATE`、`NON_NEGATIVE_SAFE_INTEGER`、`ENTITY_ID`），供 replay 与比对复用，没有另建校验模块。
 
 ## 审批
 
