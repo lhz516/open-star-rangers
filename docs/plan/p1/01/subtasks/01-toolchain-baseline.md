@@ -34,11 +34,11 @@ updated: 2026-10-01
 
 ## 验收标准
 
-- [ ] AC-01：实际工具版本符合声明，多文档锁定依赖与 manifest 匹配；无升级、新依赖或非必要锁文件改动。
-- [ ] AC-02：有效项目配置/文件集记录完整，纯程序无 DOM/Node 类型；JS lint 与 TS 检查范围明确。
-- [ ] AC-06 基线：现有 `pnpm check` 与独立 Python 测试的新结果及发现集合已记录；失败不得隐瞒，必要前提未满足则不标完成。
-- [ ] AC-10：已确认规则缺口和 STATUS 当前不成立的勾选明确关联；本项通过不声称规则已修复。
-- [ ] AC-09：探测不产生持久生产样本、不读取原版文件、不改变用户环境和数据。
+- [x] AC-01：实际工具版本符合声明，多文档锁定依赖与 manifest 匹配；无升级、新依赖或非必要锁文件改动。
+- [x] AC-02：有效项目配置/文件集记录完整，纯程序无 DOM/Node 类型；JS lint 与 TS 检查范围明确。
+- [x] AC-06 基线：现有 `pnpm check` 与独立 Python 测试的新结果及发现集合已记录；失败不得隐瞒，必要前提未满足则不标完成。
+- [x] AC-10：已确认规则缺口和 STATUS 当前不成立的勾选明确关联；本项通过不声称规则已修复。
+- [x] AC-09：探测不产生持久生产样本、不读取原版文件、不改变用户环境和数据。
 
 ## 验证方法
 
@@ -48,3 +48,10 @@ updated: 2026-10-01
 - 无浏览器、原版或云验证；证据留在下方，不能在生成计划时填通过结果。
 
 ## 完成证据
+
+- 2026-10-01：执行起点为 `b6bd45f`，工作树干净；此前规划文件均已提交，无用户改动需要混入。
+- 实际 Node `22.22.0`、pnpm `12.8.1`、Python `3.12.3`。manifest 所有直接依赖 specifier 与锁文件的应用文档一致，首文档的 pnpm specifier 与 packageManager 一致；未安装或升级依赖。
+- 真实 TypeScript 程序：core 的 roots 为 3 个纯解析/合成数据文件，无 DOM/Node 声明；app 为入口、App 和三个纯文件；node 为 Vite 配置、两个 TS 工具和两个解析器测试。三者 strict/noEmit 生效。`eslint.config.js` 未被 TS 纳入，但由 lint 覆盖。
+- `pnpm check`：三个 typecheck、lint、2 文件/21 个 Vitest 用例、生产 build 全部通过。独立 Python 命令发现并通过 3 个合成 XML 测试。这里记录的是起点结果，不是最终边界完成证明。
+- ESLint `lintText` 虚拟源确认 5 种输入没有目标诊断：core `.tsx` 的 React/Math.random、`react/jsx-runtime`、`idb-keyval/dist/index.js`、`../app` 目录入口、无 await 的 async。已取消 STATUS 边界整体勾选，交由 02/03 回归与修正。
+- 仅读取项目配置/合成代码及依赖声明；未读取 `local/`、原版文件或真实研究环境，未写入生产探测文件或启动服务。

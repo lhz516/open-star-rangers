@@ -32,7 +32,7 @@ P1 已形成 [12 项本地任务拆分、依赖与退出条件覆盖](./plan/p1/
 ### 工程骨架
 
 - [x] Vite + React + TS（strict）项目，目录结构按总计划 §4.1；`src/original-data` 与 `tools/` 纳入构建与类型检查；[AGENTS.md](../AGENTS.md) 要求代码任务先读[工程约定](./engineering/README.md)
-- [x] 目录边界与确定性 lint：`src/core` 等不得导入 React、Zustand、Three.js、DOM、IndexedDB，不得使用 `Math.random`、`Date.now`、`performance.now`；已用违规文件验证 → [engineering](./engineering/README.md#lint-规则eslintconfigjs)
+- [ ] 目录边界与确定性 lint：原有规则尚有扩展名、子路径、目录入口和 async 缺口，复核已取消整体通过勾选 → [P1-01 基线证据](./plan/p1/01/subtasks/01-toolchain-baseline.md#完成证据)。修正与持久回归通过后再恢复
 - [x] Vitest 单元测试；原版格式解析器的测试使用代码生成的合成样本（21 个测试，含驾驶舱字体目录）；CLI 复用共享解析器 → [payloads.test.ts](../src/original-data/payloads.test.ts)、[engineering](./engineering/README.md#测试)
 
 ### 运行骨架

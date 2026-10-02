@@ -52,7 +52,7 @@ updated: 2026-10-01
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-toolchain-baseline.md](./subtasks/01-toolchain-baseline.md) | — | pending |
+| [01-toolchain-baseline.md](./subtasks/01-toolchain-baseline.md) | — | completed |
 | [02-type-environment-regression.md](./subtasks/02-type-environment-regression.md) | 01 | pending |
 | [03-lint-boundary-regression.md](./subtasks/03-lint-boundary-regression.md) | 02 | pending |
 | [04-check-chain-failure-contract.md](./subtasks/04-check-chain-failure-contract.md) | 03 | pending |
@@ -65,4 +65,4 @@ updated: 2026-10-01
 
 ## 审批
 
-**2026-10-01 用户明确批准本 Goal，但暂不执行。** 用户选择“批准 goal，但暂不执行”，批准本文件的范围覆盖、六项子任务与依赖。Spec 亦于同日明确批准。`accepted` 仅表示计划获批，所有 subtask 仍为 `pending`，没有实现或验收完成记录。
+**2026-10-01 用户明确批准本 Goal，随后明确调用 execute-goal 开始执行。** 批准范围为本文件的范围覆盖、六项子任务与依赖。Spec 亦于同日明确批准。`accepted` 仅表示计划获批，执行状态以 tracker 和实际证据为准。
