@@ -87,7 +87,7 @@ updated: 2026-10-02
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-runtime-errors.md](./subtasks/01-runtime-errors.md) | — | completed |
-| [02-fixed-step-clock.md](./subtasks/02-fixed-step-clock.md) | 01 | pending |
+| [02-fixed-step-clock.md](./subtasks/02-fixed-step-clock.md) | 01 | completed |
 | [03-synthetic-event-bus.md](./subtasks/03-synthetic-event-bus.md) | 01 | pending |
 | [04-runtime-command-loop.md](./subtasks/04-runtime-command-loop.md) | 01, 02, 03 | pending |
 | [05-runtime-recording.md](./subtasks/05-runtime-recording.md) | 04 | pending |
