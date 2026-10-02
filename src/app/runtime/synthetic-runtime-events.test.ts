@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from '../core/errors.ts';
-import type { Command, DomainEvent } from '../core/synthetic-scene.ts';
+import { CoreInputError } from '../../core/errors.ts';
+import type { Command, DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
 import type { EventDelivery } from './synthetic-event-bus.ts';
 import { createSyntheticRuntime } from './synthetic-runtime.ts';
 

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type * as SceneModule from '../core/synthetic-scene.ts';
-import type { SyntheticSceneConfig, TickInput } from '../core/synthetic-scene.ts';
-import { replaySyntheticRecord } from '../core/synthetic-replay.ts';
+import type * as SceneModule from '../../core/synthetic/synthetic-scene.ts';
+import type { SyntheticSceneConfig, TickInput } from '../../core/synthetic/synthetic-scene.ts';
+import { replaySyntheticRecord } from '../../core/synthetic/synthetic-replay.ts';
 import { createSyntheticRuntime } from './synthetic-runtime.ts';
 
 const injection = vi.hoisted(() => ({ fail: false, cause: new Error('step') }));
-vi.mock('../core/synthetic-scene.ts', async importOriginal => {
+vi.mock('../../core/synthetic/synthetic-scene.ts', async importOriginal => {
   const original = await importOriginal<typeof SceneModule>();
   return {
     ...original,

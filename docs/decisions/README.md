@@ -27,3 +27,4 @@ updated: 2026-10-02
 | [ADR-0012](./ADR-0012-local-p1-defer-ci-deployment.md) | P1 只做本地验证，CI 与部署移至 P5 | accepted |
 | [ADR-0013](./ADR-0013-task-graph-orchestration.md) | 用确定性路由编排任务工作流图 | accepted |
 | [ADR-0014](./ADR-0014-status-summary-only.md) | STATUS 只维护项目摘要 | accepted |
+| [ADR-0015](./ADR-0015-source-module-structure.md) | 保持顶层模块，按职责细化源码目录 | accepted |

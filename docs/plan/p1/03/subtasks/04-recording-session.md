@@ -24,7 +24,7 @@ updated: 2026-10-02
   - 会话在内部创建并独占一个新场景，不接受外部已有的或恢复得到的场景。
 - **step：**
   - step 正常返回时，按顺序追加记录与事件。包含 `command-rejected` 的合法 tick 同样记录。
-  - 记录的必须是场景实际执行的那份规范副本：只含契约字段，`moveX` 的 `-0` 记为 `0`。调用者对象只读取一次，避免 getter 等使记录与执行不一致。如需复用 `readTickInput`，可以从 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 增加一个内部导出，不改变 `SyntheticScene` 接口。
+  - 记录的必须是场景实际执行的那份规范副本：只含契约字段，`moveX` 的 `-0` 记为 `0`。调用者对象只读取一次，避免 getter 等使记录与执行不一致。如需复用 `readTickInput`，可以从 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 增加一个内部导出，不改变 `SyntheticScene` 接口。
   - 抛 `CoreInputError` 的调用不进入记录，之后可继续录制。
   - 录制不修改、不冻结调用者的对象；调用者之后修改配置、输入轴、命令对象或数组，都不影响场景和已录制的数据。
 - **检查点：**
@@ -48,7 +48,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 计划新增 `src/core/synthetic-replay.ts`、`src/core/synthetic-replay-record.test.ts`（尚不存在）。
-- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 的 `createSyntheticScene` 与类型；可能新增 `readTickInput` 的内部导出。复用 02 的状态哈希。
+- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `createSyntheticScene` 与类型；可能新增 `readTickInput` 的内部导出。复用 02 的状态哈希。
 
 ## 验收标准
 
@@ -64,14 +64,14 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic-replay.ts)
+- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts)
   - 导出常量 `SYNTHETIC_REPLAY_FORMAT`、`SYNTHETIC_REPLAY_VERSION`，类型 `SyntheticReplayConfig`、`SyntheticReplayRecord`、`SyntheticReplayCheckpoint`、`SyntheticReplayResult`、`SyntheticRecording`、`SyntheticRecordingSession`（扩展 `SyntheticScene`，另有 `exportRecording()`），以及入口 `createSyntheticRecordingSession(config, checkpointInterval)`。
   - 会话用私有类 `RecordingSession` 独占 `createSyntheticScene` 新建的场景。
     - step 用 `readTickInput` 只读取一次调用者对象，生成深冻结的规范副本（`moveX + 0`），执行的就是这份副本。场景正常返回后才追加副本与事件，并在间隔倍数的 tick 记录检查点哈希。
     - 导出时若最终 tick 不是检查点，只在本次导出中补一个，不写回会话。
   - 配置错误沿用 `config.*` 路径；非法间隔抛 `CoreInputError`（`checkpointInterval`）。
-  - [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 只把 `readTickInput` 改为内部导出，`SyntheticScene` 接口不变。
-- **测试：** [synthetic-replay-record.test.ts](../../../../../src/core/synthetic-replay-record.test.ts)，共 30 项。
+  - [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 只把 `readTickInput` 改为内部导出，`SyntheticScene` 接口不变。
+- **测试：** [synthetic-replay-record.test.ts](../../../../../src/core/synthetic/synthetic-replay-record.test.ts)，共 30 项。
   - 与普通场景并行运行 7 个 tick，60 Hz（省略配置）与 120 Hz 下，step 返回值与三种读取逐 tick 严格相同；记录含两个业务拒绝的 tick 及完整事件流。
   - 每个合法 tick 之前插入一次非法调用（`moveX` 越界、未知命令、缺少 `commands`），错误路径与普通场景相同，且不进入记录。`tickRateHz = 1e-308` 下位置溢出被守卫拒绝的 tick 也不进入记录。
   - 检查点：间隔 1、间隔 3 以非倍数或倍数结束、间隔大于运行长度、无 tick 五种情况，与对照场景在 `0`、倍数与最终 tick 的哈希相同且不重复。在非倍数 tick 导出后继续录制，后续检查点不含当时补的那一个。

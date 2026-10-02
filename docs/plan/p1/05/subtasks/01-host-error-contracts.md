@@ -28,7 +28,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 计划新增 `src/app/session-host.ts`、`src/app/session-errors.ts`、`src/app/session-errors.test.ts`，当前均不存在。
-- [Runtime 错误](../../../../../src/app/runtime-errors.ts)（已有，只读）：cause/错误数组的先例。
+- [Runtime 错误](../../../../../src/app/runtime/runtime-errors.ts)（已有，只读）：cause/错误数组的先例。
 
 ## 验收标准
 
@@ -45,7 +45,7 @@ updated: 2026-10-02
 ## 完成证据
 
 - 2026-10-02：`pnpm exec vitest run src/app/session-errors.test.ts` 4 项通过；`pnpm check` 的 typecheck/lint/22 文件 517 测试/build 全通过。编辑器测试工具未发现测试，实际 Vitest 命令成功发现并运行。负向类型覆盖必需字段、failure phase、pageshow、异步错误出口/帧/取消。
-- [错误测试](../../../../../src/app/session-errors.test.ts) 精确检查有序原因、undefined cause 的存在性、冻结副本/条目与原 Error 不冻结；DOM-free host 使用 handle=0。
+- [错误测试](../../../../../src/app/session/session-errors.test.ts) 精确检查有序原因、undefined cause 的存在性、冻结副本/条目与原 Error 不冻结；DOM-free host 使用 handle=0。
 - rubber-duck 无缺陷；补充端口注释中的 integer。operation 保留 string，因为后续 run 读写/注册也需状态错误，不限六种控制。
 - simplify 四个独立角度并行完成（复用/简化/效率/层次），均无适用清理。
 - 文档影响：engineering 新增已交付端口/错误说明；guides 仍是研究环境/工具操作，无新增操作流程。Core、原版事实、冻结决定、阶段退出证据无变化，未改 STATUS。

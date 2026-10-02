@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "02"
 subtask: "03"
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 03 — Step 行为：移动、标记命令与事件
@@ -65,8 +65,8 @@ updated: 2026-10-01
 
 ## 完成证据
 
-- 2026-10-01：[synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 的 `SyntheticScene` 新增 `step(tickInput)`，固定顺序为先按数组顺序处理命令，再积分移动，最后推进 tick，返回冻结事件数组。私有 `#apply` 处理四种命令情形，`#drawCoordinate` 按 X、Y、Z 顺序抽 RNG，坐标为 `MIN + (MAX - MIN) · r`。
-- [synthetic-scene-step.test.ts](../../../../../src/core/synthetic-scene-step.test.ts) 31 个测试：
+- 2026-10-01：[synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `SyntheticScene` 新增 `step(tickInput)`，固定顺序为先按数组顺序处理命令，再积分移动，最后推进 tick，返回冻结事件数组。私有 `#apply` 处理四种命令情形，`#drawCoordinate` 按 X、Y、Z 顺序抽 RNG，坐标为 `MIN + (MAX - MIN) · r`。
+- [synthetic-scene-step.test.ts](../../../../../src/core/synthetic/synthetic-scene-step.test.ts) 31 个测试：
   - AC-02：空 tick 推进一次、返回空的冻结数组；60/120 Hz 下各运行一秒，moveX 为 -1/0/0.5/1 时 X 误差 ≤ 1e-12、Y/Z 为 0；归零后立即停止。
   - AC-03：四种组合的事件逐字段精确；两种拒绝前后 `rngState`、`nextEntityId` 与标记不变，tick 与 ±1/60 的移动照常发生。
   - AC-04：同 tick add/add/remove/add 的四个事件精确匹配（ID 2→3、两组位置）；已有标记时 remove→add 与 add→remove 结果不同；同样请求分散到 4 个 tick 时得到相同的实体、ID 与 RNG 状态。

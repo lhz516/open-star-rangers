@@ -15,7 +15,7 @@ updated: 2026-10-02
 
 ## 工作范围
 
-- 在 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 新增导出 `restoreSyntheticScene(snapshot: unknown): SyntheticScene`，复用同文件中的 `requireRecord`、tick 频率校验与 `Scene`。
+- 在 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 新增导出 `restoreSyntheticScene(snapshot: unknown): SyntheticScene`，复用同文件中的 `requireRecord`、tick 频率校验与 `Scene`。
   - `Scene` 增加一个仅供模块内部使用、从已校验状态构造的入口。`createSyntheticScene` 的行为与 `SyntheticScene` 接口都不变。
   - 格式常量从 02 的 `synthetic-snapshot.ts` 在运行时导入；该文件只从本文件导入类型，因此不形成运行时循环。
 - 先完成全部校验，失败时抛 `CoreInputError`，`path` 以 `snapshot` 开头并指向字段（例如 `snapshot.state.marker.id`），不返回半构造的场景。规则逐条按 spec“恢复”一节的校验表：
@@ -49,7 +49,7 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- 修改已有的 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts)：只新增恢复入口与内部构造路径。
+- 修改已有的 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts)：只新增恢复入口与内部构造路径。
 - 计划新增 `src/core/synthetic-scene-restore.test.ts`（尚不存在）。
 - 复用 02 的 `src/core/synthetic-snapshot.ts` 与 [errors.ts](../../../../../src/core/errors.ts)。
 
@@ -69,13 +69,13 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts)
+- **实现：** [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts)
   - 新增导出 `restoreSyntheticScene(snapshot: unknown): SyntheticScene`。
   - 私有 `Scene` 构造函数改为接收已校验的 `SyntheticSceneState` 并复制一份；`createSyntheticScene` 用初始状态调用它，行为、错误路径与消息不变。
   - 恢复专用的 `requireExactRecord` 在拒绝额外字段之外，还要求每个字段都是自有属性，原型链上的继承值视为缺失。
   - 数值通过 `readNumber` 加规则元组校验，`-0` 经 `value + 0` 规范化为 `+0`；`readVec` 统一读取 mover 与 marker 的坐标。
   - 只做结构和不变量校验，不检查历史可达性。快照格式常量运行时从 `synthetic-snapshot.ts` 导入，后者只做类型导入，因此没有运行时循环。
-- **测试：** [synthetic-scene-restore.test.ts](../../../../../src/core/synthetic-scene-restore.test.ts)，共 87 项。
+- **测试：** [synthetic-scene-restore.test.ts](../../../../../src/core/synthetic/synthetic-scene-restore.test.ts)，共 87 项。
   - **AC-03：**
     - 初始、有标记（120 Hz）、移除后（seed 4294967295）、JSON 往返四种来源，恢复后的 `inspect`、两种投影、快照与哈希都与来源严格相同。
     - 随后并行执行 6 个 tick（移动、添加、两种拒绝、移除、同 tick add/remove/add），逐 tick 比较事件与哈希。

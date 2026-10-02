@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 import { createSyntheticScene, type SyntheticSceneConfig } from './synthetic-scene.ts';
 
 const origin = { x: 0, y: 0, z: 0 };

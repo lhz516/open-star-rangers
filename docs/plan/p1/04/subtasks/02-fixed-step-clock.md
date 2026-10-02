@@ -50,7 +50,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：[时钟](../../../../../src/app/fixed-step-clock.ts)与[20 项测试](../../../../../src/app/fixed-step-clock.test.ts)通过；最终 `pnpm check` 16 文件、447 项通过，typecheck/lint/build 成功。
+- 2026-10-02：[时钟](../../../../../src/app/runtime/fixed-step-clock.ts)与[20 项测试](../../../../../src/app/runtime/fixed-step-clock.test.ts)通过；最终 `pnpm check` 16 文件、447 项通过，typecheck/lint/build 成功。
 - rubber-duck 未发现实现阻塞；按建议补齐原样 1000/1010/1020 序列、已有 tick 进度后的错误、溢出后可表示的新时间，以及上限+1 边界。
 - 随后限定两文件做 simplify：整数/余数截断共享参数化测试；时钟为单一类，无重复时间源或闭包持有场景，不增加通用调度层。复验通过。
 - 文档检查：尚无浏览器入口或新操作命令，engineering/guides 无需新增使用流程；本项保留内部时钟契约，04 接线时再记录公开 Runtime 使用约定。

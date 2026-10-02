@@ -3,12 +3,14 @@ type: guide
 status: active
 phase: P1
 updated: 2026-10-02
-related: [ADR-0002, ADR-0006]
+related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
 # 工程约定
 
 本项目代码的结构、命令与检查规则。架构决定见[总计划](../plan/master-plan.md) §4–5；本文只记录落地方式。
+
+当前源码目录、Runtime/Session 的分工、helper 归属与后续阶段扩展落点见[源码结构指南](./source-structure.md)，决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。历史源码路径的对应关系与本轮验证只在[迁移记录](./source-structure.md#p1-06-前迁移记录)维护。
 
 按 spec、goal 与 subtasks 开发的路径、审批、进度维护和 skills 入口见[Agent 任务工作流](./agent-workflow.md)。
 
@@ -62,21 +64,21 @@ related: [ADR-0002, ADR-0006]
 
 ## 合成 Runtime
 
-- [synthetic-runtime.ts](../../src/app/synthetic-runtime.ts) 是 P1 合成运行入口，契约见 [P1-04 spec](../plan/p1/04/spec.md)。它不是原版玩法，也尚未接入页面或浏览器帧循环。
+- [synthetic-runtime.ts](../../src/app/runtime/synthetic-runtime.ts) 是 P1 合成运行入口，契约见 [P1-04 spec](../plan/p1/04/spec.md)。它不是原版玩法，也尚未接入页面或浏览器帧循环。
 - 调用者向 `frame(nowMs)` 提供单调不减的毫秒时间戳；首帧只锚定。只在 Runtime 内推进 Core；时钟和 Event Bus 的内部发布入口不能交给消费者。
 - `setInput` 保存连续轴，`submitCommand` 返回 Runtime commandId；它不同于 Core entityId。命令结果在整帧模拟结束后通知，持续事实从 `uiProjection`/`renderFrame` 读取。
 - `on`/`onAny` 仅接收同步、返回 undefined 的回调。监听器抛错前的副作用不会回滚；帧末 `listener-failed` 不意味着 tick 未提交，不可重试已完成 tick。Core `faulted` 后禁止模拟和输入，读取与订阅清理仍可用；恢复会话属于 P1-05。
 - 录制默认关闭；创建时传 `recording: {checkpointInterval}` 开启，`exportRecording()` 返回 P1-03 格式的冻结记录/结果，关闭时为 null。较大间隔仅减少检查点，不减少逐 tick 输入和事件；没有有界内存或自动持久化。
 - 故障帧已经成功的 tick 和事件保留在录制中，但该帧通知不投递。因此故障导出仍可 replay 一致，却不是 Event Bus 投递日志。测试用真实合成 Core；故障测试只在 Vitest 创建边界注入 step 前异常，不向生产接口加入测试后门。
 - owner 可在 frame/事件批次之外显式调用 `resetClock`（丢弃全部宿主时间进度）、`clearIntent`（清轴/队列并返回冻结 FIFO ID）、`foldRenderState`（previous=current、alpha=0）和 `clearSubscriptions`。faulted 也可收尾，但不解除故障；批次内调用抛 reentrant-call。它们不改 Core、RNG、ID 分配或录制；没有调用时裸 Runtime 行为不变。
-- 针对性检查使用 `pnpm exec vitest run src/app`；完整检查仍为 `pnpm check`。没有新浏览器/原版操作流程，不需要额外 guides。
+- Runtime 与会话的针对性检查使用 `pnpm exec vitest run src/app/runtime src/app/session`；完整检查仍为 `pnpm check`。Core 回归可用 `pnpm exec vitest run src/core/determinism src/core/synthetic`。
 
 ## 会话端口与错误
 
-- [session-host.ts](../../src/app/session-host.ts) 是 app 的 DOM-free 调度/生命周期端口。回调在请求返回非负安全整数句柄之后异步交付（0 合法）；注册失败由宿主回收未交给 owner 的部分资源。取消和所有通知均同步返回 undefined。
-- [session-errors.ts](../../src/app/session-errors.ts) 定义会话参数、状态及执行失败，不替代 Runtime 错误。执行失败保存有序 runtime/scheduler/consumer/cleanup/control 原因，冻结副本与条目但不冻结原异常；onError 不接受 Promise。
-- [browser-session-host.ts](../../src/platform/browser-session-host.ts) 在 platform 提供真实 rAF 与 visibilitychange/pagehide/pageshow，无导入副作用或独立循环。每份订阅拥有三个监听，撤销逐项尝试且幂等，部分注册失败先回滚再抛错。只用 app 的 DOM 类型检查；不要导入当前 Node 测试程序或给 Core 加 DOM。
-- [synthetic-session.ts](../../src/app/synthetic-session.ts) 的 `createSyntheticSession(options,host,onError)` 创建 idle controller，配置复制/验证后只订阅一次宿主。`control` 独立处理 start/pause/resume/restart/exit/dispose；唯一请求凭证按运行与请求身份隔离，0 句柄合法。SessionRun 没有 frame/step/world/publish；结束后读写/注册拒绝，faulted 最后状态仍可读。
+- [session-host.ts](../../src/app/session/session-host.ts) 是 app 的 DOM-free 调度/生命周期端口。回调在请求返回非负安全整数句柄之后异步交付（0 合法）；注册失败由宿主回收未交给 owner 的部分资源。取消和所有通知均同步返回 undefined。
+- [session-errors.ts](../../src/app/session/session-errors.ts) 定义会话参数、状态及执行失败，不替代 Runtime 错误。执行失败保存有序 runtime/scheduler/consumer/cleanup/control 原因，冻结副本与条目但不冻结原异常；onError 不接受 Promise。
+- [browser-session-host.ts](../../src/platform/browser/browser-session-host.ts) 在 platform 提供真实 rAF 与 visibilitychange/pagehide/pageshow，无导入副作用或独立循环。每份订阅拥有三个监听，撤销逐项尝试且幂等，部分注册失败先回滚再抛错。只用 app 的 DOM 类型检查；不要导入当前 Node 测试程序或给 Core 加 DOM。
+- [synthetic-session.ts](../../src/app/session/synthetic-session.ts) 的 `createSyntheticSession(options,host,onError)` 创建 idle controller，配置复制/验证后只订阅一次宿主。`control` 独立处理 start/pause/resume/restart/exit/dispose；唯一请求凭证按运行与请求身份隔离，0 句柄合法。SessionRun 没有 frame/step/world/publish；结束后读写/注册拒绝，faulted 最后状态仍可读。
 - 暂停/隐藏时清瞬时意图、折叠呈现并停止循环；pagehide 独立阻断，返回可见不自动继续。显式 resume 首回调重新锚定，保留最新呈现，不补跑后台时长。`onFrame` 包含真实 projection/render/report，暂停静止通知 report=null。owner 必须 dispose 后再创建，不靠全局单例；当前不接生产页面或 React/HMR。
 - rAF、同步控制及宿主通知各构成一个通知边界。域/帧消费者的控制、宿主通知与故障按 FIFO 在当前批次后处理；静止帧也不递归控制。状态通知允许为新运行接线，禁止控制；取消/错误/清理仅允许读取或取消订阅。新增订阅下一批生效，取消立即生效。
 - `onCommandsCancelled` 的冻结 FIFO ID 及 reason 是会话反馈，不是 Core 拒绝或 replay 数据。转换通知按取消→暂停静止帧→适用收尾→状态→错误出口排序。`ownCleanup` 同步逆序收尾、至多尝试一次，release 即时移除/执行；释放后的 token 不再保有 owner/run/cleanup。release 失败只置 `cleanupFailed` 并同步抛错，不主动停止运行；后续 start/restart 均被阻断，exit/dispose 仍可执行。error 只保留最近错误，不是历史日志。
@@ -87,7 +89,7 @@ related: [ADR-0002, ADR-0006]
 ### 浏览器生命周期复现
 
 1. 端口空闲时启动自有 `pnpm dev --host 127.0.0.1 --port 5173 --strictPort`，在独立 Chromium profile/context 打开 `http://127.0.0.1:5173/`；没有正式游戏页面或 E2E runner，不改 App/main、不操作用户存储。
-2. 在该 origin 的 DevTools 用动态 import 导入 `/src/app/synthetic-session.ts` 的 `createSyntheticSession` 和 `/src/platform/browser-session-host.ts` 的 `createBrowserSessionHost`。以 `{scene:{seed:0,tickRateHz:50}}`、实际 host、必填同步错误出口创建 controller。用公共 onStatus/onFrame 与一个自有临时 `<pre>` 显示 phase/runId/tick/error，监听器返回 undefined；只读 projection/render，不写 Core。
+2. 在该 origin 的 DevTools 用动态 import 导入 `/src/app/session/synthetic-session.ts` 的 `createSyntheticSession` 和 `/src/platform/browser/browser-session-host.ts` 的 `createBrowserSessionHost`。以 `{scene:{seed:0,tickRateHz:50}}`、实际 host、必填同步错误出口创建 controller。用公共 onStatus/onFrame 与一个自有临时 `<pre>` 显示 phase/runId/tick/error，监听器返回 undefined；只读 projection/render，不写 Core。
 3. 通过 `control({type:'start'})` 开始，正常 rAF 驱动 tick。pause 后跨实际 rAF 观察 tick 不变、静止 pair 相同/alpha=0；resume 首通知为 0 tick，pair 仍为最新 tick。restart 得到新 runId/tick0；exit→start 与 dispose→新 controller 分别观察请求/旧句柄隔离。
 4. 切到另一实际标签页/窗口，再返回。记录实际 `document.visibilityState` 的变化、hidden 时与返回时的 status/tick；应为 hidden→visible、自动 paused/hidden、返回仍 paused 且 tick 不变，只有显式 resume 才继续。可以单独注册 visibilitychange 观察监听存入自有数组，以便返回后检查；记录时与 host 的三个监听分开计数。
 5. 浏览器事件探针可派发 pagehide/pageshow 验证适配绑定/离页阻断，但这不是实际 hidden 或 BFCache 证据。工具若所有标签页持续 visible，该判据保持 blocked；不能覆盖 getter 或使用合成事件代替。

@@ -3,7 +3,7 @@ type: plan
 status: active
 phase: all
 updated: 2026-10-02
-related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014]
+related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014, ADR-0015]
 ---
 
 # Star Rangers 重制版：架构与开发总计划
@@ -175,6 +175,8 @@ tools/                   本地盘点、解包、查看和对照的 Node 脚本�
 docs/                    文档，结构见 docs/README.md：进度、总计划、ADR、原版知识、指南、评审记录
 local/                   原版镜像与研究产物，git 忽略，永不提交
 ```
+
+顶层保持上述架构边界，模块内按职责或功能细化，不建立全局 utils/shared/types/services 兜底目录。Runtime 与 Session 仍归 app，合成规则不冒充正式玩法；决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。当前目录、helper 归属、后续扩展方向及历史路径对应关系统一维护于[源码结构指南](../engineering/source-structure.md)，不把本节的计划目录当作已实现清单。
 
 目录就是职责边界。边界由 lint 规则检查，而不是靠拆包：`src/core`、`src/original-data` 和 `src/content` 不得导入 React、Zustand、Three.js、DOM 或 IndexedDB；`src/core` 不得导入 `render`、`ui`、`platform`、`app`，也不得使用 `Math.random`、`Date.now`、`performance.now` 等非确定性 API（见 §5）。`src/original-data` 通过抽象的字节读取接口访问数据，浏览器端用 `File.slice` 实现，Node 端用 `fs` 实现，因此同一份解析代码可同时供 Worker 和 `tools/` 使用。首版不建设插件市场、通用编辑器或通用游戏引擎。
 

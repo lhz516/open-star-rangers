@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from '../core/errors.ts';
+import { CoreInputError } from '../../core/errors.ts';
 import { GameRuntimeError } from './runtime-errors.ts';
 
 describe('GameRuntimeError', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 import type { Command, TickInput } from './synthetic-scene.ts';
 import {
   compareSyntheticReplayResults,

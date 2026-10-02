@@ -1,4 +1,4 @@
-import type { DomainEvent } from '../core/synthetic-scene.ts';
+import type { DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
 import { GameRuntimeError } from './runtime-errors.ts';
 
 export interface EventDelivery {

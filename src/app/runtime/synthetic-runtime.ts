@@ -1,10 +1,10 @@
-import { CoreInputError } from '../core/errors.ts';
-import { createSyntheticRecordingSession, type SyntheticRecording, type SyntheticRecordingSession } from '../core/synthetic-replay.ts';
+import { CoreInputError } from '../../core/errors.ts';
+import { createSyntheticRecordingSession, type SyntheticRecording, type SyntheticRecordingSession } from '../../core/synthetic/synthetic-replay.ts';
 import {
   createSyntheticScene, readTickInput,
   type Command, type DomainEvent, type MoveInput, type SyntheticScene,
   type SyntheticSceneConfig, type SyntheticRenderState, type SyntheticUiProjection,
-} from '../core/synthetic-scene.ts';
+} from '../../core/synthetic/synthetic-scene.ts';
 import { FixedStepClock } from './fixed-step-clock.ts';
 import { GameRuntimeError } from './runtime-errors.ts';
 import { SyntheticEventBus, type EventListener, type PendingDelivery } from './synthetic-event-bus.ts';

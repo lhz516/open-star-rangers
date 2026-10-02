@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "02"
 subtask: "04"
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 04 — 输入校验、整批原子性与数值守卫
@@ -59,13 +59,13 @@ updated: 2026-10-01
 
 ## 完成证据
 
-- 2026-10-01：[synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 的 `step()` 依次执行：
+- 2026-10-01：[synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `step()` 依次执行：
   1. `readTickInput` 严格校验整批输入并返回 `moveX` 与命令类型的脱离副本，之后不再读取调用方对象。
   2. `planCommands` 只按标记是否存在为每条命令决定结果，不抽 RNG。
   3. 三个守卫。
   4. 状态修改：`#commit` 执行计划好的结果，然后写入 mover 位置与 tick。
   - 命令类型用类型守卫 `isCommandType` 判定。
-- [synthetic-scene-input.test.ts](../../../../../src/core/synthetic-scene-input.test.ts) 28 个测试：
+- [synthetic-scene-input.test.ts](../../../../../src/core/synthetic/synthetic-scene-input.test.ts) 28 个测试：
   - 22 种非法输入各抛 `CoreInputError`，`path` 准确，调用前后 `inspect()` 相同：tickInput 与 input 为 undefined/null/数组/缺失或带额外键；moveX 为缺失、NaN、±Infinity、1.0000001、-1.5 或字符串 `'1'`；commands 缺失、非数组、含 null/字符串元素或稀疏空洞；命令缺 type、type 未知或带额外的 `position` 字段。
   - 整批原子性：add, add 之后跟非法命令，或 moveX=2 配合 add，均无标记、`rngState` 与 `nextEntityId` 不变。
   - 恢复：非法调用后三次合法调用的事件与 `inspect()` 与从未出错的对照实例逐次相等。

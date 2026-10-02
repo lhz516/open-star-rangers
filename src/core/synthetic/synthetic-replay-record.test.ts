@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 import { createSyntheticScene, type Command, type SyntheticScene, type SyntheticSceneConfig, type TickInput } from './synthetic-scene.ts';
 import { createSyntheticRecordingSession, type SyntheticRecording, type SyntheticReplayCheckpoint } from './synthetic-replay.ts';
 import { hashSyntheticScene } from './synthetic-snapshot.ts';

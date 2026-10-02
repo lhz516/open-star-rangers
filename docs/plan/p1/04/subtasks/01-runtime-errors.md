@@ -47,6 +47,6 @@ updated: 2026-10-02
 ## 完成证据
 
 - 2026-10-02：目标 Vitest 7 项通过；清理后 `pnpm check` 通过（15 文件、427 项，typecheck/lint/build 成功）。编辑器测试工具未发现用例，改用仓库现有 Vitest 命令，无新增 runner。
-- [实现](../../../../../src/app/runtime-errors.ts)、[测试](../../../../../src/app/runtime-errors.test.ts)：四种错误、原 cause、非 Error 值、冻结数组/未冻结异常、构造负向类型均覆盖。
+- [实现](../../../../../src/app/runtime/runtime-errors.ts)、[测试](../../../../../src/app/runtime/runtime-errors.test.ts)：四种错误、原 cause、非 Error 值、冻结数组/未冻结异常、构造负向类型均覆盖。
 - 先完成 rubber-duck 审阅，再做限定两文件的本地 simplify 检查（按四个角度自行检查，并非四路独立审阅）：改为穷尽 switch，消除不适用字段的运行时空槽，并补充类身份与故障消息断言。四路独立复核后来在 [07](./07-scoped-cleanup-verification.md#完成证据)补齐。未新增实例判别辅助 API（契约只要求构造数据完整）；空错误集合由 03 的分发条件负责，不在数据容器重复校验。
 - 文档检查：engineering/guides 没有新命令、环境或用户流程需要更改；新增 API 的职责由本证据及源码表达。

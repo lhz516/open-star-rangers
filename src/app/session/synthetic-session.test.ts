@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionHost } from './session-host.ts';
-import type { SyntheticRuntimeOptions } from './synthetic-runtime.ts';
+import type { SyntheticRuntimeOptions } from '../runtime/synthetic-runtime.ts';
 import { createSyntheticSession, type SessionControl, type SessionRun } from './synthetic-session.ts';
 import { ControlledHost } from './synthetic-session.test-support.ts';
 

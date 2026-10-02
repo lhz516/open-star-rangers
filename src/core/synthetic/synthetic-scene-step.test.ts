@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextRandom } from './rng.ts';
+import { nextRandom } from '../determinism/rng.ts';
 import {
   createSyntheticScene,
   SYNTHETIC_MARKER_MAX,

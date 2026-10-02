@@ -3,8 +3,8 @@
  * one marker placed at a seeded random position. The rules, units, and numbers are invented to
  * exercise the architecture and are not original-game behaviour. Contract: docs/plan/p1/02/spec.md.
  */
-import { CoreInputError } from './errors.ts';
-import { nextRandom, type RngState } from './rng.ts';
+import { CoreInputError } from '../errors.ts';
+import { nextRandom, type RngState } from '../determinism/rng.ts';
 import { SYNTHETIC_SNAPSHOT_FORMAT, SYNTHETIC_SNAPSHOT_VERSION } from './synthetic-snapshot.ts';
 
 export const SYNTHETIC_DEFAULT_TICK_RATE_HZ = 60;

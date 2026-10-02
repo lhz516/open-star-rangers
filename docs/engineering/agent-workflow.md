@@ -3,7 +3,7 @@ type: guide
 status: active
 phase: all
 updated: 2026-10-02
-related: [ADR-0013, ADR-0014]
+related: [ADR-0013, ADR-0014, ADR-0015]
 ---
 
 # Agent 任务工作流
@@ -120,7 +120,7 @@ generate-spec → review-spec → ⏸ approve-spec → generate-goal → ⏸ app
 | 调度、命令队列、Event Bus 与会话生命周期 | [src/app/](../../src/app/) |
 | Three.js 的渲染状态消费与 React/Zustand 桥接 | `src/render/`、`src/ui/` |
 
-这些是职责位置，不是已实现文件清单。每次规划必须检查实际存在的文件，引用真实类型和路径；未落地的目录或类型明确标记为“计划新增”。不要为了替换 schema 路径而提前创建一个大而全的模型文件。
+这些是职责位置，不是已实现文件清单。当前模块内目录、helper 归属和历史路径对应关系见[源码结构指南](./source-structure.md)。每次规划必须检查实际存在的文件，引用真实类型和路径；未落地的目录或类型明确标记为“计划新增”。不要为了替换 schema 路径而提前创建一个大而全的模型文件。
 
 涉及持久化时，明确版本、内容指纹、读写边界、事务原子性、旧存档兼容、损坏或配额不足的反馈及恢复方式。设置可按总计划使用 localStorage；资源、缓存和存档使用 IndexedDB。测试在隔离的合成数据环境进行，不清空用户站点数据。
 

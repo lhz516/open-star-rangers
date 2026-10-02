@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fnv1a64 } from './fnv1a64.ts';
+import { fnv1a64 } from '../determinism/fnv1a64.ts';
 import { createSyntheticScene, type TickInput } from './synthetic-scene.ts';
 import {
   canonicalSnapshotText,

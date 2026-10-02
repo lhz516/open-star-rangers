@@ -1,4 +1,4 @@
-import type { SessionCleanup, SessionHost, SessionLifecycleEvent, SessionVisibility } from '../app/session-host.ts';
+import type { SessionCleanup, SessionHost, SessionLifecycleEvent, SessionVisibility } from '../../app/session/session-host.ts';
 
 function readVisibility(): SessionVisibility {
   return document.visibilityState;

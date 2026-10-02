@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from '../core/errors.ts';
-import { createSyntheticScene, type MoveInput } from '../core/synthetic-scene.ts';
+import { CoreInputError } from '../../core/errors.ts';
+import { createSyntheticScene, type MoveInput } from '../../core/synthetic/synthetic-scene.ts';
 import { createSyntheticRuntime, type SyntheticRuntimeOptions } from './synthetic-runtime.ts';
 
 describe('Runtime creation and input', () => {

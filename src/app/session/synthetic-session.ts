@@ -1,10 +1,10 @@
-import type { Command, DomainEvent, MoveInput, SyntheticUiProjection } from '../core/synthetic-scene.ts';
-import type { SyntheticRecording } from '../core/synthetic-replay.ts';
+import type { Command, DomainEvent, MoveInput, SyntheticUiProjection } from '../../core/synthetic/synthetic-scene.ts';
+import type { SyntheticRecording } from '../../core/synthetic/synthetic-replay.ts';
 import { GameSessionError, type SessionErrorListener, type SessionFailure, type SessionPhase } from './session-errors.ts';
 import type { SessionCleanup, SessionHost, SessionLifecycleEvent } from './session-host.ts';
-import { GameRuntimeError } from './runtime-errors.ts';
-import { createSyntheticRuntime, type RenderFrame, type SyntheticRuntime, type SyntheticRuntimeOptions } from './synthetic-runtime.ts';
-import type { EventListener } from './synthetic-event-bus.ts';
+import { GameRuntimeError } from '../runtime/runtime-errors.ts';
+import { createSyntheticRuntime, type RenderFrame, type SyntheticRuntime, type SyntheticRuntimeOptions } from '../runtime/synthetic-runtime.ts';
+import type { EventListener } from '../runtime/synthetic-event-bus.ts';
 
 export type SessionControl = { readonly type: 'start' | 'pause' | 'resume' | 'restart' | 'exit' | 'dispose' };
 export interface SessionStatus {

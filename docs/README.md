@@ -22,6 +22,7 @@ updated: 2026-10-02
 | [original/behavior/](./original/behavior/) | 行为规范 `B-###`，带测量方法与容差 | 参考类 | 中文 |
 | [original/input/key-map.md](./original/input/key-map.md) | 原版键位与浏览器冲突表 | 参考类 | 中文 |
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
+| [engineering/source-structure.md](./engineering/source-structure.md) | 当前源码目录、职责边界、后续扩展落点与历史路径迁移；决定见 ADR-0015 | 参考类 | 中文 |
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |

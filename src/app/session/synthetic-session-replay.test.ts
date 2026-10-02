@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { compareSyntheticReplayResults, replaySyntheticRecord } from '../core/synthetic-replay.ts';
-import type { SyntheticRecording } from '../core/synthetic-replay.ts';
+import { compareSyntheticReplayResults, replaySyntheticRecord } from '../../core/synthetic/synthetic-replay.ts';
+import type { SyntheticRecording } from '../../core/synthetic/synthetic-replay.ts';
 import { createSyntheticSession } from './synthetic-session.ts';
-import { createSyntheticRuntime } from './synthetic-runtime.ts';
+import { createSyntheticRuntime } from '../runtime/synthetic-runtime.ts';
 import { ControlledHost } from './synthetic-session.test-support.ts';
 
 describe('session lifecycle recording', () => {

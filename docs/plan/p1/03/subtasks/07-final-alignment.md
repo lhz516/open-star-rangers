@@ -83,7 +83,7 @@ updated: 2026-10-02
   - 快照（`osr-synthetic-snapshot`/1）与输入记录（`osr-synthetic-replay`/1）都带格式和版本，不匹配时拒绝。
   - 恢复只构造状态，P1-02 守卫由 03 的边界测试验证，语义不变。
   - 录制只在 step 正常返回后追加。
-  - 比对只报告可观察差异，间隔 2 的反例测试保留在 [synthetic-replay-compare.test.ts](../../../../../src/core/synthetic-replay-compare.test.ts)。
+  - 比对只报告可观察差异，间隔 2 的反例测试保留在 [synthetic-replay-compare.test.ts](../../../../../src/core/synthetic/synthetic-replay-compare.test.ts)。
 - **范围检查：**
   - `git diff b48bf1d..HEAD` 只涉及 `docs/plan/p1/03/` 与 `src/core/`。
   - `package.json`、`pnpm-lock.yaml`、P1-02 测试文件、`src/app`、`tools`、ESLint/tsconfig/Vite 配置都没有变化。

@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "02"
 subtask: "01"
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 01 — 种子随机数
@@ -53,7 +53,7 @@ updated: 2026-10-01
 
 ## 完成证据
 
-- 2026-10-01：新增 [rng.ts](../../../../../src/core/rng.ts)（Mulberry32，uint32 状态，纯函数 `nextRandom` 返回 `{value, state}`，文件头写明算法、状态、范围与确定性边界）与 [rng.test.ts](../../../../../src/core/rng.test.ts)。
+- 2026-10-01：新增 [rng.ts](../../../../../src/core/determinism/rng.ts)（Mulberry32，uint32 状态，纯函数 `nextRandom` 返回 `{value, state}`，文件头写明算法、状态、范围与确定性边界）与 [rng.test.ts](../../../../../src/core/determinism/rng.test.ts)。
 - 测试 8 个：seed 0、123456789、4294967295 各前三项与字面 KAT 常量一致（常量由测试外的参考实现计算）；三种子各 1000 次与测试内独立参考实现逐项一致；状态始终为 uint32、值始终在 `[0, 1)`；相同状态得到相同结果。
 - `pnpm exec vitest run src/core/rng.test.ts`：8 通过。`pnpm check`：类型检查（core 程序现含 `rng.ts`）、lint（Core 宿主随机/时间/async 规则）、4 文件/57 测试、build 全部通过。
 - simplify 四视角：reuse、efficiency 无发现；simplification 与 altitude 一致指出坐标上界检查属于场景公式，已从 RNG 测试移除并加入 03 的 AC-05 测试范围，重跑上述检查通过。

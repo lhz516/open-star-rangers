@@ -3,7 +3,7 @@ type: plan
 status: active
 phase: P1
 updated: 2026-10-02
-related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0011, ADR-0012, ADR-0014]
+related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0011, ADR-0012, ADR-0014, ADR-0015]
 ---
 
 # P1：工程与运行骨架 — 阶段计划与任务
@@ -22,6 +22,8 @@ P1 要证明的是**工程架构可以在本地端到端运行和验证**，不�
 按用户确认的 [ADR-0012](../../decisions/ADR-0012-local-p1-defer-ci-deployment.md)，CI 与 SWA 部署统一归 P5，不再是 P1 的退出条件或阻塞项；本阶段可以凭完整的本地证据通过评审。
 
 各任务共同遵循[总计划 §4–5](../master-plan.md#4-总体架构)、[工程约定](../../engineering/README.md)和[任务工作流](../../engineering/agent-workflow.md)。合成行为必须明确标记；不得把演示用移动、命令或数值解释为原版规则。
+
+P1-06 前按 [ADR-0015](../../decisions/ADR-0015-source-module-structure.md) 独立整理源码目录，不改变已批准的行为、契约或任务依赖。后续 spec/goal 使用[源码结构指南](../../engineering/source-structure.md)中的当前路径与消费者落点；旧计划路径和历史验收命令的对应关系及本次验证见[迁移记录](../../engineering/source-structure.md#p1-06-前迁移记录)，不作为新玩法或消费者已完成的证据。
 
 ### 本阶段不做
 

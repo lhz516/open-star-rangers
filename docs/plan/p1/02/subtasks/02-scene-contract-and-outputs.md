@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "02"
 subtask: "02"
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # 02 — 场景契约、创建入口与只读输出
@@ -66,8 +66,8 @@ updated: 2026-10-01
 
 ## 完成证据
 
-- 2026-10-01：新增 [errors.ts](../../../../../src/core/errors.ts)（`CoreInputError`，只读 `path`）与 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts)（常量、类型、`createSyntheticScene`、私有字段的 `Scene` 类，以及 `inspect`/`uiProjection`/`renderState`）。`step()` 尚未加入。
-- [synthetic-scene.test.ts](../../../../../src/core/synthetic-scene.test.ts) 27 个测试：seed 0 默认 60 Hz 的完整 `inspect()`、UI 与 Render 精确值；120 Hz 与 seed 上界；显式 `undefined` 频率取默认、seed `-0` 归一为 0；相同配置初始状态相同；创建后修改 config 不影响实例；17 种非法配置（含 null/数组/字符串、缺失/负数/小数/超界/NaN/字符串 seed，0/负/Infinity/NaN/字符串/倒数溢出频率，额外字段）均抛 `CoreInputError` 且 `path` 准确；冻结输出写入抛 `TypeError`；重复读取结果相等；读取不改变状态；UI/Render 与检查副本一致；三种输出可 JSON 往返。
+- 2026-10-01：新增 [errors.ts](../../../../../src/core/errors.ts)（`CoreInputError`，只读 `path`）与 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts)（常量、类型、`createSyntheticScene`、私有字段的 `Scene` 类，以及 `inspect`/`uiProjection`/`renderState`）。`step()` 尚未加入。
+- [synthetic-scene.test.ts](../../../../../src/core/synthetic/synthetic-scene.test.ts) 27 个测试：seed 0 默认 60 Hz 的完整 `inspect()`、UI 与 Render 精确值；120 Hz 与 seed 上界；显式 `undefined` 频率取默认、seed `-0` 归一为 0；相同配置初始状态相同；创建后修改 config 不影响实例；17 种非法配置（含 null/数组/字符串、缺失/负数/小数/超界/NaN/字符串 seed，0/负/Infinity/NaN/字符串/倒数溢出频率，额外字段）均抛 `CoreInputError` 且 `path` 准确；冻结输出写入抛 `TypeError`；重复读取结果相等；读取不改变状态；UI/Render 与检查副本一致；三种输出可 JSON 往返。
 - `pnpm exec vitest run src/core`：2 文件/35 测试通过。`pnpm check` 退出码 0：三个 TS 项目（core 程序现含 `src/core/*.ts`）、lint（纯模块与 Core 规则）、5 文件/84 测试、build 全部通过。
 - simplify 四视角：reuse 无发现。efficiency 与 simplification 指出 `renderState()`、`inspect()` 先建冻结对象再展开丢弃，已改为直接构造。altitude 指出 `CoreInputError` 注释承诺“不改变状态”属于具体操作而非错误类型，已移除（原子性由 04 在 `step()` 上保证）；另指出“每次读取必须是不同对象”超出 spec，已删除该身份测试并改为脱离性在 03 验证。修正后重跑上述检查通过。
 - 未接入 App 或其他消费者，无新依赖，未读取原版文件。

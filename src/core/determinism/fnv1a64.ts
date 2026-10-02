@@ -2,7 +2,7 @@
  * FNV-1a 64-bit hash of an ASCII string (offset basis 0xcbf29ce484222325, prime 0x100000001b3),
  * used only for state-consistency checks; not cryptographic. Contract: docs/plan/p1/03/spec.md.
  */
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 
 const ASCII_MAX = 0x7f;
 const UINT32_RANGE = 0x1_0000_0000;

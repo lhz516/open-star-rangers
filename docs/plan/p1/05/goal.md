@@ -12,15 +12,17 @@ updated: 2026-10-02
 
 落实 [已批准 spec](./spec.md#审批) 的 S-01 至 S-08、AC-01 至 AC-14：在现有合成 Runtime 之上建立独立控制通道、唯一帧循环、身份隔离、后台暂停、资源清理和可观察错误。行为及技术决定以 spec 为准，本文件不重定规则。
 
+**当前源码定位：** P1-06 前的独立目录重组见[源码结构指南与迁移记录](../../../engineering/source-structure.md#p1-06-前迁移记录)。本 goal 的初始计划路径保留为历史记录，源码链接指向现位置；迁移验证不改变下面的 tracker，也不替代 08 最终对齐。
+
 浏览器验收是必需交付，不以 Node 代理通过。按 [ADR-0014](../../../decisions/ADR-0014-status-summary-only.md)，全部通过后的证据留在本 goal/subtask，供 P1 阶段评审核对，不再更新 STATUS 退出项；真实 React StrictMode/HMR、键盘/UI/GPU 的联合生命周期仍属于 P1-10。
 
 ## 代码现状与前提
 
 - **直接前提 P1-04 已完成：** [最终证据](../04/subtasks/06-final-alignment.md#完成证据)记录 21 文件、513 项测试和完整工程检查；最终提交 `7c576ff`。其传递前提 P1-02/03 提供真实 Core 与录制/replay，均已有完成证据。
-- **现有 Runtime：** [synthetic-runtime.ts](../../../../src/app/synthetic-runtime.ts)定义 `SyntheticRuntimeOptions`、`RenderFrame`、`SyntheticRuntime` 和统一创建入口。其私有队列带 commandId，成功首 tick 才消费；没有重置时钟、清队列/轴、折叠状态对或清空订阅入口。02 添加这些显式操作，既有正常行为与测试不放宽。
-- **现有内部设施：** [fixed-step-clock.ts](../../../../src/app/fixed-step-clock.ts)有时间基准/最后时间/相对 tick 数，无 reset；[synthetic-event-bus.ts](../../../../src/app/synthetic-event-bus.ts)提供类型化同步事件与幂等取消，无全量清理。[runtime-errors.ts](../../../../src/app/runtime-errors.ts)四种 kind 保持原样。
-- **Core 只读：** 输入、领域事件、UI projection、Render State 归 [synthetic-scene.ts](../../../../src/core/synthetic-scene.ts)；录制格式、导出、replay 与结果比对归 [synthetic-replay.ts](../../../../src/core/synthetic-replay.ts)。会话数据归 app，不新增统一 schema 或 Core 生命周期字段。
-- **测试先例：** [事件测试](../../../../src/app/synthetic-runtime-events.test.ts)覆盖帧末意图/重入；[故障测试](../../../../src/app/synthetic-runtime-fault.test.ts)在 Vitest 创建边界包装真实场景，仅在 step 前抛错。06 复用该方式，不给生产 API 添加故障开关。
+- **现有 Runtime：** [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts)定义 `SyntheticRuntimeOptions`、`RenderFrame`、`SyntheticRuntime` 和统一创建入口。其私有队列带 commandId，成功首 tick 才消费；没有重置时钟、清队列/轴、折叠状态对或清空订阅入口。02 添加这些显式操作，既有正常行为与测试不放宽。
+- **现有内部设施：** [fixed-step-clock.ts](../../../../src/app/runtime/fixed-step-clock.ts)有时间基准/最后时间/相对 tick 数，无 reset；[synthetic-event-bus.ts](../../../../src/app/runtime/synthetic-event-bus.ts)提供类型化同步事件与幂等取消，无全量清理。[runtime-errors.ts](../../../../src/app/runtime/runtime-errors.ts)四种 kind 保持原样。
+- **Core 只读：** 输入、领域事件、UI projection、Render State 归 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)；录制格式、导出、replay 与结果比对归 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts)。会话数据归 app，不新增统一 schema 或 Core 生命周期字段。
+- **测试先例：** [事件测试](../../../../src/app/runtime/synthetic-runtime-events.test.ts)覆盖帧末意图/重入；[故障测试](../../../../src/app/runtime/synthetic-runtime-fault.test.ts)在 Vitest 创建边界包装真实场景，仅在 step 前抛错。06 复用该方式，不给生产 API 添加故障开关。
 - **计划新增文件，当前均不存在：**
 
 | 新文件 | 责任子任务 |

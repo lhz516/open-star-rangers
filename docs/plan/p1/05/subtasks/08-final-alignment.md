@@ -32,8 +32,9 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - [spec](../spec.md)、[goal](../goal.md)与01–07文档。
-- 01–06 计划交付的 app/platform 文件及 [Core](../../../../../src/core/synthetic-scene.ts)、[replay](../../../../../src/core/synthetic-replay.ts)（只读核验）。
+- 01–06 计划交付的 app/platform 文件及 [Core](../../../../../src/core/synthetic/synthetic-scene.ts)、[replay](../../../../../src/core/synthetic/synthetic-replay.ts)（只读核验）。
 - [工程约定](../../../../engineering/README.md)、07 实际更新的操作说明、[阶段索引](../../tasks.md)与 [ADR-0014](../../../../decisions/ADR-0014-status-summary-only.md)。
+- 当前文件位置与独立目录迁移验证见[源码结构指南](../../../../engineering/source-structure.md#p1-06-前迁移记录)；历史计划路径按对应关系定位，不将目录检查计为本项完成。
 
 ## 验收标准
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 import { fnv1a64 } from './fnv1a64.ts';
 
 /** Independent BigInt transcription of FNV-1a 64, used to cross-check the uint32-halves implementation. */

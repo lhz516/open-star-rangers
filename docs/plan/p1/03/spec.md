@@ -5,7 +5,6 @@ phase: P1
 task: "03"
 updated: 2026-10-02
 related: [ADR-0006, ADR-0012]
-reviewed: sha256:e414b6c6aef7
 ---
 
 # P1-03：快照、状态哈希与输入 replay — Spec
@@ -50,7 +49,7 @@ P1-02 已交付合成纯 Core：`step()` 返回事件，状态检查副本给出
 
 | 模块 | 责任与影响 |
 |---|---|
-| [synthetic-scene.ts](../../../../src/core/synthetic-scene.ts)（已有） | 可能需要一个从已校验状态构造场景的内部入口；P1-02 的行为、公开类型和既有测试断言不变 |
+| [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)（已有） | 可能需要一个从已校验状态构造场景的内部入口；P1-02 的行为、公开类型和既有测试断言不变 |
 | 计划新增 `src/core/` 文件 | 快照、规范文本、FNV-1a 64、恢复校验、录制会话、replay 与结果比对；具体文件分配由 goal 决定 |
 | [errors.ts](../../../../src/core/errors.ts)（已有） | 复用 `CoreInputError` 及其 `path` 约定，不另造错误类型 |
 | 计划新增 Core 同目录 `*.test.ts` | 使用现有 Node 环境 Vitest；不读取原版文件 |
@@ -59,10 +58,10 @@ P1-02 已交付合成纯 Core：`step()` 返回事件，状态检查副本给出
 
 ## 当前实现与依据
 
-- [createSyntheticScene](../../../../src/core/synthetic-scene.ts) 只接受 `{seed, tickRateHz?}`，返回 `SyntheticScene`（`step`/`inspect`/`uiProjection`/`renderState`），没有从任意状态创建场景的入口。`SyntheticSceneState` 字段为 `scenario`、`tick`、`tickRateHz`、`seed`、`rngState`、`nextEntityId`、`mover`、`marker`，即 P1-02 定义的完整权威状态。
-- [rng.ts](../../../../src/core/rng.ts) 的 Mulberry32 状态是单个 uint32（`RngState = number`），不存在其他隐藏的随机状态。
+- [createSyntheticScene](../../../../src/core/synthetic/synthetic-scene.ts) 只接受 `{seed, tickRateHz?}`，返回 `SyntheticScene`（`step`/`inspect`/`uiProjection`/`renderState`），没有从任意状态创建场景的入口。`SyntheticSceneState` 字段为 `scenario`、`tick`、`tickRateHz`、`seed`、`rngState`、`nextEntityId`、`mover`、`marker`，即 P1-02 定义的完整权威状态。
+- [rng.ts](../../../../src/core/determinism/rng.ts) 的 Mulberry32 状态是单个 uint32（`RngState = number`），不存在其他隐藏的随机状态。
 - `step()` 先完成全部校验与守卫（输入、命令计划、tick 安全整数、ID 安全整数、位置有限性），再修改状态。tick/ID 上限守卫已实现但无法测试（[P1-02 技术决定 7](../02/spec.md#技术决定)）。
-- 既有测试覆盖了相同条件下两个独立实例的一致性和输出的 JSON 往返形状（[step 测试](../../../../src/core/synthetic-scene-step.test.ts)、[场景测试](../../../../src/core/synthetic-scene.test.ts)），没有序列化、哈希或 replay。
+- 既有测试覆盖了相同条件下两个独立实例的一致性和输出的 JSON 往返形状（[step 测试](../../../../src/core/synthetic/synthetic-scene-step.test.ts)、[场景测试](../../../../src/core/synthetic/synthetic-scene.test.ts)），没有序列化、哈希或 replay。
 - Core 类型环境只有 ES2023 lib，不含 DOM/Node 声明，因此不能使用 `TextEncoder`、`crypto` 或 `Buffer`；lint 禁止 async/await 及宿主时间/随机。Web Crypto 摘要是异步的，不能在 Core 中使用。依据：[工程约定](../../../engineering/README.md)。
 - 架构依据为[总计划 §5](../../master-plan.md#5-状态管理与通信约定)：replay 输入是"初始状态 + 种子 + 每 tick 输入与命令"，事件流与周期性状态哈希只用于一致性校验，快照通过显式序列化取得。另见 [§11 核心自动测试](../../master-plan.md#11-测试与质量门槛)和 [ADR-0006](../../../decisions/ADR-0006-core-returns-events.md)。
 - 本任务没有原版研究依据，不新增 U/B 事实。
@@ -144,7 +143,7 @@ P1-02 已交付合成纯 Core：`step()` 返回事件，状态检查副本给出
 
 ## 数据模型与契约
 
-权威定义位于计划新增的 `src/core/` 文件，复用 [synthetic-scene.ts](../../../../src/core/synthetic-scene.ts) 中已有的 `SyntheticSceneState`、`TickInput`、`DomainEvent`、`SyntheticSceneConfig` 与 `SyntheticScene`。这里只约定形状、规则和所有权，类型名与文件布局由 goal 确定。
+权威定义位于计划新增的 `src/core/` 文件，复用 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 中已有的 `SyntheticSceneState`、`TickInput`、`DomainEvent`、`SyntheticSceneConfig` 与 `SyntheticScene`。这里只约定形状、规则和所有权，类型名与文件布局由 goal 确定。
 
 | 数据 | 形状、约束与规范字段顺序 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|

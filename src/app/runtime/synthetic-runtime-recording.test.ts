@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CoreInputError } from '../core/errors.ts';
-import { compareSyntheticReplayResults, replaySyntheticRecord } from '../core/synthetic-replay.ts';
-import type { Command, DomainEvent } from '../core/synthetic-scene.ts';
+import { CoreInputError } from '../../core/errors.ts';
+import { compareSyntheticReplayResults, replaySyntheticRecord } from '../../core/synthetic/synthetic-replay.ts';
+import type { Command, DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
 import { createSyntheticRuntime, type SyntheticRuntimeOptions } from './synthetic-runtime.ts';
 
 describe('Runtime optional recording', () => {

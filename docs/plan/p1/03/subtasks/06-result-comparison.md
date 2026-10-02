@@ -57,7 +57,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 修改 04/05 已建立的 `src/core/synthetic-replay.ts`；计划新增 `src/core/synthetic-replay-compare.test.ts`（尚不存在）。
-- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 的 `DomainEvent` 类型与常量，以及 [errors.ts](../../../../../src/core/errors.ts)。
+- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `DomainEvent` 类型与常量，以及 [errors.ts](../../../../../src/core/errors.ts)。
 
 ## 验收标准
 
@@ -73,7 +73,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic-replay.ts) 新增类型 `SyntheticReplayComparison` 与 `compareSyntheticReplayResults(expected, actual)`。
+- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts) 新增类型 `SyntheticReplayComparison` 与 `compareSyntheticReplayResults(expected, actual)`。
   - **结构校验：** 先对两份结果分别执行 `readResult`，路径前缀为 `expected` 或 `actual`。
     - 要求自有属性并拒绝额外字段；数组无缺失项。
     - 检查点非空，首个 tick 为 0，严格递增，hash 为 16 位小写十六进制；最后一个检查点即最终 tick。
@@ -81,8 +81,8 @@ updated: 2026-10-02
     - 事件按 tick 非递减；同 tick 内 `commandIndex` 从 0 连续递增。
     - 每个不受信字段只读取一次，返回规范化（`-0` 为 `0`）的分离副本。
   - **比较：** 用四个游标顺序遍历两份已按 tick 排序的事件与检查点，逐字段比较事件，与对象身份和键序无关；同一 tick 先比较事件再比较检查点。差异作为冻结的数据返回。
-  - [synthetic-scene.ts](../../../../../src/core/synthetic-scene.ts) 把 `NumberRule`、`readNumber`、`readVec`、`MARKER_COORDINATE`、`NON_NEGATIVE_SAFE_INTEGER`、`ENTITY_ID` 改为 Core 内部导出（后两者由原私有规则改名而来），恢复行为不变。replay 的 `ticks` 缺失项检查改用同一个 `requireDenseArray`。
-- **测试：** [synthetic-replay-compare.test.ts](../../../../../src/core/synthetic-replay-compare.test.ts)，共 81 项。
+  - [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 把 `NumberRule`、`readNumber`、`readVec`、`MARKER_COORDINATE`、`NON_NEGATIVE_SAFE_INTEGER`、`ENTITY_ID` 改为 Core 内部导出（后两者由原私有规则改名而来），恢复行为不变。replay 的 `ticks` 缺失项检查改用同一个 `requireDenseArray`。
+- **测试：** [synthetic-replay-compare.test.ts](../../../../../src/core/synthetic/synthetic-replay-compare.test.ts)，共 81 项。
   - **AC-08（比对）：** 60/120 Hz × 间隔 1/4 下，录制结果与 replay 结果比对为 `{ match: true }`，记录与结果都经 JSON 往返后仍一致。
   - **AC-09：** 全部用分别生成的结果比对。
     - 间隔 1：

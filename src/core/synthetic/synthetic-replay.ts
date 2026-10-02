@@ -4,7 +4,7 @@
  * checkpoints. Consistency holds only for the same code version and JS runtime. Contract:
  * docs/plan/p1/03/spec.md.
  */
-import { CoreInputError } from './errors.ts';
+import { CoreInputError } from '../errors.ts';
 import {
   createSyntheticScene,
   ENTITY_ID,

@@ -2,7 +2,7 @@
  * Versioned snapshot, canonical text and FNV-1a 64 state hash of the synthetic scene.
  * The hash is only a same-version, same-runtime consistency check. Contract: docs/plan/p1/03/spec.md.
  */
-import { fnv1a64 } from './fnv1a64.ts';
+import { fnv1a64 } from '../determinism/fnv1a64.ts';
 // Type-only, so synthetic-scene.ts can import the format constants at run time without a cycle.
 import type { SyntheticEntity, SyntheticScene, SyntheticSceneState, Vec3 } from './synthetic-scene.ts';
 

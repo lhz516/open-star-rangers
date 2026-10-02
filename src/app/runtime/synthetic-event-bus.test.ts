@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSyntheticScene, type DomainEvent } from '../core/synthetic-scene.ts';
+import { createSyntheticScene, type DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
 import { SyntheticEventBus, type EventListener } from './synthetic-event-bus.ts';
 
 function batch() {
