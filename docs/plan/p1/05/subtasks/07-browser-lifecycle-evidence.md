@@ -36,7 +36,7 @@ updated: 2026-10-02
 ## 验收标准
 
 - [x] AC-13：真实 rAF 的运行/暂停/显式恢复/重启/退出/销毁→重建观察与公开状态一致；暂停/恢复状态对不回退。
-- [ ] AC-07/13：实际 hidden 与 visible 已观测，回前台仍 paused；自动化或用户手动证据准确，不用伪造 getter 代替。
+- [x] AC-07/13：实际 hidden 与 visible 已观测，回前台仍 paused；自动化或用户手动证据准确，不用伪造 getter 代替。
 - [x] AC-09/13：注册三类真实监听、正常 dispose 逐项撤销、旧回调无通知；pagehide/pageshow 探针不被描述成 BFCache。
 - [x] AC-14：探针、页面/上下文及自有服务器清理完成，无 App/main/依赖/存储变更；直接相关文档含 updated 日期、可复现步骤。
 
@@ -48,6 +48,8 @@ updated: 2026-10-02
 - 清理只操作自有探针/上下文/进程，不清用户站点数据；缺少真实 hidden/工具时如实 blocked。
 
 ## 完成证据
+
+### 首轮浏览器证据（当时缺少实际 hidden）
 
 - 2026-10-02：browser-testing 已调用，真实 Chromium 154.0.8037.95 / macOS，独立 context，viewport=1000×700，固定 origin `http://127.0.0.1:5173/`，真实 Vite 与公共模块导入。临时 DOM `<pre>` 显示 phase/runId/tick/error，无 App/main、依赖、存储或 Core 修改。
 - 在适配器创建前包装真实 add/remove 与 request/cancel；自动循环的请求集合记录 maxPending=1。探针另有自己的 visibility 观察监听，单独计数，不能把它算作适配器第四个监听。
@@ -67,3 +69,23 @@ updated: 2026-10-02
 - 清理完成：两个自有页面/独立 context 已关闭，临时探针/包装随 context 移除；自有附着 Vite 已停止，两个自有工具日志/快照已删除。无原版/用户站点数据操作。
 - 文档影响：engineering 增加已使用的公共入口复现步骤；STATUS 记录阶段级浏览器证据阻塞，不勾 GameRuntime 或 StrictMode/HMR。研究 guides/原版事实/冻结决定无需变更。
 - rubber-duck 对本项证据/文档复核，无阻断问题；按建议将恢复/身份行仅标 AC-13 子面，避免混入 02/04 的 Node 精确验收归属。07 保持 blocked，不执行依赖未满足的 08。
+
+### 真实 hidden 补测（解除阻塞）
+
+- 2026-10-02：沿用本会话已调用的 browser-testing，通过 VS Code 的 `runPlaywrightCode` 执行 Playwright，使用本机已有 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 启动外部 headed Chromium 154.0.8037.95 / macOS，无新依赖或下载。viewport=1000×700，固定 origin `http://127.0.0.1:5173/`，自有附着 Vite 已确认运行并提供本仓库模块；HTTP 响应仅用于启动检查。
+- 普通 Playwright 页面切换仍报告 visible；成功路线是在自有浏览器的 CDP session 中用 `Target.createBrowserContext` 创建独立 context，`Target.createTarget` 创建探针页和另一个真实标签页，再用 `Target.activateTarget` 切换。通过 `Runtime.evaluate` 在探针页导入公共 host/session 模块，显示临时 DOM `<pre>`，读取原生 `document.visibilityState` 与公开状态。没有伪造 getter、派发 visibilitychange 或强制 lifecycle 状态；普通页面路线失败的具体原因未确认，不归因于应用缺陷，也不要求只能使用 VS Code 工具。可复现操作见 [engineering](../../../../engineering/README.md#已验证的-cdp-自动化路线)。
+- 适配器创建前包装真实 add/removeEventListener 和 request/cancel，自己的 visibility 观察监听通过原注册方法添加，不计入适配器三监听。配置为 `{scene:{seed:0,tickRateHz:50}}`，先条件等待 tick≥3；仅用公共 controller/run API，不修改 Core、App/main、依赖或站点存储。
+
+| 判据 | Setup/action | Expected | Observed | Result |
+|---|---|---|---|---|
+| AC-13 补测起点 | start，条件等待 tick≥3 | visible/running，真实 rAF 推进且只有一个请求 | tick=3、pending=1，三监听各注册一次 | passed |
+| AC-07/13 实际 hidden | CDP 激活另一标签页，读原生 visibility/status；再以浏览器定时器间隔观察 | hidden 自动暂停，tick/帧数稳定，停止调度 | hidden、paused、pauseReason=hidden、environmentVisible=false；两次 tick=478、frameCount=1150、pending=0 | passed |
+| AC-07 后台恢复阻断 | hidden 期间显式 resume | 拒绝，仍 paused | 抛 invalid-state：resume requires a visible paused run；会话 errors=[] | passed |
+| AC-07/13 返回 visible | 激活探针标签页，跨两个实际 rAF 观察 | 回前台不自动继续，tick/帧数仍稳定 | 原生日志为 hidden→visible；visible、paused、environmentVisible=true；tick=478、frameCount=1150、pending=0 | passed |
+| AC-13 显式恢复 | resume，读取首正常帧并条件等待新 tick | 首帧重锚、不补跑/回退，随后继续推进 | 首 report={ticks:0,capped:false}、pair=478/478、alpha=0；后续 tick=483、pending=1；maxPending=1、errors=[] | passed |
+| AC-09/13 补测收尾 | dispose，移除自有观察/包装/DOM，销毁自有 CDP context 与浏览器 | 三监听逐项撤销，零请求，无清理错误 | visibilitychange/pagehide/pageshow 各 remove 一次；disposed、runId=null、pending=0、cleanupFailed=false、errors=[] | passed |
+
+- 上述结果与首轮已通过的暂停/恢复、重启、exit→start、dispose→重建及旧回调/句柄隔离证据合并，补齐本项 AC-13；pagehide/pageshow 的派发探针仍只证明绑定，不证明 BFCache。真实 hidden 已取得，无需用户手动观测。
+- 清理核验：控制器已 dispose，包装/额外监听/临时 DOM 已撤销；自有 CDP context、外部浏览器和集成工具的空白入口页已关闭，关闭后工具不再找到该入口页，进程检查未发现本轮自有 Chrome。自有 Vite 已停止，5173 无监听，唯一自有临时工具输出已删除。未操作用户浏览器 profile、站点数据或原版文件。
+- 本次补测按 AC-07/13 和 AC-09/13 直接复核，实际 visibility、稳定 tick、恢复首帧、三监听清理均有观察记录；首轮 rubber-duck 复核及其他 passed 证据保留。仅改直接相关文档，不执行 simplify 或无关 build。engineering 补充成功自动化路线，STATUS 移除已解除的阶段级阻塞；原版事实、研究 guides 与冻结决定未变化。
+- 按用户要求将本项在 goal tracker 标为 completed；08 仍 pending，GameRuntime 和 StrictMode/HMR 等退出项仍不勾选。检查通过：4 篇文档的 updated 元数据、105 个本地链接/锚点、`git diff --check`；`node tools/task-state.ts p1/05 --json` 返回 subtask 08 is eligible，确认依赖阻塞已解除。

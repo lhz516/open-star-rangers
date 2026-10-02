@@ -1,6 +1,6 @@
 ---
 name: browser-testing
-description: 'Verify Open Star Rangers in a running browser using synthetic content: React flows, Canvas/WebGL rendering, Core-command feedback, keyboard/mouse input, Runtime lifecycle, and IndexedDB/localStorage behavior. Use for browser testing, UI/gameplay verification, reproducing browser bugs, or checks assigned by execute-goal.'
+description: 'Verify Open Star Rangers in a running browser using synthetic content: React flows, Canvas/WebGL rendering, Core-command feedback, keyboard/mouse input, Runtime lifecycle/page visibility, and IndexedDB/localStorage behavior. Use for browser testing, UI/gameplay verification, browser-capability troubleshooting, reproducing browser bugs, or checks assigned by execute-goal.'
 argument-hint: 'spec/subtask path or a concrete browser scenario'
 ---
 
@@ -14,8 +14,8 @@ Do not modify application code while testing. Report findings to the caller; an 
 
 ## 1. Preflight
 
-1. Discover available browser capabilities before calling tools. Use one supported browser tool family, without guessing tool names or arguments.
-2. If browser tools are unavailable, report browser checks as blocked. CLI HTTP responses or screenshots from elsewhere are not an equivalent pass.
+1. Discover available browser capabilities before calling tools, without guessing tool names or arguments. Prefer one supported browser tool family per attempt; if it has a capability limitation, discover another already-available family before declaring the affected check blocked.
+2. If no supported browser tool provides the required capability after bounded alternatives, report the affected browser checks as blocked. A busy shared profile or a missing default browser executable is an entry-point limitation, not proof that every available browser tool is unusable. Never unlock, close, or reuse a user-owned profile to bypass it. CLI HTTP responses or screenshots from elsewhere are not an equivalent pass.
 3. Identify the actual acceptance criteria, expected DOM/game/render/persistence outcomes, and required browser engines/devices.
 4. Inspect the existing app process/origin before starting a server. Do not stop user-owned processes or unrelated projects.
 5. Use a fresh, isolated browser context/profile for synthetic test data. If isolation is unavailable, do not mutate an existing user profile's storage; report the limitation and use safe read-only checks.
@@ -66,10 +66,21 @@ Original-game reference comparisons remain separate authorized local research. T
 ### Input and browser capabilities
 
 - Verify applicable keydown/keyup, mouse behavior, focus loss, page visibility changes, and lock exit/recovery.
-- Keep the page foregrounded for rAF-sensitive checks. If focus/visibility cannot be established, report the affected test as blocked rather than forcing clicks until it appears to pass.
+- Keep the page foregrounded for rAF-sensitive checks. For real hidden/visible checks, use the fallback below before declaring a capability blocker. Do not force clicks until the result appears to pass.
 - Fullscreen, Pointer Lock, Keyboard Lock, audio unlock, GPU performance, and system shortcuts may require real user gestures/devices.
 - Synthesized Alt/Option/F-key events cannot prove browser or OS shortcuts were intercepted. WebKit automation is not a real Safari result; record engines and platforms precisely.
 - Desktop keyboard/mouse is the first-release target. Do not introduce mobile-touch or Gamepad acceptance unless the approved scope explicitly changes that decision through an ADR.
+
+### Real page visibility fallback
+
+For Chromium lifecycle checks requiring actual `hidden -> visible`, use this bounded sequence before requesting manual evidence or marking the check blocked:
+
+1. Use a supported browser tool to launch an already-installed compatible Chromium with `headless:false` and a fresh, owned profile/context. The execution tool and browser engine are separate: an available Playwright MCP or VS Code tool may control an external Chromium. Do not install a runner, download a browser, or change project dependencies merely for this check.
+2. Test native visibility with two real, loaded tabs. Observe `document.visibilityState` and native `visibilitychange` events while switching tabs; a successful `bringToFront()` call is not evidence of hidden. A simple capability probe does not prove the application/session behavior.
+3. If ordinary Playwright pages remain visible, attempt the [verified CDP automation procedure](../../../docs/engineering/README.md), in its browser lifecycle reproduction section, using the existing headed browser. Create an owned CDP context with `Target.createBrowserContext`, create two targets with `Target.createTarget`, and switch them with `Target.activateTarget`. Use the supported CDP API to evaluate the probe and check protocol errors; do not repeat the same failed tab-switch approach indefinitely.
+4. Once real visibility transitions work, run the selected scenario at the exact Vite origin through the actual public host/session API. Verify automatic pause on hidden, stable tick/frame counts, continued pause after visible across real rAF observations, and advancement only after explicit resume; verify the resume first-frame contract when required.
+5. Never substitute a visibility getter override, synthetic `visibilitychange`/`pagehide`, forced lifecycle state, or Node host simulation for real hidden evidence. Record the successful entry point, browser, launch settings, isolation method, observed transitions, and cleanup; do not claim a cause for failed alternatives without evidence.
+6. If this route is unavailable or still cannot produce real hidden, request actual manual Chromium observations when the selected contract permits them. If neither automated nor manual evidence is obtainable, report the precise remaining capability blocker. The fallback is a verified option, not a guarantee for every browser/tool installation.
 
 ### Local persistence and privacy
 
@@ -92,6 +103,7 @@ For an active goal, put criterion evidence in the owning subtask's `完成证据
 ## 6. Clean up
 
 - Close only test contexts/pages you created.
+- For CDP-created contexts, dispose the owned context with `Target.disposeBrowserContext`, then close only the browser and tool entry pages you created. Verify cleanup even if closing an entry page makes the tool lose its page reference.
 - Remove only your specifically identified temporary synthetic files/scripts and test state.
 - Stop only servers you started, using the recorded terminal handle or specific process ID. Leave reused user servers running.
 - Never clear all site data or delete a user's save/resource stores.
