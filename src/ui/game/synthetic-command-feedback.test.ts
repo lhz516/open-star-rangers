@@ -5,17 +5,15 @@ import type { SyntheticGameState } from './synthetic-game-store.ts';
 import { createSyntheticGameStore } from './synthetic-game-store.ts';
 import { createSyntheticCommandFeedback, type SyntheticCommandFeedback } from './synthetic-command-feedback.ts';
 import { createSyntheticSessionBridge } from './synthetic-session-bridge.ts';
-import { TestClock, projectionLog, setupBridge } from './synthetic-ui.test-support.ts';
+import { TestClock, projectionLog, setupBridge, setupCommandFeedback } from './synthetic-ui.test-support.ts';
 
 function setup() {
-  let feedback: SyntheticCommandFeedback | undefined;
-  const context = setupBridge(undefined, writer => [feedback = createSyntheticCommandFeedback(writer)]);
-  if (!feedback) throw new Error('Expected command feedback');
+  const context = setupCommandFeedback();
   context.session.control({ type: 'start' });
   context.host.deliver(0);
   let now = 0;
   const tick = () => { now += 20; context.host.deliver(now); };
-  return { ...context, feedback, tick, zeroTickFrame: () => { context.host.deliver(now + 5); } };
+  return { ...context, tick, zeroTickFrame: () => { context.host.deliver(now + 5); } };
 }
 
 function lastResult(state: SyntheticGameState) {

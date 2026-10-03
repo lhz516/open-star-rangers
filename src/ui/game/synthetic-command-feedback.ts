@@ -1,11 +1,11 @@
 /**
- * Command submission and Core result feedback for the synthetic dev panel. Entering the queue is
- * not success: a pending command settles only from Core's own domain event, matched by the
- * Runtime command ID of the current run. The UI does not duplicate marker rules. Contract:
+ * Command submission and result feedback for the synthetic dev panel. Entering the queue is not
+ * success: a pending command settles once, from Core's own domain event, the session's
+ * cancellation notice, or, when the run faults first, as unconfirmed. Matching uses the Runtime
+ * command ID of the current run. The UI does not duplicate marker rules. Contract:
  * docs/plan/p1/06/spec.md.
  */
 import type { Command, DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
-import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { SyntheticGameStoreWriter, UiCommandSettlement } from './synthetic-game-store.ts';
 import type { SyntheticRunBinding, SyntheticRunConsumer } from './synthetic-session-bridge.ts';
 
@@ -31,12 +31,26 @@ class CommandFeedback implements SyntheticCommandFeedback {
     this.#store = store;
   }
 
-  attach(binding: SyntheticRunBinding): readonly SessionCleanup[] {
+  attach(binding: SyntheticRunBinding): void {
     this.#binding = binding;
-    return [binding.run.onAny((event, { commandId }) => {
+    const { run, runId } = binding;
+    binding.own(run.onAny((event, { commandId }) => {
       // Events from other consumers' commands match no pending entry but still refresh the projection.
-      binding.commit({ settle: [settlementFor(binding.runId, commandId, event)] }, true);
-    })];
+      binding.commit({ settle: [settlementFor(runId, commandId, event)] }, true);
+    }));
+    binding.own(run.onCommandsCancelled(({ commandIds, reason }) => {
+      binding.commit({ settle: commandIds.map(commandId => ({ runId, commandId, outcome: 'cancelled', reason })) }, true);
+    }));
+  }
+
+  /**
+   * Commands still pending when the run faults may already have run in a tick whose events the
+   * failure discarded, so they are unconfirmed rather than failed or cancelled.
+   */
+  faulted(binding: SyntheticRunBinding): readonly UiCommandSettlement[] {
+    return this.#store.reader.getState().pendingCommands
+      .filter(pending => pending.runId === binding.runId)
+      .map(({ runId, commandId }) => ({ runId, commandId, outcome: 'unconfirmed', reason: 'session-failed' }));
   }
 
   submit(type: Command['type']): void {

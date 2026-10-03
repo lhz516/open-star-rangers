@@ -9,6 +9,7 @@ import type { DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
 import {
   createSyntheticGameStore, type SyntheticGameState, type SyntheticGameStoreReader, type SyntheticGameStoreWriter,
 } from './synthetic-game-store.ts';
+import { createSyntheticCommandFeedback, type SyntheticCommandFeedback } from './synthetic-command-feedback.ts';
 import { createSyntheticSessionBridge, type SyntheticRunConsumer } from './synthetic-session-bridge.ts';
 
 /** Settable sampling clock; `failure` makes the next read throw. */
@@ -95,4 +96,12 @@ export function projectionLog(reader: SyntheticGameStoreReader, clock: TestClock
     if (state.projection !== previous.projection) log.push([state.projection?.tick ?? null, clock.now]);
   });
   return log;
+}
+
+/** `setupBridge` with the command feedback consumer attached to every run. */
+export function setupCommandFeedback(options: SyntheticRuntimeOptions = SYNTHETIC_TEST_OPTIONS) {
+  let feedback: SyntheticCommandFeedback | undefined;
+  const context = setupBridge(options, writer => [feedback = createSyntheticCommandFeedback(writer)]);
+  if (!feedback) throw new Error('Expected command feedback');
+  return { ...context, feedback };
 }

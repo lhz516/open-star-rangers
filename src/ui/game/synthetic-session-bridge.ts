@@ -33,6 +33,8 @@ export interface SyntheticRunBinding {
    * run clearing and errors stay with the bridge.
    */
   commit(change: SyntheticRunFeedback, withLatestProjection?: boolean): number;
+  /** Hands a registration's cancellation to the bridge, which runs it on rollback or unbind. */
+  own(cleanup: SessionCleanup): void;
 }
 
 /** The part of a store change that run consumers may write. */
@@ -40,8 +42,11 @@ export type SyntheticRunFeedback = Pick<SyntheticGameChange, 'addPending' | 'set
 
 /** Run-scoped UI logic attached by the bridge to every new run. */
 export interface SyntheticRunConsumer {
-  /** Registers run listeners and returns their cancellations. */
-  attach(binding: SyntheticRunBinding): readonly SessionCleanup[];
+  /**
+   * Registers run listeners, handing each cancellation to `binding.own` as soon as it exists. If
+   * attachment throws, the bridge rolls back everything owned so far.
+   */
+  attach(binding: SyntheticRunBinding): void;
   /** Settlements committed together with the status that shows the bound run as faulted. */
   faulted?(binding: SyntheticRunBinding): readonly UiCommandSettlement[];
 }
@@ -93,6 +98,10 @@ class RunBinding implements SyntheticRunBinding {
 
   commit(change: SyntheticRunFeedback, withLatestProjection = false): number {
     return this.#bridge.commitFor(this, change, withLatestProjection);
+  }
+
+  own(cleanup: SessionCleanup): void {
+    this.cleanups.push(cleanup);
   }
 
   /** Retires the binding and cancels its registrations newest first; returns their errors. */
@@ -225,9 +234,9 @@ class Bridge implements SyntheticSessionBridge {
     const binding = new RunBinding(this, run, projection.tick, now, deferred);
     this.#binding = binding;
     try {
-      binding.cleanups.push(run.onFrame(frame => { this.#onFrame(binding, frame); }));
-      binding.cleanups.push(run.ownCleanup(() => { binding.live = false; }));
-      for (const consumer of this.#consumers) binding.cleanups.push(...consumer.attach(binding));
+      binding.own(run.onFrame(frame => { this.#onFrame(binding, frame); }));
+      binding.own(run.ownCleanup(() => { binding.live = false; }));
+      for (const consumer of this.#consumers) consumer.attach(binding);
     } catch (cause) {
       this.#binding = null;
       binding.drain(); // The attachment failure is reported instead of rollback errors.

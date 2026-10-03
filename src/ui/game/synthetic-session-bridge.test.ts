@@ -15,10 +15,12 @@ function unboundBridge(consumers: readonly SyntheticRunConsumer[] = []) {
 /** Commits accepted results for pending commands, with the latest projection. */
 function acceptingConsumer(writer: SyntheticGameStoreWriter): SyntheticRunConsumer {
   return {
-    attach: binding => [binding.run.onAny((event, { commandId }) => {
-      if (event.type === 'command-rejected') return;
-      binding.commit({ settle: [{ runId: binding.runId, commandId, outcome: 'accepted', event }] }, true);
-    })],
+    attach: binding => {
+      binding.own(binding.run.onAny((event, { commandId }) => {
+        if (event.type === 'command-rejected') return;
+        binding.commit({ settle: [{ runId: binding.runId, commandId, outcome: 'accepted', event }] }, true);
+      }));
+    },
     faulted: binding => writer.reader.getState().pendingCommands
       .filter(pending => pending.runId === binding.runId)
       .map(({ runId, commandId }) => ({ runId, commandId, outcome: 'unconfirmed' as const, reason: 'session-failed' as const })),
@@ -120,6 +122,25 @@ describe('synthetic session bridge: status and run attachment', () => {
     first.session.control({ type: 'pause' });
     expect(late.reader.getState().status).toBeNull();
     expect(first.session.status()).toMatchObject({ phase: 'paused', error: null });
+  });
+
+  it('releases registrations a consumer owned before its attachment failed', () => {
+    const first = setupBridge();
+    first.session.control({ type: 'start' });
+    first.host.deliver(0);
+    const cause = new Error('second registration');
+    let calls = 0;
+    const late = unboundBridge([{
+      attach: binding => {
+        binding.own(binding.run.onAny(() => { calls++; }));
+        throw cause;
+      },
+    }]);
+    expect(() => late.bridge.bind(first.session)).toThrow(cause);
+    first.currentRun().submitCommand({ type: 'add-marker' });
+    first.host.deliver(20);
+    expect(first.currentRun().uiProjection().marker).not.toBeNull();
+    expect(calls).toBe(0);
   });
 
   it('keeps observing status after a consumer fails to attach to a new run', () => {
