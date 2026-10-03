@@ -32,13 +32,21 @@ updated: 2026-10-03
 
 ## 验收标准
 
-- [ ] AC-05：真实pnpm一致性与安装集合核对有效，缺/错/env-only项目锁失败；无隐含安装/联网/包代码执行。
-- [ ] AC-06：数组展开保留多版本/peer身份，平台optional覆盖可审计；未知许可或必要元数据不省略。
-- [ ] AC-08：OR具体分支、AND全满足，站点未知/不允许/GPL/AGPL及缺LGPL证明失败，非分发MPL不冒称站点允许。
-- [ ] AC-13：诊断脱敏、fixtures自建并收尾；pnpm check及聚焦测试通过。
+- [x] AC-05：真实pnpm一致性与安装集合核对有效，缺/错/env-only项目锁失败；无隐含安装/联网/包代码执行。
+- [x] AC-06：数组展开保留多版本/peer身份，平台optional覆盖可审计；未知许可或必要元数据不省略。
+- [x] AC-08：OR具体分支、AND全满足，站点未知/不允许/GPL/AGPL及缺LGPL证明失败，非分发MPL不冒称站点允许。
+- [x] AC-13：诊断脱敏、fixtures自建并收尾；pnpm check及聚焦测试通过。
 
 ## 验证方法
 
 新增后 pnpm exec vitest run tools/compliance/packages.test.ts tools/compliance/license-policy.test.ts；pnpm真实元数据查询与临时项目frozen错配反例结合，测试保持可离线执行。当前lightningcss最终归属与义务由04/06/08核对，不能把pnpm prod列表当证据。无浏览器/原版对照。
 
 ## 完成证据
+
+- 2026-10-03：[packages](../../../../../tools/compliance/packages.ts)复用pnpm licenses/list（depth1000，含全部JSON分支）并按本地metadata展开versions/paths，保留exact version与peer相对instance。真实当前155个安装实例、darwin/arm64的24项未安装optional均由pnpm skipped＋锁optional＋OS/CPU不支持证明，明确不作已安装许可检查；必要缺失仍失败，不把非本机平台结果泛化。
+- 跟踪package/锁先验证存在，YAML多文档只选应用importers文档；包管理器在自有临时副本做offline/frozen/lockfile-only/ignore-scripts/ignore-pnpmfile，用户树/锁不修改。再精确比installed lock importers/packages/snapshots、实际/lockfile-only图及许可查询的每个物理实例/version。缺/错/env-only、缺installed snapshot、图错配/必要包缺失及查询错误明确拒绝。只锁校验不被当安装证明。
+- [SPDX政策](../../../../../tools/compliance/license-policy.ts)用已声明MIT解析器、OR记录有效分支/AND满足所有；未知、LicenseRef、unsupported exception/plus、网站MPL/GPL/AGPL及无具体LGPL证明均失败。MPL仅明确not-distributed-known-copyleft；解析器数据依赖spdx-exceptions的CC-BY-3.0仅known-attribution/non-distributed允许，网站仍拒绝，不扩宽网站政策。真正分发由04证明，未在本项根据dev标签判定。
+- 必需新增开发依赖：yaml2.9.1（ISC）、spdx-expression-parse5.0.0及types4.0.0（MIT），传递SPDX IDs为CC0、exceptions为CC-BY3.0。既有依赖版本不升级；Vite/plugin/Vitest的peer锁键因yaml可选peer多一项，版本仍原值；网站产物未变。正常pnpm安装后`pnpm install --frozen-lockfile`通过，供应链策略未改。
+- [packages测试](../../../../../tools/compliance/packages.test.ts)/[policy测试](../../../../../tools/compliance/license-policy.test.ts)29项通过，含当前真实查询、自有副本真实frozen错配、多版本/peer数组顺序、unsupported/unknown/SPDX matrix、meta与图/锁差异；`pnpm check`52文件/1257测试、四types/lint/build通过。
+- rubber-duck建议禁止PackageAudit公共形状含absolute root，已移除该字段；只在内部Node边界由相对instance解析，JSON无私人路径。混合local许可的完整selectedLicenses不丢；peer-qualified未安装optional若无法证明仍fail-closed，不做默认豁免。simplify限定4新文件与必要manifest/锁，保留一次归一化/查询，不遍历安装目录重造pnpm。
+- 文档影响检查：暂无CLI，现有工程发现/工具链继续准确，08说明平台与分发边界；没有App/Core/原版事实/ADR变更。临时frozen与合成包/Git fixtures finally清理，不执行依赖脚本，不读取local/。
