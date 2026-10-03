@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 
 export type ReportKind = 'original' | 'licenses' | 'compliance';
-export interface Finding { readonly code: string; readonly reason: string; readonly path?: string; readonly package?: string }
+export interface Finding {
+  readonly code: string; readonly reason: string; readonly path?: string; readonly package?: string;
+  readonly scope?: string; readonly sha256?: string; readonly sources?: readonly string[];
+}
 export interface Count { readonly checked: number; readonly completed: boolean }
 export interface Fingerprint { readonly path: string; readonly sha256: string }
 export interface DependencyEvidence {

@@ -71,7 +71,7 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-manifest-report-contract.md](./subtasks/01-manifest-report-contract.md) | — | completed |
-| [02-original-file-scan.md](./subtasks/02-original-file-scan.md) | 01 | pending |
+| [02-original-file-scan.md](./subtasks/02-original-file-scan.md) | 01 | completed |
 | [03-package-license-policy.md](./subtasks/03-package-license-policy.md) | 01 | pending |
 | [04-distribution-inventory.md](./subtasks/04-distribution-inventory.md) | 03 | pending |
 | [05-project-rights-text.md](./subtasks/05-project-rights-text.md) | — | pending |

@@ -32,13 +32,19 @@ updated: 2026-10-03
 
 ## 验收标准
 
-- [ ] AC-02：四scope同hash改名等命中与干净结果正确；ignored路径无读取，报告无内容。
-- [ ] AC-03：index/worktree反例被检测，dist所有嵌套普通文件与独立清单/count一致。
-- [ ] AC-04：Git/读取/缺候选/local跟踪/symlink/越界/缺或空dist均passed=false并说明未完成范围，不跟随禁止目标。
-- [ ] AC-13：负向bytes自建，读访问审计和finally清理；目标Vitest、pnpm check通过。
+- [x] AC-02：四scope同hash改名等命中与干净结果正确；ignored路径无读取，报告无内容。
+- [x] AC-03：index/worktree反例被检测，dist所有嵌套普通文件与独立清单/count一致。
+- [x] AC-04：Git/读取/缺候选/local跟踪/symlink/越界/缺或空dist均passed=false并说明未完成范围，不跟随禁止目标。
+- [x] AC-13：负向bytes自建，读访问审计和finally清理；目标Vitest、pnpm check通过。
 
 ## 验证方法
 
 新增后 pnpm exec vitest run tools/compliance/scan.test.ts；真实临时Git支持空格/换行路径、暂存blob与工作树不同，文件访问记录结合临时链接/禁止目标夹具。并非仅mock返回hash来证明枚举。07再验证真实CLI退出，浏览器/原版对照不适用。
 
 ## 完成证据
+
+- 2026-10-03：[scan](../../../../../tools/compliance/scan.ts)分别枚举worktree/index/untracked/build；Git NUL及UTF-8完整性校验，index解析mode/stage后读实际cat-file blob，不替换为工作树。完整普通dist递归包含map/notice，无扩展过滤；范围显式completed/count，任一故障/命中非passed。
+- [12项真实Git fixture测试](../../../../../tools/compliance/scan.test.ts)通过：四scope改名命中、暂存命中再改回、空格/换行路径、ignored无读取、nested/map/notice数量、tracked local与symlink/index特殊模式、实际unmerged、遍历逃逸、非Git/subdir、缺候选/空或缺dist、Git/read失败。onRead证明禁止目标未打开；私有原因/root不进报告，缺文件含安全相对路径。
+- 工作树采用O_NOFOLLOW及FD dev/inode/普通文件校验、64KiB完整流式SHA256、读后size/mtime/ctime核对；路径每一层先lstat，local及链接不追随。index未合并/特殊mode在blob读取前拒绝，Git根需完整repo。错误带稳定code/范围及相对path，命中只含digest和manifest来源标签。
+- `pnpm check`通过（50文件/1228测试、type/lint/build），无生产/原版记录变化。rubber-duck建议补index独立escape及真实ENOENT隐私断言，均已补；simplify限定scan/test与Finding字段扩展，清除无断言的空目录样本，复用01report/hash/fixture。
+- 文档影响检查：CLI尚属07，工程Node/test发现与hash能力说明仍准确；本项只记录扫描证据，不更改.gitignore/原版事实/ADR/阶段摘要。fixture finally删除自有目录，不扫描历史或ignored用户数据。
