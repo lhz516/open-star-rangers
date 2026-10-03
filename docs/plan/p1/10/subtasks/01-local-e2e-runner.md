@@ -32,13 +32,20 @@ updated: 2026-10-03
 
 ## 验收标准
 
-- [ ] AC-01：bootstrap在开发/生产实际通过；3项目配置可发现、类型/lint识别E2E，普通Vitest不发现.spec.ts。
-- [ ] AC-01：包管理器正常更新多文档根锁，pnpm install --frozen-lockfile通过；无既有工具链升级或策略放宽。
-- [ ] AC-11：配置夹具的错误断言、构建/启动失败和无效executable均非零、含场景/原因，无skip或成功fallback；占用端口不复用其他项目。
-- [ ] AC-12局部：pnpm check及聚焦配置测试通过，自有进程/profile/context失败亦收尾；不把bootstrap当作完整E2E验收。
+- [x] AC-01：bootstrap在开发/生产实际通过；3项目配置可发现、类型/lint识别E2E，普通Vitest不发现.spec.ts。
+- [x] AC-01：包管理器正常更新多文档根锁，pnpm install --frozen-lockfile通过；无既有工具链升级或策略放宽。
+- [x] AC-11：配置夹具的错误断言、构建/启动失败和无效executable均非零、含场景/原因，无skip或成功fallback；占用端口不复用其他项目。
+- [x] AC-12局部：pnpm check及聚焦配置测试通过，自有进程/profile/context失败亦收尾；不把bootstrap当作完整E2E验收。
 
 ## 验证方法
 
 使用已有 pnpm exec vitest run tools/e2e-configuration.test.ts（文件新增后）、pnpm check；新增runner落地后用实际选择器跑bootstrap，并检查3项目列表。夹具在自有临时目录驱动真实子进程，finally清理，不改用户源码。浏览器准备、隔离与错误观察按[browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)，无原版或实机对照。
 
 ## 完成证据
+
+- 2026-10-03：新增 [配置](../../../../../playwright.config.ts)、[独立类型程序](../../../../../tsconfig.e2e.json)、[环境参数](../../../../../e2e/support/environment.ts)、[bootstrap](../../../../../e2e/bootstrap.spec.ts)、[配置回归](../../../../../tools/e2e-configuration.test.ts)。仅加入 Apache-2.0 的 @playwright/test 1.63.0 及 playwright/playwright-core；既有锁定版本、供应链策略和生产源码不变。
+- `pnpm exec vitest run tools/e2e-configuration.test.ts`：7项通过，真实子进程验证断言失败、构建/启动前提退出7、missing executable和占用HTTP origin均非零且带原因；原占用fixture服务器仍响应，临时目录finally清理。VS Code测试发现入口未找到新增文件，改用仓库Vitest runner。
+- `pnpm test:e2e bootstrap.spec.ts --project=development --project=production`：2项实际通过，Chrome 154.0.8037.95/macOS，1280×800/DPR1，origin为4173/4174；每项environment附件记录版本、origin、project。3项目配置可发现，headed实测属于06。
+- `pnpm install --frozen-lockfile`通过；`pnpm check`通过（4类型程序、ESLint、47文件/1192测试、build）。网站仍为 index-BWtf9nnJ.js，811.01kB；仅既有500kB警告。runner结束后4173/4174无监听，失败fixture的自有进程已退出，不下载浏览器、不访问用户profile。
+- rubber-duck审阅本项完整文件范围，无阻塞发现。simplify限定上述当前diff及新文件，复用现有配置/fixture习惯，没有必要增加抽象或改生产代码。
+- 文档影响：更新[工程约定](../../../../engineering/README.md)的四类型程序、独立命令、浏览器与端口/产物所有权；源码结构/阶段摘要/原版事实及ADR暂未变化，完整覆盖映射由07维护。

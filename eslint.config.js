@@ -7,7 +7,7 @@ const browserOnly = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyva
 const appLayers = ['app', 'render', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]);
 
 export default tseslint.config(
-  { ignores: ['dist', 'local', 'node_modules', 'coverage'] },
+  { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -23,8 +23,12 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['tools/**/*.ts', 'vite.config.ts', 'eslint.config.js', '**/*.test.ts'],
+    files: ['tools/**/*.ts', 'vite.config.ts', 'playwright.config.ts', 'eslint.config.js', '**/*.test.ts'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['e2e/**/*.ts'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {
     // Pure modules: no UI, rendering, or browser storage libraries, and no app layers.

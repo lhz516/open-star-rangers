@@ -25,10 +25,11 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 |---|---|
 | `pnpm dev` | 启动 Vite 开发服务器 |
 | `pnpm build` | 生产构建，输出到 `dist/` |
-| `pnpm typecheck` | 分别用三个 tsconfig 做类型检查（见下） |
+| `pnpm typecheck` | 分别用四个 tsconfig 做类型检查（见下） |
 | `pnpm lint` | ESLint，包含模块边界与确定性规则 |
 | `pnpm test` | Vitest 单元测试 |
 | `pnpm check` | 依次运行以上四项检查，提交前使用 |
+| `pnpm test:e2e` | 先构建当前代码，再运行独立的本地 Chromium 浏览器回归；不属于 `pnpm check` |
 
 `tools/` 中的研究脚本直接用 `node tools/<脚本>.ts` 运行，见 [tools](../guides/tools.md)。
 
@@ -40,6 +41,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | `tsconfig.core.json` | `src/core`、`src/original-data`、`src/content` | **不含 DOM 与 Node 类型**：这些纯模块一旦使用浏览器或 Node API，编译即失败 |
 | `tsconfig.app.json` | `src/` 全部 | 浏览器应用（DOM、JSX、Vite 客户端类型） |
 | `tsconfig.node.json` | `tools/**/*.ts`、Vite 配置、`src/**/*.test.ts` | Node 端 TypeScript；`eslint.config.js` 由 lint 覆盖，未启用 JS 类型检查 |
+| `tsconfig.e2e.json` | `playwright.config.ts`、`e2e/**/*.ts` | 独立 Node runner 与浏览器 evaluate 的 DOM 类型，不扩大 Core/Node 环境 |
 
 - `erasableSyntaxOnly` 禁止 `enum`、`namespace` 等需要转换的语法，使同一份代码既能被 Vite 打包，也能被 Node 直接运行。常量集合用 `as const` 对象代替 `enum`。
 - 导入本项目模块时写出 `.ts`/`.tsx` 扩展名，Node 直接运行时需要。
@@ -62,6 +64,15 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 - Ghidra 编译器规范补丁另有标准库 `unittest` 测试：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`，验证 XML 结构变换、备份与幂等性。
 - 工程边界回归还启动隔离的预期失败 Vitest 进程，断言其命中真正的失败检查并非零退出；该失败是测试输入，正常测试命令仍须成功。临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。
 - 快速只跑边界回归：`pnpm exec vitest run tools/engineering-boundaries.test.ts`。不要用测试数量代替覆盖证明；当前证据见 [P1-01 subtasks](../plan/p1/01/goal.md#子任务跟踪)。
+
+### 本地浏览器 runner
+
+[Playwright 配置](../../playwright.config.ts)使用已有兼容 Chrome（channel `chrome`），不自动下载浏览器。需要使用其他已安装 Chromium 时设置 `OSR_E2E_EXECUTABLE` 为其可执行文件。缺浏览器是明确失败，不 skip。运行需要普通 WebGL 2 和原生 headed 桌面能力；完整验收见 [P1-10 goal](../plan/p1/10/goal.md)，bootstrap 通过不代表后续生命周期/渲染验收通过。
+
+- 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。
+- 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
+- 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
+- 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
 
 ## 合成 Runtime
 
