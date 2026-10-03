@@ -64,7 +64,7 @@ updated: 2026-10-02
 | [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04, 07 | completed |
 | [07-start-failure-recovery-text.md](./subtasks/07-start-failure-recovery-text.md) | 04 | completed |
 | [08-demo-visit-exhaustion-feedback.md](./subtasks/08-demo-visit-exhaustion-feedback.md) | 01, 04 | completed |
-| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07, 08 | pending |
+| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07, 08 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖。
 

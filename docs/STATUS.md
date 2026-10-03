@@ -25,7 +25,7 @@ updated: 2026-10-02
 
 ## 下一步
 
-1. P1：P1-05、P1-06、P1-07（Three.js 合成渲染）已完成；下一步规划 P1-09（最小键盘适配），P1-08 装配菜单（其渲染失败恢复入口由 P1-07 留给它），见[依赖顺序](./plan/p1/tasks.md#5-实施顺序)，目录基线见[源码结构指南](./engineering/source-structure.md)；P1-12 本地合规检查可并行开始。
+1. P1：P1-05 至 P1-08（React 菜单与导入占位，含渲染失败的返回菜单恢复入口）已完成；下一步规划 P1-09（最小键盘适配，在演示画面的会话生命周期内接入），之后由 P1-10 联合验证，见[依赖顺序](./plan/p1/tasks.md#5-实施顺序)，目录基线见[源码结构指南](./engineering/source-structure.md)；P1-12 本地合规检查可并行开始。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 
