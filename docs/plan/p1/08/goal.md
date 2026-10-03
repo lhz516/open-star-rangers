@@ -61,7 +61,7 @@ updated: 2026-10-02
 | [02-cleanup-failure-signals.md](./subtasks/02-cleanup-failure-signals.md) | — | completed |
 | [03-demo-lifecycle-wiring.md](./subtasks/03-demo-lifecycle-wiring.md) | 01, 02 | completed |
 | [04-menu-pages-shell.md](./subtasks/04-menu-pages-shell.md) | 01, 03 | completed |
-| [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04, 07 | pending |
+| [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04, 07 | completed |
 | [07-start-failure-recovery-text.md](./subtasks/07-start-failure-recovery-text.md) | 04 | completed |
 | [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07 | pending |
 

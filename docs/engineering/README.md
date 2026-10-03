@@ -126,18 +126,28 @@ P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/
     - 附着发生在状态通知内时，失败延到下一帧报告，避免状态监听因抛错被 Session 移除。
     - 已暂停的运行（如隐藏时 start）附着时不读时钟，在恢复后的首帧锚定基准，因此失败不会被无限期延迟。
     - 立即发布结果时时钟失败，已收到的结果与最新投影先写入，再抛出。
-  - 附着是事务性的：运行监听全部注册成功后才写入 running/paused。运行级 consumer 每完成一项注册就用 `binding.own` 交出撤销函数；任一注册失败时，桥接逆序撤销已交出的注册，并在重新订阅状态后再抛出，以便继续观察随之而来的故障。
+  - 附着是事务性的：运行监听全部注册成功后才写入 running/paused。运行级 consumer 每完成一项注册就用 `binding.own` 交出撤销函数；任一注册失败时，桥接逆序撤销已交出的注册，并在重新订阅状态后再抛出，以便继续观察随之而来的故障。撤销本身也失败时抛 `RollbackError`（P1-08，见下文“页面流转与演示生命周期”），绑定回滚失败同样如此。
   - 一个桥接实例只服务一个会话；成功绑定后 unbind 即终止，只有首次绑定失败可以重试。`onError` 只写 sessionError，必须作为创建 Session 时的错误出口传入；新运行开始且会话 error 为空时清空 sessionError。
 - [synthetic-command-feedback.ts](../../src/ui/game/synthetic-command-feedback.ts) 是桥接的运行级 consumer：`submit(type)` 经当前运行提交已有 marker 命令，只有拿到 Runtime commandId 后才记为 pending，投影不提前改变。结果只来自 Core 的域事件：按 `delivery.commandId`（不是 commandIndex 或 entityId）匹配当前运行的 pending，生成 accepted/rejected，并与帧末最新投影同次写入，不等采样窗。其他消费者的命令和重复投递不会生成本面板结果；同步失败写入 actionError 并保留原 cause，暂停或已结束运行的错误来自 Session 本身。提交经 `SyntheticRunBinding.submitCommand` 转发：桥接回滚或 unbind 后该 binding 被注销，不再触及仍在运行的会话。成功提交时，清除旧 actionError 与新增 pending 在同一次写入中完成。
   - Session 的取消通知把匹配的 pending 记为 cancelled 并保留原 reason（user-pause/hidden/restart/exit/dispose/failure），不是 Core 拒绝。运行故障时，仍未终结的 pending 与 faulted 状态在同一次写入中标为 unconfirmed/session-failed：这些命令可能已在被丢弃事件的 tick 中执行，因此既不显示成功，也不自动重提。真实 Runtime 中，同一帧首个 tick 失败只会产生取消（命令尚未消耗），后续 tick 失败只会产生 unconfirmed。
 - [synthetic-game-controls.ts](../../src/ui/game/synthetic-game-controls.ts) 的 `syntheticControlAvailability(status)` 按 spec“控件可用性”从状态纯函数推导可用性。结果以面板动作 ID（start/pause/resume/restart/exit/add-marker/remove-marker）为键，同一状态组合返回同一个冻结对象，便于 React selector 按引用比较。`createSyntheticGameControls(store, session).control(type)` 先清空 actionError 再调用 Session 控制，同步失败时写入。Session 仍是唯一判定者，UI 不放宽其判断；cleanupFailed 在 error 被替换后仍禁用 start/restart。
 - 测试用 [synthetic-ui.test-support.ts](../../src/ui/game/synthetic-ui.test-support.ts) 组合真实 Session、`ControlledHost`、可控时钟，以及记录监听器的会话包装，用来重放旧运行通知。
-- [synthetic-demo-owner.ts](../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的应用装配 owner：`createSyntheticDemoOwner(host, clock, render)` 依次创建 store、反馈、渲染器（P1-07）、桥接与会话（种子 0、Core 默认 tick 频率，均为合成值），不自动 start，也不登记全局单例。它只向外暴露只读 `store`、只读 `renderer`（状态句柄与诊断；表面无法连接时为 unavailable）、`dispatch(action)` 与 `dispose()`。渲染器作为桥接的第二个运行级 consumer 接入每个运行。
+- [synthetic-demo-owner.ts](../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的应用装配 owner：`createSyntheticDemoOwner(host, clock, render)` 依次创建 store、反馈、渲染器（P1-07）、桥接与会话（种子 0、Core 默认 tick 频率，均为合成值），不自动 start，也不登记全局单例。它只向外暴露只读 `store`、只读 `renderer`（状态句柄与诊断；表面无法连接时为 unavailable）、`dispatch(action)`、`dispose()` 与只读的 `cleanupFailure()`（P1-08）。渲染器作为桥接的第二个运行级 consumer 接入每个运行。
   - `dispatch` 使用 controls 模块的 `createSyntheticPanelDispatcher`：marker 命令交给命令反馈，其余交给会话控制，动作分类留在 UI 层。
-  - 传入的渲染表面在会话创建前即归 owner 所有；表面连接失败时由渲染器释放并改为 unavailable。会话创建或绑定失败时，依次尝试销毁已创建的会话、解绑桥接与释放渲染器（含表面），store 原子重置为 status=null，actionError 为 initialize（多个失败时为 AggregateError）。
+  - 传入的渲染表面在会话创建前即归 owner 所有；表面连接失败且释放成功时改为 unavailable，演示照常运行。表面释放也失败（渲染器抛 `RollbackError`，或表面工厂交来的 `unavailable` 本身是 `RollbackError`）时按初始化失败处理，不创建会话。会话创建或绑定失败时，依次尝试销毁已创建的会话、解绑桥接与释放渲染器（含表面），store 原子重置为 status=null，actionError 为 initialize（多个失败时为 AggregateError）。
   - `dispose` 依次销毁会话、解绑桥接、释放渲染器，每项清理都会尝试；失败时把同一个 AggregateError 写入 actionError（cleanup）并抛出。重复调用无效果，dispose 或初始化失败后的 dispatch 被忽略。
-  - 持有方（React effect）必须先 dispose 旧 owner 再创建新 owner。
-- React 接线：[use-synthetic-demo-owner.ts](../../src/app/composition/use-synthetic-demo-owner.ts) 返回 `{owner, containerRef}`：容器回调 ref 把元素本身存入 state 作为 effect 依赖（容器为空时不建 owner；画面子树重挂载、换了容器元素时先释放旧 owner 再重建），在同一 effect 中先用 `createBrowserWebGLSurface(container)` 创建 WebGL 表面（失败时改为 unavailable），再与 `createBrowserSessionHost()`、`performance.now` 一起交给新 owner，此后 hook 不单独释放表面；卸载、StrictMode 重跑或 Fast Refresh 时先 dispose 再创建新 owner；清理失败与渲染状态监听错误经 `reportError` 报告。[use-synthetic-game.ts](../../src/ui/game/use-synthetic-game.ts) 用 Zustand 的 `useStore(reader, selector)` 订阅单个标量或稳定切片。[SyntheticDevPanel.tsx](../../src/ui/dev/SyntheticDevPanel.tsx) 只接收只读 `store`、`dispatch` 与只读渲染器，按区块分别订阅，使用原生按钮且不注册全局键盘监听；渲染诊断区只在挂载、点击刷新或渲染器更换时读取一次快照。[SyntheticRenderView.tsx](../../src/ui/render/SyntheticRenderView.tsx)（P1-07）提供画面容器（内容盒宽 100%、高 `clamp(240px, 70vh, 720px)`、相对定位、裁剪、黑底；React 不向其中渲染子节点，画布由 WebGL 表面管理）、合成标注，以及用 `useSyncExternalStore` 只在渲染状态转换时更新的状态文字（ready/context-lost 为 status，unavailable/failed 为 alert）。[App](../../src/app/App.tsx) 在开发与生产构建中都显示画面与面板，不自动 start。
+  - `cleanupFailure()` 返回首个包含清理失败的错误记录 `{cause}`，外壳冻结、此后不再替换或清除，dispose 后仍可读。以下情况会设置记录：
+    - 初始化回滚失败（`RollbackError`）。
+    - 会话状态首次报告 `cleanupFailed`，或会话错误的失败项中出现 `RollbackError`（运行消费者自有撤销失败）。
+    - `dispose` 失败：dispose 先停止 owner 的状态订阅，因此记录的就是抛出的错误。
+
+    Core/调度故障、渲染 failed/unavailable，以及回滚成功的业务 AggregateError 都不设置。
+  - 持有方必须先 dispose 旧 owner 再创建新 owner；应用中由下文的演示生命周期保证。
+- React 接线：[use-synthetic-demo-owner.ts](../../src/app/composition/use-synthetic-demo-owner.ts) 的 `useSyntheticDemoOwner(lifecycle)` 返回 `{owner, containerRef}`。
+  - 容器回调 ref 把元素本身存入 state，作为 effect 依赖：容器为空时不建 owner；画面子树重挂载或换了容器元素时，effect 关闭旧 visit 再打开新 visit。
+  - 每次 effect 打开演示生命周期的一个 visit：先用 `createBrowserWebGLSurface(container)` 创建 WebGL 表面（失败时改为 unavailable），再与 `createBrowserSessionHost()`、`performance.now` 一起交给新 owner 并 start 一次；此后 hook 不单独释放表面。
+  - 卸载、StrictMode 重跑或 Fast Refresh 时，cleanup 先发布 null 再关闭 visit。清理失败锁存后不再创建表面或 owner。
+  - 渲染状态监听错误与 dispose 抛出的错误经 `reportError` 报告。[use-synthetic-game.ts](../../src/ui/game/use-synthetic-game.ts) 用 Zustand 的 `useStore(reader, selector)` 订阅单个标量或稳定切片。[SyntheticDevPanel.tsx](../../src/ui/dev/SyntheticDevPanel.tsx) 只接收只读 `store`、`dispatch` 与只读渲染器，按区块分别订阅，使用原生按钮且不注册全局键盘监听；渲染诊断区只在挂载、点击刷新或渲染器更换时读取一次快照。[SyntheticRenderView.tsx](../../src/ui/render/SyntheticRenderView.tsx)（P1-07）提供画面容器（内容盒宽 100%、高 `clamp(240px, 70vh, 720px)`、相对定位、裁剪、黑底；React 不向其中渲染子节点，画布由 WebGL 表面管理）、合成标注，以及用 `useSyncExternalStore` 只在渲染状态转换时更新的状态文字（ready/context-lost 为 status，unavailable/failed 为 alert）。开发面板标题为 h3 `Development panel`、各区块为 h4，画面标题为 h3，以便演示画面的 h2 唯一。它们只在 P1-08 的合成演示画面中出现（开发与生产构建相同），见下文。
 
 ## 合成渲染
 
@@ -146,8 +156,30 @@ P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07
 - 依赖：`three`（dependencies）与 `@types/three`（devDependencies）同为 0.186 次版本，只从包根导入、只构造 `WebGLRenderer`（WebGL 2，不回退）；不用 React Three Fiber、addons、WebGPU、Worker 或 OffscreenCanvas。生产构建主块因此约 798 kB（gzip 约 216 kB），Vite 的 500 kB 块体积警告按 spec 只记录，包体优化归 P5。
 - DOM-free 模块由 Node 测试覆盖：[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts)（固定 4:3、等比居中、DPR 上限 2 与设备尺寸上限 M）、[synthetic-render-frame.ts](../../src/render/synthetic/synthetic-render-frame.ts)（整帧校验与位置插值，每个运行一份历史）、[synthetic-camera.ts](../../src/render/synthetic/synthetic-camera.ts)、[synthetic-appearance.ts](../../src/render/synthetic/synthetic-appearance.ts)、[render-surface.ts](../../src/render/scene/render-surface.ts)（绘制端口）、[synthetic-renderer.ts](../../src/render/synthetic/synthetic-renderer.ts) 与 [webgl-surface.ts](../../src/render/webgl/webgl-surface.ts)。浏览器专用的 [browser-webgl-surface.ts](../../src/render/webgl/browser-webgl-surface.ts) 只创建画布、`WebGLRenderer`、`ResizeObserver` 与 resolution 媒体查询。边界回归要求非 `browser-*` 的渲染模块位于 Node 类型程序中（见上文 Lint 规则）。
 - 绘制只发生在：表面首次得到有效布局、接线（读 `run.renderFrame()`）、绑定运行的每次 `SessionFrame`（含暂停静止帧）、运行结束（空帧）、布局变化（相同布局不重绘）与上下文恢复。渲染代码不调用 rAF、`setAnimationLoop`、定时器或微任务；暂停时只有后三类事件会重绘。
-- 每帧先完整校验（alpha、tick、ID 顺序、kind、坐标、两份状态与运行历史一致、tick 不倒退）再原子更新场景；表面绘制失败时把场景退回上一份成功画面。任何映射或绘制错误使渲染器进入终止的 failed，帧监听与运行收尾从不向 Session 抛错；状态监听抛错经 `reportError` 报告，报告本身失败时丢弃，以保持会话健康。恢复入口归 P1-08。
+- 每帧先完整校验（alpha、tick、ID 顺序、kind、坐标、两份状态与运行历史一致、tick 不倒退）再原子更新场景；表面绘制失败时把场景退回上一份成功画面。任何映射或绘制错误使渲染器进入终止的 failed，帧监听与运行收尾从不向 Session 抛错；状态监听抛错经 `reportError` 报告，报告本身失败时丢弃，以保持会话健康。恢复方式（P1-08）：返回菜单后重新进入，会重建会话与渲染器并丢弃本次合成状态；会话不自动暂停，只有释放成功才允许重新进入。
+- 初始化回滚失败用 [rollback-error.ts](../../src/app/session/rollback-error.ts) 的 `RollbackError`（`AggregateError` 子类，`cause` 为原始失败，`errors` 依次为原始失败与回滚失败）表示。以下几处在回滚失败时抛出它：`createSyntheticRenderer` 的连接回滚、渲染器 `attach()` 的本地回滚、`createBrowserWebGLSurface` 转交前的回滚。回滚成功时原样抛出原始原因，因此不必按消息或 AggregateError 类型猜测是否释放失败。
 - 状态为 ready/context-lost/failed/unavailable/disposed，只在转换时通知；开始释放后不再通知。诊断快照（state、runId、drawnTick、draws、entities、当前 `renderer.info` 的 GPU 三项、layout）只按需读取。
 - 释放顺序：撤销上下文监听、DPR 查询与尺寸观察 → 每种 kind 的共享几何与材质各释放一次 → `WebGLRenderer.dispose()` → 若有 `WEBGL_lose_context` 则强制丢弃（缺失只是能力限制）→ 移除画布；每步都尝试，失败汇总为 AggregateError。owner 释放顺序为会话 → 桥接 → 渲染器。
 - 测试替身 [render-surface.test-support.ts](../../src/render/scene/render-surface.test-support.ts) 记录每次绘制的对象、位置与相机，并按绘制/释放模拟 GPU 统计；它不进入生产导入链。目标回归：`pnpm exec vitest run src/render src/app/composition src/ui/game src/app/session src/app/runtime src/core/synthetic`。[synthetic-renderer-replay.test.ts](../../src/render/synthetic/synthetic-renderer-replay.test.ts) 证明不接、绘制中、failed、context-lost 与无布局时 Core 事件、录制与状态哈希一致。
 - 浏览器取证：截图保持 `preserveDrawingBuffer:false`，用元素截图的 Buffer 在页面内 `createImageBitmap` 解码采样；DPR 变化用上文“已验证的 CDP 自动化路线”中的仿真加媒体重新求值；WebGL 不可用用 `--disable-webgl --disable-webgl2 --disable-3d-apis` 启动的隔离 Chrome；上下文丢失用页面画布的 `WEBGL_lose_context`。
+
+## 页面流转与演示生命周期
+
+P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。它是现代网页界面，不是原版菜单，也不提供任何原版玩法入口或导入能力。
+
+- [app-flow.ts](../../src/app/flow/app-flow.ts) 是 DOM-free 的页面流转，由邻接 Node 测试覆盖。
+  - 冻结快照为 `{screen:'menu'|'import'|'demo', demoVisit, focusTarget, cleanupFailure}`。
+  - 输入为 open-demo、open-import、return-to-menu 与 `{demo-release-failed, cause}`。不适用的输入原样返回同一对象；`demoVisit` 耗尽时抛 `RangeError`。
+  - 页面状态只在内存中，不用路由或 history；刷新后回到主菜单。
+- [synthetic-demo-lifecycle.ts](../../src/app/composition/synthetic-demo-lifecycle.ts) 是每个应用实例一个的演示槽位，持有同步锁存，由真实 owner/Session 的 Node 测试覆盖。
+  - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit；锁存时不调用工厂；否则创建 owner，交付其初始化回滚记录，未锁存时只派发一次 start。同一 visit 不会再次 start，失败的 start 也不重试。
+  - `close()` 幂等，释放 owner、交付其清理失败记录，再报告 dispose 抛出的错误。`release()` 供“返回菜单”在切换画面前同步释放。
+  - 失败经 `onCleanupFailure` 交给页面流转。该出口抛错时改经 `reportError` 报告；`reportError` 自身抛错被丢弃。无论出口是否失败，锁存都已生效。
+- [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。
+- [ui/pages/](../../src/ui/pages/) 是三个只用原生按钮的画面，不在 window/document 注册键盘监听。
+  - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。
+  - 演示画面中，`Return to menu` 是标题之后的第一个控件。
+  - 导入占位只有说明与 `Return to menu`，不放文件输入或拖放区，不读写存储或发请求。
+  - 样式在 [app.css](../../src/app/app.css)：响应式、按钮 `:focus-visible` 有可见 outline。
+- 验证分层：页面流转、owner 记录与生命周期接线用 Node 测试。React 画面、焦点、键盘与往返释放用上文“已验证的 CDP 自动化路线”在开发服务器与 `vite preview` 中取证。稀有失败（failed、faulted、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不伪造浏览器复现。不引入 jsdom、React Testing Library 或 Playwright 依赖。
+
