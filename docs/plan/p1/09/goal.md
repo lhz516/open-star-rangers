@@ -75,7 +75,7 @@ related: [ADR-0004, ADR-0012, ADR-0015]
 | [04-demo-keyboard-wiring.md](./subtasks/04-demo-keyboard-wiring.md) | 02, 03 | completed |
 | [05-browser-input-evidence.md](./subtasks/05-browser-input-evidence.md) | 04 | completed |
 | [06-keyboard-docs-alignment.md](./subtasks/06-keyboard-docs-alignment.md) | 05 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | completed |
 
 02 与 03 共用 01 的端口，彼此没有实现前提；04 汇合，05 在实际页面取证，06 根据实现与证据定稿文档。最后一行始终只做最终核验并依赖所有其他子任务；新增修复使用新 ID、插在最后一行之前并加入其依赖，不重编号。
 
