@@ -73,7 +73,7 @@ related: [ADR-0004, ADR-0012, ADR-0015]
 | [02-browser-keyboard-source.md](./subtasks/02-browser-keyboard-source.md) | 01 | completed |
 | [03-session-keyboard-actions.md](./subtasks/03-session-keyboard-actions.md) | 01 | completed |
 | [04-demo-keyboard-wiring.md](./subtasks/04-demo-keyboard-wiring.md) | 02, 03 | completed |
-| [05-browser-input-evidence.md](./subtasks/05-browser-input-evidence.md) | 04 | pending |
+| [05-browser-input-evidence.md](./subtasks/05-browser-input-evidence.md) | 04 | completed |
 | [06-keyboard-docs-alignment.md](./subtasks/06-keyboard-docs-alignment.md) | 05 | pending |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
 
