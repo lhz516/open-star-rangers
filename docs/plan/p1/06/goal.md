@@ -1,6 +1,6 @@
 ---
 type: plan
-status: draft
+status: accepted
 phase: P1
 task: "06"
 updated: 2026-10-02
@@ -97,7 +97,7 @@ updated: 2026-10-02
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-projection-store-contract.md](./subtasks/01-projection-store-contract.md) | — | pending |
+| [01-projection-store-contract.md](./subtasks/01-projection-store-contract.md) | — | completed |
 | [02-session-projection-bridge.md](./subtasks/02-session-projection-bridge.md) | 01 | pending |
 | [03-command-result-feedback.md](./subtasks/03-command-result-feedback.md) | 02 | pending |
 | [04-cancellation-failure-controls.md](./subtasks/04-cancellation-failure-controls.md) | 03 | pending |
@@ -118,4 +118,4 @@ updated: 2026-10-02
 
 ## 审批
 
-待用户确认。用户明确批准本 goal，或明确调用 execute-goal 后，记录批准日期与范围并将 front matter 的 status 改为 accepted。这不代表实现完成，也不替代 spec 批准。
+**2026-10-02 用户批准本 goal。** 用户调用 execute-goal 并写明“approve and start”，批准当前 9 个子任务、依赖与验收覆盖。status 为 accepted，仅表示计划获批，不表示实现完成。

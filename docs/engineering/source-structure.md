@@ -44,9 +44,12 @@ src/
   platform/
     browser/
       browser-session-host.ts
+  ui/
+    game/
+      synthetic-game-store.ts
 ```
 
-`content/`、`render/`、`ui/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
+`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄），会话桥接与页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
 
 ## 职责与依赖
 

@@ -43,11 +43,11 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] S-01/AC-01：新 store 的初始 state 精确为 `{status:null, projection:null, pendingCommands:[], recentResults:[], actionError:null, sessionError:null}`；读出的数组与对象不可变。
-- [ ] AC-11（Node）：基于 subscribe+selector 的计数中，tick/坐标变化通知 0 次，marker ID 或 phase 变化各通知 1 次。
-- [ ] AC-11：只读句柄没有 setState 或其他写入口，有负向类型断言证明；写入口不从组件/hook 公共入口导出。
-- [ ] `recentResults` 的上限、顺序与清空行为符合 spec；store 中没有 RenderFrame、snapshot 或世界引用。
-- [ ] AC-15：Zustand 与锁文件同步，许可 MIT；store 无 DOM/React 导入；目标 Vitest 与 `pnpm check` 通过。
+- [x] S-01/AC-01：新 store 的初始 state 精确为 `{status:null, projection:null, pendingCommands:[], recentResults:[], actionError:null, sessionError:null}`；读出的数组与对象不可变。
+- [x] AC-11（Node）：基于 subscribe+selector 的计数中，tick/坐标变化通知 0 次，marker ID 或 phase 变化各通知 1 次。
+- [x] AC-11：只读句柄没有 setState 或其他写入口，有负向类型断言证明；写入口不从组件/hook 公共入口导出。
+- [x] `recentResults` 的上限、顺序与清空行为符合 spec；store 中没有 RenderFrame、snapshot 或世界引用。
+- [x] AC-15：Zustand 与锁文件同步，许可 MIT；store 无 DOM/React 导入；目标 Vitest 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -58,3 +58,25 @@ updated: 2026-10-02
 - 不适用浏览器、实机或原版对照。
 
 ## 完成证据
+
+- 2026-10-02：前提核验——P1-05 的 08 最终对齐已 completed（提交 `8fb36e8`），证据覆盖其 AC-01 至 AC-14。
+- 依赖：`zustand@^5.0.15` 加入 dependencies，锁文件只新增 zustand 5.0.15 条目（React/@types/react 为可选 peer，解析到 19.3.0）。`pnpm licenses list --prod` 显示 MIT；`pnpm install --frozen-lockfile` 通过。
+- 实现：[synthetic-game-store.ts](../../../../../src/ui/game/synthetic-game-store.ts) 定义 UI 状态与结果类型、`createSyntheticGameStore()`、只读 `reader`（仅 getState/getInitialState/subscribe 且冻结）与写入口 `commit(change)`，以及 phase/runId/tick/markerId 标量 selector。写入口只在 ui/game 模块内部流转，不进入组件公共入口（07 再核验 hook 导出）。
+- 测试：[synthetic-game-store.test.ts](../../../../../src/ui/game/synthetic-game-store.test.ts) 6 项通过，覆盖：
+  - 初始 state 精确值、冻结与只读句柄；两处 `@ts-expect-error`（无 setState、只读数组）经 node 类型程序检查。
+  - 同值 commit 不通知；非冻结 status 被复制并冻结，改动原输入不影响 store；actionError 复制冻结、cause 保持原引用。
+  - 用真实 Core 投影推进 3 tick：tick 通知 3 次，markerId/phase/runId/pending 列表各 0 次；加 marker 与改 phase 各 1 次。
+  - settle 按序只终结一次，忽略未知、重复与跨 run 的 ID；recentResults 上限 10、最新在后，clearRun 清空，空清空不通知。
+  - 故障（取消后 unconfirmed）、重启与退出各自只产生一次通知，且该次快照内的 status、projection、pending 与结果一致。
+- 工程检查：`pnpm check` 通过（三个 TypeScript 程序、ESLint、28 个文件 / 604 项测试、生产构建）。store 无 DOM 或 React 导入。
+- rubber-duck：
+  - 采纳“生命周期转换需原子写入”：把 update/addPending/settle/clearRun 合并为单个 `commit`，并增加通知历史测试。
+  - 采纳“状态可变泄漏”的可行部分：非冻结 status 复制并冻结，actionError 复制冻结。
+  - 不冻结 GameSessionError：P1-05 规定不冻结异常对象，store 将错误和 cause 一样作为不透明引用保留。Core 投影与事件按 P1-02 契约本已深冻结。
+- simplify（四角度）：
+  - reuse 无发现。
+  - 已采纳：显式处理字段，替代动态键与类型断言；新建数组就地冻结，不再二次复制；用变更比较代替 `Object.keys` 分配；未知 settlement 不再产生临时对象。
+  - 未采纳“改成语义化 reducer”：会把单一原子 `commit` 拆成更大的 API，属于重新设计。
+  - 未采纳“去掉 status 冻结保护”：这是 rubber-duck 要求的保证，只需一行。
+  - 采纳后重验全部通过。
+- 文档影响：[源码结构指南](../../../../engineering/source-structure.md)记录 `ui/game/` 的实际目录与职责；[阶段索引](../../tasks.md)§2 改为“已加入 Zustand”，并更正 Core/Runtime 已交付的现状。工程约定的 UI 桥接说明待 02 接线后补充；原版事实、冻结决定与指南无变化。
