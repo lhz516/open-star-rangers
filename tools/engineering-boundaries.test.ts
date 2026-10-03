@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
@@ -271,5 +271,83 @@ describe('TypeScript module environments', () => {
     }, (directory) => {
       expect(ts.getPreEmitDiagnostics(program('core', directory))).toEqual([]);
     });
+  });
+});
+
+describe('render layer boundaries', () => {
+  // docs/plan/p1/07/spec.md AC-01/AC-04/AC-17. Browser adapters in render/ are named `browser-*`;
+  // they and React `.tsx` files belong to the app program only.
+  const src = join(root, 'src');
+  const relativeSource = (fileName: string): string => relative(src, fileName).split(sep).join('/');
+  const inRender = (fileName: string): boolean => relativeSource(fileName).startsWith('render/');
+  const isBrowserModule = (fileName: string): boolean => /^browser-.*\.ts$/.test(basename(fileName)) || fileName.endsWith('.tsx');
+  const scheduling = new Set(['requestAnimationFrame', 'setAnimationLoop', 'setTimeout', 'setInterval', 'queueMicrotask', 'requestIdleCallback']);
+
+  /** Real import/export declarations and string dynamic imports; comments and other strings are ignored. */
+  function moduleSpecifiers(file: ts.SourceFile): string[] {
+    const found: string[] = [];
+    const visit = (node: ts.Node): void => {
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        found.push(node.moduleSpecifier.text);
+      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+        found.push(node.arguments[0].text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return found;
+  }
+
+  function identifierNames(file: ts.SourceFile): Set<string> {
+    const names = new Set<string>();
+    const visit = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) names.add(node.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return names;
+  }
+
+  const parse = (source: string): ts.SourceFile => ts.createSourceFile('sample.ts', source, ts.ScriptTarget.Latest, true);
+  const appProgram = program('app');
+  const production = appProgram.getRootFileNames()
+    .filter(fileName => !fileName.endsWith('.test-support.ts'))
+    .map(fileName => appProgram.getSourceFile(fileName)!);
+  const renderProduction = production.filter(file => inRender(file.fileName));
+
+  it('parses real imports and identifiers only', () => {
+    const sample = parse([
+      "import type { A } from './a.ts';", 'export { b } from "../b.ts";', "const c = import('./c.ts');",
+      "import /* note */ { X } from 'three/addons/x.js';", "// import './commented.ts';", "const s = 'setTimeout';",
+    ].join('\n'));
+    expect(moduleSpecifiers(sample)).toEqual(['./a.ts', '../b.ts', './c.ts', 'three/addons/x.js']);
+    expect(identifierNames(sample).has('setTimeout')).toBe(false);
+    expect(identifierNames(parse('window.setTimeout(f);')).has('setTimeout')).toBe(true);
+  });
+
+  it('imports Three.js only from its package root, only in render, and never R3F or WebGPU', () => {
+    expect(production.length).toBeGreaterThan(10);
+    const violations = production.flatMap(file => {
+      const specifiers = moduleSpecifiers(file);
+      const bad = specifiers.filter(specifier => /^three\/|^@react-three\//.test(specifier));
+      if (!inRender(file.fileName) && specifiers.includes('three')) bad.push('three outside render');
+      if (identifierNames(file).has('WebGPURenderer')) bad.push('WebGPURenderer');
+      return bad.map(entry => `${relativeSource(file.fileName)}: ${entry}`);
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it('schedules no frame, timer or microtask in render code', () => {
+    const violations = renderProduction.flatMap(file => [...identifierNames(file)]
+      .filter(name => scheduling.has(name)).map(name => `${relativeSource(file.fileName)}: ${name}`));
+    expect(violations).toEqual([]);
+  });
+
+  it('checks every DOM-free render module in the Node program and no browser module there', () => {
+    const nodeFiles = new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
+    const unchecked = renderProduction.filter(file => !isBrowserModule(file.fileName) && !nodeFiles.has(resolve(file.fileName)));
+    expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
+    const browserInNode = [...nodeFiles].filter(fileName => fileName.startsWith(`${src}${sep}`) && isBrowserModule(fileName));
+    expect(browserInNode.map(relativeSource)).toEqual([]);
   });
 });
