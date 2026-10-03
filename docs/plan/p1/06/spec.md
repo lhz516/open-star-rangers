@@ -5,7 +5,6 @@ phase: P1
 task: "06"
 updated: 2026-10-02
 related: [ADR-0002, ADR-0006, ADR-0008, ADR-0012, ADR-0015]
-reviewed: sha256:81317118fac1
 ---
 
 # P1-06：UI projection 与 React 指令闭环 — Spec
@@ -148,7 +147,7 @@ store 只保留 UI pending 与当前运行的有界最近终态，不保存事�
 2. **复用 Session，而非裸 Runtime。** 应用装配已有浏览器宿主与会话控制器，消费者不持有 frame/step 或独立帧调度。按 [ADR-0015](../../../decisions/ADR-0015-source-module-structure.md) 组织必要小模块，不创建泛型引擎或大 schema。
 3. **10 Hz 常规采样 + 即时关键反馈。** 降低 React 发布频率，且命令/生命周期反馈不等待采样窗；不把总计划初始 60 Hz 模拟参数硬编码为 UI 的 tick 时间转换。
 4. **允许有效命令被 Core 拒绝。** add/remove 不因当前 marker 事实或已有 pending 而禁用，仅按有效 running 运行控制提交能力；不在 UI 复制 marker 规则。连续点击仍是按 FIFO 提交，不合并、去重或自动重试。
-5. **最小反馈而非通用请求日志。** pending 列表与当前运行最近 10 项终态足以证明关联，且故障时取消与未确认结果可同时观察；同步、异步错误分开呈现。故障可能已有提交，增加 UI-only unconfirmed，不把它虚构为 Core 拒绝或 Session 取消。
+5. **最小反馈而非通用请求日志。** pending 列表与当前运行最近 10 项终态足以证明关联，故障相关的取消与未确认结果都可观察，同时出现时都保留；同步、异步错误分开呈现。故障可能已有提交，增加 UI-only unconfirmed，不把它虚构为 Core 拒绝或 Session 取消。
 6. **暂停保留，切换隔离。** 运行级订阅/disposer 通过 `ownCleanup` 归属 Session；controller 状态订阅归应用 owner。初始化或部分接线失败回滚已取得资源并报告，独立清理全部尝试，遵守 Session 通知中的注册/控制限制。不建立全局 owner 登记来阻止新 owner；旧回调由 owner/run 身份隔离，清理失败显式报告。
 7. **开发面板代替正式页面。** 先交付可操作的工程证明，保留合成说明；不用自动启动跨过 start 边界，不提前制作正式菜单、飞行 HUD 或键位系统。P1 中该面板在开发与生产构建的应用入口均可见，不额外按环境隐藏；P1-08 再将其纳入菜单流程。无自定义全局按键，按钮有可读标签和可见错误反馈。
 8. **本地证据，不提前引入浏览器 runner。** Node 测试 vanilla store/桥接/反馈，真实浏览器测试 React DOM 和生命周期；Zustand 依赖选择兼容现有 React/TS 的版本并锁定，遵循 [ADR-0008](../../../decisions/ADR-0008-mit-and-dependency-licenses.md)，不顺带升级工具链。
@@ -167,7 +166,7 @@ store 只保留 UI pending 与当前运行的有界最近终态，不保存事�
 | AC-05 | 有 marker 时再次 add 得 rejected/marker-already-exists；无 marker 时 remove 得 rejected/marker-not-found；marker 保持相应权威状态，UI 不显示成功 | Node 两种拒绝原事件断言；浏览器两条实际交互及原因反馈，按钮不靠规则禁用来避开测试 |
 | AC-06 | 同 tick 排队 add→remove 的两个 commandId 均按 FIFO 终结一次，投影只显示帧末 marker=null；反馈使用 delivery.commandId 而非 commandIndex/entityId。其他消费者命令不生成本面板请求结果 | Node 对 store 订阅记录、真实事件及最终 projection 的精确断言；覆盖重复已确认 ID 与外部命令 |
 | AC-07 | 未执行命令在 user-pause/hidden/restart/exit/dispose/failure 时按通知 ID/reason 取消，保留顺序、不变成拒绝、不入 replay；新 run 的 pending/recentResults 不继承旧值，迟到旧通知无效 | Node 参数化真实 Session 转换、取消冻结数据和旧 store 记录；同 commandId 在新 run 重用以及不同 owner 的 runId 重用均隔离 |
-| AC-08 | 补跑第二 tick 故障且首 tick 已提交、事件未送达时，最后成功投影仍反映该提交；未被取消或确认的 pending 为 unconfirmed/session-failed，而非假成功/假取消。同次故障的 failure 取消与 unconfirmed 同时保留在 recentResults；收到真实结果后发生消费者故障不覆盖已有终态 | Node 沿用现有 Vitest 创建边界注入，真实 Core/录制成功前缀对照；断言错误、无 pending 悬挂、无自动重提，生产无故障后门 |
+| AC-08 | 补跑第二 tick 故障且首 tick 已提交、事件未送达时，最后成功投影仍反映该提交；未被取消或确认的 pending 为 unconfirmed/session-failed，而非假成功/假取消。真实 Runtime 中，同一帧首个 tick 失败时命令未消耗，只产生 failure 取消；后续 tick 失败时命令已消耗、事件被丢弃，只产生 unconfirmed。若同一转换先后出现两类结果，二者都保留在 recentResults，unconfirmed 不覆盖已有终态；收到真实结果后发生消费者故障也不覆盖已有终态 | Node 沿用现有 Vitest 创建边界注入，首个与后续 tick 两条故障路径分别用真实 Core/录制成功前缀对照；断言错误、无 pending 悬挂、无自动重提，生产无故障后门；两类结果并存时的保留由 store 原子转换测试验证 |
 | AC-09 | 提交/控制非法状态或形状的同步失败显示 actionError，保留原原因，不分配虚构 ID；onError 的异步错误显示为 sessionError。初始化/部分接线失败有明确反馈，卸载期清理失败抛给 React 或经 `reportError` 报告；cleanupFailed 即使 error 后被替换仍阻止 start/restart | Node 失败输入、部分注册回滚与清理异常测试；浏览器开发诊断证据可用自有探针注入，不污染生产参数或用户存储 |
 | AC-10 | pause 后跨帧 tick 不变且未执行命令取消；paused 仍能操作 resume/restart/exit，resume 仅在 environmentVisible 时可用；返回可见不自动继续，显式 resume 首帧不补跑。idle/disposed 无世界 | Node 控制启用条件和 Session 状态对照；真实 Chromium 中实际 hidden→visible 观测，不用伪造 visibility 代替。浏览器取消证据须在同一任务内依次触发 add 与 pause 按钮的真实 click，再读取 DOM |
 | AC-11 | 只订阅 marker ID/phase 的切片在普通 tick/坐标发布时不被通知；对应字段改变才更新。实际 React 组件只取得只读读取/订阅入口，不订阅整个 store，也不因无关 store 更新产生额外提交 | Node selector/订阅计数，以及组件侧不存在写入口的负向类型检查或代码审阅；隔离浏览器以临时 React Profiler 或等价组件观测，区分 StrictMode 初次提交与父组件更新，记录基线及无关/相关更新差值 |
@@ -203,3 +202,5 @@ store 只保留 UI pending 与当前运行的有界最近终态，不保存事�
 ## 审批
 
 **2026-10-02 用户批准完整 Spec。** 用户调用 generate-goal 并明确写明“approve the spec. generate goal”，批准当前审阅版本的 S-01 至 S-08、AC-01 至 AC-15 与技术决定 1–9（含审阅修订）。status 为 accepted，仅表示契约获批，不表示实现完成，也不批准尚未生成的 goal 或授权执行/提交。
+
+**2026-10-02 AC-08 契约更正（执行中修订）。** goal 的最终对齐发现，原 AC-08“同次故障的 failure 取消与 unconfirmed 同时保留”在字面上要求一次真实故障同时产生两类结果，而真实 Runtime 无法做到：首个 tick 失败只产生取消，后续 tick 失败只产生 unconfirmed。修订删除了这项无法满足的“同一故障必须同时产生两类结果”要求，属于范围很窄的契约放宽；改为说明两条互斥路径，并把并存要求表述为“若出现则都保留”，技术决定 5 的措辞随之调整。AC-08 的其余要求、其他 AC、行为、数据形状与全部测试断言均未改变，验证方法改为分别覆盖两条路径。该方案依据用户 2026-10-02“需要提问时直接采用最推荐答案”的指示采纳，未另行取得逐字确认，已在交付报告中提请用户复核。修订使旧 reviewed 标记失效，已删除，未伪造新的审阅。

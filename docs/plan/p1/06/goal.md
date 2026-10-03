@@ -82,7 +82,7 @@ updated: 2026-10-02
 | AC-05 | 03 | 03 两种拒绝；08 两条实际交互 |
 | AC-06 | 03 | 03 同 tick FIFO、外部命令与重复投递 |
 | AC-07 | 04 | 04 六种 reason、新运行重置、迟到通知、ID/runId 重用；05 不入记录 |
-| AC-08 | 04 | 04 第二 tick 故障注入、成功前缀、取消与 unconfirmed 并存 |
+| AC-08 | 04、10 | 04 首个/后续 tick 故障注入、成功前缀；01 store 并存保留；10 澄清并存条款 |
 | AC-09 | 03、04、06 | 03/04 同步失败与 cleanupFailed；06 初始化/部分接线/卸载清理；08 诊断探针 |
 | AC-10 | 02、04 | 02 暂停静止；04 可用性与取消；08 实际 hidden→visible |
 | AC-11 | 01、07 | 01 selector 计数与负向类型；07 组件只取得只读句柄；08 提交计数 |
@@ -105,7 +105,8 @@ updated: 2026-10-02
 | [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | completed |
 | [07-dev-panel-app-wiring.md](./subtasks/07-dev-panel-app-wiring.md) | 06 | completed |
 | [08-browser-acceptance-evidence.md](./subtasks/08-browser-acceptance-evidence.md) | 07 | completed |
-| [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |
+| [10-ac08-contract-clarification.md](./subtasks/10-ac08-contract-clarification.md) | 04 | completed |
+| [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 10 | pending |
 
 依赖关系：
 
@@ -115,6 +116,11 @@ updated: 2026-10-02
 - 09 仅验证，不实现功能。后续修复使用新 ID，插在 09 前并加入其依赖，不重编号或复用 ID。
 
 ## 执行记录
+
+- **2026-10-02 — 最终对齐 09 发现契约缺口，新增修复项 10：** spec 的 AC-08 写有“同次故障的 failure 取消与 unconfirmed 同时保留”，字面要求一次真实故障同时产生两类结果。但真实 Runtime 中，首个 tick 失败时命令未消耗，只产生取消；后续 tick 失败时命令已在首个 tick 消耗、事件被丢弃，只产生 unconfirmed。实现与测试满足保留语义（两类都不覆盖已有终态），但 09 的“全部 AC 有完整证据”不能按字面勾选。
+  Evidence: 04 的真实 Core 注入测试；P1-05 的 [故障测试](../../../../src/app/session/synthetic-session-fault.test.ts)也说明取消只出现在首个 tick 失败时；09 的 rubber-duck 复核。
+  Affected acceptance: AC-08，以及 09 的第一项验收。
+  Resume when: 10 完成 AC-08 与技术决定 5 的更正后，重新执行 09。这是删除一项无法满足要求的窄范围契约放宽，其余要求、行为与测试断言不变。按用户“需要提问时直接采用最推荐答案”的指示采用此方案，最终报告中提请用户确认。
 
 ## 审批
 
