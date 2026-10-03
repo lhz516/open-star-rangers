@@ -41,7 +41,7 @@ P0 的剩余研究与实机工作继续在[未知项登记表](../../original/un
 
 - Vite/React/TypeScript strict、Node/pnpm 锁定、模块边界与确定性 lint、Vitest 和合成格式样本已纳入仓库；证据入口见 [P1-01 最终对齐](./01/subtasks/06-final-alignment.md#完成证据)与[工程约定](../../engineering/README.md)。
 - [App](../../../src/app/App.tsx) 由 P1-06 接入合成开发面板（React 指令与 Core 反馈），由 P1-07 接入 Three.js 合成画面与渲染诊断，[应用入口](../../../src/main.tsx) 已启用 StrictMode。P1-08 已接入菜单/导入占位原型，P1-09 已接入焦点限定的合成键盘输入；仍没有正式原版菜单或可玩的原版内容。
-- [package.json](../../../package.json) 已由 P1-06 加入 Zustand、由 P1-07 加入 Three.js，尚未包含 Playwright。Core、Runtime 与会话已由 P1-02 至 P1-05 交付，UI projection 桥接与 React 指令闭环已由 P1-06 交付，合成渲染器已由 P1-07 交付；尚无 CI、SWA 配置和 E2E 测试入口。
+- [package.json](../../../package.json) 已由 P1-06 加入 Zustand、P1-07 加入 Three.js、P1-10 加入本地 Playwright runner；P1-12已提供本地聚合合规与构建声明。Core/Runtime/Session、UI指令闭环、合成渲染/菜单/输入已有交付；本地命令见[工程约定](../../engineering/README.md)，实际证据分别归各Goal/subtask，阶段判定见[退出评审](../../reviews/P1-exit.md)。仍无CI/SWA交付，不以本地runner冒称发布验证。
 
 P1-01 以既有实现为输入进行复核和证据归档，不重新初始化项目，也不为了凑任务补写虚假的历史执行记录。本文件不复制任务完成状态；每个 goal 的状态须以其实际验收为准。
 
@@ -196,4 +196,4 @@ P1-01 以既有实现为输入进行复核和证据归档，不重新初始化�
 
 每个任务先澄清自己的 spec，再生成 goal 与 subtasks，路径为 `docs/plan/p1/<任务号>/`。不要一次性为这 12 项猜测具体字段、数值、重复测试次数或浏览器矩阵。
 
-建议下一项为 `/generate-spec p1/01 工程骨架基线复核`；复核后进入 `/generate-spec p1/02 最小纯 Core 与合成场景契约`。已有交付可验证归档，但没有已批准的契约和真实证据，不自动把新 goal 标记为 completed。
+当前规划入口为核对并明确确认[P1退出评审](../../reviews/P1-exit.md)实际结论；阶段切换与后续任务规划分别授权，不自动调用下一skill。后续仍须经Spec/Goal审批与真实验收，不能把已有合成交付或规划文字当正式资源/玩法完成；进度仅见相应Goal。

@@ -15,7 +15,7 @@ related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 
 ## 代码现状与前提
 
-- 规划基线 HEAD 为 `e5383d8`，当前改动为 P1-14 的规划与导航；执行前重新记录实际候选 revision、工作树/索引及非本任务改动。现有源码不需重写；目前新增本 Goal、六项证据文档，执行时计划新增 `docs/reviews/P1-exit.md`；具体缺陷出现后才确定独立修复项的实际代码/测试文件，不预建空修复文件或新功能。
+- 规划基线 HEAD 为 `e5383d8`，执行起点为 `831d231`（干净工作树/索引，见01）；规划新增本 Goal、六项证据文档，执行已新增[draft退出评审](../../../reviews/P1-exit.md)。现有源码未重写，未发现需独立修复项的既定P1缺陷，不预建空修复文件或新功能；最终差异/身份见06。
 - [合成 Core](../../../../src/core/synthetic/synthetic-scene.ts)、[snapshot](../../../../src/core/synthetic/synthetic-snapshot.ts)、[replay](../../../../src/core/synthetic/synthetic-replay.ts)已提供纯输入/命令/事件、投影、两种状态读取及 `osr-synthetic-replay`/1。其单位、规则和版本不成为正式玩法/存档契约。
 - [Runtime](../../../../src/app/runtime/synthetic-runtime.ts)、[Session](../../../../src/app/session/synthetic-session.ts)、[UI store](../../../../src/ui/game/synthetic-game-store.ts)和[App](../../../../src/app/App.tsx)已形成命令/控制分流、帧后反馈、只读消费及菜单/合成场景闭环，输入/渲染的落点见[结构指南](../../../engineering/source-structure.md)。
 - [package.json](../../../../package.json)已有工程、E2E、三合规命令；[Python 测试](../../../../tools/ghidra/test_patch_watcom_cspec.py)只用临时合成 XML，独立于 `pnpm check`。无缺失 runner 或新增依赖前提。
@@ -43,7 +43,7 @@ related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 
 规划时前置任务路由均为 done；01 必须核验批准、全部 tracker 行和证据，不能只看此表或旧最终项。P0/发布级实机要求只交接，不豁免。
 
-**本次提交约定：** 用户于 2026-10-03 允许无代码子任务不单独 commit，或仅 commit 文档。当前六项仍为验证/文档项，可合并保存证据后仅提交文档，也可不创建提交；不为 checkbox 生成空提交。发现后新增的代码修复项须单独本地提交，不适用无代码例外。各项证据与 tracker 必须真实保存到仓库文档，最终明确提交或未提交状态，不能以跳过 commit 为由省略验证或清理。当前修订不执行或提交。
+**本次提交约定：** 用户于 2026-10-03 允许无代码子任务不单独 commit，或仅 commit 文档。当前六项仍为验证/文档项，可合并保存证据后仅提交文档，也可不创建提交；不为 checkbox 生成空提交。发现后新增的代码修复项须单独本地提交，不适用无代码例外。各项证据与 tracker 必须真实保存到仓库文档，最终明确提交或未提交状态，不能以跳过 commit 为由省略验证或清理。获批规划修订本身未执行；本轮明确execute-goal后按此例外合并文档提交。
 
 ### 按需聚焦修复
 
@@ -89,17 +89,17 @@ related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | pending |
-| [02-engineering-replay-checks.md](./subtasks/02-engineering-replay-checks.md) | 01 | pending |
-| [03-browser-exit-checks.md](./subtasks/03-browser-exit-checks.md) | 01 | pending |
-| [04-compliance-artifact-review.md](./subtasks/04-compliance-artifact-review.md) | 01 | pending |
-| [05-exit-review-handoff.md](./subtasks/05-exit-review-handoff.md) | 01, 02, 03, 04 | pending |
-| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | pending |
+| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | completed |
+| [02-engineering-replay-checks.md](./subtasks/02-engineering-replay-checks.md) | 01 | completed |
+| [03-browser-exit-checks.md](./subtasks/03-browser-exit-checks.md) | 01 | completed |
+| [04-compliance-artifact-review.md](./subtasks/04-compliance-artifact-review.md) | 01 | completed |
+| [05-exit-review-handoff.md](./subtasks/05-exit-review-handoff.md) | 01, 02, 03, 04 | completed |
+| [06-final-alignment.md](./subtasks/06-final-alignment.md) | 01, 02, 03, 04, 05 | completed |
 
-02/03/04只需要01的候选及适用性，不互相制造前置；执行仍顺序进行，因各命令共用 dist，须核对实际测试/审阅产物身份。05需要全部证据和相关修复闭环才能作判定，06仅验证且依赖所有其他行。生产缺口归原责任定位，在本 Goal 按上述规则新增修复项，不重新打开旧Goal或改写历史证据；现有ID与当前pending状态不变。
+02/03/04只需要01的候选及适用性，不互相制造前置；执行仍顺序进行，因各命令共用 dist，须核对实际测试/审阅产物身份。05需要全部证据和相关修复闭环才能作判定，06仅验证且依赖所有其他行。生产缺口归原责任定位，在本 Goal 按上述规则新增修复项，不重新打开旧Goal或改写历史证据；规划修订保持ID与当时pending状态，当前执行状态只见tracker。
 
 ## 执行记录
 
 ## 审批
 
-用户于 2026-10-03 明确批准本 Goal 的完整计划：当前六个验证/文档子任务及按需新增的 P1 契约内聚焦修复项，并要求本地提交 P1-14 规划文档。所有现有子任务仍为 pending，尚未开始执行；批准不代表验收完成、不代替未来阶段评审结论确认，也不授权阶段切换、push 或部署。
+用户于 2026-10-03 明确批准本 Goal 的完整计划：当前六个验证/文档子任务及按需新增的 P1 契约内聚焦修复项，并要求本地提交 P1-14 规划文档；获批时所有现有子任务为pending，随后用户明确调用execute-goal执行，当前状态只见tracker。批准不代表验收完成、不代替阶段评审结论确认，也不授权阶段切换、push 或部署。

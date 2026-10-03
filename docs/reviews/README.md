@@ -2,12 +2,12 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 
 # 阶段评审记录
 
-每个阶段结束时写一份评审记录，文件名为 `P<阶段>-<主题>.md`，例如 `P0-feasibility.md`。写完即冻结，不再修改；之后的变化写进新的记录或 ADR。
+每个阶段结束时写一份评审记录，文件名为 `P<阶段>-<主题>.md`，例如 `P0-feasibility.md`。完整评审先以 `draft` 交付、待负责人明确确认实际结论；确认后记录真实日期/范围、改为 `accepted` 并冻结，不再修改，之后的变化写进新的记录或 ADR。Spec/Goal 批准或执行不代替结论确认，阶段切换仍需另行授权；见 [P0 先例](./P0-feasibility.md)及 [P1 退出评审](./P1-exit.md)。
 
 每份记录包括：
 
