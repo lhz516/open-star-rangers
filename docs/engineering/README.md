@@ -24,7 +24,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | 命令 | 作用 |
 |---|---|
 | `pnpm dev` | 启动 Vite 开发服务器 |
-| `pnpm build` | 生产构建，输出到 `dist/` |
+| `pnpm build` | 生产构建及严格分发许可声明，输出到 `dist/` |
 | `pnpm typecheck` | 分别用四个 tsconfig 做类型检查（见下） |
 | `pnpm lint` | ESLint，包含模块边界与确定性规则 |
 | `pnpm test` | Vitest 单元测试 |
@@ -32,6 +32,15 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | `pnpm test:e2e` | 先构建当前代码，再运行独立的本地 Chromium 浏览器回归；不属于 `pnpm check` |
 
 `tools/` 中的研究脚本直接用 `node tools/<脚本>.ts` 运行，见 [tools](../guides/tools.md)。
+
+### 构建许可声明
+
+[构建插件](../../tools/compliance/build-plugin.ts)仅用于build，不进入应用。正常构建同时生成 `dist/LICENSE.txt`、`dist/THIRD-PARTY-NOTICES.txt`、`dist/compliance-inventory.json`；inventory是分发/指纹元数据，不是已通过合规报告。
+
+- 当前锁与实际安装集合由pnpm自身frozen校验及只读查询核对；frozen在自有离线临时副本中运行lockfile-only/ignore-scripts，不修改用户树。缺依赖/文本/归属、未知或不支持的网站许可使build非零；普通命令不下载许可或安装依赖。
+- 分发依据真实chunk/module、map附带来源及静态文件，不看dev标签。Vite/Rolldown实际注入的helper也属于分发；当前lightningcss仅本地工具，不自动获得网站许可。public复制文件必须显式归属，当前无public资源系统。
+- [声明生成器](../../tools/compliance/notices.ts)保留当前shipped包的完整本地LICENSE/COPYRIGHT/NOTICE（含多文本/目录及显式声明的义务），校验许可正文/版权基础完整性；未知义务仍需人工审阅，不是法律鉴定。项目MIT与原版权利范围见[根说明](../../README.md#许可证与原版权利)。
+- 构建先移除旧声明/inventory及自有temporary文件；正常输入在load前记录并于写出前核对，输入变化或生成/IO失败不能留有效旧inventory。只管理3个明确输出，不清用户/local/或依赖目录；输入/产物SHA256有变化须重建。
 
 ## TypeScript 配置
 

@@ -1,8 +1,9 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { complianceBuildPlugin } from './tools/compliance/build-plugin.ts';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), complianceBuildPlugin()],
   build: {
     target: 'es2023',
     sourcemap: true,

@@ -1,7 +1,8 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { sha256 } from './report.ts';
+import { queryPnpm } from './packages.ts';
 
 export const syntheticBytes = Buffer.from('code-owned compliance fixture\n');
 export function syntheticManifest(digest = sha256(syntheticBytes)): string {
@@ -27,7 +28,19 @@ export async function fixture<T>(run: (root: string, write: (path: string, conte
   const write = (path: string, content: string | Uint8Array): void => {
     const destination = join(root, path);
     mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, content);
+    // Replacing the entry avoids mutating shared pnpm-store hard links.
+    writeFileSync(`${destination}.fixture-tmp`, content, { flag: 'wx' });
+    renameSync(`${destination}.fixture-tmp`, destination);
   };
   try { return await run(root, write); } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+export function installedBuildFixture(root: string, write: (path: string, content: string | Uint8Array) => void): void {
+  const project = new URL('../../', import.meta.url);
+  for (const name of ['package.json', 'pnpm-lock.yaml', 'LICENSE']) write(name, readFileSync(new URL(name, project)));
+  write('.gitignore', 'node_modules/\ndist/\nlocal/\n');
+  write('docs/original/manifest.md', syntheticManifest());
+  write('index.html', '<main>Code-owned compliance fixture</main><script type="module" src="/main.js"></script>');
+  write('main.js', 'document.body.dataset.fixture = "code-owned synthetic application";');
+  queryPnpm(['install', '--offline', '--frozen-lockfile', '--ignore-scripts', '--ignore-pnpmfile', '--ignore-workspace', '--reporter=silent'], root);
 }
