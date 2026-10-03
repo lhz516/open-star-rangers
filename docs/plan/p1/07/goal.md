@@ -37,7 +37,7 @@ updated: 2026-10-02
 | AC-02 | 03、05 | 07、08：实体映射和 restart identity |
 | AC-03 | 02、03 | 07：插值和无效帧原子拒绝 |
 | AC-04 | 03、04、05 | 07、08：唯一调度、暂停 draws 和源码检查 |
-| AC-05 | 06 | 08：真实 Chromium 画面流程和像素采样 |
+| AC-05 | 03、06 | 08：真实 Chromium 画面流程和像素采样；09：Node 故障收尾空帧 |
 | AC-06 | 02 | 07：相机参数化测试 |
 | AC-07 | 02 | 07：viewport 参数化测试 |
 | AC-08 | 04、06 | 08：容器尺寸、黑边和截图采样 |
@@ -64,13 +64,16 @@ updated: 2026-10-02
 | [05-owner-renderer-integration.md](./subtasks/05-owner-renderer-integration.md) | 03, 04 | completed |
 | [06-react-render-diagnostics.md](./subtasks/06-react-render-diagnostics.md) | 05 | completed |
 | [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
+| [09-fault-empty-frame.md](./subtasks/09-fault-empty-frame.md) | 03 | completed |
+| [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 09 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。浏览器能力受限时按 spec 记录 blocked，不以合成替代真实 WebGL 证据。
 
 ## 执行记录
 
 - **2026-10-02 — AC-09 取证方法补充：** 本机 Chrome 154 在只改 CDP `Emulation.setDeviceMetricsOverride.deviceScaleFactor`（CSS 宽高不变）时不派发 `MediaQueryList.change`，直到媒体查询重新求值。浏览器证据在每次改 DPR 后交替发送 `Emulation.setEmulatedMedia({media:'screen'})`/`{media:''}` 触发 Chrome 自己派发真实 `change`；仍不使用合成事件或 getter 替换，CSS 宽高保持不变。证据见 [04](./subtasks/04-browser-surface-lifecycle.md#完成证据)。
+
+- **2026-10-02 — 最终对齐前审计发现 Node 缺口：** AC-05 要求“故障收尾后为空帧”的 Node 证据（沿用 Vitest 创建边界注入），03/05/07 均未覆盖 Session 故障导致运行结束时的空帧绘制。按工作流把 08 保持 pending，新增修复子任务 [09](./subtasks/09-fault-empty-frame.md) 并加入 08 的依赖；其余 AC 的 Node 证据已齐，浏览器证据在 08 取得。
 
 ## 审批
 
