@@ -58,7 +58,7 @@ updated: 2026-10-02
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-dependency-boundaries.md](./subtasks/01-dependency-boundaries.md) | — | completed |
-| [02-pure-render-contracts.md](./subtasks/02-pure-render-contracts.md) | 01 | pending |
+| [02-pure-render-contracts.md](./subtasks/02-pure-render-contracts.md) | 01 | completed |
 | [03-three-scene-mapping.md](./subtasks/03-three-scene-mapping.md) | 02 | pending |
 | [04-browser-surface-lifecycle.md](./subtasks/04-browser-surface-lifecycle.md) | 02, 03 | pending |
 | [05-owner-renderer-integration.md](./subtasks/05-owner-renderer-integration.md) | 03, 04 | pending |
