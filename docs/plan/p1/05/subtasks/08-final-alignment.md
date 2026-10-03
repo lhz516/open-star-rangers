@@ -38,12 +38,12 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] 全部 8 个 S 和 14 个 AC 有当前有效的完整证据，不用部分子任务或文档 accepted 冒称完成。
-- [ ] 完整 pnpm check 通过、上游回归没有删除/跳过/放宽；runId 上限审阅准确。
-- [ ] 生命周期、通知、错误、资源与录制不变量一致，无第二循环或错误成功 fallback。
-- [ ] 实际 Chromium hidden/rAF/监听证据齐全；没有混同模拟/BFCache/StrictMode/HMR/发布设备结论。
-- [ ] 范围/文档/隐私检查通过，自有临时验证资源已清理，所有交付有对应证据。
-- [ ] 本项完整记录 GameRuntime 证据且未修改 STATUS 退出条件；联合要求明确留给后续任务和 P1 阶段评审。
+- [x] 全部 8 个 S 和 14 个 AC 有当前有效的完整证据，不用部分子任务或文档 accepted 冒称完成。
+- [x] 完整 pnpm check 通过、上游回归没有删除/跳过/放宽；runId 上限审阅准确。
+- [x] 生命周期、通知、错误、资源与录制不变量一致，无第二循环或错误成功 fallback。
+- [x] 实际 Chromium hidden/rAF/监听证据齐全；没有混同模拟/BFCache/StrictMode/HMR/发布设备结论。
+- [x] 范围/文档/隐私检查通过，自有临时验证资源已清理，所有交付有对应证据。
+- [x] 本项完整记录 GameRuntime 证据且未修改 STATUS 退出条件；联合要求明确留给后续任务和 P1 阶段评审。
 
 ## 验证方法
 
@@ -52,3 +52,14 @@ updated: 2026-10-02
 - 浏览器证据使用 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 已在 03/07 取得的实际记录；缺失则不能通过，不将实机/原版/云检查凭空加入本目标。
 
 ## 完成证据
+
+- 2026-10-02：基线为 `8d02001`（相对 `b23683b` 仅新增 P1-06 规划文档与阶段索引链接，无代码、依赖或配置变化）。`pnpm check` 通过：三个 TypeScript 程序、ESLint、27 个测试文件 / 598 项 Vitest、Vite 生产构建。
+- **覆盖：** 01–07 的验收框全部已勾选并有证据。各 AC 的子任务来源与 goal 覆盖表一致：AC-01 {01,04}、AC-02 {04,05}、AC-03 {03,04,06}、AC-04 {02,04,06}、AC-05 {02,04,05,06}、AC-06 {05,06}、AC-07 {03,04,07}、AC-08 {02,04,05}、AC-09 {05,06,07}、AC-10 {01,05,06}、AC-11 {04,06}、AC-12 {06}、AC-13 {03,07}、AC-14 {01–07}。S-01 至 S-08 分别由上述实现与测试覆盖，没有以文档 accepted 代替证据。
+- **上游回归：** P1-04 最终提交 `7c576ff` 的 7 个 Runtime 测试文件迁到 `src/app/runtime/` 后，与原文件相比只有 import 与 `vi.mock` 路径行不同。Core 文件迁到 `determinism/`、`synthetic/` 后只改了导入路径；全仓测试无 `.skip`、`.only`、`.todo`。自 `7c576ff` 以来 package.json、锁文件、Vite/TS/ESLint 配置、App 与 main 均无变化。Core 中没有 React、Zustand、Three.js 或 DOM 引用。
+- **runId 上限：** [`#canAllocate`](../../../../../src/app/session/synthetic-session.ts) 在 `#nextId === Number.MAX_SAFE_INTEGER` 时抛出“runId exhausted”，因此最多签发 `MAX_SAFE_INTEGER − 1`。restart 先调用 `#canAllocate` 再 `#end`，耗尽时不会关闭旧运行；没有公开的身份修改入口或测试后门。
+- **不变量：** 唯一请求与身份/代次隔离（04、06）、通知 FIFO 与唯一错误出口（05、06）、暂停折叠与重锚（02、04、06）、逆序且至多一次的清理和持续的 cleanupFailed（05、06）、故障成功前缀与 replay 一致（06），均有直接测试；Runtime.frame 失败时没有成功形状的帧报告或自动重试。
+- **浏览器：** 07 补测在外部 headed Chromium 154 中经 CDP 独立 context 取得真实 hidden。依次观测到：自动 paused/hidden，tick 稳定为 478、pending=0；隐藏期间 resume 被拒绝；回到 visible 后仍 paused；显式 resume 首帧 0 tick、状态对 478/478、alpha=0，随后推进且 maxPending=1；dispose 后三个监听各撤销一次。临时探针、context、浏览器与 Vite 均已清理。pagehide/pageshow 只证明绑定，不涉及 BFCache；StrictMode、HMR 与真实消费者没有被宣称通过。
+- **文档与隐私：** P1-05 文档与工程文档的本地链接只有 spec 中 `STATUS.md#运行骨架` 一处失效。它是[迁移记录](../../../../engineering/source-structure.md#验证)中保留的历史锚点，不修改已批准的 spec。仓库中没有 `local/` 文件、二进制或原版内容。
+- **GameRuntime 证据与 STATUS：** spec 的 AC-14 和技术决定 13 原要求勾选 STATUS 的 GameRuntime 项；按 [ADR-0014](../../../../decisions/ADR-0014-status-summary-only.md)，该叙述保留为历史，证据留在本项（P1-04 [最终证据](../../04/subtasks/06-final-alignment.md#完成证据)加上本任务 01–08），由 P1 阶段评审判定。STATUS 只更新“下一步”摘要，不新增或勾选退出项。“重启/暂停无重复循环（含 StrictMode 与 HMR）”这一联合要求仍由 P1-06 至 P1-10 及阶段评审核验。
+- **rubber-duck：** 结论为可以完成，无阻断问题，也不需要修复子任务。两条非阻断建议已采纳：记录实际基线 `8d02001`；STATUS 的下一步改为推进 P1-06。本项只做验证与文档，没有实现改动，因此不执行 simplify。
+- **文档影响：** 更新本项证据、goal tracker 与 STATUS 的下一步。工程约定、源码结构与指南已描述最终 API，无需修改；原版事实与冻结决定没有变化。

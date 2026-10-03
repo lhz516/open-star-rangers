@@ -85,7 +85,7 @@ updated: 2026-10-02
 | [05-consumer-boundaries-cleanup.md](./subtasks/05-consumer-boundaries-cleanup.md) | 04 | completed |
 | [06-failure-recovery-replay.md](./subtasks/06-failure-recovery-replay.md) | 05 | completed |
 | [07-browser-lifecycle-evidence.md](./subtasks/07-browser-lifecycle-evidence.md) | 03, 06 | completed |
-| [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
+| [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 
 01 与 02 互不依赖；03 只依赖宿主契约，04 的可控调度不依赖浏览器适配器。05 使用已成立的运行身份/控制器边界，06 验证完整消费者清理与错误恢复，07 才联合真实宿主和完整会话。
 
