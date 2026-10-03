@@ -140,7 +140,16 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 - 数字/结构校验可在真实复用需求下形成 Core 内部校验模块；合成 marker 坐标、ID 和输入规则仍归合成场景。本轮不提取校验。
 - 公共类型跟随 owner；`AssetId` 归内容，`Command` 归 Core，`SessionHost` 归 Session。不建立统一大 schema 或全局 barrel，也不要求一函数一文件。
 - `core/synthetic/` 是明确标记的合成规则，不是测试支持目录。合成 Command/Event、snapshot/replay 的形状和版本不得通过重命名变成正式玩法契约。Runtime 与 Session 同样保留 synthetic 命名，正式复用在第二个真实场景出现后设计。
-- 新单元测试继续邻接源码；测试支持在所属模块内维护，不进入生产导入链。未来 TSX 或 E2E 测试需由负责接入的任务明确配置类型/lint/发现范围，不能假定当前 `.test.ts` 配置已经覆盖。
+- 新单元测试继续邻接源码；测试支持在所属模块内维护，不进入生产导入链。TSX 单元测试尚未配置；P1-10 的 E2E 已用独立 `.spec.ts` runner/type/lint 接入，不扩大既有 `.test.ts` 的 Vitest 发现。
+
+### 浏览器测试目录与证据分层
+
+仓库根 [e2e/](../../e2e/)属于测试，不是 app/platform 模块，也不进入网站导入链。[配置](../../playwright.config.ts)和[独立tsconfig](../../tsconfig.e2e.json)允许 Node runner 与 evaluate 的 DOM 类型，但 Core/Node 程序仍无 DOM。命令、已有浏览器准备、origin/端口所有权、headed CDP 与输出清理见[工程约定](./README.md#本地浏览器-runner)。
+
+- bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；[P1-10覆盖表](../plan/p1/10/goal.md#验收覆盖)及[证据适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)是唯一执行证据入口。
+- `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议，replay只导入公开纯模块创建独立scene。
+- Node 单元测试继续证明纯规则、通知/旧回调、注册失败/回滚/稀有错误；持久E2E证明真实DOM/图形/宿主生命周期与联合资源。仍适用的人工HMR/window/DPR证据直接复用，不自动改源码，不把本机Chromium结果说成Safari/系统快捷键/目标GPU/原版保真。
+- `tools/e2e-configuration.test.ts`是 Node 接入/子进程失败回归，不传递导入浏览器helper或需要已安装浏览器；真正浏览器验收独立运行`pnpm test:e2e`，不由`pnpm check`替代。报告与合成截图只有ignored测试目录，不是产品资源。
 
 ## 后续扩展方向
 

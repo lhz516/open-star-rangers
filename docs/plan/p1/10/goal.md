@@ -72,7 +72,7 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 | [04-joint-resource-regression.md](./subtasks/04-joint-resource-regression.md) | 02 | completed |
 | [05-browser-replay.md](./subtasks/05-browser-replay.md) | 01 | completed |
 | [06-native-lifecycle-fallback.md](./subtasks/06-native-lifecycle-fallback.md) | 02 | completed |
-| [07-evidence-docs-alignment.md](./subtasks/07-evidence-docs-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-evidence-docs-alignment.md](./subtasks/07-evidence-docs-alignment.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 
 03/04/06共同依赖02的观测能力，不互相依赖；05只需01的runner。共享helper仍须顺序编辑。最后一行仅验证，依赖所有其他子任务；新增修复用新ID插在最终验证前，不改已有ID。
