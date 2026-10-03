@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Plugin } from 'vite';
 import { auditPackages, type PackageAudit } from './packages.ts';
@@ -6,21 +6,7 @@ import { collectDistribution, makeInventory, ordinaryFiles, validateInventory, t
 import { ownLicense, thirdPartyNotices } from './notices.ts';
 import { ComplianceError, diagnostic, sha256 } from './report.ts';
 import { safeFile } from './scan.ts';
-
-export const COMPLIANCE_OUTPUTS = ['LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'compliance-inventory.json'] as const;
-export function clearComplianceOutputs(root: string): void {
-  if (!existsSync(join(root, 'dist'))) return;
-  safeFile(root, 'dist');
-  const failures: unknown[] = [];
-  for (const name of COMPLIANCE_OUTPUTS) {
-    for (const suffix of ['', '.tmp']) {
-      const path = `dist/${name}${suffix}`;
-      if (!existsSync(join(root, path))) continue;
-      try { unlinkSync(safeFile(root, path)); } catch (cause) { failures.push(cause); }
-    }
-  }
-  if (failures.length) throw new ComplianceError('cleanup-outputs', 'Previous compliance outputs could not all be invalidated');
-}
+import { clearComplianceOutputs, type COMPLIANCE_OUTPUTS } from './outputs.ts';
 
 export function complianceBuildPlugin(options: DistributionOptions & { readonly audit?: (root: string) => PackageAudit } = {}): Plugin {
   let root = '';

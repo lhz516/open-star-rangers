@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { parseAllDocuments } from 'yaml';
-import { ComplianceError, compare, packageIdentity, relativePath, sha256, type Fingerprint } from './report.ts';
+import { ComplianceError, compare, diagnostic, packageIdentity, relativePath, sha256, type Fingerprint } from './report.ts';
 import { runGit, safeFile } from './scan.ts';
 import { licensePolicy } from './license-policy.ts';
 
@@ -28,7 +28,7 @@ export function queryPnpm(args: readonly string[], directory: string): string {
     });
   } catch (cause) {
     const status = object(cause) && 'status' in cause ? String(cause.status) : 'unavailable';
-    throw new ComplianceError('pnpm-failed', `pnpm ${args[0]} failed (exit ${status}); dependency range not completed`);
+    throw new ComplianceError('pnpm-failed', `pnpm ${args[0]} failed (exit ${status}); required step not completed`);
   }
 }
 
@@ -80,7 +80,11 @@ export function expandLicenses(root: string, data: unknown, directNames: Readonl
       if (!object(row) || typeof row.name !== 'string' || row.license !== license || !strings(row.versions) || !row.versions.length || !strings(row.paths) || !row.paths.length) {
         throw new ComplianceError('license-query', 'Name, exact versions, paths and license metadata are required');
       }
-      licensePolicy(license, false);
+      try { licensePolicy(license, false); } catch (cause) {
+        const finding = diagnostic(cause);
+        const identities = row.versions.map(version => packageIdentity(`${row.name}@${version}`)).sort(compare);
+        throw new ComplianceError(finding.code, `${finding.reason}; affected exact packages: ${identities.join(', ')}`, undefined, identities[0]);
+      }
       const foundVersions = new Set<string>();
       for (const location of row.paths) {
         const actual = containedPackage(directory, location);

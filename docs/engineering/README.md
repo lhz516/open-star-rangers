@@ -30,6 +30,9 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | `pnpm test` | Vitest 单元测试 |
 | `pnpm check` | 依次运行以上四项检查，提交前使用 |
 | `pnpm test:e2e` | 先构建当前代码，再运行独立的本地 Chromium 浏览器回归；不属于 `pnpm check` |
+| `pnpm check:original` | 只读扫描当前Git工作树/索引/未忽略未跟踪及完整dist，不自动build |
+| `pnpm check:licenses` | 只读核对当前锁/安装、inventory指纹与完整声明，不自动build |
+| `pnpm check:compliance` | 先当前build，再执行两类检查，任一失败整体非零 |
 
 `tools/` 中的研究脚本直接用 `node tools/<脚本>.ts` 运行，见 [tools](../guides/tools.md)。
 
@@ -41,6 +44,10 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 - 分发依据真实chunk/module、map附带来源及静态文件，不看dev标签。Vite/Rolldown实际注入的helper也属于分发；当前lightningcss仅本地工具，不自动获得网站许可。public复制文件必须显式归属，当前无public资源系统。
 - [声明生成器](../../tools/compliance/notices.ts)保留当前shipped包的完整本地LICENSE/COPYRIGHT/NOTICE（含多文本/目录及显式声明的义务），校验许可正文/版权基础完整性；未知义务仍需人工审阅，不是法律鉴定。项目MIT与原版权利范围见[根说明](../../README.md#许可证与原版权利)。
 - 构建先移除旧声明/inventory及自有temporary文件；正常输入在load前记录并于写出前核对，输入变化或生成/IO失败不能留有效旧inventory。只管理3个明确输出，不清用户/local/或依赖目录；输入/产物SHA256有变化须重建。
+
+[CLI](../../tools/compliance/cli.ts)输出 `osr-local-compliance`/1 的JSON，kind分别为original/licenses/compliance。只有全部必需范围completed且零finding才passed=true/exit0；失败是passed=false/非零，保留稳定code、范围与安全相对路径/包身份，不转发原始内容、私人路径或工具stderr。机器读取可用 `pnpm --silent check:compliance`；默认不保存报告，需留存时重定向到ignored的 `test-results/compliance/`。
+
+counts的checked含义：worktree/index/untracked/build为完整文件数，dependencies为当前安装实例数，distribution为归属产物数（inventory自身无递归digest），artifacts为全部当前dist文件数。coverage明确当前platform/arch与未安装optional清单；这些未安装包没有被冒称已扫描。原版扫描只需Node/Git，缺许可SDK时许可/聚合也返回明确失败JSON，不安装补齐。
 
 ## TypeScript 配置
 

@@ -19,9 +19,12 @@ pnpm install --frozen-lockfile
 pnpm dev
 pnpm check
 pnpm test:e2e
+pnpm check:compliance
 ```
 
 浏览器回归需要本机已有兼容 Chrome/Chromium，不自动下载浏览器。环境、独立命令、端口/profile 所有权与覆盖限制只在工程约定维护。
+
+本地合规聚合会先重新构建；`pnpm check:original`/`pnpm check:licenses`只检查当前Git/dist/安装与声明，不偷偷重建或安装。范围不完整、命中或义务不明均非零，不把hash/许可工具通过当作法律保证；机器JSON、声明产物与具体能力边界见工程约定。
 
 从[项目进度](./docs/STATUS.md)、[文档地图](./docs/README.md)与[Agent入口](./AGENTS.md)了解当前实现及下一步；本地研究工具的适用范围见[工具指南](./docs/guides/tools.md)。不要把规划文档视为已交付功能。
 

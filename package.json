@@ -22,7 +22,10 @@
     "lint": "eslint .",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
-    "test:e2e": "pnpm build && playwright test"
+    "test:e2e": "pnpm build && playwright test",
+    "check:original": "node tools/compliance/cli.ts original",
+    "check:licenses": "node tools/compliance/cli.ts licenses",
+    "check:compliance": "node tools/compliance/cli.ts compliance"
   },
   "dependencies": {
     "react": "^19.3.0",

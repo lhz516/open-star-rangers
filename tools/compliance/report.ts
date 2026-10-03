@@ -25,14 +25,18 @@ export interface ReportInput {
   readonly dependencies?: readonly DependencyEvidence[];
   readonly distribution?: readonly ArtifactEvidence[];
   readonly fingerprints?: readonly Fingerprint[];
+  readonly coverage?: { readonly platform: string; readonly arch: string; readonly skippedOptional: readonly string[] };
 }
 
 export class ComplianceError extends Error {
   readonly finding: Finding;
-  constructor(code: string, reason: string, path?: string) {
+  constructor(code: string, reason: string, path?: string, packageId?: string) {
     super(reason);
     this.name = 'ComplianceError';
-    this.finding = { code, reason, ...(path === undefined ? {} : { path: relativePath(path) }) };
+    this.finding = {
+      code, reason, ...(path === undefined ? {} : { path: relativePath(path) }),
+      ...(packageId === undefined ? {} : { package: packageIdentity(packageId) }),
+    };
   }
 }
 
@@ -72,11 +76,15 @@ export function diagnostic(error: unknown): Finding {
   return { code, reason: `Required operation failed (${code}); no input contents or host paths are included.` };
 }
 
-export function report(kind: ReportKind, input: ReportInput) {
-  const required = [
+export function requiredScopes(kind: ReportKind): string[] {
+  return [
     ...(kind === 'licenses' ? [] : ['worktree', 'index', 'untracked', 'build']),
     ...(kind === 'original' ? [] : ['dependencies', 'distribution', 'artifacts']),
   ];
+}
+
+export function report(kind: ReportKind, input: ReportInput) {
+  const required = requiredScopes(kind);
   const counts = Object.fromEntries(Object.entries(input.counts).sort(([a], [b]) => compare(a, b)));
   for (const count of Object.values(counts)) {
     if (!Number.isSafeInteger(count.checked) || count.checked < 0 || typeof count.completed !== 'boolean') {
@@ -101,6 +109,9 @@ export function report(kind: ReportKind, input: ReportInput) {
       ...dependency, identity: packageIdentity(dependency.identity), instance: relativePath(dependency.instance),
     })).sort((a, b) => compare(a.identity, b.identity)),
     distribution, fingerprints,
+    coverage: input.coverage ? {
+      platform: input.coverage.platform, arch: input.coverage.arch, skippedOptional: input.coverage.skippedOptional.map(packageIdentity).sort(compare),
+    } : null,
   };
 }
 

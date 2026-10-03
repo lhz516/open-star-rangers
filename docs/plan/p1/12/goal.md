@@ -76,7 +76,7 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 | [04-distribution-inventory.md](./subtasks/04-distribution-inventory.md) | 03 | completed |
 | [05-project-rights-text.md](./subtasks/05-project-rights-text.md) | — | completed |
 | [06-build-notices.md](./subtasks/06-build-notices.md) | 04, 05 | completed |
-| [07-compliance-cli.md](./subtasks/07-compliance-cli.md) | 02, 03, 06 | pending |
+| [07-compliance-cli.md](./subtasks/07-compliance-cli.md) | 02, 03, 06 | completed |
 | [08-local-evidence-docs.md](./subtasks/08-local-evidence-docs.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |
 
