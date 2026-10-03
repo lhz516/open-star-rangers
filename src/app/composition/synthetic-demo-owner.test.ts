@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RollbackError } from '../session/rollback-error.ts';
 import { GameSessionError } from '../session/session-errors.ts';
 import { ControlledHost } from '../session/synthetic-session.test-support.ts';
 import type * as BridgeModule from '../../ui/game/synthetic-session-bridge.ts';
@@ -8,13 +9,29 @@ import { TestClock } from '../../ui/game/synthetic-ui.test-support.ts';
 import { RecordingSurface } from '../../render/scene/render-surface.test-support.ts';
 import { createSyntheticDemoOwner } from './synthetic-demo-owner.ts';
 
-const failures = vi.hoisted(() => ({ bind: undefined as unknown, afterBind: undefined as unknown, unbind: undefined as unknown, trace: null as string[] | null }));
+const failures = vi.hoisted(() => ({
+  bind: undefined as unknown, afterBind: undefined as unknown, unbind: undefined as unknown, trace: null as string[] | null,
+  /**
+   * Makes an extra run consumer own a cleanup that throws this, through the session unless
+   * `consumerOwnsDirectly`, then fail to attach with `consumerAttach`.
+   */
+  consumerRollback: undefined as unknown, consumerAttach: undefined as unknown, consumerOwnsDirectly: false,
+  bridge: null as BridgeModule.SyntheticSessionBridge | null,
+}));
 vi.mock('../../ui/game/synthetic-session-bridge.ts', async importOriginal => {
   const original = await importOriginal<typeof BridgeModule>();
   return {
     ...original,
-    createSyntheticSessionBridge(...args: Parameters<typeof original.createSyntheticSessionBridge>) {
-      const bridge = original.createSyntheticSessionBridge(...args);
+    createSyntheticSessionBridge(...[store, clock, consumers = []]: Parameters<typeof original.createSyntheticSessionBridge>) {
+      const failing: BridgeModule.SyntheticRunConsumer = {
+        attach: binding => {
+          const cleanup = (): undefined => { throw failures.consumerRollback; };
+          binding.own(failures.consumerOwnsDirectly ? cleanup : binding.run.ownCleanup(cleanup));
+          throw failures.consumerAttach;
+        },
+      };
+      const bridge = original.createSyntheticSessionBridge(store, clock, failures.consumerAttach === undefined ? consumers : [...consumers, failing]);
+      failures.bridge = bridge;
       return Object.freeze({
         onError: bridge.onError,
         bind(session: SyntheticSession) {
@@ -32,7 +49,11 @@ vi.mock('../../ui/game/synthetic-session-bridge.ts', async importOriginal => {
     },
   };
 });
-afterEach(() => { failures.bind = undefined; failures.afterBind = undefined; failures.unbind = undefined; failures.trace = null; });
+afterEach(() => {
+  Object.assign(failures, {
+    bind: undefined, afterBind: undefined, unbind: undefined, trace: null, consumerRollback: undefined, consumerAttach: undefined, consumerOwnsDirectly: false, bridge: null,
+  });
+});
 
 /** A controlled host whose lifecycle cancellation can be made to fail. */
 class FailingCancelHost extends ControlledHost {
@@ -331,3 +352,167 @@ describe('synthetic demo owner with a renderer', () => {
     expect(() => owner.dispose()).not.toThrow();
   });
 });
+
+describe('synthetic demo owner cleanup failure record', () => {
+  const reportError = (error: unknown): void => { throw error; };
+
+  it('stays null for a faulted session, a failed or unavailable renderer and a released connect failure', () => {
+    const host = new ControlledHost(), surface = new RecordingSurface();
+    const faulted = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError });
+    surface.resize();
+    faulted.dispatch('start');
+    surface.drawFailure = new Error('draw');
+    host.deliver(0);
+    expect(faulted.renderer.getSnapshot().state).toBe('failed');
+    host.deliver(Number.NaN);
+    expect(faulted.store.getState().status).toMatchObject({ phase: 'faulted', cleanupFailed: false });
+    faulted.dispose();
+    expect(faulted.cleanupFailure()).toBeNull();
+
+    const unavailable = createSyntheticDemoOwner(new ControlledHost(), new TestClock().read, NO_VIEW);
+    unavailable.dispatch('start');
+    unavailable.dispose();
+    expect(unavailable.cleanupFailure()).toBeNull();
+
+    // A business failure that is itself an AggregateError is not a cleanup failure.
+    const connectSurface = new RecordingSurface(), connectHost = new ControlledHost();
+    const business = new AggregateError([new Error('connect')], 'connect');
+    connectSurface.connectFailure = business;
+    const released = createSyntheticDemoOwner(connectHost, new TestClock().read, { surface: connectSurface, reportError });
+    expect(released.renderer.getSnapshot()).toEqual({ state: 'unavailable', error: business });
+    released.dispatch('start');
+    expect(released.store.getState().status?.phase).toBe('running');
+    expect(released.cleanupFailure()).toBeNull();
+    released.dispose();
+  });
+
+  it('keeps the session error when a restart cannot cancel a frame, whatever the store shows later', () => {
+    const host = new ControlledHost();
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW);
+    owner.dispatch('start');
+    const cause = new Error('cancel');
+    host.cancelFailure = cause;
+    owner.dispatch('restart');
+    const status = owner.store.getState().status;
+    expect(status).toMatchObject({ phase: 'faulted', cleanupFailed: true });
+    const record = owner.cleanupFailure();
+    expect(record?.cause).toBe(status?.error);
+    expect(record?.cause).toMatchObject({ failures: [{ phase: 'scheduler', cause }] });
+    expect(Object.isFrozen(record)).toBe(true);
+    owner.dispatch('restart');
+    expect(owner.store.getState().actionError?.operation).toBe('restart');
+    host.cancelFailure = undefined;
+    owner.dispose();
+    expect(owner.cleanupFailure()).toBe(record);
+  });
+
+  it('keeps the session error when a run resource fails to clean up on restart', () => {
+    const owner = createSyntheticDemoOwner(new ControlledHost(), new TestClock().read, NO_VIEW);
+    owner.dispatch('start');
+    const cause = new Error('resource');
+    failures.bridge!.currentRun()!.run.ownCleanup(() => { throw cause; });
+    owner.dispatch('restart');
+    expect(owner.store.getState().status).toMatchObject({ phase: 'faulted', cleanupFailed: true });
+    expect(owner.cleanupFailure()?.cause).toMatchObject({ failures: [{ phase: 'cleanup', cause }] });
+    owner.dispose();
+  });
+
+  it('records a failed dispose as the error it throws, after attempting every cleanup, and keeps the first', () => {
+    const host = new ControlledHost(), surface = new RecordingSurface();
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError });
+    owner.dispatch('start');
+    host.cancelFailure = new Error('cancel');
+    let thrown: unknown;
+    try { owner.dispose(); } catch (error) { thrown = error; }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect(owner.cleanupFailure()).toEqual({ cause: thrown });
+    expect(owner.store.getState().actionError).toEqual({ operation: 'cleanup', cause: thrown });
+    expect(host.listeners.size).toBe(0);
+    expect(surface.calls.slice(-2)).toEqual(['disconnect', 'dispose']);
+    owner.dispose();
+    expect(owner.cleanupFailure()?.cause).toBe(thrown);
+
+    const earlier = createSyntheticDemoOwner(new ControlledHost(), new TestClock().read, NO_VIEW);
+    earlier.dispatch('start');
+    failures.bridge!.currentRun()!.run.ownCleanup(() => { throw new Error('resource'); });
+    earlier.dispatch('restart');
+    const first = earlier.cleanupFailure();
+    failures.unbind = new Error('unbind');
+    expect(() => earlier.dispose()).toThrow(AggregateError);
+    expect(earlier.cleanupFailure()).toBe(first);
+  });
+
+  it('records a failed initialization only when its rollback also failed', () => {
+    failures.bind = new Error('bind');
+    const rolledBack = createSyntheticDemoOwner(new ControlledHost(), new TestClock().read, NO_VIEW);
+    expect(rolledBack.store.getState().actionError?.operation).toBe('initialize');
+    expect(rolledBack.cleanupFailure()).toBeNull();
+    failures.bind = undefined;
+
+    const host = new FailingCancelHost();
+    failures.afterBind = new Error('after bind');
+    host.lifecycleCancelFailure = new Error('lifecycle cancel');
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW);
+    const cause = owner.store.getState().actionError?.cause;
+    expect(cause).toBeInstanceOf(RollbackError);
+    expect((cause as RollbackError).cause).toBe(failures.afterBind);
+    expect(owner.cleanupFailure()).toEqual({ cause });
+  });
+
+  it('creates no session beside a surface it could not release', () => {
+    const host = new ControlledHost(), surface = new RecordingSurface();
+    surface.connectFailure = new Error('connect');
+    surface.disposeFailure = new Error('dispose');
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError });
+    const cause = owner.store.getState().actionError?.cause;
+    expect(owner.store.getState()).toMatchObject({ status: null, actionError: { operation: 'initialize' } });
+    expect(cause).toBeInstanceOf(RollbackError);
+    expect((cause as RollbackError).errors).toEqual([surface.connectFailure, surface.disposeFailure]);
+    expect(owner.cleanupFailure()).toEqual({ cause });
+    expect(counts(host)).toEqual({ requests: 0, listeners: 0 });
+    owner.dispatch('start');
+    expect(counts(host)).toEqual({ requests: 0, listeners: 0 });
+    expect(() => owner.dispose()).not.toThrow();
+  });
+
+  it('records a run consumer whose own cancellation failed, though the session saw no cleanup failure', () => {
+    failures.consumerAttach = new Error('attach');
+    failures.consumerRollback = new Error('rollback');
+    failures.consumerOwnsDirectly = true;
+    const owner = createSyntheticDemoOwner(new ControlledHost(), new TestClock().read, NO_VIEW);
+    owner.dispatch('start');
+    expect(owner.store.getState().status).toMatchObject({ phase: 'faulted', cleanupFailed: false });
+    const [consumer] = (owner.cleanupFailure()?.cause as GameSessionError).failures!;
+    expect(consumer.cause).toMatchObject({ cause: failures.consumerAttach, errors: [failures.consumerAttach, failures.consumerRollback] });
+    expect(consumer.cause).toBeInstanceOf(RollbackError);
+    owner.dispose();
+  });
+
+  it('creates no session beside a surface its factory could not release', () => {
+    const host = new ControlledHost();
+    const unreleased = new RollbackError(new Error('no WebGL 2'), [new Error('canvas removal')], 'surface');
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, { unavailable: unreleased, reportError });
+    expect(owner.store.getState()).toMatchObject({ status: null, actionError: { operation: 'initialize', cause: unreleased } });
+    expect(owner.cleanupFailure()).toEqual({ cause: unreleased });
+    expect(counts(host)).toEqual({ requests: 0, listeners: 0 });
+  });
+
+  it('records a run consumer whose attachment rollback failed, with the cleanup cause', () => {
+    const host = new ControlledHost();
+    failures.consumerAttach = new Error('attach');
+    failures.consumerRollback = new Error('rollback');
+    const owner = createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW);
+    owner.dispatch('start');
+    expect(owner.store.getState()).toMatchObject({ status: { phase: 'faulted', cleanupFailed: true }, actionError: { operation: 'start' } });
+    const error = owner.cleanupFailure()?.cause as GameSessionError;
+    const [consumer] = error.failures!;
+    expect(consumer.phase).toBe('consumer');
+    expect(consumer.cause).toBeInstanceOf(RollbackError);
+    const rollback = consumer.cause as RollbackError;
+    expect(rollback.cause).toBe(failures.consumerAttach);
+    expect(rollback.errors.slice(1)).toEqual([expect.objectContaining({ failures: [{ phase: 'cleanup', cause: failures.consumerRollback }] })]);
+    owner.dispose();
+    expect(host.listeners.size).toBe(0);
+  });
+});
+

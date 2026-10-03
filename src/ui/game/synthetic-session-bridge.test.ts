@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GameRuntimeError } from '../../app/runtime/runtime-errors.ts';
+import { RollbackError } from '../../app/session/rollback-error.ts';
 import { GameSessionError } from '../../app/session/session-errors.ts';
 import { createSyntheticGameStore, type SyntheticGameStoreWriter } from './synthetic-game-store.ts';
 import {
@@ -141,6 +142,24 @@ describe('synthetic session bridge: status and run attachment', () => {
     first.host.deliver(20);
     expect(first.currentRun().uiProjection().marker).not.toBeNull();
     expect(calls).toBe(0);
+  });
+
+  it('throws a RollbackError, and the session reports cleanupFailed, when a consumer cannot roll back its attachment', () => {
+    const cause = new Error('consumer attach'), rollback = new Error('rollback');
+    const consumer: SyntheticRunConsumer = {
+      attach: binding => {
+        binding.own(binding.run.ownCleanup(() => { throw rollback; }));
+        throw cause;
+      },
+    };
+    const { reader, session } = setupBridge(undefined, () => [consumer]);
+    let thrown: unknown;
+    try { session.control({ type: 'start' }); } catch (error) { thrown = error; }
+    const [failure] = (thrown as GameSessionError).failures!;
+    expect(failure.phase).toBe('consumer');
+    expect(failure.cause).toBeInstanceOf(RollbackError);
+    expect(failure.cause).toMatchObject({ cause, errors: [cause, { failures: [{ phase: 'cleanup', cause: rollback }] }] });
+    expect(reader.getState().status).toMatchObject({ phase: 'faulted', cleanupFailed: true });
   });
 
   it('keeps observing status after a consumer fails to attach to a new run', () => {

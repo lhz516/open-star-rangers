@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
 import { createSyntheticSession, type SessionFrame, type SessionRun } from '../../app/session/synthetic-session.ts';
 import { ControlledHost } from '../../app/session/synthetic-session.test-support.ts';
@@ -394,8 +395,8 @@ describe('synthetic renderer lifecycle', () => {
     expect(cancels).toBe(1);
     let thrown: unknown;
     try { renderer.attach(binding(rollback)); } catch (error) { thrown = error; }
-    expect(thrown).toBeInstanceOf(AggregateError);
-    expect((thrown as AggregateError).errors).toEqual([registration, rollback]);
+    expect(thrown).toBeInstanceOf(RollbackError);
+    expect(thrown).toMatchObject({ cause: registration, errors: [registration, rollback] });
     expect(cancels).toBe(2);
     for (const cleanup of owned) cleanup();
     expect(cancels).toBe(2);
@@ -407,10 +408,17 @@ describe('synthetic renderer lifecycle', () => {
     surface.connectFailure = failure;
     expect(() => createSyntheticRenderer({ surface, reportError: () => {} })).toThrow(failure);
     expect(surface.calls).toEqual(['connect', 'disconnect', 'dispose']);
-    surface.disposeFailure = new Error('dispose');
+    // A released surface rethrows the cause as is, even one that is itself an AggregateError.
+    const business = new AggregateError([failure], 'connect');
+    surface.connectFailure = business;
     let thrown: unknown;
     try { createSyntheticRenderer({ surface, reportError: () => {} }); } catch (error) { thrown = error; }
-    expect((thrown as AggregateError).errors).toEqual([failure, surface.disposeFailure]);
+    expect(thrown).toBe(business);
+    surface.connectFailure = failure;
+    surface.disposeFailure = new Error('dispose');
+    try { createSyntheticRenderer({ surface, reportError: () => {} }); } catch (error) { thrown = error; }
+    expect(thrown).toBeInstanceOf(RollbackError);
+    expect(thrown).toMatchObject({ cause: failure, errors: [failure, surface.disposeFailure] });
   });
 
   it('reports without a surface, attaches nothing and has no GPU statistics', () => {

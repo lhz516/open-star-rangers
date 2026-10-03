@@ -7,6 +7,7 @@
  */
 import { Color, Mesh, Scene, type PerspectiveCamera } from 'three';
 import type { RenderFrame } from '../../app/runtime/synthetic-runtime.ts';
+import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { SessionFrame, SessionRun } from '../../app/session/synthetic-session.ts';
 import { attemptAll } from '../scene/cleanup.ts';
@@ -63,7 +64,7 @@ export interface SyntheticRenderer extends SyntheticRendererReader {
   /**
    * Draws the run's current frame and then every frame it delivers until it ends. Transactional:
    * on a registration failure it cancels what it registered, newest first, and throws the failure,
-   * or an AggregateError that also holds the rollback failures. Handles already passed to `own`
+   * or a RollbackError when a cancellation also failed. Handles already passed to `own`
    * become harmless no-ops. Does nothing once failed, unavailable or disposed.
    */
   attach(binding: SyntheticRenderBinding): void;
@@ -180,7 +181,7 @@ class Renderer implements SyntheticRenderer {
     } catch (cause) {
       const errors = attemptAll(registered.reverse());
       if (errors.length === 0) throw cause;
-      throw new AggregateError([cause, ...errors], 'Renderer attachment and rollback failed', { cause });
+      throw new RollbackError(cause, errors, 'Renderer attachment and rollback failed');
     }
     if (this.#run) this.#clearRun();
     this.#run = run;
@@ -329,7 +330,8 @@ class Renderer implements SyntheticRenderer {
 
 /**
  * Creates the renderer and connects a supplied surface, taking ownership of it: if creation fails,
- * the surface is disconnected and disposed before the error (with any cleanup errors) is thrown.
+ * the surface is disconnected and disposed before the error is thrown, as a RollbackError if that
+ * cleanup also failed.
  */
 export function createSyntheticRenderer(options: SyntheticRendererOptions): SyntheticRenderer {
   if (!('surface' in options)) return new UnavailableRenderer(options.unavailable);
@@ -345,6 +347,6 @@ export function createSyntheticRenderer(options: SyntheticRendererOptions): Synt
       ? attemptAll([() => { created.dispose(); }]).flatMap(error => (error as AggregateError).errors)
       : attemptAll([() => { surface.disconnect(); }, () => { surface.dispose(); }]);
     if (errors.length === 0) throw cause;
-    throw new AggregateError([cause, ...errors], 'Synthetic renderer creation and cleanup failed', { cause });
+    throw new RollbackError(cause, errors, 'Synthetic renderer creation and cleanup failed');
   }
 }

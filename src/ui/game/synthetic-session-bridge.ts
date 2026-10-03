@@ -6,6 +6,7 @@
  */
 import type { Command } from '../../core/synthetic/synthetic-scene.ts';
 import type { GameSessionError } from '../../app/session/session-errors.ts';
+import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { SessionFrame, SessionRun, SessionStatus, SyntheticSession } from '../../app/session/synthetic-session.ts';
 import type { SyntheticGameChange, SyntheticGameStoreWriter, UiCommandSettlement } from './synthetic-game-store.ts';
@@ -44,7 +45,8 @@ export type SyntheticRunFeedback = Pick<SyntheticGameChange, 'addPending' | 'set
 export interface SyntheticRunConsumer {
   /**
    * Registers run listeners, handing each cancellation to `binding.own` as soon as it exists. If
-   * attachment throws, the bridge rolls back everything owned so far.
+   * attachment throws, the bridge rolls back everything owned so far and rethrows the failure, as a
+   * RollbackError if a cancellation also failed.
    */
   attach(binding: SyntheticRunBinding): void;
   /** Settlements committed together with the status that shows the bound run as faulted. */
@@ -147,7 +149,7 @@ class Bridge implements SyntheticSessionBridge {
       try {
         this.#release();
       } catch (cleanup) {
-        throw new AggregateError([cause, cleanup], 'Bridge binding and rollback failed', { cause: cleanup });
+        throw new RollbackError(cause, [cleanup], 'Bridge binding and rollback failed');
       } finally {
         this.#state = 'unbound';
       }
@@ -239,9 +241,10 @@ class Bridge implements SyntheticSessionBridge {
       for (const consumer of this.#consumers) consumer.attach(binding);
     } catch (cause) {
       this.#binding = null;
-      binding.drain(); // The attachment failure is reported instead of rollback errors.
+      const rollback = binding.drain();
       // The session drops a throwing status listener; keep observing the fault this failure causes.
       if (inNotification) this.#subscribeStatus();
+      if (rollback.length > 0) throw new RollbackError(cause, rollback, 'Run consumer attachment and rollback failed');
       throw cause;
     }
     this.#store.commit({ status, projection, clearRun: true, ...(status.error === null ? { sessionError: null } : {}) });
