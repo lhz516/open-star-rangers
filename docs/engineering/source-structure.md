@@ -21,6 +21,7 @@ src/
     App.tsx
     composition/
       synthetic-demo-owner.ts
+      use-synthetic-demo-owner.ts
     runtime/
       fixed-step-clock.ts
       runtime-errors.ts
@@ -47,14 +48,17 @@ src/
     browser/
       browser-session-host.ts
   ui/
+    dev/
+      SyntheticDevPanel.tsx
     game/
       synthetic-command-feedback.ts
       synthetic-game-controls.ts
       synthetic-game-store.ts
       synthetic-session-bridge.ts
+      use-synthetic-game.ts
 ```
 
-`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）和会话控制；[app/composition/](../../src/app/composition/) 已有 DOM-free 的合成演示 owner，负责装配会话、桥接、反馈与控制，并统一回滚和销毁；React 页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
+`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。[App](../../src/app/App.tsx) 现在承载合成开发面板，它是工程演示，不是正式菜单、飞行 HUD 或原版界面。
 
 ## 职责与依赖
 

@@ -128,3 +128,4 @@ P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/
   - 会话创建或绑定失败时，依次尝试销毁已创建的会话与解绑桥接，store 原子重置为 status=null，actionError 为 initialize（多个失败时为 AggregateError）。
   - `dispose` 先销毁会话再解绑桥接，每项清理都会尝试；失败时把同一个 AggregateError 写入 actionError（cleanup）并抛出。重复调用无效果，dispose 或初始化失败后的 dispatch 被忽略。
   - 持有方（React effect）必须先 dispose 旧 owner 再创建新 owner。
+- React 接线：[use-synthetic-demo-owner.ts](../../src/app/composition/use-synthetic-demo-owner.ts) 在 effect 中用 `createBrowserSessionHost()` 与 `performance.now` 创建 owner，并在卸载、StrictMode 重跑或 Fast Refresh 时先 dispose 再创建新 owner；清理失败经 `reportError` 报告。[use-synthetic-game.ts](../../src/ui/game/use-synthetic-game.ts) 用 Zustand 的 `useStore(reader, selector)` 订阅单个标量或稳定切片。[SyntheticDevPanel.tsx](../../src/ui/dev/SyntheticDevPanel.tsx) 只接收只读 `store` 与 `dispatch`，按区块分别订阅，使用原生按钮且不注册全局键盘监听。[App](../../src/app/App.tsx) 在开发与生产构建中都显示该面板，不自动 start。

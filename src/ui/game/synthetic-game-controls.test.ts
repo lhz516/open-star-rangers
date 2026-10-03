@@ -33,6 +33,22 @@ describe('synthetic game controls: availability', () => {
     expect(Object.isFrozen(syntheticControlAvailability(current))).toBe(true);
     expect(syntheticControlAvailability(current && { ...current })).toBe(syntheticControlAvailability(current));
   });
+
+  it('returns the same object for statuses that enable the same actions', () => {
+    const idleVisible = syntheticControlAvailability(status({ phase: 'idle', runId: null }));
+    expect(syntheticControlAvailability(status({ phase: 'idle', runId: null, environmentVisible: false }))).toBe(idleVisible);
+    expect(syntheticControlAvailability(status({ phase: 'faulted', environmentVisible: false })))
+      .toBe(syntheticControlAvailability(status({ phase: 'faulted' })));
+    expect(syntheticControlAvailability(status({ phase: 'running', environmentVisible: false })))
+      .toBe(syntheticControlAvailability(base));
+    expect(syntheticControlAvailability(status({ phase: 'disposed', runId: null }))).toBe(syntheticControlAvailability(null));
+    expect(syntheticControlAvailability(status({ phase: 'idle', runId: null, cleanupFailed: true })))
+      .toBe(syntheticControlAvailability(null));
+    expect(syntheticControlAvailability(status({ phase: 'paused', pauseReason: 'hidden', environmentVisible: false })))
+      .toBe(syntheticControlAvailability(status({ phase: 'faulted' })));
+    expect(syntheticControlAvailability(status({ phase: 'paused', pauseReason: 'user' })))
+      .not.toBe(syntheticControlAvailability(status({ phase: 'faulted' })));
+  });
 });
 
 describe('synthetic game controls: actions', () => {

@@ -40,7 +40,7 @@ P0 的剩余研究与实机工作继续在[未知项登记表](../../original/un
 ## 2. 已有起点
 
 - Vite/React/TypeScript strict、Node/pnpm 锁定、模块边界与确定性 lint、Vitest 和合成格式样本已纳入仓库；证据入口见 [P1-01 最终对齐](./01/subtasks/06-final-alignment.md#完成证据)与[工程约定](../../engineering/README.md)。
-- [App](../../../src/app/App.tsx) 仍是占位页面；[应用入口](../../../src/main.tsx) 已启用 StrictMode。目前不是可运行的游戏场景。
+- [App](../../../src/app/App.tsx) 由 P1-06 接入合成开发面板（React 指令与 Core 反馈），[应用入口](../../../src/main.tsx) 已启用 StrictMode。目前仍没有 Three.js 场景、正式菜单或可玩的原版内容。
 - [package.json](../../../package.json) 已由 P1-06 加入 Zustand，尚未包含 Three.js 或 Playwright。Core、Runtime 与会话已由 P1-02 至 P1-05 交付；渲染器与 UI 桥接尚未完成，也尚无 CI、SWA 配置和 E2E 测试入口。
 
 P1-01 以既有实现为输入进行复核和证据归档，不重新初始化项目，也不为了凑任务补写虚假的历史执行记录。本文件不复制任务完成状态；每个 goal 的状态须以其实际验收为准。

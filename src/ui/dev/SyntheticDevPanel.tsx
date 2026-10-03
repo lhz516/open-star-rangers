@@ -1,0 +1,200 @@
+/**
+ * Development panel for the P1 synthetic demo: session controls, marker commands, the sampled
+ * projection, command results and errors. It reads the UI store through selectors and acts only
+ * through `dispatch`; it is not a flight HUD, menu or original-game screen.
+ */
+import type { CSSProperties } from 'react';
+import type { SessionFailure } from '../../app/session/session-errors.ts';
+import type { Vec3 } from '../../core/synthetic/synthetic-scene.ts';
+import type { SyntheticGameStoreReader, UiCommandResult } from '../game/synthetic-game-store.ts';
+import {
+  syntheticControlAvailability, type SyntheticControlAvailability, type SyntheticPanelAction,
+} from '../game/synthetic-game-controls.ts';
+import { useSyntheticGame } from '../game/use-synthetic-game.ts';
+
+export interface SyntheticDevPanelProps {
+  readonly store: SyntheticGameStoreReader;
+  readonly dispatch: (action: SyntheticPanelAction) => void;
+}
+
+interface SectionProps {
+  readonly store: SyntheticGameStoreReader;
+}
+
+const SESSION_ACTIONS: readonly (readonly [SyntheticPanelAction, string])[] = [
+  ['start', 'Start'], ['pause', 'Pause'], ['resume', 'Resume'], ['restart', 'Restart'], ['exit', 'Exit'],
+];
+const COMMAND_ACTIONS: readonly (readonly [SyntheticPanelAction, string])[] = [
+  ['add-marker', 'Add marker'], ['remove-marker', 'Remove marker'],
+];
+
+const panelStyle: CSSProperties = { display: 'grid', gap: '1rem', maxWidth: '48rem' };
+const rowStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '0.5rem' };
+const valueStyle: CSSProperties = { fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' };
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3);
+}
+
+function formatPosition({ x, y, z }: Vec3): string {
+  return `(${formatNumber(x)}, ${formatNumber(y)}, ${formatNumber(z)})`;
+}
+
+/** Readable error text for developers, including session failure phases and aggregated causes. */
+function describeError(cause: unknown, indent = ''): string {
+  if (!(cause instanceof Error)) return `${indent}${String(cause)}`;
+  const lines = [`${indent}${cause.name}: ${cause.message}`];
+  const { failures } = cause as { readonly failures?: readonly SessionFailure[] };
+  for (const failure of failures ?? []) lines.push(`${indent}  ${failure.phase}:`, describeError(failure.cause, `${indent}    `));
+  if (cause instanceof AggregateError) for (const error of cause.errors) lines.push(describeError(error, `${indent}  `));
+  return lines.join('\n');
+}
+
+function describeResult(result: UiCommandResult): string {
+  switch (result.outcome) {
+    case 'accepted': {
+      const { event } = result;
+      return `accepted by Core at tick ${event.tick}: ${event.type} entity ${event.entityId} at ${formatPosition(event.position)}`;
+    }
+    case 'rejected':
+      return `rejected by Core at tick ${result.event.tick}: ${result.event.reason}`;
+    case 'cancelled':
+      return `cancelled by the session: ${result.reason}`;
+    case 'unconfirmed':
+      return 'unconfirmed: the session failed before Core reported a result';
+  }
+}
+
+function ActionButtons({ availability, dispatch, actions, label }: {
+  readonly availability: SyntheticControlAvailability;
+  readonly dispatch: SyntheticDevPanelProps['dispatch'];
+  readonly actions: readonly (readonly [SyntheticPanelAction, string])[];
+  readonly label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} style={rowStyle}>
+      {actions.map(([action, text]) => (
+        <button key={action} type="button" disabled={!availability[action]} onClick={() => { dispatch(action); }}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ControlsView({ store, dispatch }: SyntheticDevPanelProps) {
+  // Availability is one shared object per set of enabled actions, so this re-renders only when a button changes.
+  const availability = useSyntheticGame(store, state => syntheticControlAvailability(state.status));
+  return (
+    <>
+      <ActionButtons availability={availability} dispatch={dispatch} actions={SESSION_ACTIONS} label="Session controls" />
+      <ActionButtons availability={availability} dispatch={dispatch} actions={COMMAND_ACTIONS} label="Marker commands" />
+    </>
+  );
+}
+
+function SessionStatusView({ store }: SectionProps) {
+  const status = useSyntheticGame(store, state => state.status);
+  return (
+    <section aria-label="Session status">
+      <h3>Session</h3>
+      {status === null ? <p data-testid="session-status">No session controller.</p> : (
+        <dl data-testid="session-status" style={valueStyle}>
+          <dt>Phase</dt><dd data-testid="phase">{status.phase}</dd>
+          <dt>Run</dt><dd data-testid="run-id">{status.runId ?? 'none'}</dd>
+          <dt>Pause reason</dt><dd data-testid="pause-reason">{status.pauseReason ?? 'none'}</dd>
+          <dt>Page visible</dt><dd data-testid="environment-visible">{status.environmentVisible ? 'yes' : 'no'}</dd>
+          <dt>Cleanup failed</dt><dd data-testid="cleanup-failed">{status.cleanupFailed ? 'yes' : 'no'}</dd>
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function ProjectionView({ store }: SectionProps) {
+  const projection = useSyntheticGame(store, state => state.projection);
+  return (
+    <section aria-label="Projection">
+      <h3>Projection (sampled at 10 Hz)</h3>
+      {projection === null ? <p data-testid="projection">No current world.</p> : (
+        <dl data-testid="projection" style={valueStyle}>
+          <dt>Scenario</dt><dd data-testid="scenario">{projection.scenario}</dd>
+          <dt>Tick</dt><dd data-testid="tick">{projection.tick}</dd>
+          <dt>Tick rate</dt><dd data-testid="tick-rate">{projection.tickRateHz} Hz</dd>
+          <dt>Mover</dt><dd data-testid="mover">#{projection.mover.id} at {formatPosition(projection.mover.position)}</dd>
+          <dt>Marker</dt>
+          <dd data-testid="marker">
+            {projection.marker === null ? 'none' : `#${projection.marker.id} at ${formatPosition(projection.marker.position)}`}
+          </dd>
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function CommandFeedbackView({ store }: SectionProps) {
+  const pending = useSyntheticGame(store, state => state.pendingCommands);
+  const results = useSyntheticGame(store, state => state.recentResults);
+  return (
+    <section aria-label="Command feedback">
+      <h3>Pending commands</h3>
+      {pending.length === 0 ? <p data-testid="pending">None.</p> : (
+        <ul data-testid="pending" style={valueStyle}>
+          {pending.map(command => (
+            <li key={`${command.runId}:${command.commandId}`}>
+              run {command.runId} · #{command.commandId} {command.commandType}: waiting for Core
+            </li>
+          ))}
+        </ul>
+      )}
+      <h3>Recent results</h3>
+      {results.length === 0 ? <p data-testid="results">None.</p> : (
+        <ol data-testid="results" style={valueStyle}>
+          {results.map(result => (
+            <li key={`${result.runId}:${result.commandId}`} data-outcome={result.outcome}>
+              run {result.runId} · #{result.commandId} {result.commandType}: {describeResult(result)}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function ErrorView({ store }: SectionProps) {
+  const actionError = useSyntheticGame(store, state => state.actionError);
+  const sessionError = useSyntheticGame(store, state => state.sessionError);
+  const cleanupFailed = useSyntheticGame(store, state => state.status?.cleanupFailed ?? false);
+  if (!actionError && !sessionError && !cleanupFailed) return null;
+  return (
+    <section aria-label="Errors" role="alert">
+      <h3>Errors</h3>
+      {cleanupFailed && (
+        <p data-testid="cleanup-advice">
+          Cleanup failed, so start and restart stay blocked. Reload the page to create a new session.
+        </p>
+      )}
+      {actionError && (
+        <pre data-testid="action-error" style={valueStyle}>Action {actionError.operation} failed:{'\n'}{describeError(actionError.cause)}</pre>
+      )}
+      {sessionError && <pre data-testid="session-error" style={valueStyle}>Session error:{'\n'}{describeError(sessionError)}</pre>}
+    </section>
+  );
+}
+
+export function SyntheticDevPanel({ store, dispatch }: SyntheticDevPanelProps) {
+  return (
+    <section aria-labelledby="synthetic-demo-title" style={panelStyle}>
+      <h2 id="synthetic-demo-title">Synthetic demo</h2>
+      <p role="note" data-testid="synthetic-notice">
+        <strong>P1 synthetic engineering demo — not original gameplay.</strong> The marker, positions and rules are invented
+        to test the architecture.
+      </p>
+      <ControlsView store={store} dispatch={dispatch} />
+      <SessionStatusView store={store} />
+      <ProjectionView store={store} />
+      <CommandFeedbackView store={store} />
+      <ErrorView store={store} />
+    </section>
+  );
+}

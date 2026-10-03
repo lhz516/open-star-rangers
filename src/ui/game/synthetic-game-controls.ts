@@ -16,26 +16,32 @@ export type SyntheticPanelAction = SyntheticPanelControl | Command['type'];
 /** Marker commands stay enabled whether or not a marker exists; Core decides the outcome. */
 export type SyntheticControlAvailability = Readonly<Record<SyntheticPanelAction, boolean>>;
 
-const availabilityCache = new Map<string, SyntheticControlAvailability>();
+const PANEL_ACTIONS: readonly SyntheticPanelAction[] = ['start', 'pause', 'resume', 'restart', 'exit', 'add-marker', 'remove-marker'];
 
-/** Returns one shared frozen result per distinct input, so React selectors can compare by identity. */
+/** One frozen object per distinct set of enabled actions, keyed by bitmask. */
+const availabilityCache = new Map<number, SyntheticControlAvailability>();
+
+/**
+ * Returns the same frozen object whenever the enabled actions are the same, whatever status
+ * produced them, so React selectors re-render only when a button actually changes.
+ */
 export function syntheticControlAvailability(status: SessionStatus | null): SyntheticControlAvailability {
   const phase = status?.phase ?? null;
   const cleanupFailed = status?.cleanupFailed ?? false;
-  const environmentVisible = status?.environmentVisible ?? false;
-  const key = `${phase}|${cleanupFailed}|${environmentVisible}`;
+  const hasRun = phase === 'running' || phase === 'paused' || phase === 'faulted';
+  const enabled: Record<SyntheticPanelAction, boolean> = {
+    start: phase === 'idle' && !cleanupFailed,
+    pause: phase === 'running',
+    resume: phase === 'paused' && (status?.environmentVisible ?? false),
+    restart: hasRun && !cleanupFailed,
+    exit: hasRun,
+    'add-marker': phase === 'running',
+    'remove-marker': phase === 'running',
+  };
+  const key = PANEL_ACTIONS.reduce((bits, action, index) => (enabled[action] ? bits | (1 << index) : bits), 0);
   let availability = availabilityCache.get(key);
   if (!availability) {
-    const hasRun = phase === 'running' || phase === 'paused' || phase === 'faulted';
-    availability = Object.freeze({
-      start: phase === 'idle' && !cleanupFailed,
-      pause: phase === 'running',
-      resume: phase === 'paused' && environmentVisible,
-      restart: hasRun && !cleanupFailed,
-      exit: hasRun,
-      'add-marker': phase === 'running',
-      'remove-marker': phase === 'running',
-    });
+    availability = Object.freeze(enabled);
     availabilityCache.set(key, availability);
   }
   return availability;
