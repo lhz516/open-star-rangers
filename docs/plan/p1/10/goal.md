@@ -68,7 +68,7 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 |---|---|---|
 | [01-local-e2e-runner.md](./subtasks/01-local-e2e-runner.md) | — | completed |
 | [02-readonly-browser-probes.md](./subtasks/02-readonly-browser-probes.md) | 01 | completed |
-| [03-interaction-render-smoke.md](./subtasks/03-interaction-render-smoke.md) | 02 | pending |
+| [03-interaction-render-smoke.md](./subtasks/03-interaction-render-smoke.md) | 02 | completed |
 | [04-joint-resource-regression.md](./subtasks/04-joint-resource-regression.md) | 02 | pending |
 | [05-browser-replay.md](./subtasks/05-browser-replay.md) | 01 | pending |
 | [06-native-lifecycle-fallback.md](./subtasks/06-native-lifecycle-fallback.md) | 02 | pending |

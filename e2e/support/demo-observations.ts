@@ -5,6 +5,11 @@ export async function enterDemo(page: Page): Promise<void> {
   await expect(page.getByTestId('phase')).toHaveText('running');
 }
 
+export async function focusView(page: Page): Promise<void> {
+  await page.getByTestId('synthetic-view').click({ position: { x: 8, y: 8 } });
+  await expect(page.getByTestId('synthetic-view')).toBeFocused();
+}
+
 export async function projection(page: Page): Promise<{ tick: number; x: number; run: string }> {
   return page.evaluate(() => {
     const text = (name: string): string => {
