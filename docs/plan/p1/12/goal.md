@@ -78,7 +78,7 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 | [06-build-notices.md](./subtasks/06-build-notices.md) | 04, 05 | completed |
 | [07-compliance-cli.md](./subtasks/07-compliance-cli.md) | 02, 03, 06 | completed |
 | [08-local-evidence-docs.md](./subtasks/08-local-evidence-docs.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
-| [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |
+| [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | completed |
 
 05不依赖扫描/包审计；02与03共用01报告契约，但不互相依赖。04需要03精确包身份；06需要04分发归属与05根文本；07组合两个检查。所有共同文件仍顺序编辑。最后一行仅验证、依赖所有其他行；发现缺口用新ID在最终行前加入修复项，保持原ID及证据。
 
@@ -86,4 +86,4 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 
 ## 审批
 
-用户于 2026-10-03 明确批准本 Goal 的完整执行计划（9 个子任务），并要求本地提交 P1-10/P1-12 规划文档。Goal 批准不代表实现完成；本轮所有子任务仍为 pending，不开始执行，不授权 push或部署。
+用户于 2026-10-03 明确批准本 Goal 的完整执行计划（9 个子任务），并要求本地提交 P1-10/P1-12 规划文档。获批规划时所有子任务为pending，Goal批准不等于实现完成；随后用户明确调用execute-goal执行本任务，当前状态仅见tracker。不授权push或部署。
