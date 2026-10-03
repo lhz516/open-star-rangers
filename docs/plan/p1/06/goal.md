@@ -104,7 +104,7 @@ updated: 2026-10-02
 | [05-ui-replay-invariants.md](./subtasks/05-ui-replay-invariants.md) | 04 | completed |
 | [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | completed |
 | [07-dev-panel-app-wiring.md](./subtasks/07-dev-panel-app-wiring.md) | 06 | completed |
-| [08-browser-acceptance-evidence.md](./subtasks/08-browser-acceptance-evidence.md) | 07 | pending |
+| [08-browser-acceptance-evidence.md](./subtasks/08-browser-acceptance-evidence.md) | 07 | completed |
 | [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |
 
 依赖关系：
