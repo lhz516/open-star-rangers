@@ -94,7 +94,7 @@ src/
 
 ## 职责与依赖
 
-P1-09/01–03 已提供 [platform/input/](../../src/platform/input/) 的通用事件、按住轴、源端口与监听管理，以及 [synthetic-keyboard-input.ts](../../src/ui/game/synthetic-keyboard-input.ts) 的合成五键映射和 Session 消费者。平台层不识别合成动作；消费者不导入浏览器连接、不调度 tick，方向轴经桥接的 guarded setInput，命令与 P 复用既有反馈/controls。工厂与释放契约见[工程约定](./README.md#ui-投影与指令反馈)。owner/页面接线仍由 P1-09/04 负责；当前页面尚无游戏键盘输入，独立键位文档的整体验证与定稿留给 06。
+P1-09 已提供 [platform/input/](../../src/platform/input/) 的通用事件、按住轴、源端口与监听管理，以及 [synthetic-keyboard-input.ts](../../src/ui/game/synthetic-keyboard-input.ts) 的合成五键映射和 Session 消费者。平台层不识别合成动作；消费者不导入浏览器连接、不调度 tick，方向轴经桥接的 guarded setInput，命令与 P 复用既有反馈/controls。工厂与释放契约见[工程约定](./README.md#ui-投影与指令反馈)。owner/页面已接线，每个 owner 一组输入源；释放先失效/撤销输入再销毁 Session。同 owner 换 run 不重建监听。当前绑定、焦点及清键规则见独立[键位文档](./keyboard-input.md)，实际开发/生产证据见 [05](../plan/p1/09/subtasks/05-browser-input-evidence.md#完成证据)，不代表原版操控或系统快捷键拦截。
 
 | 模块 | 拥有的职责 | 不应承担 |
 |---|---|---|

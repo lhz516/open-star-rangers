@@ -1,8 +1,8 @@
 ---
 type: guide
-status: draft
+status: active
 phase: P1
-updated: 2026-10-02
+updated: 2026-10-03
 related: [ADR-0004, U-011, U-012]
 ---
 
@@ -14,7 +14,7 @@ related: [ADR-0004, U-011, U-012]
 - 默认键位政策见[总计划 §1.2](../plan/master-plan.md#12-首版交付范围)与 [ADR-0004](../decisions/ADR-0004-keyboard-mouse-original-keys.md)。
 - 模块落点见[源码结构指南](./source-structure.md)，测试约定见[工程约定](./README.md)。
 
-> **状态：草案。** 本文目前是 [P1-09 spec](../plan/p1/09/spec.md) 的键位契约部分，随该 spec 一同审阅和批准，实现尚未交付。在 P1-09 完成之前，下文描述的是约定的行为，不是已实现的行为。P1-09 完成后，本文改为 `active` 并按实际实现更新。修改本文的绑定或规则，等同于修改 P1-09 的契约，须重新审阅。
+> **状态：当前实现说明。** 五行绑定及以下规则按已批准的 [P1-09 spec](../plan/p1/09/spec.md) 对齐；实现、故障测试与实际开发/生产浏览器证据分别见 [03](../plan/p1/09/subtasks/03-session-keyboard-actions.md#完成证据)、[04](../plan/p1/09/subtasks/04-demo-keyboard-wiring.md#完成证据)、[05](../plan/p1/09/subtasks/05-browser-input-evidence.md#完成证据)。旧草案全文不是另一个获批合同；修改绑定或行为仍须修订契约、重新审阅与批准。
 
 ## 1. 适用范围
 
@@ -28,9 +28,9 @@ P1 只有合成演示这一个使用游戏键的画面。下表的动作全部�
 |---|---|---|---|---|
 | `move-x`（−1） | 连续轴 | `ArrowLeft` | 按住期间，合成 mover 沿 −x 方向移动 | 合成演示自定，不是原版事实。原版的方向键尚未确认（[U-011](../original/unknowns.md)） |
 | `move-x`（+1） | 连续轴 | `ArrowRight` | 按住期间，合成 mover 沿 +x 方向移动 | 同上 |
-| `add-marker` | 离散命令 | `KeyN` | 提交一次 `add-marker` 命令，由 Core 接受或拒绝 | 合成演示自定，原版没有对应功能 |
+| `add-marker` | 离散命令 | `KeyN` | 提交一次 `add-marker` 命令，由 Core 接受或拒绝 | 合成演示自定，不声称与原版功能对应 |
 | `remove-marker` | 离散命令 | `KeyX` | 提交一次 `remove-marker` 命令，由 Core 接受或拒绝 | 同上 |
-| `toggle-pause` | Runtime 控制 | `KeyP` | 运行中按下则暂停；暂停中且页面可见时按下则继续 | `p` 是原版的暂停键（已确认，见[键位表](../original/input/key-map.md)）。再按一次 `p` 继续是本项目演示的选择，原版是否如此**未确认**（[U-011](../original/unknowns.md)） |
+| `toggle-pause` | Runtime 控制 | `KeyP` | 运行中按下则暂停；暂停中且 Session 允许继续（页面可见、离页阻断解除）时按下则继续 | `p` 是原版的暂停键（已确认，见[键位表](../original/input/key-map.md)）。再按一次 `p` 继续是本项目演示的选择，原版是否如此**未确认**（[U-011](../original/unknowns.md)） |
 
 - **轴值：** `moveX = (ArrowRight 按住 ? 1 : 0) − (ArrowLeft 按住 ? 1 : 0)`，只取 −1、0、+1 三个值。两个方向键同时按住时为 0，与按下顺序无关。
 - **选键约束：** `p` 保持原版的暂停含义。其余演示键都不在原版键位表已确认的按键中，不会把已确认的原版按键挪作他用。原版方向键确认后，若与演示键冲突，以原版为准并修订本表。
@@ -38,30 +38,31 @@ P1 只有合成演示这一个使用游戏键的画面。下表的动作全部�
 
 ## 3. 触发语义
 
-- **识别：** 只按 `code` 识别，不读取 `key` 或 `keyCode`。键盘布局、大小写以及 Shift/Option 产生的字符都不影响匹配。
-- **修饰键：** 按下时只要 Ctrl、Alt 或 Meta 中任何一个处于按下状态，就不算游戏动作：不处理，也不阻止默认行为，以保留浏览器快捷键（例如 Ctrl/Cmd+R）。Shift 不参与匹配，按住 Shift 不改变动作。Windows 的 AltGr 同时报告 Ctrl 与 Alt，因此同样不匹配。
-- **输入法：** `isComposing` 为 true 的事件不处理，也不阻止默认行为。
+- **识别：** 只按 `code` 识别，不读取 `key` 或 `keyCode`。键盘布局、大小写及 Shift 产生的字符不影响匹配；Option 作为 Alt 修饰键按下条放行，不触发动作。
+- **修饰键：** 按下时只要 Ctrl、Alt 或 Meta 中任何一个处于按下状态，就不启动游戏动作，也不阻止默认行为，以保留浏览器快捷键（例如 Ctrl/Cmd+R）。Shift 不参与匹配，按住 Shift 不改变动作。Windows 的 AltGr 同时报告 Ctrl 与 Alt，因此同样不匹配。
+- **输入法：** `isComposing` 为 true 的事件不启动动作、不阻止默认行为；既有轴的 keyup 清理独立处理。
 - **按下与重复：**
-  - 轴键的每个 keydown（包括 `repeat` 为 true 的自动重复）都把该键记为按住。已按住时重复只起确认作用，不产生额外效果。
+  - 仅输入区有效且会话 running 时，非重复 keydown 登记轴键。重复只确认已登记键，不再发送相同轴值，清表后不能靠 repeat 重建。paused/idle/faulted 不预置按住状态。
   - 离散命令和 `toggle-pause` 只在非重复的 keydown 上触发一次。重复的 keydown 仍会阻止默认行为（见 §5），但不再触发。
-- **抬起：** 轴键的 keyup 解除按住，与修饰键状态无关。离散命令键和 `toggle-pause` 的 keyup 没有动作。没有对应按住记录的 keyup 也没有效果。
+- **抬起：** 轴键的 keyup 按 code 解除按住，即使有 Ctrl/Alt/Meta 或 isComposing=true；这不意味着拦截该事件。离散命令与 P 的 keyup 不触发动作，没有对应按住记录的 keyup 不改变轴。
 - **动作不可用：** 键盘与开发面板按钮使用同一套可用性判断，即 [synthetic-game-controls.ts](../../src/ui/game/synthetic-game-controls.ts) 中的 `syntheticControlAvailability`：
   - 会话不在 running 时，`add-marker` 和 `remove-marker` 不提交。
   - `toggle-pause` 在 pause 可用时暂停，否则在 resume 可用时继续，两者都不可用时忽略。
   - 忽略时不显示错误，但按键仍按 §5 阻止默认行为。
   - 动作可用但提交或控制同步失败时，与面板一样写入 actionError，并保留原始原因。
-- **反馈：** 键盘提交的命令与面板按钮走同一条反馈路径：先显示为 pending，再由 Core 的域事件判定为 accepted 或 rejected，或因会话通知而 cancelled。成功与否不由键盘层自行判断。
-- **轴值同步：** 会话处于 running 时，Runtime 的 `moveX` 始终等于按住表推导出的值。按住表变化后立即同步；进入 running（start 或 resume）时同步一次；值没有变化时不重复发送。会话不在 running 时不发送。
+- **反馈：** 键盘与面板走同一条 pending→accepted/rejected/cancelled/unconfirmed 反馈路径，实际可用性每次按键读取当前 Session，不依赖可能过期的 React/store。仅失焦不撤回已入队命令，Session 暂停/隐藏/结束按既有规则取消；键盘不重提或自行判定成功。
+- **轴值同步：** 合法 running 输入回调中，数值实际变化才经当前运行绑定 setInput。成功时 Runtime 轴等于本地推导值；失败写 actionError=input 并保留 cause。成功实际轴变更只清旧 input 错误，无变化/忽略/重复不清错，不覆盖独立错误。start/resume/attach 不同步旧轴；状态、取消、错误和清理通知绝不提交输入、命令或控制，也不排微任务绕过限制。
 
 ## 4. 活动界面与焦点
 
 - **唯一的游戏键输入区：** 演示画面中的合成画面区域，即现有的 `synthetic-view` 容器。它可以用 Tab 到达，点击即获得焦点，有可见的焦点样式、可读名称，并通过关联说明列出 §2 的绑定，同时注明这是合成演示键位、不是原版操控。
 - **只在输入区获得焦点时生效：** 焦点在主菜单、导入占位、“Return to menu”、开发面板按钮或页面其他位置时，所有按键都保持浏览器原生行为，不产生游戏效果。
+- **资格事实：** 当前 owner/source 有效，页面 visible 且没有 pagehide 阻断，窗口有焦点，document.activeElement 恰为容器（非交互/编辑子控件）。初始化及元素 focusin/focusout、window focus/blur、visibilitychange、pagehide/pageshow 重新读取真实事实；窗口返回或 pageshow 不要求新的元素 focusin。
 - **监听位置：** 不在 window 或 document 上注册 keydown/keyup 监听。输入区不设焦点陷阱，Tab 与 Shift+Tab 照常把焦点移出。
 - **进入演示时的焦点：** 仍按 P1-08 落在画面标题，不自动移入输入区。
 - **与渲染器无关：** 渲染器 unavailable、failed 或 context-lost 时，只要会话存在，输入区照常工作。
 - **键盘状态：** 输入区旁以文字显示键盘状态：
-  - `active`：输入区有焦点，游戏键生效；
+  - `active`：键盘通道有焦点，不等于会话 running；paused 中 P 仍可继续，轴/命令不可用；
   - `inactive`：提示点击画面或用 Tab 移入输入区；
   - `unavailable`：监听登记失败，同时显示原因；演示仍可用开发面板操作。
 
@@ -69,21 +70,25 @@ P1 只有合成演示这一个使用游戏键的画面。下表的动作全部�
 
 - 焦点在输入区、且通过 §3 修饰键与输入法检查的绑定键，在 keydown 与 keyup 时都调用 `preventDefault`。动作暂不可用时和重复事件也照此处理，例如避免方向键滚动页面。
 - 未绑定键、带 Ctrl/Alt/Meta 的组合以及输入法事件，都不阻止默认行为。
+- keyup 的本地释放与默认拦截分开：放行的修饰/输入法轴 keyup 仍清已有按住记录；失效源/非活动区域不 preventDefault。这里是无开火绑定的合成政策，不替代正式飞行的 Alt/AltGr 政策。
 - 自动化测试中的合成按键不经过浏览器和系统自身的快捷键处理，`preventDefault` 生效也不能证明系统快捷键已被拦截（[总计划 §1.2](../plan/master-plan.md#12-首版交付范围)）。当前构建不宣称拦截了任何浏览器或系统快捷键。
 
 ## 6. 清键与恢复
 
-以下任一情况都会清空按住表；会话处于 running 时，同时立即把 `moveX` 设为 0：
+以下任一情况都会清空按住表：
 
 - 输入区失去焦点（focusout），包括焦点移到页面上的其他控件；
 - 窗口 blur；
 - 页面变为 hidden，或触发 pagehide；
+- 任何暂停，包括用户 P/面板 pause 与 hidden 暂停；
 - 当前运行结束或被替换（exit、restart、faulted、disposed）；
 - 演示 owner 释放，此时也移除全部键盘监听。
 
-**用户暂停不清空按住表。** 暂停期间仍跟踪输入区内的按下与抬起，继续时按 §3 同步。因页面隐藏而暂停时，隐藏本身已清空按住表。
+**零轴出口：** 失焦等源回调在仍合法 running 时立即提交变化后的0；Session 暂停、运行收尾与受限通知只清本地，依赖 Session 已有 clearIntent 归零，不调用内部入口。owner 释放先失效输入、尝试撤销，再销毁 Session。
 
-**恢复：** 浏览器不提供查询物理按键状态的接口。清空之后，只有新的 keydown（包括仍按住键的自动重复）才会重新建立按住状态。这就是总计划“恢复时以实际按键状态为准”在本项目中的落地方式。
+**恢复：** 继续、聚焦、visible/pageshow 和新 run 只恢复可用通道，不恢复按住状态或自动继续会话。必须新的非重复 keydown 才能移动；旧 repeat 无效，不查询或猜测物理状态。
+
+**资源与失败：** 一个 owner 连接一组九项监听；同 owner Restart/Exit→Start 只换 run，不重新登记。登记失败、成功回滚时 unavailable 保留原因，面板仍可用；回滚失败保持 RollbackError、释放全部已取得资源并锁存，不开始运行。释放前先逻辑失效，任何撤销失败仍继续其他清理并保留所有原因；旧回调不能写 store、动作或 preventDefault。逻辑隔离不是物理监听回收成功，失败仍进入既有 owner/app-instance 清理锁存，重载前不建新 owner。
 
 ## 7. 尚未实现的键盘能力
 
