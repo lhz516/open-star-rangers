@@ -32,13 +32,19 @@ updated: 2026-10-03
 
 ## 验收标准
 
-- [ ] AC-01：真实必需表全进入黑名单；缺文件/缺表/空表/坏行/非64位hex明确失败，不跳过或自动重算。
-- [ ] AC-12：JSON format/version/kind/passed/counts/findings满足Spec，排序稳定，无失败成功fallback或独立检查冒充聚合。
-- [ ] AC-13：只有允许元数据/相对路径，错误包含原因但无私人路径/内容，fixtures自有并收尾。
-- [ ] 新目标Vitest与pnpm check通过，无Core/原版记录变化。
+- [x] AC-01：真实必需表全进入黑名单；缺文件/缺表/空表/坏行/非64位hex明确失败，不跳过或自动重算。
+- [x] AC-12：JSON format/version/kind/passed/counts/findings满足Spec，排序稳定，无失败成功fallback或独立检查冒充聚合。
+- [x] AC-13：只有允许元数据/相对路径，错误包含原因但无私人路径/内容，fixtures自有并收尾。
+- [x] 新目标Vitest与pnpm check通过，无Core/原版记录变化。
 
 ## 验证方法
 
 新增后用 pnpm exec vitest run tools/compliance/manifest.test.ts tools/compliance/report.test.ts，表驱动自建合法/缺失/坏结构样本及输出形状/脱敏反例；读真实manifest只比条目完整性，不使用原版bytes。工具尚未落地前不得宣称命令可用。浏览器/实机/原版对照不适用。
 
 ## 完成证据
+
+- 2026-10-03：[manifest](../../../../../tools/compliance/manifest.ts)严格核对两必需heading、表头/分隔/列、所有连续行、非空、size/hash与相对来源标签；当前真实元数据52条，与独立表行计数相同，不硬编码数量、不打开来源文件。重复digest保留两来源，重复source拒绝。
+- [report](../../../../../tools/compliance/report.ts)提供osr-local-compliance/1及3种kind、显式completed/checked范围、稳定排序的findings/依赖/分发/指纹；缺任一必需范围或有finding均passed=false。包身份及instance/source分类也校验，原始系统错误只保留允许code，不转发内容、秘密或host路径。
+- 聚焦[manifest测试](../../../../../tools/compliance/manifest.test.ts)/[report测试](../../../../../tools/compliance/report.test.ts)24项通过：缺输入/坏结构/空表/坏hash/重复来源，完整聚合正例、未完成/命中反例、路径与包身份脱敏、稳定序列化。fixtures仅代码生成bytes/hash、临时目录finally清理，真实manifest仅读元数据。
+- `pnpm check`通过（49文件/1216测试、四类型程序/lint/build），生产产物保持不变。rubber-duck无阻塞，已补包/source身份验证、compliance正例及重复来源测试。simplify限定本项5个新文件，复用SHA256/相对路径与fixture，不增公共schema。
+- 文档影响检查：Node工具/测试已在既有工程发现规则内，尚无可用CLI，不提前修改命令说明；无Core/原版事实/冻结决定/阶段摘要变化，长期命令文档由08落地。
