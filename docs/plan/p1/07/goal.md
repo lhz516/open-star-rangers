@@ -62,7 +62,7 @@ updated: 2026-10-02
 | [03-three-scene-mapping.md](./subtasks/03-three-scene-mapping.md) | 02 | completed |
 | [04-browser-surface-lifecycle.md](./subtasks/04-browser-surface-lifecycle.md) | 02, 03 | completed |
 | [05-owner-renderer-integration.md](./subtasks/05-owner-renderer-integration.md) | 03, 04 | completed |
-| [06-react-render-diagnostics.md](./subtasks/06-react-render-diagnostics.md) | 05 | pending |
+| [06-react-render-diagnostics.md](./subtasks/06-react-render-diagnostics.md) | 05 | completed |
 | [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 

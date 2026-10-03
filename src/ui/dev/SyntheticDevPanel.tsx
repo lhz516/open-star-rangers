@@ -3,9 +3,10 @@
  * projection, command results and errors. It reads the UI store through selectors and acts only
  * through `dispatch`; it is not a flight HUD, menu or original-game screen.
  */
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { SessionFailure } from '../../app/session/session-errors.ts';
 import type { Vec3 } from '../../core/synthetic/synthetic-scene.ts';
+import type { SyntheticRenderDiagnostics, SyntheticRendererReader } from '../../render/synthetic/synthetic-renderer.ts';
 import type { SyntheticGameStoreReader, UiCommandResult } from '../game/synthetic-game-store.ts';
 import {
   syntheticControlAvailability, type SyntheticControlAvailability, type SyntheticPanelAction,
@@ -15,6 +16,8 @@ import { useSyntheticGame } from '../game/use-synthetic-game.ts';
 export interface SyntheticDevPanelProps {
   readonly store: SyntheticGameStoreReader;
   readonly dispatch: (action: SyntheticPanelAction) => void;
+  /** Read on demand only; the panel never subscribes to drawing. */
+  readonly renderer: SyntheticRendererReader;
 }
 
 interface SectionProps {
@@ -82,7 +85,7 @@ function ActionButtons({ availability, dispatch, actions, label }: {
   );
 }
 
-function ControlsView({ store, dispatch }: SyntheticDevPanelProps) {
+function ControlsView({ store, dispatch }: Pick<SyntheticDevPanelProps, 'store' | 'dispatch'>) {
   // Availability is one shared object per set of enabled actions, so this re-renders only when a button changes.
   const availability = useSyntheticGame(store, state => syntheticControlAvailability(state.status));
   return (
@@ -182,7 +185,39 @@ function ErrorView({ store }: SectionProps) {
   );
 }
 
-export function SyntheticDevPanel({ store, dispatch }: SyntheticDevPanelProps) {
+function describeLayout(layout: SyntheticRenderDiagnostics['layout']): string {
+  if (layout === null) return 'none';
+  const { bufferWidth, bufferHeight, pixelRatio, frame } = layout;
+  return `buffer ${bufferWidth}×${bufferHeight} at pixel ratio ${formatNumber(pixelRatio)}; frame ${formatNumber(frame.width)}×${formatNumber(frame.height)} CSS px at (${formatNumber(frame.left)}, ${formatNumber(frame.top)})`;
+}
+
+function RenderDiagnosticsView({ renderer }: { readonly renderer: SyntheticRendererReader }) {
+  // A snapshot taken on mount, on each refresh and for a replaced renderer; drawing never re-renders this section.
+  const [read, setRead] = useState(() => ({ renderer, diagnostics: renderer.diagnostics() }));
+  if (read.renderer !== renderer) setRead({ renderer, diagnostics: renderer.diagnostics() });
+  const { diagnostics } = read;
+  const { gpu } = diagnostics;
+  return (
+    <section aria-label="Renderer diagnostics">
+      <h3>Renderer diagnostics</h3>
+      <button type="button" onClick={() => { setRead({ renderer, diagnostics: renderer.diagnostics() }); }}>Refresh diagnostics</button>
+      <dl data-testid="render-diagnostics" style={valueStyle}>
+        <dt>State</dt><dd data-testid="render-state">{diagnostics.state}</dd>
+        <dt>Run</dt><dd data-testid="render-run-id">{diagnostics.runId ?? 'none'}</dd>
+        <dt>Drawn tick</dt><dd data-testid="render-drawn-tick">{diagnostics.drawnTick ?? 'none'}</dd>
+        <dt>Draws</dt><dd data-testid="render-draws">{diagnostics.draws}</dd>
+        <dt>Entity objects</dt><dd data-testid="render-entities">{diagnostics.entities}</dd>
+        <dt>GPU</dt>
+        <dd data-testid="render-gpu">
+          {gpu === null ? 'none' : `${gpu.geometries} geometries, ${gpu.textures} textures, ${gpu.programs} programs`}
+        </dd>
+        <dt>Layout</dt><dd data-testid="render-layout">{describeLayout(diagnostics.layout)}</dd>
+      </dl>
+    </section>
+  );
+}
+
+export function SyntheticDevPanel({ store, dispatch, renderer }: SyntheticDevPanelProps) {
   return (
     <section aria-labelledby="synthetic-demo-title" style={panelStyle}>
       <h2 id="synthetic-demo-title">Synthetic demo</h2>
@@ -195,6 +230,7 @@ export function SyntheticDevPanel({ store, dispatch }: SyntheticDevPanelProps) {
       <ProjectionView store={store} />
       <CommandFeedbackView store={store} />
       <ErrorView store={store} />
+      <RenderDiagnosticsView renderer={renderer} />
     </section>
   );
 }

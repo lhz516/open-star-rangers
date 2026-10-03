@@ -70,9 +70,11 @@ src/
       synthetic-game-store.ts
       synthetic-session-bridge.ts
       use-synthetic-game.ts
+    render/
+      SyntheticRenderView.tsx
 ```
 
-`content/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；页面接线尚在实施。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。[App](../../src/app/App.tsx) 现在承载合成开发面板，它是工程演示，不是正式菜单、飞行 HUD 或原版界面。
+`content/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。[App](../../src/app/App.tsx) 现在承载合成画面与开发面板，它们是工程演示，不是正式菜单、飞行 HUD 或原版界面。
 
 ## 职责与依赖
 
