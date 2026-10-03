@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { SyntheticDevPanel } from '../ui/dev/SyntheticDevPanel.tsx';
 import { SyntheticRenderView } from '../ui/render/SyntheticRenderView.tsx';
+import { createSyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
 import { useSyntheticDemoOwner } from './composition/use-synthetic-demo-owner.ts';
 
-// The import flow and menus arrive in later P1 tasks; until then the page hosts the synthetic demo.
+// The menu shell arrives in the next P1-08 subtask; until then the page hosts the synthetic demo.
 export function App() {
-  const { owner, containerRef } = useSyntheticDemoOwner();
+  const [lifecycle] = useState(() => createSyntheticDemoLifecycle({ onCleanupFailure: reportError, reportError }));
+  const { owner, containerRef } = useSyntheticDemoOwner(lifecycle);
   return (
     <main>
       <h1>Open Star Rangers</h1>
