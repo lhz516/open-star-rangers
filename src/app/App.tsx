@@ -1,19 +1,73 @@
+/**
+ * The application shell: the title, the page flow and the current screen. It owns the demo
+ * lifecycle, so a cleanup failure stays latched across screens and Fast Refresh of the pages, and
+ * its cause stays visible without the demo owner or its panel. Contract: docs/plan/p1/08/spec.md.
+ */
 import { useState } from 'react';
-import { SyntheticDevPanel } from '../ui/dev/SyntheticDevPanel.tsx';
-import { SyntheticRenderView } from '../ui/render/SyntheticRenderView.tsx';
-import { createSyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
+import { describeError } from '../ui/game/describe-error.ts';
+import { ImportPlaceholderPage } from '../ui/pages/ImportPlaceholderPage.tsx';
+import { MainMenuPage } from '../ui/pages/MainMenuPage.tsx';
+import { SyntheticDemoPage } from '../ui/pages/SyntheticDemoPage.tsx';
+import { createSyntheticDemoLifecycle, type SyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
 import { useSyntheticDemoOwner } from './composition/use-synthetic-demo-owner.ts';
+import { INITIAL_APP_FLOW, nextAppFlow, type AppFlowInput, type AppFlowState } from './flow/app-flow.ts';
 
-// The menu shell arrives in the next P1-08 subtask; until then the page hosts the synthetic demo.
-export function App() {
-  const [lifecycle] = useState(() => createSyntheticDemoLifecycle({ onCleanupFailure: reportError, reportError }));
+/** Creates and releases the demo owner with the screen's view container. */
+function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
+  readonly lifecycle: SyntheticDemoLifecycle;
+  readonly demoBlocked: boolean;
+  readonly onReturn: () => void;
+}) {
   const { owner, containerRef } = useSyntheticDemoOwner(lifecycle);
+  return <SyntheticDemoPage demo={owner} viewRef={containerRef} demoBlocked={demoBlocked} onReturn={onReturn} />;
+}
+
+function CleanupFailureAlert({ cause }: { readonly cause: unknown }) {
+  return (
+    <div role="alert" data-testid="cleanup-failure" className="cleanup-failure">
+      <p>
+        <strong>Releasing the synthetic demo&apos;s resources could not be confirmed.</strong> No new demo can be created
+        until the page is reloaded.
+      </p>
+      <pre>{describeError(cause)}</pre>
+    </div>
+  );
+}
+
+export function App() {
+  const [flow, setFlow] = useState<AppFlowState>(INITIAL_APP_FLOW);
+  const [lifecycle] = useState(() => createSyntheticDemoLifecycle({
+    onCleanupFailure: cause => { setFlow(state => nextAppFlow(state, { type: 'demo-release-failed', cause })); },
+    reportError,
+  }));
+  const go = (input: AppFlowInput): void => { setFlow(state => nextAppFlow(state, input)); };
+  const demoBlocked = flow.cleanupFailure !== null;
   return (
     <main>
       <h1>Open Star Rangers</h1>
       <p>Browser re-implementation in progress. No original game content is included.</p>
-      <SyntheticRenderView ref={containerRef} renderer={owner?.renderer ?? null} />
-      {owner && <SyntheticDevPanel store={owner.store} dispatch={owner.dispatch} renderer={owner.renderer} />}
+      {flow.cleanupFailure && <CleanupFailureAlert cause={flow.cleanupFailure.cause} />}
+      {flow.screen === 'menu' && (
+        <MainMenuPage
+          focusTarget={flow.focusTarget}
+          demoBlocked={demoBlocked}
+          onStartDemo={() => { go({ type: 'open-demo' }); }}
+          onOpenImport={() => { go({ type: 'open-import' }); }}
+        />
+      )}
+      {flow.screen === 'import' && <ImportPlaceholderPage onReturn={() => { go({ type: 'return-to-menu' }); }} />}
+      {flow.screen === 'demo' && (
+        <DemoScreen
+          key={flow.demoVisit}
+          lifecycle={lifecycle}
+          demoBlocked={demoBlocked}
+          onReturn={() => {
+            // Release before leaving, so a cleanup failure is latched before the menu appears.
+            lifecycle.release();
+            go({ type: 'return-to-menu' });
+          }}
+        />
+      )}
     </main>
   );
 }

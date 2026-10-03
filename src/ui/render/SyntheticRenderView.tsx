@@ -36,7 +36,10 @@ function describeStatus(status: SyntheticRendererStatus | null): { readonly aler
     case 'unavailable':
       return { alert: true, text: `WebGL 2 is unavailable, so the synthetic view cannot be shown (${errorText(status.error)}). The session is not affected.` };
     case 'failed':
-      return { alert: true, text: `The renderer failed and stopped drawing (${errorText(status.error)}). The session is not affected; reloading the page restores the picture.` };
+      return {
+        alert: true,
+        text: `The renderer failed and stopped drawing (${errorText(status.error)}). The session is not affected. To try to recover, return to the menu and start the demo again; this discards the current synthetic state.`,
+      };
     case 'disposed':
       return { alert: false, text: 'Renderer released.' };
   }
@@ -48,7 +51,7 @@ export function SyntheticRenderView({ ref, renderer }: SyntheticRenderViewProps)
   const { alert, text } = describeStatus(status);
   return (
     <section aria-labelledby="synthetic-view-title">
-      <h2 id="synthetic-view-title">Synthetic view</h2>
+      <h3 id="synthetic-view-title">Synthetic view</h3>
       <p role="note" data-testid="synthetic-view-notice">
         <strong>P1 synthetic engineering demo — not original graphics.</strong> The shapes, colours and camera are invented
         to test the renderer.

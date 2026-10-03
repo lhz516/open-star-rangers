@@ -4,9 +4,9 @@
  * through `dispatch`; it is not a flight HUD, menu or original-game screen.
  */
 import { useState, type CSSProperties } from 'react';
-import type { SessionFailure } from '../../app/session/session-errors.ts';
 import type { Vec3 } from '../../core/synthetic/synthetic-scene.ts';
 import type { SyntheticRenderDiagnostics, SyntheticRendererReader } from '../../render/synthetic/synthetic-renderer.ts';
+import { describeError } from '../game/describe-error.ts';
 import type { SyntheticGameStoreReader, UiCommandResult } from '../game/synthetic-game-store.ts';
 import {
   syntheticControlAvailability, type SyntheticControlAvailability, type SyntheticPanelAction,
@@ -41,16 +41,6 @@ function formatNumber(value: number): string {
 
 function formatPosition({ x, y, z }: Vec3): string {
   return `(${formatNumber(x)}, ${formatNumber(y)}, ${formatNumber(z)})`;
-}
-
-/** Readable error text for developers, including session failure phases and aggregated causes. */
-function describeError(cause: unknown, indent = ''): string {
-  if (!(cause instanceof Error)) return `${indent}${String(cause)}`;
-  const lines = [`${indent}${cause.name}: ${cause.message}`];
-  const { failures } = cause as { readonly failures?: readonly SessionFailure[] };
-  for (const failure of failures ?? []) lines.push(`${indent}  ${failure.phase}:`, describeError(failure.cause, `${indent}    `));
-  if (cause instanceof AggregateError) for (const error of cause.errors) lines.push(describeError(error, `${indent}  `));
-  return lines.join('\n');
 }
 
 function describeResult(result: UiCommandResult): string {
@@ -100,7 +90,7 @@ function SessionStatusView({ store }: SectionProps) {
   const status = useSyntheticGame(store, state => state.status);
   return (
     <section aria-label="Session status">
-      <h3>Session</h3>
+      <h4>Session</h4>
       {status === null ? <p data-testid="session-status">No session controller.</p> : (
         <dl data-testid="session-status" style={valueStyle}>
           <dt>Phase</dt><dd data-testid="phase">{status.phase}</dd>
@@ -118,7 +108,7 @@ function ProjectionView({ store }: SectionProps) {
   const projection = useSyntheticGame(store, state => state.projection);
   return (
     <section aria-label="Projection">
-      <h3>Projection (sampled at 10 Hz)</h3>
+      <h4>Projection (sampled at 10 Hz)</h4>
       {projection === null ? <p data-testid="projection">No current world.</p> : (
         <dl data-testid="projection" style={valueStyle}>
           <dt>Scenario</dt><dd data-testid="scenario">{projection.scenario}</dd>
@@ -140,7 +130,7 @@ function CommandFeedbackView({ store }: SectionProps) {
   const results = useSyntheticGame(store, state => state.recentResults);
   return (
     <section aria-label="Command feedback">
-      <h3>Pending commands</h3>
+      <h4>Pending commands</h4>
       {pending.length === 0 ? <p data-testid="pending">None.</p> : (
         <ul data-testid="pending" style={valueStyle}>
           {pending.map(command => (
@@ -150,7 +140,7 @@ function CommandFeedbackView({ store }: SectionProps) {
           ))}
         </ul>
       )}
-      <h3>Recent results</h3>
+      <h4>Recent results</h4>
       {results.length === 0 ? <p data-testid="results">None.</p> : (
         <ol data-testid="results" style={valueStyle}>
           {results.map(result => (
@@ -171,10 +161,10 @@ function ErrorView({ store }: SectionProps) {
   if (!actionError && !sessionError && !cleanupFailed) return null;
   return (
     <section aria-label="Errors" role="alert">
-      <h3>Errors</h3>
+      <h4>Errors</h4>
       {cleanupFailed && (
         <p data-testid="cleanup-advice">
-          Cleanup failed, so start and restart stay blocked. Reload the page to create a new session.
+          Cleanup failed, so start and restart stay blocked and no new demo can be created. Reload the page to start over.
         </p>
       )}
       {actionError && (
@@ -199,7 +189,7 @@ function RenderDiagnosticsView({ renderer }: { readonly renderer: SyntheticRende
   const { gpu } = diagnostics;
   return (
     <section aria-label="Renderer diagnostics">
-      <h3>Renderer diagnostics</h3>
+      <h4>Renderer diagnostics</h4>
       <button type="button" onClick={() => { setRead({ renderer, diagnostics: renderer.diagnostics() }); }}>Refresh diagnostics</button>
       <dl data-testid="render-diagnostics" style={valueStyle}>
         <dt>State</dt><dd data-testid="render-state">{diagnostics.state}</dd>
@@ -219,8 +209,8 @@ function RenderDiagnosticsView({ renderer }: { readonly renderer: SyntheticRende
 
 export function SyntheticDevPanel({ store, dispatch, renderer }: SyntheticDevPanelProps) {
   return (
-    <section aria-labelledby="synthetic-demo-title" style={panelStyle}>
-      <h2 id="synthetic-demo-title">Synthetic demo</h2>
+    <section aria-labelledby="dev-panel-title" style={panelStyle}>
+      <h3 id="dev-panel-title">Development panel</h3>
       <p role="note" data-testid="synthetic-notice">
         <strong>P1 synthetic engineering demo — not original gameplay.</strong> The marker, positions and rules are invented
         to test the architecture.

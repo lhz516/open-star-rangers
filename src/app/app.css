@@ -1,0 +1,46 @@
+/* Shell styles of the P1 menu prototype: a responsive web page, not the original interface. */
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  white-space: pre-wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  max-width: 100%;
+}
+
+button:focus-visible {
+  outline: 3px solid #1a5fb4;
+  outline-offset: 2px;
+}
+
+.menu-entries {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu-entries p {
+  margin: 0.25rem 0 0;
+}
+
+.cleanup-failure {
+  border: 2px solid #a51d2d;
+  padding: 0 1rem;
+}

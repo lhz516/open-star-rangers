@@ -37,11 +37,11 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] 主菜单、导入占位与演示画面的可访问名称、说明关联、控件数量与顺序符合“画面与控件契约”。
-- [ ] 焦点规则（进入、返回、锁存、首次加载）与可见焦点指示在实现中成立；无全局键盘监听。
-- [ ] failed/unavailable/清理失败的文案与恢复入口符合 AC-10；失败原因在面板卸载后仍可见。
-- [ ] 无原版玩法入口或成功标记；AC-08 禁止的导入与 API 未被使用。
-- [ ] `pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；`pnpm dev` 下用 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 做一次合成冒烟（菜单 → 演示 running → 返回 → 导入 → 返回），完整取证归 06。
+- [x] 主菜单、导入占位与演示画面的可访问名称、说明关联、控件数量与顺序符合“画面与控件契约”。
+- [x] 焦点规则（进入、返回、锁存、首次加载）与可见焦点指示在实现中成立；无全局键盘监听。
+- [x] failed/unavailable/清理失败的文案与恢复入口符合 AC-10；失败原因在面板卸载后仍可见。
+- [x] 无原版玩法入口或成功标记；AC-08 禁止的导入与 API 未被使用。
+- [x] `pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；`pnpm dev` 下用 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 做一次合成冒烟（菜单 → 演示 running → 返回 → 导入 → 返回），完整取证归 06。
 
 ## 验证方法
 
@@ -49,3 +49,38 @@ updated: 2026-10-02
 - 开发服务器上的有界浏览器冒烟，只用合成演示，清理自建浏览器与服务器。
 
 ## 完成证据
+
+- **应用外壳：** [App.tsx](../../../../../src/app/App.tsx) 由以下几部分组成：
+  - 一个 `main`、h1 与“不含原版内容”声明。
+  - 持有 [app-flow](../../../../../src/app/flow/app-flow.ts) 状态与一个[演示生命周期](../../../../../src/app/composition/synthetic-demo-lifecycle.ts)（`onCleanupFailure` 派发 `demo-release-failed`）。
+  - 只渲染当前画面，演示画面以 `demoVisit` 为 key。
+  - 锁存时，在所有画面的标题之后显示含原始原因（`describeError`）与刷新提示的 alert，不依赖 owner 或面板。
+  - 演示的“Return to menu”先同步 `lifecycle.release()` 再派发 `return-to-menu`。
+  - 由 `DemoScreen` 调用 app 层的 hook，`ui/pages` 不依赖装配。
+
+  样式在 [app.css](../../../../../src/app/app.css)：响应式 `main`、`overflow-wrap:anywhere`、按钮 `max-width:100%`、`button:focus-visible` 3px 实线 outline。
+- **画面组件：**
+  - [MainMenuPage](../../../../../src/ui/pages/MainMenuPage.tsx)：h2 `Main menu`（`tabIndex=-1`）、原版数据状态、按顺序的两个原生按钮，各以 `aria-describedby` 关联说明。锁存时 Start 原生禁用，说明追加原因。`focusTarget` 变化或挂载时聚焦对应入口或标题；为 null 时不移动焦点。
+  - [ImportPlaceholderPage](../../../../../src/ui/pages/ImportPlaceholderPage.tsx)：标题、未实现说明（不读取、存储或上传；以后在浏览器本地处理用户自有数据）和唯一的 `Return to menu` 按钮。
+  - [SyntheticDemoPage](../../../../../src/ui/pages/SyntheticDemoPage.tsx)：标题后首个控件为 `Return to menu`，随后是合成画面与开发面板。锁存且无 owner 时只显示状态说明，不创建容器。
+  - 进入画面时由 [useFocusOnMount](../../../../../src/ui/pages/use-focus-on-mount.ts) 聚焦标题。
+- **文案与层级：**
+  - [SyntheticRenderView](../../../../../src/ui/render/SyntheticRenderView.tsx) 的标题改为 h3；failed 文案改为“会话不受影响，返回菜单并重新启动演示可尝试恢复，会丢弃当前合成状态”。
+  - [SyntheticDevPanel](../../../../../src/ui/dev/SyntheticDevPanel.tsx) 的标题改为 h3 `Development panel`，各区块改为 h4，使 `Synthetic demo` 在整页唯一、不跳级；清理失败提示改为“无法创建新演示，刷新页面”。
+  - `describeError` 移到 [describe-error.ts](../../../../../src/ui/game/describe-error.ts)，供面板与外壳共用。订阅、诊断读取与派发方式不变。
+- **禁止项（AC-08 实现部分）：** 新增页面、外壳与页面流转不导入 `original-data`、`content`、`workers`，不使用存储、文件、Worker、`fetch` 或文件输入；没有原版玩法入口或成功标记。完整源码检索记录归 [05](./05-docs-isolation-checks.md)。
+- **工程检查：** `pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；`pnpm check`：43 个文件 1094 passed（仅既有块体积警告）。
+- **浏览器冒烟（browser-testing）：** 环境为自建 `pnpm dev`（`http://127.0.0.1:5180`）、shell 启动且使用临时 `--user-data-dir` 的 Chrome 154.0.8037.95 / macOS，经 `connectOverCDP` 驱动。另有一个非本轮启动的 5173 服务器，未触碰。
+  - 主菜单：h1 正确，两个启用按钮及其说明齐全，原版数据状态正确，无画布，焦点在 body。
+  - 点击 Start：焦点在 `Synthetic demo` 标题，1 个画布，running/run 1，`Renderer ready.`。标题依次为 H1、H2 Synthetic demo、H3 Synthetic view、H3 Development panel、H4 若干。
+  - Return：焦点在 Start，0 个画布。
+  - Import：焦点在其标题，0 个 input。Return：焦点在 Import 入口。
+  - 唯一控制台错误为预期的 `/favicon.ico` 404。simplify 改动后复跑，结果相同，无错误。
+
+  完整取证归 [06](./06-final-browser-alignment.md)；自建服务器与浏览器保留到 06 结束后清理。
+- **Rubber-duck：** 未发现问题（核对了焦点、锁存可见性、Tab 顺序、StrictMode/Fast Refresh、AC-08 与 360px 溢出风险）。
+- **Simplify：**
+  - 已采纳：删除无规则的 `className="screen"`；`SyntheticDemoPage` 改收面板自己的 props 形状，不依赖 app 装配的 owner 类型。
+  - 未采纳：把渲染器的单行 `errorText` 并入多行 `describeError`（呈现形式不同）；把 `describe-error.ts` 移出 `ui/game`（其格式化的是会话错误，为单个文件新建目录不值得）。
+- **文档影响：** 工程约定与源码结构中的页面/目录说明同步按计划归 [05](./05-docs-isolation-checks.md)。
+
