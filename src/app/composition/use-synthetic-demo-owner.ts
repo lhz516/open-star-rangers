@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { createBrowserSessionHost } from '../../platform/browser/browser-session-host.ts';
+import { createBrowserKeyboardSource } from '../../platform/input/browser-keyboard-source.ts';
 import { createBrowserWebGLSurface } from '../../render/webgl/browser-webgl-surface.ts';
 import type { SyntheticRendererOptions } from '../../render/synthetic/synthetic-renderer.ts';
 import type { SyntheticDemoLifecycle } from './synthetic-demo-lifecycle.ts';
@@ -39,7 +40,10 @@ export function useSyntheticDemoOwner(lifecycle: SyntheticDemoLifecycle): Synthe
     if (!container) return;
     const visit = lifecycle.visit();
     // The surface's ownership passes to the owner here; this effect never releases it separately.
-    setOwner(visit.open(() => createSyntheticDemoOwner(createBrowserSessionHost(), () => performance.now(), createRender(container))));
+    setOwner(visit.open(() => {
+      const source = createBrowserKeyboardSource(container);
+      return createSyntheticDemoOwner(createBrowserSessionHost(), () => performance.now(), createRender(container), { source });
+    }));
     return () => {
       setOwner(null);
       visit.close();

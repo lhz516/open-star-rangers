@@ -6,11 +6,12 @@
 import type { Ref } from 'react';
 import { SyntheticDevPanel, type SyntheticDevPanelProps } from '../dev/SyntheticDevPanel.tsx';
 import { SyntheticRenderView } from '../render/SyntheticRenderView.tsx';
+import type { SyntheticKeyboardReader } from '../game/synthetic-keyboard-input.ts';
 import { useFocusOnMount } from './use-focus-on-mount.ts';
 
 export interface SyntheticDemoPageProps {
   /** The current demo owner's store, actions and renderer; null while it is prepared or when none may be created. */
-  readonly demo: SyntheticDevPanelProps | null;
+  readonly demo: (SyntheticDevPanelProps & { readonly keyboard: SyntheticKeyboardReader }) | null;
   /** The view container in which the owner's surface is created. */
   readonly viewRef: Ref<HTMLDivElement>;
   /** A cleanup failure is latched, so no owner will be created. */
@@ -30,7 +31,7 @@ export function SyntheticDemoPage({ demo, viewRef, demoBlocked, onReturn }: Synt
         <p role="status">No synthetic demo was created because an earlier resource cleanup failed.</p>
       ) : (
         <>
-          <SyntheticRenderView ref={viewRef} renderer={demo?.renderer ?? null} />
+          <SyntheticRenderView ref={viewRef} renderer={demo?.renderer ?? null} keyboard={demo?.keyboard ?? null} />
           {demo && <SyntheticDevPanel store={demo.store} dispatch={demo.dispatch} renderer={demo.renderer} />}
         </>
       )}

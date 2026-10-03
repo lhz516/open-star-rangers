@@ -43,6 +43,49 @@ function setup(host = new ControlledHost(), render: () => SyntheticRendererOptio
 
 const phase = (owner: SyntheticDemoOwner | null) => owner?.store.getState().status?.phase;
 
+describe('synthetic demo lifecycle keyboard cleanup latch', () => {
+  it('does not start beside a failed input rollback and blocks the next owner', () => {
+    const host = new ControlledHost(), surface = new RecordingSurface();
+    const delivered: unknown[] = [];
+    const lifecycle = createSyntheticDemoLifecycle({
+      onCleanupFailure: cause => { delivered.push(cause); }, reportError: cause => { throw cause; },
+    });
+    const failure = new RollbackError(new Error('input registration'), [new Error('input removal')], 'input rollback');
+    const create = vi.fn(() => createSyntheticDemoOwner(
+      host, new TestClock().read, { surface, reportError: cause => { throw cause; } }, { unavailable: failure },
+    ));
+    const visit = lifecycle.visit();
+    const owner = visit.open(create)!;
+    expect(owner.store.getState().status).toBeNull();
+    expect(delivered).toEqual([failure]);
+    expect(host.pending.size + host.listeners.size).toBe(0);
+    expect(surface.calls.slice(-2)).toEqual(['disconnect', 'dispose']);
+    visit.close();
+    expect(lifecycle.visit().open(create)).toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('latches input disposal failure before a new visit can acquire resources', () => {
+    const host = new ControlledHost();
+    const delivered: unknown[] = [], reported: unknown[] = [];
+    const failure = new Error('input removal');
+    const lifecycle = createSyntheticDemoLifecycle({
+      onCleanupFailure: cause => { delivered.push(cause); }, reportError: cause => { reported.push(cause); },
+    });
+    const create = vi.fn(() => createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW, {
+      source: { connect: () => () => { throw failure; } },
+    }));
+    const owner = lifecycle.visit().open(create)!;
+    expect(owner.store.getState().status?.phase).toBe('running');
+    expect(lifecycle.visit().open(create)).toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(host.pending.size + host.listeners.size).toBe(0);
+    expect(delivered).toHaveLength(1);
+    expect(delivered).toEqual(reported);
+    expect(lifecycle.cleanupFailure()).toBe(owner.cleanupFailure());
+  });
+});
+
 describe('synthetic demo lifecycle: one start per owner', () => {
   it('starts the owner it opens once; reopening the visit and Exit start nothing', () => {
     const { host, lifecycle, create, starts } = setup();

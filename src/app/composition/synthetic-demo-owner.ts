@@ -17,6 +17,9 @@ import {
   createSyntheticGameControls, createSyntheticPanelDispatcher, type SyntheticPanelAction,
 } from '../../ui/game/synthetic-game-controls.ts';
 import { createSyntheticGameStore, type SyntheticGameStoreReader } from '../../ui/game/synthetic-game-store.ts';
+import {
+  createSyntheticKeyboardInput, type SyntheticKeyboardInput, type SyntheticKeyboardOptions, type SyntheticKeyboardReader,
+} from '../../ui/game/synthetic-keyboard-input.ts';
 import { createSyntheticSessionBridge, type SamplingClock } from '../../ui/game/synthetic-session-bridge.ts';
 
 /** Fixed seed and Core's default tick rate for the demo; invented values, not original-game rules. */
@@ -29,10 +32,11 @@ export interface SyntheticDemoOwner {
   readonly store: SyntheticGameStoreReader;
   /** The renderer's read-only state and diagnostics. */
   readonly renderer: SyntheticRendererReader;
+  readonly keyboard: SyntheticKeyboardReader;
   /** Runs a panel action. Ignored after dispose or a failed initialization, which the store reports. */
   dispatch(action: SyntheticPanelAction): void;
   /**
-   * Disposes the session, then releases the bridge, then the renderer; idempotent. Every cleanup is
+   * Releases input first, then the session, bridge and renderer; idempotent. Every cleanup is
    * attempted; any failure is gathered into one AggregateError, written as actionError and thrown.
    */
   dispose(): void;
@@ -51,7 +55,10 @@ export interface SyntheticDemoOwner {
  * the owner releases it, and otherwise disposal does. A surface that could not be released, here
  * or by its factory (an `unavailable` RollbackError), fails initialization: no session runs beside it.
  */
-export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock, render: SyntheticRendererOptions): SyntheticDemoOwner {
+export function createSyntheticDemoOwner(
+  host: SessionHost, clock: SamplingClock, render: SyntheticRendererOptions,
+  input: SyntheticKeyboardOptions = { unavailable: new Error('Keyboard input is not connected') },
+): SyntheticDemoOwner {
   const writer = createSyntheticGameStore();
   const feedback = createSyntheticCommandFeedback(writer);
   let cleanupFailure: SyntheticDemoCleanupFailure | null = null;
@@ -69,11 +76,14 @@ export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock
   // The renderer attaches to every run the bridge observes, after the command feedback.
   const bridge = createSyntheticSessionBridge(writer, clock, [feedback, { attach: binding => { renderer.attach(binding); } }]);
   let stopStatus: SessionCleanup | null = null;
+  let keyboard: SyntheticKeyboardInput | null = null;
+  let initializationFailure: unknown;
   /**
-   * Stops watching status, so a failure here is recorded as the error it makes, then disposes the
-   * session (if any), unbinds the bridge and disposes the renderer, attempting all; returns their failures.
+   * Releases input before stopping status observation and disposing the session, bridge and
+   * renderer. Every independent cleanup is attempted; returns their failures.
    */
   const release = (session: SyntheticSession | null): unknown[] => attemptAll([
+    () => { keyboard?.dispose(); },
     () => { stopStatus?.(); },
     () => { session?.control({ type: 'dispose' }); },
     () => { bridge.unbind(); },
@@ -93,17 +103,25 @@ export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock
       }
     });
     bridge.bind(session);
-    active = { session, dispatch: createSyntheticPanelDispatcher(feedback, createSyntheticGameControls(writer, session)) };
+    const controls = createSyntheticGameControls(writer, session);
+    keyboard = createSyntheticKeyboardInput({ store: writer, session, bridge, feedback, controls }, input);
+    active = { session, dispatch: createSyntheticPanelDispatcher(feedback, controls) };
   } catch (cause) {
     const rollback = release(session);
     const failure = rollback.length === 0 ? cause : new RollbackError(cause, rollback, 'Synthetic demo initialization and rollback failed');
     if (failure instanceof RollbackError) recordCleanupFailure(failure);
+    initializationFailure = failure;
     // No controller remains, so the store shows no status rather than the rolled-back session's last one.
     writer.commit({ status: null, projection: null, clearRun: true, actionError: { operation: 'initialize', cause: failure } });
   }
+  const unavailable = Object.freeze({ state: 'unavailable' as const, error: initializationFailure });
   return Object.freeze({
     store: writer.reader,
     renderer,
+    keyboard: keyboard?.reader ?? Object.freeze({
+      getSnapshot: () => unavailable,
+      subscribe: () => () => {},
+    }),
     dispatch(action: SyntheticPanelAction): void {
       active?.dispatch(action);
     },

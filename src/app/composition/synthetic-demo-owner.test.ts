@@ -8,6 +8,10 @@ import type { SyntheticSession } from '../session/synthetic-session.ts';
 import { TestClock } from '../../ui/game/synthetic-ui.test-support.ts';
 import { RecordingSurface } from '../../render/scene/render-surface.test-support.ts';
 import { createSyntheticDemoOwner } from './synthetic-demo-owner.ts';
+import { createKeyboardSource } from '../../platform/input/keyboard-source.ts';
+import type { KeyboardHost, KeyboardLifecycleType } from '../../platform/input/keyboard-source.ts';
+import { normalizeKeyboardInput } from '../../platform/input/keyboard-input.ts';
+import type { KeyboardInput } from '../../platform/input/keyboard-input.ts';
 
 const failures = vi.hoisted(() => ({
   bind: undefined as unknown, afterBind: undefined as unknown, unbind: undefined as unknown, trace: null as string[] | null,
@@ -386,6 +390,146 @@ describe('synthetic demo owner cleanup failure record', () => {
     released.dispose();
   });
 
+  class InputHost implements KeyboardHost {
+    readonly keys = new Map<string, (input: KeyboardInput, prevent: () => void) => void>();
+    readonly signals = new Map<string, () => void>();
+    readonly removed: number[] = [];
+    registrations = 0;
+    failAdd = -1;
+    readonly failRemove = new Set<number>();
+    readonly cause = new Error('keyboard registration');
+    readonly removalCause = new Error('keyboard removal');
+    readonly trace: string[];
+    constructor(trace: string[] = []) { this.trace = trace; }
+    readFacts = () => ({ elementFocused: true, windowFocused: true, visible: true });
+    listenKey(type: KeyboardInput['type'], listener: (input: KeyboardInput, prevent: () => void) => void) {
+      return this.add(() => this.keys.set(type, listener));
+    }
+    listenSignal(type: KeyboardLifecycleType, listener: () => void) {
+      return this.add(() => this.signals.set(type, listener));
+    }
+    add(save: () => void) {
+      const id = this.registrations++;
+      if (id === this.failAdd) throw this.cause;
+      save();
+      return () => {
+        this.trace.push(`keyboard-${id}`);
+        this.removed.push(id);
+        if (this.failRemove.has(id)) throw this.removalCause;
+      };
+    }
+    key(code: string, repeat = false): number {
+      let prevented = 0;
+      this.keys.get('keydown')?.(normalizeKeyboardInput({
+        type: 'keydown', code, repeat, ctrlKey: false, altKey: false, metaKey: false, isComposing: false,
+      }), () => { prevented++; });
+      return prevented;
+    }
+  }
+
+  describe('synthetic demo keyboard ownership', () => {
+    const reportError = (error: unknown): void => { throw error; };
+
+    it('drives an unavailable renderer and retains one source through Restart and Exit/Start', () => {
+      const host = new ControlledHost(), input = new InputHost(), clock = new TestClock();
+      const owner = createSyntheticDemoOwner(host, clock.read, NO_VIEW, { source: createKeyboardSource(input) });
+      expect(owner.keyboard.getSnapshot()).toEqual({ state: 'active' });
+      owner.dispatch('start');
+      host.deliver(0);
+      input.key('ArrowRight');
+      clock.now = 100;
+      host.deliver(100);
+      expect(owner.store.getState().projection!.mover.position.x).toBeGreaterThan(0);
+      input.key('KeyN');
+      host.deliver(120);
+      expect(owner.store.getState().recentResults.at(-1)?.outcome).toBe('accepted');
+      owner.dispatch('restart');
+      input.key('ArrowRight', true);
+      host.deliver(140); clock.now = 240; host.deliver(240);
+      expect(owner.store.getState().projection!.mover.position.x).toBe(0);
+      owner.dispatch('exit');
+      owner.dispatch('start');
+      input.key('ArrowRight', true);
+      host.deliver(260); clock.now = 360; host.deliver(360);
+      expect(owner.store.getState().projection!.mover.position.x).toBe(0);
+      expect(input.registrations).toBe(9);
+      expect(input.removed).toHaveLength(0);
+      owner.dispose();
+      expect(owner.keyboard.getSnapshot()).toEqual({ state: 'inactive' });
+      expect(input.removed).toHaveLength(9);
+    });
+
+    it('releases all source listeners before Session, bridge and surface even when removals fail', () => {
+      const surface = new RecordingSurface(), input = new InputHost(surface.calls);
+      const host = new TracingHost(surface.calls);
+      failures.trace = surface.calls;
+      const owner = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError }, { source: createKeyboardSource(input) });
+      owner.dispatch('start');
+      input.failRemove.add(0); input.failRemove.add(8);
+      surface.disposeFailure = new Error('surface removal');
+      expect(() => owner.dispose()).toThrow(AggregateError);
+      const cleanup = owner.cleanupFailure()?.cause;
+      expect(cleanup).toBe(owner.store.getState().actionError?.cause);
+      expect(cleanup).toBeInstanceOf(AggregateError);
+      if (!(cleanup instanceof AggregateError)) throw new Error('Expected aggregate');
+      expect(cleanup.errors).toHaveLength(2);
+      expect(input.removed).toHaveLength(9);
+      expect(surface.calls.indexOf('keyboard-8')).toBeLessThan(surface.calls.indexOf('session'));
+      expect(surface.calls.slice(-4)).toEqual(['session', 'bridge', 'disconnect', 'dispose']);
+      expect(host.listeners.size + host.pending.size).toBe(0);
+      const state = owner.store.getState();
+      expect(input.key('KeyN')).toBe(0);
+      for (const signal of input.signals.values()) signal();
+      expect(owner.store.getState()).toBe(state);
+      expect(owner.keyboard.getSnapshot()).toEqual({ state: 'inactive' });
+      owner.dispose();
+      expect(input.removed).toHaveLength(9);
+    });
+
+    it('registration failure with successful rollback only disables keyboard, not the panel', () => {
+      const host = new ControlledHost(), input = new InputHost();
+      input.failAdd = 4;
+      const owner = createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW, { source: createKeyboardSource(input) });
+      expect(owner.keyboard.getSnapshot()).toEqual({ state: 'unavailable', error: input.cause });
+      expect(input.removed).toEqual([0, 1, 2, 3]);
+      expect(owner.cleanupFailure()).toBeNull();
+      owner.dispatch('start');
+      owner.dispatch('add-marker');
+      host.deliver(0); host.deliver(20);
+      expect(owner.store.getState().recentResults[0]?.outcome).toBe('accepted');
+      owner.dispose();
+    });
+
+    it('failed keyboard rollback prevents start, keeps all causes and releases previously acquired surface/session', () => {
+      const host = new ControlledHost(), surface = new RecordingSurface(), input = new InputHost();
+      input.failAdd = 8;
+      input.failRemove.add(0); input.failRemove.add(7);
+      surface.disposeFailure = new Error('surface removal');
+      const owner = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError }, { source: createKeyboardSource(input) });
+      expect(owner.store.getState().status).toBeNull();
+      expect(owner.cleanupFailure()?.cause).toBeInstanceOf(RollbackError);
+      expect(owner.store.getState().actionError?.operation).toBe('initialize');
+      expect(input.removed).toHaveLength(8);
+      expect(surface.calls.slice(-2)).toEqual(['disconnect', 'dispose']);
+      expect(host.listeners.size + host.pending.size).toBe(0);
+      const state = owner.store.getState();
+      owner.dispatch('start');
+      expect(input.key('KeyN')).toBe(0);
+      expect(owner.store.getState()).toBe(state);
+      expect(owner.keyboard.getSnapshot().state).toBe('unavailable');
+    });
+
+    it('does not acquire source listeners when earlier Session initialization fails', () => {
+      const host = new ControlledHost(), surface = new RecordingSurface(), input = new InputHost();
+      host.subscribeFailure = new Error('session registration');
+      const owner = createSyntheticDemoOwner(host, new TestClock().read, { surface, reportError }, { source: createKeyboardSource(input) });
+      expect(input.registrations).toBe(0);
+      expect(surface.calls).toEqual(['connect', 'disconnect', 'dispose']);
+      expect(owner.keyboard.getSnapshot().state).toBe('unavailable');
+      expect(owner.cleanupFailure()).toBeNull();
+    });
+  });
+
   it('keeps the session error when a restart cannot cancel a frame, whatever the store shows later', () => {
     const host = new ControlledHost();
     const owner = createSyntheticDemoOwner(host, new TestClock().read, NO_VIEW);
@@ -515,4 +659,3 @@ describe('synthetic demo owner cleanup failure record', () => {
     expect(host.listeners.size).toBe(0);
   });
 });
-

@@ -5,12 +5,15 @@
  */
 import { useSyncExternalStore, type CSSProperties, type Ref } from 'react';
 import type { SyntheticRendererReader, SyntheticRendererStatus } from '../../render/synthetic/synthetic-renderer.ts';
+import type { SyntheticKeyboardReader } from '../game/synthetic-keyboard-input.ts';
+import { describeError } from '../game/describe-error.ts';
 
 export interface SyntheticRenderViewProps {
   /** The container the WebGL surface draws in; React renders no children into it. */
   readonly ref: Ref<HTMLDivElement>;
   /** Null until the demo owner exists. */
   readonly renderer: SyntheticRendererReader | null;
+  readonly keyboard: SyntheticKeyboardReader | null;
 }
 
 /** Content box per docs/plan/p1/07/spec.md 画面布局; the background is the letterbox. */
@@ -45,10 +48,12 @@ function describeStatus(status: SyntheticRendererStatus | null): { readonly aler
   }
 }
 
-export function SyntheticRenderView({ ref, renderer }: SyntheticRenderViewProps) {
+export function SyntheticRenderView({ ref, renderer, keyboard }: SyntheticRenderViewProps) {
   const source = renderer ?? NO_RENDERER;
   const status = useSyncExternalStore(source.subscribe, source.getSnapshot);
   const { alert, text } = describeStatus(status);
+  const keys = keyboard ?? NO_RENDERER;
+  const keyboardStatus = useSyncExternalStore(keys.subscribe, keys.getSnapshot);
   return (
     <section aria-labelledby="synthetic-view-title">
       <h3 id="synthetic-view-title">Synthetic view</h3>
@@ -56,7 +61,28 @@ export function SyntheticRenderView({ ref, renderer }: SyntheticRenderViewProps)
         <strong>P1 synthetic engineering demo — not original graphics.</strong> The shapes, colours and camera are invented
         to test the renderer.
       </p>
-      <div ref={ref} data-testid="synthetic-view" style={containerStyle} />
+      <p id="synthetic-keyboard-help">
+        Synthetic demo keys, not original controls: ArrowLeft / ArrowRight move along X; N adds a marker; X removes it;
+        P pauses or resumes. Focus this area to use game keys.
+      </p>
+      <div
+        ref={ref} data-testid="synthetic-view" className="synthetic-input" style={containerStyle}
+        tabIndex={0} role="region" aria-label="Synthetic view and game key input"
+        aria-describedby="synthetic-keyboard-help"
+        onClick={event => {
+          if (event.target === event.currentTarget || event.target instanceof HTMLCanvasElement) event.currentTarget.focus();
+        }}
+      />
+      <p
+        role={keyboardStatus?.state === 'unavailable' ? 'alert' : 'status'}
+        data-testid="keyboard-status" data-state={keyboardStatus?.state ?? 'preparing'}
+      >
+        {keyboardStatus === null ? 'Preparing keyboard input…' : keyboardStatus.state === 'unavailable'
+          ? `Keyboard input is unavailable (${describeError(keyboardStatus.error)}). The session and panel remain usable.`
+          : keyboardStatus?.state === 'active'
+            ? 'Game keys active.'
+            : 'Game keys inactive. Focus the synthetic view to use them.'}
+      </p>
       <p role={alert ? 'alert' : 'status'} data-testid="render-status" data-state={status?.state ?? 'preparing'}>{text}</p>
     </section>
   );
