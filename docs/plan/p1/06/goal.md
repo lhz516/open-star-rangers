@@ -101,7 +101,7 @@ updated: 2026-10-02
 | [02-session-projection-bridge.md](./subtasks/02-session-projection-bridge.md) | 01 | completed |
 | [03-command-result-feedback.md](./subtasks/03-command-result-feedback.md) | 02 | completed |
 | [04-cancellation-failure-controls.md](./subtasks/04-cancellation-failure-controls.md) | 03 | completed |
-| [05-ui-replay-invariants.md](./subtasks/05-ui-replay-invariants.md) | 04 | pending |
+| [05-ui-replay-invariants.md](./subtasks/05-ui-replay-invariants.md) | 04 | completed |
 | [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | pending |
 | [07-dev-panel-app-wiring.md](./subtasks/07-dev-panel-app-wiring.md) | 06 | pending |
 | [08-browser-acceptance-evidence.md](./subtasks/08-browser-acceptance-evidence.md) | 07 | pending |
