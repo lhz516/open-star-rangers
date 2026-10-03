@@ -60,7 +60,7 @@ updated: 2026-10-02
 | [01-dependency-boundaries.md](./subtasks/01-dependency-boundaries.md) | — | completed |
 | [02-pure-render-contracts.md](./subtasks/02-pure-render-contracts.md) | 01 | completed |
 | [03-three-scene-mapping.md](./subtasks/03-three-scene-mapping.md) | 02 | completed |
-| [04-browser-surface-lifecycle.md](./subtasks/04-browser-surface-lifecycle.md) | 02, 03 | pending |
+| [04-browser-surface-lifecycle.md](./subtasks/04-browser-surface-lifecycle.md) | 02, 03 | completed |
 | [05-owner-renderer-integration.md](./subtasks/05-owner-renderer-integration.md) | 03, 04 | pending |
 | [06-react-render-diagnostics.md](./subtasks/06-react-render-diagnostics.md) | 05 | pending |
 | [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | pending |
@@ -69,6 +69,8 @@ updated: 2026-10-02
 最后一行始终为最终对齐验证，依赖所有其他子任务。浏览器能力受限时按 spec 记录 blocked，不以合成替代真实 WebGL 证据。
 
 ## 执行记录
+
+- **2026-10-02 — AC-09 取证方法补充：** 本机 Chrome 154 在只改 CDP `Emulation.setDeviceMetricsOverride.deviceScaleFactor`（CSS 宽高不变）时不派发 `MediaQueryList.change`，直到媒体查询重新求值。浏览器证据在每次改 DPR 后交替发送 `Emulation.setEmulatedMedia({media:'screen'})`/`{media:''}` 触发 Chrome 自己派发真实 `change`；仍不使用合成事件或 getter 替换，CSS 宽高保持不变。证据见 [04](./subtasks/04-browser-surface-lifecycle.md#完成证据)。
 
 ## 审批
 

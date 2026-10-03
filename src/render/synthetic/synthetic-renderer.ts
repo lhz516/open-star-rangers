@@ -9,6 +9,7 @@ import { Color, Mesh, Scene, type PerspectiveCamera } from 'three';
 import type { RenderFrame } from '../../app/runtime/synthetic-runtime.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { SessionFrame, SessionRun } from '../../app/session/synthetic-session.ts';
+import { attemptAll } from '../scene/cleanup.ts';
 import type { RenderGpuStats, RenderSurface, RenderSurfaceSize } from '../scene/render-surface.ts';
 import { computeViewportLayout, sameViewportLayout, type ViewportLayout } from '../viewport/viewport-layout.ts';
 import {
@@ -98,15 +99,6 @@ function once(cleanup: () => unknown): SessionCleanup {
     pending = false;
     cleanup();
   };
-}
-
-/** Runs every step in order, whatever fails, and returns the failures. */
-function attemptAll(steps: readonly (() => unknown)[]): unknown[] {
-  const errors: unknown[] = [];
-  for (const step of steps) {
-    try { step(); } catch (cause) { errors.push(cause); }
-  }
-  return errors;
 }
 
 /** The renderer when no surface could be created: it only reports why. */
