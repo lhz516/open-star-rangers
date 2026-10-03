@@ -73,6 +73,9 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
+- 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
+- [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
+- 联合资源测试逐轮打印context扩展能力；缺可选`WEBGL_lose_context`的context以annotation明确“context-loss未验证”，不冒称lost。可用时逐个断言实际lost；完整必需测量及本机结果见[04证据](../plan/p1/10/subtasks/04-joint-resource-regression.md#完成证据)。
 
 ## 合成 Runtime
 

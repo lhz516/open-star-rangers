@@ -56,7 +56,8 @@ export function installBrowserProbes(): void {
     if ((target === window && ['focus', 'blur'].includes(type))) return 'keyboard';
     if ((target === document && type === 'visibilitychange') || (target === window && ['pagehide', 'pageshow'].includes(type))) {
       // Session registers first; the input source registers the second distinct callback.
-      return listeners.some(entry => entry.object === target && entry.type === type && entry.active) ? 'keyboard' : 'session';
+      return listeners.some(entry => entry.object === target && entry.type === type && entry.active && ['session', 'keyboard'].includes(entry.group))
+        ? 'keyboard' : 'session';
     }
     if (target instanceof HTMLCanvasElement || (target instanceof MediaQueryList && target.media.includes('resolution'))) return 'render';
     return 'other';

@@ -71,7 +71,7 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 | [03-interaction-render-smoke.md](./subtasks/03-interaction-render-smoke.md) | 02 | completed |
 | [04-joint-resource-regression.md](./subtasks/04-joint-resource-regression.md) | 02 | completed |
 | [05-browser-replay.md](./subtasks/05-browser-replay.md) | 01 | completed |
-| [06-native-lifecycle-fallback.md](./subtasks/06-native-lifecycle-fallback.md) | 02 | pending |
+| [06-native-lifecycle-fallback.md](./subtasks/06-native-lifecycle-fallback.md) | 02 | completed |
 | [07-evidence-docs-alignment.md](./subtasks/07-evidence-docs-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 

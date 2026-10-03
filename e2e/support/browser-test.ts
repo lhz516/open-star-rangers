@@ -11,7 +11,11 @@ export function collectBrowserErrors(page: Page, webglUnavailable = false) {
     const text = message.text();
     const url = message.location().url;
     if ((url.endsWith('/favicon.ico') && text.includes('404'))
-      || (webglUnavailable && text === 'THREE.WebGLRenderer: Error creating WebGL context.')) {
+      || (webglUnavailable && [
+        'THREE.WebGLRenderer: Error creating WebGL context.',
+        'THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context.',
+        'THREE.WebGLRenderer: A WebGL context could not be created. Reason:  disabled by enterprise policy or commandline switch',
+      ].includes(text))) {
       allowed.push(`${url}: ${text}`);
     } else errors.push(`console: ${url}: ${text}`);
   });
@@ -32,12 +36,15 @@ export const test = base.extend<{ webglUnavailable: boolean; observeErrors: void
     try {
       await use();
     } finally {
-      await testInfo.attach('browser-errors', { body: JSON.stringify({ errors, allowed }), contentType: 'application/json' });
-      expect(errors, 'Unexpected browser errors').toEqual([]);
-      for (const name of ['action-error', 'session-error', 'cleanup-failure', 'open-demo-failure']) {
-        expect(await page.getByTestId(name).count(), `Unexpected ${name}`).toBe(0);
+      try {
+        await testInfo.attach('browser-errors', { body: JSON.stringify({ errors, allowed }), contentType: 'application/json' });
+        expect(errors, 'Unexpected browser errors').toEqual([]);
+        for (const name of ['action-error', 'session-error', 'cleanup-failure', 'open-demo-failure']) {
+          expect(await page.getByTestId(name).count(), `Unexpected ${name}`).toBe(0);
+        }
+      } finally {
+        await page.evaluate(() => { window.osrProbe?.restore(); });
       }
-      await page.evaluate(() => { window.osrProbe?.restore(); });
     }
   }, { auto: true }],
 });
