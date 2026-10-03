@@ -40,8 +40,8 @@ P0 的剩余研究与实机工作继续在[未知项登记表](../../original/un
 ## 2. 已有起点
 
 - Vite/React/TypeScript strict、Node/pnpm 锁定、模块边界与确定性 lint、Vitest 和合成格式样本已纳入仓库；证据入口见 [P1-01 最终对齐](./01/subtasks/06-final-alignment.md#完成证据)与[工程约定](../../engineering/README.md)。
-- [App](../../../src/app/App.tsx) 由 P1-06 接入合成开发面板（React 指令与 Core 反馈），[应用入口](../../../src/main.tsx) 已启用 StrictMode。目前仍没有 Three.js 场景、正式菜单或可玩的原版内容。
-- [package.json](../../../package.json) 已由 P1-06 加入 Zustand，尚未包含 Three.js 或 Playwright。Core、Runtime 与会话已由 P1-02 至 P1-05 交付，UI projection 桥接与 React 指令闭环已由 P1-06 交付；渲染器尚未完成，也尚无 CI、SWA 配置和 E2E 测试入口。
+- [App](../../../src/app/App.tsx) 由 P1-06 接入合成开发面板（React 指令与 Core 反馈），由 P1-07 接入 Three.js 合成画面与渲染诊断，[应用入口](../../../src/main.tsx) 已启用 StrictMode。目前仍没有正式菜单或可玩的原版内容。
+- [package.json](../../../package.json) 已由 P1-06 加入 Zustand、由 P1-07 加入 Three.js，尚未包含 Playwright。Core、Runtime 与会话已由 P1-02 至 P1-05 交付，UI projection 桥接与 React 指令闭环已由 P1-06 交付，合成渲染器已由 P1-07 交付；尚无 CI、SWA 配置和 E2E 测试入口。
 
 P1-01 以既有实现为输入进行复核和证据归档，不重新初始化项目，也不为了凑任务补写虚假的历史执行记录。本文件不复制任务完成状态；每个 goal 的状态须以其实际验收为准。
 
@@ -59,14 +59,14 @@ P1-01 以既有实现为输入进行复核和证据归档，不重新初始化�
 | P1-04 | [Runtime 调度、命令与事件分发](./04/spec.md) · [Goal](./04/goal.md) | 固定步长、补跑上限、命令队列、帧后 Event Bus、两帧 Render State、可选录制接线 | P1-02、P1-03 |
 | P1-05 | [会话与浏览器生命周期](./05/spec.md) · [Goal](./05/goal.md) | 开始/暂停/继续/重启/退出/销毁、后台时钟与会话级清理 | P1-04 |
 | P1-06 | [UI projection 与 React 指令闭环](./06/spec.md) · [Goal](./06/goal.md) | Zustand vanilla 桥接、selector 订阅、Core 接受/拒绝反馈 | P1-05 |
-| P1-07 | [Three.js 合成渲染](./07/spec.md) | 实体映射、插值、固定比例画面、尺寸/DPR 变化与 GPU 释放 | P1-05 |
+| P1-07 | [Three.js 合成渲染](./07/spec.md) · [Goal](./07/goal.md) | 实体映射、插值、固定比例画面、尺寸/DPR 变化与 GPU 释放 | P1-05 |
 | P1-08 | [菜单与导入占位](#p1-08-菜单与导入占位) | 从菜单进入/退出合成场景，明确区分演示与未实现的导入 | P1-06、P1-07 |
 | P1-09 | [最小键盘适配与输入隔离](#p1-09-最小键盘适配与输入隔离) | 游戏动作适配、连续轴/离散命令/Runtime 控制分流、焦点与清键 | P1-05 |
 | P1-10 | [浏览器集成与回归冒烟](#p1-10-浏览器集成与回归冒烟) | 本地 Playwright 入口，指令/画面/生命周期的联合验证 | P1-03、P1-08、P1-09 |
 | P1-12 | [本地原版隔离与许可检查](#p1-12-本地原版隔离与许可检查) | 本地仓库/产物哈希扫描、依赖许可判定与第三方声明 | P1-01 |
 | P1-14 | [P1 退出评审与交接](#p1-14-p1-退出评审与交接) | 逐项核验本地退出条件，形成评审并交接 P2/P3 | P1-01 至 P1-10、P1-12 |
 
-P1-01 至 P1-06 的索引链接指向已有 spec 与 goal，P1-07 指向已起草的 spec。其余任务链接暂指向下方范围说明，文档按需生成。不创建空的 spec/goal，也不维护一份额外的执行状态表。
+P1-01 至 P1-07 的索引链接指向已有 spec 与 goal。其余任务链接暂指向下方范围说明，文档按需生成。不创建空的 spec/goal，也不维护一份额外的执行状态表。
 
 ## 4. 任务范围与责任
 

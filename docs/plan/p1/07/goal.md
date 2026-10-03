@@ -66,7 +66,7 @@ updated: 2026-10-02
 | [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [09-fault-empty-frame.md](./subtasks/09-fault-empty-frame.md) | 03 | completed |
 | [10-container-remount.md](./subtasks/10-container-remount.md) | 05, 06 | completed |
-| [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 09, 10 | pending |
+| [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 09, 10 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。浏览器能力受限时按 spec 记录 blocked，不以合成替代真实 WebGL 证据。
 
@@ -77,6 +77,8 @@ updated: 2026-10-02
 - **2026-10-02 — 最终对齐前审计发现 Node 缺口：** AC-05 要求“故障收尾后为空帧”的 Node 证据（沿用 Vitest 创建边界注入），03/05/07 均未覆盖 Session 故障导致运行结束时的空帧绘制。按工作流把 08 保持 pending，新增修复子任务 [09](./subtasks/09-fault-empty-frame.md) 并加入 08 的依赖；其余 AC 的 Node 证据已齐，浏览器证据在 08 取得。
 
 - **2026-10-02 — 最终对齐浏览器取证发现画面容器重挂载缺陷：** AC-15 临时 Profiler 编辑使 Fast Refresh 重挂载画面子树，React 生成新的容器 `div`，而 owner effect 只依赖稳定的 ref 对象、未重跑：渲染器仍为 ready 却画在已脱离文档的旧容器里，页面 0 个已连接画布。已还原临时编辑；08 回到 pending，新增修复子任务 [10](./subtasks/10-container-remount.md)（hook 依赖实际容器元素），08 依赖加入 10。此前取得的 AC-04/05/08/09/10/12/13 与生产预览证据不受影响，保留在 08。
+
+- **2026-10-02 — 最终对齐观察：** 同一页面先经历上下文丢失/恢复、随后释放该渲染器时，Chrome 记录 Three.js 对旧上下文对象调用删除产生的 `INVALID_OPERATION` 警告；不经上下文丢失的重建无 WebGL 日志，资源与画布数量均正常。未改契约，留给 P1-10 联合回归评估。修复 10 之前取得的浏览器结果已在最终代码上复测一致，证据见 [08](./subtasks/08-final-browser-alignment.md#完成证据)。
 
 ## 审批
 
