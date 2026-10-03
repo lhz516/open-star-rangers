@@ -1,6 +1,6 @@
 export type ListenerGroup = 'keyboard' | 'session' | 'render' | 'react' | 'vite' | 'test' | 'other';
 export interface ProbeSnapshot {
-  listeners: { id: number; target: number; type: string; capture: boolean; group: ListenerGroup; active: boolean; removedAt: number | null }[];
+  listeners: { id: number; target: number; type: string; capture: boolean; group: ListenerGroup; active: boolean; addedAt: number; removedAt: number | null }[];
   observers: { id: number; targets: number[] }[];
   canvases: { id: number; connected: boolean; extension: boolean; lost: boolean }[];
   frames: { pending: number; maximum: number; requested: number; delivered: number; cancelled: number };
@@ -78,7 +78,7 @@ export function installBrowserProbes(): void {
     if (signal?.aborted) return;
     const entry: Listener = {
       id: id(callback), target: id(this), object: this, type, callback, nativeCallback, capture: capturing,
-      group: group(this, type), active: true, removedAt: null, signal,
+      group: group(this, type), active: true, addedAt: ++sequence, removedAt: null, signal,
     };
     listeners.push(entry);
   };
@@ -130,8 +130,8 @@ export function installBrowserProbes(): void {
   });
   window.osrProbe = {
     snapshot: () => ({
-      listeners: listeners.map(({ id, target, type, capture, group, active, removedAt, signal }) => ({
-        id, target, type, capture, group, active: active && !signal?.aborted, removedAt,
+      listeners: listeners.map(({ id, target, type, capture, group, active, addedAt, removedAt, signal }) => ({
+        id, target, type, capture, group, active: active && !signal?.aborted, addedAt, removedAt,
       })),
       observers: [...observers].map(([observer, targets]) => ({ id: id(observer), targets: [...targets].map(id) })),
       canvases: [...canvases].map(([canvas, { gl, extension }]) => ({
