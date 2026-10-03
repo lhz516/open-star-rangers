@@ -36,7 +36,7 @@ updated: 2026-10-02
 | S-07 | 04 | 06：键盘、焦点与监听计数 |
 | S-08 | 05 | 05：文档与工程检查；06：最终核对 |
 | AC-01 | 04 | 06：开发与生产预览主菜单检查 |
-| AC-02 | 01 | 01：Node 参数化转换测试 |
+| AC-02 | 01、08 | 01：Node 参数化转换测试 |
 | AC-03 | 03、04 | 06：鼠标/Enter/Space 进入与 mover 像素 |
 | AC-04 | 04 | 06：面板控制、重启、Exit 不被自动 start 撤销 |
 | AC-05 | 03、04 | 06：三种状态返回菜单的释放探针 |
@@ -63,13 +63,20 @@ updated: 2026-10-02
 | [04-menu-pages-shell.md](./subtasks/04-menu-pages-shell.md) | 01, 03 | completed |
 | [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04, 07 | completed |
 | [07-start-failure-recovery-text.md](./subtasks/07-start-failure-recovery-text.md) | 04 | completed |
-| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07 | pending |
+| [08-demo-visit-exhaustion-feedback.md](./subtasks/08-demo-visit-exhaustion-feedback.md) | 01, 04 | completed |
+| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07, 08 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖。
 
 ## 执行记录
 
 - **2026-10-02 — 新增修复子任务 07：** 05 审阅 AC-10 时发现，初始化失败或 start 同步失败时开发面板只显示原始错误，缺少 spec 行为表要求的“返回菜单”处置说明。新增 07 修复文案，插在最终对齐之前；05 的 AC-10 审阅改为依赖 07，06 依赖全部其他子任务。
+
+- **2026-10-02 — 最终对齐第一轮未通过，新增修复子任务 08：** 06 的 rubber-duck 核对指出：
+  - spec“页面流转输入”行要求 `demoVisit` 耗尽时“应用显式显示错误且不创建 owner”，但 App 中 `RangeError` 会从 React 状态更新函数中逃逸，没有应用级反馈。
+  - AC-03 未逐一记录三种激活方式的完整结果，AC-06 未显式记录 20/20 accepted 与“立即重进时先释放旧画布”，AC-12 未证明 Exit 后的同一 owner 确实发生了重渲染。
+
+  Affected acceptance：页面流转输入契约、AC-03、AC-06、AC-12。06 退回 pending；新增 08 修复耗尽反馈，06 改为依赖 08，并在 08 完成后重新取证上述浏览器项。
 
 ## 审批
 

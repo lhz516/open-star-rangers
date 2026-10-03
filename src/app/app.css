@@ -40,7 +40,7 @@ button:focus-visible {
   margin: 0.25rem 0 0;
 }
 
-.cleanup-failure {
+.failure-alert {
   border: 2px solid #a51d2d;
   padding: 0 1rem;
 }

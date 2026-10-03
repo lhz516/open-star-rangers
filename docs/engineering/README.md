@@ -175,7 +175,7 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit；锁存时不调用工厂；否则创建 owner，交付其初始化回滚记录，未锁存时只派发一次 start。同一 visit 不会再次 start，失败的 start 也不重试。
   - `close()` 幂等，释放 owner、交付其清理失败记录，再报告 dispose 抛出的错误。`release()` 供“返回菜单”在切换画面前同步释放。
   - 失败经 `onCleanupFailure` 交给页面流转。该出口抛错时改经 `reportError` 报告；`reportError` 自身抛错被丢弃。无论出口是否失败，锁存都已生效。
-- [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。
+- [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。进入演示前，外壳先用当前状态同步校验转换：`demoVisit` 耗尽时以 alert 显示 `RangeError` 并停留在主菜单，不创建 owner；实际提交仍走函数式更新，双击时每次激活至多一次转换。
 - [ui/pages/](../../src/ui/pages/) 是三个只用原生按钮的画面，不在 window/document 注册键盘监听。
   - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。
   - 演示画面中，`Return to menu` 是标题之后的第一个控件。
