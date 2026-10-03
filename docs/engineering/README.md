@@ -104,3 +104,19 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 3. 用 `Target.attachToTarget({targetId,flatten:false})` 取得探针页 session，通过 `Target.sendMessageToTarget` 发送 `Runtime.evaluate`，按 sessionId/消息 ID 接收 `Target.receivedMessageFromTarget` 的结果；明确检查协议错误和 exceptionDetails。探针页先导航到固定 Vite origin，再导入前述公共模块和安装临时 DOM/只读观测，不能在 data URL 的能力预检上宣称 Runtime 已通过。
 4. 用 `Target.activateTarget` 激活探针页，确认原生 visible 且 tick 前进；激活另一标签页，确认原生 hidden、自动 paused 与稳定 tick；再次激活探针页，确认 visible 后跨真实 rAF 仍 paused/tick 不变，再显式 resume 验证首帧重锚与后续推进。记录原生 visibilitychange 日志；不使用合成事件、visibility getter 替换或强制生命周期命令。
 5. 先 dispose 会话、撤销自有探针和包装，再用 `Target.disposeBrowserContext` 关闭自有 context、关闭自有浏览器/入口页并停止自有 Vite。只清理本轮拥有的资源，不关闭用户 profile 或其他项目的浏览器/服务器。
+
+## UI 投影与指令反馈
+
+P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/06/spec.md)。它不创建会话、宿主、rAF 或定时器，只消费 Session 的公开通知。
+
+- [synthetic-game-store.ts](../../src/ui/game/synthetic-game-store.ts) 是 Zustand vanilla store。React 只拿到只读 `reader`（getState/getInitialState/subscribe）；UI 模块内部通过单次 `commit(change)` 原子写入一次转换（状态、投影、pending 增减与结果、清空当前运行反馈），无变化时不通知。状态与数组冻结；Core 投影与事件本已深冻结，错误保持原引用。
+- [synthetic-session-bridge.ts](../../src/ui/game/synthetic-session-bridge.ts) 按 owner 绑定一个控制器：
+  - 状态通知即时写入。新的 running/paused 运行立即发布投影并重建采样基准；idle/disposed 清空投影与运行反馈；faulted 保留最后成功投影。
+  - 常规投影在现有 onFrame 中按 10 Hz（100 ms）采样，以“运行 + tick”去重；暂停静止帧立即发布未发布的 tick；恢复后不补发历史快照。
+  - 采样时钟由装配层注入（浏览器为 `performance.now`），必须是有限且不倒退的毫秒值；只在需要锚定基准或判断新 tick 是否到期时读取。读取失败或非法值在帧监听器中抛出，由 Session 记为 consumer 故障：
+    - 附着发生在状态通知内时，失败延到下一帧报告，避免状态监听因抛错被 Session 移除。
+    - 已暂停的运行（如隐藏时 start）附着时不读时钟，在恢复后的首帧锚定基准，因此失败不会被无限期延迟。
+    - 立即发布结果时时钟失败，已收到的结果与最新投影先写入，再抛出。
+  - 附着是事务性的：运行监听全部注册成功后才写入 running/paused；任一注册失败会逆序撤销已注册的监听，并在重新订阅状态后再抛出，以便继续观察随之而来的故障。
+  - 一个桥接实例只服务一个会话；成功绑定后 unbind 即终止，只有首次绑定失败可以重试。`onError` 只写 sessionError，必须作为创建 Session 时的错误出口传入；新运行开始且会话 error 为空时清空 sessionError。
+- 测试用 [synthetic-ui.test-support.ts](../../src/ui/game/synthetic-ui.test-support.ts) 组合真实 Session、`ControlledHost`、可控时钟，以及记录监听器的会话包装，用来重放旧运行通知。
