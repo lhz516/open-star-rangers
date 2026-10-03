@@ -71,7 +71,7 @@ related: [ADR-0004, ADR-0012, ADR-0015]
 |---|---|---|
 | [01-keyboard-input-contract.md](./subtasks/01-keyboard-input-contract.md) | — | completed |
 | [02-browser-keyboard-source.md](./subtasks/02-browser-keyboard-source.md) | 01 | completed |
-| [03-session-keyboard-actions.md](./subtasks/03-session-keyboard-actions.md) | 01 | pending |
+| [03-session-keyboard-actions.md](./subtasks/03-session-keyboard-actions.md) | 01 | completed |
 | [04-demo-keyboard-wiring.md](./subtasks/04-demo-keyboard-wiring.md) | 02, 03 | pending |
 | [05-browser-input-evidence.md](./subtasks/05-browser-input-evidence.md) | 04 | pending |
 | [06-keyboard-docs-alignment.md](./subtasks/06-keyboard-docs-alignment.md) | 05 | pending |

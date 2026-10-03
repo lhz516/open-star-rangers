@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-02
+updated: 2026-10-03
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -52,6 +52,10 @@ src/
   platform/
     browser/
       browser-session-host.ts
+    input/
+      browser-keyboard-source.ts
+      keyboard-input.ts
+      keyboard-source.ts
   render/
     scene/
       cleanup.ts
@@ -74,6 +78,7 @@ src/
       synthetic-command-feedback.ts
       synthetic-game-controls.ts
       synthetic-game-store.ts
+      synthetic-keyboard-input.ts
       synthetic-session-bridge.ts
       use-synthetic-game.ts
     pages/
@@ -88,6 +93,8 @@ src/
 `content/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 ## 职责与依赖
+
+P1-09/01–03 已提供 [platform/input/](../../src/platform/input/) 的通用事件、按住轴、源端口与监听管理，以及 [synthetic-keyboard-input.ts](../../src/ui/game/synthetic-keyboard-input.ts) 的合成五键映射和 Session 消费者。平台层不识别合成动作；消费者不导入浏览器连接、不调度 tick，方向轴经桥接的 guarded setInput，命令与 P 复用既有反馈/controls。工厂与释放契约见[工程约定](./README.md#ui-投影与指令反馈)。owner/页面接线仍由 P1-09/04 负责；当前页面尚无游戏键盘输入，独立键位文档的整体验证与定稿留给 06。
 
 | 模块 | 拥有的职责 | 不应承担 |
 |---|---|---|

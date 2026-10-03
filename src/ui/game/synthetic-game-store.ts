@@ -34,7 +34,7 @@ export type UiCommandResult = UiPendingCommand & UiCommandOutcome;
 export type UiCommandSettlement = Pick<UiPendingCommand, 'runId' | 'commandId'> & UiCommandOutcome;
 
 export interface UiActionError {
-  readonly operation: Command['type'] | SessionControl['type'] | 'initialize' | 'cleanup';
+  readonly operation: Command['type'] | SessionControl['type'] | 'input' | 'initialize' | 'cleanup';
   readonly cause: unknown;
 }
 

@@ -4,7 +4,7 @@
  * and published at once on run, command, pause and fault boundaries. The bridge creates no
  * session, host, animation frame or timer. Contract: docs/plan/p1/06/spec.md.
  */
-import type { Command } from '../../core/synthetic/synthetic-scene.ts';
+import type { Command, MoveInput } from '../../core/synthetic/synthetic-scene.ts';
 import type { GameSessionError } from '../../app/session/session-errors.ts';
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
@@ -28,6 +28,8 @@ export interface SyntheticRunBinding {
    * without touching the run once the bridge retired the binding by rollback or unbind.
    */
   submitCommand(command: Command): number;
+  /** Same retirement guard as commands; Session checks current run, phase and notification mode. */
+  setInput(input: MoveInput): void;
   /**
    * Commits command feedback if this run is still current, optionally with the run's latest
    * projection when that tick is unpublished. Returns the number of commands settled. Status,
@@ -96,6 +98,11 @@ class RunBinding implements SyntheticRunBinding {
   submitCommand(command: Command): number {
     if (this.retired) throw new Error('The UI owner no longer controls this run');
     return this.run.submitCommand(command);
+  }
+
+  setInput(input: MoveInput): void {
+    if (this.retired) throw new Error('The UI owner no longer controls this run');
+    this.run.setInput(input);
   }
 
   commit(change: SyntheticRunFeedback, withLatestProjection = false): number {

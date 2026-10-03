@@ -87,6 +87,19 @@ describe('synthetic game store', () => {
     expect([counts.phase(), counts.runId(), counts.marker()]).toEqual([1, 0, 1]);
   });
 
+  it('keeps the raw input action cause in a frozen error record, separately from session errors', () => {
+    const { reader, commit } = createSyntheticGameStore();
+    const cause = new Error('input failed');
+    commit({ actionError: { operation: 'input', cause } });
+    expect(reader.getState().actionError).toEqual({ operation: 'input', cause });
+    expect(reader.getState().actionError?.cause).toBe(cause);
+    expect(Object.isFrozen(reader.getState().actionError)).toBe(true);
+    expect(reader.getState().sessionError).toBeNull();
+    const before = reader.getState();
+    commit({ actionError: before.actionError });
+    expect(reader.getState()).toBe(before);
+  });
+
   it('settles each pending command once in order and ignores unknown or repeated IDs', () => {
     const { reader, commit } = createSyntheticGameStore();
     commit({ addPending: { runId: 1, commandId: 1, commandType: 'add-marker' } });

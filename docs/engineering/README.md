@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-02
+updated: 2026-10-03
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -131,6 +131,10 @@ P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/
 - [synthetic-command-feedback.ts](../../src/ui/game/synthetic-command-feedback.ts) 是桥接的运行级 consumer：`submit(type)` 经当前运行提交已有 marker 命令，只有拿到 Runtime commandId 后才记为 pending，投影不提前改变。结果只来自 Core 的域事件：按 `delivery.commandId`（不是 commandIndex 或 entityId）匹配当前运行的 pending，生成 accepted/rejected，并与帧末最新投影同次写入，不等采样窗。其他消费者的命令和重复投递不会生成本面板结果；同步失败写入 actionError 并保留原 cause，暂停或已结束运行的错误来自 Session 本身。提交经 `SyntheticRunBinding.submitCommand` 转发：桥接回滚或 unbind 后该 binding 被注销，不再触及仍在运行的会话。成功提交时，清除旧 actionError 与新增 pending 在同一次写入中完成。
   - Session 的取消通知把匹配的 pending 记为 cancelled 并保留原 reason（user-pause/hidden/restart/exit/dispose/failure），不是 Core 拒绝。运行故障时，仍未终结的 pending 与 faulted 状态在同一次写入中标为 unconfirmed/session-failed：这些命令可能已在被丢弃事件的 tick 中执行，因此既不显示成功，也不自动重提。真实 Runtime 中，同一帧首个 tick 失败只会产生取消（命令尚未消耗），后续 tick 失败只会产生 unconfirmed。
 - [synthetic-game-controls.ts](../../src/ui/game/synthetic-game-controls.ts) 的 `syntheticControlAvailability(status)` 按 spec“控件可用性”从状态纯函数推导可用性。结果以面板动作 ID（start/pause/resume/restart/exit/add-marker/remove-marker）为键，同一状态组合返回同一个冻结对象，便于 React selector 按引用比较。`createSyntheticGameControls(store, session).control(type)` 先清空 actionError 再调用 Session 控制，同步失败时写入。Session 仍是唯一判定者，UI 不放宽其判断；cleanupFailed 在 error 被替换后仍禁用 start/restart。
+- [synthetic-keyboard-input.ts](../../src/ui/game/synthetic-keyboard-input.ts)（P1-09/03）提供 DOM-free 的五键消费者，尚未接入 owner/页面。桥接绑定后调用 `createSyntheticKeyboardInput({store, session, bridge, feedback, controls}, {source})`，也可传 `{unavailable: cause}`。`session` 必须与桥接绑定的是同一控制器；反馈和 controls 复用该 owner 的实例。返回 `{reader, dispose}`：`reader.getSnapshot()/subscribe()` 只读、句柄与快照冻结，active/inactive 只随输入源资格变化，unavailable 保存原始 error，不随 tick 或暂停刷新。释放后读到 inactive，不再通知或接受旧回调。
+  - 方向轴只从合法输入回调经 `SyntheticRunBinding.setInput` 转发；与 submitCommand 相同，retired/unbind 时先拒绝，当前运行身份、phase 与通知模式由 Session 校验。每个动作读取实时 Session 状态，不用 store 的旧缓存；命令走现有反馈，P 走现有可用性与 controls。
+  - Session 状态订阅仅清本地按住表（所有暂停、结束和运行替换），不提交输入、命令或控制。start/resume 不补发；repeat 不能重建已清状态。源失焦/hidden/pagehide 在仍合法 running 时立即发送变化后的零轴，其余状态依赖 Session 清意图。setInput 同步失败写 actionError=input 并保留 cause；成功的实际轴变更只清旧 input 错误，忽略/no-op 不清错，也不覆盖独立错误。
+  - 创建时先取得状态订阅再连接 source；connect 的同步初始信号只更新资格，不接受同步按键或提交输入。普通登记失败（包括回滚成功的 AggregateError）降为 unavailable；`RollbackError`（包括传入的 unavailable 原因）保持初始化失败，撤销已取得的订阅；若消费层回滚也失败，以新的 RollbackError 保留全部原因。dispose 先失效并清本地状态，再逐项释放 source、取消状态订阅，继续独立清理，以 AggregateError 报告全部失败；owner04 负责先调用它再销毁 Session，并把失败纳入清理锁存。
 - 测试用 [synthetic-ui.test-support.ts](../../src/ui/game/synthetic-ui.test-support.ts) 组合真实 Session、`ControlledHost`、可控时钟，以及记录监听器的会话包装，用来重放旧运行通知。
 - [synthetic-demo-owner.ts](../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的应用装配 owner：`createSyntheticDemoOwner(host, clock, render)` 依次创建 store、反馈、渲染器（P1-07）、桥接与会话（种子 0、Core 默认 tick 频率，均为合成值），不自动 start，也不登记全局单例。它只向外暴露只读 `store`、只读 `renderer`（状态句柄与诊断；表面无法连接时为 unavailable）、`dispatch(action)`、`dispose()` 与只读的 `cleanupFailure()`（P1-08）。渲染器作为桥接的第二个运行级 consumer 接入每个运行。
   - `dispatch` 使用 controls 模块的 `createSyntheticPanelDispatcher`：marker 命令交给命令反馈，其余交给会话控制，动作分类留在 UI 层。
@@ -182,4 +186,3 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - 导入占位只有说明与 `Return to menu`，不放文件输入或拖放区，不读写存储或发请求。
   - 样式在 [app.css](../../src/app/app.css)：响应式、按钮 `:focus-visible` 有可见 outline。
 - 验证分层：页面流转、owner 记录与生命周期接线用 Node 测试。React 画面、焦点、键盘与往返释放用上文“已验证的 CDP 自动化路线”在开发服务器与 `vite preview` 中取证。稀有失败（failed、faulted、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不伪造浏览器复现。不引入 jsdom、React Testing Library 或 Playwright 依赖。
-

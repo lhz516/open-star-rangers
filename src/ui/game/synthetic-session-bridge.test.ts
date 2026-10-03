@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GameRuntimeError } from '../../app/runtime/runtime-errors.ts';
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import { GameSessionError } from '../../app/session/session-errors.ts';
+import type { SyntheticRunBinding } from './synthetic-session-bridge.ts';
 import { createSyntheticGameStore, type SyntheticGameStoreWriter } from './synthetic-game-store.ts';
 import {
   PROJECTION_SAMPLE_INTERVAL_MS, createSyntheticSessionBridge, type SyntheticRunConsumer,
@@ -31,6 +32,46 @@ function acceptingConsumer(writer: SyntheticGameStoreWriter): SyntheticRunConsum
 const throwingConsumer = (cause: unknown): SyntheticRunConsumer => ({ attach: () => { throw cause; } });
 
 describe('synthetic session bridge: status and run attachment', () => {
+  it('forwards input only through the Session guards and never touches a run after unbind', () => {
+    const { session, bridge, recorded, host, currentRun } = setupBridge();
+    session.control({ type: 'start' });
+    const binding = bridge.currentRun();
+    if (!binding) throw new Error('Expected a binding');
+    binding.setInput({ moveX: 1 });
+    host.deliver(0); host.deliver(20);
+    expect(currentRun().uiProjection().mover.position.x).toBe(0.02);
+    session.control({ type: 'pause' });
+    expect(() => binding.setInput({ moveX: -1 })).toThrowError(expect.objectContaining({ kind: 'invalid-state', phase: 'paused' }));
+    session.control({ type: 'resume' });
+    session.control({ type: 'restart' });
+    const next = bridge.currentRun();
+    if (!next) throw new Error('Expected next binding');
+    expect(() => binding.setInput({ moveX: -1 })).toThrowError(expect.objectContaining({ kind: 'invalid-state', reason: 'run has ended' }));
+    const before = recorded.inputs.length;
+    bridge.unbind();
+    expect(() => next.setInput({ moveX: -1 })).toThrow('no longer controls');
+    expect(recorded.inputs).toHaveLength(before);
+    host.deliver(1000); host.deliver(1020);
+    expect(currentRun().uiProjection().mover.position.x).toBe(0);
+  });
+
+  it('guards input from a binding retired by attachment rollback while its Session still runs', () => {
+    const first = setupBridge();
+    first.session.control({ type: 'start' });
+    const retired: SyntheticRunBinding[] = [];
+    const cause = new Error('attachment');
+    const late = unboundBridge([{
+      attach: binding => { retired.push(binding); throw cause; },
+    }]);
+    expect(() => late.bridge.bind(first.session)).toThrow(cause);
+    const [abandoned] = retired;
+    if (!abandoned) throw new Error('Expected retired binding');
+    expect(() => abandoned.setInput({ moveX: 1 })).toThrow('no longer controls');
+    first.host.deliver(0); first.host.deliver(20);
+    expect(first.currentRun().uiProjection().mover.position.x).toBe(0);
+    expect(first.session.status().phase).toBe('running');
+  });
+
   it('binds an idle session without a world or frame request, then attaches start at once', () => {
     const { host, reader, session, currentRun } = setupBridge();
     expect(reader.getState()).toMatchObject({ status: { phase: 'idle', runId: null }, projection: null, pendingCommands: [] });

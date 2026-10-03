@@ -5,7 +5,7 @@ import {
 } from '../../app/session/synthetic-session.ts';
 import type { SyntheticRuntimeOptions } from '../../app/runtime/synthetic-runtime.ts';
 import type { EventListener } from '../../app/runtime/synthetic-event-bus.ts';
-import type { DomainEvent } from '../../core/synthetic/synthetic-scene.ts';
+import type { DomainEvent, MoveInput } from '../../core/synthetic/synthetic-scene.ts';
 import {
   createSyntheticGameStore, type SyntheticGameState, type SyntheticGameStoreReader, type SyntheticGameStoreWriter,
 } from './synthetic-game-store.ts';
@@ -24,20 +24,21 @@ export class TestClock {
 
 /** Records the listeners the bridge registers, so tests can replay stale notifications. */
 export interface RecordedListeners {
+  readonly inputs: { readonly runId: number; readonly input: MoveInput }[];
   readonly frames: { readonly runId: number; readonly listener: (frame: SessionFrame) => undefined }[];
   readonly domain: { readonly runId: number; readonly listener: EventListener }[];
   readonly cancellations: { readonly runId: number; readonly listener: (notice: SessionCommandsCancelled) => undefined }[];
 }
 
 export function recordingSession(session: SyntheticSession): { session: SyntheticSession; recorded: RecordedListeners } {
-  const recorded: RecordedListeners = { frames: [], domain: [], cancellations: [] };
+  const recorded: RecordedListeners = { inputs: [], frames: [], domain: [], cancellations: [] };
   const wrappers = new WeakMap<SessionRun, SessionRun>();
   const wrap = (run: SessionRun): SessionRun => {
     const existing = wrappers.get(run);
     if (existing) return existing;
     const wrapper: SessionRun = Object.freeze({
       runId: run.runId,
-      setInput: input => run.setInput(input),
+      setInput: input => { recorded.inputs.push({ runId: run.runId, input }); run.setInput(input); },
       submitCommand: command => run.submitCommand(command),
       on<T extends DomainEvent['type']>(type: T, listener: EventListener<Extract<DomainEvent, { type: T }>>) { return run.on(type, listener); },
       onAny: listener => { recorded.domain.push({ runId: run.runId, listener }); return run.onAny(listener); },
@@ -86,7 +87,7 @@ export function setupBridge(
     if (!run) throw new Error('Expected a current run');
     return run;
   };
-  return { host, clock, writer, reader: writer.reader, bridge, session: inner, recorded, errors, currentRun };
+  return { host, clock, writer, reader: writer.reader, bridge, session: inner, observedSession: session, recorded, errors, currentRun };
 }
 
 /** Projection publications as `[tick, clock]`, in order. */
