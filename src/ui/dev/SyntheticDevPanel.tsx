@@ -170,6 +170,12 @@ function ErrorView({ store }: SectionProps) {
       {actionError && (
         <pre data-testid="action-error" style={valueStyle}>Action {actionError.operation} failed:{'\n'}{describeError(actionError.cause)}</pre>
       )}
+      {(actionError?.operation === 'initialize' || actionError?.operation === 'start') && (
+        <p data-testid="recovery-advice">
+          The demo is not retried. Return to the menu to leave it; starting the demo again creates a new session unless a
+          cleanup failure blocks it.
+        </p>
+      )}
       {sessionError && <pre data-testid="session-error" style={valueStyle}>Session error:{'\n'}{describeError(sessionError)}</pre>}
     </section>
   );

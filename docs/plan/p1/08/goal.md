@@ -44,7 +44,7 @@ updated: 2026-10-02
 | AC-07 | 04 | 06：导入占位、网络与存储读回 |
 | AC-08 | 04 | 05：生产源码检索与调用点审阅 |
 | AC-09 | 02、03 | 02、03：Node 清理失败记录与装配接收路径 |
-| AC-10 | 02、03、04 | 03：Node 锁存与恢复；05：文案/焦点审阅；06：WebGL 禁用浏览器 |
+| AC-10 | 02、03、04、07 | 03：Node 锁存与恢复；05：文案/焦点审阅；06：WebGL 禁用浏览器 |
 | AC-11 | 04 | 06：键盘流程、焦点指示与按键负向检查 |
 | AC-12 | 03、04 | 06：StrictMode 与 Fast Refresh 替换 |
 | AC-13 | 04 | 06：1280×800 与 360×640 溢出测量 |
@@ -61,12 +61,15 @@ updated: 2026-10-02
 | [02-cleanup-failure-signals.md](./subtasks/02-cleanup-failure-signals.md) | — | completed |
 | [03-demo-lifecycle-wiring.md](./subtasks/03-demo-lifecycle-wiring.md) | 01, 02 | completed |
 | [04-menu-pages-shell.md](./subtasks/04-menu-pages-shell.md) | 01, 03 | completed |
-| [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04 | pending |
-| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05 | pending |
+| [05-docs-isolation-checks.md](./subtasks/05-docs-isolation-checks.md) | 01, 02, 03, 04, 07 | pending |
+| [07-start-failure-recovery-text.md](./subtasks/07-start-failure-recovery-text.md) | 04 | completed |
+| [06-final-browser-alignment.md](./subtasks/06-final-browser-alignment.md) | 01, 02, 03, 04, 05, 07 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖。
 
 ## 执行记录
+
+- **2026-10-02 — 新增修复子任务 07：** 05 审阅 AC-10 时发现，初始化失败或 start 同步失败时开发面板只显示原始错误，缺少 spec 行为表要求的“返回菜单”处置说明。新增 07 修复文案，插在最终对齐之前；05 的 AC-10 审阅改为依赖 07，06 依赖全部其他子任务。
 
 ## 审批
 
