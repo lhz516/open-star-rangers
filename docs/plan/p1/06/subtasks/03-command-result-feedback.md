@@ -42,12 +42,12 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-04：running 且无 marker 时提交 add，同步得到 ID 后只有 pending、投影不变。首个执行 tick 后得到 accepted，事件的 tick/entityId/position 与最新投影一致，且 pending 移除。
-- [ ] AC-05：有 marker 时再次 add 得到 rejected/marker-already-exists；无 marker 时 remove 得到 rejected/marker-not-found；marker 保持权威状态，无 accepted 反馈。
-- [ ] AC-06：同 tick add→remove 的两个 ID 按 FIFO 各终结一次，最终 projection.marker=null。外部提交的命令不生成本面板结果；对已终结 ID 的再次投递不改变 pending 或 recentResults。
-- [ ] AC-03（命令部分）：同一毫秒内的多个结果在通知边界同步写入，不等待采样窗；同一 tick 不重复写投影。
-- [ ] AC-09（提交部分）：非 running 或非法形状的同步失败写入 actionError，保留原 cause，无 ID、pending 或伪造事件。
-- [ ] 目标 Vitest 与 `pnpm check` 通过，模块 DOM-free。
+- [x] AC-04：running 且无 marker 时提交 add，同步得到 ID 后只有 pending、投影不变。首个执行 tick 后得到 accepted，事件的 tick/entityId/position 与最新投影一致，且 pending 移除。
+- [x] AC-05：有 marker 时再次 add 得到 rejected/marker-already-exists；无 marker 时 remove 得到 rejected/marker-not-found；marker 保持权威状态，无 accepted 反馈。
+- [x] AC-06：同 tick add→remove 的两个 ID 按 FIFO 各终结一次，最终 projection.marker=null。外部提交的命令不生成本面板结果；对已终结 ID 的再次投递不改变 pending 或 recentResults。
+- [x] AC-03（命令部分）：同一毫秒内的多个结果在通知边界同步写入，不等待采样窗；同一 tick 不重复写投影。
+- [x] AC-09（提交部分）：非 running 或非法形状的同步失败写入 actionError，保留原 cause，无 ID、pending 或伪造事件。
+- [x] 目标 Vitest 与 `pnpm check` 通过，模块 DOM-free。
 
 ## 验证方法
 
@@ -56,3 +56,20 @@ updated: 2026-10-02
 - 使用 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 时限定本项文件；浏览器接受/拒绝证据归 08。
 
 ## 完成证据
+
+- 2026-10-02：实现 [synthetic-command-feedback.ts](../../../../../src/ui/game/synthetic-command-feedback.ts)：`createSyntheticCommandFeedback(store)` 是桥接的运行级 consumer。`attach` 订阅 `onAny`，按 `delivery.commandId` 把真实 marker-added/removed 记为 accepted、command-rejected 记为 rejected，并与帧末最新投影同次写入。`submit(type)` 经 binding 转发，成功后与清除 actionError 同次加入 pending，失败时写入 actionError。桥接新增 `SyntheticRunBinding.submitCommand`：binding 被回滚或 unbind 注销后不再转发。
+- 测试：[synthetic-command-feedback.test.ts](../../../../../src/ui/game/synthetic-command-feedback.test.ts) 8 项（UI 目录合计 33 项）通过：
+  - AC-04：提交后只有 pending `{runId:1,commandId:1}`，投影对象不变；0 tick 帧后仍 pending、无 marker。执行 tick 后 accepted 的事件 tick=1、commandIndex=0，投影 marker 的 id/position 与事件的 entityId/position 一致，pending 清空。
+  - AC-05：重复 add 得到 marker-already-exists，再 remove 被接受，再 remove 得到 marker-not-found；marker 始终与投影一致，结果序列为 accepted/rejected/accepted/rejected。
+  - AC-06：同 tick add→remove 的 ID 1、2 按 FIFO 各终结一次，帧内所有 store 快照的 marker 均为 null，投影只发布一次 `[1,0]`。外部直接提交的命令不产生结果但刷新了投影；用记录的旧监听重放已终结事件，store 完全不变。
+  - AC-03（命令部分）：时钟 10 ms、采样窗未到期时结果与 tick 1 投影即时写入；同 tick 的帧不重复写入，后续未到期 tick 不发布。
+  - AC-09（提交部分）：暂停时提交得到 Session invalid-state（operation=input），非法类型得到 invalid-argument（path=command.type）；两者都没有 pending，也不消耗 Runtime ID（之后提交仍为 1，下一条直接提交为 2）。退出后提交得到“run has ended”；从未开始时得到 Error；成功提交清空 actionError。
+- rubber-duck 阻断问题已采纳：附着回滚或 unbind 后，feedback 仍持有旧 binding，可能把命令送进仍在运行的会话，却没有 pending 或错误。现改为经可注销的 binding 提交；回归测试覆盖“后续 consumer 附着失败后的旧提交”与“unbind 后的提交”，两者都不改变 Core marker。其余审查项（ID 关联、FIFO 恰一次、重复与外部投递、结果不会早于 pending）无问题。
+- simplify（四角度，各一个代理）：
+  - reuse 与 simplification 无发现。
+  - 已采纳 efficiency/altitude 的“提交两次写入”：改为单次原子写入。
+  - 未采纳“按帧批量合并结果”：每帧命令很少，逐事件写入已是原子的。
+  - 未采纳“隐藏 binding 的原始 run”：consumer 都是内部模块，提交路径已在类型注释与工程文档中明确。
+  - 重验通过。
+- 工程检查：`pnpm check` 通过（30 个文件 / 631 项测试、三个类型程序、ESLint、构建）。
+- 文档影响：[工程约定](../../../../engineering/README.md)补充命令反馈的关联规则、Session 错误来源、注销后的 binding 与原子提交；[源码结构指南](../../../../engineering/source-structure.md)补充文件与现状。原版事实与冻结决定无变化。

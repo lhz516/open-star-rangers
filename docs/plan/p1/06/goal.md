@@ -99,7 +99,7 @@ updated: 2026-10-02
 |---|---|---|
 | [01-projection-store-contract.md](./subtasks/01-projection-store-contract.md) | — | completed |
 | [02-session-projection-bridge.md](./subtasks/02-session-projection-bridge.md) | 01 | completed |
-| [03-command-result-feedback.md](./subtasks/03-command-result-feedback.md) | 02 | pending |
+| [03-command-result-feedback.md](./subtasks/03-command-result-feedback.md) | 02 | completed |
 | [04-cancellation-failure-controls.md](./subtasks/04-cancellation-failure-controls.md) | 03 | pending |
 | [05-ui-replay-invariants.md](./subtasks/05-ui-replay-invariants.md) | 04 | pending |
 | [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | pending |

@@ -46,11 +46,12 @@ src/
       browser-session-host.ts
   ui/
     game/
+      synthetic-command-feedback.ts
       synthetic-game-store.ts
       synthetic-session-bridge.ts
 ```
 
-`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄）和会话桥接（状态即时写入、10 Hz 投影采样）；命令反馈与页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
+`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）和命令反馈（Core 接受/拒绝）；取消、控制与页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
 
 ## 职责与依赖
 
