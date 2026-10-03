@@ -1,12 +1,16 @@
 /**
  * One owner of the P1 synthetic demo. It creates the UI store, session bridge, command feedback,
- * controls and session for a supplied host and sampling clock, and disposes them together. It is
- * DOM-free, does not start the session, and keeps no global registry: whoever holds an owner
- * disposes it before creating the next. Contract: docs/plan/p1/06/spec.md.
+ * controls, renderer and session for a supplied host and sampling clock, and disposes them together.
+ * It is DOM-free, does not start the session, and keeps no global registry: whoever holds an owner
+ * disposes it before creating the next. Contracts: docs/plan/p1/06/spec.md, docs/plan/p1/07/spec.md.
  */
 import type { SyntheticRuntimeOptions } from '../runtime/synthetic-runtime.ts';
 import type { SessionHost } from '../session/session-host.ts';
 import { createSyntheticSession, type SyntheticSession } from '../session/synthetic-session.ts';
+import { attemptAll } from '../../render/scene/cleanup.ts';
+import {
+  createSyntheticRenderer, type SyntheticRenderer, type SyntheticRendererOptions, type SyntheticRendererReader,
+} from '../../render/synthetic/synthetic-renderer.ts';
 import { createSyntheticCommandFeedback } from '../../ui/game/synthetic-command-feedback.ts';
 import {
   createSyntheticGameControls, createSyntheticPanelDispatcher, type SyntheticPanelAction,
@@ -19,27 +23,40 @@ export const SYNTHETIC_DEMO_OPTIONS: SyntheticRuntimeOptions = Object.freeze({ s
 
 export interface SyntheticDemoOwner {
   readonly store: SyntheticGameStoreReader;
+  /** The renderer's read-only state and diagnostics. */
+  readonly renderer: SyntheticRendererReader;
   /** Runs a panel action. Ignored after dispose or a failed initialization, which the store reports. */
   dispatch(action: SyntheticPanelAction): void;
   /**
-   * Disposes the session, then releases the bridge; idempotent. Every cleanup is attempted; any
-   * failure is gathered into one AggregateError, written as actionError and thrown.
+   * Disposes the session, then releases the bridge, then the renderer; idempotent. Every cleanup is
+   * attempted; any failure is gathered into one AggregateError, written as actionError and thrown.
    */
   dispose(): void;
 }
 
-
-export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock): SyntheticDemoOwner {
+/**
+ * Creates the owner. A supplied render surface passes to the owner at once, before the session
+ * exists: if the surface cannot be connected the renderer is unavailable, if initialization fails
+ * the owner releases it, and otherwise disposal does.
+ */
+export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock, render: SyntheticRendererOptions): SyntheticDemoOwner {
   const writer = createSyntheticGameStore();
   const feedback = createSyntheticCommandFeedback(writer);
-  const bridge = createSyntheticSessionBridge(writer, clock, [feedback]);
-  /** Disposes the session (if any), then unbinds the bridge, attempting both; returns their failures. */
-  const release = (session: SyntheticSession | null): unknown[] => {
-    const errors: unknown[] = [];
-    try { session?.control({ type: 'dispose' }); } catch (cause) { errors.push(cause); }
-    try { bridge.unbind(); } catch (cause) { errors.push(cause); }
-    return errors;
-  };
+  let renderer: SyntheticRenderer;
+  try {
+    renderer = createSyntheticRenderer(render);
+  } catch (cause) {
+    // The renderer released the surface it could not connect; the demo runs without a picture.
+    renderer = createSyntheticRenderer({ unavailable: cause, reportError: render.reportError });
+  }
+  // The renderer attaches to every run the bridge observes, after the command feedback.
+  const bridge = createSyntheticSessionBridge(writer, clock, [feedback, { attach: binding => { renderer.attach(binding); } }]);
+  /** Disposes the session (if any), unbinds the bridge, then disposes the renderer, attempting all; returns their failures. */
+  const release = (session: SyntheticSession | null): unknown[] => attemptAll([
+    () => { session?.control({ type: 'dispose' }); },
+    () => { bridge.unbind(); },
+    () => { renderer.dispose(); },
+  ]);
   /** Null once disposed or when initialization failed; both make later actions no-ops. */
   let active: { readonly session: SyntheticSession; readonly dispatch: (action: SyntheticPanelAction) => void } | null = null;
   let session: SyntheticSession | null = null;
@@ -55,6 +72,7 @@ export function createSyntheticDemoOwner(host: SessionHost, clock: SamplingClock
   }
   return Object.freeze({
     store: writer.reader,
+    renderer,
     dispatch(action: SyntheticPanelAction): void {
       active?.dispatch(action);
     },
