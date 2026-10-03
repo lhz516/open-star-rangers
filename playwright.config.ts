@@ -23,7 +23,7 @@ export default defineConfig({
   projects: [
     {
       name: 'development',
-      testIgnore: '**/native-lifecycle.spec.ts',
+      testIgnore: ['**/native-lifecycle.spec.ts', '**/compliance-assets.spec.ts'],
       use: { baseURL: devOrigin },
     },
     {

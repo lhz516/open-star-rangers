@@ -49,6 +49,8 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 
 counts的checked含义：worktree/index/untracked/build为完整文件数，dependencies为当前安装实例数，distribution为归属产物数（inventory自身无递归digest），artifacts为全部当前dist文件数。coverage明确当前platform/arch与未安装optional清单；这些未安装包没有被冒称已扫描。原版扫描只需Node/Git，缺许可SDK时许可/聚合也返回明确失败JSON，不安装补齐。
 
+扫描/许可证政策的能力边界与P5后续确认见[本地合规用法](../guides/tools.md#本地合规)，当前来源/完整任务文件与实际产物审阅见[P1-12/08](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)。浏览器只核对相关声明DOM及生产预览3文件可读性；[专用assets测试](../../e2e/compliance-assets.spec.ts)只属于production项目，开发页面使用rights-text测试，不把开发服务器当dist静态发布物。
+
 ## TypeScript 配置
 
 | 文件 | 范围 | 作用 |

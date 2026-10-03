@@ -77,7 +77,7 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 | [05-project-rights-text.md](./subtasks/05-project-rights-text.md) | — | completed |
 | [06-build-notices.md](./subtasks/06-build-notices.md) | 04, 05 | completed |
 | [07-compliance-cli.md](./subtasks/07-compliance-cli.md) | 02, 03, 06 | completed |
-| [08-local-evidence-docs.md](./subtasks/08-local-evidence-docs.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
+| [08-local-evidence-docs.md](./subtasks/08-local-evidence-docs.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |
 
 05不依赖扫描/包审计；02与03共用01报告契约，但不互相依赖。04需要03精确包身份；06需要04分发归属与05根文本；07组合两个检查。所有共同文件仍顺序编辑。最后一行仅验证、依赖所有其他行；发现缺口用新ID在最终行前加入修复项，保持原ID及证据。
