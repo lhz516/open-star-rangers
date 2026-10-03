@@ -25,7 +25,7 @@ updated: 2026-10-03
 
 ## 下一步
 
-1. P1：P1-05 至 P1-09 已完成，包括合成画面、菜单/导入占位与焦点限定的键盘输入；下一步规划 P1-10 本地浏览器联合验证，见[依赖顺序](./plan/p1/tasks.md#5-实施顺序)，当前模块落点见[源码结构指南](./engineering/source-structure.md)与[键位文档](./engineering/keyboard-input.md)；P1-12 本地合规检查可并行开始。阶段退出仍由后续评审判定。
+1. P1：P1-05 至 P1-10 已完成，包括合成画面、菜单/导入占位、焦点限定键盘与可重复的本地浏览器联合回归；下一步执行已批准的[P1-12 本地合规 Goal](./plan/p1/12/goal.md)，再按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)进入P1-14评审。当前模块落点见[源码结构指南](./engineering/source-structure.md)与[键位文档](./engineering/keyboard-input.md)；本地合规与阶段退出尚未因此获通过。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 
