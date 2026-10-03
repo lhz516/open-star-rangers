@@ -63,7 +63,7 @@ updated: 2026-10-02
 | [04-browser-surface-lifecycle.md](./subtasks/04-browser-surface-lifecycle.md) | 02, 03 | completed |
 | [05-owner-renderer-integration.md](./subtasks/05-owner-renderer-integration.md) | 03, 04 | completed |
 | [06-react-render-diagnostics.md](./subtasks/06-react-render-diagnostics.md) | 05 | completed |
-| [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-node-regression-evidence.md](./subtasks/07-node-regression-evidence.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-final-browser-alignment.md](./subtasks/08-final-browser-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。浏览器能力受限时按 spec 记录 blocked，不以合成替代真实 WebGL 证据。
