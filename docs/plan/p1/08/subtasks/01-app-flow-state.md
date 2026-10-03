@@ -35,9 +35,9 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-02 的全部转换、不适用组合、焦点目标、`demoVisit` 递增与 `RangeError`、首因锁存、重复失败与冻结性断言通过。
-- [ ] 模块无 DOM 引用，由测试传递导入并通过 Node 类型检查（AC-14 的本模块部分）。
-- [ ] `pnpm exec vitest run src/app/flow` 与 `pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-02 的全部转换、不适用组合、焦点目标、`demoVisit` 递增与 `RangeError`、首因锁存、重复失败与冻结性断言通过。
+- [x] 模块无 DOM 引用，由测试传递导入并通过 Node 类型检查（AC-14 的本模块部分）。
+- [x] `pnpm exec vitest run src/app/flow` 与 `pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -46,3 +46,11 @@ updated: 2026-10-02
 - 不适用浏览器测试。
 
 ## 完成证据
+
+- **实现：** [app-flow.ts](../../../../../src/app/flow/app-flow.ts) 导出 `AppFlowState`、`AppFlowInput`、冻结的 `INITIAL_APP_FLOW` 与纯函数 `nextAppFlow`；只依赖语言内建，不引用 DOM、React、`ui/`、`render/` 或 `platform/`。
+- **测试：** [app-flow.test.ts](../../../../../src/app/flow/app-flow.test.ts) 的参数化表覆盖 3 画面 × 是否锁存 × 4 种输入的全部 24 个组合（不适用组合用 `toBe` 断言同一对象，适用组合断言完整新状态与冻结）；另测 `demoVisit` 从 0 严格递增、`MAX_SAFE_INTEGER` 时 `open-demo` 抛 `RangeError`（锁存或非菜单时仍原样返回）、Error/字符串/null 三种 cause 在三个画面各自锁存且原异常不被冻结、重复失败保留首因与后续导航焦点、锁存后导入往返焦点仍为 import-entry 而演示返回为 menu-heading。`pnpm exec vitest run src/app/flow`：37 passed。
+- **工程检查：** `pnpm typecheck`（含 `tsconfig.node.json` 经测试传递导入本模块）、`pnpm lint` 通过；`pnpm check`：42 个测试文件 1067 passed，构建成功（仅既有块体积警告）。
+- **Rubber-duck：** 未发现缺陷、契约偏差或 AC-02 覆盖缺口。
+- **Simplify：** 采纳“把 cause × 画面的嵌套循环展平为具名参数化用例”；未采纳“拆分 24 行转换表”，因为 AC-02 明确要求按组合参数化。
+- **文档影响：** 页面流转目录与职责的工程文档同步按计划归 [05](./05-docs-isolation-checks.md)；本子任务无其他需更新的文档。
+

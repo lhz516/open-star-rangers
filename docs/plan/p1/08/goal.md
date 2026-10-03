@@ -57,7 +57,7 @@ updated: 2026-10-02
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-app-flow-state.md](./subtasks/01-app-flow-state.md) | — | pending |
+| [01-app-flow-state.md](./subtasks/01-app-flow-state.md) | — | completed |
 | [02-cleanup-failure-signals.md](./subtasks/02-cleanup-failure-signals.md) | — | pending |
 | [03-demo-lifecycle-wiring.md](./subtasks/03-demo-lifecycle-wiring.md) | 01, 02 | pending |
 | [04-menu-pages-shell.md](./subtasks/04-menu-pages-shell.md) | 01, 03 | pending |
