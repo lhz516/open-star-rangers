@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "09"
-updated: 2026-10-02
+updated: 2026-10-03
 related: [ADR-0004, ADR-0012, ADR-0015]
 ---
 
@@ -70,7 +70,7 @@ related: [ADR-0004, ADR-0012, ADR-0015]
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-keyboard-input-contract.md](./subtasks/01-keyboard-input-contract.md) | — | completed |
-| [02-browser-keyboard-source.md](./subtasks/02-browser-keyboard-source.md) | 01 | pending |
+| [02-browser-keyboard-source.md](./subtasks/02-browser-keyboard-source.md) | 01 | completed |
 | [03-session-keyboard-actions.md](./subtasks/03-session-keyboard-actions.md) | 01 | pending |
 | [04-demo-keyboard-wiring.md](./subtasks/04-demo-keyboard-wiring.md) | 02, 03 | pending |
 | [05-browser-input-evidence.md](./subtasks/05-browser-input-evidence.md) | 04 | pending |
