@@ -56,6 +56,11 @@ export function App() {
     <main>
       <h1>Open Star Rangers</h1>
       <p>Browser re-implementation in progress. No original game content is included.</p>
+      <p data-testid="project-rights">
+        MIT applies only to this project&apos;s own code, documentation and synthetic resources, not original game content.
+        This is an independent synthetic engineering demo, not original gameplay or an officially authorized product.
+        Obtain your own original game data legally; no rights to original content are granted here.
+      </p>
       {flow.cleanupFailure && (
         <FailureAlert testId="cleanup-failure" cause={flow.cleanupFailure.cause}>
           <strong>Releasing the synthetic demo&apos;s resources could not be confirmed.</strong> No new demo can be created

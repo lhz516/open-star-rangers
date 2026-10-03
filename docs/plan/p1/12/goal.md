@@ -74,7 +74,7 @@ related: [ADR-0008, ADR-0012, ADR-0015]
 | [02-original-file-scan.md](./subtasks/02-original-file-scan.md) | 01 | completed |
 | [03-package-license-policy.md](./subtasks/03-package-license-policy.md) | 01 | completed |
 | [04-distribution-inventory.md](./subtasks/04-distribution-inventory.md) | 03 | completed |
-| [05-project-rights-text.md](./subtasks/05-project-rights-text.md) | — | pending |
+| [05-project-rights-text.md](./subtasks/05-project-rights-text.md) | — | completed |
 | [06-build-notices.md](./subtasks/06-build-notices.md) | 04, 05 | pending |
 | [07-compliance-cli.md](./subtasks/07-compliance-cli.md) | 02, 03, 06 | pending |
 | [08-local-evidence-docs.md](./subtasks/08-local-evidence-docs.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
