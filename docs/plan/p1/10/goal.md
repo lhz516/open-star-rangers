@@ -67,7 +67,7 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-local-e2e-runner.md](./subtasks/01-local-e2e-runner.md) | — | completed |
-| [02-readonly-browser-probes.md](./subtasks/02-readonly-browser-probes.md) | 01 | pending |
+| [02-readonly-browser-probes.md](./subtasks/02-readonly-browser-probes.md) | 01 | completed |
 | [03-interaction-render-smoke.md](./subtasks/03-interaction-render-smoke.md) | 02 | pending |
 | [04-joint-resource-regression.md](./subtasks/04-joint-resource-regression.md) | 02 | pending |
 | [05-browser-replay.md](./subtasks/05-browser-replay.md) | 01 | pending |

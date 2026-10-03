@@ -34,13 +34,20 @@ updated: 2026-10-03
 
 ## 验收标准
 
-- [ ] S-03/AC-05：自有测试对象的登记/交付/撤销计数真实正确，应用与测试/React/Vite可分离；finally恢复包装及自有资源。
-- [ ] AC-03/06：像素解码可识别合成颜色与位置，布局预期用真实容器、DPR/设备限制；不读取Core内部或截图假数据。
-- [ ] AC-04：采样记录tick/x/实际时间窗，清键后先等新投影；paused不等tick递增，running须递增。
-- [ ] AC-09/11：默认错误收集能让测试失败，探针不吞异常/改变调用语义；pnpm check与探针自检实跑通过。
+- [x] S-03/AC-05：自有测试对象的登记/交付/撤销计数真实正确，应用与测试/React/Vite可分离；finally恢复包装及自有资源。
+- [x] AC-03/06：像素解码可识别合成颜色与位置，布局预期用真实容器、DPR/设备限制；不读取Core内部或截图假数据。
+- [x] AC-04：采样记录tick/x/实际时间窗，清键后先等新投影；paused不等tick递增，running须递增。
+- [x] AC-09/11：默认错误收集能让测试失败，探针不吞异常/改变调用语义；pnpm check与探针自检实跑通过。
 
 ## 验证方法
 
 按[browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)在开发/生产跑probe-contract，自有DOM正/负样本与实际应用只读交叉核对；探针rAF窗口不使用requestAnimationFrame轮询等待。使用01新增runner的聚焦选择器及pnpm check。无实机/原版要求。
 
 ## 完成证据
+
+- 2026-10-03：新增 [browser-probes](../../../../../e2e/support/browser-probes.ts)、[默认错误fixture](../../../../../e2e/support/browser-test.ts)、[DOM/采样](../../../../../e2e/support/demo-observations.ts)、[截图/布局](../../../../../e2e/support/image-observations.ts)及[探针契约](../../../../../e2e/probe-contract.spec.ts)。所有探针仅在测试context内包装宿主方法；不进入App、不改变Core、时钟、输入或visibility。
+- `pnpm test:e2e probe-contract.spec.ts --project=development --project=production`：6/6真实通过，Chrome154/macOS、4173/4174、1280×800/DPR1。自有节点验证相同callback/capture去重、错误capture不撤销、once仅执行一次、this不变、无效receiver原生TypeError、rAF取消/交付与ResizeObserver归零；restore后新登记不再被记录。
+- 应用只读交叉核对：mover实际色像素≥9、marker为0，真实CSS容器与设备限制计算布局误差≤1px；首个新投影后4样本跨≥360ms，tick增加而x不变。每次显式刷新diagnostics，真实running窗口rAF最大1；9项键盘/3项Session的具体type组成均精确断言。菜单后应用监听、observer、pending帧归零，旧canvas断开，扩展可用时context lost。
+- 默认fixture收集console/pageerror/HTTP/requestfailed和UI错误；独立child page生成受控console、宿主异步异常和404，错误原因均保留，child finally关闭。只有favicon404逐项记录，WebGL白名单尚只供06使用。最初404样本被Vite SPA fallback返回200，改为`Accept: application/javascript`取得真正404，不以伪造响应代替。
+- `pnpm check`通过（47文件/1192测试、四类型程序、lint、build）；源产物仍index-BWtf9nnJ.js。rubber-duck非阻塞建议已补：React/Vite独立分类、每类listener具体组成、canvas能力/释放与restore自检；共享生命周期类型按现有owner中Session先于input的真实登记顺序归属（注释及type断言限定该前提），不新增生产marker。simplify限定本项5个新文件，错误采集抽出供自检复用，未增不必要公共接口。
+- 文档影响检查：工程命令/类型边界与生产架构仍准确，没有新的原版事实/ADR/阶段结论；helper职责证据写本项，完整使用与覆盖映射由07补齐。fixture恢复包装，runner关闭自有浏览器/服务器；合成附件只在ignored目录。
