@@ -25,7 +25,7 @@ updated: 2026-10-02
 
 ## 下一步
 
-1. P1：P1-05 已完成；按 [P1-06 goal](./plan/p1/06/goal.md) 推进 UI projection 与 React 指令闭环，其余消费者按[依赖顺序](./plan/p1/tasks.md#5-实施顺序)接入，目录基线见[源码结构指南](./engineering/source-structure.md)；P1-12 本地合规检查可并行开始。
+1. P1：P1-05、P1-06 已完成；P1-07（Three.js 合成渲染）与 P1-09（最小键盘适配）可分别规划，完成后由 P1-08 装配菜单，见[依赖顺序](./plan/p1/tasks.md#5-实施顺序)，目录基线见[源码结构指南](./engineering/source-structure.md)；P1-12 本地合规检查可并行开始。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（决定机型、阵营的字段）在 P2 中继续，见 [executable](./original/formats/executable.md) §4。
 
