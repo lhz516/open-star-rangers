@@ -102,7 +102,7 @@ updated: 2026-10-02
 | [03-command-result-feedback.md](./subtasks/03-command-result-feedback.md) | 02 | completed |
 | [04-cancellation-failure-controls.md](./subtasks/04-cancellation-failure-controls.md) | 03 | completed |
 | [05-ui-replay-invariants.md](./subtasks/05-ui-replay-invariants.md) | 04 | completed |
-| [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | pending |
+| [06-demo-owner-composition.md](./subtasks/06-demo-owner-composition.md) | 04 | completed |
 | [07-dev-panel-app-wiring.md](./subtasks/07-dev-panel-app-wiring.md) | 06 | pending |
 | [08-browser-acceptance-evidence.md](./subtasks/08-browser-acceptance-evidence.md) | 07 | pending |
 | [09-final-alignment.md](./subtasks/09-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08 | pending |

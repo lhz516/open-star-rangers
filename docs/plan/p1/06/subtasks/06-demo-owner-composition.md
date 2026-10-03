@@ -43,10 +43,10 @@ updated: 2026-10-02
 
 ## 验收标准
 
-- [ ] AC-01（owner）：创建后为 idle，store 初始值符合 spec，宿主待交付请求为 0，生命周期监听为 1；start 后请求为 1。
-- [ ] AC-09：初始化失败时 status=null、actionError 为 initialize 并保留原 cause，无残留；部分接线失败会回滚；dispose 中单项清理失败时其余仍执行，失败原因完整抛出。
-- [ ] AC-12（Node）：dispose 后请求与监听均为 0，重复 dispose 不重复清理；A→B 序列中最多一个活跃 owner/请求/监听组，A 的迟到回调与 action 不写入 B。
-- [ ] 装配文件 DOM-free，ui 不导入 app 装配；目标 Vitest 与 `pnpm check` 通过。
+- [x] AC-01（owner）：创建后为 idle，store 初始值符合 spec，宿主待交付请求为 0，生命周期监听为 1；start 后请求为 1。
+- [x] AC-09：初始化失败时 status=null、actionError 为 initialize 并保留原 cause，无残留；部分接线失败会回滚；dispose 中单项清理失败时其余仍执行，失败原因完整抛出。
+- [x] AC-12（Node）：dispose 后请求与监听均为 0，重复 dispose 不重复清理；A→B 序列中最多一个活跃 owner/请求/监听组，A 的迟到回调与 action 不写入 B。
+- [x] 装配文件 DOM-free，ui 不导入 app 装配；目标 Vitest 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -55,3 +55,23 @@ updated: 2026-10-02
 - 使用 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 时限定本项文件；在[源码结构指南](../../../../engineering/source-structure.md)记录 `app/composition/` 的实际职责。
 
 ## 完成证据
+
+- 2026-10-02：实现 [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts)。`createSyntheticDemoOwner(host, clock)` 依次创建 store、命令反馈、桥接与会话（`SYNTHETIC_DEMO_OPTIONS`：种子 0、Core 默认 60 Hz，均为合成值），不自动 start、不登记全局单例，只暴露只读 `store`、`dispatch(action)` 与 `dispose()`。动作路由放在 UI 层的 `createSyntheticPanelDispatcher`（[synthetic-game-controls.ts](../../../../../src/ui/game/synthetic-game-controls.ts)）。
+- 测试：[synthetic-demo-owner.test.ts](../../../../../src/app/composition/synthetic-demo-owner.test.ts) 8 项通过；用 `vi.mock` 包装桥接工厂，以注入绑定前、绑定后与解绑失败：
+  - AC-01（owner）：创建后为 idle，store 的其余字段为初始值，待交付请求 0、生命周期监听 1；dispatch start 后请求为 1，投影 tickRateHz=60。add-marker 先 pending，再经 Core 接受。
+  - AC-09：
+    - 会话创建时宿主订阅失败：status=null，actionError 为 initialize，cause 是带 scheduler 原因的 GameSessionError，无残留监听或请求；之后的 dispatch 不改 store，dispose 不抛错。
+    - 绑定前或绑定后失败：会话被销毁、桥接解绑，宿主监听撤销 1 次，store 原子重置为 status=null。
+    - 回滚的每一步都失败时：AggregateError 依次保留原因、会话清理失败与解绑失败。
+    - dispose 时 cancelFrame 失败：仍撤销宿主监听，写入 actionError 的与抛出的是同一个 AggregateError（含 scheduler 原因）；重复 dispose 不抛错。
+  - AC-12（Node）：dispose 后请求与监听归零，重复 dispose 不再清理，之后的 dispatch 被忽略。模拟 StrictMode 的“建 A→销毁 A→建 B”中，任一时刻至多一组请求与监听。B 启动后直接调用 A 被取消的帧回调与旧生命周期监听，并调用 A 的 dispatch：A、B 的 store 均不变，B 仍只有 1 个请求与 1 组监听，之后 B 正常推进。
+- rubber-duck 的两个阻断问题与一个非阻断问题已采纳：
+  - 初始化回滚原先只销毁会话、不解绑桥接，store 可能停在 disposed：改为两步都尝试，并原子重置 status=null。
+  - StrictMode 测试原先没有真正调用 A 的旧回调：改为捕获并重放。
+  - dispose 写入 store 的错误与抛出的不是同一对象：统一为同一个 AggregateError。
+- simplify（四角度，各一个代理）：
+  - reuse 与 efficiency 无发现。
+  - 已采纳：抽出初始化回滚与 dispose 共用的 `release`；用单个可空的 `active` 记录取代 session/controls/disposed 三个重叠状态；动作路由移到 UI 层的 dispatcher。
+  - 重验通过。
+- 工程检查：`pnpm check` 通过（34 个文件 / 667 项测试、三个类型程序、ESLint、构建）。装配文件不使用 DOM 或 React；ui 不导入 app 装配。
+- 文档影响：[源码结构指南](../../../../engineering/source-structure.md)增加 `app/composition/` 及其职责；[工程约定](../../../../engineering/README.md)记录 owner 的生命周期、回滚、dispose 与动作路由。原版事实与冻结决定无变化。

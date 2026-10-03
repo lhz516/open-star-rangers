@@ -19,6 +19,8 @@ src/
   main.tsx
   app/
     App.tsx
+    composition/
+      synthetic-demo-owner.ts
     runtime/
       fixed-step-clock.ts
       runtime-errors.ts
@@ -52,7 +54,7 @@ src/
       synthetic-session-bridge.ts
 ```
 
-`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）和会话控制；应用装配与页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
+`content/`、`render/`、`workers/` 仍是顶层架构中的计划模块，不是已实现目录。`ui/game/` 已有 P1-06 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）和会话控制；[app/composition/](../../src/app/composition/) 已有 DOM-free 的合成演示 owner，负责装配会话、桥接、反馈与控制，并统一回滚和销毁；React 页面接线仍在该任务中推进。当前 App 仍为占位页面；目录重组不构成消费者接线、浏览器验收或 P1 退出证据。
 
 ## 职责与依赖
 

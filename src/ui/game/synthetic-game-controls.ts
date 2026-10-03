@@ -59,3 +59,16 @@ export function createSyntheticGameControls(store: SyntheticGameStoreWriter, ses
     },
   });
 }
+
+/**
+ * Routes a panel action: marker commands go to command feedback, everything else to the session
+ * controls. Keeps the action taxonomy inside the UI layer.
+ */
+export function createSyntheticPanelDispatcher(
+  commands: { submit(type: Command['type']): void }, controls: SyntheticGameControls,
+): (action: SyntheticPanelAction) => void {
+  return action => {
+    if (action === 'add-marker' || action === 'remove-marker') commands.submit(action);
+    else controls.control(action);
+  };
+}
