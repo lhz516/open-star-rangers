@@ -135,6 +135,8 @@ updated: 2026-10-04
 
 - **2026-10-04 — Research resumed on an observed startup interval change:** 用户现已可协作并批准开始隔离操作。实际采集在用户点击练习入口之前就取得一处合格字值变化并暂停，因此本次不再要求该点击；原版窗口已安全结束，原用户数据未变。事实与局限见 [executable](../../../original/formats/executable.md#qualified-startup-interval-change-before-manual-activation)。01 恢复研究，下一小步只绑定这个非零上下文的创建者/来源；没有将区间变化当作捕获写指令、来源 ID 或候选资格，也没有改变原 S-02 或开始依赖未满足的下游。
 
+- **2026-10-04 — Completion-hook strategy bounded, alternate source proof selected:** 完成流程和真实 code hook 注册已有证据，但其有界窗口没有取得实际 wrapper/consumer/payload 实例；请求载体的数值也未证明是 archive ID，见上述 executable owner。停止重复这一回调捕获策略，改为先核实生产者的记录布局/转换，再仅在已核实的所有权、完整数据与唯一 locator 条件下尝试图像/调色板来源比较。只比较 header、尺寸或运行时 handle 不算来源证明；若布局/转换未明，则保留准确缺口，不生成猜测的 Asset 或计数。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。

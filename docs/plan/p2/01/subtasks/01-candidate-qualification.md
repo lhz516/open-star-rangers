@@ -102,6 +102,8 @@ updated: 2026-10-04
 
 - `tex-completion-27-milestone.json` 取得下一请求载体的原生输入绑定，并在实际探针中重验 CODE/DATA 和页身份；精确语义边界与未核实的 code hook 注册只在上述 executable owner 维护。注册未确认时的零事件不作为执行时序/缺失证明，没有捕获 wrapper 实例或补来源 ID。01 继续先核实真实 hook 注册和目录 ID 语义，再关联实际 pointer/consumer；资格、原 S-02 与额外计数仍未满足。
 
+- `code-registry-28-milestone.json` 保存真实 code hook 的原生登记和有界未观察结果、载体 callee 的具体操作及十项读取反例。只有原生登记证明 hook，fixture 不代替运行时证据；具体时长、操作和未关联限制只由上述 executable owner 维护。没有把零事件推成未执行/不存在，也没有把 opaque 载体数值补为目录 ID；停止重复回调捕获，下一替代来源比较仍须先证明记录生产/转换，再核对完整数据和唯一 locator。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
