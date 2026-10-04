@@ -108,6 +108,8 @@ updated: 2026-10-04
 
 - `preparation-layout-30.json` 取得原生准备记录的构造/字段布局和正调色板转换循环，完整检查字段断言与合成转换例通过；owner 与 prep 的不同偏移语义、helper 实际操作和未读 target/未证明 mutation 只在上述 executable owner 维护。不能把静态布局套到已观察 pointer 就声称所有权，也不把这个 RGB 转换循环写成 nearest-DATA 映射。没有完整 payload 比较/来源结论，原数据和 2,233 份保护范围内的旧证据未变。
 
+- `runtime-ownership-31-milestone.json` 取得实际 owner/linked-prep 及两组完整调色板读取和精确关系核对；字段对应、alias、所有条目转换与稳定性保护只在上述 executable owner 维护。此结果证明当前两记录/调色板关系，不证明构造函数执行、完整像素来源、请求 ID 或下游不变性。没有从结构关系直接选定原版 locator；原数据和 2,238 份旧证据保护范围未变，资格/S-02/额外计数仍未满足。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
