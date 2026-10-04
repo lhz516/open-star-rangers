@@ -78,6 +78,9 @@ updated: 2026-10-04
 - 2026-10-04 第二次独立有界敌我追踪从已记录的 target-iterator 引用进入一个具体表现 consumer；新增 `slot1-iff-consumer-attempt.ts/.json` 核对三个精确原生函数、五条直接调用绑定和未变化的 source-profile 哈希，没有重算既有 profile。精确 consumer、观察位置及其 IFF/攻击语义仍未绑定的限制见 [executable](../../../../original/formats/executable.md#bounded-presentation-consumer-follow-up)。实际敌机基数仍为 unknown；输入不变量未证明，不向主记录、模板或成员传播敌我判定，也不要求必须存在持久阵营字段。
 - 此 distinct attempt 在具体运行时身份/IFF 观察 blocker 处停止；未改变资格、原 S-02 排序、模型 Asset 粒度或 goal/spec，下游仍未启动，独立缓存分支未重访。只验证新增实验及变更文档元数据/链接；不重复已完成的工程检查。
 
+- 随后用 private install/config 运行有界 DOSBox-X PTY 探针，原安装的配置/计分文件哈希保持不变，各自有进程均已回收；原始屏幕、原生指令和运行时输出仅留 ignored local。前三次尝试分别保留地址映射未验证、F10 观察时间不足和历史断点误判的失败证据，没有将其当作外部前提或赋值不存在。
+- 修复按键/时限/最新断点响应解析后，`runtime-cache-probe-attempt-04/report.json` 记录一次真实 key-only F10 返回边界验证：4 项合成解析回归通过，返回位置观察 35.12 秒，单次控制器总时长 44.60 秒；旧报告哈希与原用户配置/计分哈希未变化。此结果只证明 DPMI 发现中断返回可自动控制，不证明应用入口或 LE object 映射；观察点覆盖仍为 0/16 bytes，来源赋值未取得，报告完成/资格标志均 false。下一步只收集经过验证的运行时映射与初始化写入，不扩张猜测静态地址或重跑工程检查。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
