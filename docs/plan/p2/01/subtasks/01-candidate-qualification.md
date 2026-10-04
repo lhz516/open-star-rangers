@@ -102,7 +102,7 @@ updated: 2026-10-04
 
 - `tex-completion-27-milestone.json` 取得下一请求载体的原生输入绑定，并在实际探针中重验 CODE/DATA 和页身份；精确语义边界与未核实的 code hook 注册只在上述 executable owner 维护。注册未确认时的零事件不作为执行时序/缺失证明，没有捕获 wrapper 实例或补来源 ID。01 继续先核实真实 hook 注册和目录 ID 语义，再关联实际 pointer/consumer；资格、原 S-02 与额外计数仍未满足。
 
-- `code-registry-28-milestone.json` 保存真实 code hook 的原生登记和有界未观察结果、载体 callee 的具体操作及十项读取反例。只有原生登记证明 hook，fixture 不代替运行时证据；具体时长、操作和未关联限制只由上述 executable owner 维护。没有把零事件推成未执行/不存在，也没有把 opaque 载体数值补为目录 ID；停止重复回调捕获，下一替代来源比较仍须先证明记录生产/转换，再核对完整数据和唯一 locator。
+- `code-registry-28-milestone.json` 保存真实 code hook 的原生登记和有界未观察结果、载体 callee 的具体操作及十项读取反例。只有原生登记证明 hook，fixture 不代替运行时证据；具体时长、操作和未关联限制只由上述 executable owner 维护。没有把零事件推成未执行/不存在，也没有把 opaque 载体数值补为目录 ID；停止重复回调捕获，下一替代来源比较仍须先证明记录生产/转换，再核对完整数据和可验证 locator（允许等价集合）。
 
 - `source-binding-29-milestone.json` 核对了分配/分派 helper 的实际操作，避免沿用“image/renderer preparation”的未经证明命名；准备记录 +36 关联及像素/调色板范围、alias 和 mutation 的缺口只在上述 executable owner 维护。未对未证明布局进行完整图像比较或来源候选扫描，未把达到原生导出 cap 的函数当作空函数。没有新模拟器/输入、原数据或工程接口变化；资格、来源 locator、generated/reused-only 归属与额外计数仍未证明。
 
@@ -114,6 +114,12 @@ updated: 2026-10-04
 
 - `runtime-full-content-33-guard.json` 核对本次初始 DATA selector 的完整新描述符内容及保护/分页状态，但实验性的回执绑定仍因未显示标签/echo 而拒绝 bulk 读取；描述符本身和接口能力的局限只在上述 executable owner 维护。没有改动 emulated registers 或改用截断段，完整像素/来源比对仍未执行，不把 decoder 保护失败升级为原版资源缺失或必须人工介入。原数据及 3,268 份保护范围证据未变。
 
+- `runtime-full-content-34-milestone.json` 与 `current-tex-equivalence-34.json` 取得通过完整读取保护的图像内容等价证明；原版来源事实、两个等价 locator、全部候选既有引用及未确认的请求/创建者只在 [textures](../../../../original/formats/textures.md#checked-runtime-image-equivalence-and-exact-source-aliases) 维护，读取身份/页面/稳定性保护见 [executable](../../../../original/formats/executable.md#qualified-full-span-image-capture)。依已批准契约保留等价来源集合，不额外要求辨别字节完全相同条目的历史请求 ID；这不是完整生产来源映射、全包规范计数或候选资格通过。没有用户输入或产品接口变更，不重复 08 已完成的全量工程检查。
+
+- `exact-source-tex-subgraphs.ts/.json` 将保守的精确来源别名纳入全部候选的部分模型/图像图；来源等价规则只在上述 textures 维护，重建计数、真实类型化引用断言和完整性边界见 [mesh](../../../../original/formats/mesh.md#exact-source-image-alias-projection-partial)。实际运行断言通过且报告 hash 与已验证结果一致，既有三份来源/图/音效报告未变。不将部分图句柄、hash 编号或来源别名直接当作生产 Asset/语义角色，也未据此选定候选或解锁下游。
+
+- 本里程碑检查：7 份变更文档的元数据、166 个相对链接和 60 个锚点通过，`git diff --check` 通过；`pnpm --silent check:original` 四个范围均 completed 且零 finding。本地投影脚本/报告已确认 git-ignored；未改产品 TypeScript、测试、依赖或冻结决策。本次提交只持久化研究进展，不表示 01 验收完成。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
@@ -123,5 +129,6 @@ updated: 2026-10-04
 | 基地/基地交互角色 | 可观察功能已确认，slot-1 kind 门禁已有结构证据 | B-004 与 executable 的有界角色证据；运行时可用条件、具体所选任务的基地数量与完整来源闭包仍待核实 |
 | 战略地图/Warp | 存在与表现已确认 | B-001；所选任务空间对象与原版来源绑定仍待完成 |
 | 任务结果入口 | 可观察结算/推进已确认 | B-003；正式成功公式归 P3，被毁后的救援与失败规则另见 B-005/U-031 |
+| 已观察表现图像的内容来源 | 精确等价来源集合已核对，历史请求/创建者仍未确认 | textures 与 executable；已有模型来源闭包包含该内容族，其他表现族与完整规范身份仍待核实 |
 | S-02 回退排序 | 来源规模对比已完成，规范排序未完成 | scenario 的计数不涵盖全部切片，来源条目/边也不是规范 Asset/边；需先明确规范划分或经批准修订选择规则 |
 | 替代候选审批 | 未完成 | 现有 accepted spec 的批准不等于批准任意战役任务，不能静默改候选 |

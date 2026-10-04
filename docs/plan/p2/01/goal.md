@@ -135,7 +135,9 @@ updated: 2026-10-04
 
 - **2026-10-04 — Research resumed on an observed startup interval change:** 用户现已可协作并批准开始隔离操作。实际采集在用户点击练习入口之前就取得一处合格字值变化并暂停，因此本次不再要求该点击；原版窗口已安全结束，原用户数据未变。事实与局限见 [executable](../../../original/formats/executable.md#qualified-startup-interval-change-before-manual-activation)。01 恢复研究，下一小步只绑定这个非零上下文的创建者/来源；没有将区间变化当作捕获写指令、来源 ID 或候选资格，也没有改变原 S-02 或开始依赖未满足的下游。
 
-- **2026-10-04 — Completion-hook strategy bounded, alternate source proof selected:** 完成流程和真实 code hook 注册已有证据，但其有界窗口没有取得实际 wrapper/consumer/payload 实例；请求载体的数值也未证明是 archive ID，见上述 executable owner。停止重复这一回调捕获策略，改为先核实生产者的记录布局/转换，再仅在已核实的所有权、完整数据与唯一 locator 条件下尝试图像/调色板来源比较。只比较 header、尺寸或运行时 handle 不算来源证明；若布局/转换未明，则保留准确缺口，不生成猜测的 Asset 或计数。
+- **2026-10-04 — Completion-hook strategy bounded, alternate source proof selected:** 完成流程和真实 code hook 注册已有证据，但其有界窗口没有取得实际 wrapper/consumer/payload 实例；请求载体的数值也未证明是 archive ID，见上述 executable owner。停止重复这一回调捕获策略，改为先核实生产者的记录布局/转换，再仅在已核实的所有权、完整数据与可验证 locator（允许等价集合）条件下尝试图像/调色板来源比较。只比较 header、尺寸或运行时 handle 不算来源证明；若布局/转换未明，则保留准确缺口，不生成猜测的 Asset 或计数。
+
+- **2026-10-04 — Full image equivalence verified; equivalent locators retained:** 完整运行时读取已通过身份、页面和稳定性保护，内容与已检查来源中的一个精确等价族匹配；该族已有代表位于所有候选的模型来源闭包。事实与历史来源局限见 [textures](../../../original/formats/textures.md#checked-runtime-image-equivalence-and-exact-source-aliases)，读取保护见 [executable](../../../original/formats/executable.md#qualified-full-span-image-capture)。按已批准的 [来源契约](./spec.md#清单来源与版本)，保留多个等价 locator，而不是任意选一个请求 ID、因多个目录 ID 计为多个图像，或把“必须抓到唯一原版请求 ID”增加为本次内容等价证明的门槛。实际请求/创建者仍未确认，不显示为历史来源已验证；不同语义角色/版本所有权也不能仅按 hash 自动合并。精确来源别名已纳入 [部分模型/图像投影](../../../original/formats/mesh.md#exact-source-image-alias-projection-partial)，通过重建/引用断言，尚未提供完整规范计数。下一步继续剩余表现资源、敌我资格、完整规范图及原 S-02 排序。01 仍为 in-progress，02–07 未解锁，替代候选尚未获批。
 
 ## 审批
 

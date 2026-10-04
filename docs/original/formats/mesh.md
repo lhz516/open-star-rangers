@@ -81,6 +81,14 @@ The 189 model-to-source edges are accounted for as 149 geometry references, 22 i
 
 **Coverage limit:** image identity merging, palettes, implicit objects and the rest of the slice remain outside this projection. The local report uses provisional research references and explicitly has `complete: false` and `rankingAvailable: false`; it is neither a production manifest nor an S-02 selection result. Reproduce with `node local/research/p2-01/model-material-subgraphs.ts`; parsing output and payload content remain ignored.
 
+### Exact-source image-alias projection (partial)
+
+**Confirmed (bounded reconstruction/counts):** `local/research/p2-01/exact-source-tex-subgraphs.ts` rebuilds all 54 candidate model/image subgraphs using the exact-source classes defined in [textures](./textures.md#checked-runtime-image-equivalence-and-exact-source-aliases). The union retains eighteen model handles and reduces image handles from 54 to 52: seventy nodes and eighty-eight model-to-image edges. Thirty-six candidates lose one image handle; no candidate loses an edge. Each slot-1 graph remains five model handles, fifteen provisional image handles and twenty-two edges.
+
+Assertions independently reconstruct all three MODL part lists, compare every raw source closure/count with the prior profiles, validate public typed references, and reject dangling/duplicate nodes and edges. MESH geometry remains internal. Existing source, material and sound report hashes/versions are unchanged; replay produces byte-identical JSON.
+
+**Coverage limit:** exact source aliases do not establish shared semantic roles/version ownership, a production SourceMapping or historical request provenance. Research IDs are provisional, not stable production semantic IDs. Palette identity, implicit/fixed presentation resources, mission/data, HUD and audio integration remain outside this partial graph. Its `complete`, `rankingAvailable` and `qualification` flags remain false; these counts cannot stand in for S-02 full-package ranking.
+
 ## 3. Comparison with the original (partial)
 
 Compared against HI-resolution screenshots of all nine views (`local/StarRang/captures/srangers_006.png`–`014.png`, `018.png`):
