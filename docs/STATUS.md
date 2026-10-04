@@ -32,4 +32,4 @@ updated: 2026-10-04
 
 ## 阻塞项
 
-- P2-01 的缓存表现来源及权威玩家相对敌我判定仍未绑定；隔离探针的控制已验证，但实际受保护模式应用映射和初始化写入证据未取得。来源 profile/部分规范图不能代替完整排序，替代候选也未获批准。剩余缺口见 [subtask 01](./plan/p2/01/subtasks/01-candidate-qualification.md#当前资格证据覆盖)，准确恢复条件见 [P2-01 goal](./plan/p2/01/goal.md#执行记录)。
+- P2-01 的缓存表现来源及权威玩家相对敌我判定仍未绑定；隔离探针已取得检查范围内的应用 CODE/DATA 映射，初始化前观察时机和来源赋值仍待证明。来源 profile/部分规范图不能代替完整排序，替代候选也未获批准。剩余缺口见 [subtask 01](./plan/p2/01/subtasks/01-candidate-qualification.md#当前资格证据覆盖)，准确恢复条件见 [P2-01 goal](./plan/p2/01/goal.md#执行记录)。

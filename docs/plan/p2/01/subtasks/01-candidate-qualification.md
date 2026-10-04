@@ -83,6 +83,8 @@ updated: 2026-10-04
 
 - `runtime-cache-probe-attempt-05/report.json` 保留纠正协议后的一次独立转场尝试：目标中断 hook 未取得合格停点，未证明实际 LE 应用入口、object-4 runtime base/selectors/limits 或初始化前时机，覆盖仍为 0/16 bytes。没有猜测地址或设置未验证观察点；未知来源/额外 Asset/边数仍为 unknown，不是 0。单次控制器 19.58 秒，自有 PID 已回收，原用户配置/计分哈希及旧报告哈希未变化。此策略在证据 blocker 处停止；恢复条件仅由 goal 维护，不要求用户重复普通战役试玩或已经自动验证的按键动作。
 
+- 用户批准分阶段恢复后，直接验证安装版本的定时暂停能力并取得运行中 CODE/DATA 关联。`runtime-vrt-map-12/report.json` 及离线反例记录两处完整窗口的独立精确比较、每对象地址推导与隔离/清理；此前失败报告保留，错误公共偏移没有改成静默默认。原版事实只在 [executable](../../../../original/formats/executable.md#bounded-runtime-codedata-object-correlation) 维护，不在此复制地址表或原始内容。当前只证明检查范围内的映射；入口执行、初始化前观察、缓存来源赋值、敌我基数与完整 S-02 排序仍未通过，报告资格标志保持 false。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
