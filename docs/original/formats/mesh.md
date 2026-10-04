@@ -71,6 +71,12 @@ Part lists (meaning Unconfirmed, U-027):
 
 The 189 model-to-source edges are accounted for as 149 geometry references, 22 image references and 18 sound references. The separate [sound projection](./audio.md#sample-boundaries-and-candidate-model-references-confirmed-structure) resolves the latter structurally; it does not determine their gameplay roles.
 
+### Secondary presentation model reuse (bounded)
+
+**Confirmed (native references):** registered MODL handler `0x6662c` requests MESH and TEX fields from all three 28-byte part lists and the five SND fields before queuing model completion at `0x66864`. The discriminator-3 effect callback `0x3e590` consumes list 1 (pointer/count at model +8/+12), including each selected part's mesh and optional texture references. This establishes a model-part presentation path; it does not assign gameplay sound roles or prove every queued source is required for a given candidate.
+
+**Confirmed (ownership consequence), Unconfirmed (full binding):** this path uses the owning MODL's existing geometry/image/sample source family, not a new independent MESH Asset for each effect instance or part index. The model-with-internal-geometry policy and existing source projection above remain unchanged. The callback/completion binding and discriminator-2 active model context still need exact source identity confirmation; production, selector-domain limits, candidate comparison and next addresses are maintained only in [executable](./executable.md#secondary-presentation-selector-bounded-production-and-dispatch). Cached geometry is not labelled procedural or archive-derived without creation evidence.
+
 **Coverage limit:** image identity merging, palettes, implicit objects and the rest of the slice remain outside this projection. The local report uses provisional research references and explicitly has `complete: false` and `rankingAvailable: false`; it is neither a production manifest nor an S-02 selection result. Reproduce with `node local/research/p2-01/model-material-subgraphs.ts`; parsing output and payload content remain ignored.
 
 ## 3. Comparison with the original (partial)
