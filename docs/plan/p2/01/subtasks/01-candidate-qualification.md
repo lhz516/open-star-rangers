@@ -61,6 +61,8 @@ updated: 2026-10-04
 - 本轮研究文档检查：6 份变更文档的元数据、98 个相对链接及锚点通过，`git diff --check` 通过；`pnpm --silent check:original` 四个范围均完成且零 finding。未改产品 TypeScript、测试或依赖，不重复 08 已通过的全量工程检查。本轮仅持久化事实里程碑，不表示子任务完成。
 - 2026-10-04 独立有界研究新增 `slot1-role-gates.ts/.json`，精确地址只读分析及全部模板/成员（含非零生成时间）断言通过；基地 kind 门禁和 SCEN 外分配器调用的安全事实、角色置信度及限制见 [executable](../../../../original/formats/executable.md#bounded-slot-1-interaction-kind-evidence)。该门禁不是阵营分类，也不能证明基地交互在任意运行状态可用；隐式路径是否新增模型身份仍未确认。新报告四个完成/排序/分类/隐式覆盖标志均为 false，不重算已完成的模型/音效/固定图形图。
 - 此有界研究只取得角色门禁里程碑，未完成本子任务，不启动 02–07、不修订 spec、不暂存/提交。下一次从 `0x38780`、`0x3cb80` 两个已定位的 SCEN 外分配器调用者核实 kind 与模型来源，再决定隐式身份是否扩展候选；敌方基数、完整规范图、原 S-02 排序及替代候选重新审阅/批准仍未满足。工程/操作命令与产品接口未变，相关工程指南无需更新。
+- 同日跟进完成上述两条路径的原生输入及局部/直接调用门禁核对；`node local/research/p2-01/two-allocator-profile.ts` 将结果与全部 54 个现有 profile 对比，来源图不重算。事实、条件性及未闭合的表现/参数依赖见 [executable](../../../../original/formats/executable.md#two-allocator-paths-native-inputs-and-profile-comparison)。只读 Ghidra 使用精确函数/调用地址，未用猜测的 C 签名确定输入，原生指令、C、脚本及报告仅留 ignored local。
+- 本次仍不通过 AC-01/10、不改变 tracker 或 spec、不推进下游。下一有界目标可核对剩余分配调用 `0x23b3c` / `0x23ff0` 的输入和模型绑定；其他直接调用地址由 executable 单点维护。报告保留完成/排序/隐式覆盖 false，候选敌方基数、完整闭包、原 S-02 排序及替代审批仍未满足；未重跑测试/构建，产品接口与工程指南没有变化。
 - 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
 
 ### 当前资格证据覆盖
