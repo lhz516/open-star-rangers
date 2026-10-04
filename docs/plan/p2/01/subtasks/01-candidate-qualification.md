@@ -75,6 +75,9 @@ updated: 2026-10-04
 - 2026-10-04 独立有界敌我研究只沿既有 `0x68050` 目标选择路径，完成五个精确函数的只读原生/Watcom 交叉核对；`slot1-hostility-boundary.ts` 将全部 slot-1 主记录、模板和实际成员逐条与原 SCEN 和未变化的 version-2 profile 对照。证据及缺失的权威攻击/敌我 consumer 链接只由 [executable](../../../../original/formats/executable.md#slot-1-hostility-qualification-boundary) 维护；实际敌机基数仍为 unknown，slot 8 不提升为已确认敌方，未知值不填 0。
 - 此轮保存的是精确分类证据边界，不通过 AC-01/10、不选定候选、不修改 tracker/spec、不推进下游。缓存创建来源仍为独立 blocker，未重访；保留原 S-02 全规范图排序和每模型一个 Asset/内部几何决定。不重跑已完成的测试、构建、profile 或全检查；本轮仅验证新增研究断言及文档/变更边界。
 
+- 2026-10-04 第二次独立有界敌我追踪从已记录的 target-iterator 引用进入一个具体表现 consumer；新增 `slot1-iff-consumer-attempt.ts/.json` 核对三个精确原生函数、五条直接调用绑定和未变化的 source-profile 哈希，没有重算既有 profile。精确 consumer、观察位置及其 IFF/攻击语义仍未绑定的限制见 [executable](../../../../original/formats/executable.md#bounded-presentation-consumer-follow-up)。实际敌机基数仍为 unknown；输入不变量未证明，不向主记录、模板或成员传播敌我判定，也不要求必须存在持久阵营字段。
+- 此 distinct attempt 在具体运行时身份/IFF 观察 blocker 处停止；未改变资格、原 S-02 排序、模型 Asset 粒度或 goal/spec，下游仍未启动，独立缓存分支未重访。只验证新增实验及变更文档元数据/链接；不重复已完成的工程检查。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
