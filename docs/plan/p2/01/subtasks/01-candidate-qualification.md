@@ -72,6 +72,8 @@ updated: 2026-10-04
 - 同日完成最后一次有界静态 writer 核对；`node local/research/p2-01/cache-writer-profile.ts` 验证精确 cell/附近 base 的 reference/write 元数据及一次候选函数地址列表的完整原生覆盖。未恢复 containing root 结构，发现的邻近写入没有绑定目标 cell 的运行时创建或来源。具体 scope、置信度与缺口只在 [executable](../../../../original/formats/executable.md#final-bounded-static-cache-writer-attempt) 维护；既有 MODL 完成绑定不撤销，也不提升为缓存/全图闭合。
 - 此分支的静态研究按有界执行约束停在证据 blocker：需一个本地初始化至首个 discriminator-1/2 实例的四 cell write-watch 记录，先做 LE→runtime 地址映射，取得 writer PC/调用链与来源元数据。该 probe 尚未执行，不再扩张猜测的静态地址或通用 loader。ASSET_UNITS 边界和额外 Asset/边数仍为 unknown；01 保持进行中，逐候选可达性、敌方基数、完整图、S-02 排序和替代审批仍未满足。没有产品/工程约定变更，未重跑测试/构建或候选 profile。
 - 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
+- 2026-10-04 独立有界敌我研究只沿既有 `0x68050` 目标选择路径，完成五个精确函数的只读原生/Watcom 交叉核对；`slot1-hostility-boundary.ts` 将全部 slot-1 主记录、模板和实际成员逐条与原 SCEN 和未变化的 version-2 profile 对照。证据及缺失的权威攻击/敌我 consumer 链接只由 [executable](../../../../original/formats/executable.md#slot-1-hostility-qualification-boundary) 维护；实际敌机基数仍为 unknown，slot 8 不提升为已确认敌方，未知值不填 0。
+- 此轮保存的是精确分类证据边界，不通过 AC-01/10、不选定候选、不修改 tracker/spec、不推进下游。缓存创建来源仍为独立 blocker，未重访；保留原 S-02 全规范图排序和每模型一个 Asset/内部几何决定。不重跑已完成的测试、构建、profile 或全检查；本轮仅验证新增研究断言及文档/变更边界。
 
 ### 当前资格证据覆盖
 
