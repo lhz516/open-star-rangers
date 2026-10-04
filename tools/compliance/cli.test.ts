@@ -8,6 +8,10 @@ import { object } from './packages.ts';
 const directory = resolve(import.meta.dirname);
 function setup(root: string, write: (path: string, content: string | Uint8Array) => void): void {
   installedBuildFixture(root, write);
+  const metadata: unknown = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  if (!object(metadata) || !object(metadata.scripts)) throw new Error('Fixture scripts missing');
+  // Node loads these TypeScript tools directly; avoid rebundling the fixture config.
+  write('package.json', JSON.stringify({ ...metadata, scripts: { ...metadata.scripts, build: 'vite build --configLoader native' } }));
   for (const name of readdirSync(directory).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts') && name !== 'test-support.ts')) {
     write(`tools/compliance/${name}`, readFileSync(join(directory, name)));
   }

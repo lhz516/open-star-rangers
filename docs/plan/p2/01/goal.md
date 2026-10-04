@@ -26,27 +26,27 @@ updated: 2026-10-03
 | S-01 | 01、02 | 07 核对本地资格证据与唯一生产切片定义一致 |
 | S-02 | 01、02 | 07 核对回退选择链与重新批准记录 |
 | S-03 | 01、02 | 06 角色基数正负测试 |
-| S-04 | 02 | 06 Asset ID 语法、稳定性与引用测试 |
-| S-05 | 02、03 | 06 版本、manifest 与来源判别测试 |
+| S-04 | 08、02 | 08/06 Asset ID 语法、稳定性与引用测试 |
+| S-05 | 08、02、03 | 08/06 版本、manifest 与来源判别测试 |
 | S-06 | 03 | 07 来源隔离与文档事实归属检查 |
 | S-07 | 04 | 06 依赖闭包与完整性推导测试 |
-| S-08 | 04 | 06 组级/全包与混装拒绝测试 |
+| S-08 | 08、04 | 08/06 资源组、组级/全包与混装拒绝测试 |
 | S-09 | 05 | 06 十二维预算、溢出与缺失维度测试 |
-| S-10 | 02、05 | 06 结构化克隆与 TypedArray 所有权测试 |
+| S-10 | 08、02、05 | 08/06 结构化克隆与 TypedArray 所有权测试 |
 | S-11 | 01、03 | 07 U 项置信度与下游责任链接检查 |
-| S-12 | 06 | 07 合成隔离、纯模块与工程检查 |
+| S-12 | 08、06 | 07 合成隔离、纯模块与工程检查 |
 | AC-01 | 01、02 | 07 候选结论与生产定义一致性复核 |
 | AC-02 | 02 | 06 角色与组基数断言 |
-| AC-03 | 02 | 06 Asset ID 稳定性与跨资源引用断言 |
-| AC-04 | 02、03 | 06 身份字段与合成/原版来源判别断言 |
+| AC-03 | 08、02 | 08/06 Asset ID 稳定性与跨资源引用断言 |
+| AC-04 | 08、02、03 | 08/06 身份字段与合成/原版来源判别断言 |
 | AC-05 | 03 | 06 locator 映射、冲突与缺失诊断断言 |
 | AC-06 | 04 | 06 完整性推导与不可伪造布尔断言 |
 | AC-07 | 04 | 06 四组独立、跨组要求与混装拒绝断言 |
 | AC-08 | 05 | 06 预算维度、边界与溢出断言 |
-| AC-09 | 05 | 06 所有权隔离与 transfer 失效断言 |
+| AC-09 | 08、05 | 08/06 所有权隔离与 transfer 失效断言 |
 | AC-10 | 01、03 | 07 本地资格证据与 U 项状态复核 |
 | AC-11 | 06 | 07 `pnpm check:original`与 diff 审阅 |
-| AC-12 | 06 | 07 `pnpm check`与依赖/锁文件无变化检查 |
+| AC-12 | 08、06 | 08/07 `pnpm check`与依赖/锁文件无变化检查 |
 | AC-13 | 03 | 07 文档链接、元数据与导出一致性检查 |
 | 风险恢复与阻塞门禁 | 07 | 07 `node tools/task-state.ts`与最终 diff 审阅 |
 
@@ -56,18 +56,61 @@ updated: 2026-10-03
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | — | pending |
+| [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | pending |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | pending |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务；ID 固定，不在执行中重排。
 
 ## 执行记录
 
+- **2026-10-03 — Subtask 01 blocked:** 首选 slot 0 的结构已确认，但六个非玩家 M2ID 槽位的敌我/基地语义、任务结果条件和战略地图/Warp 空间语义不足以满足已批准的资格门槛；同一 U-022 缺口也阻止无猜测地选择确定性回退。
+  Evidence: 本地 `SCENARIO.NOB` 结构统计、M2ID/SCCT 交叉核对及 rubber-duck 审查；安全证据保存在 `local/research/p2-01/`，结论记录于 `docs/original/formats/scenario.md`。
+  Affected acceptance: S-01、S-02、S-03、S-11；AC-01、AC-10；subtask 01 前两项。
+  Resume when: U-022 已定位并验证阵营、基地能力、结果条件和空间字段，或用户批准修订后的切片资格契约。
+
+- **2026-10-03 — Subtask 01 blocker updated:** 用户补充试玩后，原先建议的练习玩法候选已排除；进入 S-02 的战役回退资格研究，不再等待练习模式通关。模式到 SCCT/SCEN 的对应仍须核实，未选定或锁定替代任务。
+  Evidence: [B-002](../../../original/behavior/B-002-practice-mode.md) 的用户观察与本地截图核对。
+  Affected acceptance: S-01、S-02；AC-01、AC-10。
+  Resume when: 战役回退候选满足原资格门槛，并按必需 Asset 数、依赖边数、group/slot 字典序完成选择；替代候选的 spec 已重新审阅、批准并与 goal 对齐。
+
+- **2026-10-03 — Subtask 01 blocker narrowed after campaign evidence:** 战役玩法覆盖疑问已有证据，当前阻塞缩小为基准配置/结构身份、完整机型与资源闭包、S-02 排序和替代候选审批；不再要求重复证明已有的基地、地图/Warp 或结算界面。
+  Evidence: [subtask 01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖) 与其中链接的原版行为记录。
+  Affected acceptance: S-01、S-02、S-03；AC-01、AC-10。
+  Resume when: 取得所选基准配置的合格任务与闭包/排序证据，替代候选经 spec 修订、重新审阅和批准；U-031 的精确救援/失败规则留给 P3，不作为要求全部关闭的额外 P2 门槛。
+
+- **2026-10-03 — Subtask 01 selection-contract prerequisite identified:** 全槽位来源 profile 已完成，但 S-02 要求先按规范 Asset/边数选择，当前尚未明确源条目到规范 Asset 的拆分/合并与固定/隐式依赖；不能拿来源计数替代。跨组比较的字典序兜底也不能自动保留此前期望的中间组配置。
+  Evidence: [scenario 来源 profile](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)；本地结构断言及现有封包/payload 检查通过。
+  Affected acceptance: S-01、S-02；AC-01、AC-10。
+  Resume when: 补齐完整规范划分与排序证据，或用户决定修订回退选型关卡，再经 spec 修订、审阅和批准；在此之前 tracker 保持 blocked。
+
+- **2026-10-03 — Selection rule retained by user:** 用户明确选择保留现有全战役规范 Asset 排序规则，不采用优先固定中间组第一关的替代关卡。后续需先明确规范资源划分和全部必需引用，再执行原 S-02 比较；来源 profile 只作为辅助证据。本选择不批准任何候选，也不改变 spec 或 subtask 依赖。
+
+- **2026-10-03 — Model Asset granularity selected by user:** 用户选择每个模型一个规范 Asset，网格几何并入模型 payload，几何版本与所有权由模型管理，不把原版 MESH 条目直接计为独立 data Asset。原版解析可以复用共享几何的读取/解码，但输出模型不能共享可由消费者修改的二进制视图。此实现细化不改变 S-02 排序、原版隔离或候选审批关卡；完整规范图仍在研究中。
+
+- **2026-10-03 — Prerequisite split approved by user:** 用户明确批准从 02 拆出候选无关的基础契约作为前置项。新增稳定 ID 08，01 依赖 08，02 仍依赖完成资格选择的 01；07 依赖全部非最终项。原有编号、状态与证据保留，spec/S-02 不变。
+
+- **2026-10-03 — Subtask 08 blocked on required validation:** 基础契约实现、164 项针对性测试、类型/lint/单独构建及原版隔离通过，但两次默认 `pnpm check` 分别有 26/16 项工具测试超时；原断言/deadline 未改。本项尚不满足完整检查通过的验收，不标 completed、不提交、不推进依赖项。
+  Evidence: 单独工程边界 suite 在当前树为 29 通过/3 超时；无本项代码的干净 HEAD 副本在同样 `--maxWorkers=1`、原 deadline 下也出现 31 通过/1 超时，证明至少一项超时在旧树可重现，不据此断言全部失败均无关。本轮默认检查为 1420 通过/16 失败，无内容契约断言失败。
+  Affected acceptance: subtask 08 最后一项；AC-12 的最终工程检查。
+  Resume when: 在可满足既有 deadline 的环境中重跑 required checks 并全部通过；不得放宽 timeout、跳过失败测试或停止非本任务进程来伪造通过。
+
+- **2026-10-03 — Test scheduling change approved by user:** 全部 60 文件/1436 项测试在串行模式下通过，默认并发仍产生工具 deadline 超时。用户明确批准将 Vitest 文件调度改为串行，保持测试发现、断言和 timeout 不变；独立 E2E 设置不变。此变更纳入 08 的验证修复范围，不以单独通过替代默认完整检查，须重新运行 `pnpm check`。
+
+- **2026-10-03 — Subtask 08 validation still blocked after scheduling fix:** 默认串行/单 worker 已落实且 typecheck/lint 通过；最新完整测试为 1436 通过/1 超时，合规 CLI 聚合用例约 47.3 秒超过原 45 秒。没有放宽 deadline，也不以先前串行全量通过或单独 suite 通过宣称当前默认检查通过。
+  Evidence: 08 的父任务追加验证与本地检查输出；新增调度回归包含在 1437 项中。
+  Affected acceptance: 08 最后一项、AC-12；禁止完成提交或推进 01。
+  Resume when: 默认 `pnpm check` 在原 deadline 下完整通过；若需更改合规测试/工具而非调度，应先明确授权其新增范围。
+
+- **2026-10-03 — Subtask 08 validation blocker resolved:** 用户批准的有界合规性能修复仅改变临时 fixture 的配置加载方式；真实检查、扫描范围、断言和 deadline 不变。默认 `pnpm check` 已完整通过（60 文件/1437 项），08 验收满足。01 仍需完成规范候选图和原 S-02 排序，未锁定替代候选，不把 08 完成解释为资格研究完成。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。
+
+同日用户明确批准保留 S-02、模型几何归属及新增前置项 08 的拆分方案；当前共 8 个子任务。这不批准替代候选，也不代表 08 已实现。

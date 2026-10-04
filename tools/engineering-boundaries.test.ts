@@ -5,10 +5,22 @@ import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import viteConfiguration from '../vite.config.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const pureLayers = ['core', 'original-data', 'content'] as const;
 const eslint = new ESLint({ cwd: root });
+
+describe('Vitest scheduling', () => {
+  it('serializes files without reducing test discovery or overriding deadlines', () => {
+    expect(viteConfiguration.test?.fileParallelism).toBe(false);
+    expect(viteConfiguration.test?.maxWorkers).toBe(1);
+    expect(viteConfiguration.test?.include).toEqual(['src/**/*.test.ts', 'tools/**/*.test.ts']);
+    expect(viteConfiguration.test?.environment).toBe('node');
+    expect(viteConfiguration.test?.testTimeout).toBeUndefined();
+    expect(viteConfiguration.test?.hookTimeout).toBeUndefined();
+  });
+});
 
 function configuration(project: string, directory = root): ts.ParsedCommandLine {
   const config = ts.getParsedCommandLineOfConfigFile(join(directory, `tsconfig.${project}.json`), {}, {

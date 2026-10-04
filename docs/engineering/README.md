@@ -76,6 +76,8 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
 ## 测试
 
+- Vitest 在同一 runner 中使用一个 worker 按文件串行执行（`fileParallelism: false`、`maxWorkers: 1`）。工程边界与合规集成测试会启动真实编译/构建/子进程，并发文件执行会造成资源争用和 deadline 超时；串行调度不缩小测试发现范围、不增加 timeout，也不影响独立 Playwright runner。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护。
+
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
 - **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.ts` 在代码中生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。
 - 驾驶舱字体目录的读取属于 `src/original-data/payloads.ts`，CLI 只负责调度与报告；合成样本覆盖目录顺序与空目录。

@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'tools/**/*.test.ts'],
     environment: 'node',
+    fileParallelism: false,
+    maxWorkers: 1,
   },
 });
