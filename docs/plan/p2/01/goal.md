@@ -139,6 +139,8 @@ updated: 2026-10-04
 
 - **2026-10-04 — Full image equivalence verified; equivalent locators retained:** 完整运行时读取已通过身份、页面和稳定性保护，内容与已检查来源中的一个精确等价族匹配；该族已有代表位于所有候选的模型来源闭包。事实与历史来源局限见 [textures](../../../original/formats/textures.md#checked-runtime-image-equivalence-and-exact-source-aliases)，读取保护见 [executable](../../../original/formats/executable.md#qualified-full-span-image-capture)。按已批准的 [来源契约](./spec.md#清单来源与版本)，保留多个等价 locator，而不是任意选一个请求 ID、因多个目录 ID 计为多个图像，或把“必须抓到唯一原版请求 ID”增加为本次内容等价证明的门槛。实际请求/创建者仍未确认，不显示为历史来源已验证；不同语义角色/版本所有权也不能仅按 hash 自动合并。精确来源别名已纳入 [部分模型/图像投影](../../../original/formats/mesh.md#exact-source-image-alias-projection-partial)，通过重建/引用断言，尚未提供完整规范计数。下一步继续剩余表现资源、敌我资格、完整规范图及原 S-02 排序。01 仍为 in-progress，02–07 未解锁，替代候选尚未获批。
 
+- **2026-10-04 — Subtask 01 qualification evidence complete; fallback selected, approval pending:** 有界掩码立即数搜索找到玩家飞行按键的敌/友目标模式，由此取得玩家相对敌我分类与输入不变量，并把用户第一关试玩经难度全局值绑定到 group 0 / slot 1；事实见 [executable](../../../original/formats/executable.md#player-target-modes-and-enemy-classification) 与 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)。S-02 检查 51 个战役槽位：45 个按敌机数量下界不合格，6 个通过结构门槛；按规范闭包的包含关系选出 group 0 / slot 1（SCEN 3019），论证见 [01](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。该回退候选改变任务与必需闭包；按 S-02 及“切片候选选择”第 5 步，须先修订 spec 选择记录、经另一模型审阅，再由用户重新批准。在此之前 01 保持 in-progress，02–07 不开始；绝对全包总数与固定资源来源映射归 02/03。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。

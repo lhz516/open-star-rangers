@@ -2,8 +2,8 @@
 type: reference
 status: draft
 phase: P0
-updated: 2026-10-03
-related: [U-011, U-012, ADR-0004]
+updated: 2026-10-04
+related: [U-011, U-012, U-022, ADR-0004]
 ---
 
 # 原版键位冲突表
@@ -48,6 +48,11 @@ related: [U-011, U-012, ADR-0004]
 - 原版不支持鼠标飞行：鼠标不能用于操纵飞船。
 - **证据**：用户试玩反馈（2026-10-01），确认鼠标无法控制飞行。
 - 此结论不影响战略地图中的鼠标交互，相关行为见 [B-001](../behavior/B-001-strategic-map.md#交互已确认)。
+
+## 目标模式（代码确认）
+
+- `t` 选择敌方模式的首个目标，`f` 选择友方模式的首个目标；`r`/`y` 在当前模式内按距离切换。敌/友模式按目标的运行时种类区分，各槽位的归属与证据见 [executable](../formats/executable.md#player-target-modes-and-enemy-classification)。
+- `u` 选择前方目标并按其种类自动切换模式，为高概率（来自反编译比较树，未逐条核对原生比较）。
 
 ## 待试玩补充
 
