@@ -94,6 +94,8 @@ updated: 2026-10-04
 
 - 用户随后已可协作并批准开始隔离会话。`runtime-manual-activation-23/report.json` 记录点击前自然启动过程中取得的一处合格区间变化；用户只报告黑色调试暂停画面，没有进入练习或执行游戏操作。原窗口已结束，原配置/计分/程序与旧报告哈希核对不变。实际字值、页面核验与未捕获写入者/来源的边界只在 [executable](../../../../original/formats/executable.md#qualified-startup-interval-change-before-manual-activation) 维护；这次不再要求用户点击入口，继续绑定新观察到的上下文，而不是把区间变化提升为资源转换/候选通过。
 
+- `runtime-source-snapshot-24/milestone.json` 保存一次新运行中的有限上下文读取、字段稳定性/页面核验和精确 TEX handler 调用位置。结构兼容性、运行时 handle 与来源 ID 的区别及下一 ownership linker 只在上述 executable owner 维护。没有由尺寸/调色板数量或运行时 handle 唯一选定原版条目，没有抓到写指令/创建者；资格和额外单位/边数仍未通过/仍为 unknown。原数据、912 份旧证据与私有配置未变，没有产品接口或测试发现/截止时间变化。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
