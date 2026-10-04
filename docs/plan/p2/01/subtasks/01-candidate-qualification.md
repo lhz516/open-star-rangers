@@ -100,6 +100,8 @@ updated: 2026-10-04
 
 - `tex-completion-26-milestone.json` 核对完成函数及准备 callee 的完整可达原生流，取得成功 consumer 的字段/寄存器传递证据；精确关系及 +12 未观察语义只由上述 executable owner 维护。一次实际探针虽重验映射，但未通过设断点前的上下文保护，没有取得请求、wrapper 或 consumer 实例。没有将 native 转发的数值命名为已验证 archive ID；实际来源/所有者关联、写指令和候选资格仍未满足，已有 23/24/25 证据及原数据保持不变。
 
+- `tex-completion-27-milestone.json` 取得下一请求载体的原生输入绑定，并在实际探针中重验 CODE/DATA 和页身份；精确语义边界与未核实的 code hook 注册只在上述 executable owner 维护。注册未确认时的零事件不作为执行时序/缺失证明，没有捕获 wrapper 实例或补来源 ID。01 继续先核实真实 hook 注册和目录 ID 语义，再关联实际 pointer/consumer；资格、原 S-02 与额外计数仍未满足。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
