@@ -2,8 +2,8 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-01
-related: [U-009, U-017]
+updated: 2026-10-03
+related: [U-009, U-017, U-022]
 ---
 
 # Main executable (`SRANGERS.EXE`)
@@ -49,6 +49,12 @@ Addresses are Ghidra addresses with the ghidra-lx-loader defaults (objects mappe
 | 0x68d2c | Rescales all spatial fields of the current `SCEN` by (runtime scale ÷ header scale) | Confirmed (logic) | Identifies the spatial fields in [scenario](./scenario.md) §2–3 |
 | 0x6721c | Schedules mission objects: section-1 records, section-5 entries, and the selected wingman | Likely | Inserts {time, index, source} into a time-ordered queue via 0x67584 |
 | 0x6744c | Fills default values into a 132-byte object record | Confirmed (logic) | Field defaults listed in [scenario](./scenario.md) §3 |
+| 0x65ca4 | Maps a single-bit object kind to the corresponding M2ID model slot | Confirmed (logic) | Computes the bit position and indexes the M2ID table loaded from entry 10649 |
+| 0x67678 | Dispatches queued spawns, including actual section-5 member records | Confirmed (access logic) | Follows the section-5 template, formation and member-pointer array; see [scenario](./scenario.md#section-5-member-records-confirmed-access) |
+| 0x68018 | Returns a mission object's AI target-kind filter | Confirmed (logic) | Uses the active +0x58 descriptor or falls back to the +0x5C mask; not a base-capability field |
+| 0x33940 | Returns the selected wingman value | Confirmed (getter/access) | Zero suppresses wingman scheduling; positive values select from SCCT through `0x6721c` |
 | 0x3b8dc | Records post-mission statistics (17 rows of 0x48 bytes) and decides promotion | Likely | Compares a rank field and the average of recent scores with a threshold table |
 
-The mission module occupies roughly 0x67000–0x6a000; functions there read the current `SCEN` through one global pointer. Not yet located: the field that selects the craft type (and therefore the M2ID model) for each object (U-022).
+The mission module occupies roughly 0x67000–0x6a000; functions there read the current `SCEN` through one global pointer. The object kind at +0 selects the M2ID slot through its single set bit. Faction, base capability, result-condition and remaining object-field semantics are still open under U-022.
+
+Local follow-up analysis found that previously generated C could retain `__fastcall` prototypes despite the installed compiler spec having `__watcall` as its default. Selected engine-function conventions were therefore overridden in memory during `-readOnly` analysis; the project was not overwritten or reimported. Parameter-sensitive claims use native call-site register metadata as a cross-check rather than trusting incomplete inferred signatures. Code/output remains in `local/research/p2-01/`.

@@ -2,7 +2,7 @@
 type: register
 status: active
 phase: all
-updated: 2026-10-01
+updated: 2026-10-03
 ---
 
 # 待确认事项登记表
@@ -17,19 +17,19 @@ updated: 2026-10-01
 |---|---|---|---|---|---|
 | U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表、调色板、通用图像记录（含精灵 RLE 编码）、TEX、BITM、MFDD、MESH、MODL、SND 已确认（全部条目解析通过）；CCKD 元素结构已确认；SCEN 结构已确认；ANIM（编码 1）、音乐、TABL 等其余类型待研究 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[cockpit](./formats/cockpit.md)、[mesh](./formats/mesh.md)、[audio](./formats/audio.md)、[scenario](./formats/scenario.md) | P0（结构）/ P2（切片所需类型） |
 | U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 已确认（内容） | 任务内容（对象名、编组名、任务内文字、坐标、战役顺序）全部在 `SCENARIO.NOB`；EXE 中没有任务文字。EXE 是否有针对特定任务的硬编码逻辑见 U-022 | [scenario](./formats/scenario.md)、[executable](./formats/executable.md) | P0 |
-| U-003 | 任务总数与分支结构 | 高概率 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个开场任务，其余 51 个各不相同。代码按 0–100 的数值以 34、67 为界选组，与 README 中开局设定的战役难度滑块一致，因此 3 组很可能是同一战役的 3 个难度版本，各 17 个任务加共用开场任务。顺序是否即游玩顺序、是否有分支未确认 | [scenario](./formats/scenario.md) §4、[executable](./formats/executable.md) §4 | P0 |
+| U-003 | 任务总数与分支结构 | 高概率 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个共用场景，其余 51 个各不相同。代码按 0–100 的数值以 34、67 为界选组，与 README 中开局设定的战役难度滑块一致，因此 3 组很可能是同一战役的 3 个难度版本，各 17 个任务加共用场景。战役首关的 slot-1 选择逻辑已确认，共用 slot 0 对应练习入口仍为高概率；用户已观察第一关结算后进入第二关简报，但具体试玩的完整初始化身份、全战役顺序与分支仍未确认 | [scenario](./formats/scenario.md) §4、[B-002](./behavior/B-002-practice-mode.md)、[B-003](./behavior/B-003-campaign-flow.md)、[executable](./formats/executable.md) §4 | P0 |
 | U-004 | 音乐与音效编码 | 部分确认 | 音效 `SND`（37 个）已确认为原始 PCM：8 位无符号或 16 位，采样率 9000–22050 Hz，头部 20 字节。音乐 `SONG`（12 个）、`MUSC`（5 个）未解析，经 Miles MIDI 驱动播放，可能是 XMIDI | [audio](./formats/audio.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
 | U-005 | 原版存档格式 | 未确认 | 原版存档兼容是可选工作 | | P4 之后 |
 | U-018 | 不带调色板的 BITM 所用调色板 | 未确认 | 22 个 BITM 用全局调色板显示颜色不对 | [textures](./formats/textures.md) | P2 |
 | U-019 | 部分 BITM 显示为上下颠倒 | 未确认 | 调色板改按 BGR 读取后颜色已正常（肤色），但仍上下颠倒；可能按行倒序存储，也可能是贴图本身的朝向 | 同上 | P2 |
 | U-020 | IMFAT 目录项 `flags` 字段含义 | 未确认 | 观察到 0、0x10、0x50 | [imfat](./formats/imfat.md) | P2 |
-| U-022 | `SCEN` 各段与 132 字节记录的字段含义；EXE 是否有特定任务的硬编码逻辑 | 部分确认 | 已定位任务构建与生成代码。头部比例尺、7 个段的元素大小与空间字段已确认；132 字节记录中对象种类、生成时间、位置、AI 参数默认值、标志等字段为高概率。尚未找到决定机型（M2ID 槽位）的字段；在已阅读的任务代码中未见针对特定任务编号的分支 | [scenario](./formats/scenario.md) §2–3、[executable](./formats/executable.md) §4 | P2（切片任务的剩余字段） |
-| U-023 | `SCCT` 中 5 条 132 字节记录的用途 | 高概率 | 可选僚机：任务中存在种类为 1（玩家）的记录时，加载代码从这 5 条中按所选僚机编号生成僚机 | [scenario](./formats/scenario.md) §4 | P2 |
+| U-022 | `SCEN` 各段与 132 字节记录的字段含义；EXE 是否有特定任务的硬编码逻辑 | 进行中 | 已确认 kind→M2ID、战役首关的 slot-1 选择逻辑、对象名列表访问、section-5 成员数组生成及 +0x5C 的 AI 目标类型掩码；+0x5C 不是原先猜测的基地能力标志。完整规范引用、阵营/基地操作条件、结果与其余空间字段仍需核实；在已阅读的任务代码中未见针对特定任务编号的分支 | [scenario](./formats/scenario.md) §2–4、[B-003](./behavior/B-003-campaign-flow.md)、[B-004](./behavior/B-004-base-communications.md)、[executable](./formats/executable.md) §4 | P2（切片任务的剩余字段） |
+| U-023 | `SCCT` 中 5 条 132 字节记录的用途 | 部分确认 | 战役简报流程中的僚机选择、无僚机选项和飞行中出现僚机已由试玩确认；加载代码在种类为 1 的玩家记录存在时按选择编号生成这 5 条中的僚机为高概率。逐条人物对应、无僚机的内部选择器与生成门禁仍未确认 | [scenario](./formats/scenario.md) §4、[B-003](./behavior/B-003-campaign-flow.md) | P2 |
 | U-024 | 地图边框两侧按钮的功能；地图打开时飞行与武器按键是否有效 | 已确认 | 按钮不能点击，只是装饰；地图打开时飞行按键无效 | [B-001](./behavior/B-001-strategic-map.md) | P0 |
 | U-025 | 战争迷雾的计算规则 | 部分确认 | 基础显示与敌机可见性规则已确认；探测半径、范围边界判定与历史探索保留规则未确认，研究计划见 B-001 | [B-001](./behavior/B-001-strategic-map.md#战争迷雾与敌机可见性基础规则已确认u-025)（2026-10-01 用户补充试玩反馈与截图） | P3 |
 | U-026 | 跃迁能量消耗的显示与计算 | 部分确认 | 显示已确认：地图上选取框旁显示“E: 百分比”，距离越远越大；左侧状态窗口的能量数值是当前能量。计算公式与百分比基准未确认 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
 | U-027 | MODL 第 1、2 部件列表、部件标志与 5 个音效槽的含义 | 高概率（部分） | 第 1 列表像被摧毁后的残骸碎片；第 2 列表是单色凸包，可能是碰撞体或护盾受击效果；标志与音效槽未确认 | [mesh](./formats/mesh.md) | P2 |
-| U-028 | 运行时贴图着色；M2ID 各槽位对应的机型 | 部分确认 | 颜色来源已确认：贴图自带调色板按 BGR 顺序存储，游戏把贴图颜色映射到全局调色板 DATA 中最接近的颜色；按此渲染的玩家座机与 Xpon 与截图颜色一致。机型到 MODL 的对应来自 M2ID（槽位 0、1 为玩家座机，槽位 14 为 Xpon）。光照如何选择明暗、其余槽位对应的机型未确认 | [textures](./formats/textures.md) §3、[mesh](./formats/mesh.md) §3、[hud](./formats/hud.md) §3 | P3（光照）/ P2（槽位） |
+| U-028 | 运行时贴图着色；M2ID 各槽位对应的机型 | 部分确认 | 颜色来源已确认：贴图自带调色板按 BGR 顺序存储，游戏把贴图颜色映射到全局调色板 DATA 中最接近的颜色；按此渲染的玩家座机与 Xpon 与截图颜色一致。机型到 MODL 的对应来自 M2ID（槽位 0、1 为玩家座机，槽位 14 为 Xpon）。本轮补充槽位 7、17 的目标/基地几何对照，结论见 mesh；其余友方飞船和救援对象的身份、光照与其他槽位仍未确认 | [textures](./formats/textures.md) §3、[mesh](./formats/mesh.md) §3、[hud](./formats/hud.md) §3、[B-003](./behavior/B-003-campaign-flow.md)、[B-005](./behavior/B-005-campaign-rescue.md) | P3（光照）/ P2（槽位） |
 | U-029 | CCKD 分组表的布局；战略地图边框所用调色板；第 2–5 组由哪个按键或状态选择 | 未确认 | 元素（图像记录 + 屏幕坐标）与头部的 3 个字体已确认；地图边框组的元素带标志 1，用全局调色板显示颜色不对；第 2–4 组像向后、向左、向右看的视角 | [cockpit](./formats/cockpit.md) | P2 |
 | U-030 | 4×6 字体的字符映射；TABL 10165 中 33 个叠加图的用途；TABL 10399、11375 的内容 | 未确认 | 8×8 字体按 ASCII 排列，4×6 字体不是 | [hud](./formats/hud.md) | P2 |
 
@@ -46,13 +46,14 @@ updated: 2026-10-01
 |---|---|---|---|---|---|
 | U-008 | 精确运动模型 | 未确认 | 线索：任务生成队列的时间单位很可能是 1/64 秒（生成时间左移 6 位），可能反映引擎时钟频率 | 待行为实验；[scenario](./formats/scenario.md) §3 | P0 / P3 |
 | U-009 | 是否使用定点数与三角函数查表 | 部分确认 | 网格顶点以 32 位浮点存储；但渲染器内部使用定点数（断言文字中有定点转整数的宏）；任务坐标为 int32。是否有三角函数查表未确认 | [mesh](./formats/mesh.md)、[executable](./formats/executable.md)、[scenario](./formats/scenario.md) | P0 / P3 |
-| U-010 | 起降、Warp 与过场动画的衔接 | 未确认 | 光盘有 `LAUNCH`、`LANDING`、`FLYTO`、`FLYFROM` 等 Smacker 视频 | [manifest](./manifest.md) | P0 |
+| U-010 | 起降、Warp 与过场动画的衔接 | 部分确认 | 新战役介绍/简报/出发、基地入港/内部/离港、结算到下一关的顺序及实际 Warp 画面已由试玩确认；只确认新战役介绍可按空格跳过。精确媒体定位、所有 skip 条件、输入门禁、时长和过场与逻辑状态的切换时刻仍待研究 | [B-001](./behavior/B-001-strategic-map.md)、[B-003](./behavior/B-003-campaign-flow.md)、[B-004](./behavior/B-004-base-communications.md)、[manifest](./manifest.md) | P3（衔接规则）/ P4（完整媒体） |
+| U-031 | 战役玩家被毁后的救援与真实任务失败条件 | 进行中 | 已观察到被毁后救援对象、救援船和返回基地，不能复用练习被毁即失败的分支。最近基地选择、救援失败条件、到达后的控制/进度、其他任务失败触发仍未确认；研究计划为记录被毁前后任务状态、运送目的地和救援后的页面/控制，并比较多基地场景 | [B-005](./behavior/B-005-campaign-rescue.md) | P3（失败/救援规则）/ P2（所选任务必需来源） |
 
 ## 输入
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-011 | 完整原版键位（含飞行方向与横滚） | 部分确认 | README 中的键位已列入键位表；F1–F9 九种视角已由试玩截图确认；飞行方向与横滚键待确认 | [key-map](./input/key-map.md) | P0 |
+| U-011 | 完整原版键位（含飞行方向与横滚） | 部分确认 | README 中的键位已列入键位表；F1–F9 九种视角已由试玩截图确认；本轮补充通讯菜单按键、基地内离港与新战役介绍跳过，飞行方向与横滚键仍待确认 | [key-map](./input/key-map.md) | P0 |
 | U-012 | 是否支持鼠标飞行 | 已确认 | 结论与试玩证据见键位表 | [key-map](./input/key-map.md#鼠标飞行已确认u-012)（2026-10-01 用户试玩反馈） | P0 |
 
 ## 存档
@@ -60,7 +61,7 @@ updated: 2026-10-01
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
 | U-013 | 存档时机与存档槽数量 | 未确认 | 线索：试玩后 `SRANGER.CFG` 中的 `CURR_LEVEL` 从 `0 0` 变为 `0 17`，可能是“难度组 任务编号”（任务构建函数按组与任务编号取任务；17 为最后一个任务位置）。之后可在开始战役、完成任务前后各对比一次配置文件 | 配置文件对比 | P0 |
-| U-014 | 战役存档内容与高分榜 | 部分确认 | 代码在任务结束后保存 17 行、每行 0x48 字节的任务统计，并据此（军衔字段、最近 3 个任务的平均分与阈值表）决定是否晋升；高分榜文件为 `SRHISCOR.RAW`（1176 字节）。存档文件格式未确认 | [executable](./formats/executable.md) §4、[manifest](./manifest.md) | P0 / P4 |
+| U-014 | 战役存档内容与高分榜 | 部分确认 | 代码在任务结束后保存 17 行、每行 0x48 字节的任务统计，并据此（军衔字段、最近 3 个任务的平均分与阈值表）决定是否晋升；高分榜文件为 `SRHISCOR.RAW`（1176 字节）。试玩补充统计/高分榜/总结/下一关页面流，未验证文件写入时机或存档格式 | [executable](./formats/executable.md) §4、[manifest](./manifest.md)、[B-003](./behavior/B-003-campaign-flow.md) | P0 / P4 |
 
 ## 环境与其他
 
