@@ -57,7 +57,7 @@ updated: 2026-10-04
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -127,6 +127,11 @@ updated: 2026-10-04
 - **2026-10-04 — Assignment observation remains context-qualified:** 后续探针验证了部分可读目标及真实观察点注册，但跨模式报警未通过同一内存查找身份/完整字值核对。失败读取不能补零，注册地址覆盖也不能冒充来源赋值。边界与对早期输出的澄清见 [executable](../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。下一步在有界控制中跳过未验证上下文，并只在已重新核实的页面上恢复观察；不增加“必须显示某个控制寄存器 UI 字段”之类的新 P2 前提。
 
 - **2026-10-04 — Bounded observation controller verified, activation evidence still missing:** 原生控制链已完成暂停观察、返回合格上下文、独立内存身份核对、完整字读取与重新注册的三个循环；实际检查范围见 [executable](../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。这个启动窗口内没有取得合格赋值或来源身份，不据此裁剪资源。停止重复相同启动捕获，下一步只定位/激活能创建相关表现资源的最小原版上下文；研究样本不等于批准生产候选，不扩展到胜负/AI 公式或完整任务试玩。
+
+- **2026-10-04 — Subtask 01 blocked on a verified presentation activation input:** 已取得映射与可工作的有界观察控制链，但相同启动窗口没有激活待追踪资源；最短已有玩法证据是从原版练习入口进入首次驾驶舱/3D 画面，见 [B-002](../../../original/behavior/B-002-practice-mode.md)。它只作为表现激活参考，不重新选定练习任务或声称 SCCT 绑定。当前未验证相关菜单热键或可靠的按钮输入；内置键盘调度能力不是鼠标点击证明，一次不含原版游戏的输入实验发生模拟器原生退出，输入派发仍未确认。停止猜测键序或重复启动实验。
+  Evidence: [01 激活依赖记录](./subtasks/01-candidate-qualification.md#完成证据)；既有映射/观察证明保持有效，实际创建和来源仍未取得。本轮询问一次隔离副本中的最小协作操作，但没有可用用户应答；不将其记为用户拒绝或批准新候选。
+  Affected acceptance: S-01、S-02、S-03、S-11；AC-01、AC-10；01 前两项。
+  Resume when: 能在隔离副本、映射和页面保护就绪后，执行已核实的练习入口按钮/热键，只推进到首次驾驶舱画面，或取得同等强度的其他表现创建上下文证据。用户只需这一激活动作，不需飞行、开火、通关或操作寄存器。随后仍须核实创建者/来源，完成敌我资格、规范图、原 S-02 排序与替代审批；这不是把研究样本批准为生产切片。
 
 ## 审批
 
