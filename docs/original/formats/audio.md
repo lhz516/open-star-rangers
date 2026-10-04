@@ -2,8 +2,8 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-01
-related: [U-004, U-016]
+updated: 2026-10-04
+related: [U-004, U-016, U-027]
 ---
 
 # Audio (SND, SONG, MUSC)
@@ -25,6 +25,16 @@ Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Struc
 - 15 entries are 16-bit; Likely signed little-endian (the usual Sound Blaster 16 format), not yet verified by playback.
 - Total length is about 30 seconds.
 - Playback in the browser needs only conversion to floating-point samples for Web Audio; no codec is required.
+
+### Sample boundaries and candidate model references (Confirmed structure)
+
+`local/research/p2-01/sound-source-profile.ts` validates all 37 SND entries. Every block has a single relocated sample pointer at header offset 0, pointing to byte 20; the declared sample length covers the remainder of the block and is divisible by the sample width. This supports a whole sample-region unit, not one Asset per sample point. The reported word count does not assume a channel count or resolve flags.
+
+An exact comparison of sample bytes, rate, width and flags finds one duplicate pair, entry IDs 10401 and 10647, leaving 36 distinct sample/format bindings across the archive. Matching only sample bytes or only source IDs is insufficient. These aliases are represented by a shared provisional research reference; they are not approved semantic Asset IDs or converted payload identities.
+
+The script independently reconstructs MODL sound references for all 54 candidate slots and cross-checks them with the [source profiles](./scenario.md#campaign-candidate-source-profiles-confirmed-structure). Each of the three slot-1 profiles has 13 distinct sample bindings and 18 distinct model-to-sound edges. Each includes only one member of the duplicate pair, so alias merging does not reduce these slot-1 counts.
+
+**Coverage limit:** the ignored report explicitly has `complete: false` and `rankingAvailable: false`. Sound-slot meanings, channel/flag interpretation, the four required gameplay sound roles and fixed runtime audio remain unresolved (U-004/U-027; P2-08). Resolving structural model references does not qualify a mission or complete S-02 ranking. Reproduce with `node local/research/p2-01/sound-source-profile.ts`; only metadata and counts are reported, never sample data.
 
 ## 2. SONG and MUSC (Unconfirmed)
 

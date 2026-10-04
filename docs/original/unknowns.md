@@ -2,7 +2,7 @@
 type: register
 status: active
 phase: all
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # 待确认事项登记表
@@ -18,7 +18,7 @@ updated: 2026-10-03
 | U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表、调色板、通用图像记录（含精灵 RLE 编码）、TEX、BITM、MFDD、MESH、MODL、SND 已确认（全部条目解析通过）；CCKD 元素结构已确认；SCEN 结构已确认；ANIM（编码 1）、音乐、TABL 等其余类型待研究 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[cockpit](./formats/cockpit.md)、[mesh](./formats/mesh.md)、[audio](./formats/audio.md)、[scenario](./formats/scenario.md) | P0（结构）/ P2（切片所需类型） |
 | U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 已确认（内容） | 任务内容（对象名、编组名、任务内文字、坐标、战役顺序）全部在 `SCENARIO.NOB`；EXE 中没有任务文字。EXE 是否有针对特定任务的硬编码逻辑见 U-022 | [scenario](./formats/scenario.md)、[executable](./formats/executable.md) | P0 |
 | U-003 | 任务总数与分支结构 | 高概率 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个共用场景，其余 51 个各不相同。代码按 0–100 的数值以 34、67 为界选组，与 README 中开局设定的战役难度滑块一致，因此 3 组很可能是同一战役的 3 个难度版本，各 17 个任务加共用场景。战役首关的 slot-1 选择逻辑已确认，共用 slot 0 对应练习入口仍为高概率；用户已观察第一关结算后进入第二关简报，但具体试玩的完整初始化身份、全战役顺序与分支仍未确认 | [scenario](./formats/scenario.md) §4、[B-002](./behavior/B-002-practice-mode.md)、[B-003](./behavior/B-003-campaign-flow.md)、[executable](./formats/executable.md) §4 | P0 |
-| U-004 | 音乐与音效编码 | 部分确认 | 音效 `SND`（37 个）已确认为原始 PCM：8 位无符号或 16 位，采样率 9000–22050 Hz，头部 20 字节。音乐 `SONG`（12 个）、`MUSC`（5 个）未解析，经 Miles MIDI 驱动播放，可能是 XMIDI | [audio](./formats/audio.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
+| U-004 | 音乐与音效编码 | 部分确认 | 音效 `SND` 已确认为原始 PCM；全部样本区边界、精确重复来源和候选模型音效引用已核对，见 audio。声道/flags、16 位样本解释及玩法音效角色仍待核实。音乐 `SONG`、`MUSC` 未解析，经 Miles MIDI 驱动播放，可能是 XMIDI | [audio](./formats/audio.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
 | U-005 | 原版存档格式 | 未确认 | 原版存档兼容是可选工作 | | P4 之后 |
 | U-018 | 不带调色板的 BITM 所用调色板 | 未确认 | 22 个 BITM 用全局调色板显示颜色不对 | [textures](./formats/textures.md) | P2 |
 | U-019 | 部分 BITM 显示为上下颠倒 | 未确认 | 调色板改按 BGR 读取后颜色已正常（肤色），但仍上下颠倒；可能按行倒序存储，也可能是贴图本身的朝向 | 同上 | P2 |
@@ -30,7 +30,7 @@ updated: 2026-10-03
 | U-026 | 跃迁能量消耗的显示与计算 | 部分确认 | 显示已确认：地图上选取框旁显示“E: 百分比”，距离越远越大；左侧状态窗口的能量数值是当前能量。计算公式与百分比基准未确认 | [B-001](./behavior/B-001-strategic-map.md) | P3 |
 | U-027 | MODL 第 1、2 部件列表、部件标志与 5 个音效槽的含义 | 高概率（部分） | 第 1 列表像被摧毁后的残骸碎片；第 2 列表是单色凸包，可能是碰撞体或护盾受击效果；标志与音效槽未确认 | [mesh](./formats/mesh.md) | P2 |
 | U-028 | 运行时贴图着色；M2ID 各槽位对应的机型 | 部分确认 | 颜色来源已确认：贴图自带调色板按 BGR 顺序存储，游戏把贴图颜色映射到全局调色板 DATA 中最接近的颜色；按此渲染的玩家座机与 Xpon 与截图颜色一致。机型到 MODL 的对应来自 M2ID（槽位 0、1 为玩家座机，槽位 14 为 Xpon）。本轮补充槽位 7、17 的目标/基地几何对照，结论见 mesh；其余友方飞船和救援对象的身份、光照与其他槽位仍未确认 | [textures](./formats/textures.md) §3、[mesh](./formats/mesh.md) §3、[hud](./formats/hud.md) §3、[B-003](./behavior/B-003-campaign-flow.md)、[B-005](./behavior/B-005-campaign-rescue.md) | P3（光照）/ P2（槽位） |
-| U-029 | CCKD 分组表的布局；战略地图边框所用调色板；第 2–5 组由哪个按键或状态选择 | 未确认 | 元素（图像记录 + 屏幕坐标）与头部的 3 个字体已确认；地图边框组的元素带标志 1，用全局调色板显示颜色不对；第 2–4 组像向后、向左、向右看的视角 | [cockpit](./formats/cockpit.md) | P2 |
+| U-029 | CCKD 分组表的布局；战略地图边框所用调色板；其他视角由哪个按键或状态选择 | 部分确认 | 32 字节目录项的元素指针/数量已在全部 3 个 CCKD 上核实；前视和地图实际为 slot 0/2，slot 1/7 为空，旧文档使用了非空组的紧凑编号。其余目录字段、slot 3–6 的选择、地图调色板/标志仍未确认；固定 HI 图形已有部分规范单位投影，不代表全切片闭包完成 | [cockpit](./formats/cockpit.md) | P2 |
 | U-030 | 4×6 字体的字符映射；TABL 10165 中 33 个叠加图的用途；TABL 10399、11375 的内容 | 未确认 | 8×8 字体按 ASCII 排列，4×6 字体不是 | [hud](./formats/hud.md) | P2 |
 
 ## 画面

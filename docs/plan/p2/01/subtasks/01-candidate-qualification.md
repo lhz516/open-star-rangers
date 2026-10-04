@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "01"
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # 01 — 候选任务资格核对
@@ -55,7 +55,11 @@ updated: 2026-10-03
 - 本地执行 `node local/research/p2-01/profile-candidates.ts`，覆盖和计数限制见 [scenario 来源 profile](../../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)；结构断言核对 54 个 slot、52 个不同 SCEN、三个 slot-1 profile 及逐类型最小值。`node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` 零失败。没有把原版来源条目数或来源边数作为 S-02 的规范 Asset/边数。
 - 模型对照已补入 [mesh](../../../../original/formats/mesh.md#3-comparison-with-the-original-partial) 和 U-028；研究脚本与 Ghidra 输出仍只留在 `local/`。接口/测试规则未变化，无需改工程约定；跟踪文档只含来源 ID、数量、结构和研究结论。
 - 后续只读分析核实首个战役任务使用 slot 1，并发现 section-5 实际成员数组遍历和 +0x5C 的真实用途。profile 已升级为 version 2 并重算 54 个槽位，slot-1 的来源数量和逐类型最小值保持不变；参数敏感结论同时核对原生调用寄存器，未依赖旧的 `__fastcall` 推断签名。事实见 scenario/executable，不在此复制原版代码。
-- 恢复条件：按 S-02 核实战役回退候选的结构选择器、角色资格与资源闭包，取得确定性选择结果并修订、重新审阅和批准 spec；在此之前保持 blocked，不要求用户继续通关被排除的练习模式。
+- 08 完成后恢复研究；新增本地 `fixed-graphics-profile.ts`，固定 HI 图形贡献的结构/部分计数见 [cockpit](../../../../original/formats/cockpit.md#bounded-canonical-graphics-projection)。断言核对 25 个唯一单位（2 layout、20 image、3 font）及 8 条已解析布局/图像边；报告显式不完整，未把这些贡献当作全包数量或 S-02 排序结果。
+- 2026-10-04 有界研究生成可重放的 `model-material-subgraphs.ts`，覆盖全部候选，重建闭包/引用并通过真实 `readAssetReference` 校验；重新生成的报告与初次结果逐字节一致。模型/几何/图像引用的划分与限制见 [mesh](../../../../original/formats/mesh.md#bounded-modelmaterial-dependency-projection-confirmed-structurecounts)，没有将研究编号当作稳定生产语义 ID。
+- 同日新增 `sound-source-profile.ts`，全量样本区边界、模型音效引用和精确别名核对通过；合成边界样本同时拒绝截断和不完整采样字。结构结论及未确认的角色/声道/flags 见 [audio](../../../../original/formats/audio.md#sample-boundaries-and-candidate-model-references-confirmed-structure)。两份新报告均明确 `complete: false`、`rankingAvailable: false`，所有脚本/输出已确认 git-ignored。
+- 本轮研究文档检查：6 份变更文档的元数据、98 个相对链接及锚点通过，`git diff --check` 通过；`pnpm --silent check:original` 四个范围均完成且零 finding。未改产品 TypeScript、测试或依赖，不重复 08 已通过的全量工程检查。本轮仅持久化事实里程碑，不表示子任务完成。
+- 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
 
 ### 当前资格证据覆盖
 

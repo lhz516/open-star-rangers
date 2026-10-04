@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "01"
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # P2-01：切片资源边界与内容契约 — Goal
@@ -15,7 +15,7 @@ updated: 2026-10-03
 ## 代码现状与前提
 
 - [imfat.ts](../../../../src/original-data/imfat.ts)、[payloads.ts](../../../../src/original-data/payloads.ts)和[synthetic.ts](../../../../src/original-data/synthetic.ts)已提供原版格式解析/合成字节基础，但没有 Asset ID、内容清单或来源映射契约。
-- `src/content/`、正式来源选择模块和本任务测试文件尚不存在；它们是计划新增文件，必须保持在 `tsconfig.core.json` 的纯模块边界内。
+- [08](./subtasks/08-base-content-contract.md) 已新增纯 `src/content/` 基础契约及相邻合成测试；正式切片定义、来源选择与完整性/预算验证仍由后续子任务实现，继续保持纯模块边界。
 - [P2 tasks](../tasks.md)、[P0 可行性评审](../../../reviews/P0-feasibility.md)及 [U-003/U-022/U-023](../../../original/unknowns.md)提供研究范围；本地合法原版数据只读研究留在 `local/`，公开文档仅记录安全结构结论。
 - 外部前提：必须能访问开发者本地基准数据以取得候选资格证据；无数据或语义无法区分时，01 进入 blocked，不能用合成 fixture 代替。
 
@@ -57,7 +57,7 @@ updated: 2026-10-03
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -109,8 +109,12 @@ updated: 2026-10-03
 
 - **2026-10-03 — Subtask 08 validation blocker resolved:** 用户批准的有界合规性能修复仅改变临时 fixture 的配置加载方式；真实检查、扫描范围、断言和 deadline 不变。默认 `pnpm check` 已完整通过（60 文件/1437 项），08 验收满足。01 仍需完成规范候选图和原 S-02 排序，未锁定替代候选，不把 08 完成解释为资格研究完成。
 
+- **2026-10-03 — Subtask 01 resumed:** 08 已验证并持久化，候选无关的资源单位前提已满足；01 恢复规范图研究，而非要求其研究结果在开始前已经完成。已完成检查不重复运行。本轮先核实固定 HI 图形目录与部分规范单位，具体证据见 01；未完成的隐式引用和候选审批仍保留，不修改 S-02 或标记资格通过。
+
+- **2026-10-04 — Subtask 01 bounded graph research continued:** 补齐可重放的模型/图像引用投影及模型音效样本绑定，覆盖全部候选并显式保留未完成状态；安全事实与覆盖限制见 [01 证据](./subtasks/01-candidate-qualification.md#完成证据)。未运行已通过的全量工程检查，未把部分图相加当作全包排序，也未批准或锁定替代候选。01 继续研究，02–07 不越过依赖门禁。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。
 
-同日用户明确批准保留 S-02、模型几何归属及新增前置项 08 的拆分方案；当前共 8 个子任务。这不批准替代候选，也不代表 08 已实现。
+同日用户明确批准保留 S-02、模型几何归属及新增前置项 08 的拆分方案；当前共 8 个子任务。批准本身不构成实现证据，也不批准替代候选。

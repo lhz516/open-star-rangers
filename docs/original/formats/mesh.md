@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-03
+updated: 2026-10-04
 related: [U-001, U-009, U-027]
 ---
 
@@ -64,6 +64,14 @@ Part lists (meaning Unconfirmed, U-027):
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
 - **List 1**: hull fragments that look like a wrecked version of the same model; Likely used when it is destroyed. One MODL has an empty list 0 and only fragments in list 1 (Likely an asteroid or debris field).
 - **List 2**: zero or one untextured, single-colour, roughly convex hull. Possibly a collision volume or a shield-hit effect.
+
+### Bounded model/material dependency projection (Confirmed structure/counts)
+
+`local/research/p2-01/model-material-subgraphs.ts` reconstructs model/material source closures for all 54 candidate slots and cross-checks the existing [source profiles](./scenario.md#campaign-candidate-source-profiles-confirmed-structure). Under the approved model-with-internal-geometry unit policy, each slot-1 profile contributes five model units, fifteen provisional parsed-image bindings and twenty-two distinct model-to-image edges. Its 149 MESH sources are internal model geometry, not independent Asset nodes or canonical dependency edges.
+
+The 189 model-to-source edges are accounted for as 149 geometry references, 22 image references and 18 sound references. The separate [sound projection](./audio.md#sample-boundaries-and-candidate-model-references-confirmed-structure) resolves the latter structurally; it does not determine their gameplay roles.
+
+**Coverage limit:** image identity merging, palettes, implicit objects and the rest of the slice remain outside this projection. The local report uses provisional research references and explicitly has `complete: false` and `rankingAvailable: false`; it is neither a production manifest nor an S-02 selection result. Reproduce with `node local/research/p2-01/model-material-subgraphs.ts`; parsing output and payload content remain ignored.
 
 ## 3. Comparison with the original (partial)
 
