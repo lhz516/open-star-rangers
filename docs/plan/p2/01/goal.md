@@ -126,6 +126,8 @@ updated: 2026-10-04
 
 - **2026-10-04 — Assignment observation remains context-qualified:** 后续探针验证了部分可读目标及真实观察点注册，但跨模式报警未通过同一内存查找身份/完整字值核对。失败读取不能补零，注册地址覆盖也不能冒充来源赋值。边界与对早期输出的澄清见 [executable](../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。下一步在有界控制中跳过未验证上下文，并只在已重新核实的页面上恢复观察；不增加“必须显示某个控制寄存器 UI 字段”之类的新 P2 前提。
 
+- **2026-10-04 — Bounded observation controller verified, activation evidence still missing:** 原生控制链已完成暂停观察、返回合格上下文、独立内存身份核对、完整字读取与重新注册的三个循环；实际检查范围见 [executable](../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。这个启动窗口内没有取得合格赋值或来源身份，不据此裁剪资源。停止重复相同启动捕获，下一步只定位/激活能创建相关表现资源的最小原版上下文；研究样本不等于批准生产候选，不扩展到胜负/AI 公式或完整任务试玩。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。
