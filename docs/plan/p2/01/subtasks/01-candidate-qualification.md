@@ -69,6 +69,8 @@ updated: 2026-10-04
 - 此里程碑未闭合全部选择器值域或表现来源，未给未知单位/边数填写 0。下一精确 linker 是 `0x66864` 的 MODL 完成回调与 `0x3ec20` 的缓存 owner 线索；缓存创建未证明前不标 procedural，不把 selector 1 或零来源当作无表现。01 继续进行中；敌方基数、全图、S-02 排序及替代审批仍未满足，不改 spec、不推进下游，不重跑测试/构建。
 - 同日跟进两条 linker，`node local/research/p2-01/presentation-closure-profile.ts` 验证 MODL 完成回调的原生寄存器绑定、缓存 texture setter 的实际操作及初始零值的有限意义；事实/限制见 [executable](../../../../original/formats/executable.md#model-completion-and-cached-handle-follow-up)，模型内部颜色状态只由 [mesh](../../../../original/formats/mesh.md#secondary-presentation-model-reuse-bounded) 维护。仅完善有效 MODL 的完成绑定，不把缓存 texture 更新误称几何创建，不把零初始值或零 texture handle 判为无表现资源。
 - 剩余最小缺口是缓存几何和 active model/texture 的运行时来源赋值；注册 TEX handler `0x662c8` 可作为下一精确来源侧线索，但尚未证明它写入这些 context。附加 probe `0x6ac98` 已排除为 callback 执行器。报告的额外 Asset/边数仍为 unknown，01 继续进行中；逐候选可达性、敌方基数、全图、S-02 排序和替代审批仍未满足。未修改产品接口或重跑测试/构建，原生输出与合并 recipe/report 只留 ignored local。
+- 同日完成最后一次有界静态 writer 核对；`node local/research/p2-01/cache-writer-profile.ts` 验证精确 cell/附近 base 的 reference/write 元数据及一次候选函数地址列表的完整原生覆盖。未恢复 containing root 结构，发现的邻近写入没有绑定目标 cell 的运行时创建或来源。具体 scope、置信度与缺口只在 [executable](../../../../original/formats/executable.md#final-bounded-static-cache-writer-attempt) 维护；既有 MODL 完成绑定不撤销，也不提升为缓存/全图闭合。
+- 此分支的静态研究按有界执行约束停在证据 blocker：需一个本地初始化至首个 discriminator-1/2 实例的四 cell write-watch 记录，先做 LE→runtime 地址映射，取得 writer PC/调用链与来源元数据。该 probe 尚未执行，不再扩张猜测的静态地址或通用 loader。ASSET_UNITS 边界和额外 Asset/边数仍为 unknown；01 保持进行中，逐候选可达性、敌方基数、完整图、S-02 排序和替代审批仍未满足。没有产品/工程约定变更，未重跑测试/构建或候选 profile。
 - 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
 
 ### 当前资格证据覆盖
