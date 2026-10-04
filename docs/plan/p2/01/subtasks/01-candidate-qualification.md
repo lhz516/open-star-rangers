@@ -106,6 +106,8 @@ updated: 2026-10-04
 
 - `source-binding-29-milestone.json` 核对了分配/分派 helper 的实际操作，避免沿用“image/renderer preparation”的未经证明命名；准备记录 +36 关联及像素/调色板范围、alias 和 mutation 的缺口只在上述 executable owner 维护。未对未证明布局进行完整图像比较或来源候选扫描，未把达到原生导出 cap 的函数当作空函数。没有新模拟器/输入、原数据或工程接口变化；资格、来源 locator、generated/reused-only 归属与额外计数仍未证明。
 
+- `preparation-layout-30.json` 取得原生准备记录的构造/字段布局和正调色板转换循环，完整检查字段断言与合成转换例通过；owner 与 prep 的不同偏移语义、helper 实际操作和未读 target/未证明 mutation 只在上述 executable owner 维护。不能把静态布局套到已观察 pointer 就声称所有权，也不把这个 RGB 转换循环写成 nearest-DATA 映射。没有完整 payload 比较/来源结论，原数据和 2,233 份保护范围内的旧证据未变。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
