@@ -57,7 +57,7 @@ updated: 2026-10-04
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -132,6 +132,8 @@ updated: 2026-10-04
   Evidence: [01 激活依赖记录](./subtasks/01-candidate-qualification.md#完成证据)；既有映射/观察证明保持有效，实际创建和来源仍未取得。本轮询问一次隔离副本中的最小协作操作，但没有可用用户应答；不将其记为用户拒绝或批准新候选。
   Affected acceptance: S-01、S-02、S-03、S-11；AC-01、AC-10；01 前两项。
   Resume when: 能在隔离副本、映射和页面保护就绪后，执行已核实的练习入口按钮/热键，只推进到首次驾驶舱画面，或取得同等强度的其他表现创建上下文证据。用户只需这一激活动作，不需飞行、开火、通关或操作寄存器。随后仍须核实创建者/来源，完成敌我资格、规范图、原 S-02 排序与替代审批；这不是把研究样本批准为生产切片。
+
+- **2026-10-04 — Research resumed on an observed startup interval change:** 用户现已可协作并批准开始隔离操作。实际采集在用户点击练习入口之前就取得一处合格字值变化并暂停，因此本次不再要求该点击；原版窗口已安全结束，原用户数据未变。事实与局限见 [executable](../../../original/formats/executable.md#qualified-startup-interval-change-before-manual-activation)。01 恢复研究，下一小步只绑定这个非零上下文的创建者/来源；没有将区间变化当作捕获写指令、来源 ID 或候选资格，也没有改变原 S-02 或开始依赖未满足的下游。
 
 ## 审批
 
