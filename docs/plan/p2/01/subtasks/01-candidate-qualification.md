@@ -67,6 +67,8 @@ updated: 2026-10-04
 - 此批次闭合的是已知直接 allocator 输入清单，不是资源闭包或敌方分类；全部相关完成/排序/表现/间接/隐式模型/敌方标志保持 false。下一有界动作是从 `0x24d78` 到 `0x3e530` 核对独立的二级表现选择器，不能由 allocator 无直接模型身份推断无需表现资源。01 保持进行中；AC-01/10、完整闭包、S-02 排序和替代审批仍未满足，不修改 spec、不推进下游、不重跑测试/构建、不暂存/提交。
 - 同日继续二级选择器链，取得局部 discriminator 生成/消费、MODL 类型处理器及部件引用族证据；`node local/research/p2-01/secondary-selector-profile.ts` 核对精确原生输入、已记录候选的条件模型请求和未变化的 profile 哈希。选择器、缓存/参数表未绑定的限制及 ASSET_UNITS 归属见 [executable](../../../../original/formats/executable.md#secondary-presentation-selector-bounded-production-and-dispatch)，模型部件事实只在 [mesh](../../../../original/formats/mesh.md#secondary-presentation-model-reuse-bounded) 维护。没有原版指令/代码/内容进入跟踪文件，也没有重建已完成的图。
 - 此里程碑未闭合全部选择器值域或表现来源，未给未知单位/边数填写 0。下一精确 linker 是 `0x66864` 的 MODL 完成回调与 `0x3ec20` 的缓存 owner 线索；缓存创建未证明前不标 procedural，不把 selector 1 或零来源当作无表现。01 继续进行中；敌方基数、全图、S-02 排序及替代审批仍未满足，不改 spec、不推进下游，不重跑测试/构建。
+- 同日跟进两条 linker，`node local/research/p2-01/presentation-closure-profile.ts` 验证 MODL 完成回调的原生寄存器绑定、缓存 texture setter 的实际操作及初始零值的有限意义；事实/限制见 [executable](../../../../original/formats/executable.md#model-completion-and-cached-handle-follow-up)，模型内部颜色状态只由 [mesh](../../../../original/formats/mesh.md#secondary-presentation-model-reuse-bounded) 维护。仅完善有效 MODL 的完成绑定，不把缓存 texture 更新误称几何创建，不把零初始值或零 texture handle 判为无表现资源。
+- 剩余最小缺口是缓存几何和 active model/texture 的运行时来源赋值；注册 TEX handler `0x662c8` 可作为下一精确来源侧线索，但尚未证明它写入这些 context。附加 probe `0x6ac98` 已排除为 callback 执行器。报告的额外 Asset/边数仍为 unknown，01 继续进行中；逐候选可达性、敌方基数、全图、S-02 排序和替代审批仍未满足。未修改产品接口或重跑测试/构建，原生输出与合并 recipe/report 只留 ignored local。
 - 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
 
 ### 当前资格证据覆盖
