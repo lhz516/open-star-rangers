@@ -104,6 +104,8 @@ updated: 2026-10-04
 
 - `code-registry-28-milestone.json` 保存真实 code hook 的原生登记和有界未观察结果、载体 callee 的具体操作及十项读取反例。只有原生登记证明 hook，fixture 不代替运行时证据；具体时长、操作和未关联限制只由上述 executable owner 维护。没有把零事件推成未执行/不存在，也没有把 opaque 载体数值补为目录 ID；停止重复回调捕获，下一替代来源比较仍须先证明记录生产/转换，再核对完整数据和唯一 locator。
 
+- `source-binding-29-milestone.json` 核对了分配/分派 helper 的实际操作，避免沿用“image/renderer preparation”的未经证明命名；准备记录 +36 关联及像素/调色板范围、alias 和 mutation 的缺口只在上述 executable owner 维护。未对未证明布局进行完整图像比较或来源候选扫描，未把达到原生导出 cap 的函数当作空函数。没有新模拟器/输入、原数据或工程接口变化；资格、来源 locator、generated/reused-only 归属与额外计数仍未证明。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
