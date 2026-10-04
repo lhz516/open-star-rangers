@@ -57,7 +57,7 @@ updated: 2026-10-04
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -119,6 +119,8 @@ updated: 2026-10-04
   Evidence: [01 的静态边界与运行时尝试证据](./subtasks/01-candidate-qualification.md#完成证据)；attempt 04 控制验证通过，attempt 05 未建立应用映射，初始化前写入覆盖仍为 0/16 bytes，来源赋值和敌方基数未取得。没有以用户再按 F10 或重复普通战役试玩作为恢复条件。
   Affected acceptance: S-01、S-02、S-03、S-11；AC-01、AC-10；01 前两项。02–07 的依赖仍未满足。
   Resume when: 取得可核实的受保护模式 LE 应用入口/object 映射与初始化来源赋值，或同等强度的独立来源绑定证据；取得目标对象身份绑定的玩家相对 IFF/攻击决策及可推广的输入不变量。之后完成全规范图、原 S-02 排序及替代候选重新审阅/批准。仅控制器可响应或中断返回可验证，不足以恢复为资格通过。
+
+- **2026-10-04 — Subtask 01 research resumed under the user-approved staged plan:** 用户明确批准先只验证实际程序入口/运行时地址映射，再追资源来源、敌我判定与完整排序。恢复研究不等于资格通过，不要求尚待取得的研究结果先成为开始研究的前提；08 依赖已完成。新路径将“运行中应用的映射验证”与“初始化前写入捕获”分开，可先在已初始化但暂停的应用中核实映射，不重复已失败的中断 hook，也不同时扩展到完整加载器/玩法追踪。映射取得后仍须独立证明初始化前观察时机与来源赋值。原 S-02、角色门槛、替代候选审批及 02–07 依赖不变；若本轮新路径不能取得证据，记录实际缺口而非猜测地址。
 
 ## 审批
 
