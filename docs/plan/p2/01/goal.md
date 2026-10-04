@@ -57,7 +57,7 @@ updated: 2026-10-04
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | blocked |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -114,6 +114,11 @@ updated: 2026-10-04
 - **2026-10-04 — Subtask 01 bounded graph research continued:** 补齐可重放的模型/图像引用投影及模型音效样本绑定，覆盖全部候选并显式保留未完成状态；安全事实与覆盖限制见 [01 证据](./subtasks/01-candidate-qualification.md#完成证据)。未运行已通过的全量工程检查，未把部分图相加当作全包排序，也未批准或锁定替代候选。01 继续研究，02–07 不越过依赖门禁。
 
 - **2026-10-04 — Runtime evidence collection continued after local probe fixes:** 静态缓存来源和敌我 consumer 均停在明确证据边界；已转为隔离副本中的有界运行时探针。修复原探针的按键通道、截止时间与历史断点解析错误后，DPMI 发现返回边界已实际验证，不把这些自动化缺陷误记为用户介入前提。LE 运行时映射、初始化前观察点和来源赋值仍未取得；01 继续进行中，不通过资格或推进依赖项。验证与隔离证据见 [01](./subtasks/01-candidate-qualification.md#完成证据)。
+
+- **2026-10-04 — Subtask 01 blocked on source-linked runtime evidence:** 前置 08 已满足，但静态与隔离运行时研究尚不能绑定缓存表现来源及权威玩家相对敌我判定；纠正控制器后，目标中断 hook 仍未暴露实际受保护模式 LE 入口和 object 映射。停止重复这一失败策略，不把未知来源/边数记为 0。
+  Evidence: [01 的静态边界与运行时尝试证据](./subtasks/01-candidate-qualification.md#完成证据)；attempt 04 控制验证通过，attempt 05 未建立应用映射，初始化前写入覆盖仍为 0/16 bytes，来源赋值和敌方基数未取得。没有以用户再按 F10 或重复普通战役试玩作为恢复条件。
+  Affected acceptance: S-01、S-02、S-03、S-11；AC-01、AC-10；01 前两项。02–07 的依赖仍未满足。
+  Resume when: 取得可核实的受保护模式 LE 应用入口/object 映射与初始化来源赋值，或同等强度的独立来源绑定证据；取得目标对象身份绑定的玩家相对 IFF/攻击决策及可推广的输入不变量。之后完成全规范图、原 S-02 排序及替代候选重新审阅/批准。仅控制器可响应或中断返回可验证，不足以恢复为资格通过。
 
 ## 审批
 
