@@ -57,7 +57,7 @@ updated: 2026-10-04
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
-| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | in-progress |
+| [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | completed |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
@@ -141,8 +141,12 @@ updated: 2026-10-04
 
 - **2026-10-04 — Subtask 01 qualification evidence complete; fallback selected, approval pending:** 有界掩码立即数搜索找到玩家飞行按键的敌/友目标模式，由此取得玩家相对敌我分类与输入不变量，并把用户第一关试玩经难度全局值绑定到 group 0 / slot 1；事实见 [executable](../../../original/formats/executable.md#player-target-modes-and-enemy-classification) 与 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)。S-02 检查 51 个战役槽位：45 个按敌机数量下界不合格，6 个通过结构门槛；按规范闭包的包含关系选出 group 0 / slot 1（SCEN 3019），论证见 [01](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。该回退候选改变任务与必需闭包；按 S-02 及“切片候选选择”第 5 步，须先修订 spec 选择记录、经另一模型审阅，再由用户重新批准。在此之前 01 保持 in-progress，02–07 不开始；绝对全包总数与固定资源来源映射归 02/03。
 
+- **2026-10-04 — Subtask 01 completed:** spec [候选选择记录](./spec.md#候选选择记录)经另一模型审阅，没有新的契约决策；用户明确批准修订，spec 恢复 accepted。01 的三项验收均已满足，rubber-duck 的 5 个发现均已处理并复核，证据见 [01](./subtasks/01-candidate-qualification.md#完成证据)。下一项为依赖已满足的 02，按已批准候选实现唯一生产切片定义；绝对规范总数与来源映射分别由 02/03 完成。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。
 
 同日用户明确批准保留 S-02、模型几何归属及新增前置项 08 的拆分方案；当前共 8 个子任务。批准本身不构成实现证据，也不批准替代候选。
+
+2026-10-04 用户明确批准 spec 修订中的回退候选 group 0 / slot 1；子任务拆分、依赖与验收覆盖不变。
