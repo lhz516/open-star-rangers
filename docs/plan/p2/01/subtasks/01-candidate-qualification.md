@@ -63,6 +63,8 @@ updated: 2026-10-04
 - 此有界研究只取得角色门禁里程碑，未完成本子任务，不启动 02–07、不修订 spec、不暂存/提交。下一次从 `0x38780`、`0x3cb80` 两个已定位的 SCEN 外分配器调用者核实 kind 与模型来源，再决定隐式身份是否扩展候选；敌方基数、完整规范图、原 S-02 排序及替代候选重新审阅/批准仍未满足。工程/操作命令与产品接口未变，相关工程指南无需更新。
 - 同日跟进完成上述两条路径的原生输入及局部/直接调用门禁核对；`node local/research/p2-01/two-allocator-profile.ts` 将结果与全部 54 个现有 profile 对比，来源图不重算。事实、条件性及未闭合的表现/参数依赖见 [executable](../../../../original/formats/executable.md#two-allocator-paths-native-inputs-and-profile-comparison)。只读 Ghidra 使用精确函数/调用地址，未用猜测的 C 签名确定输入，原生指令、C、脚本及报告仅留 ignored local。
 - 本次仍不通过 AC-01/10、不改变 tracker 或 spec、不推进下游。下一有界目标可核对剩余分配调用 `0x23b3c` / `0x23ff0` 的输入和模型绑定；其他直接调用地址由 executable 单点维护。报告保留完成/排序/隐式覆盖 false，候选敌方基数、完整闭包、原 S-02 排序及替代审批仍未满足；未重跑测试/构建，产品接口与工程指南没有变化。
+- 同日按一个地址列表完成剩余直接分配器输入批次；初次原生导出触及第四个函数的本地单函数指令上限，调整 ignored 导出器上限后，同一列表完整导出成功。`node local/research/p2-01/remaining-allocator-profile.ts` 核对完整输入集、有效 M2ID 边界/零条目、已知直接调用清单覆盖和全部既有 profile，且原 profile 哈希未变化；没有重建已完成的图。结果与置信度/可达性限制只写在 [executable 的单一事实表](../../../../original/formats/executable.md#remaining-direct-allocator-input-inventory)，原生指令、C 和一个合并 recipe/report 仍仅留 ignored local。
+- 此批次闭合的是已知直接 allocator 输入清单，不是资源闭包或敌方分类；全部相关完成/排序/表现/间接/隐式模型/敌方标志保持 false。下一有界动作是从 `0x24d78` 到 `0x3e530` 核对独立的二级表现选择器，不能由 allocator 无直接模型身份推断无需表现资源。01 保持进行中；AC-01/10、完整闭包、S-02 排序和替代审批仍未满足，不修改 spec、不推进下游、不重跑测试/构建、不暂存/提交。
 - 剩余资格条件：按 S-02 核实战役回退候选的角色、完整规范图和确定性排序，再修订、重新审阅和批准 spec。当前研究状态仅见 goal tracker；没有资格通过，不要求用户继续通关被排除的练习模式。
 
 ### 当前资格证据覆盖
