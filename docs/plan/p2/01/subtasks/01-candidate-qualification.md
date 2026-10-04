@@ -85,6 +85,8 @@ updated: 2026-10-04
 
 - 用户批准分阶段恢复后，直接验证安装版本的定时暂停能力并取得运行中 CODE/DATA 关联。`runtime-vrt-map-12/report.json` 及离线反例记录两处完整窗口的独立精确比较、每对象地址推导与隔离/清理；此前失败报告保留，错误公共偏移没有改成静默默认。原版事实只在 [executable](../../../../original/formats/executable.md#bounded-runtime-codedata-object-correlation) 维护，不在此复制地址表或原始内容。当前只证明检查范围内的映射；入口执行、初始化前观察、缓存来源赋值、敌我基数与完整 S-02 排序仍未通过，报告资格标志保持 false。
 
+- 映射后的赋值实验保留各次控制/读取失败；修复就绪等待和读取校验后，run 18 取得真实的部分观察点注册，未把模拟解析测试算作实际覆盖。页面可读性、跨模式警报及早期零填充输出的证据限制只在 [executable](../../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary) 维护。没有从不可读、初始零值或报警推断资源不存在/来源已确认；完整字值变化、写入者和初始化时机仍未满足。原始内存/控制输出只留 ignored local，没有产品接口或工程检查规则变更。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |

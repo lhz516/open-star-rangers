@@ -124,6 +124,8 @@ updated: 2026-10-04
 
 - **2026-10-04 — Staged mapping milestone verified:** 新的定时暂停方法已取得运行中应用的 CODE/DATA 来源关联；两处独立窗口逐字节核对通过，纠正了“所有 LE 对象共享同一地址偏移”的错误假设。权威事实与检查范围见 [executable](../../../original/formats/executable.md#bounded-runtime-codedata-object-correlation)。本轮只关闭已检查对象的地址关联缺口，未观察应用入口执行、初始化前写入或资源来源赋值，未解锁敌我/排序/候选审批门槛。01 继续研究，下一小步是基于每次运行验证的映射收集来源赋值证据，不把本轮地址硬编码到后续探针。
 
+- **2026-10-04 — Assignment observation remains context-qualified:** 后续探针验证了部分可读目标及真实观察点注册，但跨模式报警未通过同一内存查找身份/完整字值核对。失败读取不能补零，注册地址覆盖也不能冒充来源赋值。边界与对早期输出的澄清见 [executable](../../../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。下一步在有界控制中跳过未验证上下文，并只在已重新核实的页面上恢复观察；不增加“必须显示某个控制寄存器 UI 字段”之类的新 P2 前提。
+
 ## 审批
 
 用户于 2026-10-03 明确批准关联 spec 与本 goal，批准范围为上述 7 个子任务的拆分、依赖关系和验收覆盖。批准不代表实现完成；执行仍须逐项取得证据，候选资格未满足时相关子任务保持 blocked。
