@@ -96,6 +96,8 @@ updated: 2026-10-04
 
 - `runtime-source-snapshot-24/milestone.json` 保存一次新运行中的有限上下文读取、字段稳定性/页面核验和精确 TEX handler 调用位置。结构兼容性、运行时 handle 与来源 ID 的区别及下一 ownership linker 只在上述 executable owner 维护。没有由尺寸/调色板数量或运行时 handle 唯一选定原版条目，没有抓到写指令/创建者；资格和额外单位/边数仍未通过/仍为 unknown。原数据、912 份旧证据与私有配置未变，没有产品接口或测试发现/截止时间变化。
 
+- `tex-source-binding-25.json` 与精确原生导出取得 TEX continuation 的 wrapper/分派调用绑定，具体字段/寄存器、下一完成 linker 与尚未证明的来源含义只在上述 executable owner 维护。没有按类比补 source ID，没有启动新模拟器或 payload 捕获；对间接回调方法的合成保护不冒充真实来源请求。01 继续绑定完成回调/consumer 与已接受的运行时指针，所有资格和原 S-02 门禁保持未通过。
+
 ### 当前资格证据覆盖
 
 | 资格/关卡 | 本轮评估 | 证据或未满足部分 |
