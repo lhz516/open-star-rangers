@@ -2,7 +2,7 @@
 type: manifest
 status: verified
 phase: P0
-updated: 2026-09-30
+updated: 2026-10-05
 related: [U-017]
 ---
 
@@ -20,6 +20,8 @@ related: [U-017]
 | `STAR_RANGERS.sub`（7,123,680 字节） | `ae1fa380a1d693aa3efb453f4d080cf7942397cef89834ac787f391974f9370b` |
 
 `.ccd`/`.cue` 为文本描述文件，不作为版本指纹。
+
+镜像的描述布局、原始扇区、ISO9660 卷与目录结构，以及本地读取核对的结论，见[基准光盘镜像布局](./formats/disc-image.md)。
 
 ## 游戏文件（光盘 `MAIN/` 与 `FLICS/`）
 

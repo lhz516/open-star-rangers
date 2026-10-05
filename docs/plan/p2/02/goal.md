@@ -87,7 +87,7 @@ updated: 2026-10-05
 | [06-port-boundary.md](./subtasks/06-port-boundary.md) | 01 | completed |
 | [07-blob-adapter.md](./subtasks/07-blob-adapter.md) | 05, 06 | completed |
 | [08-node-adapter-cli.md](./subtasks/08-node-adapter-cli.md) | 05 | completed |
-| [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | pending |
+| [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
 | [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
