@@ -2,7 +2,7 @@
 type: register
 status: active
 phase: all
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # 待确认事项登记表
@@ -15,7 +15,7 @@ updated: 2026-10-04
 
 | ID | 事项 | 状态 | 结论 / 线索 | 证据 | 负责阶段 |
 |---|---|---|---|---|---|
-| U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表、调色板、通用图像记录（含精灵 RLE 编码）、TEX、BITM、MFDD、MESH、MODL、SND 已确认（全部条目解析通过）；CCKD 元素结构已确认；SCEN 结构已确认；ANIM（编码 1）、音乐、TABL 等其余类型待研究 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[cockpit](./formats/cockpit.md)、[mesh](./formats/mesh.md)、[audio](./formats/audio.md)、[scenario](./formats/scenario.md) | P0（结构）/ P2（切片所需类型） |
+| U-001 | `.NOB` 内部格式 | 进行中 | 封包目录与重定位表、调色板、通用图像记录（含精灵 RLE 编码）、TEX、BITM、MFDD、MESH、MODL、SND 已确认（全部条目解析通过）；P2-03 在全部 9 个封包上逐条目校验了目录连续布局与重定位表（见 imfat §2–§3、§6）；CCKD 元素结构已确认；SCEN 结构已确认；ANIM（编码 1）、音乐、TABL 等其余类型待研究 | [imfat](./formats/imfat.md)、[textures](./formats/textures.md)、[cockpit](./formats/cockpit.md)、[mesh](./formats/mesh.md)、[audio](./formats/audio.md)、[scenario](./formats/scenario.md) | P0（结构）/ P2（切片所需类型） |
 | U-002 | 任务数据存于 `SCENARIO.NOB`，还是嵌在 EXE 中 | 已确认（内容） | 任务内容（对象名、编组名、任务内文字、坐标、战役顺序）全部在 `SCENARIO.NOB`；EXE 中没有任务文字。EXE 是否有针对特定任务的硬编码逻辑见 U-022 | [scenario](./formats/scenario.md)、[executable](./formats/executable.md) | P0 |
 | U-003 | 任务总数与分支结构 | 高概率 | 52 个 `SCEN`；`SCCT` 为 3 组 × 18 个位置，每组第 0 个位置是同一个共用场景，其余 51 个各不相同。代码按 0–100 的数值以 34、67 为界选组，与 README 中开局设定的战役难度滑块一致，因此 3 组很可能是同一战役的 3 个难度版本，各 17 个任务加共用场景。战役首关的 slot-1 选择逻辑已确认，共用 slot 0 对应练习入口仍为高概率；用户已观察第一关结算后进入第二关简报，代码确认该次统计页显示的难度（19）就是选组输入，对应 group 0 / slot 1。全战役顺序与分支仍未确认 | [scenario](./formats/scenario.md) §4、[B-002](./behavior/B-002-practice-mode.md)、[B-003](./behavior/B-003-campaign-flow.md)、[executable](./formats/executable.md) §4 | P0 |
 | U-004 | 音乐与音效编码 | 部分确认 | 音效 `SND` 已确认为原始 PCM；全部样本区边界、精确重复来源和候选模型音效引用已核对，见 audio。声道/flags、16 位样本解释及玩法音效角色仍待核实。音乐 `SONG`、`MUSC` 未解析，经 Miles MIDI 驱动播放，可能是 XMIDI | [audio](./formats/audio.md)、[executable](./formats/executable.md) | P2（音效）/ P4（音乐） |
