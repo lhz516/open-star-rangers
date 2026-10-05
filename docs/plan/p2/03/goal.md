@@ -88,7 +88,7 @@ updated: 2026-10-05
 | [04-catalog-fingerprint.md](./subtasks/04-catalog-fingerprint.md) | 02 | completed |
 | [05-identify-verified-source.md](./subtasks/05-identify-verified-source.md) | 01, 03, 04 | completed |
 | [06-mapping-verification.md](./subtasks/06-mapping-verification.md) | 05 | completed |
-| [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | pending |
+| [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | completed |
 | [08-source-check-cli.md](./subtasks/08-source-check-cli.md) | 05 | pending |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | pending |
 | [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09 | pending |

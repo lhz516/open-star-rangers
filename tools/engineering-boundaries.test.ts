@@ -42,26 +42,41 @@ function program(project: string, directory = root): ts.Program {
 
 const COMPUTED_IMPORT = '<computed import>';
 
+/** Whether an import declaration imports types only: `import type` or only `type`-marked named bindings. */
+function typeOnlyImport(node: ts.ImportDeclaration): boolean {
+  const clause = node.importClause;
+  if (!clause) return false;
+  if (clause.isTypeOnly) return true;
+  const bindings = clause.namedBindings;
+  return !clause.name && bindings !== undefined && ts.isNamedImports(bindings) && bindings.elements.length > 0
+    && bindings.elements.every(element => element.isTypeOnly);
+}
+
 /**
- * Specifiers of real import/export declarations, dynamic imports and import types; comments and other
- * strings are ignored. A dynamic import whose argument is not a string literal yields COMPUTED_IMPORT.
+ * References of real import/export declarations, dynamic imports and import types; comments and other strings are
+ * ignored. A dynamic import whose argument is not a string literal yields COMPUTED_IMPORT. Only an import declaration
+ * can be `typeOnly`: type re-exports and import types still reach the module.
  */
-function moduleSpecifiers(file: ts.SourceFile): string[] {
-  const found: string[] = [];
+function moduleReferences(file: ts.SourceFile): { specifier: string; typeOnly: boolean }[] {
+  const found: { specifier: string; typeOnly: boolean }[] = [];
   const visit = (node: ts.Node): void => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      found.push(node.moduleSpecifier.text);
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      found.push({ specifier: node.moduleSpecifier.text, typeOnly: typeOnlyImport(node) });
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      found.push({ specifier: node.moduleSpecifier.text, typeOnly: false });
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const [argument] = node.arguments;
-      found.push(argument && ts.isStringLiteralLike(argument) ? argument.text : COMPUTED_IMPORT);
+      found.push({ specifier: argument && ts.isStringLiteralLike(argument) ? argument.text : COMPUTED_IMPORT, typeOnly: false });
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
-      found.push(node.argument.literal.text);
+      found.push({ specifier: node.argument.literal.text, typeOnly: false });
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
   return found;
 }
+
+const moduleSpecifiers = (file: ts.SourceFile): string[] => moduleReferences(file).map(({ specifier }) => specifier);
 
 let appProgram: ts.Program | undefined;
 /** The real app program covers every production source; source rules share one build of it. */
@@ -294,6 +309,65 @@ describe('TypeScript module environments', () => {
       for (const [file, source] of cases) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
     });
 
+    // P2-03 AC-14: workers and original-data outside the capability families reach discs and archives only through the
+    // verified-source product entry; type-only imports, errors, the disc path grammar and source mappings stay open.
+    it('keeps low-level original-data capabilities inside their families, the source family, tests and tools', async () => {
+      const rule = '@typescript-eslint/no-restricted-imports';
+      const rejected: [string, string, string][] = [
+        ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;", rule],
+        ['src/workers/probe.ts', "import { readFileRange } from '../original-data/disc/file-range.ts'; export const read = readFileRange;", rule],
+        ['src/workers/probe.ts', "import { openImfatArchive } from '../original-data/archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
+        ['src/workers/probe.ts', "import { readImfatDirectory } from '../original-data/archive/imfat-rules.ts'; export const read = readImfatDirectory;", rule],
+        ['src/workers/probe.ts', "import { parseImfat } from '../original-data/imfat.ts'; export const parse = parseImfat;", rule],
+        ['src/workers/probe.ts', "import { identifySource } from '../original-data/source/identify-source.ts'; export const identify = identifySource;", rule],
+        ['src/workers/probe.ts', "export { openDiscImage } from '../original-data/disc/disc-image.ts';", rule],
+        ['src/workers/probe.ts', "export type { DiscImage } from '../original-data/disc/disc-image.ts';", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export * from '../original-data/imfat.ts';", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export const load = () => import('../original-data/archive/archive-reader.ts');", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', 'export const load = () => import(`../original-data/source/identify-source.ts`);', 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export type Open = typeof import('../original-data/disc/disc-image.ts').openDiscImage;", 'no-restricted-syntax'],
+        ['src/original-data/convert/probe.ts', "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;", rule],
+        ['src/original-data/convert/probe.ts', "import { openImfatArchive } from '../archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
+        ['src/original-data/convert/probe.ts', "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;", rule],
+        ['src/original-data/probe.ts', "import { openDiscImage } from './disc/disc-image.ts'; export const open = openDiscImage;", rule],
+        ['src/original-data/disc/probe.ts', "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;", rule],
+        ['src/original-data/disc/probe.ts', "export const load = () => import('../archive/archive-reader.ts');", 'no-restricted-syntax'],
+        ['src/original-data/archive/probe.ts', "import { openDiscImage } from '../disc/disc-image.ts'; export const open = openDiscImage;", rule],
+        ['src/original-data/archive/probe.ts', "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;", rule],
+        ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image'; export const open = openDiscImage;", rule],
+        ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image.js'; export const open = openDiscImage;", rule],
+        ['src/workers/nested/probe.ts', "import { parseImfat } from '../../original-data/imfat'; export const parse = parseImfat;", rule],
+        ['src/workers/probe.ts', "export * from '../original-data/imfat';", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export const load = () => import('../original-data/source/identify-source.js');", 'no-restricted-syntax'],
+        ['src/original-data/convert/probe.ts', "import { readFileRange } from '../disc/file-range'; export const read = readFileRange;", rule],
+      ];
+      for (const [file, source, expected] of rejected) expectRule(await lint(source, file), expected, source);
+      const allowed: [string, string][] = [
+        ['src/workers/probe.ts', "import { openVerifiedSource } from '../original-data/source/open-verified-source.ts'; export const open = openVerifiedSource;"],
+        ['src/workers/probe.ts', "import { verifySourceMappings } from '../original-data/source/verify-source-mappings.ts'; export const verify = verifySourceMappings;"],
+        ['src/workers/probe.ts', "import { DiscReadError } from '../original-data/disc/disc-error.ts'; export const error = DiscReadError;"],
+        ['src/workers/probe.ts', "import { SourceError } from '../original-data/source-error.ts'; export const error = SourceError;"],
+        ['src/workers/probe.ts', "import { readSourceMappingTable } from '../original-data/source-mapping.ts'; export const read = readSourceMappingTable;"],
+        ['src/workers/probe.ts', "import type { DiscImage } from '../original-data/disc/disc-image.ts'; export type Image = DiscImage;"],
+        ['src/workers/probe.ts', "import { type ImfatEntry } from '../original-data/imfat.ts'; export type Entry = ImfatEntry;"],
+        ['src/original-data/convert/probe.ts', "import { isDiscPath } from '../disc/disc-path.ts'; export const valid = isDiscPath;"],
+        ['src/original-data/disc/probe.ts', "import { openDiscImage } from './disc-image.ts'; export const open = openDiscImage;"],
+        ['src/original-data/archive/probe.ts', "import { parseImfat } from '../imfat.ts'; import type { DiscFile } from '../disc/disc-image.ts'; export type File = DiscFile; export const parse = parseImfat;"],
+        ['src/original-data/source/probe.ts', "import { openDiscImage } from '../disc/disc-image.ts'; import { parseImfat } from '../imfat.ts'; export const open = [openDiscImage, parseImfat];"],
+        ['src/original-data/convert/probe.test.ts', "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;"],
+        ['tools/probe.ts', "import { openImfatArchive } from '../src/original-data/archive/archive-reader.ts'; export const open = openImfatArchive;"],
+        ['src/workers/probe.ts', "export { DiscReadError } from '../original-data/disc/disc-error.ts';"],
+        ['src/workers/probe.ts', "export const load = () => import('../original-data/disc/disc-path.ts');"],
+        ['src/workers/probe.ts', "export * from '../original-data/source/open-verified-source.ts';"],
+        ['src/workers/probe.ts', "export * from '../platform/disc/open.ts';"],
+        ['src/workers/probe.ts', "export const load = () => import('../render/archive/open.ts');"],
+        ['src/workers/probe.ts', "import { probe } from '../platform/discovery.ts'; export const found = probe;"],
+        ['src/workers/probe.ts', "import { probe } from '../ui/imfat.ts'; import { other } from '../app/identify-source.ts'; export const found = [probe, other];"],
+        ['src/original-data/convert/probe.ts', "export { isDiscPath } from '../disc/disc-path';"],
+      ];
+      for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
+    });
+
     it.each(['ts', 'tsx'])('rejects host scheduling, time, randomness and async syntax in core .%s', async (extension) => {
       for (const { source, rule } of hostOperations) {
         const file = `src/core/probe.${extension}`;
@@ -508,15 +582,6 @@ describe('original-data dependency boundary', () => {
   const mayReachOriginalData = (path: string): boolean => /^src\/(?:original-data|workers)\//.test(path);
   const BYTE_PORT = 'src/original-data/io/byte-source.ts';
 
-  const typeOnlyImport = (node: ts.ImportDeclaration): boolean => {
-    const clause = node.importClause;
-    if (!clause) return false;
-    if (clause.isTypeOnly) return true;
-    const bindings = clause.namedBindings;
-    return !clause.name && bindings !== undefined && ts.isNamedImports(bindings) && bindings.elements.length > 0
-      && bindings.elements.every(element => element.isTypeOnly);
-  };
-
   /** Consumers whose transitive source dependencies reach original-data or an unverifiable computed import. */
   function originalDataReach(compilation: ts.Program, directory: string): string[] {
     const options = compilation.getCompilerOptions();
@@ -675,6 +740,90 @@ describe('original-data dependency boundary', () => {
         `src/ui/via-local-export.ts -> ${BYTE_PORT}`,
       ]);
     });
+  });
+
+  // P2-03 S-07/AC-14: production modules use the low-level original-data capabilities only inside their own family or
+  // the source family; anything else, such as workers or converters, goes through the verified-source product entry.
+  // Type-only import declarations carry no capability; re-exports (also of types), dynamic imports and import types do.
+  type CapabilityFamily = 'disc' | 'archive' | 'identify';
+  const capabilityOf = (path: string): CapabilityFamily | null => {
+    if (/\.test(?:-support)?\.ts$/.test(path)) return null;
+    if (/^src\/original-data\/disc\/[^/]+\.ts$/.test(path) && !/\/disc-(?:error|path)\.ts$/.test(path)) return 'disc';
+    if (/^src\/original-data\/(?:archive\/[^/]+|imfat)\.ts$/.test(path)) return 'archive';
+    return path === 'src/original-data/source/identify-source.ts' ? 'identify' : null;
+  };
+  const familyOf = (path: string): CapabilityFamily | 'source' | null => {
+    if (path.startsWith('src/original-data/source/')) return 'source';
+    if (path.startsWith('src/original-data/disc/')) return 'disc';
+    return /^src\/original-data\/(?:archive\/|imfat\.ts$)/.test(path) ? 'archive' : null;
+  };
+
+  function capabilityViolations(compilation: ts.Program, directory: string): string[] {
+    const options = compilation.getCompilerOptions();
+    const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+    const violations = new Set<string>();
+    for (const fileName of compilation.getRootFileNames()) {
+      const importer = project(fileName);
+      if (!importer.startsWith('src/') || /\.test(?:-support)?\.ts$/.test(importer) || familyOf(importer) === 'source') continue;
+      for (const { specifier, typeOnly } of moduleReferences(compilation.getSourceFile(fileName)!)) {
+        if (specifier === COMPUTED_IMPORT) {
+          if (/^src\/(?:original-data|workers)\//.test(importer)) violations.add(`${importer} -> computed import`);
+          continue;
+        }
+        const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName;
+        const target = resolved ? project(resolved) : '';
+        const capability = capabilityOf(target);
+        if (capability && !typeOnly && familyOf(importer) !== capability) violations.add(`${importer} -> ${target}`);
+      }
+    }
+    return [...violations].sort();
+  }
+
+  it('confines low-level capabilities to their families and the source family, following every reference form', () => {
+    withFixtures({
+      'src/original-data/disc/disc-image.ts': 'export interface DiscImage { readonly sectors: number } export const openDiscImage = (): number => 1;',
+      'src/original-data/disc/disc-error.ts': 'export class DiscReadError extends Error {}',
+      'src/original-data/disc/disc-path.ts': "export const isDiscPath = (value: unknown): boolean => typeof value === 'string';",
+      'src/original-data/disc/cross.ts': "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;",
+      'src/original-data/imfat.ts': 'export const parseImfat = (): number => 1;',
+      'src/original-data/archive/archive-reader.ts': "import type { DiscImage } from '../disc/disc-image.ts'; import { parseImfat } from '../imfat.ts'; export const open = (image: DiscImage): number => image.sectors + parseImfat();",
+      'src/original-data/source/identify-source.ts': "import { openDiscImage } from '../disc/disc-image.ts'; import { open } from '../archive/archive-reader.ts'; export const identifySource = (): unknown[] => [openDiscImage, open];",
+      'src/original-data/source/open-verified-source.ts': "import { identifySource } from './identify-source.ts'; export const openVerifiedSource = (): unknown => identifySource; export type { DiscImage } from '../disc/disc-image.ts';",
+      'src/original-data/source-mapping.ts': "import type { DiscImage } from './disc/disc-image.ts'; import { isDiscPath } from './disc/disc-path.ts'; export const check = (image: DiscImage): boolean => isDiscPath(image);",
+      'src/original-data/convert/model.ts': "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;",
+      'src/original-data/convert/identify.ts': "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;",
+      'src/original-data/convert/lazy.ts': 'export const load = (name: string) => import(`../disc/${name}.ts`);',
+      'src/original-data/convert/support.test-support.ts': "import { openDiscImage } from '../disc/disc-image.ts'; export const open = openDiscImage;",
+      'src/workers/good.ts': [
+        "import { openVerifiedSource } from '../original-data/source/open-verified-source.ts';",
+        "import { DiscReadError } from '../original-data/disc/disc-error.ts';",
+        "import { isDiscPath } from '../original-data/disc/disc-path.ts';",
+        "import type { DiscImage } from '../original-data/disc/disc-image.ts';",
+        'export const entry = [openVerifiedSource, DiscReadError, isDiscPath];',
+        'export type Image = DiscImage;',
+      ].join('\n'),
+      'src/workers/value.ts': "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;",
+      'src/workers/reexport.ts': "export type { DiscImage } from '../original-data/disc/disc-image.ts';",
+      'src/workers/lazy.ts': "export const load = () => import('../original-data/imfat.ts');",
+      'src/workers/query.ts': "export type Open = typeof import('../original-data/archive/archive-reader.ts').open;",
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(capabilityViolations(compilation, directory)).toEqual([
+        'src/original-data/convert/identify.ts -> src/original-data/source/identify-source.ts',
+        'src/original-data/convert/lazy.ts -> computed import',
+        'src/original-data/convert/model.ts -> src/original-data/imfat.ts',
+        'src/original-data/disc/cross.ts -> src/original-data/imfat.ts',
+        'src/workers/lazy.ts -> src/original-data/imfat.ts',
+        'src/workers/query.ts -> src/original-data/archive/archive-reader.ts',
+        'src/workers/reexport.ts -> src/original-data/disc/disc-image.ts',
+        'src/workers/value.ts -> src/original-data/disc/disc-image.ts',
+      ]);
+    });
+  });
+
+  it('keeps every production module within the low-level capability boundary', () => {
+    expect(capabilityViolations(sharedAppProgram(), root)).toEqual([]);
   });
 
   it('keeps every production consumer away from original-data', () => {

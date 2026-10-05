@@ -217,7 +217,7 @@ src/
   - `read` 用一次范围读取取得数据块与重定位表并校验重定位，返回冻结的 `{ entry, bytes, relocations }`；`bytes` 恰为数据块，是独占的新缓冲。
   - 句柄只保留目录，不缓存字节，每次读取都经镜像句柄计量、检查取消；`DiscReadError` 原样传递。
   - 参数非法时返回 `invalid-request`，ID 不存在返回 `entry-not-found`，类型不符返回 `entry-type-mismatch`。
-  - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包。
+  - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包，边界见[工程约定](./README.md#lint-规则eslintconfigjs)。
 - **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上；辅助函数只接受从同一字节数组解析出的条目。
 - **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。
 - **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
