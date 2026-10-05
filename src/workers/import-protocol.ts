@@ -128,12 +128,12 @@ export type ImportWorkerMessage =
 
 export type ImportMessageRead<Message> =
   | { readonly status: 'valid'; readonly message: Message }
-  | { readonly status: 'invalid'; readonly error: ImportErrorData };
+  | { readonly status: 'invalid'; readonly error: ImportLayerError<'protocol-error'> };
 
 export type ImportStartRead =
   | { readonly status: 'valid'; readonly message: ImportStartMessage }
   /** `jobId` is the request's job ID when it can be read, so the Worker's `failed` reply can carry it. */
-  | { readonly status: 'invalid'; readonly error: ImportErrorData; readonly jobId: number | null };
+  | { readonly status: 'invalid'; readonly error: ImportLayerError<'invalid-request'>; readonly jobId: number | null };
 
 const TOKEN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_TOKEN_LENGTH = 64;

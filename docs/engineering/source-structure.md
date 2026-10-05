@@ -129,6 +129,7 @@ src/
       SyntheticRenderView.tsx
   workers/
     import-protocol.ts
+    import-host.ts
 ```
 
 [workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
@@ -268,6 +269,19 @@ src/
 - **错误 DTO：** `ImportErrorData` 为 `{ layer, code, location, reason, limit }`，层为 `disc`、`source`、`content` 或 `import`。
   - 前三层的 code 只按 token 语法核对，所以协议不依赖 `original-data`。
   - `import` 层的 6 个 code 为封闭集合 `IMPORT_ERROR_CODES`，`importError` 构造这一层的 DTO 并保留具体 code 的类型。Worker 报告的 `failed` 只接受其中的 `invalid-request` 与 `internal-error`（`WORKER_IMPORT_ERROR_CODES`），类型 `WorkerImportErrorData` 在编译期同样排除另外四个。
+- **宿主：** [workers/import-host.ts](../../src/workers/import-host.ts) 的 `runImportHost(endpoint, job)` 在 Worker 内运行一个作业。
+  - **端点：** `ImportHostEndpoint` 只含 `postMessage(message, transfer)`、`addEventListener`（`message`、`messageerror`、`unhandledrejection`）与 `close()`。Worker 入口把 `self` 断言为它，Node 测试用假端点或 `MessagePort`。宿主不监听 `error`：`ready` 之后的未捕获错误传到主线程，由持有者报 `worker-failed`。
+  - **握手：** 安装监听后发送一次 `ready`，只接受第一条有效的 `start`。以下情况都以 `invalid-request` 失败：`start` 非法（带能读出的作业 ID）、`messageerror`，以及 `start` 之后的任何消息。
+  - **作业：** `ImportJob` 接收冻结的文件快照与冻结的报告器（`progress`、`identified`、`group`），成功时返回预算用量。
+    - 宿主维护顺序号，从 1 起逐条加 1。发送抛错（如克隆失败）不消耗顺序号，异常交给作业。
+    - `identified` 至多一次，之后不再有识别进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败。
+    - 身份只发送版本 ID 与指纹。
+  - **转移：** 发送组前，用 `readPayloadRecords` 与 `payloadTransferList` 计算转移列表，位置以 `groups.<组>.payloads` 为根。非独占、别名、已转移或乱序的 payload 以 `content` 层失败，该组不发送。发送后，作业持有的 payload 视图失效。
+  - **终态：** 作业返回的用量经 `readBudgetRecord` 读取，再随 `finished` 与已发送的组一起发送。终态消息之后关闭端点，之后的报告与消息都被忽略。
+  - **错误转换：**
+    - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
+    - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
+    - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
 
 ## 职责与依赖
 

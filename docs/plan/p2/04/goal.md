@@ -102,7 +102,7 @@ updated: 2026-10-05
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-import-protocol.md](./subtasks/01-import-protocol.md) | — | completed |
-| [02-worker-host.md](./subtasks/02-worker-host.md) | 01 | pending |
+| [02-worker-host.md](./subtasks/02-worker-host.md) | 01 | completed |
 | [03-import-job.md](./subtasks/03-import-job.md) | 02 | pending |
 | [04-job-owner-lifecycle.md](./subtasks/04-job-owner-lifecycle.md) | 01 | pending |
 | [05-group-results.md](./subtasks/05-group-results.md) | 04 | pending |
@@ -117,6 +117,8 @@ updated: 2026-10-05
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-05 — 02 的计划与 spec 对齐：** 02 的工作范围原写宿主把端点的 `error` 事件也报为 `internal-error`。这与 spec 不一致：错误码表把 `internal-error` 限于作业中的异常与未处理拒绝，把 `ready` 之后 Worker 报告的 `error` 归为主线程的 `worker-failed`，AC-10 也要求异步未捕获错误报 `worker-failed`。若宿主同时处理 `error`，两条失败路径会竞争。已按 spec 修订 02 的工作范围：宿主只监听 `unhandledrejection`，不监听 `error`；验收标准本来就与 spec 一致，没有变化。
 
 ## 审批
 
