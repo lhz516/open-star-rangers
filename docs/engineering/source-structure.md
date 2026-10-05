@@ -137,7 +137,7 @@ src/
   - `payloadTransferList` 返回要转移的 ArrayBuffer：每个视图必须独占整个非共享 buffer，且彼此不共用；否则以 `payload-not-exclusive`/`payload-aliased` 拒绝。
   - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
 
-针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
+合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态，以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
 
 ### 原版来源映射
 

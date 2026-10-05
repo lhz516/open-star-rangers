@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readPayloadIdentity } from './content-identity.ts';
 import { exclusiveBytes, isDetached, payloadTransferList } from './ownership.ts';
 import { payloadMismatch, readPayloadRecords } from './payload.ts';
-import { sha256Fingerprint } from './sha256.ts';
+import { payloadIdentityOf, syntheticBytes } from './synthetic-content.test-support.ts';
 
 describe('exclusive payload bytes', () => {
   it('copies a view into its own exact buffer, isolated in both directions', () => {
@@ -43,8 +43,8 @@ describe('exclusive payload bytes', () => {
 
 describe('payload transfer', () => {
   it('moves every payload buffer, after which the sender can neither use nor resend them', () => {
-    const bytes = new TextEncoder().encode('payload:model/synthetic-enemy');
-    const identity = readPayloadIdentity({ schemaVersion: 1, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) });
+    const bytes = syntheticBytes('model/synthetic-enemy');
+    const identity = readPayloadIdentity(payloadIdentityOf(bytes));
     const sent = [exclusiveBytes(bytes), exclusiveBytes(new Uint8Array(0))];
     expect(readPayloadRecords([{ id: 'model/synthetic-enemy', schemaVersion: 1, bytes: sent[0] }, { id: 'sound/synthetic-silent', schemaVersion: 1, bytes: sent[1] }]))
       .toHaveLength(2);
@@ -64,7 +64,7 @@ describe('payload transfer', () => {
       expect(() => payloadTransferList([exclusiveBytes(bytes), view]))
         .toThrowError(expect.objectContaining({ code: 'payload-detached', path: 'payloads[1]' }));
     });
-    expect(() => structuredClone(sent, { transfer: [...transfer] })).toThrowError();
+    expect(() => structuredClone(sent, { transfer: [...transfer] })).toThrowError(expect.objectContaining({ name: 'DataCloneError' }));
   });
 
   it.each([

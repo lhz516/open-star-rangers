@@ -21,7 +21,7 @@ describe('canonical resource unit policy', () => {
     expect(INTERNAL_ASSET_ELEMENTS.sound).toContain('sample-points');
     expect(INTERNAL_ASSET_ELEMENTS.palette).toContain('palette-entries');
     expect('mesh' in ASSET_UNITS).toBe(false);
-    expect(() => readAssetId('mesh/synthetic-geometry')).toThrowError();
+    expect(() => readAssetId('mesh/synthetic-geometry')).toThrowError(expect.objectContaining({ code: 'invalid-kind', path: 'assetId' }));
   });
 
   it('keeps the policy and its nested containers readonly and independently cloneable', () => {

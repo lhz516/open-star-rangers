@@ -81,7 +81,12 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - Vitest 在同一 runner 中使用一个 worker 按文件串行执行（`fileParallelism: false`、`maxWorkers: 1`）。工程边界与合规集成测试会启动真实编译/构建/子进程，并发文件执行会造成资源争用和 deadline 超时；串行调度不缩小测试发现范围、不增加 timeout，也不影响独立 Playwright runner。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
-- **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.ts` 在代码中生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。
+- **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.ts` 在代码中生成，内容契约的合成包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。工程边界回归会检查 `src/content` 与 `src/original-data` 的测试和 test-support 文件：
+  - 只能导入 `vitest`、作为哈希对照的 `node:crypto`，以及这两层自身的模块；相对路径按真实路径解析，不能借符号链接指向别处。
+  - 不能使用 `require`、`process`、`vi` 或 `import.meta` 这类绕开 import 声明的加载方式。
+  - 文件系统、工具脚本和计算型动态 import 都会被拒绝（P2-01 AC-11）。
+
+  这项检查用于防止无意中读取文件，并不针对刻意混淆的代码。
 - 驾驶舱字体目录的读取属于 `src/original-data/payloads.ts`，CLI 只负责调度与报告；合成样本覆盖目录顺序与空目录。
 - Ghidra 编译器规范补丁另有标准库 `unittest` 测试：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`，验证 XML 结构变换、备份与幂等性。
 - 工程边界回归还启动隔离的预期失败 Vitest 进程，断言其命中真正的失败检查并非零退出；该失败是测试输入，正常测试命令仍须成功。临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。

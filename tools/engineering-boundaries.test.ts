@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -533,5 +533,82 @@ describe('original-data dependency boundary', () => {
 
   it('keeps every production consumer away from original-data', () => {
     expect(originalDataReach(sharedAppProgram(), root)).toEqual([]);
+  });
+});
+
+describe('content and original-data test data', () => {
+  // AGENTS.md and docs/plan/p2/01/spec.md AC-11: these tests generate synthetic data in code and never read files.
+  // They import only the test runner, a hash oracle and real files of the two layers, and use no host module loader.
+  // The guard catches honest mistakes, not deliberately obfuscated code.
+  const ownLayers = ['src/content/', 'src/original-data/'];
+  const allowedPackages = new Set(['vitest', 'node:crypto']);
+  // Loaders that bypass import declarations: require(), process.getBuiltinModule() and vi.importActual()/vi.mock().
+  const hostLoaders = new Set(['require', 'process', 'vi']);
+
+  function testDataAccess(directory: string): string[] {
+    const roots = ownLayers.map(layer => realpathSync(join(directory, layer)) + sep);
+    // Symlinks are followed, so a link inside a layer cannot lead an import elsewhere.
+    const insideLayers = (target: string): boolean => {
+      if (!existsSync(target)) return false;
+      const real = realpathSync(target);
+      return roots.some(own => real.startsWith(own));
+    };
+    const violations = new Set<string>();
+    for (const layer of ownLayers) {
+      for (const name of readdirSync(join(directory, layer), { recursive: true, encoding: 'utf8' })) {
+        if (!/\.test(?:-support)?\.ts$/.test(name)) continue;
+        const fileName = join(directory, layer, name);
+        const reject = (access: string): void => { violations.add(`${layer}${name.split(sep).join('/')} -> ${access}`); };
+        const file = ts.createSourceFile(fileName, readFileSync(fileName, 'utf8'), ts.ScriptTarget.Latest);
+        for (const specifier of moduleSpecifiers(file)) {
+          if (specifier.startsWith('.') ? !insideLayers(resolve(dirname(fileName), specifier)) : !allowedPackages.has(specifier)) reject(specifier);
+        }
+        const visit = (node: ts.Node): void => {
+          if (ts.isIdentifier(node) && hostLoaders.has(node.text)) reject(node.text);
+          else if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) reject('import.meta');
+          ts.forEachChild(node, visit);
+        };
+        visit(file);
+      }
+    }
+    return [...violations].sort();
+  }
+
+  it('rejects file-system, tool, computed, symlinked and host-loader access in tests and test support only', () => {
+    withFixtures({
+      'src/content/clean.test.ts': [
+        "import { it } from 'vitest';", "import { createHash } from 'node:crypto';",
+        "import { value } from './value.ts';", "import type { Other } from '../original-data/other.ts';",
+      ].join('\n'),
+      'src/content/reads.test.ts': "import { readFileSync } from 'node:fs';",
+      'src/content/helper.test-support.ts': "export { readFile } from 'fs/promises';",
+      'src/content/value.ts': "export { readFileSync as value } from 'node:fs';",
+      'src/content/builtin.test.ts': "export const read = () => process.getBuiltinModule('node:fs');",
+      'src/content/actual.test.ts': "import { vi } from 'vitest'; export const load = () => vi.importActual('node:fs');",
+      'src/content/escape.test.ts': "import { data } from './external/generated.ts'; export const copy = data;",
+      'src/original-data/other.ts': 'export interface Other { readonly value: number }',
+      'src/original-data/tool.test.ts': "import { main } from '../../tools/nob-list.ts';",
+      'src/original-data/computed.test.ts': 'export const load = (name: string) => import(name);',
+      'src/original-data/required.test.ts': "export const read = () => require('node:fs');",
+      'src/original-data/meta.test.ts': "export const files = import.meta.glob('../../local/**');",
+      'local/research/generated.ts': 'export const data = 1;',
+    }, (directory) => {
+      symlinkSync(join(directory, 'local', 'research'), join(directory, 'src', 'content', 'external'), 'junction');
+      expect(testDataAccess(directory)).toEqual([
+        'src/content/actual.test.ts -> vi',
+        'src/content/builtin.test.ts -> process',
+        'src/content/escape.test.ts -> ./external/generated.ts',
+        'src/content/helper.test-support.ts -> fs/promises',
+        'src/content/reads.test.ts -> node:fs',
+        `src/original-data/computed.test.ts -> ${COMPUTED_IMPORT}`,
+        'src/original-data/meta.test.ts -> import.meta',
+        'src/original-data/required.test.ts -> require',
+        'src/original-data/tool.test.ts -> ../../tools/nob-list.ts',
+      ]);
+    });
+  });
+
+  it('keeps every content and original-data test on code-generated data', () => {
+    expect(testDataAccess(root)).toEqual([]);
   });
 });

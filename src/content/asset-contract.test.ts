@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { readAssetDescriptor, readAssetReference, readResourceGroup, RESOURCE_GROUPS } from './asset-contract.ts';
-import { ContentContractError } from './contract-validation.ts';
 
 const descriptor = () => ({
   id: 'model/synthetic-player',
@@ -87,18 +86,24 @@ describe('Asset descriptor and reference primitives', () => {
     class ReferenceRecord { id = 'model/test'; kind = 'model'; }
     class Dependencies extends Array {}
     for (const value of [new DescriptorRecord(), null, [], () => descriptor()]) {
-      expect(() => readAssetDescriptor(value)).toThrowError(ContentContractError);
+      expect(() => readAssetDescriptor(value)).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'asset' }));
     }
-    expect(() => readAssetReference(new ReferenceRecord())).toThrowError(ContentContractError);
+    expect(() => readAssetReference(new ReferenceRecord())).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'reference' }));
     const accessor = [{ id: 'image/test', kind: 'image' }];
     Object.defineProperty(accessor, '0', { get: () => { throw new Error('Getter must not run'); } });
     const extended = Object.assign([], { extra: () => 1 });
     const symbolArray = Object.assign([], { [Symbol('extra')]: 1 });
-    for (const dependencies of [undefined, {}, () => [], new Dependencies(), new Array(1), accessor, extended, symbolArray, [() => 1]]) {
-      expect(() => readAssetDescriptor({ ...descriptor(), dependencies })).toThrowError(ContentContractError);
+    for (const dependencies of [undefined, {}, () => [], new Dependencies(), new Array(1), extended, symbolArray]) {
+      expect(() => readAssetDescriptor({ ...descriptor(), dependencies }))
+        .toThrowError(expect.objectContaining({ code: 'invalid-dependencies', path: 'asset.dependencies' }));
     }
-    expect(() => readAssetDescriptor({ ...descriptor(), payloadIdentity: new Uint8Array(0) })).toThrowError(ContentContractError);
-    expect(() => readAssetDescriptor({ ...descriptor(), complete: true })).toThrowError(ContentContractError);
+    expect(() => readAssetDescriptor({ ...descriptor(), dependencies: accessor }))
+      .toThrowError(expect.objectContaining({ code: 'invalid-dependencies', path: 'asset.dependencies[0]' }));
+    expect(() => readAssetDescriptor({ ...descriptor(), dependencies: [() => 1] }))
+      .toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'asset.dependencies[0]' }));
+    expect(() => readAssetDescriptor({ ...descriptor(), payloadIdentity: new Uint8Array(0) }))
+      .toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'asset.payloadIdentity' }));
+    expect(() => readAssetDescriptor({ ...descriptor(), complete: true })).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'asset' }));
     expect(() => readAssetReference({ id: 'image/test', kind: 'image', sourcePath: '/private/source' }))
       .toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'reference', reason: 'contains unknown fields' }));
     for (const field of Object.keys(descriptor())) {

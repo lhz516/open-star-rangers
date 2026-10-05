@@ -62,7 +62,7 @@ updated: 2026-10-04
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | completed |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | completed |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | completed |
-| [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | pending |
+| [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | completed |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务；ID 固定，不在执行中重排。

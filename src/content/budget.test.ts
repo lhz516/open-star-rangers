@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUDGET_DIMENSIONS, BUDGET_UNITS, chargeBudget, chargeManifestBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetDimension,
 } from './budget.ts';
-import { SLICE_ID } from './content-identity.ts';
+import { kindOf, syntheticIdentity } from './synthetic-content.test-support.ts';
 
 const MAX = Number.MAX_SAFE_INTEGER;
 const amounts = (amount: number, overrides: Record<string, unknown> = {}): Record<string, unknown> =>
@@ -134,15 +134,13 @@ describe('budget charges', () => {
 });
 
 describe('manifest budget charges', () => {
+  // Declared sizes only: budgets are charged before any payload exists, so the fingerprint is a placeholder.
   const manifest = (assets: { id: string; dependencies?: string[]; byteLength: number }[]) => ({
-    identity: {
-      schemaVersion: 1, sliceId: SLICE_ID, sliceDefinitionVersion: 1, converterVersion: 'synthetic-converter.1',
-      manifestIdentity: 'manifest:synthetic-1', origin: { type: 'synthetic', fixtureId: 'p2-01-budget' },
-    },
+    identity: syntheticIdentity(),
     group: 'models',
     assets: assets.map(({ id, dependencies = [], byteLength }) => ({
-      id, kind: id.split('/')[0], role: 'synthetic-role', group: 'models',
-      dependencies: dependencies.map(dependency => ({ id: dependency, kind: dependency.split('/')[0] })),
+      id, kind: kindOf(id), role: 'synthetic-role', group: 'models',
+      dependencies: dependencies.map(dependency => ({ id: dependency, kind: kindOf(dependency) })),
       payloadIdentity: { schemaVersion: 1, byteLength, fingerprint: `sha256:${'0'.repeat(64)}` },
     })),
   });

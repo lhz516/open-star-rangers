@@ -1,10 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   readContentIdentity, readContentOrigin, readPayloadIdentity,
-  type ContentSchemaVersion, type ConverterVersion, type FixtureId, type ManifestIdentity,
-  type PayloadFingerprint, type PayloadSchemaVersion, type SliceDefinitionVersion, type SourceFingerprint,
+  type ContentOrigin, type ContentSchemaVersion, type ConverterVersion, type FixtureId, type ManifestIdentity,
+  type PayloadFingerprint,   type PayloadSchemaVersion, type SliceDefinitionVersion, type SourceFingerprint,
 } from './content-identity.ts';
-import { ContentContractError } from './contract-validation.ts';
 
 const fingerprint = `sha256:${'a'.repeat(64)}`;
 const payload = () => ({ schemaVersion: 1, byteLength: 0, fingerprint });
@@ -42,6 +41,14 @@ describe('separate content and payload identities', () => {
     expectTypeOf<ConverterVersion>().not.toExtend<ManifestIdentity>();
     expectTypeOf<FixtureId>().not.toExtend<SourceFingerprint>();
     expectTypeOf<SourceFingerprint>().not.toExtend<PayloadFingerprint>();
+  });
+
+  it('lets neither origin take the other origin\'s field shape at the type level', () => {
+    expectTypeOf<{ type: 'synthetic'; sourceFingerprint: SourceFingerprint }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'synthetic'; fixtureId: SourceFingerprint }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'original-import'; fixtureId: FixtureId }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'original-import'; sourceFingerprint: FixtureId }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'original-import'; sourceFingerprint: string }>().not.toExtend<ContentOrigin>();
   });
 
   it('checks source representation without claiming provenance or manufacturing a hash', () => {
@@ -97,18 +104,27 @@ describe('separate content and payload identities', () => {
       .toThrowError(expect.objectContaining({ code: 'invalid-payload-identity', path: 'payloadIdentity.fingerprint' }));
   });
 
-  it.each([
-    {}, { type: 'other' }, { type: 'synthetic' }, { type: 'original-import' },
-    { type: 'synthetic', sourceFingerprint: 'source:test' },
-    { type: 'original-import', fixtureId: 'test' },
-    { type: 'synthetic', fixtureId: 'test', sourceFingerprint: 'source:test' },
-    { type: 'original-import', sourceFingerprint: 'source:test', fixtureId: 'test' },
-    { type: 'synthetic', fixtureId: 'source:test' },
-    ...['test-fixture', 'SR.NOB', 'volume-label', 'fnv1a64:0123456789abcdef', 'source:', 'source:test\n', 'source:../private', '\u0430']
-      .map(sourceFingerprint => ({ type: 'original-import', sourceFingerprint })),
-  ])('rejects missing, mixed or malformed origin %#', value => {
-    expect(() => readContentOrigin(value)).toThrowError(ContentContractError);
+  it.each<[Record<string, unknown>, string, string]>([
+    [{}, 'invalid-origin', 'origin.type'],
+    [{ type: 'other' }, 'invalid-origin', 'origin.type'],
+    [{ type: 'synthetic' }, 'invalid-record', 'origin.fixtureId'],
+    [{ type: 'original-import' }, 'invalid-record', 'origin.sourceFingerprint'],
+    [{ type: 'synthetic', sourceFingerprint: 'source:test' }, 'invalid-record', 'origin.fixtureId'],
+    [{ type: 'original-import', fixtureId: 'test' }, 'invalid-record', 'origin.sourceFingerprint'],
+    [{ type: 'synthetic', fixtureId: 'test', sourceFingerprint: 'source:test' }, 'invalid-record', 'origin'],
+    [{ type: 'original-import', sourceFingerprint: 'source:test', fixtureId: 'test' }, 'invalid-record', 'origin'],
+    [{ type: 'synthetic', fixtureId: 'source:test' }, 'invalid-identity', 'origin.fixtureId'],
+  ])('rejects missing or mixed origin %j with a stable code', (value, code, path) => {
+    expect(() => readContentOrigin(value)).toThrowError(expect.objectContaining({ code, path }));
   });
+
+  it.each(['test-fixture', 'SR.NOB', 'volume-label', 'fnv1a64:0123456789abcdef', 'source:', 'source:test\n', 'source:../private', '\u0430'])(
+    'rejects source fingerprint %j that is not an opaque source: identity',
+    sourceFingerprint => {
+      expect(() => readContentOrigin({ type: 'original-import', sourceFingerprint }))
+        .toThrowError(expect.objectContaining({ code: 'invalid-identity', path: 'origin.sourceFingerprint' }));
+    },
+  );
 
   it('rejects missing fields rather than defaulting versions or identities', () => {
     for (const field of Object.keys(identity())) {
@@ -130,17 +146,17 @@ describe('separate content and payload identities', () => {
     for (const value of [new IdentityRecord(), [], new Map(), new Uint8Array(0), () => identity(), Object.create(identity())]) {
       expect(() => readContentIdentity(value)).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'identity' }));
     }
-    expect(() => readContentOrigin(new OriginRecord())).toThrowError(ContentContractError);
-    expect(() => readPayloadIdentity(new PayloadRecord())).toThrowError(ContentContractError);
+    expect(() => readContentOrigin(new OriginRecord())).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'origin' }));
+    expect(() => readPayloadIdentity(new PayloadRecord())).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'payloadIdentity' }));
     const accessor = { ...identity() };
     Object.defineProperty(accessor, 'origin', { get: () => { throw new Error('Getter must not run'); } });
-    expect(() => readContentIdentity(accessor)).toThrowError(ContentContractError);
+    expect(() => readContentIdentity(accessor)).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'identity' }));
     for (const extra of [{ ['/private/source']: () => 1 }, { [Symbol('private')]: 1 }, { complete: true }]) {
       expect(() => readContentIdentity({ ...identity(), ...extra }))
         .toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'identity' }));
     }
     const hidden = Object.defineProperty(identity(), 'hidden', { value: 1 });
-    expect(() => readContentIdentity(hidden)).toThrowError(ContentContractError);
+    expect(() => readContentIdentity(hidden)).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'identity' }));
     expect(readContentIdentity(Object.assign(Object.create(null), identity()))).toEqual(identity());
   });
 });
