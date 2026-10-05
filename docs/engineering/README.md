@@ -84,12 +84,21 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
     满足时该边不计入可达性，所以 app/ui 使用平台适配不会被误报。app/ui 直接导入端口，或经平台的再导出、本地导出、类型别名或接口取得端口，仍然报错。
   - 其他层（core、content、render、ui、app）对端口的任何导入仍被拒绝。
 - **原版数据的底层能力**（P2-03 S-07/AC-14）：未经生产白名单识别、就能打开光盘或封包的模块，只能由所属模块族、`original-data/source/` 来源模块族、测试与 `tools/` 使用。
-  - **受限模块：** `original-data/disc/` 下任意深度的 `.ts`/`.tsx` 模块（只豁免顶层的 `disc-error.ts`、`disc-path.ts`）；`original-data/archive/` 下任意深度的模块与 `original-data/imfat.ts`；以及接受自定义白名单的 `original-data/source/identify-source.ts`。
-  - **其他使用者：** `src/workers/` 与 `original-data` 内的其他模块（例如转换模块）只经产品入口 [open-verified-source.ts](../../src/original-data/source/open-verified-source.ts) 取得镜像、文件与封包。它们仍可使用错误类型、`DiscPath` 语法检查、来源映射与映射核验，也可纯类型导入受限模块。
+  - **受限模块：**
+    - `original-data/disc/` 下任意深度的 `.ts`/`.tsx` 模块（只豁免顶层的 `disc-error.ts`、`disc-path.ts`）；
+    - `original-data/archive/` 下任意深度的模块与 `original-data/imfat.ts`；
+    - `original-data/source/` 下除产品入口与两个公开模块以外的全部模块，包括接受自定义白名单的 `identify-source.ts`。今后新增的来源模块默认只供来源族使用；
+    - 测试、测试支持，以及 `src/` 之外的全部仓库文件（`tools/`、E2E 支持、配置等）。它们可以使用全部能力，生产模块若导入它们，就能间接取得能力。依赖包不受此限。
+  - **其他使用者：** `src/workers/` 与 `original-data` 内的其他模块（例如转换模块）只经以下来源模块取得能力：
+    - 产品入口 [open-verified-source.ts](../../src/original-data/source/open-verified-source.ts)：取得镜像、文件与封包的唯一途径。它自己使用底层能力，因此导出面受限：唯一的值导出是它声明的函数 `openVerifiedSource`，其他导出都必须是纯类型；
+    - [verify-source-mappings.ts](../../src/original-data/source/verify-source-mappings.ts)：只接受已验证来源句柄；
+    - [source-catalog.ts](../../src/original-data/source/source-catalog.ts)：白名单数据与读取，不打开任何输入。
+
+    这两个公开模块不属于来源族，与其他使用者受同样的检查，因此不能再导出或包装底层能力。其他使用者仍可使用错误类型、`DiscPath` 语法检查与来源映射，也可纯类型导入受限模块。其他层（core、content、render、ui、app）经 `src/` 内的中间模块到达 `original-data`，由消费者的传递检查拒绝。
   - **族之间：** disc 族与 archive 族之间也不能互相值导入，archive 族只能纯类型引用 disc 的接口。
   - **分类：** 受限模块所属的族与导入者所属的族由 [tools/original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 统一判定，lint 与依赖图共用。
-  - **lint：** 本地规则 `osr/original-data-capabilities`（定义在 `eslint.config.js`）把每个相对说明符相对于被检查文件解析为真实路径（带或不带 `.ts`/`.js` 都识别），再按上述族判定；`original-data` 内其他位置的同名 `disc/`、`archive/` 目录不受影响。它拒绝值导入（含副作用导入）、带模块说明符的再导出（含 `export type`、`export *`）、字符串或模板参数的动态 `import()` 与 `import('…')` 类型查询；纯类型导入声明放行。
-  - **依赖图：** 同一回归文件解析每个生产模块的真实导入、再导出、动态导入与导入类型，按目标模块所属的族判定。`original-data` 与 `src/workers/` 中参数无法核实的动态导入一律报错。纯类型导入的名称只能在本模块私用：若再用不带模块说明符的 `export { … }`、`export type { … }` 或 `export default` 导出该名称，同样报错。lint 无法追踪本地名称的来源，这种情况只由依赖图拦截。基于受限类型声明并导出新的类型别名或接口，不算再导出：类型不携带打开能力，受限的值则在导入时已被拒绝。
+  - **lint：** 本地规则 `osr/original-data-capabilities`（定义在 `eslint.config.js`）把每个相对说明符相对于被检查文件解析为真实路径（带或不带 `.ts`/`.js` 都识别），再按上述分类判定；`original-data` 内其他位置的同名 `disc/`、`archive/` 目录不受影响。导入测试、测试支持或 `src/` 之外的文件时，提示生产代码不得依赖它们；其他情况提示改经产品入口。对产品入口改为检查导出面：除 `openVerifiedSource` 函数声明外，值声明、本地或带模块说明符的值再导出、值 `export *` 与默认导出都报错。对其他模块，它拒绝值导入（含副作用导入）、带模块说明符的再导出（含 `export type`、`export *`）、字符串或模板参数的动态 `import()` 与 `import('…')` 类型查询；纯类型导入声明放行。
+  - **依赖图：** 同一回归文件解析每个生产模块的真实导入、再导出、动态导入与导入类型，按目标模块所属的族判定。`original-data` 与 `src/workers/` 中参数无法核实的动态导入一律报错。纯类型导入的名称只能在本模块私用：若再用不带模块说明符的 `export { … }`、`export type { … }` 或 `export default` 导出该名称，同样报错。lint 无法追踪本地名称的来源，这种情况只由依赖图拦截。产品入口的导出面按与 lint 相同的规则从语法核对，本地别名（如 `const leak = openDiscImage; export default leak`）也会被拒绝。基于受限类型声明并导出新的类型别名或接口，不算再导出：类型不携带打开能力，受限的值则在导入时已被拒绝。
 
 ## 测试
 

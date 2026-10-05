@@ -3,7 +3,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
-import { capabilityOf, familyOf } from './tools/original-data-capabilities.ts';
+import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT } from './tools/original-data-capabilities.ts';
 
 const browserOnly = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyval'];
 const appLayers = ['app', 'render', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]);
@@ -45,22 +45,41 @@ const originalDataCapabilities = {
   meta: {
     type: 'problem',
     schema: [],
-    messages: { restricted: 'Read original data through the verified-source product entry, original-data/source/open-verified-source.ts.' },
+    messages: {
+      restricted: 'Read original data through the verified-source product entry, original-data/source/open-verified-source.ts.',
+      support: 'Production code must not depend on tests, test support or tools.',
+      entry: `The product entry exports only the ${PRODUCT_ENTRY_EXPORT} function as a value; export everything else type-only.`,
+    },
   },
   create(context) {
     const importer = projectPath(context.filename);
     const own = familyOf(importer);
-    if (own === 'source') return {};
     const check = (node, specifier) => {
       if (typeof specifier !== 'string' || !specifier.startsWith('.')) return;
       let target = projectPath(resolve(dirname(context.filename), specifier));
       if (/\.js$/.test(target)) target = target.replace(/\.js$/, '.ts');
       else if (!/\.tsx?$/.test(target)) target += '.ts';
       const capability = capabilityOf(target);
-      if (capability && capability !== own) context.report({ node, messageId: 'restricted' });
+      if (capability && capability !== own) context.report({ node, messageId: capability === 'support' ? 'support' : 'restricted' });
     };
     const typeOnly = (node) => node.importKind === 'type'
       || (node.specifiers.length > 0 && node.specifiers.every(specifier => specifier.type === 'ImportSpecifier' && specifier.importKind === 'type'));
+    if (isProductEntry(importer)) {
+      // The entry uses every capability itself, so its export surface is what keeps them in: no value but its opening.
+      const entry = (node) => context.report({ node, messageId: 'entry' });
+      const allowed = (declaration) => ['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'].includes(declaration.type)
+        || (declaration.type === 'FunctionDeclaration' && declaration.id?.name === PRODUCT_ENTRY_EXPORT && declaration.body !== null);
+      return {
+        ExportNamedDeclaration(node) {
+          if (node.exportKind === 'type') return;
+          if (node.declaration ? !allowed(node.declaration) : node.specifiers.some(specifier => specifier.exportKind !== 'type')) entry(node);
+        },
+        ExportAllDeclaration(node) { if (node.exportKind !== 'type') entry(node); },
+        ExportDefaultDeclaration: entry,
+        TSExportAssignment: entry,
+      };
+    }
+    if (own === 'source') return {};
     return {
       ImportDeclaration(node) { if (!typeOnly(node)) check(node, node.source.value); },
       ExportNamedDeclaration(node) { if (node.source) check(node, node.source.value); },
@@ -137,7 +156,7 @@ export default tseslint.config(
   {
     // P2-03 AC-14: import workers and the rest of original-data reach discs and archives only through the product entry.
     files: ['src/workers/**/*.{ts,tsx}', 'src/original-data/**/*.{ts,tsx}'],
-    ignores: ['**/*.test.ts', '**/*.test-support.ts'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
     plugins: { osr: { rules: { 'original-data-capabilities': originalDataCapabilities } } },
     rules: { 'osr/original-data-capabilities': 'error' },
   },

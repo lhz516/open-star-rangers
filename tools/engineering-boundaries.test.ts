@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
-import { capabilityOf, familyOf } from './original-data-capabilities.ts';
+import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT } from './original-data-capabilities.ts';
 import { describe, expect, it } from 'vitest';
 import viteConfiguration from '../vite.config.ts';
 
@@ -346,8 +346,33 @@ describe('TypeScript module environments', () => {
         ['src/workers/probe.ts', "import { readSectors } from '../original-data/disc/internal/sectors.ts'; export const read = readSectors;", rule],
         ['src/workers/probe.ts', "export * from '../original-data/archive/formats/table.ts';", rule],
         ['src/original-data/convert/probe.ts', "export const load = () => import('../disc/internal/sectors.ts');", rule],
+        ['src/workers/probe.ts', "import { open } from '../original-data/source/barrel.ts'; export const run = open;", rule],
+        ['src/workers/probe.ts', "export * from '../original-data/source/barrel';", rule],
+        ['src/original-data/convert/probe.ts', "export const load = () => import('../source/nested/wrapper.ts');", rule],
+        ['src/original-data/source/open-verified-source.ts', "export { openDiscImage } from '../disc/disc-image.ts';", rule],
+        ['src/original-data/source/open-verified-source.ts', "export * from './identify-source.ts';", rule],
+        ['src/original-data/source/open-verified-source.ts', "import { openDiscImage } from '../disc/disc-image.ts'; const leak = openDiscImage; export default leak;", rule],
+        ['src/original-data/source/open-verified-source.ts', "import { openDiscImage } from '../disc/disc-image.ts'; export { openDiscImage as openVerifiedSource };", rule],
+        ['src/original-data/source/open-verified-source.ts', "import { openDiscImage } from '../disc/disc-image.ts'; export const openVerifiedSource = openDiscImage;", rule],
+        ['src/original-data/source/source-catalog.ts', "export { openDiscImage } from '../disc/disc-image.ts';", rule],
+        ['src/original-data/source/verify-source-mappings.ts', "import { openImfatArchive } from '../archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
       ];
       for (const [file, source, expected] of rejected) expectRule(await lint(source, file), expected, source);
+      // Tests, test support and tools may use every capability, so production code must not receive one through them.
+      const support: [string, string][] = [
+        ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc.test-support.ts'; export const open = openDiscImage;"],
+        ['src/workers/probe.ts', "export * from '../original-data/source/source.test-support';"],
+        ['src/workers/nested/probe.ts', "import { identify } from '../../../tools/barrel.ts'; export const run = identify;"],
+        ['src/workers/probe.ts', "export const load = () => import('../../tools/source-check.js');"],
+        ['src/original-data/convert/probe.ts', "import { open } from './support.test-support.ts'; export const run = open;"],
+        ['src/original-data/archive/probe.ts', "import { ARCHIVE_SAMPLES } from './archive.test-support.ts'; export const samples = ARCHIVE_SAMPLES;"],
+        ['src/original-data/disc/probe.ts', "export { syntheticFileDisc } from './disc.test-support.ts';"],
+        ['src/workers/probe.ts', "import { open } from '../../e2e/support/barrel.ts'; export const run = open;"],
+        ['src/original-data/convert/probe.ts', "export * from '../../../vite.config.ts';"],
+      ];
+      for (const [file, source] of support) {
+        expect((await lint(source, file)).messages.map(message => message.messageId), `${file}: ${source}`).toEqual(['support']);
+      }
       const allowed: [string, string][] = [
         ['src/workers/probe.ts', "import { openVerifiedSource } from '../original-data/source/open-verified-source.ts'; export const open = openVerifiedSource;"],
         ['src/workers/probe.ts', "import { verifySourceMappings } from '../original-data/source/verify-source-mappings.ts'; export const verify = verifySourceMappings;"],
@@ -373,6 +398,19 @@ describe('TypeScript module environments', () => {
         ['src/original-data/convert/nested/probe.ts', "import { helper } from '../archive/helper.ts'; import { other } from '../disc/helper.ts'; export const found = [helper, other];"],
         ['src/original-data/disc/internal/probe.ts', "import { openDiscImage } from '../disc-image.ts'; export const open = openDiscImage;"],
         ['src/original-data/archive/formats/probe.ts', "import { parseImfat } from '../../imfat.ts'; import type { DiscFile } from '../../disc/disc-image.ts'; export type File = DiscFile; export const parse = parseImfat;"],
+        ['src/workers/probe.ts', "import { PRODUCTION_CATALOG, sourceFingerprint } from '../original-data/source/source-catalog.ts'; export const found = [PRODUCTION_CATALOG, sourceFingerprint];"],
+        ['src/original-data/convert/probe.ts', "export { openVerifiedSource } from '../source/open-verified-source';"],
+        ['src/workers/probe.ts', "import type { Barrel } from '../original-data/source/barrel.ts'; import type { Tool } from '../../tools/barrel.ts'; export type Found = [Barrel, Tool];"],
+        ['src/workers/probe.ts', "import { helper } from '../tools/barrel.ts'; import { other } from '../original-data/sources/barrel.ts'; export const found = [helper, other];"],
+        ['src/original-data/source/open-verified-source.ts', [
+          "import { openDiscImage } from '../disc/disc-image.ts'; import { identifySource } from './identify-source.ts';",
+          "export type { DiscImage } from '../disc/disc-image.ts'; export type * from './identify-source.ts'; export { type VerifiedSource } from './identify-source.ts';",
+          'export interface Options { readonly cancel: boolean } export type Opening = typeof openDiscImage;',
+          'export async function openVerifiedSource(): Promise<unknown> { return identifySource(openDiscImage()); }',
+        ].join(' ')],
+        ['src/workers/helper.test-support.tsx', "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;"],
+        ['src/original-data/source/verify-source-mappings.ts', "import type { ImfatArchiveHandle } from '../archive/archive-reader.ts'; import { SourceError } from '../source-error.ts'; export const verify = (archive: ImfatArchiveHandle): unknown => [archive, SourceError];"],
+        ['src/workers/probe.ts', "import { z } from 'zod'; import { join } from 'node:path'; export const found = [z, join];"],
       ];
       for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
     });
@@ -751,22 +789,60 @@ describe('original-data dependency boundary', () => {
     });
   });
 
+  /**
+   * The product entry's runtime exports other than its opening function, read from the syntax: export declarations of
+   * values, value specifiers (local or re-exported), value star exports and default exports. Type-only forms are free.
+   */
+  function entryValueExports(file: ts.SourceFile): string[] {
+    const found: string[] = [];
+    const hasModifier = (statement: ts.Statement, kind: ts.SyntaxKind): boolean =>
+      ts.canHaveModifiers(statement) && (ts.getModifiers(statement)?.some(modifier => modifier.kind === kind) ?? false);
+    const isOpening = (statement: ts.Statement): boolean => ts.isFunctionDeclaration(statement) && statement.body !== undefined
+      && statement.name?.text === PRODUCT_ENTRY_EXPORT && !hasModifier(statement, ts.SyntaxKind.DefaultKeyword);
+    for (const statement of file.statements) {
+      if (ts.isExportDeclaration(statement)) {
+        if (statement.isTypeOnly) continue;
+        const clause = statement.exportClause;
+        if (!clause) found.push('*');
+        else if (ts.isNamespaceExport(clause)) found.push(clause.name.text);
+        else found.push(...clause.elements.filter(element => !element.isTypeOnly).map(element => element.name.text));
+      } else if (ts.isExportAssignment(statement)) {
+        found.push('default');
+      } else if (hasModifier(statement, ts.SyntaxKind.ExportKeyword) && !isOpening(statement)) {
+        if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) continue;
+        if (ts.isVariableStatement(statement)) found.push(...statement.declarationList.declarations.map(item => item.name.getText(file)));
+        else found.push((statement as ts.DeclarationStatement).name?.getText(file) ?? 'default');
+      }
+    }
+    return found;
+  }
+
   // P2-03 S-07/AC-14: production modules use the low-level original-data capabilities only inside their own family or
-  // the source family; anything else, such as workers or converters, goes through the verified-source product entry.
-  // Type-only import declarations carry no capability; re-exports (also of types), dynamic imports and import types do.
+  // the source family; anything else, such as workers or converters, goes through the product entry and the public
+  // source modules, and the entry exports no value but its opening. Tests, test support and every file outside
+  // src/ may hold any capability, so production code must not import them either. Type-only import declarations carry
+  // no capability; re-exports (also of types), dynamic imports and import types do.
   function capabilityViolations(compilation: ts.Program, directory: string): string[] {
     const options = compilation.getCompilerOptions();
     const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
     const violations = new Set<string>();
     for (const fileName of compilation.getRootFileNames()) {
       const importer = project(fileName);
-      if (!importer.startsWith('src/') || /\.test(?:-support)?\.ts$/.test(importer) || familyOf(importer) === 'source') continue;
+      if (!importer.startsWith('src/') || capabilityOf(importer) === 'support') continue;
       const file = compilation.getSourceFile(fileName)!;
+      if (isProductEntry(importer)) {
+        for (const name of entryValueExports(file)) violations.add(`${importer} exports ${name}`);
+        continue;
+      }
+      const own = familyOf(importer);
+      if (own === 'source') continue;
       const restrictedTarget = (specifier: string): string | null => {
-        const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName;
-        const target = resolved ? project(resolved) : '';
+        const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule;
+        // Linked packages resolve outside node_modules, so ask the resolver rather than the path.
+        if (!resolved || resolved.isExternalLibraryImport) return null;
+        const target = project(resolved.resolvedFileName);
         const capability = capabilityOf(target);
-        return capability && familyOf(importer) !== capability ? target : null;
+        return capability && own !== capability ? target : null;
       };
       for (const { specifier, typeOnly } of moduleReferences(file)) {
         if (specifier === COMPUTED_IMPORT) {
@@ -809,8 +885,8 @@ describe('original-data dependency boundary', () => {
       'src/original-data/disc/cross.ts': "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;",
       'src/original-data/imfat.ts': 'export const parseImfat = (): number => 1;',
       'src/original-data/archive/archive-reader.ts': "import type { DiscImage } from '../disc/disc-image.ts'; import { parseImfat } from '../imfat.ts'; export const open = (image: DiscImage): number => image.sectors + parseImfat();",
-      'src/original-data/source/identify-source.ts': "import { openDiscImage } from '../disc/disc-image.ts'; import { open } from '../archive/archive-reader.ts'; export const identifySource = (): unknown[] => [openDiscImage, open];",
-      'src/original-data/source/open-verified-source.ts': "import { identifySource } from './identify-source.ts'; export const openVerifiedSource = (): unknown => identifySource; export type { DiscImage } from '../disc/disc-image.ts';",
+      'src/original-data/source/identify-source.ts': "import { openDiscImage } from '../disc/disc-image.ts'; import { open } from '../archive/archive-reader.ts'; export const identifySource = (): unknown[] => [openDiscImage, open]; export class VerifiedSource { readonly open = true; }",
+      'src/original-data/source/open-verified-source.ts': "import { identifySource } from './identify-source.ts'; export function openVerifiedSource(): unknown { return identifySource; } export type { DiscImage } from '../disc/disc-image.ts'; export type { VerifiedSource } from './identify-source.ts';",
       'src/original-data/source-mapping.ts': "import type { DiscImage } from './disc/disc-image.ts'; import { isDiscPath } from './disc/disc-path.ts'; export const check = (image: DiscImage): boolean => isDiscPath(image);",
       'src/original-data/convert/model.ts': "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;",
       'src/original-data/convert/identify.ts': "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;",
@@ -839,6 +915,29 @@ describe('original-data dependency boundary', () => {
       'src/workers/local-default.ts': "import { parseImfat } from '../original-data/imfat.ts'; export default parseImfat;",
       'src/workers/private-type.ts': "import type { DiscImage } from '../original-data/disc/disc-image.ts'; export const sectors = (image: DiscImage): number => image.sectors;",
       'src/workers/entry-types.ts': "export type { DiscImage } from '../original-data/source/open-verified-source.ts';",
+      // Second-hand capabilities: wrappers and re-exports in non-public source modules, test support and tools.
+      'src/original-data/source/source-catalog.ts': "export const PRODUCTION_CATALOG = { versionId: 'synthetic' };",
+      'src/original-data/source/verify-source-mappings.ts': 'export const verifySourceMappings = (): boolean => true;',
+      'src/original-data/source/barrel.ts': "import { openDiscImage } from '../disc/disc-image.ts'; export { openDiscImage }; export const wrap = (): number => openDiscImage();",
+      'src/original-data/disc/disc.test-support.ts': "export { openDiscImage } from './disc-image.ts';",
+      'tools/barrel.ts': "import { identifySource } from '../src/original-data/source/identify-source.ts'; export const identify = (): unknown[] => identifySource();",
+      'src/workers/public-source.ts': [
+        "import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';",
+        "import { verifySourceMappings } from '../original-data/source/verify-source-mappings.ts';",
+        "import type { wrap } from '../original-data/source/barrel.ts';",
+        "import type { identify } from '../../tools/barrel.ts';",
+        'export const found = [PRODUCTION_CATALOG, verifySourceMappings];',
+        'export type Found = [typeof wrap, typeof identify];',
+      ].join('\n'),
+      'src/workers/via-source-wrapper.ts': "import { wrap } from '../original-data/source/barrel.ts'; export const open = wrap;",
+      'src/workers/via-source-reexport.ts': "export { openDiscImage } from '../original-data/source/barrel.ts';",
+      'src/workers/via-test-support.ts': "import { openDiscImage } from '../original-data/disc/disc.test-support.ts'; export const open = openDiscImage;",
+      'src/workers/via-tools.ts': "import { identify } from '../../tools/barrel.ts'; export const run = identify;",
+      'src/original-data/convert/via-test-support.ts': "export * from './support.test-support.ts';",
+      'src/original-data/disc/own-test-support.ts': "import { openDiscImage } from './disc.test-support.ts'; export const open = openDiscImage;",
+      'e2e/support/barrel.ts': "export { openDiscImage as open } from '../../src/original-data/disc/disc-image.ts';",
+      'src/workers/via-e2e.ts': "import { open } from '../../e2e/support/barrel.ts'; export const run = open;",
+      'src/workers/helper.test-support.tsx': "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;",
     }, (directory) => {
       const compilation = program('app', directory);
       expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
@@ -846,7 +945,9 @@ describe('original-data dependency boundary', () => {
         'src/original-data/convert/identify.ts -> src/original-data/source/identify-source.ts',
         'src/original-data/convert/lazy.ts -> computed import',
         'src/original-data/convert/model.ts -> src/original-data/imfat.ts',
+        'src/original-data/convert/via-test-support.ts -> src/original-data/convert/support.test-support.ts',
         'src/original-data/disc/cross.ts -> src/original-data/imfat.ts',
+        'src/original-data/disc/own-test-support.ts -> src/original-data/disc/disc.test-support.ts',
         'src/workers/lazy.ts -> src/original-data/imfat.ts',
         'src/workers/local-alias.ts -> src/original-data/disc/disc-image.ts',
         'src/workers/local-default.ts -> src/original-data/imfat.ts',
@@ -857,9 +958,71 @@ describe('original-data dependency boundary', () => {
         'src/workers/reexport.ts -> src/original-data/disc/disc-image.ts',
         'src/workers/tsx-type.ts -> src/original-data/disc/internal/reader.tsx',
         'src/workers/value.ts -> src/original-data/disc/disc-image.ts',
+        'src/workers/via-e2e.ts -> e2e/support/barrel.ts',
+        'src/workers/via-source-reexport.ts -> src/original-data/source/barrel.ts',
+        'src/workers/via-source-wrapper.ts -> src/original-data/source/barrel.ts',
+        'src/workers/via-test-support.ts -> src/original-data/disc/disc.test-support.ts',
+        'src/workers/via-tools.ts -> tools/barrel.ts',
       ]);
     });
   });
+
+  it('rejects values exported by the product entry besides its opening, and capabilities in the public source modules', () => {
+    withFixtures({
+      'src/original-data/disc/disc-image.ts': 'export interface DiscImage { readonly sectors: number } export const openDiscImage = (): number => 1;',
+      'src/original-data/source/identify-source.ts': 'export const identifySource = (): number => 1; export class VerifiedSource { readonly open = true; }',
+      'src/original-data/source/open-verified-source.ts': [
+        "import { openDiscImage } from '../disc/disc-image.ts';",
+        "import { identifySource } from './identify-source.ts';",
+        "export * from './identify-source.ts';",
+        "export * as disc from '../disc/disc-image.ts';",
+        'export { openDiscImage, identifySource as identify, type openDiscImage as Opener };',
+        'const leak = openDiscImage;',
+        'export default leak;',
+        'export const opened = leak();',
+        'export class Handle { readonly open = true; }',
+        "export type * from '../disc/disc-image.ts';",
+        "export type { VerifiedSource } from './identify-source.ts';",
+        'export interface Options { readonly cancel: boolean }',
+        'export type Opening = typeof openDiscImage;',
+        'export function openVerifiedSource(): number { return identifySource() + openDiscImage(); }',
+      ].join('\n'),
+      'src/original-data/source/source-catalog.ts': "export { openDiscImage } from '../disc/disc-image.ts';",
+      'src/original-data/source/verify-source-mappings.ts': "import { identifySource } from './identify-source.ts'; export const verify = (): number => identifySource();",
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(capabilityViolations(compilation, directory)).toEqual([
+        'src/original-data/source/open-verified-source.ts exports *',
+        'src/original-data/source/open-verified-source.ts exports Handle',
+        'src/original-data/source/open-verified-source.ts exports default',
+        'src/original-data/source/open-verified-source.ts exports disc',
+        'src/original-data/source/open-verified-source.ts exports identify',
+        'src/original-data/source/open-verified-source.ts exports openDiscImage',
+        'src/original-data/source/open-verified-source.ts exports opened',
+        'src/original-data/source/source-catalog.ts -> src/original-data/disc/disc-image.ts',
+        'src/original-data/source/verify-source-mappings.ts -> src/original-data/source/identify-source.ts',
+      ]);
+    });
+  });
+
+  it.each([
+    ['src/original-data/source/open-verified-source.ts', null],
+    ['src/original-data/source/source-catalog.ts', null],
+    ['src/original-data/source/verify-source-mappings.ts', null],
+    ['src/original-data/source/identify-source.ts', 'source'],
+    ['src/original-data/source/nested/wrapper.tsx', 'source'],
+    ['src/original-data/disc/disc-path.ts', null],
+    ['src/original-data/disc/internal/disc-path.ts', 'disc'],
+    ['src/original-data/archive/formats/table.tsx', 'archive'],
+    ['src/original-data/source-mapping.ts', null],
+    ['src/original-data/archive/archive.test-support.ts', 'support'],
+    ['src/workers/helper.test-support.tsx', 'support'],
+    ['tools/source-check.ts', 'support'],
+    ['e2e/support/environment.ts', 'support'],
+    ['vite.config.ts', 'support'],
+    ['node_modules/.pnpm/three@0.180.0/node_modules/three/build/three.module.js', null],
+  ])('classifies %s as %s', (path, expected) => expect(capabilityOf(path)).toBe(expected));
 
   it('keeps every production module within the low-level capability boundary', () => {
     expect(capabilityViolations(sharedAppProgram(), root)).toEqual([]);
