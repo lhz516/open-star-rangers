@@ -218,6 +218,7 @@ function tocEntry(entry: Section): TocEntry {
   const control = numberAt(entry, 'Control');
   const pMin = point === LEAD_IN_POINTS[0] || point === LEAD_IN_POINTS[1] ? numberAt(entry, 'PMin') : undefined;
   const pLba = point === TRACK_ONE || point === LEAD_OUT ? numberAt(entry, 'PLBA') : undefined;
+  if (point === LEAD_OUT && pLba === 0) throw invalid(keyAt(entry.name, 'PLBA'), 'the lead-out must be a positive sector count');
   return { name: entry.name, session, point, adr, control, pMin, pLba };
 }
 

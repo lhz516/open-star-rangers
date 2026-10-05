@@ -49,7 +49,12 @@ export function readSourceLimits(value: unknown, path = 'limits'): BudgetRecord 
   }
 }
 
-/** Checks that a cancellation probe reports a boolean `aborted` now; the live reference is kept for later checks. */
+const ABORTED: CancellationProbe = Object.freeze({ aborted: true });
+
+/**
+ * Checks that a cancellation probe reports a boolean `aborted` now. An abort seen here is kept, so the reader starts
+ * cancelled even if the probe later reports false; otherwise the live reference is kept for later checks.
+ */
 export function readCancellation(value: unknown, path = 'cancellation'): CancellationProbe | undefined {
   if (value === undefined) return undefined;
   let aborted: unknown;
@@ -59,7 +64,7 @@ export function readCancellation(value: unknown, path = 'cancellation'): Cancell
     aborted = undefined;
   }
   if (typeof aborted !== 'boolean') throw new DiscReadError('invalid-record', path, 'must be an object with a boolean aborted flag');
-  return value as CancellationProbe;
+  return aborted ? ABORTED : value as CancellationProbe;
 }
 
 function intrinsicGetter(target: object, key: PropertyKey): (this: unknown) => unknown {

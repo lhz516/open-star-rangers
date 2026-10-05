@@ -135,6 +135,16 @@ describe('input sizes', () => {
     expect(image.requests).toEqual([]);
   });
 
+  it('rejects a zero lead-out as an invalid required key before layout and size checks', async () => {
+    const zero = (sections: CloneCdSection[]): void => setKey(sections, 'Entry 2', 'PLBA', '0');
+    expect(await failure(open(descriptor(zero)).result)).toEqual(failureOf('invalid-descriptor', 'descriptor[Entry 2].PLBA'));
+    const alsoUnsupported = descriptor(sections => {
+      zero(sections);
+      setKey(sections, 'TRACK 1', 'MODE', '2');
+    });
+    expect(await failure(open(alsoUnsupported, imagePort(SECTORS + 1)).result)).toEqual(failureOf('invalid-descriptor', 'descriptor[Entry 2].PLBA'));
+  });
+
   it('rejects a lead-out that differs from the image sector count', async () => {
     const { result } = open(descriptor(() => {}, SECTORS + 1));
     expect(await failure(result)).toEqual(failureOf('image-size-mismatch', 'descriptor[Entry 2].PLBA'));
@@ -337,6 +347,20 @@ describe('open options', () => {
     ['an accessor that throws host text', { get limits(): unknown { throw new Error(MARKER); } }],
   ])('rejects options that are %s without running accessors', async (_case, options) => {
     expect(await failure(open(BASE, imagePort(), options as unknown as OpenDiscOptions).result)).toEqual(failureOf('invalid-record', 'options'));
+  });
+
+  it('keeps a cancellation first seen while checking the probe, even if the probe later reports false', async () => {
+    const probe = { checks: 0, get aborted(): boolean { return this.checks++ === 0; } };
+    const cancelled = open(BASE, imagePort(), { cancellation: probe });
+    expect(await failure(cancelled.result)).toEqual(failureOf('cancelled', 'descriptor'));
+    expect([...cancelled.ccdPort.requests, ...cancelled.image.requests]).toEqual([]);
+  });
+
+  it('reads a probe that starts false live after opening', async () => {
+    const probe = { aborted: false };
+    const { reader } = await open(BASE, imagePort(), { cancellation: probe }).result();
+    probe.aborted = true;
+    expect(await failure(() => reader.throwIfCancelled('image'))).toEqual(failureOf('cancelled', 'image'));
   });
 
   it('reads nothing when cancelled before opening', async () => {

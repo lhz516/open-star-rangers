@@ -29,9 +29,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] `0xa2` 的 `PLBA` 为 0 时返回 `invalid-descriptor@descriptor[Entry 2].PLBA`，即使镜像大小与布局另有问题也先报此项；`PLBA` 等于扇区数时照常打开。
-- [ ] 探针只在第一次读取时返回 true、之后返回 false：打开返回 `cancelled`，端口请求为 0；初始为 false 的探针在打开后再置 true，仍按实时值取消。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] `0xa2` 的 `PLBA` 为 0 时返回 `invalid-descriptor@descriptor[Entry 2].PLBA`，即使镜像大小与布局另有问题也先报此项；`PLBA` 等于扇区数时照常打开。
+- [x] 探针只在第一次读取时返回 true、之后返回 false：打开返回 `cancelled`，端口请求为 0；初始为 false 的探针在打开后再置 true，仍按实时值取消。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -39,3 +39,18 @@ updated: 2026-10-05
 - 不适用 browser-testing 或原版对照。
 
 ## 完成证据
+
+- **实现：**
+  - [clone-cd.ts](../../../../../src/original-data/disc/clone-cd.ts) 的 `tocEntry` 在描述语法阶段检查 lead-out：`PLBA` 为 0 时返回 `invalid-descriptor@descriptor[Entry n].PLBA`。负数与非整数原本就被 `numberAt` 拒绝。这一检查先于布局与镜像大小比较。
+  - [source-reader.ts](../../../../../src/original-data/disc/source-reader.ts) 的 `readCancellation` 若在校验时读到 `aborted` 为 true，返回冻结、恒为取消的探针，锁存这次观察；初始为 false 时仍返回实时引用。
+- **测试：** [clone-cd.test.ts](../../../../../src/original-data/disc/clone-cd.test.ts)
+  - `PLBA=0` 返回 `invalid-descriptor@descriptor[Entry 2].PLBA`；同时存在 MODE2 与镜像大小不符时，仍先报这一项；
+  - 只在第一次返回 true 的探针：打开返回 `cancelled@descriptor`，描述与镜像的请求都为 0；
+  - 初始为 false 的探针在打开后置 true：读取方按实时值取消。
+- **变异检查：** 分别撤销两处修正，各有 1 个新用例失败。检查后已恢复原代码。
+- **检查：**
+  - `pnpm exec vitest run src/original-data` 454 项通过；typecheck 与 lint 通过；
+  - 第一次完整 `pnpm check` 在负载约 10 时有 4 个与本改动无关的 `tools/` 用例超时；负载回落后重跑通过：80 个测试文件共 2083 项测试、build。
+- **Rubber-duck：** 未发现问题。确认 `PLBA=0` 归为“非法的必需键”比归为布局问题更贴合错误码表；锁存不影响 `AbortSignal` 语义；其他读取 `aborted` 的地方都已在 `SourceReader` 中锁存。
+- **Simplify：** 未采纳“删除两项打开层用例”的建议：它们分别是“打开不读取任何字节”的 AC-07 证据，以及 `readCancellation` 经打开路径保留实时引用的唯一用例。其余维度无发现。
+- **文档影响：** 无需更新；spec、源码结构与工具指南的描述与新行为一致。
