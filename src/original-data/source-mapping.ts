@@ -3,6 +3,7 @@ import type { AssetId, AssetKind } from '../content/asset-id.ts';
 import { readSourceFingerprint, type SourceFingerprint } from '../content/content-identity.ts';
 import { compareText, fail, matchesWhole, readOrderedArray, readRecord, requireFields } from '../content/contract-validation.ts';
 import { readUnknownIds, type SourceState, type SourceStateSet } from '../content/source-state.ts';
+import { isDiscPath, type DiscPath } from './disc/disc-path.ts';
 import type { ImfatEntry } from './imfat.ts';
 
 /** Research confidence in a mapping; it is not proof that a payload was verified. */
@@ -29,8 +30,8 @@ export const SOURCE_ENTRY_TYPES = Object.freeze({
 } satisfies Record<AssetKind, readonly string[]>);
 
 export interface OriginalAssetLocator {
-  /** Disc-relative archive path such as `MAIN/SR.NOB`. */
-  readonly discPath: string;
+  /** Disc-relative archive path such as `MAIN/SR.NOB`, in the grammar the disc reader resolves. */
+  readonly discPath: DiscPath;
   /** IMFAT entry selected by the parser's own entry ID and type tag. */
   readonly entry: Readonly<Pick<ImfatEntry, 'id' | 'type'>>;
   /** Path inside the entry payload, or null for the whole entry. */
@@ -74,8 +75,6 @@ export interface SourceDiagnostic {
   readonly unknowns: readonly string[];
 }
 
-const DOS_NAME = '[A-Z0-9_-]{1,8}(?:\\.[A-Z0-9_-]{1,3})?';
-const DISC_PATH = new RegExp(`^${DOS_NAME}(?:/${DOS_NAME}){0,7}$`);
 const SUBRESOURCE = /^[a-z0-9]+(?:[-.][a-z0-9]+)*(?:\/[a-z0-9]+(?:[-.][a-z0-9]+)*){0,7}$/;
 const EVIDENCE = /^docs\/original\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.md(?:#[^\s#]+)?$/;
 
@@ -87,7 +86,7 @@ function readEnum<T extends string>(value: unknown, allowed: readonly T[], path:
 function readLocator(value: unknown, path: string): OriginalAssetLocator {
   const record = readRecord(value, path);
   requireFields(record, path, ['discPath', 'entry', 'subresource']);
-  if (!matchesWhole(record.discPath, DISC_PATH)) {
+  if (!isDiscPath(record.discPath)) {
     fail('invalid-source-mapping', `${path}.discPath`, 'must be a relative upper-case 8.3 disc path');
   }
   const entry = readRecord(record.entry, `${path}.entry`);

@@ -293,3 +293,21 @@ export function primaryVolumeDescriptor(volumeSectors: number, root: Uint8Array)
   descriptor[881] = 1;
   return descriptor;
 }
+
+/**
+ * Packs directory records into whole 2,048-byte sectors, at least `byteLength` bytes: a record that does not fit the
+ * rest of a sector starts the next one, leaving zero padding behind.
+ */
+export function directoryData(records: readonly Uint8Array[], byteLength = SYNTHETIC_SECTOR_DATA_BYTES): Uint8Array {
+  const chunks: { record: Uint8Array; offset: number }[] = [];
+  let offset = 0;
+  for (const record of records) {
+    const room = SYNTHETIC_SECTOR_DATA_BYTES - (offset % SYNTHETIC_SECTOR_DATA_BYTES);
+    if (record.length > room) offset += room;
+    chunks.push({ record, offset });
+    offset += record.length;
+  }
+  const data = new Uint8Array(Math.max(byteLength, Math.ceil(offset / SYNTHETIC_SECTOR_DATA_BYTES) * SYNTHETIC_SECTOR_DATA_BYTES));
+  for (const { record, offset: at } of chunks) data.set(record, at);
+  return data;
+}

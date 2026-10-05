@@ -1,7 +1,7 @@
 import { DiscReadError } from './disc-error.ts';
 import {
   ASSOCIATED_FLAG, bothEndian16, bothEndian32, DIRECTORY_FLAG, extentFits, MAX_DIRECTORY_BYTES, MIN_RECORD_BYTES, readDirectoryRecord,
-  unsupportedFeature,
+  unsupportedFeature, type DiscExtent,
 } from './iso9660-record.ts';
 import { lbaAt, readSectors, SECTOR_DATA_BYTES } from './raw-sector.ts';
 import type { SourceReader, SourceSnapshot } from './source-reader.ts';
@@ -16,15 +16,10 @@ const PARTITION = 3;
 const TERMINATOR = 255;
 const ROOT_RECORD_OFFSET = 156;
 
-/** The root directory's extent as stated by the primary volume descriptor. */
-export interface RootDirectory {
-  readonly firstSector: number;
-  readonly byteLength: number;
-}
-
 export interface Volume {
   readonly volumeSectors: number;
-  readonly root: RootDirectory;
+  /** The root directory's extent as stated by the primary volume descriptor. */
+  readonly root: DiscExtent;
 }
 
 const invalid = (location: string, reason: string): DiscReadError => new DiscReadError('invalid-volume', location, reason);
@@ -82,7 +77,7 @@ function checkPrimary(descriptor: Uint8Array, lba: number, terminatorLba: number
   return Object.freeze({ volumeSectors, root });
 }
 
-function checkRoot(descriptor: Uint8Array, at: (field: string) => string, volumeSectors: number): RootDirectory {
+function checkRoot(descriptor: Uint8Array, at: (field: string) => string, volumeSectors: number): DiscExtent {
   const rootAt = (field: string): string => at(`rootDirectory.${field}`);
   const record = readDirectoryRecord(descriptor, ROOT_RECORD_OFFSET, ROOT_RECORD_OFFSET + MIN_RECORD_BYTES);
   if (typeof record === 'string') throw invalid(rootAt(record), 'is not a valid directory record');

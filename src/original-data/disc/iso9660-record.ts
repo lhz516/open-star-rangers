@@ -20,6 +20,12 @@ export function bothEndian32(bytes: Uint8Array, offset: number): number | undefi
   return little === big ? little : undefined;
 }
 
+/** Contiguous 2,048-byte blocks holding a file or directory. */
+export interface DiscExtent {
+  readonly firstSector: number;
+  readonly byteLength: number;
+}
+
 export interface DirectoryRecord {
   readonly recordLength: number;
   readonly extendedAttributeLength: number;

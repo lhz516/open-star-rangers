@@ -2,7 +2,8 @@
 
 import {
   cloneCdSections, cloneCdText, directoryRecord, ISO_DIRECTORY_FLAG, memoryByteSource, primaryVolumeDescriptor, sectorImageSource,
-  SYNTHETIC_RAW_SECTOR_BYTES, SYNTHETIC_SECTOR_DATA_BYTES, volumeDescriptor, type SyntheticByteSource,
+  SYNTHETIC_RAW_SECTOR_BYTES, SYNTHETIC_SECTOR_DATA_BYTES, volumeDescriptor, type DirectoryRecordFields,
+  type SyntheticByteSource,
 } from '../synthetic.ts';
 import { DiscReadError, type DiscReadErrorData } from './disc-error.ts';
 
@@ -47,9 +48,22 @@ export async function failure(action: () => unknown): Promise<Diagnostic> {
 
 export const ROOT_LBA = 18;
 
+type RecordFields = Partial<DirectoryRecordFields>;
+
 /** A root directory record for the primary volume descriptor. */
 export const rootRecord = (extent = ROOT_LBA, dataLength = SYNTHETIC_SECTOR_DATA_BYTES): Uint8Array =>
   directoryRecord({ extent, dataLength, flags: ISO_DIRECTORY_FLAG, name: Uint8Array.of(0) });
+/** The `.` record of a directory at `extent`. */
+export const selfRecord = (extent: number, dataLength = SYNTHETIC_SECTOR_DATA_BYTES, fields: RecordFields = {}): Uint8Array =>
+  directoryRecord({ extent, dataLength, flags: ISO_DIRECTORY_FLAG, name: Uint8Array.of(0), ...fields });
+/** The `..` record naming the parent directory at `extent`. */
+export const parentRecord = (extent: number, dataLength = SYNTHETIC_SECTOR_DATA_BYTES, fields: RecordFields = {}): Uint8Array =>
+  directoryRecord({ extent, dataLength, flags: ISO_DIRECTORY_FLAG, name: Uint8Array.of(1), ...fields });
+export const subdirectoryRecord = (name: string, extent: number, dataLength = SYNTHETIC_SECTOR_DATA_BYTES, fields: RecordFields = {}): Uint8Array =>
+  directoryRecord({ extent, dataLength, flags: ISO_DIRECTORY_FLAG, name, ...fields });
+/** A file record; `name` carries its own version suffix, such as `SR.NOB;1`. */
+export const fileRecord = (name: string, extent: number, dataLength: number, fields: RecordFields = {}): Uint8Array =>
+  directoryRecord({ extent, dataLength, name, ...fields });
 
 /** User data by LBA for the smallest supported volume: primary descriptor at 16, terminator at 17, root at 18. */
 export function volumeSectors(sectorCount: number): Map<number, Uint8Array> {

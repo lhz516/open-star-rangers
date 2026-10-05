@@ -82,7 +82,7 @@ updated: 2026-10-04
 | [01-port-guarded-reader.md](./subtasks/01-port-guarded-reader.md) | — | completed |
 | [02-clonecd-file-set.md](./subtasks/02-clonecd-file-set.md) | 01 | completed |
 | [03-sector-volume.md](./subtasks/03-sector-volume.md) | 01, 02 | completed |
-| [04-directory-path.md](./subtasks/04-directory-path.md) | 03 | pending |
+| [04-directory-path.md](./subtasks/04-directory-path.md) | 03 | completed |
 | [05-file-range-read.md](./subtasks/05-file-range-read.md) | 01, 04 | pending |
 | [06-port-boundary.md](./subtasks/06-port-boundary.md) | 01 | pending |
 | [07-blob-adapter.md](./subtasks/07-blob-adapter.md) | 05, 06 | pending |
@@ -93,6 +93,9 @@ updated: 2026-10-04
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-04 — 本机负载导致完整 `pnpm check` 超时：** 子任务 04 完成时，其他桌面应用把 load average 推到 10–23，`tools/` 中启动子进程的用例反复超时。typecheck、lint、build 与 `src/original-data` 测试均通过；在 HEAD 基线上，同负载下同样超时。
+  影响：04 记录了与本改动无关的环境失败。最终对齐（10）必须在负载正常时取得完整 `pnpm check` 的通过结果，不能以本记录代替。
 
 ## 审批
 
