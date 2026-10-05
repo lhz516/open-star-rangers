@@ -47,7 +47,8 @@ export const contentIdentityKey = ({ schemaVersion, sliceId, sliceDefinitionVers
 
 const OPAQUE_TOKEN = /^[a-z0-9]+(?:[-.:][a-z0-9]+)*$/;
 
-function readVersion(value: unknown, path: string): number {
+/** Reads a positive safe integer version. */
+export function readVersion(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     fail('invalid-version', path, 'must be a positive safe integer');
   }

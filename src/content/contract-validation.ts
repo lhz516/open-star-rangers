@@ -27,7 +27,9 @@ export type ContentContractErrorCode =
   | 'payload-not-exclusive'
   | 'payload-aliased'
   | 'payload-detached'
-  | 'invalid-sound-payload';
+  | 'invalid-sound-payload'
+  | 'duplicate-group'
+  | 'group-order';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

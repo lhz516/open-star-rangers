@@ -22,11 +22,12 @@ function readManifestRecord(value: unknown, path: string): { identity: ContentId
 
 export function readGroupManifest(value: unknown, path = 'manifest'): GroupManifest {
   const { identity, group, assets } = readManifestRecord(value, path);
-  return Object.freeze({
-    identity,
-    group,
-    assets: readOrderedArray(assets, `${path}.assets`, ASSET_CODES, readAssetDescriptor, assetKey, compareAssets),
-  });
+  return Object.freeze({ identity, group, assets: readManifestAssets(assets, `${path}.assets`) });
+}
+
+/** Reads manifest descriptors: each one checked, in ascending unique Asset ID order. */
+export function readManifestAssets(value: unknown, path: string): readonly AssetDescriptor[] {
+  return readOrderedArray(value, path, ASSET_CODES, readAssetDescriptor, assetKey, compareAssets);
 }
 
 /**

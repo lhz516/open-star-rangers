@@ -125,7 +125,7 @@ updated: 2026-10-05
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-sound-payload.md](./subtasks/01-sound-payload.md) | — | completed |
-| [02-manifest-identity.md](./subtasks/02-manifest-identity.md) | — | pending |
+| [02-manifest-identity.md](./subtasks/02-manifest-identity.md) | — | completed |
 | [03-snd-parser.md](./subtasks/03-snd-parser.md) | 01 | pending |
 | [04-audio-group-conversion.md](./subtasks/04-audio-group-conversion.md) | 01, 03 | pending |
 | [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03 | pending |
