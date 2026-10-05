@@ -62,6 +62,12 @@ src/
     completeness.ts
     budget.ts
     ownership.ts
+    graphics/
+      graphics-format.ts
+      palette-payload.ts
+      image-payload.ts
+      font-payload.ts
+      graphics-binding.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -144,7 +150,7 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 [platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
 
@@ -185,6 +191,28 @@ src/
   - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
 
 合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态（`syntheticSourceGroup` 可绑定任意来源指纹），以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
+
+### 图形 payload
+
+[content/graphics/](../../src/content/graphics/)（[P2-05/01](../plan/p2/05/subtasks/01-graphics-payloads.md)）定义 `palette`、`image`、`font` 三类 Asset 的规范 payload。它是纯 TypeScript，不导入 `original-data`；原版转换由 `original-data` 产生这些字节。
+
+- **常量：** [graphics-format.ts](../../src/content/graphics/graphics-format.ts) 的 `GRAPHICS_SCHEMA_VERSION` 为 1，三类共用；改变布局或解释须递增。`GRAPHICS_LIMITS` 供读取器与转换器共用，分为两类：
+  - **格式规则：** 调色板 1–256 项（8 位索引最多寻址 256 项），字体单元宽 1–8（每行 1 字节），字形恰为 256 个，字符映射 0–256 条；
+  - **安全上限：** 图像宽 1–640、高 1–480（Classic HI 画幅），字体高 1–8（已观察到 6 与 8）。原版字段本身更宽，这两项是 [P2-05 spec](../plan/p2/05/spec.md#限值与预算) 批准的上限。
+- **字节布局：** 都是小端定长头部加数据，总长恰为两者之和，Asset ID 以 ASCII 存储。
+
+  | 类别 | 头部 | 数据 |
+  |---|---|---|
+  | 调色板 | `u16` 条目数 | 每项 (R, G, B) 各 8 位，不含透明 |
+  | 图像 | `u16` 宽、`u16` 高；`u8` alpha（0 不透明、1 掩码）；`u8` display（0 direct、1 nearest）；`u8` 调色板 ID 长度（1–128）；`u8` 目标 ID 长度（direct 为 0，nearest 为 1–128） | 调色板 ID，nearest 的目标调色板 ID；`宽 × 高` 个行优先索引，行 0 在上；alpha 为 1 时再接掩码：每行 `⌈宽/8⌉` 字节，bit 7 为最左，1 为不透明 |
+  | 字体 | `u8` 单元宽、`u8` 高、`u16` 映射条数 | 256 × 高字节的字形，字形 g 的第 r 行在 `4 + g × 高 + r`，bit 7 为最左，逐位保留（含单元宽度以外的位）；映射按码位严格升序的 (code, glyph) 字节对 |
+
+  图像引用的 ID 必须是 `palette` kind 的 Asset ID。透明像素的索引与掩码行尾填充位一律为 0：编码器写 0，读取器拒绝非零。字形的绘制颜色与字距不在 payload 中，映射之外的码位没有字形。
+- **编码：** `encodePalettePayload`、`encodeImagePayload`、`encodeFontPayload` 校验字段后写入一个独占整个 `ArrayBuffer` 的新缓冲（可直接交给 `payloadTransferList`），同一输入得到同样的字节与 SHA-256；不改动调用者的数组。
+- **读取：** `readPalettePayload`、`readImagePayload`、`readFontPayload` 接受 `(bytes, schemaVersion, path)`，返回带 `kind` 的冻结数据，其中的数组是调用者独占的新副本。schema 不是 1 为 `unsupported-payload-schema`；长度不符（截断或尾随字节）、字段越界、未知的 alpha/display 值、非法或非调色板 ID、非零填充位、透明像素的非零索引、映射乱序或重复为 `invalid-graphics-payload`；已转移的字节为 `payload-detached`。`maskStride` 与 `isOpaque` 按上述掩码约定取每行字节数与单个像素的不透明性。
+- **绑定：** [graphics-binding.ts](../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes` 给出图像引用的调色板 ID（去重后升序：direct 为 `{palette}`，nearest 为 `{palette, target}`；调色板与字体没有）。`checkGraphicsBinding(descriptor, payload)` 要求描述符的 kind 与 payload 一致，依赖恰好等于这些调色板且 kind 都是 `palette`，否则报 `binding-mismatch`。
+
+针对性检查为 `pnpm exec vitest run src/content/graphics`。
 
 ### 原版来源映射
 

@@ -26,7 +26,10 @@ export type ContentContractErrorCode =
   | 'invalid-budget-value'
   | 'payload-not-exclusive'
   | 'payload-aliased'
-  | 'payload-detached';
+  | 'payload-detached'
+  | 'invalid-graphics-payload'
+  | 'unsupported-payload-schema'
+  | 'binding-mismatch';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

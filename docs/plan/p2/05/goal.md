@@ -92,7 +92,7 @@ updated: 2026-10-05
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-graphics-payloads.md](./subtasks/01-graphics-payloads.md) | — | pending |
+| [01-graphics-payloads.md](./subtasks/01-graphics-payloads.md) | — | completed |
 | [02-expansion-lookup.md](./subtasks/02-expansion-lookup.md) | 01 | pending |
 | [03-source-hardening.md](./subtasks/03-source-hardening.md) | 01 | pending |
 | [04-graphics-conversion.md](./subtasks/04-graphics-conversion.md) | 01, 03 | pending |

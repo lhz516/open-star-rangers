@@ -49,12 +49,12 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-01 读取器：调色板 payload 条目数 1 与 256 往返相等；条目数 0 或 257、截断、尾随字节 → `invalid-graphics-payload`；schema 2 → `unsupported-payload-schema`。
-- [ ] AC-02 与 AC-08 的 payload 不变量：掩码 bit 7 为最左，行尾填充位为 0，透明像素索引为 0；读取器拒绝违反者。
-- [ ] AC-07 payload：4×6 与 8×8 字体往返，单元宽度以外的位保留；宽或高为 0 或 9、`charMap` 乱序或重复都被拒绝。
-- [ ] AC-04 读取器部分：图像引用与描述符依赖不一致、依赖 kind 不是 `palette`、调色板或字体带依赖时都报 `binding-mismatch`。
-- [ ] AC-08：三类 payload 同输入同字节、同 SHA-256；`payloadIdentity` 与实际字节一致，`validateGroup` 无 `payload-mismatch`。
-- [ ] AC-17 部分：新模块不导入 `original-data`、DOM、Node 或 Three.js；`pnpm exec vitest run src/content`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-01 读取器：调色板 payload 条目数 1 与 256 往返相等；条目数 0 或 257、截断、尾随字节 → `invalid-graphics-payload`；schema 2 → `unsupported-payload-schema`。
+- [x] AC-02 与 AC-08 的 payload 不变量：掩码 bit 7 为最左，行尾填充位为 0，透明像素索引为 0；读取器拒绝违反者。
+- [x] AC-07 payload：4×6 与 8×8 字体往返，单元宽度以外的位保留；宽或高为 0 或 9、`charMap` 乱序或重复都被拒绝。
+- [x] AC-04 读取器部分：图像引用与描述符依赖不一致、依赖 kind 不是 `palette`、调色板或字体带依赖时都报 `binding-mismatch`。
+- [x] AC-08：三类 payload 同输入同字节、同 SHA-256；`payloadIdentity` 与实际字节一致，`validateGroup` 无 `payload-mismatch`。
+- [x] AC-17 部分：新模块不导入 `original-data`、DOM、Node 或 Three.js；`pnpm exec vitest run src/content`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -63,3 +63,15 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现（2026-10-05）：** [src/content/graphics/](../../../../../src/content/graphics/) 新增 [graphics-format.ts](../../../../../src/content/graphics/graphics-format.ts)（`GRAPHICS_SCHEMA_VERSION`、`GRAPHICS_LIMITS` 与共用的字段/长度/ID 校验）、[palette-payload.ts](../../../../../src/content/graphics/palette-payload.ts)、[image-payload.ts](../../../../../src/content/graphics/image-payload.ts)、[font-payload.ts](../../../../../src/content/graphics/font-payload.ts) 的编码器与严格读取器，以及 [graphics-binding.ts](../../../../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes`、`checkGraphicsBinding`。[contract-validation.ts](../../../../../src/content/contract-validation.ts) 追加 `invalid-graphics-payload`、`unsupported-payload-schema`、`binding-mismatch`；[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的穷举 code 表随之补齐（DTO 语法本已接受新 token）。编码器写出独占整个 `ArrayBuffer` 的缓冲，并把透明像素索引与掩码填充位写为 0；读取器先校验头部字段与总长，再在借用视图上校验填充位与透明索引，最后复制。
+- **测试：** `pnpm exec vitest run src/content/graphics` 4 个文件 96 项通过：
+  - [palette-payload.test.ts](../../../../../src/content/graphics/palette-payload.test.ts)：字节布局；1 与 256 项往返、冻结与副本隔离；非零偏移视图；schema 0/2、截断头部、0 与 257 项、截断与尾随字节、已转移字节；编码器拒绝 0/257 项与不完整三元组。
+  - [image-payload.test.ts](../../../../../src/content/graphics/image-payload.test.ts)：3×2 不透明字节布局与往返；10×3 非对称掩码（含全透明行与行尾填充）断言掩码字节为 `11011000 01000000 …` 且 `isOpaque` 逐像素与期望一致，即 bit 7 为最左；编码器把透明索引与填充位写 0 且不改输入；1×1、640×480、目标等于源调色板的 nearest 往返；65535×65535 头部只凭字段拒绝；读取器 18 类拒绝（含非调色板 ID、填充位、透明非零索引）与编码器 12 类拒绝都断言 code 与路径。
+  - [font-payload.test.ts](../../../../../src/content/graphics/font-payload.test.ts)：字形按字形序与行序存放；4×6（单元宽度以外的位保留）、8×8、1×1、空映射与 256 条映射逐位往返且冻结；宽或高 0/9、257 条、表长不符、映射乱序或重复的读取器与编码器拒绝。
+  - [graphics-binding.test.ts](../../../../../src/content/graphics/graphics-binding.test.ts)：引用去重升序；匹配时通过；kind 不同、缺少/多出/错误依赖、缺少 nearest 目标、依赖 kind 不是 `palette`、调色板或字体带依赖 8 种情况均为 `binding-mismatch@asset.*`；三类同输入同字节同 SHA-256；以三类 payload 替换合成 `cockpit-hud-map` 组的图形 Asset（另加 `flight-palette` 调色板并让图像依赖它）后 `validateGroup` 为 `group-complete`，每个图形 Asset 的读取结果与 `readAssetDescriptor` 的描述符通过绑定核对。
+  - 变异核对：分别去掉填充位拒绝、透明非零索引拒绝、编码器的透明索引清零、整字节跳过，相应用例都失败，恢复后通过。
+- **边界与工程：** 新模块只导入 `content` 内模块（逐文件核对 import）；`pnpm exec vitest run src/content src/workers/import-protocol.test.ts` 15 个文件 613 项、`pnpm typecheck`、`pnpm lint` 与 `pnpm check`（含工程边界回归）通过。
+- **Rubber-duck：** 以本子任务 diff 为范围审查，无 Blocker/High/Medium/Low 发现。
+- **Simplify：** 采纳 `payloadView` 复用 `requireBytes`、复制改用 `ownership.ts` 的 `exclusiveBytes`、图像按掩码字节跳过不透明像素并由编码器与读取器共用一个透明像素遍历、读取器先校验后复制、字体编码不再为每条映射分配对象、测试共用 [graphics.test-support.ts](../../../../../src/content/graphics/graphics.test-support.ts)。未采纳：`readPaletteReference` 把 ID 错误归为 `invalid-graphics-payload` 是 spec 规定的分类；共用的已转移检查需改动本 diff 之外的模块；`GRAPHICS_SCHEMA_VERSION` 供 04 的 `PayloadRecord` 使用，保留导出。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形-payload)新增“图形 payload”一节（字节布局、常量及两类限值、编码、读取、绑定与错误码）并在目录树与 content 概述中加入 `graphics/`。工程约定与工具指南没有列出 content code 或相关命令，无需更新；原版文档不受影响。
