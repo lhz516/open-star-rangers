@@ -90,7 +90,8 @@ updated: 2026-10-05
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
 | [11-leadout-cancel-remediation.md](./subtasks/11-leadout-cancel-remediation.md) | 01, 02 | completed |
 | [12-evidence-remediation.md](./subtasks/12-evidence-remediation.md) | 03, 08 | completed |
-| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
+| [13-close-failure-remediation.md](./subtasks/13-close-failure-remediation.md) | 08 | pending |
+| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -106,6 +107,7 @@ updated: 2026-10-05
   - AC-11 的 CLI 读取失败时关闭句柄缺少测试。
 
   处理：新增补救子任务 11（实现修正）与 12（测试证据），10 回到 pending，并依赖 11、12。
+- **2026-10-05 — 第二次最终对齐未通过：** 独立复核确认 11、12 已关闭上述 5 个缺口，其余范围均已覆盖。但发现一个新缺口：CLI 用 `error ??=` 记录关闭失败，若之前已有错误，关闭失败就不会被显式报告。处理：新增补救子任务 13，10 回到 pending 并依赖 13。
 
 ## 审批
 
