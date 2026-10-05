@@ -14,6 +14,7 @@ updated: 2026-10-05
 | `tools/nob-list.ts` | 列出 IMFAT（`.NOB`）封包目录：条目数、各类型数量与大小 | `node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]` |
 | `tools/nob-check.ts` | 解析封包中全部 TEX、BITM、MFDD、CCKD 字体、M2ID、NEBC、MESH、MODL 条目并检查交叉引用，只输出统计与失败项 | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
+| `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
 | `tools/ghidra/patch-watcom-cspec.py` | 给 Ghidra 加入 Watcom 调用约定 | 见 [baseline-environment](./baseline-environment.md#静态分析) |
@@ -38,6 +39,26 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 - **退出码：** 全部一致时为 0；核对失败或输入错误时为 1，例如文件组不受支持、文件无法打开或关闭（`read-failed`）、取消（Ctrl-C 中止读取）、manifest 不可读或含非规范路径；用法错误时为 2。
 - **句柄：** 任何情况下都会关闭已打开的句柄；关闭失败同样判为失败。
 - **原版内容：** 命令只读取 `local/`，不写出任何文件。若需要保存结果，只能放在 `local/` 下。
+
+## 来源核对
+
+`tools/source-check.ts` 在开发者本地的基准镜像上，验证版本识别与封包读取（[P2-03](../plan/p2/03/spec.md)）。它只用于本地原版数据，输出与结果只能留在 `local/` 下。
+
+- **输入：** 与光盘镜像核对相同，是 CloneCD 文件组的各个文件，经 [node-byte-source.ts](../../tools/node-byte-source.ts) 只读打开。
+- **核对内容：**
+  - 经产品入口 `openVerifiedSource` 打开镜像并用生产白名单识别版本；
+  - 经已验证来源打开每个覆盖范围内的 `.NOB`，读取并校验全部条目；
+  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFACE.NOB` 与 `MAIN/COMMFAC2.NOB`；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
+  - 任何识别、封包或条目失败都结束核对。
+- **输出：** stdout 为一份 `osr-source-check`/1 JSON，包含：
+  - `passed`；`error`（结束核对的首个失败，只含 code 与位置）；`closeFailures`；
+  - `identity`（版本 ID、指纹、覆盖文件数）；
+  - 每个封包的规范路径、`coverage`（`verified` 或 `research`）、条目数、按类型的计数、已读取并通过的条目数、最大数据块与最大重定位个数；
+  - `reads.sourceReadBytes`。
+
+  不输出宿主路径、文件内容或宿主错误文本。
+- **退出码：** 通过时为 0；识别、封包、输入或关闭失败以及取消（Ctrl-C）时为 1；用法错误为 2。
+- **句柄：** 任何情况下都会关闭已打开的句柄；关闭失败单独计数，并使核对失败。
 
 ## 本地合规
 
