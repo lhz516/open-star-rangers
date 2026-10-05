@@ -25,7 +25,8 @@ export interface SourceCatalog {
   readonly files: readonly CatalogFile[];
 }
 
-const CATALOG_LOCATION = /^catalog(?:\.versionId|\.files(?:\[\d+\](?:\.(?:path|byteLength|sha256))?)?)?$/;
+/** The spec's catalog locations; a missing, malformed or empty file list is reported at the whole catalog. */
+const CATALOG_LOCATION = /^catalog(?:\.versionId|\.files\[\d+\](?:\.(?:path|byteLength|sha256))?)?$/;
 const CODES = Object.freeze({ invalid: 'invalid-record', duplicate: 'invalid-record', order: 'invalid-record' } as const);
 
 function readCatalogFile(value: unknown, path: string): CatalogFile {

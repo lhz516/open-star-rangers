@@ -219,7 +219,7 @@ src/
   - 参数非法时返回 `invalid-request`，ID 不存在返回 `entry-not-found`，类型不符返回 `entry-type-mismatch`。
   - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包，边界见[工程约定](./README.md#lint-规则eslintconfigjs)。
 - **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上；辅助函数只接受从同一字节数组解析出的条目。
-- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。
+- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。P2-03 的全部位置都属于 spec 的封闭语法；[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `inLocationGrammar` 按 spec 定义该语法（光盘路径部分复用 `isDiscPath`），各模块测试的失败辅助逐个核对。
 - **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
 
 ### 版本识别与已验证来源
@@ -229,7 +229,7 @@ src/
 - **白名单：** [source/source-catalog.ts](../../src/original-data/source/source-catalog.ts) 的 `readSourceCatalog` 严格读取 `{ versionId, files }`：
   - 版本 token 为小写；
   - 文件按 ASCII 路径序严格升序，每项为 `{ path, byteLength, sha256 }`；
-  - 非法时在结构路径返回 `invalid-catalog`，不回显值。
+  - 非法时在结构路径返回 `invalid-catalog`，不回显值；文件列表缺失、不是数组或为空时，位置为 `catalog`。
 
   `PRODUCTION_CATALOG` 是唯一的生产白名单（`star-rangers-1995-cd`，8 个文件）。[tools/source-catalog.test.ts](../../tools/source-catalog.test.ts) 核对它与 [manifest](../original/manifest.md#游戏文件光盘-main-与-flics) 一致。
 - **指纹：** `sourceFingerprint(catalog)` 对规范 ASCII 文本计算 SHA-256，返回 `source:sha256:<hex>`；版本 ID 不参与。生产指纹由测试固定。指纹字符串只表示形状，来源证明来自对实际文件的识别。

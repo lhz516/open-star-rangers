@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readSourceFingerprint } from '../../content/content-identity.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import { SourceError, type SourceErrorData } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { PRODUCTION_CATALOG, readSourceCatalog, sourceFingerprint, type SourceCatalog } from './source-catalog.ts';
 import { catalogFor } from './source.test-support.ts';
 
@@ -14,6 +15,7 @@ function rejected(value: unknown): Pick<SourceErrorData, 'code' | 'location'> {
     readSourceCatalog(value);
   } catch (error) {
     expect(error).toBeInstanceOf(SourceError);
+    expect(inLocationGrammar((error as SourceError).toData())).toBe(true);
     const { code, location } = (error as SourceError).toData();
     return { code, location };
   }
@@ -59,15 +61,15 @@ describe('readSourceCatalog', () => {
     ['an array', [], 'catalog'],
     ['a class instance', new (class { versionId = 'a'; files = [file('A')]; })(), 'catalog'],
     ['an unknown field', { ...catalog([file('A')]), extra: 1 }, 'catalog'],
-    ['a missing field', { versionId: 'a' }, 'catalog.files'],
+    ['a missing field', { versionId: 'a' }, 'catalog'],
     ['an empty version', catalog([file('A')], ''), 'catalog.versionId'],
     ['an upper-case version', catalog([file('A')], 'Star'), 'catalog.versionId'],
     ['a doubled hyphen', catalog([file('A')], 'a--b'), 'catalog.versionId'],
     ['a leading hyphen', catalog([file('A')], '-a'), 'catalog.versionId'],
     ['a 65-character version', catalog([file('A')], 'a'.repeat(65)), 'catalog.versionId'],
     ['a numeric version', catalog([file('A')], 7), 'catalog.versionId'],
-    ['files that are not an array', catalog({}), 'catalog.files'],
-    ['no files', catalog([]), 'catalog.files'],
+    ['files that are not an array', catalog({}), 'catalog'],
+    ['no files', catalog([]), 'catalog'],
     ['a file that is not a record', catalog(['A']), 'catalog.files[0]'],
     ['an unknown file field', catalog([{ ...file('A'), size: 1 }]), 'catalog.files[0]'],
     ['a lower-case path', catalog([file('main/sr.nob')]), 'catalog.files[0].path'],
@@ -90,6 +92,7 @@ describe('readSourceCatalog', () => {
       try {
         readSourceCatalog(value);
       } catch (error) {
+        expect(inLocationGrammar((error as SourceError).toData())).toBe(true);
         expect(JSON.stringify((error as SourceError).toData())).not.toMatch(/private/i);
         continue;
       }

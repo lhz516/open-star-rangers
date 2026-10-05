@@ -71,7 +71,7 @@ updated: 2026-10-05
 - **实现：**
   - [source-error.ts](../../../../../src/original-data/source-error.ts)：封闭的 11 个错误码、`SourceError` 与 DTO，限值名为 `archiveEntries`、`entryBytes`。它是叶子模块；为避免 `archive/` 与 `source/` 互相依赖，放在 `original-data` 根目录，而不是计划中的 `source/`。
   - [imfat-rules.ts](../../../../../src/original-data/archive/imfat-rules.ts)：`readImfatHeader`、`readImfatDirectory`、`readImfatRelocations` 按 spec 顺序校验；位置只能由 `DiscPath | null` 生成；`ImfatEntry` 定义在这里。
-  - [imfat.ts](../../../../../src/original-data/imfat.ts)：`parseImfat`、`entryData`、`entryRelocations` 改用上述规则，`ImfatEntry` 原样再导出。辅助函数只接受从同一字节数组解析出的条目，否则在 `request.entry` 返回 `invalid-request`（研究用的内存接口，不属于产品入口）。
+  - [imfat.ts](../../../../../src/original-data/imfat.ts)：`parseImfat`、`entryData`、`entryRelocations` 改用上述规则，`ImfatEntry` 原样再导出。辅助函数只接受从同一字节数组解析出的条目，否则返回 `invalid-request`（研究用的内存接口，不属于产品入口）。最初的位置为 `request.entry`，已由 [12](./12-location-grammar.md) 改为 spec 语法中的 `request.id`。
   - 研究工具的源码无需修改。
 - **样本：** [archive.test-support.ts](../../../../../src/original-data/archive/archive.test-support.ts) 的 `ARCHIVE_SAMPLES` 包含：
   - **正向：** 与基准同形的样本（1–4 字符标签、全数字标签、任意 `flags`、非固定步长 ID、非对齐且无序的重定位、指针 0 与 `size`），4,096 条目，以及 4,194,304 字节的数据块；

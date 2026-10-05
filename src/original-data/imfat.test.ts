@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ARCHIVE_SAMPLES, BASE_ARCHIVE, BASE_ENTRIES, BLOCK_MARKER, type SampleFailure } from './archive/archive.test-support.ts';
 import { SourceError } from './source-error.ts';
+import { inLocationGrammar } from './source-error.test-support.ts';
 import { entryData, entryRelocations, parseImfat } from './imfat.ts';
 
 function caught(action: () => unknown): SourceError {
@@ -8,6 +9,7 @@ function caught(action: () => unknown): SourceError {
     action();
   } catch (error) {
     expect(error).toBeInstanceOf(SourceError);
+    expect(inLocationGrammar((error as SourceError).toData()), (error as SourceError).location).toBe(true);
     return error as SourceError;
   }
   throw new Error('expected a SourceError');
@@ -48,7 +50,7 @@ describe('parseImfat and entryRelocations', () => {
     const twin = BASE_ARCHIVE.slice();
     expect(parseImfat(twin).entries).toEqual(entries);
     for (const bytes of [twin, BASE_ARCHIVE.subarray(0, entry.offset + entry.size)]) {
-      const rejected = { code: 'invalid-request', location: 'request.entry', limit: null };
+      const rejected = { code: 'invalid-request', location: 'request.id', limit: null };
       expect(data(caught(() => entryData(bytes, entry)))).toEqual(rejected);
       expect(data(caught(() => entryRelocations(bytes, entry)))).toEqual(rejected);
     }

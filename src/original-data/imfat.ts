@@ -37,7 +37,7 @@ export function parseImfat(bytes: Uint8Array): ImfatArchive {
 }
 
 function requireOwned(bytes: Uint8Array, entry: ImfatEntry): void {
-  if (!parsed.get(bytes)?.has(entry)) throw new SourceError('invalid-request', 'request.entry', 'the entry was not parsed from these bytes');
+  if (!parsed.get(bytes)?.has(entry)) throw new SourceError('invalid-request', 'request.id', 'the entry was not parsed from these bytes');
 }
 
 /** The data block of an entry of `parseImfat(bytes)`, as a view of `bytes`. */

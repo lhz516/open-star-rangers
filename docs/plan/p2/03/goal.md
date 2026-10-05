@@ -92,7 +92,7 @@ updated: 2026-10-05
 | [08-source-check-cli.md](./subtasks/08-source-check-cli.md) | 05 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
 | [11-capability-bypass.md](./subtasks/11-capability-bypass.md) | 07 | completed |
-| [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | pending |
+| [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | completed |
 | [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。

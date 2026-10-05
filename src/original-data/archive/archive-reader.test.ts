@@ -7,6 +7,7 @@ import { openDiscImage, type DiscFile, type OpenDiscOptions } from '../disc/disc
 import { rangeLbas, rejection, requestedLbas, syntheticFileDisc, type SyntheticFileDisc } from '../disc/disc.test-support.ts';
 import { entryData, entryRelocations, parseImfat } from '../imfat.ts';
 import { SourceError, type SourceErrorData } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { SyntheticByteSource } from '../synthetic.ts';
 import { ARCHIVE_SAMPLES, BASE_ARCHIVE, BASE_ENTRIES, type SampleFailure } from './archive.test-support.ts';
 import { openImfatArchive } from './archive-reader.ts';
@@ -22,6 +23,7 @@ async function sourceFailure(action: () => unknown): Promise<Diagnostic> {
     await action();
   } catch (error) {
     if (!(error instanceof SourceError)) throw error;
+    expect(inLocationGrammar(error), error.location).toBe(true);
     const { code, location, limit } = error.toData();
     return { code, location, limit };
   }

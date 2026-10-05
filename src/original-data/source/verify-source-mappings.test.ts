@@ -5,6 +5,7 @@ import { openDiscImage } from '../disc/disc-image.ts';
 import { rejection, syntheticFileDisc } from '../disc/disc.test-support.ts';
 import { assetSourceStates, readSourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { block } from '../archive/archive.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 import { identifySource, type VerifiedSource } from './identify-source.ts';
@@ -70,6 +71,7 @@ async function sourceFailure(action: () => unknown): Promise<{ code: string; loc
   } catch (error) {
     if (!(error instanceof SourceError)) throw error;
     const data = error.toData();
+    expect(inLocationGrammar(data), data.location).toBe(true);
     expect(structuredClone(data)).toEqual(data);
     // Diagnostics carry the structural path only: no locator path, entry ID or entry bytes.
     expect(`${JSON.stringify(data)} ${error.message}`).not.toMatch(/MAIN|NOB|U\.DAT|1000\d|4294967296|PRIVATE/);
@@ -151,6 +153,7 @@ describe('verifySourceMappings', () => {
     const { source } = wrapped(await verified(), () => Promise.reject(new SourceError('limit-exceeded', 'archive:/MAIN/A.NOB', 'too many', limit)));
     const input = table([mapping('image/hull', [[at('MAIN/A.NOB', 'TEX', 10_001)]])]);
     const error = await verifySourceMappings(input, source).then(() => undefined, (caught: unknown) => caught);
+    expect(inLocationGrammar((error as SourceError).toData())).toBe(true);
     expect((error as SourceError).toData()).toEqual({ code: 'limit-exceeded', location: ALT(0), reason: 'too many', limit });
   });
 

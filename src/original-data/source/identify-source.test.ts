@@ -9,6 +9,7 @@ import {
   MARKER, rangeLbas, rejection, requestedLbas, syntheticFileDisc, type SyntheticFileContent, type SyntheticFileDisc, type SyntheticFileDiscOptions,
 } from '../disc/disc.test-support.ts';
 import { SourceError } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { SYNTHETIC_RAW_SECTOR_BYTES as RAW, SYNTHETIC_SECTOR_DATA_BYTES as SECTOR, SyntheticByteSource } from '../synthetic.ts';
 import { HASH_SEGMENT_BYTES, identifySource } from './identify-source.ts';
 import { openVerifiedSource } from './open-verified-source.ts';
@@ -125,6 +126,7 @@ async function sourceFailure(action: () => unknown): Promise<{ code: string; loc
   } catch (error) {
     if (!(error instanceof SourceError)) throw error;
     const data = error.toData();
+    expect(inLocationGrammar(data), data.location).toBe(true);
     expect(structuredClone(data)).toEqual(data);
     expect(Object.isFrozen(data)).toBe(true);
     expect(`${JSON.stringify(data)} ${error.message}`).not.toContain(MARKER);
