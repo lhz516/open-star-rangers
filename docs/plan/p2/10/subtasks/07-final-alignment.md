@@ -10,7 +10,7 @@ updated: 2026-10-05
 # 07 — P2-10 最终对齐验证
 
 **契约来源：** [spec](../spec.md) 的全部 S-01 至 S-12、AC-01 至 AC-16，重点为 AC-14、AC-15、AC-16、[不变量](../spec.md#行为与边界)与[风险与恢复](../spec.md#风险与恢复)。
-**依赖：** 01, 02, 03, 04, 05, 06。
+**依赖：** 01, 02, 03, 04, 05, 06, 08。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
@@ -53,3 +53,17 @@ updated: 2026-10-05
 - 浏览器验证复用 03–06 的 E2E；不需要原版对照或实机测试。
 
 ## 完成证据
+
+### 首次最终对齐（2026-10-05，未通过）
+
+- **检查：** 在 HEAD `6147e51` 上：
+  - `pnpm check`：89 个测试文件 2,483 个测试、lint、类型检查与构建通过；
+  - `pnpm test:e2e resource-cache.spec.ts --project=development` 16 个用例通过；
+  - `pnpm check:original` 通过（`local` 符号链接已由 `2e27f2d` 忽略）。
+
+  自 `603cda7` 起 `package.json` 与锁文件无变化，提交中没有二进制、`local/` 文件或测试产物。`.gitignore` 与 `.vscode/settings.json` 的改动是用户另行要求的修复。
+- **覆盖复核：** rubber-duck 逐项复核，S-01–S-06、S-08、S-09、S-12 与 AC-01–AC-16 均通过，第 07 项列出的全部不变量也通过。
+- **缺口（阻塞）：**
+  - **S-07/S-10/S-11：** `read-failed` 没有真实浏览器中的产生路径；`storage-closed` 从未被观测到。报告 `storage-closed` 后适配器也不丢弃已关闭的连接。补救为 [08](./08-error-path-coverage.md)。
+  - **STATUS：** 下一步仍写着 P2-10 先编写 spec，在本子任务通过时更新。
+- **处理：** 本行改回 `pending`，在 08 完成后重新对齐。

@@ -56,10 +56,10 @@ updated: 2026-10-05
 | S-04 | 02、04 | 02 存储需求 Node 测试；04 空间判定 Node 测试与 CDP 配额 E2E |
 | S-05 | 03 | 03 列出 E2E；06 元数据损坏与不兼容的列出状态 |
 | S-06 | 02、03 | 02 记录读取 Node 测试；03 刷新恢复 E2E；06 损坏、不兼容与恢复预算 E2E |
-| S-07 | 04、05、06 | 04 取消、配额、写失败、存储不可用；05 中断、强制关闭、删除与更高版本；06 损坏 |
+| S-07 | 04、05、06、08 | 04 取消、配额、写失败、存储不可用；05 中断、强制关闭、删除与更高版本；06 损坏；08 读事务失败与连接已关闭 |
 | S-08 | 05 | 05 versionchange、blocked 与删除的 E2E |
 | S-09 | 03 | 03 偏移视图、缓冲不被转移、独占恢复缓冲与结构化克隆的 E2E |
-| S-10 | 01 | 01 封闭错误码、失败形状与分类的 Node 测试；07 复核所有产生路径 |
+| S-10 | 01、08 | 01 封闭错误码、失败形状与分类的 Node 测试；08 `read-failed` 与 `storage-closed` 的浏览器产生路径；07 复核所有产生路径 |
 | S-11 | 01–06 | 各子任务的 Node 测试与 E2E；07 核对无新依赖、无模拟 IndexedDB |
 | S-12 | 03、04、05 | 各子任务同步文档；07 链接、元数据与内容一致性 |
 | AC-01 | 01 | 01 Node 键测试；03 多来源包共存与恢复（AC-03、AC-04） |
@@ -91,7 +91,8 @@ updated: 2026-10-05
 | [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | completed |
 | [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | completed |
 | [06-integrity-concurrency.md](./subtasks/06-integrity-concurrency.md) | 03 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [08-error-path-coverage.md](./subtasks/08-error-path-coverage.md) | 05 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -105,6 +106,11 @@ updated: 2026-10-05
 - **2026-10-05 — 子任务 04 阻塞解除：** 用户批准按推荐改写 AC-06，修订经 review-spec 审阅后重新批准，spec 恢复为 accepted。同次修订按用户选择更新了 AC-07 的验证方式，以如实描述 05 使用的只读 `count()` 保持。
   - **04 的后续工作：** 审阅指出配额用例尚未断言覆盖期间完整的空间检查结果，04 据此补上该断言；04 的 AC-06 勾选项改为修订后的措辞，其余范围不变。
   - **对 05 的影响：** 05 的完成证据已与修订后的 AC-07 一致，由 07 复核。
+- **2026-10-05 — 首次最终对齐未通过：**
+  - **S-07/S-10/S-11：** 13 个错误码中，`read-failed` 只有 Node 侧的分类测试，没有真实浏览器中的产生路径；`storage-closed` 从未被观测到。CDP 清除时，事务中止先于连接的 `close` 事件，所以写入期间清除只得到 `write-failed`，而 `transaction()` 在已关闭连接上抛出 `InvalidStateError` 的路径没有测试。由此还发现：报告 `storage-closed` 后适配器没有丢弃已关闭的连接，不符合 spec “之后的操作按实际状态报告”。
+  - **STATUS：** 下一步仍写着 P2-10 先编写 spec，由 07 更新。
+  - **其余项：** 均通过，见 [07](./subtasks/07-final-alignment.md#完成证据)。
+  - **补救：** 新增 [08](./subtasks/08-error-path-coverage.md)，07 改为依赖它，之后重新进行最终对齐。
 
 ## 审批
 
