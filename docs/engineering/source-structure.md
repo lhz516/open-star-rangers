@@ -91,6 +91,10 @@ src/
       identify-source.ts
       open-verified-source.ts
       verify-source-mappings.ts
+    conversion/
+      conversion-error.ts
+    formats/
+      snd.ts
   platform/
     browser/
       browser-session-host.ts
@@ -281,6 +285,17 @@ src/
   - 返回绑定本来源指纹的新冻结表：条目级映射为 `verified`；含子资源 locator 的映射一律为 `declared`，由理解该 payload 的转换任务核验。
   - 每个封包的目录在一次核验中只读一次，条目字节不跨部件保留；首个错误终止核验，不修改输入。
 - **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
+
+### 原版格式转换
+
+[P2-08](../plan/p2/08/spec.md) 起，把已验证来源中的条目转换为规范内容的模块放在 `original-data/formats/`（单一格式的解析与转换）与 `original-data/conversion/`（转换流程与共用错误）。它们属于[底层能力边界](./README.md#lint-规则eslintconfigjs)中的“其他使用者”，原版字节只经产品入口与 `verifySourceMappings` 取得。
+
+- **`conversion` 错误层：** [conversion/conversion-error.ts](../../src/original-data/conversion/conversion-error.ts) 的 `ConversionError` 与 `SourceError` 同形：`code`、`location`、`reason`、`limit`，`toData()` 返回冻结的纯数据。code 目前为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，后续转换器可追加，层与形状不变。`limit` 为 null 或 `{ name, limit, observed }`：`name` 是 P2-01 预算维度名，总量超出安全整数范围时 `observed` 为 null。`location` 是结构位置（映射路径或 P2-03 的封包位置加字段名），`reason` 是固定文本，都不含字节、宿主路径或宿主错误文本。
+- **SND：** [formats/snd.ts](../../src/original-data/formats/snd.ts)（[P2-08/03](../plan/p2/08/subtasks/03-snd-parser.md)，格式见 [audio §1](../original/formats/audio.md#1-snd-digital-sound-effects-confirmed-on-all-37-entries)）。
+  - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-sound`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
+  - **规则：** `SndFormatRules` 是转换器接受的采样解释：`flags` 列出研究已确认的取值及各自的声道数与循环方式，`s16le` 表示 16 位样本是否已确认为有符号小端。规则之外的取值一律拒绝，不猜测默认值。生产规则由 P2-08 的生产音效模块提供。
+  - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-sound-format`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-sound`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
+- **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
 
 ### 导入 Worker
 

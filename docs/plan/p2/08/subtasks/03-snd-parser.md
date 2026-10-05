@@ -57,8 +57,8 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-01（转换）：合成 SND 的以下样本都转换为预期的规范 payload：8 位、16 位（规则接受时）、采样率 8,000 与 44,100、测试规则列出的每个 `flags` 取值（单声道与双声道、循环与不循环）。PCM 与源样本逐字节相同。
-- [ ] AC-01（拒绝）：以下每项都以预期的 code 与结构位置拒绝：
+- [x] AC-01（转换）：合成 SND 的以下样本都转换为预期的规范 payload：8 位、16 位（规则接受时）、采样率 8,000 与 44,100、测试规则列出的每个 `flags` 取值（单声道与双声道、循环与不循环）。PCM 与源样本逐字节相同。
+- [x] AC-01（拒绝）：以下每项都以预期的 code 与结构位置拒绝：
   - 块 19 字节；
   - 重定位数为 0 与 2；
   - 重定位位置为 4；
@@ -70,9 +70,9 @@ updated: 2026-10-05
   - 规则不接受 16 位时出现 16 位；
   - 采样率 7,999 与 44,101；
   - 未列入规则的 `flags`。
-- [ ] 诊断不含样本字节；读取声明长度之前不按它分配缓冲；源视图在调用后不变。
-- [ ] `ConversionError.toData()` 冻结、可结构化克隆，code 合协议的 token 语法。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过；能力边界回归保持通过。
+- [x] 诊断不含样本字节；读取声明长度之前不按它分配缓冲；源视图在调用后不变。
+- [x] `ConversionError.toData()` 冻结、可结构化克隆，code 合协议的 token 语法。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过；能力边界回归保持通过。
 
 ## 验证方法
 
@@ -81,3 +81,21 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [conversion-error.ts](../../../../../src/original-data/conversion/conversion-error.ts)：`ConversionError` 与 `SourceError` 同形，code 为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，`limit.name` 为 P2-01 预算维度。
+  - [snd.ts](../../../../../src/original-data/formats/snd.ts)：`readSndHeader` 负责结构核对；`convertSnd` 依次核对位宽、采样率与 `flags`，最后核对整帧，然后用 `writeSoundPayload` 输出；`SndFormatRules` 为 `{ flags: [{ value, channels, loop }], s16le }`。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.ts)：新增 `syntheticSnd`，可直接展开为 `buildImfat` 的条目。
+  - 生产规则不在本子任务中写入。
+- **测试：**
+  - [snd.test.ts](../../../../../src/original-data/formats/snd.test.ts)，使用合成 `flags` 取值 100–103，测试含义只在测试中：
+    - **转换：** 5 个用例覆盖 8 位与 16 位、单声道与双声道、循环与不循环、8,000 与 44,100 Hz，PCM 与源样本逐字节相同，采样点数正确，payload 为独占 buffer；
+    - **源块与 IMFAT：** 源块在调用后不变；经 `buildImfat` 与 `parseImfat` 读出的合成 SND 头部正确；
+    - **拒绝：** 15 个表驱动用例，各断言 `toData()` 的 code 与位置：块 19 字节、重定位 0 个与 2 个、重定位位置为 4、指针为 24、样本字节数不符、声明长度 0xFFFFFFF0、16 位奇数字节、双声道奇数字节、帧数 0、12 位、7,999 与 44,101 Hz、未列入的 `flags`、高字节不同的 `flags`。声明长度为 0xFFFFFFF0 时以 `invalid-sound` 拒绝，不按声明分配；
+    - **规则不接受 16 位：** 以 `unsupported-sound-format` 拒绝；
+    - **诊断：** 不回显头部值或样本字节。
+  - [conversion-error.test.ts](../../../../../src/original-data/conversion/conversion-error.test.ts) 覆盖冻结、可结构化克隆、`limit` 冻结副本、`observed: null`，以及 code 符合协议 token 语法。
+- **命令：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts` 通过，其中包括能力边界与依赖图回归。`pnpm check` 通过（99 个测试文件、2,889 个测试，构建成功）。
+- **rubber-duck：** 无阻塞、无非阻塞问题。
+- **simplify：** 采纳效率一项：`syntheticSnd` 直接写入单个 `Uint8Array`，不再经 `ByteWriter` 的数组，以便后续预算测试构造大块。复用、简化与层次三个角度无发现。复跑检查通过。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录树加入 `conversion/` 与 `formats/`，并新增“原版格式转换”一节（`conversion` 错误层、SND 结构与规则、转换顺序、合成数据）。工程约定的边界规则已覆盖“其他使用者”，无需修改。

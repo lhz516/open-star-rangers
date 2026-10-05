@@ -182,6 +182,28 @@ export function buildImfat(idBase: number, entries: SyntheticEntry[]): Uint8Arra
   return w.toBytes();
 }
 
+export interface SyntheticSndFields {
+  /** Raw sample bytes after the header. */
+  samples: ArrayLike<number>;
+  sampleRate?: number;
+  bitsPerSample?: number;
+  flags?: number;
+  /** The stored sample pointer; defaults to 20, just past the header. */
+  sampleOffset?: number;
+  /** The declared sample length; defaults to the actual one. */
+  sampleBytes?: number;
+}
+
+/** A code-generated SND data block and its one relocated sample pointer at offset 0, to spread into a `SyntheticEntry`. */
+export function syntheticSnd(fields: SyntheticSndFields): { data: Uint8Array; relocations: number[] } {
+  const { samples, sampleRate = 11_025, bitsPerSample = 8, flags = 0, sampleOffset = 20, sampleBytes = samples.length } = fields;
+  const data = new Uint8Array(20 + samples.length);
+  const view = new DataView(data.buffer);
+  [sampleOffset, sampleBytes, sampleRate, bitsPerSample, flags].forEach((value, index) => view.setUint32(index * 4, value, true));
+  data.set(samples, 20);
+  return { data, relocations: [0] };
+}
+
 /** A 36-byte image record followed (at the given offsets) by nothing else; callers append data. */
 export function imageRecord(
   w: ByteWriter,
