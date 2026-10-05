@@ -1,6 +1,7 @@
 import { readAssetId, type AssetId } from './asset-id.ts';
 import type { PayloadIdentity } from './content-identity.ts';
 import { compareText, fail, readOrderedArray, readRecord, requireFields } from './contract-validation.ts';
+import { isDetached } from './ownership.ts';
 import { sha256Fingerprint } from './sha256.ts';
 
 /** An actual converted payload offered for validation; validation hashes the bytes but never retains them. */
@@ -21,6 +22,7 @@ export function readPayloadRecords(value: unknown, path = 'payloads'): readonly 
       fail('invalid-payload-identity', `${at}.schemaVersion`, 'must be a positive safe integer');
     }
     if (!(record.bytes instanceof Uint8Array)) fail('invalid-record', `${at}.bytes`, 'must be a Uint8Array');
+    if (isDetached(record.bytes.buffer)) fail('payload-detached', `${at}.bytes`, 'was transferred away and can no longer be used');
     return Object.freeze({ id: readAssetId(record.id, `${at}.id`), schemaVersion: record.schemaVersion, bytes: record.bytes });
   }, payload => payload.id, (left, right) => compareText(left.id, right.id));
 }

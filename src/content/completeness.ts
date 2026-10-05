@@ -1,9 +1,8 @@
-import { readAssetDescriptor, readResourceGroup, type AssetDescriptor, type AssetReference, type ResourceGroup } from './asset-contract.ts';
+import type { AssetReference, ResourceGroup } from './asset-contract.ts';
 import type { AssetId } from './asset-id.ts';
-import { readContentIdentity, type ContentIdentity } from './content-identity.ts';
-import {
-  compareText, ContentContractError, readOrderedArray, readRecord, requireFields, type ContentContractErrorCode,
-} from './contract-validation.ts';
+import type { ContentIdentity } from './content-identity.ts';
+import { compareText, ContentContractError, type ContentContractErrorCode } from './contract-validation.ts';
+import { readGroupManifest, type GroupManifest } from './manifest.ts';
 import { payloadMismatch, readPayloadRecords } from './payload.ts';
 import type { SliceDefinition, SliceRoleRequirement } from './slice-definition.ts';
 import { readSourceStateSet, type SourceStateSet } from './source-state.ts';
@@ -61,26 +60,6 @@ export type PackageCompletenessResult =
   | { readonly status: 'complete'; readonly identity: ContentIdentity; readonly groups: readonly ResourceGroup[] }
   | { readonly status: 'incomplete'; readonly diagnostics: readonly CompletenessDiagnostic[] };
 
-interface GroupManifest {
-  readonly identity: ContentIdentity;
-  readonly group: ResourceGroup;
-  readonly assets: readonly AssetDescriptor[];
-}
-
-const ASSET_CODES = Object.freeze({ invalid: 'invalid-record', duplicate: 'duplicate-asset', order: 'asset-order' } as const);
-
-function readManifest(value: unknown, path: string): GroupManifest {
-  const record = readRecord(value, path);
-  requireFields(record, path, ['identity', 'group', 'assets']);
-  const identity = readContentIdentity(record.identity, `${path}.identity`);
-  return Object.freeze({
-    identity,
-    group: readResourceGroup(record.group, `${path}.group`),
-    assets: readOrderedArray(record.assets, `${path}.assets`, ASSET_CODES, (item, at) => readAssetDescriptor(item, at),
-      asset => asset.id, (left, right) => compareText(left.id, right.id)),
-  });
-}
-
 function diagnostic(code: CompletenessCode, path: string, reason: string, assetId: AssetId | null = null, unknowns: readonly string[] = []): CompletenessDiagnostic {
   return Object.freeze({ code, path, assetId, unknowns: Object.freeze([...unknowns]), reason });
 }
@@ -115,7 +94,7 @@ function checkGroup(definition: SliceDefinition, input: GroupInput, root = ''): 
   let payloads: ReturnType<typeof readPayloadRecords>;
   let sources: SourceStateSet | null;
   try {
-    manifest = readManifest(input.manifest, `${root}manifest`);
+    manifest = readGroupManifest(input.manifest, `${root}manifest`);
     payloads = readPayloadRecords(input.payloads, `${root}payloads`);
     sources = input.sources === null ? null : readSourceStateSet(input.sources, `${root}sources`);
   } catch (error) {

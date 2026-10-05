@@ -46,7 +46,7 @@ function readDependencies(value: unknown, path: string): readonly AssetReference
     (left, right) => compareText(left.id, right.id));
 }
 
-/** Frozen metadata only: graph closure is subtask 04; binary ownership/transfer is subtask 05. */
+/** Frozen metadata only: graph closure is in completeness.ts; payload bytes and their ownership are in payload.ts and ownership.ts. */
 export function readAssetDescriptor(value: unknown, path = 'asset'): AssetDescriptor {
   const record = readRecord(value, path);
   requireFields(record, path, ['id', 'kind', 'role', 'group', 'dependencies', 'payloadIdentity']);

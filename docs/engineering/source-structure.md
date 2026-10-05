@@ -55,7 +55,10 @@ src/
     source-state.ts
     sha256.ts
     payload.ts
+    manifest.ts
     completeness.ts
+    budget.ts
+    ownership.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -114,11 +117,25 @@ src/
 - 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
-- [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。**二进制 payload 的独占副本、别名隔离和 transfer 后失效仍由 05 实现**，当前 API 不接收二进制 payload。
+- [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。两者都建立在 `visitArray`/`visitOrderedArray` 之上：这两个函数按索引逐项读取并访问，访问函数一旦返回非 undefined 的值就停止读取，并把该值返回。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。二进制 payload 不能冻结，所有权规则见下方 `ownership.ts`。
 - [slice-definition.ts](../../src/content/slice-definition.ts)（[P2-01/02](../plan/p2/01/subtasks/02-slice-content-contract.md)）：`CLASSIC_P2_SLICE` 是唯一的生产切片定义，深度冻结；`SliceDefinition` 带仅类型品牌，唯一构造由[工程边界回归](./README.md#lint-规则eslintconfigjs)保证。定义记录经批准的候选结构选择器（战役 group 0 / slot 1，僚机可选）、四个必需资源组及各组拥有的 kind（`groupKinds`），以及 S-03 角色的组、允许 kind 与 Asset 数量范围。弹丸/导弹/碎片暂允许 model 或 image，四类核心音效暂允许多个采样片段，分别待 P2-06/P2-08 核实后收窄。原版条目 ID 不在此处，由 03 的来源映射记录。更换候选或改变角色、数量范围、分组都须修订 spec 并递增 `SLICE_DEFINITION_VERSION`。
 - [completeness.ts](../../src/content/completeness.ts)（[P2-01/04](../plan/p2/01/subtasks/04-completeness-validation.md)）：`validateGroup` 用切片定义、组清单（身份、组、按 ID 升序的描述符）、按 ID 升序且唯一的实际 payload 记录和来源状态集推导 `group-complete` 或 `incomplete`。它检查定义版本、组归属、角色的组与 kind、角色数量、组内依赖、自引用与环、payload（[payload.ts](../../src/content/payload.ts) 重新计算 SHA-256，并比对 schema 版本与长度）以及来源就绪。依赖的 kind 若不属于本组拥有的 kind，作为类型化外部要求返回，不判为本组缺失。`validatePackage` 每次都从四组原始输入重新验证，从不接受已有结果；只有每组恰好一份、六项身份一致、ID 跨组唯一、外部要求全部解析且无跨组环时才返回 `complete`。诊断带稳定 code、结构路径、规范 ID、U 项与原因，不含 payload 字节或 locator。
 - [sha256.ts](../../src/content/sha256.ts)：同步、无依赖的 SHA-256，供纯模块计算和核验 `sha256:` payload 指纹。
 - [source-state.ts](../../src/content/source-state.ts)：不含 locator 的来源状态集 `{ sourceFingerprint, states }`（每个 Asset 为 verified/unverified/unconfirmed/conflict 加 U 项），由 `original-data` 从来源映射推导后交给完整性验证。原版导入的状态集指纹必须等于清单的来源指纹，且每个 Asset 都必须为 verified；合成内容的来源输入必须为 null。
+- [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
+- [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
+  - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
+  - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
+  - **计量：** `chargeBudget` 每次都重新读取限值、当前用量和增量，调用者应在读取或分配声明规模之前计量。
+    - 用量等于上限时通过；超过上限返回 `budget-exceeded`，带维度、limit 与 observed。
+    - 总量超出安全整数范围时返回 `budget-overflow`，observed 为 null。
+    - 判断基于剩余额度，不依赖溢出后的和。被拒的计量不会部分生效，结果中仍是之前的用量。
+  - **清单计量：** `chargeManifestBudget` 在读取清单的同时逐个 Asset 计量声明的 Asset 数、依赖边数和 payload 字节，遇到第一个超限的 Asset 即拒绝整个清单，不再读取后续描述符，路径指向该 Asset。若传入的现有用量已经超限，即使清单为空也会拒绝。
+  - 具体限值由 P2-02 至 P2-09 各自的 spec 批准。
+- [ownership.ts](../../src/content/ownership.ts)：TypedArray 不能冻结，因此二进制 payload 不在消费者之间共享。
+  - `exclusiveBytes` 把字节复制到长度恰好的新 ArrayBuffer；不使用 `slice`，因为 Node 的 `Buffer#slice` 共享内存。
+  - `payloadTransferList` 返回要转移的 ArrayBuffer：每个视图必须独占整个非共享 buffer，且彼此不共用；否则以 `payload-not-exclusive`/`payload-aliased` 拒绝。
+  - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
 
 针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
 

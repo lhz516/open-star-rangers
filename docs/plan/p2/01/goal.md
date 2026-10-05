@@ -61,7 +61,7 @@ updated: 2026-10-04
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | completed |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | completed |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | completed |
-| [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | pending |
+| [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | completed |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | pending |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
 

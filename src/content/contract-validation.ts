@@ -20,7 +20,13 @@ export type ContentContractErrorCode =
   | 'duplicate-asset'
   | 'asset-order'
   | 'duplicate-payload'
-  | 'payload-order';
+  | 'payload-order'
+  | 'missing-budget-dimension'
+  | 'unknown-budget-dimension'
+  | 'invalid-budget-value'
+  | 'payload-not-exclusive'
+  | 'payload-aliased'
+  | 'payload-detached';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;
@@ -68,6 +74,31 @@ export function requireFields(record: Record<string, unknown>, path: string, fie
   if (Object.keys(record).length !== fields.length) fail('invalid-record', path, 'contains unknown fields');
 }
 
+/**
+ * Visits a dense plain array of data elements in index order, reading each item just before visiting it. Reading stops
+ * at the first item whose visit returns a value other than undefined, and that value is returned.
+ */
+export function visitArray<T, R>(
+  value: unknown,
+  path: string,
+  code: ContentContractErrorCode,
+  readItem: (item: unknown, path: string) => T,
+  visit: (item: T, path: string) => R | undefined,
+): R | undefined {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+    || Reflect.ownKeys(value).length !== value.length + 1) {
+    fail(code, path, 'must be a dense plain array without extra fields');
+  }
+  for (let index = 0; index < value.length; index++) {
+    const at = `${path}[${index}]`;
+    const property = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!property?.enumerable || !('value' in property)) fail(code, at, 'must be an enumerable data element');
+    const stop = visit(readItem(property.value, at), at);
+    if (stop !== undefined) return stop;
+  }
+  return undefined;
+}
+
 /** Reads a dense plain array of data elements and returns a frozen copy of the read items. */
 export function readArray<T>(
   value: unknown,
@@ -75,17 +106,8 @@ export function readArray<T>(
   code: ContentContractErrorCode,
   readItem: (item: unknown, path: string) => T,
 ): readonly T[] {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
-    || Reflect.ownKeys(value).length !== value.length + 1) {
-    fail(code, path, 'must be a dense plain array without extra fields');
-  }
   const items: T[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const at = `${path}[${index}]`;
-    const property = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!property?.enumerable || !('value' in property)) fail(code, at, 'must be an enumerable data element');
-    items.push(readItem(property.value, at));
-  }
+  visitArray(value, path, code, readItem, item => { items.push(item); });
   return Object.freeze(items);
 }
 
@@ -96,9 +118,31 @@ export interface OrderedArrayCodes {
 }
 
 /**
- * Reads a dense array whose items are unique by `key` and strictly ascending under `compare`.
- * Checks run while each item is read, so the first problem in index order is reported.
+ * Visits a dense array whose items must be unique by `key` and strictly ascending under `compare`. Each item is checked
+ * as it is read, so the first problem in index order is reported, and is visited only after its own checks pass.
  */
+export function visitOrderedArray<T, R>(
+  value: unknown,
+  path: string,
+  codes: OrderedArrayCodes,
+  readItem: (item: unknown, path: string) => T,
+  key: (item: T) => string,
+  compare: (left: T, right: T) => number,
+  visit: (item: T, path: string) => R | undefined,
+): R | undefined {
+  const seen = new Set<string>();
+  let previous: { readonly item: T } | undefined;
+  return visitArray(value, path, codes.invalid, readItem, (item, at) => {
+    const identity = key(item);
+    if (seen.has(identity)) fail(codes.duplicate, at, 'must not repeat an item');
+    if (previous && compare(previous.item, item) > 0) fail(codes.order, at, 'must be in canonical ascending order');
+    seen.add(identity);
+    previous = { item };
+    return visit(item, at);
+  });
+}
+
+/** Reads a dense array whose items are unique by `key` and strictly ascending under `compare`, as `visitOrderedArray`. */
 export function readOrderedArray<T>(
   value: unknown,
   path: string,
@@ -108,19 +152,10 @@ export function readOrderedArray<T>(
   compare: (left: T, right: T) => number,
   minimum = 0,
 ): readonly T[] {
-  const seen = new Set<string>();
-  let previous: { readonly item: T } | undefined;
-  const items = readArray(value, path, codes.invalid, (raw, at) => {
-    const item = readItem(raw, at);
-    const identity = key(item);
-    if (seen.has(identity)) fail(codes.duplicate, at, 'must not repeat an item');
-    if (previous && compare(previous.item, item) > 0) fail(codes.order, at, 'must be in canonical ascending order');
-    seen.add(identity);
-    previous = { item };
-    return item;
-  });
+  const items: T[] = [];
+  visitOrderedArray(value, path, codes, readItem, key, compare, item => { items.push(item); });
   if (items.length < minimum) fail(codes.invalid, path, `must contain at least ${minimum} item(s)`);
-  return items;
+  return Object.freeze(items);
 }
 
 export const compareText = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
