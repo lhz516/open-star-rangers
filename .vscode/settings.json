@@ -1,5 +1,6 @@
 {
+  // Same pattern as .gitignore: the repository-root local directory, shared into each new worktree as a symlink.
   "git.worktreeSymlinkFolders": [
-    "local/"
+    "/local"
   ]
 }
