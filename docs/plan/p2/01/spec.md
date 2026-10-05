@@ -5,7 +5,7 @@ phase: P2
 task: "01"
 updated: 2026-10-04
 related: [ADR-0003, ADR-0007, ADR-0014, ADR-0015, U-001, U-003, U-020, U-022, U-023, U-027, U-028, U-029, U-030]
-reviewed: sha256:a27d6887de82
+reviewed: sha256:b8e48c05b46d
 ---
 
 # P2-01：切片资源边界与内容契约 — Spec
@@ -87,15 +87,20 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 
 ### 候选选择记录
 
-2026-10-04 的本地资格核对结果如下。本记录按上方第 4、5 步给出回退结果，不改变 S-01/S-02 规则、资格条件或其他契约；它已经审阅，并于 2026-10-04 经用户重新批准生效。
+2026-10-04 的本地资格核对结果如下。本记录按上方第 4、5 步给出回退结果，不改变 S-01/S-02 规则、资格条件或其他契约；它已经审阅，并于 2026-10-04 经用户重新批准生效。同日按 AC-13 把记录中复述的原版事实改为链接权威记录，选择结论不变；该修订经另一模型审阅，并于 2026-10-04 经用户重新批准。
 
 - **首选不合格：** 按 [scenario 候选证据](../../../original/formats/scenario.md#p2-slice-candidate-evidence)，共用 slot 0 未通过资格核对。练习模式的排除及其与 slot 0 的**高概率**关联见 [B-002](../../../original/behavior/B-002-practice-mode.md)；不据此断言 slot 0 没有基地、通讯或 Warp。
 - **资格结论：** group 0 / slot 1 的本任务资格已有证据，见 [01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)及其链接的原版记录；其他通过[结构门槛](../../../original/formats/scenario.md#p2-slice-candidate-evidence)的候选未逐个核实完整资格。结构门槛不等于完整资格，候选资格也不等于精确玩法公式或资源包完整性已确认。
 - **S-02 比较：** 按已批准的[规范单位](../../../../src/content/asset-units.ts)及 S-02 全战役规则，比较结论为 group 0 / slot 1。包含关系论证及其他候选资格未知不影响排序的依据见 [01 选择证据](./subtasks/01-candidate-qualification.md#完成证据)；部分投影的计数限制见[资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。绝对规范总数与来源映射仍由 [02](./subtasks/02-slice-content-contract.md) / [03](./subtasks/03-source-mapping-boundary.md) 完成，不把部分投影当作完整规范总数。
-- **选定候选：** 结构选择器为 SCCT group 0 / slot 1（SCEN 条目 3019），基准难度组为 group 0。选组规则及用户试玩的同一 group/slot 绑定见 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)和 [B-003](../../../original/behavior/B-003-campaign-flow.md)。上方第 1 步的中间组只适用于首选 slot 0；用户已于 2026-10-03 接受 S-02 字典序兜底不保证保留中间组，见 [goal 执行记录](./goal.md#执行记录)，该决定不构成对本回退候选的批准。
+- **选定候选：** 结构选择器为 SCCT group 0 / slot 1，基准难度组为 group 0。该槽位对应的 SCEN 条目见 [scenario 候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)；选组规则及用户试玩的同一 group/slot 绑定见 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)和 [B-003](../../../original/behavior/B-003-campaign-flow.md)。上方第 1 步的中间组只适用于首选 slot 0；用户已于 2026-10-03 接受 S-02 字典序兜底不保证保留中间组，见 [goal 执行记录](./goal.md#执行记录)，该决定不构成对本回退候选的批准。
 - **所需配置：** 僚机可选；该配置的模型闭包影响及研究边界见 [01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)与 [U-023](../../../original/unknowns.md#数据与格式)。具体选择语义与生成门禁仍由 P3 处理。
 - **逻辑角色：** 任务使用该 SCEN 的整任务 Asset；任务结果所需数据及战略地图/Warp 所需空间对象按同一资格条件纳入切片。资格证据与未确认字段/规则的边界见 [01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)，不把可观察流程外推为精确规则已确认。
-- **资源角色：** 玩家飞船对应 M2ID slot 0；敌机恰为 slot 7、8 两个模型 Asset；基地/基地交互对象对应 slot 17。任务引用的友方 slot 14 模型不是 S-03 的必需角色，但作为额外引用资源保留在闭包中；角色证据见 [01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。S-03 的固定表现与音效角色不变，其来源映射由 [02](./subtasks/02-slice-content-contract.md) / [03](./subtasks/03-source-mapping-boundary.md) 记录；未确认的部件、布局、字体和音效含义仍分别受 [U-027/028/029/030](../../../original/unknowns.md#数据与格式)约束。
+- **资源角色：** 玩家飞船为 1 个模型 Asset；敌机恰为 2 个模型 Asset；基地/基地交互对象为 1 个模型 Asset。任务另引用 1 个友方模型，它不是 S-03 的必需角色，但作为额外引用资源保留在闭包中。各角色对应的 M2ID 槽位见以下权威记录：
+  - [scenario 候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)；
+  - [executable 敌我分类](../../../original/formats/executable.md#player-target-modes-and-enemy-classification)；
+  - [slot-1 交互种类证据](../../../original/formats/executable.md#bounded-slot-1-interaction-kind-evidence)。
+
+  角色证据见 [01 资格覆盖表](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。S-03 的固定表现与音效角色不变，其来源映射由 [02](./subtasks/02-slice-content-contract.md) / [03](./subtasks/03-source-mapping-boundary.md) 记录；未确认的部件、布局、字体和音效含义仍分别受 [U-027/028/029/030](../../../original/unknowns.md#数据与格式)约束。
 
 ### Asset ID 与角色
 
@@ -231,4 +236,6 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 
 用户于 2026-10-03 明确批准本 spec 的 2026-10-03 版本契约及范围，批准范围包括 S-01 至 S-12、AC-01 至 AC-13、首选共用 slot 0 / 中间组策略、确定性回退规则、规范内容与来源映射分层、四组资源完整性及预算/所有权约束。候选资格的本地事实证据仍是执行期前置验收条件；它不改变已批准的选择策略，未取得合格候选时任务必须保持 blocked。
 
-2026-10-04 修订：按 S-02 加入[候选选择记录](#候选选择记录)，记录首选不合格及回退候选 group 0 / slot 1。S/AC、选择规则和其他契约均未改变。该修订经另一模型审阅后，用户于 2026-10-04 明确选择“批准修订”，采用候选选择记录中的回退候选 group 0 / slot 1（SCEN 3019）及其基准难度组、所需配置和角色。批准范围为修订后的 S-01 至 S-12 与 AC-01 至 AC-13；本 spec 恢复为 accepted。
+2026-10-04 修订：按 S-02 加入[候选选择记录](#候选选择记录)，记录首选不合格及回退候选 group 0 / slot 1。S/AC、选择规则和其他契约均未改变。该修订经另一模型审阅后，用户于 2026-10-04 明确选择“批准修订”，采用候选选择记录中的回退候选 group 0 / slot 1 及其基准难度组、所需配置和角色。批准范围为修订后的 S-01 至 S-12 与 AC-01 至 AC-13；本 spec 恢复为 accepted。
+
+2026-10-04 修订（事实归属）：最终对齐按 AC-13 发现候选选择记录复述了原版事实，用户选择修订 spec。候选记录与上一条审批记录中的 SCEN 条目，以及 M2ID 槽位与角色的对应，都改为链接 `docs/original/` 中的权威记录。候选、角色构成、配置、S/AC 与其他契约均不变。修订稿经另一模型审阅，未发现问题；用户于 2026-10-04 明确选择“批准修订”，本 spec 恢复为 accepted。

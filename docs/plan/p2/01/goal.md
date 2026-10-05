@@ -64,7 +64,7 @@ updated: 2026-10-04
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | completed |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | completed |
 | [09-isolation-origin-remediation.md](./subtasks/09-isolation-origin-remediation.md) | 03, 04, 08 | completed |
-| [10-spec-fact-links.md](./subtasks/10-spec-fact-links.md) | 01 | pending |
+| [10-spec-fact-links.md](./subtasks/10-spec-fact-links.md) | 01 | completed |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08, 09, 10 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务；ID 固定，不在执行中重排。
@@ -165,3 +165,5 @@ updated: 2026-10-04
 同日用户明确批准保留 S-02、模型几何归属及新增前置项 08 的拆分方案；当前共 8 个子任务。批准本身不构成实现证据，也不批准替代候选。
 
 2026-10-04 用户明确批准 spec 修订中的回退候选 group 0 / slot 1；子任务拆分、依赖与验收覆盖不变。
+
+2026-10-04 最终对齐未通过后，按 execute-goal 的补救流程新增子任务 09、10，并让 07 依赖它们；契约与验收要求不变。同日用户明确批准 spec 的事实归属修订：原版事实改为链接，候选与契约不变。
