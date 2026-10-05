@@ -5,7 +5,7 @@ phase: P2
 task: "10"
 updated: 2026-10-05
 related: [ADR-0007, ADR-0008, ADR-0015]
-reviewed: sha256:05231094a3dd
+reviewed: sha256:8d80372d0df3
 ---
 
 # P2-10：IndexedDB 最小资源缓存 — Spec
@@ -153,7 +153,7 @@ reviewed: sha256:05231094a3dd
 
 | 操作 | 输入 | 成功结果 | 可能的失败 code |
 |---|---|---|---|
-| 创建适配器 | 可选的 `IDBFactory` 与 `StorageManager`，默认取全局；注入只用于测试表示“环境缺少该能力”或宿主打开失败，生产装配不传入 | 适配器句柄，连接按需建立 | 无；能力缺失在首个操作中报告 |
+| 创建适配器 | 可选的 `IDBFactory` 与 `StorageManager`，默认取全局；注入只用于测试：表示环境缺少该能力或宿主打开失败，或复用页面中真实 `estimate()` 的读数验证空间判定边界；生产装配不传入 | 适配器句柄，连接按需建立 | 无；能力缺失在首个操作中报告 |
 | 存储需求 | 四组 `GroupInput` | `{ payloadBytes, metadataBytes, requiredBytes }`：payload 字节精确求和，元数据按实现固定的确定性规则估算，`requiredBytes` 为两者之和 | `invalid-request` |
 | 空间检查 | `requiredBytes`，非负安全整数。导入前尚无转换结果时，P2-11 可以用已批准的 `payloadBytes` 预算上限作估计 | `sufficient` 或 `insufficient`：`{ requiredBytes, availableBytes, usage, quota }`，其中 `availableBytes = max(0, quota − usage)`；`unknown`：`{ requiredBytes }` | `invalid-request` |
 | 提交 | 四组 `GroupInput`、预算限值（P2-01 `BudgetRecord`）、可选 `AbortSignal` | `committed`：`{ key, identity, payloadCount, payloadBytes }` | `invalid-request`、`package-incomplete`、`over-budget`、`storage-unavailable`、`storage-newer-version`、`storage-closed`、`quota-exceeded`、`write-failed`、`cancelled` |
@@ -211,7 +211,7 @@ reviewed: sha256:05231094a3dd
 8. **使用原生 IndexedDB API，不新增依赖：** 所需操作很少，直接控制事务边界更清楚。不引入 `idb` 等封装库，也不引入 `fake-indexeddb`。
 9. **在真实浏览器中验证 IndexedDB 行为：** Node 中没有 IndexedDB，模拟实现也不能证明事务原子性、配额与中断行为。纯逻辑在 Node 中测试；事务、配额、中断与刷新恢复在已安装的 Chrome 中以 E2E 验证：
    - 沿用 browser-replay 的方式，在 development 项目中经开发服务器导入 `/src` 模块，不建生产调试 API；
-   - 用 CDP `Storage.overrideQuotaForOrigin` 降低本 origin 的配额，取得真实的配额错误；
+   - 用 CDP `Storage.overrideQuotaForOrigin` 降低本 origin 的配额，取得真实的配额错误。Chrome 只对会话首次使用 IndexedDB 之前设置的覆盖执行写入限制，且 `estimate()` 不反映该覆盖，所以覆盖在重启浏览器后的新会话中设置。`sufficient`/`insufficient` 判定边界另以页面中读取的真实 `estimate()` 读数注入空间检查验证；该注入只验证空间判定，真实配额错误仍须由 CDP 覆盖下的 IndexedDB 写入产生；
    - 刷新恢复与中断用测试自有的临时持久 profile，使数据落在磁盘后端，而不只在内存中；
    - 存储不可用通过注入“缺失的工厂”或“打开时抛出宿主异常的工厂”表示。这正是该失败的形态，但不用于证明事务或配额行为。
 10. **只在 Chrome 上验证：** 与 P1 以来的本地浏览器 runner 一致。Firefox/Safari 的实测与 Safari 驱逐提示属于 P5 的浏览器兼容范围。
@@ -226,8 +226,8 @@ reviewed: sha256:05231094a3dd
 | AC-03 | **提交与刷新恢复：** 分别提交一个合成包与一个带合成指纹的原版导入形状包（仅测试数据）。在同一临时持久 profile 中刷新页面后，列出得到两个 `compatible` 条目，恢复都得到 `restored`：身份、清单、来源状态与提交时相等，每个 payload 与原字节逐字节相同；恢复的 `groups` 交给 `validatePackage` 为 `complete`；合成包的 origin 仍为 `synthetic` | 浏览器用例；临时 profile 由测试创建，结束时关闭并删除。证据记录键、payload 数与字节总数 |
 | AC-04 | **同键替换、幂等与键隔离：** 用 payload 可区分的原版导入形状合成包，提交 `[F1, V1]`、`[F1, V2]`、`[F2, V1]` 三个键（F 为合成指纹，V 为转换器版本），三者都能恢复。再向 `[F1, V1]` 提交 Asset 集合不同的包 B：该键恢复只得到 B，原包独有的 payload 记录不复存在；另两个键的包记录、payload 记录与恢复结果不变。再次提交 B，记录与恢复结果不变 | 浏览器用例；按实际仓库常量只读枚举各键的记录 |
 | AC-05 | **取消：** 调用时已取消，返回 `cancelled` 且库中无变化。写请求已发出、事务仍可中止时取消，原生事务以 `abort` 结束，返回 `cancelled`，同键旧包仍能恢复，库中没有新包的记录。事务已进入提交阶段或 `complete` 后才取消，返回 `committed`，新包可恢复 | 浏览器用例；测试侧包装原生方法的只读探针记录写请求的发出、`abort()` 调用与事务最终事件，不改变写入行为。证据至少包含一次写请求发出后的原生 `abort` |
-| AC-06 | **真实配额错误：** 先在默认配额下提交旧包；再经 CDP 把本 origin 的配额设为高于当前用量、低于新包需求的值，空间检查返回 `insufficient`，数值与 `estimate()` 一致；继续提交新包返回 `quota-exceeded`，旧包仍能恢复，库中没有新包的记录；恢复默认配额后同一提交成功。若当前 Chrome 不支持该 CDP 方法或不产生真实配额错误，本项保持未通过，不能用抛出的通用异常代替 | 浏览器用例；证据记录 CDP 方法可用性、配额、用量、需求与宿主错误名 |
-| AC-07 | **中断：** 写请求已发出（探针确认）后、调用方得到结果前关闭页面或 context；用同一临时 profile 重开后，状态恰为“完整旧包、新包没有任何记录”或“完整新包”之一，不出现混合或部分记录。证据中至少有一次写请求已发出、重开后为完整旧包且没有新包记录的观测，证明回滚确实发生 | 浏览器用例；使用足以让写事务跨越可观察时间窗口的合成 payload；证据记录每次运行的中断时机与重开后的状态 |
+| AC-06 | **真实配额错误与空间判定：** 先在默认配额下提交旧包；再经 CDP 把本 origin 的配额设为高于当前用量、低于新包需求的值。覆盖生效期间，默认适配器的空间检查结果须与随即独立读取的 `navigator.storage.estimate()` 按[操作与结果](#操作与结果)的公式算出的结果一致（Chrome 的 `estimate()` 不反映 CDP 配额覆盖）：`usage`、`quota` 等于该读数，`availableBytes = max(0, quota − usage)`，`status` 由 `availableBytes` 与 `requiredBytes` 比较得出；继续提交新包返回 `quota-exceeded`，旧包仍能恢复，库中没有新包的记录；恢复默认配额后同一提交成功。另在页面中读取一次真实的 `navigator.storage.estimate()`，把该读数作为注入的 `StorageManager.estimate()` 的固定返回值验证判定边界：需求恰等于由该读数算出的剩余空间时返回 `sufficient`，多 1 字节时返回 `insufficient`，两次结果的数值都与该读数及输入需求一致；默认适配器另行直接读取 `navigator.storage`，确认得到同一 `quota`。若当前 Chrome 不支持该 CDP 方法或不产生真实配额错误，本项保持未通过，不能用抛出的通用异常代替 | 浏览器用例；覆盖在临时持久 profile 中重启浏览器后、首次使用 IndexedDB 之前设置。证据记录 CDP 方法可用性、CDP 报告的配额与用量、`estimate()` 读数、需求与宿主错误名 |
+| AC-07 | **中断：** 写请求已发出（探针确认）后、调用方得到结果前关闭页面或 context；用同一临时 profile 重开后，状态恰为“完整旧包、新包没有任何记录”或“完整新包”之一，不出现混合或部分记录。证据中至少有一次写请求已发出、重开后为完整旧包且没有新包记录的观测，证明回滚确实发生 | 浏览器用例；以大体量合成 payload 记录一次自然时序的结果，另在首个写请求发出后由测试探针在同一事务上链式发出只读 `count()` 请求，使事务保持未提交，再关闭 context。该探针不增加或改变写入，只延长事务生命周期。证据记录每次运行的中断时机、是否启用保持以及重开后的状态 |
 | AC-08 | **损坏与不兼容：** 在隔离 context 中直接改写记录后，恢复依次返回：包记录缺字段、键与身份不一致、计数与清单不符、payload 记录缺失或多余、payload 同长度改写、payload 长度改变、来源状态改为未验证，都为 `cache-corrupt`；格式标识未知、`formatVersion` 为 2、内容 schema 为 2、切片定义版本为 2，都为 `cache-incompatible`；清单声明的 payload 字节超出恢复限值为 `over-budget`，且在读取 payload 前判定。任何情况都不返回部分包，记录不被删除或修改。列出把元数据层面的损坏与不兼容条目标为 `corrupt` 或 `incompatible`（payload 层面的损坏不在列出范围内） | 浏览器用例；改写是对存储损坏的故障注入，按实现导出的常量定位记录，证据中注明 |
 | AC-09 | **删除、驱逐与更高版本：** 适配器的连接空闲时，另一连接 `deleteDatabase` 不触发 `blocked` 且成功；适配器有事务进行中时，删除可以暂时 `blocked`，在该事务结束后成功。两种情况之后都列出为空、恢复返回 `not-found`。经 CDP 清除本 origin 的 IndexedDB 数据后结果相同；若清除时写请求已发出，该提交返回 `committed`（提交先胜出）、`storage-closed` 或 `write-failed`，之后同样列出为空、恢复返回 `not-found`。测试以版本 2 打开同名数据库后，适配器的各操作返回 `storage-newer-version`，该数据库仍为版本 2、内容不变 | 浏览器用例；证据记录 `blocked` 与 `versionchange` 事件、强制关闭时的 `close` 事件（适配器主动关闭不产生该事件）、清除与事务事件的先后，以及数据库版本 |
 | AC-10 | **存储不可用：** 工厂缺失，或打开时抛出 `SecurityError`、`InvalidStateError` 的工厂，使提交、列出、恢复都返回 `storage-unavailable`，提交从不返回 `committed`。`StorageManager` 缺失，或 `estimate()` 失败、返回非有限数时，空间检查返回 `unknown` | Node 单元测试覆盖分类；浏览器用例以注入方式各验证一次 |
@@ -243,7 +243,7 @@ reviewed: sha256:05231094a3dd
 - **单元/契约测试：** 在 `src/platform/storage/` 旁新增 Node 环境的 `*.test.ts`，覆盖键推导、包记录与 payload 记录的读取（正常、缺字段、未知格式或版本、键不一致）、存储需求估算、宿主错误名到 code 的分类，以及失败结果的字段。不在 Node 中模拟 IndexedDB 来证明事务行为。
 - **Replay/一致性：** 不适用。本任务不涉及 Core 世界、tick 或 replay。
 - **浏览器验证：** 在计划新增的 development 项目 E2E 用例中，页面内导入 `/src/platform/storage/` 的适配器与 `/src/content/` 的合成内容 helper，按 AC-02 至 AC-12 与 AC-14 验证真实 IndexedDB：
-  - 普通用例使用 Playwright 的隔离 context；AC-03 与 AC-07 使用测试自有的临时持久 profile，结束时关闭并删除；AC-06 与 AC-09 使用 CDP 的 Storage 域。
+  - 普通用例使用 Playwright 的隔离 context；AC-03、AC-07 以及 AC-06 的真实配额错误用例使用测试自有的临时持久 profile，结束时关闭并删除；AC-06 的真实配额错误路径与 AC-09 使用 CDP 的 Storage 域。
   - 测试侧可以在 `e2e/support/` 增加只读写入探针与 CDP 辅助，它们不进入生产导入链。
   - 聚焦运行：`pnpm test:e2e <新用例文件> --project=development`。
 - **实机/原版对照：** 不适用。本任务不处理原版内容；真实转换结果的缓存与刷新恢复由 P2-11/P2-12 验证，Firefox/Safari 归 P5。
@@ -255,7 +255,7 @@ reviewed: sha256:05231094a3dd
 风险等级：**中。** 这是第一个持久化浏览器数据的模块，记录格式一经写入就成为兼容负担；但目前没有已发布的缓存或存档，失败最多导致重新导入，不会丢失玩家数据。
 
 - **事务提前自动提交，留下半个包：** 事务内等待非 IndexedDB 的异步工作会让事务提前提交。校验与哈希都放在事务之前，事务内只发请求；AC-05 与 AC-07 用真实浏览器的取消与中断验证。
-- **配额与中断难以真实复现：** 配额依赖 CDP `Storage.overrideQuotaForOrigin`；若不可用，AC-06 保持未通过并记录原因，由用户决定替代的真实验证方式，不以通用异常代替。中断依赖测试侧探针确认时机；结果不确定时重复运行，如实记录每次结果。
+- **配额与中断难以真实复现：** 配额依赖 CDP `Storage.overrideQuotaForOrigin`。本机 Chrome 154 实测：覆盖只有在会话首次使用 IndexedDB 之前设置才作用于写入，之后设置、降低或等待都不生效；CDP 能报告覆盖，`navigator.storage.estimate()` 始终不反映。因此 AC-06 在重启后的会话中设置覆盖；`sufficient`/`insufficient` 判定边界另以真实 `estimate()` 的读数注入空间检查验证，该注入只验证空间判定，真实配额错误仍须由 CDP 覆盖下的写入产生。若该方法不可用或不再产生真实配额错误，AC-06 保持未通过并记录原因，由用户决定替代的真实验证方式，不以通用异常代替。中断依赖测试侧探针确认时机；结果不确定时重复运行，如实记录每次结果。
 - **只在 Chrome 上验证：** Firefox/Safari 的事务、配额与驱逐行为可能不同，由 P5 的浏览器矩阵覆盖。本任务的契约不依赖 Chromium 专有行为，持久性提示与 `indexedDB.databases()` 都不是功能前提。
 - **损坏记录造成大内存占用：** IndexedDB 读取单条记录时整体载入；声明大小只能在读取前按清单核算，实际字节在读取后核对。一条被篡改成超大值的 payload 仍会先载入再被拒绝。这只在本地存储损坏时发生，记为已知限制。
 - **旧键累积占用空间：** 本任务不清理旧转换器版本或旧来源的键，开发期间可能累积。P5 实现清理策略；在此之前，空间检查与配额错误如实反馈。
@@ -275,3 +275,11 @@ reviewed: sha256:05231094a3dd
 - 行为与边界中的取消、中断、并发与连接生命周期语义，以及技术决定。
 
 生成与审阅时按“采用推荐答案”授权作出的选择，以及 review-spec 采纳的五项修正，随本次批准一并生效。
+
+2026-10-05 修订（AC-06 与 AC-07 的验证方式）：
+- **原因：** 执行中发现，AC-06 原条款要求 CDP 配额覆盖期间空间检查返回 `insufficient`，这在真实 Chrome 中不可能成立：`estimate()` 不反映 CDP 配额覆盖，而 S-04 规定空间检查基于 `estimate()`。见 [goal 执行记录](./goal.md#执行记录)。
+- **改动：**
+  - AC-06：覆盖期间的空间检查须与独立读取的 `estimate()` 一致；`sufficient`/`insufficient` 判定边界改用页面中真实 `estimate()` 的读数注入验证。真实配额错误、旧包保留、无新记录、重置后成功与不得以通用异常代替等要求不变。
+  - 同步更新：技术决定 9、验证策略、风险与恢复，以及“创建适配器”行中允许的测试注入用途。
+  - 用户另于审阅中选择把 AC-07 的验证方式改为如实描述探针的只读 `count()` 保持。
+- **审批：** 用户于 2026-10-05 明确批准 AC-06 的改写，并在审阅中明确选择同步修订 AC-07 的验证方式。修订稿经另一模型审阅；其指出的措辞精确化已采纳，均在已批准的意图内。其余 S/AC 与契约不变，本 spec 恢复为 accepted。
