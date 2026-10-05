@@ -65,7 +65,7 @@ updated: 2026-10-04
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | completed |
 | [09-isolation-origin-remediation.md](./subtasks/09-isolation-origin-remediation.md) | 03, 04, 08 | completed |
 | [10-spec-fact-links.md](./subtasks/10-spec-fact-links.md) | 01 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08, 09, 10 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08, 09, 10 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务；ID 固定，不在执行中重排。
 
@@ -157,6 +157,12 @@ updated: 2026-10-04
   - 10 修订 spec 的事实归属。用户已于 2026-10-04 选择修订 spec：保留 group 0 / slot 1 的选择，原版事实改为链接；修订稿须经另一模型审阅，并由用户重新批准。
 
   候选、契约与 S/AC 均不改变。07 回到 pending，依赖全部其他子任务，补救完成后重跑。
+
+- **2026-10-04 — Goal completed:** 补救子任务 09（结果隔离与来源类型判别）和 10（spec 事实归属，用户已重新批准）完成后，07 的第二次最终对齐通过，审查者确认六项原发现均已解决，见 [07](./subtasks/07-final-alignment.md#2026-10-04--第二次最终对齐补救后)。`node tools/task-state.ts p2/01` 输出 `done`。留给下游的责任不变：
+  - 真实 Worker 转移由 P2-04 负责；
+  - 各类预算限值由 P2-02 至 P2-09 批准；
+  - 来源指纹由 P2-03 生成；
+  - 未确认的语义按 U 项交给 P2-05 至 P2-09。
 
 ## 审批
 
