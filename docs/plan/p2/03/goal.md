@@ -85,7 +85,7 @@ updated: 2026-10-05
 | [01-incremental-sha256.md](./subtasks/01-incremental-sha256.md) | — | completed |
 | [02-archive-rules-memory.md](./subtasks/02-archive-rules-memory.md) | — | completed |
 | [03-on-demand-archive.md](./subtasks/03-on-demand-archive.md) | 02 | completed |
-| [04-catalog-fingerprint.md](./subtasks/04-catalog-fingerprint.md) | 02 | pending |
+| [04-catalog-fingerprint.md](./subtasks/04-catalog-fingerprint.md) | 02 | completed |
 | [05-identify-verified-source.md](./subtasks/05-identify-verified-source.md) | 01, 03, 04 | pending |
 | [06-mapping-verification.md](./subtasks/06-mapping-verification.md) | 05 | pending |
 | [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | pending |

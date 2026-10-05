@@ -46,16 +46,16 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-04：
+- [x] AC-04：
   - 生产白名单恰有一个版本 `star-rangers-1995-cd` 和 spec 列出的 8 个升序路径，每项的路径、大小、SHA-256 与 manifest 完全一致；
   - 生产指纹等于测试中固定的常量；
   - 读取器以 `invalid-catalog` 拒绝空文件列表、未排序或重复路径、非 `DiscPath`、大小不是非负安全整数、哈希格式错误、版本 token 非法，以及未知字段。
-- [ ] AC-07（无需光盘的部分）：
+- [x] AC-07（无需光盘的部分）：
   - 指纹等于测试用 `node:crypto` 对规范文本独立计算的结果；
   - 只修改 `versionId` 不改变指纹；改变任一文件的哈希或大小、增删路径，指纹改变；
   - 测试所用合成白名单的指纹不等于生产指纹；
   - 路径排序与区域设置无关。
-- [ ] `pnpm exec vitest run src/original-data/source tools/source-catalog.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] `pnpm exec vitest run src/original-data/source tools/source-catalog.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -63,3 +63,26 @@ updated: 2026-10-05
 - 不适用 browser-testing 或原版对照。
 
 ## 完成证据
+
+- **实现：** [source-catalog.ts](../../../../../src/original-data/source/source-catalog.ts)：
+  - **`readSourceCatalog`：** 复用 P2-01 的 `readRecord`、`requireFields`、`readOrderedArray`、`matchesWhole` 与 `compareText`，严格读取白名单并返回冻结副本。失败一律报 `invalid-catalog`；只有符合 `catalog…` 结构路径的位置才被报告，其余情况（含 Proxy trap 抛出的错误或伪造的路径）都报 `catalog`。
+  - **`sourceFingerprint`：** 按 spec 的规范文本（ASCII 字节，不依赖 `TextEncoder`）用分段 SHA-256 计算，并经 `readSourceFingerprint` 返回。
+  - **`PRODUCTION_CATALOG`：** 在模块加载时经读取器构造，版本 `star-rangers-1995-cd`，覆盖 8 个文件。
+- **测试辅助：** [source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 从字节或按范围生成的内容生成合成白名单。
+- **测试：**
+  - [source-catalog.test.ts](../../../../../src/original-data/source/source-catalog.test.ts) 覆盖：
+    - **生产白名单：** 8 个路径、ASCII 序与深度冻结；生产指纹固定为 `source:sha256:fd97bcea…81be`，并与 `node:crypto` 独立计算的结果一致；
+    - **读取器：** 26 种非法形状都在预期结构路径返回 `invalid-catalog`，含 ASCII 序（`A_B` 在 `AB` 之后）、重复、未知字段与 `2^53` 长度；读取后修改输入不影响结果；被拒的值不出现在诊断中；
+    - **Proxy：** trap 抛出的普通错误或伪造的 `ContentContractError` 都在 `catalog` 返回 `invalid-catalog`；
+    - **指纹：** 与 `node:crypto` 一致并能通过 `readSourceFingerprint`；只改版本 ID 时不变；改变内容、长度、增删路径时都会改变；测试所用合成白名单的指纹不等于生产指纹。
+  - [tools/source-catalog.test.ts](../../../../../tools/source-catalog.test.ts) 读取 `docs/original/manifest.md`，核对每个覆盖文件的大小与 SHA-256。
+- **变异检查：** 规范文本的字节数加 1 后，有 2 个测试失败。
+- **检查：**
+  - `pnpm exec vitest run src/original-data/source tools/source-catalog.test.ts`：68 个测试通过；
+  - `pnpm check`：83 个测试文件 2,256 个测试与构建通过。
+- **Rubber-duck：** 采纳一项阻塞意见：防止 Proxy 伪造错误路径或泄露值，改为按位置白名单映射，并增加 Proxy 测试。行为上等同纯数据的透明 Proxy 仍被接受，与 P2-01 读取器一致。
+- **Simplify：**
+  - 采纳：测试辅助的字节分支复用 `sha256Fingerprint`，`contentDigest` 不再导出。
+  - 未采纳：缓存生产指纹（只计算一次，开销可忽略）。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#版本白名单与来源指纹)新增“版本白名单与来源指纹”一节，并更新目录树。manifest 本身无需修改，一致性由测试保证；工程约定与工具指南无受影响内容。
+
