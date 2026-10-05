@@ -39,7 +39,10 @@ export interface DiscCheckReport {
   readonly format: 'osr-disc-check';
   readonly version: 1;
   readonly passed: boolean;
+  /** The first failure that ended the check, if any. */
   readonly error: DiscCheckFailure | null;
+  /** Handles whose close failed; reported separately so an earlier error never hides one. */
+  readonly closeFailures: number;
   readonly volume: { readonly sectorCount: number; readonly volumeSectors: number } | null;
   readonly files: {
     readonly checked: number;
@@ -144,6 +147,7 @@ export async function runDiscCheck(paths: readonly string[], options: DiscCheckO
   const tally: Tally = { checked: 0, mismatched: [] };
   let error: DiscCheckFailure | null = null;
   let disc: DiscImage | undefined;
+  let closeFailures: number;
   try {
     const game = readGameTable(options.manifestPath);
     for (const [index, path] of paths.entries()) {
@@ -167,7 +171,8 @@ export async function runDiscCheck(paths: readonly string[], options: DiscCheckO
   } finally {
     // async callbacks turn a synchronous throw into a rejection, so every handle still gets its close.
     const closes = await Promise.allSettled(inputs.map(async ({ handle }) => handle.close()));
-    if (closes.some(result => result.status === 'rejected')) error ??= { code: 'read-failed', location: 'input' };
+    closeFailures = closes.filter(result => result.status === 'rejected').length;
+    if (closeFailures > 0) error ??= { code: 'read-failed', location: 'input' };
   }
   const requestedBytes = inputs.reduce((total, { source }) => total + source.requestedBytes, 0);
   const ignoredFileBytes = inputs.filter(({ name }) => /\.(?:sub|cue)$/i.test(name)).reduce((total, { source }) => total + source.requestedBytes, 0);
@@ -178,6 +183,7 @@ export async function runDiscCheck(paths: readonly string[], options: DiscCheckO
     version: 1,
     passed: error === null && tally.mismatched.length === 0,
     error,
+    closeFailures,
     volume: disc ? { sectorCount: disc.volume.sectorCount, volumeSectors: disc.volume.volumeSectors } : null,
     files: { checked: tally.checked, matched: tally.checked - tally.mismatched.length, mismatched: tally.mismatched },
     reads: { sourceReadBytes, requestedBytes, ignoredFileBytes },

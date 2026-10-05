@@ -90,7 +90,7 @@ updated: 2026-10-05
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
 | [11-leadout-cancel-remediation.md](./subtasks/11-leadout-cancel-remediation.md) | 01, 02 | completed |
 | [12-evidence-remediation.md](./subtasks/12-evidence-remediation.md) | 03, 08 | completed |
-| [13-close-failure-remediation.md](./subtasks/13-close-failure-remediation.md) | 08 | pending |
+| [13-close-failure-remediation.md](./subtasks/13-close-failure-remediation.md) | 08 | completed |
 | [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。

@@ -34,7 +34,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - 对 manifest 游戏文件表的每一行，按光盘路径打开文件，比较大小，并以不超过 16 MiB 的分段读取计算 SHA-256；
   - 读取方计量的 `sourceReadBytes` 必须等于端口实际收到的请求之和；
   - `.sub`/`.cue` 读取须为 0 字节。
-- **输出：** stdout 为一份 `osr-disc-check`/1 JSON：`passed`、`error`、卷信息、文件计数与不一致项（只含规范光盘路径与稳定 code），以及读取计量。不输出宿主路径、文件内容或宿主错误文本。
+- **输出：** stdout 为一份 `osr-disc-check`/1 JSON：`passed`、`error`（结束核对的首个失败）、`closeFailures`（关闭失败的句柄数，不会被先前错误掩盖）、卷信息、文件计数与不一致项（只含规范光盘路径与稳定 code），以及读取计量。不输出宿主路径、文件内容或宿主错误文本。
 - **退出码：** 全部一致时为 0；核对失败或输入错误时为 1，例如文件组不受支持、文件无法打开或关闭（`read-failed`）、取消（Ctrl-C 中止读取）、manifest 不可读或含非规范路径；用法错误时为 2。
 - **句柄：** 任何情况下都会关闭已打开的句柄；关闭失败同样判为失败。
 - **原版内容：** 命令只读取 `local/`，不写出任何文件。若需要保存结果，只能放在 `local/` 下。

@@ -118,7 +118,7 @@ describe('local disc check', () => {
     const { open, closed } = trackedOpener();
     const report = await check(inputs, { open, manifestPath: fullManifest });
     expect(report).toMatchObject({
-      format: 'osr-disc-check', version: 1, passed: true, error: null, volume: { sectorCount: SECTORS, volumeSectors: SECTORS },
+      format: 'osr-disc-check', version: 1, passed: true, error: null, closeFailures: 0, volume: { sectorCount: SECTORS, volumeSectors: SECTORS },
       files: { checked: 4, matched: 4, mismatched: [] },
     });
     expect(report.reads.sourceReadBytes).toBe(report.reads.requestedBytes);
@@ -181,14 +181,22 @@ describe('local disc check', () => {
   it('fails a check whose handles cannot be closed as read-failed', async () => {
     const { open, closed } = trackedOpener({ failClose: 'async' });
     const report = await check(inputs, { open });
-    expect(report).toMatchObject({ passed: false, error: { code: 'read-failed', location: 'input' }, files: { matched: 3 } });
+    expect(report).toMatchObject({ passed: false, error: { code: 'read-failed', location: 'input' }, closeFailures: 4, files: { matched: 3 } });
+    expect(closed).toHaveLength(4);
+  });
+
+  it('reports close failures even when an earlier error ended the check', async () => {
+    const controller = new AbortController();
+    const { open, closed } = trackedOpener({ failClose: 'async', abortAfterReads: { controller, count: 6 } });
+    const report = await check(inputs, { open, signal: controller.signal });
+    expect(report).toMatchObject({ passed: false, error: { code: 'cancelled' }, closeFailures: 4 });
     expect(closed).toHaveLength(4);
   });
 
   it('closes the remaining handles when one close throws synchronously', async () => {
     const { open, closed, opened } = trackedOpener({ failClose: 'sync-first' });
     const report = await check(inputs, { open });
-    expect(report).toMatchObject({ passed: false, error: { code: 'read-failed', location: 'input' } });
+    expect(report).toMatchObject({ passed: false, error: { code: 'read-failed', location: 'input' }, closeFailures: 1 });
     expect(closed.sort()).toEqual(opened.slice(1).sort());
   });
 
