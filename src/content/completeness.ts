@@ -231,5 +231,5 @@ export function validatePackage(definition: SliceDefinition, inputs: readonly Gr
   });
   diagnostics.push(...cycleDiagnostics(edges));
   if (diagnostics.length > 0) return Object.freeze({ status: 'incomplete', diagnostics: sortDiagnostics(diagnostics) });
-  return Object.freeze({ status: 'complete', identity, groups: definition.groups });
+  return Object.freeze({ status: 'complete', identity, groups: Object.freeze([...definition.groups]) });
 }

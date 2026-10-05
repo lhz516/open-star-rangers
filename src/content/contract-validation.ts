@@ -51,6 +51,10 @@ export function matchesWhole(value: unknown, pattern: RegExp): value is string {
   return typeof value === 'string' && pattern.exec(value)?.[0] === value;
 }
 
+/**
+ * Validation primitive: checks one plain data record and copies only its own fields. Nested values are still the
+ * caller's, so every reader copies and freezes the fields it accepts; this is never a contract result.
+ */
 export function readRecord(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) fail('invalid-record', path, 'must be a plain data record');
   const prototype: unknown = Object.getPrototypeOf(value);

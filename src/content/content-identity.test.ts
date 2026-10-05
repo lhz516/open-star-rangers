@@ -49,6 +49,11 @@ describe('separate content and payload identities', () => {
     expectTypeOf<{ type: 'original-import'; fixtureId: FixtureId }>().not.toExtend<ContentOrigin>();
     expectTypeOf<{ type: 'original-import'; sourceFingerprint: FixtureId }>().not.toExtend<ContentOrigin>();
     expectTypeOf<{ type: 'original-import'; sourceFingerprint: string }>().not.toExtend<ContentOrigin>();
+    // Named values skip excess-property checks, so each origin must exclude the other's field.
+    expectTypeOf<{ type: 'synthetic'; fixtureId: FixtureId; sourceFingerprint: SourceFingerprint }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'original-import'; sourceFingerprint: SourceFingerprint; fixtureId: FixtureId }>().not.toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'synthetic'; fixtureId: FixtureId }>().toExtend<ContentOrigin>();
+    expectTypeOf<{ type: 'original-import'; sourceFingerprint: SourceFingerprint }>().toExtend<ContentOrigin>();
   });
 
   it('checks source representation without claiming provenance or manufacturing a hash', () => {

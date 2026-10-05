@@ -63,7 +63,7 @@ updated: 2026-10-04
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | completed |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | completed |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | completed |
-| [09-isolation-origin-remediation.md](./subtasks/09-isolation-origin-remediation.md) | 03, 04, 08 | pending |
+| [09-isolation-origin-remediation.md](./subtasks/09-isolation-origin-remediation.md) | 03, 04, 08 | completed |
 | [10-spec-fact-links.md](./subtasks/10-spec-fact-links.md) | 01 | pending |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08, 09, 10 | pending |
 

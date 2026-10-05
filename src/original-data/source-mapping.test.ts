@@ -178,6 +178,14 @@ describe('source mapping diagnostics', () => {
     expect(JSON.stringify(states)).not.toMatch(/discPath|entry|subresource|SYNTH/);
   });
 
+  it('copies U items into the derived states, isolated from a mutable copy of the table', () => {
+    const mutable = structuredClone(readSourceMappingTable(table()));
+    const states = assetSourceStates(mutable);
+    (mutable.mappings[4].unknowns as string[]).push('U-099');
+    expect(states.states[4].unknowns).toEqual(['U-028']);
+    expect(states.states.every(state => Object.isFrozen(state.unknowns))).toBe(true);
+  });
+
   it('defines compatible archive entry types for every Asset kind', () => {
     expect(Object.keys(SOURCE_ENTRY_TYPES)).toEqual([...ASSET_KINDS]);
     for (const types of Object.values(SOURCE_ENTRY_TYPES)) {

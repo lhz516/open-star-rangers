@@ -16,9 +16,14 @@ export const CONTENT_SCHEMA_VERSION = 1;
 export const SLICE_ID = 'classic-p2-slice';
 export type SliceId = typeof SLICE_ID;
 
+/**
+ * Each origin excludes the other's field, so a value carrying both cannot pass as either at the type level.
+ * Without `exactOptionalPropertyTypes` an explicit `undefined` still type-checks; it carries no identity, and
+ * `readContentOrigin` rejects any extra field at runtime.
+ */
 export type ContentOrigin =
-  | { readonly type: 'synthetic'; readonly fixtureId: FixtureId }
-  | { readonly type: 'original-import'; readonly sourceFingerprint: SourceFingerprint };
+  | { readonly type: 'synthetic'; readonly fixtureId: FixtureId; readonly sourceFingerprint?: never }
+  | { readonly type: 'original-import'; readonly sourceFingerprint: SourceFingerprint; readonly fixtureId?: never };
 
 export interface ContentIdentity {
   readonly schemaVersion: ContentSchemaVersion;

@@ -174,6 +174,14 @@ describe('package completeness', () => {
     expect(Object.isFrozen(result)).toBe(true);
   });
 
+  it('copies the defined groups into the result, isolated from a mutable copy of the definition', () => {
+    const definition = structuredClone(CLASSIC_P2_SLICE);
+    const result = validatePackage(definition, syntheticPackage());
+    (definition.groups as ResourceGroup[]).reverse();
+    expect(result).toEqual({ status: 'complete', identity: syntheticIdentity(), groups: [...CLASSIC_P2_SLICE.groups] });
+    expect(result.status === 'complete' && Object.isFrozen(result.groups)).toBe(true);
+  });
+
   it('keeps group and package success distinct, so a group result never passes as a whole package', () => {
     expectTypeOf<GroupCompletenessResult['status']>().toEqualTypeOf<'group-complete' | 'incomplete'>();
     expectTypeOf<PackageCompletenessResult['status']>().toEqualTypeOf<'complete' | 'incomplete'>();

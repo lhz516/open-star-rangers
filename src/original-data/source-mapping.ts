@@ -215,7 +215,7 @@ export function assetSourceStates(table: SourceMappingTable): SourceStateSet {
     const state: SourceState = conflict ? 'conflict'
       : confidence === 'unconfirmed' ? 'unconfirmed'
         : resolution === 'declared' ? 'unverified' : 'verified';
-    return Object.freeze({ id: asset.id, state, unknowns });
+    return Object.freeze({ id: asset.id, state, unknowns: Object.freeze([...unknowns]) });
   });
   return Object.freeze({ sourceFingerprint: table.sourceFingerprint, states: Object.freeze(states) });
 }
