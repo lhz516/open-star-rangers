@@ -17,6 +17,8 @@ const originalDataImports = {
   group: ['**/original-data', '**/original-data/**'],
   message: 'Content consumers must not import original-data locators or archive structure.',
 };
+// The byte reading port (P2-02 S-07), the only original-data module platform adapters may see.
+const bytePort = '**/original-data/io/byte-source.ts';
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
@@ -57,9 +59,33 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/render/**/*.{ts,tsx}', 'src/platform/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
+    files: ['src/render/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
     ignores: ['**/*.test.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: [originalDataImports] }] },
+  },
+  {
+    // P2-02 AC-09: platform adapters implement the byte port, so they alone may import that one module, type-only;
+    // every other original-data module stays forbidden, as for the consumers above.
+    // The typescript-eslint rule lets type-only re-exports and dynamic imports through, so syntax rules reject those.
+    files: ['src/platform/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          { ...originalDataImports, group: [...originalDataImports.group, `!${bytePort}`] },
+          { group: [bytePort], allowTypeImports: true, message: 'Platform may import the byte port type-only.' },
+        ],
+      }],
+      'no-restricted-syntax': [
+        'error',
+        { selector: ':matches(ExportNamedDeclaration, ExportAllDeclaration)[source.value=/original-data/]', message: 'Platform must not re-export original-data.' },
+        {
+          selector: 'ImportExpression:matches([source.value=/original-data/], [source.quasis.0.value.raw=/original-data/])',
+          message: 'Platform must not load original-data dynamically.',
+        },
+        { selector: 'TSImportType[argument.literal.value=/original-data/]', message: 'Platform must use a type-only import declaration.' },
+      ],
+    },
   },
   {
     // Core determinism: randomness and time come from the tick input, never from the host.

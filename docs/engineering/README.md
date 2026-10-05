@@ -74,7 +74,15 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
 - 同一回归文件的 content 部分（P2-01 AC-01）保证唯一生产切片定义。`SliceDefinition` 带仅类型品牌，其他模块不经类型断言就无法构造；检查用应用程序的类型检查器找出所有目标类型可充当 `SliceDefinition` 的 `as`/`satisfies`/尖括号断言（含别名与映射类型），只允许 [slice-definition.ts](../../src/content/slice-definition.ts) 中的那一处。引用、传参或克隆已有单例不受限；显式 `any` 由 lint 拒绝，无类型的 `any` 数据流不在覆盖范围内。
-- 规范内容的消费者（`src/core`、`src/content`、`src/render`、`src/platform`、`src/ui`、`src/app` 的非测试文件）不得导入 `original-data` 的目录入口或任何子模块（P2-01 S-06/AC-05），原版 locator、IMFAT entry ID/type 和子资源定位因此只留在 `original-data`。core 与 content 的这一限制与纯模块限制写在同一条规则选项里，因为 flat config 中后出现的同名规则选项会整体替换前者。lint 只检查直接的 import/export 声明，所以同一回归文件还沿真实应用程序的依赖图检查传递可达性（含再导出、动态 `import()` 与 `import('…')` 类型）：只有 `original-data` 与导入 `workers` 可以到达 `original-data`，消费者也不能经由 workers 或其他中间模块间接到达；参数不是字符串字面量的动态 import 无法核实目标，从消费者可达时一律报错。测试文件不受限。若 P2-02 需要平台实现 `original-data` 定义的字节端口，须在该任务中显式放行那个端口模块。
+- 规范内容的消费者（`src/core`、`src/content`、`src/render`、`src/platform`、`src/ui`、`src/app` 的非测试文件）不得导入 `original-data` 的目录入口或任何子模块（P2-01 S-06/AC-05），原版 locator、IMFAT entry ID/type 和子资源定位因此只留在 `original-data`。core 与 content 的这一限制与纯模块限制写在同一条规则选项里，因为 flat config 中后出现的同名规则选项会整体替换前者。lint 只检查直接的 import/export 声明，所以同一回归文件还沿真实应用程序的依赖图检查传递可达性（含再导出、动态 `import()` 与 `import('…')` 类型）：只有 `original-data` 与导入 `workers` 可以到达 `original-data`，消费者也不能经由 workers 或其他中间模块间接到达；参数不是字符串字面量的动态 import 无法核实目标，从消费者可达时一律报错。测试文件不受限。
+- 唯一例外是字节读取端口 [`src/original-data/io/byte-source.ts`](../../src/original-data/io/byte-source.ts)（P2-02 S-07/AC-09）。它只含类型、不导入任何模块，由平台适配实现。
+  - **lint：** `src/platform` 的非测试文件改用 typescript-eslint 的 `@typescript-eslint/no-restricted-imports`，只允许以纯类型方式导入这一个模块（`import type` 或全部为 `type` 的具名导入）。值导入、副作用导入和其他 `original-data` 模块仍被拒绝。该扩展规则会放过纯类型再导出和动态加载，因此同一条目还用 `no-restricted-syntax` 拒绝以下语法：`export … from` 形式的 `original-data` 再导出（含 `export type`），字符串或模板字面量参数的动态 `import()`，以及 `import('…')` 类型查询。lint 无法追踪本地绑定的来源，先导入再 `export type { … }` 或用类型别名转出的情况由依赖图拦截。
+  - **依赖图：** 平台文件到端口的边须同时满足两点才放行：
+    - 对端口的每个引用都是纯类型导入声明；
+    - 导出的符号不是端口类型，导出的类型别名与接口在任何位置（别名体、类型参数约束与默认值、继承、成员）都不引用端口类型。导出的函数与类可以在签名中使用端口，这正是适配的用法。
+
+    满足时该边不计入可达性，所以 app/ui 使用平台适配不会被误报。app/ui 直接导入端口，或经平台的再导出、本地导出、类型别名或接口取得端口，仍然报错。
+  - 其他层（core、content、render、ui、app）对端口的任何导入仍被拒绝。
 
 ## 测试
 

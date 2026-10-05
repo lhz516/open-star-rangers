@@ -84,7 +84,7 @@ updated: 2026-10-04
 | [03-sector-volume.md](./subtasks/03-sector-volume.md) | 01, 02 | completed |
 | [04-directory-path.md](./subtasks/04-directory-path.md) | 03 | completed |
 | [05-file-range-read.md](./subtasks/05-file-range-read.md) | 01, 04 | completed |
-| [06-port-boundary.md](./subtasks/06-port-boundary.md) | 01 | pending |
+| [06-port-boundary.md](./subtasks/06-port-boundary.md) | 01 | completed |
 | [07-blob-adapter.md](./subtasks/07-blob-adapter.md) | 05, 06 | pending |
 | [08-node-adapter-cli.md](./subtasks/08-node-adapter-cli.md) | 05 | pending |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | pending |

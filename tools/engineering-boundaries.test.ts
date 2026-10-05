@@ -242,13 +242,46 @@ describe('TypeScript module environments', () => {
     // P2-01 AC-05: canonical content consumers never import original locators or archive structure.
     const contentConsumerFiles = ['core', 'content', 'render', 'platform', 'ui', 'app'].flatMap((layer) => ['ts', 'tsx'].map((extension) => `src/${layer}/probe.${extension}`));
 
+    const bytePort = '../original-data/io/byte-source.ts';
+
     it.each(contentConsumerFiles)('rejects original-data imports in %s', async (file) => {
-      for (const specifier of ['../original-data', '../original-data/source-mapping.ts', '../../original-data/imfat.ts']) {
+      // Platform files use the typescript-eslint variant of the rule, which can allow the byte port's type-only imports;
+      // only platform adapters may see the port (P2-02 AC-09), so every other consumer rejects it in every form.
+      const platform = file.startsWith('src/platform/');
+      const rule = platform ? '@typescript-eslint/no-restricted-imports' : 'no-restricted-imports';
+      const specifiers = ['../original-data', '../original-data/source-mapping.ts', '../../original-data/imfat.ts'];
+      for (const specifier of platform ? specifiers : [...specifiers, bytePort]) {
         const source = importForms.map(form => form(specifier)).join('\n');
         const result = await lint(source, file);
-        const restricted = result.messages.filter(message => message.ruleId === 'no-restricted-imports');
-        expect(restricted.map(message => message.line), `${file}: ${source}`).toEqual(importForms.map((_, index) => index + 1));
+        const restricted = result.messages.filter(message => message.ruleId === rule);
+        expect([...new Set(restricted.map(message => message.line))], `${file}: ${source}`).toEqual(importForms.map((_, index) => index + 1));
       }
+    });
+
+    it.each(['ts', 'tsx'])('lets platform .%s files import only the byte port, and only type-only', async (extension) => {
+      const file = `src/platform/files/probe.${extension}`;
+      const port = `../${bytePort}`;
+      for (const source of [
+        `import type { ByteSource } from '${port}'; export type Port = ByteSource;`,
+        `import { type ByteSource } from '${port}'; export type Port = ByteSource;`,
+      ]) {
+        expect((await lint(source, file)).messages, source).toEqual([]);
+      }
+      const rejected: [string, string][] = [
+        [`import { ByteSource } from '${port}'; export type Port = ByteSource;`, '@typescript-eslint/no-restricted-imports'],
+        [`import '${port}';`, '@typescript-eslint/no-restricted-imports'],
+        [`export type { ByteSource } from '${port}';`, 'no-restricted-syntax'],
+        [`export { type ByteSource } from '${port}';`, 'no-restricted-syntax'],
+        [`export * from '${port}';`, 'no-restricted-syntax'],
+        [`export type * from '${port}';`, 'no-restricted-syntax'],
+        [`export const load = () => import('${port}');`, 'no-restricted-syntax'],
+        [`export const load = () => import(\`${port}\`);`, 'no-restricted-syntax'],
+        [`export type Port = import('${port}').ByteSource;`, 'no-restricted-syntax'],
+        ["import type { ImfatEntry } from '../../original-data/imfat.ts'; export type Entry = ImfatEntry;", '@typescript-eslint/no-restricted-imports'],
+        ["import type { DiscImage } from '../../original-data/disc/disc-image.ts'; export type Image = DiscImage;", '@typescript-eslint/no-restricted-imports'],
+        ["import type { Other } from '../../original-data/io/other.ts'; export type Port = Other;", '@typescript-eslint/no-restricted-imports'],
+      ];
+      for (const [source, rule] of rejected) expectRule(await lint(source, file), rule, source);
     });
 
     it('keeps original-data available to itself, the import workers and tests', async () => {
@@ -470,19 +503,70 @@ describe('content slice definition boundary', () => {
 describe('original-data dependency boundary', () => {
   // docs/plan/p2/01/spec.md S-06/AC-05: only original-data and the import workers may reach original locators,
   // directly or through re-exports, dynamic imports or import types.
+  // P2-02 AC-09: a platform adapter may also depend on the byte port, through type-only import declarations only and
+  // without exporting anything the port declares, so the port never reaches the adapter's own consumers.
   const mayReachOriginalData = (path: string): boolean => /^src\/(?:original-data|workers)\//.test(path);
+  const BYTE_PORT = 'src/original-data/io/byte-source.ts';
+
+  const typeOnlyImport = (node: ts.ImportDeclaration): boolean => {
+    const clause = node.importClause;
+    if (!clause) return false;
+    if (clause.isTypeOnly) return true;
+    const bindings = clause.namedBindings;
+    return !clause.name && bindings !== undefined && ts.isNamedImports(bindings) && bindings.elements.length > 0
+      && bindings.elements.every(element => element.isTypeOnly);
+  };
 
   /** Consumers whose transitive source dependencies reach original-data or an unverifiable computed import. */
   function originalDataReach(compilation: ts.Program, directory: string): string[] {
     const options = compilation.getCompilerOptions();
+    const checker = compilation.getTypeChecker();
     const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+    const resolveFrom = (specifier: string, fileName: string): string | undefined =>
+      ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName;
+    const resolveAlias = (symbol: ts.Symbol): ts.Symbol => (symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol);
+    const declaredByPort = (symbol: ts.Symbol | undefined): boolean =>
+      symbol?.declarations?.some(declaration => project(declaration.getSourceFile().fileName) === BYTE_PORT) ?? false;
+    /** Whether a declaration names a port type anywhere: alias bodies, type parameters, heritage or members. */
+    const namesPort = (node: ts.Node): boolean => {
+      if (ts.isIdentifier(node)) {
+        const symbol = checker.getSymbolAtLocation(node);
+        if (symbol && declaredByPort(resolveAlias(symbol))) return true;
+      }
+      return ts.forEachChild(node, namesPort) ?? false;
+    };
+    const privatePortUse = new Map<string, boolean>();
+    /**
+     * Whether a platform file uses the port only privately: every reference is a type-only import declaration, and no
+     * export is a port type or an exported type alias or interface that names one. Exported functions and classes may
+     * mention the port in their signatures; that is how adapters are used.
+     */
+    const usesPortPrivately = (fileName: string): boolean => {
+      let allowed = privatePortUse.get(fileName);
+      if (allowed === undefined) {
+        const file = compilation.getSourceFile(fileName)!;
+        const toPort = (specifier: string): boolean => project(resolveFrom(specifier, fileName) ?? '') === BYTE_PORT;
+        const references = moduleSpecifiers(file).filter(toPort).length;
+        const typeImports = file.statements.filter(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)
+          && toPort(statement.moduleSpecifier.text) && typeOnlyImport(statement)).length;
+        const moduleSymbol = checker.getSymbolAtLocation(file);
+        const leaks = (moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []).some(exported => {
+          const target = resolveAlias(exported);
+          return declaredByPort(target) || (target.declarations ?? [])
+            .some(declaration => (ts.isTypeAliasDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) && namesPort(declaration));
+        });
+        allowed = project(fileName).startsWith('src/platform/') && references === typeImports && !leaks;
+        privatePortUse.set(fileName, allowed);
+      }
+      return allowed;
+    };
     const edges = new Map<string, string[]>();
     const dependencies = (fileName: string): string[] => {
       let resolved = edges.get(fileName);
       if (!resolved) {
         const file = compilation.getSourceFile(fileName);
         resolved = file ? moduleSpecifiers(file)
-          .map(specifier => specifier === COMPUTED_IMPORT ? specifier : ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName)
+          .map(specifier => specifier === COMPUTED_IMPORT ? specifier : resolveFrom(specifier, fileName))
           .filter((name): name is string => name === COMPUTED_IMPORT || (name !== undefined && project(name).startsWith('src/'))) : [];
         edges.set(fileName, resolved);
       }
@@ -498,6 +582,7 @@ describe('original-data dependency boundary', () => {
         for (const next of dependencies(queue[index])) {
           if (next === COMPUTED_IMPORT) violations.add(`${consumer} -> computed import in ${project(queue[index])}`);
           else if (seen.has(next)) continue;
+          else if (project(next) === BYTE_PORT && usesPortPrivately(queue[index])) continue;
           else if (project(next).startsWith('src/original-data/')) violations.add(`${consumer} -> ${project(next)}`);
           else queue.push(next);
           seen.add(next);
@@ -527,6 +612,67 @@ describe('original-data dependency boundary', () => {
         'src/render/via-worker.ts -> src/original-data/locator.ts',
         'src/ui/computed.ts -> computed import in src/ui/computed.ts',
         'src/ui/type-query.ts -> src/original-data/locator.ts',
+      ]);
+    });
+  });
+
+  it('keeps the byte port a type-only module that imports nothing', () => {
+    const port = sharedAppProgram().getSourceFile(join(root, BYTE_PORT))!;
+    expect(port.statements.length).toBeGreaterThan(0);
+    expect(moduleSpecifiers(port)).toEqual([]);
+    expect(port.statements.every(statement => ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement))).toBe(true);
+  });
+
+  it('allows only private, type-only use of the byte port by platform adapters', () => {
+    const port = '../../original-data/io/byte-source.ts';
+    withFixtures({
+      'src/original-data/io/byte-source.ts': 'export interface ByteSource { readonly byteLength: number }',
+      'src/original-data/disc/reader.ts': 'export interface Reader { readonly ready: boolean }',
+      'src/platform/files/adapter.ts': `import type { ByteSource } from '${port}'; export function source(): ByteSource { return { byteLength: 0 }; }`,
+      'src/platform/files/inline.ts': `import { type ByteSource } from '${port}'; export const size = (source: ByteSource): number => source.byteLength;`,
+      'src/platform/files/class.ts': `import type { ByteSource } from '${port}'; export class Empty implements ByteSource { readonly byteLength = 0; }`,
+      'src/app/uses-adapter.ts': [
+        "import { source } from '../platform/files/adapter.ts'; import { size } from '../platform/files/inline.ts';",
+        "import { Empty } from '../platform/files/class.ts'; export const bytes = size(source()) + size(new Empty());",
+      ].join('\n'),
+      'src/ui/direct.ts': "import type { ByteSource } from '../original-data/io/byte-source.ts'; export type Port = ByteSource;",
+      'src/platform/files/reexport.ts': `export type { ByteSource } from '${port}';`,
+      'src/app/via-reexport.ts': "import type { ByteSource } from '../platform/files/reexport.ts'; export type Port = ByteSource;",
+      'src/platform/files/local-export.ts': `import type { ByteSource } from '${port}'; export type { ByteSource };`,
+      'src/ui/via-local-export.ts': "import type { ByteSource } from '../platform/files/local-export.ts'; export type Port = ByteSource;",
+      'src/platform/files/alias.ts': `import type { ByteSource } from '${port}'; export type Source = ByteSource;`,
+      'src/platform/files/generic.ts': `import type { ByteSource } from '${port}'; export type Source<T extends ByteSource = ByteSource> = T;`,
+      'src/platform/files/mapped.ts': `import type { ByteSource } from '${port}'; export type Source = { readonly [Key in keyof ByteSource]: ByteSource[Key] };`,
+      'src/platform/files/heritage.ts': `import type { ByteSource } from '${port}'; export interface Source extends ByteSource { readonly name: string }`,
+      'src/platform/files/default.ts': `import type { ByteSource } from '${port}'; export default interface Source extends ByteSource { readonly name: string }`,
+      'src/platform/files/namespace.ts': `import type * as port from '${port}'; export type Source = port.ByteSource;`,
+      'src/ui/via-generic.ts': "import type { Source } from '../platform/files/generic.ts'; export type Port = Source;",
+      'src/platform/files/value.ts': `import * as port from '${port}'; export type Port = port.ByteSource;`,
+      'src/platform/files/lazy.ts': `export const load = () => import('${port}');`,
+      'src/platform/files/type-query.ts': `export type Port = import('${port}').ByteSource;`,
+      'src/platform/files/other.ts': "import type { Reader } from '../../original-data/disc/reader.ts'; export const ready = (reader: Reader): boolean => reader.ready;",
+      'src/render/via-other.ts': "import { ready } from '../platform/files/other.ts'; export const check = ready;",
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(originalDataReach(compilation, directory)).toEqual([
+        `src/app/via-reexport.ts -> ${BYTE_PORT}`,
+        `src/platform/files/alias.ts -> ${BYTE_PORT}`,
+        `src/platform/files/default.ts -> ${BYTE_PORT}`,
+        `src/platform/files/generic.ts -> ${BYTE_PORT}`,
+        `src/platform/files/heritage.ts -> ${BYTE_PORT}`,
+        `src/platform/files/lazy.ts -> ${BYTE_PORT}`,
+        `src/platform/files/local-export.ts -> ${BYTE_PORT}`,
+        `src/platform/files/mapped.ts -> ${BYTE_PORT}`,
+        `src/platform/files/namespace.ts -> ${BYTE_PORT}`,
+        'src/platform/files/other.ts -> src/original-data/disc/reader.ts',
+        `src/platform/files/reexport.ts -> ${BYTE_PORT}`,
+        `src/platform/files/type-query.ts -> ${BYTE_PORT}`,
+        `src/platform/files/value.ts -> ${BYTE_PORT}`,
+        'src/render/via-other.ts -> src/original-data/disc/reader.ts',
+        `src/ui/direct.ts -> ${BYTE_PORT}`,
+        `src/ui/via-generic.ts -> ${BYTE_PORT}`,
+        `src/ui/via-local-export.ts -> ${BYTE_PORT}`,
       ]);
     });
   });
