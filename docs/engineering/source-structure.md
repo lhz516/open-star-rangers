@@ -136,6 +136,9 @@ src/
 - [slice-definition.ts](../../src/content/slice-definition.ts)（[P2-01/02](../plan/p2/01/subtasks/02-slice-content-contract.md)）：`CLASSIC_P2_SLICE` 是唯一的生产切片定义，深度冻结；`SliceDefinition` 带仅类型品牌，唯一构造由[工程边界回归](./README.md#lint-规则eslintconfigjs)保证。定义记录经批准的候选结构选择器（战役 group 0 / slot 1，僚机可选）、四个必需资源组及各组拥有的 kind（`groupKinds`），以及 S-03 角色的组、允许 kind 与 Asset 数量范围。弹丸/导弹/碎片暂允许 model 或 image，四类核心音效暂允许多个采样片段，分别待 P2-06/P2-08 核实后收窄。原版条目 ID 不在此处，由 03 的来源映射记录。更换候选或改变角色、数量范围、分组都须修订 spec 并递增 `SLICE_DEFINITION_VERSION`。
 - [completeness.ts](../../src/content/completeness.ts)（[P2-01/04](../plan/p2/01/subtasks/04-completeness-validation.md)）：`validateGroup` 用切片定义、组清单（身份、组、按 ID 升序的描述符）、按 ID 升序且唯一的实际 payload 记录和来源状态集推导 `group-complete` 或 `incomplete`。它检查定义版本、组归属、角色的组与 kind、角色数量、组内依赖、自引用与环、payload（[payload.ts](../../src/content/payload.ts) 重新计算 SHA-256，并比对 schema 版本与长度）以及来源就绪。依赖的 kind 若不属于本组拥有的 kind，作为类型化外部要求返回，不判为本组缺失。`validatePackage` 每次都从四组原始输入重新验证，从不接受已有结果；只有每组恰好一份、六项身份一致、ID 跨组唯一、外部要求全部解析且无跨组环时才返回 `complete`。诊断带稳定 code、结构路径、规范 ID、U 项与原因，不含 payload 字节或 locator。
 - [sha256.ts](../../src/content/sha256.ts)：同步、无依赖的 SHA-256，供纯模块计算和核验 `sha256:` payload 指纹。
+  - `Sha256` 可分段输入：`update` 接受任意长度（含零长度）的片段，只保留未满一块的尾部，用完即清零，不复制、不保留、不修改调用者的字节；已 detached 的输入或总长超出安全整数时，在改变状态前抛错。
+  - `digestHex` 结束计算并返回 64 位小写十六进制；之后再 `update` 会抛错，再次 `digestHex` 返回同一结果。
+  - 一次性的 `sha256Fingerprint` 建立在它之上，签名与输出不变。
 - [source-state.ts](../../src/content/source-state.ts)：不含 locator 的来源状态集 `{ sourceFingerprint, states }`（每个 Asset 为 verified/unverified/unconfirmed/conflict 加 U 项），由 `original-data` 从来源映射推导后交给完整性验证。原版导入的状态集指纹必须等于清单的来源指纹，且每个 Asset 都必须为 verified；合成内容的来源输入必须为 null。
 - [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
