@@ -53,11 +53,11 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-02（往返）：`u8` 单声道、`u8` 双声道、`s16le` 单声道与双声道，以及采样率 8,000 与 96,000 的样本，写入后读取得到相同字段与 PCM；头部偏移等于导出常量。
-- [ ] AC-02（拒绝）：以下每项都以稳定的 code 与路径拒绝，诊断不含值，且不按声明长度分配：错误标签、未知编码、声道数 0 与 3、循环方式 2、采样率 7,999 与 96,001、保留字节非零、帧数 0、PCM 少 1 字节、尾随 1 字节、总长 15。
-- [ ] AC-02（浮点映射）：`u8` 的 0、128、255 分别映射为 −1、0、127/128；`s16le` 的 −32768、0、32767 分别映射为 −1、0、32767/32768。双声道拆分正确，结果的缓冲与 payload 不同。
-- [ ] 写入不修改输入 PCM 视图，输出独占自己的缓冲（`exclusiveBytes` 接受它）。
-- [ ] `pnpm exec vitest run src/content`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-02（往返）：`u8` 单声道、`u8` 双声道、`s16le` 单声道与双声道，以及采样率 8,000 与 96,000 的样本，写入后读取得到相同字段与 PCM；头部偏移等于导出常量。
+- [x] AC-02（拒绝）：以下每项都以稳定的 code 与路径拒绝，诊断不含值，且不按声明长度分配：错误标签、未知编码、声道数 0 与 3、循环方式 2、采样率 7,999 与 96,001、保留字节非零、帧数 0、PCM 少 1 字节、尾随 1 字节、总长 15。
+- [x] AC-02（浮点映射）：`u8` 的 0、128、255 分别映射为 −1、0、127/128；`s16le` 的 −32768、0、32767 分别映射为 −1、0、32767/32768。双声道拆分正确，结果的缓冲与 payload 不同。
+- [x] 写入不修改输入 PCM 视图，输出独占自己的缓冲（`exclusiveBytes` 接受它）。
+- [x] `pnpm exec vitest run src/content`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -66,3 +66,10 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：** [sound-payload.ts](../../../../../src/content/sound-payload.ts) 导出 schema 版本、头部长度与偏移、标签、采样率范围、编码/声道/循环方式的封闭取值，`writeSoundPayload`、`readSoundPayload` 与唯一浮点映射 `soundChannelData`。[contract-validation.ts](../../../../../src/content/contract-validation.ts) 的封闭 code 集合新增 `invalid-sound-payload`，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的穷举 code 记录随之同步（content 层 code 在协议中只按 token 语法核对，行为不变）。
+- **测试：** [sound-payload.test.ts](../../../../../src/content/sound-payload.test.ts) 覆盖布局与偏移常量（含小端字节核对）、四种编码/声道组合与 8,000、96,000 Hz 的往返、位于大 buffer 偏移处的读取、写入的独占输出（`payloadTransferList` 接受）与输入不变；读取拒绝的 11 个表驱动用例与总长 15，断言 `invalid-sound-payload` 与字段路径且 message 不含被测值；声明帧数 2^32−1 的超大声明以 PCM 长度拒绝而不分配；已转移字节为 `payload-detached`；写入的 9 项拒绝；`u8`、`s16le` 精确映射、双声道拆分与结果不共享内存。
+- **命令：** `pnpm exec vitest run src/content src/workers/import-protocol.test.ts`（549 通过）；`pnpm check` 通过（96 个测试文件、2,831 个测试，构建成功），其中包含 `pnpm typecheck` 与 `pnpm lint`。
+- **rubber-duck：** 审查范围为本子任务的全部文件，结论为无阻塞、无非阻塞问题。
+- **simplify：** 按建议把浮点映射的编码分支提到循环外并改为递增偏移，测试辅助复用单个 `DataView`；未采纳“用 `SOUND_ENCODINGS` 的编码值代替 `SOUND_ENCODING_BYTES`”，因为编码值与字节宽度只是数值巧合。复跑上述检查通过。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#内容基础契约与切片定义)新增目录项与 `sound-payload.ts` 一条（布局、写入、读取与映射公式）。工程约定的命令、边界与测试规则不变，无需修改。

@@ -284,7 +284,7 @@ describe('error code grammar', () => {
     'duplicate-dependency': true, 'dependency-order': true, 'invalid-source-mapping': true, 'duplicate-mapping': true,
     'mapping-order': true, 'duplicate-asset': true, 'asset-order': true, 'duplicate-payload': true, 'payload-order': true,
     'missing-budget-dimension': true, 'unknown-budget-dimension': true, 'invalid-budget-value': true,
-    'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true,
+    'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true, 'invalid-sound-payload': true,
   };
   const limitNames: Record<DiscLimitName | SourceLimitName | BudgetDimension, true> = {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,

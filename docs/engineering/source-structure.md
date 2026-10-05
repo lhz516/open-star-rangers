@@ -62,6 +62,7 @@ src/
     completeness.ts
     budget.ts
     ownership.ts
+    sound-payload.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -183,6 +184,11 @@ src/
   - `exclusiveBytes` 把字节复制到长度恰好的新 ArrayBuffer；不使用 `slice`，因为 Node 的 `Buffer#slice` 共享内存。
   - `payloadTransferList` 返回要转移的 ArrayBuffer：每个视图必须独占整个非共享 buffer，且彼此不共用；否则以 `payload-not-exclusive`/`payload-aliased` 拒绝。
   - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
+- [sound-payload.ts](../../src/content/sound-payload.ts)（[P2-08/01](../plan/p2/08/subtasks/01-sound-payload.md)）：kind 为 `sound` 的规范采样 payload，schema 1（`SOUND_PAYLOAD_SCHEMA_VERSION`），与来源无关，不含条目编号、`flags` 原值或 locator。
+  - **布局：** 16 字节小端头部（`SOUND_PAYLOAD_HEADER_BYTES`）后接交错的 PCM。`SOUND_PAYLOAD_OFFSETS` 依次为：标签 `OSRS`（0）、u32 采样率（4）、u32 帧数（8）、u8 声道数（12）、u8 编码（13）、u8 循环方式（14）、保留字节 0（15）、PCM（16）。采样率范围 `SOUND_SAMPLE_RATE_RANGE` 为 8,000–96,000 Hz；声道 1 或 2；编码 `SOUND_ENCODINGS` 为 1 = `u8`（无符号 8 位）、2 = `s16le`（有符号 16 位小端）；循环方式 `SOUND_LOOP_MODES` 为 0 = `none`、1 = `whole`。
+  - **写入：** `writeSoundPayload` 按读取器的同一规则核对 `{ sampleRate, channels, encoding, loop, pcm }`（PCM 须是一个或多个整帧，帧数不超过 u32），把 PCM 原样复制到长度恰好的新独占 buffer，不修改也不保留输入视图。
+  - **读取：** `readSoundPayload` 依次核对长度至少为头部、标签、采样率/声道/编码/循环方式、保留字节、帧数 ≥ 1、PCM 长度恰为帧数 × 声道数 × 每样本字节数（无尾随字节），失败时以 `invalid-sound-payload` 及字段路径拒绝，已转移的字节为 `payload-detached`；不按声明的帧数分配，诊断不回显值。结果是冻结的头部字段加指向原视图的 PCM 子视图，仅供读取。
+  - **浮点映射：** `soundChannelData` 是唯一的映射，为每个声道返回新的 `Float32Array`（按帧交错拆分，不与 payload 共享内存）：`u8` 的 v 映射为 (v − 128) / 128，`s16le` 的 v 映射为 v / 32768，按小端读取，与宿主字节序无关。转换器、播放适配与本地对照脚本都用它。
 
 合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态（`syntheticSourceGroup` 可绑定任意来源指纹），以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
 
