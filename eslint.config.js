@@ -5,6 +5,18 @@ import tseslint from 'typescript-eslint';
 
 const browserOnly = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyval'];
 const appLayers = ['app', 'render', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]);
+const pureModuleImports = {
+  paths: browserOnly.map((name) => ({ name, message: 'Pure modules must not depend on UI, rendering, or storage libraries.' })),
+  patterns: [
+    { group: browserOnly.map((name) => `${name}/*`), message: 'Pure modules must not depend on UI, rendering, or storage libraries.' },
+    { group: appLayers, message: 'Pure modules must not import app layers.' },
+  ],
+};
+// P2-01 AC-05: consumers use canonical Asset IDs; original locators and archive structure stay in original-data.
+const originalDataImports = {
+  group: ['**/original-data', '**/original-data/**'],
+  message: 'Content consumers must not import original-data locators or archive structure.',
+};
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
@@ -32,20 +44,22 @@ export default tseslint.config(
   },
   {
     // Pure modules: no UI, rendering, or browser storage libraries, and no app layers.
-    files: ['src/core/**/*.{ts,tsx}', 'src/original-data/**/*.{ts,tsx}', 'src/content/**/*.{ts,tsx}'],
+    files: ['src/original-data/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts'],
+    rules: { 'no-restricted-imports': ['error', pureModuleImports] },
+  },
+  {
+    // Pure content consumers additionally never see original-data (one rule entry, as later entries replace options).
+    files: ['src/core/**/*.{ts,tsx}', 'src/content/**/*.{ts,tsx}'],
     ignores: ['**/*.test.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: browserOnly.map((name) => ({ name, message: 'Pure modules must not depend on UI, rendering, or storage libraries.' })),
-          patterns: [
-            { group: browserOnly.map((name) => `${name}/*`), message: 'Pure modules must not depend on UI, rendering, or storage libraries.' },
-            { group: appLayers, message: 'Pure modules must not import app layers.' },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { ...pureModuleImports, patterns: [...pureModuleImports.patterns, originalDataImports] }],
     },
+  },
+  {
+    files: ['src/render/**/*.{ts,tsx}', 'src/platform/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [originalDataImports] }] },
   },
   {
     // Core determinism: randomness and time come from the tick input, never from the host.

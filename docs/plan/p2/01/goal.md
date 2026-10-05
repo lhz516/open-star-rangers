@@ -59,7 +59,7 @@ updated: 2026-10-04
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
 | [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | completed |
 | [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | completed |
-| [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
+| [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | completed |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | pending |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | pending |

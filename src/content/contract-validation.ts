@@ -13,7 +13,10 @@ export type ContentContractErrorCode =
   | 'invalid-origin'
   | 'invalid-payload-identity'
   | 'duplicate-dependency'
-  | 'dependency-order';
+  | 'dependency-order'
+  | 'invalid-source-mapping'
+  | 'duplicate-mapping'
+  | 'mapping-order';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;
@@ -59,4 +62,25 @@ export function requireFields(record: Record<string, unknown>, path: string, fie
   }
   // Never echo unknown keys, which may contain private source paths or content.
   if (Object.keys(record).length !== fields.length) fail('invalid-record', path, 'contains unknown fields');
+}
+
+/** Reads a dense plain array of data elements and returns a frozen copy of the read items. */
+export function readArray<T>(
+  value: unknown,
+  path: string,
+  code: ContentContractErrorCode,
+  readItem: (item: unknown, path: string) => T,
+): readonly T[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+    || Reflect.ownKeys(value).length !== value.length + 1) {
+    fail(code, path, 'must be a dense plain array without extra fields');
+  }
+  const items: T[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const at = `${path}[${index}]`;
+    const property = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!property?.enumerable || !('value' in property)) fail(code, at, 'must be an enumerable data element');
+    items.push(readItem(property.value, at));
+  }
+  return Object.freeze(items);
 }

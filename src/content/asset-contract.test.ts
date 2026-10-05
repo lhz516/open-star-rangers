@@ -75,6 +75,11 @@ describe('Asset descriptor and reference primitives', () => {
     expect(() => readAssetDescriptor(reversed))
       .toThrowError(expect.objectContaining({ code: 'dependency-order', path: 'asset.dependencies[1]' }));
     expect(reversed).toEqual(before);
+    const earlierProblem = descriptor();
+    earlierProblem.dependencies.reverse();
+    earlierProblem.dependencies.push({ id: 'Bad', kind: 'image' });
+    expect(() => readAssetDescriptor(earlierProblem))
+      .toThrowError(expect.objectContaining({ code: 'dependency-order', path: 'asset.dependencies[1]' }));
   });
 
   it('rejects classes, functions, sparse/accessor/extended arrays and non-DTO metadata', () => {

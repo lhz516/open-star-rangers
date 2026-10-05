@@ -40,6 +40,29 @@ function program(project: string, directory = root): ts.Program {
   return ts.createProgram(config.fileNames, config.options);
 }
 
+const COMPUTED_IMPORT = '<computed import>';
+
+/**
+ * Specifiers of real import/export declarations, dynamic imports and import types; comments and other
+ * strings are ignored. A dynamic import whose argument is not a string literal yields COMPUTED_IMPORT.
+ */
+function moduleSpecifiers(file: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      found.push(node.moduleSpecifier.text);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [argument] = node.arguments;
+      found.push(argument && ts.isStringLiteralLike(argument) ? argument.text : COMPUTED_IMPORT);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
+      found.push(node.argument.literal.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
 let appProgram: ts.Program | undefined;
 /** The real app program covers every production source; source rules share one build of it. */
 const sharedAppProgram = (): ts.Program => appProgram ??= program('app');
@@ -216,6 +239,28 @@ describe('TypeScript module environments', () => {
       }
     });
 
+    // P2-01 AC-05: canonical content consumers never import original locators or archive structure.
+    const contentConsumerFiles = ['core', 'content', 'render', 'platform', 'ui', 'app'].flatMap((layer) => ['ts', 'tsx'].map((extension) => `src/${layer}/probe.${extension}`));
+
+    it.each(contentConsumerFiles)('rejects original-data imports in %s', async (file) => {
+      for (const specifier of ['../original-data', '../original-data/source-mapping.ts', '../../original-data/imfat.ts']) {
+        const source = importForms.map(form => form(specifier)).join('\n');
+        const result = await lint(source, file);
+        const restricted = result.messages.filter(message => message.ruleId === 'no-restricted-imports');
+        expect(restricted.map(message => message.line), `${file}: ${source}`).toEqual(importForms.map((_, index) => index + 1));
+      }
+    });
+
+    it('keeps original-data available to itself, the import workers and tests', async () => {
+      const cases = [
+        ['src/original-data/probe.ts', "export { readSourceMappingTable } from './source-mapping.ts';"],
+        ['src/original-data/probe.ts', "export { readAssetReference } from '../content/asset-contract.ts';"],
+        ['src/workers/probe.ts', "export { readSourceMappingTable } from '../original-data/source-mapping.ts';"],
+        ['src/core/probe.test.ts', "export { parseImfat } from '../original-data/imfat.ts';"],
+      ];
+      for (const [file, source] of cases) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
+    });
+
     it.each(['ts', 'tsx'])('rejects host scheduling, time, randomness and async syntax in core .%s', async (extension) => {
       for (const { source, rule } of hostOperations) {
         const file = `src/core/probe.${extension}`;
@@ -299,21 +344,6 @@ describe('render layer boundaries', () => {
   const isBrowserModule = (fileName: string): boolean => /^browser-.*\.ts$/.test(basename(fileName)) || fileName.endsWith('.tsx');
   const scheduling = new Set(['requestAnimationFrame', 'setAnimationLoop', 'setTimeout', 'setInterval', 'queueMicrotask', 'requestIdleCallback']);
 
-  /** Real import/export declarations and string dynamic imports; comments and other strings are ignored. */
-  function moduleSpecifiers(file: ts.SourceFile): string[] {
-    const found: string[] = [];
-    const visit = (node: ts.Node): void => {
-      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-        found.push(node.moduleSpecifier.text);
-      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
-        found.push(node.arguments[0].text);
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
-    return found;
-  }
-
   function identifierNames(file: ts.SourceFile): Set<string> {
     const names = new Set<string>();
     const visit = (node: ts.Node): void => {
@@ -337,6 +367,8 @@ describe('render layer boundaries', () => {
       "import /* note */ { X } from 'three/addons/x.js';", "// import './commented.ts';", "const s = 'setTimeout';",
     ].join('\n'));
     expect(moduleSpecifiers(sample)).toEqual(['./a.ts', '../b.ts', './c.ts', 'three/addons/x.js']);
+    expect(moduleSpecifiers(parse("type T = import('./t.ts').T; const d = import(name); const e = import(`./e.ts`);")))
+      .toEqual(['./t.ts', COMPUTED_IMPORT, './e.ts']);
     expect(identifierNames(sample).has('setTimeout')).toBe(false);
     expect(identifierNames(parse('window.setTimeout(f);')).has('setTimeout')).toBe(true);
   });
@@ -432,5 +464,74 @@ describe('content slice definition boundary', () => {
     const compilation = sharedAppProgram();
     const production = compilation.getRootFileNames().filter(fileName => !fileName.endsWith('.test-support.ts'));
     expect(definitionAssertions(compilation, root, production).map(entry => entry.replace(/:\d+$/, ''))).toEqual([owner]);
+  });
+});
+
+describe('original-data dependency boundary', () => {
+  // docs/plan/p2/01/spec.md S-06/AC-05: only original-data and the import workers may reach original locators,
+  // directly or through re-exports, dynamic imports or import types.
+  const mayReachOriginalData = (path: string): boolean => /^src\/(?:original-data|workers)\//.test(path);
+
+  /** Consumers whose transitive source dependencies reach original-data or an unverifiable computed import. */
+  function originalDataReach(compilation: ts.Program, directory: string): string[] {
+    const options = compilation.getCompilerOptions();
+    const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+    const edges = new Map<string, string[]>();
+    const dependencies = (fileName: string): string[] => {
+      let resolved = edges.get(fileName);
+      if (!resolved) {
+        const file = compilation.getSourceFile(fileName);
+        resolved = file ? moduleSpecifiers(file)
+          .map(specifier => specifier === COMPUTED_IMPORT ? specifier : ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName)
+          .filter((name): name is string => name === COMPUTED_IMPORT || (name !== undefined && project(name).startsWith('src/'))) : [];
+        edges.set(fileName, resolved);
+      }
+      return resolved;
+    };
+    const violations = new Set<string>();
+    for (const start of compilation.getRootFileNames()) {
+      const consumer = project(start);
+      if (!consumer.startsWith('src/') || mayReachOriginalData(consumer) || consumer.endsWith('.test-support.ts')) continue;
+      const seen = new Set([start]);
+      const queue = [start];
+      for (let index = 0; index < queue.length; index++) {
+        for (const next of dependencies(queue[index])) {
+          if (next === COMPUTED_IMPORT) violations.add(`${consumer} -> computed import in ${project(queue[index])}`);
+          else if (seen.has(next)) continue;
+          else if (project(next).startsWith('src/original-data/')) violations.add(`${consumer} -> ${project(next)}`);
+          else queue.push(next);
+          seen.add(next);
+        }
+      }
+    }
+    return [...violations].sort();
+  }
+
+  it('follows re-exports, dynamic imports and import types through intermediaries and rejects computed imports', () => {
+    withFixtures({
+      'src/original-data/locator.ts': 'export interface Locator { readonly discPath: string }',
+      'src/workers/bridge.ts': "export type { Locator } from '../original-data/locator.ts';",
+      'src/workers/protocol.ts': 'export interface ImportProgress { readonly done: number }',
+      'src/core/direct.ts': "export type { Locator } from '../original-data/locator.ts';",
+      'src/render/via-worker.ts': "import type { Locator } from '../workers/bridge.ts'; export type Seen = Locator;",
+      'src/ui/type-query.ts': "export type Seen = import('../original-data/locator.ts').Locator;",
+      'src/app/lazy.ts': "export const load = () => import('../original-data/locator.ts');",
+      'src/platform/clean.ts': "import type { ImportProgress } from '../workers/protocol.ts'; export type Seen = ImportProgress;",
+      'src/ui/computed.ts': 'export const load = (name: string) => import(`../original-data/${name}.ts`);',
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(originalDataReach(compilation, directory)).toEqual([
+        'src/app/lazy.ts -> src/original-data/locator.ts',
+        'src/core/direct.ts -> src/original-data/locator.ts',
+        'src/render/via-worker.ts -> src/original-data/locator.ts',
+        'src/ui/computed.ts -> computed import in src/ui/computed.ts',
+        'src/ui/type-query.ts -> src/original-data/locator.ts',
+      ]);
+    });
+  });
+
+  it('keeps every production consumer away from original-data', () => {
+    expect(originalDataReach(sharedAppProgram(), root)).toEqual([]);
   });
 });

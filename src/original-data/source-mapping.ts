@@ -1,0 +1,215 @@
+import { readAssetReference, type AssetReference } from '../content/asset-contract.ts';
+import type { AssetId, AssetKind } from '../content/asset-id.ts';
+import { readSourceFingerprint, type SourceFingerprint } from '../content/content-identity.ts';
+import { fail, matchesWhole, readArray, readRecord, requireFields } from '../content/contract-validation.ts';
+import type { ImfatEntry } from './imfat.ts';
+
+/** Research confidence in a mapping; it is not proof that a payload was verified. */
+export const SOURCE_CONFIDENCES = Object.freeze(['confirmed', 'likely', 'unconfirmed'] as const);
+export type SourceConfidence = typeof SOURCE_CONFIDENCES[number];
+
+/** `declared` by research; `verified` once an import resolved every locator in the fingerprinted source. */
+export const SOURCE_RESOLUTIONS = Object.freeze(['declared', 'verified'] as const);
+export type SourceResolution = typeof SOURCE_RESOLUTIONS[number];
+
+/**
+ * Archive entry types that can supply each canonical kind: entry types from
+ * docs/original/formats/imfat.md §5; image records also embedded in MFDD/CCKD/ANIM/TABL (textures.md §2).
+ */
+export const SOURCE_ENTRY_TYPES = Object.freeze({
+  mission: Object.freeze(['SCCT', 'SCEN']),
+  model: Object.freeze(['MESH', 'MODL']),
+  image: Object.freeze(['ANIM', 'BITM', 'CCKD', 'MFDD', 'TABL', 'TEX']),
+  palette: Object.freeze(['ANIM', 'BITM', 'CCKD', 'DATA', 'MFDD', 'TABL', 'TEX']),
+  font: Object.freeze(['CCKD', 'TABL']),
+  layout: Object.freeze(['CCKD', 'TABL']),
+  sound: Object.freeze(['SND']),
+  data: Object.freeze(['AICO', 'CINF', 'DFPG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'SCCT', 'TABL']),
+} satisfies Record<AssetKind, readonly string[]>);
+
+export interface OriginalAssetLocator {
+  /** Disc-relative archive path such as `MAIN/SR.NOB`. */
+  readonly discPath: string;
+  /** IMFAT entry selected by the parser's own entry ID and type tag. */
+  readonly entry: Readonly<Pick<ImfatEntry, 'id' | 'type'>>;
+  /** Path inside the entry payload, or null for the whole entry. */
+  readonly subresource: string | null;
+}
+
+export interface SourcePart {
+  /**
+   * Exact source equivalents (same entry type and sub-resource); any one supplies the part.
+   * A `verified` mapping means the importer also proved their bytes and entry metadata equal.
+   */
+  readonly alternatives: readonly OriginalAssetLocator[];
+}
+
+export interface SourceMapping {
+  readonly asset: AssetReference;
+  /** All parts are needed to produce the Asset. */
+  readonly parts: readonly SourcePart[];
+  readonly confidence: SourceConfidence;
+  /** U-### items the mapping depends on; required unless the mapping is confirmed. */
+  readonly unknowns: readonly string[];
+  /** Authoritative `docs/original/` references. */
+  readonly evidence: readonly string[];
+  readonly resolution: SourceResolution;
+}
+
+export interface SourceMappingTable {
+  /** Source the locators were verified against; null until P2-03 supplies a fingerprint. */
+  readonly sourceFingerprint: SourceFingerprint | null;
+  /** Ascending unique Asset IDs; several Assets may share a locator. */
+  readonly mappings: readonly SourceMapping[];
+}
+
+export type SourceDiagnosticCode = 'source-missing' | 'source-type-conflict' | 'source-unconfirmed' | 'source-unverified';
+
+/** Safe diagnostic: a canonical ID, a structural path and U items, never original content or locator values. */
+export interface SourceDiagnostic {
+  readonly code: SourceDiagnosticCode;
+  readonly assetId: AssetId;
+  readonly path: string;
+  readonly unknowns: readonly string[];
+}
+
+const DOS_NAME = '[A-Z0-9_-]{1,8}(?:\\.[A-Z0-9_-]{1,3})?';
+const DISC_PATH = new RegExp(`^${DOS_NAME}(?:/${DOS_NAME}){0,7}$`);
+const SUBRESOURCE = /^[a-z0-9]+(?:[-.][a-z0-9]+)*(?:\/[a-z0-9]+(?:[-.][a-z0-9]+)*){0,7}$/;
+const EVIDENCE = /^docs\/original\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.md(?:#[^\s#]+)?$/;
+
+function readEnum<T extends string>(value: unknown, allowed: readonly T[], path: string, reason: string): T {
+  if (!allowed.some(item => item === value)) fail('invalid-source-mapping', path, reason);
+  return value as T;
+}
+
+function readLocator(value: unknown, path: string): OriginalAssetLocator {
+  const record = readRecord(value, path);
+  requireFields(record, path, ['discPath', 'entry', 'subresource']);
+  if (!matchesWhole(record.discPath, DISC_PATH)) {
+    fail('invalid-source-mapping', `${path}.discPath`, 'must be a relative upper-case 8.3 disc path');
+  }
+  const entry = readRecord(record.entry, `${path}.entry`);
+  requireFields(entry, `${path}.entry`, ['id', 'type']);
+  if (typeof entry.id !== 'number' || !Number.isSafeInteger(entry.id) || entry.id < 0) {
+    fail('invalid-source-mapping', `${path}.entry.id`, 'must be a nonnegative safe integer archive entry ID');
+  }
+  if (!matchesWhole(entry.type, /^[A-Z0-9]{1,4}$/)) fail('invalid-source-mapping', `${path}.entry.type`, 'must be a 1-4 character archive type tag');
+  const subresource = record.subresource;
+  if (subresource !== null && (!matchesWhole(subresource, SUBRESOURCE) || subresource.length > 128)) {
+    fail('invalid-source-mapping', `${path}.subresource`, 'must be null or a restricted ASCII path of at most 128 characters');
+  }
+  return Object.freeze({
+    discPath: record.discPath,
+    entry: Object.freeze({ id: entry.id + 0, type: entry.type }),
+    subresource: subresource as string | null,
+  });
+}
+
+const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
+  return compareText(left.discPath, right.discPath) || compareText(left.entry.type, right.entry.type)
+    || left.entry.id - right.entry.id
+    || (left.subresource === right.subresource ? 0 : left.subresource === null ? -1 : right.subresource === null ? 1 : compareText(left.subresource, right.subresource));
+}
+
+/** Reads a list whose items must be strictly ascending under `compare`, checked in index order. */
+function readOrdered<T>(value: unknown, path: string, readItem: (item: unknown, path: string) => T, compare: (a: T, b: T) => number, minimum = 1): readonly T[] {
+  let previous: { item: T } | undefined;
+  const items = readArray(value, path, 'invalid-source-mapping', (raw, at) => {
+    const item = readItem(raw, at);
+    const order = previous ? compare(previous.item, item) : -1;
+    if (order === 0) fail('duplicate-mapping', at, 'must not repeat an item');
+    if (order > 0) fail('mapping-order', at, 'must be in canonical ascending order');
+    previous = { item };
+    return item;
+  });
+  if (items.length < minimum) fail('invalid-source-mapping', path, `must contain at least ${minimum} item`);
+  return items;
+}
+
+function readMapping(value: unknown, path: string, fingerprinted: boolean): SourceMapping {
+  const record = readRecord(value, path);
+  requireFields(record, path, ['asset', 'parts', 'confidence', 'unknowns', 'evidence', 'resolution']);
+  const parts = readOrdered(record.parts, `${path}.parts`, (item, at) => {
+    const part = readRecord(item, at);
+    requireFields(part, at, ['alternatives']);
+    const alternatives = readOrdered(part.alternatives, `${at}.alternatives`, readLocator, compareLocators);
+    alternatives.forEach(({ entry, subresource }, index) => {
+      if (entry.type !== alternatives[0].entry.type || subresource !== alternatives[0].subresource) {
+        fail('invalid-source-mapping', `${at}.alternatives[${index}]`, 'must share the entry type and sub-resource of the other equivalents');
+      }
+    });
+    return Object.freeze({ alternatives });
+  }, (a, b) => compareLocators(a.alternatives[0], b.alternatives[0]));
+  const locators = new Set<string>();
+  for (const { alternatives } of parts) {
+    for (const { discPath, entry, subresource } of alternatives) {
+      // Sub-resources are never empty, so '' unambiguously stands for null.
+      const key = `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
+      if (locators.has(key)) fail('duplicate-mapping', `${path}.parts`, 'must not repeat a locator across parts');
+      locators.add(key);
+    }
+  }
+  const confidence = readEnum(record.confidence, SOURCE_CONFIDENCES, `${path}.confidence`, 'must be confirmed, likely or unconfirmed');
+  const unknowns = readOrdered(record.unknowns, `${path}.unknowns`, (item, at) => {
+    if (!matchesWhole(item, /^U-\d{3}$/)) fail('invalid-source-mapping', at, 'must be a U-### register ID');
+    return item;
+  }, compareText, confidence === 'confirmed' ? 0 : 1);
+  const evidence = readOrdered(record.evidence, `${path}.evidence`, (item, at) => {
+    if (!matchesWhole(item, EVIDENCE) || item.length > 256) fail('invalid-source-mapping', at, 'must reference a docs/original document');
+    return item;
+  }, compareText);
+  const resolution = readEnum(record.resolution, SOURCE_RESOLUTIONS, `${path}.resolution`, 'must be declared or verified');
+  if (resolution === 'verified' && !fingerprinted) {
+    fail('invalid-source-mapping', `${path}.resolution`, 'cannot be verified without a source fingerprint');
+  }
+  return Object.freeze({ asset: readAssetReference(record.asset, `${path}.asset`), parts, confidence, unknowns, evidence, resolution });
+}
+
+/** Validates a source mapping table; locators stay in original-data and never enter canonical content. */
+export function readSourceMappingTable(value: unknown): SourceMappingTable {
+  const path = 'sources';
+  const record = readRecord(value, path);
+  requireFields(record, path, ['sourceFingerprint', 'mappings']);
+  const sourceFingerprint = record.sourceFingerprint === null
+    ? null
+    : readSourceFingerprint(record.sourceFingerprint, `${path}.sourceFingerprint`);
+  const mappings = readOrdered(record.mappings, `${path}.mappings`,
+    (item, at) => readMapping(item, at, sourceFingerprint !== null),
+    (a, b) => compareText(a.asset.id, b.asset.id), 0);
+  return Object.freeze({ sourceFingerprint, mappings });
+}
+
+/**
+ * Diagnoses entry-type conflicts in every mapping, and missing, unconfirmed or unverified sources
+ * for the required Assets. `likely` mappings are allowed; their U items remain on the mapping.
+ */
+export function diagnoseSourceMappings(table: SourceMappingTable, required: readonly AssetReference[]): readonly SourceDiagnostic[] {
+  const diagnostics: SourceDiagnostic[] = [];
+  const report = (code: SourceDiagnosticCode, assetId: AssetId, path: string, unknowns: readonly string[] = []) =>
+    diagnostics.push(Object.freeze({ code, assetId, path, unknowns: Object.freeze([...unknowns]) }));
+  const byId = new Map(table.mappings.map((mapping, index) => [mapping.asset.id, { mapping, index }]));
+  table.mappings.forEach(({ asset, parts, unknowns }, index) => {
+    parts.forEach(({ alternatives }, part) => alternatives.forEach(({ entry }, alternative) => {
+      if (!(SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type)) {
+        report('source-type-conflict', asset.id, `mappings[${index}].parts[${part}].alternatives[${alternative}].entry.type`, unknowns);
+      }
+    }));
+  });
+  const firstRequired = new Map<AssetId, number>();
+  required.forEach(({ id }, index) => { if (!firstRequired.has(id)) firstRequired.set(id, index); });
+  for (const [id, requiredIndex] of firstRequired) {
+    const found = byId.get(id);
+    if (!found) {
+      report('source-missing', id, `required[${requiredIndex}]`);
+      continue;
+    }
+    const { mapping, index } = found;
+    if (mapping.confidence === 'unconfirmed') report('source-unconfirmed', id, `mappings[${index}].confidence`, mapping.unknowns);
+    if (mapping.resolution === 'declared') report('source-unverified', id, `mappings[${index}].resolution`, mapping.unknowns);
+  }
+  return Object.freeze(diagnostics.sort((a, b) =>
+    compareText(a.assetId, b.assetId) || compareText(a.code, b.code) || compareText(a.path, b.path)));
+}

@@ -50,6 +50,14 @@ function readToken(value: unknown, path: string): string {
 }
 
 /** Validates representation, not provenance. P2-03 must produce verified source fingerprints. */
+export function readSourceFingerprint(value: unknown, path = 'sourceFingerprint'): SourceFingerprint {
+  if (!matchesWhole(value, /^source:[a-z0-9]+(?:[-.:][a-z0-9]+)*$/)) {
+    fail('invalid-identity', path, 'must be a source: identity, not a fixture, filename or state hash');
+  }
+  return value as SourceFingerprint;
+}
+
+/** Validates representation, not provenance. P2-03 must produce verified source fingerprints. */
 export function readContentOrigin(value: unknown, path = 'origin'): ContentOrigin {
   const record = readRecord(value, path);
   switch (record.type) {
@@ -62,10 +70,7 @@ export function readContentOrigin(value: unknown, path = 'origin'): ContentOrigi
     }
     case 'original-import': {
       requireFields(record, path, ['type', 'sourceFingerprint']);
-      if (!matchesWhole(record.sourceFingerprint, /^source:[a-z0-9]+(?:[-.:][a-z0-9]+)*$/)) {
-        fail('invalid-identity', `${path}.sourceFingerprint`, 'must be a source: identity, not a fixture, filename or state hash');
-      }
-      return Object.freeze({ type: 'original-import', sourceFingerprint: record.sourceFingerprint as SourceFingerprint });
+      return Object.freeze({ type: 'original-import', sourceFingerprint: readSourceFingerprint(record.sourceFingerprint, `${path}.sourceFingerprint`) });
     }
     default: return fail('invalid-origin', `${path}.type`, 'must be synthetic or original-import');
   }

@@ -55,6 +55,7 @@ src/
   original-data/
     imfat.ts
     payloads.ts
+    source-mapping.ts
     synthetic.ts
   platform/
     browser/
@@ -97,7 +98,7 @@ src/
       SyntheticRenderView.tsx
 ```
 
-`workers/` 仍是顶层架构中的计划模块，不是已实现目录。[content/](../../src/content/) 目前实现候选无关的基础契约和唯一生产切片定义（见下节），尚无来源映射或完整性验证。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+`workers/` 仍是顶层架构中的计划模块，不是已实现目录。[content/](../../src/content/) 目前实现候选无关的基础契约和唯一生产切片定义（见下节），尚无完整性验证；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 ### 内容基础契约与切片定义
 
@@ -109,10 +110,19 @@ src/
 - 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
-- [contract-validation.ts](../../src/content/contract-validation.ts)：模块内复用的严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；**二进制 payload 的独占副本、别名隔离和 transfer 后失效仍由 05 实现**，当前 API 不接收二进制 payload。
+- [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。**二进制 payload 的独占副本、别名隔离和 transfer 后失效仍由 05 实现**，当前 API 不接收二进制 payload。
 - [slice-definition.ts](../../src/content/slice-definition.ts)（[P2-01/02](../plan/p2/01/subtasks/02-slice-content-contract.md)）：`CLASSIC_P2_SLICE` 是唯一的生产切片定义，深度冻结；`SliceDefinition` 带仅类型品牌，唯一构造由[工程边界回归](./README.md#lint-规则eslintconfigjs)保证。定义记录经批准的候选结构选择器（战役 group 0 / slot 1，僚机可选）、四个必需资源组，以及 S-03 角色的组、允许 kind 与 Asset 数量范围。弹丸/导弹/碎片暂允许 model 或 image，四类核心音效暂允许多个采样片段，分别待 P2-06/P2-08 核实后收窄。原版条目 ID 不在此处，由 03 的来源映射记录；按定义判定清单完整性由 04 实现。更换候选或改变角色、数量范围、分组都须修订 spec 并递增 `SLICE_DEFINITION_VERSION`。
 
 针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
+
+### 原版来源映射
+
+[source-mapping.ts](../../src/original-data/source-mapping.ts)（[P2-01/03](../plan/p2/01/subtasks/03-source-mapping-boundary.md)）只属于 `original-data`，规范内容消费者不能导入（见[工程约定](./README.md#lint-规则eslintconfigjs)）：
+
+- `readSourceMappingTable` 验证来源映射表：每个规范 Asset 映射到一个或多个部件，部件之间为“全部需要”（例如任务的 SCEN 与 SCCT 记录），同一部件内的多个 locator 为“精确等价，任取其一”（例如字节完全相同的别名条目）。locator 是光盘相对的 8.3 大写路径、IMFAT entry ID/type 与可选子资源路径；多个 Asset 可以共用同一 locator。每条映射还记录置信度（confirmed/likely/unconfirmed，非 confirmed 必须链接 U 项）、`docs/original/` 证据及 `declared`/`verified` 解析状态。表级 `sourceFingerprint` 在 P2-03 提供前为 null，此时不允许出现 `verified`。
+- `diagnoseSourceMappings` 返回稳定排序、深度冻结的安全诊断，只含规范 ID、结构路径和 U 项，不含 locator 值或原版内容。所有映射都检查条目类型与 Asset kind 是否兼容（`SOURCE_ENTRY_TYPES` 依据 [imfat §5](../original/formats/imfat.md#5-entry-types) 与 [textures §2](../original/formats/textures.md#2-image-record-36-bytes-confirmed)）。必需 Asset 另报缺失、未确认和未验证；likely 不报，但其 U 项保留在映射上。按切片定义把这些诊断计入组和全包完整性由 04 实现。
+
+针对性检查为 `pnpm exec vitest run src/original-data src/content tools/engineering-boundaries.test.ts`。
 
 ## 职责与依赖
 
