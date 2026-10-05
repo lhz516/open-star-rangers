@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-03
+updated: 2026-10-04
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -73,6 +73,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 持久正/负回归在 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts)，进入现有 `pnpm test`/`pnpm check`。TypeScript 样本在自有临时项目中使用仓库原配置和真实 include/exclude，ESLint 使用虚拟源与真实逻辑路径，不在生产目录留违规文件。负向必须命中目标诊断，正向须通过；空项目、ignored/parser 错误及误配预期均会失败。
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
+- 同一回归文件的 content 部分（P2-01 AC-01）保证唯一生产切片定义。`SliceDefinition` 带仅类型品牌，其他模块不经类型断言就无法构造；检查用应用程序的类型检查器找出所有目标类型可充当 `SliceDefinition` 的 `as`/`satisfies`/尖括号断言（含别名与映射类型），只允许 [slice-definition.ts](../../src/content/slice-definition.ts) 中的那一处。引用、传参或克隆已有单例不受限；显式 `any` 由 lint 拒绝，无类型的 `any` 数据流不在覆盖范围内。
 
 ## 测试
 

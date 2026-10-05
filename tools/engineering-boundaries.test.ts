@@ -40,6 +40,10 @@ function program(project: string, directory = root): ts.Program {
   return ts.createProgram(config.fileNames, config.options);
 }
 
+let appProgram: ts.Program | undefined;
+/** The real app program covers every production source; source rules share one build of it. */
+const sharedAppProgram = (): ts.Program => appProgram ??= program('app');
+
 function withFixtures<T>(files: Record<string, string>, check: (directory: string) => T): T {
   const directory = mkdtempSync(join(tmpdir(), 'star-rangers-boundaries-'));
   try {
@@ -321,7 +325,7 @@ describe('render layer boundaries', () => {
   }
 
   const parse = (source: string): ts.SourceFile => ts.createSourceFile('sample.ts', source, ts.ScriptTarget.Latest, true);
-  const appProgram = program('app');
+  const appProgram = sharedAppProgram();
   const production = appProgram.getRootFileNames()
     .filter(fileName => !fileName.endsWith('.test-support.ts'))
     .map(fileName => appProgram.getSourceFile(fileName)!);
@@ -361,5 +365,72 @@ describe('render layer boundaries', () => {
     expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
     const browserInNode = [...nodeFiles].filter(fileName => fileName.startsWith(`${src}${sep}`) && isBrowserModule(fileName));
     expect(browserInNode.map(relativeSource)).toEqual([]);
+  });
+});
+
+describe('content slice definition boundary', () => {
+  // docs/plan/p2/01/spec.md AC-01: the branded SliceDefinition is constructed only by its owner module.
+  const owner = 'src/content/slice-definition.ts';
+  const contentModules = ['asset-contract', 'asset-id', 'content-identity', 'contract-validation', 'slice-definition'];
+
+  /** Type assertions whose target can stand in for a SliceDefinition; explicit `any` is left to lint. */
+  function definitionAssertions(compilation: ts.Program, directory: string, fileNames: readonly string[]): string[] {
+    const checker = compilation.getTypeChecker();
+    const declaration = compilation.getSourceFile(join(directory, owner))?.statements
+      .find((statement): statement is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(statement) && statement.name.text === 'SliceDefinition');
+    if (!declaration) throw new Error('SliceDefinition declaration not found');
+    const definition = checker.getTypeAtLocation(declaration.name);
+    return fileNames.flatMap(fileName => {
+      const file = compilation.getSourceFile(fileName);
+      if (!file) throw new Error(`Not compiled: ${fileName}`);
+      const found: string[] = [];
+      const visit = (node: ts.Node): void => {
+        if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isSatisfiesExpression(node)) {
+          const target = checker.getTypeFromTypeNode(node.type);
+          if (!(target.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) && checker.isTypeAssignableTo(target, definition)) {
+            found.push(`${relative(directory, fileName).split(sep).join('/')}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      return found;
+    });
+  }
+
+  it('detects aliased, mapped and direct assertions but not consumers of the singleton', () => {
+    const modules = Object.fromEntries(contentModules.map(name =>
+      [`src/content/${name}.ts`, readFileSync(join(root, 'src', 'content', `${name}.ts`), 'utf8')]));
+    withFixtures({
+      ...modules,
+      'src/sample/forged.ts': [
+        "import { CLASSIC_P2_SLICE, type SliceDefinition } from '../content/slice-definition.ts';",
+        'type Alias = SliceDefinition;',
+        'export const aliased = { ...CLASSIC_P2_SLICE } as Alias;',
+        'export const mapped = structuredClone(CLASSIC_P2_SLICE) as Readonly<SliceDefinition>;',
+        "export const direct = JSON.parse('{}') as SliceDefinition;",
+      ].join('\n'),
+      'src/sample/consumer.ts': [
+        "import { CLASSIC_P2_SLICE, type SliceDefinition } from '../content/slice-definition.ts';",
+        'export const count = (definition: SliceDefinition): number => definition.roles.length;',
+        'export const active: SliceDefinition = CLASSIC_P2_SLICE;',
+        'export const copy = structuredClone(CLASSIC_P2_SLICE);',
+        "export const parsed = JSON.parse('1') as unknown;",
+        'export const width = 4 as number;',
+      ].join('\n'),
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      const sample = (name: string): string => join(directory, 'src', 'sample', name);
+      expect(definitionAssertions(compilation, directory, [sample('forged.ts')]))
+        .toEqual(['src/sample/forged.ts:3', 'src/sample/forged.ts:4', 'src/sample/forged.ts:5']);
+      expect(definitionAssertions(compilation, directory, [sample('consumer.ts')])).toEqual([]);
+    });
+  });
+
+  it('constructs the only SliceDefinition in its owner module', () => {
+    const compilation = sharedAppProgram();
+    const production = compilation.getRootFileNames().filter(fileName => !fileName.endsWith('.test-support.ts'));
+    expect(definitionAssertions(compilation, root, production).map(entry => entry.replace(/:\d+$/, ''))).toEqual([owner]);
   });
 });

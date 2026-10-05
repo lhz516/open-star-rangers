@@ -58,7 +58,7 @@ updated: 2026-10-04
 |---|---|---|
 | [08-base-content-contract.md](./subtasks/08-base-content-contract.md) | — | completed |
 | [01-candidate-qualification.md](./subtasks/01-candidate-qualification.md) | 08 | completed |
-| [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | pending |
+| [02-slice-content-contract.md](./subtasks/02-slice-content-contract.md) | 01 | completed |
 | [03-source-mapping-boundary.md](./subtasks/03-source-mapping-boundary.md) | 01, 02 | pending |
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | pending |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | pending |
@@ -142,6 +142,8 @@ updated: 2026-10-04
 - **2026-10-04 — Subtask 01 qualification evidence complete; fallback selected, approval pending:** 有界掩码立即数搜索找到玩家飞行按键的敌/友目标模式，由此取得玩家相对敌我分类与输入不变量，并把用户第一关试玩经难度全局值绑定到 group 0 / slot 1；事实见 [executable](../../../original/formats/executable.md#player-target-modes-and-enemy-classification) 与 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)。S-02 检查 51 个战役槽位：45 个按敌机数量下界不合格，6 个通过结构门槛；按规范闭包的包含关系选出 group 0 / slot 1（SCEN 3019），论证见 [01](./subtasks/01-candidate-qualification.md#当前资格证据覆盖)。该回退候选改变任务与必需闭包；按 S-02 及“切片候选选择”第 5 步，须先修订 spec 选择记录、经另一模型审阅，再由用户重新批准。在此之前 01 保持 in-progress，02–07 不开始；绝对全包总数与固定资源来源映射归 02/03。
 
 - **2026-10-04 — Subtask 01 completed:** spec [候选选择记录](./spec.md#候选选择记录)经另一模型审阅，没有新的契约决策；用户明确批准修订，spec 恢复 accepted。01 的三项验收均已满足，rubber-duck 的 5 个发现均已处理并复核，证据见 [01](./subtasks/01-candidate-qualification.md#完成证据)。下一项为依赖已满足的 02，按已批准候选实现唯一生产切片定义；绝对规范总数与来源映射分别由 02/03 完成。
+
+- **2026-10-04 — Subtask 02 completed:** 唯一生产切片定义、S-03 角色/组/数量范围及唯一构造边界已实现并通过完整工程检查，证据见 [02](./subtasks/02-slice-content-contract.md#完成证据)。rubber-duck 审查后，核心音效改为至少 1 个，唯一性改用名义类型加类型检查器规则。02 验收第 4 项按依赖关系限定为契约层保证：几何字节变化导致 payload 身份失配、共享源网格视图隔离这两项字节层证明，由 04/05 实现、06 验证（AC-06/AC-09），因为 03–05 依赖 02，不能反过来作为 02 的前置。06 的工作范围已加入对应用例，目标级验收不降低。下一项为 03（来源映射边界）。
 
 ## 审批
 
