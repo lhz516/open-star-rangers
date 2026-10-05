@@ -75,6 +75,7 @@ src/
       iso9660-volume.ts
       disc-path.ts
       iso9660-directory.ts
+      file-range.ts
       disc-image.ts
   platform/
     browser/

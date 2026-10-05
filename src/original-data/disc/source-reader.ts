@@ -22,7 +22,8 @@ export interface SourceSnapshot {
 
 const isBudgetShapeCode = (code: string): code is BudgetShapeCode => (BUDGET_SHAPE_CODES as readonly string[]).includes(code);
 
-const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+/** Whether `value` is a nonnegative safe integer. */
+export const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
 /** Reads the source size once; later reads never consult the port's size again. */
 export function snapshotSource(port: ByteSource, location: string): SourceSnapshot {
