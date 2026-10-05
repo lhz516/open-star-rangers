@@ -79,7 +79,12 @@ beforeAll(async () => {
  * An opener over real files that records which handles were closed. It can fail closing (asynchronously, or
  * synchronously for the first file opened) or cancel after a number of reads.
  */
-function trackedOpener(options: { failClose?: 'async' | 'sync-first'; abortAfterReads?: { controller: AbortController; count: number } } = {}) {
+function trackedOpener(options: {
+  failClose?: 'async' | 'sync-first';
+  abortAfterReads?: { controller: AbortController; count: number };
+  /** Makes reads of this path that start at or after the offset fail. */
+  failReads?: { path: string; from: number };
+} = {}) {
   const closed: string[] = [];
   const opened: string[] = [];
   let reads = 0;
@@ -91,6 +96,7 @@ function trackedOpener(options: { failClose?: 'async' | 'sync-first'; abortAfter
       byteLength: source.byteLength,
       read: (offset, length) => {
         if (options.abortAfterReads && ++reads === options.abortAfterReads.count) options.abortAfterReads.controller.abort();
+        if (options.failReads?.path === path && offset >= options.failReads.from) return Promise.reject(new Error(`EIO ${directory}`));
         return source.read(offset, length);
       },
       close: () => {
@@ -160,6 +166,16 @@ describe('local disc check', () => {
     const report = await check(inputs, { open, signal: controller.signal });
     expect(report).toMatchObject({ passed: false, error: { code: 'cancelled' }, files: { checked: 0, matched: 0, mismatched: [] } });
     expect(closed).toHaveLength(4);
+  });
+
+  it('records a failed game file read as read-failed, fails, and still closes every handle', async () => {
+    const { open, closed } = trackedOpener({ failReads: { path: paths.img, from: FILES[0].extent * 2_352 } });
+    const report = await check(inputs, { open });
+    expect(report).toMatchObject({
+      passed: false, error: null, files: { checked: 3, matched: 2, mismatched: [{ path: 'MAIN/SMALL.DAT', code: 'read-failed' }] },
+    });
+    expect(JSON.stringify(report)).not.toContain(directory);
+    expect(closed.sort()).toEqual([...inputs].sort());
   });
 
   it('fails a check whose handles cannot be closed as read-failed', async () => {

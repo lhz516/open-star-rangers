@@ -46,6 +46,13 @@ describe('volume descriptors', () => {
     expect((await open(SECTORS, sectors).result()).volume.volumeSectors).toBe(SECTORS);
   });
 
+  it('accepts a terminator as the sixteenth descriptor, at LBA 31', async () => {
+    const descriptors = [primaryVolumeDescriptor(40, rootRecord(34)), ...Array.from({ length: 14 }, () => volumeDescriptor(SUPPLEMENTARY)), terminator()];
+    const { image, result } = open(40, sequence(...descriptors));
+    expect((await result()).volume).toEqual({ sectorCount: 40, volumeSectors: 40 });
+    expect(requestedLbas(image)).toEqual(Array.from({ length: 16 }, (_, index) => 16 + index));
+  });
+
   it('rejects a sequence without a terminator in 16 descriptors and reads no further', async () => {
     const descriptors = [primaryVolumeDescriptor(40, rootRecord(34)), ...Array.from({ length: 15 }, () => volumeDescriptor(SUPPLEMENTARY))];
     const { image, result } = open(40, sequence(...descriptors));

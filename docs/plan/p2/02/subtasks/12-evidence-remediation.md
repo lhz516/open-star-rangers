@@ -31,10 +31,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] 16 个描述符且终止符位于 LBA 31 时打开成功，读取日志为 LBA 16–31；既有的“无终止符”拒绝用例保持通过。
-- [ ] 打开、查找、读取三层各有一个失败用例：重复执行两次得到相同的首个错误 DTO。
-- [ ] CLI 读取游戏文件失败时报告 `read-failed`，`passed` 为 false，4 个句柄全部关闭。
-- [ ] `pnpm exec vitest run src/original-data tools/disc-check.test.ts` 通过。
+- [x] 16 个描述符且终止符位于 LBA 31 时打开成功，读取日志为 LBA 16–31；既有的“无终止符”拒绝用例保持通过。
+- [x] 打开、查找、读取三层各有一个失败用例：重复执行两次得到相同的首个错误 DTO。
+- [x] CLI 读取游戏文件失败时报告 `read-failed`，`passed` 为 false，4 个句柄全部关闭。
+- [x] `pnpm exec vitest run src/original-data tools/disc-check.test.ts` 通过。
 
 ## 验证方法
 
@@ -42,3 +42,22 @@ updated: 2026-10-05
 - 不适用 browser-testing 或原版对照。
 
 ## 完成证据
+
+- **测试（只补证据，没有改实现）：**
+  - [iso9660-volume.test.ts](../../../../../src/original-data/disc/iso9660-volume.test.ts)：主卷、14 个补充描述符与位于 LBA 31 的终止符（第 16 个描述符）可以打开，卷信息正确，读取日志恰为 LBA 16–31。既有的“16 个描述符内无终止符”拒绝用例仍证明不会读第 17 个。
+  - [disc-image.test.ts](../../../../../src/original-data/disc/disc-image.test.ts)（AC-08）：用相同输入、相同初始预算记录（40,000 字节）与相同取消状态，分别新建句柄做两次：
+    - 打开：描述符扇区为空，返回 `invalid-volume`；
+    - 查找：不存在的路径，返回 `path-not-found`；
+    - 读取：原始扇区头部损坏，返回 `invalid-sector`。
+    - 每层两次得到的完整 DTO（code、location、reason、limit）相同。同一句柄上重复查找与读取也得到相同错误。
+  - [disc-check.test.ts](../../../../../tools/disc-check.test.ts)（AC-11）：从第一个游戏文件的数据扇区起，镜像端口读取失败：
+    - 该文件记为 `read-failed`，其余照常核对（checked 3、matched 2），`error` 为 null，`passed` 为 false；
+    - 4 个句柄全部关闭；
+    - 报告中没有宿主异常里的临时目录路径。
+  - 测试辅助 `requestedLbas` 现在遇到不是整扇区的请求即失败，任何多出的不足一扇区的读取都不会被漏掉。
+- **检查：**
+  - `pnpm exec vitest run src/original-data tools/disc-check.test.ts` 通过；typecheck 与 lint 通过；
+  - 完整 `pnpm check` 通过：80 个测试文件共 2086 项测试、build。
+- **Rubber-duck：** 没有阻塞项，确认三个用例都不会空过，且各自命中目标路径。非阻塞项“`requestedLbas` 会把不足一扇区的请求截掉”已修复。
+- **Simplify：** 只改测试，没有生产代码变更，按流程不需要代码清理。
+- **文档影响：** 无需更新。

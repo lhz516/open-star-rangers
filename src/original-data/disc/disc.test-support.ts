@@ -83,7 +83,9 @@ export function syntheticDisc(sectorCount: number, sectors: ReadonlyMap<number, 
   return { descriptor, image, files: [{ name: `${MARKER}.ccd`, source: descriptor }, { name: `${MARKER}.img`, source: image }] };
 }
 
-/** The LBAs of the image port's requests, one per requested sector. */
+/** The LBAs of the image port's requests, one per requested sector; a request that is not whole raw sectors fails. */
 export const requestedLbas = (image: SyntheticByteSource): number[] =>
-  image.requests.flatMap(({ offset, length }) =>
-    Array.from({ length: length / SYNTHETIC_RAW_SECTOR_BYTES }, (_, index) => offset / SYNTHETIC_RAW_SECTOR_BYTES + index));
+  image.requests.flatMap(({ offset, length }) => {
+    if (offset % SYNTHETIC_RAW_SECTOR_BYTES !== 0 || length % SYNTHETIC_RAW_SECTOR_BYTES !== 0) throw new Error('an image request is not whole raw sectors');
+    return Array.from({ length: length / SYNTHETIC_RAW_SECTOR_BYTES }, (_, index) => offset / SYNTHETIC_RAW_SECTOR_BYTES + index);
+  });
