@@ -73,6 +73,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 持久正/负回归在 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts)，进入现有 `pnpm test`/`pnpm check`。TypeScript 样本在自有临时项目中使用仓库原配置和真实 include/exclude，ESLint 使用虚拟源与真实逻辑路径，不在生产目录留违规文件。负向必须命中目标诊断，正向须通过；空项目、ignored/parser 错误及误配预期均会失败。
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
+- 同一回归文件的资源缓存部分（P2-10 AC-14/AC-15）解析 `src/platform/storage/` 的生产源码：不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`window`、`document`、`localStorage` 标识符，只能相对导入且不能导入 `original-data`、`render`、`ui`、`app`、`workers`；非 `browser-*` 的模块必须在真实 Node 程序中。`browser-*` 适配不进入 Node 程序由上一条的 render 规则覆盖（它检查 `src/` 中所有浏览器模块）。
 - 同一回归文件的 content 部分（P2-01 AC-01）保证唯一生产切片定义。`SliceDefinition` 带仅类型品牌，其他模块不经类型断言就无法构造；检查用应用程序的类型检查器找出所有目标类型可充当 `SliceDefinition` 的 `as`/`satisfies`/尖括号断言（含别名与映射类型），只允许 [slice-definition.ts](../../src/content/slice-definition.ts) 中的那一处。引用、传参或克隆已有单例不受限；显式 `any` 由 lint 拒绝，无类型的 `any` 数据流不在覆盖范围内。
 - 规范内容的消费者（`src/core`、`src/content`、`src/render`、`src/platform`、`src/ui`、`src/app` 的非测试文件）不得导入 `original-data` 的目录入口或任何子模块（P2-01 S-06/AC-05），原版 locator、IMFAT entry ID/type 和子资源定位因此只留在 `original-data`。core 与 content 的这一限制与纯模块限制写在同一条规则选项里，因为 flat config 中后出现的同名规则选项会整体替换前者。lint 只检查直接的 import/export 声明，所以同一回归文件还沿真实应用程序的依赖图检查传递可达性（含再导出、动态 `import()` 与 `import('…')` 类型）：只有 `original-data` 与导入 `workers` 可以到达 `original-data`，消费者也不能经由 workers 或其他中间模块间接到达；参数不是字符串字面量的动态 import 无法核实目标，从消费者可达时一律报错。测试文件不受限。
 - 唯一例外是字节读取端口 [`src/original-data/io/byte-source.ts`](../../src/original-data/io/byte-source.ts)（P2-02 S-07/AC-09）。它只含类型、不导入任何模块，由平台适配实现。
@@ -118,7 +119,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 驾驶舱字体目录的读取属于 `src/original-data/payloads.ts`，CLI 只负责调度与报告；合成样本覆盖目录顺序与空目录。
 - Ghidra 编译器规范补丁另有标准库 `unittest` 测试：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`，验证 XML 结构变换、备份与幂等性。
 - 工程边界回归还启动隔离的预期失败 Vitest 进程，断言其命中真正的失败检查并非零退出；该失败是测试输入，正常测试命令仍须成功。临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。
-- 快速只跑边界回归：`pnpm exec vitest run tools/engineering-boundaries.test.ts`。不要用测试数量代替覆盖证明；当前证据见 [P1-01 subtasks](../plan/p1/01/goal.md#子任务跟踪)。
+- 快速只跑边界回归：`pnpm exec vitest run tools/engineering-boundaries.test.ts`。资源缓存的 DOM-free 逻辑：`pnpm exec vitest run src/platform/storage`；Node 中没有 IndexedDB，也不引入模拟实现，事务、配额、中断与刷新恢复只在浏览器 runner 中验证。不要用测试数量代替覆盖证明；当前证据见 [P1-01 subtasks](../plan/p1/01/goal.md#子任务跟踪)。
 
 ### 本地浏览器 runner
 
@@ -139,6 +140,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - **浏览器错误收集**（[browser-test.ts](../../e2e/support/browser-test.ts)）：除页面的 pageerror、console error、失败请求与 4xx/5xx 外，也收集页面所建 Worker 的 console error（Playwright 把它报告在 Worker 上，不在页面上）。
   - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。
   - 未声明的错误仍使用例失败；声明了却未出现的诊断也使用例失败。判定由 `settleDiagnostics` 完成，[probe-contract](../../e2e/probe-contract.spec.ts) 核对它与 Worker console 的收集。
+- [资源缓存](../../e2e/resource-cache.spec.ts)（P2-10）在页面内经开发服务器动态导入 `/src` 模块与合成内容 helper，因此只属于 development 项目（与 browser-replay 一样排除出 production，由[配置回归](../../tools/e2e-configuration.test.ts)固定）：`pnpm test:e2e resource-cache.spec.ts --project=development`。普通用例用隔离 context；刷新恢复用测试自有的临时持久 profile（`launchPersistentContext`，建于系统临时目录，结束后关闭并删除），使数据落在磁盘。[支持模块](../../e2e/support/resource-cache.ts)提供只观察不改变行为的 IndexedDB 探针（事务模式、写请求、`abort()` 调用与最终事件）、按导出常量的只读记录读取（库不存在时不打开，避免创建或升级）与请求记录；不清空或删除用户 profile 的数据。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
 
 ## 合成 Runtime

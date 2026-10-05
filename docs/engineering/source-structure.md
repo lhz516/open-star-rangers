@@ -99,6 +99,7 @@ src/
       keyboard-input.ts
       keyboard-source.ts
     storage/
+      browser-resource-cache.ts
       resource-cache-contract.ts
       resource-cache-records.ts
     workers/
@@ -143,7 +144,12 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。[platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 逐步交付，目前只有两个 DOM-free 模块：[resource-cache-contract.ts](../../src/platform/storage/resource-cache-contract.ts) 定义缓存键、13 个封闭错误码、失败结果形状与宿主错误按 `name` 分类；[resource-cache-records.ts](../../src/platform/storage/resource-cache-records.ts) 定义数据库名 `osr-resource-cache`、数据库版本 1、记录格式版本 1 与两个对象仓库名（`RESOURCE_CACHE_DATABASE`），包记录与 payload 记录的构建和读取（先查结构，再按 P2-01 读取；未知格式、内容 schema 或切片定义版本为 `cache-incompatible`，其余为 `cache-corrupt`），以及存储需求估算（payload 字节精确求和，元数据按包记录与各 payload 记录键的 JSON 文本每字符 2 字节、每条记录另加 64 字节估算）。尚无 IndexedDB 适配。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+
+[platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
+
+- **DOM-free：** [resource-cache-contract.ts](../../src/platform/storage/resource-cache-contract.ts) 定义缓存键、13 个封闭错误码、失败结果形状与宿主错误按 `name` 分类；[resource-cache-records.ts](../../src/platform/storage/resource-cache-records.ts) 定义数据库名 `osr-resource-cache`、数据库版本 1、记录格式版本 1 与两个对象仓库名（`RESOURCE_CACHE_DATABASE`），包记录与 payload 记录的构建和读取（先查结构，再按 P2-01 读取；未知格式、内容 schema 或切片定义版本为 `cache-incompatible`，其余为 `cache-corrupt`），按定义顺序核算清单预算，恢复时把 payload 记录与清单配对并重新验证，以及存储需求估算（payload 字节精确求和，元数据按包记录与各 payload 记录键的 JSON 文本每字符 2 字节、每条记录另加 64 字节估算）。两者都在 Node 中测试。
+- **IndexedDB 适配：** [browser-resource-cache.ts](../../src/platform/storage/browser-resource-cache.ts) 的 `createResourceCache({ indexedDB? })` 只依赖注入或全局的 IndexedDB 能力，不用 `window`/`document`，因此也能在 Dedicated Worker 中运行；只由应用程序检查，不进入 Node 程序。提交先取得 payload 独占快照，再读预算限值、按定义顺序核算、`validatePackage`，最后在一个读写事务中删除该键的旧记录（payload 用 `[来源类别, 令牌, 转换器版本]` 到其后追加 `[]` 的键范围）并写入新记录，只有 `complete` 才返回 `committed`；列出只读包记录；恢复在一个只读事务中读包记录、在其回调里核算预算后才读 payload 记录，事务结束后配对并重新验证。预期失败都以结果返回。
 
 ### 内容基础契约与切片定义
 

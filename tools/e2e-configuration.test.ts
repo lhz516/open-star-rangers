@@ -86,6 +86,19 @@ describe('local E2E integration', () => {
     expect(readFileSync(join(root, 'package.json'), 'utf8')).toContain('"test:e2e": "pnpm build && playwright test"');
   });
 
+  it('runs the resource cache spec only on the development server, which serves its /src imports', () => {
+    const result = spawnSync(process.execPath, [cli, 'test', 'resource-cache.spec.ts', '--list', '--reporter=json'], { cwd: root, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    interface Suite { specs?: { tests: { projectName: string }[] }[]; suites?: Suite[] }
+    const projects = new Set<string>();
+    const visit = (suite: Suite): void => {
+      suite.specs?.forEach(spec => spec.tests.forEach(({ projectName }) => projects.add(projectName)));
+      suite.suites?.forEach(visit);
+    };
+    (JSON.parse(result.stdout) as { suites: Suite[] }).suites.forEach(visit);
+    expect([...projects]).toEqual(['development']);
+  });
+
   it('propagates a genuine assertion failure', async () => {
     const result = await fixture(`import { test, expect } from '@playwright/test'; test('controlled assertion', () => { expect(1).toBe(2); });`, `${config} };`);
     expect(result.code).toBe(1);

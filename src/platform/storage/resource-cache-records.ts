@@ -1,5 +1,6 @@
-import type { AssetId } from '../../content/asset-id.ts';
-import type { ResourceGroup } from '../../content/asset-contract.ts';
+import { readAssetId, type AssetId } from '../../content/asset-id.ts';
+import { chargeManifestBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { validatePackage } from '../../content/completeness.ts';
 import { contentIdentityKey, type ContentIdentity } from '../../content/content-identity.ts';
 import { ContentContractError, readArray, readRecord, requireFields } from '../../content/contract-validation.ts';
 import { readGroupManifest, type GroupManifest } from '../../content/manifest.ts';
@@ -10,7 +11,7 @@ import { readSourceStateSet, type SourceStateSet } from '../../content/source-st
 import {
   cacheKeyOf, contractDiagnostic, failWith, packageRecordKey, payloadRecordKey, readCacheKey,
   readPackageRecordKey, ResourceCacheFailureError, sameCacheKey, withContractFailure,
-  type CacheEntry, type ResourceCacheFailureCode, type ResourceCacheKey, type StorageRequirementResult,
+  type CacheEntry, type ResourceCacheFailureCode, type ResourceCacheKey, type RestoredGroup, type StorageRequirementResult,
 } from './resource-cache-contract.ts';
 
 // DOM-free record layout of the resource cache (P2-10 S-01, S-04, S-06): compatibility constants, the package and
@@ -87,9 +88,15 @@ export function readGroupInputs(inputs: unknown, code: ResourceCacheFailureCode)
   }));
 }
 
+/** A group's position in the slice definition; unknown groups sort last. */
+const definitionRank = (group: string): number => {
+  const rank = CLASSIC_P2_SLICE.groups.findIndex(defined => defined === group);
+  return rank < 0 ? CLASSIC_P2_SLICE.groups.length : rank;
+};
+
 /** Orders the groups as the slice definition does; each defined group must appear exactly once. */
 export function inDefinitionOrder<T extends CachedGroup>(groups: readonly T[], code: ResourceCacheFailureCode): readonly T[] {
-  const ordered = CLASSIC_P2_SLICE.groups.map((group: ResourceGroup) => {
+  const ordered = CLASSIC_P2_SLICE.groups.map(group => {
     const matches = groups.filter(({ manifest }) => manifest.group === group);
     if (matches.length !== 1) failWith(code, `groups.${group}`);
     return matches[0];
@@ -238,4 +245,46 @@ export function measureStorageRequirement(inputs: unknown): StorageRequirementRe
     if (error instanceof ResourceCacheFailureError) return error.failure;
     throw error;
   }
+}
+
+/**
+ * Charges the manifests' declared Assets, edges and payload bytes from zero usage, in slice definition group order,
+ * before any payload is read or touched. A violation is `over-budget` at the group's position under `root`.
+ */
+export function chargeDeclaredBudget(limits: BudgetRecord, groups: readonly CachedGroup[], root: string): void {
+  let usage = EMPTY_BUDGET_USAGE;
+  const order = [...groups.keys()].sort((left, right) => definitionRank(groups[left].manifest.group) - definitionRank(groups[right].manifest.group));
+  for (const index of order) {
+    const charged = chargeManifestBudget(limits, usage, groups[index].manifest, `${root}[${index}].manifest`);
+    if (charged.status === 'over-budget') failWith('over-budget', charged.violations[0].path, { budget: charged.violations });
+    usage = charged.usage;
+  }
+}
+
+/**
+ * Matches one key's stored payload records (primary keys and values, as read together) to the manifests' Assets and
+ * revalidates the whole package. A missing, extra or malformed payload record, or a package that does not revalidate
+ * as complete, is `cache-corrupt`.
+ */
+export function assembleRestoredGroups(read: ReadPackageRecord, keys: readonly unknown[], values: readonly unknown[]): readonly RestoredGroup[] {
+  const stored = new Map<AssetId, unknown>();
+  keys.forEach((storedKey, index) => {
+    const assetId = Array.isArray(storedKey) && storedKey.length === 4 ? storedKey[3] : undefined;
+    stored.set(withContractFailure('cache-corrupt', () => readAssetId(assetId, 'payloads')), values[index]);
+  });
+  const groups = Object.freeze(read.groups.map(({ manifest, sources }) => Object.freeze({
+    manifest,
+    sources,
+    payloads: Object.freeze(manifest.assets.map(({ id }) => {
+      if (!stored.has(id)) failWith('cache-corrupt', `payloads[${id}]`);
+      const payload = readStoredPayload(stored.get(id), id);
+      stored.delete(id);
+      return payload;
+    })),
+  })));
+  const [extra] = stored.keys();
+  if (extra !== undefined) failWith('cache-corrupt', `payloads[${extra}]`);
+  const validation = validatePackage(CLASSIC_P2_SLICE, groups);
+  if (validation.status === 'incomplete') failWith('cache-corrupt', 'groups', { diagnostics: validation.diagnostics });
+  return groups;
 }

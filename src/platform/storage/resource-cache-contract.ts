@@ -111,9 +111,9 @@ export interface ResourceCacheKey {
   readonly converterVersion: ConverterVersion;
 }
 
-/** IndexedDB array key of a package record; payload records append the Asset ID. */
-export type PackageRecordKey = readonly [ContentOrigin['type'], string, string];
-export type PayloadRecordKey = readonly [ContentOrigin['type'], string, string, string];
+/** IndexedDB array key of a package record, fresh per call; payload records append the Asset ID. */
+export type PackageRecordKey = [ContentOrigin['type'], string, string];
+export type PayloadRecordKey = [ContentOrigin['type'], string, string, string];
 
 export function cacheKeyOf(identity: ContentIdentity): ResourceCacheKey {
   const { origin, converterVersion } = identity;
@@ -151,11 +151,11 @@ export function readCacheKey(value: unknown, path = 'key', code: ResourceCacheFa
 }
 
 export function packageRecordKey(key: ResourceCacheKey): PackageRecordKey {
-  return Object.freeze([key.originType, key.originToken, key.converterVersion] as const);
+  return [key.originType, key.originToken, key.converterVersion];
 }
 
 export function payloadRecordKey(key: ResourceCacheKey, assetId: string): PayloadRecordKey {
-  return Object.freeze([...packageRecordKey(key), assetId] as const);
+  return [...packageRecordKey(key), assetId];
 }
 
 /** Reads a stored package record key; any other value is `cache-corrupt`. */

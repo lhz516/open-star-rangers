@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BUDGET_DIMENSIONS, readBudgetRecord } from '../../content/budget.ts';
 import { validatePackage } from '../../content/completeness.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
@@ -8,7 +9,8 @@ import {
   cacheKeyOf, packageRecordKey, readPackageRecordKey, ResourceCacheFailureError, type ResourceCacheFailure,
 } from './resource-cache-contract.ts';
 import {
-  buildPackageRecord, buildStoredPayload, cacheEntryOf, inDefinitionOrder, measureStorageRequirement,
+  assembleRestoredGroups, buildPackageRecord, buildStoredPayload, cacheEntryOf, chargeDeclaredBudget, inDefinitionOrder,
+  measureStorageRequirement,
   readGroupInputs, readPackageRecord, readStoredPayload, RESOURCE_CACHE_DATABASE, RESOURCE_CACHE_FORMAT,
   RESOURCE_CACHE_FORMAT_VERSION,
 } from './resource-cache-records.ts';
@@ -247,5 +249,77 @@ describe('storage requirement', () => {
     inputs[0].payloads[0].bytes = new Uint8Array([1]);
     expect(diagnosticCodes(validatePackage(CLASSIC_P2_SLICE, inputs))).not.toEqual([]);
     expect(measureStorageRequirement(inputs)).not.toHaveProperty('status');
+  });
+});
+
+const generous = (overrides: Record<string, number> = {}) =>
+  readBudgetRecord({ ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, 1_000_000])), ...overrides }, 'limits');
+
+describe('declared budget charge', () => {
+  const groups = () => readGroupInputs(syntheticPackage(), 'package-incomplete');
+  const assets = Object.values(SYNTHETIC_ASSETS).flat();
+
+  it('passes a package exactly at its limits', () => {
+    const edges = assets.reduce((sum, { dependencies = [] }) => sum + dependencies.length, 0);
+    expect(() => chargeDeclaredBudget(generous({ assets: assets.length, dependencyEdges: edges }), groups(), 'groups')).not.toThrow();
+  });
+
+  it('charges in definition order and reports the group at its input position', () => {
+    // The last defined group (audio) is first in the input, so it is charged last and overflows the limit.
+    const reversed = [...groups()].reverse();
+    const failure = failureOf(() => chargeDeclaredBudget(generous({ assets: assets.length - 1 }), reversed, 'groups'));
+    expect(failure).toMatchObject({ code: 'over-budget', location: 'groups[0].manifest.assets[4]' });
+    expect(failure.budget).toEqual([expect.objectContaining({ code: 'budget-exceeded', dimension: 'assets', limit: assets.length - 1 })]);
+  });
+});
+
+describe('restored group assembly', () => {
+  const stored = (inputs = originalPackage()) => {
+    const record = recordOf(inputs);
+    const read = readPackageRecord(structuredClone(record));
+    const payloads = inputs.flatMap(({ payloads }) => payloads).sort((left, right) => (left.id < right.id ? -1 : 1));
+    return {
+      read,
+      keys: payloads.map(({ id }) => [...packageRecordKey(record.key), id]),
+      values: payloads.map(({ schemaVersion, bytes }) => ({ schemaVersion, bytes: new Uint8Array(bytes).buffer })),
+    };
+  };
+
+  it('assembles every group in definition order and revalidates it as complete', () => {
+    const { read, keys, values } = stored();
+    const groups = assembleRestoredGroups(read, keys, values);
+    expect(groups.map(({ manifest }) => manifest.group)).toEqual(CLASSIC_P2_SLICE.groups);
+    expect(validatePackage(CLASSIC_P2_SLICE, groups)).toMatchObject({ status: 'complete' });
+    expect(Object.isFrozen(groups) && groups.every(group => Object.isFrozen(group) && Object.isFrozen(group.payloads))).toBe(true);
+  });
+
+  it.each([
+    ['a missing payload record', (keys: unknown[][], values: unknown[]) => { keys.pop(); values.pop(); }, 'payloads[sound/synthetic-warp]'],
+    ['an extra payload record', (keys: unknown[][], values: unknown[]) => { keys.push([...keys[0].slice(0, 3), 'image/synthetic-other']); values.push(values[0]); }, 'payloads[image/synthetic-other]'],
+    ['a malformed payload key', (keys: unknown[][]) => { keys[0] = [...keys[0].slice(0, 3), 'Bad/Id']; }, 'payloads'],
+    ['a short payload key', (keys: unknown[][]) => { keys[0] = keys[0].slice(0, 3); }, 'payloads'],
+    ['a malformed payload value', (_keys: unknown[][], values: unknown[]) => { values[0] = { schemaVersion: 1 }; }, 'payloads[font/synthetic-hud].bytes'],
+  ])('reads %s as cache-corrupt', (_name, change, location) => {
+    const { read, keys, values } = stored();
+    change(keys, values);
+    expect(failureOf(() => assembleRestoredGroups(read, keys, values))).toMatchObject({ code: 'cache-corrupt', location });
+  });
+
+  it('rejects payload bytes that no longer match their declared identity', () => {
+    const { read, keys, values } = stored();
+    const value = values[0] as { bytes: ArrayBuffer };
+    new Uint8Array(value.bytes)[0] ^= 1;
+    const failure = failureOf(() => assembleRestoredGroups(read, keys, values));
+    expect(failure).toMatchObject({ code: 'cache-corrupt', location: 'groups' });
+    expect(failure.diagnostics.map(({ code }) => code)).toEqual(['payload-mismatch']);
+  });
+
+  it('rejects a source state that is no longer verified', () => {
+    const inputs = originalPackage();
+    inputs[2].sources!.states[0].state = 'unverified';
+    const { read, keys, values } = stored(inputs);
+    const failure = failureOf(() => assembleRestoredGroups(read, keys, values));
+    expect(failure).toMatchObject({ code: 'cache-corrupt', location: 'groups' });
+    expect(failure.diagnostics.map(({ code }) => code)).toEqual(['source-not-ready']);
   });
 });

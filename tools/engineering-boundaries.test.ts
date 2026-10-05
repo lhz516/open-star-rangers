@@ -584,6 +584,17 @@ describe('TypeScript module environments', () => {
   });
 });
 
+/** Every identifier in real code; comments and strings are ignored. */
+function identifierNames(file: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) names.add(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return names;
+}
+
 describe('render layer boundaries', () => {
   // docs/plan/p1/07/spec.md AC-01/AC-04/AC-17. Browser adapters in render/ are named `browser-*`;
   // they and React `.tsx` files belong to the app program only.
@@ -592,16 +603,6 @@ describe('render layer boundaries', () => {
   const inRender = (fileName: string): boolean => relativeSource(fileName).startsWith('render/');
   const isBrowserModule = (fileName: string): boolean => /^browser-.*\.ts$/.test(basename(fileName)) || fileName.endsWith('.tsx');
   const scheduling = new Set(['requestAnimationFrame', 'setAnimationLoop', 'setTimeout', 'setInterval', 'queueMicrotask', 'requestIdleCallback']);
-
-  function identifierNames(file: ts.SourceFile): Set<string> {
-    const names = new Set<string>();
-    const visit = (node: ts.Node): void => {
-      if (ts.isIdentifier(node)) names.add(node.text);
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
-    return names;
-  }
 
   const parse = (source: string): ts.SourceFile => ts.createSourceFile('sample.ts', source, ts.ScriptTarget.Latest, true);
   const appProgram = sharedAppProgram();
@@ -646,6 +647,34 @@ describe('render layer boundaries', () => {
     expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
     const browserInNode = [...nodeFiles].filter(fileName => fileName.startsWith(`${src}${sep}`) && isBrowserModule(fileName));
     expect(browserInNode.map(relativeSource)).toEqual([]);
+  });
+});
+
+describe('resource cache boundaries', () => {
+  // docs/plan/p2/10/spec.md AC-14/AC-15: the cache sends nothing over the network and needs only the IndexedDB and
+  // StorageManager capabilities, so it also runs in a dedicated Worker. Its DOM-free modules are checked in the Node
+  // program; the `browser-*` adapter is kept out of it by the render layer rule above, which covers every browser module.
+  const src = join(root, 'src');
+  const relativeSource = (fileName: string): string => relative(src, fileName).split(sep).join('/');
+  const appProgram = sharedAppProgram();
+  const storage = appProgram.getRootFileNames()
+    .filter(fileName => relativeSource(fileName).startsWith('platform/storage/') && !fileName.endsWith('.test-support.ts'))
+    .map(fileName => appProgram.getSourceFile(fileName)!);
+  const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'sendBeacon', 'EventSource', 'window', 'document', 'localStorage']);
+
+  it('uses no network API, window, document, package or other-layer import', () => {
+    expect(storage.length).toBeGreaterThanOrEqual(3);
+    const violations = storage.flatMap(file => [
+      ...[...identifierNames(file)].filter(name => banned.has(name)),
+      ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || /original-data|\/(?:render|ui|app|workers)\//.test(specifier)),
+    ].map(entry => `${relativeSource(file.fileName)}: ${entry}`));
+    expect(violations).toEqual([]);
+  });
+
+  it('checks every DOM-free storage module in the Node program', () => {
+    const nodeFiles = new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
+    const unchecked = storage.filter(file => !basename(file.fileName).startsWith('browser-') && !nodeFiles.has(resolve(file.fileName)));
+    expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
   });
 });
 
