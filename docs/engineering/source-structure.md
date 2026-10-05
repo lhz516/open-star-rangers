@@ -80,6 +80,7 @@ src/
       disc-image.ts
     archive/
       imfat-rules.ts
+      archive-reader.ts
   platform/
     browser/
       browser-session-host.ts
@@ -203,9 +204,16 @@ src/
   - `readImfatDirectory` 校验整个目录：保留字、类型标签、递增 ID、块大小（`MAX_ENTRY_BYTES`，4 MiB）、重定位个数，以及无空隙、无尾随字节的连续布局；
   - `readImfatRelocations` 校验条目的重定位位置与存储的指针，允许非对齐与无序位置，拒绝重叠。
   - 目录项类型 `ImfatEntry` 定义在这里，[imfat.ts](../../src/original-data/imfat.ts) 原样再导出。
-- **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上。
+- **按需读取：** [archive/archive-reader.ts](../../src/original-data/archive/archive-reader.ts) 的 `openImfatArchive(file)` 在 P2-02 的任意 `DiscFile` 上打开封包：
+  - 先读 24 字节文件头；条目数超限时，在读取目录前拒绝；再用一次范围读取取得整个目录。
+  - 返回冻结句柄：`path`、按 ID 升序的冻结目录项、同步的 `entry(id, type?)`、异步的 `read(id, type?)`。
+  - `read` 用一次范围读取取得数据块与重定位表并校验重定位，返回冻结的 `{ entry, bytes, relocations }`；`bytes` 恰为数据块，是独占的新缓冲。
+  - 句柄只保留目录，不缓存字节，每次读取都经镜像句柄计量、检查取消；`DiscReadError` 原样传递。
+  - 参数非法时返回 `invalid-request`，ID 不存在返回 `entry-not-found`，类型不符返回 `entry-type-mismatch`。
+  - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包。
+- **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上；辅助函数只接受从同一字节数组解析出的条目。
 - **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。
-- **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。
+- **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
 
 ## 职责与依赖
 
