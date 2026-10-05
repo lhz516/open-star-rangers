@@ -91,11 +91,19 @@ updated: 2026-10-05
 | [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | completed |
 | [08-source-check-cli.md](./subtasks/08-source-check-cli.md) | 05 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
-| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09 | pending |
+| [11-capability-bypass.md](./subtasks/11-capability-bypass.md) | 07 | pending |
+| [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | pending |
+| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-05 — 首次最终对齐未通过：**
+  - **AC-14/S-07：** Worker 可以纯类型导入受限模块后在本地 `export type { … }` 再导出，lint 与依赖图都未拦截；位于嵌套目录中的受限模块（如 `disc/internal/*.ts`）也未被识别。
+  - **AC-10/S-10：** 两个诊断位置超出 spec 的封闭位置语法：内存解析辅助函数的 `request.entry`，以及白名单文件列表根部的 `catalog.files`。
+  - **其余项：** 均通过，见 [10](./subtasks/10-final-alignment.md#完成证据)。
+  - **补救：** 新增补救子任务 11、12，10 改为依赖它们，之后重新进行最终对齐。
 
 ## 审批
 
