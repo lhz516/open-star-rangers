@@ -38,16 +38,16 @@ updated: 2026-10-04
 | AC-01 | 01、02 | 07 候选结论与生产定义一致性复核 |
 | AC-02 | 02 | 06 角色与组基数断言 |
 | AC-03 | 08、02 | 08/06 Asset ID 稳定性与跨资源引用断言 |
-| AC-04 | 08、02、03 | 08/06 身份字段与合成/原版来源判别断言 |
+| AC-04 | 08、02、03、09 | 08/06 身份字段与合成/原版来源判别断言；09 类型级排除对方字段 |
 | AC-05 | 03 | 06 locator 映射、冲突与缺失诊断断言 |
 | AC-06 | 04 | 06 完整性推导与不可伪造布尔断言 |
 | AC-07 | 04 | 06 四组独立、跨组要求与混装拒绝断言 |
 | AC-08 | 05 | 06 预算维度、边界与溢出断言 |
-| AC-09 | 08、05 | 08/06 所有权隔离与 transfer 失效断言 |
+| AC-09 | 08、05、09 | 08/06 所有权隔离与 transfer 失效断言；09 结果容器不引用调用者输入 |
 | AC-10 | 01、03 | 07 本地资格证据与 U 项状态复核 |
 | AC-11 | 06 | 07 `pnpm check:original`与 diff 审阅 |
 | AC-12 | 08、06 | 08/07 `pnpm check`与依赖/锁文件无变化检查 |
-| AC-13 | 03 | 07 文档链接、元数据与导出一致性检查 |
+| AC-13 | 03、10 | 07 文档链接、元数据与导出一致性检查；10 spec 只链接原版事实 |
 | 风险恢复与阻塞门禁 | 07 | 07 `node tools/task-state.ts`与最终 diff 审阅 |
 
 ## 子任务跟踪
@@ -63,7 +63,9 @@ updated: 2026-10-04
 | [04-completeness-validation.md](./subtasks/04-completeness-validation.md) | 02, 03 | completed |
 | [05-budget-ownership-contract.md](./subtasks/05-budget-ownership-contract.md) | 02 | completed |
 | [06-synthetic-contract-tests.md](./subtasks/06-synthetic-contract-tests.md) | 02, 03, 04, 05 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
+| [09-isolation-origin-remediation.md](./subtasks/09-isolation-origin-remediation.md) | 03, 04, 08 | pending |
+| [10-spec-fact-links.md](./subtasks/10-spec-fact-links.md) | 01 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08, 09, 10 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务；ID 固定，不在执行中重排。
 
@@ -144,6 +146,17 @@ updated: 2026-10-04
 - **2026-10-04 — Subtask 01 completed:** spec [候选选择记录](./spec.md#候选选择记录)经另一模型审阅，没有新的契约决策；用户明确批准修订，spec 恢复 accepted。01 的三项验收均已满足，rubber-duck 的 5 个发现均已处理并复核，证据见 [01](./subtasks/01-candidate-qualification.md#完成证据)。下一项为依赖已满足的 02，按已批准候选实现唯一生产切片定义；绝对规范总数与来源映射分别由 02/03 完成。
 
 - **2026-10-04 — Subtask 02 completed:** 唯一生产切片定义、S-03 角色/组/数量范围及唯一构造边界已实现并通过完整工程检查，证据见 [02](./subtasks/02-slice-content-contract.md#完成证据)。rubber-duck 审查后，核心音效改为至少 1 个，唯一性改用名义类型加类型检查器规则。02 验收第 4 项按依赖关系限定为契约层保证：几何字节变化导致 payload 身份失配、共享源网格视图隔离这两项字节层证明，由 04/05 实现、06 验证（AC-06/AC-09），因为 03–05 依赖 02，不能反过来作为 02 的前置。06 的工作范围已加入对应用例，目标级验收不降低。下一项为 03（来源映射边界）。
+
+- **2026-10-04 — Final alignment failed; remediation added:** 07 的第一次核对由 rubber-duck 复查，发现以下未满足的验收，记录见 [07](./subtasks/07-final-alignment.md#完成证据)：
+  - **AC-04：** 同时带有 `fixtureId` 与 `sourceFingerprint` 的具名对象仍能通过 `ContentOrigin` 的类型检查（运行时已拒绝）。
+  - **AC-09：** 全包结果直接引用传入定义的组数组；`assetSourceStates` 直接引用映射的 U 项数组。调用者使用可变的克隆时，修改会影响先前的结果。
+  - **AC-13：** spec 的候选选择记录复述了 SCEN 条目与 M2ID 槽位→角色等原版事实，而不是只链接权威记录。
+
+  此前提前写入的完成声明（本文件与 STATUS）已撤回。按补救流程新增子任务：
+  - 09 修复上述代码缺口；
+  - 10 修订 spec 的事实归属。用户已于 2026-10-04 选择修订 spec：保留 group 0 / slot 1 的选择，原版事实改为链接；修订稿须经另一模型审阅，并由用户重新批准。
+
+  候选、契约与 S/AC 均不改变。07 回到 pending，依赖全部其他子任务，补救完成后重跑。
 
 ## 审批
 
