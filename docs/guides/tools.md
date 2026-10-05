@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-03
+updated: 2026-10-05
 ---
 
 # 工具用法
@@ -13,6 +13,7 @@ updated: 2026-10-03
 |---|---|---|
 | `tools/nob-list.ts` | 列出 IMFAT（`.NOB`）封包目录：条目数、各类型数量与大小 | `node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]` |
 | `tools/nob-check.ts` | 解析封包中全部 TEX、BITM、MFDD、CCKD 字体、M2ID、NEBC、MESH、MODL 条目并检查交叉引用，只输出统计与失败项 | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
+| `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
 | `tools/ghidra/patch-watcom-cspec.py` | 给 Ghidra 加入 Watcom 调用约定 | 见 [baseline-environment](./baseline-environment.md#静态分析) |
@@ -23,6 +24,20 @@ updated: 2026-10-03
 | `tools/ghidra/ReadTable.java` | 按固定步长打印内存中的表格及其指向的字符串 | `-postScript ReadTable.java <起始地址> <数量或数量所在地址> <步长>` |
 
 Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <脚本> <参数>` 运行；输出文件必须放在 `local/` 下。
+
+## 光盘镜像核对
+
+`tools/disc-check.ts` 读取开发者本地的基准镜像，验证整条光盘读取链（[P2-02](../plan/p2/02/spec.md)）。
+
+- **输入：** 输入是 CloneCD 文件组的各个文件，`.ccd` 与 `.img` 必需，同主名的 `.sub`/`.cue` 可以给出，但从不读取。manifest 默认为 [docs/original/manifest.md](../original/manifest.md)。文件经 [node-byte-source.ts](../../tools/node-byte-source.ts) 以只读句柄定位读取：短读会续读，提前 EOF 或 I/O 失败即拒绝。
+- **核对内容：**
+  - 对 manifest 游戏文件表的每一行，按光盘路径打开文件，比较大小，并以不超过 16 MiB 的分段读取计算 SHA-256；
+  - 读取方计量的 `sourceReadBytes` 必须等于端口实际收到的请求之和；
+  - `.sub`/`.cue` 读取须为 0 字节。
+- **输出：** stdout 为一份 `osr-disc-check`/1 JSON：`passed`、`error`、卷信息、文件计数与不一致项（只含规范光盘路径与稳定 code），以及读取计量。不输出宿主路径、文件内容或宿主错误文本。
+- **退出码：** 全部一致时为 0；核对失败或输入错误时为 1，例如文件组不受支持、文件无法打开或关闭（`read-failed`）、取消（Ctrl-C 中止读取）、manifest 不可读或含非规范路径；用法错误时为 2。
+- **句柄：** 任何情况下都会关闭已打开的句柄；关闭失败同样判为失败。
+- **原版内容：** 命令只读取 `local/`，不写出任何文件。若需要保存结果，只能放在 `local/` 下。
 
 ## 本地合规
 

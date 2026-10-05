@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { ComplianceError, relativePath, sha256 } from './report.ts';
 
-export interface BlacklistEntry { readonly table: 'images' | 'game'; readonly source: string; readonly sha256: string }
+/** A manifest row; game rows carry their validated byte size, image rows have no size column. */
+export type BlacklistEntry =
+  | { readonly table: 'images'; readonly source: string; readonly sha256: string; readonly size: null }
+  | { readonly table: 'game'; readonly source: string; readonly sha256: string; readonly size: number };
 export interface Blacklist { readonly entries: readonly BlacklistEntry[]; readonly fingerprint: string }
 
 export function parseManifest(text: string): Blacklist {
@@ -35,7 +38,9 @@ export function parseManifest(text: string): Blacklist {
         throw new ComplianceError('manifest-size', 'Game file size must be a nonnegative safe integer');
       }
       if (entries.some(entry => entry.table === table && entry.source === name[1])) throw new ComplianceError('manifest-duplicate', 'Duplicate source label');
-      entries.push({ table, source: name[1], sha256: digest[1] });
+      entries.push(table === 'game'
+        ? { table, source: name[1], sha256: digest[1], size: Number(row[1]) }
+        : { table, source: name[1], sha256: digest[1], size: null });
     }
     if (entries.length === start) throw new ComplianceError('manifest-empty', `Required ${table} table is empty`);
   }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseManifest, readManifest } from './manifest.ts';
-import { fixture, syntheticManifest } from './test-support.ts';
+import { fixture, syntheticBytes, syntheticManifest } from './test-support.ts';
 
 describe('authoritative blacklist tables', () => {
   it('reads every real metadata table row without opening original files', () => {
@@ -10,6 +10,11 @@ describe('authoritative blacklist tables', () => {
     expect(parsed.entries.length).toBe(text.split('\n').filter(line => /^\| `.+\| `[a-f0-9]{64}` \|$/.test(line)).length);
     expect(new Set(parsed.entries.map(entry => entry.table))).toEqual(new Set(['images', 'game']));
     expect(parsed.entries.every(entry => entry.source.length > 0)).toBe(true);
+  });
+  it('returns the validated size of each game file and none for image rows', () => {
+    const real = parseManifest(readFileSync(new URL('../../docs/original/manifest.md', import.meta.url), 'utf8'));
+    expect(real.entries.every(entry => (entry.table === 'game' ? Number.isSafeInteger(entry.size) && entry.size >= 0 : entry.size === null))).toBe(true);
+    expect(parseManifest(syntheticManifest()).entries.map(entry => entry.size)).toEqual([null, syntheticBytes.length]);
   });
   it('retains repeated digests with separate provenance', () => {
     const parsed = parseManifest(syntheticManifest());

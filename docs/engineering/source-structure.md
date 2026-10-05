@@ -183,7 +183,7 @@ src/
   - [iso9660-record.ts](../../src/original-data/disc/iso9660-record.ts)、[iso9660-volume.ts](../../src/original-data/disc/iso9660-volume.ts)、[iso9660-directory.ts](../../src/original-data/disc/iso9660-directory.ts)：目录记录、卷描述符与路径解析；
   - [disc-path.ts](../../src/original-data/disc/disc-path.ts)：与来源映射共用的 `DiscPath` 规则；
   - [file-range.ts](../../src/original-data/disc/file-range.ts)：分段范围读取。
-- **平台适配：** [platform/files/blob-byte-source.ts](../../src/platform/files/blob-byte-source.ts) 的 `BlobByteSource` 用 `Blob.slice` 与 `arrayBuffer()` 实现端口，页面与 Worker 中的 `File` 都适用。越界请求在切片前拒绝；Blob 读取不可中止，取消由读取方保证不再发出、也不发布结果。Node 侧的端口实现与本地核对 CLI 计划由 [P2-02/08](../plan/p2/02/subtasks/08-node-adapter-cli.md) 放在 `tools/`。
+- **平台适配：** [platform/files/blob-byte-source.ts](../../src/platform/files/blob-byte-source.ts) 的 `BlobByteSource` 用 `Blob.slice` 与 `arrayBuffer()` 实现端口，页面与 Worker 中的 `File` 都适用。越界请求在切片前拒绝；Blob 读取不可中止，取消由读取方保证不再发出、也不发布结果。Node 侧的端口实现是 [tools/node-byte-source.ts](../../tools/node-byte-source.ts)，本地核对 CLI 是 [tools/disc-check.ts](../../tools/disc-check.ts)，用法见[工具指南](../guides/tools.md#光盘镜像核对)。
 - **测试数据：** 合成 CloneCD 描述、原始扇区、卷描述符与目录由 [synthetic.ts](../../src/original-data/synthetic.ts) 生成，按需生成扇区的镜像端口不分配整盘；光盘测试共用的纯辅助在 [disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts)。
 
 针对性检查为 `pnpm exec vitest run src/original-data src/platform/files tools/engineering-boundaries.test.ts`。
