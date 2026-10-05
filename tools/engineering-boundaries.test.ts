@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
+import { capabilityOf, familyOf } from './original-data-capabilities.ts';
 import { describe, expect, it } from 'vitest';
 import viteConfiguration from '../vite.config.ts';
 
@@ -312,8 +313,10 @@ describe('TypeScript module environments', () => {
     // P2-03 AC-14: workers and original-data outside the capability families reach discs and archives only through the
     // verified-source product entry; type-only imports, errors, the disc path grammar and source mappings stay open.
     it('keeps low-level original-data capabilities inside their families, the source family, tests and tools', async () => {
-      const rule = '@typescript-eslint/no-restricted-imports';
+      const rule = 'osr/original-data-capabilities';
       const rejected: [string, string, string][] = [
+        ['src/original-data/convert/nested/probe.ts', "import { openImfatArchive } from '../../archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
+        ['src/original-data/disc/internal/probe.ts', "import { parseImfat } from '../../imfat.ts'; export const parse = parseImfat;", rule],
         ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;", rule],
         ['src/workers/probe.ts', "import { readFileRange } from '../original-data/disc/file-range.ts'; export const read = readFileRange;", rule],
         ['src/workers/probe.ts', "import { openImfatArchive } from '../original-data/archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
@@ -321,25 +324,28 @@ describe('TypeScript module environments', () => {
         ['src/workers/probe.ts', "import { parseImfat } from '../original-data/imfat.ts'; export const parse = parseImfat;", rule],
         ['src/workers/probe.ts', "import { identifySource } from '../original-data/source/identify-source.ts'; export const identify = identifySource;", rule],
         ['src/workers/probe.ts', "export { openDiscImage } from '../original-data/disc/disc-image.ts';", rule],
-        ['src/workers/probe.ts', "export type { DiscImage } from '../original-data/disc/disc-image.ts';", 'no-restricted-syntax'],
-        ['src/workers/probe.ts', "export * from '../original-data/imfat.ts';", 'no-restricted-syntax'],
-        ['src/workers/probe.ts', "export const load = () => import('../original-data/archive/archive-reader.ts');", 'no-restricted-syntax'],
-        ['src/workers/probe.ts', 'export const load = () => import(`../original-data/source/identify-source.ts`);', 'no-restricted-syntax'],
-        ['src/workers/probe.ts', "export type Open = typeof import('../original-data/disc/disc-image.ts').openDiscImage;", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export type { DiscImage } from '../original-data/disc/disc-image.ts';", rule],
+        ['src/workers/probe.ts', "export * from '../original-data/imfat.ts';", rule],
+        ['src/workers/probe.ts', "export const load = () => import('../original-data/archive/archive-reader.ts');", rule],
+        ['src/workers/probe.ts', 'export const load = () => import(`../original-data/source/identify-source.ts`);', rule],
+        ['src/workers/probe.ts', "export type Open = typeof import('../original-data/disc/disc-image.ts').openDiscImage;", rule],
         ['src/original-data/convert/probe.ts', "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;", rule],
         ['src/original-data/convert/probe.ts', "import { openImfatArchive } from '../archive/archive-reader.ts'; export const open = openImfatArchive;", rule],
         ['src/original-data/convert/probe.ts', "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;", rule],
         ['src/original-data/probe.ts', "import { openDiscImage } from './disc/disc-image.ts'; export const open = openDiscImage;", rule],
         ['src/original-data/disc/probe.ts', "import { parseImfat } from '../imfat.ts'; export const parse = parseImfat;", rule],
-        ['src/original-data/disc/probe.ts', "export const load = () => import('../archive/archive-reader.ts');", 'no-restricted-syntax'],
+        ['src/original-data/disc/probe.ts', "export const load = () => import('../archive/archive-reader.ts');", rule],
         ['src/original-data/archive/probe.ts', "import { openDiscImage } from '../disc/disc-image.ts'; export const open = openDiscImage;", rule],
         ['src/original-data/archive/probe.ts', "import { identifySource } from '../source/identify-source.ts'; export const identify = identifySource;", rule],
         ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image'; export const open = openDiscImage;", rule],
         ['src/workers/probe.ts', "import { openDiscImage } from '../original-data/disc/disc-image.js'; export const open = openDiscImage;", rule],
         ['src/workers/nested/probe.ts', "import { parseImfat } from '../../original-data/imfat'; export const parse = parseImfat;", rule],
-        ['src/workers/probe.ts', "export * from '../original-data/imfat';", 'no-restricted-syntax'],
-        ['src/workers/probe.ts', "export const load = () => import('../original-data/source/identify-source.js');", 'no-restricted-syntax'],
+        ['src/workers/probe.ts', "export * from '../original-data/imfat';", rule],
+        ['src/workers/probe.ts', "export const load = () => import('../original-data/source/identify-source.js');", rule],
         ['src/original-data/convert/probe.ts', "import { readFileRange } from '../disc/file-range'; export const read = readFileRange;", rule],
+        ['src/workers/probe.ts', "import { readSectors } from '../original-data/disc/internal/sectors.ts'; export const read = readSectors;", rule],
+        ['src/workers/probe.ts', "export * from '../original-data/archive/formats/table.ts';", rule],
+        ['src/original-data/convert/probe.ts', "export const load = () => import('../disc/internal/sectors.ts');", rule],
       ];
       for (const [file, source, expected] of rejected) expectRule(await lint(source, file), expected, source);
       const allowed: [string, string][] = [
@@ -364,6 +370,9 @@ describe('TypeScript module environments', () => {
         ['src/workers/probe.ts', "import { probe } from '../platform/discovery.ts'; export const found = probe;"],
         ['src/workers/probe.ts', "import { probe } from '../ui/imfat.ts'; import { other } from '../app/identify-source.ts'; export const found = [probe, other];"],
         ['src/original-data/convert/probe.ts', "export { isDiscPath } from '../disc/disc-path';"],
+        ['src/original-data/convert/nested/probe.ts', "import { helper } from '../archive/helper.ts'; import { other } from '../disc/helper.ts'; export const found = [helper, other];"],
+        ['src/original-data/disc/internal/probe.ts', "import { openDiscImage } from '../disc-image.ts'; export const open = openDiscImage;"],
+        ['src/original-data/archive/formats/probe.ts', "import { parseImfat } from '../../imfat.ts'; import type { DiscFile } from '../../disc/disc-image.ts'; export type File = DiscFile; export const parse = parseImfat;"],
       ];
       for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
     });
@@ -745,19 +754,6 @@ describe('original-data dependency boundary', () => {
   // P2-03 S-07/AC-14: production modules use the low-level original-data capabilities only inside their own family or
   // the source family; anything else, such as workers or converters, goes through the verified-source product entry.
   // Type-only import declarations carry no capability; re-exports (also of types), dynamic imports and import types do.
-  type CapabilityFamily = 'disc' | 'archive' | 'identify';
-  const capabilityOf = (path: string): CapabilityFamily | null => {
-    if (/\.test(?:-support)?\.ts$/.test(path)) return null;
-    if (/^src\/original-data\/disc\/[^/]+\.ts$/.test(path) && !/\/disc-(?:error|path)\.ts$/.test(path)) return 'disc';
-    if (/^src\/original-data\/(?:archive\/[^/]+|imfat)\.ts$/.test(path)) return 'archive';
-    return path === 'src/original-data/source/identify-source.ts' ? 'identify' : null;
-  };
-  const familyOf = (path: string): CapabilityFamily | 'source' | null => {
-    if (path.startsWith('src/original-data/source/')) return 'source';
-    if (path.startsWith('src/original-data/disc/')) return 'disc';
-    return /^src\/original-data\/(?:archive\/|imfat\.ts$)/.test(path) ? 'archive' : null;
-  };
-
   function capabilityViolations(compilation: ts.Program, directory: string): string[] {
     const options = compilation.getCompilerOptions();
     const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
@@ -765,15 +761,41 @@ describe('original-data dependency boundary', () => {
     for (const fileName of compilation.getRootFileNames()) {
       const importer = project(fileName);
       if (!importer.startsWith('src/') || /\.test(?:-support)?\.ts$/.test(importer) || familyOf(importer) === 'source') continue;
-      for (const { specifier, typeOnly } of moduleReferences(compilation.getSourceFile(fileName)!)) {
+      const file = compilation.getSourceFile(fileName)!;
+      const restrictedTarget = (specifier: string): string | null => {
+        const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName;
+        const target = resolved ? project(resolved) : '';
+        const capability = capabilityOf(target);
+        return capability && familyOf(importer) !== capability ? target : null;
+      };
+      for (const { specifier, typeOnly } of moduleReferences(file)) {
         if (specifier === COMPUTED_IMPORT) {
           if (/^src\/(?:original-data|workers)\//.test(importer)) violations.add(`${importer} -> computed import`);
           continue;
         }
-        const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName;
-        const target = resolved ? project(resolved) : '';
-        const capability = capabilityOf(target);
-        if (capability && !typeOnly && familyOf(importer) !== capability) violations.add(`${importer} -> ${target}`);
+        const target = restrictedTarget(specifier);
+        if (target && !typeOnly) violations.add(`${importer} -> ${target}`);
+      }
+      // A type-only import is allowed only for private use: exporting the imported name again is a re-export.
+      const restrictedNames = new Map<string, string>();
+      for (const statement of file.statements) {
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+        const target = restrictedTarget(statement.moduleSpecifier.text);
+        const clause = statement.importClause;
+        if (!target || !clause) continue;
+        if (clause.name) restrictedNames.set(clause.name.text, target);
+        const bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) restrictedNames.set(bindings.name.text, target);
+        if (bindings && ts.isNamedImports(bindings)) for (const element of bindings.elements) restrictedNames.set(element.name.text, target);
+      }
+      for (const statement of file.statements) {
+        const exported = ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause && ts.isNamedExports(statement.exportClause)
+          ? statement.exportClause.elements.map(element => (element.propertyName ?? element.name).getText(file))
+          : ts.isExportAssignment(statement) && ts.isIdentifier(statement.expression) ? [statement.expression.text] : [];
+        for (const name of exported) {
+          const target = restrictedNames.get(name);
+          if (target) violations.add(`${importer} -> ${target}`);
+        }
       }
     }
     return [...violations].sort();
@@ -806,6 +828,17 @@ describe('original-data dependency boundary', () => {
       'src/workers/reexport.ts': "export type { DiscImage } from '../original-data/disc/disc-image.ts';",
       'src/workers/lazy.ts': "export const load = () => import('../original-data/imfat.ts');",
       'src/workers/query.ts': "export type Open = typeof import('../original-data/archive/archive-reader.ts').open;",
+      'src/original-data/disc/internal/sectors.ts': 'export const readSectors = (): number => 1;',
+      'src/original-data/archive/formats/table.ts': 'export const readTable = (): number => 1;',
+      'src/original-data/disc/internal/reader.tsx': 'export interface Reader { readonly ready: boolean }',
+      'src/workers/tsx-type.ts': "import type { Reader } from '../original-data/disc/internal/reader.tsx'; export type { Reader };",
+      'src/workers/nested.ts': "import { readSectors } from '../original-data/disc/internal/sectors.ts'; export const read = readSectors;",
+      'src/workers/nested-archive.ts': "export type { readTable } from '../original-data/archive/formats/table.ts';",
+      'src/workers/local-type.ts': "import type { DiscImage } from '../original-data/disc/disc-image.ts'; export type { DiscImage };",
+      'src/workers/local-alias.ts': "import type { DiscImage as Image } from '../original-data/disc/disc-image.ts'; export type { Image as Disc };",
+      'src/workers/local-default.ts': "import { parseImfat } from '../original-data/imfat.ts'; export default parseImfat;",
+      'src/workers/private-type.ts': "import type { DiscImage } from '../original-data/disc/disc-image.ts'; export const sectors = (image: DiscImage): number => image.sectors;",
+      'src/workers/entry-types.ts': "export type { DiscImage } from '../original-data/source/open-verified-source.ts';",
     }, (directory) => {
       const compilation = program('app', directory);
       expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
@@ -815,8 +848,14 @@ describe('original-data dependency boundary', () => {
         'src/original-data/convert/model.ts -> src/original-data/imfat.ts',
         'src/original-data/disc/cross.ts -> src/original-data/imfat.ts',
         'src/workers/lazy.ts -> src/original-data/imfat.ts',
+        'src/workers/local-alias.ts -> src/original-data/disc/disc-image.ts',
+        'src/workers/local-default.ts -> src/original-data/imfat.ts',
+        'src/workers/local-type.ts -> src/original-data/disc/disc-image.ts',
+        'src/workers/nested-archive.ts -> src/original-data/archive/formats/table.ts',
+        'src/workers/nested.ts -> src/original-data/disc/internal/sectors.ts',
         'src/workers/query.ts -> src/original-data/archive/archive-reader.ts',
         'src/workers/reexport.ts -> src/original-data/disc/disc-image.ts',
+        'src/workers/tsx-type.ts -> src/original-data/disc/internal/reader.tsx',
         'src/workers/value.ts -> src/original-data/disc/disc-image.ts',
       ]);
     });

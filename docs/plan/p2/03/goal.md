@@ -91,7 +91,7 @@ updated: 2026-10-05
 | [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | completed |
 | [08-source-check-cli.md](./subtasks/08-source-check-cli.md) | 05 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
-| [11-capability-bypass.md](./subtasks/11-capability-bypass.md) | 07 | pending |
+| [11-capability-bypass.md](./subtasks/11-capability-bypass.md) | 07 | completed |
 | [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | pending |
 | [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
 

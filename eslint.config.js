@@ -1,7 +1,9 @@
 // Lint rules enforce the module boundaries of master plan §4.1 and the determinism rules of §5.
+import { dirname, relative, resolve, sep } from 'node:path';
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { capabilityOf, familyOf } from './tools/original-data-capabilities.ts';
 
 const browserOnly = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyval'];
 const appLayers = ['app', 'render', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]);
@@ -19,38 +21,55 @@ const originalDataImports = {
 };
 // The byte reading port (P2-02 S-07), the only original-data module platform adapters may see.
 const bytePort = '**/original-data/io/byte-source.ts';
-// P2-03 S-07/AC-14: low-level capabilities that open discs, archives or custom whitelists without production version
-// identification. Only their own family, the source family, tests and tools/ may use them; type-only imports carry no
-// capability. Lint matches import specifiers (with or without .ts/.js), anchored at the original-data layout; the
-// dependency graph check in tools/engineering-boundaries.test.ts resolves the real modules as well.
-const DISC = String.raw`disc/(?!disc-(?:error|path)(?:\.[jt]s)?$)[^/]+`;
-const ARCHIVE = String.raw`archive/[^/]+|imfat(?:\.[jt]s)?`;
-const IDENTIFY = String.raw`source/identify-source(?:\.[jt]s)?`;
-/** Specifiers from src/workers reach original-data through parent segments. */
-const FROM_WORKERS = String.raw`^(?:\.\./)+original-data/`;
-/** Specifiers from inside original-data are relative to their own directory. */
-const FROM_ORIGINAL_DATA = String.raw`^(?:\./|(?:\.\./)+)(?:(?:\.\./)*original-data/)?`;
-const capabilityRegex = (prefix, tails) => `${prefix}(?:${tails.join('|')})$`;
 /** `no-restricted-syntax` entries for re-exports, string or template dynamic imports and import types matching `pattern`. */
 const restrictedModuleSyntax = (pattern, messages) => [
   { selector: `:matches(ExportNamedDeclaration, ExportAllDeclaration)[source.value=${pattern}]`, message: messages.reexport },
   { selector: `ImportExpression:matches([source.value=${pattern}], [source.quasis.0.value.raw=${pattern}])`, message: messages.dynamic },
   { selector: `TSImportType[argument.literal.value=${pattern}]`, message: messages.type },
 ];
-function capabilityRules(prefix, tails) {
-  const regex = capabilityRegex(prefix, tails);
-  const pattern = `/${regex.replaceAll('/', '\\/')}/`;
-  return {
-    '@typescript-eslint/no-restricted-imports': ['error', {
-      patterns: [{ regex, allowTypeImports: true, message: 'Use the verified-source product entry, original-data/source/open-verified-source.ts.' }],
-    }],
-    'no-restricted-syntax': ['error', ...restrictedModuleSyntax(pattern, {
-      reexport: 'Do not re-export a low-level original-data capability.',
-      dynamic: 'Do not load a low-level original-data capability dynamically.',
-      type: 'Use a type-only import declaration.',
-    })],
-  };
-}
+
+// P2-03 S-07/AC-14: low-level capabilities that open discs, archives or custom whitelists without production version
+// identification. Only their own family, the source family, tests and tools/ may use them; type-only import
+// declarations carry no capability. The rule resolves each relative specifier against the linted file, so same-named
+// directories elsewhere are unaffected; tools/engineering-boundaries.test.ts applies the same classification to the
+// TypeScript dependency graph, which also catches local re-exports that lint cannot trace.
+const repositoryRoot = import.meta.dirname;
+const projectPath = (file) => relative(repositoryRoot, file).split(sep).join('/');
+
+const literalSpecifier = (source) => {
+  if (source?.type === 'Literal' && typeof source.value === 'string') return source.value;
+  return source?.type === 'TemplateLiteral' && source.expressions.length === 0 ? source.quasis[0].value.cooked : undefined;
+};
+
+const originalDataCapabilities = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { restricted: 'Read original data through the verified-source product entry, original-data/source/open-verified-source.ts.' },
+  },
+  create(context) {
+    const importer = projectPath(context.filename);
+    const own = familyOf(importer);
+    if (own === 'source') return {};
+    const check = (node, specifier) => {
+      if (typeof specifier !== 'string' || !specifier.startsWith('.')) return;
+      let target = projectPath(resolve(dirname(context.filename), specifier));
+      if (/\.js$/.test(target)) target = target.replace(/\.js$/, '.ts');
+      else if (!/\.tsx?$/.test(target)) target += '.ts';
+      const capability = capabilityOf(target);
+      if (capability && capability !== own) context.report({ node, messageId: 'restricted' });
+    };
+    const typeOnly = (node) => node.importKind === 'type'
+      || (node.specifiers.length > 0 && node.specifiers.every(specifier => specifier.type === 'ImportSpecifier' && specifier.importKind === 'type'));
+    return {
+      ImportDeclaration(node) { if (!typeOnly(node)) check(node, node.source.value); },
+      ExportNamedDeclaration(node) { if (node.source) check(node, node.source.value); },
+      ExportAllDeclaration(node) { check(node, node.source.value); },
+      ImportExpression(node) { check(node, literalSpecifier(node.source)); },
+      TSImportType(node) { check(node, literalSpecifier(node.source ?? node.argument?.literal)); },
+    };
+  },
+};
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
@@ -116,29 +135,11 @@ export default tseslint.config(
     },
   },
   {
-    // P2-03 AC-14: import workers reach discs and archives only through the verified-source product entry.
-    files: ['src/workers/**/*.{ts,tsx}'],
+    // P2-03 AC-14: import workers and the rest of original-data reach discs and archives only through the product entry.
+    files: ['src/workers/**/*.{ts,tsx}', 'src/original-data/**/*.{ts,tsx}'],
     ignores: ['**/*.test.ts', '**/*.test-support.ts'],
-    rules: capabilityRules(FROM_WORKERS, [DISC, ARCHIVE, IDENTIFY]),
-  },
-  {
-    // Original-data outside the capability families, such as converters, does the same.
-    files: ['src/original-data/**/*.{ts,tsx}'],
-    ignores: [
-      '**/*.test.ts', '**/*.test-support.ts',
-      'src/original-data/disc/**', 'src/original-data/archive/**', 'src/original-data/imfat.ts', 'src/original-data/source/**',
-    ],
-    rules: capabilityRules(FROM_ORIGINAL_DATA, [DISC, ARCHIVE, IDENTIFY]),
-  },
-  {
-    files: ['src/original-data/disc/**/*.{ts,tsx}'],
-    ignores: ['**/*.test.ts', '**/*.test-support.ts'],
-    rules: capabilityRules(FROM_ORIGINAL_DATA, [ARCHIVE, IDENTIFY]),
-  },
-  {
-    files: ['src/original-data/archive/**/*.{ts,tsx}', 'src/original-data/imfat.ts'],
-    ignores: ['**/*.test.ts', '**/*.test-support.ts'],
-    rules: capabilityRules(FROM_ORIGINAL_DATA, [DISC, IDENTIFY]),
+    plugins: { osr: { rules: { 'original-data-capabilities': originalDataCapabilities } } },
+    rules: { 'osr/original-data-capabilities': 'error' },
   },
   {
     // Core determinism: randomness and time come from the tick input, never from the host.

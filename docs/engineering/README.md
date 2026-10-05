@@ -84,11 +84,12 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
     满足时该边不计入可达性，所以 app/ui 使用平台适配不会被误报。app/ui 直接导入端口，或经平台的再导出、本地导出、类型别名或接口取得端口，仍然报错。
   - 其他层（core、content、render、ui、app）对端口的任何导入仍被拒绝。
 - **原版数据的底层能力**（P2-03 S-07/AC-14）：未经生产白名单识别、就能打开光盘或封包的模块，只能由所属模块族、`original-data/source/` 来源模块族、测试与 `tools/` 使用。
-  - **受限模块：** `original-data/disc/` 中除 `disc-error.ts`、`disc-path.ts` 以外的模块；`original-data/archive/` 与 `original-data/imfat.ts`；以及接受自定义白名单的 `original-data/source/identify-source.ts`。
+  - **受限模块：** `original-data/disc/` 下任意深度的 `.ts`/`.tsx` 模块（只豁免顶层的 `disc-error.ts`、`disc-path.ts`）；`original-data/archive/` 下任意深度的模块与 `original-data/imfat.ts`；以及接受自定义白名单的 `original-data/source/identify-source.ts`。
   - **其他使用者：** `src/workers/` 与 `original-data` 内的其他模块（例如转换模块）只经产品入口 [open-verified-source.ts](../../src/original-data/source/open-verified-source.ts) 取得镜像、文件与封包。它们仍可使用错误类型、`DiscPath` 语法检查、来源映射与映射核验，也可纯类型导入受限模块。
   - **族之间：** disc 族与 archive 族之间也不能互相值导入，archive 族只能纯类型引用 disc 的接口。
-  - **lint：** 用 typescript-eslint 的 `@typescript-eslint/no-restricted-imports`（`allowTypeImports`）拒绝值导入，并用 `no-restricted-syntax` 拒绝再导出（含 `export type`）、字符串或模板参数的动态 `import()`，以及 `import('…')` 类型查询。规则用锚定的正则匹配导入说明符：从 `src/workers/` 起须经 `original-data/`，在 `original-data` 内按相对路径匹配，带或不带 `.ts`/`.js` 扩展名都识别；其他层同名的 `disc/`、`archive/` 模块不受影响。lint 无法解析路径，最终以依赖图为准。
-  - **依赖图：** 同一回归文件解析每个生产模块的真实导入、再导出、动态导入与导入类型，按目标模块所属的族判定。`original-data` 与 `src/workers/` 中参数无法核实的动态导入一律报错。
+  - **分类：** 受限模块所属的族与导入者所属的族由 [tools/original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 统一判定，lint 与依赖图共用。
+  - **lint：** 本地规则 `osr/original-data-capabilities`（定义在 `eslint.config.js`）把每个相对说明符相对于被检查文件解析为真实路径（带或不带 `.ts`/`.js` 都识别），再按上述族判定；`original-data` 内其他位置的同名 `disc/`、`archive/` 目录不受影响。它拒绝值导入（含副作用导入）、带模块说明符的再导出（含 `export type`、`export *`）、字符串或模板参数的动态 `import()` 与 `import('…')` 类型查询；纯类型导入声明放行。
+  - **依赖图：** 同一回归文件解析每个生产模块的真实导入、再导出、动态导入与导入类型，按目标模块所属的族判定。`original-data` 与 `src/workers/` 中参数无法核实的动态导入一律报错。纯类型导入的名称只能在本模块私用：若再用不带模块说明符的 `export { … }`、`export type { … }` 或 `export default` 导出该名称，同样报错。lint 无法追踪本地名称的来源，这种情况只由依赖图拦截。基于受限类型声明并导出新的类型别名或接口，不算再导出：类型不携带打开能力，受限的值则在导入时已被拒绝。
 
 ## 测试
 
