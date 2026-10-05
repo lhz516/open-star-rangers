@@ -91,6 +91,11 @@ function expectPrivate(report: unknown): void {
   expect(text).not.toContain(directory);
 }
 
+/** Every opened handle was closed exactly once; concurrent closes may complete in any order. */
+function expectEveryInputClosed({ opened, closed }: { opened: readonly string[]; closed: readonly string[] }): void {
+  expect([...closed].sort()).toEqual([...opened].sort());
+}
+
 describe('runSourceCheck', () => {
   it('identifies the source and validates every entry of the covered and research archives', async () => {
     const { open, opened, closed } = opener();
@@ -105,7 +110,7 @@ describe('runSourceCheck', () => {
       { path: 'MAIN/COMMFAC2.NOB', coverage: 'research', entries: 2, types: { CMOV: 1, TABL: 1 }, entriesRead: 2, maxBlockBytes: 8, maxRelocations: 1 },
     ]);
     expect(report.reads.sourceReadBytes).toBeGreaterThan(0);
-    expect(closed).toEqual(opened);
+    expectEveryInputClosed({ opened, closed });
     expectPrivate(report);
   });
 
@@ -114,7 +119,7 @@ describe('runSourceCheck', () => {
     const { open, opened, closed } = opener();
     const report = await runSourceCheck(good, { open });
     expect(report).toMatchObject({ passed: false, identity: null, archives: [], error: { code: 'unsupported-version', location: 'file:/MAIN/AISTUFF.NOB' } });
-    expect(closed).toEqual(opened);
+    expectEveryInputClosed({ opened, closed });
   });
 
   it('stops at the first invalid entry and reports how far the archive got', async () => {
@@ -123,7 +128,7 @@ describe('runSourceCheck', () => {
     expect(report.error).toEqual({ code: 'invalid-entry', location: 'archive:/MAIN/R.NOB#30001.relocations[0]' });
     expect(report.archives.at(-1)).toMatchObject({ path: 'MAIN/R.NOB', entries: 1, entriesRead: 0 });
     expect(report.passed).toBe(false);
-    expect(closed).toEqual(opened);
+    expectEveryInputClosed({ opened, closed });
   });
 
   it('fails when a research archive is missing', async () => {
@@ -152,13 +157,13 @@ describe('runSourceCheck', () => {
     before.abort();
     const first = opener();
     expect((await runSourceCheck(good, { open: first.open, catalog: CATALOG, signal: before.signal })).error?.code).toBe('cancelled');
-    expect(first.closed).toEqual(first.opened);
+    expectEveryInputClosed(first);
 
     const during = new AbortController();
     const second = opener(undefined, onArchiveOpen(() => during.abort()));
     const report = await runSourceCheck(good, { open: second.open, catalog: CATALOG, signal: during.signal });
     expect(report).toMatchObject({ passed: false, error: { code: 'cancelled' }, identity: { files: 2 } });
-    expect(second.closed).toEqual(second.opened);
+    expectEveryInputClosed(second);
   });
 
   it('keeps the first error when closing also fails, and hides host read errors', async () => {
@@ -171,7 +176,7 @@ describe('runSourceCheck', () => {
     const failing = opener(undefined, onArchiveOpen(() => { throw new Error(`${directory} ${MARKER}`); }));
     const failed = await runSourceCheck(good, { open: failing.open, catalog: CATALOG });
     expect(failed.error?.code).toBe('read-failed');
-    expect(failing.closed).toEqual(failing.opened);
+    expectEveryInputClosed(failing);
     expectPrivate(failed);
   });
 });

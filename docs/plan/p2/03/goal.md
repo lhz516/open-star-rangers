@@ -93,7 +93,9 @@ updated: 2026-10-05
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
 | [11-capability-bypass.md](./subtasks/11-capability-bypass.md) | 07 | completed |
 | [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | completed |
-| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
+| [13-close-order-flake.md](./subtasks/13-close-order-flake.md) | 08 | completed |
+| [14-capability-laundering.md](./subtasks/14-capability-laundering.md) | 11 | pending |
+| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 13, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -104,6 +106,11 @@ updated: 2026-10-05
   - **AC-10/S-10：** 两个诊断位置超出 spec 的封闭位置语法：内存解析辅助函数的 `request.entry`，以及白名单文件列表根部的 `catalog.files`。
   - **其余项：** 均通过，见 [10](./subtasks/10-final-alignment.md#完成证据)。
   - **补救：** 新增补救子任务 11、12，10 改为依赖它们，之后重新进行最终对齐。
+- **2026-10-05 — 第二次最终对齐未通过：**
+  - **AC-12/S-13（自动化部分）：** 在 HEAD `1d67f23` 上，`pnpm check` 有 1 个测试偶发失败：`tools/source-check.test.ts` 的默认路径用例。它断言句柄的关闭完成顺序等于打开顺序，但测试的打开函数在异步关闭完成后才记录，各句柄并发关闭，完成顺序不确定。单独运行该文件 6 次全部通过。契约只要求关闭每个句柄，不规定顺序；生产代码无缺陷。
+  - **AC-14/S-07/S-13/AC-13：** 边界只判定导入的直接目标。来源族模块、测试支持与 `tools/` 模块被放行，Worker 或转换模块可以经它们转手取得底层能力；真实 ESLint 配置对三类探针都不报告，依赖图同样只看直接目标。
+  - **其余项：** AC-10/S-10 经 12 补救后通过；其他 S/AC 均通过，见 [10](./subtasks/10-final-alignment.md#第二次最终对齐2026-10-05未通过)。
+  - **补救：** 新增 [13](./subtasks/13-close-order-flake.md) 与 [14](./subtasks/14-capability-laundering.md)，10 改为依赖它们，之后再次对齐。
 
 ## 审批
 
