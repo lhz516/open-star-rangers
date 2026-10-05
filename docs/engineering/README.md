@@ -134,7 +134,11 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - **导入 Worker 浏览器测试**（P2-04 AC-08）：[import-worker.spec.ts](../../e2e/import-worker.spec.ts) 在页面内从开发服务器动态导入 `/src/…` 模块，所以只在 development 项目运行，生产项目用 `testIgnore` 排除；生产预览中的 Worker 归 P2-11 验证。
   - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择场景。合成文件在页面内由代码生成，不读取 `local/`。
   - 探针用 Proxy 包装 `Worker` 构造函数（保持 `instanceof` 与原型），并包装 `terminate`。快照的 `workers` 记录入口路径、URL 是否由 Vite 的 Worker 转换生成、类型、名称，以及 `postMessage` 与 `terminate` 的调用次数（不保留消息内容）；注册在 Worker 对象上的监听归入 `worker` 分组。[probe-contract](../../e2e/probe-contract.spec.ts) 在两个项目中证明包装后仍能载入模块 Worker、收发消息与终止。
+  - 失败与生命周期（AC-09、AC-10）：测试入口另有四个场景：`busy` 先发送一条进度，再进入只有终止才能结束的同步循环；`job-throws` 让作业抛错；`late-error` 在 `ready` 之后的异步回调中抛出未捕获错误；`top-level-throw` 在模块求值时抛错。抛出的文本都含文件名标记，用于证明它不进入快照、错误与 console。页面内事件日志按顺序记录快照、可信点击、rAF、取消与释放，作为主页面响应与“之后无通知”的证据，不用耗时阈值。开发服务器对不存在的 `.ts` 入口返回 SPA 回退的 HTML（200），模块 Worker 因此载入失败，与生产静态托管的导航回退一致。
   - 聚焦运行：`pnpm test:e2e import-worker.spec.ts --project=development`。
+- **浏览器错误收集**（[browser-test.ts](../../e2e/support/browser-test.ts)）：除页面的 pageerror、console error、失败请求与 4xx/5xx 外，也收集页面所建 Worker 的 console error（Playwright 把它报告在 Worker 上，不在页面上）。
+  - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。
+  - 未声明的错误仍使用例失败；声明了却未出现的诊断也使用例失败。判定由 `settleDiagnostics` 完成，[probe-contract](../../e2e/probe-contract.spec.ts) 核对它与 Worker console 的收集。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
 
 ## 合成 Runtime

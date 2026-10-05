@@ -19,6 +19,11 @@ export function collectBrowserErrors(page: Page, webglUnavailable = false) {
       allowed.push(`${url}: ${text}`);
     } else errors.push(`console: ${url}: ${text}`);
   });
+  // Playwright reports a Worker's console on the Worker, not on the page.
+  page.on('worker', worker => {
+    const entry = new URL(worker.url()).pathname;
+    worker.on('console', message => { if (message.type() === 'error') errors.push(`worker console: ${entry}: ${message.text()}`); });
+  });
   page.on('requestfailed', request => { errors.push(`request: ${request.url()}: ${request.failure()?.errorText}`); });
   page.on('response', response => {
     if (response.status() < 400) return;
@@ -28,17 +33,45 @@ export function collectBrowserErrors(page: Page, webglUnavailable = false) {
   return { errors, allowed };
 }
 
-export const test = base.extend<{ webglUnavailable: boolean; observeErrors: void }>({
+/**
+ * Splits the observed errors into declared diagnostics, each matched by one exactly equal error, unexpected errors, and
+ * declared diagnostics that never occurred.
+ */
+export function settleDiagnostics(observed: readonly string[], declared: readonly string[]) {
+  const pending = [...declared];
+  const matched: string[] = [];
+  const unexpected: string[] = [];
+  for (const error of observed) {
+    const index = pending.indexOf(error);
+    if (index === -1) unexpected.push(error);
+    else matched.push(...pending.splice(index, 1));
+  }
+  return { matched, unexpected, missing: pending };
+}
+
+export const test = base.extend<{
+  webglUnavailable: boolean;
+  declaredDiagnostics: string[];
+  /** Declares one browser error, in the collector's exact wording, that this test must produce; it is then recorded. */
+  expectDiagnostic: (diagnostic: string) => void;
+  observeErrors: void;
+}>({
   webglUnavailable: [false, { option: true }],
-  observeErrors: [async ({ page, webglUnavailable }, use, testInfo) => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires a fixture to destructure its first argument.
+  declaredDiagnostics: async ({}, use) => { await use([]); },
+  expectDiagnostic: async ({ declaredDiagnostics }, use) => { await use(diagnostic => { declaredDiagnostics.push(diagnostic); }); },
+  observeErrors: [async ({ page, webglUnavailable, declaredDiagnostics }, use, testInfo) => {
     const { errors, allowed } = collectBrowserErrors(page, webglUnavailable);
     await page.addInitScript(installBrowserProbes);
     try {
       await use();
     } finally {
       try {
-        await testInfo.attach('browser-errors', { body: JSON.stringify({ errors, allowed }), contentType: 'application/json' });
-        expect(errors, 'Unexpected browser errors').toEqual([]);
+        const { matched, unexpected, missing } = settleDiagnostics(errors, declaredDiagnostics);
+        for (const diagnostic of matched) testInfo.annotations.push({ type: 'expected-diagnostic', description: diagnostic });
+        await testInfo.attach('browser-errors', { body: JSON.stringify({ errors: unexpected, declared: matched, missing, allowed }), contentType: 'application/json' });
+        expect(unexpected, 'Unexpected browser errors').toEqual([]);
+        expect(missing, 'Declared diagnostics that did not occur').toEqual([]);
         for (const name of ['action-error', 'session-error', 'cleanup-failure', 'open-demo-failure']) {
           expect(await page.getByTestId(name).count(), `Unexpected ${name}`).toBe(0);
         }

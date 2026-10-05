@@ -1,4 +1,4 @@
-import { test, expect, collectBrowserErrors } from './support/browser-test.ts';
+import { test, expect, collectBrowserErrors, settleDiagnostics } from './support/browser-test.ts';
 import { diagnostics, enterDemo, frameWindow, stableAxis } from './support/demo-observations.ts';
 import { image, verifyLayout } from './support/image-observations.ts';
 
@@ -135,3 +135,26 @@ test('error collector retains console, native exception and failed HTTP reasons'
     await child.close();
   }
 });
+
+test('error collector retains Worker console errors and settles declared diagnostics exactly', async ({ page, context, expectDiagnostic }) => {
+  await page.goto('/');
+  const child = await context.newPage();
+  try {
+    const collected = collectBrowserErrors(child);
+    await child.goto(page.url());
+    await child.evaluate(() => {
+      const url = URL.createObjectURL(new Blob(["console.error('controlled-worker-console');"], { type: 'text/javascript' }));
+      new Worker(url, { type: 'module' });
+    });
+    await expect.poll(() => collected.errors.some(error => error.startsWith('worker console: ') && error.endsWith(': controlled-worker-console'))).toBe(true);
+  } finally {
+    await child.close();
+  }
+  expect(settleDiagnostics(['a', 'b', 'a'], ['a', 'c'])).toEqual({ matched: ['a'], unexpected: ['b', 'a'], missing: ['c'] });
+  expect(settleDiagnostics(['a'], [' a'])).toEqual({ matched: [], unexpected: ['a'], missing: [' a'] });
+  // Declared in the collector's wording, this error is allowed and recorded instead of failing the test.
+  const logged = page.waitForEvent('console', message => message.text() === 'controlled-declared-diagnostic');
+  await page.evaluate(() => { console.error('controlled-declared-diagnostic'); });
+  expectDiagnostic(`console: ${(await logged).location().url}: controlled-declared-diagnostic`);
+});
+
