@@ -1,0 +1,69 @@
+---
+type: plan
+status: active
+phase: P2
+task: "03"
+subtask: "02"
+updated: 2026-10-05
+---
+
+# 02 — 封包格式规则、错误类型与内存解析
+
+**契约来源：** [spec](../spec.md) 的 S-01、S-02（规则部分）、S-09（结构限值）、S-10、S-12（合成封包）；[支持的封包格式](../spec.md#支持的封包格式)、[限值与预算](../spec.md#限值与预算)、[错误码](../spec.md#错误码)；AC-01、AC-02（重定位规则）、AC-03（共用样本）、AC-10（封包诊断）。
+**依赖：** 无。
+**执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
+
+## 工作范围
+
+- **错误类型：** 新增 P2-03 的封闭错误码集合与错误类，DTO 与 `DiscReadError` 相同，为 `{ code, location, reason, limit }`。
+  - code 为 spec 列出的 11 个；`limit` 为 `{ name, limit, observed }` 或 null，限值名为 `archiveEntries`、`entryBytes`；
+  - `reason` 只用固定的安全文本，可结构化克隆；
+  - 错误模块是不导入其他模块的叶子，供封包与来源模块共用。
+- **格式规则：** 新增纯规则模块，对字节做如下校验：
+  - **文件头：** 长度、8 字节魔数、版本、条目数（`n ≥ 1`，超过 4,096 时 `limit-exceeded`）、第一个数据块偏移公式，以及 `L ≥ 24 + 36n`。
+  - **目录：** 按目录顺序检查每一项：保留字、类型标签语法、ID 大于基数且严格递增、`1 ≤ size`（超过 4,194,304 时 `limit-exceeded`）、`relocationCount ≤ ⌊size/4⌋`、连续偏移、跨度在 `L` 内；全部通过后检查尾随字节。`flags` 原样保留。
+  - **重定位：** 按表顺序检查位置在块内、存储的指针不超过 `size`；全部通过后，检查排序后的重叠，报告规则与 spec 一致。允许非对齐与无序位置。
+  - **算术：** 所有比较都用安全整数减法，不依赖 `DataView` 异常。
+  - **位置：** 按 spec 的语法生成（`archive`、`[i]`、`#ID`、`#ID.relocations[k]`），可带 `:/路径` 前缀；只回显通过语法的类型标签。
+- **内存解析：** [imfat.ts](../../../../../src/original-data/imfat.ts) 的 `parseImfat` 与条目辅助函数改用上述规则与错误码，`ImfatEntry` 形状保持不变。若改名或移动导出，须同步 [nob-list](../../../../../tools/nob-list.ts)、[nob-check](../../../../../tools/nob-check.ts) 与测试，研究工具的输出不含新增的原版内容。
+- **合成样本：**
+  - 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)，可构造任意覆写文件头、保留字、原始类型标签字节、偏移、尾随字节与块内指针值的合成封包；
+  - 新增共用的正负样本表，每条为 `(名称, 字节, 期望目录/重定位或期望 code 与位置)`，供本子任务与 03 的一致性测试使用。
+
+## 不包含
+
+- 在 `DiscFile` 上的按需读取、读取日志、预算与取消（03）。
+- 版本白名单、识别、来源句柄与映射核验（04–06）；边界规则（07）。
+- payload 解析器（`payloads.ts`）的任何改动。
+
+## 关键文件与契约
+
+- **计划新增：**
+  - `src/original-data/source/source-error.ts`：P2-03 错误码、DTO 与错误类（名称可由实现调整，须保持叶子模块）；
+  - `src/original-data/archive/imfat-rules.ts`：文件头、目录与重定位规则及限值常量；
+  - `src/original-data/archive/archive.test-support.ts`：共用正负样本表；
+  - 相邻的 `*.test.ts`。
+- **修改：** [imfat.ts](../../../../../src/original-data/imfat.ts)、[imfat.test.ts](../../../../../src/original-data/imfat.test.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)，以及按需修改 [nob-list](../../../../../tools/nob-list.ts)、[nob-check](../../../../../tools/nob-check.ts)。
+- **文档：** [源码结构](../../../../engineering/source-structure.md)的目录树与新增的封包读取说明。
+
+## 验收标准
+
+- [ ] AC-01（内存解析）：
+  - **正向：** 与基准同形的合成封包解析正确，`flags` 任意值原样保留；样本包含 1–4 字符的标签（含数字与全数字标签）、非固定步长的 ID，以及等于基数 + 1 的首项 ID。
+  - **负向：** spec AC-01 列出的每一项都在预期位置返回 `invalid-archive`。
+  - **限值：** 条目数 4,096 与数据块 4,194,304 字节通过，再多 1 个单位返回 `limit-exceeded`；u32 最大值不引起不安全算术或宿主异常。
+- [ ] AC-02（重定位规则）：
+  - 非对齐与无序位置通过，指针等于 0 或 `size` 通过；
+  - 位置等于 `size - 3` 或 u32 最大值、指针等于 `size + 1`、位置重复、位置相差 1–3，都返回 `invalid-entry`；
+  - 报告的重定位序号符合排序后第一对重叠的规则。
+- [ ] AC-03（样本）：共用样本表覆盖上述正负情况，内存解析对每条给出期望结果。
+- [ ] AC-10（封包部分）：非法类型标签与块字节中植入的标记不出现在 DTO 中；DTO 可结构化克隆，code 属于封闭集合。
+- [ ] 既有 `imfat`、`payloads`、`source-mapping` 测试保持通过（必要时只按新规则调整合成样本）；`nob-list`、`nob-check` 通过类型检查。
+- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+
+## 验证方法
+
+- 表驱动 Node 测试，按 code、location 与 limit 断言，不比较错误消息文本；测试只导入允许的模块。
+- 不适用 browser-testing；基准盘上的规则验证由 09 完成。
+
+## 完成证据
