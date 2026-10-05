@@ -136,15 +136,18 @@ function readKeyFields(
 
 const isOriginType = (value: unknown): value is ContentOrigin['type'] => value === 'synthetic' || value === 'original-import';
 
-/** Reads an untrusted `{ originType, originToken, converterVersion }`; any other shape is `invalid-request`. */
-export function readCacheKey(value: unknown, path = 'key'): ResourceCacheKey {
-  const record = withContractFailure('invalid-request', () => {
+/**
+ * Reads an untrusted `{ originType, originToken, converterVersion }`; any other shape fails with `code`, which is
+ * `invalid-request` for a caller's key and `cache-corrupt` for one read back from storage.
+ */
+export function readCacheKey(value: unknown, path = 'key', code: ResourceCacheFailureCode = 'invalid-request'): ResourceCacheKey {
+  const record = withContractFailure(code, () => {
     const fields = readRecord(value, path);
     requireFields(fields, path, ['originType', 'originToken', 'converterVersion']);
     return fields;
   });
-  if (!isOriginType(record.originType)) failWith('invalid-request', `${path}.originType`);
-  return readKeyFields('invalid-request', record.originType, record.originToken, record.converterVersion, path);
+  if (!isOriginType(record.originType)) failWith(code, `${path}.originType`);
+  return readKeyFields(code, record.originType, record.originToken, record.converterVersion, path);
 }
 
 export function packageRecordKey(key: ResourceCacheKey): PackageRecordKey {

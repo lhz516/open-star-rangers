@@ -86,7 +86,7 @@ updated: 2026-10-05
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-cache-key-results.md](./subtasks/01-cache-key-results.md) | — | completed |
-| [02-cache-records.md](./subtasks/02-cache-records.md) | 01 | pending |
+| [02-cache-records.md](./subtasks/02-cache-records.md) | 01 | completed |
 | [03-browser-commit-restore.md](./subtasks/03-browser-commit-restore.md) | 02 | pending |
 | [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | pending |
 | [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | pending |

@@ -1,6 +1,6 @@
 import type { AssetReference, ResourceGroup } from './asset-contract.ts';
 import type { AssetId } from './asset-id.ts';
-import type { ContentIdentity } from './content-identity.ts';
+import { contentIdentityKey, type ContentIdentity } from './content-identity.ts';
 import { compareText, ContentContractError, type ContentContractErrorCode } from './contract-validation.ts';
 import { readGroupManifest, type GroupManifest } from './manifest.ts';
 import { payloadMismatch, readPayloadRecords } from './payload.ts';
@@ -188,11 +188,6 @@ export function validateGroup(definition: SliceDefinition, input: GroupInput): G
   return checkGroup(definition, input).result;
 }
 
-/** One comparable key over the six package identity fields. */
-const identityKey = ({ schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin }: ContentIdentity): string =>
-  [schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin.type,
-    origin.type === 'synthetic' ? origin.fixtureId : origin.sourceFingerprint].join('\u0000');
-
 /**
  * Derives whole-package completeness by revalidating every raw group input; group results are never trusted.
  * Requires each defined group exactly once, identical identities, unique IDs and resolved cross-group requirements.
@@ -208,11 +203,11 @@ export function validatePackage(definition: SliceDefinition, inputs: readonly Gr
   if (diagnostics.length > 0) return Object.freeze({ status: 'incomplete', diagnostics: sortDiagnostics(diagnostics) });
   const complete = checked.map(({ result, manifest }) => ({ result: result as Extract<GroupCompletenessResult, { status: 'group-complete' }>, manifest: manifest! }));
   const identity = complete[0].result.identity;
-  const expectedKey = identityKey(identity);
+  const expectedKey = contentIdentityKey(identity);
   const owners = new Map<AssetId, number>();
   const edges = new Map<AssetId, { target: AssetId; path: string }[]>();
   complete.forEach(({ result, manifest }, index) => {
-    if (identityKey(result.identity) !== expectedKey) {
+    if (contentIdentityKey(result.identity) !== expectedKey) {
       diagnostics.push(diagnostic('package-identity-mismatch', `groups[${index}].manifest.identity`, 'must match every other group'));
     }
     manifest.assets.forEach((asset, assetIndex) => {

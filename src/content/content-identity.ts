@@ -40,6 +40,11 @@ export interface PayloadIdentity {
   readonly fingerprint: PayloadFingerprint;
 }
 
+/** One comparable key over the six content identity fields: equal keys mean the same package identity. */
+export const contentIdentityKey = ({ schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin }: ContentIdentity): string =>
+  [schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin.type,
+    origin.type === 'synthetic' ? origin.fixtureId : origin.sourceFingerprint].join('\u0000');
+
 const OPAQUE_TOKEN = /^[a-z0-9]+(?:[-.:][a-z0-9]+)*$/;
 
 function readVersion(value: unknown, path: string): number {
