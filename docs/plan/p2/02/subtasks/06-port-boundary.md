@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "02"
 subtask: "06"
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # 06 — 端口模块的边界放行

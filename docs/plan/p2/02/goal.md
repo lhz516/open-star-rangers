@@ -88,7 +88,9 @@ updated: 2026-10-05
 | [07-blob-adapter.md](./subtasks/07-blob-adapter.md) | 05, 06 | completed |
 | [08-node-adapter-cli.md](./subtasks/08-node-adapter-cli.md) | 05 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 08 | completed |
-| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09 | pending |
+| [11-leadout-cancel-remediation.md](./subtasks/11-leadout-cancel-remediation.md) | 01, 02 | pending |
+| [12-evidence-remediation.md](./subtasks/12-evidence-remediation.md) | 03, 08 | pending |
+| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -96,6 +98,14 @@ updated: 2026-10-05
 
 - **2026-10-04 — 本机负载导致完整 `pnpm check` 超时：** 子任务 04 完成时，其他桌面应用把 load average 推到 10–23，`tools/` 中启动子进程的用例反复超时。typecheck、lint、build 与 `src/original-data` 测试均通过；在 HEAD 基线上，同负载下同样超时。
   影响：04 记录了与本改动无关的环境失败。最终对齐（10）必须在负载正常时取得完整 `pnpm check` 的通过结果，不能以本记录代替。
+- **2026-10-05 — 第一次最终对齐未通过：** 完整 `pnpm check`（80 个文件、2080 项）与 `pnpm check:original` 都已通过，负载问题解除。但覆盖核对发现 5 个缺口：
+  - `0xa2` 的 `PLBA=0` 被报成 `image-size-mismatch`，而 spec 要求正安全整数；
+  - 校验取消探针时读到的 true 没有锁存；
+  - 卷描述符上限缺少“恰好 16 个仍通过”的用例；
+  - AC-08 的首个错误确定性缺少测试；
+  - AC-11 的 CLI 读取失败时关闭句柄缺少测试。
+
+  处理：新增补救子任务 11（实现修正）与 12（测试证据），10 回到 pending，并依赖 11、12。
 
 ## 审批
 

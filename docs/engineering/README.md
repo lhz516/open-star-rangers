@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-04
+updated: 2026-10-05
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
