@@ -28,7 +28,7 @@ export default defineConfig({
     },
     {
       name: 'production',
-      testIgnore: ['**/native-lifecycle.spec.ts', '**/browser-replay.spec.ts'],
+      testIgnore: ['**/native-lifecycle.spec.ts', '**/browser-replay.spec.ts', '**/import-worker.spec.ts'],
       use: { baseURL: previewOrigin },
     },
     {

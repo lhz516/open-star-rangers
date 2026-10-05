@@ -4,6 +4,7 @@ import { syntheticSourceGroup } from '../content/synthetic-content.test-support.
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
 import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
 import { identifySource } from '../original-data/source/identify-source.ts';
+import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
 import type { ImportJob } from './import-host.ts';
 import { createImportJob, type OpenSource } from './import-job.ts';
@@ -24,6 +25,28 @@ interface SyntheticImport {
   readonly open: OpenSource;
 }
 
+/** Generated content whose byte at `i` is a fixed function of `i` and `seed`; never original data. */
+export function generatedContent(byteLength: number, seed: number): SyntheticFileContent {
+  return {
+    byteLength,
+    read: (offset, length) => {
+      const bytes = new Uint8Array(length);
+      for (let index = 0; index < length; index++) bytes[index] = ((offset + index) * 31 + seed) & 0xff;
+      return bytes;
+    },
+  };
+}
+
+/** Files at the production whitelist's paths and sizes, with generated content: shaped like the base version, never it. */
+export function productionSizedFiles(): Record<string, SyntheticFileContent> {
+  return Object.fromEntries(PRODUCTION_CATALOG.files.map(({ path, byteLength }, index) => [path, generatedContent(byteLength, index + 1)]));
+}
+
+/** Identification against a whitelist of exactly `covered`, in place of the production whitelist. */
+export function syntheticOpen(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): OpenSource {
+  return async inputs => identifySource(await openDiscImage(inputs), catalogFor(covered, versionId));
+}
+
 /** A CloneCD file set holding `covered` plus the padding, by disc path, read out chunk by chunk. */
 export async function syntheticImport(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): Promise<SyntheticImport> {
   const disc = syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING });
@@ -35,7 +58,7 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
     }
     return new File(parts, name);
   }));
-  return { files, open: async inputs => identifySource(await openDiscImage(inputs), catalogFor(covered, versionId)) };
+  return { files, open: syntheticOpen(covered, versionId) };
 }
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */

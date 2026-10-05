@@ -54,6 +54,34 @@ test('probe preserves native listener, observer and frame behavior', async ({ pa
   expect(restored.after).toBe(restored.before);
 });
 
+test('probe records Workers without changing module loading, messaging or termination', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    // `import.meta` parses only in a module script, so a reply proves the Worker still loads as a module.
+    const source = 'const base = import.meta.url; self.onmessage = event => self.postMessage({ doubled: event.data * 2, module: typeof base });';
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    const worker = new Worker(url, { type: 'module', name: 'probe-worker' });
+    const replied = new Promise<unknown>(resolve => { worker.addEventListener('message', event => resolve(event.data), { once: true }); });
+    const listening = window.osrProbe.snapshot().listeners.filter(entry => entry.group === 'worker');
+    worker.postMessage(21);
+    const reply = await replied;
+    worker.terminate();
+    worker.terminate();
+    URL.revokeObjectURL(url);
+    const after = window.osrProbe.snapshot();
+    return {
+      reply, instance: worker instanceof Worker, prototype: Object.getPrototypeOf(worker) === Worker.prototype,
+      listening: listening.map(entry => [entry.type, entry.active]),
+      records: after.workers.map(({ viteWorker, type, name, posts, terminations }) => ({ viteWorker, type, name, posts, terminations })),
+      active: after.listeners.filter(entry => entry.group === 'worker' && entry.active).length,
+    };
+  });
+  expect(result).toEqual({
+    reply: { doubled: 42, module: 'string' }, instance: true, prototype: true, listening: [['message', true]],
+    records: [{ viteWorker: false, type: 'module', name: 'probe-worker', posts: 1, terminations: 2 }], active: 0,
+  });
+});
+
 test('reads real pixels, fresh projections, layout and owner resources', async ({ page }, testInfo) => {
   await page.goto('/');
   await enterDemo(page);

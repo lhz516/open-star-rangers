@@ -1,9 +1,14 @@
-export type ListenerGroup = 'keyboard' | 'session' | 'render' | 'react' | 'vite' | 'test' | 'other';
+export type ListenerGroup = 'keyboard' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
 export interface ProbeSnapshot {
   listeners: { id: number; target: number; type: string; capture: boolean; group: ListenerGroup; active: boolean; addedAt: number; removedAt: number | null }[];
   observers: { id: number; targets: number[] }[];
   canvases: { id: number; connected: boolean; extension: boolean; lost: boolean }[];
   frames: { pending: number; maximum: number; requested: number; delivered: number; cancelled: number };
+  /**
+   * Every Worker constructed: its script path (no origin or query), whether Vite's Worker transform built the URL, type,
+   * name, and the number of `postMessage()` and `terminate()` calls. Message contents are never kept.
+   */
+  workers: { id: number; entry: string; viteWorker: boolean; type: string; name: string; posts: number; terminations: number }[];
   sequence: number;
 }
 
@@ -35,6 +40,9 @@ export function installBrowserProbes(): void {
   const originalUnobserve = ResizeObserver.prototype.unobserve;
   const originalDisconnect = ResizeObserver.prototype.disconnect;
   const originalContext = HTMLCanvasElement.prototype.getContext;
+  const OriginalWorker = window.Worker;
+  const originalTerminate = OriginalWorker.prototype.terminate;
+  const originalPost = OriginalWorker.prototype.postMessage;
   type Listener = ProbeSnapshot['listeners'][number] & {
     callback: EventListenerOrEventListenerObject; nativeCallback: EventListenerOrEventListenerObject; object: EventTarget; signal?: AbortSignal;
   };
@@ -42,6 +50,9 @@ export function installBrowserProbes(): void {
   const observers = new Map<ResizeObserver, Set<Element>>();
   const canvases = new Map<HTMLCanvasElement, { gl: WebGL2RenderingContext; extension: boolean }>();
   const frames = new Map<number, boolean>();
+  // Records hold no Worker reference, so a terminated Worker is not kept alive for the snapshot.
+  const workerRecords: ProbeSnapshot['workers'] = [];
+  const workers = new WeakMap<Worker, ProbeSnapshot['workers'][number]>();
   let maximum = 0;
   let requested = 0;
   let delivered = 0;
@@ -49,6 +60,7 @@ export function installBrowserProbes(): void {
   const pending = (): number => [...frames.values()].filter(Boolean).length;
   const capture = (options?: boolean | EventListenerOptions): boolean => typeof options === 'boolean' ? options : options?.capture ?? false;
   function group(target: EventTarget, type: string): ListenerGroup {
+    if (target instanceof OriginalWorker) return 'worker';
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
     if (/\/@(?:vite\/client|react-refresh)/.test(new Error().stack ?? '')) return 'vite';
     if (!application()) return 'test';
@@ -129,6 +141,31 @@ export function installBrowserProbes(): void {
       return result;
     },
   });
+  // A Proxy keeps `Worker.prototype` and `instanceof`; Vite's `new Worker(new URL(...))` resolves the global at call time.
+  window.Worker = new Proxy(OriginalWorker, {
+    construct(target, args: ConstructorParameters<typeof Worker>, newTarget: NewableFunction): object {
+      const worker = Reflect.construct(target, args, newTarget) as Worker;
+      const [url, options] = args;
+      const parsed = new URL(String(url), location.href);
+      const record = {
+        id: id(worker), entry: parsed.pathname, viteWorker: parsed.searchParams.has('worker_file'), type: options?.type ?? 'classic',
+        name: options?.name ?? '', posts: 0, terminations: 0,
+      };
+      workers.set(worker, record);
+      workerRecords.push(record);
+      return worker;
+    },
+  });
+  OriginalWorker.prototype.postMessage = function (this: Worker, ...args: Parameters<Worker['postMessage']>): void {
+    const record = workers.get(this);
+    if (record) record.posts++;
+    (originalPost as (...values: unknown[]) => void).apply(this, args);
+  } as Worker['postMessage'];
+  OriginalWorker.prototype.terminate = function (this: Worker): void {
+    const record = workers.get(this);
+    if (record) record.terminations++;
+    originalTerminate.call(this);
+  };
   window.osrProbe = {
     snapshot: () => ({
       listeners: listeners.map(({ id, target, type, capture, group, active, addedAt, removedAt, signal }) => ({
@@ -139,6 +176,7 @@ export function installBrowserProbes(): void {
         id: id(canvas), connected: canvas.isConnected, extension, lost: gl.isContextLost(),
       })),
       frames: { pending: pending(), maximum, requested, delivered, cancelled },
+      workers: workerRecords.map(record => ({ ...record })),
       sequence,
     }),
     resetFrames: () => { maximum = pending(); requested = 0; delivered = 0; cancelled = 0; },
@@ -151,6 +189,9 @@ export function installBrowserProbes(): void {
       ResizeObserver.prototype.unobserve = originalUnobserve;
       ResizeObserver.prototype.disconnect = originalDisconnect;
       HTMLCanvasElement.prototype.getContext = originalContext;
+      window.Worker = OriginalWorker;
+      OriginalWorker.prototype.terminate = originalTerminate;
+      OriginalWorker.prototype.postMessage = originalPost;
     },
   };
 }
