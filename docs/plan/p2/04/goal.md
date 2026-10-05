@@ -106,7 +106,7 @@ updated: 2026-10-05
 | [03-import-job.md](./subtasks/03-import-job.md) | 02 | completed |
 | [04-job-owner-lifecycle.md](./subtasks/04-job-owner-lifecycle.md) | 01 | completed |
 | [05-group-results.md](./subtasks/05-group-results.md) | 04 | completed |
-| [06-browser-worker-adapter.md](./subtasks/06-browser-worker-adapter.md) | 04 | pending |
+| [06-browser-worker-adapter.md](./subtasks/06-browser-worker-adapter.md) | 04 | completed |
 | [07-node-integration.md](./subtasks/07-node-integration.md) | 03, 05, 06 | pending |
 | [08-boundaries.md](./subtasks/08-boundaries.md) | 03, 05, 06 | pending |
 | [09-browser-worker-paths.md](./subtasks/09-browser-worker-paths.md) | 06, 07 | pending |

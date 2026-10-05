@@ -98,6 +98,9 @@ src/
       browser-keyboard-source.ts
       keyboard-input.ts
       keyboard-source.ts
+    workers/
+      worker-port.ts
+      browser-import-worker.ts
   render/
     scene/
       cleanup.ts
@@ -299,6 +302,10 @@ src/
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。
+- **平台适配：** [platform/workers/worker-port.ts](../../src/platform/workers/worker-port.ts) 的 `connectImportWorker(worker, events)` 在最小的 `WorkerLike` 形状上实现端口，不用 DOM 类型，由 Node 测试覆盖。
+  - 它注册 `message`、`messageerror`、`error` 三个监听，按上面的端口契约转交与终止；对 `error` 另调用 `preventDefault()`，错误文本不进入页面控制台。
+  - [browser-import-worker.ts](../../src/platform/workers/browser-import-worker.ts) 的 `browserImportWorkerFactory(createWorker)` 每次调用创建一个新 Worker。默认用 Vite 可识别的 `new Worker(new URL('../../workers/import-worker.ts', import.meta.url), { type: 'module' })`；浏览器测试传入 `createWorker` 载入测试入口。它是 `browser-*` 文件，只由应用程序检查。
+  - [vite.config.ts](../../vite.config.ts) 以 `worker.format: 'es'` 输出 Worker。页面尚未引用工厂，生产构建暂不产生 Worker chunk，接线与生产预览归 P2-11。
 - **作业持有者：** [app/import/import-job-owner.ts](../../src/app/import/import-job-owner.ts) 的 `createImportJobOwner({ createPort, reportError })` 同一时刻至多管理一个活动作业。它是 DOM-free 的，Node 测试用假端口。
   - **开始：** `start(files)` 只在空闲或终态时创建新作业，作业 ID 递增，每个作业一个新端口。
     - 有活动作业时返回 `busy`；文件数不在 1–4，或某项不是名称为 1–255 个 UTF-16 码元的 Blob 时返回 `invalid-files`；释放后返回 `disposed`。拒绝都不改变状态，也不创建端口。

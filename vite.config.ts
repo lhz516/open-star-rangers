@@ -8,6 +8,10 @@ export default defineConfig({
     target: 'es2023',
     sourcemap: true,
   },
+  // P2-04: import Workers are module Workers with the page's ES module semantics.
+  worker: {
+    format: 'es',
+  },
   test: {
     include: ['src/**/*.test.ts', 'tools/**/*.test.ts'],
     environment: 'node',
