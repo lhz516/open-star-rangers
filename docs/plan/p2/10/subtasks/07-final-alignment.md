@@ -43,9 +43,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] S-01 至 S-12、AC-01 至 AC-16 逐项有实现与验证证据，没有未解释的缺口，也没有用代理证据替代要求的真实浏览器行为。
-- [ ] 上述工程检查全部通过；依赖清单与锁文件没有变化；没有原版内容或测试产物进入提交。
-- [ ] 文档、源码边界、测试发现与项目归属一致，文档链接与元数据检查通过；`node tools/task-state.ts p2/10` 在标记完成后输出 `done`。
+- [x] S-01 至 S-12、AC-01 至 AC-16 逐项有实现与验证证据，没有未解释的缺口，也没有用代理证据替代要求的真实浏览器行为。
+- [x] 上述工程检查全部通过；依赖清单与锁文件没有变化；没有原版内容或测试产物进入提交。
+- [x] 文档、源码边界、测试发现与项目归属一致，文档链接与元数据检查通过；`node tools/task-state.ts p2/10` 在标记完成后输出 `done`。
 
 ## 验证方法
 
@@ -67,3 +67,24 @@ updated: 2026-10-05
   - **S-07/S-10/S-11：** `read-failed` 没有真实浏览器中的产生路径；`storage-closed` 从未被观测到。报告 `storage-closed` 后适配器也不丢弃已关闭的连接。补救为 [08](./08-error-path-coverage.md)。
   - **STATUS：** 下一步仍写着 P2-10 先编写 spec，在本子任务通过时更新。
 - **处理：** 本行改回 `pending`，在 08 完成后重新对齐。
+
+### 第二次最终对齐（2026-10-05，通过）
+
+- **检查：** 在 HEAD `3b689e8`（08 完成后）上：
+  - `pnpm check`：89 个测试文件 2,483 个测试、lint、类型检查与构建通过；
+  - `pnpm check:original` 通过；`pnpm exec vitest run tools/e2e-configuration.test.ts` 8 个测试通过；
+  - `pnpm test:e2e resource-cache.spec.ts --project=development` 18 个用例通过；完整 `pnpm test:e2e`（构建＋全部 3 个项目）39 个用例通过；
+  - goal 改动的 14 个文档链接、锚点与 front matter 检查通过，`updated` 均为当天。
+- **提交范围：** 自 `603cda7` 起 `package.json` 与 `pnpm-lock.yaml` 无变化；没有二进制、`local/` 文件或测试产物。P2-01 的 `src/content` 改动只抽出共享的身份比较与读取函数，契约测试只有新增断言；P1 E2E 不变，生产项目只新增排除 `resource-cache.spec.ts`。浏览器用例只用隔离 context 或测试自建的临时 profile。
+- **覆盖表：**
+
+  | 要求 | 实现与证据 | 结果 |
+  |---|---|---|
+  | S-01–S-06、S-08、S-09、S-12 | 01–06 的 Node 测试、E2E 与完成证据（见 [goal 覆盖表](../goal.md#验收覆盖)） | 通过（首次对齐已核对，08 未改动相关代码路径） |
+  | S-07、S-10、S-11 | 01–06 加 [08](./08-error-path-coverage.md)：13 个错误码都有产生路径与测试；`read-failed` 来自 CDP 清除造成的原生只读中止，`storage-closed` 来自已关闭连接上原生 `transaction()` 抛出的 `InvalidStateError`，之后的操作重新打开并按实际状态报告 | 通过 |
+  | AC-01–AC-16 | 各 AC 在 goal 覆盖表中的子任务证据；AC-05 有原生 `abort`，AC-06 来自 Chrome 的真实 `QuotaExceededError`，AC-07 有一次实际回滚观测 | 通过 |
+  | 不变量 | 本子任务工作范围所列各项；08 只在 `storage-closed` 时丢弃连接，不改事务、校验或结果形状 | 通过 |
+- **复核：** rubber-duck 重新复核 08 后的缺口、不变量与 STATUS：判定通过，无问题。
+- **阶段文档：** [STATUS](../../../../STATUS.md) 更新为 P2-10 已完成，下一步为 P2-04；[P2 任务索引](../../tasks.md)的导航仍准确，无需修改。
+- **剩余事项：** 浏览器证据只来自 Chrome；Firefox/Safari 验证归 P5。
+

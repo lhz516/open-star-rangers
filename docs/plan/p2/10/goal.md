@@ -92,7 +92,7 @@ updated: 2026-10-05
 | [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | completed |
 | [06-integrity-concurrency.md](./subtasks/06-integrity-concurrency.md) | 03 | completed |
 | [08-error-path-coverage.md](./subtasks/08-error-path-coverage.md) | 05 | completed |
-| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | pending |
+| [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06, 08 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
