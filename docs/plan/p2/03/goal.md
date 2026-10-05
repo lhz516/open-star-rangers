@@ -86,7 +86,7 @@ updated: 2026-10-05
 | [02-archive-rules-memory.md](./subtasks/02-archive-rules-memory.md) | — | completed |
 | [03-on-demand-archive.md](./subtasks/03-on-demand-archive.md) | 02 | completed |
 | [04-catalog-fingerprint.md](./subtasks/04-catalog-fingerprint.md) | 02 | completed |
-| [05-identify-verified-source.md](./subtasks/05-identify-verified-source.md) | 01, 03, 04 | pending |
+| [05-identify-verified-source.md](./subtasks/05-identify-verified-source.md) | 01, 03, 04 | completed |
 | [06-mapping-verification.md](./subtasks/06-mapping-verification.md) | 05 | pending |
 | [07-capability-boundary.md](./subtasks/07-capability-boundary.md) | 05 | pending |
 | [08-source-check-cli.md](./subtasks/08-source-check-cli.md) | 05 | pending |

@@ -83,6 +83,8 @@ src/
       archive-reader.ts
     source/
       source-catalog.ts
+      identify-source.ts
+      open-verified-source.ts
   platform/
     browser/
       browser-session-host.ts
@@ -217,7 +219,7 @@ src/
 - **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。
 - **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
 
-### 版本白名单与来源指纹
+### 版本识别与已验证来源
 
 [P2-03](../plan/p2/03/spec.md) 按文件白名单识别基准版本，覆盖范围与指纹算法以 spec 为准：
 
@@ -228,6 +230,18 @@ src/
 
   `PRODUCTION_CATALOG` 是唯一的生产白名单（`star-rangers-1995-cd`，8 个文件）。[tools/source-catalog.test.ts](../../tools/source-catalog.test.ts) 核对它与 [manifest](../original/manifest.md#游戏文件光盘-main-与-flics) 一致。
 - **指纹：** `sourceFingerprint(catalog)` 对规范 ASCII 文本计算 SHA-256，返回 `source:sha256:<hex>`；版本 ID 不参与。生产指纹由测试固定。指纹字符串只表示形状，来源证明来自对实际文件的识别。
+- **识别：** [source/identify-source.ts](../../src/original-data/source/identify-source.ts) 的 `identifySource(disc, catalog)` 在已打开的 P2-02 镜像上识别：
+  - 先按路径序核对每个覆盖文件存在且大小一致：P2-02 的 `path-not-found`、`wrong-entry-kind`，目录，以及大小不符，都报 `unsupported-version`，位置为 `file:/路径`；
+  - 再按路径序从偏移 0 起分段（每段最多 `HASH_SEGMENT_BYTES`，即 4 MiB）计算 SHA-256，用完即丢；不符时同样报 `unsupported-version`，之后的文件不再读取；
+  - 白名单之外的文件从不查找或读取；
+  - 光盘层错误（坏扇区、预算、取消）原样传递。
+  - 它接受任意白名单，属于底层能力。
+- **已验证来源：** 识别成功返回冻结的 `VerifiedSource`：
+  - `identity` 为冻结、可结构化克隆的 `{ versionId, fingerprint, files }`；
+  - `openFile(path)`、`openArchive(path)` 只接受覆盖路径，其他合法路径报 `path-not-covered`，非法路径报 `invalid-request`，都不发生读取；
+  - `usage()` 与镜像句柄共用计量。
+- **产品入口：** [source/open-verified-source.ts](../../src/original-data/source/open-verified-source.ts) 的 `openVerifiedSource(files, options)` 先用 `openDiscImage` 打开文件组，再固定用 `PRODUCTION_CATALOG` 识别，不接受自定义白名单；同时导出产品需要的类型。P2-04 起，产品代码只经它取得原版字节。
+  - 默认 `sourceReadBytes` 上限等于输入总量；基准盘约 174 MB，识别约读取 17 MB 原始扇区，余量留给后续转换。
 - **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
 
 ## 职责与依赖

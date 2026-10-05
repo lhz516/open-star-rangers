@@ -23,10 +23,10 @@ function rejected(value: unknown): Pick<SourceErrorData, 'code' | 'location'> {
 const file = (path: string, byteLength = 1, sha256 = DIGEST) => ({ path, byteLength, sha256 });
 const catalog = (files: unknown, versionId: unknown = 'test-version') => ({ versionId, files });
 
-/** Recomputes the fingerprint with Node from the specified canonical text. */
+/** The fingerprint recomputed independently with Node from the specified canonical text. */
 function nodeFingerprint({ files }: SourceCatalog): string {
-  const text = `open-star-rangers/source-fingerprint/1\n${files.map(({ path, byteLength, sha256 }) => `${path}\t${byteLength}\t${sha256.slice(7)}\n`).join('')}`;
-  return `source:sha256:${createHash('sha256').update(text, 'ascii').digest('hex')}`;
+  const lines = files.map(({ path, byteLength, sha256 }) => `${path}\t${byteLength}\t${sha256.slice('sha256:'.length)}\n`);
+  return `source:sha256:${createHash('sha256').update(`open-star-rangers/source-fingerprint/1\n${lines.join('')}`, 'ascii').digest('hex')}`;
 }
 
 describe('PRODUCTION_CATALOG', () => {

@@ -24,3 +24,4 @@ export function catalogFor(files: Readonly<Record<string, SyntheticFileContent>>
     }),
   });
 }
+

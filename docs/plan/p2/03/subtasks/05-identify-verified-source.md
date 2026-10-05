@@ -50,22 +50,22 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-05：
+- [x] AC-05：
   - 合成光盘加合成白名单返回冻结、可结构化克隆的身份，指纹等于测试独立计算的结果，并通过 `readSourceFingerprint`；
   - `MAIN/` 中另有 `SRANGER.CFG`、`SRHISCOR.RAW`、`*.SWP`、演示目录或未知文件时，结果与指纹不变，这些文件从不被读取；
   - 读取日志只包含打开镜像、查找所经目录与覆盖文件的扇区，每段不超过 4 MiB。
-- [ ] AC-06：
+- [x] AC-06：
   - 缺失、路径中间段是文件、目标是目录、大小 ±1，都返回 `unsupported-version`，且没有读取任何覆盖文件的数据扇区（包括最后一个文件不符的情况）；
   - 首字节或最后一段被改时返回 `unsupported-version`，后续文件未被读取；多个不符时报告路径最小的一个；
   - 大小相同但内容不同的文件，即使文件名、卷标与 `.ccd` 相同也被拒绝；
   - 坏扇区、预算恰差 1 字节、在两段之间或等待最后一段期间取消，都以 P2-02 的 code 失败，不返回句柄。
-- [ ] AC-07（光盘部分）：扇区布局、`.ccd` 文本与无关文件都不同、但覆盖文件相同的两张合成光盘，得到相同的身份与指纹。
-- [ ] AC-08：
+- [x] AC-07（光盘部分）：扇区布局、`.ccd` 文本与无关文件都不同、但覆盖文件相同的两张合成光盘，得到相同的身份与指纹。
+- [x] AC-08：
   - `openFile`/`openArchive` 只接受覆盖路径；非 NOB 的覆盖文件用 `openArchive` 打开时返回 `invalid-archive`；
   - 已验证来源的读取与识别共用同一镜像句柄的用量与取消状态；
   - 产品入口对缺少覆盖文件的合成光盘，在 `file:/MAIN/AISTUFF.NOB` 返回 `unsupported-version`；对大小与生产相同、内容不同的合成光盘，在哈希阶段返回 `unsupported-version`。
-- [ ] AC-10（识别部分）：任何失败都不返回句柄或部分身份；同一输入在相同初始用量与取消状态下得到相同的首个错误；DTO 不含宿主名或文件内容。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-10（识别部分）：任何失败都不返回句柄或部分身份；同一输入在相同初始用量与取消状态下得到相同的首个错误；DTO 不含宿主名或文件内容。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -73,3 +73,49 @@ updated: 2026-10-05
 - 不适用 browser-testing；基准盘的真实识别由 09 完成。
 
 ## 完成证据
+
+- **实现：**
+  - [identify-source.ts](../../../../../src/original-data/source/identify-source.ts)：`identifySource(disc, catalog)` 是底层能力，按以下次序识别：
+    1. 用 04 的读取器校验白名单；
+    2. **存在与大小：** 按路径序 `lookup`。只有 P2-02 的 `path-not-found`/`wrong-entry-kind`、目录与大小不符转换为 `unsupported-version`（`file:/路径`）；其他错误原样传递；
+    3. **哈希：** 按路径序 `openFile` 后从 0 起分段（`HASH_SEGMENT_BYTES` = 4,194,304）用 `Sha256` 计算。哈希阶段的光盘错误（含 `path-not-found`）都原样传递，不再转换；
+    4. **结果：** 返回冻结的 `VerifiedSource`：
+       - `identity` 冻结且可克隆；
+       - `openFile`/`openArchive` 只接受覆盖路径，其他合法路径报 `path-not-covered`，非法路径报 `invalid-request`，都不读取；
+       - `usage()` 与镜像共用计量。
+  - [open-verified-source.ts](../../../../../src/original-data/source/open-verified-source.ts)：`openVerifiedSource(files, options)` 先 `openDiscImage`，再固定用 `PRODUCTION_CATALOG` 识别；同时导出 `DiscInputFile`、`OpenDiscOptions`、`SourceIdentity`、`VerifiedSource`、`CatalogFile` 类型。
+- **测试：** [identify-source.test.ts](../../../../../src/original-data/source/identify-source.test.ts) 使用三个覆盖文件（基准形封包、5,000 字节程序文件、超过两段的 8,999,000 字节生成文件）：
+  - **AC-05：**
+    - 身份等于 `node:crypto` 独立计算的指纹，冻结且可结构化克隆；
+    - 记录的读取精确为每个文件从 0 起的分段，最后一段为 611,392 字节，每段不超过 4 MiB；
+    - `lookup`/`openFile` 的路径恰为白名单的路径序；
+    - `SRANGER.CFG`、`SRHISCOR.RAW`、`*.SWP` 与 `DEMO/` 的数据扇区从未被读取，首个数据扇区之后只读取了覆盖文件的扇区。
+  - **AC-06：**
+    - 缺失、路径穿过文件、目录、最后一个文件长 1 或短 1 字节时，在任何覆盖文件的数据扇区被读取之前，返回 `unsupported-version`；
+    - 两处存在或大小错误时报告路径最小的一处；
+    - 首字节或最后一段被改时，后续文件未被读取；多处内容不符时报告路径最小的一处，两次运行结果相同；
+    - 坏扇区返回 `invalid-sector`；预算少 1 字节返回 `budget-exceeded`；两段之间取消时不再发出下一段；挂起最后一段的端口请求期间取消，返回 `cancelled`；
+    - lookup、openFile、分段读取注入的 `DiscReadError`，以及哈希阶段的 `path-not-found`，都以同一实例传递。
+  - **AC-07：** 改变间隔扇区、文件顺序与 `.ccd` 行尾，并增加无关文件后，身份不变。
+  - **AC-08：**
+    - **句柄：** 覆盖范围外的路径与非法路径都不读取；非 NOB 覆盖文件打开封包时返回 `invalid-archive`；修改传入的白名单不影响身份；`usage()` 与镜像一致；取消后打开封包返回 `cancelled`；
+    - **产品入口：** 缺少覆盖文件时在 `file:/MAIN/AISTUFF.NOB` 失败；8 个生产大小、内容不同的文件在哈希阶段失败，只读取了 AISTUFF 的数据扇区；打开失败的 DTO 与直接调用 `openDiscImage` 一致；预算与取消选项被转发。
+  - **AC-10：** 所有 `SourceError` 的 DTO 都可克隆、冻结，且不含标记。
+- **变异检查：** 以下改动都使测试失败：合并两个阶段；去掉 `wrong-entry-kind` 的转换；去掉覆盖路径检查。
+- **检查：**
+  - `pnpm exec vitest run src/original-data/source`：93 个测试通过；
+  - `pnpm check`：84 个测试文件 2,281 个测试与构建通过。
+- **Rubber-duck（无阻塞问题）：** 采纳四项：
+  - 产品入口导出参数类型；
+  - 注入同一 `DiscReadError` 实例并断言；
+  - 测试产品入口转发预算与取消；
+  - 记录 lookup/openFile 的路径与顺序，并增加两处存在错误的用例。
+- **Simplify：**
+  - 采纳：`dataSectors` 复用 `rangeLbas`；记录辅助改用选项对象；故障注入改为显式 `it.each`；生成内容改为周期图样的原生复制。
+  - 未采纳：
+    - 把 `nodeFingerprint` 移入 test-support（test-support 在纯模块程序中，没有 Node 类型）；
+    - 跨文件共享挂起与记录辅助（形状不同）；
+    - 合并两次路径解析（spec 规定两个阶段，开销小）；
+    - 流式哈希 API。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#版本识别与已验证来源)的一节改名为“版本识别与已验证来源”，补充识别、已验证来源、产品入口与默认预算余量，并更新目录树。04 证据中的链接已同步。工程约定与工具指南无受影响内容；边界规则由 07 处理。
+
