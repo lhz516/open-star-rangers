@@ -101,7 +101,7 @@ updated: 2026-10-05
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-import-protocol.md](./subtasks/01-import-protocol.md) | — | pending |
+| [01-import-protocol.md](./subtasks/01-import-protocol.md) | — | completed |
 | [02-worker-host.md](./subtasks/02-worker-host.md) | 01 | pending |
 | [03-import-job.md](./subtasks/03-import-job.md) | 02 | pending |
 | [04-job-owner-lifecycle.md](./subtasks/04-job-owner-lifecycle.md) | 01 | pending |
