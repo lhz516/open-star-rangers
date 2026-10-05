@@ -54,6 +54,11 @@ function readToken(value: unknown, path: string): string {
   return value;
 }
 
+/** Validates the converter version token as `readContentIdentity` does, for consumers that receive it alone. */
+export function readConverterVersion(value: unknown, path = 'converterVersion'): ConverterVersion {
+  return readToken(value, path) as ConverterVersion;
+}
+
 /** Validates representation, not provenance. P2-03 must produce verified source fingerprints. */
 export function readSourceFingerprint(value: unknown, path = 'sourceFingerprint'): SourceFingerprint {
   if (!matchesWhole(value, /^source:[a-z0-9]+(?:[-.:][a-z0-9]+)*$/)) {
@@ -62,16 +67,21 @@ export function readSourceFingerprint(value: unknown, path = 'sourceFingerprint'
   return value as SourceFingerprint;
 }
 
+/** Validates a synthetic fixture token; it has no fingerprint namespace, so a source fingerprint never passes. */
+export function readFixtureId(value: unknown, path = 'fixtureId'): FixtureId {
+  if (!matchesWhole(value, /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/)) {
+    fail('invalid-identity', path, 'must be a nonempty ASCII fixture token without a fingerprint namespace');
+  }
+  return value as FixtureId;
+}
+
 /** Validates representation, not provenance. P2-03 must produce verified source fingerprints. */
 export function readContentOrigin(value: unknown, path = 'origin'): ContentOrigin {
   const record = readRecord(value, path);
   switch (record.type) {
     case 'synthetic': {
       requireFields(record, path, ['type', 'fixtureId']);
-      if (!matchesWhole(record.fixtureId, /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/)) {
-        fail('invalid-identity', `${path}.fixtureId`, 'must be a nonempty ASCII fixture token without a fingerprint namespace');
-      }
-      return Object.freeze({ type: 'synthetic', fixtureId: record.fixtureId as FixtureId });
+      return Object.freeze({ type: 'synthetic', fixtureId: readFixtureId(record.fixtureId, `${path}.fixtureId`) });
     }
     case 'original-import': {
       requireFields(record, path, ['type', 'sourceFingerprint']);
@@ -92,7 +102,7 @@ export function readContentIdentity(value: unknown, path = 'identity'): ContentI
     schemaVersion: schemaVersion as ContentSchemaVersion,
     sliceId: SLICE_ID,
     sliceDefinitionVersion: readVersion(record.sliceDefinitionVersion, `${path}.sliceDefinitionVersion`) as SliceDefinitionVersion,
-    converterVersion: readToken(record.converterVersion, `${path}.converterVersion`) as ConverterVersion,
+    converterVersion: readConverterVersion(record.converterVersion, `${path}.converterVersion`),
     manifestIdentity: readToken(record.manifestIdentity, `${path}.manifestIdentity`) as ManifestIdentity,
     origin: readContentOrigin(record.origin, `${path}.origin`),
   });

@@ -43,11 +43,11 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-01（Node 部分）：两种来源的键确定；来源类别、令牌、转换器版本任一不同则键不同；schema、切片定义版本、manifest 身份变化不影响键；跨来源令牌、未知来源类别、多余字段与非法转换器版本都返回 `invalid-request`。
-- [ ] S-10：错误码集合与 spec 的 13 个 code 完全一致；每个 code 的 `reason` 为固定文本；失败结果冻结，`structuredClone` 后相等。
-- [ ] AC-10（分类部分）：`VersionError`、`SecurityError`、`InvalidStateError`、`QuotaExceededError`、`AbortError`、未知名称、无 `name` 的值与非对象值，都映射到上述 code。
-- [ ] AC-14（结果字段部分）：给定带消息、堆栈与自定义字段的宿主异常，失败结果只含规定的 6 个字段，不含消息文本、堆栈、payload 字节或路径。
-- [ ] `pnpm exec vitest run src/platform/storage`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-01（Node 部分）：两种来源的键确定；来源类别、令牌、转换器版本任一不同则键不同；schema、切片定义版本、manifest 身份变化不影响键；跨来源令牌、未知来源类别、多余字段与非法转换器版本都返回 `invalid-request`。
+- [x] S-10：错误码集合与 spec 的 13 个 code 完全一致；每个 code 的 `reason` 为固定文本；失败结果冻结，`structuredClone` 后相等。
+- [x] AC-10（分类部分）：`VersionError`、`SecurityError`、`InvalidStateError`、`QuotaExceededError`、`AbortError`、未知名称、无 `name` 的值与非对象值，都映射到上述 code。
+- [x] AC-14（结果字段部分）：给定带消息、堆栈与自定义字段的宿主异常，失败结果只含规定的 6 个字段，不含消息文本、堆栈、payload 字节或路径。
+- [x] `pnpm exec vitest run src/platform/storage`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -56,3 +56,21 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：** [resource-cache-contract.ts](../../../../../src/platform/storage/resource-cache-contract.ts)（DOM-free）：
+  - **键：** `cacheKeyOf` 从 `ContentIdentity` 推导冻结的 `ResourceCacheKey`；`readCacheKey` 读取不可信输入，失败为 `invalid-request`；`packageRecordKey`/`payloadRecordKey` 生成 IndexedDB 数组键（payload 键由包键追加 Asset ID）；`readPackageRecordKey` 读取存储的数组键，失败为 `cache-corrupt`；`sameCacheKey` 比较三项。
+  - **令牌：** 合成内容用 `readFixtureId`，原版导入用 `readSourceFingerprint`，各自只接受本来源的命名空间，错误位置为 `key.originToken`；转换器版本用 `readConverterVersion`。
+  - **结果：** `RESOURCE_CACHE_FAILURE_CODES` 恰为 spec 的 13 个 code；`cacheFailure` 产出只含 6 个字段、`reason` 按 code 固定的冻结结果（无诊断时复用冻结空数组）；`ResourceCacheFailureError`/`failWith`/`withContractFailure` 供后续读取在内部传递预期失败，P2-01 错误转为同路径的诊断。各操作的成功结果与 `*Result` 联合类型在此声明。
+  - **分类：** `classifyHostError` 只按 `name`：打开 `VersionError` → `storage-newer-version`，其他 → `storage-unavailable`；写 `QuotaExceededError` → `quota-exceeded`，其他 → `write-failed`；读 → `read-failed`。`name` 访问器抛出时按默认处理。
+- **content 增量：** [content-identity.ts](../../../../../src/content/content-identity.ts) 新增 `readConverterVersion`、`readFixtureId`，`readContentIdentity`、`readContentOrigin` 改为调用它们，规则与错误码、路径不变；[content-identity.test.ts](../../../../../src/content/content-identity.test.ts) 覆盖单独读取与原有非法令牌表。
+- **测试：** [resource-cache-contract.test.ts](../../../../../src/platform/storage/resource-cache-contract.test.ts)：
+  - AC-01：两种来源的推导；schema、切片定义版本、manifest 身份不影响键；来源类别、指纹、转换器版本变化改变键与数组键；读取与数组键往返；8 种非法输入（非记录、数组、缺字段、多余字段、未知来源类别、跨来源的两种令牌误用、非法转换器版本）都为 `invalid-request` 且位置正确，令牌诊断保留 P2-01 code；5 种损坏的存储键为 `cache-corrupt`。
+  - S-10：code 集合与 spec 完全一致；每个 code 的 `reason` 固定且互不相同；结果冻结、只含 6 个字段、`structuredClone` 后相等；诊断列表被复制。
+  - AC-10（分类）：10 组阶段与名称（含 `DOMException`），以及 `undefined`、`null`、字符串、数字、无 `name`、非字符串 `name` 和抛出的访问器。
+  - AC-14（字段）：带消息、堆栈、私人路径与字节的宿主异常不进入结果。
+- **检查：** `pnpm exec vitest run src/platform/storage src/content` 通过；`pnpm check`：88 个测试文件 2,400 个测试、lint、类型检查与构建全部通过（基线为 87 个文件 2,358 个测试）。
+- **Rubber-duck：** 指出 `StorageRequirement` 多出 spec 未规定的 `status` 字段，已移除，并增加各操作的 `*Result` 联合类型；其余（键、code、形状、分类、`readConverterVersion` 行为等价、DOM-free）无问题。
+- **Simplify：**
+  - 采纳：在 content 导出 `readFixtureId` 并直接校验令牌，去掉构造临时 origin 再改写错误路径的做法；payload 键由包键派生；去掉仅用于收窄的 `status?: never`；无诊断时复用冻结空数组。
+  - 未采纳：导出 `completeness.ts` 私有的 `diagnostic` 构造函数（为一行构造扩大 content 的 API）；用 `readArray` 读取 IndexedDB 数组键（IndexedDB 键总是普通数组，引入错误转换没有收益）。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)的目录树加入 `platform/storage/resource-cache-contract.ts`，`platform/storage/` 现状与 `content-identity.ts` 的单独令牌读取写入说明；模块完整说明、数据库常量与命令由 02、03 补充。工程约定的命令与测试规则无受影响内容。

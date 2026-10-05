@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  readContentIdentity, readContentOrigin, readPayloadIdentity,
+  readContentIdentity, readContentOrigin, readConverterVersion, readFixtureId, readPayloadIdentity,
   type ContentOrigin, type ContentSchemaVersion, type ConverterVersion, type FixtureId, type ManifestIdentity,
   type PayloadFingerprint,   type PayloadSchemaVersion, type SliceDefinitionVersion, type SourceFingerprint,
 } from './content-identity.ts';
@@ -92,8 +92,22 @@ describe('separate content and payload identities', () => {
         expect(() => readContentIdentity({ ...identity(), [field]: value }))
           .toThrowError(expect.objectContaining({ code: 'invalid-identity', path: `identity.${field}` }));
       }
+      expect(() => readConverterVersion(value, 'key.converterVersion'))
+        .toThrowError(expect.objectContaining({ code: 'invalid-identity', path: 'key.converterVersion' }));
     },
   );
+
+  it('reads a converter version alone with the identity rules', () => {
+    expect(readConverterVersion('synthetic-converter:1.0')).toBe('synthetic-converter:1.0');
+  });
+
+  it('reads a fixture ID alone with the origin rule and no fingerprint namespace', () => {
+    expect(readFixtureId('p2-01.contracts')).toBe('p2-01.contracts');
+    for (const value of ['source:disc', 'UPPER', '', 'a--b', 7]) {
+      expect(() => readFixtureId(value, 'key.originToken'))
+        .toThrowError(expect.objectContaining({ code: 'invalid-identity', path: 'key.originToken' }));
+    }
+  });
 
   it.each([undefined, null, '0', true, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, {}, () => 0])('rejects invalid byte length %#', byteLength => {
     expect(() => readPayloadIdentity({ ...payload(), byteLength }))

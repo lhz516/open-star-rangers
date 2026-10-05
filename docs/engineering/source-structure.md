@@ -98,6 +98,8 @@ src/
       browser-keyboard-source.ts
       keyboard-input.ts
       keyboard-source.ts
+    storage/
+      resource-cache-contract.ts
     workers/
       worker-port.ts
       browser-import-worker.ts
@@ -140,7 +142,7 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。[platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 逐步交付，目前只有 DOM-free 的 [resource-cache-contract.ts](../../src/platform/storage/resource-cache-contract.ts)：缓存键、13 个封闭错误码、失败结果形状与宿主错误按 `name` 分类；尚无 IndexedDB 适配。
 
 ### 内容基础契约与切片定义
 
@@ -149,7 +151,7 @@ src/
 - [asset-id.ts](../../src/content/asset-id.ts)：`readAssetId` 返回品牌化语义 ID，8 段限制包含 kind 首段；`ASSET_KINDS` 封闭为 8 种，`ASSET_ID_LIMITS` 固定每段 32 字符、总长 128 字符。语法验证不能证明命名语义或来源映射正确。
 - [asset-contract.ts](../../src/content/asset-contract.ts)：`readAssetReference`、`readAssetDescriptor` 验证 kind 一致性、4 个封闭资源组、语义 role token、严格 ASCII ID 顺序且无重复的类型化依赖，以及 payload 身份。role 的必需集合/基数留给 02，引用存在/自引用/环与分组/全包完整性留给 04；没有 `complete` 布尔值。
 - [content-identity.ts](../../src/content/content-identity.ts)：`readContentIdentity` 显式分开 schema、切片 ID、切片定义版本、converter、manifest 与 origin；schema 当前只支持 1，数值版本为正安全整数。converter 按 spec 保留受限 ASCII 不透明字符串，不用应用版本代替。converter/manifest token 允许小写 ASCII 字母、数字及单个内部 `-`、`.`、`:` 分隔符。
-- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。
+- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
 - [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。两者都建立在 `visitArray`/`visitOrderedArray` 之上：这两个函数按索引逐项读取并访问，访问函数一旦返回非 undefined 的值就停止读取，并把该值返回。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。二进制 payload 不能冻结，所有权规则见下方 `ownership.ts`。
