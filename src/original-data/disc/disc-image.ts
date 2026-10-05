@@ -5,6 +5,9 @@ import { readFileRange } from './file-range.ts';
 import { resolvePath, type DirectoryContext, type DiscEntry } from './iso9660-directory.ts';
 import { readVolume } from './iso9660-volume.ts';
 
+export type { DiscInputFile, OpenDiscOptions } from './clone-cd.ts';
+export type { DiscEntry } from './iso9660-directory.ts';
+
 /** Frozen, structured-cloneable facts about an opened image. */
 export interface DiscVolumeInfo {
   /** Raw sectors in the image. */

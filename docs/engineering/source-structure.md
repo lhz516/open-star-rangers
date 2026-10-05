@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-04
+updated: 2026-10-05
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -80,6 +80,8 @@ src/
   platform/
     browser/
       browser-session-host.ts
+    files/
+      blob-byte-source.ts
     input/
       browser-keyboard-source.ts
       keyboard-input.ts
@@ -160,6 +162,31 @@ src/
 - `diagnoseSourceMappings` 返回稳定排序、深度冻结的安全诊断，只含规范 ID、结构路径和 U 项，不含 locator 值或原版内容。所有映射都检查条目类型与 Asset kind 是否兼容（`SOURCE_ENTRY_TYPES` 依据 [imfat §5](../original/formats/imfat.md#5-entry-types) 与 [textures §2](../original/formats/textures.md#2-image-record-36-bytes-confirmed)）。必需 Asset 另报缺失、未确认和未验证；likely 不报，但其 U 项保留在映射上。`assetSourceStates` 直接由映射事实为每个已映射 Asset 推导一条不含 locator 的状态（严重度依次为条目类型冲突 conflict、unconfirmed、未验证 unverified，否则 verified），连同表级来源指纹一起交给 content 的完整性验证。
 
 针对性检查为 `pnpm exec vitest run src/original-data src/content tools/engineering-boundaries.test.ts`。
+
+### 光盘镜像读取
+
+[P2-02](../plan/p2/02/spec.md) 的纯读取链按需读取开发者的 CloneCD 文件组，整个镜像从不一次性载入。支持的布局、限值、错误码与报错优先级以 spec 为准，这里只说明模块分工与对外 API：
+
+- **端口：** [io/byte-source.ts](../../src/original-data/io/byte-source.ts) 只含 `ByteSource` 接口（`byteLength` 与 `read(offset, length)`），不导入任何模块。它是 `src/platform` 唯一能以纯类型方式导入的 `original-data` 模块，见[工程约定](./README.md#lint-规则eslintconfigjs)。
+- **入口：** [disc/disc-image.ts](../../src/original-data/disc/disc-image.ts) 的 `openDiscImage(files, options)` 接受 `{ name, source }` 文件组，以及可选的 P2-01 预算记录 `limits` 与取消探针 `cancellation`（`AbortSignal` 即可）。返回冻结句柄：
+  - `volume`：`{ sectorCount, volumeSectors }`；
+  - `lookup(path)`：返回冻结、可结构化克隆的 `DiscEntry`；
+  - `openFile(path)`：返回绑定镜像的 `DiscFile`，其 `read(offset, length)` 返回新的 `Uint8Array`，底层是独占的 ArrayBuffer；
+  - `usage()`：十二维用量快照。
+  - 句柄持有端口，不可结构化克隆，也不关闭调用方的源；内部不建立缓存。
+  - 公共类型 `DiscInputFile`、`OpenDiscOptions`、`DiscEntry`、`DiscFile`、`DiscImage` 都从该入口导出。
+- **错误：** 所有失败都以 [disc-error.ts](../../src/original-data/disc/disc-error.ts) 的 `DiscReadError` 拒绝，`toData()` 给出 `{ code, location, reason, limit }` 纯数据 DTO，不含字节、宿主名或记录原名。
+- **内部模块（消费者只用上面的入口）：**
+  - [source-reader.ts](../../src/original-data/disc/source-reader.ts)：受控端口读取、`sourceReadBytes` 计量、取消，以及端口返回值核对；
+  - [clone-cd.ts](../../src/original-data/disc/clone-cd.ts)：文件组配对、尺寸门禁与 `.ccd` 解析；
+  - [raw-sector.ts](../../src/original-data/disc/raw-sector.ts)：MODE1 原始扇区头部校验；
+  - [iso9660-record.ts](../../src/original-data/disc/iso9660-record.ts)、[iso9660-volume.ts](../../src/original-data/disc/iso9660-volume.ts)、[iso9660-directory.ts](../../src/original-data/disc/iso9660-directory.ts)：目录记录、卷描述符与路径解析；
+  - [disc-path.ts](../../src/original-data/disc/disc-path.ts)：与来源映射共用的 `DiscPath` 规则；
+  - [file-range.ts](../../src/original-data/disc/file-range.ts)：分段范围读取。
+- **平台适配：** [platform/files/blob-byte-source.ts](../../src/platform/files/blob-byte-source.ts) 的 `BlobByteSource` 用 `Blob.slice` 与 `arrayBuffer()` 实现端口，页面与 Worker 中的 `File` 都适用。越界请求在切片前拒绝；Blob 读取不可中止，取消由读取方保证不再发出、也不发布结果。Node 侧的端口实现与本地核对 CLI 计划由 [P2-02/08](../plan/p2/02/subtasks/08-node-adapter-cli.md) 放在 `tools/`。
+- **测试数据：** 合成 CloneCD 描述、原始扇区、卷描述符与目录由 [synthetic.ts](../../src/original-data/synthetic.ts) 生成，按需生成扇区的镜像端口不分配整盘；光盘测试共用的纯辅助在 [disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts)。
+
+针对性检查为 `pnpm exec vitest run src/original-data src/platform/files tools/engineering-boundaries.test.ts`。
 
 ## 职责与依赖
 
