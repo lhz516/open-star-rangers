@@ -70,6 +70,9 @@ src/
       disc-error.ts
       source-reader.ts
       clone-cd.ts
+      raw-sector.ts
+      iso9660-record.ts
+      iso9660-volume.ts
       disc-image.ts
   platform/
     browser/

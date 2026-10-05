@@ -1,5 +1,9 @@
 // Shared helpers for disc reader tests. Pure like the layer itself; assertions stay in the test files.
 
+import {
+  cloneCdSections, cloneCdText, directoryRecord, ISO_DIRECTORY_FLAG, memoryByteSource, primaryVolumeDescriptor, sectorImageSource,
+  SYNTHETIC_RAW_SECTOR_BYTES, SYNTHETIC_SECTOR_DATA_BYTES, volumeDescriptor, type SyntheticByteSource,
+} from '../synthetic.ts';
 import { DiscReadError, type DiscReadErrorData } from './disc-error.ts';
 
 /** Planted in host names, host error text and unknown descriptor names; no diagnostic may contain it. */
@@ -40,3 +44,32 @@ export async function failure(action: () => unknown): Promise<Diagnostic> {
   if (!isPlainData(data)) throw new Error('the diagnostic is not structured-cloneable plain data');
   return { code: data.code, location: data.location, limit: data.limit };
 }
+
+export const ROOT_LBA = 18;
+
+/** A root directory record for the primary volume descriptor. */
+export const rootRecord = (extent = ROOT_LBA, dataLength = SYNTHETIC_SECTOR_DATA_BYTES): Uint8Array =>
+  directoryRecord({ extent, dataLength, flags: ISO_DIRECTORY_FLAG, name: Uint8Array.of(0) });
+
+/** User data by LBA for the smallest supported volume: primary descriptor at 16, terminator at 17, root at 18. */
+export function volumeSectors(sectorCount: number): Map<number, Uint8Array> {
+  return new Map([[16, primaryVolumeDescriptor(sectorCount, rootRecord())], [17, volumeDescriptor(255)]]);
+}
+
+export interface SyntheticDisc {
+  readonly descriptor: SyntheticByteSource;
+  readonly image: SyntheticByteSource;
+  readonly files: { readonly name: string; readonly source: SyntheticByteSource }[];
+}
+
+/** A CloneCD file set whose image builds sectors on demand from `sectors`, after `edit` changes raw sectors. */
+export function syntheticDisc(sectorCount: number, sectors: ReadonlyMap<number, Uint8Array>, edit?: (lba: number, raw: Uint8Array) => void): SyntheticDisc {
+  const descriptor = memoryByteSource(cloneCdText(cloneCdSections(sectorCount)));
+  const image = sectorImageSource(sectorCount, lba => sectors.get(lba), edit);
+  return { descriptor, image, files: [{ name: `${MARKER}.ccd`, source: descriptor }, { name: `${MARKER}.img`, source: image }] };
+}
+
+/** The LBAs of the image port's requests, one per requested sector. */
+export const requestedLbas = (image: SyntheticByteSource): number[] =>
+  image.requests.flatMap(({ offset, length }) =>
+    Array.from({ length: length / SYNTHETIC_RAW_SECTOR_BYTES }, (_, index) => offset / SYNTHETIC_RAW_SECTOR_BYTES + index));
