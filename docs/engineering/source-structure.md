@@ -26,6 +26,9 @@ src/
       use-synthetic-demo-owner.ts
     flow/
       app-flow.ts
+    import/
+      import-worker-port.ts
+      import-job-owner.ts
     runtime/
       fixed-step-clock.ts
       runtime-errors.ts
@@ -293,6 +296,24 @@ src/
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用。
+- **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
+  - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
+  - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。
+- **作业持有者：** [app/import/import-job-owner.ts](../../src/app/import/import-job-owner.ts) 的 `createImportJobOwner({ createPort, reportError })` 同一时刻至多管理一个活动作业。它是 DOM-free 的，Node 测试用假端口。
+  - **开始：** `start(files)` 只在空闲或终态时创建新作业，作业 ID 递增，每个作业一个新端口。
+    - 有活动作业时返回 `busy`；文件数不在 1–4，或某项不是名称为 1–255 个 UTF-16 码元的 Blob 时返回 `invalid-files`；释放后返回 `disposed`。拒绝都不改变状态，也不创建端口。
+    - 持有者用这些文件构造 `start` 请求，交给协议的 `readImportStartMessage` 核对，所以主线程从不发送 Worker 会拒绝的请求。读取结果就是冻结的私有 `{ name, blob }` 列表，只保留 Blob 引用，输入总字节也由它计算；发送 `start` 或作业结束后释放。
+  - **握手：** 状态从 `starting` 开始；收到有效的 `ready` 后发送唯一的 `start`，进入 `running`。
+    - 工厂抛错，或 `ready` 之前的 `error`、`messageError`，都报 `worker-start-failed@worker`；
+    - `ready` 的版本不符时报 `protocol-error`，不发送 `start`；
+    - 发送 `start` 抛错时报 `worker-failed@worker`。
+  - **消息：** 用协议读取函数校验，再依次核对第二次 `ready`（`message.type`）、作业 ID（`message.jobId`，含 `jobId` 为 null 的 `failed`）与连续的顺序号（`message.sequence`）。
+    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`），识别之后不得再有识别进度（`message.stage`）；
+    - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
+    - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
+    - Worker 报告的 `failed` 原样成为快照的错误。
+  - **终态与隔离：** 结束、失败、取消与释放都先终止端口，每个作业恰好一次。工厂返回之前送达的回调先排队，发布 `starting` 后按序处理；作业结束之后的回调都被丢弃，所以旧作业的迟到消息不会影响新作业。
+  - **命令与快照：** `cancel()` 只对 `starting`、`running` 生效，同步变为 `cancelled`。`dispose()` 可重复调用：终止活动端口、清空订阅，之后的命令返回 `disposed` 或 false，快照不再变化。快照冻结，在两次变化之间保持同一对象；`failed` 与 `cancelled` 不含来源身份与组。订阅者同步收到通知，抛出的错误交给 `reportError`，不影响其他订阅者与状态；通知过程中被移除（包括因释放）的订阅者不再收到这次通知。
 
 ## 职责与依赖
 

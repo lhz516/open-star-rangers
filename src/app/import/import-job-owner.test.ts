@@ -1,0 +1,452 @@
+import { describe, expect, it } from 'vitest';
+import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
+import { IMPORT_PROTOCOL_VERSION, type ImportStartMessage } from '../../workers/import-protocol.ts';
+import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
+import type { ImportWorkerEvents, ImportWorkerPort } from './import-worker-port.ts';
+
+const MARKER = 'PRIVATE-MARKER';
+const FINGERPRINT = `source:sha256:${'0123456789abcdef'.repeat(4)}`;
+const IDENTITY = Object.freeze({ versionId: 'synthetic-disc', sourceFingerprint: FINGERPRINT });
+const USAGE = Object.freeze({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: 6 });
+const DISC_ERROR = Object.freeze({ layer: 'disc', code: 'read-failed', location: 'image', reason: 'the byte source failed to read', limit: null });
+
+/** A port double that records posts and terminations and can still fire events after termination. */
+class FakePort implements ImportWorkerPort {
+  readonly posts: ImportStartMessage[] = [];
+  terminations = 0;
+  postError: unknown = null;
+  readonly events: ImportWorkerEvents;
+
+  constructor(events: ImportWorkerEvents) {
+    this.events = events;
+  }
+
+  post(message: ImportStartMessage): void {
+    this.posts.push(message);
+    if (this.postError) throw this.postError;
+  }
+
+  terminate(): void {
+    this.terminations += 1;
+  }
+
+  send(...messages: unknown[]): void {
+    for (const message of messages) this.events.message(message);
+  }
+}
+
+function setup() {
+  const ports: FakePort[] = [];
+  const reported: unknown[] = [];
+  let factoryError: unknown = null;
+  const owner = createImportJobOwner({
+    createPort: events => {
+      if (factoryError) throw factoryError;
+      const port = new FakePort(events);
+      ports.push(port);
+      return port;
+    },
+    reportError: error => { reported.push(error); },
+  });
+  const snapshots: ImportJobSnapshot[] = [];
+  owner.subscribe(() => { snapshots.push(owner.getSnapshot()); });
+  return { owner, ports, reported, snapshots, failFactory: (error: unknown) => { factoryError = error; } };
+}
+
+const files = (...names: string[]) => names.map(name => new File([name], name));
+const ready = { type: 'ready', protocol: IMPORT_PROTOCOL_VERSION };
+const progress = (sequence: number, readBytes: number, jobId = 1) => ({ type: 'progress', jobId, sequence, stage: 'identify-source', readBytes });
+const identified = (sequence: number, jobId = 1) => ({ type: 'identified', jobId, sequence, identity: IDENTITY });
+const group = (sequence: number, jobId = 1) => ({
+  type: 'group', jobId, sequence, group: 'audio',
+  input: { manifest: {}, payloads: [{ id: 'sound/a', schemaVersion: 1, bytes: new Uint8Array(4) }], sources: { sourceFingerprint: FINGERPRINT, states: [] } },
+});
+const finished = (sequence: number, jobId = 1) => ({ type: 'finished', jobId, sequence, groups: [], usage: USAGE });
+const failed = (sequence: number, error: unknown = DISC_ERROR, jobId: number | null = 1) => ({ type: 'failed', jobId, sequence, error });
+const protocolError = (location: string) => expect.objectContaining({ layer: 'import', code: 'protocol-error', location });
+
+/** A started job whose Worker sent `ready`, so the owner is running. */
+function running(names = ['GAME.CCD', 'GAME.IMG']) {
+  const context = setup();
+  context.owner.start(files(...names));
+  context.ports[0].send(ready);
+  return { ...context, port: context.ports[0] };
+}
+
+function isDeepFrozen(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return true;
+  return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen);
+}
+
+describe('normal import', () => {
+  it('moves from idle through starting and running to finished, terminating the Worker once', () => {
+    const { owner, ports, snapshots } = setup();
+    const idle = owner.getSnapshot();
+    expect(idle).toEqual({ status: 'idle' });
+    expect(owner.getSnapshot()).toBe(idle);
+    const input = files(`${MARKER}.ccd`, `${MARKER}.img`);
+    expect(owner.start(input)).toEqual({ status: 'started', jobId: 1 });
+    expect(ports).toHaveLength(1);
+    const [port] = ports;
+    expect(owner.getSnapshot()).toEqual({ status: 'starting', jobId: 1 });
+    expect(port.posts).toEqual([]);
+    port.send(ready);
+    expect(port.posts).toEqual([{
+      type: 'start', protocol: IMPORT_PROTOCOL_VERSION, jobId: 1, files: input.map(file => ({ name: file.name, blob: file })),
+    }]);
+    port.posts[0].files.forEach((item, index) => expect(item.blob).toBe(input[index]));
+    expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: null, readBytes: 0, identity: null, groups: [] });
+    port.send(progress(1, 0), progress(2, 5), identified(3));
+    const before = owner.getSnapshot();
+    expect(before).toEqual({ status: 'running', jobId: 1, stage: 'identify-source', readBytes: 5, identity: IDENTITY, groups: [] });
+    expect(owner.getSnapshot()).toBe(before);
+    expect(port.terminations).toBe(0);
+    port.send(finished(4));
+    expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [], usage: USAGE });
+    expect(port.terminations).toBe(1);
+    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', 'running', 'running', 'running', 'running', 'finished']);
+    expect(snapshots.every(isDeepFrozen)).toBe(true);
+    expect(JSON.stringify(snapshots)).not.toContain(MARKER);
+    port.send(progress(5, 6));
+    port.events.error();
+    port.events.messageError();
+    expect(snapshots).toHaveLength(6);
+    expect(port.terminations).toBe(1);
+  });
+
+  it('reports a Worker failure with its error and stage, without the identity', () => {
+    const { owner, port } = running();
+    port.send(progress(1, 3), identified(2), failed(3));
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'identify-source', error: DISC_ERROR });
+    expect(port.terminations).toBe(1);
+  });
+
+  it('copies the accepted files, so changing the array before ready does not change the start message', () => {
+    const context = setup();
+    const input = files('GAME.CCD', 'GAME.IMG');
+    const [ccd, img] = input;
+    context.owner.start(input);
+    input.push(new File(['x'], 'EXTRA.SUB'));
+    input[0] = new File(['y'], 'OTHER.CCD');
+    input.length = 0;
+    context.ports[0].send(ready);
+    expect(context.ports[0].posts[0].files).toEqual([{ name: 'GAME.CCD', blob: ccd }, { name: 'GAME.IMG', blob: img }]);
+    expect(context.ports[0].posts[0].files[1].blob).toBe(img);
+  });
+});
+
+describe('rejected starts', () => {
+  const blob = new Blob(['x']);
+  it.each([
+    ['no files', []],
+    ['five files', files('A', 'B', 'C', 'D', 'E')],
+    ['a value that is not an array', files('A')[0]],
+    ['a Blob without a name', [blob]],
+    ['bytes', [new Uint8Array(1)]],
+    ['a record shaped like a file', [{ name: 'GAME.CCD', size: 1, slice: () => blob }]],
+    ['an empty name', files('')],
+    ['a 256-unit name', files(MARKER.padEnd(256, 'x'))],
+  ])('rejects %s as invalid-files without changing state or creating a Worker', (_, input) => {
+    const { owner, ports, snapshots } = setup();
+    expect(owner.start(input as unknown as File[])).toEqual({ status: 'invalid-files' });
+    expect(owner.getSnapshot()).toEqual({ status: 'idle' });
+    expect(ports).toHaveLength(0);
+    expect(snapshots).toHaveLength(0);
+  });
+
+  it('accepts four files and a 255-unit name', () => {
+    expect(setup().owner.start(files('A.CCD', 'A.IMG', 'A.SUB', 'a'.repeat(255)))).toEqual({ status: 'started', jobId: 1 });
+  });
+
+  it.each(['starting', 'running'])('answers busy while a job is %s, without changing anything', state => {
+    const { owner, ports, snapshots } = setup();
+    owner.start(files('GAME.CCD'));
+    if (state === 'running') ports[0].send(ready);
+    const snapshot = owner.getSnapshot();
+    const notified = snapshots.length;
+    expect(owner.start(files('OTHER.CCD'))).toEqual({ status: 'busy' });
+    expect(owner.getSnapshot()).toBe(snapshot);
+    expect(ports).toHaveLength(1);
+    expect(snapshots).toHaveLength(notified);
+  });
+});
+
+describe('cancellation and retry', () => {
+  it.each(['starting', 'running'])('cancels a %s job synchronously and terminates its Worker once', state => {
+    const { owner, ports, snapshots } = setup();
+    owner.start(files('GAME.CCD'));
+    if (state === 'running') ports[0].send(ready, progress(1, 0));
+    expect(owner.cancel()).toBe(true);
+    expect(owner.getSnapshot()).toEqual({ status: 'cancelled', jobId: 1, stage: state === 'running' ? 'identify-source' : null });
+    expect(ports[0].terminations).toBe(1);
+    const notified = snapshots.length;
+    ports[0].send(ready, identified(1), finished(2));
+    ports[0].events.error();
+    ports[0].events.messageError();
+    expect(owner.cancel()).toBe(false);
+    expect(snapshots).toHaveLength(notified);
+    expect(ports[0].terminations).toBe(1);
+  });
+
+  it.each([
+    ['idle', () => undefined],
+    ['finished', (port: FakePort) => port.send(ready, identified(1), finished(2))],
+    ['failed', (port: FakePort) => port.send(ready, failed(1))],
+  ])('does not cancel when %s', (state, settle) => {
+    const { owner, ports } = setup();
+    if (state !== 'idle') {
+      owner.start(files('GAME.CCD'));
+      settle(ports[0]);
+    }
+    const snapshot = owner.getSnapshot();
+    expect(owner.cancel()).toBe(false);
+    expect(owner.getSnapshot()).toBe(snapshot);
+  });
+
+  it('runs a retry in a new Worker with a new job ID, unaffected by late messages of the cancelled job', () => {
+    const { owner, ports, snapshots } = setup();
+    owner.start(files('A.CCD'));
+    ports[0].send(ready, progress(1, 1));
+    owner.cancel();
+    expect(owner.start(files('B.CCD', 'B.IMG'))).toEqual({ status: 'started', jobId: 2 });
+    expect(ports).toHaveLength(2);
+    const notified = snapshots.length;
+    ports[0].send(identified(2), group(3), finished(4), failed(5));
+    ports[0].events.error();
+    ports[0].events.messageError();
+    expect(snapshots).toHaveLength(notified);
+    expect(owner.getSnapshot()).toEqual({ status: 'starting', jobId: 2 });
+    ports[1].send(ready, progress(1, 0, 2), identified(2, 2), finished(3, 2));
+    expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 2, identity: IDENTITY, groups: [], usage: USAGE });
+    expect(ports[1].posts[0].jobId).toBe(2);
+    expect(ports.map(port => port.terminations)).toEqual([1, 1]);
+  });
+
+  it('starts again after a failure', () => {
+    const { owner, ports } = running();
+    ports[0].send(failed(1));
+    expect(owner.start(files('GAME.CCD'))).toEqual({ status: 'started', jobId: 2 });
+  });
+});
+
+describe('start failures', () => {
+  it('fails with worker-start-failed when the Worker cannot be created, then allows a retry', () => {
+    const { owner, ports, snapshots, failFactory } = setup();
+    failFactory(new Error(MARKER));
+    expect(owner.start(files('GAME.CCD'))).toEqual({ status: 'started', jobId: 1 });
+    expect(owner.getSnapshot()).toEqual({
+      status: 'failed', jobId: 1, stage: null,
+      error: { layer: 'import', code: 'worker-start-failed', location: 'worker', reason: 'the import Worker could not start', limit: null },
+    });
+    expect(ports).toHaveLength(0);
+    expect(JSON.stringify(snapshots)).not.toContain(MARKER);
+    failFactory(null);
+    expect(owner.start(files('GAME.CCD'))).toEqual({ status: 'started', jobId: 2 });
+  });
+
+  it('handles events a factory delivers before returning, in order, once the job is starting', () => {
+    const snapshots: ImportJobSnapshot[] = [];
+    let port: FakePort | undefined;
+    const owner = createImportJobOwner({
+      createPort: events => {
+        events.message(ready);
+        events.message(progress(1, 2));
+        port = new FakePort(events);
+        return port;
+      },
+      reportError: error => { throw error; },
+    });
+    owner.subscribe(() => { snapshots.push(owner.getSnapshot()); });
+    owner.start(files('GAME.CCD'));
+    expect(port!.posts.map(message => message.type)).toEqual(['start']);
+    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', 'running', 'running']);
+    expect(owner.getSnapshot()).toMatchObject({ status: 'running', stage: 'identify-source', readBytes: 2 });
+  });
+
+  it('fails with worker-start-failed on an error a factory delivers before returning', () => {
+    let port: FakePort | undefined;
+    const owner = createImportJobOwner({
+      createPort: events => { events.error(); port = new FakePort(events); return port; },
+      reportError: error => { throw error; },
+    });
+    owner.start(files('GAME.CCD'));
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', error: expect.objectContaining({ code: 'worker-start-failed' }) });
+    expect(port!.terminations).toBe(1);
+  });
+
+  it('drops events a factory delivered when a subscriber cancels the starting job', () => {
+    let port: FakePort | undefined;
+    const owner = createImportJobOwner({
+      createPort: events => { events.message(ready); port = new FakePort(events); return port; },
+      reportError: error => { throw error; },
+    });
+    owner.subscribe(() => { if (owner.getSnapshot().status === 'starting') owner.cancel(); });
+    owner.start(files('GAME.CCD'));
+    expect(owner.getSnapshot()).toEqual({ status: 'cancelled', jobId: 1, stage: null });
+    expect(port!.posts).toEqual([]);
+    expect(port!.terminations).toBe(1);
+  });
+
+  it.each(['error', 'messageError'] as const)('fails with worker-start-failed on %s before ready, never sending start', event => {
+    const { owner, ports } = setup();
+    owner.start(files('GAME.CCD'));
+    ports[0].events[event]();
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: null, error: expect.objectContaining({ code: 'worker-start-failed', location: 'worker' }) });
+    expect(ports[0].posts).toEqual([]);
+    expect(ports[0].terminations).toBe(1);
+  });
+
+  it('fails with protocol-error when ready has another protocol version, never sending start', () => {
+    const { owner, ports } = setup();
+    owner.start(files('GAME.CCD'));
+    ports[0].send({ type: 'ready', protocol: 2 });
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: null, error: protocolError('message.protocol') });
+    expect(ports[0].posts).toEqual([]);
+    expect(ports[0].terminations).toBe(1);
+  });
+
+  it('fails with worker-failed when sending start throws, terminating the Worker once', () => {
+    const { owner, ports } = setup();
+    owner.start(files(`${MARKER}.ccd`));
+    ports[0].postError = new DOMException(MARKER, 'DataCloneError');
+    ports[0].send(ready);
+    expect(owner.getSnapshot()).toEqual({
+      status: 'failed', jobId: 1, stage: null,
+      error: { layer: 'import', code: 'worker-failed', location: 'worker', reason: 'the import Worker failed', limit: null },
+    });
+    expect(ports[0].terminations).toBe(1);
+  });
+});
+
+describe('running failures', () => {
+  it('fails with worker-failed on an error after ready', () => {
+    const { owner, port } = running();
+    port.send(progress(1, 2));
+    port.events.error();
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'identify-source', error: expect.objectContaining({ code: 'worker-failed', location: 'worker' }) });
+    expect(port.terminations).toBe(1);
+  });
+
+  it.each([
+    ['a message that cannot be deserialized', (port: FakePort) => port.events.messageError(), 'message'],
+    ['an invalid message', (port: FakePort) => port.send({ type: MARKER }), 'message.type'],
+    ['a second ready', (port: FakePort) => port.send(ready), 'message.type'],
+    ['another job ID', (port: FakePort) => port.send(progress(1, 0, 2)), 'message.jobId'],
+    ['a failure without a job ID', (port: FakePort) => port.send(failed(1, { ...DISC_ERROR, layer: 'import', code: 'invalid-request', location: 'request' }, null)), 'message.jobId'],
+    ['a skipped sequence number', (port: FakePort) => port.send(progress(2, 0)), 'message.sequence'],
+    ['a repeated sequence number', (port: FakePort) => port.send(progress(1, 0), progress(1, 0)), 'message.sequence'],
+    ['a decreasing byte count', (port: FakePort) => port.send(progress(1, 3), progress(2, 2)), 'message.readBytes'],
+    ['more bytes than the input', (port: FakePort) => port.send(progress(1, 17)), 'message.readBytes'],
+    ['identification progress after identification', (port: FakePort) => port.send(identified(1), progress(2, 0)), 'message.stage'],
+    ['a second identification', (port: FakePort) => port.send(identified(1), identified(2)), 'message.type'],
+    ['a group before identification', (port: FakePort) => port.send(group(1)), 'message.type'],
+    ['a repeated group', (port: FakePort) => port.send(identified(1), group(2), group(3)), 'message.group'],
+    ['finished before identification', (port: FakePort) => port.send(finished(1)), 'message.type'],
+  ])('fails with protocol-error on %s, never as an empty finish', (_, receive, location) => {
+    const { owner, port } = running(['GAME.CCD', 'GAME.IMG']);
+    receive(port);
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', jobId: 1, error: protocolError(location) });
+    expect(JSON.stringify(owner.getSnapshot())).not.toContain(MARKER);
+    expect(port.terminations).toBe(1);
+    port.send(finished(9));
+    expect(owner.getSnapshot().status).toBe('failed');
+  });
+
+  it('fails with protocol-error on a message other than ready before ready', () => {
+    const { owner, ports } = setup();
+    owner.start(files('GAME.CCD'));
+    ports[0].send(progress(1, 0));
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', error: protocolError('message.type') });
+    expect(ports[0].posts).toEqual([]);
+  });
+});
+
+describe('subscribers and disposal', () => {
+  it('isolates a throwing subscriber from the others and from the state', () => {
+    const { owner, reported } = setup();
+    const failure = new Error('subscriber');
+    const calls: string[] = [];
+    owner.subscribe(() => { calls.push('first'); throw failure; });
+    const unsubscribe = owner.subscribe(() => { calls.push('second'); });
+    owner.start(files('GAME.CCD'));
+    expect(calls).toEqual(['first', 'second']);
+    expect(reported).toEqual([failure]);
+    expect(owner.getSnapshot()).toEqual({ status: 'starting', jobId: 1 });
+    unsubscribe();
+    owner.cancel();
+    expect(calls).toEqual(['first', 'second', 'first']);
+  });
+
+  it('survives an error outlet that throws', () => {
+    const owner = createImportJobOwner({ createPort: events => new FakePort(events), reportError: () => { throw new Error('outlet'); } });
+    let second = 0;
+    owner.subscribe(() => { throw new Error('subscriber'); });
+    owner.subscribe(() => { second += 1; });
+    expect(owner.start(files('GAME.CCD'))).toEqual({ status: 'started', jobId: 1 });
+    expect(second).toBe(1);
+  });
+
+  it.each(['idle', 'starting', 'running', 'finished'])('disposes when %s: terminates any active Worker, then rejects every command', state => {
+    const { owner, ports, snapshots } = setup();
+    if (state !== 'idle') owner.start(files('GAME.CCD'));
+    if (state === 'running' || state === 'finished') ports[0].send(ready, progress(1, 1));
+    if (state === 'finished') ports[0].send(identified(2), finished(3));
+    const snapshot = owner.getSnapshot();
+    const notified = snapshots.length;
+    owner.dispose();
+    owner.dispose();
+    expect(ports.map(port => port.terminations)).toEqual(state === 'idle' ? [] : [1]);
+    ports[0]?.send(identified(2), finished(3));
+    ports[0]?.events.error();
+    let late = 0;
+    owner.subscribe(() => { late += 1; })();
+    owner.subscribe(() => { late += 1; });
+    expect(owner.start(files('GAME.CCD'))).toEqual({ status: 'disposed' });
+    expect(owner.cancel()).toBe(false);
+    expect(owner.getSnapshot()).toBe(snapshot);
+    expect(snapshots).toHaveLength(notified);
+    expect(late).toBe(0);
+    expect(ports).toHaveLength(state === 'idle' ? 0 : 1);
+  });
+
+  it('skips a subscriber that an earlier one removed during the same notification', () => {
+    const { owner } = setup();
+    const calls: string[] = [];
+    let unsubscribeLater = () => undefined as void;
+    owner.subscribe(() => { calls.push('first'); unsubscribeLater(); });
+    unsubscribeLater = owner.subscribe(() => { calls.push('later'); });
+    owner.start(files('GAME.CCD'));
+    expect(calls).toEqual(['first']);
+  });
+
+  it('stops notifying the remaining subscribers when one disposes the owner', () => {
+    const { owner } = setup();
+    const calls: string[] = [];
+    owner.subscribe(() => { calls.push('disposer'); owner.dispose(); });
+    owner.subscribe(() => { calls.push('later'); });
+    owner.start(files('GAME.CCD'));
+    expect(calls).toEqual(['disposer']);
+  });
+});
+
+describe('snapshots', () => {
+  it('keeps the identity and every byte count out of failed and cancelled snapshots', () => {
+    const cancelled = running();
+    cancelled.port.send(identified(1));
+    cancelled.owner.cancel();
+    expect(Object.keys(cancelled.owner.getSnapshot())).toEqual(['status', 'jobId', 'stage']);
+    const failedJob = running();
+    failedJob.port.send(identified(1), failed(2));
+    expect(Object.keys(failedJob.owner.getSnapshot())).toEqual(['status', 'jobId', 'stage', 'error']);
+  });
+
+  it('never holds payload bytes', () => {
+    const { owner, port, snapshots } = running();
+    port.send(identified(1), group(2));
+    expect(owner.getSnapshot().status).toBe('running');
+    const holdsBytes = (value: unknown): boolean => value instanceof Uint8Array
+      || (typeof value === 'object' && value !== null && Object.values(value).some(holdsBytes));
+    expect(snapshots.some(holdsBytes)).toBe(false);
+  });
+});
+
