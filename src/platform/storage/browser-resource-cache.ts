@@ -236,6 +236,16 @@ export function createResourceCache(options: ResourceCacheOptions = {}): Resourc
     }
     return connection;
   };
+  /** Runs `use` on the shared connection; one found closed is dropped so the next operation opens a new one. */
+  const withDatabase = async <T>(use: (db: IDBDatabase) => Promise<T>): Promise<T> => {
+    const current = database();
+    try {
+      return await use(await current);
+    } catch (error) {
+      if (error instanceof ResourceCacheFailureError && error.failure.code === 'storage-closed') drop(current);
+      throw error;
+    }
+  };
 
   return Object.freeze({
     measure: measureStorageRequirement,
@@ -257,7 +267,7 @@ export function createResourceCache(options: ResourceCacheOptions = {}): Resourc
       const ordered = inDefinitionOrder(groups, 'package-incomplete');
       const record = buildPackageRecord(ordered);
       if (signal?.aborted) failWith('cancelled', 'transaction');
-      await writePackage(await database(), record, ordered, signal);
+      await withDatabase(db => writePackage(db, record, ordered, signal));
       return Object.freeze({
         status: 'committed' as const,
         key: record.key,
@@ -268,19 +278,19 @@ export function createResourceCache(options: ResourceCacheOptions = {}): Resourc
     }),
 
     list: () => settle(async () => {
-      const entries = await readTransaction(await database(), tx => {
+      const entries = await withDatabase(db => readTransaction(db, tx => {
         const store = tx.objectStore(packageStore);
         const keys = store.getAllKeys();
         const values = store.getAll();
         return () => keys.result.map((key, index) => cacheEntryOf(key, values.result[index]));
-      });
+      }));
       return Object.freeze({ status: 'listed' as const, entries: Object.freeze(entries) });
     }),
 
     restore: (key: unknown, limits: unknown) => settle(async () => {
       const requested = readCacheKey(key);
       const checkedLimits = readLimits(limits);
-      const { read, keys, values } = await readPackage(await database(), requested, checkedLimits);
+      const { read, keys, values } = await withDatabase(db => readPackage(db, requested, checkedLimits));
       return Object.freeze({ status: 'restored' as const, key: read.key, identity: read.identity, groups: assembleRestoredGroups(read, keys, values) });
     }),
 

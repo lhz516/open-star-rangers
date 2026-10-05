@@ -75,6 +75,13 @@ interface IdbProbe {
    * so it stays uncommitted with the page's main thread free. It adds reads only, never writes.
    */
   holdWrites: boolean;
+  /** As `holdWrites`, for the transaction of the next read request. */
+  holdReads: boolean;
+  /**
+   * One-shot fault injection: the next `transaction()` call first closes its real connection, so the native call throws
+   * `InvalidStateError` as on a connection closed before use. It resets itself.
+   */
+  closeNextTransaction: boolean;
   reset(): void;
 }
 
@@ -162,14 +169,29 @@ export async function installIdbProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     if (window.osrIdbProbe) return;
     const events: ProbeEvent[] = [];
-    const probe: IdbProbe = { events, onEvent: null, holdWrites: false, reset: () => { events.length = 0; } };
+    const probe: IdbProbe = {
+      events, onEvent: null, holdWrites: false, holdReads: false, closeNextTransaction: false, reset: () => { events.length = 0; },
+    };
     const held = new WeakSet<IDBTransaction>();
+    /** Keeps the store's transaction open with chained read-only `count()` requests while the probe flag is set. */
+    const hold = (store: IDBObjectStore, flag: 'holdReads' | 'holdWrites'): void => {
+      if (!probe[flag] || held.has(store.transaction)) return;
+      held.add(store.transaction);
+      const keepOpen = (): void => {
+        if (probe[flag]) store.count().onsuccess = keepOpen;
+      };
+      keepOpen();
+    };
     const record = (event: ProbeEvent): void => {
       events.push(event);
       probe.onEvent?.(event);
     };
     const transaction = IDBDatabase.prototype.transaction;
     IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<IDBDatabase['transaction']>) {
+      if (probe.closeNextTransaction) {
+        probe.closeNextTransaction = false;
+        this.close();
+      }
       const created = transaction.apply(this, args);
       record({ kind: 'transaction', mode: created.mode });
       // Registered before the adapter assigns its handlers, so these run first.
@@ -182,13 +204,7 @@ export async function installIdbProbe(page: Page): Promise<void> {
       (IDBObjectStore.prototype[method] as unknown) = function (this: IDBObjectStore, ...args: unknown[]) {
         const request = original.apply(this, args);
         record({ kind: 'write', store: this.name });
-        if (probe.holdWrites && !held.has(this.transaction)) {
-          held.add(this.transaction);
-          const keepOpen = (): void => {
-            if (probe.holdWrites) this.count().onsuccess = keepOpen;
-          };
-          keepOpen();
-        }
+        hold(this, 'holdWrites');
         return request;
       };
     }
@@ -197,6 +213,7 @@ export async function installIdbProbe(page: Page): Promise<void> {
       (IDBObjectStore.prototype[method] as unknown) = function (this: IDBObjectStore, ...args: unknown[]) {
         const request = original.apply(this, args);
         record({ kind: 'read', store: this.name });
+        hold(this, 'holdReads');
         return request;
       };
     }
@@ -221,6 +238,27 @@ export async function installIdbProbe(page: Page): Promise<void> {
     };
     window.osrIdbProbe = probe;
   });
+}
+
+/**
+ * Arms the probe so the next `kind` request signals `issued` over the console (delivered as soon as the page's main
+ * thread is free) and, with `hold`, keeps that request's transaction open. Start the operation after this resolves,
+ * then clear the matching `holdReads`/`holdWrites` flag once it settles.
+ */
+export async function armHold(page: Page, kind: 'read' | 'write', hold = true): Promise<{ issued: Promise<unknown> }> {
+  const token = `osr-${kind}-issued`;
+  const issued = page.waitForEvent('console', message => message.text() === token);
+  await page.evaluate(({ kind, hold, token }) => {
+    const probe = window.osrIdbProbe;
+    probe.reset();
+    probe[kind === 'read' ? 'holdReads' : 'holdWrites'] = hold;
+    probe.onEvent = event => {
+      if (event.kind !== kind) return;
+      probe.onEvent = null;
+      console.log(token);
+    };
+  }, { kind, hold, token });
+  return { issued };
 }
 
 /**

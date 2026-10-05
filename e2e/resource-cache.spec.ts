@@ -1,7 +1,7 @@
 import { test, expect } from './support/browser-test.ts';
 import type { ResourceCache } from '../src/platform/storage/browser-resource-cache.ts';
 import {
-  clearOriginIndexedDb, installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, withQuotaOverride,
+  armHold, clearOriginIndexedDb, installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, withQuotaOverride,
   type StoredRecords,
 } from './support/resource-cache.ts';
 
@@ -15,6 +15,8 @@ declare global {
     osrCacheLarge: unknown;
     /** A commit left running while the test acts from outside the page. */
     osrCachePending?: ReturnType<ResourceCache['commit']>;
+    /** A restore or list left running while the test acts from outside the page. */
+    osrCachePendingRead?: ReturnType<ResourceCache['restore']> | ReturnType<ResourceCache['list']>;
   }
 }
 
@@ -530,18 +532,13 @@ test('reports an origin cleared over CDP as missing, including during a write', 
   expect(await page.evaluate(() => window.osrIdbProbe.events.some(({ kind }) => kind === 'close'))).toBe(true);
 
   // The write transaction is held open after its first write request, so the clear lands before it can commit.
-  const issued = page.waitForEvent('console', message => message.text() === 'osr-write-issued');
-  await page.evaluate(async large => {
+  await page.evaluate(async () => {
     const { buildPackage, limits } = window.osrCache;
-    const probe = window.osrIdbProbe;
     await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
-    probe.reset();
-    probe.holdWrites = true;
-    probe.onEvent = event => {
-      if (event.kind !== 'write') return;
-      probe.onEvent = null;
-      console.log('osr-write-issued');
-    };
+  });
+  const { issued } = await armHold(page, 'write');
+  await page.evaluate(large => {
+    const { buildPackage, limits } = window.osrCache;
     window.osrCachePending = window.osrCacheSubject.commit(buildPackage(large), limits());
   }, LARGE_PACKAGE);
   await issued;
@@ -603,18 +600,11 @@ test('keeps the old package or the whole new one when the browser closes during 
       const messages: string[] = [];
       const record = (message: { text(): string }) => { messages.push(message.text()); };
       page.on('console', record);
-      const issued = page.waitForEvent('console', message => message.text() === 'osr-write-issued');
-      await page.evaluate(({ large, held }) => {
+      const { issued } = await armHold(page, 'write', held);
+      await page.evaluate(large => {
         const { cache, buildPackage, limits } = window.osrCache;
-        const probe = window.osrIdbProbe;
-        probe.holdWrites = held;
-        probe.onEvent = event => {
-          if (event.kind !== 'write') return;
-          probe.onEvent = null;
-          console.log('osr-write-issued');
-        };
         void cache.createResourceCache().commit(buildPackage(large), limits()).then(result => console.log(`osr-commit-${result.status}`));
-      }, { large: { tag: 'new', modelBytes: 4 << 20 }, held });
+      }, { tag: 'new', modelBytes: 4 << 20 });
       await issued;
       // Taken before closing, so a result caused by the close itself is not mistaken for one that preceded it.
       const resultBeforeClose = messages.some(text => text.startsWith('osr-commit-'));
@@ -803,4 +793,75 @@ test('never mixes packages when commits and restores of one key run concurrently
   for (const restored of [observed.replacing.before, observed.replacing.during]) expect(['old', 'new']).toContain(restored);
   expect(observed.first.status).toBe('committed');
   for (const restored of [observed.first.before, observed.first.during]) expect(['not-found', 'new']).toContain(restored);
+});
+
+test('reports a read transaction aborted by a cleared origin as read-failed', async ({ page, baseURL }) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  const origin = new URL(baseURL!).origin;
+  await page.evaluate(() => { window.osrCacheSubject = window.osrCache.cache.createResourceCache(); });
+  for (const operation of ['restore', 'list'] as const) {
+    // The read transaction is held open after its first read request, so the clear lands before it completes.
+    await page.evaluate(async () => {
+      const { buildPackage, limits } = window.osrCache;
+      await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+    });
+    const { issued } = await armHold(page, 'read');
+    await page.evaluate(({ operation, key }) => {
+      const { limits } = window.osrCache;
+      window.osrCachePendingRead = operation === 'restore' ? window.osrCacheSubject.restore(key, limits()) : window.osrCacheSubject.list();
+    }, { operation, key: SYNTHETIC_KEY });
+    await issued;
+    await clearOriginIndexedDb(page, origin);
+    const observed = await page.evaluate(async key => {
+      const result = await window.osrCachePendingRead!;
+      const probe = window.osrIdbProbe;
+      probe.holdReads = false;
+      const aborted = probe.events.some(({ kind, mode }) => kind === 'abort' && mode === 'readonly');
+      return { status: window.osrCache.statusOf(result), keys: Object.keys(result).sort(), aborted, ...await window.osrCache.cacheState(window.osrCacheSubject, key) };
+    }, SYNTHETIC_KEY);
+    expect(observed, operation).toEqual({
+      status: 'read-failed', keys: ['budget', 'code', 'diagnostics', 'location', 'reason', 'status'], aborted: true, listed: 0, restored: 'not-found',
+    });
+  }
+});
+
+test('reports a connection closed before use as storage-closed and reopens for the next operation', async ({ page }) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  await page.evaluate(async () => {
+    const { cache, buildPackage, limits } = window.osrCache;
+    window.osrCacheSubject = cache.createResourceCache();
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+  });
+  // Each step closes the adapter's real connection just before its next transaction, then repeats the operation.
+  const closedThenRetried = (operation: 'restore' | 'list') => page.evaluate(async ({ operation, key }) => {
+    const { limits, restoredTag } = window.osrCache;
+    const subject = window.osrCacheSubject;
+    const run = async () => {
+      if (operation === 'restore') return restoredTag(await subject.restore(key, limits()));
+      const listed = await subject.list();
+      return listed.status === 'listed' ? `listed:${listed.entries.length}` : listed.code;
+    };
+    window.osrIdbProbe.closeNextTransaction = true;
+    const closed = await run();
+    return { closed, retried: await run() };
+  }, { operation, key: SYNTHETIC_KEY });
+
+  const before = await readStoredRecords(page);
+  const restore = await closedThenRetried('restore');
+  expect(restore).toEqual({ closed: 'storage-closed', retried: 'old' });
+  const list = await closedThenRetried('list');
+  expect(list).toEqual({ closed: 'storage-closed', retried: 'listed:1' });
+  expect(await readStoredRecords(page)).toEqual(before);
+
+  const commit = () => page.evaluate(async key => {
+    const { buildPackage, limits, restoredTag, statusOf } = window.osrCache;
+    const status = statusOf(await window.osrCacheSubject.commit(buildPackage({ tag: 'new' }), limits()));
+    return { status, tag: restoredTag(await window.osrCacheSubject.restore(key, limits())) };
+  }, SYNTHETIC_KEY);
+  await page.evaluate(() => { window.osrIdbProbe.closeNextTransaction = true; });
+  expect(await commit()).toEqual({ status: 'storage-closed', tag: 'old' });
+  expect(await readStoredRecords(page)).toEqual(before);
+  expect(await commit()).toEqual({ status: 'committed', tag: 'new' });
 });
