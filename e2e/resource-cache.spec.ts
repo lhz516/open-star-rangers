@@ -629,3 +629,168 @@ test('keeps the old package or the whole new one when the browser closes during 
   for (const { tag, unchanged } of outcomes) expect(tag === 'old' ? unchanged : tag === 'new').toBe(true);
   expect(outcomes.find(({ held }) => held)).toEqual({ held: true, resultBeforeClose: false, tag: 'old', unchanged: true });
 });
+
+const ORIGINAL_KEY = { originType: 'original-import', originToken: 'source:synthetic-disc', converterVersion: 'synthetic-converter.1' } as const;
+type Corruption = 'missing field' | 'key mismatch' | 'count mismatch' | 'payload missing' | 'payload extra' | 'payload rewritten'
+  | 'payload length' | 'source unverified' | 'unknown format' | 'format version 2' | 'content schema 2' | 'slice definition version 2';
+
+test('refuses damaged or incompatible stored records without deleting or changing them', async ({ page }) => {
+  await loadCacheModules(page);
+  await page.evaluate(() => { window.osrCacheSubject = window.osrCache.cache.createResourceCache(); });
+  // Each case commits a fresh original-import package (replacing the key), then rewrites real stored records.
+  const corrupt = async (name: Corruption) => {
+    const committed = await page.evaluate(async ({ name, key }) => {
+      const { buildPackage, limits, records, statusOf } = window.osrCache;
+      const status = statusOf(await window.osrCacheSubject.commit(buildPackage({ origin: 'source:synthetic-disc' }), limits()));
+      const { name: database, packageStore, payloadStore } = records.RESOURCE_CACHE_DATABASE;
+      const db = await new Promise<IDBDatabase>(resolve => { const request = indexedDB.open(database); request.onsuccess = () => resolve(request.result); });
+      const tx = db.transaction([packageStore, payloadStore], 'readwrite');
+      const packages = tx.objectStore(packageStore);
+      const payloads = tx.objectStore(payloadStore);
+      const packageKey = [key.originType, key.originToken, key.converterVersion];
+      const first = [...packageKey, 'font/synthetic-hud'];
+      /** The stored shapes this test rewrites; see resource-cache-records.ts. */
+      interface StoredPackage {
+        format: string; formatVersion: number; payloadCount: number; payloadBytes?: number; key: { converterVersion: string };
+        groups: { manifest: { identity: Record<string, unknown> }; sources: { states: { state: string }[] } }[];
+      }
+      interface StoredPayload { bytes: ArrayBuffer }
+      const update = <T>(store: IDBObjectStore, storeKey: IDBValidKey, change: (value: T) => unknown) => {
+        const request = store.get(storeKey);
+        request.onsuccess = () => store.put(change(request.result as T) ?? request.result, storeKey);
+      };
+      const updatePackage = (change: (record: StoredPackage) => unknown) => update(packages, packageKey, change);
+      const updatePayload = (change: (value: StoredPayload) => unknown) => update(payloads, first, change);
+      const everyGroup = (change: (identity: Record<string, unknown>) => void) => (record: StoredPackage) => {
+        for (const group of record.groups) change(group.manifest.identity);
+      };
+      const changes: Record<Corruption, () => void> = {
+        'missing field': () => updatePackage(record => { delete record.payloadBytes; }),
+        'key mismatch': () => updatePackage(record => { record.key.converterVersion = 'synthetic-converter.9'; }),
+        'count mismatch': () => updatePackage(record => { record.payloadCount += 1; }),
+        'payload missing': () => payloads.delete(first),
+        'payload extra': () => updatePayload(value => { payloads.put(value, [...packageKey, 'image/synthetic-unlisted']); }),
+        'payload rewritten': () => updatePayload(value => { new Uint8Array(value.bytes)[0] ^= 1; }),
+        'payload length': () => updatePayload(value => ({ ...value, bytes: new Uint8Array([...new Uint8Array(value.bytes), 0]).buffer })),
+        'source unverified': () => updatePackage(record => { record.groups[2].sources.states[0].state = 'unverified'; }),
+        'unknown format': () => updatePackage(record => { record.format = 'another-cache'; }),
+        'format version 2': () => updatePackage(record => { record.formatVersion = 2; }),
+        'content schema 2': () => updatePackage(everyGroup(identity => { identity.schemaVersion = 2; })),
+        'slice definition version 2': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 2; })),
+      };
+      changes[name]();
+      await new Promise(resolve => { tx.oncomplete = resolve; });
+      db.close();
+      return status;
+    }, { name, key: ORIGINAL_KEY });
+    expect(committed).toBe('committed');
+    const before = await readStoredRecords(page, true);
+    const observed = await page.evaluate(async key => {
+      const { limits } = window.osrCache;
+      const restored = await window.osrCacheSubject.restore(key, limits());
+      const listed = await window.osrCacheSubject.list();
+      return {
+        restored: restored.status === 'failed'
+          ? { code: restored.code, diagnostics: [...new Set(restored.diagnostics.map(({ code }) => code))] }
+          : { code: restored.status, diagnostics: [] },
+        listed: listed.status === 'listed' ? listed.entries.map(({ status }) => status) : listed.code,
+      };
+    }, ORIGINAL_KEY);
+    expect(await readStoredRecords(page, true)).toEqual(before);
+    return observed;
+  };
+
+  const expected: Record<Corruption, { code: string; listed: string; diagnostics: string[] }> = {
+    'missing field': { code: 'cache-corrupt', listed: 'corrupt', diagnostics: ['invalid-record'] },
+    'key mismatch': { code: 'cache-corrupt', listed: 'corrupt', diagnostics: [] },
+    'count mismatch': { code: 'cache-corrupt', listed: 'corrupt', diagnostics: [] },
+    'payload missing': { code: 'cache-corrupt', listed: 'compatible', diagnostics: [] },
+    'payload extra': { code: 'cache-corrupt', listed: 'compatible', diagnostics: [] },
+    'payload rewritten': { code: 'cache-corrupt', listed: 'compatible', diagnostics: ['payload-mismatch'] },
+    'payload length': { code: 'cache-corrupt', listed: 'compatible', diagnostics: ['payload-mismatch'] },
+    'source unverified': { code: 'cache-corrupt', listed: 'compatible', diagnostics: ['source-not-ready'] },
+    'unknown format': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
+    'format version 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
+    'content schema 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: ['unsupported-schema'] },
+    'slice definition version 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
+  };
+  for (const [name, { code, listed, diagnostics }] of Object.entries(expected) as [Corruption, typeof expected[Corruption]][]) {
+    const observed = await corrupt(name);
+    expect(observed.restored, name).toEqual({ code, diagnostics });
+    expect(observed.listed, name).toEqual([listed]);
+  }
+});
+
+test('rejects a restore over budget before reading any payload record', async ({ page }) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  const observed = await page.evaluate(async key => {
+    const { cache, buildPackage, limits, records, statusOf } = window.osrCache;
+    const subject = cache.createResourceCache();
+    const groups = buildPackage({ origin: 'source:synthetic-disc' });
+    await subject.commit(groups, limits());
+    const declared = groups.flatMap(({ manifest }) => manifest.assets).reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0);
+    window.osrIdbProbe.reset();
+    const result = await subject.restore(key, limits({ payloadBytes: declared - 1 }));
+    const reads = window.osrIdbProbe.events.filter(({ kind }) => kind === 'read').map(({ store }) => store);
+    const within = statusOf(await subject.restore(key, limits({ payloadBytes: declared })));
+    subject.close();
+    return {
+      code: statusOf(result),
+      budget: result.status === 'failed' ? result.budget.map(({ dimension }) => dimension) : [],
+      reads,
+      payloadStore: records.RESOURCE_CACHE_DATABASE.payloadStore,
+      within,
+    };
+  }, ORIGINAL_KEY);
+  expect(observed).toMatchObject({ code: 'over-budget', budget: ['payloadBytes'], within: 'restored' });
+  expect(observed.reads.length).toBeGreaterThan(0);
+  expect(observed.reads).not.toContain(observed.payloadStore);
+});
+
+test('never mixes packages when commits and restores of one key run concurrently', async ({ page }, testInfo) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  const observed = await page.evaluate(async key => {
+    const { cache, buildPackage, limits, signature, statusOf } = window.osrCache;
+    const [one, two] = [cache.createResourceCache(), cache.createResourceCache()];
+    const probe = window.osrIdbProbe;
+    const candidates = { aaa: buildPackage({ tag: 'aaa' }), bbb: buildPackage({ tag: 'bbb' }), old: buildPackage({ tag: 'old' }), new: buildPackage({ tag: 'new', modelBytes: 1 << 20 }) };
+    /** Which whole candidate a restore equals, else its failure code or `mixed`. */
+    const which = async () => {
+      const restored = await one.restore(key, limits());
+      if (restored.status !== 'restored') return restored.code;
+      const found = Object.entries(candidates).find(([, groups]) => signature(groups) === signature(restored.groups));
+      return found ? found[0] : 'mixed';
+    };
+    const commits: string[] = [];
+    for (let round = 0; round < 4; round++) {
+      const statuses = await Promise.all([one.commit(candidates.aaa, limits()), two.commit(candidates.bbb, limits())]);
+      commits.push(`${statuses.map(statusOf).join('+')}=${await which()}`);
+    }
+    /** Restores on `one` just before and at the first write request of `two` committing the new package. */
+    const restoreAroundCommit = async (seed: boolean) => {
+      if (seed) await one.commit(candidates.old, limits());
+      let during: Promise<string> | undefined;
+      probe.onEvent = event => {
+        if (event.kind === 'write') during ??= which();
+      };
+      const before = which();
+      const status = statusOf(await two.commit(candidates.new, limits()));
+      probe.onEvent = null;
+      return { status, before: await before, during: await during! };
+    };
+    const replacing = await restoreAroundCommit(true);
+    one.close();
+    two.close();
+    await new Promise(resolve => { indexedDB.deleteDatabase(window.osrCache.records.RESOURCE_CACHE_DATABASE.name).onsuccess = resolve; });
+    const first = await restoreAroundCommit(false);
+    return { commits, replacing, first };
+  }, SYNTHETIC_KEY);
+  await testInfo.attach('concurrency-outcomes', { body: JSON.stringify(observed), contentType: 'application/json' });
+  for (const outcome of observed.commits) expect(outcome).toMatch(/^committed\+committed=(aaa|bbb)$/);
+  expect(observed.replacing.status).toBe('committed');
+  for (const restored of [observed.replacing.before, observed.replacing.during]) expect(['old', 'new']).toContain(restored);
+  expect(observed.first.status).toBe('committed');
+  for (const restored of [observed.first.before, observed.first.during]) expect(['not-found', 'new']).toContain(restored);
+});

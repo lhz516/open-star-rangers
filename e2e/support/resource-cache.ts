@@ -45,6 +45,11 @@ export interface CacheModules {
   restoredTag(result: Awaited<ReturnType<CacheModule.ResourceCache['restore']>>): string;
   /** A result's status, or its failure code. */
   statusOf(result: { status: string; code?: string }): string;
+  /**
+   * Every group's Asset IDs with a digest and length of each payload, in order: equal signatures mean the same whole
+   * package, so a restore can be matched to exactly one committed candidate.
+   */
+  signature(groups: readonly { payloads: readonly { id: string; bytes: Uint8Array }[] }[]): string;
   /** How many packages the subject lists (or the failure code) and what restoring `key` yields. */
   cacheState(subject: CacheModule.ResourceCache, key: unknown): Promise<{ listed: number | string; restored: string }>;
   /** Deletes the cache database from another connection: `blocked` if reported, then whether success followed a commit. */
@@ -52,7 +57,7 @@ export interface CacheModules {
 }
 
 export interface ProbeEvent {
-  readonly kind: 'transaction' | 'complete' | 'abort' | 'write' | 'abort-call' | 'versionchange' | 'close';
+  readonly kind: 'transaction' | 'complete' | 'abort' | 'write' | 'read' | 'abort-call' | 'versionchange' | 'close';
   readonly mode?: IDBTransactionMode;
   readonly store?: string;
   /** Name of the DOMException an `abort()` call threw. */
@@ -130,6 +135,11 @@ export async function loadCacheModules(page: Page): Promise<void> {
         .sort(([left], [right]) => (left < right ? -1 : 1)),
       restoredTag: result => (result.status === 'restored' ? String.fromCharCode(...result.groups[0].payloads[0].bytes).split(':')[0] : result.code),
       statusOf: result => (result.status === 'failed' ? result.code! : result.status),
+      signature: groups => groups.map(({ payloads }) => payloads.map(({ id, bytes }) => {
+        let hash = 0x811c9dc5;
+        for (const byte of bytes) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+        return `${id}=${bytes.length}:${hash.toString(16)}`;
+      }).join(',')).join('|'),
       async cacheState(subject, key) {
         const listed = await subject.list();
         const restored = await subject.restore(key, this.limits());
@@ -182,6 +192,14 @@ export async function installIdbProbe(page: Page): Promise<void> {
         return request;
       };
     }
+    for (const method of ['get', 'getAll', 'getAllKeys'] as const) {
+      const original = IDBObjectStore.prototype[method] as (...args: unknown[]) => IDBRequest;
+      (IDBObjectStore.prototype[method] as unknown) = function (this: IDBObjectStore, ...args: unknown[]) {
+        const request = original.apply(this, args);
+        record({ kind: 'read', store: this.name });
+        return request;
+      };
+    }
     const open = IDBFactory.prototype.open;
     IDBFactory.prototype.open = function (this: IDBFactory, ...args: Parameters<IDBFactory['open']>) {
       const request = open.apply(this, args);
@@ -205,18 +223,21 @@ export async function installIdbProbe(page: Page): Promise<void> {
   });
 }
 
-/** Stored records with their IndexedDB array keys; package values as JSON, payload bytes as length and digest. */
+/**
+ * Stored records with their IndexedDB array keys; package values as JSON, payload bytes as length and digest, and in
+ * `exact` mode also every payload record's whole value with its bytes listed.
+ */
 export interface StoredRecords {
   readonly packages: { key: unknown[]; value: string }[];
-  readonly payloads: { key: unknown[]; schemaVersion: unknown; byteLength: number; digest: string }[];
+  readonly payloads: { key: unknown[]; schemaVersion: unknown; byteLength: number; digest: string; value?: string }[];
 }
 
 /**
  * Reads every record through a separate read-only connection, using the adapter's exported constants. It opens the
  * database only if the page already lists it, so it never creates or upgrades one.
  */
-export async function readStoredRecords(page: Page): Promise<StoredRecords> {
-  return page.evaluate(async () => {
+export async function readStoredRecords(page: Page, exact = false): Promise<StoredRecords> {
+  return page.evaluate(async exact => {
     const { name, packageStore, payloadStore } = window.osrCache.records.RESOURCE_CACHE_DATABASE;
     if (!(await indexedDB.databases()).some(database => database.name === name)) return { packages: [], payloads: [] };
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -244,13 +265,14 @@ export async function readStoredRecords(page: Page): Promise<StoredRecords> {
         payloads: payloads.keys.map((key, index) => {
           const value = payloads.values[index] as { schemaVersion?: unknown; bytes?: unknown };
           const bytes = value.bytes instanceof ArrayBuffer ? new Uint8Array(value.bytes) : new Uint8Array(0);
-          return { key: key as unknown[], schemaVersion: value.schemaVersion, byteLength: bytes.byteLength, digest: digest(bytes) };
+          const whole = exact ? { value: JSON.stringify({ ...value, bytes: [...bytes] }) } : {};
+          return { key: key as unknown[], schemaVersion: value.schemaVersion, byteLength: bytes.byteLength, digest: digest(bytes), ...whole };
         }),
       };
     } finally {
       db.close();
     }
-  });
+  }, exact);
 }
 
 /** Records every request the page issues while `run` executes. */
