@@ -111,7 +111,7 @@ updated: 2026-10-05
 | [08-boundaries.md](./subtasks/08-boundaries.md) | 03, 05, 06 | completed |
 | [09-browser-worker-paths.md](./subtasks/09-browser-worker-paths.md) | 06, 07 | completed |
 | [10-browser-lifecycle-failures.md](./subtasks/10-browser-lifecycle-failures.md) | 09 | completed |
-| [11-local-base-check.md](./subtasks/11-local-base-check.md) | 07 | pending |
+| [11-local-base-check.md](./subtasks/11-local-base-check.md) | 07 | completed |
 | [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。

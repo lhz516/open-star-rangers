@@ -41,8 +41,8 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-12：本地运行以 `finished` 结束，版本与指纹符合预期，组为空，最后一次进度的 `readBytes` 等于 `usage.sourceReadBytes`；耗时与读取量已记录。
-- [ ] 输出与证据只含允许的字段；`git status` 显示 `local/` 下的文件未被跟踪；`pnpm check:original` 通过。
+- [x] AC-12：本地运行以 `finished` 结束，版本与指纹符合预期，组为空，最后一次进度的 `readBytes` 等于 `usage.sourceReadBytes`；耗时与读取量已记录。
+- [x] 输出与证据只含允许的字段；`git status` 显示 `local/` 下的文件未被跟踪；`pnpm check:original` 通过。
 
 ## 验证方法
 
@@ -50,3 +50,22 @@ updated: 2026-10-05
 - 不适用 browser-testing；不做视觉或听觉对照。
 
 ## 完成证据
+
+- **命令：** `node local/research/p2-04/base-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}`。脚本与输出 `base-check.json` 都在被忽略的 `local/research/p2-04/` 中，退出码为 0。
+- **方法：**
+  - 用 `fs.openAsBlob` 打开开发者的 CloneCD 文件组（4 个文件），组装为 `File`。
+  - 按 07 的方式，用 Node `MessageChannel` 连接以下各部分：生产作业 `createImportJob()`（默认打开函数，即产品入口：生产白名单、P2-02 默认预算）、真实宿主、06 的平台适配与持有者。作业从 `start` 运行到终态。
+- **结果：**
+  - 以 `finished` 结束，版本 `star-rangers-1995-cd`，指纹等于 P2-03 固定的生产常量；
+  - 组为 0，`takeGroups()` 返回空列表；
+  - 进度消息 46 条，单调不减，最后一次的 `readBytes` 为 17,255,043，等于 `usage.sourceReadBytes`；
+  - 耗时：全程 123 ms，从发送 `start` 到识别 112 ms；
+  - 结论 passed。
+- **输出与合规：**
+  - 输出只含版本 ID、指纹、计数、读取量、耗时与结论；
+  - `git check-ignore` 确认脚本与输出都被 `/local/` 规则忽略，`git status` 不显示它们；
+  - `pnpm check:original` 通过（passed）。
+- **Rubber-duck：** 审查确认检查本身成立，脚本也只经产品入口读取：默认打开函数是产品入口，以真实的宿主、持有者与平台适配经结构化克隆通道连接，固定指纹与测试常量一致，读取量比较有效。阻塞问题：初版输出还包含格式、输入扩展名、状态、错误与逐项检查，超出 AC-12 允许的字段；失败时错误位置可能含光盘内路径。已改为只输出允许的字段，逐项检查只留在脚本内部，失败时以非零退出码表示。重跑仍为 passed。
+- **Simplify：** 本子任务不提交实现代码，不需要代码清理。
+- **文档影响：** 没有新的原版事实，也没有 U 项变化。该脚本是一次性的本地研究脚本，不是仓库工具，工具指南不需要更新。STATUS 不变。
+
