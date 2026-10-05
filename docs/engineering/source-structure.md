@@ -172,7 +172,7 @@ src/
   - `payloadTransferList` 返回要转移的 ArrayBuffer：每个视图必须独占整个非共享 buffer，且彼此不共用；否则以 `payload-not-exclusive`/`payload-aliased` 拒绝。
   - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
 
-合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态，以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
+合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态（`syntheticSourceGroup` 可绑定任意来源指纹），以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
 
 ### 原版来源映射
 
@@ -312,8 +312,16 @@ src/
     - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
     - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
     - Worker 报告的 `failed` 原样成为快照的错误。
+  - **组结果：** 按 spec 的验证顺序处理每个 `group`：
+    - 外层由协议读取函数核对；组须在识别之后，每组一次；
+    - `sources.sourceFingerprint` 须等于已识别的指纹，否则报 `invalid-result@groups.<组>`；
+    - 用 `CLASSIC_P2_SLICE` 与 `validateGroup` 重新验证；可读的组须等于消息的组，否则报 `protocol-error@message.group`；
+    - `group-complete` 连同 payload 保留，摘要的 `assets` 为描述符个数；`incomplete`（含清单无法读取、来源状态集格式错误或多余字段）只保留 P2-01 诊断，`assets` 为 null，不再引用其 payload。
+
+    `finished.groups` 须与收到的组完全一致（顺序与集合），否则报 `protocol-error@message.groups`。快照的 `groups` 只含摘要 `{ group, status, assets, diagnostics }`，没有 payload 字节。
+  - **移交：** `takeGroups()` 只在 `finished` 之后返回一次完整的组 `{ group, manifest, payloads, sources }`（按收到顺序），容器全部冻结，payload 视图从此归调用者独占。再次调用、开始新作业或释放之后，以及其他状态，都返回 null。作业以任何方式结束时都释放它保留的 payload 引用：完成时结果移入一个新的冻结列表，在端口终止之后与 `finished` 快照一起发布；失败、取消与释放丢弃全部已收结果。
   - **终态与隔离：** 结束、失败、取消与释放都先终止端口，每个作业恰好一次。工厂返回之前送达的回调先排队，发布 `starting` 后按序处理；作业结束之后的回调都被丢弃，所以旧作业的迟到消息不会影响新作业。
-  - **命令与快照：** `cancel()` 只对 `starting`、`running` 生效，同步变为 `cancelled`。`dispose()` 可重复调用：终止活动端口、清空订阅，之后的命令返回 `disposed` 或 false，快照不再变化。快照冻结，在两次变化之间保持同一对象；`failed` 与 `cancelled` 不含来源身份与组。订阅者同步收到通知，抛出的错误交给 `reportError`，不影响其他订阅者与状态；通知过程中被移除（包括因释放）的订阅者不再收到这次通知。
+  - **命令与快照：** `cancel()` 只对 `starting`、`running` 生效，同步变为 `cancelled`。`dispose()` 可重复调用：终止活动端口、丢弃结果、清空订阅，之后的命令返回 `disposed`、false 或 null，快照不再变化。快照冻结，在两次变化之间保持同一对象；`failed` 与 `cancelled` 不含来源身份与组。订阅者同步收到通知，抛出的错误交给 `reportError`，不影响其他订阅者与状态；通知过程中被移除（包括因释放）的订阅者不再收到这次通知。
 
 ## 职责与依赖
 

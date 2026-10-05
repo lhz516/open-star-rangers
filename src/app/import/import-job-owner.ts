@@ -1,6 +1,7 @@
 import type { ResourceGroup } from '../../content/asset-contract.ts';
 import type { BudgetRecord } from '../../content/budget.ts';
-import type { CompletenessDiagnostic } from '../../content/completeness.ts';
+import { validateGroup, type CompletenessDiagnostic, type GroupInput } from '../../content/completeness.ts';
+import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
   IMPORT_PROTOCOL_VERSION, importError, readImportStartMessage, readImportWorkerMessage, type ImportErrorData,
   type ImportSourceIdentity, type ImportStage, type ImportStartMessage, type ImportWorkerMessage,
@@ -39,6 +40,11 @@ export type ImportJobSnapshot =
   | { readonly status: 'failed'; readonly jobId: number; readonly stage: ImportStage | null; readonly error: ImportErrorData }
   | { readonly status: 'cancelled'; readonly jobId: number; readonly stage: ImportStage | null };
 
+/** A complete group handed over by `takeGroups`; its payload views belong to the caller alone from then on. */
+export interface ImportedGroup extends GroupInput {
+  readonly group: ResourceGroup;
+}
+
 export type ImportStartResult =
   | { readonly status: 'started'; readonly jobId: number }
   | { readonly status: 'busy' | 'invalid-files' | 'disposed' };
@@ -51,6 +57,11 @@ export interface ImportJobOwner {
   start(files: readonly File[]): ImportStartResult;
   /** Ends a starting or running job as `cancelled` and terminates its Worker at once; false otherwise. */
   cancel(): boolean;
+  /**
+   * Once after `finished`, the complete groups with their payloads, in receiving order and in frozen containers; the
+   * owner keeps no reference to them. Null in any other state, on a second call, after a new start or after dispose.
+   */
+  takeGroups(): readonly ImportedGroup[] | null;
   /** Terminates any active Worker, drops results and subscribers; later commands are rejected. Repeatable. */
   dispose(): void;
   /** Notified synchronously after each change; returns the unsubscribe function. */
@@ -66,6 +77,7 @@ export interface ImportJobOwnerOptions {
 
 const IDLE: ImportJobSnapshot = Object.freeze({ status: 'idle' });
 const NO_GROUPS: readonly ImportGroupSummary[] = Object.freeze([]);
+const NO_DIAGNOSTICS: readonly CompletenessDiagnostic[] = Object.freeze([]);
 const BUSY: ImportStartResult = Object.freeze({ status: 'busy' });
 const INVALID_FILES: ImportStartResult = Object.freeze({ status: 'invalid-files' });
 const DISPOSED: ImportStartResult = Object.freeze({ status: 'disposed' });
@@ -79,6 +91,18 @@ const OUT_OF_SEQUENCE = importError('protocol-error', 'message.sequence', 'the m
 const LATE_PROGRESS = importError('protocol-error', 'message.stage', 'identification progress after identification');
 const INVALID_READ_BYTES = importError('protocol-error', 'message.readBytes', 'the read byte count decreased or exceeds the input size');
 const REPEATED_GROUP = importError('protocol-error', 'message.group', 'the group was already received');
+const OTHER_GROUP = importError('protocol-error', 'message.group', 'the group content declares another group');
+const OTHER_GROUPS = importError('protocol-error', 'message.groups', 'the finished groups differ from the groups received');
+
+/** Freezes every plain container of a received value, however deep; payload views cannot be frozen and stay as they are. */
+function freezeContainers<T>(value: T, seen = new Set<object>()): T {
+  if (typeof value === 'object' && value !== null && !ArrayBuffer.isView(value) && !seen.has(value)) {
+    seen.add(value);
+    Object.freeze(value);
+    for (const item of Object.values(value)) freezeContainers(item, seen);
+  }
+  return value;
+}
 
 /**
  * The `start` request for the files, or null when they break the start rules. The protocol reader checks it, so the
@@ -107,7 +131,10 @@ class Job {
   stage: ImportStage | null = null;
   readBytes = 0;
   identity: ImportSourceIdentity | null = null;
-  readonly received: ResourceGroup[] = [];
+  /** Every group received so far, in receiving order. */
+  groups: readonly ImportGroupSummary[] = NO_GROUPS;
+  /** The complete groups with their payloads, emptied when the job ends; incomplete ones keep no payload reference. */
+  kept: ImportedGroup[] = [];
 
   constructor(request: ImportStartMessage) {
     this.id = request.jobId;
@@ -123,6 +150,8 @@ class Owner implements ImportJobOwner {
   #snapshot = IDLE;
   /** The active job; cleared when it ends. */
   #job: Job | null = null;
+  /** The complete groups of the last finished job until they are taken. */
+  #results: readonly ImportedGroup[] | null = null;
   #lastJobId = 0;
   #disposed = false;
 
@@ -137,6 +166,7 @@ class Owner implements ImportJobOwner {
     const request = startRequest(this.#lastJobId + 1, files);
     if (!request) return INVALID_FILES;
     this.#lastJobId = request.jobId;
+    this.#results = null;
     const job = new Job(request);
     this.#job = job;
     const started: ImportStartResult = Object.freeze({ status: 'started', jobId: job.id });
@@ -158,14 +188,23 @@ class Owner implements ImportJobOwner {
     return true;
   }
 
+  takeGroups(): readonly ImportedGroup[] | null {
+    if (this.#snapshot.status !== 'finished') return null;
+    const results = this.#results;
+    this.#results = null;
+    return results;
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#results = null;
     this.#listeners.clear();
     const job = this.#job;
     this.#job = null;
     if (job) {
       job.request = null;
+      job.kept = [];
       job.port?.terminate();
     }
   }
@@ -218,13 +257,16 @@ class Owner implements ImportJobOwner {
         job.identity = message.identity;
         return this.#running(job);
       case 'group':
+        return this.#receiveGroup(job, message);
+      case 'finished': {
         if (!job.identity) return this.#fail(job, UNEXPECTED_MESSAGE);
-        if (job.received.includes(message.group)) return this.#fail(job, REPEATED_GROUP);
-        job.received.push(message.group);
-        return;
-      case 'finished':
-        if (!job.identity) return this.#fail(job, UNEXPECTED_MESSAGE);
-        return this.#end(job, { status: 'finished', jobId: job.id, identity: job.identity, groups: NO_GROUPS, usage: message.usage });
+        const { groups } = message;
+        if (groups.length !== job.groups.length || groups.some((group, index) => group !== job.groups[index].group)) {
+          return this.#fail(job, OTHER_GROUPS);
+        }
+        const results = freezeContainers([...job.kept]);
+        return this.#end(job, { status: 'finished', jobId: job.id, identity: job.identity, groups: job.groups, usage: message.usage }, results);
+      }
       case 'failed':
         return this.#end(job, { status: 'failed', jobId: job.id, stage: job.stage, error: message.error });
     }
@@ -244,22 +286,48 @@ class Owner implements ImportJobOwner {
     this.#running(job);
   }
 
+  /**
+   * Checks a group in the spec's order: after identification and once; bound to the identified source; validated
+   * again with the slice definition; declaring the group it was sent as. Only a complete group keeps its payloads.
+   */
+  #receiveGroup(job: Job, { group, input }: Extract<ImportWorkerMessage, { type: 'group' }>): void {
+    if (!job.identity) return this.#fail(job, UNEXPECTED_MESSAGE);
+    if (job.groups.some(summary => summary.group === group)) return this.#fail(job, REPEATED_GROUP);
+    // The protocol reader guarantees a record with a string fingerprint.
+    if ((input.sources as { readonly sourceFingerprint: string }).sourceFingerprint !== job.identity.sourceFingerprint) {
+      return this.#fail(job, importError('invalid-result', `groups.${group}`, 'the group is bound to another source'));
+    }
+    const result = validateGroup(CLASSIC_P2_SLICE, input);
+    if (result.group !== null && result.group !== group) return this.#fail(job, OTHER_GROUP);
+    const summary: ImportGroupSummary = result.status === 'group-complete'
+      ? { group, status: 'group-complete', assets: result.assets.length, diagnostics: NO_DIAGNOSTICS }
+      : { group, status: 'incomplete', assets: null, diagnostics: result.diagnostics };
+    if (result.status === 'group-complete') job.kept.push({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources });
+    job.groups = Object.freeze([...job.groups, Object.freeze(summary)]);
+    this.#running(job);
+  }
+
   #running(job: Job): void {
-    const { id: jobId, stage, readBytes, identity } = job;
-    this.#set({ status: 'running', jobId, stage, readBytes, identity, groups: NO_GROUPS });
+    const { id: jobId, stage, readBytes, identity, groups } = job;
+    this.#set({ status: 'running', jobId, stage, readBytes, identity, groups });
   }
 
   #fail(job: Job, error: ImportErrorData): void {
     this.#end(job, { status: 'failed', jobId: job.id, stage: job.stage, error });
   }
 
-  /** Ends the job: its port is terminated exactly once, before subscribers see the terminal snapshot. */
-  #end(job: Job, snapshot: ImportJobSnapshot): void {
+  /**
+   * Ends the job: it drops its file and payload references, its port is terminated exactly once, and only then are the
+   * results of a finished job published, together with the terminal snapshot.
+   */
+  #end(job: Job, snapshot: ImportJobSnapshot, results: readonly ImportedGroup[] | null = null): void {
     this.#job = null;
     job.request = null;
+    job.kept = [];
     try {
       job.port?.terminate();
     } finally {
+      this.#results = results;
       this.#set(snapshot);
     }
   }

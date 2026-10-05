@@ -79,11 +79,16 @@ export function syntheticGroup(group: ResourceGroup, specs = SYNTHETIC_ASSETS[gr
   };
 }
 
+/** The group as an original import of `sourceFingerprint` whose every Asset has a verified source state for it. */
+export function syntheticSourceGroup(group: ResourceGroup, sourceFingerprint: string) {
+  const input = syntheticGroup(group, SYNTHETIC_ASSETS[group], { origin: { type: 'original-import', sourceFingerprint } });
+  input.sources = { sourceFingerprint, states: SYNTHETIC_ASSETS[group].map(({ id }) => ({ id, state: 'verified', unknowns: [] as string[] })) };
+  return input;
+}
+
 /** The group as an original import whose every Asset has a verified source state for the manifest's fingerprint. */
 export function syntheticOriginalGroup(group: ResourceGroup) {
-  const input = syntheticGroup(group, SYNTHETIC_ASSETS[group], { origin: { type: 'original-import', sourceFingerprint: 'source:synthetic-disc' } });
-  input.sources = { sourceFingerprint: 'source:synthetic-disc', states: SYNTHETIC_ASSETS[group].map(({ id }) => ({ id, state: 'verified', unknowns: [] as string[] })) };
-  return input;
+  return syntheticSourceGroup(group, 'source:synthetic-disc');
 }
 
 /** All four groups in definition order. */

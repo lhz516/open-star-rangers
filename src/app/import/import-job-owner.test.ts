@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { RESOURCE_GROUPS, type ResourceGroup } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
+import { SYNTHETIC_ASSETS, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, type ImportStartMessage } from '../../workers/import-protocol.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerEvents, ImportWorkerPort } from './import-worker-port.ts';
@@ -73,8 +75,9 @@ function running(names = ['GAME.CCD', 'GAME.IMG']) {
   return { ...context, port: context.ports[0] };
 }
 
+/** Whether every container is frozen; payload views cannot be frozen and are exempt. */
 function isDeepFrozen(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) return true;
+  if (typeof value !== 'object' || value === null || ArrayBuffer.isView(value)) return true;
   return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen);
 }
 
@@ -447,6 +450,133 @@ describe('snapshots', () => {
     const holdsBytes = (value: unknown): boolean => value instanceof Uint8Array
       || (typeof value === 'object' && value !== null && Object.values(value).some(holdsBytes));
     expect(snapshots.some(holdsBytes)).toBe(false);
+  });
+});
+
+describe('group results', () => {
+  const bound = (name: ResourceGroup, fingerprint = FINGERPRINT) => syntheticSourceGroup(name, fingerprint);
+  const sent = (sequence: number, name: ResourceGroup, input: unknown) => ({ type: 'group', jobId: 1, sequence, group: name, input });
+  const finish = (sequence: number, groups: readonly ResourceGroup[]) => ({ type: 'finished', jobId: 1, sequence, groups, usage: USAGE });
+  const holdsBytes = (value: unknown): boolean => value instanceof Uint8Array
+    || (typeof value === 'object' && value !== null && Object.values(value).some(holdsBytes));
+  const complete = (name: ResourceGroup) => ({ group: name, status: 'group-complete', assets: SYNTHETIC_ASSETS[name].length, diagnostics: [] });
+
+  it('keeps four complete groups bound to the identified source and hands them over once', () => {
+    const { owner, port, snapshots } = running();
+    const inputs = RESOURCE_GROUPS.map(name => bound(name));
+    port.send(identified(1), ...RESOURCE_GROUPS.map((name, index) => sent(index + 2, name, inputs[index])));
+    expect(owner.getSnapshot()).toMatchObject({ status: 'running', groups: RESOURCE_GROUPS.map(complete) });
+    expect(owner.takeGroups()).toBeNull();
+    port.send(finish(6, RESOURCE_GROUPS));
+    expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: RESOURCE_GROUPS.map(complete), usage: USAGE });
+    expect(snapshots.map(snapshot => snapshot.status === 'running' && snapshot.groups.length)).toEqual([false, 0, 0, 1, 2, 3, 4, false]);
+    expect(snapshots.some(holdsBytes)).toBe(false);
+    expect(snapshots.filter(snapshot => !isDeepFrozen(snapshot))).toEqual([]);
+    const taken = owner.takeGroups();
+    expect(taken).toEqual(RESOURCE_GROUPS.map((name, index) => ({ group: name, ...inputs[index] })));
+    taken!.forEach((item, index) => {
+      expect(item.payloads).toBe(inputs[index].payloads);
+      (item.payloads as { bytes: Uint8Array }[]).forEach((payload, at) => expect(payload.bytes).toBe(inputs[index].payloads[at].bytes));
+    });
+    expect(isDeepFrozen(taken)).toBe(true);
+    expect(owner.takeGroups()).toBeNull();
+  });
+
+  it('records a group with a changed payload as incomplete and keeps no payload of it', () => {
+    const { owner, port } = running();
+    const models = bound('models');
+    models.payloads[0].bytes[0] ^= 1;
+    port.send(identified(1), sent(2, 'models', models), sent(3, 'audio', bound('audio')), finish(4, ['models', 'audio']));
+    const snapshot = owner.getSnapshot();
+    if (snapshot.status !== 'finished') throw new Error('expected a finished job');
+    expect(snapshot.groups[0]).toMatchObject({ group: 'models', status: 'incomplete', assets: null });
+    expect(snapshot.groups[0].diagnostics.map(({ code, path }) => `${code}@${path}`)).toEqual(['payload-mismatch@payloads[0]']);
+    expect(snapshot.groups[1]).toEqual(complete('audio'));
+    expect(owner.takeGroups()!.map(item => item.group)).toEqual(['audio']);
+  });
+
+  it.each([
+    ['a manifest that cannot be read', (input: Record<string, unknown>) => { input.manifest = null; }],
+    ['malformed source states', (input: Record<string, unknown>) => { input.sources = { sourceFingerprint: FINGERPRINT, states: MARKER }; }],
+    ['an extra field in the source states', (input: Record<string, unknown>) => { input.sources = { ...(input.sources as object), [MARKER]: 1 }; }],
+    ['an extra field in the manifest', (input: Record<string, unknown>) => { input.manifest = { ...(input.manifest as object), [MARKER]: 1 }; }],
+  ])('records a group with %s as incomplete with P2-01 diagnostics', (_, change) => {
+    const { owner, port } = running();
+    const input: Record<string, unknown> = bound('audio');
+    change(input);
+    port.send(identified(1), sent(2, 'audio', input), finish(3, ['audio']));
+    const snapshot = owner.getSnapshot();
+    if (snapshot.status !== 'finished') throw new Error('expected a finished job');
+    expect(snapshot.groups).toHaveLength(1);
+    expect(snapshot.groups[0]).toMatchObject({ group: 'audio', status: 'incomplete', assets: null });
+    expect(snapshot.groups[0].diagnostics.length).toBeGreaterThan(0);
+    expect(JSON.stringify(snapshot)).not.toContain(MARKER);
+    expect(owner.takeGroups()).toEqual([]);
+  });
+
+  it.each([
+    ['a group bound to another source', (port: FakePort) => port.send(sent(2, 'audio', bound('audio', `source:sha256:${'f'.repeat(64)}`))), 'invalid-result', 'groups.audio'],
+    ['sources that do not name the identified source', (port: FakePort) => port.send(sent(2, 'audio', { ...bound('audio'), sources: { sourceFingerprint: MARKER, states: [] } })), 'invalid-result', 'groups.audio'],
+    ['audio content sent as models', (port: FakePort) => port.send(sent(2, 'models', bound('audio'))), 'protocol-error', 'message.group'],
+    ['an input without sources', (port: FakePort) => port.send(sent(2, 'audio', { manifest: {}, payloads: [] })), 'protocol-error', 'message.input.sources'],
+    ['an input with an extra field', (port: FakePort) => port.send(sent(2, 'audio', { ...bound('audio'), [MARKER]: 1 })), 'protocol-error', 'message.input'],
+    ['a group message with an extra field', (port: FakePort) => port.send({ ...sent(2, 'audio', bound('audio')), [MARKER]: 1 }), 'protocol-error', 'message'],
+    ['finished groups in another order', (port: FakePort) => port.send(sent(2, 'audio', bound('audio')), sent(3, 'logic', bound('logic')), finish(4, ['logic', 'audio'])), 'protocol-error', 'message.groups'],
+    ['finished groups missing one', (port: FakePort) => port.send(sent(2, 'audio', bound('audio')), finish(3, [])), 'protocol-error', 'message.groups'],
+    ['finished groups naming one never sent', (port: FakePort) => port.send(sent(2, 'audio', bound('audio')), finish(3, ['audio', 'logic'])), 'protocol-error', 'message.groups'],
+  ])('fails on %s and discards every received group', (_, receive, code, location) => {
+    const { owner, port } = running();
+    port.send(identified(1));
+    receive(port);
+    const snapshot = owner.getSnapshot();
+    expect(snapshot).toMatchObject({ status: 'failed', error: expect.objectContaining({ layer: 'import', code, location }) });
+    expect(Object.keys(snapshot)).toEqual(['status', 'jobId', 'stage', 'error']);
+    expect(JSON.stringify(snapshot)).not.toContain(MARKER);
+    expect(owner.takeGroups()).toBeNull();
+    expect(port.terminations).toBe(1);
+  });
+
+  it.each([
+    ['idle', () => setup().owner],
+    ['starting', () => { const context = setup(); context.owner.start(files('GAME.CCD')); return context.owner; }],
+    ['running', () => { const { owner, port } = running(); port.send(identified(1), sent(2, 'audio', bound('audio'))); return owner; }],
+    ['cancelled', () => { const { owner, port } = running(); port.send(identified(1), sent(2, 'audio', bound('audio'))); owner.cancel(); return owner; }],
+    ['failed', () => { const { owner, port } = running(); port.send(identified(1), sent(2, 'audio', bound('audio')), failed(3)); return owner; }],
+  ])('hands nothing over while %s', (_, make) => {
+    expect(make().takeGroups()).toBeNull();
+  });
+
+  it.each([
+    ['a new job starts', (owner: ReturnType<typeof setup>['owner']) => { expect(owner.start(files('GAME.CCD'))).toMatchObject({ status: 'started' }); }],
+    ['the owner is disposed', (owner: ReturnType<typeof setup>['owner']) => owner.dispose()],
+  ])('drops untaken groups when %s', (_, act) => {
+    const { owner, port } = running();
+    port.send(identified(1), sent(2, 'audio', bound('audio')), finish(3, ['audio']));
+    act(owner);
+    expect(owner.takeGroups()).toBeNull();
+  });
+
+  it('hands nothing over while the finishing port terminates, then once to the finished subscriber', () => {
+    const { owner, port } = running();
+    let duringTermination: unknown = 'not called';
+    let taken: unknown = null;
+    port.terminate = () => { duringTermination = owner.takeGroups(); };
+    owner.subscribe(() => { if (owner.getSnapshot().status === 'finished') taken = owner.takeGroups(); });
+    port.send(identified(1), sent(2, 'audio', bound('audio')), finish(3, ['audio']));
+    expect(duringTermination).toBeNull();
+    expect((taken as { group: string }[]).map(item => item.group)).toEqual(['audio']);
+    expect(owner.takeGroups()).toBeNull();
+  });
+
+  it('freezes every container it hands over, even below one that arrived frozen', () => {
+    const { owner, port } = running();
+    const audio = bound('audio');
+    Object.freeze(audio.sources);
+    Object.freeze(audio.manifest);
+    port.send(identified(1), sent(2, 'audio', audio), finish(3, ['audio']));
+    const [taken] = owner.takeGroups()!;
+    expect(Object.isFrozen((taken.sources as { states: unknown[] }).states)).toBe(true);
+    expect(Object.isFrozen((taken.manifest as { assets: unknown[] }).assets)).toBe(true);
   });
 });
 
