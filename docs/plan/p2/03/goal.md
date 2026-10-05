@@ -83,7 +83,7 @@ updated: 2026-10-05
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-incremental-sha256.md](./subtasks/01-incremental-sha256.md) | — | completed |
-| [02-archive-rules-memory.md](./subtasks/02-archive-rules-memory.md) | — | pending |
+| [02-archive-rules-memory.md](./subtasks/02-archive-rules-memory.md) | — | completed |
 | [03-on-demand-archive.md](./subtasks/03-on-demand-archive.md) | 02 | pending |
 | [04-catalog-fingerprint.md](./subtasks/04-catalog-fingerprint.md) | 02 | pending |
 | [05-identify-verified-source.md](./subtasks/05-identify-verified-source.md) | 01, 03, 04 | pending |

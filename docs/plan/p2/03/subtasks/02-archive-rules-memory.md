@@ -48,18 +48,18 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-01（内存解析）：
+- [x] AC-01（内存解析）：
   - **正向：** 与基准同形的合成封包解析正确，`flags` 任意值原样保留；样本包含 1–4 字符的标签（含数字与全数字标签）、非固定步长的 ID，以及等于基数 + 1 的首项 ID。
   - **负向：** spec AC-01 列出的每一项都在预期位置返回 `invalid-archive`。
   - **限值：** 条目数 4,096 与数据块 4,194,304 字节通过，再多 1 个单位返回 `limit-exceeded`；u32 最大值不引起不安全算术或宿主异常。
-- [ ] AC-02（重定位规则）：
+- [x] AC-02（重定位规则）：
   - 非对齐与无序位置通过，指针等于 0 或 `size` 通过；
   - 位置等于 `size - 3` 或 u32 最大值、指针等于 `size + 1`、位置重复、位置相差 1–3，都返回 `invalid-entry`；
   - 报告的重定位序号符合排序后第一对重叠的规则。
-- [ ] AC-03（样本）：共用样本表覆盖上述正负情况，内存解析对每条给出期望结果。
-- [ ] AC-10（封包部分）：非法类型标签与块字节中植入的标记不出现在 DTO 中；DTO 可结构化克隆，code 属于封闭集合。
-- [ ] 既有 `imfat`、`payloads`、`source-mapping` 测试保持通过（必要时只按新规则调整合成样本）；`nob-list`、`nob-check` 通过类型检查。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-03（样本）：共用样本表覆盖上述正负情况，内存解析对每条给出期望结果。
+- [x] AC-10（封包部分）：非法类型标签与块字节中植入的标记不出现在 DTO 中；DTO 可结构化克隆，code 属于封闭集合。
+- [x] 既有 `imfat`、`payloads`、`source-mapping` 测试保持通过（必要时只按新规则调整合成样本）；`nob-list`、`nob-check` 通过类型检查。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -67,3 +67,34 @@ updated: 2026-10-05
 - 不适用 browser-testing；基准盘上的规则验证由 09 完成。
 
 ## 完成证据
+
+- **实现：**
+  - [source-error.ts](../../../../../src/original-data/source-error.ts)：封闭的 11 个错误码、`SourceError` 与 DTO，限值名为 `archiveEntries`、`entryBytes`。它是叶子模块；为避免 `archive/` 与 `source/` 互相依赖，放在 `original-data` 根目录，而不是计划中的 `source/`。
+  - [imfat-rules.ts](../../../../../src/original-data/archive/imfat-rules.ts)：`readImfatHeader`、`readImfatDirectory`、`readImfatRelocations` 按 spec 顺序校验；位置只能由 `DiscPath | null` 生成；`ImfatEntry` 定义在这里。
+  - [imfat.ts](../../../../../src/original-data/imfat.ts)：`parseImfat`、`entryData`、`entryRelocations` 改用上述规则，`ImfatEntry` 原样再导出。辅助函数只接受从同一字节数组解析出的条目，否则在 `request.entry` 返回 `invalid-request`（研究用的内存接口，不属于产品入口）。
+  - 研究工具的源码无需修改。
+- **样本：** [archive.test-support.ts](../../../../../src/original-data/archive/archive.test-support.ts) 的 `ARCHIVE_SAMPLES` 包含：
+  - **正向：** 与基准同形的样本（1–4 字符标签、全数字标签、任意 `flags`、非固定步长 ID、非对齐且无序的重定位、指针 0 与 `size`），4,096 条目，以及 4,194,304 字节的数据块；
+  - **负向：** spec AC-01 的全部文件头与目录项，含 u32 最大值，以及 4,097 条目与 4,194,305 字节的上限；AC-02 的重定位位置、指针、重复与相差 1–3 字节；
+  - **多错误：** 9 个样本，每个在任何其他检查顺序下都会报告不同的 code 或位置，用来固定报错优先级。
+- **测试：** [imfat.test.ts](../../../../../src/original-data/imfat.test.ts) 逐条驱动样本表，按 code、位置与 limit 断言。另外覆盖：
+  - 冻结结果与块视图；
+  - 同布局的另一份字节被拒绝；
+  - 全部失败的 DTO 可结构化克隆且冻结，不含块内标记与非法小写标签。
+- **变异检查：** 以下改动都使测试失败，恢复后全部通过：
+  - 重叠距离判定由 `< 4` 改为 `< 1`；
+  - 去掉第一个保留字检查；
+  - 重叠时报告前一个序号。
+- **本地快速核对：** `nob-list` 对 7 个安装目录的 NOB 退出码为 0，`nob-check` 对 7 个文件均为 0 失败。只看结论，正式证据在 09。
+- **检查：**
+  - `pnpm exec vitest run src/original-data`：13 个文件、512 个测试通过；
+  - `pnpm check`：80 个测试文件 2,156 个测试与构建通过；eslint 通过。
+- **Rubber-duck（无阻塞问题）：** 采纳三项：
+  - 条目绑定到所解析的字节；
+  - 增加多错误样本固定报错顺序；
+  - 位置只接受 `DiscPath | null`。
+- **Simplify：**
+  - 采纳：类型标签检查复用 `matchesWhole`；错误模块移到根目录；所有权改为以字节为键的 `WeakMap`，条目不会让整份封包常驻；重叠检查改用 `Float64Array` 的原生数值排序；收窄 test-support 的导出，去掉别名，4,096 条目只构建一次，增加失败 helper。
+  - 未采纳：与 `DiscReadError` 抽公共基类（需要修改 P2-02 代码）；复用 disc 的异步测试 helper；延迟构建 4 MiB 样本（只影响测试内存）；把辅助函数改为绑定方法（会改变工具接口）。
+- **文档影响：** 更新[源码结构](../../../../engineering/source-structure.md#封包读取)的目录树与“封包读取”一节。[工具指南](../../../../guides/tools.md)中 `nob-list`/`nob-check` 的描述仍然准确，工程约定无受影响规则。
+

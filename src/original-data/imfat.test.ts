@@ -1,43 +1,72 @@
 import { describe, expect, it } from 'vitest';
-import { entryData, entryRelocations, ImfatError, parseImfat } from './imfat.ts';
-import { buildImfat, ByteWriter } from './synthetic.ts';
+import { ARCHIVE_SAMPLES, BASE_ARCHIVE, BASE_ENTRIES, BLOCK_MARKER, type SampleFailure } from './archive/archive.test-support.ts';
+import { SourceError } from './source-error.ts';
+import { entryData, entryRelocations, parseImfat } from './imfat.ts';
 
-describe('parseImfat', () => {
-  const archive = buildImfat(5000, [
-    { id: 5001, type: 'TEX', data: new ByteWriter().u32(8, 0, 0).toBytes(), relocations: [0] },
-    { id: 5003, type: 'MODL', flags: 0x10, data: Uint8Array.of(1, 2, 3, 4, 5, 6) },
-  ]);
+function caught(action: () => unknown): SourceError {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(SourceError);
+    return error as SourceError;
+  }
+  throw new Error('expected a SourceError');
+}
 
-  it('reads the header and directory', () => {
-    const parsed = parseImfat(archive);
-    expect(parsed.version).toBe(1);
-    expect(parsed.idBase).toBe(5000);
-    expect(parsed.dataStart).toBe(0x18 + 2 * 36);
-    expect(parsed.entries.map((e) => [e.id, e.type, e.flags, e.size, e.relocationCount])).toEqual([
-      [5001, 'TEX', 0, 12, 1],
-      [5003, 'MODL', 0x10, 6, 0],
-    ]);
+const diagnostic = ({ code, at, limit }: SampleFailure) => ({ code, location: `archive${at}`, limit });
+const data = (error: SourceError) => {
+  const { code, location, limit } = error.toData();
+  return { code, location, limit };
+};
+
+describe('parseImfat and entryRelocations', () => {
+  it.each(ARCHIVE_SAMPLES.map(sample => [sample.name, sample] as const))('%s', (_, sample) => {
+    if ('failure' in sample.open) {
+      expect(data(caught(() => parseImfat(sample.bytes)))).toEqual(diagnostic(sample.open.failure));
+      return;
+    }
+    const archive = parseImfat(sample.bytes);
+    expect(archive.entries).toEqual(sample.open.entries);
+    for (const read of sample.reads) {
+      const entry = archive.entries.find(({ id }) => id === read.id)!;
+      if (read.failure) expect(data(caught(() => entryRelocations(sample.bytes, entry)))).toEqual(diagnostic(read.failure));
+      else expect(entryRelocations(sample.bytes, entry)).toEqual(read.relocations);
+    }
   });
 
-  it('returns entry data and relocation positions', () => {
-    const [tex, modl] = parseImfat(archive).entries;
-    expect(Array.from(entryData(archive, modl))).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(entryRelocations(archive, tex)).toEqual([0]);
+  it('returns the header, frozen entries and block views', () => {
+    const archive = parseImfat(BASE_ARCHIVE);
+    expect([archive.version, archive.idBase, archive.dataStart]).toEqual([1, 10_000, 24 + BASE_ENTRIES.length * 36]);
+    expect(Object.isFrozen(archive) && Object.isFrozen(archive.entries) && archive.entries.every(Object.isFrozen)).toBe(true);
+    archive.entries.forEach((entry, index) => expect(entryData(BASE_ARCHIVE, entry)).toEqual(BASE_ENTRIES[index].data));
+    expect(Object.isFrozen(entryRelocations(BASE_ARCHIVE, archive.entries[1]))).toBe(true);
   });
 
-  it('rejects a missing magic', () => {
-    const bad = archive.slice();
-    bad[0] = 0;
-    expect(() => parseImfat(bad)).toThrow(ImfatError);
+  it('rejects an entry parsed from other bytes, even with the same layout', () => {
+    const { entries } = parseImfat(BASE_ARCHIVE);
+    const [entry] = entries;
+    const twin = BASE_ARCHIVE.slice();
+    expect(parseImfat(twin).entries).toEqual(entries);
+    for (const bytes of [twin, BASE_ARCHIVE.subarray(0, entry.offset + entry.size)]) {
+      const rejected = { code: 'invalid-request', location: 'request.entry', limit: null };
+      expect(data(caught(() => entryData(bytes, entry)))).toEqual(rejected);
+      expect(data(caught(() => entryRelocations(bytes, entry)))).toEqual(rejected);
+    }
   });
 
-  it('rejects an entry that extends past the file', () => {
-    expect(() => parseImfat(archive.subarray(0, archive.length - 1))).toThrow(/out of bounds/);
-  });
-
-  it('rejects a relocation outside its block', () => {
-    const bad = buildImfat(1, [{ id: 2, type: 'TEX', data: new Uint8Array(4), relocations: [2] }]);
-    const [entry] = parseImfat(bad).entries;
-    expect(() => entryRelocations(bad, entry)).toThrow(/outside the block/);
+  it('keeps diagnostics free of bytes and raw type tags', () => {
+    const errors = ARCHIVE_SAMPLES.flatMap(sample => {
+      if ('failure' in sample.open) return [caught(() => parseImfat(sample.bytes))];
+      const { entries } = parseImfat(sample.bytes);
+      return sample.reads.filter(read => read.failure)
+        .map(read => caught(() => entryRelocations(sample.bytes, entries.find(({ id }) => id === read.id)!)));
+    });
+    for (const error of errors) {
+      const dto = error.toData();
+      expect(structuredClone(dto)).toEqual(dto);
+      expect(Object.isFrozen(dto)).toBe(true);
+      expect(JSON.stringify(dto)).not.toMatch(/PRIV|priv|BLOCK-MARKER/);
+      expect(error.message).not.toContain(BLOCK_MARKER);
+    }
   });
 });

@@ -63,6 +63,7 @@ src/
     imfat.ts
     payloads.ts
     source-mapping.ts
+    source-error.ts
     synthetic.ts
     io/
       byte-source.ts
@@ -77,6 +78,8 @@ src/
       iso9660-directory.ts
       file-range.ts
       disc-image.ts
+    archive/
+      imfat-rules.ts
   platform/
     browser/
       browser-session-host.ts
@@ -190,6 +193,19 @@ src/
 - **测试数据：** 合成 CloneCD 描述、原始扇区、卷描述符与目录由 [synthetic.ts](../../src/original-data/synthetic.ts) 生成，按需生成扇区的镜像端口不分配整盘；光盘测试共用的纯辅助在 [disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts)。
 
 针对性检查为 `pnpm exec vitest run src/original-data src/platform/files tools/engineering-boundaries.test.ts`。
+
+### 封包读取
+
+[P2-03](../plan/p2/03/spec.md) 校验 IMFAT（`.NOB`）封包。支持的格式、限值、错误码与报错优先级以 spec 为准，格式事实见 [imfat](../original/formats/imfat.md)：
+
+- **结构规则：** [archive/imfat-rules.ts](../../src/original-data/archive/imfat-rules.ts) 是内存解析与按需读取共用的纯规则：
+  - `readImfatHeader` 校验文件头，条目数超过 `MAX_ARCHIVE_ENTRIES`（4,096）时在读取目录前拒绝；
+  - `readImfatDirectory` 校验整个目录：保留字、类型标签、递增 ID、块大小（`MAX_ENTRY_BYTES`，4 MiB）、重定位个数，以及无空隙、无尾随字节的连续布局；
+  - `readImfatRelocations` 校验条目的重定位位置与存储的指针，允许非对齐与无序位置，拒绝重叠。
+  - 目录项类型 `ImfatEntry` 定义在这里，[imfat.ts](../../src/original-data/imfat.ts) 原样再导出。
+- **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上。
+- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。
+- **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。
 
 ## 职责与依赖
 
