@@ -103,7 +103,7 @@ updated: 2026-10-05
 |---|---|---|
 | [01-import-protocol.md](./subtasks/01-import-protocol.md) | — | completed |
 | [02-worker-host.md](./subtasks/02-worker-host.md) | 01 | completed |
-| [03-import-job.md](./subtasks/03-import-job.md) | 02 | pending |
+| [03-import-job.md](./subtasks/03-import-job.md) | 02 | completed |
 | [04-job-owner-lifecycle.md](./subtasks/04-job-owner-lifecycle.md) | 01 | pending |
 | [05-group-results.md](./subtasks/05-group-results.md) | 04 | pending |
 | [06-browser-worker-adapter.md](./subtasks/06-browser-worker-adapter.md) | 04 | pending |

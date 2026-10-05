@@ -6,9 +6,8 @@ import type { ResourceGroup } from '../content/asset-contract.ts';
 import { syntheticGroup } from '../content/synthetic-content.test-support.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
 import { SourceError } from '../original-data/source-error.ts';
-import {
-  runImportHost, type ImportHostEndpoint, type ImportHostEvent, type ImportJob, type ImportReporter,
-} from './import-host.ts';
+import { runImportHost, type ImportHostEndpoint, type ImportJob, type ImportReporter } from './import-host.ts';
+import { FakeEndpoint } from './import-host.test-support.ts';
 import {
   IMPORT_PROTOCOL_VERSION, readImportWorkerMessage, type ImportFile, type ImportSourceIdentity, type ImportWorkerMessage,
 } from './import-protocol.ts';
@@ -18,50 +17,6 @@ const FINGERPRINT = `source:sha256:${'0123456789abcdef'.repeat(4)}`;
 const IDENTITY: ImportSourceIdentity = Object.freeze({ versionId: 'synthetic-disc', sourceFingerprint: FINGERPRINT as SourceFingerprint });
 const USAGE = Object.freeze({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: 42 });
 const INTERNAL_ERROR = { layer: 'import', code: 'internal-error', location: 'job', reason: 'the import job failed unexpectedly', limit: null };
-
-type HostEventType = Parameters<ImportHostEndpoint['addEventListener']>[0];
-
-class FakeEndpoint implements ImportHostEndpoint {
-  readonly log: string[] = [];
-  readonly posts: { readonly message: ImportWorkerMessage; readonly transfer: ArrayBuffer[] }[] = [];
-  readonly #listeners = new Map<HostEventType, ((event: ImportHostEvent) => void)[]>();
-
-  postMessage(message: ImportWorkerMessage, transfer: ArrayBuffer[]): void {
-    this.log.push(`post:${message.type}`);
-    this.posts.push({ message, transfer });
-  }
-
-  addEventListener(type: HostEventType, listener: (event: ImportHostEvent) => void): void {
-    this.log.push(`listen:${type}`);
-    this.#listeners.set(type, [...this.#listeners.get(type) ?? [], listener]);
-  }
-
-  close(): void {
-    this.log.push('close');
-  }
-
-  dispatch(type: HostEventType, data?: unknown): { prevented: boolean } {
-    const event = { data, prevented: false, preventDefault() { this.prevented = true; } };
-    for (const listener of this.#listeners.get(type) ?? []) listener(event);
-    return event;
-  }
-
-  get messages(): ImportWorkerMessage[] {
-    return this.posts.map(post => post.message);
-  }
-
-  /** Messages after `ready`, which the receiver must be able to read. */
-  get afterReady(): ImportWorkerMessage[] {
-    const [ready, ...rest] = this.messages;
-    expect(ready).toEqual({ type: 'ready', protocol: IMPORT_PROTOCOL_VERSION });
-    for (const message of rest) expect(readImportWorkerMessage(message).status).toBe('valid');
-    return rest;
-  }
-
-  get closes(): number {
-    return this.log.filter(entry => entry === 'close').length;
-  }
-}
 
 const file = (name: string): ImportFile => ({ name, blob: new Blob([MARKER]) });
 const start = (overrides: Record<string, unknown> = {}) =>
