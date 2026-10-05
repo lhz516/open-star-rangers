@@ -79,7 +79,7 @@ updated: 2026-10-04
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-port-guarded-reader.md](./subtasks/01-port-guarded-reader.md) | — | pending |
+| [01-port-guarded-reader.md](./subtasks/01-port-guarded-reader.md) | — | completed |
 | [02-clonecd-file-set.md](./subtasks/02-clonecd-file-set.md) | 01 | pending |
 | [03-sector-volume.md](./subtasks/03-sector-volume.md) | 01, 02 | pending |
 | [04-directory-path.md](./subtasks/04-directory-path.md) | 03 | pending |

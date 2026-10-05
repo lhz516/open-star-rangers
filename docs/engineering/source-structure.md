@@ -64,6 +64,11 @@ src/
     payloads.ts
     source-mapping.ts
     synthetic.ts
+    io/
+      byte-source.ts
+    disc/
+      disc-error.ts
+      source-reader.ts
   platform/
     browser/
       browser-session-host.ts

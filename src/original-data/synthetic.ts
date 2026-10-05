@@ -1,5 +1,51 @@
 // Builders for synthetic test data in the original formats. Test-only; never reads original files.
 
+import type { ByteSource } from './io/byte-source.ts';
+
+export interface SourceRequest {
+  readonly offset: number;
+  readonly length: number;
+}
+
+/**
+ * A byte port double that records every request in order and answers with `respond`, which may return bytes, any other
+ * value or a promise, or throw. This models in-memory, generated, slow and contract-breaking ports.
+ */
+export class SyntheticByteSource implements ByteSource {
+  readonly byteLength: number;
+  readonly requests: SourceRequest[] = [];
+  readonly #respond: (offset: number, length: number) => unknown;
+
+  constructor(byteLength: number, respond: (offset: number, length: number) => unknown) {
+    this.byteLength = byteLength;
+    this.#respond = respond;
+  }
+
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    this.requests.push(Object.freeze({ offset, length }));
+    return this.#respond(offset, length) as Uint8Array;
+  }
+}
+
+/** A port over in-memory bytes; each read returns a fresh copy. */
+export function memoryByteSource(bytes: Uint8Array): SyntheticByteSource {
+  return new SyntheticByteSource(bytes.length, (offset, length) => bytes.slice(offset, offset + length));
+}
+
+export interface PendingRead extends SourceRequest {
+  resolve(value: unknown): void;
+  reject(reason: unknown): void;
+}
+
+/** A port whose reads stay pending until the test settles them, to replay overlapping reads and cancellation mid-wait. */
+export function deferredByteSource(byteLength: number): { source: SyntheticByteSource; pending: PendingRead[] } {
+  const pending: PendingRead[] = [];
+  const source = new SyntheticByteSource(byteLength, (offset, length) => new Promise((resolve, reject) => {
+    pending.push({ offset, length, resolve, reject });
+  }));
+  return { source, pending };
+}
+
 export class ByteWriter {
   private bytes: number[] = [];
 
