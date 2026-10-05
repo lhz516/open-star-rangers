@@ -286,6 +286,7 @@ describe('error code grammar', () => {
     'missing-budget-dimension': true, 'unknown-budget-dimension': true, 'invalid-budget-value': true,
     'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true,
     'invalid-graphics-payload': true, 'unsupported-payload-schema': true, 'binding-mismatch': true,
+    'palette-index-out-of-range': true, 'unmapped-character': true,
   };
   const limitNames: Record<DiscLimitName | SourceLimitName | BudgetDimension, true> = {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,

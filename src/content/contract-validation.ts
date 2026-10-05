@@ -29,7 +29,9 @@ export type ContentContractErrorCode =
   | 'payload-detached'
   | 'invalid-graphics-payload'
   | 'unsupported-payload-schema'
-  | 'binding-mismatch';
+  | 'binding-mismatch'
+  | 'palette-index-out-of-range'
+  | 'unmapped-character';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

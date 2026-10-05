@@ -68,6 +68,8 @@ src/
       image-payload.ts
       font-payload.ts
       graphics-binding.ts
+      expand-image.ts
+      glyph-lookup.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -211,6 +213,10 @@ src/
 - **编码：** `encodePalettePayload`、`encodeImagePayload`、`encodeFontPayload` 校验字段后写入一个独占整个 `ArrayBuffer` 的新缓冲（可直接交给 `payloadTransferList`），同一输入得到同样的字节与 SHA-256；不改动调用者的数组。
 - **读取：** `readPalettePayload`、`readImagePayload`、`readFontPayload` 接受 `(bytes, schemaVersion, path)`，返回带 `kind` 的冻结数据，其中的数组是调用者独占的新副本。schema 不是 1 为 `unsupported-payload-schema`；长度不符（截断或尾随字节）、字段越界、未知的 alpha/display 值、非法或非调色板 ID、非零填充位、透明像素的非零索引、映射乱序或重复为 `invalid-graphics-payload`；已转移的字节为 `payload-detached`。`maskStride` 与 `isOpaque` 按上述掩码约定取每行字节数与单个像素的不透明性。
 - **绑定：** [graphics-binding.ts](../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes` 给出图像引用的调色板 ID（去重后升序：direct 为 `{palette}`，nearest 为 `{palette, target}`；调色板与字体没有）。`checkGraphicsBinding(descriptor, payload)` 要求描述符的 kind 与 payload 一致，依赖恰好等于这些调色板且 kind 都是 `palette`，否则报 `binding-mismatch`。
+
+- **展开：** [expand-image.ts](../../src/content/graphics/expand-image.ts) 的 `expandImage(image, palettes)` 是项目中唯一的调色板查找。`palettes` 按 Asset ID 提供，必须恰好是图像引用的调色板，否则报 `binding-mismatch@palettes`。结果为冻结的 `{ width, height, rgba }`，`rgba` 是调用者独占的新缓冲，非预乘：不透明像素为显示颜色、alpha 255，透明像素为 (0, 0, 0, 0)。direct 直接查图像的调色板；nearest 先把源调色板逐项映射到目标调色板再查表，因此不透明像素的颜色都属于目标调色板。不透明像素的索引不小于源调色板条目数时报 `palette-index-out-of-range@<path>.indices`，透明像素的索引不参与。展开结果不进入 payload 或缓存。
+- **最近色：** 同文件的 `nearestColourMap(source, target)` 对源调色板的每一项取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等取较小索引。这是**暂定的项目规则**：原版的度量与并列规则尚无证据（[U-028](../original/unknowns.md#数据与格式)，研究见 [P2-05/11](../plan/p2/05/subtasks/11-nearest-colour-research.md)），合成测试只验证这个算法，不是保真证据。研究工具与后续 Renderer 复用它，不另写颜色逻辑。
+- **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。
 
