@@ -46,20 +46,20 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-09（正向）：`declared`、指纹为 null 的合成表经核验后得到新表：
+- [x] AC-09（正向）：`declared`、指纹为 null 的合成表经核验后得到新表：
   - 指纹为本来源的指纹；
   - 条目级映射为 `verified`，含子资源的映射为 `declared`；
   - 新表能通过 `readSourceMappingTable`，`assetSourceStates` 给出相应状态；
   - 精确等价且字节相同的备选通过。
-- [ ] AC-09（负向）：下列情况都返回预期 code，位置为 locator 的结构路径或 `sources.sourceFingerprint`：
+- [x] AC-09（负向）：下列情况都返回预期 code，位置为 locator 的结构路径或 `sources.sourceFingerprint`：
   - 路径不在覆盖范围内；封包无法打开（保留封包错误的 code）；
   - 条目不存在（含大于 u32 的 ID）；类型不符；重定位无效；
   - 备选的 `flags`、`size`、重定位个数、块字节、重定位位置之一不同；
   - 表已绑定另一指纹。
 
   另外：类型不同的备选由 P2-01 读取器以 `invalid-source-mapping` 拒绝；光盘层错误以同一实例传递。
-- [ ] AC-10（映射部分）：不返回部分表，输入表不变；在 locator 与条目字节中植入的标记不出现在诊断中。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-10（映射部分）：不返回部分表，输入表不变；在 locator 与条目字节中植入的标记不出现在诊断中。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -67,3 +67,36 @@ updated: 2026-10-05
 - 不适用 browser-testing 或原版对照。
 
 ## 完成证据
+
+- **实现：** [verify-source-mappings.ts](../../../../../src/original-data/source/verify-source-mappings.ts) 的 `verifySourceMappings(table, source)`：
+  - **读取与指纹：** 先用 `readSourceMappingTable`（P2-01 错误原样传递）；表级指纹不为 null 且不同于本来源时，在打开任何封包之前，于 `sources.sourceFingerprint` 报 `fingerprint-mismatch`。
+  - **逐个 locator：** 按映射、部件、备选的顺序处理，依次检查：路径在覆盖范围内、封包能打开（一次核验中每个封包只打开一次）、大于 u32 的 ID 报 `entry-not-found`、`read(id, type)` 核对存在、类型与重定位。
+  - **错误位置：** 本任务产生的错误改用 locator 的结构路径重新发出，code、reason 与 limit 不变；`DiscReadError` 原样传递。
+  - **备选等价：** 与第 0 个备选逐项比较 `flags`、大小、重定位个数、块字节与重定位位置，否则报 `alternatives-differ`。
+  - **输出：** 经 `readSourceMappingTable` 再次读取，得到冻结的新表；含子资源的映射一律为 `declared`。
+- **测试：** [verify-source-mappings.test.ts](../../../../../src/original-data/source/verify-source-mappings.test.ts) 的合成光盘包含两个封包（含精确别名与只差一项的近似条目）、一个坏封包、一个重定位无效的封包、一个覆盖范围外的文件，以及用于提高默认预算的未读填充文件。覆盖：
+  - **AC-09 正向：** 多备选跨封包的精确别名、多部件的映射与 MESH 模型映射变为 `verified`，含子资源的调色板映射保持 `declared`；输出能通过 `readSourceMappingTable` 且冻结，`assetSourceStates` 依次为 verified、verified、verified、unverified；输入不变；把输出再次核验通过。
+  - **AC-09 负向：** 下列情况都在 locator 的结构路径返回预期 code，且输入不变：
+    - 覆盖范围外、坏封包、条目不存在、ID 大于 u32、类型不符、重定位无效；
+    - 覆盖范围外或坏封包与 ID 大于 u32 同时出现时，先报前者；
+    - `flags`、字节、大小、重定位个数、重定位位置各自不同。
+
+    另外：
+    - 指纹不符时不打开任何封包；
+    - 注入的 `limit-exceeded` 改到 locator 路径后，code、reason 与 limit 完整保留；
+    - 类型不同的备选与缺字段的表由 P2-01 分别以 `invalid-source-mapping`、`invalid-record` 拒绝；
+    - 注入的 `DiscReadError` 以同一实例传递。
+  - **AC-10：** 所有诊断可结构化克隆，不含光盘路径、entry ID、`2^32` 或条目字节中的标记。
+- **变异检查：** 不比较 `flags`、把含子资源的映射标为 `verified`，都使测试失败。
+- **检查：**
+  - `pnpm exec vitest run src/original-data/source`：111 个测试通过；
+  - `pnpm check`：85 个测试文件 2,299 个测试与构建通过。
+- **Rubber-duck：** 采纳一项阻塞意见：ID 大于 u32 的判定移到封包打开之后，并增加两组同时出错的用例。另采纳两项：保留 limit 的回归，以及指纹不符先于任何读取的回归。
+- **Simplify：**
+  - 采纳：复用 `block` 构建器；封包缓存直接存句柄；按元素提前退出的比较。
+  - 未采纳：
+    - 抽取共享的映射与失败测试辅助（不同模块，投影方式不同）；
+    - 跨部件缓存条目字节（与“不跨部件保留字节”冲突）；
+    - 直接冻结输出（经读取器再次读取可以证明满足 P2-01 契约）。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#版本识别与已验证来源)补充映射核验，“原版来源映射”一节写明 `verified` 的产生方式，并更新目录树。工程约定与工具指南无受影响内容。
+
