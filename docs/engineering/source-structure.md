@@ -269,8 +269,8 @@ src/
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
   - `IMPORT_PROTOCOL_VERSION` 为 1。阶段集合 `IMPORT_STAGES` 目前只有 `identify-source`。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
-  - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，拒绝未知或缺少的字段、accessor 与类实例，返回冻结的副本。`start` 的文件只保留 Blob 引用，不读取内容。
-  - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。内部值原样交给接收方，由 `validateGroup` 验证。
+  - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
+  - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
     - 主线程方向为 `protocol-error`，位置以 `message` 为根；
     - Worker 方向为 `invalid-request`，位置以 `request` 为根，并附上能读出的作业 ID，读不出时为 null。
@@ -330,7 +330,7 @@ src/
     - `group-complete` 连同 payload 保留，摘要的 `assets` 为描述符个数；`incomplete`（含清单无法读取、来源状态集格式错误或多余字段）只保留 P2-01 诊断，`assets` 为 null，不再引用其 payload。
 
     `finished.groups` 须与收到的组完全一致（顺序与集合），否则报 `protocol-error@message.groups`。快照的 `groups` 只含摘要 `{ group, status, assets, diagnostics }`，没有 payload 字节。
-  - **移交：** `takeGroups()` 只在 `finished` 之后返回一次完整的组 `{ group, manifest, payloads, sources }`（按收到顺序），容器全部冻结，payload 视图从此归调用者独占。再次调用、开始新作业或释放之后，以及其他状态，都返回 null。作业以任何方式结束时都释放它保留的 payload 引用：完成时结果移入一个新的冻结列表，在端口终止之后与 `finished` 快照一起发布；失败、取消与释放丢弃全部已收结果。
+  - **移交：** `takeGroups()` 只在 `finished` 之后返回一次完整的组 `{ group, manifest, payloads, sources }`（按收到顺序），容器全部冻结：内部容器在协议读取时已冻结，保留的条目在验证通过后立即冻结，移交列表在接受 `finished` 时冻结。payload 视图从此归调用者独占。再次调用、开始新作业或释放之后，以及其他状态，都返回 null。作业以任何方式结束时都释放它保留的 payload 引用：完成时结果移入一个新的冻结列表，在端口终止之后与 `finished` 快照一起发布；失败、取消与释放丢弃全部已收结果。
   - **终态与隔离：** 结束、失败、取消与释放都先终止端口，每个作业恰好一次。工厂返回之前送达的回调先排队，发布 `starting` 后按序处理；作业结束之后的回调都被丢弃，所以旧作业的迟到消息不会影响新作业。
   - **命令与快照：** `cancel()` 只对 `starting`、`running` 生效，同步变为 `cancelled`。`dispose()` 可重复调用：终止活动端口、丢弃结果、清空订阅，之后的命令返回 `disposed`、false 或 null，快照不再变化。快照冻结，在两次变化之间保持同一对象；`failed` 与 `cancelled` 不含来源身份与组。订阅者同步收到通知，抛出的错误交给 `reportError`，不影响其他订阅者与状态；通知过程中被移除（包括因释放）的订阅者不再收到这次通知。
 

@@ -17,7 +17,7 @@ updated: 2026-10-05
 
 - **新增 `src/app/import/import-worker-port.ts`（app 定义的端口）：**
   - 工厂接收三个回调（收到消息、`messageerror`、`error`）并返回端口；
-  - `post(message, transfer?)` 可能同步抛错；
+  - `post(message)` 可能同步抛错（持有者只发送 `start`，不带转移列表）；
   - `terminate()` 先移除监听再终止，可重复调用；
   - 终止之后，回调不再被调用。
 - **新增 `src/app/import/import-job-owner.ts`：** 用端口工厂创建持有者。
@@ -130,4 +130,4 @@ updated: 2026-10-05
     - 每条消息的闭包：相对消息反序列化可忽略；
     - 精简文档：与同文档粒度一致。
 - **文档影响：** [源码结构](../../../../engineering/source-structure.md)的目录树加入 `app/import/`，“导入 Worker”一节新增 Worker 端口与作业持有者。工程约定没有需要更新的规则或命令；STATUS 不变。
-
+- **计划更正（2026-10-05，[13](./13-freeze-group-input.md)）：** 工作范围中的 `post(message, transfer?)` 改为与 spec 和实现一致的 `post(message)`。

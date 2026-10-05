@@ -112,13 +112,19 @@ updated: 2026-10-05
 | [09-browser-worker-paths.md](./subtasks/09-browser-worker-paths.md) | 06, 07 | completed |
 | [10-browser-lifecycle-failures.md](./subtasks/10-browser-lifecycle-failures.md) | 09 | completed |
 | [11-local-base-check.md](./subtasks/11-local-base-check.md) | 07 | completed |
-| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11 | pending |
+| [13-freeze-group-input.md](./subtasks/13-freeze-group-input.md) | 01, 05 | completed |
+| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
 
 - **2026-10-05 — 02 的计划与 spec 对齐：** 02 的工作范围原写宿主把端点的 `error` 事件也报为 `internal-error`。这与 spec 不一致：错误码表把 `internal-error` 限于作业中的异常与未处理拒绝，把 `ready` 之后 Worker 报告的 `error` 归为主线程的 `worker-failed`，AC-10 也要求异步未捕获错误报 `worker-failed`。若宿主同时处理 `error`，两条失败路径会竞争。已按 spec 修订 02 的工作范围：宿主只监听 `unhandledrejection`，不监听 `error`；验收标准本来就与 spec 一致，没有变化。
+
+- **2026-10-05 — 最终对齐第一次未通过：** 覆盖审计发现 S-01/AC-01 要求“校验结果冻结”，但协议读取 `group` 消息时只冻结了 `input` 外层，收到的 `manifest`、`payloads`、`sources` 仍可修改；协议测试把它们排除在冻结检查之外，属于代理证据。另有 04、06 工作范围中的端口签名写有 `transfer`，与 spec 和实现不符。
+  Evidence: [12 的完成证据](./subtasks/12-final-alignment.md#完成证据)。
+  Affected acceptance: S-01、AC-01、S-12/AC-13 的文档一致性。
+  Resume when: 补救子任务 13 完成后重新执行 12。
 
 ## 审批
 

@@ -568,6 +568,18 @@ describe('group results', () => {
     expect(owner.takeGroups()).toBeNull();
   });
 
+  it('keeps a validated group immutable from receipt to handoff', () => {
+    const { owner, port } = running();
+    const audio = bound('audio');
+    port.send(identified(1), sent(2, 'audio', audio));
+    expect(() => { (audio.manifest as { group: string }).group = 'models'; }).toThrow(TypeError);
+    expect(() => { audio.payloads.pop(); }).toThrow(TypeError);
+    expect(() => { audio.payloads[0].bytes = new Uint8Array(1); }).toThrow(TypeError);
+    expect(() => { audio.sources!.states.push({ id: 'sound/x', state: 'verified', unknowns: [] }); }).toThrow(TypeError);
+    port.send(finish(3, ['audio']));
+    expect(owner.takeGroups()).toEqual([{ group: 'audio', ...bound('audio') }]);
+  });
+
   it('freezes every container it hands over, even below one that arrived frozen', () => {
     const { owner, port } = running();
     const audio = bound('audio');

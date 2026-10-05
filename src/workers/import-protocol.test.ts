@@ -30,10 +30,10 @@ const file = (name = 'GAME.CCD'): Sample => ({ name, blob: new Blob([MARKER]) })
 const start = (overrides: Sample = {}): Sample =>
   ({ type: 'start', protocol: IMPORT_PROTOCOL_VERSION, jobId: 3, files: [file(), file('GAME.IMG')], ...overrides });
 
-// Group input values are the received references by design (see the group input test), so callers can exempt them.
-function isDeepFrozen(value: unknown, received: readonly unknown[] = []): boolean {
-  if (typeof value !== 'object' || value === null || value instanceof Blob || received.includes(value)) return true;
-  return Object.isFrozen(value) && Object.values(value).every(item => isDeepFrozen(item, received));
+/** Whether every container is frozen; Blobs and payload views cannot be frozen and are exempt. */
+function isDeepFrozen(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || value instanceof Blob || ArrayBuffer.isView(value)) return true;
+  return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen);
 }
 
 function rejection(read: { readonly status: string; readonly error?: unknown }): string {
@@ -83,7 +83,7 @@ describe('Worker messages', () => {
   ])('reads a valid %s message as a frozen copy', (_, sample) => {
     const read = readImportWorkerMessage(sample);
     expect(read).toEqual({ status: 'valid', message: sample });
-    expect(isDeepFrozen(read, sample.type === 'group' ? Object.values(sample.input as Sample) : [])).toBe(true);
+    expect(isDeepFrozen(read)).toBe(true);
   });
 
   it('copies every field it checks, so later changes to the received value do not reach the result', () => {
@@ -94,16 +94,36 @@ describe('Worker messages', () => {
     expect(read.status === 'valid' && read.message).toEqual(finished());
   });
 
-  it('keeps the received group input values for the receiver to validate, without deep copies', () => {
-    const sample = group({ input: input({ manifest: { extra: MARKER }, sources: { sourceFingerprint: 'not-a-fingerprint', extra: 1 } }) });
-    const read = readImportWorkerMessage(sample);
+  it('freezes the received group input in place for the receiver to validate, without copying it', () => {
+    const bytes = Uint8Array.of(1, 2, 3);
+    const states = [{ id: 'sound/a', state: 'verified', unknowns: [] }];
+    // A shallow-frozen container still gets its contents frozen.
+    const manifest = Object.freeze({ identity: { origin: { type: 'synthetic' } }, assets: [{ dependencies: [{ id: 'x' }] }] });
+    const payloads = [{ id: 'sound/a', schemaVersion: 1, bytes }];
+    const sources = { sourceFingerprint: FINGERPRINT, states, extra: { nested: [MARKER] } };
+    const read = readImportWorkerMessage(group({ input: { manifest, payloads, sources } }));
     if (read.status !== 'valid' || read.message.type !== 'group') throw new Error('expected a group message');
-    const received = sample.input as Sample;
-    expect(read.message.input).not.toBe(received);
-    expect(read.message.input.manifest).toBe(received.manifest);
-    expect(read.message.input.payloads).toBe(received.payloads);
-    expect(read.message.input.sources).toBe(received.sources);
-    expect(Object.isFrozen(read.message.input)).toBe(true);
+    expect(read.message.input).toEqual({ manifest, payloads, sources });
+    expect([read.message.input.manifest, read.message.input.payloads, read.message.input.sources]).toEqual([manifest, payloads, sources]);
+    expect(read.message.input.payloads).toBe(payloads);
+    expect(isDeepFrozen(read)).toBe(true);
+    expect([manifest.assets[0].dependencies, payloads[0], states, states[0].unknowns, sources.extra.nested].every(Object.isFrozen)).toBe(true);
+    // Payload bytes are neither copied nor frozen, and stay readable.
+    expect(payloads[0].bytes).toBe(bytes);
+    expect([...bytes]).toEqual([1, 2, 3]);
+  });
+
+  it('freezes received input without running accessors, entering cycles or freezing other objects', () => {
+    let getterRuns = 0;
+    const manifest: Record<string, unknown> = Object.defineProperty({}, 'computed', { enumerable: true, get: () => { getterRuns++; return 1; } });
+    manifest.self = manifest;
+    const blob = new Blob(['x']);
+    const map = new Map([['key', { value: 1 }]]);
+    const read = readImportWorkerMessage(group({ input: input({ manifest, payloads: [{ blob, map }] }) }));
+    expect(read.status).toBe('valid');
+    expect(getterRuns).toBe(0);
+    expect(Object.isFrozen(manifest)).toBe(true);
+    expect([Object.isFrozen(blob), Object.isFrozen(map)]).toEqual([false, false]);
   });
 
   it('normalizes a negative zero byte count', () => {

@@ -94,8 +94,8 @@ export interface ImportIdentifiedMessage extends JobMessage {
 }
 
 /**
- * One raw resource group. Only the envelope is read here: the input values are the received ones, not deep copies, and
- * the receiver checks them with `validateGroup`.
+ * One raw resource group. Only the envelope is read here: the input values are the received ones, frozen in place
+ * rather than copied, and the receiver checks them with `validateGroup`.
  */
 export interface ImportGroupMessage extends JobMessage {
   readonly type: 'group';
@@ -203,12 +203,30 @@ function readIdentity(value: unknown, path: string): ImportSourceIdentity {
   return Object.freeze({ versionId, sourceFingerprint });
 }
 
+/**
+ * Freezes every plain record and array of a received value in place, without copying it. Payload views, Blobs and other
+ * objects stay as they are; only data properties are followed, so no accessor runs.
+ */
+function freezeReceived(value: unknown, seen: Set<object>): void {
+  if (typeof value !== 'object' || value === null || seen.has(value)) return;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return;
+  seen.add(value);
+  Object.freeze(value);
+  for (const key of Reflect.ownKeys(value)) {
+    const property = Object.getOwnPropertyDescriptor(value, key)!;
+    if ('value' in property) freezeReceived(property.value, seen);
+  }
+}
+
 function readGroupInput(value: unknown, path: string): GroupInput {
   const record = readRecord(value, path);
   requireFields(record, path, ['manifest', 'payloads', 'sources']);
   const sources = readRecord(record.sources, `${path}.sources`);
   if (typeof sources.sourceFingerprint !== 'string') reject(`${path}.sources.sourceFingerprint`, 'must be a string');
-  return Object.freeze({ manifest: record.manifest, payloads: record.payloads, sources: record.sources });
+  const input = Object.freeze({ manifest: record.manifest, payloads: record.payloads, sources: record.sources });
+  freezeReceived(input, new Set());
+  return input;
 }
 
 function readGroups(value: unknown, path: string): readonly ResourceGroup[] {

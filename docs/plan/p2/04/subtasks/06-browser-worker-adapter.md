@@ -16,7 +16,7 @@ updated: 2026-10-05
 ## 工作范围
 
 - **新增 `src/platform/workers/worker-port.ts`：** 不使用 DOM 类型。在最小的 Worker 形状上实现 04 的端口：
-  - Worker 形状为 `postMessage(message, transfer)`、`addEventListener`、`removeEventListener`、`terminate()`；
+  - Worker 形状为 `postMessage(message)`、`addEventListener`、`removeEventListener`、`terminate()`；
   - 注册 `message`、`messageerror`、`error` 三个监听；`message` 只把 `event.data` 交给持有者，另外两个只通知事件类型，不传事件对象、文本或文件名，并对 `error` 调用 `preventDefault()`；
   - `post` 原样传播同步异常；
   - `terminate()` 先移除自己注册的全部监听，再终止；可重复调用，终止后不再调用回调。
@@ -78,4 +78,4 @@ updated: 2026-10-05
     - 改用 Map 实现的假 Worker：本子任务要求基于 `EventTarget`，它也覆盖了真实的 `defaultPrevented` 语义；
     - 终止后释放 Worker 引用：作业结束后持有者丢弃作业，端口、Worker 与回调一起变得不可达。
 - **文档影响：** [源码结构](../../../../engineering/source-structure.md)的目录树加入 `platform/workers/`，“导入 Worker”一节新增平台适配，说明 `browser-*` 文件只由应用程序检查，以及 Worker 的 ES 输出与 P2-11 的接线归属。工程约定的 TypeScript 配置表仍然准确（`browser-*` 不被测试导入，因此不在 Node 程序中）；STATUS 不变。
-
+- **计划更正（2026-10-05，[13](./13-freeze-group-input.md)）：** 工作范围中的 `postMessage(message, transfer)` 改为与实现一致的 `postMessage(message)`：主线程只发送不带转移列表的 `start`。

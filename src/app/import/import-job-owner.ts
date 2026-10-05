@@ -94,15 +94,6 @@ const REPEATED_GROUP = importError('protocol-error', 'message.group', 'the group
 const OTHER_GROUP = importError('protocol-error', 'message.group', 'the group content declares another group');
 const OTHER_GROUPS = importError('protocol-error', 'message.groups', 'the finished groups differ from the groups received');
 
-/** Freezes every plain container of a received value, however deep; payload views cannot be frozen and stay as they are. */
-function freezeContainers<T>(value: T, seen = new Set<object>()): T {
-  if (typeof value === 'object' && value !== null && !ArrayBuffer.isView(value) && !seen.has(value)) {
-    seen.add(value);
-    Object.freeze(value);
-    for (const item of Object.values(value)) freezeContainers(item, seen);
-  }
-  return value;
-}
 
 /**
  * The `start` request for the files, or null when they break the start rules. The protocol reader checks it, so the
@@ -264,7 +255,8 @@ class Owner implements ImportJobOwner {
         if (groups.length !== job.groups.length || groups.some((group, index) => group !== job.groups[index].group)) {
           return this.#fail(job, OTHER_GROUPS);
         }
-        const results = freezeContainers([...job.kept]);
+        // The protocol reader froze the received containers; the handoff list and its entries are the owner's own.
+        const results = Object.freeze([...job.kept]);
         return this.#end(job, { status: 'finished', jobId: job.id, identity: job.identity, groups: job.groups, usage: message.usage }, results);
       }
       case 'failed':
@@ -302,7 +294,7 @@ class Owner implements ImportJobOwner {
     const summary: ImportGroupSummary = result.status === 'group-complete'
       ? { group, status: 'group-complete', assets: result.assets.length, diagnostics: NO_DIAGNOSTICS }
       : { group, status: 'incomplete', assets: null, diagnostics: result.diagnostics };
-    if (result.status === 'group-complete') job.kept.push({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources });
+    if (result.status === 'group-complete') job.kept.push(Object.freeze({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources }));
     job.groups = Object.freeze([...job.groups, Object.freeze(summary)]);
     this.#running(job);
   }
