@@ -88,7 +88,7 @@ updated: 2026-10-05
 | [01-cache-key-results.md](./subtasks/01-cache-key-results.md) | — | completed |
 | [02-cache-records.md](./subtasks/02-cache-records.md) | 01 | completed |
 | [03-browser-commit-restore.md](./subtasks/03-browser-commit-restore.md) | 02 | completed |
-| [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | blocked |
+| [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | completed |
 | [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | completed |
 | [06-integrity-concurrency.md](./subtasks/06-integrity-concurrency.md) | 03 | completed |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
@@ -102,6 +102,9 @@ updated: 2026-10-05
   - **已满足：** AC-06 的其余要求（真实配额错误、旧包保留、无新记录、重置后成功），以及基于真实 `estimate()` 的 `insufficient`，均已验证并提交，见 [04 完成证据](./subtasks/04-capacity-quota-cancel.md#完成证据)。
   - **受影响验收：** AC-06（spec）、04 的 AC-06 勾选项，以及依赖 04 的 07。
   - **恢复条件：** 用户决定 AC-06 中该子句的替代真实验证方式。spec 风险与恢复已约定由用户决定。推荐：改为“覆盖期间空间检查与 `estimate()` 一致；`insufficient` 由真实 `estimate()` 的快照验证”，即现有两个用例。修订须经 review-spec 与重新批准后再关闭 04。
+- **2026-10-05 — 子任务 04 阻塞解除：** 用户批准按推荐改写 AC-06，修订经 review-spec 审阅后重新批准，spec 恢复为 accepted。同次修订按用户选择更新了 AC-07 的验证方式，以如实描述 05 使用的只读 `count()` 保持。
+  - **04 的后续工作：** 审阅指出配额用例尚未断言覆盖期间完整的空间检查结果，04 据此补上该断言；04 的 AC-06 勾选项改为修订后的措辞，其余范围不变。
+  - **对 05 的影响：** 05 的完成证据已与修订后的 AC-07 一致，由 07 复核。
 
 ## 审批
 

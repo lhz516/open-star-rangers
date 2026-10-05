@@ -431,8 +431,18 @@ test('reports a real quota error from Chrome and keeps the old package', async (
     expect(overridden.usage).toBeLessThan(quotaSize);
     expect(quotaSize).toBeLessThan(need.requiredBytes);
     expect(quotaSize - overridden.usage).toBeLessThan(1 << 20);
-    // estimate() does not reflect the CDP override, so the advisory check matches estimate() and cannot see it.
-    expect(limited.capacity).toMatchObject({ requiredBytes: need.requiredBytes, usage: limited.estimate.usage, quota: limited.estimate.quota });
+    // estimate() does not reflect the CDP override, so the advisory check equals the result the spec formula derives
+    // from an independent estimate() reading, and cannot see the override.
+    const usage = limited.estimate.usage ?? 0;
+    const quota = limited.estimate.quota ?? 0;
+    const availableBytes = Math.max(0, quota - usage);
+    expect(limited.capacity).toEqual({
+      status: availableBytes >= need.requiredBytes ? 'sufficient' : 'insufficient',
+      requiredBytes: need.requiredBytes,
+      availableBytes,
+      usage,
+      quota,
+    });
     expect(limited.estimate.quota).toBeGreaterThan(quotaSize);
     expect(limited.status).toBe('quota-exceeded');
     expect(limited.abort).toEqual({ kind: 'abort', mode: 'readwrite', error: 'QuotaExceededError' });

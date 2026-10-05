@@ -44,7 +44,7 @@ updated: 2026-10-05
 
 - 按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 运行。删除、清除与版本 2 只在隔离 context 或测试自有 profile 中进行，不触碰用户 profile。
 - AC-09 证据记录 `blocked`、`versionchange` 事件，强制关闭时的 `close` 事件（适配器主动关闭不产生该事件），清除与事务事件的先后，以及数据库版本。
-- AC-07 使用足以让写事务跨越可观察时间窗口的合成 payload（经 `syntheticGroup` 的自定义字节构造），证据记录每次运行的中断时机与重开后的状态；结果不确定时重复运行并如实记录。
+- AC-07（按 2026-10-05 修订后的 spec）：先以大体量合成 payload（经 `syntheticGroup` 的自定义字节构造）按自然时序记录一次结果；另做一次确定的尝试：首个写请求发出后，由探针在同一事务上链式发出只读 `count()` 请求（`holdWrites`），使事务保持未提交，再关闭 context。证据记录每次运行的中断时机、是否启用保持以及重开后的状态。
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
