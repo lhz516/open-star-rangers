@@ -113,7 +113,7 @@ updated: 2026-10-05
 | [10-browser-lifecycle-failures.md](./subtasks/10-browser-lifecycle-failures.md) | 09 | completed |
 | [11-local-base-check.md](./subtasks/11-local-base-check.md) | 07 | completed |
 | [13-freeze-group-input.md](./subtasks/13-freeze-group-input.md) | 01, 05 | completed |
-| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | pending |
+| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -125,6 +125,7 @@ updated: 2026-10-05
   Evidence: [12 的完成证据](./subtasks/12-final-alignment.md#完成证据)。
   Affected acceptance: S-01、AC-01、S-12/AC-13 的文档一致性。
   Resume when: 补救子任务 13 完成后重新执行 12。
+- **2026-10-05 — 最终对齐第二次通过：** 13 完成后重新执行 12，独立复核确认 S-01、AC-01、S-12、AC-13 已满足，其余项无回归。全部检查通过，goal 完成。
 
 ## 审批
 
