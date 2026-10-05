@@ -59,6 +59,11 @@ export interface SliceDefinition {
   readonly configuration: SliceConfiguration;
   /** Every group must be complete before the whole slice is complete. */
   readonly groups: readonly ResourceGroup[];
+  /**
+   * Kinds each group owns, with their dependency closure. A dependency of a kind its group does not own
+   * is a typed cross-group requirement; one of an owned kind must be in the same group.
+   */
+  readonly groupKinds: Readonly<Record<ResourceGroup, readonly AssetKind[]>>;
   readonly roles: readonly SliceRoleRequirement[];
 }
 
@@ -84,6 +89,12 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   candidate: Object.freeze({ campaignGroup: 0, campaignSlot: 1 }),
   configuration: Object.freeze({ wingman: 'optional' }),
   groups: RESOURCE_GROUPS,
+  groupKinds: Object.freeze({
+    logic: Object.freeze(['mission', 'data'] as const),
+    models: Object.freeze(['model', 'image', 'palette'] as const),
+    'cockpit-hud-map': Object.freeze(['image', 'palette', 'font', 'layout'] as const),
+    audio: Object.freeze(['sound'] as const),
+  }),
   roles: Object.freeze([
     requirement('mission', 'logic', ['mission'], 1, 1),
     requirement('player-ship', 'models', ['model'], 1, 1),

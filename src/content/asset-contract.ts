@@ -1,6 +1,6 @@
 import { readAssetId, readAssetKind, type AssetId, type AssetKind } from './asset-id.ts';
 import { readPayloadIdentity, type PayloadIdentity } from './content-identity.ts';
-import { fail, matchesWhole, readArray, readRecord, requireFields } from './contract-validation.ts';
+import { compareText, fail, matchesWhole, readOrderedArray, readRecord, requireFields } from './contract-validation.ts';
 
 export const RESOURCE_GROUPS = Object.freeze(['logic', 'models', 'cockpit-hud-map', 'audio'] as const);
 export type ResourceGroup = typeof RESOURCE_GROUPS[number];
@@ -39,23 +39,15 @@ export function readAssetReference(value: unknown, path = 'reference'): AssetRef
   return readReferenceFields(record, path);
 }
 
+const DEPENDENCY_CODES = Object.freeze({ invalid: 'invalid-dependencies', duplicate: 'duplicate-dependency', order: 'dependency-order' } as const);
+
 function readDependencies(value: unknown, path: string): readonly AssetReference[] {
-  const seen = new Set<AssetId>();
-  let previous: AssetReference | undefined;
-  // Collection checks stay interleaved with element parsing so the first problem in index order wins.
-  return readArray(value, path, 'invalid-dependencies', (item, at) => {
-    const reference = readAssetReference(item, at);
-    if (seen.has(reference.id)) fail('duplicate-dependency', at, 'must not repeat a dependency ID');
-    if (previous && previous.id > reference.id) fail('dependency-order', at, 'must be in ascending ASCII Asset ID order');
-    seen.add(reference.id);
-    previous = reference;
-    return reference;
-  });
+  return readOrderedArray(value, path, DEPENDENCY_CODES, readAssetReference, reference => reference.id,
+    (left, right) => compareText(left.id, right.id));
 }
 
 /** Frozen metadata only: graph closure is subtask 04; binary ownership/transfer is subtask 05. */
-export function readAssetDescriptor(value: unknown): AssetDescriptor {
-  const path = 'asset';
+export function readAssetDescriptor(value: unknown, path = 'asset'): AssetDescriptor {
   const record = readRecord(value, path);
   requireFields(record, path, ['id', 'kind', 'role', 'group', 'dependencies', 'payloadIdentity']);
   const reference = readReferenceFields(record, path);

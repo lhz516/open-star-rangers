@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readAssetDescriptor, readAssetReference } from '../content/asset-contract.ts';
 import { ASSET_KINDS } from '../content/asset-id.ts';
-import { diagnoseSourceMappings, readSourceMappingTable, SOURCE_ENTRY_TYPES, type SourceMappingTable } from './source-mapping.ts';
+import { readSourceStateSet } from '../content/source-state.ts';
+import { assetSourceStates, diagnoseSourceMappings, readSourceMappingTable, SOURCE_ENTRY_TYPES, type SourceMappingTable } from './source-mapping.ts';
 
 // Synthetic locators only: structural shapes, not research claims about any original entry.
 const locator = (type: string, id: number, subresource: string | null = null) =>
@@ -156,6 +157,25 @@ describe('source mapping diagnostics', () => {
     unknowns.push('U-028');
     expect(diagnostic.unknowns).toEqual(['U-027']);
     expect(Object.isFrozen(diagnostic.unknowns)).toBe(true);
+  });
+
+  it('derives one locator-free state per mapped Asset, most severe first', () => {
+    const input = table();
+    input.mappings[1].parts[0].alternatives = [locator('SND', 40)];
+    Object.assign(input.mappings[1], { confidence: 'unconfirmed', unknowns: ['U-028'] });
+    Object.assign(input.mappings[3], { confidence: 'unconfirmed', unknowns: ['U-027'], resolution: 'declared' });
+    input.mappings[2].resolution = 'declared';
+    const states = assetSourceStates(readSourceMappingTable(input));
+    expect(states.sourceFingerprint).toBe('source:synthetic-disc');
+    expect(states.states).toEqual([
+      { id: 'image/synthetic-hull', state: 'verified', unknowns: [] },
+      { id: 'image/synthetic-hull-variant', state: 'conflict', unknowns: ['U-028'] },
+      { id: 'mission/synthetic-first', state: 'unverified', unknowns: [] },
+      { id: 'model/synthetic-ship', state: 'unconfirmed', unknowns: ['U-027'] },
+      { id: 'palette/synthetic-hull', state: 'verified', unknowns: ['U-028'] },
+    ]);
+    expect(readSourceStateSet(structuredClone(states))).toEqual(states);
+    expect(JSON.stringify(states)).not.toMatch(/discPath|entry|subresource|SYNTH/);
   });
 
   it('defines compatible archive entry types for every Asset kind', () => {

@@ -16,7 +16,11 @@ export type ContentContractErrorCode =
   | 'dependency-order'
   | 'invalid-source-mapping'
   | 'duplicate-mapping'
-  | 'mapping-order';
+  | 'mapping-order'
+  | 'duplicate-asset'
+  | 'asset-order'
+  | 'duplicate-payload'
+  | 'payload-order';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;
@@ -84,3 +88,39 @@ export function readArray<T>(
   }
   return Object.freeze(items);
 }
+
+export interface OrderedArrayCodes {
+  readonly invalid: ContentContractErrorCode;
+  readonly duplicate: ContentContractErrorCode;
+  readonly order: ContentContractErrorCode;
+}
+
+/**
+ * Reads a dense array whose items are unique by `key` and strictly ascending under `compare`.
+ * Checks run while each item is read, so the first problem in index order is reported.
+ */
+export function readOrderedArray<T>(
+  value: unknown,
+  path: string,
+  codes: OrderedArrayCodes,
+  readItem: (item: unknown, path: string) => T,
+  key: (item: T) => string,
+  compare: (left: T, right: T) => number,
+  minimum = 0,
+): readonly T[] {
+  const seen = new Set<string>();
+  let previous: { readonly item: T } | undefined;
+  const items = readArray(value, path, codes.invalid, (raw, at) => {
+    const item = readItem(raw, at);
+    const identity = key(item);
+    if (seen.has(identity)) fail(codes.duplicate, at, 'must not repeat an item');
+    if (previous && compare(previous.item, item) > 0) fail(codes.order, at, 'must be in canonical ascending order');
+    seen.add(identity);
+    previous = { item };
+    return item;
+  });
+  if (items.length < minimum) fail(codes.invalid, path, `must contain at least ${minimum} item(s)`);
+  return items;
+}
+
+export const compareText = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);

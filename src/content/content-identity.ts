@@ -77,8 +77,7 @@ export function readContentOrigin(value: unknown, path = 'origin'): ContentOrigi
 }
 
 /** No slice selection or manifest identity generation is performed here. */
-export function readContentIdentity(value: unknown): ContentIdentity {
-  const path = 'identity';
+export function readContentIdentity(value: unknown, path = 'identity'): ContentIdentity {
   const record = readRecord(value, path);
   requireFields(record, path, ['schemaVersion', 'sliceId', 'sliceDefinitionVersion', 'converterVersion', 'manifestIdentity', 'origin']);
   const schemaVersion = readVersion(record.schemaVersion, `${path}.schemaVersion`);

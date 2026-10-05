@@ -44,12 +44,26 @@ describe('classic-p2-slice definition', () => {
     expect(CLASSIC_P2_SLICE.groups).toEqual([...RESOURCE_GROUPS]);
   });
 
+  it('assigns each group its owned kinds and keeps every role inside its group', () => {
+    expect(CLASSIC_P2_SLICE.groupKinds).toEqual({
+      logic: ['mission', 'data'],
+      models: ['model', 'image', 'palette'],
+      'cockpit-hud-map': ['image', 'palette', 'font', 'layout'],
+      audio: ['sound'],
+    });
+    for (const { role, group, kinds } of CLASSIC_P2_SLICE.roles) {
+      expect(kinds.every(kind => CLASSIC_P2_SLICE.groupKinds[group].includes(kind)), role).toBe(true);
+    }
+  });
+
   it('is deeply frozen and independently structured-cloneable', () => {
     const containers = [
       CLASSIC_P2_SLICE,
       CLASSIC_P2_SLICE.candidate,
       CLASSIC_P2_SLICE.configuration,
       CLASSIC_P2_SLICE.groups,
+      CLASSIC_P2_SLICE.groupKinds,
+      ...Object.values(CLASSIC_P2_SLICE.groupKinds),
       CLASSIC_P2_SLICE.roles,
       ...CLASSIC_P2_SLICE.roles,
       ...CLASSIC_P2_SLICE.roles.map(requirement => requirement.kinds),

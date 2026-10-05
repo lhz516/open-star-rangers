@@ -1,7 +1,8 @@
 import { readAssetReference, type AssetReference } from '../content/asset-contract.ts';
 import type { AssetId, AssetKind } from '../content/asset-id.ts';
 import { readSourceFingerprint, type SourceFingerprint } from '../content/content-identity.ts';
-import { fail, matchesWhole, readArray, readRecord, requireFields } from '../content/contract-validation.ts';
+import { compareText, fail, matchesWhole, readOrderedArray, readRecord, requireFields } from '../content/contract-validation.ts';
+import { readUnknownIds, type SourceState, type SourceStateSet } from '../content/source-state.ts';
 import type { ImfatEntry } from './imfat.ts';
 
 /** Research confidence in a mapping; it is not proof that a payload was verified. */
@@ -106,7 +107,13 @@ function readLocator(value: unknown, path: string): OriginalAssetLocator {
   });
 }
 
-const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+// Sub-resources are never empty, so '' unambiguously stands for null.
+const locatorKey = ({ discPath, entry, subresource }: OriginalAssetLocator) =>
+  `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
+
+/** Whether the archive entry type can supply the Asset's kind. */
+const admits = (asset: AssetReference, entry: OriginalAssetLocator['entry']): boolean =>
+  (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
 
 function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
   return compareText(left.discPath, right.discPath) || compareText(left.entry.type, right.entry.type)
@@ -114,53 +121,36 @@ function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator
     || (left.subresource === right.subresource ? 0 : left.subresource === null ? -1 : right.subresource === null ? 1 : compareText(left.subresource, right.subresource));
 }
 
-/** Reads a list whose items must be strictly ascending under `compare`, checked in index order. */
-function readOrdered<T>(value: unknown, path: string, readItem: (item: unknown, path: string) => T, compare: (a: T, b: T) => number, minimum = 1): readonly T[] {
-  let previous: { item: T } | undefined;
-  const items = readArray(value, path, 'invalid-source-mapping', (raw, at) => {
-    const item = readItem(raw, at);
-    const order = previous ? compare(previous.item, item) : -1;
-    if (order === 0) fail('duplicate-mapping', at, 'must not repeat an item');
-    if (order > 0) fail('mapping-order', at, 'must be in canonical ascending order');
-    previous = { item };
-    return item;
-  });
-  if (items.length < minimum) fail('invalid-source-mapping', path, `must contain at least ${minimum} item`);
-  return items;
-}
+const SOURCE_CODES = Object.freeze({ invalid: 'invalid-source-mapping', duplicate: 'duplicate-mapping', order: 'mapping-order' } as const);
 
 function readMapping(value: unknown, path: string, fingerprinted: boolean): SourceMapping {
   const record = readRecord(value, path);
   requireFields(record, path, ['asset', 'parts', 'confidence', 'unknowns', 'evidence', 'resolution']);
-  const parts = readOrdered(record.parts, `${path}.parts`, (item, at) => {
+  const parts = readOrderedArray(record.parts, `${path}.parts`, SOURCE_CODES, (item, at) => {
     const part = readRecord(item, at);
     requireFields(part, at, ['alternatives']);
-    const alternatives = readOrdered(part.alternatives, `${at}.alternatives`, readLocator, compareLocators);
+    const alternatives = readOrderedArray(part.alternatives, `${at}.alternatives`, SOURCE_CODES, readLocator, locatorKey, compareLocators, 1);
     alternatives.forEach(({ entry, subresource }, index) => {
       if (entry.type !== alternatives[0].entry.type || subresource !== alternatives[0].subresource) {
         fail('invalid-source-mapping', `${at}.alternatives[${index}]`, 'must share the entry type and sub-resource of the other equivalents');
       }
     });
     return Object.freeze({ alternatives });
-  }, (a, b) => compareLocators(a.alternatives[0], b.alternatives[0]));
+  }, part => locatorKey(part.alternatives[0]), (left, right) => compareLocators(left.alternatives[0], right.alternatives[0]), 1);
   const locators = new Set<string>();
   for (const { alternatives } of parts) {
-    for (const { discPath, entry, subresource } of alternatives) {
-      // Sub-resources are never empty, so '' unambiguously stands for null.
-      const key = `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
+    for (const locator of alternatives) {
+      const key = locatorKey(locator);
       if (locators.has(key)) fail('duplicate-mapping', `${path}.parts`, 'must not repeat a locator across parts');
       locators.add(key);
     }
   }
   const confidence = readEnum(record.confidence, SOURCE_CONFIDENCES, `${path}.confidence`, 'must be confirmed, likely or unconfirmed');
-  const unknowns = readOrdered(record.unknowns, `${path}.unknowns`, (item, at) => {
-    if (!matchesWhole(item, /^U-\d{3}$/)) fail('invalid-source-mapping', at, 'must be a U-### register ID');
-    return item;
-  }, compareText, confidence === 'confirmed' ? 0 : 1);
-  const evidence = readOrdered(record.evidence, `${path}.evidence`, (item, at) => {
+  const unknowns = readUnknownIds(record.unknowns, `${path}.unknowns`, confidence === 'confirmed' ? 0 : 1);
+  const evidence = readOrderedArray(record.evidence, `${path}.evidence`, SOURCE_CODES, (item, at) => {
     if (!matchesWhole(item, EVIDENCE) || item.length > 256) fail('invalid-source-mapping', at, 'must reference a docs/original document');
     return item;
-  }, compareText);
+  }, item => item, compareText, 1);
   const resolution = readEnum(record.resolution, SOURCE_RESOLUTIONS, `${path}.resolution`, 'must be declared or verified');
   if (resolution === 'verified' && !fingerprinted) {
     fail('invalid-source-mapping', `${path}.resolution`, 'cannot be verified without a source fingerprint');
@@ -176,9 +166,9 @@ export function readSourceMappingTable(value: unknown): SourceMappingTable {
   const sourceFingerprint = record.sourceFingerprint === null
     ? null
     : readSourceFingerprint(record.sourceFingerprint, `${path}.sourceFingerprint`);
-  const mappings = readOrdered(record.mappings, `${path}.mappings`,
+  const mappings = readOrderedArray(record.mappings, `${path}.mappings`, SOURCE_CODES,
     (item, at) => readMapping(item, at, sourceFingerprint !== null),
-    (a, b) => compareText(a.asset.id, b.asset.id), 0);
+    mapping => mapping.asset.id, (left, right) => compareText(left.asset.id, right.asset.id));
   return Object.freeze({ sourceFingerprint, mappings });
 }
 
@@ -193,7 +183,7 @@ export function diagnoseSourceMappings(table: SourceMappingTable, required: read
   const byId = new Map(table.mappings.map((mapping, index) => [mapping.asset.id, { mapping, index }]));
   table.mappings.forEach(({ asset, parts, unknowns }, index) => {
     parts.forEach(({ alternatives }, part) => alternatives.forEach(({ entry }, alternative) => {
-      if (!(SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type)) {
+      if (!admits(asset, entry)) {
         report('source-type-conflict', asset.id, `mappings[${index}].parts[${part}].alternatives[${alternative}].entry.type`, unknowns);
       }
     }));
@@ -212,4 +202,20 @@ export function diagnoseSourceMappings(table: SourceMappingTable, required: read
   }
   return Object.freeze(diagnostics.sort((a, b) =>
     compareText(a.assetId, b.assetId) || compareText(a.code, b.code) || compareText(a.path, b.path)));
+}
+
+/**
+ * Derives the locator-free readiness of every mapped Asset, bound to the table's source fingerprint, for
+ * content completeness validation. Most severe first: an entry-type conflict, then unconfirmed research,
+ * then a declared (unverified) source.
+ */
+export function assetSourceStates(table: SourceMappingTable): SourceStateSet {
+  const states = table.mappings.map(({ asset, parts, confidence, resolution, unknowns }) => {
+    const conflict = parts.some(({ alternatives }) => alternatives.some(({ entry }) => !admits(asset, entry)));
+    const state: SourceState = conflict ? 'conflict'
+      : confidence === 'unconfirmed' ? 'unconfirmed'
+        : resolution === 'declared' ? 'unverified' : 'verified';
+    return Object.freeze({ id: asset.id, state, unknowns });
+  });
+  return Object.freeze({ sourceFingerprint: table.sourceFingerprint, states: Object.freeze(states) });
 }
