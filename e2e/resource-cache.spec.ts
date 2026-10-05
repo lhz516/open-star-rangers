@@ -1,7 +1,8 @@
 import { test, expect } from './support/browser-test.ts';
 import type { ResourceCache } from '../src/platform/storage/browser-resource-cache.ts';
 import {
-  installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, withQuotaOverride, type StoredRecords,
+  clearOriginIndexedDb, installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, withQuotaOverride,
+  type StoredRecords,
 } from './support/resource-cache.ts';
 
 // P2-10 resource cache in real Chrome IndexedDB, with code-generated synthetic packages only. Ordinary cases use the
@@ -12,6 +13,8 @@ declare global {
     osrCacheSubject: ResourceCache;
     /** A large package built once and committed more than once; commits copy their inputs. */
     osrCacheLarge: unknown;
+    /** A commit left running while the test acts from outside the page. */
+    osrCachePending?: ReturnType<ResourceCache['commit']>;
   }
 }
 
@@ -461,4 +464,168 @@ test('compares a requirement with the real storage estimate', async ({ page }) =
   expect(checks.over).toEqual({ status: 'insufficient', requiredBytes: checks.available + 1, availableBytes: checks.available, usage, quota });
   // The default adapter reads the same real estimate through navigator.storage.
   expect(checks.real).toMatchObject({ status: 'sufficient', requiredBytes: 0, quota });
+});
+
+test('lets another connection delete the database when the cache is idle or busy', async ({ page }) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  await page.evaluate(async () => {
+    const { cache, buildPackage, limits } = window.osrCache;
+    window.osrCacheSubject = cache.createResourceCache();
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+  });
+  const idle = await page.evaluate(async key => {
+    window.osrIdbProbe.reset();
+    const steps = await window.osrCache.deleteDatabase();
+    const versionchange = window.osrIdbProbe.events.some(({ kind }) => kind === 'versionchange');
+    return { steps, versionchange, ...await window.osrCache.cacheState(window.osrCacheSubject, key) };
+  }, SYNTHETIC_KEY);
+  expect(idle).toEqual({ steps: ['success'], versionchange: true, listed: 0, restored: 'not-found' });
+
+  const busy = await page.evaluate(async ({ key, large }) => {
+    const { buildPackage, limits, statusOf } = window.osrCache;
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+    const probe = window.osrIdbProbe;
+    probe.reset();
+    let deletion: Promise<string[]> | undefined;
+    probe.onEvent = event => {
+      if (event.kind === 'write') deletion ??= window.osrCache.deleteDatabase();
+    };
+    const status = statusOf(await window.osrCacheSubject.commit(buildPackage(large), limits()));
+    probe.onEvent = null;
+    const steps = await deletion!;
+    const versionchange = probe.events.some(({ kind }) => kind === 'versionchange');
+    return { status, steps, versionchange, ...await window.osrCache.cacheState(window.osrCacheSubject, key) };
+  }, { key: SYNTHETIC_KEY, large: LARGE_PACKAGE });
+  // The commit already writing finishes first; the deletion may wait briefly as blocked, then succeeds.
+  expect(busy).toMatchObject({ status: 'committed', versionchange: true, listed: 0, restored: 'not-found' });
+  expect(busy.steps.at(-1)).toBe('success-after-commit');
+  expect(busy.steps.filter(step => step !== 'blocked')).toHaveLength(1);
+});
+
+test('reports an origin cleared over CDP as missing, including during a write', async ({ page, baseURL }, testInfo) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  const origin = new URL(baseURL!).origin;
+  const state = () => page.evaluate(key => window.osrCache.cacheState(window.osrCacheSubject, key), SYNTHETIC_KEY);
+
+  await page.evaluate(async () => {
+    const { cache, buildPackage, limits } = window.osrCache;
+    window.osrCacheSubject = cache.createResourceCache();
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+    window.osrIdbProbe.reset();
+  });
+  await clearOriginIndexedDb(page, origin);
+  expect(await state()).toEqual({ listed: 0, restored: 'not-found' });
+  expect(await page.evaluate(() => window.osrIdbProbe.events.some(({ kind }) => kind === 'close'))).toBe(true);
+
+  // The write transaction is held open after its first write request, so the clear lands before it can commit.
+  const issued = page.waitForEvent('console', message => message.text() === 'osr-write-issued');
+  await page.evaluate(async large => {
+    const { buildPackage, limits } = window.osrCache;
+    const probe = window.osrIdbProbe;
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+    probe.reset();
+    probe.holdWrites = true;
+    probe.onEvent = event => {
+      if (event.kind !== 'write') return;
+      probe.onEvent = null;
+      console.log('osr-write-issued');
+    };
+    window.osrCachePending = window.osrCacheSubject.commit(buildPackage(large), limits());
+  }, LARGE_PACKAGE);
+  await issued;
+  await clearOriginIndexedDb(page, origin);
+  const during = await page.evaluate(async () => {
+    const status = window.osrCache.statusOf(await window.osrCachePending!);
+    window.osrIdbProbe.holdWrites = false;
+    return { status, events: window.osrIdbProbe.events.filter(({ kind }) => kind !== 'transaction').map(({ kind, mode, error }) => [kind, mode, error].filter(Boolean).join(':')) };
+  });
+  await testInfo.attach('clear-during-write', { body: JSON.stringify(during), contentType: 'application/json' });
+  expect(['storage-closed', 'write-failed']).toContain(during.status);
+  expect(during.events).toContain('close');
+  expect(await state()).toEqual({ listed: 0, restored: 'not-found' });
+});
+
+test('refuses a newer database version without upgrading, deleting or writing it', async ({ page }) => {
+  await loadCacheModules(page);
+  const observed = await page.evaluate(async key => {
+    const { cache, buildPackage, limits, records, statusOf } = window.osrCache;
+    const { name } = records.RESOURCE_CACHE_DATABASE;
+    const open = (version?: number) => new Promise<IDBDatabase>((resolve, reject) => {
+      const request = version === undefined ? indexedDB.open(name) : indexedDB.open(name, version);
+      request.onupgradeneeded = () => { request.result.createObjectStore('future').put({ future: true }, 'k'); };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    (await open(2)).close();
+    const subject = cache.createResourceCache();
+    const results = [await subject.commit(buildPackage(), limits()), await subject.list(), await subject.restore(key, limits())];
+    const db = await open();
+    const content = await new Promise(resolve => {
+      const request = db.transaction('future', 'readonly').objectStore('future').get('k');
+      request.onsuccess = () => resolve(request.result);
+    });
+    const after = { version: db.version, stores: [...db.objectStoreNames], content };
+    db.close();
+    return { codes: results.map(statusOf), after };
+  }, SYNTHETIC_KEY);
+  expect(observed.codes).toEqual(['storage-newer-version', 'storage-newer-version', 'storage-newer-version']);
+  expect(observed.after).toEqual({ version: 2, stores: ['future'], content: { future: true } });
+});
+
+test('keeps the old package or the whole new one when the browser closes during a write', async ({ baseURL }, testInfo) => {
+  const outcomes: { held: boolean; resultBeforeClose: boolean; tag: string; unchanged: boolean }[] = [];
+  await withPersistentProfile(baseURL!, async launch => {
+    let page = await launch();
+    // A natural-timing attempt records whichever state Chrome reaches; a held attempt keeps the write transaction open
+    // with read-only requests after its first write request, so the close always lands before it can commit.
+    for (const held of [false, true]) {
+      await loadCacheModules(page);
+      await page.evaluate(async () => {
+        const { cache, buildPackage, limits } = window.osrCache;
+        const subject = cache.createResourceCache();
+        await subject.commit(buildPackage({ tag: 'old' }), limits());
+        subject.close();
+      });
+      const before = await readStoredRecords(page);
+      await installIdbProbe(page);
+      const messages: string[] = [];
+      const record = (message: { text(): string }) => { messages.push(message.text()); };
+      page.on('console', record);
+      const issued = page.waitForEvent('console', message => message.text() === 'osr-write-issued');
+      await page.evaluate(({ large, held }) => {
+        const { cache, buildPackage, limits } = window.osrCache;
+        const probe = window.osrIdbProbe;
+        probe.holdWrites = held;
+        probe.onEvent = event => {
+          if (event.kind !== 'write') return;
+          probe.onEvent = null;
+          console.log('osr-write-issued');
+        };
+        void cache.createResourceCache().commit(buildPackage(large), limits()).then(result => console.log(`osr-commit-${result.status}`));
+      }, { large: { tag: 'new', modelBytes: 4 << 20 }, held });
+      await issued;
+      // Taken before closing, so a result caused by the close itself is not mistaken for one that preceded it.
+      const resultBeforeClose = messages.some(text => text.startsWith('osr-commit-'));
+      page.off('console', record);
+      await page.context().close();
+
+      page = await launch();
+      await loadCacheModules(page);
+      const tag = await page.evaluate(async key => {
+        const { cache, limits, restoredTag } = window.osrCache;
+        const subject = cache.createResourceCache();
+        const restored = restoredTag(await subject.restore(key, limits()));
+        subject.close();
+        return restored;
+      }, SYNTHETIC_KEY);
+      const after = await readStoredRecords(page);
+      outcomes.push({ held, resultBeforeClose, tag, unchanged: JSON.stringify(after) === JSON.stringify(before) });
+    }
+  });
+  await testInfo.attach('interruption-outcomes', { body: JSON.stringify(outcomes), contentType: 'application/json' });
+  // Every reopen finds exactly the old package unchanged or the whole new one; never a mix or a damaged package.
+  for (const { tag, unchanged } of outcomes) expect(tag === 'old' ? unchanged : tag === 'new').toBe(true);
+  expect(outcomes.find(({ held }) => held)).toEqual({ held: true, resultBeforeClose: false, tag: 'old', unchanged: true });
 });

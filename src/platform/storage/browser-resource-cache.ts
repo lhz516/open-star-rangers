@@ -62,6 +62,13 @@ async function settle<T>(run: () => Promise<T>): Promise<T | ResourceCacheFailur
 const failure = (code: ResourceCacheFailureCode, location: string): ResourceCacheFailureError =>
   new ResourceCacheFailureError(cacheFailure(code, location));
 
+/** Connections the browser closed (the `close` event), as when site data is cleared; never ones the adapter closed. */
+const forcedClosed = new WeakSet<IDBDatabase>();
+
+/** Why a transaction the adapter did not abort itself ended: a force-closed connection, or the host error. */
+const abortCode = (db: IDBDatabase, tx: IDBTransaction, phase: 'write' | 'read'): ResourceCacheFailureCode =>
+  (forcedClosed.has(db) ? 'storage-closed' : classifyHostError(phase, tx.error));
+
 const readLimits = (limits: unknown): BudgetRecord => withContractFailure('invalid-request', () => readBudgetRecord(limits, 'limits'));
 
 /** The caller's group inputs read once, with every payload copied into a buffer only the cache owns. */
@@ -102,7 +109,7 @@ function writePackage(db: IDBDatabase, record: PackageRecord, groups: readonly R
     tx.oncomplete = () => { settled(); resolve(); };
     tx.onabort = () => {
       settled();
-      reject(failure(reason ?? classifyHostError('write', tx.error), 'transaction'));
+      reject(failure(reason ?? abortCode(db, tx, 'write'), 'transaction'));
     };
     try {
       const key = packageRecordKey(record.key);
@@ -135,7 +142,7 @@ function readTransaction<T>(db: IDBDatabase, issue: (tx: IDBTransaction) => () =
         reject(error);
       }
     };
-    tx.onabort = () => reject(failure(classifyHostError('read', tx.error), 'transaction'));
+    tx.onabort = () => reject(failure(abortCode(db, tx, 'read'), 'transaction'));
   });
 }
 
@@ -165,7 +172,12 @@ function readPackage(db: IDBDatabase, key: ResourceCacheKey, limits: BudgetRecor
   });
 }
 
-function openDatabase(factory: IDBFactory | null | undefined): Promise<IDBDatabase> {
+/**
+ * Opens version 1, creating its stores only for a new database. `onClosed` runs when the connection closes: on
+ * `versionchange` the adapter closes it at once so another connection can delete or upgrade the database (existing
+ * transactions still finish), and on `close` the browser has closed it.
+ */
+function openDatabase(factory: IDBFactory | null | undefined, onClosed: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (!factory) throw failure('storage-unavailable', 'database');
     let request: IDBOpenDBRequest;
@@ -180,7 +192,18 @@ function openDatabase(factory: IDBFactory | null | undefined): Promise<IDBDataba
       db.createObjectStore(packageStore);
       db.createObjectStore(payloadStore);
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        onClosed();
+      };
+      db.onclose = () => {
+        forcedClosed.add(db);
+        onClosed();
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(failure(classifyHostError('open', request.error), 'database'));
   });
 }
@@ -200,11 +223,17 @@ export function createResourceCache(options: ResourceCacheOptions = {}): Resourc
   const storage = 'storage' in options ? options.storage : globalThis.navigator?.storage;
   let connection: Promise<IDBDatabase> | null = null;
 
+  /** Forgets `closed` unless a newer connection has already replaced it. */
+  const drop = (closed: Promise<IDBDatabase>): void => {
+    if (connection === closed) connection = null;
+  };
+  /** The shared connection; a closed or failed one is dropped so the next operation opens a new one. */
   const database = (): Promise<IDBDatabase> => {
-    connection ??= openDatabase(factory).catch((error: unknown) => {
-      connection = null;
-      throw error;
-    });
+    if (!connection) {
+      const opening: Promise<IDBDatabase> = openDatabase(factory, () => drop(opening));
+      opening.catch(() => drop(opening));
+      connection = opening;
+    }
     return connection;
   };
 

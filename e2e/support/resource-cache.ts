@@ -43,10 +43,16 @@ export interface CacheModules {
   payloadBytes(groups: readonly { payloads: readonly { id: string; bytes: Uint8Array }[] }[]): [string, number[]][];
   /** The `tag` of a restored package (read from its first logic payload), or the failure code. */
   restoredTag(result: Awaited<ReturnType<CacheModule.ResourceCache['restore']>>): string;
+  /** A result's status, or its failure code. */
+  statusOf(result: { status: string; code?: string }): string;
+  /** How many packages the subject lists (or the failure code) and what restoring `key` yields. */
+  cacheState(subject: CacheModule.ResourceCache, key: unknown): Promise<{ listed: number | string; restored: string }>;
+  /** Deletes the cache database from another connection: `blocked` if reported, then whether success followed a commit. */
+  deleteDatabase(): Promise<string[]>;
 }
 
 export interface ProbeEvent {
-  readonly kind: 'transaction' | 'complete' | 'abort' | 'write' | 'abort-call';
+  readonly kind: 'transaction' | 'complete' | 'abort' | 'write' | 'abort-call' | 'versionchange' | 'close';
   readonly mode?: IDBTransactionMode;
   readonly store?: string;
   /** Name of the DOMException an `abort()` call threw. */
@@ -59,6 +65,11 @@ interface IdbProbe {
   readonly events: ProbeEvent[];
   /** Runs synchronously after each event is recorded, before the application's own handlers; it changes no request. */
   onEvent: ((event: ProbeEvent) => void) | null;
+  /**
+   * While true, the transaction of the next write request is kept open by chaining read-only `count()` requests on it,
+   * so it stays uncommitted with the page's main thread free. It adds reads only, never writes.
+   */
+  holdWrites: boolean;
   reset(): void;
 }
 
@@ -118,6 +129,20 @@ export async function loadCacheModules(page: Page): Promise<void> {
       payloadBytes: groups => groups.flatMap(({ payloads }) => payloads.map(({ id, bytes }): [string, number[]] => [id, [...bytes]]))
         .sort(([left], [right]) => (left < right ? -1 : 1)),
       restoredTag: result => (result.status === 'restored' ? String.fromCharCode(...result.groups[0].payloads[0].bytes).split(':')[0] : result.code),
+      statusOf: result => (result.status === 'failed' ? result.code! : result.status),
+      async cacheState(subject, key) {
+        const listed = await subject.list();
+        const restored = await subject.restore(key, this.limits());
+        return { listed: listed.status === 'listed' ? listed.entries.length : listed.code, restored: this.statusOf(restored) };
+      },
+      deleteDatabase: () => new Promise(resolve => {
+        const steps: string[] = [];
+        const request = indexedDB.deleteDatabase(records.RESOURCE_CACHE_DATABASE.name);
+        const committed = () => window.osrIdbProbe?.events.some(({ kind, mode }) => kind === 'complete' && mode === 'readwrite');
+        request.onblocked = () => steps.push('blocked');
+        request.onsuccess = () => resolve([...steps, committed() ? 'success-after-commit' : 'success']);
+        request.onerror = () => resolve([...steps, 'error']);
+      }),
     };
   });
 }
@@ -127,7 +152,8 @@ export async function installIdbProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     if (window.osrIdbProbe) return;
     const events: ProbeEvent[] = [];
-    const probe: IdbProbe = { events, onEvent: null, reset: () => { events.length = 0; } };
+    const probe: IdbProbe = { events, onEvent: null, holdWrites: false, reset: () => { events.length = 0; } };
+    const held = new WeakSet<IDBTransaction>();
     const record = (event: ProbeEvent): void => {
       events.push(event);
       probe.onEvent?.(event);
@@ -146,9 +172,25 @@ export async function installIdbProbe(page: Page): Promise<void> {
       (IDBObjectStore.prototype[method] as unknown) = function (this: IDBObjectStore, ...args: unknown[]) {
         const request = original.apply(this, args);
         record({ kind: 'write', store: this.name });
+        if (probe.holdWrites && !held.has(this.transaction)) {
+          held.add(this.transaction);
+          const keepOpen = (): void => {
+            if (probe.holdWrites) this.count().onsuccess = keepOpen;
+          };
+          keepOpen();
+        }
         return request;
       };
     }
+    const open = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (this: IDBFactory, ...args: Parameters<IDBFactory['open']>) {
+      const request = open.apply(this, args);
+      request.addEventListener('success', () => {
+        request.result.addEventListener('versionchange', () => record({ kind: 'versionchange' }));
+        request.result.addEventListener('close', () => record({ kind: 'close' }));
+      });
+      return request;
+    };
     const abort = IDBTransaction.prototype.abort;
     IDBTransaction.prototype.abort = function (this: IDBTransaction) {
       try {
@@ -259,6 +301,16 @@ export async function withQuotaOverride<T>(page: Page, origin: string, quotaSize
     return { overridden, result: await run() };
   } finally {
     await cdp.send('Storage.overrideQuotaForOrigin', { origin });
+    await cdp.detach();
+  }
+}
+
+/** Clears the origin's IndexedDB data over CDP, as a user or the browser clearing site data would. */
+export async function clearOriginIndexedDb(page: Page, origin: string): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'indexeddb' });
+  } finally {
     await cdp.detach();
   }
 }

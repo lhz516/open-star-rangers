@@ -89,7 +89,7 @@ updated: 2026-10-05
 | [02-cache-records.md](./subtasks/02-cache-records.md) | 01 | completed |
 | [03-browser-commit-restore.md](./subtasks/03-browser-commit-restore.md) | 02 | completed |
 | [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | blocked |
-| [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | pending |
+| [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | completed |
 | [06-integrity-concurrency.md](./subtasks/06-integrity-concurrency.md) | 03 | pending |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
 
