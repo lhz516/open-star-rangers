@@ -1,5 +1,6 @@
 // P2-03 S-07/AC-14: the low-level original-data capability families, shared by the ESLint rule in eslint.config.js and
 // the dependency graph check in tools/engineering-boundaries.test.ts so both classify modules the same way.
+import { posix } from 'node:path';
 
 export type CapabilityFamily = 'disc' | 'archive' | 'source';
 
@@ -41,3 +42,18 @@ export const isProductEntry = (path: string): boolean => PRODUCT_ENTRY.test(path
 
 /** The product entry's only runtime export, a function declared in the entry; every other export is type-only. */
 export const PRODUCT_ENTRY_EXPORT = 'openVerifiedSource';
+
+/**
+ * The repository path `new URL(specifier, import.meta.url)` names from the module at `importer`, or null for an external
+ * URL. Unlike an import specifier, a URL path resolves against the importer's directory with or without `./`, and
+ * against the repository root, which Vite serves at `/`, when it starts with `/`. Backslashes separate segments as in
+ * browser URLs, query and fragment are dropped, and `.js` names the `.ts` source as in imports (P2-04 AC-11).
+ */
+export function urlTarget(importer: string, specifier: string): string | null {
+  // URLs with a special scheme such as http treat a backslash as a path separator.
+  const url = specifier.replaceAll('\\', '/');
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) return null;
+  const path = url.replace(/[?#].*$/s, '').replace(/\.js$/, '.ts');
+  return posix.normalize(path.startsWith('/') ? path.slice(1) : posix.join(posix.dirname(importer), path));
+}
+

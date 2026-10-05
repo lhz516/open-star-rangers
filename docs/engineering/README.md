@@ -99,6 +99,10 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - **分类：** 受限模块所属的族与导入者所属的族由 [tools/original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 统一判定，lint 与依赖图共用。
   - **lint：** 本地规则 `osr/original-data-capabilities`（定义在 `eslint.config.js`）把每个相对说明符相对于被检查文件解析为真实路径（带或不带 `.ts`/`.js` 都识别），再按上述分类判定；`original-data` 内其他位置的同名 `disc/`、`archive/` 目录不受影响。导入测试、测试支持或 `src/` 之外的文件时，提示生产代码不得依赖它们；其他情况提示改经产品入口。对产品入口改为检查导出面：除 `openVerifiedSource` 函数声明外，值声明、本地或带模块说明符的值再导出、值 `export *` 与默认导出都报错。对其他模块，它拒绝值导入（含副作用导入）、带模块说明符的再导出（含 `export type`、`export *`）、字符串或模板参数的动态 `import()` 与 `import('…')` 类型查询；纯类型导入声明放行。
   - **依赖图：** 同一回归文件解析每个生产模块的真实导入、再导出、动态导入与导入类型，按目标模块所属的族判定。`original-data` 与 `src/workers/` 中参数无法核实的动态导入一律报错。纯类型导入的名称只能在本模块私用：若再用不带模块说明符的 `export { … }`、`export type { … }` 或 `export default` 导出该名称，同样报错。lint 无法追踪本地名称的来源，这种情况只由依赖图拦截。产品入口的导出面按与 lint 相同的规则从语法核对，本地别名（如 `const leak = openDiscImage; export default leak`）也会被拒绝。基于受限类型声明并导出新的类型别名或接口，不算再导出：类型不携带打开能力，受限的值则在导入时已被拒绝。
+- **测试支持与工具**（P2-04 AC-11）：`src/` 下的全部生产模块（含来源族与产品入口）都不得依赖测试、测试支持或 `src/` 之外的文件，也不得把它们当作 `new URL('…', import.meta.url)` 载入，例如测试用的 Worker 入口。
+  - **lint：** `osr/original-data-capabilities` 适用于 `src/` 下全部非测试文件，对每个导入者检查这一类目标，也检查 `new URL('…', import.meta.url)` 的字面量说明符。URL 按 URL 语义解析（[original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 的 `urlTarget`，lint 与依赖图共用）：相对路径不论有无 `./` 都相对于模块所在目录，以 `/` 开头的路径相对于仓库根（Vite 在 `/` 提供），反斜杠与浏览器 URL 一样视为路径分隔符，去掉查询与片段，`.js` 视为 `.ts` 源文件，外部 URL 忽略。能力族本身仍只在 `src/workers/` 与 `original-data` 中检查；其他层由上面的消费者规则整体拒绝 `original-data`，不重复报告。
+  - **依赖图：** 同一检查对全部生产模块（不再豁免来源族）判定这一类目标，并把 `new URL('…', import.meta.url)` 的字面量当作引用。它不计入原版数据的可达性：Worker 入口单独载入，不是导入。纯类型导入照旧只能私用；参数不是字面量的 `new URL` 无法核实，不在覆盖范围内。
+- **导入 Worker 不用网络**（P2-04 S-09/AC-11）：`src/workers/` 的非测试文件不得以全局名称使用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource` 与 `importScripts`（`no-restricted-globals`），也不得以任何对象的属性访问它们或 `sendBeacon`（`no-restricted-properties`，含 `self.`、`globalThis.`、`navigator.`、字面量计算属性与解构）。这只是静态规则，实际请求审计归 P2-12。
 
 ## 测试
 

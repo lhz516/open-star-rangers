@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
-import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT } from './original-data-capabilities.ts';
+import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT, urlTarget } from './original-data-capabilities.ts';
 import { describe, expect, it } from 'vitest';
 import viteConfiguration from '../vite.config.ts';
 
@@ -78,6 +78,24 @@ function moduleReferences(file: ts.SourceFile): { specifier: string; typeOnly: b
 }
 
 const moduleSpecifiers = (file: ts.SourceFile): string[] => moduleReferences(file).map(({ specifier }) => specifier);
+
+/**
+ * Literal specifiers of `new URL('…', import.meta.url)`, such as a Worker entry. They name a module without importing
+ * it, so they are no edge of the module graph, but a production module must not name test support this way either.
+ */
+function urlReferences(file: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'URL') {
+      const [specifier, base] = node.arguments ?? [];
+      if (specifier && ts.isStringLiteralLike(specifier) && base && ts.isPropertyAccessExpression(base)
+        && ts.isMetaProperty(base.expression) && base.name.text === 'url') found.push(specifier.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
 
 let appProgram: ts.Program | undefined;
 /** The real app program covers every production source; source rules share one build of it. */
@@ -411,6 +429,83 @@ describe('TypeScript module environments', () => {
         ['src/workers/helper.test-support.tsx', "import { openDiscImage } from '../original-data/disc/disc-image.ts'; export const open = openDiscImage;"],
         ['src/original-data/source/verify-source-mappings.ts', "import type { ImfatArchiveHandle } from '../archive/archive-reader.ts'; import { SourceError } from '../source-error.ts'; export const verify = (archive: ImfatArchiveHandle): unknown => [archive, SourceError];"],
         ['src/workers/probe.ts', "import { z } from 'zod'; import { join } from 'node:path'; export const found = [z, join];"],
+      ];
+      for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
+    });
+
+    // P2-04 S-09/AC-11: production import Worker code uses no network API, as a global or as a property of any object.
+    it('rejects network APIs in production import Worker code only', async () => {
+      const [globalsRule, propertiesRule] = ['no-restricted-globals', 'no-restricted-properties'];
+      const rejected: [string, string, string][] = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'importScripts'].flatMap(name => [
+        ['src/workers/probe.ts', `export const value = ${name};`, globalsRule],
+        ['src/workers/probe.ts', `export const value = self.${name};`, propertiesRule],
+        ['src/workers/probe.ts', `export const value = globalThis.${name};`, propertiesRule],
+      ] as [string, string, string][]);
+      rejected.push(
+        ['src/workers/nested/probe.tsx', 'export const value = new WebSocket(self.location.href);', globalsRule],
+        ['src/workers/probe.ts', "export const value = self['fetch'];", propertiesRule],
+        ['src/workers/probe.ts', 'export const { fetch: value } = globalThis;', propertiesRule],
+        ['src/workers/probe.ts', 'const scope = self; export const value = new scope.EventSource(scope.location.href);', propertiesRule],
+        ['src/workers/probe.ts', 'export const value = navigator.sendBeacon;', propertiesRule],
+        ['src/workers/probe.ts', 'export const value = self.navigator.sendBeacon;', propertiesRule],
+        ['src/workers/probe.ts', "export const value = globalThis.navigator['sendBeacon'];", propertiesRule],
+      );
+      for (const [file, source, rule] of rejected) expectRule(await lint(source, file), rule, source);
+      const network = 'export const value = [fetch, self.fetch, new XMLHttpRequest(), navigator.sendBeacon];';
+      const allowed: [string, string][] = [
+        ['src/workers/probe.ts', 'export const read = (blob: Blob) => blob.slice(0, 1).arrayBuffer(); export const send = (message: unknown) => self.postMessage(message);'],
+        ['src/workers/probe.ts', "export const entry = new URL('./import-worker.ts', import.meta.url);"],
+        ['src/workers/probe.test.ts', network],
+        ['src/workers/probe.test-support.ts', network],
+      ];
+      for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
+    });
+
+    // P2-04 AC-11: no production module, in any layer, depends on tests, test support or tools, or names one as a URL.
+    it('keeps tests, test support and tools out of every production module, including Worker entry URLs', async () => {
+      const rule = 'osr/original-data-capabilities';
+      const findings = async (source: string, file: string): Promise<string[]> =>
+        (await lint(source, file)).messages.filter(message => message.ruleId === rule).map(message => message.messageId ?? '');
+      const support: [string, string][] = [
+        ['src/app/import/probe.ts', "import { boundGroups } from '../../workers/synthetic-import.test-support.ts'; export const groups = boundGroups;"],
+        ['src/app/import/probe.ts', "export * from '../../workers/import-host.test-support.ts';"],
+        ['src/app/import/probe.ts', "export const load = () => import('../../workers/synthetic-import.test-support.ts');"],
+        ['src/app/import/probe.ts', "export type Job = typeof import('../../workers/synthetic-import.test-support.ts').syntheticGroupsJob;"],
+        ['src/platform/workers/probe.ts', "export const create = () => new Worker(new URL('../../workers/import-worker.test-support.ts', import.meta.url), { type: 'module' });"],
+        ['src/platform/workers/probe.ts', 'export const entry = new URL(`../../workers/probe.test.ts`, import.meta.url);'],
+        ['src/workers/probe.ts', "export const entry = new URL('./import-worker.test-support.ts', import.meta.url);"],
+        ['src/workers/probe.ts', "export const entry = new URL('import-worker.test-support.ts', import.meta.url);"],
+        ['src/workers/probe.ts', "export const entry = new URL('./import-worker.test-support.ts?worker', import.meta.url);"],
+        ['src/workers/probe.ts', "export const entry = new URL('./import-worker.test-support.ts#entry', import.meta.url);"],
+        ['src/workers/probe.ts', "export const entry = new URL('./import-worker.test-support.js', import.meta.url);"],
+        ['src/app/probe.ts', "export const entry = new URL('/src/workers/import-worker.test-support.ts', import.meta.url);"],
+        ['src/app/probe.ts', "export const entry = new URL('/tools/source-check.ts', import.meta.url);"],
+        ['src/app/probe.ts', "export const entry = new URL('..\\\\..\\\\tools\\\\source-check.ts', import.meta.url);"],
+        ['src/ui/probe.tsx', "import { syntheticGroup } from '../content/synthetic-content.test-support.ts'; export const group = syntheticGroup;"],
+        ['src/render/probe.ts', "export { value } from './scene/probe.test.ts';"],
+        ['src/core/probe.ts', "import { helper } from './synthetic/probe.test-support.ts'; export const value = helper;"],
+        ['src/content/probe.ts', "import { syntheticGroup } from './synthetic-content.test-support.ts'; export const group = syntheticGroup;"],
+        ['src/app/probe.ts', "import { run } from '../../tools/source-check.ts'; export const check = run;"],
+        ['src/original-data/source/probe.ts', "import { catalogFor } from './source.test-support.ts'; export const catalog = catalogFor;"],
+        ['src/original-data/source/open-verified-source.ts', "import { catalogFor } from './source.test-support.ts'; export async function openVerifiedSource(): Promise<unknown> { return catalogFor; }"],
+      ];
+      for (const [file, source] of support) expect(await findings(source, file), `${file}: ${source}`).toEqual(['support']);
+      // The capability families are checked in workers and original-data only; other layers never reach original-data.
+      expect(await findings("import { identifySource } from '../original-data/source/identify-source.ts'; export const open = identifySource;", 'src/workers/import-job.ts')).toEqual(['restricted']);
+      expect(await findings("export const entry = new URL('..\\\\original-data\\\\disc\\\\disc-image.ts', import.meta.url);", 'src/workers/probe.ts')).toEqual(['restricted']);
+      const consumer = await lint("import { openDiscImage } from '../../original-data/disc/disc-image.ts'; export const open = openDiscImage;", 'src/app/import/probe.ts');
+      expect(consumer.messages.map(message => message.ruleId)).toEqual(['no-restricted-imports']);
+      const allowed: [string, string][] = [
+        ['src/platform/workers/probe.ts', "export const create = () => new Worker(new URL('../../workers/import-worker.ts', import.meta.url), { type: 'module' });"],
+        ['src/workers/import-job.ts', "import { openVerifiedSource } from '../original-data/source/open-verified-source.ts'; import { BlobByteSource } from '../platform/files/blob-byte-source.ts'; export const parts = [openVerifiedSource, BlobByteSource];"],
+        ['src/app/import/probe.test.ts', "import { boundGroups } from '../../workers/synthetic-import.test-support.ts'; export const groups = boundGroups;"],
+        ['src/workers/probe.test-support.ts', "export const entry = new URL('./import-worker.test-support.ts', import.meta.url);"],
+        // Type-only declarations carry no code; re-exporting the name is rejected by the dependency graph.
+        ['src/app/import/probe.ts', "import type { SyntheticGroups } from '../../workers/synthetic-import.test-support.ts'; export const none = (groups: SyntheticGroups) => groups;"],
+        ['src/app/probe.ts', "export const asset = new URL('./logo.png', import.meta.url);"],
+        ['src/app/probe.ts', "export const assets = [new URL('logo.png?url', import.meta.url), new URL('/src/app/logo.png', import.meta.url)];"],
+        ['src/app/probe.ts', "export const external = [new URL('https://example.invalid/x.test-support.ts', import.meta.url), new URL('//cdn.invalid/x.test.ts', import.meta.url), new URL('data:text/javascript,1', import.meta.url), new URL('\\\\\\\\cdn.invalid\\\\x.test.ts', import.meta.url)];"],
+        ['src/app/probe.ts', 'export const entry = (name: string) => new URL(`./${name}.test-support.ts`, import.meta.url);'],
       ];
       for (const [file, source] of allowed) expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
     });
@@ -820,8 +915,9 @@ describe('original-data dependency boundary', () => {
   // P2-03 S-07/AC-14: production modules use the low-level original-data capabilities only inside their own family or
   // the source family; anything else, such as workers or converters, goes through the product entry and the public
   // source modules, and the entry exports no value but its opening. Tests, test support and every file outside
-  // src/ may hold any capability, so production code must not import them either. Type-only import declarations carry
-  // no capability; re-exports (also of types), dynamic imports and import types do.
+  // src/ may hold any capability, so no production module, the source family included, may import them or name them
+  // in `new URL('…', import.meta.url)` (P2-04 AC-11). Type-only import declarations carry no capability; re-exports
+  // (also of types), dynamic imports and import types do.
   function capabilityViolations(compilation: ts.Program, directory: string): string[] {
     const options = compilation.getCompilerOptions();
     const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
@@ -832,18 +928,23 @@ describe('original-data dependency boundary', () => {
       const file = compilation.getSourceFile(fileName)!;
       if (isProductEntry(importer)) {
         for (const name of entryValueExports(file)) violations.add(`${importer} exports ${name}`);
-        continue;
       }
       const own = familyOf(importer);
-      if (own === 'source') continue;
+      const restricted = (target: string): string | null => {
+        const capability = capabilityOf(target);
+        if (capability === 'support') return target;
+        return capability && own !== 'source' && own !== capability ? target : null;
+      };
       const restrictedTarget = (specifier: string): string | null => {
         const resolved = ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule;
         // Linked packages resolve outside node_modules, so ask the resolver rather than the path.
         if (!resolved || resolved.isExternalLibraryImport) return null;
-        const target = project(resolved.resolvedFileName);
-        const capability = capabilityOf(target);
-        return capability && own !== capability ? target : null;
+        return restricted(project(resolved.resolvedFileName));
       };
+      for (const specifier of urlReferences(file)) {
+        const target = urlTarget(importer, specifier);
+        if (target !== null && restricted(target)) violations.add(`${importer} -> ${target}`);
+      }
       for (const { specifier, typeOnly } of moduleReferences(file)) {
         if (specifier === COMPUTED_IMPORT) {
           if (/^src\/(?:original-data|workers)\//.test(importer)) violations.add(`${importer} -> computed import`);
@@ -1023,6 +1124,74 @@ describe('original-data dependency boundary', () => {
     ['vite.config.ts', 'support'],
     ['node_modules/.pnpm/three@0.180.0/node_modules/three/build/three.module.js', null],
   ])('classifies %s as %s', (path, expected) => expect(capabilityOf(path)).toBe(expected));
+
+  it('keeps tests and test support out of every production module, including Worker entry URLs', () => {
+    withFixtures({
+      'src/workers/import-worker.ts': "export const entry = 'production';",
+      'src/workers/import-worker.test-support.ts': "export const entry = 'test';",
+      'src/workers/synthetic.test-support.ts': 'export interface Groups { readonly count: number } export const groups = (): number => 1;',
+      'src/platform/workers/factory.ts': "export const create = (): URL => new URL('../../workers/import-worker.ts', import.meta.url);",
+      'src/platform/workers/test-factory.ts': "export const create = (): URL => new URL('../../workers/import-worker.test-support.ts', import.meta.url);",
+      'src/platform/workers/template.ts': 'export const create = (): URL => new URL(`../../workers/import-worker.test-support.ts`, import.meta.url);',
+      'src/workers/dotless.ts': "export const entry = (): URL => new URL('import-worker.test-support.ts', import.meta.url);",
+      'src/workers/query.ts': "export const entry = (): URL => new URL('./import-worker.test-support.ts?worker#entry', import.meta.url);",
+      'src/app/import/rooted.ts': "export const entry = (): URL => new URL('/src/workers/import-worker.test-support.ts', import.meta.url);",
+      'src/app/import/backslash.ts': "export const entry = (): URL => new URL('..\\\\..\\\\workers\\\\import-worker.test-support.ts', import.meta.url);",
+      'src/app/import/external.ts': "export const entry = (): URL[] => [new URL('https://example.invalid/a.test.ts', import.meta.url), new URL('/src/app/logo.png', import.meta.url)];",
+      'src/app/import/value.ts': "import { groups } from '../../workers/synthetic.test-support.ts'; export const run = groups;",
+      'src/app/import/reexport.ts': "export * from '../../workers/synthetic.test-support.ts';",
+      'src/app/import/lazy.ts': "export const load = () => import('../../workers/synthetic.test-support.ts');",
+      'src/app/import/query.ts': "export type Run = typeof import('../../workers/synthetic.test-support.ts').groups;",
+      'src/app/import/local-type.ts': "import type { Groups } from '../../workers/synthetic.test-support.ts'; export type { Groups };",
+      'src/app/import/private-type.ts': "import type { Groups } from '../../workers/synthetic.test-support.ts'; export const count = (groups: Groups): number => groups.count;",
+      'src/original-data/source/catalog.test-support.ts': 'export const catalogFor = (): number => 1;',
+      'src/original-data/source/identify.ts': "import { catalogFor } from './catalog.test-support.ts'; export const identify = catalogFor;",
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(capabilityViolations(compilation, directory)).toEqual([
+        'src/app/import/backslash.ts -> src/workers/import-worker.test-support.ts',
+        'src/app/import/lazy.ts -> src/workers/synthetic.test-support.ts',
+        'src/app/import/local-type.ts -> src/workers/synthetic.test-support.ts',
+        'src/app/import/query.ts -> src/workers/synthetic.test-support.ts',
+        'src/app/import/reexport.ts -> src/workers/synthetic.test-support.ts',
+        'src/app/import/rooted.ts -> src/workers/import-worker.test-support.ts',
+        'src/app/import/value.ts -> src/workers/synthetic.test-support.ts',
+        'src/original-data/source/identify.ts -> src/original-data/source/catalog.test-support.ts',
+        'src/platform/workers/template.ts -> src/workers/import-worker.test-support.ts',
+        'src/platform/workers/test-factory.ts -> src/workers/import-worker.test-support.ts',
+        'src/workers/dotless.ts -> src/workers/import-worker.test-support.ts',
+        'src/workers/query.ts -> src/workers/import-worker.test-support.ts',
+      ]);
+    });
+  });
+
+  it('keeps the import protocol, owner and Worker adapter away from original-data, ignoring Worker entry URLs', () => {
+    // Two chains: a clean protocol as in the repository, and one that imports original-data.
+    const chain = (directory: string, protocol: string) => ({
+      [`src/app/${directory}/import-worker-port.ts`]: `import type { Start } from '../../workers/${protocol}.ts'; export interface Port { post(message: Start): void }`,
+      [`src/app/${directory}/import-job-owner.ts`]: "import type { Port } from './import-worker-port.ts'; export const owner = (port: Port): Port => port;",
+      [`src/platform/${directory}/browser-import-worker.ts`]: `import type { Port } from '../../app/${directory}/import-worker-port.ts'; export const entry = (): URL => new URL('../../workers/import-worker.ts', import.meta.url); export type Created = Port;`,
+    });
+    withFixtures({
+      'src/original-data/source/open-verified-source.ts': 'export function openVerifiedSource(): number { return 1; }',
+      'src/original-data/source/identify-source.ts': 'export interface VerifiedSource { readonly open: boolean }',
+      'src/content/contract.ts': 'export interface GroupInput { readonly manifest: unknown }',
+      'src/workers/import-protocol.ts': "import type { GroupInput } from '../content/contract.ts'; export interface Start { readonly input: GroupInput }",
+      'src/workers/leaky-protocol.ts': "import type { VerifiedSource } from '../original-data/source/identify-source.ts'; export interface Start { readonly source: VerifiedSource }",
+      'src/workers/import-worker.ts': "import { openVerifiedSource } from '../original-data/source/open-verified-source.ts'; export const run = openVerifiedSource;",
+      ...chain('import', 'import-protocol'),
+      ...chain('leaky', 'leaky-protocol'),
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(originalDataReach(compilation, directory)).toEqual([
+        'src/app/leaky/import-job-owner.ts -> src/original-data/source/identify-source.ts',
+        'src/app/leaky/import-worker-port.ts -> src/original-data/source/identify-source.ts',
+        'src/platform/leaky/browser-import-worker.ts -> src/original-data/source/identify-source.ts',
+      ]);
+    });
+  });
 
   it('keeps every production module within the low-level capability boundary', () => {
     expect(capabilityViolations(sharedAppProgram(), root)).toEqual([]);

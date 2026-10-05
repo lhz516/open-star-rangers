@@ -108,7 +108,7 @@ updated: 2026-10-05
 | [05-group-results.md](./subtasks/05-group-results.md) | 04 | completed |
 | [06-browser-worker-adapter.md](./subtasks/06-browser-worker-adapter.md) | 04 | completed |
 | [07-node-integration.md](./subtasks/07-node-integration.md) | 03, 05, 06 | completed |
-| [08-boundaries.md](./subtasks/08-boundaries.md) | 03, 05, 06 | pending |
+| [08-boundaries.md](./subtasks/08-boundaries.md) | 03, 05, 06 | completed |
 | [09-browser-worker-paths.md](./subtasks/09-browser-worker-paths.md) | 06, 07 | pending |
 | [10-browser-lifecycle-failures.md](./subtasks/10-browser-lifecycle-failures.md) | 09 | pending |
 | [11-local-base-check.md](./subtasks/11-local-base-check.md) | 07 | pending |
