@@ -95,7 +95,7 @@ updated: 2026-10-05
 | [12-location-grammar.md](./subtasks/12-location-grammar.md) | 02, 04 | completed |
 | [13-close-order-flake.md](./subtasks/13-close-order-flake.md) | 08 | completed |
 | [14-capability-laundering.md](./subtasks/14-capability-laundering.md) | 11 | completed |
-| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 13, 14 | pending |
+| [10-final-alignment.md](./subtasks/10-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 11, 12, 13, 14 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -111,6 +111,7 @@ updated: 2026-10-05
   - **AC-14/S-07/S-13/AC-13：** 边界只判定导入的直接目标。来源族模块、测试支持与 `tools/` 模块被放行，Worker 或转换模块可以经它们转手取得底层能力；真实 ESLint 配置对三类探针都不报告，依赖图同样只看直接目标。
   - **其余项：** AC-10/S-10 经 12 补救后通过；其他 S/AC 均通过，见 [10](./subtasks/10-final-alignment.md#第二次最终对齐2026-10-05未通过)。
   - **补救：** 新增 [13](./subtasks/13-close-order-flake.md) 与 [14](./subtasks/14-capability-laundering.md)，10 改为依赖它们，之后再次对齐。
+- **2026-10-05 — 第三次最终对齐通过：** 13、14 补救后，S-01 至 S-13、AC-01 至 AC-14 全部通过，见 [10](./subtasks/10-final-alignment.md#第三次最终对齐2026-10-05通过)。
 
 ## 审批
 

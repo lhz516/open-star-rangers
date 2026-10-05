@@ -41,9 +41,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] S-01 至 S-13、AC-01 至 AC-14 逐项有实现与验证证据，没有未解释的缺口，也没有用代理证据替代要求；AC-12 的证据来自真实的本地基准运行。
-- [ ] `pnpm check` 与 `pnpm check:original` 通过；依赖清单与锁文件没有变化；仓库没有新增二进制样本。
-- [ ] 文档、源码边界、测试发现与事实归属一致，文档链接与元数据检查通过；`node tools/task-state.ts p2/03` 在标记完成后输出 `done`。
+- [x] S-01 至 S-13、AC-01 至 AC-14 逐项有实现与验证证据，没有未解释的缺口，也没有用代理证据替代要求；AC-12 的证据来自真实的本地基准运行。
+- [x] `pnpm check` 与 `pnpm check:original` 通过；依赖清单与锁文件没有变化；仓库没有新增二进制样本。
+- [x] 文档、源码边界、测试发现与事实归属一致，文档链接与元数据检查通过；`node tools/task-state.ts p2/03` 在标记完成后输出 `done`。
 
 ## 验证方法
 
@@ -83,3 +83,37 @@ updated: 2026-10-05
   - **AC-12/S-13（自动化部分）：** `tools/source-check.test.ts` 的关闭断言依赖异步关闭的完成顺序，负载下偶发失败。补救为 [13](./13-close-order-flake.md)。
   - **AC-14/S-07/S-13/AC-13：** 底层能力可经来源族模块、测试支持或 `tools/` 转手到达 Worker 与转换模块。补救为 [14](./14-capability-laundering.md)。
 - **处理：** 本行改回 `pending`，在 13、14 完成后再次对齐。
+
+### 第三次最终对齐（2026-10-05，通过）
+
+- **检查：** 在 HEAD `a8473e3` 上：
+  - `pnpm check`：87 个测试文件 2,358 个测试与构建通过；
+  - `pnpm check:original` 通过；
+  - 自 `9719c39` 起改动的全部文档，以及 spec、P2 任务索引与 STATUS，都通过链接与锚点检查，改动文档的 `updated` 日期都已更新；
+  - `node tools/task-state.ts p2/03` 结构有效。
+
+  自 `9719c39` 起，依赖清单与锁文件无变化，没有二进制或 `local/` 文件进入提交。
+- **补救核对：**
+  - **13：** CLI 关闭断言与完成顺序无关，仍能发现漏关与重复关闭。
+  - **14：** lint 与依赖图都拒绝以下转手途径：来源族 barrel、测试支持、`tools/`、E2E 支持、公开模块的再导出或包装，以及产品入口的再导出、别名、默认导出与值 `export *`。
+
+  AC-14 的放行项全部通过：产品入口、错误类型、`DiscPath`、来源映射读取、纯类型导入、`tools/` 与测试使用底层能力，以及 platform 对字节端口的纯类型导入。
+- **覆盖表：**
+
+  | 要求 | 结论 | 主要证据 |
+  |---|---|---|
+  | S-01、S-02、AC-01、AC-03 | 通过 | [02](./02-archive-rules-memory.md#完成证据)、[03](./03-on-demand-archive.md#完成证据)：共用样本表，限值边界与 +1 |
+  | S-03、AC-02 | 通过 | [03](./03-on-demand-archive.md#完成证据)：只读文件头与目录，按需读取，独占字节，预算与取消 |
+  | S-04、AC-04 | 通过 | [04](./04-catalog-fingerprint.md#完成证据)：冻结白名单与 manifest 自动核对 |
+  | S-05、S-06、AC-05、AC-06、AC-07 | 通过 | [04](./04-catalog-fingerprint.md#完成证据)、[05](./05-identify-verified-source.md#完成证据)：先核对大小再分段计算哈希，固定指纹，光盘层错误原样传递 |
+  | S-07、AC-08、AC-14 | 通过 | [05](./05-identify-verified-source.md#完成证据)、[07](./07-capability-boundary.md#完成证据)、[11](./11-capability-bypass.md#完成证据)、[14](./14-capability-laundering.md#完成证据) |
+  | S-08、AC-09 | 通过 | [06](./06-mapping-verification.md#完成证据)：结构化位置，精确比较备选项 |
+  | S-09 | 通过 | [02](./02-archive-rules-memory.md#完成证据)、[03](./03-on-demand-archive.md#完成证据)：先检查结构限值再分配或读取 |
+  | S-10、AC-10 | 通过 | [12](./12-location-grammar.md#完成证据)：封闭位置语法，诊断脱敏，无部分成功 |
+  | S-11、AC-11 | 通过 | [01](./01-incremental-sha256.md#完成证据) |
+  | S-12 | 通过 | 各层合成构建器；测试不读取原版文件 |
+  | S-13、AC-12、AC-13 | 通过 | [08](./08-source-check-cli.md#完成证据)、[09](./09-local-base-check.md#完成证据)（真实本地基准运行）、[13](./13-close-order-flake.md#完成证据)；工程约定、工具指南与 imfat 文档与实现一致 |
+
+- **Rubber-duck：** 第三次逐项复核 S/AC，全部通过，无阻塞与非阻塞问题。复核时独立运行：2 个聚焦测试文件 85 个测试通过，`pnpm lint`、`pnpm typecheck` 与 `pnpm check:original` 通过。
+- **文档影响：** [STATUS](../../../../STATUS.md) 更新阶段摘要与下一步（P2-04 与 P2-10 并行）；[P2 任务索引](../../tasks.md)的导航仍然准确，无需改动。
+- **范围外观察：** 消费者层的传递检查只跟随 `src/` 内的边，见 [14](./14-capability-laundering.md#完成证据)；不影响本任务的验收。
