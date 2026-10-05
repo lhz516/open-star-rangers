@@ -46,6 +46,49 @@ export function deferredByteSource(byteLength: number): { source: SyntheticByteS
   return { source, pending };
 }
 
+/** One `[section]` of a CloneCD descriptor with its `key=value` lines in order; tests mutate these to build cases. */
+export interface CloneCdSection {
+  name: string;
+  keys: [key: string, value: string][];
+}
+
+function tocEntry(index: number, point: string, frames: number): CloneCdSection {
+  const [min, sec, frame] = [Math.floor(frames / 4_500), Math.floor(frames / 75) % 60, frames % 75];
+  return {
+    name: `Entry ${index}`,
+    keys: [
+      ['Session', '1'], ['Point', point], ['ADR', '0x01'], ['Control', '0x04'], ['TrackNo', '0'], ['AMin', '0'], ['ASec', '0'],
+      ['AFrame', '0'], ['ALBA', '-150'], ['Zero', '0'], ['PMin', String(min)], ['PSec', String(sec)], ['PFrame', String(frame)],
+      ['PLBA', String(frames - 150)],
+    ],
+  };
+}
+
+/**
+ * Descriptor sections shaped like the base disc's: one session whose TOC holds the first-track (0xa0), last-track
+ * (0xa1) and lead-out (0xa2) points and one MODE1 data track starting at LBA 0, for an image of `sectorCount` sectors.
+ * The lead-in PMin values name track 1, so their PLBA is not an address.
+ */
+export function cloneCdSections(sectorCount: number): CloneCdSection[] {
+  return [
+    { name: 'CloneCD', keys: [['Version', '3']] },
+    { name: 'Disc', keys: [['TocEntries', '4'], ['Sessions', '1'], ['DataTracksScrambled', '0'], ['CDTextLength', '0']] },
+    { name: 'Session 1', keys: [['PreGapMode', '1'], ['PreGapSubC', '0']] },
+    tocEntry(0, '0xa0', 4_500),
+    tocEntry(1, '0xa1', 4_500),
+    tocEntry(2, '0xa2', sectorCount + 150),
+    tocEntry(3, '0x01', 150),
+    { name: 'TRACK 1', keys: [['MODE', '1'], ['INDEX 1', '0']] },
+  ];
+}
+
+/** Writes descriptor sections as ASCII text, each line ended with `lineEnd`. */
+export function cloneCdText(sections: readonly CloneCdSection[], lineEnd = '\r\n'): Uint8Array {
+  const lines = sections.flatMap(({ name, keys }) => [`[${name}]`, ...keys.map(([key, value]) => `${key}=${value}`)]);
+  const text = lines.map(line => line + lineEnd).join('');
+  return new ByteWriter().ascii(text, text.length).toBytes();
+}
+
 export class ByteWriter {
   private bytes: number[] = [];
 

@@ -1,37 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { deferredByteSource, memoryByteSource, SyntheticByteSource } from '../synthetic.ts';
-import { DiscReadError, type DiscReadErrorData } from './disc-error.ts';
-import { MAX_PORT_READ_BYTES, readSourceLimits, snapshotSource, SourceReader, type CancellationProbe } from './source-reader.ts';
+import { failure, failureOf, MARKER, rejection } from './disc.test-support.ts';
+import { MAX_PORT_READ_BYTES, readCancellation, readSourceLimits, snapshotSource, SourceReader, type CancellationProbe } from './source-reader.ts';
 
-const MARKER = 'PRIVATE-MARKER-7f3a';
 const MAX = Number.MAX_SAFE_INTEGER;
 const CONTENT = Uint8Array.from({ length: 64 }, (_, index) => index * 3);
 const limits = (sourceReadBytes: number): BudgetRecord => Object.freeze({ ...EMPTY_BUDGET_USAGE, sourceReadBytes });
 const used = (reader: SourceReader): number => reader.usage().sourceReadBytes;
-
-async function rejection(action: () => unknown): Promise<DiscReadError> {
-  try {
-    await action();
-  } catch (error) {
-    if (error instanceof DiscReadError) return error;
-    throw error;
-  }
-  throw new Error('expected a DiscReadError');
-}
-
-/** The DTO, after checking it is frozen, structured-cloneable and free of planted markers and bytes. */
-function privateData(error: DiscReadError): DiscReadErrorData {
-  const data = error.toData();
-  expect(Object.isFrozen(data)).toBe(true);
-  expect(structuredClone(data)).toEqual(data);
-  expect(`${JSON.stringify(data)} ${error.message}`).not.toContain(MARKER);
-  expect(Object.values(error).some(value => value instanceof Uint8Array || value instanceof Error)).toBe(false);
-  return data;
-}
-
-const failureOf = (code: DiscReadErrorData['code'], location: string, limit: DiscReadErrorData['limit'] = null): DiscReadErrorData =>
-  ({ code, location, reason: expect.any(String), limit });
 
 describe('source snapshots', () => {
   it('keeps the size reported when the source was snapshotted', async () => {
@@ -40,8 +16,7 @@ describe('source snapshots', () => {
     (port as { byteLength: number }).byteLength = 1_000;
     expect(snapshot).toEqual({ port, byteLength: 64 });
     expect(Object.isFrozen(snapshot)).toBe(true);
-    const error = await rejection(() => new SourceReader(limits(MAX)).read(snapshot, 64, 1, 'image'));
-    expect(privateData(error)).toEqual(failureOf('invalid-range', 'image'));
+    expect(await failure(() => new SourceReader(limits(MAX)).read(snapshot, 64, 1, 'image'))).toEqual(failureOf('invalid-range', 'image'));
     expect(port.requests).toEqual([]);
   });
 
@@ -52,12 +27,12 @@ describe('source snapshots', () => {
 
   it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, MAX + 1, '64'])('rejects size %s as invalid-range', async size => {
     const port = new SyntheticByteSource(size as number, () => undefined);
-    expect(privateData(await rejection(() => snapshotSource(port, 'image')))).toEqual(failureOf('invalid-range', 'image'));
+    expect(await failure(() => snapshotSource(port, 'image'))).toEqual(failureOf('invalid-range', 'image'));
   });
 
   it('maps a size getter failure to read-failed without its host text', async () => {
     const port = { get byteLength(): number { throw new Error(MARKER); }, read: () => Promise.resolve(new Uint8Array()) };
-    expect(privateData(await rejection(() => snapshotSource(port, 'descriptor')))).toEqual(failureOf('read-failed', 'descriptor'));
+    expect(await failure(() => snapshotSource(port, 'descriptor'))).toEqual(failureOf('read-failed', 'descriptor'));
   });
 });
 
@@ -78,7 +53,7 @@ describe('source limits', () => {
     ['an unknown dimension', { ...EMPTY_BUDGET_USAGE, [MARKER]: 1 }, 'unknown-budget-dimension', 'limits'],
     ['an invalid amount', { ...EMPTY_BUDGET_USAGE, sourceReadBytes: -1 }, 'invalid-budget-value', 'limits.sourceReadBytes'],
   ] as const)('keeps the P2-01 code and path for %s', async (_case, value, code, location) => {
-    expect(privateData(await rejection(() => readSourceLimits(value)))).toEqual(failureOf(code, location));
+    expect(await failure(() => readSourceLimits(value))).toEqual(failureOf(code, location));
   });
 });
 
@@ -130,8 +105,7 @@ describe('guarded reads', () => {
   ] as const)('rejects %s before metering or reading', async (_case, offset, length, code) => {
     const port = memoryByteSource(CONTENT);
     const reader = new SourceReader(limits(MAX));
-    const error = await rejection(() => reader.read(snapshotSource(port, 'image'), offset, length, 'image'));
-    expect(privateData(error)).toEqual(failureOf(code, 'image'));
+    expect(await failure(() => reader.read(snapshotSource(port, 'image'), offset, length, 'image'))).toEqual(failureOf(code, 'image'));
     expect(port.requests).toEqual([]);
     expect(reader.usage()).toBe(EMPTY_BUDGET_USAGE);
   });
@@ -139,16 +113,15 @@ describe('guarded reads', () => {
   it('rejects one byte over the port read limit before metering or reading', async () => {
     const port = new SyntheticByteSource(MAX, (_offset, length) => new Uint8Array(length));
     const reader = new SourceReader(limits(MAX));
-    const error = await rejection(() => reader.read(snapshotSource(port, 'image'), 0, MAX_PORT_READ_BYTES + 1, 'image'));
-    expect(privateData(error)).toEqual(failureOf('limit-exceeded', 'image', { name: 'portReadBytes', limit: 4_816_896, observed: 4_816_897 }));
+    expect(await failure(() => reader.read(snapshotSource(port, 'image'), 0, MAX_PORT_READ_BYTES + 1, 'image'))).toEqual(failureOf('limit-exceeded', 'image', { name: 'portReadBytes', limit: 4_816_896, observed: 4_816_897 }));
     expect(port.requests).toEqual([]);
     expect(used(reader)).toBe(0);
   });
 
   it('reports the source range before the port read limit when both fail', async () => {
     const port = memoryByteSource(CONTENT);
-    const error = await rejection(() => new SourceReader(limits(MAX)).read(snapshotSource(port, 'image'), 0, MAX_PORT_READ_BYTES + 1, 'image'));
-    expect(error.toData()).toEqual(failureOf('invalid-range', 'image'));
+    expect(await failure(() => new SourceReader(limits(MAX)).read(snapshotSource(port, 'image'), 0, MAX_PORT_READ_BYTES + 1, 'image')))
+      .toEqual(failureOf('invalid-range', 'image'));
   });
 });
 
@@ -180,16 +153,14 @@ describe('port contract', () => {
   ])('maps %s to read-failed, still metered, without leaking bytes or host text', async (_case, respond) => {
     const port = new SyntheticByteSource(64, respond);
     const reader = new SourceReader(limits(MAX));
-    const error = await rejection(() => reader.read(snapshotSource(port, 'image'), 8, 4, 'image'));
-    expect(privateData(error)).toEqual(failureOf('read-failed', 'image'));
+    expect(await failure(() => reader.read(snapshotSource(port, 'image'), 8, 4, 'image'))).toEqual(failureOf('read-failed', 'image'));
     expect(port.requests).toEqual([{ offset: 8, length: 4 }]);
     expect(used(reader)).toBe(4);
   });
 
   it('maps a synchronously throwing read method to read-failed', async () => {
     const port = { byteLength: 64, read(): Promise<Uint8Array> { throw new Error(MARKER); } };
-    const error = await rejection(() => new SourceReader(limits(MAX)).read(snapshotSource(port, 'image'), 0, 1, 'image'));
-    expect(privateData(error)).toEqual(failureOf('read-failed', 'image'));
+    expect(await failure(() => new SourceReader(limits(MAX)).read(snapshotSource(port, 'image'), 0, 1, 'image'))).toEqual(failureOf('read-failed', 'image'));
   });
 });
 
@@ -199,8 +170,7 @@ describe('source read budget', () => {
     const source = snapshotSource(port, 'image');
     const reader = new SourceReader(limits(10));
     await reader.read(source, 0, 10, 'image');
-    const error = await rejection(() => reader.read(source, 10, 1, 'image'));
-    expect(privateData(error)).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
+    expect(await failure(() => reader.read(source, 10, 1, 'image'))).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
     expect(port.requests).toEqual([{ offset: 0, length: 10 }]);
     expect(used(reader)).toBe(10);
   });
@@ -232,8 +202,7 @@ describe('source read budget', () => {
     const first = reader.read(source, 0, 6, 'image');
     const second = reader.read(source, 6, 4, 'image');
     expect(used(reader)).toBe(10);
-    const third = await rejection(() => reader.read(source, 10, 1, 'image'));
-    expect(third.toData()).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
+    expect(await failure(() => reader.read(source, 10, 1, 'image'))).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
     expect(pending.map(({ offset, length }) => [offset, length])).toEqual([[0, 6], [6, 4]]);
     pending[1].resolve(CONTENT.slice(6, 10));
     pending[0].resolve(CONTENT.slice(0, 6));
@@ -255,16 +224,14 @@ describe('source read budget', () => {
     const reader = new SourceReader(limits(10));
     await reader.read(snapshotSource(memoryByteSource(CONTENT), 'image'), 0, 4, 'image');
     reader.precheck(6, 'image');
-    const error = await rejection(() => reader.precheck(7, 'image'));
-    expect(privateData(error)).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
+    expect(await failure(() => reader.precheck(7, 'image'))).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: 10, observed: 11 }));
     expect(used(reader)).toBe(4);
   });
 
   it('reports a total beyond the safe integer range with a null observed amount', async () => {
     const reader = new SourceReader(limits(MAX));
     await reader.read(snapshotSource(memoryByteSource(CONTENT), 'image'), 0, 4, 'image');
-    const error = await rejection(() => reader.precheck(MAX - 3, 'image'));
-    expect(privateData(error)).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: MAX, observed: null }));
+    expect(await failure(() => reader.precheck(MAX - 3, 'image'))).toEqual(failureOf('budget-exceeded', 'image', { name: 'sourceReadBytes', limit: MAX, observed: null }));
   });
 
   it('returns all twelve dimensions as a frozen snapshot that later reads and callers cannot change', async () => {
@@ -286,7 +253,7 @@ describe('cancellation', () => {
   it('reads nothing and meters nothing once cancelled before a request', async () => {
     const port = memoryByteSource(CONTENT);
     const reader = new SourceReader(limits(MAX), { aborted: true });
-    expect(privateData(await rejection(() => reader.read(snapshotSource(port, 'image'), 0, 4, 'image')))).toEqual(failureOf('cancelled', 'image'));
+    expect(await failure(() => reader.read(snapshotSource(port, 'image'), 0, 4, 'image'))).toEqual(failureOf('cancelled', 'image'));
     expect(port.requests).toEqual([]);
     expect(used(reader)).toBe(0);
   });
@@ -299,10 +266,10 @@ describe('cancellation', () => {
     const { source: port, pending } = deferredByteSource(64);
     const probe = { aborted: false };
     const reader = new SourceReader(limits(MAX), probe);
-    const read = rejection(() => reader.read(snapshotSource(port, 'image'), 0, 4, 'image'));
+    const read = reader.read(snapshotSource(port, 'image'), 0, 4, 'image');
     probe.aborted = true;
     settle(pending[0]);
-    expect(privateData(await read)).toEqual(failureOf('cancelled', 'image'));
+    expect(await failure(() => read)).toEqual(failureOf('cancelled', 'image'));
     expect(used(reader)).toBe(4);
   });
 
@@ -321,10 +288,31 @@ describe('cancellation', () => {
     const port = memoryByteSource(CONTENT);
     const probe = { aborted: true };
     const reader = new SourceReader(limits(MAX), probe);
-    expect((await rejection(() => reader.throwIfCancelled('descriptor'))).toData()).toEqual(failureOf('cancelled', 'descriptor'));
+    expect(await failure(() => reader.throwIfCancelled('descriptor'))).toEqual(failureOf('cancelled', 'descriptor'));
     probe.aborted = false;
     expect((await rejection(() => reader.read(snapshotSource(port, 'image'), 0, 4, 'image'))).code).toBe('cancelled');
     expect(port.requests).toEqual([]);
+  });
+
+  it('reads a probe once to check its shape and keeps the live reference', () => {
+    const signal = new AbortController().signal;
+    expect(readCancellation(signal)).toBe(signal);
+    expect(readCancellation(undefined)).toBeUndefined();
+  });
+
+  it.each([
+    ['a probe whose flag getter starts throwing host text', (probe: { flag: unknown }) => {
+      Object.defineProperty(probe, 'aborted', { get() { throw new Error(MARKER); } });
+    }],
+    ['a probe whose flag stops being a boolean', (probe: { flag: unknown }) => { probe.flag = 0; }],
+  ])('fails closed for %s after opening', async (_case, breakProbe) => {
+    const probe = { flag: false as unknown, get aborted(): boolean { return this.flag as boolean; } };
+    const port = memoryByteSource(CONTENT);
+    const reader = new SourceReader(limits(MAX), readCancellation(probe));
+    await reader.read(snapshotSource(port, 'image'), 0, 4, 'image');
+    breakProbe(probe);
+    expect(await failure(() => reader.read(snapshotSource(port, 'image'), 0, 4, 'image'))).toEqual(failureOf('cancelled', 'image'));
+    expect(port.requests).toHaveLength(1);
   });
 
   it('accepts an AbortSignal as the probe and reads it live', async () => {
@@ -334,6 +322,6 @@ describe('cancellation', () => {
     const source = snapshotSource(memoryByteSource(CONTENT), 'image');
     await reader.read(source, 0, 4, 'image');
     controller.abort(new Error(MARKER));
-    expect(privateData(await rejection(() => reader.read(source, 0, 4, 'image')))).toEqual(failureOf('cancelled', 'image'));
+    expect(await failure(() => reader.read(source, 0, 4, 'image'))).toEqual(failureOf('cancelled', 'image'));
   });
 });

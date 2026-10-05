@@ -48,6 +48,19 @@ export function readSourceLimits(value: unknown, path = 'limits'): BudgetRecord 
   }
 }
 
+/** Checks that a cancellation probe reports a boolean `aborted` now; the live reference is kept for later checks. */
+export function readCancellation(value: unknown, path = 'cancellation'): CancellationProbe | undefined {
+  if (value === undefined) return undefined;
+  let aborted: unknown;
+  try {
+    aborted = typeof value === 'object' && value !== null ? (value as CancellationProbe).aborted : undefined;
+  } catch {
+    aborted = undefined;
+  }
+  if (typeof aborted !== 'boolean') throw new DiscReadError('invalid-record', path, 'must be an object with a boolean aborted flag');
+  return value as CancellationProbe;
+}
+
 function intrinsicGetter(target: object, key: PropertyKey): (this: unknown) => unknown {
   return Object.getOwnPropertyDescriptor(target, key)!.get!;
 }
@@ -99,8 +112,18 @@ export class SourceReader {
 
   /** Throws `cancelled` once the probe has been seen aborted; the reader stays cancelled from then on. */
   throwIfCancelled(location: string): void {
-    if (!this.#cancelled && this.#cancellation?.aborted) this.#cancelled = true;
+    if (!this.#cancelled && this.#probeAborted()) this.#cancelled = true;
     if (this.#cancelled) throw new DiscReadError('cancelled', location, 'the operation was cancelled');
+  }
+
+  /** Fails closed: a probe that throws or stops reporting exactly false counts as aborted, and its error is dropped. */
+  #probeAborted(): boolean {
+    if (!this.#cancellation) return false;
+    try {
+      return this.#cancellation.aborted !== false;
+    } catch {
+      return true;
+    }
   }
 
   /** Throws `budget-exceeded` unless `bytes` more source reads fit the budget; usage is unchanged. */

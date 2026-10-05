@@ -69,6 +69,8 @@ src/
     disc/
       disc-error.ts
       source-reader.ts
+      clone-cd.ts
+      disc-image.ts
   platform/
     browser/
       browser-session-host.ts
