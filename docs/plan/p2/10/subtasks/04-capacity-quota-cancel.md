@@ -42,12 +42,12 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-10（空间判定部分）：Node 测试覆盖足够、刚好相等、不足、`usage` 大于 `quota`、缺失、`NaN`、`Infinity`、负数与非法 `requiredBytes`。
-- [ ] AC-10（浏览器部分）：缺失工厂、打开时抛出 `SecurityError`、抛出 `InvalidStateError` 三种注入下，提交、列出、恢复都返回 `storage-unavailable`，提交从不返回 `committed`；`StorageManager` 缺失、`estimate()` 拒绝、返回非有限数时空间检查为 `unknown`。
-- [ ] AC-05：调用时已取消 → `cancelled`，记录不变；写请求已发出、事务仍可中止时取消 → 探针观测到原生 `abort()` 与 `abort` 事件，返回 `cancelled`，同键旧包仍能恢复，没有新包的记录；事务已进入提交阶段或 `complete` 后取消 → `committed`，新包可恢复。证据至少包含一次写请求发出后的原生 `abort`。
+- [x] AC-10（空间判定部分）：Node 测试覆盖足够、刚好相等、不足、`usage` 大于 `quota`、缺失、`NaN`、`Infinity`、负数与非法 `requiredBytes`。
+- [x] AC-10（浏览器部分）：缺失工厂、打开时抛出 `SecurityError`、抛出 `InvalidStateError` 三种注入下，提交、列出、恢复都返回 `storage-unavailable`，提交从不返回 `committed`；`StorageManager` 缺失、`estimate()` 拒绝、返回非有限数时空间检查为 `unknown`。
+- [x] AC-05：调用时已取消 → `cancelled`，记录不变；写请求已发出、事务仍可中止时取消 → 探针观测到原生 `abort()` 与 `abort` 事件，返回 `cancelled`，同键旧包仍能恢复，没有新包的记录；事务已进入提交阶段或 `complete` 后取消 → `committed`，新包可恢复。证据至少包含一次写请求发出后的原生 `abort`。
 - [ ] AC-06：默认配额下提交旧包；经 CDP 把配额设为高于当前用量、低于新包需求后，空间检查为 `insufficient`，数值与页面内 `navigator.storage.estimate()` 一致；提交新包返回 `quota-exceeded`，旧包仍能恢复，没有新包的记录；恢复默认配额后同一提交成功。若 CDP 方法不可用或没有产生真实配额错误，本项不通过，子任务保持 blocked 并记录探测结果。
-- [ ] AC-16（本子任务部分）：工程约定记录 CDP 配额覆盖、工厂注入与配额覆盖不可用时的处理。
-- [ ] `pnpm check` 与 `pnpm test:e2e resource-cache.spec.ts --project=development` 通过。
+- [x] AC-16（本子任务部分）：工程约定记录 CDP 配额覆盖、工厂注入与配额覆盖不可用时的处理。
+- [x] `pnpm check` 与 `pnpm test:e2e resource-cache.spec.ts --project=development` 通过。
 
 ## 验证方法
 
@@ -57,3 +57,36 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [resource-cache-contract.ts](../../../../../src/platform/storage/resource-cache-contract.ts) 新增 DOM-free 的 `evaluateCapacity`。工作范围原定放在 `resource-cache-records.ts`，simplify 认为它属于结果与请求校验的契约，故改放此处。
+  - [browser-resource-cache.ts](../../../../../src/platform/storage/browser-resource-cache.ts) 新增 `storage` 注入（默认 `navigator.storage`）与 `checkCapacity`：非法输入不读取估算，没有估算、估算抛出或拒绝时为 `unknown`。
+  - **取消：** 提交入口先检查已取消的 signal，避免复制与哈希。写事务的 `abort()` 记录唯一原因，后续请求错误不能覆盖；`abort()` 抛出 `InvalidStateError` 时等待事务的最终事件；结束时移除监听。
+- **测试支持：** [support/resource-cache.ts](../../../../../e2e/support/resource-cache.ts) 的探针记录中止时的宿主错误名，并提供 `onEvent`（记录后、应用处理器之前同步运行）；`modelBytes` 改为 xorshift 生成的不可压缩字节；新增 `restoredTag` 与 `withQuotaOverride`。
+- **Node 证据（AC-10 空间判定）：** [resource-cache-contract.test.ts](../../../../../src/platform/storage/resource-cache-contract.test.ts) 覆盖足够、刚好相等、差 1 字节、用量超过配额（需求为 0 与 1）；缺 quota、缺 usage、`NaN`、`Infinity`、负数、字符串与非对象估算为 `unknown`；7 种非法 `requiredBytes` 为 `invalid-request`。
+- **浏览器证据**（本机 Chrome 154，`pnpm test:e2e resource-cache.spec.ts --project=development` 9 个用例全部通过；临时 profile 无残留）：
+  - **AC-10：** 缺失工厂、打开时抛出 `SecurityError`、抛出 `InvalidStateError` 三种注入下，提交、列出、恢复都返回 `storage-unavailable`，结果不含宿主消息，页面没有创建缓存数据库；`StorageManager` 缺失、`estimate()` 拒绝、同步抛出、返回 `NaN` 时为 `unknown`；默认适配器读真实估算为 `sufficient`。
+  - **AC-05：**
+    - 调用时已取消：返回 `cancelled`，没有读写事务或写请求，记录不变。
+    - 写请求发出后取消：探针记录到成功的原生 `abort()` 与 `readwrite` 的 `abort` 事件，没有 `complete`；返回 `cancelled`，旧包可恢复，记录不变。
+    - 在 `complete` 时取消：`abort()` 抛出 `InvalidStateError`，返回 `committed`，新包可恢复。
+    - 提交返回后取消：返回 `committed`，且没有 `abort()` 调用，证明监听已移除。
+  - **AC-06（已满足部分）：**
+    - 在临时持久 profile 的第一个会话按默认配额提交旧包，重启后在首次使用 IndexedDB 前经 CDP 设置配额 524,288 字节：高于 CDP 报告的用量 0，低于新包需求 8,406,461 字节，也低于单个 1 MiB payload。CDP `Storage.getUsageAndQuota` 报告 `overrideActive: true`。
+    - 提交新包返回 `quota-exceeded`，探针记录 `readwrite` 中止且宿主错误为 `QuotaExceededError`；旧包仍可恢复，记录与第一个会话结束时完全相同。
+    - 重置覆盖后同一提交返回 `committed` 并可恢复。
+    - 另一用例用真实 `estimate()` 的快照得到 `sufficient`（刚好相等）与 `insufficient`（多 1 字节），数值与快照一致。
+  - **AC-06（未满足）：** 覆盖生效期间，空间检查返回 `sufficient`，数值与 `estimate()` 一致（配额 10,737,418,240）。原因是 Chrome 154 的 `navigator.storage.estimate()` 不反映 CDP 配额覆盖：同一文档、刷新后与新页面都一样，而 CDP 报告覆盖已生效。spec 规定空间检查基于 `estimate()`，所以“覆盖下返回 insufficient”无法在真实 Chrome 中出现。按 spec 风险与恢复，本项保持未通过，等待用户决定替代的真实验证方式，见 [goal 执行记录](../goal.md#执行记录)。
+- **检查：** `pnpm check`：89 个测试文件 2,483 个测试、lint、类型检查与构建全部通过。
+- **Rubber-duck：** 确认没有实现缺陷，也找不到可行且不空洞的字面满足 AC-06 的方式，同意保持阻塞。采纳 3 项非阻塞建议：已取消的 signal 在复制与哈希前返回；断言提交返回后再取消不会调用 `abort()`；断言配额覆盖值高于用量、低于需求和单个 payload。
+- **Simplify：**
+  - 采纳：
+    - `evaluateCapacity` 移到契约模块；
+    - `checkCapacity` 用 `readEstimate` helper；
+    - 恢复标记的解析改为共用的 `restoredTag`；
+    - 大包只构建一次；
+    - 噪声字节改为循环填充；
+    - CDP 覆盖流程抽成 `withQuotaOverride`；
+    - 容量用例只取一次真实估算并注入。
+  - 未采纳：去掉配额用例中独立的 `estimate()` 调用（该断言的目的就是比较检查结果与独立估算）。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)补充 `evaluateCapacity`、`storage` 注入、`checkCapacity` 与取消语义；[工程约定](../../../../engineering/README.md)的资源缓存 E2E 说明加入存储不可用的注入、`onEvent` 取消时机，以及 Chrome 154 下 CDP 配额覆盖的实测行为与用例做法。

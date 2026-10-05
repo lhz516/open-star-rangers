@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readContentIdentity } from '../../content/content-identity.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import {
-  cacheFailure, cacheKeyOf, classifyHostError, packageRecordKey, payloadRecordKey, readCacheKey, readPackageRecordKey,
+  cacheFailure, cacheKeyOf, classifyHostError, evaluateCapacity, packageRecordKey, payloadRecordKey, readCacheKey, readPackageRecordKey,
   RESOURCE_CACHE_FAILURE_CODES, ResourceCacheFailureError, sameCacheKey, type ResourceCacheFailure,
 } from './resource-cache-contract.ts';
 
@@ -155,5 +155,34 @@ describe('host error classification', () => {
     const failure = cacheFailure(code, 'transaction');
     expect(Object.keys(failure).sort()).toEqual(['budget', 'code', 'diagnostics', 'location', 'reason', 'status']);
     expect(JSON.stringify(failure)).not.toMatch(/private|secret|stack/);
+  });
+});
+
+describe('capacity evaluation', () => {
+  it.each([
+    ['more than enough', 100, { usage: 10, quota: 1000 }, { status: 'sufficient', availableBytes: 990 }],
+    ['exactly enough', 990, { usage: 10, quota: 1000 }, { status: 'sufficient', availableBytes: 990 }],
+    ['one byte short', 991, { usage: 10, quota: 1000 }, { status: 'insufficient', availableBytes: 990 }],
+    ['usage beyond quota', 0, { usage: 2000, quota: 1000 }, { status: 'sufficient', availableBytes: 0 }],
+    ['usage beyond quota with a need', 1, { usage: 2000, quota: 1000 }, { status: 'insufficient', availableBytes: 0 }],
+  ])('reports %s with the estimate numbers', (_name, requiredBytes, estimate, expected) => {
+    expect(evaluateCapacity(requiredBytes, estimate)).toEqual({ requiredBytes, usage: estimate.usage, quota: estimate.quota, ...expected });
+  });
+
+  it.each([
+    ['no estimate', null],
+    ['a missing quota', { usage: 1 }],
+    ['a missing usage', { quota: 1 }],
+    ['a NaN usage', { usage: NaN, quota: 1 }],
+    ['an infinite quota', { usage: 1, quota: Infinity }],
+    ['a negative quota', { usage: 1, quota: -1 }],
+    ['a string quota', { usage: 1, quota: '1000' }],
+    ['a non-object', 'estimate'],
+  ])('reports %s as unknown', (_name, estimate) => {
+    expect(evaluateCapacity(5, estimate)).toEqual({ status: 'unknown', requiredBytes: 5 });
+  });
+
+  it.each([-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '5', null])('rejects required bytes %s as invalid-request', requiredBytes => {
+    expect(evaluateCapacity(requiredBytes, { usage: 1, quota: 10 })).toMatchObject({ status: 'failed', code: 'invalid-request', location: 'requiredBytes' });
   });
 });

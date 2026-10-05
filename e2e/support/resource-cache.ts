@@ -25,7 +25,7 @@ export interface PackageOptions {
   readonly tag?: string;
   /** Adds a non-required image Asset to the models group. */
   readonly extraAsset?: boolean;
-  /** Bytes of every models payload, to make a write transaction long enough to observe. */
+  /** Bytes of every models payload, pseudo-random so on-disk compression cannot shrink them. */
   readonly modelBytes?: number;
 }
 
@@ -41,19 +41,24 @@ export interface CacheModules {
   limits(overrides?: Record<string, number>): Record<string, number>;
   /** Payload bytes as an ID-ordered list of plain number arrays, for comparison outside the page. */
   payloadBytes(groups: readonly { payloads: readonly { id: string; bytes: Uint8Array }[] }[]): [string, number[]][];
+  /** The `tag` of a restored package (read from its first logic payload), or the failure code. */
+  restoredTag(result: Awaited<ReturnType<CacheModule.ResourceCache['restore']>>): string;
 }
 
 export interface ProbeEvent {
   readonly kind: 'transaction' | 'complete' | 'abort' | 'write' | 'abort-call';
   readonly mode?: IDBTransactionMode;
   readonly store?: string;
+  /** Name of the DOMException an `abort()` call threw. */
   readonly threw?: string;
+  /** Name of the transaction's error when it aborted, if any. */
+  readonly error?: string;
 }
 
 interface IdbProbe {
   readonly events: ProbeEvent[];
-  /** Runs synchronously after each write request is issued; the request itself is unchanged. */
-  afterWrite: (() => void) | null;
+  /** Runs synchronously after each event is recorded, before the application's own handlers; it changes no request. */
+  onEvent: ((event: ProbeEvent) => void) | null;
   reset(): void;
 }
 
@@ -79,6 +84,18 @@ export async function loadCacheModules(page: Page): Promise<void> {
       load<typeof BudgetModule>('/src/content/budget.ts'),
     ]);
     const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
+    /** Incompressible deterministic bytes (xorshift32), different per Asset. */
+    const noise = (length: number, seed: string): Uint8Array => {
+      let state = [...seed].reduce((hash, character) => Math.imul(hash ^ character.charCodeAt(0), 0x01000193) >>> 0, 0x811c9dc5) || 1;
+      const bytes = new Uint8Array(length);
+      for (let index = 0; index < length; index++) {
+        state ^= state << 13; state >>>= 0;
+        state ^= state >>> 17;
+        state ^= state << 5; state >>>= 0;
+        bytes[index] = state & 0xff;
+      }
+      return bytes;
+    };
     window.osrCache = {
       cache, records, completeness, slice, ownership,
       buildPackage({ origin = 'synthetic', converterVersion = 'synthetic-converter.1', tag = 'payload', extraAsset = false, modelBytes } = {}) {
@@ -87,9 +104,7 @@ export async function loadCacheModules(page: Page): Promise<void> {
           const specs = [...synthetic.SYNTHETIC_ASSETS[group], ...(extraAsset && group === 'models' ? [{ id: 'image/synthetic-extra', role: 'model-texture' }] : [])]
             .map(spec => ({
               ...spec,
-              bytes: modelBytes !== undefined && group === 'models'
-                ? Uint8Array.from({ length: modelBytes }, (_, index) => (index * 31 + spec.id.length) % 256)
-                : ascii(`${tag}:${spec.id}`),
+              bytes: modelBytes !== undefined && group === 'models' ? noise(modelBytes, `${tag}:${spec.id}`) : ascii(`${tag}:${spec.id}`),
             }))
             .sort((left, right) => (left.id < right.id ? -1 : 1));
           const input = synthetic.syntheticGroup(group, specs, identity);
@@ -102,6 +117,7 @@ export async function loadCacheModules(page: Page): Promise<void> {
       limits: overrides => ({ ...Object.fromEntries(budget.BUDGET_DIMENSIONS.map(dimension => [dimension, 1_000_000_000])), ...overrides }),
       payloadBytes: groups => groups.flatMap(({ payloads }) => payloads.map(({ id, bytes }): [string, number[]] => [id, [...bytes]]))
         .sort(([left], [right]) => (left < right ? -1 : 1)),
+      restoredTag: result => (result.status === 'restored' ? String.fromCharCode(...result.groups[0].payloads[0].bytes).split(':')[0] : result.code),
     };
   });
 }
@@ -111,21 +127,25 @@ export async function installIdbProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     if (window.osrIdbProbe) return;
     const events: ProbeEvent[] = [];
-    const probe: IdbProbe = { events, afterWrite: null, reset: () => { events.length = 0; } };
+    const probe: IdbProbe = { events, onEvent: null, reset: () => { events.length = 0; } };
+    const record = (event: ProbeEvent): void => {
+      events.push(event);
+      probe.onEvent?.(event);
+    };
     const transaction = IDBDatabase.prototype.transaction;
     IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<IDBDatabase['transaction']>) {
       const created = transaction.apply(this, args);
-      events.push({ kind: 'transaction', mode: created.mode });
-      created.addEventListener('complete', () => events.push({ kind: 'complete', mode: created.mode }));
-      created.addEventListener('abort', () => events.push({ kind: 'abort', mode: created.mode }));
+      record({ kind: 'transaction', mode: created.mode });
+      // Registered before the adapter assigns its handlers, so these run first.
+      created.addEventListener('complete', () => record({ kind: 'complete', mode: created.mode }));
+      created.addEventListener('abort', () => record({ kind: 'abort', mode: created.mode, ...(created.error ? { error: created.error.name } : {}) }));
       return created;
     };
     for (const method of ['put', 'delete'] as const) {
       const original = IDBObjectStore.prototype[method] as (...args: unknown[]) => IDBRequest;
       (IDBObjectStore.prototype[method] as unknown) = function (this: IDBObjectStore, ...args: unknown[]) {
         const request = original.apply(this, args);
-        events.push({ kind: 'write', store: this.name });
-        probe.afterWrite?.();
+        record({ kind: 'write', store: this.name });
         return request;
       };
     }
@@ -133,9 +153,9 @@ export async function installIdbProbe(page: Page): Promise<void> {
     IDBTransaction.prototype.abort = function (this: IDBTransaction) {
       try {
         abort.call(this);
-        events.push({ kind: 'abort-call' });
+        record({ kind: 'abort-call' });
       } catch (error) {
-        events.push({ kind: 'abort-call', threw: error instanceof DOMException ? error.name : 'unknown' });
+        record({ kind: 'abort-call', threw: error instanceof DOMException ? error.name : 'unknown' });
         throw error;
       }
     };
@@ -223,5 +243,22 @@ export async function withPersistentProfile<T>(baseURL: string, use: (launch: ()
     await Promise.all(contexts.map(context => context.close().catch(() => undefined)));
     await rm(directory, { recursive: true, force: true });
     expect(errors.flat(), 'Unexpected browser errors in the persistent profile').toEqual([]);
+  }
+}
+
+/**
+ * Overrides the origin's quota over CDP while `run` executes and always resets it. Chrome 154 enforces the override
+ * on IndexedDB writes only if it is set before the session's first IndexedDB use, reports it through
+ * `Storage.getUsageAndQuota`, and never through `navigator.storage.estimate()`.
+ */
+export async function withQuotaOverride<T>(page: Page, origin: string, quotaSize: number, run: () => Promise<T>) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Storage.overrideQuotaForOrigin', { origin, quotaSize });
+    const overridden = await cdp.send('Storage.getUsageAndQuota', { origin });
+    return { overridden, result: await run() };
+  } finally {
+    await cdp.send('Storage.overrideQuotaForOrigin', { origin });
+    await cdp.detach();
   }
 }

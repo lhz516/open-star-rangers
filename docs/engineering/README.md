@@ -141,6 +141,9 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。
   - 未声明的错误仍使用例失败；声明了却未出现的诊断也使用例失败。判定由 `settleDiagnostics` 完成，[probe-contract](../../e2e/probe-contract.spec.ts) 核对它与 Worker console 的收集。
 - [资源缓存](../../e2e/resource-cache.spec.ts)（P2-10）在页面内经开发服务器动态导入 `/src` 模块与合成内容 helper，因此只属于 development 项目（与 browser-replay 一样排除出 production，由[配置回归](../../tools/e2e-configuration.test.ts)固定）：`pnpm test:e2e resource-cache.spec.ts --project=development`。普通用例用隔离 context；刷新恢复用测试自有的临时持久 profile（`launchPersistentContext`，建于系统临时目录，结束后关闭并删除），使数据落在磁盘。[支持模块](../../e2e/support/resource-cache.ts)提供只观察不改变行为的 IndexedDB 探针（事务模式、写请求、`abort()` 调用与最终事件）、按导出常量的只读记录读取（库不存在时不打开，避免创建或升级）与请求记录；不清空或删除用户 profile 的数据。
+  - **存储不可用：** 用 `createResourceCache({ indexedDB: null })` 或打开时抛出 `SecurityError`/`InvalidStateError` 的工厂表示能力缺失或打开失败；`storage` 注入同理。注入只表示这些失败形态，不用来证明事务或配额行为。
+  - **取消：** 探针的 `onEvent` 在记录事件后、应用自身处理器之前同步运行，用来在写请求发出后或 `complete` 时触发 `AbortSignal`；它不改变请求。
+  - **真实配额错误：** 本机 Chrome 154 实测，CDP `Storage.overrideQuotaForOrigin` 只有在会话首次使用 IndexedDB 之前设置才会作用于写入；之后再设置、降低或等待都不生效，重置后写入恢复。`Storage.getUsageAndQuota` 能看到覆盖值，`navigator.storage.estimate()` 始终看不到。因此用例在临时持久 profile 的第一个会话按默认配额提交旧包，重启浏览器后在首次使用前设置覆盖，再提交新包；payload 用不可压缩的伪随机字节，以免磁盘压缩使写入低于配额。`insufficient` 由真实 `estimate()` 的快照验证。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
 
 ## 合成 Runtime

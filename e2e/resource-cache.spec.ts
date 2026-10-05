@@ -1,14 +1,18 @@
 import { test, expect } from './support/browser-test.ts';
 import type { ResourceCache } from '../src/platform/storage/browser-resource-cache.ts';
 import {
-  installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, type StoredRecords,
+  installIdbProbe, loadCacheModules, readStoredRecords, requestsDuring, withPersistentProfile, withQuotaOverride, type StoredRecords,
 } from './support/resource-cache.ts';
 
 // P2-10 resource cache in real Chrome IndexedDB, with code-generated synthetic packages only. Ordinary cases use the
 // runner's isolated context; reload cases use a test-owned temporary persistent profile so data reaches disk.
 
 declare global {
-  interface Window { osrCacheSubject: ResourceCache }
+  interface Window {
+    osrCacheSubject: ResourceCache;
+    /** A large package built once and committed more than once; commits copy their inputs. */
+    osrCacheLarge: unknown;
+  }
 }
 
 // Each second value extends the first, so a range that matched by text prefix instead of key components would leak.
@@ -288,4 +292,173 @@ test('issues no network request during cache operations', async ({ page, baseURL
   const foreign = requests.filter(request => !request.startsWith(`GET ${new URL(baseURL!).origin}/`));
   expect(foreign).toEqual([]);
   expect(requests.filter(request => !/^GET \S+\/(?:src|node_modules|@vite|@id|@fs)\//.test(request))).toEqual([]);
+});
+
+const SYNTHETIC_KEY = { originType: 'synthetic', originToken: 'p2-01-contracts', converterVersion: 'synthetic-converter.1' } as const;
+/** Eight incompressible 1 MiB model payloads under the synthetic key. */
+const LARGE_PACKAGE = { tag: 'new', modelBytes: 1 << 20 } as const;
+
+test('reports unavailable storage and unknown estimates without a memory fallback', async ({ page }) => {
+  await loadCacheModules(page);
+  const outcomes = await page.evaluate(async key => {
+    const { cache, buildPackage, limits, records } = window.osrCache;
+    const throwing = (name: string) => ({ open: () => { throw new DOMException('private host detail', name); } }) as unknown as IDBFactory;
+    const factories: [string, IDBFactory | null][] = [['missing', null], ['SecurityError', throwing('SecurityError')], ['InvalidStateError', throwing('InvalidStateError')]];
+    const operations: Record<string, string[]> = {};
+    for (const [name, factory] of factories) {
+      const subject = cache.createResourceCache({ indexedDB: factory });
+      const results = [await subject.commit(buildPackage(), limits()), await subject.list(), await subject.restore(key, limits())];
+      operations[name] = results.map(result => (result.status === 'failed' ? `${result.code}${JSON.stringify(result).includes('private') ? ':leaked' : ''}` : result.status));
+    }
+    const estimates: [string, Pick<StorageManager, 'estimate'> | null][] = [
+      ['missing', null],
+      ['rejected', { estimate: () => Promise.reject(new Error('private')) }],
+      ['thrown', { estimate: () => { throw new Error('private'); } }],
+      ['non-finite', { estimate: async () => ({ usage: Number.NaN, quota: 10 }) }],
+    ];
+    const capacity: Record<string, string> = {};
+    for (const [name, storage] of estimates) capacity[name] = (await cache.createResourceCache({ storage }).checkCapacity(100)).status;
+    const real = await cache.createResourceCache().checkCapacity(100);
+    const databases = (await indexedDB.databases()).map(({ name }) => name);
+    return { operations, capacity, real: real.status, created: databases.includes(records.RESOURCE_CACHE_DATABASE.name) };
+  }, SYNTHETIC_KEY);
+  const unavailable = ['storage-unavailable', 'storage-unavailable', 'storage-unavailable'];
+  expect(outcomes.operations).toEqual({ missing: unavailable, SecurityError: unavailable, InvalidStateError: unavailable });
+  expect(outcomes.capacity).toEqual({ missing: 'unknown', rejected: 'unknown', thrown: 'unknown', 'non-finite': 'unknown' });
+  expect(outcomes.real).toBe('sufficient');
+  expect(outcomes.created).toBe(false);
+});
+
+test('cancels before the write and while abortable, but not after the commit point', async ({ page }) => {
+  await loadCacheModules(page);
+  await installIdbProbe(page);
+  await page.evaluate(async () => {
+    const { cache, buildPackage, limits } = window.osrCache;
+    window.osrCacheSubject = cache.createResourceCache();
+    await window.osrCacheSubject.commit(buildPackage({ tag: 'old' }), limits());
+  });
+  const before = await readStoredRecords(page);
+
+  const attempt = (when: 'before' | 'write' | 'complete' | 'resolved') => page.evaluate(async ({ when, key }) => {
+    const { buildPackage, limits } = window.osrCache;
+    const probe = window.osrIdbProbe;
+    const controller = new AbortController();
+    probe.reset();
+    if (when === 'before') controller.abort();
+    probe.onEvent = event => {
+      const trigger = when === 'write' ? event.kind === 'write' : when === 'complete' && event.kind === 'complete' && event.mode === 'readwrite';
+      if (trigger && !controller.signal.aborted) controller.abort();
+    };
+    const result = await window.osrCacheSubject.commit(buildPackage({ tag: 'new' }), limits(), { signal: controller.signal });
+    probe.onEvent = null;
+    if (when === 'resolved') controller.abort();
+    const events = probe.events.map(event => ({ ...event }));
+    const tag = window.osrCache.restoredTag(await window.osrCacheSubject.restore(key, limits()));
+    return { status: result.status === 'failed' ? result.code : result.status, events, tag };
+  }, { when, key: SYNTHETIC_KEY });
+
+  const early = await attempt('before');
+  expect(early).toMatchObject({ status: 'cancelled', tag: 'old' });
+  expect(early.events.filter(({ mode, kind }) => mode === 'readwrite' || kind === 'write')).toEqual([]);
+  expect(await readStoredRecords(page)).toEqual(before);
+
+  const abortable = await attempt('write');
+  expect(abortable).toMatchObject({ status: 'cancelled', tag: 'old' });
+  expect(abortable.events.filter(({ kind }) => kind === 'write').length).toBeGreaterThan(0);
+  expect(abortable.events).toContainEqual({ kind: 'abort-call' });
+  expect(abortable.events).toContainEqual({ kind: 'abort', mode: 'readwrite' });
+  expect(abortable.events).not.toContainEqual({ kind: 'complete', mode: 'readwrite' });
+  expect(await readStoredRecords(page)).toEqual(before);
+
+  const committing = await attempt('complete');
+  expect(committing).toMatchObject({ status: 'committed', tag: 'new' });
+  expect(committing.events).toContainEqual({ kind: 'abort-call', threw: 'InvalidStateError' });
+
+  const resolved = await attempt('resolved');
+  expect(resolved).toMatchObject({ status: 'committed', tag: 'new' });
+  // The commit removed its abort listener, so a later abort reaches no transaction.
+  expect(resolved.events.filter(({ kind }) => kind === 'abort-call')).toEqual([]);
+});
+
+test('reports a real quota error from Chrome and keeps the old package', async ({ baseURL }, testInfo) => {
+  // Chrome 154 fixes an origin's IndexedDB quota at the session's first IndexedDB use, so the override takes effect
+  // only in a new browser session: the old package is committed under the default quota in one, and the override is
+  // set before the cache opens in the next, over a test-owned persistent profile.
+  const origin = new URL(baseURL!).origin;
+  await withPersistentProfile(baseURL!, async launch => {
+    const first = await launch();
+    await loadCacheModules(first);
+    const seeded = await first.evaluate(async () => {
+      const { cache, buildPackage, limits } = window.osrCache;
+      const subject = cache.createResourceCache();
+      const result = await subject.commit(buildPackage({ tag: 'old' }), limits());
+      subject.close();
+      return result.status;
+    });
+    expect(seeded).toBe('committed');
+    // Read in this session: in the next one, any IndexedDB use before the override would fix the default quota.
+    const before = await readStoredRecords(first);
+    await first.context().close();
+
+    const page = await launch();
+    await loadCacheModules(page);
+    await installIdbProbe(page);
+    const need = await page.evaluate(async large => {
+      window.osrCacheLarge = window.osrCache.buildPackage(large);
+      const requirement = window.osrCache.cache.createResourceCache({ indexedDB: null }).measure(window.osrCacheLarge);
+      if ('status' in requirement) throw new Error(requirement.code);
+      return { requiredBytes: requirement.requiredBytes, estimate: await navigator.storage.estimate() };
+    }, LARGE_PACKAGE);
+    // Above the current usage and below the new package's requirement and each of its 1 MiB model payloads.
+    const quotaSize = (need.estimate.usage ?? 0) + (1 << 19);
+    const { overridden, result: limited } = await withQuotaOverride(page, origin, quotaSize, () => page.evaluate(async ({ requiredBytes, key }) => {
+      const { cache, limits, restoredTag } = window.osrCache;
+      window.osrCacheSubject = cache.createResourceCache();
+      const capacity = await window.osrCacheSubject.checkCapacity(requiredBytes);
+      const estimate = await navigator.storage.estimate();
+      const result = await window.osrCacheSubject.commit(window.osrCacheLarge, limits());
+      const tag = restoredTag(await window.osrCacheSubject.restore(key, limits()));
+      return { capacity, estimate, status: result.status === 'failed' ? result.code : result.status, abort: window.osrIdbProbe.events.find(({ kind }) => kind === 'abort'), tag };
+    }, { requiredBytes: need.requiredBytes, key: SYNTHETIC_KEY }));
+    await testInfo.attach('quota-evidence', {
+      body: JSON.stringify({ method: 'Storage.overrideQuotaForOrigin', quotaSize, cdpQuota: overridden, requiredBytes: need.requiredBytes, capacity: limited.capacity, estimate: limited.estimate, abort: limited.abort }),
+      contentType: 'application/json',
+    });
+    expect(overridden).toMatchObject({ quota: quotaSize, overrideActive: true });
+    expect(overridden.usage).toBeLessThan(quotaSize);
+    expect(quotaSize).toBeLessThan(need.requiredBytes);
+    expect(quotaSize - overridden.usage).toBeLessThan(1 << 20);
+    // estimate() does not reflect the CDP override, so the advisory check matches estimate() and cannot see it.
+    expect(limited.capacity).toMatchObject({ requiredBytes: need.requiredBytes, usage: limited.estimate.usage, quota: limited.estimate.quota });
+    expect(limited.estimate.quota).toBeGreaterThan(quotaSize);
+    expect(limited.status).toBe('quota-exceeded');
+    expect(limited.abort).toEqual({ kind: 'abort', mode: 'readwrite', error: 'QuotaExceededError' });
+    expect(limited.tag).toBe('old');
+    expect(await readStoredRecords(page)).toEqual(before);
+
+    const recovered = await page.evaluate(async key => {
+      const { limits } = window.osrCache;
+      const result = await window.osrCacheSubject.commit(window.osrCacheLarge, limits());
+      const restored = await window.osrCacheSubject.restore(key, limits());
+      window.osrCacheSubject.close();
+      return { status: result.status, restored: restored.status };
+    }, SYNTHETIC_KEY);
+    expect(recovered).toEqual({ status: 'committed', restored: 'restored' });
+  });
+});
+
+test('compares a requirement with the real storage estimate', async ({ page }) => {
+  await loadCacheModules(page);
+  const checks = await page.evaluate(async () => {
+    const snapshot = await navigator.storage.estimate();
+    const subject = window.osrCache.cache.createResourceCache({ storage: { estimate: async () => snapshot } });
+    const available = Math.max(0, (snapshot.quota ?? 0) - (snapshot.usage ?? 0));
+    const real = await window.osrCache.cache.createResourceCache().checkCapacity(0);
+    return { exact: await subject.checkCapacity(available), over: await subject.checkCapacity(available + 1), real, snapshot, available };
+  });
+  const { usage, quota } = checks.snapshot;
+  expect(checks.exact).toEqual({ status: 'sufficient', requiredBytes: checks.available, availableBytes: checks.available, usage, quota });
+  expect(checks.over).toEqual({ status: 'insufficient', requiredBytes: checks.available + 1, availableBytes: checks.available, usage, quota });
+  // The default adapter reads the same real estimate through navigator.storage.
+  expect(checks.real).toMatchObject({ status: 'sufficient', requiredBytes: 0, quota });
 });

@@ -3,8 +3,8 @@ import { validatePackage } from '../../content/completeness.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
-  cacheFailure, classifyHostError, failWith, packageRecordKey, payloadRecordKey, readCacheKey, ResourceCacheFailureError,
-  withContractFailure, type CommitResult, type ListResult, type ResourceCacheFailure, type ResourceCacheFailureCode,
+  cacheFailure, classifyHostError, evaluateCapacity, failWith, packageRecordKey, payloadRecordKey, readCacheKey, ResourceCacheFailureError,
+  withContractFailure, type CapacityCheckResult, type CommitResult, type ListResult, type ResourceCacheFailure, type ResourceCacheFailureCode,
   type ResourceCacheKey, type RestoreResult, type StorageRequirementResult,
 } from './resource-cache-contract.ts';
 import {
@@ -19,6 +19,8 @@ import {
 export interface ResourceCacheOptions {
   /** Defaults to the global `indexedDB`; null stands for an environment without IndexedDB. */
   readonly indexedDB?: IDBFactory | null;
+  /** Defaults to `navigator.storage`; null stands for an environment without a storage estimate. */
+  readonly storage?: Pick<StorageManager, 'estimate'> | null;
 }
 
 export interface CommitOptions {
@@ -28,6 +30,8 @@ export interface CommitOptions {
 export interface ResourceCache {
   /** Exact payload bytes plus the metadata estimate of four group inputs; no storage access. */
   measure(inputs: unknown): StorageRequirementResult;
+  /** Advisory comparison of `requiredBytes` with the storage estimate; it never blocks a commit. */
+  checkCapacity(requiredBytes: unknown): Promise<CapacityCheckResult>;
   /** Validates a complete package within `limits` and replaces the key's package in one readwrite transaction. */
   commit(inputs: unknown, limits: unknown, options?: CommitOptions): Promise<CommitResult>;
   /** Metadata status of every stored package; payload records are never read. */
@@ -181,8 +185,19 @@ function openDatabase(factory: IDBFactory | null | undefined): Promise<IDBDataba
   });
 }
 
+/** The storage estimate, or null when the environment has none or it fails. */
+async function readEstimate(storage: Pick<StorageManager, 'estimate'> | null | undefined): Promise<unknown> {
+  if (typeof storage?.estimate !== 'function') return null;
+  try {
+    return await storage.estimate();
+  } catch {
+    return null;
+  }
+}
+
 export function createResourceCache(options: ResourceCacheOptions = {}): ResourceCache {
   const factory = 'indexedDB' in options ? options.indexedDB : globalThis.indexedDB;
+  const storage = 'storage' in options ? options.storage : globalThis.navigator?.storage;
   let connection: Promise<IDBDatabase> | null = null;
 
   const database = (): Promise<IDBDatabase> => {
@@ -196,7 +211,15 @@ export function createResourceCache(options: ResourceCacheOptions = {}): Resourc
   return Object.freeze({
     measure: measureStorageRequirement,
 
+    checkCapacity: async (requiredBytes: unknown) => {
+      // Without an estimate the evaluation rejects malformed input or reports `unknown`; only a valid request asks.
+      const withoutEstimate = evaluateCapacity(requiredBytes, null);
+      if (withoutEstimate.status === 'failed') return withoutEstimate;
+      return evaluateCapacity(requiredBytes, await readEstimate(storage));
+    },
+
     commit: (inputs: unknown, limits: unknown, { signal }: CommitOptions = {}) => settle(async () => {
+      if (signal?.aborted) failWith('cancelled', 'transaction');
       const groups = snapshot(inputs);
       const checkedLimits = readLimits(limits);
       chargeDeclaredBudget(checkedLimits, groups, 'groups');

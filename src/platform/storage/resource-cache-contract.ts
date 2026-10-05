@@ -253,3 +253,19 @@ export type CapacityCheckResult = CapacityCheck | ResourceCacheFailure;
 export type CommitResult = CommittedPackage | ResourceCacheFailure;
 export type ListResult = ListedPackages | ResourceCacheFailure;
 export type RestoreResult = RestoredPackage | ResourceCacheFailure;
+
+const isSize = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const isAmount = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+/**
+ * Advisory space check from a storage estimate (`StorageManager.estimate()`), or null when none is available. Missing,
+ * negative or non-finite usage or quota is `unknown`; an estimate never guarantees or forbids a write.
+ */
+export function evaluateCapacity(requiredBytes: unknown, estimate: unknown): CapacityCheckResult {
+  if (!isSize(requiredBytes)) return cacheFailure('invalid-request', 'requiredBytes');
+  const usage = typeof estimate === 'object' && estimate !== null ? Object.getOwnPropertyDescriptor(estimate, 'usage')?.value : undefined;
+  const quota = typeof estimate === 'object' && estimate !== null ? Object.getOwnPropertyDescriptor(estimate, 'quota')?.value : undefined;
+  if (!isAmount(usage) || !isAmount(quota)) return Object.freeze({ status: 'unknown', requiredBytes });
+  const availableBytes = Math.max(0, quota - usage);
+  return Object.freeze({ status: availableBytes >= requiredBytes ? 'sufficient' : 'insufficient', requiredBytes, availableBytes, usage, quota });
+}

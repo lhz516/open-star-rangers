@@ -88,7 +88,7 @@ updated: 2026-10-05
 | [01-cache-key-results.md](./subtasks/01-cache-key-results.md) | — | completed |
 | [02-cache-records.md](./subtasks/02-cache-records.md) | 01 | completed |
 | [03-browser-commit-restore.md](./subtasks/03-browser-commit-restore.md) | 02 | completed |
-| [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | pending |
+| [04-capacity-quota-cancel.md](./subtasks/04-capacity-quota-cancel.md) | 03 | blocked |
 | [05-connection-lifecycle.md](./subtasks/05-connection-lifecycle.md) | 03 | pending |
 | [06-integrity-concurrency.md](./subtasks/06-integrity-concurrency.md) | 03 | pending |
 | [07-final-alignment.md](./subtasks/07-final-alignment.md) | 01, 02, 03, 04, 05, 06 | pending |
@@ -96,6 +96,12 @@ updated: 2026-10-05
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-05 — 子任务 04 阻塞：** AC-06 中“经 CDP 覆盖配额后，空间检查返回 `insufficient`，数值与 `estimate()` 一致”无法在真实 Chrome 中成立。
+  - **证据：** 在本机 Chrome 154 上，CDP `Storage.getUsageAndQuota` 报告覆盖已生效（`overrideActive: true`），写入也按覆盖值失败（`QuotaExceededError`）。但 `navigator.storage.estimate()` 在同一文档、刷新后与新页面中都只报告未覆盖的配额，而 spec S-04 规定空间检查基于 `estimate()`。
+  - **已满足：** AC-06 的其余要求（真实配额错误、旧包保留、无新记录、重置后成功），以及基于真实 `estimate()` 的 `insufficient`，均已验证并提交，见 [04 完成证据](./subtasks/04-capacity-quota-cancel.md#完成证据)。
+  - **受影响验收：** AC-06（spec）、04 的 AC-06 勾选项，以及依赖 04 的 07。
+  - **恢复条件：** 用户决定 AC-06 中该子句的替代真实验证方式。spec 风险与恢复已约定由用户决定。推荐：改为“覆盖期间空间检查与 `estimate()` 一致；`insufficient` 由真实 `estimate()` 的快照验证”，即现有两个用例。修订须经 review-spec 与重新批准后再关闭 04。
 
 ## 审批
 
