@@ -1,8 +1,12 @@
+import { RESOURCE_GROUPS, type ResourceGroup } from '../content/asset-contract.ts';
+import type { GroupInput } from '../content/completeness.ts';
+import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
 import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
 import { identifySource } from '../original-data/source/identify-source.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
-import type { OpenSource } from './import-job.ts';
+import type { ImportJob } from './import-host.ts';
+import { createImportJob, type OpenSource } from './import-job.ts';
 
 // Code-generated CloneCD imports for Worker tests in Node and the browser; it never holds original data.
 
@@ -33,3 +37,27 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
   }));
   return { files, open: async inputs => identifySource(await openDiscImage(inputs), catalogFor(covered, versionId)) };
 }
+
+/** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
+export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];
+
+/** The four synthetic groups, each bound to the identified source. */
+export const boundGroups: SyntheticGroups = fingerprint => RESOURCE_GROUPS.map(group => [group, syntheticSourceGroup(group, fingerprint)]);
+
+/** The import job identifying through `open`, then sending `groups` for the identified fingerprint. */
+export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = boundGroups): ImportJob {
+  const identify = createImportJob(open);
+  return async (files, report) => {
+    let fingerprint = '';
+    const usage = await identify(files, Object.freeze({
+      ...report,
+      identified: (identity: Parameters<typeof report.identified>[0]) => {
+        fingerprint = identity.sourceFingerprint;
+        report.identified(identity);
+      },
+    }));
+    for (const [group, input] of groups(fingerprint)) report.group(group, input);
+    return usage;
+  };
+}
+

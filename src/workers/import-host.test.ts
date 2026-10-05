@@ -6,8 +6,8 @@ import type { ResourceGroup } from '../content/asset-contract.ts';
 import { syntheticGroup } from '../content/synthetic-content.test-support.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
 import { SourceError } from '../original-data/source-error.ts';
-import { runImportHost, type ImportHostEndpoint, type ImportJob, type ImportReporter } from './import-host.ts';
-import { FakeEndpoint } from './import-host.test-support.ts';
+import { runImportHost, type ImportJob, type ImportReporter } from './import-host.ts';
+import { FakeEndpoint, portEndpoint } from './import-host.test-support.ts';
 import {
   IMPORT_PROTOCOL_VERSION, readImportWorkerMessage, type ImportFile, type ImportSourceIdentity, type ImportWorkerMessage,
 } from './import-protocol.ts';
@@ -310,15 +310,7 @@ describe('payload transfer', () => {
 
   it('detaches the sender views through a real message channel, and the receiver gets the bytes', async () => {
     const { port1, port2 } = new MessageChannel();
-    const endpoint: ImportHostEndpoint = {
-      postMessage: (message, transfer) => port1.postMessage(message, transfer),
-      addEventListener: (type, listener) => {
-        if (type === 'unhandledrejection') return;
-        port1.addEventListener(type, listener as unknown as Parameters<typeof port1.addEventListener>[1]);
-        port1.start();
-      },
-      close: () => port1.close(),
-    };
+    const endpoint = portEndpoint(port1);
     const audio = group('audio');
     const expected = audio.payloads.map(payload => new Uint8Array(payload.bytes));
     const detachedAfterSend: boolean[] = [];

@@ -57,3 +57,19 @@ export class FakeEndpoint implements ImportHostEndpoint {
     return this.log.filter(entry => entry === 'close').length;
   }
 }
+
+type ChannelPort = InstanceType<typeof MessageChannel>['port1'];
+
+/** The host side of a Node `MessageChannel`: one port as the Worker scope, which has no unhandled rejections to report. */
+export function portEndpoint(port: ChannelPort): ImportHostEndpoint {
+  return {
+    postMessage: (message, transfer) => port.postMessage(message, transfer),
+    addEventListener: (type, listener) => {
+      if (type === 'unhandledrejection') return;
+      port.addEventListener(type, listener as unknown as Parameters<ChannelPort['addEventListener']>[1]);
+      port.start();
+    },
+    close: () => port.close(),
+  };
+}
+

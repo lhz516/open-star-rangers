@@ -40,9 +40,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-07 集成：四组 payload 以转移交出，发送方失效，接收方验证通过；每层失败样本往返后 DTO 相等。
-- [ ] AC-07 隐私：文件名只出现在 `start` 中；Worker 发出的消息、快照、错误与诊断都不含标记。
-- [ ] 测试结束后关闭全部端口，不留下活动句柄；`pnpm exec vitest run src/app/import src/workers`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-07 集成：四组 payload 以转移交出，发送方失效，接收方验证通过；每层失败样本往返后 DTO 相等。
+- [x] AC-07 隐私：文件名只出现在 `start` 中；Worker 发出的消息、快照、错误与诊断都不含标记。
+- [x] 测试结束后关闭全部端口，不留下活动句柄；`pnpm exec vitest run src/app/import src/workers`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -50,3 +50,35 @@ updated: 2026-10-05
 - 不适用 browser-testing 或原版对照。
 
 ## 完成证据
+
+- **实现：**
+  - [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 的 `channelFactory` 是持有者的端口工厂，每个作业做三件事：
+    - 新建 Node `MessageChannel`，在 `port1` 上运行真实宿主；
+    - 把 `port2` 包装为 `WorkerLike`，交给 06 的适配（计划中称 `createWorkerPort`，实际名为 `connectImportWorker`）；
+    - 终止时关闭两端，并记录两个方向的全部消息。
+  - [synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 新增 `syntheticGroupsJob(open, groups)`、`boundGroups` 与 `SyntheticGroups`。作业先经注入的识别，再发送 `groups(指纹)` 给出的组；它们不依赖 Node API，供 09 的浏览器测试入口复用。
+  - [import-host.test-support.ts](../../../../../src/workers/import-host.test-support.ts) 新增 `portEndpoint(port)`，宿主测试改用它。
+  - 计划把四层失败作业都放进测试支持，实际只放了可复用的部分：`disc` 与 `source` 失败直接用生产作业（只有 `.ccd`，以及不在生产白名单上的光盘）；`content` 失败用 `syntheticGroupsJob` 加 payload 互相别名的组；`import/internal-error` 是测试中一行抛错的作业。
+- **测试：** 共 3 项，`pnpm exec vitest run src/app/import src/workers` 通过。
+  - **集成：** 四组经通道送达，持有者全部判为 `group-complete`，版本 ID 为 `pipeline-disc`。发送方每个 payload 视图与其 buffer 的 `byteLength` 都为 0，即已转移，不是复制。`takeGroups` 与按同一指纹重新生成的四组逐字节相等，Worker 发出的组消息恰好 4 条，运行中有 `readBytes` 大于 0 的进度。
+  - **四层失败：** 每层先用 `FakeEndpoint` 取得宿主自己转换的 DTO，再经通道运行同一作业，快照的错误与之相等，层分别为 `disc`、`source`、`content`、`import`；Worker 消息与快照都不含标记。
+  - **隐私：** 文件名含 `PRIVATE-MARKER-7f3a`，其中一组 payload 被改动，因此带 P2-01 诊断。主线程只发出一条 `start`，且其中有标记；`strings()` 深度遍历字符串与 `File` 名称，Worker 发出的全部消息、全部快照（含诊断）与移交的组都不含标记。移交恰为三个完整的组。
+  - **句柄：** 每次运行结束后，`process.getActiveResourcesInfo()` 中的 `MessagePort` 数量回到运行前的值。
+- **变异检查：** 经本测试，以下变异都被发现：宿主不转移 payload；适配转交事件对象；宿主去掉 `source` 层转换；持有者保留不完整的组。以下两项未被本测试发现：
+  - 适配不调用 `worker.terminate()`：宿主关闭本端会关闭整条通道，由适配的单元测试覆盖；
+  - 宿主写死与测试数据相同的版本 ID：由宿主测试覆盖。
+- **检查：** `pnpm check`（93 个文件、2665 项测试、构建）、`pnpm check:original`（passed）与文档链接检查都通过。
+- **Rubber-duck：** 无问题。审查确认：
+  - 测试区分了转移与复制；
+  - 以宿主转换值作为四层失败的对照是恰当的；
+  - 隐私遍历覆盖了不可枚举的 `File.name`；
+  - 新测试支持可在 Chromium 中复用。
+- **Simplify：**
+  - **已采纳：** 三项测试共用一个合成导入。
+  - **未采纳：**
+    - 失败用例去掉宿主对照：AC-07 要求与宿主转换的原值比较；
+    - 改等 `close` 事件：全局句柄计数本身就是验收依据；
+    - 提取通用深度遍历：`strings()` 需读取 `File` 名称，语义不同；
+    - 把合成作业移回本测试：09 会复用。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)的“导入 Worker”一节补充 `syntheticGroupsJob`、`portEndpoint` 与集成测试的位置和覆盖。工程约定与 STATUS 不变。
+
