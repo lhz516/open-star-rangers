@@ -109,13 +109,17 @@ export const PRODUCTION_LAYOUT_POSITIONS: Readonly<Record<string, readonly { rea
 
 /**
  * A CCKD entry in the production cockpit structure: `fonts` in its font directory, the front cockpit in slot 0, an empty
- * slot 1, and the map frame with the group palette in slot 2.
+ * slot 1, and the map frame with the group palette in slot 2. `firstFrontFlags` replaces the flags of the first front
+ * element, such as a value the reader rejects.
  */
-export const productionCockpitBlock = (fonts: readonly Uint8Array[] = hudFontTables()): Uint8Array => cockpitLayoutBlock(
-  [FRONT, [], MAP_FRAME].map(elements => elements.map(({ image, x, y, flags }) => ({ record: image.block, x, y, flags }))),
-  fonts,
-  [null, null, MAP_PALETTE_BLOCK],
-);
+export const productionCockpitBlock = (fonts: readonly Uint8Array[] = hudFontTables(), firstFrontFlags?: readonly [number, number]): Uint8Array => {
+  const front = FRONT.map((placed, index) => (index === 0 && firstFrontFlags ? { ...placed, flags: firstFrontFlags } : placed));
+  return cockpitLayoutBlock(
+    [front, [], MAP_FRAME].map(elements => elements.map(({ image, x, y, flags }) => ({ record: image.block, x, y, flags }))),
+    fonts,
+    [null, null, MAP_PALETTE_BLOCK],
+  );
+};
 
 /** The `MAIN/SR.NOB` entry a production Asset maps to. */
 const entryOf = (id: string): number => PRODUCTION_GRAPHICS_MAPPINGS.mappings.find(({ asset }) => asset.id === id)!.parts[0].alternatives[0].entry.id;

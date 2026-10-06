@@ -87,6 +87,14 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
 /** A CCKD block in the production cockpit structure whose 4×6 font table is one byte short. */
 const CORRUPT_FONTS = productionCockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
 
+/** A corrupt production CCKD: a 4×6 font table one byte short, or a first front element with a draw-pass flag of 2. */
+export type CockpitCorruption = 'font' | 'element';
+
+const corruptCockpit = (corrupt: CockpitCorruption | undefined) => {
+  if (corrupt === undefined) return {};
+  return { CCKD: corrupt === 'font' ? CORRUPT_FONTS : productionCockpitBlock(undefined, [2, 0]) };
+};
+
 /** A graphics step with nothing to convert, for jobs whose test is about identification or group transfer. */
 export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
   mappings: { sourceFingerprint: null, mappings: [] },
@@ -179,10 +187,11 @@ export function graphicsCoveredFiles(corrupt = false): Record<string, Uint8Array
 /**
  * The covered files of a disc in the production graphics and sound structure: the production graphics and synthetic
  * samples at every entry of the production sound table, so the production graphics and audio stages convert both.
- * `corrupt` shortens the 4×6 font table by one byte, which the converter rejects as `invalid-payload`.
+ * `corrupt` shortens the 4×6 font table by one byte (`font`) or sets a front cockpit element flag to 2 (`element`); the
+ * converter rejects either as `invalid-payload`.
  */
-export function productionCoveredFiles(corrupt = false): Record<string, Uint8Array> {
-  return productionGraphicsFiles(corrupt ? { CCKD: CORRUPT_FONTS } : {}, productionSoundEntries());
+export function productionCoveredFiles(corrupt?: CockpitCorruption): Record<string, Uint8Array> {
+  return productionGraphicsFiles(corruptCockpit(corrupt), productionSoundEntries());
 }
 
 /**

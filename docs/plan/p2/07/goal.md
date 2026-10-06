@@ -96,7 +96,7 @@ updated: 2026-10-06
 | [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | completed |
 | [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09, 18 | completed |
 | [13-group-assembly.md](./subtasks/13-group-assembly.md) | 04 | completed |
-| [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | pending |
+| [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | completed |
 | [15-local-composite-check.md](./subtasks/15-local-composite-check.md) | 12 | pending |
 | [16-local-base-check.md](./subtasks/16-local-base-check.md) | 12, 13 | pending |
 | [18-cockpit-group-palette.md](./subtasks/18-cockpit-group-palette.md) | 03, 04, 08 | completed |

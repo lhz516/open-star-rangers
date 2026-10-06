@@ -244,7 +244,7 @@ describe('graphics conversion over a structured-clone channel', () => {
     const [complete, withoutCockpit, brokenFont, brokenElement] = await Promise.all([
       syntheticImport(productionCoveredFiles(), 'graphics-disc'),
       syntheticImport(productionGraphicsFiles({ CCKD: null }), 'graphics-disc'),
-      syntheticImport(productionCoveredFiles(true), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles('font'), 'graphics-disc'),
       syntheticImport(cockpitCoveredFiles(true), 'cockpit-disc'),
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [

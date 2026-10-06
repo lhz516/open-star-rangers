@@ -30,14 +30,16 @@ import {
 // name contains MARKER, and every failing test scenario throws text that contains it too.
 
 /** `production` is the real entry, `missing` an entry URL that does not exist, and any other value a test scenario. */
-type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'audio' | 'models' | 'models-corrupt' | 'busy' | 'job-throws'
+type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'graphics-element-corrupt' | 'audio' | 'models' | 'models-corrupt'
+  | 'busy' | 'job-throws'
   | 'late-error' | 'top-level-throw';
 
 /**
- * The synthetic files to import: uncovered, the production-sized whitelist, the production graphics structure, that
- * with sounds, or the slice disc every production step converts, with a broken shared mesh in the corrupt variant.
+ * The synthetic files to import: uncovered, the production-sized whitelist, the production graphics structure (with a
+ * short font table or a rejected cockpit element in the corrupt variants), that with sounds, or the slice disc every
+ * production step converts, with a broken shared mesh in the corrupt variant.
  */
-type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt' | 'audio' | 'slice' | 'slice-corrupt';
+type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt' | 'graphics-element-corrupt' | 'audio' | 'slice' | 'slice-corrupt';
 
 interface LogEntry {
   readonly event: 'snapshot' | 'click' | 'frame' | 'cancel' | 'dispose';
@@ -88,7 +90,7 @@ async function openHarness(page: Page): Promise<void> {
           : covered === 'production-sized' ? support.productionSizedFiles()
             : covered === 'audio' ? support.audioCoveredFiles()
               : covered === 'slice' || covered === 'slice-corrupt' ? support.sliceCoveredFiles({ corruptMesh: covered === 'slice-corrupt' })
-                : support.productionCoveredFiles(covered === 'graphics-corrupt');
+                : support.productionCoveredFiles(({ 'graphics-corrupt': 'font', 'graphics-element-corrupt': 'element' } as Partial<Record<Covered, 'font' | 'element'>>)[covered]);
         harness.covered = Object.entries(contents).map(([path, content]) => [path, content instanceof Uint8Array ? content.length : content.byteLength]);
         harness.files = [...(await support.syntheticImport(contents)).files];
       },
@@ -339,20 +341,30 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
 });
 
-test('test entry fails a corrupt synthetic font at the source layer without a partial result', async ({ page }) => {
-  const consoled = consoleText(page);
-  await openHarness(page);
-  await startImport(page, 'graphics-corrupt', 'graphics-corrupt');
-  await settled(page);
-  const observed = await snapshots(page);
-  expect(observed.at(-1)).toEqual({
-    status: 'failed', jobId: 1, stage: 'convert-graphics',
-    error: { layer: 'source', code: 'invalid-payload', location: 'graphics[font/hud/4x6].glyphs', reason: expect.any(String), limit: null },
-  });
-  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toBeNull();
-  expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['graphics-corrupt', 1, 1]]);
-  expect(JSON.stringify(observed)).not.toContain(MARKER);
-  expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+// P2-05 AC-12 and P2-07 AC-09: a font table or a front cockpit element the converter rejects fails the graphics stage
+// before any group is sent.
+test.describe('test entry fails corrupt synthetic graphics at the source layer without a group', () => {
+  for (const [corrupted, entry, location] of [
+    ['font', 'graphics-corrupt', 'graphics[font/hud/4x6].glyphs'],
+    ['cockpit element', 'graphics-element-corrupt', 'graphics[layout/cockpit/front].elements'],
+  ] as const) {
+    test(`a corrupt ${corrupted}`, async ({ page }) => {
+      const consoled = consoleText(page);
+      await openHarness(page);
+      await startImport(page, entry, entry);
+      await settled(page);
+      const observed = await snapshots(page);
+      expect(observed.at(-1)).toEqual({
+        status: 'failed', jobId: 1, stage: 'convert-graphics',
+        error: { layer: 'source', code: 'invalid-payload', location, reason: expect.any(String), limit: null },
+      });
+      expect(await page.evaluate(() => window.osrImport.received.length)).toBe(0);
+      expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toBeNull();
+      expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([[entry, 1, 1]]);
+      expect(JSON.stringify(observed)).not.toContain(MARKER);
+      expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+    });
+  }
 });
 
 /** The production job on the slice disc run in Node with the same test support: the groups it sends and its usage. */
