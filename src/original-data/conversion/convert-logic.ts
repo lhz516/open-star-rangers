@@ -13,7 +13,7 @@ import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { parseModelIdList } from '../formats/m2id.ts';
 import { entryLocation } from '../formats/payload-block.ts';
 import { parseScenario, type ParsedScenario } from '../formats/scen.ts';
-import type { OriginalAssetLocator, SourceMappingTable } from '../source-mapping.ts';
+import { archiveLocator, type ArchiveEntryLocator, type SourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { readConversionUsage } from './conversion-budget.ts';
@@ -78,8 +78,8 @@ const strategicMapFrame = ({ sectors, referenceScale }: ParsedScenario): Strateg
   ({ rightAxis: '+x', upAxis: '-y', center: { right: 0, up: 0 }, halfExtent: sectors * referenceScale / 2 });
 
 /** The first locator of `asset`'s mapping whose entry has `type`; the production table has exactly one. */
-const locatorOf = (table: SourceMappingTable, asset: AssetReference, type: string): OriginalAssetLocator =>
-  table.mappings.find(mapping => mapping.asset.id === asset.id)!.parts.map(({ alternatives }) => alternatives[0]).find(({ entry }) => entry.type === type)!;
+const locatorOf = (table: SourceMappingTable, asset: AssetReference, type: string): ArchiveEntryLocator =>
+  archiveLocator(table.mappings.find(mapping => mapping.asset.id === asset.id)!.parts.map(({ alternatives }) => alternatives[0]).find(({ entry }) => entry?.type === type)!);
 
 interface AssetPlan {
   readonly asset: AssetReference;
@@ -112,7 +112,7 @@ export async function convertLogic(source: VerifiedSource, limits: unknown, usag
   const meter = new BudgetMeter(limits, usage);
   const readEntry = logicEntryReader(source);
   const { table, sources, campaign } = await verifyLogicSources(source, readEntry);
-  const at = ({ discPath, entry }: OriginalAssetLocator, path = '') => `${entryLocation(discPath, entry)}${path}`;
+  const at = ({ discPath, entry }: ArchiveEntryLocator, path = '') => `${entryLocation(discPath, entry)}${path}`;
   const missionAt = locatorOf(table, LOGIC_ASSETS.mission, 'SCEN');
   const modelListAt = locatorOf(table, LOGIC_ASSETS.craftTypes, 'M2ID');
   const rosterAt = locatorOf(table, LOGIC_ASSETS.wingmanRoster, 'SCCT');

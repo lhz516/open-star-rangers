@@ -9,6 +9,7 @@ import { applyManifestIdentity } from '../../content/manifest-identity.ts';
 import { MODEL_LIMITS, MODEL_PAYLOAD_LAYOUT } from '../../content/models/model-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { DEFAULT_MODEL_IDS, syntheticScenarioArchive } from '../formats/formats.test-support.ts';
+import { archiveLocator } from '../source-mapping.ts';
 import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.ts';
 import { countedVerifiedSource, expectSourceError, UNLIMITED_BUDGET } from './conversion.test-support.ts';
 import { convertLogic } from './convert-logic.ts';
@@ -35,7 +36,7 @@ async function slice() {
   return { source, reads, logic, binding };
 }
 
-const soundIdOf = new Map(PRODUCTION_SOUND_TABLE.map(({ mapping }) => [mapping.parts[0].alternatives[0].entry.id, mapping.asset.id]));
+const soundIdOf = new Map(PRODUCTION_SOUND_TABLE.map(({ mapping }) => [archiveLocator(mapping.parts[0].alternatives[0]).entry.id, mapping.asset.id]));
 
 /** The effect model the P2-06/11 research recorded: converted besides the bound craft models, with its own evidence. */
 const DEBRIS = Object.freeze({ id: 'model/debris', modelEntryId: 10_383 });

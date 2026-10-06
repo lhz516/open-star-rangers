@@ -31,7 +31,7 @@ describe('cache key', () => {
 
   it('ignores the schema, slice definition version and manifest identity', () => {
     const base = cacheKeyOf(original());
-    for (const overrides of [{ sliceDefinitionVersion: 2 }, { manifestIdentity: 'manifest:other' }]) {
+    for (const overrides of [{ sliceDefinitionVersion: 1 }, { manifestIdentity: 'manifest:other' }]) {
       expect(cacheKeyOf(original(overrides))).toEqual(base);
     }
     // Schema 2 cannot be read, so the key is computed from the schema 1 identity with only the schema changed.

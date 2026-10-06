@@ -8,7 +8,7 @@ import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '
 import type { DiscPath } from '../disc/disc-path.ts';
 import { readModel } from '../formats/modl.ts';
 import { SourceError } from '../source-error.ts';
-import { assetSourceStates, readSourceMappingTable, type OriginalAssetLocator, type SourceMapping } from '../source-mapping.ts';
+import { archiveLocator, assetSourceStates, readSourceMappingTable, type ArchiveEntryLocator, type SourceMapping } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
 import { convertModels, type ModelReferences } from './convert-models.ts';
@@ -23,12 +23,12 @@ export const MODEL_ARCHIVE = 'MAIN/SR.NOB';
 export type ModelStepResult = GraphicsStepResult;
 
 /** The whole MODL entry a model maps to; any other mapping is a declaration error at the model. */
-function modelLocator(mapping: SourceMapping): OriginalAssetLocator {
+function modelLocator(mapping: SourceMapping): ArchiveEntryLocator {
   const [first] = mapping.parts;
   const whole = mapping.parts.length === 1
-    && first.alternatives.every(({ discPath, entry, subresource }) => discPath === MODEL_ARCHIVE && entry.type === 'MODL' && subresource === null);
+    && first.alternatives.every(({ discPath, entry, subresource }) => discPath === MODEL_ARCHIVE && entry?.type === 'MODL' && subresource === null);
   if (!whole) throw new SourceError('invalid-declaration', `models[${mapping.asset.id}].model`, 'a model must map to one whole MODL entry of MAIN/SR.NOB');
-  return first.alternatives[0];
+  return archiveLocator(first.alternatives[0]);
 }
 
 /**

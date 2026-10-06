@@ -26,10 +26,16 @@ export const SOURCE_ENTRY_TYPES = Object.freeze({
   font: Object.freeze(['CCKD', 'TABL']),
   layout: Object.freeze(['CCKD', 'TABL']),
   sound: Object.freeze(['SND']),
-  data: Object.freeze(['AICO', 'CINF', 'DFPG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'SCCT', 'TABL']),
+  data: Object.freeze(['AICO', 'CINF', 'DFPG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'RENS', 'SCCT', 'TABL']),
 } satisfies Record<AssetKind, readonly string[]>);
 
-export interface OriginalAssetLocator {
+/** The only files a region locator may name: non-archive files read by byte region (P2-06 spec, effect geometry data). */
+export const REGION_FILES: readonly DiscPath[] = Object.freeze(['MAIN/SRANGERS.EXE' as DiscPath]);
+
+/** Region lengths a locator may name, in bytes. */
+export const REGION_LIMITS = Object.freeze({ objects: 8, bytes: 65_536 });
+
+export interface ArchiveEntryLocator {
   /** Disc-relative archive path such as `MAIN/SR.NOB`, in the grammar the disc reader resolves. */
   readonly discPath: DiscPath;
   /** IMFAT entry selected by the parser's own entry ID and type tag. */
@@ -37,6 +43,44 @@ export interface OriginalAssetLocator {
   /** Path inside the entry payload, or null for the whole entry. */
   readonly subresource: string | null;
 }
+
+/** A byte region of a non-archive file: `le/<object>/<hex offset>/<bytes>` in the file's LE object `object`. */
+export interface ExecutableRegionLocator {
+  readonly discPath: DiscPath;
+  readonly entry: null;
+  readonly subresource: string;
+}
+
+export type OriginalAssetLocator = ArchiveEntryLocator | ExecutableRegionLocator;
+
+/** A region locator's parsed numbers: the 1-based LE object, the offset from the object's start, and the length. */
+export interface ExecutableRegion {
+  readonly object: number;
+  readonly offset: number;
+  readonly length: number;
+}
+
+export const isRegionLocator = (locator: OriginalAssetLocator): locator is ExecutableRegionLocator => locator.entry === null;
+
+/** Parses a canonical region sub-resource, or returns null when it is not one. */
+function parseRegion(text: string): ExecutableRegion | null {
+  const match = /^le\/([1-9])\/0x(0|[1-9a-f][0-9a-f]{0,7})\/([1-9][0-9]{0,4})$/.exec(text);
+  if (!match) return null;
+  const region = { object: Number(match[1]), offset: parseInt(match[2], 16), length: Number(match[3]) };
+  return region.object <= REGION_LIMITS.objects && region.length <= REGION_LIMITS.bytes ? region : null;
+}
+
+/**
+ * The locator as an archive entry locator, for code that has already checked its mapping's form, where a region
+ * locator is impossible; one reaching it is a programming error.
+ */
+export function archiveLocator(locator: OriginalAssetLocator): ArchiveEntryLocator {
+  if (isRegionLocator(locator)) throw new TypeError('expected an archive entry locator');
+  return locator;
+}
+
+/** The region a region locator names; its syntax was checked when the table was read. */
+export const executableRegion = (locator: ExecutableRegionLocator): ExecutableRegion => parseRegion(locator.subresource)!;
 
 export interface SourcePart {
   /**
@@ -89,6 +133,13 @@ function readLocator(value: unknown, path: string): OriginalAssetLocator {
   if (!isDiscPath(record.discPath)) {
     fail('invalid-source-mapping', `${path}.discPath`, 'must be a relative upper-case 8.3 disc path');
   }
+  if (record.entry === null) {
+    if (!REGION_FILES.includes(record.discPath)) fail('invalid-source-mapping', `${path}.discPath`, 'must be a file that allows region locators');
+    if (typeof record.subresource !== 'string' || parseRegion(record.subresource) === null) {
+      fail('invalid-source-mapping', `${path}.subresource`, 'must be a canonical le/<object>/<hex offset>/<bytes> region');
+    }
+    return Object.freeze({ discPath: record.discPath, entry: null, subresource: record.subresource });
+  }
   const entry = readRecord(record.entry, `${path}.entry`);
   requireFields(entry, `${path}.entry`, ['id', 'type']);
   if (typeof entry.id !== 'number' || !Number.isSafeInteger(entry.id) || entry.id < 0) {
@@ -106,15 +157,22 @@ function readLocator(value: unknown, path: string): OriginalAssetLocator {
   });
 }
 
-// Sub-resources are never empty, so '' unambiguously stands for null.
+// Sub-resources are never empty, so '' unambiguously stands for null; a region's canonical text is its identity.
 const locatorKey = ({ discPath, entry, subresource }: OriginalAssetLocator) =>
-  `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
+  entry === null ? `${discPath}\u0000region\u0000${subresource}` : `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
 
-/** Whether the archive entry type can supply the Asset's kind. */
+/** Whether the locator can supply the Asset's kind: an archive entry type admitted for it, or a region for data. */
 const admits = (asset: AssetReference, entry: OriginalAssetLocator['entry']): boolean =>
-  (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
+  entry === null ? asset.kind === 'data' : (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
 
+/** Archive entries first, in path, type, ID and sub-resource order; then regions by path, object, offset and length. */
 function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
+  if (isRegionLocator(left) || isRegionLocator(right)) {
+    if (!isRegionLocator(left)) return -1;
+    if (!isRegionLocator(right)) return 1;
+    const [a, b] = [executableRegion(left), executableRegion(right)];
+    return compareText(left.discPath, right.discPath) || a.object - b.object || a.offset - b.offset || a.length - b.length;
+  }
   return compareText(left.discPath, right.discPath) || compareText(left.entry.type, right.entry.type)
     || left.entry.id - right.entry.id
     || (left.subresource === right.subresource ? 0 : left.subresource === null ? -1 : right.subresource === null ? 1 : compareText(left.subresource, right.subresource));
@@ -128,9 +186,14 @@ function readMapping(value: unknown, path: string, fingerprinted: boolean): Sour
   const parts = readOrderedArray(record.parts, `${path}.parts`, SOURCE_CODES, (item, at) => {
     const part = readRecord(item, at);
     requireFields(part, at, ['alternatives']);
-    const alternatives = readOrderedArray(part.alternatives, `${at}.alternatives`, SOURCE_CODES, readLocator, locatorKey, compareLocators, 1);
+    // Before ordering is checked, so several region alternatives fail for their count, whatever their order.
+    const raw = part.alternatives;
+    if (Array.isArray(raw) && raw.length > 1 && raw.some(locator => typeof locator === 'object' && locator !== null && (locator as { entry?: unknown }).entry === null)) {
+      fail('invalid-source-mapping', `${at}.alternatives`, 'a region part must have exactly one alternative');
+    }
+    const alternatives = readOrderedArray(raw, `${at}.alternatives`, SOURCE_CODES, readLocator, locatorKey, compareLocators, 1);
     alternatives.forEach(({ entry, subresource }, index) => {
-      if (entry.type !== alternatives[0].entry.type || subresource !== alternatives[0].subresource) {
+      if (entry?.type !== alternatives[0].entry?.type || subresource !== alternatives[0].subresource) {
         fail('invalid-source-mapping', `${at}.alternatives[${index}]`, 'must share the entry type and sub-resource of the other equivalents');
       }
     });
@@ -154,7 +217,13 @@ function readMapping(value: unknown, path: string, fingerprinted: boolean): Sour
   if (resolution === 'verified' && !fingerprinted) {
     fail('invalid-source-mapping', `${path}.resolution`, 'cannot be verified without a source fingerprint');
   }
-  return Object.freeze({ asset: readAssetReference(record.asset, `${path}.asset`), parts, confidence, unknowns, evidence, resolution });
+  const asset = readAssetReference(record.asset, `${path}.asset`);
+  parts.forEach(({ alternatives }, part) => {
+    if (asset.kind !== 'data' && alternatives.some(isRegionLocator)) {
+      fail('invalid-source-mapping', `${path}.parts[${part}].alternatives[0]`, 'only a data Asset may map to a region');
+    }
+  });
+  return Object.freeze({ asset, parts, confidence, unknowns, evidence, resolution });
 }
 
 /** Validates a source mapping table; locators stay in original-data and never enter canonical content. */

@@ -54,9 +54,10 @@ export const payloadIdentityOf = (bytes: Uint8Array) =>
 export const syntheticIdentity = (overrides: Record<string, unknown> = {}) => ({
   schemaVersion: 1,
   sliceId: SLICE_ID,
-  sliceDefinitionVersion: 1,
+  sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
   converterVersion: 'synthetic-converter.1',
-  manifestIdentity: 'manifest:synthetic-1',
+  // Opaque fixture token; it names the slice definition version so a version change also changes it.
+  manifestIdentity: `manifest:synthetic-definition-${CLASSIC_P2_SLICE.version}`,
   origin: { type: 'synthetic', fixtureId: 'p2-01-contracts' },
   ...overrides,
 });

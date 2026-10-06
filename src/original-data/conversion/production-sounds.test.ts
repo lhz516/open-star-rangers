@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readSoundPayload } from '../../content/sound-payload.ts';
 import { convertSnd } from '../formats/snd.ts';
-import { readSourceMappingTable } from '../source-mapping.ts';
+import { archiveLocator, readSourceMappingTable } from '../source-mapping.ts';
 import { syntheticSnd } from '../synthetic.ts';
 import { AUDIO_BUDGET_LIMITS, convertAudioGroup } from './audio-conversion.ts';
 import { countedVerifiedSource, expectSourceError } from './conversion.test-support.ts';
@@ -15,7 +15,7 @@ const block = (bitsPerSample: number, flags: number) => {
   return { bytes: data, relocations };
 };
 const locatorOf = ({ mapping }: (typeof PRODUCTION_SOUND_TABLE)[number]) =>
-  mapping.parts.flatMap(({ alternatives }) => alternatives.map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`));
+  mapping.parts.flatMap(({ alternatives }) => alternatives.map(archiveLocator).map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`));
 
 describe('production sound table', () => {
   it('maps every variant of the four core roles and the other model clips, each to one whole SND entry', () => {

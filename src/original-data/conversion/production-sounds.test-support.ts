@@ -1,5 +1,6 @@
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../../content/sound-payload.ts';
+import { archiveLocator } from '../source-mapping.ts';
 import { syntheticSnd, type SyntheticEntry } from '../synthetic.ts';
 import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 
@@ -11,7 +12,7 @@ import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 const LOOPING_SOUND_ENTRIES: ReadonlySet<number> = new Set([10_319, 10_679, 11_023]);
 
 const entries = PRODUCTION_SOUND_TABLE.map(({ mapping }, index) => {
-  const { id } = mapping.parts[0].alternatives[0].entry;
+  const { id } = archiveLocator(mapping.parts[0].alternatives[0]).entry;
   const bitsPerSample = index % 2 === 0 ? 16 : 8;
   const samples = Array.from({ length: (bitsPerSample / 8) * (3 + (index % 4)) }, (_, at) => (id + at * 37) & 0xff);
   return { id, bitsPerSample, flags: LOOPING_SOUND_ENTRIES.has(id) ? 0 : 1, samples };

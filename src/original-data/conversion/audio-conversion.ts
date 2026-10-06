@@ -7,7 +7,9 @@ import { SOUND_PAYLOAD_HEADER_BYTES, SOUND_PAYLOAD_SCHEMA_VERSION } from '../../
 import type { SourceStateSet } from '../../content/source-state.ts';
 import type { ImfatArchiveHandle } from '../archive/archive-reader.ts';
 import { convertSnd, SND_HEADER_BYTES, type SndFormatRules } from '../formats/snd.ts';
-import { assetSourceStates, readSourceMappingTable, type OriginalAssetLocator, type SourceMapping } from '../source-mapping.ts';
+import {
+  archiveLocator, assetSourceStates, readSourceMappingTable, type ArchiveEntryLocator, type OriginalAssetLocator, type SourceMapping,
+} from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
@@ -48,8 +50,8 @@ export interface SoundTableRow {
   readonly mapping: SourceMapping;
 }
 
-const isSoundLocator = ({ discPath, entry, subresource }: OriginalAssetLocator): boolean =>
-  discPath === AUDIO_SOURCE_ARCHIVE && entry.type === 'SND' && subresource === null;
+const isSoundLocator = (locator: OriginalAssetLocator): locator is ArchiveEntryLocator =>
+  locator.discPath === AUDIO_SOURCE_ARCHIVE && locator.entry?.type === 'SND' && locator.subresource === null;
 
 /**
  * Reads a sound table. Each row's mapping is checked by the P2-01 reader through the projection
@@ -117,9 +119,10 @@ async function atMapping<T>(at: string, action: () => T | Promise<T>): Promise<T
  */
 async function preflight(archive: ImfatArchiveHandle, mappings: readonly SourceMapping[], limits: BudgetRecord): Promise<void> {
   const entryOf = (locator: OriginalAssetLocator, at: string) => atMapping(at, () => {
+    const { entry } = archiveLocator(locator);
     // An ID beyond u32 cannot be in an archive; the handle itself would call it a malformed request.
-    if (locator.entry.id > 0xffffffff) throw new SourceError('entry-not-found', at, 'the archive has no entry with this ID');
-    return archive.entry(locator.entry.id, locator.entry.type);
+    if (entry.id > 0xffffffff) throw new SourceError('entry-not-found', at, 'the archive has no entry with this ID');
+    return archive.entry(entry.id, entry.type);
   });
   const sizes: number[] = [];
   for (const [row, mapping] of mappings.entries()) {
@@ -162,7 +165,7 @@ export async function convertAudioGroup(
   const payloads: PayloadRecord[] = [];
   for (const [row, { role, mapping }] of rows.entries()) {
     const at = alternativePath(row, 0);
-    const block = await atMapping(at, () => archive!.read(mapping.parts[0].alternatives[0].entry.id, 'SND'));
+    const block = await atMapping(at, () => archive!.read(archiveLocator(mapping.parts[0].alternatives[0]).entry.id, 'SND'));
     const { payload, samplePoints } = convertSnd(block, rules, at);
     usage = chargeConversionBudget(checkedLimits, usage, { assets: 1, payloadBytes: payload.byteLength, audioSamples: samplePoints }, at);
     const { id } = mapping.asset;

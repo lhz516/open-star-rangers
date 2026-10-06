@@ -2,6 +2,7 @@ import { readAssetId } from '../../content/asset-id.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { imagePayloadLength } from '../../content/graphics/image-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
+import { archiveLocator } from '../source-mapping.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 import { cockpitBlock, dataPaletteBlock, hudFontTables, rawImageBlock } from './conversion.test-support.ts';
 import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
@@ -35,7 +36,7 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
     return type === 'DATA' ? dataPaletteBlock() : type === 'CCKD' ? cockpitBlock(hudFontTables()) : syntheticTexture(id);
   };
   const entries = new Map<number, SyntheticEntry>();
-  for (const { entry: { id, type } } of locators) {
+  for (const { entry: { id, type } } of locators.map(archiveLocator)) {
     if (entries.has(id)) continue;
     const data = content(type, id);
     if (data) entries.set(id, { id, type, data });

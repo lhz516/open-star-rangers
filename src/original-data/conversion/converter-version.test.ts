@@ -30,5 +30,7 @@ describe('production converter version', () => {
       origin: { type: 'original-import', sourceFingerprint },
     });
     expect(Object.isFrozen(productionIdentityBasis(sourceFingerprint))).toBe(true);
+    // P2-01 AC-04 (2026-10-06 revision): production and synthetic identities carry slice definition version 2.
+    expect([productionIdentityBasis(sourceFingerprint).sliceDefinitionVersion, syntheticIdentity().sliceDefinitionVersion]).toEqual([2, 2]);
   });
 });

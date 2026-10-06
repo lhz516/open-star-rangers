@@ -9,9 +9,9 @@ const S03_ROLES = [
   ['player-ship', 'models', ['model'], 1, 1],
   ['enemy-ship', 'models', ['model'], 1, 2],
   ['base', 'models', ['model'], 1, 1],
-  ['projectile', 'models', ['model', 'image'], 1, null],
-  ['missile', 'models', ['model', 'image'], 1, null],
-  ['debris', 'models', ['model', 'image'], 1, null],
+  ['projectile', 'models', ['model', 'image', 'data'], 1, null],
+  ['missile', 'models', ['model', 'image', 'data'], 1, null],
+  ['debris', 'models', ['model', 'image', 'data'], 1, null],
   ['front-cockpit', 'cockpit-hud-map', ['layout'], 1, 1],
   ['hud-mfd', 'cockpit-hud-map', ['image', 'layout'], 1, null],
   ['font', 'cockpit-hud-map', ['font'], 1, null],
@@ -26,7 +26,8 @@ describe('classic-p2-slice definition', () => {
   it('records the approved candidate and configuration without source entry IDs', () => {
     expect(CLASSIC_P2_SLICE.sliceId).toBe(SLICE_ID);
     expect(CLASSIC_P2_SLICE.version).toBe(SLICE_DEFINITION_VERSION);
-    expect(SLICE_DEFINITION_VERSION).toBe(1);
+    // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group.
+    expect(SLICE_DEFINITION_VERSION).toBe(2);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });
     const serialized = JSON.stringify(CLASSIC_P2_SLICE);
@@ -47,7 +48,7 @@ describe('classic-p2-slice definition', () => {
   it('assigns each group its owned kinds and keeps every role inside its group', () => {
     expect(CLASSIC_P2_SLICE.groupKinds).toEqual({
       logic: ['mission', 'data'],
-      models: ['model', 'image', 'palette'],
+      models: ['model', 'image', 'palette', 'data'],
       'cockpit-hud-map': ['image', 'palette', 'font', 'layout'],
       audio: ['sound'],
     });

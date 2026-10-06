@@ -4,7 +4,7 @@ import {
   syntheticScenarioArchive,
 } from '../formats/formats.test-support.ts';
 import { buildImfat } from '../synthetic.ts';
-import { readSourceMappingTable } from '../source-mapping.ts';
+import { archiveLocator, readSourceMappingTable } from '../source-mapping.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
 import { loggedReads, syntheticVerifiedSource } from '../source/source.test-support.ts';
 import { LOGIC_SOURCE_MAPPINGS, logicEntryReader, verifyLogicSources } from './logic-sources.ts';
@@ -24,7 +24,7 @@ describe('logic source mappings', () => {
     expect(table.sourceFingerprint).toBeNull();
     expect(table.mappings.map(({ asset, confidence, unknowns, resolution, parts }) => ({
       asset, confidence, unknowns, resolution,
-      parts: parts.map(({ alternatives }) => alternatives.map(({ discPath, entry, subresource }) => `${discPath}#${entry.id}.${entry.type}/${subresource}`)),
+      parts: parts.map(({ alternatives }) => alternatives.map(archiveLocator).map(({ discPath, entry, subresource }) => `${discPath}#${entry.id}.${entry.type}/${subresource}`)),
     }))).toEqual([
       { asset: { id: 'data/craft-types', kind: 'data' }, confidence: 'likely', unknowns: ['U-022', 'U-028'], resolution: 'declared', parts: [['MAIN/SR.NOB#10649.M2ID/null']] },
       { asset: { id: 'data/wingman-roster', kind: 'data' }, confidence: 'likely', unknowns: ['U-023'], resolution: 'declared', parts: [['MAIN/SCENARIO.NOB#3123.SCCT/wingmen']] },

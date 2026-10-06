@@ -3,7 +3,7 @@ import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
 import type { AssetSourceState } from '../../content/source-state.ts';
 import { SourceError } from '../source-error.ts';
-import { assetSourceStates, readSourceMappingTable, type SourceMapping } from '../source-mapping.ts';
+import { assetSourceStates, isRegionLocator, readSourceMappingTable, type SourceMapping } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
@@ -49,10 +49,10 @@ function sourceKindOf(kind: string, entryType: string, subresource: string | nul
  */
 async function graphicsSource({ id, kind }: AssetReference, mapping: SourceMapping, readEntry: EntryReader): Promise<GraphicsSource> {
   const locator = mapping.parts.length === 1 ? mapping.parts[0].alternatives[0] : null;
-  const source = locator && sourceKindOf(kind, locator.entry.type, locator.subresource);
-  if (!locator || !source) {
-    throw new SourceError('invalid-declaration', `graphics[${id}].${SOURCE_FIELDS[kind]}`, 'the mapped source does not supply this kind');
-  }
+  const unsupplied = () => new SourceError('invalid-declaration', `graphics[${id}].${SOURCE_FIELDS[kind]}`, 'the mapped source does not supply this kind');
+  if (!locator || isRegionLocator(locator)) throw unsupplied();
+  const source = sourceKindOf(kind, locator.entry.type, locator.subresource);
+  if (!source) throw unsupplied();
   return { ...source, block: (await readEntry(locator)).bytes };
 }
 

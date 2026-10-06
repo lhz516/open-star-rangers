@@ -2,7 +2,7 @@ import type { AssetKind } from './asset-id.ts';
 import { RESOURCE_GROUPS, type ResourceGroup } from './asset-contract.ts';
 import { SLICE_ID, type SliceDefinitionVersion, type SliceId } from './content-identity.ts';
 
-export const SLICE_DEFINITION_VERSION = 1;
+export const SLICE_DEFINITION_VERSION = 2;
 
 export type SliceRole =
   | 'mission'
@@ -80,8 +80,8 @@ function requirement(
 /**
  * The only production slice definition. Changing the candidate, roles, cardinalities or groups
  * is a contract change that requires a spec revision and a new definition version.
- * Projectile, missile and debris allow model or image representations until P2-06 confirms them (U-027);
- * core sounds allow several sample clips until P2-08 confirms their variants (U-004/U-027).
+ * Projectile, missile and debris allow model, image or data representations: version 2 admits data for the
+ * generated effect geometry P2-06 imports (U-027). Core sounds allow several sample clips (U-004/U-027).
  */
 const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   sliceId: SLICE_ID,
@@ -91,7 +91,7 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   groups: RESOURCE_GROUPS,
   groupKinds: Object.freeze({
     logic: Object.freeze(['mission', 'data'] as const),
-    models: Object.freeze(['model', 'image', 'palette'] as const),
+    models: Object.freeze(['model', 'image', 'palette', 'data'] as const),
     'cockpit-hud-map': Object.freeze(['image', 'palette', 'font', 'layout'] as const),
     audio: Object.freeze(['sound'] as const),
   }),
@@ -100,9 +100,9 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
     requirement('player-ship', 'models', ['model'], 1, 1),
     requirement('enemy-ship', 'models', ['model'], 1, 2),
     requirement('base', 'models', ['model'], 1, 1),
-    requirement('projectile', 'models', ['model', 'image'], 1, null),
-    requirement('missile', 'models', ['model', 'image'], 1, null),
-    requirement('debris', 'models', ['model', 'image'], 1, null),
+    requirement('projectile', 'models', ['model', 'image', 'data'], 1, null),
+    requirement('missile', 'models', ['model', 'image', 'data'], 1, null),
+    requirement('debris', 'models', ['model', 'image', 'data'], 1, null),
     requirement('front-cockpit', 'cockpit-hud-map', ['layout'], 1, 1),
     requirement('hud-mfd', 'cockpit-hud-map', ['image', 'layout'], 1, null),
     requirement('font', 'cockpit-hud-map', ['font'], 1, null),

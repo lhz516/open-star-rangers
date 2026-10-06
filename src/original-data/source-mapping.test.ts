@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readAssetDescriptor, readAssetReference } from '../content/asset-contract.ts';
 import { ASSET_KINDS } from '../content/asset-id.ts';
 import { readSourceStateSet } from '../content/source-state.ts';
-import { assetSourceStates, diagnoseSourceMappings, readSourceMappingTable, SOURCE_ENTRY_TYPES, type SourceMappingTable } from './source-mapping.ts';
+import {
+  archiveLocator, assetSourceStates, diagnoseSourceMappings, executableRegion, isRegionLocator, readSourceMappingTable, REGION_FILES,
+  SOURCE_ENTRY_TYPES, type ExecutableRegionLocator, type SourceMappingTable,
+} from './source-mapping.ts';
 
 // Synthetic locators only: structural shapes, not research claims about any original entry.
 const locator = (type: string, id: number, subresource: string | null = null) =>
@@ -193,5 +196,60 @@ describe('source mapping diagnostics', () => {
       expect(Object.isFrozen(types)).toBe(true);
     }
     expect(Object.isFrozen(SOURCE_ENTRY_TYPES)).toBe(true);
+  });
+});
+
+// P2-06 AC-18 (locator part): byte regions of a non-archive file, for data Assets only.
+describe('region locators', () => {
+  const region = (subresource: string, discPath = 'MAIN/SRANGERS.EXE') => ({ discPath, entry: null, subresource });
+  const dataMapping = (parts: object[][]) => ({ ...mapping('data/synthetic-effects', 'data', [] as never), parts: parts.map(alternatives => ({ alternatives })) });
+  const effectsTable = (parts: object[][]) => ({ sourceFingerprint: null, mappings: [{ ...dataMapping(parts), resolution: 'declared' }] });
+
+  it('reads a data mapping with an archive entry and canonical regions, entries first and regions in numeric order', () => {
+    const parts = [[locator('RENS', 7)], [region('le/2/0x9/4')], [region('le/2/0x10/4')], [region('le/2/0x10/8')], [region('le/4/0x0/1')]];
+    const { mappings: [read] } = readSourceMappingTable(effectsTable(parts));
+    expect(read.parts.map(({ alternatives: [first] }) => (isRegionLocator(first) ? executableRegion(first) : archiveLocator(first).entry))).toEqual([
+      { id: 7, type: 'RENS' },
+      { object: 2, offset: 0x9, length: 4 }, { object: 2, offset: 0x10, length: 4 }, { object: 2, offset: 0x10, length: 8 }, { object: 4, offset: 0, length: 1 },
+    ]);
+    expect(Object.isFrozen(read.parts[1].alternatives[0])).toBe(true);
+    expect(REGION_FILES).toEqual(['MAIN/SRANGERS.EXE']);
+    expect(() => archiveLocator(read.parts[1].alternatives[0] as ExecutableRegionLocator)).toThrow(TypeError);
+  });
+
+  it('accepts the largest region and object the grammar allows', () => {
+    expect(readSourceMappingTable(effectsTable([[region('le/8/0xffffffff/65536')]])).mappings).toHaveLength(1);
+  });
+
+  it.each([
+    ['upper-case hexadecimal', 'le/2/0x1A/4'], ['a leading zero in the offset', 'le/2/0x01a/4'], ['a decimal offset', 'le/2/26/4'],
+    ['a leading zero in the length', 'le/2/0x1a/04'], ['object 0', 'le/0/0x1a/4'], ['object 9', 'le/9/0x1a/4'], ['length 0', 'le/2/0x1a/0'],
+    ['length 65,537', 'le/2/0x1a/65537'], ['a nine-digit offset', 'le/2/0x100000000/4'], ['a missing field', 'le/2/0x1a'], ['another prefix', 'mz/2/0x1a/4'],
+  ])('rejects a region with %s', (_name, text) => {
+    expect(() => readSourceMappingTable(effectsTable([[region(text)]])))
+      .toThrowError(expect.objectContaining({ code: 'invalid-source-mapping', path: 'sources.mappings[0].parts[0].alternatives[0].subresource' }));
+  });
+
+  it.each([
+    ['another file', effectsTable([[region('le/2/0x1a/4', 'MAIN/SR.NOB')]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives[0].discPath'],
+    ['a null sub-resource', effectsTable([[{ ...region('le/2/0x1a/4'), subresource: null }]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives[0].subresource'],
+    ['two alternatives', effectsTable([[region('le/2/0x1a/4'), region('le/2/0x2a/4')]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives'],
+    ['two alternatives in reverse order', effectsTable([[region('le/2/0x2a/4'), region('le/2/0x1a/4')]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives'],
+    ['a region after an archive alternative', effectsTable([[locator('RENS', 7), region('le/2/0x1a/4')]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives'],
+    ['a region before an archive alternative', effectsTable([[region('le/2/0x1a/4'), locator('RENS', 7)]]), 'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives'],
+    ['a repeated region', effectsTable([[region('le/2/0x1a/4')], [region('le/2/0x1a/4')]]), 'duplicate-mapping', 'sources.mappings[0].parts[1]'],
+    ['regions out of numeric order', effectsTable([[region('le/2/0x10/4')], [region('le/2/0x9/4')]]), 'mapping-order', 'sources.mappings[0].parts[1]'],
+    ['a region before an archive entry', effectsTable([[region('le/2/0x10/4')], [locator('RENS', 7)]]), 'mapping-order', 'sources.mappings[0].parts[1]'],
+    ['a region for another kind', { sourceFingerprint: null, mappings: [{ ...mapping('image/synthetic-effect', 'image', [] as never), parts: [{ alternatives: [region('le/2/0x1a/4')] }], resolution: 'declared' }] },
+      'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives[0]'],
+  ])('rejects %s', (_name, input, code, path) => {
+    expect(() => readSourceMappingTable(input)).toThrowError(expect.objectContaining({ code, path }));
+  });
+
+  it('admits regions and RENS entries for data Assets, with locator-free states', () => {
+    const read = readSourceMappingTable({ ...effectsTable([[locator('RENS', 7)], [region('le/2/0x1a/4')]]), sourceFingerprint: 'source:synthetic-disc' });
+    expect(diagnoseSourceMappings(read, [])).toEqual([]);
+    expect(assetSourceStates(read).states).toEqual([{ id: 'data/synthetic-effects', state: 'unverified', unknowns: [] }]);
+    expect(JSON.stringify(assetSourceStates(read))).not.toMatch(/le\/|SRANGERS|RENS/);
   });
 });

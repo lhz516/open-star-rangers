@@ -6,7 +6,7 @@ import { MODEL_LIST_LIMITS } from '../formats/m2id.ts';
 import { requireEntryBytes } from '../formats/payload-block.ts';
 import { CAMPAIGN_LIMITS, parseCampaignTable, type ParsedCampaignTable } from '../formats/scct.ts';
 import { SCENARIO_LIMITS } from '../formats/scen.ts';
-import { assetSourceStates, readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
+import { assetSourceStates, isRegionLocator, readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
@@ -115,12 +115,15 @@ export async function verifyLogicSources(source: VerifiedSource, readEntry: Entr
     let checked = false;
     for (const [part, { alternatives }] of mapping.parts.entries()) {
       for (const [alternative, locator] of alternatives.entries()) {
-        const { discPath, entry, subresource } = locator;
-        if (subresource === null) continue;
+        if (locator.subresource === null) continue;
         checked = true;
         const at = `sources.mappings[${index}].parts[${part}].alternatives[${alternative}]`;
-        const mismatch = (reason: string): never => { throw new SourceError('subresource-mismatch', at, reason); };
-        if (discPath !== SCENARIO_NOB || entry.type !== 'SCCT') mismatch('the sub-resource is not in a campaign table');
+        // A declaration, not a const arrow, so its never return narrows the locator below.
+        function mismatch(reason: string): never {
+          throw new SourceError('subresource-mismatch', at, reason);
+        }
+        if (isRegionLocator(locator) || locator.discPath !== SCENARIO_NOB || locator.entry.type !== 'SCCT') mismatch('the sub-resource is not in a campaign table');
+        const { discPath, entry, subresource } = locator;
         if (campaign === null) {
           campaign = { entryId: entry.id, table: parseCampaignTable(discPath, await readEntry(locator)) };
         } else if (campaign.entryId !== entry.id) {
@@ -129,7 +132,7 @@ export async function verifyLogicSources(source: VerifiedSource, readEntry: Entr
         const { scenarioEntryId } = campaign.table;
         if (subresource === CAMPAIGN_SLOT_SUBRESOURCE) {
           const named = mapping.parts.some(({ alternatives: others }) =>
-            others.some(other => other.discPath === discPath && other.entry.type === 'SCEN' && other.entry.id === scenarioEntryId && other.subresource === null));
+            others.some(other => other.discPath === discPath && other.entry?.type === 'SCEN' && other.entry.id === scenarioEntryId && other.subresource === null));
           if (!named) mismatch('the campaign slot names another mission than the mapping');
         } else if (subresource !== WINGMEN_SUBRESOURCE) {
           mismatch('the sub-resource is not one the converter resolves');

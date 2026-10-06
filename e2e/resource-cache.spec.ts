@@ -632,7 +632,7 @@ test('keeps the old package or the whole new one when the browser closes during 
 
 const ORIGINAL_KEY = { originType: 'original-import', originToken: 'source:synthetic-disc', converterVersion: 'synthetic-converter.1' } as const;
 type Corruption = 'missing field' | 'key mismatch' | 'count mismatch' | 'payload missing' | 'payload extra' | 'payload rewritten'
-  | 'payload length' | 'source unverified' | 'unknown format' | 'format version 2' | 'content schema 2' | 'slice definition version 2';
+  | 'payload length' | 'source unverified' | 'unknown format' | 'format version 2' | 'content schema 2' | 'slice definition version 1';
 
 test('refuses damaged or incompatible stored records without deleting or changing them', async ({ page }) => {
   await loadCacheModules(page);
@@ -676,7 +676,7 @@ test('refuses damaged or incompatible stored records without deleting or changin
         'unknown format': () => updatePackage(record => { record.format = 'another-cache'; }),
         'format version 2': () => updatePackage(record => { record.formatVersion = 2; }),
         'content schema 2': () => updatePackage(everyGroup(identity => { identity.schemaVersion = 2; })),
-        'slice definition version 2': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 2; })),
+        'slice definition version 1': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 1; })),
       };
       changes[name]();
       await new Promise(resolve => { tx.oncomplete = resolve; });
@@ -712,7 +712,7 @@ test('refuses damaged or incompatible stored records without deleting or changin
     'unknown format': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
     'format version 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
     'content schema 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: ['unsupported-schema'] },
-    'slice definition version 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
+    'slice definition version 1': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
   };
   for (const [name, { code, listed, diagnostics }] of Object.entries(expected) as [Corruption, typeof expected[Corruption]][]) {
     const observed = await corrupt(name);

@@ -7,7 +7,7 @@ import { GRAPHICS_LIMITS, asciiBytes } from '../../content/graphics/graphics-for
 import { expectContractError } from '../../content/graphics/graphics.test-support.ts';
 import { imagePayloadLength, readImagePayload } from '../../content/graphics/image-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
-import { diagnoseSourceMappings } from '../source-mapping.ts';
+import { archiveLocator, diagnoseSourceMappings } from '../source-mapping.ts';
 import { countedVerifiedSource, hudFontTables } from './conversion.test-support.ts';
 import { runGraphicsStep } from './graphics-step.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from './production-graphics.ts';
@@ -53,7 +53,7 @@ describe('production graphics', () => {
     ]);
     expect(mappings.map(({ asset, parts, confidence, unknowns, evidence, resolution }) => ({
       id: asset.id,
-      locators: parts.map(({ alternatives }) => alternatives.map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`)),
+      locators: parts.map(({ alternatives }) => alternatives.map(archiveLocator).map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`)),
       confidence, unknowns, evidence, resolution,
     }))).toEqual([
       { id: 'font/hud/4x6', locators: [['MAIN/SR.NOB#CCKD:10103/fonts/2']], confidence: 'likely', unknowns: ['U-029', 'U-030'], evidence: fontEvidence, resolution: 'declared' },

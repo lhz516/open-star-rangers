@@ -42,13 +42,15 @@ const FILES = {
   'MAIN/BAD.NOB': badArchive,
   'MAIN/R.NOB': buildImfat(30_000, [tex(30_001, { data: sixteen(17) })]),
 };
-const CATALOG = catalogFor(FILES);
 
-async function verified(): Promise<VerifiedSource> {
+/** A synthetic executable whose bytes are never read by mapping verification. */
+const EXECUTABLE = { 'MAIN/SRANGERS.EXE': Uint8Array.from({ length: 64 }, (_, index) => index) };
+
+async function verified(covered: Record<string, Uint8Array> = FILES): Promise<VerifiedSource> {
   // The unread padding raises the default read budget, which equals the input size, above this test's rereads.
   const padding = { byteLength: 1 << 20, read: (_: number, length: number) => new Uint8Array(length) };
-  const disc = syntheticFileDisc({ ...FILES, 'MAIN/U.DAT': Uint8Array.of(1), 'DEMO/PAD.DAT': padding });
-  return identifySource(await openDiscImage(disc.files), CATALOG);
+  const disc = syntheticFileDisc({ ...FILES, ...EXECUTABLE, 'MAIN/U.DAT': Uint8Array.of(1), 'DEMO/PAD.DAT': padding });
+  return identifySource(await openDiscImage(disc.files), catalogFor(covered));
 }
 
 type Locator = { discPath: string; entry: { id: number; type: string }; subresource: string | null };
@@ -199,5 +201,31 @@ describe('verifySourceMappings', () => {
     const failing = wrapped(source, () => Promise.reject(failed)).source;
     const input = table([mapping('image/hull', [[at('MAIN/A.NOB', 'TEX', 10_001)]])]);
     expect(await rejection(() => verifySourceMappings(input, failing))).toBe(failed);
+  });
+});
+
+// P2-06 AC-18 (locator part): a region locator is checked for coverage only; the effect step reads and validates it.
+describe('verifySourceMappings with region locators', () => {
+  const effects = (alternatives: unknown[][]) => ({
+    asset: { id: 'data/effects', kind: 'data' }, parts: alternatives.map(list => ({ alternatives: list })),
+    confidence: 'likely', unknowns: ['U-027'], evidence: ['docs/original/formats/executable.md'], resolution: 'declared',
+  });
+  const region = (subresource: string) => ({ discPath: 'MAIN/SRANGERS.EXE', entry: null, subresource });
+
+  it('checks that the region file is covered without reading it, and keeps the mapping declared', async () => {
+    const source = await verified({ ...FILES, ...EXECUTABLE });
+    const before = source.usage().sourceReadBytes;
+    let reads = 0;
+    const counting: EntryReader = async () => { reads += 1; throw new Error('a region must not be read as an entry'); };
+    const result = await verifySourceMappings(table([effects([[region('le/2/0x10/4')], [region('le/4/0x0/8')]])]), source, counting);
+    expect(result.mappings.map(({ resolution }) => resolution)).toEqual(['declared']);
+    expect(assetSourceStates(result).states.map(({ state }) => state)).toEqual(['unverified']);
+    expect([reads, source.usage().sourceReadBytes - before]).toEqual([0, 0]);
+  });
+
+  it('reports an uncovered region file at the locator path', async () => {
+    const source = await verified();
+    expect(await sourceFailure(() => verifySourceMappings(table([effects([[region('le/2/0x10/4')]])]), source)))
+      .toEqual({ code: 'path-not-covered', location: ALT(0) });
   });
 });

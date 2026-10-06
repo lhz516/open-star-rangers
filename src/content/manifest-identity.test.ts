@@ -12,7 +12,7 @@ const FINGERPRINT = 'source:synthetic-disc';
 const basis = (overrides: Record<string, unknown> = {}) => ({
   schemaVersion: 1,
   sliceId: 'classic-p2-slice',
-  sliceDefinitionVersion: 1,
+  sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
   converterVersion: 'synthetic-converter.1',
   origin: { type: 'original-import', sourceFingerprint: FINGERPRINT },
   ...overrides,
@@ -43,7 +43,8 @@ describe('manifest identity derivation', () => {
 
   it('matches the version-1 encoding vector, which fixes every field position including kinds', () => {
     // Independently computed: SHA-256 of the compact JSON array in the order `encode` documents.
-    const vectorBasis = basis({ converterVersion: 'vector-converter.1', origin: { type: 'original-import', sourceFingerprint: 'source:vector-disc' } });
+    // The vector was computed with slice definition version 1, so it names that version explicitly.
+    const vectorBasis = basis({ sliceDefinitionVersion: 1, converterVersion: 'vector-converter.1', origin: { type: 'original-import', sourceFingerprint: 'source:vector-disc' } });
     const vectorDrafts = [{
       group: 'logic',
       assets: [{
@@ -88,7 +89,7 @@ describe('manifest identity derivation', () => {
 
   it.each([
     ['the converter version', { converterVersion: 'synthetic-converter.2' }],
-    ['the slice definition version', { sliceDefinitionVersion: 2 }],
+    ['the slice definition version', { sliceDefinitionVersion: 1 }],
     ['the source fingerprint', { origin: { type: 'original-import', sourceFingerprint: 'source:other-disc' } }],
     ['the origin type', { origin: { type: 'synthetic', fixtureId: 'synthetic-disc' } }],
   ])('changes with %s', (_, overrides) => {
