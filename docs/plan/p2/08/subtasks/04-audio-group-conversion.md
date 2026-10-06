@@ -68,14 +68,14 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-04（完整）：合成表覆盖四个核心角色与一个 `model-sound`、一对精确别名。草稿加合成包身份后，经 `validateGroup(CLASSIC_P2_SLICE, …)` 为 `group-complete`，没有外部要求；payload 的版本、长度与指纹与描述符一致；每个 payload 独占缓冲；来源状态集绑定已识别的指纹。
-- [ ] AC-04（不完整）：格式在规则内时，一个核心角色的映射为 `unconfirmed`，结果为 `incomplete` 且诊断为 `source-not-ready`，并带对应 U 项；删去一个核心角色的全部行，结果为 `incomplete` 且诊断为 `role-cardinality`。
-- [ ] AC-04（失败）：`flags` 或位宽不在规则内，以 `conversion/unsupported-sound-format` 失败，不产生 payload；别名的两个条目内容不同，以 `source/alternatives-differ` 失败。
-- [ ] AC-03（读取部分）：行读取拒绝以下各项：未知 `role`；ID 与角色不一致；非 `sound` kind；多个部件；非 `MAIN/SR.NOB`/`SND` 的 locator；`subresource` 非 null；乱序与重复 ID。投影能通过 `readSourceMappingTable`；带 `role` 的整行不送入它。
-- [ ] AC-05（预算）：每个音频预算维度在等于上限时通过，超过 1 时以 `limit-exceeded` 失败，`limit` 的名称、上限与观测值正确；累加溢出时观测值为 null。
-- [ ] AC-05（预检）：预检超限时，读取计量证明没有任何 SND 块被读取，包括 `verifySourceMappings` 的核验读取；不分配 payload。块大小为 8 字节的条目在预检中以 `conversion/invalid-sound` 失败，同样零块读取、零分配。`payloadBytes` 计入含 16 字节头部的完整 payload。
-- [ ] AC-11（转换部分）：本模块只经 `VerifiedSource` 与 `verifySourceMappings` 取得字节，能力边界的 lint 与依赖图回归通过。
-- [ ] `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-04（完整）：合成表覆盖四个核心角色与一个 `model-sound`、一对精确别名。草稿加合成包身份后，经 `validateGroup(CLASSIC_P2_SLICE, …)` 为 `group-complete`，没有外部要求；payload 的版本、长度与指纹与描述符一致；每个 payload 独占缓冲；来源状态集绑定已识别的指纹。
+- [x] AC-04（不完整）：格式在规则内时，一个核心角色的映射为 `unconfirmed`，结果为 `incomplete` 且诊断为 `source-not-ready`，并带对应 U 项；删去一个核心角色的全部行，结果为 `incomplete` 且诊断为 `role-cardinality`。
+- [x] AC-04（失败）：`flags` 或位宽不在规则内，以 `conversion/unsupported-sound-format` 失败，不产生 payload；别名的两个条目内容不同，以 `source/alternatives-differ` 失败。
+- [x] AC-03（读取部分）：行读取拒绝以下各项：未知 `role`；ID 与角色不一致；非 `sound` kind；多个部件；非 `MAIN/SR.NOB`/`SND` 的 locator；`subresource` 非 null；乱序与重复 ID。投影能通过 `readSourceMappingTable`；带 `role` 的整行不送入它。
+- [x] AC-05（预算）：每个音频预算维度在等于上限时通过，超过 1 时以 `limit-exceeded` 失败，`limit` 的名称、上限与观测值正确；累加溢出时观测值为 null。
+- [x] AC-05（预检）：预检超限时，读取计量证明没有任何 SND 块被读取，包括 `verifySourceMappings` 的核验读取；不分配 payload。块大小为 8 字节的条目在预检中以 `conversion/invalid-sound` 失败，同样零块读取、零分配。`payloadBytes` 计入含 16 字节头部的完整 payload。
+- [x] AC-11（转换部分）：本模块只经 `VerifiedSource` 与 `verifySourceMappings` 取得字节，能力边界的 lint 与依赖图回归通过。
+- [x] `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -84,3 +84,25 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [audio-conversion.ts](../../../../../src/original-data/conversion/audio-conversion.ts)：
+    - **读取与常量：** `readSoundTable` 先投影给 `readSourceMappingTable`，再核对角色、ID 规则、kind、单一部件、`MAIN/SR.NOB` 的 `SND` locator，以及 SND 条目不跨行复用。另导出 `AUDIO_BUDGET_LIMITS`、`AUDIO_CONVERTER_COMPONENT`（`audio-1`）与 `AUDIO_SOURCE_ARCHIVE`。
+    - **流程：** `convertAudioGroup` 先做三遍目录预检（locator 存在且为 SND → 首个块不小于 20 字节 → 上界核算），再依次调用 `verifySourceMappings` 与 `assetSourceStates`，最后逐行读取、`convertSnd` 并按实际值计量。
+    - **输出：** 不含清单身份的组草稿。`limits` 选项只供测试使用。
+  - [conversion-budget.ts](../../../../../src/original-data/conversion/conversion-budget.ts)：`chargeConversionBudget` 把 P2-01 预算违规转为 `conversion/limit-exceeded`，供后续转换器共用。
+- **测试：** [audio-conversion.test.ts](../../../../../src/original-data/conversion/audio-conversion.test.ts) 使用合成光盘：`MAIN/SR.NOB` 由 `buildImfat` 与 `syntheticSnd` 构造，经 `catalogFor` 与 `identifySource` 识别。块读取由包装后的 `VerifiedSource` 按条目 ID 记录。
+  - **AC-04 完整：** 四个核心角色与一个带精确别名的 `model-sound`，经 `validateGroup` 为 `group-complete`，`externalRequirements` 为空。描述符为 sound/audio、无依赖、schema 1；payload 格式正确，且 `payloadTransferList` 接受全部 payload；来源状态集绑定识别指纹。读取顺序证明先核验全部别名，再转换首个 locator。
+  - **AC-04 不完整：** `unconfirmed` 的 fire 为 `source-not-ready@sound/fire`，带 `U-004`；缺少 warp 为 `role-cardinality`。
+  - **AC-04 失败：** 未列入的 `flags` 与 12 位为 `unsupported-sound-format`，位置为映射路径加字段；别名内容不同为 `source/alternatives-differ`。
+  - **AC-05 预检：** 以下失败都是零块读取：缺失条目、超出 u32 的 ID 与类型不符（各为 `source` 层原 code）、8 字节块（`conversion/invalid-sound`，位置以 `.size` 结尾），以及封包不在白名单内（报在首个映射路径）。另断言 locator 检查先于块大小检查。
+  - **AC-05 预算：** `assets`、`payloadBytes`、`audioSamples` 各自等于上限时通过；超过 1 时以 `limit-exceeded` 失败，`{ name, limit, observed }` 正确，且零块读取。生产 `assets` 上限 37 在真实常量下通过，38 时失败。`usage` 每个维度只计一次，`payloadBytes` 含 16 字节头部。
+  - **溢出：** 实际计量的溢出语义（`observed: null`）在 [conversion-budget.test.ts](../../../../../src/original-data/conversion/conversion-budget.test.ts) 中直接测试。预检通过后，实际值总不超过上界（payload 字节相等，采样点数不多于样本字节数），所以经 `convertAudioGroup` 无法触发实际计量超限。
+  - **AC-03 行读取：** 15 个拒绝用例：未知角色、ID 与角色不符、两位序号与变体段规则、非 sound kind、两个部件、其他封包、其他类型、子资源、乱序、重复 ID、多余字段、非法映射、两核心角色共用条目、核心条目被模型别名复用。合法的核心变体 `sound/fire/v1` 被接受。
+- **命令：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts` 通过，包括 AC-11 的能力边界与依赖图回归。`pnpm check` 通过（101 个测试文件、2,928 个测试，构建成功）。
+- **rubber-duck：** 指出一项阻塞问题：同一 SND 条目可以绑定到多个 Asset，违反“同一源样本只形成一个 Asset”。已在 `readSoundTable` 中拒绝跨行复用（`duplicate-mapping`），并加入两个回归用例；生产资产上限测试改用 34 个不同的合成条目。
+- **simplify：**
+  - **采纳：** 预检首遍即缓存首个 locator 的块大小，不再重复查找；角色 ID 正则在模块级预编译；打开封包的失败也改写为映射路径，并补充测试。
+  - **未采纳：** 把定位与错误改写抽成与 `verify-source-mappings.ts` 共用的辅助函数，因为要改动 P2-03 已批准的模块，超出本子任务范围；测试共用一个已识别来源，因为会牺牲用例间的计量隔离。
+  - 复跑检查通过。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录加入 `conversion-budget.ts` 与 `audio-conversion.ts`，并新增“转换预算”“音频组”两条（音效表、常量、流程、输出与门槛）。工程约定无需修改：能力边界与命令不变。

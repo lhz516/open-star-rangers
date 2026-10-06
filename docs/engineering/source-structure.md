@@ -93,6 +93,8 @@ src/
       verify-source-mappings.ts
     conversion/
       conversion-error.ts
+      conversion-budget.ts
+      audio-conversion.ts
     formats/
       snd.ts
   platform/
@@ -296,6 +298,16 @@ src/
   - **规则：** `SndFormatRules` 是转换器接受的采样解释：`flags` 列出研究已确认的取值及各自的声道数与循环方式，`s16le` 表示 16 位样本是否已确认为有符号小端。规则之外的取值一律拒绝，不猜测默认值。生产规则由 P2-08 的生产音效模块提供。
   - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-sound-format`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-sound`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
 - **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
+- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量（增量缺省的维度为 0）：等于上限通过；第一个超限或超出安全整数范围的维度以 `limit-exceeded` 失败，`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
+- **音频组：** [conversion/audio-conversion.ts](../../src/original-data/conversion/audio-conversion.ts)（[P2-08/04](../plan/p2/08/subtasks/04-audio-group-conversion.md)）。
+  - **音效表：** `readSoundTable` 读取行 `{ role, mapping }`。先把各行的 `mapping` 投影为 `{ sourceFingerprint: null, mappings }`，交给 P2-01 `readSourceMappingTable` 校验，因此行按 Asset ID 升序且唯一，错误路径为 `sources.mappings[i]…`；带 `role` 的整行不送入该读取器。之后另行核对：`role` 属于 `SOUND_ROLES`（四个核心角色与 `model-sound`）；ID 符合该角色的规则（核心角色为 `sound/<词干>` 或再加一段变体，`model-sound` 为 `sound/model-clip/<两位数字>`）；kind 为 `sound`；恰有一个部件，各别名都是 `MAIN/SR.NOB`（`AUDIO_SOURCE_ARCHIVE`）中不带子资源的 `SND` 条目；同一 SND 条目只能属于一行（`duplicate-mapping`），因为同一源样本只形成一个 Asset。
+  - **常量：** `AUDIO_BUDGET_LIMITS` 为 `assets` 37、`audioSamples` 4,194,304、`payloadBytes` 8,388,608，其余维度为 0。转换器版本组件 `AUDIO_CONVERTER_COMPONENT` 为 `audio-1`。
+  - **流程：** `convertAudioGroup(source, table, rules, { limits? })` 按以下顺序执行。`limits` 只供测试替换。
+    1. **目录预检：** 读取任何 SND 块之前，只经 `openArchive` 的 `entries`/`entry` 核对（打开封包本身的 P2-03 失败报在 `sources.mappings[0].parts[0].alternatives[0]`）。先确认每个 locator（含别名）都存在且为 `SND`，失败时为 P2-03 原 code，位置为 `sources.mappings[i].parts[0].alternatives[k]`；再确认每行第一个 locator 的块不小于 20 字节，否则为 `invalid-sound`，位置为该路径加 `.size`；最后按块大小核算上界（`payloadBytes` 为 16 + 块大小 − 20，`audioSamples` 为块大小 − 20，另计 `assets`）。预检不计入用量。
+    2. **核验：** `verifySourceMappings` 核验映射，再由 `assetSourceStates` 得到绑定指纹的来源状态集。
+    3. **转换：** 逐行读取第一个 locator，以 `convertSnd` 转换，位置为该行映射路径；按实际 payload 字节与采样点数计量。
+  - **输出：** 组草稿 `{ assets, payloads, sources, usage }`。描述符为 `sound`/`audio`、无依赖、payload schema 1；每个 payload 独占 buffer；`usage` 只含转换用量，源读取用量在已验证来源的 `usage()` 中。清单身份不在这里填入。
+  - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-sound-format` 失败。空表不打开封包。
 
 ### 导入 Worker
 
