@@ -1,16 +1,18 @@
 import { readAssetReference, readResourceGroup, readRole, type ResourceGroup } from '../../content/asset-contract.ts';
 import type { AssetId } from '../../content/asset-id.ts';
 import { ContentContractError, fail, readArray, readRecord, requireFields } from '../../content/contract-validation.ts';
-import { GRAPHICS_LIMITS, readPaletteReference, requireInteger as integer } from '../../content/graphics/graphics-format.ts';
+import { GRAPHICS_LIMITS, readPaletteReference, readReference, requireInteger as integer } from '../../content/graphics/graphics-format.ts';
 import type { ImageDisplay } from '../../content/graphics/image-payload.ts';
+import { layoutFrame, type LayoutFrame } from '../../content/graphics/layout-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { SourceError } from '../source-error.ts';
 
-// Graphics conversion declarations (docs/plan/p2/05/spec.md, graphics conversion declarations): plain data paired
-// one to one with source mappings but without locators. Non-default choices (nearest display, colour keys, reversed
-// rows and character map ranges) need evidence linked from the Asset's mapping.
+// Graphics conversion declarations (docs/plan/p2/05/spec.md, graphics conversion declarations, and
+// docs/plan/p2/07/spec.md, layout conversion declarations): plain data paired one to one with source mappings but
+// without locators. Non-default choices (nearest display, colour keys, reversed rows and character map ranges) need
+// evidence linked from the Asset's mapping.
 
-export type GraphicsKind = 'palette' | 'image' | 'font';
+export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout';
 
 interface DeclarationBase<Kind extends GraphicsKind> {
   readonly asset: { readonly id: AssetId; readonly kind: Kind };
@@ -50,16 +52,23 @@ export interface FontDeclaration extends DeclarationBase<'font'> {
   readonly charMap: readonly CharMapRange[];
 }
 
+export interface LayoutDeclaration extends DeclarationBase<'layout'> {
+  readonly frame: LayoutFrame;
+  /** 1–16 distinct images in stored element order, each declared in the same set and group. */
+  readonly elements: readonly AssetId[];
+}
+
 /** Glyphs of a declared font: its source table holds 256 × cell height bytes. */
 export const declaredGlyphCount = ({ cell, glyphRows }: Pick<FontDeclaration, 'cell' | 'glyphRows'>): number =>
   GRAPHICS_LIMITS.glyphCount * cell.height / glyphRows;
 
-export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration;
+export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration;
 
 const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
   palette: ['asset', 'role', 'group'],
   image: ['asset', 'role', 'group', 'palette', 'display', 'alpha', 'rowOrder'],
   font: ['asset', 'role', 'group', 'cell', 'glyphRows', 'charMap'],
+  layout: ['asset', 'role', 'group', 'frame', 'elements'],
 };
 
 const isGraphicsKind = (kind: string): kind is GraphicsKind => Object.hasOwn(FIELDS, kind);
@@ -93,14 +102,27 @@ function readCharMap(value: unknown, glyphCount: number, path: string): readonly
   });
 }
 
+function readLayout(record: Record<string, unknown>, base: DeclarationBase<'layout'>, path: string): LayoutDeclaration {
+  const fields = readRecord(record.frame, `${path}.frame`);
+  requireFields(fields, `${path}.frame`, ['width', 'height']);
+  const frame = layoutFrame(fields.width, fields.height, `${path}.frame`);
+  const elements = readArray(record.elements, `${path}.elements`, 'invalid-record', (item, at) => readReference(item, 'image', at));
+  if (elements.length < 1 || elements.length > GRAPHICS_LIMITS.layoutElements) fail('invalid-record', `${path}.elements`, 'must list 1 to 16 images');
+  elements.forEach((image, index) => {
+    if (elements.indexOf(image) !== index) fail('invalid-record', `${path}.elements[${index}]`, 'must differ from every other element image');
+  });
+  return Object.freeze({ ...base, frame, elements });
+}
+
 function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   const record = readRecord(value, path);
   const asset = readAssetReference(record.asset, `${path}.asset`);
-  if (!isGraphicsKind(asset.kind)) fail('invalid-kind', `${path}.asset.kind`, 'must be palette, image or font');
+  if (!isGraphicsKind(asset.kind)) fail('invalid-kind', `${path}.asset.kind`, 'must be palette, image, font or layout');
   requireFields(record, path, FIELDS[asset.kind]);
   const base = { asset, role: readRole(record.role, `${path}.role`), group: readResourceGroup(record.group, `${path}.group`) };
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
   if (asset.kind === 'palette') return Object.freeze(base as PaletteDeclaration);
+  if (asset.kind === 'layout') return readLayout(record, base as DeclarationBase<'layout'>, path);
   if (asset.kind === 'font') {
     const fields = readRecord(record.cell, `${path}.cell`);
     requireFields(fields, `${path}.cell`, ['width', 'height']);
@@ -123,13 +145,21 @@ function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   });
 }
 
-/** Checks that every palette an image names is declared in the same set and group. */
+/** Checks that every palette an image names, and every image a layout lists, is declared in the same set and group. */
 function checkBindings(declarations: readonly GraphicsDeclaration[], path: string): void {
-  const palettes = new Map<string, ResourceGroup>(declarations.filter(({ asset }) => asset.kind === 'palette').map(({ asset, group }) => [asset.id, group]));
+  const groupsOf = (kind: GraphicsKind) =>
+    new Map<string, ResourceGroup>(declarations.filter(({ asset }) => asset.kind === kind).map(({ asset, group }) => [asset.id, group]));
+  const [palettes, images] = [groupsOf('palette'), groupsOf('image')];
   declarations.forEach((declaration, index) => {
+    const at = `${path}[${index}]`;
+    if (declaration.asset.kind === 'layout') {
+      const { elements, group } = declaration as LayoutDeclaration;
+      elements.forEach((image, element) => {
+        if (images.get(image) !== group) fail('invalid-record', `${at}.elements[${element}]`, 'must be an image declared in the same group');
+      });
+    }
     if (declaration.asset.kind !== 'image') return;
     const { palette, display, group } = declaration as ImageDeclaration;
-    const at = `${path}[${index}]`;
     if (palettes.get(palette) !== group) fail('invalid-record', `${at}.palette`, 'must be a palette declared in the same group');
     if (display !== 'direct' && palettes.get(display.nearest) !== group) {
       fail('invalid-record', `${at}.display.nearest`, 'must be a palette declared in the same group');

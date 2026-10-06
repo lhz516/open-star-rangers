@@ -114,7 +114,8 @@ const locatorKey = ({ discPath, entry, subresource }: OriginalAssetLocator) =>
 const admits = (asset: AssetReference, entry: OriginalAssetLocator['entry']): boolean =>
   (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
 
-function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
+/** Canonical locator order by archive path, entry type, entry ID and subresource; 0 means the same locator. */
+export function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
   return compareText(left.discPath, right.discPath) || compareText(left.entry.type, right.entry.type)
     || left.entry.id - right.entry.id
     || (left.subresource === right.subresource ? 0 : left.subresource === null ? -1 : right.subresource === null ? 1 : compareText(left.subresource, right.subresource));

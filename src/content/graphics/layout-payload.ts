@@ -39,7 +39,8 @@ const ELEMENT_BYTES = 5;
 export const layoutPayloadLength = ({ elements }: Pick<LayoutPayload, 'elements'>): number =>
   elements.reduce((length, { image }) => length + ELEMENT_BYTES + image.length, HEADER_BYTES);
 
-const frameOf = (width: unknown, height: unknown, path: string): LayoutFrame => Object.freeze({
+/** Checks a frame's width and height, as the payload and conversion declarations require, and returns it frozen. */
+export const layoutFrame = (width: unknown, height: unknown, path: string): LayoutFrame => Object.freeze({
   width: requireInteger(width, 1, GRAPHICS_LIMITS.imageWidth, `${path}.width`),
   height: requireInteger(height, 1, GRAPHICS_LIMITS.imageHeight, `${path}.height`),
 });
@@ -57,7 +58,7 @@ function elementOf(image: unknown, x: unknown, y: unknown, frame: LayoutFrame, s
 /** Encodes a layout into a new buffer that the result owns entirely. */
 export function encodeLayoutPayload(layout: Omit<LayoutPayload, 'kind'>, path = 'layout'): Uint8Array<ArrayBuffer> {
   if (typeof layout.frame !== 'object' || layout.frame === null) invalid(`${path}.frame`, 'must have a width and height');
-  const frame = frameOf(layout.frame.width, layout.frame.height, `${path}.frame`);
+  const frame = layoutFrame(layout.frame.width, layout.frame.height, `${path}.frame`);
   const { elements } = layout;
   if (!Array.isArray(elements) || elements.length < 1 || elements.length > GRAPHICS_LIMITS.layoutElements) {
     invalid(`${path}.elements`, `must be 1 to ${GRAPHICS_LIMITS.layoutElements} elements`);
@@ -89,7 +90,7 @@ export function encodeLayoutPayload(layout: Omit<LayoutPayload, 'kind'>, path = 
 export function readLayoutPayload(bytes: unknown, schemaVersion: unknown, path = 'payload'): LayoutPayload {
   const view = payloadView(bytes, schemaVersion, path);
   if (view.byteLength < HEADER_BYTES) invalid(path, 'is truncated');
-  const frame = frameOf(view.getUint16(0, true), view.getUint16(2, true), `${path}.frame`);
+  const frame = layoutFrame(view.getUint16(0, true), view.getUint16(2, true), `${path}.frame`);
   const count = requireInteger(view.getUint8(4), 1, GRAPHICS_LIMITS.layoutElements, `${path}.elements`);
   const idsAt = HEADER_BYTES + count * ELEMENT_BYTES;
   if (view.byteLength < idsAt) invalid(path, 'is truncated');

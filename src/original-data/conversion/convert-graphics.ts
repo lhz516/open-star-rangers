@@ -3,9 +3,10 @@ import type { AssetId } from '../../content/asset-id.ts';
 import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import { encodeFontPayload, fontPayloadLength, type CharMapEntry } from '../../content/graphics/font-payload.ts';
-import { imagePalettes } from '../../content/graphics/graphics-binding.ts';
+import { imagePalettes, layoutImages } from '../../content/graphics/graphics-binding.ts';
 import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics/graphics-format.ts';
 import { encodeImagePayload, imagePayloadLength, maskStride } from '../../content/graphics/image-payload.ts';
+import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement } from '../../content/graphics/layout-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
@@ -13,25 +14,42 @@ import { SourceError } from '../source-error.ts';
 import { readConversionUsage } from './conversion-budget.ts';
 import {
   declaredGlyphCount, readGraphicsDeclarations, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind, type ImageDeclaration,
-  type PaletteDeclaration,
+  type LayoutDeclaration, type PaletteDeclaration,
 } from './graphics-declarations.ts';
 import {
-  checkPaletteIndices, decodeImageRecord, readCockpitFont, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
+  checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, mfdRecordOffset, readCockpitFont, readCockpitGroup, readDataPalette,
+  readEmbeddedPalette, readImageRecordHeader,
 } from './source-graphics.ts';
 
 /** The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. */
 export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-1';
 
-interface PaletteSource {
-  /** A DATA entry, or the `palette` subresource: the embedded palette of a whole-entry image record. */
-  readonly type: 'data-palette' | 'embedded-palette';
+/** An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`) or an MFDD list record. */
+export type RecordSelector =
+  | { readonly container: 'cockpit-element'; readonly slot: number; readonly index: number }
+  | { readonly container: 'mfd-record'; readonly list: number; readonly index: number };
+
+interface DataPaletteSource {
+  /** A whole DATA entry. */
+  readonly type: 'data-palette';
   readonly block: Uint8Array;
 }
 
+interface EmbeddedPaletteSource {
+  /** The embedded palette of an image record, a `…palette` subresource. */
+  readonly type: 'embedded-palette';
+  readonly block: Uint8Array;
+  /** The container record; absent for a whole-entry record at offset 0. */
+  readonly record?: RecordSelector;
+}
+
+type PaletteSource = DataPaletteSource | EmbeddedPaletteSource;
+
 interface ImageSource {
-  /** A whole-entry image record at offset 0. */
+  /** An image record: a whole entry at offset 0, or the container record `record` selects. */
   readonly type: 'image-record';
   readonly block: Uint8Array;
+  readonly record?: RecordSelector;
 }
 
 interface FontSource {
@@ -41,8 +59,15 @@ interface FontSource {
   readonly index: number;
 }
 
+interface LayoutSource {
+  /** The `groups/<slot>` subresource of a CCKD entry. */
+  readonly type: 'cockpit-group';
+  readonly block: Uint8Array;
+  readonly slot: number;
+}
+
 /** The source bytes of one Asset, already read from its mapped entry. */
-export type GraphicsSource = PaletteSource | ImageSource | FontSource;
+export type GraphicsSource = PaletteSource | ImageSource | FontSource | LayoutSource;
 
 export interface ConvertedGraphic {
   readonly descriptor: AssetDescriptor;
@@ -58,10 +83,18 @@ export interface GraphicsConversion {
 }
 
 const SOURCE_TYPES: Readonly<Record<GraphicsKind, readonly GraphicsSource['type'][]>> =
-  Object.freeze({ palette: ['data-palette', 'embedded-palette'], image: ['image-record'], font: ['cockpit-font'] });
-const SOURCE_FIELDS = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts' });
+  Object.freeze({ palette: ['data-palette', 'embedded-palette'], image: ['image-record'], font: ['cockpit-font'], layout: ['cockpit-group'] });
+const SOURCE_FIELDS = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts', layout: 'groups' });
 /** The field a budget rejection is reported at, per kind. */
-const BUDGET_FIELDS = Object.freeze({ palette: 'palette', image: 'pixels', font: 'glyphs' });
+const BUDGET_FIELDS = Object.freeze({ palette: 'palette', image: 'pixels', font: 'glyphs', layout: 'elements' });
+
+/** Block offset of the image record a source selects: 0 for a whole-entry record. */
+function recordOffset(block: Uint8Array, record: RecordSelector | undefined, at: string): number {
+  if (!record) return 0;
+  return record.container === 'cockpit-element'
+    ? cockpitElementRecordOffset(block, record.slot, record.index, at)
+    : mfdRecordOffset(block, record.list, record.index, at);
+}
 
 class Conversion {
   readonly #limits: unknown;
@@ -90,11 +123,11 @@ class Conversion {
     this.#usage = result.usage;
   }
 
-  #add(declaration: GraphicsDeclaration, dependencies: readonly AssetId[], bytes: Uint8Array): void {
+  #add(declaration: GraphicsDeclaration, dependencies: readonly AssetId[], bytes: Uint8Array, dependencyKind: 'palette' | 'image' = 'palette'): void {
     const { asset: { id, kind }, role, group } = declaration;
     const descriptor = readAssetDescriptor({
       id, kind, role, group,
-      dependencies: dependencies.map(dependency => ({ id: dependency, kind: 'palette' })),
+      dependencies: dependencies.map(dependency => ({ id: dependency, kind: dependencyKind })),
       payloadIdentity: { schemaVersion: GRAPHICS_SCHEMA_VERSION, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) },
     });
     this.assets.push(Object.freeze({ descriptor, payload: Object.freeze({ id, schemaVersion: GRAPHICS_SCHEMA_VERSION, bytes }) }));
@@ -102,17 +135,19 @@ class Conversion {
 
   palette(declaration: PaletteDeclaration, source: PaletteSource): void {
     const at = `graphics[${declaration.asset.id}]`;
-    const entryCount = source.type === 'data-palette' ? GRAPHICS_LIMITS.paletteEntryCount : readImageRecordHeader(source.block, 0, at).paletteCount;
+    const offset = source.type === 'data-palette' ? 0 : recordOffset(source.block, source.record, at);
+    const entryCount = source.type === 'data-palette' ? GRAPHICS_LIMITS.paletteEntryCount : readImageRecordHeader(source.block, offset, at).paletteCount;
     this.#charge(declaration, { paletteEntries: entryCount, payloadBytes: palettePayloadLength(entryCount) });
-    const entries = source.type === 'data-palette' ? readDataPalette(source.block, at) : readEmbeddedPalette(source.block, 0, at);
+    const entries = source.type === 'data-palette' ? readDataPalette(source.block, at) : readEmbeddedPalette(source.block, offset, at);
     this.#paletteEntries.set(declaration.asset.id, entries.length / 3);
     this.#add(declaration, [], encodePalettePayload({ entries }, at));
   }
 
-  image(declaration: ImageDeclaration, { block }: ImageSource): void {
+  image(declaration: ImageDeclaration, { block, record }: ImageSource): void {
     const { asset: { id }, palette, display, alpha, rowOrder } = declaration;
     const at = `graphics[${id}]`;
-    const { encoding, width, height } = readImageRecordHeader(block, 0, at);
+    const offset = recordOffset(block, record, at);
+    const { encoding, width, height } = readImageRecordHeader(block, offset, at);
     if (alpha !== 'encoding' && encoding !== 'raw') throw new SourceError('invalid-declaration', `${at}.alpha`, 'a colour key applies only to raw images');
     const masked = encoding === 'sprite-rle' || alpha !== 'encoding';
     const dependencies = imagePalettes(declaration);
@@ -121,7 +156,7 @@ class Conversion {
       imagePixels: width * height,
       payloadBytes: imagePayloadLength({ width, height, palette, display }, masked),
     });
-    const decoded = decodeImageRecord(block, 0, at);
+    const decoded = decodeImageRecord(block, offset, at);
     const indices = decoded.indices;
     const mask = alpha === 'encoding' ? decoded.mask : colourKeyMask(indices, width, height, alpha.colourKey);
     checkPaletteIndices({ width, height, indices, mask }, this.#paletteEntries.get(palette)!, at);
@@ -150,6 +185,31 @@ class Conversion {
     // The same bytes, split into glyphs of the declared rows.
     this.#add(declaration, [], encodeFontPayload({ cellWidth: font.cellWidth, height: font.height, glyphRows, glyphs: font.glyphs, charMap: entries }, at));
   }
+
+  /**
+   * A layout's elements from its CCKD group, pairing declared image i with stored element i: the stored element count
+   * must equal the declared one and every element must lie inside the declared frame at its record's image size.
+   */
+  layoutElements(declaration: LayoutDeclaration, { block, slot }: LayoutSource): readonly LayoutElement[] {
+    const { asset: { id }, frame, elements: images } = declaration;
+    const at = `graphics[${id}]`;
+    const stored = readCockpitGroup(block, slot, at);
+    if (stored.length !== images.length) throw new SourceError('geometry-mismatch', `${at}.elements`, 'the group element count differs from the declared one');
+    stored.forEach(({ recordOffset: offset, x, y }, index) => {
+      const { width, height } = readImageRecordHeader(block, offset, at);
+      const element = `${at}.elements[${index}]`;
+      if (x < 0 || x + width > frame.width) throw new SourceError('geometry-mismatch', `${element}.x`, 'the element lies outside the declared frame');
+      if (y < 0 || y + height > frame.height) throw new SourceError('geometry-mismatch', `${element}.y`, 'the element lies outside the declared frame');
+    });
+    return images.map((image, index) => ({ image, x: stored[index].x, y: stored[index].y }));
+  }
+
+  /** A layout of checked elements; the element images themselves are converted as images. */
+  layout(declaration: LayoutDeclaration, elements: readonly LayoutElement[]): void {
+    const at = `graphics[${declaration.asset.id}]`;
+    this.#charge(declaration, { dependencyEdges: elements.length, payloadBytes: layoutPayloadLength({ elements }) });
+    this.#add(declaration, layoutImages({ elements }), encodeLayoutPayload({ frame: declaration.frame, elements }, at), 'image');
+  }
 }
 
 /** Makes every pixel of index `key` transparent (index 0) and returns the packed mask. */
@@ -172,10 +232,12 @@ function reverseRows(rows: Uint8Array, rowBytes: number, height: number): Uint8A
 }
 
 /**
- * Converts a declaration set from its Assets' source bytes: palettes first, then images and fonts, each kind in Asset
- * ID order. Every Asset is charged against `limits` on top of `usage`, the conversion usage of earlier steps (never
- * source reads), before anything sized by it is read or allocated. Any failure rejects the whole set without results;
- * a rejected charge leaves the caller's usage as it was.
+ * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts and layouts, each kind in
+ * Asset ID order. Layouts are checked against their groups before anything is converted, so an element the group lacks
+ * is reported as the layout's count mismatch rather than as its image's missing record. Every Asset is charged against
+ * `limits` on top of `usage`, the conversion usage of earlier steps (never source reads), before anything sized by it
+ * is read or allocated. Any failure rejects the whole set without results; a rejected charge leaves the caller's usage
+ * as it was.
  */
 export function convertGraphics(
   declarations: unknown,
@@ -187,7 +249,7 @@ export function convertGraphics(
   const conversion = new Conversion(limits, usage);
   const order = (kind: GraphicsDeclaration['asset']['kind']) =>
     checked.filter(({ asset }) => asset.kind === kind).sort((left, right) => compareText(left.asset.id, right.asset.id));
-  for (const declaration of [...order('palette'), ...order('image'), ...order('font')]) {
+  const sourceOf = (declaration: GraphicsDeclaration): GraphicsSource => {
     const { id, kind } = declaration.asset;
     const source = sources.get(id);
     if (!source) {
@@ -196,10 +258,17 @@ export function convertGraphics(
     if (!SOURCE_TYPES[kind].includes(source.type)) {
       throw new SourceError('invalid-declaration', `graphics[${id}].${SOURCE_FIELDS[kind]}`, 'the source does not supply this kind');
     }
-    if (kind === 'palette') conversion.palette(declaration as PaletteDeclaration, source as PaletteSource);
-    else if (kind === 'image') conversion.image(declaration as ImageDeclaration, source as ImageSource);
+    return source;
+  };
+  const layouts = order('layout') as LayoutDeclaration[];
+  const layoutElements = layouts.map(declaration => conversion.layoutElements(declaration, sourceOf(declaration) as LayoutSource));
+  for (const declaration of [...order('palette'), ...order('image'), ...order('font')]) {
+    const source = sourceOf(declaration);
+    if (declaration.asset.kind === 'palette') conversion.palette(declaration as PaletteDeclaration, source as PaletteSource);
+    else if (declaration.asset.kind === 'image') conversion.image(declaration as ImageDeclaration, source as ImageSource);
     else conversion.font(declaration as FontDeclaration, source as FontSource);
   }
+  layouts.forEach((declaration, index) => conversion.layout(declaration, layoutElements[index]));
   return Object.freeze({
     assets: Object.freeze(conversion.assets.sort((left, right) => compareText(left.descriptor.id, right.descriptor.id))),
     usage: conversion.usage,

@@ -3,15 +3,16 @@ import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE, type BudgetDimension, type Budge
 import { readFontPayload } from '../../content/graphics/font-payload.ts';
 import { checkGraphicsBinding } from '../../content/graphics/graphics-binding.ts';
 import { readImagePayload } from '../../content/graphics/image-payload.ts';
+import { readLayoutPayload } from '../../content/graphics/layout-payload.ts';
 import { readPalettePayload } from '../../content/graphics/palette-payload.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { payloadMismatch } from '../../content/payload.ts';
 import type { SourceError } from '../source-error.ts';
 import {
-  cockpitBlock, dataPaletteBlock, expectSourceError, fontDeclaration, hudFontTables, imageDeclaration, paletteDeclaration,
-  rawImageBlock, spriteImageBlock,
+  cockpitBlock, cockpitLayoutBlock, dataPaletteBlock, expectSourceError, fontDeclaration, hudFontTables, imageDeclaration, layoutDeclaration,
+  mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
-import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
+import { convertGraphics, type GraphicsSource, type RecordSelector } from './convert-graphics.ts';
 import { readDataPalette } from './source-graphics.ts';
 
 const SIXTEEN_BGR = Array.from({ length: 48 }, (_, index) => (index * 5) & 0xff);
@@ -174,6 +175,128 @@ describe('graphics conversion', () => {
       const usage = { ...EMPTY_BUDGET_USAGE, payloadBytes: Number.MAX_SAFE_INTEGER };
       expectSourceError(() => convertGraphics(declarations(), sources(), { ...LIMITS, payloadBytes: Number.MAX_SAFE_INTEGER }, usage),
         'budget-exceeded', 'graphics[palette/flight].palette', { name: 'payloadBytes', limit: Number.MAX_SAFE_INTEGER, observed: null });
+    });
+  });
+});
+
+describe('layout and container record conversion', () => {
+  const FRONT_RAW = rawImageBlock(4, 2, [1, 2, 3, 4, 5, 6, 7, 8]);
+  const MAP_RECORD = rawImageBlock(2, 3, [0, 1, 2, 3, 0, 1], SIXTEEN_BGR);
+  // Slot 0 touches the right edge (3 + 5 = 8) and the bottom edge (6 + 2 = 8) of an 8×8 frame; slot 1 is empty.
+  const FRONT: readonly SyntheticElement[] = [{ record: FRONT_RAW, x: 0, y: 6 }, { record: SPRITE, x: 3, y: 0 }];
+  const cockpitWith = (front: readonly SyntheticElement[] = FRONT) => cockpitLayoutBlock([front, [], [{ record: MAP_RECORD, x: 1, y: 1, flags: [1, 0] }]]);
+  const COCKPIT = cockpitWith();
+  const MFD = mfdBlock([[TEXTURE], [SPRITE]]);
+  const element = (slot: number, index: number): RecordSelector => ({ container: 'cockpit-element', slot, index });
+  const mfd = (list: number, index: number): RecordSelector => ({ container: 'mfd-record', list, index });
+
+  const layoutDeclarations = (overrides: Record<string, Record<string, unknown>> = {}) => [
+    paletteDeclaration('palette/flight'),
+    paletteDeclaration('palette/map'),
+    paletteDeclaration('palette/mfd'),
+    imageDeclaration('image/front/element-0', 'palette/flight', { role: 'cockpit-element' }),
+    imageDeclaration('image/front/element-1', 'palette/flight', { role: 'cockpit-element' }),
+    imageDeclaration('image/map/element-0', 'palette/map', { role: 'map-frame-element' }),
+    imageDeclaration('image/mfd/background-0', 'palette/mfd'),
+    imageDeclaration('image/mfd/overlay-0', 'palette/flight'),
+    layoutDeclaration('layout/front', ['image/front/element-0', 'image/front/element-1'], { frame: { width: 8, height: 8 }, ...overrides['layout/front'] }),
+    layoutDeclaration('layout/map', ['image/map/element-0'], { role: 'strategic-map', frame: { width: 4, height: 4 } }),
+  ];
+
+  const containerSources = (overrides: Record<string, GraphicsSource> = {}): Map<string, GraphicsSource> => new Map(Object.entries({
+    'palette/flight': { type: 'data-palette', block: DATA },
+    'palette/map': { type: 'embedded-palette', block: COCKPIT, record: element(2, 0) },
+    'palette/mfd': { type: 'embedded-palette', block: MFD, record: mfd(0, 0) },
+    'image/front/element-0': { type: 'image-record', block: COCKPIT, record: element(0, 0) },
+    'image/front/element-1': { type: 'image-record', block: COCKPIT, record: element(0, 1) },
+    'image/map/element-0': { type: 'image-record', block: COCKPIT, record: element(2, 0) },
+    'image/mfd/background-0': { type: 'image-record', block: MFD, record: mfd(0, 0) },
+    'image/mfd/overlay-0': { type: 'image-record', block: MFD, record: mfd(1, 0) },
+    'layout/front': { type: 'cockpit-group', block: COCKPIT, slot: 0 },
+    'layout/map': { type: 'cockpit-group', block: COCKPIT, slot: 2 },
+    ...overrides,
+  } satisfies Record<string, GraphicsSource>));
+
+  const convertLayouts = (overrides: Record<string, Record<string, unknown>> = {}, sourceOverrides: Record<string, GraphicsSource> = {}, limits: unknown = LIMITS) =>
+    convertGraphics(layoutDeclarations(overrides), containerSources(sourceOverrides), limits);
+
+  it('converts CCKD groups into layouts of the stored elements that depend on their element images', () => {
+    const result = convertLayouts();
+    const layout = (id: string) => result.assets.find(({ descriptor }) => descriptor.id === id)!;
+    expect(readLayoutPayload(layout('layout/front').payload.bytes, 1)).toEqual({
+      kind: 'layout', frame: { width: 8, height: 8 },
+      elements: [{ image: 'image/front/element-0', x: 0, y: 6 }, { image: 'image/front/element-1', x: 3, y: 0 }],
+    });
+    expect(readLayoutPayload(layout('layout/map').payload.bytes, 1).elements).toEqual([{ image: 'image/map/element-0', x: 1, y: 1 }]);
+    expect(layout('layout/front').descriptor).toMatchObject({
+      kind: 'layout', role: 'front-cockpit', group: 'cockpit-hud-map',
+      dependencies: [{ id: 'image/front/element-0', kind: 'image' }, { id: 'image/front/element-1', kind: 'image' }],
+    });
+    for (const { descriptor, payload } of result.assets.filter(({ descriptor }) => descriptor.kind === 'layout')) {
+      expect(payloadMismatch(descriptor.payloadIdentity, payload)).toBeNull();
+      expect(() => checkGraphicsBinding(descriptor, readLayoutPayload(payload.bytes, 1))).not.toThrow();
+    }
+    const payloadBytes = result.assets.reduce((total, { payload }) => total + payload.bytes.length, 0);
+    expect(result.usage).toMatchObject({ assets: 10, dependencyEdges: 5 + 3, imagePixels: 8 + 15 + 6 + 6 + 15, paletteEntries: 256 + 16 + 16, payloadBytes });
+  });
+
+  it('pairs the declared images with the stored elements in order', () => {
+    const swapped = convertLayouts({ 'layout/front': { elements: ['image/front/element-1', 'image/front/element-0'] } });
+    expect(readLayoutPayload(swapped.assets.find(({ descriptor }) => descriptor.id === 'layout/front')!.payload.bytes, 1).elements)
+      .toEqual([{ image: 'image/front/element-1', x: 0, y: 6 }, { image: 'image/front/element-0', x: 3, y: 0 }]);
+  });
+
+  it('converts container records and their embedded palettes exactly like the same records as whole entries', () => {
+    const contained = convertLayouts();
+    const whole = convertGraphics(layoutDeclarations(), containerSources({
+      'palette/map': { type: 'embedded-palette', block: MAP_RECORD },
+      'palette/mfd': { type: 'embedded-palette', block: TEXTURE },
+      'image/front/element-0': { type: 'image-record', block: FRONT_RAW },
+      'image/front/element-1': { type: 'image-record', block: SPRITE },
+      'image/map/element-0': { type: 'image-record', block: MAP_RECORD },
+      'image/mfd/background-0': { type: 'image-record', block: TEXTURE },
+      'image/mfd/overlay-0': { type: 'image-record', block: SPRITE },
+    }), LIMITS);
+    expect(contained.assets.map(({ payload }) => payload)).toEqual(whole.assets.map(({ payload }) => payload));
+    expect(imageOf(contained, 'image/front/element-1').mask).not.toBeNull();
+  });
+
+  it.each<[string, () => ReturnType<typeof convertLayouts>, string]>([
+    ['fewer declared images than stored elements', () => convertLayouts({ 'layout/front': { elements: ['image/front/element-0'] } }), 'graphics[layout/front].elements'],
+    ['more declared images than stored elements', () => convertGraphics(
+      [...layoutDeclarations({ 'layout/front': { elements: ['image/front/element-0', 'image/front/element-1', 'image/front/element-2'] } }),
+        imageDeclaration('image/front/element-2', 'palette/flight', { role: 'cockpit-element' })],
+      new Map([...containerSources(), ['image/front/element-2', { type: 'image-record', block: COCKPIT, record: element(0, 2) }]]),
+      LIMITS,
+    ), 'graphics[layout/front].elements'],
+    ['an element past the right edge', () => convertLayouts({ 'layout/front': { frame: { width: 7, height: 8 } } }), 'graphics[layout/front].elements[1].x'],
+    ['an element past the bottom edge', () => convertLayouts({ 'layout/front': { frame: { width: 8, height: 7 } } }), 'graphics[layout/front].elements[0].y'],
+    ['a negative x', () => negativeAt({ x: -1 }), 'graphics[layout/front].elements[0].x'],
+    ['a negative y', () => negativeAt({ y: -1 }), 'graphics[layout/front].elements[0].y'],
+  ])('reports geometry-mismatch for %s', (_, run, location) => expectSourceError(run, 'geometry-mismatch', location));
+
+  /** The front layout read from a block whose first element is moved; layouts are checked before anything converts. */
+  const negativeAt = (position: { x?: number; y?: number }) =>
+    convertLayouts({}, { 'layout/front': { type: 'cockpit-group', block: cockpitWith([{ ...FRONT[0], ...position }, FRONT[1]]), slot: 0 } });
+
+  it.each<[string, Record<string, GraphicsSource>, string, string]>([
+    ['a layout from an empty slot', { 'layout/front': { type: 'cockpit-group', block: COCKPIT, slot: 1 } }, 'subresource-not-found', 'graphics[layout/front].groups'],
+    ['a layout from a slot past the directory', { 'layout/front': { type: 'cockpit-group', block: COCKPIT, slot: 3 } }, 'subresource-not-found', 'graphics[layout/front].groups'],
+    ['an element past its group', { 'image/front/element-1': { type: 'image-record', block: COCKPIT, record: element(0, 2) } }, 'subresource-not-found', 'graphics[image/front/element-1].elements'],
+    ['MFDD list 2', { 'image/mfd/overlay-0': { type: 'image-record', block: MFD, record: mfd(2, 0) } }, 'subresource-not-found', 'graphics[image/mfd/overlay-0].record'],
+    ['an element record without an embedded palette', { 'palette/map': { type: 'embedded-palette', block: COCKPIT, record: element(0, 0) } }, 'subresource-not-found', 'graphics[palette/map].palette'],
+    ['a layout from an image record', { 'layout/front': { type: 'image-record', block: COCKPIT, record: element(0, 0) } }, 'invalid-declaration', 'graphics[layout/front].groups'],
+    ['an image from a CCKD group', { 'image/front/element-0': { type: 'cockpit-group', block: COCKPIT, slot: 0 } }, 'invalid-declaration', 'graphics[image/front/element-0].record'],
+  ])('rejects %s with a located source error', (_, overrides, code, location) => expectSourceError(() => convertLayouts({}, overrides), code, location));
+
+  describe('budget', () => {
+    const exact = convertLayouts().usage;
+
+    it('passes at the exact usage', () => expect(convertLayouts({}, {}, exact).usage).toEqual(exact));
+
+    it.each(['assets', 'dependencyEdges', 'payloadBytes'] as const)('charges the last layout before encoding it when %s runs out', dimension => {
+      expectSourceError(() => convertLayouts({}, {}, { ...exact, [dimension]: exact[dimension] - 1 }), 'budget-exceeded', 'graphics[layout/map].elements',
+        { name: dimension, limit: exact[dimension] - 1, observed: exact[dimension] });
     });
   });
 });
