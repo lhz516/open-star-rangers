@@ -101,7 +101,7 @@ updated: 2026-10-05
 | [07-worker-integration.md](./subtasks/07-worker-integration.md) | 05, 06 | completed |
 | [08-browser-worker-graphics.md](./subtasks/08-browser-worker-graphics.md) | 07 | completed |
 | [09-local-structure-check.md](./subtasks/09-local-structure-check.md) | 03 | completed |
-| [10-local-base-check.md](./subtasks/10-local-base-check.md) | 07 | pending |
+| [10-local-base-check.md](./subtasks/10-local-base-check.md) | 07 | completed |
 | [11-nearest-colour-research.md](./subtasks/11-nearest-colour-research.md) | 02, 04 | pending |
 | [12-character-map-research.md](./subtasks/12-character-map-research.md) | 06 | pending |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
