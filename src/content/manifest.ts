@@ -20,13 +20,14 @@ function readManifestRecord(value: unknown, path: string): { identity: ContentId
   return { identity, group: readResourceGroup(record.group, `${path}.group`), assets: record.assets };
 }
 
+/** Reads descriptors in ascending unique Asset ID order, as a group manifest holds them. */
+export function readAssetDescriptors(value: unknown, path: string): readonly AssetDescriptor[] {
+  return readOrderedArray(value, path, ASSET_CODES, readAssetDescriptor, assetKey, compareAssets);
+}
+
 export function readGroupManifest(value: unknown, path = 'manifest'): GroupManifest {
   const { identity, group, assets } = readManifestRecord(value, path);
-  return Object.freeze({
-    identity,
-    group,
-    assets: readOrderedArray(assets, `${path}.assets`, ASSET_CODES, readAssetDescriptor, assetKey, compareAssets),
-  });
+  return Object.freeze({ identity, group, assets: readAssetDescriptors(assets, `${path}.assets`) });
 }
 
 /**

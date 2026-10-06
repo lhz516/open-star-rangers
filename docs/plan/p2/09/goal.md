@@ -92,7 +92,7 @@ updated: 2026-10-05
 |---|---|---|
 | [01-field-inventory.md](./subtasks/01-field-inventory.md) | — | completed |
 | [02-spatial-frame.md](./subtasks/02-spatial-frame.md) | 01 | completed |
-| [03-package-identity.md](./subtasks/03-package-identity.md) | — | pending |
+| [03-package-identity.md](./subtasks/03-package-identity.md) | — | completed |
 | [04-logic-content.md](./subtasks/04-logic-content.md) | 02 | pending |
 | [05-scenario-parser.md](./subtasks/05-scenario-parser.md) | 02 | pending |
 | [06-craft-binding.md](./subtasks/06-craft-binding.md) | 04, 05 | pending |

@@ -40,9 +40,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-08（推导部分）：确定性、敏感性、组顺序无关与 token 语法测试全部通过；写入身份后的合成组通过 `validateGroup`，全包以同一身份通过 `validatePackage`。
-- [ ] `PRODUCTION_CONVERTER_VERSION` 在生产代码中只有一个定义（源码搜索证据）；常量通过 `readConverterVersion`。
-- [ ] 推导与写入函数位于 `content/`，不导入 `original-data`；`pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`、`pnpm typecheck` 与 `pnpm lint` 通过。
+- [x] AC-08（推导部分）：确定性、敏感性、组顺序无关与 token 语法测试全部通过；写入身份后的合成组通过 `validateGroup`，全包以同一身份通过 `validatePackage`。
+- [x] `PRODUCTION_CONVERTER_VERSION` 在生产代码中只有一个定义（源码搜索证据）；常量通过 `readConverterVersion`。
+- [x] 推导与写入函数位于 `content/`，不导入 `original-data`；`pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`、`pnpm typecheck` 与 `pnpm lint` 通过。
 
 ## 验证方法
 
@@ -51,3 +51,39 @@ updated: 2026-10-05
 - 不适用 browser-testing。
 
 ## 完成证据
+
+- **开始前核对：** `node tools/task-state.ts p2/05`、`p2/06`、`p2/08` 都输出 `generate-spec`；`src` 中没有已落地的 manifest 身份推导或生产转换器版本，无需对齐。
+- **实现：**
+  - [manifest-identity.ts](../../../../../src/content/manifest-identity.ts)：`deriveManifestIdentity`、`applyManifestIdentity`、`GroupDraft`、`IdentifiedGroup`；
+  - [content-identity.ts](../../../../../src/content/content-identity.ts)：`readContentIdentityBasis` 与 `ContentIdentityBasis`；`readContentIdentity` 的检查顺序与输出不变；
+  - [manifest.ts](../../../../../src/content/manifest.ts)：`readAssetDescriptors`；
+  - [converter-version.ts](../../../../../src/original-data/conversion/converter-version.ts)：`PRODUCTION_CONVERTER_VERSION`。
+
+  编码为带版本前缀的紧凑 JSON 文本，只含整数与读取器限定的 ASCII 令牌；组按 `RESOURCE_GROUPS` 排序。推导不读取 payload。写入返回冻结副本，只共享 payload 字节视图。
+- **测试：** `pnpm exec vitest run src/content src/original-data/conversion` 368 个测试通过。其中 [manifest-identity.test.ts](../../../../../src/content/manifest-identity.test.ts) 覆盖：
+  - **确定性与令牌：** 结果确定，符合 `manifest:sha256:` 格式并能被 `readContentIdentity` 读取；
+  - **固定向量：** 版本 1 编码的固定向量，另用 Python 按同一布局独立计算核对，锁定包括 kind 在内的全部字段位置；
+  - **组顺序无关；**
+  - **敏感性（20 项变化都改变结果）：** Asset ID、role、描述符组、依赖增删、payload schema 版本、长度、指纹、Asset 或组的增删、来源状态、状态 Asset ID、U 项、状态指纹、来源集为 null、转换器版本、切片定义版本、来源指纹、来源类别、合成 fixture 令牌；
+  - **拒绝：** 空列表、重复组、未知组、未知字段、错误 Asset ID、降序 Asset、错误来源状态，以及身份基础中多出 `manifestIdentity`、错误转换器版本或不支持的 schema；
+  - **写入：** 四组按定义顺序得到同一身份，各组 `validateGroup` 为 `group-complete`，`validatePackage` 为 `complete` 且身份一致；结果冻结；调用者草稿不变，之后修改草稿不影响结果；payload 字节为同一视图；已转移的 payload 以调用者草稿序号报 `payload-detached`。
+
+  [converter-version.test.ts](../../../../../src/original-data/conversion/converter-version.test.ts) 证明常量能作为身份基础的转换器版本。
+- **源码搜索：** `grep -rn "PRODUCTION_CONVERTER_VERSION\s*[:=]" src --include=*.ts` 排除测试后只有 `converter-version.ts` 一处定义；生产代码中没有其他转换器版本字面量。
+- **边界与工程检查：**
+  - `content/` 不导入 `original-data`，由 `pnpm lint` 与边界回归覆盖，均通过；
+  - `pnpm typecheck` 通过；
+  - `pnpm check` 通过：97 个测试文件、2834 个测试与生产构建。
+- **rubber-duck：** 无阻塞。唯一意见是 AC-08 敏感性覆盖不全：缺少来源状态 ID、合成 fixture 令牌与 kind 位置。已采纳，新增两项变化测试与固定向量。
+- **simplify（四个角度）：**
+  - **已采纳：**
+    - 推导只读身份相关字段，payload 只在写入时读取；
+    - 推导与写入共用一个准备步骤，用 `Map` 代替重复过滤；
+    - 写入返回带类型的 `IdentifiedGroup`，测试去掉强制转换；
+    - 测试改用 `toThrowError(objectContaining)`；
+    - 转换器版本测试改为有意义的身份基础核对。
+  - **未采纳：**
+    - 把 `readAssetDescriptors` 移到 asset-contract：它与 `visitGroupManifest` 共用排序码；
+    - 流式哈希与把编码器移到各契约旁：规模有界，固定向量已锁定编码；
+    - 在完整性验证中跳过重复读取：验证边界按设计重新读取。
+- **文档影响：** 已更新[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)：目录树、身份基础读取、`readAssetDescriptors`、推导与写入、生产转换器版本。工程约定、工具指南与 STATUS 无需更新：没有新命令、检查规则或阶段变化。

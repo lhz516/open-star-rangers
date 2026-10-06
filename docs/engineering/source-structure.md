@@ -59,6 +59,7 @@ src/
     sha256.ts
     payload.ts
     manifest.ts
+    manifest-identity.ts
     completeness.ts
     budget.ts
     ownership.ts
@@ -92,6 +93,8 @@ src/
     archive/
       imfat-rules.ts
       archive-reader.ts
+    conversion/
+      converter-version.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -172,7 +175,7 @@ src/
 - [asset-id.ts](../../src/content/asset-id.ts)：`readAssetId` 返回品牌化语义 ID，8 段限制包含 kind 首段；`ASSET_KINDS` 封闭为 8 种，`ASSET_ID_LIMITS` 固定每段 32 字符、总长 128 字符。语法验证不能证明命名语义或来源映射正确。
 - [asset-contract.ts](../../src/content/asset-contract.ts)：`readAssetReference`、`readAssetDescriptor` 验证 kind 一致性、4 个封闭资源组、语义 role token、严格 ASCII ID 顺序且无重复的类型化依赖，以及 payload 身份。role 的必需集合/基数留给 02，引用存在/自引用/环与分组/全包完整性留给 04；没有 `complete` 布尔值。 `readRole` 单独读取语义 role token，描述符与图形转换声明共用。
 - [content-identity.ts](../../src/content/content-identity.ts)：`readContentIdentity` 显式分开 schema、切片 ID、切片定义版本、converter、manifest 与 origin；schema 当前只支持 1，数值版本为正安全整数。converter 按 spec 保留受限 ASCII 不透明字符串，不用应用版本代替。converter/manifest token 允许小写 ASCII 字母、数字及单个内部 `-`、`.`、`:` 分隔符。
-- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用；`contentIdentityKey` 把六项身份合成一个可比较的键，全包验证与缓存读取共用。
+- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，manifest 身份由 `manifest-identity.ts` 推导（见下）。`readContentIdentityBasis` 用同样的规则读取不含 `manifestIdentity` 的五项身份（`ContentIdentityBasis`），供推导使用。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用；`contentIdentityKey` 把六项身份合成一个可比较的键，全包验证与缓存读取共用。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
 - [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。两者都建立在 `visitArray`/`visitOrderedArray` 之上：这两个函数按索引逐项读取并访问，访问函数一旦返回非 undefined 的值就停止读取，并把该值返回。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。二进制 payload 不能冻结，所有权规则见下方 `ownership.ts`。
@@ -183,7 +186,11 @@ src/
   - `digestHex` 结束计算并返回 64 位小写十六进制；之后再 `update` 会抛错，再次 `digestHex` 返回同一结果。
   - 一次性的 `sha256Fingerprint` 建立在它之上，签名与输出不变。
 - [source-state.ts](../../src/content/source-state.ts)：不含 locator 的来源状态集 `{ sourceFingerprint, states }`（每个 Asset 为 verified/unverified/unconfirmed/conflict 加 U 项），由 `original-data` 从来源映射推导后交给完整性验证。原版导入的状态集指纹必须等于清单的来源指纹，且每个 Asset 都必须为 verified；合成内容的来源输入必须为 null。
-- [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
+- [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它；`readAssetDescriptors` 单独读取同样排序的描述符数组。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
+- [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-09/03](../plan/p2/09/subtasks/03-package-identity.md)）：包身份的唯一推导。
+  - **推导：** `deriveManifestIdentity(basis, drafts)` 严格读取身份基础与一个作业的全部组草稿（`GroupDraft`：组、按 ID 升序的描述符、payload 记录、来源状态集或 null），按 `RESOURCE_GROUPS` 顺序编码为带版本前缀的 ASCII 文本，结果为 `manifest:sha256:<64 位小写十六进制>`。任一身份基础字段、描述符字段、依赖、payload 身份或来源状态变化，结果都变化；组的传入顺序与 payload 记录不影响结果，推导也不读取 payload。空列表、重复或未知的组与格式错误的草稿以 `ContentContractError` 拒绝。测试中的固定向量锁定版本 1 编码。
+  - **写入：** `applyManifestIdentity` 把同一身份写入每个组，返回冻结的 `IdentifiedGroup` 列表（可直接作为 `GroupInput` 交给完整性验证）。描述符、来源状态与 payload 记录都是读取后的副本，只有 payload 字节沿用调用者的视图，所有权仍按 `ownership.ts` 转移；payload 记录的错误路径使用调用者的草稿序号。
+  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义；任一转换器的输出可能变化时都要递增，它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
