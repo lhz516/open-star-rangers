@@ -100,6 +100,7 @@ src/
     conversion/
       converter-version.ts
       craft-binding.ts
+      logic-sources.ts
     formats/
       payload-block.ts
       object-record.ts
@@ -288,6 +289,18 @@ src/
   - **命名：** 按玩家、敌方、基地、其余友方的顺序命名每个 MODL，同类内按机型升序编号；同一 MODL 只有一个 ID，只允许同类机型或友方机型与玩家飞船共用。
   - **失败：** 玩家机型缺失、M2ID 槽位为 0 或越界、模型被不同类别共用为 `invalid-payload`，没有玩家相对阵营的机型为 `unsupported-payload`，位置为 M2ID 的槽位路径。
   - **[P2-06](../plan/p2/tasks.md#p2-06-切片模型与材质转换) 必须用这一绑定命名模型 Asset，不得另建表。**
+- **生产来源映射：** [logic-sources.ts](../../src/original-data/conversion/logic-sources.ts) 的 `LOGIC_SOURCE_MAPPINGS` 是 `logic` 组的生产映射表。它未绑定来源，三项都为 `likely` 与 `declared`，U 项与证据按 spec 的 Asset 表：
+  - `data/craft-types`：`SR.NOB` 的 M2ID；
+  - `data/wingman-roster`：SCCT 的 `wingmen` 子资源；
+  - `mission/first-campaign`：SCCT 的候选槽位子资源（由 `CLASSIC_P2_SLICE.candidate` 生成）与 SCEN 条目。
+
+  条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。`verifyLogicSources(source, openArchive)` 按一个顺序、只用同一个已验证来源完成核验，因此映射只会由该来源的读取证实。转换编排传入带缓存的 `openArchive`，每个目录只读一次。步骤如下：
+  1. 按目录项的大小检查每个映射条目的 payload 限值（在读取之前）；
+  2. 调用 `verifySourceMappings` 读取每个 locator，只把不含子资源的映射升为 `verified`；
+  3. 读取并以切片候选解析映射的 SCCT，核对子资源：候选槽位的 SCEN 条目 ID 必须是同一映射中的 SCEN 部件，僚机记录必须解析成功，所有子资源都在同一张 SCCT 中；
+  4. 一致时升为 `verified`，否则在 `sources.mappings[i].parts[j].alternatives[k]` 报 `subresource-mismatch`。
+
+  返回冻结的 `{ table, sources, campaign }`：`sources` 是 `assetSourceStates` 推导、绑定指纹的来源状态，`campaign` 是解析结果，供转换复用。
 
 ### 原版来源映射
 

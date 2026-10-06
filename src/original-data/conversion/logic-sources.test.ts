@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ENTRY_IDS, MARKER, defaultCampaignSpec, defaultScenarioSpec, syntheticCampaign, syntheticModelArchive, syntheticScenario,
+  syntheticScenarioArchive,
+} from '../formats/formats.test-support.ts';
+import { buildImfat } from '../synthetic.ts';
+import { readSourceMappingTable } from '../source-mapping.ts';
+import { SourceError } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
+import { archiveOpener, syntheticVerifiedSource } from '../source/source.test-support.ts';
+import { LOGIC_SOURCE_MAPPINGS, verifyLogicSources } from './logic-sources.ts';
+
+const filesWith = (scenario = syntheticScenarioArchive()) => ({ 'MAIN/SCENARIO.NOB': scenario, 'MAIN/SR.NOB': syntheticModelArchive() });
+
+const verify = async (files: Record<string, Uint8Array>, mappings?: unknown) => {
+  const source = await syntheticVerifiedSource(files);
+  return { source, result: await verifyLogicSources(source, archiveOpener(source), mappings) };
+};
+
+async function failure(action: () => Promise<unknown>): Promise<{ code: string; location: string; limit?: unknown }> {
+  try {
+    await action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(SourceError);
+    const data = (error as SourceError).toData();
+    expect(inLocationGrammar(data)).toBe(true);
+    expect(JSON.stringify({ ...data, location: '' })).not.toMatch(new RegExp(`${MARKER}|\\b(?:3019|3121|3123)\\b`));
+    return data.limit === null ? { code: data.code, location: data.location } : { code: data.code, location: data.location, limit: data.limit };
+  }
+  throw new Error('expected a SourceError');
+}
+
+describe('logic source mappings', () => {
+  it('declares one likely mapping per logic Asset with the spec unknowns', () => {
+    const table = readSourceMappingTable(LOGIC_SOURCE_MAPPINGS);
+    expect(table.sourceFingerprint).toBeNull();
+    expect(table.mappings.map(({ asset, confidence, unknowns, resolution, parts }) => ({
+      asset, confidence, unknowns, resolution,
+      parts: parts.map(({ alternatives }) => alternatives.map(({ discPath, entry, subresource }) => `${discPath}#${entry.id}.${entry.type}/${subresource}`)),
+    }))).toEqual([
+      { asset: { id: 'data/craft-types', kind: 'data' }, confidence: 'likely', unknowns: ['U-022', 'U-028'], resolution: 'declared', parts: [['MAIN/SR.NOB#10649.M2ID/null']] },
+      { asset: { id: 'data/wingman-roster', kind: 'data' }, confidence: 'likely', unknowns: ['U-023'], resolution: 'declared', parts: [['MAIN/SCENARIO.NOB#3123.SCCT/wingmen']] },
+      {
+        asset: { id: 'mission/first-campaign', kind: 'mission' }, confidence: 'likely', unknowns: ['U-022'], resolution: 'declared',
+        parts: [['MAIN/SCENARIO.NOB#3123.SCCT/group-0/slot-1'], ['MAIN/SCENARIO.NOB#3019.SCEN/null']],
+      },
+    ]);
+  });
+
+  it('verifies every mapping from one source, binding the states to its fingerprint and returning the parsed campaign', async () => {
+    const { source, result } = await verify(filesWith());
+    expect(result.table.sourceFingerprint).toBe(source.identity.fingerprint);
+    expect(result.table.mappings.map(mapping => mapping.resolution)).toEqual(['verified', 'verified', 'verified']);
+    expect(result.sources).toEqual({
+      sourceFingerprint: source.identity.fingerprint,
+      states: [
+        { id: 'data/craft-types', state: 'verified', unknowns: ['U-022', 'U-028'] },
+        { id: 'data/wingman-roster', state: 'verified', unknowns: ['U-023'] },
+        { id: 'mission/first-campaign', state: 'verified', unknowns: ['U-022'] },
+      ],
+    });
+    expect(result.campaign.scenarioEntryId).toBe(ENTRY_IDS.scenario);
+    expect(result.campaign.wingmen).toHaveLength(2);
+    expect(Object.isFrozen(result) && Object.isFrozen(result.table)).toBe(true);
+  });
+
+  it('reports a campaign slot naming another mission as subresource-mismatch', async () => {
+    const spec = defaultCampaignSpec();
+    spec.groups[0][1] = [3121, 9101];
+    expect(await failure(() => verify(filesWith(syntheticScenarioArchive(syntheticCampaign(spec))))))
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]' });
+  });
+
+  it('rejects sub-resources in two campaign tables or ones the converter does not resolve', async () => {
+    const files = filesWith();
+    const declared = readSourceMappingTable(LOGIC_SOURCE_MAPPINGS);
+    const withLocator = (index: number, change: Record<string, unknown>) => ({
+      ...declared,
+      mappings: declared.mappings.map((mapping, at) => (at !== index ? mapping : {
+        ...mapping, parts: mapping.parts.map((part, position) => (position !== 0 ? part : { alternatives: [{ ...part.alternatives[0], ...change }] })),
+      })),
+    });
+    expect(await failure(() => verify(files, withLocator(1, { subresource: 'pilots' }))))
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[1].parts[0].alternatives[0]' });
+    const second = buildImfat(3000, [
+      { id: ENTRY_IDS.scenario, type: 'SCEN', data: syntheticScenario(defaultScenarioSpec()).bytes, relocations: syntheticScenario(defaultScenarioSpec()).relocations },
+      { id: ENTRY_IDS.campaign, type: 'SCCT', data: syntheticCampaign(defaultCampaignSpec()).bytes, relocations: syntheticCampaign(defaultCampaignSpec()).relocations },
+      { id: ENTRY_IDS.campaign + 1, type: 'SCCT', data: syntheticCampaign(defaultCampaignSpec()).bytes, relocations: syntheticCampaign(defaultCampaignSpec()).relocations },
+    ]);
+    expect(await failure(() => verify(filesWith(second), withLocator(2, { entry: { id: ENTRY_IDS.campaign + 1, type: 'SCCT' } }))))
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]' });
+  });
+
+  it('checks mapped entry sizes against the payload limits before reading them', async () => {
+    const campaign = syntheticCampaign(defaultCampaignSpec());
+    const oversized = new Uint8Array(262_145);
+    oversized.set(campaign.bytes);
+    const scenario = syntheticScenario(defaultScenarioSpec());
+    const archive = buildImfat(3000, [
+      { id: ENTRY_IDS.scenario, type: 'SCEN', data: scenario.bytes, relocations: scenario.relocations },
+      { id: ENTRY_IDS.campaign, type: 'SCCT', data: oversized, relocations: campaign.relocations },
+    ]);
+    expect(await failure(() => verify(filesWith(archive)))).toEqual({
+      code: 'limit-exceeded', location: `archive:/MAIN/SCENARIO.NOB#${ENTRY_IDS.campaign}`,
+      limit: { name: 'payloadEntryBytes', limit: 262_144, observed: 262_145 },
+    });
+  });
+});

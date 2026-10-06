@@ -1,4 +1,5 @@
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
+import { LOGIC_SOURCE_ENTRIES } from '../conversion/logic-sources.ts';
 import { MARKER } from '../disc/disc.test-support.ts';
 import { buildImfat } from '../synthetic.ts';
 
@@ -8,8 +9,8 @@ import { buildImfat } from '../synthetic.ts';
 
 export { MARKER };
 
-/** Entry IDs of the production mapping (docs/original/formats/scenario.md §4, hud.md §3), reused by synthetic archives. */
-export const ENTRY_IDS = Object.freeze({ campaign: 3123, scenario: 3019, modelList: 10649 });
+/** Entry IDs of the production mapping, reused by synthetic archives. */
+export const ENTRY_IDS = LOGIC_SOURCE_ENTRIES;
 
 /** A growable little-endian block whose pointer writes are recorded as relocations. */
 class BlockWriter {

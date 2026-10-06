@@ -97,7 +97,7 @@ updated: 2026-10-05
 | [05-scenario-parser.md](./subtasks/05-scenario-parser.md) | 02 | completed |
 | [06-craft-binding.md](./subtasks/06-craft-binding.md) | 04, 05 | completed |
 | [07-file-range-locator.md](./subtasks/07-file-range-locator.md) | 02 | completed |
-| [08-logic-sources.md](./subtasks/08-logic-sources.md) | 05, 07 | pending |
+| [08-logic-sources.md](./subtasks/08-logic-sources.md) | 05, 07 | completed |
 | [09-logic-conversion.md](./subtasks/09-logic-conversion.md) | 03, 04, 06, 08 | pending |
 | [10-import-stage.md](./subtasks/10-import-stage.md) | 03, 09 | pending |
 | [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | pending |
