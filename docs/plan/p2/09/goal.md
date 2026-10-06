@@ -91,7 +91,7 @@ updated: 2026-10-05
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-field-inventory.md](./subtasks/01-field-inventory.md) | — | completed |
-| [02-spatial-frame.md](./subtasks/02-spatial-frame.md) | 01 | pending |
+| [02-spatial-frame.md](./subtasks/02-spatial-frame.md) | 01 | completed |
 | [03-package-identity.md](./subtasks/03-package-identity.md) | — | pending |
 | [04-logic-content.md](./subtasks/04-logic-content.md) | 02 | pending |
 | [05-scenario-parser.md](./subtasks/05-scenario-parser.md) | 02 | pending |

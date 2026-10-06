@@ -3,7 +3,7 @@ type: format
 status: draft
 phase: P0
 updated: 2026-10-05
-related: [U-009, U-017, U-022]
+related: [U-009, U-017, U-022, U-032]
 ---
 
 # Main executable (`SRANGERS.EXE`)
@@ -83,6 +83,19 @@ Placement uses the runtime random generator; the resulting positions are runtime
 **Confirmed (scheduling and AI-target access):** `0x6721c` skips section-1 records whose kind is zero or whose +0x3C member back-reference is set; records with a non-zero +0x30 go through `0x69708` instead of the time queue. Section-5 entries are queued by their template's +0x1C or +0x30. `0x68018` returns the +0x58 target record's kind while that record's spawn counter is positive, and the +0x5C mask otherwise. The event-trigger consumer `0x6977c` passes record +0x54 to `0x695c0`, which updates counters and, for matching ranges, queues the paired section-1 record or section-5 entry after a delay taken from +0x34 of that record or of the entry's template.
 
 Evidence: ignored read-only probe outputs `local/research/p2-09/probe-1.txt`–`probe-5.txt` (references, constants and native loops) and the earlier decompiled exports in `local/research/`.
+
+### Strategic map projection
+
+**Confirmed (map-to-world conversion and Warp marker):** `0x2b9bc` classifies a mouse point against three screen rectangles. Inside the main map rectangle (origin and size at `0x186444`–`0x186450`) it converts the point with `0x4c4c0`, stores it as the cursor's world point and lets `0x2bc30` set the zoom-window bounds around it, clamped to the world rectangle of `0x3a41c`. On a left click it also stores the point as the target: `0x4c310` finds the nearest map icon, and `0x2bd74` replaces the target's z with that icon's stored value (0 when none is hit) while a player-state field is set. It then either creates the runtime kind-25 map/Warp marker at the target through `0x3cb80` or moves the existing marker to it. The vertical component therefore comes from runtime state, not mission data. `0x4c4c0` computes world x and y as the world rectangle's minimum corner plus the point's offset from the map origin times a per-axis world-per-pixel factor (`0x18646c`, `0x186470`), and sets z to 0. `0x4c310` picks the map icon nearest to a point within three pixels. Map icon labels are drawn by unanalysed code near `0x4afc0`–`0x4b360` from per-object screen coordinates relative to the same map origin.
+
+**Likely (orientation and extent):** no writer of the two world-per-pixel factors was found by reference search, so their values are inferred.
+
+- **Orientation:** the map origin is the top-left pixel and corresponds to the world's minimum corner, so positive factors give map right = +x and map up = −y. A local comparison with the first-mission map screenshot ([B-001](../behavior/B-001-strategic-map.md#地图框架与坐标轴高概率p2-09)) agrees: enemy markers lie only in the half predicted for their spawn rectangle.
+- **Extent:** that the main map shows the entire world rests on the same screenshot. The drawn grid has as many cells per side as the mission has sectors, consistent with one cell per sector.
+
+**Likely (no Warp-specific static spatial data at destination selection):** the cursor-to-marker path uses the world rectangle, the map rectangle and runtime map-icon data; no Warp destination table, grid or range data was found on it. The Warp execution path (energy, travel, arrival, error) was not traced and remains U-026.
+
+Evidence: ignored probe outputs `local/research/p2-09/probe-2.txt`–`probe-4.txt` (map references and the unanalysed label-drawing region) and decompiled exports in `local/research/all.c`; the screenshot comparison used `local/StarRang/captures/srangers_059.png` and the selected mission's spawn rectangles from `pointer-targets-3019.json`, checking only which half of the map each marker class falls in.
 
 ### Bounded slot-1 interaction-kind evidence
 
