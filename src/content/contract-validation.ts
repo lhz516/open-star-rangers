@@ -29,7 +29,12 @@ export type ContentContractErrorCode =
   | 'payload-detached'
   | 'invalid-sound-payload'
   | 'duplicate-group'
-  | 'group-order';
+  | 'group-order'
+  | 'invalid-graphics-payload'
+  | 'unsupported-payload-schema'
+  | 'binding-mismatch'
+  | 'palette-index-out-of-range'
+  | 'unmapped-character';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

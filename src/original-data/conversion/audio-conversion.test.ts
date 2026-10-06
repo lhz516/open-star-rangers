@@ -231,7 +231,7 @@ describe('audio directory preflight', () => {
 
     const { error, blockReads } = await failure(table(), { limits: limits(BOUND[dimension] - 1) });
     expect(error).toEqual({
-      layer: 'SourceError', code: 'limit-exceeded', location: 'sources.mappings[4].parts[0].alternatives[0].size',
+      layer: 'SourceError', code: 'budget-exceeded', location: 'sources.mappings[4].parts[0].alternatives[0].size',
       limit: { name: dimension, limit: BOUND[dimension] - 1, observed: BOUND[dimension] },
     });
     expect(blockReads).toEqual([]);
@@ -247,7 +247,7 @@ describe('audio directory preflight', () => {
     ];
     expect((await convert(rows(37))).draft.usage.assets).toBe(37);
     const { error, blockReads } = await failure(rows(38));
-    expect(error).toEqual({ layer: 'SourceError', code: 'limit-exceeded', location: 'sources.mappings[37].parts[0].alternatives[0].size', limit: { name: 'assets', limit: 37, observed: 38 } });
+    expect(error).toEqual({ layer: 'SourceError', code: 'budget-exceeded', location: 'sources.mappings[37].parts[0].alternatives[0].size', limit: { name: 'assets', limit: 37, observed: 38 } });
     expect(blockReads).toEqual([]);
   });
 

@@ -2,10 +2,10 @@ import type { BudgetDimension } from '../content/budget.ts';
 
 /**
  * Stable failure codes of P2-03 archive reading, version identification and source mapping verification
- * (docs/plan/p2/03/spec.md, error codes), extended by converters: `invalid-payload` for a source entry that breaks its
- * format, `unsupported-payload` for a valid one outside the accepted rules, and `limit-exceeded` with a budget dimension
- * for a conversion budget (P2-08, shared with P2-05 and P2-09). Consumers classify failures by code only; P2-02
- * `DiscReadError` and P2-01 `ContentContractError` pass through with their own codes.
+ * (docs/plan/p2/03/spec.md, error codes), followed by those of P2-05 graphics conversion (docs/plan/p2/05/spec.md,
+ * error codes) and P2-08 sound conversion: `invalid-payload` is shared, and `unsupported-payload` marks a valid SND
+ * format outside the accepted rules. Budget overruns are `budget-exceeded` with a P2-01 budget dimension. Consumers
+ * classify failures by code only; P2-02 `DiscReadError` and P2-01 `ContentContractError` pass through with their own codes.
  */
 export type SourceErrorCode =
   | 'invalid-archive'
@@ -20,15 +20,32 @@ export type SourceErrorCode =
   | 'alternatives-differ'
   | 'fingerprint-mismatch'
   | 'invalid-payload'
-  | 'unsupported-payload';
+  | 'unsupported-payload'
+  | 'unsupported-encoding'
+  | 'budget-exceeded'
+  | 'palette-index-out-of-range'
+  | 'subresource-not-found'
+  | 'invalid-declaration'
+  | 'geometry-mismatch';
 
-/** Names of the limits a `limit-exceeded` diagnostic reports: P2-03 structural limits and P2-01 budget dimensions. */
-export type SourceLimitName = 'archiveEntries' | 'entryBytes' | BudgetDimension;
+/**
+ * Names a `limit-exceeded` diagnostic reports: the P2-03 archive limits and the P2-05 graphics structural limits.
+ * `budget-exceeded` reports a P2-01 budget dimension instead.
+ */
+export type SourceLimitName =
+  | 'archiveEntries'
+  | 'entryBytes'
+  | 'imageWidth'
+  | 'imageHeight'
+  | 'paletteEntryCount'
+  | 'fontCellWidth'
+  | 'fontHeight'
+  | BudgetDimension;
 
 export interface SourceLimit {
   readonly name: SourceLimitName;
   readonly limit: number;
-  /** The observed total; null only for a budget total beyond the safe integer range. */
+  /** Always a number for structural limits; null only when a budget total exceeds the safe integer range. */
   readonly observed: number | null;
 }
 

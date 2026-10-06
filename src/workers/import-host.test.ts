@@ -56,7 +56,7 @@ describe('handshake', () => {
   it('installs its listeners, then sends ready exactly once and waits for start', () => {
     const { endpoint, calls } = host();
     expect(endpoint.log).toEqual(['listen:message', 'listen:messageerror', 'listen:unhandledrejection', 'post:ready']);
-    expect(endpoint.messages).toEqual([{ type: 'ready', protocol: 1 }]);
+    expect(endpoint.messages).toEqual([{ type: 'ready', protocol: IMPORT_PROTOCOL_VERSION }]);
     expect(calls).toHaveLength(0);
   });
 
@@ -82,7 +82,7 @@ describe('handshake', () => {
   it.each([
     ['a non-record', MARKER, null, 'request'],
     ['a Worker message', { type: 'ready', protocol: 1, jobId: 5 }, 5, 'request.type'],
-    ['another protocol version', start({ protocol: 2 }), 7, 'request.protocol'],
+    ['the previous protocol version', start({ protocol: 1 }), 7, 'request.protocol'],
     ['an unreadable job ID', start({ jobId: -7 }), null, 'request.jobId'],
     ['a 256-unit name', start({ files: [file('GAME.CCD'), file(MARKER.padEnd(256, 'x'))] }), 7, 'request.files[1].name'],
   ])('answers %s with invalid-request and never runs the job', async (_, request, jobId, location) => {
@@ -142,17 +142,20 @@ describe('reporting', () => {
       report.progress('identify-source', 0);
       report.progress('identify-source', 2048);
       report.identified({ ...IDENTITY, files: [MARKER] } as typeof IDENTITY);
+      report.progress('convert-graphics', 2048);
+      report.progress('convert-graphics', 4096);
       report.group('audio', audio);
       report.group('models', models);
     });
     const messages = endpoint.afterReady;
     expect(messages.map(message => [message.type, 'sequence' in message && message.sequence])).toEqual([
-      ['progress', 1], ['progress', 2], ['identified', 3], ['group', 4], ['group', 5], ['finished', 6],
+      ['progress', 1], ['progress', 2], ['identified', 3], ['progress', 4], ['progress', 5], ['group', 6], ['group', 7], ['finished', 8],
     ]);
     expect(messages[2]).toEqual({ type: 'identified', jobId: 7, sequence: 3, identity: IDENTITY });
-    expect(messages[3]).toEqual({ type: 'group', jobId: 7, sequence: 4, group: 'audio', input: audio });
-    expect(Object.keys((messages[3] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
-    expect(messages[5]).toEqual({ type: 'finished', jobId: 7, sequence: 6, groups: ['audio', 'models'], usage: USAGE });
+    expect(messages[4]).toEqual({ type: 'progress', jobId: 7, sequence: 5, stage: 'convert-graphics', readBytes: 4096 });
+    expect(messages[5]).toEqual({ type: 'group', jobId: 7, sequence: 6, group: 'audio', input: audio });
+    expect(Object.keys((messages[5] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
+    expect(messages[7]).toEqual({ type: 'finished', jobId: 7, sequence: 8, groups: ['audio', 'models'], usage: USAGE });
     expect(messages.every(message => 'jobId' in message && message.jobId === 7)).toBe(true);
     expect(endpoint.log.slice(-2)).toEqual(['post:finished', 'close']);
     expect(JSON.stringify(messages)).not.toContain(MARKER);
@@ -172,6 +175,12 @@ describe('reporting', () => {
   it.each([
     ['a second identification', (report: ImportReporter) => { report.identified(IDENTITY); report.identified(IDENTITY); }, ['identified']],
     ['identification progress after identification', (report: ImportReporter) => { report.identified(IDENTITY); report.progress('identify-source', 9); }, ['identified']],
+    ['graphics progress before identification', (report: ImportReporter) => report.progress('convert-graphics', 0), []],
+    ['identification progress after graphics progress', (report: ImportReporter) => {
+      report.identified(IDENTITY);
+      report.progress('convert-graphics', 9);
+      report.progress('identify-source', 9);
+    }, ['identified', 'progress']],
     ['a group before identification', (report: ImportReporter) => report.group('audio', group('audio')), []],
     ['a repeated group', (report: ImportReporter) => {
       report.identified(IDENTITY);

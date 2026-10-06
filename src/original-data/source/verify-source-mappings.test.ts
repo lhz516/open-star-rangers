@@ -10,7 +10,7 @@ import { block } from '../archive/archive.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 import { identifySource, type VerifiedSource } from './identify-source.ts';
 import { catalogFor } from './source.test-support.ts';
-import { verifySourceMappings } from './verify-source-mappings.ts';
+import { verifySourceMappings, type EntryReader } from './verify-source-mappings.ts';
 
 const MARKER = 'PRIVATE-ENTRY-MARKER';
 
@@ -167,6 +167,23 @@ describe('verifySourceMappings', () => {
       expect(error).toBeInstanceOf(ContentContractError);
       expect((error as ContentContractError).code).toBe(code);
     }
+  });
+
+  it('reads every locator through a supplied entry reader, with the same result and locations', async () => {
+    const source = await verified();
+    const input = table([
+      mapping('image/alias', [[at('MAIN/A.NOB', 'TEX', 10_001), at('MAIN/A.NOB', 'TEX', 10_005)]]),
+      mapping('palette/hull', [[at('MAIN/A.NOB', 'TEX', 10_001, 'palette')]]),
+    ]);
+    const requested: number[] = [];
+    const readEntry: EntryReader = async ({ discPath, entry: { id, type } }) => {
+      requested.push(id);
+      return (await source.openArchive(discPath)).read(id, type);
+    };
+    expect(await verifySourceMappings(input, source, readEntry)).toEqual(await verifySourceMappings(input, await verified()));
+    expect(requested).toEqual([10_001, 10_005, 10_001]);
+    const failing: EntryReader = () => Promise.reject(new SourceError('entry-not-found', 'request.id', 'the archive has no entry with this ID'));
+    expect(await sourceFailure(() => verifySourceMappings(input, source, failing))).toEqual({ code: 'entry-not-found', location: ALT(0) });
   });
 
   it('passes disc errors through as the same instance', async () => {

@@ -3,22 +3,28 @@ import { SourceError } from '../source-error.ts';
 import type { ArchiveEntryRead, ImfatArchiveHandle } from '../archive/archive-reader.ts';
 import type { VerifiedSource } from './identify-source.ts';
 
-/** Reads one locator's entry, reporting any P2-03 failure at the locator's structural path instead of its values. */
-async function readLocator(
-  source: VerifiedSource,
-  archives: Map<string, ImfatArchiveHandle>,
-  { discPath, entry }: OriginalAssetLocator,
-  at: string,
-): Promise<ArchiveEntryRead> {
-  try {
+/** Reads the entry a locator names; its failures may carry any location, which verification rewrites. */
+export type EntryReader = (locator: OriginalAssetLocator) => Promise<ArchiveEntryRead>;
+
+/** The default reader: opens each archive of the verified source once and keeps only its directory, never entry bytes. */
+function archiveEntryReader(source: VerifiedSource): EntryReader {
+  const archives = new Map<string, ImfatArchiveHandle>();
+  return async ({ discPath, entry }) => {
     let handle = archives.get(discPath);
     if (!handle) {
       handle = await source.openArchive(discPath);
       archives.set(discPath, handle);
     }
     // An ID beyond u32 cannot be in an archive; the archive handle itself would call it a malformed request.
-    if (entry.id > 0xffffffff) throw new SourceError('entry-not-found', at, 'the archive has no entry with this ID');
-    return await handle.read(entry.id, entry.type);
+    if (entry.id > 0xffffffff) throw new SourceError('entry-not-found', 'request.id', 'the archive has no entry with this ID');
+    return handle.read(entry.id, entry.type);
+  };
+}
+
+/** Reads one locator's entry, reporting any P2-03 failure at the locator's structural path instead of its values. */
+async function readLocator(readEntry: EntryReader, locator: OriginalAssetLocator, at: string): Promise<ArchiveEntryRead> {
+  try {
+    return await readEntry(locator);
   } catch (error) {
     if (error instanceof SourceError) throw new SourceError(error.code, at, error.reason, error.limit);
     throw error;
@@ -44,21 +50,25 @@ const sameRead = (left: ArchiveEntryRead, right: ArchiveEntryRead): boolean =>
  * alternatives must equal the first in flags, size, relocation count, bytes and relocation positions (P2-01 already
  * guarantees equal types and sub-resources). Mappings without sub-resource locators become `verified`; any with one
  * stay `declared` for the converter that understands the payload. The first failure rejects the whole table.
+ * A conversion step passes its own `readEntry` so verification and conversion share each entry read; by default the
+ * entries are read here and not kept.
  */
-export async function verifySourceMappings(value: unknown, source: VerifiedSource): Promise<SourceMappingTable> {
+export async function verifySourceMappings(
+  value: unknown,
+  source: VerifiedSource,
+  readEntry: EntryReader = archiveEntryReader(source),
+): Promise<SourceMappingTable> {
   const table = readSourceMappingTable(value);
   const { fingerprint } = source.identity;
   if (table.sourceFingerprint !== null && table.sourceFingerprint !== fingerprint) {
     throw new SourceError('fingerprint-mismatch', 'sources.sourceFingerprint', 'the table is bound to another source');
   }
-  // Each archive's directory is read once per verification; entry bytes are never kept beyond a part.
-  const archives = new Map<string, ImfatArchiveHandle>();
   for (const [index, mapping] of table.mappings.entries()) {
     for (const [part, { alternatives }] of mapping.parts.entries()) {
       const at = (alternative: number) => `sources.mappings[${index}].parts[${part}].alternatives[${alternative}]`;
-      const first = await readLocator(source, archives, alternatives[0], at(0));
+      const first = await readLocator(readEntry, alternatives[0], at(0));
       for (let alternative = 1; alternative < alternatives.length; alternative++) {
-        const other = await readLocator(source, archives, alternatives[alternative], at(alternative));
+        const other = await readLocator(readEntry, alternatives[alternative], at(alternative));
         if (!sameRead(first, other)) {
           throw new SourceError('alternatives-differ', at(alternative), 'the exact alternatives are not identical');
         }

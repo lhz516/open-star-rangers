@@ -64,6 +64,14 @@ src/
     budget.ts
     ownership.ts
     sound-payload.ts
+    graphics/
+      graphics-format.ts
+      palette-payload.ts
+      image-payload.ts
+      font-payload.ts
+      graphics-binding.ts
+      expand-image.ts
+      glyph-lookup.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -95,6 +103,11 @@ src/
       conversion-budget.ts
       audio-conversion.ts
       converter-version.ts
+      source-graphics.ts
+      graphics-declarations.ts
+      convert-graphics.ts
+      graphics-step.ts
+      production-graphics.ts
     formats/
       snd.ts
   platform/
@@ -155,7 +168,7 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 [platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
 
@@ -201,7 +214,7 @@ src/
 [P2-01/08](../plan/p2/01/subtasks/08-base-content-contract.md) 的当前 API：
 
 - [asset-id.ts](../../src/content/asset-id.ts)：`readAssetId` 返回品牌化语义 ID，8 段限制包含 kind 首段；`ASSET_KINDS` 封闭为 8 种，`ASSET_ID_LIMITS` 固定每段 32 字符、总长 128 字符。语法验证不能证明命名语义或来源映射正确。
-- [asset-contract.ts](../../src/content/asset-contract.ts)：`readAssetReference`、`readAssetDescriptor` 验证 kind 一致性、4 个封闭资源组、语义 role token、严格 ASCII ID 顺序且无重复的类型化依赖，以及 payload 身份。role 的必需集合/基数留给 02，引用存在/自引用/环与分组/全包完整性留给 04；没有 `complete` 布尔值。
+- [asset-contract.ts](../../src/content/asset-contract.ts)：`readAssetReference`、`readAssetDescriptor` 验证 kind 一致性、4 个封闭资源组、语义 role token、严格 ASCII ID 顺序且无重复的类型化依赖，以及 payload 身份。role 的必需集合/基数留给 02，引用存在/自引用/环与分组/全包完整性留给 04；没有 `complete` 布尔值。 `readRole` 单独读取语义 role token，描述符与图形转换声明共用。
 - [content-identity.ts](../../src/content/content-identity.ts)：`readContentIdentity` 显式分开 schema、切片 ID、切片定义版本、converter、manifest 与 origin；schema 当前只支持 1，数值版本为正安全整数。converter 按 spec 保留受限 ASCII 不透明字符串，不用应用版本代替。converter/manifest token 允许小写 ASCII 字母、数字及单个内部 `-`、`.`、`:` 分隔符。
 - 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，manifest 身份由下方的 `manifest-identity.ts` 计算、由导入作业填入。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用；`contentIdentityKey` 把六项身份合成一个可比较的键，全包验证与缓存读取共用。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
@@ -225,6 +238,7 @@ src/
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
   - **计量：** `chargeBudget` 每次都重新读取限值、当前用量和增量，调用者应在读取或分配声明规模之前计量。
+  - **相加：** `addBudgets(left, right, path)` 把两个完整记录逐维相加（例如读取限值加某一步骤的份额，或读取用量加转换用量），结果须仍是合法记录，否则在 `path` 下报 `invalid-budget-value`。
     - 用量等于上限时通过；超过上限返回 `budget-exceeded`，带维度、limit 与 observed。
     - 总量超出安全整数范围时返回 `budget-overflow`，observed 为 null。
     - 判断基于剩余额度，不依赖溢出后的和。被拒的计量不会部分生效，结果中仍是之前的用量。
@@ -241,6 +255,32 @@ src/
   - **浮点映射：** `soundChannelData` 是唯一的映射，为每个声道返回新的 `Float32Array`（按帧交错拆分，不与 payload 共享内存）：`u8` 的 v 映射为 (v − 128) / 128，`s16le` 的 v 映射为 v / 32768，按小端读取，与宿主字节序无关。转换器、播放适配与本地对照脚本都用它。
 
 合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态（`syntheticSourceGroup` 可绑定任意来源指纹），以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
+
+### 图形 payload
+
+[content/graphics/](../../src/content/graphics/)（[P2-05/01](../plan/p2/05/subtasks/01-graphics-payloads.md)）定义 `palette`、`image`、`font` 三类 Asset 的规范 payload。它是纯 TypeScript，不导入 `original-data`；原版转换由 `original-data` 产生这些字节。
+
+- **常量：** [graphics-format.ts](../../src/content/graphics/graphics-format.ts) 的 `GRAPHICS_SCHEMA_VERSION` 为 1，三类共用；改变布局或解释须递增。`GRAPHICS_LIMITS` 供读取器与转换器共用，分为两类：
+  - **格式规则：** 调色板 1–256 项（8 位索引最多寻址 256 项），字体单元宽 1–8（每行 1 字节），字形恰为 256 个，字符映射 0–256 条；
+  - **安全上限：** 图像宽 1–640、高 1–480（Classic HI 画幅），字体高 1–8（已观察到 6 与 8）。原版字段本身更宽，这两项是 [P2-05 spec](../plan/p2/05/spec.md#限值与预算) 批准的上限。
+- **字节布局：** 都是小端定长头部加数据，总长恰为两者之和，Asset ID 以 ASCII 存储。
+
+  | 类别 | 头部 | 数据 |
+  |---|---|---|
+  | 调色板 | `u16` 条目数 | 每项 (R, G, B) 各 8 位，不含透明 |
+  | 图像 | `u16` 宽、`u16` 高；`u8` alpha（0 不透明、1 掩码）；`u8` display（0 direct、1 nearest）；`u8` 调色板 ID 长度（1–128）；`u8` 目标 ID 长度（direct 为 0，nearest 为 1–128） | 调色板 ID，nearest 的目标调色板 ID；`宽 × 高` 个行优先索引，行 0 在上；alpha 为 1 时再接掩码：每行 `⌈宽/8⌉` 字节，bit 7 为最左，1 为不透明 |
+  | 字体 | `u8` 单元宽、`u8` 高、`u16` 映射条数 | 256 × 高字节的字形，字形 g 的第 r 行在 `4 + g × 高 + r`，bit 7 为最左，逐位保留（含单元宽度以外的位）；映射按码位严格升序的 (code, glyph) 字节对 |
+
+  图像引用的 ID 必须是 `palette` kind 的 Asset ID。透明像素的索引与掩码行尾填充位一律为 0：编码器写 0，读取器拒绝非零。字形的绘制颜色与字距不在 payload 中，映射之外的码位没有字形。
+- **编码：** `encodePalettePayload`、`encodeImagePayload`、`encodeFontPayload` 校验字段后写入一个独占整个 `ArrayBuffer` 的新缓冲（可直接交给 `payloadTransferList`），同一输入得到同样的字节与 SHA-256；不改动调用者的数组。`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 按字段给出编码长度，供转换器在分配前扣除 `payloadBytes`。
+- **读取：** `readPalettePayload`、`readImagePayload`、`readFontPayload` 接受 `(bytes, schemaVersion, path)`，返回带 `kind` 的冻结数据，其中的数组是调用者独占的新副本。schema 不是 1 为 `unsupported-payload-schema`；长度不符（截断或尾随字节）、字段越界、未知的 alpha/display 值、非法或非调色板 ID、非零填充位、透明像素的非零索引、映射乱序或重复为 `invalid-graphics-payload`；已转移的字节为 `payload-detached`。`maskStride` 与 `isOpaque` 按上述掩码约定取每行字节数与单个像素的不透明性。
+- **绑定：** [graphics-binding.ts](../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes` 给出 payload 引用的调色板 ID（去重后升序：direct 为 `{palette}`，nearest 为 `{palette, target}`；调色板与字体没有），`imagePalettes` 对图像的绑定字段给出同样的结果，供转换器生成依赖。`checkGraphicsBinding(descriptor, payload)` 要求描述符的 kind 与 payload 一致，依赖恰好等于这些调色板且 kind 都是 `palette`，否则报 `binding-mismatch`。
+
+- **展开：** [expand-image.ts](../../src/content/graphics/expand-image.ts) 的 `expandImage(image, palettes)` 是项目中唯一的调色板查找。`palettes` 按 Asset ID 提供，必须恰好是图像引用的调色板，否则报 `binding-mismatch@palettes`。结果为冻结的 `{ width, height, rgba }`，`rgba` 是调用者独占的新缓冲，非预乘：不透明像素为显示颜色、alpha 255，透明像素为 (0, 0, 0, 0)。direct 直接查图像的调色板；nearest 先把源调色板逐项映射到目标调色板再查表，因此不透明像素的颜色都属于目标调色板。不透明像素的索引不小于源调色板条目数时报 `palette-index-out-of-range@<path>.indices`，透明像素的索引不参与。展开结果不进入 payload 或缓存。
+- **最近色：** 同文件的 `nearestColourMap(source, target)` 对源调色板的每一项取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等取较小索引。这是**暂定的项目规则**：原版的度量与并列规则尚无证据（[U-028](../original/unknowns.md#数据与格式)，研究见 [P2-05/11](../plan/p2/05/subtasks/11-nearest-colour-research.md)），合成测试只验证这个算法，不是保真证据。研究工具与后续 Renderer 复用它，不另写颜色逻辑。
+- **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
+
+针对性检查为 `pnpm exec vitest run src/content/graphics`。
 
 ### 原版来源映射
 
@@ -326,15 +366,46 @@ src/
   - 精确等价的备选须与第一个备选的 `flags`、大小、重定位个数、块字节和重定位位置都相同，否则报 `alternatives-differ`。
   - 返回绑定本来源指纹的新冻结表：条目级映射为 `verified`；含子资源 locator 的映射一律为 `declared`，由理解该 payload 的转换任务核验。
   - 每个封包的目录在一次核验中只读一次，条目字节不跨部件保留；首个错误终止核验，不修改输入。
+  - 可选的第三个参数 `readEntry`（`EntryReader` 类型）替换模块内部的默认读取，供转换步骤让核验与转换共用条目读取（P2-05）；错误位置的改写、等价备选核对与结果都不变。公开模块只导出这个类型，不导出读取封包的函数。
 - **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
+
+### 图形转换
+
+[P2-05](../plan/p2/05/spec.md) 把原版的调色板、图像记录与字体转换为[图形 payload](#图形-payload)。`original-data/conversion/` 不属于任何能力族，只处理已读取的条目字节，封包经已验证来源取得（见[工程约定](./README.md#lint-规则eslintconfigjs)）。
+
+- **源结构读取：** [source-graphics.ts](../../src/original-data/conversion/source-graphics.ts)（[P2-05/03](../plan/p2/05/subtasks/03-source-hardening.md)）是 DATA、36 字节图像记录、MFDD 记录列表与点阵字体表的唯一读取实现，格式见 [textures](../original/formats/textures.md)、[cockpit](../original/formats/cockpit.md) 与 [hud](../original/formats/hud.md)。
+  - `readDataPalette` 要求恰为 768 字节且分量不大于 63（不截断高位），按位复制展开为 8 位 RGB。
+  - `readImageRecordHeader(block, offset)` 只读 36 字节头，依次校验位深为 8、+16 为 0、编码为 0 或 2（其余为 `unsupported-encoding`）、宽高与嵌入调色板条目数在 `GRAPHICS_LIMITS` 内（`limit-exceeded`，带限值名与观察值），以及调色板与像素范围在块内（不溢出的比较）。不按声明的规模分配，65535×65535 的头部只凭字段即被拒绝。
+  - `decodeImageRecord(block, offset)` 与 `readEmbeddedPalette(block, offset)` 自己从块中重新读取并校验记录头，不接受调用者传入的头部，之后才分配：raw 要求数据恰为宽 × 高并复制；精灵 RLE 拒绝截断、越行与尾随字节，输出透明像素为 0 的索引与规范打包掩码。行序保持存储顺序。嵌入调色板按 BGR 读为 RGB，没有时为 `subresource-not-found`。调用者可先用 `readImageRecordHeader` 取得尺寸扣除预算，再解码。
+  - `readMfdRecordOffsets` 返回两个列表中记录的块内偏移，每个列表须整体落在块内，计数因此以块长为界；容器语义归 P2-07。
+  - `readFontTable` 要求头部首字节为 0、单元宽与高为 1–8（`limit-exceeded`）、表长恰为 `4 + 256 × 高`，字形逐位复制。CCKD 字体目录须恰为 3 项且都在块内：`readCockpitFonts` 按目录顺序读取全部 3 个字库，`readCockpitFont(block, i)` 只读取 `fonts/<i>`，i 不在 0–2 时为 `subresource-not-found`。
+  - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs` 或 `fonts`，不含条目编号、偏移或字节。
+- **转换声明：** [graphics-declarations.ts](../../src/original-data/conversion/graphics-declarations.ts)（[P2-05/04](../plan/p2/05/subtasks/04-graphics-conversion.md)）的 `readGraphicsDeclarations` 严格读取一组声明（字段见 [spec](../plan/p2/05/spec.md#图形转换声明)）：`asset` 为 palette/image/font 且组内 ID 唯一，`role` 与 `group` 按 P2-01 规则读取且该组拥有此 kind；图像的 `palette` 与 nearest 目标都须是同一组声明中同组的调色板，`alpha` 为 `encoding` 或 `{ colourKey }`，`rowOrder` 为 `stored`/`reversed`；字体有预期 `cell` 与按码位互不重叠的 `charMap` 区间。它复用 content 的严格读取原语，任何问题都转为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 加字段路径。
+- **转换器：** [convert-graphics.ts](../../src/original-data/conversion/convert-graphics.ts) 的 `convertGraphics(declarations, sources, limits, usage)` 先读取声明，再按 Asset ID 取得已读入的源块：`data-palette`、`embedded-palette`（`palette` 子资源）、`image-record`（整条目记录）或 `cockpit-font`（`fonts/<i>`）；来源与 kind 不符、缺少来源都是 `invalid-declaration`。依次转换调色板，再转换图像与字体，同类按 ID 排序。
+  - 每个 Asset 在读取或分配之前，用 `chargeBudget` 扣除由记录头或声明推得的 `assets`、`dependencyEdges`、`paletteEntries`、`imagePixels`、`glyphs` 与 `payloadBytes`（`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 与编码器共用同一公式）。被拒绝时报 `budget-exceeded`，限值名为维度，总量超出安全整数时 `observed` 为 null；调用者的用量不变。转换用量不扣 `sourceReadBytes`。
+  - 颜色键只用于 raw 图像（否则为 `invalid-declaration@…alpha`），值为 k 的像素变为透明；不透明像素的索引不小于所绑定调色板（同组声明的转换结果）的条目数时为 `palette-index-out-of-range@…pixels`；`reversed` 恰好反转索引与掩码的行序。字体按声明的 `cell` 扣除，实际单元不符为 `geometry-mismatch@…glyphs`，`charMap` 区间展开为按码位升序的条目。
+  - 结果是按 ID 升序的冻结 `{ descriptor, payload }`：描述符经 `readAssetDescriptor` 生成，依赖为图像引用的调色板（`imagePalettes`），`payloadIdentity` 由实际字节计算；payload 独占缓冲。源结构读取的位置都带上 `graphics[<Asset ID>]` 前缀；任一失败使整组转换失败，不返回部分结果。
+- **转换步骤：** [graphics-step.ts](../../src/original-data/conversion/graphics-step.ts)（[P2-05/05](../plan/p2/05/subtasks/05-graphics-step.md)）的 `runGraphicsStep(source, mappings, declarations, limits, usage)`：
+  - **共用读取：** 模块内部的 `stepEntryReader(source)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。
+  - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源只接受整条目（`null`）、整条目 TEX/BITM 图像记录的 `palette` 与 CCKD 的 `fonts/<i>`（i 为不带前导零的十进制，0–2 以外由读取报 `subresource-not-found`）：DATA 整条目为调色板，TEX/BITM 整条目为图像；其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts`。CCKD 元素、MFDD 与 TABL 的容器子资源归 P2-07。
+  - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
+- **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：
+  - `PRODUCTION_GRAPHICS_DECLARATIONS`：`palette/flight/models` 与 `palette/flight/cockpit-hud-map`（角色 `flight-palette`，各在本组），`font/hud/8x8-1`、`font/hud/8x8-2`、`font/hud/4x6`（角色 `font`，`cockpit-hud-map`，单元 8×8、8×8、4×6）。字符映射初始为空，由 [P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md) 按证据填入。
+  - `PRODUCTION_GRAPHICS_MAPPINGS`：两个调色板共用 `MAIN/SR.NOB` 唯一 DATA 条目的整条目定位（confirmed，textures §1）；三个字库指向 HI 完整驾驶舱组 CCKD 的 `fonts/0`、`fonts/1`、`fonts/2`（likely，U-029，4×6 另加 U-030；cockpit §1 与 hud §1）。条目 ID 与序号来自本地结构核对，只存在于 `original-data`；表的来源指纹为 null，由作业核验时绑定。
+  - `PRODUCTION_GRAPHICS_SHARE`：`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384（按结构上限与头部算出的上界不超过它），其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
+  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA 与带 3 个字库的 CCKD），供 Node、作业与浏览器测试使用。
+- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。
+- [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表与 MESH/MODL 的研究用解析器及 `PayloadError`（归 P2-06），不再有第二套图像、调色板或字体解析。
+
+合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`），`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
 ### 原版格式转换
 
-[P2-08](../plan/p2/08/spec.md) 起，把已验证来源中的条目转换为规范内容的模块放在 `original-data/formats/`（单一格式的解析与转换）与 `original-data/conversion/`（转换流程与共用错误）。它们属于[底层能力边界](./README.md#lint-规则eslintconfigjs)中的“其他使用者”，原版字节只经产品入口与 `verifySourceMappings` 取得。
+[P2-08](../plan/p2/08/spec.md) 的 SND 转换分为两处：`original-data/formats/` 放单一格式的解析与转换，`original-data/conversion/` 放音频组转换流程与共用的转换预算、生产 `ConverterVersion`。它们属于[底层能力边界](./README.md#lint-规则eslintconfigjs)中的“其他使用者”，原版字节只经产品入口与 `verifySourceMappings` 取得。
 
 - **转换错误：** 与 P2-05、P2-09 一致，转换失败扩展 P2-03 的 `SourceError`，经 `source` 层传递，不另设错误层（[P2-08/14](../plan/p2/08/subtasks/14-shared-mechanism-alignment.md)）。
-  - **追加 code：** `invalid-payload`（源条目违反其格式）与 `unsupported-payload`（格式合法，但取值不在生产规则内），另以 `limit-exceeded` 表示转换预算超限。
-  - **限值：** `SourceLimitName` 追加 P2-01 的全部预算维度；只有预算总量超出安全整数时，`observed` 为 null。P2-03 已有 code 与限值的含义不变。
+  - **追加 code：** `invalid-payload`（源条目违反其格式，与 P2-05 共用）与 `unsupported-payload`（格式合法，但取值不在生产规则内）；转换预算超限沿用 P2-05 已落地的 `budget-exceeded`。
+  - **限值：** 预算超限的 `limit.name` 为 P2-01 预算维度（P2-05 已把全部维度加入 `SourceLimitName`）；只有预算总量超出安全整数时，`observed` 为 null。P2-03 已有 code 与限值的含义不变。
   - **位置：** 映射路径后接字段名（如 `.size`、`.flags`），属于 `inLocationGrammar` 的扩展语法。`reason` 为固定文本，不含字节、宿主路径或宿主错误文本。
 - **SND：** [formats/snd.ts](../../src/original-data/formats/snd.ts)（[P2-08/03](../plan/p2/08/subtasks/03-snd-parser.md)，格式见 [audio §1](../original/formats/audio.md#1-snd-digital-sound-effects-confirmed-on-all-37-entries)）。
   - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-payload`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
@@ -343,7 +414,7 @@ src/
 - **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
 - **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。
   - **通过：** 总量等于上限时通过。
-  - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('limit-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
+  - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('budget-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
 - **生产 `ConverterVersion`：** [conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION` 是唯一的生产值（P2-09 定义的共享机制），目前为 `osr-import.audio-1`：`osr-import.` 后按固定顺序接各转换器的 `<转换器>-<正整数>` 组件。任一转换器的输出变化都递增其组件。
 - **音频组：** [conversion/audio-conversion.ts](../../src/original-data/conversion/audio-conversion.ts)（[P2-08/04](../plan/p2/08/subtasks/04-audio-group-conversion.md)）。
   - **音效表：** `readSoundTable` 读取行 `{ role, mapping }`。先把各行的 `mapping` 投影为 `{ sourceFingerprint: null, mappings }`，交给 P2-01 `readSourceMappingTable` 校验，因此行按 Asset ID 升序且唯一，错误路径为 `sources.mappings[i]…`；带 `role` 的整行不送入该读取器。之后另行核对：`role` 属于 `SOUND_ROLES`（四个核心角色与 `model-sound`）；ID 符合该角色的规则（核心角色为 `sound/<词干>` 或再加一段变体，`model-sound` 为 `sound/model-clip/<两位数字>`）；kind 为 `sound`；恰有一个部件，各别名都是 `MAIN/SR.NOB`（`AUDIO_SOURCE_ARCHIVE`）中不带子资源的 `SND` 条目；同一 SND 条目只能属于一行（`duplicate-mapping`），因为同一源样本只形成一个 Asset。
@@ -360,7 +431,7 @@ src/
 [P2-04](../plan/p2/04/spec.md) 在专用模块 Worker 中运行导入作业，消息与生命周期契约以 spec 为准。当前已实现：
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
-  - `IMPORT_PROTOCOL_VERSION` 为 1。阶段集合 `IMPORT_STAGES` 目前只有 `identify-source`。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
+  - `IMPORT_PROTOCOL_VERSION` 为 2（P2-05 增加阶段时由 1 递增）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
   - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
   - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
@@ -374,7 +445,7 @@ src/
   - **握手：** 安装监听后发送一次 `ready`，只接受第一条有效的 `start`。以下情况都以 `invalid-request` 失败：`start` 非法（带能读出的作业 ID）、`messageerror`，以及 `start` 之后的任何消息。
   - **作业：** `ImportJob` 接收冻结的文件快照与冻结的报告器（`progress`、`identified`、`group`），成功时返回预算用量。
     - 宿主维护顺序号，从 1 起逐条加 1。发送抛错（如克隆失败）不消耗顺序号，异常交给作业。
-    - `identified` 至多一次，之后不再有识别进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败。
+    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
     - 身份只发送版本 ID 与指纹。
   - **转移：** 发送组前，用 `readPayloadRecords` 与 `payloadTransferList` 计算转移列表，位置以 `groups.<组>.payloads` 为根。非独占、别名、已转移或乱序的 payload 以 `content` 层失败，该组不发送。发送后，作业持有的 payload 视图失效。
   - **终态：** 作业返回的用量经 `readBudgetRecord` 读取，再随 `finished` 与已发送的组一起发送。终态消息之后关闭端点，之后的报告与消息都被忽略。
@@ -382,19 +453,20 @@ src/
     - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
     - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
     - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
-- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open)` 返回生产作业。
-  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。阶段开始时先报告一次 `readBytes` 为 0 的 `identify-source` 进度；之后端口每次读取成功返回，报告累计的实际返回字节。识别完成后不再报告识别进度。
-  - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹），返回 `source.usage()`；作业不产生组结果，失败原样交给宿主转换。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。只有测试传入其他打开函数，用合成白名单识别。
+- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics)` 返回生产作业。
+  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，图形阶段从识别结束时的累计值开始。
+  - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
+  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上步骤批准的份额；作业返回已验证来源最终的读取用量与转换用量逐维之和。步骤结果只留在作业内，供 P2-06/07 装配组结果；本任务不发送组，`finished.groups` 为空。转换失败为 `source` 层，图形阶段的读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是 [生产图形](#图形转换)的声明、映射与份额。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或图形输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
-  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，再发送 `groups(指纹)` 给出的组；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
+  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`（不转换任何 Asset）运行图形阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
-  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
+  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
-- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。
+- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。
@@ -411,7 +483,7 @@ src/
     - `ready` 的版本不符时报 `protocol-error`，不发送 `start`；
     - 发送 `start` 抛错时报 `worker-failed@worker`。
   - **消息：** 用协议读取函数校验，再依次核对第二次 `ready`（`message.type`）、作业 ID（`message.jobId`，含 `jobId` 为 null 的 `failed`）与连续的顺序号（`message.sequence`）。
-    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`），识别之后不得再有识别进度（`message.stage`）；
+    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；
     - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
     - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
     - Worker 报告的 `failed` 原样成为快照的错误。

@@ -24,7 +24,7 @@ describe('conversion budget', () => {
   it('fails one over a limit with its name, limit and observed total, applying nothing', () => {
     const usage = { ...EMPTY_BUDGET_USAGE, audioSamples: 4 };
     expect(failureOf(() => chargeConversionBudget(LIMITS, usage, { assets: 1, audioSamples: 7 }, 'sounds[2]')))
-      .toEqual({ code: 'limit-exceeded', location: 'sounds[2]', reason: expect.any(String), limit: { name: 'audioSamples', limit: 10, observed: 11 } });
+      .toEqual({ code: 'budget-exceeded', location: 'sounds[2]', reason: expect.any(String), limit: { name: 'audioSamples', limit: 10, observed: 11 } });
     expect(usage.audioSamples).toBe(4);
   });
 
