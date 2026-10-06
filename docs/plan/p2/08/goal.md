@@ -134,7 +134,7 @@ updated: 2026-10-05
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |
 | [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | completed |
-| [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | blocked |
+| [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | completed |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | pending |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | pending |
 | [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | completed |
@@ -183,6 +183,7 @@ updated: 2026-10-05
       - `finished.usage` 含图形转换用量。
     - **subtasks：** 05、06 的范围与验收随之调整；03、04、14 的已完成证据保留原样，只追加修订说明；13 的 code 名同步。
   - **不变：** S/AC 编号、音频转换与播放行为、依赖关系。
+- **2026-10-05 — 子任务 10 解除阻塞：** 开发者可以参与后，按清单在基准 DOSBox-X 中完成试听对照。四个核心角色的全部变体与四个爆炸效果音都判定一致，研究门槛达到，结果见 [10 的完成证据](./subtasks/10-listening-comparison.md#完成证据)。11 的依赖已满足。
 
 ## 审批
 

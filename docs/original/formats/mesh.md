@@ -42,7 +42,7 @@ Notes:
 | Offset | Type | Meaning |
 |---|---|---|
 | 0x00 | {u32 ptr, u32 count} × 3 | Three part lists (relocated pointers) |
-| 0x18 | u32 × 5 | SND entry IDs (0 = none). Likely from the playback code, pending listening: slot 1 gun fire, slot 2 missile launch, slot 4 destroyed (see [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08)). Slots 0 and 3 Unconfirmed |
+| 0x18 | u32 × 5 | SND entry IDs (0 = none). Confirmed by the playback code and listening: slot 1 gun fire, slot 2 missile launch, slot 4 destroyed. Slots 0 and 3 Unconfirmed; observations are recorded in [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08) |
 | 0x2C | Part[...] | Parts of all three lists, 28 bytes each |
 
 Part, 28 bytes:
@@ -100,5 +100,5 @@ Compared against HI-resolution screenshots of all nine views (`local/StarRang/ca
 
 ## 4. Open questions
 
-- Meaning of part lists 1 and 2, part flags, and the five sound slots (U-027).
+- Meaning of part lists 1 and 2 and the part flags (U-027). Sound slots 1, 2 and 4 are confirmed; slots 0 and 3 remain Unconfirmed.
 - How lighting selects shades (U-028); which craft type each M2ID slot is.
