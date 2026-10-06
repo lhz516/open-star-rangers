@@ -79,10 +79,11 @@ describe('effect step', () => {
     const [debris, missile, projectile] = PRODUCTION_EFFECT_MAPPINGS.mappings;
     const declarations = PRODUCTION_EFFECT_DECLARATIONS;
     const mappings = (...list: unknown[]) => ({ sourceFingerprint: null, mappings: list });
-    const failures: [unknown, unknown, string][] = [
+    const failures: [unknown, unknown, string, string?][] = [
       [mappings(debris, missile), declarations, 'effects.declarations[0]'],
       [PRODUCTION_EFFECT_MAPPINGS, declarations.slice(0, 2), 'effects.declarations'],
-      [mappings(debris, missile, { ...projectile, parts: projectile.parts.slice(1) }), declarations, `effects[${ID.projectile}].source`],
+      [mappings(debris, missile, { ...projectile, parts: projectile.parts.slice(1) }), declarations, `effects[${ID.projectile}].source`,
+        'a projectile mapping must start with one whole RENS entry of the effect archive'],
       [mappings({ ...debris, parts: debris.parts.slice(1) }, missile, projectile), declarations, `effects[${ID.debris}].source`],
     ];
     // A constants region shorter than its use accepts.
@@ -90,9 +91,9 @@ describe('effect step', () => {
     const shortened = missile.parts.map((part, index) => index !== constants ? part
       : { alternatives: [{ ...part.alternatives[0], subresource: part.alternatives[0].subresource!.replace(/\/56$/, '/48') }] });
     failures.push([mappings(debris, { ...missile, parts: shortened }, projectile), declarations, `effects[${ID.missile}].regions[${constants}]`]);
-    for (const [table, declared, location] of failures) {
+    for (const [table, declared, location, reason] of failures) {
       const error = await run({}, UNLIMITED_BUDGET, table, declared).then(() => null, (caught: unknown) => caught);
-      expectSourceError(() => { throw error; }, 'invalid-declaration', location);
+      expectSourceError(() => { throw error; }, 'invalid-declaration', location, null, reason);
     }
     const reordered = { ...declarations[0], regions: [...declarations[0].regions].reverse() };
     const error = await run({}, UNLIMITED_BUDGET, PRODUCTION_EFFECT_MAPPINGS, [reordered, ...declarations.slice(1)]).then(() => null, (caught: unknown) => caught);

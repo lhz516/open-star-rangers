@@ -191,23 +191,24 @@ describe('model step', () => {
     expect(source.usage().sourceReadBytes).toBeGreaterThan(before);
   });
 
-  it.each<[string, () => [unknown, unknown], string]>([
+  const WHOLE_MODL = 'a model must map to one whole MODL entry of the model archive';
+  it.each<[string, () => [unknown, unknown], string, string?]>([
     ['a declaration without a mapping', () => [{ ...MODEL_MAPPINGS, mappings: MODEL_MAPPINGS.mappings.slice(1) }, MODEL_DECLARATIONS], 'models.declarations[2]'],
     ['a mapping without a declaration', () => [MODEL_MAPPINGS, MODEL_DECLARATIONS.slice(1)], 'models.declarations'],
     ['a mapping to a MODL subresource', () => [
       replaceMapping('player', modelMapping('player', ENTRY.player, 'MODL', 'parts')),
       MODEL_DECLARATIONS,
-    ], `models[${id('player')}].model`],
+    ], `models[${id('player')}].model`, WHOLE_MODL],
     ['a mapping to another entry type', () => [
       replaceMapping('enemy', modelMapping('enemy', ENTRY.quad, 'MESH')),
       MODEL_DECLARATIONS,
-    ], `models[${id('enemy')}].model`],
-  ])('rejects %s as an invalid declaration before reading', async (_, inputs, location) => {
+    ], `models[${id('enemy')}].model`, WHOLE_MODL],
+  ])('rejects %s as an invalid declaration before reading', async (_, inputs, location, reason) => {
     const { source, reads } = await countedVerifiedSource(archive());
     const [mappings, declarations] = inputs();
     let thrown: unknown;
     await step(source, mappings, declarations).catch(error => { thrown = error; });
-    expectSourceError(() => { throw thrown; }, 'invalid-declaration', location);
+    expectSourceError(() => { throw thrown; }, 'invalid-declaration', location, null, reason);
     expect(reads.size).toBe(0);
   });
 });

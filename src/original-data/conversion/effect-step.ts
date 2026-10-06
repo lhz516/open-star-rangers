@@ -226,7 +226,7 @@ function checkParts(declaration: EffectDeclaration, mapping: SourceMapping): rea
   const entries = declaration.role === 'projectile' ? 1 : 0;
   const [first] = mapping.parts;
   if (entries === 1 && !first.alternatives.every(({ discPath, entry, subresource }) => discPath === EFFECT_ARCHIVE && entry?.type === 'RENS' && subresource === null)) {
-    throw new SourceError('invalid-declaration', `${at}.source`, 'a projectile mapping must start with one whole RENS entry of MAIN/SR.NOB');
+    throw new SourceError('invalid-declaration', `${at}.source`, 'a projectile mapping must start with one whole RENS entry of the effect archive');
   }
   const regions = mapping.parts.slice(entries).map(({ alternatives: [locator] }) => locator);
   if (regions.length !== declaration.regions.length) {

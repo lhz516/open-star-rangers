@@ -25,7 +25,7 @@ function modelLocator(mapping: SourceMapping): ArchiveEntryLocator {
   const [first] = mapping.parts;
   const whole = mapping.parts.length === 1
     && first.alternatives.every(({ discPath, entry, subresource }) => discPath === MODEL_ARCHIVE && entry?.type === 'MODL' && subresource === null);
-  if (!whole) throw new SourceError('invalid-declaration', `models[${mapping.asset.id}].model`, 'a model must map to one whole MODL entry of MAIN/SR.NOB');
+  if (!whole) throw new SourceError('invalid-declaration', `models[${mapping.asset.id}].model`, 'a model must map to one whole MODL entry of the model archive');
   return archiveLocator(first.alternatives[0]);
 }
 

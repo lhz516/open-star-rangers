@@ -33,7 +33,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   据此，本任务的“合入后”条款落实为：
   - `convert-models` 追加为第五个阶段，协议版本为 5；
   - 模型步骤份额并入图形与逻辑共用的作业限值，在逻辑用量之上扣除；
-  - 图形输出首次随 `models` 组打包，因此 `ConverterVersion` 增加图形与模型两个组件，为 `osr-import.graphics-1.logic-1.audio-1.models-1`；
+  - 图形输出首次随 `models` 组打包，因此 `ConverterVersion` 增加图形与模型两个组件，为 `osr-import.graphics-1.logic-1.audio-1.models-1`。2026-10-06 合入 P2-07 后，图形组件为 `graphics-2`，生产值为 `osr-import.graphics-2.logic-1.audio-1.models-1`（见执行记录）；
   - 作业在全部阶段之后总是发送 `models` 组（与 `audio` 组一致，即使没有 Asset 也发送），全部已发送组共用一个身份。
 - **现有实现：**
   - **MESH/MODL：** [payloads.ts](../../../../src/original-data/payloads.ts) 的 `parseMesh`、`parseModel` 是研究用解析器：抛出 `PayloadError`，不检查浮点有限性、颜色范围、部件保留字段与块长公式，没有数量上限。其合成样本只在 [payloads.test.ts](../../../../src/original-data/payloads.test.ts) 内部构造。[nob-check.ts](../../../../tools/nob-check.ts) 用这两个函数全量核对。
@@ -86,7 +86,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | S-05 | 04 | 04 生产图形声明与合成光盘上的图形步骤 |
 | S-06 | 05、06、07、11 | 06 模型 ID 与 `bindCraftTypes` 一致；07 作业传递绑定；09 本地；11 研究 Asset 的命名 |
 | S-07 | 01、02、03、04、06、07 | 01/02 限值常量与先于分配；03 扣除；04/06 份额常量与上界；07 作业限值组合 |
-| S-08 | 01、02、03、05、07 | 各层错误码测试；05/07 按失败边界一览逐类断言；13 隐私复核 |
+| S-08 | 01、02、03、05、07、20 | 各层错误码测试；05/07 按失败边界一览逐类断言；20 原因文本的隐私断言；13 隐私复核 |
 | S-09 | 05、07、08 | 05 步骤结果与组草稿；07 阶段、协议与组装；08 Chromium |
 | S-10 | 04、06、11 | 04/06 生产测试；09 本地基准；11 研究 |
 | S-11 | 10、11、12 | 10 部件结构；11 U-027；12 U-028 |
@@ -108,7 +108,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | AC-13 | 11、14、15–18 | 11 本地研究与可直接支持的 Asset；14 研究与契约修订；15–18 按修订实现。文档与生产常量对照 |
 | AC-14 | 12 | 12 本地研究；文档与映射对照，逐条目展开断言 |
 | AC-15 | 01、10 | 01 源码结构；10 mesh |
-| AC-16 | 01–08 | 各子任务 `pnpm typecheck`、`pnpm lint`；13 `pnpm check`、`pnpm check:original`、聚焦 E2E、依赖与锁文件 diff |
+| AC-16 | 01–08、20 | 各子任务 `pnpm typecheck`、`pnpm lint`；20 诊断原因的隐私断言；13 `pnpm check`、`pnpm check:original`、聚焦 E2E、依赖与锁文件 diff |
 | AC-17 | 01–12、15–18 | 13 链接与元数据检查、最终 diff 审阅 |
 | AC-18 | 15、16 | 15 locator 与映射核验的 Node 测试；16 LE 读取的 Node 测试与本地区域核对 |
 | AC-19 | 17 | 17 表驱动 Node 测试与源码检查 |
@@ -139,7 +139,8 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | completed |
 | [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | completed |
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19 | pending |
+| [20-diagnostic-privacy.md](./subtasks/20-diagnostic-privacy.md) | 05, 18 | completed |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -193,6 +194,11 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 按 12 与 P2-05 技术决定 2，只改了 `nearestColourMap` 一处；生产贴图映射改为 likely。
   - 复跑 09：`models` 组完整，四个组都完整。
   - 12 改为 completed，13 仍等待 19。证据见 [12](./subtasks/12-ambiguous-texture-research.md)。
+- **2026-10-06，13 首轮未通过，新增补救子任务 20：** 最终对齐的审阅发现 AC-16 的诊断隐私不变量不成立：模型步骤与效果步骤各有一条 `invalid-declaration` 的原因文本含原版文件名，测试只核对位置语法，没有核对原因文本。
+  - 按补救流程，13 回到 pending，新增 [20](./subtasks/20-diagnostic-privacy.md)（只改这两条原因并补原因文本的隐私断言），13 增加对 20 的依赖。
+  - 同一审阅指出 17 的已勾选验收仍是修订前的措辞，07 与“合入后条款”中的 `ConverterVersion` 早于 P2-07 合入。这两处是文档对齐，在 13 复跑时修正。
+  - 07 的 `ConverterVersion` 证据是当时的值。2026-10-06 合入 P2-07 后，图形组件为 `graphics-2`，四个组共用 `osr-import.graphics-2.logic-1.audio-1.models-1`，由 [import-job.test.ts](../../../../src/workers/import-job.test.ts) 断言。
+  - `nob-check` 失败行带条目号不算违规：这一格式早于本 goal；AC-16 对 nob-check 只要求“只输出结构计数与失败原因”；条目号的限制针对 S-08 定义的转换诊断。
 
 ## 审批
 

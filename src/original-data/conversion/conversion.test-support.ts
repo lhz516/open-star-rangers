@@ -43,10 +43,18 @@ const EFFECT_LOCATION = new RegExp(`^effects(?:${[
 /** Whether a conversion diagnostic location belongs to the P2-06 effect grammar. */
 export const inEffectLocationGrammar = (location: string): boolean => EFFECT_LOCATION.test(location);
 
+// What a P2-06 diagnostic reason must never name (spec S-08, AC-16): a file name, a path, a hexadecimal value, or an
+// entry number, offset or byte value.
+const PRIVATE_REASON_DETAIL = /\b\w+\.[a-z]\w{0,2}\b|[/\\]|\b0x[0-9a-f]|\b(?:entry|entries|offsets?|bytes?)\b\W{0,3}(?:id\b\W{0,3})?\d/i;
+
+/** Whether a diagnostic reason names a file, path, offset, entry number or byte value. */
+export const namesPrivateDetail = (reason: string): boolean => PRIVATE_REASON_DETAIL.test(reason);
+
 /**
  * Asserts that `action` throws a SourceError with exactly this code, location and limit, and a reason the Worker
  * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…`, `models…` and
- * `effects…` locations must be in their grammars.
+ * `effects…` locations must be in their grammars, and `models…` and `effects…` reasons must name no file, path, offset
+ * or entry number.
  */
 export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null, reason?: string): void => {
   let thrown: unknown;
@@ -56,11 +64,15 @@ export const expectSourceError = (action: () => unknown, code: string, location:
     thrown = error;
   }
   expect(thrown).toEqual(expect.objectContaining({ name: 'SourceError', code, location, limit }));
-  expect((thrown as { reason: string }).reason).toMatch(/^[ -~]{1,512}$/);
-  if (reason !== undefined) expect((thrown as { reason: string }).reason).toBe(reason);
+  const { reason: actual } = thrown as { reason: string };
+  expect(actual).toMatch(/^[ -~]{1,512}$/);
+  if (reason !== undefined) expect(actual).toBe(reason);
+  const models = location.startsWith('models');
+  const effects = location.startsWith('effects');
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
-  if (location.startsWith('models')) expect(inModelLocationGrammar(location), location).toBe(true);
-  if (location.startsWith('effects')) expect(inEffectLocationGrammar(location), location).toBe(true);
+  if (models) expect(inModelLocationGrammar(location), location).toBe(true);
+  if (effects) expect(inEffectLocationGrammar(location), location).toBe(true);
+  if (models || effects) expect(namesPrivateDetail(actual), actual).toBe(false);
 };
 
 /** A complete budget record allowing the most of every dimension, for tests whose subject is not the budget. */

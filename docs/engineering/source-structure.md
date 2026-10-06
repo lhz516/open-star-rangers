@@ -701,7 +701,7 @@ src/
   4. 扣除通过后才用 `readMesh` 解码几何并编码 payload。跨模型不共享几何：两个模型引用同一 MESH 时各自含有一份。
 - **输出：** 冻结的 `{ assets, usage }`：`assets` 按 ID 升序，每项为描述符（`model`、`models` 组、依赖为去重后升序的 image 与 sound 引用、payload schema 1 与实际字节的身份）与独占 buffer 的 payload；`usage` 为起始用量加本步用量。任何失败都不输出部分结果，被拒绝的扣除不改变调用者的用量；超出安全整数时 `observed` 为 null。
 - **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-1`，由作业组成生产 `ConverterVersion`；模型输出变化时递增。
-- **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块，`triangleMeshBlock()` 生成单个三角形的 MESH 块；`withMeshReads(source, read)` 替换来源的 MESH 读取（如光盘层失败），`UNLIMITED_BUDGET` 是各维度都取最大安全整数的预算记录。
+- **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文），并用 `namesPrivateDetail` 确认原因文本不含文件名、路径、十六进制值、条目编号、偏移或字节值（spec AC-16，判定的正反例见 [conversion.test-support.test.ts](../../src/original-data/conversion/conversion.test-support.test.ts)）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块，`triangleMeshBlock()` 生成单个三角形的 MESH 块；`withMeshReads(source, read)` 替换来源的 MESH 读取（如光盘层失败），`UNLIMITED_BUDGET` 是各维度都取最大安全整数的预算记录。
 
 ### 模型转换步骤
 
@@ -756,7 +756,7 @@ src/
   - `syntheticRensEntry` 生成 RENS 条目；
   - `syntheticEffectExecutable` 生成四个对象的合成 LE 文件，生产区域之外为生成的图案，可按用途改写区域或加入修正记录；
   - 期望用量为 `PRODUCTION_EFFECT_USAGE`。
-- **位置语法：** [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inEffectLocationGrammar` 按 spec 写出 `effects.declarations…`，以及 `effects[<ID>]` 单独或后接 `.source`、`.regions[<k>]`、`.records[<i>]`、`.templates[<j>]`；`expectSourceError` 对 `effects` 开头的位置逐个核对。
+- **位置语法：** [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inEffectLocationGrammar` 按 spec 写出 `effects.declarations…`，以及 `effects[<ID>]` 单独或后接 `.source`、`.regions[<k>]`、`.records[<i>]`、`.templates[<j>]`；`expectSourceError` 对 `effects` 开头的位置逐个核对，原因文本同样经 `namesPrivateDetail` 检查。
 
 ### 导入 Worker
 
