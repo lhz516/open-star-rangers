@@ -193,6 +193,8 @@ src/
       synthetic-keyboard-input.ts
       synthetic-session-bridge.ts
       use-synthetic-game.ts
+    import/
+      failure-copy.ts
     pages/
       ImportPlaceholderPage.tsx
       MainMenuPage.tsx
@@ -886,6 +888,21 @@ src/
 
   只凭作业 `finished` 得不到“完整资源可查看”。
 - **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用：中止提交，丢弃资源包与全部监听；之后的列出、提交与恢复结果都被忽略，也不通知任何人。持有者不拥有缓存实例，不关闭它。
+
+### 失败文案
+
+[ui/import/failure-copy.ts](../../src/ui/import/failure-copy.ts) 是 P2-11 的纯文案模块（[spec 失败反馈](../plan/p2/11/spec.md#失败反馈)），由 Node 测试覆盖：
+
+- **入口：** `startFailureCopy`、`jobFailureCopy`、`cacheFailureCopy`、`missionFailureCopy` 分别接收启动规则的 `invalid-files`、作业快照的 `ImportErrorData`、P2-10 的 `ResourceCacheFailure` 与任务载入失败。
+- **返回：** `{ category, message, details }`。
+  - `category` 为 `<层>/<类别>`；
+  - `message` 是该类别固定的英文句子；
+  - `details` 只含 layer、code、结构位置、失败自带的固定原因与限值（名称、限值、观察值；缓存失败取第一条预算违规）。输入上的其他字段一律丢弃，所以宿主文本与文件名不会进入输出。
+- **分类：** 只按 layer 与 code，不依赖 `reason`。
+  - 每层的未知 code 用该层的默认句，未知层用全局默认句；
+  - `source` 层的默认句与“结构或转换校验”同句，对应 spec 的“其余 code”。
+  - `ui/` 不能导入 `original-data`，所以 disc 与 source 的 code 以字面量列出；测试以 `Record<DiscReadErrorData['code'] | SourceErrorCode | ImportErrorCode, …>` 的期望表逐一核对，上游新增 code 时类型检查失败。`import` 层的内部错误类别由 `IMPORT_ERROR_CODES` 派生。
+  - 缓存的 13 个 code 各有一句，句子表的类型为 `Record<ResourceCacheFailureCode, string>`。
 
 ## 职责与依赖
 
