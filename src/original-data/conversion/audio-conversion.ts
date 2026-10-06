@@ -12,7 +12,6 @@ import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import { chargeConversionBudget } from './conversion-budget.ts';
-import { ConversionError } from './conversion-error.ts';
 
 // The audio group converter (P2-08 S-03/S-05): a sound table of SND mappings becomes the `audio` group's descriptors,
 // exclusive canonical payloads and locator-free source states, within the audio conversion budget.
@@ -130,12 +129,12 @@ async function preflight(archive: ImfatArchiveHandle, mappings: readonly SourceM
     }
   }
   sizes.forEach((size, row) => {
-    if (size < SND_HEADER_BYTES) throw new ConversionError('invalid-sound', `${alternativePath(row, 0)}.size`, 'the block is shorter than the 20-byte SND header');
+    if (size < SND_HEADER_BYTES) throw new SourceError('invalid-payload', `${alternativePath(row, 0)}.size`, 'the block is shorter than the 20-byte SND header');
   });
   let bound = EMPTY_BUDGET_USAGE;
   sizes.forEach((size, row) => {
     const samples = size - SND_HEADER_BYTES;
-    bound = chargeConversionBudget(limits, bound, { assets: 1, payloadBytes: SOUND_PAYLOAD_HEADER_BYTES + samples, audioSamples: samples }, `sources.mappings[${row}]`);
+    bound = chargeConversionBudget(limits, bound, { assets: 1, payloadBytes: SOUND_PAYLOAD_HEADER_BYTES + samples, audioSamples: samples }, `${alternativePath(row, 0)}.size`);
   });
 }
 
@@ -165,7 +164,7 @@ export async function convertAudioGroup(
     const at = alternativePath(row, 0);
     const block = await atMapping(at, () => archive!.read(mapping.parts[0].alternatives[0].entry.id, 'SND'));
     const { payload, samplePoints } = convertSnd(block, rules, at);
-    usage = chargeConversionBudget(checkedLimits, usage, { assets: 1, payloadBytes: payload.byteLength, audioSamples: samplePoints }, `sources.mappings[${row}]`);
+    usage = chargeConversionBudget(checkedLimits, usage, { assets: 1, payloadBytes: payload.byteLength, audioSamples: samplePoints }, at);
     const { id } = mapping.asset;
     assets.push(readAssetDescriptor({
       id, kind: 'sound', role, group: 'audio', dependencies: [],

@@ -10,13 +10,13 @@ import { openDiscImage } from '../disc/disc-image.ts';
 import { syntheticFileDisc } from '../disc/disc.test-support.ts';
 import type { SndFormatRules } from '../formats/snd.ts';
 import { SourceError } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
 import { catalogFor } from '../source/source.test-support.ts';
 import { buildImfat, syntheticSnd, type SyntheticEntry, type SyntheticSndFields } from '../synthetic.ts';
 import {
   AUDIO_BUDGET_LIMITS, AUDIO_CONVERTER_COMPONENT, convertAudioGroup, readSoundTable, type AudioConversionOptions,
 } from './audio-conversion.ts';
-import { ConversionError } from './conversion-error.ts';
 
 // Synthetic flag values with test meanings only; production meanings come from research.
 const RULES: SndFormatRules = Object.freeze({
@@ -110,8 +110,9 @@ async function failure(rows: unknown, options: AudioConversionOptions = {}) {
   try {
     await convertAudioGroup(source, rows, RULES, options);
   } catch (error) {
-    if (!(error instanceof ConversionError || error instanceof SourceError || error instanceof ContentContractError)) throw error;
+    if (!(error instanceof SourceError || error instanceof ContentContractError)) throw error;
     const data = 'toData' in error ? error.toData() : { code: error.code, location: error.path, limit: null };
+    if (error instanceof SourceError) expect(inLocationGrammar(error.toData()), data.location).toBe(true);
     // Diagnostics carry structural paths only: no archive path, entry ID or sample bytes.
     expect(`${JSON.stringify(data)} ${error.message}`).not.toMatch(/SR\.NOB|1000\d|1001\d/);
     return { error: { layer: error.name, code: data.code, location: data.location, limit: data.limit }, blockReads };
@@ -187,7 +188,7 @@ describe('audio group conversion', () => {
     ['an unsupported bit width', 10_010, 'bitsPerSample'],
   ])('fails on %s without producing a group', async (_name, entry, field) => {
     const { error } = await failure(swap(table(), 'sound/warp', row('warp-sound', 'sound/warp', [entry])));
-    expect(error).toEqual({ layer: 'ConversionError', code: 'unsupported-sound-format', location: `sources.mappings[4].parts[0].alternatives[0].${field}`, limit: null });
+    expect(error).toEqual({ layer: 'SourceError', code: 'unsupported-payload', location: `sources.mappings[4].parts[0].alternatives[0].${field}`, limit: null });
   });
 
   it('fails when exact alternatives differ', async () => {
@@ -202,7 +203,7 @@ describe('audio directory preflight', () => {
     ['an ID beyond u32', row('warp-sound', 'sound/warp', [2 ** 32]), { layer: 'SourceError', code: 'entry-not-found', location: 'sources.mappings[4].parts[0].alternatives[0]', limit: null }],
     ['an entry of another type', (() => { const item = row('warp-sound', 'sound/warp', [10_004]); item.mapping.parts[0].alternatives.push(locator(10_011)); return item; })(),
       { layer: 'SourceError', code: 'entry-type-mismatch', location: 'sources.mappings[4].parts[0].alternatives[1]', limit: null }],
-    ['an 8-byte SND block', row('warp-sound', 'sound/warp', [10_008]), { layer: 'ConversionError', code: 'invalid-sound', location: 'sources.mappings[4].parts[0].alternatives[0].size', limit: null }],
+    ['an 8-byte SND block', row('warp-sound', 'sound/warp', [10_008]), { layer: 'SourceError', code: 'invalid-payload', location: 'sources.mappings[4].parts[0].alternatives[0].size', limit: null }],
   ])('rejects %s before reading any SND block', async (_name, replacement, expected) => {
     const { error, blockReads } = await failure(swap(table(), 'sound/warp', replacement));
     expect(error).toEqual(expected);
@@ -230,7 +231,7 @@ describe('audio directory preflight', () => {
 
     const { error, blockReads } = await failure(table(), { limits: limits(BOUND[dimension] - 1) });
     expect(error).toEqual({
-      layer: 'ConversionError', code: 'limit-exceeded', location: 'sources.mappings[4]',
+      layer: 'SourceError', code: 'limit-exceeded', location: 'sources.mappings[4].parts[0].alternatives[0].size',
       limit: { name: dimension, limit: BOUND[dimension] - 1, observed: BOUND[dimension] },
     });
     expect(blockReads).toEqual([]);
@@ -246,7 +247,7 @@ describe('audio directory preflight', () => {
     ];
     expect((await convert(rows(37))).draft.usage.assets).toBe(37);
     const { error, blockReads } = await failure(rows(38));
-    expect(error).toEqual({ layer: 'ConversionError', code: 'limit-exceeded', location: 'sources.mappings[37]', limit: { name: 'assets', limit: 37, observed: 38 } });
+    expect(error).toEqual({ layer: 'SourceError', code: 'limit-exceeded', location: 'sources.mappings[37].parts[0].alternatives[0].size', limit: { name: 'assets', limit: 37, observed: 38 } });
     expect(blockReads).toEqual([]);
   });
 

@@ -92,9 +92,9 @@ src/
       open-verified-source.ts
       verify-source-mappings.ts
     conversion/
-      conversion-error.ts
       conversion-budget.ts
       audio-conversion.ts
+      converter-version.ts
     formats/
       snd.ts
   platform/
@@ -215,9 +215,12 @@ src/
   - 一次性的 `sha256Fingerprint` 建立在它之上，签名与输出不变。
 - [source-state.ts](../../src/content/source-state.ts)：不含 locator 的来源状态集 `{ sourceFingerprint, states }`（每个 Asset 为 verified/unverified/unconfirmed/conflict 加 U 项），由 `original-data` 从来源映射推导后交给完整性验证。原版导入的状态集指纹必须等于清单的来源指纹，且每个 Asset 都必须为 verified；合成内容的来源输入必须为 null。
 - [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它；其中描述符数组的读取单独导出为 `readManifestAssets`。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
-- [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-08/02](../plan/p2/08/subtasks/02-manifest-identity.md)）：`computeManifestIdentity(definition, { schemaVersion, groups })` 为整个包计算一个 `manifest:sha256:<64 位小写十六进制>`，同一作业的全部组共用。
-  - **输入：** 每个组草稿为 `{ group, assets, sources }`。组名属于切片定义，唯一（`duplicate-group`）且按定义顺序（`group-order`），至少一组；描述符用 `readManifestAssets` 读取，来源状态集为 null 或用 `readSourceStateSet` 读取；`schemaVersion` 为正安全整数。非法输入以 `ContentContractError` 拒绝。
-  - **规范序列化：** 每个位置固定的 JSON 数组：序列化标签 `osr-manifest-identity-1`、`sliceId`、切片定义版本、`schemaVersion`，然后按顺序列出各组的组名、全部描述符（`id`、`kind`、`role`、`group`、依赖的 `[id, kind]`、payload 身份的 `[schemaVersion, byteLength, fingerprint]`）与来源状态集（指纹，以及每项的 `[id, state, unknowns]`，或 null）。只用数组，因此与属性插入顺序无关；字符串经 JSON 引号与转义，字段边界无歧义。对文本的 UTF-16LE 码元计算 SHA-256（复用 `Sha256`）。payload 字节不进入序列化，其变化经 payload 指纹体现。改变序列化须更换标签，同时改变全部身份。
+- [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-08/02](../plan/p2/08/subtasks/02-manifest-identity.md)，经 [14](../plan/p2/08/subtasks/14-shared-mechanism-alignment.md) 按 P2-09 的共享定义修订）：`computeManifestIdentity(definition, { schemaVersion, converterVersion, origin, groups })` 为整个包计算一个 `manifest:sha256:<64 位小写十六进制>`，同一作业的全部组共用。P2-05、P2-08、P2-09 只用这一套机制。
+  - **输入：** 每个组草稿为 `{ group, assets, sources }`。组名属于切片定义，唯一（`duplicate-group`）且按定义顺序（`group-order`），至少一组；描述符用 `readManifestAssets` 读取，来源状态集为 null 或用 `readSourceStateSet` 读取；`schemaVersion` 用 `readVersion` 读取，`converterVersion` 用 `readConverterVersion` 读取，`origin` 用 `readContentOrigin` 读取。非法输入以 `ContentContractError` 拒绝。
+  - **规范序列化：** 每个位置固定的 JSON 数组，依次为：`schemaVersion`、`sliceId`、切片定义版本、`converterVersion`、来源 `[类别, 令牌]`，然后按顺序列出各组的组名、全部描述符（`id`、`kind`、`role`、`group`、依赖的 `[id, kind]`、payload 身份的 `[schemaVersion, byteLength, fingerprint]`）与来源状态集（指纹，以及每项的 `[id, state, unknowns]`，或 null）。
+    - **确定且无歧义：** 只用数组，因此与属性插入顺序无关；字符串经 JSON 引号与转义，字段边界无歧义。
+    - **哈希：** 各字段都由只允许 ASCII 的读取器保证，所以文本是 ASCII；对其字节计算 SHA-256（复用 `Sha256`）。
+    - **范围：** payload 字节不进入序列化，其变化经 payload 指纹体现。改变序列化会改变全部身份。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
@@ -292,7 +295,7 @@ src/
   - 参数非法时返回 `invalid-request`，ID 不存在返回 `entry-not-found`，类型不符返回 `entry-type-mismatch`。
   - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包，边界见[工程约定](./README.md#lint-规则eslintconfigjs)。
 - **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上；辅助函数只接受从同一字节数组解析出的条目。
-- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。P2-03 的全部位置都属于 spec 的封闭语法；[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `inLocationGrammar` 按 spec 定义该语法（光盘路径部分复用 `isDiscPath`），各模块测试的失败辅助逐个核对。
+- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。转换器追加的 code 与限值名见[原版格式转换](#原版格式转换)。P2-03 的全部位置都属于 spec 的封闭语法；[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `inLocationGrammar` 按 spec 定义该语法（光盘路径部分复用 `isDiscPath`），各模块测试的失败辅助逐个核对。
 - **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
 
 ### 版本识别与已验证来源
@@ -329,22 +332,28 @@ src/
 
 [P2-08](../plan/p2/08/spec.md) 起，把已验证来源中的条目转换为规范内容的模块放在 `original-data/formats/`（单一格式的解析与转换）与 `original-data/conversion/`（转换流程与共用错误）。它们属于[底层能力边界](./README.md#lint-规则eslintconfigjs)中的“其他使用者”，原版字节只经产品入口与 `verifySourceMappings` 取得。
 
-- **`conversion` 错误层：** [conversion/conversion-error.ts](../../src/original-data/conversion/conversion-error.ts) 的 `ConversionError` 与 `SourceError` 同形：`code`、`location`、`reason`、`limit`，`toData()` 返回冻结的纯数据。code 目前为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，后续转换器可追加，层与形状不变。`limit` 为 null 或 `{ name, limit, observed }`：`name` 是 P2-01 预算维度名，总量超出安全整数范围时 `observed` 为 null。`location` 是结构位置（映射路径或 P2-03 的封包位置加字段名），`reason` 是固定文本，都不含字节、宿主路径或宿主错误文本。
+- **转换错误：** 与 P2-05、P2-09 一致，转换失败扩展 P2-03 的 `SourceError`，经 `source` 层传递，不另设错误层（[P2-08/14](../plan/p2/08/subtasks/14-shared-mechanism-alignment.md)）。
+  - **追加 code：** `invalid-payload`（源条目违反其格式）与 `unsupported-payload`（格式合法，但取值不在生产规则内），另以 `limit-exceeded` 表示转换预算超限。
+  - **限值：** `SourceLimitName` 追加 P2-01 的全部预算维度；只有预算总量超出安全整数时，`observed` 为 null。P2-03 已有 code 与限值的含义不变。
+  - **位置：** 映射路径后接字段名（如 `.size`、`.flags`），属于 `inLocationGrammar` 的扩展语法。`reason` 为固定文本，不含字节、宿主路径或宿主错误文本。
 - **SND：** [formats/snd.ts](../../src/original-data/formats/snd.ts)（[P2-08/03](../plan/p2/08/subtasks/03-snd-parser.md)，格式见 [audio §1](../original/formats/audio.md#1-snd-digital-sound-effects-confirmed-on-all-37-entries)）。
-  - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-sound`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
+  - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-payload`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
   - **规则：** `SndFormatRules` 是转换器接受的采样解释：`flags` 列出研究已确认的取值及各自的声道数与循环方式，`s16le` 表示 16 位样本是否已确认为有符号小端。规则之外的取值一律拒绝，不猜测默认值。生产规则由 P2-08 的生产音效模块提供。
-  - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-sound-format`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-sound`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
+  - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-payload`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-payload`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
 - **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
-- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量（增量缺省的维度为 0）：等于上限通过；第一个超限或超出安全整数范围的维度以 `limit-exceeded` 失败，`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
+- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。
+  - **通过：** 总量等于上限时通过。
+  - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('limit-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
+- **生产 `ConverterVersion`：** [conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION` 是唯一的生产值（P2-09 定义的共享机制），目前为 `osr-import.audio-1`：`osr-import.` 后按固定顺序接各转换器的 `<转换器>-<正整数>` 组件。任一转换器的输出变化都递增其组件。
 - **音频组：** [conversion/audio-conversion.ts](../../src/original-data/conversion/audio-conversion.ts)（[P2-08/04](../plan/p2/08/subtasks/04-audio-group-conversion.md)）。
   - **音效表：** `readSoundTable` 读取行 `{ role, mapping }`。先把各行的 `mapping` 投影为 `{ sourceFingerprint: null, mappings }`，交给 P2-01 `readSourceMappingTable` 校验，因此行按 Asset ID 升序且唯一，错误路径为 `sources.mappings[i]…`；带 `role` 的整行不送入该读取器。之后另行核对：`role` 属于 `SOUND_ROLES`（四个核心角色与 `model-sound`）；ID 符合该角色的规则（核心角色为 `sound/<词干>` 或再加一段变体，`model-sound` 为 `sound/model-clip/<两位数字>`）；kind 为 `sound`；恰有一个部件，各别名都是 `MAIN/SR.NOB`（`AUDIO_SOURCE_ARCHIVE`）中不带子资源的 `SND` 条目；同一 SND 条目只能属于一行（`duplicate-mapping`），因为同一源样本只形成一个 Asset。
-  - **常量：** `AUDIO_BUDGET_LIMITS` 为 `assets` 37、`audioSamples` 4,194,304、`payloadBytes` 8,388,608，其余维度为 0。转换器版本组件 `AUDIO_CONVERTER_COMPONENT` 为 `audio-1`。
+  - **常量：** `AUDIO_BUDGET_LIMITS` 为 `assets` 37、`audioSamples` 4,194,304、`payloadBytes` 8,388,608，其余维度为 0。转换器版本组件 `AUDIO_CONVERTER_COMPONENT` 为 `audio-1`，由 `converter-version.ts` 组成生产值。
   - **流程：** `convertAudioGroup(source, table, rules, { limits? })` 按以下顺序执行。`limits` 只供测试替换。
-    1. **目录预检：** 读取任何 SND 块之前，只经 `openArchive` 的 `entries`/`entry` 核对（打开封包本身的 P2-03 失败报在 `sources.mappings[0].parts[0].alternatives[0]`）。先确认每个 locator（含别名）都存在且为 `SND`，失败时为 P2-03 原 code，位置为 `sources.mappings[i].parts[0].alternatives[k]`；再确认每行第一个 locator 的块不小于 20 字节，否则为 `invalid-sound`，位置为该路径加 `.size`；最后按块大小核算上界（`payloadBytes` 为 16 + 块大小 − 20，`audioSamples` 为块大小 − 20，另计 `assets`）。预检不计入用量。
+    1. **目录预检：** 读取任何 SND 块之前，只经 `openArchive` 的 `entries`/`entry` 核对（打开封包本身的 P2-03 失败报在 `sources.mappings[0].parts[0].alternatives[0]`）。先确认每个 locator（含别名）都存在且为 `SND`，失败时为 P2-03 原 code，位置为 `sources.mappings[i].parts[0].alternatives[k]`；再确认每行第一个 locator 的块不小于 20 字节，否则为 `invalid-payload`，位置为该路径加 `.size`；最后按块大小核算上界（`payloadBytes` 为 16 + 块大小 − 20，`audioSamples` 为块大小 − 20，另计 `assets`），超限时位置为该行首个 locator 加 `.size`。预检不计入用量。
     2. **核验：** `verifySourceMappings` 核验映射，再由 `assetSourceStates` 得到绑定指纹的来源状态集。
     3. **转换：** 逐行读取第一个 locator，以 `convertSnd` 转换，位置为该行映射路径；按实际 payload 字节与采样点数计量。
   - **输出：** 组草稿 `{ assets, payloads, sources, usage }`。描述符为 `sound`/`audio`、无依赖、payload schema 1；每个 payload 独占 buffer；`usage` 只含转换用量，源读取用量在已验证来源的 `usage()` 中。清单身份不在这里填入。
-  - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-sound-format` 失败。空表不打开封包。
+  - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-payload` 失败。空表不打开封包。
 
 ### 导入 Worker
 

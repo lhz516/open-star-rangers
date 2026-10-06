@@ -1,5 +1,5 @@
 import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
-import { ConversionError } from './conversion-error.ts';
+import { SourceError } from '../source-error.ts';
 
 /**
  * Charges a converter's increment under its conversion limits with P2-01 `chargeBudget`: a total equal to a limit
@@ -10,5 +10,5 @@ export function chargeConversionBudget(limits: BudgetRecord, usage: BudgetRecord
   const result = chargeBudget(limits, usage, { ...EMPTY_BUDGET_USAGE, ...increment }, location);
   if (result.status === 'within-budget') return result.usage;
   const [{ dimension, limit, observed }] = result.violations;
-  throw new ConversionError('limit-exceeded', location, 'the conversion exceeds its budget', { name: dimension, limit, observed });
+  throw new SourceError('limit-exceeded', location, 'the conversion exceeds its budget', { name: dimension, limit, observed });
 }

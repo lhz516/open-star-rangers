@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { chargeConversionBudget } from './conversion-budget.ts';
-import { ConversionError } from './conversion-error.ts';
+import { SourceError } from '../source-error.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 2, audioSamples: 10, payloadBytes: Number.MAX_SAFE_INTEGER };
 
@@ -9,10 +9,10 @@ const failureOf = (action: () => unknown) => {
   try {
     action();
   } catch (error) {
-    if (error instanceof ConversionError) return error.toData();
+    if (error instanceof SourceError) return error.toData();
     throw error;
   }
-  throw new Error('expected a ConversionError');
+  throw new Error('expected a SourceError');
 };
 
 describe('conversion budget', () => {

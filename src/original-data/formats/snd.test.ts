@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readSoundPayload } from '../../content/sound-payload.ts';
-import { ConversionError } from '../conversion/conversion-error.ts';
+import { SourceError } from '../source-error.ts';
 import { entryData, entryRelocations, parseImfat } from '../imfat.ts';
 import { buildImfat, syntheticSnd, type SyntheticSndFields } from '../synthetic.ts';
 import { convertSnd, readSndHeader, SND_HEADER_BYTES, SND_HEADER_OFFSETS, type SndBlock, type SndFormatRules } from './snd.ts';
@@ -23,14 +23,14 @@ const snd = (fields: Partial<SyntheticSndFields> = {}): SndBlock => {
   return { bytes: data, relocations };
 };
 
-const rejection = (block: SndBlock, rules: SndFormatRules = RULES): ConversionError => {
+const rejection = (block: SndBlock, rules: SndFormatRules = RULES): SourceError => {
   try {
     convertSnd(block, rules, AT);
   } catch (error) {
-    if (error instanceof ConversionError) return error;
+    if (error instanceof SourceError) return error;
     throw error;
   }
-  throw new Error('expected a ConversionError');
+  throw new Error('expected a SourceError');
 };
 
 describe('SND conversion', () => {
@@ -76,21 +76,21 @@ describe('SND rejection', () => {
   };
 
   it.each([
-    ['a 19-byte block', { bytes: snd().bytes.subarray(0, 19), relocations: [0] }, 'invalid-sound', `${AT}.size`],
-    ['no relocation', { ...snd(), relocations: [] }, 'invalid-sound', `${AT}.relocations`],
-    ['two relocations', { ...snd(), relocations: [0, 4] }, 'invalid-sound', `${AT}.relocations`],
-    ['a relocation at 4', { ...snd(), relocations: [4] }, 'invalid-sound', `${AT}.relocations`],
-    ['a sample pointer of 24', snd({ sampleOffset: 24 }), 'invalid-sound', `${AT}.sampleOffset`],
-    ['a sample length unlike the block', snd({ sampleBytes: 3 }), 'invalid-sound', `${AT}.sampleBytes`],
-    ['an enormous declared sample length', snd({ sampleBytes: 0xffff_fff0 }), 'invalid-sound', `${AT}.sampleBytes`],
-    ['an odd 16-bit sample length', snd({ bitsPerSample: 16, samples: [1, 2, 3] }), 'invalid-sound', `${AT}.sampleBytes`],
-    ['an odd stereo sample length', snd({ flags: 102, samples: [1, 2, 3] }), 'invalid-sound', `${AT}.sampleBytes`],
-    ['no frames', snd({ samples: [] }), 'invalid-sound', `${AT}.sampleBytes`],
-    ['12-bit samples', snd({ bitsPerSample: 12 }), 'unsupported-sound-format', `${AT}.bitsPerSample`],
-    ['7999 Hz', snd({ sampleRate: 7_999 }), 'unsupported-sound-format', `${AT}.sampleRate`],
-    ['44101 Hz', snd({ sampleRate: 44_101 }), 'unsupported-sound-format', `${AT}.sampleRate`],
-    ['an unlisted flags value', snd({ flags: 104 }), 'unsupported-sound-format', `${AT}.flags`],
-    ['a flags value differing in a high byte', corrupt(view => view.setUint32(SND_HEADER_OFFSETS.flags, 0x0100_0064, true)), 'unsupported-sound-format', `${AT}.flags`],
+    ['a 19-byte block', { bytes: snd().bytes.subarray(0, 19), relocations: [0] }, 'invalid-payload', `${AT}.size`],
+    ['no relocation', { ...snd(), relocations: [] }, 'invalid-payload', `${AT}.relocations`],
+    ['two relocations', { ...snd(), relocations: [0, 4] }, 'invalid-payload', `${AT}.relocations`],
+    ['a relocation at 4', { ...snd(), relocations: [4] }, 'invalid-payload', `${AT}.relocations`],
+    ['a sample pointer of 24', snd({ sampleOffset: 24 }), 'invalid-payload', `${AT}.sampleOffset`],
+    ['a sample length unlike the block', snd({ sampleBytes: 3 }), 'invalid-payload', `${AT}.sampleBytes`],
+    ['an enormous declared sample length', snd({ sampleBytes: 0xffff_fff0 }), 'invalid-payload', `${AT}.sampleBytes`],
+    ['an odd 16-bit sample length', snd({ bitsPerSample: 16, samples: [1, 2, 3] }), 'invalid-payload', `${AT}.sampleBytes`],
+    ['an odd stereo sample length', snd({ flags: 102, samples: [1, 2, 3] }), 'invalid-payload', `${AT}.sampleBytes`],
+    ['no frames', snd({ samples: [] }), 'invalid-payload', `${AT}.sampleBytes`],
+    ['12-bit samples', snd({ bitsPerSample: 12 }), 'unsupported-payload', `${AT}.bitsPerSample`],
+    ['7999 Hz', snd({ sampleRate: 7_999 }), 'unsupported-payload', `${AT}.sampleRate`],
+    ['44101 Hz', snd({ sampleRate: 44_101 }), 'unsupported-payload', `${AT}.sampleRate`],
+    ['an unlisted flags value', snd({ flags: 104 }), 'unsupported-payload', `${AT}.flags`],
+    ['a flags value differing in a high byte', corrupt(view => view.setUint32(SND_HEADER_OFFSETS.flags, 0x0100_0064, true)), 'unsupported-payload', `${AT}.flags`],
   ] as const)('rejects %s', (_name, block, code, location) => {
     const error = rejection(block);
     expect(error.toData()).toEqual({ code, location, reason: expect.any(String), limit: null });
@@ -100,7 +100,7 @@ describe('SND rejection', () => {
     const block = snd({ bitsPerSample: 16 });
     expect(convertSnd(block, RULES, AT).samplePoints).toBe(2);
     expect(rejection(block, { ...RULES, s16le: false }).toData())
-      .toEqual({ code: 'unsupported-sound-format', location: `${AT}.bitsPerSample`, reason: expect.any(String), limit: null });
+      .toEqual({ code: 'unsupported-payload', location: `${AT}.bitsPerSample`, reason: expect.any(String), limit: null });
   });
 
   it('never echoes header values or sample bytes', () => {

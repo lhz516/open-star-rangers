@@ -1,7 +1,7 @@
 import {
   SOUND_ENCODING_BYTES, writeSoundPayload, type SoundChannelCount, type SoundEncoding, type SoundLoop,
 } from '../../content/sound-payload.ts';
-import { ConversionError } from '../conversion/conversion-error.ts';
+import { SourceError } from '../source-error.ts';
 
 // SND digital sound effects (docs/original/formats/audio.md §1): a 20-byte little-endian header whose relocated
 // pointer at offset 0 addresses the raw PCM right after it.
@@ -49,22 +49,22 @@ export interface ConvertedSound {
 
 /**
  * Checks an SND block's structure — at least the header, exactly one relocation at offset 0 whose pointer is 20, and a
- * sample length covering the rest of the block — and returns its raw header fields. Failures are `invalid-sound` at
+ * sample length covering the rest of the block — and returns its raw header fields. Failures are `invalid-payload` at
  * `location` plus a field name.
  */
 export function readSndHeader(block: SndBlock, location: string): SndHeader {
   const { bytes, relocations } = block;
-  if (bytes.byteLength < SND_HEADER_BYTES) throw new ConversionError('invalid-sound', `${location}.size`, 'the block is shorter than the 20-byte SND header');
+  if (bytes.byteLength < SND_HEADER_BYTES) throw new SourceError('invalid-payload', `${location}.size`, 'the block is shorter than the 20-byte SND header');
   if (relocations.length !== 1 || relocations[0] !== SND_HEADER_OFFSETS.sampleOffset) {
-    throw new ConversionError('invalid-sound', `${location}.relocations`, 'must be one relocated sample pointer at offset 0');
+    throw new SourceError('invalid-payload', `${location}.relocations`, 'must be one relocated sample pointer at offset 0');
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, SND_HEADER_BYTES);
   if (view.getUint32(SND_HEADER_OFFSETS.sampleOffset, true) !== SND_HEADER_BYTES) {
-    throw new ConversionError('invalid-sound', `${location}.sampleOffset`, 'must point just past the 20-byte header');
+    throw new SourceError('invalid-payload', `${location}.sampleOffset`, 'must point just past the 20-byte header');
   }
   const sampleBytes = view.getUint32(SND_HEADER_OFFSETS.sampleBytes, true);
   if (sampleBytes !== bytes.byteLength - SND_HEADER_BYTES) {
-    throw new ConversionError('invalid-sound', `${location}.sampleBytes`, 'must cover the rest of the block');
+    throw new SourceError('invalid-payload', `${location}.sampleBytes`, 'must cover the rest of the block');
   }
   return Object.freeze({
     sampleRate: view.getUint32(SND_HEADER_OFFSETS.sampleRate, true),
@@ -75,8 +75,8 @@ export function readSndHeader(block: SndBlock, location: string): SndHeader {
 }
 
 /**
- * Converts an SND block into a canonical sound payload under `rules`: structure (`invalid-sound`), then bit width,
- * sample rate and flags (`unsupported-sound-format`), then whole frames (`invalid-sound`, since the frame size depends on
+ * Converts an SND block into a canonical sound payload under `rules`: structure (`invalid-payload`), then bit width,
+ * sample rate and flags (`unsupported-payload`), then whole frames (`invalid-payload`, since the frame size depends on
  * the flags' channel count). The samples are copied unchanged; the block is never modified, and nothing is allocated
  * before every check passes.
  */
@@ -84,16 +84,16 @@ export function convertSnd(block: SndBlock, rules: SndFormatRules, location: str
   const { sampleRate, bitsPerSample, flags, sampleBytes } = readSndHeader(block, location);
   const encoding: SoundEncoding | undefined = bitsPerSample === 8 ? 'u8' : bitsPerSample === 16 && rules.s16le ? 's16le' : undefined;
   if (!encoding) {
-    throw new ConversionError('unsupported-sound-format', `${location}.bitsPerSample`, 'must be 8, or 16 where signed little-endian samples are confirmed');
+    throw new SourceError('unsupported-payload', `${location}.bitsPerSample`, 'must be 8, or 16 where signed little-endian samples are confirmed');
   }
   if (sampleRate < SND_SAMPLE_RATE_RANGE.min || sampleRate > SND_SAMPLE_RATE_RANGE.max) {
-    throw new ConversionError('unsupported-sound-format', `${location}.sampleRate`, 'must be from 8000 to 44100 Hz');
+    throw new SourceError('unsupported-payload', `${location}.sampleRate`, 'must be from 8000 to 44100 Hz');
   }
   const rule = rules.flags.find(candidate => candidate.value === flags);
-  if (!rule) throw new ConversionError('unsupported-sound-format', `${location}.flags`, 'must be a value whose meaning research confirmed');
+  if (!rule) throw new SourceError('unsupported-payload', `${location}.flags`, 'must be a value whose meaning research confirmed');
   const sampleWidth = SOUND_ENCODING_BYTES[encoding];
   if (sampleBytes === 0 || sampleBytes % (sampleWidth * rule.channels) !== 0) {
-    throw new ConversionError('invalid-sound', `${location}.sampleBytes`, 'must hold one or more whole frames');
+    throw new SourceError('invalid-payload', `${location}.sampleBytes`, 'must hold one or more whole frames');
   }
   const pcm = block.bytes.subarray(SND_HEADER_BYTES);
   return Object.freeze({

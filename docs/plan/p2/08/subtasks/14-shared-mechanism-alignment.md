@@ -66,18 +66,18 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] 生产代码中没有 `conversion` 错误层或 `ConversionError`；SND 转换与音频预算的失败都是 `SourceError`，code 为 `invalid-payload`、`unsupported-payload` 或 `limit-exceeded`，位置与 03、04 相同。
-- [ ] AC-01、AC-04、AC-05 的全部用例以新的 code 通过：
+- [x] 生产代码中没有 `conversion` 错误层或 `ConversionError`；SND 转换与音频预算的失败都是 `SourceError`，code 为 `invalid-payload`、`unsupported-payload` 或 `limit-exceeded`，位置与 03、04 相同。
+- [x] AC-01、AC-04、AC-05 的全部用例以新的 code 通过：
   - 预检失败仍为零块读取；
   - 预算超限的 `limit` 为 `{ name: <预算维度>, limit, observed }`，溢出时 `observed` 为 null；
   - `toData()` 冻结且可结构化克隆。
-- [ ] P2-03 既有的 `SourceError` 测试与协议穷举记录通过；新增 code 与限值名都合协议 DTO 语法。
-- [ ] AC-06：
+- [x] P2-03 既有的 `SourceError` 测试与协议穷举记录通过；新增 code 与限值名都合协议 DTO 语法。
+- [x] AC-06：
   - `PRODUCTION_CONVERTER_VERSION` 为 `osr-import.audio-1`，能通过 `readConverterVersion`，含 `AUDIO_CONVERTER_COMPONENT`；
   - `ManifestIdentity` 对 `ConverterVersion` 与来源（类别与令牌）各自敏感；
   - 原有的确定性、无歧义与敏感性用例仍通过；
   - 新的固定值经 `node:crypto` 对同一 ASCII 文本独立核对。
-- [ ] `pnpm exec vitest run src/content src/original-data src/workers tools/engineering-boundaries.test.ts`、`pnpm check` 通过。
+- [x] `pnpm exec vitest run src/content src/original-data src/workers tools/engineering-boundaries.test.ts`、`pnpm check` 通过。
 
 ## 验证方法
 
@@ -86,3 +86,26 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **`source` 层错误：**
+  - **扩展：** [source-error.ts](../../../../../src/original-data/source-error.ts) 追加 `invalid-payload`、`unsupported-payload`；`SourceLimitName` 追加全部预算维度；`observed` 改为 `number | null`。P2-03 既有 code、限值与其测试不变。
+  - **替换：** SND 解析、音频预检与预算计量改为抛出 `SourceError`。删除 `conversion-error.ts` 及其测试。
+  - **预算位置：** 改为该行首个 locator 的路径：预检时加 `.size`，实际计量时为该 locator 本身。原因是裸 `sources.mappings[i]` 在 P2-03 语法中明确被拒绝。
+  - **语法与回归：** [source-error.test-support.ts](../../../../../src/original-data/source-error.test-support.ts) 的语法预言只追加“映射路径 + SND 头部字段”，P2-03 原有的接受与拒绝用例不变。音频转换测试对每个 `SourceError` 断言 `inLocationGrammar`。协议测试的穷举记录随之同步。
+- **`ConverterVersion`：** 新增 [converter-version.ts](../../../../../src/original-data/conversion/converter-version.ts)，唯一的生产常量 `PRODUCTION_CONVERTER_VERSION` 为 `osr-import.audio-1`，由 `AUDIO_CONVERTER_COMPONENT` 组成并经 `readConverterVersion` 校验。测试断言其值、组件，以及能经 `readContentIdentity` 读取。
+- **`ManifestIdentity`：** [manifest-identity.ts](../../../../../src/content/manifest-identity.ts) 改为 P2-09 的定义：
+  - **输入：** 增加 `converterVersion` 与 `origin`。
+  - **编码：** 依次为 `schemaVersion`、`sliceId`、切片定义版本、`converterVersion`、来源 `[类别, 令牌]`、各组；采用 ASCII 编码，去掉了原序列化标签。
+  - **固定值：** 已用 `node:crypto` 对同一 ASCII 文本独立核对后更新。
+  - **用例：** 原有的确定性、无歧义与 16 项敏感性用例全部保留，另加 `converterVersion`、来源令牌、来源类别 3 项敏感性用例，以及非法 `converterVersion`、非法来源 2 项拒绝用例。
+- **命令：** `pnpm exec vitest run src/content src/original-data src/workers src/app/import tools/engineering-boundaries.test.ts`（1,545 通过）；`pnpm check` 通过（102 个测试文件、2,981 个测试，构建成功）。
+- **rubber-duck：** 无阻塞、无非阻塞问题。审阅确认三点：P2-03 契约是纯追加；语法预言仍是封闭的；身份覆盖了 P2-09 要求的全部字段与顺序。
+- **simplify：**
+  - **采纳：** 复用 `ManifestIdentityInput`，去掉重复的内部接口；ASCII 编码改为简单循环；在 content-identity 中导出 `originToken`，供 `contentIdentityKey` 与身份序列化共用。
+  - **未采纳：** 跨层共享 ASCII 辅助函数，以及改动 storage 的缓存键实现，都超出本子任务范围。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md)作了以下更新，工程约定无需修改：
+  - 目录树去掉 `conversion-error.ts`，加入 `converter-version.ts`；
+  - `manifest-identity.ts` 一条改为新的输入与编码；
+  - “原版格式转换”一节改为 `source` 层追加 code，并新增生产 `ConverterVersion` 一条；
+  - SND、预检与门槛中的 code 名同步；
+  - P2-03 错误一条指向追加的 code。

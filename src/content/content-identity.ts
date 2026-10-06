@@ -40,10 +40,12 @@ export interface PayloadIdentity {
   readonly fingerprint: PayloadFingerprint;
 }
 
+/** The origin's own token: the fixture ID of synthetic content or the source fingerprint of an original import. */
+export const originToken = (origin: ContentOrigin): string => (origin.type === 'synthetic' ? origin.fixtureId : origin.sourceFingerprint);
+
 /** One comparable key over the six content identity fields: equal keys mean the same package identity. */
 export const contentIdentityKey = ({ schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin }: ContentIdentity): string =>
-  [schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin.type,
-    origin.type === 'synthetic' ? origin.fixtureId : origin.sourceFingerprint].join('\u0000');
+  [schemaVersion, sliceId, sliceDefinitionVersion, converterVersion, manifestIdentity, origin.type, originToken(origin)].join('\u0000');
 
 const OPAQUE_TOKEN = /^[a-z0-9]+(?:[-.:][a-z0-9]+)*$/;
 

@@ -275,7 +275,7 @@ describe('error code grammar', () => {
   const sourceCodes: Record<SourceErrorCode, true> = {
     'invalid-archive': true, 'invalid-entry': true, 'limit-exceeded': true, 'entry-not-found': true, 'entry-type-mismatch': true,
     'invalid-request': true, 'invalid-catalog': true, 'unsupported-version': true, 'path-not-covered': true,
-    'alternatives-differ': true, 'fingerprint-mismatch': true,
+    'alternatives-differ': true, 'fingerprint-mismatch': true, 'invalid-payload': true, 'unsupported-payload': true,
   };
   const contentCodes: Record<ContentContractErrorCode, true> = {
     'invalid-record': true, 'invalid-dependencies': true, 'invalid-asset-id': true, 'invalid-kind': true, 'kind-mismatch': true,

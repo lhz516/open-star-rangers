@@ -4,12 +4,15 @@ import { computeManifestIdentity } from './manifest-identity.ts';
 import { CLASSIC_P2_SLICE, type SliceDefinition } from './slice-definition.ts';
 import { payloadIdentityOf, syntheticIdentity, syntheticSourceGroup } from './synthetic-content.test-support.ts';
 
+type Origin = { type: 'synthetic'; fixtureId: string } | { type: 'original-import'; sourceFingerprint: string };
 type Draft = { group: string; assets: Record<string, unknown>[]; sources: { sourceFingerprint: string | null; states: { id: string; state: string; unknowns: string[] }[] } | null };
 
 /** Fresh mutable drafts of the synthetic models and audio groups, as an original import of one source. */
-function drafts(): { schemaVersion: number; groups: Draft[] } {
+function drafts(): { schemaVersion: number; converterVersion: string; origin: Origin; groups: Draft[] } {
   return {
     schemaVersion: 1,
+    converterVersion: 'osr-import.audio-1',
+    origin: { type: 'original-import', sourceFingerprint: 'source:synthetic-disc' },
     groups: (['models', 'audio'] as const).map(group => {
       const { manifest, sources } = syntheticSourceGroup(group, 'source:synthetic-disc');
       return { group, assets: manifest.assets as unknown as Record<string, unknown>[], sources };
@@ -30,8 +33,8 @@ describe('manifest identity', () => {
   });
 
   it('pins the canonical serialization of a fixed input', () => {
-    // Cross-checked with node:crypto over the UTF-16LE JSON text; a change here changes every package identity.
-    expect(identity(drafts())).toBe('manifest:sha256:389de87c2d82dcdaac8299e23b6e782b294033e68ea2a99d3509d10e1bceba7a');
+    // Cross-checked with node:crypto over the ASCII JSON text; a change here changes every package identity.
+    expect(identity(drafts())).toBe('manifest:sha256:3c196518907b0eced19e1133e5c60bf8b150a4bb18271428045f5ffa486ec351');
   });
 
   it('is deterministic and independent of property insertion order', () => {
@@ -41,7 +44,7 @@ describe('manifest identity', () => {
       return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reversed(item)]));
     };
     const input = drafts();
-    expect(Object.keys(reversed(input) as object)).toEqual(['groups', 'schemaVersion']);
+    expect(Object.keys(reversed(input) as object)).toEqual(['groups', 'origin', 'converterVersion', 'schemaVersion']);
     expect(identity(drafts())).toBe(identity(input));
     expect(identity(reversed(input))).toBe(identity(input));
   });
@@ -67,6 +70,9 @@ describe('manifest identity', () => {
       input.groups.unshift({ group: 'logic', assets: manifest.assets as unknown as Record<string, unknown>[], sources });
     }],
     ['the content schema version', input => { input.schemaVersion = 2; }],
+    ['the converter version', input => { input.converterVersion = 'osr-import.audio-2'; }],
+    ['the origin token', input => { input.origin = { type: 'original-import', sourceFingerprint: 'source:other-disc' }; }],
+    ['the origin type', input => { input.origin = { type: 'synthetic', fixtureId: 'synthetic-disc' }; }],
     ['the slice definition version', () => undefined, { ...CLASSIC_P2_SLICE, version: 2 as SliceDefinition['version'] }],
   ];
 
@@ -103,6 +109,8 @@ describe('manifest identity', () => {
     ['descriptors out of order', (input: ReturnType<typeof drafts>) => { audio(input).assets.reverse(); }, 'asset-order', 'package.groups[1].assets[1]'],
     ['an invalid source state', (input: ReturnType<typeof drafts>) => { audio(input).sources!.states[0].state = 'ready'; }, 'invalid-source-mapping', 'package.groups[1].sources.states[0].state'],
     ['schema version 0', (input: ReturnType<typeof drafts>) => { input.schemaVersion = 0; }, 'invalid-version', 'package.schemaVersion'],
+    ['an invalid converter version', (input: ReturnType<typeof drafts>) => { input.converterVersion = 'Audio 1'; }, 'invalid-identity', 'package.converterVersion'],
+    ['an invalid origin', (input: ReturnType<typeof drafts>) => { input.origin = { type: 'cloud' } as never; }, 'invalid-origin', 'package.origin.type'],
     ['an extra field', (input: ReturnType<typeof drafts>) => { Object.assign(input.groups[0], { payloads: [] }); }, 'invalid-record', 'package.groups[0]'],
   ] as const)('rejects %s', (_name, corrupt, code, path) => {
     const input = drafts();

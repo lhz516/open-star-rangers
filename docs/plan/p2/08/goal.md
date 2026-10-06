@@ -134,10 +134,10 @@ updated: 2026-10-05
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |
 | [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | completed |
-| [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | pending |
+| [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | blocked |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | pending |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | pending |
-| [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | pending |
+| [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -168,6 +168,10 @@ updated: 2026-10-05
   - **原规定：** 两个核心角色对应同一个源样本时，记为契约问题并修订 spec。
   - **处理：** 依据同一授权修订“切片音效集合”：不同核心角色用到字节相同的不同条目时，各建一个 Asset，各自映射到原版为该角色播放的条目；同一条目被两个核心角色使用时，仍为契约问题。子任务 11 的冲突处理随之更新。
   - **不变：** 其余契约。
+- **2026-10-05 — Subtask 10 blocked:** AC-14 要求开发者在基准 DOSBox-X 中本人试听对照并给出判定，agent 无法代替，也不能用合成测试或统计量替代。
+  Evidence: 09 已完成。试听材料（18 个 WAV）与逐角色、逐变体的触发清单在被忽略的 `local/research/p2-08/listen/` 与 `listening-checklist.md` 中；四类角色与 16 位、`flags` 的结论目前为静态高概率，爆炸效果音的选择未确认。
+  Affected acceptance: AC-13（门槛）、AC-14；依赖它的 11、12 与最终对齐 13。
+  Resume when: 开发者按清单完成对照，并给出每个角色、每个变体的三项判定（是否同一声音、音高与速度是否一致、有无失真），同时说明爆炸时听到的是哪个效果音。
 
 ## 审批
 
