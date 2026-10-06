@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { cockpitLayoutBlock, dataPaletteBlock, rawImageBlock } from '../src/original-data/conversion/conversion.test-support.ts';
 import { buildImfat, syntheticMesh, syntheticModl } from '../src/original-data/synthetic.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -65,5 +66,31 @@ describe('nob-check on a synthetic archive', () => {
       '10001 MESH: invalid-payload@mesh',
     ]));
     expect(result.stdout).not.toContain(String(MARKER));
+  });
+});
+
+describe('nob-check on a synthetic CCKD entry', () => {
+  // Slot 0 holds one element; slot 1 is empty with a palette, slot 2 has neither.
+  const cockpit = (palette: Uint8Array) => cockpitLayoutBlock([[{ record: rawImageBlock(1, 1, [1]), x: 0, y: 0 }], [], []], undefined, [null, palette]);
+  const checkCockpit = (name: string, palette: Uint8Array) => {
+    const file = join(directory, name);
+    writeFileSync(file, buildImfat(10_000, [{ id: 10_001, type: 'CCKD', data: cockpit(palette) }]));
+    return spawnSync(process.execPath, [join(root, 'tools/nob-check.ts'), file], { cwd: root, encoding: 'utf8', timeout: 60_000 });
+  };
+
+  it('reads every group palette a directory record points to with the shared reader', () => {
+    const result = checkCockpit('COCKPIT.NOB', dataPaletteBlock());
+    expect(result.status).toBe(0);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining([
+      'CCKD 1 passed, 0 failed',
+      'CCKD directory slots 3, elements per slot 1, 1 elements decoded, 1 group palettes read',
+      'failures: 0',
+    ]));
+  });
+
+  it('reports a group palette the reader rejects by code and location', () => {
+    const result = checkCockpit('BADPAL.NOB', dataPaletteBlock(index => (index === 5 ? 64 : 0)));
+    expect(result.status).toBe(1);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining(['failures: 1', '10001 CCKD: invalid-payload@palette']));
   });
 });

@@ -4,12 +4,12 @@ import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
 import { ByteWriter } from '../synthetic.ts';
 import {
-  cockpitBlock as cockpit, cockpitLayoutBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
+  cockpitBlock as cockpit, cockpitLayoutBlock, dataPaletteBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
   recordBlock as record, spriteImageBlock, tableBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, mfdRecordOffset, readCockpitFont,
-  readCockpitFonts, readCockpitGroup, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
+  readCockpitFonts, readCockpitGroup, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
   readMfdRecordOffsets, readTableRecordOffsets, tableRecordOffset,
 } from './source-graphics.ts';
 
@@ -314,6 +314,37 @@ describe('CCKD groups', () => {
     const huge = record({ width: 65_535, height: 65_535, size: 1 }, [0]);
     const block = cockpitLayoutBlock([[{ record: huge, x: 0, y: 0 }]]);
     rejects(() => decodeImageRecord(block, cockpitElementRecordOffset(block, 0, 0)), 'limit-exceeded', 'record', { name: 'imageWidth', limit: 640, observed: 65_535 });
+  });
+});
+
+describe('CCKD group palettes', () => {
+  const MAP_PALETTE = dataPaletteBlock(index => (index * 5) % 64);
+  const VIEW_PALETTE = dataPaletteBlock();
+  // Palettes on slot 2 and on the empty slot 7; the other slots have none.
+  const block = cockpitLayoutBlock(HI_GROUPS, undefined, [null, null, MAP_PALETTE, null, null, null, null, VIEW_PALETTE]);
+
+  it('reads a slot palette exactly as the same 768 bytes as a DATA entry, on an empty slot too, leaving the layout as it was', () => {
+    expect(readCockpitGroupPalette(block, 2)).toEqual(readDataPalette(MAP_PALETTE));
+    expect(readCockpitGroupPalette(block, 7)).toEqual(readDataPalette(VIEW_PALETTE));
+    const positions = (groups: readonly (readonly { x: number; y: number }[])[]) => groups.map(elements => elements.map(({ x, y }) => [x, y]));
+    expect(positions(readCockpitGroups(block))).toEqual(positions(readCockpitGroups(HI_BLOCK)));
+  });
+
+  it.each<[string, number, string]>([
+    ['a slot without a palette', 0, 'graphics[palette/a].palette'],
+    ['an empty slot without a palette', 1, 'graphics[palette/a].palette'],
+    ['a slot past the directory', 8, 'graphics[palette/a].groups'],
+    ['a negative slot', -1, 'graphics[palette/a].groups'],
+  ])('reports %s as a missing subresource', (_, slot, location) => {
+    rejects(() => readCockpitGroupPalette(block, slot, 'graphics[palette/a]'), 'subresource-not-found', location);
+  });
+
+  it.each<[string, () => Uint8Array]>([
+    ['a pointer past the block', () => set32(copy(block), slotAt(2) + 4, block.length - 767)],
+    ['a size other than 768', () => set32(copy(block), slotAt(2) + 8, 767)],
+    ['a component of 64', () => cockpitLayoutBlock(HI_GROUPS, undefined, [null, null, dataPaletteBlock(index => (index === 300 ? 64 : 0))])],
+  ])('rejects %s', (_, malformed) => {
+    rejects(() => readCockpitGroupPalette(malformed(), 2, 'graphics[palette/a]'), 'invalid-payload', 'graphics[palette/a].palette');
   });
 });
 

@@ -534,7 +534,7 @@ src/
     - 每个元素的 +44、+48 只能为 0 或 1，否则为 `invalid-payload@…elements`。
 
     计数都在读取或遍历它们决定的规模之前检查。结果按目录顺序给出每个 slot 的冻结元素数组，每项为 `{ recordOffset, x, y }`：`recordOffset` 是元素开头图像记录的块内偏移，x、y 取自 +36、+40 的有符号 32 位整数。目录项的其余字段不解释。
-  - **CCKD 子资源：** `readCockpitGroup(block, s)` 对应 `groups/<s>`，空 slot 或序号越界为 `subresource-not-found@…groups`；`cockpitElementRecordOffset(block, s, i)` 对应 `groups/<s>/elements/<i>`，元素序号越界为 `subresource-not-found@…elements`。
+  - **CCKD 子资源：** `readCockpitGroup(block, s)` 对应 `groups/<s>`，空 slot 或序号越界为 `subresource-not-found@…groups`；`cockpitElementRecordOffset(block, s, i)` 对应 `groups/<s>/elements/<i>`，元素序号越界为 `subresource-not-found@…elements`。`readCockpitGroupPalette(block, s)`（[P2-07/18](../plan/p2/07/subtasks/18-cockpit-group-palette.md)）对应 `groups/<s>/palette`：先按上述规则读取目录，slot 越界为 `subresource-not-found@…groups`，目录项 +0x04 为 0 为 `subresource-not-found@…palette`；+0x08 不为 768 或指针越出块为 `invalid-payload@…palette`；768 字节交给 `readDataPalette`，结果与同样字节作为 DATA 整条目相同。
   - **TABL 图像列表（[P2-07/06](../plan/p2/07/subtasks/06-table-records.md)）：** `readTableRecordOffsets` 只接受 [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 记录为已确认的结构。依次检查：
     - 没有头部，记录从 0 起紧密排列；
     - 记录数为记录 0 的像素偏移除以 36，须为 1–64（`tableRecords`），在读取其余记录之前判定；
@@ -547,7 +547,7 @@ src/
   - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs`、`fonts`、`groups` 或 `elements`，不含条目编号、偏移或字节。
 - **转换声明：** [graphics-declarations.ts](../../src/original-data/conversion/graphics-declarations.ts)（[P2-05/04](../plan/p2/05/subtasks/04-graphics-conversion.md)）的 `readGraphicsDeclarations` 严格读取一组声明（字段见 [spec](../plan/p2/05/spec.md#图形转换声明)）：`asset` 为 palette/image/font 且组内 ID 唯一，`role` 与 `group` 按 P2-01 规则读取且该组拥有此 kind；图像的 `palette` 与 nearest 目标都须是同一组声明中同组的调色板，`alpha` 为 `encoding` 或 `{ colourKey }`，`rowOrder` 为 `stored`/`reversed`；字体有预期 `cell`、每字形行数 `glyphRows`（`cell.height`–8，且整除 256 × `cell.height`，字形数为二者之商，由 `declaredGlyphCount` 给出）与按码位互不重叠、字形小于字形数的 `charMap` 区间。它复用 content 的严格读取原语，任何问题都转为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 加字段路径。[P2-07/04](../plan/p2/07/subtasks/04-layout-conversion.md) 加入布局声明（字段见 [P2-07 spec](../plan/p2/07/spec.md#布局转换声明)）：`frame` 的宽 1–640、高 1–480，`elements` 为 1–16 个互不相同的 image ID，按存储顺序排列，每个都须是同一声明组、同一资源组中的图像声明。
 - **转换器：** [convert-graphics.ts](../../src/original-data/conversion/convert-graphics.ts) 的 `convertGraphics(declarations, sources, limits, usage)` 先读取声明，再按 Asset ID 取得已读入的源块：
-  - 来源类型为 `data-palette`、`embedded-palette`（记录的嵌入调色板）、`image-record`、`cockpit-font`（`fonts/<i>`）或 `cockpit-group`（`groups/<s>`）；来源与 kind 不符、缺少来源都是 `invalid-declaration`；
+  - 来源类型为 `data-palette`、`embedded-palette`（记录的嵌入调色板）、`cockpit-group-palette`（`groups/<s>/palette`）、`image-record`、`cockpit-font`（`fonts/<i>`）或 `cockpit-group`（`groups/<s>`）；DATA 整条目与分组调色板都在读取之前按 256 项扣除，嵌入调色板按记录头的条目数扣除；来源与 kind 不符、缺少来源都是 `invalid-declaration`；
   - 记录类来源可带 `RecordSelector`：CCKD 元素 `{ slot, index }`、MFDD 记录 `{ list, index }` 或 TABL 记录 `{ index }`，没有时为偏移 0 的整条目记录。转换时经 `cockpitElementRecordOffset`、`mfdRecordOffset`、`tableRecordOffset` 得到记录偏移，此后的读取、解码与检查与整条目相同；
   - 依次转换调色板、图像、字体与布局，同类按 ID 排序。
   - 每个 Asset 在读取或分配之前，用 `chargeBudget` 扣除由记录头或声明推得的 `assets`、`dependencyEdges`、`paletteEntries`、`imagePixels`、`glyphs` 与 `payloadBytes`（`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 与编码器共用同一公式）。被拒绝时报 `budget-exceeded`，限值名为维度，总量超出安全整数时 `observed` 为 null；调用者的用量不变。转换用量不扣 `sourceReadBytes`。
@@ -558,7 +558,7 @@ src/
   - **共用读取：** [step-entry-reader.ts](../../src/original-data/conversion/step-entry-reader.ts) 的 `stepEntryReader(source, beforeRead?)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。可选的 `beforeRead` 在读取字节之前收到目录项，供步骤按声明大小拒绝条目（逻辑步骤用它检查条目大小）。
   - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源的序号都是不带前导零的十进制，越界由读取报 `subresource-not-found`：
     - DATA 整条目为调色板；TEX/BITM 整条目为图像，其 `palette` 为嵌入调色板；
-    - CCKD 的 `fonts/<i>` 为字库，`groups/<s>` 为布局，`groups/<s>/elements/<i>` 为图像；
+    - CCKD 的 `fonts/<i>` 为字库，`groups/<s>` 为布局，`groups/<s>/palette` 为分组调色板，`groups/<s>/elements/<i>` 为图像；
     - MFDD 的 `lists/<l>/records/<i>` 与 TABL 的 `records/<i>` 为图像；
     - 任一容器记录路径后接 `/palette` 为该记录的嵌入调色板。
 

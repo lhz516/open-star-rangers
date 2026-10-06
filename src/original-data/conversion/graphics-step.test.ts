@@ -305,6 +305,40 @@ describe('graphics step container sources and layouts', () => {
       .rejects.toMatchObject({ name: 'SourceError', code: 'geometry-mismatch', location: 'graphics[layout/front].elements' });
   });
 
+  describe('with a CCKD group palette', () => {
+    const GROUP_PALETTE = dataPaletteBlock(index => (index * 3) % 64);
+    const PALETTED_COCKPIT = cockpitLayoutBlock([
+      [{ record: FRONT_RAW, x: 0, y: 6 }, { record: FRONT_SPRITE, x: 3, y: 0 }],
+      [],
+      [{ record: MAP_RECORD, x: 1, y: 1, flags: [1, 0] }],
+    ], undefined, [null, null, GROUP_PALETTE]);
+    const palettedSource = () => verifiedSource(graphicsArchive({ cockpit: PALETTED_COCKPIT, mfd: MFD }));
+
+    it('converts groups/<s>/palette as the same bytes as a DATA entry, with one read of the shared CCKD entry', async () => {
+      const { source, reads } = await palettedSource();
+      const mapped = withContainerMapping(IDS.mapPalette, 'CCKD', cockpit, 'groups/2/palette');
+      const [step] = (await runGraphicsStep(source, mapped, containerDeclarations(), LIMITS)).groups;
+      expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [cockpit]: 1, [mfd]: 1 });
+      expect(step.sources.find(({ id }) => id === IDS.mapPalette)?.state).toBe('verified');
+      const whole = convertGraphics([paletteDeclaration(IDS.mapPalette)], new Map<string, GraphicsSource>([
+        [IDS.mapPalette, { type: 'data-palette', block: GROUP_PALETTE }],
+      ]), LIMITS);
+      expect(step.payloads.find(({ id }) => id === IDS.mapPalette)!.bytes).toEqual(whole.assets[0].payload.bytes);
+    });
+
+    it.each<[string, () => unknown, string, string]>([
+      ['an image from a group palette', () => withContainerMapping(IDS.overlay, 'CCKD', cockpit, 'groups/2/palette'), 'invalid-declaration', 'graphics[image/mfd/overlay-0].record'],
+      ['a group palette path with a leading zero', () => withContainerMapping(IDS.mapPalette, 'CCKD', cockpit, 'groups/02/palette'), 'invalid-declaration', 'graphics[palette/map].palette'],
+      ['a group palette path on an MFDD entry', () => withContainerMapping(IDS.mapPalette, 'MFDD', mfd, 'groups/2/palette'), 'invalid-declaration', 'graphics[palette/map].palette'],
+      ['a slot without a palette', () => withContainerMapping(IDS.mapPalette, 'CCKD', cockpit, 'groups/0/palette'), 'subresource-not-found', 'graphics[palette/map].palette'],
+      ['a slot past the directory', () => withContainerMapping(IDS.mapPalette, 'CCKD', cockpit, 'groups/3/palette'), 'subresource-not-found', 'graphics[palette/map].groups'],
+    ])('rejects %s', async (_, table, code, location) => {
+      const { source } = await palettedSource();
+      await expect(runGraphicsStep(source, table(), containerDeclarations(), LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location });
+      expect(inGraphicsLocationGrammar(location)).toBe(true);
+    });
+  });
+
   describe('with a TABL image list', () => {
     const GAUGE = rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]);
     const TABLE = tableBlock([OVERLAY, rawImageBlock(1, 2, [3, 4]), GAUGE]);

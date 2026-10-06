@@ -55,6 +55,7 @@ const WHOLE_RECORD_TYPES: readonly string[] = Object.freeze(['TEX', 'BITM']);
 const INDEX = '(0|[1-9][0-9]*)';
 const FONT_SUBRESOURCE = new RegExp(`^fonts/${INDEX}$`);
 const GROUP_SUBRESOURCE = new RegExp(`^groups/${INDEX}$`);
+const GROUP_PALETTE_SUBRESOURCE = new RegExp(`^groups/${INDEX}/palette$`);
 const ELEMENT_SUBRESOURCE = new RegExp(`^groups/${INDEX}/elements/${INDEX}(/palette)?$`);
 const MFD_SUBRESOURCE = new RegExp(`^lists/${INDEX}/records/${INDEX}(/palette)?$`);
 const TABLE_SUBRESOURCE = new RegExp(`^records/${INDEX}(/palette)?$`);
@@ -80,6 +81,8 @@ function recordOf(entryType: string, subresource: string | null): { readonly rec
 /** What a locator supplies for an Asset kind, or null when it supplies nothing of that kind. */
 function sourceKindOf(kind: string, entryType: string, subresource: string | null): SourceKind | null {
   if (kind === 'palette' && subresource === null) return entryType === 'DATA' ? { type: 'data-palette' } : null;
+  const groupPalette = kind === 'palette' && entryType === 'CCKD' && subresource !== null ? GROUP_PALETTE_SUBRESOURCE.exec(subresource) : null;
+  if (groupPalette) return { type: 'cockpit-group-palette', slot: Number(groupPalette[1]) };
   if (kind === 'palette' || kind === 'image') {
     const located = recordOf(entryType, subresource);
     if (!located || located.palette !== (kind === 'palette')) return null;
@@ -97,8 +100,8 @@ const locatorOf = (mapping: SourceMapping): OriginalAssetLocator | null => (mapp
 
 /**
  * The typed source of one Asset from its mapping: a whole DATA entry; a whole-entry image record, a CCKD element, an
- * MFDD list record or a TABL image list record, or the embedded palette of any of them; `fonts/<i>` or `groups/<s>` of a
- * CCKD entry.
+ * MFDD list record or a TABL image list record, or the embedded palette of any of them; `fonts/<i>`, `groups/<s>` or
+ * `groups/<s>/palette` of a CCKD entry.
  */
 async function graphicsSource({ id, kind }: AssetReference, mapping: SourceMapping, readEntry: EntryReader): Promise<GraphicsSource> {
   const locator = locatorOf(mapping);

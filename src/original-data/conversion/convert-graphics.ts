@@ -17,7 +17,7 @@ import {
   type LayoutDeclaration, type PaletteDeclaration,
 } from './graphics-declarations.ts';
 import {
-  checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, mfdRecordOffset, readCockpitFont, readCockpitGroup, readDataPalette,
+  checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, mfdRecordOffset, readCockpitFont, readCockpitGroup, readCockpitGroupPalette, readDataPalette,
   readEmbeddedPalette, readImageRecordHeader, tableRecordOffset,
 } from './source-graphics.ts';
 
@@ -47,7 +47,14 @@ interface EmbeddedPaletteSource {
   readonly record?: RecordSelector;
 }
 
-type PaletteSource = DataPaletteSource | EmbeddedPaletteSource;
+interface CockpitGroupPaletteSource {
+  /** The `groups/<slot>/palette` subresource of a CCKD entry: a DATA-format palette the directory record points to. */
+  readonly type: 'cockpit-group-palette';
+  readonly block: Uint8Array;
+  readonly slot: number;
+}
+
+type PaletteSource = DataPaletteSource | EmbeddedPaletteSource | CockpitGroupPaletteSource;
 
 interface ImageSource {
   /** An image record: a whole entry at offset 0, or the container record `record` selects. */
@@ -87,7 +94,7 @@ export interface GraphicsConversion {
 }
 
 const SOURCE_TYPES: Readonly<Record<GraphicsKind, readonly GraphicsSource['type'][]>> =
-  Object.freeze({ palette: ['data-palette', 'embedded-palette'], image: ['image-record'], font: ['cockpit-font'], layout: ['cockpit-group'] });
+  Object.freeze({ palette: ['data-palette', 'embedded-palette', 'cockpit-group-palette'], image: ['image-record'], font: ['cockpit-font'], layout: ['cockpit-group'] });
 const SOURCE_FIELDS = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts', layout: 'groups' });
 /** The field a budget rejection is reported at, per kind. */
 const BUDGET_FIELDS = Object.freeze({ palette: 'palette', image: 'pixels', font: 'glyphs', layout: 'elements' });
@@ -99,6 +106,15 @@ function recordOffset(block: Uint8Array, record: RecordSelector | undefined, at:
     case 'cockpit-element': return cockpitElementRecordOffset(block, record.slot, record.index, at);
     case 'mfd-record': return mfdRecordOffset(block, record.list, record.index, at);
     case 'table-record': return tableRecordOffset(block, record.index, at);
+  }
+}
+
+/** The 8-bit RGB entries of a palette source; `offset` locates an embedded palette's image record. */
+function paletteEntries(source: PaletteSource, offset: number, at: string): Uint8Array<ArrayBuffer> {
+  switch (source.type) {
+    case 'data-palette': return readDataPalette(source.block, at);
+    case 'cockpit-group-palette': return readCockpitGroupPalette(source.block, source.slot, at);
+    case 'embedded-palette': return readEmbeddedPalette(source.block, offset, at);
   }
 }
 
@@ -141,10 +157,11 @@ class Conversion {
 
   palette(declaration: PaletteDeclaration, source: PaletteSource): void {
     const at = `graphics[${declaration.asset.id}]`;
-    const offset = source.type === 'data-palette' ? 0 : recordOffset(source.block, source.record, at);
-    const entryCount = source.type === 'data-palette' ? GRAPHICS_LIMITS.paletteEntryCount : readImageRecordHeader(source.block, offset, at).paletteCount;
+    // DATA-format palettes always have 256 entries; an embedded palette's count is in its record header.
+    const offset = source.type === 'embedded-palette' ? recordOffset(source.block, source.record, at) : 0;
+    const entryCount = source.type === 'embedded-palette' ? readImageRecordHeader(source.block, offset, at).paletteCount : GRAPHICS_LIMITS.paletteEntryCount;
     this.#charge(declaration, { paletteEntries: entryCount, payloadBytes: palettePayloadLength(entryCount) });
-    const entries = source.type === 'data-palette' ? readDataPalette(source.block, at) : readEmbeddedPalette(source.block, offset, at);
+    const entries = paletteEntries(source, offset, at);
     this.#paletteEntries.set(declaration.asset.id, entries.length / 3);
     this.#add(declaration, [], encodePalettePayload({ entries }, at));
   }

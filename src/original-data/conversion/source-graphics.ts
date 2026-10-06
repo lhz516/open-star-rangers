@@ -288,6 +288,23 @@ export function readCockpitGroup(block: Uint8Array, slot: number, path = ''): re
   return elements;
 }
 
+/**
+ * The palette of CCKD directory slot `slot`, the `groups/<slot>/palette` subresource (cockpit §1): directory +0x04
+ * points to 768 bytes in the DATA format, read as a DATA palette, and +0x08 must hold 768 (an invariant of every
+ * baseline slot). A slot past the directory or with a null pointer has no palette.
+ */
+export function readCockpitGroupPalette(block: Uint8Array, slot: number, path = ''): Uint8Array<ArrayBuffer> {
+  const groups = readCockpitGroups(block, path);
+  if (!isIndex(slot, groups.length)) notFound(fieldAt(path, 'groups'), 'the CCKD directory has no such slot');
+  const at = u32(block, 8) + slot * COCKPIT_GROUP_BYTES;
+  const [pointer, size] = [u32(block, at + 4), u32(block, at + 8)];
+  const palette = fieldAt(path, 'palette');
+  if (pointer === 0) notFound(palette, 'the CCKD group has no palette');
+  if (size !== DATA_PALETTE_BYTES) invalid(palette, 'a CCKD group palette must be 768 bytes');
+  if (!fits(block, pointer, DATA_PALETTE_BYTES)) invalid(palette, 'the CCKD group palette extends past the block');
+  return readDataPalette(block.subarray(pointer, pointer + DATA_PALETTE_BYTES), path);
+}
+
 /** Block offset of the image record of element `index` in slot `slot`, the `groups/<slot>/elements/<index>` subresource. */
 export function cockpitElementRecordOffset(block: Uint8Array, slot: number, index: number, path = ''): number {
   const elements = readCockpitGroup(block, slot, path);

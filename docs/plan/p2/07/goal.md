@@ -99,7 +99,7 @@ updated: 2026-10-06
 | [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | pending |
 | [15-local-composite-check.md](./subtasks/15-local-composite-check.md) | 12 | pending |
 | [16-local-base-check.md](./subtasks/16-local-base-check.md) | 12, 13 | pending |
-| [18-cockpit-group-palette.md](./subtasks/18-cockpit-group-palette.md) | 03, 04, 08 | pending |
+| [18-cockpit-group-palette.md](./subtasks/18-cockpit-group-palette.md) | 03, 04, 08 | completed |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。

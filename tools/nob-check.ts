@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
-  checkPaletteIndices, decodeImageRecord, readCockpitFonts, readCockpitGroups, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
+  checkPaletteIndices, decodeImageRecord, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
   readMfdRecordOffsets, readTableRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
 import { entryData, parseImfat } from '../src/original-data/imfat.ts';
@@ -51,9 +51,22 @@ const stats = new Map<string, GraphicsStats>();
 let images = 0;
 let indexedImages = 0;
 /** Observed container counts, compared with the P2-07 structural limits in docs/original. */
-const containers = { cockpitSlots: 0, cockpitElements: 0, elements: 0, mfdRecords: 0, tableRecords: 0, otherTables: 0, otherImageLists: 0 };
+const containers = {
+  cockpitSlots: 0, cockpitElements: 0, elements: 0, groupPalettes: 0, mfdRecords: 0, tableRecords: 0, otherTables: 0, otherImageLists: 0,
+};
 /** How many elements set each of the two CCKD element flag fields to 1; the others hold 0. */
 const flagsSet = [0, 0];
+
+/** Whether CCKD slot `slot` has a palette; a palette it points to must pass the shared reader. */
+function hasGroupPalette(block: Uint8Array, slot: number): boolean {
+  try {
+    readCockpitGroupPalette(block, slot);
+    return true;
+  } catch (error) {
+    if (error instanceof SourceError && error.code === 'subresource-not-found') return false;
+    throw error;
+  }
+}
 
 /** Whether a TABL entry that is not documented as an image list would still parse as one. */
 function parsesAsImageList(block: Uint8Array): boolean {
@@ -124,6 +137,7 @@ for (const entry of archive.entries) {
         for (const { cellWidth, height } of readCockpitFonts(block)) statsOf(entry.type).fontCells.add(`${cellWidth}x${height}`);
         const groups = readCockpitGroups(block);
         containers.cockpitSlots = Math.max(containers.cockpitSlots, groups.length);
+        groups.forEach((_, slot) => { if (hasGroupPalette(block, slot)) containers.groupPalettes += 1; });
         for (const elements of groups) {
           containers.cockpitElements = Math.max(containers.cockpitElements, elements.length);
           for (const { recordOffset, flags } of elements) {
@@ -220,7 +234,7 @@ if (counts.get('MODL')?.passed) {
   console.log(`    MODL parts ${modelMaxima.parts} (lists ${modelMaxima.lists.join('/')}), colour component ${modelMaxima.colour}, part flags ${flags}`);
 }
 console.log('  observed container counts:');
-console.log(`    CCKD directory slots ${containers.cockpitSlots}, elements per slot ${containers.cockpitElements}, ${containers.elements} elements decoded`);
+console.log(`    CCKD directory slots ${containers.cockpitSlots}, elements per slot ${containers.cockpitElements}, ${containers.elements} elements decoded, ${containers.groupPalettes} group palettes read`);
 const flagText = (set: number) => `${containers.elements - set}×0 ${set}×1`;
 console.log(`    CCKD element flags: first ${flagText(flagsSet[0])}, second ${flagText(flagsSet[1])}`);
 console.log(`    MFDD records per list ${containers.mfdRecords}`);

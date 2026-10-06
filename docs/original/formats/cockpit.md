@@ -117,6 +117,7 @@ The container limits come from [the P2-07 spec](../../plan/p2/07/spec.md#限值�
 | Elements per slot | 4 | 0–16 |
 | CCKD elements decoded | 38 in total, up to 640×480 | image limits of P2-05 |
 | MFDD records per list | 9 | 0–16 |
+| CCKD group palettes read | 3: 10097 slot 0, 10101 slot 2, 10103 slot 2 (2026-10-06, [P2-07 subtask 18](../../plan/p2/07/subtasks/18-cockpit-group-palette.md#完成证据)); every other slot's +0x04 is 0 | +0x08 = 768; components ≤ 63 |
 
 The two element flag fields after the position (+44, +48) hold only 0 or 1 on every element: +44 is 1 on 8 of 38 elements and +48 on 33 of 38. Which elements set them, and what they mean, remains U-029.
 
