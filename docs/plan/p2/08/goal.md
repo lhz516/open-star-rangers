@@ -107,7 +107,7 @@ updated: 2026-10-05
 | AC-02 | 01 | 01 Node 测试 |
 | AC-03 | 04、11 | 11 读取真实生产表的 Node 测试与边界回归 |
 | AC-04 | 04、14 | 04 Node 测试（合成光盘与注入表）；14 改为 `source` 层 code 后复跑 |
-| AC-05 | 04、14、06 | 04 计量端口的预检与核算测试；14 的 `source/limit-exceeded`；06 的 `finished.usage` |
+| AC-05 | 04、14、06 | 04 计量端口的预检与核算测试；14 与合并 P2-05 后的 `source/budget-exceeded`；06 的 `finished.usage` |
 | AC-06 | 02、14、06 | 02、14 格式、确定性与敏感性测试；14 生产常量；06 同一作业各组的身份相同 |
 | AC-07 | 05 | 05 协议、宿主与持有者 Node 测试，以及 P2-04 既有测试的更新 |
 | AC-08 | 06 | 06 Node `MessageChannel` 集成测试；`pnpm test:e2e import-worker.spec.ts --project=development` |
@@ -129,7 +129,7 @@ updated: 2026-10-05
 | [02-manifest-identity.md](./subtasks/02-manifest-identity.md) | — | completed |
 | [03-snd-parser.md](./subtasks/03-snd-parser.md) | 01 | completed |
 | [04-audio-group-conversion.md](./subtasks/04-audio-group-conversion.md) | 01, 03 | completed |
-| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | pending |
+| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | in-progress |
 | [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05, 14 | pending |
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |
@@ -172,7 +172,18 @@ updated: 2026-10-05
   Evidence: 09 已完成。试听材料（18 个 WAV）与逐角色、逐变体的触发清单在被忽略的 `local/research/p2-08/listen/` 与 `listening-checklist.md` 中；四类角色与 16 位、`flags` 的结论目前为静态高概率，爆炸效果音的选择未确认。
   Affected acceptance: AC-13（门槛）、AC-14；依赖它的 11、12 与最终对齐 13。
   Resume when: 开发者按清单完成对照，并给出每个角色、每个变体的三项判定（是否同一声音、音高与速度是否一致、有无失真），同时说明爆炸时听到的是哪个效果音。
+- **2026-10-05 — 子任务 05 开始时 P2-05 已合入，已按授权修订 spec（执行期修订三）：**
+  - **核对：** 按 05 的开始前核对，`main` 上已合入 P2-05 的实现：协议版本 2，阶段 `identify-source`、`convert-graphics`；`canReportStage` 统一阶段顺序；预算超限为 `source/budget-exceeded`；图形步骤结果留在作业内，不发送组。
+  - **处理：** 以非破坏性的合并提交把 `main` 并入本分支，冲突按并集解决。依据 spec 风险约定（协议版本按合入顺序递增，已落地者的定义由后者复用）与同一授权，作了以下修订：
+    - **代码（合并提交）：** 音频预算超限改用 `budget-exceeded`，同步 03、04、14 的测试与源码结构指南。
+    - **spec：** 修订当前实现与依据、转换与导入作业、音频转换预算、包身份的组装顺序、导入协议变化，以及技术决定 7、AC-05、AC-07、AC-08 与风险约定。要点如下：
+      - 协议为版本 3，阶段为 `identify-source`、`convert-graphics`、`convert-audio`；
+      - 新增的顺序规则只有“第一个组之后不再有进度”；
+      - 作业只发送 `audio` 组，包身份只覆盖发送的组；
+      - `finished.usage` 含图形转换用量。
+    - **subtasks：** 05、06 的范围与验收随之调整；03、04、14 的已完成证据保留原样，只追加修订说明；13 的 code 名同步。
+  - **不变：** S/AC 编号、音频转换与播放行为、依赖关系。
 
 ## 审批
 
-用户于 2026-10-05 明确批准本 goal（“approve goal and commit”）；执行期按用户授权新增子任务 14 并调整 05、06 的依赖，见[执行记录](#执行记录)。原批准范围为最初 13 个子任务的拆分、依赖关系和验收覆盖，包括 06 先建立空的生产音效模块、11 再依据研究填入的安排。spec 已于同日由用户明确批准。批准不代表实现完成，也不授权 push、部署或替代 10 中开发者的试听判定。
+用户于 2026-10-05 明确批准本 goal（“approve goal and commit”）；执行期按用户授权新增子任务 14 并调整 05、06 的依赖，之后又按执行期修订三调整了 05、06 的范围，见[执行记录](#执行记录)。原批准范围为最初 13 个子任务的拆分、依赖关系和验收覆盖，包括 06 先建立空的生产音效模块、11 再依据研究填入的安排。spec 已于同日由用户明确批准。批准不代表实现完成，也不授权 push、部署或替代 10 中开发者的试听判定。

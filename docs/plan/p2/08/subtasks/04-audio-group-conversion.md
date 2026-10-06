@@ -107,4 +107,4 @@ updated: 2026-10-05
   - 复跑检查通过。
 - **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录加入 `conversion-budget.ts` 与 `audio-conversion.ts`，并新增“转换预算”“音频组”两条（音效表、常量、流程、输出与门槛）。工程约定无需修改：能力边界与命令不变。
 
-- **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。预检与预算的错误改为 `SourceError`（`invalid-payload`、`limit-exceeded`）。本条以上的证据记录的是本子任务完成时的状态。
+- **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。预检与预算的错误改为 `SourceError`（`invalid-payload`、`limit-exceeded`）。合并 P2-05 后，预算超限再改为 `budget-exceeded`（执行期修订三）。本条以上的证据记录的是本子任务完成时的状态。

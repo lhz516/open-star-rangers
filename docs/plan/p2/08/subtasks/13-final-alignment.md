@@ -26,7 +26,7 @@ updated: 2026-10-05
   - **组的发送与失败：**
     - 组在全部转换与身份计算之后发送；
     - 发送前的失败不发出组，发送后的失败由持有者丢弃已收的组。
-  - **诊断：** 不含样本字节、宿主错误文本或私人路径。生产代码中没有 `ConversionError` 或 `conversion` 错误层；SND 转换与音频预算的每个 `SourceError` 产生路径（`invalid-payload`、`unsupported-payload`、`limit-exceeded`）都有测试，并经宿主到达 `source` 层 DTO。
+  - **诊断：** 不含样本字节、宿主错误文本或私人路径。生产代码中没有 `ConversionError` 或 `conversion` 错误层；SND 转换与音频预算的每个 `SourceError` 产生路径（`invalid-payload`、`unsupported-payload`、`budget-exceeded`）都有测试，并经宿主到达 `source` 层 DTO。
   - **播放：** 隐藏、挂起、失败与释放后没有发声；控制器至多一个上下文；释放从不创建上下文。
   - **研究与生产表：** 研究门槛与生产表一致；没有用近似样本、猜测的解释或槽位顺序命名补齐。
 - **工程检查：**

@@ -109,3 +109,4 @@ updated: 2026-10-05
   - “原版格式转换”一节改为 `source` 层追加 code，并新增生产 `ConverterVersion` 一条；
   - SND、预检与门槛中的 code 名同步；
   - P2-03 错误一条指向追加的 code。
+- **后续修订（执行期修订三）：** 2026-10-05 合并 `main` 时，P2-05 已以 `budget-exceeded` 落地预算超限 code。合并提交中，`conversion-budget.ts` 与 03、04、14 的相关测试已改为 `budget-exceeded`；`limit-exceeded` 只保留给结构限值（见 [goal 执行记录](../goal.md#执行记录)）。本条以上的证据记录的是本子任务完成时的状态。

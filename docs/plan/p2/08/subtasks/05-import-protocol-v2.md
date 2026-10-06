@@ -16,20 +16,19 @@ updated: 2026-10-05
 ## 工作范围
 
 - **开始前核对（goal 前提六）：** 2026-10-05 的核对发现 P2-05、P2-09 已批准不同的错误层与身份机制，spec 已据此修订（见 [goal 执行记录](../goal.md#执行记录)），由 14 实施。开始前再次核对 [import-protocol.ts](../../../../../src/workers/import-protocol.ts)：若并行任务已先合入并递增版本，本任务在其值上递增，阶段集合按合入顺序追加；若出现新的契约冲突，本子任务记为 blocked。
+  - **再次核对的结果（2026-10-05）：** P2-05 已合入 `main`：协议为版本 2，阶段为 `identify-source`、`convert-graphics`，`canReportStage` 统一了阶段顺序规则。本分支已以合并提交并入 `main`，spec 按执行期修订三在其上递增（见 [goal 执行记录](../goal.md#执行记录)）。
 - **协议（`src/workers/import-protocol.ts`）：**
-  - `IMPORT_PROTOCOL_VERSION` 递增（本分支为 2）；
-  - `IMPORT_STAGES` 改为 `identify-source`、`convert-audio`，按此顺序；
+  - `IMPORT_PROTOCOL_VERSION` 递增为 3；
+  - `IMPORT_STAGES` 改为 `identify-source`、`convert-graphics`、`convert-audio`，按此顺序；
   - 错误层集合与消息形状不变。
 - **宿主（`src/workers/import-host.ts`）：**
   - `toErrorData` 不变：14 之后，SND 转换与音频预算的失败都是 `SourceError`，按既有规则转为 `source` 层 DTO；
   - 报告器拒绝作业的误用，以 `internal-error` 失败，与 P2-04 的做法一致：
-    - `identified` 之前报告 `convert-audio` 进度；
-    - 阶段回退；
-    - 发送第一个组之后再报告进度。
-- **持有者（`src/app/import/import-job-owner.ts`）：** 增加三条顺序检查，违反时以 `protocol-error` 失败，位置沿用 `message.stage` 或 `message.type`：
-  - `identified` 之前的 `convert-audio` 进度；
-  - 阶段相对于上一条进度回退；
-  - 收到第一个 `group` 之后的任何进度。
+    - `identified` 之前报告 `convert-audio` 进度、阶段回退：沿用 `canReportStage`；
+    - 新增：发送第一个组之后再报告进度。
+- **持有者（`src/app/import/import-job-owner.ts`）：** 以下顺序违规以 `protocol-error` 失败，位置沿用 `message.stage` 或 `message.type`：
+  - `identified` 之前的 `convert-audio` 进度、阶段相对于上一条进度回退：沿用 `canReportStage`；
+  - 新增：收到第一个 `group` 之后的任何进度。
 
   `readBytes` 不减少、不超过输入总字节的规则跨阶段继续适用。组结果的验证顺序与 `takeGroups()` 不变。
 - **既有测试：** 按新契约更新 [import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts)、[import-host.test.ts](../../../../../src/workers/import-host.test.ts)、[import-job-owner.test.ts](../../../../../src/app/import/import-job-owner.test.ts) 与 [worker-port.test.ts](../../../../../src/platform/workers/worker-port.test.ts) 中涉及版本、阶段与错误层的断言。不放宽它们原有的拒绝用例。
@@ -48,11 +47,11 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-07（协议）：版本已递增（本分支为 2）；阶段集合按 spec，错误层集合不变；带 14 追加的 `source` code、预算维度限值名与 `observed: null` 的 DTO 通过读取；层未知、code 不合语法的 DTO 仍被拒绝。
-- [ ] AC-07（顺序）：持有者以 `protocol-error` 拒绝三种违规：`identified` 之前的 `convert-audio` 进度、阶段回退、`group` 之后的进度。合法序列 `identify-source` → `identified` → `convert-audio` → `group` → `finished` 被接受。
+- [ ] AC-07（协议）：版本为 3；阶段集合按 spec，错误层集合不变；`budget-exceeded`（预算维度限值名与 `observed: null`）、`invalid-payload` 与 `unsupported-payload` 的 `source` DTO 通过读取；层未知、code 不合语法的 DTO 仍被拒绝。
+- [ ] AC-07（顺序）：持有者以 `protocol-error` 拒绝三种违规：`identified` 之前的 `convert-audio` 进度、阶段回退（含 `convert-audio` 之后的 `convert-graphics` 进度）、`group` 之后的进度。合法序列 `identify-source` → `identified` → `convert-graphics` → `convert-audio` → `group` → `finished` 被接受。
 - [ ] AC-07（版本）：旧版本的 `ready` 被新持有者以 `protocol-error` 拒绝，且不发送 `start`；新宿主拒绝旧版本的 `start`。
 - [ ] AC-07（错误转换）：宿主把 SND 转换与音频预算的 `SourceError` 转为 `source` 层 DTO，其余字段等于 `toData()`，`limit` 的预算维度名、上限与观测值（含 null）完整保留；`DiscReadError`、`ContentContractError` 与未知异常的转换不变。宿主拒绝三种作业误用，报 `internal-error@job`。
-- [ ] AC-07（回归）：P2-04 的既有测试按新契约更新后全部通过。
+- [ ] AC-07（回归）：P2-04、P2-05 的既有测试按新契约更新后全部通过。
 - [ ] `pnpm exec vitest run src/workers src/app/import src/platform/workers tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法

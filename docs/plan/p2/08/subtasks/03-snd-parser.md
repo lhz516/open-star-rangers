@@ -83,7 +83,7 @@ updated: 2026-10-05
 ## 完成证据
 
 - **实现：**
-  - [conversion-error.ts](../../../../../src/original-data/conversion/conversion-error.ts)：`ConversionError` 与 `SourceError` 同形，code 为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，`limit.name` 为 P2-01 预算维度。
+  - `conversion-error.ts`（已由 14 移除）：`ConversionError` 与 `SourceError` 同形，code 为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，`limit.name` 为 P2-01 预算维度。
   - [snd.ts](../../../../../src/original-data/formats/snd.ts)：`readSndHeader` 负责结构核对；`convertSnd` 依次核对位宽、采样率与 `flags`，最后核对整帧，然后用 `writeSoundPayload` 输出；`SndFormatRules` 为 `{ flags: [{ value, channels, loop }], s16le }`。
   - [synthetic.ts](../../../../../src/original-data/synthetic.ts)：新增 `syntheticSnd`，可直接展开为 `buildImfat` 的条目。
   - 生产规则不在本子任务中写入。
@@ -94,7 +94,7 @@ updated: 2026-10-05
     - **拒绝：** 15 个表驱动用例，各断言 `toData()` 的 code 与位置：块 19 字节、重定位 0 个与 2 个、重定位位置为 4、指针为 24、样本字节数不符、声明长度 0xFFFFFFF0、16 位奇数字节、双声道奇数字节、帧数 0、12 位、7,999 与 44,101 Hz、未列入的 `flags`、高字节不同的 `flags`。声明长度为 0xFFFFFFF0 时以 `invalid-sound` 拒绝，不按声明分配；
     - **规则不接受 16 位：** 以 `unsupported-sound-format` 拒绝；
     - **诊断：** 不回显头部值或样本字节。
-  - [conversion-error.test.ts](../../../../../src/original-data/conversion/conversion-error.test.ts) 覆盖冻结、可结构化克隆、`limit` 冻结副本、`observed: null`，以及 code 符合协议 token 语法。
+  - `conversion-error.test.ts`（已由 14 移除） 覆盖冻结、可结构化克隆、`limit` 冻结副本、`observed: null`，以及 code 符合协议 token 语法。
 - **命令：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts` 通过，其中包括能力边界与依赖图回归。`pnpm check` 通过（99 个测试文件、2,889 个测试，构建成功）。
 - **rubber-duck：** 无阻塞、无非阻塞问题。
 - **simplify：** 采纳效率一项：`syntheticSnd` 直接写入单个 `Uint8Array`，不再经 `ByteWriter` 的数组，以便后续预算测试构造大块。复用、简化与层次三个角度无发现。复跑检查通过。
