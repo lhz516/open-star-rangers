@@ -38,9 +38,9 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-12 成功、转换失败与取消三个用例都在真实 Chromium 模块 Worker 中通过。
-- [ ] P2-04 的既有 Worker 用例在协议版本 2 下照常通过。
-- [ ] `pnpm test:e2e e2e/import-worker.spec.ts --project=development` 通过；`pnpm exec vitest run tools/e2e-configuration.test.ts` 通过。
+- [x] AC-12 成功、转换失败与取消三个用例都在真实 Chromium 模块 Worker 中通过。
+- [x] P2-04 的既有 Worker 用例在协议版本 2 下照常通过。
+- [x] `pnpm test:e2e e2e/import-worker.spec.ts --project=development` 通过；`pnpm exec vitest run tools/e2e-configuration.test.ts` 通过。
 
 ## 验证方法
 
@@ -49,3 +49,21 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **环境（2026-10-05）：** macOS 26.6；Playwright 1.63.0 的 development 项目，使用已安装的 Chrome 154.0.8037.98（channel `chrome`）。runner 自建的开发服务器为 `http://127.0.0.1:4173`，视口 1280×800，每个用例使用独立 context。只用代码生成的合成光盘，不读取 `local/`。
+- **实现：** [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 新增两个场景：`graphics` 用 07 的生产作业（默认图形步骤）识别 `graphicsCoveredFiles()`；`graphics-corrupt` 识别 4×6 字库表少一个字节的同一光盘。[synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 新增 `graphicsCoveredFiles` 与 `GRAPHICS_PAYLOAD_BYTES`（7,184，按 payload 长度公式；06 的 Node 测试独立核对用量等于实际 payload 字节之和）。[import-worker.spec.ts](../../../../../e2e/import-worker.spec.ts) 的页面持有者订阅新增 `cancelAtStage`，可在指定阶段首个快照的通知中同步取消。没有修改生产代码，也没有新增生产入口或调试 API。
+
+| 验收项 | 设置与操作 | 期望 | 观测 | 结果 |
+|---|---|---|---|---|
+| AC-12 成功 | `graphics` 场景，生产图形结构的合成光盘 | 识别进度 → `identified` → 图形进度 → `finished`；组为空；用量 5/512/768，`payloadBytes` 为期望值 | 去重后的快照序列为 `starting`、`running:null`、`running:identify-source`、`running:identify-source`（已识别）、`running:convert-graphics`、`finished`；`groups` 与 `takeGroups()` 为 `[]`；`usage` 为 assets 5、dependencyEdges 0、paletteEntries 512、glyphs 768、imagePixels 0，`payloadBytes` 等于页面中的 `GRAPHICS_PAYLOAD_BYTES`；`readBytes` 不减少且末值等于 `sourceReadBytes`；探针显示一个模块 Worker（`name` 为 graphics），发送 1 次，终止 1 次，监听全部移除 | passed |
+| AC-12 转换失败 | `graphics-corrupt` 场景 | `source` 层 `invalid-payload`，没有部分结果 | 终态为 `{status: failed, jobId: 1, stage: convert-graphics, error: {layer: source, code: invalid-payload, location: graphics[font/hud/4x6].glyphs, limit: null}}`；`takeGroups()` 为 null；Worker 终止 | passed |
+| AC-12 取消 | `graphics` 场景，订阅在首个 `convert-graphics` 快照时调用 `cancel()` | `cancelled`，Worker 终止，之后不再变化 | 日志依次为 `running:convert-graphics`、`cancelled:convert-graphics`、`cancel:true`，此前没有图形快照，此后只有帧事件；终态为 `{status: cancelled, jobId: 1, stage: convert-graphics}`；探针显示终止 1 次、监听全部移除 | passed |
+| 隐私 | 三个用例 | 快照与页面/Worker console 中没有 `MARKER` | 均未出现 | passed |
+| P2-04 回归 | 既有 8 个用例，协议版本 2 | 照常通过 | 通过（`synthetic` 的序列已在 07 中包含空图形阶段） | passed |
+
+- **命令：** `pnpm test:e2e import-worker.spec.ts --project=development` 11 项通过（新增 3 项）；`pnpm exec vitest run tools/e2e-configuration.test.ts` 8 项通过；`pnpm typecheck`、`pnpm lint` 与 `pnpm check` 通过。[import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 改用同一个 `graphicsCoveredFiles` 构造合成光盘，5 项通过。
+- **清理：** runner 自行启动和停止开发服务器与浏览器；没有遗留进程。报告与 trace 只在被忽略的 `test-results/`、`playwright-report/` 中。
+- **Rubber-duck：** 无发现。审阅者确认：在订阅通知中取消符合同步通知契约；Worker 端口先移除监听再终止，排队的消息不会改变状态；`GRAPHICS_PAYLOAD_BYTES` 与实际字节一致；差异只涉及测试、测试支持与文档。
+- **Simplify：** 本子任务只修改测试、测试支持与文档，没有实现代码，按 execute-goal 不需要代码清理。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#导入-worker)补充两个测试场景与期望值来源；[工程约定](../../../../engineering/README.md#本地浏览器-runner)的导入 Worker 浏览器测试补充图形阶段用例与 `cancelAtStage`。配置回归不需要改动。
+

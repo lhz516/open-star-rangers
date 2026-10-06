@@ -7,6 +7,10 @@ import { identifySource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
 import { EMPTY_BUDGET_USAGE } from '../content/budget.ts';
+import { fontPayloadLength } from '../content/graphics/font-payload.ts';
+import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
+import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
+import { productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
 import type { ImportJob } from './import-host.ts';
 import { createImportJob, type GraphicsStepInput, type OpenSource } from './import-job.ts';
 
@@ -68,6 +72,17 @@ export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
   declarations: [],
   share: EMPTY_BUDGET_USAGE,
 });
+
+/**
+ * The covered files of a disc in the production graphics structure; `corrupt` shortens the 4×6 font table by one byte,
+ * which the converter rejects as `invalid-payload`.
+ */
+export function graphicsCoveredFiles(corrupt = false): Record<string, Uint8Array> {
+  return productionGraphicsFiles(corrupt ? { CCKD: cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]) } : {});
+}
+
+/** The payload bytes of the production graphics converted from `graphicsCoveredFiles()`: two palettes and three fonts without character maps. */
+export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + 2 * fontPayloadLength(8, 0) + fontPayloadLength(6, 0);
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];

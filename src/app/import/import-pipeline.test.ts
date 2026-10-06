@@ -4,11 +4,12 @@ import { syntheticSourceGroup } from '../../content/synthetic-content.test-suppo
 import { connectImportWorker, type WorkerLike } from '../../platform/workers/worker-port.ts';
 import { runImportHost, type ImportJob } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
-import { cockpitBlock, fontTable } from '../../original-data/conversion/conversion.test-support.ts';
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { createImportJob, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
-import { boundGroups, MARKER, syntheticGroupsJob, syntheticImport, type SyntheticGroups } from '../../workers/synthetic-import.test-support.ts';
+import {
+  boundGroups, graphicsCoveredFiles, MARKER, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
+} from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
 
@@ -186,7 +187,7 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 
 describe('graphics conversion over a structured-clone channel', () => {
   it('reports identification, then graphics progress, and finishes without groups with the conversion usage', async () => {
-    const graphics = await syntheticImport(productionGraphicsFiles(), 'graphics-disc');
+    const graphics = await syntheticImport(graphicsCoveredFiles(), 'graphics-disc');
     const { owner, traffic } = await run(createImportJob(graphics.open), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
@@ -207,9 +208,9 @@ describe('graphics conversion over a structured-clone channel', () => {
 
   it('keeps the layer, code and location of identification, read and conversion failures, with no partial result', async () => {
     const [complete, withoutCockpit, brokenFont] = await Promise.all([
-      syntheticImport(productionGraphicsFiles(), 'graphics-disc'),
+      syntheticImport(graphicsCoveredFiles(), 'graphics-disc'),
       syntheticImport(productionGraphicsFiles({ CCKD: null }), 'graphics-disc'),
-      syntheticImport(productionGraphicsFiles({ CCKD: cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]) }), 'graphics-disc'),
+      syntheticImport(graphicsCoveredFiles(true), 'graphics-disc'),
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],

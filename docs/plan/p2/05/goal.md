@@ -99,7 +99,7 @@ updated: 2026-10-05
 | [05-graphics-step.md](./subtasks/05-graphics-step.md) | 04 | completed |
 | [06-production-graphics.md](./subtasks/06-production-graphics.md) | 05 | completed |
 | [07-worker-integration.md](./subtasks/07-worker-integration.md) | 05, 06 | completed |
-| [08-browser-worker-graphics.md](./subtasks/08-browser-worker-graphics.md) | 07 | pending |
+| [08-browser-worker-graphics.md](./subtasks/08-browser-worker-graphics.md) | 07 | completed |
 | [09-local-structure-check.md](./subtasks/09-local-structure-check.md) | 03 | pending |
 | [10-local-base-check.md](./subtasks/10-local-base-check.md) | 07 | pending |
 | [11-nearest-colour-research.md](./subtasks/11-nearest-colour-research.md) | 02, 04 | pending |
