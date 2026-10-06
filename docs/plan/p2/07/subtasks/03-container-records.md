@@ -43,10 +43,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-03 的解析部分：CCKD 目录、元素与记录读取的正负路径全部符合，限值名与 `observed` 正确，65535×65535 只读头部。
-- [ ] AC-04 的 MFDD 部分：`l` 为 2 或 `i` 越界、17 个记录、指针越出块分别报对应 code。
-- [ ] `fonts/<i>` 与 MFDD 的既有测试不改即通过；没有新 code，只追加限值名。
-- [ ] `pnpm typecheck`、`pnpm lint` 与聚焦测试通过；源码结构已更新。
+- [x] AC-03 的解析部分：CCKD 目录、元素与记录读取的正负路径全部符合，限值名与 `observed` 正确，65535×65535 只读头部。
+- [x] AC-04 的 MFDD 部分：`l` 为 2 或 `i` 越界、17 个记录、指针越出块分别报对应 code。
+- [x] `fonts/<i>` 与 MFDD 的既有测试不改即通过；没有新 code，只追加限值名。
+- [x] `pnpm typecheck`、`pnpm lint` 与聚焦测试通过；源码结构已更新。
 
 ## 验证方法
 
@@ -55,3 +55,38 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+2026-10-05：
+
+- **实现（[source-graphics.ts](../../../../../src/original-data/conversion/source-graphics.ts)）：**
+  - `readCockpitGroups` 按 cockpit §1 读取目录：头部 +0x08 的 {指针, 数量}，32 字节目录项的 +0x10 指针与 +0x14 元素数，52 字节元素的 +36、+40 有符号坐标，+44、+48 只接受 0、1。计数先于遍历判定。空 slot 的指针不寻址任何字节，因此不做范围检查。
+  - `readCockpitGroup`（`groups/<s>`）与 `cockpitElementRecordOffset`（`groups/<s>/elements/<i>`）给出布局元素与记录偏移。
+  - `readMfdRecordOffsets` 在原有范围检查之后增加 `mfdRecords` 上限。范围检查在前，因此既有“巨大计数”用例仍报 `invalid-payload`。`mfdRecordOffset` 对应 `lists/<l>/records/<i>`。
+  - `CONTAINER_LIMITS` 导出 8、16、16，其中 `cockpitElements` 即 `GRAPHICS_LIMITS.layoutElements`。
+  - 位置为调用者 `path` 下的 `groups`、`elements` 或 `record`，不含条目编号、偏移或字节。
+  - [source-error.ts](../../../../../src/original-data/source-error.ts) 只追加限值名 `cockpitSlots`、`cockpitElements`、`mfdRecords`；[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的类型完备记录随之更新。
+- **合成数据：** [conversion.test-support.ts](../../../../../src/original-data/conversion/conversion.test-support.ts) 新增两个构造器：
+  - `cockpitLayoutBlock`：字体目录与分组目录并存；目录元数据为非零填充，空 slot 的指针越出块；记录数据的指针相对条目块；
+  - `mfdBlock`：两个记录列表。
+
+  位置语法 oracle 加入 `groups` 与 `elements` 字段。
+- **测试：** `pnpm exec vitest run src/original-data/conversion/source-graphics.test.ts` 通过，共 90 项。[source-graphics.test.ts](../../../../../src/original-data/conversion/source-graphics.test.ts) 覆盖：
+  - **正向：** 8 个目录项（slot 1、7 为空，坐标含负数，两个标志都用到）与 1 个目录项；16 个元素；
+  - **等价：** 编码 0 与 2 的元素记录、MFDD 两个列表中的记录，与偏移 0 的同一记录逐字节等价；`…/palette` 得到嵌入调色板，没有调色板时报 `subresource-not-found`；
+  - **subresource-not-found：** 空 slot、slot 为 8/-1/0.5、元素序号越界、`lists/2`、记录序号越界；
+  - **invalid-payload：** 截断头部、目录越出块、元素数组越出块、+44 或 +48 为 2、MFDD 指针越出块；
+  - **limit-exceeded：** 0 个与 9 个目录项（`cockpitSlots`）、17 个元素与 0xFFFFFFFF 个元素（`cockpitElements`，`observed` 为实际值）、17 个 MFDD 记录（`mfdRecords`）；
+  - **超大记录：** 65535×65535 的元素记录只凭头部被拒绝。
+
+  既有的 MFDD、CCKD 字体测试未修改，照常通过；`readCockpitFont` 改用共用的 `isIndex`，行为不变。
+- **工程：** `pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过，124 个文件、3732 项，构建成功。
+- **审查：**
+  - **rubber-duck：** 无问题。
+  - **simplify：**
+    - 已采纳：`readCockpitFont` 复用 `isIndex`；`cockpitElements` 与布局元素上限共用常量；拒绝用例只构造一次损坏块。
+    - 未采纳：
+      - 单 slot 解析与共享 DataView：每次导入至多 8×16 个元素，开销可忽略，且整体结构校验是有意的；
+      - 改用 P2-09 的 `PayloadBlock`：位置语法不同；
+      - 复用 P2-09 测试支持中私有的 `BlockWriter`：它依赖逻辑模块；
+      - 合并两个构造器：两者结构不同，共用部分已抽出。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)“图形转换”一节已记录 CCKD 分组与子资源函数、MFDD 上限与定位、`CONTAINER_LIMITS`、新字段名与限值名，以及合成构造器；其余文档不受影响，不涉及原版事实或 STATUS。

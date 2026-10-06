@@ -4,11 +4,13 @@ import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
 import { ByteWriter } from '../synthetic.ts';
 import {
-  cockpitBlock as cockpit, expectSourceError as rejects, fontTable, hudFontTables, recordBlock as record,
+  cockpitBlock as cockpit, cockpitLayoutBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
+  recordBlock as record, spriteImageBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import {
-  checkPaletteIndices, decodeImageRecord, readCockpitFont, readCockpitFonts, readDataPalette, readEmbeddedPalette, readFontTable,
-  readImageRecordHeader, readMfdRecordOffsets,
+  checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, mfdRecordOffset, readCockpitFont,
+  readCockpitFonts, readCockpitGroup, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
+  readMfdRecordOffsets,
 } from './source-graphics.ts';
 
 // A 5×3 sprite whose rows differ, as little-endian u16 runs and pixels. Row 0: transparent 0, opaque 2 (1, 2),
@@ -212,5 +214,137 @@ describe('bitmap font source', () => {
 
   it.each([3, -1, 0.5])('reports fonts/%s as a missing subresource', index => {
     rejects(() => readCockpitFont(cockpit(HUD_FONTS), index), 'subresource-not-found', 'fonts');
+  });
+});
+
+/** Sets a little-endian u32 of `block` and returns it, for corrupting synthetic containers inline. */
+function set32(block: Uint8Array, offset: number, value: number): Uint8Array {
+  new DataView(block.buffer, block.byteOffset).setUint32(offset, value, true);
+  return block;
+}
+
+// Records of different encodings, sizes and palettes; each decodes differently, so a wrong offset cannot go unnoticed.
+const RAW = rawImageBlock(3, 2, [10, 11, 12, 13, 14, 15]);
+const SPRITE = spriteImageBlock(5, 3, SPRITE_RUNS);
+const PALETTED = rawImageBlock(2, 2, [0, 1, 2, 3], Array.from({ length: 12 }, (_, index) => index * 20 + 1));
+const tiny = (index: number) => rawImageBlock(1, 1, [index]);
+
+// Eight slots shaped like the HI set (cockpit §1): slots 1 and 7 empty, signed positions and both flags used.
+const HI_GROUPS: readonly (readonly SyntheticElement[])[] = [
+  [{ record: RAW, x: 0, y: 316 }, { record: SPRITE, x: -2, y: 7, flags: [1, 0] }],
+  [],
+  [{ record: PALETTED, x: 10, y: 20, flags: [1, 1] }],
+  [{ record: tiny(3), x: 3, y: 30 }],
+  [{ record: tiny(4), x: 4, y: 40 }],
+  [{ record: tiny(5), x: 5, y: 50 }],
+  [{ record: tiny(6), x: 6, y: 60, flags: [0, 1] }],
+  [],
+];
+const HI_BLOCK = cockpitLayoutBlock(HI_GROUPS);
+
+// Offsets of the synthetic layout: header 16 bytes, three font directory records, then the 32-byte group directory.
+const DIRECTORY = 16 + 3 * 8;
+const slotAt = (slot: number) => DIRECTORY + slot * 32;
+const elementsAt = (block: Uint8Array, slot: number) => new DataView(block.buffer, block.byteOffset).getUint32(slotAt(slot) + 16, true);
+const copy = (block: Uint8Array) => Uint8Array.from(block);
+
+describe('CCKD groups', () => {
+  it('reads every slot in directory order, with element positions in stored order and empty slots empty', () => {
+    const groups = readCockpitGroups(HI_BLOCK);
+    expect(groups.map(elements => elements.map(({ x, y }) => [x, y]))).toEqual(HI_GROUPS.map(elements => elements.map(({ x, y }) => [x, y])));
+    expect(readCockpitGroup(HI_BLOCK, 0).map(({ x, y }) => [x, y])).toEqual([[0, 316], [-2, 7]]);
+    expect(Object.isFrozen(groups) && groups.every(Object.isFrozen) && groups.flat().every(Object.isFrozen)).toBe(true);
+  });
+
+  it('decodes each element record exactly as the same record at offset 0', () => {
+    HI_GROUPS.forEach((elements, slot) => elements.forEach(({ record: whole }, index) => {
+      expect(decodeImageRecord(HI_BLOCK, cockpitElementRecordOffset(HI_BLOCK, slot, index))).toEqual(decodeImageRecord(whole));
+    }));
+    expect(decodeImageRecord(HI_BLOCK, cockpitElementRecordOffset(HI_BLOCK, 0, 1)).mask).not.toBeNull();
+  });
+
+  it('reads an element record\'s embedded palette, and reports a record without one as a missing subresource', () => {
+    expect(readEmbeddedPalette(HI_BLOCK, cockpitElementRecordOffset(HI_BLOCK, 2, 0))).toEqual(readEmbeddedPalette(PALETTED));
+    rejects(() => readEmbeddedPalette(HI_BLOCK, cockpitElementRecordOffset(HI_BLOCK, 0, 0), 'graphics[palette/a]'), 'subresource-not-found', 'graphics[palette/a].palette');
+  });
+
+  it('reads a single-slot directory and leaves the fonts of the same entry readable', () => {
+    const block = cockpitLayoutBlock([[{ record: RAW, x: 1, y: 2 }]]);
+    expect(readCockpitGroup(block, 0)).toEqual([{ recordOffset: cockpitElementRecordOffset(block, 0, 0), x: 1, y: 2 }]);
+    expect(readCockpitFonts(HI_BLOCK)).toEqual(hudFontTables().map(table => readFontTable(table)));
+    expect(readCockpitFont(block, 2)).toEqual(readFontTable(hudFontTables()[2]));
+  });
+
+  it('accepts 16 elements in a slot', () => {
+    const block = cockpitLayoutBlock([Array.from({ length: CONTAINER_LIMITS.cockpitElements }, (_, index) => ({ record: tiny(index), x: index, y: 0 }))]);
+    expect(readCockpitGroup(block, 0)).toHaveLength(16);
+    expect([...decodeImageRecord(block, cockpitElementRecordOffset(block, 0, 15)).indices]).toEqual([15]);
+  });
+
+  it.each<[string, number, number, string]>([
+    ['an empty slot', 1, 0, 'graphics[layout/a].groups'],
+    ['the last empty slot', 7, 0, 'graphics[layout/a].groups'],
+    ['a slot past the directory', 8, 0, 'graphics[layout/a].groups'],
+    ['a negative slot', -1, 0, 'graphics[layout/a].groups'],
+    ['a fractional slot', 0.5, 0, 'graphics[layout/a].groups'],
+    ['an element past the group', 0, 2, 'graphics[layout/a].elements'],
+    ['a negative element', 0, -1, 'graphics[layout/a].elements'],
+  ])('reports %s as a missing subresource', (_, slot, index, location) => {
+    rejects(() => cockpitElementRecordOffset(HI_BLOCK, slot, index, 'graphics[layout/a]'), 'subresource-not-found', location);
+  });
+
+  it.each<[string, () => Uint8Array, string, string, unknown]>([
+    ['a truncated header', () => HI_BLOCK.subarray(0, 15), 'invalid-payload', 'groups', null],
+    ['a directory past the block', () => set32(copy(HI_BLOCK), 8, HI_BLOCK.length - 8 * 32 + 1), 'invalid-payload', 'groups', null],
+    ['no slots', () => set32(copy(HI_BLOCK), 12, 0), 'limit-exceeded', 'groups', { name: 'cockpitSlots', limit: 8, observed: 0 }],
+    ['9 slots', () => cockpitLayoutBlock([...HI_GROUPS, []]), 'limit-exceeded', 'groups', { name: 'cockpitSlots', limit: 8, observed: 9 }],
+    ['an element array past the block', () => set32(copy(HI_BLOCK), slotAt(3) + 16, HI_BLOCK.length - 51), 'invalid-payload', 'elements', null],
+    ['17 elements', () => cockpitLayoutBlock([Array.from({ length: 17 }, (_, index) => ({ record: tiny(index), x: 0, y: 0 }))]), 'limit-exceeded', 'elements', { name: 'cockpitElements', limit: 16, observed: 17 }],
+    ['a huge element count', () => set32(copy(HI_BLOCK), slotAt(0) + 20, 0xffff_ffff), 'limit-exceeded', 'elements', { name: 'cockpitElements', limit: 16, observed: 0xffff_ffff }],
+    ['a first flag of 2', () => set32(copy(HI_BLOCK), elementsAt(HI_BLOCK, 0) + 52 + 44, 2), 'invalid-payload', 'elements', null],
+    ['a second flag of 2', () => set32(copy(HI_BLOCK), elementsAt(HI_BLOCK, 6) + 48, 2), 'invalid-payload', 'elements', null],
+  ])('rejects %s', (_, block, code, location, limit) => {
+    const malformed = block();
+    rejects(() => readCockpitGroups(malformed), code, location, limit as null);
+    rejects(() => readCockpitGroup(malformed, 0, 'graphics[layout/a]'), code, `graphics[layout/a].${location}`, limit as null);
+  });
+
+  it('rejects a 65535×65535 element record from its header alone', () => {
+    const huge = record({ width: 65_535, height: 65_535, size: 1 }, [0]);
+    const block = cockpitLayoutBlock([[{ record: huge, x: 0, y: 0 }]]);
+    rejects(() => decodeImageRecord(block, cockpitElementRecordOffset(block, 0, 0)), 'limit-exceeded', 'record', { name: 'imageWidth', limit: 640, observed: 65_535 });
+  });
+});
+
+describe('MFDD records', () => {
+  const backgrounds = [RAW, PALETTED, tiny(1)];
+  const overlays = [SPRITE, tiny(2)];
+  const block = mfdBlock([backgrounds, overlays]);
+
+  it('decodes each record of both lists exactly as the same record at offset 0', () => {
+    [backgrounds, overlays].forEach((records, list) => records.forEach((whole, index) => {
+      expect(decodeImageRecord(block, mfdRecordOffset(block, list, index))).toEqual(decodeImageRecord(whole));
+    }));
+    expect(readEmbeddedPalette(block, mfdRecordOffset(block, 0, 1))).toEqual(readEmbeddedPalette(PALETTED));
+  });
+
+  it('accepts 16 records and an empty list', () => {
+    const full = mfdBlock([Array.from({ length: CONTAINER_LIMITS.mfdRecords }, (_, index) => tiny(index)), []]);
+    expect(readMfdRecordOffsets(full).map(list => list.length)).toEqual([16, 0]);
+    expect([...decodeImageRecord(full, mfdRecordOffset(full, 0, 15)).indices]).toEqual([15]);
+  });
+
+  it.each([[2, 0], [-1, 0], [0, 3], [1, 2], [0, 0.5]])('reports lists/%s/records/%s as a missing subresource', (list, index) => {
+    rejects(() => mfdRecordOffset(block, list, index, 'graphics[image/a]'), 'subresource-not-found', 'graphics[image/a].record');
+  });
+
+  it('limits each list to 16 records', () => {
+    const limit = { name: 'mfdRecords', limit: 16, observed: 17 } as const;
+    rejects(() => readMfdRecordOffsets(mfdBlock([[], Array.from({ length: 17 }, (_, index) => tiny(index))])), 'limit-exceeded', 'record', limit);
+    rejects(() => mfdRecordOffset(mfdBlock([Array.from({ length: 17 }, (_, index) => tiny(index)), []]), 0, 0), 'limit-exceeded', 'record', limit);
+  });
+
+  it('rejects a record pointer past the block', () => {
+    rejects(() => mfdRecordOffset(set32(copy(block), 8, block.length - 35), 1, 0), 'invalid-payload', 'record');
   });
 });
