@@ -12,6 +12,7 @@ import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
 import { productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import { syntheticSnd } from '../original-data/synthetic.ts';
 import type { ImportJob } from './import-host.ts';
 import { createImportJob, type AudioStageInput, type GraphicsStepInput, type OpenSource } from './import-job.ts';
@@ -124,15 +125,26 @@ export function audioCoveredFiles(corrupt = false): Record<string, Uint8Array> {
 }
 
 /**
- * The covered files of a disc in the production graphics structure; `corrupt` shortens the 4×6 font table by one byte,
- * which the converter rejects as `invalid-payload`.
+ * The covered files of a disc in the production structure: the production graphics and synthetic samples at every
+ * entry of the production sound table, so the production job converts both. `corrupt` shortens the 4×6 font table by
+ * one byte, which the converter rejects as `invalid-payload`.
  */
-export function graphicsCoveredFiles(corrupt = false): Record<string, Uint8Array> {
-  return productionGraphicsFiles(corrupt ? { CCKD: cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]) } : {});
+export function productionCoveredFiles(corrupt = false): Record<string, Uint8Array> {
+  const blocks = corrupt ? { CCKD: cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]) } : {};
+  return productionGraphicsFiles(blocks, productionSoundEntries());
 }
 
-/** The payload bytes of the production graphics converted from `graphicsCoveredFiles()`: two palettes and three fonts without character maps. */
+/** The payload bytes of the production graphics converted from `productionCoveredFiles()`: two palettes and three fonts without character maps. */
 export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + 2 * fontPayloadLength(8, 0) + fontPayloadLength(6, 0);
+
+/** The conversion usage of the production job on `productionCoveredFiles()`: the five graphics Assets plus the production sounds. */
+export const PRODUCTION_CONVERSION_USAGE: BudgetRecord = Object.freeze({
+  ...PRODUCTION_SOUND_USAGE,
+  assets: 5 + PRODUCTION_SOUND_USAGE.assets,
+  paletteEntries: 512,
+  glyphs: 768,
+  payloadBytes: GRAPHICS_PAYLOAD_BYTES + PRODUCTION_SOUND_USAGE.payloadBytes,
+});
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];

@@ -2,7 +2,7 @@ import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
 import {
-  audioCoveredFiles, boundGroups, graphicsCoveredFiles, MARKER, productionSizedFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticOpen,
+  audioCoveredFiles, boundGroups, productionCoveredFiles, MARKER, productionSizedFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticOpen,
 } from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
@@ -28,9 +28,9 @@ const EXCEPTION_MARKER = `${MARKER}-exception`;
 const scenarios: Readonly<Record<string, ImportJob>> = {
   synthetic,
   /** The production job with its graphics step, identifying a disc in the production graphics structure. */
-  graphics: createImportJob(syntheticOpen(graphicsCoveredFiles(), 'synthetic-graphics')),
+  graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics')),
   /** The same, with a font table the converter rejects. */
-  'graphics-corrupt': createImportJob(syntheticOpen(graphicsCoveredFiles(true), 'synthetic-graphics')),
+  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics')),
   /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
   audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, SYNTHETIC_AUDIO),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */

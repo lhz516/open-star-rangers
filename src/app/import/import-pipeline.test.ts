@@ -8,11 +8,12 @@ import { connectImportWorker, type WorkerLike } from '../../platform/workers/wor
 import { runImportHost, type ImportJob, type ImportReporter } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { createImportJob, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_PAYLOAD_BYTES, graphicsCoveredFiles, MARKER, SYNTHETIC_AUDIO,
-  syntheticGroupsJob, syntheticImport, type SyntheticGroups,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_PAYLOAD_BYTES, MARKER, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles,
+  SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
@@ -195,28 +196,26 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 }
 
 describe('graphics conversion over a structured-clone channel', () => {
-  it('reports identification, graphics and audio progress, and finishes with the empty production audio group', async () => {
-    const graphics = await syntheticImport(graphicsCoveredFiles(), 'graphics-disc');
+  it('reports identification, graphics and audio progress, and finishes with the complete production audio group', async () => {
+    const graphics = await syntheticImport(productionCoveredFiles(), 'graphics-disc');
     const { owner, traffic } = await run(createImportJob(graphics.open), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    // The production sound table is empty: the audio group arrives without Assets and lacks every core role.
-    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'incomplete', assets: null, diagnostics: expect.any(Array) }]);
-    expect(snapshot.groups[0].diagnostics.map(({ code }) => code)).toEqual(new Array(4).fill('role-cardinality'));
-    expect(snapshot.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 768, imagePixels: 0, audioSamples: 0 });
+    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] }]);
+    expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
     const messages = traffic.fromWorker as { readonly type: string; readonly stage?: string; readonly readBytes?: number }[];
     expect(stepsOf(messages)).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-audio', 'group', 'finished']);
     const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
     expect(counts).toEqual([...counts].sort((left, right) => left - right));
     expect(counts.at(-1)).toBe(snapshot.usage.sourceReadBytes);
-    expect(owner.takeGroups()).toEqual([]);
+    expect(owner.takeGroups()?.map(({ group }) => group)).toEqual(['audio']);
   });
 
   it('keeps the layer, code and location of identification, read and conversion failures, with no partial result', async () => {
     const [complete, withoutCockpit, brokenFont] = await Promise.all([
-      syntheticImport(graphicsCoveredFiles(), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles(), 'graphics-disc'),
       syntheticImport(productionGraphicsFiles({ CCKD: null }), 'graphics-disc'),
-      syntheticImport(graphicsCoveredFiles(true), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles(true), 'graphics-disc'),
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],

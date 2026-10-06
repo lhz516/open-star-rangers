@@ -43,16 +43,16 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-03：只有一张生产音效表。
+- [x] AC-03：只有一张生产音效表。
   - 四个核心角色各至少一行；
   - ID 唯一、升序，符合 Asset ID 规则，不含条目编号；
   - 每行的 locator 都是 `MAIN/SR.NOB` 的 `SND`，`subresource` 为 null；
   - 非 `confirmed` 的行都列有 U 项，证据指向 `docs/original/`；
   - 各行的 `mapping` 投影能通过 `readSourceMappingTable`。
-- [ ] AC-03（边界）：locator 不出现在 `content/`、`platform/`、`app/`、`ui/` 的任何导出中，依赖图回归通过。
-- [ ] AC-13（一致性）：四个核心角色都不是 `unconfirmed`；每行的置信度与 U 项与 `docs/original/` 的记录一致；生产规则只含研究确认的取值。
-- [ ] 生产 `ConverterVersion` 仍为 `osr-import.audio-1`，06 的测试保持通过。
-- [ ] `pnpm exec vitest run src/original-data src/workers tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint`、`pnpm check:original` 通过。
+- [x] AC-03（边界）：locator 不出现在 `content/`、`platform/`、`app/`、`ui/` 的任何导出中，依赖图回归通过。
+- [x] AC-13（一致性）：四个核心角色都不是 `unconfirmed`；每行的置信度与 U 项与 `docs/original/` 的记录一致；生产规则只含研究确认的取值。
+- [x] 生产 `ConverterVersion` 仍为 `osr-import.audio-1`，06 的测试保持通过。
+- [x] `pnpm exec vitest run src/original-data src/workers tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint`、`pnpm check:original` 通过。
 
 ## 验证方法
 
@@ -61,3 +61,54 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **生产表：** [production-sounds.ts](../../../../../src/original-data/conversion/production-sounds.ts) 的 `PRODUCTION_SOUND_TABLE` 共 18 行，都映射到 `MAIN/SR.NOB` 的一个整条 `SND` 条目，`confidence` 为 `confirmed`，`resolution` 为 `declared`。依据为 [audio](../../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08) 的角色对应与[试听对照](../../../../original/formats/audio.md#listening-comparison-p2-0810)。
+
+  | 角色 | 行数 | ID |
+  |---|---:|---|
+  | `explosion-sound` | 6 | `sound/explosion/blast-v1`…`blast-v4`（四个 EXPL 效果音，随机选择、用途相同，因此用中性序号）、`sound/explosion/other`、`sound/explosion/player` |
+  | `fire-sound` | 4 | `sound/fire/base`、`sound/fire/enemy-v1`、`sound/fire/enemy-v2`（两种敌机的炮）、`sound/fire/player` |
+  | `missile-sound` | 1 | `sound/missile` |
+  | `warp-sound` | 1 | `sound/warp`（只映射 Warp 开始播放的条目，与导弹的字节相同条目互不列为别名） |
+  | `model-sound` | 6 | `sound/model-clip/01`…`06`（槽 0、3 的样本，含义未确认，带 U-027；证据另指向 mesh 的 MODL 表） |
+
+  - **覆盖：** 13 个模型可达样本中，属于核心角色的 7 个用核心 ID，其余 6 个为片段；另有 Warp 条目与 4 个 EXPL 效果音。
+  - **ID：** 序号一次分配后冻结，不含条目编号；没有两个核心角色共用同一条目。
+  - **对照：** 置信度、U 项与证据都与 `docs/original/` 的记录一致。
+- **生产规则：** `PRODUCTION_SND_RULES` 只接受切片中出现的 `flags`：0 为单声道循环至停止，1 为单声道播放一次；`s16le` 为 true。值 8 等未研究的取值以 `unsupported-payload` 拒绝。依据见 audio 的[播放解释](../../../../original/formats/audio.md#playback-interpretation-p2-08)。
+- **版本：** `PRODUCTION_CONVERTER_VERSION` 保持 `osr-import.audio-1`（首次填入，没有持久化的旧输出）；06 的测试保持通过。
+- **AC-03：** [production-sounds.test.ts](../../../../../src/original-data/conversion/production-sounds.test.ts) 逐行核对以下内容：
+  - 角色、ID 与 locator；
+  - `confirmed`/`declared`，以及每行确切的 `unknowns` 与 `evidence`：核心角色为试听与角色对应两节，片段为角色对应与 MODL 表，并带 U-027；
+  - ID 不含四位以上的数字；
+  - 映射投影能单独通过 `readSourceMappingTable`。
+
+  行序、唯一性、角色 ID 规则与“一条目只属一个 Asset”由 `readSoundTable` 在模块加载时执行，表若违反则模块无法加载。
+- **AC-03（边界）：** locator 不外泄由既有的 [engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts) 的 “original-data dependency boundary” 回归覆盖。它从全部 `src/` 生产模块沿解析后的依赖图检查，除 `original-data` 与 `workers` 外都不能到达 `original-data`；生产表位于 `original-data`，因此自动受约束，无需新增用例。
+- **转换核对：** `productionSoundEntries()`（[production-sounds.test-support.ts](../../../../../src/original-data/conversion/production-sounds.test-support.ts)）在表的各条目处生成合成 SND。宽度交替为 8 与 16 位；`flags` 按原版取值，只有三个槽 0 条目为 0。生产表与规则在其上转换：
+  - 得到 18 个 Asset，来源状态都为 `verified`，用量等于 `PRODUCTION_SOUND_USAGE`；
+  - 只有 `model-clip/01`–`03` 为循环 payload；
+  - 每个条目恰好读取两次（核验与转换）。
+- **06 测试的迁移：** 原 `graphicsCoveredFiles()` 改名为 `productionCoveredFiles()`，并加入 `productionSoundEntries()`。经生产音频阶段的用例因此得到完整的生产 `audio` 组，预期统一为 `PRODUCTION_CONVERSION_USAGE`：
+  - [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 的生产转换用例；
+  - [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 的图形用例；
+  - [import-worker.spec.ts](../../../../../e2e/import-worker.spec.ts) 的 `graphics` 场景。
+
+  空表断言已改为真实表的断言。
+- **命令：**
+  - `pnpm check` 通过（114 个测试文件、3,281 个测试，构建成功）；`pnpm check:original` 通过。
+  - `pnpm test:e2e import-worker.spec.ts --project=development` 12 个全部通过。默认端口 4174 被另一个工作树的 `vite preview` 占用，按工程约定改用 `OSR_E2E_DEV_PORT=4273 OSR_E2E_PREVIEW_PORT=4274`；那个进程不属于本会话，没有停止它。
+- **rubber-duck：** 没有阻塞问题。审阅确认了以下几点：行覆盖与研究一致，EXPL 效果音属于爆炸角色，ID 命名合规，不需递增版本，边界已由既有回归覆盖。两个非阻塞问题已修正：
+  - 合成条目原把全部片段设为循环，现在只有槽 0 条目为 `flags` 0；
+  - 证据断言原只核对格式，现在逐行核对确切数组。
+- **simplify：**
+  - **采纳：** 合成光盘改名为 `productionCoveredFiles()`；三处重复的用量算式统一为 `PRODUCTION_CONVERSION_USAGE`；循环条目集合不再导出，并去掉了同义反复的断言。
+  - **未采纳：**
+    - 两次读取 SND：spec 明确接受；
+    - 模块加载时校验：与 P2-05 一致，只有 18 行；
+    - 精简表声明：会改变已批准的 `readSoundTable` 契约；
+    - 在生产数据中逐条记录 `flags`：这一事实属于 SND 头部；
+    - 精简 18 行的逐行断言：这正是 AC-03 的证据；
+    - 在 `original-data` 中复用 workers 的夹具：会造成跨层导入。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md)已更新：生产音效一节写入唯一绑定、行形状、行数、规则、版本规则与测试支持，测试支持与集成测试的描述改为完整的生产 `audio` 组。[工程约定](../../../../engineering/README.md)中 `graphics` 场景的预期也已更新。原版事实在 10 中已记录，这里不需修改。
+

@@ -10,7 +10,8 @@ import { CONTENT_SCHEMA_VERSION } from '../src/content/content-identity.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { computeManifestIdentity } from '../src/content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
-import { AUDIO_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
+import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/production-sounds.test-support.ts';
+import { AUDIO_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
 
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 // The page imports modules from the development server, so this spec runs in the development project only. Every file
@@ -66,7 +67,7 @@ async function openHarness(page: Page): Promise<void> {
         // The production whitelist covers none of these files; the test entry's synthetic whitelist covers all of them.
         const contents = covered === 'none' ? { 'MAIN/OTHER.DAT': support.generatedContent(4096, 7) }
           : covered === 'production-sized' ? support.productionSizedFiles()
-            : covered === 'audio' ? support.audioCoveredFiles() : support.graphicsCoveredFiles(covered === 'graphics-corrupt');
+            : covered === 'audio' ? support.audioCoveredFiles() : support.productionCoveredFiles(covered === 'graphics-corrupt');
         harness.covered = Object.entries(contents).map(([path, content]) => [path, content instanceof Uint8Array ? content.length : content.byteLength]);
         harness.files = [...(await support.syntheticImport(contents)).files];
       },
@@ -223,9 +224,9 @@ test('test entry identifies production-sized synthetic files and transfers four 
   });
 });
 
-// P2-05 AC-12: the production job with its graphics stage, on a synthetic disc in the production graphics structure.
-// With the empty production sound table, the audio stage sends an audio group without Assets.
-test('test entry converts the production graphics after identification and finishes with an incomplete audio group', async ({ page }) => {
+// P2-05 AC-12: the production job with its graphics stage, on a synthetic disc in the production structure; the disc
+// also holds synthetic samples at the production sound entries, so the audio stage sends the complete audio group.
+test('test entry converts the production graphics and sounds after identification and finishes with the audio group', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);
   await startImport(page, 'graphics', 'graphics');
@@ -238,14 +239,12 @@ test('test entry converts the production graphics after identification and finis
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-audio:identified', 'finished',
   ]);
-  expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.map(({ code }) => code)]))
-    .toEqual([['audio', 'incomplete', new Array(4).fill('role-cardinality')]]);
-  const expectedBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
-  expect(final.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 768, imagePixels: 0, payloadBytes: expectedBytes });
+  expect(final.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] }]);
+  expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
   expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
-  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toEqual([]);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['audio']);
   expect(await probe(page)).toEqual({
     workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'graphics', posts: 1, terminations: 1 }],
     activeListeners: 0, listeners: 3,

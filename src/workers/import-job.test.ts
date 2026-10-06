@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMPTY_BUDGET_USAGE } from '../content/budget.ts';
 import { validateGroup } from '../content/completeness.ts';
 import { CONTENT_SCHEMA_VERSION } from '../content/content-identity.ts';
 import { readGroupManifest } from '../content/manifest.ts';
@@ -14,9 +13,9 @@ import {
 } from './import-job.ts';
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from './import-protocol.ts';
-import { productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, SYNTHETIC_AUDIO, syntheticImport,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, PRODUCTION_CONVERSION_USAGE,
+  productionCoveredFiles, SYNTHETIC_AUDIO, syntheticImport,
 } from './synthetic-import.test-support.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
@@ -87,8 +86,6 @@ function sentGroup(messages: readonly ImportWorkerMessage[]): Extract<ImportWork
   return groups[0];
 }
 
-/** The graphics conversion usage of the production graphics on the synthetic disc. */
-const GRAPHICS_USAGE = Object.freeze({ ...EMPTY_BUDGET_USAGE, assets: 5, paletteEntries: 512, glyphs: 768, payloadBytes: GRAPHICS_PAYLOAD_BYTES });
 
 class UnreadableBlob extends Blob {
   override slice(start?: number, end?: number): Blob {
@@ -165,9 +162,9 @@ describe('injected identification', () => {
   });
 });
 
-describe('graphics conversion', () => {
-  it('converts the production graphics after identification and finishes with the read and conversion usage added', async () => {
-    const imported = await syntheticImport(productionGraphicsFiles(), 'graphics-job-disc');
+describe('production conversion', () => {
+  it('converts the production graphics and sounds after identification and sends the complete audio group', async () => {
+    const imported = await syntheticImport(productionCoveredFiles(), 'production-job-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
     const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs))), imported.files);
@@ -179,14 +176,10 @@ describe('graphics conversion', () => {
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
     expect(last.groups).toEqual(['audio']);
-    // Two 770-byte palettes, two 2,052-byte 8×8 fonts and a 1,540-byte 4×6 font, all with empty character maps.
-    expect(last.usage).toEqual({ ...readUsage, ...GRAPHICS_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
-    // The empty production sound table: the audio group is sent without Assets and is incomplete for every core role.
+    expect(last.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
     const result = validateGroup(CLASSIC_P2_SLICE, sentGroup(messages).input);
-    if (result.status !== 'incomplete') throw new Error('expected an incomplete audio group');
-    expect(result.diagnostics.map(({ code, path }) => [code, path])).toEqual(
-      ['explosion-sound', 'fire-sound', 'missile-sound', 'warp-sound'].map(role => ['role-cardinality', `roles.${role}`]),
-    );
+    expect(result).toMatchObject({ status: 'group-complete', group: 'audio' });
+    expect(readGroupManifest(sentGroup(messages).input.manifest).assets).toHaveLength(PRODUCTION_CONVERSION_USAGE.assets - 5);
   });
 });
 
