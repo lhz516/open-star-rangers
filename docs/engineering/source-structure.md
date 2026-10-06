@@ -74,6 +74,7 @@ src/
       layout-payload.ts
       graphics-binding.ts
       expand-image.ts
+      compose-layout.ts
       glyph-lookup.ts
     logic/
       logic-content.ts
@@ -309,6 +310,10 @@ src/
 
 - **展开：** [expand-image.ts](../../src/content/graphics/expand-image.ts) 的 `expandImage(image, palettes)` 是项目中唯一的调色板查找。`palettes` 按 Asset ID 提供，必须恰好是图像引用的调色板，否则报 `binding-mismatch@palettes`。结果为冻结的 `{ width, height, rgba }`，`rgba` 是调用者独占的新缓冲，非预乘：不透明像素为显示颜色、alpha 255，透明像素为 (0, 0, 0, 0)。direct 直接查图像的调色板；nearest 先把源调色板逐项映射到目标调色板再查表，因此不透明像素的颜色都属于目标调色板。不透明像素的索引不小于源调色板条目数时报 `palette-index-out-of-range@<path>.indices`，透明像素的索引不参与。展开结果不进入 payload 或缓存。
 - **最近色：** 同文件的 `nearestColourMap(source, target)` 对源调色板的每一项取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等取较小索引。这是**暂定的项目规则**：原版的度量与并列规则尚无证据（[U-028](../original/unknowns.md#数据与格式)，研究见 [P2-05/11](../plan/p2/05/subtasks/11-nearest-colour-research.md)），合成测试只验证这个算法，不是保真证据。研究工具与后续 Renderer 复用它，不另写颜色逻辑。
+- **布局合成：** [compose-layout.ts](../../src/content/graphics/compose-layout.ts) 的 `composeLayout(layout, images, palettes, path)` 是项目中唯一的布局合成（[P2-07/02](../plan/p2/07/subtasks/02-layout-composition.md)），供 P2-11 查看器、P2-12 对照与后续 Renderer 使用：
+  - **输入：** `images` 按 Asset ID 提供，必须恰为布局各元素的图像，否则报 `binding-mismatch@images`；`palettes` 必须恰为这些图像引用的调色板，否则报 `binding-mismatch@palettes`。
+  - **规则：** 输出画幅大小的非预乘 RGBA，初始全部为 (0, 0, 0, 0)。按数组顺序处理每个元素：用 `expandImage` 展开（每个图像只拿到自己引用的调色板）；按实际图像尺寸核对 x + 宽 ≤ 画幅宽、y + 高 ≤ 画幅高，越出时报 `layout-out-of-frame@<path>.elements[<i>]`；只写入 alpha 255 的像素：后者覆盖前者，透明像素不改变下层。错误由第一个失败的元素决定。同一布局可以混用绑定不同调色板的图像。
+  - **结果：** 冻结的 `{ width, height, rgba }`，`rgba` 是调用者独占的新缓冲，坐标是 HI 画幅的原始像素，不缩放；窗口缩放与设备像素比属于 `render/`。调色板索引越界沿用 `palette-index-out-of-range`，位置为 `images[<图像 ID>].indices`。结果不进入 payload 或缓存。
 - **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。

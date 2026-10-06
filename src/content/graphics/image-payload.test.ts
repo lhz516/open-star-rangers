@@ -2,21 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readAssetId } from '../asset-id.ts';
 import { payloadTransferList } from '../ownership.ts';
 import { asciiBytes } from './graphics-format.ts';
-import { encodeImagePayload, isOpaque, maskStride, readImagePayload, type ImagePayload } from './image-payload.ts';
-import { expectContractError, set16, set8 } from './graphics.test-support.ts';
+import { encodeImagePayload, isOpaque, readImagePayload, type ImagePayload } from './image-payload.ts';
+import { expectContractError, packMask, set16, set8, setText } from './graphics.test-support.ts';
 
 const PALETTE = readAssetId('palette/synthetic-a');
 const TARGET = readAssetId('palette/synthetic-flight');
-
-/** Packs per-pixel opacity rows ('1' opaque) into a mask with bit 7 leftmost and 0 padding bits. */
-function packMask(rows: readonly string[]): Uint8Array {
-  const width = rows[0].length;
-  const mask = new Uint8Array(maskStride(width) * rows.length);
-  rows.forEach((row, y) => [...row].forEach((bit, x) => {
-    if (bit === '1') mask[y * maskStride(width) + (x >> 3)] |= 0x80 >> (x & 7);
-  }));
-  return mask;
-}
 
 // A 10×3 sprite: rows differ, row 1 is fully transparent and each row ends in a padded mask byte.
 const MASK_ROWS = ['1101100001', '0000000000', '0111111110'];
@@ -126,8 +116,3 @@ describe('image payload schema 1', () => {
     expectContractError(() => encodeImagePayload({ ...maskedImage(), ...overrides } as Omit<ImagePayload, 'kind'>), 'invalid-graphics-payload', path);
   });
 });
-
-function setText(bytes: Uint8Array, offset: number, text: string): Uint8Array {
-  bytes.set(asciiBytes(text), offset);
-  return bytes;
-}

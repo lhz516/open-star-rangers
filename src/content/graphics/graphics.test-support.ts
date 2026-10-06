@@ -1,4 +1,5 @@
 import { expect } from 'vitest';
+import { maskStride } from './image-payload.ts';
 
 /** Asserts that `action` throws a contract error with exactly this code and path whose message contains none of `secrets`. */
 export function expectContractError(action: () => unknown, code: string, path: string, secrets: readonly string[] = []): void {
@@ -34,4 +35,14 @@ export function set32(bytes: Uint8Array, offset: number, value: number): Uint8Ar
 export function setText(bytes: Uint8Array, offset: number, text: string): Uint8Array {
   bytes.set(Uint8Array.from(text, character => character.charCodeAt(0)), offset);
   return bytes;
+}
+
+/** Packs per-pixel opacity rows ('1' opaque) into an image mask with bit 7 leftmost and 0 padding bits. */
+export function packMask(rows: readonly string[]): Uint8Array {
+  const width = rows[0].length;
+  const mask = new Uint8Array(maskStride(width) * rows.length);
+  rows.forEach((row, y) => [...row].forEach((bit, x) => {
+    if (bit === '1') mask[y * maskStride(width) + (x >> 3)] |= 0x80 >> (x & 7);
+  }));
+  return mask;
 }

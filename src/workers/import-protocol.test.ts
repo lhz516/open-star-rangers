@@ -329,7 +329,7 @@ describe('error code grammar', () => {
     'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true, 'invalid-sound-payload': true,
     'duplicate-group': true, 'group-order': true,
     'invalid-graphics-payload': true, 'unsupported-payload-schema': true, 'binding-mismatch': true,
-    'palette-index-out-of-range': true, 'unmapped-character': true,
+    'palette-index-out-of-range': true, 'unmapped-character': true, 'layout-out-of-frame': true,
     'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,
     'invalid-model-payload': true,
   };
