@@ -16,14 +16,15 @@ reviewed: sha256:e03f704149fe
 
 - **只支持整条目图像：** 图形步骤只转换偏移 0 处的图像记录（TEX、BITM）与 CCKD 字体表，见 [graphics-step.ts](../../../../src/original-data/conversion/graphics-step.ts)。CCKD 分组中的元素、MFDD 的两个列表与 TABL 中的图像列表都是容器内的记录，P2-05 已把它们的解析交给本任务。
 - **没有布局：** P2-01 已有 `layout` 类别、它的来源类型（CCKD、TABL）与 `front-cockpit` 角色（恰 1 个 layout），但没有 payload schema、读取器或转换器，元素的屏幕坐标与层次无处表达。
-- **组不完整、未发送：** `cockpit-hud-map` 分区只有一份飞行调色板与三个字库，满足不了 `front-cockpit`、`hud-mfd`、`strategic-map` 三个必需角色。作业的 `finished.groups` 为空，P2-10/11 没有可验证、可缓存的驾驶舱组。
+- **组不完整、未发送：** `cockpit-hud-map` 分区只有一份飞行调色板与三个字库，满足不了 `front-cockpit`、`hud-mfd`、`strategic-map` 三个必需角色。作业现在发送 `logic` 与 `audio` 组，但图形步骤的结果只计入用量，P2-10/11 没有可验证、可缓存的驾驶舱组。
 - **研究缺口：**
   - 地图边框在 DATA 下颜色不对，实际使用的调色板未知（[U-029](../../../original/unknowns.md#数据与格式)）；
   - HI 飞行实际载入 CCKD 10103 还是 10097，目前为高概率；
   - MFD 叠加图把颜色 0 当透明，未确认；
   - TABL 图像列表的容器结构没有记录，图标、仪表条与雷达点的用途只是高概率（[hud §2](../../../original/formats/hud.md#2-tabl-entries-in-srnob-contents-likely)）；
   - U-030 的 TABL 部分（10165 等）已交给本任务。
-- **包身份尚无生产者：** 生产 `ConverterVersion` 与 `ManifestIdentity` 的生成规则由 P2-09 已批准的 spec 定义，P2-08、P2-09 正在各自分支实现；当前 `main` 上还没有。
+
+包身份与组装机制已由 [P2-09](../09/spec.md#包身份与转换器版本) 与 [P2-08](../08/spec.md#包身份) 落地，本任务复用，见[当前实现与依据](#当前实现与依据)。
 
 本任务交付：
 
@@ -115,9 +116,9 @@ reviewed: sha256:e03f704149fe
 | `src/content/graphics/` 中计划新增的布局模块 | 布局 payload 的格式常量、编码、严格读取、与描述符依赖的一致性校验，以及纯合成函数。复用 [expand-image.ts](../../../../src/content/graphics/expand-image.ts) 与 [graphics-format.ts](../../../../src/content/graphics/graphics-format.ts)，不导入 `original-data` |
 | [contract-validation.ts](../../../../src/content/contract-validation.ts) | 追加合成越界的 content 层 code |
 | [src/original-data/conversion/](../../../../src/original-data/conversion/) | 容器解析扩展 [source-graphics.ts](../../../../src/original-data/conversion/source-graphics.ts)；布局声明扩展 [graphics-declarations.ts](../../../../src/original-data/conversion/graphics-declarations.ts)；布局转换扩展 [convert-graphics.ts](../../../../src/original-data/conversion/convert-graphics.ts)；容器来源扩展 [graphics-step.ts](../../../../src/original-data/conversion/graphics-step.ts)；生产声明、映射与份额扩展 [production-graphics.ts](../../../../src/original-data/conversion/production-graphics.ts) |
-| 生产 `ConverterVersion` 与 `ManifestIdentity` | 包身份以 P2-09 的定义为准，版本表示以 P2-08 为准：常量在 `original-data` 的转换模块，身份推导在 `content/`。`main` 上已有就复用，没有就由本任务按该定义实现；本任务新增 `graphics` 组件 |
+| 生产 `ConverterVersion` 与 `ManifestIdentity` | 复用已落地的 [converter-version.ts](../../../../src/original-data/conversion/converter-version.ts) 与 [manifest-identity.ts](../../../../src/content/manifest-identity.ts)，不另建机制；本任务在常量中加入或递增 `graphics` 组件 |
 | [source-error.ts](../../../../src/original-data/source-error.ts) | 追加本任务的限值名；code 不变 |
-| [import-job.ts](../../../../src/workers/import-job.ts) | 图形步骤的输入扩大；全部转换完成后装配并发送 `cockpit-hud-map` 组 |
+| [import-job.ts](../../../../src/workers/import-job.ts) | 图形步骤的输入扩大；装配 `cockpit-hud-map` 组草稿，与其他组一起写入包身份、校验后发送 |
 | [import-protocol.ts](../../../../src/workers/import-protocol.ts)、[import-host.ts](../../../../src/workers/import-host.ts)、[import-job-owner.ts](../../../../src/app/import/import-job-owner.ts) | 行为不变；相关测试按新的组与用量更新 |
 | [nob-check.ts](../../../../tools/nob-check.ts) | 用同一套容器解析校验全部 CCKD 分组与元素、MFDD 列表与 TABL 图像列表，只输出计数与失败原因 |
 | 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、[import-worker.spec.ts](../../../../e2e/import-worker.spec.ts) | 合成 CCKD、MFDD、TABL 与合成光盘，Node 与真实 Worker 用例 |
@@ -133,14 +134,17 @@ reviewed: sha256:e03f704149fe
 - **来源映射：** `SOURCE_ENTRY_TYPES` 允许 layout 来自 CCKD、TABL，image 与 palette 可来自 CCKD、MFDD、TABL 等；子资源是至多 8 段的受限 ASCII 路径。[source-catalog.ts](../../../../src/original-data/source/source-catalog.ts) 的生产覆盖文件为 `MAIN/` 下的 7 个 NOB 与 `SRANGERS.EXE`；来源定位只能指向 IMFAT 条目。
 - **图形转换（P2-05）：**
   - [source-graphics.ts](../../../../src/original-data/conversion/source-graphics.ts) 的 `readImageRecordHeader`、`decodeImageRecord` 与 `readEmbeddedPalette` 已接受块内偏移；`readMfdRecordOffsets` 读出 MFDD 两个列表的记录偏移，计数以块内能容纳的记录数为界；`readCockpitFonts` 读取 CCKD 字体目录。
-  - [graphics-declarations.ts](../../../../src/original-data/conversion/graphics-declarations.ts) 的声明只有 `palette`、`image`、`font` 三类。[graphics-step.ts](../../../../src/original-data/conversion/graphics-step.ts) 只接受 DATA 整条目、整条目 TEX/BITM 及其 `palette` 子资源，以及 CCKD 的 `fonts/<i>`；步骤内的条目读取保证每个条目只读一次。
+  - [graphics-declarations.ts](../../../../src/original-data/conversion/graphics-declarations.ts) 的声明只有 `palette`、`image`、`font` 三类。[graphics-step.ts](../../../../src/original-data/conversion/graphics-step.ts) 只接受 DATA 整条目、整条目 TEX/BITM 及其 `palette` 子资源，以及 CCKD 的 `fonts/<i>`；[step-entry-reader.ts](../../../../src/original-data/conversion/step-entry-reader.ts) 保证一个步骤内每个条目只读一次。
   - [production-graphics.ts](../../../../src/original-data/conversion/production-graphics.ts) 的 5 个生产 Asset 中，`palette/flight/cockpit-hud-map` 与三个 `font/hud/*` 属于 `cockpit-hud-map`，字库映射到 CCKD 10103。
   - 结构限值、份额与错误码见 P2-05 spec 的[限值与预算](../05/spec.md#限值与预算)与[错误码](../05/spec.md#错误码)。
-- **导入作业（P2-04/05）：** [import-job.ts](../../../../src/workers/import-job.ts) 在 `identified` 之后运行一次图形步骤，限值为读取限值加图形份额，不发送组。[import-host.ts](../../../../src/workers/import-host.ts) 的 `ImportReporter.group` 已能发送组结果；持有者按 [P2-04 的验证顺序](../04/spec.md#组结果的验证顺序)用 `validateGroup` 重新验证，并一次性移交。当前协议版本为 2，阶段为 `identify-source`、`convert-graphics`。
-- **并行任务：**
-  - P2-08、P2-09 的 spec 已批准，正在各自分支实现，各自追加阶段并递增协议版本。
-  - P2-09 的 spec 定义了唯一的生产常量 `PRODUCTION_CONVERTER_VERSION` 与 `ManifestIdentity` 的推导：同一作业的全部转换完成后计算一次身份，写入每个组，再发送组。P2-08 的 spec 规定“先落地者实现，后者复用”，并选定版本表示：`osr-import.` 后接按固定顺序排列的转换器组件，它的组件为 `audio-1`；它还规定发送第一个组之前完成全部校验，发送后的失败由持有者丢弃已收的组。两份 spec 合入 `main` 之前，本文不链接它们。
-  - P2-06 还没有 spec，它与本任务都向同一图形步骤追加声明。
+- **导入作业（P2-04/05/08/09）：** [import-protocol.ts](../../../../src/workers/import-protocol.ts) 的协议版本为 4，阶段依次为 `identify-source`、`convert-graphics`、`convert-logic`、`convert-audio`。[import-job.ts](../../../../src/workers/import-job.ts) 的流程：
+  - 图形与逻辑步骤共用读取限值加两者份额的限值，逻辑步骤在图形用量之上扣除；图形步骤的结果目前只保留用量，注释写明留待 P2-06/07 装配；
+  - 全部转换完成后，对 `logic` 与 `audio` 的组草稿调用 [manifest-identity.ts](../../../../src/content/manifest-identity.ts) 的 `applyManifestIdentity` 写入同一包身份，身份基础来自 [converter-version.ts](../../../../src/original-data/conversion/converter-version.ts) 的 `productionIdentityBasis`；
+  - `checkPackageTransfers` 与结束用量在发送第一个组之前校验，然后经 [import-host.ts](../../../../src/workers/import-host.ts) 的 `ImportReporter.group` 发送各组。
+
+  持有者按 [P2-04 的验证顺序](../04/spec.md#组结果的验证顺序)用 `validateGroup` 重新验证，并一次性移交。
+- **包身份与转换器版本（P2-08/09，已落地）：** [converter-version.ts](../../../../src/original-data/conversion/converter-version.ts) 中唯一的 `PRODUCTION_CONVERTER_VERSION` 为 `osr-import.logic-1.audio-1`：`osr-import.` 后接各被打包转换器的 `<转换器>-<n>` 组件，按阶段顺序排列，任一转换器输出变化都递增它自己的组件。规则见 [P2-09](../09/spec.md#包身份与转换器版本) 与 [P2-08](../08/spec.md#包身份)。
+- **并行任务：** [P2-06](../06/spec.md) 的 spec 已批准，尚未实现。它向同一图形步骤追加切片贴图（`models` 分区），新增 `convert-models` 阶段并递增协议版本，发送 `models` 组，并按合入后的规则递增 `ConverterVersion`。
 - **原版事实：**
   - CCKD 头部、32 字节分组目录、52 字节元素、HI 组各 slot 的角色，以及地图边框的调色板问题，见 [cockpit §1](../../../original/formats/cockpit.md#1-cckd-cockpit-layouts)。
   - MFDD 的结构与 10473、10475、10477 见 [cockpit §2](../../../original/formats/cockpit.md#2-mfdd-multi-function-display-images-confirmed-structure)：全部为 raw，DATA 下颜色正确；叠加图把颜色 0 当透明为未确认。
@@ -326,30 +330,24 @@ reviewed: sha256:e03f704149fe
 
 ### 组结果与包身份
 
-- **装配：** 作业在全部转换步骤成功后，把图形步骤的 `cockpit-hud-map` 分区装配为一个组结果：
+- **装配：** 作业在全部转换步骤成功后，把图形步骤的 `cockpit-hud-map` 分区装配为一个组草稿（`GroupDraft`），与 `logic`、`audio` 等其他组的草稿一起写入包身份：
   - 清单：包身份与按 ID 升序的描述符；
   - payload：每个独占整个缓冲；
   - 来源状态集：已识别的来源指纹与各 Asset 的状态。
-- **身份：** 包身份各字段如下：
-  - `schemaVersion` 为 `CONTENT_SCHEMA_VERSION`；
-  - `sliceId` 与 `sliceDefinitionVersion` 取自 `CLASSIC_P2_SLICE`；
-  - `converterVersion` 为生产常量 `PRODUCTION_CONVERTER_VERSION`；
-  - `manifestIdentity` 按 P2-09 的定义推导：对确定性的 ASCII 编码（schema、切片 ID、切片定义版本、`ConverterVersion`、来源，以及作业发送的各组的描述符与来源状态）计算 SHA-256，形如 `manifest:sha256:<64 位小写十六进制>`；
-  - `origin` 为带已识别指纹的 `original-import`。
-
-  同一作业发送的各组共用一个身份。推导规则以 P2-09 的 spec 为准，本任务不另定义。
-- **实现归属：** `main` 上已有该常量与推导时直接复用；没有时由本任务按 P2-09 的定义实现，后落地的任务复用。
-- **`ConverterVersion`：** 沿用 P2-08 选定的表示：`osr-import.` 后接按固定顺序以 `.` 连接的各转换器组件，每个组件形如 `<转换器>-<正整数>`。
-  - 本任务新增 `graphics` 组件，初值为 `graphics-1`。它覆盖图形步骤的全部生产输出：P2-05 与本任务的转换规则、payload schema、生产声明、映射与置信度，以及图形份额。其中任一变化都递增该组件。
-  - 组件按产生它的导入阶段排序；`main` 上已有排序规则时按已有规则。`graphics` 来自 `convert-graphics`，排在之后各阶段的组件之前，例如与音频组件同时存在时为 `osr-import.graphics-1.audio-1`。
-  - 已有组件保持不变。本任务先落地时，常量为 `osr-import.graphics-1`，后落地的任务追加自己的组件。
-  - 新的常量值记录在源码结构指南。
-- **发送前校验：** 作业先完成全部组草稿、包身份、转移列表与结束用量的校验，再发送第一个组。因此转换、预算、身份与草稿校验的失败都发生在发送之前，不会发出任何组。
-- **发送：** 校验通过后，作业经 `ImportReporter.group` 发送 `cockpit-hud-map` 组，然后发送 `finished`，其 `groups` 含 `cockpit-hud-map`。
+- **身份：** 用已落地的 `applyManifestIdentity` 与 `productionIdentityBasis`，不另建机制：
+  - `schemaVersion`、`sliceId`、`sliceDefinitionVersion`、`converterVersion` 与 `origin` 来自 `productionIdentityBasis`，`origin` 为带已识别指纹的 `original-import`；
+  - `manifestIdentity` 按 [P2-09](../09/spec.md#包身份与转换器版本) 的定义推导：对确定性的 ASCII 编码（schema、切片 ID、切片定义版本、`ConverterVersion`、来源，以及作业发送的各组的描述符与来源状态）计算 SHA-256，形如 `manifest:sha256:<64 位小写十六进制>`；
+  - 同一作业发送的各组共用一个身份，因此加入 `cockpit-hud-map` 后，`logic` 与 `audio` 组的身份也随之改变。
+- **`ConverterVersion`：** 沿用已落地的表示：`osr-import.` 后接各被打包转换器的 `<转换器>-<正整数>` 组件，按阶段顺序排列，当前为 `osr-import.logic-1.audio-1`。
+  - 图形步骤的输出首次被打包，因此加入 `graphics` 组件。它覆盖图形步骤的全部生产输出：P2-05 与本任务的转换规则、payload schema、生产声明、映射与置信度，以及图形份额。其中任一变化都递增该组件。
+  - `graphics` 来自 `convert-graphics`，排在 `logic` 之前。本任务先于 P2-06 落地时，常量变为 `osr-import.graphics-1.logic-1.audio-1`。P2-06 先落地并已加入 `graphics` 组件时，本任务把它递增 1；P2-06 若为图形输出另设组件，本任务仍按本条加入或递增 `graphics`。
+  - 其他组件保持不变；新的常量值记录在源码结构指南。
+- **发送前校验：** 沿用已落地的流程：作业先完成全部组草稿、包身份、转移列表（`checkPackageTransfers`）与结束用量的校验，再发送第一个组。因此转换、预算、身份与草稿校验的失败都发生在发送之前，不会发出任何组。
+- **发送：** 校验通过后，作业经 `ImportReporter.group` 依次发送各组，然后发送 `finished`，其 `groups` 含 `cockpit-hud-map`。
   - 消息发送本身不是原子的。发送开始后若仍失败（例如某个组的转移失败），作业以 `failed` 结束；持有者按 P2-04 丢弃已收到的全部组，`takeGroups()` 返回 null。
-  - 第一个 `group` 之后作业不再发送进度消息。若 `main` 上的协议已把这一点定为持有者校验的规则，按其执行；本任务不改变协议。
-  - `models` 分区（当前只有 `palette/flight/models`）不发送，留给 P2-06。
-  - 其他任务合入后发送的组，按 `main` 上当时的规则排列。
+  - 第一个 `group` 之后作业不再发送进度消息。本任务不改变协议。
+  - `models` 分区（当前只有 `palette/flight/models`）不由本任务发送，留给 P2-06。
+  - 各组的发送顺序按 `main` 上当时的规则。
 - **持有者：** 按 P2-04 的顺序重新验证，期望 `group-complete`，外部要求为空。
 
 ### 限值与预算
@@ -382,7 +380,7 @@ reviewed: sha256:e03f704149fe
 | `sourceReadBytes` | 不另设 | 沿用 P2-02 的默认值（输入总字节） |
 | 其余维度 | 0 | |
 
-- 作业限值等于读取限值加 P2-05 与本任务的份额之和（以及合入时其他步骤批准的份额）。
+- 本任务的份额并入图形步骤的份额。图形与逻辑步骤共用的限值随之变为：读取限值加 P2-05 与本任务的图形份额，再加逻辑份额（已落地的组合方式，见[当前实现与依据](#当前实现与依据)）；其他阶段的限值不变。
 - 扣除发生在读取或分配声明的规模之前；总量恰等于限值时通过。被拒绝的扣除不改变转换用量，已发出的读取仍计入 `sourceReadBytes`。
 - 每个 Asset 只在产生它的步骤中扣除一次，装配组结果时不重复扣除。
 
@@ -421,7 +419,7 @@ reviewed: sha256:e03f704149fe
 1. **布局只表达有数据依据的静态定位：** CCKD 元素的坐标与顺序来自数据。按 P2-01 的单位规则，布局是消费者布局，图像与调色板是独立 Asset。元素 +44 为 1 时高概率表示使用另一调色板，由图像的调色板绑定表达；+48 与目录的其余字段含义未确认，只做取值校验，不进入 payload，避免把未知字段写成语义。后续研究若需要它们，递增布局 schema 与 `graphics` 版本组件。HUD 动态元素的位置不在数据中，本任务不凭截图测量后写进生产代码。
 2. **合成在 `content/` 中只实现一次：** 复用 P2-05 的展开函数，按元素各自的绑定取色。背景透明，使驾驶舱窗口外能露出 3D 场景。它是纯函数，可以在 Node 中逐像素验证；P2-11 把结果或各图像交给 `render/` 显示，React 不绘制飞行 HUD（总计划 §2）。
 3. **容器沿用 P2-05 的记录转换：** 子资源只决定记录在块内的位置，项目中仍只有一套图像记录转换。TABL 是通用容器，只支持 R3 记录的图像列表结构，不按“看起来像图像”的数据推断结构。
-4. **扩展现有图形步骤，不新增阶段：** 字库、前视驾驶舱与地图边框位于同一 CCKD 条目，同一步骤内只读一次。阶段集合与消息形状不变，因此协议版本不变，也减少与 P2-08、P2-09 的冲突。图形阶段的进度、取消与失败分类沿用 P2-05。
+4. **扩展现有图形步骤，不新增阶段：** 字库、前视驾驶舱与地图边框位于同一 CCKD 条目，同一步骤内只读一次。阶段集合与消息形状不变，因此协议版本不变，也不与 P2-06 新增的 `convert-models` 阶段冲突。图形阶段的进度、取消与失败分类沿用 P2-05。
 5. **候选族默认入选，排除须有“不使用”的证据：** 阶段索引把切片使用的仪表、雷达与目标提示、地图与放大窗口图标都交给本任务，地图边框调色板不正确也明确是必需缺口。因此研究未定论时阻塞并记录恢复条件，不把缺口自动转给 P3，也不以 DATA 或其他资源代替。截图中暂未出现不等于不使用。任何未确认的映射都会让整组 `source-not-ready`，所以生产声明也不放入未确认的绑定。透明规则单独取证，避免不透明像素一致掩盖错误的颜色键。
 6. **Asset ID 与角色：**
    - ID 按语义路径与来源列表内的序号命名，不含条目编号；
@@ -429,7 +427,7 @@ reviewed: sha256:e03f704149fe
    - 地图边框布局与地图图标计入 `strategic-map`；状态 MFD、仪表条与雷达点计入 `hud-mfd`；
    - R1 若改选 10097，只修改映射。
 7. **对应关系只做研究，不编码进规范内容：** 规范的机型到图标查找表需要 `logic` 组的机型表跨组引用 `cockpit-hud-map` 的图像，或新增一种查找表形式，P2-01 与 P2-09 都没有定义。它与阵营颜色、迷雾可见性（U-025）等选择规则一起，由 P3 的地图绘制契约定义。本任务的 R8 以 M2ID 机型槽位为键，把所选任务各机型对应的图标写入 hud；该键与 P2-09 的 `craftType` 相同，不另建机型身份。R7 的字体引用同样只写入文档。
-8. **组装复用 P2-09 的包身份与 P2-08 的版本表示：** 不另定义推导规则或版本格式；`main` 上没有时由本任务按其定义实现（先落地者实现）。本任务新增 `graphics` 组件，使图形输出的变化能单独体现在缓存键中。发送前完成全部校验，发送后的失败由持有者丢弃已收的组，与 P2-08 相同。只发送 `cockpit-hud-map`；只含一个调色板的 `models` 分区必然不完整，留给 P2-06。
+8. **组装复用已落地的包身份与版本表示：** P2-09 的身份推导与 P2-08 的版本表示已在 `main` 上实现，本任务不另定义推导规则或版本格式。图形步骤的输出首次被打包，因此加入 `graphics` 组件，使图形输出的变化单独体现在缓存键中；P2-06 若先加入它，本任务只递增。发送前完成全部校验，发送后的失败由持有者丢弃已收的组，与 P2-08 相同。只发送 `cockpit-hud-map`；只含一个调色板的 `models` 分区必然不完整，留给 P2-06。
 9. **限值与份额：** 容器计数是安全上限，以基准观察值为依据，由 AC-14 核对；目录项 32 字节、元素 52 字节与 MFDD 头部是已确认的格式规则。份额覆盖全部候选，是上界而不是精确用量，因为入选族在研究后才确定；读取不可信输入之前，上界已经批准。
 10. **错误：** 容器与布局的转换失败都能用 P2-05 的 code 表达，只追加限值名。content 层只新增合成越界一项，布局读取复用 `invalid-graphics-payload`。
 11. **本地校验与研究分开：** 全量结构校验加固仓库中已有的 nob-check，只输出计数；截图比较与一次性研究脚本放在被忽略的 `local/research/p2-07/`。
@@ -445,8 +443,8 @@ reviewed: sha256:e03f704149fe
 | AC-04 | **MFDD 与 TABL：** `lists/<l>/records/<i>` 与 `records/<i>` 得到正确的图像。<br>- `l` 为 2 或 `i` 越界 → `subresource-not-found`；<br>- 列表有 17 个记录 → `limit-exceeded`（`mfdRecords`）；<br>- 记录指针越出块 → `invalid-payload`。<br>TABL 用例按 R3 记录的结构生成：结构不符 → `invalid-payload`；65 个记录 → `limit-exceeded`（`tableRecords`）；对没有嵌入调色板的记录取 `…/palette` → `subresource-not-found` | Node |
 | AC-05 | **布局转换与声明：** 从合成 CCKD 转换得到的布局，画幅、元素顺序、坐标与图像引用逐项符合期望，描述符依赖恰为元素图像。<br>拒绝：<br>- 声明的元素数与实际不符、元素坐标为负、元素右边或下边越出画幅 → `geometry-mismatch`；<br>- 某个元素图像的映射不是同一 CCKD 条目的 `groups/<s>/elements/<i>`、在别组或未声明，或布局映射不是 CCKD 的 `groups/<s>` → `invalid-declaration`。<br>布局映射只在转换成功后为 `verified`；任一失败使整个步骤失败，不输出结果 | Node |
 | AC-06 | **组装与包身份：** 在合成映射与声明上运行作业（注入合成识别）：<br>- 发送的 `cockpit-hud-map` 组含 P2-05 的飞行调色板与字库以及本任务的 Asset；描述符、payload 与来源状态按 ID 升序一一对应，每个 payload 独占缓冲；<br>- 持有者重新验证为 `group-complete`，外部要求为空；`takeGroups()` 在 `finished` 之后返回该组；<br>- 删去前视布局，或删去全部 `strategic-map` Asset，或删去全部 `hud-mfd` Asset → `role-cardinality`；把一个映射改为 `unconfirmed` → `source-not-ready`；<br>- 生产声明含已知使用的各族：前视布局与元素、地图边框布局与元素、地图调色板、状态 MFD 背景，由针对生产常量的测试断言；<br>- `converterVersion` 是生产常量，含 `graphics` 组件且已有组件不变，能被 P2-01 的读取器读取；`manifestIdentity` 按 P2-09 的定义推导，同一作业发送的各组相同；改变任一描述符、payload 身份或来源状态，身份随之改变；<br>- `models` 分区不被发送 | Node，使用结构化克隆端口与真实的宿主和持有者 |
-| AC-07 | **预算与读取：** 结构限值与份额以常量导出，并与[限值与预算](#限值与预算)一致；作业限值等于读取限值加 P2-05 与本任务的份额。<br>- 总量恰等于限值时通过；超出任一维度 → `budget-exceeded`，带维度、`limit` 与 `observed`，不产生部分结果，也不发送组；<br>- 字库、前视布局与地图边框共用的 CCKD 条目在一步内只物理读取一次，由计量端口的读取次数与字节断言；<br>- `finished.usage` 等于最终读取用量与转换用量逐维之和 | Node，使用计量端口 |
-| AC-08 | **作业消息与失败：** 成功作业的消息依次为识别进度、`identified`、`convert-graphics` 进度（以及合入时已有的其他阶段）、`cockpit-hud-map` 的 `group`、`finished`。`finished.groups` 含 `cockpit-hud-map`，`readBytes` 不减少，第一个 `group` 之后没有进度消息；本任务不改变协议版本与阶段集合。<br>- 识别、图形阶段中的读取与转换三类失败保持 P2-05 规定的层、code 与位置，都不发送组；<br>- 组草稿或结束用量的校验失败发生在发送之前，不发送组；<br>- 注入的转移失败使已发送组之后的作业以 `failed` 结束，持有者丢弃已收的组，`takeGroups()` 返回 null；<br>- 在图形阶段取消时，状态为 `cancelled`，之后的消息不改变状态 | Node，使用结构化克隆端口与真实的宿主和持有者 |
+| AC-07 | **预算与读取：** 结构限值与份额以常量导出，并与[限值与预算](#限值与预算)一致；作业限值等于[限值与预算](#限值与预算)所述的组合。<br>- 总量恰等于限值时通过；超出任一维度 → `budget-exceeded`，带维度、`limit` 与 `observed`，不产生部分结果，也不发送组；<br>- 字库、前视布局与地图边框共用的 CCKD 条目在一步内只物理读取一次，由计量端口的读取次数与字节断言；<br>- `finished.usage` 等于最终读取用量与转换用量逐维之和 | Node，使用计量端口 |
+| AC-08 | **作业消息与失败：** 成功作业的消息依次为识别进度、`identified`、各转换阶段的进度（`convert-graphics`、`convert-logic`、`convert-audio`，以及合入时已有的其他阶段）、各组的 `group`（含 `cockpit-hud-map`）、`finished`。`finished.groups` 含 `cockpit-hud-map`，`readBytes` 不减少，第一个 `group` 之后没有进度消息；本任务不改变协议版本与阶段集合。<br>- 识别、图形阶段中的读取与转换三类失败保持 P2-05 规定的层、code 与位置，都不发送组；<br>- 组草稿或结束用量的校验失败发生在发送之前，不发送组；<br>- 注入的转移失败使已发送组之后的作业以 `failed` 结束，持有者丢弃已收的组，`takeGroups()` 返回 null；<br>- 在图形阶段取消时，状态为 `cancelled`，之后的消息不改变状态 | Node，使用结构化克隆端口与真实的宿主和持有者 |
 | AC-09 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试入口处理合成光盘，光盘按生产映射的结构放置合成的 DATA、CCKD、MFDD 与 TABL 条目。<br>- 收到以转移交出的 `cockpit-hud-map` 组，持有者为 `group-complete`；`finished.usage` 的 `assets`、`imagePixels`、`paletteEntries`、`glyphs` 与 `payloadBytes` 等于合成声明的逐维合计；<br>- 损坏的合成 CCKD 元素使作业以 `source` 层 `invalid-payload` 失败，不发送组；<br>- 收到首条 `convert-graphics` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
 | AC-10 | **R1、R2（前视来源与地图调色板）：** cockpit 与 U-029 记录：<br>- R1：10097 与 10103 的 slot 0 元素是否相同；不同时以截图比较选定前视来源；<br>- R2：地图边框调色板的来源条目与格式、证据类型与置信度（不低于高概率），以及该调色板下地图边框合成与本地地图截图的比较计数（截图、比较像素数、一致数与不一致像素的分类）；<br>- 元素 +44 与调色板的关系，按证据更新。<br>生产映射与文档一致；地图边框不绑定 DATA，除非证据证明它就是地图调色板。调色板不在生产覆盖文件的 IMFAT 条目中，或格式不是 P2-05 的两种之一时，本项 blocked，按[风险与恢复](#风险与恢复)处理 | 本地研究；文档与生产常量对照审阅 |
 | AC-11 | **R3、R4、R6（覆盖表与图像族）：** hud 与 cockpit 记录：<br>- 切片画面覆盖表：每个可见元素的归类（封包位图、字库文字、代码绘制或未识别）及证据；归类为封包位图之前已在 `SR.NOB` 全部可解码的图像记录中检索；<br>- 入选 TABL 的图像列表结构（已确认，由 AC-14 覆盖全部同类实例）；<br>- 每个候选族的用途证据与比较计数、调色板与透明选择及其证据、置信度、入选或排除及排除证据；<br>- R4 选定的 MFDD，以及两个列表按[透明规则单独取证](#研究与入选门槛)的结论；<br>- R6 对 10165 的有界检查结果。<br>U-029、U-030 随之更新，未解决部分写明转交 P3 或 P4。生产声明与映射恰好包含入选族，没有 `unconfirmed` 映射。任一入选族不满足交付条件时，本项 blocked 并记录恢复条件 | 本地研究；文档与生产常量对照审阅 |
@@ -475,10 +473,10 @@ reviewed: sha256:e03f704149fe
   - 恢复：修订本 spec（必要时连同 P2-01/03 的定位与覆盖规则）并经用户批准后再实现。
 - **入选族的研究无法定论（R1、R3、R4）：** 相应验收项保持 blocked，记录恢复条件，例如需要受损状态或放大窗口的截图，或某段 EXE 证据；用户可按 P0 的方式补充试玩截图。现有高概率的映射不因此降级为猜测，缺口也不自动转给 P3。
 - **HUD 资源仍可能不全：** 覆盖表中归为代码绘制或未识别的元素不在本任务转换，作为交给 P3 的记录。P3 可按 ADR-0007 使用明确标注的临时资源；HUD 资源是否足以满足阶段退出条件，由 P2-12 对照与 P2-13 评审判定。
-- **与并行任务冲突：** P2-06 向同一图形步骤追加声明与份额；P2-08、P2-09 实现包身份与 `ConverterVersion`，并各自递增协议版本。
-  - 规则：包身份以 P2-09 的定义为准，`ConverterVersion` 的表示以 P2-08 为准，先落地者实现，后者复用；
-  - 涉及共享文件的提交之前先并入 `main`。各任务只递增自己的版本组件，合并时保留其他组件；协议版本跟随 `main`。
-- **P2-05 的可观察结果改变：** `finished.groups` 不再为空，作业用量增加。P2-05 中断言这些结果的测试按本 spec 更新；P2-05 的 spec 是已完成任务的历史记录，不改写。
+- **与并行任务冲突：** P2-06 向同一图形步骤追加声明与份额，新增 `convert-models` 阶段并递增协议版本，也会改变 `ConverterVersion`。
+  - 规则：两者都复用已落地的包身份与版本表示；图形输出的变化都体现在 `graphics` 组件上，先落地者加入，后者递增；
+  - 涉及共享文件的提交之前先并入 `main`；协议版本跟随 `main`。
+- **已有测试的期望改变：** 作业多发送一个组，`logic` 与 `audio` 组的包身份随之改变，图形用量增加。断言这些结果的既有测试按本 spec 更新；已完成任务的 spec 是历史记录，不改写。
 - **份额不足：** 本地基准的实际用量超出份额时，修订 S-08 并重新批准，不放宽检查。
 - **截图证据有限：** 92 张本地截图未必覆盖受损叠加图等状态。缺少证据的入选族保持 blocked 并写明需要的截图；不以外观相似或不透明像素一致提升置信度。
 - **恢复：** 改动都可以回退，不写入用户数据。`graphics` 组件变化使旧结果与新结果的缓存键不同，不会混用。
@@ -496,3 +494,8 @@ reviewed: sha256:e03f704149fe
 - 技术决定 1 至 12。
 
 生成时按“采用推荐答案”授权作出的选择，以及 review-spec 采纳的七项修正，随本次批准一并生效。
+
+2026-10-05 前提更新（rebase 到 `main` 之后）：
+- **原因：** P2-08 与 P2-09 已合入 `main`，包身份、`ConverterVersion`（`osr-import.logic-1.audio-1`）、发送前校验与协议版本 4 都已落地；P2-06 的 spec 已获批准。
+- **改动：** 问题与目标、当前实现与依据、涉及模块、组结果与包身份、限值与预算的组合说明、技术决定 4 与 8、AC-07 与 AC-08 的措辞，以及风险与恢复，改为引用已落地的代码与 spec。`graphics` 组件写明排在 `logic` 之前；P2-06 先加入该组件时，本任务只递增。
+- **审批：** 用户于 2026-10-05 确认作此更新，并确认范围与验收标准不变、原批准继续有效。S-01 至 S-11 与 AC-01 至 AC-18 的意图不变。
