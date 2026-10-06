@@ -136,7 +136,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | completed |
 | [15-slice-definition-region-locator.md](./subtasks/15-slice-definition-region-locator.md) | 14 | completed |
 | [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | completed |
-| [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | pending |
+| [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | completed |
 | [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | pending |
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | pending |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19 | pending |
@@ -171,6 +171,18 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 两份 spec 修订经两轮审阅后，用户明确批准。
   - 14 的范围改为研究与契约修订，已完成；其余工作按 spec 拆入 15（切片定义与区域 locator）、16（LE 区域读取）、17（效果 payload 与展开）、18（效果步骤与作业集成）与 19（本地基准）。
   - 13 增加对 15–19 的依赖；S-14 与 AC-18 至 AC-21 的覆盖见上表。
+- **2026-10-06，17 执行中修订 spec（按用户授权）：** 实现效果 payload 时，逐个核对了构建函数的渲染器调用，发现原字段表有三处无法按原样实现：
+  - 模式字由寄存器传递，部分沿用前一次调用的寄存器值；
+  - 碎片的平面映射依赖运行时的包围盒与映射函数的立即数参数，不在研究区域内；
+  - 导弹元素不设颜色。
+
+  据此修订 [spec 的效果几何数据](./spec.md#效果几何数据)：
+  - 不导入模式字与碎片的平面映射参数，留待 P2-11 与 U-028（新增技术决定 17）；
+  - 弹丸标记改为按构建函数与坐标轴分别保存；
+  - 颜色按参数顺序保存，8 位立即数按符号扩展；
+  - 展开结果非有限时报 `invalid-effect-payload`；AC-19 相应去掉“模式”。
+
+  [executable](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research) 补记常量用途、颜色来源、标志的两种比较与逐轴标记，[18](./subtasks/18-effect-step-integration.md) 的生产输入范围同步更新。
 
 ## 审批
 

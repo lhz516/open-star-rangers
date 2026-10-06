@@ -332,6 +332,7 @@ describe('error code grammar', () => {
     'palette-index-out-of-range': true, 'unmapped-character': true,
     'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,
     'invalid-model-payload': true,
+    'invalid-effect-payload': true,
   };
   const limitNames: Record<DiscLimitName | SourceLimitName | BudgetDimension, true> = {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,

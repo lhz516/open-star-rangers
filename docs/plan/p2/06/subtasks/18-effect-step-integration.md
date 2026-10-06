@@ -21,6 +21,8 @@ updated: 2026-10-06
   - 把映射标为 `verified`，结果并入 `models` 组；
   - 失败位置按 spec 的效果位置语法，没有部分结果。
 - **生产输入：** 三个 `data` Asset 的声明与映射。RENS 条目与 EXE 区域清单（对象、偏移、长度、用途）只放在生产常量中；置信度为 likely，带 U-027。
+  - 区域按 17 的 payload 字段取：弹丸两套模板各自的 6 个宽度标记与长度标记（每轴一对比较立即数，见 executable）、导弹的 7 个常量与旋转缩放、附加元素与碎片的颜色立即数（含 8 位压栈，按符号扩展）；
+  - 不读取模式字与碎片的平面映射参数（spec 技术决定 17）。
 - **作业：** [import-job.ts](../../../../../src/workers/import-job.ts) 在同一阶段调用效果步骤，协议版本与阶段不变。
 - **合成光盘：** 加入合成 RENS 与合成 EXE（区域位置与生产常量一致），更新 `sliceCoveredFiles`、Worker 场景、作业与管线测试，以及 E2E 的 `models` 用例与期望用量。
 - **文档：** 同步[源码结构](../../../../engineering/source-structure.md)与[工程约定](../../../../engineering/README.md)。

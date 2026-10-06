@@ -315,6 +315,36 @@ Across all 9 records, segment counts are small integers, colours fit 24 bits and
 - **Debris:** every template vertex component is multiplied by the call's scale.
 - **Texture mappings:** the missile element's rotations and the textured debris shape's planar mapping go through `0x82ae8`. That function's semantics were not traced, so how they become texture coordinates is Unconfirmed.
 
+**Builder arguments (Confirmed, code; P2-06/17, structure only):**
+
+- **Missile constants:** the 7 doubles from `0x171ac8` to `0x171b00`, in address order, are:
+  1. the fin colour scale;
+  2. the body angle (the step is it divided by the segment count);
+  3. the body colour scale;
+  4. the element angle step;
+  5. the extra element's offset c;
+  6. the extra element's angle step;
+  7. the rotation angle step.
+
+  The rotation scale is a double argument of `0x44cd8`, pushed as two halves: a 32-bit push at `0x444b5` (high half) and an 8-bit push at `0x444ba` (low half). Each rotation passes the reciprocal of this scale to `0x82ae8`.
+- **Colours:** `0x82340` receives three floats, in argument order:
+  - **Projectile:** the record's colour.
+  - **Missile body and fin:** the packed colour's bits 16–23, 8–15 and 0–7, each times the body or fin colour scale.
+  - **Missile extra element:** immediate pushes at `0x44cb2` (8-bit), `0x44cb4` and `0x44cbb`.
+  - **Untextured debris:** immediate pushes at `0x3ea7f`, `0x3ea81` (both 8-bit) and `0x3ea85`.
+  - **Textured debris:** immediate pushes at `0x3eb65`, `0x3eb6a` and `0x3eb71`.
+
+  The push order is the reverse of argument order. The textured missile element calls no colour function.
+- **Missile flag:** the element builder compares the flag as a float with zero, while the initialisation compares its 32-bit word with zero. So a negative zero selects the zero-flag face template and still adds the extra element.
+- **Projectile markers:** each builder compares each axis against its own pair of 32-bit immediates (`CMP` with the immediate at +2):
+  - x at `0x3f7bd` and `0x3f7c5`;
+  - y at `0x3f7e4` and `0x3f7ec`;
+  - z at `0x3f80b` and `0x3f813`.
+
+  The tail comparison is at `0x3f82e` (immediate at +4). Builder `0x3f8c4` has the same instruction layout 0x16C bytes later. The pairs are the unit marker and its negation for every axis.
+- **Mode words (Unconfirmed meaning):** both mode words are register arguments. Some builders set the register just before the call. Others call `0x8249c` or `0x82340` with the value still in the register from the preceding call: callees preserve registers under the Watcom convention.
+- **Textured debris mapping:** the planar mapping depends on the shape's bounding box, the double at `0x1718ea` and several immediate arguments of `0x82ae8`. P2-06 does not import it (spec technical decision 17).
+
 **Confirmed (no load-time relocations):** Ghidra's relocation table (from the LE fixup records) has no entry inside any of the template, table, constant or immediate-operand ranges named above. The relocations next to the debris scale immediates belong to the following store instructions.
 
 **Consequence:** every effect geometry is reproducible from RENS, static data in the executable and the builders' arithmetic, without runtime state. The projectile visuals depend on the executable's templates as well as on RENS. Normals for projectiles and missiles are not stored; the renderer computes shading.

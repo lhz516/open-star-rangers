@@ -81,6 +81,9 @@ src/
     models/
       model-payload.ts
       model-parts.ts
+    effects/
+      effect-payload.ts
+      expand-effects.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -195,7 +198,7 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）与 `models/` 中的模型 payload（见[模型 payload](#模型-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）与 `effects/` 中的效果 payload（见[效果 payload](#效果-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 [platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
 
@@ -339,6 +342,40 @@ src/
 - **对照入口：** P2-11 渲染与 P2-12 本地对照都只经 `readModelPayload`、`modelPartItems`/`expandModelTextures` 与 P2-05 的 `expandImage` 取数据，不另建研究用的解码路径。
 
 合成模型由 [models.test-support.ts](../../src/content/models/models.test-support.ts) 在代码中生成。针对性检查为 `pnpm exec vitest run src/content/models`。
+
+### 效果 payload
+
+[effects/](../../src/content/effects/) 实现 [P2-06 spec](../plan/p2/06/spec.md#效果几何数据) 的三个效果 `data` Asset：弹丸、导弹与碎片的程序几何的源数据（P2-06/17）。构建规则与各字段的来源只记在 [executable](../original/formats/executable.md#effect-geometry-data-p2-0614-research)。
+
+- **常量：** [effect-payload.ts](../../src/content/effects/effect-payload.ts) 的 `EFFECT_PAYLOAD_SCHEMA_VERSION` 为 1。
+  - `EFFECT_LIMITS` 是批准的安全上限：弹丸记录 1–64（`effectRecords`）、导弹类型 1–32（`missileTypes`）、机身段数 3–64（`ringSegments`）；部件数 1–4、打包颜色不超过 24 位是格式规则。
+  - `EFFECT_SHAPES` 是源结构的固定计数（弹丸模板 4 个顶点、尾翼 9 个、元素 6 个、附加元素 3 个、碎片模板 6 个，3 个无贴图缩放与 2 个有贴图缩放）。
+  - `MISSILE_CONSTANTS` 是导弹常量的源顺序。
+  - `effectPayloadLength(payload)` 只按计数给出编码长度，供转换器在分配之前扣除 `payloadBytes`。
+- **字节布局：** 小端，无填充。面表为 `u16` 字数 W，后接 W 个 `u32`：每个面为角数与顶点序号，以 0 结束。贴图引用为 `u8` 长度（1–128），后接 image Asset ID 的 ASCII 字节。
+
+  | payload | 布局 |
+  |---|---|
+  | 弹丸 | `u16` 记录数 R（1–64）；两套模板，各为面表、12 个 `f32` 顶点、6 个 `u32` 宽度标记（x、y、z 各两个）、`u32` 长度标记、`f64` 长度常量；R 条 24 字节的记录：`u32` 构建选择、`f32` 宽度、`f32` 长度、3 个 `f32` 颜色 |
+  | 导弹 | 贴图引用；`u16` 类型数 T（1–32）；尾翼、元素、带标志元素、附加元素四个面表；按源顺序的 7 个 `f64` 常量；`f64` 旋转缩放；3 个 `f32` 附加元素颜色；T 个类型：`u32` 部件数 P（1–4），机身 `f32` r0、r1、长度、`i32` 段数（3–64）、`u32` 打包颜色，P − 1 片尾翼（4 个 `f32` 与 `u32` 打包颜色），3 个 `f32` 元素参数，`f32` 标志 |
+  | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色 |
+
+  浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 或 4 个角，顶点序号小于该形状的顶点数，至少一个面，0 恰在最后一个字。
+- **编码与读取：**
+  - `encodeEffectPayload(payload)` 按读取器的同一规则校验，32 位浮点字段须恰为 32 位浮点值，写入独占的新缓冲；同一输入得到同样的字节。
+  - `readEffectPayload(bytes, schemaVersion, kind, path)` 严格读取：计数先检查范围、字节先确认存在，再分配；返回冻结数据，数组为调用者独占的副本。
+  - schema 不是 1 为 `unsupported-payload-schema`；截断、尾随字节、计数或字段越界、非有限浮点、面表不合规、贴图不是 image Asset ID 为 `invalid-effect-payload`；已转移的字节或数组为 `payload-detached`。诊断只含结构路径（如 `payload.types[1].fins[0].colour`）。
+- **绑定：** `effectReferences(payload)` 给出导弹与碎片的贴图引用，弹丸没有引用。`checkEffectBinding(descriptor, payload)` 要求描述符 kind 为 `data`、角色等于 payload 种类（`projectile`、`missile`、`debris`）、依赖恰为这些引用，否则报 `binding-mismatch`。
+- **展开：** [expand-effects.ts](../../src/content/effects/expand-effects.ts) 的 `expandProjectiles`、`expandMissiles` 与 `expandDebris` 是纯函数，按 executable 的构建规则给出冻结的形状。
+  - **形状内容：** 位置、面（顶点序号数组）、颜色或 null、贴图 Asset ID 或 null。碎片形状另带模板每顶点字的副本，导弹元素另带原样的旋转参数 `{ rotationStep, rotationScale }`。
+  - **面表：** `faceTriangles(words, vertices, path)` 不分配地校验面表并给出三角形数，`faceList` 给出冻结的面数组。一次展开中每个源面表只解析一次，由它生成的形状共用同一组冻结的面；机身的面直接按规则生成。
+  - **数值：** 以 64 位浮点计算，结果分量在最后舍入为 32 位。例外是弹丸的宽度乘积：它先舍入为 32 位，再与长度标记比较，因为原版比较的是存回的值。
+  - **导弹：** 元素面表按标志的浮点值是否为 0 选择；附加元素在标志的位模式非 0 时生成，所以负零也生成。
+  - **错误：** 任一结果分量不是有限值时报 `invalid-effect-payload`，位置为形状路径后接 `.positions` 或 `.colour`。
+  - **规模：** `effectExpansionSize(payload)` 不展开，只按计数与面表给出顶点数和三角形数（每个面计角数 − 2），供转换器在分配之前扣除。
+- **不做的事：** 不生成法线、明暗或贴图坐标，不保存模式字与碎片的平面映射参数（spec 技术决定 17）。消费者暂时只能使用颜色与几何，贴图坐标等 P2-11 研究映射函数之后加入。
+
+合成效果 payload 由 [effects.test-support.ts](../../src/content/effects/effects.test-support.ts) 用任意数值在代码中生成。针对性检查为 `pnpm exec vitest run src/content/effects`。
 
 ### 任务数据的定向解析
 
