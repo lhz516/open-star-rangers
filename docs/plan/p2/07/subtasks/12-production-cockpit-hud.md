@@ -10,14 +10,14 @@ updated: 2026-10-05
 # 12 — 生产驾驶舱、HUD 与地图内容
 
 **契约来源：** [spec](../spec.md) 的 S-06，S-08 的份额；[生产 Asset 与来源](../spec.md#生产-asset-与来源)、[限值与预算](../spec.md#限值与预算)的生产份额；技术决定 5、6；AC-06 的“生产声明含已知使用的各族”、AC-07 的份额常量。
-**依赖：** 04、06、08、09。
+**依赖：** 04、06、08、09、18。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
 
 - **生产声明与映射（扩展 [production-graphics.ts](../../../../../src/original-data/conversion/production-graphics.ts)）：** 按 08、09 写入 `docs/original/` 的结论，声明并映射本任务的 Asset：
   - `layout/cockpit/front` 与 `image/cockpit/front/element-<i>`（R1 选定的 CCKD `groups/0`）；
-  - `layout/map/frame` 与 `image/map/frame/element-<i>`（CCKD 10103 `groups/2`），绑定 R2 的地图调色板；地图调色板 Asset 按 spec 命名规则（单一调色板为 `palette/map/screen`，逐记录嵌入时由图像 ID 推导）；
+  - `layout/map/frame` 与 `image/map/frame/element-<i>`（CCKD 10103 `groups/2`），绑定 R2 的地图调色板 `palette/map/screen`，后者映射为 CCKD 10103 的 `groups/2/palette`（08 的结论，18 实现该子资源）；
   - `image/hud/status-display/background-<i>`（R4 选定 MFDD 的 `lists/0`）；
   - 09 判定入选的其余族：状态 MFD 叠加图、仪表条、雷达点、11401 的各区间，ID 用完整来源列表内的序号。
   - 每个映射的 `confidence` 只能为 `confirmed` 或 `likely`，`unknowns` 与 `evidence` 链接到 `docs/original/` 的相应条目；非默认的转换选择（颜色键、地图调色板绑定）由 `evidence` 支撑。

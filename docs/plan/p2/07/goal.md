@@ -49,18 +49,18 @@ updated: 2026-10-05
 |---|---|---|
 | S-01 | 01 | 01 编码往返与读取器拒绝 |
 | S-02 | 02 | 02 逐像素合成测试 |
-| S-03 | 03、04、06 | 03 CCKD 与 MFDD 容器测试；06 TABL 测试；04 经步骤的等价转换 |
+| S-03 | 03、04、06、18 | 03 CCKD 与 MFDD 容器测试；06 TABL 测试；04 经步骤的等价转换；18 分组调色板 |
 | S-04 | 04 | 04 布局声明与转换测试 |
 | S-05 | 05、08、09、10、11、15 | 各研究子任务的文档与生产常量对照审阅 |
 | S-06 | 12 | 12 生产声明、映射与份额测试；16 本地基准 |
 | S-07 | 13 | 13 Node 作业与持有者集成测试 |
 | S-08 | 03、06、12、13 | 03、06 结构限值常量；12 份额常量；13 作业限值组合 |
 | S-09 | 02、03、04、06 | 各层错误码与位置测试；17 隐私复核 |
-| S-10 | 01–16 | 各子任务的 Node 测试；07、15、16 本地；14 Chromium |
-| S-11 | 01–16 | 各子任务的文档影响；17 链接、元数据与一致性 |
+| S-10 | 01–16、18 | 各子任务的 Node 测试；07、15、16、18 本地；14 Chromium |
+| S-11 | 01–16、18 | 各子任务的文档影响；17 链接、元数据与一致性 |
 | AC-01 | 01 | 01 读取器往返、拒绝与 `validateGroup` |
 | AC-02 | 02 | 02 非对称样本逐像素断言 |
-| AC-03 | 03、04 | 03 CCKD 解析正负路径与先于分配；04 经步骤的偏移 0 等价与 `fonts/<i>` 回归 |
+| AC-03 | 03、04、18 | 03 CCKD 解析正负路径与先于分配；04 经步骤的偏移 0 等价与 `fonts/<i>` 回归；18 `groups/<s>/palette` |
 | AC-04 | 03、06 | 03 MFDD；06 TABL |
 | AC-05 | 04 | 04 布局转换、声明拒绝与 `verified` 时机 |
 | AC-06 | 12、13 | 13 合成作业的组装、身份与角色负例；12 生产声明含已知使用的各族 |
@@ -71,9 +71,9 @@ updated: 2026-10-05
 | AC-11 | 05、09 | 05 TABL 结构；09 覆盖表、图像族、R4 透明与 R6 |
 | AC-12 | 15 | 15 本地重叠计数与截图逐像素比较 |
 | AC-13 | 16 | 16 本地 Node 脚本，证据只记命令、计数与判定 |
-| AC-14 | 07 | 07 本地运行加固后的 nob-check |
-| AC-15 | 01–16 | 各子任务 `pnpm typecheck`、`pnpm lint`；17 `pnpm check`、`pnpm check:original`、依赖与锁文件 diff |
-| AC-16 | 01–16 | 研究子任务的原版文档；各子任务的源码结构与工具指南；17 链接与元数据检查 |
+| AC-14 | 07、18 | 07 本地运行加固后的 nob-check；18 分组调色板 |
+| AC-15 | 01–16、18 | 各子任务 `pnpm typecheck`、`pnpm lint`；17 `pnpm check`、`pnpm check:original`、依赖与锁文件 diff |
+| AC-16 | 01–16、18 | 研究子任务的原版文档；各子任务的源码结构与工具指南；17 链接与元数据检查 |
 | AC-17 | 10 | 10 本地字形比较；hud 与生产字符映射对照 |
 | AC-18 | 11 | 11 本地研究；hud 审阅与源码搜索 |
 
@@ -90,21 +90,27 @@ updated: 2026-10-05
 | [05-table-structure-research.md](./subtasks/05-table-structure-research.md) | — | completed |
 | [06-table-records.md](./subtasks/06-table-records.md) | 03, 04, 05 | completed |
 | [07-local-structure-check.md](./subtasks/07-local-structure-check.md) | 03, 06 | completed |
-| [08-cockpit-palette-research.md](./subtasks/08-cockpit-palette-research.md) | 02, 03 | pending |
+| [08-cockpit-palette-research.md](./subtasks/08-cockpit-palette-research.md) | 02, 03 | completed |
 | [09-hud-family-research.md](./subtasks/09-hud-family-research.md) | 03, 06, 10 | pending |
 | [10-font-text-research.md](./subtasks/10-font-text-research.md) | — | pending |
 | [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | pending |
-| [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09 | pending |
+| [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09, 18 | pending |
 | [13-group-assembly.md](./subtasks/13-group-assembly.md) | 04 | pending |
 | [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | pending |
 | [15-local-composite-check.md](./subtasks/15-local-composite-check.md) | 12 | pending |
 | [16-local-base-check.md](./subtasks/16-local-base-check.md) | 12, 13 | pending |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16 | pending |
+| [18-cockpit-group-palette.md](./subtasks/18-cockpit-group-palette.md) | 03, 04, 08 | pending |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
 
+- **2026-10-05 — Subtask 08 需要修订 spec（已按用户授权处理）：** 地图调色板是 CCKD 分组目录项 +0x04 指向的 768 字节 6 位 VGA 调色板（EXE 使用路径；地图边框覆盖的全部不透明像素与 4 张地图截图一致）。原 spec 的 R2 只允许 DATA 整条目与嵌入 BGR，按原文 AC-10 应 blocked。
+  - **授权：** 用户在本次 execute-goal 调用中授权，子任务因需要修改 spec 而阻塞时可直接更新 spec、goal 与 subtasks，并在此说明。
+  - **spec 修订：** 加入 CCKD `groups/<s>/palette` 子资源（S-03、容器子资源、行为与边界、错误码、AC-03、AC-10、AC-14、风险与恢复），记录 R1、R2 与 +44/+48 的结论；修订记录写在 spec 的[审批](./spec.md#审批)一节。范围项、验收项编号与份额不变。
+  - **goal 调整：** 新增子任务 [18](./subtasks/18-cockpit-group-palette.md)（依赖 03、04、08），实现该子资源，并在 nob-check 中校验全部分组调色板；12 增加对 18 的依赖；最终对齐 17 依赖全部其他子任务。覆盖表的 S-03、S-10、S-11、AC-03、AC-14、AC-15、AC-16 加入 18。
+
 ## 审批
 
-用户于 2026-10-05 明确批准本 goal，批准范围为上述 17 个子任务的拆分、依赖关系和验收覆盖。spec 已于同日获批。批准不代表实现完成。
+用户于 2026-10-05 明确批准本 goal，批准范围为最初的 17 个子任务（01–17）的拆分、依赖关系和验收覆盖。spec 已于同日获批。子任务 18 是执行期按用户授权新增的，见[执行记录](#执行记录)。批准不代表实现完成。
