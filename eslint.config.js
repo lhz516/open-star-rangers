@@ -151,7 +151,8 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/render/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
+    // P2-11 S-05: the production package profile in workers/ is read by the main thread, so it is a consumer too.
+    files: ['src/render/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}', 'src/workers/production-package.ts'],
     ignores: ['**/*.test.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: [originalDataImports] }] },
   },

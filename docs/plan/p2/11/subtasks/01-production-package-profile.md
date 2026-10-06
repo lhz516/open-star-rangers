@@ -39,10 +39,10 @@ updated: 2026-10-06
 
 ## 验收标准
 
-- [ ] AC-09（配置）：三个字段分别等于生产派生值，测试在任一份额改变时失败。
-- [ ] AC-09（读取上限）：作业读取限值仍为输入总字节；音频限值不变。
-- [ ] `production-package.ts` 不导入 `original-data`（lint 与边界测试通过）。
-- [ ] `pnpm check` 通过。
+- [x] AC-09（配置）：三个字段分别等于生产派生值，测试在任一份额改变时失败。
+- [x] AC-09（读取上限）：作业读取限值仍为输入总字节；音频限值不变。
+- [x] `production-package.ts` 不导入 `original-data`（lint 与边界测试通过）。
+- [x] `pnpm check` 通过。
 
 ## 验证方法
 
@@ -50,3 +50,30 @@ updated: 2026-10-06
 - 不适用浏览器或原版对照。
 
 ## 完成证据
+
+- **实现：** 新增 [production-package.ts](../../../../../src/workers/production-package.ts)，导出 `ExpectedPackageProfile` 类型与冻结的 `PRODUCTION_PACKAGE`：
+  - `converterVersion` 为 `osr-import.graphics-2.logic-1.audio-1.models-1`；
+  - `sourceFingerprint` 为生产白名单的内容寻址指纹；
+  - `limits` 为 202 个 Asset、384 条依赖边、11,943,936 字节 payload，`sourceReadBytes` 为 0，其余维度依次相加。
+
+  模块只导入 `content/budget.ts` 与 `content/content-identity.ts`，以各自的读取函数得到带品牌的类型。
+- **一致性测试：** [production-package.test.ts](../../../../../src/workers/production-package.test.ts) 从 `original-data` 派生三个值并逐一比较：`PRODUCTION_CONVERTER_VERSION`、`sourceFingerprint(PRODUCTION_CATALOG)`、四份额经 `addBudgets` 之和。另断言配置与 `limits` 都已冻结。
+  - 证伪：把常量改为 `assets: 201` 与 `models-2` 后，两条测试失败；还原后通过。
+- **读取上限：** [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 新增一条测试，以生产三份额注入作业，记录逻辑步骤收到的限值：等于 `{ sourceReadBytes: 输入总字节 }` 加三份额，`sourceReadBytes` 恰为文件总字节。
+  - 音频限值不变，由已有测试“charges the audio stage from zero under its own limits”覆盖，`import-job.ts` 未修改。
+- **边界：**
+  - [eslint.config.js](../../../../../eslint.config.js) 把该文件并入 render/ui/app 的 `original-data` 禁止规则；
+  - [engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts) 把它加入 lint 探针列表；依赖图检查也把它视为消费者，不再按 `workers/` 放行。
+  - 证伪：在该文件追加 `original-data` 导入后，ESLint 报 `no-restricted-imports`；追加再导出后，依赖图测试列出 `src/workers/production-package.ts -> src/original-data/source/source-catalog.ts`。
+- **检查：**
+  - `pnpm exec vitest run src/workers tools/engineering-boundaries.test.ts`：5 个文件，421 条测试通过；
+  - `pnpm check`：类型检查、lint，141 个文件 4,249 条测试，构建，全部通过。
+- **Rubber-duck：** 没有阻塞或非阻塞问题。
+- **Simplify：** 采纳两项：ESLint 条目并入已有的消费者规则；删去与精确相等重复的部分数值断言。未采纳三项：
+  - 导出类型由计划要求，供 02、03、06 与测试入口使用；
+  - 模块载入时的读取校验开销可忽略，且免去类型断言；
+  - 读取上限测试走真实作业路径，与相邻测试相同。
+- **文档影响：**
+  - [工程约定](../../../../engineering/README.md)的 `original-data` 依赖规则注明该文件按消费者对待；
+  - [源码结构](../../../../engineering/source-structure.md)的导入 Worker 一节新增“生产包配置”；
+  - [STATUS](../../../../STATUS.md) 的下一步改为 P2-11 正在执行。

@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validateGroup } from '../content/completeness.ts';
-import { addBudgets, EMPTY_BUDGET_USAGE } from '../content/budget.ts';
+import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { deriveManifestIdentity, type GroupDraft } from '../content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
+import { PRODUCTION_LOGIC_SHARE } from '../original-data/conversion/convert-logic.ts';
 import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
 import { UNLIMITED_BUDGET, withMeshReads } from '../original-data/conversion/conversion.test-support.ts';
 import { runEffectStep } from '../original-data/conversion/effect-step.ts';
@@ -15,7 +16,7 @@ import { PRODUCTION_EFFECT_USAGE } from '../original-data/conversion/production-
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
 import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
 import {
-  PRODUCTION_MODEL_REFERENCES, productionModelDeclarations, productionModelMappings,
+  PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE, productionModelDeclarations, productionModelMappings,
 } from '../original-data/conversion/production-models.ts';
 import {
   PRODUCTION_MESH_ENTRIES, PRODUCTION_MODEL_USAGE, productionSliceEntries,
@@ -165,6 +166,24 @@ describe('production job', () => {
 });
 
 describe('injected identification', () => {
+  it('limits the conversion steps to the input size, the P2-02 default read limit, plus the graphics, logic and model shares', async () => {
+    const imported = await syntheticImport(COVERED, 'job-test-disc');
+    const seen: BudgetRecord[] = [];
+    const logic: LogicStepInput = {
+      share: PRODUCTION_LOGIC_SHARE,
+      convert: async (source, limits, usage) => {
+        seen.push(limits);
+        return NO_LOGIC.convert(source, limits, usage);
+      },
+    };
+    const job = createImportJob(imported.open, { ...NO_GRAPHICS, share: PRODUCTION_GRAPHICS_SHARE }, logic, NO_AUDIO, { ...NO_MODELS, share: PRODUCTION_MODEL_SHARE });
+    expect((await run(job, imported.files)).at(-1)).toMatchObject({ type: 'finished' });
+    const inputBytes = imported.files.reduce((total, file) => total + file.size, 0);
+    const readLimit = { ...EMPTY_BUDGET_USAGE, sourceReadBytes: inputBytes };
+    expect(seen).toEqual([[PRODUCTION_GRAPHICS_SHARE, PRODUCTION_LOGIC_SHARE, PRODUCTION_MODEL_SHARE].reduce((total, share) => addBudgets(total, share), readLimit)]);
+    expect(seen[0].sourceReadBytes).toBe(inputBytes);
+  });
+
   it('identifies the synthetic whitelist, converts nothing, then sends empty models, cockpit-hud-map and audio groups and finishes with the source usage', async () => {
     const imported = await syntheticImport(COVERED, 'job-test-disc');
     let source: VerifiedSource | undefined;

@@ -273,8 +273,12 @@ describe('TypeScript module environments', () => {
       }
     });
 
-    // P2-01 AC-05: canonical content consumers never import original locators or archive structure.
-    const contentConsumerFiles = ['core', 'content', 'render', 'platform', 'ui', 'app'].flatMap((layer) => ['ts', 'tsx'].map((extension) => `src/${layer}/probe.${extension}`));
+    // P2-01 AC-05: canonical content consumers never import original locators or archive structure. P2-11 S-05: nor
+    // does the production package profile, which the main thread reads.
+    const contentConsumerFiles = [
+      ...['core', 'content', 'render', 'platform', 'ui', 'app'].flatMap((layer) => ['ts', 'tsx'].map((extension) => `src/${layer}/probe.${extension}`)),
+      'src/workers/production-package.ts',
+    ];
 
     const bytePort = '../original-data/io/byte-source.ts';
 
@@ -876,7 +880,9 @@ describe('original-data dependency boundary', () => {
   // directly or through re-exports, dynamic imports or import types.
   // P2-02 AC-09: a platform adapter may also depend on the byte port, through type-only import declarations only and
   // without exporting anything the port declares, so the port never reaches the adapter's own consumers.
-  const mayReachOriginalData = (path: string): boolean => /^src\/(?:original-data|workers)\//.test(path);
+  // P2-11 S-05: the production package profile in workers/ is read by the main thread, so it is a consumer too.
+  const mayReachOriginalData = (path: string): boolean =>
+    /^src\/(?:original-data|workers)\//.test(path) && path !== 'src/workers/production-package.ts';
   const BYTE_PORT = 'src/original-data/io/byte-source.ts';
 
   /** Consumers whose transitive source dependencies reach original-data or an unverifiable computed import. */

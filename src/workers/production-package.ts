@@ -1,0 +1,41 @@
+import { readBudgetRecord, type BudgetRecord } from '../content/budget.ts';
+import { readConverterVersion, readSourceFingerprint, type ConverterVersion, type SourceFingerprint } from '../content/content-identity.ts';
+
+/**
+ * The package the app expects to hold and restore: cached entries are offered only when their converter version and
+ * source fingerprint equal these, and commits and restores charge `limits` (P2-11 spec, 包预算与生产身份). The
+ * production entry passes `PRODUCTION_PACKAGE`; only the development test entry passes one matching its synthetic catalog.
+ */
+export interface ExpectedPackageProfile {
+  readonly converterVersion: ConverterVersion;
+  readonly sourceFingerprint: SourceFingerprint;
+  /** The package budget: the sum of every conversion's approved share and the audio limits. */
+  readonly limits: BudgetRecord;
+}
+
+/**
+ * The production package profile as constants, so the main thread never loads the converters or the production tables
+ * to obtain them. `production-package.test.ts` derives each value from `original-data` and fails when a converter
+ * component, the production catalog or an approved share changes; update the constants with it.
+ */
+export const PRODUCTION_PACKAGE: ExpectedPackageProfile = Object.freeze({
+  converterVersion: readConverterVersion('osr-import.graphics-2.logic-1.audio-1.models-1', 'PRODUCTION_PACKAGE.converterVersion'),
+  sourceFingerprint: readSourceFingerprint(
+    'source:sha256:fd97bcea3c3aee835c9058419469786587a4580e96b431bb9ce9c127ff2181be',
+    'PRODUCTION_PACKAGE.sourceFingerprint',
+  ),
+  limits: readBudgetRecord({
+    assets: 202,
+    dependencyEdges: 384,
+    sourceReadBytes: 0,
+    payloadBytes: 11_943_936,
+    vertices: 8192,
+    triangles: 8192,
+    imagePixels: 1_048_576,
+    paletteEntries: 2560,
+    glyphs: 768,
+    audioSamples: 4_194_304,
+    missionObjects: 256,
+    missionReferences: 4096,
+  }, 'PRODUCTION_PACKAGE.limits'),
+});
