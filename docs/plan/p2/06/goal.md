@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "06"
-updated: 2026-10-05
+updated: 2026-10-06
 related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 ---
 
@@ -123,7 +123,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [05-model-step.md](./subtasks/05-model-step.md) | 03 | completed |
 | [06-production-models.md](./subtasks/06-production-models.md) | 04, 05 | completed |
 | [07-import-job-models.md](./subtasks/07-import-job-models.md) | 06 | completed |
-| [08-browser-worker-models.md](./subtasks/08-browser-worker-models.md) | 07 | pending |
+| [08-browser-worker-models.md](./subtasks/08-browser-worker-models.md) | 07 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 07 | pending |
 | [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | pending |
 | [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | pending |

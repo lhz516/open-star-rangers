@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-05
+updated: 2026-10-06
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -144,6 +144,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形与音效结构的合成光盘运行带图形与音频阶段、不转换逻辑组的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度、空的 `convert-logic` 阶段、`convert-audio` 进度、没有绑定模型的 `convert-models` 阶段，最后 `finished`；光盘还含生产音效表各条目的合成 SND，因此结束时有一个只含图形分区的不完整 `models` 组和一个完整的生产 `audio` 组，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
   - 逻辑阶段（P2-09）：不另设浏览器用例（P2-09 技术决定 12）。阶段顺序、组发送、预算与失败经宿主、真实 `MessageChannel` 与持有者的 Node 集成测试验证，见 [import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts)。浏览器用例只随新阶段更新快照序列。
   - 音频阶段（P2-08 AC-08）：`audio` 场景在同一光盘的 `MAIN/SR.NOB` 中加入合成 SND 条目，以合成音效表、不转换逻辑组运行生产作业。用例核对阶段顺序、完整的 `audio` 组、用量为图形与音频转换之和、移交的 payload 长度与描述符一致，并在 Node 中由同一 `audio` 清单与 Node 对同一光盘转换的 `models` 组草稿（`syntheticSource`）重新推导 `ManifestIdentity`，证明与 Worker 内的值相同。
+  - 模型阶段（P2-06 AC-10）：`models` 场景对合成切片光盘运行完整的生产作业，逻辑阶段绑定的五个机体模型在音频阶段之后转换。页面侧在持有者的端口事件外再记录每条收到的 `group` 消息与其清单，因为持有者对不完整组只给出状态与诊断。用例在 Node 中对同一光盘运行同一作业作对照：收到的 `models` 清单与诊断等于 Node 的，Asset 数等于飞行调色板、纹理与绑定模型之和，用量等于 Node 的用量。另外，`assets`、`payloadBytes`、`vertices`、`triangles` 与 `imagePixels` 还要等于测试支持按布局给出的图形、音频与模型用量加上收到的逻辑 Asset。`models-corrupt` 场景损坏共用网格，作业在 `convert-models` 以 `source` 层 `invalid-payload` 失败，位置为引用它的首个部件，且没有收到任何组。`cancelAtStage` 设为 `convert-models` 时，在音频阶段之后的首个模型快照上同步取消。
   - 聚焦运行：`pnpm test:e2e import-worker.spec.ts --project=development`。
 - **浏览器错误收集**（[browser-test.ts](../../e2e/support/browser-test.ts)）：除页面的 pageerror、console error、失败请求与 4xx/5xx 外，也收集页面所建 Worker 的 console error（Playwright 把它报告在 Worker 上，不在页面上）。
   - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。

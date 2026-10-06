@@ -12,8 +12,13 @@ import { deriveManifestIdentity, type GroupDraft } from '../src/content/manifest
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/production-sounds.test-support.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, syntheticSource,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, sliceCoveredFiles, syntheticImport, syntheticSource,
 } from '../src/workers/synthetic-import.test-support.ts';
+import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
+import { MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
+import { createImportJob } from '../src/workers/import-job.ts';
+import type { BudgetRecord } from '../src/content/budget.ts';
+import { validateGroup, type GroupInput } from '../src/content/completeness.ts';
 import { runGraphicsStep } from '../src/original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft } from '../src/original-data/conversion/model-step.ts';
 import {
@@ -25,10 +30,14 @@ import {
 // name contains MARKER, and every failing test scenario throws text that contains it too.
 
 /** `production` is the real entry, `missing` an entry URL that does not exist, and any other value a test scenario. */
-type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'audio' | 'busy' | 'job-throws' | 'late-error' | 'top-level-throw';
+type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'audio' | 'models' | 'models-corrupt' | 'busy' | 'job-throws'
+  | 'late-error' | 'top-level-throw';
 
-/** The synthetic files to import: uncovered, the production-sized whitelist, the production graphics structure, or that with sounds. */
-type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt' | 'audio';
+/**
+ * The synthetic files to import: uncovered, the production-sized whitelist, the production graphics structure, that
+ * with sounds, or the slice disc every production step converts, with a broken shared mesh in the corrupt variant.
+ */
+type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt' | 'audio' | 'slice' | 'slice-corrupt';
 
 interface LogEntry {
   readonly event: 'snapshot' | 'click' | 'frame' | 'cancel' | 'dispose';
@@ -45,6 +54,8 @@ interface Harness {
   entry: Entry;
   /** When set, the owner subscriber cancels the job at its first running snapshot in this stage. */
   cancelAtStage: string | null;
+  /** Every group message the owner received, in order, with its manifest; the owner summarises an incomplete group by status only. */
+  readonly received: { group: string; manifest: unknown }[];
   readonly graphicsPayloadBytes: number;
   readonly log: LogEntry[];
   record(entry: Omit<LogEntry, 'at'>): void;
@@ -68,13 +79,16 @@ async function openHarness(page: Page): Promise<void> {
     const support = await load<typeof SyntheticImportModule>('/src/workers/synthetic-import.test-support.ts');
     const startedAt = performance.now();
     const harness: Harness = {
-      owner: null, files: [], covered: [], entry: 'production', cancelAtStage: null, graphicsPayloadBytes: support.GRAPHICS_PAYLOAD_BYTES, log: [],
+      owner: null, files: [], covered: [], entry: 'production', cancelAtStage: null, received: [], graphicsPayloadBytes: support.GRAPHICS_PAYLOAD_BYTES,
+      log: [],
       record: entry => { harness.log.push({ ...entry, at: performance.now() - startedAt }); },
       prepare: async covered => {
         // The production whitelist covers none of these files; the test entry's synthetic whitelist covers all of them.
         const contents = covered === 'none' ? { 'MAIN/OTHER.DAT': support.generatedContent(4096, 7) }
           : covered === 'production-sized' ? support.productionSizedFiles()
-            : covered === 'audio' ? support.audioCoveredFiles() : support.productionCoveredFiles(covered === 'graphics-corrupt');
+            : covered === 'audio' ? support.audioCoveredFiles()
+              : covered === 'slice' || covered === 'slice-corrupt' ? support.sliceCoveredFiles({ corruptMesh: covered === 'slice-corrupt' })
+                : support.productionCoveredFiles(covered === 'graphics-corrupt');
         harness.covered = Object.entries(contents).map(([path, content]) => [path, content instanceof Uint8Array ? content.length : content.byteLength]);
         harness.files = [...(await support.syntheticImport(contents)).files];
       },
@@ -83,8 +97,16 @@ async function openHarness(page: Page): Promise<void> {
           if (harness.entry === 'missing') return new Worker(new URL('/src/workers/missing-import-worker.ts', location.href), { type: 'module' });
           return new Worker(new URL('/src/workers/import-worker.test-support.ts', location.href), { type: 'module', name: harness.entry });
         };
+        const factory = harness.entry === 'production' ? browserImportWorkerFactory() : browserImportWorkerFactory(createWorker);
         const owner = createImportJobOwner({
-          createPort: harness.entry === 'production' ? browserImportWorkerFactory() : browserImportWorkerFactory(createWorker),
+          createPort: events => factory({
+            ...events,
+            message: data => {
+              const message = data as { type?: unknown; group?: string; input?: { manifest: unknown } } | null;
+              if (message?.type === 'group') harness.received.push({ group: message.group!, manifest: message.input!.manifest });
+              events.message(data);
+            },
+          }),
           reportError: error => { throw error; },
         });
         owner.subscribe(() => {
@@ -325,6 +347,110 @@ test('test entry fails a corrupt synthetic font at the source layer without a pa
   expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toBeNull();
   expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['graphics-corrupt', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);
+  expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+});
+
+/** The production job on the slice disc run in Node with the same test support: the groups it sends and its usage. */
+async function nodeSliceRun(): Promise<{ readonly groups: ReadonlyMap<string, GroupInput>; readonly usage: BudgetRecord }> {
+  const imported = await syntheticImport(sliceCoveredFiles(), 'synthetic-models');
+  const groups = new Map<string, GroupInput>();
+  const usage = await createImportJob(imported.open)(imported.files.map(file => ({ name: file.name, blob: file })), {
+    progress: () => undefined, identified: () => undefined, group: (group, input) => { groups.set(group, input); },
+  });
+  return { groups, usage };
+}
+
+// P2-06 AC-10: the whole production job in a real module Worker on the synthetic slice disc. The logic step binds the
+// five craft models the model stage converts; the receiver validates the models group, which stays incomplete while
+// textures are unconfirmed and effect roles missing, exactly as the same job in Node.
+test('test entry converts the models after the audio stage, and the receiver validates the models group as Node does', async ({ page }) => {
+  const consoled = consoleText(page);
+  await openHarness(page);
+  await startImport(page, 'models', 'slice');
+  await settled(page);
+  const observed = await snapshots(page);
+  const final = observed.at(-1)!;
+  if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
+  expect(distinctSteps(observed)).toEqual([
+    'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
+    'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
+  ]);
+  const node = await nodeSliceRun();
+  const expected = validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!);
+  if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group in Node');
+  expect(final.groups).toEqual([
+    { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
+    { group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics },
+    { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
+  ]);
+  // The models manifest the owner received is the one Node sent: the flight palette, the textures and the bound models.
+  const received = await page.evaluate(() => window.osrImport.received);
+  expect(received.map(({ group }) => group)).toEqual(['logic', 'models', 'audio']);
+  const models = readGroupManifest(received[1].manifest);
+  expect(models).toEqual(readGroupManifest(node.groups.get('models')!.manifest));
+  expect(models.assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets);
+  // The usage equals the Node run's. Independently of the job, the dimensions the contract names are the test support's
+  // layout-derived graphics, sound and model usage plus the logic Assets the owner received.
+  expect(final.usage).toEqual(node.usage);
+  const logic = readGroupManifest(received[0].manifest).assets;
+  expect(final.usage).toMatchObject({
+    assets: PRODUCTION_CONVERSION_USAGE.assets + logic.length + PRODUCTION_MODEL_USAGE.assets,
+    payloadBytes: PRODUCTION_CONVERSION_USAGE.payloadBytes + PRODUCTION_MODEL_USAGE.payloadBytes
+      + logic.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
+    vertices: PRODUCTION_MODEL_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles, imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,
+  });
+  const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
+  expect(reads).toEqual([...reads].sort((left, right) => left - right));
+  expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['logic', 'audio']);
+  expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['models', 1, 1]]);
+  expect(JSON.stringify(observed)).not.toContain(MARKER);
+  expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+});
+
+test('test entry fails a corrupt synthetic mesh at the source layer in the model stage, handing over no group', async ({ page }) => {
+  const consoled = consoleText(page);
+  await openHarness(page);
+  await startImport(page, 'models-corrupt', 'slice-corrupt');
+  await settled(page);
+  const observed = await snapshots(page);
+  expect(observed.at(-1)).toEqual({
+    status: 'failed', jobId: 1, stage: 'convert-models',
+    error: { layer: 'source', code: 'invalid-payload', location: 'models[model/base-1].parts[0][1].mesh', reason: expect.any(String), limit: null },
+  });
+  expect(await page.evaluate(() => window.osrImport.received)).toEqual([]);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toBeNull();
+  expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['models-corrupt', 1, 1]]);
+  expect(JSON.stringify(observed)).not.toContain(MARKER);
+  expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+});
+
+test('cancelling at the first model progress terminates the Worker, and nothing changes afterwards', async ({ page }) => {
+  const consoled = consoleText(page);
+  await openHarness(page);
+  await page.evaluate(() => {
+    window.osrImport.cancelAtStage = 'convert-models';
+    window.osrImport.startFrames();
+  });
+  await startImport(page, 'models', 'slice');
+  await page.waitForFunction(() => window.osrImport.log.some(entry => entry.event === 'cancel'));
+  await framesAfter(page, 'cancel');
+  const log = await page.evaluate(() => window.osrImport.log.map(entry => (entry.snapshot
+    ? `snapshot:${entry.snapshot.status}:${'stage' in entry.snapshot ? entry.snapshot.stage : '-'}`
+    : entry.event === 'cancel' ? `cancel:${String(entry.accepted)}` : entry.event)));
+  const cancelAt = log.indexOf('cancel:true');
+  // The subscriber cancelled on the first model snapshot, after the audio stage; the cancelled snapshot was synchronous.
+  expect(log.slice(cancelAt - 2, cancelAt + 1)).toEqual(['snapshot:running:convert-models', 'snapshot:cancelled:convert-models', 'cancel:true']);
+  expect(log.slice(0, cancelAt - 2).some(entry => entry === 'snapshot:running:convert-audio')).toBe(true);
+  expect(log.slice(cancelAt + 1).every(entry => entry === 'frame')).toBe(true);
+  expect(await page.evaluate(() => window.osrImport.owner!.getSnapshot())).toEqual({ status: 'cancelled', jobId: 1, stage: 'convert-models' });
+  expect(await page.evaluate(() => window.osrImport.received)).toEqual([]);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups())).toBeNull();
+  expect(await probe(page)).toEqual({
+    workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'models', posts: 1, terminations: 1 }],
+    activeListeners: 0, listeners: 3,
+  });
+  expect(JSON.stringify(await snapshots(page))).not.toContain(MARKER);
   expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
 });
 
