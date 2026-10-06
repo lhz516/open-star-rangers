@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "07"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # P2-07：驾驶舱、HUD 与战略地图资源 — Goal
@@ -91,7 +91,7 @@ updated: 2026-10-05
 | [06-table-records.md](./subtasks/06-table-records.md) | 03, 04, 05 | completed |
 | [07-local-structure-check.md](./subtasks/07-local-structure-check.md) | 03, 06 | completed |
 | [08-cockpit-palette-research.md](./subtasks/08-cockpit-palette-research.md) | 02, 03 | completed |
-| [09-hud-family-research.md](./subtasks/09-hud-family-research.md) | 03, 06, 10 | pending |
+| [09-hud-family-research.md](./subtasks/09-hud-family-research.md) | 03, 06, 10 | completed |
 | [10-font-text-research.md](./subtasks/10-font-text-research.md) | — | completed |
 | [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | pending |
 | [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09, 18 | pending |
@@ -110,6 +110,11 @@ updated: 2026-10-05
   - **授权：** 用户在本次 execute-goal 调用中授权，子任务因需要修改 spec 而阻塞时可直接更新 spec、goal 与 subtasks，并在此说明。
   - **spec 修订：** 加入 CCKD `groups/<s>/palette` 子资源（S-03、容器子资源、行为与边界、错误码、AC-03、AC-10、AC-14、风险与恢复），记录 R1、R2 与 +44/+48 的结论；修订记录写在 spec 的[审批](./spec.md#审批)一节。范围项、验收项编号与份额不变。
   - **goal 调整：** 新增子任务 [18](./subtasks/18-cockpit-group-palette.md)（依赖 03、04、08），实现该子资源，并在 nob-check 中校验全部分组调色板；12 增加对 18 的依赖；最终对齐 17 依赖全部其他子任务。覆盖表的 S-03、S-10、S-11、AC-03、AC-14、AC-15、AC-16 加入 18。
+- **2026-10-06 — Subtask 09 需要修订 spec（已按同一授权处理）：** EXE 中找到运行时才建立的仪表与地图绘制函数（地址与规则见 [hud](../../../original/formats/hud.md#hud-and-map-drawing-paths-confirmed-exe)），各候选族的用途、调色板、透明与行序都取得 EXE 证据。原 spec 有两处与结论不符：
+  - 10461 由战略地图绘制在主地图区，是单位标记，不是雷达点。按原 ID 与角色（`image/hud/radar-blip/<i>`、`hud-mfd`、飞行调色板）无法交付；
+  - 切片载入并绘制左显示屏的页面背景 BITM 10467，仪表条 10479 就画在其中一页上。它在候选族之外，按原文须先修订范围与预算。
+  - **spec 修订：** 10461 改为 `image/map/unit-marker/<i>`（`strategic-map`、地图调色板）；11401 的三个按外观推测命名的前缀合并为 `image/map/zoom-icon/<i>`；加入 `image/hud/display-page/background`（BITM 10467）与整条目 BITM 的图像族定义；R3、R4、R6 写入结论，生产 Asset 表写入全部入选族；10475、10469、10481 排除（只用于另一种玩家机型），SNIP 10487 与 DIAG 10489 转交 P3。修订记录写在 spec 的[审批](./spec.md#审批)一节。范围项、验收项编号、依赖与份额不变（入选共 86 个 Asset、约 44.2 万像素）。
+  - **goal 调整：** 无新增子任务；[12](./subtasks/12-production-cockpit-hud.md) 的入选族清单随之更新。
 
 ## 审批
 

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "07"
 subtask: "12"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 12 — 生产驾驶舱、HUD 与地图内容
@@ -19,11 +19,11 @@ updated: 2026-10-05
   - `layout/cockpit/front` 与 `image/cockpit/front/element-<i>`（R1 选定的 CCKD `groups/0`）；
   - `layout/map/frame` 与 `image/map/frame/element-<i>`（CCKD 10103 `groups/2`），绑定 R2 的地图调色板 `palette/map/screen`，后者映射为 CCKD 10103 的 `groups/2/palette`（08 的结论，18 实现该子资源）；
   - `image/hud/status-display/background-<i>`（R4 选定 MFDD 的 `lists/0`）；
-  - 09 判定入选的其余族：状态 MFD 叠加图、仪表条、雷达点、11401 的各区间，ID 用完整来源列表内的序号。
+  - 09 判定入选的其余族（spec 的 P2-07/09 执行期修订）：状态 MFD 叠加图、左显示屏页面背景 BITM 10467、仪表条 10479、地图单位标记 10461、11401 的全部记录（`image/map/zoom-icon/<i>`），ID 用完整来源列表内的序号；颜色键 0 与地图调色板绑定按 spec 生产 Asset 表。
   - 每个映射的 `confidence` 只能为 `confirmed` 或 `likely`，`unknowns` 与 `evidence` 链接到 `docs/original/` 的相应条目；非默认的转换选择（颜色键、地图调色板绑定）由 `evidence` 支撑。
   - 元素数由声明断言，与本地结构核对一致。
 - **份额：** 以常量导出本任务的生产份额（assets 96、dependencyEdges 192、imagePixels 524,288、paletteEntries 1,024、glyphs 0、payloadBytes 786,432，其余 0），图形步骤的份额变为 P2-05 与本任务份额之和；作业的限值组合不变（读取限值 + 图形份额 + 逻辑份额）。
-- **测试支持：** 扩展 [production-graphics.test-support.ts](../../../../../src/original-data/conversion/production-graphics.test-support.ts)，按生产映射的结构在合成封包中放置合成的 CCKD 分组、MFDD 与 TABL 条目；同步 [synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 的 `GRAPHICS_PAYLOAD_BYTES`、`PRODUCTION_CONVERSION_USAGE` 等期望。
+- **测试支持：** 扩展 [production-graphics.test-support.ts](../../../../../src/original-data/conversion/production-graphics.test-support.ts)，按生产映射的结构在合成封包中放置合成的 CCKD 分组、MFDD、TABL 与 BITM 条目；同步 [synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 的 `GRAPHICS_PAYLOAD_BYTES`、`PRODUCTION_CONVERSION_USAGE` 等期望。
 - **测试：**
   - 生产声明含已知使用的各族（前视布局与元素、地图边框布局与元素、地图调色板、状态 MFD 背景）以及 09 判定入选的族，且只含这些；没有 `unconfirmed` 映射；
   - 份额常量与 spec 表一致；

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "07"
 subtask: "14"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 14 — 真实 Worker 中的 cockpit-hud-map 组
@@ -15,7 +15,7 @@ updated: 2026-10-05
 
 ## 工作范围
 
-- **场景：** 在 [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 中提供（或更新）测试场景：生产作业处理合成光盘，光盘按生产映射的结构放置合成的 DATA、CCKD、MFDD 与 TABL 条目（12 的测试支持），以及满足逻辑与音频阶段的合成内容或测试注入。
+- **场景：** 在 [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 中提供（或更新）测试场景：生产作业处理合成光盘，光盘按生产映射的结构放置合成的 DATA、CCKD、MFDD、TABL 与 BITM 条目（12 的测试支持），以及满足逻辑与音频阶段的合成内容或测试注入。
 - **用例（扩展 [import-worker.spec.ts](../../../../../e2e/import-worker.spec.ts)）：**
   - 成功：持有者收到以转移交出的 `cockpit-hud-map` 组并验证为 `group-complete`；`finished.usage` 的 `assets`、`imagePixels`、`paletteEntries`、`glyphs`、`payloadBytes` 等于合成声明的逐维合计（与 Node 侧期望来自同一常量）；
   - 损坏的合成 CCKD 元素：作业以 `source` 层 `invalid-payload` 失败，没有组被移交；

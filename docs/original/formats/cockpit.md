@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-06
 related: [U-001, U-006, U-029]
 ---
 
@@ -102,10 +102,10 @@ Slot 0 of 10097 and slot 0 of 10103 have the same element count, positions and f
 | Entry | Images | Content |
 |---|---|---|
 | 10473 | 3 + 9 of 96×96 | Ship status display: list 0 holds three full backgrounds (the ship outline with different shield-glow levels), list 1 holds nine labelled subsystem-damage overlays on a black background |
-| 10475 | 3 + 9 of 96×96 | Same structure; Likely another craft's status display |
+| 10475 | 3 + 9 of 96×96 | Same structure; replaces 10473 in HI for one player craft type (Confirmed, EXE; [hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)) |
 | 10477 | 3 + 9 of 48×48 | LO version |
 
-All images are raw (encoding 0) and display with correct colours using DATA. Overlays Likely treat colour 0 as transparent (Unconfirmed).
+All images are raw (encoding 0) and display with correct colours using DATA. The status display draws one list-0 background opaque and then the list-1 overlays with colour key 0 (Confirmed, EXE; [hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)).
 
 ## 3. Observed counts against the P2-07 limits (Confirmed)
 
