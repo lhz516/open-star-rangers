@@ -176,6 +176,23 @@ export default tseslint.config(
     },
   },
   {
+    // P2-08 AC-11: audio playback consumes canonical payloads only. Unlike other platform adapters it never sees
+    // original data, not even the byte port type-only, nor the app, render, ui or workers layers.
+    files: ['src/platform/audio/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [
+          originalDataImports,
+          {
+            group: ['app', 'render', 'ui', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]),
+            message: 'Audio playback must not import the app, render, ui or workers layers.',
+          },
+        ],
+      }],
+    },
+  },
+  {
     // P2-03 AC-14: import workers and the rest of original-data reach discs and archives only through the product entry.
     // P2-04 AC-11: no production module depends on tests, test support or tools.
     files: ['src/**/*.{ts,tsx}'],

@@ -1,17 +1,21 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { RESOURCE_GROUPS } from '../../content/asset-contract.ts';
+import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import type { GroupInput } from '../../content/completeness.ts';
+import { readGroupManifest } from '../../content/manifest.ts';
 import { syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import { connectImportWorker, type WorkerLike } from '../../platform/workers/worker-port.ts';
-import { runImportHost, type ImportJob } from '../../workers/import-host.ts';
+import { runImportHost, type ImportJob, type ImportReporter } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
-import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { fail } from '../../content/contract-validation.ts';
+import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  boundGroups, graphicsCoveredFiles, MARKER, NO_GRAPHICS, NO_LOGIC, sliceCoveredFiles, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC,
+  PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
@@ -172,6 +176,11 @@ describe('import pipeline over a structured-clone channel', () => {
   });
 });
 
+/** Each message as its stage or type, with repeats collapsed. */
+const stepsOf = (messages: readonly { readonly type: string; readonly stage?: string }[]): string[] => messages
+  .map(({ type, stage }) => stage ?? type)
+  .filter((step, index, all) => step !== all[index - 1]);
+
 /** `open` whose ports reject every read once identification has finished, as a disc that fails mid-import would. */
 function failingAfterIdentification(open: OpenSource): OpenSource {
   return async inputs => {
@@ -189,32 +198,26 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 }
 
 describe('graphics conversion over a structured-clone channel', () => {
-  it('reports identification, then graphics progress, and finishes without groups with the conversion usage', async () => {
-    const graphics = await syntheticImport(graphicsCoveredFiles(), 'graphics-disc');
+  it('reports identification, graphics, logic and audio progress, and finishes with the complete production audio group', async () => {
+    const graphics = await syntheticImport(productionCoveredFiles(), 'graphics-disc');
     const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    expect(snapshot.groups).toEqual([]);
-    expect(snapshot.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 256 + 256 + 192, imagePixels: 0 });
+    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] }]);
+    expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
     const messages = traffic.fromWorker as { readonly type: string; readonly stage?: string; readonly readBytes?: number }[];
-    const steps = messages.map(({ type, stage }) => stage ?? type);
-    const identifiedAt = steps.indexOf('identified');
-    expect([steps[0], steps.at(-1)]).toEqual(['ready', 'finished']);
-    expect(steps.slice(1, identifiedAt).every(step => step === 'identify-source')).toBe(true);
-    expect(steps.slice(identifiedAt + 1, -2)).not.toHaveLength(0);
-    expect(steps.slice(identifiedAt + 1, -2).every(step => step === 'convert-graphics')).toBe(true);
-    expect(steps.at(-2)).toBe('convert-logic');
+    expect(stepsOf(messages)).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
     const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
     expect(counts).toEqual([...counts].sort((left, right) => left - right));
     expect(counts.at(-1)).toBe(snapshot.usage.sourceReadBytes);
-    expect(owner.takeGroups()).toEqual([]);
+    expect(owner.takeGroups()?.map(({ group }) => group)).toEqual(['audio']);
   });
 
   it('keeps the layer, code and location of identification, read and conversion failures, with no partial result', async () => {
     const [complete, withoutCockpit, brokenFont] = await Promise.all([
-      syntheticImport(graphicsCoveredFiles(), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles(), 'graphics-disc'),
       syntheticImport(productionGraphicsFiles({ CCKD: null }), 'graphics-disc'),
-      syntheticImport(graphicsCoveredFiles(true), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles(true), 'graphics-disc'),
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
@@ -244,11 +247,14 @@ describe('logic conversion over a structured-clone channel', () => {
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     const steps = (traffic.fromWorker as { readonly type: string; readonly stage?: string }[]).map(({ type, stage }) => stage ?? type);
     const distinct = steps.filter((step, index) => step !== steps[index - 1]);
-    expect(distinct).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'group', 'finished']);
-    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete']]);
-    expect(snapshot.usage).toMatchObject({ assets: 8, missionObjects: 11, missionReferences: 37 });
+    expect(distinct).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete'], ['audio', 'group-complete']]);
+    expect(snapshot.usage).toMatchObject({ assets: 8 + PRODUCTION_SOUND_USAGE.assets, missionObjects: 11, missionReferences: 37 });
     const taken = owner.takeGroups()!;
-    expect(taken.map(({ group }) => group)).toEqual(['logic']);
+    expect(taken.map(({ group }) => group)).toEqual(['logic', 'audio']);
+    // One package: both groups carry the same identity.
+    const [logicManifest, audioManifest] = taken.map(({ manifest }) => readGroupManifest(manifest));
+    expect(audioManifest.identity).toEqual(logicManifest.identity);
     expect(owner.takeGroups()).toBeNull();
     expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
   });
@@ -277,5 +283,66 @@ describe('logic conversion over a structured-clone channel', () => {
       expect(traffic.fromWorker.some(message => (message as { type: string }).type === 'group')).toBe(false);
       expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
     }
+  });
+});
+
+describe('audio conversion over a structured-clone channel', () => {
+  /** `job` with every group it sends recorded before the host transfers it. */
+  const recording = (job: ImportJob, sent: GroupInput[]): ImportJob => (files, report) => job(files, Object.freeze({
+    ...report,
+    group: (group: Parameters<ImportReporter['group']>[0], input: GroupInput) => {
+      sent.push(input);
+      report.group(group, input);
+    },
+  }));
+
+  it('transfers the converted audio group, detaching the sender views, and the owner hands it over complete', async () => {
+    const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
+    const sent: GroupInput[] = [];
+    const { owner, traffic } = await run(recording(createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO), sent), audio.files);
+    const snapshot = owner.getSnapshot();
+    if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
+    expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
+      .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
+    expect(snapshot.usage).toMatchObject({
+      assets: 5 + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
+    });
+    expect(sent).toHaveLength(1);
+    expect((sent[0].payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
+    const taken = owner.takeGroups()!;
+    expect(taken.map(({ group }) => group)).toEqual(['audio']);
+    const manifest = readGroupManifest(taken[0].manifest);
+    expect(manifest.identity).toMatchObject({
+      converterVersion: 'osr-import.logic-1.audio-1', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+    });
+    expect((taken[0].payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
+      .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
+  });
+
+  it('carries an SND conversion failure through the channel exactly as the host converted it, without a group', async () => {
+    const corrupt = await syntheticImport(audioCoveredFiles(true), 'audio-disc');
+    const job = createImportJob(corrupt.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO);
+    const expected = await hostError(job, corrupt.files);
+    expect(expected).toMatchObject({ layer: 'source', code: 'unsupported-payload', location: 'sources.mappings[1].parts[0].alternatives[0].flags' });
+    const { owner, traffic, snapshots } = await run(job, corrupt.files);
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'convert-audio', error: expected });
+    expect(traffic.fromWorker.some(message => (message as { type: string }).type === 'group')).toBe(false);
+    expect(owner.takeGroups()).toBeNull();
+    expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
+  });
+
+  it('discards the received audio group when the job fails after sending it', async () => {
+    const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
+    const converting = createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO);
+    // The group is already sent when the host rejects the job's final usage.
+    const failingLate: ImportJob = async (files, report) => {
+      await converting(files, report);
+      return { ...EMPTY_BUDGET_USAGE, assets: -1 } as BudgetRecord;
+    };
+    const { owner, traffic } = await run(failingLate, audio.files);
+    expect(traffic.fromWorker.filter(message => (message as { type: string }).type === 'group')).toHaveLength(1);
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', stage: 'convert-audio', error: { layer: 'content', code: 'invalid-budget-value' } });
+    expect(owner.takeGroups()).toBeNull();
   });
 });

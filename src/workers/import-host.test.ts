@@ -144,18 +144,21 @@ describe('reporting', () => {
       report.identified({ ...IDENTITY, files: [MARKER] } as typeof IDENTITY);
       report.progress('convert-graphics', 2048);
       report.progress('convert-graphics', 4096);
+      report.progress('convert-audio', 4096);
       report.group('audio', audio);
       report.group('models', models);
     });
     const messages = endpoint.afterReady;
     expect(messages.map(message => [message.type, 'sequence' in message && message.sequence])).toEqual([
-      ['progress', 1], ['progress', 2], ['identified', 3], ['progress', 4], ['progress', 5], ['group', 6], ['group', 7], ['finished', 8],
+      ['progress', 1], ['progress', 2], ['identified', 3], ['progress', 4], ['progress', 5], ['progress', 6], ['group', 7], ['group', 8],
+      ['finished', 9],
     ]);
     expect(messages[2]).toEqual({ type: 'identified', jobId: 7, sequence: 3, identity: IDENTITY });
     expect(messages[4]).toEqual({ type: 'progress', jobId: 7, sequence: 5, stage: 'convert-graphics', readBytes: 4096 });
-    expect(messages[5]).toEqual({ type: 'group', jobId: 7, sequence: 6, group: 'audio', input: audio });
-    expect(Object.keys((messages[5] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
-    expect(messages[7]).toEqual({ type: 'finished', jobId: 7, sequence: 8, groups: ['audio', 'models'], usage: USAGE });
+    expect(messages[5]).toEqual({ type: 'progress', jobId: 7, sequence: 6, stage: 'convert-audio', readBytes: 4096 });
+    expect(messages[6]).toEqual({ type: 'group', jobId: 7, sequence: 7, group: 'audio', input: audio });
+    expect(Object.keys((messages[6] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
+    expect(messages[8]).toEqual({ type: 'finished', jobId: 7, sequence: 9, groups: ['audio', 'models'], usage: USAGE });
     expect(messages.every(message => 'jobId' in message && message.jobId === 7)).toBe(true);
     expect(endpoint.log.slice(-2)).toEqual(['post:finished', 'close']);
     expect(JSON.stringify(messages)).not.toContain(MARKER);
@@ -187,6 +190,18 @@ describe('reporting', () => {
       report.progress('convert-logic', 9);
       report.progress('convert-graphics', 9);
     }, ['identified', 'progress']],
+    ['audio progress before identification', (report: ImportReporter) => report.progress('convert-audio', 0), []],
+    ['graphics progress after audio progress', (report: ImportReporter) => {
+      report.identified(IDENTITY);
+      report.progress('convert-audio', 9);
+      report.progress('convert-graphics', 9);
+    }, ['identified', 'progress']],
+    ['progress after the first group', (report: ImportReporter) => {
+      report.identified(IDENTITY);
+      report.progress('convert-audio', 9);
+      report.group('audio', group('audio'));
+      report.progress('convert-audio', 9);
+    }, ['identified', 'progress', 'group']],
     ['a group before identification', (report: ImportReporter) => report.group('audio', group('audio')), []],
     ['a repeated group', (report: ImportReporter) => {
       report.identified(IDENTITY);
@@ -236,10 +251,17 @@ describe('failures', () => {
     { name: 'sourceReadBytes', limit: 10, observed: 11 });
   const sourceError = new SourceError('unsupported-version', 'file:/MAIN/AISTUFF.NOB', 'the file does not match the whitelist');
   const contentError = new ContentContractError('payload-detached', 'groups.audio.payloads[0]', 'was already transferred');
+  const sndError = new SourceError('unsupported-payload', 'sources.mappings[0].parts[0].alternatives[0].flags', 'the flags are not accepted');
+  const sndHeaderError = new SourceError('invalid-payload', 'sources.mappings[0].parts[0].alternatives[0].sampleBytes', 'the sample bytes exceed the block');
+  const audioBudgetError = new SourceError('budget-exceeded', 'sources.mappings[0].parts[0].alternatives[0].size',
+    'the conversion exceeds its budget', { name: 'audioSamples', limit: 4_194_304, observed: null });
 
   it.each([
     ['a disc error', discError, { layer: 'disc', ...discError.toData() }],
     ['a source error', sourceError, { layer: 'source', ...sourceError.toData() }],
+    ['an SND conversion error', sndError, { layer: 'source', ...sndError.toData() }],
+    ['an SND structure error', sndHeaderError, { layer: 'source', ...sndHeaderError.toData() }],
+    ['an audio budget error', audioBudgetError, { layer: 'source', ...audioBudgetError.toData() }],
     ['a content error', contentError, { layer: 'content', code: 'payload-detached', location: 'groups.audio.payloads[0]', reason: 'was already transferred', limit: null }],
     ['another Error', new TypeError(MARKER), INTERNAL_ERROR],
     ['an Error named like a known one', Object.assign(new Error(MARKER), { name: 'DiscReadError', code: 'read-failed' }), INTERNAL_ERROR],

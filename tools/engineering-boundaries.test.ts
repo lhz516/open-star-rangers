@@ -318,6 +318,17 @@ describe('TypeScript module environments', () => {
       for (const [source, rule] of rejected) expectRule(await lint(source, file), rule, source);
     });
 
+    it('keeps audio playback away from original data and the app, render, ui and workers layers', async () => {
+      const file = 'src/platform/audio/probe.ts';
+      const rule = '@typescript-eslint/no-restricted-imports';
+      for (const specifier of [`../${bytePort}`, '../../original-data/source-mapping.ts', '../../original-data',
+        '../../app/import/import-job-owner.ts', '../../render/scene/cleanup.ts', '../../ui/game/describe-error.ts', '../../workers/import-protocol.ts', '../../workers']) {
+        for (const form of importForms.slice(0, 2)) expectRule(await lint(form(specifier), file), rule, form(specifier));
+      }
+      const allowed = "import { readSoundPayload } from '../../content/sound-payload.ts'; export const read = readSoundPayload;";
+      expect((await lint(allowed, file)).messages, allowed).toEqual([]);
+    });
+
     it('keeps original-data available to itself, the import workers and tests', async () => {
       const cases = [
         ['src/original-data/probe.ts', "export { readSourceMappingTable } from './source-mapping.ts';"],
@@ -675,6 +686,121 @@ describe('resource cache boundaries', () => {
     const nodeFiles = new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
     const unchecked = storage.filter(file => !basename(file.fileName).startsWith('browser-') && !nodeFiles.has(resolve(file.fileName)));
     expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
+  });
+});
+
+describe('audio playback boundaries', () => {
+  // docs/plan/p2/08/spec.md AC-11: playback uses no network API or localStorage, imports only relative modules outside
+  // original-data and the app, render, ui and workers layers, and checks its DOM-free modules in the Node program.
+  const src = join(root, 'src');
+  const relativeSource = (fileName: string, base = src): string => relative(base, fileName).split(sep).join('/');
+  const parse = (source: string): ts.SourceFile => ts.createSourceFile('probe.ts', source, ts.ScriptTarget.Latest, true);
+  const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'sendBeacon', 'EventSource', 'localStorage']);
+  const violations = (file: ts.SourceFile): string[] => [
+    ...[...identifierNames(file)].filter(name => banned.has(name)),
+    ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || /original-data|\/(?:render|ui|app|workers)(?:\/|$)/.test(specifier)),
+  ];
+  const audioFiles = (compilation: ts.Program, base: string) => compilation.getRootFileNames()
+    .filter(fileName => relativeSource(fileName, base).startsWith('platform/audio/') && !/\.test(?:-support)?\.ts$/.test(fileName))
+    .map(fileName => compilation.getSourceFile(fileName)!);
+  /** DOM-free audio modules missing from the Node program, which only the tests that import them pull in. */
+  const unchecked = (directory: string, app = program('app', directory)): string[] => {
+    const base = join(directory, 'src');
+    const nodeFiles = new Set(program('node', directory).getSourceFiles().map(file => resolve(file.fileName)));
+    return audioFiles(app, base)
+      .filter(file => !basename(file.fileName).startsWith('browser-') && !nodeFiles.has(resolve(file.fileName)))
+      .map(file => relativeSource(file.fileName, base));
+  };
+
+  it('flags each banned API and import in counterexamples, and accepts content imports', () => {
+    const cases: [string, string][] = [
+      ['export const a = fetch;', 'fetch'],
+      ['export const a = new XMLHttpRequest();', 'XMLHttpRequest'],
+      ["export const a = new WebSocket('ws://localhost');", 'WebSocket'],
+      ["export const a = navigator.sendBeacon('/');", 'sendBeacon'],
+      ["export const a = new EventSource('/');", 'EventSource'],
+      ["export const a = localStorage.getItem('volume');", 'localStorage'],
+      ["import { Scene } from 'three'; export { Scene };", 'three'],
+      ["import type { ByteSource } from '../../original-data/io/byte-source.ts'; export type A = ByteSource;", '../../original-data/io/byte-source.ts'],
+      ["export { cleanup } from '../../render/scene/cleanup.ts';", '../../render/scene/cleanup.ts'],
+      ["export const load = () => import('../../ui/game/describe-error.ts');", '../../ui/game/describe-error.ts'],
+      ["export type A = import('../../app/flow/app-flow.ts').AppFlow;", '../../app/flow/app-flow.ts'],
+      ["import '../../workers';", '../../workers'],
+    ];
+    for (const [source, expected] of cases) expect(violations(parse(source)), source).toEqual([expected]);
+    expect(violations(parse("import { readSoundPayload } from '../../content/sound-payload.ts'; export const a = document.hidden;"))).toEqual([]);
+  });
+
+  it('uses no network API, localStorage, package or other-layer import', () => {
+    const files = audioFiles(sharedAppProgram(), src);
+    expect(files.length).toBeGreaterThanOrEqual(1);
+    expect(files.flatMap(file => violations(file).map(entry => `${relativeSource(file.fileName)}: ${entry}`))).toEqual([]);
+  });
+
+  it('checks every DOM-free audio module in the Node program', () => {
+    expect(unchecked(root, sharedAppProgram())).toEqual([]);
+  });
+
+  it('flags a DOM-free audio module that no test brings into the Node program', () => {
+    withFixtures({
+      'src/platform/audio/checked.ts': 'export const checked = 1;',
+      'src/platform/audio/checked.test.ts': "import { checked } from './checked.ts'; export const value = checked;",
+      'src/platform/audio/orphan.ts': 'export const orphan = 1;',
+      'src/platform/audio/browser-adapter.ts': 'export const hidden = document.hidden;',
+    }, directory => {
+      expect(unchecked(directory)).toEqual(['platform/audio/orphan.ts']);
+    });
+  });
+
+  /** Audio modules whose transitive source dependencies reach a forbidden layer, or an unverifiable computed import. */
+  function audioReach(compilation: ts.Program, directory: string): string[] {
+    const options = compilation.getCompilerOptions();
+    const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+    const forbidden = /^src\/(?:original-data|app|render|ui|workers)\//;
+    const found = new Set<string>();
+    for (const start of compilation.getRootFileNames()) {
+      const origin = project(start);
+      if (!origin.startsWith('src/platform/audio/') || /\.test(?:-support)?\.ts$/.test(origin)) continue;
+      const seen = new Set([start]);
+      const queue = [start];
+      for (let index = 0; index < queue.length; index++) {
+        for (const specifier of moduleSpecifiers(compilation.getSourceFile(queue[index])!)) {
+          if (specifier === COMPUTED_IMPORT) {
+            found.add(`${origin} -> computed import in ${project(queue[index])}`);
+            continue;
+          }
+          const next = ts.resolveModuleName(specifier, queue[index], options, ts.sys).resolvedModule?.resolvedFileName;
+          if (!next || !project(next).startsWith('src/') || seen.has(next)) continue;
+          seen.add(next);
+          if (forbidden.test(project(next))) found.add(`${origin} -> ${project(next)}`);
+          else queue.push(next);
+        }
+      }
+    }
+    return [...found].sort();
+  }
+
+  it('reaches no forbidden layer through intermediaries', () => {
+    expect(audioReach(sharedAppProgram(), root)).toEqual([]);
+  });
+
+  it('flags forbidden layers reached through re-exports, import types and computed imports', () => {
+    withFixtures({
+      'src/platform/audio/player.ts': "export { describe } from '../shared/bridge.ts';",
+      'src/platform/shared/bridge.ts': "export { describe } from '../../ui/describe.ts';",
+      'src/ui/describe.ts': 'export const describe = 1;',
+      'src/platform/audio/port.ts': "export type Port = import('../../original-data/io/byte-source.ts').ByteSource;",
+      'src/original-data/io/byte-source.ts': 'export interface ByteSource { readonly byteLength: number }',
+      'src/platform/audio/dynamic.ts': 'export const load = (name: string) => import(name);',
+      'src/platform/audio/clean.ts': "export { value } from '../../content/value.ts';",
+      'src/content/value.ts': 'export const value = 1;',
+    }, directory => {
+      expect(audioReach(program('app', directory), directory)).toEqual([
+        'src/platform/audio/dynamic.ts -> computed import in src/platform/audio/dynamic.ts',
+        'src/platform/audio/player.ts -> src/ui/describe.ts',
+        'src/platform/audio/port.ts -> src/original-data/io/byte-source.ts',
+      ]);
+    });
   });
 });
 

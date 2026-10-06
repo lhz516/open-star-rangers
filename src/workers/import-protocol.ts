@@ -5,19 +5,20 @@ import { readSourceFingerprint, type SourceFingerprint } from '../content/conten
 import { ContentContractError, fail, matchesWhole, readArray, readRecord, requireFields } from '../content/contract-validation.ts';
 
 /** Any change to a message shape, the stage set or an ordering rule increments it (P2-04 spec, message protocol). */
-export const IMPORT_PROTOCOL_VERSION = 3;
+export const IMPORT_PROTOCOL_VERSION = 4;
 
 /** Stages in the only order a job may report them; the conversion stages follow `identified`. */
-export const IMPORT_STAGES = Object.freeze(['identify-source', 'convert-graphics', 'convert-logic'] as const);
+export const IMPORT_STAGES = Object.freeze(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio'] as const);
 export type ImportStage = typeof IMPORT_STAGES[number];
 
 /**
  * Whether progress for `stage` may follow the latest reported stage (null before any progress): stages only advance in
- * `IMPORT_STAGES` order, identification progress comes before `identified`, and every later stage after it.
+ * `IMPORT_STAGES` order, identification progress comes before `identified` and every later stage after it, and no
+ * progress follows the first group, since groups are sent only after every conversion stage.
  */
-export function canReportStage(latest: ImportStage | null, stage: ImportStage, identified: boolean): boolean {
+export function canReportStage(latest: ImportStage | null, stage: ImportStage, identified: boolean, grouped: boolean): boolean {
   const index = IMPORT_STAGES.indexOf(stage);
-  return index >= (latest === null ? 0 : IMPORT_STAGES.indexOf(latest)) && (index === 0) !== identified;
+  return !grouped && index >= (latest === null ? 0 : IMPORT_STAGES.indexOf(latest)) && (index === 0) !== identified;
 }
 
 /** The main thread never sends a `start` outside these limits; names are counted in UTF-16 code units. */

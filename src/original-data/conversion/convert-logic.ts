@@ -23,6 +23,9 @@ import { LOGIC_ASSETS, logicEntryReader, verifyLogicSources } from './logic-sour
 // The logic conversion step (P2-09 spec, 规范逻辑数据 and 限值与预算): the three payloads of the `logic` group, their
 // descriptors and source states, charged to the job budget. Every value comes from the source; nothing is defaulted.
 
+/** This converter's `ConverterVersion` component; any change to its output for the same source increments it. */
+export const LOGIC_CONVERTER_COMPONENT = 'logic-1';
+
 /**
  * The approved budget share of the logic step; the job adds it to its read limits and the other steps' shares
  * (P2-05 budget shares). Mission objects count mission and wingman declarations together.

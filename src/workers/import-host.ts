@@ -31,7 +31,7 @@ export interface ImportReporter {
   progress(stage: ImportStage, readBytes: number): void;
   /** At most once, before any group. */
   identified(identity: ImportSourceIdentity): void;
-  /** Each group at most once, after `identified`. The payload buffers are transferred and unusable afterwards. */
+  /** Each group at most once, after `identified` and with no progress after it. The payload buffers are transferred and unusable afterwards. */
   group(group: ResourceGroup, input: GroupInput): void;
 }
 
@@ -88,7 +88,7 @@ class ImportHost {
   async #run(jobId: number, files: readonly ImportFile[]): Promise<void> {
     const report: ImportReporter = Object.freeze({
       progress: (stage: ImportStage, readBytes: number) => {
-        if (!canReportStage(this.#stage, stage, this.#identified)) return this.#fail(INTERNAL_ERROR);
+        if (!canReportStage(this.#stage, stage, this.#identified, this.#groups.length > 0)) return this.#fail(INTERNAL_ERROR);
         this.#stage = stage;
         this.#send(sequence => ({ type: 'progress', jobId, sequence, stage, readBytes }));
       },

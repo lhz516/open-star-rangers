@@ -2,7 +2,7 @@ import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
 import {
-  boundGroups, graphicsCoveredFiles, MARKER, NO_LOGIC, productionSizedFiles, syntheticGroupsJob, syntheticOpen,
+  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, productionCoveredFiles, productionSizedFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticOpen,
 } from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
@@ -27,10 +27,15 @@ const EXCEPTION_MARKER = `${MARKER}-exception`;
 
 const scenarios: Readonly<Record<string, ImportJob>> = {
   synthetic,
-  /** The production job with its graphics step and no logic step, identifying a disc in the production graphics structure. */
-  graphics: createImportJob(syntheticOpen(graphicsCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC),
+  /**
+   * The production job with its graphics and audio stages and no logic step, identifying a disc in the production
+   * graphics and sound structure.
+   */
+  graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC),
   /** The same, with a font table the converter rejects. */
-  'graphics-corrupt': createImportJob(syntheticOpen(graphicsCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC),
+  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC),
+  /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
+  audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */
   busy: async (_, report) => {
     report.progress('identify-source', 0);

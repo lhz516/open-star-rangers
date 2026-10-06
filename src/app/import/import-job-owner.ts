@@ -238,7 +238,7 @@ class Owner implements ImportJobOwner {
     job.sequence = message.sequence;
     switch (message.type) {
       case 'progress':
-        if (!canReportStage(job.stage, message.stage, job.identity !== null)) return this.#fail(job, STAGE_OUT_OF_ORDER);
+        if (!canReportStage(job.stage, message.stage, job.identity !== null, job.groups.length > 0)) return this.#fail(job, STAGE_OUT_OF_ORDER);
         if (message.readBytes < job.readBytes || message.readBytes > job.totalBytes) return this.#fail(job, INVALID_READ_BYTES);
         job.stage = message.stage;
         job.readBytes = message.readBytes;

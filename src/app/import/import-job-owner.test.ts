@@ -60,6 +60,7 @@ const ready = { type: 'ready', protocol: IMPORT_PROTOCOL_VERSION };
 const progress = (sequence: number, readBytes: number, jobId = 1, stage = 'identify-source') => ({ type: 'progress', jobId, sequence, stage, readBytes });
 const graphicsProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-graphics');
 const logicProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-logic');
+const audioProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-audio');
 const identified = (sequence: number, jobId = 1) => ({ type: 'identified', jobId, sequence, identity: IDENTITY });
 const group = (sequence: number, jobId = 1) => ({
   type: 'group', jobId, sequence, group: 'audio',
@@ -109,17 +110,19 @@ describe('normal import', () => {
     expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-graphics', readBytes: 9, identity: IDENTITY, groups: [] });
     port.send(logicProgress(6, 9));
     expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-logic', readBytes: 9, identity: IDENTITY, groups: [] });
+    port.send(audioProgress(7, 9));
+    expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-audio', readBytes: 9, identity: IDENTITY, groups: [] });
     expect(port.terminations).toBe(0);
-    port.send(finished(7));
+    port.send(finished(8));
     expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [], usage: USAGE });
     expect(port.terminations).toBe(1);
-    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(7).fill('running'), 'finished']);
+    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(8).fill('running'), 'finished']);
     expect(snapshots.every(isDeepFrozen)).toBe(true);
     expect(JSON.stringify(snapshots)).not.toContain(MARKER);
     port.send(progress(5, 6));
     port.events.error();
     port.events.messageError();
-    expect(snapshots).toHaveLength(9);
+    expect(snapshots).toHaveLength(10);
     expect(port.terminations).toBe(1);
   });
 
@@ -352,6 +355,11 @@ describe('running failures', () => {
     ['identification progress after graphics progress', (port: FakePort) => port.send(identified(1), graphicsProgress(2, 0), progress(3, 0)), 'message.stage'],
     ['logic progress before identification', (port: FakePort) => port.send(progress(1, 0), logicProgress(2, 0)), 'message.stage'],
     ['graphics progress after logic progress', (port: FakePort) => port.send(identified(1), logicProgress(2, 0), graphicsProgress(3, 0)), 'message.stage'],
+    ['audio progress as the first progress', (port: FakePort) => port.send(audioProgress(1, 0)), 'message.stage'],
+    ['audio progress before identification', (port: FakePort) => port.send(progress(1, 0), audioProgress(2, 0)), 'message.stage'],
+    ['graphics progress after audio progress', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), graphicsProgress(3, 0)), 'message.stage'],
+    ['logic progress after audio progress', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), logicProgress(3, 0)), 'message.stage'],
+    ['progress after the first group', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), group(3), audioProgress(4, 0)), 'message.stage'],
     ['a second identification', (port: FakePort) => port.send(identified(1), identified(2)), 'message.type'],
     ['a group before identification', (port: FakePort) => port.send(group(1)), 'message.type'],
     ['a repeated group', (port: FakePort) => port.send(identified(1), group(2), group(3)), 'message.group'],
@@ -491,6 +499,14 @@ describe('group results', () => {
     });
     expect(isDeepFrozen(taken)).toBe(true);
     expect(owner.takeGroups()).toBeNull();
+  });
+
+  it('accepts every stage in order before a group, and the group before finishing', () => {
+    const { owner, port } = running();
+    const audio = bound('audio');
+    port.send(progress(1, 0), identified(2), graphicsProgress(3, 4), audioProgress(4, 9), sent(5, 'audio', audio), finish(6, ['audio']));
+    expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [complete('audio')], usage: USAGE });
+    expect(owner.takeGroups()).toEqual([{ group: 'audio', ...audio }]);
   });
 
   it('records a group with a changed payload as incomplete and keeps no payload of it', () => {

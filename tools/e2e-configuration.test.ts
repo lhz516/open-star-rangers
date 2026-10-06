@@ -86,8 +86,8 @@ describe('local E2E integration', () => {
     expect(readFileSync(join(root, 'package.json'), 'utf8')).toContain('"test:e2e": "pnpm build && playwright test"');
   });
 
-  it('runs the resource cache spec only on the development server, which serves its /src imports', () => {
-    const result = spawnSync(process.execPath, [cli, 'test', 'resource-cache.spec.ts', '--list', '--reporter=json'], { cwd: root, encoding: 'utf8' });
+  it.each(['resource-cache.spec.ts', 'audio-playback.spec.ts'])('runs %s only on the development server, which serves its /src imports', spec => {
+    const result = spawnSync(process.execPath, [cli, 'test', spec, '--list', '--reporter=json'], { cwd: root, encoding: 'utf8' });
     expect(result.status, result.stderr).toBe(0);
     interface Suite { specs?: { tests: { projectName: string }[] }[]; suites?: Suite[] }
     const projects = new Set<string>();

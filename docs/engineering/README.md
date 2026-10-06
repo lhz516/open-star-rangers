@@ -74,6 +74,11 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
 - 同一回归文件的资源缓存部分（P2-10 AC-14/AC-15）解析 `src/platform/storage/` 的生产源码：不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`window`、`document`、`localStorage` 标识符，只能相对导入且不能导入 `original-data`、`render`、`ui`、`app`、`workers`；非 `browser-*` 的模块必须在真实 Node 程序中。`browser-*` 适配不进入 Node 程序由上一条的 render 规则覆盖（它检查 `src/` 中所有浏览器模块）。
+- 同一回归文件的音频播放部分（P2-08 AC-11）与 lint 共同约束 `src/platform/audio/`。
+  - **lint：** 用单独一条 `@typescript-eslint/no-restricted-imports` 覆盖平台的通用选项，拒绝任何 `original-data` 导入（包括纯类型导入字节端口），以及 `app`、`render`、`ui`、`workers`。
+  - **源码回归：** 解析生产源码，不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`localStorage` 标识符，只能相对导入；沿应用程序的依赖图（含再导出、动态 `import()` 与 `import('…')` 类型）也不能间接到达上述模块，无法核实目标的计算型动态导入同样报错；非 `browser-*` 的模块必须在真实 Node 程序中。
+  - **反例：** 每条规则都有反例夹具，Node 程序一条用临时项目中的孤立模块验证。
+  - **发声上限：** 播放控制器的同时发声上限 `AUDIO_VOICE_LIMIT` 为 8（至少满足四类核心音效同时发声）。它只是资源保护，不代表原版混音路数。
 - 同一回归文件的 content 部分（P2-01 AC-01）保证唯一生产切片定义。`SliceDefinition` 带仅类型品牌，其他模块不经类型断言就无法构造；检查用应用程序的类型检查器找出所有目标类型可充当 `SliceDefinition` 的 `as`/`satisfies`/尖括号断言（含别名与映射类型），只允许 [slice-definition.ts](../../src/content/slice-definition.ts) 中的那一处。引用、传参或克隆已有单例不受限；显式 `any` 由 lint 拒绝，无类型的 `any` 数据流不在覆盖范围内。
 - 规范内容的消费者（`src/core`、`src/content`、`src/render`、`src/platform`、`src/ui`、`src/app` 的非测试文件）不得导入 `original-data` 的目录入口或任何子模块（P2-01 S-06/AC-05），原版 locator、IMFAT entry ID/type 和子资源定位因此只留在 `original-data`。core 与 content 的这一限制与纯模块限制写在同一条规则选项里，因为 flat config 中后出现的同名规则选项会整体替换前者。lint 只检查直接的 import/export 声明，所以同一回归文件还沿真实应用程序的依赖图检查传递可达性（含再导出、动态 `import()` 与 `import('…')` 类型）：只有 `original-data` 与导入 `workers` 可以到达 `original-data`，消费者也不能经由 workers 或其他中间模块间接到达；参数不是字符串字面量的动态 import 无法核实目标，从消费者可达时一律报错。测试文件不受限。
 - 唯一例外是字节读取端口 [`src/original-data/io/byte-source.ts`](../../src/original-data/io/byte-source.ts)（P2-02 S-07/AC-09）。它只含类型、不导入任何模块，由平台适配实现。
@@ -136,8 +141,9 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择场景。合成文件在页面内由代码生成，不读取 `local/`。
   - 探针用 Proxy 包装 `Worker` 构造函数（保持 `instanceof` 与原型），并包装 `terminate`。快照的 `workers` 记录入口路径、URL 是否由 Vite 的 Worker 转换生成、类型、名称，以及 `postMessage` 与 `terminate` 的调用次数（不保留消息内容）；注册在 Worker 对象上的监听归入 `worker` 分组。[probe-contract](../../e2e/probe-contract.spec.ts) 在两个项目中证明包装后仍能载入模块 Worker、收发消息与终止。
   - 失败与生命周期（AC-09、AC-10）：测试入口另有四个场景：`busy` 先发送一条进度，再进入只有终止才能结束的同步循环；`job-throws` 让作业抛错；`late-error` 在 `ready` 之后的异步回调中抛出未捕获错误；`top-level-throw` 在模块求值时抛错。抛出的文本都含文件名标记，用于证明它不进入快照、错误与 console。页面内事件日志按顺序记录快照、可信点击、rAF、取消与释放，作为主页面响应与“之后无通知”的证据，不用耗时阈值。开发服务器对不存在的 `.ts` 入口返回 SPA 回退的 HTML（200），模块 Worker 因此载入失败，与生产静态托管的导航回退一致。
-  - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形结构的合成光盘运行带图形步骤、不转换逻辑组的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度、空的 `convert-logic` 阶段与 `finished`，组为空，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
+  - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形与音效结构的合成光盘运行带图形与音频阶段、不转换逻辑组的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度、空的 `convert-logic` 阶段、`convert-audio` 进度，最后 `finished`；光盘还含生产音效表各条目的合成 SND，因此结束时有一个完整的生产 `audio` 组，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
   - 逻辑阶段（P2-09）：不另设浏览器用例（P2-09 技术决定 12）。阶段顺序、组发送、预算与失败经宿主、真实 `MessageChannel` 与持有者的 Node 集成测试验证，见 [import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts)。浏览器用例只随新阶段更新快照序列。
+  - 音频阶段（P2-08 AC-08）：`audio` 场景在同一光盘的 `MAIN/SR.NOB` 中加入合成 SND 条目，以合成音效表、不转换逻辑组运行生产作业。用例核对阶段顺序、完整的 `audio` 组、用量为图形与音频转换之和、移交的 payload 长度与描述符一致，并在 Node 中由同一清单重新推导 `ManifestIdentity`，证明与 Worker 内的值相同。
   - 聚焦运行：`pnpm test:e2e import-worker.spec.ts --project=development`。
 - **浏览器错误收集**（[browser-test.ts](../../e2e/support/browser-test.ts)）：除页面的 pageerror、console error、失败请求与 4xx/5xx 外，也收集页面所建 Worker 的 console error（Playwright 把它报告在 Worker 上，不在页面上）。
   - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。
@@ -150,6 +156,16 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - **损坏与并发：** 损坏与不兼容通过另一连接按导出常量直接改写已提交的真实记录，属于合成故障注入。改写后用 `readStoredRecords(page, true)` 的精确模式（逐字节列出 payload 记录）证明恢复与列出不删除、不修改任何记录。探针记录 payload 仓库的读取请求，用来证明超出预算的恢复没有读取 payload。并发用两个各持连接的适配器，按页面内 `signature`（各组 Asset ID 与 payload 摘要）判断恢复结果完全等于哪一个已提交候选。
   - **读失败与连接已关闭：** `holdReads` 在恢复或列出的只读事务上同样链式发出只读 `count()`，事务保持未完成时经 CDP 清除，得到原生只读中止与 `read-failed`。`closeNextTransaction` 是默认关闭的一次性故障注入：在下一次原生 `transaction()` 调用前关闭其真实连接，使其抛出 `InvalidStateError`，适配器报告 `storage-closed`；随后的操作重新打开数据库并报告实际状态。
   - **真实配额错误：** 本机 Chrome 154 实测，CDP `Storage.overrideQuotaForOrigin` 只有在会话首次使用 IndexedDB 之前设置才会作用于写入；之后再设置、降低或等待都不生效，重置后写入恢复。`Storage.getUsageAndQuota` 能看到覆盖值，`navigator.storage.estimate()` 始终看不到。因此用例在临时持久 profile 的第一个会话按默认配额提交旧包，重启浏览器后在首次使用前设置覆盖，再提交新包；payload 用不可压缩的伪随机字节，以免磁盘压缩使写入低于配额。覆盖期间，用例断言空间检查的完整结果等于按公式由随即独立读取的 `estimate()` 算出的结果；`sufficient`/`insufficient` 判定边界另把页面中真实 `estimate()` 的快照注入空间检查验证。
+- **音频播放**（P2-08 AC-10）：[audio-playback.spec.ts](../../e2e/audio-playback.spec.ts) 在页面内经开发服务器动态导入 `/src` 的生产工厂与 payload 模块，因此只属于 development 项目，由 production 的 `testIgnore` 排除，并由[配置回归](../../tools/e2e-configuration.test.ts)固定。只用代码生成的合成采样。
+  - **自管浏览器：** 每个用例自行启动 Chrome，并显式设置 `--autoplay-policy=document-user-activation-required`。本机 Chrome 154 实测，`user-gesture-required` 不会阻止 Web Audio。
+  - **无激活的驱动：** Playwright 的 `page.evaluate` 会给页面用户激活，掩盖被阻止的路径。所以页面操作都经 [native-lifecycle](../../e2e/support/native-lifecycle.ts) 的 `NativeTarget` 走原始 CDP `Runtime.evaluate`（不带 `userGesture`），解锁用 CDP `Input.dispatchMouseEvent` 的可信点击；证据记录 `navigator.userActivation.hasBeenActive` 在点击前为 false。
+  - **只读探针：** [支持模块](../../e2e/support/audio-playback.ts)的探针：
+    - 用 Proxy 包装 `AudioContext` 与 `AudioBuffer` 构造器，记录实例；
+    - 把每个接到已记录 `destination` 的连接另外分接到一个 `AnalyserNode`，该节点经增益为 0 的节点接到 `destination`，因此不改变输出；
+    - 运行中的上下文用峰值判断有无声音，不以调用 `start()` 或没有异常作为可听证据；
+    - 已挂起或已关闭的上下文不再渲染，分析节点保留最后一帧（实测关闭后峰值仍为 0.5）。此时的无输出证据是上下文状态，加上探针记录的“仍接到 `destination` 的应用节点数”为 0（包装 `connect`/`disconnect`）。
+  - **页面隐藏：** 用 `nativeBrowser([自动播放开关])` 启动 headed 浏览器，在 CDP 自建的 context 中开两个标签页，用 `Target.activateTarget` 切换，得到原生 hidden，并记录原生 `visibilitychange` 日志。
+  - **聚焦运行：** `pnpm test:e2e audio-playback.spec.ts --project=development`。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
 
 ## 合成 Runtime

@@ -3,10 +3,12 @@ import type { BudgetDimension } from '../content/budget.ts';
 /**
  * Stable failure codes of P2-03 archive reading, version identification and source mapping verification
  * (docs/plan/p2/03/spec.md, error codes), followed by those of P2-05 graphics conversion (docs/plan/p2/05/spec.md,
- * error codes) and P2-09 mission conversion (docs/plan/p2/09/spec.md, errors): `unsupported-payload` for a valid
- * structure that uses a position the converter does not support, `subresource-mismatch` for a subresource that
- * disagrees with its mapping. Consumers classify failures by code only; P2-02 `DiscReadError` and P2-01
- * `ContentContractError` pass through with their own codes.
+ * error codes), P2-09 mission conversion (docs/plan/p2/09/spec.md, errors) and P2-08 sound conversion
+ * (docs/plan/p2/08/spec.md): `unsupported-payload` marks a valid structure that uses a position or format the
+ * converter does not support, `subresource-mismatch` a subresource that disagrees with its mapping, and
+ * `invalid-payload` is shared. Budget overruns are `budget-exceeded` with a P2-01 budget dimension. Consumers
+ * classify failures by code only; P2-02 `DiscReadError` and P2-01 `ContentContractError` pass through with their
+ * own codes.
  */
 export type SourceErrorCode =
   | 'invalid-archive'
@@ -21,13 +23,13 @@ export type SourceErrorCode =
   | 'alternatives-differ'
   | 'fingerprint-mismatch'
   | 'invalid-payload'
+  | 'unsupported-payload'
   | 'unsupported-encoding'
   | 'budget-exceeded'
   | 'palette-index-out-of-range'
   | 'subresource-not-found'
   | 'invalid-declaration'
   | 'geometry-mismatch'
-  | 'unsupported-payload'
   | 'subresource-mismatch';
 
 /**
@@ -61,7 +63,8 @@ export interface SourceErrorData {
   /**
    * A safe structural position: `archive[:/PATH]` with a directory index, entry ID or relocation index, an entry ID
    * followed by a payload structure path such as `/records[3]/craftType`, `file:/PATH`, `catalog…`, `request…` or a
-   * source mapping path. Never bytes, raw type tags, names, values, host names or host paths.
+   * source mapping path, which a converter may follow with a field name. Never bytes, raw type tags, names, values,
+   * host names or host paths.
    */
   readonly location: string;
   /** Fixed safe text. */

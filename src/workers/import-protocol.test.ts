@@ -46,9 +46,9 @@ function rejection(read: { readonly status: string; readonly error?: unknown }):
 }
 
 describe('protocol constants', () => {
-  it('fixes version 3, three ordered stages, four layers and the six import codes', () => {
-    expect(IMPORT_PROTOCOL_VERSION).toBe(3);
-    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics', 'convert-logic']);
+  it('fixes version 4, four ordered stages, four layers and the six import codes', () => {
+    expect(IMPORT_PROTOCOL_VERSION).toBe(4);
+    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio']);
     expect(IMPORT_ERROR_LAYERS).toEqual(['disc', 'source', 'content', 'import']);
     expect(IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error', 'worker-start-failed', 'worker-failed', 'protocol-error', 'invalid-result']);
     expect(WORKER_IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error']);
@@ -60,24 +60,32 @@ describe('protocol constants', () => {
   });
 
   it.each([
-    [null, 'identify-source', false, true],
-    ['identify-source', 'identify-source', false, true],
-    [null, 'convert-graphics', false, false],
-    ['identify-source', 'convert-graphics', false, false],
-    ['identify-source', 'identify-source', true, false],
-    ['identify-source', 'convert-graphics', true, true],
-    [null, 'convert-graphics', true, true],
-    ['convert-graphics', 'convert-graphics', true, true],
-    ['convert-graphics', 'identify-source', true, false],
-    [null, 'convert-logic', false, false],
-    ['identify-source', 'convert-logic', false, false],
-    ['convert-graphics', 'convert-logic', true, true],
-    ['identify-source', 'convert-logic', true, true],
-    ['convert-logic', 'convert-logic', true, true],
-    ['convert-logic', 'convert-graphics', true, false],
-    ['convert-logic', 'identify-source', true, false],
-  ] as const)('orders stages: after %s, %s with identified %s is %s', (latest, stage, identified, allowed) => {
-    expect(canReportStage(latest, stage, identified)).toBe(allowed);
+    [null, 'identify-source', false, false, true],
+    ['identify-source', 'identify-source', false, false, true],
+    [null, 'convert-graphics', false, false, false],
+    ['identify-source', 'convert-graphics', false, false, false],
+    ['identify-source', 'identify-source', true, false, false],
+    ['identify-source', 'convert-graphics', true, false, true],
+    [null, 'convert-graphics', true, false, true],
+    ['convert-graphics', 'convert-graphics', true, false, true],
+    ['convert-graphics', 'identify-source', true, false, false],
+    [null, 'convert-logic', false, false, false],
+    ['identify-source', 'convert-logic', false, false, false],
+    ['convert-graphics', 'convert-logic', true, false, true],
+    ['identify-source', 'convert-logic', true, false, true],
+    ['convert-logic', 'convert-logic', true, false, true],
+    ['convert-logic', 'convert-graphics', true, false, false],
+    ['convert-logic', 'identify-source', true, false, false],
+    ['identify-source', 'convert-audio', false, false, false],
+    ['convert-graphics', 'convert-audio', true, false, true],
+    ['convert-logic', 'convert-audio', true, false, true],
+    ['convert-audio', 'convert-audio', true, false, true],
+    ['convert-audio', 'convert-logic', true, false, false],
+    ['convert-audio', 'convert-graphics', true, false, false],
+    ['convert-audio', 'convert-audio', true, true, false],
+    [null, 'convert-audio', true, true, false],
+  ] as const)('orders progress: after %s, %s with identified %s and grouped %s is %s', (latest, stage, identified, grouped, allowed) => {
+    expect(canReportStage(latest, stage, identified, grouped)).toBe(allowed);
   });
 
   it('types a Worker failure with only the import codes the Worker may report', () => {
@@ -96,11 +104,16 @@ describe('Worker messages', () => {
     ['progress', progress({ readBytes: MAX })],
     ['graphics conversion progress', progress({ stage: 'convert-graphics', readBytes: 12 })],
     ['logic conversion progress', progress({ stage: 'convert-logic', readBytes: 13 })],
+    ['audio conversion progress', progress({ stage: 'convert-audio', readBytes: 12 })],
     ['identified', identified()],
     ['group', group()],
     ['finished', finished()],
     ['finished without groups', finished({ groups: [] })],
     ['failed', failed({ error: error({ limit: { name: 'sourceReadBytes', limit: 10, observed: null } }) })],
+    ['failed over the audio budget', failed({ error: error({
+      layer: 'source', code: 'budget-exceeded', location: 'sources.mappings[0].parts[0].alternatives[0].size',
+      limit: { name: 'audioSamples', limit: 4_194_304, observed: null },
+    }) })],
     ['failed without a job ID', failed({ jobId: null, sequence: 1, error: error({ layer: 'import', code: 'invalid-request', location: 'request.files[1].name' }) })],
     ['failed with an internal error', failed({ error: error({ layer: 'import', code: 'internal-error', location: 'job' }) })],
   ])('reads a valid %s message as a frozen copy', (_, sample) => {
@@ -168,6 +181,7 @@ describe('Worker messages', () => {
     ['a missing field', withoutReadBytes, 'protocol-error@message.readBytes'],
     ['an unknown field', ready({ [MARKER]: MARKER }), 'protocol-error@message'],
     ['the previous protocol version', ready({ protocol: IMPORT_PROTOCOL_VERSION - 1 }), 'protocol-error@message.protocol'],
+    ['the first protocol version', ready({ protocol: 1 }), 'protocol-error@message.protocol'],
     ['a protocol version as text', ready({ protocol: '1' }), 'protocol-error@message.protocol'],
     ['job ID 0', progress({ jobId: 0 }), 'protocol-error@message.jobId'],
     ['a negative job ID', progress({ jobId: -1 }), 'protocol-error@message.jobId'],
@@ -265,6 +279,7 @@ describe('start requests', () => {
     ['a missing type', { protocol: 1, jobId: 4, files: files(1) }, 'invalid-request@request.type', 4],
     ['an unknown field', start({ [MARKER]: 1 }), 'invalid-request@request', 3],
     ['another protocol version', start({ protocol: 0 }), 'invalid-request@request.protocol', 3],
+    ['the previous protocol version', start({ protocol: IMPORT_PROTOCOL_VERSION - 1 }), 'invalid-request@request.protocol', 3],
     ['job ID 0', start({ jobId: 0 }), 'invalid-request@request.jobId', null],
     ['a job ID as text', start({ jobId: MARKER }), 'invalid-request@request.jobId', null],
     ['files that are not an array', start({ files: file() }), 'invalid-request@request.files', 3],
@@ -298,10 +313,9 @@ describe('error code grammar', () => {
   const sourceCodes: Record<SourceErrorCode, true> = {
     'invalid-archive': true, 'invalid-entry': true, 'limit-exceeded': true, 'entry-not-found': true, 'entry-type-mismatch': true,
     'invalid-request': true, 'invalid-catalog': true, 'unsupported-version': true, 'path-not-covered': true,
-    'alternatives-differ': true, 'fingerprint-mismatch': true, 'invalid-payload': true, 'unsupported-encoding': true,
+    'alternatives-differ': true, 'fingerprint-mismatch': true, 'invalid-payload': true, 'unsupported-payload': true, 'unsupported-encoding': true,
     'budget-exceeded': true, 'palette-index-out-of-range': true, 'subresource-not-found': true, 'invalid-declaration': true,
-    'geometry-mismatch': true,
-    'unsupported-payload': true, 'subresource-mismatch': true,
+    'geometry-mismatch': true, 'subresource-mismatch': true,
   };
   const contentCodes: Record<ContentContractErrorCode, true> = {
     'invalid-record': true, 'invalid-dependencies': true, 'invalid-asset-id': true, 'invalid-kind': true, 'kind-mismatch': true,
@@ -310,7 +324,8 @@ describe('error code grammar', () => {
     'duplicate-dependency': true, 'dependency-order': true, 'invalid-source-mapping': true, 'duplicate-mapping': true,
     'mapping-order': true, 'duplicate-asset': true, 'asset-order': true, 'duplicate-payload': true, 'payload-order': true,
     'missing-budget-dimension': true, 'unknown-budget-dimension': true, 'invalid-budget-value': true,
-    'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true,
+    'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true, 'invalid-sound-payload': true,
+    'duplicate-group': true, 'group-order': true,
     'invalid-graphics-payload': true, 'unsupported-payload-schema': true, 'binding-mismatch': true,
     'palette-index-out-of-range': true, 'unmapped-character': true,
     'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,

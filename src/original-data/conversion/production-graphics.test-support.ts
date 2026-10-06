@@ -26,6 +26,9 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
   return [...entries.values()].sort((left, right) => left.id - right.id);
 }
 
-/** The disc files of a source holding only the production graphics archive with `productionGraphicsEntries`. */
-export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}): Record<string, Uint8Array> =>
-  ({ [locators[0].discPath]: buildImfat(10_000, productionGraphicsEntries(blocks)) });
+/**
+ * The disc files of a source holding only the production graphics archive with `productionGraphicsEntries`;
+ * `extra` adds other entries to the same archive.
+ */
+export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}, extra: readonly SyntheticEntry[] = []): Record<string, Uint8Array> =>
+  ({ [locators[0].discPath]: buildImfat(10_000, [...productionGraphicsEntries(blocks), ...extra].sort((left, right) => left.id - right.id)) });

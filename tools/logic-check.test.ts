@@ -43,7 +43,7 @@ function printed(report: unknown): string {
 }
 
 const stageReads = ({ reads }: { readonly reads: Readonly<Record<string, number>> }) =>
-  reads['identify-source'] + reads['convert-graphics'] + reads['convert-logic'];
+  reads['identify-source'] + reads['convert-graphics'] + reads['convert-logic'] + reads['convert-audio'];
 
 describe('logic check', () => {
   it('converts, validates, decodes and loads the logic group, reporting counts, limits, reads and hashes only', async () => {
@@ -72,8 +72,9 @@ describe('logic check', () => {
     ]);
     expect(report.limits.every(item => Object.keys(item).join() === 'name,observed,limit' && item.observed <= item.limit)).toBe(true);
     expect(report.limits.find(({ name }) => name === 'nameLength')).toEqual({ name: 'nameLength', observed: `${MARKER}-pool-a`.length, limit: 63 });
-    expect(Object.keys(report.reads)).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'total']);
-    expect([report.reads['identify-source'], report.reads['convert-graphics'], report.reads['convert-logic']].every(bytes => bytes > 0)).toBe(true);
+    expect(Object.keys(report.reads)).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio', 'total']);
+    expect([report.reads['identify-source'], report.reads['convert-graphics'], report.reads['convert-logic'], report.reads['convert-audio']]
+      .every(bytes => bytes > 0)).toBe(true);
     expect(stageReads(report)).toBe(report.reads.total);
   });
 

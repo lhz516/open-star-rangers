@@ -65,6 +65,7 @@ src/
     completeness.ts
     budget.ts
     ownership.ts
+    sound-payload.ts
     graphics/
       graphics-format.ts
       palette-payload.ts
@@ -105,23 +106,30 @@ src/
       scct.ts
       scen.ts
       m2id.ts
+      snd.ts
     source/
       source-catalog.ts
       identify-source.ts
       open-verified-source.ts
       verify-source-mappings.ts
     conversion/
+      conversion-budget.ts
+      audio-conversion.ts
+      converter-version.ts
       source-graphics.ts
       graphics-declarations.ts
       convert-graphics.ts
       step-entry-reader.ts
       graphics-step.ts
       production-graphics.ts
-      converter-version.ts
       craft-binding.ts
       logic-sources.ts
       convert-logic.ts
+      production-sounds.ts
   platform/
+    audio/
+      audio-controller.ts
+      browser-audio-controller.ts
     browser/
       browser-session-host.ts
     files/
@@ -183,6 +191,40 @@ src/
 - **DOM-free：** [resource-cache-contract.ts](../../src/platform/storage/resource-cache-contract.ts) 定义缓存键、13 个封闭错误码、失败结果形状、宿主错误按 `name` 分类，以及由存储估算得出的建议性空间判定 `evaluateCapacity`（`usage`/`quota` 缺失、为负或非有限时为 `unknown`）；[resource-cache-records.ts](../../src/platform/storage/resource-cache-records.ts) 定义数据库名 `osr-resource-cache`、数据库版本 1、记录格式版本 1 与两个对象仓库名（`RESOURCE_CACHE_DATABASE`），包记录与 payload 记录的构建和读取（先查结构，再按 P2-01 读取；未知格式、内容 schema 或切片定义版本为 `cache-incompatible`，其余为 `cache-corrupt`），按定义顺序核算清单预算，恢复时把 payload 记录与清单配对并重新验证，以及存储需求估算（payload 字节精确求和，元数据按包记录与各 payload 记录键的 JSON 文本每字符 2 字节、每条记录另加 64 字节估算）。两者都在 Node 中测试。
 - **IndexedDB 适配：** [browser-resource-cache.ts](../../src/platform/storage/browser-resource-cache.ts) 的 `createResourceCache({ indexedDB?, storage? })` 只依赖注入或全局的 IndexedDB 与 `navigator.storage` 能力，不用 `window`/`document`，因此也能在 Dedicated Worker 中运行；只由应用程序检查，不进入 Node 程序。提交先取得 payload 独占快照，再读预算限值、按定义顺序核算、`validatePackage`，最后在一个读写事务中删除该键的旧记录（payload 用 `[来源类别, 令牌, 转换器版本]` 到其后追加 `[]` 的键范围）并写入新记录，只有 `complete` 才返回 `committed`；列出只读包记录；恢复在一个只读事务中读包记录、在其回调里核算预算后才读 payload 记录，事务结束后配对并重新验证。连接收到 `versionchange` 即关闭并丢弃，已开始的事务照常结束，之后的操作重新打开；浏览器强制关闭（`close` 事件）后同样丢弃。在已关闭连接上开始事务报 `storage-closed`，这次操作随即丢弃它所用的那个缓存连接（只在缓存的仍是该连接时，不会清掉更新的连接），下一次操作重新打开并报告实际状态；进行中的事务被强制关闭时，中止先于 `close` 事件，所以报 `write-failed`/`read-failed`，之后由 `close` 处理器丢弃连接。更高版本的数据库报 `storage-newer-version`，不升级也不删除。`checkCapacity` 只作建议，不阻止提交；没有 `StorageManager` 或估算失败时为 `unknown`。提交可带 `AbortSignal`：调用时已取消或写事务开始前取消返回 `cancelled`；写事务仍可中止时调用原生 `abort()`，事务确已中止才返回 `cancelled`；已进入提交阶段（`abort()` 抛出 `InvalidStateError`）或已完成时以事务最终事件为准。预期失败都以结果返回。
 
+[platform/audio/](../../src/platform/audio/) 由 [P2-08](../plan/p2/08/goal.md) 交付 Web Audio 播放端口，供 P2-11 试听与后续 Runtime 事件消费者调用：
+
+- **DOM-free 控制器：** [audio-controller.ts](../../src/platform/audio/audio-controller.ts) 的 `createAudioController({ audio, lifecycle, reportError })`。
+  - **注入：**
+    - `audio` 能力：`createContext()` 返回上下文端口，含 `state`、`onStateChange`、`resume`/`suspend`/`close`，以及接到输出的 `createVoice(buffer, loop)`；`createBuffer(channels, sampleRate)` 不需要上下文。
+    - `lifecycle` 宿主：`visible()`，以及可撤销的 `visibilitychange`、`pagehide`、`pageshow` 监听。
+    - 必填的 `reportError`。
+  - **状态：** `idle`、`locked`、`running`、`suspended`、`unavailable`、`failed`、`disposed`。
+    - **上下文：** 每个控制器至多一个，延迟到 `unlock()` 创建；构造失败为 `unavailable`。
+    - **状态来源：** 由上下文的状态变化驱动，从不等待 `resume()` 的 Promise。首次运行前未运行时为 `locked`；浏览器自行挂起或中断时停止全部发声，变为 `suspended`；上下文被关闭，或宿主操作同步抛错（创建缓冲、注册状态监听、开始发声、恢复、挂起）时为 `failed`。离开 `running` 时先改变状态再停止发声，所以订阅者在这期间也不能开始新的发声。
+  - **可见性门：**
+    - **隐藏：** 停止全部发声，只把 `running` 挂起为 `suspended`，并记下“因隐藏而挂起”。
+    - **恢复：** 只有这种挂起才在页面恢复可见（`visibilitychange` 为 visible，或可见时的 `pageshow`）时自动 `resume()`。
+    - **隐藏期间：** `unlock()` 不创建也不恢复上下文；迟到的 `running` 立即再次挂起。
+    - **不补播：** 恢复后不补播任何发声。
+  - **命令：**
+    - **`load(sounds)`：** 用 `readSoundPayload` 与 `soundChannelData` 把 `{ id, schemaVersion: 1, bytes }` 转为控制器自有的浮点缓冲，整批成功才登记；`idle` 时也可调用。
+    - **`play(id)`：** 只在 `running` 时开始新的发声，按 payload 的循环方式整段循环；同时发声上限为 `AUDIO_VOICE_LIMIT`（8），只是资源保护。
+    - **`stop`、`stopAll`：** 立即停止并断开节点，可重复调用。
+    - **`dispose()`：** 同步停止全部发声、移除全部监听并释放缓冲；从不为释放而创建上下文；只在上下文存在且未关闭时 `close()` 一次。
+  - **结果与快照：**
+    - **结果：** 判别联合的纯数据，错误码封闭：`audio-unavailable`、`audio-locked`、`audio-suspended`、`audio-failed`、`unknown-sound`、`duplicate-sound`、`invalid-sound-payload`、`voice-limit`、`disposed`。宿主错误文本不进入结果。
+    - **快照：** `{ status, loaded, voices }`，冻结，两次变化之间保持同一对象；`subscribe` 可配合 `useSyncExternalStore`。
+    - **错误转交：** 订阅者错误与发声清理错误交给 `reportError`。
+    - **所有权：** 不保留、不修改、也不转移调用方的 payload。
+  - **测试：** 用假能力与假生命周期宿主在 Node 中测试。
+- **浏览器工厂：** [browser-audio-controller.ts](../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })` 提供真实能力：
+  - **上下文：** `new AudioContext()`；构造器缺失或抛错时，控制器为 `unavailable`。
+  - **发声：** 每次发声一个接到 `destination` 的 `AudioBufferSourceNode`。
+  - **缓冲：** `new AudioBuffer(...)` 加 `getChannelData().set()`，不需要上下文。
+  - **生命周期：** `document.visibilityState` 与 `document` 的 `visibilitychange`、`window` 的 `pagehide`/`pageshow`。
+  - **范围：** 无导入副作用，没有测试注入口；只由应用程序检查，不进入 Node 程序。Chrome 中的验证见[工程约定](./README.md#本地浏览器-runner)。
+- **边界：** `platform/audio/` 不导入 `original-data`（字节端口也不行）、`render`、`ui`、`app`、`workers`，不使用网络 API 或 `localStorage`，见[工程约定](./README.md#lint-规则eslintconfigjs)。
+
 ### 内容基础契约与切片定义
 
 [P2-01/08](../plan/p2/01/subtasks/08-base-content-contract.md) 的当前 API：
@@ -205,7 +247,7 @@ src/
 - [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-09/03](../plan/p2/09/subtasks/03-package-identity.md)）：包身份的唯一推导。
   - **推导：** `deriveManifestIdentity(basis, drafts)` 严格读取身份基础与一个作业的全部组草稿（`GroupDraft`：组、按 ID 升序的描述符、payload 记录、来源状态集或 null），按 `RESOURCE_GROUPS` 顺序编码为带版本前缀的 ASCII 文本，结果为 `manifest:sha256:<64 位小写十六进制>`。任一身份基础字段、描述符字段、依赖、payload 身份或来源状态变化，结果都变化；组的传入顺序与 payload 记录不影响结果，推导也不读取 payload。空列表、重复或未知的组与格式错误的草稿以 `ContentContractError` 拒绝。测试中的固定向量锁定版本 1 编码。
   - **写入：** `applyManifestIdentity` 把同一身份写入每个组，返回冻结的 `IdentifiedGroup` 列表（可直接作为 `GroupInput` 交给完整性验证）。描述符、来源状态与 payload 记录都是读取后的副本，只有 payload 字节沿用调用者的视图，所有权仍按 `ownership.ts` 转移；payload 记录的错误路径使用调用者的草稿序号。
-  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义；任一转换器的输出可能变化时都要递增，它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。
+  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义（P2-09 S-07）。值的格式取自 P2-08：`osr-import.` 后按阶段顺序接作业打包的各转换器组件 `<转换器>-<n>`，目前为 `osr-import.logic-1.audio-1`（`LOGIC_CONVERTER_COMPONENT`、`AUDIO_CONVERTER_COMPONENT`）。任一转换器对同一来源的输出可能变化时，递增它的组件，从而改变这个值；它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。`productionIdentityBasis(指纹)` 给出生产组的身份基础。P2-08 合入前曾另行实现 `computeManifestIdentity`，合入时统一为本节的 `deriveManifestIdentity`/`applyManifestIdentity`。
 - [logic/](../../src/content/logic/)（[P2-09/04](../plan/p2/09/subtasks/04-logic-content.md)）：`logic` 组的规范逻辑内容，形状与约束见 [P2-09 spec](../plan/p2/09/spec.md#规范逻辑数据)。
   - **类型与限值：** [logic-content.ts](../../src/content/logic/logic-content.ts) 定义 `MissionContent`、`MissionGroup`、`MissionDeclaration`、`CraftTypeTable`、`WingmanRoster`、`StrategicMapFrame`、按角色区分的 `LogicPayload`，以及 `LOGIC_LIMITS` 与 payload schema 版本 1。字段声明顺序就是规范编码顺序；规则输入的字段名不表示语义已确认。
   - **读取器：** [logic-readers.ts](../../src/content/logic/logic-readers.ts) 的 `readMissionContent`、`readCraftTypeTable`、`readWingmanRoster` 与按角色分派的 `readLogicContent` 读取已解码的纯数据，返回冻结副本，-0 规范化为 0。结构、类型、取值范围与限值错误一律为 `invalid-logic-payload`（共用的基础读取器的错误也改报此码，路径不变）；数组先查长度再逐项读取。单个 payload 内的引用错误为 `logic-reference-mismatch`：声明序号与规范顺序（`object` 声明在前，最多 64 条，其后为编组首次使用的声明）、编组模板与成员的来源标记（双向一致）、成员回指、放置矩形与锚点、AI 目标，以及僚机选项不得引用任务结构。跨 Asset 的一致性不在这里检查。
@@ -225,6 +267,11 @@ src/
   - `exclusiveBytes` 把字节复制到长度恰好的新 ArrayBuffer；不使用 `slice`，因为 Node 的 `Buffer#slice` 共享内存。
   - `payloadTransferList` 返回要转移的 ArrayBuffer：每个视图必须独占整个非共享 buffer，且彼此不共用；否则以 `payload-not-exclusive`/`payload-aliased` 拒绝。
   - 转移后，发送方的视图变为空。`isDetached` 用 ES2023 可用的方式识别已转移的 buffer；`exclusiveBytes`、`payloadTransferList` 和 `readPayloadRecords` 都以 `payload-detached` 拒绝已转移的字节，因此发送方不能再复制、再次发送或拿去验证。实际的 Worker 转移由 P2-04 接入。
+- [sound-payload.ts](../../src/content/sound-payload.ts)（[P2-08/01](../plan/p2/08/subtasks/01-sound-payload.md)）：kind 为 `sound` 的规范采样 payload，schema 1（`SOUND_PAYLOAD_SCHEMA_VERSION`），与来源无关，不含条目编号、`flags` 原值或 locator。
+  - **布局：** 16 字节小端头部（`SOUND_PAYLOAD_HEADER_BYTES`）后接交错的 PCM。`SOUND_PAYLOAD_OFFSETS` 依次为：标签 `OSRS`（0）、u32 采样率（4）、u32 帧数（8）、u8 声道数（12）、u8 编码（13）、u8 循环方式（14）、保留字节 0（15）、PCM（16）。采样率范围 `SOUND_SAMPLE_RATE_RANGE` 为 8,000–96,000 Hz；声道 1 或 2；编码 `SOUND_ENCODINGS` 为 1 = `u8`（无符号 8 位）、2 = `s16le`（有符号 16 位小端）；循环方式 `SOUND_LOOP_MODES` 为 0 = `none`、1 = `whole`。
+  - **写入：** `writeSoundPayload` 按读取器的同一规则核对 `{ sampleRate, channels, encoding, loop, pcm }`（PCM 须是一个或多个整帧，帧数不超过 u32），把 PCM 原样复制到长度恰好的新独占 buffer，不修改也不保留输入视图。
+  - **读取：** `readSoundPayload` 依次核对长度至少为头部、标签、采样率/声道/编码/循环方式、保留字节、帧数 ≥ 1、PCM 长度恰为帧数 × 声道数 × 每样本字节数（无尾随字节），失败时以 `invalid-sound-payload` 及字段路径拒绝，已转移的字节为 `payload-detached`；不按声明的帧数分配，诊断不回显值。结果是冻结的头部字段加指向原视图的 PCM 子视图，仅供读取。
+  - **浮点映射：** `soundChannelData` 是唯一的映射，为每个声道返回新的 `Float32Array`（按帧交错拆分，不与 payload 共享内存）：`u8` 的 v 映射为 (v − 128) / 128，`s16le` 的 v 映射为 v / 32768，按小端读取，与宿主字节序无关。转换器、播放适配与本地对照脚本都用它。
 
 合成内容包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 在代码中生成：四组清单覆盖全部角色，另含实际 payload、原版导入变体的来源状态（`syntheticSourceGroup` 可绑定任意来源指纹），以及按 `code@path` 断言诊断的辅助函数。它与生产文件同样位于纯模块程序中。[synthetic-package.test.ts](../../src/content/synthetic-package.test.ts) 用同一个包串联完整性验证、预算、独占发布、转移与接收方重新验证，并覆盖模型内部几何与共享源网格的字节层用例。针对性检查为 `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts`；不读取原版文件或接线浏览器消费者。
 
@@ -392,7 +439,7 @@ src/
   - 参数非法时返回 `invalid-request`，ID 不存在返回 `entry-not-found`，类型不符返回 `entry-type-mismatch`。
   - 它可以打开未经版本识别的文件，属于底层能力；产品代码经已验证来源打开封包，边界见[工程约定](./README.md#lint-规则eslintconfigjs)。
 - **内存解析：** [imfat.ts](../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 供研究工具与测试使用，规则与错误同上；辅助函数只接受从同一字节数组解析出的条目。
-- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。P2-03 的全部位置都属于 spec 的封闭语法；[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `inLocationGrammar` 按 spec 定义该语法（光盘路径部分复用 `isDiscPath`），各模块测试的失败辅助逐个核对。
+- **错误：** 失败都抛出 [source-error.ts](../../src/original-data/source-error.ts) 的 `SourceError`。它的 `toData()` 与 P2-02 的 DTO 形状相同，位置形如 `archive[:/路径]`，可后接 `[i]`、`#ID` 或 `#ID.relocations[k]`，只回显通过语法规则的类型标签。转换器追加的 code 与限值名见[原版格式转换](#原版格式转换)。P2-03 的全部位置都属于 spec 的封闭语法；[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `inLocationGrammar` 按 spec 定义该语法（光盘路径部分复用 `isDiscPath`），各模块测试的失败辅助逐个核对。
 - **测试数据：** [archive.test-support.ts](../../src/original-data/archive/archive.test-support.ts) 提供共用的正负样本表，内存解析与按需读取用同一张表核对一致性。[disc.test-support.ts](../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按光盘路径放置任意文件（字节或按需生成的内容），生成完整的合成 ISO9660 树，并可调整文件位置与 `.ccd` 行尾。
 
 ### 版本识别与已验证来源
@@ -457,12 +504,49 @@ src/
 
 合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`），`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
+### 原版格式转换
+
+[P2-08](../plan/p2/08/spec.md) 的 SND 转换分为两处：`original-data/formats/` 放单一格式的解析与转换，`original-data/conversion/` 放音频组转换流程与共用的转换预算、生产 `ConverterVersion`。它们属于[底层能力边界](./README.md#lint-规则eslintconfigjs)中的“其他使用者”，原版字节只经产品入口与 `verifySourceMappings` 取得。
+
+- **转换错误：** 与 P2-05、P2-09 一致，转换失败扩展 P2-03 的 `SourceError`，经 `source` 层传递，不另设错误层（[P2-08/14](../plan/p2/08/subtasks/14-shared-mechanism-alignment.md)）。
+  - **追加 code：** `invalid-payload`（源条目违反其格式，与 P2-05 共用）与 `unsupported-payload`（格式合法，但取值不在生产规则内）；转换预算超限沿用 P2-05 已落地的 `budget-exceeded`。
+  - **限值：** 预算超限的 `limit.name` 为 P2-01 预算维度（P2-05 已把全部维度加入 `SourceLimitName`）；只有预算总量超出安全整数时，`observed` 为 null。P2-03 已有 code 与限值的含义不变。
+  - **位置：** 映射路径后接字段名（如 `.size`、`.flags`），属于 `inLocationGrammar` 的扩展语法。`reason` 为固定文本，不含字节、宿主路径或宿主错误文本。
+- **SND：** [formats/snd.ts](../../src/original-data/formats/snd.ts)（[P2-08/03](../plan/p2/08/subtasks/03-snd-parser.md)，格式见 [audio §1](../original/formats/audio.md#1-snd-digital-sound-effects-confirmed-on-all-37-entries)）。
+  - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-payload`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
+  - **规则：** `SndFormatRules` 是转换器接受的采样解释：`flags` 列出研究已确认的取值及各自的声道数与循环方式，`s16le` 表示 16 位样本是否已确认为有符号小端。规则之外的取值一律拒绝，不猜测默认值。生产规则由 P2-08 的生产音效模块提供。
+  - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-payload`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-payload`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
+- **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
+- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。
+  - **通过：** 总量等于上限时通过。
+  - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('budget-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
+- **生产 `ConverterVersion`：** 见上文[内容基础契约](#内容基础契约与切片定义)中 `manifest-identity.ts` 一节；音频转换器的组件为 `AUDIO_CONVERTER_COMPONENT`。
+- **音频组：** [conversion/audio-conversion.ts](../../src/original-data/conversion/audio-conversion.ts)（[P2-08/04](../plan/p2/08/subtasks/04-audio-group-conversion.md)）。
+  - **音效表：** `readSoundTable` 读取行 `{ role, mapping }`。先把各行的 `mapping` 投影为 `{ sourceFingerprint: null, mappings }`，交给 P2-01 `readSourceMappingTable` 校验，因此行按 Asset ID 升序且唯一，错误路径为 `sources.mappings[i]…`；带 `role` 的整行不送入该读取器。之后另行核对：`role` 属于 `SOUND_ROLES`（四个核心角色与 `model-sound`）；ID 符合该角色的规则（核心角色为 `sound/<词干>` 或再加一段变体，`model-sound` 为 `sound/model-clip/<两位数字>`）；kind 为 `sound`；恰有一个部件，各别名都是 `MAIN/SR.NOB`（`AUDIO_SOURCE_ARCHIVE`）中不带子资源的 `SND` 条目；同一 SND 条目只能属于一行（`duplicate-mapping`），因为同一源样本只形成一个 Asset。
+  - **常量：** `AUDIO_BUDGET_LIMITS` 为 `assets` 37、`audioSamples` 4,194,304、`payloadBytes` 8,388,608，其余维度为 0。转换器版本组件 `AUDIO_CONVERTER_COMPONENT` 为 `audio-1`，由 `converter-version.ts` 组成生产值。
+  - **流程：** `convertAudioGroup(source, table, rules, { limits? })` 按以下顺序执行。`limits` 只供测试替换。
+    1. **目录预检：** 读取任何 SND 块之前，只经 `openArchive` 的 `entries`/`entry` 核对（打开封包本身的 P2-03 失败报在 `sources.mappings[0].parts[0].alternatives[0]`）。先确认每个 locator（含别名）都存在且为 `SND`，失败时为 P2-03 原 code，位置为 `sources.mappings[i].parts[0].alternatives[k]`；再确认每行第一个 locator 的块不小于 20 字节，否则为 `invalid-payload`，位置为该路径加 `.size`；最后按块大小核算上界（`payloadBytes` 为 16 + 块大小 − 20，`audioSamples` 为块大小 − 20，另计 `assets`），超限时位置为该行首个 locator 加 `.size`。预检不计入用量。
+    2. **核验：** `verifySourceMappings` 核验映射，再由 `assetSourceStates` 得到绑定指纹的来源状态集。
+    3. **转换：** 逐行读取第一个 locator，以 `convertSnd` 转换，位置为该行映射路径；按实际 payload 字节与采样点数计量。
+  - **输出：** 组草稿 `{ assets, payloads, sources, usage }`。描述符为 `sound`/`audio`、无依赖、payload schema 1；每个 payload 独占 buffer；`usage` 只含转换用量，源读取用量在已验证来源的 `usage()` 中。清单身份不在这里填入。
+  - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-payload` 失败。空表不打开封包。
+- **生产音效：** [conversion/production-sounds.ts](../../src/original-data/conversion/production-sounds.ts)（[P2-08/06](../plan/p2/08/subtasks/06-import-job-audio-stage.md) 建立，[P2-08/11](../plan/p2/08/subtasks/11-production-sound-table.md) 填入）导出 `PRODUCTION_SOUND_TABLE`（经 `readSoundTable` 读取）与 `PRODUCTION_SND_RULES`。
+  - **唯一绑定：** 这张表是 SND 条目与 sound Asset ID 之间唯一的绑定。P2-06 建立模型到样本的依赖边时从这里查 ID，不另立映射。
+  - **行：** 每行 `{ role, mapping }`，映射到 `MAIN/SR.NOB` 的一个整条 `SND` 条目，为 `confirmed`、`declared`，证据指向 [audio](../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)。共 18 行：
+    - 四个核心角色的全部变体：开火 4 个、导弹 1 个、爆炸 6 个（含 4 个效果音）、Warp 1 个，按 spec 的 Asset ID 规则命名；
+    - 其余模型可达样本 6 个，为 `sound/model-clip/<两位序号>`，带 U-027。
+
+    变体序号与片段序号一次分配后冻结，不由条目编号或槽位推导。
+  - **规则：** 单声道；8 位无符号，16 位按有符号小端（`s16le`）接受；`flags` 只接受切片中出现的 0（循环至停止）与 1（播放一次），其他取值（如 8）以 `unsupported-payload` 失败。
+  - **变化：** 表或规则的任何改动都会改变转换输出，须递增 `AUDIO_CONVERTER_COMPONENT`，从而改变生产 `ConverterVersion`。
+  - **测试支持：** [production-sounds.test-support.ts](../../src/original-data/conversion/production-sounds.test-support.ts) 的 `productionSoundEntries()` 在表的各条目编号处生成合成 SND（宽度与 `flags` 都在规则之内），期望的转换用量为 `PRODUCTION_SOUND_USAGE`。
+
 ### 导入 Worker
 
 [P2-04](../plan/p2/04/spec.md) 在专用模块 Worker 中运行导入作业，消息与生命周期契约以 spec 为准。当前已实现：
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
-  - `IMPORT_PROTOCOL_VERSION` 为 3（P2-05 增加阶段时由 1 递增到 2，P2-09 再递增到 3）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`、`convert-logic`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
+  - `IMPORT_PROTOCOL_VERSION` 为 4：P2-05 增加 `convert-graphics` 时由 1 递增为 2；P2-09 与 P2-08 分别增加 `convert-logic` 与 `convert-audio`，各自递增为 3，合入后阶段集合与二者都不同，因此为 4。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`、`convert-logic`、`convert-audio`。`canReportStage(latest, stage, identified, grouped)` 是唯一的进度顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后；第一个组之后不再有任何进度，因为组只在全部转换阶段完成后发送。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
   - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
   - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
@@ -476,7 +560,7 @@ src/
   - **握手：** 安装监听后发送一次 `ready`，只接受第一条有效的 `start`。以下情况都以 `invalid-request` 失败：`start` 非法（带能读出的作业 ID）、`messageerror`，以及 `start` 之后的任何消息。
   - **作业：** `ImportJob` 接收冻结的文件快照与冻结的报告器（`progress`、`identified`、`group`），成功时返回预算用量。
     - 宿主维护顺序号，从 1 起逐条加 1。发送抛错（如克隆失败）不消耗顺序号，异常交给作业。
-    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
+    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次，第一个组之后不再报告进度；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
     - 身份只发送版本 ID 与指纹。
   - **转移：** 发送组前，用 `readPayloadRecords` 与 `payloadTransferList` 计算转移列表，位置以 `groups.<组>.payloads` 为根。非独占、别名、已转移或乱序的 payload 以 `content` 层失败，该组不发送。发送后，作业持有的 payload 视图失效。
   - **终态：** 作业返回的用量经 `readBudgetRecord` 读取，再随 `finished` 与已发送的组一起发送。终态消息之后关闭端点，之后的报告与消息都被忽略。
@@ -484,25 +568,33 @@ src/
     - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
     - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
     - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
-- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics, logic)` 返回生产作业。
-  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，后续阶段从上一阶段结束时的累计值开始。
+- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics, logic, audio)` 返回生产作业。
+  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，之后各阶段从上一阶段结束时的累计值开始。
   - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
-  - **限值与用量：** 限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上图形与 logic 两个步骤批准的份额。每个步骤在先前步骤的转换用量之上扣除；作业返回已验证来源最终的读取用量与累计转换用量逐维之和。
-  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。步骤结果只留在作业内，供 P2-06/07 装配组结果，不发送图形组。转换失败为 `source` 层；读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
-  - **逻辑转换（P2-09）：** 图形阶段之后进入 `convert-logic`，运行[逻辑组转换步骤](#逻辑组转换)，结果为组草稿与累计用量。作业先算出最终用量，再以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 的 `applyManifestIdentity` 和 `productionIdentityBasis(指纹)`，对作业发送的全部组草稿推导同一 `ManifestIdentity`，写入每个组清单，最后逐组 `report.group`。因此用量或身份出错时不会已经发出组。目前作业只发送 `logic` 组，`finished.groups` 为 `['logic']`。失败时不发送组，错误层与图形阶段相同。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即 `convertLogic` 与 `PRODUCTION_LOGIC_SHARE`；`convert` 返回 `{ drafts, usage }`，测试的 `NO_LOGIC` 返回空草稿并原样传回用量。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
+  - **限值与用量：** 图形与逻辑步骤共用一份限值记录：P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上两个步骤批准的份额，逻辑步骤在图形转换用量之上扣除。音频阶段按 `AUDIO_BUDGET_LIMITS`（或注入的限值）从零核算，与前两者互不占用（P2-08 的预算契约）。作业返回已验证来源最终的读取用量与全部转换用量逐维之和。
+  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。步骤结果只留在作业内，供 P2-06/07 装配组结果，不发送，也不计入包身份。转换失败为 `source` 层；读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
+  - **逻辑转换（P2-09）：** 图形阶段之后进入 `convert-logic`，运行[逻辑组转换步骤](#逻辑组转换)，结果为组草稿与累计用量；测试的 `NO_LOGIC` 返回空草稿。
+  - **音频转换（P2-08）：** 逻辑阶段之后进入 `convert-audio`，以 [`convertAudioGroup`](#原版格式转换) 转换 `audio` 组草稿；音效表为空时得到没有 Asset 的 `audio` 组，照常发送。
+  - **组装与发送：** 全部转换完成后，以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 的 `applyManifestIdentity` 和 `productionIdentityBasis(指纹)`，对作业发送的全部组草稿（逻辑步骤的草稿与 `audio` 组）推导同一 `ManifestIdentity`，写入每个组清单。发送任何组之前，先由 `checkPackageTransfers` 用 `readPayloadRecords` 与 `payloadTransferList` 校验每组的转移列表（位置与宿主相同，为 `groups.<组>.payloads`），并确认没有 buffer 跨组共享，以免发送前一组时使后一组失效；再以 `addBudgets` 算出最终用量。因此转换、预算、身份与最终用量的失败都不会发出组。之后逐组 `report.group`，返回用量。后续任务接入更多组时，身份须对全部已发送组重新推导，`validatePackage` 只比较各组身份是否相同，不会发现沿用的旧值。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即 `convertLogic` 与 `PRODUCTION_LOGIC_SHARE`；`convert` 返回 `{ drafts, usage }`。`audio`（`AudioStageInput`：音效表、SND 规则与可选限值）默认是生产音效表与规则。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
-  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS` 与 `NO_LOGIC`（都不转换任何 Asset）运行两个转换阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
-  - **合成光盘：** 生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目；`productionGraphicsEntries` 给出同样的条目。`sliceCoveredFiles(scenario?)` 是同时含生产图形与切片任务的合成光盘：`SR.NOB` 合并图形条目与 [formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 的 `syntheticModelEntries`，`SCENARIO.NOB` 含战役表与可替换的所选任务。
+  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`、`NO_LOGIC` 与 `NO_AUDIO`（都不转换任何 Asset）运行转换阶段，丢弃作业自己的空 `audio` 组，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
+  - **合成光盘：** 生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles(blocks, extra)` 生成，可替换或省略条目，也可加入其他条目；`productionGraphicsEntries` 给出同样的图形条目。
+    - `graphicsCoveredFiles(corrupt)`：只有生产图形；
+    - `productionCoveredFiles(corrupt)`：生产图形加上 `productionSoundEntries()`，即生产音效表各条目的合成 SND，供图形与音频阶段使用；
+    - `audioCoveredFiles(corrupt)`（P2-08）：在生产图形结构的 `MAIN/SR.NOB` 中加入四个合成 SND 条目（其一为 16 位），`SYNTHETIC_AUDIO` 是把它们转换为完整 `audio` 组的合成音效表与规则（`flags` 取值只有测试含义），期望的转换用量为 `AUDIO_CONVERSION_USAGE`；`corrupt` 让开火音效的 `flags` 不被接受；
+    - `sliceCoveredFiles(scenario?)`（P2-09）：全部生产步骤都能转换的合成光盘。`SR.NOB` 合并图形条目、[formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 的 `syntheticModelEntries` 与生产音效条目，`SCENARIO.NOB` 含战役表与可替换的所选任务。
+    - 前三者的 4×6 字库表在 `corrupt` 时少一个字节。期望的图形 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出；图形与音频阶段在 `productionCoveredFiles()` 上的转换用量为 `PRODUCTION_CONVERSION_USAGE`。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
-  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤、以 `NO_LOGIC` 跳过逻辑转换的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
+  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `productionCoveredFiles()` 运行带图形与音频阶段、以 `NO_LOGIC` 跳过逻辑转换的生产作业，因此 `graphics` 场景发送完整的生产 `audio` 组；页面与 Worker 用同一函数生成光盘。`audio` 场景（P2-08）对 `audioCoveredFiles()` 以 `NO_LOGIC` 与 `SYNTHETIC_AUDIO` 运行生产作业。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
-- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → 空的逻辑阶段 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。P2-09 另核对逻辑阶段，使用 `sliceCoveredFiles()` 的合成光盘：
-  - **成功：** 消息依次经过识别、`identified`、图形、逻辑、`group`、`finished`；持有者验证 `logic` 组为 `group-complete`，`takeGroups()` 只移交一次；
-  - **失败：** 不支持的任务（`source` 层 `unsupported-payload`）、份额不足（`source` 层 `budget-exceeded`，`limit` 完整）与注入的内容错误（`content` 层）都停在 `convert-logic`，不发送组，快照与消息不含文件名标记。
+- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。
+  - **图形（P2-05）：** 识别进度 → `identified` → 图形进度 → 空的逻辑阶段 → 音频进度 → 完整的生产 `audio` 组 → `finished`（用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。
+  - **逻辑（P2-09）：** 在 `sliceCoveredFiles()` 上，消息依次经过识别、`identified`、图形、逻辑、音频、`group`、`finished`；持有者验证 `logic` 与 `audio` 组都为 `group-complete`、二者身份相同，`takeGroups()` 只移交一次。不支持的任务（`source` 层 `unsupported-payload`）、份额不足（`source` 层 `budget-exceeded`，`limit` 完整）与注入的内容错误（`content` 层）都停在 `convert-logic`，不发送组，快照与消息不含文件名标记。
+  - **音频（P2-08）：** 完整的 `audio` 组经通道转移、发送方视图失效、持有者移交且清单身份为生产值；SND 转换失败经往返后与宿主转换的 DTO 相等、没有组；组发送之后作业失败时，持有者丢弃已收的组。
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。
@@ -519,7 +611,7 @@ src/
     - `ready` 的版本不符时报 `protocol-error`，不发送 `start`；
     - 发送 `start` 抛错时报 `worker-failed@worker`。
   - **消息：** 用协议读取函数校验，再依次核对第二次 `ready`（`message.type`）、作业 ID（`message.jobId`，含 `jobId` 为 null 的 `failed`）与连续的顺序号（`message.sequence`）。
-    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；
+    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；收到第一个组之后不得再有进度（同为 `message.stage`）；
     - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
     - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
     - Worker 报告的 `failed` 原样成为快照的错误。
@@ -602,7 +694,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 | P1-06/07/08/09/10 | `ui/game/`、`ui/pages/`、`ui/dev/`；`render/scene/`、`render/viewport/`、`render/synthetic/`；`platform/input/`；必要时 `app/composition/`；仓库根 `e2e/` | 消费者各自实现订阅与释放，应用装配，不增游戏循环 |
 | P2 | `original-data/io/`、`disc/`、`archives/`、`formats/`、`identification/`、`conversion/`、`validation/`；`content/` 按数据类别组织；`platform/files/`、`storage/`；`workers/` | 纯字节读取端口由解析层定义，File/fs 实现分别在平台/工具；转换数据不写入仓库 |
 | P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/` | 真实系统显式按固定顺序执行；不得把合成 marker 契约改名使用 |
-| P4 | `core/save/`；内容模块的战役/任务数据；`render/cockpit/`；UI 简报、结果等页面；`platform/audio/`、`video/`、`music/` | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
+| P4 | `core/save/`；内容模块的战役/任务数据；`render/cockpit/`；UI 简报、结果等页面；`platform/video/`、`music/`（音效播放端口 `platform/audio/` 已由 P2-08 交付） | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
 | P5 | 扩展原版导入、平台存储/PWA、UI 错误反馈、`e2e/`、`tools/` 与 CI/发布配置 | 不建立装满所有业务的 release 模块；缓存管理不静默覆盖玩家存档 |
 | P6 | `render/styles/`、`effects/`、内容模块的外观覆盖契约、画质设置 | 同一 Core/逻辑定义/存档；碰撞等逻辑不从 Enhanced 模型重新推导 |
 
