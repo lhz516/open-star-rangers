@@ -14,6 +14,10 @@ export const LOGIC_IDS: Readonly<Record<'mission' | 'craftTypes' | 'wingmanRoste
   wingmanRoster: 'data/wingman-roster',
 });
 
+/** Whether every object reachable from `value` is frozen, as read results must be. */
+export const deepFrozen = (value: unknown): boolean =>
+  typeof value !== 'object' || value === null || (Object.isFrozen(value) && Object.values(value).every(deepFrozen));
+
 export const ruleInputs = (overrides: Record<string, unknown> = {}) => ({
   percentA: null as number | null, craftCount: null as number | null, percentB: null as number | null,
   percentC: null as number | null, percentD: null as number | null, aiValueA: null as number | null,

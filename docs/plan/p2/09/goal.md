@@ -100,7 +100,7 @@ updated: 2026-10-05
 | [08-logic-sources.md](./subtasks/08-logic-sources.md) | 05, 07 | completed |
 | [09-logic-conversion.md](./subtasks/09-logic-conversion.md) | 03, 04, 06, 08 | completed |
 | [10-import-stage.md](./subtasks/10-import-stage.md) | 03, 09 | completed |
-| [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | pending |
+| [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | completed |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 10, 11 | pending |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
 

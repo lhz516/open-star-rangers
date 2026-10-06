@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LOGIC_LIMITS } from './logic-content.ts';
-import { MARKER, declaration, syntheticCraftTypes, syntheticMission, syntheticRoster } from './logic-content.test-support.ts';
+import { MARKER, declaration, deepFrozen, syntheticCraftTypes, syntheticMission, syntheticRoster } from './logic-content.test-support.ts';
 import { readCraftTypeTable, readLogicContent, readMissionContent, readWingmanRoster } from './logic-readers.ts';
 
 type Mission = ReturnType<typeof syntheticMission>;
@@ -8,9 +8,6 @@ type Roster = ReturnType<typeof syntheticRoster>;
 type CraftTypes = ReturnType<typeof syntheticCraftTypes>;
 
 const contractError = (code: string, path: string) => expect.objectContaining({ name: 'ContentContractError', code, path });
-
-const deepFrozen = (value: unknown): boolean =>
-  typeof value !== 'object' || value === null || (Object.isFrozen(value) && Object.values(value).every(deepFrozen));
 
 const changed = <T>(build: () => T, change: (value: T) => void): T => {
   const value = build();

@@ -44,6 +44,8 @@ src/
     determinism/
       rng.ts
       fnv1a64.ts
+    mission/
+      load-mission.ts
     synthetic/
       synthetic-scene.ts
       synthetic-snapshot.ts
@@ -319,6 +321,23 @@ src/
     - `missionReferences`：每个声明的机型、放置矩形、锚点、编组与 AI 目标（非 null 时各计一次），编组的模板与每个成员位置，每个机型到 model 的引用，以及任务的 2 个、僚机名单的 1 个 Asset 引用。
   - **超限：** 与图形步骤相同，报 `budget-exceeded`：`limit` 为维度名、上限与观测值，总量超出安全整数时观测值为 null。位置是该 Asset 的来源条目，僚机名单为 SCCT 的 `/wingmen`。被拒绝的扣除不改变用量。
   - **可达性：** 只用本份额时，结构限值下只有 `missionReferences` 与 `payloadBytes` 可能超限。
+
+### Core 任务载入
+
+[core/mission/load-mission.ts](../../src/core/mission/load-mission.ts)（[P2-09/11](../plan/p2/09/subtasks/11-core-load-mission.md)）的 `loadMission(input)` 是 Core 的纯函数，契约见 spec 的 [Core 载入结果](../plan/p2/09/spec.md#core-载入结果)：
+
+- **输入：** `LoadMissionInput` 为 `{ mission, craftTypes, wingmanRoster }`，每项为 `{ id: AssetId, content: unknown }`。Core 仍在运行时核对输入，不信任调用者给的类型：先核对任务 ID，再用 [logic-readers.ts](../../src/content/logic/logic-readers.ts) 读取任务；确认机型表与僚机名单的 ID 是任务引用的 ID 之后，才读取它们的 `content`。读取路径为 `input.<asset>.content`；单个 payload 内部的错误是读取器的 `ContentContractError`，原样传递。
+- **前提：** 只检查跨 Asset 的一致性，不满足时抛出 `CoreInputError(path, reason)`，路径指向输入位置：
+  - 输入或某项不是对象；
+  - 任务 ID 不是 `mission` 类 Asset ID；
+  - 机型表与僚机名单的 ID 不是任务引用的 ID，或名单引用了另一张机型表；
+  - 声明或僚机选项引用了表中没有的机型；
+  - 任务中没有或有两个玩家声明，或有僚机选项是玩家机型；
+  - 表中有任务与名单都没引用的机型。这一项最后检查，以免缺少玩家时被误报为多余机型。
+- **输出：** 冻结的 `MissionSetup`，字段依次为 `mission`、`campaign`、`coordinates`、`mapFrame`、`namePool`、`spawnRegions`、`declarations`、`player`、`groups`、`wingmanOptions`。声明与僚机选项附加解析出的 `side`、`model`（model 的 Asset ID）与 `baseInteraction`；`craftType` 为 null 时三者为 null、null、false。结果由读取器的新副本组成，与输入隔离；相同输入得到深度相等的结果。
+- **纯净：** 不应用默认值，不推导生成时刻、顺序或位置，不使用 RNG 或宿主时间，只导入 `content/` 与 Core 自己的错误类型。
+
+针对性检查为 `pnpm exec vitest run src/core/mission tools/engineering-boundaries.test.ts`。
 
 ### 原版来源映射
 
