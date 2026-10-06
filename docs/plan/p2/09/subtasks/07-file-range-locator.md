@@ -28,7 +28,7 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-12：证据记录 02 的结论 2、文档位置与不适用依据；`OriginalAssetLocator` 的形状与校验没有改动（`git diff` 不含 source-mapping.ts）。
+- [x] AC-12：证据记录 02 的结论 2、文档位置与不适用依据；`OriginalAssetLocator` 的形状与校验没有改动（`git diff` 不含 source-mapping.ts）。
 
 ## 验证方法
 
@@ -36,3 +36,13 @@ updated: 2026-10-05
 - 不适用 browser-testing。
 
 ## 完成证据
+
+- **不适用依据：** 02 已把 S-02 的结论 2（任务内静态参数）写入 `docs/original/`：
+  - [executable 地图投影](../../../../original/formats/executable.md#strategic-map-projection)与[世界网格](../../../../original/formats/executable.md#mission-placement-scheduling-and-world-grid)；
+  - [B-001 地图框架与坐标轴](../../../../original/behavior/B-001-strategic-map.md#地图框架与坐标轴高概率p2-09)；
+  - [U-032](../../../../original/unknowns.md#画面)。
+
+  按这些记录，地图框架来自所选 SCEN 头部的扇区数（0x00/0x04）与参考比例（0x08），以原点为中心；在目的地选取路径上没有 Warp 专用的静态数据。必需的空间参数都在已覆盖的 `SCENARIO.NOB` 条目中，不存在只在主程序等非封包文件里的参数，因此 S-12 不适用，与 spec [空间框架的研究结论](../spec.md#空间框架的研究结论)与技术决定 14 一致。
+- **代码无改动：** `git log f063eed..HEAD -- src/original-data/source-mapping.ts` 没有提交，本子任务也没有改动它，`OriginalAssetLocator` 的形状与校验不变；已有 locator 测试在 06 的 `pnpm check` 中全部通过（101 个测试文件、3082 个测试）。
+- **rubber-duck：** 无问题。审阅确认 `mapFrame` 的半边长只由 SCEN 0x00/0x04/0x08 推导，中心与坐标轴是格式知识；主程序中的地图像素换算与运行时比例不属于 `StrategicMapFrame`。`source-mapping.ts` 与 f063eed 逐字节相同，locator 相关的 2 个测试文件、53 个测试通过。
+- **文档影响：** 只更新本证据与 goal tracker；源码结构、工程约定与工具指南无需更新，因为没有新模块或命令。
