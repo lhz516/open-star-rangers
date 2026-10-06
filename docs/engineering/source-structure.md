@@ -134,6 +134,7 @@ src/
       production-sounds.ts
       model-declarations.ts
       convert-models.ts
+      model-step.ts
   platform/
     audio/
       audio-controller.ts
@@ -606,6 +607,19 @@ src/
 - **输出：** 冻结的 `{ assets, usage }`：`assets` 按 ID 升序，每项为描述符（`model`、`models` 组、依赖为去重后升序的 image 与 sound 引用、payload schema 1 与实际字节的身份）与独占 buffer 的 payload；`usage` 为起始用量加本步用量。任何失败都不输出部分结果，被拒绝的扣除不改变调用者的用量；超出安全整数时 `observed` 为 null。
 - **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-1`，由作业组成生产 `ConverterVersion`；模型输出变化时递增。
 - **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块。
+
+### 模型转换步骤
+
+[model-step.ts](../../src/original-data/conversion/model-step.ts)（[P2-06/05](../plan/p2/06/subtasks/05-model-step.md)）在已验证来源上运行模型转换，规则见 [P2-06 spec 的步骤结果与 `models` 组](../plan/p2/06/spec.md#步骤结果与-models-组)与[失败边界一览](../plan/p2/06/spec.md#错误码)。
+
+- **流程：** `runModelStep(source, mappings, declarations, references, limits, usage)` 依次执行：
+  1. **配对：** 读取声明与映射表，二者一一对应，否则为 `invalid-declaration`（`models.declarations[<i>]` 或 `models.declarations`）；每个映射须恰为 `MAIN/SR.NOB`（`MODEL_ARCHIVE`）中一个 MODL 整条目（单一部件、各别名都不带子资源），否则为 `invalid-declaration@models[<ID>].model`。这些检查在任何读取之前完成。
+  2. **核验：** 用步骤内读取（`stepEntryReader`）经 `verifySourceMappings` 核验，失败保持 P2-03 的 code 与 `sources.mappings[…]` 位置。
+  3. **读取：** 按 Asset ID 升序，从同一读取取得每个 MODL 块，用 `readModel` 收集部件引用的 MESH 条目号，在同一封包中按 `MESH` 类型读取。每个条目在一步内只物理读取一次，跨部件、跨模型共用。MESH 读取的 P2-03 失败（缺失、类型不符、封包限值）保持 code 与限值，位置改写为首个引用部件的 `models[<ID>].parts[<l>][<p>].mesh`；P2-02 的光盘层失败原样传出。
+  4. **转换：** 调用 `convertModels`。
+  5. **来源状态：** 由核验后的映射经 `assetSourceStates` 得到不带定位的来源状态。
+- **结果：** 冻结的 `ModelStepResult`，形状同图形步骤结果：有模型时只有一个 `models` 分区，描述符、payload 与来源状态按 ID 升序一一对应；`usage` 为起始用量加本步转换用量，`sourceReadBytes` 为 0。结果不含定位、条目编号或原版字节。任一模型失败时整步失败，不输出结果，已发出的读取仍计入来源用量。
+- **组草稿：** `modelsGroupDraft(graphics, models, sourceFingerprint)` 把图形步骤与模型步骤结果的 `models` 分区按 Asset ID 合并为一个 `GroupDraft`，不重新转换；来源状态绑定给定的来源指纹。重复的 Asset ID 以内容层的 `duplicate-asset` 拒绝。两边都没有 Asset 时得到空组。作业把它与其他组草稿一起交给 `applyManifestIdentity`，接收方用 `validateGroup` 验证：`sound` 依赖作为外部要求返回，来源状态不是 `verified` 时为 `source-not-ready`。
 
 ### 导入 Worker
 

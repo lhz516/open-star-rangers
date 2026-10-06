@@ -43,14 +43,14 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-07（共用读取）：被多个部件或模型引用的 MESH 在一步内只物理读取一次，用计量端口断言读取次数。
-- [ ] AC-08（步骤部分）：结果按 ID 升序且不含定位；与图形分区合并并补入合成效果 Asset 后 `validateGroup` 为 `group-complete`，外部要求恰为 sound 引用；必需角色来源未确认时为 `incomplete` 与 `source-not-ready`；任一模型失败时不输出结果。
-- [ ] 失败边界一览逐行断言：
+- [x] AC-07（共用读取）：被多个部件或模型引用的 MESH 在一步内只物理读取一次，用计量端口断言读取次数。
+- [x] AC-08（步骤部分）：结果按 ID 升序且不含定位；与图形分区合并并补入合成效果 Asset 后 `validateGroup` 为 `group-complete`，外部要求恰为 sound 引用；必需角色来源未确认时为 `incomplete` 与 `source-not-ready`；任一模型失败时不输出结果。
+- [x] 失败边界一览逐行断言：
   - 映射核验保持 `sources.mappings[…]`；
   - MESH 缺失或类型不符时保持 P2-03 的 code，位置改写为 `….parts[<l>][<p>].mesh`；
   - 光盘层失败原样传出；
   - 其余位置符合位置语法。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -59,3 +59,29 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：** [model-step.ts](../../../../../src/original-data/conversion/model-step.ts) 的 `runModelStep` 按本文的五步执行，其中配对与“整条 MODL”检查在任何读取之前完成，所以声明错误不会产生读取。MESH 经步骤内读取逐个读取；P2-03 失败保留 code、原因与限值，位置改写为首个引用部件的 `….mesh`。转换后由核验后的映射得到来源状态。结果类型 `ModelStepResult` 与图形步骤结果同形。`modelsGroupDraft` 把两步的 `models` 分区按 ID 合并为 `GroupDraft`，并经内容层读取器校验（重复 ID 报 `duplicate-asset`）。`MODEL_ARCHIVE` 为 `MAIN/SR.NOB`。
+- **AC-07（共用读取）：** [model-step.test.ts](../../../../../src/original-data/conversion/model-step.test.ts) 的合成 `SR.NOB` 含 6 个模型（覆盖全部必需角色）与 3 个 MESH：quad 被 3 个模型的 4 个部件引用，pair 被 2 个模型的 3 个部件引用，三角形被 2 个模型引用。计量端口显示每个 MESH 与每个 MODL 都只读取一次；MODL 由核验与转换共用这次读取。
+- **AC-08（步骤部分）：**
+  - 结果只有 `models` 分区，按 ID 升序，来源状态都为 `verified`；描述符与来源状态序列化后不含封包路径、条目编号、类型标签或定位字段。
+  - 与合成图形步骤的 `models` 分区（飞行调色板、一个贴图及其调色板）合并后，经 `applyManifestIdentity`，`validateGroup` 返回 `group-complete`，外部要求恰为两个 sound ID。弹丸、导弹与碎片由合成模型声明补入。
+  - 把贴图映射设为 unconfirmed（U-028）时，结果为 `incomplete`，唯一的诊断是该贴图的 `source-not-ready`。
+  - 两个结果都没有 Asset 时得到空的 `models` 草稿；合并含相同 ID 的分区时报 `duplicate-asset`。
+- **失败边界一览：** 逐行断言：
+  - 映射核验失败（模型的 MODL 条目缺失）保持 `entry-not-found@sources.mappings[0].parts[0].alternatives[0]`；
+  - MESH 缺失与类型不符分别保持 `entry-not-found`、`entry-type-mismatch`，位置为首个引用部件（按 ID 顺序为导弹）的 `….parts[0][0].mesh`；
+  - 包装的读取以 `limit-exceeded` 失败时，code、原因与限值原样保留，只改写位置；
+  - 光盘层的 `DiscReadError`（`read-failed`）原样传出；
+  - MESH 结构不符为 `invalid-payload@….parts[0][0].mesh`，超出顶点上限为 `limit-exceeded`（`meshVertices`）；
+  - 预算不足时报 `budget-exceeded@models[<ID>].model`，已发出的读取仍计入来源用量；
+  - 声明没有映射、映射没有声明、映射到 MODL 子资源或其他类型时报 `invalid-declaration`，位置分别为 `models.declarations[2]`、`models.declarations`、`models[<ID>].model`，且没有读取。
+
+  任一模型失败时整步失败，不输出结果。
+- **检查：** `pnpm exec vitest run src/original-data` 通过（38 个文件、1,123 项）；`pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过（130 个文件、3,821 项，生产构建成功）。
+- **rubber-duck：** 没有阻塞问题。采纳一项：补充用例，证明 MESH 读取失败的原因与限值在改写位置后原样保留，并覆盖结构限值。
+- **simplify：** 采纳：测试中改写映射的用例改用 `modelMapping` 的定位参数与 `replaceMapping` 辅助函数。曾尝试导出 `verify-source-mappings.ts` 的 `readLocator`，以共用位置改写，但该模块有回归测试规定只导出 `verifySourceMappings`（P2-05 审查意见的修正），于是保留本模块内的 `readMeshEntry`。未采纳：
+  - 中性的步骤结果类型与共享的配对辅助函数：需要改动图形步骤，而 spec 明确规定模型步骤结果与图形步骤同形，直接引用其类型正好表达这一点；
+  - 把 `modelsGroupDraft` 移到单独模块：它只装配 `models` 组，放在模型步骤旁更直接；
+  - MODL 只解析一次、MESH 并发读取：前者的代价很小；后者在先前读取失败后仍会发出后续读取，改变“失败即停止”的读取计量；
+  - 不导出 `MODEL_ARCHIVE` 与 `ModelStepResult`：06、07 会使用它们。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#模型转换步骤)新增“模型转换步骤”一节（流程、共用读取、位置改写、结果与组草稿合并）与目录树条目。工程约定、工具指南与 `docs/original/` 无需改动：没有新命令，也没有新的原版事实。
