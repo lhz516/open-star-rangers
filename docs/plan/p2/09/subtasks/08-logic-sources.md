@@ -18,8 +18,9 @@ updated: 2026-10-05
 - **生产映射表：** 在 `original-data/conversion/` 定义 `logic` 组每个 Asset 的映射，形状为 P2-01 的 `SourceMappingTable`（`sourceFingerprint` 为 null，`resolution` 为 `declared`）：
   - `mission/first-campaign`：SCCT 部件（子资源 `group-0/slot-1`）与所选 SCEN 整条目，`likely`，U-022；
   - `data/craft-types`：`MAIN/SR.NOB` 的 M2ID 整条目，`likely`，U-022、U-028；
-  - `data/wingman-roster`：SCCT 部件（子资源 `wingmen`），`likely`，U-023；
-  - 结论 1 时的 `data/strategic-map-frame`：按 02 的结论使用封包条目 locator 或 07 的范围 locator，置信度与 U 项按 02 的记录。
+  - `data/wingman-roster`：SCCT 部件（子资源 `wingmen`），`likely`，U-023。
+
+  S-02 为结论 2，地图框架随任务的 SCEN 部件读取，没有独立映射。
 
   条目 ID 来自 `docs/original/` 的记录（SCEN 条目见 scenario 候选来源概况，SCCT 条目见 01 的记录，M2ID 见 hud §3）；`evidence` 只引用 `docs/original/` 文档。
 - **子资源核验：** 提供一个函数，接收 `verifySourceMappings` 的结果与 05 对 SCCT 的解析：
@@ -31,7 +32,7 @@ updated: 2026-10-05
 
 ## 不包含
 
-- 读取与转换编排（09）；非封包 locator 本身（07）。
+- 读取与转换编排（09）；非封包 locator（S-12 不适用）。
 - 修改 `verifySourceMappings` 对封包条目 locator 的既有行为。
 
 ## 关键文件与契约

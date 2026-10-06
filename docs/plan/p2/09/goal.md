@@ -13,7 +13,7 @@ updated: 2026-10-05
 实现已批准的 [P2-09 spec](./spec.md) 中的 S-01 至 S-14 与 AC-01 至 AC-15：
 
 - **研究先行：** 所选任务的字段清单与地图/Warp 空间框架（S-01、S-02），结论写入 `docs/original/`，按[研究门槛](./spec.md#研究门槛与阻塞)处理超出预设形状的结果。
-- **original-data：** SCCT/SCEN/M2ID 定向解析、机型与模型绑定、生产来源映射与子资源核验、转换为 `logic` 组，以及条件交付的非封包 locator。
+- **original-data：** SCCT/SCEN/M2ID 定向解析、机型与模型绑定、生产来源映射与子资源核验、转换为 `logic` 组；非封包 locator 经研究不适用（S-12，07 只记录依据）。
 - **content：** 规范逻辑数据的类型、确定性编码与严格读取器，以及 `ManifestIdentity` 推导。
 - **workers 与 app：** 生产导入作业追加 `convert-logic` 阶段并发送 `logic` 组，协议版本递增。
 - **core：** 纯载入 `loadMission` 与 `MissionSetup`。
@@ -90,7 +90,7 @@ updated: 2026-10-05
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-field-inventory.md](./subtasks/01-field-inventory.md) | — | pending |
+| [01-field-inventory.md](./subtasks/01-field-inventory.md) | — | completed |
 | [02-spatial-frame.md](./subtasks/02-spatial-frame.md) | 01 | pending |
 | [03-package-identity.md](./subtasks/03-package-identity.md) | — | pending |
 | [04-logic-content.md](./subtasks/04-logic-content.md) | 02 | pending |
@@ -108,6 +108,21 @@ updated: 2026-10-05
 
 ## 执行记录
 
+- **2026-10-05 — 子任务 01 触发研究门槛，spec、goal 与子任务已修订：** 所选任务用到了原定为不支持的位置：
+  - 段 3、段 5 布局与段 6；
+  - 记录 +0x3C、+0x44、+0x48、+0x54 与 +0x58。
+
+  所有记录的位置与 +0x40 都为零，放置完全依赖矩形、锚点与布局；头部 0x00/0x04 决定世界范围。
+  证据：[切片字段清单](../../../original/formats/scenario.md#selected-mission-field-inventory-confirmed-structure)与 [executable 放置与世界网格](../../../original/formats/executable.md#mission-placement-scheduling-and-world-grid)。
+  受影响验收：AC-01（门槛项）、AC-02、AC-03、AC-04、AC-05、AC-11、AC-12、AC-14；子任务 02、04、05、07、08、09、11、12 的范围。
+  处理：用户在本次 execute-goal 调用中授权：子任务因需修订 spec 而阻塞时，可直接修订 spec、goal 与 subtasks，并在本节说明。据此按技术决定 3，合并 01 与 02 的研究结果修订 spec 一次：
+  - S-02 为结论 2，S-12 不适用；
+  - 修订经 rubber-duck 审阅后按该授权视为重新批准。
+
+  S/AC 编号、子任务 ID 与依赖不变，只调整相关子任务的范围与验收。
+
 ## 审批
 
-用户于 2026-10-05 明确批准本 goal，批准范围为上述 13 个子任务的拆分、依赖关系和验收覆盖。同日用户明确批准 spec。批准不代表实现完成。
+用户于 2026-10-05 明确批准本 goal，批准范围为上述 13 个子任务的拆分、依赖关系和验收覆盖。同日用户明确批准 spec。
+
+同日 spec 因研究门槛修订后，相关子任务的范围与验收随之调整，ID、依赖与验收覆盖不变。这些调整依据用户在 execute-goal 调用中的授权生效，见[执行记录](#执行记录)。批准不代表实现完成。

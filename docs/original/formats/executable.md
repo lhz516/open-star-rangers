@@ -46,8 +46,10 @@ Addresses are Ghidra addresses with the ghidra-lx-loader defaults (objects mappe
 | 0x3266c | Main mission flow: briefing, building the mission, in-mission loop, results | Likely | Reads the mission number global; calls 0x66c00 and 0x335f0 |
 | 0x38428 | Maps a 0–100 value to campaign group 0, 1, or 2 at thresholds 34 and 67 | Confirmed (logic), Likely (difficulty slider) | Result is passed to 0x66c00 as the group |
 | 0x66c00 | Mission builder: picks a `SCCT` slot by group and mission number, loads its `SCEN` and `MUSC` by ID, rescales, and spawns objects | Likely | See [scenario](./scenario.md) §4 |
-| 0x68d2c | Rescales all spatial fields of the current `SCEN` by (runtime scale ÷ header scale) | Confirmed (logic) | Identifies the spatial fields in [scenario](./scenario.md) §2–3 |
-| 0x6721c | Schedules mission objects: section-1 records, section-5 entries, and the selected wingman | Likely | Inserts {time, index, source} into a time-ordered queue via 0x67584 |
+| 0x68d2c | Rescales the spatial fields of section-1 records and sections 3–4 of the current `SCEN` by (runtime scale ÷ header scale), then swaps y/z of element 0 of each section-6 entry | Confirmed (logic, native loop) | Identifies the spatial fields in [scenario](./scenario.md) §2–3; the builder passes a constant runtime scale |
+| 0x6721c | Schedules mission objects: section-1 records with a non-zero kind and zero +0x3C, section-5 entries by their template, and the selected wingman | Confirmed (scheduling conditions) | Inserts {time, index, source} into a time-ordered queue via 0x67584 |
+| 0x67018 | Processes due spawn-queue entries: probability, live-limit and repeat checks, then issues the per-entry number of spawn requests | Likely (field roles) | See [scenario](./scenario.md#3-132-byte-object-record-structure-confirmed-fields-partly-likely) +0x0C–+0x20 |
+| 0x68398 | Computes an object's spawn position from its record (see [placement](#mission-placement-scheduling-and-world-grid)) | Confirmed (logic) | Called by spawn dispatch for records and section-5 templates |
 | 0x6744c | Fills default values into a 132-byte object record | Confirmed (logic) | Field defaults listed in [scenario](./scenario.md) §3 |
 | 0x65ca4 | Maps a single-bit object kind to the corresponding M2ID model slot | Confirmed (logic) | Computes the bit position and indexes the M2ID table loaded from entry 10649 |
 | 0x67678 | Dispatches queued spawns, including actual section-5 member records | Confirmed (access logic) | Follows the section-5 template, formation and member-pointer array; see [scenario](./scenario.md#section-5-member-records-confirmed-access) |
@@ -61,6 +63,26 @@ Addresses are Ghidra addresses with the ghidra-lx-loader defaults (objects mappe
 The mission module occupies roughly 0x67000–0x6a000; functions there read the current `SCEN` through one global pointer. The object kind at +0 selects the M2ID slot through its single set bit and also fixes the player-relative enemy/friendly class ([player target modes](#player-target-modes-and-enemy-classification)). Exact base-interaction conditions, result conditions and the remaining object-field semantics are still open under U-022.
 
 Local follow-up analysis found that previously generated C could retain `__fastcall` prototypes despite the installed compiler spec having `__watcall` as its default. Selected engine-function conventions were therefore overridden in memory during `-readOnly` analysis; the project was not overwritten or reimported. Parameter-sensitive claims use native call-site register metadata as a cross-check rather than trusting incomplete inferred signatures. Code/output remains in `local/research/p2-01/`.
+
+### Mission placement, scheduling and world grid
+
+**Confirmed (world sector grid):** after rescaling, the builder `0x66c00` passes the low 16 bits of `SCEN` header 0x00 and 0x04 and the (runtime) scale at 0x08 to `0x3a380`, which stores them as the world grid. `0x3a41c` returns the world rectangle ±(header value × scale × 0.5) on x and y. `0x3a61c` maps a world x/y to a signed sector coordinate with 1 ÷ scale (negative values are offset by one sector first), `0x3a680` adds half the grid size to obtain a zero-based sector index, and `0x3a6b0` returns a sector's centre at z = 0. The world is therefore header 0x00 × header 0x04 sectors of one scale unit each, centred on the origin in the x/y plane. Default placement `0x68c98` draws x and y uniformly over the same extent, computed directly from the header. Several callers clamp positions or query objects against the world rectangle.
+
+**Confirmed (placement routines):** `0x68398` selects placement as recorded in [scenario](./scenario.md#3-132-byte-object-record-structure-confirmed-fields-partly-likely):
+
+| Routine | Input | Result |
+|---|---|---|
+| `0x685e0` | Section-3 rectangle (+0x44) and spacing (+0x40) | Grid position with a random jitter, z = 0 |
+| `0x68708` | Anchor record (+0x48) | Position of the runtime object created from that record plus a random signed offset per axis; `0x68c98` when none exists |
+| `0x6883c` | Section-3 rectangle (+0x44) | Uniform x/y inside the rectangle, z = 0 |
+| `0x688c4` | Path reference (+0x4C) and selector (+0x50) | Likely a position along or between path points |
+| `0x68c98` | Header 0x00/0x04 and scale | Uniform x/y over the world extent, z = 0 |
+
+Placement uses the runtime random generator; the resulting positions are runtime state, not record data. Spawn dispatch `0x67678` adds section-6 layout offsets to the template anchor for section-5 members (see [scenario](./scenario.md#section-5-member-records-confirmed-access)).
+
+**Confirmed (scheduling and AI-target access):** `0x6721c` skips section-1 records whose kind is zero or whose +0x3C member back-reference is set; records with a non-zero +0x30 go through `0x69708` instead of the time queue. Section-5 entries are queued by their template's +0x1C or +0x30. `0x68018` returns the +0x58 target record's kind while that record's spawn counter is positive, and the +0x5C mask otherwise. The event-trigger consumer `0x6977c` passes record +0x54 to `0x695c0`, which updates counters and, for matching ranges, queues the paired section-1 record or section-5 entry after a delay taken from +0x34 of that record or of the entry's template.
+
+Evidence: ignored read-only probe outputs `local/research/p2-09/probe-1.txt`–`probe-5.txt` (references, constants and native loops) and the earlier decompiled exports in `local/research/`.
 
 ### Bounded slot-1 interaction-kind evidence
 
