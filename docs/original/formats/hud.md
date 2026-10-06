@@ -253,6 +253,31 @@ The LO families (MFDD 10477, BITM 10471, TABL 10483) are outside the slice (HI o
 
 **R6 (bounded check):** TABL 10165 holds 33 records that decode through its pixel pointers, each with at least two colour indices. None has an exact placement in any of the 92 captures, at scale 1 or 2, under the flight or map palette. The program loads 10165 only in `0x38ff4`, within a distance threshold of an object and together with a screen-mode change. It is therefore Likely not part of the reference screens, and its remaining questions pass to P4 (U-030).
 
+### Zoom window icons by craft type (R8)
+
+Research of [P2-07 subtask 11](../../plan/p2/07/subtasks/11-map-icon-research.md#完成证据), 2026-10-06 (addresses and roles only).
+
+**Rule (Confirmed, EXE):**
+
+- For each unit, the map drawer `0x49f8c` reads the unit's runtime kind and stores its bit position as both the 10461 marker index and the 11401 icon index. The kind is a single bit at runtime +4 ([executable](./executable.md#player-target-modes-and-enemy-classification)). One object referenced by the map state instead gets 10461 record 28; its 11401 index stays the bit position.
+- For a model-backed craft kind, as in mission and wingman records, the bit position is its M2ID slot ([scenario](./scenario.md#p2-slice-candidate-evidence), `0x65ca4`).
+- The same code tests the kind against the friendly-plus-player mask `0x6c87f`.
+
+A craft's zoom window icon is therefore the 11401 record whose full-list index equals its M2ID slot. Other runtime kinds use the record at their bit position, which is not an M2ID slot.
+
+**Selected mission:** SCCT group 0, slot 1 (SCEN 3019). It references M2ID slots 0, 7, 8, 14 and 17 ([scenario](./scenario.md#campaign-candidate-source-profiles-confirmed-structure)); the wingman roster adds slot 1, as in P2-09's craft binding.
+
+| M2ID slot | 11401 record | Confidence | Seen in the captures |
+|---|---|---|---|
+| 0 | 0 | Confirmed (EXE rule) | Not observed |
+| 1 | 1 | Confirmed (EXE rule) | Not observed |
+| 7 | 7 | Confirmed (EXE rule) | Exact at 5 zoom window places on `srangers_000/001/004.png` |
+| 8 | 8 | Confirmed (EXE rule) | Not observed |
+| 14 | 14 | Confirmed (EXE rule) | Exact at 8 zoom window places on `srangers_000/001/004/088.png` |
+| 17 | 17 | Confirmed (EXE rule) | Exact once on `srangers_059.png` |
+
+Records 20–28 correspond to bit positions 20–28. M2ID slots 20 and 21 are empty, and kinds 22, 24 and 25 are runtime kinds outside the M2ID table ([executable](./executable.md#player-target-modes-and-enemy-classification)). Canonical content has no craft-to-icon lookup table; P3 defines the map drawing rules (P2-07 technical decision 7). Scripts: `local/research/p2-07/ghidra/` (`ListRange` over the unit loop) and the family searches of subtask 09.
+
 ## 3. ID lists (Confirmed structure)
 
 {u32 offset, u32 count} at 0x00, then `count` u32 entry IDs.

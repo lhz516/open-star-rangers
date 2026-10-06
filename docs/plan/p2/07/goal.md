@@ -93,7 +93,7 @@ updated: 2026-10-06
 | [08-cockpit-palette-research.md](./subtasks/08-cockpit-palette-research.md) | 02, 03 | completed |
 | [09-hud-family-research.md](./subtasks/09-hud-family-research.md) | 03, 06, 10 | completed |
 | [10-font-text-research.md](./subtasks/10-font-text-research.md) | — | completed |
-| [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | pending |
+| [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | completed |
 | [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09, 18 | pending |
 | [13-group-assembly.md](./subtasks/13-group-assembly.md) | 04 | pending |
 | [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | pending |
