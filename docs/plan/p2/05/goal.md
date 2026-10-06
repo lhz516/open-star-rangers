@@ -104,7 +104,7 @@ updated: 2026-10-05
 | [10-local-base-check.md](./subtasks/10-local-base-check.md) | 07 | completed |
 | [11-nearest-colour-research.md](./subtasks/11-nearest-colour-research.md) | 02, 04 | completed |
 | [12-character-map-research.md](./subtasks/12-character-map-research.md) | 06 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
