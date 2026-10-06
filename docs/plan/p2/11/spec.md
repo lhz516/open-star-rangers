@@ -284,7 +284,7 @@ P2-01 至 P2-10 已分别交付读取、识别、Worker 作业、四个资源组
 ### 包预算与生产身份
 
 - **包预算：** 等于 `PRODUCTION_GRAPHICS_SHARE`、`PRODUCTION_LOGIC_SHARE`、`PRODUCTION_MODEL_SHARE` 与 `AUDIO_BUDGET_LIMITS` 的逐维之和，按 P2-01 `addBudgets` 计算。
-  - 提交与恢复都使用它；提交前的空间检查以其 `payloadBytes` 加上 `measure` 的元数据估计为需求。
+  - 提交与恢复都使用它；导入前的空间检查以其 `payloadBytes` 为需求。此时还没有组输入，`measure` 无法给出元数据估计；P2-10 允许导入前以 `payloadBytes` 预算上限作估计，该上限远大于实际 payload 与元数据之和。
   - 任一转换任务修改份额时，这个和随之改变，由 Node 测试守护。
 - **作业级读取上限：** 维持 P2-02 的默认值（输入总字节），不另设上限。
   - 读取按需进行，并受单条目上限约束；本地基准读取量约为输入的八分之一。

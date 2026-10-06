@@ -1,54 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ResourceGroup } from '../../content/asset-contract.ts';
-import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
-import { readSourceFingerprint } from '../../content/content-identity.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
-import { diagnosticCodes, syntheticGroup, SYNTHETIC_ASSETS, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
-import type { ImportedGroup, ImportGroupSummary, ImportJobOwner, ImportJobSnapshot } from '../import/import-job-owner.ts';
-import { createResourceHolder, type PackageSummary, type ResourceHolderSnapshot } from './resource-holder.ts';
+import { diagnosticCodes, syntheticGroup, SYNTHETIC_ASSETS } from '../../content/synthetic-content.test-support.ts';
+import type { ImportJobSnapshot } from '../import/import-job-owner.ts';
+import type { PackageSummary, ResourceHolderSnapshot } from './resource-holder.ts';
+import {
+  allGroups, fakeJob, finishedJob, imported, incompleteSummary, SYNTHETIC_FINGERPRINT as FINGERPRINT, testHolder,
+} from './resource-holder.test-support.ts';
 import { resourceStatuses } from './resource-status.ts';
 
-const FINGERPRINT = readSourceFingerprint(`source:sha256:${'ab'.repeat(32)}`);
 const IDENTITY = Object.freeze({ versionId: 'synthetic-disc', sourceFingerprint: FINGERPRINT });
-
-const imported = (group: ResourceGroup, input = syntheticSourceGroup(group, FINGERPRINT)): ImportedGroup =>
-  Object.freeze({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources });
-const completeSummary = (group: ResourceGroup): ImportGroupSummary =>
-  ({ group, status: 'group-complete', assets: SYNTHETIC_ASSETS[group].length, diagnostics: [] });
-const incompleteSummary = (group: ResourceGroup): ImportGroupSummary => ({
-  group, status: 'incomplete', assets: null,
-  diagnostics: [{ code: 'payload-missing', path: 'payloads', assetId: null, unknowns: [], reason: 'is missing' }],
-});
-
-type FakeJob = Pick<ImportJobOwner, 'getSnapshot' | 'takeGroups'> & { readonly takeGroups: ReturnType<typeof vi.fn> };
-
-/** A job owner whose job ended with `snapshot`; on `finished` it hands `groups` over once, like the real owner. */
-function fakeJob(snapshot: ImportJobSnapshot, groups: readonly ImportedGroup[] = []): FakeJob {
-  let taken = false;
-  return {
-    getSnapshot: () => snapshot,
-    takeGroups: vi.fn(() => {
-      if (snapshot.status !== 'finished' || taken) return null;
-      taken = true;
-      return Object.freeze([...groups]);
-    }),
-  };
-}
-
-const finishedSnapshot = (summaries: readonly ImportGroupSummary[]): ImportJobSnapshot =>
-  ({ status: 'finished', jobId: 1, identity: IDENTITY, groups: summaries, usage: EMPTY_BUDGET_USAGE });
-
-/** A finished job whose complete groups are `groups`, plus the incomplete summaries `incomplete`. */
-function finishedJob(groups: readonly ImportedGroup[], incomplete: readonly ImportGroupSummary[] = []): FakeJob {
-  return fakeJob(finishedSnapshot([...groups.map(({ group }) => completeSummary(group)), ...incomplete]), groups);
-}
-
-const allGroups = (): ImportedGroup[] => CLASSIC_P2_SLICE.groups.map(group => imported(group));
-
-const holder = () => {
-  const reportError = vi.fn();
-  return { holder: createResourceHolder({ reportError }), reportError };
-};
+const EMPTY: ResourceHolderSnapshot = { package: null, catalog: { status: 'checking' }, restore: { status: 'idle' } };
 
 describe('resource holder state ladder', () => {
   const others = (group: ResourceGroup) => CLASSIC_P2_SLICE.groups.filter(other => other !== group).map(other => imported(other));
@@ -63,9 +25,10 @@ describe('resource holder state ladder', () => {
     {
       name: 'four complete groups forming a complete package',
       job: () => finishedJob(allGroups()),
-      statuses: ['source-identified', 'complete-viewable', 'memory-only'],
+      statuses: ['source-identified', 'complete-viewable', 'memory-only', 'saving'],
       groups: ['complete', 'complete', 'complete', 'complete'],
       diagnostics: [],
+      cache: { status: 'saving' },
     },
     {
       name: 'a finished job without a group',
@@ -73,6 +36,7 @@ describe('resource holder state ladder', () => {
       statuses: ['source-identified', 'partial-conversion'],
       groups: ['complete', 'complete', 'complete', 'missing'],
       diagnostics: ['group-missing@groups.audio'],
+      cache: { status: 'not-saved', failure: null, durationMs: null },
     },
     {
       name: 'a finished job with an incomplete group',
@@ -80,6 +44,7 @@ describe('resource holder state ladder', () => {
       statuses: ['source-identified', 'partial-conversion'],
       groups: ['complete', 'complete', 'incomplete', 'complete'],
       diagnostics: ['group-missing@groups.cockpit-hud-map'],
+      cache: { status: 'not-saved', failure: null, durationMs: null },
     },
     {
       name: 'four complete groups whose package is incomplete',
@@ -87,33 +52,34 @@ describe('resource holder state ladder', () => {
       statuses: ['source-identified', 'partial-conversion'],
       groups: ['complete', 'complete', 'complete', 'complete'],
       diagnostics: ['package-identity-mismatch@groups[1].manifest.identity'],
+      cache: { status: 'not-saved', failure: null, durationMs: null },
     },
-  ])('derives the ladder for $name', ({ job: makeJob, statuses, groups, diagnostics }) => {
-    const { holder: resources } = holder();
+  ])('derives the ladder for $name', ({ job: makeJob, statuses, groups, diagnostics, cache }) => {
+    const { holder: resources } = testHolder();
     const job = makeJob();
     expect(resources.acceptImport(job)).toBe(true);
     const snapshot = resources.getSnapshot();
     expect(resourceStatuses(snapshot, job.getSnapshot())).toEqual(statuses);
     expect(snapshot.package!.groups.map(({ group, status }) => [group, status])).toEqual(CLASSIC_P2_SLICE.groups.map((group, index) => [group, groups[index]]));
     expect(diagnosticCodes(snapshot.package!.completeness)).toEqual(diagnostics);
-    expect(snapshot.package).toMatchObject({ generation: 1, origin: 'import', cache: { status: 'not-saved', failure: null }, mission: { status: 'not-attempted' } });
+    expect(snapshot.package).toMatchObject({ generation: 1, origin: 'import', cache, mission: { status: 'not-attempted' } });
   });
 
   it('keeps the diagnostics of an incomplete group', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(others('audio'), [incompleteSummary('audio')]));
     expect(resources.getSnapshot().package!.groups[3]).toEqual({ group: 'audio', status: 'incomplete', diagnostics: incompleteSummary('audio').diagnostics });
   });
 
   it('establishes nothing beyond the source identity from a finished job alone', () => {
     const job = finishedJob(allGroups());
-    expect(resourceStatuses(createResourceHolder({ reportError: vi.fn() }).getSnapshot(), job.getSnapshot())).toEqual(['source-identified']);
+    expect(resourceStatuses(testHolder().holder.getSnapshot(), job.getSnapshot())).toEqual(['source-identified']);
   });
 
   it('identifies the source only while a job runs or after it finished with an identity', () => {
     const running = (identity: typeof IDENTITY | null): ImportJobSnapshot =>
       ({ status: 'running', jobId: 1, stage: 'identify-source', readBytes: 0, identity, groups: [] });
-    const empty: ResourceHolderSnapshot = { package: null };
+    const empty = EMPTY;
     expect(resourceStatuses(empty, running(IDENTITY))).toEqual(['source-identified']);
     expect(resourceStatuses(empty, running(null))).toEqual([]);
     expect(resourceStatuses(empty, { status: 'failed', jobId: 1, stage: 'convert-logic', error: { layer: 'import', code: 'worker-failed', location: 'worker', reason: 'r', limit: null } })).toEqual([]);
@@ -122,26 +88,27 @@ describe('resource holder state ladder', () => {
   });
 
   it('shows a complete package as saved only when its cache state is saved, and otherwise as memory only', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     const summary = resources.getSnapshot().package!;
-    const withCache = (cache: PackageSummary['cache']): ResourceHolderSnapshot => ({ package: { ...summary, cache } });
-    expect(resourceStatuses(withCache({ status: 'saved' }))).toEqual(['complete-viewable', 'saved']);
+    const withCache = (cache: PackageSummary['cache']): ResourceHolderSnapshot => ({ ...EMPTY, package: { ...summary, cache } });
+    expect(resourceStatuses(withCache({ status: 'saved', via: 'commit', durationMs: 0 }))).toEqual(['complete-viewable', 'saved']);
+    expect(resourceStatuses(withCache({ status: 'saved', via: 'restore', durationMs: 0 }))).toEqual(['complete-viewable', 'saved']);
     expect(resourceStatuses(withCache({ status: 'saving' }))).toEqual(['complete-viewable', 'memory-only', 'saving']);
-    expect(resourceStatuses(withCache({ status: 'not-saved', failure: null }))).toEqual(['complete-viewable', 'memory-only']);
+    expect(resourceStatuses(withCache({ status: 'not-saved', failure: null, durationMs: null }))).toEqual(['complete-viewable', 'memory-only']);
   });
 });
 
 describe('resource holder ownership', () => {
   it('holds nothing at first', () => {
-    const { holder: resources } = holder();
-    expect(resources.getSnapshot()).toEqual({ package: null });
+    const { holder: resources } = testHolder();
+    expect(resources.getSnapshot()).toEqual(EMPTY);
     expect(resources.current()).toBeNull();
     expect(resourceStatuses(resources.getSnapshot())).toEqual([]);
   });
 
   it('replaces the package with neither a failed or cancelled job nor groups already taken', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     const before = resources.getSnapshot();
     const listener = vi.fn();
@@ -158,7 +125,7 @@ describe('resource holder ownership', () => {
   });
 
   it('replaces the package with each finished job, partial or complete, under the next generation, releasing the outgoing one first', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     const events: string[] = [];
     resources.beforeReplace(outgoing => {
       // The outgoing package is still the held one while its consumers release it.
@@ -177,7 +144,7 @@ describe('resource holder ownership', () => {
   });
 
   it('holds only the complete groups, in slice definition order, without copying, changing or detaching a payload', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     const groups = allGroups().reverse();
     const expected = groups.map(({ payloads }) => (payloads as { bytes: Uint8Array }[]).map(({ bytes }) => [...bytes]));
     resources.acceptImport(finishedJob(groups));
@@ -195,7 +162,7 @@ describe('resource holder ownership', () => {
   });
 
   it('returns the same frozen snapshot until a change', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     const snapshot = resources.getSnapshot();
     expect(resources.getSnapshot()).toBe(snapshot);
@@ -206,7 +173,7 @@ describe('resource holder ownership', () => {
   });
 
   it('reports what a listener throws and still notifies the others', () => {
-    const { holder: resources, reportError } = holder();
+    const { holder: resources, reportError } = testHolder();
     const failure = new Error('listener');
     const second = vi.fn();
     resources.beforeReplace(() => { throw failure; });
@@ -220,7 +187,7 @@ describe('resource holder ownership', () => {
   });
 
   it('completes the replacement and notifies every listener when the error outlet throws too', () => {
-    const resources = createResourceHolder({ reportError: () => { throw new Error('outlet'); } });
+    const { holder: resources } = testHolder({ reportError: () => { throw new Error('outlet'); } });
     const release = vi.fn();
     const changed = vi.fn();
     resources.acceptImport(finishedJob(allGroups()));
@@ -235,7 +202,7 @@ describe('resource holder ownership', () => {
   });
 
   it('drops the package on dispose and ignores later results without notifying anyone', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     const listener = vi.fn();
     const release = vi.fn();
@@ -247,14 +214,14 @@ describe('resource holder ownership', () => {
     expect(resources.acceptImport(late)).toBe(false);
     expect(late.takeGroups).not.toHaveBeenCalled();
     expect(resources.current()).toBeNull();
-    expect(resources.getSnapshot()).toEqual({ package: null });
+    expect(resources.getSnapshot().package).toBeNull();
     expect(listener).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled();
     expect(resources.subscribe(listener)).toBeTypeOf('function');
   });
 
   it('holds nothing new when a release listener disposes the holder', () => {
-    const { holder: resources } = holder();
+    const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     resources.beforeReplace(() => resources.dispose());
     expect(resources.acceptImport(finishedJob(allGroups()))).toBe(false);

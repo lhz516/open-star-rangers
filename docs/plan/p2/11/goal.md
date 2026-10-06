@@ -106,7 +106,7 @@ updated: 2026-10-06
 |---|---|---|
 | [01-production-package-profile.md](./subtasks/01-production-package-profile.md) | — | completed |
 | [02-resource-holder.md](./subtasks/02-resource-holder.md) | 01 | completed |
-| [03-cache-orchestration.md](./subtasks/03-cache-orchestration.md) | 02 | pending |
+| [03-cache-orchestration.md](./subtasks/03-cache-orchestration.md) | 02 | completed |
 | [04-mission-diagnostics.md](./subtasks/04-mission-diagnostics.md) | 02 | pending |
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | pending |
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | pending |
@@ -128,6 +128,10 @@ updated: 2026-10-06
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-06 — 子任务 03 前的 spec 澄清：** spec“包预算与生产身份”原写“提交前的空间检查以 `payloadBytes` 加上 `measure` 的元数据估计为需求”。但行为表与 S-04 把空间检查放在开始导入之前，此时没有组输入，`measure` 无法计算元数据。
+  - 改为：导入前以包预算的 `payloadBytes` 为需求，这是 [P2-10 spec](../10/spec.md) 操作表允许的估计；该上限（11,943,936 字节）远大于实际 payload 与元数据之和。
+  - 同步修改了 spec 与子任务 03 的措辞，不影响其他验收。
 
 ## 审批
 

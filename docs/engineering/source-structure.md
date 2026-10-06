@@ -857,17 +857,28 @@ src/
 
 [P2-11](../plan/p2/11/spec.md) 的应用级资源持有者在 [app/resources/](../../src/app/resources/) 中，DOM-free，由 Node 测试覆盖。回归测试确认它不使用网络 API、`window`、`document` 与 `localStorage`，不导入包、`render` 或 `ui`，且每个模块都在 Node 程序中检查。当前已实现：
 
-- **持有：** [resource-holder.ts](../../src/app/resources/resource-holder.ts) 的 `createResourceHolder({ reportError })` 由应用外壳实例创建，至多持有一份资源包 `HeldPackage`：代际、来源（`import` 或 `cache`）、按切片定义顺序排列的完整组 `{ group, manifest, payloads, sources }`，以及 `validatePackage(CLASSIC_P2_SLICE, groups)` 的全包判定。容器冻结；payload 视图直接取自作业移交，不复制、不转移、不改写，所有权归持有者。
+- **持有：** [resource-holder.ts](../../src/app/resources/resource-holder.ts) 的 `createResourceHolder({ cache, profile, now, reportError })` 由应用外壳实例创建，至多持有一份资源包 `HeldPackage`：代际、来源（`import` 或 `cache`）、按切片定义顺序排列的完整组 `{ group, manifest, payloads, sources }`，以及 `validatePackage(CLASSIC_P2_SLICE, groups)` 的全包判定。容器冻结；payload 视图直接取自作业移交，不复制、不转移、不改写，所有权归持有者。
 - **接收作业：** `acceptImport(job)` 只在作业快照为 `finished` 时调用 `takeGroups()`；失败、取消、组已被取走或释放之后都返回 false，不改变状态。部分结果同样替换原资源包。各组状态取自作业快照的组摘要：完整、不完整（附诊断）或缺失。
-- **替换：** 每次替换代际加 1。替换前先以旧资源包同步通知 `beforeReplace` 监听，使引用它的消费者先释放；之后才持有新包并通知订阅者。监听期间释放了持有者时，不再持有新包。
-- **快照：** `getSnapshot()` 返回冻结的 `{ package }`，两次变化之间为同一对象，不含 payload。`package` 含代际、来源、四个组的状态、全包判定、缓存状态（`not-saved` 附失败或 null、`saving`、`saved`）与任务载入状态。`current()` 为应用内的消费者返回带 payload 的资源包。
+- **替换：** 每次替换代际加 1。替换前先以旧资源包同步通知 `beforeReplace` 监听，使引用它的消费者先释放；之后中止旧包的提交、结束进行中的恢复，再持有新包并通知订阅者。监听期间释放了持有者时，不再持有新包。
+- **快照：** `getSnapshot()` 返回冻结的 `{ package, catalog, restore }`，两次变化之间为同一对象，不含 payload。
+  - `package` 含代际、来源、四个组的状态、全包判定、缓存状态与任务载入状态。缓存状态为 `not-saved`（附失败或 null，以及失败提交的耗时）、`saving` 或 `saved`（附来源 `commit` 或 `restore` 与耗时）。
+  - `catalog` 是最近一次列出的结果：`checking`、`unavailable`（附失败）或 `listed`（附可恢复的条目或 null）；spec 的缓存状态中 `checking` 与 `unavailable` 即此处的列出状态。
+  - `restore` 为 `idle`、`restoring` 或 `failed`（附失败与耗时）。
+  - `current()` 为应用内的消费者返回带 payload 的资源包。
+- **缓存端口：** `ResourceCachePort` 是 P2-10 `ResourceCache` 的结构子集（`checkCapacity`、`commit`、`list`、`restore`），只用 `resource-cache-contract.ts` 的 DOM-free 类型，所以持有者不把浏览器适配带进 Node 程序；真实适配满足它。`profile` 是 01 的预期包配置，`now` 是只用于显示耗时的页面时钟。
+- **列出：** 创建时列出一次，`relist()` 供每次回到菜单时调用；列出期间为 `checking`，只采用最近一次发起的结果。`restorableEntry(entries, profile)` 只选元数据兼容、来源为 `original-import`、指纹与转换器版本都等于预期配置的条目；其他条目不提供恢复，也不清理。结果失败（含意外拒绝，报 `read-failed@list`）时为 `unavailable`。
+  - 列出发起后资源包被替换时，丢弃该结果并重新列出。
+  - 已保存的资源包在之后的列出中没有同键条目时，缓存状态改为 `not-saved`（`not-found@key`），资源仍可使用；只在列出发起后缓存状态没有变化时这样判定，所以与提交交错的旧列出不会误判。
+- **提交：** 来自导入且全包 `complete` 的资源包立即以 `profile.limits` 与 `AbortSignal` 提交，状态为 `saving`，成功为 `saved`，失败为 `not-saved` 并附 P2-10 失败；部分结果与来自缓存的资源包不自动提交。`save()` 在完整资源包为 `not-saved` 时再次提交，不论来源（spec 行为表：列表中已没有该键时提供重新保存），保存中返回 false。意外拒绝报 `write-failed@commit`。替换与释放中止进行中的提交，其结果被丢弃。
+- **恢复：** `restore()` 只在未持有资源包、列出有可恢复条目且没有恢复进行时，以 `profile.limits` 恢复该键。结果的身份与预期配置不一致时为 `cache-incompatible@identity`，重新校验不完整时为 `cache-corrupt@groups`，都不持有；成功时以来源 `cache`、缓存状态 `saved` 替换资源包。意外拒绝报 `read-failed@restore`。恢复期间资源包被替换时，恢复立即结束，迟到的结果被静默丢弃。
+- **空间检查：** `checkSpace()` 以包预算的 `payloadBytes` 调用 `checkCapacity`，结果原样返回，只用于导入前的提示。
 - **状态阶梯：** [resource-status.ts](../../src/app/resources/resource-status.ts) 的 `resourceStatuses(holder, job?)` 按 spec 的成立条件派生状态，依次为：
   - 来源已识别：作业 `running` 或 `finished` 且带身份；
   - 部分转换或完整资源可查看：按全包判定；
-  - 完整包的已保存或仅在内存中，保存中另有 `saving`。
+  - 完整包的已保存（缓存状态为 `saved`）或仅在内存中，保存中另有 `saving`。
 
   只凭作业 `finished` 得不到“完整资源可查看”。
-- **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用，丢弃资源包与全部监听，之后的结果被忽略，也不通知任何人。
+- **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用：中止提交，丢弃资源包与全部监听；之后的列出、提交与恢复结果都被忽略，也不通知任何人。持有者不拥有缓存实例，不关闭它。
 
 ## 职责与依赖
 
