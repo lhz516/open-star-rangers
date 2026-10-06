@@ -9,9 +9,9 @@ import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { DiscReadError } from '../disc/disc-error.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
-import { buildImfat, syntheticMesh, syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
+import { buildImfat, syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
 import {
-  countedVerifiedSource, dataPaletteBlock, expectSourceError, graphicsMapping, imageDeclaration, meshBlockFor, textureBlock,
+  countedVerifiedSource, dataPaletteBlock, expectSourceError, graphicsMapping, imageDeclaration, meshBlockFor, textureBlock, triangleMeshBlock,
 } from './conversion.test-support.ts';
 import { productionIdentityBasis } from './converter-version.ts';
 import { runGraphicsStep } from './graphics-step.ts';
@@ -41,12 +41,10 @@ const MODLS: Readonly<Record<ModelName, SyntheticModlFields>> = {
 };
 const NAMES = Object.keys(MODLS) as ModelName[];
 
-const TRIANGLE = syntheticMesh({ positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], uvs: new Array(6).fill(0), normals: new Array(9).fill(0), shadingSlotCount: 1, faces: [[[0, 0], [1, 0], [2, 0]]] }).data;
-
 function archive(replace: Partial<Record<keyof typeof ENTRY, Uint8Array | null>> = {}): Record<string, Uint8Array> {
   const blocks: Record<string, [string, Uint8Array]> = {
     data: ['DATA', dataPaletteBlock()], texture: ['TEX', textureBlock()],
-    quad: ['MESH', meshBlockFor(quadGeometry())], pair: ['MESH', meshBlockFor(pairGeometry())], tri: ['MESH', TRIANGLE],
+    quad: ['MESH', meshBlockFor(quadGeometry())], pair: ['MESH', meshBlockFor(pairGeometry())], tri: ['MESH', triangleMeshBlock()],
     ...Object.fromEntries(NAMES.map(name => [name, ['MODL', syntheticModl(MODLS[name]).data]])),
   };
   const entries: SyntheticEntry[] = Object.entries(blocks).flatMap(([name, [type, data]]) => {

@@ -57,6 +57,11 @@ export const meshBlockFor = ({ positions, uvs, normals, indices, cornerShading, 
     [0, 1, 2].map(corner => [indices[face * 3 + corner], cornerShading[face * 3 + corner]] as const)),
 }).data;
 
+/** A MESH data block of one triangle over three vertices with one shading slot. */
+export const triangleMeshBlock = (): Uint8Array => syntheticMesh({
+  positions: [0, 0, 0, 2, 0, 0, 0, 3, 0], uvs: [0, 0, 1, 0, 0, 1], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], shadingSlotCount: 1, faces: [[[0, 0], [1, 0], [2, 0]]],
+}).data;
+
 type RecordFields = Partial<Parameters<typeof imageRecord>[1]> & { width: number; height: number; size: number };
 
 /** A whole-entry image record (raw, no palette, data at offset 36 by default) followed by `tail`. */

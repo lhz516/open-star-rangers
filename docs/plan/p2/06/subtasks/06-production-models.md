@@ -51,10 +51,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-08（生产结构部分）：模型步骤得到全部生产模型，机型模型的 ID 与对同一合成输入运行 P2-09 绑定得到的 ID 逐一相同；`logic` 组对模型的外部要求都由合并后的 `models` 组草稿满足。
-- [ ] AC-07（模型份额）：`PRODUCTION_MODEL_SHARE` 以常量导出且与 spec 一致；在份额、`modelParts` 与实际字节布局约束下的 payload 上界不超过 `payloadBytes` 份额；结构上合法但超出份额的输入以 `budget-exceeded` 拒绝。
-- [ ] 模型到样本的依赖边全部取自生产音效表，没有自行命名的 sound ID；映射的置信度、U 项与证据逐项断言。
-- [ ] P2-09 与 P2-08 的既有测试在合法合成模型下继续通过；`pnpm check` 通过。
+- [x] AC-08（生产结构部分）：模型步骤得到全部生产模型，机型模型的 ID 与对同一合成输入运行 P2-09 绑定得到的 ID 逐一相同；`logic` 组对模型的外部要求都由合并后的 `models` 组草稿满足。
+- [x] AC-07（模型份额）：`PRODUCTION_MODEL_SHARE` 以常量导出且与 spec 一致；在份额、`modelParts` 与实际字节布局约束下的 payload 上界不超过 `payloadBytes` 份额；结构上合法但超出份额的输入以 `budget-exceeded` 拒绝。
+- [x] 模型到样本的依赖边全部取自生产音效表，没有自行命名的 sound ID；映射的置信度、U 项与证据逐项断言。
+- [x] P2-09 与 P2-08 的既有测试在合法合成模型下继续通过；`pnpm check` 通过。
 
 ## 验证方法
 
@@ -63,3 +63,29 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+- **实现：**
+  - [craft-binding.ts](../../../../../src/original-data/conversion/craft-binding.ts) 的 `ModelBinding` 只追加 `category`，即命名时所用的类别。命名规则不变：玩家模型被友方机型共用时仍为 `player`。
+  - [production-models.ts](../../../../../src/original-data/conversion/production-models.ts) 由绑定生成 `productionModelDeclarations`（玩家、敌方、基地交互、其他友方分别对应 `player-ship`、`enemy-ship`、`base`、`friendly-craft`）与 `productionModelMappings`（MODL 整条目，likely，U-022、U-027、U-028，四条证据）。它还导出 `PRODUCTION_MODEL_REFERENCES`：贴图表来自 04，音效表为 [production-sounds.ts](../../../../../src/original-data/conversion/production-sounds.ts) 新增的 `PRODUCTION_SOUND_REFERENCES`。另导出 `PRODUCTION_MODEL_SHARE`。
+  - [production-models.test-support.ts](../../../../../src/original-data/conversion/production-models.test-support.ts) 为默认合成任务绑定的 5 个 MODL 条目给出合法内容：用到全部三个列表，quad 网格被四个模型共用，部件引用生产贴图表的 TEX，音效槽引用生产音效表的 SND。`productionSliceEntries()` 组成合成生产 `SR.NOB`。[formats.test-support.ts](../../../../../src/original-data/formats/formats.test-support.ts) 的 `syntheticModelEntries` 新增可选的替换块参数，M2ID 列表与合成任务不变；[synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 的 `sliceCoveredFiles` 改用 `productionSliceEntries()`。
+- **AC-08（生产结构部分）：** [production-models.test.ts](../../../../../src/original-data/conversion/production-models.test.ts) 在合成生产光盘上运行生产逻辑转换，再对同一机型表与 M2ID 列表调用 `bindCraftTypes`。
+  - **绑定与声明：** 绑定得到 `model/base-1`、`model/enemy-ship-1`、`model/enemy-ship-2`、`model/friendly-craft-1`、`model/player-ship`，类别与角色逐项断言。
+  - **模型步骤：** 用生产声明、映射、查找表与份额运行，得到的 5 个模型 ID 与绑定逐一相同。每个模型的依赖恰为所绑定 MODL 引用的贴图（经生产贴图表）与音效（按 SND 条目号查 `PRODUCTION_SOUND_TABLE`），说明转换的正是绑定的 MODL。来源状态为 `verified` 并带 U-022、U-027、U-028。用量为 5 个 Asset、31 个顶点、11 个三角形；共用的 quad 网格只读取一次。
+  - **跨组：** 与生产图形的 `models` 分区合并后，`logic` 组经 `validateGroup` 为 `group-complete`，其外部要求恰为 5 个模型 ID，且都在合并后的 `models` 组草稿中。
+- **AC-07（模型份额）：** `PRODUCTION_MODEL_SHARE` 与 spec 相同：`assets` 16、`dependencyEdges` 96、`vertices` 8,192、`triangles` 8,192、`payloadBytes` 1,048,576。上界按最坏情形计算为 442,816 字节，不超过 `payloadBytes`：份额内每个模型都有 256 个部件，每个部件一个几何；每条依赖边都是最长 ID 的引用；顶点与三角形用满份额。由 3 个各 4,096 顶点的 MESH 组成的模型结构上合法，但超出份额，报 `budget-exceeded`，`vertices` 的限值为 8,192，`observed` 为 12,288。
+- **映射与音效：** 映射的定位、置信度、U 项与证据逐项断言。模型到样本的依赖边全部经生产音效表查得，模块中没有自行命名的 sound ID。
+- **既有测试：** P2-09 的绑定测试只追加 `category` 的断言；其余 P2-08 与 P2-09 测试在合法合成模型下全部通过。
+- **检查：** `pnpm check` 通过（131 个文件、3,826 项，生产构建成功）。
+- **rubber-duck：** 没有阻塞问题。采纳一项：共用 quad 网格的模型数应为四个，测试支持、测试注释与源码结构的说明都已改正。审查确认 U-028 与 likely 适用于模型映射，上界推算成立，P2-08 与 P2-09 的测试意图保持不变。
+- **simplify：** 采纳：
+  - 删除多余的 `Category` 别名；
+  - `PRODUCTION_SOUND_REFERENCES` 移到表的所有者 production-sounds.ts；
+  - 新增共用的 `triangleMeshBlock()`，模型步骤测试与生产测试支持共用；
+  - `productionModelBlocks` 改为私有；
+  - 声明测试改用 `{id, category, role}` 的显式期望表，排序改用 `compareText`；
+  - 展开过长的夹具行。
+
+  未采纳：
+  - 去掉映射的再次排序：保留后，任意顺序的绑定都能得到有效的映射表；
+  - 测试直接复用模块的音效查找表：测试从 `PRODUCTION_SOUND_TABLE` 独立推导，否则断言会变成同义反复；
+  - 夹具缓存与把 `productionSliceEntries` 移到单独模块：收益很小。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#生产模型)新增“生产模型”一节（绑定来源与类别、声明与映射、查找表、份额与上界、合成生产光盘）与目录树条目，P2-08 的“唯一绑定”说明与测试支持说明随之更新。`docs/original/` 无需改动：没有新的原版事实。

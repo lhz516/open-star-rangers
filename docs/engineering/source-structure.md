@@ -135,6 +135,7 @@ src/
       model-declarations.ts
       convert-models.ts
       model-step.ts
+      production-models.ts
   platform/
     audio/
       audio-controller.ts
@@ -580,7 +581,7 @@ src/
   - **输出：** 组草稿 `{ assets, payloads, sources, usage }`。描述符为 `sound`/`audio`、无依赖、payload schema 1；每个 payload 独占 buffer；`usage` 只含转换用量，源读取用量在已验证来源的 `usage()` 中。清单身份不在这里填入。
   - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-payload` 失败。空表不打开封包。
 - **生产音效：** [conversion/production-sounds.ts](../../src/original-data/conversion/production-sounds.ts)（[P2-08/06](../plan/p2/08/subtasks/06-import-job-audio-stage.md) 建立，[P2-08/11](../plan/p2/08/subtasks/11-production-sound-table.md) 填入）导出 `PRODUCTION_SOUND_TABLE`（经 `readSoundTable` 读取）与 `PRODUCTION_SND_RULES`。
-  - **唯一绑定：** 这张表是 SND 条目与 sound Asset ID 之间唯一的绑定。P2-06 建立模型到样本的依赖边时从这里查 ID，不另立映射。
+  - **唯一绑定：** 这张表是 SND 条目与 sound Asset ID 之间唯一的绑定。P2-06 建立模型到样本的依赖边时经同一模块的 `PRODUCTION_SOUND_REFERENCES`（SND 条目号到 sound ID）查 ID，不另立映射。
   - **行：** 每行 `{ role, mapping }`，映射到 `MAIN/SR.NOB` 的一个整条 `SND` 条目，为 `confirmed`、`declared`，证据指向 [audio](../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)。共 18 行：
     - 四个核心角色的全部变体：开火 4 个、导弹 1 个、爆炸 6 个（含 4 个效果音）、Warp 1 个，按 spec 的 Asset ID 规则命名；
     - 其余模型可达样本 6 个，为 `sound/model-clip/<两位序号>`，带 U-027。
@@ -606,7 +607,7 @@ src/
   4. 扣除通过后才用 `readMesh` 解码几何并编码 payload。跨模型不共享几何：两个模型引用同一 MESH 时各自含有一份。
 - **输出：** 冻结的 `{ assets, usage }`：`assets` 按 ID 升序，每项为描述符（`model`、`models` 组、依赖为去重后升序的 image 与 sound 引用、payload schema 1 与实际字节的身份）与独占 buffer 的 payload；`usage` 为起始用量加本步用量。任何失败都不输出部分结果，被拒绝的扣除不改变调用者的用量；超出安全整数时 `observed` 为 null。
 - **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-1`，由作业组成生产 `ConverterVersion`；模型输出变化时递增。
-- **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块。
+- **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块，`triangleMeshBlock()` 生成单个三角形的 MESH 块。
 
 ### 模型转换步骤
 
@@ -620,6 +621,16 @@ src/
   5. **来源状态：** 由核验后的映射经 `assetSourceStates` 得到不带定位的来源状态。
 - **结果：** 冻结的 `ModelStepResult`，形状同图形步骤结果：有模型时只有一个 `models` 分区，描述符、payload 与来源状态按 ID 升序一一对应；`usage` 为起始用量加本步转换用量，`sourceReadBytes` 为 0。结果不含定位、条目编号或原版字节。任一模型失败时整步失败，不输出结果，已发出的读取仍计入来源用量。
 - **组草稿：** `modelsGroupDraft(graphics, models, sourceFingerprint)` 把图形步骤与模型步骤结果的 `models` 分区按 Asset ID 合并为一个 `GroupDraft`，不重新转换；来源状态绑定给定的来源指纹。重复的 Asset ID 以内容层的 `duplicate-asset` 拒绝。两边都没有 Asset 时得到空组。作业把它与其他组草稿一起交给 `applyManifestIdentity`，接收方用 `validateGroup` 验证：`sound` 依赖作为外部要求返回，来源状态不是 `verified` 时为 `source-not-ready`。
+
+### 生产模型
+
+[production-models.ts](../../src/original-data/conversion/production-models.ts)（[P2-06/06](../plan/p2/06/subtasks/06-production-models.md)）由 P2-09 的机型绑定生成生产模型输入，规则见 [P2-06 spec 的生产 Asset 与来源](../plan/p2/06/spec.md#生产-asset-与来源)。
+
+- **绑定来源：** 模型 ID 只来自 [craft-binding.ts](../../src/original-data/conversion/craft-binding.ts) 的 `bindCraftTypes`，不另建模型 ID 表。`ModelBinding` 为此追加 `category`：模型命名时所用的类别（`player`、`enemy`、`base`、`friendly`；同一模型被多个类别使用时，取命名顺序中最先使用它的类别）。
+- **声明与映射：** `productionModelDeclarations(bindings)` 按类别给出角色：玩家 `player-ship`、敌方 `enemy-ship`、基地交互 `base`、其他友方 `friendly-craft`，组为 `models`。`productionModelMappings(bindings)` 把每个模型映射到 `MAIN/SR.NOB` 中绑定给出的 MODL 整条目，置信度 likely，U 项为 U-022、U-027、U-028，证据指向 hud §3、mesh §2 与 §3、玩家目标模式；来源指纹为 null，由作业核验时绑定。
+- **查找表：** `PRODUCTION_MODEL_REFERENCES` 的贴图表为生产贴图表的 `PRODUCTION_TEXTURE_REFERENCES`，音效表为 [production-sounds.ts](../../src/original-data/conversion/production-sounds.ts) 的 `PRODUCTION_SOUND_REFERENCES`（由 `PRODUCTION_SOUND_TABLE` 按 SND 条目号查得 sound ID）；模型到样本的依赖边因此不自行命名 sound ID。
+- **份额：** `PRODUCTION_MODEL_SHARE` 为 `assets` 16、`dependencyEdges` 96、`vertices` 8,192、`triangles` 8,192、`payloadBytes` 1,048,576，其余维度为 0。在这些计数、每个模型 256 个部件（每个部件一个几何）与实际字节布局下算出的上界为 442,816 字节，不超过 `payloadBytes`。
+- **合成生产光盘：** [production-models.test-support.ts](../../src/original-data/conversion/production-models.test-support.ts) 为默认合成任务绑定的 5 个 MODL 条目给出合法内容：用到全部三个列表，quad 网格被四个模型共用，部件引用生产贴图表的 TEX 条目，音效槽引用生产音效表的 SND 条目；MESH 条目为 21001–21003。`productionSliceEntries()` 组成合成生产 `SR.NOB` 的全部条目（图形、M2ID 与合法模型、MESH、音效），`sliceCoveredFiles` 与 original-data 的测试共用它；未被绑定的 M2ID 槽位仍为 8 字节占位块，`syntheticModelEntries` 为此接受按条目号替换的块。
 
 ### 导入 Worker
 

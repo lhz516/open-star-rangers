@@ -20,9 +20,10 @@ const FRIENDLY_MASK = 0x206c87e;
  */
 const BASE_INTERACTION_MASK = 0x68000;
 
-type Category = 'player' | 'enemy' | 'base' | 'friendly';
+/** A model's craft category: the player's ship, an enemy, a friendly craft with base interaction, or another friendly. */
+export type ModelCategory = 'player' | 'enemy' | 'base' | 'friendly';
 /** Naming order and names: a model shared by several craft types takes its name from the first category using it. */
-const CATEGORIES: readonly { readonly category: Category; readonly name: (ordinal: number) => string }[] = [
+const CATEGORIES: readonly { readonly category: ModelCategory; readonly name: (ordinal: number) => string }[] = [
   { category: 'player', name: () => 'model/player-ship' },
   { category: 'enemy', name: ordinal => `model/enemy-ship-${ordinal}` },
   { category: 'base', name: ordinal => `model/base-${ordinal}` },
@@ -33,6 +34,8 @@ export interface ModelBinding {
   readonly id: AssetId;
   /** The MODL entry in `MAIN/SR.NOB` the model Asset is converted from. */
   readonly modelEntryId: number;
+  /** The category the model was named from: the first category using it in naming order. */
+  readonly category: ModelCategory;
 }
 
 export interface CraftBinding {
@@ -50,7 +53,7 @@ function sideOf(craftType: number): CraftSide | null {
 }
 
 /** Whether craft types of `first` and `other` may share one model: within a category, or a friendly player ship. */
-const mayShare = (first: Category, other: Category): boolean => first === other || (first === 'player' && other === 'friendly');
+const mayShare = (first: ModelCategory, other: ModelCategory): boolean => first === other || (first === 'player' && other === 'friendly');
 
 /**
  * Binds the craft types the mission and the wingman roster reference to model Asset IDs through the M2ID list
@@ -66,11 +69,11 @@ export function bindCraftTypes(referenced: Iterable<number>, modelIds: readonly 
     const side = sideOf(craftType);
     if (side === null) throw new SourceError('unsupported-payload', at(craftType), 'the craft type has no player-relative side');
     const baseInteraction = (BASE_INTERACTION_MASK & bit(craftType)) !== 0;
-    const category: Category = side === 'player' ? 'player' : side === 'enemy' ? 'enemy' : baseInteraction ? 'base' : 'friendly';
+    const category: ModelCategory = side === 'player' ? 'player' : side === 'enemy' ? 'enemy' : baseInteraction ? 'base' : 'friendly';
     return { craftType, side, baseInteraction, modelEntryId, category };
   });
 
-  const named = new Map<number, { readonly id: AssetId; readonly category: Category }>();
+  const named = new Map<number, { readonly id: AssetId; readonly category: ModelCategory }>();
   for (const { category, name } of CATEGORIES) {
     let ordinal = 0;
     for (const { craftType, modelEntryId, category: own } of craft) {
@@ -87,7 +90,7 @@ export function bindCraftTypes(referenced: Iterable<number>, modelIds: readonly 
   const entries = craft.map(({ craftType, side, baseInteraction, modelEntryId }): CraftTypeEntry => ({
     craftType, side, baseInteraction, model: { id: named.get(modelEntryId)!.id, kind: 'model' },
   }));
-  const models = [...named].map(([modelEntryId, { id }]) => Object.freeze({ id, modelEntryId }))
+  const models = [...named].map(([modelEntryId, { id, category }]) => Object.freeze({ id, modelEntryId, category }))
     .sort((left, right) => compareText(left.id, right.id));
   return Object.freeze({ table: readCraftTypeTable({ entries }), models: Object.freeze(models) });
 }

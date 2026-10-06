@@ -1,3 +1,4 @@
+import type { AssetId } from '../../content/asset-id.ts';
 import type { SndFormatRules } from '../formats/snd.ts';
 import { AUDIO_SOURCE_ARCHIVE, readSoundTable, type SoundRole, type SoundTableRow } from './audio-conversion.ts';
 
@@ -66,3 +67,7 @@ export const PRODUCTION_SND_RULES: SndFormatRules = Object.freeze({
   ]),
   s16le: true,
 });
+
+/** SND entry → sound Asset ID: how model-to-sample edges name samples, so no other module names a sound ID. */
+export const PRODUCTION_SOUND_REFERENCES: ReadonlyMap<number, AssetId> = new Map(PRODUCTION_SOUND_TABLE.map(({ mapping }) =>
+  [mapping.parts[0].alternatives[0].entry.id, mapping.asset.id]));

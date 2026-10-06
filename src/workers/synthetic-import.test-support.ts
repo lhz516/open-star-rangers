@@ -11,11 +11,10 @@ import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
-import { MODEL_TEXTURE_USAGE, productionGraphicsEntries, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import { MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
-import {
-  defaultScenarioSpec, syntheticModelEntries, syntheticScenario, syntheticScenarioArchive,
-} from '../original-data/formats/formats.test-support.ts';
+import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
+import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.ts';
 import type { ImportJob } from './import-host.ts';
 import { createImportJob, type AudioStageInput, type GraphicsStepInput, type LogicStepInput, type OpenSource } from './import-job.ts';
@@ -90,12 +89,12 @@ export const NO_LOGIC: LogicStepInput = Object.freeze({
 
 /**
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics entries, the M2ID
- * list and its models and synthetic samples at every entry of the production sound table, and `MAIN/SCENARIO.NOB` with
- * the campaign table and `scenario` as the selected mission.
+ * list with valid models for the craft types the default mission binds and their meshes, and synthetic samples at
+ * every entry of the production sound table, and `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the
+ * selected mission.
  */
 export function sliceCoveredFiles(scenario = syntheticScenario(defaultScenarioSpec())): Record<string, Uint8Array> {
-  const entries = [...productionGraphicsEntries(), ...syntheticModelEntries(), ...productionSoundEntries()].sort((left, right) => left.id - right.id);
-  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, entries) };
+  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries()) };
 }
 
 /** An audio stage with nothing to convert; its group has no Assets. */

@@ -35,12 +35,13 @@ describe('craft type binding', () => {
       { craftType: 14, side: 'friendly', baseInteraction: false, model: model('model/friendly-craft-1') },
       { craftType: 17, side: 'friendly', baseInteraction: true, model: model('model/base-1') },
     ]);
+    // The player's model, also used by friendly craft type 1, keeps the category it was named from.
     expect(models).toEqual([
-      { id: 'model/base-1', modelEntryId: DEFAULT_MODEL_IDS[17] },
-      { id: 'model/enemy-ship-1', modelEntryId: DEFAULT_MODEL_IDS[7] },
-      { id: 'model/enemy-ship-2', modelEntryId: DEFAULT_MODEL_IDS[8] },
-      { id: 'model/friendly-craft-1', modelEntryId: DEFAULT_MODEL_IDS[14] },
-      { id: 'model/player-ship', modelEntryId: DEFAULT_MODEL_IDS[0] },
+      { id: 'model/base-1', modelEntryId: DEFAULT_MODEL_IDS[17], category: 'base' },
+      { id: 'model/enemy-ship-1', modelEntryId: DEFAULT_MODEL_IDS[7], category: 'enemy' },
+      { id: 'model/enemy-ship-2', modelEntryId: DEFAULT_MODEL_IDS[8], category: 'enemy' },
+      { id: 'model/friendly-craft-1', modelEntryId: DEFAULT_MODEL_IDS[14], category: 'friendly' },
+      { id: 'model/player-ship', modelEntryId: DEFAULT_MODEL_IDS[0], category: 'player' },
     ]);
     expect(Object.isFrozen(table) && Object.isFrozen(models) && Object.isFrozen(models[0])).toBe(true);
   });

@@ -302,13 +302,19 @@ export function syntheticScenarioArchive(campaign = syntheticCampaign(defaultCam
   ]);
 }
 
-/** The M2ID list and a placeholder MODL entry for every non-zero ID it names, in ascending ID order. */
-export function syntheticModelEntries(ids: readonly number[] = DEFAULT_MODEL_IDS): SyntheticEntry[] {
+/**
+ * The M2ID list and a MODL entry for every non-zero ID it names, in ascending ID order: the block `models` gives for that
+ * ID, or an 8-byte placeholder that only mapping verification reads.
+ */
+export function syntheticModelEntries(
+  ids: readonly number[] = DEFAULT_MODEL_IDS,
+  models: ReadonlyMap<number, { readonly data: Uint8Array; readonly relocations: number[] }> = new Map(),
+): SyntheticEntry[] {
   const list = syntheticModelList(ids);
-  const models = [...new Set(ids.filter(id => id !== 0))].sort((left, right) => left - right);
+  const entries = [...new Set(ids.filter(id => id !== 0))].sort((left, right) => left - right);
   return [
     { id: ENTRY_IDS.modelList, type: 'M2ID', data: list.bytes, relocations: list.relocations },
-    ...models.map(id => ({ id, type: 'MODL', data: new Uint8Array(8) })),
+    ...entries.map(id => ({ id, type: 'MODL', ...(models.get(id) ?? { data: new Uint8Array(8) }) })),
   ];
 }
 
