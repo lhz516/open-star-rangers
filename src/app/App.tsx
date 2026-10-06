@@ -6,15 +6,17 @@
  */
 import { useState, type ReactNode } from 'react';
 import { describeError } from '../ui/game/describe-error.ts';
-import { ImportPlaceholderPage } from '../ui/pages/ImportPlaceholderPage.tsx';
+import { ImportPage } from '../ui/import/ImportPage.tsx';
 import { MainMenuPage } from '../ui/pages/MainMenuPage.tsx';
 import { SyntheticDemoPage } from '../ui/pages/SyntheticDemoPage.tsx';
 import { ViewerPage } from '../ui/viewer/ViewerPage.tsx';
 import { createSyntheticDemoLifecycle, type SyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
 import { useResourceHolder } from './composition/use-resource-holder.ts';
 import { useSyntheticDemoOwner } from './composition/use-synthetic-demo-owner.ts';
+import { useImportJob } from './import/use-import-job.ts';
 import { INITIAL_APP_FLOW, nextAppFlow, type AppFlowInput, type AppFlowState } from './flow/app-flow.ts';
 import type { AppPorts } from './ports.ts';
+import type { ResourceHolder, ResourceHolderSnapshot } from './resources/resource-holder.ts';
 
 /** Creates and releases the demo owner with the screen's view container. */
 function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
@@ -24,6 +26,25 @@ function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
 }) {
   const { owner, containerRef } = useSyntheticDemoOwner(lifecycle);
   return <SyntheticDemoPage demo={owner} viewRef={containerRef} demoBlocked={demoBlocked} onReturn={onReturn} />;
+}
+
+/** Creates and releases the import page's job owner with the screen. */
+function ImportScreen({ ports, holder, resources, onReturn }: {
+  readonly ports: AppPorts;
+  readonly holder: ResourceHolder | null;
+  readonly resources: ResourceHolderSnapshot | null;
+  readonly onReturn: () => void;
+}) {
+  const job = useImportJob(ports, holder);
+  return (
+    <ImportPage
+      job={job}
+      resources={resources}
+      checkSpace={async () => (holder ? holder.checkSpace() : null)}
+      onSave={() => { holder?.save(); }}
+      onReturn={onReturn}
+    />
+  );
 }
 
 /** A failure the shell reports itself, with its original cause. */
@@ -67,8 +88,11 @@ export function App({ ports }: { readonly ports: AppPorts }) {
       <p>Browser re-implementation in progress. No original game content is included.</p>
       <p data-testid="project-rights">
         MIT applies only to this project&apos;s own code, documentation and synthetic resources, not original game content.
-        This is an independent synthetic engineering demo, not original gameplay or an officially authorized product.
+        This is an independent project with a synthetic engineering demo, not original gameplay or an officially authorized product.
         Obtain your own original game data legally; no rights to original content are granted here.
+      </p>
+      <p data-testid="project-privacy">
+        Original game data you import is read, converted and saved only in this browser. It is never uploaded.
       </p>
       {flow.cleanupFailure && (
         <FailureAlert testId="cleanup-failure" cause={flow.cleanupFailure.cause}>
@@ -93,7 +117,7 @@ export function App({ ports }: { readonly ports: AppPorts }) {
           onSave={() => { holder?.save(); }}
         />
       )}
-      {flow.screen === 'import' && <ImportPlaceholderPage onReturn={returnToMenu} />}
+      {flow.screen === 'import' && <ImportScreen ports={ports} holder={holder} resources={snapshot} onReturn={returnToMenu} />}
       {flow.screen === 'viewer' && <ViewerPage onReturn={returnToMenu} />}
       {flow.screen === 'demo' && (
         <DemoScreen

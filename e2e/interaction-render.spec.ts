@@ -105,9 +105,9 @@ test('native controls, trusted movement, Core results and same-owner resize', as
   await page.keyboard.press('Space');
   await expect(page.getByRole('heading', { name: 'Import original game data', exact: true })).toBeFocused();
   await isolatedKeys(page);
-  await expect(page.getByText('Importing original game data is not implemented', { exact: false })).toBeVisible();
-  await expect(page.locator('input[type="file"], canvas')).toHaveCount(0);
-  await page.keyboard.press('Tab');
+  await expect(page.locator('canvas')).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Return to menu', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Import original game data', exact: true })).toBeFocused();
   await testInfo.attach('interaction-render', { body: JSON.stringify({ movements, identities, markerImage, wide, narrow, narrowImage }), contentType: 'application/json' });

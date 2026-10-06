@@ -1,6 +1,7 @@
 import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
-import { createImportJob } from './import-job.ts';
+import { ContentContractError } from '../content/contract-validation.ts';
+import { createImportJob, PRODUCTION_LOGIC_STEP } from './import-job.ts';
 import { boundGroups, MARKER, NO_LOGIC, NO_MODELS, scenarioOpen, SYNTHETIC_AUDIO, syntheticGroupsJob } from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
@@ -40,6 +41,11 @@ const scenarios: Readonly<Record<string, ImportJob>> = {
   models: createImportJob(scenarioOpen('models')),
   /** The same, with a shared mesh the model step rejects. */
   'models-corrupt': createImportJob(scenarioOpen('models-corrupt')),
+  /** Identifies the slice disc, then fails content validation in the logic step, so the job fails at the content layer. */
+  'content-invalid': createImportJob(scenarioOpen('models'), undefined, {
+    ...PRODUCTION_LOGIC_STEP,
+    convert: async () => { throw new ContentContractError('invalid-record', 'drafts[0].manifest', 'must be a record'); },
+  }),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */
   busy: async (_, report) => {
     report.progress('identify-source', 0);

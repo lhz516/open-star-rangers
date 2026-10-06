@@ -29,7 +29,7 @@ updated: 2026-10-06
   - **Core：** [load-mission.ts](../../../../src/core/mission/load-mission.ts) 的 `loadMission`。
   - **音频：** [audio-controller.ts](../../../../src/platform/audio/audio-controller.ts) 的 `createAudioController`；[browser-audio-controller.ts](../../../../src/platform/audio/browser-audio-controller.ts)。
   - **渲染：** [render-surface.ts](../../../../src/render/scene/render-surface.ts)、[webgl-surface.ts](../../../../src/render/webgl/webgl-surface.ts)、[browser-webgl-surface.ts](../../../../src/render/webgl/browser-webgl-surface.ts)（无障碍名称目前固定为合成演示的文字）、[viewport-layout.ts](../../../../src/render/viewport/viewport-layout.ts)、[cleanup.ts](../../../../src/render/scene/cleanup.ts)。
-  - **页面：** [App.tsx](../../../../src/app/App.tsx)、[app-flow.ts](../../../../src/app/flow/app-flow.ts)、[MainMenuPage.tsx](../../../../src/ui/pages/MainMenuPage.tsx)、[ImportPlaceholderPage.tsx](../../../../src/ui/pages/ImportPlaceholderPage.tsx)、[main.tsx](../../../../src/main.tsx)。可参照的生命周期与锁存模式：[synthetic-demo-lifecycle.ts](../../../../src/app/composition/synthetic-demo-lifecycle.ts)、[use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts)。
+  - **页面：** [App.tsx](../../../../src/app/App.tsx)、[app-flow.ts](../../../../src/app/flow/app-flow.ts)、[MainMenuPage.tsx](../../../../src/ui/pages/MainMenuPage.tsx)、`src/ui/pages/ImportPlaceholderPage.tsx`（P2-11 已删除）、[main.tsx](../../../../src/main.tsx)。可参照的生命周期与锁存模式：[synthetic-demo-lifecycle.ts](../../../../src/app/composition/synthetic-demo-lifecycle.ts)、[use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts)。
   - **测试设施：**
     - [import-worker.test-support.ts](../../../../src/workers/import-worker.test-support.ts) 的合成 Worker 场景（`synthetic`、`models`、`models-corrupt` 等）与 [synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)；
     - E2E 探针 [browser-probes.ts](../../../../e2e/support/browser-probes.ts)、[resource-cache.ts](../../../../e2e/support/resource-cache.ts)、[audio-playback.ts](../../../../e2e/support/audio-playback.ts)、[image-observations.ts](../../../../e2e/support/image-observations.ts)、[demo-observations.ts](../../../../e2e/support/demo-observations.ts)；
@@ -110,7 +110,7 @@ updated: 2026-10-06
 | [04-mission-diagnostics.md](./subtasks/04-mission-diagnostics.md) | 02 | completed |
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | completed |
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
-| [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | pending |
+| [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | pending |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08 | pending |

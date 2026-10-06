@@ -1,5 +1,5 @@
 import type { ImportJobSnapshot } from '../import/import-job-owner.ts';
-import type { ResourceHolderSnapshot } from './resource-holder.ts';
+import type { PackageCacheState, PackageSummary, ResourceHolderSnapshot } from './resource-holder.ts';
 
 /**
  * The verified statuses of the state ladder (P2-11 spec 状态阶梯), in ladder order. Each holds only under its condition;
@@ -36,3 +36,7 @@ export function resourceStatuses(holder: ResourceHolderSnapshot, job: ImportJobS
   if (held?.mission.status === 'failed') statuses.push('mission-not-loadable');
   return Object.freeze(statuses);
 }
+
+/** The cache state of a complete package not saved in this browser, which may be saved again; null otherwise. */
+export const unsavedCache = (summary: PackageSummary | null): Exclude<PackageCacheState, { readonly status: 'saved' }> | null =>
+  (summary?.completeness.status === 'complete' && summary.cache.status !== 'saved' ? summary.cache : null);

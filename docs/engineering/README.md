@@ -135,7 +135,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
-- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`），`cache=unavailable` 换成没有 IndexedDB 的缓存；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
+- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
@@ -304,10 +304,18 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - 只测缓存适配的浏览器用例经 [resource-cache.ts](../../e2e/support/resource-cache.ts) 的 `loadCacheModules` 打开不含应用的 [blank.html](../../e2e/entries/blank.html)，因为应用一载入就列出缓存，会打开（从而创建）数据库。
   - 入口：持有资源包时有 `View resources`；未持有且有可恢复条目时有 `Open saved resources`（恢复中禁用，由它发起的恢复成功后焦点移到 `View resources`）；完整资源包未保存时有 `Save again`（保存中禁用）。
   - 查看器画面目前是占位（[ViewerPage](../../src/ui/viewer/ViewerPage.tsx)），由 P2-11 子任务 11 替换。
+- **导入页面（P2-11 S-02）：** [ImportPage](../../src/ui/import/ImportPage.tsx) 由外壳内的 `ImportScreen` 渲染，后者调用 [use-import-job.ts](../../src/app/import/use-import-job.ts)。
+  - **作业持有者：** hook 在 effect 中以端口的 Worker 工厂创建作业持有者，卸载、StrictMode 重跑与 Fast Refresh 时释放并终止 Worker。作业结束时，hook 在持有者自己的通知中把组交给资源持有者，所以随即离开页面也不丢组；此刻没有可用的资源持有者时，移交等到下一个持有者出现，新作业开始时放弃。提交属于资源持有者，不因离开页面中断。hook 另以页面时钟记录每个作业从开始到结束的耗时，并记下本页最近作业所得资源包的持有者实例与代际。
+  - **控件：** 文件输入（`.ccd,.img,.sub,.cue`，可多选）、`Start import`、`Cancel import` 与 `Return to menu`。
+  - **开始：** 资源持有者存在后才能开始。先做建议性的空间检查；`insufficient` 时先显示所需与可用的 MiB，由玩家选择 `Import anyway` 或 `Do not import`。检查进行中与等待选择时，开始按钮与文件输入都禁用；更换文件、开始作业或离开页面会使未完成的检查作废，所以开始的总是当前显示的文件。启动规则不符时显示 `start/file-rules` 文案，不创建 Worker。
+  - **进度：** 运行中显示阶段名、已读取 MiB 与已识别的版本标识，不显示百分比；开始按钮与文件输入此时禁用。
+  - **结果：** 结束后显示结果与耗时；失败经失败文案显示类别与技术细节；取消说明没有保留部分结果。
+  - **资源状态：** 页面列出状态阶梯（含来源已识别）、本次导入各组的状态与诊断 code、部分转换的说明、保存失败与 `Save again`，以及任务载入失败。这些只针对本页最近作业所得的资源包（同一持有者实例与代际）；之前持有的资源包不当作本次结果，仍由菜单显示。
+  - **文案：** 页首新增隐私说明：原版数据只在本浏览器中读取、转换与保存，不上传；权利说明保持 MIT 不覆盖原版内容、不是官方产品、不授予原版权利。
 - [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。进入演示前，外壳先用当前状态同步校验转换：`demoVisit` 耗尽时以 alert 显示 `RangeError` 并停留在主菜单，不创建 owner；实际提交仍走函数式更新，双击时每次激活至多一次转换。
 - [ui/pages/](../../src/ui/pages/) 是三个只用原生按钮的画面，不在 window/document 注册键盘监听。
   - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。
   - 演示画面中，`Return to menu` 是标题之后的第一个控件。
-  - 导入占位只有说明与 `Return to menu`，不放文件输入或拖放区，不读写存储或发请求。
+  - 导入页面（P2-11，[ImportPage](../../src/ui/import/ImportPage.tsx)）见下文“导入页面”。
   - 样式在 [app.css](../../src/app/app.css)：响应式、按钮 `:focus-visible` 有可见 outline。
 - 验证分层：页面流转、owner 记录与生命周期接线用 Node 测试。React 画面、焦点、键盘与往返释放用上文“已验证的 CDP 自动化路线”在开发服务器与 `vite preview` 中取证。稀有失败（failed、faulted、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不伪造浏览器复现。不引入 jsdom、React Testing Library 或 Playwright 依赖。

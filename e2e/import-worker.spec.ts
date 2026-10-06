@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { test, expect } from './support/browser-test.ts';
+import { consoleText, test, expect } from './support/browser-test.ts';
 import type * as OwnerModule from '../src/app/import/import-job-owner.ts';
 import type { ImportJobOwner, ImportJobSnapshot } from '../src/app/import/import-job-owner.ts';
 import type * as FactoryModule from '../src/platform/workers/browser-import-worker.ts';
@@ -182,13 +182,6 @@ function distinctSteps(observed: readonly ImportJobSnapshot[]): string[] {
   return steps.filter((step, index) => step !== steps[index - 1]);
 }
 
-/** Every console message of the page and its Workers, any level, for the privacy check. */
-function consoleText(page: Page): string[] {
-  const seen: string[] = [];
-  page.on('console', message => { seen.push(message.text()); });
-  page.on('worker', worker => { worker.on('console', message => { seen.push(message.text()); }); });
-  return seen;
-}
 
 test('production entry reads the synthetic disc in one module Worker and reports the unsupported version', async ({ page }, testInfo) => {
   await openHarness(page);

@@ -6,10 +6,11 @@
 import { useEffect, useRef } from 'react';
 import type { AppFocusTarget } from '../../app/flow/app-flow.ts';
 import type { ResourceHolderSnapshot } from '../../app/resources/resource-holder.ts';
-import { resourceStatuses } from '../../app/resources/resource-status.ts';
+import { unsavedCache } from '../../app/resources/resource-status.ts';
 import { cacheFailureCopy } from '../import/failure-copy.ts';
 import { FailureNotice } from '../import/FailureNotice.tsx';
-import { catalogText, statusText } from '../import/resource-copy.ts';
+import { catalogText } from '../import/resource-copy.ts';
+import { ResourceStatusList } from '../import/ResourceStatusList.tsx';
 
 export interface MainMenuPageProps {
   /** Where to put focus when the menu appears or the target changes; null leaves focus alone. */
@@ -49,18 +50,14 @@ export function MainMenuPage({
     if (held !== null) viewerEntry.current?.focus();
   }, [held, restoring]);
   const restorable = held === null && catalog?.status === 'listed' && catalog.restorable !== null;
-  const unsaved = held?.completeness.status === 'complete' && held.cache.status !== 'saved' ? held.cache : null;
+  const unsaved = unsavedCache(held);
   return (
     <section aria-labelledby="main-menu-heading">
       <h2 id="main-menu-heading" ref={heading} tabIndex={-1}>Main menu</h2>
       <p data-testid="original-data-status">
         <strong>Original game data:</strong> {held === null ? catalogText(catalog) : 'Resources are held in this page.'}
       </p>
-      {held !== null && resources && (
-        <ul data-testid="resource-statuses" className="resource-statuses">
-          {resourceStatuses(resources).map(status => <li key={status} data-status={status}>{statusText(status, held.cache)}</li>)}
-        </ul>
-      )}
+      {held !== null && resources && <ResourceStatusList resources={resources} testId="resource-statuses" />}
       {catalog?.status === 'unavailable' && !(held?.cache.status === 'not-saved' && held.cache.failure === catalog.failure) && (
         <FailureNotice testId="storage-failure" copy={cacheFailureCopy(catalog.failure)} />
       )}
@@ -85,7 +82,7 @@ export function MainMenuPage({
           <button ref={importEntry} type="button" aria-describedby="import-entry-description" onClick={onOpenImport}>
             Import original game data
           </button>
-          <p id="import-entry-description">Not implemented in this build.</p>
+          <p id="import-entry-description">Select the CloneCD files of your own disc; they are read and converted only in this browser.</p>
         </li>
         {held !== null && (
           <li>

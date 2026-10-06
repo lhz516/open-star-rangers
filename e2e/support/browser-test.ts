@@ -2,6 +2,14 @@ import { expect, test as base, type Page } from '@playwright/test';
 import { installBrowserProbes } from './browser-probes.ts';
 
 export { expect } from '@playwright/test';
+
+/** Every console message of the page and its Workers, any level, for privacy checks. */
+export function consoleText(page: Page): string[] {
+  const seen: string[] = [];
+  page.on('console', message => { seen.push(message.text()); });
+  page.on('worker', worker => { worker.on('console', message => { seen.push(message.text()); }); });
+  return seen;
+}
 export function collectBrowserErrors(page: Page, webglUnavailable = false) {
   const errors: string[] = [];
   const allowed: string[] = [];

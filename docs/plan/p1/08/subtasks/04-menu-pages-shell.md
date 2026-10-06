@@ -61,7 +61,7 @@ updated: 2026-10-02
   样式在 [app.css](../../../../../src/app/app.css)：响应式 `main`、`overflow-wrap:anywhere`、按钮 `max-width:100%`、`button:focus-visible` 3px 实线 outline。
 - **画面组件：**
   - [MainMenuPage](../../../../../src/ui/pages/MainMenuPage.tsx)：h2 `Main menu`（`tabIndex=-1`）、原版数据状态、按顺序的两个原生按钮，各以 `aria-describedby` 关联说明。锁存时 Start 原生禁用，说明追加原因。`focusTarget` 变化或挂载时聚焦对应入口或标题；为 null 时不移动焦点。
-  - [ImportPlaceholderPage](../../../../../src/ui/pages/ImportPlaceholderPage.tsx)：标题、未实现说明（不读取、存储或上传；以后在浏览器本地处理用户自有数据）和唯一的 `Return to menu` 按钮。
+  - `src/ui/pages/ImportPlaceholderPage.tsx`（P2-11 已删除）：标题、未实现说明（不读取、存储或上传；以后在浏览器本地处理用户自有数据）和唯一的 `Return to menu` 按钮。
   - [SyntheticDemoPage](../../../../../src/ui/pages/SyntheticDemoPage.tsx)：标题后首个控件为 `Return to menu`，随后是合成画面与开发面板。锁存且无 owner 时只显示状态说明，不创建容器。
   - 进入画面时由 [useFocusOnMount](../../../../../src/ui/pages/use-focus-on-mount.ts) 聚焦标题。
 - **文案与层级：**

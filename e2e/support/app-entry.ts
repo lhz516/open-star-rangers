@@ -11,7 +11,9 @@ declare global {
 export interface TestEntryOptions {
   /** The import Worker scenario, `production` or `missing`; `models` by default. */
   readonly worker?: string;
-  readonly cache?: 'unavailable';
+  /** `unavailable`, or a P2-10 failure code the first commit returns. */
+  readonly cache?: string;
+  readonly capacity?: 'insufficient';
 }
 
 export async function openTestEntry(page: Page, options: TestEntryOptions = {}): Promise<void> {

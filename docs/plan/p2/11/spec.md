@@ -14,7 +14,7 @@ reviewed: sha256:b648fab4dd52
 
 P2-01 至 P2-10 已分别交付读取、识别、Worker 作业、四个资源组的转换、缓存适配与 Core 纯载入，但它们还没有接到页面上：
 
-- **页面：** 菜单的导入入口仍是 P1 的[占位页](../../../../src/ui/pages/ImportPlaceholderPage.tsx)，没有文件输入；[主菜单](../../../../src/ui/pages/MainMenuPage.tsx)固定显示“none verified”。
+- **页面：** 菜单的导入入口仍是 P1 的占位页（`src/ui/pages/ImportPlaceholderPage.tsx`，P2-11 已删除），没有文件输入；[主菜单](../../../../src/ui/pages/MainMenuPage.tsx)固定显示“none verified”。
 - **作业：** [作业持有者](../../../../src/app/import/import-job-owner.ts)只在 Node 测试与开发服务器的 Worker 测试中使用。页面没有引用它，所以生产构建没有 Worker chunk。
 - **缓存：** [缓存适配](../../../../src/platform/storage/browser-resource-cache.ts)没有调用方，`commit` 与 `restore` 需要的包预算也没有确定。
 - **消费：** 规范 payload 的展开与合成函数只有 Node 测试；`render/` 只绘制 P1 合成几何。[音频控制器](../../../../src/platform/audio/audio-controller.ts)没有界面；[`loadMission`](../../../../src/core/mission/load-mission.ts) 只在 Node 测试与本地脚本中运行。

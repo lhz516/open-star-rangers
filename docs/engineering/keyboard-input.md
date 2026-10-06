@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-03
+updated: 2026-10-06
 related: [ADR-0004, U-011, U-012]
 ---
 
@@ -20,7 +20,7 @@ related: [ADR-0004, U-011, U-012]
 
 P1 只有合成演示这一个使用游戏键的画面。下表的动作全部作用于 [P1-02 合成场景](../plan/p1/02/spec.md)，**不是原版操控**。从 P3 起，正式玩法的绑定按原版键位逐项加入本文；合成演示的绑定随合成场景一起退役。
 
-菜单、导入占位等 React 画面只使用浏览器原生的按钮键盘操作（Tab、Enter、Space），不属于游戏键绑定，见 [P1-08 spec](../plan/p1/08/spec.md)。
+菜单、导入页面等 React 画面只使用浏览器原生的控件键盘操作（Tab、Enter、Space），不属于游戏键绑定，见 [P1-08 spec](../plan/p1/08/spec.md)。
 
 ## 2. 当前绑定表
 
@@ -56,7 +56,7 @@ P1 只有合成演示这一个使用游戏键的画面。下表的动作全部�
 ## 4. 活动界面与焦点
 
 - **唯一的游戏键输入区：** 演示画面中的合成画面区域，即现有的 `synthetic-view` 容器。它可以用 Tab 到达，点击即获得焦点，有可见的焦点样式、可读名称，并通过关联说明列出 §2 的绑定，同时注明这是合成演示键位、不是原版操控。
-- **只在输入区获得焦点时生效：** 焦点在主菜单、导入占位、“Return to menu”、开发面板按钮或页面其他位置时，所有按键都保持浏览器原生行为，不产生游戏效果。
+- **只在输入区获得焦点时生效：** 焦点在主菜单、导入页面、“Return to menu”、开发面板按钮或页面其他位置时，所有按键都保持浏览器原生行为，不产生游戏效果。
 - **资格事实：** 当前 owner/source 有效，页面 visible 且没有 pagehide 阻断，窗口有焦点，document.activeElement 恰为容器（非交互/编辑子控件）。初始化及元素 focusin/focusout、window focus/blur、visibilitychange、pagehide/pageshow 重新读取真实事实；窗口返回或 pageshow 不要求新的元素 focusin。
 - **监听位置：** 不在 window 或 document 上注册 keydown/keyup 监听。输入区不设焦点陷阱，Tab 与 Shift+Tab 照常把焦点移出。
 - **进入演示时的焦点：** 仍按 P1-08 落在画面标题，不自动移入输入区。
