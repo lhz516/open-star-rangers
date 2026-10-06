@@ -35,6 +35,7 @@ export type ContentContractErrorCode =
   | 'binding-mismatch'
   | 'palette-index-out-of-range'
   | 'unmapped-character'
+  | 'layout-out-of-frame'
   | 'invalid-logic-payload'
   | 'non-canonical-payload'
   | 'logic-reference-mismatch'

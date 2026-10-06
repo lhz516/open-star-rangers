@@ -1,12 +1,13 @@
 // Checks every structure of an IMFAT archive that the import or the research reads, and its cross-references.
 // Usage: node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
-// Prints per-type pass and fail counts, failure codes with structural locations and the observed graphics, MESH and
-// MODL maxima; never pixels, palette values, glyphs, coordinates or other entry contents.
+// Prints per-type pass and fail counts, failure codes with structural locations, the observed graphics, MESH and MODL
+// maxima and the observed container counts; never pixels, palette values, glyphs, coordinates, offsets or other entry
+// contents.
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
-  checkPaletteIndices, decodeImageRecord, readCockpitFonts, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
-  readMfdRecordOffsets,
+  checkPaletteIndices, decodeImageRecord, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
+  readMfdRecordOffsets, readTableRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
 import { entryData, parseImfat } from '../src/original-data/imfat.ts';
 import { readMesh } from '../src/original-data/formats/mesh.ts';
@@ -34,7 +35,14 @@ try {
   console.log(`${basename(file)}: ${error instanceof SourceError ? failureText(error) : 'the file cannot be read'}`);
   process.exit(1);
 }
+/**
+ * TABL entries that docs/original/formats/hud.md §2 records as image lists. Their IDs belong to SR.NOB only; an archive
+ * holding any of them must hold all of them as TABL entries, whatever the file is called.
+ */
+const IMAGE_LIST_TABLES: readonly number[] = [10461, 10479, 10481, 10483, 11401];
+
 const typeById = new Map(archive.entries.map((e) => [e.id, e.type]));
+const holdsImageLists = IMAGE_LIST_TABLES.some(id => typeById.has(id));
 const counts = new Map<string, { passed: number; failed: number }>();
 const failures: string[] = [];
 /** Observed graphics maxima by entry type, compared with the P2-05 structural limits in docs/original. */
@@ -42,6 +50,34 @@ interface GraphicsStats { imageWidth: number; imageHeight: number; paletteEntryC
 const stats = new Map<string, GraphicsStats>();
 let images = 0;
 let indexedImages = 0;
+/** Observed container counts, compared with the P2-07 structural limits in docs/original. */
+const containers = {
+  cockpitSlots: 0, cockpitElements: 0, elements: 0, groupPalettes: 0, mfdRecords: 0, tableRecords: 0, otherTables: 0, otherImageLists: 0,
+};
+/** How many elements set each of the two CCKD element flag fields to 1; the others hold 0. */
+const flagsSet = [0, 0];
+
+/** Whether CCKD slot `slot` has a palette; a palette it points to must pass the shared reader. */
+function hasGroupPalette(block: Uint8Array, slot: number): boolean {
+  try {
+    readCockpitGroupPalette(block, slot);
+    return true;
+  } catch (error) {
+    if (error instanceof SourceError && error.code === 'subresource-not-found') return false;
+    throw error;
+  }
+}
+
+/** Whether a TABL entry that is not documented as an image list would still parse as one. */
+function parsesAsImageList(block: Uint8Array): boolean {
+  try {
+    readTableRecordOffsets(block);
+    return true;
+  } catch (error) {
+    if (error instanceof SourceError) return false;
+    throw error;
+  }
+}
 let vertices = 0;
 let triangles = 0;
 /** Observed MESH and MODL maxima of passing entries, compared with the P2-06 structural limits in docs/original. */
@@ -92,11 +128,38 @@ for (const entry of archive.entries) {
         checkImage(entry.type, block);
         break;
       case 'MFDD':
-        for (const offset of readMfdRecordOffsets(block).flat()) checkImage(entry.type, block, offset);
+        for (const list of readMfdRecordOffsets(block)) {
+          containers.mfdRecords = Math.max(containers.mfdRecords, list.length);
+          for (const offset of list) checkImage(entry.type, block, offset);
+        }
         break;
-      case 'CCKD':
+      case 'CCKD': {
         for (const { cellWidth, height } of readCockpitFonts(block)) statsOf(entry.type).fontCells.add(`${cellWidth}x${height}`);
+        const groups = readCockpitGroups(block);
+        containers.cockpitSlots = Math.max(containers.cockpitSlots, groups.length);
+        groups.forEach((_, slot) => { if (hasGroupPalette(block, slot)) containers.groupPalettes += 1; });
+        for (const elements of groups) {
+          containers.cockpitElements = Math.max(containers.cockpitElements, elements.length);
+          for (const { recordOffset, flags } of elements) {
+            checkImage(entry.type, block, recordOffset);
+            flags.forEach((value, field) => { flagsSet[field] += value; });
+            containers.elements += 1;
+          }
+        }
         break;
+      }
+      case 'TABL': {
+        if (!holdsImageLists || !IMAGE_LIST_TABLES.includes(entry.id)) {
+          // Other TABL entries are not image lists; count any that would parse as one, which the format doc must list.
+          containers.otherTables += 1;
+          if (parsesAsImageList(block)) containers.otherImageLists += 1;
+          continue;
+        }
+        const offsets = readTableRecordOffsets(block);
+        containers.tableRecords = Math.max(containers.tableRecords, offsets.length);
+        for (const offset of offsets) checkImage(entry.type, block, offset);
+        break;
+      }
       case 'M2ID':
       case 'NEBC': {
         const expected = entry.type === 'M2ID' ? 'MODL' : 'BITM';
@@ -146,6 +209,10 @@ for (const entry of archive.entries) {
   }
 }
 
+for (const id of holdsImageLists ? IMAGE_LIST_TABLES : []) {
+  if (typeById.get(id) !== 'TABL') failures.push(`${id} TABL: a documented image list entry is missing or has another type`);
+}
+
 console.log(`${basename(file)}:`);
 for (const [type, { passed, failed }] of counts) console.log(`  ${type.padEnd(4)} ${passed} passed, ${failed} failed`);
 console.log(`  image records: ${images} decoded, ${indexedImages} with embedded palettes checked for index range`);
@@ -166,6 +233,12 @@ if (counts.get('MODL')?.passed) {
   const flags = [...modelMaxima.flags].sort((left, right) => left - right).join(', ');
   console.log(`    MODL parts ${modelMaxima.parts} (lists ${modelMaxima.lists.join('/')}), colour component ${modelMaxima.colour}, part flags ${flags}`);
 }
+console.log('  observed container counts:');
+console.log(`    CCKD directory slots ${containers.cockpitSlots}, elements per slot ${containers.cockpitElements}, ${containers.elements} elements decoded, ${containers.groupPalettes} group palettes read`);
+const flagText = (set: number) => `${containers.elements - set}×0 ${set}×1`;
+console.log(`    CCKD element flags: first ${flagText(flagsSet[0])}, second ${flagText(flagsSet[1])}`);
+console.log(`    MFDD records per list ${containers.mfdRecords}`);
+console.log(`    TABL records per image list ${containers.tableRecords}; ${containers.otherTables} other TABL entries, ${containers.otherImageLists} parse as image lists`);
 console.log(`  failures: ${failures.length}`);
 for (const f of failures) console.log(`    ${f}`);
 process.exit(failures.length ? 1 : 0);

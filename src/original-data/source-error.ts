@@ -34,8 +34,9 @@ export type SourceErrorCode =
 
 /**
  * Names a `limit-exceeded` diagnostic reports: the P2-03 archive limits, the P2-05 graphics structural limits, the
- * P2-09 payload limits (entry bytes, item counts and text bytes), the P2-06 mesh and model limits, and the P2-06
- * effect and executable limits. `budget-exceeded` reports a P2-01 budget dimension instead.
+ * P2-09 payload limits (entry bytes, item counts and text bytes), the P2-06 mesh, model, effect and executable limits
+ * and the P2-07 container counts (CCKD directory slots, elements per slot, records per MFDD list and records per TABL
+ * image list). `budget-exceeded` reports a P2-01 budget dimension instead.
  */
 export type SourceLimitName =
   | 'archiveEntries'
@@ -57,6 +58,10 @@ export type SourceLimitName =
   | 'executableObjects'
   | 'executablePages'
   | 'executableRegion'
+  | 'cockpitSlots'
+  | 'cockpitElements'
+  | 'mfdRecords'
+  | 'tableRecords'
   | BudgetDimension;
 
 export interface SourceLimit {

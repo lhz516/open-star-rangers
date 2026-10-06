@@ -3,15 +3,28 @@ import { isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
 import { SourceError, type SourceLimitName } from '../source-error.ts';
 
-// Source structure of DATA palettes, 36-byte image records, MFDD record lists and bitmap font tables
-// (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before it
-// allocates anything sized by the source, copies its result into new buffers the caller owns and throws a SourceError
-// located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`) under the caller's `path`.
+// Source structure of DATA palettes, 36-byte image records, MFDD record lists, bitmap font tables, CCKD group
+// directories and TABL image lists (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
+// it allocates anything sized by the source, copies its result into new buffers the caller owns and throws a
+// SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`) under the
+// caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
 
 const IMAGE_RECORD_BYTES = 36;
 const DATA_PALETTE_BYTES = 768;
 /** Each CCKD entry begins with exactly three fonts: two 8×8 and one 4×6 (hud §1). */
 const CCKD_FONT_COUNT = 3;
+/** CCKD directory records and elements (cockpit §1): an element is an image record, i32 x and y, and two u32 flags. */
+const COCKPIT_GROUP_BYTES = 32;
+const COCKPIT_ELEMENT_BYTES = 52;
+
+/**
+ * Approved safety caps on container counts above the largest baseline counts (docs/plan/p2/07/spec.md, limits): CCKD
+ * directory slots (1–8), elements per slot (0–16, the layout element cap), records per MFDD list (0–16) and records per
+ * TABL image list (1–64).
+ */
+export const CONTAINER_LIMITS = Object.freeze({
+  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64,
+});
 
 export interface ImageRecordHeader {
   readonly encoding: 'raw' | 'sprite-rle';
@@ -34,6 +47,17 @@ export interface SourceImage {
   readonly mask: Uint8Array<ArrayBuffer> | null;
 }
 
+/** One CCKD element in stored order. */
+export interface CockpitElement {
+  /** Block offset of the element's image record. */
+  readonly recordOffset: number;
+  /** Signed screen position of the image's top-left corner. */
+  readonly x: number;
+  readonly y: number;
+  /** The two fields after the position, each 0 or 1; their meaning is unconfirmed (U-029) and never enters a payload. */
+  readonly flags: readonly [number, number];
+}
+
 export interface SourceFont {
   readonly cellWidth: number;
   readonly height: number;
@@ -49,14 +73,24 @@ const fits = (block: Uint8Array, offset: number, length: number): boolean => off
 const u32 = (block: Uint8Array, offset: number): number =>
   new DataView(block.buffer, block.byteOffset + offset, 4).getUint32(0, true);
 
+const i32 = (block: Uint8Array, offset: number): number =>
+  new DataView(block.buffer, block.byteOffset + offset, 4).getInt32(0, true);
+
 function invalid(location: string, reason: string): never {
   throw new SourceError('invalid-payload', location, reason);
 }
 
-function withinLimit(value: number, name: SourceLimitName, limit: number, location: string): number {
-  if (value < 1 || value > limit) throw new SourceError('limit-exceeded', location, 'is outside the supported range', { name, limit, observed: value });
+function withinLimit(value: number, name: SourceLimitName, limit: number, location: string, minimum = 1): number {
+  if (value < minimum || value > limit) throw new SourceError('limit-exceeded', location, 'is outside the supported range', { name, limit, observed: value });
   return value;
 }
+
+const notFound = (location: string, reason: string): never => {
+  throw new SourceError('subresource-not-found', location, reason);
+};
+
+/** Whether `index` is an integer index into a list of `length` items. */
+const isIndex = (index: number, length: number): boolean => Number.isInteger(index) && index >= 0 && index < length;
 
 /** DATA: 256 VGA colours with 6-bit components, expanded to 8 bits by bit replication. */
 export function readDataPalette(block: Uint8Array, path = ''): Uint8Array<ArrayBuffer> {
@@ -130,6 +164,11 @@ function decodeSpriteRle(data: Uint8Array, width: number, height: number, locati
   return Object.freeze({ width, height, indices, mask });
 }
 
+/** Rejects a raw record whose pixel data is not exactly width × height bytes. */
+function requireRawSize({ width, height, dataSize }: ImageRecordHeader, path: string): void {
+  if (dataSize !== width * height) invalid(fieldAt(path, 'pixels'), 'raw image data must be width * height bytes');
+}
+
 /** Checks the record at `offset`, then decodes its pixels into new buffers; stored row order is kept. */
 export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): SourceImage {
   const header = readImageRecordHeader(block, offset, path);
@@ -137,7 +176,7 @@ export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): Sou
   const { width, height } = header;
   const data = block.subarray(header.pixelOffset, header.pixelOffset + header.dataSize);
   if (header.encoding === 'sprite-rle') return decodeSpriteRle(data, width, height, location);
-  if (data.length !== width * height) invalid(location, 'raw image data must be width * height bytes');
+  requireRawSize(header, path);
   return Object.freeze({ width, height, indices: exclusiveBytes(data), mask: null });
 }
 
@@ -164,15 +203,113 @@ export function readEmbeddedPalette(block: Uint8Array, offset = 0, path = ''): U
   return rgb;
 }
 
-/** Block offsets of the image records in MFDD lists 0 and 1; each list must fit the block. */
+/** Block offsets of the image records in MFDD lists 0 and 1; each list must fit the block and hold at most 16 records. */
 export function readMfdRecordOffsets(block: Uint8Array, path = ''): readonly (readonly number[])[] {
   const location = fieldAt(path, 'record');
   if (!fits(block, 0, 16)) invalid(location, 'the MFDD header extends past the block');
   return Object.freeze([0, 8].map(at => {
     const [offset, count] = [u32(block, at), u32(block, at + 4)];
     if (!fits(block, offset, count * IMAGE_RECORD_BYTES)) invalid(location, 'an MFDD image list extends past the block');
+    withinLimit(count, 'mfdRecords', CONTAINER_LIMITS.mfdRecords, location, 0);
     return Object.freeze(Array.from({ length: count }, (_, index) => offset + index * IMAGE_RECORD_BYTES));
   }));
+}
+
+/** Block offset of record `index` in MFDD list `list`, the `lists/<list>/records/<index>` subresource. */
+export function mfdRecordOffset(block: Uint8Array, list: number, index: number, path = ''): number {
+  const lists = readMfdRecordOffsets(block, path);
+  const records = list === 0 || list === 1 ? lists[list] : [];
+  if (!isIndex(index, records.length)) notFound(fieldAt(path, 'record'), 'the MFDD has no such list or record');
+  return records[index];
+}
+
+/**
+ * Block offsets of the records of a TABL image list (hud §2), the only TABL structure supported: no header; raw image
+ * records without embedded palettes packed from offset 0; their count, 1–64, is record 0's pixel offset divided by 36
+ * and is checked before the other records are read; and the records' pixel data follows in record order and fills the
+ * rest of the block exactly. Anything else is `invalid-payload`.
+ */
+export function readTableRecordOffsets(block: Uint8Array, path = ''): readonly number[] {
+  const location = fieldAt(path, 'record');
+  const arrayEnd = readImageRecordHeader(block, 0, path).pixelOffset;
+  if (arrayEnd < IMAGE_RECORD_BYTES || arrayEnd % IMAGE_RECORD_BYTES !== 0) invalid(location, 'a TABL image list must hold whole records before its data');
+  const count = withinLimit(arrayEnd / IMAGE_RECORD_BYTES, 'tableRecords', CONTAINER_LIMITS.tableRecords, location);
+  let dataEnd = arrayEnd;
+  const offsets = Array.from({ length: count }, (_, index) => {
+    const offset = index * IMAGE_RECORD_BYTES;
+    const header = readImageRecordHeader(block, offset, path);
+    if (header.encoding !== 'raw' || header.paletteCount !== 0) invalid(location, 'a TABL image list holds only raw records without embedded palettes');
+    requireRawSize(header, path);
+    if (header.pixelOffset !== dataEnd) invalid(location, 'TABL image list data must follow record order without gaps');
+    dataEnd += header.dataSize;
+    return offset;
+  });
+  if (dataEnd !== block.length) invalid(location, 'TABL image list data must fill the rest of the block');
+  return Object.freeze(offsets);
+}
+
+/** Block offset of record `index` in a TABL image list, the `records/<index>` subresource. */
+export function tableRecordOffset(block: Uint8Array, index: number, path = ''): number {
+  const offsets = readTableRecordOffsets(block, path);
+  if (!isIndex(index, offsets.length)) notFound(fieldAt(path, 'record'), 'the TABL image list has no such record');
+  return offsets[index];
+}
+
+/**
+ * Every CCKD directory slot's elements in stored order. An empty slot has no elements and its pointer addresses
+ * nothing; every other element array must lie inside the block, and each element's two flag fields must be 0 or 1
+ * (their meaning is unconfirmed, U-029). Counts are checked before anything they size is read.
+ */
+export function readCockpitGroups(block: Uint8Array, path = ''): readonly (readonly CockpitElement[])[] {
+  const [groups, elements] = [fieldAt(path, 'groups'), fieldAt(path, 'elements')];
+  if (!fits(block, 0, 16)) invalid(groups, 'the CCKD header extends past the block');
+  const [directory, count] = [u32(block, 8), u32(block, 12)];
+  withinLimit(count, 'cockpitSlots', CONTAINER_LIMITS.cockpitSlots, groups);
+  if (!fits(block, directory, count * COCKPIT_GROUP_BYTES)) invalid(groups, 'the CCKD group directory extends past the block');
+  return Object.freeze(Array.from({ length: count }, (_, slot) => {
+    const at = directory + slot * COCKPIT_GROUP_BYTES;
+    const [array, length] = [u32(block, at + 16), u32(block, at + 20)];
+    withinLimit(length, 'cockpitElements', CONTAINER_LIMITS.cockpitElements, elements, 0);
+    if (length > 0 && !fits(block, array, length * COCKPIT_ELEMENT_BYTES)) invalid(elements, 'a CCKD element array extends past the block');
+    return Object.freeze(Array.from({ length }, (_, index) => {
+      const element = array + index * COCKPIT_ELEMENT_BYTES;
+      const flags = Object.freeze([u32(block, element + 44), u32(block, element + 48)] as const);
+      if (flags[0] > 1 || flags[1] > 1) invalid(elements, 'a CCKD element flag must be 0 or 1');
+      return Object.freeze({ recordOffset: element, x: i32(block, element + 36), y: i32(block, element + 40), flags });
+    }));
+  }));
+}
+
+/** The elements of CCKD directory slot `slot`, the `groups/<slot>` subresource; an empty slot has no layout. */
+export function readCockpitGroup(block: Uint8Array, slot: number, path = ''): readonly CockpitElement[] {
+  const groups = readCockpitGroups(block, path);
+  const elements = isIndex(slot, groups.length) ? groups[slot] : [];
+  if (elements.length === 0) notFound(fieldAt(path, 'groups'), 'the CCKD directory has no such non-empty slot');
+  return elements;
+}
+
+/**
+ * The palette of CCKD directory slot `slot`, the `groups/<slot>/palette` subresource (cockpit §1): directory +0x04
+ * points to 768 bytes in the DATA format, read as a DATA palette, and +0x08 must hold 768 (an invariant of every
+ * baseline slot). A slot past the directory or with a null pointer has no palette.
+ */
+export function readCockpitGroupPalette(block: Uint8Array, slot: number, path = ''): Uint8Array<ArrayBuffer> {
+  const groups = readCockpitGroups(block, path);
+  if (!isIndex(slot, groups.length)) notFound(fieldAt(path, 'groups'), 'the CCKD directory has no such slot');
+  const at = u32(block, 8) + slot * COCKPIT_GROUP_BYTES;
+  const [pointer, size] = [u32(block, at + 4), u32(block, at + 8)];
+  const palette = fieldAt(path, 'palette');
+  if (pointer === 0) notFound(palette, 'the CCKD group has no palette');
+  if (size !== DATA_PALETTE_BYTES) invalid(palette, 'a CCKD group palette must be 768 bytes');
+  if (!fits(block, pointer, DATA_PALETTE_BYTES)) invalid(palette, 'the CCKD group palette extends past the block');
+  return readDataPalette(block.subarray(pointer, pointer + DATA_PALETTE_BYTES), path);
+}
+
+/** Block offset of the image record of element `index` in slot `slot`, the `groups/<slot>/elements/<index>` subresource. */
+export function cockpitElementRecordOffset(block: Uint8Array, slot: number, index: number, path = ''): number {
+  const elements = readCockpitGroup(block, slot, path);
+  if (!isIndex(index, elements.length)) notFound(fieldAt(path, 'elements'), 'the CCKD group has no such element');
+  return elements[index].recordOffset;
 }
 
 /**
@@ -211,8 +348,6 @@ export function readCockpitFonts(block: Uint8Array, path = ''): readonly SourceF
 /** Font `index` of a CCKD entry, the `fonts/<index>` subresource; the other tables need only lie inside the block. */
 export function readCockpitFont(block: Uint8Array, index: number, path = ''): SourceFont {
   const tables = cockpitFontTables(block, path);
-  if (!Number.isInteger(index) || index < 0 || index >= CCKD_FONT_COUNT) {
-    throw new SourceError('subresource-not-found', fieldAt(path, 'fonts'), 'the CCKD font directory has no such font');
-  }
+  if (!isIndex(index, CCKD_FONT_COUNT)) notFound(fieldAt(path, 'fonts'), 'the CCKD font directory has no such font');
   return readFontTable(tables[index], path);
 }

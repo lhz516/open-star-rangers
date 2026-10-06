@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { expectSourceError, fontDeclaration, imageDeclaration, paletteDeclaration } from './conversion.test-support.ts';
-import { readGraphicsDeclarations } from './graphics-declarations.ts';
+import { expectSourceError, fontDeclaration, imageDeclaration, layoutDeclaration, paletteDeclaration } from './conversion.test-support.ts';
+import { readGraphicsDeclarations, type LayoutDeclaration } from './graphics-declarations.ts';
 
 const validSet = () => [
   paletteDeclaration('palette/flight'),
@@ -63,5 +63,47 @@ describe('graphics conversion declarations', () => {
     } catch (error) {
       expect((error as Error).message).not.toMatch(/secretField|palette\/other|flipped|Flight/);
     }
+  });
+});
+
+describe('layout conversion declarations', () => {
+  const layoutSet = () => [
+    paletteDeclaration('palette/flight'),
+    imageDeclaration('image/front/element-0', 'palette/flight', { role: 'cockpit-element' }),
+    imageDeclaration('image/front/element-1', 'palette/flight', { role: 'cockpit-element' }),
+    layoutDeclaration('layout/front', ['image/front/element-1', 'image/front/element-0']),
+  ];
+
+  it('reads a layout with its frame and element images in stored order', () => {
+    const input = layoutSet();
+    const declarations = readGraphicsDeclarations(input);
+    expect(declarations).toEqual(input);
+    const layout = declarations[3] as LayoutDeclaration;
+    expect([layout, layout.frame, layout.elements].every(Object.isFrozen)).toBe(true);
+  });
+
+  it('accepts 16 element images', () => {
+    const images = Array.from({ length: 16 }, (_, index) => imageDeclaration(`image/front/element-${index}`, 'palette/flight'));
+    const set = [paletteDeclaration('palette/flight'), ...images, layoutDeclaration('layout/front', images.map(({ asset }) => (asset as { id: string }).id))];
+    expect(readGraphicsDeclarations(set)).toHaveLength(18);
+  });
+
+  it.each<[string, Mutation, string]>([
+    ['an unknown field', set => { set[3].secretField = 1; }, 'graphics.declarations[3]'],
+    ['a missing frame', set => { delete set[3].frame; }, 'graphics.declarations[3].frame'],
+    ['frame width 0', set => { set[3].frame = { width: 0, height: 480 }; }, 'graphics.declarations[3].frame.width'],
+    ['frame width 641', set => { set[3].frame = { width: 641, height: 480 }; }, 'graphics.declarations[3].frame.width'],
+    ['frame height 481', set => { set[3].frame = { width: 640, height: 481 }; }, 'graphics.declarations[3].frame.height'],
+    ['no element images', set => { set[3].elements = []; }, 'graphics.declarations[3].elements'],
+    ['17 element images', set => { set[3].elements = Array.from({ length: 17 }, (_, index) => `image/front/element-${index}`); }, 'graphics.declarations[3].elements'],
+    ['a palette element', set => { set[3].elements = ['palette/flight']; }, 'graphics.declarations[3].elements[0]'],
+    ['a repeated element image', set => { set[3].elements = ['image/front/element-0', 'image/front/element-0']; }, 'graphics.declarations[3].elements[1]'],
+    ['an element image outside the set', set => { set[3].elements = ['image/front/element-0', 'image/other']; }, 'graphics.declarations[3].elements[1]'],
+    ['an element image in another group', set => { set[0].group = 'models'; set[1].group = 'models'; set.push(paletteDeclaration('palette/hud')); set[2].palette = 'palette/hud'; }, 'graphics.declarations[3].elements[1]'],
+    ['a group that does not own layouts', set => { set[3].group = 'models'; }, 'graphics.declarations[3].group'],
+  ])('rejects %s as invalid-declaration', (_, mutate, location) => {
+    const set = layoutSet();
+    const value = mutate(set) ?? set;
+    expectSourceError(() => readGraphicsDeclarations(value), 'invalid-declaration', location);
   });
 });

@@ -34,7 +34,9 @@ const scenarios: Readonly<Record<string, ImportJob>> = {
    */
   graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The same, with a font table the converter rejects. */
-  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
+  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles('font'), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
+  /** The same, with a front cockpit element the CCKD reader rejects. */
+  'graphics-element-corrupt': createImportJob(syntheticOpen(productionCoveredFiles('element'), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
   audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS),
   /** The whole production job on the synthetic slice disc: the logic step binds the models the model step converts. */

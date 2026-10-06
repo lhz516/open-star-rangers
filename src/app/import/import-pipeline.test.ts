@@ -1,26 +1,32 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { RESOURCE_GROUPS } from '../../content/asset-contract.ts';
-import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { validateGroup, type GroupInput } from '../../content/completeness.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
+import { deriveManifestIdentity, type GroupDraft } from '../../content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import { connectImportWorker, type WorkerLike } from '../../platform/workers/worker-port.ts';
 import { runImportHost, type ImportJob, type ImportReporter } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
-import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { productionIdentityBasis } from '../../original-data/conversion/converter-version.ts';
+import { runGraphicsStep, stepGroupDraft } from '../../original-data/conversion/graphics-step.ts';
+import { modelsGroupDraft } from '../../original-data/conversion/model-step.ts';
+import { COCKPIT_HUD_MAP_USAGE, productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { fail } from '../../content/contract-validation.ts';
 import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
+import type { VerifiedSource } from '../../original-data/source/open-verified-source.ts';
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC, NO_MODELS,
-  PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, COCKPIT_GRAPHICS_ASSETS, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE,
+  GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles,
+  SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, syntheticSource, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
-import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
+import { createImportJobOwner, type ImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
@@ -73,8 +79,11 @@ function channelFactory(job: ImportJob, traffic: Traffic): ImportWorkerPortFacto
 
 const openPorts = () => process.getActiveResourcesInfo().filter(resource => resource === 'MessagePort').length;
 
-/** Runs one job through the owner, the adapter, a real channel and the host until the owner reaches a terminal state. */
-async function run(job: ImportJob, files: readonly File[]) {
+/**
+ * Runs one job through the owner, the adapter, a real channel and the host until the owner reaches a terminal state;
+ * `onChange` sees the owner after each recorded snapshot.
+ */
+async function run(job: ImportJob, files: readonly File[], onChange: (owner: ImportJobOwner) => void = () => undefined) {
   const ports = openPorts();
   const traffic: Traffic = { toWorker: [], fromWorker: [] };
   const owner = createImportJobOwner({ createPort: channelFactory(job, traffic), reportError: error => { throw error; } });
@@ -82,6 +91,7 @@ async function run(job: ImportJob, files: readonly File[]) {
   await new Promise<void>(resolve => {
     owner.subscribe(() => {
       snapshots.push(owner.getSnapshot());
+      onChange(owner);
       if (TERMINAL.has(owner.getSnapshot().status)) resolve();
     });
     expect(owner.start([...files])).toMatchObject({ status: 'started' });
@@ -179,6 +189,15 @@ describe('import pipeline over a structured-clone channel', () => {
   });
 });
 
+/** `job` with every group it sends recorded before the host transfers it. */
+const recording = (job: ImportJob, sent: GroupInput[]): ImportJob => (files, report) => job(files, Object.freeze({
+  ...report,
+  group: (group: Parameters<ImportReporter['group']>[0], input: GroupInput) => {
+    sent.push(input);
+    report.group(group, input);
+  },
+}));
+
 /** Each message as its stage or type, with repeats collapsed. */
 const stepsOf = (messages: readonly { readonly type: string; readonly stage?: string }[]): string[] => messages
   .map(({ type, stage }) => stage ?? type)
@@ -201,14 +220,16 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 }
 
 describe('graphics conversion over a structured-clone channel', () => {
-  it('reports every stage\'s progress, and finishes with the graphics models partition and the complete production audio group', async () => {
+  it('reports every stage\'s progress, and finishes with the graphics partitions and the complete production cockpit-hud-map and audio groups', async () => {
     const graphics = await syntheticImport(productionCoveredFiles(), 'graphics-disc');
     const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC, undefined, NO_MODELS), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    // With no model converted, the models group is incomplete: no craft, projectile or debris role, and unconfirmed textures.
+    // With no bound craft model, the models group is incomplete: no craft roles, and unconfirmed textures. The P2-05
+    // palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
+      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] },
       { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
     ]);
     expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
@@ -217,14 +238,15 @@ describe('graphics conversion over a structured-clone channel', () => {
     const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
     expect(counts).toEqual([...counts].sort((left, right) => left - right));
     expect(counts.at(-1)).toBe(snapshot.usage.sourceReadBytes);
-    expect(owner.takeGroups()?.map(({ group }) => group)).toEqual(['audio']);
+    expect(owner.takeGroups()?.map(({ group }) => group)).toEqual(['cockpit-hud-map', 'audio']);
   });
 
   it('keeps the layer, code and location of identification, read and conversion failures, with no partial result', async () => {
-    const [complete, withoutCockpit, brokenFont] = await Promise.all([
+    const [complete, withoutCockpit, brokenFont, brokenElement] = await Promise.all([
       syntheticImport(productionCoveredFiles(), 'graphics-disc'),
       syntheticImport(productionGraphicsFiles({ CCKD: null }), 'graphics-disc'),
-      syntheticImport(productionCoveredFiles(true), 'graphics-disc'),
+      syntheticImport(productionCoveredFiles('font'), 'graphics-disc'),
+      syntheticImport(cockpitCoveredFiles(true), 'cockpit-disc'),
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
@@ -234,6 +256,8 @@ describe('graphics conversion over a structured-clone channel', () => {
       ['convert-graphics', createImportJob(failingAfterIdentification(complete.open)), complete.files, { layer: 'disc', code: 'read-failed', location: 'image:lba 18' }],
       ['convert-graphics', createImportJob(brokenFont.open), brokenFont.files,
         { layer: 'source', code: 'invalid-payload', location: 'graphics[font/hud/4x6].glyphs' }],
+      ['convert-graphics', createImportJob(brokenElement.open, cockpitGraphics(), NO_LOGIC, NO_AUDIO, NO_MODELS), brokenElement.files,
+        { layer: 'source', code: 'invalid-payload', location: 'graphics[layout/cockpit/front].elements' }],
     ];
     for (const [stage, job, files, error] of cases) {
       const expected = await hostError(job, files);
@@ -247,14 +271,16 @@ describe('graphics conversion over a structured-clone channel', () => {
 });
 
 describe('logic conversion over a structured-clone channel', () => {
-  it('sends the logic, models and audio groups after the conversion stages, and the owner validates them and hands the complete ones over once', async () => {
+  it('sends the logic, models, cockpit-hud-map and audio groups after the conversion stages, and the owner validates them and hands the complete ones over once', async () => {
     const slice = await syntheticImport(sliceCoveredFiles(), 'slice-disc');
     const { owner, traffic, snapshots } = await run(createImportJob(slice.open), slice.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
-    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete'], ['models', 'incomplete'], ['audio', 'group-complete']]);
+    expect(snapshot.groups.map(({ group, status }) => [group, status]))
+      .toEqual([['logic', 'group-complete'], ['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
+    expect(snapshot.groups[2].diagnostics).toEqual([]);
     // The receiver's validation of the models group equals Node's validation of the group message it received.
     const received = (traffic.fromWorker as { type: string; group?: string; input?: GroupInput }[]).find(({ type, group }) => type === 'group' && group === 'models')!;
     const expected = validateGroup(CLASSIC_P2_SLICE, received.input!);
@@ -268,10 +294,10 @@ describe('logic conversion over a structured-clone channel', () => {
       vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     });
     const taken = owner.takeGroups()!;
-    expect(taken.map(({ group }) => group)).toEqual(['logic', 'audio']);
-    // One package: both groups carry the same identity.
-    const [logicManifest, audioManifest] = taken.map(({ manifest }) => readGroupManifest(manifest));
-    expect(audioManifest.identity).toEqual(logicManifest.identity);
+    expect(taken.map(({ group }) => group)).toEqual(['logic', 'cockpit-hud-map', 'audio']);
+    // One package: every group carries the same identity.
+    const [logicManifest, ...others] = taken.map(({ manifest }) => readGroupManifest(manifest));
+    expect(others.map(({ identity }) => identity)).toEqual(others.map(() => logicManifest.identity));
     expect(owner.takeGroups()).toBeNull();
     expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
   });
@@ -318,15 +344,6 @@ describe('model conversion over a structured-clone channel', () => {
 });
 
 describe('audio conversion over a structured-clone channel', () => {
-  /** `job` with every group it sends recorded before the host transfers it. */
-  const recording = (job: ImportJob, sent: GroupInput[]): ImportJob => (files, report) => job(files, Object.freeze({
-    ...report,
-    group: (group: Parameters<ImportReporter['group']>[0], input: GroupInput) => {
-      sent.push(input);
-      report.group(group, input);
-    },
-  }));
-
   it('transfers the converted audio group, detaching the sender views, and the owner hands it over complete', async () => {
     const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
     const sent: GroupInput[] = [];
@@ -335,20 +352,21 @@ describe('audio conversion over a structured-clone channel', () => {
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
-    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
-    expect(snapshot.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
+    expect(snapshot.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
     expect(snapshot.usage).toMatchObject({
       assets: GRAPHICS_CONVERSION_USAGE.assets + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
     });
-    expect(sent).toHaveLength(2);
+    expect(sent).toHaveLength(3);
     expect(sent.flatMap(({ payloads }) => payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
     const taken = owner.takeGroups()!;
-    expect(taken.map(({ group }) => group)).toEqual(['audio']);
-    const manifest = readGroupManifest(taken[0].manifest);
+    expect(taken.map(({ group }) => group)).toEqual(['cockpit-hud-map', 'audio']);
+    const audioGroup = taken[1];
+    const manifest = readGroupManifest(audioGroup.manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.graphics-1.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
-    expect((taken[0].payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
+    expect((audioGroup.payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
   });
 
@@ -373,8 +391,173 @@ describe('audio conversion over a structured-clone channel', () => {
       return { ...EMPTY_BUDGET_USAGE, assets: -1 } as BudgetRecord;
     };
     const { owner, traffic } = await run(failingLate, audio.files);
-    expect(traffic.fromWorker.filter(message => (message as { type: string }).type === 'group')).toHaveLength(2);
+    expect(traffic.fromWorker.filter(message => (message as { type: string }).type === 'group')).toHaveLength(3);
     expect(owner.getSnapshot()).toMatchObject({ status: 'failed', stage: 'convert-models', error: { layer: 'content', code: 'invalid-budget-value' } });
     expect(owner.takeGroups()).toBeNull();
+  });
+});
+
+describe('cockpit-hud-map assembly over a structured-clone channel', () => {
+  const idsOf = (keep: (asset: typeof COCKPIT_GRAPHICS_ASSETS[number]) => boolean) => COCKPIT_GRAPHICS_ASSETS.filter(keep).map(({ id }) => id);
+  const COCKPIT_IDS = idsOf(({ group }) => group === 'cockpit-hud-map');
+  const MODEL_IDS = idsOf(({ group }) => group === 'models');
+  type GroupMessage = { readonly type: 'group'; readonly group: string; readonly input: GroupInput };
+
+  let disc: Awaited<ReturnType<typeof syntheticImport>>;
+  beforeAll(async () => { disc = await syntheticImport(cockpitCoveredFiles(), 'cockpit-disc'); });
+
+  /** The job converting `graphics` and nothing else on the cockpit disc; `capture` receives the source it identifies. */
+  const cockpitJob = (graphics = cockpitGraphics(), capture: (source: VerifiedSource) => void = () => undefined) =>
+    createImportJob(async inputs => {
+      const source = await disc.open(inputs);
+      capture(source);
+      return source;
+    }, graphics, NO_LOGIC, NO_AUDIO, NO_MODELS);
+
+  const groupMessages = (traffic: Traffic) => traffic.fromWorker.filter(message => (message as { type: string }).type === 'group') as GroupMessage[];
+
+  it('sends the complete cockpit-hud-map group apart from the models partition, and the owner hands it over after finished', async () => {
+    let source: VerifiedSource | undefined;
+    const sent: GroupInput[] = [];
+    const { owner, traffic } = await run(recording(cockpitJob(undefined, opened => { source = opened; }), sent), disc.files);
+    const snapshot = owner.getSnapshot();
+    if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
+    const sourceFingerprint = source!.identity.fingerprint;
+
+    // Messages in protocol order with read bytes that never decrease and no progress after the first group.
+    const messages = traffic.fromWorker as { readonly type: string; readonly stage?: string; readonly readBytes?: number; readonly groups?: string[] }[];
+    expect(stepsOf(messages)).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
+    const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
+    expect(counts).toEqual([...counts].sort((left, right) => left - right));
+    expect(counts.at(-1)).toBe(source!.usage().sourceReadBytes);
+    const received = groupMessages(traffic);
+    expect(received.map(({ group }) => group)).toEqual(['models', 'cockpit-hud-map', 'audio']);
+    expect(messages.at(-1)).toMatchObject({ type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'] });
+    expect(sent.flatMap(({ payloads }) => payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'incomplete']]);
+    expect(snapshot.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: COCKPIT_IDS.length, diagnostics: [] });
+
+    // The received groups are the graphics step's partitions as Node converts them from the same source.
+    const graphics = cockpitGraphics();
+    const step = await runGraphicsStep(await syntheticSource(cockpitCoveredFiles(), 'cockpit-disc'), graphics.mappings, graphics.declarations, graphics.share);
+    const taken = owner.takeGroups()!;
+    expect(taken.map(({ group }) => group)).toEqual(['cockpit-hud-map']);
+    const [cockpit] = taken;
+    const expected = stepGroupDraft('cockpit-hud-map', [step], sourceFingerprint);
+    const manifest = readGroupManifest(cockpit.manifest);
+    expect(manifest.assets).toEqual(expected.assets);
+    expect(manifest.assets.map(({ id }) => id)).toEqual(COCKPIT_IDS);
+    expect(new Set(manifest.assets.map(({ kind }) => kind))).toEqual(new Set(['font', 'image', 'layout', 'palette']));
+    const payloads = cockpit.payloads as { readonly id: string; readonly bytes: Uint8Array }[];
+    expect(payloads.map(({ id, bytes }) => [id, [...bytes]])).toEqual(expected.payloads.map(({ id, bytes }) => [id, [...bytes]]));
+    expect(payloads.every(({ bytes }) => bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength)).toBe(true);
+    expect(new Set(payloads.map(({ bytes }) => bytes.buffer)).size).toBe(payloads.length);
+    expect(cockpit.sources).toEqual({ sourceFingerprint, states: COCKPIT_IDS.map(id => ({ id, state: 'verified', unknowns: [] })) });
+    expect(validateGroup(CLASSIC_P2_SLICE, cockpit)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map', externalRequirements: [] });
+    expect(owner.takeGroups()).toBeNull();
+    const manifests = received.map(({ input }) => readGroupManifest(input.manifest));
+    const models = manifests[0];
+    expect(models.assets).toEqual(modelsGroupDraft([step], sourceFingerprint).assets);
+    expect(models.assets.map(({ id }) => id)).toEqual(MODEL_IDS);
+
+    // One package identity over every sent group, from the production basis with the incremented graphics component.
+    const basis = productionIdentityBasis(sourceFingerprint);
+    const drafts = received.map(({ group, input }, index) => ({ group, assets: manifests[index].assets, payloads: [], sources: input.sources }) as GroupDraft);
+    const identity = { ...basis, manifestIdentity: deriveManifestIdentity(basis, drafts) };
+    expect(manifests.map(({ identity: sent }) => sent)).toEqual(received.map(() => identity));
+    expect(identity.converterVersion).toBe('osr-import.graphics-2.logic-1.audio-1.models-1');
+
+    // The read usage plus the conversion usage, which counts every sent Asset and payload byte once.
+    expect(snapshot.usage).toEqual(addBudgets(source!.usage(), step.usage));
+    const assets = manifests.flatMap(({ assets: sent }) => sent);
+    expect(snapshot.usage).toMatchObject({
+      assets: COCKPIT_GRAPHICS_ASSETS.length, glyphs: 256 + 256 + 192,
+      dependencyEdges: assets.reduce((sum, { dependencies }) => sum + dependencies.length, 0),
+      payloadBytes: assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
+    });
+  });
+
+  it('reports each missing role and an unconfirmed source, and changes the package identity with any descriptor, payload or source state', async () => {
+    const roleIds = (role: string) => idsOf(asset => asset.role === role);
+    const [gauge] = roleIds('hud-mfd');
+    const background = 'image/hud/status-display/background-0';
+    const cases: [string, ReturnType<typeof cockpitGraphics>, readonly Record<string, unknown>[]][] = [
+      ['every role', cockpitGraphics(), []],
+      ['no front layout', cockpitGraphics({ without: roleIds('front-cockpit') }), [{ code: 'role-cardinality', path: 'roles.front-cockpit' }]],
+      ['no strategic-map Asset', cockpitGraphics({ without: roleIds('strategic-map') }), [{ code: 'role-cardinality', path: 'roles.strategic-map' }]],
+      ['no hud-mfd Asset', cockpitGraphics({ without: roleIds('hud-mfd') }), [{ code: 'role-cardinality', path: 'roles.hud-mfd' }]],
+      ['an unconfirmed mapping', cockpitGraphics({ mappings: { [gauge]: { confidence: 'unconfirmed', unknowns: ['U-030'] } } }),
+        [{ code: 'source-not-ready', assetId: gauge, unknowns: ['U-030'] }]],
+      // Complete groups that differ from the first only in one descriptor's role, or in one payload's rows.
+      ['a relabelled image', cockpitGraphics({ declarations: { 'image/map/unit-marker/0': { role: 'hud-mfd' } } }), []],
+      ['reversed rows', cockpitGraphics({ declarations: { [background]: { rowOrder: 'reversed' } } }), []],
+    ];
+    const identities: string[] = [];
+    for (const [name, graphics, diagnostics] of cases) {
+      const { owner, traffic } = await run(cockpitJob(graphics), disc.files);
+      const snapshot = owner.getSnapshot();
+      if (snapshot.status !== 'finished') throw new Error(`expected ${name} to finish, got ${snapshot.status}`);
+      const summary = snapshot.groups.find(({ group }) => group === 'cockpit-hud-map')!;
+      expect(summary, name).toMatchObject(diagnostics.length === 0
+        ? { status: 'group-complete', diagnostics: [] }
+        : { status: 'incomplete', diagnostics: diagnostics.map(diagnostic => expect.objectContaining(diagnostic)) });
+      const sent = new Set(groupMessages(traffic).map(({ input }) => readGroupManifest(input.manifest).identity.manifestIdentity));
+      expect(sent.size, name).toBe(1);
+      identities.push(...sent);
+    }
+    expect(new Set(identities).size).toBe(cases.length);
+  });
+
+  /** `job` whose reporter hands the host an audio group with a detached payload buffer, which it cannot transfer. */
+  const detachingAudio = (job: ImportJob): ImportJob => (files, report) => job(files, Object.freeze({
+    ...report,
+    group: (group: Parameters<ImportReporter['group']>[0], input: GroupInput) => {
+      if (group !== 'audio') return report.group(group, input);
+      const bytes = new Uint8Array(1);
+      structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+      report.group(group, { ...input, payloads: [{ id: 'sound/detached', schemaVersion: 1, bytes }] });
+    },
+  }));
+  /** `job` returning a usage the host rejects once every group is sent. */
+  const invalidUsage = (job: ImportJob): ImportJob => async (files, report) => {
+    await job(files, report);
+    return { ...EMPTY_BUDGET_USAGE, assets: -1 } as BudgetRecord;
+  };
+
+  it.each([
+    ['a later group fails to transfer', detachingAudio, ['models', 'cockpit-hud-map'], { code: 'payload-detached', location: 'groups.audio.payloads[0].bytes' }],
+    ['the final usage is rejected', invalidUsage, ['models', 'cockpit-hud-map', 'audio'], { code: 'invalid-budget-value', location: 'usage.assets' }],
+  ])('discards the received complete cockpit-hud-map group when %s after sending began', async (_, inject, groups, error) => {
+    const { owner, traffic, snapshots } = await run(inject(cockpitJob()), disc.files);
+    expect(groupMessages(traffic).map(({ group }) => group)).toEqual(groups);
+    expect(snapshots.some(snapshot => snapshot.status === 'running'
+      && snapshot.groups.some(({ group, status }) => group === 'cockpit-hud-map' && status === 'group-complete'))).toBe(true);
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', stage: 'convert-models', error: { layer: 'content', ...error } });
+    expect(owner.takeGroups()).toBeNull();
+  });
+
+  it('cancels during the graphics stage, and nothing the job still does changes the cancelled state', async () => {
+    let ended!: () => void;
+    const jobEnded = new Promise<void>(resolve => { ended = resolve; });
+    const converting = cockpitJob();
+    const job: ImportJob = async (files, report) => {
+      try {
+        return await converting(files, report);
+      } finally {
+        ended();
+      }
+    };
+    const { owner, traffic, snapshots } = await run(job, disc.files, current => {
+      const snapshot = current.getSnapshot();
+      if (snapshot.status === 'running' && snapshot.stage === 'convert-graphics') expect(current.cancel()).toBe(true);
+    });
+    // The host runs on in this thread until the job ends; its later messages go nowhere.
+    await jobEnded;
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const cancelled = { status: 'cancelled', jobId: 1, stage: 'convert-graphics' };
+    expect(snapshots.slice(-2)).toEqual([expect.objectContaining({ status: 'running', stage: 'convert-graphics' }), cancelled]);
+    expect(owner.getSnapshot()).toEqual(cancelled);
+    expect(owner.takeGroups()).toBeNull();
+    expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]).at(-1)).toBe('convert-graphics');
   });
 });

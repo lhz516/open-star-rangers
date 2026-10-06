@@ -329,7 +329,7 @@ describe('error code grammar', () => {
     'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true, 'invalid-sound-payload': true,
     'duplicate-group': true, 'group-order': true,
     'invalid-graphics-payload': true, 'unsupported-payload-schema': true, 'binding-mismatch': true,
-    'palette-index-out-of-range': true, 'unmapped-character': true,
+    'palette-index-out-of-range': true, 'unmapped-character': true, 'layout-out-of-frame': true,
     'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,
     'invalid-model-payload': true,
     'invalid-effect-payload': true,
@@ -341,6 +341,7 @@ describe('error code grammar', () => {
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
     payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
     effectRecords: true, missileTypes: true, ringSegments: true, executableObjects: true, executablePages: true, executableRegion: true,
+    cockpitSlots: true, cockpitElements: true, mfdRecords: true, tableRecords: true,
   };
 
   it.each([

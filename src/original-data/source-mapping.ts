@@ -165,8 +165,11 @@ const locatorKey = ({ discPath, entry, subresource }: OriginalAssetLocator) =>
 const admits = (asset: AssetReference, entry: OriginalAssetLocator['entry']): boolean =>
   entry === null ? asset.kind === 'data' : (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
 
-/** Archive entries first, in path, type, ID and sub-resource order; then regions by path, object, offset and length. */
-function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
+/**
+ * Canonical locator order: archive entries first, in path, type, ID and sub-resource order; then regions by path,
+ * object, offset and length. 0 means the same locator.
+ */
+export function compareLocators(left: OriginalAssetLocator, right: OriginalAssetLocator): number {
   if (isRegionLocator(left) || isRegionLocator(right)) {
     if (!isRegionLocator(left)) return -1;
     if (!isRegionLocator(right)) return 1;

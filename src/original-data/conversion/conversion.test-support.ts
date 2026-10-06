@@ -12,10 +12,10 @@ import { buildImfat, ByteWriter, imageRecord, syntheticMesh } from '../synthetic
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
 
 // The closed P2-05 location grammar (docs/plan/p2/05/spec.md, error codes), written from the spec as an oracle: the
-// declaration set, a declaration's field path, or a field of a canonical Asset.
+// declaration set, a declaration's field path, or a field of a canonical Asset. P2-07 adds the CCKD container fields.
 const GRAPHICS_LOCATION = new RegExp(`^graphics(?:${[
   String.raw`\.declarations(?:\[\d+\](?:\.[A-Za-z]+(?:\[\d+\])?)*)?`,
-  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\]\.(?:record|palette|pixels|mask|glyphs|charMap|fonts|display|alpha|rowOrder)`,
+  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\]\.(?:record|palette|pixels|mask|glyphs|charMap|fonts|display|alpha|rowOrder|groups|elements(?:\[\d+\](?:\.[xy])?)?)`,
 ].join('|')})$`);
 
 /** Whether a conversion diagnostic location belongs to the P2-05 grammar. */
@@ -139,6 +139,89 @@ export function cockpitBlock(tables: readonly Uint8Array[], count = tables.lengt
 /** The HUD font directory shape: two 8×8 fonts and one 4×6 font. */
 export const hudFontTables = (): Uint8Array[] => [fontTable(8, 8), fontTable(8, 8), fontTable(4, 6)];
 
+/** A CCKD element for `cockpitLayoutBlock`: a whole-entry record block (see `recordBlock`), its position and flags. */
+export interface SyntheticElement {
+  readonly record: Uint8Array;
+  readonly x: number;
+  readonly y: number;
+  /** The fields after the position; 0 and 0 unless a test needs other values. */
+  readonly flags?: readonly [number, number];
+}
+
+/** The 36-byte header of a whole-entry record whose data, everything after the header, moves to block offset `dataAt`. */
+function movedRecordHeader(record: Uint8Array, dataAt: number): Uint8Array {
+  const header = record.slice(0, 36);
+  const view = new DataView(header.buffer);
+  const move = (field: number) => view.setUint32(field, view.getUint32(field, true) - 36 + dataAt, true);
+  if (view.getUint32(24, true) > 0) move(20);
+  move(28);
+  return header;
+}
+
+/** Allocates consecutive block ranges from `start`. */
+function blockLayout(start: number): (length: number) => number {
+  let end = start;
+  return length => {
+    const at = end;
+    end += length;
+    return at;
+  };
+}
+
+/**
+ * A CCKD entry (cockpit §1): the font directory pointer at 0x00 and the group directory pointer at 0x08, the font
+ * directory, one 32-byte directory record per slot, the 52-byte element arrays, the font tables, the slot palettes and
+ * then each element record's data under block-relative pointers. A slot with a palette (768 DATA-format bytes) points
+ * to it at +0x04 with its length at +0x08; both are 0 otherwise. The unexplained directory fields are nonzero filler,
+ * and an empty slot's element pointer lies past the block because it addresses nothing.
+ */
+export function cockpitLayoutBlock(
+  groups: readonly (readonly SyntheticElement[])[],
+  fonts: readonly Uint8Array[] = hudFontTables(),
+  palettes: readonly (Uint8Array | null)[] = [],
+): Uint8Array {
+  const directory = 16 + fonts.length * 8;
+  const take = blockLayout(directory + groups.length * 32);
+  const arrays = groups.map(elements => take(elements.length * 52));
+  const tables = fonts.map(table => take(table.length));
+  const paletteAt = groups.map((_, slot) => (palettes[slot] ? take(palettes[slot].length) : 0));
+  const data = groups.map(elements => elements.map(({ record }) => take(record.length - 36)));
+  const writer = new ByteWriter().u32(16, fonts.length, directory, groups.length);
+  fonts.forEach((table, index) => writer.u32(tables[index], table.length));
+  groups.forEach((elements, slot) => {
+    writer.u32(0xa5a5_a5a5, paletteAt[slot], palettes[slot]?.length ?? 0, 0xffff_ffff, elements.length ? arrays[slot] : 0xffff_fff0, elements.length, 0xc3c3_c3c3, 7);
+  });
+  groups.forEach((elements, slot) => elements.forEach(({ record, x, y, flags = [0, 0] }, index) => {
+    writer.raw(movedRecordHeader(record, data[slot][index])).u32(x, y, ...flags);
+  }));
+  fonts.forEach(table => writer.raw(table));
+  palettes.forEach(palette => palette && writer.raw(palette));
+  groups.forEach(elements => elements.forEach(({ record }) => writer.raw(record.subarray(36))));
+  return writer.toBytes();
+}
+
+/** A TABL image list (hud §2): the records packed from offset 0, then each record's data in record order. */
+export function tableBlock(records: readonly Uint8Array[]): Uint8Array {
+  const take = blockLayout(records.length * 36);
+  const data = records.map(record => take(record.length - 36));
+  const writer = new ByteWriter();
+  records.forEach((record, index) => writer.raw(movedRecordHeader(record, data[index])));
+  records.forEach(record => writer.raw(record.subarray(36)));
+  return writer.toBytes();
+}
+
+/** An MFDD entry (cockpit §2): the {pointer, count} of lists 0 and 1, both record arrays, then each record's data. */
+export function mfdBlock(lists: readonly [readonly Uint8Array[], readonly Uint8Array[]]): Uint8Array {
+  const take = blockLayout(16);
+  const arrays = lists.map(records => take(records.length * 36));
+  const data = lists.map(records => records.map(record => take(record.length - 36)));
+  const writer = new ByteWriter();
+  lists.forEach((records, list) => writer.u32(arrays[list], records.length));
+  lists.forEach((records, list) => records.forEach((record, index) => writer.raw(movedRecordHeader(record, data[list][index]))));
+  lists.forEach(records => records.forEach(record => writer.raw(record.subarray(36))));
+  return writer.toBytes();
+}
+
 export const paletteDeclaration = (id: string, group = 'cockpit-hud-map'): Record<string, unknown> =>
   ({ asset: { id, kind: 'palette' }, role: 'flight-palette', group });
 
@@ -152,20 +235,26 @@ export const fontDeclaration = (id: string, overrides: Record<string, unknown> =
 });
 
 export const GRAPHICS_ARCHIVE = 'MAIN/SR.NOB';
-export const GRAPHICS_ENTRIES = Object.freeze({ data: 10_001, texture: 10_003, cockpit: 10_005 });
+export const GRAPHICS_ENTRIES = Object.freeze({ data: 10_001, texture: 10_003, cockpit: 10_005, mfd: 10_009, table: 10_011 });
 
 /** A 4×2 raw texture with distinct indices and an 8-colour embedded BGR palette. */
 export const textureBlock = (): Uint8Array =>
   rawImageBlock(4, 2, [0, 1, 2, 3, 4, 5, 6, 7], Array.from({ length: 24 }, (_, index) => (index * 9) & 0xff));
 
-/** An archive with one DATA, one TEX and one CCKD entry, any of which a test may replace. */
-export function graphicsArchive(blocks: { data?: Uint8Array; texture?: Uint8Array; cockpit?: Uint8Array } = {}): Uint8Array {
+/** An archive with one DATA, one TEX and one CCKD entry, any of which a test may replace, and MFDD and TABL entries when given. */
+export function graphicsArchive(blocks: { data?: Uint8Array; texture?: Uint8Array; cockpit?: Uint8Array; mfd?: Uint8Array; table?: Uint8Array } = {}): Uint8Array {
   return buildImfat(10_000, [
     { id: GRAPHICS_ENTRIES.data, type: 'DATA', data: blocks.data ?? dataPaletteBlock() },
     { id: GRAPHICS_ENTRIES.texture, type: 'TEX', data: blocks.texture ?? textureBlock() },
     { id: GRAPHICS_ENTRIES.cockpit, type: 'CCKD', data: blocks.cockpit ?? cockpitBlock(hudFontTables()) },
+    ...(blocks.mfd ? [{ id: GRAPHICS_ENTRIES.mfd, type: 'MFDD', data: blocks.mfd }] : []),
+    ...(blocks.table ? [{ id: GRAPHICS_ENTRIES.table, type: 'TABL', data: blocks.table }] : []),
   ]);
 }
+
+export const layoutDeclaration = (id: string, elements: readonly string[], overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  asset: { id, kind: 'layout' }, role: 'front-cockpit', group: 'cockpit-hud-map', frame: { width: 640, height: 480 }, elements, ...overrides,
+});
 
 /** A declared single-locator mapping in the graphics archive. */
 export function graphicsMapping(id: string, type: string, entry: number, subresource: string | null = null): Record<string, unknown> {

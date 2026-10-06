@@ -1,5 +1,6 @@
 import { RESOURCE_GROUPS, type ResourceGroup } from '../content/asset-contract.ts';
 import type { GroupInput } from '../content/completeness.ts';
+import { compareText } from '../content/contract-validation.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
 import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
@@ -10,8 +11,13 @@ import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/bu
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
-import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
-import { MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import {
+  cockpitLayoutBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
+  layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock,
+} from '../original-data/conversion/conversion.test-support.ts';
+import {
+  COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionCockpitBlock, productionGraphicsFiles,
+} from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import { syntheticEffectExecutable } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
@@ -79,8 +85,16 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
   return { files, open: syntheticOpen(covered, versionId) };
 }
 
-/** A CCKD block whose 4×6 font table is one byte short. */
-const CORRUPT_FONTS = cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
+/** A CCKD block in the production cockpit structure whose 4×6 font table is one byte short. */
+const CORRUPT_FONTS = productionCockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
+
+/** A corrupt production CCKD: a 4×6 font table one byte short, or a first front element with a draw-pass flag of 2. */
+export type CockpitCorruption = 'font' | 'element';
+
+const corruptCockpit = (corrupt: CockpitCorruption | undefined) => {
+  if (corrupt === undefined) return {};
+  return { CCKD: corrupt === 'font' ? CORRUPT_FONTS : productionCockpitBlock(undefined, [2, 0]) };
+};
 
 /** A graphics step with nothing to convert, for jobs whose test is about identification or group transfer. */
 export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
@@ -180,37 +194,143 @@ export function graphicsCoveredFiles(corrupt = false): Record<string, Uint8Array
 /**
  * The covered files of a disc in the production graphics and sound structure: the production graphics and synthetic
  * samples at every entry of the production sound table, so the production graphics and audio stages convert both.
- * `corrupt` shortens the 4×6 font table by one byte, which the converter rejects as `invalid-payload`.
+ * `corrupt` shortens the 4×6 font table by one byte (`font`) or sets a front cockpit element flag to 2 (`element`); the
+ * converter rejects either as `invalid-payload`.
  */
-export function productionCoveredFiles(corrupt = false): Record<string, Uint8Array> {
-  return productionGraphicsFiles(corrupt ? { CCKD: CORRUPT_FONTS } : {}, productionSoundEntries());
+export function productionCoveredFiles(corrupt?: CockpitCorruption): Record<string, Uint8Array> {
+  return productionGraphicsFiles(corruptCockpit(corrupt), productionSoundEntries());
 }
 
 /**
- * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
- * two flight palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries, the 4×6 font of 192 eight-row glyphs
- * with 56 entries, and the slice textures with their palettes.
+ * The payload bytes of the P2-05 Assets: two flight palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries,
+ * and the 4×6 font of 192 eight-row glyphs with 56 entries.
  */
-export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256)
-  + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56) + MODEL_TEXTURE_USAGE.payloadBytes;
+const P2_05_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56);
+
+/**
+ * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
+ * the P2-05 palettes and fonts, the slice textures with their palettes, and the P2-07 cockpit, HUD and map Assets.
+ */
+export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes;
 
 /**
  * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
- * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures.
+ * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures and the P2-07
+ * cockpit, HUD and map Assets.
  */
-export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = addBudgets({
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   paletteEntries: 512,
   glyphs: 256 + 256 + 192,
-  payloadBytes: GRAPHICS_PAYLOAD_BYTES - MODEL_TEXTURE_USAGE.payloadBytes,
-}, MODEL_TEXTURE_USAGE, 'usage');
+  payloadBytes: P2_05_PAYLOAD_BYTES,
+});
 
 /**
  * The conversion usage of the production graphics and audio stages on `productionCoveredFiles()`: the graphics
  * Assets plus the production sounds.
  */
 export const PRODUCTION_CONVERSION_USAGE: BudgetRecord = addBudgets(GRAPHICS_CONVERSION_USAGE, PRODUCTION_SOUND_USAGE, 'usage');
+
+const { data: DATA_ENTRY, texture: TEX_ENTRY, cockpit: CCKD_ENTRY, mfd: MFDD_ENTRY, table: TABL_ENTRY } = GRAPHICS_ENTRIES;
+const FLIGHT_PALETTE = 'palette/flight/cockpit-hud-map';
+const MAP_PALETTE = 'palette/map/frame/element-0';
+const FRONT_ELEMENTS = ['image/cockpit/front/element-0', 'image/cockpit/front/element-1'];
+const MAP_ELEMENTS = ['image/map/frame/element-0'];
+
+/** One Asset of the synthetic cockpit disc: its declaration and its single-locator mapping. */
+interface CockpitAsset {
+  readonly id: string;
+  readonly role: string;
+  readonly group: ResourceGroup;
+  readonly declaration: Record<string, unknown>;
+  readonly mapping: Record<string, unknown>;
+}
+
+const cockpitAsset = (declaration: Record<string, unknown>, type: string, entry: number, subresource: string | null = null): CockpitAsset => {
+  const { id } = declaration.asset as { readonly id: string };
+  return { id, role: declaration.role as string, group: declaration.group as ResourceGroup, declaration, mapping: graphicsMapping(id, type, entry, subresource) };
+};
+
+/**
+ * The Assets of the synthetic cockpit disc in ascending ID order. The `cockpit-hud-map` partition fills every role of
+ * the group with the P2-05 shapes (the flight palette and three fonts) and the P2-07 ones (the front and map frame
+ * layouts with their CCKD element images, an element's embedded palette, MFDD and TABL records); the `models`
+ * partition is one texture with its palette and the models flight palette.
+ */
+const COCKPIT_ASSETS: readonly CockpitAsset[] = [
+  cockpitAsset(fontDeclaration('font/hud/4x6', { cell: { width: 4, height: 6 } }), 'CCKD', CCKD_ENTRY, 'fonts/2'),
+  cockpitAsset(fontDeclaration('font/hud/8x8-1'), 'CCKD', CCKD_ENTRY, 'fonts/0'),
+  cockpitAsset(fontDeclaration('font/hud/8x8-2'), 'CCKD', CCKD_ENTRY, 'fonts/1'),
+  ...FRONT_ELEMENTS.map((id, index) => cockpitAsset(imageDeclaration(id, FLIGHT_PALETTE, { role: 'cockpit-element' }), 'CCKD', CCKD_ENTRY, `groups/0/elements/${index}`)),
+  cockpitAsset(imageDeclaration('image/hud/gauge-bar-1/0', FLIGHT_PALETTE, { alpha: { colourKey: 0 } }), 'TABL', TABL_ENTRY, 'records/0'),
+  cockpitAsset(imageDeclaration('image/hud/status-display/background-0', FLIGHT_PALETTE), 'MFDD', MFDD_ENTRY, 'lists/0/records/0'),
+  cockpitAsset(imageDeclaration('image/hud/status-display/overlay-0', FLIGHT_PALETTE, { alpha: { colourKey: 0 } }), 'MFDD', MFDD_ENTRY, 'lists/1/records/0'),
+  ...MAP_ELEMENTS.map((id, index) => cockpitAsset(imageDeclaration(id, MAP_PALETTE, { role: 'map-frame-element' }), 'CCKD', CCKD_ENTRY, `groups/2/elements/${index}`)),
+  cockpitAsset(imageDeclaration('image/map/unit-marker/0', MAP_PALETTE, { role: 'strategic-map', alpha: { colourKey: 0 } }), 'TABL', TABL_ENTRY, 'records/1'),
+  cockpitAsset(imageDeclaration('image/model-texture/01', 'palette/model-texture/01', {
+    group: 'models', role: 'model-texture', display: { nearest: 'palette/flight/models' },
+  }), 'TEX', TEX_ENTRY),
+  cockpitAsset(layoutDeclaration('layout/cockpit/front', FRONT_ELEMENTS, { frame: { width: 8, height: 8 } }), 'CCKD', CCKD_ENTRY, 'groups/0'),
+  cockpitAsset(layoutDeclaration('layout/map/frame', MAP_ELEMENTS, { role: 'strategic-map', frame: { width: 4, height: 4 } }), 'CCKD', CCKD_ENTRY, 'groups/2'),
+  cockpitAsset(paletteDeclaration(FLIGHT_PALETTE), 'DATA', DATA_ENTRY),
+  cockpitAsset(paletteDeclaration('palette/flight/models', 'models'), 'DATA', DATA_ENTRY),
+  cockpitAsset({ ...paletteDeclaration(MAP_PALETTE), role: 'map-palette' }, 'CCKD', CCKD_ENTRY, 'groups/2/elements/0/palette'),
+  cockpitAsset({ ...paletteDeclaration('palette/model-texture/01', 'models'), role: 'texture-palette' }, 'TEX', TEX_ENTRY, 'palette'),
+].sort((left, right) => compareText(left.id, right.id));
+
+/** The ID, role and group of every Asset `cockpitGraphics()` converts, in ascending ID order. */
+export const COCKPIT_GRAPHICS_ASSETS: readonly Pick<CockpitAsset, 'id' | 'role' | 'group'>[] =
+  Object.freeze(COCKPIT_ASSETS.map(({ id, role, group }) => Object.freeze({ id, role, group })));
+
+/** A share above the conversion usage of `cockpitGraphics()` in every dimension it charges. */
+const COCKPIT_GRAPHICS_SHARE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE, assets: 64, dependencyEdges: 64, paletteEntries: 1024, imagePixels: 1024, glyphs: 1024, payloadBytes: 1 << 16,
+});
+
+/** Changes to the Assets of `cockpitGraphics()`, by Asset ID. */
+interface CockpitGraphicsChanges {
+  /** Assets left out, declaration and mapping. */
+  readonly without?: readonly string[];
+  /** Fields replaced in an Asset's declaration. */
+  readonly declarations?: Readonly<Record<string, Record<string, unknown>>>;
+  /** Fields replaced in an Asset's mapping, such as its confidence. */
+  readonly mappings?: Readonly<Record<string, Record<string, unknown>>>;
+}
+
+/**
+ * The graphics step input converting the Assets of `cockpitCoveredFiles()` with `changes`: confirmed mappings, so
+ * every converted Asset is verified, and a share above their usage.
+ */
+export function cockpitGraphics({ without = [], declarations = {}, mappings = {} }: CockpitGraphicsChanges = {}): GraphicsStepInput {
+  const kept = COCKPIT_ASSETS.filter(({ id }) => !without.includes(id));
+  return Object.freeze({
+    mappings: { sourceFingerprint: null, mappings: kept.map(({ id, mapping }) => ({ ...mapping, ...mappings[id] })) },
+    declarations: kept.map(({ id, declaration }) => ({ ...declaration, ...declarations[id] })),
+    share: COCKPIT_GRAPHICS_SHARE,
+  });
+}
+
+/** A raw and a sprite front element, a map frame element with a 16-colour embedded palette, MFDD and TABL records. */
+const FRONT_RAW = rawImageBlock(4, 2, [1, 2, 3, 4, 5, 6, 7, 8]);
+const FRONT_SPRITE = spriteImageBlock(5, 3, [0, 0, 2, 0, 1, 2, 3, 0, 5, 0, 1, 0, 3, 0, 3, 4, 5, 1, 0]);
+const MAP_FRAME = rawImageBlock(2, 3, [0, 1, 2, 3, 0, 1], Array.from({ length: 48 }, (_, index) => (index * 5) & 0xff));
+const MFD = mfdBlock([[rawImageBlock(3, 2, [9, 8, 7, 6, 5, 4])], [rawImageBlock(2, 2, [0, 3, 0, 4])]]);
+const TABLE = tableBlock([rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]), rawImageBlock(1, 2, [0, 15])]);
+
+/**
+ * The covered files of a synthetic disc whose `MAIN/SR.NOB` holds the DATA, TEX, CCKD, MFDD and TABL entries
+ * `cockpitGraphics()` maps: the CCKD has the front layout in slot 0, an empty slot 1 and the map frame in slot 2.
+ * `corrupt` sets a front element's +44 field to 2, which the converter rejects as `invalid-payload`.
+ */
+export function cockpitCoveredFiles(corrupt = false): Record<string, Uint8Array> {
+  const cockpit = cockpitLayoutBlock([
+    [{ record: FRONT_RAW, x: 0, y: 6 }, { record: FRONT_SPRITE, x: 3, y: 0, flags: [corrupt ? 2 : 0, 0] }],
+    [],
+    [{ record: MAP_FRAME, x: 1, y: 1, flags: [1, 0] }],
+  ]);
+  return { [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE }) };
+}
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];
@@ -220,7 +340,7 @@ export const boundGroups: SyntheticGroups = fingerprint => RESOURCE_GROUPS.map(g
 
 /**
  * The import job identifying through `open` and converting no graphics, logic or sounds, then sending `groups` for the
- * identified fingerprint in place of its own empty audio group.
+ * identified fingerprint in place of its own empty models, cockpit-hud-map and audio groups.
  */
 export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = boundGroups): ImportJob {
   const identify = createImportJob(open, NO_GRAPHICS, NO_LOGIC, NO_AUDIO, NO_MODELS);

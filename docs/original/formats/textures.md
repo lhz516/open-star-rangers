@@ -110,12 +110,12 @@ The P2-05 conversion limits come from [the P2-05 spec](../../plan/p2/05/spec.md#
 - for the 64 records with an embedded palette (58 TEX, 6 BITM), every opaque pixel index is below the palette's entry count;
 - records without an embedded palette are checked for structure only; 8-bit indices cannot exceed 256 entries.
 
-The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-structure-check.md#完成证据).
+The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-structure-check.md#完成证据). Since P2-07 the same command also decodes the 38 CCKD element records (up to 640×480) and the 70 records of the TABL image lists (up to 20×52), 231 records in total; all fit the same limits ([cockpit §3](./cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed), [hud §2](./hud.md#tabl-image-lists-confirmed-structure)).
 
 | Quantity | Baseline maximum | P2-05 limit |
 |---|---:|---:|
 | Image width | 640 (BITM); TEX 256, MFDD 96 | 640 (safety cap) |
-| Image height | 316 (BITM); TEX 256, MFDD 96 | 480 (safety cap) |
+| Image height | 480 (CCKD elements, since P2-07); BITM 316, TEX 256, MFDD 96 | 480 (safety cap) |
 | Embedded palette entries | 256 (TEX, BITM) | 256 (format rule) |
 | DATA entries | 256 | exactly 256 (format rule) |
 

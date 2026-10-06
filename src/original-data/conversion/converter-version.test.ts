@@ -9,7 +9,7 @@ import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from './convert
 
 describe('production converter version', () => {
   it('is osr-import followed by the packaged converters\' components in stage order', () => {
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-1.logic-1.audio-1.models-1');
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-2.logic-1.audio-1.models-1');
     expect(PRODUCTION_CONVERTER_VERSION.split('.').slice(1))
       .toEqual([GRAPHICS_CONVERTER_COMPONENT, LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT, MODEL_CONVERTER_COMPONENT]);
   });
