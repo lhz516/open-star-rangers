@@ -187,15 +187,16 @@ test('test entry identifies production-sized synthetic files and transfers four 
   expect(final.identity.versionId).toBe('synthetic-browser');
   expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.length]))
     .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', 0]));
-  // In order: identification, the start of the (empty) graphics stage, then one more complete group per change, then
-  // the end; the job itself throws if a payload it sent was not detached, so finishing proves every group was transferred.
+  // In order: identification, the starts of the (empty) graphics and logic stages, then one more complete group per
+  // change, then the end; the job itself throws if a payload it sent was not detached, so finishing proves every group
+  // was transferred.
   const identifiedAt = observed.findIndex(snapshot => 'identity' in snapshot && snapshot.identity !== null);
   expect(identifiedAt).toBeGreaterThan(0);
   expect(observed.slice(identifiedAt).map(snapshot =>
     `${snapshot.status}:${'stage' in snapshot ? snapshot.stage : '-'}:${'groups' in snapshot ? snapshot.groups.length : '-'}`))
     .toEqual([
-      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-graphics:1', 'running:convert-graphics:2',
-      'running:convert-graphics:3', 'running:convert-graphics:4', 'finished:-:4',
+      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-logic:0', 'running:convert-logic:1',
+      'running:convert-logic:2', 'running:convert-logic:3', 'running:convert-logic:4', 'finished:-:4',
     ]);
   expect(await page.evaluate(() => window.osrImport.compareTaken()))
     .toEqual(final.groups.map(({ group }) => ({ group, payloads: expect.any(Number), matches: true })));
@@ -218,11 +219,15 @@ test('test entry converts the production graphics after identification and finis
   const observed = await snapshots(page);
   const final = observed.at(-1)!;
   if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
-  // Identification progress, `identified`, graphics progress, then the end: each change of the running snapshot in order.
+  // Identification progress, `identified`, graphics progress, the start of the (empty) logic stage, then the end: each
+  // change of the running snapshot in order.
   const steps = observed.map(snapshot => (snapshot.status === 'running'
     ? `running:${snapshot.stage}:${snapshot.identity ? 'identified' : '-'}` : snapshot.status));
   const distinct = steps.filter((step, index) => step !== steps[index - 1]);
-  expect(distinct).toEqual(['starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified', 'finished']);
+  expect(distinct).toEqual([
+    'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
+    'running:convert-logic:identified', 'finished',
+  ]);
   expect(final.groups).toEqual([]);
   const expectedBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 256 + 256 + 192, imagePixels: 0, payloadBytes: expectedBytes });

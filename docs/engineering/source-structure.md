@@ -44,6 +44,8 @@ src/
     determinism/
       rng.ts
       fnv1a64.ts
+    mission/
+      load-mission.ts
     synthetic/
       synthetic-scene.ts
       synthetic-snapshot.ts
@@ -59,6 +61,7 @@ src/
     sha256.ts
     payload.ts
     manifest.ts
+    manifest-identity.ts
     completeness.ts
     budget.ts
     ownership.ts
@@ -70,6 +73,10 @@ src/
       graphics-binding.ts
       expand-image.ts
       glyph-lookup.ts
+    logic/
+      logic-content.ts
+      logic-readers.ts
+      logic-payload.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -92,6 +99,12 @@ src/
     archive/
       imfat-rules.ts
       archive-reader.ts
+    formats/
+      payload-block.ts
+      object-record.ts
+      scct.ts
+      scen.ts
+      m2id.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -101,8 +114,13 @@ src/
       source-graphics.ts
       graphics-declarations.ts
       convert-graphics.ts
+      step-entry-reader.ts
       graphics-step.ts
       production-graphics.ts
+      converter-version.ts
+      craft-binding.ts
+      logic-sources.ts
+      convert-logic.ts
   platform/
     browser/
       browser-session-host.ts
@@ -172,7 +190,7 @@ src/
 - [asset-id.ts](../../src/content/asset-id.ts)：`readAssetId` 返回品牌化语义 ID，8 段限制包含 kind 首段；`ASSET_KINDS` 封闭为 8 种，`ASSET_ID_LIMITS` 固定每段 32 字符、总长 128 字符。语法验证不能证明命名语义或来源映射正确。
 - [asset-contract.ts](../../src/content/asset-contract.ts)：`readAssetReference`、`readAssetDescriptor` 验证 kind 一致性、4 个封闭资源组、语义 role token、严格 ASCII ID 顺序且无重复的类型化依赖，以及 payload 身份。role 的必需集合/基数留给 02，引用存在/自引用/环与分组/全包完整性留给 04；没有 `complete` 布尔值。 `readRole` 单独读取语义 role token，描述符与图形转换声明共用。
 - [content-identity.ts](../../src/content/content-identity.ts)：`readContentIdentity` 显式分开 schema、切片 ID、切片定义版本、converter、manifest 与 origin；schema 当前只支持 1，数值版本为正安全整数。converter 按 spec 保留受限 ASCII 不透明字符串，不用应用版本代替。converter/manifest token 允许小写 ASCII 字母、数字及单个内部 `-`、`.`、`:` 分隔符。
-- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，未来转换器负责产生 manifest 身份。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用；`contentIdentityKey` 把六项身份合成一个可比较的键，全包验证与缓存读取共用。
+- 同文件的 `readContentOrigin` 严格区分 `{type: synthetic, fixtureId}` 与 `{type: original-import, sourceFingerprint}`；fixture token 不允许 `:`，source 使用 `source:<不透明 token>` 命名空间，不规定指纹算法。通过只表示形状合法，**不是来源已验证的证据**；P2-03 负责生成经过验证的来源指纹，manifest 身份由 `manifest-identity.ts` 推导（见下）。`readContentIdentityBasis` 用同样的规则读取不含 `manifestIdentity` 的五项身份（`ContentIdentityBasis`），供推导使用。`readFixtureId`、`readSourceFingerprint` 与 `readConverterVersion` 用同样的规则单独读取这些令牌，供 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)使用；`contentIdentityKey` 把六项身份合成一个可比较的键，全包验证与缓存读取共用。
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
 - [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。两者都建立在 `visitArray`/`visitOrderedArray` 之上：这两个函数按索引逐项读取并访问，访问函数一旦返回非 undefined 的值就停止读取，并把该值返回。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。二进制 payload 不能冻结，所有权规则见下方 `ownership.ts`。
@@ -183,7 +201,16 @@ src/
   - `digestHex` 结束计算并返回 64 位小写十六进制；之后再 `update` 会抛错，再次 `digestHex` 返回同一结果。
   - 一次性的 `sha256Fingerprint` 建立在它之上，签名与输出不变。
 - [source-state.ts](../../src/content/source-state.ts)：不含 locator 的来源状态集 `{ sourceFingerprint, states }`（每个 Asset 为 verified/unverified/unconfirmed/conflict 加 U 项），由 `original-data` 从来源映射推导后交给完整性验证。原版导入的状态集指纹必须等于清单的来源指纹，且每个 Asset 都必须为 verified；合成内容的来源输入必须为 null。
-- [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
+- [manifest.ts](../../src/content/manifest.ts)：`readGroupManifest` 读取组清单（身份、组，以及按 ID 升序且唯一的描述符），完整性验证使用它；`readAssetDescriptors` 单独读取同样排序的描述符数组。`visitGroupManifest` 做同样的检查，但逐个访问描述符而不收集，访问函数返回值时即停止，供预算计量使用。
+- [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-09/03](../plan/p2/09/subtasks/03-package-identity.md)）：包身份的唯一推导。
+  - **推导：** `deriveManifestIdentity(basis, drafts)` 严格读取身份基础与一个作业的全部组草稿（`GroupDraft`：组、按 ID 升序的描述符、payload 记录、来源状态集或 null），按 `RESOURCE_GROUPS` 顺序编码为带版本前缀的 ASCII 文本，结果为 `manifest:sha256:<64 位小写十六进制>`。任一身份基础字段、描述符字段、依赖、payload 身份或来源状态变化，结果都变化；组的传入顺序与 payload 记录不影响结果，推导也不读取 payload。空列表、重复或未知的组与格式错误的草稿以 `ContentContractError` 拒绝。测试中的固定向量锁定版本 1 编码。
+  - **写入：** `applyManifestIdentity` 把同一身份写入每个组，返回冻结的 `IdentifiedGroup` 列表（可直接作为 `GroupInput` 交给完整性验证）。描述符、来源状态与 payload 记录都是读取后的副本，只有 payload 字节沿用调用者的视图，所有权仍按 `ownership.ts` 转移；payload 记录的错误路径使用调用者的草稿序号。
+  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义；任一转换器的输出可能变化时都要递增，它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。
+- [logic/](../../src/content/logic/)（[P2-09/04](../plan/p2/09/subtasks/04-logic-content.md)）：`logic` 组的规范逻辑内容，形状与约束见 [P2-09 spec](../plan/p2/09/spec.md#规范逻辑数据)。
+  - **类型与限值：** [logic-content.ts](../../src/content/logic/logic-content.ts) 定义 `MissionContent`、`MissionGroup`、`MissionDeclaration`、`CraftTypeTable`、`WingmanRoster`、`StrategicMapFrame`、按角色区分的 `LogicPayload`，以及 `LOGIC_LIMITS` 与 payload schema 版本 1。字段声明顺序就是规范编码顺序；规则输入的字段名不表示语义已确认。
+  - **读取器：** [logic-readers.ts](../../src/content/logic/logic-readers.ts) 的 `readMissionContent`、`readCraftTypeTable`、`readWingmanRoster` 与按角色分派的 `readLogicContent` 读取已解码的纯数据，返回冻结副本，-0 规范化为 0。结构、类型、取值范围与限值错误一律为 `invalid-logic-payload`（共用的基础读取器的错误也改报此码，路径不变）；数组先查长度再逐项读取。单个 payload 内的引用错误为 `logic-reference-mismatch`：声明序号与规范顺序（`object` 声明在前，最多 64 条，其后为编组首次使用的声明）、编组模板与成员的来源标记（双向一致）、成员回指、放置矩形与锚点、AI 目标，以及僚机选项不得引用任务结构。跨 Asset 的一致性不在这里检查。
+  - **编码：** [logic-payload.ts](../../src/content/logic/logic-payload.ts) 的 `encodeLogicPayload(payload, reserve?)` 先严格读取，再输出无空白的可打印 ASCII JSON 字节（独占新 buffer）；可选的 `reserve` 在检查上限与分配字节之前收到字节数，供转换器先计量预算。`decodeLogicPayload(bytes, descriptor)` 依次检查：描述符的角色与 kind、payload schema 版本、字节已转移与长度上限（在读取任何字节之前）、逐字节可打印 ASCII、JSON 语法、按角色读取，然后要求重新编码与输入逐字节相同（否则 `non-canonical-payload`），最后要求 payload 内的 Asset 引用恰为描述符依赖（否则 `logic-reference-mismatch`）。payload 身份由完整性验证核对，这里不重复。
+  - [contract-validation.ts](../../src/content/contract-validation.ts) 为此追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`；诊断只含结构路径与固定原因，不回显名称或数值。合成内容由 [logic-content.test-support.ts](../../src/content/logic/logic-content.test-support.ts) 生成，名称带内容测试自己的标记。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
@@ -226,6 +253,91 @@ src/
 - **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。
+
+### 任务数据的定向解析
+
+[P2-09/05](../plan/p2/09/subtasks/05-scenario-parser.md) 在 [original-data/formats/](../../src/original-data/formats/) 解析所选任务需要的 SCCT、SCEN 与 M2ID 条目。规则来自 [P2-09 spec 的源字段处理](../plan/p2/09/spec.md#源字段处理)与限值表，格式事实见 [scenario](../original/formats/scenario.md) 与 [hud §3](../original/formats/hud.md#3-id-lists-confirmed-structure)。解析器只接收 `ArchiveEntryRead` 形状的已读条目与封包的 `DiscPath`，不打开文件或封包；读取由转换编排经已验证来源完成。按能力边界，这里只以类型导入封包与光盘模块。
+
+- **数据块读取：** [payload-block.ts](../../src/original-data/formats/payload-block.ts) 的 `PayloadBlock`：
+  - 先按条目大小检查 `payloadEntryBytes`；`requireEntryBytes` 也可在读取前按目录项调用。
+  - 指针只在重定位表登记的位置上有效：未登记的非零值为 `invalid-payload`，目标结构必须完整位于块内。反过来，登记的位置不得与解析器读取的任何数值、名称或保留字重叠，否则同为 `invalid-payload`。
+  - 指针字段按两步判定：先校验登记与边界（`invalid-payload`），再判定用途；必须为空的指针字段由 `unsupportedPointer` 判为 `unsupported-payload`。
+  - `{指针, 数量}` 数组先按 `payloadItems` 检查数量，再做边界检查，因此不按声明规模分配；空指针要求数量为 0；顶层数组不得与所在条目的头部重叠；非空指针配 0 个元素为 `unsupported-payload`。
+  - 名称必须以 NUL 结尾，1–63 字节（超出为 `textBytes`，最多检查 64 字节）的可打印 ASCII；f32 必须有限。
+- **记录：** [object-record.ts](../../src/original-data/formats/object-record.ts) 读取 132 字节记录：
+  - 重定位只能位于文档记载的指针字段；
+  - +0x30、+0x4C 与保留字必须为默认值（前两者按指针的两步规则），+0x38 必须为 0；
+  - 各引用字段的目标须按预期结构大小（编组 28、矩形 16、记录 132、事件触发头部 28 字节）完整位于块内，然后才判定是否为该结构的起点；
+  - 种类转为位序号，多比特为 `invalid-payload`；
+  - 规则输入原样保留，0 为 null；AI 掩码转为升序位序号；
+  - 指针字段作为目标偏移交给所在结构解析。
+- **SCEN：** [scen.ts](../../src/original-data/formats/scen.ts) 的 `parseScenario` 返回 `ParsedScenario`：
+  - 内容：扇区数、参考比例、名称备用池、生成矩形、声明与编组，声明与编组使用 `content/logic` 的类型；
+  - 声明：段 1 记录按表序；模板与成员必须是段 1 记录的别名；
+  - 引用转为序号：+0x3C 成员回指（须与列出它的唯一编组一致）、+0x44 生成矩形、+0x48 锚点与 +0x58 AI 目标；
+  - +0x54 只核对它指向段 2 第一个元素且该事件触发没有生成配对；
+  - 段 6 布局只交换第 0 个元素的 y/z，并核对原版循环越过表尾读取的计数字。
+- **SCCT：** [scct.ts](../../src/original-data/formats/scct.ts) 的 `parseCampaignTable` 校验每个组的槽位表头与限值，但只读取候选（默认 `CLASSIC_P2_SLICE.candidate`）槽位的 SCEN 条目 ID 与僚机记录；组或槽位超出表为 `subresource-mismatch`；僚机记录的引用与空间字段必须为零。
+- **M2ID：** [m2id.ts](../../src/original-data/formats/m2id.ts) 的 `parseModelIdList` 严格读取 MODL 条目 ID 列表；槽位为 0 的处理归机型绑定。
+- **错误：** [source-error.ts](../../src/original-data/source-error.ts) 为此追加 `invalid-payload`、`unsupported-payload`、`subresource-mismatch` 与限值名 `payloadEntryBytes`、`payloadItems`、`textBytes`。位置为 `archive:/路径#ID` 后接 `/名称[下标]` 形式的结构路径，`inLocationGrammar` 已扩展为接受这种形式；诊断不回显名称、数值或字节。
+- **测试数据：** [formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 用 `BlockWriter` 在奇数偏移上布置结构，倒序写出重定位表，由规格生成合成 SCEN、SCCT 与 M2ID 数据块，并用 `buildImfat` 组成合成的 `SCENARIO.NOB` 与 `SR.NOB`。默认任务的形状与切片任务相同，但数值都是合成的；名称带 `MARKER`。
+
+### 逻辑组转换
+
+[original-data/conversion/](../../src/original-data/conversion/) 把已解析的任务数据转换为 `logic` 组，规则见 [P2-09 spec](../plan/p2/09/spec.md)：
+
+- **机型与模型绑定：** [craft-binding.ts](../../src/original-data/conversion/craft-binding.ts) 的 `bindCraftTypes(referenced, modelIds, location)` 是机型到 model Asset ID 的唯一生产绑定（[spec 的命名规则](../plan/p2/09/spec.md#机型与模型绑定)）。
+  - **输入：** 任务与僚机名单引用的机型，以及 M2ID 解析结果。
+  - **输出：** `CraftTypeTable` 与按 Asset ID 排序的 `{ id, modelEntryId }`。阵营按玩家目标模式的种类掩码推导，`baseInteraction` 按交互种类掩码推导（“基地”含义为高概率），这两组掩码是写在转换器里的格式知识，注释链接权威记录。
+  - **命名：** 按玩家、敌方、基地、其余友方的顺序命名每个 MODL，同类内按机型升序编号；同一 MODL 只有一个 ID，只允许同类机型或友方机型与玩家飞船共用。
+  - **失败：** 玩家机型缺失、M2ID 槽位为 0 或越界、模型被不同类别共用为 `invalid-payload`，没有玩家相对阵营的机型为 `unsupported-payload`，位置为 M2ID 的槽位路径。
+  - **[P2-06](../plan/p2/tasks.md#p2-06-切片模型与材质转换) 必须用这一绑定命名模型 Asset，不得另建表。**
+- **生产来源映射：** [logic-sources.ts](../../src/original-data/conversion/logic-sources.ts) 的 `LOGIC_SOURCE_MAPPINGS` 是 `logic` 组的生产映射表。它未绑定来源，三项都为 `likely` 与 `declared`，U 项与证据按 spec 的 Asset 表：
+  - `data/craft-types`：`SR.NOB` 的 M2ID；
+  - `data/wingman-roster`：SCCT 的 `wingmen` 子资源；
+  - `mission/first-campaign`：SCCT 的候选槽位子资源（由 `CLASSIC_P2_SLICE.candidate` 生成）与 SCEN 条目。
+
+  Asset 引用集中在 `LOGIC_ASSETS`，条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。
+  - **步骤读取：** `logicEntryReader(source)` 是[图形转换](#图形转换)共用的步骤内读取 `stepEntryReader`，另带读取前钩子：在读取条目字节之前，按目录项大小检查 SCCT、SCEN 与 M2ID 的 `payloadEntryBytes`。经映射核验读取时，超限位置改写为映射路径。
+  - **核验：** `verifyLogicSources(source, readEntry)` 只用同一个已验证来源及其步骤读取完成核验，因此映射只会由该来源的读取证实，每个条目只物理读取一次。步骤如下：
+    1. 调用 `verifySourceMappings(table, source, readEntry)` 读取每个 locator，只把不含子资源的映射升为 `verified`；
+    2. 从同一读取结果中以切片候选解析映射的 SCCT，核对子资源：候选槽位的 SCEN 条目 ID 必须是同一映射中的 SCEN 部件，僚机记录必须解析成功，所有子资源都在同一张 SCCT 中；
+    3. 一致时升为 `verified`，否则在 `sources.mappings[i].parts[j].alternatives[k]` 报 `subresource-mismatch`。
+
+  返回冻结的 `{ table, sources, campaign }`：`sources` 是 `assetSourceStates` 推导、绑定指纹的来源状态，`campaign` 是解析结果，供转换复用。
+- **转换步骤：** [convert-logic.ts](../../src/original-data/conversion/convert-logic.ts) 的 `convertLogic(source, limits, usage)` 产出 `logic` 组草稿：
+  1. 以 `logicEntryReader` 与 `verifyLogicSources` 核验映射并解析 SCCT；
+  2. 从同一步骤读取取得映射的 SCEN 与 M2ID 并解析；
+  3. 以 `bindCraftTypes` 绑定任务与僚机名单引用的机型；
+  4. 核对跨 Asset 的一致性：任务恰有一条记录为玩家机型，僚机选项都不是玩家机型，否则为 `unsupported-payload`；
+  5. 组装三个 payload。`mapFrame` 按 executable 的世界扇区网格与战略地图投影记录生成：+x 向右，−y 向上，中心为原点，`halfExtent` 为扇区数 × 比例 ÷ 2；
+  6. 按 Asset ID 升序编码，并生成描述符与 payload 记录。
+
+  返回冻结的 `{ draft, usage }`，`usage` 为起始用量加上本步骤的转换用量。`draft` 是 `GroupDraft`（描述符、各占独立 buffer 的 payload、来源状态），身份由调用方以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 写入。生产身份基础是 [converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `productionIdentityBasis(sourceFingerprint)`：来源为 `original-import`，带 P2-01 的 schema、切片常量与 `PRODUCTION_CONVERTER_VERSION`。
+- **预算：** 同一模块的 `PRODUCTION_LOGIC_SHARE` 是 logic 步骤的生产份额：`assets` 8、`dependencyEdges` 32、`payloadBytes` 1,048,576、`missionObjects` 256、`missionReferences` 4,096，其余维度为 0。与图形步骤一样，作业把份额加到读取限值上作为 `limits`，本步骤在先前步骤的转换用量 `usage` 之上扣除；起始用量含 `sourceReadBytes` 时为 `invalid-budget-value`。
+  - **计量时机：** 每个 Asset 分两次计量：Asset、依赖边与两类任务计数在复制与编码 payload 之前计量；`payloadBytes` 由 `encodeLogicPayload` 的 `reserve` 回调在得到规范字节数之后、检查 payload 上限与分配字节之前计量。
+  - **计数规则**（spec 的[限值与预算](../plan/p2/09/spec.md#限值与预算)）：
+    - `missionObjects`：任务声明与僚机声明的总数；
+    - `missionReferences`：每个声明的机型、放置矩形、锚点、编组与 AI 目标（非 null 时各计一次），编组的模板与每个成员位置，每个机型到 model 的引用，以及任务的 2 个、僚机名单的 1 个 Asset 引用。
+  - **超限：** 与图形步骤相同，报 `budget-exceeded`：`limit` 为维度名、上限与观测值，总量超出安全整数时观测值为 null。位置是该 Asset 的来源条目，僚机名单为 SCCT 的 `/wingmen`。被拒绝的扣除不改变用量。
+  - **可达性：** 只用本份额时，结构限值下只有 `missionReferences` 与 `payloadBytes` 可能超限。
+
+### Core 任务载入
+
+[core/mission/load-mission.ts](../../src/core/mission/load-mission.ts)（[P2-09/11](../plan/p2/09/subtasks/11-core-load-mission.md)）的 `loadMission(input)` 是 Core 的纯函数，契约见 spec 的 [Core 载入结果](../plan/p2/09/spec.md#core-载入结果)：
+
+- **输入：** `LoadMissionInput` 为 `{ mission, craftTypes, wingmanRoster }`，每项为 `{ id: AssetId, content: unknown }`。Core 仍在运行时核对输入，不信任调用者给的类型：先核对任务 ID，再用 [logic-readers.ts](../../src/content/logic/logic-readers.ts) 读取任务；确认机型表与僚机名单的 ID 是任务引用的 ID 之后，才读取它们的 `content`。读取路径为 `input.<asset>.content`；单个 payload 内部的错误是读取器的 `ContentContractError`，原样传递。
+- **前提：** 只检查跨 Asset 的一致性，不满足时抛出 `CoreInputError(path, reason)`，路径指向输入位置：
+  - 输入或某项不是对象；
+  - 任务 ID 不是 `mission` 类 Asset ID；
+  - 机型表与僚机名单的 ID 不是任务引用的 ID，或名单引用了另一张机型表；
+  - 声明或僚机选项引用了表中没有的机型；
+  - 任务中没有或有两个玩家声明，或有僚机选项是玩家机型；
+  - 表中有任务与名单都没引用的机型。这一项最后检查，以免缺少玩家时被误报为多余机型。
+- **输出：** 冻结的 `MissionSetup`，字段依次为 `mission`、`campaign`、`coordinates`、`mapFrame`、`namePool`、`spawnRegions`、`declarations`、`player`、`groups`、`wingmanOptions`。声明与僚机选项附加解析出的 `side`、`model`（model 的 Asset ID）与 `baseInteraction`；`craftType` 为 null 时三者为 null、null、false。结果由读取器的新副本组成，与输入隔离；相同输入得到深度相等的结果。
+- **纯净：** 不应用默认值，不推导生成时刻、顺序或位置，不使用 RNG 或宿主时间，只导入 `content/` 与 Core 自己的错误类型。
+
+针对性检查为 `pnpm exec vitest run src/core/mission tools/engineering-boundaries.test.ts`。
 
 ### 原版来源映射
 
@@ -312,7 +424,7 @@ src/
   - 返回绑定本来源指纹的新冻结表：条目级映射为 `verified`；含子资源 locator 的映射一律为 `declared`，由理解该 payload 的转换任务核验。
   - 每个封包的目录在一次核验中只读一次，条目字节不跨部件保留；首个错误终止核验，不修改输入。
   - 可选的第三个参数 `readEntry`（`EntryReader` 类型）替换模块内部的默认读取，供转换步骤让核验与转换共用条目读取（P2-05）；错误位置的改写、等价备选核对与结果都不变。公开模块只导出这个类型，不导出读取封包的函数。
-- **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
+- **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单，`syntheticVerifiedSource(files)` 用该白名单识别含这些文件与 1 MiB 不读取填充的合成光盘。[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `sourceFailure(action, hidden)` 等待 `SourceError`，核对位置语法与隐私后返回不含原因的诊断。
 
 ### 图形转换
 
@@ -332,7 +444,7 @@ src/
   - 颜色键只用于 raw 图像（否则为 `invalid-declaration@…alpha`），值为 k 的像素变为透明；不透明像素的索引不小于所绑定调色板（同组声明的转换结果）的条目数时为 `palette-index-out-of-range@…pixels`；`reversed` 恰好反转索引与掩码的行序。字体按声明的 `cell` 扣除，实际单元不符为 `geometry-mismatch@…glyphs`，`charMap` 区间展开为按码位升序的条目。
   - 结果是按 ID 升序的冻结 `{ descriptor, payload }`：描述符经 `readAssetDescriptor` 生成，依赖为图像引用的调色板（`imagePalettes`），`payloadIdentity` 由实际字节计算；payload 独占缓冲。源结构读取的位置都带上 `graphics[<Asset ID>]` 前缀；任一失败使整组转换失败，不返回部分结果。
 - **转换步骤：** [graphics-step.ts](../../src/original-data/conversion/graphics-step.ts)（[P2-05/05](../plan/p2/05/subtasks/05-graphics-step.md)）的 `runGraphicsStep(source, mappings, declarations, limits, usage)`：
-  - **共用读取：** 模块内部的 `stepEntryReader(source)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。
+  - **共用读取：** [step-entry-reader.ts](../../src/original-data/conversion/step-entry-reader.ts) 的 `stepEntryReader(source, beforeRead?)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。可选的 `beforeRead` 在读取字节之前收到目录项，供步骤按声明大小拒绝条目（逻辑步骤用它检查条目大小）。
   - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源只接受整条目（`null`）、整条目 TEX/BITM 图像记录的 `palette` 与 CCKD 的 `fonts/<i>`（i 为不带前导零的十进制，0–2 以外由读取报 `subresource-not-found`）：DATA 整条目为调色板，TEX/BITM 整条目为图像；其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts`。CCKD 元素、MFDD 与 TABL 的容器子资源归 P2-07。
   - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
 - **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：
@@ -350,7 +462,7 @@ src/
 [P2-04](../plan/p2/04/spec.md) 在专用模块 Worker 中运行导入作业，消息与生命周期契约以 spec 为准。当前已实现：
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
-  - `IMPORT_PROTOCOL_VERSION` 为 2（P2-05 增加阶段时由 1 递增）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
+  - `IMPORT_PROTOCOL_VERSION` 为 3（P2-05 增加阶段时由 1 递增到 2，P2-09 再递增到 3）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`、`convert-logic`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
   - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
   - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
@@ -372,20 +484,25 @@ src/
     - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
     - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
     - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
-- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics)` 返回生产作业。
-  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，图形阶段从识别结束时的累计值开始。
+- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics, logic)` 返回生产作业。
+  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，后续阶段从上一阶段结束时的累计值开始。
   - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
-  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上步骤批准的份额；作业返回已验证来源最终的读取用量与转换用量逐维之和。步骤结果只留在作业内，供 P2-06/07 装配组结果；本任务不发送组，`finished.groups` 为空。转换失败为 `source` 层，图形阶段的读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是 [生产图形](#图形转换)的声明、映射与份额。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或图形输入，用合成白名单识别。
+  - **限值与用量：** 限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上图形与 logic 两个步骤批准的份额。每个步骤在先前步骤的转换用量之上扣除；作业返回已验证来源最终的读取用量与累计转换用量逐维之和。
+  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。步骤结果只留在作业内，供 P2-06/07 装配组结果，不发送图形组。转换失败为 `source` 层；读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
+  - **逻辑转换（P2-09）：** 图形阶段之后进入 `convert-logic`，运行[逻辑组转换步骤](#逻辑组转换)，结果为组草稿与累计用量。作业先算出最终用量，再以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 的 `applyManifestIdentity` 和 `productionIdentityBasis(指纹)`，对作业发送的全部组草稿推导同一 `ManifestIdentity`，写入每个组清单，最后逐组 `report.group`。因此用量或身份出错时不会已经发出组。目前作业只发送 `logic` 组，`finished.groups` 为 `['logic']`。失败时不发送组，错误层与图形阶段相同。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即 `convertLogic` 与 `PRODUCTION_LOGIC_SHARE`；`convert` 返回 `{ drafts, usage }`，测试的 `NO_LOGIC` 返回空草稿并原样传回用量。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
-  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`（不转换任何 Asset）运行图形阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目。
+  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS` 与 `NO_LOGIC`（都不转换任何 Asset）运行两个转换阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
+  - **合成光盘：** 生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目；`productionGraphicsEntries` 给出同样的条目。`sliceCoveredFiles(scenario?)` 是同时含生产图形与切片任务的合成光盘：`SR.NOB` 合并图形条目与 [formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 的 `syntheticModelEntries`，`SCENARIO.NOB` 含战役表与可替换的所选任务。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
-  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
+  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤、以 `NO_LOGIC` 跳过逻辑转换的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
-- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。
+- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → 空的逻辑阶段 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。P2-09 另核对逻辑阶段，使用 `sliceCoveredFiles()` 的合成光盘：
+  - **成功：** 消息依次经过识别、`identified`、图形、逻辑、`group`、`finished`；持有者验证 `logic` 组为 `group-complete`，`takeGroups()` 只移交一次；
+  - **失败：** 不支持的任务（`source` 层 `unsupported-payload`）、份额不足（`source` 层 `budget-exceeded`，`limit` 完整）与注入的内容错误（`content` 层）都停在 `convert-logic`，不发送组，快照与消息不含文件名标记。
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。

@@ -100,17 +100,34 @@ export function readContentOrigin(value: unknown, path = 'origin'): ContentOrigi
 export function readContentIdentity(value: unknown, path = 'identity'): ContentIdentity {
   const record = readRecord(value, path);
   requireFields(record, path, ['schemaVersion', 'sliceId', 'sliceDefinitionVersion', 'converterVersion', 'manifestIdentity', 'origin']);
+  const shared = readSharedIdentityFields(record, path);
+  return Object.freeze({
+    ...shared,
+    manifestIdentity: readToken(record.manifestIdentity, `${path}.manifestIdentity`) as ManifestIdentity,
+    origin: readContentOrigin(record.origin, `${path}.origin`),
+  });
+}
+
+/** The identity fields a package's groups share before its manifest identity is derived from them. */
+export type ContentIdentityBasis = Omit<ContentIdentity, 'manifestIdentity'>;
+
+/** Reads the identity without `manifestIdentity`, with the same rules as `readContentIdentity`. */
+export function readContentIdentityBasis(value: unknown, path = 'basis'): ContentIdentityBasis {
+  const record = readRecord(value, path);
+  requireFields(record, path, ['schemaVersion', 'sliceId', 'sliceDefinitionVersion', 'converterVersion', 'origin']);
+  return Object.freeze({ ...readSharedIdentityFields(record, path), origin: readContentOrigin(record.origin, `${path}.origin`) });
+}
+
+function readSharedIdentityFields(record: Record<string, unknown>, path: string): Omit<ContentIdentityBasis, 'origin'> {
   const schemaVersion = readVersion(record.schemaVersion, `${path}.schemaVersion`);
   if (schemaVersion !== CONTENT_SCHEMA_VERSION) fail('unsupported-schema', `${path}.schemaVersion`, 'must be the supported content schema');
   if (record.sliceId !== SLICE_ID) fail('invalid-slice-id', `${path}.sliceId`, 'must be the known slice identity');
-  return Object.freeze({
+  return {
     schemaVersion: schemaVersion as ContentSchemaVersion,
     sliceId: SLICE_ID,
     sliceDefinitionVersion: readVersion(record.sliceDefinitionVersion, `${path}.sliceDefinitionVersion`) as SliceDefinitionVersion,
     converterVersion: readConverterVersion(record.converterVersion, `${path}.converterVersion`),
-    manifestIdentity: readToken(record.manifestIdentity, `${path}.manifestIdentity`) as ManifestIdentity,
-    origin: readContentOrigin(record.origin, `${path}.origin`),
-  });
+  };
 }
 
 /** Checks declared identity only; future converters must hash and verify actual payload bytes. */

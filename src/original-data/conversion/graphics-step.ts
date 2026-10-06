@@ -2,13 +2,13 @@ import { RESOURCE_GROUPS, type AssetDescriptor, type AssetReference, type Resour
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
 import type { AssetSourceState } from '../../content/source-state.ts';
-import type { ArchiveEntryRead, ImfatArchiveHandle } from '../archive/archive-reader.ts';
 import { SourceError } from '../source-error.ts';
 import { assetSourceStates, readSourceMappingTable, type SourceMapping } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
 import { readGraphicsDeclarations } from './graphics-declarations.ts';
+import { stepEntryReader } from './step-entry-reader.ts';
 
 export interface GraphicsStepGroup {
   readonly group: ResourceGroup;
@@ -31,35 +31,6 @@ export interface GraphicsStepResult {
 const WHOLE_RECORD_TYPES: readonly string[] = Object.freeze(['TEX', 'BITM']);
 const FONT_SUBRESOURCE = /^fonts\/(0|[1-9][0-9]*)$/;
 const SOURCE_FIELDS = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts' } as Record<string, string>);
-
-/**
- * A step-local entry reader: each (archive, type, entry ID) is read at most once and its result shared by mapping
- * verification and conversion. The cache lives only as long as the reader, so entry bytes are released with the step.
- */
-function stepEntryReader(source: VerifiedSource): EntryReader {
-  const archives = new Map<string, Promise<ImfatArchiveHandle>>();
-  const entries = new Map<string, Promise<ArchiveEntryRead>>();
-  const read = async (discPath: string, id: number, type: string): Promise<ArchiveEntryRead> => {
-    let archive = archives.get(discPath);
-    if (!archive) {
-      archive = source.openArchive(discPath);
-      archives.set(discPath, archive);
-    }
-    const handle = await archive;
-    // As in mapping verification: an ID beyond u32 cannot be in an archive, which the handle would call malformed.
-    if (id > 0xffffffff) throw new SourceError('entry-not-found', 'request.id', 'the archive has no entry with this ID');
-    return handle.read(id, type);
-  };
-  return ({ discPath, entry: { id, type } }) => {
-    const key = `${discPath}\u0000${type}\u0000${id}`;
-    let entry = entries.get(key);
-    if (!entry) {
-      entry = read(discPath, id, type);
-      entries.set(key, entry);
-    }
-    return entry;
-  };
-}
 
 type SourceKind = { readonly type: Exclude<GraphicsSource['type'], 'cockpit-font'> } | { readonly type: 'cockpit-font'; readonly index: number };
 

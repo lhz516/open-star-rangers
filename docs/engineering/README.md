@@ -136,7 +136,8 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择场景。合成文件在页面内由代码生成，不读取 `local/`。
   - 探针用 Proxy 包装 `Worker` 构造函数（保持 `instanceof` 与原型），并包装 `terminate`。快照的 `workers` 记录入口路径、URL 是否由 Vite 的 Worker 转换生成、类型、名称，以及 `postMessage` 与 `terminate` 的调用次数（不保留消息内容）；注册在 Worker 对象上的监听归入 `worker` 分组。[probe-contract](../../e2e/probe-contract.spec.ts) 在两个项目中证明包装后仍能载入模块 Worker、收发消息与终止。
   - 失败与生命周期（AC-09、AC-10）：测试入口另有四个场景：`busy` 先发送一条进度，再进入只有终止才能结束的同步循环；`job-throws` 让作业抛错；`late-error` 在 `ready` 之后的异步回调中抛出未捕获错误；`top-level-throw` 在模块求值时抛错。抛出的文本都含文件名标记，用于证明它不进入快照、错误与 console。页面内事件日志按顺序记录快照、可信点击、rAF、取消与释放，作为主页面响应与“之后无通知”的证据，不用耗时阈值。开发服务器对不存在的 `.ts` 入口返回 SPA 回退的 HTML（200），模块 Worker 因此载入失败，与生产静态托管的导航回退一致。
-  - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形结构的合成光盘运行带图形步骤的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度与 `finished`，组为空，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
+  - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形结构的合成光盘运行带图形步骤、不转换逻辑组的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度、空的 `convert-logic` 阶段与 `finished`，组为空，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
+  - 逻辑阶段（P2-09）：不另设浏览器用例（P2-09 技术决定 12）。阶段顺序、组发送、预算与失败经宿主、真实 `MessageChannel` 与持有者的 Node 集成测试验证，见 [import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts)。浏览器用例只随新阶段更新快照序列。
   - 聚焦运行：`pnpm test:e2e import-worker.spec.ts --project=development`。
 - **浏览器错误收集**（[browser-test.ts](../../e2e/support/browser-test.ts)）：除页面的 pageerror、console error、失败请求与 4xx/5xx 外，也收集页面所建 Worker 的 console error（Playwright 把它报告在 Worker 上，不在页面上）。
   - 单个用例可以用 `expectDiagnostic(诊断)` 声明必须出现的诊断，写法与收集到的条目完全相同。每项只放行一条完全相同的条目，并记录为 `expected-diagnostic` annotation。
@@ -160,7 +161,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 录制默认关闭；创建时传 `recording: {checkpointInterval}` 开启，`exportRecording()` 返回 P1-03 格式的冻结记录/结果，关闭时为 null。较大间隔仅减少检查点，不减少逐 tick 输入和事件；没有有界内存或自动持久化。
 - 故障帧已经成功的 tick 和事件保留在录制中，但该帧通知不投递。因此故障导出仍可 replay 一致，却不是 Event Bus 投递日志。测试用真实合成 Core；故障测试只在 Vitest 创建边界注入 step 前异常，不向生产接口加入测试后门。
 - owner 可在 frame/事件批次之外显式调用 `resetClock`（丢弃全部宿主时间进度）、`clearIntent`（清轴/队列并返回冻结 FIFO ID）、`foldRenderState`（previous=current、alpha=0）和 `clearSubscriptions`。faulted 也可收尾，但不解除故障；批次内调用抛 reentrant-call。它们不改 Core、RNG、ID 分配或录制；没有调用时裸 Runtime 行为不变。
-- Runtime 与会话的针对性检查使用 `pnpm exec vitest run src/app/runtime src/app/session`；完整检查仍为 `pnpm check`。Core 回归可用 `pnpm exec vitest run src/core/determinism src/core/synthetic`。
+- Runtime 与会话的针对性检查使用 `pnpm exec vitest run src/app/runtime src/app/session`；完整检查仍为 `pnpm check`。Core 回归可用 `pnpm exec vitest run src/core/determinism src/core/synthetic`；任务载入（P2-09）用 `pnpm exec vitest run src/core/mission`。
 
 ## 会话端口与错误
 

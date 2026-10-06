@@ -31,7 +31,10 @@ export type ContentContractErrorCode =
   | 'unsupported-payload-schema'
   | 'binding-mismatch'
   | 'palette-index-out-of-range'
-  | 'unmapped-character';
+  | 'unmapped-character'
+  | 'invalid-logic-payload'
+  | 'non-canonical-payload'
+  | 'logic-reference-mismatch';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

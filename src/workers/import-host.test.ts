@@ -82,7 +82,7 @@ describe('handshake', () => {
   it.each([
     ['a non-record', MARKER, null, 'request'],
     ['a Worker message', { type: 'ready', protocol: 1, jobId: 5 }, 5, 'request.type'],
-    ['the previous protocol version', start({ protocol: 1 }), 7, 'request.protocol'],
+    ['the previous protocol version', start({ protocol: IMPORT_PROTOCOL_VERSION - 1 }), 7, 'request.protocol'],
     ['an unreadable job ID', start({ jobId: -7 }), null, 'request.jobId'],
     ['a 256-unit name', start({ files: [file('GAME.CCD'), file(MARKER.padEnd(256, 'x'))] }), 7, 'request.files[1].name'],
   ])('answers %s with invalid-request and never runs the job', async (_, request, jobId, location) => {
@@ -180,6 +180,12 @@ describe('reporting', () => {
       report.identified(IDENTITY);
       report.progress('convert-graphics', 9);
       report.progress('identify-source', 9);
+    }, ['identified', 'progress']],
+    ['logic progress before identification', (report: ImportReporter) => report.progress('convert-logic', 0), []],
+    ['graphics progress after logic progress', (report: ImportReporter) => {
+      report.identified(IDENTITY);
+      report.progress('convert-logic', 9);
+      report.progress('convert-graphics', 9);
     }, ['identified', 'progress']],
     ['a group before identification', (report: ImportReporter) => report.group('audio', group('audio')), []],
     ['a repeated group', (report: ImportReporter) => {
