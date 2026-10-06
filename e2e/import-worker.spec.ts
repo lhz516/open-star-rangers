@@ -15,7 +15,7 @@ import {
   AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, sliceCoveredFiles, syntheticImport, syntheticSource,
 } from '../src/workers/synthetic-import.test-support.ts';
 import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
-import { MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
 import type { BudgetRecord } from '../src/content/budget.ts';
 import { validateGroup, type GroupInput } from '../src/content/completeness.ts';
@@ -255,7 +255,7 @@ test('test entry identifies production-sized synthetic files and transfers four 
 
 // P2-05 AC-12: the production job with its graphics stage, on a synthetic disc in the production structure; the disc
 // also holds synthetic samples at the production sound entries, so the audio stage sends the complete audio group.
-test('test entry converts the production graphics and sounds after identification and finishes with the audio group', async ({ page }) => {
+test('test entry converts the production graphics and sounds after identification and finishes with the cockpit-hud-map and audio groups', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);
   await startImport(page, 'graphics', 'graphics');
@@ -269,13 +269,14 @@ test('test entry converts the production graphics and sounds after identificatio
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
+  expect(final.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] });
   expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
   expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
   expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
-  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['audio']);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['cockpit-hud-map', 'audio']);
   expect(await probe(page)).toEqual({
     workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'graphics', posts: 1, terminations: 1 }],
     activeListeners: 0, listeners: 3,
@@ -297,7 +298,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
   expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
   const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({
@@ -311,9 +312,9 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   const taken = await page.evaluate(() => window.osrImport.owner!.takeGroups()!.map(({ group, manifest, payloads, sources }) => ({
     group, manifest, sources, payloadBytes: (payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength),
   })));
-  expect(taken.map(({ group }) => group)).toEqual(['audio']);
-  const [{ sources, payloadBytes }] = taken;
-  const manifest = readGroupManifest(taken[0].manifest);
+  expect(taken.map(({ group }) => group)).toEqual(['cockpit-hud-map', 'audio']);
+  const [, { sources, payloadBytes }] = taken;
+  const manifest = readGroupManifest(taken[1].manifest);
   expect(payloadBytes).toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
   // The Worker's package identity equals the one Node derives from the same audio manifest and source states and the
   // graphics groups Node converts from the same disc: the cockpit-hud-map partition, and the models partition alone, as
@@ -382,14 +383,12 @@ test('test entry converts the models after the audio stage, and the receiver val
   const node = await nodeSliceRun();
   const expected = validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!);
   if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group in Node');
-  // The production graphics declare no layout or HUD and map image yet, so the cockpit-hud-map group lacks those roles.
-  const cockpit = validateGroup(CLASSIC_P2_SLICE, node.groups.get('cockpit-hud-map')!);
-  if (cockpit.status !== 'incomplete') throw new Error('expected an incomplete cockpit-hud-map group in Node');
-  expect(new Set(cockpit.diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality']));
+  // The P2-05 palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
+  expect(validateGroup(CLASSIC_P2_SLICE, node.groups.get('cockpit-hud-map')!)).toMatchObject({ status: 'group-complete', externalRequirements: [] });
   expect(final.groups).toEqual([
     { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
     { group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics },
-    { group: 'cockpit-hud-map', status: 'incomplete', assets: null, diagnostics: cockpit.diagnostics },
+    { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
   // The models manifest the owner received is the one Node sent: the flight palette, the textures and the bound models.
@@ -411,7 +410,7 @@ test('test entry converts the models after the audio stage, and the receiver val
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
   expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
-  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['logic', 'audio']);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['logic', 'cockpit-hud-map', 'audio']);
   expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['models', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);
   expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);

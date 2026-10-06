@@ -44,10 +44,10 @@ updated: 2026-10-06
 
 ## 验收标准
 
-- [ ] 生产声明恰好包含已知使用的各族与 09 判定入选的族；映射置信度、U 项与证据链接与原版文档一致；没有 `unconfirmed` 映射。
-- [ ] AC-07 的份额常量与 spec 一致；图形步骤份额为两者之和。
-- [ ] 生产图形步骤在合成生产结构光盘上的 `cockpit-hud-map` 分区经 `validateGroup` 为 `group-complete`。
-- [ ] `pnpm typecheck`、`pnpm lint` 与 `pnpm test -- src/original-data/conversion/ src/workers/ src/app/import/` 通过；源码结构已更新。
+- [x] 生产声明恰好包含已知使用的各族与 09 判定入选的族；映射置信度、U 项与证据链接与原版文档一致；没有 `unconfirmed` 映射。
+- [x] AC-07 的份额常量与 spec 一致；图形步骤份额为两者之和。
+- [x] 生产图形步骤在合成生产结构光盘上的 `cockpit-hud-map` 分区经 `validateGroup` 为 `group-complete`。
+- [x] `pnpm typecheck`、`pnpm lint` 与 `pnpm test -- src/original-data/conversion/ src/workers/ src/app/import/` 通过；源码结构已更新。
 
 ## 验证方法
 
@@ -56,3 +56,39 @@ updated: 2026-10-06
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [production-graphics.ts](../../../../../src/original-data/conversion/production-graphics.ts) 按 spec 的生产 Asset 表声明并映射 86 个 P2-07 Asset（2 个布局、83 个图像、1 个调色板），条目均为 `MAIN/SR.NOB`：
+    - 前视布局与 4 个元素：CCKD `groups/0`，高概率，U-029；
+    - 地图边框布局与 4 个元素，以及 `palette/map/screen`（`groups/2/palette`）：已确认，U-029；
+    - 状态显示背景 3 个（不透明）与叠加图 9 个（颜色键 0）：MFDD 10473；
+    - 页面背景：BITM 10467 整条目；
+    - 仪表条：TABL 10479 的 4 个记录；
+    - 地图单位标记与放大窗口图标：TABL 10461、11401 各 29 个记录，地图调色板、颜色键 0。
+
+    HUD 与地图各族为已确认，U-030；证据链接到 hud 与 cockpit 的相应小节。P2-05 与 P2-06 的声明不变。
+  - 导出 `PRODUCTION_COCKPIT_HUD_MAP_SHARE`（96、192、524,288、1,024、0、786,432），`PRODUCTION_GRAPHICS_SHARE` 为 P2-05、P2-06 切片贴图与本任务三者之和。
+- **测试：**
+  - [production-graphics.test.ts](../../../../../src/original-data/conversion/production-graphics.test.ts) 以独立写出的期望表断言：
+    - 声明恰为 P2-05、P2-06 与 86 个 P2-07 Asset，ID、kind、角色、调色板、透明与子资源逐项一致；
+    - P2-07 映射没有 `unconfirmed`，置信度、U 项与证据逐项一致；
+    - 份额常量等于 spec 表，图形份额为三者之和；
+    - 合成生产结构光盘上的 `cockpit-hud-map` 分区经 `validateGroup` 为 `group-complete`、外部要求为空，且 CCKD 条目只读一次。
+  - 合成生产光盘（[production-graphics.test-support.ts](../../../../../src/original-data/conversion/production-graphics.test-support.ts)）在生产条目 ID 处放置以下合成数据，条目 ID 从生产映射查得，不硬编码：
+    - CCKD（3 个字库，slot 0 与 2 各 4 个元素，其中一个为精灵，slot 2 带分组调色板）；
+    - MFDD（3 + 9 个记录）、BITM 与三个 TABL 列表。
+  - 13 留下的中间断言（`incomplete`、`role-cardinality`）在作业、管线与 e2e 测试中改为 `group-complete`，`takeGroups()` 也移交 `cockpit-hud-map`。
+- **本地基准（只作核对，正式证据归 16）：** 经产品入口打开本地光盘，直接运行生产图形步骤：
+  - `cockpit-hud-map` 有 90 个 Asset（86 个来自本任务，4 个来自 P2-05），全部 `verified`；
+  - 装配并写入身份后，`validateGroup` 为 `group-complete`，没有诊断；
+  - 本任务的 payload 为 467,707 字节、像素 441,785，都在份额内。
+
+  脚本 `local/research/p2-07/production-step.ts`。
+- **检查：** `pnpm check` 通过（134 个文件、4044 个测试与构建）；`OSR_E2E_DEV_PORT=4273 OSR_E2E_PREVIEW_PORT=4274 pnpm test:e2e e2e/import-worker.spec.ts --project=development` 15/15 通过。
+- **rubber-duck：** 没有阻塞或非阻塞问题。
+- **simplify：** 没有修改。跳过的建议：
+  - 测试改用生产或夹具辅助函数生成期望（期望表须独立于被测常量）；
+  - 不导出 P2-07 份额（AC-07 要求以常量导出）；
+  - 合成夹具做模块级缓存（只影响测试，构建开销很小）；
+  - 把 P2-07 表移到独立模块（P2-06 拆出贴图表，是因为模型转换器要按编号引用它；本表没有这样的消费者，拆分还需导出共用的 `mapping` 辅助函数）。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)记录生产 Asset 清单、映射、份额与合计；[cockpit](../../../../original/formats/cockpit.md#bounded-canonical-graphics-projection) 的有界投影一节注明已由生产映射取代的部分。STATUS 不变。

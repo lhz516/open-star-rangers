@@ -92,6 +92,8 @@ Slot 0 of 10097 and slot 0 of 10103 have the same element count, positions and f
 
 **Unconfirmed bindings:** palettes, HUD gauges, map/radar symbols, weapons/effects, core audio and runtime-created objects are not closed by this projection. It explicitly remains incomplete and cannot by itself satisfy P2-01/S-02 or prove any candidate qualified.
 
+**Superseded by P2-07:** the [P2-07 production mappings](../../plan/p2/07/spec.md#生产-asset-与来源) now bind both layouts with their eight element images, the twelve status display images, the map palette (slot 2's group palette), and the gauge bar, left-display page background, map unit marker and zoom window icon families, each with its palette and transparency, so this projection is historical for those Assets; radar contacts, weapons/effects and runtime-created objects are not among them.
+
 ## 2. MFDD: multi-function display images (Confirmed structure)
 
 | Offset | Type | Meaning |

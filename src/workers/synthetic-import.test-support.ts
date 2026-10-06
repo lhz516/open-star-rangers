@@ -12,10 +12,12 @@ import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import {
-  cockpitBlock, cockpitLayoutBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
+  cockpitLayoutBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
   layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock,
 } from '../original-data/conversion/conversion.test-support.ts';
-import { MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import {
+  COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionCockpitBlock, productionGraphicsFiles,
+} from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
@@ -82,8 +84,8 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
   return { files, open: syntheticOpen(covered, versionId) };
 }
 
-/** A CCKD block whose 4×6 font table is one byte short. */
-const CORRUPT_FONTS = cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
+/** A CCKD block in the production cockpit structure whose 4×6 font table is one byte short. */
+const CORRUPT_FONTS = productionCockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
 
 /** A graphics step with nothing to convert, for jobs whose test is about identification or group transfer. */
 export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
@@ -184,24 +186,29 @@ export function productionCoveredFiles(corrupt = false): Record<string, Uint8Arr
 }
 
 /**
- * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
- * two flight palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries, the 4×6 font of 192 eight-row glyphs
- * with 56 entries, and the slice textures with their palettes.
+ * The payload bytes of the P2-05 Assets: two flight palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries,
+ * and the 4×6 font of 192 eight-row glyphs with 56 entries.
  */
-export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256)
-  + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56) + MODEL_TEXTURE_USAGE.payloadBytes;
+const P2_05_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56);
+
+/**
+ * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
+ * the P2-05 palettes and fonts, the slice textures with their palettes, and the P2-07 cockpit, HUD and map Assets.
+ */
+export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes;
 
 /**
  * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
- * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures.
+ * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures and the P2-07
+ * cockpit, HUD and map Assets.
  */
-export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = addBudgets({
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   paletteEntries: 512,
   glyphs: 256 + 256 + 192,
-  payloadBytes: GRAPHICS_PAYLOAD_BYTES - MODEL_TEXTURE_USAGE.payloadBytes,
-}, MODEL_TEXTURE_USAGE, 'usage');
+  payloadBytes: P2_05_PAYLOAD_BYTES,
+});
 
 /**
  * The conversion usage of the production graphics and audio stages on `productionCoveredFiles()`: the graphics

@@ -35,7 +35,7 @@ export interface GraphicsStepInput {
   readonly share: BudgetRecord;
 }
 
-/** The P2-05 production graphics and the P2-06 slice textures. */
+/** The P2-05 production graphics, the P2-06 slice textures and the P2-07 cockpit, HUD and map Assets. */
 const PRODUCTION_GRAPHICS_STEP: GraphicsStepInput = Object.freeze({
   mappings: PRODUCTION_GRAPHICS_MAPPINGS,
   declarations: PRODUCTION_GRAPHICS_DECLARATIONS,

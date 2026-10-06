@@ -10,7 +10,7 @@ import { UNLIMITED_BUDGET, withMeshReads } from '../original-data/conversion/con
 import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
-import { MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
 import {
   PRODUCTION_MODEL_REFERENCES, productionModelDeclarations, productionModelMappings,
 } from '../original-data/conversion/production-models.ts';
@@ -189,7 +189,7 @@ describe('injected identification', () => {
 });
 
 describe('production conversion', () => {
-  it('converts the production graphics and sounds after identification, and sends the graphics partitions and the complete audio group', async () => {
+  it('converts the production graphics and sounds after identification, and sends the graphics partitions and the complete cockpit-hud-map and audio groups', async () => {
     const imported = await syntheticImport(productionCoveredFiles(), 'production-job-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
@@ -208,13 +208,12 @@ describe('production conversion', () => {
     // Without a logic step no craft model is bound, so the models group holds only the flight palette and the textures.
     expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets);
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
-    // Until the production cockpit, HUD and map Assets are declared, the group holds only the P2-05 palette and fonts.
+    // The P2-05 palette and fonts with the production cockpit, HUD and map Assets fill every role of the group.
     const cockpit = sentGroup(messages, 'cockpit-hud-map').input;
-    expect(readGroupManifest(cockpit.manifest).assets.map(({ id }) => id))
-      .toEqual(['font/hud/4x6', 'font/hud/8x8-1', 'font/hud/8x8-2', 'palette/flight/cockpit-hud-map']);
-    const result = validateGroup(CLASSIC_P2_SLICE, cockpit);
-    if (result.status !== 'incomplete') throw new Error('expected an incomplete cockpit-hud-map group');
-    expect(new Set(result.diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality']));
+    const cockpitIds = PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').map(({ asset }) => asset.id).sort();
+    expect(cockpitIds).toHaveLength(4 + COCKPIT_HUD_MAP_USAGE.assets);
+    expect(readGroupManifest(cockpit.manifest).assets.map(({ id }) => id)).toEqual(cockpitIds);
+    expect(validateGroup(CLASSIC_P2_SLICE, cockpit)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map', externalRequirements: [] });
   });
 });
 
@@ -241,9 +240,7 @@ describe('logic conversion', () => {
     expect(groups.map(({ group }) => group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     expect(last.groups).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     for (const group of ['logic', 'audio']) expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, group).input)).toMatchObject({ status: 'group-complete' });
-    // The production graphics declare no layout or HUD and map image yet.
-    expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'cockpit-hud-map').input))
-      .toMatchObject({ status: 'incomplete', diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) });
+    expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'cockpit-hud-map').input)).toMatchObject({ status: 'group-complete', externalRequirements: [] });
     // One identity derived from every sent draft; payloads, already transferred, are not part of the derivation.
     const basis = productionIdentityBasis(source!.identity.fingerprint);
     const manifests = groups.map(({ input }) => readGroupManifest(input.manifest));
@@ -376,9 +373,10 @@ describe('audio conversion', () => {
       share: PRODUCTION_GRAPHICS_SHARE,
     };
     const [withCockpit, withoutCockpit] = (await Promise.all([audioJob(), audioJob({ graphics })])).map(({ messages }) => messages);
-    // Without the cockpit-hud-map flight palette and the three fonts.
+    // Without the cockpit-hud-map flight palette, the three fonts and the cockpit, HUD and map Assets.
     expect(withoutCockpit.at(-1)).toMatchObject({
-      type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 },
+      type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'],
+      usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 - COCKPIT_HUD_MAP_USAGE.assets + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 },
     });
     expect(manifest(withoutCockpit, 'cockpit-hud-map').assets).toEqual([]);
     expect(manifest(withoutCockpit, 'models').assets).toEqual(manifest(withCockpit, 'models').assets);
