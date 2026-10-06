@@ -264,8 +264,9 @@ describe('logic conversion', () => {
     });
 
     // The models group the receiver validates is the one Node derives from the same source and binding: the graphics
-    // models partition with the five bound craft models, the debris model and the three effect data Assets, incomplete
-    // only while textures are unconfirmed.
+    // models partition with the five bound craft models, the debris model and the three effect data Assets. Every role
+    // has its Assets (AC-20) and no texture mapping is unconfirmed (AC-14), so the group is complete; its sounds are
+    // external requirements the audio group satisfies.
     const graphics = await runGraphicsStep(source!, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, UNLIMITED_BUDGET);
     const models = await runModelStep(source!, productionModelMappings(bindings), productionModelDeclarations(bindings), PRODUCTION_MODEL_REFERENCES, UNLIMITED_BUDGET);
     const effects = await runEffectStep(source!, PRODUCTION_EFFECT_MAPPINGS, PRODUCTION_EFFECT_DECLARATIONS, UNLIMITED_BUDGET);
@@ -274,10 +275,9 @@ describe('logic conversion', () => {
     expect(sentDraft(sent)).toEqual({ ...expected, payloads: [] });
     expect(bindings.map(({ id }) => id).every(id => expected.assets.some(asset => asset.id === id))).toBe(true);
     const result = validateGroup(CLASSIC_P2_SLICE, sent.input);
-    expect(result.status).toBe('incomplete');
-    // No effect role lacks an Asset any more (AC-20).
-    if (result.status !== 'incomplete') throw new Error('expected an incomplete group');
-    expect(result.diagnostics.filter(({ code }) => code === 'role-cardinality')).toEqual([]);
+    if (result.status !== 'group-complete') throw new Error(`expected a complete models group, got ${JSON.stringify(result)}`);
+    expect(result.externalRequirements.length).toBeGreaterThan(0);
+    expect(result.externalRequirements.every(({ kind }) => kind === 'sound')).toBe(true);
   });
 
   it('sends no group when the job fails after the logic step, such as on invalid usage', async () => {

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "04"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 04 — 切片贴图与调色板
@@ -18,7 +18,7 @@ updated: 2026-10-05
 - **本地探查（被忽略的 `local/research/p2-06/`）：** 在本地基准镜像上确定生产贴图表的初始内容。
   - 用 P2-09 的机型绑定（经产品入口运行逻辑转换，或在同样的 M2ID 与任务输入上调用 `bindCraftTypes`）得到 5 个机型模型的 MODL；
   - 以 02 的 `readModel` 按“模型 ID 升序、列表 0–2、部件顺序”收集首次引用的 TEX，编出序号 `01` 起的初始表；
-  - 记录 TEX 数量、尺寸与编码，以及每个 TEX 的像素实际用到的[歧义条目](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)。生成 spec 时的探查结果是 15 个 TEX、其中 8 个用到歧义条目，作为本次核对的参照。
+  - 记录 TEX 数量、尺寸与编码，以及每个 TEX 的像素实际用到的[歧义条目](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed)。生成 spec 时的探查结果是 15 个 TEX、其中 8 个用到歧义条目，作为本次核对的参照。
 - **生产贴图表（计划新增 `src/original-data/conversion/production-model-textures.ts`）：**
   - 冻结的有序表：每行为序号 `<nn>` 与 `MAIN/SR.NOB` 的 TEX 条目号，以及该 TEX 是否用到未解决的歧义条目；
   - 由序号得到 `image/model-texture/<nn>` 与 `palette/model-texture/<nn>`，并导出 TEX 条目号到 image ID 的查找表，供 03 的转换器使用；
@@ -69,7 +69,7 @@ updated: 2026-10-05
 - **本地探查：** `node local/research/p2-06/texture-table-probe.ts`（被忽略的脚本）经产品入口打开本地 CloneCD 文件组，运行生产逻辑步骤，从机型表得到机型到模型 ID 的绑定，再结合 M2ID 与本地 `SR.NOB`，用 02 的读取函数统计。结果只有条目号、计数与判定：
   - **模型：** 5 个，`model/base-1`（MODL 10611）、`model/enemy-ship-1`（11063）、`model/enemy-ship-2`（10373）、`model/friendly-craft-1`（11399）、`model/player-ship`（10743）；
   - **贴图：** 按“模型 ID 升序、列表 0–2、部件顺序”首次引用的 TEX 共 15 个，全部为 raw、带嵌入调色板（合计 212 项），合计 340,992 像素；
-  - **歧义：** 其中 8 个的像素用到 [textures §3](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed) 的歧义条目，即序号 01、03、06、07、08、10、13、15；
+  - **歧义：** 其中 8 个的像素用到 [textures §3](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed) 的歧义条目，即序号 01、03、06、07、08、10、13、15；
   - **其余计数：** 模型到贴图的依赖边 22 条、模型到样本的依赖边 18 条、MESH 149 个、顶点 3,287 个、三角形 3,460 个。
 
   以上计数与生成 spec 时的探查一致。

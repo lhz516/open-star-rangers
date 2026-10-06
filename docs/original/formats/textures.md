@@ -58,25 +58,27 @@ Used only by the 186 ANIM frames; the data is smaller than `width × height`, so
 - 58 of 59 TEX entries embed a palette; one has none.
 - Besides model parts, the executable loads two TEX entries by ID for effects: TEX 10151 for debris and TEX 10377 for missiles ([executable](./executable.md#effect-presentation-sources)).
 
-### Nearest-colour metric and tie rule (Unconfirmed)
+### Nearest-colour metric and tie rule (Confirmed)
 
-That textures map to the nearest DATA colour is Confirmed (above). How the original measures "nearest", and which entry it picks on a tie, is Unconfirmed (U-028):
+That textures map to the nearest DATA colour is Confirmed (above). How the renderer measures "nearest" and which entry wins a tie are also Confirmed, from its colour manager's code (P2-06/12; see [executable](./executable.md#native-tex-preparation-and-nearest-colour-search)):
 
-- **No EXE evidence yet.** Two bounded read-only searches (P2-05/11, and a wider one in P2-06/12) found no nearest-colour code; see [executable](./executable.md#native-tex-preparation-and-nearest-colour-search).
-- **Provisional project rule.** The importer records each texture's `nearest` binding to DATA. The production expansion path then applies one function, `nearestColourMap` (see [source structure](../../engineering/source-structure.md#图形-payload)): the least squared Euclidean distance in 8-bit RGB, with ties going to the lower DATA index. This is a project choice, not a finding, and its confidence is at most Likely. A mapping that uses `nearest` carries U-028.
-- **Candidate check (P2-05 subtask 11, 2026-10-05).** `local/research/p2-05/nearest-candidates.ts` used the shared source readers and this function on all 58 embedded TEX palettes (1,335 entries). It compared a fixed candidate set: squared distance in 8-bit RGB and in 6-bit VGA space (TEX components truncated by `>> 2` against the raw DATA values), each with ties going to the lower or to the higher index. The implemented function matches the 8-bit lower-index candidate on every entry.
+- **Search space:** the game expands DATA for the renderer by shifting each 6-bit component left by 2, so values are 0–252 in steps of 4. All 256 entries are allocated, and the search never adds a colour.
+- **Metric:** the least (r − R)² + (g − G)² + (b − B)² over 8-bit integer components, where R, G, B are the DATA values times 4 and r, g, b the colour searched (Confirmed). That an unshaded texture colour is searched as its 8-bit BGR palette components is Likely: the texture ramp builder was not traced.
+- **Ties:** the lowest DATA index. An exact match returns the lowest of equal entries; otherwise a strict less-than scan runs in ascending index order.
+- **Shading (Likely):** in-game, textures get 4-shade colour ramps, and every ramp entry is matched by the same search. A shade is the texture colour scaled by the ramp position and combined with other material terms, so it equals the raw colour only when those terms vanish. When the ramp table is full, a colour shares the closest existing ramp under a different, ramp-level metric. Which shade a pixel shows depends on lighting, which stays Unconfirmed (U-028, P3). The project's `nearest` display mapping is the unshaded colour.
 
-**Ambiguous entries (Unconfirmed).** An entry is visually ambiguous when any tied choice in either space would show a different DATA colour. This covers every tie rule in both spaces, not only the lowest and highest index. There are 78 such palette entries across 29 TEX entries:
+**Project implementation.** `nearestColourMap` is the only nearest-colour function (see [source structure](../../engineering/source-structure.md#图形-payload)). It compares the 8-bit source colour with each target component with its two low bits cleared. For a palette expanded from 6-bit values by bit replication, as DATA is, this gives exactly the values times 4. On all 58 embedded TEX palettes (1,335 entries) it chooses the same DATA entry as the confirmed rule.
 
-- 32 have an index tie in 8-bit space and 71 in 6-bit space, and every one of these ties is between different DATA colours;
-- in 8 entries the two spaces choose different indices, and the colours differ too;
-- an entry can fall into more than one of these categories.
+**Entries that were ambiguous under the P2-05 candidate rules (historical).** P2-05/11 (2026-10-05) compared four rules with `local/research/p2-05/nearest-candidates.ts`:
+- squared distance in 8-bit RGB, with DATA expanded to 8 bits by bit replication;
+- squared distance in 6-bit VGA space (TEX components truncated by `>> 2`, DATA raw);
+- each with ties going to the lower or to the higher index.
 
-Agreement between candidates on the remaining entries is not evidence of the original rule. The ambiguous entries, as TEX entry: palette indices:
+It recorded 78 palette entries across 29 TEX entries where a tied choice in either space would show a different DATA colour:
 
 10001: 5; 10003: 1; 10061: 10; 10145: 0, 3, 10; 10149: 6, 8; 10321: 0, 3, 10; 10377: 1; 10419: 10; 10421: 9, 11; 10451: 3; 10613: 6; 10617: 3; 10625: 2, 4, 7; 10643: 1, 14, 15; 10645: 4; 10681: 1; 10887: 2; 10893: 1; 10895: 2; 10897: 9, 10; 10901: 0, 4; 11067: 2, 13; 11091: 38, 40, 44, 57, 61, 64, 65, 71, 84, 88, 93, 99, 105, 107, 109, 111, 112, 121, 126, 144, 151, 168, 171, 172, 174, 198, 199, 202, 204, 208, 210, 211, 215, 220, 251; 11163: 2; 11261: 0, 4; 11273: 2; 11297: 2; 11309: 0, 8; 11371: 6.
 
-A slice texture that uses an ambiguous entry needs EXE evidence, or an unconfirmed mapping that blocks completeness (P2-01). The player craft's TEX 10681 is affected at palette index 1.
+The confirmed rule resolves every one of them. It was not among the candidates. Compared with the earlier implementation (the 8-bit rule with lower-index ties), it shows a different DATA colour on 8 entries: 10145: 3; 10149: 6; 10321: 3; 10643: 14; 11067: 13; 11091: 65, 199, 215. Three of these are in slice textures (10149: 6, 10321: 3 and 11067: 13). In 71 entries several DATA entries still tie at different colours; the lowest-index rule decides them. Evidence: ignored `local/research/p2-06/nearest2/confirmed-rule.ts`.
 
 **Consistency reference only.** The player craft is M2ID slot 0, MODL 10743. Its intact parts use TEX 10749, 10747 and 10681 (5, 14 and 16 colours). Each was converted with the production converter (`display: { nearest: DATA }`) and every palette entry expanded with `expandImage`. The recorded counts above (4 of 5, 8 of 14, 16 of 16 colours present) are reproduced exactly in local captures `srangers_008.png`, `srangers_010.png` and `srangers_013.png`; `srangers_091.png` shows 5, 9 and 16 of 92 captures checked. This shows the expansion path is consistent with the earlier observation; it does not measure the metric or the tie rule.
 

@@ -27,9 +27,19 @@ function image(display: ImageDisplay, overrides: Partial<Omit<ImagePayload, 'kin
 
 const palettes = (...entries: [AssetId, PalettePayload][]) => new Map(entries);
 
-describe('nearest colour mapping (provisional rule, U-028)', () => {
+describe('nearest colour mapping (textures §3, confirmed by EXE code)', () => {
   it('maps exact matches, a unique nearest entry and equal distances to the lower index', () => {
     expect([...nearestColourMap(NEAREST_SOURCE, TARGET)]).toEqual([2, 1, 0, 3]);
+  });
+
+  it('compares the 8-bit source with each target component with its two low bits cleared', () => {
+    // Masked, target 1 is (4, 4, 4), an exact match; unmasked, target 0 would be nearer.
+    expect([...nearestColourMap(palette([4, 4, 4]), palette([2, 2, 2], [7, 7, 7]))]).toEqual([1]);
+    // Masked, both targets are (0, 0, 0), so the tie keeps the lower index; unmasked, target 1 would be nearer.
+    expect([...nearestColourMap(palette([2, 2, 2]), palette([0, 0, 0], [3, 3, 3]))]).toEqual([0]);
+    // A 6-bit VGA palette expanded with bit replication searches its value times 4: white (63) as 255 is searched as 252.
+    const vga = (value: number) => (value << 2) | (value >> 4);
+    expect([...nearestColourMap(palette([253, 253, 253]), palette([vga(62), vga(62), vga(62)], [vga(63), vga(63), vga(63)]))]).toEqual([1]);
   });
 
   it('maps a palette onto itself as the identity', () => {

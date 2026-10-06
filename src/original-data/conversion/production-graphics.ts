@@ -48,15 +48,15 @@ const TABLE_EVIDENCE = [...HUD_PATH_EVIDENCE, 'docs/original/formats/hud.md#tabl
 const ZOOM_ICON_EVIDENCE = [...TABLE_EVIDENCE, 'docs/original/formats/hud.md#zoom-window-icons-by-craft-type-r8'];
 
 const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
-const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed';
+const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed';
 const EFFECT_EVIDENCE = 'docs/original/formats/executable.md#effect-presentation-sources';
 
 /**
  * Whole-entry TEX images research confirmed for the slice's effect roles (P2-06/11, U-027): `image/<role>` with its
- * embedded palette `palette/<role>`, shown like the slice textures. `ambiguous` as in the texture table.
+ * embedded palette `palette/<role>`, shown like the slice textures.
  */
-export const PRODUCTION_EFFECT_IMAGES: readonly { readonly role: string; readonly entry: number; readonly ambiguous: boolean }[] =
-  Object.freeze([Object.freeze({ role: 'missile', entry: 10_377, ambiguous: true })]);
+export const PRODUCTION_EFFECT_IMAGES: readonly { readonly role: string; readonly entry: number }[] =
+  Object.freeze([Object.freeze({ role: 'missile', entry: 10_377 })]);
 
 function mapping(
   id: string, type: string, entry: number, subresource: string | null, unknowns: string[], evidence: string[],
@@ -76,16 +76,17 @@ const palette = (group: string) => ({ asset: { id: `palette/flight/${group}`, ki
 
 /**
  * Every whole-entry TEX image with its embedded palette: the slice textures in table order, then the effect images.
- * Each image is the whole TEX record shown through the provisional nearest-colour rule (U-028), so at most likely, and
- * unconfirmed while it uses an ambiguous entry; an effect image's role assignment also carries the effects research.
+ * Each image is the whole TEX record shown through the nearest flight colours (textures §3, confirmed). Runtime
+ * shading stays unconfirmed (U-028), so the image mappings are likely; an effect image's role assignment also carries
+ * the effects research.
  */
 const TEX_IMAGES = [
-  ...PRODUCTION_MODEL_TEXTURES.map(({ entry, ambiguous }, index) => ({
-    imageId: modelTextureImageId(index), paletteId: modelTexturePaletteId(index), role: 'model-texture', entry, ambiguous,
+  ...PRODUCTION_MODEL_TEXTURES.map(({ entry }, index) => ({
+    imageId: modelTextureImageId(index), paletteId: modelTexturePaletteId(index), role: 'model-texture', entry,
     unknowns: ['U-028'], evidence: [TEXTURE_EVIDENCE, NEAREST_EVIDENCE],
   })),
-  ...PRODUCTION_EFFECT_IMAGES.map(({ role, entry, ambiguous }) => ({
-    imageId: `image/${role}`, paletteId: `palette/${role}`, role, entry, ambiguous,
+  ...PRODUCTION_EFFECT_IMAGES.map(({ role, entry }) => ({
+    imageId: `image/${role}`, paletteId: `palette/${role}`, role, entry,
     unknowns: ['U-027', 'U-028'], evidence: [EFFECT_EVIDENCE, TEXTURE_EVIDENCE, NEAREST_EVIDENCE],
   })),
 ];
@@ -186,8 +187,8 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
 ]);
 
 /** Each TEX image maps to its whole record; its palette, the embedded BGR palette, is confirmed. */
-const texImageMappings = TEX_IMAGES.flatMap(({ imageId, paletteId, entry, ambiguous, unknowns, evidence }) => [
-  mapping(imageId, 'TEX', entry, null, unknowns, evidence, ambiguous ? 'unconfirmed' : 'likely'),
+const texImageMappings = TEX_IMAGES.flatMap(({ imageId, paletteId, entry, unknowns, evidence }) => [
+  mapping(imageId, 'TEX', entry, null, unknowns, evidence),
   mapping(paletteId, 'TEX', entry, 'palette', [], [TEXTURE_EVIDENCE]),
 ]);
 

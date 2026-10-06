@@ -12,7 +12,7 @@ import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-suppo
 import { productionIdentityBasis } from '../../original-data/conversion/converter-version.ts';
 import { runGraphicsStep, stepGroupDraft } from '../../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft } from '../../original-data/conversion/model-step.ts';
-import { COCKPIT_HUD_MAP_USAGE, productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { fail } from '../../content/contract-validation.ts';
 import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
@@ -225,7 +225,7 @@ describe('graphics conversion over a structured-clone channel', () => {
     const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC, undefined, NO_MODELS), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    // With no bound craft model, the models group is incomplete: no craft roles, and unconfirmed textures. The P2-05
+    // With no bound craft model, the models group is incomplete: no craft roles. The P2-05
     // palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
@@ -278,23 +278,21 @@ describe('logic conversion over a structured-clone channel', () => {
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
-    expect(snapshot.groups.map(({ group, status }) => [group, status]))
-      .toEqual([['logic', 'group-complete'], ['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
-    expect(snapshot.groups[2].diagnostics).toEqual([]);
+    // Every effect role has its data Asset (AC-20) and no texture mapping is unconfirmed (AC-14), so all four groups are complete.
+    expect(snapshot.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics]))
+      .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', []]));
     // The receiver's validation of the models group equals Node's validation of the group message it received.
     const received = (traffic.fromWorker as { type: string; group?: string; input?: GroupInput }[]).find(({ type, group }) => type === 'group' && group === 'models')!;
     const expected = validateGroup(CLASSIC_P2_SLICE, received.input!);
-    if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group');
-    expect(snapshot.groups[1]).toEqual({ group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics });
-    // Every effect role has its data Asset, so only the unconfirmed textures remain (AC-20).
-    expect(new Set(snapshot.groups[1].diagnostics.map(({ code }) => code))).toEqual(new Set(['source-not-ready']));
+    if (expected.status !== 'group-complete') throw new Error('expected a complete models group');
+    expect(snapshot.groups[1].assets).toBe(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets);
     expect(snapshot.usage).toMatchObject({
       assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
       missionObjects: 11, missionReferences: 37,
       vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     });
     const taken = owner.takeGroups()!;
-    expect(taken.map(({ group }) => group)).toEqual(['logic', 'cockpit-hud-map', 'audio']);
+    expect(taken.map(({ group }) => group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     // One package: every group carries the same identity.
     const [logicManifest, ...others] = taken.map(({ manifest }) => readGroupManifest(manifest));
     expect(others.map(({ identity }) => identity)).toEqual(others.map(() => logicManifest.identity));

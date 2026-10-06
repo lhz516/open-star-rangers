@@ -17,7 +17,6 @@ describe('production texture table', () => {
     const entries = PRODUCTION_MODEL_TEXTURES.map(({ entry }) => entry);
     // Rows 01–15 are the craft models' textures and row 16, appended, the debris model's.
     expect(new Set(entries).size).toBe(16);
-    expect(PRODUCTION_MODEL_TEXTURES.filter(({ ambiguous }) => ambiguous)).toHaveLength(8);
     expect([modelTextureImageId(0), modelTexturePaletteId(0), modelTextureImageId(15)]).toEqual(['image/model-texture/01', 'palette/model-texture/01', 'image/model-texture/16']);
     expect([...PRODUCTION_TEXTURE_REFERENCES]).toEqual(entries.map((entry, index) => [entry, modelTextureImageId(index)]));
     expect(Object.isFrozen(PRODUCTION_MODEL_TEXTURES) && PRODUCTION_MODEL_TEXTURES.every(row => Object.isFrozen(row))).toBe(true);

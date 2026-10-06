@@ -10,30 +10,25 @@ import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 export interface ModelTextureRow {
   /** The `MAIN/SR.NOB` TEX entry; it stays in original-data and never enters canonical content. */
   readonly entry: number;
-  /**
-   * Whether the texture's pixels use a palette entry whose nearest flight colour is ambiguous (textures §3). Until
-   * research resolves those entries (U-028), the image mapping is unconfirmed and blocks the group's completeness.
-   */
-  readonly ambiguous: boolean;
 }
 
 export const PRODUCTION_MODEL_TEXTURES: readonly ModelTextureRow[] = Object.freeze([
-  { entry: 10_613, ambiguous: true },
-  { entry: 10_615, ambiguous: false },
-  { entry: 10_617, ambiguous: true },
-  { entry: 10_619, ambiguous: false },
-  { entry: 11_073, ambiguous: false },
-  { entry: 11_067, ambiguous: true },
-  { entry: 10_003, ambiguous: true },
-  { entry: 10_001, ambiguous: true },
-  { entry: 10_147, ambiguous: false },
-  { entry: 10_321, ambiguous: true },
-  { entry: 10_747, ambiguous: false },
-  { entry: 10_749, ambiguous: false },
-  { entry: 10_681, ambiguous: true },
-  { entry: 11_009, ambiguous: false },
-  { entry: 10_149, ambiguous: true },
-  { entry: 10_151, ambiguous: false },
+  { entry: 10_613 },
+  { entry: 10_615 },
+  { entry: 10_617 },
+  { entry: 10_619 },
+  { entry: 11_073 },
+  { entry: 11_067 },
+  { entry: 10_003 },
+  { entry: 10_001 },
+  { entry: 10_147 },
+  { entry: 10_321 },
+  { entry: 10_747 },
+  { entry: 10_749 },
+  { entry: 10_681 },
+  { entry: 11_009 },
+  { entry: 10_149 },
+  { entry: 10_151 },
 ].map(row => Object.freeze(row)));
 
 /** The two-digit number of the row at `index`, shared by its image and palette. */

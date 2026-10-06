@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "05"
-updated: 2026-10-05
+updated: 2026-10-06
 related: [ADR-0007, ADR-0008, ADR-0015, U-001, U-018, U-019, U-028, U-029, U-030]
 reviewed: sha256:1c6f9c5f4028
 ---
@@ -176,7 +176,7 @@ reviewed: sha256:1c6f9c5f4028
 | 图像 payload | `width` 1–640、`height` 1–480，单位为像素。`alpha` ∈ {`opaque`, `mask`}。`palette` 为调色板 Asset ID。`display` 为 `direct`，或 `{ nearest: 目标调色板 Asset ID }`。`indices` 为 `width × height` 字节，行优先，行 0 是规范上方的第一行。`mask` 只在 `alpha` 为 `mask` 时存在：每像素 1 位，bit 7 为最左，每行补齐到整字节，1 表示不透明 | `content/` | 透明像素的索引与填充位为 0。引用的调色板 ID 去重后按升序必须恰好等于描述符依赖：`direct` 为 `{palette}`，`nearest` 为 `{palette, target}` |
 | 字体 payload | `cellWidth` 1–8、`height` 1–8；`glyphRows` 为每字形行数，`height`–8；字形数 1–256；`glyphs` 为字形数 × `glyphRows` 字节，每行 1 字节、bit 7 为最左、行 0 在上，逐位保留；`charMap` 为 0–256 个 `{ code: 0–255, glyph }`，`glyph` 小于字形数，按 `code` 升序且唯一 | `content/` | 字形的绘制颜色与字距不在 payload 中；映射之外的码位没有字形；单元以外的位与行的绘制语义不在 payload 中（U-030） |
 | 展开结果 | `{ width, height, rgba }`，`rgba` 为 `width × height × 4` 字节的非预乘 RGBA | `content/` 中的纯函数 | 每次返回调用者独占的新缓冲；不进入缓存或 payload |
-| 最近色映射 | 项目暂定规则：对源调色板的每一项，取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等时取较小索引。原版的实际度量与并列规则在取得证据前不高于高概率（U-028），见 AC-15；合成测试只验证算法，不是保真证据 | `content/` 中的纯函数 | 只有展开函数与研究工具调用它；不在转换时改写像素 |
+| 最近色映射 | 项目暂定规则：对源调色板的每一项，取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等时取较小索引。原版的实际度量与并列规则在取得证据前不高于高概率（U-028），见 AC-15；合成测试只验证算法，不是保真证据。**2026-10-06 更新：** P2-06/12 取得 EXE 证据，按 AC-15 与技术决定 2 只改了 `nearestColourMap` 一处：目标分量清除低两位（DATA 的 6 位值 × 4），其余不变，见 textures §3 | `content/` 中的纯函数 | 只有展开函数与研究工具调用它；不在转换时改写像素 |
 
 ### 图形转换声明
 

@@ -378,10 +378,9 @@ async function nodeSliceRun(): Promise<{ readonly groups: ReadonlyMap<string, Gr
   return { groups, usage };
 }
 
-// P2-06 AC-10 and AC-20: the whole production job in a real module Worker on the synthetic slice disc. The model stage
-// converts the five craft models the logic step binds and the debris model, then the three effect data Assets; the
-// receiver validates the models group, which stays incomplete only while textures are unconfirmed, exactly as the same
-// job in Node.
+// P2-06 AC-10, AC-14 and AC-20: the whole production job in a real module Worker on the synthetic slice disc. The model
+// stage converts the five craft models the logic step binds and the debris model, then the three effect data Assets;
+// the receiver validates every group complete, exactly as the same job in Node, and hands over the whole package.
 test('test entry converts the models after the audio stage, and the receiver validates the models group as Node does', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);
@@ -395,14 +394,12 @@ test('test entry converts the models after the audio stage, and the receiver val
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
   const node = await nodeSliceRun();
-  const expected = validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!);
-  if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group in Node');
-  expect(expected.diagnostics.filter(({ code }) => code === 'role-cardinality')).toEqual([]);
+  expect(validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!)).toMatchObject({ status: 'group-complete', group: 'models' });
   // The P2-05 palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
   expect(validateGroup(CLASSIC_P2_SLICE, node.groups.get('cockpit-hud-map')!)).toMatchObject({ status: 'group-complete', externalRequirements: [] });
   expect(final.groups).toEqual([
     { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
-    { group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics },
+    { group: 'models', status: 'group-complete', assets: 1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets, diagnostics: [] },
     { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
@@ -428,7 +425,7 @@ test('test entry converts the models after the audio stage, and the receiver val
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
   expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
-  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['logic', 'cockpit-hud-map', 'audio']);
+  expect(await page.evaluate(() => window.osrImport.owner!.takeGroups()?.map(({ group }) => group))).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
   expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['models', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);
   expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);

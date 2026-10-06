@@ -36,7 +36,7 @@ Confidence labels as defined in the [IMFAT](./imfat.md) doc. No code or disassem
 | Watcom C/C++ 32-bit run-time | Run-time banner | Calling convention, struct packing |
 | Miles Audio Interface Library (AIL) | Over 100 `AIL_` references; matches the Miles 3.03 drivers on disc | Music and sound playback (U-004) |
 | Smacker player (statically linked) | Code checks the `SMK2` signature | Cut-scene playback |
-| In-house or unbranded 3D renderer (Likely) | Assertion text mentions a fixed-point-to-integer macro, viewports, tile maps, and versioned renderer components; no third-party brand strings found | The renderer uses **fixed point** internally, while mesh vertices are stored as floats (U-009) |
+| 3D renderer, Likely RenderMorphics Reality Lab (P2-06/12) | Assertion text mentions a fixed-point-to-integer macro, viewports, tile maps and versioned renderer components, and names source files under `..\rl\` and `..\rlpatch\` (such as `ramplt.c`, a ramp colour model); no brand string found | The renderer uses **fixed point** internally, while mesh vertices are stored as floats (U-009). Its colour manager does the nearest-colour search ([§4](#native-tex-preparation-and-nearest-colour-search)) |
 
 ## 3. Content embedded in the EXE (Confirmed)
 
@@ -265,7 +265,7 @@ Bounded read-only analysis for P2-06/11 (2026-10-06): `-noanalysis -readOnly`, w
 
 **Confirmed (destruction fragments), Unconfirmed (other fragment events):** the explosion constructor `0x23ac8` calls producer `0x24d78` in mode 3 when the destroyed object is a craft kind (bits 0–19), so a destroyed craft sheds fragments from its own model's list 1 (discriminator 3). Dispatcher event `0x10` calls the producer with a mode from the event payload, giving discriminators 1 and 2 for kinds in mask `0x91780`. Which code posts that event was not found in this bounded search, so when discriminator 1 and 2 fragments appear is Unconfirmed. Discriminator 0 is not emitted by this producer. The external-view capture `local/StarRang/captures/srangers_044.png` shows small textured fragments next to an explosion animation (Likely fragments).
 
-**Confirmed (structure and constant references):** MODL 10383, the only MODL outside M2ID, has only list 1: 6 parts with flag 3, 6 distinct meshes, 260 vertices and 240 triangles, and no sounds. Every part names TEX 10151. TEX 10151 is a raw 256 × 256 record with a 16-entry palette and uses no ambiguous entry. TEX 10377 is a raw 64 × 64 record with a 16-entry palette whose pixels use an ambiguous entry ([textures §3](./textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)). A scan of the executable for 32-bit constants finds MODL 10383 named three times, all in the fragment effect setup and teardown. MODL 10383 is also passed to the generic model request `0x6a024`, which many callers use, including the mission builder. The one MESH that no MODL names (8 vertices, 4 triangles) is not named by any 32-bit constant in the executable; whether anything uses it is Unconfirmed.
+**Confirmed (structure and constant references):** MODL 10383, the only MODL outside M2ID, has only list 1: 6 parts with flag 3, 6 distinct meshes, 260 vertices and 240 triangles, and no sounds. Every part names TEX 10151. TEX 10151 is a raw 256 × 256 record with a 16-entry palette and uses no ambiguous entry. TEX 10377 is a raw 64 × 64 record with a 16-entry palette whose pixels use an ambiguous entry ([textures §3](./textures.md#nearest-colour-metric-and-tie-rule-confirmed)). A scan of the executable for 32-bit constants finds MODL 10383 named three times, all in the fragment effect setup and teardown. MODL 10383 is also passed to the generic model request `0x6a024`, which many callers use, including the mission builder. The one MESH that no MODL names (8 vertices, 4 triangles) is not named by any 32-bit constant in the executable; whether anything uses it is Unconfirmed.
 
 Under [ASSET_UNITS](../../../src/content/asset-units.ts), MODL 10383 is a whole-entry model and TEX 10151 and TEX 10377 are whole-entry images. RENS records and the executable's vertex tables are not image or model sources; whether and how the import represents them is a P2-06 contract question (see U-027).
 
@@ -440,7 +440,7 @@ Evidence: ignored `runtime-full-content-34-milestone.json` and private capture f
 
 ### Native TEX preparation and nearest-colour search
 
-**Confirmed (bounded negative result), Unconfirmed (where the nearest-DATA mapping happens):** P2-05 subtask 11 searched for the code that maps TEX colours to the nearest DATA colour (see [textures](./textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)). The search was read-only, against the existing Ghidra project without reimport, and checked exactly these functions:
+**Confirmed (bounded negative result), Unconfirmed (where the nearest-DATA mapping happens):** P2-05 subtask 11 searched for the code that maps TEX colours to the nearest DATA colour (see [textures](./textures.md#nearest-colour-metric-and-tie-rule-confirmed)). The search was read-only, against the existing Ghidra project without reimport, and checked exactly these functions:
 
 - the documented TEX handlers `0x662c8` and `0x66338`, the preparation function `0x660dc` and the helper `0x850ec`, with their direct callees (17 functions in total);
 - every call site of `0x660dc`: in `0x65e28`, in the documented TEX completion `0x66310`, and in the 12-byte stub `0x66834`;
@@ -456,4 +456,24 @@ Evidence: ignored `tex-path.c`, `callsites-0x660dc.c`, `callers-0x660dc.c`, `cal
 - **Raw scans of the code object, including code never disassembled:** it holds only 6 integer self-multiplications, none clustered, and 25 clusters of floating-point self-multiplications. The 8 clusters checked in renderer and game code compute vectors and texture coordinates; none loops over palette entries.
 
 The mapping was not found in the checked set. Renderer-side processing after the indexed image is handed over is only a hypothesis for the next search: indirect callbacks, precomputed tables or a different algorithm shape are not excluded. The location, metric and tie rule stay Unconfirmed (U-028). Evidence: ignored `local/research/p2-06/nearest/`, including `scans.py` and `scans.log` with the scan criteria, totals and hit addresses.
+
+**Confirmed (nearest-colour search found, P2-06/12, 2026-10-06):** following the DATA palette instead of the TEX path found the search, inside the 3D renderer. The renderer is Likely RenderMorphics Reality Lab: its assertion texts name source files under `..\rl\` and `..\rlpatch\`, such as `ramplt.c` for its ramp colour model; the code below is Confirmed whatever the library is called.
+
+- **Screen palette:** flight setup loads DATA 11075 at `0x3ecdc` and passes it to `0x3d1c0`. That function writes 256 four-byte entries at `0x186c00`: each 6-bit component shifted left by 2, with flag byte 1.
+- **Devices:** the two 3D devices are created by `0x3d0b0` and `0x42b04` through `0x7b710`. Their static pixel-map descriptors at `0x175224` and `0x1753ac` give 8 bits per pixel, indexed, 256 palette entries, and the palette at `0x186c00` (descriptor +0x34 and +0x38).
+- **Colour manager:** `0x952b0` creates the device's colour manager with `0x9e100` and enters every palette entry whose flag is 1 with `0x9e24c`. All 256 DATA colours are therefore allocated, and none is free.
+- **Lookup `0x9e304`:** this is the manager's find method (slot +0x428, exposed through the interface at +0x424, which the driver returns for query token 0x10). It works in order:
+  1. An exact match in a 257-bucket hash returns the existing entry. Entries are entered from the highest index down and each goes to the head of its bucket, so duplicate colours give the lowest index.
+  2. An allocation callback at +0x418 is tried next; it is never set.
+  3. A free entry is taken next; there are none.
+  4. Otherwise a linear scan in ascending index order over the allocated entries keeps the strictly smallest (c0 − e0)² + (c1 − e1)² + (c2 − e2)² over integer components. It starts from a bound larger than any possible distance, so ties go to the lowest index.
+- **Ramp shading (Likely for textures):** Reality Lab's ramp code (`0x6c8d4` and `0x6c0e8`, file `ramplt.c`) allocates colour ramps in a 4,096-slot table. The table is created by `0x9e6d0` for query token 0x11, and every slot is filled through `0x9e304` with 8-bit integer components.
+  - A single-shade ramp passes its colour unchanged.
+  - With more shades, each entry is the colour scaled by its position and combined with two other material terms, then rounded and clamped.
+  - When `0x874f0` cannot allocate slots, `0x6c8d4` shares the closest existing ramp, chosen by `0x6c598` under a ramp-level metric.
+
+  Textures are created with `0x850ec` and then given a colour count (`0x8526c`) and 4 shades (`0x852c8`), which matches ramp-model texture shading. The ramp builder for texture colours and how lighting picks a shade were not traced (U-028, lighting is P3).
+- **Why the earlier scans missed it:** `0x9e304` is reached only through function pointers and was never disassembled. It holds only two syntactic self-multiplications, plus one through a register copy, which is below the earlier cluster criterion. On an 8-bit device, `0xa07d4` (token 0x10) builds a 6 × 6 × 6 colour cube through the same lookup, which maps RGB colours onto the palette; on other devices it builds channel masks instead. That textures use ramps rather than this cube is inferred from the ramp model (Likely).
+
+Consequence: the renderer matches colours against the DATA values times 4 by squared Euclidean distance, with ties to the lowest index (Confirmed). That an unshaded TEX colour reaches this lookup as its 8-bit BGR palette components is Likely; see [textures §3](./textures.md#nearest-colour-metric-and-tie-rule-confirmed). Evidence: ignored `local/research/p2-06/nearest2/`, holding the read-only scripts `RangeRefs.java`, `DispScan.java`, `QueryScan.java` and `DumpWords.java`, native listings, and the rule comparison `confirmed-rule.ts`.
 

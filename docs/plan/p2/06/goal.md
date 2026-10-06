@@ -68,7 +68,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - `local/ghidra/srangers.gpr`：11、12 只读分析需要。
 
   缺少时相应子任务为 blocked，不能用合成数据代替。
-- **原版证据：** [mesh](../../../original/formats/mesh.md)、[textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)、[executable](../../../original/formats/executable.md)、[hud §3](../../../original/formats/hud.md#3-id-lists-confirmed-structure)、[候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)、[audio](../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)，以及 [U-022、U-027、U-028](../../../original/unknowns.md#数据与格式)。研究只把地址、结构、计数与结论写入 `docs/original/`。
+- **原版证据：** [mesh](../../../original/formats/mesh.md)、[textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed)、[executable](../../../original/formats/executable.md)、[hud §3](../../../original/formats/hud.md#3-id-lists-confirmed-structure)、[候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)、[audio](../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)，以及 [U-022、U-027、U-028](../../../original/unknowns.md#数据与格式)。研究只把地址、结构、计数与结论写入 `docs/original/`。
 - **可预见的研究阻塞：** 按 spec [风险与恢复](./spec.md#风险与恢复)：
   - 11 可能需要先经用户批准修订 P2-01 切片定义，或修订本 spec；
   - 12 需要 EXE 证据，而 P2-05 的有界检索没有找到，也可以先修订并批准 P2-05 spec。
@@ -132,7 +132,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 07 | completed |
 | [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | completed |
 | [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | completed |
-| [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | blocked |
+| [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | completed |
 | [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | completed |
 | [15-slice-definition-region-locator.md](./subtasks/15-slice-definition-region-locator.md) | 14 | completed |
 | [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | completed |
@@ -188,6 +188,11 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 修订后，本地基准上三个 Asset 都通过，每个形状都能展开（证据见 18）。
   - [executable](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research) 的面表结论由“模板为高概率”改为已确认，并记录角数分布。
   - 内容层校验、测试与合成数据同步：合成碎片模板含五边形与六边形，排列与原版不同。
+- **2026-10-06，12 以 EXE 证据解除阻塞：** 用户询问如何推进 12 后，按恢复条件 1 继续有界只读检索，沿 DATA 调色板找到 3D 渲染器颜色管理器中的最近色实现。
+  - 度量为“贴图 8 位分量对 DATA 6 位值 × 4 的平方欧氏距离”，并列取最小索引，已确认（代码）；不需要 P2-05 的截图证据修订。
+  - 按 12 与 P2-05 技术决定 2，只改了 `nearestColourMap` 一处；生产贴图映射改为 likely。
+  - 复跑 09：`models` 组完整，四个组都完整。
+  - 12 改为 completed，13 仍等待 19。证据见 [12](./subtasks/12-ambiguous-texture-research.md)。
 
 ## 审批
 

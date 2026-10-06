@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "11"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 11 — 最近色规则研究（U-028 颜色部分）
@@ -65,7 +65,7 @@ updated: 2026-10-05
   - **方法：** 用 03 的源结构读取与 02 的 `nearestColourMap`。研究记录固定 4 个候选：8 位 RGB 与 6 位 VGA 空间（TEX 分量 `>> 2`，对 DATA 原始 6 位值）的平方距离，各分并列取较小与较大索引。
   - **覆盖：** 59 个 TEX 中 58 个有嵌入调色板，共 1,335 个条目；实现与“8 位、取较小索引”逐项一致。
   - **并列与不一致：** 索引并列在 8 位空间 32 个、6 位空间 71 个，全部发生在不同颜色之间；两种空间选出不同索引的有 8 个，颜色也不同。
-  - **歧义条目：** 任何并列选择会显示不同颜色的条目为视觉歧义，共 78 个，分布在 29 个 TEX 条目中，逐一列入 [textures §3](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed) 并标为未确认。其中包括玩家座机 TEX 10681 的序号 1。
+  - **歧义条目：** 任何并列选择会显示不同颜色的条目为视觉歧义，共 78 个，分布在 29 个 TEX 条目中，逐一列入 [textures §3](../../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed) 并标为未确认。其中包括玩家座机 TEX 10681 的序号 1。
   - 文档明确说明，候选之间一致不能证明原版规则。
 - **一致性参考：**
   - 玩家座机为 M2ID 槽位 0 的 MODL 10743，完整部件的贴图为 TEX 10749、10747、10681（5、14、16 色）。每张都经 04 的转换器（`display: { nearest: DATA }`）转换，用探针图像经 02 的 `expandImage` 得到每个调色板条目的显示颜色，再与 92 张本地截图比较。

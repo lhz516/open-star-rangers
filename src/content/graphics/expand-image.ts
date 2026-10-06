@@ -12,12 +12,15 @@ export interface ExpandedImage {
 }
 
 /**
- * For each source entry, the index of the target entry at the least squared Euclidean distance in 8-bit RGB, ties going
- * to the lower index. This is a provisional project rule: the original metric and tie rule are not yet evidenced
- * (U-028), so synthetic tests prove only this algorithm, not fidelity. It is the project's only nearest-colour logic.
+ * For each source entry, the index of the target entry at the least squared Euclidean distance, ties going to the lower
+ * index. Source components are compared at 8 bits; each target component has its two low bits cleared, which recovers
+ * the 6-bit VGA value times 4 that the original's colour manager searches (docs/original/formats/textures.md §3,
+ * confirmed by EXE code). The target is therefore a palette expanded from 6-bit VGA values, such as DATA. This is the
+ * project's only nearest-colour logic.
  */
 export function nearestColourMap(source: PalettePayload, target: PalettePayload): Uint8Array<ArrayBuffer> {
-  const [from, to] = [source.entries, target.entries];
+  const from = source.entries;
+  const to = target.entries.map(component => component & 0xfc);
   const map = new Uint8Array(from.length / 3);
   for (let entry = 0; entry < map.length; entry++) {
     const [red, green, blue] = from.subarray(entry * 3, entry * 3 + 3);

@@ -15,7 +15,7 @@ reviewed: sha256:78d7582af903
 切片的 `models` 组目前没有任何生产来源：
 
 - **只有研究用解析器：** [payloads.ts](../../../../src/original-data/payloads.ts) 的 `parseMesh` 与 `parseModel` 能读出 MESH 与 MODL，[nob-check](../../../../tools/nob-check.ts) 也在本地基准上逐条核对过。但它们抛出无类型的 `PayloadError`，不检查浮点是否有限、部件颜色是否越界、保留字段是否为 0，也没有结构限值或预算；输出仍是原版结构，没有规范 payload、Asset 身份或对贴图与音效的规范引用。
-- **贴图没有选型：** [P2-05](../05/spec.md) 已提供唯一的图像与调色板转换器，但切片模型用到的 TEX 尚未声明。按 P2-05 的规则，用到[歧义条目](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)的贴图映射为未确认，会阻塞组的完整性；本地核对显示切片的 15 个 TEX 中有 8 个用到这样的条目，其中包括玩家座机的贴图。
+- **贴图没有选型：** [P2-05](../05/spec.md) 已提供唯一的图像与调色板转换器，但切片模型用到的 TEX 尚未声明。按 P2-05 的规则，用到[歧义条目](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed)的贴图映射为未确认，会阻塞组的完整性；本地核对显示切片的 15 个 TEX 中有 8 个用到这样的条目，其中包括玩家座机的贴图。
 - **三个表现角色的来源未知：** [P2-01](../01/spec.md#候选选择记录) 的切片定义要求弹丸、导弹与碎片各至少一个 Asset，暂时允许模型或图像两种 kind，等待本任务确认（U-027）。目前没有任何记录说明原版用什么绘制它们。
 - **没有 `models` 组：** 导入作业只在作业内保留 P2-05 的图形步骤结果，没有任务装配并发送 `models` 组。
 
@@ -140,7 +140,7 @@ reviewed: sha256:78d7582af903
   - MESH 与 MODL 的结构、part 字段、UV 平铺、部件列表的已知线索（列表 0 渲染出可辨认的完整模型，列表 1 高概率为残骸碎片，列表 2 为单色凸包、用途未确认）与模型对照见 [mesh](../../../original/formats/mesh.md)。MESH 是 32 位浮点、只有三角形、顶点在模型空间，量级与米一致；“米”是推断，不是已确认事实。
   - 已确认：MODL 处理函数会读取全部三个部件列表的 MESH 与 TEX 字段以及五个 SND 字段；效果回调 `0x3e590` 读取列表 1。见 [mesh 次级表现路径](../../../original/formats/mesh.md#secondary-presentation-model-reuse-bounded)与 [executable](../../../original/formats/executable.md#model-completion-and-cached-handle-follow-up)。
   - 机型到 MODL 的对应来自 M2ID（[hud §3](../../../original/formats/hud.md#3-id-lists-confirmed-structure)）；选定任务引用的 M2ID 槽位、MODL/MESH/TEX/SND 计数见[候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)；基地交互种类见 [executable](../../../original/formats/executable.md#bounded-slot-1-interaction-kind-evidence)。
-  - 最近色的度量与并列规则未确认，歧义条目清单与 EXE 有界检索的否定结果见 [textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)与 [executable](../../../original/formats/executable.md#native-tex-preparation-and-nearest-colour-search)。
+  - 最近色的度量与并列规则在编写本 spec 时未确认（2026-10-06 由 12 以 EXE 证据确认），歧义条目清单与 EXE 检索结果见 [textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed)与 [executable](../../../original/formats/executable.md#native-tex-preparation-and-nearest-colour-search)。
   - 相关未知项：[U-027、U-028、U-009、U-022](../../../original/unknowns.md#数据与格式)。
 - **生成本 spec 时的本地结构探查（2026-10-05，只记计数）：** 脚本在被忽略的 `local/research/p2-06/`。
   - 切片 5 个 MODL 共 149 个 MESH，三个列表合计 3,287 个顶点、3,460 个三角形；引用 15 个 TEX，全部为 raw、带嵌入调色板，其中 8 个用到歧义条目。
@@ -432,7 +432,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | 主题 | 范围 | 通过门槛与阻塞 |
 |---|---|---|
 | 弹丸、导弹与碎片的表现（U-027） | 对每个角色，确定原版绘制它所用的资源与路径。线索与入口，均为未经核实的探查结果：<br>- 列表 1 与效果回调 `0x3e590`；<br>- 未被 MODL 引用的 MESH、只有列表 1 的 MODL、不在选定任务中的小型 M2ID 模型；<br>- ANIM、EXPL 与 EXIC；<br>- 分配器调用点 `0x38780`、`0x3cb80`；<br>- 原版截图中开火、导弹与击毁的画面。 | 每个角色结论至少高概率，并归入以下一种：<br>1. **独立来源：** 整条目 MODL 或 P2-05 已支持的整条目图像记录，按[生产 Asset](#生产-asset-与来源)的规则转换为承担该角色的 Asset；其他来源形式（独立 MESH、容器子资源、ANIM、EXPL 等）须先修订本 spec，批准其表示与命名，ANIM 还须先修订 P2-05 spec（其技术决定 6）；<br>2. **另一模型的内部元素：** 例如碎片就是被摧毁模型的列表 1；<br>3. **程序生成，没有原版资源。**<br>第 2、3 种无法满足 P2-01 的角色定义，须提出 P2-01 切片定义修订（角色、kind 或基数变化须递增切片定义版本，并经用户批准）。所需修订批准前，或任一角色达不到高概率时，AC-13 为 blocked，不以猜测的 Asset 冒充完成。<br>**结论（P2-06/11、14）：** 碎片与导弹另有整条目来源（已实现）；三类效果的几何都由 RENS 与 EXE 静态数据生成，按 2026-10-06 修订以 `data` Asset 导入，见[效果几何数据](#效果几何数据) |
-| 歧义贴图条目（U-028） | 切片贴图实际被像素用到的每个歧义条目。P2-05 的已批准规则与 [textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed) 要求用 EXE 证据解除歧义：找到原版的最近色实现，从未检索的回调分发与绘制路径入手。截图中能区分候选颜色的逐条目像素证据只能作为辅助；只有 P2-05 spec 先修订并经用户批准、允许这类证据解除歧义之后，才能代替 EXE 证据，且须说明如何排除光照明暗的干扰 | 每个条目的结论都满足上述门槛，并记录证据类型。生产展开路径对每个已有结论的条目，得到的显示颜色与结论一致。结论与暂定规则不同时，只修改 `nearestColourMap` 一处（P2-05 技术决定 2），并更新 textures 与 U-028；全局度量与并列规则只有在 EXE 证据下才标为已确认。任一条目未达门槛时，用到它的贴图映射保持未确认，`models` 组不完整，AC-14 为 blocked |
+| 歧义贴图条目（U-028） | 切片贴图实际被像素用到的每个歧义条目。P2-05 的已批准规则与 [textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed) 要求用 EXE 证据解除歧义：找到原版的最近色实现，从未检索的回调分发与绘制路径入手。截图中能区分候选颜色的逐条目像素证据只能作为辅助；只有 P2-05 spec 先修订并经用户批准、允许这类证据解除歧义之后，才能代替 EXE 证据，且须说明如何排除光照明暗的干扰 | 每个条目的结论都满足上述门槛，并记录证据类型。生产展开路径对每个已有结论的条目，得到的显示颜色与结论一致。结论与暂定规则不同时，只修改 `nearestColourMap` 一处（P2-05 技术决定 2），并更新 textures 与 U-028；全局度量与并列规则只有在 EXE 证据下才标为已确认。任一条目未达门槛时，用到它的贴图映射保持未确认，`models` 组不完整，AC-14 为 blocked |
 | 部件结构 | 切片实际用到的部件列表、标志值与音效槽：记录已知含义与置信度。音效槽含义以 P2-08 的记录为准。另记录切片网格的三角形绕序与顶点法线一致性统计 | 只记录，不以未确认的含义改写 payload 或玩法 |
 
 ## 技术决定

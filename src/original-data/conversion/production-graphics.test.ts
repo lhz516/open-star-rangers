@@ -64,13 +64,14 @@ describe('production graphics', () => {
   it('maps the flight palettes to the DATA entry, the fonts to the HI cockpit font directory, each texture to its TEX entry and the P2-07 Assets to their records', () => {
     const { sourceFingerprint, mappings } = PRODUCTION_GRAPHICS_MAPPINGS;
     expect(sourceFingerprint).toBeNull();
-    const textures = TEXTURES.flatMap(([entry, ambiguous], index) => [
-      { id: `image/model-texture/${TEXTURE_NUMBERS[index]}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: ambiguous ? 'unconfirmed' : 'likely', unknowns: ['U-028'], evidence: [textureEvidence, nearestEvidence], resolution: 'declared' },
+    // Every image is likely: the nearest rule is confirmed and only runtime shading stays open (U-028).
+    const textures = TEXTURES.flatMap((entry, index) => [
+      { id: `image/model-texture/${TEXTURE_NUMBERS[index]}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: 'likely', unknowns: ['U-028'], evidence: [textureEvidence, nearestEvidence], resolution: 'declared' },
       { id: `palette/model-texture/${TEXTURE_NUMBERS[index]}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/palette`]], confidence: 'confirmed', unknowns: [], evidence: [textureEvidence], resolution: 'declared' },
     ]);
     // An effect image carries the effects research as well as the texture rule.
-    const effects = EFFECTS.flatMap(([role, entry, ambiguous]) => [
-      { id: `image/${role}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: ambiguous ? 'unconfirmed' : 'likely', unknowns: ['U-027', 'U-028'], evidence: [effectEvidence, textureEvidence, nearestEvidence], resolution: 'declared' },
+    const effects = EFFECTS.flatMap(([role, entry]) => [
+      { id: `image/${role}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: 'likely', unknowns: ['U-027', 'U-028'], evidence: [effectEvidence, textureEvidence, nearestEvidence], resolution: 'declared' },
       { id: `palette/${role}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/palette`]], confidence: 'confirmed', unknowns: [], evidence: [textureEvidence], resolution: 'declared' },
     ]);
     const projected = mappings.map(({ asset, parts, confidence, unknowns, evidence, resolution }) => ({
@@ -95,7 +96,8 @@ describe('production graphics', () => {
     const cockpitIds = new Set(COCKPIT_HUD_MAP.map(({ declaration }) => declaration.asset.id));
     expect(new Set(mappings.filter(({ asset }) => cockpitIds.has(asset.id)).map(({ confidence }) => confidence))).toEqual(new Set(['confirmed', 'likely']));
     const diagnostics = diagnoseSourceMappings(PRODUCTION_GRAPHICS_MAPPINGS, mappings.map(({ asset }) => asset));
-    expect(diagnostics.map(({ code }) => code).sort()).toEqual([...new Array(9).fill('source-unconfirmed'), ...new Array(39 + 86).fill('source-unverified')].sort());
+    // Every declared mapping is only unverified until the job verifies it; none is unconfirmed.
+    expect(diagnostics.map(({ code }) => code)).toEqual(new Array(39 + 86).fill('source-unverified'));
   });
 
   it('exports the approved P2-05, slice texture and P2-07 shares as the graphics step share, each bounding its payloads', () => {
@@ -147,8 +149,8 @@ describe('production graphics', () => {
     ]);
     const states = result.groups.flatMap(({ sources }) => sources.map(({ id, state, unknowns }) => `${id}:${state}:${unknowns.join()}`));
     expect(states).toEqual([
-      'image/missile:unconfirmed:U-027,U-028',
-      ...TEXTURES.map(([, ambiguous], index) => `${images[index]}:${ambiguous ? 'unconfirmed' : 'verified'}:U-028`),
+      'image/missile:verified:U-027,U-028',
+      ...TEXTURES.map((_, index) => `${images[index]}:verified:U-028`),
       'palette/flight/models:verified:', 'palette/missile:verified:',
       ...palettes.map(id => `${id}:verified:`),
       ...cockpitHudMap.map(({ id, unknowns }) => `${id}:verified:${unknowns.join()}`),
@@ -179,7 +181,7 @@ describe('production graphics', () => {
     // elements and the map palette share the one read of the CCKD entry.
     expect(Object.fromEntries(reads)).toEqual({
       10103: 1, 11075: 1, 10461: 1, 10467: 1, 10473: 1, 10479: 1, 11401: 1,
-      ...Object.fromEntries([...TEXTURES, ...EFFECTS.map(([, entry]) => [entry])].map(([entry]) => [entry, 1])),
+      ...Object.fromEntries([...TEXTURES, ...EFFECTS.map(([, entry]) => entry)].map(entry => [entry, 1])),
     });
     const payloads = result.groups.flatMap(group => group.payloads);
     const font = (id: string) => {
@@ -233,15 +235,14 @@ describe('production graphics', () => {
 });
 
 /**
- * The production texture table as recorded by the P2-06/04 local check, with row 16 appended for the debris model by
- * the P2-06/11 research: TEX entry and whether it uses an ambiguous entry.
+ * The production texture table's TEX entries as recorded by the P2-06/04 local check, with row 16 appended for the
+ * debris model by the P2-06/11 research.
  */
-const TEXTURES: readonly (readonly [number, boolean])[] = [
-  [10_613, true], [10_615, false], [10_617, true], [10_619, false], [11_073, false], [11_067, true], [10_003, true], [10_001, true],
-  [10_147, false], [10_321, true], [10_747, false], [10_749, false], [10_681, true], [11_009, false], [10_149, true], [10_151, false],
+const TEXTURES: readonly number[] = [
+  10_613, 10_615, 10_617, 10_619, 11_073, 11_067, 10_003, 10_001, 10_147, 10_321, 10_747, 10_749, 10_681, 11_009, 10_149, 10_151,
 ];
-/** The effect images the P2-06/11 research recorded: role, TEX entry and whether it uses an ambiguous entry. */
-const EFFECTS: readonly (readonly [string, number, boolean])[] = [['missile', 10_377, true]];
+/** The effect images the P2-06/11 research recorded: role and TEX entry. */
+const EFFECTS: readonly (readonly [string, number])[] = [['missile', 10_377]];
 const TEXTURE_NUMBERS = TEXTURES.map((_, index) => String(index + 1).padStart(2, '0'));
 
 /** Codes `firstCode` … `firstCode + count − 1` mapped to the glyphs of the same numbers. */
@@ -254,7 +255,7 @@ const fontEvidence = [
 ];
 const paletteEvidence = 'docs/original/formats/textures.md#1-data-global-palette-confirmed';
 const textureEvidence = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
-const nearestEvidence = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed';
+const nearestEvidence = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed';
 const effectEvidence = 'docs/original/formats/executable.md#effect-presentation-sources';
 
 /** Where the P2-07 declarations start: after the five P2-05 Assets and each texture's and effect image's palette and image. */
