@@ -101,6 +101,7 @@ src/
       converter-version.ts
       craft-binding.ts
       logic-sources.ts
+      convert-logic.ts
     formats/
       payload-block.ts
       object-record.ts
@@ -206,7 +207,7 @@ src/
 - [logic/](../../src/content/logic/)（[P2-09/04](../plan/p2/09/subtasks/04-logic-content.md)）：`logic` 组的规范逻辑内容，形状与约束见 [P2-09 spec](../plan/p2/09/spec.md#规范逻辑数据)。
   - **类型与限值：** [logic-content.ts](../../src/content/logic/logic-content.ts) 定义 `MissionContent`、`MissionGroup`、`MissionDeclaration`、`CraftTypeTable`、`WingmanRoster`、`StrategicMapFrame`、按角色区分的 `LogicPayload`，以及 `LOGIC_LIMITS` 与 payload schema 版本 1。字段声明顺序就是规范编码顺序；规则输入的字段名不表示语义已确认。
   - **读取器：** [logic-readers.ts](../../src/content/logic/logic-readers.ts) 的 `readMissionContent`、`readCraftTypeTable`、`readWingmanRoster` 与按角色分派的 `readLogicContent` 读取已解码的纯数据，返回冻结副本，-0 规范化为 0。结构、类型、取值范围与限值错误一律为 `invalid-logic-payload`（共用的基础读取器的错误也改报此码，路径不变）；数组先查长度再逐项读取。单个 payload 内的引用错误为 `logic-reference-mismatch`：声明序号与规范顺序（`object` 声明在前，最多 64 条，其后为编组首次使用的声明）、编组模板与成员的来源标记（双向一致）、成员回指、放置矩形与锚点、AI 目标，以及僚机选项不得引用任务结构。跨 Asset 的一致性不在这里检查。
-  - **编码：** [logic-payload.ts](../../src/content/logic/logic-payload.ts) 的 `encodeLogicPayload` 先严格读取，再输出无空白的可打印 ASCII JSON 字节（独占新 buffer）。`decodeLogicPayload(bytes, descriptor)` 依次检查：描述符的角色与 kind、payload schema 版本、字节已转移与长度上限（在读取任何字节之前）、逐字节可打印 ASCII、JSON 语法、按角色读取，然后要求重新编码与输入逐字节相同（否则 `non-canonical-payload`），最后要求 payload 内的 Asset 引用恰为描述符依赖（否则 `logic-reference-mismatch`）。payload 身份由完整性验证核对，这里不重复。
+  - **编码：** [logic-payload.ts](../../src/content/logic/logic-payload.ts) 的 `encodeLogicPayload(payload, reserve?)` 先严格读取，再输出无空白的可打印 ASCII JSON 字节（独占新 buffer）；可选的 `reserve` 在检查上限与分配字节之前收到字节数，供转换器先计量预算。`decodeLogicPayload(bytes, descriptor)` 依次检查：描述符的角色与 kind、payload schema 版本、字节已转移与长度上限（在读取任何字节之前）、逐字节可打印 ASCII、JSON 语法、按角色读取，然后要求重新编码与输入逐字节相同（否则 `non-canonical-payload`），最后要求 payload 内的 Asset 引用恰为描述符依赖（否则 `logic-reference-mismatch`）。payload 身份由完整性验证核对，这里不重复。
   - [contract-validation.ts](../../src/content/contract-validation.ts) 为此追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`；诊断只含结构路径与固定原因，不回显名称或数值。合成内容由 [logic-content.test-support.ts](../../src/content/logic/logic-content.test-support.ts) 生成，名称带内容测试自己的标记。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
@@ -294,13 +295,29 @@ src/
   - `data/wingman-roster`：SCCT 的 `wingmen` 子资源；
   - `mission/first-campaign`：SCCT 的候选槽位子资源（由 `CLASSIC_P2_SLICE.candidate` 生成）与 SCEN 条目。
 
-  条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。`verifyLogicSources(source, openArchive)` 按一个顺序、只用同一个已验证来源完成核验，因此映射只会由该来源的读取证实。转换编排传入带缓存的 `openArchive`，每个目录只读一次。步骤如下：
+  Asset 引用集中在 `LOGIC_ASSETS`，条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。`verifyLogicSources(source, openArchive)` 按一个顺序、只用同一个已验证来源完成核验，因此映射只会由该来源的读取证实。转换编排传入 `openEachArchiveOnce(source)`，每个目录只读一次。步骤如下：
   1. 按目录项的大小检查每个映射条目的 payload 限值（在读取之前）；
   2. 调用 `verifySourceMappings` 读取每个 locator，只把不含子资源的映射升为 `verified`；
   3. 读取并以切片候选解析映射的 SCCT，核对子资源：候选槽位的 SCEN 条目 ID 必须是同一映射中的 SCEN 部件，僚机记录必须解析成功，所有子资源都在同一张 SCCT 中；
   4. 一致时升为 `verified`，否则在 `sources.mappings[i].parts[j].alternatives[k]` 报 `subresource-mismatch`。
 
   返回冻结的 `{ table, sources, campaign }`：`sources` 是 `assetSourceStates` 推导、绑定指纹的来源状态，`campaign` 是解析结果，供转换复用。
+- **转换编排：** [convert-logic.ts](../../src/original-data/conversion/convert-logic.ts) 的 `convertLogic(source)` 产出 `logic` 组草稿：
+  1. 以 `verifyLogicSources` 核验映射并解析 SCCT；
+  2. 只读取映射的 SCEN 与 M2ID 并解析；
+  3. 以 `bindCraftTypes` 绑定任务与僚机名单引用的机型；
+  4. 核对跨 Asset 的一致性：任务恰有一条记录为玩家机型，僚机选项都不是玩家机型，否则为 `unsupported-payload`；
+  5. 组装三个 payload。`mapFrame` 按 executable 的世界扇区网格与战略地图投影记录生成：+x 向右，−y 向上，中心为原点，`halfExtent` 为扇区数 × 比例 ÷ 2；
+  6. 按 Asset ID 升序编码，并生成描述符与 payload 记录。
+
+  返回冻结的 `{ draft, usage }`。`draft` 是 `GroupDraft`（描述符、各占独立 buffer 的 payload、来源状态），身份由调用方以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 写入。生产身份基础是 [converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `productionIdentityBasis(sourceFingerprint)`：来源为 `original-import`，带 P2-01 的 schema、切片常量与 `PRODUCTION_CONVERTER_VERSION`。
+- **预算：** 同一模块的 `LOGIC_BUDGET_LIMITS` 是 `logic` 组的预算上限：`assets` 8、`dependencyEdges` 32、`payloadBytes` 1,048,576、`missionObjects` 256、`missionReferences` 4,096，其余维度为 0。
+  - **计量时机：** 每个 Asset 分两次计量：Asset、依赖边与两类任务计数在复制与编码 payload 之前计量；`payloadBytes` 由 `encodeLogicPayload` 的 `reserve` 回调在得到规范字节数之后、检查 payload 上限与分配字节之前计量。
+  - **计数规则**（spec 的[限值与预算](../plan/p2/09/spec.md#限值与预算)）：
+    - `missionObjects`：任务声明与僚机声明的总数；
+    - `missionReferences`：每个声明的机型、放置矩形、锚点、编组与 AI 目标（非 null 时各计一次），编组的模板与每个成员位置，每个机型到 model 的引用，以及任务的 2 个、僚机名单的 1 个 Asset 引用。
+  - **超限：** `over-budget` 转为 `SourceError('limit-exceeded')`，`limit` 为维度名、上限与观测值，位置是该 Asset 的来源条目（僚机名单为 SCCT 的 `/wingmen`）；`budget-overflow` 报 `invalid-payload`。
+  - **可达性：** 结构限值下只有 `missionReferences` 与 `payloadBytes` 可能超限，`SourceLimitName` 为此追加了这五个维度名。
 
 ### 原版来源映射
 
@@ -387,7 +404,7 @@ src/
   - 返回绑定本来源指纹的新冻结表：条目级映射为 `verified`；含子资源 locator 的映射一律为 `declared`，由理解该 payload 的转换任务核验。
   - 每个封包的目录在一次核验中只读一次，条目字节不跨部件保留；首个错误终止核验，不修改输入。
   - 可选的第三个参数 `readEntry`（`EntryReader` 类型）替换模块内部的默认读取，供转换步骤让核验与转换共用条目读取（P2-05）；错误位置的改写、等价备选核对与结果都不变。公开模块只导出这个类型，不导出读取封包的函数。
-- **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
+- **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单，`syntheticVerifiedSource(files)` 用该白名单识别含这些文件与 1 MiB 不读取填充的合成光盘。[source-error.test-support.ts](../../src/original-data/source-error.test-support.ts) 的 `sourceFailure(action, hidden)` 等待 `SourceError`，核对位置语法与隐私后返回不含原因的诊断。
 
 ### 图形转换
 

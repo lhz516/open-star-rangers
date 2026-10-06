@@ -98,7 +98,7 @@ updated: 2026-10-05
 | [06-craft-binding.md](./subtasks/06-craft-binding.md) | 04, 05 | completed |
 | [07-file-range-locator.md](./subtasks/07-file-range-locator.md) | 02 | completed |
 | [08-logic-sources.md](./subtasks/08-logic-sources.md) | 05, 07 | completed |
-| [09-logic-conversion.md](./subtasks/09-logic-conversion.md) | 03, 04, 06, 08 | pending |
+| [09-logic-conversion.md](./subtasks/09-logic-conversion.md) | 03, 04, 06, 08 | completed |
 | [10-import-stage.md](./subtasks/10-import-stage.md) | 03, 09 | pending |
 | [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | pending |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 10, 11 | pending |
@@ -120,6 +120,12 @@ updated: 2026-10-05
   - 修订经 rubber-duck 审阅后按该授权视为重新批准。
 
   S/AC 编号、子任务 ID 与依赖不变，只调整相关子任务的范围与验收。
+- **2026-10-05 — 子任务 09 更正 AC-09 的可触发预算维度：** 原文要求经转换器触发 `missionObjects` 与 `missionReferences` 的超限。子任务 01 的修订规定编组模板与成员必须是段 1 记录的别名，因此结构限值下：
+  - 任务声明至多 64 个，僚机至多 16 个，`missionObjects` 至多 80，低于上限 256，不可达；
+  - 64 个编组、每组 64 个成员位置即超过 `missionReferences` 上限 4,096；
+  - 64 个编组各写入 256 个布局元素即超过 `payloadBytes` 上限 1,048,576。
+
+  处理：按上述授权，把 spec 与子任务 09 中 AC-09 的可触发维度更正为 `missionReferences` 与 `payloadBytes`；其余维度的不可达依据记在 09 的完成证据中。S/AC 编号与子任务依赖不变。
 
 ## 审批
 

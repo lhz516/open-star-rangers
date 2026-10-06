@@ -448,7 +448,7 @@ S-02 的结论必须是以下四种之一：
 | AC-06 | 绑定是唯一的生产来源：<br>- 源码中没有第二份机型到模型的表；<br>- 命名规则产生合法且唯一的 Asset ID；<br>- 同一 MODL 只有一个 ID；<br>- 合成 M2ID 把两个机型指向同一 MODL 时共用 ID，指向不同 MODL 时 ID 不同；<br>- 绑定与 M2ID 解析不一致时失败 | Node 测试与源码搜索证据；P2-06 对齐由其 spec 承接，并在本任务证据中记录交接 |
 | AC-07 | 生产映射表能通过 `readSourceMappingTable` 读取，且满足：<br>- 经 `verifySourceMappings` 后，不含子资源的部件为 `verified`；<br>- 带子资源的部件只有在转换器解析一致后才升为 `verified`；<br>- 解析不一致时报 `subresource-mismatch`；<br>- 来源状态绑定已识别指纹；<br>- 映射置信度与 U 项符合 [`logic` 组 Asset](#logic-组的-asset) 表 | Node 测试，使用合成映射表与合成光盘；生产表另以只读方式核对形状 |
 | AC-08 | `ManifestIdentity` 满足以下要求：<br>- 对相同输入结果相同；<br>- 任一描述符、依赖、payload 身份、来源状态、`ConverterVersion` 或来源变化，结果都不同；<br>- 结果符合 P2-01 token 语法；<br>- 作业中的每个组都携带同一身份。<br>`ConverterVersion` 在生产代码中只有一个定义 | Node 测试与源码搜索 |
-| AC-09 | 合成来源经生产转换器得到的 `logic` 组满足以下要求：<br>- 以 `CLASSIC_P2_SLICE` 调用 `validateGroup` 的结果为 `group-complete`；<br>- 外部要求恰为绑定的 model Asset；<br>- 来源为 `original-import`，带合成指纹；<br>- 每个 payload 独占，可由 `payloadTransferList` 转移；<br>- 转换器计入的预算用量，等于按[计数规则](#限值与预算)独立计算的值。<br>**预算阈值：** 以本 spec 批准的上限调用预算计量函数，五个设限维度各在恰好等于上限时通过，超出 1 时返回 `over-budget`。经转换器可以触发的超限（至少 `missionObjects` 与 `missionReferences`）用合成样本触发，并返回 `limit-exceeded`；其余维度在结构限值下不可达，证据中注明，不为达到阈值而制造契约之外的 Asset。<br>篡改 payload 后，组为 `incomplete` | Node 测试 |
+| AC-09 | 合成来源经生产转换器得到的 `logic` 组满足以下要求：<br>- 以 `CLASSIC_P2_SLICE` 调用 `validateGroup` 的结果为 `group-complete`；<br>- 外部要求恰为绑定的 model Asset；<br>- 来源为 `original-import`，带合成指纹；<br>- 每个 payload 独占，可由 `payloadTransferList` 转移；<br>- 转换器计入的预算用量，等于按[计数规则](#限值与预算)独立计算的值。<br>**预算阈值：** 以本 spec 批准的上限调用预算计量函数，五个设限维度各在恰好等于上限时通过，超出 1 时返回 `over-budget`。经转换器可以触发的超限（`missionReferences` 与 `payloadBytes`）用合成样本触发，并返回 `limit-exceeded`；其余维度在结构限值下不可达，证据中注明，不为达到阈值而制造契约之外的 Asset。<br>篡改 payload 后，组为 `incomplete` | Node 测试 |
 | AC-10 | 生产导入作业以可注入的合成白名单运行，满足以下要求：<br>- 消息依次为 `identify-source` 进度、`identified`、`convert-logic` 进度、`group logic`、`finished`（`groups` 为 `['logic']`）；<br>- 递增后的协议版本在两端一致，旧版本消息被拒绝；<br>- app 持有者接受该组，`takeGroups()` 一次性移交；<br>- 转换失败时报 `failed`（`source` 或 `content` 层），不发送组；预算超限经宿主与持有者到达时，为 `source` 层的 `limit-exceeded`，`limit` 的维度名、上限与观测值完整保留；<br>- P2-04 已有的 Node 与浏览器测试继续通过 | Node 集成测试，使用宿主、真实结构化克隆端口与持有者；`pnpm check` |
 | AC-11 | `loadMission` 满足以下要求：<br>- **正向：** 对合法的合成逻辑数据，`MissionSetup` 的声明（含放置引用、成员回指与 AI 目标）、阵营、模型、基地交互、玩家、编组（含布局）、名称备用池、生成矩形、僚机选项与地图框架都符合预期。<br>- **确定性：** 两次载入深度相等；结果冻结，并与输入隔离。<br>- **前提失败：** 以下每项都抛出 `CoreInputError`，路径准确：没有或有两个玩家、僚机选项解析为玩家、引用的机型缺失、机型表多出机型、任务或僚机名单引用的 Asset ID 不一致。<br>- **透传：** 单个 payload 内部的错误（如编组引用的声明不存在）由读取器报告为内容层错误，Core 原样传递，不改为 `CoreInputError`。<br>- **纯净：** Core 中没有 RNG、宿主时间或 `original-data` 依赖 | Node 测试；ESLint 与边界回归 |
 | AC-12 | S-12 不适用：证据记录 S-02 的结论 2 及其文档位置；`OriginalAssetLocator` 的形状与校验未改变，已有 locator 测试不变地通过 | 文档核对与源码 diff；既有测试 |
@@ -517,5 +517,7 @@ S-01、S-02 的研究结论属于验收门槛；2026-10-05 的研究结果已按
 - **授权：** 用户在同日的 execute-goal 调用中明确授权：子任务因需修订 spec 而阻塞时，可直接修订 spec、goal 与 subtasks，并在 goal 的执行记录中说明。
 - **审阅：** 修订经 rubber-duck 审阅，适用意见已采纳。
 - **生效：** 修订依据该授权生效，S/AC 编号不变。
+
+**2026-10-05 AC-09 更正：** 子任务 09 发现上述修订后 `missionObjects` 不可达、`payloadBytes` 可达，按同一授权更正 AC-09 的可触发维度，记录见 goal 执行记录。
 
 批准不代表实现完成。之后若再触发研究门槛，同样须取得用户批准或授权。

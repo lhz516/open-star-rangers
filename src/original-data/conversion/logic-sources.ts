@@ -1,13 +1,15 @@
+import type { AssetReference } from '../../content/asset-contract.ts';
+import { readAssetId, readAssetKind } from '../../content/asset-id.ts';
 import type { SourceStateSet } from '../../content/source-state.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
-import type { ImfatArchiveHandle } from '../archive/archive-reader.ts';
-import type { DiscPath } from '../disc/disc-path.ts';
 import { MODEL_LIST_LIMITS } from '../formats/m2id.ts';
 import { requireEntryBytes } from '../formats/payload-block.ts';
 import { CAMPAIGN_LIMITS, parseCampaignTable, type ParsedCampaignTable } from '../formats/scct.ts';
 import { SCENARIO_LIMITS } from '../formats/scen.ts';
 import { assetSourceStates, readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
+import type { ImfatArchiveHandle } from '../archive/archive-reader.ts';
+import type { DiscPath } from '../disc/disc-path.ts';
 import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 
@@ -19,6 +21,14 @@ const { campaignGroup, campaignSlot } = CLASSIC_P2_SLICE.candidate;
 export const CAMPAIGN_SLOT_SUBRESOURCE = `group-${campaignGroup}/slot-${campaignSlot}`;
 /** The SCCT sub-resource of the selectable wingman records. */
 export const WINGMEN_SUBRESOURCE = 'wingmen';
+
+const reference = (id: string, kind: string): AssetReference => Object.freeze({ id: readAssetId(id), kind: readAssetKind(kind) });
+/** The Assets of the `logic` group (P2-09 spec, `logic` 组的 Asset). */
+export const LOGIC_ASSETS = Object.freeze({
+  craftTypes: reference('data/craft-types', 'data'),
+  wingmanRoster: reference('data/wingman-roster', 'data'),
+  mission: reference('mission/first-campaign', 'mission'),
+});
 
 const SCENARIO_NOB = 'MAIN/SCENARIO.NOB';
 /** Entry IDs from docs/original/formats/scenario.md §4 (SCCT, SCEN of group 0 / slot 1) and hud.md §3 (M2ID). */
@@ -34,7 +44,7 @@ export const LOGIC_SOURCE_MAPPINGS: SourceMappingTable = readSourceMappingTable(
   sourceFingerprint: null,
   mappings: [
     {
-      asset: { id: 'data/craft-types', kind: 'data' },
+      asset: LOGIC_ASSETS.craftTypes,
       parts: [{ alternatives: [{ discPath: 'MAIN/SR.NOB', entry: { id: LOGIC_SOURCE_ENTRIES.modelList, type: 'M2ID' }, subresource: null }] }],
       confidence: 'likely',
       unknowns: ['U-022', 'U-028'],
@@ -45,7 +55,7 @@ export const LOGIC_SOURCE_MAPPINGS: SourceMappingTable = readSourceMappingTable(
       resolution: 'declared',
     },
     {
-      asset: { id: 'data/wingman-roster', kind: 'data' },
+      asset: LOGIC_ASSETS.wingmanRoster,
       parts: [{ alternatives: [{ discPath: SCENARIO_NOB, entry: { id: LOGIC_SOURCE_ENTRIES.campaign, type: 'SCCT' }, subresource: WINGMEN_SUBRESOURCE }] }],
       confidence: 'likely',
       unknowns: ['U-023'],
@@ -53,7 +63,7 @@ export const LOGIC_SOURCE_MAPPINGS: SourceMappingTable = readSourceMappingTable(
       resolution: 'declared',
     },
     {
-      asset: { id: 'mission/first-campaign', kind: 'mission' },
+      asset: LOGIC_ASSETS.mission,
       parts: [
         { alternatives: [{ discPath: SCENARIO_NOB, entry: { id: LOGIC_SOURCE_ENTRIES.campaign, type: 'SCCT' }, subresource: CAMPAIGN_SLOT_SUBRESOURCE }] },
         { alternatives: [{ discPath: SCENARIO_NOB, entry: { id: LOGIC_SOURCE_ENTRIES.scenario, type: 'SCEN' }, subresource: null }] },
@@ -66,8 +76,21 @@ export const LOGIC_SOURCE_MAPPINGS: SourceMappingTable = readSourceMappingTable(
   ],
 });
 
-/** Opens an archive of the verified source; the converter memoizes it so each directory is read once. */
+/** Opens an archive of the verified source. */
 export type OpenArchive = (path: DiscPath) => Promise<ImfatArchiveHandle>;
+
+/** Opens each archive of `source` once and reuses its handle, so one conversion reads each directory once. */
+export function openEachArchiveOnce(source: VerifiedSource): OpenArchive {
+  const archives = new Map<DiscPath, Promise<ImfatArchiveHandle>>();
+  return path => {
+    let archive = archives.get(path);
+    if (!archive) {
+      archive = source.openArchive(path);
+      archives.set(path, archive);
+    }
+    return archive;
+  };
+}
 
 /** Payload limits by entry type, judged on directory sizes before any mapped entry is read. */
 const ENTRY_LIMITS: Readonly<Record<string, number>> = Object.freeze({

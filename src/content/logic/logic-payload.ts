@@ -18,9 +18,14 @@ const ROLES: Readonly<Record<LogicRole, { readonly kind: string; readonly path: 
 /** Read results are built in contract field order and hold only printable ASCII strings, so this text is canonical. */
 const canonicalText = (payload: LogicPayload): string => JSON.stringify(payload.content);
 
-/** Reads `payload` strictly and returns its canonical bytes, within the byte limit, in a new buffer of their exact length. */
-export function encodeLogicPayload(payload: LogicPayload): Uint8Array {
+/**
+ * Reads `payload` strictly and returns its canonical bytes, within the byte limit, in a new buffer of their exact length.
+ * `reserve` receives the byte length before the limit is checked and the bytes are allocated, so a converter can charge
+ * it to its budget first.
+ */
+export function encodeLogicPayload(payload: LogicPayload, reserve?: (byteLength: number) => void): Uint8Array {
   const text = canonicalText(readLogicContent(payload.role, payload.content));
+  reserve?.(text.length);
   if (text.length > LOGIC_LIMITS.payloadBytes) fail('invalid-logic-payload', 'payload', 'must not exceed the logic payload byte limit');
   const bytes = new Uint8Array(text.length);
   for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index);

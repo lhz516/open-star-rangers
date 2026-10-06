@@ -70,6 +70,20 @@ describe('logic payload encoding', () => {
       mission.groups.push({ template: 1, members: [], spawnCount: 0, layout: Array(LOGIC_LIMITS.layoutElements).fill(extreme) });
     }
     expect(() => encodeLogicPayload({ role: 'mission', content: mission } as never)).toThrowError(contractError('invalid-logic-payload', 'payload'));
+    const reserved: number[] = [];
+    const refuse = (byteLength: number) => {
+      reserved.push(byteLength);
+      throw new RangeError('over budget');
+    };
+    expect(() => encodeLogicPayload({ role: 'mission', content: mission } as never, refuse)).toThrowError(RangeError);
+    expect(reserved).toHaveLength(1);
+    expect(reserved[0]).toBeGreaterThan(LOGIC_LIMITS.payloadBytes);
+  });
+
+  it('reserves the exact byte length before allocating the bytes', () => {
+    const reserved: number[] = [];
+    const bytes = encodeLogicPayload({ role: 'mission', content: syntheticMission() } as never, byteLength => reserved.push(byteLength));
+    expect(reserved).toEqual([bytes.length]);
   });
 
   it('rejects content its reader rejects', () => {

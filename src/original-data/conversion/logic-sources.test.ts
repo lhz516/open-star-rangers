@@ -5,30 +5,18 @@ import {
 } from '../formats/formats.test-support.ts';
 import { buildImfat } from '../synthetic.ts';
 import { readSourceMappingTable } from '../source-mapping.ts';
-import { SourceError } from '../source-error.ts';
-import { inLocationGrammar } from '../source-error.test-support.ts';
-import { archiveOpener, syntheticVerifiedSource } from '../source/source.test-support.ts';
-import { LOGIC_SOURCE_MAPPINGS, verifyLogicSources } from './logic-sources.ts';
+import { sourceFailure } from '../source-error.test-support.ts';
+import { syntheticVerifiedSource } from '../source/source.test-support.ts';
+import { LOGIC_SOURCE_MAPPINGS, openEachArchiveOnce, verifyLogicSources } from './logic-sources.ts';
 
 const filesWith = (scenario = syntheticScenarioArchive()) => ({ 'MAIN/SCENARIO.NOB': scenario, 'MAIN/SR.NOB': syntheticModelArchive() });
 
 const verify = async (files: Record<string, Uint8Array>, mappings?: unknown) => {
   const source = await syntheticVerifiedSource(files);
-  return { source, result: await verifyLogicSources(source, archiveOpener(source), mappings) };
+  return { source, result: await verifyLogicSources(source, openEachArchiveOnce(source), mappings) };
 };
 
-async function failure(action: () => Promise<unknown>): Promise<{ code: string; location: string; limit?: unknown }> {
-  try {
-    await action();
-  } catch (error) {
-    expect(error).toBeInstanceOf(SourceError);
-    const data = (error as SourceError).toData();
-    expect(inLocationGrammar(data)).toBe(true);
-    expect(JSON.stringify({ ...data, location: '' })).not.toMatch(new RegExp(`${MARKER}|\\b(?:3019|3121|3123)\\b`));
-    return data.limit === null ? { code: data.code, location: data.location } : { code: data.code, location: data.location, limit: data.limit };
-  }
-  throw new Error('expected a SourceError');
-}
+const failure = (action: () => Promise<unknown>) => sourceFailure(action, new RegExp(`${MARKER}|\\b(?:3019|3121|3123)\\b`));
 
 describe('logic source mappings', () => {
   it('declares one likely mapping per logic Asset with the spec unknowns', () => {
@@ -68,7 +56,7 @@ describe('logic source mappings', () => {
     const spec = defaultCampaignSpec();
     spec.groups[0][1] = [3121, 9101];
     expect(await failure(() => verify(filesWith(syntheticScenarioArchive(syntheticCampaign(spec))))))
-      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]' });
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]', limit: null });
   });
 
   it('rejects sub-resources in two campaign tables or ones the converter does not resolve', async () => {
@@ -81,14 +69,14 @@ describe('logic source mappings', () => {
       })),
     });
     expect(await failure(() => verify(files, withLocator(1, { subresource: 'pilots' }))))
-      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[1].parts[0].alternatives[0]' });
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[1].parts[0].alternatives[0]', limit: null });
     const second = buildImfat(3000, [
       { id: ENTRY_IDS.scenario, type: 'SCEN', data: syntheticScenario(defaultScenarioSpec()).bytes, relocations: syntheticScenario(defaultScenarioSpec()).relocations },
       { id: ENTRY_IDS.campaign, type: 'SCCT', data: syntheticCampaign(defaultCampaignSpec()).bytes, relocations: syntheticCampaign(defaultCampaignSpec()).relocations },
       { id: ENTRY_IDS.campaign + 1, type: 'SCCT', data: syntheticCampaign(defaultCampaignSpec()).bytes, relocations: syntheticCampaign(defaultCampaignSpec()).relocations },
     ]);
     expect(await failure(() => verify(filesWith(second), withLocator(2, { entry: { id: ENTRY_IDS.campaign + 1, type: 'SCCT' } }))))
-      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]' });
+      .toEqual({ code: 'subresource-mismatch', location: 'sources.mappings[2].parts[0].alternatives[0]', limit: null });
   });
 
   it('checks mapped entry sizes against the payload limits before reading them', async () => {
