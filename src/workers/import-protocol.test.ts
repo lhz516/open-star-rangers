@@ -304,6 +304,7 @@ describe('error code grammar', () => {
     'payload-not-exclusive': true, 'payload-aliased': true, 'payload-detached': true,
     'invalid-graphics-payload': true, 'unsupported-payload-schema': true, 'binding-mismatch': true,
     'palette-index-out-of-range': true, 'unmapped-character': true,
+    'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,
   };
   const limitNames: Record<DiscLimitName | SourceLimitName | BudgetDimension, true> = {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,

@@ -71,6 +71,10 @@ src/
       graphics-binding.ts
       expand-image.ts
       glyph-lookup.ts
+    logic/
+      logic-content.ts
+      logic-readers.ts
+      logic-payload.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -191,6 +195,11 @@ src/
   - **推导：** `deriveManifestIdentity(basis, drafts)` 严格读取身份基础与一个作业的全部组草稿（`GroupDraft`：组、按 ID 升序的描述符、payload 记录、来源状态集或 null），按 `RESOURCE_GROUPS` 顺序编码为带版本前缀的 ASCII 文本，结果为 `manifest:sha256:<64 位小写十六进制>`。任一身份基础字段、描述符字段、依赖、payload 身份或来源状态变化，结果都变化；组的传入顺序与 payload 记录不影响结果，推导也不读取 payload。空列表、重复或未知的组与格式错误的草稿以 `ContentContractError` 拒绝。测试中的固定向量锁定版本 1 编码。
   - **写入：** `applyManifestIdentity` 把同一身份写入每个组，返回冻结的 `IdentifiedGroup` 列表（可直接作为 `GroupInput` 交给完整性验证）。描述符、来源状态与 payload 记录都是读取后的副本，只有 payload 字节沿用调用者的视图，所有权仍按 `ownership.ts` 转移；payload 记录的错误路径使用调用者的草稿序号。
   - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义；任一转换器的输出可能变化时都要递增，它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。
+- [logic/](../../src/content/logic/)（[P2-09/04](../plan/p2/09/subtasks/04-logic-content.md)）：`logic` 组的规范逻辑内容，形状与约束见 [P2-09 spec](../plan/p2/09/spec.md#规范逻辑数据)。
+  - **类型与限值：** [logic-content.ts](../../src/content/logic/logic-content.ts) 定义 `MissionContent`、`MissionGroup`、`MissionDeclaration`、`CraftTypeTable`、`WingmanRoster`、`StrategicMapFrame`、按角色区分的 `LogicPayload`，以及 `LOGIC_LIMITS` 与 payload schema 版本 1。字段声明顺序就是规范编码顺序；规则输入的字段名不表示语义已确认。
+  - **读取器：** [logic-readers.ts](../../src/content/logic/logic-readers.ts) 的 `readMissionContent`、`readCraftTypeTable`、`readWingmanRoster` 与按角色分派的 `readLogicContent` 读取已解码的纯数据，返回冻结副本，-0 规范化为 0。结构、类型、取值范围与限值错误一律为 `invalid-logic-payload`（共用的基础读取器的错误也改报此码，路径不变）；数组先查长度再逐项读取。单个 payload 内的引用错误为 `logic-reference-mismatch`：声明序号与规范顺序（`object` 声明在前，最多 64 条，其后为编组首次使用的声明）、编组模板与成员的来源标记（双向一致）、成员回指、放置矩形与锚点、AI 目标，以及僚机选项不得引用任务结构。跨 Asset 的一致性不在这里检查。
+  - **编码：** [logic-payload.ts](../../src/content/logic/logic-payload.ts) 的 `encodeLogicPayload` 先严格读取，再输出无空白的可打印 ASCII JSON 字节（独占新 buffer）。`decodeLogicPayload(bytes, descriptor)` 依次检查：描述符的角色与 kind、payload schema 版本、字节已转移与长度上限（在读取任何字节之前）、逐字节可打印 ASCII、JSON 语法、按角色读取，然后要求重新编码与输入逐字节相同（否则 `non-canonical-payload`），最后要求 payload 内的 Asset 引用恰为描述符依赖（否则 `logic-reference-mismatch`）。payload 身份由完整性验证核对，这里不重复。
+  - [contract-validation.ts](../../src/content/contract-validation.ts) 为此追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`；诊断只含结构路径与固定原因，不回显名称或数值。合成内容由 [logic-content.test-support.ts](../../src/content/logic/logic-content.test-support.ts) 生成，名称带内容测试自己的标记。
 - [budget.ts](../../src/content/budget.ts)（[P2-01/05](../plan/p2/01/subtasks/05-budget-ownership-contract.md)）：
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
