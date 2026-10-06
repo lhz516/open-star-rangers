@@ -336,7 +336,7 @@ describe('error code grammar', () => {
     descriptorBytes: true, imageSectors: true, volumeDescriptors: true, directoryBytes: true, directoryRecords: true,
     rangeReadBytes: true, portReadBytes: true, sourceReadBytes: true, archiveEntries: true, entryBytes: true,
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
-    payloadEntryBytes: true, payloadItems: true, textBytes: true,
+    payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
   };
 
   it.each([

@@ -29,14 +29,15 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 ## 封包结构核对
 
-`tools/nob-check.ts` 在内存中解析一个 IMFAT 封包，用与导入相同的代码核对其结构（[P2-05](../plan/p2/05/spec.md) 的图形源结构读取见[源码结构](../engineering/source-structure.md#图形转换)）。
+`tools/nob-check.ts` 在内存中解析一个 IMFAT 封包，用与导入相同的代码核对其结构（[P2-05](../plan/p2/05/spec.md) 的图形源结构读取见[源码结构](../engineering/source-structure.md#图形转换)，[P2-06](../plan/p2/06/spec.md) 的 MESH 与 MODL 读取见[原版格式转换](../engineering/source-structure.md#原版格式转换)）。
 
 - **图形：**
   - DATA 须为 768 字节且分量不大于 63；
   - TEX 与 BITM 的整条目图像记录、MFDD 两个列表中的全部记录都经头部校验并解码；有嵌入调色板时，再核对每个不透明像素的索引都小于条目数；
   - CCKD 的字体目录须恰为 3 项，每个字体表都经读取校验。
-- **其余：** M2ID、NEBC 的 ID 引用，MESH、MODL 的解析与网格、贴图、音效引用。
-- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元），以及失败列表。失败只写条目 ID、类型与稳定 `code@结构位置`；研究用解析器与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形或其他条目内容。
+- **模型：** MESH 与 MODL 经导入共用的读取校验（MESH 失败位置为 `mesh`，MODL 为 `model`），再核对 MODL 部件的网格与贴图引用、音效槽引用都指向相应类型的条目。
+- **其余：** M2ID、NEBC 的 ID 引用。
+- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元），以及失败列表。失败只写条目 ID、类型与稳定 `code@结构位置`；ID 列表解析与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形或其他条目内容。
 - **退出码：** 没有失败时为 0；有任何失败、文件无法读取或封包不合法时为 1；缺少参数时为 1 并打印用法。
 - 结果对照的观察最大值记录在 [textures §5](../original/formats/textures.md#5-observed-maxima-against-the-p2-05-limits-confirmed) 与 [hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed)。
 

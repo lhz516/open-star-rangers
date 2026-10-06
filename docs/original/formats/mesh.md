@@ -10,7 +10,7 @@ related: [U-001, U-009, U-027]
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
-- Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseMesh`, `parseModel`)
+- Readers: [`src/original-data/formats/mesh.ts`](../../../src/original-data/formats/mesh.ts) (`readMeshCounts`, `readMesh`) and [`src/original-data/formats/modl.ts`](../../../src/original-data/formats/modl.ts) (`readModel`), shared by the import and nob-check
 - Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all 486 MESH and 19 MODL entries (13,166 vertices, 13,285 triangles) and checks every cross-reference.
 
 ## 1. MESH (Confirmed on all 486 entries)
@@ -56,6 +56,8 @@ Part, 28 bytes:
 | +24 | u32 | TEX entry ID, or 0 for none |
 
 Block size is always `44 + 28 × (total parts)`. All MESH, TEX, and SND references resolve to entries of the expected type.
+
+**Confirmed on all 19 entries (local structure probe, 2026-10-05; counts only):** the three lists are stored contiguously in list order right after the header, so a non-empty list points at 0x2C plus 28 × the parts of the lists before it; every empty list (6 in total) has a null pointer and count 0. The part field at +16 is 0 in every part, and the MESH header field at 0x08 is 0 in all 486 MESH entries. The readers reject any other layout.
 
 **Confirmed source reuse statistic:** collecting every part from all 19 MODL entries references 485 distinct MESH entries; one MESH source is referenced by more than one MODL. This is a source-format reuse relationship, not a decision that each MESH must become an independent canonical Asset. The unused/implicit geometry and the conversion ownership policy require separate analysis.
 

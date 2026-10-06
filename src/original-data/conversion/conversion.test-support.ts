@@ -21,9 +21,10 @@ export const inGraphicsLocationGrammar = (location: string): boolean => GRAPHICS
 
 /**
  * Asserts that `action` throws a SourceError with exactly this code, location and limit, and a reason the Worker
- * boundary can carry (1 to 512 printable ASCII characters); `graphics…` locations must be in the grammar.
+ * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…` locations must be
+ * in the grammar.
  */
-export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null): void => {
+export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null, reason?: string): void => {
   let thrown: unknown;
   try {
     action();
@@ -32,6 +33,7 @@ export const expectSourceError = (action: () => unknown, code: string, location:
   }
   expect(thrown).toEqual(expect.objectContaining({ name: 'SourceError', code, location, limit }));
   expect((thrown as { reason: string }).reason).toMatch(/^[ -~]{1,512}$/);
+  if (reason !== undefined) expect((thrown as { reason: string }).reason).toBe(reason);
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
 };
 

@@ -9,7 +9,9 @@ import {
   readMfdRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
 import { entryData, parseImfat } from '../src/original-data/imfat.ts';
-import { parseIdList, parseMesh, parseModel, PayloadError } from '../src/original-data/payloads.ts';
+import { readMesh } from '../src/original-data/formats/mesh.ts';
+import { readModel } from '../src/original-data/formats/modl.ts';
+import { parseIdList, PayloadError } from '../src/original-data/payloads.ts';
 import { SourceError } from '../src/original-data/source-error.ts';
 
 const file = process.argv[2];
@@ -101,20 +103,20 @@ for (const entry of archive.entries) {
         break;
       }
       case 'MESH': {
-        const mesh = parseMesh(block);
+        const mesh = readMesh(block, 'mesh');
         vertices += mesh.positions.length / 3;
         triangles += mesh.indices.length / 3;
         break;
       }
       case 'MODL': {
-        const model = parseModel(block);
+        const model = readModel(block, 'model');
         for (const part of model.partLists.flat()) {
-          if (typeById.get(part.meshId) !== 'MESH') throw new PayloadError(`part references non-MESH ${part.meshId}`);
-          if (part.textureId !== 0 && typeById.get(part.textureId) !== 'TEX') {
-            throw new PayloadError(`part references non-TEX ${part.textureId}`);
+          if (typeById.get(part.meshEntry) !== 'MESH') throw new PayloadError(`part references non-MESH ${part.meshEntry}`);
+          if (part.textureEntry !== 0 && typeById.get(part.textureEntry) !== 'TEX') {
+            throw new PayloadError(`part references non-TEX ${part.textureEntry}`);
           }
         }
-        for (const id of model.soundIds) {
+        for (const id of model.soundEntries) {
           if (id !== 0 && typeById.get(id) !== 'SND') throw new PayloadError(`sound slot references non-SND ${id}`);
         }
         break;

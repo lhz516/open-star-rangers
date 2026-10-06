@@ -204,6 +204,82 @@ export function syntheticSnd(fields: SyntheticSndFields): { data: Uint8Array; re
   return { data, relocations: [0] };
 }
 
+export interface SyntheticMeshFields {
+  /** x, y, z per vertex. */
+  positions: ArrayLike<number>;
+  /** u, v per vertex. */
+  uvs: ArrayLike<number>;
+  /** x, y, z per vertex. */
+  normals: ArrayLike<number>;
+  shadingSlotCount: number;
+  /** Each face's corners as [vertex index, shading slot]; each face's stored corner count is its length. */
+  faces: readonly (readonly (readonly [number, number])[])[];
+  /** Stored fields that default to the consistent values. */
+  structurePointer?: number;
+  structureLength?: number;
+  reserved?: number;
+  trailer?: number;
+}
+
+/** A code-generated MESH data block and its relocated structure pointer at offset 0, to spread into a `SyntheticEntry`. */
+export function syntheticMesh(fields: SyntheticMeshFields): { data: Uint8Array; relocations: number[] } {
+  const { positions, uvs, normals, shadingSlotCount, faces, structurePointer = 12, reserved = 0, trailer = 0 } = fields;
+  const length = 28 + (positions.length + uvs.length + normals.length) * 4 + faces.reduce((sum, corners) => sum + 4 + corners.length * 8, 0);
+  const data = new Uint8Array(length);
+  const view = new DataView(data.buffer);
+  let at = 0;
+  const u32 = (...values: number[]): void => {
+    for (const value of values) view.setUint32((at += 4) - 4, value, true);
+  };
+  const f32 = (values: ArrayLike<number>): void => {
+    for (let index = 0; index < values.length; index++) view.setFloat32((at += 4) - 4, values[index], true);
+  };
+  u32(structurePointer, fields.structureLength ?? length - 12, reserved, positions.length / 3);
+  f32(positions);
+  f32(uvs);
+  u32(shadingSlotCount);
+  f32(normals);
+  u32(faces.length);
+  for (const corners of faces) u32(corners.length, ...corners.flat());
+  u32(trailer);
+  return { data, relocations: [0] };
+}
+
+export interface SyntheticModlPart {
+  mesh: number;
+  /** TEX entry ID, 0 (the default) for none. */
+  texture?: number;
+  flags?: number;
+  colour?: readonly [number, number, number];
+  /** The +16 field, 0 unless a test needs another value. */
+  reserved?: number;
+}
+
+export interface SyntheticModlFields {
+  partLists: readonly [readonly SyntheticModlPart[], readonly SyntheticModlPart[], readonly SyntheticModlPart[]];
+  /** SND entry IDs of slots 0–4; all 0 by default. */
+  sounds?: readonly number[];
+  /** Stored {pointer, count} list headers; by default contiguous after the header, with null pointers for empty lists. */
+  listHeaders?: readonly (readonly [number, number])[];
+}
+
+/** A code-generated MODL data block and its relocated list pointers, to spread into a `SyntheticEntry`. */
+export function syntheticModl(fields: SyntheticModlFields): { data: Uint8Array; relocations: number[] } {
+  let next = 44;
+  const headers = fields.listHeaders ?? fields.partLists.map(list => {
+    const header = [list.length ? next : 0, list.length] as const;
+    next += list.length * 28;
+    return header;
+  });
+  const writer = new ByteWriter();
+  for (const [pointer, count] of headers) writer.u32(pointer, count);
+  writer.u32(...(fields.sounds ?? [0, 0, 0, 0, 0]));
+  for (const { mesh, texture = 0, flags = 1, colour = [128, 128, 128], reserved = 0 } of fields.partLists.flat()) {
+    writer.u32(flags, ...colour, reserved, mesh, texture);
+  }
+  return { data: writer.toBytes(), relocations: headers.flatMap(([pointer], list) => (pointer ? [list * 8] : [])) };
+}
+
 /** A 36-byte image record followed (at the given offsets) by nothing else; callers append data. */
 export function imageRecord(
   w: ByteWriter,

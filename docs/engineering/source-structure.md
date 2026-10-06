@@ -110,6 +110,8 @@ src/
       scen.ts
       m2id.ts
       snd.ts
+      mesh.ts
+      modl.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -531,7 +533,7 @@ src/
   - `PRODUCTION_GRAPHICS_SHARE`：`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384（按结构上限与头部算出的上界不超过它；实际字形用量为 256 + 256 + 192），其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
   - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA 与带 3 个字库的 CCKD），供 Node、作业与浏览器测试使用。
 - **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。
-- [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表与 MESH/MODL 的研究用解析器及 `PayloadError`（归 P2-06），不再有第二套图像、调色板或字体解析。
+- [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表的研究用解析器 `parseIdList` 与 `PayloadError`；图像、调色板与字体由上述源读取处理，MESH 与 MODL 由 `formats/mesh.ts`、`formats/modl.ts` 处理（见[原版格式转换](#原版格式转换)）。
 
 合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`），`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
@@ -547,7 +549,15 @@ src/
   - **结构：** `readSndHeader(block, location)` 只核对结构：块至少 20 字节（`SND_HEADER_BYTES`）、恰有一个位于 0 的重定位且该处指针为 20、声明的样本字节数等于块大小减 20。不符时为 `invalid-payload`，位置为 `location` 加 `.size`、`.relocations`、`.sampleOffset` 或 `.sampleBytes`。结果是未按规则核对的原始头部字段 `{ sampleRate, bitsPerSample, flags, sampleBytes }`。
   - **规则：** `SndFormatRules` 是转换器接受的采样解释：`flags` 列出研究已确认的取值及各自的声道数与循环方式，`s16le` 表示 16 位样本是否已确认为有符号小端。规则之外的取值一律拒绝，不猜测默认值。生产规则由 P2-08 的生产音效模块提供。
   - **转换：** `convertSnd(block, rules, location)` 在结构核对之后依次核对：位宽为 8，或在规则接受时为 16；采样率为 8,000–44,100 Hz（`SND_SAMPLE_RATE_RANGE`）；`flags` 在规则内。这三项不符时为 `unsupported-payload`。最后核对样本字节数为帧大小的正整数倍，不符为 `invalid-payload`；帧大小取决于 `flags` 给出的声道数，所以这一项放在最后。全部通过后，用 `writeSoundPayload` 把样本原样复制为新的独占 payload，同时返回采样点数（帧数 × 声道数）。块视图不被修改，所有检查通过之前不分配缓冲。
-- **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnd(fields)` 由代码生成 SND 块与位于 0 的重定位，可直接展开为 `buildImfat` 的条目；指针与声明长度可单独改写，用于构造拒绝用例。
+- **MESH 与 MODL：** [formats/mesh.ts](../../src/original-data/formats/mesh.ts) 与 [formats/modl.ts](../../src/original-data/formats/modl.ts)（[P2-06/02](../plan/p2/06/subtasks/02-source-mesh-modl.md)，格式见 [mesh](../original/formats/mesh.md)）是这两种条目唯一的源结构读取，导入转换与 nob-check 共用。它们只接收已读入的块，失败位置恰为调用者给出的 `path`（转换器传入 `models[<Asset ID>].model` 或 `….parts[<l>][<p>].mesh`），不附加条目编号或偏移；`reason` 为固定的可打印 ASCII 文本。
+  - **MESH 计数：** `readMeshCounts(block, path)` 依次核对结构指针为 12、结构长度等于块长 − 12、保留字为 0，然后只读取顶点数与三角形数：为 0 或超过 `MODEL_LIMITS`（4,096）时报 `limit-exceeded`（`meshVertices`、`meshTriangles`，带 `observed`），之后才计算其他位置；最后要求块长恰为 28 + 32 × 顶点数 + 28 × 三角形数。转换器据此在分配之前扣除 `vertices` 与 `triangles`。
+  - **MESH 读取：** `readMesh(block, path)` 在计数之后核对着色槽数为 1 至 3 × 三角形数、位置/UV/法线全部有限、每个面恰为 3 个角、顶点与着色槽索引在范围内、尾字为 0，返回冻结的 `ModelGeometry`（`content/models` 的类型）：数组都是新缓冲，浮点逐位保留（含负零与次正规数，不像 `PayloadBlock.f32` 那样把 −0 规范化），三角形顺序与绕序按存储，允许未用顶点。
+  - **MODL 读取：** `readModel(block, path)` 先核对头部完整、列表按 0、1、2 的顺序紧接头部连续存放（非空列表的指针等于前面列表之后的位置，空列表的指针为 0）且计数不越出块，再核对部件总数为 1–256（否则 `limit-exceeded`，`modelParts`）、块长恰为 44 + 28 × 部件总数，最后逐个部件核对保留字段为 0、颜色分量不大于 255。返回冻结的 `{ partLists, soundEntries }`：部件为 `{ sourceFlags, colour, meshEntry, textureEntry }`（无贴图为 0），音效槽为 5 个 SND 条目号（空槽为 0）；条目号不在这里解析。
+  - **错误：** 除计数的 `limit-exceeded` 外，结构不符一律为 `invalid-payload`。[source-error.ts](../../src/original-data/source-error.ts) 的限值名为此追加 `meshVertices`、`meshTriangles`、`modelParts`。
+- **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 由代码生成单个格式的数据块及其重定位，可直接展开为 `buildImfat` 的条目：
+  - `syntheticSnd(fields)`：SND 块与位于 0 的重定位，指针与声明长度可单独改写；
+  - `syntheticMesh(fields)`：按顶点、着色槽数与各面的角点生成 MESH 块与位于 0 的重定位，结构指针、长度、保留字与尾字可单独改写；
+  - `syntheticModl(fields)`：按三个部件列表与音效槽生成 MODL 块与非空列表指针的重定位，列表头、部件颜色与保留字段可单独改写。
 - **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。
   - **通过：** 总量等于上限时通过。
   - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('budget-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
