@@ -135,7 +135,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | blocked |
 | [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | completed |
 | [15-slice-definition-region-locator.md](./subtasks/15-slice-definition-region-locator.md) | 14 | completed |
-| [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | pending |
+| [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | completed |
 | [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | pending |
 | [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | pending |
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | pending |

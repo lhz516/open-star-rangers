@@ -112,6 +112,7 @@ src/
       snd.ts
       mesh.ts
       modl.ts
+      le-executable.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -572,10 +573,15 @@ src/
   - **MESH 读取：** `readMesh(block, path)` 在计数之后核对着色槽数为 1 至 3 × 三角形数、位置/UV/法线全部有限、每个面恰为 3 个角、顶点与着色槽索引在范围内、尾字为 0，返回冻结的 `ModelGeometry`（`content/models` 的类型）：数组都是新缓冲，浮点逐位保留（含负零与次正规数，不像 `PayloadBlock.f32` 那样把 −0 规范化），三角形顺序与绕序按存储，允许未用顶点。
   - **MODL 读取：** `readModel(block, path)` 先核对头部完整、列表按 0、1、2 的顺序紧接头部连续存放（非空列表的指针等于前面列表之后的位置，空列表的指针为 0）且计数不越出块，再核对部件总数为 1–256（否则 `limit-exceeded`，`modelParts`）、块长恰为 44 + 28 × 部件总数，最后逐个部件核对保留字段为 0、颜色分量不大于 255。返回冻结的 `{ partLists, soundEntries }`：部件为 `{ sourceFlags, colour, meshEntry, textureEntry }`（无贴图为 0），音效槽为 5 个 SND 条目号（空槽为 0）；条目号不在这里解析。
   - **错误：** 除计数的 `limit-exceeded` 外，结构不符一律为 `invalid-payload`。[source-error.ts](../../src/original-data/source-error.ts) 的限值名为此追加 `meshVertices`、`meshTriangles`、`modelParts`。
+- **LE 区域：** [formats/le-executable.ts](../../src/original-data/formats/le-executable.ts)（[P2-06/16](../plan/p2/06/subtasks/16-executable-region-reader.md)，结构见 [executable §1](../original/formats/executable.md)）从 `ByteSource` 读取 EXE 的字节区域，供效果步骤使用。
+  - **打开：** `openLeExecutable(file, path)` 读 MZ 头取 LE 偏移，核对签名、字节序与字序、页大小为 `LE_PAGE_SIZE`、末页字节数，以及对象表、页映射、修正页表、修正记录表与数据页都在文件内、修正页表递增。对象数与页数先于其余读取按 `EXECUTABLE_LIMITS` 检查，超出为 `limit-exceeded`（`executableObjects`、`executablePages`），此时只读过两个头部。
+  - **区域：** `readRegion(region, path)` 先按 `executableRegion` 检查长度，再要求区域在对象的虚拟大小与其文件页之内、经页映射找到的每页都存于文件，且没有任何修正记录（含从前一页跨入的记录）改写区域内的字节；结果是新的独立缓冲。每页的修正记录只解析一次；未知的源类型或保留标志无法证明不触及区域，一律拒绝。
+  - **错误：** 除限值外均为 `invalid-payload`，位置恰为调用者给出的 `path`；`reason` 为固定文本，不含偏移或字节。
 - **测试数据：** [synthetic.ts](../../src/original-data/synthetic.ts) 由代码生成单个格式的数据块及其重定位，可直接展开为 `buildImfat` 的条目：
   - `syntheticSnd(fields)`：SND 块与位于 0 的重定位，指针与声明长度可单独改写；
   - `syntheticMesh(fields)`：按顶点、着色槽数与各面的角点生成 MESH 块与位于 0 的重定位，结构指针、长度、保留字与尾字可单独改写；
   - `syntheticModl(fields)`：按三个部件列表与音效槽生成 MODL 块与非空列表指针的重定位，列表头、部件颜色与保留字段可单独改写。
+  - `syntheticLeExecutable(fields)`：按对象内容与各页修正记录生成完整的 LE 文件（MZ 头、LE 头、对象表、页映射、修正表与数据页），签名、字序、页大小、计数、各表偏移、页类型与存储顺序可单独改写；`leInternalFixup(offset)` 生成一条 32 位偏移的内部修正记录。
 - **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。`readConversionUsage(value)` 读取转换器的起始用量（前序步骤的转换用量）：须为完整的预算记录，且 `sourceReadBytes` 为 0（源读取由已验证来源计量，否则会重复扣除），否则为 `invalid-budget-value@usage.sourceReadBytes`；图形、逻辑与模型转换器都经它读取。
   - **通过：** 总量等于上限时通过。
   - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('budget-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。

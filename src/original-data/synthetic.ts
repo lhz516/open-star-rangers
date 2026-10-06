@@ -280,6 +280,99 @@ export function syntheticModl(fields: SyntheticModlFields): { data: Uint8Array; 
   return { data: writer.toBytes(), relocations: headers.flatMap(([pointer], list) => (pointer ? [list * 8] : [])) };
 }
 
+/** One object of a synthetic LE file: its stored bytes, split into 4,096-byte pages. */
+export interface SyntheticLeObject {
+  bytes: Uint8Array;
+  /** The object's size in memory; its stored bytes by default. A larger size leaves a tail not stored in the file. */
+  virtualSize?: number;
+}
+
+/** A code-generated MZ + LE executable; header fields default to the consistent values and can be overridden. */
+export interface SyntheticLeFields {
+  objects: readonly SyntheticLeObject[];
+  /** Raw fixup records by 1-based page map index; see `leInternalFixup`. */
+  fixups?: Readonly<Record<number, readonly number[]>>;
+  /** Page map entry types by 1-based index; 0 (stored in the file) by default. */
+  pageTypes?: Readonly<Record<number, number>>;
+  /** The stored page each page map entry names, as a permutation of 1…n; in order by default. */
+  storedOrder?: readonly number[];
+  mzSignature?: number;
+  leSignature?: number;
+  byteOrder?: number;
+  wordOrder?: number;
+  pageSize?: number;
+  pageCount?: number;
+  objectCount?: number;
+  lastPageBytes?: number;
+  /** Offsets relative to the LE header, or from the file start for the data pages. */
+  objectTableOffset?: number;
+  pageMapOffset?: number;
+  fixupPageTableOffset?: number;
+  fixupRecordTableOffset?: number;
+  dataPagesOffset?: number;
+}
+
+const LE_HEADER_AT = 0x40;
+const SYNTHETIC_LE_PAGE = 4_096;
+
+/** A fixup record patching a 32-bit offset at `offset` of its page (internal reference to object 1). */
+export const leInternalFixup = (offset: number): number[] => Array.from(new ByteWriter().u8(0x07, 0x10).u16(offset).u8(1).u32(0).toBytes());
+
+/** Builds an MZ stub, an LE header, the object table, page map, fixup tables and data pages, in that order. */
+export function syntheticLeExecutable(fields: SyntheticLeFields): Uint8Array {
+  const pages: Uint8Array[] = [];
+  const objects = fields.objects.map(({ bytes, virtualSize = bytes.length }) => {
+    const firstPage = pages.length + 1;
+    for (let at = 0; at < bytes.length; at += SYNTHETIC_LE_PAGE) {
+      const page = new Uint8Array(SYNTHETIC_LE_PAGE);
+      page.set(bytes.subarray(at, at + SYNTHETIC_LE_PAGE));
+      pages.push(page);
+    }
+    return { virtualSize, firstPage, pageCount: pages.length + 1 - firstPage };
+  });
+  const lastObject = fields.objects.at(-1)!.bytes;
+  const lastPageBytes = fields.lastPageBytes ?? (lastObject.length % SYNTHETIC_LE_PAGE || SYNTHETIC_LE_PAGE);
+  const fixups = Array.from({ length: pages.length }, (_, index) => fields.fixups?.[index + 1] ?? []);
+  const objectTable = 0x84;
+  const pageMap = objectTable + objects.length * 24;
+  const fixupPageTable = pageMap + pages.length * 4;
+  const fixupRecords = fixupPageTable + (pages.length + 1) * 4;
+  const recordBytes = fixups.reduce((total, records) => total + records.length, 0);
+  const dataPages = LE_HEADER_AT + fixupRecords + recordBytes;
+
+  const w = new ByteWriter().u16(fields.mzSignature ?? 0x5a4d).raw(new Uint8Array(0x3a)).u32(LE_HEADER_AT);
+  const header = new Uint8Array(0x84);
+  const view = new DataView(header.buffer);
+  view.setUint16(0, fields.leSignature ?? 0x454c, true);
+  view.setUint8(2, fields.byteOrder ?? 0);
+  view.setUint8(3, fields.wordOrder ?? 0);
+  view.setUint32(0x14, fields.pageCount ?? pages.length, true);
+  view.setUint32(0x28, fields.pageSize ?? SYNTHETIC_LE_PAGE, true);
+  view.setUint32(0x2c, lastPageBytes, true);
+  view.setUint32(0x40, fields.objectTableOffset ?? objectTable, true);
+  view.setUint32(0x44, fields.objectCount ?? objects.length, true);
+  view.setUint32(0x48, fields.pageMapOffset ?? pageMap, true);
+  view.setUint32(0x68, fields.fixupPageTableOffset ?? fixupPageTable, true);
+  view.setUint32(0x6c, fields.fixupRecordTableOffset ?? fixupRecords, true);
+  view.setUint32(0x80, fields.dataPagesOffset ?? dataPages, true);
+  w.raw(header);
+  for (const { virtualSize, firstPage, pageCount } of objects) w.u32(virtualSize, 0, 0, firstPage, pageCount, 0);
+  const stored = fields.storedOrder ?? pages.map((_, index) => index + 1);
+  stored.forEach((number, index) => w.u8((number >>> 16) & 0xff, (number >>> 8) & 0xff, number & 0xff, fields.pageTypes?.[index + 1] ?? 0));
+  let offset = 0;
+  for (const records of fixups) {
+    w.u32(offset);
+    offset += records.length;
+  }
+  w.u32(offset);
+  for (const records of fixups) w.raw(records);
+  // Stored page n holds the logical page whose map entry names n; only the last stored page may be short.
+  const byStored: Uint8Array[] = [];
+  stored.forEach((number, index) => { byStored[number - 1] = pages[index]; });
+  byStored.forEach((page, index) => w.raw(index === pages.length - 1 ? page.subarray(0, lastPageBytes) : page));
+  return w.toBytes();
+}
+
 /** A 36-byte image record followed (at the given offsets) by nothing else; callers append data. */
 export function imageRecord(
   w: ByteWriter,

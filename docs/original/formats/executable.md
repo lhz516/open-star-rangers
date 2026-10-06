@@ -15,6 +15,18 @@ Confidence labels as defined in the [IMFAT](./imfat.md) doc. No code or disassem
 - MZ stub + **LE** (Linear Executable) image for the DOS/4GW extender; 32-bit protected mode.
 - Compiled with Watcom C/C++ (Watcom 32-bit run-time present).
 - The installed copy is byte-identical to the CD copy (see [manifest](../manifest.md)).
+- **LE structure (Confirmed, local reader check 2026-10-06):** little-endian byte and word order, 4,096-byte pages, 342 pages in 4 objects, and fixup records for the loader. The fields the product reader [`le-executable.ts`](../../../src/original-data/formats/le-executable.ts) uses:
+
+  | Structure | Layout |
+  |---|---|
+  | MZ header | `MZ` at 0x00; u32 LE header offset at 0x3C |
+  | LE header | `LE` at 0x00; u8 byte order 0x02, u8 word order 0x03 (0 = little-endian); u32 page count 0x14; u32 page size 0x28; u32 bytes on the last page 0x2C; u32 object table offset 0x40 and u32 object count 0x44; u32 page map offset 0x48; u32 fixup page table offset 0x68; u32 fixup record table offset 0x6C (these offsets relative to the LE header); u32 data pages offset 0x80 (from the file start) |
+  | Object entry, 24 bytes | u32 virtual size, u32 base address, u32 flags, u32 first page map index (1-based), u32 page count, u32 reserved |
+  | Page map entry, 4 bytes | 3-byte stored page number, most significant byte first, then u8 type (0 = stored in the file). Stored page n is at data pages offset + (n − 1) × page size; only the last stored page may be short |
+  | Fixup page table | page count + 1 u32 offsets into the fixup record table; page map entry i owns records [entry i − 1, entry i) |
+  | Fixup record | u8 source type (low nibble: patched size 1, 2, 4, 2, 6, 4 or 4 bytes for types 0, 2, 3, 5, 6, 7, 8; 0x10 alias, only on selectors and pointers; 0x20 offset list); u8 target flags (low two bits: internal, import by ordinal, import by name, internal entry; 0x04 additive, 32-bit when 0x20; 0x10 32-bit target offset; 0x40 16-bit object or module; 0x80 8-bit import ordinal; 0x08 reserved); then a signed 16-bit source offset, or a count and the offset list after the target data. A fixup that crosses a page boundary is recorded on both pages, with a negative offset on the later one |
+
+  The reader rejects any region that a fixup patches. All 28 planned effect regions (P2-06/16) read cleanly, and the opcode bytes of their 16 immediate-operand instructions match. Object numbers in region locators are the 1-based LE object numbers; offsets count from the object's start.
 - Loads in Ghidra 12.0.1 with the ghidra-lx-loader extension as 4 LE objects. Ghidra defaults to a Borland calling convention; Watcom passes arguments in EAX, EDX, EBX, ECX, so a custom calling convention is needed before decompiling.
 
 ## 2. Linked libraries (Confirmed unless noted)
