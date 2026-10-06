@@ -100,6 +100,7 @@ src/
   platform/
     audio/
       audio-controller.ts
+      browser-audio-controller.ts
     browser/
       browser-session-host.ts
     files/
@@ -187,6 +188,12 @@ src/
     - **错误转交：** 订阅者错误与发声清理错误交给 `reportError`。
     - **所有权：** 不保留、不修改、也不转移调用方的 payload。
   - **测试：** 用假能力与假生命周期宿主在 Node 中测试。
+- **浏览器工厂：** [browser-audio-controller.ts](../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })` 提供真实能力：
+  - **上下文：** `new AudioContext()`；构造器缺失或抛错时，控制器为 `unavailable`。
+  - **发声：** 每次发声一个接到 `destination` 的 `AudioBufferSourceNode`。
+  - **缓冲：** `new AudioBuffer(...)` 加 `getChannelData().set()`，不需要上下文。
+  - **生命周期：** `document.visibilityState` 与 `document` 的 `visibilitychange`、`window` 的 `pagehide`/`pageshow`。
+  - **范围：** 无导入副作用，没有测试注入口；只由应用程序检查，不进入 Node 程序。Chrome 中的验证见[工程约定](./README.md#本地浏览器-runner)。
 - **边界：** `platform/audio/` 不导入 `original-data`（字节端口也不行）、`render`、`ui`、`app`、`workers`，不使用网络 API 或 `localStorage`，见[工程约定](./README.md#lint-规则eslintconfigjs)。
 
 ### 内容基础契约与切片定义

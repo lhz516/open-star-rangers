@@ -119,10 +119,10 @@ export class NativeTarget {
   }
 }
 
-export async function nativeBrowser() {
+export async function nativeBrowser(args: readonly string[] = []) {
   return chromium.launch({
     ...installedBrowser(false),
-    args: ['--enable-automation'],
+    args: ['--enable-automation', ...args],
     ignoreDefaultArgs: ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'],
   });
 }

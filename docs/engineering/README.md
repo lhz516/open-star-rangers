@@ -153,6 +153,16 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - **损坏与并发：** 损坏与不兼容通过另一连接按导出常量直接改写已提交的真实记录，属于合成故障注入。改写后用 `readStoredRecords(page, true)` 的精确模式（逐字节列出 payload 记录）证明恢复与列出不删除、不修改任何记录。探针记录 payload 仓库的读取请求，用来证明超出预算的恢复没有读取 payload。并发用两个各持连接的适配器，按页面内 `signature`（各组 Asset ID 与 payload 摘要）判断恢复结果完全等于哪一个已提交候选。
   - **读失败与连接已关闭：** `holdReads` 在恢复或列出的只读事务上同样链式发出只读 `count()`，事务保持未完成时经 CDP 清除，得到原生只读中止与 `read-failed`。`closeNextTransaction` 是默认关闭的一次性故障注入：在下一次原生 `transaction()` 调用前关闭其真实连接，使其抛出 `InvalidStateError`，适配器报告 `storage-closed`；随后的操作重新打开数据库并报告实际状态。
   - **真实配额错误：** 本机 Chrome 154 实测，CDP `Storage.overrideQuotaForOrigin` 只有在会话首次使用 IndexedDB 之前设置才会作用于写入；之后再设置、降低或等待都不生效，重置后写入恢复。`Storage.getUsageAndQuota` 能看到覆盖值，`navigator.storage.estimate()` 始终看不到。因此用例在临时持久 profile 的第一个会话按默认配额提交旧包，重启浏览器后在首次使用前设置覆盖，再提交新包；payload 用不可压缩的伪随机字节，以免磁盘压缩使写入低于配额。覆盖期间，用例断言空间检查的完整结果等于按公式由随即独立读取的 `estimate()` 算出的结果；`sufficient`/`insufficient` 判定边界另把页面中真实 `estimate()` 的快照注入空间检查验证。
+- **音频播放**（P2-08 AC-10）：[audio-playback.spec.ts](../../e2e/audio-playback.spec.ts) 在页面内经开发服务器动态导入 `/src` 的生产工厂与 payload 模块，因此只属于 development 项目，由 production 的 `testIgnore` 排除，并由[配置回归](../../tools/e2e-configuration.test.ts)固定。只用代码生成的合成采样。
+  - **自管浏览器：** 每个用例自行启动 Chrome，并显式设置 `--autoplay-policy=document-user-activation-required`。本机 Chrome 154 实测，`user-gesture-required` 不会阻止 Web Audio。
+  - **无激活的驱动：** Playwright 的 `page.evaluate` 会给页面用户激活，掩盖被阻止的路径。所以页面操作都经 [native-lifecycle](../../e2e/support/native-lifecycle.ts) 的 `NativeTarget` 走原始 CDP `Runtime.evaluate`（不带 `userGesture`），解锁用 CDP `Input.dispatchMouseEvent` 的可信点击；证据记录 `navigator.userActivation.hasBeenActive` 在点击前为 false。
+  - **只读探针：** [支持模块](../../e2e/support/audio-playback.ts)的探针：
+    - 用 Proxy 包装 `AudioContext` 与 `AudioBuffer` 构造器，记录实例；
+    - 把每个接到已记录 `destination` 的连接另外分接到一个 `AnalyserNode`，该节点经增益为 0 的节点接到 `destination`，因此不改变输出；
+    - 运行中的上下文用峰值判断有无声音，不以调用 `start()` 或没有异常作为可听证据；
+    - 已挂起或已关闭的上下文不再渲染，分析节点保留最后一帧（实测关闭后峰值仍为 0.5）。此时的无输出证据是上下文状态，加上探针记录的“仍接到 `destination` 的应用节点数”为 0（包装 `connect`/`disconnect`）。
+  - **页面隐藏：** 用 `nativeBrowser([自动播放开关])` 启动 headed 浏览器，在 CDP 自建的 context 中开两个标签页，用 `Target.activateTarget` 切换，得到原生 hidden，并记录原生 `visibilitychange` 日志。
+  - **聚焦运行：** `pnpm test:e2e audio-playback.spec.ts --project=development`。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
 
 ## 合成 Runtime

@@ -132,7 +132,7 @@ updated: 2026-10-05
 | [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | pending |
 | [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05, 14 | pending |
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
-| [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | pending |
+| [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |
 | [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | pending |
 | [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | pending |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | pending |

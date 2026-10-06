@@ -49,17 +49,17 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-10（被阻止）：没有用户激活时，`unlock()` 后状态不是 `running`，`play` 返回 `audio-locked`，分析节点没有输出；证据记录 `hasBeenActive` 为 false。
-- [ ] AC-10（解锁、缓冲、输出）：
+- [x] AC-10（被阻止）：没有用户激活时，`unlock()` 后状态不是 `running`，`play` 返回 `audio-locked`，分析节点没有输出；证据记录 `hasBeenActive` 为 false。
+- [x] AC-10（解锁、缓冲、输出）：
   - 可信点击后状态为 `running`；
   - 缓冲的采样率、长度与逐样本数据等于 `u8` 与 `s16le` 合成采样的预期浮点值；
   - 播放期间观测到非零输出；
   - 自然结束或 `stop` 之后回到静音，发声数归零。
-- [ ] AC-10（页面隐藏）：真实 hidden 后发声停止、状态为 `suspended`、`play` 返回 `audio-suspended`；回到可见后恢复为 `running` 且不补播。证据记录原生 `visibilitychange` 日志。
-- [ ] AC-10（释放与不可用）：释放后上下文为 `closed`，生命周期监听为零，没有输出；移除 `AudioContext` 时为 `unavailable`。
-- [ ] AC-10（生产路径）：至少一条用例经 `browser-*` 生产工厂与真实 `AudioContext` 完成解锁、播放与输出观测。
-- [ ] 本用例不在 production 项目中运行，配置回归同步；浏览器错误收集没有未预期项。
-- [ ] `pnpm test:e2e audio-playback.spec.ts --project=development`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-10（页面隐藏）：真实 hidden 后发声停止、状态为 `suspended`、`play` 返回 `audio-suspended`；回到可见后恢复为 `running` 且不补播。证据记录原生 `visibilitychange` 日志。
+- [x] AC-10（释放与不可用）：释放后上下文为 `closed`，生命周期监听为零，没有输出；移除 `AudioContext` 时为 `unavailable`。
+- [x] AC-10（生产路径）：至少一条用例经 `browser-*` 生产工厂与真实 `AudioContext` 完成解锁、播放与输出观测。
+- [x] 本用例不在 production 项目中运行，配置回归同步；浏览器错误收集没有未预期项。
+- [x] `pnpm test:e2e audio-playback.spec.ts --project=development`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -68,3 +68,34 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：** [browser-audio-controller.ts](../../../../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })`。
+  - **能力：** 上下文为 `new AudioContext()`，构造器缺失时抛出，由控制器判为 `unavailable`；每次发声一个接到 `destination` 的 `AudioBufferSourceNode`；缓冲为 `new AudioBuffer` 加 `getChannelData().set()`；生命周期取自 `document` 与 `window`。
+  - **约束：** 无导入副作用，只由应用程序检查。
+  - **测试注入口：** 未增加。观测改用只读探针，见下文；子任务原先允许、但不强制注入口。
+- **E2E：** [audio-playback.spec.ts](../../../../../e2e/audio-playback.spec.ts) 与[支持模块](../../../../../e2e/support/audio-playback.ts)。
+  - **浏览器：** 每个用例自管 Chrome，带 `--autoplay-policy=document-user-activation-required`。复用 [native-lifecycle](../../../../../e2e/support/native-lifecycle.ts) 的 `NativeTarget`：原始 CDP `Runtime.evaluate` 不给用户激活，CDP 鼠标事件为可信点击。`nativeBrowser` 改为可追加启动参数，既有调用不变。
+  - **探针（只读）：**
+    - Proxy 记录 `AudioContext` 与 `AudioBuffer` 实例；
+    - 把接到已记录 `destination` 的连接另外分接到 `AnalyserNode`，该节点经增益为 0 的节点接到 `destination`，不改变输出；
+    - 包装 `connect`/`disconnect`，统计仍接到 `destination` 的节点数；
+    - 记录原生 `visibilitychange`。
+  - **配置：** [playwright.config.ts](../../../../../playwright.config.ts) 的 production 项目排除本用例；[e2e-configuration.test.ts](../../../../../tools/e2e-configuration.test.ts) 以 `it.each` 同时固定 resource-cache 与 audio-playback 只在 development 运行。
+- **Chrome 154.0.8037.98 结果**（`pnpm test:e2e audio-playback.spec.ts --project=development`：3 通过；`--repeat-each=3`：9 通过）：
+  - **被阻止：** 加载 4 个合成采样后经 CDP 调用 `unlock()`，得到 `locked`，上下文为 `suspended`，`play` 返回 `audio-locked`，分接峰值为 0，`hasBeenActive` 为 false。
+  - **解锁：** 可信点击后为 `running`，`hasBeenActive` 为 true。
+  - **缓冲：** 两个精确采样的缓冲逐样本等于测试端按公式独立算出的 `Math.fround` 值：`u8` 单声道 8,000 Hz 长 5；`s16le` 双声道 22,050 Hz 长 3（含 −1、32767/32768 与 1/32768）。
+  - **输出：** 循环方波峰值 0.500；`stop` 后峰值回到 0，发声数为 0，接入 `destination` 的节点数为 0；0.5 秒单次方波自然结束后同样回到 0。
+  - **释放：** 在循环发声时 `dispose()`，快照为 disposed；上下文变为 `closed`，接入节点数由 1 变为 0；控制器添加的 7 个监听（`visibilitychange`、`pagehide`、`pageshow`、`statechange`、3 个 `ended`）全部移除；之后 `play` 返回 `disposed`。
+    - 关闭后分析节点保留最后一帧（实测峰值仍为 0.5），所以无输出的证据是上下文已关闭且没有节点接入，不以峰值判断。
+  - **不可用：** 删除 `AudioContext` 构造器后可信点击解锁，结果为 `unavailable`，`play` 返回 `audio-unavailable`。
+  - **页面隐藏（headed，CDP 自建 context 与两个标签页，`Target.activateTarget`）：** 原生日志为 `hidden -> visible -> hidden -> visible`（第一项是标签页激活前的状态）。
+    - **隐藏：** 发声（峰值 0.500）后隐藏，状态与上下文都为 `suspended`，发声数为 0，接入节点数为 0，`play` 返回 `audio-suspended`。
+    - **恢复：** 回到可见后为 `running`，发声数与峰值都为 0，即不补播；之后新的发声可闻，释放后上下文关闭且监听为零。
+  - **浏览器错误：** 各用例 `NativeTarget.errors` 为空。
+- **回归：** `pnpm test:e2e` 全部 3 个项目通过（54 个）。`pnpm exec playwright test --project=development-headed`（native-lifecycle）通过。`pnpm check` 通过（102 个测试文件、2,976 个测试，构建成功）。
+- **rubber-duck：** 指出释放后的无输出未被证明。已改为在循环发声时释放；并实测确认关闭后的分析节点保留最后一帧，因此改以“上下文已关闭，且没有节点接到 `destination`”作为证据，挂起时同理。工程约定中记录了这一测量限制。
+- **simplify：**
+  - **采纳：** 模块内部符号不再导出；精确采样作为参数传入页面，只保留一份；释放等待改用 `until`；`buffers(maxLength)` 先过滤再复制；`peak()` 复用缓冲。
+  - **未采纳：** 共享页面模块加载器、共享浏览器生命周期源、通用 `withNativeTargets`，都要改动本子任务之外的既有模块；页面内的 `s16` 编码必须自包含，因为它会被序列化进页面。
+- **文档影响：** [工程约定](../../../../engineering/README.md#本地浏览器-runner)新增音频播放一条：命令、自动播放开关的选择、原始 CDP evaluate、只读探针与测量限制、headed 隐藏路线。[源码结构指南](../../../../engineering/source-structure.md)新增 `browser-audio-controller.ts` 的目录项与说明。
