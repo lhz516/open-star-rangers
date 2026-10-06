@@ -92,7 +92,7 @@ updated: 2026-10-05
   - [verify-source-mappings.test.ts](../../../../../src/original-data/source/verify-source-mappings.test.ts) 原有用例不改即通过。新增的用例证明传入的读取按映射、部件、备选顺序被调用，结果与默认读取相同，读取错误仍改写到定位路径。
 - **工程：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 与 `pnpm check` 通过。`conversion/` 只值导入公开的 `verify-source-mappings.ts` 与 `source-mapping.ts`，对 `archive-reader.ts` 与 `open-verified-source.ts` 只做纯类型导入。
 - **Rubber-duck：** 三项发现均已处理：
-  - **High：** 公开模块导出了读取封包的 `archiveEntryReader`。现改为模块私有，步骤自带读取，公开模块只导出类型。未新增静态导出面回归：现有规则只为产品入口检查导出面，扩大规则超出本任务范围。
+  - **High：** 公开模块导出了读取封包的 `archiveEntryReader`。现改为模块私有，步骤自带读取，公开模块只导出类型。未新增静态导出面回归：现有规则只为产品入口检查导出面，扩大规则超出本任务范围。之后按审查反馈补充了运行时回归（2026-10-05）：[verify-source-mappings.test.ts](../../../../../src/original-data/source/verify-source-mappings.test.ts) 断言该模块的运行时导出恰为 `verifySourceMappings`；临时导出默认读取时该用例失败。
   - **Medium：** 字库序号原先限制位数。现改为任意不带前导零的十进制，越界由读取报 `subresource-not-found`。
   - **Medium：** `graphics.declarations` 根位置不在 spec 语法内。已按授权澄清 spec，见 [goal 执行记录](../goal.md#执行记录)，并新增语法检查。
 - **Simplify：** 采纳步骤读取改为私有（测试改由句柄计数证明共用）、字库序号只解析一次、测试用显式句柄包装代替 Proxy、复用 `kindOf`，以及去掉多余的类型断言与重复的映射构造。未采纳：

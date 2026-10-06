@@ -10,6 +10,7 @@ import { block } from '../archive/archive.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 import { identifySource, type VerifiedSource } from './identify-source.ts';
 import { catalogFor } from './source.test-support.ts';
+import * as verifySourceMappingsModule from './verify-source-mappings.ts';
 import { verifySourceMappings, type EntryReader } from './verify-source-mappings.ts';
 
 const MARKER = 'PRIVATE-ENTRY-MARKER';
@@ -83,6 +84,12 @@ async function sourceFailure(action: () => unknown): Promise<{ code: string; loc
 const ALT = (alternative: number) => `sources.mappings[0].parts[0].alternatives[${alternative}]`;
 
 describe('verifySourceMappings', () => {
+  // A public source module may not export or wrap a low-level capability (engineering guide): the default archive
+  // reader stays private, and callers that share reads supply their own `EntryReader`.
+  it('exports only verifySourceMappings at runtime', () => {
+    expect(Object.keys(verifySourceMappingsModule)).toEqual(['verifySourceMappings']);
+  });
+
   it('binds the table to the fingerprint and verifies entry-level mappings only', async () => {
     const source = await verified();
     const input = table([
