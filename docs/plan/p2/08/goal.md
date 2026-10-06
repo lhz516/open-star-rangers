@@ -102,7 +102,7 @@ updated: 2026-10-05
 | S-09 | 07、08 | 07 生命周期与释放 Node 测试；08 真实解锁、隐藏与释放 E2E |
 | S-10 | 03、04、05、07、14 | 各子任务的诊断与边界测试；13 复核诊断不含字节或宿主文本 |
 | S-11 | 01–08、10、12、14 | 各子任务的 Node 测试与 E2E；10、12 的本地核对；13 汇总 |
-| S-12 | 01–12、14（各自同步） | 13 文档链接、元数据与内容一致性 |
+| S-12 | 01–12、14、15（各自同步） | 13 文档链接、元数据与内容一致性 |
 | AC-01 | 03、14 | 03 表驱动 Node 测试；14 改为 `source` 层 code 后复跑 |
 | AC-02 | 01 | 01 Node 测试 |
 | AC-03 | 04、11 | 11 读取真实生产表的 Node 测试与边界回归 |
@@ -117,7 +117,7 @@ updated: 2026-10-05
 | AC-12 | 12 | 12 本地 Node 脚本 |
 | AC-13 | 09、10、11 | 13 文档审阅、生产表一致性、`pnpm check:original` |
 | AC-14 | 10 | 10 开发者书面判定 |
-| AC-15 | 01–12、14 | 13 `pnpm check`、受影响的 E2E、`pnpm check:original`、文档检查 |
+| AC-15 | 01–12、14、15 | 13 `pnpm check`、受影响的 E2E、`pnpm check:original`、文档检查 |
 
 ## 子任务跟踪
 
@@ -138,7 +138,8 @@ updated: 2026-10-05
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | completed |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | completed |
 | [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
+| [15-status-alignment.md](./subtasks/15-status-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | completed |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -184,6 +185,10 @@ updated: 2026-10-05
     - **subtasks：** 05、06 的范围与验收随之调整；03、04、14 的已完成证据保留原样，只追加修订说明；13 的 code 名同步。
   - **不变：** S/AC 编号、音频转换与播放行为、依赖关系。
 - **2026-10-05 — 子任务 10 解除阻塞：** 开发者可以参与后，按清单在基准 DOSBox-X 中完成试听对照。四个核心角色的全部变体与四个爆炸效果音都判定一致，研究门槛达到，结果见 [10 的完成证据](./subtasks/10-listening-comparison.md#完成证据)。11 的依赖已满足。
+- **2026-10-05 — 最终对齐首轮发现文档缺口，新增修复子任务 15：** 13 的首轮核对中，工程检查、覆盖与不变量都已通过，但 rubber-duck 指出 STATUS 的下一步仍把 P2-08 列为批次 4 的待办，与已完成的跟踪表矛盾，AC-15 的文档对齐因此不成立。按最终对齐的修复规则：
+  - 13 退回 `pending`；
+  - 新增 [15](./subtasks/15-status-alignment.md)，负责 STATUS 的阶段摘要与下一步，插在 13 之前，并加入 13 的依赖；
+  - 15 完成后重跑 13。
 
 ## 审批
 
