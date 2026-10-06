@@ -5,7 +5,7 @@ import { compareText, fail } from '../../content/contract-validation.ts';
 import { encodeFontPayload, fontPayloadLength, type CharMapEntry } from '../../content/graphics/font-payload.ts';
 import { imagePalettes } from '../../content/graphics/graphics-binding.ts';
 import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics/graphics-format.ts';
-import { encodeImagePayload, imagePayloadLength, isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
+import { encodeImagePayload, imagePayloadLength, maskStride } from '../../content/graphics/image-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
@@ -15,7 +15,7 @@ import {
   type PaletteDeclaration,
 } from './graphics-declarations.ts';
 import {
-  decodeImageRecord, readCockpitFont, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
+  checkPaletteIndices, decodeImageRecord, readCockpitFont, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
 } from './source-graphics.ts';
 
 interface PaletteSource {
@@ -122,14 +122,7 @@ class Conversion {
     const decoded = decodeImageRecord(block, 0, at);
     const indices = decoded.indices;
     const mask = alpha === 'encoding' ? decoded.mask : colourKeyMask(indices, width, height, alpha.colourKey);
-    const entryCount = this.#paletteEntries.get(palette)!;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        if (indices[y * width + x] >= entryCount && isOpaque(mask, width, x, y)) {
-          throw new SourceError('palette-index-out-of-range', `${at}.pixels`, 'an opaque pixel addresses no entry of the image palette');
-        }
-      }
-    }
+    checkPaletteIndices({ width, height, indices, mask }, this.#paletteEntries.get(palette)!, at);
     const reversed = rowOrder === 'reversed';
     this.#add(declaration, dependencies, encodeImagePayload({
       width, height, palette, display,

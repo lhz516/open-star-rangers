@@ -12,7 +12,7 @@ updated: 2026-10-05
 | 脚本 | 用途 | 用法 |
 |---|---|---|
 | `tools/nob-list.ts` | 列出 IMFAT（`.NOB`）封包目录：条目数、各类型数量与大小 | `node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]` |
-| `tools/nob-check.ts` | 解析封包中全部 TEX、BITM、MFDD、CCKD 字体、M2ID、NEBC、MESH、MODL 条目并检查交叉引用，只输出统计与失败项 | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
+| `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录与 CCKD 字体表，并解析 M2ID、NEBC、MESH、MODL 与交叉引用；只输出计数、失败 code 与图形观察最大值（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
@@ -25,6 +25,19 @@ updated: 2026-10-05
 | `tools/ghidra/ReadTable.java` | 按固定步长打印内存中的表格及其指向的字符串 | `-postScript ReadTable.java <起始地址> <数量或数量所在地址> <步长>` |
 
 Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <脚本> <参数>` 运行；输出文件必须放在 `local/` 下。
+
+## 封包结构核对
+
+`tools/nob-check.ts` 在内存中解析一个 IMFAT 封包，用与导入相同的代码核对其结构（[P2-05](../plan/p2/05/spec.md) 的图形源结构读取见[源码结构](../engineering/source-structure.md#图形转换)）。
+
+- **图形：**
+  - DATA 须为 768 字节且分量不大于 63；
+  - TEX 与 BITM 的整条目图像记录、MFDD 两个列表中的全部记录都经头部校验并解码；有嵌入调色板时，再核对每个不透明像素的索引都小于条目数；
+  - CCKD 的字体目录须恰为 3 项，每个字体表都经读取校验。
+- **其余：** M2ID、NEBC 的 ID 引用，MESH、MODL 的解析与网格、贴图、音效引用。
+- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元），以及失败列表。失败只写条目 ID、类型与稳定 `code@结构位置`；研究用解析器与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形或其他条目内容。
+- **退出码：** 没有失败时为 0；有任何失败、文件无法读取或封包不合法时为 1；缺少参数时为 1 并打印用法。
+- 结果对照的观察最大值记录在 [textures §5](../original/formats/textures.md#5-observed-maxima-against-the-p2-05-limits-confirmed) 与 [hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed)。
 
 ## 光盘镜像核对
 

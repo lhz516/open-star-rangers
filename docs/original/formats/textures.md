@@ -77,3 +77,22 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 - 22 entries have no embedded palette. Displayed with DATA, their colours are clearly wrong, so their palette lives elsewhere (Unconfirmed, U-018).
 - Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes.
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
+
+## 5. Observed maxima against the P2-05 limits (Confirmed)
+
+The P2-05 conversion limits come from [the P2-05 spec](../../plan/p2/05/spec.md#限值与预算). The 256-entry palette is a format rule (8-bit indices); the 640×480 image size is a project safety cap, not a format limit, because the width and height fields are u32. The baseline values below fit within both. `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` (2026-10-05) decodes every image record with the shared source readers:
+
+- 123 image records in total: 59 TEX, 28 BITM, and the 36 records of the 3 MFDD entries;
+- the DATA entry passes (768 bytes, every component at most 63);
+- for the 64 records with an embedded palette (58 TEX, 6 BITM), every opaque pixel index is below the palette's entry count;
+- records without an embedded palette are checked for structure only; 8-bit indices cannot exceed 256 entries.
+
+The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-structure-check.md#完成证据).
+
+| Quantity | Baseline maximum | P2-05 limit |
+|---|---:|---:|
+| Image width | 640 (BITM); TEX 256, MFDD 96 | 640 (safety cap) |
+| Image height | 316 (BITM); TEX 256, MFDD 96 | 480 (safety cap) |
+| Embedded palette entries | 256 (TEX, BITM) | 256 (format rule) |
+| DATA entries | 256 | exactly 256 (format rule) |
+

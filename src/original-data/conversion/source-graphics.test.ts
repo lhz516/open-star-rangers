@@ -7,7 +7,7 @@ import {
   cockpitBlock as cockpit, expectSourceError as rejects, fontTable, hudFontTables, recordBlock as record,
 } from './conversion.test-support.ts';
 import {
-  decodeImageRecord, readCockpitFont, readCockpitFonts, readDataPalette, readEmbeddedPalette, readFontTable,
+  checkPaletteIndices, decodeImageRecord, readCockpitFont, readCockpitFonts, readDataPalette, readEmbeddedPalette, readFontTable,
   readImageRecordHeader, readMfdRecordOffsets,
 } from './source-graphics.ts';
 
@@ -135,6 +135,21 @@ describe('image record source', () => {
 
   it('places locations under the caller path', () => {
     rejects(() => readImageRecordHeader(record({ bitsPerPixel: 4, width: 1, height: 1, size: 1 }, [0]), 0, 'graphics[image/a]'), 'invalid-payload', 'graphics[image/a].record');
+  });
+});
+
+describe('palette index range', () => {
+  const image = (indices: number[], mask: number[] | null) =>
+    ({ width: 3, height: 1, indices: Uint8Array.from(indices), mask: mask && Uint8Array.from(mask) }) as Parameters<typeof checkPaletteIndices>[0];
+
+  it('accepts opaque indices below the entry count and ignores transparent pixels', () => {
+    expect(() => checkPaletteIndices(image([0, 1, 15], null), 16)).not.toThrow();
+    expect(() => checkPaletteIndices(image([0, 16, 15], [0b1010_0000]), 16)).not.toThrow();
+  });
+
+  it('rejects an opaque index at the entry count', () => {
+    rejects(() => checkPaletteIndices(image([0, 16, 15], null), 16, 'graphics[image/a]'), 'palette-index-out-of-range', 'graphics[image/a].pixels');
+    rejects(() => checkPaletteIndices(image([0, 1, 16], [0b1010_0000]), 16), 'palette-index-out-of-range', 'pixels');
   });
 });
 

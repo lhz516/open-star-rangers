@@ -55,7 +55,8 @@ python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'
 node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
 # Append --entries to include individual directory entries.
 
-# Parse every TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and check cross-references (counts only)
+# Check every DATA/TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and cross-references
+# (counts, failure codes and observed graphics maxima only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 
 # Next spec/review/goal/execute workflow node for a task (reads planning docs only)

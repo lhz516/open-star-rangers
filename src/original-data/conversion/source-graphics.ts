@@ -1,5 +1,5 @@
 import { GRAPHICS_LIMITS } from '../../content/graphics/graphics-format.ts';
-import { maskStride } from '../../content/graphics/image-payload.ts';
+import { isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
 import { SourceError, type SourceLimitName } from '../source-error.ts';
 
@@ -139,6 +139,15 @@ export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): Sou
   if (header.encoding === 'sprite-rle') return decodeSpriteRle(data, width, height, location);
   if (data.length !== width * height) invalid(location, 'raw image data must be width × height bytes');
   return Object.freeze({ width, height, indices: exclusiveBytes(data), mask: null });
+}
+
+/** Rejects an opaque pixel whose index addresses no entry of a palette with `entryCount` entries; transparent pixels are ignored. */
+export function checkPaletteIndices({ width, height, indices, mask }: SourceImage, entryCount: number, path = ''): void {
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    if (indices[pixel] >= entryCount && isOpaque(mask, width, pixel % width, Math.floor(pixel / width))) {
+      throw new SourceError('palette-index-out-of-range', fieldAt(path, 'pixels'), 'an opaque pixel addresses no entry of the image palette');
+    }
+  }
 }
 
 /** Checks the record at `offset`, then reads its embedded palette, stored as BGR, as new RGB triples. */
