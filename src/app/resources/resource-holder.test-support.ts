@@ -3,11 +3,14 @@ import type { ResourceGroup } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { validatePackage, type GroupInput } from '../../content/completeness.ts';
 import { readConverterVersion, readSourceFingerprint, type ContentIdentity } from '../../content/content-identity.ts';
+import type { LogicRole } from '../../content/logic/logic-content.ts';
+import { LOGIC_IDS, syntheticCraftTypes, syntheticMission, syntheticRoster } from '../../content/logic/logic-content.test-support.ts';
+import { encodeLogicPayload } from '../../content/logic/logic-payload.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
 import { readPayloadRecords } from '../../content/payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { readSourceStateSet } from '../../content/source-state.ts';
-import { SYNTHETIC_ASSETS, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
+import { syntheticGroup, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import {
   cacheKeyOf, type CacheEntry, type CacheEntryStatus, type CapacityCheckResult, type CommitResult, type ListResult, type ResourceCacheKey,
   type RestoreResult,
@@ -29,15 +32,66 @@ export const SYNTHETIC_PROFILE: ExpectedPackageProfile = Object.freeze({
   limits: PRODUCTION_PACKAGE.limits,
 });
 
-/** A group as the job owner hands it over: the synthetic group bound to `SYNTHETIC_FINGERPRINT`, frozen. */
-export const imported = (group: ResourceGroup, input: GroupInput = syntheticSourceGroup(group, SYNTHETIC_FINGERPRINT)): ImportedGroup =>
-  Object.freeze({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources });
+/** The synthetic logic content's craft models, renamed to the synthetic models group's Asset IDs. */
+const MODEL_IDS: Readonly<Record<string, string>> = Object.freeze({
+  'model/player-ship': 'model/synthetic-player',
+  'model/enemy-ship-1': 'model/synthetic-enemy-a',
+  'model/enemy-ship-2': 'model/synthetic-enemy-b',
+  'model/base-1': 'model/synthetic-base',
+});
+
+/** The synthetic craft type table, its models renamed to the synthetic models group's. */
+export function packageCraftTypes() {
+  const table = syntheticCraftTypes();
+  return { entries: table.entries.map(entry => ({ ...entry, model: { ...entry.model, id: MODEL_IDS[entry.model.id] } })) };
+}
+
+export interface LogicContents {
+  readonly mission?: unknown;
+  readonly craftTypes?: ReturnType<typeof packageCraftTypes>;
+  /** Replaces the mission payload bytes, which the manifest then describes. */
+  readonly missionBytes?: Uint8Array;
+  /** Roles that get a second Asset with the same content under the ID suffixed `-copy`, which nothing references. */
+  readonly duplicates?: readonly ('craft-types' | 'wingman-roster')[];
+}
+
+/**
+ * A logic group of real logic payloads (mission, craft types and wingman roster) bound to `SYNTHETIC_FINGERPRINT`,
+ * whose craft types use the synthetic models group's models; the mission and the table default to the synthetic logic content.
+ */
+export function logicGroupInput(
+  { mission = syntheticMission(), craftTypes = packageCraftTypes(), missionBytes, duplicates = [] }: LogicContents = {},
+): GroupInput {
+  const asset = (role: LogicRole, id: string, content: unknown, dependencies: readonly string[]) =>
+    ({ id, role, dependencies, bytes: encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]) });
+  const models = [...new Set(craftTypes.entries.map(({ model }) => model.id))].sort();
+  const tables = (id: string) => asset('craft-types', id, craftTypes, models);
+  const rosters = (id: string) => asset('wingman-roster', id, syntheticRoster(), [LOGIC_IDS.craftTypes]);
+  const specs = [
+    tables(LOGIC_IDS.craftTypes),
+    rosters(LOGIC_IDS.wingmanRoster),
+    ...duplicates.map(role => (role === 'craft-types' ? tables(`${LOGIC_IDS.craftTypes}-copy`) : rosters(`${LOGIC_IDS.wingmanRoster}-copy`))),
+    { ...asset('mission', LOGIC_IDS.mission, mission, [LOGIC_IDS.craftTypes, LOGIC_IDS.wingmanRoster]), ...(missionBytes ? { bytes: missionBytes } : {}) },
+  ].sort((left, right) => (left.id < right.id ? -1 : 1));
+  const input = syntheticGroup('logic', specs, { origin: { type: 'original-import', sourceFingerprint: SYNTHETIC_FINGERPRINT } });
+  input.sources = { sourceFingerprint: SYNTHETIC_FINGERPRINT, states: specs.map(({ id }) => ({ id, state: 'verified', unknowns: [] as string[] })) };
+  return input;
+}
+
+/**
+ * A group as the job owner hands it over, bound to `SYNTHETIC_FINGERPRINT` and frozen: by default the logic group of
+ * real logic payloads, or the synthetic group of the other kinds.
+ */
+export const imported = (
+  group: ResourceGroup,
+  input: GroupInput = group === 'logic' ? logicGroupInput() : syntheticSourceGroup(group, SYNTHETIC_FINGERPRINT),
+): ImportedGroup => Object.freeze({ group, manifest: input.manifest, payloads: input.payloads, sources: input.sources });
 
 /** All four groups of one complete package, in slice definition order. */
 export const allGroups = (): ImportedGroup[] => CLASSIC_P2_SLICE.groups.map(group => imported(group));
 
-const completeSummary = (group: ResourceGroup): ImportGroupSummary =>
-  ({ group, status: 'group-complete', assets: SYNTHETIC_ASSETS[group].length, diagnostics: [] });
+const completeSummary = ({ group, manifest }: ImportedGroup): ImportGroupSummary =>
+  ({ group, status: 'group-complete', assets: (manifest as { readonly assets: readonly unknown[] }).assets.length, diagnostics: [] });
 
 export const incompleteSummary = (group: ResourceGroup): ImportGroupSummary => ({
   group, status: 'incomplete', assets: null,
@@ -61,7 +115,7 @@ export function fakeJob(snapshot: ImportJobSnapshot, groups: readonly ImportedGr
 
 /** A finished job whose complete groups are `groups`, plus the incomplete summaries `incomplete`. */
 export function finishedJob(groups: readonly ImportedGroup[], incomplete: readonly ImportGroupSummary[] = []): FakeJob {
-  const summaries = [...groups.map(({ group }) => completeSummary(group)), ...incomplete];
+  const summaries = [...groups.map(completeSummary), ...incomplete];
   return fakeJob({ status: 'finished', jobId: 1, identity: IDENTITY, groups: summaries, usage: EMPTY_BUDGET_USAGE }, groups);
 }
 

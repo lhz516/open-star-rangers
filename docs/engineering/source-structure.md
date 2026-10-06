@@ -30,6 +30,7 @@ src/
       import-worker-port.ts
       import-job-owner.ts
     resources/
+      mission-diagnostics.ts
       resource-holder.ts
       resource-status.ts
     runtime/
@@ -872,10 +873,16 @@ src/
 - **提交：** 来自导入且全包 `complete` 的资源包立即以 `profile.limits` 与 `AbortSignal` 提交，状态为 `saving`，成功为 `saved`，失败为 `not-saved` 并附 P2-10 失败；部分结果与来自缓存的资源包不自动提交。`save()` 在完整资源包为 `not-saved` 时再次提交，不论来源（spec 行为表：列表中已没有该键时提供重新保存），保存中返回 false。意外拒绝报 `write-failed@commit`。替换与释放中止进行中的提交，其结果被丢弃。
 - **恢复：** `restore()` 只在未持有资源包、列出有可恢复条目且没有恢复进行时，以 `profile.limits` 恢复该键。结果的身份与预期配置不一致时为 `cache-incompatible@identity`，重新校验不完整时为 `cache-corrupt@groups`，都不持有；成功时以来源 `cache`、缓存状态 `saved` 替换资源包。意外拒绝报 `read-failed@restore`。恢复期间资源包被替换时，恢复立即结束，迟到的结果被静默丢弃。
 - **空间检查：** `checkSpace()` 以包预算的 `payloadBytes` 调用 `checkCapacity`，结果原样返回，只用于导入前的提示。
+- **任务载入诊断：** [mission-diagnostics.ts](../../src/app/resources/mission-diagnostics.ts) 的 `diagnoseMission(groups)` 在持有 `logic` 组时，取出并解码唯一的任务 Asset，再按任务引用的 Asset ID 取出机型表与僚机名单（切片只约束任务角色，组中可能有同角色的其他 Asset），都以 `decodeLogicPayload` 解码，然后调用 Core 的 `loadMission`。
+  - **结果：** 没有 `logic` 组时为 `not-attempted`。成功为 `loaded`，附结构摘要与引用校验；`CoreInputError` 与 `ContentContractError` 分别为 `failed` 的 `core-input` 与 `content`，附路径与原因。缺少某个角色的 Asset 时，由 `loadMission` 在对应的输入位置报 `CoreInputError`；解码错误保留 code 与原因，路径为 `logic[<Asset ID>].<路径>`；其他异常视为缺陷，继续抛出。
+  - **摘要：** 只含任务 Asset ID、`campaign`、地图轴向、坐标与编队偏移的单位标注、玩家声明序号，以及声明、编组、生成区域、僚机选项与名称池的条目数和各阵营的声明数；不含名称、消息或其他原版文字。
+  - **引用校验：** 解析到模型的声明数与僚机选项数，持有的资源包是否有完整的 `models` 组，以及每个模型 Asset ID 是否在其中。
+  - **持有者：** 每次替换资源包时计算一次，结果在缓存状态变化时保持不变；诊断函数抛出的缺陷交给 `reportError`，任务状态保持 `not-attempted`。
 - **状态阶梯：** [resource-status.ts](../../src/app/resources/resource-status.ts) 的 `resourceStatuses(holder, job?)` 按 spec 的成立条件派生状态，依次为：
   - 来源已识别：作业 `running` 或 `finished` 且带身份；
   - 部分转换或完整资源可查看：按全包判定；
-  - 完整包的已保存（缓存状态为 `saved`）或仅在内存中，保存中另有 `saving`。
+  - 完整包的已保存（缓存状态为 `saved`）或仅在内存中，保存中另有 `saving`；
+  - 任务可载入 Core 或任务不可载入，只按任务载入诊断的 `loaded` 与 `failed`。
 
   只凭作业 `finished` 得不到“完整资源可查看”。
 - **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用：中止提交，丢弃资源包与全部监听；之后的列出、提交与恢复结果都被忽略，也不通知任何人。持有者不拥有缓存实例，不关闭它。

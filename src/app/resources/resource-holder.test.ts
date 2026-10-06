@@ -25,7 +25,7 @@ describe('resource holder state ladder', () => {
     {
       name: 'four complete groups forming a complete package',
       job: () => finishedJob(allGroups()),
-      statuses: ['source-identified', 'complete-viewable', 'memory-only', 'saving'],
+      statuses: ['source-identified', 'complete-viewable', 'memory-only', 'saving', 'mission-loadable'],
       groups: ['complete', 'complete', 'complete', 'complete'],
       diagnostics: [],
       cache: { status: 'saving' },
@@ -33,7 +33,7 @@ describe('resource holder state ladder', () => {
     {
       name: 'a finished job without a group',
       job: () => finishedJob(others('audio')),
-      statuses: ['source-identified', 'partial-conversion'],
+      statuses: ['source-identified', 'partial-conversion', 'mission-loadable'],
       groups: ['complete', 'complete', 'complete', 'missing'],
       diagnostics: ['group-missing@groups.audio'],
       cache: { status: 'not-saved', failure: null, durationMs: null },
@@ -41,7 +41,7 @@ describe('resource holder state ladder', () => {
     {
       name: 'a finished job with an incomplete group',
       job: () => finishedJob(others('cockpit-hud-map'), [incompleteSummary('cockpit-hud-map')]),
-      statuses: ['source-identified', 'partial-conversion'],
+      statuses: ['source-identified', 'partial-conversion', 'mission-loadable'],
       groups: ['complete', 'complete', 'incomplete', 'complete'],
       diagnostics: ['group-missing@groups.cockpit-hud-map'],
       cache: { status: 'not-saved', failure: null, durationMs: null },
@@ -49,12 +49,21 @@ describe('resource holder state ladder', () => {
     {
       name: 'four complete groups whose package is incomplete',
       job: () => finishedJob(otherVersion()),
-      statuses: ['source-identified', 'partial-conversion'],
+      statuses: ['source-identified', 'partial-conversion', 'mission-loadable'],
       groups: ['complete', 'complete', 'complete', 'complete'],
       diagnostics: ['package-identity-mismatch@groups[1].manifest.identity'],
       cache: { status: 'not-saved', failure: null, durationMs: null },
     },
-  ])('derives the ladder for $name', ({ job: makeJob, statuses, groups, diagnostics, cache }) => {
+    {
+      name: 'a finished job without the logic group, whose mission is not attempted',
+      job: () => finishedJob(others('logic')),
+      statuses: ['source-identified', 'partial-conversion'],
+      groups: ['missing', 'complete', 'complete', 'complete'],
+      diagnostics: ['group-missing@groups.logic'],
+      cache: { status: 'not-saved', failure: null, durationMs: null },
+      mission: 'not-attempted',
+    },
+  ])('derives the ladder for $name', ({ job: makeJob, statuses, groups, diagnostics, cache, mission = 'loaded' }) => {
     const { holder: resources } = testHolder();
     const job = makeJob();
     expect(resources.acceptImport(job)).toBe(true);
@@ -62,7 +71,7 @@ describe('resource holder state ladder', () => {
     expect(resourceStatuses(snapshot, job.getSnapshot())).toEqual(statuses);
     expect(snapshot.package!.groups.map(({ group, status }) => [group, status])).toEqual(CLASSIC_P2_SLICE.groups.map((group, index) => [group, groups[index]]));
     expect(diagnosticCodes(snapshot.package!.completeness)).toEqual(diagnostics);
-    expect(snapshot.package).toMatchObject({ generation: 1, origin: 'import', cache, mission: { status: 'not-attempted' } });
+    expect(snapshot.package).toMatchObject({ generation: 1, origin: 'import', cache, mission: { status: mission } });
   });
 
   it('keeps the diagnostics of an incomplete group', () => {
@@ -87,11 +96,22 @@ describe('resource holder state ladder', () => {
     expect(resourceStatuses(empty)).toEqual([]);
   });
 
+  it('shows the mission as loadable only when it loaded, and as not loadable when it failed', () => {
+    const { holder: resources } = testHolder();
+    resources.acceptImport(finishedJob(allGroups()));
+    const summary = resources.getSnapshot().package!;
+    expect(summary.mission.status).toBe('loaded');
+    const withMission = (mission: PackageSummary['mission']): ResourceHolderSnapshot => ({ ...EMPTY, package: { ...summary, mission } });
+    expect(resourceStatuses(withMission({ status: 'not-attempted' }))).toEqual(['complete-viewable', 'memory-only', 'saving']);
+    expect(resourceStatuses(withMission({ status: 'failed', failure: { kind: 'core-input', path: 'input', reason: 'r' } })))
+      .toEqual(['complete-viewable', 'memory-only', 'saving', 'mission-not-loadable']);
+  });
+
   it('shows a complete package as saved only when its cache state is saved, and otherwise as memory only', () => {
     const { holder: resources } = testHolder();
     resources.acceptImport(finishedJob(allGroups()));
     const summary = resources.getSnapshot().package!;
-    const withCache = (cache: PackageSummary['cache']): ResourceHolderSnapshot => ({ ...EMPTY, package: { ...summary, cache } });
+    const withCache = (cache: PackageSummary['cache']): ResourceHolderSnapshot => ({ ...EMPTY, package: { ...summary, cache, mission: { status: 'not-attempted' } } });
     expect(resourceStatuses(withCache({ status: 'saved', via: 'commit', durationMs: 0 }))).toEqual(['complete-viewable', 'saved']);
     expect(resourceStatuses(withCache({ status: 'saved', via: 'restore', durationMs: 0 }))).toEqual(['complete-viewable', 'saved']);
     expect(resourceStatuses(withCache({ status: 'saving' }))).toEqual(['complete-viewable', 'memory-only', 'saving']);

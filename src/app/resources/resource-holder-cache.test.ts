@@ -15,6 +15,8 @@ import {
 import { resourceStatuses } from './resource-status.ts';
 
 const IDENTITY = identityOf(allGroups());
+/** The state ladder without the mission statuses, which mission-diagnostics.test.ts covers. */
+const cacheStatuses = (snapshot: Parameters<typeof resourceStatuses>[0]) => resourceStatuses(snapshot).filter(status => !status.startsWith('mission-'));
 const failed = (code: ResourceCacheFailureCode) => cacheFailure(code, 'database');
 
 /** A holder whose initial listing found nothing and whose complete import is now committing. */
@@ -96,12 +98,12 @@ describe('automatic commit', () => {
     expect(cache.commits).toHaveLength(1);
     expect(cache.commits[0].inputs).toBe(holder.current()!.groups);
     expect(cache.commits[0].limits).toBe(SYNTHETIC_PROFILE.limits);
-    expect(resourceStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only', 'saving']);
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only', 'saving']);
     clock.time = 142;
     cache.commits[0].result.resolve(committed(allGroups()));
     await flush();
     expect(holder.getSnapshot().package!.cache).toEqual({ status: 'saved', via: 'commit', durationMs: 42 });
-    expect(resourceStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'saved']);
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'saved']);
   });
 
   it('never commits a partial package', async () => {
@@ -121,7 +123,7 @@ describe('automatic commit', () => {
     cache.commits[0].result.resolve(failed(code));
     await flush();
     expect(holder.getSnapshot().package!.cache).toEqual({ status: 'not-saved', failure: failed(code), durationMs: 7 });
-    expect(resourceStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
     expect(holder.save()).toBe(true);
     expect(holder.save()).toBe(false);
     expect(holder.getSnapshot().package!.cache).toEqual({ status: 'saving' });
@@ -155,7 +157,7 @@ describe('automatic commit', () => {
     }
     await flush();
     expect(holder.getSnapshot().package!.cache).toMatchObject({ status: 'not-saved', failure: { code: 'over-budget' } });
-    expect(resourceStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
   });
 
   it('leaves the payloads unchanged and attached while it commits', async () => {
@@ -198,7 +200,7 @@ describe('restore', () => {
     expect(snapshot.restore).toEqual({ status: 'idle' });
     expect(snapshot.package).toMatchObject({ generation: 1, origin: 'cache', cache: { status: 'saved', via: 'restore', durationMs: 25 } });
     expect(snapshot.package!.groups).toEqual(CLASSIC_P2_SLICE.groups.map(group => expect.objectContaining({ group, status: 'complete' })));
-    expect(resourceStatuses(snapshot)).toEqual(['complete-viewable', 'saved']);
+    expect(cacheStatuses(snapshot)).toEqual(['complete-viewable', 'saved']);
     expect(holder.current()!.groups.map(({ group }) => group)).toEqual(CLASSIC_P2_SLICE.groups);
     // A package from the cache is never committed again on its own.
     expect(cache.commits).toEqual([]);
@@ -361,7 +363,7 @@ describe('generations', () => {
     cache.lists[2].resolve(listed());
     await flush();
     expect(holder.getSnapshot().package!.cache).toEqual({ status: 'not-saved', failure: cacheFailure('not-found', 'key'), durationMs: null });
-    expect(resourceStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
     expect(holder.current()).toBe(held);
     expect(holder.save()).toBe(true);
   });

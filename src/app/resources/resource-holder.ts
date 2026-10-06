@@ -8,6 +8,7 @@ import {
 } from '../../platform/storage/resource-cache-contract.ts';
 import type { ExpectedPackageProfile } from '../../workers/production-package.ts';
 import type { ImportGroupSummary, ImportJobOwner } from '../import/import-job-owner.ts';
+import { diagnoseMission, MISSION_NOT_ATTEMPTED, type MissionLoadState } from './mission-diagnostics.ts';
 
 // The app-level resource holder (P2-11 S-03, S-04, S-12): at most one resource package, owned by one app shell
 // instance, with the cache orchestration around it.
@@ -44,8 +45,6 @@ export type PackageCacheState =
   | { readonly status: 'saving' }
   /** `durationMs` is the page-clock time of the commit or restore that established it, for display only. */
   | { readonly status: 'saved'; readonly via: 'commit' | 'restore'; readonly durationMs: number };
-
-export type MissionLoadState = { readonly status: 'not-attempted' };
 
 /** Frozen plain data without payloads. */
 export interface PackageSummary {
@@ -132,7 +131,6 @@ export interface ResourceHolderOptions {
 
 const NOT_SAVED: PackageCacheState = Object.freeze({ status: 'not-saved', failure: null, durationMs: null });
 const SAVING: PackageCacheState = Object.freeze({ status: 'saving' });
-const NOT_ATTEMPTED: MissionLoadState = Object.freeze({ status: 'not-attempted' });
 const CHECKING: CacheCatalogState = Object.freeze({ status: 'checking' });
 const IDLE: RestoreState = Object.freeze({ status: 'idle' });
 const RESTORING: RestoreState = Object.freeze({ status: 'restoring' });
@@ -370,7 +368,7 @@ class Holder implements ResourceHolder {
 
   /**
    * Lets the outgoing package's consumers release it, aborts its commit, ends any restore, then holds the new package
-   * under the next generation; false when a release listener disposed the holder.
+   * under the next generation with its mission loaded once; false when a release listener disposed the holder.
    */
   #replace({ origin, groups, completeness, states, cache }: Replacement): boolean {
     const outgoing = this.#held?.package;
@@ -382,9 +380,19 @@ class Holder implements ResourceHolder {
     this.#generation += 1;
     this.#cacheEpoch += 1;
     const held = Object.freeze({ generation: this.#generation, origin, groups, completeness });
-    this.#held = { package: held, groups: states, cache, mission: NOT_ATTEMPTED };
+    this.#held = { package: held, groups: states, cache, mission: this.#loadMission(groups) };
     this.#publish();
     return true;
+  }
+
+  /** The mission diagnostics of `groups`; a defect is reported and leaves the mission not attempted. */
+  #loadMission(groups: readonly HeldGroup[]): MissionLoadState {
+    try {
+      return diagnoseMission(groups);
+    } catch (error) {
+      this.#report(error);
+      return MISSION_NOT_ATTEMPTED;
+    }
   }
 
   #build(): ResourceHolderSnapshot {
