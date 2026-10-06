@@ -62,7 +62,7 @@ Used only by the 186 ANIM frames; the data is smaller than `width × height`, so
 
 That textures map to the nearest DATA colour is Confirmed (above). How the original measures "nearest", and which entry it picks on a tie, is Unconfirmed (U-028):
 
-- **No EXE evidence yet.** A bounded read-only search found no nearest-colour code; see [executable](./executable.md#native-tex-preparation-and-nearest-colour-search).
+- **No EXE evidence yet.** Two bounded read-only searches (P2-05/11, and a wider one in P2-06/12) found no nearest-colour code; see [executable](./executable.md#native-tex-preparation-and-nearest-colour-search).
 - **Provisional project rule.** The importer records each texture's `nearest` binding to DATA. The production expansion path then applies one function, `nearestColourMap` (see [source structure](../../engineering/source-structure.md#图形-payload)): the least squared Euclidean distance in 8-bit RGB, with ties going to the lower DATA index. This is a project choice, not a finding, and its confidence is at most Likely. A mapping that uses `nearest` carries U-028.
 - **Candidate check (P2-05 subtask 11, 2026-10-05).** `local/research/p2-05/nearest-candidates.ts` used the shared source readers and this function on all 58 embedded TEX palettes (1,335 entries). It compared a fixed candidate set: squared distance in 8-bit RGB and in 6-bit VGA space (TEX components truncated by `>> 2` against the raw DATA values), each with ties going to the lower or to the higher index. The implemented function matches the 8-bit lower-index candidate on every entry.
 
