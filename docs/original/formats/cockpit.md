@@ -86,6 +86,17 @@ Slot 0 of 10097 and slot 0 of 10103 have the same element count, positions and f
 
 **10103 slot 0 is the HI forward cockpit (Likely).** Its 21,065 mismatching pixels all fall on the bottom panel in 17 regions where instruments are drawn over it at run time. The slot has 10 instrument records, one each of types 0–3, 5–9 and 12. Each record's rectangle at +4–+16 lies inside the 640×480 frame, and every mismatch region lies inside one of these rectangles (17 of 17 regions, 21,065 of 21,065 pixels). `0x49b2c` draws these records each frame after the +44 = 0 elements, so every mismatch has a recorded runtime overlay as its basis. By size the regions are two 96×97 MFD screens (the status display images are 96×96), four gauge-sized regions of about 30×55, the radar area with its crosshair lines, and small text-sized regions. The elements do not overlap. Where no instrument is drawn, the panel's index-0 pixels show the default palette's entry 0, consistent with the opaque draw. P2-07/15 matches each region to its instrument type. When 10097 is shown is Unconfirmed. Scripts: `local/research/p2-07/front-mismatch.ts`, `instrument-records.ts`.
 
+### Production composites and element overlaps (R5)
+
+Local check of [P2-07 subtask 15](../../plan/p2/07/subtasks/15-local-composite-check.md#完成证据), 2026-10-06. The local disc is opened through the product entry. The production graphics step converts the layouts, element images and palettes, and the production `composeLayout` draws each 640×480 frame. Script: `local/research/p2-07/composite-check.ts`. Only covered (opaque) frame pixels are compared, exactly, without scaling.
+
+| Layout | Overlapping opaque pixels | Screenshot | Compared | Matching | Differing pixels |
+|---|---:|---|---:|---:|---|
+| Front cockpit (10103 slot 0) | 0 | `srangers_002.png` | 132,505 | 111,440 | 21,065, all inside 8 of the slot's 10 instrument rectangles, drawn each frame over the elements ([above](#front-cockpit-source-r1)) |
+| Map frame (10103 slot 2) | 161 | `srangers_059.png`, `srangers_000.png`, `srangers_001.png`, `srangers_004.png` | 124,701 each | 124,701 each | None |
+
+**Draw order (Confirmed for these layouts):** the front cockpit elements do not overlap. The map frame elements overlap on 161 opaque pixels, where every covering element has the same colour. Any draw order therefore gives the same frame, and the four map screenshots match the stored-order composite there. The production results equal the research composites of P2-07/08.
+
 ### Bounded canonical graphics projection
 
 **Confirmed structure/counts:** `local/research/p2-01/fixed-graphics-profile.ts` uses the public Asset-reference syntax checks and existing image/font/MFDD parsers to enumerate the fixed HI resources: two layout units for slots 0 and 2, eight associated image units, three font libraries, and twelve image units from player status MFDD 10473. This is a partial 25-unit projection with eight layout-to-image edges, not the complete slice graph. Header fields, layer indices and dimensions stay in the ignored local report; no original pixels or strings enter tracked output.
