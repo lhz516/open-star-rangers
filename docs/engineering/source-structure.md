@@ -29,6 +29,9 @@ src/
     import/
       import-worker-port.ts
       import-job-owner.ts
+    resources/
+      resource-holder.ts
+      resource-status.ts
     runtime/
       fixed-step-clock.ts
       runtime-errors.ts
@@ -849,6 +852,22 @@ src/
   - **移交：** `takeGroups()` 只在 `finished` 之后返回一次完整的组 `{ group, manifest, payloads, sources }`（按收到顺序），容器全部冻结：内部容器在协议读取时已冻结，保留的条目在验证通过后立即冻结，移交列表在接受 `finished` 时冻结。payload 视图从此归调用者独占。再次调用、开始新作业或释放之后，以及其他状态，都返回 null。作业以任何方式结束时都释放它保留的 payload 引用：完成时结果移入一个新的冻结列表，在端口终止之后与 `finished` 快照一起发布；失败、取消与释放丢弃全部已收结果。
   - **终态与隔离：** 结束、失败、取消与释放都先终止端口，每个作业恰好一次。工厂返回之前送达的回调先排队，发布 `starting` 后按序处理；作业结束之后的回调都被丢弃，所以旧作业的迟到消息不会影响新作业。
   - **命令与快照：** `cancel()` 只对 `starting`、`running` 生效，同步变为 `cancelled`。`dispose()` 可重复调用：终止活动端口、丢弃结果、清空订阅，之后的命令返回 `disposed`、false 或 null，快照不再变化。快照冻结，在两次变化之间保持同一对象；`failed` 与 `cancelled` 不含来源身份与组。订阅者同步收到通知，抛出的错误交给 `reportError`，不影响其他订阅者与状态；通知过程中被移除（包括因释放）的订阅者不再收到这次通知。
+
+### 应用资源持有者
+
+[P2-11](../plan/p2/11/spec.md) 的应用级资源持有者在 [app/resources/](../../src/app/resources/) 中，DOM-free，由 Node 测试覆盖。回归测试确认它不使用网络 API、`window`、`document` 与 `localStorage`，不导入包、`render` 或 `ui`，且每个模块都在 Node 程序中检查。当前已实现：
+
+- **持有：** [resource-holder.ts](../../src/app/resources/resource-holder.ts) 的 `createResourceHolder({ reportError })` 由应用外壳实例创建，至多持有一份资源包 `HeldPackage`：代际、来源（`import` 或 `cache`）、按切片定义顺序排列的完整组 `{ group, manifest, payloads, sources }`，以及 `validatePackage(CLASSIC_P2_SLICE, groups)` 的全包判定。容器冻结；payload 视图直接取自作业移交，不复制、不转移、不改写，所有权归持有者。
+- **接收作业：** `acceptImport(job)` 只在作业快照为 `finished` 时调用 `takeGroups()`；失败、取消、组已被取走或释放之后都返回 false，不改变状态。部分结果同样替换原资源包。各组状态取自作业快照的组摘要：完整、不完整（附诊断）或缺失。
+- **替换：** 每次替换代际加 1。替换前先以旧资源包同步通知 `beforeReplace` 监听，使引用它的消费者先释放；之后才持有新包并通知订阅者。监听期间释放了持有者时，不再持有新包。
+- **快照：** `getSnapshot()` 返回冻结的 `{ package }`，两次变化之间为同一对象，不含 payload。`package` 含代际、来源、四个组的状态、全包判定、缓存状态（`not-saved` 附失败或 null、`saving`、`saved`）与任务载入状态。`current()` 为应用内的消费者返回带 payload 的资源包。
+- **状态阶梯：** [resource-status.ts](../../src/app/resources/resource-status.ts) 的 `resourceStatuses(holder, job?)` 按 spec 的成立条件派生状态，依次为：
+  - 来源已识别：作业 `running` 或 `finished` 且带身份；
+  - 部分转换或完整资源可查看：按全包判定；
+  - 完整包的已保存或仅在内存中，保存中另有 `saving`。
+
+  只凭作业 `finished` 得不到“完整资源可查看”。
+- **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用，丢弃资源包与全部监听，之后的结果被忽略，也不通知任何人。
 
 ## 职责与依赖
 

@@ -100,6 +100,9 @@ function urlReferences(file: ts.SourceFile): string[] {
 let appProgram: ts.Program | undefined;
 /** The real app program covers every production source; source rules share one build of it. */
 const sharedAppProgram = (): ts.Program => appProgram ??= program('app');
+let nodeProgramFiles: ReadonlySet<string> | undefined;
+/** The resolved files of the real Node program, which type-checks the DOM-free modules its tests import. */
+const sharedNodeFiles = (): ReadonlySet<string> => nodeProgramFiles ??= new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
 
 function withFixtures<T>(files: Record<string, string>, check: (directory: string) => T): T {
   const directory = mkdtempSync(join(tmpdir(), 'star-rangers-boundaries-'));
@@ -657,7 +660,7 @@ describe('render layer boundaries', () => {
   });
 
   it('checks every DOM-free render module in the Node program and no browser module there', () => {
-    const nodeFiles = new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
+    const nodeFiles = sharedNodeFiles();
     const unchecked = renderProduction.filter(file => !isBrowserModule(file.fileName) && !nodeFiles.has(resolve(file.fileName)));
     expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
     const browserInNode = [...nodeFiles].filter(fileName => fileName.startsWith(`${src}${sep}`) && isBrowserModule(fileName));
@@ -687,9 +690,36 @@ describe('resource cache boundaries', () => {
   });
 
   it('checks every DOM-free storage module in the Node program', () => {
-    const nodeFiles = new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
+    const nodeFiles = sharedNodeFiles();
     const unchecked = storage.filter(file => !basename(file.fileName).startsWith('browser-') && !nodeFiles.has(resolve(file.fileName)));
     expect(unchecked.map(file => relativeSource(file.fileName))).toEqual([]);
+  });
+});
+
+describe('app resource boundaries', () => {
+  // docs/plan/p2/11/spec.md S-03/S-12/AC-22: the resource holder is DOM-free logic owned by the app shell. It uses no
+  // network API, window, document or local storage, imports no package and neither the render nor the ui layer, and
+  // every one of its modules is checked in the Node program.
+  const src = join(root, 'src');
+  const relativeSource = (fileName: string): string => relative(src, fileName).split(sep).join('/');
+  const appProgram = sharedAppProgram();
+  const resources = appProgram.getRootFileNames()
+    .filter(fileName => relativeSource(fileName).startsWith('app/resources/') && !fileName.endsWith('.test-support.ts'))
+    .map(fileName => appProgram.getSourceFile(fileName)!);
+  const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'sendBeacon', 'EventSource', 'window', 'document', 'localStorage']);
+
+  it('uses no network API, window, document, package, render or ui import', () => {
+    expect(resources.length).toBeGreaterThanOrEqual(2);
+    const violations = resources.flatMap(file => [
+      ...[...identifierNames(file)].filter(name => banned.has(name)),
+      ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || /\/(?:render|ui)(?:\/|$)/.test(specifier)),
+    ].map(entry => `${relativeSource(file.fileName)}: ${entry}`));
+    expect(violations).toEqual([]);
+  });
+
+  it('checks every app resource module in the Node program', () => {
+    const nodeFiles = sharedNodeFiles();
+    expect(resources.filter(file => !nodeFiles.has(resolve(file.fileName))).map(file => relativeSource(file.fileName))).toEqual([]);
   });
 });
 

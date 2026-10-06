@@ -105,7 +105,7 @@ updated: 2026-10-06
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-production-package-profile.md](./subtasks/01-production-package-profile.md) | — | completed |
-| [02-resource-holder.md](./subtasks/02-resource-holder.md) | 01 | pending |
+| [02-resource-holder.md](./subtasks/02-resource-holder.md) | 01 | completed |
 | [03-cache-orchestration.md](./subtasks/03-cache-orchestration.md) | 02 | pending |
 | [04-mission-diagnostics.md](./subtasks/04-mission-diagnostics.md) | 02 | pending |
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | pending |
