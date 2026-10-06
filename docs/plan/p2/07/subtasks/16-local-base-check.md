@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "07"
 subtask: "16"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 16 — 本地基准生产路径
@@ -37,12 +37,38 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-13 的步骤结果：Asset 集合正确，`group-complete`，两次运行哈希一致，用量不超过份额且已记录。
-- [ ] AC-13 的作业路径：阶段顺序正确，`cockpit-hud-map` 组为 `group-complete`，作业以 `finished` 结束。
-- [ ] 证据只含命令、计数与判定。
+- [x] AC-13 的步骤结果：Asset 集合正确，`group-complete`，两次运行哈希一致，用量不超过份额且已记录。
+- [x] AC-13 的作业路径：阶段顺序正确，`cockpit-hud-map` 组为 `group-complete`，作业以 `finished` 结束。
+- [x] 证据只含命令、计数与判定。
 
 ## 验证方法
 
 - 本地 Node 脚本；不涉及浏览器。
 
 ## 完成证据
+
+- **命令：** `node --preserve-symlinks --preserve-symlinks-main local/research/p2-07/base-check.ts`（2026-10-06，本地 CloneCD 镜像）。脚本只经产品入口 `openVerifiedSource` 与生产常量，作业路径使用真实的 `createImportJob()`、`runImportHost`、`connectImportWorker` 与 `createImportJobOwner`，通过 Node 的 `MessageChannel` 连接。
+- **步骤结果：**
+  - 每次运行转换 121 个 Asset，其中 P2-05 的 5 个与本任务的 86 个全部在内，其余为 P2-06 的切片贴图；
+  - 两次运行各 121 个 payload 的 SHA-256 逐一相同；
+  - `cockpit-hud-map` 分区 90 个 Asset 全部 `verified`，经 `productionIdentityBasis` 与 `applyManifestIdentity` 装配后，`validateGroup` 为 `group-complete`，外部要求为 0。
+- **实际用量（本任务 / 份额）：**
+
+  | 维度 | 实际 | 份额 |
+  |---|---:|---:|
+  | assets | 86 | 96 |
+  | dependencyEdges | 91 | 192 |
+  | imagePixels | 441,785 | 524,288 |
+  | paletteEntries | 256 | 1,024 |
+  | glyphs | 0 | 0 |
+  | payloadBytes | 467,707 | 786,432 |
+
+  整个图形步骤的用量也在图形份额（P2-05、P2-06 与本任务之和）之内。
+- **作业路径：**
+  - 阶段依次为 `identify-source`、`convert-graphics`、`convert-logic`、`convert-audio`、`convert-models`，最终为 `finished`；
+  - 收到的组依次为 `logic`、`models`、`cockpit-hud-map`、`audio`；
+  - 持有者对 `cockpit-hud-map` 记为 `group-complete`（90 个 Asset），`logic` 与 `audio` 也是 `group-complete`；`models` 为 `incomplete`，这是 P2-06 记录的已知状态（歧义贴图与效果角色），与本任务无关；
+  - `takeGroups()` 移交 `logic`、`cockpit-hud-map` 与 `audio`。
+- **判定：** 脚本汇总 9 项判定，任一失败时以非零状态退出；本次输出 `verdict: pass (9/9)`。9 项分别为：Asset 齐全、两次哈希一致、分区恰为 4 + 86 个 Asset、`group-complete`、只有布局/图像/调色板、本任务逐维不超过份额、步骤不超过图形份额、阶段顺序与 `finished`、组完整并被移交。
+- **rubber-duck：** 没有阻塞问题。非阻塞建议已采纳：本任务的 Asset 集合改由 `cockpit-hud-map` 组的声明推得并检查精确相等；用量从完整的预算记录出发，调色板条目按 payload 实际条目数，逐个预算维度与份额比较；判定失败时以非零状态退出。
+- **文档影响：** 只记录本子任务的证据；原版文档、源码结构与 STATUS 不受影响。
