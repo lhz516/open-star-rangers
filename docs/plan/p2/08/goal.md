@@ -133,7 +133,7 @@ updated: 2026-10-05
 | [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05, 14 | pending |
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |
-| [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | pending |
+| [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | completed |
 | [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | pending |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | pending |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | pending |
@@ -163,6 +163,11 @@ updated: 2026-10-05
     - **goal：** 新增修复子任务 14，改写 02、03、04 已提交的实现；05 与 06 增加对 14 的依赖，最终对齐增加对 14 的依赖。
     - **subtasks：** 05、06 的范围随之调整。
   - **不变：** S/AC 编号与其余行为。02、03、04 的完成证据保留原样，并注明由 14 修订。
+- **2026-10-05 — 子任务 09 发现跨角色共用样本，已按授权修订 spec：**
+  - **发现：** 静态研究表明，导弹发射用 MODL 槽 2 的条目 10647，Warp 开始用固定条目 10401，二者正是档案中唯一的精确重复对，见 [audio](../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)。
+  - **原规定：** 两个核心角色对应同一个源样本时，记为契约问题并修订 spec。
+  - **处理：** 依据同一授权修订“切片音效集合”：不同核心角色用到字节相同的不同条目时，各建一个 Asset，各自映射到原版为该角色播放的条目；同一条目被两个核心角色使用时，仍为契约问题。子任务 11 的冲突处理随之更新。
+  - **不变：** 其余契约。
 
 ## 审批
 

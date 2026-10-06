@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-04
+updated: 2026-10-05
 related: [U-001, U-009, U-027]
 ---
 
@@ -42,7 +42,7 @@ Notes:
 | Offset | Type | Meaning |
 |---|---|---|
 | 0x00 | {u32 ptr, u32 count} × 3 | Three part lists (relocated pointers) |
-| 0x18 | u32 × 5 | SND entry IDs (0 = none); roles Unconfirmed |
+| 0x18 | u32 × 5 | SND entry IDs (0 = none). Likely from the playback code, pending listening: slot 1 gun fire, slot 2 missile launch, slot 4 destroyed (see [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08)). Slots 0 and 3 Unconfirmed |
 | 0x2C | Part[...] | Parts of all three lists, 28 bytes each |
 
 Part, 28 bytes:
