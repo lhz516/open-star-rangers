@@ -6,8 +6,9 @@ import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../origina
 import { identifySource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
+import { EMPTY_BUDGET_USAGE } from '../content/budget.ts';
 import type { ImportJob } from './import-host.ts';
-import { createImportJob, type OpenSource } from './import-job.ts';
+import { createImportJob, type GraphicsStepInput, type OpenSource } from './import-job.ts';
 
 // Code-generated CloneCD imports for Worker tests in Node and the browser; it never holds original data.
 
@@ -61,15 +62,22 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
   return { files, open: syntheticOpen(covered, versionId) };
 }
 
+/** A graphics step with nothing to convert, for jobs whose test is about identification or group transfer. */
+export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
+  mappings: { sourceFingerprint: null, mappings: [] },
+  declarations: [],
+  share: EMPTY_BUDGET_USAGE,
+});
+
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];
 
 /** The four synthetic groups, each bound to the identified source. */
 export const boundGroups: SyntheticGroups = fingerprint => RESOURCE_GROUPS.map(group => [group, syntheticSourceGroup(group, fingerprint)]);
 
-/** The import job identifying through `open`, then sending `groups` for the identified fingerprint. */
+/** The import job identifying through `open`, converting no graphics, then sending `groups` for the identified fingerprint. */
 export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = boundGroups): ImportJob {
-  const identify = createImportJob(open);
+  const identify = createImportJob(open, NO_GRAPHICS);
   return async (files, report) => {
     let fingerprint = '';
     const usage = await identify(files, Object.freeze({

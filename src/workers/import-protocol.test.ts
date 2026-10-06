@@ -4,7 +4,7 @@ import type { ContentContractErrorCode } from '../content/contract-validation.ts
 import type { BudgetShapeCode, DiscLimitName, DiscReadErrorCode } from '../original-data/disc/disc-error.ts';
 import type { SourceErrorCode, SourceLimitName } from '../original-data/source-error.ts';
 import {
-  IMPORT_ERROR_CODES, IMPORT_ERROR_LAYERS, IMPORT_FILE_LIMITS, IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, importError,
+  canReportStage, IMPORT_ERROR_CODES, IMPORT_ERROR_LAYERS, IMPORT_FILE_LIMITS, IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, importError,
   readImportStartMessage, readImportWorkerMessage, WORKER_IMPORT_ERROR_CODES, type ImportFailedMessage,
 } from './import-protocol.ts';
 
@@ -46,9 +46,9 @@ function rejection(read: { readonly status: string; readonly error?: unknown }):
 }
 
 describe('protocol constants', () => {
-  it('fixes version 1, one stage, four layers and the six import codes', () => {
-    expect(IMPORT_PROTOCOL_VERSION).toBe(1);
-    expect(IMPORT_STAGES).toEqual(['identify-source']);
+  it('fixes version 2, two ordered stages, four layers and the six import codes', () => {
+    expect(IMPORT_PROTOCOL_VERSION).toBe(2);
+    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics']);
     expect(IMPORT_ERROR_LAYERS).toEqual(['disc', 'source', 'content', 'import']);
     expect(IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error', 'worker-start-failed', 'worker-failed', 'protocol-error', 'invalid-result']);
     expect(WORKER_IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error']);
@@ -57,6 +57,20 @@ describe('protocol constants', () => {
     expect(importError('worker-failed', 'worker', 'the Worker reported an error'))
       .toEqual({ layer: 'import', code: 'worker-failed', location: 'worker', reason: 'the Worker reported an error', limit: null });
     expect(Object.isFrozen(importError('protocol-error', 'message', 'x'))).toBe(true);
+  });
+
+  it.each([
+    [null, 'identify-source', false, true],
+    ['identify-source', 'identify-source', false, true],
+    [null, 'convert-graphics', false, false],
+    ['identify-source', 'convert-graphics', false, false],
+    ['identify-source', 'identify-source', true, false],
+    ['identify-source', 'convert-graphics', true, true],
+    [null, 'convert-graphics', true, true],
+    ['convert-graphics', 'convert-graphics', true, true],
+    ['convert-graphics', 'identify-source', true, false],
+  ] as const)('orders stages: after %s, %s with identified %s is %s', (latest, stage, identified, allowed) => {
+    expect(canReportStage(latest, stage, identified)).toBe(allowed);
   });
 
   it('types a Worker failure with only the import codes the Worker may report', () => {
@@ -73,6 +87,7 @@ describe('Worker messages', () => {
   it.each([
     ['ready', ready()],
     ['progress', progress({ readBytes: MAX })],
+    ['graphics conversion progress', progress({ stage: 'convert-graphics', readBytes: 12 })],
     ['identified', identified()],
     ['group', group()],
     ['finished', finished()],
@@ -144,7 +159,7 @@ describe('Worker messages', () => {
     ['a start message in the wrong direction', start(), 'protocol-error@message.type'],
     ['a missing field', withoutReadBytes, 'protocol-error@message.readBytes'],
     ['an unknown field', ready({ [MARKER]: MARKER }), 'protocol-error@message'],
-    ['another protocol version', ready({ protocol: 2 }), 'protocol-error@message.protocol'],
+    ['the previous protocol version', ready({ protocol: 1 }), 'protocol-error@message.protocol'],
     ['a protocol version as text', ready({ protocol: '1' }), 'protocol-error@message.protocol'],
     ['job ID 0', progress({ jobId: 0 }), 'protocol-error@message.jobId'],
     ['a negative job ID', progress({ jobId: -1 }), 'protocol-error@message.jobId'],

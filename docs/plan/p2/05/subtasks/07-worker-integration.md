@@ -50,10 +50,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-11：新阶段与协议版本 2，版本不符时在发送 `start` 之前失败；成功作业的消息顺序与 `groups` 为空；持有者的两种阶段顺序违规；三类失败分别保持各自的层、code 与位置，快照不含部分结果。
-- [ ] AC-10 用量部分：`finished.usage` 等于最终读取用量与转换用量逐维之和，`sourceReadBytes` 等于最后一次进度的 `readBytes`。
-- [ ] P2-04 的既有测试按新版本更新后全部通过；`pnpm exec vitest run src/workers src/app/import`、`pnpm typecheck`、`pnpm lint` 通过。
-- [ ] 能力边界不变：`src/workers` 只经产品入口取得原版字节，不使用网络 API；`tools/engineering-boundaries.test.ts` 通过。
+- [x] AC-11：新阶段与协议版本 2，版本不符时在发送 `start` 之前失败；成功作业的消息顺序与 `groups` 为空；持有者的两种阶段顺序违规；三类失败分别保持各自的层、code 与位置，快照不含部分结果。
+- [x] AC-10 用量部分：`finished.usage` 等于最终读取用量与转换用量逐维之和，`sourceReadBytes` 等于最后一次进度的 `readBytes`。
+- [x] P2-04 的既有测试按新版本更新后全部通过；`pnpm exec vitest run src/workers src/app/import`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] 能力边界不变：`src/workers` 只经产品入口取得原版字节，不使用网络 API；`tools/engineering-boundaries.test.ts` 通过。
 
 ## 验证方法
 
@@ -62,3 +62,42 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现（2026-10-05）：**
+  - [import-protocol.ts](../../../../../src/workers/import-protocol.ts)：`IMPORT_PROTOCOL_VERSION` 改为 2，`IMPORT_STAGES` 为 `identify-source`、`convert-graphics`。新增 `canReportStage(latest, stage, identified)` 作为唯一的阶段顺序规则。
+  - [import-host.ts](../../../../../src/workers/import-host.ts) 记录最近的阶段，违反规则时报 `internal-error`。[import-job-owner.ts](../../../../../src/app/import/import-job-owner.ts) 把 `LATE_PROGRESS` 推广为同一规则，违反时报 `protocol-error@message.stage`。
+  - [import-job.ts](../../../../../src/workers/import-job.ts) 的 `createImportJob(open, graphics)`：
+    - 计量报告当前阶段，识别后先以累计字节发送一次 `convert-graphics` 进度；
+    - 用 06 的生产声明、映射与份额运行 05 的步骤，限值为 `{sourceReadBytes: 输入总字节} + 份额`；
+    - 返回 `source.usage()` 与转换用量之和，不发送组。
+  - [budget.ts](../../../../../src/content/budget.ts) 新增 `addBudgets`，相加后仍按预算记录校验。
+  - [synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts) 新增 `NO_GRAPHICS`；`syntheticGroupsJob` 用它运行空的图形阶段，以免 P2-04 的组转移测试依赖图形内容。[production-graphics.test-support.ts](../../../../../src/original-data/conversion/production-graphics.test-support.ts) 允许以 null 省略条目。
+- **测试：** `pnpm exec vitest run src/content/budget.test.ts src/workers src/app/import src/platform/workers` 7 个文件 397 项通过。
+  - **协议：** 版本 2 与两个有序阶段；`convert-graphics` 进度可读；前一版本 1 的 `ready` 被拒绝（`protocol-error@message.protocol`）；`canReportStage` 的 9 种前后关系逐项断言。
+  - **宿主：** 识别 → 图形进度 → 组 → `finished` 的顺序号连续。图形进度在识别前、或识别进度在图形进度后，都报 `internal-error`。版本 1 的 `start` 报 `invalid-request@request.protocol`，不运行作业。
+  - **持有者：** 图形进度更新快照阶段。以下三种情况都报 `protocol-error@message.stage`：图形进度作为第一条进度、图形进度在识别前、识别进度在图形进度后。`ready` 的版本为 1 时报 `protocol-error`，不发送 `start`。
+  - **作业：**
+    - 空图形输入时，识别后只有一条图形进度，`finished.usage` 等于读取用量；
+    - 生产结构的合成光盘：识别后至少两条图形进度，进度逐读累计且阶段正确，`groups` 为空，`usage` 等于读取用量加 assets 5、paletteEntries 512、glyphs 768、payloadBytes 7,184。最后一次进度的 `readBytes` 等于 `sourceReadBytes`。
+  - **`MessageChannel` 集成**（[import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts)，真实持有者、平台适配与宿主）：
+    - **成功：** 消息为 `ready`、识别进度、`identified`、至少一条图形进度、`finished`，`readBytes` 不减少且末值等于 `sourceReadBytes`，`groups` 与移交结果为空。
+    - **三类失败：** 生产白名单拒绝合成光盘时，快照停在 `identify-source`，为 `source` 层 `unsupported-version`。缺少 CCKD 条目时为 P2-03 `source` 层 `entry-not-found@sources.mappings[0].parts[0].alternatives[0]`。识别后端口拒绝读取时为 P2-02 `disc` 层 `read-failed@image:lba 18`。字库表长不符时为 `source` 层 `invalid-payload@graphics[font/hud/4x6].glyphs`。
+    - 每种失败的快照都等于宿主转换的 DTO，停在相应阶段；`takeGroups()` 为 null，消息与快照中没有文件名或宿主错误文本。
+  - **浏览器回归：** P2-04 的 `synthetic` 场景在 `identified` 与第一组之间多出一条空图形阶段的进度，[import-worker.spec.ts](../../../../../e2e/import-worker.spec.ts) 的快照序列随之更新。`pnpm test:e2e import-worker.spec.ts --project=development` 8 项通过。
+- **工程：** `pnpm typecheck`、`pnpm lint` 与 `pnpm check`（106 个文件，3061 项，含工程边界回归）通过。`src/workers` 只经产品入口与 `conversion/` 取得原版数据，没有网络 API。
+- **Rubber-duck：** 无 Blocker/High/Medium。两项 Low 已补：断言图形阶段磁盘读取失败的确定位置 `image:lba 18`（不只以宿主结果为准）；增加图形进度作为第一条进度的持有者用例。
+- **Simplify：** 采纳：
+  - 宿主与持有者共用 `canReportStage`；
+  - 预算相加移到 `content/budget.ts` 的 `addBudgets`；
+  - `PRODUCTION_GRAPHICS_STEP` 改为模块私有；
+  - `syntheticGroupsJob` 去掉未用的图形参数；
+  - 作业与集成测试的阶段断言改为直接判断。
+
+  未采纳“节流进度”：spec 要求每次端口读取完成发送一次进度。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#导入-worker)的“导入 Worker”一节更新：
+  - 协议版本 2、两个阶段与 `canReportStage`，宿主与持有者的阶段顺序规则；
+  - 作业的阶段计量、图形转换、限值与用量合并，`groups` 为空，注入点；
+  - `NO_GRAPHICS` 测试支持与集成测试覆盖。
+
+  预算一节补充 `addBudgets`。工程约定与工具指南没有协议版本或阶段的说明，无需更新。
+

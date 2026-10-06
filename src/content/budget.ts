@@ -48,6 +48,11 @@ export function readBudgetRecord(value: unknown, path: string): BudgetRecord {
   return Object.freeze(amounts);
 }
 
+/** Adds two complete records dimension by dimension, such as read limits and a step's share; the sum must stay a budget record. */
+export function addBudgets(left: BudgetRecord, right: BudgetRecord, path = 'budget'): BudgetRecord {
+  return readBudgetRecord(Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, left[dimension] + right[dimension]])), path);
+}
+
 export type BudgetCode = 'budget-exceeded' | 'budget-overflow';
 
 export interface BudgetViolation {

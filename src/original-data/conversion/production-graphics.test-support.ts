@@ -9,13 +9,17 @@ const locators = PRODUCTION_GRAPHICS_MAPPINGS.mappings.flatMap(({ parts }) => pa
 /**
  * The disc files of a source holding only the production graphics archive, with synthetic content at the mapped
  * entries: a DATA palette and a CCKD entry whose font directory holds two 8×8 fonts and one 4×6 font at the mapped
- * indices. `blocks` replaces an entry's content by type.
+ * indices. `blocks` replaces an entry's content by type, or omits the entry when null.
  */
-export function productionGraphicsFiles(blocks: { DATA?: Uint8Array; CCKD?: Uint8Array } = {}): Record<string, Uint8Array> {
-  const content: Record<string, Uint8Array> = { DATA: blocks.DATA ?? dataPaletteBlock(), CCKD: blocks.CCKD ?? cockpitBlock(hudFontTables()) };
+export function productionGraphicsFiles(blocks: { DATA?: Uint8Array | null; CCKD?: Uint8Array | null } = {}): Record<string, Uint8Array> {
+  const content: Record<string, Uint8Array | null> = {
+    DATA: blocks.DATA === undefined ? dataPaletteBlock() : blocks.DATA,
+    CCKD: blocks.CCKD === undefined ? cockpitBlock(hudFontTables()) : blocks.CCKD,
+  };
   const entries = new Map<number, SyntheticEntry>();
   for (const { entry: { id, type } } of locators) {
-    if (!entries.has(id)) entries.set(id, { id, type, data: content[type] });
+    const data = content[type];
+    if (data && !entries.has(id)) entries.set(id, { id, type, data });
   }
   return { [locators[0].discPath]: buildImfat(10_000, [...entries.values()].sort((left, right) => left.id - right.id)) };
 }

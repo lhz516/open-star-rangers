@@ -188,6 +188,7 @@ src/
   - **维度：** `BUDGET_UNITS`/`BUDGET_DIMENSIONS` 固定 schema 1 的十二个维度及单位，增删维度或改变单位属于 schema 变化。
   - **记录：** `readBudgetRecord` 要求完整记录，不适用的维度写 0。缺失维度、未知维度（例如换了单位的键）以及非“非负安全整数”的值分别以稳定 code 拒绝，不回显未知键名。
   - **计量：** `chargeBudget` 每次都重新读取限值、当前用量和增量，调用者应在读取或分配声明规模之前计量。
+  - **相加：** `addBudgets(left, right, path)` 把两个完整记录逐维相加（例如读取限值加某一步骤的份额，或读取用量加转换用量），结果须仍是合法记录，否则在 `path` 下报 `invalid-budget-value`。
     - 用量等于上限时通过；超过上限返回 `budget-exceeded`，带维度、limit 与 observed。
     - 总量超出安全整数范围时返回 `budget-overflow`，observed 为 null。
     - 判断基于剩余额度，不依赖溢出后的和。被拒的计量不会部分生效，结果中仍是之前的用量。
@@ -348,7 +349,7 @@ src/
 [P2-04](../plan/p2/04/spec.md) 在专用模块 Worker 中运行导入作业，消息与生命周期契约以 spec 为准。当前已实现：
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
-  - `IMPORT_PROTOCOL_VERSION` 为 1。阶段集合 `IMPORT_STAGES` 目前只有 `identify-source`。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
+  - `IMPORT_PROTOCOL_VERSION` 为 2（P2-05 增加阶段时由 1 递增）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
   - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
   - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
@@ -362,7 +363,7 @@ src/
   - **握手：** 安装监听后发送一次 `ready`，只接受第一条有效的 `start`。以下情况都以 `invalid-request` 失败：`start` 非法（带能读出的作业 ID）、`messageerror`，以及 `start` 之后的任何消息。
   - **作业：** `ImportJob` 接收冻结的文件快照与冻结的报告器（`progress`、`identified`、`group`），成功时返回预算用量。
     - 宿主维护顺序号，从 1 起逐条加 1。发送抛错（如克隆失败）不消耗顺序号，异常交给作业。
-    - `identified` 至多一次，之后不再有识别进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败。
+    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
     - 身份只发送版本 ID 与指纹。
   - **转移：** 发送组前，用 `readPayloadRecords` 与 `payloadTransferList` 计算转移列表，位置以 `groups.<组>.payloads` 为根。非独占、别名、已转移或乱序的 payload 以 `content` 层失败，该组不发送。发送后，作业持有的 payload 视图失效。
   - **终态：** 作业返回的用量经 `readBudgetRecord` 读取，再随 `finished` 与已发送的组一起发送。终态消息之后关闭端点，之后的报告与消息都被忽略。
@@ -370,19 +371,20 @@ src/
     - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
     - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
     - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
-- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open)` 返回生产作业。
-  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。阶段开始时先报告一次 `readBytes` 为 0 的 `identify-source` 进度；之后端口每次读取成功返回，报告累计的实际返回字节。识别完成后不再报告识别进度。
-  - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹），返回 `source.usage()`；作业不产生组结果，失败原样交给宿主转换。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。只有测试传入其他打开函数，用合成白名单识别。
+- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics)` 返回生产作业。
+  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，图形阶段从识别结束时的累计值开始。
+  - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
+  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上步骤批准的份额；作业返回已验证来源最终的读取用量与转换用量逐维之和。步骤结果只留在作业内，供 P2-06/07 装配组结果；本任务不发送组，`finished.groups` 为空。转换失败为 `source` 层，图形阶段的读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是 [生产图形](#图形转换)的声明、映射与份额。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或图形输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
-  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，再发送 `groups(指纹)` 给出的组；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
+  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`（不转换任何 Asset）运行图形阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
   - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
-- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。
+- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。
@@ -399,7 +401,7 @@ src/
     - `ready` 的版本不符时报 `protocol-error`，不发送 `start`；
     - 发送 `start` 抛错时报 `worker-failed@worker`。
   - **消息：** 用协议读取函数校验，再依次核对第二次 `ready`（`message.type`）、作业 ID（`message.jobId`，含 `jobId` 为 null 的 `failed`）与连续的顺序号（`message.sequence`）。
-    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`），识别之后不得再有识别进度（`message.stage`）；
+    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；
     - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
     - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
     - Worker 报告的 `failed` 原样成为快照的错误。

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BUDGET_DIMENSIONS, BUDGET_UNITS, chargeBudget, chargeManifestBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetDimension,
+  addBudgets, BUDGET_DIMENSIONS, BUDGET_UNITS, chargeBudget, chargeManifestBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetDimension,
 } from './budget.ts';
 import { kindOf, syntheticIdentity } from './synthetic-content.test-support.ts';
 
@@ -64,6 +64,19 @@ describe('budget records', () => {
     for (const value of [null, [], Object.assign(new (class Limits {})(), amounts(0)), accessor]) {
       expect(() => readBudgetRecord(value, 'limits')).toThrowError(expect.objectContaining({ code: 'invalid-record', path: 'limits' }));
     }
+  });
+});
+
+describe('budget addition', () => {
+  it('adds two complete records dimension by dimension into a frozen record', () => {
+    const sum = addBudgets({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: 7, assets: 1 }, { ...EMPTY_BUDGET_USAGE, assets: 5, glyphs: 768 });
+    expect(sum).toEqual({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: 7, assets: 6, glyphs: 768 });
+    expect(Object.isFrozen(sum)).toBe(true);
+  });
+
+  it('rejects a sum beyond the safe integer range at the given path', () => {
+    expect(() => addBudgets({ ...EMPTY_BUDGET_USAGE, payloadBytes: Number.MAX_SAFE_INTEGER }, { ...EMPTY_BUDGET_USAGE, payloadBytes: 1 }, 'limits'))
+      .toThrowError(expect.objectContaining({ code: 'invalid-budget-value', path: 'limits.payloadBytes' }));
   });
 });
 

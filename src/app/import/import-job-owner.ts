@@ -3,7 +3,7 @@ import type { BudgetRecord } from '../../content/budget.ts';
 import { validateGroup, type CompletenessDiagnostic, type GroupInput } from '../../content/completeness.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
-  IMPORT_PROTOCOL_VERSION, importError, readImportStartMessage, readImportWorkerMessage, type ImportErrorData,
+  canReportStage, IMPORT_PROTOCOL_VERSION, importError, readImportStartMessage, readImportWorkerMessage, type ImportErrorData,
   type ImportSourceIdentity, type ImportStage, type ImportStartMessage, type ImportWorkerMessage,
 } from '../../workers/import-protocol.ts';
 import type { ImportWorkerEvents, ImportWorkerPort, ImportWorkerPortFactory } from './import-worker-port.ts';
@@ -88,7 +88,7 @@ const UNREADABLE_MESSAGE = importError('protocol-error', 'message', 'a message c
 const UNEXPECTED_MESSAGE = importError('protocol-error', 'message.type', 'the message is not allowed at this point of the job');
 const OTHER_JOB = importError('protocol-error', 'message.jobId', 'the message does not belong to this job');
 const OUT_OF_SEQUENCE = importError('protocol-error', 'message.sequence', 'the message is out of sequence');
-const LATE_PROGRESS = importError('protocol-error', 'message.stage', 'identification progress after identification');
+const STAGE_OUT_OF_ORDER = importError('protocol-error', 'message.stage', 'the progress stage is out of order');
 const INVALID_READ_BYTES = importError('protocol-error', 'message.readBytes', 'the read byte count decreased or exceeds the input size');
 const REPEATED_GROUP = importError('protocol-error', 'message.group', 'the group was already received');
 const OTHER_GROUP = importError('protocol-error', 'message.group', 'the group content declares another group');
@@ -238,7 +238,7 @@ class Owner implements ImportJobOwner {
     job.sequence = message.sequence;
     switch (message.type) {
       case 'progress':
-        if (job.identity && message.stage === 'identify-source') return this.#fail(job, LATE_PROGRESS);
+        if (!canReportStage(job.stage, message.stage, job.identity !== null)) return this.#fail(job, STAGE_OUT_OF_ORDER);
         if (message.readBytes < job.readBytes || message.readBytes > job.totalBytes) return this.#fail(job, INVALID_READ_BYTES);
         job.stage = message.stage;
         job.readBytes = message.readBytes;

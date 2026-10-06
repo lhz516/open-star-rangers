@@ -7,7 +7,7 @@ import { readPayloadRecords } from '../content/payload.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
 import { SourceError } from '../original-data/source-error.ts';
 import {
-  IMPORT_PROTOCOL_VERSION, importError, readImportStartMessage, type ImportFile, type ImportSourceIdentity, type ImportStage,
+  canReportStage, IMPORT_PROTOCOL_VERSION, importError, readImportStartMessage, type ImportFile, type ImportSourceIdentity, type ImportStage,
   type ImportWorkerMessage, type WorkerImportErrorData,
 } from './import-protocol.ts';
 
@@ -59,6 +59,7 @@ class ImportHost {
   #jobId: number | null = null;
   #sequence = 0;
   #identified = false;
+  #stage: ImportStage | null = null;
   readonly #groups: ResourceGroup[] = [];
 
   constructor(endpoint: ImportHostEndpoint, job: ImportJob) {
@@ -87,8 +88,8 @@ class ImportHost {
   async #run(jobId: number, files: readonly ImportFile[]): Promise<void> {
     const report: ImportReporter = Object.freeze({
       progress: (stage: ImportStage, readBytes: number) => {
-        // Identification progress ends with `identified`.
-        if (this.#identified && stage === 'identify-source') return this.#fail(INTERNAL_ERROR);
+        if (!canReportStage(this.#stage, stage, this.#identified)) return this.#fail(INTERNAL_ERROR);
+        this.#stage = stage;
         this.#send(sequence => ({ type: 'progress', jobId, sequence, stage, readBytes }));
       },
       identified: ({ versionId, sourceFingerprint }: ImportSourceIdentity) => {

@@ -172,12 +172,16 @@ test('test entry identifies production-sized synthetic files and transfers four 
   expect(final.identity.versionId).toBe('synthetic-browser');
   expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.length]))
     .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', 0]));
-  // In order: identification, then one more complete group per change, then the end; the job itself throws if a
-  // payload it sent was not detached, so finishing proves every group was transferred.
+  // In order: identification, the start of the (empty) graphics stage, then one more complete group per change, then
+  // the end; the job itself throws if a payload it sent was not detached, so finishing proves every group was transferred.
   const identifiedAt = observed.findIndex(snapshot => 'identity' in snapshot && snapshot.identity !== null);
   expect(identifiedAt).toBeGreaterThan(0);
-  expect(observed.slice(identifiedAt).map(snapshot => `${snapshot.status}:${'groups' in snapshot ? snapshot.groups.length : '-'}`))
-    .toEqual(['running:0', 'running:1', 'running:2', 'running:3', 'running:4', 'finished:4']);
+  expect(observed.slice(identifiedAt).map(snapshot =>
+    `${snapshot.status}:${'stage' in snapshot ? snapshot.stage : '-'}:${'groups' in snapshot ? snapshot.groups.length : '-'}`))
+    .toEqual([
+      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-graphics:1', 'running:convert-graphics:2',
+      'running:convert-graphics:3', 'running:convert-graphics:4', 'finished:-:4',
+    ]);
   expect(await page.evaluate(() => window.osrImport.compareTaken()))
     .toEqual(final.groups.map(({ group }) => ({ group, payloads: expect.any(Number), matches: true })));
   const reads = observed.slice(0, identifiedAt).flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
