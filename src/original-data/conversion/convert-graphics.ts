@@ -22,7 +22,7 @@ import {
 } from './source-graphics.ts';
 
 /** The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. */
-export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-1';
+export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-2';
 
 /**
  * An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`), an MFDD list record

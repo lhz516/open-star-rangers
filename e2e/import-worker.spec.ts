@@ -19,7 +19,7 @@ import { MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-
 import { createImportJob } from '../src/workers/import-job.ts';
 import type { BudgetRecord } from '../src/content/budget.ts';
 import { validateGroup, type GroupInput } from '../src/content/completeness.ts';
-import { runGraphicsStep } from '../src/original-data/conversion/graphics-step.ts';
+import { runGraphicsStep, stepGroupDraft } from '../src/original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft } from '../src/original-data/conversion/model-step.ts';
 import {
   PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
@@ -269,8 +269,8 @@ test('test entry converts the production graphics and sounds after identificatio
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
-  expect(final.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
   expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
@@ -297,8 +297,8 @@ test('test entry converts the synthetic sounds after the graphics and hands over
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
-  expect(final.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
   const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({
     assets: GRAPHICS_CONVERSION_USAGE.assets + 4, dependencyEdges: GRAPHICS_CONVERSION_USAGE.dependencyEdges,
@@ -316,18 +316,22 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   const manifest = readGroupManifest(taken[0].manifest);
   expect(payloadBytes).toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
   // The Worker's package identity equals the one Node derives from the same audio manifest and source states and the
-  // models group Node converts from the same disc: the graphics models partition, as no craft model is bound.
+  // graphics groups Node converts from the same disc: the cockpit-hud-map partition, and the models partition alone, as
+  // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-1.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);
   const graphics = await runGraphicsStep(source, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_SHARE);
   const models = modelsGroupDraft(graphics, { groups: [], usage: graphics.usage }, source.identity.fingerprint);
+  const cockpit = stepGroupDraft('cockpit-hud-map', [graphics], source.identity.fingerprint);
   expect(manifest.identity).toEqual({
     ...basis,
-    manifestIdentity: deriveManifestIdentity(basis, [{ ...models, payloads: [] }, { group: 'audio', assets: manifest.assets, payloads: [], sources } as GroupDraft]),
+    manifestIdentity: deriveManifestIdentity(basis, [
+      { ...models, payloads: [] }, { ...cockpit, payloads: [] }, { group: 'audio', assets: manifest.assets, payloads: [], sources } as GroupDraft,
+    ]),
   });
   expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['audio', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);
@@ -378,14 +382,19 @@ test('test entry converts the models after the audio stage, and the receiver val
   const node = await nodeSliceRun();
   const expected = validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!);
   if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group in Node');
+  // The production graphics declare no layout or HUD and map image yet, so the cockpit-hud-map group lacks those roles.
+  const cockpit = validateGroup(CLASSIC_P2_SLICE, node.groups.get('cockpit-hud-map')!);
+  if (cockpit.status !== 'incomplete') throw new Error('expected an incomplete cockpit-hud-map group in Node');
+  expect(new Set(cockpit.diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality']));
   expect(final.groups).toEqual([
     { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
     { group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics },
+    { group: 'cockpit-hud-map', status: 'incomplete', assets: null, diagnostics: cockpit.diagnostics },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
   // The models manifest the owner received is the one Node sent: the flight palette, the textures and the bound models.
   const received = await page.evaluate(() => window.osrImport.received);
-  expect(received.map(({ group }) => group)).toEqual(['logic', 'models', 'audio']);
+  expect(received.map(({ group }) => group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
   const models = readGroupManifest(received[1].manifest);
   expect(models).toEqual(readGroupManifest(node.groups.get('models')!.manifest));
   expect(models.assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets);

@@ -1,7 +1,10 @@
 import { RESOURCE_GROUPS, type AssetDescriptor, type AssetReference, type ResourceGroup } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
-import type { PayloadRecord } from '../../content/payload.ts';
-import type { AssetSourceState } from '../../content/source-state.ts';
+import { compareText } from '../../content/contract-validation.ts';
+import type { GroupDraft } from '../../content/manifest-identity.ts';
+import { readAssetDescriptors } from '../../content/manifest.ts';
+import { readPayloadRecords, type PayloadRecord } from '../../content/payload.ts';
+import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '../../content/source-state.ts';
 import { SourceError } from '../source-error.ts';
 import { assetSourceStates, compareLocators, readSourceMappingTable, type OriginalAssetLocator, type SourceMapping } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
@@ -25,6 +28,24 @@ export interface GraphicsStepResult {
   readonly groups: readonly GraphicsStepGroup[];
   /** The step's conversion usage; source reads are metered by the verified source. */
   readonly usage: BudgetRecord;
+}
+
+/**
+ * The draft of `group`: that group's partitions of the step results merged by Asset ID without reconverting, with the
+ * source states bound to `sourceFingerprint`. A repeated Asset ID fails as a content contract error; with no Assets the
+ * draft is an empty group.
+ */
+export function stepGroupDraft(group: ResourceGroup, results: readonly GraphicsStepResult[], sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
+  const items = results
+    .flatMap(({ groups }) => groups.filter(partition => partition.group === group))
+    .flatMap(({ descriptors, payloads, sources }) => descriptors.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources[index] })))
+    .sort((left, right) => compareText(left.descriptor.id, right.descriptor.id));
+  return Object.freeze({
+    group,
+    assets: readAssetDescriptors(items.map(({ descriptor }) => descriptor), `${group}.assets`),
+    payloads: readPayloadRecords(items.map(({ payload }) => payload), `${group}.payloads`),
+    sources: readSourceStateSet({ sourceFingerprint, states: items.map(({ state }) => state) }, `${group}.sources`),
+  });
 }
 
 /** Entry types whose payload is an image record at offset 0 (textures.md §2). */

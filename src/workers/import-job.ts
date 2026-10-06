@@ -10,7 +10,7 @@ import { convertLogic, PRODUCTION_LOGIC_SHARE } from '../original-data/conversio
 import type { ModelReferences } from '../original-data/conversion/convert-models.ts';
 import { productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
 import type { ModelBinding } from '../original-data/conversion/craft-binding.ts';
-import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
+import { runGraphicsStep, stepGroupDraft } from '../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
 import {
   PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
@@ -144,12 +144,13 @@ class MeteredByteSource implements ByteSource {
  * once when it starts and after every port read, with the read bytes accumulated across stages. The graphics, logic and
  * model limits are the P2-02 default read limit (the input size) plus the three steps' shares: the logic step charges
  * on top of the graphics usage and the model step on top of the logic usage; the audio stage charges its own limits
- * from zero (P2-08 budget). The model step converts the craft models the logic step bound, and its models join the
- * graphics step's `models` partition in the `models` group; the `cockpit-hud-map` partition stays in the job until it
- * is assembled. The logic drafts, the audio group and the always-sent models group get one manifest identity derived
- * from all of them; every conversion, that identity, the transfer lists and the final usage (read usage plus every
- * conversion's usage) are checked before the first group is sent. `open`, `graphics`, `logic`, `audio` and `models`
- * are replaced only by tests.
+ * from zero (P2-08 budget). The graphics step's `cockpit-hud-map` partition becomes the `cockpit-hud-map` group, and
+ * the model step converts the craft models the logic step bound, which join the graphics step's `models` partition in
+ * the `models` group; neither group's Assets are converted again. The logic drafts and the always-sent
+ * `cockpit-hud-map`, audio and models groups get one manifest identity derived from all of them; every conversion,
+ * that identity, the transfer lists and the final usage (read usage plus every conversion's usage) are checked before
+ * the first group is sent, and groups are sent in `RESOURCE_GROUPS` order. `open`, `graphics`, `logic`, `audio` and
+ * `models` are replaced only by tests.
  */
 export function createImportJob(
   open: OpenSource = openVerifiedSource,
@@ -185,12 +186,14 @@ export function createImportJob(
     const { mappings, declarations } = models.inputs(logicResult.models);
     const modelResult = await runModelStep(source, mappings, declarations, models.references, limits, logicResult.usage);
     // Everything that can still fail runs before the first group is sent, so a failure never follows a group.
+    const fingerprint = source.identity.fingerprint;
     const drafts: GroupDraft[] = [
+      stepGroupDraft('cockpit-hud-map', [graphicsResult], fingerprint),
       ...logicResult.drafts,
       { group: 'audio', ...sounds },
-      modelsGroupDraft(graphicsResult, modelResult, source.identity.fingerprint),
+      modelsGroupDraft(graphicsResult, modelResult, fingerprint),
     ];
-    const groups = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), drafts)
+    const groups = applyManifestIdentity(productionIdentityBasis(fingerprint), drafts)
       .map((group): PackageGroup => [group.manifest.group, group]);
     checkPackageTransfers(groups);
     const usage = addBudgets(addBudgets(source.usage(), modelResult.usage, 'usage'), audioUsage, 'usage');

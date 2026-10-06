@@ -37,7 +37,7 @@ updated: 2026-10-06
   文件拆分可在执行时微调，但不得建立中央 schema 或第二套图像、颜色或合成逻辑。
 - **类型与边界：** [tsconfig.core.json](../../../../tsconfig.core.json) 覆盖 `src/content` 与 `src/original-data`，没有 DOM 与 Node 类型；`content/` 不导入 `original-data`；`original-data/conversion/` 只经 `VerifiedSource` 取得封包，见 [eslint.config.js](../../../../eslint.config.js) 与 [original-data-capabilities.ts](../../../../tools/original-data-capabilities.ts)。
 - **本地数据（2026-10-05 均已存在）：** `local/StarRang/cd/` 的 CloneCD 文件组（16）；`local/StarRang/SRANGERS/MAIN/SR.NOB`（05、07–11、15）；`local/StarRang/captures/` 的 92 张截图（08–11、15）；`local/ghidra/srangers.gpr`（研究子任务的只读 EXE 分析）。缺少时相应子任务为 blocked，不能用合成数据代替。
-- **并行任务：** [P2-06](../06/spec.md) 的 spec 已批准、尚未执行。它同样修改图形步骤、生产映射、作业与 `ConverterVersion`，并新增 `convert-models` 阶段。涉及共享文件的子任务开始前先并入 `main`；若 P2-06 已加入 `graphics` 组件，13 只递增它（spec [组结果与包身份](./spec.md#组结果与包身份)）。不建议两个 agent 同时修改 `src/workers/`、`production-graphics.ts` 或图形步骤。
+- **并行任务：** [P2-06](../06/spec.md) 已在 `main` 上实现（2026-10-06 rebase 后核对）：图形步骤的切片贴图、`convert-models` 阶段、`models` 组的装配与发送（`modelsGroupDraft`），以及 `ConverterVersion` 的 `graphics-1` 与 `models-1` 组件。13 因此把 `graphics` 递增为 `graphics-2`，`models` 组保持 P2-06 的规则。不建议两个 agent 同时修改 `src/workers/`、`production-graphics.ts` 或图形步骤。
 - **`graphics` 组件的取值：** 13 首次打包图形输出时加入（或递增）该组件。本任务后续子任务（10、12）再改变图形输出时不再逐次递增，因为任务完成前没有缓存消费者（P2-11 尚未接线），与 P2-08 在任务内保持 `audio-1` 的做法一致；17 核对最终取值。
 - **研究证据规则：** 证据要求、置信度与入选规则见 spec [研究与入选门槛](./spec.md#研究与入选门槛)。研究子任务只把文件名、计数、判定、地址与结构写入 `docs/original/`；截图、像素、颜色值、原版文字与反编译输出留在 `local/`。入选族未达交付条件时，相应子任务为 blocked 并记录恢复条件。
 - **spec 批准：** spec 已于 2026-10-05 由用户明确批准，rebase 后的前提更新也已确认。
@@ -95,7 +95,7 @@ updated: 2026-10-06
 | [10-font-text-research.md](./subtasks/10-font-text-research.md) | — | completed |
 | [11-map-icon-research.md](./subtasks/11-map-icon-research.md) | 06 | completed |
 | [12-production-cockpit-hud.md](./subtasks/12-production-cockpit-hud.md) | 04, 06, 08, 09, 18 | pending |
-| [13-group-assembly.md](./subtasks/13-group-assembly.md) | 04 | pending |
+| [13-group-assembly.md](./subtasks/13-group-assembly.md) | 04 | completed |
 | [14-browser-worker-group.md](./subtasks/14-browser-worker-group.md) | 12, 13 | pending |
 | [15-local-composite-check.md](./subtasks/15-local-composite-check.md) | 12 | pending |
 | [16-local-base-check.md](./subtasks/16-local-base-check.md) | 12, 13 | pending |
@@ -115,6 +115,9 @@ updated: 2026-10-06
   - 切片载入并绘制左显示屏的页面背景 BITM 10467，仪表条 10479 就画在其中一页上。它在候选族之外，按原文须先修订范围与预算。
   - **spec 修订：** 10461 改为 `image/map/unit-marker/<i>`（`strategic-map`、地图调色板）；11401 的三个按外观推测命名的前缀合并为 `image/map/zoom-icon/<i>`；加入 `image/hud/display-page/background`（BITM 10467）与整条目 BITM 的图像族定义；R3、R4、R6 写入结论，生产 Asset 表写入全部入选族；10475、10469、10481 排除（只用于另一种玩家机型），SNIP 10487 与 DIAG 10489 转交 P3。修订记录写在 spec 的[审批](./spec.md#审批)一节。范围项、验收项编号、依赖与份额不变（入选共 86 个 Asset、约 44.2 万像素）。
   - **goal 调整：** 无新增子任务；[12](./subtasks/12-production-cockpit-hud.md) 的入选族清单随之更新。
+- **2026-10-06 — rebase 到含 P2-06 实现的 `main`：** `main` 新增了 P2-06 的执行提交（模型 payload、切片贴图、`convert-models` 阶段与 `models` 组）。本分支的全部提交已 rebase 到其上，冲突按“保留 `main` 的 P2-06 变化、追加本任务内容”解决：限值名、`set32` 与 `setText` 测试辅助、`GRAPHICS_CONVERTER_COMPONENT`、nob-check 的输出与工具指南。rebase 后 `pnpm check` 通过（134 个文件、4018 个测试），nob-check 对本地 `SR.NOB` 无失败。
+  - **spec 前提更新：** “`models` 分区不发送、留给 P2-06”的表述已过时，按授权改为“`models` 组按 P2-06 的规则发送，`cockpit-hud-map` 组不含 `models` 分区”。记录在 spec 的[审批](./spec.md#审批)一节，范围与验收不变。
+  - **goal 调整：** 13 的 `ConverterVersion` 目标改为在 P2-06 的值上递增 `graphics`，即 `osr-import.graphics-2.logic-1.audio-1.models-1`。
 
 ## 审批
 

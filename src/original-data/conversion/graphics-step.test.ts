@@ -14,7 +14,7 @@ import {
   textureBlock,
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
-import { runGraphicsStep } from './graphics-step.ts';
+import { runGraphicsStep, stepGroupDraft } from './graphics-step.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 100, dependencyEdges: 100, paletteEntries: 10_000, imagePixels: 10_000, glyphs: 10_000, payloadBytes: 1_000_000 };
 const { data, texture, cockpit, mfd, table } = GRAPHICS_ENTRIES;
@@ -73,6 +73,22 @@ describe('graphics conversion step', () => {
     const shape = JSON.stringify(result, (key, value: unknown) => (value instanceof Uint8Array ? `${value.length} bytes` : key === 'fingerprint' ? 'sha256' : value));
     expect(shape).not.toMatch(/SR\.NOB|MAIN|1000[135]|DATA|TEX|CCKD|fonts\/|discPath|subresource|entry/);
     expect(result.usage).toMatchObject({ assets: 6, dependencyEdges: 2, paletteEntries: 520, imagePixels: 8, glyphs: 256 + 192, sourceReadBytes: 0 });
+  });
+
+  it('drafts one group from its partitions alone, without reconverting, and an empty group when no partition has it', async () => {
+    const { source } = await verifiedSource();
+    const result = await runGraphicsStep(source, mappings(), declarations(), LIMITS);
+    const sourceFingerprint = source.identity.fingerprint;
+    const draft = stepGroupDraft('cockpit-hud-map', [result], sourceFingerprint);
+    const [, partition] = result.groups;
+    expect(draft).toEqual({
+      group: 'cockpit-hud-map', assets: partition.descriptors, payloads: partition.payloads, sources: { sourceFingerprint, states: partition.sources },
+    });
+    expect(draft.payloads.every(({ bytes }, index) => bytes === partition.payloads[index].bytes)).toBe(true);
+    expect(Object.isFrozen(draft)).toBe(true);
+    expect(stepGroupDraft('audio', [result], sourceFingerprint)).toEqual({ group: 'audio', assets: [], payloads: [], sources: { sourceFingerprint, states: [] } });
+    expect(() => stepGroupDraft('cockpit-hud-map', [result, result], sourceFingerprint))
+      .toThrow(expect.objectContaining({ code: 'duplicate-asset', path: expect.stringMatching(/^cockpit-hud-map\.assets/) }));
   });
 
   it('verifies subresource mappings only through a successful conversion', async () => {

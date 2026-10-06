@@ -2,9 +2,7 @@ import type { AssetId } from '../../content/asset-id.ts';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import type { GroupDraft } from '../../content/manifest-identity.ts';
-import { readAssetDescriptors } from '../../content/manifest.ts';
-import { readPayloadRecords } from '../../content/payload.ts';
-import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '../../content/source-state.ts';
+import type { AssetSourceState, SourceStateSet } from '../../content/source-state.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { readModel } from '../formats/modl.ts';
 import { SourceError } from '../source-error.ts';
@@ -12,7 +10,7 @@ import { assetSourceStates, readSourceMappingTable, type OriginalAssetLocator, t
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
 import { convertModels, type ModelReferences } from './convert-models.ts';
-import type { GraphicsStepResult } from './graphics-step.ts';
+import { stepGroupDraft, type GraphicsStepResult } from './graphics-step.ts';
 import { readModelDeclarations } from './model-declarations.ts';
 import { stepEntryReader } from './step-entry-reader.ts';
 
@@ -98,19 +96,9 @@ export async function runModelStep(
 }
 
 /**
- * The `models` group draft: the `models` partitions of the graphics and model step results merged by Asset ID without
- * reconverting, with the source states bound to `sourceFingerprint`. A repeated Asset ID fails as a content contract
- * error; with no Assets the draft is an empty group.
+ * The `models` group draft: the `models` partitions of the graphics and model step results merged as `stepGroupDraft`
+ * merges them.
  */
 export function modelsGroupDraft(graphics: GraphicsStepResult, models: ModelStepResult, sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
-  const items = [graphics, models]
-    .flatMap(({ groups }) => groups.filter(({ group }) => group === 'models'))
-    .flatMap(({ descriptors, payloads, sources }) => descriptors.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources[index] })))
-    .sort((left, right) => compareText(left.descriptor.id, right.descriptor.id));
-  return Object.freeze({
-    group: 'models',
-    assets: readAssetDescriptors(items.map(({ descriptor }) => descriptor), 'models.assets'),
-    payloads: readPayloadRecords(items.map(({ payload }) => payload), 'models.payloads'),
-    sources: readSourceStateSet({ sourceFingerprint, states: items.map(({ state }) => state) }, 'models.sources'),
-  });
+  return stepGroupDraft('models', [graphics, models], sourceFingerprint);
 }

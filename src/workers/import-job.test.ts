@@ -24,14 +24,14 @@ import type { VerifiedSource } from '../original-data/source/open-verified-sourc
 import { buildImfat, type SyntheticEntry } from '../original-data/synthetic.ts';
 import { runImportHost, type ImportJob } from './import-host.ts';
 import {
-  checkPackageTransfers, createImportJob, PRODUCTION_LOGIC_STEP, type AudioStageInput, type GraphicsStepInput, type LogicStepGroups, type OpenSource,
-  type PackageGroup,
+  checkPackageTransfers, createImportJob, PRODUCTION_LOGIC_STEP, type AudioStageInput, type GraphicsStepInput, type LogicStepGroups, type LogicStepInput,
+  type OpenSource, type PackageGroup,
 } from './import-job.ts';
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from './import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS,
-  PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO,
+  NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport, syntheticSource,
 } from './synthetic-import.test-support.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
@@ -162,7 +162,7 @@ describe('production job', () => {
 });
 
 describe('injected identification', () => {
-  it('identifies the synthetic whitelist, converts nothing, then sends empty models and audio groups and finishes with the source usage', async () => {
+  it('identifies the synthetic whitelist, converts nothing, then sends empty models, cockpit-hud-map and audio groups and finishes with the source usage', async () => {
     const imported = await syntheticImport(COVERED, 'job-test-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
@@ -173,22 +173,23 @@ describe('injected identification', () => {
     expect(counts.at(-1)).toBe(usage.sourceReadBytes);
     expect(usage.sourceReadBytes).toBeGreaterThan(Object.values(COVERED).reduce((total, bytes) => total + bytes.length, 0));
     const empty = (group: string) => ({ manifest: expect.objectContaining({ group, assets: [] }), payloads: [], sources: { sourceFingerprint: fingerprint, states: [] } });
-    expect(messages.slice(-8)).toEqual([
-      { type: 'identified', jobId: 3, sequence: messages.length - 7, identity: { versionId: 'job-test-disc', sourceFingerprint: fingerprint } },
-      { type: 'progress', jobId: 3, sequence: messages.length - 6, stage: 'convert-graphics', readBytes: usage.sourceReadBytes },
-      { type: 'progress', jobId: 3, sequence: messages.length - 5, stage: 'convert-logic', readBytes: usage.sourceReadBytes },
-      { type: 'progress', jobId: 3, sequence: messages.length - 4, stage: 'convert-audio', readBytes: usage.sourceReadBytes },
-      { type: 'progress', jobId: 3, sequence: messages.length - 3, stage: 'convert-models', readBytes: usage.sourceReadBytes },
-      { type: 'group', jobId: 3, sequence: messages.length - 2, group: 'models', input: empty('models') },
+    expect(messages.slice(-9)).toEqual([
+      { type: 'identified', jobId: 3, sequence: messages.length - 8, identity: { versionId: 'job-test-disc', sourceFingerprint: fingerprint } },
+      { type: 'progress', jobId: 3, sequence: messages.length - 7, stage: 'convert-graphics', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 6, stage: 'convert-logic', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 5, stage: 'convert-audio', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 4, stage: 'convert-models', readBytes: usage.sourceReadBytes },
+      { type: 'group', jobId: 3, sequence: messages.length - 3, group: 'models', input: empty('models') },
+      { type: 'group', jobId: 3, sequence: messages.length - 2, group: 'cockpit-hud-map', input: empty('cockpit-hud-map') },
       { type: 'group', jobId: 3, sequence: messages.length - 1, group: 'audio', input: empty('audio') },
-      { type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'audio'], usage },
+      { type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'cockpit-hud-map', 'audio'], usage },
     ]);
     expect(fingerprint).toMatch(/^source:sha256:[0-9a-f]{64}$/);
   });
 });
 
 describe('production conversion', () => {
-  it('converts the production graphics and sounds after identification, and sends the graphics models partition and the complete audio group', async () => {
+  it('converts the production graphics and sounds after identification, and sends the graphics partitions and the complete audio group', async () => {
     const imported = await syntheticImport(productionCoveredFiles(), 'production-job-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
@@ -200,18 +201,25 @@ describe('production conversion', () => {
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
-    expect(last.groups).toEqual(['models', 'audio']);
+    expect(last.groups).toEqual(['models', 'cockpit-hud-map', 'audio']);
     expect(last.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'audio').input)).toMatchObject({ status: 'group-complete', group: 'audio' });
     expect(readGroupManifest(sentGroup(messages, 'audio').input.manifest).assets).toHaveLength(PRODUCTION_SOUND_USAGE.assets);
     // Without a logic step no craft model is bound, so the models group holds only the flight palette and the textures.
     expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets);
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
+    // Until the production cockpit, HUD and map Assets are declared, the group holds only the P2-05 palette and fonts.
+    const cockpit = sentGroup(messages, 'cockpit-hud-map').input;
+    expect(readGroupManifest(cockpit.manifest).assets.map(({ id }) => id))
+      .toEqual(['font/hud/4x6', 'font/hud/8x8-1', 'font/hud/8x8-2', 'palette/flight/cockpit-hud-map']);
+    const result = validateGroup(CLASSIC_P2_SLICE, cockpit);
+    if (result.status !== 'incomplete') throw new Error('expected an incomplete cockpit-hud-map group');
+    expect(new Set(result.diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality']));
   });
 });
 
 describe('logic conversion', () => {
-  it('converts every stage on the slice disc and sends the logic, models and audio groups with one manifest identity', async () => {
+  it('converts every stage on the slice disc and sends the logic, models, cockpit-hud-map and audio groups with one manifest identity', async () => {
     const imported = await syntheticImport(sliceCoveredFiles(), 'logic-job-disc');
     let source: VerifiedSource | undefined;
     let captured: LogicStepGroups | undefined;
@@ -230,16 +238,19 @@ describe('logic conversion', () => {
     const groups = messages.filter(message => message.type === 'group');
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
-    expect(groups.map(({ group }) => group)).toEqual(['logic', 'models', 'audio']);
-    expect(last.groups).toEqual(['logic', 'models', 'audio']);
+    expect(groups.map(({ group }) => group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
+    expect(last.groups).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     for (const group of ['logic', 'audio']) expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, group).input)).toMatchObject({ status: 'group-complete' });
+    // The production graphics declare no layout or HUD and map image yet.
+    expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'cockpit-hud-map').input))
+      .toMatchObject({ status: 'incomplete', diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) });
     // One identity derived from every sent draft; payloads, already transferred, are not part of the derivation.
     const basis = productionIdentityBasis(source!.identity.fingerprint);
     const manifests = groups.map(({ input }) => readGroupManifest(input.manifest));
     const { drafts, models: bindings } = captured!;
     expect(manifests[0].identity).toEqual({ ...basis, manifestIdentity: deriveManifestIdentity(basis, [...drafts, ...groups.slice(1).map(sentDraft)]) });
     expect(manifests.every(({ identity }) => identity.manifestIdentity === manifests[0].identity.manifestIdentity)).toBe(true);
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-1.logic-1.audio-1.models-1');
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-2.logic-1.audio-1.models-1');
 
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
@@ -317,8 +328,8 @@ describe('audio conversion', () => {
     const basis = productionIdentityBasis(source.identity.fingerprint);
     expect(manifest.identity).toEqual({
       ...basis,
-      // Over exactly the sent groups, models then audio; payloads are not part of the derivation.
-      manifestIdentity: deriveManifestIdentity(basis, [sentDraft(sentGroup(messages, 'models')), sentDraft(audioGroup)]),
+      // Over exactly the sent groups; payloads are not part of the derivation.
+      manifestIdentity: deriveManifestIdentity(basis, ['models', 'cockpit-hud-map', 'audio'].map(group => sentDraft(sentGroup(messages, group)))),
     });
     expect(manifest.assets.map(({ id, role }) => [id, role])).toEqual([
       ['sound/explosion', 'explosion-sound'], ['sound/fire', 'fire-sound'], ['sound/missile', 'missile-sound'], ['sound/warp', 'warp-sound'],
@@ -328,7 +339,7 @@ describe('audio conversion', () => {
     expect(AUDIO_CONVERSION_USAGE).toMatchObject({ assets: 4, payloadBytes: 4 * 16 + 4 + 5 + 3 + 6, audioSamples: 2 + 5 + 3 + 6 });
     // Overlapping dimensions add up: the graphics and four sound Assets, and both conversions' payload bytes.
     expect(messages.at(-1)).toEqual({
-      type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'audio'],
+      type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'cockpit-hud-map', 'audio'],
       usage: {
         ...GRAPHICS_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes, assets: GRAPHICS_CONVERSION_USAGE.assets + 4,
         payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
@@ -340,7 +351,7 @@ describe('audio conversion', () => {
     // Assets and payload bytes exactly at their limits, while the graphics step already charged both. The directory
     // preflight bounds samples by sample bytes, so the 16-bit clip counts twice its sample points there.
     const exact = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, audioSamples: 4 + 5 + 3 + 6 } } });
-    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['models', 'audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets + 4 } });
+    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets + 4 } });
     const payloadBytes = AUDIO_CONVERSION_USAGE.payloadBytes;
     const { messages } = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, payloadBytes: payloadBytes - 1 } } });
     expect(messages.some(message => message.type === 'group')).toBe(false);
@@ -353,8 +364,8 @@ describe('audio conversion', () => {
     });
   });
 
-  it('keeps the package identity independent of the cockpit-hud-map graphics it does not send', async () => {
-    const identity = (messages: readonly ImportWorkerMessage[]) => readGroupManifest(sentGroup(messages, 'audio').input.manifest).identity;
+  it('sends the cockpit-hud-map group empty without its graphics, changing the package identity but not the models group', async () => {
+    const manifest = (messages: readonly ImportWorkerMessage[], group: string) => readGroupManifest(sentGroup(messages, group).input.manifest);
     const modelsOnly = (table: { readonly mappings: readonly { readonly asset: { readonly id: string } }[] }) => {
       const ids = new Set<string>(PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'models').map(({ asset }) => asset.id));
       return { ...table, mappings: table.mappings.filter(({ asset }) => ids.has(asset.id)) };
@@ -365,9 +376,13 @@ describe('audio conversion', () => {
       share: PRODUCTION_GRAPHICS_SHARE,
     };
     const [withCockpit, withoutCockpit] = (await Promise.all([audioJob(), audioJob({ graphics })])).map(({ messages }) => messages);
-    // Without the cockpit-hud-map flight palette and the three fonts; the sent groups and their identity are the same.
-    expect(withoutCockpit.at(-1)).toMatchObject({ type: 'finished', usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 } });
-    expect(identity(withoutCockpit)).toEqual(identity(withCockpit));
+    // Without the cockpit-hud-map flight palette and the three fonts.
+    expect(withoutCockpit.at(-1)).toMatchObject({
+      type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 },
+    });
+    expect(manifest(withoutCockpit, 'cockpit-hud-map').assets).toEqual([]);
+    expect(manifest(withoutCockpit, 'models').assets).toEqual(manifest(withCockpit, 'models').assets);
+    expect(manifest(withoutCockpit, 'audio').identity.manifestIdentity).not.toBe(manifest(withCockpit, 'audio').identity.manifestIdentity);
   });
 
   it('fails before sending any group when a sample, or the final usage, is rejected', async () => {
@@ -428,6 +443,39 @@ describe('model conversion', () => {
   it('fails a mesh that breaks its format at the source layer, in the model location grammar', async () => {
     const failed = await sliceJob(() => productionSliceEntries(true));
     expect(failed).toMatchObject({ type: 'failed', error: { layer: 'source', code: 'invalid-payload', location: 'models[model/base-1].parts[0][1].mesh' } });
+  });
+});
+
+describe('cockpit-hud-map assembly', () => {
+  it('limits the graphics step to the read limit plus the graphics, logic and model shares, passing at it and failing past it without a group', async () => {
+    const covered = cockpitCoveredFiles();
+    const imported = await syntheticImport(covered, 'cockpit-job-disc');
+    const graphics = cockpitGraphics();
+    const { usage } = await runGraphicsStep(await syntheticSource(covered, 'cockpit-job-disc'), graphics.mappings, graphics.declarations, UNLIMITED_BUDGET);
+    // The graphics share is the conversion usage in every dimension but the image pixels, which the three shares split.
+    const pixel = { ...EMPTY_BUDGET_USAGE, imagePixels: 1 };
+    const job = (imagePixels: number) => createImportJob(
+      imported.open, { ...graphics, share: { ...usage, imagePixels: imagePixels - 2 } }, { ...NO_LOGIC, share: pixel }, NO_AUDIO, { ...NO_MODELS, share: pixel },
+    );
+    expect((await run(job(usage.imagePixels), imported.files)).at(-1)).toMatchObject({ type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'] });
+    const messages = await run(job(usage.imagePixels - 1), imported.files);
+    expect(typesOf(messages).filter(type => !type.startsWith('progress'))).toEqual(['identified', 'failed']);
+    expect(messages.at(-1)).toMatchObject({
+      type: 'failed',
+      error: { layer: 'source', code: 'budget-exceeded', location: 'graphics[image/model-texture/01].pixels', limit: { name: 'imagePixels', limit: usage.imagePixels - 1, observed: usage.imagePixels } },
+    });
+  });
+
+  it('fails before sending any group when a group draft is rejected', async () => {
+    const imported = await syntheticImport(cockpitCoveredFiles(), 'cockpit-job-disc');
+    // A logic step whose draft claims the group the job assembles from the graphics step.
+    const claiming: LogicStepInput = {
+      ...NO_LOGIC,
+      convert: async (...args) => ({ ...await NO_LOGIC.convert(...args), drafts: [{ group: 'cockpit-hud-map', assets: [], payloads: [], sources: null }] }),
+    };
+    const messages = await run(createImportJob(imported.open, cockpitGraphics(), claiming, NO_AUDIO, NO_MODELS), imported.files);
+    expect(typesOf(messages).filter(type => !type.startsWith('progress'))).toEqual(['identified', 'failed']);
+    expect(messages.at(-1)).toMatchObject({ type: 'failed', error: { layer: 'content', code: 'invalid-resource-group', location: 'drafts[1].group' } });
   });
 });
 
