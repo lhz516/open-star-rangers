@@ -2,25 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { encodeImagePayload, readImagePayload } from '../../content/graphics/image-payload.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
-import type { SourceLimit } from '../source-error.ts';
-import { ByteWriter, imageRecord } from '../synthetic.ts';
+import { ByteWriter } from '../synthetic.ts';
+import {
+  cockpitBlock as cockpit, expectSourceError as rejects, fontTable, hudFontTables, recordBlock as record,
+} from './conversion.test-support.ts';
 import {
   decodeImageRecord, readCockpitFont, readCockpitFonts, readDataPalette, readEmbeddedPalette, readFontTable,
   readImageRecordHeader, readMfdRecordOffsets,
 } from './source-graphics.ts';
-
-const rejects = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null) =>
-  expect(action).toThrowError(expect.objectContaining({ name: 'SourceError', code, location, limit }));
-
-type RecordFields = Partial<Parameters<typeof imageRecord>[1]> & { width: number; height: number; size: number };
-
-/** A whole-entry image record (raw, no palette, data at offset 36 by default) followed by `tail`. */
-function record(fields: RecordFields, ...tail: readonly (readonly number[])[]): Uint8Array {
-  const writer = imageRecord(new ByteWriter(), { encoding: 0, paletteOffset: 0, paletteCount: 0, pixelOffset: 36, ...fields });
-  for (const bytes of tail) writer.raw(bytes);
-  return writer.toBytes();
-}
-
 
 // A 5×3 sprite whose rows differ, as little-endian u16 runs and pixels. Row 0: transparent 0, opaque 2 (1, 2),
 // transparent 3. Row 1: transparent 5. Row 2: transparent 1, opaque 3 (3, 4, 5), transparent 1.
@@ -28,25 +17,7 @@ const SPRITE_RUNS = [0, 0, 2, 0, 1, 2, 3, 0, 5, 0, 1, 0, 3, 0, 3, 4, 5, 1, 0];
 const SPRITE_INDICES = [1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 5, 0];
 const SPRITE_MASK = [0b1100_0000, 0, 0b0111_0000];
 
-function fontTable(width: number, height: number, length = 4 + 256 * height): Uint8Array {
-  const table = Uint8Array.from({ length }, (_, index) => (index * 29 + 7) & 0xff);
-  table.set([0, 1, width, height]);
-  return table;
-}
-
-/** A CCKD-shaped block: a {pointer, count} header, a directory of {offset, size} and the tables. */
-function cockpit(tables: readonly Uint8Array[], count = tables.length): Uint8Array {
-  const writer = new ByteWriter().u32(8, count);
-  let offset = 8 + tables.length * 8;
-  for (const table of tables) {
-    writer.u32(offset, table.length);
-    offset += table.length;
-  }
-  for (const table of tables) writer.raw(table);
-  return writer.toBytes();
-}
-
-const HUD_FONTS = [fontTable(8, 8), fontTable(8, 8), fontTable(4, 6)];
+const HUD_FONTS = hudFontTables();
 
 describe('DATA palette source', () => {
   it('expands 6-bit components by bit replication into a new buffer', () => {

@@ -95,7 +95,7 @@ updated: 2026-10-05
 | [01-graphics-payloads.md](./subtasks/01-graphics-payloads.md) | — | completed |
 | [02-expansion-lookup.md](./subtasks/02-expansion-lookup.md) | 01 | completed |
 | [03-source-hardening.md](./subtasks/03-source-hardening.md) | 01 | completed |
-| [04-graphics-conversion.md](./subtasks/04-graphics-conversion.md) | 01, 03 | pending |
+| [04-graphics-conversion.md](./subtasks/04-graphics-conversion.md) | 01, 03 | completed |
 | [05-graphics-step.md](./subtasks/05-graphics-step.md) | 04 | pending |
 | [06-production-graphics.md](./subtasks/06-production-graphics.md) | 05 | pending |
 | [07-worker-integration.md](./subtasks/07-worker-integration.md) | 05, 06 | pending |

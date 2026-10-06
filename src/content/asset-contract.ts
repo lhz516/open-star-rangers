@@ -26,6 +26,12 @@ export function readResourceGroup(value: unknown, path = 'group'): ResourceGroup
   return value as ResourceGroup;
 }
 
+/** A nonempty ASCII semantic role token; required role membership belongs to the slice definition. */
+export function readRole(value: unknown, path = 'role'): string {
+  if (!matchesWhole(value, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)) fail('invalid-role', path, 'must be a nonempty ASCII semantic role token');
+  return value;
+}
+
 function readReferenceFields(record: Record<string, unknown>, path: string): AssetReference {
   const id = readAssetId(record.id, `${path}.id`);
   const kind = readAssetKind(record.kind, `${path}.kind`);
@@ -51,10 +57,9 @@ export function readAssetDescriptor(value: unknown, path = 'asset'): AssetDescri
   const record = readRecord(value, path);
   requireFields(record, path, ['id', 'kind', 'role', 'group', 'dependencies', 'payloadIdentity']);
   const reference = readReferenceFields(record, path);
-  if (!matchesWhole(record.role, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)) fail('invalid-role', `${path}.role`, 'must be a nonempty ASCII semantic role token');
   return Object.freeze({
     ...reference,
-    role: record.role,
+    role: readRole(record.role, `${path}.role`),
     group: readResourceGroup(record.group, `${path}.group`),
     dependencies: readDependencies(record.dependencies, `${path}.dependencies`),
     payloadIdentity: readPayloadIdentity(record.payloadIdentity, `${path}.payloadIdentity`),

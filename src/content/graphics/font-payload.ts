@@ -25,6 +25,10 @@ export interface FontPayload {
 
 const HEADER_BYTES = 4;
 
+/** Encoded length of a font of `height` rows with `charMapEntries` map entries. */
+export const fontPayloadLength = (height: number, charMapEntries: number): number =>
+  HEADER_BYTES + GRAPHICS_LIMITS.glyphCount * height + charMapEntries * 2;
+
 const cellWidthOf = (value: unknown, path: string): number => requireInteger(value, 1, GRAPHICS_LIMITS.fontCellWidth, path);
 const heightOf = (value: unknown, path: string): number => requireInteger(value, 1, GRAPHICS_LIMITS.fontHeight, path);
 
@@ -44,7 +48,7 @@ export function encodeFontPayload(font: Omit<FontPayload, 'kind'>, path = 'font'
   const { charMap } = font;
   if (!Array.isArray(charMap) || charMap.length > GRAPHICS_LIMITS.charMapEntries) invalid(`${path}.charMap`, 'must be at most 256 entries');
   const mapAt = HEADER_BYTES + glyphs.length;
-  const bytes = new Uint8Array(mapAt + charMap.length * 2);
+  const bytes = new Uint8Array(fontPayloadLength(height, charMap.length));
   bytes.set([cellWidth, height], 0);
   new DataView(bytes.buffer).setUint16(2, charMap.length, true);
   bytes.set(glyphs, HEADER_BYTES);
@@ -65,7 +69,7 @@ export function readFontPayload(bytes: unknown, schemaVersion: unknown, path = '
   const height = heightOf(view.getUint8(1), `${path}.height`);
   const count = requireInteger(view.getUint16(2, true), 0, GRAPHICS_LIMITS.charMapEntries, `${path}.charMap`);
   const mapAt = HEADER_BYTES + GRAPHICS_LIMITS.glyphCount * height;
-  requireLength(view, mapAt + count * 2, path);
+  requireLength(view, fontPayloadLength(height, count), path);
   const charMap: CharMapEntry[] = [];
   for (let index = 0, previous = -1; index < count; index++) {
     const [code, glyph] = [view.getUint8(mapAt + index * 2), view.getUint8(mapAt + index * 2 + 1)];

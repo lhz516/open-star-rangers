@@ -37,6 +37,10 @@ const HEADER_BYTES = 8;
 /** Mask bytes per row. */
 export const maskStride = (width: number): number => (width + 7) >> 3;
 
+/** Encoded length of an image with these fields, with or without a mask. */
+export const imagePayloadLength = ({ width, height, palette, display }: Pick<ImagePayload, 'width' | 'height' | 'palette' | 'display'>, masked: boolean): number =>
+  HEADER_BYTES + palette.length + (display === 'direct' ? 0 : display.nearest.length) + width * height + (masked ? maskStride(width) * height : 0);
+
 /** Whether pixel (x, y) is opaque under `mask`; every pixel is opaque without one. */
 export const isOpaque = (mask: Uint8Array | null, width: number, x: number, y: number): boolean =>
   mask === null || (mask[y * maskStride(width) + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
@@ -72,7 +76,7 @@ export function encodeImagePayload(image: Omit<ImagePayload, 'kind'>, path = 'im
   const mask = image.mask === null ? null : requireBytes(image.mask, `${path}.mask`, maskStride(width) * height);
   const pixelsAt = HEADER_BYTES + palette.length + (target?.length ?? 0);
   const maskAt = pixelsAt + indices.length;
-  const bytes = new Uint8Array(maskAt + (mask?.length ?? 0));
+  const bytes = new Uint8Array(imagePayloadLength({ width, height, palette: image.palette, display }, mask !== null));
   const view = new DataView(bytes.buffer);
   view.setUint16(0, width, true);
   view.setUint16(2, height, true);

@@ -7,12 +7,15 @@ import type { PalettePayload } from './palette-payload.ts';
 
 export type GraphicsPayload = PalettePayload | ImagePayload | FontPayload;
 
-/** The palette Asset IDs a payload references, deduplicated in ascending order; palettes and fonts reference none. */
-export function referencedPalettes(payload: GraphicsPayload): readonly AssetId[] {
-  if (payload.kind !== 'image') return [];
-  const { palette, display } = payload;
+/** The palette Asset IDs an image with this binding references, deduplicated in ascending order. */
+export function imagePalettes({ palette, display }: Pick<ImagePayload, 'palette' | 'display'>): readonly AssetId[] {
   if (display === 'direct' || display.nearest === palette) return [palette];
   return [palette, display.nearest].sort(compareText);
+}
+
+/** The palette Asset IDs a payload references, deduplicated in ascending order; palettes and fonts reference none. */
+export function referencedPalettes(payload: GraphicsPayload): readonly AssetId[] {
+  return payload.kind === 'image' ? imagePalettes(payload) : [];
 }
 
 /** Checks that the descriptor's kind matches the payload and its dependencies are exactly the palettes it references. */

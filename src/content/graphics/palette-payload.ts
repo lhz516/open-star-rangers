@@ -12,13 +12,16 @@ export interface PalettePayload {
 
 const HEADER_BYTES = 2;
 
+/** Encoded length of a palette with `entryCount` entries. */
+export const palettePayloadLength = (entryCount: number): number => HEADER_BYTES + entryCount * 3;
+
 const entryCount = (value: unknown, path: string): number => requireInteger(value, 1, GRAPHICS_LIMITS.paletteEntryCount, path);
 
 /** Encodes a palette into a new buffer that the result owns entirely. */
 export function encodePalettePayload(palette: Omit<PalettePayload, 'kind'>, path = 'palette'): Uint8Array<ArrayBuffer> {
   const entries = requireBytes(palette.entries, `${path}.entries`);
   const count = entryCount(entries.length / 3, `${path}.entries`);
-  const bytes = new Uint8Array(HEADER_BYTES + entries.length);
+  const bytes = new Uint8Array(palettePayloadLength(count));
   new DataView(bytes.buffer).setUint16(0, count, true);
   bytes.set(entries, HEADER_BYTES);
   return bytes;
@@ -29,6 +32,6 @@ export function readPalettePayload(bytes: unknown, schemaVersion: unknown, path 
   const view = payloadView(bytes, schemaVersion, path);
   if (view.byteLength < HEADER_BYTES) invalid(path, 'is truncated');
   const count = entryCount(view.getUint16(0, true), `${path}.entryCount`);
-  requireLength(view, HEADER_BYTES + count * 3, path);
+  requireLength(view, palettePayloadLength(count), path);
   return Object.freeze({ kind: 'palette', entries: copyBytes(view, HEADER_BYTES, count * 3) });
 }

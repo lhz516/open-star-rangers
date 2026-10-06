@@ -54,12 +54,12 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-04、AC-06 的转换部分全部通过。
-- [ ] AC-02 的 `reversed` 与 AC-07 的单元断言、映射区间通过。
-- [ ] AC-03 预算部分与 AC-10 扣除部分：等于限值通过，超出被拒绝且用量不变、无部分结果；转换用量的 `sourceReadBytes` 为 0。
-- [ ] AC-08 转换部分：同输入同字节，`payloadIdentity` 与字节一致。
-- [ ] 错误位置都是 `graphics[<Asset ID>]…` 或 `graphics.declarations[<i>]…`，不含条目编号、偏移或字节。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-04、AC-06 的转换部分全部通过。
+- [x] AC-02 的 `reversed` 与 AC-07 的单元断言、映射区间通过。
+- [x] AC-03 预算部分与 AC-10 扣除部分：等于限值通过，超出被拒绝且用量不变、无部分结果；转换用量的 `sourceReadBytes` 为 0。
+- [x] AC-08 转换部分：同输入同字节，`payloadIdentity` 与字节一致。
+- [x] 错误位置都是 `graphics[<Asset ID>]…` 或 `graphics.declarations[<i>]…`，不含条目编号、偏移或字节。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -68,3 +68,25 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现（2026-10-05）：**
+  - [graphics-declarations.ts](../../../../../src/original-data/conversion/graphics-declarations.ts) 的 `readGraphicsDeclarations` 复用 content 的严格读取原语与新导出的 `readRole`。它把任何 `ContentContractError` 转为同一路径的 `invalid-declaration`，并核对组拥有 kind、ID 唯一、图像的 `palette` 与 nearest 目标都是同组已声明的调色板，以及 `charMap` 区间互不重叠且落在 0–255。
+  - [convert-graphics.ts](../../../../../src/original-data/conversion/convert-graphics.ts) 的 `convertGraphics(declarations, sources, limits, usage)` 按 Asset ID 接收类型化的源块（`data-palette`、`embedded-palette`、`image-record`、`cockpit-font`）。来源与 kind 不符或缺少来源都是 `invalid-declaration`。它先转换调色板，再转换图像与字体，每个 Asset 都先扣除由记录头或声明推得的预算。颜色键只用于 raw；不透明索引越界为 `palette-index-out-of-range`；`reversed` 反转索引与掩码；字体按声明的单元扣除，实际不符为 `geometry-mismatch`。描述符依赖用 content 新增的 `imagePalettes`。起始用量含源读取时直接拒绝，防止重复计量。
+  - content 新增 `palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength`，编码器与转换器共用；`readRole` 由 `readAssetDescriptor` 与声明共用。
+  - 合成样本与声明移到 [conversion.test-support.ts](../../../../../src/original-data/conversion/conversion.test-support.ts)，[source-graphics.test.ts](../../../../../src/original-data/conversion/source-graphics.test.ts) 改用它。
+- **测试：** `pnpm exec vitest run src/original-data/conversion` 3 个文件 104 项通过。
+  - [graphics-declarations.test.ts](../../../../../src/original-data/conversion/graphics-declarations.test.ts)：有效集合冻结且与输入相等；23 种拒绝都为 `invalid-declaration`，位置均在 `graphics.declarations[…]` 下。覆盖非数组、未知或缺少字段、非图形 kind、kind 与 ID 不符、角色、组或不拥有该 kind 的组、重复 ID、绑定到非调色板、集合外或别组的调色板（AC-04 声明部分）、nearest 目标、display、颜色键 256、alpha、rowOrder、单元宽 0 与高 9、区间重叠、码位或字形越过 255、空区间（AC-07 区间）。消息不含被拒的值。
+  - [convert-graphics.test.ts](../../../../../src/original-data/conversion/convert-graphics.test.ts)：
+    - 5 个 Asset（DATA 与嵌入调色板、raw nearest 图像、RLE 图像、4×6 字体）按 ID 排序；描述符的 kind、role、group 与依赖正确；`payloadMismatch` 为 null、`checkGraphicsBinding` 通过、缓冲独占。调色板、图像与字体内容逐项符合期望，区间展开为按码位升序的映射。用量为 assets 5、dependencyEdges 3、paletteEntries 272、imagePixels 21、glyphs 256，payloadBytes 等于字节之和，其余维度（含 `sourceReadBytes`）为 0。
+    - AC-08：两次转换的描述符与字节相同。
+    - AC-02：`reversed` 恰好反转 raw 与 RLE 的行序，RLE 掩码也随之反转；未声明时不变。
+    - AC-06：raw 颜色键 2 使对应像素索引为 0、掩码位为 0，其余不变；RLE 上声明颜色键为 `invalid-declaration@graphics[image/sprite].alpha`；未声明时掩码为 null。
+    - AC-04：16 色调色板下不透明索引 16 为 `palette-index-out-of-range@graphics[image/panel].pixels`；同一索引被颜色键变透明后通过。
+    - AC-07：单元不符为 `geometry-mismatch@…glyphs`，`fonts/3` 为 `subresource-not-found@…fonts`。
+    - 来源与 kind 不符、缺少来源、DATA 损坏、记录没有嵌入调色板、RLE 截断，都带 `graphics[<ID>].<字段>` 或 `graphics.declarations[3]` 位置。
+    - AC-03、AC-10：限值恰等于用量时通过。6 个被扣除的维度各少 1 时都报 `budget-exceeded`，`{name, limit, observed}` 正确，位置为 `graphics[<ID>].palette|pixels|glyphs`。一个只有解码才会发现错误的 RLE 在像素预算不足时报 `budget-exceeded` 而非 `invalid-payload`，证明扣除先于解码；同一输入在预算充足时为 `invalid-payload`，调用者的用量不变。起始用量可累加，含 `sourceReadBytes` 时被拒绝；总量超出安全整数时 `observed` 为 null。
+- **工程：** `pnpm typecheck`、`pnpm lint`、`pnpm check`（含工程边界回归）通过；`conversion/` 只值导入 content、`source-error.ts` 与同目录模块，不触及 `archive/` 或 `imfat.ts`。
+- **Rubber-duck：** 无 Blocker/High。Medium（起始用量可带入 `sourceReadBytes`，违反转换用量为 0 且可能重复计量）已改为拒绝并加测试。Low（字符映射在扣除前展开）已改为先按区间计数扣除、再展开。
+- **Simplify：** 采纳声明读取复用 `requireInteger` 与 `readPaletteReference`、像素越界检查先比索引再查掩码、测试支持去掉断言式类型与多余导出。未采纳：嵌套 kind 判别无法让 TypeScript 收窄，类型断言保留；`checkBindings` 改用 `imagePalettes` 会失去按字段的错误位置；重读 36 字节头是 03 审查后有意保留的；行反转与编码融合只影响需要证据的少数图像；声明分桶与字符映射展开规模很小。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)的“图形转换”一节补充转换声明与转换器（来源类型、顺序、预算扣除、错误位置），“图形 payload”一节补充长度辅助与 `imagePalettes`，content 概述补充 `readRole`，目录树加入两个文件。工程约定、工具指南与原版文档无需更新：没有新命令或原版事实。
+
