@@ -10,8 +10,10 @@ import { convertLogic, PRODUCTION_LOGIC_SHARE } from '../original-data/conversio
 import type { ModelReferences } from '../original-data/conversion/convert-models.ts';
 import { productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
 import type { ModelBinding } from '../original-data/conversion/craft-binding.ts';
+import { runEffectStep } from '../original-data/conversion/effect-step.ts';
 import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
+import { PRODUCTION_EFFECT_DECLARATIONS, PRODUCTION_EFFECT_MAPPINGS } from '../original-data/conversion/production-effects.ts';
 import {
   PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
 } from '../original-data/conversion/production-graphics.ts';
@@ -72,19 +74,22 @@ export const PRODUCTION_LOGIC_STEP: LogicStepInput = Object.freeze({
 });
 
 /**
- * The model step: the mappings and declarations of the craft models the logic step bound, the lookup tables of part
- * textures and sound slots, and the budget share approved for it.
+ * The model stage: the mappings and declarations of the craft models the logic step bound, the lookup tables of part
+ * textures and sound slots, the effect mappings and declarations the effect step converts after the models, and the
+ * budget share approved for both steps.
  */
 export interface ModelStepInput {
   readonly inputs: (models: readonly ModelBinding[]) => { readonly mappings: unknown; readonly declarations: unknown };
   readonly references: ModelReferences;
+  readonly effects: { readonly mappings: unknown; readonly declarations: unknown };
   readonly share: BudgetRecord;
 }
 
-/** The P2-06 production models. */
+/** The P2-06 production models and effects. */
 const PRODUCTION_MODEL_STEP: ModelStepInput = Object.freeze({
   inputs: (models: readonly ModelBinding[]) => ({ mappings: productionModelMappings(models), declarations: productionModelDeclarations(models) }),
   references: PRODUCTION_MODEL_REFERENCES,
+  effects: Object.freeze({ mappings: PRODUCTION_EFFECT_MAPPINGS, declarations: PRODUCTION_EFFECT_DECLARATIONS }),
   share: PRODUCTION_MODEL_SHARE,
 });
 
@@ -140,12 +145,13 @@ class MeteredByteSource implements ByteSource {
 
 /**
  * The import job: reads the files on demand through metered Blob ports, opens and identifies them, then runs the
- * graphics and the logic conversion steps, converts the audio group and runs the model step. Each stage reports progress
+ * graphics and the logic conversion steps, converts the audio group and runs the model and effect steps. Each stage reports progress
  * once when it starts and after every port read, with the read bytes accumulated across stages. The graphics, logic and
  * model limits are the P2-02 default read limit (the input size) plus the three steps' shares: the logic step charges
- * on top of the graphics usage and the model step on top of the logic usage; the audio stage charges its own limits
- * from zero (P2-08 budget). The model step converts the craft models the logic step bound, and its models join the
- * graphics step's `models` partition in the `models` group; the `cockpit-hud-map` partition stays in the job until it
+ * on top of the graphics usage, the model step on top of the logic usage and the effect step, in the same stage, on top
+ * of the model usage; the audio stage charges its own limits from zero (P2-08 budget). The model step converts the craft
+ * models the logic step bound; its models and the effect Assets join the graphics step's `models` partition in the
+ * `models` group; the `cockpit-hud-map` partition stays in the job until it
  * is assembled. The logic drafts, the audio group and the always-sent models group get one manifest identity derived
  * from all of them; every conversion, that identity, the transfer lists and the final usage (read usage plus every
  * conversion's usage) are checked before the first group is sent. `open`, `graphics`, `logic`, `audio` and `models`
@@ -184,16 +190,17 @@ export function createImportJob(
     enter('convert-models');
     const { mappings, declarations } = models.inputs(logicResult.models);
     const modelResult = await runModelStep(source, mappings, declarations, models.references, limits, logicResult.usage);
+    const effectResult = await runEffectStep(source, models.effects.mappings, models.effects.declarations, limits, modelResult.usage);
     // Everything that can still fail runs before the first group is sent, so a failure never follows a group.
     const drafts: GroupDraft[] = [
       ...logicResult.drafts,
       { group: 'audio', ...sounds },
-      modelsGroupDraft(graphicsResult, modelResult, source.identity.fingerprint),
+      modelsGroupDraft([graphicsResult, modelResult, effectResult], source.identity.fingerprint),
     ];
     const groups = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), drafts)
       .map((group): PackageGroup => [group.manifest.group, group]);
     checkPackageTransfers(groups);
-    const usage = addBudgets(addBudgets(source.usage(), modelResult.usage, 'usage'), audioUsage, 'usage');
+    const usage = addBudgets(addBudgets(source.usage(), effectResult.usage, 'usage'), audioUsage, 'usage');
     for (const [group, input] of groups) report.group(group, input);
     return usage;
   };

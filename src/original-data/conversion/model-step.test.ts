@@ -111,7 +111,7 @@ describe('model step', () => {
     const { source } = await countedVerifiedSource(archive());
     const graphics = await runGraphicsStep(source, graphicsMappings(), GRAPHICS_DECLARATIONS, LIMITS);
     const models = await step(source);
-    const draft = modelsGroupDraft(graphics, models, source.identity.fingerprint);
+    const draft = modelsGroupDraft([graphics, models], source.identity.fingerprint);
     expect(draft.assets.map(({ id: asset }) => asset)).toEqual(['image/synthetic-texture', ...NAMES.map(id).sort(), 'palette/flight/models', 'palette/synthetic-texture']);
     expect(draft.payloads.map(({ id: asset }) => asset)).toEqual(draft.assets.map(({ id: asset }) => asset));
     expect(draft.sources?.states.map(({ id: asset }) => asset)).toEqual(draft.assets.map(({ id: asset }) => asset));
@@ -125,7 +125,7 @@ describe('model step', () => {
   it('is incomplete with source-not-ready while a texture the models need is unconfirmed', async () => {
     const { source } = await countedVerifiedSource(archive());
     const graphics = await runGraphicsStep(source, graphicsMappings({ confidence: 'unconfirmed', unknowns: ['U-028'] }), GRAPHICS_DECLARATIONS, LIMITS);
-    const [group] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [modelsGroupDraft(graphics, await step(source), source.identity.fingerprint)]);
+    const [group] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [modelsGroupDraft([graphics, await step(source)], source.identity.fingerprint)]);
     expect(validateGroup(CLASSIC_P2_SLICE, group)).toMatchObject({
       status: 'incomplete',
       diagnostics: [expect.objectContaining({ code: 'source-not-ready', assetId: 'image/synthetic-texture', unknowns: ['U-028'] })],
@@ -135,8 +135,8 @@ describe('model step', () => {
   it('rejects merging partitions that repeat an Asset ID', async () => {
     const { source } = await countedVerifiedSource(archive());
     const models = await step(source);
-    expect(() => modelsGroupDraft(models, models, source.identity.fingerprint)).toThrow(expect.objectContaining({ code: 'duplicate-asset' }));
-    expect(modelsGroupDraft({ groups: [], usage: EMPTY_BUDGET_USAGE }, { groups: [], usage: EMPTY_BUDGET_USAGE }, source.identity.fingerprint))
+    expect(() => modelsGroupDraft([models, models], source.identity.fingerprint)).toThrow(expect.objectContaining({ code: 'duplicate-asset' }));
+    expect(modelsGroupDraft([{ groups: [], usage: EMPTY_BUDGET_USAGE }, { groups: [], usage: EMPTY_BUDGET_USAGE }], source.identity.fingerprint))
       .toEqual({ group: 'models', assets: [], payloads: [], sources: { sourceFingerprint: source.identity.fingerprint, states: [] } });
   });
 

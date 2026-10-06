@@ -13,6 +13,7 @@ import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
 import { MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
+import { syntheticEffectExecutable } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.ts';
@@ -94,24 +95,30 @@ export const NO_LOGIC: LogicStepInput = Object.freeze({
   share: EMPTY_BUDGET_USAGE,
 });
 
-/** A model step with nothing to convert whatever the logic step bound; the models group holds only the graphics partition. */
+/** A model stage with no models or effects to convert whatever the logic step bound; the models group holds only the graphics partition. */
 export const NO_MODELS: ModelStepInput = Object.freeze({
   inputs: () => ({ mappings: { sourceFingerprint: null, mappings: [] }, declarations: [] }),
   references: Object.freeze({ textures: new Map(), sounds: new Map() }),
+  effects: Object.freeze({ mappings: { sourceFingerprint: null, mappings: [] }, declarations: [] }),
   share: EMPTY_BUDGET_USAGE,
 });
 
 /**
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics entries, the M2ID
- * list with valid models for the craft types the default mission binds and their meshes, and synthetic samples at
- * every entry of the production sound table, and `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the
- * selected mission. `corruptMesh` breaks the mesh five models share, which the model step rejects as
+ * list with valid models for the craft types the default mission binds and their meshes, the effect model, the RENS
+ * entry and synthetic samples at every entry of the production sound table; `MAIN/SCENARIO.NOB` with the campaign
+ * table and `scenario` as the selected mission; and `MAIN/SRANGERS.EXE`, a synthetic LE executable with effect data
+ * at the production regions. `corruptMesh` breaks the mesh five models share, which the model step rejects as
  * `invalid-payload`.
  */
 export function sliceCoveredFiles(
   { scenario = syntheticScenario(defaultScenarioSpec()), corruptMesh = false }: { readonly scenario?: ReturnType<typeof syntheticScenario>; readonly corruptMesh?: boolean } = {},
 ): Record<string, Uint8Array> {
-  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)) };
+  return {
+    'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario),
+    'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
+    'MAIN/SRANGERS.EXE': syntheticEffectExecutable(),
+  };
 }
 
 /** An audio stage with nothing to convert; its group has no Assets. */

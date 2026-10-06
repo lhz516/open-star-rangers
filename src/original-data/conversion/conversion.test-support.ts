@@ -32,10 +32,21 @@ const MODEL_LOCATION = new RegExp(`^models(?:${[
 /** Whether a conversion diagnostic location belongs to the P2-06 model grammar. */
 const inModelLocationGrammar = (location: string): boolean => MODEL_LOCATION.test(location);
 
+// The P2-06 effect location grammar (spec, effect geometry data and error codes), written from the spec as an oracle:
+// the declaration set or a declaration's field path, or an effect Asset alone or followed by its source, a region, a
+// record or a template. No entry IDs or offsets can appear.
+const EFFECT_LOCATION = new RegExp(`^effects(?:${[
+  String.raw`\.declarations(?:\[\d+\](?:\.[A-Za-z]+(?:\[\d+\])?)*)?`,
+  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\](?:\.source|\.(?:regions|records|templates)\[\d+\])?`,
+].join('|')})$`);
+
+/** Whether a conversion diagnostic location belongs to the P2-06 effect grammar. */
+export const inEffectLocationGrammar = (location: string): boolean => EFFECT_LOCATION.test(location);
+
 /**
  * Asserts that `action` throws a SourceError with exactly this code, location and limit, and a reason the Worker
- * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…` and `models…`
- * locations must be in their grammars.
+ * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…`, `models…` and
+ * `effects…` locations must be in their grammars.
  */
 export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null, reason?: string): void => {
   let thrown: unknown;
@@ -49,6 +60,7 @@ export const expectSourceError = (action: () => unknown, code: string, location:
   if (reason !== undefined) expect((thrown as { reason: string }).reason).toBe(reason);
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
   if (location.startsWith('models')) expect(inModelLocationGrammar(location), location).toBe(true);
+  if (location.startsWith('effects')) expect(inEffectLocationGrammar(location), location).toBe(true);
 };
 
 /** A complete budget record allowing the most of every dimension, for tests whose subject is not the budget. */

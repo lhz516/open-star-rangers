@@ -116,7 +116,7 @@ describe('production models', () => {
     const { source, logic, binding } = await slice();
     const graphics = await runGraphicsStep(source, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_SHARE);
     const models = await runModelStep(source, productionModelMappings(binding.models), productionModelDeclarations(binding.models), PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE);
-    const draft = modelsGroupDraft(graphics, models, source.identity.fingerprint);
+    const draft = modelsGroupDraft([graphics, models], source.identity.fingerprint);
     const [logicGroup] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [logic.draft, draft]);
     const result = validateGroup(CLASSIC_P2_SLICE, logicGroup);
     if (result.status !== 'group-complete') throw new Error('expected a complete logic group');

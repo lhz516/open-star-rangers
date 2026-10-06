@@ -144,7 +144,7 @@ describe('debris expansion', () => {
       expect([shape.faces, shape.colour, shape.texture, [...shape.perVertex!]]).toEqual([[[0, 1, 2], [2, 3, 4, 5]], payload.untexturedColour, null, [...plain.perVertex]]);
     }
     for (const shape of shapes.textured) {
-      expect([shape.faces, shape.colour, shape.texture, [...shape.perVertex!]]).toEqual([[[0, 1, 2, 3], [3, 4, 5]], payload.texturedColour, DEBRIS_TEXTURE, [...textured.perVertex]]);
+      expect([shape.faces, shape.colour, shape.texture, [...shape.perVertex!]]).toEqual([[[0, 1, 2, 3, 4], [3, 4, 5]], payload.texturedColour, DEBRIS_TEXTURE, [...textured.perVertex]]);
     }
   });
 });
@@ -167,7 +167,7 @@ describe('effect expansion', () => {
     const debris = syntheticDebris();
     expect(effectExpansionSize(projectile)).toEqual({ vertices: 12, triangles: 7 });
     expect(effectExpansionSize(missile)).toEqual({ vertices: 93, triangles: 56 });
-    expect(effectExpansionSize(debris)).toEqual({ vertices: 30, triangles: 15 });
+    expect(effectExpansionSize(debris)).toEqual({ vertices: 30, triangles: 17 });
     expect(effectExpansionSize(projectile)).toEqual(shapeSize(expandProjectiles(projectile)));
     expect(effectExpansionSize(missile)).toEqual(shapeSize(expandMissiles(missile).flatMap(v => [...v.parts, v.element, ...(v.extra ? [v.extra] : [])])));
     const { untextured, textured } = expandDebris(debris);

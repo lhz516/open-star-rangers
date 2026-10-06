@@ -17,7 +17,7 @@ export interface EffectMapping {
 export interface EffectShape {
   /** x, y, z per vertex. */
   readonly positions: Float32Array;
-  /** Vertex indices of each face, 3 or 4 corners, in source order. */
+  /** Vertex indices of each face, 3 corners up to the shape's vertex count, in source order. */
   readonly faces: readonly (readonly number[])[];
   /** Three floats in the builder's argument order, or null when the builder sets no colour. */
   readonly colour: EffectColour | null;

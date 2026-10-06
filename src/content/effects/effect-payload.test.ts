@@ -52,6 +52,8 @@ describe('effect payloads', () => {
 
   it('checks face lists', () => {
     expect(faceList(Uint32Array.of(3, 0, 1, 2, 4, 3, 2, 1, 0, 0), 4, 'f')).toEqual([[0, 1, 2], [3, 2, 1, 0]]);
+    // A face may have as many corners as the shape has vertices.
+    expect(faceList(Uint32Array.of(5, 4, 3, 2, 1, 0, 3, 0, 2, 4, 0), 5, 'f')).toEqual([[4, 3, 2, 1, 0], [0, 2, 4]]);
     for (const words of [[0], [], [3, 0, 1, 2], [3, 0, 1, 2, 0, 0], [2, 0, 1, 0], [5, 0, 1, 2, 3, 0, 0], [3, 0, 1, 4, 0], [4, 0, 1, 2]]) {
       expectContractError(() => faceList(Uint32Array.from(words), 4, 'f'), 'invalid-effect-payload', 'f');
     }
@@ -74,18 +76,18 @@ describe('effect payloads', () => {
     const EXTRA_COLOUR = ROTATION_SCALE + 8;
     const TYPE_0 = EXTRA_COLOUR + 12;
     const TYPE_1 = TYPE_0 + 40;
-    // Debris: texture (1 + 22 bytes), template 0 (face list of 10 words), template 1 (10 words), scales and colours.
+    // Debris: texture (1 + 22 bytes), template 0 (face list of 10 words), template 1 (11 words), scales and colours.
     const debris = encodeEffectPayload(syntheticDebris());
     const D0_VERTICES = 23 + 2 + 40;
     const D1_FACES = D0_VERTICES + 144 + 2;
-    const SCALES = D1_FACES + 40 + 144;
+    const SCALES = D1_FACES + 44 + 144;
 
     it.each<[string, EffectKind, Uint8Array, string]>([
       ['a truncated payload', 'projectile', projectile.subarray(0, -1), 'payload'],
       ['a trailing byte', 'projectile', Uint8Array.of(...projectile, 0), 'payload'],
       ['no records', 'projectile', set16(projectile, 0, 0), 'payload.records'],
       ['65 records', 'projectile', set16(projectile, 0, EFFECT_LIMITS.effectRecords + 1), 'payload.records'],
-      ['a face of 5 corners', 'projectile', set32(projectile, T0_FACES, 5), 'payload.templates[0].faces'],
+      ['a face of more corners than vertices', 'projectile', set32(projectile, T0_FACES, 5), 'payload.templates[0].faces'],
       ['a face of 2 corners', 'projectile', set32(projectile, T0_FACES, 2), 'payload.templates[0].faces'],
       ['a vertex index equal to the vertex count', 'projectile', set32(projectile, T0_FACES + 4, 4), 'payload.templates[0].faces'],
       ['a face list without its end marker', 'projectile', set32(projectile, T0_FACES + 36, 3), 'payload.templates[0].faces'],
@@ -157,15 +159,15 @@ describe('effect payloads', () => {
     ])('rejects %s', (_, input, path) => expectContractError(() => encodeEffectPayload(input as EffectPayload), 'invalid-effect-payload', path));
 
     it('accepts face lists up to the u16 word count and rejects longer ones', () => {
-      /** `quads` quadrilaterals and `triangles` triangles on vertices 0–2, then the end marker. */
+      /** `quads` quadrilaterals and `triangles` triangles on vertices 0–2 of the 6-vertex element, then the end marker. */
       const faces = (quads: number, triangles: number) =>
         Uint32Array.of(...Array.from({ length: quads }, () => [4, 0, 1, 2, 1]).flat(), ...Array.from({ length: triangles }, () => [3, 0, 1, 2]).flat(), 0);
       const longest = faces(2, 16_381);
       expect(longest).toHaveLength(MAX_FACE_WORDS);
-      const accepted = { ...missile, faces: { ...missile.faces, extra: longest } };
-      expect(readEffectPayload(encodeEffectPayload(accepted), 1, 'missile').faces.extra).toEqual(longest);
-      expectContractError(() => encodeEffectPayload({ ...missile, faces: { ...missile.faces, extra: faces(0, 16_384) } }),
-        'invalid-effect-payload', 'effect.faces.extra');
+      const accepted = { ...missile, faces: { ...missile.faces, element: longest } };
+      expect(readEffectPayload(encodeEffectPayload(accepted), 1, 'missile').faces.element).toEqual(longest);
+      expectContractError(() => encodeEffectPayload({ ...missile, faces: { ...missile.faces, element: faces(0, 16_384) } }),
+        'invalid-effect-payload', 'effect.faces.element');
     });
 
     it('rejects transferred arrays', () => {

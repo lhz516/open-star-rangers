@@ -4,6 +4,7 @@ import { pairGeometry, quadGeometry } from '../../content/models/models.test-sup
 import { DEFAULT_MODEL_IDS, syntheticModelEntries } from '../formats/formats.test-support.ts';
 import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
 import { meshBlockFor, triangleMeshBlock } from './conversion.test-support.ts';
+import { syntheticRensEntry } from './production-effects.test-support.ts';
 import { productionGraphicsEntries } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from './production-model-textures.ts';
 import { PRODUCTION_EFFECT_MODELS, PRODUCTION_MODEL_REFERENCES } from './production-models.ts';
@@ -73,14 +74,15 @@ export function productionModelReferences(entry: number): { readonly textures: r
 
 /**
  * The `MAIN/SR.NOB` entries of the synthetic production disc, in ascending ID order: the production graphics, the M2ID
- * list with the valid bound models, the effect models, their meshes, and synthetic samples at every production sound
- * table entry. `corruptMesh` breaks the shared quad mesh.
+ * list with the valid bound models, the effect models, their meshes, the synthetic RENS entry and synthetic samples at
+ * every production sound table entry. `corruptMesh` breaks the shared quad mesh.
  */
 export const productionSliceEntries = (corruptMesh = false): SyntheticEntry[] => {
   const blocks = productionModelBlocks();
   return [
     ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, blocks),
     ...EFFECT_MODEL_ENTRIES.map(id => ({ id, type: 'MODL', ...blocks.get(id)! })), ...productionMeshEntries(corruptMesh), ...productionSoundEntries(),
+    syntheticRensEntry(),
   ].sort((left, right) => left.id - right.id);
 };
 

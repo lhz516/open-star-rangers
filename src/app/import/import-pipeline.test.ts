@@ -11,6 +11,7 @@ import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-suppo
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { fail } from '../../content/contract-validation.ts';
 import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
+import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
@@ -259,10 +260,12 @@ describe('logic conversion over a structured-clone channel', () => {
     const expected = validateGroup(CLASSIC_P2_SLICE, received.input!);
     if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group');
     expect(snapshot.groups[1]).toEqual({ group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics });
-    expect(new Set(snapshot.groups[1].diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality', 'source-not-ready']));
+    // Every effect role has its data Asset, so only the unconfirmed textures remain (AC-20).
+    expect(new Set(snapshot.groups[1].diagnostics.map(({ code }) => code))).toEqual(new Set(['source-not-ready']));
     expect(snapshot.usage).toMatchObject({
-      assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets, missionObjects: 11, missionReferences: 37,
-      vertices: PRODUCTION_MODEL_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles,
+      assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
+      missionObjects: 11, missionReferences: 37,
+      vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     });
     const taken = owner.takeGroups()!;
     expect(taken.map(({ group }) => group)).toEqual(['logic', 'audio']);

@@ -103,7 +103,7 @@ export function syntheticDebris(): DebrisVisuals {
         perVertex: Uint32Array.of(0, 1, 0xffff_ffff, 0x7fc0_0001, 0x8000_0000, 17, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
       },
       {
-        faces: Uint32Array.of(4, 0, 1, 2, 3, 3, 3, 4, 5, 0),
+        faces: Uint32Array.of(5, 0, 1, 2, 3, 4, 3, 3, 4, 5, 0),
         vertices: Float32Array.of(-1, 2.25, 0.75, 1.5, -0.125, 3.5, 0, 0, -2, 5.25, 1.875, -0.625, -3.25, 0.4375, 2.125, 1, -1, 1.25),
         perVertex: Uint32Array.of(...Array.from({ length: 18 }, (_, index) => 0x1000 * index + 3)),
       },

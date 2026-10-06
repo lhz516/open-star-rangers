@@ -98,12 +98,12 @@ export async function runModelStep(
 }
 
 /**
- * The `models` group draft: the `models` partitions of the graphics and model step results merged by Asset ID without
- * reconverting, with the source states bound to `sourceFingerprint`. A repeated Asset ID fails as a content contract
- * error; with no Assets the draft is an empty group.
+ * The `models` group draft: the `models` partitions of the step results (graphics, models and effects) merged by Asset
+ * ID without reconverting, with the source states bound to `sourceFingerprint`. A repeated Asset ID fails as a content
+ * contract error; with no Assets the draft is an empty group.
  */
-export function modelsGroupDraft(graphics: GraphicsStepResult, models: ModelStepResult, sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
-  const items = [graphics, models]
+export function modelsGroupDraft(results: readonly GraphicsStepResult[], sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
+  const items = results
     .flatMap(({ groups }) => groups.filter(({ group }) => group === 'models'))
     .flatMap(({ descriptors, payloads, sources }) => descriptors.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources[index] })))
     .sort((left, right) => compareText(left.descriptor.id, right.descriptor.id));

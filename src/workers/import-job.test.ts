@@ -7,8 +7,11 @@ import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
 import { UNLIMITED_BUDGET, withMeshReads } from '../original-data/conversion/conversion.test-support.ts';
+import { runEffectStep } from '../original-data/conversion/effect-step.ts';
 import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
+import { PRODUCTION_EFFECT_DECLARATIONS, PRODUCTION_EFFECT_MAPPINGS } from '../original-data/conversion/production-effects.ts';
+import { PRODUCTION_EFFECT_USAGE } from '../original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
 import { MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
 import {
@@ -247,19 +250,26 @@ describe('logic conversion', () => {
     // the bound models.
     const logicBytes = drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0);
     const logicUsage = { ...EMPTY_BUDGET_USAGE, assets: 3, dependencyEdges: 8, missionObjects: 11, missionReferences: 37, payloadBytes: logicBytes };
-    expect(last.usage).toEqual({ ...addBudgets(addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), PRODUCTION_MODEL_USAGE), sourceReadBytes: readUsage.sourceReadBytes });
+    expect(last.usage).toEqual({
+      ...addBudgets(addBudgets(addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), PRODUCTION_MODEL_USAGE), PRODUCTION_EFFECT_USAGE),
+      sourceReadBytes: readUsage.sourceReadBytes,
+    });
 
     // The models group the receiver validates is the one Node derives from the same source and binding: the graphics
-    // models partition with the five bound craft models and the debris model, incomplete while textures are unconfirmed
-    // and the projectile role missing.
+    // models partition with the five bound craft models, the debris model and the three effect data Assets, incomplete
+    // only while textures are unconfirmed.
     const graphics = await runGraphicsStep(source!, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, UNLIMITED_BUDGET);
     const models = await runModelStep(source!, productionModelMappings(bindings), productionModelDeclarations(bindings), PRODUCTION_MODEL_REFERENCES, UNLIMITED_BUDGET);
-    const expected = modelsGroupDraft(graphics, models, source!.identity.fingerprint);
+    const effects = await runEffectStep(source!, PRODUCTION_EFFECT_MAPPINGS, PRODUCTION_EFFECT_DECLARATIONS, UNLIMITED_BUDGET);
+    const expected = modelsGroupDraft([graphics, models, effects], source!.identity.fingerprint);
     const sent = sentGroup(messages, 'models');
     expect(sentDraft(sent)).toEqual({ ...expected, payloads: [] });
     expect(bindings.map(({ id }) => id).every(id => expected.assets.some(asset => asset.id === id))).toBe(true);
     const result = validateGroup(CLASSIC_P2_SLICE, sent.input);
     expect(result.status).toBe('incomplete');
+    // No effect role lacks an Asset any more (AC-20).
+    if (result.status !== 'incomplete') throw new Error('expected an incomplete group');
+    expect(result.diagnostics.filter(({ code }) => code === 'role-cardinality')).toEqual([]);
   });
 
   it('sends no group when the job fails after the logic step, such as on invalid usage', async () => {

@@ -214,8 +214,9 @@ function requireTexture(value: unknown, path: string): AssetId {
 export const MAX_FACE_WORDS = 0xffff;
 
 /**
- * Checks face list words without allocating: at most `MAX_FACE_WORDS`, every face of 3 or 4 corners addressing the
- * shape's vertices, at least one face, and 0 at the last word. Returns the triangle count, corners − 2 per face.
+ * Checks face list words without allocating: at most `MAX_FACE_WORDS`, every face of 3 to `vertices` corners
+ * addressing the shape's vertices, at least one face, and 0 at the last word. Returns the triangle count, corners − 2
+ * per face.
  */
 export function faceTriangles(words: Uint32Array, vertices: number, path: string): number {
   if (words.length > MAX_FACE_WORDS) invalid(path, `must hold at most ${MAX_FACE_WORDS} words`);
@@ -223,7 +224,7 @@ export function faceTriangles(words: Uint32Array, vertices: number, path: string
   let at = 0;
   while (at < words.length && words[at] !== 0) {
     const corners = words[at];
-    if (corners !== 3 && corners !== 4) invalid(path, 'must give each face 3 or 4 corners');
+    if (corners < 3 || corners > vertices) invalid(path, 'must give each face 3 corners up to the vertex count');
     if (at + 1 + corners >= words.length) invalid(path, 'must end with 0');
     for (let corner = 1; corner <= corners; corner++) if (words[at + corner] >= vertices) invalid(path, 'must address vertices of the shape');
     triangles += corners - 2;

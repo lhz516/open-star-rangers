@@ -14,6 +14,7 @@ import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/producti
 import {
   AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, sliceCoveredFiles, syntheticImport, syntheticSource,
 } from '../src/workers/synthetic-import.test-support.ts';
+import { PRODUCTION_EFFECT_USAGE } from '../src/original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
 import { MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
@@ -324,7 +325,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);
   const graphics = await runGraphicsStep(source, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_SHARE);
-  const models = modelsGroupDraft(graphics, { groups: [], usage: graphics.usage }, source.identity.fingerprint);
+  const models = modelsGroupDraft([graphics], source.identity.fingerprint);
   expect(manifest.identity).toEqual({
     ...basis,
     manifestIdentity: deriveManifestIdentity(basis, [{ ...models, payloads: [] }, { group: 'audio', assets: manifest.assets, payloads: [], sources } as GroupDraft]),
@@ -360,9 +361,10 @@ async function nodeSliceRun(): Promise<{ readonly groups: ReadonlyMap<string, Gr
   return { groups, usage };
 }
 
-// P2-06 AC-10: the whole production job in a real module Worker on the synthetic slice disc. The model stage converts
-// the five craft models the logic step binds and the debris model; the receiver validates the models group, which
-// stays incomplete while textures are unconfirmed and the projectile role missing, exactly as the same job in Node.
+// P2-06 AC-10 and AC-20: the whole production job in a real module Worker on the synthetic slice disc. The model stage
+// converts the five craft models the logic step binds and the debris model, then the three effect data Assets; the
+// receiver validates the models group, which stays incomplete only while textures are unconfirmed, exactly as the same
+// job in Node.
 test('test entry converts the models after the audio stage, and the receiver validates the models group as Node does', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);
@@ -378,26 +380,30 @@ test('test entry converts the models after the audio stage, and the receiver val
   const node = await nodeSliceRun();
   const expected = validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!);
   if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group in Node');
+  expect(expected.diagnostics.filter(({ code }) => code === 'role-cardinality')).toEqual([]);
   expect(final.groups).toEqual([
     { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
     { group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
-  // The models manifest the owner received is the one Node sent: the flight palette, the textures and the bound models.
+  // The models manifest the owner received is the one Node sent: the flight palette, the textures, the bound models and
+  // the effect data.
   const received = await page.evaluate(() => window.osrImport.received);
   expect(received.map(({ group }) => group)).toEqual(['logic', 'models', 'audio']);
   const models = readGroupManifest(received[1].manifest);
   expect(models).toEqual(readGroupManifest(node.groups.get('models')!.manifest));
-  expect(models.assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets);
+  expect(models.assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets);
   // The usage equals the Node run's. Independently of the job, the dimensions the contract names are the test support's
-  // layout-derived graphics, sound and model usage plus the logic Assets the owner received.
+  // layout-derived graphics, sound, model and effect usage plus the logic Assets the owner received.
   expect(final.usage).toEqual(node.usage);
   const logic = readGroupManifest(received[0].manifest).assets;
   expect(final.usage).toMatchObject({
-    assets: PRODUCTION_CONVERSION_USAGE.assets + logic.length + PRODUCTION_MODEL_USAGE.assets,
-    payloadBytes: PRODUCTION_CONVERSION_USAGE.payloadBytes + PRODUCTION_MODEL_USAGE.payloadBytes
+    assets: PRODUCTION_CONVERSION_USAGE.assets + logic.length + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
+    payloadBytes: PRODUCTION_CONVERSION_USAGE.payloadBytes + PRODUCTION_MODEL_USAGE.payloadBytes + PRODUCTION_EFFECT_USAGE.payloadBytes
       + logic.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
-    vertices: PRODUCTION_MODEL_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles, imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,
+    vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices,
+    triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
+    imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,
   });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));

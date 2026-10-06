@@ -137,7 +137,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [15-slice-definition-region-locator.md](./subtasks/15-slice-definition-region-locator.md) | 14 | completed |
 | [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | completed |
 | [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | completed |
-| [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | pending |
+| [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | completed |
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | pending |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19 | pending |
 
@@ -183,6 +183,11 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 展开结果非有限时报 `invalid-effect-payload`；AC-19 相应去掉“模式”。
 
   [executable](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research) 补记常量用途、颜色来源、标志的两种比较与逐轴标记，[18](./subtasks/18-effect-step-integration.md) 的生产输入范围同步更新。
+- **2026-10-06，18 执行中修订面的角数规则（按用户授权）：** 18 在本地基准上试运行效果步骤，碎片模板的面表未通过“角数为 3 或 4”的规则：两个碎片模板各含一个 6 角面与一个 5 角面，其余模板为三角形或四边形。
+  - 据此修订 [spec 的格式规则](./spec.md#效果几何数据)与 AC-19：面的角数为 3 至该形状的顶点数。三角形数仍按每面角数 − 2 计算，上界与份额不变。
+  - 修订后，本地基准上三个 Asset 都通过，每个形状都能展开（证据见 18）。
+  - [executable](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research) 的面表结论由“模板为高概率”改为已确认，并记录角数分布。
+  - 内容层校验、测试与合成数据同步：合成碎片模板含五边形与六边形，排列与原版不同。
 
 ## 审批
 

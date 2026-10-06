@@ -140,6 +140,9 @@ src/
       convert-models.ts
       model-step.ts
       production-models.ts
+      effect-declarations.ts
+      effect-step.ts
+      production-effects.ts
   platform/
     audio/
       audio-controller.ts
@@ -360,7 +363,7 @@ src/
   | 导弹 | 贴图引用；`u16` 类型数 T（1–32）；尾翼、元素、带标志元素、附加元素四个面表；按源顺序的 7 个 `f64` 常量；`f64` 旋转缩放；3 个 `f32` 附加元素颜色；T 个类型：`u32` 部件数 P（1–4），机身 `f32` r0、r1、长度、`i32` 段数（3–64）、`u32` 打包颜色，P − 1 片尾翼（4 个 `f32` 与 `u32` 打包颜色），3 个 `f32` 元素参数，`f32` 标志 |
   | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色 |
 
-  浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 或 4 个角，顶点序号小于该形状的顶点数，至少一个面，0 恰在最后一个字。
+  浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 个至该形状顶点数个角，顶点序号小于该形状的顶点数，至少一个面，0 恰在最后一个字。
 - **编码与读取：**
   - `encodeEffectPayload(payload)` 按读取器的同一规则校验，32 位浮点字段须恰为 32 位浮点值，写入独占的新缓冲；同一输入得到同样的字节。
   - `readEffectPayload(bytes, schemaVersion, kind, path)` 严格读取：计数先检查范围、字节先确认存在，再分配；返回冻结数据，数组为调用者独占的副本。
@@ -672,7 +675,7 @@ src/
   4. **转换：** 调用 `convertModels`。
   5. **来源状态：** 由核验后的映射经 `assetSourceStates` 得到不带定位的来源状态。
 - **结果：** 冻结的 `ModelStepResult`，形状同图形步骤结果：有模型时只有一个 `models` 分区，描述符、payload 与来源状态按 ID 升序一一对应；`usage` 为起始用量加本步转换用量，`sourceReadBytes` 为 0。结果不含定位、条目编号或原版字节。任一模型失败时整步失败，不输出结果，已发出的读取仍计入来源用量。
-- **组草稿：** `modelsGroupDraft(graphics, models, sourceFingerprint)` 把图形步骤与模型步骤结果的 `models` 分区按 Asset ID 合并为一个 `GroupDraft`，不重新转换；来源状态绑定给定的来源指纹。重复的 Asset ID 以内容层的 `duplicate-asset` 拒绝。两边都没有 Asset 时得到空组。作业把它与其他组草稿一起交给 `applyManifestIdentity`，接收方用 `validateGroup` 验证：`sound` 依赖作为外部要求返回，来源状态不是 `verified` 时为 `source-not-ready`。
+- **组草稿：** `modelsGroupDraft(results, sourceFingerprint)` 把各步骤结果（作业中为图形、模型与效果步骤）的 `models` 分区按 Asset ID 合并为一个 `GroupDraft`，不重新转换；来源状态绑定给定的来源指纹。重复的 Asset ID 以内容层的 `duplicate-asset` 拒绝。都没有 Asset 时得到空组。作业把它与其他组草稿一起交给 `applyManifestIdentity`，接收方用 `validateGroup` 验证：`sound` 依赖作为外部要求返回，来源状态不是 `verified` 时为 `source-not-ready`。
 
 ### 生产模型
 
@@ -683,7 +686,38 @@ src/
 - **效果模型：** 两个函数在机型模型之外，总是加入导出的 `PRODUCTION_EFFECT_MODELS` 中研究确认的效果模型：目前为 `model/debris`（角色 `debris`，MODL 整条目），它不进入机型绑定。映射置信度 likely，U 项为 U-027、U-028，证据指向 [executable 的效果表现来源](../original/formats/executable.md#effect-presentation-sources)与 mesh §2。映射按 Asset ID 升序与机型模型合排，因此没有绑定时只含效果模型。
 - **查找表：** `PRODUCTION_MODEL_REFERENCES` 的贴图表为生产贴图表的 `PRODUCTION_TEXTURE_REFERENCES`，音效表为 [production-sounds.ts](../../src/original-data/conversion/production-sounds.ts) 的 `PRODUCTION_SOUND_REFERENCES`（由 `PRODUCTION_SOUND_TABLE` 按 SND 条目号查得 sound ID）；模型到样本的依赖边因此不自行命名 sound ID。
 - **份额：** `PRODUCTION_MODEL_SHARE` 为 `assets` 16、`dependencyEdges` 96、`vertices` 8,192、`triangles` 8,192、`payloadBytes` 1,048,576，其余维度为 0。在这些计数、每个模型 256 个部件（每个部件一个几何）与实际字节布局下算出的上界为 442,816 字节，不超过 `payloadBytes`。
-- **合成生产光盘：** [production-models.test-support.ts](../../src/original-data/conversion/production-models.test-support.ts) 为默认合成任务绑定的 5 个 MODL 条目与效果模型的条目给出合法内容：用到全部三个列表，碎片模型与原版一样只有列表 1，quad 网格被五个模型共用，部件引用生产贴图表的 TEX 条目，音效槽引用生产音效表的 SND 条目；MESH 条目为 21001–21003。`productionSliceEntries()` 组成合成生产 `SR.NOB` 的全部条目（图形、M2ID 与合法模型、效果模型、MESH、音效），`sliceCoveredFiles` 与 original-data 的测试共用它；未被绑定的 M2ID 槽位仍为 8 字节占位块，`syntheticModelEntries` 为此接受按条目号替换的块。
+- **合成生产光盘：** [production-models.test-support.ts](../../src/original-data/conversion/production-models.test-support.ts) 为默认合成任务绑定的 5 个 MODL 条目与效果模型的条目给出合法内容：用到全部三个列表，碎片模型与原版一样只有列表 1，quad 网格被五个模型共用，部件引用生产贴图表的 TEX 条目，音效槽引用生产音效表的 SND 条目；MESH 条目为 21001–21003。`productionSliceEntries()` 组成合成生产 `SR.NOB` 的全部条目（图形、M2ID 与合法模型、效果模型、MESH、合成 RENS、音效），`sliceCoveredFiles` 与 original-data 的测试共用它；未被绑定的 M2ID 槽位仍为 8 字节占位块，`syntheticModelEntries` 为此接受按条目号替换的块。
+
+### 效果步骤
+
+[effect-step.ts](../../src/original-data/conversion/effect-step.ts)（[P2-06/18](../plan/p2/06/subtasks/18-effect-step-integration.md)）把 RENS 的弹丸记录与 EXE 的区域转换为三个效果 `data` Asset，规则见 [P2-06 spec 的效果几何数据](../plan/p2/06/spec.md#效果几何数据)，字段布局与构建规则见 [executable](../original/formats/executable.md#effect-geometry-data-p2-0614-research)。
+
+- **声明：** [effect-declarations.ts](../../src/original-data/conversion/effect-declarations.ts) 的 `readEffectDeclarations` 严格读取 `{ asset: { id, kind: 'data' }, role, group: 'models', texture, regions }`。
+  - `role` 为 `projectile`、`missile` 或 `debris`；`texture` 对弹丸为 null，否则为 image Asset ID。
+  - `regions` 按映射的区域部件顺序给出每个区域的用途，恰为 `EFFECT_REGION_USES[role]` 的每个用途各一次。每个用途规定可接受的区域长度：固定字节数；面表为 4 的倍数；导弹类型表为 `MISSILE_RECORD_BYTES` 的倍数；立即数为 1 或 4 字节，1 字节按符号扩展。
+  - 不合规时报 `invalid-declaration`，位置在 `effects.declarations` 之下。
+- **流程：** `runEffectStep(source, mappings, declarations, limits, usage)` 依次执行：
+  1. **配对：** 声明与映射一一对应，否则为 `invalid-declaration@effects.declarations[<i>]` 或 `@effects.declarations`。弹丸映射的第一个部件须为 `MAIN/SR.NOB` 中的 RENS 整条目，其余部件都是区域，数量等于声明的用途数；不符时为 `invalid-declaration@effects[<ID>].source`。区域长度不合用途时为 `@effects[<ID>].regions[<k>]`。这些检查都在读取之前。
+  2. **核验：** 经步骤内读取用 `verifySourceMappings` 核验：读取 RENS 条目；区域只核对覆盖，未覆盖时为 P2-03 的 `path-not-covered`，位置为 `sources.mappings[…]`。
+  3. **读取：** 每个 EXE 经 `openFile` 打开一次，以 `openLeExecutable` 读结构（失败位置为首个读取它的 Asset 的 `.source`），再按 Asset ID 升序读出全部区域（`.regions[<k>]`）。
+  4. **校验：** 按格式规则校验，位置如下：
+     - RENS 头部问题与 `effectRecords` 在 `.source`；
+     - 弹丸记录与导弹类型在 `.records[<i>]`，`ringSegments` 也在这里；
+     - 面表与模板顶点在 `.templates[<j>]`（弹丸 0、1；导弹的尾翼、元素、带标志元素、附加元素依次为 0–3；碎片 0、1）；
+     - 常量、缩放、颜色与类型数（`missileTypes`）在所在区域的 `.regions[<k>]`。
+  5. **扣除与编码：** 每个 Asset 按 `assets` 1、依赖边、`effectPayloadLength`，以及 `effectExpansionSize` 给出的 `vertices` 与 `triangles` 扣除，位置为 `effects[<ID>]`；扣除之后才编码。
+  6. **来源状态：** 全部成功后，把核验后的映射标为 `verified`，由置信度给出来源状态。
+- **结果：** 形状同图形步骤结果（`EffectStepResult`）。任一失败都使整步失败，不输出结果；P2-02 的光盘层失败原样传出。
+- **生产输入：** [production-effects.ts](../../src/original-data/conversion/production-effects.ts) 按 executable 记录的地址与长度列出每个 Asset 的区域，经文档化的对象基址换算为对象序号与偏移（`PRODUCTION_EFFECT_REGIONS`），并据此生成 `PRODUCTION_EFFECT_DECLARATIONS` 与 `PRODUCTION_EFFECT_MAPPINGS`。
+  - 映射置信度 likely，带 U-027；弹丸另映射 RENS 条目 `PRODUCTION_RENS_ENTRY`。
+  - 导弹依赖 `image/missile`，碎片依赖生产贴图表第 16 行。
+  - 颜色立即数按参数顺序列出，即压栈顺序的逆序。源码只有地址与长度，没有原版字节。
+  - `PRODUCTION_EFFECT_PAYLOAD_BOUND` 为 16,384 字节，测试按结构限值下的最大 payload 断言不超过它；展开上界 5,534 个顶点也由测试断言。
+- **合成来源：** [production-effects.test-support.ts](../../src/original-data/conversion/production-effects.test-support.ts) 先用任意数值生成三个期望 payload，面表字数与生产区域一致，再写成合成数据：
+  - `syntheticRensEntry` 生成 RENS 条目；
+  - `syntheticEffectExecutable` 生成四个对象的合成 LE 文件，生产区域之外为生成的图案，可按用途改写区域或加入修正记录；
+  - 期望用量为 `PRODUCTION_EFFECT_USAGE`。
+- **位置语法：** [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inEffectLocationGrammar` 按 spec 写出 `effects.declarations…`，以及 `effects[<ID>]` 单独或后接 `.source`、`.regions[<k>]`、`.records[<i>]`、`.templates[<j>]`；`expectSourceError` 对 `effects` 开头的位置逐个核对。
 
 ### 导入 Worker
 
@@ -715,13 +749,13 @@ src/
 - **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics, logic, audio, models)` 返回生产作业。
   - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，之后各阶段从上一阶段结束时的累计值开始。
   - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
-  - **限值与用量：** 图形、逻辑与模型步骤共用一份限值记录：P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上三个步骤批准的份额；逻辑步骤在图形转换用量之上扣除，模型步骤在逻辑用量之上扣除。音频阶段按 `AUDIO_BUDGET_LIMITS`（或注入的限值）从零核算，与其他步骤互不占用（P2-08 的预算契约）。作业返回已验证来源最终的读取用量、模型步骤的累计转换用量与音频用量逐维之和。
+  - **限值与用量：** 图形、逻辑与模型步骤共用一份限值记录：P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上三个步骤批准的份额；逻辑步骤在图形转换用量之上扣除，模型步骤在逻辑用量之上扣除，效果步骤在模型用量之上按同一份模型份额扣除。音频阶段按 `AUDIO_BUDGET_LIMITS`（或注入的限值）从零核算，与其他步骤互不占用（P2-08 的预算契约）。作业返回已验证来源最终的读取用量、效果步骤的累计转换用量与音频用量逐维之和。
   - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。结果的 `models` 分区并入 `models` 组发送（P2-06）；`cockpit-hud-map` 分区仍只留在作业内，归 P2-07 装配，不发送，也不计入包身份。转换失败为 `source` 层；读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
   - **逻辑转换（P2-09）：** 图形阶段之后进入 `convert-logic`，运行[逻辑组转换步骤](#逻辑组转换)，结果为组草稿、累计用量与机型绑定的模型（`LogicStepGroups.models`，即 `convertLogic` 返回的 `bindCraftTypes` 的 `models`）；测试的 `NO_LOGIC` 返回空草稿与空绑定。
   - **音频转换（P2-08）：** 逻辑阶段之后进入 `convert-audio`，以 [`convertAudioGroup`](#原版格式转换) 转换 `audio` 组草稿；音效表为空时得到没有 Asset 的 `audio` 组，照常发送。
-  - **模型转换（P2-06）：** 音频阶段之后进入 `convert-models`，对逻辑步骤绑定的模型运行[模型转换步骤](#模型转换步骤)：映射与声明由 `ModelStepInput.inputs(绑定)` 一并生成，查找表与份额也来自它；只用这份绑定，不重读任务或 M2ID。随后由 `modelsGroupDraft` 把图形步骤的 `models` 分区与模型步骤结果合并为 `models` 组草稿。没有绑定任何模型时，`models` 组只含图形分区，没有 Asset 时为空组，照常发送。
+  - **模型转换（P2-06）：** 音频阶段之后进入 `convert-models`，对逻辑步骤绑定的模型运行[模型转换步骤](#模型转换步骤)：映射与声明由 `ModelStepInput.inputs(绑定)` 一并生成，查找表与份额也来自它；只用这份绑定，不重读任务或 M2ID。同一阶段内随后运行[效果步骤](#效果步骤)（映射与声明来自 `ModelStepInput.effects`），不新增阶段。最后由 `modelsGroupDraft` 把图形步骤的 `models` 分区与模型、效果步骤的结果合并为 `models` 组草稿。没有任何模型或效果时，`models` 组只含图形分区，没有 Asset 时为空组，照常发送。
   - **组装与发送：** 全部转换完成后，以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 的 `applyManifestIdentity` 和 `productionIdentityBasis(指纹)`，对作业发送的全部组草稿（逻辑步骤的草稿、`audio` 组与 `models` 组）推导同一 `ManifestIdentity`，写入每个组清单。发送任何组之前，先由 `checkPackageTransfers` 用 `readPayloadRecords` 与 `payloadTransferList` 校验每组的转移列表（位置与宿主相同，为 `groups.<组>.payloads`），并确认没有 buffer 跨组共享，以免发送前一组时使后一组失效；再以 `addBudgets` 算出最终用量。因此转换、预算、身份与最终用量的失败都不会发出组。之后逐组 `report.group`，返回用量。后续任务接入更多组时，身份须对全部已发送组重新推导，`validatePackage` 只比较各组身份是否相同，不会发现沿用的旧值。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即 `convertLogic` 与 `PRODUCTION_LOGIC_SHARE`；`convert` 返回 `{ drafts, usage, models }`。`audio`（`AudioStageInput`：音效表、SND 规则与可选限值）默认是生产音效表与规则。`models`（`ModelStepInput`：由绑定一并生成映射与声明的 `inputs`、查找表与份额）默认是[生产模型](#生产模型)的 `productionModelMappings` 与 `productionModelDeclarations`、`PRODUCTION_MODEL_REFERENCES` 与 `PRODUCTION_MODEL_SHARE`。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即 `convertLogic` 与 `PRODUCTION_LOGIC_SHARE`；`convert` 返回 `{ drafts, usage, models }`。`audio`（`AudioStageInput`：音效表、SND 规则与可选限值）默认是生产音效表与规则。`models`（`ModelStepInput`：由绑定一并生成映射与声明的 `inputs`、查找表、效果的映射与声明 `effects` 与份额）默认是[生产模型](#生产模型)的 `productionModelMappings` 与 `productionModelDeclarations`、`PRODUCTION_MODEL_REFERENCES`、[效果步骤](#效果步骤)的生产映射与声明，以及 `PRODUCTION_MODEL_SHARE`。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
@@ -731,8 +765,8 @@ src/
     - `graphicsCoveredFiles(corrupt)`：只有生产图形；
     - `productionCoveredFiles(corrupt)`：生产图形加上 `productionSoundEntries()`，即生产音效表各条目的合成 SND，供图形与音频阶段使用；
     - `audioCoveredFiles(corrupt)`（P2-08）：在生产图形结构的 `MAIN/SR.NOB` 中加入四个合成 SND 条目（其一为 16 位），`SYNTHETIC_AUDIO` 是把它们转换为完整 `audio` 组的合成音效表与规则（`flags` 取值只有测试含义），期望的转换用量为 `AUDIO_CONVERSION_USAGE`；`corrupt` 让开火音效的 `flags` 不被接受；
-    - `sliceCoveredFiles({ scenario?, corruptMesh? })`（P2-09、P2-06）：全部生产步骤都能转换的合成光盘。`SR.NOB` 为[生产模型](#生产模型)的 `productionSliceEntries`（图形条目、M2ID 与合法的绑定模型、效果模型、MESH、生产音效条目），`SCENARIO.NOB` 含战役表与可替换的所选任务；`corruptMesh` 使五个模型共用的网格被模型步骤以 `invalid-payload` 拒绝。模型步骤在其上的期望用量为 `PRODUCTION_MODEL_USAGE`。
-    - 前三者的 4×6 字库表在 `corrupt` 时少一个字节。期望的图形 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出，图形步骤的转换用量为 `GRAPHICS_CONVERSION_USAGE`；图形与音频阶段在 `productionCoveredFiles()` 上的转换用量为 `PRODUCTION_CONVERSION_USAGE`。`NO_MODELS` 是不转换任何模型的模型步骤输入。生产模型步骤总是转换效果模型，而这些光盘没有效果模型，所以只关心图形或音频的作业同时传入 `NO_LOGIC` 与 `NO_MODELS`。
+    - `sliceCoveredFiles({ scenario?, corruptMesh? })`（P2-09、P2-06）：全部生产步骤都能转换的合成光盘。`SR.NOB` 为[生产模型](#生产模型)的 `productionSliceEntries`（图形条目、M2ID 与合法的绑定模型、效果模型、MESH、合成 RENS 条目、生产音效条目），`SCENARIO.NOB` 含战役表与可替换的所选任务，`SRANGERS.EXE` 为 `syntheticEffectExecutable()`；`corruptMesh` 使五个模型共用的网格被模型步骤以 `invalid-payload` 拒绝。模型与效果步骤在其上的期望用量为 `PRODUCTION_MODEL_USAGE` 与 `PRODUCTION_EFFECT_USAGE`。
+    - 前三者的 4×6 字库表在 `corrupt` 时少一个字节。期望的图形 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出，图形步骤的转换用量为 `GRAPHICS_CONVERSION_USAGE`；图形与音频阶段在 `productionCoveredFiles()` 上的转换用量为 `PRODUCTION_CONVERSION_USAGE`。`NO_MODELS` 是不转换任何模型或效果的模型阶段输入。生产模型阶段总是转换效果模型与效果数据，而这些光盘没有它们的来源，所以只关心图形或音频的作业同时传入 `NO_LOGIC` 与 `NO_MODELS`。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别，`syntheticSource(covered, versionId)` 在调用线程中打开与 `syntheticImport` 同一光盘的已验证来源（指纹相同），供 Node 侧推导期望；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
   - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `productionCoveredFiles()` 运行带图形与音频阶段、以 `NO_LOGIC` 与 `NO_MODELS` 跳过逻辑与模型转换的生产作业，因此 `graphics` 场景发送完整的生产 `audio` 组；页面与 Worker 用同一函数生成光盘。`audio` 场景（P2-08）对 `audioCoveredFiles()` 以 `NO_LOGIC`、`NO_MODELS` 与 `SYNTHETIC_AUDIO` 运行生产作业。`models` 与 `models-corrupt` 场景（P2-06）对 `sliceCoveredFiles()` 运行完整的生产作业，后者的共用网格损坏。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
