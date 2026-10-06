@@ -99,6 +99,7 @@ src/
       archive-reader.ts
     conversion/
       converter-version.ts
+      craft-binding.ts
     formats/
       payload-block.ts
       object-record.ts
@@ -276,6 +277,17 @@ src/
 - **M2ID：** [m2id.ts](../../src/original-data/formats/m2id.ts) 的 `parseModelIdList` 严格读取 MODL 条目 ID 列表；槽位为 0 的处理归机型绑定。
 - **错误：** [source-error.ts](../../src/original-data/source-error.ts) 为此追加 `invalid-payload`、`unsupported-payload`、`subresource-mismatch` 与限值名 `payloadEntryBytes`、`payloadItems`、`textBytes`。位置为 `archive:/路径#ID` 后接 `/名称[下标]` 形式的结构路径，`inLocationGrammar` 已扩展为接受这种形式；诊断不回显名称、数值或字节。
 - **测试数据：** [formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 用 `BlockWriter` 在奇数偏移上布置结构，倒序写出重定位表，由规格生成合成 SCEN、SCCT 与 M2ID 数据块，并用 `buildImfat` 组成合成的 `SCENARIO.NOB` 与 `SR.NOB`。默认任务的形状与切片任务相同，但数值都是合成的；名称带 `MARKER`。
+
+### 逻辑组转换
+
+[original-data/conversion/](../../src/original-data/conversion/) 把已解析的任务数据转换为 `logic` 组，规则见 [P2-09 spec](../plan/p2/09/spec.md)：
+
+- **机型与模型绑定：** [craft-binding.ts](../../src/original-data/conversion/craft-binding.ts) 的 `bindCraftTypes(referenced, modelIds, location)` 是机型到 model Asset ID 的唯一生产绑定（[spec 的命名规则](../plan/p2/09/spec.md#机型与模型绑定)）。
+  - **输入：** 任务与僚机名单引用的机型，以及 M2ID 解析结果。
+  - **输出：** `CraftTypeTable` 与按 Asset ID 排序的 `{ id, modelEntryId }`。阵营按玩家目标模式的种类掩码推导，`baseInteraction` 按交互种类掩码推导（“基地”含义为高概率），这两组掩码是写在转换器里的格式知识，注释链接权威记录。
+  - **命名：** 按玩家、敌方、基地、其余友方的顺序命名每个 MODL，同类内按机型升序编号；同一 MODL 只有一个 ID，只允许同类机型或友方机型与玩家飞船共用。
+  - **失败：** 玩家机型缺失、M2ID 槽位为 0 或越界、模型被不同类别共用为 `invalid-payload`，没有玩家相对阵营的机型为 `unsupported-payload`，位置为 M2ID 的槽位路径。
+  - **[P2-06](../plan/p2/tasks.md#p2-06-切片模型与材质转换) 必须用这一绑定命名模型 Asset，不得另建表。**
 
 ### 原版来源映射
 
