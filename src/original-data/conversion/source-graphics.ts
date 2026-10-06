@@ -54,6 +54,8 @@ export interface CockpitElement {
   /** Signed screen position of the image's top-left corner. */
   readonly x: number;
   readonly y: number;
+  /** The two fields after the position, each 0 or 1; their meaning is unconfirmed (U-029) and never enters a payload. */
+  readonly flags: readonly [number, number];
 }
 
 export interface SourceFont {
@@ -271,8 +273,9 @@ export function readCockpitGroups(block: Uint8Array, path = ''): readonly (reado
     if (length > 0 && !fits(block, array, length * COCKPIT_ELEMENT_BYTES)) invalid(elements, 'a CCKD element array extends past the block');
     return Object.freeze(Array.from({ length }, (_, index) => {
       const element = array + index * COCKPIT_ELEMENT_BYTES;
-      if (u32(block, element + 44) > 1 || u32(block, element + 48) > 1) invalid(elements, 'a CCKD element flag must be 0 or 1');
-      return Object.freeze({ recordOffset: element, x: i32(block, element + 36), y: i32(block, element + 40) });
+      const flags = Object.freeze([u32(block, element + 44), u32(block, element + 48)] as const);
+      if (flags[0] > 1 || flags[1] > 1) invalid(elements, 'a CCKD element flag must be 0 or 1');
+      return Object.freeze({ recordOffset: element, x: i32(block, element + 36), y: i32(block, element + 40), flags });
     }));
   }));
 }

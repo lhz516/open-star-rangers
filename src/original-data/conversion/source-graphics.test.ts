@@ -253,6 +253,7 @@ describe('CCKD groups', () => {
     const groups = readCockpitGroups(HI_BLOCK);
     expect(groups.map(elements => elements.map(({ x, y }) => [x, y]))).toEqual(HI_GROUPS.map(elements => elements.map(({ x, y }) => [x, y])));
     expect(readCockpitGroup(HI_BLOCK, 0).map(({ x, y }) => [x, y])).toEqual([[0, 316], [-2, 7]]);
+    expect(groups.map(elements => elements.map(({ flags }) => flags))).toEqual(HI_GROUPS.map(elements => elements.map(({ flags = [0, 0] }) => flags)));
     expect(Object.isFrozen(groups) && groups.every(Object.isFrozen) && groups.flat().every(Object.isFrozen)).toBe(true);
   });
 
@@ -270,7 +271,7 @@ describe('CCKD groups', () => {
 
   it('reads a single-slot directory and leaves the fonts of the same entry readable', () => {
     const block = cockpitLayoutBlock([[{ record: RAW, x: 1, y: 2 }]]);
-    expect(readCockpitGroup(block, 0)).toEqual([{ recordOffset: cockpitElementRecordOffset(block, 0, 0), x: 1, y: 2 }]);
+    expect(readCockpitGroup(block, 0)).toEqual([{ recordOffset: cockpitElementRecordOffset(block, 0, 0), x: 1, y: 2, flags: [0, 0] }]);
     expect(readCockpitFonts(HI_BLOCK)).toEqual(hudFontTables().map(table => readFontTable(table)));
     expect(readCockpitFont(block, 2)).toEqual(readFontTable(hudFontTables()[2]));
   });

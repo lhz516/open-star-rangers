@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-04
+updated: 2026-10-05
 related: [U-001, U-006, U-029]
 ---
 
@@ -81,7 +81,20 @@ The LO set uses the same structure with 320×240 coordinates; its slot 2 still u
 
 All images are raw (encoding 0) and display with correct colours using DATA. Overlays Likely treat colour 0 as transparent (Unconfirmed).
 
-## 3. Open questions
+## 3. Observed counts against the P2-07 limits (Confirmed)
+
+The container limits come from [the P2-07 spec](../../plan/p2/07/spec.md#限值与预算). The record and element sizes are format rules; the counts are safety caps above these baseline values. `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` (2026-10-05) reads every CCKD directory and MFDD list with the shared container readers and decodes every element and record with the shared image reader; all 3 CCKD and 3 MFDD entries pass. The run is recorded in [P2-07 subtask 07](../../plan/p2/07/subtasks/07-local-structure-check.md#完成证据).
+
+| Quantity | Baseline maximum | P2-07 limit |
+|---|---:|---:|
+| CCKD directory slots | 8 (10101, 10103); 1 in 10097 | 1–8 |
+| Elements per slot | 4 | 0–16 |
+| CCKD elements decoded | 38 in total, up to 640×480 | image limits of P2-05 |
+| MFDD records per list | 9 | 0–16 |
+
+The two element flag fields after the position (+44, +48) hold only 0 or 1 on every element: +44 is 1 on 8 of 38 elements and +48 on 33 of 38. Which elements set them, and what they mean, remains U-029.
+
+## 4. Open questions
 
 - Additional group metadata, the alternate-palette flag, and which palette the map frame uses (U-029).
 - Which key or state selects CCKD slots 3–6.
