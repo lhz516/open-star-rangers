@@ -71,7 +71,7 @@ updated: 2026-10-05
 | AC-01 | 01 | 01 文档 diff、`pnpm --silent check:original` |
 | AC-02 | 02 | 02 文档 diff 与置信度；09、13 源码搜索无框架数值 |
 | AC-03 | 05、06、09 | 05 解析正向；06 绑定正向；09 规范数据逐字段断言 |
-| AC-04 | 05、08、09 | 05 解析负向与限值；08 `subresource-mismatch`；09 识别之后的读取日志 |
+| AC-04 | 05、08、09、14 | 05 解析负向与限值；14 补齐记录数值字段的负向用例；08 `subresource-mismatch`；09 识别之后的读取日志 |
 | AC-05 | 04 | 04 `pnpm exec vitest run src/content` |
 | AC-06 | 06 | 06 绑定测试与源码搜索 |
 | AC-07 | 08 | 08 合成映射表与合成光盘测试 |
@@ -102,7 +102,8 @@ updated: 2026-10-05
 | [10-import-stage.md](./subtasks/10-import-stage.md) | 03, 09 | completed |
 | [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | completed |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 10, 11 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
+| [14-record-value-negatives.md](./subtasks/14-record-value-negatives.md) | 05 | completed |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -145,6 +146,13 @@ updated: 2026-10-05
 
   S/AC 编号、子任务 ID 与依赖不变。P2-08 尚未合入主线（只有另一工作分支），不受影响。
 - **2026-10-05 — 子任务 12 更正读取增量的基准：** 原文把 `convert-logic` 的读取增量定义为“最后一次进度减去识别结束时的读取量”。P2-05 合入后，识别与逻辑阶段之间多了图形阶段，按原文计算会混入图形读取。按用户授权改为“减去该阶段开始时的读取量”；CLI 同时输出识别与图形阶段的增量和总读取量。
+- **2026-10-05 — 子任务 13 开始时再次变基：** 主线在第一次变基后又合入 P2-05 的 3 个提交：
+  - HUD 字库字符映射与“每个字形存储的行数”：4×6 字库为 192 个八行字形；
+  - 公开模块 `verify-source-mappings` 的运行时导出检查；
+  - P2-05 收尾文档。
+
+  本分支 14 个提交无冲突变基到主线。唯一的语义影响是逻辑作业测试中写死的图形用量，已改为引用测试支持的 `GRAPHICS_PAYLOAD_BYTES`，`glyphs` 改为 704，并更新子任务 10 的证据。`verify-source-mappings` 的导出未被本分支改动，新增的导出检查通过。
+- **2026-10-05 — 子任务 13 发现缺口，新增补救子任务 14：** 独立覆盖审计发现，源字段处理表中记录 +0x1C（`spawnTime`）、+0x40（`gridSpacing`）与 +0x5C（AI 目标机型掩码）三行只有正向测试；唯一的“数值字段上有重定位”负向用例在 +0x0C，用作这三行的证据属于代理证据。按 execute-goal 的补救流程，13 退回 `pending`，新增子任务 14 补齐这三行的负向用例。14 不改变行为，13 依赖 14，完成后重跑最终对齐。
 
 ## 审批
 
