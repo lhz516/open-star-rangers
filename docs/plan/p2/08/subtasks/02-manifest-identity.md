@@ -69,3 +69,5 @@ updated: 2026-10-05
 - **rubber-duck：** 无阻塞、无非阻塞问题。
 - **simplify：** 采纳两项：版本校验改为复用导出的 `readVersion`；测试改用仓库惯用的 `toThrowError(expect.objectContaining(...))`，去掉重复的辅助函数。效率与层次两个角度无发现。复跑检查通过。
 - **文档影响：** 在[源码结构指南](../../../../engineering/source-structure.md#内容基础契约与切片定义)新增目录项与 `manifest-identity.ts` 一条（输入、序列化与输出），`manifest.ts` 一条补记 `readManifestAssets`，content-identity 一条改为指向身份生成者。工程约定无需修改。
+
+- **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。身份输入增加 `ConverterVersion` 与来源，编码改为 ASCII，固定值随之更新。本条以上的证据记录的是本子任务完成时的状态。

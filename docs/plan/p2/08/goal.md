@@ -14,10 +14,10 @@ updated: 2026-10-05
 
 - **内容与转换：**
   - 规范采样 payload 与唯一的浮点映射；
-  - 包级 `ManifestIdentity`；
-  - SND 定向解析与 `conversion` 错误层；
+  - 包级 `ManifestIdentity` 与唯一的生产 `ConverterVersion`（与 P2-09 共享的机制）；
+  - SND 定向解析，失败以追加 code 的 `SourceError` 经 `source` 层报告；
   - 音频组转换（目录预检、来源核验、预算）。
-- **导入管线：** 协议 v2（`convert-audio` 阶段、`conversion` 错误层与顺序规则）、生产作业的音频阶段与包身份组装，以及 Node 与真实 Worker 集成。
+- **导入管线：** 递增的协议版本（`convert-audio` 阶段与顺序规则，错误层不变）、生产作业的音频阶段与包身份组装，以及 Node 与真实 Worker 集成。
 - **播放：** `platform/audio/` 的 DOM-free 控制器、`browser-*` 工厂，以及 Chrome 中的真实播放与生命周期验证。
 - **研究与原版证据：**
   - 定向研究写入 `docs/original/`；
@@ -44,7 +44,7 @@ updated: 2026-10-05
     - [source-mapping.ts](../../../../src/original-data/source-mapping.ts) 的 `readSourceMappingTable`、`assetSourceStates`。严格读取器拒绝多余字段，所以带 `role` 的行必须先投影为 `SourceMapping` 再交给它；
     - [verify-source-mappings.ts](../../../../src/original-data/source/verify-source-mappings.ts) 的 `verifySourceMappings`。它读取每个别名的块，返回绑定指纹的新表，但不保留字节；
     - [open-verified-source.ts](../../../../src/original-data/source/open-verified-source.ts) 是唯一产品入口。`VerifiedSource.openArchive(path)` 返回的 [ImfatArchiveHandle](../../../../src/original-data/archive/archive-reader.ts) 有 `entries`、`entry(id, type)` 与 `read(id, type)`，目录预检只用前两者；
-    - [source-error.ts](../../../../src/original-data/source-error.ts) 的 `SourceError` 是 `conversion` 层错误类的形状参照。
+    - [source-error.ts](../../../../src/original-data/source-error.ts) 的 `SourceError`：14 起以追加 code 与预算限值名承载 SND 转换与音频预算的失败（最初的计划是以它为形状参照新建 `conversion` 层，已按执行记录修订）。
   - **导入管线：**
     - [import-protocol.ts](../../../../src/workers/import-protocol.ts)：版本 1，阶段只有 `identify-source`，四个错误层；
     - [import-host.ts](../../../../src/workers/import-host.ts) 的 `toErrorData`、`#sendGroup`：每组分别转移，作业返回后才读取用量；
@@ -60,7 +60,8 @@ updated: 2026-10-05
 - **计划新增（均尚不存在）：**
   - **content：** `src/content/sound-payload.ts`（01）、`src/content/manifest-identity.ts`（02）；
   - **original-data：**
-    - `src/original-data/conversion/conversion-error.ts` 与 `src/original-data/formats/snd.ts`（03）；
+    - `src/original-data/conversion/conversion-error.ts`（03 新增，14 移除）与 `src/original-data/formats/snd.ts`（03）；
+    - `src/original-data/conversion/converter-version.ts`（14）；
     - `src/original-data/conversion/audio-conversion.ts`（04）；
     - `src/original-data/conversion/production-sounds.ts`（06 建立，11 填入）；
   - **platform：** `src/platform/audio/audio-controller.ts`（07）与 `browser-audio-controller.ts`（08）；
@@ -83,7 +84,7 @@ updated: 2026-10-05
   - `local/StarRang/cd/` 的 CloneCD 文件组（4 个文件）与 `local/StarRang/SRANGERS/` 安装目录；
   - [基准环境](../../../guides/baseline-environment.md)中的 DOSBox-X（`~/Applications/dosbox-x.app`）与 Ghidra 12.0.1 只读分析环境。
 - **前提五：开发者参与（10 需要）。** AC-14 的试听判定，以及 AC-13 中“试听一致”的门槛，只能由开发者给出。agent 准备本地对照材料与清单，不替代判定。
-- **前提六：并行任务的协调。** P2-05、P2-09 可能与本任务同时推进。05 开始前核对 `IMPORT_PROTOCOL_VERSION`、错误层与包身份规则是否已被其他已批准的契约改动；若已改动，按 spec 技术决定 6 与风险约定修订 spec 并重新批准，不在实现中自行协调出第二套规则。
+- **前提六：并行任务的协调。** P2-05、P2-09 可能与本任务同时推进。05 开始前核对 `IMPORT_PROTOCOL_VERSION`、错误层与包身份规则是否已被其他已批准的契约改动；若已改动，按 spec 技术决定 6 与风险约定修订 spec 并重新批准，不在实现中自行协调出第二套规则。2026-10-05 的核对结果与据此作出的修订见[执行记录](#执行记录)，由 14 实施。
 - **原版证据：** SND 结构、模型音效引用与候选来源计数以 [audio](../../../original/formats/audio.md)、[mesh](../../../original/formats/mesh.md)、[scenario](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure) 为准。16 位解释、`flags`、声道与四类角色的对应仍未确认（[U-004、U-027](../../../original/unknowns.md#数据与格式)），由 09、10 按 spec 的[研究要求](./spec.md#研究要求)处理。
 
 ## 验收覆盖
@@ -95,19 +96,19 @@ updated: 2026-10-05
 | S-03 | 04（行形状与投影）、06（生产表模块）、11（生产行） | 04 合成表 Node 测试；11 读取真实生产表；12 覆盖核对 |
 | S-04 | 09、10 | 09 静态研究证据；10 试听判定；13 文档与生产表的一致性 |
 | S-05 | 04 | 04 转换、预检与预算的 Node 测试 |
-| S-06 | 02、06 | 02 身份计算的 Node 测试；06 生产 `ConverterVersion` 与组装测试 |
+| S-06 | 02、14、06 | 02、14 身份计算的 Node 测试；14 生产常量；06 组装测试 |
 | S-07 | 05、06 | 05 协议与持有者 Node 测试；06 作业与集成测试、Worker E2E |
 | S-08 | 07、08 | 07 控制器 Node 测试；08 Chrome E2E |
 | S-09 | 07、08 | 07 生命周期与释放 Node 测试；08 真实解锁、隐藏与释放 E2E |
-| S-10 | 03、04、05、07 | 各子任务的诊断与边界测试；13 复核诊断不含字节或宿主文本 |
-| S-11 | 01–08、10、12 | 各子任务的 Node 测试与 E2E；10、12 的本地核对；13 汇总 |
-| S-12 | 01–12（各自同步） | 13 文档链接、元数据与内容一致性 |
-| AC-01 | 03 | 03 表驱动 Node 测试 |
+| S-10 | 03、04、05、07、14 | 各子任务的诊断与边界测试；13 复核诊断不含字节或宿主文本 |
+| S-11 | 01–08、10、12、14 | 各子任务的 Node 测试与 E2E；10、12 的本地核对；13 汇总 |
+| S-12 | 01–12、14（各自同步） | 13 文档链接、元数据与内容一致性 |
+| AC-01 | 03、14 | 03 表驱动 Node 测试；14 改为 `source` 层 code 后复跑 |
 | AC-02 | 01 | 01 Node 测试 |
 | AC-03 | 04、11 | 11 读取真实生产表的 Node 测试与边界回归 |
-| AC-04 | 04 | 04 Node 测试（合成光盘与注入表） |
-| AC-05 | 04、06 | 04 计量端口的预检与核算测试；06 的 `finished.usage` |
-| AC-06 | 02、06 | 02 格式、确定性与敏感性测试；06 生产值与同一作业各组的身份相同 |
+| AC-04 | 04、14 | 04 Node 测试（合成光盘与注入表）；14 改为 `source` 层 code 后复跑 |
+| AC-05 | 04、14、06 | 04 计量端口的预检与核算测试；14 的 `source/limit-exceeded`；06 的 `finished.usage` |
+| AC-06 | 02、14、06 | 02、14 格式、确定性与敏感性测试；14 生产常量；06 同一作业各组的身份相同 |
 | AC-07 | 05 | 05 协议、宿主与持有者 Node 测试，以及 P2-04 既有测试的更新 |
 | AC-08 | 06 | 06 Node `MessageChannel` 集成测试；`pnpm test:e2e import-worker.spec.ts --project=development` |
 | AC-09 | 07 | 07 假音频能力的 Node 测试 |
@@ -116,7 +117,7 @@ updated: 2026-10-05
 | AC-12 | 12 | 12 本地 Node 脚本 |
 | AC-13 | 09、10、11 | 13 文档审阅、生产表一致性、`pnpm check:original` |
 | AC-14 | 10 | 10 开发者书面判定 |
-| AC-15 | 01–12 | 13 `pnpm check`、受影响的 E2E、`pnpm check:original`、文档检查 |
+| AC-15 | 01–12、14 | 13 `pnpm check`、受影响的 E2E、`pnpm check:original`、文档检查 |
 
 ## 子任务跟踪
 
@@ -128,27 +129,41 @@ updated: 2026-10-05
 | [02-manifest-identity.md](./subtasks/02-manifest-identity.md) | — | completed |
 | [03-snd-parser.md](./subtasks/03-snd-parser.md) | 01 | completed |
 | [04-audio-group-conversion.md](./subtasks/04-audio-group-conversion.md) | 01, 03 | completed |
-| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03 | pending |
-| [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05 | pending |
+| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | pending |
+| [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05, 14 | pending |
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | pending |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | pending |
 | [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | pending |
 | [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | pending |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | pending |
 | [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | pending |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
+| [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 **依赖结构：**
 
-- **转换链：** 01 → 03 → 04；03 → 05；02、04、05 → 06。
+- **转换链：** 01 → 03 → 04；02、03、04 → 14（与并行任务的共享机制对齐）；03、14 → 05；02、04、05、14 → 06。
 - **播放链：** 01 → 07 → 08，与转换链和研究链互不依赖。
 - **研究链：** 01、03 → 09 → 10（开发者参与）。
 - **汇合：** 06 与 10 汇合于 11 → 12。研究链阻塞时，转换链与播放链仍可完成。
 
 ## 执行记录
 
+- **2026-10-05 — 子任务 05 开始前发现并行契约冲突，已按授权修订 spec：**
+  - **核对：** 按前提六，在 05 开始前比对了各分支，结果如下：
+    - `main` 上有 P2-05 的 spec（accepted，提交于 16:29:10）。`agents/generate-spec-review-rubber-duck` 分支上有 P2-09 的 spec（accepted，提交于 16:28:02）。本 spec 的批准提交晚于二者（16:29:53）。
+    - 两者的代码都还没有改动 `IMPORT_PROTOCOL_VERSION`（仍为 1）、`SourceError` 或身份机制。
+  - **冲突：**
+    - P2-05、P2-09 都把转换错误放在 `source` 层，以追加 code 扩展 `SourceError`，不新增错误层。本 spec 原定新增 `conversion` 层。
+    - P2-09 规定唯一的生产常量 `PRODUCTION_CONVERTER_VERSION`，以及覆盖 `ConverterVersion` 与来源的 ASCII `ManifestIdentity` 推导。本 spec 原定的身份不含这两项，且在 `workers/` 中组成版本。
+  - **处理：** 依据 spec 风险约定（其他 spec 先以不同机制获批时，本 spec 在实现前修订），以及用户在本次 execute-goal 调用中的授权（需要修改 spec 时可以直接修改 spec、goal 与 subtasks，并在执行记录中说明），作了以下修订：
+    - **spec：** S-06、S-07、错误 code、包身份、导入协议变化、技术决定 6 与 7、AC-01、AC-04 至 AC-08，以及风险约定，改为复用共享机制。
+    - **goal：** 新增修复子任务 14，改写 02、03、04 已提交的实现；05 与 06 增加对 14 的依赖，最终对齐增加对 14 的依赖。
+    - **subtasks：** 05、06 的范围随之调整。
+  - **不变：** S/AC 编号与其余行为。02、03、04 的完成证据保留原样，并注明由 14 修订。
+
 ## 审批
 
-用户于 2026-10-05 明确批准本 goal（“approve goal and commit”），批准范围为上述 13 个子任务的拆分、依赖关系和验收覆盖，包括 06 先建立空的生产音效模块、11 再依据研究填入的安排。spec 已于同日由用户明确批准。批准不代表实现完成，也不授权 push、部署或替代 10 中开发者的试听判定。
+用户于 2026-10-05 明确批准本 goal（“approve goal and commit”）；执行期按用户授权新增子任务 14 并调整 05、06 的依赖，见[执行记录](#执行记录)。原批准范围为最初 13 个子任务的拆分、依赖关系和验收覆盖，包括 06 先建立空的生产音效模块、11 再依据研究填入的安排。spec 已于同日由用户明确批准。批准不代表实现完成，也不授权 push、部署或替代 10 中开发者的试听判定。

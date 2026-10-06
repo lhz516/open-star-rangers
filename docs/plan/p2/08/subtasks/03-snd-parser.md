@@ -99,3 +99,5 @@ updated: 2026-10-05
 - **rubber-duck：** 无阻塞、无非阻塞问题。
 - **simplify：** 采纳效率一项：`syntheticSnd` 直接写入单个 `Uint8Array`，不再经 `ByteWriter` 的数组，以便后续预算测试构造大块。复用、简化与层次三个角度无发现。复跑检查通过。
 - **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录树加入 `conversion/` 与 `formats/`，并新增“原版格式转换”一节（`conversion` 错误层、SND 结构与规则、转换顺序、合成数据）。工程约定的边界规则已覆盖“其他使用者”，无需修改。
+
+- **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。`ConversionError` 改为 `SourceError`，code 改为 `invalid-payload`/`unsupported-payload`。本条以上的证据记录的是本子任务完成时的状态。

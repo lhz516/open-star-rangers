@@ -5,7 +5,7 @@ phase: P2
 task: "08"
 updated: 2026-10-05
 related: [ADR-0005, ADR-0007, ADR-0008, ADR-0015, U-004, U-027]
-reviewed: sha256:5cfdda6a24c3
+reviewed: sha256:3470167a92ce
 ---
 
 # P2-08：核心音效转换与播放适配 — Spec
@@ -23,7 +23,7 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 
 1. 切片音效的 SND 定向解析，以及到紧凑规范采样的转换；
 2. 生产音效来源映射与音频组转换，并接入 P2-04 的导入作业；
-3. 首个转换任务必需的包身份（转换器版本与 manifest 身份）生成规则；
+3. 首个转换任务必需的包身份（转换器版本与 manifest 身份），按 P2-09 已批准的共享机制实现；
 4. `platform/audio/` 中的 Web Audio 播放适配，覆盖解锁、被阻止、停止、页面隐藏与释放；
 5. 四类核心角色的定向研究与本地试听对照。
 
@@ -61,12 +61,12 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 - **S-05 音频组转换与预算：** 把生产音效表转换为 P2-01 `GroupInput`，内容包括清单描述符、独占的 payload 与来源状态集。
   - 读取任何 SND 块（包括核验读取）之前，先按[音频转换预算](#音频转换预算)做目录预检；每个 payload 在分配前都已通过预检。
   - 样本格式在规则之内、但必需的角色映射未达到可用置信度时，结果是带诊断的 `incomplete`，不补默认资源。
-- **S-06 包身份生成：** 定义生产 `ConverterVersion` 的组成规则与 `ManifestIdentity` 的计算规则，见[包身份](#包身份)。
+- **S-06 包身份生成：** 实现 P2-09 已批准 spec 定义的共享机制：唯一的生产常量 `PRODUCTION_CONVERTER_VERSION`，以及由同一作业全部组草稿确定性推导的 `ManifestIdentity`，见[包身份](#包身份)。
   - 作业在全部转换阶段完成后，为包内所有组计算同一身份，再发送各组。
-  - 后续转换任务复用这套规则，只追加自己的版本组件。
+  - 后续转换任务复用这套机制，不另立第二套。
 - **S-07 导入作业与协议接入：** 按 P2-04 预留的扩展方式接入音频转换，协议变化见[导入协议变化](#导入协议变化)：
   - 在生产导入作业中追加 `convert-audio` 阶段；
-  - 新增 `conversion` 错误层；
+  - 转换错误按 P2-05、P2-09 的做法扩展 P2-03 的 `SourceError`，经既有的 `source` 层传递，不新增错误层；
   - 递增协议版本，并同步宿主、持有者、平台适配与既有测试。
 - **S-08 Web Audio 播放适配：** 在计划新增的 `platform/audio/` 中提供[播放控制器](#播放控制器)。
   - DOM-free 的控制器只依赖注入的最小音频能力，由 Node 测试覆盖；`browser-*` 工厂接入真实的 `AudioContext` 与页面生命周期。
@@ -120,10 +120,10 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 
 | 模块 | 责任与影响 |
 |---|---|
-| `src/original-data/`（计划新增模块） | SND 解析与转换、生产音效表、`conversion` 层错误类型（供后续转换器共用）。只经产品入口与 `verifySourceMappings` 取得原版字节，受现有[底层能力边界](../../../engineering/README.md#lint-规则eslintconfigjs)约束 |
+| `src/original-data/`（计划新增模块） | SND 解析与转换、生产音效表、生产 `ConverterVersion` 常量，以及 `SourceError` 的追加 code 与预算限值名。只经产品入口与 `verifySourceMappings` 取得原版字节，受现有[底层能力边界](../../../engineering/README.md#lint-规则eslintconfigjs)约束 |
 | [src/original-data/synthetic.ts](../../../../src/original-data/synthetic.ts) | 扩展合成 SND 与含 SND 的 IMFAT 构造，供测试使用；不含原版字节 |
 | `src/content/`（计划新增模块） | 规范采样 payload 的写入、读取与浮点映射；`ManifestIdentity` 的纯计算。既有导出与契约不变 |
-| [src/workers/](../../../../src/workers/) | 协议 v2（`convert-audio` 阶段、`conversion` 错误层、顺序规则）、宿主的错误转换、生产作业的音频阶段与包身份组装、生产 `ConverterVersion` 组成。测试可注入合成识别与合成音效表 |
+| [src/workers/](../../../../src/workers/) | 协议版本递增（`convert-audio` 阶段与顺序规则）、生产作业的音频阶段与包身份组装；宿主的错误转换不变。测试可注入合成识别与合成音效表 |
 | [src/app/import/](../../../../src/app/import/) | 持有者接受新阶段，执行新增的顺序规则；组结果的验证顺序不变 |
 | [src/platform/workers/](../../../../src/platform/workers/) | 只随协议版本同步，行为不变 |
 | `src/platform/audio/`（计划新增） | DOM-free 播放控制器与 `browser-*` 工厂；不建通用音频引擎 |
@@ -151,7 +151,8 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
   - **扩展方式：** [P2-04 S-03](../04/spec.md#包含) 规定转换任务在同一作业中追加步骤与阶段；其[消息协议](../04/spec.md#消息协议)规定消息形状、阶段集合或顺序规则变化时递增协议版本。持有者按[组结果的验证顺序](../04/spec.md#组结果的验证顺序)用 `validateGroup` 重新验证组结果。
 - **身份与缓存（P2-01/10，已实现）：**
   - **全包一致：** [content-identity.ts](../../../../src/content/content-identity.ts) 定义 `ConverterVersion` 与 `ManifestIdentity` 的令牌语法。[completeness.ts](../../../../src/content/completeness.ts) 的 `validatePackage` 要求四组身份完全一致。
-  - **生成规则：** P2-01 把 manifest 身份的生成算法交给“P2-03 与转换任务批准”，见其[清单与版本](../01/spec.md#清单来源与版本)，目前没有生产者。
+  - **生成规则：** P2-01 把 manifest 身份的生成算法交给“P2-03 与转换任务批准”，见其[清单与版本](../01/spec.md#清单来源与版本)，目前没有生产者。P2-09 已批准的 spec（“包身份与转换器版本”一节）定义了共享机制：唯一的生产常量与全包推导，由先落地的转换任务实现，后续任务复用。
+  - **并行任务的错误约定：** P2-05、P2-09 已批准的 spec 都以追加 code 的方式扩展 P2-03 `SourceError`，经 `source` 层传递，不新增错误层；P2-09 定义的 `invalid-payload`、`unsupported-payload` 与预算超限的 `limit-exceeded` 声明可供本任务复用。
   - **缓存键：** [P2-10](../10/spec.md#缓存键与身份) 的缓存键含 `ConverterVersion`。
 - **播放端：**
   - 仓库中没有 Web Audio 代码，`src/platform/audio/` 不存在。[源码结构指南](../../../engineering/source-structure.md#后续扩展方向)的阶段方向表把它列在 P4，但该表只是职责落点，不是已批准清单；[P2 阶段索引](../tasks.md#p2-08-核心音效转换与播放适配)把 Web Audio 端口分配给本任务。
@@ -198,13 +199,13 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 
 转换器对每个映射到的 SND 条目，按下列顺序核对。任何一项不符都使整个转换失败，不跳过该条目：
 
-| 项 | 规则 | 失败 code（`conversion` 层） |
+| 项 | 规则 | 失败 code（`source` 层） |
 |---|---|---|
-| 块与重定位 | 块至少 20 字节；恰有 1 个重定位，位置为 0；该处偏移值为 20 | `invalid-sound` |
-| 样本字节数 | 等于块大小减 20，且为帧大小（位宽字节数 × 声道数）的正整数倍；帧数至少为 1 | `invalid-sound` |
-| 位宽 | 8 或 16 | `unsupported-sound-format` |
-| 采样率 | 8,000–44,100 Hz 的整数，包含两端 | `unsupported-sound-format` |
-| `flags` | 只接受研究确认含义后列入生产转换规则的值，并按其含义得到声道数与循环方式；其他值一律拒绝 | `unsupported-sound-format` |
+| 块与重定位 | 块至少 20 字节；恰有 1 个重定位，位置为 0；该处偏移值为 20 | `invalid-payload` |
+| 样本字节数 | 等于块大小减 20，且为帧大小（位宽字节数 × 声道数）的正整数倍；帧数至少为 1 | `invalid-payload` |
+| 位宽 | 8 或 16 | `unsupported-payload` |
+| 采样率 | 8,000–44,100 Hz 的整数，包含两端 | `unsupported-payload` |
+| `flags` | 只接受研究确认含义后列入生产转换规则的值，并按其含义得到声道数与循环方式；其他值一律拒绝 | `unsupported-payload` |
 
 - **编码：** 8 位映射为无符号编码。16 位映射为有符号小端编码，前提是研究已把这一解释确认为至少高概率，见[研究要求](#研究要求)。
 - **采样率：** 原样保留，不重采样。下限取 Web Audio `createBuffer` 保证支持的最低采样率；上限取 Sound Blaster 16 的最高采样率，基准观察值都在其中。
@@ -224,7 +225,7 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 
 - **门槛的含义：** 门槛只决定能否写入生产转换规则或生产表，不代表映射一定达到 `confirmed`。映射的 `confidence`、`unknowns` 与 `evidence` 按研究结论如实填写。
 - **两类门槛分开处理：**
-  - **采样解释（16 位解释、`flags`、声道）：** 没有达到门槛的解释不写入生产转换规则，因此不存在可合法产生的 payload。转换时遇到规则之外的格式，一律以 `conversion/unsupported-sound-format` 失败，不产生猜测的 payload，也不以不完整组代替。
+  - **采样解释（16 位解释、`flags`、声道）：** 没有达到门槛的解释不写入生产转换规则，因此不存在可合法产生的 payload。转换时遇到规则之外的格式，一律以 `source/unsupported-payload` 失败，不产生猜测的 payload，也不以不完整组代替。
   - **角色与来源对应：** 样本格式已在规则之内、但角色对应尚未达到门槛时，映射可以以 `unconfirmed` 写入生产表；转换照常进行，`audio` 组按 P2-01 规则为 `incomplete`（`source-not-ready`）。某个核心角色尚无任何映射时，组同样为 `incomplete`（`role-cardinality`）。
 - **阻塞规则：** 任何必需事项达不到门槛时，本任务按阻塞处理，记录受影响的验收项与恢复条件。不能用合成数据、近似规则或按槽位顺序命名来补齐。
 - **证据边界：** 只记录结构位置、编号、计数、统计量与判定。原版样本、反编译输出与本地生成的音频文件都留在 `local/`。
@@ -237,9 +238,9 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 | 样本格式在规则之内，但必需的角色映射为 `unconfirmed` | 仍转换并发送组；作业正常结束 | 持有者记录 `incomplete`，诊断为 `source-not-ready`，带对应 U 项；`finished` 不代表可用 |
 | 某个核心角色在生产表中没有任何映射 | 仍转换并发送组；作业正常结束 | 持有者记录 `incomplete`，诊断为 `role-cardinality` |
 | 映射的条目不存在或类型不符（目录预检时发现），或别名不同（核验读取时发现） | → `failed`，不发送组 | `source` 层原 code（`entry-not-found`、`entry-type-mismatch`、`alternatives-differ` 等）与映射路径 |
-| SND 头部、重定位或长度不合规则 | → `failed` | `conversion/invalid-sound`，位置为结构路径 |
-| 位宽、采样率或 `flags` 不在接受范围 | → `failed`，不产生猜测的 payload | `conversion/unsupported-sound-format` |
-| 目录预检或实际核算超出预算（含安全整数溢出） | → `failed`。预检超限时，任何 SND 块都不被读取（包括核验读取）；对应 payload 都不分配 | `conversion/limit-exceeded`，`limit` 为 `{ name: <预算维度>, limit, observed }`，溢出时 `observed` 为 null |
+| SND 头部、重定位或长度不合规则 | → `failed` | `source/invalid-payload`，位置为结构路径 |
+| 位宽、采样率或 `flags` 不在接受范围 | → `failed`，不产生猜测的 payload | `source/unsupported-payload` |
+| 目录预检或实际核算超出预算（含安全整数溢出） | → `failed`。预检超限时，任何 SND 块都不被读取（包括核验读取）；对应 payload 都不分配 | `source/limit-exceeded`，`limit` 为 `{ name: <预算维度>, limit, observed }`，溢出时 `observed` 为 null |
 | 读取失败 | → `failed` | `disc` 层原 code |
 | 音频阶段中取消 | 与 P2-04 相同：同步变为 `cancelled`，Worker 终止 | — |
 | 识别失败或不是基准版本 | 不进入音频阶段 | 与 P2-04 相同 |
@@ -334,7 +335,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 
 - **目录预检：** 在 `verifySourceMappings` 或转换读取任何 SND 块之前，先打开 `SR.NOB` 的目录，按顺序做以下检查：
   1. 用目录确认每个 locator（含全部别名）都存在且类型为 `SND`。
-  2. 每个 Asset 第一个 locator 的目录声明块大小若小于 20，立即以 `conversion/invalid-sound` 失败，位置为该块大小的结构路径。这一步在计算任何估算之前完成，所以估算不会为负。
+  2. 每个 Asset 第一个 locator 的目录声明块大小若小于 20，立即以 `source/invalid-payload` 失败，位置为该块大小的结构路径。这一步在计算任何估算之前完成，所以估算不会为负。
   3. 按块大小核算可能产生的用量上界：`payloadBytes` 为 16 + 块大小 − 20，`audioSamples` 为块大小 − 20，另核算 `assets`。
 
   预检中任一项失败，或核算超限、溢出（以 `limit-exceeded` 失败）时，任何块都不被读取。预检只是检查，不计入用量。
@@ -345,28 +346,30 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 
 ### 包身份
 
+本节实现 P2-09 已批准 spec 的“包身份与转换器版本”所定义的共享机制。P2-05、P2-09 与本任务只用这一套，不另立规则。
+
 | 数据/字段 | 类型、单位与约束 | 权威所有者 | 输入/输出或序列化边界 |
 |---|---|---|---|
-| 生产 `ConverterVersion` | `osr-import.` 加上按固定顺序以 `.` 连接的组件，每个组件形如 `<转换器>-<正整数>`。本任务引入首个组件 `audio-1`，生产值为 `osr-import.audio-1`。符合 P2-01 令牌语法 | 组件归各转换器模块；组成与生产值归 `workers/` 的导入管线 | 写入每组清单的 `identity.converterVersion`，P2-10 用作缓存键的一部分 |
-| 版本组件递增规则 | 以下任何变化都要递增本任务的组件：SND 解析与校验规则、`flags` 解释、payload schema、生产表（ID、角色、映射、置信度）、预算限值，以及其他会改变同一来源转换结果的变化 | 本任务 | 递增后旧缓存键自然不再命中，旧条目的清理归 P5 |
-| `ManifestIdentity` | `manifest:sha256:<64 位小写十六进制>`，对规范序列化计算 SHA-256。序列化须确定、无歧义，内容包括：`sliceId`、`sliceDefinitionVersion`、`schemaVersion`；以及按 `CLASSIC_P2_SLICE.groups` 顺序列出的包内每个组的组名、按清单顺序排列的全部描述符（`id`、`kind`、`role`、`group`、依赖、payload 身份），和该组的来源状态集（指纹，以及每项的 `id`、`state`、`unknowns`） | 计算函数归 `content/`（纯函数，复用已有 SHA-256）；调用归作业 | 同一作业的全部组共用一个值。上列任何字段变化都会改变它；它不覆盖 payload 字节本身，payload 的变化经 payload 指纹体现 |
+| 生产 `ConverterVersion` | `original-data` 转换模块中唯一的生产常量 `PRODUCTION_CONVERTER_VERSION`，符合 P2-01 令牌语法。本任务选定初始值 `osr-import.audio-1`：`osr-import.` 后接按固定顺序以 `.` 连接的各转换器组件，每个组件形如 `<转换器>-<正整数>`；本任务的组件为 `audio-1` | 常量归 `original-data` 的转换模块；各组件归相应转换器 | 写入每组清单的 `identity.converterVersion`，P2-10 用作缓存键的一部分 |
+| 版本递增规则 | 任一生产转换器的输出变化都递增该常量。就本任务而言，以下变化递增 `audio` 组件：SND 解析与校验规则、`flags` 解释、payload schema、生产表（ID、角色、映射、置信度）、预算限值，以及其他会改变同一来源转换结果的变化 | 本任务 | 递增后旧缓存键自然不再命中，旧条目的清理归 P5 |
+| `ManifestIdentity` | `manifest:sha256:<64 位小写十六进制>`，对确定、无歧义的 ASCII 编码计算 SHA-256。编码依次包含：`schemaVersion`、`sliceId`、`sliceDefinitionVersion`、`ConverterVersion`、来源（`origin`）；然后按 `CLASSIC_P2_SLICE.groups` 顺序列出包内每个组的组名、按清单顺序排列的全部描述符（`id`、`kind`、`role`、`group`、依赖、payload 身份），以及该组的来源状态集（指纹，以及每项的 `id`、`state`、`unknowns`） | 计算函数归 `content/`（纯函数，复用已有 SHA-256）；调用归作业 | 同一作业的全部组共用一个值。上列任何字段变化都会改变它；它不覆盖 payload 字节本身，payload 的变化经 payload 指纹体现 |
 
 - **组装顺序：** 作业先运行全部转换阶段，得到各组草稿（描述符、payload、来源状态），再计算一次 `ManifestIdentity`，填入每组清单，最后发送各组。目前只有 `audio` 组；后续转换任务加入后，同一计算覆盖全部组。
 - **合成内容：** 测试用的合成包可以使用固定的合成身份。生产作业的身份只能由上述规则产生。
 
 ### 导入协议变化
 
-| 项 | v1（P2-04） | v2（本任务） |
+| 项 | P2-04 | 本任务 |
 |---|---|---|
-| `IMPORT_PROTOCOL_VERSION` | 1 | 2 |
+| `IMPORT_PROTOCOL_VERSION` | 1 | 递增；本分支为 2，与 P2-05、P2-09 按合入顺序依次递增 |
 | 阶段集合 | `identify-source` | `identify-source`、`convert-audio`，按此顺序 |
-| 错误层 | `disc`、`source`、`content`、`import` | 增加 `conversion`；code 与 `disc`、`source` 一样只按 token 语法核对 |
+| 错误层 | `disc`、`source`、`content`、`import` | 不变。转换错误经 `source` 层传递，新增 code 只是新的 token |
 | 进度顺序 | 识别之后不再有 `identify-source` 进度 | 另增三条：`convert-audio` 进度只在 `identified` 之后；阶段按集合顺序不回退；第一个 `group` 之后不再有任何进度 |
 | `finished.usage` | 来源用量 | 来源用量与转换用量之和 |
 
 - **违规处理：** 持有者把违反上述顺序的消息报为 `protocol-error`，位置沿用 P2-04 的约定。`readBytes` 不减少、不超过输入总字节的规则跨阶段继续适用。
-- **错误转换：** 宿主把 `original-data` 的 `conversion` 层错误转为 `{ layer: 'conversion', code, location, reason, limit }`，字段取自其 `toData()`；其他错误的转换不变。
-- **`conversion` 层 code：** 本任务定义 `invalid-sound`、`unsupported-sound-format` 和 `limit-exceeded` 三个。`location` 是结构位置（生产表路径或 P2-03 的封包位置形式，加上字段名），`reason` 是固定文本，都不含字节、宿主路径或宿主错误文本。后续转换任务可以追加 code，层与 DTO 形状不变。
+- **错误转换：** 不变。SND 转换与音频预算的错误是 `SourceError`，宿主按既有规则转为 `source` 层 DTO。
+- **`source` 层的追加 code：** 本任务复用 P2-09 定义的 `invalid-payload`（结构损坏或违反格式规则）与 `unsupported-payload`（格式合法，但用到了生产规则未接受的取值），以及 `limit-exceeded`（音频预算超限）。为此在 `SourceError` 的限值名中追加 P2-01 的预算维度；预算超限的 `observed` 在超出安全整数时为 null。P2-03 已有 code 与限值的含义不变。`location` 是结构位置（映射路径加字段名），`reason` 是固定文本，都不含字节、宿主路径或宿主错误文本。
 - **组结果验证不变：** 组结果的验证顺序与 `takeGroups()` 的移交语义与 P2-04 相同。
 
 ### 播放控制器
@@ -388,7 +391,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 
 - **不新增持久化：** 本任务不读写 IndexedDB 或 localStorage。音频组的 payload 经 P2-11 交给 P2-10 的缓存时，沿用其记录格式与恢复时的重新校验，不需改动缓存。
 - **缓存兼容：** 规范采样以 payload schema 版本 1 写入 `PayloadIdentity`。任何影响转换输出的变化都按[包身份](#包身份)的规则递增转换器版本组件，从而得到新的缓存键。旧键不会被误读为当前内容，其清理归 P5。
-- **协议兼容：** 协议版本 2 的 Worker 与版本 1 的主线程不兼容，反之亦然。握手阶段按 P2-04 的规则以 `protocol-error` 拒绝，不发送文件。
+- **协议兼容：** 递增后的协议版本与旧版本互不兼容。握手阶段按 P2-04 的规则以 `protocol-error` 拒绝，不发送文件。
 
 ## 技术决定
 
@@ -399,8 +402,8 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 3. **不在导入时重采样：** Web Audio 的缓冲可以使用源采样率，由上下文负责重采样。保留源采样率可以避免引入有损处理与额外的实现选择，也让本地对照可以直接核对音高与速度。
 4. **`flags` 采用封闭的已研究取值：** 观察到的 3 个取值含义都未确认。转换器只接受经研究确认、并已写入生产规则的取值，其他取值明确失败。这样不会把“可能是循环或声道”的猜测写进 payload。payload 的声道数与循环方式字段只表达通用音频属性，不复制原值。
 5. **角色对应须达到高概率，并有试听一致的判定：** 生产映射的置信度沿用 P2-01 的规则，`unconfirmed` 会阻止组完整。阶段退出要求本地对照证据，所以本任务把开发者的试听判定作为验收的一部分；只有代码或只有试听的单方面推断，都不能升级为已确认。
-6. **包身份按“版本组件 + 全包 SHA-256”生成：** P2-10 要求缓存键含转换器版本，P2-01 要求全包四组身份相同。按组件组成的版本令牌能看出是哪个转换器的变化，各任务递增自己的组件；manifest 身份覆盖 P2-01 规定的全部要素，在发送前一次算出。P2-05、P2-09 与本任务可以并行；若它们的 spec 先以其他机制获批，须在实现前修订本 spec，不能出现两套身份规则。
-7. **协议递增到版本 2，新增 `conversion` 错误层：** SND 结构错误既不是 P2-03 的封包读取错误，也不是 P2-01 的规范内容错误。若扩充 `source` 层的封闭 code，会改动已批准的 P2-03 契约。新增一层只需按 P2-04 预留的方式递增协议版本，后续转换任务可直接追加 code。
+6. **包身份采用 P2-09 已批准的共享机制：** 原决定是“版本组件 + 全包 SHA-256”的自有规则。执行 05 前的核对发现，P2-09 的 spec 先获批，规定了唯一的生产常量 `PRODUCTION_CONVERTER_VERSION`，以及覆盖 `ConverterVersion`、来源与全部组草稿的 ASCII SHA-256 推导。本任务按本条原有的对齐规则改用该机制，并作为先落地者实现它。常量初始值由本任务选定为 `osr-import.audio-1`，以组件形式标明变化来自哪个转换器。这样只有一套身份规则，P2-10 的缓存键与 P2-01 的全包一致性都成立。
+7. **协议只因阶段变化而递增，转换错误扩展 `source` 层：** 原决定新增 `conversion` 错误层。执行 05 前的核对发现，P2-05 与 P2-09 已批准的 spec 都以追加 code 的方式扩展 P2-03 `SourceError`，不新增错误层。为避免同类错误出现两套层与 DTO 规则，本任务改为复用 P2-09 的 `invalid-payload`、`unsupported-payload` 与预算超限的 `limit-exceeded`。这对 P2-03 契约只是追加 code 与限值名，已有含义不变。协议版本仍因阶段集合变化而递增。
 8. **组在全部转换完成后发送，之后不再有进度：** 这是计算全包 manifest 身份的必然要求。音频阶段的内存占用受预算约束（payload 不超过 8 MiB），可以在 Worker 中暂存。
 9. **播放控制器的契约与实现都在 `platform/audio/`，`AudioContext` 在 `unlock()` 中延迟创建：**
    - **位置：** 与 P2-10 一样，在需求方的消费者出现之前先由平台提供契约，避免在 app 中预先建立没有消费者的空端口（ADR-0015 第 7 条）。
@@ -418,11 +421,11 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 | AC-01 | **SND 校验：** 合成 SND 的 8 位与 16 位样本、采样率边界 8,000 与 44,100、每个已列入生产规则的 `flags` 取值，都转换为预期的规范 payload。<br>**拒绝：** 以下每项都以预期 code 与结构位置拒绝：块小于 20 字节、重定位数不为 1 或位置不为 0、偏移不为 20、样本字节数与块大小不符、样本字节数不是帧大小的整数倍、帧数为 0、位宽为 12、采样率为 7,999 与 44,101、未列入的 `flags`。诊断不含样本字节，失败前不按声明长度分配缓冲 | 表驱动 Node 测试，使用代码生成的 SND |
 | AC-02 | **payload 往返：** 规范 payload 的写入与读取往返一致，头部偏移等于导出常量。<br>**读取拒绝：** 错误标签、未知编码、声道数或循环方式、采样率 7,999 与 96,001、保留字节非零、PCM 长度不符、尾随字节、长度小于头部，都以稳定 code 与路径拒绝。<br>**浮点映射：** 精确值为：`u8` 的 0、128、255 分别映射为 −1、0、127/128；`s16le` 的 −32768、0、32767 分别映射为 −1、0、32767/32768。双声道正确拆分，结果不与 payload 共享缓冲 | Node 测试 |
 | AC-03 | **生产音效表：** 只有一张生产音效表。<br>- 四个核心角色各至少一行；<br>- ID 唯一、升序，符合 Asset ID 规则，不含条目编号；<br>- 每行的 locator 都是 `MAIN/SR.NOB` 的 `SND`，`subresource` 为 null；<br>- 非 `confirmed` 的行都列有 U 项，证据指向 `docs/original/`。<br>**合法性与边界：** 各行的 `mapping` 投影（`{ sourceFingerprint: null, mappings }`）能通过 `readSourceMappingTable`；`role` 的取值、行序与唯一性另有校验，带 `role` 的行本身不送入该读取器。locator 不出现在 `content/`、`platform/`、`app/`、`ui/` 的任何导出中 | Node 测试读取真实生产表；边界回归 |
-| AC-04 | **转换结果：** 用含 SND 条目的合成光盘与注入的合成表，音频转换得到的 `GroupInput` 经 `validateGroup(CLASSIC_P2_SLICE, …)` 为 `group-complete`，没有外部要求。<br>- payload 版本、长度与指纹都与描述符一致；<br>- 每个 payload 独占缓冲；<br>- 来源状态集绑定已识别的指纹。<br>**不完整：** 样本格式在规则之内时，把一个核心角色的映射改为 `unconfirmed`，结果为 `incomplete`，诊断为 `source-not-ready` 并带对应 U 项；删去一个核心角色的全部映射，结果为 `incomplete`，诊断为 `role-cardinality`。<br>**失败：** 样本的 `flags` 或位宽不在规则之内时，以 `conversion/unsupported-sound-format` 失败，不产生 payload。把别名的两个条目改为不同，以 `source/alternatives-differ` 失败 | Node 测试 |
-| AC-05 | **预算：** 每个音频预算维度在等于上限时通过，超过 1 时以 `conversion/limit-exceeded` 失败，`limit` 的名称、上限与观测值正确；累加溢出时观测值为 null。<br>**目录预检：** 预检超限时，读取计量证明没有任何 SND 块被读取，包括 `verifySourceMappings` 的核验读取；不分配任何 payload。目录声明块大小为 8 字节的 SND 条目在预检中以 `conversion/invalid-sound` 失败（不是预算读取器的 `invalid-budget-value`），同样零块读取、零分配。<br>**计量口径：** `payloadBytes` 计入完整 payload（含 16 字节头部），每个维度只计一次。<br>**用量：** `finished.usage` 等于来源用量加转换用量，来源用量包含核验读取与转换读取 | Node 测试，使用计量的合成字节端口 |
-| AC-06 | **包身份：** 生产 `ConverterVersion` 为 `osr-import.audio-1`，能通过 P2-01 读取器。<br>**确定性：** `ManifestIdentity` 形如 `manifest:sha256:<64 位十六进制>`，相同输入两次计算结果相同。<br>**敏感性：** 以下每项单独变化都会改变结果：任一描述符字段、依赖、payload 身份、来源状态（状态值或 U 项）、指纹、组的集合、切片定义版本。<br>**全包一致：** 同一作业所有组的清单身份相同 | Node 测试 |
-| AC-07 | **协议 v2：**<br>- 版本为 2，阶段集合与错误层按[导入协议变化](#导入协议变化)；<br>- 持有者以 `protocol-error` 拒绝三种顺序违规：`identified` 之前的 `convert-audio` 进度、阶段回退、`group` 之后的进度；<br>- 版本 1 与版本 2 互相握手时被拒绝。<br>**错误转换：** 宿主把 `conversion` 层错误转换为对应 DTO，其余层的转换不变。<br>**回归：** P2-04 的既有测试按新契约更新后全部通过；其中“生产作业组为空”的断言改为本任务的预期 | Node 测试 |
-| AC-08 | **Worker 集成（Node）：** 经 Node `MessageChannel` 连接生产作业（注入合成识别与合成表）、宿主、平台适配与持有者。<br>- 消息依次为 `identified`、`convert-audio` 进度、`audio` 组与 `finished`；<br>- 持有者得到 `group-complete`，`takeGroups()` 返回该组，发送方 payload 视图已失效；<br>- `conversion` 层错误往返后与宿主转换的 DTO 相等；<br>- 已收到组之后作业失败（例如结束用量无效）时，持有者丢弃已收的组，`takeGroups()` 返回 null。<br>**真实浏览器 Worker：** 在开发项目中，经测试 Worker 入口跑同一场景，结果与 Node 一致 | Node 集成测试；`pnpm test:e2e import-worker.spec.ts --project=development` |
+| AC-04 | **转换结果：** 用含 SND 条目的合成光盘与注入的合成表，音频转换得到的 `GroupInput` 经 `validateGroup(CLASSIC_P2_SLICE, …)` 为 `group-complete`，没有外部要求。<br>- payload 版本、长度与指纹都与描述符一致；<br>- 每个 payload 独占缓冲；<br>- 来源状态集绑定已识别的指纹。<br>**不完整：** 样本格式在规则之内时，把一个核心角色的映射改为 `unconfirmed`，结果为 `incomplete`，诊断为 `source-not-ready` 并带对应 U 项；删去一个核心角色的全部映射，结果为 `incomplete`，诊断为 `role-cardinality`。<br>**失败：** 样本的 `flags` 或位宽不在规则之内时，以 `source/unsupported-payload` 失败，不产生 payload。把别名的两个条目改为不同，以 `source/alternatives-differ` 失败 | Node 测试 |
+| AC-05 | **预算：** 每个音频预算维度在等于上限时通过，超过 1 时以 `source/limit-exceeded` 失败，`limit` 的名称、上限与观测值正确；累加溢出时观测值为 null。<br>**目录预检：** 预检超限时，读取计量证明没有任何 SND 块被读取，包括 `verifySourceMappings` 的核验读取；不分配任何 payload。目录声明块大小为 8 字节的 SND 条目在预检中以 `source/invalid-payload` 失败（不是预算读取器的 `invalid-budget-value`），同样零块读取、零分配。<br>**计量口径：** `payloadBytes` 计入完整 payload（含 16 字节头部），每个维度只计一次。<br>**用量：** `finished.usage` 等于来源用量加转换用量，来源用量包含核验读取与转换读取 | Node 测试，使用计量的合成字节端口 |
+| AC-06 | **包身份：** 生产 `ConverterVersion` 是唯一的常量 `PRODUCTION_CONVERTER_VERSION`，值为 `osr-import.audio-1`，能通过 P2-01 读取器。<br>**确定性：** `ManifestIdentity` 形如 `manifest:sha256:<64 位十六进制>`，相同输入两次计算结果相同。<br>**敏感性：** 以下每项单独变化都会改变结果：任一描述符字段、依赖、payload 身份、来源状态（状态值或 U 项）、指纹、组的集合、切片定义版本、`ConverterVersion`、来源。<br>**全包一致：** 同一作业所有组的清单身份相同 | Node 测试 |
+| AC-07 | **协议：**<br>- 版本已递增（本分支为 2），阶段集合按[导入协议变化](#导入协议变化)，错误层集合不变；<br>- 持有者以 `protocol-error` 拒绝三种顺序违规：`identified` 之前的 `convert-audio` 进度、阶段回退、`group` 之后的进度；<br>- 新旧版本互相握手时被拒绝。<br>**错误转换：** SND 转换与音频预算的 `SourceError` 经既有宿主转为 `source` 层 DTO，`limit` 的预算维度名、上限与观测值（含 null）完整保留；其余层的转换不变。<br>**回归：** P2-04 的既有测试按新契约更新后全部通过；其中“生产作业组为空”的断言改为本任务的预期 | Node 测试 |
+| AC-08 | **Worker 集成（Node）：** 经 Node `MessageChannel` 连接生产作业（注入合成识别与合成表）、宿主、平台适配与持有者。<br>- 消息依次为 `identified`、`convert-audio` 进度、`audio` 组与 `finished`；<br>- 持有者得到 `group-complete`，`takeGroups()` 返回该组，发送方 payload 视图已失效；<br>- SND 转换错误（`source` 层）往返后与宿主转换的 DTO 相等；<br>- 已收到组之后作业失败（例如结束用量无效）时，持有者丢弃已收的组，`takeGroups()` 返回 null。<br>**真实浏览器 Worker：** 在开发项目中，经测试 Worker 入口跑同一场景，结果与 Node 一致 | Node 集成测试；`pnpm test:e2e import-worker.spec.ts --project=development` |
 | AC-09 | **控制器（Node，假音频能力）：**<br>- **状态转换：** 实现[播放控制器](#播放控制器)表中的全部转换与错误码；<br>- **可见性：** 覆盖以下情形：解锁前隐藏再恢复（保持 `idle`，不创建上下文）；`locked` 时隐藏再恢复（保持 `locked`）；`failed` 后隐藏再恢复（保持 `failed`）；隐藏期间调用 `unlock()`（不创建、不恢复）；隐藏前发起的 `resume()` 在隐藏后才兑现（再次挂起，不发声）；浏览器自行挂起（停止发声，不补播）；初始即为隐藏；`pageshow` 恢复；<br>- **释放：** 停止全部发声，移除全部监听，可重复调用，之后不再通知。上下文创建前释放时 `close()` 调用 0 次；有存活上下文时恰好 1 次；重复释放不增加；上下文已被宿主关闭时为 0 次；<br>- **登记：** `load` 失败时整批不登记；<br>- **所有权：** 调用方修改或转移自己的缓冲不影响已登记的音频，控制器从不转移它；<br>- **快照：** 冻结，订阅者的错误被隔离 | Node 测试 |
 | AC-10 | **真实浏览器播放（Chrome，合成采样，固定“需要用户手势”策略）：**<br>- **被阻止：** 没有可信点击时，`unlock()` 后状态不是 `running`，`play` 返回 `audio-locked`，且没有输出。<br>- **解锁：** 可信点击后状态为 `running`。<br>- **缓冲：** 缓冲的采样率、长度与逐样本数据等于 `u8` 与 `s16le` 合成采样的预期浮点值。<br>- **输出：** 播放期间观测到非静音输出；自然结束或 `stop` 之后回到静音，发声数归零。<br>- **页面隐藏与恢复：** 经真实隐藏（CDP `Target.activateTarget`）后，全部发声停止，状态为 `suspended`，`play` 返回 `audio-suspended`；回到可见后恢复 `running`，且不补播。<br>- **释放：** 释放后上下文状态为 `closed`，没有剩余监听或输出。<br>- **不可用：** 移除 `AudioContext` 构造器时，状态为 `unavailable`。<br>不以调用 `start()` 或无异常作为可听的证据 | `pnpm test:e2e <音频用例>.spec.ts --project=development`。观测输出的方式可以是只读探针，或由测试注入的上下文工厂在 destination 之前插入分析节点；至少一条用例经 `browser-*` 生产工厂与真实 `AudioContext` 走完整路径 |
 | AC-11 | **边界：**<br>- `platform/audio/` 不导入 `original-data`、`render`、`ui`、`app`、`workers`，不出现 `fetch` 等网络 API，非 `browser-*` 模块在真实 Node 程序中；<br>- `content/` 保持纯模块；<br>- 音频转换只经产品入口与 `verifySourceMappings` 取得字节；<br>- `src/workers/` 的网络禁用继续生效；<br>- 依赖清单与锁文件不变 | `tools/engineering-boundaries.test.ts` 新增与既有回归、`pnpm lint`、`pnpm typecheck`；依赖文件 diff |
@@ -434,7 +437,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 ## 验证策略
 
 - **单元/契约测试：**
-  - 计划新增的 `original-data/`、`content/`、`platform/audio/` 模块各有相邻的 `*.test.ts`；`src/workers/`、`src/app/import/` 中的既有测试按协议 v2 更新。
+  - 计划新增的 `original-data/`、`content/`、`platform/audio/` 模块各有相邻的 `*.test.ts`；`src/workers/`、`src/app/import/` 中的既有测试按新的协议版本更新。
   - 合成 SND 与含 SND 的 IMFAT 由 [synthetic.ts](../../../../src/original-data/synthetic.ts) 生成，合成光盘沿用 P2-04 的测试支持。
   - 覆盖 AC-01 至 AC-09 的正向、边界与失败路径。
   - 迭代时运行 `pnpm exec vitest run src/original-data src/content src/workers src/app/import src/platform/audio tools/engineering-boundaries.test.ts`，按实际路径收窄。
@@ -457,7 +460,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 
 - **研究无法闭合：** 两类门槛分别处理，本任务都按 blocked 记录受影响的 AC 与恢复条件。
   - **角色对应：** 映射保持 `unconfirmed` 或缺失，`audio` 组不完整（`source-not-ready` 或 `role-cardinality`）。取得证据后更新映射。
-  - **采样解释（16 位解释、`flags`、声道）：** 相应取值不写入生产转换规则；转换遇到它时以 `conversion/unsupported-sound-format` 失败，不产生 payload。取得证据后更新转换规则。
+  - **采样解释（16 位解释、`flags`、声道）：** 相应取值不写入生产转换规则；转换遇到它时以 `source/unsupported-payload` 失败，不产生 payload。取得证据后更新转换规则。
   - **恢复后：** 无论更新的是映射还是转换规则，都递增版本组件。
   - **禁止：** 不用近似样本、猜测的解释或按槽位顺序命名来通过。
 - **采样解释错误（符号、字节序、采样率、声道）：**
@@ -465,7 +468,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
   - **恢复：** 修正后递增 payload schema 或转换器版本组件，旧缓存键不再命中。
 - **并行转换任务的契约冲突：**
   - **来源：** P2-05、P2-09 与本任务并行，可能各自递增协议版本或提出不同的身份规则。
-  - **规则：** 协议版本按合入顺序依次递增；`conversion` 错误层与包身份规则由本任务首先定义，后续任务复用。若其他 spec 先以不同机制获批，本 spec 在实现前修订并重新批准。
+  - **规则：** 协议版本按合入顺序依次递增。转换错误的层（`source`）与包身份机制以 P2-09 已批准的定义为准（见技术决定 6、7）：先落地者实现，后者复用。合入时若共享文件冲突，按这一份定义合并，不另立规则。
 - **浏览器自动播放策略差异：** 用例固定策略开关并以可信点击解锁，只证明 Chrome 中的工程行为。真实界面的实机检查在 P2-11，Firefox/Safari 与移动设备在 P5。
 - **`AudioContext` 资源泄漏：** 浏览器会限制同时存在的上下文数量。每个控制器至多一个上下文，释放时关闭；AC-09 与 AC-10 都核对关闭。
 - **Worker 暂存全部组：** 组在发送前暂存于 Worker，内存受音频预算约束。后续转换任务加入时，各自的预算须一并考虑总量，由 P2-11 确定组合上限。
@@ -487,4 +490,14 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 - 规范采样 payload、生产音效表、音频转换预算、包身份与导入协议变化；
 - 播放控制器的状态、生命周期与释放语义，以及技术决定。
 
-生成与审阅时按“采用推荐答案”授权作出的选择，以及 review-spec 两轮审阅采纳的九项修正，随本次批准一并生效。研究事项（AC-13）与本地试听（AC-14）仍是执行期的验收条件；达不到门槛时任务按阻塞规则停止，本批准不预先认定其结论。
+生成与审阅时按“采用推荐答案”授权作出的选择，以及 review-spec 两轮审阅采纳的九项修正，随本次批准一并生效。
+
+**执行期修订（2026-10-05）：** 执行子任务 05 前，按 goal 前提六核对并行任务，发现 P2-05、P2-09 的 spec 都在本 spec 之前获批，并以不同机制处理转换错误层与包身份。依据本 spec 风险约定中的对齐规则，以及用户在 execute-goal 调用中的授权（需要修改 spec 时可以直接修改 spec、goal 与 subtasks，并在执行记录中说明），本 spec 作了以下修订，改为复用共享机制：
+- S-06、S-07；
+- 采样格式规则、转换与导入作业、音频转换预算中的错误 code；
+- 包身份、导入协议变化、协议兼容；
+- 技术决定 6、7；
+- AC-01、AC-04 至 AC-08；
+- 风险约定。
+
+S/AC 编号与其余行为不变。详情见 [goal 执行记录](./goal.md#执行记录)。研究事项（AC-13）与本地试听（AC-14）仍是执行期的验收条件；达不到门槛时任务按阻塞规则停止，本批准不预先认定其结论。

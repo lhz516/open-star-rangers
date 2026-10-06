@@ -1,0 +1,88 @@
+---
+type: plan
+status: active
+phase: P2
+task: "08"
+subtask: "14"
+updated: 2026-10-05
+---
+
+# 14 — 与并行任务的共享机制对齐：`source` 层转换错误与包身份
+
+**契约来源：** [spec](../spec.md) 中修订后的以下部分：
+- S-06、S-07（错误层部分）、S-10；
+- AC-01、AC-04、AC-05（code 与层），AC-06（生产常量，以及身份对 `ConverterVersion` 与来源的敏感性）；
+- [采样格式规则](../spec.md#采样格式规则)、[音频转换预算](../spec.md#音频转换预算)、[包身份](../spec.md#包身份)、[导入协议变化](../spec.md#导入协议变化)中的 `source` 层追加 code；
+- [技术决定](../spec.md#技术决定) 6、7；
+- 修订原因见 [goal 执行记录](../goal.md#执行记录)。
+
+**依赖：** 02、03、04。
+**执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
+
+## 工作范围
+
+修复子任务：把 02、03、04 已提交的实现改为 P2-05、P2-09 已批准的共享机制，不新增行为。
+
+- **`source` 层错误：**
+  - **扩展 `SourceError`：** 在 [source-error.ts](../../../../../src/original-data/source-error.ts) 中：
+    - code 联合追加 `invalid-payload` 与 `unsupported-payload`；
+    - 限值名追加 P2-01 的全部预算维度；
+    - `SourceLimit.observed` 改为 `number | null`，null 只用于预算超出安全整数的情形。
+    - P2-03 已有 code 与限值的含义不变。
+  - **替换调用方：**
+    - SND 解析（`formats/snd.ts`）把 `invalid-sound` 改为 `invalid-payload`，把 `unsupported-sound-format` 改为 `unsupported-payload`；
+    - 音频预检（`conversion/audio-conversion.ts`）同样改用这两个 code；
+    - 预算计量（`conversion/conversion-budget.ts`）改为抛出 `SourceError('limit-exceeded')`，`limit.name` 为预算维度。
+  - **移除：** `conversion/conversion-error.ts` 及其测试。
+  - **不变：** 位置、固定 reason、检查顺序与零读取保证。
+- **生产 `ConverterVersion`：** 新增 `src/original-data/conversion/converter-version.ts`，导出唯一的生产常量 `PRODUCTION_CONVERTER_VERSION = 'osr-import.audio-1'`。
+  - 值由 `osr-import.` 与各转换器组件按固定顺序组成，本任务只有 04 的 `AUDIO_CONVERTER_COMPONENT`。
+  - 生产代码中没有第二个定义。
+- **`ManifestIdentity`：** [manifest-identity.ts](../../../../../src/content/manifest-identity.ts) 改为 P2-09 的定义：
+  - **输入：** 增加 `converterVersion` 与 `origin`，分别用 `readConverterVersion` 与 `readContentOrigin` 读取。
+  - **编码顺序：** `schemaVersion`、`sliceId`、`sliceDefinitionVersion`、`ConverterVersion`、来源，然后是各组。
+  - **编码：** 对确定的 ASCII 文本计算 SHA-256。各字段都由只允许 ASCII 的读取器保证。
+  - **测试：** 重新固定已钉住的值，并增加对 `ConverterVersion` 与来源的敏感性用例。
+- **测试：** 更新受影响测试，包括 `snd.test.ts`、`audio-conversion.test.ts`、`conversion-budget.test.ts`、`manifest-identity.test.ts`，以及协议测试中 `SourceErrorCode`/限值名的穷举记录。新增 `converter-version.test.ts`。
+- **文档：** 同步[源码结构指南](../../../../engineering/source-structure.md)中的以下内容：
+  - 原版格式转换一节：`source` 层 code，以及去掉 `conversion` 错误层；
+  - 版本识别一节中 `SourceError` 的说明；
+  - `manifest-identity.ts` 一条；
+  - 新的 `converter-version.ts`。
+
+## 不包含
+
+- 协议版本、阶段与持有者规则（05）；作业装配（06）。
+- P2-05、P2-09 自己的 code（`unsupported-encoding`、`budget-exceeded`、`subresource-mismatch` 等），由它们各自追加。
+
+## 关键文件与契约
+
+- **修改：**
+  - `src/original-data/` 下：[source-error.ts](../../../../../src/original-data/source-error.ts)、`formats/snd.ts`、`conversion/audio-conversion.ts`、`conversion/conversion-budget.ts`，以及它们的测试；
+  - `src/content/manifest-identity.ts` 及其测试；
+  - [import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts)。
+- **计划新增：** `src/original-data/conversion/converter-version.ts` 与其测试。
+- **移除：** `src/original-data/conversion/conversion-error.ts` 与其测试。
+
+## 验收标准
+
+- [ ] 生产代码中没有 `conversion` 错误层或 `ConversionError`；SND 转换与音频预算的失败都是 `SourceError`，code 为 `invalid-payload`、`unsupported-payload` 或 `limit-exceeded`，位置与 03、04 相同。
+- [ ] AC-01、AC-04、AC-05 的全部用例以新的 code 通过：
+  - 预检失败仍为零块读取；
+  - 预算超限的 `limit` 为 `{ name: <预算维度>, limit, observed }`，溢出时 `observed` 为 null；
+  - `toData()` 冻结且可结构化克隆。
+- [ ] P2-03 既有的 `SourceError` 测试与协议穷举记录通过；新增 code 与限值名都合协议 DTO 语法。
+- [ ] AC-06：
+  - `PRODUCTION_CONVERTER_VERSION` 为 `osr-import.audio-1`，能通过 `readConverterVersion`，含 `AUDIO_CONVERTER_COMPONENT`；
+  - `ManifestIdentity` 对 `ConverterVersion` 与来源（类别与令牌）各自敏感；
+  - 原有的确定性、无歧义与敏感性用例仍通过；
+  - 新的固定值经 `node:crypto` 对同一 ASCII 文本独立核对。
+- [ ] `pnpm exec vitest run src/content src/original-data src/workers tools/engineering-boundaries.test.ts`、`pnpm check` 通过。
+
+## 验证方法
+
+- Node 测试；只用代码生成的合成数据。
+- 不适用浏览器或原版对照。
+- 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
+
+## 完成证据
