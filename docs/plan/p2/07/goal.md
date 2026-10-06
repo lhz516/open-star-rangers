@@ -87,7 +87,7 @@ updated: 2026-10-05
 | [02-layout-composition.md](./subtasks/02-layout-composition.md) | 01 | completed |
 | [03-container-records.md](./subtasks/03-container-records.md) | — | completed |
 | [04-layout-conversion.md](./subtasks/04-layout-conversion.md) | 01, 03 | completed |
-| [05-table-structure-research.md](./subtasks/05-table-structure-research.md) | — | pending |
+| [05-table-structure-research.md](./subtasks/05-table-structure-research.md) | — | completed |
 | [06-table-records.md](./subtasks/06-table-records.md) | 03, 04, 05 | pending |
 | [07-local-structure-check.md](./subtasks/07-local-structure-check.md) | 03, 06 | pending |
 | [08-cockpit-palette-research.md](./subtasks/08-cockpit-palette-research.md) | 02, 03 | pending |

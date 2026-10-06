@@ -67,13 +67,49 @@ TABL is a generic container; its meaning depends on the entry.
 |---|---|---|
 | 10099 | Three CCKD entry IDs (HI set, HI forward-only, LO set) | Confirmed (IDs resolve to CCKD) |
 | 10171 | Three BITM entry IDs (the 640×316 full-screen scenes) | Confirmed (IDs resolve to BITM) |
-| 11401 | 29 image records: 18 craft icons of 20×20 used on the strategic map and in its zoom window, 9 radar blips of 4×3, 2 other symbols | Likely (icons match the map screenshots) |
-| 10461 | 29 radar blips, 4×3, in several colours | Likely |
-| 10479, 10481 | 4 images each, about 20×51: vertical HUD gauge bars with pointer markers | Likely |
-| 10483 | 4 images, 12×26: LO version of the gauge bars | Likely |
-| 10165 | 33 sprite-RLE images on a 320×200 canvas; each contains only a small part at a fixed position | Purpose Unconfirmed (U-030) |
+| 11401 | 29 image records: 18 craft icons of 20×20 used on the strategic map and in its zoom window, 9 radar blips of 4×3, 2 other symbols | Likely (icons match the map screenshots); image list structure Confirmed, see [below](#tabl-image-lists-confirmed-structure) |
+| 10461 | 29 radar blips, 4×3, in several colours | Likely; image list structure Confirmed |
+| 10479, 10481 | 4 images each, 20×51 and 20×52: vertical HUD gauge bars with pointer markers | Likely; image list structure Confirmed |
+| 10483 | 4 images, 12×26: LO version of the gauge bars | Likely; image list structure Confirmed |
+| 10165 | 33 sprite-RLE images on a 320×200 canvas; each contains only a small part at a fixed position | Purpose Unconfirmed (U-030); not an image list as defined below |
 | 10399 | 13 offsets, Likely a string or record table | Unconfirmed |
 | 11375 | 640 bytes of floats | Unconfirmed |
+
+### TABL image lists (Confirmed structure)
+
+Entries 10461, 10479, 10481, 10483 and 11401 have no header. They are `n` 36-byte [image records](./textures.md#2-image-record-36-bytes-confirmed) packed from offset 0, followed by the records' data.
+
+| Rule | Detail |
+|---|---|
+| Record array | Record `i` starts at `36 × i`; there is no count or pointer field |
+| Records | Every record is raw (encoding 0) with no embedded palette (palette count 0) |
+| Record count | `n` is record 0's pixel data offset divided by 36 |
+| Data | Every record's pixel data lies after the record array. In all five entries the data follows record order and covers the rest of the block exactly: no gaps, overlaps or trailing bytes |
+| Relocations | The entry's relocation table lists exactly one position per record, its pixel pointer (+28) |
+
+The count rule is derived from these instances. A TABL list with embedded palettes or other encodings has not been observed and is not part of this structure.
+
+**Evidence (Confirmed on every instance):** a local script read all 62 TABL entries of the seven `MAIN/` archives with the shared IMFAT reader and `readImageRecordHeader`/`decodeImageRecord` (`local/research/p2-07/tabl-structure.ts`, run with `node --preserve-symlinks --preserve-symlinks-main`). The five entries above pass every rule; no other TABL entry has this structure. How the program obtains `n` is Unconfirmed; it may use fixed counts.
+
+| Entry | Records | Sizes by full-list index |
+|---|---|---|
+| 10461 | 29 | 0–28: 4×3 |
+| 10479, 10481 | 4 each | 0–1: 20×51; 2–3: 20×52 |
+| 10483 | 4 | 0–3: 12×26 |
+| 11401 | 29 | 0–12 and 15–19: 20×20; 13: 16×15; 14: 12×15; 20–28: 4×3 |
+
+**11401 intervals (Confirmed by size):** contiguous runs of equal record size, by full-list index:
+
+| Interval | Records | Size |
+|---|---|---|
+| 0–12 | 13 | 20×20 |
+| 13–14 | 2 | 16×15 and 12×15 |
+| 15–19 | 5 | 20×20 |
+| 20–28 | 9 | 4×3 |
+
+The purposes in the table above (18 craft icons, 9 blips, 2 other symbols) come from the earlier visual research and are not yet evidenced to the [P2-07 thresholds](../../plan/p2/07/spec.md#研究与入选门槛). The 18 records of 20×20 fall in two runs separated by 13–14, and whether 13–14 belong to the craft icon sequence is Unconfirmed. P2-07/09 decides each interval's purpose and family from the slice coverage evidence.
+
+**10165 has another structure.** Offset 0 holds an image record header of a 320×200 sprite, but record 0's first data offset is not a multiple of 36, and its 78 relocations include more than record pointer fields. It does not satisfy the rules above and is not parsed as an image list; its layout and purpose remain U-030.
 
 ## 3. ID lists (Confirmed structure)
 
