@@ -129,7 +129,7 @@ updated: 2026-10-05
 | [02-manifest-identity.md](./subtasks/02-manifest-identity.md) | — | completed |
 | [03-snd-parser.md](./subtasks/03-snd-parser.md) | 01 | completed |
 | [04-audio-group-conversion.md](./subtasks/04-audio-group-conversion.md) | 01, 03 | completed |
-| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | in-progress |
+| [05-import-protocol-v2.md](./subtasks/05-import-protocol-v2.md) | 03, 14 | completed |
 | [06-import-job-audio-stage.md](./subtasks/06-import-job-audio-stage.md) | 02, 04, 05, 14 | pending |
 | [07-audio-controller.md](./subtasks/07-audio-controller.md) | 01 | completed |
 | [08-browser-audio-playback.md](./subtasks/08-browser-audio-playback.md) | 07 | completed |

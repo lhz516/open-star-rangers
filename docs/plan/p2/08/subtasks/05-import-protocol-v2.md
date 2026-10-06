@@ -47,12 +47,12 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-07（协议）：版本为 3；阶段集合按 spec，错误层集合不变；`budget-exceeded`（预算维度限值名与 `observed: null`）、`invalid-payload` 与 `unsupported-payload` 的 `source` DTO 通过读取；层未知、code 不合语法的 DTO 仍被拒绝。
-- [ ] AC-07（顺序）：持有者以 `protocol-error` 拒绝三种违规：`identified` 之前的 `convert-audio` 进度、阶段回退（含 `convert-audio` 之后的 `convert-graphics` 进度）、`group` 之后的进度。合法序列 `identify-source` → `identified` → `convert-graphics` → `convert-audio` → `group` → `finished` 被接受。
-- [ ] AC-07（版本）：旧版本的 `ready` 被新持有者以 `protocol-error` 拒绝，且不发送 `start`；新宿主拒绝旧版本的 `start`。
-- [ ] AC-07（错误转换）：宿主把 SND 转换与音频预算的 `SourceError` 转为 `source` 层 DTO，其余字段等于 `toData()`，`limit` 的预算维度名、上限与观测值（含 null）完整保留；`DiscReadError`、`ContentContractError` 与未知异常的转换不变。宿主拒绝三种作业误用，报 `internal-error@job`。
-- [ ] AC-07（回归）：P2-04、P2-05 的既有测试按新契约更新后全部通过。
-- [ ] `pnpm exec vitest run src/workers src/app/import src/platform/workers tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-07（协议）：版本为 3；阶段集合按 spec，错误层集合不变；`budget-exceeded`（预算维度限值名与 `observed: null`）、`invalid-payload` 与 `unsupported-payload` 的 `source` DTO 通过读取；层未知、code 不合语法的 DTO 仍被拒绝。
+- [x] AC-07（顺序）：持有者以 `protocol-error` 拒绝三种违规：`identified` 之前的 `convert-audio` 进度、阶段回退（含 `convert-audio` 之后的 `convert-graphics` 进度）、`group` 之后的进度。合法序列 `identify-source` → `identified` → `convert-graphics` → `convert-audio` → `group` → `finished` 被接受。
+- [x] AC-07（版本）：旧版本的 `ready` 被新持有者以 `protocol-error` 拒绝，且不发送 `start`；新宿主拒绝旧版本的 `start`。
+- [x] AC-07（错误转换）：宿主把 SND 转换与音频预算的 `SourceError` 转为 `source` 层 DTO，其余字段等于 `toData()`，`limit` 的预算维度名、上限与观测值（含 null）完整保留；`DiscReadError`、`ContentContractError` 与未知异常的转换不变。宿主拒绝三种作业误用，报 `internal-error@job`。
+- [x] AC-07（回归）：P2-04、P2-05 的既有测试按新契约更新后全部通过。
+- [x] `pnpm exec vitest run src/workers src/app/import src/platform/workers tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -61,3 +61,21 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [import-protocol.ts](../../../../../src/workers/import-protocol.ts)：`IMPORT_PROTOCOL_VERSION` 为 3，`IMPORT_STAGES` 为 `identify-source`、`convert-graphics`、`convert-audio`。P2-05 的 `canReportStage` 增加必填参数 `grouped`，成为唯一的进度顺序规则：已有阶段规则之外，第一个组之后的任何进度都不合法。
+  - [import-host.ts](../../../../../src/workers/import-host.ts)：报告器以已发送组是否非空作为 `grouped`，违反时报 `internal-error@job`；`toErrorData` 不变。
+  - [import-job-owner.ts](../../../../../src/app/import/import-job-owner.ts)：以已收组是否非空作为 `grouped`，违反时报 `protocol-error@message.stage`。不完整的组同样计入，因为持有者对它也记录摘要。
+- **AC-07（协议）：** [import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的常量用例固定版本 3 与三阶段；新增 `convert-audio` 进度、`source/budget-exceeded`（`audioSamples`、`observed: null`）两条合法消息。`invalid-payload`、`unsupported-payload`、`budget-exceeded` 与全部预算维度名由既有的穷举语法记录覆盖；层未知、code 不合语法的拒绝用例未改动。
+- **AC-07（顺序）：** 谓词表新增 `grouped` 列与音频阶段的前进、回退、识别前，以及组之后的用例。持有者以 `protocol-error` 拒绝以下情况：音频进度作为首条进度或在识别之前（`message.stage`）、音频之后的图形进度（`message.stage`）、组之后的进度（`message.stage`）。新用例接受 `identify-source` → `identified` → `convert-graphics` → `convert-audio` → `audio` 组 → `finished`，并移交该组。
+- **AC-07（版本）：** 持有者对 `IMPORT_PROTOCOL_VERSION - 1` 的 `ready` 报 `protocol-error@message.protocol` 且不发送 `start`；宿主与 `readImportStartMessage` 对上一版本的 `start` 报 `invalid-request@request.protocol`。P2-04 原有的版本 1 拒绝用例保留。
+- **AC-07（错误转换）：** 宿主测试新增 SND `unsupported-payload`、`invalid-payload` 与音频预算 `budget-exceeded`（`observed: null`）三种 `SourceError`，转换结果均为 `{ layer: 'source', ...toData() }`；`DiscReadError`、`ContentContractError` 与未知异常的用例不变。宿主对三种误用报 `internal-error@job`：识别前的音频进度、音频之后的图形进度、组之后的进度。
+- **AC-07（回归）：** P2-04、P2-05 的既有测试只作了按契约的更新：消息序列加入音频阶段，旧版本取上一版本号；没有删除或放宽拒绝用例。
+- **命令：**
+  - `pnpm exec vitest run src/app/import src/workers src/platform/workers tools/engineering-boundaries.test.ts` 通过（简化前 457 个）；`pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过（113 个测试文件、3,266 个测试，构建成功）。
+  - 回归时另跑了 `pnpm test:e2e import-worker.spec.ts --project=development`。构建后的首次运行中，“production entry reads …”用例失败一次；单独重跑与随后两次完整运行都是 11 个全部通过，首次失败的产物已被覆盖，未能复现。音频场景的浏览器验证属于 06。
+- **rubber-duck：** 没有阻塞问题。审阅确认：不完整组之后的进度、组之后的 `failed`/`finished`，以及检查顺序都正确。唯一的非阻塞意见是宿主转换缺少 `invalid-payload` 用例，已补上。
+- **simplify：**
+  - **采纳：** 两位审阅者都指出“组之后无进度”在宿主与持有者中各写了一遍，现已并入共享的 `canReportStage(..., grouped)`，持有者的位置随之统一为 `message.stage`（本子任务允许 `message.stage` 或 `message.type`）；宿主预算用例改为复用 `toData()`。
+  - **未采纳：** 删除版本 1 的拒绝用例（本子任务要求不放宽原有拒绝用例）；删减音频阶段的谓词行与协议层的预算 DTO 用例（它们是 AC-07 的直接证据，只保留了边界行）。效率审阅无发现。
+- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md)的导入 Worker 一节已更新：版本 3 与递增来历、三个阶段、`canReportStage` 的 `grouped` 参数，以及宿主与持有者的“组之后无进度”规则。工程约定的 Worker 场景列表要到 06 加入音频场景时才变化；P2-04、P2-05 的 spec 作为历史保留。

@@ -431,7 +431,7 @@ src/
 [P2-04](../plan/p2/04/spec.md) 在专用模块 Worker 中运行导入作业，消息与生命周期契约以 spec 为准。当前已实现：
 
 - **消息协议：** [workers/import-protocol.ts](../../src/workers/import-protocol.ts) 只依赖 `content/`，app 与 platform 都可以导入它。
-  - `IMPORT_PROTOCOL_VERSION` 为 2（P2-05 增加阶段时由 1 递增）。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`。`canReportStage(latest, stage, identified)` 是唯一的阶段顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
+  - `IMPORT_PROTOCOL_VERSION` 为 3：P2-05 增加 `convert-graphics` 时由 1 递增为 2，P2-08 增加 `convert-audio` 时再递增。`IMPORT_STAGES` 依次为 `identify-source`、`convert-graphics`、`convert-audio`。`canReportStage(latest, stage, identified, grouped)` 是唯一的进度顺序规则，宿主与持有者共用：阶段只按这个顺序前进，识别进度只在 `identified` 之前，后续阶段只在它之后；第一个组之后不再有任何进度，因为组只在全部转换阶段完成后发送。`IMPORT_FILE_LIMITS` 规定 1–4 个文件，名称为 1–255 个 UTF-16 码元。
   - `readImportWorkerMessage` 读取 Worker 发往主线程的 6 种消息，`readImportStartMessage` 读取主线程发往 Worker 的 `start`。两者复用 `contract-validation.ts` 的严格 plain-data 读取，对协议记录拒绝未知或缺少的字段、accessor 与类实例。读取的协议字段复制后冻结。`start` 的文件只保留 Blob 引用，不读取内容。
   - 读取只核对单条消息；顺序、作业 ID 与顺序号的连续性由接收方核对。`group` 消息只读外层：`input` 恰好含三个字段，`sources` 是带字符串 `sourceFingerprint` 的 record。`group.input` 的内部值不复制，而是就地冻结其中可达的普通对象与数组，再交给接收方由 `validateGroup` 验证。递归只沿数据属性进行，不调用 accessor，并防止循环；payload 字节视图、Blob 与其他非普通对象不冻结，后者在内容验证中判为不完整。
   - 拒绝时返回 `import` 层 DTO，原因是固定文本，不回显值：
@@ -445,7 +445,7 @@ src/
   - **握手：** 安装监听后发送一次 `ready`，只接受第一条有效的 `start`。以下情况都以 `invalid-request` 失败：`start` 非法（带能读出的作业 ID）、`messageerror`，以及 `start` 之后的任何消息。
   - **作业：** `ImportJob` 接收冻结的文件快照与冻结的报告器（`progress`、`identified`、`group`），成功时返回预算用量。
     - 宿主维护顺序号，从 1 起逐条加 1。发送抛错（如克隆失败）不消耗顺序号，异常交给作业。
-    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
+    - 阶段只能按 `IMPORT_STAGES` 的顺序前进：`identified` 至多一次，识别进度只在它之前，后续阶段的进度只在它之后，进入后续阶段后不再有较早阶段的进度；组须在识别之后，且每组一次，第一个组之后不再报告进度；作业须先识别才能正常结束。违反时作业以 `internal-error` 失败，作为作业缺陷的防线。
     - 身份只发送版本 ID 与指纹。
   - **转移：** 发送组前，用 `readPayloadRecords` 与 `payloadTransferList` 计算转移列表，位置以 `groups.<组>.payloads` 为根。非独占、别名、已转移或乱序的 payload 以 `content` 层失败，该组不发送。发送后，作业持有的 payload 视图失效。
   - **终态：** 作业返回的用量经 `readBudgetRecord` 读取，再随 `finished` 与已发送的组一起发送。终态消息之后关闭端点，之后的报告与消息都被忽略。
@@ -483,7 +483,7 @@ src/
     - `ready` 的版本不符时报 `protocol-error`，不发送 `start`；
     - 发送 `start` 抛错时报 `worker-failed@worker`。
   - **消息：** 用协议读取函数校验，再依次核对第二次 `ready`（`message.type`）、作业 ID（`message.jobId`，含 `jobId` 为 null 的 `failed`）与连续的顺序号（`message.sequence`）。
-    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；
+    - 进度的字节数不得减少或超过输入总字节（`message.readBytes`）；阶段只能按 `IMPORT_STAGES` 的顺序前进，识别之前不得有后续阶段的进度，识别之后或进入后续阶段之后不得再有较早阶段的进度（`message.stage`）；收到第一个组之后不得再有进度（同为 `message.stage`）；
     - `identified` 至多一次；组与 `finished` 须在识别之后，每组至多一次（`message.group`）；
     - `ready` 之后的 `messageError` 报 `protocol-error@message`，`error` 报 `worker-failed@worker`；
     - Worker 报告的 `failed` 原样成为快照的错误。
