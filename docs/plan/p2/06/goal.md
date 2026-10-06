@@ -91,7 +91,8 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | S-10 | 04、06、11 | 04/06 生产测试；09 本地基准；11 研究 |
 | S-11 | 10、11、12 | 10 部件结构；11 U-027；12 U-028 |
 | S-12 | 01–10 | 各子任务的 Node 测试；08 Chromium；09、10 本地 |
-| S-13 | 01–12 | 各子任务的文档影响；13 链接、元数据与一致性 |
+| S-13 | 01–12、15–18 | 各子任务的文档影响；13 链接、元数据与一致性 |
+| S-14 | 15、16、17、18 | 15 切片定义与区域 locator；16 LE 读取；17 payload 与展开；18 步骤与作业；19 本地基准 |
 | AC-01 | 01 | 01 表驱动 Node 测试 |
 | AC-02 | 01 | 01 Node 测试 |
 | AC-03 | 02 | 02 Node 测试 |
@@ -104,11 +105,15 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | AC-10 | 08 | 08 `pnpm test:e2e e2e/import-worker.spec.ts --project=development` |
 | AC-11 | 09 | 09 本地 Node 脚本，证据只记命令、计数、判定与诊断 code |
 | AC-12 | 02、10 | 10 本地运行加固后的 nob-check |
-| AC-13 | 11, 14 | 11 本地研究与可直接支持的 Asset；14 为需修订的弹丸与程序生成来源。文档与生产常量对照 |
+| AC-13 | 11、14、15–18 | 11 本地研究与可直接支持的 Asset；14 研究与契约修订；15–18 按修订实现。文档与生产常量对照 |
 | AC-14 | 12 | 12 本地研究；文档与映射对照，逐条目展开断言 |
 | AC-15 | 01、10 | 01 源码结构；10 mesh |
 | AC-16 | 01–08 | 各子任务 `pnpm typecheck`、`pnpm lint`；13 `pnpm check`、`pnpm check:original`、聚焦 E2E、依赖与锁文件 diff |
-| AC-17 | 01–12 | 13 链接与元数据检查、最终 diff 审阅 |
+| AC-17 | 01–12、15–18 | 13 链接与元数据检查、最终 diff 审阅 |
+| AC-18 | 15、16 | 15 locator 与映射核验的 Node 测试；16 LE 读取的 Node 测试与本地区域核对 |
+| AC-19 | 17 | 17 表驱动 Node 测试与源码检查 |
+| AC-20 | 18 | 18 Node、`MessageChannel` 集成与 E2E |
+| AC-21 | 19 | 19 本地 Node 脚本 |
 
 ## 子任务跟踪
 
@@ -128,8 +133,13 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | completed |
 | [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | completed |
 | [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | blocked |
-| [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | blocked |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
+| [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | completed |
+| [15-slice-definition-region-locator.md](./subtasks/15-slice-definition-region-locator.md) | 14 | pending |
+| [16-executable-region-reader.md](./subtasks/16-executable-region-reader.md) | 14 | pending |
+| [17-effect-payloads-expansion.md](./subtasks/17-effect-payloads-expansion.md) | 14 | pending |
+| [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | pending |
+| [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -157,6 +167,10 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 研究表明三类效果的几何都由 RENS 与 EXE 静态数据生成，弹丸也依赖 EXE 模板，因此把 EXE 几何数据的导入（Decision 2 的 D1）并入 P2-06。
   - 据此起草 P2-01 与 P2-06 的 spec 修订，两份 spec 回到 `draft`。批准后在本 goal 增加实施子任务，14 改为由这些子任务承担。
   - 详见 [14](./subtasks/14-procedural-effect-sources.md) 的进展。
+- **2026-10-06，修订获批准，新增 15–19：**
+  - 两份 spec 修订经两轮审阅后，用户明确批准。
+  - 14 的范围改为研究与契约修订，已完成；其余工作按 spec 拆入 15（切片定义与区域 locator）、16（LE 区域读取）、17（效果 payload 与展开）、18（效果步骤与作业集成）与 19（本地基准）。
+  - 13 增加对 15–19 的依赖；S-14 与 AC-18 至 AC-21 的覆盖见上表。
 
 ## 审批
 

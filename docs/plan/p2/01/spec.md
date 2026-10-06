@@ -1,6 +1,6 @@
 ---
 type: plan
-status: draft
+status: accepted
 phase: P2
 task: "01"
 updated: 2026-10-06
@@ -240,4 +240,4 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 
 2026-10-04 修订（事实归属）：最终对齐按 AC-13 发现候选选择记录复述了原版事实，用户选择修订 spec。候选记录与上一条审批记录中的 SCEN 条目，以及 M2ID 槽位与角色的对应，都改为链接 `docs/original/` 中的权威记录。候选、角色构成、配置、S/AC 与其他契约均不变。修订稿经另一模型审阅，未发现问题；用户于 2026-10-04 明确选择“批准修订”，本 spec 恢复为 accepted。
 
-2026-10-06 修订（待批准，P2-06/14）：依据 [U-027](../../../original/unknowns.md#数据与格式) 与 [executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)，用户选择方案 A：三个效果角色允许 `data` Asset，`models` 组允许 `data`，切片定义版本递增为 2，并增加 `OriginalAssetLocator` 的文件区域形式。角色、基数、候选、配置与其他 S/AC 不变，AC-04 的版本值随之更新。批准前本 spec 为 `draft`，已批准的其余条款照常有效。
+2026-10-06 修订（待批准，P2-06/14）：依据 [U-027](../../../original/unknowns.md#数据与格式) 与 [executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)，用户选择方案 A：三个效果角色允许 `data` Asset，`models` 组允许 `data`，切片定义版本递增为 2，并增加 `OriginalAssetLocator` 的文件区域形式。角色、基数、候选、配置与其他 S/AC 不变，AC-04 的版本值随之更新。该修订经另一模型两轮审阅，发现的问题均已修正；用户于 2026-10-06 明确批准，本 spec 恢复为 accepted。
