@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "07"
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # 07 — 导入作业、协议与 `models` 组
@@ -138,3 +138,4 @@ updated: 2026-10-05
   - [工具指南](../../../../guides/tools.md#逻辑组核对)：logic-check 的核对内容与读取量字段。
 
   STATUS 中“P2-08 与 P2-09 合入后”的阶段描述记录的是合入时的状态，P2-06 完成时由 13 统一更新阶段摘要。
+- **2026-10-06 后续（13 复跑）：** 上面的 `ConverterVersion` 是本子任务完成时的值。2026-10-06 合入 P2-07 后，图形组件升为 `graphics-2`，生产值为 `osr-import.graphics-2.logic-1.audio-1.models-1`，四个组共用一个身份，由 [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 断言。
