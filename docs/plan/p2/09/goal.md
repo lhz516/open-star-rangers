@@ -101,7 +101,7 @@ updated: 2026-10-05
 | [09-logic-conversion.md](./subtasks/09-logic-conversion.md) | 03, 04, 06, 08 | completed |
 | [10-import-stage.md](./subtasks/10-import-stage.md) | 03, 09 | completed |
 | [11-core-load-mission.md](./subtasks/11-core-load-mission.md) | 04 | completed |
-| [12-local-base-check.md](./subtasks/12-local-base-check.md) | 10, 11 | pending |
+| [12-local-base-check.md](./subtasks/12-local-base-check.md) | 10, 11 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -144,6 +144,7 @@ updated: 2026-10-05
   - **审阅与检查：** 对齐改动经 rubber-duck 审阅，无阻塞项。3 项建议已采纳：08、09 的证据就地改写；新增读取日志测试，证明超限条目的字节从未读取。`pnpm check` 通过，共 114 个测试文件、3377 个测试；`check:original` 通过。
 
   S/AC 编号、子任务 ID 与依赖不变。P2-08 尚未合入主线（只有另一工作分支），不受影响。
+- **2026-10-05 — 子任务 12 更正读取增量的基准：** 原文把 `convert-logic` 的读取增量定义为“最后一次进度减去识别结束时的读取量”。P2-05 合入后，识别与逻辑阶段之间多了图形阶段，按原文计算会混入图形读取。按用户授权改为“减去该阶段开始时的读取量”；CLI 同时输出识别与图形阶段的增量和总读取量。
 
 ## 审批
 

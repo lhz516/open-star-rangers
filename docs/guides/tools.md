@@ -15,6 +15,7 @@ updated: 2026-10-05
 | `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录与 CCKD 字体表，并解析 M2ID、NEBC、MESH、MODL 与交叉引用；只输出计数、失败 code 与图形观察最大值（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
+| `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
 | `tools/ghidra/patch-watcom-cspec.py` | 给 Ghidra 加入 Watcom 调用约定 | 见 [baseline-environment](./baseline-environment.md#静态分析) |
@@ -72,6 +73,29 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   不输出宿主路径、文件内容或宿主错误文本。
 - **退出码：** 通过时为 0；识别、封包、输入或关闭失败以及取消（Ctrl-C）时为 1；用法错误为 2。
 - **句柄：** 任何情况下都会关闭已打开的句柄；关闭失败单独计数，并使核对失败。
+
+## 逻辑组核对
+
+`tools/logic-check.ts` 在开发者本地的基准镜像上，验证所选任务的 `logic` 组转换与 Core 载入（[P2-09](../plan/p2/09/spec.md) 的 S-14、AC-14）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p2-09/`）。
+
+- **输入：** CloneCD 文件组的各个文件，经 Node 的 `fs.openAsBlob` 打开为 `Blob`。`Blob` 没有关闭方法，文件描述符随其回收或进程退出释放，因此核对按一次性进程运行。
+- **核对内容：**
+  - 用 [import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob()` 运行与 Worker 相同的生产作业：产品入口识别（默认生产白名单）、图形步骤与逻辑步骤，并记录进度、身份与发送的组；
+  - 对 `logic` 组运行 `validateGroup`，不完整时报告首个诊断，不读取未经验证的清单字段；
+  - 用 `decodeLogicPayload` 按描述符解码三个 payload，再用 Core 的 `loadMission` 载入；
+  - 把规范数据的结构观测值与 P2-09 的限值对照。
+
+  任何作业、验证、解码、载入或限值失败都结束核对。
+- **输出：** stdout 为一份 `osr-logic-check`/1 JSON，包含：
+  - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
+  - `identity`（版本 ID 与指纹）；
+  - `group`：组状态、`ManifestIdentity`，以及每个 payload 的 Asset ID、角色、字节数与指纹；
+  - `counts`：声明、名称备用池、生成矩形、编组、成员位置、布局元素、非 null 的放置矩形、锚点、成员回指与 AI 目标、僚机选项、机型条目与各阵营；
+  - `limits`：各项观测值与限值；
+  - `reads`：识别、图形与逻辑各阶段的读取增量（阶段最后一次进度减去该阶段开始时的读取量）与总读取量；失败时保留已发生的读取。
+
+  不输出名称、坐标、字段值、宿主路径或宿主错误文本。测试可注入合成白名单（`runLogicCheck(paths, { catalog })`）。
+- **退出码：** 通过时为 0，核对失败为 1，用法错误为 2。
 
 ## 本地合规
 
