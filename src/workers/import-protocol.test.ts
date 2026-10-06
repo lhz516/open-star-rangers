@@ -46,9 +46,9 @@ function rejection(read: { readonly status: string; readonly error?: unknown }):
 }
 
 describe('protocol constants', () => {
-  it('fixes version 4, four ordered stages, four layers and the six import codes', () => {
-    expect(IMPORT_PROTOCOL_VERSION).toBe(4);
-    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio']);
+  it('fixes version 5, five ordered stages, four layers and the six import codes', () => {
+    expect(IMPORT_PROTOCOL_VERSION).toBe(5);
+    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models']);
     expect(IMPORT_ERROR_LAYERS).toEqual(['disc', 'source', 'content', 'import']);
     expect(IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error', 'worker-start-failed', 'worker-failed', 'protocol-error', 'invalid-result']);
     expect(WORKER_IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error']);
@@ -59,6 +59,7 @@ describe('protocol constants', () => {
     expect(Object.isFrozen(importError('protocol-error', 'message', 'x'))).toBe(true);
   });
 
+  // A stage may repeat or advance by one; skipping, going back, or any progress after the first group is rejected.
   it.each([
     [null, 'identify-source', false, false, true],
     ['identify-source', 'identify-source', false, false, true],
@@ -66,23 +67,24 @@ describe('protocol constants', () => {
     ['identify-source', 'convert-graphics', false, false, false],
     ['identify-source', 'identify-source', true, false, false],
     ['identify-source', 'convert-graphics', true, false, true],
-    [null, 'convert-graphics', true, false, true],
+    [null, 'convert-graphics', true, false, false],
     ['convert-graphics', 'convert-graphics', true, false, true],
     ['convert-graphics', 'identify-source', true, false, false],
-    [null, 'convert-logic', false, false, false],
-    ['identify-source', 'convert-logic', false, false, false],
     ['convert-graphics', 'convert-logic', true, false, true],
-    ['identify-source', 'convert-logic', true, false, true],
+    ['identify-source', 'convert-logic', true, false, false],
     ['convert-logic', 'convert-logic', true, false, true],
     ['convert-logic', 'convert-graphics', true, false, false],
     ['convert-logic', 'identify-source', true, false, false],
-    ['identify-source', 'convert-audio', false, false, false],
-    ['convert-graphics', 'convert-audio', true, false, true],
+    ['convert-graphics', 'convert-audio', true, false, false],
     ['convert-logic', 'convert-audio', true, false, true],
     ['convert-audio', 'convert-audio', true, false, true],
     ['convert-audio', 'convert-logic', true, false, false],
-    ['convert-audio', 'convert-graphics', true, false, false],
-    ['convert-audio', 'convert-audio', true, true, false],
+    ['convert-audio', 'convert-models', true, false, true],
+    ['convert-models', 'convert-models', true, false, true],
+    ['convert-logic', 'convert-models', true, false, false],
+    ['identify-source', 'convert-models', true, false, false],
+    ['convert-models', 'convert-audio', true, false, false],
+    ['convert-models', 'convert-models', true, true, false],
     [null, 'convert-audio', true, true, false],
   ] as const)('orders progress: after %s, %s with identified %s and grouped %s is %s', (latest, stage, identified, grouped, allowed) => {
     expect(canReportStage(latest, stage, identified, grouped)).toBe(allowed);

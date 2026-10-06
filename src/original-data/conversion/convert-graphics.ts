@@ -19,6 +19,9 @@ import {
   checkPaletteIndices, decodeImageRecord, readCockpitFont, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
 } from './source-graphics.ts';
 
+/** The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. */
+export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-1';
+
 interface PaletteSource {
   /** A DATA entry, or the `palette` subresource: the embedded palette of a whole-entry image record. */
   readonly type: 'data-palette' | 'embedded-palette';

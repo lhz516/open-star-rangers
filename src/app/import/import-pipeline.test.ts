@@ -1,14 +1,16 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { RESOURCE_GROUPS } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
-import type { GroupInput } from '../../content/completeness.ts';
+import { validateGroup, type GroupInput } from '../../content/completeness.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
+import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import { connectImportWorker, type WorkerLike } from '../../platform/workers/worker-port.ts';
 import { runImportHost, type ImportJob, type ImportReporter } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { fail } from '../../content/contract-validation.ts';
+import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
@@ -198,15 +200,19 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 }
 
 describe('graphics conversion over a structured-clone channel', () => {
-  it('reports identification, graphics, logic and audio progress, and finishes with the complete production audio group', async () => {
+  it('reports every stage\'s progress, and finishes with the graphics models partition and the complete production audio group', async () => {
     const graphics = await syntheticImport(productionCoveredFiles(), 'graphics-disc');
     const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] }]);
+    // With no bound craft model, the models group is incomplete: no craft or effect roles, and unconfirmed textures.
+    expect(snapshot.groups).toEqual([
+      { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
+      { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
+    ]);
     expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
     const messages = traffic.fromWorker as { readonly type: string; readonly stage?: string; readonly readBytes?: number }[];
-    expect(stepsOf(messages)).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(stepsOf(messages)).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
     expect(counts).toEqual([...counts].sort((left, right) => left - right));
     expect(counts.at(-1)).toBe(snapshot.usage.sourceReadBytes);
@@ -240,16 +246,24 @@ describe('graphics conversion over a structured-clone channel', () => {
 });
 
 describe('logic conversion over a structured-clone channel', () => {
-  it('sends the logic group after the conversion stages, and the owner validates and hands it over once', async () => {
+  it('sends the logic, models and audio groups after the conversion stages, and the owner validates them and hands the complete ones over once', async () => {
     const slice = await syntheticImport(sliceCoveredFiles(), 'slice-disc');
     const { owner, traffic, snapshots } = await run(createImportJob(slice.open), slice.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    const steps = (traffic.fromWorker as { readonly type: string; readonly stage?: string }[]).map(({ type, stage }) => stage ?? type);
-    const distinct = steps.filter((step, index) => step !== steps[index - 1]);
-    expect(distinct).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
-    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete'], ['audio', 'group-complete']]);
-    expect(snapshot.usage).toMatchObject({ assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets, missionObjects: 11, missionReferences: 37 });
+    expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
+      .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete'], ['models', 'incomplete'], ['audio', 'group-complete']]);
+    // The receiver's validation of the models group equals Node's validation of the group message it received.
+    const received = (traffic.fromWorker as { type: string; group?: string; input?: GroupInput }[]).find(({ type, group }) => type === 'group' && group === 'models')!;
+    const expected = validateGroup(CLASSIC_P2_SLICE, received.input!);
+    if (expected.status !== 'incomplete') throw new Error('expected an incomplete models group');
+    expect(snapshot.groups[1]).toEqual({ group: 'models', status: 'incomplete', assets: null, diagnostics: expected.diagnostics });
+    expect(new Set(snapshot.groups[1].diagnostics.map(({ code }) => code))).toEqual(new Set(['role-cardinality', 'source-not-ready']));
+    expect(snapshot.usage).toMatchObject({
+      assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets, missionObjects: 11, missionReferences: 37,
+      vertices: PRODUCTION_MODEL_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles,
+    });
     const taken = owner.takeGroups()!;
     expect(taken.map(({ group }) => group)).toEqual(['logic', 'audio']);
     // One package: both groups carry the same identity.
@@ -264,7 +278,7 @@ describe('logic conversion over a structured-clone channel', () => {
     unequal.sectors = [6, 7];
     const [slice, unsupported] = await Promise.all([
       syntheticImport(sliceCoveredFiles(), 'slice-disc'),
-      syntheticImport(sliceCoveredFiles(syntheticScenario(unequal)), 'slice-disc'),
+      syntheticImport(sliceCoveredFiles({ scenario: syntheticScenario(unequal) }), 'slice-disc'),
     ]);
     const tight: LogicStepInput = { ...PRODUCTION_LOGIC_STEP, share: { ...PRODUCTION_LOGIC_STEP.share, missionReferences: 36 } };
     const failing: LogicStepInput = { convert: async () => fail('invalid-logic-payload', 'payload', 'is not a logic payload'), share: EMPTY_BUDGET_USAGE };
@@ -286,6 +300,20 @@ describe('logic conversion over a structured-clone channel', () => {
   });
 });
 
+describe('model conversion over a structured-clone channel', () => {
+  it('carries a model conversion failure through the channel exactly as the host converted it, without a group', async () => {
+    const corrupt = await syntheticImport(sliceCoveredFiles({ corruptMesh: true }), 'slice-disc');
+    const job = createImportJob(corrupt.open);
+    const expected = await hostError(job, corrupt.files);
+    expect(expected).toMatchObject({ layer: 'source', code: 'invalid-payload', location: 'models[model/base-1].parts[0][1].mesh' });
+    const { owner, traffic, snapshots } = await run(job, corrupt.files);
+    expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'convert-models', error: expected });
+    expect(traffic.fromWorker.some(message => (message as { type: string }).type === 'group')).toBe(false);
+    expect(owner.takeGroups()).toBeNull();
+    expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
+  });
+});
+
 describe('audio conversion over a structured-clone channel', () => {
   /** `job` with every group it sends recorded before the host transfers it. */
   const recording = (job: ImportJob, sent: GroupInput[]): ImportJob => (files, report) => job(files, Object.freeze({
@@ -303,18 +331,19 @@ describe('audio conversion over a structured-clone channel', () => {
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
-      .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
-    expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
+      .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
+    expect(snapshot.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
     expect(snapshot.usage).toMatchObject({
       assets: GRAPHICS_CONVERSION_USAGE.assets + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
     });
-    expect(sent).toHaveLength(1);
-    expect((sent[0].payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
+    expect(sent).toHaveLength(2);
+    expect(sent.flatMap(({ payloads }) => payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
     const taken = owner.takeGroups()!;
     expect(taken.map(({ group }) => group)).toEqual(['audio']);
     const manifest = readGroupManifest(taken[0].manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.logic-1.audio-1', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-1.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
     expect((taken[0].payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
@@ -332,7 +361,7 @@ describe('audio conversion over a structured-clone channel', () => {
     expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
   });
 
-  it('discards the received audio group when the job fails after sending it', async () => {
+  it('discards the received groups when the job fails after sending them', async () => {
     const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
     const converting = createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO);
     // The group is already sent when the host rejects the job's final usage.
@@ -341,8 +370,8 @@ describe('audio conversion over a structured-clone channel', () => {
       return { ...EMPTY_BUDGET_USAGE, assets: -1 } as BudgetRecord;
     };
     const { owner, traffic } = await run(failingLate, audio.files);
-    expect(traffic.fromWorker.filter(message => (message as { type: string }).type === 'group')).toHaveLength(1);
-    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', stage: 'convert-audio', error: { layer: 'content', code: 'invalid-budget-value' } });
+    expect(traffic.fromWorker.filter(message => (message as { type: string }).type === 'group')).toHaveLength(2);
+    expect(owner.getSnapshot()).toMatchObject({ status: 'failed', stage: 'convert-models', error: { layer: 'content', code: 'invalid-budget-value' } });
     expect(owner.takeGroups()).toBeNull();
   });
 });

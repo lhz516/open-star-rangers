@@ -81,7 +81,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 - **输入：** CloneCD 文件组的各个文件，经 Node 的 `fs.openAsBlob` 打开为 `Blob`。`Blob` 没有关闭方法，文件描述符随其回收或进程退出释放，因此核对按一次性进程运行。
 - **核对内容：**
-  - 用 [import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob()` 运行与 Worker 相同的生产作业：产品入口识别（默认生产白名单）、图形步骤与逻辑步骤，并记录进度、身份与发送的组；
+  - 用 [import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob()` 运行与 Worker 相同的生产作业：产品入口识别（默认生产白名单）与图形、逻辑、音频、模型各转换阶段（任一阶段失败都结束核对），并记录进度、身份与发送的组；
   - 对 `logic` 组运行 `validateGroup`，不完整时报告首个诊断，不读取未经验证的清单字段；
   - 用 `decodeLogicPayload` 按描述符解码三个 payload，再用 Core 的 `loadMission` 载入；
   - 把规范数据的结构观测值与 P2-09 的限值对照。
@@ -93,7 +93,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `group`：组状态、`ManifestIdentity`，以及每个 payload 的 Asset ID、角色、字节数与指纹；
   - `counts`：声明、名称备用池、生成矩形、编组、成员位置、布局元素、非 null 的放置矩形、锚点、成员回指与 AI 目标、僚机选项、机型条目与各阵营；
   - `limits`：各项观测值与限值；
-  - `reads`：识别、图形与逻辑各阶段的读取增量（阶段最后一次进度减去该阶段开始时的读取量）与总读取量；失败时保留已发生的读取。
+  - `reads`：识别、图形、逻辑、音频与模型各阶段的读取增量（阶段最后一次进度减去该阶段开始时的读取量）与总读取量；失败时保留已发生的读取。
 
   不输出名称、坐标、字段值、宿主路径或宿主错误文本。测试可注入合成白名单（`runLogicCheck(paths, { catalog })`）。
 - **退出码：** 通过时为 0，核对失败为 1，用法错误为 2。

@@ -154,7 +154,7 @@ export async function runLogicCheck(paths: readonly string[], options: LogicChec
   let measured: ReturnType<typeof measure> | null = null;
   let error: LogicCheckFailure | null = null;
   const reads: Record<ImportStage | 'total', number> = {
-    'identify-source': 0, 'convert-graphics': 0, 'convert-logic': 0, 'convert-audio': 0, total: 0,
+    'identify-source': 0, 'convert-graphics': 0, 'convert-logic': 0, 'convert-audio': 0, 'convert-models': 0, total: 0,
   };
   /** The bytes read when each stage started: a stage reports its first progress with the bytes read so far. */
   const starts: Partial<Record<ImportStage, number>> = {};

@@ -1,4 +1,5 @@
 import { expect } from 'vitest';
+import { BUDGET_DIMENSIONS, type BudgetRecord } from '../../content/budget.ts';
 import type { ModelGeometry } from '../../content/models/model-payload.ts';
 import { kindOf } from '../../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../disc/disc-image.ts';
@@ -49,6 +50,25 @@ export const expectSourceError = (action: () => unknown, code: string, location:
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
   if (location.startsWith('models')) expect(inModelLocationGrammar(location), location).toBe(true);
 };
+
+/** A complete budget record allowing the most of every dimension, for tests whose subject is not the budget. */
+export const UNLIMITED_BUDGET: BudgetRecord = Object.freeze(Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, Number.MAX_SAFE_INTEGER])) as BudgetRecord);
+
+/** `source` with every MESH entry read replaced by `read`, such as a failure at the disc layer. */
+export function withMeshReads(source: VerifiedSource, read: () => Promise<never>): VerifiedSource {
+  return {
+    identity: source.identity,
+    openFile: path => source.openFile(path),
+    usage: () => source.usage(),
+    openArchive: async path => {
+      const handle = await source.openArchive(path);
+      return {
+        path: handle.path, entries: handle.entries, entry: (id, type) => handle.entry(id, type),
+        read: (id, type) => (type === 'MESH' ? read() : handle.read(id, type)),
+      };
+    },
+  };
+}
 
 /** A MESH data block holding `geometry` exactly: its floats bit for bit, triangles in order and their corner slots. */
 export const meshBlockFor = ({ positions, uvs, normals, indices, cornerShading, shadingSlotCount }: ModelGeometry): Uint8Array => syntheticMesh({

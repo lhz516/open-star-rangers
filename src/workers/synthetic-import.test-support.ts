@@ -3,7 +3,7 @@ import type { GroupInput } from '../content/completeness.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
 import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
-import { identifySource } from '../original-data/source/identify-source.ts';
+import { identifySource, type VerifiedSource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
@@ -17,7 +17,9 @@ import { productionSliceEntries } from '../original-data/conversion/production-m
 import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.ts';
 import type { ImportJob } from './import-host.ts';
-import { createImportJob, type AudioStageInput, type GraphicsStepInput, type LogicStepInput, type OpenSource } from './import-job.ts';
+import {
+  createImportJob, type AudioStageInput, type GraphicsStepInput, type LogicStepInput, type ModelStepInput, type OpenSource,
+} from './import-job.ts';
 
 // Code-generated CloneCD imports for Worker tests in Node and the browser; it never holds original data.
 
@@ -57,6 +59,11 @@ export function syntheticOpen(covered: Readonly<Record<string, SyntheticFileCont
   return async inputs => identifySource(await openDiscImage(inputs), catalogFor(covered, versionId));
 }
 
+/** The verified source of `syntheticImport(covered, versionId)` opened in the calling thread, with the same fingerprint. */
+export async function syntheticSource(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): Promise<VerifiedSource> {
+  return identifySource(await openDiscImage(syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING }).files), catalogFor(covered, versionId));
+}
+
 /** A CloneCD file set holding `covered` plus the padding, by disc path, read out chunk by chunk. */
 export async function syntheticImport(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): Promise<SyntheticImport> {
   const disc = syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING });
@@ -81,9 +88,16 @@ export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
   share: EMPTY_BUDGET_USAGE,
 });
 
-/** A logic step that converts nothing, for jobs whose test is about identification, graphics or group transfer. */
+/** A logic step that converts nothing and binds no models, for jobs whose test is about identification, graphics or group transfer. */
 export const NO_LOGIC: LogicStepInput = Object.freeze({
-  convert: async (_source: unknown, _limits: unknown, usage: BudgetRecord) => ({ drafts: [], usage }),
+  convert: async (_source: unknown, _limits: unknown, usage: BudgetRecord) => ({ drafts: [], usage, models: [] }),
+  share: EMPTY_BUDGET_USAGE,
+});
+
+/** A model step with nothing to convert whatever the logic step bound; the models group holds only the graphics partition. */
+export const NO_MODELS: ModelStepInput = Object.freeze({
+  inputs: () => ({ mappings: { sourceFingerprint: null, mappings: [] }, declarations: [] }),
+  references: Object.freeze({ textures: new Map(), sounds: new Map() }),
   share: EMPTY_BUDGET_USAGE,
 });
 
@@ -91,10 +105,13 @@ export const NO_LOGIC: LogicStepInput = Object.freeze({
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics entries, the M2ID
  * list with valid models for the craft types the default mission binds and their meshes, and synthetic samples at
  * every entry of the production sound table, and `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the
- * selected mission.
+ * selected mission. `corruptMesh` breaks the mesh four bound models share, which the model step rejects as
+ * `invalid-payload`.
  */
-export function sliceCoveredFiles(scenario = syntheticScenario(defaultScenarioSpec())): Record<string, Uint8Array> {
-  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries()) };
+export function sliceCoveredFiles(
+  { scenario = syntheticScenario(defaultScenarioSpec()), corruptMesh = false }: { readonly scenario?: ReturnType<typeof syntheticScenario>; readonly corruptMesh?: boolean } = {},
+): Record<string, Uint8Array> {
+  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)) };
 }
 
 /** An audio stage with nothing to convert; its group has no Assets. */
@@ -199,7 +216,7 @@ export const boundGroups: SyntheticGroups = fingerprint => RESOURCE_GROUPS.map(g
  * identified fingerprint in place of its own empty audio group.
  */
 export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = boundGroups): ImportJob {
-  const identify = createImportJob(open, NO_GRAPHICS, NO_LOGIC, NO_AUDIO);
+  const identify = createImportJob(open, NO_GRAPHICS, NO_LOGIC, NO_AUDIO, NO_MODELS);
   return async (files, report) => {
     let fingerprint = '';
     const usage = await identify(files, Object.freeze({

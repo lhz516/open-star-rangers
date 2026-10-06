@@ -6,16 +6,31 @@ import { deriveManifestIdentity, type GroupDraft } from '../content/manifest-ide
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
+import { UNLIMITED_BUDGET, withMeshReads } from '../original-data/conversion/conversion.test-support.ts';
+import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
+import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
+import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
+import { MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
+import {
+  PRODUCTION_MODEL_REFERENCES, productionModelDeclarations, productionModelMappings,
+} from '../original-data/conversion/production-models.ts';
+import {
+  PRODUCTION_MESH_ENTRIES, PRODUCTION_MODEL_USAGE, productionSliceEntries,
+} from '../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../original-data/conversion/production-sounds.test-support.ts';
+import { DiscReadError } from '../original-data/disc/disc-error.ts';
+import { DEFAULT_MODEL_IDS } from '../original-data/formats/formats.test-support.ts';
 import type { VerifiedSource } from '../original-data/source/open-verified-source.ts';
+import { buildImfat, type SyntheticEntry } from '../original-data/synthetic.ts';
 import { runImportHost, type ImportJob } from './import-host.ts';
 import {
-  checkPackageTransfers, createImportJob, PRODUCTION_LOGIC_STEP, type AudioStageInput, type GraphicsStepInput, type OpenSource, type PackageGroup,
+  checkPackageTransfers, createImportJob, PRODUCTION_LOGIC_STEP, type AudioStageInput, type GraphicsStepInput, type LogicStepGroups, type OpenSource,
+  type PackageGroup,
 } from './import-job.ts';
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from './import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS,
   PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport,
 } from './synthetic-import.test-support.ts';
 
@@ -84,12 +99,16 @@ const steps = (messages: readonly ImportWorkerMessage[]): string[] => messages
 const typesOf = (messages: readonly ImportWorkerMessage[]): string[] =>
   messages.map(message => (message.type === 'progress' ? `progress:${message.stage}` : message.type));
 
-/** The one group message of a finished job. */
-function sentGroup(messages: readonly ImportWorkerMessage[]): Extract<ImportWorkerMessage, { type: 'group' }> {
-  const groups = messages.filter(message => message.type === 'group');
+/** The group message of a finished job that sent `group`. */
+function sentGroup(messages: readonly ImportWorkerMessage[], group: string): Extract<ImportWorkerMessage, { type: 'group' }> {
+  const groups = messages.filter(message => message.type === 'group' && message.group === group);
   expect(groups).toHaveLength(1);
-  return groups[0];
+  return groups[0] as Extract<ImportWorkerMessage, { type: 'group' }>;
 }
+
+/** The identity-bearing draft of a sent group: payloads are not part of the derivation. */
+const sentDraft = (message: Extract<ImportWorkerMessage, { type: 'group' }>): GroupDraft =>
+  ({ group: message.group, assets: readGroupManifest(message.input.manifest).assets, payloads: [], sources: message.input.sources } as GroupDraft);
 
 
 class UnreadableBlob extends Blob {
@@ -143,89 +162,103 @@ describe('production job', () => {
 });
 
 describe('injected identification', () => {
-  it('identifies the synthetic whitelist, converts nothing, then sends an empty audio group and finishes with the source usage', async () => {
+  it('identifies the synthetic whitelist, converts nothing, then sends empty models and audio groups and finishes with the source usage', async () => {
     const imported = await syntheticImport(COVERED, 'job-test-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
-    const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), NO_GRAPHICS, NO_LOGIC, NO_AUDIO), imported.files);
+    const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), NO_GRAPHICS, NO_LOGIC, NO_AUDIO, NO_MODELS), imported.files);
     const counts = progress(messages, reads);
     const usage = source!.usage();
     const fingerprint = source!.identity.fingerprint;
     expect(counts.at(-1)).toBe(usage.sourceReadBytes);
     expect(usage.sourceReadBytes).toBeGreaterThan(Object.values(COVERED).reduce((total, bytes) => total + bytes.length, 0));
-    expect(messages.slice(-6)).toEqual([
-      { type: 'identified', jobId: 3, sequence: messages.length - 5, identity: { versionId: 'job-test-disc', sourceFingerprint: fingerprint } },
-      { type: 'progress', jobId: 3, sequence: messages.length - 4, stage: 'convert-graphics', readBytes: usage.sourceReadBytes },
-      { type: 'progress', jobId: 3, sequence: messages.length - 3, stage: 'convert-logic', readBytes: usage.sourceReadBytes },
-      { type: 'progress', jobId: 3, sequence: messages.length - 2, stage: 'convert-audio', readBytes: usage.sourceReadBytes },
-      {
-        type: 'group', jobId: 3, sequence: messages.length - 1, group: 'audio',
-        input: { manifest: expect.objectContaining({ group: 'audio', assets: [] }), payloads: [], sources: { sourceFingerprint: fingerprint, states: [] } },
-      },
-      { type: 'finished', jobId: 3, sequence: messages.length, groups: ['audio'], usage },
+    const empty = (group: string) => ({ manifest: expect.objectContaining({ group, assets: [] }), payloads: [], sources: { sourceFingerprint: fingerprint, states: [] } });
+    expect(messages.slice(-8)).toEqual([
+      { type: 'identified', jobId: 3, sequence: messages.length - 7, identity: { versionId: 'job-test-disc', sourceFingerprint: fingerprint } },
+      { type: 'progress', jobId: 3, sequence: messages.length - 6, stage: 'convert-graphics', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 5, stage: 'convert-logic', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 4, stage: 'convert-audio', readBytes: usage.sourceReadBytes },
+      { type: 'progress', jobId: 3, sequence: messages.length - 3, stage: 'convert-models', readBytes: usage.sourceReadBytes },
+      { type: 'group', jobId: 3, sequence: messages.length - 2, group: 'models', input: empty('models') },
+      { type: 'group', jobId: 3, sequence: messages.length - 1, group: 'audio', input: empty('audio') },
+      { type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'audio'], usage },
     ]);
     expect(fingerprint).toMatch(/^source:sha256:[0-9a-f]{64}$/);
   });
 });
 
 describe('production conversion', () => {
-  it('converts the production graphics and sounds after identification and sends the complete audio group', async () => {
+  it('converts the production graphics and sounds after identification, and sends the graphics models partition and the complete audio group', async () => {
     const imported = await syntheticImport(productionCoveredFiles(), 'production-job-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
     const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), undefined, NO_LOGIC), imported.files);
     const counts = progress(messages, reads);
-    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     expect(messages.filter(message => message.type === 'progress' && message.stage === 'convert-graphics').length).toBeGreaterThan(1);
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
-    expect(last.groups).toEqual(['audio']);
+    expect(last.groups).toEqual(['models', 'audio']);
     expect(last.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
-    const result = validateGroup(CLASSIC_P2_SLICE, sentGroup(messages).input);
-    expect(result).toMatchObject({ status: 'group-complete', group: 'audio' });
-    expect(readGroupManifest(sentGroup(messages).input.manifest).assets).toHaveLength(PRODUCTION_SOUND_USAGE.assets);
+    expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'audio').input)).toMatchObject({ status: 'group-complete', group: 'audio' });
+    expect(readGroupManifest(sentGroup(messages, 'audio').input.manifest).assets).toHaveLength(PRODUCTION_SOUND_USAGE.assets);
+    // Without a logic step no craft model is bound, so the models group holds only the flight palette and the textures.
+    expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets);
+    expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
   });
 });
 
 describe('logic conversion', () => {
-  it('converts the logic group after the graphics, then the audio group, and sends both with one manifest identity', async () => {
+  it('converts every stage on the slice disc and sends the logic, models and audio groups with one manifest identity', async () => {
     const imported = await syntheticImport(sliceCoveredFiles(), 'logic-job-disc');
     let source: VerifiedSource | undefined;
-    let drafts: readonly GroupDraft[] = [];
-    // The production conversion, capturing the drafts the job then identifies and sends.
+    let captured: LogicStepGroups | undefined;
+    // The production conversion, capturing the drafts the job then identifies and sends, and the bound models.
     const logic = {
       ...PRODUCTION_LOGIC_STEP,
-      convert: async (...args: Parameters<typeof PRODUCTION_LOGIC_STEP.convert>) => {
-        const converted = await PRODUCTION_LOGIC_STEP.convert(...args);
-        drafts = converted.drafts;
-        return converted;
-      },
+      convert: async (...args: Parameters<typeof PRODUCTION_LOGIC_STEP.convert>) => (captured = await PRODUCTION_LOGIC_STEP.convert(...args)),
     };
     const reads = blobReads();
     const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), undefined, logic), imported.files);
     const counts = progress(messages, reads);
-    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     expect(typesOf(messages).filter(type => type === 'progress:convert-logic').length).toBeGreaterThan(1);
+    expect(typesOf(messages).filter(type => type === 'progress:convert-models').length).toBeGreaterThan(1);
 
     const groups = messages.filter(message => message.type === 'group');
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
-    expect(groups.map(({ group }) => group)).toEqual(['logic', 'audio']);
-    for (const { input } of groups) expect(validateGroup(CLASSIC_P2_SLICE, input)).toMatchObject({ status: 'group-complete' });
+    expect(groups.map(({ group }) => group)).toEqual(['logic', 'models', 'audio']);
+    expect(last.groups).toEqual(['logic', 'models', 'audio']);
+    for (const group of ['logic', 'audio']) expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, group).input)).toMatchObject({ status: 'group-complete' });
     // One identity derived from every sent draft; payloads, already transferred, are not part of the derivation.
-    const [logicManifest, audioManifest] = groups.map(({ input }) => readGroupManifest(input.manifest));
-    const audioDraft = { group: 'audio', assets: audioManifest.assets, payloads: [], sources: groups[1].input.sources } as GroupDraft;
-    expect(logicManifest.identity.manifestIdentity).toBe(deriveManifestIdentity(productionIdentityBasis(source!.identity.fingerprint), [...drafts, audioDraft]));
-    expect(audioManifest.identity).toEqual(logicManifest.identity);
-    expect(last.groups).toEqual(['logic', 'audio']);
+    const basis = productionIdentityBasis(source!.identity.fingerprint);
+    const manifests = groups.map(({ input }) => readGroupManifest(input.manifest));
+    const { drafts, models: bindings } = captured!;
+    expect(manifests[0].identity).toEqual({ ...basis, manifestIdentity: deriveManifestIdentity(basis, [...drafts, ...groups.slice(1).map(sentDraft)]) });
+    expect(manifests.every(({ identity }) => identity.manifestIdentity === manifests[0].identity.manifestIdentity)).toBe(true);
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-1.logic-1.audio-1.models-1');
+
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
-    // The graphics and sound usage plus the three logic Assets, their eight edges, mission data and payload bytes.
+    // The graphics and sound usage, the three logic Assets with their eight edges, mission data and payload bytes, and
+    // the bound models.
     const logicBytes = drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0);
     const logicUsage = { ...EMPTY_BUDGET_USAGE, assets: 3, dependencyEdges: 8, missionObjects: 11, missionReferences: 37, payloadBytes: logicBytes };
-    expect(last.usage).toEqual({ ...addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), sourceReadBytes: readUsage.sourceReadBytes });
+    expect(last.usage).toEqual({ ...addBudgets(addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), PRODUCTION_MODEL_USAGE), sourceReadBytes: readUsage.sourceReadBytes });
+
+    // The models group the receiver validates is the one Node derives from the same source and binding: the graphics
+    // models partition with the five bound craft models, incomplete while textures are unconfirmed and effects missing.
+    const graphics = await runGraphicsStep(source!, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, UNLIMITED_BUDGET);
+    const models = await runModelStep(source!, productionModelMappings(bindings), productionModelDeclarations(bindings), PRODUCTION_MODEL_REFERENCES, UNLIMITED_BUDGET);
+    const expected = modelsGroupDraft(graphics, models, source!.identity.fingerprint);
+    const sent = sentGroup(messages, 'models');
+    expect(sentDraft(sent)).toEqual({ ...expected, payloads: [] });
+    expect(bindings.map(({ id }) => id).every(id => expected.assets.some(asset => asset.id === id))).toBe(true);
+    const result = validateGroup(CLASSIC_P2_SLICE, sent.input);
+    expect(result.status).toBe('incomplete');
   });
 
   it('sends no group when the job fails after the logic step, such as on invalid usage', async () => {
@@ -242,8 +275,9 @@ describe('logic conversion', () => {
 
   it('fails without a group when the logic step fails, keeping the source layer and the budget limit', async () => {
     const imported = await syntheticImport(sliceCoveredFiles(), 'logic-job-disc');
+    // Without the graphics and model shares, the job limit is the input size plus the logic share alone.
     const tight = { ...PRODUCTION_LOGIC_STEP, share: { ...PRODUCTION_LOGIC_STEP.share, assets: 2 } };
-    const messages = await run(createImportJob(imported.open, NO_GRAPHICS, tight), imported.files);
+    const messages = await run(createImportJob(imported.open, NO_GRAPHICS, tight, undefined, NO_MODELS), imported.files);
     expect(typesOf(messages).filter(type => !type.startsWith('progress'))).toEqual(['identified', 'failed']);
     expect(messages.at(-1)).toMatchObject({
       type: 'failed',
@@ -274,19 +308,17 @@ describe('audio conversion', () => {
     const reads = blobReads();
     const { messages, source } = await audioJob();
     const counts = progress(messages, reads);
-    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
+    expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     // The audio stage starts once, then reports each archive read of mapping verification and conversion.
     expect(messages.filter(message => message.type === 'progress' && message.stage === 'convert-audio').length).toBeGreaterThan(1);
-    const { group, input } = sentGroup(messages);
-    expect(group).toBe('audio');
-    expect(validateGroup(CLASSIC_P2_SLICE, input)).toMatchObject({ status: 'group-complete', group: 'audio' });
-    const manifest = readGroupManifest(input.manifest);
+    const audioGroup = sentGroup(messages, 'audio');
+    expect(validateGroup(CLASSIC_P2_SLICE, audioGroup.input)).toMatchObject({ status: 'group-complete', group: 'audio' });
+    const manifest = readGroupManifest(audioGroup.input.manifest);
     const basis = productionIdentityBasis(source.identity.fingerprint);
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.logic-1.audio-1');
     expect(manifest.identity).toEqual({
       ...basis,
-      // Over exactly the sent group: the graphics result stays in the job, and payloads are not part of the derivation.
-      manifestIdentity: deriveManifestIdentity(basis, [{ group: 'audio', assets: manifest.assets, payloads: [], sources: input.sources } as GroupDraft]),
+      // Over exactly the sent groups, models then audio; payloads are not part of the derivation.
+      manifestIdentity: deriveManifestIdentity(basis, [sentDraft(sentGroup(messages, 'models')), sentDraft(audioGroup)]),
     });
     expect(manifest.assets.map(({ id, role }) => [id, role])).toEqual([
       ['sound/explosion', 'explosion-sound'], ['sound/fire', 'fire-sound'], ['sound/missile', 'missile-sound'], ['sound/warp', 'warp-sound'],
@@ -296,7 +328,7 @@ describe('audio conversion', () => {
     expect(AUDIO_CONVERSION_USAGE).toMatchObject({ assets: 4, payloadBytes: 4 * 16 + 4 + 5 + 3 + 6, audioSamples: 2 + 5 + 3 + 6 });
     // Overlapping dimensions add up: the graphics and four sound Assets, and both conversions' payload bytes.
     expect(messages.at(-1)).toEqual({
-      type: 'finished', jobId: 3, sequence: messages.length, groups: ['audio'],
+      type: 'finished', jobId: 3, sequence: messages.length, groups: ['models', 'audio'],
       usage: {
         ...GRAPHICS_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes, assets: GRAPHICS_CONVERSION_USAGE.assets + 4,
         payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
@@ -308,7 +340,7 @@ describe('audio conversion', () => {
     // Assets and payload bytes exactly at their limits, while the graphics step already charged both. The directory
     // preflight bounds samples by sample bytes, so the 16-bit clip counts twice its sample points there.
     const exact = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, audioSamples: 4 + 5 + 3 + 6 } } });
-    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets + 4 } });
+    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['models', 'audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets + 4 } });
     const payloadBytes = AUDIO_CONVERSION_USAGE.payloadBytes;
     const { messages } = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, payloadBytes: payloadBytes - 1 } } });
     expect(messages.some(message => message.type === 'group')).toBe(false);
@@ -321,11 +353,21 @@ describe('audio conversion', () => {
     });
   });
 
-  it('keeps the package identity independent of the graphics result it does not send', async () => {
-    const identity = (messages: readonly ImportWorkerMessage[]) => readGroupManifest(sentGroup(messages).input.manifest).identity;
-    const [withGraphics, withoutGraphics] = (await Promise.all([audioJob(), audioJob({ graphics: NO_GRAPHICS })])).map(({ messages }) => messages);
-    expect(withoutGraphics.at(-1)).toMatchObject({ type: 'finished', usage: { assets: 4, paletteEntries: 0 } });
-    expect(identity(withoutGraphics)).toEqual(identity(withGraphics));
+  it('keeps the package identity independent of the cockpit-hud-map graphics it does not send', async () => {
+    const identity = (messages: readonly ImportWorkerMessage[]) => readGroupManifest(sentGroup(messages, 'audio').input.manifest).identity;
+    const modelsOnly = (table: { readonly mappings: readonly { readonly asset: { readonly id: string } }[] }) => {
+      const ids = new Set<string>(PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'models').map(({ asset }) => asset.id));
+      return { ...table, mappings: table.mappings.filter(({ asset }) => ids.has(asset.id)) };
+    };
+    const graphics: GraphicsStepInput = {
+      mappings: modelsOnly(PRODUCTION_GRAPHICS_MAPPINGS),
+      declarations: PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'models'),
+      share: PRODUCTION_GRAPHICS_SHARE,
+    };
+    const [withCockpit, withoutCockpit] = (await Promise.all([audioJob(), audioJob({ graphics })])).map(({ messages }) => messages);
+    // Without the cockpit-hud-map flight palette and the three fonts; the sent groups and their identity are the same.
+    expect(withoutCockpit.at(-1)).toMatchObject({ type: 'finished', usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 } });
+    expect(identity(withoutCockpit)).toEqual(identity(withCockpit));
   });
 
   it('fails before sending any group when a sample, or the final usage, is rejected', async () => {
@@ -348,6 +390,44 @@ describe('audio conversion', () => {
       error: expect.objectContaining({ layer: 'content', code: 'invalid-budget-value', location: 'usage.assets' }),
     });
     expect([...corrupt.messages, ...messages].some(message => message.type === 'group')).toBe(false);
+  });
+});
+
+describe('model conversion', () => {
+  /** Runs the whole production job on a slice disc whose `SR.NOB` entries `edit` changes; `wrap` replaces the source. */
+  async function sliceJob(edit: (entries: SyntheticEntry[]) => SyntheticEntry[] = entries => entries, wrap: (open: OpenSource) => OpenSource = open => open) {
+    const covered = { ...sliceCoveredFiles(), 'MAIN/SR.NOB': buildImfat(10_000, edit(productionSliceEntries())) };
+    const imported = await syntheticImport(covered, 'model-job-disc');
+    const messages = await run(createImportJob(wrap(imported.open)), imported.files);
+    expect(messages.some(message => message.type === 'group')).toBe(false);
+    expect(typesOf(messages).at(-2)).toBe('progress:convert-models');
+    return messages.at(-1);
+  }
+
+  const without = (id: number) => (entries: SyntheticEntry[]) => entries.filter(entry => entry.id !== id);
+
+  it('keeps the P2-03 location when a model mapping fails verification', async () => {
+    expect(await sliceJob(without(DEFAULT_MODEL_IDS[17]))).toMatchObject({
+      type: 'failed', error: { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[0].parts[0].alternatives[0]' },
+    });
+  });
+
+  it.each([
+    ['missing', without(PRODUCTION_MESH_ENTRIES.triangle), 'entry-not-found'],
+    ['of another type', (entries: SyntheticEntry[]) => entries.map(entry => (entry.id === PRODUCTION_MESH_ENTRIES.triangle ? { ...entry, type: 'MODL' } : entry)), 'entry-type-mismatch'],
+  ])('keeps the P2-03 code of a %s mesh, located at its first referencing part', async (_, edit, code) => {
+    expect(await sliceJob(edit)).toMatchObject({ type: 'failed', error: { layer: 'source', code, location: 'models[model/base-1].parts[0][0].mesh' } });
+  });
+
+  it('keeps a disc-layer failure of a mesh read at the disc layer and its own location', async () => {
+    const failingMeshes = (open: OpenSource): OpenSource => async inputs =>
+      withMeshReads(await open(inputs), () => Promise.reject(new DiscReadError('read-failed', 'file:/MAIN/SR.NOB', 'the image could not be read')));
+    expect(await sliceJob(undefined, failingMeshes)).toMatchObject({ type: 'failed', error: { layer: 'disc', code: 'read-failed', location: 'file:/MAIN/SR.NOB' } });
+  });
+
+  it('fails a mesh that breaks its format at the source layer, in the model location grammar', async () => {
+    const failed = await sliceJob(() => productionSliceEntries(true));
+    expect(failed).toMatchObject({ type: 'failed', error: { layer: 'source', code: 'invalid-payload', location: 'models[model/base-1].parts[0][1].mesh' } });
   });
 });
 

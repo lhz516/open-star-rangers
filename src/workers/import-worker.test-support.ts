@@ -2,7 +2,8 @@ import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
 import {
-  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, productionCoveredFiles, productionSizedFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticOpen,
+  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, productionCoveredFiles, productionSizedFiles, sliceCoveredFiles, SYNTHETIC_AUDIO,
+  syntheticGroupsJob, syntheticOpen,
 } from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
@@ -28,14 +29,18 @@ const EXCEPTION_MARKER = `${MARKER}-exception`;
 const scenarios: Readonly<Record<string, ImportJob>> = {
   synthetic,
   /**
-   * The production job with its graphics and audio stages and no logic step, identifying a disc in the production
-   * graphics and sound structure.
+   * The production job with its graphics, audio and model stages and no logic step, so no craft model is bound,
+   * identifying a disc in the production graphics and sound structure.
    */
   graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC),
   /** The same, with a font table the converter rejects. */
   'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC),
   /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
   audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO),
+  /** The whole production job on the synthetic slice disc: the logic step binds the models the model step converts. */
+  models: createImportJob(syntheticOpen(sliceCoveredFiles(), 'synthetic-models')),
+  /** The same, with a shared mesh the model step rejects. */
+  'models-corrupt': createImportJob(syntheticOpen(sliceCoveredFiles({ corruptMesh: true }), 'synthetic-models')),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */
   busy: async (_, report) => {
     report.progress('identify-source', 0);

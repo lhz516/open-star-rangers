@@ -11,7 +11,14 @@ import { readGroupManifest } from '../src/content/manifest.ts';
 import { deriveManifestIdentity, type GroupDraft } from '../src/content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/production-sounds.test-support.ts';
-import { AUDIO_CONVERSION_USAGE, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
+import {
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, syntheticSource,
+} from '../src/workers/synthetic-import.test-support.ts';
+import { runGraphicsStep } from '../src/original-data/conversion/graphics-step.ts';
+import { modelsGroupDraft } from '../src/original-data/conversion/model-step.ts';
+import {
+  PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
+} from '../src/original-data/conversion/production-graphics.ts';
 
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 // The page imports modules from the development server, so this spec runs in the development project only. Every file
@@ -201,7 +208,7 @@ test('test entry identifies production-sized synthetic files and transfers four 
   expect(final.identity.versionId).toBe('synthetic-browser');
   expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.length]))
     .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', 0]));
-  // In order: identification, the starts of the (empty) graphics, logic and audio stages, then one more complete group per
+  // In order: identification, the starts of the (empty) graphics, logic, audio and model stages, then one more complete group per
   // change, then the end; the job itself throws if a payload it sent was not detached, so finishing proves every group
   // was transferred.
   const identifiedAt = observed.findIndex(snapshot => 'identity' in snapshot && snapshot.identity !== null);
@@ -209,8 +216,8 @@ test('test entry identifies production-sized synthetic files and transfers four 
   expect(observed.slice(identifiedAt).map(snapshot =>
     `${snapshot.status}:${'stage' in snapshot ? snapshot.stage : '-'}:${'groups' in snapshot ? snapshot.groups.length : '-'}`))
     .toEqual([
-      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-logic:0', 'running:convert-audio:0',
-      'running:convert-audio:1', 'running:convert-audio:2', 'running:convert-audio:3', 'running:convert-audio:4', 'finished:-:4',
+      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-logic:0', 'running:convert-audio:0', 'running:convert-models:0',
+      'running:convert-models:1', 'running:convert-models:2', 'running:convert-models:3', 'running:convert-models:4', 'finished:-:4',
     ]);
   expect(await page.evaluate(() => window.osrImport.compareTaken()))
     .toEqual(final.groups.map(({ group }) => ({ group, payloads: expect.any(Number), matches: true })));
@@ -234,13 +241,14 @@ test('test entry converts the production graphics and sounds after identificatio
   const observed = await snapshots(page);
   const final = observed.at(-1)!;
   if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
-  // Identification progress, `identified`, graphics progress, the start of the (empty) logic stage, audio progress, then
-  // the end: each change of the running snapshot in order.
+  // Identification progress, `identified`, graphics progress, the start of the (empty) logic stage, audio progress, the
+  // start of the model stage, which has no bound model, then the end: each change of the running snapshot in order.
   expect(distinctSteps(observed)).toEqual([
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
-    'running:convert-logic:identified', 'running:convert-audio:identified', 'finished',
+    'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] }]);
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
   expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
@@ -265,9 +273,10 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
   expect(distinctSteps(observed)).toEqual([
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
-    'running:convert-logic:identified', 'running:convert-audio:identified', 'finished',
+    'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
-  expect(final.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
+  expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['audio', 'group-complete']]);
+  expect(final.groups[1]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
   const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({
     assets: GRAPHICS_CONVERSION_USAGE.assets + 4, dependencyEdges: GRAPHICS_CONVERSION_USAGE.dependencyEdges,
@@ -284,14 +293,19 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   const [{ sources, payloadBytes }] = taken;
   const manifest = readGroupManifest(taken[0].manifest);
   expect(payloadBytes).toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
-  // The Worker's package identity equals the one Node derives from the same manifest and source states.
+  // The Worker's package identity equals the one Node derives from the same audio manifest and source states and the
+  // models group Node converts from the same disc: the graphics models partition, as no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.logic-1.audio-1', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-1.logic-1.audio-1.models-1', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
+  const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
+  expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);
+  const graphics = await runGraphicsStep(source, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_SHARE);
+  const models = modelsGroupDraft(graphics, { groups: [], usage: graphics.usage }, source.identity.fingerprint);
   expect(manifest.identity).toEqual({
     ...basis,
-    manifestIdentity: deriveManifestIdentity(basis, [{ group: 'audio', assets: manifest.assets, payloads: [], sources } as GroupDraft]),
+    manifestIdentity: deriveManifestIdentity(basis, [{ ...models, payloads: [] }, { group: 'audio', assets: manifest.assets, payloads: [], sources } as GroupDraft]),
   });
   expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['audio', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);

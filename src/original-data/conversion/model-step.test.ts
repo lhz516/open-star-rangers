@@ -11,7 +11,7 @@ import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { buildImfat, syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
 import {
-  countedVerifiedSource, dataPaletteBlock, expectSourceError, graphicsMapping, imageDeclaration, meshBlockFor, textureBlock, triangleMeshBlock,
+  countedVerifiedSource, dataPaletteBlock, expectSourceError, graphicsMapping, imageDeclaration, meshBlockFor, textureBlock, triangleMeshBlock, withMeshReads,
 } from './conversion.test-support.ts';
 import { productionIdentityBasis } from './converter-version.ts';
 import { runGraphicsStep } from './graphics-step.ts';
@@ -86,20 +86,6 @@ const LIMITS: BudgetRecord = {
 
 const step = (source: VerifiedSource, mappings: unknown = MODEL_MAPPINGS, declarations: unknown = MODEL_DECLARATIONS) =>
   runModelStep(source, mappings, declarations, REFERENCES, LIMITS);
-
-/** The source with every MESH read replaced by `read`. */
-function withMeshReads(source: VerifiedSource, read: () => Promise<never>): VerifiedSource {
-  return {
-    ...source,
-    openArchive: async path => {
-      const handle = await source.openArchive(path);
-      return {
-        path: handle.path, entries: handle.entries, entry: (entryId, type) => handle.entry(entryId, type),
-        read: (entryId, type) => (type === 'MESH' ? read() : handle.read(entryId, type)),
-      };
-    },
-  };
-}
 
 /** The source with every MESH read failing at the disc layer, as a bad sector would. */
 const failingMeshReads = (source: VerifiedSource): VerifiedSource =>

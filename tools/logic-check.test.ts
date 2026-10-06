@@ -32,7 +32,7 @@ function seededFiles(change: (spec: ReturnType<typeof defaultScenarioSpec>) => v
   spec.regions![0][0] = -86_420;
   spec.records[0].signed![0x70] = -13_579;
   change(spec);
-  return sliceCoveredFiles(syntheticScenario(spec));
+  return sliceCoveredFiles({ scenario: syntheticScenario(spec) });
 }
 
 /** The report as printed, checked to hold no name, seeded value, host path or file-name marker. */
@@ -42,8 +42,8 @@ function printed(report: unknown): string {
   return text;
 }
 
-const stageReads = ({ reads }: { readonly reads: Readonly<Record<string, number>> }) =>
-  reads['identify-source'] + reads['convert-graphics'] + reads['convert-logic'] + reads['convert-audio'];
+const STAGES = ['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models'] as const;
+const stageReads = ({ reads }: { readonly reads: Readonly<Record<string, number>> }) => STAGES.reduce((total, stage) => total + reads[stage], 0);
 
 describe('logic check', () => {
   it('converts, validates, decodes and loads the logic group, reporting counts, limits, reads and hashes only', async () => {
@@ -72,9 +72,8 @@ describe('logic check', () => {
     ]);
     expect(report.limits.every(item => Object.keys(item).join() === 'name,observed,limit' && item.observed <= item.limit)).toBe(true);
     expect(report.limits.find(({ name }) => name === 'nameLength')).toEqual({ name: 'nameLength', observed: `${MARKER}-pool-a`.length, limit: 63 });
-    expect(Object.keys(report.reads)).toEqual(['identify-source', 'convert-graphics', 'convert-logic', 'convert-audio', 'total']);
-    expect([report.reads['identify-source'], report.reads['convert-graphics'], report.reads['convert-logic'], report.reads['convert-audio']]
-      .every(bytes => bytes > 0)).toBe(true);
+    expect(Object.keys(report.reads)).toEqual([...STAGES, 'total']);
+    expect(STAGES.every(stage => report.reads[stage] > 0)).toBe(true);
     expect(stageReads(report)).toBe(report.reads.total);
   });
 

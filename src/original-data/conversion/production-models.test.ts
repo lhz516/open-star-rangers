@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASSET_ID_LIMITS, readAssetId } from '../../content/asset-id.ts';
-import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
+import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { validateGroup } from '../../content/completeness.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import type { CraftTypeTable } from '../../content/logic/logic-content.ts';
@@ -10,7 +10,7 @@ import { MODEL_LIMITS, MODEL_PAYLOAD_LAYOUT } from '../../content/models/model-p
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { DEFAULT_MODEL_IDS, syntheticScenarioArchive } from '../formats/formats.test-support.ts';
 import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.ts';
-import { countedVerifiedSource, expectSourceError } from './conversion.test-support.ts';
+import { countedVerifiedSource, expectSourceError, UNLIMITED_BUDGET } from './conversion.test-support.ts';
 import { convertLogic } from './convert-logic.ts';
 import { convertModels } from './convert-models.ts';
 import { productionIdentityBasis } from './converter-version.ts';
@@ -25,12 +25,10 @@ import {
 import { PRODUCTION_MESH_ENTRIES, productionModelReferences, productionSliceEntries } from './production-models.test-support.ts';
 import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 
-const UNLIMITED = Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, Number.MAX_SAFE_INTEGER]));
-
 /** The production logic conversion on the synthetic slice disc, and the binding its craft types give on the same M2ID list. */
 async function slice() {
   const { source, reads } = await countedVerifiedSource({ 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries()) });
-  const logic = await convertLogic(source, UNLIMITED);
+  const logic = await convertLogic(source, UNLIMITED_BUDGET);
   const craftTypes = logic.draft.assets.find(({ role }) => role === 'craft-types')!;
   const { content } = decodeLogicPayload(logic.draft.payloads.find(({ id }) => id === craftTypes.id)!.bytes, craftTypes) as { content: CraftTypeTable };
   const binding = bindCraftTypes(content.entries.map(({ craftType }) => craftType), DEFAULT_MODEL_IDS, 'archive:/MAIN/SR.NOB#1');

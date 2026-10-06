@@ -4,7 +4,9 @@ import {
 } from '../../content/content-identity.ts';
 import { SLICE_DEFINITION_VERSION } from '../../content/slice-definition.ts';
 import { AUDIO_CONVERTER_COMPONENT } from './audio-conversion.ts';
+import { GRAPHICS_CONVERTER_COMPONENT } from './convert-graphics.ts';
 import { LOGIC_CONVERTER_COMPONENT } from './convert-logic.ts';
+import { MODEL_CONVERTER_COMPONENT } from './convert-models.ts';
 
 /**
  * The only production converter version, shared by every production converter (P2-09 spec S-07, P2-08 spec 包身份):
@@ -13,7 +15,7 @@ import { LOGIC_CONVERTER_COMPONENT } from './convert-logic.ts';
  * is part of the resource cache key, so old cached packages are then never mistaken for new output (P2-10).
  */
 export const PRODUCTION_CONVERTER_VERSION: ConverterVersion = readConverterVersion(
-  ['osr-import', LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT].join('.'),
+  ['osr-import', GRAPHICS_CONVERTER_COMPONENT, LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT, MODEL_CONVERTER_COMPONENT].join('.'),
   'PRODUCTION_CONVERTER_VERSION',
 );
 

@@ -17,7 +17,7 @@ import type { OriginalAssetLocator, SourceMappingTable } from '../source-mapping
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { readConversionUsage } from './conversion-budget.ts';
-import { bindCraftTypes } from './craft-binding.ts';
+import { bindCraftTypes, type ModelBinding } from './craft-binding.ts';
 import { LOGIC_ASSETS, logicEntryReader, verifyLogicSources } from './logic-sources.ts';
 
 // The logic conversion step (P2-09 spec, 规范逻辑数据 and 限值与预算): the three payloads of the `logic` group, their
@@ -97,6 +97,8 @@ export interface LogicConversion {
   readonly draft: GroupDraft;
   /** Conversion usage after the starting usage; `sourceReadBytes` is never charged here. */
   readonly usage: BudgetRecord;
+  /** The craft type binding's model Assets, which the model step converts without rereading the mission or M2ID. */
+  readonly models: readonly ModelBinding[];
 }
 
 /**
@@ -184,5 +186,5 @@ export async function convertLogic(source: VerifiedSource, limits: unknown, usag
     payloads: readPayloadRecords(encoded.map(({ payload }) => payload)),
     sources,
   });
-  return Object.freeze({ draft, usage: meter.usage });
+  return Object.freeze({ draft, usage: meter.usage, models });
 }

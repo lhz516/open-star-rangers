@@ -1,9 +1,12 @@
+import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { modelPayloadLength } from '../../content/models/model-payload.ts';
 import { pairGeometry, quadGeometry } from '../../content/models/models.test-support.ts';
 import { DEFAULT_MODEL_IDS, syntheticModelEntries } from '../formats/formats.test-support.ts';
 import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
 import { meshBlockFor, triangleMeshBlock } from './conversion.test-support.ts';
 import { productionGraphicsEntries } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from './production-model-textures.ts';
+import { PRODUCTION_MODEL_REFERENCES } from './production-models.ts';
 import { productionSoundEntries } from './production-sounds.test-support.ts';
 
 // Valid synthetic models for the five MODL entries the default synthetic mission binds, with their meshes, generated
@@ -44,9 +47,16 @@ const MODELS: ReadonlyMap<number, SyntheticModlFields> = new Map([
 const productionModelBlocks = (): ReadonlyMap<number, { readonly data: Uint8Array; readonly relocations: number[] }> =>
   new Map([...MODELS].map(([entry, fields]) => [entry, syntheticModl(fields)]));
 
-/** The MESH entries the bound models' parts name. */
-export const productionMeshEntries = (): SyntheticEntry[] =>
-  Object.entries(PRODUCTION_MESH_ENTRIES).map(([name, id]) => ({ id, type: 'MESH', data: MESH_BLOCKS[name as keyof typeof MESH_BLOCKS], relocations: [0] }));
+/** The quad mesh with a non-zero trailer, which the MESH reader rejects as `invalid-payload`. */
+function corruptQuad(): Uint8Array {
+  const block = meshBlockFor(quadGeometry());
+  new DataView(block.buffer).setUint32(block.length - 4, 1, true);
+  return block;
+}
+
+/** The MESH entries the bound models' parts name; `corrupt` breaks the quad mesh that four models share. */
+export const productionMeshEntries = (corrupt = false): SyntheticEntry[] => Object.entries(PRODUCTION_MESH_ENTRIES).map(([name, id]) =>
+  ({ id, type: 'MESH', data: corrupt && id === quad ? corruptQuad() : MESH_BLOCKS[name as keyof typeof MESH_BLOCKS], relocations: [0] }));
 
 /** The distinct textures and sounds each bound model references, by MODL entry. */
 export function productionModelReferences(entry: number): { readonly textures: readonly number[]; readonly sounds: readonly number[] } {
@@ -60,7 +70,35 @@ export function productionModelReferences(entry: number): { readonly textures: r
 /**
  * The `MAIN/SR.NOB` entries of the synthetic production disc, in ascending ID order: the production graphics, the M2ID
  * list with the valid bound models and their meshes, and synthetic samples at every production sound table entry.
+ * `corruptMesh` breaks the shared quad mesh.
  */
-export const productionSliceEntries = (): SyntheticEntry[] => [
-  ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, productionModelBlocks()), ...productionMeshEntries(), ...productionSoundEntries(),
+export const productionSliceEntries = (corruptMesh = false): SyntheticEntry[] => [
+  ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, productionModelBlocks()), ...productionMeshEntries(corruptMesh),
+  ...productionSoundEntries(),
 ].sort((left, right) => left.id - right.id);
+
+/** Vertex and triangle counts of the synthetic meshes. */
+const MESH_COUNTS: ReadonlyMap<number, { readonly vertices: number; readonly triangles: number }> = new Map([
+  [quad, { vertices: 4, triangles: 1 }], [pair, { vertices: 3, triangles: 2 }], [triangle, { vertices: 3, triangles: 1 }],
+]);
+
+/**
+ * The model step's conversion usage on the bound models with the production lookup tables, from the payload layout:
+ * each model stores each of its distinct meshes once and references its distinct textures and sounds once.
+ */
+export const PRODUCTION_MODEL_USAGE: BudgetRecord = [...MODELS.keys()].reduce((usage, entry) => {
+  const meshes = [...new Set(MODELS.get(entry)!.partLists.flat().map(({ mesh }) => mesh))].map(mesh => MESH_COUNTS.get(mesh)!);
+  const { textures, sounds } = productionModelReferences(entry);
+  const references = [
+    ...textures.map(id => PRODUCTION_MODEL_REFERENCES.textures.get(id)!), ...sounds.map(id => PRODUCTION_MODEL_REFERENCES.sounds.get(id)!),
+  ];
+  const parts = MODELS.get(entry)!.partLists.flat().length;
+  return addBudgets(usage, {
+    ...EMPTY_BUDGET_USAGE,
+    assets: 1,
+    dependencyEdges: references.length,
+    vertices: meshes.reduce((sum, { vertices }) => sum + vertices, 0),
+    triangles: meshes.reduce((sum, { triangles }) => sum + triangles, 0),
+    payloadBytes: modelPayloadLength({ geometries: meshes, parts, references }),
+  }, 'usage');
+}, EMPTY_BUDGET_USAGE);

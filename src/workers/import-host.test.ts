@@ -9,7 +9,7 @@ import { SourceError } from '../original-data/source-error.ts';
 import { runImportHost, type ImportJob, type ImportReporter } from './import-host.ts';
 import { FakeEndpoint, portEndpoint } from './import-host.test-support.ts';
 import {
-  IMPORT_PROTOCOL_VERSION, readImportWorkerMessage, type ImportFile, type ImportSourceIdentity, type ImportWorkerMessage,
+  IMPORT_PROTOCOL_VERSION, readImportWorkerMessage, type ImportFile, type ImportSourceIdentity, type ImportStage, type ImportWorkerMessage,
 } from './import-protocol.ts';
 
 const MARKER = 'PRIVATE-MARKER';
@@ -134,6 +134,13 @@ describe('handshake', () => {
   });
 });
 
+/** Reports identification progress, the identity and then one progress for each of `stages`, in order. */
+function through(report: ImportReporter, ...stages: ImportStage[]): void {
+  report.progress('identify-source', 0);
+  report.identified(IDENTITY);
+  for (const stage of stages) report.progress(stage, 9);
+}
+
 describe('reporting', () => {
   it('numbers every message after ready from 1 and finishes with the groups sent and the usage', async () => {
     const audio = group('audio');
@@ -144,21 +151,23 @@ describe('reporting', () => {
       report.identified({ ...IDENTITY, files: [MARKER] } as typeof IDENTITY);
       report.progress('convert-graphics', 2048);
       report.progress('convert-graphics', 4096);
+      report.progress('convert-logic', 4096);
       report.progress('convert-audio', 4096);
+      report.progress('convert-models', 4096);
       report.group('audio', audio);
       report.group('models', models);
     });
     const messages = endpoint.afterReady;
     expect(messages.map(message => [message.type, 'sequence' in message && message.sequence])).toEqual([
-      ['progress', 1], ['progress', 2], ['identified', 3], ['progress', 4], ['progress', 5], ['progress', 6], ['group', 7], ['group', 8],
-      ['finished', 9],
+      ['progress', 1], ['progress', 2], ['identified', 3], ['progress', 4], ['progress', 5], ['progress', 6], ['progress', 7], ['progress', 8],
+      ['group', 9], ['group', 10], ['finished', 11],
     ]);
     expect(messages[2]).toEqual({ type: 'identified', jobId: 7, sequence: 3, identity: IDENTITY });
     expect(messages[4]).toEqual({ type: 'progress', jobId: 7, sequence: 5, stage: 'convert-graphics', readBytes: 4096 });
-    expect(messages[5]).toEqual({ type: 'progress', jobId: 7, sequence: 6, stage: 'convert-audio', readBytes: 4096 });
-    expect(messages[6]).toEqual({ type: 'group', jobId: 7, sequence: 7, group: 'audio', input: audio });
-    expect(Object.keys((messages[6] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
-    expect(messages[8]).toEqual({ type: 'finished', jobId: 7, sequence: 9, groups: ['audio', 'models'], usage: USAGE });
+    expect(messages[7]).toEqual({ type: 'progress', jobId: 7, sequence: 8, stage: 'convert-models', readBytes: 4096 });
+    expect(messages[8]).toEqual({ type: 'group', jobId: 7, sequence: 9, group: 'audio', input: audio });
+    expect(Object.keys((messages[8] as { input: object }).input)).toEqual(['manifest', 'payloads', 'sources']);
+    expect(messages[10]).toEqual({ type: 'finished', jobId: 7, sequence: 11, groups: ['audio', 'models'], usage: USAGE });
     expect(messages.every(message => 'jobId' in message && message.jobId === 7)).toBe(true);
     expect(endpoint.log.slice(-2)).toEqual(['post:finished', 'close']);
     expect(JSON.stringify(messages)).not.toContain(MARKER);
@@ -180,28 +189,32 @@ describe('reporting', () => {
     ['identification progress after identification', (report: ImportReporter) => { report.identified(IDENTITY); report.progress('identify-source', 9); }, ['identified']],
     ['graphics progress before identification', (report: ImportReporter) => report.progress('convert-graphics', 0), []],
     ['identification progress after graphics progress', (report: ImportReporter) => {
-      report.identified(IDENTITY);
-      report.progress('convert-graphics', 9);
+      through(report, 'convert-graphics');
       report.progress('identify-source', 9);
-    }, ['identified', 'progress']],
+    }, ['progress', 'identified', 'progress']],
     ['logic progress before identification', (report: ImportReporter) => report.progress('convert-logic', 0), []],
     ['graphics progress after logic progress', (report: ImportReporter) => {
-      report.identified(IDENTITY);
-      report.progress('convert-logic', 9);
+      through(report, 'convert-graphics', 'convert-logic');
       report.progress('convert-graphics', 9);
-    }, ['identified', 'progress']],
+    }, ['progress', 'identified', 'progress', 'progress']],
     ['audio progress before identification', (report: ImportReporter) => report.progress('convert-audio', 0), []],
     ['graphics progress after audio progress', (report: ImportReporter) => {
-      report.identified(IDENTITY);
-      report.progress('convert-audio', 9);
+      through(report, 'convert-graphics', 'convert-logic', 'convert-audio');
       report.progress('convert-graphics', 9);
-    }, ['identified', 'progress']],
-    ['progress after the first group', (report: ImportReporter) => {
+    }, ['progress', 'identified', 'progress', 'progress', 'progress']],
+    ['conversion progress without identification progress', (report: ImportReporter) => {
       report.identified(IDENTITY);
-      report.progress('convert-audio', 9);
+      report.progress('convert-graphics', 9);
+    }, ['identified']],
+    ['model progress that skips the audio stage', (report: ImportReporter) => {
+      through(report, 'convert-graphics', 'convert-logic');
+      report.progress('convert-models', 9);
+    }, ['progress', 'identified', 'progress', 'progress']],
+    ['progress after the first group', (report: ImportReporter) => {
+      through(report, 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models');
       report.group('audio', group('audio'));
-      report.progress('convert-audio', 9);
-    }, ['identified', 'progress', 'group']],
+      report.progress('convert-models', 9);
+    }, ['progress', 'identified', 'progress', 'progress', 'progress', 'progress', 'group']],
     ['a group before identification', (report: ImportReporter) => report.group('audio', group('audio')), []],
     ['a repeated group', (report: ImportReporter) => {
       report.identified(IDENTITY);

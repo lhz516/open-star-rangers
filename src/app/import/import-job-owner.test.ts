@@ -61,6 +61,9 @@ const progress = (sequence: number, readBytes: number, jobId = 1, stage = 'ident
 const graphicsProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-graphics');
 const logicProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-logic');
 const audioProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-audio');
+const modelsProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-models');
+/** Identification progress, the identity, then one progress for each of the first `stages` conversion stages, from sequence 1. */
+const upTo = (stages: number) => [progress(1, 0), identified(2), ...[graphicsProgress, logicProgress, audioProgress, modelsProgress].slice(0, stages).map((at, index) => at(3 + index, 0))];
 const identified = (sequence: number, jobId = 1) => ({ type: 'identified', jobId, sequence, identity: IDENTITY });
 const group = (sequence: number, jobId = 1) => ({
   type: 'group', jobId, sequence, group: 'audio',
@@ -112,17 +115,19 @@ describe('normal import', () => {
     expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-logic', readBytes: 9, identity: IDENTITY, groups: [] });
     port.send(audioProgress(7, 9));
     expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-audio', readBytes: 9, identity: IDENTITY, groups: [] });
+    port.send(modelsProgress(8, 9));
+    expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-models', readBytes: 9, identity: IDENTITY, groups: [] });
     expect(port.terminations).toBe(0);
-    port.send(finished(8));
+    port.send(finished(9));
     expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [], usage: USAGE });
     expect(port.terminations).toBe(1);
-    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(8).fill('running'), 'finished']);
+    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(9).fill('running'), 'finished']);
     expect(snapshots.every(isDeepFrozen)).toBe(true);
     expect(JSON.stringify(snapshots)).not.toContain(MARKER);
     port.send(progress(5, 6));
     port.events.error();
     port.events.messageError();
-    expect(snapshots).toHaveLength(10);
+    expect(snapshots).toHaveLength(11);
     expect(port.terminations).toBe(1);
   });
 
@@ -352,14 +357,19 @@ describe('running failures', () => {
     ['identification progress after identification', (port: FakePort) => port.send(identified(1), progress(2, 0)), 'message.stage'],
     ['graphics progress as the first progress', (port: FakePort) => port.send(graphicsProgress(1, 0)), 'message.stage'],
     ['graphics progress before identification', (port: FakePort) => port.send(progress(1, 0), graphicsProgress(2, 0)), 'message.stage'],
-    ['identification progress after graphics progress', (port: FakePort) => port.send(identified(1), graphicsProgress(2, 0), progress(3, 0)), 'message.stage'],
+    ['identification progress after graphics progress', (port: FakePort) => port.send(...upTo(1), progress(4, 0)), 'message.stage'],
     ['logic progress before identification', (port: FakePort) => port.send(progress(1, 0), logicProgress(2, 0)), 'message.stage'],
-    ['graphics progress after logic progress', (port: FakePort) => port.send(identified(1), logicProgress(2, 0), graphicsProgress(3, 0)), 'message.stage'],
+    ['graphics progress after logic progress', (port: FakePort) => port.send(...upTo(2), graphicsProgress(5, 0)), 'message.stage'],
     ['audio progress as the first progress', (port: FakePort) => port.send(audioProgress(1, 0)), 'message.stage'],
     ['audio progress before identification', (port: FakePort) => port.send(progress(1, 0), audioProgress(2, 0)), 'message.stage'],
-    ['graphics progress after audio progress', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), graphicsProgress(3, 0)), 'message.stage'],
-    ['logic progress after audio progress', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), logicProgress(3, 0)), 'message.stage'],
-    ['progress after the first group', (port: FakePort) => port.send(identified(1), audioProgress(2, 0), group(3), audioProgress(4, 0)), 'message.stage'],
+    ['graphics progress after audio progress', (port: FakePort) => port.send(...upTo(3), graphicsProgress(6, 0)), 'message.stage'],
+    ['logic progress after audio progress', (port: FakePort) => port.send(...upTo(3), logicProgress(6, 0)), 'message.stage'],
+    ['audio progress after model progress', (port: FakePort) => port.send(...upTo(4), audioProgress(7, 0)), 'message.stage'],
+    ['conversion progress without identification progress', (port: FakePort) => port.send(identified(1), graphicsProgress(2, 0)), 'message.stage'],
+    ['audio progress that skips the logic stage', (port: FakePort) => port.send(...upTo(1), audioProgress(4, 0)), 'message.stage'],
+    ['model progress that skips the audio stage', (port: FakePort) => port.send(...upTo(2), modelsProgress(5, 0)), 'message.stage'],
+    ['model progress straight after identification', (port: FakePort) => port.send(...upTo(0), modelsProgress(3, 0)), 'message.stage'],
+    ['progress after the first group', (port: FakePort) => port.send(...upTo(4), group(7), modelsProgress(8, 0)), 'message.stage'],
     ['a second identification', (port: FakePort) => port.send(identified(1), identified(2)), 'message.type'],
     ['a group before identification', (port: FakePort) => port.send(group(1)), 'message.type'],
     ['a repeated group', (port: FakePort) => port.send(identified(1), group(2), group(3)), 'message.group'],
@@ -504,7 +514,7 @@ describe('group results', () => {
   it('accepts every stage in order before a group, and the group before finishing', () => {
     const { owner, port } = running();
     const audio = bound('audio');
-    port.send(progress(1, 0), identified(2), graphicsProgress(3, 4), audioProgress(4, 9), sent(5, 'audio', audio), finish(6, ['audio']));
+    port.send(progress(1, 0), identified(2), graphicsProgress(3, 4), logicProgress(4, 9), audioProgress(5, 9), modelsProgress(6, 9), sent(7, 'audio', audio), finish(8, ['audio']));
     expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [complete('audio')], usage: USAGE });
     expect(owner.takeGroups()).toEqual([{ group: 'audio', ...audio }]);
   });

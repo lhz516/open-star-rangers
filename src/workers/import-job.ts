@@ -7,11 +7,17 @@ import { payloadTransferList } from '../content/ownership.ts';
 import { readPayloadRecords } from '../content/payload.ts';
 import { convertAudioGroup } from '../original-data/conversion/audio-conversion.ts';
 import { convertLogic, PRODUCTION_LOGIC_SHARE } from '../original-data/conversion/convert-logic.ts';
+import type { ModelReferences } from '../original-data/conversion/convert-models.ts';
 import { productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
+import type { ModelBinding } from '../original-data/conversion/craft-binding.ts';
 import { runGraphicsStep } from '../original-data/conversion/graphics-step.ts';
+import { modelsGroupDraft, runModelStep } from '../original-data/conversion/model-step.ts';
 import {
   PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
 } from '../original-data/conversion/production-graphics.ts';
+import {
+  PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE, productionModelDeclarations, productionModelMappings,
+} from '../original-data/conversion/production-models.ts';
 import { PRODUCTION_SND_RULES, PRODUCTION_SOUND_TABLE } from '../original-data/conversion/production-sounds.ts';
 import type { SndFormatRules } from '../original-data/formats/snd.ts';
 import { openVerifiedSource, type DiscInputFile, type VerifiedSource } from '../original-data/source/open-verified-source.ts';
@@ -29,7 +35,7 @@ export interface GraphicsStepInput {
   readonly share: BudgetRecord;
 }
 
-/** The P2-05 production graphics. */
+/** The P2-05 production graphics and the P2-06 slice textures. */
 const PRODUCTION_GRAPHICS_STEP: GraphicsStepInput = Object.freeze({
   mappings: PRODUCTION_GRAPHICS_MAPPINGS,
   declarations: PRODUCTION_GRAPHICS_DECLARATIONS,
@@ -42,12 +48,17 @@ export interface StepGroups {
   readonly usage: BudgetRecord;
 }
 
+/** The logic step's groups and usage, and the craft models its binding names for the model step. */
+export interface LogicStepGroups extends StepGroups {
+  readonly models: readonly ModelBinding[];
+}
+
 /**
  * The logic conversion step and the budget share approved for it. `convert` charges `limits` on top of `usage`, the
  * earlier steps' conversion usage.
  */
 export interface LogicStepInput {
-  readonly convert: (source: VerifiedSource, limits: BudgetRecord, usage: BudgetRecord) => Promise<StepGroups>;
+  readonly convert: (source: VerifiedSource, limits: BudgetRecord, usage: BudgetRecord) => Promise<LogicStepGroups>;
   readonly share: BudgetRecord;
 }
 
@@ -55,9 +66,26 @@ export interface LogicStepInput {
 export const PRODUCTION_LOGIC_STEP: LogicStepInput = Object.freeze({
   convert: async (source: VerifiedSource, limits: BudgetRecord, usage: BudgetRecord) => {
     const converted = await convertLogic(source, limits, usage);
-    return { drafts: [converted.draft], usage: converted.usage };
+    return { drafts: [converted.draft], usage: converted.usage, models: converted.models };
   },
   share: PRODUCTION_LOGIC_SHARE,
+});
+
+/**
+ * The model step: the mappings and declarations of the craft models the logic step bound, the lookup tables of part
+ * textures and sound slots, and the budget share approved for it.
+ */
+export interface ModelStepInput {
+  readonly inputs: (models: readonly ModelBinding[]) => { readonly mappings: unknown; readonly declarations: unknown };
+  readonly references: ModelReferences;
+  readonly share: BudgetRecord;
+}
+
+/** The P2-06 production models. */
+const PRODUCTION_MODEL_STEP: ModelStepInput = Object.freeze({
+  inputs: (models: readonly ModelBinding[]) => ({ mappings: productionModelMappings(models), declarations: productionModelDeclarations(models) }),
+  references: PRODUCTION_MODEL_REFERENCES,
+  share: PRODUCTION_MODEL_SHARE,
 });
 
 /** What the audio stage converts: a sound table and the SND interpretations it accepts. */
@@ -112,19 +140,23 @@ class MeteredByteSource implements ByteSource {
 
 /**
  * The import job: reads the files on demand through metered Blob ports, opens and identifies them, then runs the
- * graphics and the logic conversion steps and converts the audio group. Each stage reports progress once when it starts
- * and after every port read, with the read bytes accumulated across stages. The graphics and logic limits are the
- * P2-02 default read limit (the input size) plus both steps' shares, the logic step charging on top of the graphics
- * usage; the audio stage charges its own limits from zero (P2-08 budget). The graphics result stays in the job for the
- * group assembly of later tasks. The logic drafts and the audio group get one manifest identity derived from all of
- * them; every conversion, that identity, the transfer lists and the final usage (read usage plus every conversion's
- * usage) are checked before the first group is sent. `open`, `graphics`, `logic` and `audio` are replaced only by tests.
+ * graphics and the logic conversion steps, converts the audio group and runs the model step. Each stage reports progress
+ * once when it starts and after every port read, with the read bytes accumulated across stages. The graphics, logic and
+ * model limits are the P2-02 default read limit (the input size) plus the three steps' shares: the logic step charges
+ * on top of the graphics usage and the model step on top of the logic usage; the audio stage charges its own limits
+ * from zero (P2-08 budget). The model step converts the craft models the logic step bound, and its models join the
+ * graphics step's `models` partition in the `models` group; the `cockpit-hud-map` partition stays in the job until it
+ * is assembled. The logic drafts, the audio group and the always-sent models group get one manifest identity derived
+ * from all of them; every conversion, that identity, the transfer lists and the final usage (read usage plus every
+ * conversion's usage) are checked before the first group is sent. `open`, `graphics`, `logic`, `audio` and `models`
+ * are replaced only by tests.
  */
 export function createImportJob(
   open: OpenSource = openVerifiedSource,
   graphics: GraphicsStepInput = PRODUCTION_GRAPHICS_STEP,
   logic: LogicStepInput = PRODUCTION_LOGIC_STEP,
   audio: AudioStageInput = PRODUCTION_AUDIO_STAGE,
+  models: ModelStepInput = PRODUCTION_MODEL_STEP,
 ): ImportJob {
   return async (files, report) => {
     let readBytes = 0;
@@ -137,23 +169,31 @@ export function createImportJob(
     const source = await open(files.map(({ name, blob }) => ({ name, source: new MeteredByteSource(new BlobByteSource(blob), meter) })));
     report.identified({ versionId: source.identity.versionId, sourceFingerprint: source.identity.fingerprint });
     const inputBytes = files.reduce((total, { blob }) => total + blob.size, 0);
-    const limits = addBudgets(addBudgets({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: inputBytes }, graphics.share, 'limits'), logic.share, 'limits');
-    stage = 'convert-graphics';
-    report.progress(stage, readBytes);
-    // Until P2-06/07 assemble graphics groups, only the step's usage outlives it.
-    const { usage: graphicsUsage } = await runGraphicsStep(source, graphics.mappings, graphics.declarations, limits);
-    stage = 'convert-logic';
-    report.progress(stage, readBytes);
-    const logicResult = await logic.convert(source, limits, graphicsUsage);
-    stage = 'convert-audio';
-    report.progress(stage, readBytes);
+    const limits = [graphics.share, logic.share, models.share]
+      .reduce((total, share) => addBudgets(total, share, 'limits'), { ...EMPTY_BUDGET_USAGE, sourceReadBytes: inputBytes });
+    const enter = (next: ImportStage) => {
+      stage = next;
+      report.progress(stage, readBytes);
+    };
+    enter('convert-graphics');
+    const graphicsResult = await runGraphicsStep(source, graphics.mappings, graphics.declarations, limits);
+    enter('convert-logic');
+    const logicResult = await logic.convert(source, limits, graphicsResult.usage);
+    enter('convert-audio');
     const { usage: audioUsage, ...sounds } = await convertAudioGroup(source, audio.table, audio.rules, { limits: audio.limits });
+    enter('convert-models');
+    const { mappings, declarations } = models.inputs(logicResult.models);
+    const modelResult = await runModelStep(source, mappings, declarations, models.references, limits, logicResult.usage);
     // Everything that can still fail runs before the first group is sent, so a failure never follows a group.
-    const drafts: GroupDraft[] = [...logicResult.drafts, { group: 'audio', ...sounds }];
+    const drafts: GroupDraft[] = [
+      ...logicResult.drafts,
+      { group: 'audio', ...sounds },
+      modelsGroupDraft(graphicsResult, modelResult, source.identity.fingerprint),
+    ];
     const groups = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), drafts)
       .map((group): PackageGroup => [group.manifest.group, group]);
     checkPackageTransfers(groups);
-    const usage = addBudgets(addBudgets(source.usage(), logicResult.usage, 'usage'), audioUsage, 'usage');
+    const usage = addBudgets(addBudgets(source.usage(), modelResult.usage, 'usage'), audioUsage, 'usage');
     for (const [group, input] of groups) report.group(group, input);
     return usage;
   };
