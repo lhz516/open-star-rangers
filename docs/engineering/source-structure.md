@@ -131,6 +131,8 @@ src/
       logic-sources.ts
       convert-logic.ts
       production-sounds.ts
+      model-declarations.ts
+      convert-models.ts
   platform/
     audio/
       audio-controller.ts
@@ -558,7 +560,7 @@ src/
   - `syntheticSnd(fields)`：SND 块与位于 0 的重定位，指针与声明长度可单独改写；
   - `syntheticMesh(fields)`：按顶点、着色槽数与各面的角点生成 MESH 块与位于 0 的重定位，结构指针、长度、保留字与尾字可单独改写；
   - `syntheticModl(fields)`：按三个部件列表与音效槽生成 MODL 块与非空列表指针的重定位，列表头、部件颜色与保留字段可单独改写。
-- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。
+- **转换预算：** [conversion/conversion-budget.ts](../../src/original-data/conversion/conversion-budget.ts) 的 `chargeConversionBudget(limits, usage, increment, location)` 用 P2-01 `chargeBudget` 核算转换用量，增量缺省的维度为 0。`readConversionUsage(value)` 读取转换器的起始用量（前序步骤的转换用量）：须为完整的预算记录，且 `sourceReadBytes` 为 0（源读取由已验证来源计量，否则会重复扣除），否则为 `invalid-budget-value@usage.sourceReadBytes`；图形、逻辑与模型转换器都经它读取。
   - **通过：** 总量等于上限时通过。
   - **失败：** 第一个超限或超出安全整数范围的维度，以 `SourceError('budget-exceeded')` 失败；`limit` 为该维度名、上限与观测值（溢出时为 null），增量不部分计入。
 - **生产 `ConverterVersion`：** 见上文[内容基础契约](#内容基础契约与切片定义)中 `manifest-identity.ts` 一节；音频转换器的组件为 `AUDIO_CONVERTER_COMPONENT`。
@@ -581,6 +583,24 @@ src/
   - **规则：** 单声道；8 位无符号，16 位按有符号小端（`s16le`）接受；`flags` 只接受切片中出现的 0（循环至停止）与 1（播放一次），其他取值（如 8）以 `unsupported-payload` 失败。
   - **变化：** 表或规则的任何改动都会改变转换输出，须递增 `AUDIO_CONVERTER_COMPONENT`，从而改变生产 `ConverterVersion`。
   - **测试支持：** [production-sounds.test-support.ts](../../src/original-data/conversion/production-sounds.test-support.ts) 的 `productionSoundEntries()` 在表的各条目编号处生成合成 SND（宽度与 `flags` 都在规则之内），期望的转换用量为 `PRODUCTION_SOUND_USAGE`。
+
+### 模型转换
+
+[original-data/conversion/](../../src/original-data/conversion/) 把 MODL 及其引用的 MESH 转换为[模型 payload](#模型-payload)，规则见 [P2-06 spec](../plan/p2/06/spec.md#模型转换声明)（[P2-06/03](../plan/p2/06/subtasks/03-model-conversion.md)）。
+
+- **声明：** [model-declarations.ts](../../src/original-data/conversion/model-declarations.ts) 的 `readModelDeclarations` 严格读取 `{ asset: { id, kind: 'model' }, role, group: 'models' }` 的数组：`role` 为 P2-01 的角色 token（机型模型为 `player-ship`、`enemy-ship`、`base`，非必需的机型为 `friendly-craft`，研究确认的为 `projectile`、`missile`、`debris`），同一组内 ID 唯一。来源、网格、贴图与音效都不可声明：来源是映射的整条 MODL，网格来自 MODL 的部件，贴图与音效只经查找表解析。任何问题都为 `invalid-declaration`，位置为 `models.declarations[<i>]` 加字段路径或 `models.declarations`。
+- **输入：** [convert-models.ts](../../src/original-data/conversion/convert-models.ts) 的 `convertModels(declarations, sources, references, limits, usage)`：
+  - `sources` 是步骤已读入的块：每个声明模型的 MODL（按 Asset ID），以及其部件引用的 MESH（按条目号）；读取条目与核验映射归模型步骤；
+  - `references` 是两张查找表：TEX 条目号到 image ID（生产贴图表），SND 条目号到 sound ID（P2-08 生产音效表）。表中没有的引用为 `invalid-declaration`，位置为 `models[<ID>].parts[<l>][<p>].texture` 或 `models[<ID>].sounds[<s>]`，不跳过、不默认；
+  - `limits` 与起始 `usage` 是完整的预算记录，`usage` 是前序步骤的转换用量，经 `readConversionUsage` 读取，不得含 `sourceReadBytes`。
+- **每个模型：** 按 Asset ID 升序：
+  1. 用 `readModel` 读取 MODL，位置为 `models[<ID>].model`；
+  2. 按列表 0、1、2 与部件顺序，为每个首次出现的 MESH 条目分配下一个几何序号（因此几何按首次使用排列，同一模型内重复的 MESH 只存一份），并用 `readMeshCounts` 只读取其计数，位置为首个引用部件的 `….parts[<l>][<p>].mesh`；
+  3. 以 `chargeConversionBudget` 一次扣除 `assets` 1、`dependencyEdges`（去重后的贴图与音效引用数）、`vertices` 与 `triangles`（各几何之和）以及 `payloadBytes`（`modelPayloadLength`，与编码器共用公式），位置为 `models[<ID>].model`；
+  4. 扣除通过后才用 `readMesh` 解码几何并编码 payload。跨模型不共享几何：两个模型引用同一 MESH 时各自含有一份。
+- **输出：** 冻结的 `{ assets, usage }`：`assets` 按 ID 升序，每项为描述符（`model`、`models` 组、依赖为去重后升序的 image 与 sound 引用、payload schema 1 与实际字节的身份）与独占 buffer 的 payload；`usage` 为起始用量加本步用量。任何失败都不输出部分结果，被拒绝的扣除不改变调用者的用量；超出安全整数时 `observed` 为 null。
+- **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-1`，由作业组成生产 `ConverterVersion`；模型输出变化时递增。
+- **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块。
 
 ### 导入 Worker
 

@@ -1,7 +1,7 @@
 import { readAssetDescriptor, type AssetDescriptor } from '../../content/asset-contract.ts';
 import type { AssetId } from '../../content/asset-id.ts';
-import { chargeBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetRecord } from '../../content/budget.ts';
-import { compareText, fail } from '../../content/contract-validation.ts';
+import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { compareText } from '../../content/contract-validation.ts';
 import { encodeFontPayload, fontPayloadLength, type CharMapEntry } from '../../content/graphics/font-payload.ts';
 import { imagePalettes } from '../../content/graphics/graphics-binding.ts';
 import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics/graphics-format.ts';
@@ -10,6 +10,7 @@ import { encodePalettePayload, palettePayloadLength } from '../../content/graphi
 import type { PayloadRecord } from '../../content/payload.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
 import { SourceError } from '../source-error.ts';
+import { readConversionUsage } from './conversion-budget.ts';
 import {
   declaredGlyphCount, readGraphicsDeclarations, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind, type ImageDeclaration,
   type PaletteDeclaration,
@@ -68,9 +69,7 @@ class Conversion {
 
   constructor(limits: unknown, usage: unknown) {
     this.#limits = limits;
-    this.#usage = readBudgetRecord(usage, 'usage');
-    // Source reads are metered by the verified source; counting them here too would charge them twice.
-    if (this.#usage.sourceReadBytes !== 0) fail('invalid-budget-value', 'usage.sourceReadBytes', 'conversion usage never includes source reads');
+    this.#usage = readConversionUsage(usage);
   }
 
   get usage(): BudgetRecord {

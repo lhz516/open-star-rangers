@@ -1,6 +1,5 @@
 import type { AssetReference } from '../../content/asset-contract.ts';
 import { chargeBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetRecord } from '../../content/budget.ts';
-import { fail } from '../../content/contract-validation.ts';
 import {
   LOGIC_LIMITS, LOGIC_PAYLOAD_SCHEMA_VERSION, type LogicPayload, type MissionContent, type MissionDeclaration, type MissionGroup,
   type StrategicMapFrame,
@@ -17,6 +16,7 @@ import { parseScenario, type ParsedScenario } from '../formats/scen.ts';
 import type { OriginalAssetLocator, SourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
+import { readConversionUsage } from './conversion-budget.ts';
 import { bindCraftTypes } from './craft-binding.ts';
 import { LOGIC_ASSETS, logicEntryReader, verifyLogicSources } from './logic-sources.ts';
 
@@ -46,9 +46,7 @@ class BudgetMeter {
 
   constructor(limits: unknown, usage: unknown) {
     this.#limits = readBudgetRecord(limits, 'limits');
-    this.usage = readBudgetRecord(usage, 'usage');
-    // Source reads are metered by the verified source; counting them here too would charge them twice.
-    if (this.usage.sourceReadBytes !== 0) fail('invalid-budget-value', 'usage.sourceReadBytes', 'conversion usage never includes source reads');
+    this.usage = readConversionUsage(usage);
   }
 
   /** A rejected charge changes nothing. */

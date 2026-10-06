@@ -1,11 +1,12 @@
 import { expect } from 'vitest';
+import type { ModelGeometry } from '../../content/models/model-payload.ts';
 import { kindOf } from '../../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../disc/disc-image.ts';
 import { syntheticFileDisc, type SyntheticFileContent } from '../disc/disc.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
 import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
 import { catalogFor } from '../source/source.test-support.ts';
-import { buildImfat, ByteWriter, imageRecord } from '../synthetic.ts';
+import { buildImfat, ByteWriter, imageRecord, syntheticMesh } from '../synthetic.ts';
 
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
 
@@ -19,10 +20,21 @@ const GRAPHICS_LOCATION = new RegExp(`^graphics(?:${[
 /** Whether a conversion diagnostic location belongs to the P2-05 grammar. */
 export const inGraphicsLocationGrammar = (location: string): boolean => GRAPHICS_LOCATION.test(location);
 
+// The closed P2-06 model location grammar (docs/plan/p2/06/spec.md, error codes), written from the spec as an oracle:
+// the declaration set or a declaration's field path, or a model Asset followed by its MODL, a part, a part's mesh or
+// texture, or a sound slot. No entry IDs or offsets can appear.
+const MODEL_LOCATION = new RegExp(`^models(?:${[
+  String.raw`\.declarations(?:\[\d+\](?:\.[A-Za-z]+(?:\[\d+\])?)*)?`,
+  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\](?:\.model|\.parts\[\d+\]\[\d+\](?:\.mesh|\.texture)?|\.sounds\[\d+\])`,
+].join('|')})$`);
+
+/** Whether a conversion diagnostic location belongs to the P2-06 model grammar. */
+const inModelLocationGrammar = (location: string): boolean => MODEL_LOCATION.test(location);
+
 /**
  * Asserts that `action` throws a SourceError with exactly this code, location and limit, and a reason the Worker
- * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…` locations must be
- * in the grammar.
+ * boundary can carry (1 to 512 printable ASCII characters), equal to `reason` when given; `graphics…` and `models…`
+ * locations must be in their grammars.
  */
 export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null, reason?: string): void => {
   let thrown: unknown;
@@ -35,7 +47,15 @@ export const expectSourceError = (action: () => unknown, code: string, location:
   expect((thrown as { reason: string }).reason).toMatch(/^[ -~]{1,512}$/);
   if (reason !== undefined) expect((thrown as { reason: string }).reason).toBe(reason);
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
+  if (location.startsWith('models')) expect(inModelLocationGrammar(location), location).toBe(true);
 };
+
+/** A MESH data block holding `geometry` exactly: its floats bit for bit, triangles in order and their corner slots. */
+export const meshBlockFor = ({ positions, uvs, normals, indices, cornerShading, shadingSlotCount }: ModelGeometry): Uint8Array => syntheticMesh({
+  positions, uvs, normals, shadingSlotCount,
+  faces: Array.from({ length: indices.length / 3 }, (_, face) =>
+    [0, 1, 2].map(corner => [indices[face * 3 + corner], cornerShading[face * 3 + corner]] as const)),
+}).data;
 
 type RecordFields = Partial<Parameters<typeof imageRecord>[1]> & { width: number; height: number; size: number };
 

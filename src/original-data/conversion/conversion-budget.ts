@@ -1,4 +1,5 @@
-import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { chargeBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetRecord } from '../../content/budget.ts';
+import { fail } from '../../content/contract-validation.ts';
 import { SourceError } from '../source-error.ts';
 
 /**
@@ -11,4 +12,14 @@ export function chargeConversionBudget(limits: BudgetRecord, usage: BudgetRecord
   if (result.status === 'within-budget') return result.usage;
   const [{ dimension, limit, observed }] = result.violations;
   throw new SourceError('budget-exceeded', location, 'the conversion exceeds its budget', { name: dimension, limit, observed });
+}
+
+/**
+ * Reads a converter's starting usage: the conversion usage of earlier steps, as a complete budget record. Source reads
+ * are metered by the verified source, so counting them here too would charge them twice.
+ */
+export function readConversionUsage(value: unknown): BudgetRecord {
+  const usage = readBudgetRecord(value, 'usage');
+  if (usage.sourceReadBytes !== 0) fail('invalid-budget-value', 'usage.sourceReadBytes', 'conversion usage never includes source reads');
+  return usage;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
-import { chargeConversionBudget } from './conversion-budget.ts';
+import { chargeConversionBudget, readConversionUsage } from './conversion-budget.ts';
 import { SourceError } from '../source-error.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 2, audioSamples: 10, payloadBytes: Number.MAX_SAFE_INTEGER };
@@ -36,5 +36,14 @@ describe('conversion budget', () => {
   it('fails a dimension whose limit is 0', () => {
     expect(failureOf(() => chargeConversionBudget(LIMITS, EMPTY_BUDGET_USAGE, { dependencyEdges: 1 }, 'sounds[0]')).limit)
       .toEqual({ name: 'dependencyEdges', limit: 0, observed: 1 });
+  });
+});
+
+describe('readConversionUsage', () => {
+  it('reads a complete starting usage and rejects one that counts source reads', () => {
+    expect(readConversionUsage({ ...EMPTY_BUDGET_USAGE, assets: 3 })).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 3 });
+    expect(() => readConversionUsage({ ...EMPTY_BUDGET_USAGE, sourceReadBytes: 1 }))
+      .toThrow(expect.objectContaining({ code: 'invalid-budget-value', path: 'usage.sourceReadBytes' }));
+    expect(() => readConversionUsage({ assets: 1 })).toThrow(expect.objectContaining({ code: 'missing-budget-dimension' }));
   });
 });
