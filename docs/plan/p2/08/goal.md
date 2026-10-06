@@ -46,16 +46,16 @@ updated: 2026-10-05
     - [open-verified-source.ts](../../../../src/original-data/source/open-verified-source.ts) 是唯一产品入口。`VerifiedSource.openArchive(path)` 返回的 [ImfatArchiveHandle](../../../../src/original-data/archive/archive-reader.ts) 有 `entries`、`entry(id, type)` 与 `read(id, type)`，目录预检只用前两者；
     - [source-error.ts](../../../../src/original-data/source-error.ts) 的 `SourceError`：14 起以追加 code 与预算限值名承载 SND 转换与音频预算的失败（最初的计划是以它为形状参照新建 `conversion` 层，已按执行记录修订）。
   - **导入管线：**
-    - [import-protocol.ts](../../../../src/workers/import-protocol.ts)：版本 1，阶段只有 `identify-source`，四个错误层；
+    - [import-protocol.ts](../../../../src/workers/import-protocol.ts)：生成本 goal 时为版本 1，阶段只有 `identify-source`，四个错误层。P2-05 合入后为版本 2，追加 `convert-graphics`，并由共享的 `canReportStage` 规定阶段顺序；本任务在其上递增为 3（见[执行记录](#执行记录)的修订三）；
     - [import-host.ts](../../../../src/workers/import-host.ts) 的 `toErrorData`、`#sendGroup`：每组分别转移，作业返回后才读取用量；
-    - [import-job.ts](../../../../src/workers/import-job.ts) 的 `createImportJob(open)`：识别后即结束；
-    - [import-job-owner.ts](../../../../src/app/import/import-job-owner.ts)：进度检查 `LATE_PROGRESS`、`INVALID_READ_BYTES`，组的验证顺序，`finished` 只核对组列表，不核对用量；
+    - [import-job.ts](../../../../src/workers/import-job.ts)：生成本 goal 时为 `createImportJob(open)`，识别后即结束。P2-05 合入后为 `createImportJob(open, graphics)`，识别后运行图形步骤，仍不发送组；
+    - [import-job-owner.ts](../../../../src/app/import/import-job-owner.ts)：进度检查（P2-05 合入后为 `canReportStage` 与 `STAGE_OUT_OF_ORDER`）与 `INVALID_READ_BYTES`，组的验证顺序，`finished` 只核对组列表，不核对用量；
     - [import-worker.ts](../../../../src/workers/import-worker.ts) 调用无参的 `createImportJob()`。
   - **测试支持：**
     - [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `buildImfat`、`ByteWriter`；
     - [disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`；
     - [source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；
-    - [synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport`、`syntheticOpen`、`syntheticGroupsJob`。`syntheticGroupsJob` 经 `createImportJob(open)` 识别，所以作业加入音频阶段后要同步它；
+    - [synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport`、`syntheticOpen`、`syntheticGroupsJob`。`syntheticGroupsJob` 经生产作业识别（P2-05 合入后注入 `NO_GRAPHICS`），所以作业加入音频阶段后要同步它；
     - [import-worker.test-support.ts](../../../../src/workers/import-worker.test-support.ts) 的浏览器场景。
 - **计划新增（均尚不存在）：**
   - **content：** `src/content/sound-payload.ts`（01）、`src/content/manifest-identity.ts`（02）；

@@ -54,6 +54,8 @@ test('blocks audio without activation, then plays exact buffers audibly after a 
     });
     expect(disposed).toEqual({ status: 'disposed', loaded: 0, voices: 0 });
     const released = await until(() => app.evaluate(audioState), state => state.contexts[0] === 'closed', 'Context closed');
+    // A closed context renders nothing, but its analyser keeps the last frame, so `peak` is no evidence here; the closed
+    // state with no node routed to the destination is (see the engineering guide's audio probe notes).
     expect(released).toMatchObject({ voices: 0, routed: 0, activeListeners: [], reported: [] });
     expect(released.listenerTypes.sort()).toEqual(['ended', 'ended', 'ended', 'pagehide', 'pageshow', 'statechange', 'visibilitychange']);
     expect(await app.evaluate(() => window.osrAudioTest.controller.play('sound/blip'))).toEqual({ status: 'rejected', code: 'disposed' });
