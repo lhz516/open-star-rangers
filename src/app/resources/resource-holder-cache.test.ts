@@ -368,6 +368,22 @@ describe('generations', () => {
     expect(holder.save()).toBe(true);
   });
 
+  it.each([
+    ['a corrupt entry', () => listed(entryFor(IDENTITY, 'corrupt')), cacheFailure('cache-corrupt', 'key')],
+    ['an incompatible entry', () => listed(entryFor(IDENTITY, 'incompatible')), cacheFailure('cache-incompatible', 'key')],
+    ['a failed listing', () => failed('read-failed'), failed('read-failed')],
+  ])('no longer shows a saved package as saved after %s under its key', async (_name, listing, failure) => {
+    const { holder, cache } = await committing();
+    cache.commits[0].result.resolve(committed(allGroups()));
+    await flush();
+    holder.relist();
+    cache.lists[1].resolve(listing());
+    await flush();
+    expect(holder.getSnapshot().package!.cache).toEqual({ status: 'not-saved', failure, durationMs: null });
+    expect(cacheStatuses(holder.getSnapshot())).toEqual(['complete-viewable', 'memory-only']);
+    expect(holder.save()).toBe(true);
+  });
+
   it('never lets a listing begun before the commit completed mark the saved package as lost', async () => {
     const { holder, cache } = await committing();
     holder.relist();

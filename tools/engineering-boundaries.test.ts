@@ -905,6 +905,27 @@ describe('content slice definition boundary', () => {
   });
 });
 
+/**
+ * The cached direct dependencies of a module in `compilation`: its imports, re-exports, dynamic imports and import
+ * types resolved to source files under `directory/src`, and `COMPUTED_IMPORT` for each import it cannot resolve.
+ */
+function sourceDependencies(compilation: ts.Program, directory: string): (fileName: string) => string[] {
+  const options = compilation.getCompilerOptions();
+  const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+  const edges = new Map<string, string[]>();
+  return fileName => {
+    let resolved = edges.get(fileName);
+    if (!resolved) {
+      const file = compilation.getSourceFile(fileName);
+      resolved = file ? moduleSpecifiers(file)
+        .map(specifier => specifier === COMPUTED_IMPORT ? specifier : ts.resolveModuleName(specifier, fileName, options, ts.sys).resolvedModule?.resolvedFileName)
+        .filter((name): name is string => name === COMPUTED_IMPORT || (name !== undefined && project(name).startsWith('src/'))) : [];
+      edges.set(fileName, resolved);
+    }
+    return resolved;
+  };
+}
+
 describe('original-data dependency boundary', () => {
   // docs/plan/p2/01/spec.md S-06/AC-05: only original-data and the import workers may reach original locators,
   // directly or through re-exports, dynamic imports or import types.
@@ -958,22 +979,11 @@ describe('original-data dependency boundary', () => {
       }
       return allowed;
     };
-    const edges = new Map<string, string[]>();
-    const dependencies = (fileName: string): string[] => {
-      let resolved = edges.get(fileName);
-      if (!resolved) {
-        const file = compilation.getSourceFile(fileName);
-        resolved = file ? moduleSpecifiers(file)
-          .map(specifier => specifier === COMPUTED_IMPORT ? specifier : resolveFrom(specifier, fileName))
-          .filter((name): name is string => name === COMPUTED_IMPORT || (name !== undefined && project(name).startsWith('src/'))) : [];
-        edges.set(fileName, resolved);
-      }
-      return resolved;
-    };
+    const dependencies = sourceDependencies(compilation, directory);
     const violations = new Set<string>();
     for (const start of compilation.getRootFileNames()) {
       const consumer = project(start);
-      if (!consumer.startsWith('src/') || mayReachOriginalData(consumer) || consumer.endsWith('.test-support.ts')) continue;
+      if (!consumer.startsWith('src/') || mayReachOriginalData(consumer) || /\.test-support\.tsx?$/.test(consumer)) continue;
       const seen = new Set([start]);
       const queue = [start];
       for (let index = 0; index < queue.length; index++) {
@@ -1390,6 +1400,32 @@ describe('original-data dependency boundary', () => {
 
   it('keeps every production consumer away from original-data', () => {
     expect(originalDataReach(sharedAppProgram(), root)).toEqual([]);
+  });
+
+  /** Every source module reachable from `start` through imports, re-exports, dynamic imports and import types. */
+  function reachableFrom(compilation: ts.Program, start: string): string[] {
+    const dependencies = sourceDependencies(compilation, root);
+    const seen = new Set([start]);
+    const queue = [start];
+    for (let index = 0; index < queue.length; index++) {
+      for (const next of dependencies(queue[index])) {
+        if (next === COMPUTED_IMPORT || seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    return [...seen].map(fileName => relative(root, fileName).split(sep).join('/')).sort();
+  }
+
+  // P2-11 AC-09: the page's production module graph holds neither the converters nor test support; only the import
+  // Worker entry, which the page loads by URL, reaches original-data.
+  it('keeps original-data and test support out of the page graph from src/main.tsx, and in the Worker graph', () => {
+    const page = reachableFrom(sharedAppProgram(), join(root, 'src/main.tsx'));
+    expect(page).toEqual(expect.arrayContaining(['src/app/App.tsx', 'src/app/browser-ports.ts', 'src/workers/production-package.ts']));
+    expect(page.filter(path => path.startsWith('src/original-data/') || /\.test(?:-support)?\.tsx?$/.test(path))).toEqual([]);
+    const worker = reachableFrom(sharedAppProgram(), join(root, 'src/workers/import-worker.ts'));
+    expect(worker.filter(path => path.startsWith('src/original-data/')).length).toBeGreaterThan(10);
+    expect(page).not.toContain('src/workers/import-worker.ts');
   });
 });
 

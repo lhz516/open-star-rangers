@@ -20,6 +20,8 @@ function run(start: AppFlowState, ...inputs: AppFlowInput[]): AppFlowState {
 const OPEN_DEMO = { type: 'open-demo' } as const;
 const OPEN_IMPORT = { type: 'open-import' } as const;
 const RETURN = { type: 'return-to-menu' } as const;
+const OPEN_VIEWER = { type: 'open-viewer', holdsPackage: true } as const;
+const NO_PACKAGE = { type: 'open-viewer', holdsPackage: false } as const;
 const failed = (cause: unknown) => ({ type: 'demo-release-failed', cause }) as const;
 
 describe('app flow', () => {
@@ -54,6 +56,18 @@ describe('app flow', () => {
     ['menu', true, failed(LATER), 'same'],
     ['import', true, failed(LATER), 'same'],
     ['demo', true, failed(LATER), 'same'],
+    ['menu', false, OPEN_VIEWER, { screen: 'viewer', demoVisit: 3, focusTarget: null }],
+    ['menu', true, OPEN_VIEWER, { screen: 'viewer', demoVisit: 3, focusTarget: null, cleanupFailure: { cause: FIRST } }],
+    ['menu', false, NO_PACKAGE, 'same'],
+    ['menu', true, NO_PACKAGE, 'same'],
+    ['import', false, OPEN_VIEWER, 'same'],
+    ['demo', false, OPEN_VIEWER, 'same'],
+    ['viewer', false, OPEN_VIEWER, 'same'],
+    ['viewer', false, OPEN_DEMO, 'same'],
+    ['viewer', false, OPEN_IMPORT, 'same'],
+    ['viewer', false, RETURN, { screen: 'menu', focusTarget: 'viewer-entry' }],
+    ['viewer', true, RETURN, { screen: 'menu', focusTarget: 'viewer-entry', cleanupFailure: { cause: FIRST } }],
+    ['viewer', false, failed(LATER), { screen: 'viewer', focusTarget: null, cleanupFailure: { cause: LATER } }],
   ];
 
   it.each(cases)('%s (locked: %s) + %o', (screen, locked, input, expected) => {

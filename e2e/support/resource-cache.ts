@@ -92,9 +92,12 @@ declare global {
   }
 }
 
-/** Opens the development page and installs the cache modules and synthetic package builders on `window.osrCache`. */
+/**
+ * Installs the cache modules and synthetic package builders on `window.osrCache`. A page still blank opens the
+ * development page without the app, whose resource holder would otherwise list (and so open) the cache on load.
+ */
 export async function loadCacheModules(page: Page): Promise<void> {
-  if (page.url() === 'about:blank') await page.goto('/');
+  if (page.url() === 'about:blank') await page.goto('/e2e/entries/blank.html');
   await page.evaluate(async () => {
     const load = <T>(path: string): Promise<T> => import(path) as Promise<T>;
     const [cache, records, completeness, slice, ownership, synthetic, budget] = await Promise.all([

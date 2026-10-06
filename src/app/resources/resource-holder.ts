@@ -310,20 +310,24 @@ class Holder implements ResourceHolder {
     if (this.#disposed || listing !== this.#listing) return;
     // A listing begun for an earlier package is dropped, and the current package is listed afresh.
     if (generation !== this.#generation) return this.relist();
-    if (result.status === 'failed') {
-      this.#catalog = Object.freeze({ status: 'unavailable', failure: result });
-    } else {
-      this.#catalog = Object.freeze({ status: 'listed', restorable: restorableEntry(result.entries, this.#profile) });
-      const held = this.#held;
-      // A saved package whose key is gone was cleared from the browser; it stays usable in memory.
-      if (held?.cache.status === 'saved' && held.package.completeness.status === 'complete' && epoch === this.#cacheEpoch) {
-        const key = cacheKeyOf(held.package.completeness.identity);
-        if (!result.entries.some(entry => entry.key !== null && sameCacheKey(entry.key, key))) {
-          this.#setCache(held, Object.freeze({ status: 'not-saved', failure: cacheFailure('not-found', 'key'), durationMs: null }));
-        }
-      }
+    this.#catalog = result.status === 'failed'
+      ? Object.freeze({ status: 'unavailable', failure: result })
+      : Object.freeze({ status: 'listed', restorable: restorableEntry(result.entries, this.#profile) });
+    const held = this.#held;
+    // A saved package stays saved only while the latest listing shows a compatible entry under its key; otherwise it
+    // was cleared or damaged, or storage cannot tell, and it stays usable in memory.
+    if (held?.cache.status === 'saved' && held.package.completeness.status === 'complete' && epoch === this.#cacheEpoch) {
+      const lost = result.status === 'failed' ? result : this.#lostFailure(result.entries, cacheKeyOf(held.package.completeness.identity));
+      if (lost !== null) this.#setCache(held, Object.freeze({ status: 'not-saved', failure: lost, durationMs: null }));
     }
     this.#publish();
+  }
+
+  /** Why the listed entries no longer hold `key` as saved: missing, or listed as corrupt or incompatible; null if compatible. */
+  #lostFailure(entries: readonly CacheEntry[], key: ResourceCacheKey): ResourceCacheFailure | null {
+    const entry = entries.find(candidate => candidate.key !== null && sameCacheKey(candidate.key, key));
+    if (entry?.status === 'compatible') return null;
+    return cacheFailure(entry === undefined ? 'not-found' : entry.status === 'corrupt' ? 'cache-corrupt' : 'cache-incompatible', 'key');
   }
 
   /** Commits the held complete package with the package budget; only its own result, while still held, applies. */

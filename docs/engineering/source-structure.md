@@ -20,9 +20,12 @@ src/
   app/
     App.tsx
     app.css
+    browser-ports.ts
+    ports.ts
     composition/
       synthetic-demo-lifecycle.ts
       synthetic-demo-owner.ts
+      use-resource-holder.ts
       use-synthetic-demo-owner.ts
     flow/
       app-flow.ts
@@ -194,7 +197,9 @@ src/
       synthetic-session-bridge.ts
       use-synthetic-game.ts
     import/
+      FailureNotice.tsx
       failure-copy.ts
+      resource-copy.ts
     pages/
       ImportPlaceholderPage.tsx
       MainMenuPage.tsx
@@ -202,11 +207,14 @@ src/
       use-focus-on-mount.ts
     render/
       SyntheticRenderView.tsx
+    viewer/
+      ViewerPage.tsx
   workers/
     import-protocol.ts
     import-host.ts
     import-job.ts
     import-worker.ts
+    production-package.ts
 ```
 
 [workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）与 `effects/` 中的效果 payload（见[效果 payload](#效果-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
@@ -807,6 +815,7 @@ src/
   - 相邻 Node 测试从 `original-data` 派生三个值并逐一比较；转换器组件、生产白名单或任一份额改变时测试失败，须同步常量。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
+  - `SCENARIO_SOURCES` 列出会识别光盘的测试 Worker 场景各自的合成光盘与白名单版本 ID，Worker 测试入口与 P2-11 的应用测试入口共用它；`scenarioProfile(scenario)` 给出该场景所发资源包的预期包配置（白名单指纹；`synthetic` 用内容测试支持的转换器版本，其余用生产转换器版本；生产包预算），Node 测试证明它与场景实际发出的身份一致。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
   - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`、`NO_LOGIC`、`NO_AUDIO` 与 `NO_MODELS`（都不转换任何 Asset）运行转换阶段，丢弃作业自己的空 `models`、`cockpit-hud-map` 与 `audio` 组，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
@@ -871,7 +880,7 @@ src/
 - **缓存端口：** `ResourceCachePort` 是 P2-10 `ResourceCache` 的结构子集（`checkCapacity`、`commit`、`list`、`restore`），只用 `resource-cache-contract.ts` 的 DOM-free 类型，所以持有者不把浏览器适配带进 Node 程序；真实适配满足它。`profile` 是 01 的预期包配置，`now` 是只用于显示耗时的页面时钟。
 - **列出：** 创建时列出一次，`relist()` 供每次回到菜单时调用；列出期间为 `checking`，只采用最近一次发起的结果。`restorableEntry(entries, profile)` 只选元数据兼容、来源为 `original-import`、指纹与转换器版本都等于预期配置的条目；其他条目不提供恢复，也不清理。结果失败（含意外拒绝，报 `read-failed@list`）时为 `unavailable`。
   - 列出发起后资源包被替换时，丢弃该结果并重新列出。
-  - 已保存的资源包在之后的列出中没有同键条目时，缓存状态改为 `not-saved`（`not-found@key`），资源仍可使用；只在列出发起后缓存状态没有变化时这样判定，所以与提交交错的旧列出不会误判。
+  - 已保存的资源包只在之后的列出中仍有同键且元数据兼容的条目时保持 `saved`。没有同键条目、同键条目为损坏或不兼容，或列出失败时，缓存状态改为 `not-saved`，原因分别为 `not-found@key`、`cache-corrupt@key`、`cache-incompatible@key` 或列出的失败本身；资源仍可使用。只在列出发起后缓存状态没有变化时这样判定，所以与提交交错的旧列出不会误判。
 - **提交：** 来自导入且全包 `complete` 的资源包立即以 `profile.limits` 与 `AbortSignal` 提交，状态为 `saving`，成功为 `saved`，失败为 `not-saved` 并附 P2-10 失败；部分结果与来自缓存的资源包不自动提交。`save()` 在完整资源包为 `not-saved` 时再次提交，不论来源（spec 行为表：列表中已没有该键时提供重新保存），保存中返回 false。意外拒绝报 `write-failed@commit`。替换与释放中止进行中的提交，其结果被丢弃。
 - **恢复：** `restore()` 只在未持有资源包、列出有可恢复条目且没有恢复进行时，以 `profile.limits` 恢复该键。结果的身份与预期配置不一致时为 `cache-incompatible@identity`，重新校验不完整时为 `cache-corrupt@groups`，都不持有；成功时以来源 `cache`、缓存状态 `saved` 替换资源包。意外拒绝报 `read-failed@restore`。恢复期间资源包被替换时，恢复立即结束，迟到的结果被静默丢弃。
 - **空间检查：** `checkSpace()` 以包预算的 `payloadBytes` 调用 `checkCapacity`，结果原样返回，只用于导入前的提示。

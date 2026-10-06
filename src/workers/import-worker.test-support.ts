@@ -1,10 +1,7 @@
 import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
-import {
-  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, NO_MODELS, productionCoveredFiles, productionSizedFiles, sliceCoveredFiles, SYNTHETIC_AUDIO,
-  syntheticGroupsJob, syntheticOpen,
-} from './synthetic-import.test-support.ts';
+import { boundGroups, MARKER, NO_LOGIC, NO_MODELS, scenarioOpen, SYNTHETIC_AUDIO, syntheticGroupsJob } from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
 // selects the scenario, so no query parameter or message reaches beyond the protocol.
@@ -12,7 +9,7 @@ import {
 /** Identifies production-sized synthetic files, sends the four bound groups and proves each was transferred, not copied. */
 const synthetic: ImportJob = async (files, report) => {
   const sent: GroupInput[] = [];
-  const usage = await syntheticGroupsJob(syntheticOpen(productionSizedFiles(), 'synthetic-browser'), fingerprint => {
+  const usage = await syntheticGroupsJob(scenarioOpen('synthetic'), fingerprint => {
     const groups = boundGroups(fingerprint);
     sent.push(...groups.map(([, input]) => input));
     return groups;
@@ -32,17 +29,17 @@ const scenarios: Readonly<Record<string, ImportJob>> = {
    * The production job with its graphics, audio and model stages, no logic step and no model to convert, identifying a
    * disc in the production graphics and sound structure.
    */
-  graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
+  graphics: createImportJob(scenarioOpen('graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The same, with a font table the converter rejects. */
-  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles('font'), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
+  'graphics-corrupt': createImportJob(scenarioOpen('graphics-corrupt'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The same, with a front cockpit element the CCKD reader rejects. */
-  'graphics-element-corrupt': createImportJob(syntheticOpen(productionCoveredFiles('element'), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
+  'graphics-element-corrupt': createImportJob(scenarioOpen('graphics-element-corrupt'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
-  audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS),
+  audio: createImportJob(scenarioOpen('audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS),
   /** The whole production job on the synthetic slice disc: the logic step binds the models the model step converts. */
-  models: createImportJob(syntheticOpen(sliceCoveredFiles(), 'synthetic-models')),
+  models: createImportJob(scenarioOpen('models')),
   /** The same, with a shared mesh the model step rejects. */
-  'models-corrupt': createImportJob(syntheticOpen(sliceCoveredFiles({ corruptMesh: true }), 'synthetic-models')),
+  'models-corrupt': createImportJob(scenarioOpen('models-corrupt')),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */
   busy: async (_, report) => {
     report.progress('identify-source', 0);

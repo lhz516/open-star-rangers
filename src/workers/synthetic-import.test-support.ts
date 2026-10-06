@@ -1,11 +1,13 @@
 import { RESOURCE_GROUPS, type ResourceGroup } from '../content/asset-contract.ts';
 import type { GroupInput } from '../content/completeness.ts';
 import { compareText } from '../content/contract-validation.ts';
-import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
+import { readConverterVersion } from '../content/content-identity.ts';
+import { syntheticIdentity, syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
+import { PRODUCTION_CONVERTER_VERSION } from '../original-data/conversion/converter-version.ts';
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
 import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
 import { identifySource, type VerifiedSource } from '../original-data/source/identify-source.ts';
-import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
+import { PRODUCTION_CATALOG, sourceFingerprint } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
@@ -27,6 +29,7 @@ import type { ImportJob } from './import-host.ts';
 import {
   createImportJob, type AudioStageInput, type GraphicsStepInput, type LogicStepInput, type ModelStepInput, type OpenSource,
 } from './import-job.ts';
+import { PRODUCTION_PACKAGE, type ExpectedPackageProfile } from './production-package.ts';
 
 // Code-generated CloneCD imports for Worker tests in Node and the browser; it never holds original data.
 
@@ -359,3 +362,44 @@ export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = b
   };
 }
 
+/** What a test Worker scenario identifies: its covered files and the version ID of its synthetic whitelist. */
+interface ScenarioSource {
+  readonly covered: Readonly<Record<string, SyntheticFileContent>>;
+  readonly versionId: string;
+}
+
+/**
+ * The synthetic disc of each test Worker scenario that identifies one, shared by the Worker entry and the app test
+ * entry, so the profile the app expects is that of the package the scenario sends.
+ */
+export const SCENARIO_SOURCES = Object.freeze({
+  synthetic: (): ScenarioSource => ({ covered: productionSizedFiles(), versionId: 'synthetic-browser' }),
+  graphics: (): ScenarioSource => ({ covered: productionCoveredFiles(), versionId: 'synthetic-graphics' }),
+  'graphics-corrupt': (): ScenarioSource => ({ covered: productionCoveredFiles('font'), versionId: 'synthetic-graphics' }),
+  'graphics-element-corrupt': (): ScenarioSource => ({ covered: productionCoveredFiles('element'), versionId: 'synthetic-graphics' }),
+  audio: (): ScenarioSource => ({ covered: audioCoveredFiles(), versionId: 'synthetic-audio' }),
+  models: (): ScenarioSource => ({ covered: sliceCoveredFiles(), versionId: 'synthetic-models' }),
+  'models-corrupt': (): ScenarioSource => ({ covered: sliceCoveredFiles({ corruptMesh: true }), versionId: 'synthetic-models' }),
+});
+
+export type IdentifyingScenario = keyof typeof SCENARIO_SOURCES;
+
+/** Identification of a scenario's disc against its synthetic whitelist. */
+export function scenarioOpen(scenario: IdentifyingScenario): OpenSource {
+  const { covered, versionId } = SCENARIO_SOURCES[scenario]();
+  return syntheticOpen(covered, versionId);
+}
+
+/**
+ * The expected package profile of a scenario's package: its whitelist's fingerprint and its converter version (the
+ * content test support's for `synthetic`, which sends those groups, and the production one for the converting
+ * scenarios), with the production package budget.
+ */
+export function scenarioProfile(scenario: IdentifyingScenario): ExpectedPackageProfile {
+  const { covered, versionId } = SCENARIO_SOURCES[scenario]();
+  return Object.freeze({
+    converterVersion: scenario === 'synthetic' ? readConverterVersion(syntheticIdentity().converterVersion) : PRODUCTION_CONVERTER_VERSION,
+    sourceFingerprint: sourceFingerprint(catalogFor(covered, versionId)),
+    limits: PRODUCTION_PACKAGE.limits,
+  });
+}

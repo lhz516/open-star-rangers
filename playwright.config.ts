@@ -28,7 +28,10 @@ export default defineConfig({
     },
     {
       name: 'production',
-      testIgnore: ['**/native-lifecycle.spec.ts', '**/browser-replay.spec.ts', '**/import-worker.spec.ts', '**/resource-cache.spec.ts', '**/audio-playback.spec.ts'],
+      testIgnore: [
+        '**/native-lifecycle.spec.ts', '**/browser-replay.spec.ts', '**/import-worker.spec.ts', '**/resource-cache.spec.ts', '**/audio-playback.spec.ts',
+        '**/app-shell-resources.spec.ts',
+      ],
       use: { baseURL: previewOrigin },
     },
     {

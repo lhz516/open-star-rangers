@@ -33,7 +33,8 @@ function contextPort(context: AudioContext): AudioContextPort {
   };
 }
 
-const browserAudio: AudioCapability = {
+/** Web Audio: a context per controller and buffers without one. */
+export const BROWSER_AUDIO: AudioCapability = Object.freeze<AudioCapability>({
   // A missing constructor throws here, which the controller reports as unavailable.
   createContext: () => contextPort(new AudioContext()),
   createBuffer(channels, sampleRate) {
@@ -41,18 +42,19 @@ const browserAudio: AudioCapability = {
     channels.forEach((data, channel) => buffer.getChannelData(channel).set(data));
     return buffer;
   },
-};
+});
 
-const pageLifecycle: PageLifecycleHost = {
+/** The document's visibility and the window's page lifecycle events. */
+export const BROWSER_PAGE_LIFECYCLE: PageLifecycleHost = Object.freeze<PageLifecycleHost>({
   visible: () => document.visibilityState === 'visible',
   listen(type, listener) {
     const target = type === 'visibilitychange' ? document : window;
     target.addEventListener(type, listener);
     return () => target.removeEventListener(type, listener);
   },
-};
+});
 
 /** The production audio controller: call `unlock()` from a user gesture handler and `dispose()` with the session. */
 export function createBrowserAudioController({ reportError }: { readonly reportError: (error: unknown) => void }): AudioController {
-  return createAudioController({ audio: browserAudio, lifecycle: pageLifecycle, reportError });
+  return createAudioController({ audio: BROWSER_AUDIO, lifecycle: BROWSER_PAGE_LIFECYCLE, reportError });
 }

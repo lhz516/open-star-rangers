@@ -109,7 +109,7 @@ updated: 2026-10-06
 | [03-cache-orchestration.md](./subtasks/03-cache-orchestration.md) | 02 | completed |
 | [04-mission-diagnostics.md](./subtasks/04-mission-diagnostics.md) | 02 | completed |
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | completed |
-| [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | pending |
+| [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | pending |
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | pending |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |

@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Rolldown } from 'vite';
 import { licensePolicy } from './license-policy.ts';
 import { object, type PackageAudit } from './packages.ts';
@@ -69,8 +69,21 @@ export function collectDistribution(directory: string, audit: PackageAudit, bund
     if (owners.size === 0) throw new ComplianceError('chunk-ownership', 'Emitted chunk has no attributable module sources', asset.fileName);
     sources[relativePath(asset.fileName)] = [...owners].sort(compare);
   }
-  for (const asset of Object.values(bundle)) {
-    if (asset.type !== 'asset') continue;
+  // Source maps first, so a JavaScript asset another build emitted can be attributed through its own map below.
+  const assets = Object.values(bundle).filter(asset => asset.type === 'asset')
+    .sort((left, right) => Number(!left.fileName.endsWith('.map')) - Number(!right.fileName.endsWith('.map')));
+  const mapFiles = new Map<string, unknown>();
+  /**
+   * Whether a JavaScript asset is a module Worker built separately: its code names its sibling map, which names it
+   * back, and an emitted chunk loads it by file name.
+   */
+  const isWorker = (path: string, source: string | Uint8Array): boolean => {
+    const name = basename(path);
+    const code = typeof source === 'string' ? source : Buffer.from(source).toString('utf8');
+    return code.trimEnd().endsWith(`//# sourceMappingURL=${name}.map`) && mapFiles.get(`${path}.map`) === name
+      && Object.values(bundle).some(chunk => chunk.type === 'chunk' && chunk.code.includes(name));
+  };
+  for (const asset of assets) {
     const path = relativePath(asset.fileName);
     if (path.endsWith('.map')) {
       let map: unknown;
@@ -82,9 +95,12 @@ export function collectDistribution(directory: string, audit: PackageAudit, bund
         throw new ComplianceError('map-ownership', 'Source map must expose complete source attribution', path);
       }
       sources[path] = [...new Set(map.sources.map(source => owner(resolve(root, 'dist', dirname(path), typeof map.sourceRoot === 'string' ? map.sourceRoot : '', source))))].sort(compare);
+      mapFiles.set(path, map.file);
     } else {
       const owners = new Set<string>(path.endsWith('.css') ? cssOwners : []);
       for (const original of asset.originalFileNames) owners.add(owner(original));
+      // A module Worker is built separately and emitted as an asset with its own source map.
+      if (owners.size === 0 && path.endsWith('.js') && isWorker(path, asset.source)) for (const source of sources[`${path}.map`] ?? []) owners.add(source);
       if (owners.size === 0) throw new ComplianceError('asset-ownership', 'Generated asset has no attributable original source', path);
       sources[path] = [...owners].sort(compare);
     }

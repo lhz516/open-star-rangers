@@ -42,6 +42,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 
 - 当前锁与实际安装集合由pnpm自身frozen校验及只读查询核对；frozen在自有离线临时副本中运行lockfile-only/ignore-scripts，不修改用户树。缺依赖/文本/归属、未知或不支持的网站许可使build非零；普通命令不下载许可或安装依赖。
 - 分发依据真实chunk/module、map附带来源及静态文件，不看dev标签。Vite/Rolldown实际注入的helper也属于分发；当前lightningcss仅本地工具，不自动获得网站许可。public复制文件必须显式归属，当前无public资源系统。
+- 模块 Worker（P2-11 起生产构建含导入 Worker）由 Vite 单独构建，作为没有原始文件名的 `.js` 资产连同自己的 `.map` 写入页面 bundle；归属先处理全部 map，再按同名 `.map` 的来源归属这种 `.js` 资产，但只在三者都成立时：脚本末尾的 `sourceMappingURL` 指向该 map，map 的 `file` 指回该脚本，且某个产出的 chunk 以文件名引用它（页面以 URL 载入 Worker）；否则仍以 `asset-ownership` 失败。Vite 把 Worker map 的来源写成相对于进程当前目录的 `dist/assets`，所以构建须在仓库根运行（`pnpm build` 即如此）；在别处运行时来源无法解析，构建以归属错误失败。
 - [声明生成器](../../tools/compliance/notices.ts)保留当前shipped包的完整本地LICENSE/COPYRIGHT/NOTICE（含多文本/目录及显式声明的义务），校验许可正文/版权基础完整性；未知义务仍需人工审阅，不是法律鉴定。项目MIT与原版权利范围见[根说明](../../README.md#许可证与原版权利)。
 - 构建先移除旧声明/inventory及自有temporary文件；正常输入在load前记录并于写出前核对，输入变化或生成/IO失败不能留有效旧inventory。只管理3个明确输出，不清用户/local/或依赖目录；输入/产物SHA256有变化须重建。
 
@@ -134,6 +135,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
+- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`），`cache=unavailable` 换成没有 IndexedDB 的缓存；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
@@ -287,13 +289,21 @@ P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07
 P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。它是现代网页界面，不是原版菜单，也不提供任何原版玩法入口或导入能力。
 
 - [app-flow.ts](../../src/app/flow/app-flow.ts) 是 DOM-free 的页面流转，由邻接 Node 测试覆盖。
-  - 冻结快照为 `{screen:'menu'|'import'|'demo', demoVisit, focusTarget, cleanupFailure}`。
-  - 输入为 open-demo、open-import、return-to-menu 与 `{demo-release-failed, cause}`。不适用的输入原样返回同一对象；`demoVisit` 耗尽时抛 `RangeError`。
+  - 冻结快照为 `{screen:'menu'|'import'|'demo'|'viewer', demoVisit, focusTarget, cleanupFailure}`。
+  - 输入为 open-demo、open-import、`{open-viewer, holdsPackage}`、return-to-menu 与 `{demo-release-failed, cause}`。不适用的输入原样返回同一对象；未持有资源包时不能进入查看器（P2-11）；`demoVisit` 耗尽时抛 `RangeError`。
+  - 返回菜单的焦点目标：导入画面回到导入入口，查看器回到 `View resources`，演示回到演示入口，演示锁存时回到菜单标题。
   - 页面状态只在内存中，不用路由或 history；刷新后回到主菜单。
 - [synthetic-demo-lifecycle.ts](../../src/app/composition/synthetic-demo-lifecycle.ts) 是每个应用实例一个的演示槽位，持有同步锁存，由真实 owner/Session 的 Node 测试覆盖。
   - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit；锁存时不调用工厂；否则创建 owner，交付其初始化回滚记录，未锁存时只派发一次 start。同一 visit 不会再次 start，失败的 start 也不重试。
   - `close()` 幂等，释放 owner、交付其清理失败记录，再报告 dispose 抛出的错误。`release()` 供“返回菜单”在切换画面前同步释放。
   - 失败经 `onCleanupFailure` 交给页面流转。该出口抛错时改经 `reportError` 报告；`reportError` 自身抛错被丢弃。无论出口是否失败，锁存都已生效。
+- **应用端口（P2-11）：** [App](../../src/app/App.tsx) 由入口传入 [AppPorts](../../src/app/ports.ts)：导入 Worker 端口工厂、资源缓存端口、音频能力与页面生命周期、WebGL 表面工厂、预期包配置与 `reportError`。[main.tsx](../../src/main.tsx) 只传 [createBrowserPorts()](../../src/app/browser-ports.ts) 的生产实现与生产包配置；生产代码不读 URL 参数或全局开关。
+  - [use-resource-holder.ts](../../src/app/composition/use-resource-holder.ts) 在 effect 中创建应用外壳的资源持有者（随即列出缓存），卸载、StrictMode 重跑与 Fast Refresh 时释放；外壳每次返回菜单都调用 `relist()`。
+  - 主菜单按持有者快照显示原版数据状态：正在检查存储、没有、找到已保存的资源（尚未校验）或存储不可用；持有资源包时列出状态阶梯（保存与恢复附耗时）。存储、恢复与保存的失败以 [FailureNotice](../../src/ui/import/FailureNotice.tsx) 显示 05 的文案与技术细节；持有资源包时存储不可用也照常显示，除非它就是该资源包未保存的原因。
+  - 演示生命周期的错误同样交给端口的 `reportError`。
+  - 只测缓存适配的浏览器用例经 [resource-cache.ts](../../e2e/support/resource-cache.ts) 的 `loadCacheModules` 打开不含应用的 [blank.html](../../e2e/entries/blank.html)，因为应用一载入就列出缓存，会打开（从而创建）数据库。
+  - 入口：持有资源包时有 `View resources`；未持有且有可恢复条目时有 `Open saved resources`（恢复中禁用，由它发起的恢复成功后焦点移到 `View resources`）；完整资源包未保存时有 `Save again`（保存中禁用）。
+  - 查看器画面目前是占位（[ViewerPage](../../src/ui/viewer/ViewerPage.tsx)），由 P2-11 子任务 11 替换。
 - [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。进入演示前，外壳先用当前状态同步校验转换：`demoVisit` 耗尽时以 alert 显示 `RangeError` 并停留在主菜单，不创建 owner；实际提交仍走函数式更新，双击时每次激活至多一次转换。
 - [ui/pages/](../../src/ui/pages/) 是三个只用原生按钮的画面，不在 window/document 注册键盘监听。
   - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。

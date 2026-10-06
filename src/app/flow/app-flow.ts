@@ -1,14 +1,14 @@
 /**
- * In-memory page flow of the P1 menu prototype: main menu, import placeholder and synthetic demo.
- * Pure and DOM-free; the React shell holds the current value, renders its screen and applies its
- * focus target. A cleanup failure latches for the life of the app instance and blocks new demos.
- * Contract: docs/plan/p1/08/spec.md.
+ * In-memory page flow: main menu, import, synthetic demo and resource viewer. Pure and DOM-free; the
+ * React shell holds the current value, renders its screen and applies its focus target. A demo
+ * cleanup failure latches for the life of the app instance and blocks new demos; the viewer opens
+ * only while a resource package is held. Contracts: docs/plan/p1/08/spec.md, docs/plan/p2/11/spec.md.
  */
 
-export type AppScreen = 'menu' | 'import' | 'demo';
+export type AppScreen = 'menu' | 'import' | 'demo' | 'viewer';
 
 /** Where the menu puts focus after a screen returns to it. */
-export type AppFocusTarget = 'demo-entry' | 'import-entry' | 'menu-heading';
+export type AppFocusTarget = 'demo-entry' | 'import-entry' | 'viewer-entry' | 'menu-heading';
 
 /** The first cleanup or rollback failure; the record is frozen, its cause is not. */
 export type AppCleanupFailure = Readonly<{ cause: unknown }>;
@@ -25,11 +25,19 @@ export type AppFlowState = Readonly<{
 
 export type AppFlowInput =
   | { readonly type: 'open-demo' | 'open-import' | 'return-to-menu' }
+  /** `holdsPackage`: whether the app holds a resource package to view. */
+  | { readonly type: 'open-viewer'; readonly holdsPackage: boolean }
   | { readonly type: 'demo-release-failed'; readonly cause: unknown };
 
 export const INITIAL_APP_FLOW: AppFlowState = Object.freeze({
   screen: 'menu', demoVisit: 0, focusTarget: null, cleanupFailure: null,
 });
+
+/** The entry a screen returns focus to; after a demo whose cleanup failed, the disabled entry gives way to the heading. */
+function returnFocus(screen: Exclude<AppScreen, 'menu'>, demoBlocked: boolean): AppFocusTarget {
+  if (screen === 'demo') return demoBlocked ? 'menu-heading' : 'demo-entry';
+  return screen === 'import' ? 'import-entry' : 'viewer-entry';
+}
 
 /**
  * Returns the next state, or the same object when the input does not apply. Throws RangeError
@@ -45,11 +53,12 @@ export function nextAppFlow(state: AppFlowState, input: AppFlowInput): AppFlowSt
     case 'open-import':
       if (screen !== 'menu') return state;
       return Object.freeze({ ...state, screen: 'import', focusTarget: null });
+    case 'open-viewer':
+      if (screen !== 'menu' || !input.holdsPackage) return state;
+      return Object.freeze({ ...state, screen: 'viewer', focusTarget: null });
     case 'return-to-menu':
       if (screen === 'menu') return state;
-      return Object.freeze({
-        ...state, screen: 'menu', focusTarget: screen === 'import' ? 'import-entry' : cleanupFailure ? 'menu-heading' : 'demo-entry',
-      });
+      return Object.freeze({ ...state, screen: 'menu', focusTarget: returnFocus(screen, cleanupFailure !== null) });
     case 'demo-release-failed':
       // The first cause wins; a later failure neither replaces it nor moves focus.
       if (cleanupFailure) return state;

@@ -34,8 +34,9 @@ import {
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from './import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO,
-  NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport, syntheticSource,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER,
+  NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, SCENARIO_SOURCES, scenarioOpen, scenarioProfile,
+  sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport, syntheticSource, type IdentifyingScenario,
 } from './synthetic-import.test-support.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
@@ -534,5 +535,30 @@ describe('package transfer check', () => {
     const buffer = payload.bytes.buffer as ArrayBuffer;
     structuredClone(buffer, { transfer: [buffer] });
     expect(failure(detached)).toEqual({ code: 'payload-detached', path: 'groups.audio.payloads[0].bytes' });
+  });
+});
+
+describe('app test entry profiles', () => {
+  // P2-11 technical decision 7: the development test entry expects the profile of the package its Worker scenario sends.
+  it('names the fingerprint each scenario identifies', async () => {
+    for (const scenario of Object.keys(SCENARIO_SOURCES) as IdentifyingScenario[]) {
+      const { covered, versionId } = SCENARIO_SOURCES[scenario]();
+      expect((await syntheticSource(covered, versionId)).identity.fingerprint, scenario).toBe(scenarioProfile(scenario).sourceFingerprint);
+    }
+  });
+
+  it('names the identity of the package the models and synthetic scenarios send', async () => {
+    const models = scenarioProfile('models');
+    const imported = await syntheticImport(SCENARIO_SOURCES.models().covered, 'synthetic-models');
+    const messages = await run(createImportJob(scenarioOpen('models')), imported.files);
+    const groups = messages.flatMap(message => (message.type === 'group' ? [readGroupManifest(message.input.manifest).identity] : []));
+    expect(groups).toHaveLength(4);
+    for (const identity of groups) {
+      expect(identity).toMatchObject({ converterVersion: models.converterVersion, origin: { type: 'original-import', sourceFingerprint: models.sourceFingerprint } });
+    }
+    const synthetic = scenarioProfile('synthetic');
+    for (const [, { manifest }] of boundGroups(synthetic.sourceFingerprint)) {
+      expect(readGroupManifest(manifest).identity).toMatchObject({ converterVersion: synthetic.converterVersion, origin: { sourceFingerprint: synthetic.sourceFingerprint } });
+    }
   });
 });

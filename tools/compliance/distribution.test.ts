@@ -25,7 +25,7 @@ async function syntheticBuild(root: string, options: DistributionOptions = {}, p
     name: 'synthetic-actual-distribution', enforce: 'post',
     writeBundle(_options, bundle) { inventory = makeInventory(root, audit, collectDistribution(root, audit, bundle, options)); },
   };
-  await build({ root, configFile: false, logLevel: 'silent', plugins: [...plugins, capture], build: { sourcemap: true } });
+  await build({ root, configFile: false, logLevel: 'silent', plugins: [...plugins, capture], build: { sourcemap: true }, worker: { format: 'es' } });
   if (!inventory) throw new Error('Actual build capture did not run');
   return inventory;
 }
@@ -74,6 +74,30 @@ describe('actual Vite distribution ownership', () => {
     expect(() => validateInventory(root, rebuilt)).toThrow(/file set/);
     writeFileSync(join(root, 'dist', rebuilt.artifacts[0].path), 'changed synthetic artifact');
     expect(() => validateInventory(root, rebuilt)).toThrow(/artifact changed/);
+  }));
+  it('attributes a module Worker, emitted as an asset, through its own source map', async () => fixture(async (root, write) => {
+    setup(write);
+    write('main.js', 'new Worker(new URL("./worker.js", import.meta.url), { type: "module" });');
+    write('worker.js', 'import {value} from "fixture-dev-package"; self.postMessage(value);');
+    // Vite writes a Worker's map sources relative to the process directory's dist, as in a real build run from the root.
+    const directory = process.cwd();
+    process.chdir(root);
+    const inventory = await syntheticBuild(root).finally(() => { process.chdir(directory); });
+    const worker = inventory.artifacts.find(artifact => /^assets\/worker-[^/]+\.js$/.test(artifact.path));
+    expect(worker?.sources).toEqual(expect.arrayContaining(['project:worker.js', expect.stringMatching(/^package:fixture-dev-package@/)]));
+    expect(inventory.dependencies.find(pkg => pkg.name === 'fixture-dev-package')?.distributed).toBe(true);
+    expect(inventory.inputs.some(input => input.path === 'worker.js')).toBe(true);
+    expect(validateInventory(root, inventory)).toEqual(inventory);
+  }));
+  it('rejects a generated script with a source map that no chunk loads', async () => fixture(async (root, write) => {
+    setup(write);
+    await expect(syntheticBuild(root, {}, [{
+      name: 'unreferenced-synthetic-script',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'assets/unknown.js', source: 'self.postMessage(1);\n//# sourceMappingURL=unknown.js.map\n' });
+        this.emitFile({ type: 'asset', fileName: 'assets/unknown.js.map', source: JSON.stringify({ version: 3, file: 'unknown.js', sources: ['../../main.js'], mappings: '' }) });
+      },
+    }])).rejects.toThrow(/Generated asset/);
   }));
   it('rejects actual unknown virtual modules and generated assets', async () => fixture(async (root, write) => {
     setup(write);
