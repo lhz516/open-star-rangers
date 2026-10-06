@@ -185,9 +185,16 @@ export function buildImfat(idBase: number, entries: SyntheticEntry[]): Uint8Arra
 /** A 36-byte image record followed (at the given offsets) by nothing else; callers append data. */
 export function imageRecord(
   w: ByteWriter,
-  fields: { encoding: number; width: number; height: number; paletteOffset: number; paletteCount: number; pixelOffset: number; size: number },
+  fields: {
+    encoding: number; width: number; height: number; paletteOffset: number; paletteCount: number; pixelOffset: number; size: number;
+    /** 8 unless a test needs another bit depth. */
+    bitsPerPixel?: number;
+    /** The +16 field, 0 unless a test needs another value. */
+    reserved?: number;
+  },
 ): ByteWriter {
-  return w.u32(8, fields.encoding, fields.width, fields.height, 0, fields.paletteOffset, fields.paletteCount, fields.pixelOffset, fields.size);
+  const { bitsPerPixel = 8, reserved = 0 } = fields;
+  return w.u32(bitsPerPixel, fields.encoding, fields.width, fields.height, reserved, fields.paletteOffset, fields.paletteCount, fields.pixelOffset, fields.size);
 }
 
 // Raw 2,352-byte MODE1 sectors and ISO9660 structures (ECMA-119), generated on demand.

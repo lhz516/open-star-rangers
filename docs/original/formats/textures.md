@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-04
+updated: 2026-10-05
 related: [U-001, U-006, U-018, U-019, U-028, U-029]
 ---
 
@@ -10,7 +10,7 @@ related: [U-001, U-006, U-018, U-019, U-028, U-029]
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
-- Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseVgaPalette`, `parseImage`, `decodeSpriteRle`)
+- Parser: [`src/original-data/conversion/source-graphics.ts`](../../../src/original-data/conversion/source-graphics.ts) (`readDataPalette`, `readImageRecordHeader`, `decodeImageRecord`, `readEmbeddedPalette`)
 - Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all TEX (59), BITM (28), and MFDD (3) entries.
 
 ## 1. DATA: global palette (Confirmed)

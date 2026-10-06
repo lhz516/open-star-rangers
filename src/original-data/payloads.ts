@@ -1,7 +1,7 @@
 /**
- * Parsers for IMFAT entry payloads: images, meshes (MESH), and models (MODL).
- * Formats: docs/original/formats/textures.md and docs/original/formats/mesh.md.
- * All offsets inside a block are relative to the block start (see imfat.ts).
+ * Research parsers for IMFAT entry payloads: ID lists (M2ID, NEBC), meshes (MESH), and models (MODL).
+ * Formats: docs/original/formats/hud.md and docs/original/formats/mesh.md. Palettes, images, and fonts are read by
+ * conversion/source-graphics.ts. All offsets inside a block are relative to the block start (see imfat.ts).
  */
 
 export class PayloadError extends Error {}
@@ -14,167 +14,6 @@ function need(block: Uint8Array, end: number, what: string): void {
   if (end > block.byteLength) throw new PayloadError(`${what} extends past the block`);
 }
 
-/** Size of the image record shared by TEX, BITM, MFDD, CCKD, ANIM, and some TABL entries. */
-export const IMAGE_RECORD_SIZE = 36;
-
-export const ImageEncoding = {
-  Raw: 0,
-  /** Animation frames; not decoded yet. */
-  Animation: 1,
-  /** Per-row runs of transparent and opaque pixels. */
-  SpriteRle: 2,
-} as const;
-
-export interface IndexedImage {
-  width: number;
-  height: number;
-  encoding: number;
-  /** One palette index per pixel, row by row. */
-  pixels: Uint8Array;
-  /** 1 where a pixel is opaque; null when every pixel is opaque (raw images). */
-  opaque: Uint8Array | null;
-  /**
-   * Embedded palette as 8-bit RGB triplets (converted from the stored BGR order), or null if
-   * the image has none. In game these colours are mapped to the nearest DATA palette entries.
-   */
-  palette: Uint8Array | null;
-}
-
-/**
- * Decodes the sprite run-length encoding: each row alternates u16 transparent-run and
- * u16 opaque-run lengths, starting with a transparent run; each opaque run is followed by
- * its pixels. A row ends when the runs add up to the width.
- */
-export function decodeSpriteRle(data: Uint8Array, width: number, height: number): { pixels: Uint8Array; opaque: Uint8Array } {
-  const v = view(data);
-  const pixels = new Uint8Array(width * height);
-  const opaque = new Uint8Array(width * height);
-  let o = 0;
-  for (let y = 0; y < height; y++) {
-    let x = 0;
-    let transparent = true;
-    while (x < width) {
-      if (o + 2 > data.byteLength) throw new PayloadError(`sprite row ${y} is truncated`);
-      const run = v.getUint16(o, true);
-      o += 2;
-      if (x + run > width) throw new PayloadError(`sprite row ${y} overflows the width`);
-      if (!transparent) {
-        if (o + run > data.byteLength) throw new PayloadError(`sprite row ${y} is truncated`);
-        const at = y * width + x;
-        pixels.set(data.subarray(o, o + run), at);
-        opaque.fill(1, at, at + run);
-        o += run;
-      }
-      x += run;
-      transparent = !transparent;
-    }
-  }
-  if (o !== data.byteLength) throw new PayloadError('trailing bytes after sprite data');
-  return { pixels, opaque };
-}
-
-/** Parses the 36-byte image record at `offset` (0 for TEX and BITM entries). */
-export function parseImage(block: Uint8Array, offset = 0): IndexedImage {
-  const v = view(block);
-  need(block, offset + IMAGE_RECORD_SIZE, 'image record');
-  if (v.getUint32(offset, true) !== 8) throw new PayloadError('unsupported bits per pixel');
-  const encoding = v.getUint32(offset + 4, true);
-  const width = v.getUint32(offset + 8, true);
-  const height = v.getUint32(offset + 12, true);
-  const paletteOffset = v.getUint32(offset + 20, true);
-  const paletteCount = v.getUint32(offset + 24, true);
-  const pixelOffset = v.getUint32(offset + 28, true);
-  const dataSize = v.getUint32(offset + 32, true);
-  need(block, pixelOffset + dataSize, 'pixel data');
-  const data = block.subarray(pixelOffset, pixelOffset + dataSize);
-  let pixels: Uint8Array;
-  let opaque: Uint8Array | null = null;
-  if (encoding === ImageEncoding.Raw) {
-    if (dataSize !== width * height) throw new PayloadError('raw image size mismatch');
-    pixels = data;
-  } else if (encoding === ImageEncoding.SpriteRle) {
-    ({ pixels, opaque } = decodeSpriteRle(data, width, height));
-  } else {
-    throw new PayloadError(`unsupported image encoding ${encoding}`);
-  }
-  let palette: Uint8Array | null = null;
-  if (paletteCount > 0) {
-    need(block, paletteOffset + paletteCount * 3, 'palette');
-    palette = new Uint8Array(paletteCount * 3);
-    for (let i = 0; i < paletteCount * 3; i += 3) {
-      palette[i] = block[paletteOffset + i + 2];
-      palette[i + 1] = block[paletteOffset + i + 1];
-      palette[i + 2] = block[paletteOffset + i];
-    }
-  }
-  return { width, height, encoding, pixels, opaque, palette };
-}
-
-/**
- * DATA entry: 256 VGA colours with 6-bit components, expanded to 8 bits by bit replication
- * ((c << 2) | (c >> 4)), which reproduces the colours in DOSBox-X screenshots exactly.
- */
-export function parseVgaPalette(block: Uint8Array): Uint8Array {
-  need(block, 768, 'palette');
-  return Uint8Array.from(block.subarray(0, 768), (c) => ((c & 63) << 2) | ((c & 63) >> 4));
-}
-
-/**
- * MFDD entry: two lists of image records, {u32 offset, u32 count} at 0x00 and 0x08.
- * For the ship status display, list 0 holds full backgrounds and list 1 overlays (Likely).
- */
-export function parseMfdImages(block: Uint8Array): [IndexedImage[], IndexedImage[]] {
-  const v = view(block);
-  need(block, 16, 'MFD header');
-  const lists: [IndexedImage[], IndexedImage[]] = [[], []];
-  for (let l = 0; l < 2; l++) {
-    const offset = v.getUint32(l * 8, true);
-    const count = v.getUint32(l * 8 + 4, true);
-    for (let i = 0; i < count; i++) lists[l].push(parseImage(block, offset + i * IMAGE_RECORD_SIZE));
-  }
-  return lists;
-}
-
-export interface BitmapFont {
-  /** Glyph cell width in pixels (at most 8). */
-  width: number;
-  /** Glyph height in pixels; one byte per row. */
-  height: number;
-  /** 256 glyphs × `height` bytes; bit 7 of each byte is the leftmost pixel. */
-  glyphs: Uint8Array;
-}
-
-/**
- * 1-bit bitmap font with 256 glyphs: a 4-byte header {0, unknown, width, height}, then
- * `height` bytes per glyph. Found as CCKD header tables and as an OPTIONS.NOB TABL entry.
- */
-export function parseBitmapFont(table: Uint8Array): BitmapFont {
-  if (table.byteLength < 4) throw new PayloadError('font table too small');
-  const width = table[2];
-  const height = table[3];
-  if (width < 1 || width > 8 || height < 1 || table.byteLength !== 4 + 256 * height) {
-    throw new PayloadError('unexpected font table layout');
-  }
-  return { width, height, glyphs: table.subarray(4) };
-}
-
-export function parseCockpitFonts(block: Uint8Array): BitmapFont[] {
-  const v = view(block);
-  need(block, 8, 'cockpit font header');
-  const directory = v.getUint32(0, true);
-  const count = v.getUint32(4, true);
-  need(block, directory + count * 8, 'cockpit font directory');
-  const fonts: BitmapFont[] = [];
-  for (let i = 0; i < count; i++) {
-    const at = directory + i * 8;
-    const offset = v.getUint32(at, true);
-    const size = v.getUint32(at + 4, true);
-    need(block, offset + size, 'cockpit font table');
-    fonts.push(parseBitmapFont(block.subarray(offset, offset + size)));
-  }
-  return fonts;
-}
-
 /** {u32 offset, u32 count} at 0x00 followed by `count` u32 entry IDs (M2ID, NEBC). */
 export function parseIdList(block: Uint8Array): number[] {
   const v = view(block);
@@ -184,6 +23,7 @@ export function parseIdList(block: Uint8Array): number[] {
   need(block, offset + count * 4, 'ID list');
   return Array.from({ length: count }, (_, i) => v.getUint32(offset + i * 4, true));
 }
+
 export interface Mesh {
   /** x, y, z per vertex. */
   positions: Float32Array;

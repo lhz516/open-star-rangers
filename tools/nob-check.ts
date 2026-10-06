@@ -4,7 +4,10 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { entryData, parseImfat } from '../src/original-data/imfat.ts';
-import { parseCockpitFonts, parseIdList, parseImage, parseMesh, parseMfdImages, parseModel } from '../src/original-data/payloads.ts';
+import {
+  decodeImageRecord, readCockpitFonts, readEmbeddedPalette, readImageRecordHeader, readMfdRecordOffsets,
+} from '../src/original-data/conversion/source-graphics.ts';
+import { parseIdList, parseMesh, parseModel } from '../src/original-data/payloads.ts';
 
 const file = process.argv[2];
 if (!file) {
@@ -26,13 +29,14 @@ for (const entry of archive.entries) {
     switch (entry.type) {
       case 'TEX':
       case 'BITM':
-        parseImage(block);
+        decodeImageRecord(block);
+        if (readImageRecordHeader(block).paletteCount > 0) readEmbeddedPalette(block);
         break;
       case 'MFDD':
-        parseMfdImages(block);
+        for (const offset of readMfdRecordOffsets(block).flat()) decodeImageRecord(block, offset);
         break;
       case 'CCKD':
-        parseCockpitFonts(block);
+        readCockpitFonts(block);
         break;
       case 'M2ID':
       case 'NEBC': {

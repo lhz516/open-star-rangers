@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-03
+updated: 2026-10-05
 related: [U-001, U-028, U-030]
 ---
 
@@ -10,7 +10,7 @@ related: [U-001, U-028, U-030]
 
 Container format: [IMFAT](./imfat.md); images use the [image record](./textures.md#2-image-record-36-bytes-confirmed). Confidence labels as defined in the IMFAT doc. Structure only; no original content.
 
-- Parser: [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseBitmapFont`, `parseCockpitFonts`, `parseIdList`, `parseImage`)
+- Parsers: [`src/original-data/conversion/source-graphics.ts`](../../../src/original-data/conversion/source-graphics.ts) (`readFontTable`, `readCockpitFontTables`, `readImageRecordHeader`, `decodeImageRecord`) and [`src/original-data/payloads.ts`](../../../src/original-data/payloads.ts) (`parseIdList`)
 - Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses the CCKD fonts and checks M2ID and NEBC references.
 
 ## 1. Bitmap fonts (Confirmed)

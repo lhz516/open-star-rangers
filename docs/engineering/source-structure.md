@@ -97,6 +97,8 @@ src/
       identify-source.ts
       open-verified-source.ts
       verify-source-mappings.ts
+    conversion/
+      source-graphics.ts
   platform/
     browser/
       browser-session-host.ts
@@ -305,6 +307,22 @@ src/
   - 返回绑定本来源指纹的新冻结表：条目级映射为 `verified`；含子资源 locator 的映射一律为 `declared`，由理解该 payload 的转换任务核验。
   - 每个封包的目录在一次核验中只读一次，条目字节不跨部件保留；首个错误终止核验，不修改输入。
 - **测试数据：** [source.test-support.ts](../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 按合成文件内容生成白名单。
+
+### 图形转换
+
+[P2-05](../plan/p2/05/spec.md) 把原版的调色板、图像记录与字体转换为[图形 payload](#图形-payload)。`original-data/conversion/` 不属于任何能力族，只处理已读取的条目字节，封包经已验证来源取得（见[工程约定](./README.md#lint-规则eslintconfigjs)）。
+
+- **源结构读取：** [source-graphics.ts](../../src/original-data/conversion/source-graphics.ts)（[P2-05/03](../plan/p2/05/subtasks/03-source-hardening.md)）是 DATA、36 字节图像记录、MFDD 记录列表与点阵字体表的唯一读取实现，格式见 [textures](../original/formats/textures.md)、[cockpit](../original/formats/cockpit.md) 与 [hud](../original/formats/hud.md)。
+  - `readDataPalette` 要求恰为 768 字节且分量不大于 63（不截断高位），按位复制展开为 8 位 RGB。
+  - `readImageRecordHeader(block, offset)` 只读 36 字节头，依次校验位深为 8、+16 为 0、编码为 0 或 2（其余为 `unsupported-encoding`）、宽高与嵌入调色板条目数在 `GRAPHICS_LIMITS` 内（`limit-exceeded`，带限值名与观察值），以及调色板与像素范围在块内（不溢出的比较）。不按声明的规模分配，65535×65535 的头部只凭字段即被拒绝。
+  - `decodeImageRecord(block, offset)` 与 `readEmbeddedPalette(block, offset)` 自己从块中重新读取并校验记录头，不接受调用者传入的头部，之后才分配：raw 要求数据恰为宽 × 高并复制；精灵 RLE 拒绝截断、越行与尾随字节，输出透明像素为 0 的索引与规范打包掩码。行序保持存储顺序。嵌入调色板按 BGR 读为 RGB，没有时为 `subresource-not-found`。调用者可先用 `readImageRecordHeader` 取得尺寸扣除预算，再解码。
+  - `readMfdRecordOffsets` 返回两个列表中记录的块内偏移，每个列表须整体落在块内，计数因此以块长为界；容器语义归 P2-07。
+  - `readFontTable` 要求头部首字节为 0、单元宽与高为 1–8（`limit-exceeded`）、表长恰为 `4 + 256 × 高`，字形逐位复制。CCKD 字体目录须恰为 3 项且都在块内：`readCockpitFonts` 按目录顺序读取全部 3 个字库，`readCockpitFont(block, i)` 只读取 `fonts/<i>`，i 不在 0–2 时为 `subresource-not-found`。
+  - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs` 或 `fonts`，不含条目编号、偏移或字节。
+- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。
+- [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表与 MESH/MODL 的研究用解析器及 `PayloadError`（归 P2-06），不再有第二套图像、调色板或字体解析。
+
+针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
 ### 导入 Worker
 

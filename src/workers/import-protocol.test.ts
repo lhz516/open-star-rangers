@@ -275,7 +275,9 @@ describe('error code grammar', () => {
   const sourceCodes: Record<SourceErrorCode, true> = {
     'invalid-archive': true, 'invalid-entry': true, 'limit-exceeded': true, 'entry-not-found': true, 'entry-type-mismatch': true,
     'invalid-request': true, 'invalid-catalog': true, 'unsupported-version': true, 'path-not-covered': true,
-    'alternatives-differ': true, 'fingerprint-mismatch': true,
+    'alternatives-differ': true, 'fingerprint-mismatch': true, 'invalid-payload': true, 'unsupported-encoding': true,
+    'budget-exceeded': true, 'palette-index-out-of-range': true, 'subresource-not-found': true, 'invalid-declaration': true,
+    'geometry-mismatch': true,
   };
   const contentCodes: Record<ContentContractErrorCode, true> = {
     'invalid-record': true, 'invalid-dependencies': true, 'invalid-asset-id': true, 'invalid-kind': true, 'kind-mismatch': true,
@@ -292,6 +294,7 @@ describe('error code grammar', () => {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,
     descriptorBytes: true, imageSectors: true, volumeDescriptors: true, directoryBytes: true, directoryRecords: true,
     rangeReadBytes: true, portReadBytes: true, sourceReadBytes: true, archiveEntries: true, entryBytes: true,
+    imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
   };
 
   it.each([

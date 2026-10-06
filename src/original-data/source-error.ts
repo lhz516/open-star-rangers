@@ -1,7 +1,10 @@
+import type { BudgetDimension } from '../content/budget.ts';
+
 /**
  * Stable failure codes of P2-03 archive reading, version identification and source mapping verification
- * (docs/plan/p2/03/spec.md, error codes). Consumers classify failures by code only; P2-02 `DiscReadError` and P2-01
- * `ContentContractError` pass through with their own codes.
+ * (docs/plan/p2/03/spec.md, error codes), followed by those of P2-05 graphics conversion (docs/plan/p2/05/spec.md,
+ * error codes). Consumers classify failures by code only; P2-02 `DiscReadError` and P2-01 `ContentContractError` pass
+ * through with their own codes.
  */
 export type SourceErrorCode =
   | 'invalid-archive'
@@ -14,15 +17,34 @@ export type SourceErrorCode =
   | 'unsupported-version'
   | 'path-not-covered'
   | 'alternatives-differ'
-  | 'fingerprint-mismatch';
+  | 'fingerprint-mismatch'
+  | 'invalid-payload'
+  | 'unsupported-encoding'
+  | 'budget-exceeded'
+  | 'palette-index-out-of-range'
+  | 'subresource-not-found'
+  | 'invalid-declaration'
+  | 'geometry-mismatch';
 
-/** Names of the P2-03 structural limits a `limit-exceeded` diagnostic reports. */
-export type SourceLimitName = 'archiveEntries' | 'entryBytes';
+/**
+ * Names a `limit-exceeded` diagnostic reports: the P2-03 archive limits and the P2-05 graphics structural limits.
+ * `budget-exceeded` reports a P2-01 budget dimension instead.
+ */
+export type SourceLimitName =
+  | 'archiveEntries'
+  | 'entryBytes'
+  | 'imageWidth'
+  | 'imageHeight'
+  | 'paletteEntryCount'
+  | 'fontCellWidth'
+  | 'fontHeight'
+  | BudgetDimension;
 
 export interface SourceLimit {
   readonly name: SourceLimitName;
   readonly limit: number;
-  readonly observed: number;
+  /** Always a number for structural limits; null only when a budget total exceeds the safe integer range. */
+  readonly observed: number | null;
 }
 
 /** Plain, structured-cloneable diagnostic with the same shape as P2-02 `DiscReadErrorData`. */

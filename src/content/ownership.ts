@@ -15,7 +15,7 @@ export function isDetached(buffer: ArrayBufferLike): boolean {
 }
 
 /** Copies bytes into a new ArrayBuffer of exactly their length, unaliased with the source or any other view. */
-export function exclusiveBytes(bytes: Uint8Array, path = 'bytes'): Uint8Array {
+export function exclusiveBytes(bytes: Uint8Array, path = 'bytes'): Uint8Array<ArrayBuffer> {
   if (isDetached(bytes.buffer)) fail('payload-detached', path, 'was transferred away and can no longer be used');
   // Not `bytes.slice()`: Node's Buffer#slice returns a view of the same memory.
   return new Uint8Array(bytes);
