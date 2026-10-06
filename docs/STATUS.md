@@ -7,7 +7,7 @@ updated: 2026-10-05
 
 # 项目进度
 
-**当前阶段：P2 玩法所需资源管线**（P2-01 切片资源边界与内容契约、P2-02 CCD/IMG 与 ISO9660 按需读取、P2-03 NOB、基准版本识别与输入校验、P2-04 Worker 导入协议与生命周期、P2-05 调色板、索引图像与字体转换、P2-10 IndexedDB 最小资源缓存已完成；P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P2 玩法所需资源管线**（P2-01 切片资源边界与内容契约、P2-02 CCD/IMG 与 ISO9660 按需读取、P2-03 NOB、基准版本识别与输入校验、P2-04 Worker 导入协议与生命周期、P2-05 调色板、索引图像与字体转换、P2-09 单任务与战略地图/Warp 数据、P2-10 IndexedDB 最小资源缓存已完成；P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -17,7 +17,7 @@ updated: 2026-10-05
 |---|---|---|---|
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
-| P2 玩法所需资源管线 | 进行中；P2-01、P2-02、P2-03、P2-04、P2-05、P2-10 已完成 | [P2 tasks](./plan/p2/tasks.md) | — |
+| P2 玩法所需资源管线 | 进行中；P2-01、P2-02、P2-03、P2-04、P2-05、P2-09、P2-10 已完成 | [P2 tasks](./plan/p2/tasks.md) | — |
 | P3 完整玩法切片 | 未开始（可与 P2 重叠） | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
@@ -25,7 +25,7 @@ updated: 2026-10-05
 
 ## 下一步
 
-1. P2：P2-01、P2-02、P2-03、P2-04、P2-05、P2-10 已完成。
+1. P2：P2-01、P2-02、P2-03、P2-04、P2-05、P2-09、P2-10 已完成。
    - [P2-01](./plan/p2/01/goal.md#子任务跟踪)：切片候选与唯一生产切片定义、来源映射边界、完整性/预算/所有权契约及合成契约测试。
    - [P2-02](./plan/p2/02/goal.md#子任务跟踪)：纯字节读取端口、CloneCD/原始扇区/ISO9660 按需读取、浏览器 Blob 与 Node 适配、本地核对 CLI。基准盘 50 个游戏文件经读取链核对一致，结构事实见 [disc-image](./original/formats/disc-image.md)。
    - [P2-03](./plan/p2/03/goal.md#子任务跟踪)：严格 IMFAT 规则与按需封包读取、生产版本白名单与来源指纹、已验证来源产品入口、来源映射核验、底层能力边界与本地核对 CLI。基准盘 9 个 NOB 共 1,857 个条目全部通过校验，结构事实见 [imfat](./original/formats/imfat.md)。
@@ -40,11 +40,17 @@ updated: 2026-10-05
      - **转换：** 加固的原版源读取与转换声明，扣除预算后才分配；图形转换步骤共用条目读取；作业新增 `convert-graphics` 阶段（协议版本 2）；
      - **生产：** 5 个 Asset，即两份飞行调色板与 HI 驾驶舱的 3 个 HUD 字库，字符映射只含有证据的同号区间。在本地基准镜像上，图形步骤读取 992,544 字节；
      - **研究：** 最近色规则仍为暂定（U-028），29 个 TEX 有歧义条目，见 [textures](./original/formats/textures.md) §3；4×6 字库实为 192 个 8 行字形，字库部分为高概率（U-030），见 [hud](./original/formats/hud.md) §1.1。
+   - [P2-09](./plan/p2/09/goal.md#子任务跟踪)：
+     - **研究：** 所选任务的字段清单、地图框架与 Warp 目的地选取，见 [scenario](./original/formats/scenario.md#selected-mission-field-inventory-confirmed-structure)、[executable](./original/formats/executable.md#strategic-map-projection) 与 [B-001](./original/behavior/B-001-strategic-map.md)；
+     - **内容与转换：** 规范任务、机型表与僚机名单 payload；SCEN/SCCT/M2ID 定向解析；唯一的机型到模型绑定；生产映射与子资源核验；
+     - **共享机制：** 生产 `ConverterVersion` 与 `ManifestIdentity`；沿用 P2-05 的步骤内读取与份额；
+     - **作业：** 新增 `convert-logic` 阶段（协议版本 3），发送 `logic` 组；Core 的 `loadMission` 产出冻结的任务初始数据；
+     - **本地验证：** 在本地基准镜像上，`logic` 组为 `group-complete`，`loadMission` 成功，逻辑步骤读取 61,152 字节。
    - [P2-10](./plan/p2/10/goal.md#子任务跟踪)：`platform/storage/` 的资源缓存，缓存键为来源指纹＋转换器版本；完整包在单个事务中原子提交，同源刷新后重新校验再恢复；容量与配额、取消、中断、损坏、连接生命周期等失败都有明确反馈。浏览器证据来自 Chrome 中的隔离合成数据库，其他浏览器归 P5。
 
    下一步按[推荐执行顺序](./plan/p2/tasks.md#推荐执行顺序)：
-   - 批次 4 余下的 P2-08（核心音效转换与播放适配）与 P2-09（单任务与战略地图/Warp 数据）可以并行；
-   - P2-05 已完成，批次 5 的 P2-06（切片模型与材质转换）与 P2-07（驾驶舱、HUD 与战略地图资源）可以开始，二者并行，复用 P2-05 的转换器与图形步骤；
+   - 批次 4 余下 P2-08（核心音效转换与播放适配）；
+   - 批次 5 的 P2-06（切片模型与材质转换）与 P2-07（驾驶舱、HUD 与战略地图资源）可以开始，二者并行，复用 P2-05 的转换器与图形步骤。P2-06 用 P2-09 的机型到模型绑定命名模型；装配组结果时，把各组草稿交给作业的同一 `ManifestIdentity` 推导；
    - P2-10 缓存接入导入流程归 P2-11。各任务先编写 spec 并取得批准；读取和转换任务须在消费不可信输入前批准各自的预算限值，转换步骤追加到 P2-04 的导入作业中。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（阵营、基地能力、结果和空间语义）在 P2 中继续，模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
