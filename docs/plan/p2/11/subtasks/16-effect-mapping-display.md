@@ -1,0 +1,55 @@
+---
+type: plan
+status: active
+phase: P2
+task: "11"
+subtask: "16"
+updated: 2026-10-06
+---
+
+# 16 — 效果贴图坐标的表示与显示
+
+**契约来源：** [spec](../spec.md) 的 S-10（实现）、AC-18，以及[效果贴图坐标](../spec.md#效果贴图坐标)的“达到高概率或已确认时”、[持久化与兼容](../spec.md#持久化与兼容)的转换器版本递增。
+**依赖：** 11, 15, 17。
+**执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
+
+## 工作范围
+
+只在 15 的结论达到高概率或已确认时进行；否则本子任务随 15 为 blocked。
+
+- **payload：** 效果 payload 递增 schema，加入 15 确定的映射参数，不改变既有字段的语义；读取器只接受新 schema，旧 schema 报 `unsupported-payload-schema`；截断、越界与非有限值报 `invalid-effect-payload`。
+- **展开：** `content/effects` 为导弹贴图元素（每个旋转序号）与带贴图碎片输出贴图坐标：按 64 位浮点计算，舍入为 32 位；结果非有限时报 `invalid-effect-payload`。
+- **转换：** 效果步骤从 15 确定的 EXE 区域读取新参数，校验规则与既有效果数据一致；生产效果声明与映射同步。模型转换器组件递增（例如 `models-2`），生产 `ConverterVersion` 与 01 的生产包配置随之改变，相关测试同步。
+- **显示：** 查看器据贴图坐标贴图，去掉这些面的“贴图映射未确认”标记；结论依赖运行时状态时，只显示静止姿态下的坐标并加以说明。
+- **本地核对：**
+  - 按 P2-06/19 的方法在本地基准上独立读取新字段，与效果步骤的结果逐项比较，差异为 0；
+  - 复跑 17 的本地脚本，确认结果不变（四组完整、任务可载入、场景构建无错误）。
+- **测试：**
+  - Node 表驱动：只用代码生成的任意参数，期望值在测试中按公式写成计算式；
+  - 开发项目 E2E：带贴图的导弹元素与碎片在已知像素位置显示期望的纹素。
+
+## 不包含
+
+- 光照、明暗级与模式字（P3）。
+- 15 未通过时的任何猜测实现。
+
+## 关键文件与契约
+
+- 修改 [effect-payload.ts](../../../../../src/content/effects/effect-payload.ts)、[expand-effects.ts](../../../../../src/content/effects/expand-effects.ts)、[effect-step.ts](../../../../../src/original-data/conversion/effect-step.ts)、[effect-declarations.ts](../../../../../src/original-data/conversion/effect-declarations.ts)、[production-effects.ts](../../../../../src/original-data/conversion/production-effects.ts)、[convert-models.ts](../../../../../src/original-data/conversion/convert-models.ts) 的 `MODEL_CONVERTER_COMPONENT`、01 的生产包配置，以及 09 的效果渲染；同步各自的测试与测试支持。
+- 本地脚本放在被忽略的 `local/research/p2-11/`。
+- 文档：[源码结构](../../../../engineering/source-structure.md)中的效果 payload 布局，以及 [executable](../../../../original/formats/executable.md) 的本地核对结论。
+
+## 验收标准
+
+- [ ] AC-18：新 schema 往返逐项相等；拒绝路径的 code 正确；展开的贴图坐标等于测试中的计算式；转换器组件与生产 `ConverterVersion` 已递增，相关测试同步。
+- [ ] AC-18（本地）：新字段与独立读取逐项一致，差异为 0；17 的脚本复跑通过。证据只记计数与判定。
+- [ ] AC-18（显示）：查看器中带贴图的导弹元素与碎片在已知像素位置显示期望的纹素，由 E2E 断言。
+- [ ] 测试与仓库中没有原版值或由其得到的快照；`pnpm check` 与开发项目的相关 E2E 通过。
+
+## 验证方法
+
+- `pnpm exec vitest run src/content/effects src/original-data/conversion src/render src/workers`，完成前 `pnpm check`。
+- 按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 用合成数据运行开发项目 E2E。
+- 本地核对用 `local/StarRang/cd/` 的镜像。按 execute-goal 做 rubber-duck 与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
+
+## 完成证据
