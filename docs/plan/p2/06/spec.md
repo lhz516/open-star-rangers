@@ -1,11 +1,11 @@
 ---
 type: plan
-status: accepted
+status: draft
 phase: P2
 task: "06"
 updated: 2026-10-06
 related: [ADR-0007, ADR-0008, ADR-0015, U-009, U-022, U-027, U-028]
-reviewed: sha256:37de99f68f37
+reviewed: sha256:78d7582af903
 ---
 
 # P2-06：切片模型与材质转换 — Spec
@@ -69,6 +69,10 @@ reviewed: sha256:37de99f68f37
   - Node 合成测试；
   - 真实 Chromium 的模块 Worker，处理合成光盘；
   - 本地基准核对，并用加固后的 nob-check 全量核对 MESH 与 MODL。
+- **S-14 效果几何数据（2026-10-06 修订）：** 弹丸、导弹与碎片中由原版构建函数生成的几何，来自 RENS 记录与 EXE 内的静态数据（[executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)）。本任务：
+  - 在 `original-data/` 中新增 LE 可执行文件的只读区域读取，并让来源映射能定位 `MAIN/SRANGERS.EXE` 的区域；
+  - 把三类效果的源数据原样转换为三个 `data` Asset，各承担一个效果角色，规则见[效果几何数据](#效果几何数据)；
+  - 在 `content/` 中提供这些 payload 的严格读取器，以及按构建函数规则展开为几何的纯函数，供 P2-11 渲染与 P2-12 对照使用。
 - **S-13 文档：** 同步[源码结构](../../../engineering/source-structure.md)、[工程约定](../../../engineering/README.md)与[工具指南](../../../guides/tools.md)。payload 字节布局与消费辅助的约定写入源码结构，作为 P2-11 渲染与 P2-12 对照的入口说明。原版事实只写入 `docs/original/`。
 
 ### 不包含
@@ -83,7 +87,8 @@ reviewed: sha256:37de99f68f37
   - 任务数据与机型阵营（P2-09）；
   - ANIM 的编码 1 与 EXPL 效果，除非研究证明切片角色依赖它们（见[风险与恢复](#风险与恢复)）。
 - **导出与持久化：** glTF、OBJ 或 PNG 等文件导出；IndexedDB 缓存接线（P2-11）。
-- **既有契约：** 不修改 P2-01 的 Asset ID 语法、资源组归属、预算维度与完整性规则，也不修改 P2-05 的 payload 布局与声明契约。研究若要求修改切片定义，走 P2-01 的修订流程，见[研究要求](#研究要求)。不新增依赖。
+- **既有契约：** 不修改 P2-01 的 Asset ID 语法、预算维度与完整性规则，也不修改 P2-05 的 payload 布局与声明契约。研究若要求修改切片定义，走 P2-01 的修订流程，见[研究要求](#研究要求)。2026-10-06 修订按此流程，同时修订 P2-01 的切片定义与来源定位，见[效果几何数据](#效果几何数据)。不新增依赖。
+- **执行 EXE：** 只读取 EXE 中的静态数据区域，不执行、不模拟其代码（总计划 §8 的导入安全规则）。
 
 ### 执行前提与协调
 
@@ -213,6 +218,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | 弹丸、导弹与碎片：`<kind>/<角色>`，同一角色有多个 Asset 时为 `<kind>/<角色>-<n>` | `model` 或 `image` / `projectile`、`missile` 或 `debris` / `models` | 按 AC-13 的结论；本 spec 直接支持的来源形式见下 | 至少高概率，否则相应验收为 blocked |
 | 碎片模型（P2-06/11 研究确认）：`model/debris` | `model` / `debris` / `models` | MODL 10383 整条目：飞行效果初始化按 ID 载入，碎片效果绘制它第 1 列表的部件，见 [executable 的效果表现来源](../../../original/formats/executable.md#effect-presentation-sources) | 高概率；带 U-027、U-028 |
 | 导弹图像（P2-06/11 研究确认）：`image/missile` 与调色板 `palette/missile` | `image` / `missile` / `models`；`palette` / `texture-palette` / `models` | TEX 10377 整条目及其 `palette` 子资源：导弹视觉初始化按 ID 载入，作为导弹元素的贴图 | 图像带 U-027、U-028，用到歧义条目，在 AC-14 解除之前为未确认；调色板已确认 |
+| 效果几何数据（2026-10-06 修订）：`data/projectile-visuals`、`data/missile-visuals`、`data/debris-visuals` | `data` / 依次为 `projectile`、`missile`、`debris` / `models` | executable 记录的 RENS 条目与 EXE 区域，见[效果几何数据](#效果几何数据) | 高概率；带 U-027 |
 
 - **贴图编号：** `<nn>` 是两位序号，与同一 TEX 的 image 与 palette 共用。编号来自 `original-data` 中显式的生产贴图表：执行时按“模型 ID 升序、列表 0–2、部件顺序”的首次引用顺序编出初始表，之后只追加，不重排。ID 不表达源条目编号或语义猜测。研究确认的模型引用的新 TEX 追加在表尾（碎片模型的贴图为第 16 行）。
 - **效果图像的调色板：** 研究确认的整条目图像绑定同一 TEX 的嵌入调色板，ID 为 `palette/<角色>`，角色为 `texture-palette`；显示、透明与行序同切片贴图。
@@ -225,6 +231,83 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 
   `<角色>` 取 `projectile`、`missile` 或 `debris`；同一角色有多个 Asset 时，`<n>` 按研究记录的列举顺序从 1 编号。其他来源形式须先修订本 spec，批准其规范表示、默认字段与命名后才能实现，例如没有 MODL 的独立 MESH、容器内的子资源、ANIM、EXPL。批准前 AC-13 为 blocked。
 - **研究确认的 Asset 的音效：** 引用的 SND 若不在 P2-08 生产音效表中，按 P2-08 的命名规则追加到该表并由其转换器转换。相应的 `audio` 组输出、包身份与音效份额随之变化，超出 P2-08 已批准的份额时，先修订 P2-08 spec。
+
+### 效果几何数据
+
+2026-10-06 修订，须经用户批准后实施（见[审批](#审批)）。原版事实只记在 [executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)，本节只规定契约。三个 `data` Asset 覆盖三类效果中**由构建函数生成的部分**；导弹与碎片的完整表现还依赖已有的 `image/missile`、`model/debris` 与被毁模型自身的列表 1。角色完整性由这些 Asset 共同满足，不表示任一 `data` Asset 单独重现整个效果。
+
+**来源。** 只读取以下两类来源：
+
+- `MAIN/SR.NOB` 中 executable 记录的 RENS 整条目，只转换其中的弹丸记录表；
+- `MAIN/SRANGERS.EXE` 中 executable 记录的模板、类型表、常量与立即数操作数区域，只读字节，不执行、不模拟代码（总计划 §8）。
+
+**区域 locator（P2-01 修订）：** `OriginalAssetLocator` 变为判别形式，`entry` 为 null 时表示可执行文件区域：
+
+- **适用范围：** `discPath` 只能是 `MAIN/SRANGERS.EXE`，其他文件报 `invalid-source-mapping`。只有 `data` kind 的 Asset 接受区域 locator，其他 kind 报 `invalid-source-mapping`；`data` 同时接受 RENS 条目 locator。
+- **语法：** `subresource` 为 `le/<对象序号>/<偏移>/<字节数>`：
+  - 对象序号为 LE 对象表的十进制序号，1–8；
+  - 偏移为对象起点起的小写十六进制，形如 `0x1a0`，没有多余前导零；
+  - 字节数为十进制，1–65,536。
+
+  不规范的写法报 `invalid-source-mapping`。
+- **排序与去重：** 一个映射内，条目 locator 排在区域 locator 之前；区域按对象序号、偏移、字节数的数值升序排列；同一区域重复报 `duplicate-mapping`。区域部件只允许一个备选，多个备选报 `invalid-source-mapping`。
+- **映射核验（P2-03 S-08 扩展）：** 区域 locator 只核对文件在已验证白名单中，不读取字节；失败时 `path-not-covered` 按 P2-03 的规则改写到 `sources.mappings[i].parts[j].alternatives[k]`。含区域 locator 的映射保持 `declared`。效果步骤读取并校验全部区域与记录之后，与 P2-05 图形步骤一样把这些映射标为 `verified`，再由置信度给出来源状态。
+
+**EXE 区域读取（`original-data/formats/`）：**
+
+- 经产品入口 `openFile` 读取，按 P2-02 的读取预算计入 `sourceReadBytes`；
+- 先校验 MZ 头中的 LE 偏移、LE 签名、字节序与字序、页大小、对象表、页映射与修正页表，都须在文件长度内；
+- 再按对象序号、偏移与字节数取出区域，输出不与源缓冲共用；
+- 区域越出对象、跨入不由文件页支持的部分，或与 LE 修正记录的目标位置重叠时，报 `invalid-payload`；
+- 对象数、页数与区域长度超出限值时报 `limit-exceeded`，只读计数即拒绝。
+
+**规范表示。** 三个 Asset 都是 `data` kind，在 `models` 组，payload schema 1。字节布局在实施时写入源码结构，须满足以下语义：
+
+- 浮点字段按源的 32 位或 64 位原样、逐位保留；整数按源宽度保留；
+- 记录、模板与常量按源顺序排列，记录序号即原版的选择索引；
+- 构建函数的标记与常量都作为字段保存，源码与测试不写入原版值；
+- payload 不含 locator、条目编号或对象偏移。
+
+| Asset | 字段 | 依赖 |
+|---|---|---|
+| `data/projectile-visuals`（角色 `projectile`） | 两套模板，各含 4 个顶点（f32 × 3）、面表与长度常量（f64）；单位标记与尾部标记（f32）；弹丸记录（1–64 条），每条为构建选择（u32）、宽度、长度（f32）与 RGB（f32 × 3） | 无 |
+| `data/missile-visuals`（角色 `missile`） | 导弹类型（1–32 个），每个含部件数（u32，1–4）、机身（r0、r1、长度 f32；段数 i32，3–64；打包颜色 u32，不超过 24 位）、尾翼参数（每片 f32 × 4 与打包颜色）、元素参数（f32 × 3）与标志（f32）；尾翼、元素（两套）与附加元素的面表模板；机身与元素的角度常量、附加元素的偏移与角度常量（f64）；机身与尾翼的颜色缩放（f64）；元素与附加元素的颜色与模式；32 个贴图映射旋转的参数 | `image/missile` |
+| `data/debris-visuals`（角色 `debris`） | 两个模板，各含 6 个顶点（f32 × 3）、18 个字的每顶点表与面表；无贴图形状的 3 个缩放、有贴图形状的 2 个缩放（f32）；各自的颜色与模式；有贴图形状的平面映射参数 | `image/model-texture/16` |
+
+**展开函数（`content/`）：** 纯函数按 executable 记录的构建规则展开每条弹丸记录、每个导弹类型与每种碎片形状。
+
+- **输出：** 每个形状的顶点位置、面表（每个面的角数与顶点序号，按源顺序）、颜色、模式字，以及可选的贴图 Asset ID 与原样的映射参数。
+- **计算：** 按 64 位浮点计算，结果分量舍入为 32 位；与原版 x87 运算的末位差异不视为错误。
+- **不做的事：**
+  - 不生成法线或明暗；碎片模板的每顶点表原样交出，含义未确认。
+  - 不计算贴图坐标：映射函数 `0x82ae8` 的语义未追踪（U-027），由 P2-11 渲染之前另行研究。在此之前，消费者只能使用颜色与几何。
+- **依赖：** 不导入 `original-data`、Three.js 或 DOM。
+
+**测试数据。** 测试只用代码生成的任意模板、常量与记录。期望值在测试中按本节与 executable 的规则写成计算式。仓库中不得出现原版的模板、常量、类型表或展开结果，也不得出现由它们得到的快照。
+
+**步骤、预算与组：**
+
+- 效果步骤在 `convert-models` 阶段内、模型步骤之后运行，在模型步骤用量之上按 `PRODUCTION_MODEL_SHARE` 扣除。不新增阶段，协议版本不变。
+- **扣除：** 每个 Asset 的 `assets`、`dependencyEdges` 与 payload 字节。另按展开后的规模扣除 `vertices` 与 `triangles`：每个面计角数 − 2 个三角形，因为消费者按此分配。所有扣除都在分配之前完成。
+- **份额：** 按结构限值与生产区域的固定长度计算，三个 payload 合计不超过 16 KiB（上界以常量与测试断言，AC-20）。展开规模的上界为：
+  - 弹丸 64 × 4 个顶点；
+  - 导弹 32 × (2 × 64 + 3 × 9 + 6 + 3) 个顶点；
+  - 碎片 5 × 6 个顶点；
+  - 合计 5,534 个顶点。
+
+  这超出模型步骤用后剩余的份额，因此极端输入由 `budget-exceeded` 拒绝。本地基准的实际用量须在份额之内（AC-21）。份额常量不变。
+- 结果并入 `models` 组。
+
+**结构限值：** `effectRecords`（1–64）、`missileTypes`（1–32）、`ringSegments`（3–64）、`executableObjects`（1–8）、`executablePages`（1–1,024）、`executableRegion`（1–65,536 字节）。
+
+**格式规则**，违反时报 `invalid-payload`：
+
+- 部件数为 1–4；
+- 打包颜色不超过 24 位；
+- 面表中每个面的角数为 3 或 4，顶点序号小于顶点数，以 0 结束，且恰好用尽该模板的区域；
+- 浮点有限。
+
+**完整性：** 切片定义修订（P2-01）之后，三个效果角色都允许 `data`。`role-cardinality@roles.projectile` 因此消失；`models` 组是否完整仍取决于 AC-14。
 
 ### 步骤结果与 `models` 组
 
@@ -245,6 +328,8 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | `meshVertices` | 1–4,096 | 安全上限：计数字段为 u32；全部 486 个 MESH 观察到 3–284 |
 | `meshTriangles` | 1–4,096 | 安全上限：全部 MESH 观察到 1–494 |
 | `modelParts` | 1–256（三个列表合计） | 安全上限：全部 MODL 观察到合计最多 66 |
+
+效果几何数据（2026-10-06 修订）的结构限值与预算见[效果几何数据](#效果几何数据)。
 
 **格式规则**以 `invalid-payload` 拒绝，不设限值名：
 
@@ -276,7 +361,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 
 ### 错误码
 
-**`source` 层（转换）：** 沿用 P2-03/05 的 `SourceError` 及其已有 code，限值名追加 `meshVertices`、`meshTriangles` 与 `modelParts`。已有 code 与限值的含义不变。
+**`source` 层（转换）：** 沿用 P2-03/05 的 `SourceError` 及其已有 code，限值名追加 `meshVertices`、`meshTriangles` 与 `modelParts`，2026-10-06 修订再追加 `effectRecords`、`missileTypes`、`ringSegments`、`executableObjects`、`executablePages` 与 `executableRegion`。已有 code 与限值的含义不变；`invalid-payload` 的条件扩展到 RENS、LE 结构、区域与效果记录。
 
 | code | 本任务中的条件 | `limit` |
 |---|---|---|
@@ -289,7 +374,8 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 
 - `models.declarations[<i>]` 加结构字段路径；
 - `models.declarations`：声明组整体的问题；
-- `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture` 或 `.sounds[<s>]` 之一。
+- `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture` 或 `.sounds[<s>]` 之一；
+- 效果几何数据（2026-10-06 修订）：`effects.declarations[<i>]`，或 `effects[<Asset ID>]` 后接 `.source`、`.regions[<k>]`、`.records[<i>]` 或 `.templates[<j>]`，不含对象偏移、条目编号或字节。
 
 部件引用的 MESH 若读取失败，保留 P2-03 的 code 与限值，位置改写为 `models[<Asset ID>].parts[<l>][<p>].mesh`，方式与 P2-03 映射核验改写定位路径相同。
 
@@ -304,6 +390,11 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | 转换预算 | `source` 层 `budget-exceeded` | `models[<Asset ID>]…` |
 | 声明或生产表不符 | `source` 层 `invalid-declaration` | `models.declarations…` 或 `models[<Asset ID>]…` |
 | 规范 payload 字节不合 schema（含计数范围） | `content` 层 `invalid-model-payload` 等 | 结构字段路径 |
+| 区域 locator 语法、文件或 kind 不允许（2026-10-06 修订） | `content` 层 `invalid-source-mapping` 或 `duplicate-mapping` | 映射字段路径 |
+| 区域 locator 指向未覆盖的文件 | `source` 层 `path-not-covered` | 改写为 `sources.mappings[i].parts[j].alternatives[k]` |
+| LE 结构、区域越界或与修正重叠，RENS 或效果记录不符合格式规则 | `source` 层 `invalid-payload` | `effects[<Asset ID>].source`、`.regions[<k>]`、`.records[<i>]` 或 `.templates[<j>]` |
+| 效果结构限值 | `source` 层 `limit-exceeded`，带限值名 | 同上 |
+| 效果步骤预算 | `source` 层 `budget-exceeded` | `effects[<Asset ID>]` |
 
 **`content` 层（读取与消费）：** 以下 code 以追加方式加入内容错误 code 枚举，位置为结构字段路径。`unsupported-payload-schema` 与 `binding-mismatch` 复用 P2-05 的 code，含义扩展到模型 payload。
 
@@ -312,6 +403,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | `invalid-model-payload` | payload 字节不符合 schema 1：长度、字段范围、索引、非有限浮点、尾随字节；消费时的列表序号越界 |
 | `unsupported-payload-schema` | payload 的 schema 版本不是 1 |
 | `binding-mismatch` | payload 引用的贴图与 sound ID 与描述符依赖不一致，或提供给消费的图像与引用不符 |
+| `invalid-effect-payload` | 效果几何数据 payload 不符合 schema 1：长度、计数范围、面表、非有限浮点、尾随字节（2026-10-06 修订） |
 
 ### 协议变化
 
@@ -336,7 +428,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 
 | 主题 | 范围 | 通过门槛与阻塞 |
 |---|---|---|
-| 弹丸、导弹与碎片的表现（U-027） | 对每个角色，确定原版绘制它所用的资源与路径。线索与入口，均为未经核实的探查结果：<br>- 列表 1 与效果回调 `0x3e590`；<br>- 未被 MODL 引用的 MESH、只有列表 1 的 MODL、不在选定任务中的小型 M2ID 模型；<br>- ANIM、EXPL 与 EXIC；<br>- 分配器调用点 `0x38780`、`0x3cb80`；<br>- 原版截图中开火、导弹与击毁的画面。 | 每个角色结论至少高概率，并归入以下一种：<br>1. **独立来源：** 整条目 MODL 或 P2-05 已支持的整条目图像记录，按[生产 Asset](#生产-asset-与来源)的规则转换为承担该角色的 Asset；其他来源形式（独立 MESH、容器子资源、ANIM、EXPL 等）须先修订本 spec，批准其表示与命名，ANIM 还须先修订 P2-05 spec（其技术决定 6）；<br>2. **另一模型的内部元素：** 例如碎片就是被摧毁模型的列表 1；<br>3. **程序生成，没有原版资源。**<br>第 2、3 种无法满足 P2-01 的角色定义，须提出 P2-01 切片定义修订（角色、kind 或基数变化须递增切片定义版本，并经用户批准）。所需修订批准前，或任一角色达不到高概率时，AC-13 为 blocked，不以猜测的 Asset 冒充完成 |
+| 弹丸、导弹与碎片的表现（U-027） | 对每个角色，确定原版绘制它所用的资源与路径。线索与入口，均为未经核实的探查结果：<br>- 列表 1 与效果回调 `0x3e590`；<br>- 未被 MODL 引用的 MESH、只有列表 1 的 MODL、不在选定任务中的小型 M2ID 模型；<br>- ANIM、EXPL 与 EXIC；<br>- 分配器调用点 `0x38780`、`0x3cb80`；<br>- 原版截图中开火、导弹与击毁的画面。 | 每个角色结论至少高概率，并归入以下一种：<br>1. **独立来源：** 整条目 MODL 或 P2-05 已支持的整条目图像记录，按[生产 Asset](#生产-asset-与来源)的规则转换为承担该角色的 Asset；其他来源形式（独立 MESH、容器子资源、ANIM、EXPL 等）须先修订本 spec，批准其表示与命名，ANIM 还须先修订 P2-05 spec（其技术决定 6）；<br>2. **另一模型的内部元素：** 例如碎片就是被摧毁模型的列表 1；<br>3. **程序生成，没有原版资源。**<br>第 2、3 种无法满足 P2-01 的角色定义，须提出 P2-01 切片定义修订（角色、kind 或基数变化须递增切片定义版本，并经用户批准）。所需修订批准前，或任一角色达不到高概率时，AC-13 为 blocked，不以猜测的 Asset 冒充完成。<br>**结论（P2-06/11、14）：** 碎片与导弹另有整条目来源（已实现）；三类效果的几何都由 RENS 与 EXE 静态数据生成，按 2026-10-06 修订以 `data` Asset 导入，见[效果几何数据](#效果几何数据) |
 | 歧义贴图条目（U-028） | 切片贴图实际被像素用到的每个歧义条目。P2-05 的已批准规则与 [textures §3](../../../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed) 要求用 EXE 证据解除歧义：找到原版的最近色实现，从未检索的回调分发与绘制路径入手。截图中能区分候选颜色的逐条目像素证据只能作为辅助；只有 P2-05 spec 先修订并经用户批准、允许这类证据解除歧义之后，才能代替 EXE 证据，且须说明如何排除光照明暗的干扰 | 每个条目的结论都满足上述门槛，并记录证据类型。生产展开路径对每个已有结论的条目，得到的显示颜色与结论一致。结论与暂定规则不同时，只修改 `nearestColourMap` 一处（P2-05 技术决定 2），并更新 textures 与 U-028；全局度量与并列规则只有在 EXE 证据下才标为已确认。任一条目未达门槛时，用到它的贴图映射保持未确认，`models` 组不完整，AC-14 为 blocked |
 | 部件结构 | 切片实际用到的部件列表、标志值与音效槽：记录已知含义与置信度。音效槽含义以 P2-08 的记录为准。另记录切片网格的三角形绕序与顶点法线一致性统计 | 只记录，不以未确认的含义改写 payload 或玩法 |
 
@@ -355,6 +447,10 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 9. **新增 `convert-models` 阶段，由本任务装配并发送 `models` 组：** 模型转换与贴图转换的输入、读取与失败分类不同。单列阶段使进度与失败位置可区分。`models` 组的全部内容（飞行调色板、贴图、模型）此时首次齐备，因此由本任务发送。
 10. **先合入 P2-08 与 P2-09：** 三个任务都修改协议版本、阶段、身份与组装，而前两者的机制尚未统一。在统一后的代码上追加一个阶段，比三方同时合并的风险小得多，返工也少。
 11. **份额按观察值留余量：** P2-01 要求在消费不可信输入前批准具体限值。弹丸、导弹与碎片的 Asset 数尚未知，份额为它们预留余量；超出时修订本 spec，不在执行中静默放宽。
+13. **效果几何以源数据导入，不在导入时生成网格（2026-10-06 修订）：** 按 [executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)，这些几何在运行时生成。导入时生成模型 payload 就得补出源数据没有的法线与着色槽。原样保存源数据，再由 `content/` 的纯函数展开，可以保持数值逐位不变；展开规则若经 P2-12 对照需要修正，也不必重新导入。贴图映射函数的语义尚未追踪，所以映射参数原样保存，贴图坐标不在本任务计算。
+14. **数据从用户的 EXE 读取，不写进源码：** 模板、类型表与常量都是原版内容，仓库不得包含。EXE 已在白名单中，并经 SHA-256 核验，所以固定的对象偏移与条目 ID 一样只对已识别版本有效。区域 locator 只开放给 `MAIN/SRANGERS.EXE` 与 `data` kind，不成为通用的文件区域机制。只读静态数据区域，不执行代码，符合总计划 §3.2（“嵌入 EXE 的数据按必要范围研究”）与 §8，因此不需要 ADR。
+15. **弹丸角色由 `data` 承担（P2-01 修订，用户 2026-10-06 选择方案 A）：** 按 [U-027](../../../original/unknowns.md#数据与格式)，弹丸没有模型或图像来源。允许 `data` 保留原版参数，P2-12 可以对照；不要求 Asset 会收窄总计划列出的资源，需要 ADR，并放弃保真。导弹与碎片同时允许 `data`，因为它们的几何来源相同。
+16. **不新增阶段：** 效果数据与模型同属 `models` 组，读取与失败分类简单，在 `convert-models` 阶段内运行即可，协议版本与持有者规则不变。
 12. **不新增依赖，不需要 ADR：** 以上决定细化总计划 §3.3、§8、§12，以及 [ADR-0007](../../../decisions/ADR-0007-narrow-p2-overlap-p3.md)、[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md) 的范围与模块边界，不改变冻结决定，也不引入依赖（[ADR-0008](../../../decisions/ADR-0008-mit-and-dependency-licenses.md)）。glTF 等导出格式不在本任务范围内。
 
 ## 验收标准
@@ -373,7 +469,11 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | AC-10 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试专用入口运行生产作业，输入为合成光盘。成功时持有者收到并验证 `models` 组，Asset 数与用量（`assets`、`vertices`、`triangles`、`imagePixels`、`payloadBytes`）等于 Node 侧的期望。损坏的合成 MESH 使作业以 `source` 层 `invalid-payload` 失败，且没有组被移交。在收到首条 `convert-models` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
 | AC-11 | **本地基准（生产路径）：** 在开发者机器上用本地基准镜像：<br>- 直接调用生产模型步骤：得到全部生产模型，机型模型的 ID 与 P2-09 绑定一致；每个模型的几何、部件与音效引用与参考读取逐项结构等价（顶点、三角形、着色槽与浮点逐位相同）；两次运行每个 payload 的 SHA-256 相同；用量不超过份额；<br>- 经作业、宿主与持有者模块处理同一镜像：以 `finished` 结束，`models` 组被验证，结果为 `group-complete`；或为 `incomplete`，且每条诊断都对应 AC-13、AC-14 中记录的阻塞 | 本地 Node 脚本，留在被忽略的 `local/research/p2-06/`；证据只记录命令、计数、判定与诊断 code |
 | AC-12 | **本地全量结构核对：** 加固后的 `tools/nob-check.ts` 用同一套读取处理本地基准 `SR.NOB`，全部 486 个 MESH 与 19 个 MODL 都通过；输出只有计数与失败原因。观察最大值与上表的限值一起写入 mesh。任何实例被拒绝时，本项不通过，须按证据修订本 spec，不放宽为静默接受 | 本地运行该工具，记录命令与计数 |
-| AC-13 | **弹丸、导弹与碎片（U-027）：** 按[研究要求](#研究要求)，三个角色各有至少高概率的结论与证据类型，记入 mesh（必要时 textures、executable），U-027 状态已更新。<br>- 结论为本 spec 直接支持的来源形式时，生产声明与映射已加入相应 Asset，ID 与角色符合[生产 Asset](#生产-asset-与来源)的规则，并在 AC-08、AC-11 中通过；<br>- 这些 Asset 引用了 P2-08 生产音效表中没有的 SND 时，已追加到该表并由其转换器转换，`audio` 组与包身份随之通过 Node 测试，全包的音效外部要求都已解析；<br>- 结论需要其他来源形式，或要求修订切片定义时，相应的本 spec、P2-05 或 P2-01 修订已获用户批准，且实现已与之一致；<br>- 任一角色达不到门槛，或所需修订未获批准时，本项为 blocked，记录原因与恢复条件 | 本地研究；文档与生产常量对照审阅；Node |
+| AC-13 | **弹丸、导弹与碎片（U-027）：** 按[研究要求](#研究要求)，三个角色各有至少高概率的结论与证据类型，记入 mesh（必要时 textures、executable），U-027 状态已更新。<br>- 结论为本 spec 直接支持的来源形式时，生产声明与映射已加入相应 Asset，ID 与角色符合[生产 Asset](#生产-asset-与来源)的规则，并在 AC-08、AC-11 中通过；<br>- 这些 Asset 引用了 P2-08 生产音效表中没有的 SND 时，已追加到该表并由其转换器转换，`audio` 组与包身份随之通过 Node 测试，全包的音效外部要求都已解析；<br>- 结论需要其他来源形式，或要求修订切片定义时，相应的本 spec、P2-05 或 P2-01 修订已获用户批准，且实现已与之一致；<br>- 任一角色达不到门槛，或所需修订未获批准时，本项为 blocked，记录原因与恢复条件。<br>2026-10-06 修订：程序生成的几何按[效果几何数据](#效果几何数据)以 `data` Asset 满足，由 AC-18 至 AC-21 验证 | 本地研究；文档与生产常量对照审阅；Node |
+| AC-18 | **区域 locator 与 EXE 读取（2026-10-06 修订）：**<br>- 区域 locator：合法与规范写法通过；不规范写法、其他文件、非 `data` kind、多个备选报 `invalid-source-mapping`，重复报 `duplicate-mapping`，排序规则逐项断言。映射核验不读取区域字节，含区域 locator 的映射为 `declared`；文件未覆盖时报 `path-not-covered`，位置改写为结构路径。<br>- EXE 读取：合成 LE 文件（代码生成，含多个对象、页映射与修正记录）上读出的区域与输入逐字节相等，输出不共享缓冲。签名、字序、页大小、对象表、页映射或修正页表越界，区域越出对象、跨入非文件页、与修正重叠，都报 `invalid-payload`。对象数、页数或区域长度超限报 `limit-exceeded`，限值名正确，只读计数即拒绝 | Node |
+| AC-19 | **效果 payload 与展开：** 三种 payload 编码再读取逐项相等，浮点逐位相等。以下输入报 `invalid-effect-payload`：截断、尾随字节、计数越界、面表角数不为 3 或 4、序号越界、缺少结束标记、非有限浮点。schema 2 报 `unsupported-payload-schema`，依赖不符报 `binding-mismatch`。展开函数用代码生成的任意模板、标记、常量与记录：每个形状的顶点、面表、颜色与模式，等于测试中按[效果几何数据](#效果几何数据)与 executable 的规则写成的计算式；同一输入两次结果相同。仓库中没有原版值或由其得到的快照 | Node 表驱动测试；源码检查 |
+| AC-20 | **效果步骤与组：** 合成光盘（含合成 RENS 与合成 EXE）上，效果步骤得到三个 `data` Asset，`models` 组不再有任何效果角色的 `role-cardinality`。<br>- 用量恰等于按 payload 布局与展开规模计算的期望，并计入模型份额；上界计算以常量与测试断言。<br>- 失败按[失败边界一览](#错误码)逐行验证：区域或记录损坏时步骤失败，位置正确，没有部分结果。<br>- 作业的阶段与协议版本不变；真实 Worker 的 `models` 场景同步更新 | Node、`MessageChannel` 集成与 E2E |
+| AC-21 | **本地基准：** 在本地基准镜像上：<br>- 三个 payload 与用 executable 记录的结构独立读取的数据逐项相等，两次运行 SHA-256 相同；<br>- 展开函数对每条弹丸记录、每个导弹类型与每种碎片形状都成功，顶点与面数符合构建规则；<br>- 用量在 `PRODUCTION_MODEL_SHARE` 之内；<br>- 作业的 `models` 组只剩 AC-14 的诊断 | 本地 Node 脚本，证据只记命令、计数与判定 |
 | AC-14 | **歧义贴图条目（U-028）：** 列出切片贴图实际用到的全部歧义条目。每个条目的结论都满足[研究要求](#研究要求)的证据门槛：EXE 证据，或 P2-05 spec 修订并获批准后允许的逐条目截图证据。证据类型记入 textures 与 U-028。生产展开路径对每个条目得到的显示颜色与结论一致；生产贴图映射的置信度与之一致，不再有因歧义而未确认的贴图。结论与暂定规则不同时，只改了 `nearestColourMap` 一处，P2-05 的相关测试已同步。任一条目未达门槛时，本项为 blocked，相应贴图保持未确认 | 本地研究；文档与映射对照审阅；对每个条目断言展开结果 |
 | AC-15 | **部件结构记录：** mesh 记录切片用到的部件列表、标志值与音效槽的已知含义与置信度，以及切片网格的绕序与法线一致性统计；源码结构写明 payload 不承载这些含义，并写明[消费者边界](#消费者边界)中的坐标与朝向约定 | 文档审阅 |
 | AC-16 | **边界、隐私与工程：**<br>- `content/` 的新模块不导入 `original-data`、DOM、Node 或 Three.js；<br>- 本任务产生的诊断不含原版字节、条目编号、偏移、文件名或宿主路径；<br>- nob-check 只输出结构计数与失败原因；<br>- `workers/` 仍不使用网络 API；<br>- 没有新依赖，锁文件不变；<br>- `pnpm check`、`pnpm check:original` 与聚焦 E2E 通过 | 命令输出；依赖与锁文件 diff；源码与边界检查 |
@@ -430,3 +530,11 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 - 技术决定 1 至 12。
 
 生成时按“采用推荐答案”授权作出的选择，以及 review-spec（rubber-duck，GPT-6.1 Sol）采纳的六项修正，随本次批准一并生效。批准不改变执行前提：goal 须在 P2-08 与 P2-09 合入 `main` 并统一协议、身份与组装机制之后生成。
+
+**2026-10-06 修订（待批准）：** 用户选择方案 A（弹丸角色由 `data` 承担），并要求研究 EXE 中的效果几何。据研究结论新增或修改：
+- S-14、[效果几何数据](#效果几何数据)；
+- 生产 Asset、限值、错误码与研究要求中的相应条款；
+- 技术决定 13 至 16；
+- AC-13 的修订说明与 AC-18 至 AC-21。
+
+同时须批准 P2-01 的切片定义与来源定位修订。批准前本 spec 为 `draft`，已批准的其余条款照常有效，按修订新增的工作不开始实施。
