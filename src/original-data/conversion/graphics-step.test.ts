@@ -10,13 +10,14 @@ import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import {
   cockpitBlock, cockpitLayoutBlock, countedVerifiedSource, dataPaletteBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping,
-  imageDeclaration, inGraphicsLocationGrammar, layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, textureBlock,
+  imageDeclaration, inGraphicsLocationGrammar, layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock,
+  textureBlock,
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
 import { runGraphicsStep } from './graphics-step.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 100, dependencyEdges: 100, paletteEntries: 10_000, imagePixels: 10_000, glyphs: 10_000, payloadBytes: 1_000_000 };
-const { data, texture, cockpit, mfd } = GRAPHICS_ENTRIES;
+const { data, texture, cockpit, mfd, table } = GRAPHICS_ENTRIES;
 
 const mappings = () => ({
   sourceFingerprint: null,
@@ -286,6 +287,46 @@ describe('graphics step container sources and layouts', () => {
     const set = [...containerDeclarations({ elements: [IDS.front0, IDS.front1, extra] }), imageDeclaration(extra, IDS.flight, { role: 'cockpit-element' })];
     await expect(runGraphicsStep(source, table, set, LIMITS))
       .rejects.toMatchObject({ name: 'SourceError', code: 'geometry-mismatch', location: 'graphics[layout/front].elements' });
+  });
+
+  describe('with a TABL image list', () => {
+    const GAUGE = rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]);
+    const TABLE = tableBlock([OVERLAY, rawImageBlock(1, 2, [3, 4]), GAUGE]);
+    const gaugeId = 'image/hud/gauge-bar-1/2';
+    const tableSource = () => verifiedSource(graphicsArchive({ cockpit: COCKPIT, mfd: MFD, table: TABLE }));
+    const tableMappings = (subresource: string | null = 'records/2') => {
+      const mapped = containerMappings();
+      mapped.mappings.splice(3, 0, graphicsMapping(gaugeId, 'TABL', table, subresource));
+      return mapped;
+    };
+    const tableDeclarations = () => [...containerDeclarations(), imageDeclaration(gaugeId, IDS.flight)];
+
+    it('converts a list record among CCKD and MFDD sources, reading each entry once', async () => {
+      const { source, reads } = await tableSource();
+      const [step] = (await runGraphicsStep(source, tableMappings(), tableDeclarations(), LIMITS)).groups;
+      expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [cockpit]: 1, [mfd]: 1, [table]: 1 });
+      expect(step.sources.find(({ id }) => id === gaugeId)?.state).toBe('verified');
+      const whole = convertGraphics([paletteDeclaration(IDS.flight), imageDeclaration(gaugeId, IDS.flight)], new Map<string, GraphicsSource>([
+        [IDS.flight, { type: 'data-palette', block: dataPaletteBlock() }], [gaugeId, { type: 'image-record', block: GAUGE }],
+      ]), LIMITS);
+      expect(step.payloads.find(({ id }) => id === gaugeId)!.bytes).toEqual(whole.assets.find(({ descriptor }) => descriptor.id === gaugeId)!.payload.bytes);
+    });
+
+    it.each<[string, string | null, string, string]>([
+      ['a whole TABL entry', null, 'invalid-declaration', 'graphics[image/hud/gauge-bar-1/2].record'],
+      ['a record index with a leading zero', 'records/02', 'invalid-declaration', 'graphics[image/hud/gauge-bar-1/2].record'],
+      ['a record past the list', 'records/3', 'subresource-not-found', 'graphics[image/hud/gauge-bar-1/2].record'],
+    ])('rejects %s', async (_, subresource, code, location) => {
+      const { source } = await tableSource();
+      await expect(runGraphicsStep(source, tableMappings(subresource), tableDeclarations(), LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location });
+    });
+
+    it('reports the embedded palette of a list record as a missing subresource', async () => {
+      const { source } = await tableSource();
+      const mapped = withContainerMapping(IDS.mfdPalette, 'TABL', table, 'records/0/palette');
+      await expect(runGraphicsStep(source, mapped, containerDeclarations(), LIMITS))
+        .rejects.toMatchObject({ name: 'SourceError', code: 'subresource-not-found', location: 'graphics[palette/mfd].palette' });
+    });
   });
 
   it.each<[string, () => unknown, string, string]>([

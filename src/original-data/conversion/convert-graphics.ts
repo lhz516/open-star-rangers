@@ -18,16 +18,20 @@ import {
 } from './graphics-declarations.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, mfdRecordOffset, readCockpitFont, readCockpitGroup, readDataPalette,
-  readEmbeddedPalette, readImageRecordHeader,
+  readEmbeddedPalette, readImageRecordHeader, tableRecordOffset,
 } from './source-graphics.ts';
 
 /** The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. */
 export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-1';
 
-/** An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`) or an MFDD list record. */
+/**
+ * An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`), an MFDD list record
+ * (`lists/<l>/records/<i>`) or a TABL image list record (`records/<i>`).
+ */
 export type RecordSelector =
   | { readonly container: 'cockpit-element'; readonly slot: number; readonly index: number }
-  | { readonly container: 'mfd-record'; readonly list: number; readonly index: number };
+  | { readonly container: 'mfd-record'; readonly list: number; readonly index: number }
+  | { readonly container: 'table-record'; readonly index: number };
 
 interface DataPaletteSource {
   /** A whole DATA entry. */
@@ -90,10 +94,12 @@ const BUDGET_FIELDS = Object.freeze({ palette: 'palette', image: 'pixels', font:
 
 /** Block offset of the image record a source selects: 0 for a whole-entry record. */
 function recordOffset(block: Uint8Array, record: RecordSelector | undefined, at: string): number {
-  if (!record) return 0;
-  return record.container === 'cockpit-element'
-    ? cockpitElementRecordOffset(block, record.slot, record.index, at)
-    : mfdRecordOffset(block, record.list, record.index, at);
+  switch (record?.container) {
+    case undefined: return 0;
+    case 'cockpit-element': return cockpitElementRecordOffset(block, record.slot, record.index, at);
+    case 'mfd-record': return mfdRecordOffset(block, record.list, record.index, at);
+    case 'table-record': return tableRecordOffset(block, record.index, at);
+  }
 }
 
 class Conversion {

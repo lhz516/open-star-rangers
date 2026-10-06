@@ -3,8 +3,8 @@ import { isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
 import { SourceError, type SourceLimitName } from '../source-error.ts';
 
-// Source structure of DATA palettes, 36-byte image records, MFDD record lists, bitmap font tables and CCKD group
-// directories (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
+// Source structure of DATA palettes, 36-byte image records, MFDD record lists, bitmap font tables, CCKD group
+// directories and TABL image lists (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
 // it allocates anything sized by the source, copies its result into new buffers the caller owns and throws a
 // SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`) under the
 // caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
@@ -19,9 +19,12 @@ const COCKPIT_ELEMENT_BYTES = 52;
 
 /**
  * Approved safety caps on container counts above the largest baseline counts (docs/plan/p2/07/spec.md, limits): CCKD
- * directory slots (1–8), elements per slot (0–16, the layout element cap) and records per MFDD list (0–16).
+ * directory slots (1–8), elements per slot (0–16, the layout element cap), records per MFDD list (0–16) and records per
+ * TABL image list (1–64).
  */
-export const CONTAINER_LIMITS = Object.freeze({ cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16 });
+export const CONTAINER_LIMITS = Object.freeze({
+  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64,
+});
 
 export interface ImageRecordHeader {
   readonly encoding: 'raw' | 'sprite-rle';
@@ -159,6 +162,11 @@ function decodeSpriteRle(data: Uint8Array, width: number, height: number, locati
   return Object.freeze({ width, height, indices, mask });
 }
 
+/** Rejects a raw record whose pixel data is not exactly width × height bytes. */
+function requireRawSize({ width, height, dataSize }: ImageRecordHeader, path: string): void {
+  if (dataSize !== width * height) invalid(fieldAt(path, 'pixels'), 'raw image data must be width * height bytes');
+}
+
 /** Checks the record at `offset`, then decodes its pixels into new buffers; stored row order is kept. */
 export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): SourceImage {
   const header = readImageRecordHeader(block, offset, path);
@@ -166,7 +174,7 @@ export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): Sou
   const { width, height } = header;
   const data = block.subarray(header.pixelOffset, header.pixelOffset + header.dataSize);
   if (header.encoding === 'sprite-rle') return decodeSpriteRle(data, width, height, location);
-  if (data.length !== width * height) invalid(location, 'raw image data must be width * height bytes');
+  requireRawSize(header, path);
   return Object.freeze({ width, height, indices: exclusiveBytes(data), mask: null });
 }
 
@@ -211,6 +219,38 @@ export function mfdRecordOffset(block: Uint8Array, list: number, index: number, 
   const records = list === 0 || list === 1 ? lists[list] : [];
   if (!isIndex(index, records.length)) notFound(fieldAt(path, 'record'), 'the MFDD has no such list or record');
   return records[index];
+}
+
+/**
+ * Block offsets of the records of a TABL image list (hud §2), the only TABL structure supported: no header; raw image
+ * records without embedded palettes packed from offset 0; their count, 1–64, is record 0's pixel offset divided by 36
+ * and is checked before the other records are read; and the records' pixel data follows in record order and fills the
+ * rest of the block exactly. Anything else is `invalid-payload`.
+ */
+export function readTableRecordOffsets(block: Uint8Array, path = ''): readonly number[] {
+  const location = fieldAt(path, 'record');
+  const arrayEnd = readImageRecordHeader(block, 0, path).pixelOffset;
+  if (arrayEnd < IMAGE_RECORD_BYTES || arrayEnd % IMAGE_RECORD_BYTES !== 0) invalid(location, 'a TABL image list must hold whole records before its data');
+  const count = withinLimit(arrayEnd / IMAGE_RECORD_BYTES, 'tableRecords', CONTAINER_LIMITS.tableRecords, location);
+  let dataEnd = arrayEnd;
+  const offsets = Array.from({ length: count }, (_, index) => {
+    const offset = index * IMAGE_RECORD_BYTES;
+    const header = readImageRecordHeader(block, offset, path);
+    if (header.encoding !== 'raw' || header.paletteCount !== 0) invalid(location, 'a TABL image list holds only raw records without embedded palettes');
+    requireRawSize(header, path);
+    if (header.pixelOffset !== dataEnd) invalid(location, 'TABL image list data must follow record order without gaps');
+    dataEnd += header.dataSize;
+    return offset;
+  });
+  if (dataEnd !== block.length) invalid(location, 'TABL image list data must fill the rest of the block');
+  return Object.freeze(offsets);
+}
+
+/** Block offset of record `index` in a TABL image list, the `records/<index>` subresource. */
+export function tableRecordOffset(block: Uint8Array, index: number, path = ''): number {
+  const offsets = readTableRecordOffsets(block, path);
+  if (!isIndex(index, offsets.length)) notFound(fieldAt(path, 'record'), 'the TABL image list has no such record');
+  return offsets[index];
 }
 
 /**

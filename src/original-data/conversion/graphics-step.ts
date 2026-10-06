@@ -36,6 +36,7 @@ const FONT_SUBRESOURCE = new RegExp(`^fonts/${INDEX}$`);
 const GROUP_SUBRESOURCE = new RegExp(`^groups/${INDEX}$`);
 const ELEMENT_SUBRESOURCE = new RegExp(`^groups/${INDEX}/elements/${INDEX}(/palette)?$`);
 const MFD_SUBRESOURCE = new RegExp(`^lists/${INDEX}/records/${INDEX}(/palette)?$`);
+const TABLE_SUBRESOURCE = new RegExp(`^records/${INDEX}(/palette)?$`);
 const SOURCE_FIELDS = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts', layout: 'groups' } as Record<string, string>);
 
 type WithoutBlock<Source> = Source extends unknown ? Omit<Source, 'block'> : never;
@@ -43,14 +44,16 @@ type SourceKind = WithoutBlock<GraphicsSource>;
 
 /**
  * The image record a locator selects and whether it names that record's embedded palette, or null when the locator
- * names no image record: a whole TEX/BITM entry, a CCKD element or an MFDD list record.
+ * names no image record: a whole TEX/BITM entry, a CCKD element, an MFDD list record or a TABL image list record.
  */
 function recordOf(entryType: string, subresource: string | null): { readonly record?: RecordSelector; readonly palette: boolean } | null {
   if (subresource === null || subresource === 'palette') return WHOLE_RECORD_TYPES.includes(entryType) ? { palette: subresource !== null } : null;
   const element = entryType === 'CCKD' ? ELEMENT_SUBRESOURCE.exec(subresource) : null;
   if (element) return { record: { container: 'cockpit-element', slot: Number(element[1]), index: Number(element[2]) }, palette: element[3] !== undefined };
   const record = entryType === 'MFDD' ? MFD_SUBRESOURCE.exec(subresource) : null;
-  return record && { record: { container: 'mfd-record', list: Number(record[1]), index: Number(record[2]) }, palette: record[3] !== undefined };
+  if (record) return { record: { container: 'mfd-record', list: Number(record[1]), index: Number(record[2]) }, palette: record[3] !== undefined };
+  const table = entryType === 'TABL' ? TABLE_SUBRESOURCE.exec(subresource) : null;
+  return table && { record: { container: 'table-record', index: Number(table[1]) }, palette: table[2] !== undefined };
 }
 
 /** What a locator supplies for an Asset kind, or null when it supplies nothing of that kind. */
@@ -72,8 +75,9 @@ function sourceKindOf(kind: string, entryType: string, subresource: string | nul
 const locatorOf = (mapping: SourceMapping): OriginalAssetLocator | null => (mapping.parts.length === 1 ? mapping.parts[0].alternatives[0] : null);
 
 /**
- * The typed source of one Asset from its mapping: a whole DATA entry; a whole-entry image record, a CCKD element or an
- * MFDD list record, or the embedded palette of any of them; `fonts/<i>` or `groups/<s>` of a CCKD entry.
+ * The typed source of one Asset from its mapping: a whole DATA entry; a whole-entry image record, a CCKD element, an
+ * MFDD list record or a TABL image list record, or the embedded palette of any of them; `fonts/<i>` or `groups/<s>` of a
+ * CCKD entry.
  */
 async function graphicsSource({ id, kind }: AssetReference, mapping: SourceMapping, readEntry: EntryReader): Promise<GraphicsSource> {
   const locator = locatorOf(mapping);

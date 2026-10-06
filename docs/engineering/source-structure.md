@@ -535,13 +535,20 @@ src/
 
     计数都在读取或遍历它们决定的规模之前检查。结果按目录顺序给出每个 slot 的冻结元素数组，每项为 `{ recordOffset, x, y }`：`recordOffset` 是元素开头图像记录的块内偏移，x、y 取自 +36、+40 的有符号 32 位整数。目录项的其余字段不解释。
   - **CCKD 子资源：** `readCockpitGroup(block, s)` 对应 `groups/<s>`，空 slot 或序号越界为 `subresource-not-found@…groups`；`cockpitElementRecordOffset(block, s, i)` 对应 `groups/<s>/elements/<i>`，元素序号越界为 `subresource-not-found@…elements`。
-  - **容器内记录：** CCKD 元素与 MFDD 的记录都用记录偏移交给 `decodeImageRecord`、`readEmbeddedPalette`，结果与把同一记录放在偏移 0 时相同。上述三项计数上限以 `CONTAINER_LIMITS` 导出。
+  - **TABL 图像列表（[P2-07/06](../plan/p2/07/subtasks/06-table-records.md)）：** `readTableRecordOffsets` 只接受 [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 记录为已确认的结构。依次检查：
+    - 没有头部，记录从 0 起紧密排列；
+    - 记录数为记录 0 的像素偏移除以 36，须为 1–64（`tableRecords`），在读取其余记录之前判定；
+    - 每个记录都是不带嵌入调色板的 raw 记录，数据恰为宽 × 高字节（否则为 `invalid-payload@…pixels`，不必解码）；
+    - 像素数据按记录顺序、无空隙地恰好占满其余部分。
+
+    其他任何形态都是 `invalid-payload@…record`，记录头自身的问题沿用 P2-05 的位置。`tableRecordOffset(block, i)` 对应 `records/<i>`，越界为 `subresource-not-found@…record`。这些记录没有嵌入调色板，因此 `records/<i>/palette` 总是 `subresource-not-found@…palette`。
+  - **容器内记录：** CCKD 元素、MFDD 与 TABL 的记录都用记录偏移交给 `decodeImageRecord`、`readEmbeddedPalette`，结果与把同一记录放在偏移 0 时相同。上述四项计数上限以 `CONTAINER_LIMITS` 导出。
   - `readFontTable` 要求头部首字节为 0、单元宽与高为 1–8（`limit-exceeded`）、表长恰为 `4 + 256 × 高`，字形字节逐位复制、不切分（每字形行数由声明给出）。CCKD 字体目录须恰为 3 项且都在块内：`readCockpitFonts` 按目录顺序读取全部 3 个字库，`readCockpitFont(block, i)` 只读取 `fonts/<i>`，i 不在 0–2 时为 `subresource-not-found`。
   - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs`、`fonts`、`groups` 或 `elements`，不含条目编号、偏移或字节。
 - **转换声明：** [graphics-declarations.ts](../../src/original-data/conversion/graphics-declarations.ts)（[P2-05/04](../plan/p2/05/subtasks/04-graphics-conversion.md)）的 `readGraphicsDeclarations` 严格读取一组声明（字段见 [spec](../plan/p2/05/spec.md#图形转换声明)）：`asset` 为 palette/image/font 且组内 ID 唯一，`role` 与 `group` 按 P2-01 规则读取且该组拥有此 kind；图像的 `palette` 与 nearest 目标都须是同一组声明中同组的调色板，`alpha` 为 `encoding` 或 `{ colourKey }`，`rowOrder` 为 `stored`/`reversed`；字体有预期 `cell`、每字形行数 `glyphRows`（`cell.height`–8，且整除 256 × `cell.height`，字形数为二者之商，由 `declaredGlyphCount` 给出）与按码位互不重叠、字形小于字形数的 `charMap` 区间。它复用 content 的严格读取原语，任何问题都转为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 加字段路径。[P2-07/04](../plan/p2/07/subtasks/04-layout-conversion.md) 加入布局声明（字段见 [P2-07 spec](../plan/p2/07/spec.md#布局转换声明)）：`frame` 的宽 1–640、高 1–480，`elements` 为 1–16 个互不相同的 image ID，按存储顺序排列，每个都须是同一声明组、同一资源组中的图像声明。
 - **转换器：** [convert-graphics.ts](../../src/original-data/conversion/convert-graphics.ts) 的 `convertGraphics(declarations, sources, limits, usage)` 先读取声明，再按 Asset ID 取得已读入的源块：
   - 来源类型为 `data-palette`、`embedded-palette`（记录的嵌入调色板）、`image-record`、`cockpit-font`（`fonts/<i>`）或 `cockpit-group`（`groups/<s>`）；来源与 kind 不符、缺少来源都是 `invalid-declaration`；
-  - 记录类来源可带 `RecordSelector`：CCKD 元素 `{ slot, index }` 或 MFDD 记录 `{ list, index }`，没有时为偏移 0 的整条目记录。转换时经 `cockpitElementRecordOffset`、`mfdRecordOffset` 得到记录偏移，此后的读取、解码与检查与整条目相同；
+  - 记录类来源可带 `RecordSelector`：CCKD 元素 `{ slot, index }`、MFDD 记录 `{ list, index }` 或 TABL 记录 `{ index }`，没有时为偏移 0 的整条目记录。转换时经 `cockpitElementRecordOffset`、`mfdRecordOffset`、`tableRecordOffset` 得到记录偏移，此后的读取、解码与检查与整条目相同；
   - 依次转换调色板、图像、字体与布局，同类按 ID 排序。
   - 每个 Asset 在读取或分配之前，用 `chargeBudget` 扣除由记录头或声明推得的 `assets`、`dependencyEdges`、`paletteEntries`、`imagePixels`、`glyphs` 与 `payloadBytes`（`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 与编码器共用同一公式）。被拒绝时报 `budget-exceeded`，限值名为维度，总量超出安全整数时 `observed` 为 null；调用者的用量不变。转换用量不扣 `sourceReadBytes`。
   - 颜色键只用于 raw 图像（否则为 `invalid-declaration@…alpha`），值为 k 的像素变为透明；不透明像素的索引不小于所绑定调色板（同组声明的转换结果）的条目数时为 `palette-index-out-of-range@…pixels`；`reversed` 恰好反转索引与掩码的行序。字体按声明的 `cell` 扣除，实际单元不符为 `geometry-mismatch@…glyphs`，`charMap` 区间展开为按码位升序的条目。
@@ -552,10 +559,10 @@ src/
   - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源的序号都是不带前导零的十进制，越界由读取报 `subresource-not-found`：
     - DATA 整条目为调色板；TEX/BITM 整条目为图像，其 `palette` 为嵌入调色板；
     - CCKD 的 `fonts/<i>` 为字库，`groups/<s>` 为布局，`groups/<s>/elements/<i>` 为图像；
-    - MFDD 的 `lists/<l>/records/<i>` 为图像；
+    - MFDD 的 `lists/<l>/records/<i>` 与 TABL 的 `records/<i>` 为图像；
     - 任一容器记录路径后接 `/palette` 为该记录的嵌入调色板。
 
-    其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts|groups`。之后要求每个布局的第 i 个元素图像恰好映射到同一封包、同一 CCKD 条目、同一 slot 的 `groups/<s>/elements/<i>`，否则为 `invalid-declaration@graphics[<布局 ID>].elements[<i>]`。TABL 的 `records/<i>` 归 P2-07/06。
+    其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts|groups`。之后要求每个布局的第 i 个元素图像恰好映射到同一封包、同一 CCKD 条目、同一 slot 的 `groups/<s>/elements/<i>`，否则为 `invalid-declaration@graphics[<布局 ID>].elements[<i>]`。
   - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
 - **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：
   - `PRODUCTION_GRAPHICS_DECLARATIONS`：`palette/flight/models` 与 `palette/flight/cockpit-hud-map`（角色 `flight-palette`，各在本组），`font/hud/8x8-1`、`font/hud/8x8-2`、`font/hud/4x6`（角色 `font`，`cockpit-hud-map`，单元 8×8、8×8、4×6，每字形行数都为 8，4×6 因此为 192 个字形）。字符映射是 [hud §1.1](../original/formats/hud.md#11-glyph-layout-and-character-maps-likely) 记录的同号区间（[P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md)）：8x8-1 为 0x20–0x7a 与 0x7c–0x7e，8x8-2 为 0x20–0x7e，4x6 为 0x20、0x25、0x27–0x3f 与 0x41–0x5d。
@@ -566,10 +573,10 @@ src/
     - **份额：** `PRODUCTION_MODEL_TEXTURE_SHARE` 为 `assets` 40、`dependencyEdges` 64、`paletteEntries` 1,024、`imagePixels` 524,288、`payloadBytes` 655,360（份额内全部 Asset 都按最长 ID 的图像、掩码与满额调色板计算的上界不超过它），为研究可能追加的 Asset 留有余量。
   - `PRODUCTION_GRAPHICS_SHARE`：P2-05 的份额（`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384；按结构上限与头部算出的上界不超过它，实际字形用量为 256 + 256 + 192）加上切片贴图份额，即 `assets` 45、`dependencyEdges` 64、`paletteEntries` 1,536、`glyphs` 768、`imagePixels` 524,288、`payloadBytes` 671,744，其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
   - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA、带 3 个字库的 CCKD，以及在每个生产贴图条目处由条目号决定内容的 4×2 raw 贴图 `syntheticTexture`），供 Node、作业与浏览器测试使用；`MODEL_TEXTURE_USAGE` 是这些贴图的期望转换用量。
-- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。P2-07 不新增 code，只追加限值名 `cockpitSlots`、`cockpitElements` 与 `mfdRecords`。
+- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。P2-07 不新增 code，只追加限值名 `cockpitSlots`、`cockpitElements`、`mfdRecords` 与 `tableRecords`。
 - [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表的研究用解析器 `parseIdList` 与 `PayloadError`；图像、调色板与字体由上述源读取处理，MESH 与 MODL 由 `formats/mesh.ts`、`formats/modl.ts` 处理（见[原版格式转换](#原版格式转换)）。
 
-合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`，P2-07 加入 `groups`、`elements`、`elements[<i>]` 与 `elements[<i>].x|y`）；`cockpitLayoutBlock` 与 `mfdBlock` 按 cockpit 记录的结构生成带分组、元素与两个记录列表的合成容器，记录数据的指针相对条目块；`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
+合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`，P2-07 加入 `groups`、`elements`、`elements[<i>]` 与 `elements[<i>].x|y`）；`cockpitLayoutBlock`、`mfdBlock` 与 `tableBlock` 按 cockpit 与 hud 记录的结构生成带分组、元素、两个记录列表或无头部图像列表的合成容器，记录数据的指针相对条目块；`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
 ### 原版格式转换
 

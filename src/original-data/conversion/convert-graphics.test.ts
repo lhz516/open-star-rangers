@@ -10,7 +10,7 @@ import { payloadMismatch } from '../../content/payload.ts';
 import type { SourceError } from '../source-error.ts';
 import {
   cockpitBlock, cockpitLayoutBlock, dataPaletteBlock, expectSourceError, fontDeclaration, hudFontTables, imageDeclaration, layoutDeclaration,
-  mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, type SyntheticElement,
+  mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource, type RecordSelector } from './convert-graphics.ts';
 import { readDataPalette } from './source-graphics.ts';
@@ -259,6 +259,19 @@ describe('layout and container record conversion', () => {
     }), LIMITS);
     expect(contained.assets.map(({ payload }) => payload)).toEqual(whole.assets.map(({ payload }) => payload));
     expect(imageOf(contained, 'image/front/element-1').mask).not.toBeNull();
+  });
+
+  it('converts a TABL list record exactly like the same record as a whole entry, and locates a missing record', () => {
+    const gauge = rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]);
+    const table = tableBlock([rawImageBlock(1, 1, [9]), gauge]);
+    const set = [...layoutDeclarations(), imageDeclaration('image/hud/gauge-bar-1/1', 'palette/flight')];
+    const listed = convertGraphics(set, new Map([...containerSources(), ['image/hud/gauge-bar-1/1', { type: 'image-record', block: table, record: { container: 'table-record', index: 1 } }]]), LIMITS);
+    const whole = convertGraphics(set, new Map([...containerSources(), ['image/hud/gauge-bar-1/1', { type: 'image-record', block: gauge }]]), LIMITS);
+    expect(payloadOf(listed, 'image/hud/gauge-bar-1/1')).toEqual(payloadOf(whole, 'image/hud/gauge-bar-1/1'));
+    expectSourceError(
+      () => convertGraphics(set, new Map([...containerSources(), ['image/hud/gauge-bar-1/1', { type: 'image-record', block: table, record: { container: 'table-record', index: 2 } }]]), LIMITS),
+      'subresource-not-found', 'graphics[image/hud/gauge-bar-1/1].record',
+    );
   });
 
   it.each<[string, () => ReturnType<typeof convertLayouts>, string]>([

@@ -5,12 +5,12 @@ import { readAssetId } from '../../content/asset-id.ts';
 import { ByteWriter } from '../synthetic.ts';
 import {
   cockpitBlock as cockpit, cockpitLayoutBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
-  recordBlock as record, spriteImageBlock, type SyntheticElement,
+  recordBlock as record, spriteImageBlock, tableBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, mfdRecordOffset, readCockpitFont,
   readCockpitFonts, readCockpitGroup, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
-  readMfdRecordOffsets,
+  readMfdRecordOffsets, readTableRecordOffsets, tableRecordOffset,
 } from './source-graphics.ts';
 
 // A 5×3 sprite whose rows differ, as little-endian u16 runs and pixels. Row 0: transparent 0, opaque 2 (1, 2),
@@ -346,5 +346,55 @@ describe('MFDD records', () => {
 
   it('rejects a record pointer past the block', () => {
     rejects(() => mfdRecordOffset(set32(copy(block), 8, block.length - 35), 1, 0), 'invalid-payload', 'record');
+  });
+});
+
+describe('TABL image lists', () => {
+  // Records of different sizes, so a wrong offset decodes differently; none has an embedded palette (hud §2).
+  const RECORDS = [rawImageBlock(3, 2, [10, 11, 12, 13, 14, 15]), tiny(7), rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6])];
+  const TABLE = tableBlock(RECORDS);
+
+  it('decodes each record exactly as the same record at offset 0', () => {
+    expect(readTableRecordOffsets(TABLE)).toEqual([0, 36, 72]);
+    RECORDS.forEach((whole, index) => expect(decodeImageRecord(TABLE, tableRecordOffset(TABLE, index))).toEqual(decodeImageRecord(whole)));
+  });
+
+  it('accepts 1 and 64 records', () => {
+    expect(readTableRecordOffsets(tableBlock([tiny(4)]))).toEqual([0]);
+    const full = tableBlock(Array.from({ length: CONTAINER_LIMITS.tableRecords }, (_, index) => tiny(index)));
+    expect([...decodeImageRecord(full, tableRecordOffset(full, 63)).indices]).toEqual([63]);
+  });
+
+  it.each([[3], [-1], [0.5]])('reports records/%s as a missing subresource', index => {
+    rejects(() => tableRecordOffset(TABLE, index, 'graphics[image/a]'), 'subresource-not-found', 'graphics[image/a].record');
+  });
+
+  it('reports the embedded palette of a list record as a missing subresource', () => {
+    rejects(() => readEmbeddedPalette(TABLE, tableRecordOffset(TABLE, 1), 'graphics[palette/a]'), 'subresource-not-found', 'graphics[palette/a].palette');
+  });
+
+  it('limits a list to 64 records before reading them', () => {
+    const limit = { name: 'tableRecords', limit: 64, observed: 65 } as const;
+    rejects(() => readTableRecordOffsets(tableBlock(Array.from({ length: 65 }, (_, index) => tiny(index)))), 'limit-exceeded', 'record', limit);
+    // Record 0's data placed after room for 65 records; the records it implies are never read.
+    const claimed = set32(Uint8Array.of(...TABLE, ...new Array(65 * 36).fill(0)), 28, 65 * 36);
+    rejects(() => readTableRecordOffsets(claimed), 'limit-exceeded', 'record', limit);
+  });
+
+  it.each<[string, () => Uint8Array, string]>([
+    ['an ID list', () => new ByteWriter().u32(10_103, 10_097, 10_101).toBytes(), 'record'],
+    ['data that starts inside a record', () => set32(copy(TABLE), 28, 40), 'record'],
+    ['data inside the record array', () => set32(copy(TABLE), 28, 0), 'record'],
+    ['a sprite record', () => tableBlock([RECORDS[0], spriteImageBlock(5, 3, SPRITE_RUNS)]), 'record'],
+    ['an embedded palette', () => tableBlock([RECORDS[0], PALETTED]), 'record'],
+    // Data of 6, 1 and 6 bytes starts at 108, 114 and 115.
+    ['data out of record order', () => set32(set32(copy(TABLE), 36 + 28, 115), 72 + 28, 114), 'record'],
+    ['a gap between records\' data', () => set32(Uint8Array.of(...TABLE, 0), 72 + 28, 116), 'record'],
+    ['trailing bytes', () => Uint8Array.of(...TABLE, 0), 'record'],
+    ['a record pointer past the block', () => set32(copy(TABLE), 72 + 28, TABLE.length), 'pixels'],
+    // Record 2 claims 5 bytes for 2×3 pixels; the data still tiles, and record 0 is the one selected.
+    ['an unselected raw record of the wrong size', () => set32(copy(TABLE).subarray(0, -1), 72 + 32, 5), 'pixels'],
+  ])('rejects %s as invalid-payload', (_, block, field) => {
+    rejects(() => tableRecordOffset(block(), 0, 'graphics[image/a]'), 'invalid-payload', `graphics[image/a].${field}`);
   });
 });

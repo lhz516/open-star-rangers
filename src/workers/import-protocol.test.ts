@@ -339,7 +339,7 @@ describe('error code grammar', () => {
     rangeReadBytes: true, portReadBytes: true, sourceReadBytes: true, archiveEntries: true, entryBytes: true,
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
     payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
-    cockpitSlots: true, cockpitElements: true, mfdRecords: true,
+    cockpitSlots: true, cockpitElements: true, mfdRecords: true, tableRecords: true,
   };
 
   it.each([
