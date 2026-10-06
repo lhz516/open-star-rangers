@@ -96,7 +96,7 @@ updated: 2026-10-05
 | [02-expansion-lookup.md](./subtasks/02-expansion-lookup.md) | 01 | completed |
 | [03-source-hardening.md](./subtasks/03-source-hardening.md) | 01 | completed |
 | [04-graphics-conversion.md](./subtasks/04-graphics-conversion.md) | 01, 03 | completed |
-| [05-graphics-step.md](./subtasks/05-graphics-step.md) | 04 | pending |
+| [05-graphics-step.md](./subtasks/05-graphics-step.md) | 04 | completed |
 | [06-production-graphics.md](./subtasks/06-production-graphics.md) | 05 | pending |
 | [07-worker-integration.md](./subtasks/07-worker-integration.md) | 05, 06 | pending |
 | [08-browser-worker-graphics.md](./subtasks/08-browser-worker-graphics.md) | 07 | pending |
@@ -109,6 +109,8 @@ updated: 2026-10-05
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-05 — Spec 位置语法澄清（子任务 05）：** rubber-duck 指出 `graphics.declarations`（映射中有未声明的 Asset；声明组不是数组时 04 的读取器也报在这里）不在 spec 错误码的封闭位置语法内。按用户在调用 execute-goal 时给出的授权，spec 的[错误码](./spec.md#错误码)与[行为与边界](./spec.md#行为与边界)补充了这个声明组整体位置，并写明 `graphics.declarations[<i>]` 可带结构字段路径（04 已按此报告字段级位置）。行为、范围与验收标准不变；测试支持新增按 spec 编写的位置语法检查，覆盖 03–05 的转换错误位置。
 
 ## 审批
 

@@ -1,12 +1,24 @@
 import { expect } from 'vitest';
+import { kindOf } from '../../content/synthetic-content.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
-import { ByteWriter, imageRecord } from '../synthetic.ts';
+import { buildImfat, ByteWriter, imageRecord } from '../synthetic.ts';
 
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
 
-/** Asserts that `action` throws a SourceError with exactly this code, location and limit. */
+// The closed P2-05 location grammar (docs/plan/p2/05/spec.md, error codes), written from the spec as an oracle: the
+// declaration set, a declaration's field path, or a field of a canonical Asset.
+const GRAPHICS_LOCATION = new RegExp(`^graphics(?:${[
+  String.raw`\.declarations(?:\[\d+\](?:\.[A-Za-z]+(?:\[\d+\])?)*)?`,
+  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\]\.(?:record|palette|pixels|mask|glyphs|charMap|fonts|display|alpha|rowOrder)`,
+].join('|')})$`);
+
+/** Whether a conversion diagnostic location belongs to the P2-05 grammar. */
+export const inGraphicsLocationGrammar = (location: string): boolean => GRAPHICS_LOCATION.test(location);
+
+/** Asserts that `action` throws a SourceError with exactly this code, location and limit; `graphics…` locations must be in the grammar. */
 export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null): void => {
   expect(action).toThrowError(expect.objectContaining({ name: 'SourceError', code, location, limit }));
+  if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
 };
 
 type RecordFields = Partial<Parameters<typeof imageRecord>[1]> & { width: number; height: number; size: number };
@@ -65,3 +77,32 @@ export const imageDeclaration = (id: string, palette: string, overrides: Record<
 export const fontDeclaration = (id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   asset: { id, kind: 'font' }, role: 'font', group: 'cockpit-hud-map', cell: { width: 8, height: 8 }, charMap: [], ...overrides,
 });
+
+export const GRAPHICS_ARCHIVE = 'MAIN/SR.NOB';
+export const GRAPHICS_ENTRIES = Object.freeze({ data: 10_001, texture: 10_003, cockpit: 10_005 });
+
+/** A 4×2 raw texture with distinct indices and an 8-colour embedded BGR palette. */
+export const textureBlock = (): Uint8Array =>
+  rawImageBlock(4, 2, [0, 1, 2, 3, 4, 5, 6, 7], Array.from({ length: 24 }, (_, index) => (index * 9) & 0xff));
+
+/** An archive with one DATA, one TEX and one CCKD entry, any of which a test may replace. */
+export function graphicsArchive(blocks: { data?: Uint8Array; texture?: Uint8Array; cockpit?: Uint8Array } = {}): Uint8Array {
+  return buildImfat(10_000, [
+    { id: GRAPHICS_ENTRIES.data, type: 'DATA', data: blocks.data ?? dataPaletteBlock() },
+    { id: GRAPHICS_ENTRIES.texture, type: 'TEX', data: blocks.texture ?? textureBlock() },
+    { id: GRAPHICS_ENTRIES.cockpit, type: 'CCKD', data: blocks.cockpit ?? cockpitBlock(hudFontTables()) },
+  ]);
+}
+
+/** A declared single-locator mapping in the graphics archive. */
+export function graphicsMapping(id: string, type: string, entry: number, subresource: string | null = null): Record<string, unknown> {
+  return {
+    asset: { id, kind: kindOf(id) },
+    parts: [{ alternatives: [{ discPath: GRAPHICS_ARCHIVE, entry: { id: entry, type }, subresource }] }],
+    confidence: 'confirmed',
+    unknowns: [],
+    evidence: ['docs/original/formats/textures.md'],
+    resolution: 'declared',
+  };
+}
+

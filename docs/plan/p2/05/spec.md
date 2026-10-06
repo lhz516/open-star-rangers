@@ -159,7 +159,7 @@ reviewed: sha256:1c6f9c5f4028
 | 展开图像 | 非预乘 RGBA：不透明为调色板颜色、alpha 255，透明为 `(0,0,0,0)`；`nearest` 先把源调色板逐项映射到目标调色板 | 提供的调色板与引用不符：`binding-mismatch`；索引越界：`palette-index-out-of-range` |
 | 同一输入与声明再次转换或展开 | 逐字节相同，SHA-256 相同 | 不适用 |
 | 映射含子资源 | 转换成功后才为 `verified` | 转换失败时整个步骤失败，不输出任何 Asset 的状态或 payload |
-| 图形步骤中任一 Asset 转换失败 | 作业以 `failed` 结束，已转换的 payload 全部丢弃 | `source` 层 DTO，位置为 `graphics[<Asset ID>]…` 或 `graphics.declarations[<i>]` |
+| 图形步骤中任一 Asset 转换失败 | 作业以 `failed` 结束，已转换的 payload 全部丢弃 | `source` 层 DTO，位置为 `graphics[<Asset ID>]…`、`graphics.declarations[<i>]…` 或 `graphics.declarations` |
 | 图形阶段中读取失败（坏扇区、预算、条目缺失等） | 作业以 `failed` 结束，已转换的 payload 全部丢弃 | 保持 P2-02 的 `disc` 层或 P2-03 的 `source` 层原 code 与位置 |
 | 图形阶段中取消 | 持有者同步变为 `cancelled` 并终止 Worker，之后的消息不改变状态 | 不适用（沿用 P2-04） |
 | 识别之前出现 `convert-graphics` 进度，或之后又出现识别进度 | 作业失败 | `protocol-error@message.stage` |
@@ -272,7 +272,7 @@ reviewed: sha256:1c6f9c5f4028
 | `invalid-declaration` | 声明不合法或与来源不符：缺少绑定，绑定的不是同步骤、同组的调色板，对 RLE 声明颜色键，字符映射区间重叠或越界，子资源与 kind 不匹配 | null |
 | `geometry-mismatch` | 转换得到的尺寸与声明的预期不符 | null |
 
-位置为 `graphics.declarations[<i>]`，或 `graphics[<Asset ID>]` 后接 `.record`、`.palette`、`.pixels`、`.mask`、`.glyphs`、`.charMap`、`.fonts`、`.display`、`.alpha`、`.rowOrder` 之一。本任务产生的位置中不出现条目编号、偏移、字节或宿主路径。映射核验与图形阶段的读取错误不属于上表，保留 P2-02/P2-03 已批准的层、code 与位置（如 `sources.mappings[…]`、带条目编号的封包位置或光盘层的 LBA），不在 Worker 边界改写。
+位置为 `graphics.declarations[<i>]` 加结构字段路径；声明组整体的问题（不是数组，或映射中有未声明的 Asset）为 `graphics.declarations`；或 `graphics[<Asset ID>]` 后接 `.record`、`.palette`、`.pixels`、`.mask`、`.glyphs`、`.charMap`、`.fonts`、`.display`、`.alpha`、`.rowOrder` 之一。本任务产生的位置中不出现条目编号、偏移、字节或宿主路径。映射核验与图形阶段的读取错误不属于上表，保留 P2-02/P2-03 已批准的层、code 与位置（如 `sources.mappings[…]`、带条目编号的封包位置或光盘层的 LBA），不在 Worker 边界改写。
 
 **`content` 层（读取、展开与查找）：** 以下 code 以追加方式加入 P2-01 的内容错误 code 枚举，位置为结构字段路径。
 
@@ -392,3 +392,5 @@ reviewed: sha256:1c6f9c5f4028
 - 技术决定 1 至 13。
 
 生成时按“采用推荐答案”授权作出的选择，以及 review-spec 采纳的八项修正，随本次批准一并生效。
+
+执行期修订（用户在调用 execute-goal 时授权按需修订 spec、goal 与 subtasks，并在 goal 执行记录中说明）：2026-10-05 在[错误码](#错误码)与[行为与边界](#行为与边界)的位置语法中补充声明组整体的位置 `graphics.declarations`，并写明声明位置可带结构字段路径。行为、范围与验收标准不变，见 [goal 执行记录](./goal.md#执行记录)。
