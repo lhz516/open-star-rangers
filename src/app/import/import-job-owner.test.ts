@@ -59,6 +59,7 @@ const files = (...names: string[]) => names.map(name => new File([name], name));
 const ready = { type: 'ready', protocol: IMPORT_PROTOCOL_VERSION };
 const progress = (sequence: number, readBytes: number, jobId = 1, stage = 'identify-source') => ({ type: 'progress', jobId, sequence, stage, readBytes });
 const graphicsProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-graphics');
+const logicProgress = (sequence: number, readBytes: number) => progress(sequence, readBytes, 1, 'convert-logic');
 const identified = (sequence: number, jobId = 1) => ({ type: 'identified', jobId, sequence, identity: IDENTITY });
 const group = (sequence: number, jobId = 1) => ({
   type: 'group', jobId, sequence, group: 'audio',
@@ -106,17 +107,19 @@ describe('normal import', () => {
     expect(owner.getSnapshot()).toBe(before);
     port.send(graphicsProgress(4, 5), graphicsProgress(5, 9));
     expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-graphics', readBytes: 9, identity: IDENTITY, groups: [] });
+    port.send(logicProgress(6, 9));
+    expect(owner.getSnapshot()).toEqual({ status: 'running', jobId: 1, stage: 'convert-logic', readBytes: 9, identity: IDENTITY, groups: [] });
     expect(port.terminations).toBe(0);
-    port.send(finished(6));
+    port.send(finished(7));
     expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 1, identity: IDENTITY, groups: [], usage: USAGE });
     expect(port.terminations).toBe(1);
-    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(6).fill('running'), 'finished']);
+    expect(snapshots.map(snapshot => snapshot.status)).toEqual(['starting', ...new Array(7).fill('running'), 'finished']);
     expect(snapshots.every(isDeepFrozen)).toBe(true);
     expect(JSON.stringify(snapshots)).not.toContain(MARKER);
     port.send(progress(5, 6));
     port.events.error();
     port.events.messageError();
-    expect(snapshots).toHaveLength(8);
+    expect(snapshots).toHaveLength(9);
     expect(port.terminations).toBe(1);
   });
 
@@ -302,10 +305,10 @@ describe('start failures', () => {
     expect(ports[0].terminations).toBe(1);
   });
 
-  it('fails with protocol-error when ready has another protocol version, never sending start', () => {
+  it('fails with protocol-error when ready has the previous protocol version, never sending start', () => {
     const { owner, ports } = setup();
     owner.start(files('GAME.CCD'));
-    ports[0].send({ type: 'ready', protocol: 1 });
+    ports[0].send({ type: 'ready', protocol: IMPORT_PROTOCOL_VERSION - 1 });
     expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: null, error: protocolError('message.protocol') });
     expect(ports[0].posts).toEqual([]);
     expect(ports[0].terminations).toBe(1);
@@ -347,6 +350,8 @@ describe('running failures', () => {
     ['graphics progress as the first progress', (port: FakePort) => port.send(graphicsProgress(1, 0)), 'message.stage'],
     ['graphics progress before identification', (port: FakePort) => port.send(progress(1, 0), graphicsProgress(2, 0)), 'message.stage'],
     ['identification progress after graphics progress', (port: FakePort) => port.send(identified(1), graphicsProgress(2, 0), progress(3, 0)), 'message.stage'],
+    ['logic progress before identification', (port: FakePort) => port.send(progress(1, 0), logicProgress(2, 0)), 'message.stage'],
+    ['graphics progress after logic progress', (port: FakePort) => port.send(identified(1), logicProgress(2, 0), graphicsProgress(3, 0)), 'message.stage'],
     ['a second identification', (port: FakePort) => port.send(identified(1), identified(2)), 'message.type'],
     ['a group before identification', (port: FakePort) => port.send(group(1)), 'message.type'],
     ['a repeated group', (port: FakePort) => port.send(identified(1), group(2), group(3)), 'message.group'],

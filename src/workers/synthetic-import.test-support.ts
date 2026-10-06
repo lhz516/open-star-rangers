@@ -6,13 +6,17 @@ import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../origina
 import { identifySource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
-import { EMPTY_BUDGET_USAGE } from '../content/budget.ts';
+import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
-import { productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import { productionGraphicsEntries, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import {
+  defaultScenarioSpec, syntheticModelEntries, syntheticScenario, syntheticScenarioArchive,
+} from '../original-data/formats/formats.test-support.ts';
+import { buildImfat } from '../original-data/synthetic.ts';
 import type { ImportJob } from './import-host.ts';
-import { createImportJob, type GraphicsStepInput, type OpenSource } from './import-job.ts';
+import { createImportJob, type GraphicsStepInput, type LogicStepInput, type OpenSource } from './import-job.ts';
 
 // Code-generated CloneCD imports for Worker tests in Node and the browser; it never holds original data.
 
@@ -73,6 +77,22 @@ export const NO_GRAPHICS: GraphicsStepInput = Object.freeze({
   share: EMPTY_BUDGET_USAGE,
 });
 
+/** A logic step that converts nothing, for jobs whose test is about identification, graphics or group transfer. */
+export const NO_LOGIC: LogicStepInput = Object.freeze({
+  convert: async (_source: unknown, _limits: unknown, usage: BudgetRecord) => ({ drafts: [], usage }),
+  share: EMPTY_BUDGET_USAGE,
+});
+
+/**
+ * The covered files of a disc holding the production graphics and the slice mission in their production structure:
+ * `SR.NOB` with the graphics entries, the M2ID list and its models, and `SCENARIO.NOB` with the campaign table and
+ * `scenario` as the selected mission.
+ */
+export function sliceCoveredFiles(scenario = syntheticScenario(defaultScenarioSpec())): Record<string, Uint8Array> {
+  const entries = [...productionGraphicsEntries(), ...syntheticModelEntries()].sort((left, right) => left.id - right.id);
+  return { 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario), 'MAIN/SR.NOB': buildImfat(10_000, entries) };
+}
+
 /**
  * The covered files of a disc in the production graphics structure; `corrupt` shortens the 4×6 font table by one byte,
  * which the converter rejects as `invalid-payload`.
@@ -94,9 +114,9 @@ export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly 
 /** The four synthetic groups, each bound to the identified source. */
 export const boundGroups: SyntheticGroups = fingerprint => RESOURCE_GROUPS.map(group => [group, syntheticSourceGroup(group, fingerprint)]);
 
-/** The import job identifying through `open`, converting no graphics, then sending `groups` for the identified fingerprint. */
+/** The import job identifying through `open`, converting nothing, then sending `groups` for the identified fingerprint. */
 export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = boundGroups): ImportJob {
-  const identify = createImportJob(open, NO_GRAPHICS);
+  const identify = createImportJob(open, NO_GRAPHICS, NO_LOGIC);
   return async (files, report) => {
     let fingerprint = '';
     const usage = await identify(files, Object.freeze({

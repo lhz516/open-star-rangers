@@ -1,7 +1,7 @@
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
 import { LOGIC_SOURCE_ENTRIES } from '../conversion/logic-sources.ts';
 import { MARKER } from '../disc/disc.test-support.ts';
-import { buildImfat } from '../synthetic.ts';
+import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 
 // Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09 tests; they never hold original data, and their
 // numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned, and
@@ -302,12 +302,15 @@ export function syntheticScenarioArchive(campaign = syntheticCampaign(defaultCam
   ]);
 }
 
-/** `SR.NOB` with the M2ID list and a placeholder MODL entry for every non-zero ID it names. */
-export function syntheticModelArchive(ids: readonly number[] = DEFAULT_MODEL_IDS): Uint8Array {
+/** The M2ID list and a placeholder MODL entry for every non-zero ID it names, in ascending ID order. */
+export function syntheticModelEntries(ids: readonly number[] = DEFAULT_MODEL_IDS): SyntheticEntry[] {
   const list = syntheticModelList(ids);
   const models = [...new Set(ids.filter(id => id !== 0))].sort((left, right) => left - right);
-  return buildImfat(10_000, [
+  return [
     { id: ENTRY_IDS.modelList, type: 'M2ID', data: list.bytes, relocations: list.relocations },
     ...models.map(id => ({ id, type: 'MODL', data: new Uint8Array(8) })),
-  ]);
+  ];
 }
+
+/** `SR.NOB` with only the `syntheticModelEntries`. */
+export const syntheticModelArchive = (ids: readonly number[] = DEFAULT_MODEL_IDS): Uint8Array => buildImfat(10_000, syntheticModelEntries(ids));

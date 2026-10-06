@@ -5,10 +5,13 @@ import { connectImportWorker, type WorkerLike } from '../../platform/workers/wor
 import { runImportHost, type ImportJob } from '../../workers/import-host.ts';
 import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-support.ts';
 import { productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
-import { createImportJob, type OpenSource } from '../../workers/import-job.ts';
+import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
+import { fail } from '../../content/contract-validation.ts';
+import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
+import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  boundGroups, graphicsCoveredFiles, MARKER, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
+  boundGroups, graphicsCoveredFiles, MARKER, NO_GRAPHICS, NO_LOGIC, sliceCoveredFiles, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
@@ -188,7 +191,7 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 describe('graphics conversion over a structured-clone channel', () => {
   it('reports identification, then graphics progress, and finishes without groups with the conversion usage', async () => {
     const graphics = await syntheticImport(graphicsCoveredFiles(), 'graphics-disc');
-    const { owner, traffic } = await run(createImportJob(graphics.open), graphics.files);
+    const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(snapshot.groups).toEqual([]);
@@ -198,8 +201,9 @@ describe('graphics conversion over a structured-clone channel', () => {
     const identifiedAt = steps.indexOf('identified');
     expect([steps[0], steps.at(-1)]).toEqual(['ready', 'finished']);
     expect(steps.slice(1, identifiedAt).every(step => step === 'identify-source')).toBe(true);
-    expect(steps.slice(identifiedAt + 1, -1)).not.toHaveLength(0);
-    expect(steps.slice(identifiedAt + 1, -1).every(step => step === 'convert-graphics')).toBe(true);
+    expect(steps.slice(identifiedAt + 1, -2)).not.toHaveLength(0);
+    expect(steps.slice(identifiedAt + 1, -2).every(step => step === 'convert-graphics')).toBe(true);
+    expect(steps.at(-2)).toBe('convert-logic');
     const counts = messages.flatMap(({ readBytes }) => (readBytes === undefined ? [] : [readBytes]));
     expect(counts).toEqual([...counts].sort((left, right) => left - right));
     expect(counts.at(-1)).toBe(snapshot.usage.sourceReadBytes);
@@ -232,3 +236,46 @@ describe('graphics conversion over a structured-clone channel', () => {
   });
 });
 
+describe('logic conversion over a structured-clone channel', () => {
+  it('sends the logic group after the conversion stages, and the owner validates and hands it over once', async () => {
+    const slice = await syntheticImport(sliceCoveredFiles(), 'slice-disc');
+    const { owner, traffic, snapshots } = await run(createImportJob(slice.open), slice.files);
+    const snapshot = owner.getSnapshot();
+    if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
+    const steps = (traffic.fromWorker as { readonly type: string; readonly stage?: string }[]).map(({ type, stage }) => stage ?? type);
+    const distinct = steps.filter((step, index) => step !== steps[index - 1]);
+    expect(distinct).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'group', 'finished']);
+    expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete']]);
+    expect(snapshot.usage).toMatchObject({ assets: 8, missionObjects: 11, missionReferences: 37 });
+    const taken = owner.takeGroups()!;
+    expect(taken.map(({ group }) => group)).toEqual(['logic']);
+    expect(owner.takeGroups()).toBeNull();
+    expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
+  });
+
+  it('keeps the layer, code, location and limit of logic failures, with no group', async () => {
+    const unequal = defaultScenarioSpec();
+    unequal.sectors = [6, 7];
+    const [slice, unsupported] = await Promise.all([
+      syntheticImport(sliceCoveredFiles(), 'slice-disc'),
+      syntheticImport(sliceCoveredFiles(syntheticScenario(unequal)), 'slice-disc'),
+    ]);
+    const tight: LogicStepInput = { ...PRODUCTION_LOGIC_STEP, share: { ...PRODUCTION_LOGIC_STEP.share, missionReferences: 36 } };
+    const failing: LogicStepInput = { convert: async () => fail('invalid-logic-payload', 'payload', 'is not a logic payload'), share: EMPTY_BUDGET_USAGE };
+    const cases: [ImportJob, readonly File[], Record<string, unknown>][] = [
+      [createImportJob(unsupported.open), unsupported.files, { layer: 'source', code: 'unsupported-payload', location: 'archive:/MAIN/SCENARIO.NOB#3019/header/height', limit: null }],
+      [createImportJob(slice.open, NO_GRAPHICS, tight), slice.files,
+        { layer: 'source', code: 'budget-exceeded', location: 'archive:/MAIN/SCENARIO.NOB#3019', limit: { name: 'missionReferences', limit: 36, observed: 37 } }],
+      [createImportJob(slice.open, NO_GRAPHICS, failing), slice.files, { layer: 'content', code: 'invalid-logic-payload', location: 'payload', limit: null }],
+    ];
+    for (const [job, files, error] of cases) {
+      const expected = await hostError(job, files);
+      expect(expected).toMatchObject(error);
+      const { owner, traffic, snapshots } = await run(job, files);
+      expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'convert-logic', error: expected });
+      expect(owner.takeGroups()).toBeNull();
+      expect(traffic.fromWorker.some(message => (message as { type: string }).type === 'group')).toBe(false);
+      expect(mentions(traffic.fromWorker) || mentions(snapshots)).toBe(false);
+    }
+  });
+});

@@ -5,10 +5,10 @@ import { readSourceFingerprint, type SourceFingerprint } from '../content/conten
 import { ContentContractError, fail, matchesWhole, readArray, readRecord, requireFields } from '../content/contract-validation.ts';
 
 /** Any change to a message shape, the stage set or an ordering rule increments it (P2-04 spec, message protocol). */
-export const IMPORT_PROTOCOL_VERSION = 2;
+export const IMPORT_PROTOCOL_VERSION = 3;
 
-/** Stages in the only order a job may report them; `convert-graphics` follows `identified`. */
-export const IMPORT_STAGES = Object.freeze(['identify-source', 'convert-graphics'] as const);
+/** Stages in the only order a job may report them; the conversion stages follow `identified`. */
+export const IMPORT_STAGES = Object.freeze(['identify-source', 'convert-graphics', 'convert-logic'] as const);
 export type ImportStage = typeof IMPORT_STAGES[number];
 
 /**

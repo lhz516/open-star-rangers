@@ -46,9 +46,9 @@ function rejection(read: { readonly status: string; readonly error?: unknown }):
 }
 
 describe('protocol constants', () => {
-  it('fixes version 2, two ordered stages, four layers and the six import codes', () => {
-    expect(IMPORT_PROTOCOL_VERSION).toBe(2);
-    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics']);
+  it('fixes version 3, three ordered stages, four layers and the six import codes', () => {
+    expect(IMPORT_PROTOCOL_VERSION).toBe(3);
+    expect(IMPORT_STAGES).toEqual(['identify-source', 'convert-graphics', 'convert-logic']);
     expect(IMPORT_ERROR_LAYERS).toEqual(['disc', 'source', 'content', 'import']);
     expect(IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error', 'worker-start-failed', 'worker-failed', 'protocol-error', 'invalid-result']);
     expect(WORKER_IMPORT_ERROR_CODES).toEqual(['invalid-request', 'internal-error']);
@@ -69,6 +69,13 @@ describe('protocol constants', () => {
     [null, 'convert-graphics', true, true],
     ['convert-graphics', 'convert-graphics', true, true],
     ['convert-graphics', 'identify-source', true, false],
+    [null, 'convert-logic', false, false],
+    ['identify-source', 'convert-logic', false, false],
+    ['convert-graphics', 'convert-logic', true, true],
+    ['identify-source', 'convert-logic', true, true],
+    ['convert-logic', 'convert-logic', true, true],
+    ['convert-logic', 'convert-graphics', true, false],
+    ['convert-logic', 'identify-source', true, false],
   ] as const)('orders stages: after %s, %s with identified %s is %s', (latest, stage, identified, allowed) => {
     expect(canReportStage(latest, stage, identified)).toBe(allowed);
   });
@@ -88,6 +95,7 @@ describe('Worker messages', () => {
     ['ready', ready()],
     ['progress', progress({ readBytes: MAX })],
     ['graphics conversion progress', progress({ stage: 'convert-graphics', readBytes: 12 })],
+    ['logic conversion progress', progress({ stage: 'convert-logic', readBytes: 13 })],
     ['identified', identified()],
     ['group', group()],
     ['finished', finished()],
@@ -159,7 +167,7 @@ describe('Worker messages', () => {
     ['a start message in the wrong direction', start(), 'protocol-error@message.type'],
     ['a missing field', withoutReadBytes, 'protocol-error@message.readBytes'],
     ['an unknown field', ready({ [MARKER]: MARKER }), 'protocol-error@message'],
-    ['the previous protocol version', ready({ protocol: 1 }), 'protocol-error@message.protocol'],
+    ['the previous protocol version', ready({ protocol: IMPORT_PROTOCOL_VERSION - 1 }), 'protocol-error@message.protocol'],
     ['a protocol version as text', ready({ protocol: '1' }), 'protocol-error@message.protocol'],
     ['job ID 0', progress({ jobId: 0 }), 'protocol-error@message.jobId'],
     ['a negative job ID', progress({ jobId: -1 }), 'protocol-error@message.jobId'],
