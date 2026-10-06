@@ -28,14 +28,15 @@ describe('production graphics', () => {
     ]);
   });
 
-  it('declares each slice texture as a models-group palette and an image shown through the nearest flight colours', () => {
-    expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(5)).toEqual(TEXTURE_NUMBERS.flatMap(number => [
-      { asset: { id: `palette/model-texture/${number}`, kind: 'palette' }, role: 'texture-palette', group: 'models' },
-      {
-        asset: { id: `image/model-texture/${number}`, kind: 'image' }, role: 'model-texture', group: 'models',
-        palette: `palette/model-texture/${number}`, display: { nearest: 'palette/flight/models' }, alpha: 'encoding', rowOrder: 'stored',
-      },
-    ]));
+  it('declares each slice texture and effect image as a models-group palette and an image shown through the nearest flight colours', () => {
+    const declarations = (image: string, palette: string, role: string) => [
+      { asset: { id: palette, kind: 'palette' }, role: 'texture-palette', group: 'models' },
+      { asset: { id: image, kind: 'image' }, role, group: 'models', palette, display: { nearest: 'palette/flight/models' }, alpha: 'encoding', rowOrder: 'stored' },
+    ];
+    expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(5)).toEqual([
+      ...TEXTURE_NUMBERS.flatMap(number => declarations(`image/model-texture/${number}`, `palette/model-texture/${number}`, 'model-texture')),
+      ...EFFECTS.flatMap(([role]) => declarations(`image/${role}`, `palette/${role}`, role)),
+    ]);
   });
 
   it('maps the flight palettes to the DATA entry, the fonts to the HI cockpit font directory and each texture to its TEX entry', () => {
@@ -45,6 +46,11 @@ describe('production graphics', () => {
       { id: `image/model-texture/${TEXTURE_NUMBERS[index]}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: ambiguous ? 'unconfirmed' : 'likely', unknowns: ['U-028'], evidence: [textureEvidence, nearestEvidence], resolution: 'declared' },
       { id: `palette/model-texture/${TEXTURE_NUMBERS[index]}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/palette`]], confidence: 'confirmed', unknowns: [], evidence: [textureEvidence], resolution: 'declared' },
     ]);
+    // An effect image carries the effects research as well as the texture rule.
+    const effects = EFFECTS.flatMap(([role, entry, ambiguous]) => [
+      { id: `image/${role}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/`]], confidence: ambiguous ? 'unconfirmed' : 'likely', unknowns: ['U-027', 'U-028'], evidence: [effectEvidence, textureEvidence, nearestEvidence], resolution: 'declared' },
+      { id: `palette/${role}`, locators: [[`MAIN/SR.NOB#TEX:${entry}/palette`]], confidence: 'confirmed', unknowns: [], evidence: [textureEvidence], resolution: 'declared' },
+    ]);
     expect(mappings.map(({ asset, parts, confidence, unknowns, evidence, resolution }) => ({
       id: asset.id,
       locators: parts.map(({ alternatives }) => alternatives.map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`)),
@@ -53,14 +59,16 @@ describe('production graphics', () => {
       { id: 'font/hud/4x6', locators: [['MAIN/SR.NOB#CCKD:10103/fonts/2']], confidence: 'likely', unknowns: ['U-029', 'U-030'], evidence: fontEvidence, resolution: 'declared' },
       { id: 'font/hud/8x8-1', locators: [['MAIN/SR.NOB#CCKD:10103/fonts/0']], confidence: 'likely', unknowns: ['U-029', 'U-030'], evidence: fontEvidence, resolution: 'declared' },
       { id: 'font/hud/8x8-2', locators: [['MAIN/SR.NOB#CCKD:10103/fonts/1']], confidence: 'likely', unknowns: ['U-029', 'U-030'], evidence: fontEvidence, resolution: 'declared' },
+      ...effects.filter(({ id }) => id.startsWith('image/')),
       ...textures.filter(({ id }) => id.startsWith('image/')),
       { id: 'palette/flight/cockpit-hud-map', locators: [['MAIN/SR.NOB#DATA:11075/']], confidence: 'confirmed', unknowns: [], evidence: [paletteEvidence], resolution: 'declared' },
       { id: 'palette/flight/models', locators: [['MAIN/SR.NOB#DATA:11075/']], confidence: 'confirmed', unknowns: [], evidence: [paletteEvidence], resolution: 'declared' },
+      ...effects.filter(({ id }) => id.startsWith('palette/')),
       ...textures.filter(({ id }) => id.startsWith('palette/')),
     ]);
     expect(mappings.map(({ asset }) => asset.id)).toEqual([...PRODUCTION_GRAPHICS_DECLARATIONS.map(({ asset }) => asset.id)].sort());
     const diagnostics = diagnoseSourceMappings(PRODUCTION_GRAPHICS_MAPPINGS, mappings.map(({ asset }) => asset));
-    expect(diagnostics.map(({ code }) => code).sort()).toEqual([...new Array(8).fill('source-unconfirmed'), ...new Array(35).fill('source-unverified')].sort());
+    expect(diagnostics.map(({ code }) => code).sort()).toEqual([...new Array(9).fill('source-unconfirmed'), ...new Array(39).fill('source-unverified')].sort());
   });
 
   it('exports the approved P2-05 and slice texture shares, each bounding its payloads at the structural limits', () => {
@@ -86,13 +94,14 @@ describe('production graphics', () => {
     const images = TEXTURE_NUMBERS.map(number => `image/model-texture/${number}`);
     const palettes = TEXTURE_NUMBERS.map(number => `palette/model-texture/${number}`);
     expect(result.groups.map(({ group, descriptors }) => [group, descriptors.map(({ id }) => id)])).toEqual([
-      ['models', [...images, 'palette/flight/models', ...palettes]],
+      ['models', ['image/missile', ...images, 'palette/flight/models', 'palette/missile', ...palettes]],
       ['cockpit-hud-map', ['font/hud/4x6', 'font/hud/8x8-1', 'font/hud/8x8-2', 'palette/flight/cockpit-hud-map']],
     ]);
     const states = result.groups.flatMap(({ sources }) => sources.map(({ id, state, unknowns }) => `${id}:${state}:${unknowns.join()}`));
     expect(states).toEqual([
+      'image/missile:unconfirmed:U-027,U-028',
       ...TEXTURES.map(([, ambiguous], index) => `${images[index]}:${ambiguous ? 'unconfirmed' : 'verified'}:U-028`),
-      'palette/flight/models:verified:',
+      'palette/flight/models:verified:', 'palette/missile:verified:',
       ...palettes.map(id => `${id}:verified:`),
       'font/hud/4x6:verified:U-029,U-030', 'font/hud/8x8-1:verified:U-029,U-030', 'font/hud/8x8-2:verified:U-029,U-030', 'palette/flight/cockpit-hud-map:verified:',
     ]);
@@ -105,14 +114,18 @@ describe('production graphics', () => {
       const { schemaVersion, bytes } = models.payloads.find(payload => payload.id === id)!;
       expect(readImagePayload(bytes, schemaVersion)).toMatchObject({ palette: palettes[index], display: { nearest: 'palette/flight/models' }, mask: null });
     });
-    expect(models.descriptors.filter(({ role }) => role === 'texture-palette').map(({ id, dependencies }) => [id, dependencies])).toEqual(palettes.map(id => [id, []]));
+    expect(models.descriptors.find(descriptor => descriptor.id === 'image/missile')).toMatchObject({
+      kind: 'image', role: 'missile', dependencies: [{ id: 'palette/flight/models', kind: 'palette' }, { id: 'palette/missile', kind: 'palette' }],
+    });
+    expect(models.descriptors.filter(({ role }) => role === 'texture-palette').map(({ id, dependencies }) => [id, dependencies]))
+      .toEqual(['palette/missile', ...palettes].map(id => [id, []]));
     const payloadBytes = result.groups.flatMap(({ payloads }) => payloads).reduce((total, { bytes }) => total + bytes.length, 0);
     expect(result.usage).toEqual({
       ...EMPTY_BUDGET_USAGE, assets: 5 + MODEL_TEXTURE_USAGE.assets, dependencyEdges: MODEL_TEXTURE_USAGE.dependencyEdges,
       paletteEntries: 512 + MODEL_TEXTURE_USAGE.paletteEntries, glyphs: 256 + 256 + 192, imagePixels: MODEL_TEXTURE_USAGE.imagePixels, payloadBytes,
     });
     // An image and its palette subresource share the one read of their TEX entry.
-    expect(Object.fromEntries(reads)).toEqual({ 10103: 1, 11075: 1, ...Object.fromEntries(TEXTURES.map(([entry]) => [entry, 1])) });
+    expect(Object.fromEntries(reads)).toEqual({ 10103: 1, 11075: 1, ...Object.fromEntries([...TEXTURES, ...EFFECTS.map(([, entry]) => [entry])].map(([entry]) => [entry, 1])) });
     const payloads = result.groups.flatMap(group => group.payloads);
     const font = (id: string) => {
       const { schemaVersion, bytes } = payloads.find(payload => payload.id === id)!;
@@ -128,11 +141,16 @@ describe('production graphics', () => {
   });
 });
 
-/** The production texture table as recorded by the P2-06/04 local check: TEX entry and whether it uses an ambiguous entry. */
+/**
+ * The production texture table as recorded by the P2-06/04 local check, with row 16 appended for the debris model by
+ * the P2-06/11 research: TEX entry and whether it uses an ambiguous entry.
+ */
 const TEXTURES: readonly (readonly [number, boolean])[] = [
   [10_613, true], [10_615, false], [10_617, true], [10_619, false], [11_073, false], [11_067, true], [10_003, true], [10_001, true],
-  [10_147, false], [10_321, true], [10_747, false], [10_749, false], [10_681, true], [11_009, false], [10_149, true],
+  [10_147, false], [10_321, true], [10_747, false], [10_749, false], [10_681, true], [11_009, false], [10_149, true], [10_151, false],
 ];
+/** The effect images the P2-06/11 research recorded: role, TEX entry and whether it uses an ambiguous entry. */
+const EFFECTS: readonly (readonly [string, number, boolean])[] = [['missile', 10_377, true]];
 const TEXTURE_NUMBERS = TEXTURES.map((_, index) => String(index + 1).padStart(2, '0'));
 
 /** Codes `firstCode` … `firstCode + count − 1` mapped to the glyphs of the same numbers. */
@@ -146,3 +164,4 @@ const fontEvidence = [
 const paletteEvidence = 'docs/original/formats/textures.md#1-data-global-palette-confirmed';
 const textureEvidence = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
 const nearestEvidence = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed';
+const effectEvidence = 'docs/original/formats/executable.md#effect-presentation-sources';

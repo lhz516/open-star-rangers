@@ -192,7 +192,7 @@ describe('production conversion', () => {
     const imported = await syntheticImport(productionCoveredFiles(), 'production-job-disc');
     let source: VerifiedSource | undefined;
     const reads = blobReads();
-    const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), undefined, NO_LOGIC), imported.files);
+    const messages = await run(createImportJob(async inputs => (source = await imported.open(inputs)), undefined, NO_LOGIC, undefined, NO_MODELS), imported.files);
     const counts = progress(messages, reads);
     expect(steps(messages)).toEqual(['identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     expect(messages.filter(message => message.type === 'progress' && message.stage === 'convert-graphics').length).toBeGreaterThan(1);
@@ -204,7 +204,7 @@ describe('production conversion', () => {
     expect(last.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'audio').input)).toMatchObject({ status: 'group-complete', group: 'audio' });
     expect(readGroupManifest(sentGroup(messages, 'audio').input.manifest).assets).toHaveLength(PRODUCTION_SOUND_USAGE.assets);
-    // Without a logic step no craft model is bound, so the models group holds only the flight palette and the textures.
+    // With neither a logic step nor a model to convert, the models group holds only the flight palette and the graphics.
     expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets);
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
   });
@@ -250,7 +250,8 @@ describe('logic conversion', () => {
     expect(last.usage).toEqual({ ...addBudgets(addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), PRODUCTION_MODEL_USAGE), sourceReadBytes: readUsage.sourceReadBytes });
 
     // The models group the receiver validates is the one Node derives from the same source and binding: the graphics
-    // models partition with the five bound craft models, incomplete while textures are unconfirmed and effects missing.
+    // models partition with the five bound craft models and the debris model, incomplete while textures are unconfirmed
+    // and the projectile role missing.
     const graphics = await runGraphicsStep(source!, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_DECLARATIONS, UNLIMITED_BUDGET);
     const models = await runModelStep(source!, productionModelMappings(bindings), productionModelDeclarations(bindings), PRODUCTION_MODEL_REFERENCES, UNLIMITED_BUDGET);
     const expected = modelsGroupDraft(graphics, models, source!.identity.fingerprint);
@@ -300,7 +301,7 @@ describe('audio conversion', () => {
     const imported = await syntheticImport(audioCoveredFiles(corrupt), 'audio-job-disc');
     let source: VerifiedSource | undefined;
     const open = wrap(async inputs => (source = await imported.open(inputs)));
-    const messages = await run(createImportJob(open, graphics, NO_LOGIC, audio), imported.files);
+    const messages = await run(createImportJob(open, graphics, NO_LOGIC, audio, NO_MODELS), imported.files);
     return { messages, source: source! };
   }
 

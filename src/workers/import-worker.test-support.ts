@@ -2,7 +2,7 @@ import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
 import {
-  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, productionCoveredFiles, productionSizedFiles, sliceCoveredFiles, SYNTHETIC_AUDIO,
+  audioCoveredFiles, boundGroups, MARKER, NO_LOGIC, NO_MODELS, productionCoveredFiles, productionSizedFiles, sliceCoveredFiles, SYNTHETIC_AUDIO,
   syntheticGroupsJob, syntheticOpen,
 } from './synthetic-import.test-support.ts';
 
@@ -29,14 +29,14 @@ const EXCEPTION_MARKER = `${MARKER}-exception`;
 const scenarios: Readonly<Record<string, ImportJob>> = {
   synthetic,
   /**
-   * The production job with its graphics, audio and model stages and no logic step, so no craft model is bound,
-   * identifying a disc in the production graphics and sound structure.
+   * The production job with its graphics, audio and model stages, no logic step and no model to convert, identifying a
+   * disc in the production graphics and sound structure.
    */
-  graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC),
+  graphics: createImportJob(syntheticOpen(productionCoveredFiles(), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The same, with a font table the converter rejects. */
-  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC),
+  'graphics-corrupt': createImportJob(syntheticOpen(productionCoveredFiles(true), 'synthetic-graphics'), undefined, NO_LOGIC, undefined, NO_MODELS),
   /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
-  audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO),
+  audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS),
   /** The whole production job on the synthetic slice disc: the logic step binds the models the model step converts. */
   models: createImportJob(syntheticOpen(sliceCoveredFiles(), 'synthetic-models')),
   /** The same, with a shared mesh the model step rejects. */

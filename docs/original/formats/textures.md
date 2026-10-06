@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-06
 related: [U-001, U-006, U-018, U-019, U-028, U-029]
 ---
 
@@ -56,6 +56,7 @@ Used only by the 186 ANIM frames; the data is smaller than `width × height`, so
 - How lighting chooses brighter or darker shades is Unconfirmed (U-028).
 - Observed sizes: 32×32, 64×64, 128×128, 256×256.
 - 58 of 59 TEX entries embed a palette; one has none.
+- Besides model parts, the executable loads two TEX entries by ID for effects: TEX 10151 for debris and TEX 10377 for missiles ([executable](./executable.md#effect-presentation-sources)).
 
 ### Nearest-colour metric and tie rule (Unconfirmed)
 

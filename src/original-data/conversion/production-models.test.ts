@@ -37,6 +37,9 @@ async function slice() {
 
 const soundIdOf = new Map(PRODUCTION_SOUND_TABLE.map(({ mapping }) => [mapping.parts[0].alternatives[0].entry.id, mapping.asset.id]));
 
+/** The effect model the P2-06/11 research recorded: converted besides the bound craft models, with its own evidence. */
+const DEBRIS = Object.freeze({ id: 'model/debris', modelEntryId: 10_383 });
+
 describe('production models', () => {
   it('exports the approved share, which bounds the payloads within its counts and the part limit', () => {
     expect(PRODUCTION_MODEL_SHARE).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 16, dependencyEdges: 96, vertices: 8_192, triangles: 8_192, payloadBytes: 1_048_576 });
@@ -50,7 +53,7 @@ describe('production models', () => {
     expect(bound).toBeLessThanOrEqual(payloadBytes);
   });
 
-  it('declares and maps every bound craft model, deriving its role from the binding', async () => {
+  it('declares and maps every bound craft model, deriving its role from the binding, and the debris model', async () => {
     const { binding } = await slice();
     const expected = [
       { id: 'model/base-1', category: 'base', role: 'base' },
@@ -60,32 +63,38 @@ describe('production models', () => {
       { id: 'model/player-ship', category: 'player', role: 'player-ship' },
     ];
     expect(binding.models.map(({ id, category }) => ({ id, category }))).toEqual(expected.map(({ id, category }) => ({ id, category })));
-    expect(productionModelDeclarations(binding.models)).toEqual(expected.map(({ id, role }) => ({ asset: { id, kind: 'model' }, role, group: 'models' })));
+    expect(productionModelDeclarations(binding.models)).toEqual([...expected, { id: DEBRIS.id, role: 'debris' }]
+      .map(({ id, role }) => ({ asset: { id, kind: 'model' }, role, group: 'models' })));
     const table = productionModelMappings(binding.models);
     expect(table.sourceFingerprint).toBeNull();
-    expect(table.mappings).toEqual(binding.models.map(({ id, modelEntryId }) => ({
+    const mapping = (id: string, modelEntryId: number, unknowns: string[], evidence: string[]) => ({
       asset: { id, kind: 'model' },
       parts: [{ alternatives: [{ discPath: 'MAIN/SR.NOB', entry: { id: modelEntryId, type: 'MODL' }, subresource: null }] }],
-      confidence: 'likely',
-      unknowns: ['U-022', 'U-027', 'U-028'],
-      evidence: [
-        'docs/original/formats/executable.md#player-target-modes-and-enemy-classification',
-        'docs/original/formats/hud.md#3-id-lists-confirmed-structure',
-        'docs/original/formats/mesh.md#2-modl-structure-confirmed-on-all-19-entries',
-        'docs/original/formats/mesh.md#3-comparison-with-the-original-partial',
-      ],
-      resolution: 'declared',
-    })));
+      confidence: 'likely', unknowns, evidence, resolution: 'declared',
+    });
+    const crafts = binding.models.map(({ id, modelEntryId }) => mapping(id, modelEntryId, ['U-022', 'U-027', 'U-028'], [
+      'docs/original/formats/executable.md#player-target-modes-and-enemy-classification',
+      'docs/original/formats/hud.md#3-id-lists-confirmed-structure',
+      'docs/original/formats/mesh.md#2-modl-structure-confirmed-on-all-19-entries',
+      'docs/original/formats/mesh.md#3-comparison-with-the-original-partial',
+    ]));
+    // The debris model carries the effects research instead of the binding's, sorted with the craft models by ID.
+    const debris = mapping(DEBRIS.id, DEBRIS.modelEntryId, ['U-027', 'U-028'], [
+      'docs/original/formats/executable.md#effect-presentation-sources',
+      'docs/original/formats/mesh.md#2-modl-structure-confirmed-on-all-19-entries',
+    ]);
+    expect(table.mappings).toEqual([...crafts, debris].sort((left, right) => compareText(left.asset.id, right.asset.id)));
   });
 
-  it('converts the bound models from the synthetic production disc with the production tables and share', async () => {
+  it('converts the bound and debris models from the synthetic production disc with the production tables and share', async () => {
     const { source, reads, binding } = await slice();
     const result = await runModelStep(source, productionModelMappings(binding.models), productionModelDeclarations(binding.models), PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE);
     const [models] = result.groups;
-    expect(models.descriptors.map(({ id }) => id)).toEqual(binding.models.map(({ id }) => id));
-    // Each model's dependencies are the bound MODL's textures, through the texture table, and its sounds, through the
+    const all = [...binding.models, DEBRIS].sort((left, right) => compareText(left.id, right.id));
+    expect(models.descriptors.map(({ id }) => id)).toEqual(all.map(({ id }) => id));
+    // Each model's dependencies are its MODL's textures, through the texture table, and its sounds, through the
     // production sound table: no sound ID is named here.
-    binding.models.forEach(({ modelEntryId }, index) => {
+    all.forEach(({ modelEntryId }, index) => {
       const { textures, sounds } = productionModelReferences(modelEntryId);
       const expected = [
         ...textures.map(entry => ({ id: PRODUCTION_TEXTURE_REFERENCES.get(entry)!, kind: 'image' })),
@@ -93,11 +102,12 @@ describe('production models', () => {
       ].sort((left, right) => compareText(left.id, right.id));
       expect(models.descriptors[index].dependencies).toEqual(expected);
     });
-    expect(models.sources.map(({ state, unknowns }) => `${state}:${unknowns.join()}`)).toEqual(new Array(5).fill('verified:U-022,U-027,U-028'));
-    // Distinct meshes per model: base triangle + quad, enemy-ship-1 pair + quad, enemy-ship-2 quad, friendly triangle,
-    // player quad + pair + triangle; each model stores its own copy of a shared mesh.
-    expect(result.usage).toMatchObject({ assets: 5, vertices: 7 + 7 + 4 + 3 + 10, triangles: 2 + 3 + 1 + 1 + 4 });
-    // The quad mesh four models share is read once.
+    expect(models.sources.map(({ id, state, unknowns }) => `${id}:${state}:${unknowns.join()}`))
+      .toEqual(all.map(({ id }) => `${id}:verified:${id === DEBRIS.id ? 'U-027,U-028' : 'U-022,U-027,U-028'}`));
+    // Distinct meshes per model: base triangle + quad, debris quad + triangle, enemy-ship-1 pair + quad, enemy-ship-2
+    // quad, friendly triangle, player quad + pair + triangle; each model stores its own copy of a shared mesh.
+    expect(result.usage).toMatchObject({ assets: 6, vertices: 7 + 7 + 7 + 4 + 3 + 10, triangles: 2 + 2 + 3 + 1 + 1 + 4 });
+    // The quad mesh five models share is read once.
     expect(reads.get(PRODUCTION_MESH_ENTRIES.quad)).toBe(1);
   });
 

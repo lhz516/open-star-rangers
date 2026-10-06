@@ -7,9 +7,10 @@ import {
 } from './production-model-textures.ts';
 
 // The production graphics: the P2-05 flight palette once per group that owns palettes and the three HUD fonts of the
-// full HI cockpit set (docs/plan/p2/05/spec.md, production Assets and sources), and the P2-06 slice textures with their
-// embedded palettes (docs/plan/p2/06/spec.md). Entry IDs and font indices come from the local structure checks recorded
-// in P2-05/06 and P2-06/04; they stay in original-data and never enter canonical content.
+// full HI cockpit set (docs/plan/p2/05/spec.md, production Assets and sources), and the P2-06 slice textures and
+// research-confirmed effect images with their embedded palettes (docs/plan/p2/06/spec.md). Entry IDs and font indices
+// come from the local structure checks and research recorded in P2-05/06, P2-06/04 and P2-06/11; they stay in
+// original-data and never enter canonical content.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** The only DATA entry (imfat §4). */
@@ -26,15 +27,39 @@ const FONT_EVIDENCE = [
 
 const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
 const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed';
+const EFFECT_EVIDENCE = 'docs/original/formats/executable.md#effect-presentation-sources';
+
+/**
+ * Whole-entry TEX images research confirmed for the slice's effect roles (P2-06/11, U-027): `image/<role>` with its
+ * embedded palette `palette/<role>`, shown like the slice textures. `ambiguous` as in the texture table.
+ */
+export const PRODUCTION_EFFECT_IMAGES: readonly { readonly role: string; readonly entry: number; readonly ambiguous: boolean }[] =
+  Object.freeze([Object.freeze({ role: 'missile', entry: 10_377, ambiguous: true })]);
 
 const palette = (group: string) => ({ asset: { id: `palette/flight/${group}`, kind: 'palette' }, role: 'flight-palette', group });
 
-/** Each slice texture's embedded palette, and its image shown through the nearest flight colours of the models group. */
-const textureDeclarations = PRODUCTION_MODEL_TEXTURES.flatMap((_, index) => [
-  { asset: { id: modelTexturePaletteId(index), kind: 'palette' }, role: 'texture-palette', group: 'models' },
+/**
+ * Every whole-entry TEX image with its embedded palette: the slice textures in table order, then the effect images.
+ * Each image is the whole TEX record shown through the provisional nearest-colour rule (U-028), so at most likely, and
+ * unconfirmed while it uses an ambiguous entry; an effect image's role assignment also carries the effects research.
+ */
+const TEX_IMAGES = [
+  ...PRODUCTION_MODEL_TEXTURES.map(({ entry, ambiguous }, index) => ({
+    imageId: modelTextureImageId(index), paletteId: modelTexturePaletteId(index), role: 'model-texture', entry, ambiguous,
+    unknowns: ['U-028'], evidence: [TEXTURE_EVIDENCE, NEAREST_EVIDENCE],
+  })),
+  ...PRODUCTION_EFFECT_IMAGES.map(({ role, entry, ambiguous }) => ({
+    imageId: `image/${role}`, paletteId: `palette/${role}`, role, entry, ambiguous,
+    unknowns: ['U-027', 'U-028'], evidence: [EFFECT_EVIDENCE, TEXTURE_EVIDENCE, NEAREST_EVIDENCE],
+  })),
+];
+
+/** Each TEX image's embedded palette, and the image shown through the nearest flight colours of the models group. */
+const texImageDeclarations = TEX_IMAGES.flatMap(({ imageId, paletteId, role }) => [
+  { asset: { id: paletteId, kind: 'palette' }, role: 'texture-palette', group: 'models' },
   {
-    asset: { id: modelTextureImageId(index), kind: 'image' }, role: 'model-texture', group: 'models',
-    palette: modelTexturePaletteId(index), display: { nearest: 'palette/flight/models' }, alpha: 'encoding', rowOrder: 'stored',
+    asset: { id: imageId, kind: 'image' }, role, group: 'models',
+    palette: paletteId, display: { nearest: 'palette/flight/models' }, alpha: 'encoding', rowOrder: 'stored',
   },
 ]);
 
@@ -52,7 +77,7 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
   font('8x8-1', 8, 8, [same(0x20, 0x7a), same(0x7c, 0x7e)]),
   font('8x8-2', 8, 8, [same(0x20, 0x7e)]),
   font('4x6', 4, 6, [same(0x20, 0x20), same(0x25, 0x25), same(0x27, 0x3f), same(0x41, 0x5d)]),
-  ...textureDeclarations,
+  ...texImageDeclarations,
 ]);
 
 function mapping(
@@ -69,13 +94,10 @@ function mapping(
   };
 }
 
-/**
- * Each texture's palette is its own embedded BGR palette (confirmed); its image is the whole TEX record shown through
- * the provisional nearest-colour rule (U-028), so at most likely, and unconfirmed while it uses an ambiguous entry.
- */
-const textureMappings = PRODUCTION_MODEL_TEXTURES.flatMap(({ entry, ambiguous }, index) => [
-  mapping(modelTextureImageId(index), 'TEX', entry, null, ['U-028'], [TEXTURE_EVIDENCE, NEAREST_EVIDENCE], ambiguous ? 'unconfirmed' : 'likely'),
-  mapping(modelTexturePaletteId(index), 'TEX', entry, 'palette', [], [TEXTURE_EVIDENCE]),
+/** Each TEX image maps to its whole record; its palette, the embedded BGR palette, is confirmed. */
+const texImageMappings = TEX_IMAGES.flatMap(({ imageId, paletteId, entry, ambiguous, unknowns, evidence }) => [
+  mapping(imageId, 'TEX', entry, null, unknowns, evidence, ambiguous ? 'unconfirmed' : 'likely'),
+  mapping(paletteId, 'TEX', entry, 'palette', [], [TEXTURE_EVIDENCE]),
 ]);
 
 /** Declared mappings without a fingerprint; the import job binds them to the verified source. */
@@ -87,7 +109,7 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
     mapping('font/hud/8x8-2', 'CCKD', HI_COCKPIT_ENTRY, 'fonts/1', ['U-029', 'U-030'], FONT_EVIDENCE),
     mapping('palette/flight/cockpit-hud-map', 'DATA', DATA_ENTRY, null, [], PALETTE_EVIDENCE),
     mapping('palette/flight/models', 'DATA', DATA_ENTRY, null, [], PALETTE_EVIDENCE),
-    ...textureMappings,
+    ...texImageMappings,
   ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
 });
 

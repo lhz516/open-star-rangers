@@ -16,7 +16,7 @@ import { defaultScenarioSpec, syntheticScenario } from '../../original-data/form
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC, NO_MODELS,
   PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
@@ -202,10 +202,10 @@ function failingAfterIdentification(open: OpenSource): OpenSource {
 describe('graphics conversion over a structured-clone channel', () => {
   it('reports every stage\'s progress, and finishes with the graphics models partition and the complete production audio group', async () => {
     const graphics = await syntheticImport(productionCoveredFiles(), 'graphics-disc');
-    const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC), graphics.files);
+    const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC, undefined, NO_MODELS), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    // With no bound craft model, the models group is incomplete: no craft or effect roles, and unconfirmed textures.
+    // With no model converted, the models group is incomplete: no craft, projectile or debris role, and unconfirmed textures.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
       { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
@@ -327,7 +327,7 @@ describe('audio conversion over a structured-clone channel', () => {
   it('transfers the converted audio group, detaching the sender views, and the owner hands it over complete', async () => {
     const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
     const sent: GroupInput[] = [];
-    const { owner, traffic } = await run(recording(createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO), sent), audio.files);
+    const { owner, traffic } = await run(recording(createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS), sent), audio.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
@@ -351,7 +351,7 @@ describe('audio conversion over a structured-clone channel', () => {
 
   it('carries an SND conversion failure through the channel exactly as the host converted it, without a group', async () => {
     const corrupt = await syntheticImport(audioCoveredFiles(true), 'audio-disc');
-    const job = createImportJob(corrupt.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO);
+    const job = createImportJob(corrupt.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS);
     const expected = await hostError(job, corrupt.files);
     expect(expected).toMatchObject({ layer: 'source', code: 'unsupported-payload', location: 'sources.mappings[1].parts[0].alternatives[0].flags' });
     const { owner, traffic, snapshots } = await run(job, corrupt.files);
@@ -363,7 +363,7 @@ describe('audio conversion over a structured-clone channel', () => {
 
   it('discards the received groups when the job fails after sending them', async () => {
     const audio = await syntheticImport(audioCoveredFiles(), 'audio-disc');
-    const converting = createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO);
+    const converting = createImportJob(audio.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS);
     // The group is already sent when the host rejects the job's final usage.
     const failingLate: ImportJob = async (files, report) => {
       await converting(files, report);

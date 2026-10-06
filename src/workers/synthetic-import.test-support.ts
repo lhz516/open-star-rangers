@@ -105,7 +105,7 @@ export const NO_MODELS: ModelStepInput = Object.freeze({
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics entries, the M2ID
  * list with valid models for the craft types the default mission binds and their meshes, and synthetic samples at
  * every entry of the production sound table, and `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the
- * selected mission. `corruptMesh` breaks the mesh four bound models share, which the model step rejects as
+ * selected mission. `corruptMesh` breaks the mesh five models share, which the model step rejects as
  * `invalid-payload`.
  */
 export function sliceCoveredFiles(

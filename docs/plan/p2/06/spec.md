@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "06"
-updated: 2026-10-05
+updated: 2026-10-06
 related: [ADR-0007, ADR-0008, ADR-0015, U-009, U-022, U-027, U-028]
 reviewed: sha256:37de99f68f37
 ---
@@ -208,11 +208,14 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 | Asset | kind / role / group | 来源（`MAIN/SR.NOB`） | 置信度与 U 项 |
 |---|---|---|---|
 | P2-09 绑定的 5 个机型模型：`model/player-ship`、`model/enemy-ship-1`、`model/enemy-ship-2`、`model/base-1`、`model/friendly-craft-1` | `model` / 依次为 `player-ship`、`enemy-ship`、`enemy-ship`、`base`、`friendly-craft` / `models` | 绑定给出的 MODL 整条目；选定任务引用的 M2ID 槽位见[候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure) | 按 P2-09 绑定的证据与 [mesh §3](../../../original/formats/mesh.md#3-comparison-with-the-original-partial) 的对照记录；部件结构带 U-027 |
-| 切片贴图：`image/model-texture/<nn>` | `image` / `model-texture` / `models` | 5 个模型全部三个部件列表引用的每个 TEX 整条目 | 带 U-028；高概率，用到未解决歧义条目的为未确认 |
+| 切片贴图：`image/model-texture/<nn>` | `image` / `model-texture` / `models` | 生产模型（5 个机型模型与研究确认的模型）全部三个部件列表引用的每个 TEX 整条目 | 带 U-028；高概率，用到未解决歧义条目的为未确认 |
 | 贴图调色板：`palette/model-texture/<nn>` | `palette` / `texture-palette` / `models` | 同一 TEX 的 `palette` 子资源 | 已确认（嵌入调色板按 BGR 读取，textures §3） |
 | 弹丸、导弹与碎片：`<kind>/<角色>`，同一角色有多个 Asset 时为 `<kind>/<角色>-<n>` | `model` 或 `image` / `projectile`、`missile` 或 `debris` / `models` | 按 AC-13 的结论；本 spec 直接支持的来源形式见下 | 至少高概率，否则相应验收为 blocked |
+| 碎片模型（P2-06/11 研究确认）：`model/debris` | `model` / `debris` / `models` | MODL 10383 整条目：飞行效果初始化按 ID 载入，碎片效果绘制它第 1 列表的部件，见 [executable 的效果表现来源](../../../original/formats/executable.md#effect-presentation-sources) | 高概率；带 U-027、U-028 |
+| 导弹图像（P2-06/11 研究确认）：`image/missile` 与调色板 `palette/missile` | `image` / `missile` / `models`；`palette` / `texture-palette` / `models` | TEX 10377 整条目及其 `palette` 子资源：导弹视觉初始化按 ID 载入，作为导弹元素的贴图 | 图像带 U-027、U-028，用到歧义条目，在 AC-14 解除之前为未确认；调色板已确认 |
 
-- **贴图编号：** `<nn>` 是两位序号，与同一 TEX 的 image 与 palette 共用。编号来自 `original-data` 中显式的生产贴图表：执行时按“模型 ID 升序、列表 0–2、部件顺序”的首次引用顺序编出初始表，之后只追加，不重排。ID 不表达源条目编号或语义猜测。
+- **贴图编号：** `<nn>` 是两位序号，与同一 TEX 的 image 与 palette 共用。编号来自 `original-data` 中显式的生产贴图表：执行时按“模型 ID 升序、列表 0–2、部件顺序”的首次引用顺序编出初始表，之后只追加，不重排。ID 不表达源条目编号或语义猜测。研究确认的模型引用的新 TEX 追加在表尾（碎片模型的贴图为第 16 行）。
+- **效果图像的调色板：** 研究确认的整条目图像绑定同一 TEX 的嵌入调色板，ID 为 `palette/<角色>`，角色为 `texture-palette`；显示、透明与行序同切片贴图。
 - **显示与透明：** 贴图的显示映射为 `{ nearest: 'palette/flight/models' }`；透明按编码（raw 为全不透明）；行序按存储。若研究或对照证明需要别的选择，按 P2-05 的声明契约修订并附证据。
 - **音效依赖：** 每个模型对其非零音效槽的 sound Asset 有依赖边，ID 取自 P2-08 生产音效表。按[候选来源概况](../../../original/formats/scenario.md#campaign-candidate-source-profiles-confirmed-structure)，5 个模型共有 18 个非零音效引用。
 - **共用来源：** 同一 MODL 只有一个模型 Asset；同一 TEX 只有一个 image Asset。
@@ -254,15 +257,15 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
 
 | 步骤 | 维度 | 份额 | 依据 |
 |---|---|---|---|
-| 图形步骤追加（切片贴图） | `assets` | 40 | 15 个 image 加 15 个 palette |
-| | `dependencyEdges` | 64 | 每个 image 依赖自己的调色板与飞行调色板，共 30 |
-| | `paletteEntries` | 1,024 | 15 个嵌入调色板，每个至多 16 项 |
-| | `imagePixels` | 524,288 | 15 个 TEX 合计 340,992 |
+| 图形步骤追加（切片贴图与效果图像） | `assets` | 40 | 16 个贴图与 1 个效果图像，各一个 image 与一个 palette，共 34 |
+| | `dependencyEdges` | 64 | 每个 image 依赖自己的调色板与飞行调色板，共 34 |
+| | `paletteEntries` | 1,024 | 17 个嵌入调色板，每个至多 16 项，合计 244 |
+| | `imagePixels` | 524,288 | 17 个 TEX 合计 410,624 |
 | | `payloadBytes` | 655,360 | 按以上份额与 payload 头部计算的上界不超过它 |
-| 模型步骤 | `assets` | 16 | 5 个机型模型 |
-| | `dependencyEdges` | 96 | 22 条模型到贴图、18 条模型到样本 |
-| | `vertices` | 8,192 | 5 个模型三个列表合计 3,287 |
-| | `triangles` | 8,192 | 合计 3,460 |
+| 模型步骤 | `assets` | 16 | 5 个机型模型与 1 个碎片模型 |
+| | `dependencyEdges` | 96 | 23 条模型到贴图、18 条模型到样本，共 41 |
+| | `vertices` | 8,192 | 6 个模型三个列表合计 3,547（机型模型 3,287） |
+| | `triangles` | 8,192 | 合计 3,700（机型模型 3,460） |
 | | `payloadBytes` | 1,048,576 | 按以上份额与 payload 头部计算的上界不超过它 |
 | 两个步骤 | `sourceReadBytes` | 不另设 | 沿用 P2-02 的默认读取上限 |
 | 两个步骤 | 其余维度 | 0 | |

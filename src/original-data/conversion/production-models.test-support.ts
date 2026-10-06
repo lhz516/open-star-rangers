@@ -6,11 +6,11 @@ import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '..
 import { meshBlockFor, triangleMeshBlock } from './conversion.test-support.ts';
 import { productionGraphicsEntries } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from './production-model-textures.ts';
-import { PRODUCTION_MODEL_REFERENCES } from './production-models.ts';
+import { PRODUCTION_EFFECT_MODELS, PRODUCTION_MODEL_REFERENCES } from './production-models.ts';
 import { productionSoundEntries } from './production-sounds.test-support.ts';
 
-// Valid synthetic models for the five MODL entries the default synthetic mission binds, with their meshes, generated
-// in code; never original data. Parts name TEX entries of the production texture table and slots SND entries of the
+// Valid synthetic models for the five MODL entries the default synthetic mission binds and for the effect models, with
+// their meshes, generated in code; never original data. Parts name TEX entries of the production texture table and slots SND entries of the
 // production sound table, so the synthetic production disc converts with the production lookup tables.
 
 /** Synthetic MESH entries, at IDs no graphics, sound, model or list entry uses. */
@@ -23,10 +23,13 @@ const MESH_BLOCKS: Readonly<Record<keyof typeof PRODUCTION_MESH_ENTRIES, Uint8Ar
 const texture = (number: number): number => PRODUCTION_MODEL_TEXTURES[number - 1].entry;
 const { quad, pair, triangle } = PRODUCTION_MESH_ENTRIES;
 
+const EFFECT_MODEL_ENTRIES = PRODUCTION_EFFECT_MODELS.map(({ modelEntryId }) => modelEntryId);
+
 /**
- * The bound models by MODL entry, in the default mission's craft type slots: player 0, enemies 7 and 8, the base 17
- * and the friendly craft 14. All three part lists are used; the quad mesh is shared by four models; sound slots name
- * the production table's player, enemy, base and shared entries.
+ * The models by MODL entry: the bound ones in the default mission's craft type slots (player 0, enemies 7 and 8, the
+ * base 17 and the friendly craft 14), then the debris model, which like the original has only list 1. All three part
+ * lists are used; the quad mesh is shared by five models; sound slots name the production table's player, enemy, base
+ * and shared entries.
  */
 const MODELS: ReadonlyMap<number, SyntheticModlFields> = new Map([
   [DEFAULT_MODEL_IDS[0], {
@@ -41,9 +44,10 @@ const MODELS: ReadonlyMap<number, SyntheticModlFields> = new Map([
   [DEFAULT_MODEL_IDS[8], { partLists: [[{ mesh: quad, texture: texture(3) }], [], []], sounds: [0, 10_037, 0, 0, 10_177] }],
   [DEFAULT_MODEL_IDS[17], { partLists: [[{ mesh: triangle, texture: texture(1) }, { mesh: quad, texture: texture(1) }], [], []], sounds: [0, 10_155, 0, 0, 0] }],
   [DEFAULT_MODEL_IDS[14], { partLists: [[{ mesh: triangle }], [], []] }],
+  [EFFECT_MODEL_ENTRIES[0], { partLists: [[], [{ mesh: quad, texture: texture(16), flags: 3 }, { mesh: triangle, texture: texture(16), flags: 3 }], []] }],
 ]);
 
-/** The valid MODL blocks of the bound models by entry ID, for `syntheticModelEntries`. */
+/** The valid MODL blocks of the models by entry ID. */
 const productionModelBlocks = (): ReadonlyMap<number, { readonly data: Uint8Array; readonly relocations: number[] }> =>
   new Map([...MODELS].map(([entry, fields]) => [entry, syntheticModl(fields)]));
 
@@ -54,7 +58,7 @@ function corruptQuad(): Uint8Array {
   return block;
 }
 
-/** The MESH entries the bound models' parts name; `corrupt` breaks the quad mesh that four models share. */
+/** The MESH entries the models' parts name; `corrupt` breaks the quad mesh that five models share. */
 export const productionMeshEntries = (corrupt = false): SyntheticEntry[] => Object.entries(PRODUCTION_MESH_ENTRIES).map(([name, id]) =>
   ({ id, type: 'MESH', data: corrupt && id === quad ? corruptQuad() : MESH_BLOCKS[name as keyof typeof MESH_BLOCKS], relocations: [0] }));
 
@@ -69,13 +73,16 @@ export function productionModelReferences(entry: number): { readonly textures: r
 
 /**
  * The `MAIN/SR.NOB` entries of the synthetic production disc, in ascending ID order: the production graphics, the M2ID
- * list with the valid bound models and their meshes, and synthetic samples at every production sound table entry.
- * `corruptMesh` breaks the shared quad mesh.
+ * list with the valid bound models, the effect models, their meshes, and synthetic samples at every production sound
+ * table entry. `corruptMesh` breaks the shared quad mesh.
  */
-export const productionSliceEntries = (corruptMesh = false): SyntheticEntry[] => [
-  ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, productionModelBlocks()), ...productionMeshEntries(corruptMesh),
-  ...productionSoundEntries(),
-].sort((left, right) => left.id - right.id);
+export const productionSliceEntries = (corruptMesh = false): SyntheticEntry[] => {
+  const blocks = productionModelBlocks();
+  return [
+    ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, blocks),
+    ...EFFECT_MODEL_ENTRIES.map(id => ({ id, type: 'MODL', ...blocks.get(id)! })), ...productionMeshEntries(corruptMesh), ...productionSoundEntries(),
+  ].sort((left, right) => left.id - right.id);
+};
 
 /** Vertex and triangle counts of the synthetic meshes. */
 const MESH_COUNTS: ReadonlyMap<number, { readonly vertices: number; readonly triangles: number }> = new Map([
@@ -83,7 +90,7 @@ const MESH_COUNTS: ReadonlyMap<number, { readonly vertices: number; readonly tri
 ]);
 
 /**
- * The model step's conversion usage on the bound models with the production lookup tables, from the payload layout:
+ * The model step's conversion usage on the bound and effect models with the production lookup tables, from the payload layout:
  * each model stores each of its distinct meshes once and references its distinct textures and sounds once.
  */
 export const PRODUCTION_MODEL_USAGE: BudgetRecord = [...MODELS.keys()].reduce((usage, entry) => {

@@ -264,7 +264,7 @@ test('test entry converts the production graphics and sounds after identificatio
   const final = observed.at(-1)!;
   if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
   // Identification progress, `identified`, graphics progress, the start of the (empty) logic stage, audio progress, the
-  // start of the model stage, which has no bound model, then the end: each change of the running snapshot in order.
+  // start of the model stage, which has no model to convert, then the end: each change of the running snapshot in order.
   expect(distinctSteps(observed)).toEqual([
     'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
@@ -360,9 +360,9 @@ async function nodeSliceRun(): Promise<{ readonly groups: ReadonlyMap<string, Gr
   return { groups, usage };
 }
 
-// P2-06 AC-10: the whole production job in a real module Worker on the synthetic slice disc. The logic step binds the
-// five craft models the model stage converts; the receiver validates the models group, which stays incomplete while
-// textures are unconfirmed and effect roles missing, exactly as the same job in Node.
+// P2-06 AC-10: the whole production job in a real module Worker on the synthetic slice disc. The model stage converts
+// the five craft models the logic step binds and the debris model; the receiver validates the models group, which
+// stays incomplete while textures are unconfirmed and the projectile role missing, exactly as the same job in Node.
 test('test entry converts the models after the audio stage, and the receiver validates the models group as Node does', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);

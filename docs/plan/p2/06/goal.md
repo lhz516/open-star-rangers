@@ -104,7 +104,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | AC-10 | 08 | 08 `pnpm test:e2e e2e/import-worker.spec.ts --project=development` |
 | AC-11 | 09 | 09 本地 Node 脚本，证据只记命令、计数、判定与诊断 code |
 | AC-12 | 02、10 | 10 本地运行加固后的 nob-check |
-| AC-13 | 11 | 11 本地研究；文档与生产常量对照 |
+| AC-13 | 11, 14 | 11 本地研究与可直接支持的 Asset；14 为需修订的弹丸与程序生成来源。文档与生产常量对照 |
 | AC-14 | 12 | 12 本地研究；文档与映射对照，逐条目展开断言 |
 | AC-15 | 01、10 | 01 源码结构；10 mesh |
 | AC-16 | 01–08 | 各子任务 `pnpm typecheck`、`pnpm lint`；13 `pnpm check`、`pnpm check:original`、聚焦 E2E、依赖与锁文件 diff |
@@ -126,13 +126,28 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [08-browser-worker-models.md](./subtasks/08-browser-worker-models.md) | 07 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 07 | completed |
 | [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | completed |
-| [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | pending |
+| [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | completed |
 | [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | pending |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
+| [14-procedural-effect-sources.md](./subtasks/14-procedural-effect-sources.md) | 11 | blocked |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-06，11 的研究结论与 spec 修订：** 研究结论见 [executable 的效果表现来源](../../../original/formats/executable.md#effect-presentation-sources)：
+  - 碎片与导弹各有本 spec 直接支持的整条目来源：`model/debris`（MODL 10383），以及 `image/missile` 与 `palette/missile`（TEX 10377）；
+  - 弹丸只有程序几何。
+
+  据此修订 [spec 的生产 Asset 与来源](./spec.md#生产-asset-与来源)：
+  - 加入上述 Asset 的具体行，以及效果图像调色板的命名（`palette/<角色>`，角色 `texture-palette`）；
+  - 说明研究确认模型的新贴图追加在贴图表尾（碎片模型的贴图为第 16 行）；
+  - 份额表的依据列改为实际计数：贴图与效果图像共 34 个 Asset、410,624 像素；6 个模型、41 条依赖边、3,547 个顶点、3,700 个三角形。
+
+  份额常量不变，用量都在份额之内。
+- **2026-10-06，从 11 拆出 14：** 弹丸属于第 3 种结论；导弹体与部分碎片的几何来自 EXE 常量表，属于第 2 种来源形式。二者需要 P2-01 切片定义修订与 P2-06 表示修订，按 spec 须经用户批准，因此拆入新子任务 [14](./subtasks/14-procedural-effect-sources.md)，状态为 blocked，恢复条件写在该文档中。
+  - 11 的验收范围相应缩小为研究结论与可直接支持的 Asset；
+  - 13 增加对 14 的依赖，AC-13 的覆盖改为 11 与 14。
 
 ## 审批
 

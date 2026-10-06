@@ -1,3 +1,4 @@
+import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
@@ -9,8 +10,9 @@ import { PRODUCTION_SOUND_REFERENCES } from './production-sounds.ts';
 import { PRODUCTION_TEXTURE_REFERENCES } from './production-model-textures.ts';
 
 // The production model inputs (docs/plan/p2/06/spec.md, production Assets and sources). Craft models are named only by
-// the P2-09 craft type binding, so their declarations and mappings are derived from it; textures and sounds resolve
-// only through the production texture table and the P2-08 production sound table.
+// the P2-09 craft type binding, so their declarations and mappings are derived from it; the research-confirmed effect
+// models are fixed. Textures and sounds resolve only through the production texture table and the P2-08 production
+// sound table.
 
 /** The slice role of a craft model, from the category its binding named it from. */
 const ROLES: Readonly<Record<ModelCategory, string>> = Object.freeze({
@@ -33,22 +35,44 @@ const MODEL_EVIDENCE = Object.freeze([
 ]);
 const MODEL_UNKNOWNS = Object.freeze(['U-022', 'U-027', 'U-028']);
 
-/** One declaration per bound craft model, in the binding's ascending Asset ID order. */
-export const productionModelDeclarations = (bindings: readonly ModelBinding[]): readonly ModelDeclaration[] =>
-  readModelDeclarations(bindings.map(({ id, category }) => ({ asset: { id, kind: 'model' }, role: ROLES[category], group: 'models' })));
+/**
+ * Models research confirmed for the slice's effect roles (P2-06/11): the flight effect setup loads the debris model
+ * by entry and the fragment effect draws its list 1 parts (executable, effect presentation sources). Its role
+ * assignment carries U-027 and its texture U-028.
+ */
+export const PRODUCTION_EFFECT_MODELS: readonly { readonly id: AssetId; readonly role: string; readonly modelEntryId: number }[] =
+  Object.freeze([Object.freeze({ id: readAssetId('model/debris'), role: 'debris', modelEntryId: 10_383 })]);
+const EFFECT_EVIDENCE = Object.freeze([
+  'docs/original/formats/executable.md#effect-presentation-sources',
+  'docs/original/formats/mesh.md#2-modl-structure-confirmed-on-all-19-entries',
+]);
+const EFFECT_UNKNOWNS = Object.freeze(['U-027', 'U-028']);
 
-/** Declared mappings of the bound craft models to their whole MODL entries, without a fingerprint until the job binds them. */
+/** One declaration per bound craft model, in the binding's ascending Asset ID order, then one per effect model. */
+export const productionModelDeclarations = (bindings: readonly ModelBinding[]): readonly ModelDeclaration[] => readModelDeclarations([
+  ...bindings.map(({ id, category }) => ({ asset: { id, kind: 'model' }, role: ROLES[category], group: 'models' })),
+  ...PRODUCTION_EFFECT_MODELS.map(({ id, role }) => ({ asset: { id, kind: 'model' }, role, group: 'models' })),
+]);
+
+/**
+ * Declared mappings of the bound craft models and the effect models to their whole MODL entries, without a
+ * fingerprint until the job binds them.
+ */
 export function productionModelMappings(bindings: readonly ModelBinding[]): SourceMappingTable {
+  const mapping = (id: string, modelEntryId: number, unknowns: readonly string[], evidence: readonly string[]) => ({
+    asset: { id, kind: 'model' },
+    parts: [{ alternatives: [{ discPath: MODEL_ARCHIVE, entry: { id: modelEntryId, type: 'MODL' }, subresource: null }] }],
+    confidence: 'likely',
+    unknowns,
+    evidence,
+    resolution: 'declared',
+  });
   return readSourceMappingTable({
     sourceFingerprint: null,
-    mappings: [...bindings].sort((left, right) => compareText(left.id, right.id)).map(({ id, modelEntryId }) => ({
-      asset: { id, kind: 'model' },
-      parts: [{ alternatives: [{ discPath: MODEL_ARCHIVE, entry: { id: modelEntryId, type: 'MODL' }, subresource: null }] }],
-      confidence: 'likely',
-      unknowns: MODEL_UNKNOWNS,
-      evidence: MODEL_EVIDENCE,
-      resolution: 'declared',
-    })),
+    mappings: [
+      ...bindings.map(({ id, modelEntryId }) => mapping(id, modelEntryId, MODEL_UNKNOWNS, MODEL_EVIDENCE)),
+      ...PRODUCTION_EFFECT_MODELS.map(({ id, modelEntryId }) => mapping(id, modelEntryId, EFFECT_UNKNOWNS, EFFECT_EVIDENCE)),
+    ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
   });
 }
 

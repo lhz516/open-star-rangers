@@ -4,7 +4,7 @@ import { imagePayloadLength } from '../../content/graphics/image-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
 import { cockpitBlock, dataPaletteBlock, hudFontTables, rawImageBlock } from './conversion.test-support.ts';
-import { PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
+import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
 import { PRODUCTION_MODEL_TEXTURES, modelTexturePaletteId } from './production-model-textures.ts';
 
 // A synthetic archive in the production graphics structure, generated in code; never original data.
@@ -50,17 +50,23 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
 export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}, extra: readonly SyntheticEntry[] = []): Record<string, Uint8Array> =>
   ({ [locators[0].discPath]: buildImfat(10_000, [...productionGraphicsEntries(blocks), ...extra].sort((left, right) => left.id - right.id)) });
 
+/** The palette of every slice texture, in table order, then of every effect image. */
+const TEXTURE_PALETTES = [
+  ...PRODUCTION_MODEL_TEXTURES.map((_, index) => modelTexturePaletteId(index)),
+  ...PRODUCTION_EFFECT_IMAGES.map(({ role }) => readAssetId(`palette/${role}`)),
+];
+
 /**
- * The graphics conversion usage of the slice textures on `productionGraphicsEntries()`: per table row an image of
- * `TEXTURE` pixels shown through the flight palette, so two dependencies, and its embedded palette.
+ * The graphics conversion usage of the slice textures and effect images on `productionGraphicsEntries()`: each an
+ * image of `TEXTURE` pixels shown through the flight palette, so two dependencies, and its embedded palette.
  */
 export const MODEL_TEXTURE_USAGE: BudgetRecord = Object.freeze({
   ...EMPTY_BUDGET_USAGE,
-  assets: 2 * PRODUCTION_MODEL_TEXTURES.length,
-  dependencyEdges: 2 * PRODUCTION_MODEL_TEXTURES.length,
-  paletteEntries: TEXTURE.paletteEntries * PRODUCTION_MODEL_TEXTURES.length,
-  imagePixels: TEXTURE.width * TEXTURE.height * PRODUCTION_MODEL_TEXTURES.length,
-  payloadBytes: PRODUCTION_MODEL_TEXTURES.reduce((total, _, index) => total + palettePayloadLength(TEXTURE.paletteEntries) + imagePayloadLength({
-    width: TEXTURE.width, height: TEXTURE.height, palette: modelTexturePaletteId(index), display: { nearest: FLIGHT_PALETTE },
+  assets: 2 * TEXTURE_PALETTES.length,
+  dependencyEdges: 2 * TEXTURE_PALETTES.length,
+  paletteEntries: TEXTURE.paletteEntries * TEXTURE_PALETTES.length,
+  imagePixels: TEXTURE.width * TEXTURE.height * TEXTURE_PALETTES.length,
+  payloadBytes: TEXTURE_PALETTES.reduce((total, palette) => total + palettePayloadLength(TEXTURE.paletteEntries) + imagePayloadLength({
+    width: TEXTURE.width, height: TEXTURE.height, palette, display: { nearest: FLIGHT_PALETTE },
   }, false), 0),
 });

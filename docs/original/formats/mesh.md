@@ -75,7 +75,7 @@ Block size is always `44 + 28 × (total parts)`. All MESH, TEX, and SND referenc
 Part lists (meaning Unconfirmed, U-027):
 
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
-- **List 1**: hull fragments that look like a wrecked version of the same model; Likely used when it is destroyed. One MODL has an empty list 0 and only fragments in list 1 (Likely an asteroid or debris field).
+- **List 1**: hull fragments that look like a wrecked version of the same model. When a craft is destroyed, its fragment effects draw parts of its own model's list 1 (Confirmed by code, see [executable](./executable.md#effect-presentation-sources)). One MODL, 10383, has an empty list 0 and only fragments in list 1; the flight effect setup loads it by ID and fragment effects draw its parts as generic debris (Confirmed by code, same section).
 - **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. Possibly a collision volume or a shield-hit effect. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). Whether and how the original draws it is Unconfirmed.
 
 ### Part structure by list (Confirmed counts)
