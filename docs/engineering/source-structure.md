@@ -102,6 +102,7 @@ src/
       graphics-declarations.ts
       convert-graphics.ts
       graphics-step.ts
+      production-graphics.ts
   platform/
     browser/
       browser-session-host.ts
@@ -332,6 +333,11 @@ src/
   - **共用读取：** 模块内部的 `stepEntryReader(source)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。
   - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源只接受整条目（`null`）、整条目 TEX/BITM 图像记录的 `palette` 与 CCKD 的 `fonts/<i>`（i 为不带前导零的十进制，0–2 以外由读取报 `subresource-not-found`）：DATA 整条目为调色板，TEX/BITM 整条目为图像；其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts`。CCKD 元素、MFDD 与 TABL 的容器子资源归 P2-07。
   - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
+- **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：
+  - `PRODUCTION_GRAPHICS_DECLARATIONS`：`palette/flight/models` 与 `palette/flight/cockpit-hud-map`（角色 `flight-palette`，各在本组），`font/hud/8x8-1`、`font/hud/8x8-2`、`font/hud/4x6`（角色 `font`，`cockpit-hud-map`，单元 8×8、8×8、4×6）。字符映射初始为空，由 [P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md) 按证据填入。
+  - `PRODUCTION_GRAPHICS_MAPPINGS`：两个调色板共用 `MAIN/SR.NOB` 唯一 DATA 条目的整条目定位（confirmed，textures §1）；三个字库指向 HI 完整驾驶舱组 CCKD 的 `fonts/0`、`fonts/1`、`fonts/2`（likely，U-029，4×6 另加 U-030；cockpit §1 与 hud §1）。条目 ID 与序号来自本地结构核对，只存在于 `original-data`；表的来源指纹为 null，由作业核验时绑定。
+  - `PRODUCTION_GRAPHICS_SHARE`：`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384（按结构上限与头部算出的上界不超过它），其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
+  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA 与带 3 个字库的 CCKD），供 Node、作业与浏览器测试使用。
 - **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。
 - [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表与 MESH/MODL 的研究用解析器及 `PayloadError`（归 P2-06），不再有第二套图像、调色板或字体解析。
 

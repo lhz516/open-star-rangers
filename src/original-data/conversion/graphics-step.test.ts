@@ -5,13 +5,10 @@ import { validateGroup } from '../../content/completeness.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { SYNTHETIC_ASSETS, syntheticGroup } from '../../content/synthetic-content.test-support.ts';
-import { openDiscImage } from '../disc/disc-image.ts';
-import { syntheticFileDisc } from '../disc/disc.test-support.ts';
-import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
-import { catalogFor } from '../source/source.test-support.ts';
+import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import {
-  cockpitBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
+  cockpitBlock, countedVerifiedSource, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
   inGraphicsLocationGrammar, paletteDeclaration,
 } from './conversion.test-support.ts';
 import { runGraphicsStep } from './graphics-step.ts';
@@ -40,33 +37,7 @@ const declarations = () => [
   fontDeclaration('font/hud/4x6', { cell: { width: 4, height: 6 } }),
 ];
 
-/** A verified source over a synthetic disc holding `archive`, with a count of archive entry reads by entry ID. */
-async function verifiedSource(archive = graphicsArchive()): Promise<{ source: VerifiedSource; reads: Map<number, number> }> {
-  const files = { [GRAPHICS_ARCHIVE]: archive };
-  // Uncovered padding raises the default read budget, which equals the input size, above the reread comparisons.
-  const padding = { byteLength: 1 << 20, read: (_: number, length: number) => new Uint8Array(length) };
-  const disc = syntheticFileDisc({ ...files, 'DEMO/PAD.DAT': padding });
-  const source = await identifySource(await openDiscImage(disc.files), catalogFor(files));
-  const reads = new Map<number, number>();
-  const counted: VerifiedSource = {
-    identity: source.identity,
-    openFile: path => source.openFile(path),
-    openArchive: async path => {
-      const handle = await source.openArchive(path);
-      return {
-        path: handle.path,
-        entries: handle.entries,
-        entry: (id, type) => handle.entry(id, type),
-        read: (id, type) => {
-          reads.set(id, (reads.get(id) ?? 0) + 1);
-          return handle.read(id, type);
-        },
-      };
-    },
-    usage: () => source.usage(),
-  };
-  return { source: counted, reads };
-}
+const verifiedSource = (archive = graphicsArchive()) => countedVerifiedSource({ [GRAPHICS_ARCHIVE]: archive });
 
 const readBytes = (source: VerifiedSource) => source.usage().sourceReadBytes;
 

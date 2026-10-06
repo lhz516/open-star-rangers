@@ -1,6 +1,10 @@
 import { expect } from 'vitest';
 import { kindOf } from '../../content/synthetic-content.test-support.ts';
+import { openDiscImage } from '../disc/disc-image.ts';
+import { syntheticFileDisc, type SyntheticFileContent } from '../disc/disc.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
+import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
+import { catalogFor } from '../source/source.test-support.ts';
 import { buildImfat, ByteWriter, imageRecord } from '../synthetic.ts';
 
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
@@ -104,5 +108,34 @@ export function graphicsMapping(id: string, type: string, entry: number, subreso
     evidence: ['docs/original/formats/textures.md'],
     resolution: 'declared',
   };
+}
+
+/**
+ * A verified source over a synthetic disc holding `files`, which its catalog covers, with a count of archive entry
+ * reads by entry ID. Uncovered padding raises the default read budget, which equals the input size, above rereads.
+ */
+export async function countedVerifiedSource(files: Readonly<Record<string, SyntheticFileContent>>): Promise<{ source: VerifiedSource; reads: Map<number, number> }> {
+  const padding = { byteLength: 1 << 20, read: (_: number, length: number) => new Uint8Array(length) };
+  const disc = syntheticFileDisc({ ...files, 'DEMO/PAD.DAT': padding });
+  const source = await identifySource(await openDiscImage(disc.files), catalogFor(files));
+  const reads = new Map<number, number>();
+  const counted: VerifiedSource = {
+    identity: source.identity,
+    openFile: path => source.openFile(path),
+    openArchive: async path => {
+      const handle = await source.openArchive(path);
+      return {
+        path: handle.path,
+        entries: handle.entries,
+        entry: (id, type) => handle.entry(id, type),
+        read: (id, type) => {
+          reads.set(id, (reads.get(id) ?? 0) + 1);
+          return handle.read(id, type);
+        },
+      };
+    },
+    usage: () => source.usage(),
+  };
+  return { source: counted, reads };
 }
 

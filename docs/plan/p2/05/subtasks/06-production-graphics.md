@@ -49,11 +49,11 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] 生产声明、映射与 spec 表格逐项一致：ID、kind、角色、组、定位类别、置信度、U 项与证据链接。
-- [ ] AC-10 份额部分：份额常量等于 spec，payload 字节上界不超过 16,384。
-- [ ] 生产结构的合成光盘上步骤得到 5 个 Asset，分区与用量正确。
-- [ ] 本地探查只输出 ID、序号与单元尺寸，脚本与输出都在被忽略的 `local/research/p2-05/`。
-- [ ] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] 生产声明、映射与 spec 表格逐项一致：ID、kind、角色、组、定位类别、置信度、U 项与证据链接。
+- [x] AC-10 份额部分：份额常量等于 spec，payload 字节上界不超过 16,384。
+- [x] 生产结构的合成光盘上步骤得到 5 个 Asset，分区与用量正确。
+- [x] 本地探查只输出 ID、序号与单元尺寸，脚本与输出都在被忽略的 `local/research/p2-05/`。
+- [x] `pnpm exec vitest run src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -62,3 +62,27 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **本地结构探查（2026-10-05）：** 被忽略的 `local/research/p2-05/probe-structure.ts` 经内存 IMFAT 解析与 03 的 `readCockpitFonts` 读取本地 `SR.NOB`，只输出 ID、序号与单元尺寸（输出同目录 `probe-structure.txt`）。结果：
+  - 唯一 DATA 条目为 11075（768 字节）；
+  - CCKD 10097、10101、10103 的字体目录都是 `fonts/0` 8×8、`fonts/1` 8×8、`fonts/2` 4×6。
+
+  因此生产字库取 10103 的 `fonts/0`、`fonts/1`、`fonts/2`。
+- **实现：** [production-graphics.ts](../../../../../src/original-data/conversion/production-graphics.ts) 导出：
+  - `PRODUCTION_GRAPHICS_DECLARATIONS`：5 个声明，字符映射为空；
+  - `PRODUCTION_GRAPHICS_MAPPINGS`：DATA 11075 整条目两次，confirmed、textures §1；CCKD 10103 的 `fonts/0..2`，likely、U-029（4×6 另加 U-030）、cockpit §1 与 hud §1；表的来源指纹为 null；
+  - `PRODUCTION_GRAPHICS_SHARE`。
+
+  声明与映射在模块载入时经严格读取，内容错误会立即失败。[production-graphics.test-support.ts](../../../../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成 `MAIN/SR.NOB`（DATA 与带 3 个字库的 CCKD，可按类型替换）。`countedVerifiedSource` 移入 [conversion.test-support.ts](../../../../../src/original-data/conversion/conversion.test-support.ts)，供 05–08 共用。
+- **测试：** [production-graphics.test.ts](../../../../../src/original-data/conversion/production-graphics.test.ts) 4 项通过：
+  - 声明逐项等于 spec 表（ID、kind、角色、组、单元、空映射）；
+  - 映射逐项断言定位、置信度、U 项、证据与 `declared`，并与声明一一对应；`diagnoseSourceMappings` 只报 5 个 `source-unverified`，没有类型冲突或未确认；
+  - 份额等于 spec；两个最大调色板加三个最高 8、映射 256 条的字库，payload 上界为 9,232 字节，不超过 16,384；
+  - 在生产结构的合成光盘上以份额为限值运行 05 的步骤：`models` 1 个、`cockpit-hud-map` 4 个，状态都为 `verified` 且带各自的 U 项，用量为 assets 5、paletteEntries 512、glyphs 768，payloadBytes 等于字节之和，CCKD 与 DATA 各只读取一次。
+- **工程：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 与 `pnpm check` 通过。
+- **Rubber-duck：** 无发现。审阅者核对了锚点存在；份额中的 `sourceReadBytes` 为 0 表示加性份额，07 须保留 P2-02 的读取限值。它还在 Chrome 页面与模块 Worker 中试载过生产结构的测试支持。
+- **Simplify：** 采纳份额断言改为字面量、测试支持只导出 `productionGraphicsFiles` 并去掉类型断言、同一条目只建一次。未采纳：
+  - 生产模块与测试支持共用声明和映射构造：生产代码不能导入测试支持，提升为公开构造会扩大生产 API；
+  - 删除份额中显式的 0：它们逐项对应 spec 批准的份额表。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)补充“生产图形”（Asset、映射位置、份额、字符映射由 12 填入、合成封包），目录树加入 `production-graphics.ts`。原版事实（DATA 与 CCKD 结构）已在 imfat、cockpit 与 hud 中，探查结果与之一致，无需更新；工程约定与工具指南无需更新。
+
