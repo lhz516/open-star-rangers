@@ -25,6 +25,8 @@ updated: 2026-10-05
 - **生产格式规则：** 写入研究确认的取值：切片中出现的每个 `flags` 值，及其声道数与循环方式；16 位按 `s16le` 接受。未研究的取值不写入。
 - **版本：** 生产 `ConverterVersion` 保持 `osr-import.audio-1`。这是生产表首次填入；P2-11 接线缓存之前没有任何持久化的旧输出，因此不需要递增。之后对表或规则的任何改动，都按 spec 的规则递增组件。
 - **测试：** 新增读取真实生产表的 Node 测试，并让边界回归覆盖 locator 不外泄。
+  - **06 留下的空表测试须迁移：** 以下测试在空表下运行生产音频阶段，表填入后会因合成光盘缺少生产 SND 条目或空表断言而失败：[production-sounds.test.ts](../../../../../src/original-data/conversion/production-sounds.test.ts) 的空表与空规则断言，以及只含生产图形的合成光盘场景（[import-job.test.ts](../../../../../src/workers/import-job.test.ts) 与 [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 的图形用例、[import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 与 [import-worker.spec.ts](../../../../../e2e/import-worker.spec.ts) 的 `graphics` 场景）。
+  - **迁移方式：** 推荐在合成生产光盘中加入与生产表对应的合成 SND 条目，并更新这些场景的预期；也可以让只关心图形的用例注入 `NO_AUDIO`，另保留一个经生产音频阶段的组合用例。
 - **文档：** 在源码结构指南记录生产表的位置、行形状与“唯一绑定”规则。
 
 ## 不包含

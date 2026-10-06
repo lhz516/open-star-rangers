@@ -53,19 +53,19 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-06（生产值）：生产作业各组清单的 `converterVersion` 等于 `PRODUCTION_CONVERTER_VERSION`（`osr-import.audio-1`）。
-- [ ] AC-06（全包一致）：同一作业中各组清单的 `identity` 完全相同（`contentIdentityKey` 相等）；`manifestIdentity` 等于 02 对恰为已发送组草稿（目前只有 `audio`）的计算结果，改变未发送的图形步骤结果不改变它。
-- [ ] AC-05（作业用量）：`finished.usage` 等于来源用量、图形转换用量与音频转换用量按维度相加，来源用量包含核验读取与转换读取。至少一个 Node 场景同时含非空的图形与音频转换：音频按本阶段份额从零核算，在图形已计入相同维度（`assets`、`payloadBytes`）时，等于份额的音频仍通过；`assets`、`payloadBytes` 等各维度按算术相加。
-- [ ] AC-08（Node 集成）：
+- [x] AC-06（生产值）：生产作业各组清单的 `converterVersion` 等于 `PRODUCTION_CONVERTER_VERSION`（`osr-import.audio-1`）。
+- [x] AC-06（全包一致）：同一作业中各组清单的 `identity` 完全相同（`contentIdentityKey` 相等）；`manifestIdentity` 等于 02 对恰为已发送组草稿（目前只有 `audio`）的计算结果，改变未发送的图形步骤结果不改变它。
+- [x] AC-05（作业用量）：`finished.usage` 等于来源用量、图形转换用量与音频转换用量按维度相加，来源用量包含核验读取与转换读取。至少一个 Node 场景同时含非空的图形与音频转换：音频按本阶段份额从零核算，在图形已计入相同维度（`assets`、`payloadBytes`）时，等于份额的音频仍通过；`assets`、`payloadBytes` 等各维度按算术相加。
+- [x] AC-08（Node 集成）：
   - 消息依次为 `identified`、`convert-graphics` 进度、至少一条 `convert-audio` 进度、`audio` 组与 `finished`；
   - 持有者得到 `group-complete`，`takeGroups()` 返回该组，发送方的 payload 视图已失效；
   - SND 转换错误（`source` 层）往返后，与宿主转换的 DTO 相等。
-- [ ] AC-08（发送前失败与发送后失败）：
+- [x] AC-08（发送前失败与发送后失败）：
   - 转换失败与预校验失败时，没有任何 `group` 消息；
   - 已收到组之后作业仍失败（例如注入无效的最终用量，或后续组的转移失败）时，持有者丢弃已收的组，`takeGroups()` 返回 null。
-- [ ] AC-08（浏览器）：`pnpm test:e2e import-worker.spec.ts --project=development` 中，音频场景的结果与 Node 一致；既有场景（含 P2-05 的图形场景，按上述更新）保持通过。
-- [ ] 空生产表下，生产作业对合成白名单识别出的输入发送 `incomplete` 的 `audio` 组（`role-cardinality`），作业正常结束。
-- [ ] `pnpm exec vitest run src/workers src/app/import src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-08（浏览器）：`pnpm test:e2e import-worker.spec.ts --project=development` 中，音频场景的结果与 Node 一致；既有场景（含 P2-05 的图形场景，按上述更新）保持通过。
+- [x] 空生产表下，生产作业对合成白名单识别出的输入发送 `incomplete` 的 `audio` 组（`role-cardinality`），作业正常结束。
+- [x] `pnpm exec vitest run src/workers src/app/import src/original-data`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -75,3 +75,48 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程，以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：**
+  - [production-sounds.ts](../../../../../src/original-data/conversion/production-sounds.ts)：`PRODUCTION_SOUND_TABLE` 是经 `readSoundTable` 读取的空表，`PRODUCTION_SND_RULES` 不接受任何 `flags` 与 16 位样本。相邻测试证明这两点，以及规则以 `unsupported-payload` 拒绝采样，而不是猜测其含义。
+  - [import-job.ts](../../../../../src/workers/import-job.ts)：`createImportJob(open, graphics, audio)` 依次执行识别、P2-05 图形步骤（只保留其用量）、`convert-audio` 进度与 `convertAudioGroup`，再进入 `packageGroups`：对恰为发送的组草稿（`audio`）计算一次 `ManifestIdentity`，组成完整 `ContentIdentity` 填入每组清单。之后由 `checkPackageTransfers` 按宿主路径校验每组转移列表，并确认 buffer 不跨组共享；再用 `addBudgets` 算出最终用量（来源、图形、音频之和）。全部通过后才依次发送。`AudioStageInput` 含音效表、规则与可选限值，只有测试注入。
+  - 测试支持：`NO_AUDIO`、`SYNTHETIC_AUDIO`、`AUDIO_CONVERSION_USAGE`、`audioCoveredFiles(corrupt)`（[synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts)）。`productionGraphicsFiles(blocks, extra)` 可加入合成 SND 条目。`syntheticGroupsJob` 以 `NO_GRAPHICS`、`NO_AUDIO` 运行并丢弃作业自己的空 `audio` 组，再发送合成组，所以不会重复发送。测试 Worker 入口新增 `audio` 场景。
+- **AC-06（生产值、全包一致）：** [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 的音频用例覆盖以下几点：
+  - 清单身份等于 schema 1、`CLASSIC_P2_SLICE` 的 ID 与版本、`PRODUCTION_CONVERTER_VERSION`（`osr-import.audio-1`）、以已识别指纹为来源的 `original-import`，以及 `computeManifestIdentity` 对 `[audio]` 草稿的结果；
+  - 去掉图形步骤（`NO_GRAPHICS`）后身份不变，证明未发送的图形结果不计入；
+  - `packageGroups` 把同一个身份对象写入每组清单。目前只发送一组，多组时须重新计算这一点已写入 spec 与源码结构指南。
+- **AC-05（作业用量）：** 组合场景中，`finished.usage` 为来源读取用量加上以下逐维之和：图形 5 个 Asset、512 个调色板项、768 个字形与 `GRAPHICS_PAYLOAD_BYTES`，音频 4 个 Asset、82 个 payload 字节与 16 个采样点。音频限值注入为恰好的 `assets` 4 与 `payloadBytes` 82 时，即使图形已计入相同维度，作业仍完成；`payloadBytes` 少 1 时以 `source/budget-exceeded@sources.mappings[3].parts[0].alternatives[0].size` 失败，没有组。`audioSamples` 限值取预检上界 18：预检按样本字节估算，16 位样本计两倍。来源用量就是计量端口的累计读取，包含核验读取与转换读取。
+- **AC-08（Node 集成）：** [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 经 Node `MessageChannel` 核对：
+  - **成功：** 消息依次为 `ready`、识别、`identified`、`convert-graphics`、`convert-audio`、`group`、`finished`；持有者得到 `group-complete`（4 个 Asset），`takeGroups()` 返回 `audio` 组，其清单身份为生产值，payload 长度与描述符一致；发送方的 payload 视图与 buffer 长度都为 0。
+  - **SND 错误：** `source/unsupported-payload@sources.mappings[1].parts[0].alternatives[0].flags` 往返后等于宿主转换的 DTO，快照停在 `convert-audio`，没有组。
+- **AC-08（发送前与发送后失败）：**
+  - **发送前：** 采样被拒、预算超限，以及最终用量溢出（注入的来源用量使 `usage.assets` 超出安全整数，报 `content/invalid-budget-value`）时，都没有 `group` 消息。`checkPackageTransfers` 的单元测试证明，跨组共享 buffer（`payload-aliased@groups.audio.payloads[0]`）与后一组已转移（`payload-detached`）都在发送前抛出。
+  - **发送后：** 管道测试让作业在发出 `audio` 组之后返回无效用量，持有者以 `content/invalid-budget-value` 失败并丢弃已收的组，`takeGroups()` 为 null。
+- **AC-08（浏览器）：** `pnpm test:e2e import-worker.spec.ts --project=development` 12 个全部通过。新增的 `audio` 场景核对以下几点，结果与 Node 一致：
+  - 快照依次经过识别、`identified`、`convert-graphics`、`convert-audio`，最后 `finished`；
+  - 得到完整的 `audio` 组，用量为图形与音频之和；
+  - 移交的 payload 长度与描述符一致；
+  - Playwright 的 Node 进程用同一清单与来源状态重新计算 `ManifestIdentity`，与 Worker 内的值相等。
+
+  `synthetic` 场景的快照序列加入了 `convert-audio`；`graphics` 场景现在以一个不完整的 `audio` 组结束。
+- **空生产表：** 生产作业对生产图形结构的合成光盘发送没有 Asset 的 `audio` 组，作业正常结束。`validateGroup` 给出四个 `role-cardinality`（`roles.explosion-sound`、`fire-sound`、`missile-sound`、`warp-sound`），持有者记录为 `incomplete`，`takeGroups()` 为空列表。
+- **命令：** `pnpm exec vitest run src/workers src/app/import src/original-data` 通过；`pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过（114 个测试文件、3,280 个测试，构建成功）；`pnpm check:original` 通过。
+- **rubber-duck：** 没有阻塞问题。
+  - **已修正：** 发送前的转移校验原为逐组进行，无法发现跨组共享的 buffer；现改为 `checkPackageTransfers` 统一核对，并补了单元测试。
+  - **已记录：** 只含生产图形的合成光盘场景与空表断言，在 11 填入生产表后需要迁移，已写入 [11](./11-production-sound-table.md) 的测试范围。
+- **simplify：**
+  - **采纳：** 测试辅助函数改用具名选项；以 `GRAPHICS_PAYLOAD_BYTES` 取代硬编码的 7,184；E2E 直接导入 `AUDIO_CONVERSION_USAGE`，不经页面状态；作业只保留图形步骤的用量，不再持有其结果；两次身份对照并行运行。
+  - **未采纳：**
+    - 图形与音频并行转换：协议要求阶段按序推进，且进度按阶段报告。
+    - SND 的核验读取与转换读取合并：spec 的“音频转换预算”明确接受两次读取，04 的代码不在本子任务范围内。
+    - 把跨组转移校验移入 `content/`：作业是唯一的包装配者，spec 把调用归于作业。
+    - 把多组组装收窄为单组：spec 要求身份覆盖全部已发送组，后续任务会追加组。
+    - 为合成作业另导出只做识别的生产函数：本子任务允许以注入实现，丢弃空组只在测试支持中发生。
+    - 通用封包夹具：超出本子任务范围。
+    - 精简 E2E 的身份核对：它正是“与 Node 一致”的证据。
+    - 合并管道测试的两次运行：这是 P2-04 已建立的“往返等于宿主 DTO”的写法。
+    - 省去发送前的转移校验：spec 要求发送前完成校验。
+- **文档影响：**
+  - [源码结构指南](../../../../engineering/source-structure.md)已更新：目录树、生产音效、导入作业的音频阶段与组装发送（含多组时须重新计算身份）、注入点、测试支持与集成测试。
+  - [工程约定](../../../../engineering/README.md)的导入 Worker 浏览器测试已更新：`graphics` 场景的新预期，以及新增的 `audio` 场景。
+  - [11](./11-production-sound-table.md) 增加了测试迁移项。
+

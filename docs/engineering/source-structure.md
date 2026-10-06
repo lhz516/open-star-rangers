@@ -108,6 +108,7 @@ src/
       convert-graphics.ts
       graphics-step.ts
       production-graphics.ts
+      production-sounds.ts
     formats/
       snd.ts
   platform/
@@ -425,6 +426,7 @@ src/
     3. **转换：** 逐行读取第一个 locator，以 `convertSnd` 转换，位置为该行映射路径；按实际 payload 字节与采样点数计量。
   - **输出：** 组草稿 `{ assets, payloads, sources, usage }`。描述符为 `sound`/`audio`、无依赖、payload schema 1；每个 payload 独占 buffer；`usage` 只含转换用量，源读取用量在已验证来源的 `usage()` 中。清单身份不在这里填入。
   - **门槛：** `unconfirmed` 的映射或缺少某个核心角色时，照常转换，交给完整性验证判为 `source-not-ready` 或 `role-cardinality`；格式不在规则内时，以 `unsupported-payload` 失败。空表不打开封包。
+- **生产音效：** [conversion/production-sounds.ts](../../src/original-data/conversion/production-sounds.ts)（[P2-08/06](../plan/p2/08/subtasks/06-import-job-audio-stage.md)）导出 `PRODUCTION_SOUND_TABLE`（经 `readSoundTable` 读取）与 `PRODUCTION_SND_RULES`。研究与试听对照完成之前（P2-08/11）两者都为空：表没有行，规则不接受任何 `flags` 与 16 位样本，所以生产作业的 `audio` 组没有 Asset，四个核心角色都报 `role-cardinality`。这不是占位资源。
 
 ### 导入 Worker
 
@@ -453,20 +455,23 @@ src/
     - `DiscReadError`、`SourceError` 按层转换，其余字段取自 `toData()`；
     - `ContentContractError` 转为 `content` 层，`location` 取 `path`；
     - 其他异常、非 Error 值与 `unhandledrejection` 都报 `internal-error@job`，原因是固定文本。宿主取消 `unhandledrejection` 的默认报告。
-- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics)` 返回生产作业。
-  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，图形阶段从识别结束时的累计值开始。
+- **导入作业：** [workers/import-job.ts](../../src/workers/import-job.ts) 的 `createImportJob(open, graphics, audio)` 返回生产作业。
+  - **计量：** 每个文件包装为 `BlobByteSource`，外加一层计量。每个阶段开始时报告一次进度，之后端口每次读取成功返回，报告当前阶段与跨阶段累计的实际返回字节：识别阶段从 0 开始，之后各阶段从上一阶段结束时的累计值开始。
   - **识别：** 经 `open` 打开并识别，成功时报告 `identified`（版本 ID 与指纹）。
-  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上步骤批准的份额；作业返回已验证来源最终的读取用量与转换用量逐维之和。步骤结果只留在作业内，供 P2-06/07 装配组结果；本任务不发送组，`finished.groups` 为空。转换失败为 `source` 层，图形阶段的读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
-  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是 [生产图形](#图形转换)的声明、映射与份额。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或图形输入，用合成白名单识别。
+  - **图形转换（P2-05）：** 识别之后运行 [图形转换步骤](#图形转换)。限值记录为 P2-02 的默认读取限值（输入总字节，即 `sourceReadBytes`）加上步骤批准的份额；作业返回已验证来源最终的读取用量与转换用量逐维之和。步骤结果只留在作业内，供 P2-06/07 装配组结果，不发送，也不计入包身份。转换失败为 `source` 层，图形阶段的读取失败保持 P2-02 `disc` 层或 P2-03 `source` 层的原 code 与位置，都原样交给宿主转换。
+  - **音频转换（P2-08）：** 图形步骤之后报告 `convert-audio`，以 [`convertAudioGroup`](#原版格式转换) 转换 `audio` 组草稿。它按 `AUDIO_BUDGET_LIMITS`（或注入的限值）从零核算，与图形份额互不占用。
+  - **组装与发送：** 全部转换完成后，用 `computeManifestIdentity` 对恰为发送的组草稿（目前只有 `audio`）计算一次 `ManifestIdentity`。来源为 `original-import` 与已识别的指纹，`ConverterVersion` 为 `PRODUCTION_CONVERTER_VERSION`；再以 `readContentIdentity` 组成完整身份，填入每组清单。发送任何组之前，先由 `checkPackageTransfers` 用 `readPayloadRecords` 与 `payloadTransferList` 校验每组的转移列表（位置与宿主相同，为 `groups.<组>.payloads`），并确认没有 buffer 跨组共享，以免发送前一组时使后一组失效；再以 `addBudgets` 算出最终用量：来源读取用量、图形转换用量与音频转换用量逐维之和。因此转换、预算、身份与最终用量的失败都不会发出组。之后依次发送各组，返回用量。后续任务接入更多组时，身份须对全部已发送组重新计算，`validatePackage` 只比较各组身份是否相同，不会发现沿用的旧值。
+  - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是 [生产图形](#图形转换)的声明、映射与份额；`audio`（`AudioStageInput`：音效表、SND 规则与可选限值）默认是生产音效表与规则。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数、图形或音频输入，用合成白名单识别。
 - **生产入口：** [workers/import-worker.ts](../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
-  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`（不转换任何 Asset）运行图形阶段，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles` 生成，可替换或省略条目。
+  - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS` 与 `NO_AUDIO`（都不转换任何 Asset）运行转换阶段，丢弃作业自己的空 `audio` 组，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。生产图形的合成光盘由 [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles(blocks, extra)` 生成，可替换或省略条目，也可加入其他条目。
+  - 音频场景（P2-08）：`audioCoveredFiles(corrupt)` 在生产图形结构的 `MAIN/SR.NOB` 中加入四个合成 SND 条目（其一为 16 位），`SYNTHETIC_AUDIO` 是把它们转换为完整 `audio` 组的合成音效表与规则（`flags` 取值只有测试含义），期望的转换用量为 `AUDIO_CONVERSION_USAGE`；`corrupt` 让开火音效的 `flags` 不被接受。
   - 同文件的 `syntheticOpen(covered, versionId)` 是单独的合成白名单识别；`productionSizedFiles()` 按生产白名单的路径与大小生成内容（`generatedContent`），形状与基准版本相同，内容从不是原版。
-  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
+  - 测试 Worker 入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 与生产入口共用宿主，由 Worker 的 `name` 选择场景。`synthetic` 场景识别生产尺寸的合成文件后发送四个组，并在结束前确认发送过的 payload 视图都已失效，否则作业失败，因此正常结束即证明组是转移而非复制。`graphics` 与 `graphics-corrupt` 场景（P2-05）对 `graphicsCoveredFiles()` 给出的生产图形结构合成光盘运行带图形步骤的生产作业，后者的 4×6 字库表少一个字节；页面与 Worker 用同一函数生成光盘，期望的 payload 字节数由 `GRAPHICS_PAYLOAD_BYTES` 按 payload 长度公式给出。空生产音效表下，`graphics` 场景还会发送一个不完整的 `audio` 组。`audio` 场景（P2-08）对 `audioCoveredFiles()` 运行带生产图形与 `SYNTHETIC_AUDIO` 的生产作业。其余生命周期与失败场景见[工程约定](./README.md#本地浏览器-runner)。
   - [import-host.test-support.ts](../../src/workers/import-host.test-support.ts) 的 `FakeEndpoint` 记录监听、发送、转移列表与关闭，并用协议读取函数核对宿主发出的每条消息，供宿主与作业的 Node 测试共用；`portEndpoint(port)` 把 Node `MessageChannel` 的一端包装为宿主端点。
-- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → `finished`（组为空、用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。
+- **集成测试：** [app/import/import-pipeline.test.ts](../../src/app/import/import-pipeline.test.ts) 用 Node `MessageChannel` 把真实的持有者、平台适配、宿主与合成作业连在一起：消息经结构化克隆，组的 payload 以转移交出。它核对发送方视图失效、接收方验证与移交、每层失败经往返后与宿主转换的 DTO 相等、文件名只出现在 `start` 中，以及结束后不留下打开的 `MessagePort`。P2-05 另核对图形阶段：识别进度 → `identified` → 图形进度 → 音频进度 → 空生产表下不完整的 `audio` 组 → `finished`（用量含转换维度），以及识别失败、图形阶段读取失败（缺少条目、识别后端口拒绝读取）与转换失败各自保持层、code 与位置，快照停在相应阶段且没有部分结果。P2-08 另核对音频阶段：完整的 `audio` 组经通道转移、发送方视图失效、持有者移交且清单身份为生产值；SND 转换失败经往返后与宿主转换的 DTO 相等、没有组；组发送之后作业失败时，持有者丢弃已收的组。
 - **Worker 端口：** [app/import/import-worker-port.ts](../../src/app/import/import-worker-port.ts) 由 app 定义，platform 实现（ADR-0015 第 4 条）。
   - 工厂 `ImportWorkerPortFactory` 接收三个回调（收到消息、`messageError`、`error`），每次调用创建一个新 Worker，可能抛错。回调只传收到的数据或事件发生这一事实，不传事件对象、宿主错误文本或文件名。
   - `post(start)` 可能同步抛错。`terminate()` 先移除全部监听再终止，可重复调用，之后不再有回调。

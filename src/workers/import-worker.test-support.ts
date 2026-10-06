@@ -1,7 +1,9 @@
 import type { GroupInput } from '../content/completeness.ts';
 import { runImportHost, type ImportHostEndpoint, type ImportJob } from './import-host.ts';
 import { createImportJob } from './import-job.ts';
-import { boundGroups, graphicsCoveredFiles, MARKER, productionSizedFiles, syntheticGroupsJob, syntheticOpen } from './synthetic-import.test-support.ts';
+import {
+  audioCoveredFiles, boundGroups, graphicsCoveredFiles, MARKER, productionSizedFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticOpen,
+} from './synthetic-import.test-support.ts';
 
 // The import Worker entry for browser tests. It shares the host with the production entry; the Worker's `name` option
 // selects the scenario, so no query parameter or message reaches beyond the protocol.
@@ -29,6 +31,8 @@ const scenarios: Readonly<Record<string, ImportJob>> = {
   graphics: createImportJob(syntheticOpen(graphicsCoveredFiles(), 'synthetic-graphics')),
   /** The same, with a font table the converter rejects. */
   'graphics-corrupt': createImportJob(syntheticOpen(graphicsCoveredFiles(true), 'synthetic-graphics')),
+  /** The production job with its graphics step and the synthetic sound table, on that disc with synthetic SND entries. */
+  audio: createImportJob(syntheticOpen(audioCoveredFiles(), 'synthetic-audio'), undefined, SYNTHETIC_AUDIO),
   /** Announces itself with a progress message, then computes until the Worker is terminated. */
   busy: async (_, report) => {
     report.progress('identify-source', 0);

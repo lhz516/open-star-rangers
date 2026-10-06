@@ -6,16 +6,21 @@ import type * as FactoryModule from '../src/platform/workers/browser-import-work
 import type * as SyntheticImportModule from '../src/workers/synthetic-import.test-support.ts';
 import { PRODUCTION_CATALOG } from '../src/original-data/source/source-catalog.ts';
 import { MARKER } from '../src/original-data/disc/disc.test-support.ts';
+import { CONTENT_SCHEMA_VERSION } from '../src/content/content-identity.ts';
+import { readGroupManifest } from '../src/content/manifest.ts';
+import { computeManifestIdentity } from '../src/content/manifest-identity.ts';
+import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
+import { AUDIO_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
 
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 // The page imports modules from the development server, so this spec runs in the development project only. Every file
 // name contains MARKER, and every failing test scenario throws text that contains it too.
 
 /** `production` is the real entry, `missing` an entry URL that does not exist, and any other value a test scenario. */
-type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'busy' | 'job-throws' | 'late-error' | 'top-level-throw';
+type Entry = 'production' | 'missing' | 'synthetic' | 'graphics' | 'graphics-corrupt' | 'audio' | 'busy' | 'job-throws' | 'late-error' | 'top-level-throw';
 
-/** The synthetic files to import: uncovered, the production-sized whitelist, or the production graphics structure. */
-type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt';
+/** The synthetic files to import: uncovered, the production-sized whitelist, the production graphics structure, or that with sounds. */
+type Covered = 'none' | 'production-sized' | 'graphics' | 'graphics-corrupt' | 'audio';
 
 interface LogEntry {
   readonly event: 'snapshot' | 'click' | 'frame' | 'cancel' | 'dispose';
@@ -60,7 +65,8 @@ async function openHarness(page: Page): Promise<void> {
       prepare: async covered => {
         // The production whitelist covers none of these files; the test entry's synthetic whitelist covers all of them.
         const contents = covered === 'none' ? { 'MAIN/OTHER.DAT': support.generatedContent(4096, 7) }
-          : covered === 'production-sized' ? support.productionSizedFiles() : support.graphicsCoveredFiles(covered === 'graphics-corrupt');
+          : covered === 'production-sized' ? support.productionSizedFiles()
+            : covered === 'audio' ? support.audioCoveredFiles() : support.graphicsCoveredFiles(covered === 'graphics-corrupt');
         harness.covered = Object.entries(contents).map(([path, content]) => [path, content instanceof Uint8Array ? content.length : content.byteLength]);
         harness.files = [...(await support.syntheticImport(contents)).files];
       },
@@ -136,6 +142,13 @@ const framesAfter = (page: Page, after: LogEntry['event'], count = 3) => page.wa
   return index >= 0 && log.slice(index + 1).filter(entry => entry.event === 'frame').length >= count;
 }, { after, count });
 
+/** Each change of the running snapshot as its stage and whether the source is identified, or the status otherwise. */
+function distinctSteps(observed: readonly ImportJobSnapshot[]): string[] {
+  const steps = observed.map(snapshot => (snapshot.status === 'running'
+    ? `running:${snapshot.stage}:${snapshot.identity ? 'identified' : '-'}` : snapshot.status));
+  return steps.filter((step, index) => step !== steps[index - 1]);
+}
+
 /** Every console message of the page and its Workers, any level, for the privacy check. */
 function consoleText(page: Page): string[] {
   const seen: string[] = [];
@@ -187,15 +200,16 @@ test('test entry identifies production-sized synthetic files and transfers four 
   expect(final.identity.versionId).toBe('synthetic-browser');
   expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.length]))
     .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', 0]));
-  // In order: identification, the start of the (empty) graphics stage, then one more complete group per change, then
-  // the end; the job itself throws if a payload it sent was not detached, so finishing proves every group was transferred.
+  // In order: identification, the starts of the (empty) graphics and audio stages, then one more complete group per
+  // change, then the end; the job itself throws if a payload it sent was not detached, so finishing proves every group
+  // was transferred.
   const identifiedAt = observed.findIndex(snapshot => 'identity' in snapshot && snapshot.identity !== null);
   expect(identifiedAt).toBeGreaterThan(0);
   expect(observed.slice(identifiedAt).map(snapshot =>
     `${snapshot.status}:${'stage' in snapshot ? snapshot.stage : '-'}:${'groups' in snapshot ? snapshot.groups.length : '-'}`))
     .toEqual([
-      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-graphics:1', 'running:convert-graphics:2',
-      'running:convert-graphics:3', 'running:convert-graphics:4', 'finished:-:4',
+      'running:identify-source:0', 'running:convert-graphics:0', 'running:convert-audio:0', 'running:convert-audio:1',
+      'running:convert-audio:2', 'running:convert-audio:3', 'running:convert-audio:4', 'finished:-:4',
     ]);
   expect(await page.evaluate(() => window.osrImport.compareTaken()))
     .toEqual(final.groups.map(({ group }) => ({ group, payloads: expect.any(Number), matches: true })));
@@ -210,7 +224,8 @@ test('test entry identifies production-sized synthetic files and transfers four 
 });
 
 // P2-05 AC-12: the production job with its graphics stage, on a synthetic disc in the production graphics structure.
-test('test entry converts the production graphics after identification and finishes without groups', async ({ page }) => {
+// With the empty production sound table, the audio stage sends an audio group without Assets.
+test('test entry converts the production graphics after identification and finishes with an incomplete audio group', async ({ page }) => {
   const consoled = consoleText(page);
   await openHarness(page);
   await startImport(page, 'graphics', 'graphics');
@@ -218,12 +233,13 @@ test('test entry converts the production graphics after identification and finis
   const observed = await snapshots(page);
   const final = observed.at(-1)!;
   if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
-  // Identification progress, `identified`, graphics progress, then the end: each change of the running snapshot in order.
-  const steps = observed.map(snapshot => (snapshot.status === 'running'
-    ? `running:${snapshot.stage}:${snapshot.identity ? 'identified' : '-'}` : snapshot.status));
-  const distinct = steps.filter((step, index) => step !== steps[index - 1]);
-  expect(distinct).toEqual(['starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified', 'finished']);
-  expect(final.groups).toEqual([]);
+  // Identification progress, `identified`, graphics and audio progress, then the end: each change of the running snapshot in order.
+  expect(distinctSteps(observed)).toEqual([
+    'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
+    'running:convert-audio:identified', 'finished',
+  ]);
+  expect(final.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics.map(({ code }) => code)]))
+    .toEqual([['audio', 'incomplete', new Array(4).fill('role-cardinality')]]);
   const expectedBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 768, imagePixels: 0, payloadBytes: expectedBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
@@ -234,6 +250,49 @@ test('test entry converts the production graphics after identification and finis
     workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'graphics', posts: 1, terminations: 1 }],
     activeListeners: 0, listeners: 3,
   });
+  expect(JSON.stringify(observed)).not.toContain(MARKER);
+  expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
+});
+
+// P2-08 AC-08: the production job with the synthetic sound table, the same scenario as the Node pipeline test.
+test('test entry converts the synthetic sounds after the graphics and hands over one complete audio group', async ({ page }) => {
+  const consoled = consoleText(page);
+  await openHarness(page);
+  await startImport(page, 'audio', 'audio');
+  await settled(page);
+  const observed = await snapshots(page);
+  const final = observed.at(-1)!;
+  if (final.status !== 'finished') throw new Error(`expected finished, got ${JSON.stringify(final)}`);
+  expect(distinctSteps(observed)).toEqual([
+    'starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified',
+    'running:convert-audio:identified', 'finished',
+  ]);
+  expect(final.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
+  const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
+  expect(final.usage).toMatchObject({
+    assets: 5 + 4, paletteEntries: 512, glyphs: 768,
+    payloadBytes: graphicsPayloadBytes + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
+  });
+  const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
+  expect(reads).toEqual([...reads].sort((left, right) => left - right));
+  expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);
+  const taken = await page.evaluate(() => window.osrImport.owner!.takeGroups()!.map(({ group, manifest, payloads, sources }) => ({
+    group, manifest, sources, payloadBytes: (payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength),
+  })));
+  expect(taken.map(({ group }) => group)).toEqual(['audio']);
+  const [{ sources, payloadBytes }] = taken;
+  const manifest = readGroupManifest(taken[0].manifest);
+  expect(payloadBytes).toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
+  // The Worker's package identity equals the one Node derives from the same manifest and source states.
+  const origin = { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint };
+  expect(manifest.identity).toEqual({
+    schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
+    converterVersion: 'osr-import.audio-1', origin,
+    manifestIdentity: computeManifestIdentity(CLASSIC_P2_SLICE, {
+      schemaVersion: CONTENT_SCHEMA_VERSION, converterVersion: 'osr-import.audio-1', origin, groups: [{ group: 'audio', assets: manifest.assets, sources }],
+    }),
+  });
+  expect((await probe(page)).workers.map(({ name, posts, terminations }) => [name, posts, terminations])).toEqual([['audio', 1, 1]]);
   expect(JSON.stringify(observed)).not.toContain(MARKER);
   expect(consoled.filter(text => text.includes(MARKER))).toEqual([]);
 });
