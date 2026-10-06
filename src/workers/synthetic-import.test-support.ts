@@ -6,12 +6,12 @@ import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../origina
 import { identifySource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
-import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
+import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import { cockpitBlock, fontTable } from '../original-data/conversion/conversion.test-support.ts';
-import { productionGraphicsEntries, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
+import { MODEL_TEXTURE_USAGE, productionGraphicsEntries, productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import {
   defaultScenarioSpec, syntheticModelEntries, syntheticScenario, syntheticScenarioArchive,
@@ -147,7 +147,6 @@ export function audioCoveredFiles(corrupt = false): Record<string, Uint8Array> {
 }
 
 /**
-/**
  * The covered files of a disc in the production graphics structure; `corrupt` shortens the 4×6 font table by one byte,
  * which the converter rejects as `invalid-payload`.
  */
@@ -166,23 +165,29 @@ export function productionCoveredFiles(corrupt = false): Record<string, Uint8Arr
 
 /**
  * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
- * two palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries, and the 4×6 font of 192 eight-row glyphs with
- * 56 entries.
+ * two flight palettes, two 8×8 fonts of 256 glyphs with 94 and 95 map entries, the 4×6 font of 192 eight-row glyphs
+ * with 56 entries, and the slice textures with their palettes.
  */
 export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256)
-  + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56);
+  + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56) + MODEL_TEXTURE_USAGE.payloadBytes;
 
 /**
- * The conversion usage of the production graphics and audio stages on `productionCoveredFiles()`: the five graphics
- * Assets plus the production sounds.
+ * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
+ * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures.
  */
-export const PRODUCTION_CONVERSION_USAGE: BudgetRecord = Object.freeze({
-  ...PRODUCTION_SOUND_USAGE,
-  assets: 5 + PRODUCTION_SOUND_USAGE.assets,
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = addBudgets({
+  ...EMPTY_BUDGET_USAGE,
+  assets: 5,
   paletteEntries: 512,
   glyphs: 256 + 256 + 192,
-  payloadBytes: GRAPHICS_PAYLOAD_BYTES + PRODUCTION_SOUND_USAGE.payloadBytes,
-});
+  payloadBytes: GRAPHICS_PAYLOAD_BYTES - MODEL_TEXTURE_USAGE.payloadBytes,
+}, MODEL_TEXTURE_USAGE, 'usage');
+
+/**
+ * The conversion usage of the production graphics and audio stages on `productionCoveredFiles()`: the graphics
+ * Assets plus the production sounds.
+ */
+export const PRODUCTION_CONVERSION_USAGE: BudgetRecord = addBudgets(GRAPHICS_CONVERSION_USAGE, PRODUCTION_SOUND_USAGE, 'usage');
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];

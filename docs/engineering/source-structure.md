@@ -127,6 +127,7 @@ src/
       step-entry-reader.ts
       graphics-step.ts
       production-graphics.ts
+      production-model-textures.ts
       craft-binding.ts
       logic-sources.ts
       convert-logic.ts
@@ -532,8 +533,12 @@ src/
 - **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：
   - `PRODUCTION_GRAPHICS_DECLARATIONS`：`palette/flight/models` 与 `palette/flight/cockpit-hud-map`（角色 `flight-palette`，各在本组），`font/hud/8x8-1`、`font/hud/8x8-2`、`font/hud/4x6`（角色 `font`，`cockpit-hud-map`，单元 8×8、8×8、4×6，每字形行数都为 8，4×6 因此为 192 个字形）。字符映射是 [hud §1.1](../original/formats/hud.md#11-glyph-layout-and-character-maps-likely) 记录的同号区间（[P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md)）：8x8-1 为 0x20–0x7a 与 0x7c–0x7e，8x8-2 为 0x20–0x7e，4x6 为 0x20、0x25、0x27–0x3f 与 0x41–0x5d。
   - `PRODUCTION_GRAPHICS_MAPPINGS`：两个调色板共用 `MAIN/SR.NOB` 唯一 DATA 条目的整条目定位（confirmed，textures §1）；三个字库指向 HI 完整驾驶舱组 CCKD 的 `fonts/0`、`fonts/1`、`fonts/2`（likely，U-029 与 U-030；cockpit §1、hud §1 与 §1.1）。条目 ID 与序号来自本地结构核对，只存在于 `original-data`；表的来源指纹为 null，由作业核验时绑定。
-  - `PRODUCTION_GRAPHICS_SHARE`：`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384（按结构上限与头部算出的上界不超过它；实际字形用量为 256 + 256 + 192），其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
-  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA 与带 3 个字库的 CCKD），供 Node、作业与浏览器测试使用。
+  - **切片贴图（[P2-06/04](../plan/p2/06/subtasks/04-slice-textures.md)）：** [production-model-textures.ts](../../src/original-data/conversion/production-model-textures.ts) 的 `PRODUCTION_MODEL_TEXTURES` 是只追加的生产贴图表：15 行，每行为 `MAIN/SR.NOB` 的 TEX 条目号与是否用到[歧义条目](../original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed)。初始行按“模型 Asset ID 升序、列表 0–2、部件顺序”的首次引用编号，覆盖 5 个切片机型模型全部三个列表引用的 TEX。第 i 行的序号 `<nn>` 为 i + 1 的两位数字，同时用于 `image/model-texture/<nn>` 与 `palette/model-texture/<nn>`（`modelTextureImageId`、`modelTexturePaletteId`）；`PRODUCTION_TEXTURE_REFERENCES` 把 TEX 条目号映射到 image ID，是模型转换器解析部件贴图的唯一途径。重排或删除行会改变 Asset ID，须递增转换器版本。
+    - **声明：** 每行一个 `palette/model-texture/<nn>`（角色 `texture-palette`）与一个 `image/model-texture/<nn>`（角色 `model-texture`），都在 `models` 组；图像绑定同序号的调色板，显示映射为 `{ nearest: 'palette/flight/models' }`，透明按编码，行序按存储。
+    - **映射：** 调色板为该 TEX 的 `palette` 子资源，confirmed；图像为 TEX 整条目，带 U-028，置信度为 likely，用到歧义条目的 8 行为 unconfirmed，在研究解除歧义之前使 `models` 组不完整。证据指向 [textures §3](../original/formats/textures.md#3-tex-textures-confirmed) 与最近色一节。
+    - **份额：** `PRODUCTION_MODEL_TEXTURE_SHARE` 为 `assets` 40、`dependencyEdges` 64、`paletteEntries` 1,024、`imagePixels` 524,288、`payloadBytes` 655,360（份额内全部 Asset 都按最长 ID 的图像、掩码与满额调色板计算的上界不超过它），为研究可能追加的 Asset 留有余量。
+  - `PRODUCTION_GRAPHICS_SHARE`：P2-05 的份额（`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384；按结构上限与头部算出的上界不超过它，实际字形用量为 256 + 256 + 192）加上切片贴图份额，即 `assets` 45、`dependencyEdges` 64、`paletteEntries` 1,536、`glyphs` 768、`imagePixels` 524,288、`payloadBytes` 671,744，其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。
+  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包（DATA、带 3 个字库的 CCKD，以及在每个生产贴图条目处由条目号决定内容的 4×2 raw 贴图 `syntheticTexture`），供 Node、作业与浏览器测试使用；`MODEL_TEXTURE_USAGE` 是这些贴图的期望转换用量。
 - **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。
 - [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表的研究用解析器 `parseIdList` 与 `PayloadError`；图像、调色板与字体由上述源读取处理，MESH 与 MODL 由 `formats/mesh.ts`、`formats/modl.ts` 处理（见[原版格式转换](#原版格式转换)）。
 

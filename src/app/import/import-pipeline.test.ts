@@ -14,7 +14,7 @@ import { defaultScenarioSpec, syntheticScenario } from '../../original-data/form
 import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from '../../workers/import-job.ts';
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC,
   PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
@@ -249,7 +249,7 @@ describe('logic conversion over a structured-clone channel', () => {
     const distinct = steps.filter((step, index) => step !== steps[index - 1]);
     expect(distinct).toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
     expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['logic', 'group-complete'], ['audio', 'group-complete']]);
-    expect(snapshot.usage).toMatchObject({ assets: 8 + PRODUCTION_SOUND_USAGE.assets, missionObjects: 11, missionReferences: 37 });
+    expect(snapshot.usage).toMatchObject({ assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets, missionObjects: 11, missionReferences: 37 });
     const taken = owner.takeGroups()!;
     expect(taken.map(({ group }) => group)).toEqual(['logic', 'audio']);
     // One package: both groups carry the same identity.
@@ -306,7 +306,7 @@ describe('audio conversion over a structured-clone channel', () => {
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'group', 'finished']);
     expect(snapshot.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
     expect(snapshot.usage).toMatchObject({
-      assets: 5 + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
+      assets: GRAPHICS_CONVERSION_USAGE.assets + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
     });
     expect(sent).toHaveLength(1);
     expect((sent[0].payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);

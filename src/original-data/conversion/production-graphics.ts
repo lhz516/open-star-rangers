@@ -1,10 +1,15 @@
-import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
+import { compareText } from '../../content/contract-validation.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { readGraphicsDeclarations, type CharMapRange, type GraphicsDeclaration } from './graphics-declarations.ts';
+import {
+  PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_MODEL_TEXTURES, modelTextureImageId, modelTexturePaletteId,
+} from './production-model-textures.ts';
 
-// The P2-05 production graphics (docs/plan/p2/05/spec.md, production Assets and sources): the flight palette once per
-// group that owns palettes, and the three HUD fonts of the full HI cockpit set. Entry IDs and font indices come from
-// the local structure check recorded in P2-05/06; they stay in original-data and never enter canonical content.
+// The production graphics: the P2-05 flight palette once per group that owns palettes and the three HUD fonts of the
+// full HI cockpit set (docs/plan/p2/05/spec.md, production Assets and sources), and the P2-06 slice textures with their
+// embedded palettes (docs/plan/p2/06/spec.md). Entry IDs and font indices come from the local structure checks recorded
+// in P2-05/06 and P2-06/04; they stay in original-data and never enter canonical content.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** The only DATA entry (imfat §4). */
@@ -19,7 +24,19 @@ const FONT_EVIDENCE = [
   'docs/original/formats/hud.md#11-glyph-layout-and-character-maps-likely',
 ];
 
+const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
+const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-unconfirmed';
+
 const palette = (group: string) => ({ asset: { id: `palette/flight/${group}`, kind: 'palette' }, role: 'flight-palette', group });
+
+/** Each slice texture's embedded palette, and its image shown through the nearest flight colours of the models group. */
+const textureDeclarations = PRODUCTION_MODEL_TEXTURES.flatMap((_, index) => [
+  { asset: { id: modelTexturePaletteId(index), kind: 'palette' }, role: 'texture-palette', group: 'models' },
+  {
+    asset: { id: modelTextureImageId(index), kind: 'image' }, role: 'model-texture', group: 'models',
+    palette: modelTexturePaletteId(index), display: { nearest: 'palette/flight/models' }, alpha: 'encoding', rowOrder: 'stored',
+  },
+]);
 
 /** Text byte c draws glyph c (hud §1.1), so each range maps codes to the glyphs of the same number. */
 const same = (first: number, last: number): CharMapRange => ({ firstCode: first, firstGlyph: first, count: last - first + 1 });
@@ -35,18 +52,31 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
   font('8x8-1', 8, 8, [same(0x20, 0x7a), same(0x7c, 0x7e)]),
   font('8x8-2', 8, 8, [same(0x20, 0x7e)]),
   font('4x6', 4, 6, [same(0x20, 0x20), same(0x25, 0x25), same(0x27, 0x3f), same(0x41, 0x5d)]),
+  ...textureDeclarations,
 ]);
 
-function mapping(id: string, type: string, entry: number, subresource: string | null, unknowns: string[], evidence: string[]) {
+function mapping(
+  id: string, type: string, entry: number, subresource: string | null, unknowns: string[], evidence: string[],
+  confidence = unknowns.length === 0 ? 'confirmed' : 'likely',
+) {
   return {
     asset: { id, kind: id.split('/')[0] },
     parts: [{ alternatives: [{ discPath: ARCHIVE, entry: { id: entry, type }, subresource }] }],
-    confidence: unknowns.length === 0 ? 'confirmed' : 'likely',
+    confidence,
     unknowns,
     evidence,
     resolution: 'declared',
   };
 }
+
+/**
+ * Each texture's palette is its own embedded BGR palette (confirmed); its image is the whole TEX record shown through
+ * the provisional nearest-colour rule (U-028), so at most likely, and unconfirmed while it uses an ambiguous entry.
+ */
+const textureMappings = PRODUCTION_MODEL_TEXTURES.flatMap(({ entry, ambiguous }, index) => [
+  mapping(modelTextureImageId(index), 'TEX', entry, null, ['U-028'], [TEXTURE_EVIDENCE, NEAREST_EVIDENCE], ambiguous ? 'unconfirmed' : 'likely'),
+  mapping(modelTexturePaletteId(index), 'TEX', entry, 'palette', [], [TEXTURE_EVIDENCE]),
+]);
 
 /** Declared mappings without a fingerprint; the import job binds them to the verified source. */
 export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappingTable({
@@ -57,14 +87,15 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
     mapping('font/hud/8x8-2', 'CCKD', HI_COCKPIT_ENTRY, 'fonts/1', ['U-029', 'U-030'], FONT_EVIDENCE),
     mapping('palette/flight/cockpit-hud-map', 'DATA', DATA_ENTRY, null, [], PALETTE_EVIDENCE),
     mapping('palette/flight/models', 'DATA', DATA_ENTRY, null, [], PALETTE_EVIDENCE),
-  ],
+    ...textureMappings,
+  ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
 });
 
 /**
- * The approved budget share of these Assets. `payloadBytes` bounds the payloads at the structural limits; source reads
- * keep the P2-02 default limit, so this share adds none.
+ * The approved budget share of these Assets: the P2-05 share plus the P2-06 slice texture share. `payloadBytes` bounds
+ * the payloads at the structural limits; source reads keep the P2-02 default limit, so neither share adds any.
  */
-export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = Object.freeze({
+export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = addBudgets(Object.freeze({
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   dependencyEdges: 0,
@@ -72,4 +103,4 @@ export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = Object.freeze({
   glyphs: 768,
   imagePixels: 0,
   payloadBytes: 16_384,
-});
+}), PRODUCTION_MODEL_TEXTURE_SHARE, 'share');

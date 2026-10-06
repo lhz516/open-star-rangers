@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validateGroup } from '../content/completeness.ts';
-import { EMPTY_BUDGET_USAGE } from '../content/budget.ts';
+import { addBudgets, EMPTY_BUDGET_USAGE } from '../content/budget.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { deriveManifestIdentity, type GroupDraft } from '../content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
@@ -15,7 +15,7 @@ import {
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from './import-protocol.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC,
   PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport,
 } from './synthetic-import.test-support.ts';
 
@@ -185,7 +185,7 @@ describe('production conversion', () => {
     expect(last.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes });
     const result = validateGroup(CLASSIC_P2_SLICE, sentGroup(messages).input);
     expect(result).toMatchObject({ status: 'group-complete', group: 'audio' });
-    expect(readGroupManifest(sentGroup(messages).input.manifest).assets).toHaveLength(PRODUCTION_CONVERSION_USAGE.assets - 5);
+    expect(readGroupManifest(sentGroup(messages).input.manifest).assets).toHaveLength(PRODUCTION_SOUND_USAGE.assets);
   });
 });
 
@@ -222,12 +222,10 @@ describe('logic conversion', () => {
     expect(last.groups).toEqual(['logic', 'audio']);
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
-    expect(last.usage).toEqual({
-      ...readUsage, assets: 8 + PRODUCTION_SOUND_USAGE.assets, dependencyEdges: 8, paletteEntries: 512, glyphs: 256 + 256 + 192,
-      missionObjects: 11, missionReferences: 37, audioSamples: PRODUCTION_SOUND_USAGE.audioSamples,
-      payloadBytes: GRAPHICS_PAYLOAD_BYTES + PRODUCTION_SOUND_USAGE.payloadBytes
-        + drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
-    });
+    // The graphics and sound usage plus the three logic Assets, their eight edges, mission data and payload bytes.
+    const logicBytes = drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0);
+    const logicUsage = { ...EMPTY_BUDGET_USAGE, assets: 3, dependencyEdges: 8, missionObjects: 11, missionReferences: 37, payloadBytes: logicBytes };
+    expect(last.usage).toEqual({ ...addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), sourceReadBytes: readUsage.sourceReadBytes });
   });
 
   it('sends no group when the job fails after the logic step, such as on invalid usage', async () => {
@@ -296,12 +294,12 @@ describe('audio conversion', () => {
     const readUsage = source.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
     expect(AUDIO_CONVERSION_USAGE).toMatchObject({ assets: 4, payloadBytes: 4 * 16 + 4 + 5 + 3 + 6, audioSamples: 2 + 5 + 3 + 6 });
-    // Overlapping dimensions add up: five graphics and four sound Assets, and both conversions' payload bytes.
+    // Overlapping dimensions add up: the graphics and four sound Assets, and both conversions' payload bytes.
     expect(messages.at(-1)).toEqual({
       type: 'finished', jobId: 3, sequence: messages.length, groups: ['audio'],
       usage: {
-        ...readUsage, assets: 5 + 4, paletteEntries: 512, glyphs: 256 + 256 + 192, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes,
-        audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
+        ...GRAPHICS_CONVERSION_USAGE, sourceReadBytes: readUsage.sourceReadBytes, assets: GRAPHICS_CONVERSION_USAGE.assets + 4,
+        payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
       },
     });
   });
@@ -310,7 +308,7 @@ describe('audio conversion', () => {
     // Assets and payload bytes exactly at their limits, while the graphics step already charged both. The directory
     // preflight bounds samples by sample bytes, so the 16-bit clip counts twice its sample points there.
     const exact = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, audioSamples: 4 + 5 + 3 + 6 } } });
-    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['audio'], usage: { assets: 9 } });
+    expect(exact.messages.at(-1)).toMatchObject({ type: 'finished', groups: ['audio'], usage: { assets: GRAPHICS_CONVERSION_USAGE.assets + 4 } });
     const payloadBytes = AUDIO_CONVERSION_USAGE.payloadBytes;
     const { messages } = await audioJob({ audio: { ...SYNTHETIC_AUDIO, limits: { ...AUDIO_CONVERSION_USAGE, payloadBytes: payloadBytes - 1 } } });
     expect(messages.some(message => message.type === 'group')).toBe(false);

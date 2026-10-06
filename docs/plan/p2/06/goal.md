@@ -119,7 +119,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [01-model-payload.md](./subtasks/01-model-payload.md) | — | completed |
 | [02-source-mesh-modl.md](./subtasks/02-source-mesh-modl.md) | 01 | completed |
 | [03-model-conversion.md](./subtasks/03-model-conversion.md) | 01, 02 | completed |
-| [04-slice-textures.md](./subtasks/04-slice-textures.md) | 02 | pending |
+| [04-slice-textures.md](./subtasks/04-slice-textures.md) | 02 | completed |
 | [05-model-step.md](./subtasks/05-model-step.md) | 03 | pending |
 | [06-production-models.md](./subtasks/06-production-models.md) | 04, 05 | pending |
 | [07-import-job-models.md](./subtasks/07-import-job-models.md) | 06 | pending |

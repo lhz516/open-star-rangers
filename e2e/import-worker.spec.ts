@@ -11,7 +11,7 @@ import { readGroupManifest } from '../src/content/manifest.ts';
 import { deriveManifestIdentity, type GroupDraft } from '../src/content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/production-sounds.test-support.ts';
-import { AUDIO_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
+import { AUDIO_CONVERSION_USAGE, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE } from '../src/workers/synthetic-import.test-support.ts';
 
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 // The page imports modules from the development server, so this spec runs in the development project only. Every file
@@ -270,7 +270,8 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   expect(final.groups).toEqual([{ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] }]);
   const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({
-    assets: 5 + 4, paletteEntries: 512, glyphs: 256 + 256 + 192,
+    assets: GRAPHICS_CONVERSION_USAGE.assets + 4, dependencyEdges: GRAPHICS_CONVERSION_USAGE.dependencyEdges,
+    paletteEntries: GRAPHICS_CONVERSION_USAGE.paletteEntries, glyphs: GRAPHICS_CONVERSION_USAGE.glyphs, imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,
     payloadBytes: graphicsPayloadBytes + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
   });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
