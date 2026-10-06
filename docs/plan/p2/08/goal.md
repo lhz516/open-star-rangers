@@ -136,7 +136,7 @@ updated: 2026-10-05
 | [09-sound-research.md](./subtasks/09-sound-research.md) | 01, 03 | completed |
 | [10-listening-comparison.md](./subtasks/10-listening-comparison.md) | 09 | completed |
 | [11-production-sound-table.md](./subtasks/11-production-sound-table.md) | 06, 10 | completed |
-| [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | pending |
+| [12-local-base-check.md](./subtasks/12-local-base-check.md) | 11 | completed |
 | [14-shared-mechanism-alignment.md](./subtasks/14-shared-mechanism-alignment.md) | 02, 03, 04 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 

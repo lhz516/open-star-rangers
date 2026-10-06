@@ -41,10 +41,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-12：本地运行以 `finished` 结束，`audio` 组为 `group-complete`；计数、分布、用量与上限的比较、读取量与耗时已记录。
-- [ ] AC-12（覆盖）：5 个模型音效槽中的每个非零 SND 都已映射到生产表。
-- [ ] 全部用量不超过 spec 的音频预算上限。
-- [ ] 输出与证据只含允许的字段；`git status` 显示 `local/` 下的文件未被跟踪；`pnpm check:original` 通过。
+- [x] AC-12：本地运行以 `finished` 结束，`audio` 组为 `group-complete`；计数、分布、用量与上限的比较、读取量与耗时已记录。
+- [x] AC-12（覆盖）：5 个模型音效槽中的每个非零 SND 都已映射到生产表。
+- [x] 全部用量不超过 spec 的音频预算上限。
+- [x] 输出与证据只含允许的字段；`git status` 显示 `local/` 下的文件未被跟踪；`pnpm check:original` 通过。
 
 ## 验证方法
 
@@ -52,3 +52,36 @@ updated: 2026-10-05
 - 不适用 browser-testing；不做视觉或听觉对照。
 
 ## 完成证据
+
+- **命令：** 在工作树根目录运行 `node local/research/p2-08/base-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}`（2026-10-05，Node 22.22.0）。
+  - **装配：** 脚本经 `process.cwd()` 动态导入本工作树的模块，因为 `local` 是指向主检出的符号链接。生产作业 `createImportJob()` 不注入任何参数，经真实宿主、Worker 平台适配与持有者，在 Node `MessageChannel` 上从 `start` 运行到终态，共运行两次。
+  - **输出：** 只含计数、分布、用量、读取量、耗时与布尔值，写入被忽略的 `local/research/p2-08/base-check.json`。
+- **AC-12（结果）：**
+  - **终态：** 以 `finished` 结束；只有一个组，即 `audio`，为 `group-complete`：18 个 Asset，0 条诊断。
+  - **身份：** `converterVersion` 为 `osr-import.audio-1`；`manifestIdentity` 符合 `manifest:sha256:<64 位十六进制>`；来源为 `original-import`；两次运行的身份相同。
+  - **各角色 Asset 数：** `explosion-sound` 6、`fire-sound` 4、`missile-sound` 1、`warp-sound` 1、`model-sound` 6。
+  - **分布：**
+    - 采样率：9,000 Hz × 1、11,025 Hz × 13、17,000 Hz × 1、22,050 Hz × 3；
+    - 编码：`s16le` × 10、`u8` × 8；
+    - 声道：全部单声道；
+    - 循环：整段循环 × 3（都是 `model-sound`，即槽 0 的 `flags` 0 样本），播放一次 × 15。
+
+    以上与 [audio](../../../../original/formats/audio.md#playback-interpretation-p2-08) 记录的 18 个所研究样本一致。
+  - **payload：** 每个 payload 的长度都等于描述符的 `byteLength`。
+  - **耗时：** 两次作业分别为 141 ms 与 104 ms（含识别、图形与音频阶段）。
+- **预算（音频阶段自身的用量对上限）：**
+
+  | 维度 | 用量 | 上限 | 占比 |
+  |---|---:|---:|---:|
+  | `assets` | 18 | 37 | 49% |
+  | `payloadBytes` | 434,636 | 8,388,608 | 5.2% |
+  | `audioSamples` | 271,173 | 4,194,304 | 6.5% |
+
+  全部在上限之内，无需修订。作业总用量另含 P2-05 的图形转换：`assets` 23，`payloadBytes` 441,820。
+- **读取量：** 作业的 `sourceReadBytes` 为 19,404,771，P2-02 的默认读取上限（`.ccd` 与 `.img` 的字节数）为 174,530,931，在上限之内。对照：P2-04 只识别时为 17,255,043。
+- **AC-12（覆盖）：** 经产品入口打开同一组文件，用 `parseModel` 读取 P2-01 选定的 5 个 MODL（10743、11063、10373、11399、10611）的音效槽。13 个非零 SND 全部映射到生产表，未映射 0 个。
+- **证据边界：** 输出与本证据不含 payload 字节、指纹、身份散列值、输入文件名之外的宿主路径或原版内容。`local` 是被 git 忽略的符号链接，`git status` 中没有未跟踪的文件；`pnpm check:original` 通过。
+- **rubber-duck：** 没有阻塞或非阻塞问题。审阅确认了以下几点：作业未注入，宿主、平台适配与持有者都是真实的；音频阶段的用量正确排除了图形用量，而 `audioSamples` 只由音频计入；覆盖核对的 MODL 编号与 P2-01 一致，并计入全部别名；输出只含允许的字段。
+- **simplify：** 本子任务只做核对，仓库中只改了跟踪表与本证据，没有实现代码，因此不需要。
+- **文档影响：** 不需修改：工程文档与指南不涉及本地核对的数值；原版事实（格式分布）在 10 中已有记录。
+
