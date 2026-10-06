@@ -73,7 +73,7 @@ updated: 2026-10-05
 - **测试（Node）：**
   - **AC-10：**
     - [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 共 8 个测试。生产作业处理 `sliceCoveredFiles` 时，消息依次为识别进度、`identified`、图形进度、`convert-logic` 进度（开始一次，之后每次读取一次）、`group logic`、`finished`（`groups` 为 `['logic']`）。
-    - 组经 `validateGroup` 为 `group-complete`。`finished.usage` 等于读取用量加上图形与 logic 的累计用量：`assets` 8、`dependencyEdges` 8、`missionObjects` 11、`missionReferences` 37，`payloadBytes` 为 7,184 加 logic payload 字节。
+    - 组经 `validateGroup` 为 `group-complete`。`finished.usage` 等于读取用量加上图形与 logic 的累计用量：`assets` 8、`dependencyEdges` 8、`missionObjects` 11、`missionReferences` 37，`payloadBytes` 为图形 payload 字节（测试支持的 `GRAPHICS_PAYLOAD_BYTES`）加 logic payload 字节。P2-05 合入主线后又修改了字库 payload，图形的 `glyphs` 改为 704，用量期望随之更新，见 goal 执行记录。
     - [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 经宿主、真实 `MessageChannel` 与持有者运行同一作业：阶段依次去重后为 `ready → identify-source → identified → convert-graphics → convert-logic → group → finished`；持有者的 `logic` 组为 `group-complete`，`takeGroups()` 只移交一次，第二次为 null。
     - 旧版本（2）的 `ready` 被持有者与协议读取拒绝，旧版本的 `start` 被宿主拒绝。
   - **AC-10（失败）：**

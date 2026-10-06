@@ -10,7 +10,7 @@ import { createImportJob, PRODUCTION_LOGIC_STEP } from './import-job.ts';
 import { FakeEndpoint } from './import-host.test-support.ts';
 import { canReportStage, IMPORT_PROTOCOL_VERSION, type ImportStage, type ImportWorkerMessage } from './import-protocol.ts';
 import { productionGraphicsFiles } from '../original-data/conversion/production-graphics.test-support.ts';
-import { MARKER, NO_GRAPHICS, NO_LOGIC, sliceCoveredFiles, syntheticImport } from './synthetic-import.test-support.ts';
+import { GRAPHICS_PAYLOAD_BYTES, MARKER, NO_GRAPHICS, NO_LOGIC, sliceCoveredFiles, syntheticImport } from './synthetic-import.test-support.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
 const COVERED = {
@@ -204,8 +204,8 @@ describe('logic conversion', () => {
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
     expect(last.usage).toEqual({
-      ...readUsage, assets: 8, dependencyEdges: 8, paletteEntries: 512, glyphs: 768, missionObjects: 11, missionReferences: 37,
-      payloadBytes: 7_184 + drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
+      ...readUsage, assets: 8, dependencyEdges: 8, paletteEntries: 512, glyphs: 256 + 256 + 192, missionObjects: 11, missionReferences: 37,
+      payloadBytes: GRAPHICS_PAYLOAD_BYTES + drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
     });
   });
 
