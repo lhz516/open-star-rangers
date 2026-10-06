@@ -1,7 +1,7 @@
 // Checks every structure of an IMFAT archive that the import or the research reads, and its cross-references.
 // Usage: node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
-// Prints per-type pass and fail counts, failure codes with structural locations and the observed graphics maxima;
-// never pixels, palette values, glyphs or other entry contents.
+// Prints per-type pass and fail counts, failure codes with structural locations and the observed graphics, MESH and
+// MODL maxima; never pixels, palette values, glyphs, coordinates or other entry contents.
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
@@ -44,6 +44,9 @@ let images = 0;
 let indexedImages = 0;
 let vertices = 0;
 let triangles = 0;
+/** Observed MESH and MODL maxima of passing entries, compared with the P2-06 structural limits in docs/original. */
+const meshMaxima = { vertices: 0, triangles: 0, shadingSlots: 0 };
+const modelMaxima = { parts: 0, lists: [0, 0, 0], colour: 0, flags: new Set<number>() };
 
 function statsOf(type: string): GraphicsStats {
   let entry = stats.get(type);
@@ -104,13 +107,19 @@ for (const entry of archive.entries) {
       }
       case 'MESH': {
         const mesh = readMesh(block, 'mesh');
-        vertices += mesh.positions.length / 3;
-        triangles += mesh.indices.length / 3;
+        const meshVertices = mesh.positions.length / 3;
+        const meshTriangles = mesh.indices.length / 3;
+        vertices += meshVertices;
+        triangles += meshTriangles;
+        meshMaxima.vertices = Math.max(meshMaxima.vertices, meshVertices);
+        meshMaxima.triangles = Math.max(meshMaxima.triangles, meshTriangles);
+        meshMaxima.shadingSlots = Math.max(meshMaxima.shadingSlots, mesh.shadingSlotCount);
         break;
       }
       case 'MODL': {
         const model = readModel(block, 'model');
-        for (const part of model.partLists.flat()) {
+        const parts = model.partLists.flat();
+        for (const part of parts) {
           if (typeById.get(part.meshEntry) !== 'MESH') throw new PayloadError(`part references non-MESH ${part.meshEntry}`);
           if (part.textureEntry !== 0 && typeById.get(part.textureEntry) !== 'TEX') {
             throw new PayloadError(`part references non-TEX ${part.textureEntry}`);
@@ -118,6 +127,12 @@ for (const entry of archive.entries) {
         }
         for (const id of model.soundEntries) {
           if (id !== 0 && typeById.get(id) !== 'SND') throw new PayloadError(`sound slot references non-SND ${id}`);
+        }
+        modelMaxima.parts = Math.max(modelMaxima.parts, parts.length);
+        model.partLists.forEach((list, index) => { modelMaxima.lists[index] = Math.max(modelMaxima.lists[index], list.length); });
+        for (const { colour, sourceFlags } of parts) {
+          modelMaxima.colour = Math.max(modelMaxima.colour, ...colour);
+          modelMaxima.flags.add(sourceFlags);
         }
         break;
       }
@@ -143,6 +158,13 @@ for (const [type, { imageWidth, imageHeight, paletteEntryCount, fontCells }] of 
     fontCells.size ? `font cell ${maxCell(fontCells)} (cells seen: ${[...fontCells].sort().join(', ')})` : '',
   ];
   console.log(`    ${type.padEnd(4)} ${parts.filter(Boolean).join(', ')}`);
+}
+if (counts.get('MESH')?.passed) {
+  console.log(`    MESH vertices ${meshMaxima.vertices}, triangles ${meshMaxima.triangles}, shading slots ${meshMaxima.shadingSlots}`);
+}
+if (counts.get('MODL')?.passed) {
+  const flags = [...modelMaxima.flags].sort((left, right) => left - right).join(', ');
+  console.log(`    MODL parts ${modelMaxima.parts} (lists ${modelMaxima.lists.join('/')}), colour component ${modelMaxima.colour}, part flags ${flags}`);
 }
 console.log(`  failures: ${failures.length}`);
 for (const f of failures) console.log(`    ${f}`);

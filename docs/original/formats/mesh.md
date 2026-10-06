@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-06
 related: [U-001, U-009, U-027]
 ---
 
@@ -11,7 +11,7 @@ related: [U-001, U-009, U-027]
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
 - Readers: [`src/original-data/formats/mesh.ts`](../../../src/original-data/formats/mesh.ts) (`readMeshCounts`, `readMesh`) and [`src/original-data/formats/modl.ts`](../../../src/original-data/formats/modl.ts) (`readModel`), shared by the import and nob-check
-- Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all 486 MESH and 19 MODL entries (13,166 vertices, 13,285 triangles) and checks every cross-reference.
+- Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all 486 MESH and 19 MODL entries (13,166 vertices, 13,285 triangles), checks every cross-reference and prints the [observed maxima](#observed-maxima-against-the-readers-limits-confirmed).
 
 ## 1. MESH (Confirmed on all 486 entries)
 
@@ -37,6 +37,17 @@ Notes:
 - The **slot index** of a corner is always below `ns`, and the largest slot index used is exactly `ns − 1`. The slot table itself is not stored. In 288 meshes `ns` equals `nv` (all corners of a vertex share one slot); in 96 meshes `ns` equals the total corner count (every corner has its own slot, i.e. flat shading); the remaining 102 lie in between. Likely a per-corner shading table built at load time, equivalent to smoothing groups.
 - Vertices are in model space: MODL applies no transform.
 
+### Winding and vertex normals (Confirmed counts; meaning Unconfirmed)
+
+Local statistics with the import's readers (`local/research/p2-06/structure-records.ts`, 2026-10-06; counts only). For each triangle, the cross product (b − a) × (c − a) of its corners in stored order is compared with the sum of its three stored vertex normals. The triangle agrees when the dot product is positive and opposes when it is negative. A dot product below 10⁻⁹ in magnitude is near zero and indeterminate, and does not decide a mesh's category.
+
+| Scope | Meshes | No triangle opposes | Mixed | No triangle agrees | Triangles agreeing / opposing / near zero |
+|---|---:|---:|---:|---:|---|
+| The slice's five craft models | 149 | 98 | 51 | 0 | 1,934 / 1,453 / 73 |
+| All MESH entries | 486 | 336 | 150 | 0 | 8,244 / 4,666 / 375 |
+
+No mesh has only near-zero triangles, and every stored normal has unit length within 10⁻³. These are records only. They establish neither a front-face winding nor how the original lights faces (U-028). The payload keeps winding and normals as stored; the consumer boundary is in [source structure](../../engineering/source-structure.md#模型-payload).
+
 ## 2. MODL (structure Confirmed on all 19 entries)
 
 | Offset | Type | Meaning |
@@ -49,7 +60,7 @@ Part, 28 bytes:
 
 | Offset | Type | Meaning |
 |---|---|---|
-| +0 | u32 | Flags; observed 1 and 3; meaning Unconfirmed |
+| +0 | u32 | Flags; observed 1, 2 and 3 (see [part structure by list](#part-structure-by-list-confirmed-counts)); meaning Unconfirmed (U-027) |
 | +4 | u32 × 3 | Colour, 0–255 per channel; Likely the base colour for untextured parts |
 | +16 | u32 | 0 |
 | +20 | u32 | MESH entry ID |
@@ -65,7 +76,35 @@ Part lists (meaning Unconfirmed, U-027):
 
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
 - **List 1**: hull fragments that look like a wrecked version of the same model; Likely used when it is destroyed. One MODL has an empty list 0 and only fragments in list 1 (Likely an asteroid or debris field).
-- **List 2**: zero or one untextured, single-colour, roughly convex hull. Possibly a collision volume or a shield-hit effect.
+- **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. Possibly a collision volume or a shield-hit effect. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). Whether and how the original draws it is Unconfirmed.
+
+### Part structure by list (Confirmed counts)
+
+Local counts with the import's readers (`local/research/p2-06/structure-records.ts`, 2026-10-06). The meanings stay as in the list above and in U-027. The payload carries lists, flags and sound slots unchanged and gives them no meaning.
+
+| List | MODL entries using it (of 19) | Parts by flag value, textured / untextured | Slice models using it (of 5) | Slice parts by flag value, textured / untextured |
+|---|---:|---|---:|---|
+| 0 | 18 | 1: 18 / 4; 2: 7 / 0; 3: 356 / 27 | 5 | 1: 6 / 0; 3: 104 / 17 |
+| 1 | 17 | 3: 68 / 1 | 4 | 3: 17 / 1 |
+| 2 | 16 | 1: 16 / 0 | 4 | 1: 4 / 0 |
+
+- **Slice parts:** 127, 18 and 4 parts in lists 0, 1 and 2. Within each list every part names a different MESH entry, and no MESH of list 1 or 2 is also used by list 0, so the slice has 149 distinct meshes. The friendly craft model uses only list 0 (2 parts); the other four models use all three lists.
+- **Flags:** flag values do not separate textured from untextured parts, because flags 1 and 3 both occur with and without a TEX entry. Flag meaning is Unconfirmed (U-027).
+- **Sound slots:** across the five slice models, slots 0–4 are non-empty in 3, 4, 4, 3 and 4 models. Their meanings are the ones recorded in [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08) and §2 above: slots 1, 2 and 4 Confirmed, slots 0 and 3 Unconfirmed. P2-06 assigns none.
+
+### Observed maxima against the readers' limits (Confirmed)
+
+The P2-06 reader limits are product constraints from [the P2-06 spec](../../plan/p2/06/spec.md#限值与预算), and the baseline values below fit within them. `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` prints them for passing entries; all 486 MESH and 19 MODL entries pass. The local run is recorded in [P2-06 subtask 10](../../plan/p2/06/subtasks/10-local-structure-records.md#完成证据).
+
+| Quantity | Baseline maximum | Reader limit |
+|---|---:|---:|
+| Vertices per MESH | 284 | 4,096 (`meshVertices`) |
+| Triangles per MESH | 494 | 4,096 (`meshTriangles`) |
+| Shading slots per MESH | 1,105 | at most the mesh's corner count, 3 × triangles (format rule) |
+| Parts per MODL, all three lists | 66 | 256 (`modelParts`) |
+| Parts in list 0 / 1 / 2 (each the maximum over all MODL entries) | 57 / 8 / 1 | within `modelParts` |
+| Part colour component | 252 | 255 (format rule) |
+| Part flag values | 1, 2, 3 | none; carried unchanged |
 
 ### Bounded model/material dependency projection (Confirmed structure/counts)
 

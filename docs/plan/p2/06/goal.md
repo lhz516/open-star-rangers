@@ -125,7 +125,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [07-import-job-models.md](./subtasks/07-import-job-models.md) | 06 | completed |
 | [08-browser-worker-models.md](./subtasks/08-browser-worker-models.md) | 07 | completed |
 | [09-local-base-check.md](./subtasks/09-local-base-check.md) | 07 | completed |
-| [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | pending |
+| [10-local-structure-records.md](./subtasks/10-local-structure-records.md) | 02 | completed |
 | [11-effects-research.md](./subtasks/11-effects-research.md) | 09 | pending |
 | [12-ambiguous-texture-research.md](./subtasks/12-ambiguous-texture-research.md) | 09 | pending |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
