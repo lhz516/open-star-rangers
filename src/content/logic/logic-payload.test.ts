@@ -152,7 +152,7 @@ describe('logic payload decoding', () => {
   it.each([
     ['an unknown role', (descriptor: { role: string }) => { descriptor.role = 'strategic-map-frame'; }, 'invalid-logic-payload', 'descriptor.role'],
     ['a kind that does not fit the role', (descriptor: { role: string }) => { descriptor.role = 'craft-types'; }, 'invalid-logic-payload', 'descriptor.kind'],
-    ['another schema version', (descriptor: { payloadIdentity: { schemaVersion: number } }) => { descriptor.payloadIdentity.schemaVersion = 2; }, 'unsupported-schema', 'descriptor.payloadIdentity.schemaVersion'],
+    ['another schema version', (descriptor: { payloadIdentity: { schemaVersion: number } }) => { descriptor.payloadIdentity.schemaVersion = 2; }, 'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
   ] as const)('rejects a descriptor with %s', (_, change, code, path) => {
     const { bytes, descriptor } = syntheticLogicAsset('mission');
     change(descriptor as never);

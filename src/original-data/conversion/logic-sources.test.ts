@@ -6,14 +6,14 @@ import {
 import { buildImfat } from '../synthetic.ts';
 import { readSourceMappingTable } from '../source-mapping.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
-import { syntheticVerifiedSource } from '../source/source.test-support.ts';
-import { LOGIC_SOURCE_MAPPINGS, openEachArchiveOnce, verifyLogicSources } from './logic-sources.ts';
+import { loggedReads, syntheticVerifiedSource } from '../source/source.test-support.ts';
+import { LOGIC_SOURCE_MAPPINGS, logicEntryReader, verifyLogicSources } from './logic-sources.ts';
 
 const filesWith = (scenario = syntheticScenarioArchive()) => ({ 'MAIN/SCENARIO.NOB': scenario, 'MAIN/SR.NOB': syntheticModelArchive() });
 
 const verify = async (files: Record<string, Uint8Array>, mappings?: unknown) => {
   const source = await syntheticVerifiedSource(files);
-  return { source, result: await verifyLogicSources(source, openEachArchiveOnce(source), mappings) };
+  return { source, result: await verifyLogicSources(source, logicEntryReader(source), mappings) };
 };
 
 const failure = (action: () => Promise<unknown>) => sourceFailure(action, new RegExp(`${MARKER}|\\b(?:3019|3121|3123)\\b`));
@@ -88,9 +88,16 @@ describe('logic source mappings', () => {
       { id: ENTRY_IDS.scenario, type: 'SCEN', data: scenario.bytes, relocations: scenario.relocations },
       { id: ENTRY_IDS.campaign, type: 'SCCT', data: oversized, relocations: campaign.relocations },
     ]);
-    expect(await failure(() => verify(filesWith(archive)))).toEqual({
-      code: 'limit-exceeded', location: `archive:/MAIN/SCENARIO.NOB#${ENTRY_IDS.campaign}`,
+    const logged = loggedReads(await syntheticVerifiedSource(filesWith(archive)));
+    // Mapping verification reports the directory check at the first mapping naming the SCCT.
+    expect(await failure(() => verifyLogicSources(logged.source, logicEntryReader(logged.source)))).toEqual({
+      code: 'limit-exceeded', location: 'sources.mappings[1].parts[0].alternatives[0]',
       limit: { name: 'payloadEntryBytes', limit: 262_144, observed: 262_145 },
+    });
+    // The oversized entry's bytes are never read.
+    expect(await logged.counts()).toEqual({
+      'MAIN/SR.NOB header': 1, 'MAIN/SR.NOB directory': 1, [`MAIN/SR.NOB M2ID#${ENTRY_IDS.modelList}`]: 1,
+      'MAIN/SCENARIO.NOB header': 1, 'MAIN/SCENARIO.NOB directory': 1,
     });
   });
 });

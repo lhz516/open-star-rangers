@@ -60,7 +60,7 @@ reviewed: sha256:3590e3a126bc
 
   若 P2-05、P2-08 已批准的 spec 先定义了等价机制，实现前须对齐为一份。
 - **S-08 逻辑组装配与预算：** 输出符合 P2-01 `GroupInput` 的 `logic` 组：清单、独占 payload 与来源状态。以 `CLASSIC_P2_SLICE` 调用 `validateGroup` 时，结果须为 `group-complete`，跨组外部要求恰为绑定的 model Asset。转换过程中按本 spec 批准的预算计量。
-- **S-09 导入作业接入：** 在生产导入作业的识别之后追加 `convert-logic` 阶段，转换完成后发送 `logic` 组。阶段集合变化须递增 `IMPORT_PROTOCOL_VERSION`；两端校验同步更新，其余协议规则不变。
+- **S-09 导入作业接入：** 在生产导入作业的 `convert-graphics` 阶段（P2-05）之后追加 `convert-logic` 阶段，转换完成后发送 `logic` 组。阶段集合变化须递增 `IMPORT_PROTOCOL_VERSION`；两端校验同步更新，其余协议规则不变。
 - **S-10 Core 纯载入：** 在 `src/core/` 计划新增的任务模块中提供 `loadMission`，消费已解码的规范逻辑数据，产出冻结的 [`MissionSetup`](#core-载入结果)：
   - 实际解析机型、阵营、模型与编组引用；
   - 确定唯一玩家声明；
@@ -116,7 +116,7 @@ reviewed: sha256:3590e3a126bc
   - [asset-units.ts](../../../../src/content/asset-units.ts) 规定计数单位：`mission` 为整任务，对象、引用、数值和短标签是任务的内部元素；`data` 为可独立复用的逻辑数据。
   - [completeness.ts](../../../../src/content/completeness.ts) 的 `validateGroup` 由清单、payload 与来源状态推导组结果。依赖本组不拥有的类别时，记为类型化外部要求。
   - [content-identity.ts](../../../../src/content/content-identity.ts) 的 `ContentIdentity` 有六项身份，`contentIdentityKey` 要求各组完全相同。生产 `ConverterVersion` 与 `ManifestIdentity` 尚无产生者，只有合成测试值。
-  - [budget.ts](../../../../src/content/budget.ts) 已定义 `missionObjects`、`missionReferences` 等十二个维度，但没有具体限值。
+  - [budget.ts](../../../../src/content/budget.ts) 已定义 `missionObjects`、`missionReferences` 等十二个维度与 `addBudgets`；P2-05 以生产份额规定图形步骤的限值，任务维度尚无限值。
   - [ownership.ts](../../../../src/content/ownership.ts) 规定 payload 的独占与转移。
 - **来源与读取（已实现，P2-03）：**
   - [identify-source.ts](../../../../src/original-data/source/identify-source.ts) 的 `VerifiedSource` 提供 `openArchive` 与 `openFile`。[生产白名单](../../../../src/original-data/source/source-catalog.ts)按大小与 SHA-256 覆盖 `MAIN/SCENARIO.NOB`、`MAIN/SR.NOB` 与 `MAIN/SRANGERS.EXE`。
@@ -124,9 +124,9 @@ reviewed: sha256:3590e3a126bc
   - [source-mapping.ts](../../../../src/original-data/source-mapping.ts) 的 `SOURCE_ENTRY_TYPES` 允许 `mission` 来自 SCCT/SCEN，`data` 来自 M2ID/SCCT 等。仓库中还没有生产映射表。
   - [verify-source-mappings.ts](../../../../src/original-data/source/verify-source-mappings.ts) 只把不含子资源的映射升为 `verified`，带子资源的留给理解该 payload 的转换器。
   - [payloads.ts](../../../../src/original-data/payloads.ts) 有通用 `parseIdList`，供 M2ID/NEBC 使用；没有 SCCT/SCEN 解析器。
-- **导入作业（已实现，P2-04）：**
-  - [import-job.ts](../../../../src/workers/import-job.ts) 只识别来源并返回用量。
-  - [import-protocol.ts](../../../../src/workers/import-protocol.ts) 中 `IMPORT_PROTOCOL_VERSION` 为 1，阶段集合只有 `identify-source`；上游错误码只按 token 语法校验。
+- **导入作业（已实现，P2-04；P2-05 扩展）：**
+  - [import-job.ts](../../../../src/workers/import-job.ts) 识别来源后运行 P2-05 的图形转换步骤，返回读取与转换用量之和，尚不发送组。作业限值为读取限值加上已接入步骤的生产份额。
+  - [import-protocol.ts](../../../../src/workers/import-protocol.ts) 中 `IMPORT_PROTOCOL_VERSION` 为 2，阶段集合为 `identify-source`、`convert-graphics`，`canReportStage` 规定阶段只按此顺序前进；上游错误码只按 token 语法校验。
   - [import-host.ts](../../../../src/workers/import-host.ts) 把 `SourceError`、`DiscReadError`、`ContentContractError` 分别映射到对应错误层，其余异常一律报 `internal-error`。
   - [app 作业持有者](../../../../src/app/import/import-job-owner.ts)以 `validateGroup` 重新验证每个组。组消息格式与验证顺序见 [P2-04 消息协议](../04/spec.md#消息协议)。
 - **Core：**
@@ -150,7 +150,7 @@ reviewed: sha256:3590e3a126bc
 |---|---|---|
 | 已验证的基准来源进入 `convert-logic` 阶段 | 读取 SCCT、所选 SCEN 与 M2ID 后转换并核验来源，得到 `group-complete` 的 `logic` 组，随后 `finished.groups` 为 `['logic']` | 不适用 |
 | SCCT 中 group/slot 超出范围，或槽位的 SCEN ID 与映射表的 SCEN 部件不一致 | 不发送任何组 | `failed`，`source` 层的 `subresource-mismatch`，位置为结构路径 |
-| 条目或结构越界、指针不在重定位表中、计数超限、种类有多个比特、坐标非有限、名称不是可打印 ASCII | 在分配与遍历之前拒绝，不返回部分声明 | `invalid-payload`；结构限值或预算超限时为 `limit-exceeded`，带限值名、限值与观测值 |
+| 条目或结构越界、指针不在重定位表中、计数超限、种类有多个比特、坐标非有限、名称不是可打印 ASCII | 在分配与遍历之前拒绝，不返回部分声明 | `invalid-payload`；结构限值超限时为 `limit-exceeded`，预算超限时为 `budget-exceeded`（P2-05），都带限值名、限值与观测值 |
 | 所选任务出现“非默认即不支持”的字段或段 | 不忽略，也不补默认值 | `unsupported-payload`，位置指出字段或段 |
 | 引用的机型在 M2ID 中为 0、超出表长，或同一 MODL 绑定到不同 model ID | 不产生机型表 | `invalid-payload` |
 | 规范 payload 被篡改、不是规范编码，或引用与描述符依赖不一致 | 读取器拒绝；主线程以 `validateGroup` 核对时，payload 身份不符的组为 `incomplete` | `ContentContractError` 对应 code；组诊断沿用 P2-01 |
@@ -374,9 +374,9 @@ S-02 的结论必须是以下四种之一：
 | 每条记录的候选名称数、单个名称长度 | ≤ 32、1–63 字节（不含 NUL） | 尚无观测值；S-01 记录所选任务的最大值 |
 | 去重后每个任务的声明数 | ≤ 256 | 预算 `missionObjects` 另按任务与僚机声明的总数计量 |
 
-预算按 P2-01 的十二个维度计量，以下各项为 `logic` 组的上限：
+预算按 P2-01 的十二个维度计量，沿用 [P2-05 的生产份额机制](../05/spec.md#限值与预算)。以下各项为 logic 转换步骤的生产份额：
 
-| 维度 | 上限 |
+| 维度 | 份额 |
 |---|---|
 | `assets` | 8 |
 | `dependencyEdges` | 32 |
@@ -386,23 +386,26 @@ S-02 的结论必须是以下四种之一：
 
 - **`missionReferences` 的计数：** 以下引用各计一次：声明到机型；声明的 `placement.region`、`placement.anchor`、`memberOf` 与 `aiTarget`（非 null 时）；编组到模板与每个成员位置；机型到 model Asset；payload 到其他 Asset。名称、规则输入、AI 目标机型与编组布局都不计入。
 - **其余维度：** 记为 0。
-- **`sourceReadBytes`：** 仍由光盘镜像句柄按作业计量，上限沿用 P2-04 的作业设置。本阶段的读取量由上面的条目大小限值约束，S-14 记录实际增量。
+- **作业限值：** 作业的限值记录等于读取限值加上各已接入步骤的份额（P2-05）。logic 步骤在先前步骤的转换用量之上扣除，返回累计的转换用量。
+- **`sourceReadBytes`：** 由光盘镜像句柄按作业计量，不另设份额，沿用 P2-02 的默认值。本阶段的读取量由上面的条目大小限值约束，S-14 记录实际增量。
+- **步骤内读取：** 映射核验与转换共用 P2-05 的步骤内读取，同一条目只物理读取一次；条目大小在读取字节之前按目录项判定。
 - **超限反馈：**
   - 结构超限为 `limit-exceeded`，带新增的限值名。
-  - 预算超限：转换器把 `chargeBudget` 返回的 `over-budget` 结果转成 `SourceError('limit-exceeded')`，并在分配对应数据之前判定。`limit` 的 `name` 为超限的预算维度名，`limit` 为上限，`observed` 为本次计入后将达到的总量。经宿主映射后，主线程收到 `source` 层 DTO，带完整的 `limit`。
-  - 在本契约的结构限值下，`budget-overflow` 不可达；若出现，报 `invalid-payload`。
+  - 预算超限沿用 P2-05 的 `budget-exceeded`，在分配对应数据之前判定。`limit` 的 `name` 为超限的预算维度名，`limit` 为作业限值，`observed` 为本次计入后将达到的总量，超出安全整数时为 null。被拒绝的扣除不改变用量。经宿主映射后，主线程收到 `source` 层 DTO，带完整的 `limit`。
 
 ### 错误
 
 - **转换层（`SourceError`，`source` 层）：**
-  - 追加以下错误码，已有错误码不变：
+  - 复用 P2-05 已追加的错误码：
     - `invalid-payload`：结构损坏或违反格式规则；
+    - `budget-exceeded`：预算超限，限值名为 P2-01 预算维度。
+  - 追加以下错误码，已有错误码不变：
     - `unsupported-payload`：格式合法，但用到了本契约不支持的位置；
     - `subresource-mismatch`：子资源解析结果与映射表的其他部件不一致。
-  - 追加限值名 `payloadEntryBytes`、`payloadItems` 与 `textBytes`（结构限值），以及 `assets`、`dependencyEdges`、`payloadBytes`、`missionObjects` 与 `missionReferences`（与 P2-01 预算维度同名，用于预算超限）。
+  - 追加结构限值名 `payloadEntryBytes`、`payloadItems` 与 `textBytes`；预算维度名已由 P2-05 纳入限值名。
   - 位置使用 P2-03 的 `archive:/路径#ID` 形式，后接只含结构名与下标的路径（例如 `/records[3]/craftType`）；映射错误使用 `sources.mappings[i]…` 结构路径。都不回显字节、名称或数值。
-  - 这些错误码可供 P2-05、P2-08 复用。
-- **内容层（`ContentContractError`）：** 追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`。
+  - 这些错误码可供 P2-08 复用。
+- **内容层（`ContentContractError`）：** 追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`；payload schema 版本不受支持时复用 P2-05 的 `unsupported-payload-schema`。
 - **Core：** 前提失败抛出 `CoreInputError`；内容层错误原样传递。
 - **协议：** 错误层集合不变，宿主映射不变。只有阶段集合变化，因此递增协议版本。
 
@@ -435,6 +438,13 @@ S-02 的结论必须是以下四种之一：
 12. **不另做浏览器验收：** 本任务只改变 Worker 内运行的纯作业函数与协议版本；结构化克隆与转移在 Node 中用真实端口验证。若实现修改了 Worker 宿主、平台适配或构建配置，则须重跑 P2-04 的浏览器用例。
 13. **指针转为规范序号（研究后修订）：** 记录与段 5 中已确认访问方式的指针，转换为生成矩形、声明或编组的序号，不在 P2 解释其放置或调度规则；目标不是预期结构起点时失败关闭。段 6 的载入变换按原版循环复现，而不是按“坐标轴转换”的猜测处理。
 14. **地图框架随任务交付（研究后修订）：** S-02 为结论 2，因此不设独立的地图框架 Asset，也不实现非封包 locator（S-12 不适用）；`loadMission` 不再接收单独的地图框架输入。
+15. **沿用先合入的 P2-05 机制（P2-05 合入后修订）：** 按[风险与恢复](#风险与恢复)中“先合入者实现，后者复用”，本任务改用 P2-05 已实现的机制，不另建第二套：
+    - 预算超限码 `budget-exceeded`；
+    - 生产份额与作业限值；
+    - 步骤内共用读取，其共用实现移到 `original-data/conversion/` 供两个步骤复用；
+    - payload schema 错误码 `unsupported-payload-schema`。
+
+    P2-05 尚未定义 `ConverterVersion` 与 `ManifestIdentity`（留给首个装配组的任务），因此仍由本任务提供。
 
 ## 验收标准
 
@@ -443,13 +453,13 @@ S-02 的结论必须是以下四种之一：
 | AC-01 | S-01 的字段清单写入 [scenario](../../../original/formats/scenario.md)，满足以下条件：<br>- 所选 SCEN 每段、每个记录位置、SCCT 僚机记录与引用的 M2ID 槽位，都有出现非默认值的计数和处理结论；<br>- 段 6、段 5 布局与头部 0x00/0x04 都有结论，并带置信度；<br>- 名称的最大长度与字符范围已记录；<br>- U-022/U-023 已更新；<br>- 没有处理结论不明的位置。若触发研究门槛，已完成 spec 修订与重新批准 | 本地只读研究，产物在 `local/`；文档 diff 只含结构、计数、置信度与证据路径；链接与元数据检查；`pnpm --silent check:original` |
 | AC-02 | S-02 的结论（研究结果为结论 2）、坐标轴约定、地图框架来源与 Warp 是否有专用静态数据，连同证据与置信度已写入 `docs/original/`；所选任务的扇区数、比例与框架数值不出现在源码或测试中（合成测试只用合成值），文档只按 `docs/original/` 的约定记录结构与观测范围 | 文档 diff 与置信度标注；若用截图对照，记录方法与判据，不提交截图 |
 | AC-03 | 合成样本的正向转换产生预期规范数据。样本覆盖以下情况：<br>- 多组 SCCT 中按候选选择 SCEN；<br>- 非对齐指针、无序重定位；<br>- 段 1 与成员数组互为别名时只生成一个声明、合并来源标记；<br>- 种类为 0 的模板；<br>- 规则输入 0 记为 null；有符号字段的负值保留；无符号字段的最高位为 1 时保留为正数，上界为 2³²−1；<br>- AI 掩码转为升序机型；<br>- 多个候选名称；段 0 名称备用池按表序保留；<br>- 僚机名单；<br>- 生成矩形、放置矩形与锚点、AI 目标、成员回指；<br>- 编组：成员重复、两个编组共用同一布局（各自写入）、`spawnCount` 原样保留、布局第 0 个元素的 y 与 z 被交换而其余元素不变；<br>- 地图框架：不同的头部扇区数与比例得到相应的 `halfExtent`，坐标轴与中心固定；<br>- `gridSpacing` 的负值保留。<br>机型表符合绑定规则：玩家与僚机共用同一 model ID，只含引用的机型 | Node 表驱动测试，逐字段断言 |
-| AC-04 | 每类负向输入都返回预期的 code 与结构位置，且不返回部分结果、不按声明规模分配：<br>- **`invalid-payload`：** 越界或未登记的指针（含 +0x3C、+0x44、+0x48、+0x54、+0x58 与段 5、段 6 的指针）、多比特种类、非有限坐标或布局、非 ASCII 或无 NUL 的名称（含段 0）、头部扇区数为 0、段 6 表后计数字不在数据块内、M2ID 槽位为 0 或越界；<br>- **`subresource-mismatch`：** 候选槽位超出范围，或槽位的 SCEN ID 与映射不符；<br>- **`unsupported-payload`：** 每个“非默认即不支持”的位置单独构造一例；另各构造一例：头部扇区数不相等或超过 32767、指针目标不是预期结构的起点、成员回指与编组成员不一致、事件触发含生成配对或不是段 2 的第一个元素、段 6 项未被引用或元素数为 0、表后计数字大于 0、段 5 运行时字段非零、模板或成员不是段 1 记录的别名、僚机记录的指针字段或空间字段非零；<br>- **限值：** 各结构限值恰好等于上限时通过，超出 1 个单位返回 `limit-exceeded`。<br>**读取范围：** 记录识别之后的读取日志。其中只能出现以下读取：<br>- `SCENARIO.NOB` 与 `SR.NOB` 的文件头与目录（来源核验与转换可各读一次）；<br>- 映射表中每个 locator 各一次核验读取（同一条目被多个映射引用时，按引用次数读取）；<br>- 转换对 SCCT、所选 SCEN 与 M2ID 的读取。<br>不读取其他条目，例如 `MUSC`、其他 SCEN 与 CINF | Node 表驱动测试，使用记录读取的合成光盘端口 |
+| AC-04 | 每类负向输入都返回预期的 code 与结构位置，且不返回部分结果、不按声明规模分配：<br>- **`invalid-payload`：** 越界或未登记的指针（含 +0x3C、+0x44、+0x48、+0x54、+0x58 与段 5、段 6 的指针）、多比特种类、非有限坐标或布局、非 ASCII 或无 NUL 的名称（含段 0）、头部扇区数为 0、段 6 表后计数字不在数据块内、M2ID 槽位为 0 或越界；<br>- **`subresource-mismatch`：** 候选槽位超出范围，或槽位的 SCEN ID 与映射不符；<br>- **`unsupported-payload`：** 每个“非默认即不支持”的位置单独构造一例；另各构造一例：头部扇区数不相等或超过 32767、指针目标不是预期结构的起点、成员回指与编组成员不一致、事件触发含生成配对或不是段 2 的第一个元素、段 6 项未被引用或元素数为 0、表后计数字大于 0、段 5 运行时字段非零、模板或成员不是段 1 记录的别名、僚机记录的指针字段或空间字段非零；<br>- **限值：** 各结构限值恰好等于上限时通过，超出 1 个单位返回 `limit-exceeded`。<br>**读取范围：** 记录识别之后的读取日志。其中只能出现以下读取：<br>- `SCENARIO.NOB` 与 `SR.NOB` 的文件头与目录，各一次；<br>- 映射表引用的 SCCT、所选 SCEN 与 M2ID，各一次，由映射核验与转换共用（P2-05 的步骤内读取）。<br>不读取其他条目，例如 `MUSC`、其他 SCEN 与 CINF | Node 表驱动测试，使用记录读取的合成光盘端口 |
 | AC-05 | 规范读取器满足以下要求：<br>- **正向：** 各 payload 往返后逐字节相同；相同内容的编码相同。<br>- **拒绝：** 以下情况都按 code 拒绝：缺少字段、未知字段、类型错误、非 ASCII、空白或字段顺序不同、-0、非有限数、超限；单个 payload 内的引用错误（序号不连续、编组引用的声明不存在或缺少对应来源标记、放置矩形或锚点或 AI 目标越界、成员回指与编组成员不一致、僚机声明带放置引用）；字节解码入口中，payload 内的 Asset 引用与描述符依赖不一致。<br>- **隔离：** 结果冻结；调用者修改输入或先前结果，不影响后续读取 | Node 单元测试 |
 | AC-06 | 绑定是唯一的生产来源：<br>- 源码中没有第二份机型到模型的表；<br>- 命名规则产生合法且唯一的 Asset ID；<br>- 同一 MODL 只有一个 ID；<br>- 合成 M2ID 把两个机型指向同一 MODL 时共用 ID，指向不同 MODL 时 ID 不同；<br>- 绑定与 M2ID 解析不一致时失败 | Node 测试与源码搜索证据；P2-06 对齐由其 spec 承接，并在本任务证据中记录交接 |
 | AC-07 | 生产映射表能通过 `readSourceMappingTable` 读取，且满足：<br>- 经 `verifySourceMappings` 后，不含子资源的部件为 `verified`；<br>- 带子资源的部件只有在转换器解析一致后才升为 `verified`；<br>- 解析不一致时报 `subresource-mismatch`；<br>- 来源状态绑定已识别指纹；<br>- 映射置信度与 U 项符合 [`logic` 组 Asset](#logic-组的-asset) 表 | Node 测试，使用合成映射表与合成光盘；生产表另以只读方式核对形状 |
 | AC-08 | `ManifestIdentity` 满足以下要求：<br>- 对相同输入结果相同；<br>- 任一描述符、依赖、payload 身份、来源状态、`ConverterVersion` 或来源变化，结果都不同；<br>- 结果符合 P2-01 token 语法；<br>- 作业中的每个组都携带同一身份。<br>`ConverterVersion` 在生产代码中只有一个定义 | Node 测试与源码搜索 |
-| AC-09 | 合成来源经生产转换器得到的 `logic` 组满足以下要求：<br>- 以 `CLASSIC_P2_SLICE` 调用 `validateGroup` 的结果为 `group-complete`；<br>- 外部要求恰为绑定的 model Asset；<br>- 来源为 `original-import`，带合成指纹；<br>- 每个 payload 独占，可由 `payloadTransferList` 转移；<br>- 转换器计入的预算用量，等于按[计数规则](#限值与预算)独立计算的值。<br>**预算阈值：** 以本 spec 批准的上限调用预算计量函数，五个设限维度各在恰好等于上限时通过，超出 1 时返回 `over-budget`。经转换器可以触发的超限（`missionReferences` 与 `payloadBytes`）用合成样本触发，并返回 `limit-exceeded`；其余维度在结构限值下不可达，证据中注明，不为达到阈值而制造契约之外的 Asset。<br>篡改 payload 后，组为 `incomplete` | Node 测试 |
-| AC-10 | 生产导入作业以可注入的合成白名单运行，满足以下要求：<br>- 消息依次为 `identify-source` 进度、`identified`、`convert-logic` 进度、`group logic`、`finished`（`groups` 为 `['logic']`）；<br>- 递增后的协议版本在两端一致，旧版本消息被拒绝；<br>- app 持有者接受该组，`takeGroups()` 一次性移交；<br>- 转换失败时报 `failed`（`source` 或 `content` 层），不发送组；预算超限经宿主与持有者到达时，为 `source` 层的 `limit-exceeded`，`limit` 的维度名、上限与观测值完整保留；<br>- P2-04 已有的 Node 与浏览器测试继续通过 | Node 集成测试，使用宿主、真实结构化克隆端口与持有者；`pnpm check` |
+| AC-09 | 合成来源经生产转换器得到的 `logic` 组满足以下要求：<br>- 以 `CLASSIC_P2_SLICE` 调用 `validateGroup` 的结果为 `group-complete`；<br>- 外部要求恰为绑定的 model Asset；<br>- 来源为 `original-import`，带合成指纹；<br>- 每个 payload 独占，可由 `payloadTransferList` 转移；<br>- 转换器计入的预算用量，等于按[计数规则](#限值与预算)独立计算的值。<br>**预算阈值：** 以本 spec 批准的份额调用预算计量函数，五个设限维度各在恰好等于份额时通过，超出 1 时返回 `over-budget`。只以份额为限值时，经转换器可以触发的超限（`missionReferences` 与 `payloadBytes`）用合成样本触发，并返回 `budget-exceeded`；在先前步骤的用量之上扣除时，用量累计，超限的观测值包含先前用量；其余维度在结构限值下不可达，证据中注明，不为达到阈值而制造契约之外的 Asset。<br>篡改 payload 后，组为 `incomplete` | Node 测试 |
+| AC-10 | 生产导入作业以可注入的合成白名单运行，满足以下要求：<br>- 消息依次为 `identify-source` 进度、`identified`、`convert-graphics` 进度、`convert-logic` 进度、`group logic`、`finished`（`groups` 为 `['logic']`）；<br>- 递增后的协议版本在两端一致，旧版本消息被拒绝；<br>- app 持有者接受该组，`takeGroups()` 一次性移交；<br>- 转换失败时报 `failed`（`source` 或 `content` 层），不发送组；预算超限经宿主与持有者到达时，为 `source` 层的 `budget-exceeded`，`limit` 的维度名、上限与观测值完整保留；<br>- P2-04 已有的 Node 与浏览器测试继续通过 | Node 集成测试，使用宿主、真实结构化克隆端口与持有者；`pnpm check` |
 | AC-11 | `loadMission` 满足以下要求：<br>- **正向：** 对合法的合成逻辑数据，`MissionSetup` 的声明（含放置引用、成员回指与 AI 目标）、阵营、模型、基地交互、玩家、编组（含布局）、名称备用池、生成矩形、僚机选项与地图框架都符合预期。<br>- **确定性：** 两次载入深度相等；结果冻结，并与输入隔离。<br>- **前提失败：** 以下每项都抛出 `CoreInputError`，路径准确：没有或有两个玩家、僚机选项解析为玩家、引用的机型缺失、机型表多出机型、任务或僚机名单引用的 Asset ID 不一致。<br>- **透传：** 单个 payload 内部的错误（如编组引用的声明不存在）由读取器报告为内容层错误，Core 原样传递，不改为 `CoreInputError`。<br>- **纯净：** Core 中没有 RNG、宿主时间或 `original-data` 依赖 | Node 测试；ESLint 与边界回归 |
 | AC-12 | S-12 不适用：证据记录 S-02 的结论 2 及其文档位置；`OriginalAssetLocator` 的形状与校验未改变，已有 locator 测试不变地通过 | 文档核对与源码 diff；既有测试 |
 | AC-13 | 边界与隐私满足以下要求：<br>- Core 与 `content/` 不导入 `original-data`；<br>- 转换器只经 `VerifiedSource` 读取；Worker 仍禁用网络 API；<br>- 合成样本只由代码生成；<br>- 错误位置、诊断与 CLI 输出不含名称、坐标、原版字节或私人绝对路径；<br>- 用不同合成框架值和比例值证明它们都来自输入，源码中没有硬编码的地图或比例数值 | 边界回归、ESLint、Node 测试、代码审阅 |
@@ -519,5 +529,7 @@ S-01、S-02 的研究结论属于验收门槛；2026-10-05 的研究结果已按
 - **生效：** 修订依据该授权生效，S/AC 编号不变。
 
 **2026-10-05 AC-09 更正：** 子任务 09 发现上述修订后 `missionObjects` 不可达、`payloadBytes` 可达，按同一授权更正 AC-09 的可触发维度，记录见 goal 执行记录。
+
+**2026-10-05 与 P2-05 对齐：** P2-05 先合入主线，本 spec 按同一授权改用其预算、读取与错误码机制（技术决定 15），记录见 goal 执行记录。
 
 批准不代表实现完成。之后若再触发研究门槛，同样须取得用户批准或授权。

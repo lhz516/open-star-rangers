@@ -61,19 +61,19 @@ updated: 2026-10-05
     - `mission/first-campaign`：SCCT 3123 的 `group-0/slot-1`（由 `CLASSIC_P2_SLICE.candidate` 生成）加 SCEN 3019，U-022。
 
     条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`，证据只引用 `docs/original/`。
-  - **核验：** `verifyLogicSources(source, openArchive)` 按一个顺序完成核验：
-    1. 按目录大小检查 payload 限值；
-    2. 调用 `verifySourceMappings`；
-    3. 以切片候选读取并解析映射的 SCCT，核对子资源：槽位的 SCEN 是同一映射的部件、僚机记录解析成功、所有子资源在同一张 SCCT；
-    4. 升为 `verified`，再由 `assetSourceStates` 推导绑定指纹的来源状态。
+  - **读取：** `logicEntryReader(source)` 是 P2-05 的步骤内读取，每个条目只物理读取一次。它带读取前钩子，在读取字节之前按目录项检查 SCCT、SCEN、M2ID 的 `payloadEntryBytes`。
+  - **核验：** `verifyLogicSources(source, readEntry)` 按一个顺序完成核验：
+    1. 以 `readEntry` 调用 `verifySourceMappings`；
+    2. 从同一读取结果中以切片候选解析映射的 SCCT，核对子资源：槽位的 SCEN 是同一映射的部件、僚机记录解析成功、所有子资源在同一张 SCCT；
+    3. 升为 `verified`，再由 `assetSourceStates` 推导绑定指纹的来源状态。
 
     它返回 `{ table, sources, campaign }` 供 09 复用。子资源核验不单独导出，因此映射只能由同一来源的读取证实。
-  - **测试支持：** [source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts) 新增 `syntheticVerifiedSource` 与 `archiveOpener`；[formats.test-support.ts](../../../../../src/original-data/formats/formats.test-support.ts) 的 `ENTRY_IDS` 改为复用生产常量。
+  - **测试支持：** [source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts) 新增 `syntheticVerifiedSource`；[formats.test-support.ts](../../../../../src/original-data/formats/formats.test-support.ts) 的 `ENTRY_IDS` 改为复用生产常量。
 - **测试：** [logic-sources.test.ts](../../../../../src/original-data/conversion/logic-sources.test.ts) 5 个测试通过，使用合成 `SCENARIO.NOB`/`SR.NOB`、合成光盘与合成白名单：
   - **形状：** 生产表的 Asset ID 与 kind、部件、置信度、U 项与 `declared` 状态，指纹为 null；
   - **正向：** 核验后三项都为 `verified`，来源状态绑定已识别指纹，并返回解析出的僚机与 SCEN 条目 ID；
   - **`subresource-mismatch`（AC-04 部分）：** 槽位指向另一 SCEN 时报在 `sources.mappings[2].parts[0].alternatives[0]`；未知子资源、子资源分属两张 SCCT 也同样报错；
-  - **限值：** SCCT 超过 262,144 字节时，在读取前按目录报 `payloadEntryBytes`；
+  - **限值：** SCCT 超过 262,144 字节时，按目录报 `payloadEntryBytes`，位置为首个引用 SCCT 的映射路径 `sources.mappings[1].parts[0].alternatives[0]`。读取日志证明该条目的字节从未读取；
   - **隐私：** 位置通过语法检查，诊断不含 `MARKER` 或条目 ID 数值。
 
   证据锚点（scenario §4、切片字段清单、executable 玩家目标模式、hud §3）用会话内的链接检查器核对有效：工程边界规定 original-data 测试不读文件，因此锚点不在测试中检查。
@@ -81,9 +81,13 @@ updated: 2026-10-05
 - **工程检查：** `pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过：102 个测试文件、3087 个测试与生产构建。第一次运行时，边界回归拦截了测试中读取文档的 `node:fs` 导入，已移除。
 - **rubber-duck：** 1 项阻塞已采纳：只凭指纹不能证明表经过核验，SCCT 也未绑定来源。处理是把核验合并为 `verifyLogicSources`，在同一已验证来源上读取与解析，并补充跨表与未知子资源测试。1 项建议已采纳：测试断言 Asset kind。审阅确认映射 ID、部件、置信度、U 项、证据锚点，以及整项升级与精确备选的处理正确。
 - **simplify：**
-  - **已采纳：** 把已验证来源与带缓存的封包打开函数提升为共用测试支持（09、10、12 复用）。
+  - **已采纳：** 把已验证来源与带缓存的封包打开函数提升为共用测试支持。
   - **未采纳：**
-    - 与 `verifySourceMappings` 共用封包缓存，或在其中执行读取前限值：会改动 P2-03 的通用核验器，且读取次数在 spec 的允许范围内；
+    - 与 `verifySourceMappings` 共用封包缓存，或在其中执行读取前限值：当时会改动 P2-03 的通用核验器。P2-05 合入后已改用其步骤内读取，见下；
     - 把条目 ID 留在格式测试支持本地：会产生两份 ID；
     - 避免重复读取映射表：开销可忽略。
 - **文档影响：** 已在[源码结构](../../../../engineering/source-structure.md#逻辑组转换)记录生产映射表与 `verifyLogicSources` 的步骤。工程约定、工具指南与 STATUS 无需更新。
+- **P2-05 合入后的对齐（2026-10-05，变基后）：** 原因见 [goal 执行记录](../goal.md#执行记录)。以上实现与测试按对齐后的状态记录；对齐前的差异如下：
+  - 核验接收带缓存的封包打开函数 `openArchive`，先单独预检目录，再由 `verifySourceMappings` 与 SCCT 解析各读一次条目；
+  - 超限位置是条目位置；
+  - 测试支持另有 `archiveOpener`，已删除。

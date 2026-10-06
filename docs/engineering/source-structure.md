@@ -97,11 +97,6 @@ src/
     archive/
       imfat-rules.ts
       archive-reader.ts
-    conversion/
-      converter-version.ts
-      craft-binding.ts
-      logic-sources.ts
-      convert-logic.ts
     formats/
       payload-block.ts
       object-record.ts
@@ -117,8 +112,13 @@ src/
       source-graphics.ts
       graphics-declarations.ts
       convert-graphics.ts
+      step-entry-reader.ts
       graphics-step.ts
       production-graphics.ts
+      converter-version.ts
+      craft-binding.ts
+      logic-sources.ts
+      convert-logic.ts
   platform/
     browser/
       browser-session-host.ts
@@ -295,29 +295,30 @@ src/
   - `data/wingman-roster`：SCCT 的 `wingmen` 子资源；
   - `mission/first-campaign`：SCCT 的候选槽位子资源（由 `CLASSIC_P2_SLICE.candidate` 生成）与 SCEN 条目。
 
-  Asset 引用集中在 `LOGIC_ASSETS`，条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。`verifyLogicSources(source, openArchive)` 按一个顺序、只用同一个已验证来源完成核验，因此映射只会由该来源的读取证实。转换编排传入 `openEachArchiveOnce(source)`，每个目录只读一次。步骤如下：
-  1. 按目录项的大小检查每个映射条目的 payload 限值（在读取之前）；
-  2. 调用 `verifySourceMappings` 读取每个 locator，只把不含子资源的映射升为 `verified`；
-  3. 读取并以切片候选解析映射的 SCCT，核对子资源：候选槽位的 SCEN 条目 ID 必须是同一映射中的 SCEN 部件，僚机记录必须解析成功，所有子资源都在同一张 SCCT 中；
-  4. 一致时升为 `verified`，否则在 `sources.mappings[i].parts[j].alternatives[k]` 报 `subresource-mismatch`。
+  Asset 引用集中在 `LOGIC_ASSETS`，条目 ID 集中在 `LOGIC_SOURCE_ENTRIES`。
+  - **步骤读取：** `logicEntryReader(source)` 是[图形转换](#图形转换)共用的步骤内读取 `stepEntryReader`，另带读取前钩子：在读取条目字节之前，按目录项大小检查 SCCT、SCEN 与 M2ID 的 `payloadEntryBytes`。经映射核验读取时，超限位置改写为映射路径。
+  - **核验：** `verifyLogicSources(source, readEntry)` 只用同一个已验证来源及其步骤读取完成核验，因此映射只会由该来源的读取证实，每个条目只物理读取一次。步骤如下：
+    1. 调用 `verifySourceMappings(table, source, readEntry)` 读取每个 locator，只把不含子资源的映射升为 `verified`；
+    2. 从同一读取结果中以切片候选解析映射的 SCCT，核对子资源：候选槽位的 SCEN 条目 ID 必须是同一映射中的 SCEN 部件，僚机记录必须解析成功，所有子资源都在同一张 SCCT 中；
+    3. 一致时升为 `verified`，否则在 `sources.mappings[i].parts[j].alternatives[k]` 报 `subresource-mismatch`。
 
   返回冻结的 `{ table, sources, campaign }`：`sources` 是 `assetSourceStates` 推导、绑定指纹的来源状态，`campaign` 是解析结果，供转换复用。
-- **转换编排：** [convert-logic.ts](../../src/original-data/conversion/convert-logic.ts) 的 `convertLogic(source)` 产出 `logic` 组草稿：
-  1. 以 `verifyLogicSources` 核验映射并解析 SCCT；
-  2. 只读取映射的 SCEN 与 M2ID 并解析；
+- **转换步骤：** [convert-logic.ts](../../src/original-data/conversion/convert-logic.ts) 的 `convertLogic(source, limits, usage)` 产出 `logic` 组草稿：
+  1. 以 `logicEntryReader` 与 `verifyLogicSources` 核验映射并解析 SCCT；
+  2. 从同一步骤读取取得映射的 SCEN 与 M2ID 并解析；
   3. 以 `bindCraftTypes` 绑定任务与僚机名单引用的机型；
   4. 核对跨 Asset 的一致性：任务恰有一条记录为玩家机型，僚机选项都不是玩家机型，否则为 `unsupported-payload`；
   5. 组装三个 payload。`mapFrame` 按 executable 的世界扇区网格与战略地图投影记录生成：+x 向右，−y 向上，中心为原点，`halfExtent` 为扇区数 × 比例 ÷ 2；
   6. 按 Asset ID 升序编码，并生成描述符与 payload 记录。
 
-  返回冻结的 `{ draft, usage }`。`draft` 是 `GroupDraft`（描述符、各占独立 buffer 的 payload、来源状态），身份由调用方以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 写入。生产身份基础是 [converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `productionIdentityBasis(sourceFingerprint)`：来源为 `original-import`，带 P2-01 的 schema、切片常量与 `PRODUCTION_CONVERTER_VERSION`。
-- **预算：** 同一模块的 `LOGIC_BUDGET_LIMITS` 是 `logic` 组的预算上限：`assets` 8、`dependencyEdges` 32、`payloadBytes` 1,048,576、`missionObjects` 256、`missionReferences` 4,096，其余维度为 0。
+  返回冻结的 `{ draft, usage }`，`usage` 为起始用量加上本步骤的转换用量。`draft` 是 `GroupDraft`（描述符、各占独立 buffer 的 payload、来源状态），身份由调用方以 [manifest-identity.ts](../../src/content/manifest-identity.ts) 写入。生产身份基础是 [converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `productionIdentityBasis(sourceFingerprint)`：来源为 `original-import`，带 P2-01 的 schema、切片常量与 `PRODUCTION_CONVERTER_VERSION`。
+- **预算：** 同一模块的 `PRODUCTION_LOGIC_SHARE` 是 logic 步骤的生产份额：`assets` 8、`dependencyEdges` 32、`payloadBytes` 1,048,576、`missionObjects` 256、`missionReferences` 4,096，其余维度为 0。与图形步骤一样，作业把份额加到读取限值上作为 `limits`，本步骤在先前步骤的转换用量 `usage` 之上扣除；起始用量含 `sourceReadBytes` 时为 `invalid-budget-value`。
   - **计量时机：** 每个 Asset 分两次计量：Asset、依赖边与两类任务计数在复制与编码 payload 之前计量；`payloadBytes` 由 `encodeLogicPayload` 的 `reserve` 回调在得到规范字节数之后、检查 payload 上限与分配字节之前计量。
   - **计数规则**（spec 的[限值与预算](../plan/p2/09/spec.md#限值与预算)）：
     - `missionObjects`：任务声明与僚机声明的总数；
     - `missionReferences`：每个声明的机型、放置矩形、锚点、编组与 AI 目标（非 null 时各计一次），编组的模板与每个成员位置，每个机型到 model 的引用，以及任务的 2 个、僚机名单的 1 个 Asset 引用。
-  - **超限：** `over-budget` 转为 `SourceError('limit-exceeded')`，`limit` 为维度名、上限与观测值，位置是该 Asset 的来源条目（僚机名单为 SCCT 的 `/wingmen`）；`budget-overflow` 报 `invalid-payload`。
-  - **可达性：** 结构限值下只有 `missionReferences` 与 `payloadBytes` 可能超限，`SourceLimitName` 为此追加了这五个维度名。
+  - **超限：** 与图形步骤相同，报 `budget-exceeded`：`limit` 为维度名、上限与观测值，总量超出安全整数时观测值为 null。位置是该 Asset 的来源条目，僚机名单为 SCCT 的 `/wingmen`。被拒绝的扣除不改变用量。
+  - **可达性：** 只用本份额时，结构限值下只有 `missionReferences` 与 `payloadBytes` 可能超限。
 
 ### 原版来源映射
 
@@ -424,7 +425,7 @@ src/
   - 颜色键只用于 raw 图像（否则为 `invalid-declaration@…alpha`），值为 k 的像素变为透明；不透明像素的索引不小于所绑定调色板（同组声明的转换结果）的条目数时为 `palette-index-out-of-range@…pixels`；`reversed` 恰好反转索引与掩码的行序。字体按声明的 `cell` 扣除，实际单元不符为 `geometry-mismatch@…glyphs`，`charMap` 区间展开为按码位升序的条目。
   - 结果是按 ID 升序的冻结 `{ descriptor, payload }`：描述符经 `readAssetDescriptor` 生成，依赖为图像引用的调色板（`imagePalettes`），`payloadIdentity` 由实际字节计算；payload 独占缓冲。源结构读取的位置都带上 `graphics[<Asset ID>]` 前缀；任一失败使整组转换失败，不返回部分结果。
 - **转换步骤：** [graphics-step.ts](../../src/original-data/conversion/graphics-step.ts)（[P2-05/05](../plan/p2/05/subtasks/05-graphics-step.md)）的 `runGraphicsStep(source, mappings, declarations, limits, usage)`：
-  - **共用读取：** 模块内部的 `stepEntryReader(source)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。
+  - **共用读取：** [step-entry-reader.ts](../../src/original-data/conversion/step-entry-reader.ts) 的 `stepEntryReader(source, beforeRead?)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。可选的 `beforeRead` 在读取字节之前收到目录项，供步骤按声明大小拒绝条目（逻辑步骤用它检查条目大小）。
   - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源只接受整条目（`null`）、整条目 TEX/BITM 图像记录的 `palette` 与 CCKD 的 `fonts/<i>`（i 为不带前导零的十进制，0–2 以外由读取报 `subresource-not-found`）：DATA 整条目为调色板，TEX/BITM 整条目为图像；其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts`。CCKD 元素、MFDD 与 TABL 的容器子资源归 P2-07。
   - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
 - **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出本任务的生产声明、映射与预算份额：

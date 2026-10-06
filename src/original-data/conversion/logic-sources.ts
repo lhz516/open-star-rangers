@@ -8,10 +8,9 @@ import { CAMPAIGN_LIMITS, parseCampaignTable, type ParsedCampaignTable } from '.
 import { SCENARIO_LIMITS } from '../formats/scen.ts';
 import { assetSourceStates, readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
-import type { ImfatArchiveHandle } from '../archive/archive-reader.ts';
-import type { DiscPath } from '../disc/disc-path.ts';
-import type { VerifiedSource } from '../source/identify-source.ts';
-import { verifySourceMappings } from '../source/verify-source-mappings.ts';
+import type { VerifiedSource } from '../source/open-verified-source.ts';
+import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
+import { stepEntryReader } from './step-entry-reader.ts';
 
 // The production source mapping of the `logic` group (P2-09 spec, `logic` 组的 Asset) and the converter's check of the
 // sub-resources `verifySourceMappings` leaves declared. Entry IDs are structural facts recorded in docs/original.
@@ -76,27 +75,20 @@ export const LOGIC_SOURCE_MAPPINGS: SourceMappingTable = readSourceMappingTable(
   ],
 });
 
-/** Opens an archive of the verified source. */
-export type OpenArchive = (path: DiscPath) => Promise<ImfatArchiveHandle>;
-
-/** Opens each archive of `source` once and reuses its handle, so one conversion reads each directory once. */
-export function openEachArchiveOnce(source: VerifiedSource): OpenArchive {
-  const archives = new Map<DiscPath, Promise<ImfatArchiveHandle>>();
-  return path => {
-    let archive = archives.get(path);
-    if (!archive) {
-      archive = source.openArchive(path);
-      archives.set(path, archive);
-    }
-    return archive;
-  };
-}
-
 /** Payload limits by entry type, judged on directory sizes before any mapped entry is read. */
 const ENTRY_LIMITS: Readonly<Record<string, number>> = Object.freeze({
   SCCT: CAMPAIGN_LIMITS.entryBytes,
   SCEN: SCENARIO_LIMITS.entryBytes,
   M2ID: MODEL_LIST_LIMITS.entryBytes,
+});
+
+/**
+ * The logic step's entry reader: the shared step-local reader, so mapping verification and conversion read each entry
+ * once, with the payload size limits checked on the directory entry before its bytes are read.
+ */
+export const logicEntryReader = (source: VerifiedSource): EntryReader => stepEntryReader(source, (discPath, entry) => {
+  const limit = ENTRY_LIMITS[entry.type];
+  if (limit !== undefined) requireEntryBytes(discPath, entry, limit);
 });
 
 export interface LogicSources {
@@ -109,37 +101,28 @@ export interface LogicSources {
 }
 
 /**
- * Verifies the logic mappings against `source` in one sequence, so a mapping is verified only by reads of that
- * source: payload limits on directory sizes, `verifySourceMappings` for every locator, then the mapped SCCT parsed
- * through `openArchive` for the slice candidate. A sub-resource is confirmed when the campaign slot names an SCEN entry
- * of the same mapping or the wingman records parsed; any other sub-resource or disagreement is `subresource-mismatch`
- * at the locator's structural path.
+ * Verifies the logic mappings against `source` with the step's `readEntry` (from `logicEntryReader`), so a mapping is
+ * verified only by reads of that source: `verifySourceMappings` reads every locator, then the mapped SCCT is parsed for
+ * the slice candidate from the same read. A sub-resource is confirmed when the campaign slot names an SCEN entry of
+ * the same mapping or the wingman records parsed; any other sub-resource or disagreement is `subresource-mismatch` at
+ * the locator's structural path.
  */
-export async function verifyLogicSources(source: VerifiedSource, openArchive: OpenArchive, mappings: unknown = LOGIC_SOURCE_MAPPINGS): Promise<LogicSources> {
-  const declared = readSourceMappingTable(mappings);
-  for (const { parts } of declared.mappings) {
-    for (const { discPath, entry } of parts.flatMap(({ alternatives }) => alternatives)) {
-      const limit = ENTRY_LIMITS[entry.type];
-      const listed = (await openArchive(discPath)).entries.find(({ id, type }) => id === entry.id && type === entry.type);
-      // A missing entry is reported by verifySourceMappings at its mapping path.
-      if (limit !== undefined && listed) requireEntryBytes(discPath, listed, limit);
-    }
-  }
-  const verified = await verifySourceMappings(declared, source);
+export async function verifyLogicSources(source: VerifiedSource, readEntry: EntryReader, mappings: unknown = LOGIC_SOURCE_MAPPINGS): Promise<LogicSources> {
+  const verified = await verifySourceMappings(mappings, source, readEntry);
   let campaign: { readonly entryId: number; readonly table: ParsedCampaignTable } | null = null;
   const upgraded = [];
   for (const [index, mapping] of verified.mappings.entries()) {
     let checked = false;
     for (const [part, { alternatives }] of mapping.parts.entries()) {
-      for (const [alternative, { discPath, entry, subresource }] of alternatives.entries()) {
+      for (const [alternative, locator] of alternatives.entries()) {
+        const { discPath, entry, subresource } = locator;
         if (subresource === null) continue;
         checked = true;
         const at = `sources.mappings[${index}].parts[${part}].alternatives[${alternative}]`;
         const mismatch = (reason: string): never => { throw new SourceError('subresource-mismatch', at, reason); };
         if (discPath !== SCENARIO_NOB || entry.type !== 'SCCT') mismatch('the sub-resource is not in a campaign table');
         if (campaign === null) {
-          const archive = await openArchive(discPath);
-          campaign = { entryId: entry.id, table: parseCampaignTable(discPath, await archive.read(entry.id, entry.type)) };
+          campaign = { entryId: entry.id, table: parseCampaignTable(discPath, await readEntry(locator)) };
         } else if (campaign.entryId !== entry.id) {
           mismatch('the sub-resource is in another campaign table');
         }

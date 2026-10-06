@@ -15,16 +15,17 @@ updated: 2026-10-05
 
 ## 工作范围
 
-- **开始前核对：** 确认 P2-05、P2-08 没有已落地的协议版本或阶段变化；若有，在其之上递增，并在证据中说明。
-- **协议：** [import-protocol.ts](../../../../../src/workers/import-protocol.ts) 的 `IMPORT_STAGES` 追加 `convert-logic`，`IMPORT_PROTOCOL_VERSION` 递增；其余消息形状与规则不变。
-- **阶段顺序：** 按 S-09，`convert-logic` 只在 `identified` 之后出现：
-  - [import-host.ts](../../../../../src/workers/import-host.ts) 在识别之前收到 `convert-logic` 进度时报 `internal-error`（与既有的 `identify-source` 迟到规则对称）；
-  - [import-job-owner.ts](../../../../../src/app/import/import-job-owner.ts) 在 `identified` 之前收到 `convert-logic` 进度时报 `protocol-error`；`readBytes` 的单调与上限规则不变。
-- **生产作业：** [import-job.ts](../../../../../src/workers/import-job.ts) 在 `identified` 之后：
+- **开始前核对：** 确认 P2-05、P2-08 没有已落地的协议版本或阶段变化；若有，在其之上递增，并在证据中说明。2026-10-05 核对时 P2-05 已合入：协议版本为 2，阶段为 `identify-source`、`convert-graphics`。本分支已变基到主线并按 [goal 执行记录](../goal.md#执行记录)对齐。
+- **协议：** [import-protocol.ts](../../../../../src/workers/import-protocol.ts) 的 `IMPORT_STAGES` 在 `convert-graphics` 之后追加 `convert-logic`，`IMPORT_PROTOCOL_VERSION` 在合入时的值上递增；其余消息形状与规则不变。
+- **阶段顺序：** P2-05 的 `canReportStage` 已规定阶段只按 `IMPORT_STAGES` 顺序前进，识别之后的阶段只在 `identified` 之后出现，宿主与持有者共用这一规则。本任务只为 `convert-logic` 补充测试：
+  - [import-host.ts](../../../../../src/workers/import-host.ts) 拒绝识别之前或回退的阶段进度（`internal-error`）；
+  - [import-job-owner.ts](../../../../../src/app/import/import-job-owner.ts) 同样拒绝（`protocol-error`）；`readBytes` 的单调与上限规则不变。
+- **生产作业：** [import-job.ts](../../../../../src/workers/import-job.ts) 在图形步骤之后：
   - 发送 `convert-logic` 进度（阶段开始一次，之后每次端口读取完成一次），计量继续累计；
-  - 调用 09 的 `convertLogic`，以 03 的函数对作业的全部组草稿推导同一 `ManifestIdentity` 并写入每个组清单，再逐组 `report.group`；
-  - 返回值 `usage` 的语义沿用 P2-04（光盘句柄的计量），转换用量由 09 的测试断言。
-- **测试注入点：** 与 `open` 一样，转换步骤只由测试替换（默认是生产转换）。更新受影响的测试支持与用例：
+  - 作业限值为读取限值加上图形与 logic 两个步骤的份额。以图形步骤的转换用量为起始用量调用 09 的 `convertLogic`；
+  - 以 03 的函数对作业发送的全部组草稿推导同一 `ManifestIdentity`，写入每个组清单，再逐组 `report.group`。图形步骤的结果按 P2-05 不组装为组，留给 P2-06/07；
+  - 返回值 `usage` 沿用 P2-05 的语义：读取用量加上累计的转换用量。
+- **测试注入点：** 与 `open` 和图形步骤一样，logic 步骤只由测试替换（默认是生产转换）。更新受影响的测试支持与用例：
   - `syntheticGroupsJob` 改为只识别、不运行生产转换，保持 [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 的 `synthetic` 场景只发送四个合成组；
   - [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 与 [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 中“识别后无组结束”的用例，改为使用含合成 `SCENARIO.NOB`/`SR.NOB` 的白名单得到 `logic` 组，或注入空转换并说明理由；
   - 生产白名单拒绝合成光盘的用例保持不变。
@@ -43,8 +44,8 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-10：以注入的合成白名单运行生产作业，消息依次为 `identify-source` 进度、`identified`、`convert-logic` 进度、`group logic`、`finished`（`groups` 为 `['logic']`）；递增后的协议版本两端一致，旧版本的 `ready` 被拒绝；app 持有者接受该组，`takeGroups()` 一次性移交。
-- [ ] AC-10（失败）：转换失败时报 `failed`（`source` 或 `content` 层）且不发送组；预算超限到达持有者时为 `source` 层的 `limit-exceeded`，`limit` 的维度名、上限与观测值完整；识别之前的 `convert-logic` 进度在宿主与持有者都被拒绝。
+- [ ] AC-10：以注入的合成白名单运行生产作业，消息依次为 `identify-source` 进度、`identified`、`convert-graphics` 进度、`convert-logic` 进度、`group logic`、`finished`（`groups` 为 `['logic']`）；递增后的协议版本两端一致，旧版本的 `ready` 被拒绝；app 持有者接受该组，`takeGroups()` 一次性移交。
+- [ ] AC-10（失败）：转换失败时报 `failed`（`source` 或 `content` 层）且不发送组；预算超限到达持有者时为 `source` 层的 `budget-exceeded`，`limit` 的维度名、上限与观测值完整；识别之前的 `convert-logic` 进度在宿主与持有者都被拒绝。
 - [ ] AC-08（作业部分）：作业中每个组的清单携带同一 `ManifestIdentity`。
 - [ ] AC-13：快照、错误 DTO 与 console 不含文件名 `MARKER`、名称或坐标。
 - [ ] P2-04 的既有 Node 测试通过；`pnpm test:e2e import-worker.spec.ts --project=development` 通过；`pnpm check` 通过。

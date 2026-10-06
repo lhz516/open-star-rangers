@@ -78,7 +78,7 @@ export function decodeLogicPayload(bytes: Uint8Array, descriptor: AssetDescripto
   const role = Object.hasOwn(ROLES, asset.role) ? asset.role as LogicRole : fail('invalid-logic-payload', 'descriptor.role', 'must be a logic payload role');
   if (asset.kind !== ROLES[role].kind) fail('invalid-logic-payload', 'descriptor.kind', 'must be the kind of the logic payload role');
   if (asset.payloadIdentity.schemaVersion !== LOGIC_PAYLOAD_SCHEMA_VERSION) {
-    fail('unsupported-schema', 'descriptor.payloadIdentity.schemaVersion', 'must be the supported logic payload schema');
+    fail('unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion', 'must be the supported logic payload schema');
   }
   const text = asciiText(bytes);
   let parsed: unknown;

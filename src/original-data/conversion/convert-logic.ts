@@ -1,5 +1,6 @@
 import type { AssetReference } from '../../content/asset-contract.ts';
-import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetDimension, type BudgetRecord } from '../../content/budget.ts';
+import { chargeBudget, EMPTY_BUDGET_USAGE, readBudgetRecord, type BudgetRecord } from '../../content/budget.ts';
+import { fail } from '../../content/contract-validation.ts';
 import {
   LOGIC_LIMITS, LOGIC_PAYLOAD_SCHEMA_VERSION, type LogicPayload, type MissionContent, type MissionDeclaration, type MissionGroup,
   type StrategicMapFrame,
@@ -14,44 +15,47 @@ import { parseModelIdList } from '../formats/m2id.ts';
 import { entryLocation } from '../formats/payload-block.ts';
 import { parseScenario, type ParsedScenario } from '../formats/scen.ts';
 import type { OriginalAssetLocator, SourceMappingTable } from '../source-mapping.ts';
-import { SourceError, type SourceLimitName } from '../source-error.ts';
-import type { VerifiedSource } from '../source/identify-source.ts';
+import { SourceError } from '../source-error.ts';
+import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { bindCraftTypes } from './craft-binding.ts';
-import { LOGIC_ASSETS, openEachArchiveOnce, verifyLogicSources } from './logic-sources.ts';
+import { LOGIC_ASSETS, logicEntryReader, verifyLogicSources } from './logic-sources.ts';
 
-// Conversion of the `logic` group (P2-09 spec, 规范逻辑数据 and 限值与预算): the three payloads, their descriptors and
-// source states, charged to the group budget. Every value comes from the source; nothing is defaulted.
+// The logic conversion step (P2-09 spec, 规范逻辑数据 and 限值与预算): the three payloads of the `logic` group, their
+// descriptors and source states, charged to the job budget. Every value comes from the source; nothing is defaulted.
 
-/** The budget dimensions the `logic` group uses and their limits. */
-const LIMITED = Object.freeze({
+/**
+ * The approved budget share of the logic step; the job adds it to its read limits and the other steps' shares
+ * (P2-05 budget shares). Mission objects count mission and wingman declarations together.
+ */
+export const PRODUCTION_LOGIC_SHARE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE,
   assets: 8,
   dependencyEdges: 32,
   payloadBytes: LOGIC_LIMITS.payloadBytes,
-  /** Mission and wingman declarations together. */
   missionObjects: 256,
   missionReferences: 4_096,
-} satisfies Partial<Record<BudgetDimension & SourceLimitName, number>>);
-type LimitedDimension = keyof typeof LIMITED;
+});
 
-/** The `logic` group's budget limits; every dimension it does not use is 0. */
-export const LOGIC_BUDGET_LIMITS: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE, ...LIMITED });
-
-const isLimited = (dimension: BudgetDimension): dimension is LimitedDimension => Object.hasOwn(LIMITED, dimension);
-
-/** Charges the group budget, failing at the charged Asset's source. */
+/** Charges the job budget on top of earlier steps' conversion usage, failing at the charged Asset's source. */
 class BudgetMeter {
-  usage: BudgetRecord = EMPTY_BUDGET_USAGE;
+  readonly #limits: BudgetRecord;
+  usage: BudgetRecord;
 
-  charge(increment: Readonly<Partial<Record<LimitedDimension, number>>>, location: string): void {
-    const result = chargeBudget(LOGIC_BUDGET_LIMITS, this.usage, { ...EMPTY_BUDGET_USAGE, ...increment });
-    if (result.status === 'within-budget') {
-      this.usage = result.usage;
-      return;
+  constructor(limits: unknown, usage: unknown) {
+    this.#limits = readBudgetRecord(limits, 'limits');
+    this.usage = readBudgetRecord(usage, 'usage');
+    // Source reads are metered by the verified source; counting them here too would charge them twice.
+    if (this.usage.sourceReadBytes !== 0) fail('invalid-budget-value', 'usage.sourceReadBytes', 'conversion usage never includes source reads');
+  }
+
+  /** A rejected charge changes nothing. */
+  charge(increment: Partial<BudgetRecord>, location: string): void {
+    const result = chargeBudget(this.#limits, this.usage, { ...EMPTY_BUDGET_USAGE, ...increment });
+    if (result.status === 'over-budget') {
+      const [{ dimension, limit, observed }] = result.violations;
+      throw new SourceError('budget-exceeded', location, 'the conversion budget is exhausted', { name: dimension, limit, observed });
     }
-    const [{ code, dimension, limit, observed }] = result.violations;
-    // Structural limits keep every total far below the safe integer range.
-    if (code === 'budget-overflow' || observed === null || !isLimited(dimension)) throw new SourceError('invalid-payload', location, 'the budget total overflows');
-    throw new SourceError('limit-exceeded', location, 'the logic group exceeds its budget', { name: dimension, limit, observed });
+    this.usage = result.usage;
   }
 }
 
@@ -90,26 +94,27 @@ interface AssetPlan {
 export interface LogicConversion {
   /** The `logic` group before its package identity is written. */
   readonly draft: GroupDraft;
-  /** What the group charged against `LOGIC_BUDGET_LIMITS`. */
+  /** Conversion usage after the starting usage; `sourceReadBytes` is never charged here. */
   readonly usage: BudgetRecord;
 }
 
 /**
- * Converts the `logic` group from `source`. The production mappings are verified first; then only the mapped campaign
- * table, mission and model list are read, craft types are bound to model Assets and the three payloads are encoded.
- * Each Asset is charged to the group budget before its payload is encoded, and its byte length before the bytes are
- * allocated. Any failure rejects the whole group.
+ * Runs the logic conversion step on `source`. The production mappings are verified first; then only the mapped
+ * campaign table, mission and model list are read, each once and shared with verification, craft types are bound to
+ * model Assets and the three payloads are encoded. Each Asset is charged against `limits` on top of `usage`, the
+ * conversion usage of earlier steps, before its payload is encoded, and its byte length before the bytes are allocated.
+ * Any failure rejects the whole group; reads already issued stay charged to the source.
  */
-export async function convertLogic(source: VerifiedSource): Promise<LogicConversion> {
-  const openArchive = openEachArchiveOnce(source);
-  const { table, sources, campaign } = await verifyLogicSources(source, openArchive);
-  const read = async ({ discPath, entry }: OriginalAssetLocator) => (await openArchive(discPath)).read(entry.id, entry.type);
+export async function convertLogic(source: VerifiedSource, limits: unknown, usage: unknown = EMPTY_BUDGET_USAGE): Promise<LogicConversion> {
+  const meter = new BudgetMeter(limits, usage);
+  const readEntry = logicEntryReader(source);
+  const { table, sources, campaign } = await verifyLogicSources(source, readEntry);
   const at = ({ discPath, entry }: OriginalAssetLocator, path = '') => `${entryLocation(discPath, entry)}${path}`;
   const missionAt = locatorOf(table, LOGIC_ASSETS.mission, 'SCEN');
   const modelListAt = locatorOf(table, LOGIC_ASSETS.craftTypes, 'M2ID');
   const rosterAt = locatorOf(table, LOGIC_ASSETS.wingmanRoster, 'SCCT');
-  const scenario = parseScenario(missionAt.discPath, await read(missionAt));
-  const modelIds = parseModelIdList(modelListAt.discPath, await read(modelListAt));
+  const scenario = parseScenario(missionAt.discPath, await readEntry(missionAt));
+  const modelIds = parseModelIdList(modelListAt.discPath, await readEntry(modelListAt));
   const { declarations, groups } = scenario;
   const { wingmen } = campaign;
 
@@ -162,7 +167,6 @@ export async function convertLogic(source: VerifiedSource): Promise<LogicConvers
     },
   ];
 
-  const meter = new BudgetMeter();
   const encoded = plans.map(({ asset, payload, dependencies, missionObjects, missionReferences, location }) => {
     // Counts are known before the payload is copied and encoded; its byte length before its bytes are allocated.
     meter.charge({ assets: 1, dependencyEdges: dependencies.length, missionObjects, missionReferences }, location);

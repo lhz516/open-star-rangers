@@ -126,6 +126,24 @@ updated: 2026-10-05
   - 64 个编组各写入 256 个布局元素即超过 `payloadBytes` 上限 1,048,576。
 
   处理：按上述授权，把 spec 与子任务 09 中 AC-09 的可触发维度更正为 `missionReferences` 与 `payloadBytes`；其余维度的不可达依据记在 09 的完成证据中。S/AC 编号与子任务依赖不变。
+- **2026-10-05 — 子任务 10 开始前发现 P2-05 已合入主线，变基并对齐：** 按“开始前核对”，主线已有 P2-05 的 12 个提交，涉及：
+  - 协议版本 2 与 `convert-graphics` 阶段；
+  - `SourceError` 的 `invalid-payload`、`budget-exceeded` 等错误码，以及含预算维度的限值名；
+  - 生产份额与作业限值；
+  - 步骤内共用读取（`verifySourceMappings` 的 `EntryReader` 参数）；
+  - 内容层的 `unsupported-payload-schema`。
+
+  P2-05 把 `ConverterVersion` 与 `ManifestIdentity` 留给首个装配组的任务，因此 03 的实现仍是唯一一份。
+  处理：
+  - **变基：** 本分支的 10 个提交变基到主线，冲突按“主线优先”解决：错误码与限值名取并集，`verify-source-mappings.ts` 保留主线版本。
+  - **对齐：** 按用户授权与 spec [风险与恢复](./spec.md#风险与恢复)中“先合入者实现，后者复用”的原则，修订 spec（技术决定 15，影响 S-09、限值与预算、错误、AC-04 读取范围、AC-09、AC-10）。实现改动如下：
+    - P2-05 的步骤内读取移到共用模块 `step-entry-reader.ts`，增加读取前钩子；logic 步骤用它检查条目大小，并与核验共用读取；
+    - 预算改为 logic 步骤的生产份额，在先前步骤用量之上累计；超限码改为 `budget-exceeded`；
+    - schema 错误码改为 `unsupported-payload-schema`。
+  - **记录：** 子任务 08、09 的证据按对齐后的状态就地改写，并注明对齐前的差异；子任务 10 的范围与验收改为在 P2-05 的作业之上实现。
+  - **审阅与检查：** 对齐改动经 rubber-duck 审阅，无阻塞项。3 项建议已采纳：08、09 的证据就地改写；新增读取日志测试，证明超限条目的字节从未读取。`pnpm check` 通过，共 114 个测试文件、3377 个测试；`check:original` 通过。
+
+  S/AC 编号、子任务 ID 与依赖不变。P2-08 尚未合入主线（只有另一工作分支），不受影响。
 
 ## 审批
 
