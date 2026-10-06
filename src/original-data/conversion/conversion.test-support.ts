@@ -19,9 +19,19 @@ const GRAPHICS_LOCATION = new RegExp(`^graphics(?:${[
 /** Whether a conversion diagnostic location belongs to the P2-05 grammar. */
 export const inGraphicsLocationGrammar = (location: string): boolean => GRAPHICS_LOCATION.test(location);
 
-/** Asserts that `action` throws a SourceError with exactly this code, location and limit; `graphics…` locations must be in the grammar. */
+/**
+ * Asserts that `action` throws a SourceError with exactly this code, location and limit, and a reason the Worker
+ * boundary can carry (1 to 512 printable ASCII characters); `graphics…` locations must be in the grammar.
+ */
 export const expectSourceError = (action: () => unknown, code: string, location: string, limit: SourceLimit | null = null): void => {
-  expect(action).toThrowError(expect.objectContaining({ name: 'SourceError', code, location, limit }));
+  let thrown: unknown;
+  try {
+    action();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toEqual(expect.objectContaining({ name: 'SourceError', code, location, limit }));
+  expect((thrown as { reason: string }).reason).toMatch(/^[ -~]{1,512}$/);
   if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location), location).toBe(true);
 };
 
@@ -79,7 +89,7 @@ export const imageDeclaration = (id: string, palette: string, overrides: Record<
 });
 
 export const fontDeclaration = (id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  asset: { id, kind: 'font' }, role: 'font', group: 'cockpit-hud-map', cell: { width: 8, height: 8 }, charMap: [], ...overrides,
+  asset: { id, kind: 'font' }, role: 'font', group: 'cockpit-hud-map', cell: { width: 8, height: 8 }, glyphRows: 8, charMap: [], ...overrides,
 });
 
 export const GRAPHICS_ARCHIVE = 'MAIN/SR.NOB';

@@ -46,7 +46,7 @@ reviewed: sha256:1c6f9c5f4028
   - 图像记录的嵌入调色板按 BGR 读为 RGB。TEX 已确认，其余记录的置信度见各自的来源映射。
 - **S-02 规范索引图像：** payload schema 1 包含：宽高；行优先的 8 位索引；透明表示（全不透明，或每像素 1 位的掩码）；调色板绑定，即索引所指的调色板 Asset，以及可选的“最近色”显示目标调色板 Asset。透明像素的索引与掩码填充位一律为 0，同一输入总是得到同样的字节。
 - **S-03 规范字体：** payload schema 1 把字形库与字符映射分开存放：
-  - 字形库为 256 个字形，单元宽 1–8、高 1–8；每行 1 字节，bit 7 为最左像素，逐位保留；
+  - 字形库为 1–256 个字形，单元宽 1–8、高 1–8；每个字形存储“每字形行数”行（不少于单元高，最多 8），每行 1 字节，bit 7 为最左像素，逐位保留，包括单元以外的位与行（执行期修订，见[技术决定](#技术决定) 14）；
   - 字符映射是原版文本字节到字形索引的有序条目，只含有证据的条目，没有 ASCII 或系统字体回退。
 - **S-04 纯读取与展开：** 在 `content/` 中提供三类 payload 的严格读取器、与描述符依赖的一致性校验、图像到 RGBA 的展开、最近色映射和字符查找。这是项目中唯一的调色板查找与最近色实现，P2-06/07/11 与后续 Renderer 复用它，不另写颜色逻辑。
 - **S-05 转换声明与原版转换：** 在 `original-data/` 中定义[图形转换声明](#图形转换声明)，内容包括调色板绑定、显示映射、透明规则（按编码，或有证据的颜色键）、行序（按存储，或有证据的反转），以及字体的预期单元与字符映射区间。转换复用并加固现有解析器：
@@ -152,8 +152,8 @@ reviewed: sha256:1c6f9c5f4028
 | raw 图像声明颜色键 k | 索引为 k 的像素变为透明，其他像素不变 | 对 RLE 图像声明颜色键：`invalid-declaration` |
 | 声明 `rowOrder: reversed` | 规范行序恰好反转；未声明时保持存储顺序 | 不适用 |
 | CCKD 字体目录 | 恰为 3 项，`fonts/<i>` 取第 i 项 | 项数不为 3 或越出块：`invalid-payload`；i ≥ 3：`subresource-not-found` |
-| 字体表 | 256 个字形，逐位保留，包括单元宽度以外的位 | 表长不符：`invalid-payload`；宽或高超限：`limit-exceeded`；与声明的预期单元不符：`geometry-mismatch` |
-| 字符映射区间 | 展开为按码位升序、互不重复的条目 | 区间重叠或越出 0–255：`invalid-declaration` |
+| 字体表 | 表头之后的 256 × 高字节按声明的每字形行数切分为 256 × 高 ÷ 每字形行数个字形，字节不变，逐位保留，包括单元以外的位与行 | 表长不符：`invalid-payload`；宽或高超限：`limit-exceeded`；与声明的预期单元不符：`geometry-mismatch`；每字形行数小于单元高、大于 8 或不能整除 256 × 高：`invalid-declaration` |
+| 字符映射区间 | 展开为按码位升序、互不重复的条目 | 区间重叠、码位越出 0–255，或字形不小于字形数：`invalid-declaration` |
 | 消费者按码位查找字形 | 得到映射中的字形索引 | 未映射的码位：`unmapped-character`，不回退到同码位字形 |
 | 消费者读取 payload | 严格读取，引用的调色板与描述符依赖一致 | 长度、字段、填充位或透明像素索引不合：`invalid-graphics-payload`；schema 不是 1：`unsupported-payload-schema`；引用不一致：`binding-mismatch` |
 | 展开图像 | 非预乘 RGBA：不透明为调色板颜色、alpha 255，透明为 `(0,0,0,0)`；`nearest` 先把源调色板逐项映射到目标调色板 | 提供的调色板与引用不符：`binding-mismatch`；索引越界：`palette-index-out-of-range` |
@@ -174,7 +174,7 @@ reviewed: sha256:1c6f9c5f4028
 |---|---|---|---|
 | 调色板 payload | `entryCount` 为 1–256；`entries` 为 `entryCount` 组 8 位 (R, G, B) | `content/` | 转换器写入，读取器严格校验；消费者只经展开函数取颜色 |
 | 图像 payload | `width` 1–640、`height` 1–480，单位为像素。`alpha` ∈ {`opaque`, `mask`}。`palette` 为调色板 Asset ID。`display` 为 `direct`，或 `{ nearest: 目标调色板 Asset ID }`。`indices` 为 `width × height` 字节，行优先，行 0 是规范上方的第一行。`mask` 只在 `alpha` 为 `mask` 时存在：每像素 1 位，bit 7 为最左，每行补齐到整字节，1 表示不透明 | `content/` | 透明像素的索引与填充位为 0。引用的调色板 ID 去重后按升序必须恰好等于描述符依赖：`direct` 为 `{palette}`，`nearest` 为 `{palette, target}` |
-| 字体 payload | `cellWidth` 1–8、`height` 1–8；`glyphs` 为 256 × `height` 字节，每行 1 字节、bit 7 为最左、行 0 在上，逐位保留；`charMap` 为 0–256 个 `{ code: 0–255, glyph: 0–255 }`，按 `code` 升序且唯一 | `content/` | 字形的绘制颜色与字距不在 payload 中；映射之外的码位没有字形 |
+| 字体 payload | `cellWidth` 1–8、`height` 1–8；`glyphRows` 为每字形行数，`height`–8；字形数 1–256；`glyphs` 为字形数 × `glyphRows` 字节，每行 1 字节、bit 7 为最左、行 0 在上，逐位保留；`charMap` 为 0–256 个 `{ code: 0–255, glyph }`，`glyph` 小于字形数，按 `code` 升序且唯一 | `content/` | 字形的绘制颜色与字距不在 payload 中；映射之外的码位没有字形；单元以外的位与行的绘制语义不在 payload 中（U-030） |
 | 展开结果 | `{ width, height, rgba }`，`rgba` 为 `width × height × 4` 字节的非预乘 RGBA | `content/` 中的纯函数 | 每次返回调用者独占的新缓冲；不进入缓存或 payload |
 | 最近色映射 | 项目暂定规则：对源调色板的每一项，取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等时取较小索引。原版的实际度量与并列规则在取得证据前不高于高概率（U-028），见 AC-15；合成测试只验证算法，不是保真证据 | `content/` 中的纯函数 | 只有展开函数与研究工具调用它；不在转换时改写像素 |
 
@@ -193,9 +193,10 @@ reviewed: sha256:1c6f9c5f4028
 | 图像 `rowOrder` | `stored` 或 `reversed` | 反转须有证据 |
 | 图像记录位置 | 整条目偏移 0；容器内的记录位置由 P2-07 的容器解析提供 | 本任务只实现整条目 |
 | 字体 `cell` | 预期的 `{ width, height }` | 与实际不符即 `geometry-mismatch` |
-| 字体 `charMap` | 互不重叠的 `{ firstCode, firstGlyph, count }` 区间，全部落在 0–255 | 每段在 hud 中有证据；不复制原版的数据表 |
+| 字体 `glyphRows` | 每字形行数，`cell.height`–8，且整除 256 × `cell.height` | 源表的 256 × 高字节按它切分；不等于 `cell.height` 时须有证据 |
+| 字体 `charMap` | 互不重叠的 `{ firstCode, firstGlyph, count }` 区间，码位全部落在 0–255，字形小于 256 × `cell.height` ÷ `glyphRows` | 每段在 hud 中有证据；不复制原版的数据表 |
 
-非默认的选择（`nearest`、颜色键、行反转、字符映射区间）须由该 Asset 映射的 `evidence` 链接相应的 `docs/original/` 条目；置信度与 U 项随映射记录，审阅时核对。在最近色规则确认之前，使用 `nearest` 的映射须带 U-028，置信度不高于高概率；若图像所用的源调色板条目在 AC-15 的歧义清单中，其映射为未确认，按 P2-01 的规则阻塞完整性。
+非默认的选择（`nearest`、颜色键、行反转、不等于单元高的每字形行数、字符映射区间）须由该 Asset 映射的 `evidence` 链接相应的 `docs/original/` 条目；置信度与 U 项随映射记录，审阅时核对。在最近色规则确认之前，使用 `nearest` 的映射须带 U-028，置信度不高于高概率；若图像所用的源调色板条目在 AC-15 的歧义清单中，其映射为未确认，按 P2-01 的规则阻塞完整性。
 
 ### 生产 Asset 与来源
 
@@ -203,9 +204,9 @@ reviewed: sha256:1c6f9c5f4028
 |---|---|---|---|
 | `palette/flight/models` | `palette` / `flight-palette` / `models` | 唯一的 DATA 条目（[imfat §4](../../../original/formats/imfat.md#4-type-distribution-per-file-confirmed)），整条目 | 已确认，[textures §1](../../../original/formats/textures.md#1-data-global-palette-confirmed) |
 | `palette/flight/cockpit-hud-map` | `palette` / `flight-palette` / `cockpit-hud-map` | 同上 | 已确认 |
-| `font/hud/8x8-1` | `font` / `font` / `cockpit-hud-map` | HI 完整组 CCKD 10103，字体目录中第一个 8×8 表的 `fonts/<i>` | 高概率：HI 飞行是否使用该组的字体属 U-029；字符映射见 AC-16 |
+| `font/hud/8x8-1` | `font` / `font` / `cockpit-hud-map` | HI 完整组 CCKD 10103，字体目录中第一个 8×8 表的 `fonts/<i>` | 高概率：HI 飞行是否使用该组的字体属 U-029；字符映射与绘制语义属 U-030，见 AC-16 |
 | `font/hud/8x8-2` | 同上 | 同一目录中第二个 8×8 表 | 同上 |
-| `font/hud/4x6` | 同上 | 同一目录中的 4×6 表 | 高概率；字符映射属 U-030 |
+| `font/hud/4x6` | 同上 | 同一目录中的 4×6 表，`glyphRows` 为 8（hud §1.1，高概率） | 同上 |
 
 - 两个飞行调色板的 payload 字节相同，各在自己的组中，由两个 Asset 共用同一个定位表示。
 - 序号 `<i>` 由执行时的本地结构核对确定，并由 `cell` 断言防止错配。
@@ -235,7 +236,8 @@ reviewed: sha256:1c6f9c5f4028
 | `paletteEntryCount` | 1–256；DATA 恰为 256 | 格式规则：8 位索引至多寻址 256 项；DATA 为 768 字节（已确认） |
 | `fontCellWidth` | 1–8 | 格式规则：每行 1 字节 |
 | `fontHeight` | 1–8 | 安全上限：高度字段为 u8，已观察的高为 6 和 8 |
-| 字形数 | 恰为 256 | 格式规则，hud §1，已确认 |
+| 字体表长 | 恰为 4 + 256 × 高 | 格式规则，hud §1，已确认 |
+| 字形数 | 1–256，为 256 × 高 ÷ 每字形行数 | 格式规则：8 位字形索引；每字形行数见技术决定 14 |
 | CCKD 字体目录 | 恰为 3 项 | 格式规则，cockpit 与 hud，已确认 |
 | 字符映射 | 0–256 条，码位与字形索引都在 0–255 | 格式规则：8 位文本字节与字形索引 |
 
@@ -310,13 +312,14 @@ reviewed: sha256:1c6f9c5f4028
 4. **透明与行序只依据编码和证据：** RLE 的透明来自编码，已确认；raw 默认不透明；颜色键与行反转必须声明并有证据。U-018/019 只涉及未入选的 BITM，不作为本任务前置。后续任务若选中依赖它们的 BITM，须在其 spec 中纳入相应研究，或修订本 spec。
 5. **字形与字符映射分开，映射只含有证据的条目：** 映射以区间声明，取自 hud 中记录的事实，不复制原版数据表；查找失败显式报错。若研究证明映射只能来自 EXE 中的数据表，导入时提取需要扩展 P2-01 的来源定位（目前只表达 IMFAT 条目），须先修订并批准相应 spec。
 6. **编码 1 不支持：** 切片定义中没有已知依赖 ANIM 的角色。P2-06 若证明弹丸、导弹或碎片依赖 ANIM，修订本 spec（新增 S/AC）后再实现，图像解码仍只在一处。
-7. **结构限值分为格式规则与安全上限，生产份额只覆盖本任务的 Asset：** 切片的图像集合由 P2-06/07 选定，本任务不虚构图像像素总量。256 项调色板、每行 1 字节的字形宽度、256 个字形与 3 个 CCKD 字库是已确认的格式规则；图像 640×480 与字体高 8 是本任务批准的安全上限，依据 HI 画幅与观察尺寸，由 AC-14 在全部基准实例上核对。两类限值都在分配前拒绝异常输入。
+7. **结构限值分为格式规则与安全上限，生产份额只覆盖本任务的 Asset：** 切片的图像集合由 P2-06/07 选定，本任务不虚构图像像素总量。256 项调色板、每行 1 字节的字形宽度、字体表长 4 + 256 × 高与 3 个 CCKD 字库是已确认的格式规则（字形数见技术决定 14）；图像 640×480 与字体高 8 是本任务批准的安全上限，依据 HI 画幅与观察尺寸，由 AC-14 在全部基准实例上核对。两类限值都在分配前拒绝异常输入。
 8. **新增阶段，但本任务不发送组：** 只含调色板或字库的组必然不完整，持有者对不完整的组只保留诊断，发送没有意义。步骤结果在作业内按组分区，由 P2-06/07 合并进组清单，作业入口与协议都不另建。因此本任务对步骤结果的验收直接调用步骤，作业路径只验收阶段、用量与失败分类。
 9. **转换错误扩展 `SourceError`，读取错误保持原样：** 转换失败是原版数据本身的问题，归 `source` 层；扩展 P2-03 的 code 与限值名联合，不新增错误层，P2-04 的 DTO 语法与消费者不变。图形阶段的读取失败仍是 P2-02 的光盘层或 P2-03 的来源层错误，其位置（条目编号、LBA）是已批准的结构位置，不在 Worker 边界改写；本任务新增的诊断才使用不含条目编号的 `graphics[…]` 位置。
 10. **核验与转换共用步骤内读取：** 现有 `verifySourceMappings` 对每个定位单独读取，五个生产映射会让 DATA 与 CCKD 被重复读取，转换时还要再读。为核验增加可选的条目读取参数，与转换共用一个步骤内的读取；核验语义不变，条目字节在步骤结束时释放，不建立通用的封包缓存。
 11. **生产字体取自 CCKD 10103：** 它是含地图边框 slot 2 的 HI 完整组，也是 P2-01 固定图形投影所用的组。10097 是否才是 HI 飞行实际加载的组仍属 U-029，映射记为高概率；改用时 Asset ID 不变。
 12. **本地校验分两类：** 全量结构校验加固仓库已有的 nob-check，只输出计数；一次性研究脚本与输出放在被忽略的 `local/research/p2-05/`。
 13. **不新增依赖，不需要 ADR：** 以上决定细化总计划 §3.3、§8、§12 与 [ADR-0015](../../../decisions/ADR-0015-source-module-structure.md) 的模块边界，不改变冻结决定，也不引入依赖（[ADR-0008](../../../decisions/ADR-0008-mit-and-dependency-licenses.md)）。
+14. **每字形行数由声明给出（执行期修订）：** P2-05/12 的研究表明，4×6 表头为 4×6、表长为 4 + 256 × 6，但字形数据按每字形 8 字节排列，即 192 个 8 行字形（hud §1.1，高概率）。若按表头读作 256 个 6 行字形，字符映射无法表达。因此字体声明增加必填的 `glyphRows`，payload 记录每字形行数与字形数，转换只改变切分，不改变字节；8×8 表的 `glyphRows` 等于单元高。改为在转换时重排为 6 行字形会丢弃单元以外的行，违背逐位保留，因此不采用。payload 尚未进入缓存（生产 `ConverterVersion` 未定义），因此 schema 1 的布局直接修订，不递增版本。
 
 ## 验收标准
 
@@ -328,12 +331,12 @@ reviewed: sha256:1c6f9c5f4028
 | AC-04 | **调色板绑定与索引：** 记录没有嵌入调色板且声明中没有绑定 → `invalid-declaration`，不使用 DATA；绑定到非调色板、别组或不在本步骤中的 Asset → `invalid-declaration`。16 色调色板下出现不透明索引 16 → `palette-index-out-of-range`，同一索引出现在透明像素上时不报错。payload 引用的调色板与描述符依赖完全一致；构造的不一致输入由读取器报 `binding-mismatch` | Node |
 | AC-05 | **展开与最近色：** `direct` 展开中，每个不透明像素的 RGBA 等于所绑定调色板的条目、alpha 为 255，透明像素为 (0, 0, 0, 0)。`nearest` 展开等价于先把源调色板逐项映射到目标调色板再查表；合成用例覆盖颜色完全相同、唯一最近、距离相等（取较小索引）三种情况。不透明像素的颜色都属于显示所用的调色板（不对索引插值）。同一输入重复展开逐字节相同；提供的调色板与引用不符 → `binding-mismatch` | Node |
 | AC-06 | **颜色键：** raw 图像声明颜色键 k 时，索引为 k 的像素变为透明（索引为 0，掩码位为 0），其他像素不变；对 RLE 图像声明颜色键 → `invalid-declaration`；未声明时不产生透明 | Node |
-| AC-07 | **字体：** 非对称合成字形（各行不同）证明 bit 7 为最左、行 0 在上，字形逐位保留，包括单元宽度以外的位。4×6 与 8×8 通过；宽 0 或 9、高 0 或 9 → `limit-exceeded`；表长不符 → `invalid-payload`。CCKD 字体目录项数不为 3 → `invalid-payload`；`fonts/3` → `subresource-not-found`；预期单元与实际不符 → `geometry-mismatch`。字符映射按码位升序且无重复：查找已映射的码位得到声明的字形，未映射的码位报 `unmapped-character`，即使同码位存在字形也不回退；区间重叠或越界 → `invalid-declaration` | Node |
+| AC-07 | **字体：** 非对称合成字形（各行不同）证明 bit 7 为最左、行 0 在上，字形逐位保留，包括单元宽度以外的位。4×6 与 8×8 通过；4×6 表声明 `glyphRows` 8 时得到 192 个 8 行字形，字节与源表相同，按字形数扣除预算；`glyphRows` 缺失、小于单元高、为 9 或不能整除 256 × 高，以及映射的字形不小于字形数 → `invalid-declaration`；宽 0 或 9、高 0 或 9 → `limit-exceeded`；表长不符 → `invalid-payload`。CCKD 字体目录项数不为 3 → `invalid-payload`；`fonts/3` → `subresource-not-found`；预期单元与实际不符 → `geometry-mismatch`。字符映射按码位升序且无重复：查找已映射的码位得到声明的字形，未映射的码位报 `unmapped-character`，即使同码位存在字形也不回退；区间重叠或越界 → `invalid-declaration` | Node |
 | AC-08 | **确定性与读取器：** 同一输入与声明得到逐字节相同、SHA-256 相同的三类 payload。读取器接受编码器的全部输出，拒绝截断、尾随字节、未知 schema、字段越界、非零填充位与透明像素的非零索引。描述符的 `payloadIdentity` 与实际字节一致，交给 P2-01 的 `validateGroup` 时没有 `payload-mismatch` | Node |
 | AC-09 | **来源状态与步骤结果：** 在合成映射表上，整条目映射经 P2-03 核验后为 `verified`；含 `palette` 或 `fonts/<i>` 的映射只在转换成功后为 `verified`。任一转换失败，整个步骤失败且不输出结果。步骤结果按资源组分区；描述符、payload 与来源状态都按 Asset ID 升序、一一对应，不含定位、条目编号或原版字节。两个飞行调色板的 payload 字节相同、ID 不同、各在本组。用步骤输出加上满足其余角色的合成 Asset 组成的 `cockpit-hud-map` 组，经 `validateGroup` 得到 `group-complete` | Node |
 | AC-10 | **预算与读取：** 结构限值与生产份额以常量导出，并与[限值与预算](#限值与预算)一致。总量恰等于限值时通过；超出任一维度 → `budget-exceeded`，带维度、`limit` 与 `observed`，被拒绝的扣除不改变转换用量、不产生部分结果。读取已发生后转换才被拒绝时，已发出的读取仍计入 `sourceReadBytes`，已转换的结果全部丢弃。映射核验与转换共用步骤内读取：两个映射共用的条目与被多个 Asset 使用的条目都只物理读取一次，可由计量端口的读取次数与字节断言；未传入步骤内读取时，P2-03 现有的核验测试照常通过。转换用量的 `sourceReadBytes` 为 0，`finished.usage` 等于最终读取用量与转换用量逐维之和 | Node，使用计量端口 |
 | AC-11 | **协议与作业：** `IMPORT_STAGES` 为 `identify-source`、`convert-graphics`，协议版本已递增，版本不符时在发送 `start` 之前失败。成功作业的消息顺序为：识别进度 → `identified` → 至少一条 `convert-graphics` 进度 → `finished`，`readBytes` 不减少，`finished.groups` 为空。持有者对识别之前的 `convert-graphics` 进度、图形阶段之后的识别进度报 `protocol-error@message.stage`。失败分三类分别验证：识别失败保持 P2-04 的现有结果；图形阶段的读取失败保持 `disc` 或 P2-03 `source` 层的原 code 与位置；转换失败为 `source` 层，code 与位置符合[错误码](#错误码)。三类失败的快照都不含部分结果 | Node，使用结构化克隆端口与真实的宿主和持有者 |
-| AC-12 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试专用入口运行生产作业与图形步骤，输入为按生产映射结构放置合成条目的合成光盘。成功时 `finished.groups` 为空，`finished.usage` 的 `assets`、`paletteEntries`、`glyphs` 分别为 5、512、768，`payloadBytes` 等于各 payload 字节之和。损坏的合成字体使作业以 `source` 层 `invalid-payload` 失败。在收到首条 `convert-graphics` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
+| AC-12 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试专用入口运行生产作业与图形步骤，输入为按生产映射结构放置合成条目的合成光盘。成功时 `finished.groups` 为空，`finished.usage` 的 `assets`、`paletteEntries`、`glyphs` 分别为 5、512、704（256 + 256 + 192，执行期修订，见技术决定 14），`payloadBytes` 等于各 payload 字节之和。损坏的合成字体使作业以 `source` 层 `invalid-payload` 失败。在收到首条 `convert-graphics` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
 | AC-13 | **本地基准（生产路径）：** 在开发者机器上用本地基准镜像，分两部分验证：<br>- **步骤结果：** 在 Node 中经产品入口打开已验证来源，直接调用生产图形步骤。得到[生产 Asset](#生产-asset-与来源)中的 5 个 Asset，`models` 与 `cockpit-hud-map` 两个分区的数量正确，字库单元与声明一致；两次运行每个 payload 的 SHA-256 相同；读取字节与各维用量不超过份额。<br>- **作业路径：** 经 Worker 的作业、宿主与持有者模块处理同一镜像。阶段顺序正确，作业以 `finished` 结束，`groups` 为空，`usage` 的转换维度与直接调用步骤时相同 | 本地 Node 脚本；脚本与输出留在被忽略的 `local/research/p2-05/`，证据只记录命令、计数、判定与是否一致 |
 | AC-14 | **本地全量结构校验：** 加固后的 `tools/nob-check.ts` 经同一套转换校验处理本地基准 `SR.NOB`。59 个 TEX、28 个 BITM、3 个 MFDD 的全部图像记录，3 个 CCKD 的全部字体表，以及 DATA，都通过结构校验；没有嵌入调色板的记录只做结构与 256 色上界校验。有嵌入调色板的图像，不透明像素索引都小于条目数。输出只有计数与失败原因。任何实例被拒绝时本项不通过，须按证据修订本 spec，不放宽为静默接受 | 本地运行该工具，记录命令与计数 |
 | AC-15 | **最近色研究（U-028 颜色部分）：** 本地研究先尝试以 EXE 证据确定原版的最近色度量与并列规则；取得时按证据实现，并在 textures 中标为已确认。未取得时，textures 与 U-028 把实现规则记为暂定（不高于高概率），并核对全部 59 个 TEX 的嵌入调色板：在研究记录中固定的候选规则下（至少包括实现规则与 6 位 VGA 空间中的同类规则）分别求最近的 DATA 条目，报告距离并列与候选之间不一致的条目数，并逐一列出这些歧义条目（TEX 条目与调色板序号），标为未确认。经生产展开路径复现 textures §3 记录的玩家座机三张贴图在截图中的颜色出现计数，只作一致性参考，不作为度量证据。不以候选之间一致来宣称原版规则已确认 | 本地研究脚本与已有的本地截图；文档审阅 |
@@ -393,4 +396,9 @@ reviewed: sha256:1c6f9c5f4028
 
 生成时按“采用推荐答案”授权作出的选择，以及 review-spec 采纳的八项修正，随本次批准一并生效。
 
-执行期修订（用户在调用 execute-goal 时授权按需修订 spec、goal 与 subtasks，并在 goal 执行记录中说明）：2026-10-05 在[错误码](#错误码)与[行为与边界](#行为与边界)的位置语法中补充声明组整体的位置 `graphics.declarations`，并写明声明位置可带结构字段路径。行为、范围与验收标准不变，见 [goal 执行记录](./goal.md#执行记录)。
+执行期修订（用户在调用 execute-goal 时授权按需修订 spec、goal 与 subtasks，并在 goal 执行记录中说明）：
+
+- 2026-10-05 在[错误码](#错误码)与[行为与边界](#行为与边界)的位置语法中补充声明组整体的位置 `graphics.declarations`，并写明声明位置可带结构字段路径。行为、范围与验收标准不变。
+- 2026-10-05（P2-05/12）字体增加每字形行数：S-03、[行为与边界](#行为与边界)、[payload 契约](#payload-契约)、[图形转换声明](#图形转换声明)、[生产 Asset 与来源](#生产-asset-与来源)、[限值与预算](#限值与预算)、技术决定 7 与新增的技术决定 14、AC-07 与 AC-12（实际字形用量 704）相应修订；生产份额不变。范围与其余验收标准不变。
+
+详见 [goal 执行记录](./goal.md#执行记录)。

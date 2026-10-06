@@ -20,7 +20,7 @@ updated: 2026-10-05
   - `role` 为 P2-01 的角色 token；`group` 须拥有该 kind（依据 `CLASSIC_P2_SLICE.groupKinds`）；
   - 图像的 `palette` 必填；`palette` 与 `display.nearest` 都须指向同一组声明中同组的调色板声明；
   - `alpha` 为 `encoding` 或 `{ colourKey: 0–255 }`；`rowOrder` 为 `stored` 或 `reversed`；
-  - 字体有预期 `cell`，`charMap` 为互不重叠、全部落在 0–255 的 `{ firstCode, firstGlyph, count }` 区间；
+  - 字体有预期 `cell`，`charMap` 为互不重叠、全部落在 0–255 的 `{ firstCode, firstGlyph, count }` 区间（[12](./12-character-map-research.md) 执行期修订：增加必填的 `glyphRows`，见 [goal 执行记录](../goal.md#执行记录)）；
   - 未知字段、缺少字段与类型错误都拒绝。
 - **计划新增转换器：** 输入为声明组与每个 Asset 的源块（条目字节与子资源，由 05 提供；本子任务的测试直接构造），输出描述符、payload 记录与转换用量。先转换调色板，再转换图像与字体。
   - **调色板：** DATA 条目按 6 位 VGA 读取，`palette` 子资源按嵌入 BGR 读取；来源格式由来源推导，不可声明。

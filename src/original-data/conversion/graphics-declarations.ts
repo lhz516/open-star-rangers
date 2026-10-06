@@ -41,16 +41,25 @@ export interface CharMapRange {
 export interface FontDeclaration extends DeclarationBase<'font'> {
   /** The expected glyph cell. */
   readonly cell: { readonly width: number; readonly height: number };
-  /** Ranges with disjoint codes, all inside 0–255. */
+  /**
+   * Rows stored per glyph, from the cell height to 8; the source table's 256 × height glyph bytes are split into
+   * glyphs of this many rows. A value other than the cell height needs evidence.
+   */
+  readonly glyphRows: number;
+  /** Ranges with disjoint codes, all inside 0–255, whose glyphs are below the glyph count. */
   readonly charMap: readonly CharMapRange[];
 }
+
+/** Glyphs of a declared font: its source table holds 256 × cell height bytes. */
+export const declaredGlyphCount = ({ cell, glyphRows }: Pick<FontDeclaration, 'cell' | 'glyphRows'>): number =>
+  GRAPHICS_LIMITS.glyphCount * cell.height / glyphRows;
 
 export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration;
 
 const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
   palette: ['asset', 'role', 'group'],
   image: ['asset', 'role', 'group', 'palette', 'display', 'alpha', 'rowOrder'],
-  font: ['asset', 'role', 'group', 'cell', 'charMap'],
+  font: ['asset', 'role', 'group', 'cell', 'glyphRows', 'charMap'],
 };
 
 const isGraphicsKind = (kind: string): kind is GraphicsKind => Object.hasOwn(FIELDS, kind);
@@ -69,15 +78,15 @@ function readAlpha(value: unknown, path: string): ImageDeclaration['alpha'] {
   return Object.freeze({ colourKey: integer(record.colourKey, 0, 255, `${path}.colourKey`) });
 }
 
-function readCharMap(value: unknown, path: string): readonly CharMapRange[] {
+function readCharMap(value: unknown, glyphCount: number, path: string): readonly CharMapRange[] {
   const used = new Uint8Array(256);
   return readArray(value, path, 'invalid-record', (item, at) => {
     const record = readRecord(item, at);
     requireFields(record, at, ['firstCode', 'firstGlyph', 'count']);
     const firstCode = integer(record.firstCode, 0, 255, `${at}.firstCode`);
-    const firstGlyph = integer(record.firstGlyph, 0, 255, `${at}.firstGlyph`);
+    const firstGlyph = integer(record.firstGlyph, 0, glyphCount - 1, `${at}.firstGlyph`);
     const count = integer(record.count, 1, 256, `${at}.count`);
-    if (count > 256 - firstCode || count > 256 - firstGlyph) fail('invalid-record', `${at}.count`, 'must keep codes and glyphs inside 0–255');
+    if (count > 256 - firstCode || count > glyphCount - firstGlyph) fail('invalid-record', `${at}.count`, 'must keep codes inside 0 to 255 and glyphs below the glyph count');
     if (used.subarray(firstCode, firstCode + count).includes(1)) fail('invalid-record', at, 'must not overlap the codes of another range');
     used.fill(1, firstCode, firstCode + count);
     return Object.freeze({ firstCode, firstGlyph, count });
@@ -93,16 +102,16 @@ function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
   if (asset.kind === 'palette') return Object.freeze(base as PaletteDeclaration);
   if (asset.kind === 'font') {
-    const cell = readRecord(record.cell, `${path}.cell`);
-    requireFields(cell, `${path}.cell`, ['width', 'height']);
-    return Object.freeze({
-      ...base as DeclarationBase<'font'>,
-      cell: Object.freeze({
-        width: integer(cell.width, 1, GRAPHICS_LIMITS.fontCellWidth, `${path}.cell.width`),
-        height: integer(cell.height, 1, GRAPHICS_LIMITS.fontHeight, `${path}.cell.height`),
-      }),
-      charMap: readCharMap(record.charMap, `${path}.charMap`),
+    const fields = readRecord(record.cell, `${path}.cell`);
+    requireFields(fields, `${path}.cell`, ['width', 'height']);
+    const cell = Object.freeze({
+      width: integer(fields.width, 1, GRAPHICS_LIMITS.fontCellWidth, `${path}.cell.width`),
+      height: integer(fields.height, 1, GRAPHICS_LIMITS.fontHeight, `${path}.cell.height`),
     });
+    const glyphRows = integer(record.glyphRows, cell.height, GRAPHICS_LIMITS.fontHeight, `${path}.glyphRows`);
+    const glyphCount = declaredGlyphCount({ cell, glyphRows });
+    if (!Number.isInteger(glyphCount)) fail('invalid-record', `${path}.glyphRows`, 'must split the table into whole glyphs');
+    return Object.freeze({ ...base as DeclarationBase<'font'>, cell, glyphRows, charMap: readCharMap(record.charMap, glyphCount, `${path}.charMap`) });
   }
   if (record.rowOrder !== 'stored' && record.rowOrder !== 'reversed') fail('invalid-record', `${path}.rowOrder`, 'must be stored or reversed');
   return Object.freeze({

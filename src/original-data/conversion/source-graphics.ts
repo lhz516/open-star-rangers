@@ -37,7 +37,7 @@ export interface SourceImage {
 export interface SourceFont {
   readonly cellWidth: number;
   readonly height: number;
-  /** 256 glyphs × height rows, copied bit for bit. */
+  /** The 256 × height glyph bytes after the header, copied bit for bit. */
   readonly glyphs: Uint8Array<ArrayBuffer>;
 }
 
@@ -137,7 +137,7 @@ export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): Sou
   const { width, height } = header;
   const data = block.subarray(header.pixelOffset, header.pixelOffset + header.dataSize);
   if (header.encoding === 'sprite-rle') return decodeSpriteRle(data, width, height, location);
-  if (data.length !== width * height) invalid(location, 'raw image data must be width × height bytes');
+  if (data.length !== width * height) invalid(location, 'raw image data must be width * height bytes');
   return Object.freeze({ width, height, indices: exclusiveBytes(data), mask: null });
 }
 
@@ -175,14 +175,17 @@ export function readMfdRecordOffsets(block: Uint8Array, path = ''): readonly (re
   }));
 }
 
-/** A bitmap font table: {0, unknown, cell width, height} followed by 256 glyphs of `height` bytes. */
+/**
+ * A bitmap font table: {0, unknown, cell width, height} followed by 256 × `height` glyph bytes. How many rows each glyph
+ * stores is the conversion declaration's choice (hud §1.1), so the bytes are returned unsplit.
+ */
 export function readFontTable(table: Uint8Array, path = ''): SourceFont {
   const location = fieldAt(path, 'glyphs');
   if (table.length < 4) invalid(location, 'the font table header is truncated');
   if (table[0] !== 0) invalid(location, 'the font table header must start with 0');
   const cellWidth = withinLimit(table[2], 'fontCellWidth', GRAPHICS_LIMITS.fontCellWidth, location);
   const height = withinLimit(table[3], 'fontHeight', GRAPHICS_LIMITS.fontHeight, location);
-  if (table.length !== 4 + GRAPHICS_LIMITS.glyphCount * height) invalid(location, 'the font table must hold 256 glyphs of its height');
+  if (table.length !== 4 + GRAPHICS_LIMITS.glyphCount * height) invalid(location, 'the font table length must be 4 + 256 * height');
   return Object.freeze({ cellWidth, height, glyphs: exclusiveBytes(table.subarray(4)) });
 }
 

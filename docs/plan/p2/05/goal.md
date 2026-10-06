@@ -103,7 +103,7 @@ updated: 2026-10-05
 | [09-local-structure-check.md](./subtasks/09-local-structure-check.md) | 03 | completed |
 | [10-local-base-check.md](./subtasks/10-local-base-check.md) | 07 | completed |
 | [11-nearest-colour-research.md](./subtasks/11-nearest-colour-research.md) | 02, 04 | completed |
-| [12-character-map-research.md](./subtasks/12-character-map-research.md) | 06 | pending |
+| [12-character-map-research.md](./subtasks/12-character-map-research.md) | 06 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -111,6 +111,11 @@ updated: 2026-10-05
 ## 执行记录
 
 - **2026-10-05 — Spec 位置语法澄清（子任务 05）：** rubber-duck 指出 `graphics.declarations`（映射中有未声明的 Asset；声明组不是数组时 04 的读取器也报在这里）不在 spec 错误码的封闭位置语法内。按用户在调用 execute-goal 时给出的授权，spec 的[错误码](./spec.md#错误码)与[行为与边界](./spec.md#行为与边界)补充了这个声明组整体位置，并写明 `graphics.declarations[<i>]` 可带结构字段路径（04 已按此报告字段级位置）。行为、范围与验收标准不变；测试支持新增按 spec 编写的位置语法检查，覆盖 03–05 的转换错误位置。
+- **2026-10-05 — 字体每字形行数（子任务 12）：** 研究发现 4×6 字库的表头为 4×6、表长为 4 + 256 × 6，但字形按每字形 8 字节排列，实为 192 个 8 行字形（[hud §1.1](../../../original/formats/hud.md#11-glyph-layout-and-character-maps-likely)，高概率）。原 spec 的字体 payload 固定为 256 个“高”行字形，无法表达这个字符映射，否则 12 只能 blocked。按用户授权修订：
+  - spec 的 S-03、行为与边界、payload 契约、图形转换声明、生产 Asset 与来源、限值与预算、技术决定 7、新增技术决定 14、AC-07 与 AC-12：字体声明增加必填的 `glyphRows`，payload 记录每字形行数与字形数，转换只改变切分、不改变字节；4×6 字库因此按 192 个字形扣除，实际字形用量由 768 变为 704，生产份额（768）不变；
+  - 12 的工作范围相应扩展到 01/04 的 payload 与声明代码；01、04、06、07、08、10 的子任务文档加注修订，原有证据保留为当时的记录。
+
+  payload 尚未进入缓存，schema 1 的布局直接修订。范围与其余验收标准不变。
 
 ## 审批
 

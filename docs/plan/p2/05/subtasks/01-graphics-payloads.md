@@ -21,7 +21,7 @@ updated: 2026-10-05
   - **字段：**
     - 调色板：`entryCount` 1–256，`entryCount` 组 8 位 (R, G, B)。
     - 图像：`width`、`height`；`alpha` ∈ {`opaque`, `mask`}；`palette`；`display` 为 `direct` 或 `{ nearest: 目标调色板 }`；`width × height` 字节的行优先索引；`alpha` 为 `mask` 时附掩码，每像素 1 位、bit 7 为最左、每行补齐到整字节、1 为不透明。
-    - 字体：`cellWidth`、`height`；256 × `height` 字节的字形，逐位保留；`charMap` 为按 `code` 升序且唯一的 `{ code, glyph }`，二者都在 0–255。
+    - 字体：`cellWidth`、`height`；256 × `height` 字节的字形，逐位保留；`charMap` 为按 `code` 升序且唯一的 `{ code, glyph }`，二者都在 0–255。（[12](./12-character-map-research.md) 执行期修订：增加每字形行数 `glyphRows` 与字形数，见 [goal 执行记录](../goal.md#执行记录)。）
   - **严格读取器：** `(bytes, schemaVersion)` → 冻结的纯数据结果，其中的数组是调用者独占的新副本，读取器不保留输入。
     - schema 不是 1 → `unsupported-payload-schema`；
     - 长度不符、字段越界、未知的 `alpha` 或 `display` 值、非法 Asset ID、非零填充位、透明像素的非零索引、尾随字节、`charMap` 乱序或重复 → `invalid-graphics-payload`。

@@ -8,7 +8,9 @@ const validSet = () => [
   imageDeclaration('image/panel', 'palette/texture', {
     display: { nearest: 'palette/flight' }, alpha: { colourKey: 0 }, rowOrder: 'reversed',
   }),
-  fontDeclaration('font/hud', { cell: { width: 4, height: 6 }, charMap: [{ firstCode: 0x41, firstGlyph: 10, count: 26 }, { firstCode: 0x30, firstGlyph: 0, count: 10 }] }),
+  fontDeclaration('font/hud', {
+    cell: { width: 4, height: 6 }, glyphRows: 8, charMap: [{ firstCode: 0x41, firstGlyph: 10, count: 26 }, { firstCode: 0x30, firstGlyph: 181, count: 11 }],
+  }),
 ];
 
 type Mutation = (set: Record<string, unknown>[]) => unknown;
@@ -45,7 +47,12 @@ describe('graphics conversion declarations', () => {
     ['a cell height of 9', set => { set[3].cell = { width: 4, height: 9 }; }, 'graphics.declarations[3].cell.height'],
     ['overlapping ranges', set => { set[3].charMap = [{ firstCode: 0x41, firstGlyph: 0, count: 2 }, { firstCode: 0x42, firstGlyph: 5, count: 1 }]; }, 'graphics.declarations[3].charMap[1]'],
     ['codes past 255', set => { set[3].charMap = [{ firstCode: 250, firstGlyph: 0, count: 10 }]; }, 'graphics.declarations[3].charMap[0].count'],
-    ['glyphs past 255', set => { set[3].charMap = [{ firstCode: 0, firstGlyph: 250, count: 10 }]; }, 'graphics.declarations[3].charMap[0].count'],
+    ['a missing glyph row count', set => { delete set[3].glyphRows; }, 'graphics.declarations[3].glyphRows'],
+    ['glyph rows below the cell height', set => { set[3].glyphRows = 5; }, 'graphics.declarations[3].glyphRows'],
+    ['glyph rows of 9', set => { set[3].glyphRows = 9; }, 'graphics.declarations[3].glyphRows'],
+    ['glyph rows that leave a partial glyph', set => { set[3].cell = { width: 4, height: 5 }; set[3].glyphRows = 6; }, 'graphics.declarations[3].glyphRows'],
+    ['a first glyph past the glyph count', set => { set[3].charMap = [{ firstCode: 0, firstGlyph: 192, count: 1 }]; }, 'graphics.declarations[3].charMap[0].firstGlyph'],
+    ['glyphs past the glyph count', set => { set[3].charMap = [{ firstCode: 0, firstGlyph: 190, count: 3 }]; }, 'graphics.declarations[3].charMap[0].count'],
     ['an empty range', set => { set[3].charMap = [{ firstCode: 0, firstGlyph: 0, count: 0 }]; }, 'graphics.declarations[3].charMap[0].count'],
   ])('rejects %s as invalid-declaration', (_, mutate, location) => {
     const set = validSet();

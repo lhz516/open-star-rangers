@@ -192,7 +192,7 @@ describe('graphics conversion over a structured-clone channel', () => {
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(snapshot.groups).toEqual([]);
-    expect(snapshot.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 768, imagePixels: 0 });
+    expect(snapshot.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 256 + 256 + 192, imagePixels: 0 });
     const messages = traffic.fromWorker as { readonly type: string; readonly stage?: string; readonly readBytes?: number }[];
     const steps = messages.map(({ type, stage }) => stage ?? type);
     const identifiedAt = steps.indexOf('identified');

@@ -225,7 +225,7 @@ test('test entry converts the production graphics after identification and finis
   expect(distinct).toEqual(['starting', 'running:null:-', 'running:identify-source:-', 'running:identify-source:identified', 'running:convert-graphics:identified', 'finished']);
   expect(final.groups).toEqual([]);
   const expectedBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
-  expect(final.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 768, imagePixels: 0, payloadBytes: expectedBytes });
+  expect(final.usage).toMatchObject({ assets: 5, dependencyEdges: 0, paletteEntries: 512, glyphs: 256 + 256 + 192, imagePixels: 0, payloadBytes: expectedBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
   expect(reads).toEqual([...reads].sort((left, right) => left - right));
   expect(reads.at(-1)).toBe(final.usage.sourceReadBytes);

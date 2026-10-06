@@ -4,7 +4,7 @@ import { glyphFor, glyphsFor } from './glyph-lookup.ts';
 import { expectContractError } from './graphics.test-support.ts';
 
 const font = (charMap: CharMapEntry[]) =>
-  readFontPayload(encodeFontPayload({ cellWidth: 4, height: 6, glyphs: new Uint8Array(256 * 6).fill(0x60), charMap }), 1);
+  readFontPayload(encodeFontPayload({ cellWidth: 4, height: 6, glyphRows: 6, glyphs: new Uint8Array(256 * 6).fill(0x60), charMap }), 1);
 
 const HUD = font([{ code: 0x20, glyph: 0 }, { code: 0x41, glyph: 3 }, { code: 0x42, glyph: 200 }]);
 

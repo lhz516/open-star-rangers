@@ -7,8 +7,8 @@ export const GRAPHICS_SCHEMA_VERSION = 1;
 
 /**
  * Structural limits shared by the payload readers and the original-data converters. Palette entries, the font cell
- * width, the glyph count and the character map size are format rules; the image size and font height are approved
- * safety caps (see the source structure guide).
+ * width, the maximum glyph count and the character map size are format rules; the image size and font height (which
+ * also caps the rows stored per glyph) are approved safety caps (see the source structure guide).
  */
 export const GRAPHICS_LIMITS = Object.freeze({
   imageWidth: 640,

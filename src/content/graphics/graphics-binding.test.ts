@@ -15,7 +15,7 @@ const SOURCE = readAssetId('palette/synthetic-texture');
 const FLIGHT = readAssetId('palette/synthetic-flight');
 
 const paletteBytes = () => encodePalettePayload({ entries: Uint8Array.from({ length: 48 }, (_, index) => index * 5) });
-const fontBytes = () => encodeFontPayload({ cellWidth: 8, height: 8, glyphs: Uint8Array.from({ length: 2048 }, (_, index) => index % 251), charMap: [{ code: 65, glyph: 65 }] });
+const fontBytes = () => encodeFontPayload({ cellWidth: 8, height: 8, glyphRows: 8, glyphs: Uint8Array.from({ length: 2048 }, (_, index) => index % 251), charMap: [{ code: 65, glyph: 65 }] });
 const imageBytes = (display: ImageDisplay = 'direct', palette = SOURCE) => encodeImagePayload({
   width: 3, height: 2, palette, display, indices: new Uint8Array([1, 0, 3, 4, 0, 6]), mask: new Uint8Array([0b1010_0000, 0b1010_0000]),
 });

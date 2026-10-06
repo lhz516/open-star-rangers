@@ -30,7 +30,7 @@ function declarations(overrides: Record<string, Record<string, unknown>> = {}) {
     imageDeclaration('image/panel', 'palette/texture', { display: { nearest: 'palette/flight' }, ...overrides['image/panel'] }),
     imageDeclaration('image/sprite', 'palette/flight', overrides['image/sprite']),
     fontDeclaration('font/hud', {
-      cell: { width: 4, height: 6 }, charMap: [{ firstCode: 0x41, firstGlyph: 33, count: 2 }, { firstCode: 0x20, firstGlyph: 0, count: 1 }],
+      cell: { width: 4, height: 6 }, glyphRows: 6, charMap: [{ firstCode: 0x41, firstGlyph: 33, count: 2 }, { firstCode: 0x20, firstGlyph: 0, count: 1 }],
       ...overrides['font/hud'],
     }),
   ];
@@ -75,9 +75,17 @@ describe('graphics conversion', () => {
     expect(imageOf(result, 'image/panel')).toMatchObject({ width: 3, height: 2, display: { nearest: 'palette/flight' }, mask: null, indices: new Uint8Array([1, 2, 3, 4, 5, 6]) });
     expect(imageOf(result, 'image/sprite')).toMatchObject({ display: 'direct', indices: new Uint8Array([1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 5, 0]), mask: new Uint8Array([0b1100_0000, 0, 0b0111_0000]) });
     const font = readFontPayload(payloadOf(result, 'font/hud').bytes, 1);
-    expect(font).toMatchObject({ cellWidth: 4, height: 6, glyphs: FONTS[2].subarray(4), charMap: [{ code: 0x20, glyph: 0 }, { code: 0x41, glyph: 33 }, { code: 0x42, glyph: 34 }] });
+    expect(font).toMatchObject({ cellWidth: 4, height: 6, glyphRows: 6, glyphs: FONTS[2].subarray(4), charMap: [{ code: 0x20, glyph: 0 }, { code: 0x41, glyph: 33 }, { code: 0x42, glyph: 34 }] });
     const payloadBytes = result.assets.reduce((total, { payload }) => total + payload.bytes.length, 0);
     expect(result.usage).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 5, dependencyEdges: 3, paletteEntries: 272, imagePixels: 21, glyphs: 256, payloadBytes });
+  });
+
+  it('splits the unchanged table bytes into glyphs of the declared rows and charges their count', () => {
+    const result = convert({ 'font/hud': { glyphRows: 8, charMap: [{ firstCode: 0x41, firstGlyph: 191, count: 1 }] } });
+    expect(readFontPayload(payloadOf(result, 'font/hud').bytes, 1)).toEqual({
+      kind: 'font', cellWidth: 4, height: 6, glyphRows: 8, glyphs: FONTS[2].subarray(4), charMap: [{ code: 0x41, glyph: 191 }],
+    });
+    expect(result.usage.glyphs).toBe(192);
   });
 
   it('converts the same input to the same bytes and identities', () => {
@@ -109,7 +117,7 @@ describe('graphics conversion', () => {
   });
 
   it('checks the declared font cell and the font index', () => {
-    expectSourceError(() => convert({ 'font/hud': { cell: { width: 8, height: 8 } } }), 'geometry-mismatch', 'graphics[font/hud].glyphs');
+    expectSourceError(() => convert({ 'font/hud': { cell: { width: 8, height: 8 }, glyphRows: 8 } }), 'geometry-mismatch', 'graphics[font/hud].glyphs');
     expectSourceError(() => convert({}, { 'font/hud': { type: 'cockpit-font', block: cockpitBlock(FONTS), index: 3 } }), 'subresource-not-found', 'graphics[font/hud].fonts');
   });
 

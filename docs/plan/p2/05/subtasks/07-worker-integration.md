@@ -101,3 +101,4 @@ updated: 2026-10-05
 
   预算一节补充 `addBudgets`。工程约定与工具指南没有协议版本或阶段的说明，无需更新。
 
+- **执行期修订（2026-10-05，[12](./12-character-map-research.md)）：** 字体 payload 增加每字形行数与字形数、生产映射填入后，合成作业的用量变为 glyphs 704、payloadBytes 7,683（[import-job.test.ts](../../../../../src/workers/import-job.test.ts) 已同步）。见 [goal 执行记录](../goal.md#执行记录)。以上为修订前的记录。

@@ -144,7 +144,8 @@ describe('graphics conversion', () => {
     const last = messages.at(-1);
     if (last?.type !== 'finished') throw new Error('expected the job to finish');
     expect(last.groups).toEqual([]);
-    // Two 770-byte palettes, two 2,052-byte 8×8 fonts and a 1,540-byte 4×6 font, all with empty character maps.
-    expect(last.usage).toEqual({ ...readUsage, assets: 5, paletteEntries: 512, glyphs: 768, payloadBytes: 7_184 });
+    // Two 770-byte palettes, 8×8 fonts of 2,243 and 2,245 bytes (256 glyphs, 94 and 95 map entries) and a 1,655-byte
+    // 4×6 font (192 eight-row glyphs, 56 map entries).
+    expect(last.usage).toEqual({ ...readUsage, assets: 5, paletteEntries: 512, glyphs: 256 + 256 + 192, payloadBytes: 7_683 });
   });
 });

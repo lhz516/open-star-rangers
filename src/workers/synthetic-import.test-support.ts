@@ -81,8 +81,12 @@ export function graphicsCoveredFiles(corrupt = false): Record<string, Uint8Array
   return productionGraphicsFiles(corrupt ? { CCKD: cockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]) } : {});
 }
 
-/** The payload bytes of the production graphics converted from `graphicsCoveredFiles()`: two palettes and three fonts without character maps. */
-export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + 2 * fontPayloadLength(8, 0) + fontPayloadLength(6, 0);
+/**
+ * The payload bytes of the production graphics converted from `graphicsCoveredFiles()`: two palettes, two 8×8 fonts of
+ * 256 glyphs with 94 and 95 map entries, and the 4×6 font of 192 eight-row glyphs with 56 entries.
+ */
+export const GRAPHICS_PAYLOAD_BYTES = 2 * palettePayloadLength(256)
+  + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + fontPayloadLength(192, 8, 56);
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */
 export type SyntheticGroups = (sourceFingerprint: string) => readonly (readonly [ResourceGroup, GroupInput])[];

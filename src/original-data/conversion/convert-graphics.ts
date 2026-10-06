@@ -11,7 +11,7 @@ import type { PayloadRecord } from '../../content/payload.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
 import { SourceError } from '../source-error.ts';
 import {
-  readGraphicsDeclarations, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind, type ImageDeclaration,
+  declaredGlyphCount, readGraphicsDeclarations, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind, type ImageDeclaration,
   type PaletteDeclaration,
 } from './graphics-declarations.ts';
 import {
@@ -132,11 +132,12 @@ class Conversion {
   }
 
   font(declaration: FontDeclaration, source: FontSource): void {
-    const { asset: { id }, cell, charMap } = declaration;
+    const { asset: { id }, cell, glyphRows, charMap } = declaration;
     const at = `graphics[${id}]`;
     const entryCount = charMap.reduce((total, { count }) => total + count, 0);
+    const glyphCount = declaredGlyphCount(declaration);
     // The declared cell bounds the charge; a source of another size is rejected below.
-    this.#charge(declaration, { glyphs: GRAPHICS_LIMITS.glyphCount, payloadBytes: fontPayloadLength(cell.height, entryCount) });
+    this.#charge(declaration, { glyphs: glyphCount, payloadBytes: fontPayloadLength(glyphCount, glyphRows, entryCount) });
     const entries: CharMapEntry[] = charMap
       .flatMap(({ firstCode, firstGlyph, count }) => Array.from({ length: count }, (_, offset) => ({ code: firstCode + offset, glyph: firstGlyph + offset })))
       .sort((left, right) => left.code - right.code);
@@ -144,7 +145,8 @@ class Conversion {
     if (font.cellWidth !== cell.width || font.height !== cell.height) {
       throw new SourceError('geometry-mismatch', `${at}.glyphs`, 'the font cell differs from the declared cell');
     }
-    this.#add(declaration, [], encodeFontPayload({ cellWidth: font.cellWidth, height: font.height, glyphs: font.glyphs, charMap: entries }, at));
+    // The same bytes, split into glyphs of the declared rows.
+    this.#add(declaration, [], encodeFontPayload({ cellWidth: font.cellWidth, height: font.height, glyphRows, glyphs: font.glyphs, charMap: entries }, at));
   }
 }
 

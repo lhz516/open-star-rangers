@@ -69,7 +69,7 @@ describe('graphics conversion step', () => {
     expect(payloadTransferList(result.groups.flatMap(({ payloads }) => payloads.map(({ bytes }) => bytes)))).toHaveLength(6);
     const shape = JSON.stringify(result, (key, value: unknown) => (value instanceof Uint8Array ? `${value.length} bytes` : key === 'fingerprint' ? 'sha256' : value));
     expect(shape).not.toMatch(/SR\.NOB|MAIN|1000[135]|DATA|TEX|CCKD|fonts\/|discPath|subresource|entry/);
-    expect(result.usage).toMatchObject({ assets: 6, dependencyEdges: 2, paletteEntries: 520, imagePixels: 8, glyphs: 512, sourceReadBytes: 0 });
+    expect(result.usage).toMatchObject({ assets: 6, dependencyEdges: 2, paletteEntries: 520, imagePixels: 8, glyphs: 256 + 192, sourceReadBytes: 0 });
   });
 
   it('verifies subresource mappings only through a successful conversion', async () => {
@@ -125,7 +125,7 @@ describe('graphics conversion step', () => {
     const { source, reads } = await verifiedSource();
     const before = readBytes(source);
     await expect(runGraphicsStep(source, mappings(), declarations(), { ...LIMITS, glyphs: 256 }))
-      .rejects.toMatchObject({ name: 'SourceError', code: 'budget-exceeded', location: 'graphics[font/hud/8x8-1].glyphs', limit: { name: 'glyphs', limit: 256, observed: 512 } });
+      .rejects.toMatchObject({ name: 'SourceError', code: 'budget-exceeded', location: 'graphics[font/hud/8x8-1].glyphs', limit: { name: 'glyphs', limit: 256, observed: 192 + 256 } });
     expect(readBytes(source) - before).toBe(stepBytes);
     expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [texture]: 1, [cockpit]: 1 });
   });
