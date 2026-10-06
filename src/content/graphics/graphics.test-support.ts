@@ -17,3 +17,15 @@ export function set8(bytes: Uint8Array, offset: number, value: number): Uint8Arr
   bytes[offset] = value;
   return bytes;
 }
+
+/** Sets a little-endian u16 of `bytes` and returns it. */
+export function set16(bytes: Uint8Array, offset: number, value: number): Uint8Array {
+  new DataView(bytes.buffer, bytes.byteOffset).setUint16(offset, value, true);
+  return bytes;
+}
+
+/** Sets a little-endian u32 of `bytes` and returns it. */
+export function set32(bytes: Uint8Array, offset: number, value: number): Uint8Array {
+  new DataView(bytes.buffer, bytes.byteOffset).setUint32(offset, value, true);
+  return bytes;
+}

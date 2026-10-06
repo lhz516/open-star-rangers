@@ -37,7 +37,8 @@ export type ContentContractErrorCode =
   | 'unmapped-character'
   | 'invalid-logic-payload'
   | 'non-canonical-payload'
-  | 'logic-reference-mismatch';
+  | 'logic-reference-mismatch'
+  | 'invalid-model-payload';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

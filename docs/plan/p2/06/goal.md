@@ -116,7 +116,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-model-payload.md](./subtasks/01-model-payload.md) | — | pending |
+| [01-model-payload.md](./subtasks/01-model-payload.md) | — | completed |
 | [02-source-mesh-modl.md](./subtasks/02-source-mesh-modl.md) | 01 | pending |
 | [03-model-conversion.md](./subtasks/03-model-conversion.md) | 01, 02 | pending |
 | [04-slice-textures.md](./subtasks/04-slice-textures.md) | 02 | pending |

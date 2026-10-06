@@ -3,7 +3,7 @@ import { readAssetId } from '../asset-id.ts';
 import { payloadTransferList } from '../ownership.ts';
 import { asciiBytes } from './graphics-format.ts';
 import { encodeImagePayload, isOpaque, maskStride, readImagePayload, type ImagePayload } from './image-payload.ts';
-import { expectContractError, set8 } from './graphics.test-support.ts';
+import { expectContractError, set16, set8 } from './graphics.test-support.ts';
 
 const PALETTE = readAssetId('palette/synthetic-a');
 const TARGET = readAssetId('palette/synthetic-flight');
@@ -126,11 +126,6 @@ describe('image payload schema 1', () => {
     expectContractError(() => encodeImagePayload({ ...maskedImage(), ...overrides } as Omit<ImagePayload, 'kind'>), 'invalid-graphics-payload', path);
   });
 });
-
-function set16(bytes: Uint8Array, offset: number, value: number): Uint8Array {
-  new DataView(bytes.buffer, bytes.byteOffset).setUint16(offset, value, true);
-  return bytes;
-}
 
 function setText(bytes: Uint8Array, offset: number, text: string): Uint8Array {
   bytes.set(asciiBytes(text), offset);

@@ -78,6 +78,9 @@ src/
       logic-content.ts
       logic-readers.ts
       logic-payload.ts
+    models/
+      model-payload.ts
+      model-parts.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -184,7 +187,7 @@ src/
     import-worker.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）与 `models/` 中的模型 payload（见[模型 payload](#模型-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 [platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
 
@@ -300,6 +303,34 @@ src/
 - **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。
+
+### 模型 payload
+
+[content/models/](../../src/content/models/)（[P2-06/01](../plan/p2/06/subtasks/01-model-payload.md)）定义 `model` Asset 的规范 payload，对应 P2-01 的 `model-with-internal-geometry` 单位：一个模型连同其内部几何，网格不是独立 Asset。它是纯 TypeScript，不导入 `original-data`、DOM、Node 或 Three.js；原版转换由 `original-data` 产生这些字节。
+
+- **常量：** [model-payload.ts](../../src/content/models/model-payload.ts) 的 `MODEL_PAYLOAD_SCHEMA_VERSION` 为 1，改变布局或解释须递增。`MODEL_LIMITS` 供读取器与转换器共用：
+  - **安全上限**（[P2-06 spec](../plan/p2/06/spec.md#限值与预算)批准，各有限值名）：每个几何顶点 1–4,096（`meshVertices`）、三角形 1–4,096（`meshTriangles`），每个模型三个列表合计部件 1–256（`modelParts`）；
+  - **格式规则：** 部件列表恰为 3 个（`partLists`），音效槽恰为 5 个（`soundSlots`）。
+
+  `MODEL_PAYLOAD_LAYOUT` 给出下表各部分的字节数，`modelPayloadLength(shape)` 按几何的顶点与三角形数、部件数和引用 ID 给出编码长度，供转换器在读取与分配之前扣除 `payloadBytes`，并计算份额下的上界。
+- **字节布局：** 小端，无填充，总长恰为各部分之和：
+
+  | 部分 | 内容 |
+  |---|---|
+  | 头部（22 字节） | `u8` 部件列表数（3）、`u8` 音效槽数（5）、`u16` 引用数 N、`u16` 几何数 G（1 至部件总数）、3 个 `u16` 列表 0–2 的部件数（合计 1–256）、5 个 `u16` 音效槽（0 为空，否则为 1 + sound 引用的序号） |
+  | 引用表 | N 项，每项 `u8` 长度（1–128）后接 ASCII 的 Asset ID；恰为部件与音效槽用到的不同 ID，严格升序，因此等于描述符依赖 |
+  | 部件（每个 11 字节） | 按列表 0、1、2 与存储顺序：`u32` 源标志字（原样）、`u8` R、G、B、`u16` 几何序号、`u16` 贴图（0 为无，否则为 1 + image 引用的序号） |
+  | 几何（G 个） | 按部件首次使用的顺序：`u16` 顶点数 V、`u16` 三角形数 T、`u16` 着色槽数 S（1 至 3T）；V × 3 个 `f32` 位置、V × 2 个 `f32` UV、V × 3 个 `f32` 法线；T × 3 个 `u16` 顶点索引（小于 V，绕序按存储）、T × 3 个 `u16` 角点着色槽（小于 S） |
+
+  规范形式唯一：引用表按上述规则排列，每个几何都被部件使用且按首次使用排序，同一模型因此只有一种字节表示。浮点全部有限并逐位保留（含负零与次正规数）；允许未被三角形使用的顶点。
+- **编码与读取：** `encodeModelPayload` 按读取器的同一规则校验 `{ geometries, partLists, soundSlots }`，写入独占整个 `ArrayBuffer` 的新缓冲，同一输入得到同样的字节与 SHA-256。`readModelPayload(bytes, schemaVersion, path)` 严格读取：每个计数先检查范围、其字节先确认存在，然后才分配；返回冻结数据，几何数组是调用者独占的新副本。schema 不是 1 为 `unsupported-payload-schema`；截断、尾随字节、计数或字段越界、非有限浮点、索引或着色槽越界、部件的几何序号越界或不按首次使用顺序、贴图或音效槽的引用越界或 kind 不符、引用表不等于实际使用的 ID 为 `invalid-model-payload`；已转移的字节为 `payload-detached`。颜色分量以 `u8` 存储，大于 255 的值只可能出现在编码器输入中，由编码器拒绝。诊断只含结构路径（如 `payload.geometries[0].indices`、`payload.partLists[1][2].texture`），不回显取值。
+- **绑定：** `modelReferences(model)` 给出全部非空贴图（`image`）与音效槽（`sound`）引用，去重后按 ID 升序；`checkModelBinding(descriptor, payload)` 要求描述符 kind 为 `model`、依赖恰好等于这些引用（ID 与 kind），否则报 `binding-mismatch`。模型不直接依赖调色板，贴图的调色板是贴图自己的依赖。
+- **消费辅助：** [model-parts.ts](../../src/content/models/model-parts.ts) 的 `modelPartItems(model, list)` 按源列表 0–2 与存储顺序给出部件项：几何的位置、UV、法线、索引、角点着色槽与着色槽数，以及材质 `{ colour }` 或 `{ colour, texture, wrap: 'repeat' }`（UV 在两个方向都按重复寻址）。每次调用返回新的冻结项与数组副本，修改它们不影响 payload 或后续调用；不剔除、不重排三角形，不翻转 UV。列表序号不是 0–2 为 `invalid-model-payload@list`。`expandModelTextures(model, images, palettes)` 对模型引用的每个贴图调用 `expandImage`，`images` 与 `palettes` 必须恰好是引用的贴图及其调色板，否则为 `binding-mismatch@images` 或 `@palettes`；颜色不另行计算。
+- **payload 不承载的含义：** 部件列表、源标志字与音效槽都按源序号原样保留，payload 不命名也不解释它们；已知的含义与置信度只记在 [mesh](../original/formats/mesh.md)，音效槽以 P2-08 的记录为准。光照与明暗不在这里（P3，U-028）。
+- **消费者边界：** 坐标是原版模型空间的数值，不换算单位、轴向或手性；正面绕序与 UV 原点（v = 0 对应贴图首行还是末行）都未确认，payload 不作解释。P2-11 的渲染适配选择换算并在本指南记录，P2-12 用原版截图判定；判定有误时只改渲染适配，不必重新导入或递增 schema。贴图是独立的 image Asset，可被多个模型共用：渲染适配按 image Asset ID 共享一个 GPU 纹理，最后一个引用模型释放后释放；几何属于各自的模型，不跨模型共享。查看器的中性光照不得称为原版效果。
+- **对照入口：** P2-11 渲染与 P2-12 本地对照都只经 `readModelPayload`、`modelPartItems`/`expandModelTextures` 与 P2-05 的 `expandImage` 取数据，不另建研究用的解码路径。
+
+合成模型由 [models.test-support.ts](../../src/content/models/models.test-support.ts) 在代码中生成。针对性检查为 `pnpm exec vitest run src/content/models`。
 
 ### 任务数据的定向解析
 
