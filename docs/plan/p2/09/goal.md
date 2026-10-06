@@ -94,7 +94,7 @@ updated: 2026-10-05
 | [02-spatial-frame.md](./subtasks/02-spatial-frame.md) | 01 | completed |
 | [03-package-identity.md](./subtasks/03-package-identity.md) | — | completed |
 | [04-logic-content.md](./subtasks/04-logic-content.md) | 02 | completed |
-| [05-scenario-parser.md](./subtasks/05-scenario-parser.md) | 02 | pending |
+| [05-scenario-parser.md](./subtasks/05-scenario-parser.md) | 02 | completed |
 | [06-craft-binding.md](./subtasks/06-craft-binding.md) | 04, 05 | pending |
 | [07-file-range-locator.md](./subtasks/07-file-range-locator.md) | 02 | pending |
 | [08-logic-sources.md](./subtasks/08-logic-sources.md) | 05, 07 | pending |

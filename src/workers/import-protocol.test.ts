@@ -293,6 +293,7 @@ describe('error code grammar', () => {
     'alternatives-differ': true, 'fingerprint-mismatch': true, 'invalid-payload': true, 'unsupported-encoding': true,
     'budget-exceeded': true, 'palette-index-out-of-range': true, 'subresource-not-found': true, 'invalid-declaration': true,
     'geometry-mismatch': true,
+    'unsupported-payload': true, 'subresource-mismatch': true,
   };
   const contentCodes: Record<ContentContractErrorCode, true> = {
     'invalid-record': true, 'invalid-dependencies': true, 'invalid-asset-id': true, 'invalid-kind': true, 'kind-mismatch': true,
@@ -311,6 +312,7 @@ describe('error code grammar', () => {
     descriptorBytes: true, imageSectors: true, volumeDescriptors: true, directoryBytes: true, directoryRecords: true,
     rangeReadBytes: true, portReadBytes: true, sourceReadBytes: true, archiveEntries: true, entryBytes: true,
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
+    payloadEntryBytes: true, payloadItems: true, textBytes: true,
   };
 
   it.each([

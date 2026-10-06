@@ -3,7 +3,8 @@ import type { SourceErrorData } from './source-error.ts';
 
 // The closed location grammar of P2-03 errors (docs/plan/p2/03/spec.md, error codes), kept as an oracle written from
 // the spec; disc paths in it are checked with the production DiscPath grammar.
-const ARCHIVE = /^archive(?::\/([^#[]+))?(?:\[\d+\]|#\d+(?:\.relocations\[\d+\])?)?$/;
+// Payload structure paths (P2-09) follow an entry ID: `/name` or `/name[index]` segments.
+const ARCHIVE = /^archive(?::\/([^#[]+))?(?:\[\d+\]|#\d+(?:\.relocations\[\d+\]|(?:\/[a-z][a-zA-Z0-9]*(?:\[\d+\])?)+)?)?$/;
 const FILE = /^file:\/(.+)$/;
 const STRUCTURAL = new RegExp(`^(?:${[
   String.raw`catalog(?:\.versionId|\.files\[\d+\](?:\.(?:path|byteLength|sha256))?)?`,

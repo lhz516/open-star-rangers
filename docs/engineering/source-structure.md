@@ -99,6 +99,12 @@ src/
       archive-reader.ts
     conversion/
       converter-version.ts
+    formats/
+      payload-block.ts
+      object-record.ts
+      scct.ts
+      scen.ts
+      m2id.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -242,6 +248,34 @@ src/
 - **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。
+
+### 任务数据的定向解析
+
+[P2-09/05](../plan/p2/09/subtasks/05-scenario-parser.md) 在 [original-data/formats/](../../src/original-data/formats/) 解析所选任务需要的 SCCT、SCEN 与 M2ID 条目。规则来自 [P2-09 spec 的源字段处理](../plan/p2/09/spec.md#源字段处理)与限值表，格式事实见 [scenario](../original/formats/scenario.md) 与 [hud §3](../original/formats/hud.md#3-id-lists-confirmed-structure)。解析器只接收 `ArchiveEntryRead` 形状的已读条目与封包的 `DiscPath`，不打开文件或封包；读取由转换编排经已验证来源完成。按能力边界，这里只以类型导入封包与光盘模块。
+
+- **数据块读取：** [payload-block.ts](../../src/original-data/formats/payload-block.ts) 的 `PayloadBlock`：
+  - 先按条目大小检查 `payloadEntryBytes`；`requireEntryBytes` 也可在读取前按目录项调用。
+  - 指针只在重定位表登记的位置上有效：未登记的非零值为 `invalid-payload`，目标结构必须完整位于块内。反过来，登记的位置不得与解析器读取的任何数值、名称或保留字重叠，否则同为 `invalid-payload`。
+  - 指针字段按两步判定：先校验登记与边界（`invalid-payload`），再判定用途；必须为空的指针字段由 `unsupportedPointer` 判为 `unsupported-payload`。
+  - `{指针, 数量}` 数组先按 `payloadItems` 检查数量，再做边界检查，因此不按声明规模分配；空指针要求数量为 0；顶层数组不得与所在条目的头部重叠；非空指针配 0 个元素为 `unsupported-payload`。
+  - 名称必须以 NUL 结尾，1–63 字节（超出为 `textBytes`，最多检查 64 字节）的可打印 ASCII；f32 必须有限。
+- **记录：** [object-record.ts](../../src/original-data/formats/object-record.ts) 读取 132 字节记录：
+  - 重定位只能位于文档记载的指针字段；
+  - +0x30、+0x4C 与保留字必须为默认值（前两者按指针的两步规则），+0x38 必须为 0；
+  - 各引用字段的目标须按预期结构大小（编组 28、矩形 16、记录 132、事件触发头部 28 字节）完整位于块内，然后才判定是否为该结构的起点；
+  - 种类转为位序号，多比特为 `invalid-payload`；
+  - 规则输入原样保留，0 为 null；AI 掩码转为升序位序号；
+  - 指针字段作为目标偏移交给所在结构解析。
+- **SCEN：** [scen.ts](../../src/original-data/formats/scen.ts) 的 `parseScenario` 返回 `ParsedScenario`：
+  - 内容：扇区数、参考比例、名称备用池、生成矩形、声明与编组，声明与编组使用 `content/logic` 的类型；
+  - 声明：段 1 记录按表序；模板与成员必须是段 1 记录的别名；
+  - 引用转为序号：+0x3C 成员回指（须与列出它的唯一编组一致）、+0x44 生成矩形、+0x48 锚点与 +0x58 AI 目标；
+  - +0x54 只核对它指向段 2 第一个元素且该事件触发没有生成配对；
+  - 段 6 布局只交换第 0 个元素的 y/z，并核对原版循环越过表尾读取的计数字。
+- **SCCT：** [scct.ts](../../src/original-data/formats/scct.ts) 的 `parseCampaignTable` 校验每个组的槽位表头与限值，但只读取候选（默认 `CLASSIC_P2_SLICE.candidate`）槽位的 SCEN 条目 ID 与僚机记录；组或槽位超出表为 `subresource-mismatch`；僚机记录的引用与空间字段必须为零。
+- **M2ID：** [m2id.ts](../../src/original-data/formats/m2id.ts) 的 `parseModelIdList` 严格读取 MODL 条目 ID 列表；槽位为 0 的处理归机型绑定。
+- **错误：** [source-error.ts](../../src/original-data/source-error.ts) 为此追加 `invalid-payload`、`unsupported-payload`、`subresource-mismatch` 与限值名 `payloadEntryBytes`、`payloadItems`、`textBytes`。位置为 `archive:/路径#ID` 后接 `/名称[下标]` 形式的结构路径，`inLocationGrammar` 已扩展为接受这种形式；诊断不回显名称、数值或字节。
+- **测试数据：** [formats.test-support.ts](../../src/original-data/formats/formats.test-support.ts) 用 `BlockWriter` 在奇数偏移上布置结构，倒序写出重定位表，由规格生成合成 SCEN、SCCT 与 M2ID 数据块，并用 `buildImfat` 组成合成的 `SCENARIO.NOB` 与 `SR.NOB`。默认任务的形状与切片任务相同，但数值都是合成的；名称带 `MARKER`。
 
 ### 原版来源映射
 
