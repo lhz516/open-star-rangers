@@ -83,7 +83,7 @@ updated: 2026-10-05
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-layout-payload.md](./subtasks/01-layout-payload.md) | — | pending |
+| [01-layout-payload.md](./subtasks/01-layout-payload.md) | — | completed |
 | [02-layout-composition.md](./subtasks/02-layout-composition.md) | 01 | pending |
 | [03-container-records.md](./subtasks/03-container-records.md) | — | pending |
 | [04-layout-conversion.md](./subtasks/04-layout-conversion.md) | 01, 03 | pending |

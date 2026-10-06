@@ -29,3 +29,9 @@ export function set32(bytes: Uint8Array, offset: number, value: number): Uint8Ar
   new DataView(bytes.buffer, bytes.byteOffset).setUint32(offset, value, true);
   return bytes;
 }
+
+/** Overwrites `bytes` with ASCII `text` at `offset` and returns it. */
+export function setText(bytes: Uint8Array, offset: number, text: string): Uint8Array {
+  bytes.set(Uint8Array.from(text, character => character.charCodeAt(0)), offset);
+  return bytes;
+}

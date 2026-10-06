@@ -38,10 +38,10 @@ updated: 2026-10-05
 
 ## 验收标准
 
-- [ ] AC-01：往返相等、逐字节确定；截断、尾随字节、画幅宽 0/641、高 0/481、元素数 0/17、坐标越出画幅、重复图像都报 `invalid-graphics-payload`；未知 schema 报 `unsupported-payload-schema`；依赖不一致报 `binding-mismatch`。
-- [ ] 描述符的 `payloadIdentity` 与实际字节一致，`validateGroup` 不报 `payload-mismatch`。
-- [ ] 新模块不导入 `original-data`、DOM、Node 或 Three.js；P2-05 三类 payload 的既有测试不改即通过。
-- [ ] `pnpm typecheck`、`pnpm lint` 与聚焦测试通过；源码结构已更新。
+- [x] AC-01：往返相等、逐字节确定；截断、尾随字节、画幅宽 0/641、高 0/481、元素数 0/17、坐标越出画幅、重复图像都报 `invalid-graphics-payload`；未知 schema 报 `unsupported-payload-schema`；依赖不一致报 `binding-mismatch`。
+- [x] 描述符的 `payloadIdentity` 与实际字节一致，`validateGroup` 不报 `payload-mismatch`。
+- [x] 新模块不导入 `original-data`、DOM、Node 或 Three.js；P2-05 三类 payload 的既有测试不改即通过。
+- [x] `pnpm typecheck`、`pnpm lint` 与聚焦测试通过；源码结构已更新。
 
 ## 验证方法
 
@@ -50,3 +50,30 @@ updated: 2026-10-05
 - 完成前按 execute-goal 流程以本子任务 diff 为范围做 rubber-duck 审查与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+2026-10-05：
+
+- **实现：**
+  - [layout-payload.ts](../../../../../src/content/graphics/layout-payload.ts) 定义布局 payload schema 1：5 字节头部（`u16` 宽、`u16` 高、`u8` 元素数），N 个 5 字节元素项（`u16` x、`u16` y、`u8` 图像 ID 长度），之后按元素顺序存放 ASCII 图像 ID。读取器先核对元素表与总长，再读取 ID；编码器与读取器共用逐元素检查。`layoutPayloadLength` 供 04 在分配前扣除 `payloadBytes`。
+  - [graphics-format.ts](../../../../../src/content/graphics/graphics-format.ts)：`readReference(value, kind, path)` 由原 `readPaletteReference` 泛化而来，调色板引用的行为与文案不变；`GRAPHICS_LIMITS.layoutElements` 为 16。
+  - [graphics-binding.ts](../../../../../src/content/graphics/graphics-binding.ts)：`GraphicsPayload` 加入布局；`layoutImages` 给出升序的元素图像；`checkGraphicsBinding` 对布局要求依赖恰为元素图像且 kind 为 `image`。
+- **测试：** `pnpm exec vitest run src/content/graphics` 通过，7 个文件、179 项。[layout-payload.test.ts](../../../../../src/content/graphics/layout-payload.test.ts) 覆盖：
+  - 精确字节布局与往返；冻结结果；重复编码逐字节相同，缓冲独占；
+  - 边界值：1×1、640×480 的最后一个像素、16 个元素、128 字符 ID；
+  - 读取器拒绝：schema 2；截断头部、截断元素表、截断 ID 与尾随字节；画幅宽 0/641、高 0/481；元素数 0/17；ID 长度 0/129；x = 宽、y = 高，以及画幅收窄后越界的 x；非法 ID 与调色板 ID；重复图像，报在后一个元素上；
+  - 编码器拒绝同类字段，另加负数、小数与非对象元素。
+
+  [graphics-binding.test.ts](../../../../../src/content/graphics/graphics-binding.test.ts)：
+  - 布局的 `binding-mismatch` 覆盖 kind 不符、少一个元素图像、多一个、换成别的图像、按绘制顺序而非升序、依赖 kind 不是 `image`、依赖调色板；
+  - 合成的 `cockpit-hud-map` 组改用真实 payload（调色板、三张图像、字库与两个布局）。`validateGroup` 为 `group-complete`，没有 `payload-mismatch`；每个描述符的指纹等于实际字节的 SHA-256，`checkGraphicsBinding` 通过。
+  - P2-05 的 palette、image、font payload 测试文件未修改，照常通过。
+- **工程：** `pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过，123 个文件、3681 项，构建成功。`content/graphics/` 的新模块只导入 `content/` 内的模块，由 core tsconfig（无 DOM/Node 类型）与边界回归覆盖。
+- **审查：**
+  - **rubber-duck：** 审查本子任务 diff，结论为无阻塞、无非阻塞问题。
+  - **simplify（四个角度）：**
+    - 已采纳：测试用的 `set16`、`setText` 移入 [graphics.test-support.ts](../../../../../src/content/graphics/graphics.test-support.ts)；排序改用 `compareText`；集成用例的布局元素只定义一次；去掉布局测试中重复的 SHA 断言（绑定测试已覆盖）。
+    - 未采纳：编码时冻结（拆分会增加路径）；128 字符 ID 的长度断言（`readAssetId` 只保证不超过 128）；ID 的临时 ASCII 缓冲（与同类模块一致，开销可忽略）；通用的依赖推导机制（`GraphicsPayload` 是 spec 封闭的联合，P2-05 已按同样方式处理调色板与字体）。
+    - `image-payload.test.ts` 的同名局部 helper 保持不变，以满足“既有测试不改”。
+- **文档影响：**
+  - [源码结构](../../../../engineering/source-structure.md)的目录树与“图形 payload”一节已更新：四类共用 schema、布局的安全上限、字节布局、读取错误、`layoutImages` 与布局绑定规则。
+  - 工程约定与工具指南的命令和检查规则不变；不涉及原版事实或 STATUS。

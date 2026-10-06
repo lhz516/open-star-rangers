@@ -2,13 +2,14 @@ import { readAssetId, type AssetId } from '../asset-id.ts';
 import { ContentContractError, fail } from '../contract-validation.ts';
 import { exclusiveBytes, isDetached } from '../ownership.ts';
 
-/** Schema version of the palette, image and font payloads; a layout or meaning change needs a new version. */
+/** Schema version of the palette, image, font and layout payloads; a byte layout or meaning change needs a new version. */
 export const GRAPHICS_SCHEMA_VERSION = 1;
 
 /**
  * Structural limits shared by the payload readers and the original-data converters. Palette entries, the font cell
- * width, the maximum glyph count and the character map size are format rules; the image size and font height (which
- * also caps the rows stored per glyph) are approved safety caps (see the source structure guide).
+ * width, the maximum glyph count and the character map size are format rules; the image size (which also bounds a
+ * layout frame), the font height (which also caps the rows stored per glyph) and the layout element count are approved
+ * safety caps (see the source structure guide).
  */
 export const GRAPHICS_LIMITS = Object.freeze({
   imageWidth: 640,
@@ -18,6 +19,7 @@ export const GRAPHICS_LIMITS = Object.freeze({
   fontHeight: 8,
   glyphCount: 256,
   charMapEntries: 256,
+  layoutElements: 16,
 });
 
 export function invalid(path: string, reason: string): never {
@@ -59,16 +61,19 @@ export const bytesAt = (view: DataView, offset: number, length: number): Uint8Ar
 /** An exclusive copy of `length` payload bytes at `offset`. */
 export const copyBytes = (view: DataView, offset: number, length: number): Uint8Array => exclusiveBytes(bytesAt(view, offset, length));
 
-/** A palette Asset ID: valid Asset ID syntax whose kind segment is `palette`. */
-export function readPaletteReference(value: unknown, path: string): AssetId {
+/** An Asset ID of valid syntax whose kind segment is `kind`. */
+export function readReference(value: unknown, kind: 'palette' | 'image', path: string): AssetId {
   try {
     const id = readAssetId(value, path);
-    if (id.startsWith('palette/')) return id;
+    if (id.startsWith(`${kind}/`)) return id;
   } catch (error) {
     if (!(error instanceof ContentContractError)) throw error;
   }
-  invalid(path, 'must be a palette Asset ID');
+  invalid(path, `must be ${kind === 'image' ? 'an' : 'a'} ${kind} Asset ID`);
 }
+
+/** A palette Asset ID: valid Asset ID syntax whose kind segment is `palette`. */
+export const readPaletteReference = (value: unknown, path: string): AssetId => readReference(value, 'palette', path);
 
 /** The pure program has no TextEncoder; Asset IDs are ASCII by construction. */
 export const asciiBytes = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));

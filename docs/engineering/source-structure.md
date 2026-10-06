@@ -71,6 +71,7 @@ src/
       palette-payload.ts
       image-payload.ts
       font-payload.ts
+      layout-payload.ts
       graphics-binding.ts
       expand-image.ts
       glyph-lookup.ts
@@ -287,11 +288,11 @@ src/
 
 ### 图形 payload
 
-[content/graphics/](../../src/content/graphics/)（[P2-05/01](../plan/p2/05/subtasks/01-graphics-payloads.md)）定义 `palette`、`image`、`font` 三类 Asset 的规范 payload。它是纯 TypeScript，不导入 `original-data`；原版转换由 `original-data` 产生这些字节。
+[content/graphics/](../../src/content/graphics/)（[P2-05/01](../plan/p2/05/subtasks/01-graphics-payloads.md)）定义 `palette`、`image`、`font` 三类 Asset 的规范 payload，[P2-07/01](../plan/p2/07/subtasks/01-layout-payload.md) 加入 `layout`。它是纯 TypeScript，不导入 `original-data`；原版转换由 `original-data` 产生这些字节。
 
-- **常量：** [graphics-format.ts](../../src/content/graphics/graphics-format.ts) 的 `GRAPHICS_SCHEMA_VERSION` 为 1，三类共用；改变布局或解释须递增。`GRAPHICS_LIMITS` 供读取器与转换器共用，分为两类：
+- **常量：** [graphics-format.ts](../../src/content/graphics/graphics-format.ts) 的 `GRAPHICS_SCHEMA_VERSION` 为 1，四类共用；改变字节布局或解释须递增。`GRAPHICS_LIMITS` 供读取器与转换器共用，分为两类：
   - **格式规则：** 调色板 1–256 项（8 位索引最多寻址 256 项），字体单元宽 1–8（每行 1 字节），字形 1–256 个（8 位字形索引），字符映射 0–256 条；
-  - **安全上限：** 图像宽 1–640、高 1–480（Classic HI 画幅），字体高 1–8（已观察到 6 与 8），每字形行数也不超过 8。原版字段本身更宽，这两项是 [P2-05 spec](../plan/p2/05/spec.md#限值与预算) 批准的上限。
+  - **安全上限：** 图像宽 1–640、高 1–480（Classic HI 画幅），布局画幅取同样的范围；字体高 1–8（已观察到 6 与 8），每字形行数也不超过 8；布局元素 1–16（`layoutElements`，等于 CCKD 每个分组的元素上限）。原版字段本身更宽，图像与字体两项是 [P2-05 spec](../plan/p2/05/spec.md#限值与预算) 批准的上限，布局两项见 [P2-07 spec](../plan/p2/07/spec.md#限值与预算)。
 - **字节布局：** 都是小端定长头部加数据，总长恰为两者之和，Asset ID 以 ASCII 存储。
 
   | 类别 | 头部 | 数据 |
@@ -299,11 +300,12 @@ src/
   | 调色板 | `u16` 条目数 | 每项 (R, G, B) 各 8 位，不含透明 |
   | 图像 | `u16` 宽、`u16` 高；`u8` alpha（0 不透明、1 掩码）；`u8` display（0 direct、1 nearest）；`u8` 调色板 ID 长度（1–128）；`u8` 目标 ID 长度（direct 为 0，nearest 为 1–128） | 调色板 ID，nearest 的目标调色板 ID；`宽 × 高` 个行优先索引，行 0 在上；alpha 为 1 时再接掩码：每行 `⌈宽/8⌉` 字节，bit 7 为最左，1 为不透明 |
   | 字体 | `u8` 单元宽、`u8` 单元高、`u8` 每字形行数（单元高–8）、`u16` 字形数（1–256）、`u16` 映射条数 | 字形数 × 每字形行数字节的字形，字形 g 的第 r 行在 `7 + g × 每字形行数 + r`，bit 7 为最左，逐位保留（含单元以外的位与行）；映射按码位严格升序的 (code, glyph) 字节对，glyph 小于字形数 |
+  | 布局 | `u16` 画幅宽（1–640）、`u16` 画幅高（1–480）、`u8` 元素数 N（1–16）；N 个 5 字节元素项，按绘制顺序（后者在上）：`u16` x（0 至宽−1）、`u16` y（0 至高−1）、`u8` 图像 ID 长度（1–128） | 按元素顺序依次存放 N 个图像 ID；(x, y) 是图像左上角在画幅中的像素位置，各元素的图像互不相同 |
 
-  图像引用的 ID 必须是 `palette` kind 的 Asset ID。透明像素的索引与掩码行尾填充位一律为 0：编码器写 0，读取器拒绝非零。字形的绘制颜色与字距不在 payload 中，映射之外的码位没有字形。每字形行数可以大于单元高（4×6 表为 8，见 [P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md)）；单元以外的位与行是否绘制属 [U-030](../original/unknowns.md#数据与格式)，由消费者按单元裁剪或保留。
-- **编码：** `encodePalettePayload`、`encodeImagePayload`、`encodeFontPayload` 校验字段后写入一个独占整个 `ArrayBuffer` 的新缓冲（可直接交给 `payloadTransferList`），同一输入得到同样的字节与 SHA-256；不改动调用者的数组。`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 按字段给出编码长度，供转换器在分配前扣除 `payloadBytes`。
-- **读取：** `readPalettePayload`、`readImagePayload`、`readFontPayload` 接受 `(bytes, schemaVersion, path)`，返回带 `kind` 的冻结数据，其中的数组是调用者独占的新副本。schema 不是 1 为 `unsupported-payload-schema`；长度不符（截断或尾随字节）、字段越界、未知的 alpha/display 值、非法或非调色板 ID、非零填充位、透明像素的非零索引、映射乱序或重复、映射的字形不小于字形数为 `invalid-graphics-payload`；已转移的字节为 `payload-detached`。`maskStride` 与 `isOpaque` 按上述掩码约定取每行字节数与单个像素的不透明性。
-- **绑定：** [graphics-binding.ts](../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes` 给出 payload 引用的调色板 ID（去重后升序：direct 为 `{palette}`，nearest 为 `{palette, target}`；调色板与字体没有），`imagePalettes` 对图像的绑定字段给出同样的结果，供转换器生成依赖。`checkGraphicsBinding(descriptor, payload)` 要求描述符的 kind 与 payload 一致，依赖恰好等于这些调色板且 kind 都是 `palette`，否则报 `binding-mismatch`。
+  图像引用的 ID 必须是 `palette` kind 的 Asset ID，布局元素引用的必须是 `image` kind。布局不含调色板、透明或缩放字段：它们由各图像 payload 表达；图像尺寸只在图像 payload 中，所以读取器只检查坐标，元素矩形是否越出画幅由转换与合成检查。透明像素的索引与掩码行尾填充位一律为 0：编码器写 0，读取器拒绝非零。字形的绘制颜色与字距不在 payload 中，映射之外的码位没有字形。每字形行数可以大于单元高（4×6 表为 8，见 [P2-05/12](../plan/p2/05/subtasks/12-character-map-research.md)）；单元以外的位与行是否绘制属 [U-030](../original/unknowns.md#数据与格式)，由消费者按单元裁剪或保留。
+- **编码：** `encodePalettePayload`、`encodeImagePayload`、`encodeFontPayload`、`encodeLayoutPayload` 校验字段后写入一个独占整个 `ArrayBuffer` 的新缓冲（可直接交给 `payloadTransferList`），同一输入得到同样的字节与 SHA-256；不改动调用者的数组。`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength`、`layoutPayloadLength` 按字段给出编码长度，供转换器在分配前扣除 `payloadBytes`。
+- **读取：** `readPalettePayload`、`readImagePayload`、`readFontPayload`、`readLayoutPayload` 接受 `(bytes, schemaVersion, path)`，返回带 `kind` 的冻结数据，其中的数组是调用者独占的新副本（布局的画幅、元素数组与各元素也都冻结）。schema 不是 1 为 `unsupported-payload-schema`；长度不符（截断或尾随字节）、字段越界、未知的 alpha/display 值、非法或 kind 不符的 ID、非零填充位、透明像素的非零索引、映射乱序或重复、映射的字形不小于字形数，以及布局元素数不在 1–16、坐标越出画幅或两个元素引用同一图像（报在后一个元素的 `elements[<i>].image`），都为 `invalid-graphics-payload`；已转移的字节为 `payload-detached`。`maskStride` 与 `isOpaque` 按上述掩码约定取每行字节数与单个像素的不透明性。
+- **绑定：** [graphics-binding.ts](../../src/content/graphics/graphics-binding.ts) 的 `referencedPalettes` 给出 payload 引用的调色板 ID（去重后升序：direct 为 `{palette}`，nearest 为 `{palette, target}`；调色板、字体与布局没有），`imagePalettes` 对图像的绑定字段给出同样的结果，`layoutImages` 给出布局各元素的图像 ID（升序），供转换器生成依赖。`checkGraphicsBinding(descriptor, payload)` 要求描述符的 kind 与 payload 一致，依赖恰好等于这些 ID：布局为元素图像且 kind 都是 `image`，其余为引用的调色板且 kind 都是 `palette`；否则报 `binding-mismatch`。
 
 - **展开：** [expand-image.ts](../../src/content/graphics/expand-image.ts) 的 `expandImage(image, palettes)` 是项目中唯一的调色板查找。`palettes` 按 Asset ID 提供，必须恰好是图像引用的调色板，否则报 `binding-mismatch@palettes`。结果为冻结的 `{ width, height, rgba }`，`rgba` 是调用者独占的新缓冲，非预乘：不透明像素为显示颜色、alpha 255，透明像素为 (0, 0, 0, 0)。direct 直接查图像的调色板；nearest 先把源调色板逐项映射到目标调色板再查表，因此不透明像素的颜色都属于目标调色板。不透明像素的索引不小于源调色板条目数时报 `palette-index-out-of-range@<path>.indices`，透明像素的索引不参与。展开结果不进入 payload 或缓存。
 - **最近色：** 同文件的 `nearestColourMap(source, target)` 对源调色板的每一项取 8 位 RGB 平方欧氏距离最小的目标条目，距离相等取较小索引。这是**暂定的项目规则**：原版的度量与并列规则尚无证据（[U-028](../original/unknowns.md#数据与格式)，研究见 [P2-05/11](../plan/p2/05/subtasks/11-nearest-colour-research.md)），合成测试只验证这个算法，不是保真证据。研究工具与后续 Renderer 复用它，不另写颜色逻辑。
