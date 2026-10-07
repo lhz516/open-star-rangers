@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-02
+updated: 2026-10-07
 ---
 
 # 文档索引与写作约定
@@ -26,6 +26,7 @@ updated: 2026-10-02
 | [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 本项目当前构建的键位绑定、按键功能、焦点/拦截/清键规则与尚未实现的键盘能力；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
+| [guides/local-import.md](./guides/local-import.md) | 本地生产预览、原版数据导入、缓存恢复与最小资源查看器操作；实机核对清单 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |
 
 仓库根目录的 [AGENTS.md](../AGENTS.md)（英文）是 coding agent 和新贡献者的入口。

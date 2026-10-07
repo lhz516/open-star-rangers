@@ -743,6 +743,63 @@ describe('app resource and viewer boundaries', () => {
   });
 });
 
+describe('import and viewer main-thread network boundaries', () => {
+  const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'sendBeacon']);
+  const projectPath = (fileName: string): string => relative(root, fileName).split(sep).join('/');
+  const inScope = (path: string): boolean =>
+    /^src\/(?:app\/|ui\/|render\/viewer\/)/.test(path) && capabilityOf(path) !== 'support';
+
+  function networkReferences(file: ts.SourceFile): string[] {
+    const names = identifierNames(file);
+    const visit = (node: ts.Node): void => {
+      const property = ts.isElementAccessExpression(node) ? node.argumentExpression
+        : ts.isBindingElement(node) ? node.propertyName : undefined;
+      if (property && ts.isStringLiteralLike(property)) names.add(property.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return [...names].filter(name => banned.has(name)).sort();
+  }
+
+  it('covers app, UI and viewer production modules, excluding tests and test support', () => {
+    for (const directory of ['app', 'ui', 'render/viewer']) {
+      for (const extension of ['ts', 'tsx']) {
+        expect(inScope(`src/${directory}/nested/module.${extension}`)).toBe(true);
+        for (const suffix of ['test', 'test-support']) {
+          expect(inScope(`src/${directory}/nested/module.${suffix}.${extension}`)).toBe(false);
+        }
+      }
+    }
+    expect(inScope('src/workers/import-worker.ts')).toBe(false);
+    expect(inScope('src/render/synthetic/synthetic-renderer.ts')).toBe(false);
+  });
+
+  it('finds globals, property access and destructuring, but not comments or ordinary strings', () => {
+    const parse = (source: string): ts.SourceFile => ts.createSourceFile('sample.tsx', source, ts.ScriptTarget.Latest, true);
+    for (const name of banned) {
+      for (const source of [
+        `const value = ${name};`,
+        `const value = globalThis.${name};`,
+        `const value = navigator['${name}'];`,
+        `const value = window[\`${name}\`];`,
+        `const { ${name}: value } = globalThis;`,
+        `const { '${name}': value } = navigator;`,
+      ]) expect(networkReferences(parse(source)), source).toEqual([name]);
+      expect(networkReferences(parse(`// ${name}\nconst label = '${name}';`))).toEqual([]);
+    }
+  });
+
+  it('uses none of the five network APIs in production app, UI or viewer code', () => {
+    const compilation = sharedAppProgram();
+    const files = compilation.getRootFileNames().filter(fileName => inScope(projectPath(fileName)));
+    for (const directory of ['app', 'ui', 'render/viewer']) {
+      expect(files.some(fileName => projectPath(fileName).startsWith(`src/${directory}/`)), directory).toBe(true);
+    }
+    expect(files.flatMap(fileName => networkReferences(compilation.getSourceFile(fileName)!)
+      .map(name => `${projectPath(fileName)}: ${name}`))).toEqual([]);
+  });
+});
+
 describe('audio playback boundaries', () => {
   // docs/plan/p2/08/spec.md AC-11: playback uses no network API or localStorage, imports only relative modules outside
   // original-data and the app, render, ui and workers layers, and checks its DOM-free modules in the Node program.

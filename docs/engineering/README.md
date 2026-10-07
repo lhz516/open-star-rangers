@@ -25,6 +25,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 |---|---|
 | `pnpm dev` | 启动 Vite 开发服务器 |
 | `pnpm build` | 生产构建及严格分发许可声明，输出到 `dist/` |
+| `pnpm preview` | 预览当前 `dist/`，发送拟定 CSP；不会自动构建，操作见[本地导入指南](../guides/local-import.md#本地生产预览) |
 | `pnpm typecheck` | 分别用四个 tsconfig 做增量类型检查（见下） |
 | `pnpm lint` | ESLint（带缓存），包含模块边界与确定性规则 |
 | `pnpm test` | Vitest 单元测试 |
@@ -78,6 +79,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
 - 同一回归文件的资源缓存部分（P2-10 AC-14/AC-15）解析 `src/platform/storage/` 的生产源码：不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`window`、`document`、`localStorage` 标识符，只能相对导入且不能导入 `original-data`、`render`、`ui`、`app`、`workers`；非 `browser-*` 的模块必须在真实 Node 程序中。`browser-*` 适配不进入 Node 程序由上一条的 render 规则覆盖（它检查 `src/` 中所有浏览器模块）。
 - 同一回归文件的应用资源部分（P2-11 S-03/AC-22）解析 `src/app/resources/` 的生产源码：不得出现与资源缓存相同的网络与宿主标识符，只能相对导入且不能导入 `render`、`ui`；每个模块都必须在真实 Node 程序中。各部分共用一次构建的 Node 程序文件集合。
+- P2-11 AC-22 的主线程网络回归覆盖 `src/app/`、`src/ui/` 与 `src/render/viewer/` 的全部生产 `.ts`/`.tsx`（排除测试与测试支持）：不得引用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource`、`sendBeacon`。复用 TypeScript 程序与标识符解析，另检查字面量下标和解构属性；正反例验证目录范围、全局/属性/解构形式，忽略注释和普通字符串。这是静态源码边界，不是 P2-12 的页面与 Worker 网络审计，也不承诺识别动态拼接的属性名。
 - 同一回归文件的音频播放部分（P2-08 AC-11）与 lint 共同约束 `src/platform/audio/`。
   - **lint：** 用单独一条 `@typescript-eslint/no-restricted-imports` 覆盖平台的通用选项，拒绝任何 `original-data` 导入（包括纯类型导入字节端口），以及 `app`、`render`、`ui`、`workers`。
   - **源码回归：** 解析生产源码，不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`localStorage` 标识符，只能相对导入；沿应用程序的依赖图（含再导出、动态 `import()` 与 `import('…')` 类型）也不能间接到达上述模块，无法核实目标的计算型动态导入同样报错；非 `browser-*` 的模块必须在真实 Node 程序中。
@@ -159,6 +161,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
 - **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
+- **P2-11 页面回归路线：** 开发项目的 [import-page.spec.ts](../../e2e/import-page.spec.ts)、[viewer-page.spec.ts](../../e2e/viewer-page.spec.ts)、[cache-recovery.spec.ts](../../e2e/cache-recovery.spec.ts) 与 [fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 分别覆盖导入、查看器、缓存恢复/损坏与生命周期；生产项目走上述严格 CSP 与生产身份合成缓存，不使用开发测试入口。聚焦运行可用 `pnpm test:e2e e2e/import-page.spec.ts e2e/viewer-page.spec.ts e2e/cache-recovery.spec.ts e2e/fast-refresh.spec.ts --project=development`，生产路径用 `pnpm test:e2e e2e/production-preview.spec.ts --project=production`。这些自动化只用合成内容；用户真实界面的操作与证据清单见[本地导入指南](../guides/local-import.md#用户实机核对)。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development）。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
@@ -309,7 +312,7 @@ P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07
 
 ## 页面流转与演示生命周期
 
-P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。它是现代网页界面，不是原版菜单，也不提供任何原版玩法入口或导入能力。
+P1-08 的 React 菜单原型由 P2-11 接入导入、缓存与查看器，契约见 [P1-08 spec](../plan/p1/08/spec.md) 与 [P2-11 spec](../plan/p2/11/spec.md)。它是现代网页界面，不是原版菜单，不提供原版玩法入口；用户操作见[本地导入指南](../guides/local-import.md)。
 
 - [app-flow.ts](../../src/app/flow/app-flow.ts) 是 DOM-free 的页面流转，由邻接 Node 测试覆盖。
   - 冻结快照为 `{screen:'menu'|'import'|'demo'|'viewer', demoVisit, focusTarget, cleanupFailure, viewerFailure}`。
@@ -346,9 +349,9 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - **资源状态：** 页面列出状态阶梯（含来源已识别）、本次导入各组的状态与诊断 code、部分转换的说明、保存失败与 `Save again`，以及任务载入失败。这些只针对本页最近作业所得的资源包（同一持有者实例与代际）；之前持有的资源包不当作本次结果，仍由菜单显示。
   - **文案：** 页首新增隐私说明：原版数据只在本浏览器中读取、转换与保存，不上传；权利说明保持 MIT 不覆盖原版内容、不是官方产品、不授予原版权利。
 - [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。进入演示前，外壳先用当前状态同步校验转换：`demoVisit` 耗尽时以 alert 显示 `RangeError` 并停留在主菜单，不创建 owner；实际提交仍走函数式更新，双击时每次激活至多一次转换。
-- [ui/pages/](../../src/ui/pages/) 是三个只用原生按钮的画面，不在 window/document 注册键盘监听。
+- [ui/pages/](../../src/ui/pages/) 提供菜单与合成演示画面及页面焦点 helper，不在 window/document 注册键盘监听；导入与查看器分别在 `ui/import/`、`ui/viewer/`。
   - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。
   - 演示画面中，`Return to menu` 是标题之后的第一个控件。
-  - 导入页面（P2-11，[ImportPage](../../src/ui/import/ImportPage.tsx)）见下文“导入页面”。
+  - 导入页面（P2-11，[ImportPage](../../src/ui/import/ImportPage.tsx)）见上文“导入页面”。
   - 样式在 [app.css](../../src/app/app.css)：响应式、按钮 `:focus-visible` 有可见 outline。
 - 验证分层：页面流转、owner 记录与生命周期接线用 Node 测试。React 画面、焦点、键盘与往返释放用上文“已验证的 CDP 自动化路线”在开发服务器与 `vite preview` 中取证。稀有失败（failed、faulted、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不伪造浏览器复现。不引入 jsdom、React Testing Library 或 Playwright 依赖。
