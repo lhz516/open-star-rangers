@@ -8,6 +8,7 @@
  * - `cache`: `unavailable` for a cache without IndexedDB; a P2-10 failure code for the real cache whose first commit
  *   returns that failure instead; otherwise the real cache.
  * - `capacity`: `insufficient` for a space check that reports 1 KiB available.
+ * - `audio`: `unavailable` for an audio capability whose context cannot be created, as without Web Audio.
  *
  * The profile is published as `window.osrTestEntry.profile` for tests that seed the cache.
  */
@@ -59,11 +60,24 @@ function cache(): ResourceCachePort {
   });
 }
 
+/** The browser audio, or one without Web Audio: creating its context throws as the browser capability does then. */
+function audio(): AppPorts['audio'] {
+  if (query.get('audio') !== 'unavailable') return browser.audio;
+  return Object.freeze({
+    ...browser.audio,
+    capability: Object.freeze({
+      createContext: () => { throw new Error('Web Audio is unavailable (test entry)'); },
+      createBuffer: browser.audio.capability.createBuffer,
+    }),
+  });
+}
+
 const identifying = Object.hasOwn(SCENARIO_SOURCES, worker);
 const ports: AppPorts = Object.freeze({
   ...browser,
   createImportPort: importPort(),
   cache: cache(),
+  audio: audio(),
   profile: identifying ? scenarioProfile(worker as IdentifyingScenario) : browser.profile,
 });
 window.osrTestEntry = Object.freeze({ profile: ports.profile });

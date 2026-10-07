@@ -377,3 +377,20 @@ export async function clearOriginIndexedDb(page: Page, origin: string): Promise<
     await cdp.detach();
   }
 }
+
+/**
+ * Commits the synthetic package of the content test support on the app test entry, keyed by the entry's expected
+ * profile unless overridden; resolves to the commit's status. Needs `loadCacheModules` first.
+ */
+export async function seedPackage(page: Page, overrides: { readonly converterVersion?: string; readonly fingerprint?: string } = {}): Promise<string> {
+  return page.evaluate(async ({ converterVersion, fingerprint }) => {
+    const profile = window.osrTestEntry!.profile;
+    const cache = window.osrCache.cache.createResourceCache();
+    const groups = window.osrCache.buildPackage({
+      origin: (fingerprint ?? profile.sourceFingerprint) as `source:${string}`, converterVersion: converterVersion ?? profile.converterVersion,
+    });
+    const result = await cache.commit(groups, profile.limits);
+    cache.close();
+    return window.osrCache.statusOf(result);
+  }, overrides);
+}

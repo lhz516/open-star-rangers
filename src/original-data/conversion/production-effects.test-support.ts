@@ -69,7 +69,11 @@ export function syntheticMissileSource(): MissileVisuals {
     types: Array.from({ length: 9 }, (_, index) => type(index)),
     // Production face lists hold 49, 16, 31 and 5 words.
     faces: { fin: faces(0, 12, 9), element: faces(3, 0, 6), flaggedElement: faces(6, 0, 6), extra: faces(0, 1, 3) },
-    constants: Object.fromEntries(MISSILE_CONSTANTS.map((name, index) => [name, (index + 1) * 0.0625 - 0.25])) as MissileVisuals['constants'],
+    // Every constant differs. The element step is non-zero, so the element ring is a visible surface, not one point.
+    constants: {
+      finColourScale: -0.1875, bodyAngle: -0.125, bodyColourScale: -0.0625, elementStep: Math.PI / 3, extraOffset: 0.0625,
+      extraStep: 0.125, rotationStep: 0.1875,
+    } satisfies Record<(typeof MISSILE_CONSTANTS)[number], number>,
     // A low word that an 8-bit immediate gives by sign extension.
     rotationScale: new Float64Array(Uint32Array.of(0xffff_ff80, 0x4012_3456).buffer)[0],
     // The third channel comes from an 8-bit immediate: the 32-bit float with bits 5.

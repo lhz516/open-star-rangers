@@ -49,3 +49,12 @@ button:focus-visible {
   border: 2px solid #a51d2d;
   padding: 0 1rem;
 }
+
+.viewer-view:focus {
+  outline: 3px solid #1a5fb4;
+  outline-offset: 2px;
+}
+
+.viewer-variant {
+  display: block;
+}

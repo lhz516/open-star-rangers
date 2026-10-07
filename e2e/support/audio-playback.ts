@@ -39,7 +39,7 @@ declare global {
  * Serialized before navigation. Records constructed contexts and buffers through constructor Proxies, and taps every
  * connection into a recorded destination with an analyser that plays nothing itself, so the output is observed unchanged.
  */
-function installAudioProbe(): void {
+export function installAudioProbe(): void {
   const OriginalContext = window.AudioContext;
   const OriginalBuffer = window.AudioBuffer;
   const originalConnect = AudioNode.prototype.connect;

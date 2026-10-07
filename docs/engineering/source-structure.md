@@ -27,6 +27,7 @@ src/
       synthetic-demo-owner.ts
       use-resource-holder.ts
       use-synthetic-demo-owner.ts
+      use-viewer-owner.ts
     flow/
       app-flow.ts
     import/
@@ -223,7 +224,10 @@ src/
     render/
       SyntheticRenderView.tsx
     viewer/
+      ViewerAudioPanel.tsx
       ViewerPage.tsx
+      viewer-copy.ts
+      viewer-keys.ts
   workers/
     import-protocol.ts
     import-host.ts
@@ -947,9 +951,9 @@ src/
 - **替换：** 资源持有者替换资源包前（`beforeReplace`），所有者先以渲染器的 `releaseItem()` 释放所示条目的全部 GPU 资源（渲染器已失败时也释放，释放失败时锁存），丢弃待播放意图并释放音频。新资源包的音频只在此前每一次音频关闭都确认后才创建：所有者与槽位保持一个只会累加的关闭屏障，连续替换或重开查看器都不会越过仍在进行的关闭；任何一次关闭失败都锁存，且不再创建。
 - **创建失败：** 表面连接失败但已干净释放时，所有者改用不可用的渲染器，条目与试听照常；释放也失败（`RollbackError`）或持有者订阅无法撤销时，槽位锁存并抛出。
 - **槽位：** `createViewerLifecycle({ onCleanupFailure, reportError })`。
-  - `open(options)` 先关闭仍打开的所有者，锁存时返回 null；新所有者的音频等到上一次音频上下文确认关闭后才创建。
+  - `open(create)` 先关闭仍打开的所有者，锁存时返回 null 且不调用 `create`，所以锁存后不会再创建表面；否则以 `create()` 的选项创建所有者。`create` 或所有者抛出的 `RollbackError` 锁存后抛出。新所有者的音频等到上一次音频上下文确认关闭后才创建。
   - `close()` 撤销持有者订阅并释放渲染器与音频，每步都尝试：同步的失败立即锁存，音频 `close-failed` 在观察到时锁存。
-  - 锁存只记第一次失败，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）；锁存后不再创建所有者，导入与演示不受影响。React 接线与页面归 11。
+  - 锁存只记第一次失败，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）；锁存后不再创建所有者，导入与演示不受影响。React 接线与页面见[工程约定](./README.md#页面流转与演示生命周期)的“查看器页面”。
 
 ### 失败文案
 

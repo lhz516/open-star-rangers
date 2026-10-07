@@ -114,7 +114,7 @@ updated: 2026-10-06
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08, 24 | completed |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | completed |
-| [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
+| [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | completed |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | pending |

@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import type { ExpectedPackageProfile } from '../../src/workers/production-package.ts';
-import { syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
+import { sliceCoveredFiles, syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
 
 // The P2-11 development test entry: the production App with synthetic ports chosen by the page query (see
 // src/app/app-entry.test-support.tsx). The development server alone serves it.
@@ -15,6 +15,8 @@ export interface TestEntryOptions {
   /** `unavailable`, or a P2-10 failure code the first commit returns. */
   readonly cache?: string;
   readonly capacity?: 'insufficient';
+  /** `unavailable` for audio without Web Audio. */
+  readonly audio?: 'unavailable';
 }
 
 export async function openTestEntry(page: Page, options: TestEntryOptions = {}): Promise<void> {
@@ -35,3 +37,7 @@ export async function discFiles(covered: Parameters<typeof syntheticImport>[0]):
   const { files } = await syntheticImport(covered);
   return Promise.all(files.map(async file => ({ name: file.name, mimeType: 'application/octet-stream', buffer: Buffer.from(await file.arrayBuffer()) })));
 }
+
+let slice: Promise<FilePayload[]> | undefined;
+/** The synthetic slice disc every converting scenario identifies, generated once per worker process. */
+export const sliceFiles = (): Promise<FilePayload[]> => slice ??= discFiles(sliceCoveredFiles());

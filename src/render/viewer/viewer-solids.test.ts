@@ -2,7 +2,7 @@ import {
   DirectionalLight, DoubleSide, MeshBasicMaterial, MeshLambertMaterial, NearestFilter, NoColorSpace, RepeatWrapping, Scene, Vector3,
   type DataTexture, type Material,
 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
 import { effectExpansionSize } from '../../content/effects/expand-effects.ts';
 import { RecordingSurface, type DrawnObject } from '../scene/render-surface.test-support.ts';
@@ -99,6 +99,19 @@ describe('viewer models', () => {
       return Array.from({ length: positions.count }, (_, vertex) => new Vector3().fromBufferAttribute(positions, vertex).applyMatrix4(mesh.matrixWorld).project(camera));
     });
   }
+
+  it('shows an empty part list as nothing, without a three.js error', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const { surface, renderer } = setup();
+      renderer.show(modelItem(syntheticModel(), 2));
+      expect(renderer.getSnapshot().state).toBe('ready');
+      expect(drawn(surface)).toEqual([]);
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
 
   it('frames the bounding sphere so every vertex is in view', () => {
     const { surface, renderer } = setup();

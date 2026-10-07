@@ -110,7 +110,7 @@ function setup({ groups = packageGroups(), initialState = 'running' } = {}) {
   const open = (): ViewerOwner | null => {
     const surface = new RecordingSurface();
     surfaces.push(surface);
-    const owner = lifecycle.open({ holder, render: { surface, reportError }, audio: { capability, lifecycle: new FakeLifecycle() }, reportError });
+    const owner = lifecycle.open(() => ({ holder, render: { surface, reportError }, audio: { capability, lifecycle: new FakeLifecycle() }, reportError }));
     // A laid-out surface, so shown items are really drawn and uploaded.
     surface.resize();
     return owner;
@@ -150,6 +150,11 @@ describe('viewer owner', () => {
     const owner = open()!;
     await flush();
     expect(owner.getSnapshot()).toMatchObject({ generation: 1, selected: null, failures: {} });
+    // Bound, as React's useSyncExternalStore takes them.
+    const { getSnapshot, subscribe } = owner;
+    const unsubscribe = subscribe(() => undefined);
+    expect(getSnapshot()).toBe(owner.getSnapshot());
+    unsubscribe();
     expect(owner.getSnapshot().audio).not.toBeNull();
     for (const asset of ['image/synthetic-panel', 'layout/synthetic-front', 'font/synthetic-hud', PALETTE]) {
       owner.select(id(asset));
@@ -372,10 +377,10 @@ describe('viewer owner release barriers and failures', () => {
     const lifecycle = createViewerLifecycle({ onCleanupFailure: cause => failures.push(cause), reportError: vi.fn() });
     const removal = new Error('unsubscribe');
     const leaky = { ...holder, current: () => holder.current(), subscribe: () => () => { throw removal; }, beforeReplace: holder.beforeReplace.bind(holder) };
-    lifecycle.open({ holder: leaky, render: { surface: new RecordingSurface(), reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() });
+    lifecycle.open(() => ({ holder: leaky, render: { surface: new RecordingSurface(), reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() }));
     lifecycle.close();
     expect(failures).toEqual([removal]);
-    expect(lifecycle.open({ holder, render: { surface: new RecordingSurface(), reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() })).toBeNull();
+    expect(lifecycle.open(() => ({ holder, render: { surface: new RecordingSurface(), reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() }))).toBeNull();
   });
 
   it('lists items without a picture when the surface cannot connect but is released cleanly', () => {
@@ -384,7 +389,7 @@ describe('viewer owner release barriers and failures', () => {
     const lifecycle = createViewerLifecycle({ onCleanupFailure: vi.fn(), reportError: vi.fn() });
     const surface = new RecordingSurface();
     surface.connectFailure = new Error('connect');
-    const owner = lifecycle.open({ holder, render: { surface, reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() })!;
+    const owner = lifecycle.open(() => ({ holder, render: { surface, reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() }))!;
     expect(owner.renderer.getSnapshot()).toEqual({ state: 'unavailable', error: surface.connectFailure });
     expect(owner.getSnapshot().entries.length).toBeGreaterThan(0);
     expect(lifecycle.cleanupFailure()).toBeNull();
@@ -399,9 +404,23 @@ describe('viewer owner release barriers and failures', () => {
     surface.connectFailure = new Error('connect');
     surface.disposeFailure = new Error('dispose');
     const options = { holder, render: { surface, reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn() };
-    expect(() => lifecycle.open(options)).toThrow(RollbackError);
+    expect(() => lifecycle.open(() => options)).toThrow(RollbackError);
     expect(failures).toEqual([expect.any(RollbackError)]);
-    expect(lifecycle.open({ ...options, render: { surface: new RecordingSurface(), reportError: vi.fn() } })).toBeNull();
+    expect(lifecycle.open(() => ({ ...options, render: { surface: new RecordingSurface(), reportError: vi.fn() } }))).toBeNull();
+  });
+
+  it('creates nothing for a latched slot, and latches what the options factory cannot roll back', () => {
+    const { holder } = testHolder();
+    holder.acceptImport(finishedJob(packageGroups()));
+    const failures: unknown[] = [];
+    const lifecycle = createViewerLifecycle({ onCleanupFailure: cause => failures.push(cause), reportError: vi.fn() });
+    const rollback = new RollbackError(new Error('surface'), [new Error('canvas removal')], 'Surface creation and cleanup failed');
+    expect(() => lifecycle.open(() => { throw rollback; })).toThrow(rollback);
+    expect(failures).toEqual([rollback]);
+    // Once latched, the factory, which would create a surface, is never called.
+    const create = vi.fn();
+    expect(lifecycle.open(create)).toBeNull();
+    expect(create).not.toHaveBeenCalled();
   });
 });
 
@@ -478,7 +497,7 @@ describe('viewer lifecycle', () => {
     const reportError = vi.fn();
     const lifecycle = createViewerLifecycle({ onCleanupFailure: () => { throw new Error('outlet'); }, reportError });
     const surface = new RecordingSurface();
-    lifecycle.open({ holder, render: { surface, reportError }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError });
+    lifecycle.open(() => ({ holder, render: { surface, reportError }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError }));
     surface.disposeFailure = new Error('dispose failed');
     lifecycle.close();
     expect(reportError).toHaveBeenCalledWith(new Error('outlet'));

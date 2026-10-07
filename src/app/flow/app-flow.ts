@@ -1,8 +1,8 @@
 /**
  * In-memory page flow: main menu, import, synthetic demo and resource viewer. Pure and DOM-free; the
  * React shell holds the current value, renders its screen and applies its focus target. A demo
- * cleanup failure latches for the life of the app instance and blocks new demos; the viewer opens
- * only while a resource package is held. Contracts: docs/plan/p1/08/spec.md, docs/plan/p2/11/spec.md.
+ * cleanup failure latches for the life of the app instance and blocks new demos; a viewer release
+ * failure likewise blocks the viewer only. The viewer opens only while a resource package is held. Contracts: docs/plan/p1/08/spec.md, docs/plan/p2/11/spec.md.
  */
 
 export type AppScreen = 'menu' | 'import' | 'demo' | 'viewer';
@@ -21,22 +21,25 @@ export type AppFlowState = Readonly<{
   focusTarget: AppFocusTarget | null;
   /** Once set, no new demo owner may be created until the page reloads. */
   cleanupFailure: AppCleanupFailure | null;
+  /** Once set, the viewer cannot be opened until the page reloads; import and the demo are unaffected. */
+  viewerFailure: AppCleanupFailure | null;
 }>;
 
 export type AppFlowInput =
   | { readonly type: 'open-demo' | 'open-import' | 'return-to-menu' }
   /** `holdsPackage`: whether the app holds a resource package to view. */
   | { readonly type: 'open-viewer'; readonly holdsPackage: boolean }
-  | { readonly type: 'demo-release-failed'; readonly cause: unknown };
+  | { readonly type: 'demo-release-failed' | 'viewer-release-failed'; readonly cause: unknown };
 
 export const INITIAL_APP_FLOW: AppFlowState = Object.freeze({
-  screen: 'menu', demoVisit: 0, focusTarget: null, cleanupFailure: null,
+  screen: 'menu', demoVisit: 0, focusTarget: null, cleanupFailure: null, viewerFailure: null,
 });
 
-/** The entry a screen returns focus to; after a demo whose cleanup failed, the disabled entry gives way to the heading. */
-function returnFocus(screen: Exclude<AppScreen, 'menu'>, demoBlocked: boolean): AppFocusTarget {
-  if (screen === 'demo') return demoBlocked ? 'menu-heading' : 'demo-entry';
-  return screen === 'import' ? 'import-entry' : 'viewer-entry';
+/** The entry a screen returns focus to; after a release that failed, the disabled entry gives way to the heading. */
+function returnFocus(screen: Exclude<AppScreen, 'menu'>, { cleanupFailure, viewerFailure }: AppFlowState): AppFocusTarget {
+  if (screen === 'demo') return cleanupFailure ? 'menu-heading' : 'demo-entry';
+  if (screen === 'viewer') return viewerFailure ? 'menu-heading' : 'viewer-entry';
+  return 'import-entry';
 }
 
 /**
@@ -49,16 +52,16 @@ export function nextAppFlow(state: AppFlowState, input: AppFlowInput): AppFlowSt
     case 'open-demo':
       if (screen !== 'menu' || cleanupFailure) return state;
       if (demoVisit >= Number.MAX_SAFE_INTEGER) throw new RangeError('Demo visits exhausted');
-      return Object.freeze({ screen: 'demo', demoVisit: demoVisit + 1, focusTarget: null, cleanupFailure });
+      return Object.freeze({ ...state, screen: 'demo', demoVisit: demoVisit + 1, focusTarget: null });
     case 'open-import':
       if (screen !== 'menu') return state;
       return Object.freeze({ ...state, screen: 'import', focusTarget: null });
     case 'open-viewer':
-      if (screen !== 'menu' || !input.holdsPackage) return state;
+      if (screen !== 'menu' || !input.holdsPackage || state.viewerFailure) return state;
       return Object.freeze({ ...state, screen: 'viewer', focusTarget: null });
     case 'return-to-menu':
       if (screen === 'menu') return state;
-      return Object.freeze({ ...state, screen: 'menu', focusTarget: returnFocus(screen, cleanupFailure !== null) });
+      return Object.freeze({ ...state, screen: 'menu', focusTarget: returnFocus(screen, state) });
     case 'demo-release-failed':
       // The first cause wins; a later failure neither replaces it nor moves focus.
       if (cleanupFailure) return state;
@@ -66,6 +69,13 @@ export function nextAppFlow(state: AppFlowState, input: AppFlowInput): AppFlowSt
         ...state,
         focusTarget: screen === 'menu' ? 'menu-heading' : state.focusTarget,
         cleanupFailure: Object.freeze({ cause: input.cause }),
+      });
+    case 'viewer-release-failed':
+      if (state.viewerFailure) return state;
+      return Object.freeze({
+        ...state,
+        focusTarget: screen === 'menu' ? 'menu-heading' : state.focusTarget,
+        viewerFailure: Object.freeze({ cause: input.cause }),
       });
   }
 }

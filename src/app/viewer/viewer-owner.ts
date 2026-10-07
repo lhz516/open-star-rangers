@@ -37,7 +37,7 @@ export interface ViewerOwnerSnapshot {
 
 export interface ViewerOwner {
   readonly renderer: ViewerRenderer;
-  /** Frozen, and the same object until the next change. */
+  /** Frozen, and the same object until the next change; bound, as `subscribe` is. */
   getSnapshot(): ViewerOwnerSnapshot;
   subscribe(listener: () => void): () => void;
   /**
@@ -117,16 +117,15 @@ class Owner implements ViewerOwner {
     }
   }
 
-  getSnapshot(): ViewerOwnerSnapshot {
-    return this.#snapshot;
-  }
+  // Bound, so React's useSyncExternalStore can take them as they are.
+  readonly getSnapshot = (): ViewerOwnerSnapshot => this.#snapshot;
 
-  subscribe(listener: () => void): () => void {
+  readonly subscribe = (listener: () => void): (() => void) => {
     if (this.#disposed) return () => undefined;
     const entry = { listener };
     this.#listeners.add(entry);
     return () => { this.#listeners.delete(entry); };
-  }
+  };
 
   select(id: AssetId | null, variant = 0): void {
     const { selected, variant: current, entries, failures } = this.#snapshot;
@@ -262,10 +261,11 @@ export interface ViewerLifecycleOptions {
 
 export interface ViewerLifecycle {
   /**
-   * Creates the viewer owner unless a release failed; its audio waits until the previous viewer's audio context is
-   * confirmed closed. Closes a still-open owner first.
+   * Closes a still-open owner, then creates the next unless a release failed; `create` runs only then, so no surface is
+   * made for an owner that will not exist. The owner's audio waits until the previous viewer's audio context is
+   * confirmed closed. A RollbackError, from `create` or the owner, latches and is thrown.
    */
-  open(options: ViewerOwnerOptions): ViewerOwner | null;
+  open(create: () => ViewerOwnerOptions): ViewerOwner | null;
   /** Releases the open owner, if any; a failed release latches. */
   close(): void;
   /** The latched release failure, or null. */
@@ -284,11 +284,11 @@ class Lifecycle implements ViewerLifecycle {
   }
 
   /** Throws what a failed creation throws, after latching a RollbackError, whose cleanup failed. */
-  open(options: ViewerOwnerOptions): ViewerOwner | null {
+  open(create: () => ViewerOwnerOptions): ViewerOwner | null {
     this.close();
     if (this.#failure) return null;
     try {
-      this.#owner = new Owner(options, this.#closed, cause => this.#latch(cause));
+      this.#owner = new Owner(create(), this.#closed, cause => this.#latch(cause));
     } catch (error) {
       if (error instanceof RollbackError) this.#latch(error);
       throw error;

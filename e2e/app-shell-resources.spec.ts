@@ -1,26 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expectNoPlayClaim, openTestEntry } from './support/app-entry.ts';
 import { test, expect } from './support/browser-test.ts';
-import { loadCacheModules } from './support/resource-cache.ts';
+import { loadCacheModules, seedPackage as seed } from './support/resource-cache.ts';
 
 // P2-11 AC-01 and AC-08 (menu): the production App on the development test entry, with the default `models` Worker
 // scenario's expected profile. The cache is seeded with synthetic packages in the test's own context.
 
 const STATUS = 'original-data-status';
-
-/** Commits a synthetic package whose key takes the expected profile's fingerprint and version unless overridden. */
-async function seed(page: Page, overrides: { readonly converterVersion?: string; readonly fingerprint?: string } = {}): Promise<string> {
-  return page.evaluate(async ({ converterVersion, fingerprint }) => {
-    const profile = window.osrTestEntry!.profile;
-    const cache = window.osrCache.cache.createResourceCache();
-    const groups = window.osrCache.buildPackage({
-      origin: (fingerprint ?? profile.sourceFingerprint) as `source:${string}`, converterVersion: converterVersion ?? profile.converterVersion,
-    });
-    const result = await cache.commit(groups, profile.limits);
-    cache.close();
-    return window.osrCache.statusOf(result);
-  }, overrides);
-}
 
 /** Leaves the menu for the import screen and comes back, which lists the cache again. */
 async function revisitMenu(page: Page): Promise<void> {

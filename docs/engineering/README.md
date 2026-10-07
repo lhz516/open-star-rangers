@@ -150,7 +150,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
-- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
+- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
@@ -304,9 +304,9 @@ P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07
 P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。它是现代网页界面，不是原版菜单，也不提供任何原版玩法入口或导入能力。
 
 - [app-flow.ts](../../src/app/flow/app-flow.ts) 是 DOM-free 的页面流转，由邻接 Node 测试覆盖。
-  - 冻结快照为 `{screen:'menu'|'import'|'demo'|'viewer', demoVisit, focusTarget, cleanupFailure}`。
-  - 输入为 open-demo、open-import、`{open-viewer, holdsPackage}`、return-to-menu 与 `{demo-release-failed, cause}`。不适用的输入原样返回同一对象；未持有资源包时不能进入查看器（P2-11）；`demoVisit` 耗尽时抛 `RangeError`。
-  - 返回菜单的焦点目标：导入画面回到导入入口，查看器回到 `View resources`，演示回到演示入口，演示锁存时回到菜单标题。
+  - 冻结快照为 `{screen:'menu'|'import'|'demo'|'viewer', demoVisit, focusTarget, cleanupFailure, viewerFailure}`。
+  - 输入为 open-demo、open-import、`{open-viewer, holdsPackage}`、return-to-menu、`{demo-release-failed, cause}` 与 `{viewer-release-failed, cause}`。不适用的输入原样返回同一对象；未持有资源包或查看器已锁存时不能进入查看器（P2-11）；`demoVisit` 耗尽时抛 `RangeError`。两种锁存都只记第一次的原因，各自只阻止自己的画面。
+  - 返回菜单的焦点目标：导入画面回到导入入口，查看器回到 `View resources`，演示回到演示入口；对应的锁存已生效时回到菜单标题，在菜单上收到锁存时也移到标题。
   - 页面状态只在内存中，不用路由或 history；刷新后回到主菜单。
 - [synthetic-demo-lifecycle.ts](../../src/app/composition/synthetic-demo-lifecycle.ts) 是每个应用实例一个的演示槽位，持有同步锁存，由真实 owner/Session 的 Node 测试覆盖。
   - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit；锁存时不调用工厂；否则创建 owner，交付其初始化回滚记录，未锁存时只派发一次 start。同一 visit 不会再次 start，失败的 start 也不重试。
@@ -318,7 +318,13 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - 演示生命周期的错误同样交给端口的 `reportError`。
   - 只测缓存适配的浏览器用例经 [resource-cache.ts](../../e2e/support/resource-cache.ts) 的 `loadCacheModules` 打开不含应用的 [blank.html](../../e2e/entries/blank.html)，因为应用一载入就列出缓存，会打开（从而创建）数据库。
   - 入口：持有资源包时有 `View resources`；未持有且有可恢复条目时有 `Open saved resources`（恢复中禁用，由它发起的恢复成功后焦点移到 `View resources`）；完整资源包未保存时有 `Save again`（保存中禁用）。
-  - 查看器画面目前是占位（[ViewerPage](../../src/ui/viewer/ViewerPage.tsx)），由 P2-11 子任务 11 替换。
+  - 查看器入口在查看器锁存后禁用并说明原因；外壳以 `viewer-cleanup-failure` 警告显示锁存的原因，导入与演示照常可用。
+- **查看器页面（P2-11 S-07 至 S-09）：** [ViewerPage](../../src/ui/viewer/ViewerPage.tsx) 由外壳内的 `ViewerScreen` 渲染，后者调用 [use-viewer-owner.ts](../../src/app/composition/use-viewer-owner.ts)。
+  - **所有者：** hook 在画面区域挂载后经外壳的查看器槽位（`createViewerLifecycle`）打开所有者。表面由端口的 `createSurface(container, VIEWER_SURFACE)` 在槽位决定创建所有者之后才创建，所以锁存后不会再有画布；创建失败时改为不可用的渲染器，回滚也失败（`RollbackError`）时槽位锁存；卸载、StrictMode 重跑、Fast Refresh 与更换容器时关闭槽位。“Return to menu”先同步关闭槽位再切换画面，所以同步的释放失败在菜单出现前锁存；音频 `close()` 被拒绝则在观察到时锁存。
+  - **页面：** 按种类（模型、效果、图像、调色板、布局、字库）列出条目，默认不选中；所选条目显示失败（code、位置、原因）或变体：模型的部件列表单选（附内容与置信度）、效果的视图单选（附各形状的原值、绘制字节与“Texture mapping unconfirmed”标记）、模型的中性光开关、导弹的贴图旋转序号。资源包不完整时始终显示说明与各组状态。
+  - **画面：** 4:3 区域（`viewer-view`）可用 Tab 到达，有焦点轮廓与含当前 Asset ID 的无障碍名称；键盘操作见[键位文档](./keyboard-input.md#资源查看器的诊断键p2-11)，同样的操作有按钮。渲染状态以 `status` 或 `alert` 显示；“Refresh diagnostics”按需读出渲染诊断（状态、条目、绘制次数、GPU 计数、布局、位置与视图）。
+  - **试听与任务：** [ViewerAudioPanel](../../src/ui/viewer/ViewerAudioPanel.tsx) 列出声音及播放、停止与全部停止按钮，显示音频状态、发声数与失败原因；任务一节以 [viewer-copy.ts](../../src/ui/viewer/viewer-copy.ts) 的文字显示 04 的结构摘要与引用校验（逐个列出解析到的模型及其是否在模型组中），失败时以 `FailureNotice` 显示类别与技术细节。只显示结构与计数，不显示原版文字。
+  - React 只提交意图，按所有者、渲染器与音频的快照变化渲染，不随绘制重渲染。所有者与音频的 `getSnapshot`、`subscribe` 是绑定的函数，可直接交给 `useSyncExternalStore`。
 - **导入页面（P2-11 S-02）：** [ImportPage](../../src/ui/import/ImportPage.tsx) 由外壳内的 `ImportScreen` 渲染，后者调用 [use-import-job.ts](../../src/app/import/use-import-job.ts)。
   - **作业持有者：** hook 在 effect 中以端口的 Worker 工厂创建作业持有者，卸载、StrictMode 重跑与 Fast Refresh 时释放并终止 Worker。作业结束时，hook 在持有者自己的通知中把组交给资源持有者，所以随即离开页面也不丢组；此刻没有可用的资源持有者时，移交等到下一个持有者出现，新作业开始时放弃。提交属于资源持有者，不因离开页面中断。hook 另以页面时钟记录每个作业从开始到结束的耗时，并记下本页最近作业所得资源包的持有者实例与代际。
   - **控件：** 文件输入（`.ccd,.img,.sub,.cue`，可多选）、`Start import`、`Cancel import` 与 `Return to menu`。

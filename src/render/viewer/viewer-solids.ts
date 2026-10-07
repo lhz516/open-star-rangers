@@ -108,7 +108,8 @@ function createSolidDisplay(
   const distance = radius / Math.sin(radians(VIEWER_FOV / 2));
   const content = new Group();
   content.position.copy(centre).negate();
-  content.add(...meshes.map(({ mesh }) => mesh));
+  // three.js reports an error for add() without an object, as an empty part list would give.
+  if (meshes.length > 0) content.add(...meshes.map(({ mesh }) => mesh));
   const pivot = new Group();
   pivot.name = name;
   pivot.add(content);

@@ -13,10 +13,12 @@ import { ViewerPage } from '../ui/viewer/ViewerPage.tsx';
 import { createSyntheticDemoLifecycle, type SyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
 import { useResourceHolder } from './composition/use-resource-holder.ts';
 import { useSyntheticDemoOwner } from './composition/use-synthetic-demo-owner.ts';
+import { useViewerOwner } from './composition/use-viewer-owner.ts';
 import { useImportJob } from './import/use-import-job.ts';
 import { INITIAL_APP_FLOW, nextAppFlow, type AppFlowInput, type AppFlowState } from './flow/app-flow.ts';
 import type { AppPorts } from './ports.ts';
 import type { ResourceHolder, ResourceHolderSnapshot } from './resources/resource-holder.ts';
+import { createViewerLifecycle, type ViewerLifecycle } from './viewer/viewer-owner.ts';
 
 /** Creates and releases the demo owner with the screen's view container. */
 function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
@@ -47,6 +49,18 @@ function ImportScreen({ ports, holder, resources, onReturn }: {
   );
 }
 
+/** Creates and releases the viewer owner with the screen's picture area. */
+function ViewerScreen({ lifecycle, ports, holder, resources, onReturn }: {
+  readonly lifecycle: ViewerLifecycle;
+  readonly ports: AppPorts;
+  readonly holder: ResourceHolder | null;
+  readonly resources: ResourceHolderSnapshot | null;
+  readonly onReturn: () => void;
+}) {
+  const { owner, containerRef, container } = useViewerOwner(lifecycle, ports, holder);
+  return <ViewerPage viewer={owner} viewRef={containerRef} view={container} resources={resources} onReturn={onReturn} />;
+}
+
 /** A failure the shell reports itself, with its original cause. */
 function FailureAlert({ testId, children, cause }: { readonly testId: string; readonly children: ReactNode; readonly cause: unknown }) {
   return (
@@ -64,6 +78,10 @@ export function App({ ports }: { readonly ports: AppPorts }) {
   const [openFailure, setOpenFailure] = useState<{ readonly cause: unknown } | null>(null);
   const [lifecycle] = useState(() => createSyntheticDemoLifecycle({
     onCleanupFailure: cause => { setFlow(state => nextAppFlow(state, { type: 'demo-release-failed', cause })); },
+    reportError: ports.reportError,
+  }));
+  const [viewerLifecycle] = useState(() => createViewerLifecycle({
+    onCleanupFailure: cause => { setFlow(state => nextAppFlow(state, { type: 'viewer-release-failed', cause })); },
     reportError: ports.reportError,
   }));
   const go = (input: AppFlowInput): void => { setFlow(state => nextAppFlow(state, input)); };
@@ -100,6 +118,12 @@ export function App({ ports }: { readonly ports: AppPorts }) {
           until the page is reloaded.
         </FailureAlert>
       )}
+      {flow.viewerFailure && (
+        <FailureAlert testId="viewer-cleanup-failure" cause={flow.viewerFailure.cause}>
+          <strong>Releasing the resource viewer&apos;s resources could not be confirmed.</strong> The viewer cannot be opened
+          again until the page is reloaded; import and the synthetic demo are unaffected.
+        </FailureAlert>
+      )}
       {openFailure && flow.screen === 'menu' && (
         <FailureAlert testId="open-demo-failure" cause={openFailure.cause}>
           <strong>The synthetic demo could not be opened.</strong>
@@ -109,6 +133,7 @@ export function App({ ports }: { readonly ports: AppPorts }) {
         <MainMenuPage
           focusTarget={flow.focusTarget}
           demoBlocked={demoBlocked}
+          viewerBlocked={flow.viewerFailure !== null}
           resources={snapshot}
           onStartDemo={openDemo}
           onOpenImport={() => { go({ type: 'open-import' }); }}
@@ -118,7 +143,19 @@ export function App({ ports }: { readonly ports: AppPorts }) {
         />
       )}
       {flow.screen === 'import' && <ImportScreen ports={ports} holder={holder} resources={snapshot} onReturn={returnToMenu} />}
-      {flow.screen === 'viewer' && <ViewerPage onReturn={returnToMenu} />}
+      {flow.screen === 'viewer' && (
+        <ViewerScreen
+          lifecycle={viewerLifecycle}
+          ports={ports}
+          holder={holder}
+          resources={snapshot}
+          onReturn={() => {
+            // Release before leaving, so a synchronous release failure is latched before the menu appears.
+            viewerLifecycle.close();
+            returnToMenu();
+          }}
+        />
+      )}
       {flow.screen === 'demo' && (
         <DemoScreen
           key={flow.demoVisit}

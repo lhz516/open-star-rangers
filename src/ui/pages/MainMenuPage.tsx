@@ -17,6 +17,8 @@ export interface MainMenuPageProps {
   readonly focusTarget: AppFocusTarget | null;
   /** A cleanup failure is latched, so the demo cannot be started. */
   readonly demoBlocked: boolean;
+  /** A viewer release failure is latched, so the viewer cannot be opened. */
+  readonly viewerBlocked: boolean;
   /** The resource holder's snapshot; null until the holder exists. */
   readonly resources: ResourceHolderSnapshot | null;
   readonly onStartDemo: () => void;
@@ -28,7 +30,7 @@ export interface MainMenuPageProps {
 }
 
 export function MainMenuPage({
-  focusTarget, demoBlocked, resources, onStartDemo, onOpenImport, onOpenViewer, onRestore, onSave,
+  focusTarget, demoBlocked, viewerBlocked, resources, onStartDemo, onOpenImport, onOpenViewer, onRestore, onSave,
 }: MainMenuPageProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   const demoEntry = useRef<HTMLButtonElement>(null);
@@ -86,10 +88,13 @@ export function MainMenuPage({
         </li>
         {held !== null && (
           <li>
-            <button ref={viewerEntry} type="button" aria-describedby="viewer-entry-description" onClick={onOpenViewer}>
+            <button ref={viewerEntry} type="button" disabled={viewerBlocked} aria-describedby="viewer-entry-description" onClick={onOpenViewer}>
               View resources
             </button>
-            <p id="viewer-entry-description">Inspect the resources held in this page.</p>
+            <p id="viewer-entry-description">
+              Inspect the resources held in this page.
+              {viewerBlocked && ' Unavailable: an earlier viewer cleanup failed, so the viewer cannot be opened until the page is reloaded.'}
+            </p>
           </li>
         )}
         {restorable && (

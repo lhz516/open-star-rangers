@@ -10,6 +10,7 @@ function state(screen: AppScreen, locked: boolean, demoVisit = 3): AppFlowState 
   return Object.freeze({
     screen, demoVisit, focusTarget: screen === 'menu' ? 'demo-entry' : null,
     cleanupFailure: locked ? Object.freeze({ cause: FIRST }) : null,
+    viewerFailure: null,
   });
 }
 
@@ -26,7 +27,7 @@ const failed = (cause: unknown) => ({ type: 'demo-release-failed', cause }) as c
 
 describe('app flow', () => {
   it('starts on the menu with no visit, focus target or failure, frozen', () => {
-    expect(INITIAL_APP_FLOW).toEqual({ screen: 'menu', demoVisit: 0, focusTarget: null, cleanupFailure: null });
+    expect(INITIAL_APP_FLOW).toEqual({ screen: 'menu', demoVisit: 0, focusTarget: null, cleanupFailure: null, viewerFailure: null });
     expect(Object.isFrozen(INITIAL_APP_FLOW)).toBe(true);
   });
 
@@ -119,7 +120,7 @@ describe('app flow', () => {
 
   it('keeps the first cause and later navigation focus through repeated failures', () => {
     const fromDemo = run(INITIAL_APP_FLOW, OPEN_DEMO, failed(FIRST), failed(LATER), RETURN);
-    expect(fromDemo).toEqual({ screen: 'menu', demoVisit: 1, focusTarget: 'menu-heading', cleanupFailure: { cause: FIRST } });
+    expect(fromDemo).toEqual({ screen: 'menu', demoVisit: 1, focusTarget: 'menu-heading', cleanupFailure: { cause: FIRST }, viewerFailure: null });
     expect(nextAppFlow(fromDemo, OPEN_DEMO)).toBe(fromDemo);
     const imported = run(fromDemo, OPEN_IMPORT, RETURN);
     expect(imported).toMatchObject({ screen: 'menu', focusTarget: 'import-entry' });
@@ -128,5 +129,20 @@ describe('app flow', () => {
     // A failure delivered on the menu after returning moves focus to the heading.
     const late = run(INITIAL_APP_FLOW, OPEN_DEMO, RETURN, failed(FIRST));
     expect(late).toMatchObject({ screen: 'menu', focusTarget: 'menu-heading', cleanupFailure: { cause: FIRST } });
+  });
+
+  it('latches a viewer release failure for the viewer only, keeping the first cause', () => {
+    const viewerFailed = (cause: unknown) => ({ type: 'viewer-release-failed', cause }) as const;
+    const left = run(INITIAL_APP_FLOW, OPEN_VIEWER, viewerFailed(FIRST), viewerFailed(LATER), RETURN);
+    expect(left).toEqual({ screen: 'menu', demoVisit: 0, focusTarget: 'menu-heading', cleanupFailure: null, viewerFailure: { cause: FIRST } });
+    expect(Object.isFrozen(left.viewerFailure)).toBe(true);
+    expect(nextAppFlow(left, OPEN_VIEWER)).toBe(left);
+    // Import and the demo stay available, and their returns keep their own focus.
+    expect(run(left, OPEN_IMPORT, RETURN)).toMatchObject({ screen: 'menu', focusTarget: 'import-entry', viewerFailure: { cause: FIRST } });
+    expect(run(left, OPEN_DEMO, RETURN)).toMatchObject({ screen: 'menu', demoVisit: 1, focusTarget: 'demo-entry' });
+    // Delivered on the menu after returning, as when an audio close is rejected later, it moves focus to the heading.
+    const late = run(INITIAL_APP_FLOW, OPEN_VIEWER, RETURN);
+    expect(late.focusTarget).toBe('viewer-entry');
+    expect(nextAppFlow(late, viewerFailed(FIRST))).toMatchObject({ focusTarget: 'menu-heading', viewerFailure: { cause: FIRST } });
   });
 });

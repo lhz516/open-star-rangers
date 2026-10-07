@@ -51,7 +51,7 @@ export interface ViewerAudio {
   stopAll(): void;
   /** Drops the pending audition, as when the viewer is left or the package is replaced. */
   cancelPending(): void;
-  /** Frozen, and the same object until the next change. */
+  /** Frozen, and the same object until the next change; bound, as `subscribe` is. */
   getSnapshot(): ViewerAudioSnapshot;
   subscribe(listener: () => void): () => void;
   /** Releases the controller and resolves with how the audio context closed. Repeatable; the same promise each time. */
@@ -222,16 +222,15 @@ class Audio implements ViewerAudio {
     this.#publish();
   }
 
-  getSnapshot(): ViewerAudioSnapshot {
-    return this.#snapshot;
-  }
+  // Bound, so React's useSyncExternalStore can take them as they are.
+  readonly getSnapshot = (): ViewerAudioSnapshot => this.#snapshot;
 
-  subscribe(listener: () => void): () => void {
+  readonly subscribe = (listener: () => void): (() => void) => {
     if (this.#disposed) return () => undefined;
     const entry = { listener };
     this.#listeners.add(entry);
     return () => { this.#listeners.delete(entry); };
-  }
+  };
 
   dispose(): Promise<AudioCloseOutcome> {
     if (!this.#disposed) {
