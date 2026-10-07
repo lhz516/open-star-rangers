@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # 项目进度
@@ -71,7 +71,7 @@ updated: 2026-10-06
 
    下一步按[推荐执行顺序](./plan/p2/tasks.md#推荐执行顺序)：
    - 批次 4、5 已完成。合入后作业阶段为 `identify-source` → `convert-graphics` → `convert-logic` → `convert-audio` → `convert-models`，协议版本 5，四个组共用同一包身份；
-   - 批次 6：P2-11（真实导入流程与最小资源查看器）的 spec 与 goal 已批准，正在按 [goal](./plan/p2/11/goal.md#子任务跟踪) 执行。P2-10 缓存接入导入流程、资源的 Three.js 消费适配与实际预览都归 P2-11；其中 19 需要用户在真实机器上核对。效果贴图坐标的研究（15）已确认映射规则；16 开始前，需由用户决定跨接缝面的显示方式与 32 个旋转映射的处理。同一研究发现 P2-06 的碎片面表解析有误，需在 09 之前安排修正（见 goal [执行记录](./plan/p2/11/goal.md#执行记录)）。
+   - 批次 6：P2-11（真实导入流程与最小资源查看器）的 spec 与 goal 已批准，正在按 [goal](./plan/p2/11/goal.md#子任务跟踪) 执行。P2-10 缓存接入导入流程、资源的 Three.js 消费适配与实际预览都归 P2-11。除用户实机核对（19）与最终对齐（20）外，其余子任务已完成：效果贴图按研究（15）确认的映射显示，导弹只用第 0 个旋转，跨接缝面的插值未确认（用户决定，见 goal [执行记录](./plan/p2/11/goal.md#执行记录)）。下一步由用户按[本地导入指南](./guides/local-import.md#用户实机核对)完成 19，然后执行最终对齐。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（阵营、基地能力、结果和空间语义）在 P2 中继续，模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
 4. P3 行为研究新增 U-031：战役被毁可进入救援，真实失败/重试条件仍未确认，见 [B-005](./original/behavior/B-005-campaign-rescue.md)；不复用练习模式被毁即失败。
