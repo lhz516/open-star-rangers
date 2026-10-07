@@ -125,7 +125,7 @@ updated: 2026-10-06
 | [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
 | [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | completed |
 | [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | completed |
-| [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | pending |
+| [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | completed |
 | [24-debris-face-pairs.md](./subtasks/24-debris-face-pairs.md) | — | pending |
 | [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24 | pending |
 
