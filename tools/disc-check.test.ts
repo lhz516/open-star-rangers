@@ -100,7 +100,11 @@ function trackedOpener(options: {
         return source.read(offset, length);
       },
       close: () => {
-        if (options.failClose === 'sync-first' && first) throw new Error(`close ${directory}`);
+        if (options.failClose === 'sync-first' && first) {
+          // Release the real file anyway, so the simulated failure leaks no descriptor into later files of the worker.
+          void source.close().catch(() => undefined);
+          throw new Error(`close ${directory}`);
+        }
         return source.close().then(() => {
           closed.push(path);
           if (options.failClose === 'async') throw new Error(`close ${directory}`);

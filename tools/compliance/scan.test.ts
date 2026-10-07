@@ -111,4 +111,33 @@ describe('complete four-scope original isolation', () => {
     mkdirSync(join(root, 'subdirectory'));
     expect(scanOriginal(join(root, 'subdirectory'), blacklist).findings[0].code).toBe('repository-root');
   }));
+  it('reads index objects in one batch, and fails a missing object or mismatched batch output', async () => fixture((root, write) => {
+    setup(root, write);
+    write('second.txt', syntheticBytes);
+    git(root, 'add', 'second.txt');
+    const batches: string[] = [];
+    const scan = (replace: (output: Buffer, input: string) => Buffer) => scanOriginal(root, blacklist, {
+      git: (args, input) => {
+        if (args[0] !== 'cat-file') return runGit(root, args, input);
+        batches.push(input ?? '');
+        return replace(runGit(root, args, input), input ?? '');
+      },
+    });
+    const index = (result: ReturnType<typeof scanOriginal>) => result.findings.filter(finding => finding.scope === 'index');
+    const actual = scan(output => output);
+    expect(batches).toHaveLength(1);
+    expect(actual.counts.index).toEqual({ checked: 3, completed: true });
+    expect(index(actual)).toEqual([expect.objectContaining({ code: 'original-hash', path: 'second.txt' })]);
+    // The second requested object (sorted index order: .gitignore, second.txt, tracked.txt) is reported missing.
+    const missing = scan((_output, input) => {
+      const objects = input.trim().split('\n');
+      return Buffer.concat([runGit(root, ['cat-file', '--batch'], `${objects[0]}\n`), Buffer.from(`${objects[1]} missing\n`),
+        runGit(root, ['cat-file', '--batch'], `${objects[2]}\n`)]);
+    });
+    expect(missing.counts.index.completed).toBe(false);
+    expect(index(missing)).toEqual([expect.objectContaining({ code: 'git-failed', path: 'second.txt' })]);
+    const truncated = scan(output => output.subarray(0, output.length - 2));
+    expect(truncated.counts.index.completed).toBe(false);
+    expect(index(truncated)).toEqual([expect.objectContaining({ code: 'git-batch' })]);
+  }));
 });

@@ -25,8 +25,8 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 |---|---|
 | `pnpm dev` | 启动 Vite 开发服务器 |
 | `pnpm build` | 生产构建及严格分发许可声明，输出到 `dist/` |
-| `pnpm typecheck` | 分别用四个 tsconfig 做类型检查（见下） |
-| `pnpm lint` | ESLint，包含模块边界与确定性规则 |
+| `pnpm typecheck` | 分别用四个 tsconfig 做增量类型检查（见下） |
+| `pnpm lint` | ESLint（带缓存），包含模块边界与确定性规则 |
 | `pnpm test` | Vitest 单元测试 |
 | `pnpm check` | 依次运行以上四项检查，提交前使用 |
 | `pnpm test:e2e` | 先构建当前代码，再运行独立的本地 Chromium 浏览器回归；不属于 `pnpm check` |
@@ -35,6 +35,8 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | `pnpm check:compliance` | 先当前build，再执行两类检查，任一失败整体非零 |
 
 `tools/` 中的研究脚本直接用 `node tools/<脚本>.ts` 运行，见 [tools](../guides/tools.md)。
+
+`pnpm typecheck` 与 `pnpm lint` 只重新检查变化的文件：各 tsconfig 启用 `incremental`，构建信息写入 `node_modules/.cache/tsc/`；ESLint 按文件内容缓存于 `node_modules/.cache/eslint/`。缓存键覆盖配置与依赖，自定义插件 `osr` 的版本取 `eslint.config.js` 与 [original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 的内容摘要，规则源码一变缓存即失效。怀疑缓存有误时删除 `node_modules/.cache` 即回到全量检查。
 
 ### 构建许可声明
 
@@ -114,7 +116,9 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
 ## 测试
 
-- Vitest 在同一 runner 中使用一个 worker 按文件串行执行（`fileParallelism: false`、`maxWorkers: 1`）。工程边界与合规集成测试会启动真实编译/构建/子进程，并发文件执行会造成资源争用和 deadline 超时；串行调度不缩小测试发现范围、不增加 timeout，也不影响独立 Playwright runner。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护。
+- Vitest 用两个项目运行全部 `src/**/*.test.ts` 与 `tools/**/*.test.ts`（[vite.config.ts](../../vite.config.ts)）。顶层调用 `vi.mock(` 替换模块的文件进入 isolated 项目，各自拥有模块图；其余文件在 shared 项目中关闭隔离（`isolate: false`），同一 worker 复用模块图，免去每个文件重新启动与导入，这原是全量测试的主要耗时。配置启动时扫描文件自动分组，新增 mock 文件无需登记。`restoreMocks` 在每个用例后还原 spy；shared 项目中的测试不得依赖其他文件留下或改动的模块级状态。
+- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。
+- 集成测试只为真实接线启动构建与子进程，其余在进程内覆盖：合规 CLI 回归只跑一次真实聚合构建，原版扫描各作用域与 inventory 校验分别由 [scan.test.ts](../../tools/compliance/scan.test.ts)、[distribution.test.ts](../../tools/compliance/distribution.test.ts) 覆盖；构建插件回归在首次真实审计后复用其结果做失败构建。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
 - **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.ts` 在代码中生成，内容契约的合成包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。工程边界回归会检查 `src/content` 与 `src/original-data` 的测试和 test-support 文件：
@@ -125,14 +129,15 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   这项检查用于防止无意中读取文件，并不针对刻意混淆的代码。
 - 调色板、图像记录、MFDD 列表、点阵字体与驾驶舱字体目录的源结构读取属于 [source-graphics.ts](../../src/original-data/conversion/source-graphics.ts)，`tools/nob-check.ts` 只负责调度与报告；合成样本覆盖目录顺序与恰为 3 项的约束。
 - Ghidra 编译器规范补丁另有标准库 `unittest` 测试：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`，验证 XML 结构变换、备份与幂等性。
-- 工程边界回归还启动隔离的预期失败 Vitest 进程，断言其命中真正的失败检查并非零退出；该失败是测试输入，正常测试命令仍须成功。临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。
+- 工程边界回归的临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。各 TypeScript 程序共用已安装包声明文件（如 `lib.dom.d.ts`）的解析结果，样本项目只另行解析自身源码；ESLint 样本矩阵按文件合成一次 lint，逐行核对每个样本命中的规则。真实纯模块程序的类型诊断由 `pnpm typecheck` 报告，回归只核对其中没有 DOM/Node 声明。断言失败使 Vitest 非零退出是 Vitest 自身的契约，不另设子进程回归。
 - 快速只跑边界回归：`pnpm exec vitest run tools/engineering-boundaries.test.ts`。资源缓存的 DOM-free 逻辑：`pnpm exec vitest run src/platform/storage`；Node 中没有 IndexedDB，也不引入模拟实现，事务、配额、中断与刷新恢复只在浏览器 runner 中验证。不要用测试数量代替覆盖证明；当前证据见 [P1-01 subtasks](../plan/p1/01/goal.md#子任务跟踪)。
 
 ### 本地浏览器 runner
 
 [Playwright 配置](../../playwright.config.ts)使用已有兼容 Chrome（channel `chrome`），不自动下载浏览器。需要使用其他已安装 Chromium 时设置 `OSR_E2E_EXECUTABLE` 为其可执行文件。缺浏览器是明确失败，不 skip。运行需要普通 WebGL 2 和原生 headed 桌面能力；完整验收见 [P1-10 goal](../plan/p1/10/goal.md)，bootstrap 通过不代表后续生命周期/渲染验收通过。
 
-- 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。
+- 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。不能改为多 worker：[fast-refresh](../../e2e/fast-refresh.spec.ts) 编辑真实源码，共享的开发服务器会把热更新推给所有打开的页面，曾替换并行用例中运行的导入任务 owner。
+- 开发服务器启动时预先转换页面与导入 Worker 的模块图（`server.warmup`）。Worker 经 URL 载入，不在页面的静态导入图中，否则首个导入任务要等按需转换。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
 - **生产预览的 CSP（P2-11 S-11、技术决定 11）：** [vite.config.ts](../../vite.config.ts) 只让 `vite preview` 发送 [preview-csp.ts](../../tools/preview-csp.ts) 中的严格策略：
@@ -151,7 +156,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
 - **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
-- 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
+- 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development）。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
 - 联合资源测试逐轮打印context扩展能力；缺可选`WEBGL_lose_context`的context以annotation明确“context-loss未验证”，不冒称lost。可用时逐个断言实际lost；完整必需测量及本机结果见[04证据](../plan/p1/10/subtasks/04-joint-resource-regression.md#完成证据)。

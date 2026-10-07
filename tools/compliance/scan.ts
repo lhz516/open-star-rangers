@@ -8,12 +8,14 @@ import { ComplianceError, diagnostic, relativePath, report, sha256, type Count, 
 export type ScanScope = 'worktree' | 'index' | 'untracked' | 'build';
 export interface ScanOptions {
   readonly onRead?: (scope: ScanScope, path: string) => void;
-  readonly git?: (args: readonly string[]) => Buffer;
+  readonly git?: (args: readonly string[], input?: string) => Buffer;
 }
 
-export function runGit(root: string, args: readonly string[]): Buffer {
+export function runGit(root: string, args: readonly string[], input?: string): Buffer {
   try {
-    return execFileSync('git', [...args], { cwd: root, maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    return execFileSync('git', [...args], {
+      cwd: root, maxBuffer: 512 * 1024 * 1024, ...(input === undefined ? { stdio: ['ignore', 'pipe', 'pipe'] } : { input, stdio: ['pipe', 'pipe', 'pipe'] }),
+    });
   } catch (cause) {
     const status = typeof cause === 'object' && cause !== null && 'status' in cause ? String(cause.status) : diagnostic(cause).code;
     throw new ComplianceError('git-failed', `Git ${args[0]} failed (exit ${status}); required range not completed`);
@@ -63,6 +65,26 @@ function hashFile(root: string, path: string, beforeRead: () => void): string {
   } finally { closeSync(fd); }
 }
 
+/** Contents of index objects from one `git cat-file --batch` run, in request order; `undefined` marks a missing one. */
+function batchBlobs(git: (args: readonly string[], input?: string) => Buffer, objects: readonly string[]): (Buffer | undefined)[] {
+  if (objects.length === 0) return [];
+  const output = git(['cat-file', '--batch'], `${objects.join('\n')}\n`);
+  let offset = 0;
+  return objects.map(object => {
+    const end = output.indexOf(0x0a, offset);
+    const header = end < 0 ? '' : output.subarray(offset, end).toString('utf8');
+    if (header === `${object} missing`) {
+      offset = end + 1;
+      return undefined;
+    }
+    const match = /^([a-f0-9]{40}|[a-f0-9]{64}) blob (\d+)$/.exec(header);
+    const size = match ? Number(match[2]) : -1;
+    if (!match || match[1] !== object || output[end + 1 + size] !== 0x0a) throw new ComplianceError('git-batch', 'Git batch output does not match the requested index objects');
+    offset = end + size + 2;
+    return output.subarray(end + 1, end + 1 + size);
+  });
+}
+
 function buildFiles(root: string, path = 'dist'): string[] {
   const filename = safeFile(root, path);
   const stat = lstatSync(filename);
@@ -74,7 +96,7 @@ function buildFiles(root: string, path = 'dist'): string[] {
 
 export function scanOriginal(directory: string, blacklist: Blacklist, options: ScanOptions = {}) {
   const root = resolve(directory);
-  const git = options.git ?? ((args: readonly string[]) => runGit(root, args));
+  const git = options.git ?? ((args: readonly string[], input?: string) => runGit(root, args, input));
   const counts: Record<ScanScope, Count> = {
     worktree: { checked: 0, completed: false }, index: { checked: 0, completed: false },
     untracked: { checked: 0, completed: false }, build: { checked: 0, completed: false },
@@ -109,17 +131,32 @@ export function scanOriginal(directory: string, blacklist: Blacklist, options: S
   for (const scope of ['worktree', 'index', 'untracked', 'build'] as const) {
     try {
       if (scope === 'index') {
-        for (const record of nulPaths(git(['ls-files', '--stage', '-z']))) {
-          const tab = record.indexOf('\t');
-          const header = /^(\d{6}) ([a-f0-9]{40}|[a-f0-9]{64}) ([0-3])$/.exec(record.slice(0, tab));
-          const path = relativePath(record.slice(tab + 1));
-          if (!header || tab < 0 || header[3] !== '0' || !['100644', '100755'].includes(header[1])) {
-            throw new ComplianceError('index-entry', 'Index requires merged regular-file entries', path);
+        // Entries up to the first rejected one or failed read hook are read in one Git process and checked in order;
+        // then the rejection ends the scope, as if each entry had been read on its own.
+        const entries: { path: string; object: string }[] = [];
+        let stop: unknown;
+        try {
+          for (const record of nulPaths(git(['ls-files', '--stage', '-z']))) {
+            const tab = record.indexOf('\t');
+            const header = /^(\d{6}) ([a-f0-9]{40}|[a-f0-9]{64}) ([0-3])$/.exec(record.slice(0, tab));
+            const path = relativePath(record.slice(tab + 1));
+            if (!header || tab < 0 || header[3] !== '0' || !['100644', '100755'].includes(header[1])) {
+              throw new ComplianceError('index-entry', 'Index requires merged regular-file entries', path);
+            }
+            if (path.split('/')[0].toLowerCase() === 'local') throw new ComplianceError('forbidden-local', 'Index local paths are not read', path);
+            options.onRead?.(scope, path);
+            entries.push({ path, object: header[2] });
           }
-          if (path.split('/')[0].toLowerCase() === 'local') throw new ComplianceError('forbidden-local', 'Index local paths are not read', path);
-          options.onRead?.(scope, path);
-          check(scope, path, readDigest(path, () => sha256(git(['cat-file', 'blob', header[2]]))));
+        } catch (cause) { stop = cause; }
+        const blobs = batchBlobs(git, entries.map(entry => entry.object));
+        for (const [index, { path }] of entries.entries()) {
+          check(scope, path, readDigest(path, () => {
+            const blob = blobs[index];
+            if (!blob) throw new ComplianceError('git-failed', 'Git cat-file found no index object; required range not completed');
+            return sha256(blob);
+          }));
         }
+        if (stop !== undefined) throw stop;
       } else {
         const files = scope === 'build' ? buildFiles(root) : [...new Set(nulPaths(git(scope === 'worktree'
           ? ['ls-files', '--cached', '-z'] : ['ls-files', '--others', '--exclude-standard', '-z'])))].sort();

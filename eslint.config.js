@@ -1,4 +1,6 @@
 // Lint rules enforce the module boundaries of master plan §4.1 and the determinism rules of §5.
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import js from '@eslint/js';
 import globals from 'globals';
@@ -40,6 +42,10 @@ const restrictedModuleSyntax = (pattern, messages) => [
 // a Worker entry; the capability families themselves are checked only in workers and original-data, since every other
 // layer is kept away from original-data as a whole.
 const repositoryRoot = import.meta.dirname;
+// `eslint --cache` identifies a plugin only by its name and version, so the version follows the rule sources.
+const ruleSources = createHash('sha256');
+for (const file of ['eslint.config.js', 'tools/original-data-capabilities.ts']) ruleSources.update(readFileSync(resolve(repositoryRoot, file)));
+const osrMeta = { name: 'osr', version: ruleSources.digest('hex').slice(0, 16) };
 const projectPath = (file) => relative(repositoryRoot, file).split(sep).join('/');
 
 const literalSpecifier = (source) => {
@@ -198,7 +204,7 @@ export default tseslint.config(
     // P2-04 AC-11: no production module depends on tests, test support or tools.
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
-    plugins: { osr: { rules: { 'original-data-capabilities': originalDataCapabilities } } },
+    plugins: { osr: { meta: osrMeta, rules: { 'original-data-capabilities': originalDataCapabilities } } },
     rules: { 'osr/original-data-capabilities': 'error' },
   },
   {
