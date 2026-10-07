@@ -260,7 +260,7 @@ Bounded read-only analysis for P2-06/11 (2026-10-06): `-noanalysis -readOnly`, w
 | Effect | Sources the executable uses | Status |
 |---|---|---|
 | Gun projectile | `0x3fa30` builds one geometry per RENS record (count at +0x5C, 28-byte records at +0x58) with `0x3f758` or `0x3f8c4`, chosen by the record's first field. Both builders only create and fill geometry: they set no texture and load no entry. `0x3fb1c` attaches the record the firing weapon selects | Confirmed (code): procedural geometry parameterised by RENS, with no MESH, MODL or image. Likely (screenshots): gun fire appears as thin coloured line segments |
-| Missile | `0x444ac` builds, for each missile type in a table in the executable's data object (0x7C-byte records at `0x1754a0`, count at `0x1758fc`), body geometry with `0x44848` and `0x44674`, which only create geometry, and one element with `0x44a80`, textured with TEX 10377. `0x44cd8` precomputes 32 rotated texture mappings and loads TEX 10377 by constant ID. `0x4457c` attaches the body and the textured element with one of the 32 rotations chosen at random | Confirmed (code): TEX 10377 plus procedural geometry from executable tables. What the textured element depicts is Unconfirmed, because no capture shows a missile in flight |
+| Missile | `0x444ac` builds, for each missile type in a table in the executable's data object (0x7C-byte records at `0x1754a0`, count at `0x1758fc`), body geometry with `0x44848` and `0x44674`, which only create geometry, and one element with `0x44a80`, textured with TEX 10377. `0x44cd8` precomputes 32 rotated texture mappings and loads TEX 10377 by constant ID; only rotation 0 is applied, to the element as it is built. `0x4457c` attaches the body and a copy of the textured element, which keeps rotation 0's texture coordinates (corrected by P2-11/15, see [effect texture mappings](#effect-texture-mappings-p2-1115-research)) | Confirmed (code): TEX 10377 plus procedural geometry from executable tables. What the textured element depicts is Unconfirmed, because no capture shows a missile in flight |
 | Debris (fragment objects) | `0x3e430` loads TEX 10151 into `0x187014` and MODL 10383 into `0x187010` by constant ID. It then builds three untextured geometries (`0x3e9db`, cells `0x1752a0`–`0x1752a8`) and two geometries that are textured with TEX 10151 when textures are enabled (`0x3eab4`, cells `0x1752ac` and `0x1752b0`), all from constant vertex tables in the executable. Callback `0x3e590` draws a fragment by its discriminator: 0, one of the three untextured geometries; 1, one of the two TEX 10151 geometries; 2, one list-1 part of MODL 10383 with its texture; 3, one or three list-1 parts of the source object's M2ID model | Confirmed (code) |
 
 **Confirmed (destruction fragments), Unconfirmed (other fragment events):** the explosion constructor `0x23ac8` calls producer `0x24d78` in mode 3 when the destroyed object is a craft kind (bits 0–19), so a destroyed craft sheds fragments from its own model's list 1 (discriminator 3). Dispatcher event `0x10` calls the producer with a mode from the event payload, giving discriminators 1 and 2 for kinds in mask `0x91780`. Which code posts that event was not found in this bounded search, so when discriminator 1 and 2 fragments appear is Unconfirmed. Discriminator 0 is not emitted by this producer. The external-view capture `local/StarRang/captures/srangers_044.png` shows small textured fragments next to an explosion animation (Likely fragments).
@@ -296,11 +296,15 @@ Each builder copies a 4-vertex template and a face list from the code object (`0
 | +0x6C | f32 × 3 | Textured element: `0x44a80` generates a ring of 6 vertices, textured with TEX 10377 |
 | +0x78 | f32 | Zero selects the element's face list template `0x44334`, otherwise `0x44374`; non-zero also adds the element `0x44be8` (template `0x443f0`); set in 3 records |
 
-Across all 9 records, segment counts are small integers, colours fit 24 bits and the floats are finite. `0x44cd8` precomputes 32 rotated texture mappings for the element, and `0x4457c` attaches one at random. The weapon parameter's first word selects the type, clamped to the last one.
+Across all 9 records, segment counts are small integers, colours fit 24 bits and the floats are finite. `0x44cd8` precomputes 32 rotated texture mappings for the element, of which only rotation 0 is applied ([effect texture mappings](#effect-texture-mappings-p2-1115-research)). The weapon parameter's first word selects the type, clamped to the last one.
 
-**Confirmed (debris shapes):** `0x3e9db` builds an untextured 6-vertex shape from code-object templates (vertices `0x3e2a0`, a per-vertex list of 18 words `0x3e2e8`, face list `0x3e330`) at a given scale. `0x3e430` calls it with three immediate scale constants. `0x3eab4` does the same from `0x3e368`, `0x3e3b0` and `0x3e3f8`, computes a planar texture mapping from its bounding box, and binds TEX 10151 when a runtime flag is set (Likely the texture setting). `0x3e430` calls it with two immediate scale constants. The per-vertex list is passed where the projectile and missile builders pass none; that it holds vertex normals is Likely.
+**Confirmed (debris shapes):** `0x3e9db` builds an untextured 6-vertex shape from code-object templates (vertices `0x3e2a0`, a per-vertex list of 18 words `0x3e2e8`, face list `0x3e330`) at a given scale. `0x3e430` calls it with three immediate scale constants. `0x3eab4` does the same from `0x3e368`, `0x3e3b0` and `0x3e3f8`, computes a cylindrical texture mapping from its bounding box (recorded as planar before P2-11/15), and binds TEX 10151 when a runtime flag is set (Likely the texture setting). `0x3e430` calls it with two immediate scale constants. The per-vertex list is passed where the projectile and missile builders pass none. It holds vertex normals (Confirmed, code, P2-11/15): `0x80c14` copies it into the mesh's normal array and normalises each entry; without it, the normals are averaged from the faces.
 
-**Confirmed (face lists):** face lists are a sequence of {corner count, vertex indices} ending with 0. This holds for the generated lists (code) and for all 8 templates: a local check with the product reader (P2-06/18) found that each template parses to its last word, which is the only terminating 0. The projectile, fin and extra element templates hold triangles, and the element templates quadrilaterals. Each debris template holds one face of 6 corners and one of 5, so the renderer accepts polygons with more than 4 corners.
+**Confirmed (face lists, corrected by P2-11/15):** a face list is a sequence of faces ending with 0. Each face is a corner count followed by one entry per corner. In `0x80c14`, an entry is a vertex index when the builder passes no per-vertex list (normal count, ECX, is 0). Otherwise it is a pair (vertex index, normal index): both the face-count loop and the build loop read the extra word.
+
+- Every other effect builder clears ECX: the two projectile builders (`0x3f86f`, `0x3f9db`), fin (`0x447a8`), body (`0x449e0`), element (`0x44b9d`) and extra element (`0x44c9d`). Their templates hold triangles, and the element templates quadrilaterals; each parses to its last word, the only terminating 0 (P2-06/18 local check).
+- Both debris builders pass a normal count equal to the vertex count (`0x3ea73`, `0x3eb4b`). Read as pairs, each debris template is a single face of 6 corners, ending at its last word, with the normal index equal to the vertex index at every corner (P2-11/15 local check, counts only). The renderer therefore accepts polygons with more than 4 corners.
+- The reading before P2-11/15 (vertex indices only, giving one face of 6 corners and one of 5) also ends at the last word, but only by coincidence.
 
 **Builder rules (Confirmed, code; structure only, no values):** for the geometry creation call `0x80c14`, every builder passes a vertex count, a vertex array (x, y, z per vertex), an optional per-vertex list and a face list. Colour and a mode word go to `0x82340`, and a second mode word to `0x8249c`. Their values are builder constants: RENS colour for projectiles, packed record colour times a scale constant for missile bodies and fins, and immediate operands otherwise.
 
@@ -310,10 +314,10 @@ Across all 9 records, segment counts are small integers, colours fit 24 bits and
   - face j is the quadrilateral (2j, 2j + 2, 2j + 3, 2j + 1), each index taken modulo 2n;
   - the face list ends with 0.
 - **Missile fin** (parameters p0–p3): 9 vertices (0, 0, p2 + p3), (±p0, 0, p3), (0, ±p0, p3), (±p1, 0, p3), (0, ±p1, p3), in that order, with each ± pair positive first. The face list is the template.
-- **Missile element** (e0, e1, e2): for k = 0, 1, 2, with the angle accumulated by the element step constant, vertex 2k is (e0 cos θ, e0 sin θ, 0) and vertex 2k + 1 is (e1 cos θ, e1 sin θ, −e2). The face list is one of two templates, chosen by the flag. The texture mapping comes from 32 precomputed rotations.
+- **Missile element** (e0, e1, e2): for k = 0, 1, 2, with the angle accumulated by the element step constant, vertex 2k is (e0 cos θ, e0 sin θ, 0) and vertex 2k + 1 is (e1 cos θ, e1 sin θ, −e2). The face list is one of two templates, chosen by the flag. The texture mapping is rotation 0 of 32 precomputed rotations.
 - **Missile extra element:** three vertices on a circle in the plane z = −e2 + c, where c is a data-object constant. The radius is e0 + (−z) × (e1 − e0) ÷ e2, the angle is accumulated by another step constant, and the face template has one triangle.
 - **Debris:** every template vertex component is multiplied by the call's scale.
-- **Texture mappings:** the missile element's rotations and the textured debris shape's planar mapping go through `0x82ae8`. That function's semantics were not traced, so how they become texture coordinates is Unconfirmed.
+- **Texture mappings:** the missile element's rotations and the textured debris shape's mapping go through `0x82ae8`. P2-11/15 traced how they become texture coordinates; see [effect texture mappings](#effect-texture-mappings-p2-1115-research).
 
 **Builder arguments (Confirmed, code; P2-06/17, structure only):**
 
@@ -343,7 +347,7 @@ Across all 9 records, segment counts are small integers, colours fit 24 bits and
 
   The tail comparison is at `0x3f82e` (immediate at +4). Builder `0x3f8c4` has the same instruction layout 0x16C bytes later. The pairs are the unit marker and its negation for every axis.
 - **Mode words (Unconfirmed meaning):** both mode words are register arguments. Some builders set the register just before the call. Others call `0x8249c` or `0x82340` with the value still in the register from the preceding call: callees preserve registers under the Watcom convention.
-- **Textured debris mapping:** the planar mapping depends on the shape's bounding box, the double at `0x1718ea` and several immediate arguments of `0x82ae8`. P2-06 does not import it (spec technical decision 17).
+- **Textured debris mapping:** the mapping depends on the shape's bounding box, the double at `0x1718ea` and immediate arguments of `0x82ae8`, all listed in [effect texture mappings](#effect-texture-mappings-p2-1115-research). P2-06 does not import it (spec technical decision 17).
 
 **Confirmed (no load-time relocations):** Ghidra's relocation table (from the LE fixup records) has no entry inside any of the template, table, constant or immediate-operand ranges named above. The relocations next to the debris scale immediates belong to the following store instructions.
 
@@ -352,6 +356,118 @@ Across all 9 records, segment counts are small integers, colours fit 24 bits and
 Evidence: ignored `local/research/p2-06/effects/`: `NativeRange.java` and the native exports `native-projectile.txt` and `native-effects.txt`, decompilations `visual-builders.c`, `visual-inits.c` and `effect-init.c`, reference logs, and counts-only probes of RENS and the data object.
 
 Evidence: ignored `local/research/p2-06/effects/`: the read-only scripts `DecompileEntry.java` and `FindPointerValues.java`, their logs and exports, the call-target and constant scans, the structure probe `effect-resources.ts/.json` and a capture contact sheet.
+
+#### Effect texture mappings (P2-11/15 research)
+
+Bounded read-only analysis for P2-11/15 (2026-10-06) by the same method: `-noanalysis -readOnly`, with disassembly done in memory and discarded. No decompiled code is reproduced here, and no values from the game's data (its doubles, scales or tables). Two kinds of value are stated because they define the formulas, as the builder rules above do: two library constants, named by the identity they hold (1/2π, 1/π), and the immediate operands that fix each wrap's type, axes and unit scale. The wrap object's layout agrees with Microsoft's DirectX 2 documentation of `IDirect3DRM::CreateWrap` and `IDirect3DRMWrap` in the retained-mode API derived from this renderer. That agreement only supports the reading; every statement below comes from the code.
+
+**Confirmed (wrap creation `0x82ae8`):** under the Watcom register convention, EAX holds the wrap type (a byte) and EDX a reference frame handle or 0. Then come 13 floats on the stack (the callee pops 0x34 bytes), in argument order:
+
+| Arguments | Wrap object offset | Meaning |
+|---|---|---|
+| type | +0x2C (byte) | 0 flat, 1 cylinder, 2 sphere, 3 chrome |
+| frame | +0x30 | Reference frame; 0 for none |
+| ox, oy, oz | +0x34 … +0x3C | Origin O |
+| dx, dy, dz | +0x40 … +0x48 | Direction: the wrap's z axis |
+| ux, uy, uz | +0x4C … +0x54 | Up: the wrap's y axis |
+| ou, ov | +0x9C, +0xA0 | Texture origin |
+| su, sv | +0xA4, +0xA8 | Texture scale |
+
+It returns the wrap's handle. `0x92c40` builds the wrap frame:
+
+- D = normalize(direction);
+- U = normalize(up − (up · D) D);
+- R = U × D.
+
+The frame matrix has rows R, U and D, with O as translation. `0x94260` stores its inverse at +0x58; for this orthonormal case it calls `0x93e54`, which transposes and sets the translation to −(O·R, O·U, O·D). Normalisation (`0x948a4`) uses an exact reciprocal square root (`0x8777c`) and maps a zero vector to (1, 0, 0).
+
+**Confirmed (application `0x82f88` and coordinates `0x82c48`):** applying a type 3 wrap to a mesh (class "Mesh", descriptor `0x178cc8`) does nothing. For the other types, every vertex (count +0x48, array +0x50, 0x30-byte records) is expressed in the wrap frame (`0x943b0`):
+
+p = (p_x, p_y, p_z) = ((v − O)·R, (v − O)·U, (v − O)·D).
+
+u and v are then written to the vertex at +0x10 and +0x14:
+
+- **Flat (0):** u = su·p_x − ou and v = sv·p_y − ov.
+- **Cylinder (1):** a = atan2(p_x, p_y) / 2π. `0x85a8b` is FPATAN with p_x as the first operand, and the double at `0x173a25` is 1/2π. a = 0 when p_x and p_y are both ±0, and a < 0 becomes a + 1. Then u = su·a − ou and v = sv·p_z − ov.
+- **Sphere (2):** a is as for the cylinder. b = acos(p_z / |p|) / π (`0x7558a`, with 1/π at `0x173a2d`), or 0 when |p| is ±0 or |p_z / |p|| ≥ 1. Then u = su·a − ou and v = sv·b − ov.
+
+Every stored value is a 32-bit float; intermediate results are x87 values, and the FPU precision setting was not examined. Faces have a count at +0x54 and an array at +0x5C of 0x78-byte records. The application then sets each face's byte +0x54 to 0 for flat or 0xC for cylinder and sphere, and byte +0x55 to 0.
+
+The coordinates are computed once, when the wrap is applied. `0x82c48` has four call sites: two in `0x82f88` (`0x83002`, `0x83087`) and two in the relative application `0x830bc` (`0x8319e`, `0x8321f`), which no rel32 call or jump reaches. Type 3 (chrome) is computed from vertex normals by `0x82e18`, called only from `0x830bc` (`0x83174`); no effect uses it.
+
+**Confirmed (missile element: only rotation 0 is applied):**
+
+- During scene creation, `0x444ac` calls `0x44cd8` once with the rotation scale s, the double pushed at `0x444b5`/`0x444ba`. For k = 0 … 31, θₖ starts at 0 and is accumulated in double precision by the rotation angle step, the double at `0x171af8`. Wrap k has these arguments:
+
+  | Argument | Value | Source (operand at +1 unless noted) |
+  |---|---|---|
+  | Type | 1 | `MOV EAX, imm32` at `0x44d30` |
+  | Frame | none | `XOR EDX, EDX` at `0x44d2c` (no operand) |
+  | O | (0, 0, 0) | `PUSH imm8` at `0x44d35`, `0x44d2e`, `0x44d2a` |
+  | Direction | (0, 0, 1) | `PUSH imm8` at `0x44d28`, `0x44d26`; `PUSH imm32` at `0x44d21` |
+  | Up | (cos θₖ, sin θₖ, 0) | FSINCOS results stored as floats at `0x44d1e` and `0x44d18`; `PUSH imm8` at `0x44d13` |
+  | ou, ov | 0, 0 | `PUSH imm8` at `0x44d11`, `0x44d0f` |
+  | su | 1 | `PUSH imm32` at `0x44d0a` |
+  | sv | 1/s | reciprocal computed in double, stored as a float at `0x44d07` (no operand) |
+
+  The handles go to a 32-entry table at `0x175900`.
+- For a vertex at polar angle φ about the z axis (x = r cos φ, y = r sin φ, r > 0), wrap k gives u = frac((θₖ − φ) / 2π) and v = z / s.
+- `0x44a80` applies the table's first entry (`0x44bb7`, `0x44bbe`) to each type's element mesh as it builds it. A scan of every initialised block finds exactly three 32-bit words that hold an address inside the table:
+  - the teardown loop (`0x44477`);
+  - this application;
+  - the creation loop (`0x44d3c`).
+
+  Wraps 1–31 are therefore created and released but never applied.
+- `0x4457c` stores rand() mod 32 in the visual record (+0x1C), but no wrap is applied with it. It attaches a copy of the element made by `0x855f0`:
+  - the call goes through the class method at descriptor +0x20;
+  - class initialisation (`0x76470`) replaces the inherit marker `0x927a0` in that slot with the parent's entry, the generic copy `0x9274c`;
+  - `0x9274c` creates a new mesh and calls the Mesh copy method `0x7fcf0`, which copies each vertex's u and v and each face's bytes +0x54 and +0x55.
+
+  Every missile element therefore shows rotation 0's coordinates.
+
+**Confirmed (textured debris: a cylindrical mapping):**
+
+- `0x3eab4` builds the scaled shape and reads its bounding box with `0x826fc`: the minimum corner is at mesh +0x78 and the maximum at +0xCC, filled by `0x805fc` and `0x7a9b4`. It computes h = max_y − min_y and 1/h.
+- It then creates a wrap with these arguments, where K is the double at `0x1718ea`, read by the `FMUL` at `0x3eb9d`:
+
+  | Argument | Value | Source (operand at +1 unless noted) |
+  |---|---|---|
+  | Type | 1 | `MOV EAX, imm32` at `0x3ebd1` |
+  | Frame | none | `XOR EDX, EDX` at `0x3ebd8` (no operand) |
+  | O | (0, 0, 0) | `PUSH imm8` at `0x3ebda`, `0x3ebd6`, `0x3ebcf` |
+  | Direction | (0, 1, 0) | `PUSH imm8` at `0x3ebcd`; `PUSH imm32` at `0x3ebc8`; `PUSH imm8` at `0x3ebc6` |
+  | Up | (0, 0, 1) | `PUSH imm8` at `0x3ebc4`, `0x3ebc2`; `PUSH imm32` at `0x3ebbd` |
+  | ou | 0 | `PUSH imm8` at `0x3ebbb` |
+  | ov | min_y/h | computed, stored as a float at `0x3ebb8` (no operand) |
+  | su | 1 | `PUSH imm32` at `0x3ebb0` |
+  | sv | K/h | computed, stored as a float at `0x3eba6` (no operand) |
+
+  It applies the wrap once to the shape (`0x3ebe5`) and releases it (`0x3ebec`).
+- In model coordinates this gives u = frac(atan2(−x, z) / 2π), or 0 on the y axis, and v = (K·y − min_y) / h.
+- `0x3e430` builds two shapes with this rule. The scale enters only through the vertices, so in exact arithmetic both scales give the same coordinates.
+
+**Confirmed (unreachable third wrap):** in the fragment callback `0x3e590`, the discriminator 3 path holds a third wrap creation (`0x3e8cb`) and application (`0x3e8e1`). It is a cylinder built from a model part's bounding box and the double at `0x1718e2`. Its guard needs a local that every discriminator 3 path sets to 0, so it never runs, and model fragments keep their model coordinates.
+
+**Unconfirmed (not examined):** the module that `0x41c00` initialises creates four wraps for its own visuals (`0x42328`, `0x42399`, `0x4242d`, `0x424ce`; the three checked are type 2) and applies wraps at `0x41eb5` and `0x42916`. These visuals are not among the three effects.
+
+**Unconfirmed (seam interpolation):** after a cylinder wrap each vertex has a single (u, v). A face whose corners straddle the u = 0/1 seam is therefore drawn either across most of the texture or around the seam, depending on the renderer. The application gives cylinder-mapped faces byte +0x54 = 0xC. Two render preparation paths of the mesh (`0x7db10`, `0x7e640`) put bytes +0x54 and +0x55, with the texture, into each batch's state key. A third (`0x7d530`) passes them to `0x7d3c8`, which ignores them, so the rule may differ by path. The resulting command list is executed through a device method (`0x7cca3`), which was not traced, so the seam rule is Unconfirmed. The retained-mode documentation describes shortest-path interpolation enabled by separate u and v mapping flags, but this byte was not matched to them. Affected faces (counts only):
+
+- missile element, zero-flag face template (`0x44334`): 1 of its 3 faces spans more than half the texture in u at rotation 0;
+- missile element, other template (`0x44374`): 2 of its 6 faces;
+- debris: its single 6-corner face; 4 of its 6 vertices lie on the wrap axis and take u = 0.
+
+**Consequence:** the mapping inputs are static:
+
+- **Missiles:** the rotation scale and rotation angle step, plus the immediate operands above.
+- **Debris:** the template vertices and scales, the double at `0x1718ea`, plus the immediate operands above.
+
+The coordinates do not depend on runtime state. The texture setting at `0x1863c8` only decides whether TEX 10151 is bound, and the random index does not affect the texture coordinates. How faces that span the seam are displayed remains Unconfirmed.
+
+Evidence: ignored `local/research/p2-11/effect-mapping/`:
+
+- the read-only scripts `NativeRange.java`, `DecompileEntry.java`, `CallSites.java`, `FindDisp.java`, `OperandScan.java`, `ConstRefs.java`, `DumpValues.java` and `DumpString.java`;
+- the native exports `native-*.txt` and the decompilations `wrap-api.c`, `face-flags.c` and `group-state.c`;
+- the Ghidra logs and the counts-only `seam-counts.py` and `debris-faces.py`.
 
 ### Bounded runtime CODE/DATA object correlation
 
