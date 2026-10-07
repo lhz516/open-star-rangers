@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "18"
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # 18 — 本地导入指南与文档收口
@@ -34,6 +34,14 @@ updated: 2026-10-06
 ## 关键文件与契约
 
 - 计划新增 `docs/guides/local-import.md`；修改 [README.md](../../../../../README.md)、[source-structure.md](../../../../engineering/source-structure.md)、[engineering/README.md](../../../../engineering/README.md)、[engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts)。
+
+## 写入范围
+
+- `docs/guides/local-import.md`：计划新增的本地导入指南。
+- `README.md`：导入与查看器的描述。
+- `docs/engineering/source-structure.md`、`docs/engineering/README.md`：核对并补全。
+- `docs/README.md`、`docs/guides/tools.md`：指向新指南的位置（如适用）。
+- `tools/engineering-boundaries.test.ts`：网络 API 边界检查。
 
 ## 验收标准
 

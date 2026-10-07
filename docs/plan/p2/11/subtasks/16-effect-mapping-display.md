@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "16"
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # 16 — 效果贴图坐标的表示与显示
@@ -38,6 +38,18 @@ updated: 2026-10-06
 - 修改 [effect-payload.ts](../../../../../src/content/effects/effect-payload.ts)、[expand-effects.ts](../../../../../src/content/effects/expand-effects.ts)、[effect-step.ts](../../../../../src/original-data/conversion/effect-step.ts)、[effect-declarations.ts](../../../../../src/original-data/conversion/effect-declarations.ts)、[production-effects.ts](../../../../../src/original-data/conversion/production-effects.ts)、[convert-models.ts](../../../../../src/original-data/conversion/convert-models.ts) 的 `MODEL_CONVERTER_COMPONENT`、01 的生产包配置，以及 09 的效果渲染；同步各自的测试与测试支持。
 - 本地脚本放在被忽略的 `local/research/p2-11/`。
 - 文档：[源码结构](../../../../engineering/source-structure.md)中的效果 payload 布局，以及 [executable](../../../../original/formats/executable.md) 的本地核对结论。
+
+## 写入范围
+
+- `src/content/`：效果 payload、展开与契约校验，以及合成内容测试支持。
+- `src/original-data/`：效果步骤、声明、生产效果、模型转换器组件与转换测试支持。
+- `src/workers/`：生产包配置与依赖 `ConverterVersion` 的测试。
+- `src/app/`：查看器条目与解析、测试入口，以及依赖 `ConverterVersion` 的测试。
+- `src/render/viewer/`、`src/ui/viewer/`：效果贴图的显示与标记。
+- `e2e/viewer-page.spec.ts`、`e2e/import-worker.spec.ts`、`e2e/support/viewer-observations.ts`：开发项目 E2E。
+- `docs/engineering/source-structure.md`：效果 payload 布局与呈现约定。
+- `docs/original/`：executable 的本地核对结论与 unknowns。
+- `local/research/p2-11/`：本地核对脚本与输出（被忽略，不提交）。
 
 ## 验收标准
 

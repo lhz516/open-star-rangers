@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "14"
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # 14 — 生产预览中的完整查看路径
@@ -29,6 +29,14 @@ updated: 2026-10-06
 - 修改 21 的生产项目用例或新增用例；[工程约定](../../../../engineering/README.md)（若需要）。
 - 计划新增生产项目 E2E 用例；复用 [browser-probes.ts](../../../../../e2e/support/browser-probes.ts) 的 Worker 记录与 [resource-cache.ts](../../../../../e2e/support/resource-cache.ts)。
 - 预置的合成包由测试在页面中用合成内容生成，不读取 `local/`。
+
+## 写入范围
+
+- `e2e/production-viewer.spec.ts`：计划新增的生产项目查看路径用例。
+- `e2e/production-preview.spec.ts`：21 的生产项目用例，必要时调整或共用。
+- `e2e/support/production-cache.ts`：计划新增的生产预览缓存预置支持（生产构建没有开发服务器的模块载入）。
+- `e2e/support/resource-cache.ts`、`e2e/support/app-entry.ts`、`e2e/support/browser-probes.ts`：复用并按需扩展的测试支持。
+- `docs/engineering/README.md`：生产预览与 E2E 路线的说明（若需要）。
 
 ## 验收标准
 
