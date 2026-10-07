@@ -118,7 +118,7 @@ updated: 2026-10-06
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11 | pending |
-| [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | pending |
+| [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17 | pending |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 03, 04, 09 | pending |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | pending |
@@ -132,6 +132,11 @@ updated: 2026-10-06
 - **2026-10-06 — 子任务 03 前的 spec 澄清：** spec“包预算与生产身份”原写“提交前的空间检查以 `payloadBytes` 加上 `measure` 的元数据估计为需求”。但行为表与 S-04 把空间检查放在开始导入之前，此时没有组输入，`measure` 无法计算元数据。
   - 改为：导入前以包预算的 `payloadBytes` 为需求，这是 [P2-10 spec](../10/spec.md) 操作表允许的估计；该上限（11,943,936 字节）远大于实际 payload 与元数据之和。
   - 同步修改了 spec 与子任务 03 的措辞，不影响其他验收。
+- **2026-10-06 — 子任务 15 的研究结论影响 09、16 与 P2-06 的实现：** 15 按 AC-17 通过：参数含义、坐标公式、计算时机与全部输入均已确认（代码），见 [executable](../../../original/formats/executable.md#effect-texture-mappings-p2-1115-research)。以下各项需在相关子任务开始前处理：
+  - **碎片映射是柱面映射：** 原版用 wrap 类型 1，不是 spec、子任务 15/16 与 P2-06 文档所称的“平面映射”。该名称来自研究前的描述；契约要求（导入研究确定的参数、展开输出贴图坐标）照常适用。
+  - **只应用第 0 个旋转：** 导弹预建的 32 个旋转映射中，原版只应用第 0 个；每枚导弹的元素都是带第 0 个坐标的副本，随机序号不影响贴图坐标。spec 的“每个旋转序号”输出与查看器的 32 选 1 仍可实现，但不对应原版可见的差异。16 开始前，需由用户确认是否保留这两项。
+  - **接缝插值未确认：** 受影响的面是导弹元素 3 个侧面中的 1 个（另一面表模板 6 个面中的 2 个）和碎片唯一的面。按 spec“不以猜测的映射贴图”，16 的 AC-18 像素断言不能用这些面，除非用户先决定其显示方式，例如按顶点坐标线性插值并标注“接缝插值未确认”。
+  - **碎片面表解析有误（P2-06 实现缺陷）：** 碎片构建函数传入逐顶点法线，`0x80c14` 因此把每个角读作（顶点序号，法线序号）一对，两种碎片模板各是一个 6 角面，executable 的面表结论已更正。`content/effects` 的 `faceList`、`faceTriangles` 与 `effectExpansionSize` 按纯顶点序号解析，碎片被展开成 6 角面加 5 角面，共 7 个三角形，几何错误。payload 保存的是原始字，导入不受影响。修正需在 09 与 16 之前安排，由用户决定归入 P2-06 修复还是本 goal 新增的修复子任务。15 只改原版文档，没有修改代码。
 
 ## 审批
 
