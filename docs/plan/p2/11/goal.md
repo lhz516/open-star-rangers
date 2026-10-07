@@ -119,7 +119,7 @@ updated: 2026-10-07
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | completed |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | in-progress |
 | [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
-| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | pending |
+| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | in-progress |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | pending |
 | [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
