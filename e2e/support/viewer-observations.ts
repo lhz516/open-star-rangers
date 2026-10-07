@@ -11,7 +11,7 @@ import { createViewerRenderer, type ViewerItem } from '../../src/render/viewer/v
 import type { ViewerView } from '../../src/render/viewer/viewer-view.ts';
 import { createImportJob } from '../../src/workers/import-job.ts';
 import { scenarioOpen, sliceCoveredFiles, syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
-import { openTestEntry, type FilePayload, type TestEntryOptions } from './app-entry.ts';
+import { button, importFiles, type FilePayload, type TestEntryOptions } from './app-entry.ts';
 
 // P2-11 subtask 11: the viewer page on the development test entry, with the synthetic `models` scenario. Expected
 // pixels come from the same package, converted here in Node by the same job, and the viewer's own render modules.
@@ -58,14 +58,9 @@ export async function firstEntry(kind: ViewerEntry['kind'], role?: string): Prom
 
 /** Imports `files` on the test entry and opens the viewer, whose heading takes focus. */
 export async function openViewer(page: Page, files: readonly FilePayload[], options: TestEntryOptions = {}): Promise<void> {
-  await openTestEntry(page, options);
-  await expect(page.getByTestId('original-data-status')).not.toContainText('Checking');
-  await page.getByRole('button', { name: 'Import original game data', exact: true }).click();
-  await page.locator('#import-files').setInputFiles([...files]);
-  await page.getByRole('button', { name: 'Start import', exact: true }).click();
-  await expect(page.getByTestId('import-statuses')).toContainText(/Complete resources, viewable|Partial conversion/, { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
-  await page.getByRole('button', { name: 'View resources', exact: true }).click();
+  await importFiles(page, files, options);
+  await button(page, 'Return to menu').click();
+  await button(page, 'View resources').click();
   await expect(page.getByRole('heading', { name: 'Resource viewer', exact: true })).toBeFocused();
   await expect(page.getByTestId('viewer-render-status')).not.toHaveText('Preparing the viewer…');
 }

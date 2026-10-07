@@ -41,3 +41,19 @@ export async function discFiles(covered: Parameters<typeof syntheticImport>[0]):
 let slice: Promise<FilePayload[]> | undefined;
 /** The synthetic slice disc every converting scenario identifies, generated once per worker process. */
 export const sliceFiles = (): Promise<FilePayload[]> => slice ??= discFiles(sliceCoveredFiles());
+
+/** A button by its exact accessible name. */
+export const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
+
+/**
+ * Opens the test entry, imports `files` and waits until the import statuses show `until`; the page stays on the import
+ * screen.
+ */
+export async function importFiles(page: Page, files: readonly FilePayload[], options: TestEntryOptions = {}, until: string | RegExp = /Complete resources, viewable|Partial conversion/): Promise<void> {
+  await openTestEntry(page, options);
+  await expect(page.getByTestId('original-data-status')).not.toContainText('Checking');
+  await button(page, 'Import original game data').click();
+  await page.locator('#import-files').setInputFiles([...files]);
+  await button(page, 'Start import').click();
+  await expect(page.getByTestId('import-statuses')).toContainText(until, { timeout: 60_000 });
+}

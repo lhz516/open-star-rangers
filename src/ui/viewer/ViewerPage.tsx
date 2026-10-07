@@ -158,6 +158,11 @@ export function ViewerPage({ viewer, viewRef, view, resources, onReturn }: Viewe
     <section aria-labelledby="viewer-heading">
       <h2 id="viewer-heading" ref={heading} tabIndex={-1}>Resource viewer</h2>
       <p>A diagnostic view of the resources converted from your own data, not the original game&apos;s screens.</p>
+      {held?.completeness.status === 'complete' && (
+        <p data-testid="viewer-identity">
+          {`Package identity: manifest ${held.completeness.identity.manifestIdentity}, converter ${held.completeness.identity.converterVersion}`}
+        </p>
+      )}
       {held && held.completeness.status !== 'complete' && (
         <p role="note" data-testid="viewer-partial">
           {'This package is partial and not a usable resource package; only its complete groups are listed. '}

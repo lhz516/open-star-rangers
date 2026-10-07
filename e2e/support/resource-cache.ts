@@ -8,6 +8,7 @@ import type * as OwnershipModule from '../../src/content/ownership.ts';
 import type * as SliceModule from '../../src/content/slice-definition.ts';
 import type * as SyntheticModule from '../../src/content/synthetic-content.test-support.ts';
 import type * as CacheModule from '../../src/platform/storage/browser-resource-cache.ts';
+import { RESOURCE_CACHE_DATABASE } from '../../src/platform/storage/resource-cache-records.ts';
 import type * as RecordsModule from '../../src/platform/storage/resource-cache-records.ts';
 import { collectBrowserErrors } from './browser-test.ts';
 import { installedBrowser } from './environment.ts';
@@ -366,6 +367,16 @@ export async function withQuotaOverride<T>(page: Page, origin: string, quotaSize
     await cdp.send('Storage.overrideQuotaForOrigin', { origin });
     await cdp.detach();
   }
+}
+
+/**
+ * Clears the origin's IndexedDB data as clearing site data does, and waits until the cache database is gone: the
+ * browser finishes by force-closing the page's connection, and an operation landing before that is aborted (P2-10).
+ */
+export async function deleteCacheDatabase(page: Page, origin: string): Promise<void> {
+  await clearOriginIndexedDb(page, origin);
+  const { name } = RESOURCE_CACHE_DATABASE;
+  await expect.poll(() => page.evaluate(async () => (await indexedDB.databases()).map(database => database.name))).not.toContain(name);
 }
 
 /** Clears the origin's IndexedDB data over CDP, as a user or the browser clearing site data would. */

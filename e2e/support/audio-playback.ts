@@ -24,6 +24,8 @@ interface AudioProbe {
   peak(): number;
   /** Application nodes still connected to a recorded destination. */
   routed(): number;
+  /** Source nodes started so far, as each voice starts one; a short sound may already have ended. */
+  started(): number;
   /** Native `visibilitychange` states in order, starting with the state at load. */
   visibility: string[];
 }
@@ -48,6 +50,16 @@ export function installAudioProbe(): void {
   const contexts: { context: AudioContext; analyser: AnalyserNode; data: Float32Array<ArrayBuffer> }[] = [];
   const buffers: AudioBuffer[] = [];
   const routed = new Set<AudioNode>();
+  let started = 0;
+  // AudioBufferSourceNode has its own start (with offset and duration), so each prototype that owns one is wrapped.
+  for (const prototype of [AudioScheduledSourceNode.prototype, AudioBufferSourceNode.prototype]) {
+    if (!Object.hasOwn(prototype, 'start')) continue;
+    const originalStart = prototype.start as (...args: unknown[]) => void;
+    prototype.start = function (this: AudioScheduledSourceNode, ...args: unknown[]): void {
+      originalStart.apply(this, args);
+      started++;
+    };
+  }
   window.AudioContext = new Proxy(OriginalContext, {
     construct(target, args: ConstructorParameters<typeof AudioContext>, newTarget: NewableFunction): object {
       const context = Reflect.construct(target, args, newTarget) as AudioContext;
@@ -96,6 +108,7 @@ export function installAudioProbe(): void {
       return newest.data.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0);
     },
     routed: () => routed.size,
+    started: () => started,
     visibility,
   };
 }

@@ -7,7 +7,7 @@ import type { ViewerItem } from '../src/render/viewer/viewer-renderer.ts';
 import { applyViewAction, INITIAL_VIEW, type ViewerView } from '../src/render/viewer/viewer-view.ts';
 import { variantLabel } from '../src/ui/viewer/viewer-copy.ts';
 import { productionCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
-import { discFiles, expectNoPlayClaim, openTestEntry, sliceFiles } from './support/app-entry.ts';
+import { button, discFiles, expectNoPlayClaim, openTestEntry, sliceFiles } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { expect, test } from './support/browser-test.ts';
 import { frameWindow } from './support/demo-observations.ts';
@@ -30,7 +30,6 @@ declare global {
 /** The initial view turned `steps` steps down about the horizontal axis. */
 const turned = (steps: number): ViewerView => applyViewAction(INITIAL_VIEW, { type: 'rotate', axis: 'horizontal', steps });
 const midTone = (rgb: readonly number[]): boolean => rgb.some(channel => channel > 0 && channel < 255);
-const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 
 /** Selects an entry, and a variant by its label, and waits until the renderer shows it. */
 async function show(page: Page, id: string, variant?: string): Promise<ViewerDiagnostics> {
@@ -249,15 +248,17 @@ test('auditions a sound after a trusted click, stops it alone or with all, and c
   await expect(status).not.toHaveText('Preparing audio…');
   expect(await page.evaluate(() => window.osrAudioProbe.contexts())).toEqual([]);
   const [first] = await soundIds();
+  // The synthetic sounds last well under a millisecond, so a voice is seen by its start rather than while it plays.
+  const started = () => page.evaluate(() => window.osrAudioProbe.started());
   const routed = () => page.evaluate(() => window.osrAudioProbe.routed());
   await button(page, `Play ${first}`).click();
   await expect(status).toHaveAttribute('data-status', 'running');
-  await expect.poll(routed).toBeGreaterThan(0);
+  await expect.poll(started).toBe(1);
   await button(page, `Stop ${first}`).click();
   await expect(page.getByTestId('viewer-voices')).toHaveText('0');
   await expect.poll(routed).toBe(0);
   await button(page, `Play ${first}`).click();
-  await expect.poll(routed).toBeGreaterThan(0);
+  await expect.poll(started).toBe(2);
   await button(page, 'Stop all sounds').click();
   await expect(page.getByTestId('viewer-voices')).toHaveText('0');
   await expect.poll(routed).toBe(0);
@@ -393,7 +394,7 @@ test('keeps the lists, the mission and the sounds in a browser without WebGL (AC
     await expectMissionSummary(page);
     await button(page, `Play ${(await soundIds())[0]}`).click();
     await expect(page.getByTestId('viewer-audio-status')).toHaveAttribute('data-status', 'running');
-    await expect.poll(() => page.evaluate(() => window.osrAudioProbe.routed())).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => window.osrAudioProbe.started())).toBe(1);
   } finally {
     await browser.close();
   }
