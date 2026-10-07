@@ -6,7 +6,8 @@ import { isDetached } from '../ownership.ts';
 
 // Effect payloads schema 1 (P2-06 spec, effect geometry data): the source data of the procedural projectile, missile
 // and debris geometry, kept bit for bit. Little-endian without padding. A face list is a u16 word count W, then W u32
-// words: {corner count, vertex indices…} per face, ending with 0. A texture is a u8 length L (1–128), then L ASCII
+// words: {corner count, corners…} per face, ending with 0; a corner is a vertex index, or for debris, whose builders
+// pass per-vertex normals, a (vertex, normal) index pair (P2-11/24). A texture is a u8 length L (1–128), then L ASCII
 // bytes of an image Asset ID.
 //   projectile  u16 record count R (1–64); 2 templates, each: face list, 12 f32 vertices (4 × x, y, z), 6 u32 width
 //               markers (2 per axis x, y, z), u32 length marker, f64 length constant. Then R records of 24 bytes: u32
@@ -40,6 +41,8 @@ export const EFFECT_SHAPES = Object.freeze({
   elementVertices: 6,
   extraVertices: 3,
   debrisVertices: 6,
+  /** The normal count both debris builders pass, one per vertex: their face lists hold (vertex, normal) pairs (P2-11/15). */
+  debrisNormals: 6,
   untexturedScales: 3,
   texturedScales: 2,
 });
@@ -127,7 +130,7 @@ export interface DebrisTemplate {
   readonly faces: Uint32Array;
   /** x, y, z of 6 vertices. */
   readonly vertices: Float32Array;
-  /** 3 words per vertex, unchanged; that they are normals is likely, not confirmed. */
+  /** The vertex normals, 3 words each, unchanged; the face list's normal indices address them. */
   readonly perVertex: Uint32Array;
 }
 
@@ -213,45 +216,57 @@ function requireTexture(value: unknown, path: string): AssetId {
 /** The most face list words a payload stores: the u16 word count. */
 export const MAX_FACE_WORDS = 0xffff;
 
+/** Words per face corner: a vertex index, followed by a normal index when the shape has normals. */
+const cornerWords = (normals: number): number => (normals > 0 ? 2 : 1);
+
 /**
- * Checks face list words without allocating: at most `MAX_FACE_WORDS`, every face of 3 to `vertices` corners
- * addressing the shape's vertices, at least one face, and 0 at the last word. Returns the triangle count, corners − 2
- * per face.
+ * Checks face list words without allocating: at most `MAX_FACE_WORDS`, every face of 3 to `vertices` corners, at least
+ * one face, and 0 at the last word. Without normals each corner is a vertex index; with `normals` above 0 it is a
+ * (vertex, normal) index pair, as when the builder passes per-vertex normals (P2-11/15). Indices address the shape's
+ * vertices and normals. Returns the triangle count, corners − 2 per face.
  */
-export function faceTriangles(words: Uint32Array, vertices: number, path: string): number {
+export function faceTriangles(words: Uint32Array, vertices: number, normals: number, path: string): number {
   if (words.length > MAX_FACE_WORDS) invalid(path, `must hold at most ${MAX_FACE_WORDS} words`);
+  const stride = cornerWords(normals);
   let triangles = 0;
   let at = 0;
   while (at < words.length && words[at] !== 0) {
     const corners = words[at];
     if (corners < 3 || corners > vertices) invalid(path, 'must give each face 3 corners up to the vertex count');
-    if (at + 1 + corners >= words.length) invalid(path, 'must end with 0');
-    for (let corner = 1; corner <= corners; corner++) if (words[at + corner] >= vertices) invalid(path, 'must address vertices of the shape');
+    const end = at + 1 + corners * stride;
+    if (end >= words.length) invalid(path, 'must end with 0');
+    for (let corner = at + 1; corner < end; corner += stride) {
+      if (words[corner] >= vertices) invalid(path, 'must address vertices of the shape');
+      if (stride === 2 && words[corner + 1] >= normals) invalid(path, 'must address normals of the shape');
+    }
     triangles += corners - 2;
-    at += 1 + corners;
+    at = end;
   }
   if (at !== words.length - 1) invalid(path, 'must end with 0 at its last word');
   if (triangles === 0) invalid(path, 'must hold at least one face');
   return triangles;
 }
 
-/** The faces of checked face list words, as frozen arrays of vertex indices in source order. */
-export function faceList(words: Uint32Array, vertices: number, path: string): readonly (readonly number[])[] {
-  faceTriangles(words, vertices, path);
+/** The faces of checked face list words, as frozen arrays of their vertex indices in source order. */
+export function faceList(words: Uint32Array, vertices: number, normals: number, path: string): readonly (readonly number[])[] {
+  faceTriangles(words, vertices, normals, path);
+  const stride = cornerWords(normals);
   const faces: (readonly number[])[] = [];
-  for (let at = 0; words[at] !== 0; at += 1 + words[at]) faces.push(Object.freeze(Array.from(words.subarray(at + 1, at + 1 + words[at]))));
+  for (let at = 0; words[at] !== 0; at += 1 + words[at] * stride) {
+    faces.push(Object.freeze(Array.from({ length: words[at] }, (_, corner) => words[at + 1 + corner * stride])));
+  }
   return Object.freeze(faces);
 }
 
-function requireFaces(value: unknown, vertices: number, path: string): void {
-  faceTriangles(requireTyped(value, Uint32Array, path), vertices, path);
+function requireFaces(value: unknown, vertices: number, normals: number, path: string): void {
+  faceTriangles(requireTyped(value, Uint32Array, path), vertices, normals, path);
 }
 
 function checkProjectile(payload: Readonly<Record<string, unknown>>, path: string): void {
   requireArray(payload.templates, `${path}.templates`, 2).forEach((value, index) => {
     const at = `${path}.templates[${index}]`;
     const template = requireRecord(value, at);
-    requireFaces(template.faces, S.projectileVertices, `${at}.faces`);
+    requireFaces(template.faces, S.projectileVertices, 0, `${at}.faces`);
     requireFloats(template.vertices, S.projectileVertices * 3, `${at}.vertices`);
     requireTyped(template.widthMarkers, Uint32Array, `${at}.widthMarkers`, S.widthMarkers);
     requireU32(template.lengthMarker, `${at}.lengthMarker`);
@@ -273,7 +288,7 @@ function checkMissile(payload: Readonly<Record<string, unknown>>, path: string):
   requireTexture(payload.texture, `${path}.texture`);
   const faces = requireRecord(payload.faces, `${path}.faces`);
   const vertices = { fin: S.finVertices, element: S.elementVertices, flaggedElement: S.elementVertices, extra: S.extraVertices };
-  for (const name of MISSILE_FACES) requireFaces(faces[name], vertices[name], `${path}.faces.${name}`);
+  for (const name of MISSILE_FACES) requireFaces(faces[name], vertices[name], 0, `${path}.faces.${name}`);
   const constants = requireRecord(payload.constants, `${path}.constants`);
   for (const name of MISSILE_CONSTANTS) requireF64(constants[name], `${path}.constants.${name}`);
   requireF64(payload.rotationScale, `${path}.rotationScale`);
@@ -304,7 +319,7 @@ function checkDebris(payload: Readonly<Record<string, unknown>>, path: string): 
   requireArray(payload.templates, `${path}.templates`, 2).forEach((value, index) => {
     const at = `${path}.templates[${index}]`;
     const template = requireRecord(value, at);
-    requireFaces(template.faces, S.debrisVertices, `${at}.faces`);
+    requireFaces(template.faces, S.debrisVertices, S.debrisNormals, `${at}.faces`);
     requireFloats(template.vertices, S.debrisVertices * 3, `${at}.vertices`);
     requireTyped(template.perVertex, Uint32Array, `${at}.perVertex`, S.debrisVertices * 3);
   });

@@ -155,6 +155,11 @@ describe('effect step', () => {
     ['an infinite debris scale', { exe: exeWith(ID.debris, 'textured-scale-1', setU32(0, 0x7f80_0000)) }, 'invalid-payload',
       `effects[${ID.debris}].regions[${regionIndex(ID.debris, 'textured-scale-1')}]`, null],
     ['a debris face of more corners than vertices', { exe: exeWith(ID.debris, 'untextured-faces', setU32(0, 7)) }, 'invalid-payload', `effects[${ID.debris}].templates[0]`, null],
+    // Debris corners are (vertex, normal) pairs, so word 2 of the 14-word hexagon is its first normal index. Cutting it to
+    // a triangle and starting a second triangle at word 7 leaves that face's last pair cut by the end word.
+    ['a debris normal index beyond its normals', { exe: exeWith(ID.debris, 'untextured-faces', setU32(8, 6)) }, 'invalid-payload', `effects[${ID.debris}].templates[0]`, null],
+    ['a debris face that ends inside a pair', { exe: exeWith(ID.debris, 'untextured-faces', bytes => setU32(28, 3)(setU32(0, 3)(bytes))) }, 'invalid-payload',
+      `effects[${ID.debris}].templates[0]`, null],
   ])('rejects %s', async (_, sources, code, location, limit) => expectFailure(sources, code, location, limit));
 
   it('charges each Asset in ID order and rejects one beyond the limits before encoding it', async () => {

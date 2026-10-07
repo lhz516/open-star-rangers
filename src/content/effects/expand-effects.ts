@@ -100,7 +100,7 @@ const packedColour = (packed: number, scale: number): EffectColour => [(packed >
 
 /** One shape per record, in record order. */
 export function expandProjectiles(payload: ProjectileVisuals, path = 'payload'): readonly EffectShape[] {
-  const faces = payload.templates.map((template, index) => faceList(template.faces, S.projectileVertices, `${path}.templates[${index}].faces`));
+  const faces = payload.templates.map((template, index) => faceList(template.faces, S.projectileVertices, 0, `${path}.templates[${index}].faces`));
   return Object.freeze(payload.records.map((record, index) => {
     const which = projectileTemplate(record.selector);
     const template = payload.templates[which];
@@ -118,10 +118,10 @@ export function expandProjectiles(payload: ProjectileVisuals, path = 'payload'):
 export function expandMissiles(payload: MissileVisuals, path = 'payload'): readonly MissileVisual[] {
   const { constants: c, faces: words } = payload;
   const faces = {
-    fin: faceList(words.fin, S.finVertices, `${path}.faces.fin`),
-    element: faceList(words.element, S.elementVertices, `${path}.faces.element`),
-    flaggedElement: faceList(words.flaggedElement, S.elementVertices, `${path}.faces.flaggedElement`),
-    extra: faceList(words.extra, S.extraVertices, `${path}.faces.extra`),
+    fin: faceList(words.fin, S.finVertices, 0, `${path}.faces.fin`),
+    element: faceList(words.element, S.elementVertices, 0, `${path}.faces.element`),
+    flaggedElement: faceList(words.flaggedElement, S.elementVertices, 0, `${path}.faces.flaggedElement`),
+    extra: faceList(words.extra, S.extraVertices, 0, `${path}.faces.extra`),
   };
   const mapping = Object.freeze({ rotationStep: c.rotationStep, rotationScale: payload.rotationScale });
   return Object.freeze(payload.types.map((type, index) => {
@@ -155,7 +155,7 @@ export function expandMissiles(payload: MissileVisuals, path = 'payload'): reado
 /** The untextured shapes at each untextured scale and the textured shapes at each textured scale. */
 export function expandDebris(payload: DebrisVisuals, path = 'payload'): DebrisShapes {
   const shapes = (template: DebrisTemplate, scales: readonly number[], name: string, colour: EffectColour, texture: AssetId | null) => {
-    const faces = faceList(template.faces, S.debrisVertices, `${path}.templates[${name === 'untextured' ? 0 : 1}].faces`);
+    const faces = faceList(template.faces, S.debrisVertices, S.debrisNormals, `${path}.templates[${name === 'untextured' ? 0 : 1}].faces`);
     return Object.freeze(scales.map((scale, index) =>
       shape(Array.from(template.vertices, value => value * scale), faces, `${path}.${name}[${index}]`, { colour, texture, perVertex: template.perVertex })));
   };
@@ -170,7 +170,7 @@ export function expandDebris(payload: DebrisVisuals, path = 'payload'): DebrisSh
 export function effectExpansionSize(payload: EffectPayload, path = 'payload'): ExpansionSize {
   switch (payload.kind) {
     case 'projectile': {
-      const perTemplate = payload.templates.map(({ faces }, index) => faceTriangles(faces, S.projectileVertices, `${path}.templates[${index}].faces`));
+      const perTemplate = payload.templates.map(({ faces }, index) => faceTriangles(faces, S.projectileVertices, 0, `${path}.templates[${index}].faces`));
       return Object.freeze({
         vertices: payload.records.length * S.projectileVertices,
         triangles: payload.records.reduce((sum, { selector }) => sum + perTemplate[projectileTemplate(selector)], 0),
@@ -178,10 +178,10 @@ export function effectExpansionSize(payload: EffectPayload, path = 'payload'): E
     }
     case 'missile': {
       const { faces } = payload;
-      const fin = faceTriangles(faces.fin, S.finVertices, `${path}.faces.fin`);
-      const element = faceTriangles(faces.element, S.elementVertices, `${path}.faces.element`);
-      const flagged = faceTriangles(faces.flaggedElement, S.elementVertices, `${path}.faces.flaggedElement`);
-      const extra = faceTriangles(faces.extra, S.extraVertices, `${path}.faces.extra`);
+      const fin = faceTriangles(faces.fin, S.finVertices, 0, `${path}.faces.fin`);
+      const element = faceTriangles(faces.element, S.elementVertices, 0, `${path}.faces.element`);
+      const flagged = faceTriangles(faces.flaggedElement, S.elementVertices, 0, `${path}.faces.flaggedElement`);
+      const extra = faceTriangles(faces.extra, S.extraVertices, 0, `${path}.faces.extra`);
       return Object.freeze(payload.types.reduce((size, { body, fins, flag }) => {
         const hasExtra = !Object.is(flag, 0);
         return {
@@ -191,7 +191,7 @@ export function effectExpansionSize(payload: EffectPayload, path = 'payload'): E
       }, { vertices: 0, triangles: 0 }));
     }
     case 'debris': {
-      const [plain, textured] = payload.templates.map(({ faces }, index) => faceTriangles(faces, S.debrisVertices, `${path}.templates[${index}].faces`));
+      const [plain, textured] = payload.templates.map(({ faces }, index) => faceTriangles(faces, S.debrisVertices, S.debrisNormals, `${path}.templates[${index}].faces`));
       return Object.freeze({
         vertices: (S.untexturedScales + S.texturedScales) * S.debrisVertices,
         triangles: S.untexturedScales * plain + S.texturedScales * textured,

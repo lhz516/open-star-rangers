@@ -92,18 +92,22 @@ export function syntheticMissile(): MissileVisuals {
   };
 }
 
+/**
+ * Debris face lists hold (vertex, normal) index pairs: template 0 a triangle and a quadrilateral whose normal indices
+ * differ from their vertex indices, template 1 a pentagon and a triangle.
+ */
 export function syntheticDebris(): DebrisVisuals {
   return {
     kind: 'debris',
     texture: DEBRIS_TEXTURE,
     templates: [
       {
-        faces: Uint32Array.of(3, 0, 1, 2, 4, 2, 3, 4, 5, 0),
+        faces: Uint32Array.of(3, 0, 5, 1, 0, 2, 4, 4, 2, 1, 3, 3, 4, 2, 5, 0, 0),
         vertices: Float32Array.of(0.25, -1.5, 2, 3.125, 0, -0, -2.75, 1.125, 0.5625, 4, -0.0625, 1.75, F32_SUBNORMAL, 2.5, -3, 0.375, -0.875, 6),
         perVertex: Uint32Array.of(0, 1, 0xffff_ffff, 0x7fc0_0001, 0x8000_0000, 17, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
       },
       {
-        faces: Uint32Array.of(5, 0, 1, 2, 3, 4, 3, 3, 4, 5, 0),
+        faces: Uint32Array.of(5, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 5, 4, 5, 5, 5, 0),
         vertices: Float32Array.of(-1, 2.25, 0.75, 1.5, -0.125, 3.5, 0, 0, -2, 5.25, 1.875, -0.625, -3.25, 0.4375, 2.125, 1, -1, 1.25),
         perVertex: Uint32Array.of(...Array.from({ length: 18 }, (_, index) => 0x1000 * index + 3)),
       },

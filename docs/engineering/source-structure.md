@@ -384,18 +384,18 @@ src/
 
 - **常量：** [effect-payload.ts](../../src/content/effects/effect-payload.ts) 的 `EFFECT_PAYLOAD_SCHEMA_VERSION` 为 1。
   - `EFFECT_LIMITS` 是批准的安全上限：弹丸记录 1–64（`effectRecords`）、导弹类型 1–32（`missileTypes`）、机身段数 3–64（`ringSegments`）；部件数 1–4、打包颜色不超过 24 位是格式规则。
-  - `EFFECT_SHAPES` 是源结构的固定计数（弹丸模板 4 个顶点、尾翼 9 个、元素 6 个、附加元素 3 个、碎片模板 6 个，3 个无贴图缩放与 2 个有贴图缩放）。
+  - `EFFECT_SHAPES` 是源结构的固定计数（弹丸模板 4 个顶点、尾翼 9 个、元素 6 个、附加元素 3 个、碎片模板 6 个顶点与 6 个法线，3 个无贴图缩放与 2 个有贴图缩放）。
   - `MISSILE_CONSTANTS` 是导弹常量的源顺序。
   - `effectPayloadLength(payload)` 只按计数给出编码长度，供转换器在分配之前扣除 `payloadBytes`。
-- **字节布局：** 小端，无填充。面表为 `u16` 字数 W，后接 W 个 `u32`：每个面为角数与顶点序号，以 0 结束。贴图引用为 `u8` 长度（1–128），后接 image Asset ID 的 ASCII 字节。
+- **字节布局：** 小端，无填充。面表为 `u16` 字数 W，后接 W 个 `u32`：每个面为角数与各角，以 0 结束。弹丸与导弹的角是顶点序号；碎片的构建函数传入逐顶点法线，它的角是（顶点序号，法线序号）一对（[P2-11 子任务 24](../plan/p2/11/subtasks/24-debris-face-pairs.md)，依据见 [executable](../original/formats/executable.md#effect-geometry-data-p2-0614-research) 的面表一条）。贴图引用为 `u8` 长度（1–128），后接 image Asset ID 的 ASCII 字节。
 
   | payload | 布局 |
   |---|---|
   | 弹丸 | `u16` 记录数 R（1–64）；两套模板，各为面表、12 个 `f32` 顶点、6 个 `u32` 宽度标记（x、y、z 各两个）、`u32` 长度标记、`f64` 长度常量；R 条 24 字节的记录：`u32` 构建选择、`f32` 宽度、`f32` 长度、3 个 `f32` 颜色 |
   | 导弹 | 贴图引用；`u16` 类型数 T（1–32）；尾翼、元素、带标志元素、附加元素四个面表；按源顺序的 7 个 `f64` 常量；`f64` 旋转缩放；3 个 `f32` 附加元素颜色；T 个类型：`u32` 部件数 P（1–4），机身 `f32` r0、r1、长度、`i32` 段数（3–64）、`u32` 打包颜色，P − 1 片尾翼（4 个 `f32` 与 `u32` 打包颜色），3 个 `f32` 元素参数，`f32` 标志 |
-  | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色 |
+  | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字（6 个顶点法线）；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色 |
 
-  浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 个至该形状顶点数个角，顶点序号小于该形状的顶点数，至少一个面，0 恰在最后一个字。
+  浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 个至该形状顶点数个角，顶点序号小于该形状的顶点数，法线序号小于该形状的法线数，一对不完整也不合规；至少一个面，0 恰在最后一个字。
 - **编码与读取：**
   - `encodeEffectPayload(payload)` 按读取器的同一规则校验，32 位浮点字段须恰为 32 位浮点值，写入独占的新缓冲；同一输入得到同样的字节。
   - `readEffectPayload(bytes, schemaVersion, kind, path)` 严格读取：计数先检查范围、字节先确认存在，再分配；返回冻结数据，数组为调用者独占的副本。
@@ -403,7 +403,7 @@ src/
 - **绑定：** `effectReferences(payload)` 给出导弹与碎片的贴图引用，弹丸没有引用。`checkEffectBinding(descriptor, payload)` 要求描述符 kind 为 `data`、角色等于 payload 种类（`projectile`、`missile`、`debris`）、依赖恰为这些引用，否则报 `binding-mismatch`。
 - **展开：** [expand-effects.ts](../../src/content/effects/expand-effects.ts) 的 `expandProjectiles`、`expandMissiles` 与 `expandDebris` 是纯函数，按 executable 的构建规则给出冻结的形状。
   - **形状内容：** 位置、面（顶点序号数组）、颜色或 null、贴图 Asset ID 或 null。碎片形状另带模板每顶点字的副本，导弹元素另带原样的旋转参数 `{ rotationStep, rotationScale }`。
-  - **面表：** `faceTriangles(words, vertices, path)` 不分配地校验面表并给出三角形数，`faceList` 给出冻结的面数组。一次展开中每个源面表只解析一次，由它生成的形状共用同一组冻结的面；机身的面直接按规则生成。
+  - **面表：** `faceTriangles(words, vertices, normals, path)` 不分配地校验面表并给出三角形数，`faceList` 给出冻结的面数组，只含顶点序号。`normals` 为 0 时每个角是一个顶点序号（弹丸与导弹），为正数时是一对（碎片传 `EFFECT_SHAPES.debrisNormals`）。一次展开中每个源面表只解析一次，由它生成的形状共用同一组冻结的面；机身的面直接按规则生成。
   - **数值：** 以 64 位浮点计算，结果分量在最后舍入为 32 位。例外是弹丸的宽度乘积：它先舍入为 32 位，再与长度标记比较，因为原版比较的是存回的值。
   - **导弹：** 元素面表按标志的浮点值是否为 0 选择；附加元素在标志的位模式非 0 时生成，所以负零也生成。
   - **错误：** 任一结果分量不是有限值时报 `invalid-effect-payload`，位置为形状路径后接 `.positions` 或 `.colour`。

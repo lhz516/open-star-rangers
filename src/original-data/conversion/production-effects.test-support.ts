@@ -78,12 +78,15 @@ export function syntheticMissileSource(): MissileVisuals {
 }
 
 /**
- * The debris payload: production face lists hold 14 words, here 2 triangles and a quadrilateral, and a pentagon and a
- * hexagon, so faces of more than 4 corners are read too.
+ * The debris payload: production face lists hold 14 words, which fit exactly one hexagon of (vertex, normal) index
+ * pairs; here the corners run in two different orders, their normal indices differ from the vertex indices, and
+ * neither list is valid when read as plain vertex indices.
  */
 export function syntheticDebrisSource(): DebrisVisuals {
   const template = (seed: number) => Object.freeze({
-    faces: seed === 3 ? faces(1, 2, 6) : Uint32Array.of(5, 1, 3, 5, 0, 2, 6, 5, 4, 3, 2, 1, 0, 0),
+    faces: seed === 3
+      ? Uint32Array.of(6, 0, 5, 2, 3, 4, 1, 1, 0, 3, 2, 5, 4, 0)
+      : Uint32Array.of(6, 5, 0, 4, 1, 3, 2, 2, 3, 1, 4, 0, 5, 0),
     vertices: floats(18, seed),
     perVertex: Uint32Array.from({ length: 18 }, (_, index) => (index * 0x0101_0101 + seed) >>> 0),
   });

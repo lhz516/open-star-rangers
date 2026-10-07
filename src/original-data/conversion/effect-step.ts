@@ -112,11 +112,11 @@ class Regions {
     return Object.freeze([channel(0), channel(1), channel(2)] as const);
   }
 
-  /** A face list template that must suit its shape, located at the template. */
-  faces(use: string, vertices: number, location: string): Uint32Array {
+  /** A face list template that must suit its shape, with (vertex, normal) pairs when `normals` is above 0, located at the template. */
+  faces(use: string, vertices: number, normals: number, location: string): Uint32Array {
     const words = this.words(use);
     try {
-      faceTriangles(words, vertices, location);
+      faceTriangles(words, vertices, normals, location);
     } catch (error) {
       if (error instanceof ContentContractError) invalid(location, error.reason);
       throw error;
@@ -143,7 +143,7 @@ function projectilePayload({ bytes, relocations }: ArchiveEntryRead, regions: Re
     const name = `template-${index}`;
     const location = `${at}.templates[${index}]`;
     return Object.freeze({
-      faces: regions.faces(`${name}-faces`, S.projectileVertices, location),
+      faces: regions.faces(`${name}-faces`, S.projectileVertices, 0, location),
       vertices: regions.floats(`${name}-vertices`, location),
       widthMarkers: Uint32Array.from({ length: S.widthMarkers }, (_, marker) => regions.u32(`${name}-width-marker-${marker}`)),
       lengthMarker: regions.u32(`${name}-length-marker`),
@@ -176,7 +176,7 @@ function missilePayload(regions: Regions, texture: AssetId, at: string): EffectP
   const count = counted(regions.u32('type-count'), 'missileTypes', 1, EFFECT_LIMITS.missileTypes, regions.at('type-count'));
   const table = regions.view('types');
   if (table.byteLength !== count * MISSILE_RECORD_BYTES) invalid(regions.at('types'), 'the type table does not hold exactly the counted types');
-  const template = (use: string, vertices: number, index: number) => regions.faces(use, vertices, `${at}.templates[${index}]`);
+  const template = (use: string, vertices: number, index: number) => regions.faces(use, vertices, 0, `${at}.templates[${index}]`);
   const constants = Object.freeze(Object.fromEntries(MISSILE_CONSTANTS.map((name, index) => [name, regions.f64('constants', index)])) as MissileConstants);
   const rotationScale = finite(f64FromWords(regions.immediate('rotation-scale-low'), regions.u32('rotation-scale-high')), regions.at('rotation-scale-high'));
   return Object.freeze({
@@ -199,7 +199,7 @@ function debrisPayload(regions: Regions, texture: AssetId, at: string): EffectPa
   const template = (name: 'untextured' | 'textured', index: number): DebrisTemplate => {
     const location = `${at}.templates[${index}]`;
     return Object.freeze({
-      faces: regions.faces(`${name}-faces`, S.debrisVertices, location),
+      faces: regions.faces(`${name}-faces`, S.debrisVertices, S.debrisNormals, location),
       vertices: regions.floats(`${name}-vertices`, location),
       perVertex: regions.words(`${name}-per-vertex`),
     });

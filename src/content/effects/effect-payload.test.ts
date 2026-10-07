@@ -3,7 +3,7 @@ import type { AssetDescriptor } from '../asset-contract.ts';
 import { readAssetId } from '../asset-id.ts';
 import { expectContractError, set16 as set16In, set32 as set32In, set8 } from '../graphics/graphics.test-support.ts';
 import {
-  EFFECT_LIMITS, MAX_FACE_WORDS, checkEffectBinding, effectPayloadLength, effectReferences, encodeEffectPayload, faceList, readEffectPayload,
+  EFFECT_LIMITS, MAX_FACE_WORDS, checkEffectBinding, effectPayloadLength, effectReferences, encodeEffectPayload, faceList, faceTriangles, readEffectPayload,
   type EffectKind, type EffectPayload,
 } from './effect-payload.ts';
 import { DEBRIS_TEXTURE, MISSILE_TEXTURE, syntheticDebris, syntheticMissile, syntheticProjectile } from './effects.test-support.ts';
@@ -51,12 +51,33 @@ describe('effect payloads', () => {
   });
 
   it('checks face lists', () => {
-    expect(faceList(Uint32Array.of(3, 0, 1, 2, 4, 3, 2, 1, 0, 0), 4, 'f')).toEqual([[0, 1, 2], [3, 2, 1, 0]]);
+    expect(faceList(Uint32Array.of(3, 0, 1, 2, 4, 3, 2, 1, 0, 0), 4, 0, 'f')).toEqual([[0, 1, 2], [3, 2, 1, 0]]);
     // A face may have as many corners as the shape has vertices.
-    expect(faceList(Uint32Array.of(5, 4, 3, 2, 1, 0, 3, 0, 2, 4, 0), 5, 'f')).toEqual([[4, 3, 2, 1, 0], [0, 2, 4]]);
+    expect(faceList(Uint32Array.of(5, 4, 3, 2, 1, 0, 3, 0, 2, 4, 0), 5, 0, 'f')).toEqual([[4, 3, 2, 1, 0], [0, 2, 4]]);
     for (const words of [[0], [], [3, 0, 1, 2], [3, 0, 1, 2, 0, 0], [2, 0, 1, 0], [5, 0, 1, 2, 3, 0, 0], [3, 0, 1, 4, 0], [4, 0, 1, 2]]) {
-      expectContractError(() => faceList(Uint32Array.from(words), 4, 'f'), 'invalid-effect-payload', 'f');
+      expectContractError(() => faceList(Uint32Array.from(words), 4, 0, 'f'), 'invalid-effect-payload', 'f');
     }
+  });
+
+  it('checks face lists of (vertex, normal) pairs and keeps only the vertex indices', () => {
+    expect(faceList(Uint32Array.of(3, 0, 3, 1, 2, 2, 1, 4, 3, 0, 2, 1, 1, 2, 0, 3, 0), 4, 4, 'f')).toEqual([[0, 1, 2], [3, 2, 1, 0]]);
+    // One face of 6 pairs, the shape of each original debris template, is 4 triangles; read as plain indices it is invalid.
+    const hexagon = Uint32Array.of(6, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 0);
+    expect(faceTriangles(hexagon, 6, 6, 'f')).toBe(4);
+    expect(faceList(hexagon, 6, 6, 'f')).toEqual([[0, 1, 2, 3, 4, 5]]);
+    expectContractError(() => faceTriangles(hexagon, 6, 0, 'f'), 'invalid-effect-payload', 'f');
+  });
+
+  it.each([
+    ['a normal index equal to the normal count', [3, 0, 0, 1, 1, 2, 3, 0]],
+    ['a vertex index equal to the vertex count', [3, 0, 0, 1, 1, 4, 0, 0]],
+    ['a last pair cut to one word', [3, 0, 0, 1, 1, 2, 0]],
+    ['pairs without the end marker', [3, 0, 0, 1, 1, 2, 2]],
+    ['a list of plain indices', [3, 0, 1, 2, 0]],
+    ['a face of 2 pairs', [2, 0, 0, 1, 1, 0]],
+    ['no face', [0]],
+  ])('rejects a pair list with %s', (_, words) => {
+    expectContractError(() => faceTriangles(Uint32Array.from(words), 4, 3, 'f'), 'invalid-effect-payload', 'f');
   });
 
   describe('reader', () => {
@@ -76,11 +97,12 @@ describe('effect payloads', () => {
     const EXTRA_COLOUR = ROTATION_SCALE + 8;
     const TYPE_0 = EXTRA_COLOUR + 12;
     const TYPE_1 = TYPE_0 + 40;
-    // Debris: texture (1 + 22 bytes), template 0 (face list of 10 words), template 1 (11 words), scales and colours.
+    // Debris: texture (1 + 22 bytes), template 0 (face list of 17 words), template 1 (19 words: a pentagon of pairs
+    // from D1_FACES, then a triangle whose corner count is word 11), scales and colours.
     const debris = encodeEffectPayload(syntheticDebris());
-    const D0_VERTICES = 23 + 2 + 40;
+    const D0_VERTICES = 23 + 2 + 68;
     const D1_FACES = D0_VERTICES + 144 + 2;
-    const SCALES = D1_FACES + 44 + 144;
+    const SCALES = D1_FACES + 76 + 144;
 
     it.each<[string, EffectKind, Uint8Array, string]>([
       ['a truncated payload', 'projectile', projectile.subarray(0, -1), 'payload'],
@@ -112,6 +134,8 @@ describe('effect payloads', () => {
       ['a 25-bit fin colour', 'missile', set32(missile, TYPE_1 + 24 + 16, 0x100_0000), 'payload.types[1].fins[0].colour'],
       ['a NaN debris vertex', 'debris', set32(debris, D0_VERTICES, NAN), 'payload.templates[0].vertices'],
       ['a debris face beyond its 6 vertices', 'debris', set32(debris, D1_FACES + 4, 6), 'payload.templates[1].faces'],
+      ['a debris face beyond its 6 normals', 'debris', set32(debris, D1_FACES + 8, 6), 'payload.templates[1].faces'],
+      ['a debris face that ends inside a pair', 'debris', set32(debris, D1_FACES + 44, 4), 'payload.templates[1].faces'],
       ['an infinite scale', 'debris', set32(debris, SCALES + 8, INFINITY), 'payload.untexturedScales[2]'],
       ['a NaN textured colour', 'debris', set32(debris, SCALES + 32, NAN), 'payload.texturedColour[0]'],
     ])('rejects %s', (_, kind, bytes, path) => expectContractError(() => readEffectPayload(bytes, 1, kind), 'invalid-effect-payload', path));
