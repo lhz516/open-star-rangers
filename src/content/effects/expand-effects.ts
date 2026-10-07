@@ -5,14 +5,8 @@ import {
 } from './effect-payload.ts';
 
 // Expansion of effect payloads by the builder rules in docs/original/formats/executable.md (effect geometry data).
-// Arithmetic is in 64-bit floats; every result component is rounded to 32 bits once, at the end. No normals, shading
-// or texture coordinates are produced.
-
-/** Raw parameters of the missile element's texture rotations; how they become coordinates is not traced yet. */
-export interface EffectMapping {
-  readonly rotationStep: number;
-  readonly rotationScale: number;
-}
+// Arithmetic is in 64-bit floats; every result component is rounded to 32 bits once, at the end. Texture coordinates
+// use the constructed 32-bit positions, as wraps are applied after mesh creation. No normals or shading are produced.
 
 export interface EffectShape {
   /** x, y, z per vertex. */
@@ -24,8 +18,8 @@ export interface EffectShape {
   readonly texture: AssetId | null;
   /** Debris only: the template's per-vertex words, unchanged. */
   readonly perVertex: Uint32Array | null;
-  /** Missile element only. */
-  readonly mapping: EffectMapping | null;
+  /** u, v per vertex for textured shapes; missile elements use only rotation 0. */
+  readonly uvs: Float32Array | null;
 }
 
 export interface MissileVisual {
@@ -74,11 +68,27 @@ function roundColour(colour: EffectColour | null, path: string): EffectColour | 
  */
 function shape(
   coordinates: readonly number[], faces: Faces, path: string,
-  { colour = null, texture = null, perVertex = null, mapping = null }: Partial<Pick<EffectShape, 'colour' | 'texture' | 'perVertex' | 'mapping'>> = {},
+  { colour = null, texture = null, perVertex = null }: Partial<Pick<EffectShape, 'colour' | 'texture' | 'perVertex'>> = {},
+  mapping?: (positions: Float32Array) => readonly number[],
 ): EffectShape {
   const positions = Float32Array.from(coordinates);
   if (!positions.every(Number.isFinite)) invalid(`${path}.positions`, 'must expand to finite values');
-  return Object.freeze({ positions, faces, colour: roundColour(colour, path), texture, perVertex: perVertex?.slice() ?? null, mapping });
+  const uvs = mapping ? Float32Array.from(mapping(positions)) : null;
+  if (uvs && !uvs.every(Number.isFinite)) invalid(`${path}.uvs`, 'must expand to finite values');
+  return Object.freeze({ positions, faces, colour: roundColour(colour, path), texture, perVertex: perVertex?.slice() ?? null, uvs });
+}
+
+/** Cylinder angle, including the original's explicit zero on the axis (all signed-zero combinations). */
+function cylinderU(x: number, y: number): number {
+  if (x === 0 && y === 0) return 0;
+  const angle = Math.atan2(x, y) / (2 * Math.PI);
+  return angle < 0 ? angle + 1 : angle;
+}
+
+function textureCoordinates(positions: Float32Array, point: (x: number, y: number, z: number) => readonly [number, number]): number[] {
+  const uvs: number[] = [];
+  for (let at = 0; at < positions.length; at += 3) uvs.push(...point(positions[at], positions[at + 1], positions[at + 2]));
+  return uvs;
 }
 
 /** The coordinates `point` gives at angles 0, step, 2 × step, …, with the angle accumulated by addition. */
@@ -123,7 +133,6 @@ export function expandMissiles(payload: MissileVisuals, path = 'payload'): reado
     flaggedElement: faceList(words.flaggedElement, S.elementVertices, 0, `${path}.faces.flaggedElement`),
     extra: faceList(words.extra, S.extraVertices, 0, `${path}.faces.extra`),
   };
-  const mapping = Object.freeze({ rotationStep: c.rotationStep, rotationScale: payload.rotationScale });
   return Object.freeze(payload.types.map((type, index) => {
     const at = `${path}.types[${index}]`;
     const { r0, r1, length, segments } = type.body;
@@ -139,7 +148,8 @@ export function expandMissiles(payload: MissileVisuals, path = 'payload'): reado
     const [e0, e1, e2] = type.element;
     const element = shape(
       ring(S.elementVertices / 2, c.elementStep, (cos, sin) => [e0 * cos, e0 * sin, 0, e1 * cos, e1 * sin, -e2]),
-      type.flag === 0 ? faces.element : faces.flaggedElement, `${at}.element`, { texture: payload.texture, mapping },
+      type.flag === 0 ? faces.element : faces.flaggedElement, `${at}.element`, { texture: payload.texture },
+      positions => textureCoordinates(positions, (x, y, z) => [cylinderU(-y, x), z / payload.rotationScale]),
     );
     // The extra element exists when the flag's bits are not zero, so a negative zero flag adds it too.
     let extra: EffectShape | null = null;
@@ -157,7 +167,13 @@ export function expandDebris(payload: DebrisVisuals, path = 'payload'): DebrisSh
   const shapes = (template: DebrisTemplate, scales: readonly number[], name: string, colour: EffectColour, texture: AssetId | null) => {
     const faces = faceList(template.faces, S.debrisVertices, S.debrisNormals, `${path}.templates[${name === 'untextured' ? 0 : 1}].faces`);
     return Object.freeze(scales.map((scale, index) =>
-      shape(Array.from(template.vertices, value => value * scale), faces, `${path}.${name}[${index}]`, { colour, texture, perVertex: template.perVertex })));
+      shape(Array.from(template.vertices, value => value * scale), faces, `${path}.${name}[${index}]`, { colour, texture, perVertex: template.perVertex },
+        texture === null ? undefined : positions => {
+          const ys = Array.from({ length: S.debrisVertices }, (_, vertex) => positions[vertex * 3 + 1]);
+          const minimum = Math.min(...ys);
+          const height = Math.max(...ys) - minimum;
+          return textureCoordinates(positions, (x, y, z) => [cylinderU(-x, z), (payload.mappingMultiplier * y - minimum) / height]);
+        })));
   };
   const [plain, textured] = payload.templates;
   return Object.freeze({

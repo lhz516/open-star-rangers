@@ -132,12 +132,12 @@ test('reads back every 2D kind byte for byte (AC-12)', async ({ page }) => {
   }
 });
 
-test('reads back textured and untextured models and every effect kind byte for byte, and marks unmapped textures (AC-11, AC-13, AC-18)', async ({ page }) => {
+test('reads back models and every effect kind byte for byte, including non-seam effect texels (AC-11, AC-13, AC-18)', async ({ page }) => {
   await openViewer(page, await sliceFiles());
   const { layout } = await viewerDiagnostics(page);
   const all = await modelsEntries();
   /** `turns` steps down about the horizontal axis show faces lying in a horizontal plane. */
-  const cases: { readonly id: string; readonly item: ViewerItem; readonly variant: string; readonly unmapped: boolean; readonly turns: number; readonly samples: Sample[] }[] = [];
+  const cases: { readonly id: string; readonly item: ViewerItem; readonly variant: string; readonly turns: number; readonly samples: Sample[] }[] = [];
   // The first textured and the first untextured part list with stable samples; synthetic models are small or extreme.
   const wanted = new Set([true, false]);
   for (const { entry, resolved } of all.filter(({ entry: candidate }) => candidate.kind === 'model')) {
@@ -146,25 +146,24 @@ test('reads back textured and untextured models and every effect kind byte for b
       const item = resolved.item(index)!;
       const samples = solidSamples(item, layout!);
       if (samples.length > 0 && wanted.delete(samples.some(({ textured }) => textured))) {
-        cases.push({ id: entry.id, item, variant: variantLabel(variant), unmapped: false, turns: 0, samples });
+        cases.push({ id: entry.id, item, variant: variantLabel(variant), turns: 0, samples });
       }
     });
   }
   expect(wanted.size, 'a textured and an untextured model are found').toBe(0);
   for (const role of ['projectile', 'missile', 'debris']) {
     const { entry, resolved } = await firstEntry('effect', role);
-    // The first view with stable samples that shows what the role needs: a mid-tone projectile colour, the missile's
-    // untextured element in diagnostic grey, and a textured debris shape; head-on first, then turned down 45°.
+    // Textured effect samples exclude seam-spanning polygons; projectile samples still exercise colour quantisation.
     const found = [0, 3].flatMap(turns => resolved.variants.flatMap((variant, at) => {
       if (variant.kind !== 'effect-view' || (role === 'debris' && variant.label !== 'textured-shape')) return [];
       const samples = solidSamples(resolved.item(at)!, layout!, turned(turns));
-      const shows = role === 'missile' ? samples.some(({ rgb }) => rgb.every(channel => channel === 128)) : samples.some(({ rgb }) => midTone(rgb));
+      const shows = samples.some(({ rgb, textured }) => midTone(rgb) && (role === 'projectile' || textured));
       return shows ? [{ at, turns, samples }] : [];
     }))[0];
     expect(found, `a ${role} view to read back`).toBeDefined();
-    cases.push({ id: entry.id, item: resolved.item(found.at)!, variant: variantLabel(resolved.variants[found.at]), unmapped: role !== 'projectile', ...found });
+    cases.push({ id: entry.id, item: resolved.item(found.at)!, variant: variantLabel(resolved.variants[found.at]), ...found });
   }
-  for (const { id, item, variant, unmapped, turns, samples } of cases) {
+  for (const { id, item, variant, turns, samples } of cases) {
     await show(page, id, variant);
     for (let step = 0; step < turns; step++) await button(page, 'Turn down').click();
     expect((await viewerDiagnostics(page)).view).toEqual(turned(turns));
@@ -175,10 +174,37 @@ test('reads back textured and untextured models and every effect kind byte for b
       for (const sample of samples.filter(({ textured }) => !textured)) expect(colours).toContain(JSON.stringify(sample.rgb));
     }
     await expectSamples(page, layout!, samples);
-    if (item.kind === 'effect') await expect(page.getByTestId('viewer-texture-unmapped')).toHaveCount(unmapped ? 1 : 0);
-    if (id.includes('missile')) expect(samples.some(({ rgb }) => rgb.every(channel => channel === 128)), 'the missile element is diagnostic grey').toBe(true);
+    await expect(page.getByTestId('viewer-texture-unmapped')).toHaveCount(0);
+    if (item.kind === 'effect' && !id.includes('projectile')) expect(samples.some(({ textured }) => textured)).toBe(true);
     await button(page, 'Reset view').click();
   }
+});
+
+test('labels only seam-spanning effect views and offers no texture rotation (AC-18)', async ({ page }) => {
+  await openViewer(page, await sliceFiles());
+  let seamViews = 0;
+  let nonSeamTexturedViews = 0;
+  for (const role of ['missile', 'debris']) {
+    const { entry, resolved } = await firstEntry('effect', role);
+    for (let index = 0; index < resolved.variants.length; index++) {
+      const item = resolved.item(index)!;
+      if (item.kind !== 'effect') throw new Error('Expected an effect');
+      const textured = item.view.shapes.filter(shape => shape.texture !== null);
+      const hasSeam = textured.some(shape => shape.faces.some(face => {
+        const us = face.map(vertex => shape.uvs![vertex * 2]);
+        return Math.max(...us) - Math.min(...us) > 0.5;
+      }));
+      if (hasSeam) seamViews++;
+      else if (textured.length > 0) nonSeamTexturedViews++;
+      await show(page, entry.id, variantLabel(resolved.variants[index]));
+      await expect(page.getByTestId('viewer-seam-unconfirmed')).toHaveCount(hasSeam ? 1 : 0);
+      if (hasSeam) await expect(page.getByTestId('viewer-seam-unconfirmed')).toContainText('Seam interpolation unconfirmed');
+      await expect(page.getByRole('combobox', { name: /Texture rotation/ })).toHaveCount(0);
+      await expect(page.getByTestId('viewer-texture-unmapped')).toHaveCount(0);
+    }
+  }
+  expect(seamViews).toBeGreaterThan(0);
+  expect(nonSeamTexturedViews).toBeGreaterThan(0);
 });
 
 /**
@@ -215,8 +241,8 @@ test('draws once per change and never while idle, holds only the shown item, and
   const missile = await firstEntry('effect', 'missile');
   await show(page, missile.entry.id);
   expect(await drawsDuring(page, async () => { await page.getByRole('radio', { name: 'Missile type 1', exact: true }).check(); }), 'a missile type draws once').toBe(1);
-  expect(await drawsDuring(page, async () => { await page.getByRole('combobox', { name: /Texture rotation/ }).selectOption('7'); }), 'the texture rotation does not draw').toBe(0);
-  expect((await viewerDiagnostics(page)).view.mappingRotation).toBe(7);
+  await expect(page.getByRole('combobox', { name: /Texture rotation/ })).toHaveCount(0);
+  expect((await viewerDiagnostics(page)).view).not.toHaveProperty('mappingRotation');
 
   // A context loss is shown; after the restore the same pixels are drawn again.
   await show(page, ten[5]);

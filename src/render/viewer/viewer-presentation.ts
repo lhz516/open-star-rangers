@@ -16,12 +16,13 @@
  * - Axes: source coordinates are read as left-handed with y up, so positions and normals get z negated for three.js.
  *   Unconfirmed: a reversible initial choice.
  * - Winding: both sides are drawn and nothing is culled, so the unconfirmed winding changes nothing.
- * - Textures: as in 2D (display bytes, nearest, no mipmaps, v = 0 at row 0); model textures repeat on both axes.
+ * - Textures: as in 2D (display bytes, nearest, no mipmaps, v = 0 at row 0); model and effect textures repeat on both axes.
  * - Lighting: unlit by default, showing the part colour, or the texel for a textured part, as is. Optionally a neutral
  *   light, which is not the original's lighting (P3, U-028). Effects have no normals and stay unlit.
  * - Effect colour: the three floats are RGB, each clamped to [0, 1] and quantised to round(v × 255). A shape without a
- *   colour gets DIAGNOSTIC_GREY, which is not an original colour. A shape with a texture is drawn without it, and
- *   marked, while the effect texture coordinates are unknown (P2-11 spec, 效果贴图坐标).
+ *   colour gets DIAGNOSTIC_GREY, which is not an original colour. Textured shapes show their texels unchanged.
+ * - Effect seams: interpolate vertex UVs linearly, with no seam correction; mark faces spanning more than half of u.
+ *   The original seam interpolation is unconfirmed (P2-11/16).
  */
 import {
   AmbientLight, ClampToEdgeWrapping, Color, DataTexture, DirectionalLight, DoubleSide, LinearSRGBColorSpace, MeshBasicMaterial,
@@ -103,18 +104,23 @@ export const effectColourBytes = (colour: EffectColour): Rgb =>
 
 /** How the viewer shows one effect shape. */
 export interface EffectAppearance {
-  /** Display bytes drawn: the clamped colour, or DIAGNOSTIC_GREY without one. */
+  /** Display bytes multiplying the texture: white when textured, else the colour or diagnostic grey. */
   readonly rgb: Rgb;
   /** The expanded colour as given, for display as numbers; null when the builder sets none. */
   readonly colour: EffectColour | null;
-  /** True when the shape has a texture the viewer cannot map yet, because its texture coordinates are not known. */
-  readonly textureUnmapped: boolean;
+  readonly textured: boolean;
+  readonly seamUnconfirmed: boolean;
 }
 
-export const effectAppearance = ({ colour, texture }: EffectShape): EffectAppearance => Object.freeze({
-  rgb: colour === null ? Object.freeze([DIAGNOSTIC_GREY, DIAGNOSTIC_GREY, DIAGNOSTIC_GREY] as const) : effectColourBytes(colour),
+export const effectAppearance = ({ colour, texture, uvs, faces }: EffectShape): EffectAppearance => Object.freeze({
+  rgb: texture !== null && uvs !== null ? WHITE
+    : colour === null ? Object.freeze([DIAGNOSTIC_GREY, DIAGNOSTIC_GREY, DIAGNOSTIC_GREY] as const) : effectColourBytes(colour),
   colour,
-  textureUnmapped: texture !== null,
+  textured: texture !== null && uvs !== null,
+  seamUnconfirmed: texture !== null && uvs !== null && faces.some(face => {
+    const us = face.map(vertex => uvs[vertex * 2]);
+    return Math.max(...us) - Math.min(...us) > 0.5;
+  }),
 });
 
 /** x, y, z coordinates converted to three.js space: a copy with every z negated. */

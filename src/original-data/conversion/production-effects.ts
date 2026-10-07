@@ -71,7 +71,7 @@ const EFFECTS: readonly { readonly id: string; readonly role: EffectKind; readon
     rows: [
       ['types', 0x17_54a0, 9 * 0x7c], ['type-count', 0x17_58fc, 4],
       ['fin-faces', 0x4_4270, 196], ['element-faces', 0x4_4334, 64], ['flagged-element-faces', 0x4_4374, 124], ['extra-faces', 0x4_43f0, 20],
-      ['constants', 0x17_1ac8, 56],
+      ['constants', 0x17_1ac8, 48],
       // A double argument pushed as its high half, then its low half.
       push32('rotation-scale-high', 0x4_44b5), push8('rotation-scale-low', 0x4_44ba),
       push32('extra-colour-0', 0x4_4cbb), push32('extra-colour-1', 0x4_4cb4), push8('extra-colour-2', 0x4_4cb2),
@@ -82,6 +82,7 @@ const EFFECTS: readonly { readonly id: string; readonly role: EffectKind; readon
     role: 'debris',
     texture: PRODUCTION_TEXTURE_REFERENCES.get(DEBRIS_TEXTURE_ENTRY)!,
     rows: [
+      ['mapping-multiplier', 0x17_18ea, 8],
       ['untextured-vertices', 0x3_e2a0, 72], ['untextured-per-vertex', 0x3_e2e8, 72], ['untextured-faces', 0x3_e330, 56],
       ['textured-vertices', 0x3_e368, 72], ['textured-per-vertex', 0x3_e3b0, 72], ['textured-faces', 0x3_e3f8, 56],
       push32('untextured-scale-0', 0x3_e462), push32('untextured-scale-1', 0x3_e46c), push32('untextured-scale-2', 0x3_e47b),
@@ -113,6 +114,7 @@ export const PRODUCTION_EFFECT_DECLARATIONS: readonly EffectDeclaration[] = read
 const EFFECT_EVIDENCE = Object.freeze([
   'docs/original/formats/executable.md#effect-geometry-data-p2-0614-research',
   'docs/original/formats/executable.md#effect-presentation-sources',
+  'docs/original/formats/executable.md#effect-texture-mappings-p2-1115-research',
 ]);
 
 /** Declared mappings of the effect Assets, without a fingerprint until the job binds them. */

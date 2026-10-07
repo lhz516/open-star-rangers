@@ -42,8 +42,8 @@ describe('viewer view', () => {
     expect(act([{ type: 'zoom', steps: 1 }]).zoom).toBe(1.25);
     expect(act(Array.from({ length: 12 }, () => ({ type: 'zoom', steps: 1 }) as const)).zoom).toBe(8);
     expect(act(Array.from({ length: 12 }, () => ({ type: 'zoom', steps: -1 }) as const)).zoom).toBe(1 / 8);
-    const changed = act([{ type: 'rotate', axis: 'vertical', steps: 2 }, { type: 'zoom', steps: 3 }, { type: 'light', lit: true }, { type: 'mapping-rotation', index: 31 }]);
-    expect(applyViewAction(changed, { type: 'reset' })).toEqual({ yaw: 0, pitch: 0, zoom: 1, lit: true, mappingRotation: 31 });
+    const changed = act([{ type: 'rotate', axis: 'vertical', steps: 2 }, { type: 'zoom', steps: 3 }, { type: 'light', lit: true }]);
+    expect(applyViewAction(changed, { type: 'reset' })).toEqual({ yaw: 0, pitch: 0, zoom: 1, lit: true });
   });
 
   it('returns the same view when nothing changes and rejects invalid steps and rotations', () => {
@@ -51,7 +51,6 @@ describe('viewer view', () => {
     expect(applyViewAction(INITIAL_VIEW, { type: 'zoom', steps: -0 })).toBe(INITIAL_VIEW);
     for (const action of [
       { type: 'rotate', axis: 'vertical', steps: 0.5 }, { type: 'zoom', steps: Number.NaN },
-      { type: 'mapping-rotation', index: 32 }, { type: 'mapping-rotation', index: -1 }, { type: 'mapping-rotation', index: 1.5 },
     ] as const) {
       expect(() => applyViewAction(INITIAL_VIEW, action)).toThrow(RangeError);
     }
@@ -199,8 +198,6 @@ describe('viewer models', () => {
     expect(drawn(surface)[0].mesh.parent!.parent!.rotation.x).toBeCloseTo((345 * Math.PI) / 180, 12);
     step({ type: 'zoom', steps: 1 }, 1);
     expect(surface.lastDraw!.camera).toMatchObject({ zoom: 1.25, position: { z: distance } });
-    // The texture rotation changes no picture before the effect texture coordinates are known.
-    step({ type: 'mapping-rotation', index: 7 }, 0);
     step({ type: 'reset' }, 1);
     expect(surface.lastDraw!.camera).toMatchObject({ zoom: 1, position: { z: distance } });
     renderer.setView(view);
@@ -232,7 +229,13 @@ describe('viewer effects', () => {
           expect(indices(objects[at])).toEqual([...fanTriangles(shape.faces)]);
           expect(indices(objects[at])).toHaveLength(3 * triangles);
           expect(rgbOf(objects[at].material)).toEqual([...effectAppearance(shape).rgb]);
-          expect(objects[at].material).toMatchObject({ side: DoubleSide, map: null });
+          expect(objects[at].material).toMatchObject({ side: DoubleSide });
+          const map = (objects[at].material as MeshBasicMaterial).map;
+          if (shape.uvs) {
+            expect(attribute(objects[at], 'uv')).toEqual([...shape.uvs]);
+            expect(map).toMatchObject({ wrapS: RepeatWrapping, wrapT: RepeatWrapping, colorSpace: NoColorSpace });
+            expect((map as DataTexture).image.data).toEqual(expandSynthetic(textureImage()).rgba);
+          } else expect(map).toBeNull();
           totals.vertices += shape.positions.length / 3;
           totals.triangles += triangles;
         });
@@ -241,18 +244,27 @@ describe('viewer effects', () => {
     },
   );
 
-  it('clamps and quantises colours, greys a shape without one, and marks textures it cannot map', () => {
+  it('clamps colours, shows texels unchanged and marks seam-spanning faces', () => {
     expect(effectColourBytes([0.25, -0, 1.75])).toEqual([64, 0, 255]);
     expect(effectColourBytes([0.5, -3, 0.998])).toEqual([128, 0, 254]);
     const [, missile, debris] = syntheticEffects();
     const element = effectViews(missile)[0].shapes.find(shape => shape.colour === null)!;
-    expect(effectAppearance(element)).toEqual({ rgb: [DIAGNOSTIC_GREY, DIAGNOSTIC_GREY, DIAGNOSTIC_GREY], colour: null, textureUnmapped: true });
+    expect(effectAppearance(element)).toEqual({ rgb: [255, 255, 255], colour: null, textured: true, seamUnconfirmed: true });
+    expect(effectAppearance({ ...element, texture: null, uvs: null })).toEqual({
+      rgb: [DIAGNOSTIC_GREY, DIAGNOSTIC_GREY, DIAGNOSTIC_GREY], colour: null, textured: false, seamUnconfirmed: false,
+    });
     const views = effectViews(debris);
     expect(views.map(({ label, index }) => `${label} ${index}`)).toEqual([
       'untextured-shape 0', 'untextured-shape 1', 'untextured-shape 2', 'textured-shape 0', 'textured-shape 1',
     ]);
-    expect(effectAppearance(views[0].shapes[0])).toEqual({ rgb: [64, 0, 255], colour: [0.25, -0, 1.75], textureUnmapped: false });
-    expect(effectAppearance(views[3].shapes[0])).toMatchObject({ rgb: [255, 32, 0], colour: [2, 0.125, -0.5], textureUnmapped: true });
+    expect(effectAppearance(views[0].shapes[0])).toEqual({ rgb: [64, 0, 255], colour: [0.25, -0, 1.75], textured: false, seamUnconfirmed: false });
+    expect(effectAppearance(views[3].shapes[0])).toMatchObject({ rgb: [255, 255, 255], colour: [2, 0.125, -0.5], textured: true });
+  });
+
+  it.each([0.5, 0.5001])('marks a face only when its full u span exceeds 1/2 (%s)', span => {
+    const shape = effectViews(syntheticEffects()[1])[0].shapes.find(shape => shape.texture !== null)!;
+    const uvs = Float32Array.of(0, 0, span, 0, 0.25, 0, 0.4, 0, 0.1, 0, 0.2, 0);
+    expect(effectAppearance({ ...shape, uvs, faces: [[0, 1, 2, 3]] }).seamUnconfirmed).toBe(span > 0.5);
   });
 
   it('stays unlit, so the light changes no effect picture', () => {

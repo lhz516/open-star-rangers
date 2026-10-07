@@ -4,7 +4,7 @@ import { ContentContractError, fail, readArray } from '../contract-validation.ts
 import { asciiBytes, asciiText, bytesAt } from '../graphics/graphics-format.ts';
 import { isDetached } from '../ownership.ts';
 
-// Effect payloads schema 1 (P2-06 spec, effect geometry data): the source data of the procedural projectile, missile
+// Effect payloads schema 2 (P2-11/16): the source data of the procedural projectile, missile
 // and debris geometry, kept bit for bit. Little-endian without padding. A face list is a u16 word count W, then W u32
 // words: {corner count, corners…} per face, ending with 0; a corner is a vertex index, or for debris, whose builders
 // pass per-vertex normals, a (vertex, normal) index pair (P2-11/24). A texture is a u8 length L (1–128), then L ASCII
@@ -12,16 +12,16 @@ import { isDetached } from '../ownership.ts';
 //   projectile  u16 record count R (1–64); 2 templates, each: face list, 12 f32 vertices (4 × x, y, z), 6 u32 width
 //               markers (2 per axis x, y, z), u32 length marker, f64 length constant. Then R records of 24 bytes: u32
 //               selector, f32 width, f32 length, f32 × 3 colour
-//   missile     texture; u16 type count T (1–32); face lists fin, element, flagged element, extra; 7 f64 constants in
+//   missile     texture; u16 type count T (1–32); face lists fin, element, flagged element, extra; 6 f64 constants in
 //               MISSILE_CONSTANTS order; f64 rotation scale; f32 × 3 extra colour. Then T types: u32 parts P (1–4);
 //               body f32 r0, r1, length, i32 segments (3–64), u32 colour (24 bits); P − 1 fins of f32 × 4 and u32
 //               colour; f32 × 3 element; f32 flag
 //   debris      texture; 2 templates (untextured, textured), each: face list, 18 f32 vertices (6 × x, y, z), 18 u32
 //               per-vertex words. Then f32 × 3 untextured scales, f32 × 2 textured scales, f32 × 3 untextured colour,
-//               f32 × 3 textured colour
+//               f32 × 3 textured colour; f64 mapping multiplier K
 // Floats are finite. Any change to a layout or its meaning needs a new schema version.
 
-export const EFFECT_PAYLOAD_SCHEMA_VERSION = 1;
+export const EFFECT_PAYLOAD_SCHEMA_VERSION = 2;
 
 /** Approved structural limits (limit names `effectRecords`, `missileTypes`, `ringSegments`) and format rules. */
 export const EFFECT_LIMITS = Object.freeze({
@@ -49,7 +49,7 @@ export const EFFECT_SHAPES = Object.freeze({
 
 /** The missile constants in source order. */
 export const MISSILE_CONSTANTS = Object.freeze([
-  'finColourScale', 'bodyAngle', 'bodyColourScale', 'elementStep', 'extraOffset', 'extraStep', 'rotationStep',
+  'finColourScale', 'bodyAngle', 'bodyColourScale', 'elementStep', 'extraOffset', 'extraStep',
 ] as const);
 
 /** Three floats in the builder's argument order; their range and channel meaning are unconfirmed. */
@@ -143,6 +143,7 @@ export interface DebrisVisuals {
   readonly texturedScales: readonly [number, number];
   readonly untexturedColour: EffectColour;
   readonly texturedColour: EffectColour;
+  readonly mappingMultiplier: number;
 }
 
 export type EffectPayload = ProjectileVisuals | MissileVisuals | DebrisVisuals;
@@ -327,6 +328,7 @@ function checkDebris(payload: Readonly<Record<string, unknown>>, path: string): 
   requireArray(payload.texturedScales, `${path}.texturedScales`, S.texturedScales, requireF32);
   requireArray(payload.untexturedColour, `${path}.untexturedColour`, 3, requireF32);
   requireArray(payload.texturedColour, `${path}.texturedColour`, 3, requireF32);
+  requireF64(payload.mappingMultiplier, `${path}.mappingMultiplier`);
 }
 
 /** Checks an effect payload by the rules the encoder and reader share. */
@@ -358,7 +360,7 @@ const MISSILE_TYPE = WORD + 4 * WORD;
 const MISSILE_SHARED = MISSILE_CONSTANTS.length * DOUBLE + DOUBLE + COLOUR;
 /** Vertices and per-vertex words. */
 const DEBRIS_TEMPLATE = 2 * S.debrisVertices * 3 * WORD;
-const DEBRIS_SHARED = (S.untexturedScales + S.texturedScales) * WORD + 2 * COLOUR;
+const DEBRIS_SHARED = (S.untexturedScales + S.texturedScales) * WORD + 2 * COLOUR + DOUBLE;
 
 /** Encoded length of a checked payload, from its counts alone. */
 export function effectPayloadLength(payload: EffectPayload): number {
@@ -452,6 +454,7 @@ export function encodeEffectPayload(payload: EffectPayload, path = 'effect'): Ui
         w.u32(template.perVertex);
       }
       w.f32([...payload.untexturedScales, ...payload.texturedScales, ...payload.untexturedColour, ...payload.texturedColour]);
+      w.f64(payload.mappingMultiplier);
       break;
   }
   return w.bytes;
@@ -554,16 +557,19 @@ function readDebris(r: Reader, path: string): DebrisVisuals {
   const templates = Object.freeze([template(), template()] as const);
   const untexturedScales = Object.freeze([r.f32(), r.f32(), r.f32()] as const);
   const texturedScales = Object.freeze([r.f32(), r.f32()] as const);
-  return Object.freeze({ kind: 'debris', texture, templates, untexturedScales, texturedScales, untexturedColour: r.colour(), texturedColour: r.colour() });
+  return Object.freeze({
+    kind: 'debris', texture, templates, untexturedScales, texturedScales,
+    untexturedColour: r.colour(), texturedColour: r.colour(), mappingMultiplier: r.f64(),
+  });
 }
 
 /**
- * Strictly reads a schema 1 effect payload of the given kind into frozen data whose arrays are the caller's own copies.
+ * Strictly reads a schema 2 effect payload of the given kind into frozen data whose arrays are the caller's own copies.
  * Counts are range-checked and their bytes found present before anything is sized from them; diagnostics name only
  * structural paths.
  */
 export function readEffectPayload<K extends EffectKind>(bytes: unknown, schemaVersion: unknown, kind: K, path = 'payload'): EffectOf<K> {
-  if (schemaVersion !== EFFECT_PAYLOAD_SCHEMA_VERSION) fail('unsupported-payload-schema', `${path}.schemaVersion`, 'must be effect payload schema 1');
+  if (schemaVersion !== EFFECT_PAYLOAD_SCHEMA_VERSION) fail('unsupported-payload-schema', `${path}.schemaVersion`, 'must be effect payload schema 2');
   if (!EFFECT_KINDS.includes(kind)) invalid(`${path}.kind`, 'must be projectile, missile or debris');
   if (!(bytes instanceof Uint8Array)) invalid(path, 'must be a Uint8Array');
   if (isDetached(bytes.buffer)) fail('payload-detached', path, 'was transferred away and can no longer be used');

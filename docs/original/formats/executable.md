@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-06
+updated: 2026-10-07
 related: [U-009, U-017, U-022, U-032]
 ---
 
@@ -469,6 +469,8 @@ Evidence: ignored `local/research/p2-11/effect-mapping/`:
 - the native exports `native-*.txt` and the decompilations `wrap-api.c`, `face-flags.c` and `group-state.c`;
 - the Ghidra logs and the counts-only `seam-counts.py` and `debris-faces.py`.
 
+**Confirmed (local import check, P2-11/16, 2026-10-07):** the mapping fields used by the schema-2 effect payloads were compared with an independent LE page-map reader of the catalog-matched local executable. Both fields (the missile rotation scale and debris K) match exactly: 2 comparisons, 0 differences. The 6 retained missile geometry constants were independently compared in source order, also with 0 differences. All 3 effect payloads use schema 2; the missile imports no rotation step, because only rotation 0 is used. The script and counts-only result remain in ignored `local/research/p2-11/effect-mapping-display-check.ts` and `.json`. This verifies imported fields, not original rasterisation or seam interpolation, which remains Unconfirmed.
+
 ### Bounded runtime CODE/DATA object correlation
 
 **Confirmed (observed pause, not a universal load address):** the installed debugger's `VRT` command permits timed pauses without an application selector guess or a DOS interrupt-route assumption. `local/research/p2-01/runtime-vrt-map.py` verifies a paused application using a unique 128-byte CODE window and an independent 64-byte DATA window. The checked run maps object 2 at `0x10059000` and object 4 at `0x1019a000`; their offsets from the LE preferred bases differ. A single common shift from Ghidra addresses is therefore not valid for this observed image.
@@ -592,4 +594,3 @@ The mapping was not found in the checked set. Renderer-side processing after the
 - **Why the earlier scans missed it:** `0x9e304` is reached only through function pointers and was never disassembled. It holds only two syntactic self-multiplications, plus one through a register copy, which is below the earlier cluster criterion. On an 8-bit device, `0xa07d4` (token 0x10) builds a 6 × 6 × 6 colour cube through the same lookup, which maps RGB colours onto the palette; on other devices it builds channel masks instead. That textures use ramps rather than this cube is inferred from the ramp model (Likely).
 
 Consequence: the renderer matches colours against the DATA values times 4 by squared Euclidean distance, with ties to the lowest index (Confirmed). That an unshaded TEX colour reaches this lookup as its 8-bit BGR palette components is Likely; see [textures §3](./textures.md#nearest-colour-metric-and-tie-rule-confirmed). Evidence: ignored `local/research/p2-06/nearest2/`, holding the read-only scripts `RangeRefs.java`, `DispScan.java`, `QueryScan.java` and `DumpWords.java`, native listings, and the rule comparison `confirmed-rule.ts`.
-

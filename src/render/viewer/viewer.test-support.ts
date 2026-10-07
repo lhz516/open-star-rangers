@@ -128,10 +128,11 @@ export function modelItem(model = syntheticModel(), list = 0, id = 'model/synthe
 
 /** The synthetic effect payloads of every kind, read back through the content reader. */
 export function syntheticEffects(): readonly EffectPayload[] {
-  return [syntheticProjectile(), syntheticMissile(), syntheticDebris()].map(payload => readEffectPayload(encodeEffectPayload(payload), 1, payload.kind));
+  return [syntheticProjectile(), syntheticMissile(), syntheticDebris()].map(payload => readEffectPayload(encodeEffectPayload(payload), 2, payload.kind));
 }
 
 /** The item of one effect view. */
 export function effectItem(payload: EffectPayload, index = 0, id = `data/synthetic-${payload.kind}`): ViewerItem {
-  return { kind: 'effect', id: readAssetId(id), view: effectViews(payload)[index] };
+  const textures = new Map(payload.kind === 'projectile' ? [] : [[payload.texture, expandSynthetic(textureImage())]]);
+  return { kind: 'effect', id: readAssetId(id), view: effectViews(payload)[index], textures };
 }

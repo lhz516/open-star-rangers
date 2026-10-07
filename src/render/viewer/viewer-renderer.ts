@@ -35,7 +35,7 @@ export type ViewerItem =
   /** `modelPartItems` output for one part list, and the `expandModelTextures` output its parts use. */
   | { readonly kind: 'model'; readonly id: AssetId; readonly parts: readonly ModelPartItem[]; readonly textures: ReadonlyMap<AssetId, ExpandedImage> }
   /** One view of an effect payload, its shapes from the content expansions. */
-  | { readonly kind: 'effect'; readonly id: AssetId; readonly view: EffectView };
+  | { readonly kind: 'effect'; readonly id: AssetId; readonly view: EffectView; readonly textures: ReadonlyMap<AssetId, ExpandedImage> };
 
 export type ViewerRendererState = 'ready' | 'context-lost' | 'failed' | 'unavailable' | 'disposed';
 
@@ -117,7 +117,7 @@ function createDisplay(scene: Scene, item: ViewerItem, textures: ViewerTextures,
     case 'palette': return createPictureDisplay(scene, paletteSheet(item.palette), 'integer', name);
     case 'font': return createPictureDisplay(scene, glyphSheet(item.font), 'integer', name);
     case 'model': return createModelDisplay(scene, name, item.parts, item.textures, textures, view);
-    case 'effect': return createEffectDisplay(scene, name, item.view.shapes, view);
+    case 'effect': return createEffectDisplay(scene, name, item.view.shapes, item.textures, textures, view);
   }
 }
 

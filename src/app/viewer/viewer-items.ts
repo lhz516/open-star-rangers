@@ -154,11 +154,17 @@ function resolve(entry: ViewerEntry, payloads: PackagePayloads): ResolvedEntry {
     }
     case 'effect': {
       const { bytes, schemaVersion } = record(payloads, id, `effects[${id}]`);
-      const views = effectViews(readEffectPayload(bytes, schemaVersion, entry.role as EffectKind, `effects[${id}]`));
+      const payload = readEffectPayload(bytes, schemaVersion, entry.role as EffectKind, `effects[${id}]`);
+      const views = effectViews(payload);
+      const textures = new Map<AssetId, ReturnType<typeof expandImage>>();
+      if (payload.kind !== 'projectile') {
+        const image = readImage(payloads, payload.texture);
+        textures.set(payload.texture, expandImage(image, paletteMap(payloads, imagePalettes(image)), `images[${payload.texture}]`));
+      }
       return {
         variants: Object.freeze(views.map(({ label, index, shapes }): ViewerVariant =>
           Object.freeze({ kind: 'effect-view', label, index, shapes: Object.freeze(shapes.map(effectAppearance)) }))),
-        item: index => (isVariant(index, views.length) ? { kind, id, view: views[index] } : null),
+        item: index => (isVariant(index, views.length) ? { kind, id, view: views[index], textures } : null),
       };
     }
   }

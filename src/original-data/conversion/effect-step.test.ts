@@ -89,7 +89,7 @@ describe('effect step', () => {
     // A constants region shorter than its use accepts.
     const constants = regionIndex(ID.missile, 'constants');
     const shortened = missile.parts.map((part, index) => index !== constants ? part
-      : { alternatives: [{ ...part.alternatives[0], subresource: part.alternatives[0].subresource!.replace(/\/56$/, '/48') }] });
+      : { alternatives: [{ ...part.alternatives[0], subresource: part.alternatives[0].subresource!.replace(/\/48$/, '/40') }] });
     failures.push([mappings(debris, { ...missile, parts: shortened }, projectile), declarations, `effects[${ID.missile}].regions[${constants}]`]);
     for (const [table, declared, location, reason] of failures) {
       const error = await run({}, UNLIMITED_BUDGET, table, declared).then(() => null, (caught: unknown) => caught);
@@ -154,6 +154,8 @@ describe('effect step', () => {
     ['an infinite projectile vertex', { exe: exeWith(ID.projectile, 'template-0-vertices', setU32(8, 0xff80_0000)) }, 'invalid-payload', `effects[${ID.projectile}].templates[0]`, null],
     ['an infinite debris scale', { exe: exeWith(ID.debris, 'textured-scale-1', setU32(0, 0x7f80_0000)) }, 'invalid-payload',
       `effects[${ID.debris}].regions[${regionIndex(ID.debris, 'textured-scale-1')}]`, null],
+    ['an infinite debris mapping multiplier', { exe: exeWith(ID.debris, 'mapping-multiplier', setU32(4, 0x7ff0_0000)) }, 'invalid-payload',
+      `effects[${ID.debris}].regions[${regionIndex(ID.debris, 'mapping-multiplier')}]`, null],
     ['a debris face of more corners than vertices', { exe: exeWith(ID.debris, 'untextured-faces', setU32(0, 7)) }, 'invalid-payload', `effects[${ID.debris}].templates[0]`, null],
     // Debris corners are (vertex, normal) pairs, so word 2 of the 14-word hexagon is its first normal index. Cutting it to
     // a triangle and starting a second triangle at word 7 leaves that face's last pair cut by the end word.
@@ -175,6 +177,6 @@ describe('effect step', () => {
   it('reads a sign-extended 8-bit immediate as the low half of the rotation scale', async () => {
     const result = await run();
     const missile = result.groups[0].payloads.find(({ id }) => id === ID.missile)!;
-    expect(readEffectPayload(missile.bytes, 1, 'missile').rotationScale).toBe(syntheticMissileSource().rotationScale);
+    expect(readEffectPayload(missile.bytes, 2, 'missile').rotationScale).toBe(syntheticMissileSource().rotationScale);
   });
 });

@@ -58,7 +58,7 @@ export function syntheticMissile(): MissileVisuals {
     },
     constants: {
       finColourScale: 0.25, bodyAngle: 5.75, bodyColourScale: 0.0625, elementStep: 1.375,
-      extraOffset: 0.875, extraStep: 2.125, rotationStep: -0,
+      extraOffset: 0.875, extraStep: 2.125,
     },
     rotationScale: 4.75,
     extraColour: [0.375, -1.25, 3],
@@ -116,5 +116,6 @@ export function syntheticDebris(): DebrisVisuals {
     texturedScales: [0.625, 3.125],
     untexturedColour: [0.25, -0, 1.75],
     texturedColour: [2, 0.125, -0.5],
+    mappingMultiplier: 1.375,
   };
 }

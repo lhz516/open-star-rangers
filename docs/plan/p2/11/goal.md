@@ -119,7 +119,7 @@ updated: 2026-10-07
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | completed |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | completed |
 | [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
-| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | in-progress |
+| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | completed |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | pending |
 | [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
@@ -160,6 +160,9 @@ updated: 2026-10-07
   - **跨接缝面：** 按各角坐标线性插值；各角 u 的最大值与最小值之差大于 1/2 的面为跨接缝面，含这种面的项标明 “Seam interpolation unconfirmed”。这是呈现约定中可逆的初始选择，由 P2-12 用截图判定。AC-18 的像素断言只取不跨接缝的面。
 
   16 的工作范围与验收随之更新；其余子任务与验收覆盖不变。
+- **2026-10-07 — 16 集成时的记录：**
+  - **效果 payload 去掉旋转步长：** schema 2 除新增碎片倍数 K 外，还从导弹常量中去掉 P2-06 schema 1 已导入的旋转步长（常量区由 7 个 `f64` 变为 6 个），因为只用第 0 个旋转时它不参与任何输出。这与用户所选方案一致（另一方案才导入步长），其余既有字段的语义不变；本地核对 6 个保留常量与 2 个映射字段，差异均为 0。
+  - **留给 18 的文档缺口：** [源码结构](../../../engineering/source-structure.md)“生产转换器版本”一节仍写 `models-1`，18 核对源码结构时改为当前值。
 
 ## 审批
 

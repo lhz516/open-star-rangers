@@ -210,6 +210,19 @@ export function solidSamples(item: ViewerItem, layout: ViewportLayout, view?: Vi
     if (behind && behind.distance - first.distance <= 1e-3 * first.distance) return null;
     const material = (first.object as unknown as { material: MeshBasicMaterial }).material;
     const mesh = meshes.indexOf(first.object as (typeof meshes)[number]);
+    if (item.kind === 'effect' && material.map) {
+      const shape = item.view.shapes[mesh];
+      let triangle = first.faceIndex!;
+      const face = shape.faces.find(corners => {
+        if (triangle < corners.length - 2) return true;
+        triangle -= corners.length - 2;
+        return false;
+      });
+      if (!face || !shape.uvs) throw new Error('Textured effect hit has no polygon or UVs');
+      const us = face.map(vertex => shape.uvs![vertex * 2]);
+      // AC-18 samples exclude the entire seam-spanning polygon, not just a fanned triangle.
+      if (Math.max(...us) - Math.min(...us) > 0.5) return null;
+    }
     if (!material.map) return { key: `${mesh}`, rgb: material.color.toArray().map(channel => Math.round(channel * 255)) as [number, number, number] };
     if (!first.uv) return null;
     const { data, width, height } = material.map.image as { data: Uint8Array; width: number; height: number };

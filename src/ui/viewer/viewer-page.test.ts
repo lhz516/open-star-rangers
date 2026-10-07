@@ -35,8 +35,9 @@ describe('viewer copy', () => {
   });
 
   it('shows effect colours as given, with the bytes drawn, and names the diagnostic grey', () => {
-    expect(appearanceText({ rgb: [64, 0, 255], colour: [0.25, -0, 1.75], textureUnmapped: false })).toBe('Colour 0.25, -0, 1.75, drawn as 64, 0, 255');
-    expect(appearanceText({ rgb: [128, 128, 128], colour: null, textureUnmapped: true })).toBe('No colour: shown in diagnostic grey 128, 128, 128, not an original colour');
+    expect(appearanceText({ rgb: [64, 0, 255], colour: [0.25, -0, 1.75], textured: false, seamUnconfirmed: false })).toBe('Colour 0.25, -0, 1.75, drawn as 64, 0, 255');
+    expect(appearanceText({ rgb: [128, 128, 128], colour: null, textured: false, seamUnconfirmed: false })).toBe('No colour: shown in diagnostic grey 128, 128, 128, not an original colour');
+    expect(appearanceText({ rgb: [255, 255, 255], colour: null, textured: true, seamUnconfirmed: true })).toBe('Texture texels shown unchanged; no source colour');
   });
 
   it('describes a loaded mission by structure and counts only, and nothing otherwise', () => {

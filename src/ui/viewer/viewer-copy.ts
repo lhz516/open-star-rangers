@@ -31,13 +31,14 @@ export function variantLabel(variant: ViewerVariant): string {
   return `${noun} ${variant.index}`;
 }
 
-/** Shown when a shape has a texture whose coordinates the viewer does not know yet (AC-18). */
-export const TEXTURE_UNMAPPED = 'Texture mapping unconfirmed: textured surfaces are shown without their texture.';
+/** The original's interpolation across cylindrical seams remains unconfirmed (AC-18). */
+export const SEAM_UNCONFIRMED = 'Seam interpolation unconfirmed: vertex texture coordinates are interpolated linearly.';
 
 /** A number as given, keeping the sign of negative zero. */
 const exact = (value: number): string => (Object.is(value, -0) ? '-0' : String(value));
 
-export function appearanceText({ colour, rgb }: EffectAppearance): string {
+export function appearanceText({ colour, rgb, textured }: EffectAppearance): string {
+  if (textured) return `Texture texels shown unchanged; ${colour === null ? 'no source colour' : `source colour ${colour.map(exact).join(', ')}`}`;
   if (colour === null) return `No colour: shown in diagnostic grey ${rgb.join(', ')}, not an original colour`;
   return `Colour ${colour.map(exact).join(', ')}, drawn as ${rgb.join(', ')}`;
 }

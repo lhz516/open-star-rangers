@@ -9,13 +9,13 @@ import type { ResourceHolderSnapshot } from '../../app/resources/resource-holder
 import type { ViewerEntry } from '../../app/viewer/viewer-items.ts';
 import type { ViewerOwner, ViewerOwnerSnapshot } from '../../app/viewer/viewer-owner.ts';
 import type { ViewerRenderDiagnostics, ViewerRendererStatus } from '../../render/viewer/viewer-renderer.ts';
-import { VIEW_LIMITS, type ViewerViewAction } from '../../render/viewer/viewer-view.ts';
+import type { ViewerViewAction } from '../../render/viewer/viewer-view.ts';
 import { describeError } from '../game/describe-error.ts';
 import { missionFailureCopy } from '../import/failure-copy.ts';
 import { FailureNotice } from '../import/FailureNotice.tsx';
 import { useFocusOnMount } from '../pages/use-focus-on-mount.ts';
 import { ViewerAudioPanel } from './ViewerAudioPanel.tsx';
-import { appearanceText, KIND_HEADINGS, KIND_ORDER, missionLines, TEXTURE_UNMAPPED, variantLabel } from './viewer-copy.ts';
+import { appearanceText, KIND_HEADINGS, KIND_ORDER, missionLines, SEAM_UNCONFIRMED, variantLabel } from './viewer-copy.ts';
 import { viewerKeyAction } from './viewer-keys.ts';
 
 export interface ViewerPageProps {
@@ -107,22 +107,13 @@ function Selection({ viewer, snapshot, entry }: { readonly viewer: ViewerOwner; 
           <ul data-testid="viewer-shapes">
             {shown.shapes.map((appearance, index) => <li key={index}>{`Shape ${index}: ${appearanceText(appearance)}`}</li>)}
           </ul>
-          {shown.shapes.some(({ textureUnmapped }) => textureUnmapped) && <p role="note" data-testid="viewer-texture-unmapped">{TEXTURE_UNMAPPED}</p>}
+          {shown.shapes.some(({ seamUnconfirmed }) => seamUnconfirmed) && <p role="note" data-testid="viewer-seam-unconfirmed">{SEAM_UNCONFIRMED}</p>}
         </>
       )}
       {!failure && entry.kind === 'model' && (
         <label>
           <input type="checkbox" checked={view.lit} onChange={event => { viewer.changeView({ type: 'light', lit: event.target.checked }); }} />
           Neutral light (not the original lighting)
-        </label>
-      )}
-      {!failure && entry.kind === 'effect' && entry.role === 'missile' && (
-        <label>
-          {'Texture rotation '}
-          <select value={view.mappingRotation} onChange={event => { viewer.changeView({ type: 'mapping-rotation', index: Number(event.target.value) }); }}>
-            {Array.from({ length: VIEW_LIMITS.mappingRotations }, (_, index) => <option key={index} value={index}>{index}</option>)}
-          </select>
-          {' (no effect on the picture until the texture mapping is known)'}
         </label>
       )}
     </section>

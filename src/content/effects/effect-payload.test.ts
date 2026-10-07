@@ -32,7 +32,7 @@ describe('effect payloads', () => {
     expect(bytes.length).toBe(effectPayloadLength(payload));
     expect(bytes.byteOffset).toBe(0);
     expect(bytes.buffer.byteLength).toBe(bytes.length);
-    const read = readEffectPayload(bytes, 1, kind);
+    const read = readEffectPayload(bytes, 2, kind);
     // toEqual compares numbers with Object.is, so negative zeros and subnormals are checked exactly.
     expect(read).toEqual(payload);
     expect(Object.isFrozen(read)).toBe(true);
@@ -47,7 +47,9 @@ describe('effect payloads', () => {
 
   it('keeps every 64-bit constant bit for bit', () => {
     const payload = { ...syntheticMissile(), rotationScale: 5e-324, constants: { ...syntheticMissile().constants, bodyAngle: -Number.MAX_VALUE } };
-    expect(readEffectPayload(encodeEffectPayload(payload), 1, 'missile')).toEqual(payload);
+    expect(readEffectPayload(encodeEffectPayload(payload), 2, 'missile')).toEqual(payload);
+    const debris = { ...syntheticDebris(), mappingMultiplier: -Number.MAX_VALUE };
+    expect(readEffectPayload(encodeEffectPayload(debris), 2, 'debris')).toEqual(debris);
   });
 
   it('checks face lists', () => {
@@ -88,12 +90,12 @@ describe('effect payloads', () => {
     const T0_CONSTANT = T0_VERTICES + 48 + 24 + 4;
     const RECORDS = 2 + (84 + 2 + 40) + (84 + 2 + 24);
     // Missile: texture (1 + 23 bytes), type count, face lists of 14, 11, 9 and 5 words (EXTRA_FACES is the last list's
-    // first word), 7 constants, scale, colour.
+    // first word), 6 constants, scale, colour.
     const missile = encodeEffectPayload(syntheticMissile());
     const TYPE_COUNT = 24;
     const EXTRA_FACES = TYPE_COUNT + 2 + (2 + 56) + (2 + 44) + (2 + 36) + 2;
     const CONSTANTS = EXTRA_FACES + 20;
-    const ROTATION_SCALE = CONSTANTS + 56;
+    const ROTATION_SCALE = CONSTANTS + 48;
     const EXTRA_COLOUR = ROTATION_SCALE + 8;
     const TYPE_0 = EXTRA_COLOUR + 12;
     const TYPE_1 = TYPE_0 + 40;
@@ -124,6 +126,10 @@ describe('effect payloads', () => {
       ['an extra face beyond its 3 vertices', 'missile', set32(missile, EXTRA_FACES + 12, 3), 'payload.faces.extra'],
       ['a NaN constant', 'missile', setF64(missile, CONSTANTS + 8, NaN), 'payload.constants.bodyAngle'],
       ['a NaN rotation scale', 'missile', setF64(missile, ROTATION_SCALE, NaN), 'payload.rotationScale'],
+      ['a truncated missile', 'missile', missile.subarray(0, -1), 'payload'],
+      ['a truncated mapping multiplier', 'debris', debris.subarray(0, -1), 'payload'],
+      ['an infinite mapping multiplier', 'debris', setF64(debris, debris.length - 8, Infinity), 'payload.mappingMultiplier'],
+      ['a NaN mapping multiplier', 'debris', setF64(debris, debris.length - 8, NaN), 'payload.mappingMultiplier'],
       ['an infinite extra colour', 'missile', set32(missile, EXTRA_COLOUR, INFINITY), 'payload.extraColour[0]'],
       ['no parts', 'missile', set32(missile, TYPE_0, 0), 'payload.types[0].parts'],
       ['5 parts', 'missile', set32(missile, TYPE_0, 5), 'payload.types[0].parts'],
@@ -138,19 +144,19 @@ describe('effect payloads', () => {
       ['a debris face that ends inside a pair', 'debris', set32(debris, D1_FACES + 44, 4), 'payload.templates[1].faces'],
       ['an infinite scale', 'debris', set32(debris, SCALES + 8, INFINITY), 'payload.untexturedScales[2]'],
       ['a NaN textured colour', 'debris', set32(debris, SCALES + 32, NAN), 'payload.texturedColour[0]'],
-    ])('rejects %s', (_, kind, bytes, path) => expectContractError(() => readEffectPayload(bytes, 1, kind), 'invalid-effect-payload', path));
+    ])('rejects %s', (_, kind, bytes, path) => expectContractError(() => readEffectPayload(bytes, 2, kind), 'invalid-effect-payload', path));
 
     it('keeps per-vertex words that are not finite floats', () => {
-      expect(readEffectPayload(debris, 1, 'debris').templates[0].perVertex[3]).toBe(0x7fc0_0001);
+      expect(readEffectPayload(debris, 2, 'debris').templates[0].perVertex[3]).toBe(0x7fc0_0001);
     });
 
     it('rejects other schemas, kinds and inputs', () => {
-      expectContractError(() => readEffectPayload(projectile, 2, 'projectile'), 'unsupported-payload-schema', 'payload.schemaVersion');
-      expectContractError(() => readEffectPayload(projectile, 1, 'laser' as EffectKind), 'invalid-effect-payload', 'payload.kind');
-      expectContractError(() => readEffectPayload([...projectile], 1, 'projectile'), 'invalid-effect-payload', 'payload');
+      for (const kind of KINDS) expectContractError(() => readEffectPayload(encodeEffectPayload(PAYLOADS[kind]()), 1, kind), 'unsupported-payload-schema', 'payload.schemaVersion');
+      expectContractError(() => readEffectPayload(projectile, 2, 'laser' as EffectKind), 'invalid-effect-payload', 'payload.kind');
+      expectContractError(() => readEffectPayload([...projectile], 2, 'projectile'), 'invalid-effect-payload', 'payload');
       const moved = projectile.slice();
       structuredClone(moved.buffer, { transfer: [moved.buffer] });
-      expectContractError(() => readEffectPayload(moved, 1, 'projectile'), 'payload-detached', 'payload');
+      expectContractError(() => readEffectPayload(moved, 2, 'projectile'), 'payload-detached', 'payload');
     });
   });
 
@@ -175,7 +181,8 @@ describe('effect payloads', () => {
       ['a non-image texture', { ...missile, texture: 'sound/synthetic' }, 'effect.texture'],
       ['fins that do not match the parts', { ...missile, types: [{ ...type, parts: 2 }] }, 'effect.types[0].fins'],
       ['an infinite constant', { ...missile, constants: { ...missile.constants, extraStep: Infinity } }, 'effect.constants.extraStep'],
-      ['a missing constant', { ...missile, constants: { ...missile.constants, rotationStep: undefined } }, 'effect.constants.rotationStep'],
+      ['a missing constant', { ...missile, constants: { ...missile.constants, extraStep: undefined } }, 'effect.constants.extraStep'],
+      ['a missing mapping multiplier', { ...syntheticDebris(), mappingMultiplier: undefined }, 'effect.mappingMultiplier'],
       ['fractional segments', { ...missile, types: [{ ...type, body: { ...type.body, segments: 3.5 } }] }, 'effect.types[0].body.segments'],
       ['33 types', { ...missile, types: Array(33).fill(type) }, 'effect.types'],
       ['four textured scales', { ...syntheticDebris(), texturedScales: [1, 2, 3, 4] }, 'effect.texturedScales'],
@@ -189,7 +196,7 @@ describe('effect payloads', () => {
       const longest = faces(2, 16_381);
       expect(longest).toHaveLength(MAX_FACE_WORDS);
       const accepted = { ...missile, faces: { ...missile.faces, element: longest } };
-      expect(readEffectPayload(encodeEffectPayload(accepted), 1, 'missile').faces.element).toEqual(longest);
+      expect(readEffectPayload(encodeEffectPayload(accepted), 2, 'missile').faces.element).toEqual(longest);
       expectContractError(() => encodeEffectPayload({ ...missile, faces: { ...missile.faces, element: faces(0, 16_384) } }),
         'invalid-effect-payload', 'effect.faces.element');
     });

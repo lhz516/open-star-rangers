@@ -52,7 +52,7 @@ describe('projectile expansion', () => {
     expect(shapes[1].faces).toEqual([[3, 2, 1, 0]]);
     shapes.forEach((shape, index) => {
       expect(shape.colour).toEqual(payload.records[index].colour);
-      expect([shape.texture, shape.perVertex, shape.mapping]).toEqual([null, null, null]);
+      expect([shape.texture, shape.perVertex, shape.uvs]).toEqual([null, null, null]);
     });
   });
 });
@@ -82,7 +82,7 @@ describe('missile expansion', () => {
     payload.types.forEach(({ body }, index) => {
       const shape = visuals[index].parts[0];
       expect(shape.positions).toEqual(bodyPositions(body.r0, body.r1, body.length, body.segments));
-      expect([shape.texture, shape.perVertex, shape.mapping]).toEqual([null, null, null]);
+      expect([shape.texture, shape.perVertex, shape.uvs]).toEqual([null, null, null]);
     });
     expect(visuals[0].parts[0].faces).toEqual([[0, 2, 3, 1], [2, 4, 5, 3], [4, 0, 1, 5]]);
     expect(visuals[2].parts[0].faces).toEqual([[0, 2, 3, 1], [2, 4, 5, 3], [4, 6, 7, 5], [6, 0, 1, 7]]);
@@ -106,13 +106,17 @@ describe('missile expansion', () => {
     expect(fin.colour).toEqual([0, 0, 0]);
   });
 
-  it('builds the textured element with the template its flag selects and the raw rotation parameters', () => {
+  it('builds the textured element with the template its flag selects and only rotation 0 UVs', () => {
     payload.types.forEach(({ element }, index) => {
       const shape = visuals[index].element;
       expect(shape.positions).toEqual(elementPositions(element));
       expect(shape.colour).toBeNull();
       expect(shape.texture).toBe(MISSILE_TEXTURE);
-      expect(shape.mapping).toEqual({ rotationStep: -0, rotationScale: 4.75 });
+      expect(shape.uvs).toEqual(Float32Array.from(Array.from({ length: 6 }, (_, vertex) => {
+        const [x, y, z] = shape.positions.slice(vertex * 3, vertex * 3 + 3);
+        const angle = Math.atan2(-y, x) / (2 * Math.PI);
+        return [angle < 0 ? angle + 1 : angle, z / payload.rotationScale];
+      }).flat()));
     });
     // Flags 0 and -0 select the element template, 1.5 the flagged one.
     expect(visuals.map(visual => visual.element.faces)).toEqual([
@@ -146,6 +150,68 @@ describe('debris expansion', () => {
     for (const shape of shapes.textured) {
       expect([shape.faces, shape.colour, shape.texture, [...shape.perVertex!]]).toEqual([[[0, 1, 2, 3, 4], [3, 4, 5]], payload.texturedColour, DEBRIS_TEXTURE, [...textured.perVertex]]);
     }
+  });
+});
+
+describe('effect texture coordinates (rotation 0 and cylindrical debris)', () => {
+  it.each([
+    [0.73, 2.375, [1.25, 0.625, 1.875]],
+    [-1.19, -0.375, [-1.25, 0.375, -2.25]],
+    [0.41, 7.125, [0, -0, 0]],
+  ] as const)('maps missile vertices for step %s and scale %s', (step, scale, element) => {
+    const payload = syntheticMissile();
+    const [shape] = expandMissiles({
+      ...payload, rotationScale: scale, constants: { ...payload.constants, elementStep: step },
+      types: [{ ...payload.types[0], element }],
+    });
+    let angle = 0;
+    const expected = Array.from({ length: 3 }, () => {
+      const a = angle;
+      angle += step;
+      return [element[0], element[1]].flatMap((radius, end) => {
+        const [x, y] = [f(radius * Math.cos(a)), f(radius * Math.sin(a))];
+        const u = x === 0 && y === 0 ? 0 : Math.atan2(-y, x) / (2 * Math.PI);
+        return [f(u < 0 ? u + 1 : u), f((end === 0 ? 0 : -element[2]) / scale)];
+      });
+    }).flat();
+    expect(shape.element.uvs).toEqual(Float32Array.from(expected));
+    expect(shape.parts.every(part => part.uvs === null)).toBe(true);
+  });
+
+  it.each([1.375, -0.625, 0])('maps scaled debris from its bounding box with multiplier %s', multiplier => {
+    const payload = syntheticDebris();
+    const vertices = Float32Array.of(0, -1, -0, -0, 2, 0, 2, -3, 1, -2, 4, -1, 1, 0, -2, -1, 3, 2);
+    const texturedScales = [0.375, -1.625] as const;
+    const { textured, untextured } = expandDebris({
+      ...payload, mappingMultiplier: multiplier, texturedScales,
+      templates: [payload.templates[0], { ...payload.templates[1], vertices }],
+    });
+    textured.forEach((shape, index) => {
+      const scaled = Array.from(vertices, value => f(value * texturedScales[index]));
+      const ys = [-1, 2, -3, 4, 0, 3].map(y => f(y * texturedScales[index]));
+      const min = Math.min(...ys);
+      const height = Math.max(...ys) - min;
+      const expected = Array.from({ length: 6 }, (_, vertex) => {
+        const [x, y, z] = scaled.slice(vertex * 3, vertex * 3 + 3);
+        const u = x === 0 && z === 0 ? 0 : Math.atan2(-x, z) / (2 * Math.PI);
+        return [u < 0 ? u + 1 : u, (multiplier * y - min) / height];
+      }).flat();
+      expect(shape.uvs).toEqual(Float32Array.from(expected));
+      expect(shape.uvs!.slice(0, 4)).toEqual(Float32Array.of(0, expected[1], 0, expected[3]));
+    });
+    expect(untextured.every(shape => shape.uvs === null)).toBe(true);
+    textured[0].uvs!.fill(0);
+    expect(textured[1].uvs).not.toEqual(textured[0].uvs);
+  });
+
+  it.each([0, -0, Number.MIN_VALUE])('rejects missile UVs made non-finite by scale %s', rotationScale => {
+    expectContractError(() => expandMissiles({ ...syntheticMissile(), rotationScale }), 'invalid-effect-payload', 'payload.types[0].element.uvs');
+  });
+
+  it('rejects zero-height debris and finite multipliers that overflow float32 UVs', () => {
+    const payload = syntheticDebris();
+    expectContractError(() => expandDebris({ ...payload, texturedScales: [0, 1] }), 'invalid-effect-payload', 'payload.textured[0].uvs');
+    expectContractError(() => expandDebris({ ...payload, mappingMultiplier: 1e100 }), 'invalid-effect-payload', 'payload.textured[0].uvs');
   });
 });
 

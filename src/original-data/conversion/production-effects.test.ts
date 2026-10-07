@@ -55,11 +55,12 @@ describe('production effect inputs', () => {
       ],
       'data/missile-visuals': [
         ['types', 0x17_54a0, 1_116], ['type-count', 0x17_58fc, 4], ['fin-faces', 0x4_4270, 196], ['element-faces', 0x4_4334, 64],
-        ['flagged-element-faces', 0x4_4374, 124], ['extra-faces', 0x4_43f0, 20], ['constants', 0x17_1ac8, 56],
+        ['flagged-element-faces', 0x4_4374, 124], ['extra-faces', 0x4_43f0, 20], ['constants', 0x17_1ac8, 48],
         ['rotation-scale-high', 0x4_44b6, 4], ['rotation-scale-low', 0x4_44bb, 1],
         ['extra-colour-0', 0x4_4cbc, 4], ['extra-colour-1', 0x4_4cb5, 4], ['extra-colour-2', 0x4_4cb3, 1],
       ],
       'data/debris-visuals': [
+        ['mapping-multiplier', 0x17_18ea, 8],
         ['untextured-vertices', 0x3_e2a0, 72], ['untextured-per-vertex', 0x3_e2e8, 72], ['untextured-faces', 0x3_e330, 56],
         ['textured-vertices', 0x3_e368, 72], ['textured-per-vertex', 0x3_e3b0, 72], ['textured-faces', 0x3_e3f8, 56],
         ['untextured-scale-0', 0x3_e463, 4], ['untextured-scale-1', 0x3_e46d, 4], ['untextured-scale-2', 0x3_e47c, 4],

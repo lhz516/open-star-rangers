@@ -213,6 +213,7 @@ function debrisPayload(regions: Regions, texture: AssetId, at: string): EffectPa
     texturedScales: Object.freeze(scales('textured', S.texturedScales) as [number, number]),
     untexturedColour: regions.colour('untextured-colour'),
     texturedColour: regions.colour('textured-colour'),
+    mappingMultiplier: regions.f64('mapping-multiplier'),
   });
 }
 
@@ -331,4 +332,3 @@ export async function runEffectStep(
   })];
   return Object.freeze({ groups: Object.freeze(groups), usage: current });
 }
-

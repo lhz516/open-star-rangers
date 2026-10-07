@@ -38,6 +38,7 @@ export function modelPartGeometry(part: ModelPartItem): BufferGeometry {
 export function effectShapeGeometry(shape: EffectShape): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(toViewerSpace(shape.positions), 3));
+  if (shape.uvs !== null) geometry.setAttribute('uv', new BufferAttribute(shape.uvs, 2));
   geometry.setIndex(new BufferAttribute(fanTriangles(shape.faces), 1));
   return geometry;
 }
@@ -163,8 +164,12 @@ export function createModelDisplay(
   return createSolidDisplay(scene, name, solids, true, { cache, pictures }, view);
 }
 
-/** Effect shapes in their effect colours or the diagnostic grey, always unlit and untextured. */
-export function createEffectDisplay(scene: Scene, name: string, shapes: readonly EffectShape[], view: ViewerView): ViewerDisplay {
-  const solids = shapes.map((shape): Solid => ({ geometry: effectShapeGeometry(shape), rgb: effectAppearance(shape).rgb, texture: null }));
-  return createSolidDisplay(scene, name, solids, false, null, view);
+/** Effect shapes show their texels or effect colours, always unlit; texture leases are shared with models. */
+export function createEffectDisplay(
+  scene: Scene, name: string, shapes: readonly EffectShape[], pictures: ReadonlyMap<AssetId, ExpandedImage>, cache: ViewerTextures, view: ViewerView,
+): ViewerDisplay {
+  const solids = shapes.map((shape): Solid => ({
+    geometry: effectShapeGeometry(shape), rgb: effectAppearance(shape).rgb, texture: shape.uvs === null ? null : shape.texture,
+  }));
+  return createSolidDisplay(scene, name, solids, false, { cache, pictures }, view);
 }

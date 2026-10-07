@@ -72,7 +72,7 @@ export function syntheticMissileSource(): MissileVisuals {
     // Every constant differs. The element step is non-zero, so the element ring is a visible surface, not one point.
     constants: {
       finColourScale: -0.1875, bodyAngle: -0.125, bodyColourScale: -0.0625, elementStep: Math.PI / 3, extraOffset: 0.0625,
-      extraStep: 0.125, rotationStep: 0.1875,
+      extraStep: 0.125,
     } satisfies Record<(typeof MISSILE_CONSTANTS)[number], number>,
     // A low word that an 8-bit immediate gives by sign extension.
     rotationScale: new Float64Array(Uint32Array.of(0xffff_ff80, 0x4012_3456).buffer)[0],
@@ -91,7 +91,8 @@ export function syntheticDebrisSource(): DebrisVisuals {
     faces: seed === 3
       ? Uint32Array.of(6, 0, 5, 2, 3, 4, 1, 1, 0, 3, 2, 5, 4, 0)
       : Uint32Array.of(6, 5, 0, 4, 1, 3, 2, 2, 3, 1, 4, 0, 5, 0),
-    vertices: floats(18, seed),
+    // The textured hexagon stays on one side of the cylinder seam for pixel checks.
+    vertices: seed === 4 ? Float32Array.of(-1, -1, 2, -2, -0.5, 2, -2, 0.5, 2, -1, 1, 2, -0.5, 0.5, 2, -0.5, -0.5, 2) : floats(18, seed),
     perVertex: Uint32Array.from({ length: 18 }, (_, index) => (index * 0x0101_0101 + seed) >>> 0),
   });
   return {
@@ -103,6 +104,7 @@ export function syntheticDebrisSource(): DebrisVisuals {
     // Channels 1 and 2 come from 8-bit immediates: bits 0 and 0x7f.
     untexturedColour: [Math.fround(0.75), 0, floatFromBits(0x7f)],
     texturedColour: [Math.fround(0.5625), Math.fround(0.6875), Math.fround(0.1875)],
+    mappingMultiplier: 1.625,
   };
 }
 
@@ -172,6 +174,7 @@ function regionBytes(payload: EffectPayload, use: string, length: number): Uint8
       return byUse[use]();
     }
     case 'debris': {
+      if (use === 'mapping-multiplier') return f64Bytes(payload.mappingMultiplier);
       const [, name, field] = /^(untextured|textured)-(vertices|per-vertex|faces|scale-\d|colour-\d)$/.exec(use)!;
       const textured = name === 'textured';
       const template = payload.templates[textured ? 1 : 0];

@@ -13,6 +13,7 @@ export interface SyntheticAssetSpec {
   readonly dependencies?: readonly string[];
   /** Payload bytes; defaults to an ASCII label of the ID. */
   readonly bytes?: Uint8Array;
+  readonly schemaVersion?: number;
 }
 
 export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly SyntheticAssetSpec[]>> = {
@@ -69,13 +70,13 @@ export function syntheticGroup(group: ResourceGroup, specs = SYNTHETIC_ASSETS[gr
     manifest: {
       identity: syntheticIdentity(identityOverrides),
       group,
-      assets: assets.map(({ id, role, dependencies = [], bytes }) => ({
+      assets: assets.map(({ id, role, dependencies = [], bytes, schemaVersion = 1 }) => ({
         id, kind: kindOf(id), role, group,
         dependencies: dependencies.map(dependency => ({ id: dependency, kind: kindOf(dependency) })),
-        payloadIdentity: payloadIdentityOf(bytes),
+        payloadIdentity: { ...payloadIdentityOf(bytes), schemaVersion },
       })),
     },
-    payloads: assets.map(({ id, bytes }) => ({ id, schemaVersion: 1, bytes })),
+    payloads: assets.map(({ id, bytes, schemaVersion = 1 }) => ({ id, schemaVersion, bytes })),
     sources: null as null | { sourceFingerprint: string | null; states: { id: string; state: string; unknowns: string[] }[] },
   };
 }

@@ -67,11 +67,11 @@ const EFFECTS = [
  * The synthetic models group with real model, texture and effect payloads; the effects' textures are images too.
  * `brokenTexture` gives the hull texture bytes the reader rejects.
  */
-function modelsGroup({ brokenTexture = false } = {}): ImportedGroup {
+function modelsGroup({ brokenTexture = false, brokenEffectTexture = false } = {}): ImportedGroup {
   const bytes: Record<string, Uint8Array> = {
-    'image/synthetic-debris': image(),
+    'image/synthetic-debris': brokenEffectTexture ? Uint8Array.of(1, 2, 3) : image(),
     'image/synthetic-hull': brokenTexture ? Uint8Array.of(1, 2, 3) : image(),
-    'image/synthetic-missile': image(),
+    'image/synthetic-missile': brokenEffectTexture ? Uint8Array.of(1, 2, 3) : image(),
     'model/synthetic-base': syntheticModelBytes({ texture: HULL }),
     'model/synthetic-enemy-a': syntheticModelBytes({ texture: HULL }),
     'model/synthetic-enemy-b': syntheticModelBytes({ texture: null }),
@@ -81,14 +81,14 @@ function modelsGroup({ brokenTexture = false } = {}): ImportedGroup {
   };
   const specs = [...SYNTHETIC_ASSETS.models, ...EFFECTS, { id: 'image/synthetic-missile', role: 'model-texture' }]
     .sort((left, right) => (left.id < right.id ? -1 : 1))
-    .map(spec => ({ ...spec, bytes: 'bytes' in spec ? spec.bytes : bytes[spec.id] }));
+    .map(spec => ({ ...spec, schemaVersion: spec.id.startsWith('data/') ? 2 : 1, bytes: 'bytes' in spec ? spec.bytes : bytes[spec.id] }));
   const input = syntheticGroup('models', specs, { origin: { type: 'original-import', sourceFingerprint: SYNTHETIC_FINGERPRINT } });
   input.sources = { sourceFingerprint: SYNTHETIC_FINGERPRINT, states: specs.map(({ id: asset }) => ({ id: asset, state: 'verified', unknowns: [] })) };
   return imported('models', input);
 }
 
 /** `models` adds the real models group; otherwise its payloads are placeholders the readers reject. */
-const packageGroups = (options: { broken?: boolean; models?: boolean; brokenTexture?: boolean } = {}): ImportedGroup[] =>
+const packageGroups = (options: { broken?: boolean; models?: boolean; brokenTexture?: boolean; brokenEffectTexture?: boolean } = {}): ImportedGroup[] =>
   allGroups().map(group => {
     switch (group.group) {
       case 'cockpit-hud-map': return cockpitGroup(options);
@@ -278,6 +278,20 @@ describe('viewer owner models, effects and view', () => {
     expect(textured.renderer.diagnostics().item).toEqual({ kind: 'model', id: 'model/synthetic-enemy-b' });
   });
 
+  it.each(['debris', 'missile'])('marks %s failed when its texture cannot be read and can select another entry', effect => {
+    const { open, surfaces } = setup({ groups: packageGroups({ models: true, brokenEffectTexture: true }) });
+    const owner = open()!;
+    owner.select(id(`data/synthetic-${effect}-visuals`));
+    expect(owner.getSnapshot().variants).toEqual([]);
+    expect(owner.getSnapshot().failures[`data/synthetic-${effect}-visuals`]).toMatchObject({
+      code: 'invalid-graphics-payload', path: expect.stringContaining(`images[image/synthetic-${effect}]`),
+    });
+    expect(owner.renderer.diagnostics().item).toBeNull();
+    expect(surfaces[0].gpuStats()).toMatchObject({ geometries: 0, textures: 0 });
+    owner.select(id('data/synthetic-projectile-visuals'));
+    expect(owner.renderer.diagnostics().item).toEqual({ kind: 'effect', id: 'data/synthetic-projectile-visuals' });
+  });
+
   it('shows each view of an effect with its appearance, and ignores a view that does not exist', () => {
     const { open, surfaces } = setup({ groups: packageGroups({ models: true }) });
     const owner = open()!;
@@ -287,7 +301,7 @@ describe('viewer owner models, effects and view', () => {
     expect(variants.map(variant => (variant.kind === 'effect-view' ? `${variant.label} ${variant.index}` : variant.kind))).toEqual(
       effectViews(syntheticDebris()).map(({ label, index }) => `${label} ${index}`),
     );
-    expect(variants[3]).toMatchObject({ shapes: [{ rgb: [255, 32, 0], textureUnmapped: true }] });
+    expect(variants[3]).toMatchObject({ shapes: [{ rgb: [255, 255, 255], textured: true }] });
     expect(owner.renderer.diagnostics().item).toEqual({ kind: 'effect', id: debris });
     expect(surfaces[0].lastDraw!.objects).toHaveLength(1);
     // Another view of the same effect reuses what was read and expanded.
@@ -315,7 +329,7 @@ describe('viewer owner models, effects and view', () => {
     expect(owner.getSnapshot()).toBe(snapshot);
     owner.select(id('model/synthetic-enemy-b'));
     expect(owner.getSnapshot().view.yaw).toBe(15);
-    expect(() => owner.changeView({ type: 'mapping-rotation', index: 32 })).toThrow(RangeError);
+    expect(() => owner.changeView({ type: 'zoom', steps: 0.5 })).toThrow(RangeError);
   });
 });
 

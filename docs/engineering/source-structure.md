@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-06
+updated: 2026-10-07
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -392,7 +392,7 @@ src/
 
 [effects/](../../src/content/effects/) 实现 [P2-06 spec](../plan/p2/06/spec.md#效果几何数据) 的三个效果 `data` Asset：弹丸、导弹与碎片的程序几何的源数据（P2-06/17）。构建规则与各字段的来源只记在 [executable](../original/formats/executable.md#effect-geometry-data-p2-0614-research)。
 
-- **常量：** [effect-payload.ts](../../src/content/effects/effect-payload.ts) 的 `EFFECT_PAYLOAD_SCHEMA_VERSION` 为 1。
+- **常量：** [effect-payload.ts](../../src/content/effects/effect-payload.ts) 的 `EFFECT_PAYLOAD_SCHEMA_VERSION` 为 2（P2-11/16）。
   - `EFFECT_LIMITS` 是批准的安全上限：弹丸记录 1–64（`effectRecords`）、导弹类型 1–32（`missileTypes`）、机身段数 3–64（`ringSegments`）；部件数 1–4、打包颜色不超过 24 位是格式规则。
   - `EFFECT_SHAPES` 是源结构的固定计数（弹丸模板 4 个顶点、尾翼 9 个、元素 6 个、附加元素 3 个、碎片模板 6 个顶点与 6 个法线，3 个无贴图缩放与 2 个有贴图缩放）。
   - `MISSILE_CONSTANTS` 是导弹常量的源顺序。
@@ -402,23 +402,24 @@ src/
   | payload | 布局 |
   |---|---|
   | 弹丸 | `u16` 记录数 R（1–64）；两套模板，各为面表、12 个 `f32` 顶点、6 个 `u32` 宽度标记（x、y、z 各两个）、`u32` 长度标记、`f64` 长度常量；R 条 24 字节的记录：`u32` 构建选择、`f32` 宽度、`f32` 长度、3 个 `f32` 颜色 |
-  | 导弹 | 贴图引用；`u16` 类型数 T（1–32）；尾翼、元素、带标志元素、附加元素四个面表；按源顺序的 7 个 `f64` 常量；`f64` 旋转缩放；3 个 `f32` 附加元素颜色；T 个类型：`u32` 部件数 P（1–4），机身 `f32` r0、r1、长度、`i32` 段数（3–64）、`u32` 打包颜色，P − 1 片尾翼（4 个 `f32` 与 `u32` 打包颜色），3 个 `f32` 元素参数，`f32` 标志 |
-  | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字（6 个顶点法线）；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色 |
+  | 导弹 | 贴图引用；`u16` 类型数 T（1–32）；尾翼、元素、带标志元素、附加元素四个面表；按源顺序的 6 个 `f64` 常量（不导入旋转步长）；`f64` 旋转缩放；3 个 `f32` 附加元素颜色；T 个类型：`u32` 部件数 P（1–4），机身 `f32` r0、r1、长度、`i32` 段数（3–64）、`u32` 打包颜色，P − 1 片尾翼（4 个 `f32` 与 `u32` 打包颜色），3 个 `f32` 元素参数，`f32` 标志 |
+  | 碎片 | 贴图引用；无贴图与有贴图两个模板，各为面表、18 个 `f32` 顶点、18 个 `u32` 每顶点字（6 个顶点法线）；3 个无贴图缩放、2 个有贴图缩放、两组各 3 个 `f32` 颜色；`f64` 柱面映射倍数 `mappingMultiplier`（K） |
 
   浮点全部有限并逐位保留；标记与每顶点字是位模式，不按浮点解释。面表最多 65,535 个字（`MAX_FACE_WORDS`），每个面有 3 个至该形状顶点数个角，顶点序号小于该形状的顶点数，法线序号小于该形状的法线数，一对不完整也不合规；至少一个面，0 恰在最后一个字。
 - **编码与读取：**
   - `encodeEffectPayload(payload)` 按读取器的同一规则校验，32 位浮点字段须恰为 32 位浮点值，写入独占的新缓冲；同一输入得到同样的字节。
   - `readEffectPayload(bytes, schemaVersion, kind, path)` 严格读取：计数先检查范围、字节先确认存在，再分配；返回冻结数据，数组为调用者独占的副本。
-  - schema 不是 1 为 `unsupported-payload-schema`；截断、尾随字节、计数或字段越界、非有限浮点、面表不合规、贴图不是 image Asset ID 为 `invalid-effect-payload`；已转移的字节或数组为 `payload-detached`。诊断只含结构路径（如 `payload.types[1].fins[0].colour`）。
+  - schema 不是 2（包括旧版本 1）为 `unsupported-payload-schema`；截断、尾随字节、计数或字段越界、非有限浮点、面表不合规、贴图不是 image Asset ID 为 `invalid-effect-payload`；已转移的字节或数组为 `payload-detached`。诊断只含结构路径（如 `payload.types[1].fins[0].colour`）。
 - **绑定：** `effectReferences(payload)` 给出导弹与碎片的贴图引用，弹丸没有引用。`checkEffectBinding(descriptor, payload)` 要求描述符 kind 为 `data`、角色等于 payload 种类（`projectile`、`missile`、`debris`）、依赖恰为这些引用，否则报 `binding-mismatch`。
 - **展开：** [expand-effects.ts](../../src/content/effects/expand-effects.ts) 的 `expandProjectiles`、`expandMissiles` 与 `expandDebris` 是纯函数，按 executable 的构建规则给出冻结的形状。
-  - **形状内容：** 位置、面（顶点序号数组）、颜色或 null、贴图 Asset ID 或 null。碎片形状另带模板每顶点字的副本，导弹元素另带原样的旋转参数 `{ rotationStep, rotationScale }`。
+  - **形状内容：** 位置、面（顶点序号数组）、颜色或 null、贴图 Asset ID 或 null、贴图形状的逐顶点 `uvs`（无贴图时为 null）。碎片形状另带模板每顶点字的副本。
   - **面表：** `faceTriangles(words, vertices, normals, path)` 不分配地校验面表并给出三角形数，`faceList` 给出冻结的面数组，只含顶点序号。`normals` 为 0 时每个角是一个顶点序号（弹丸与导弹），为正数时是一对（碎片传 `EFFECT_SHAPES.debrisNormals`）。一次展开中每个源面表只解析一次，由它生成的形状共用同一组冻结的面；机身的面直接按规则生成。
   - **数值：** 以 64 位浮点计算，结果分量在最后舍入为 32 位。例外是弹丸的宽度乘积：它先舍入为 32 位，再与长度标记比较，因为原版比较的是存回的值。
   - **导弹：** 元素面表按标志的浮点值是否为 0 选择；附加元素在标志的位模式非 0 时生成，所以负零也生成。
-  - **错误：** 任一结果分量不是有限值时报 `invalid-effect-payload`，位置为形状路径后接 `.positions` 或 `.colour`。
+  - **贴图坐标：** 对构建后的 32 位位置按 64 位浮点计算，最终舍入为 32 位；导弹只用旋转 0，碎片的包围盒来自缩放后的形状。公式与轴上零的处理见 [executable](../original/formats/executable.md#effect-texture-mappings-p2-1115-research)。不模拟 x87 扩展精度或额外的中间舍入。
+  - **错误：** 任一结果分量不是有限值时报 `invalid-effect-payload`，位置为形状路径后接 `.positions`、`.colour` 或 `.uvs`；零映射缩放、零高度碎片与 UV 溢出不会静默回退。
   - **规模：** `effectExpansionSize(payload)` 不展开，只按计数与面表给出顶点数和三角形数（每个面计角数 − 2），供转换器在分配之前扣除。
-- **不做的事：** 不生成法线、明暗或贴图坐标，不保存模式字与碎片的平面映射参数（spec 技术决定 17）。消费者暂时只能使用颜色与几何，贴图坐标等 P2-11 研究映射函数之后加入。
+- **不做的事：** 不生成法线、明暗或模式字；不导入或显示导弹未应用的旋转映射。
 
 合成效果 payload 由 [effects.test-support.ts](../../src/content/effects/effects.test-support.ts) 用任意数值在代码中生成。针对性检查为 `pnpm exec vitest run src/content/effects`。
 
@@ -735,7 +736,7 @@ src/
   3. 以 `chargeConversionBudget` 一次扣除 `assets` 1、`dependencyEdges`（去重后的贴图与音效引用数）、`vertices` 与 `triangles`（各几何之和）以及 `payloadBytes`（`modelPayloadLength`，与编码器共用公式），位置为 `models[<ID>].model`；
   4. 扣除通过后才用 `readMesh` 解码几何并编码 payload。跨模型不共享几何：两个模型引用同一 MESH 时各自含有一份。
 - **输出：** 冻结的 `{ assets, usage }`：`assets` 按 ID 升序，每项为描述符（`model`、`models` 组、依赖为去重后升序的 image 与 sound 引用、payload schema 1 与实际字节的身份）与独占 buffer 的 payload；`usage` 为起始用量加本步用量。任何失败都不输出部分结果，被拒绝的扣除不改变调用者的用量；超出安全整数时 `observed` 为 null。
-- **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-1`，由作业组成生产 `ConverterVersion`；模型输出变化时递增。
+- **转换器版本：** `MODEL_CONVERTER_COMPONENT` 为 `models-2`（P2-11/16 效果 schema 2），由作业组成生产 `ConverterVersion`，主线程生产包配置同步；旧键的缓存不恢复、不迁移、不清理。
 - **位置语法：** 转换失败的位置为 `models.declarations`、`models.declarations[<i>]` 加字段路径，或 `models[<Asset ID>]` 后接 `.model`、`.parts[<l>][<p>]`、`.parts[<l>][<p>].mesh`、`.parts[<l>][<p>].texture`、`.sounds[<s>]`，不含条目编号、偏移或宿主路径。[conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 的 `inModelLocationGrammar` 按 spec 写出这一语法，`expectSourceError` 对 `models` 开头的位置逐个核对（另可断言原因原文），并用 `namesPrivateDetail` 确认原因文本不含文件名、路径、十六进制值、条目编号、偏移或字节值（spec AC-16，判定的正反例见 [conversion.test-support.test.ts](../../src/original-data/conversion/conversion.test-support.test.ts)）；`meshBlockFor(geometry)` 生成恰好表示一个 `ModelGeometry` 的合成 MESH 块，`triangleMeshBlock()` 生成单个三角形的 MESH 块；`withMeshReads(source, read)` 替换来源的 MESH 读取（如光盘层失败），`UNLIMITED_BUDGET` 是各维度都取最大安全整数的预算记录。
 
 ### 模型转换步骤
@@ -942,8 +943,8 @@ src/
 [app/viewer/viewer-owner.ts](../../src/app/viewer/viewer-owner.ts) 是 P2-11 查看器的所有者与每个应用实例一个的查看器槽位（[spec S-07、S-12](../plan/p2/11/spec.md)），由 Node 测试以真实的查看渲染、录制用表面替身与音频替身覆盖。`app/viewer/` 可以导入 `render/`（它拥有渲染器），仍不导入 `ui/`。
 
 - **条目：** [viewer-items.ts](../../src/app/viewer/viewer-items.ts) 的 `viewerCatalog(groups)` 按组顺序与清单顺序列出持有资源包各完整组中的模型、效果（角色为 `projectile`、`missile`、`debris` 的 data Asset）、图像、布局、调色板与字库，并按 Asset ID 索引这些条目的 payload。模型贴图及其调色板本身是二维条目，所以也在索引中。
-  - **解析：** `resolveEntry(entry, payloads)` 一次读取并展开一个条目，给出它的全部变体与 `item(variant)`；所有者缓存所选条目的结果，所以切换同一条目的变体不再读取。只经 `content/` 的读取器与消费函数得到渲染器的条目：二维项用 `expandImage`、`composeLayout`；模型用 `readModelPayload`、`modelPartItems`、`expandModelTextures`；效果用 `readEffectPayload` 与 09 的 `effectViews`。所需的调色板与图像在资源包中按 Asset ID 查找，缺失时为 `binding-mismatch`。
-  - **变体：** 模型的变体是部件列表 0–2，附部件数与 `MODEL_PART_LISTS` 的内容与置信度：列表 0 为完整模型（高概率：本地渲染可辨认，见 [mesh](../original/formats/mesh.md)），列表 1 为碎片部件（已确认），列表 2 未确认（U-027）。效果的变体是它的各个视图，附每个形状的外观（显示字节、原值与“贴图映射未确认”标记，原值为 null 时显示诊断灰色）。二维项只有变体 0；不存在的变体，`item` 返回 null。
+  - **解析：** `resolveEntry(entry, payloads)` 一次读取并展开一个条目，给出它的全部变体与 `item(variant)`；所有者缓存所选条目的结果，所以切换同一条目的变体不再读取。只经 `content/` 的读取器与消费函数得到渲染器的条目：二维项用 `expandImage`、`composeLayout`；模型用 `readModelPayload`、`modelPartItems`、`expandModelTextures`；效果用 `readEffectPayload` 与 09 的 `effectViews`，并读取所引用的图像与调色板，用 `expandImage` 展开贴图。所需的调色板与图像在资源包中按 Asset ID 查找，缺失时为 `binding-mismatch`；效果贴图读取失败也使整个条目失败，不回退为无贴图显示。
+  - **变体：** 模型的变体是部件列表 0–2，附部件数与 `MODEL_PART_LISTS` 的内容与置信度：列表 0 为完整模型（高概率：本地渲染可辨认，见 [mesh](../original/formats/mesh.md)），列表 1 为碎片部件（已确认），列表 2 未确认（U-027）。效果的变体是它的各个视图，附每个形状的外观（显示字节、原值、`textured` 与 `seamUnconfirmed` 标记，无贴图且原值为 null 时显示诊断灰色）。二维项只有变体 0；不存在的变体，`item` 返回 null。
   - 内容错误成为该条目的失败（code、路径与原因），其他异常视为缺陷。
 - **所有者：** 槽位以 `{ holder, render, audio, reportError }` 创建所有者。
   - `render` 是表面或不可用的原因，交给 `createViewerRenderer`；
@@ -981,10 +982,10 @@ src/
   - **显示：** `show(item | null)` 每次显示一项。查看项携带内容消费函数的结果：图像为 `expandImage` 的结果，布局为 `composeLayout` 的结果，调色板与字库为 payload；模型为一个部件列表的 `modelPartItems` 结果与 `expandModelTextures` 的贴图；效果为 `effectViews` 的一个视图。读取与展开由调用方完成，所以内容错误只标记该项，不使渲染失败。种类、ID 与内容对象都相同的项视为未变。
   - **视图：** `setView(view)` 设置三维项的视图，之后显示的项沿用它。
   - **诊断：** 状态、当前项的 kind 与 ID、成功绘制次数、`gpuStats()` 的三项计数（释放后为 null）、布局、当前画面在绘制缓冲中的位置 `placement`（设备像素，自左上角起；三维项为整个缓冲），以及视图。
-- **按需绘制：** 只在显示项变化、布局（尺寸或像素比）变化、上下文恢复，以及视图改变了画面时同步绘制一次；相同的项、布局或视图不绘制，也不请求动画帧。改变画面的视图变化是三维项的旋转与缩放，以及模型的光照；效果的光照、贴图旋转序号与二维项的视图变化都不绘制。上下文丢失期间仍可换项但不绘制，恢复后重画一次。构建、布局或绘制的任何失败都使渲染器进入终止的 `failed`。
+- **按需绘制：** 只在显示项变化、布局（尺寸或像素比）变化、上下文恢复，以及视图改变了画面时同步绘制一次；相同的项、布局或视图不绘制，也不请求动画帧。改变画面的视图变化是三维项的旋转与缩放，以及模型的光照；效果的光照与二维项的视图变化都不绘制。上下文丢失期间仍可换项但不绘制，恢复后重画一次。构建、布局或绘制的任何失败都使渲染器进入终止的 `failed`。
 - **显示与资源：** [viewer-display.ts](../../src/render/viewer/viewer-display.ts) 的每个显示独占它创建的几何、材质与纹理。
   - **换项：** 先建成新的显示，再释放旧的；新显示构建失败时场景不变，已取得的贴图租用全部归还。GPU 计数只取决于当前项，`show(null)` 后为零。
-  - **模型贴图：** 唯一跨显示存在的资源。[viewer-textures.ts](../../src/render/viewer/viewer-textures.ts) 的 `ViewerTextures` 按 image Asset ID 引用计数：第一次使用时创建，最后一个使用它的显示释放时销毁。两个共用贴图的模型之间切换时只有一个纹理；所有者在替换资源包前释放所示条目，所以持有期间同一 ID 总是同一内容。
+  - **模型与效果贴图：** 唯一跨显示存在的资源。[viewer-textures.ts](../../src/render/viewer/viewer-textures.ts) 的 `ViewerTextures` 按 image Asset ID 引用计数：第一次使用时创建，最后一个使用它的显示释放时销毁。共用贴图的项之间切换时只有一个纹理；所有者在替换资源包前释放所示条目，所以持有期间同一 ID 总是同一内容。
   - **释放：** 撤销表面观察 → 当前显示的全部资源 → 表面；每步都尝试，失败汇总为 AggregateError。释放后迟到的表面回调不再绘制。
   - **只释放当前项（P2-11 子任务 10）：** `releaseItem()` 在除 `disposed` 以外的任何状态（包括 `failed`）下释放当前显示，就绪时画一次空画面；释放失败时抛出 AggregateError，并使渲染器进入 `failed`。查看器所有者在资源包被替换前调用它，`show(null)` 在 `failed` 状态下不做任何事。
 - **二维项：** 在绘制缓冲像素中绘制（正交相机，y 向上），由 [viewer-pictures.ts](../../src/render/viewer/viewer-pictures.ts) 的纯函数给出画面与位置。
@@ -993,9 +994,9 @@ src/
   - **调色板与字库：** `paletteSheet` 为每行 16 个 7×7 色块；`glyphSheet` 按字形序号每行 16 个单元，单元为单元宽 × 单元高，置位为白、否则为黑，单元以外的位与行不显示。格线为 1 像素的灰度 64，末行多余的单元透明。
 - **三维项：** [viewer-solids.ts](../../src/render/viewer/viewer-solids.ts) 为每个模型部件或效果形状建一个网格，几何按显示分别创建。
   - **模型：** 位置与法线的 z 取反，索引与 UV 原样；未贴图的部件显示部件颜色，贴图部件显示纹素。
-  - **效果：** [viewer-effects.ts](../../src/render/viewer/viewer-effects.ts) 的 `effectViews(payload)` 按弹丸记录、导弹类型（机身、尾翼、元素，有附加元素时加上它）与碎片形状（先无贴图、后有贴图）列出视图。多边形面以第一个角为中心扇形三角化（`fanTriangles`），每个形状的三角形数为各面“角数 − 2”之和，一个 payload 全部视图的顶点与三角形总数等于 `effectExpansionSize`。外观由 [viewer-presentation.ts](../../src/render/viewer/viewer-presentation.ts) 的 `effectAppearance(shape)` 给出：显示字节、原值与“贴图映射未确认”标记。形状带贴图而贴图坐标未知时（导弹元素、带贴图碎片）带此标记，16 之前一律如此。
+  - **效果：** [viewer-effects.ts](../../src/render/viewer/viewer-effects.ts) 的 `effectViews(payload)` 按弹丸记录、导弹类型（机身、尾翼、元素，有附加元素时加上它）与碎片形状（先无贴图、后有贴图）列出视图。多边形面以第一个角为中心扇形三角化（`fanTriangles`），每个形状的三角形数为各面“角数 − 2”之和，一个 payload 全部视图的顶点与三角形总数等于 `effectExpansionSize`。调用方经 `expandImage` 提供贴图，几何携带展开的 UV。外观由 [viewer-presentation.ts](../../src/render/viewer/viewer-presentation.ts) 的 `effectAppearance(shape)` 给出：显示字节、原颜色、是否贴图与接缝未确认标记；贴图直接显示纹素，不乘源颜色。
   - **取景：** 相机为 `VIEWER_FOV`（40°）竖直视场的透视相机，按全部顶点的包围球（包围盒中心、最远顶点距离）取景，使球恰在竖直视场内。相机停在球外的这个距离上，近、远平面包住整个球；缩放只改变相机的 `zoom`，所以放大到 8 倍时也不会进入模型。包围盒只用于取景，不产生任何规则。
-  - **视图：** [viewer-view.ts](../../src/render/viewer/viewer-view.ts) 的 `applyViewAction` 是纯函数：绕竖直轴与水平轴每步 15°（取模 360），缩放每步 1.25 倍并限制在初始取景的 1/8 至 8 倍，复位只恢复旋转与缩放，光照开关，导弹贴图旋转序号 0–31（16 之前不改变画面）。内容绕包围球中心按先竖直轴、后水平轴旋转。
+  - **视图：** [viewer-view.ts](../../src/render/viewer/viewer-view.ts) 的 `applyViewAction` 是纯函数：绕竖直轴与水平轴每步 15°（取模 360），缩放每步 1.25 倍并限制在初始取景的 1/8 至 8 倍，复位只恢复旋转与缩放，另有光照开关。导弹只显示旋转 0 的映射，不再提供贴图旋转参数或控件。内容绕包围球中心按先竖直轴、后水平轴旋转。
 - **呈现约定：** 集中在 [viewer-presentation.ts](../../src/render/viewer/viewer-presentation.ts)。P2-12 用原版截图判定，有误时只改这一处，不重新导入，也不改 payload schema。
 
   | 项 | 选择 | 依据与置信度 |
@@ -1007,9 +1008,10 @@ src/
   | 坐标轴与手性（三维） | 源数据按左手系、y 向上解释，位置与法线的 z 取反后交给 Three.js | 未确认：可逆的初始约定，由 P2-12 判定 |
   | 正面绕序（三维） | 双面渲染，不剔除 | 绕序未确认（mesh）；双面渲染不依赖它 |
   | 模型贴图（三维） | 与二维相同的颜色空间、过滤与方向；按材质在两个轴上重复（`RepeatWrapping`） | 环绕方式来自 `modelPartItems` 的材质；采样方式未确认 |
+  | 效果贴图（三维） | 同样以最近邻、无颜色变换、双轴重复显示，alpha 小于 0.5 的纹素丢弃；逐角 UV 线性插值，不修正接缝。一个面各角 u 的最大值减最小值大于 1/2 时，所选项显示 “Seam interpolation unconfirmed” | 原版接缝插值未确认；2026-10-07 用户批准的可逆初始选择，P2-12 用截图判定；AC-18 像素断言排除整个跨接缝面 |
   | 相机（三维） | 40° 竖直视场的透视相机，按包围球取景，缩放不移动相机 | 项目选择：查看器的诊断视图，不是原版相机 |
   | 光照（三维） | 默认不受光照，直接显示部件颜色或纹素；可切换为中性光：白色环境光与来自右上前方的白色方向光，强度为 π × 0.4 与 π × 0.6，正对光的面恰为原色。效果没有法线，始终不受光照 | 不是原版光照：原版光照与明暗级归 P3（U-028） |
-  | 效果颜色（三维） | 三个浮点按 RGB 解释，各截断到 [0, 1] 后按 round(v × 255) 量化；没有颜色的形状用固定的诊断灰色 128 | 取值范围与通道含义未确认（P2-06）；诊断灰色不是原版颜色 |
+  | 效果颜色（三维） | 无贴图时三个浮点按 RGB 解释，各截断到 [0, 1] 后按 round(v × 255) 量化；无贴图且没有颜色的形状用固定的诊断灰色 128。有贴图时直接显示纹素，源颜色仍以数字列出 | 取值范围与通道含义未确认（P2-06）；诊断灰色不是原版颜色 |
 - **表面选项：** [render-surface.ts](../../src/render/scene/render-surface.ts) 的 `RenderSurfaceOptions` 由画在表面上的渲染逻辑选择，含画布的无障碍名称与渲染器的输出颜色空间。浏览器工厂 `createBrowserWebGLSurface(container, options)` 按它设置画布与渲染器；应用端口 `createSurface(container, options)` 同样接收它。合成演示传 `SYNTHETIC_SURFACE`，即原来的名称与 Three.js 默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`。
 - **测试替身：** `RecordingSurface` 只记录可见的网格，并按材质上的纹理模拟纹理计数。
 
