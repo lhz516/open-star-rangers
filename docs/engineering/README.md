@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-06
+updated: 2026-10-07
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -151,7 +151,10 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 生产尺寸的合成文件得到 `source/unsupported-version`；
   - Worker 脚本返回 404 或 200 的 HTML 时，导入以 `import/worker-start-failed` 结束，Worker 已终止，没有资源包。404 时浏览器自己的加载失败报告不总是出现，出现时才声明；
   - 菜单、导入页面与合成演示没有 `securitypolicyviolation`；
+  - 在隔离 context 中预置生产身份的合成缓存，同源刷新后经菜单恢复、重新校验，模型、图像与布局的像素读回逐字节一致，试听确实启动声音源，返回菜单后音频上下文关闭，整条路径没有 CSP 违规或控制台错误；
   - `dist/` 只有 `index.html` 一个页面，产物与 source map 来源不含测试入口、测试支持或合成目录。
+
+  预置支持 [production-cache.ts](../../e2e/support/production-cache.ts) 复用合成 `models` 包、生产身份常量与 P2-10 的记录/键构造函数。Node 侧把转换器版本与来源指纹换成生产配置，经 `applyManifestIdentity` 重新派生合成包的 manifest 身份，再校验完整性与声明预算。可序列化的合成记录交给测试页面，由页面重建 `ArrayBuffer` 并在单个 IndexedDB 事务中写入；生产页面不载入 `/src/`、开发测试入口或测试支持模块，也不注入应用端口。仅限测试拥有的隔离 context，不接触用户缓存。
 
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。

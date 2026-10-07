@@ -117,7 +117,7 @@ updated: 2026-10-07
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | completed |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | completed |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | completed |
-| [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | in-progress |
+| [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | completed |
 | [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | in-progress |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |

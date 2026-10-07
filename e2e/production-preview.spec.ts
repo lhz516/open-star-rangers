@@ -1,14 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
+import { button, discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
+import { installAudioProbe } from './support/audio-playback.ts';
 import { test, expect } from './support/browser-test.ts';
+import { seedProductionCache } from './support/production-cache.ts';
+import { entryButton, expectSamples, firstEntry, pictureOf, pictureSamples, solidSamples, viewerDiagnostics } from './support/viewer-observations.ts';
 import { ordinaryFiles } from '../tools/compliance/distribution.ts';
 import { PREVIEW_CONTENT_SECURITY_POLICY } from '../tools/preview-csp.ts';
 import { productionSizedFiles } from '../src/workers/synthetic-import.test-support.ts';
 import { MARKER } from '../src/original-data/disc/disc.test-support.ts';
+import { CHECKER_GREYS } from '../src/render/viewer/viewer-presentation.ts';
 
-// P2-11 S-11 and AC-19 (without the viewer path): the local production preview under its strict Content Security
+// P2-11 S-11 and AC-19: the local production preview under its strict Content Security
 // Policy. The real import Worker identifies production-sized synthetic files as an unsupported version; a missing or
 // HTML-replaced Worker script fails the import safely. Production project only.
 
@@ -112,6 +116,65 @@ test('the menu, import page and synthetic demo run under the policy without a vi
   await expect(page.getByTestId('render-status')).toHaveAttribute('data-state', 'ready');
   await expectNoPlayClaim(page);
   await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
+  expect(await violations(page)).toEqual([]);
+});
+
+test('restores synthetic cached resources through the production menu, renders them and auditions audio under the policy', async ({ page }) => {
+  await recordViolations(page);
+  await page.addInitScript(installAudioProbe);
+  const response = await page.goto('/');
+  expect(response?.headers()['content-security-policy']).toBe(PREVIEW_CONTENT_SECURITY_POLICY);
+  await expect(page.getByTestId('original-data-status')).toHaveText('Original game data: None in this browser.');
+  await seedProductionCache(page);
+  expect(await violations(page)).toEqual([]);
+  await page.reload();
+  await expect(page.getByTestId('original-data-status')).toContainText('not yet verified');
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText([
+    'Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core',
+  ]);
+  await button(page, 'View resources').click();
+  await expect(page.getByRole('heading', { name: 'Resource viewer', exact: true })).toBeFocused();
+  for (const kind of ['model', 'image', 'layout'] as const) {
+    const { entry, resolved } = await firstEntry(kind, kind === 'model' ? 'enemy-ship' : undefined);
+    await entryButton(page, entry.id).click();
+    await expect(page.getByTestId('viewer-view')).toHaveAttribute('aria-label', `Resource viewer picture: ${entry.id}`);
+    const { state, layout, placement } = await viewerDiagnostics(page);
+    expect(state).toBe('ready');
+    const item = resolved.item(0)!;
+    const samples = kind === 'model' ? solidSamples(item, layout!) : pictureSamples(pictureOf(item), placement!);
+    if (kind !== 'model') {
+      // Sparse layouts can put every grid sample on transparency. Add a real opaque texel, not checkerboard evidence.
+      const { width, height, rgba } = pictureOf(item);
+      const at = rgba.findIndex((alpha, index) => index % 4 === 3 && alpha === 255
+        && !CHECKER_GREYS.some(grey => rgba.subarray(index - 3, index).every(channel => channel === grey)));
+      expect(at, `${entry.id} contains an opaque texel`).toBeGreaterThanOrEqual(3);
+      const texel = (at - 3) / 4;
+      samples.push({
+        x: Math.floor(placement!.left + ((texel % width + 0.5) * placement!.width) / width),
+        y: Math.floor(placement!.top + ((Math.floor(texel / width) + 0.5) * placement!.height) / height),
+        rgb: [rgba[at - 3], rgba[at - 2], rgba[at - 1]],
+      });
+    }
+    expect(samples.some(({ rgb }) => rgb.some(channel => channel > 0 && channel < 255)), `${entry.id} has mid-tone samples`).toBe(true);
+    expect(samples.some(({ rgb }) => !CHECKER_GREYS.some(grey => rgb.every(channel => channel === grey))),
+      `${entry.id} has visible content, not only the transparency background`).toBe(true);
+    await expectSamples(page, layout!, samples);
+  }
+  await expect(page.getByTestId('viewer-audio-status')).not.toHaveText('Preparing audio…');
+  expect(await page.evaluate(() => window.osrAudioProbe.contexts())).toEqual([]);
+  await page.getByTestId('viewer-sounds').getByRole('button', { name: /^Play / }).first().click();
+  await expect(page.getByTestId('viewer-audio-status')).toHaveAttribute('data-status', 'running');
+  // The synthetic sounds last less than a millisecond; observe the source start instead of a transient voice count.
+  await expect.poll(() => page.evaluate(() => window.osrAudioProbe.started())).toBe(1);
+  await button(page, 'Stop all sounds').click();
+  await expect(page.getByTestId('viewer-voices')).toHaveText('0');
+  await expect.poll(() => page.evaluate(() => window.osrAudioProbe.routed())).toBe(0);
+  await expectNoPlayClaim(page);
+  expect(await page.locator('body').innerText()).not.toContain(MARKER);
+  await button(page, 'Return to menu').click();
+  await expect.poll(() => page.evaluate(() => window.osrAudioProbe.contexts())).toEqual(['closed']);
+  expect(await workers(page)).toEqual([]);
   expect(await violations(page)).toEqual([]);
 });
 
