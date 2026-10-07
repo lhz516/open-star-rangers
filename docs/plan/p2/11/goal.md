@@ -111,7 +111,7 @@ updated: 2026-10-06
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | completed |
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
-| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | in-progress |
+| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | pending |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
@@ -141,6 +141,10 @@ updated: 2026-10-06
   - 23：本地真实数据的导入、全包判定、任务载入与耗时，依赖 03、04；17 只保留场景构建，依赖改为 09、23。
 
   验收覆盖随之更新；spec 与各验收项不变。最终对齐 20 增加对 21、22、23 的依赖，仍为最后一行。
+- **2026-10-06 — 子任务 08 的表面选项扩展：** 计划只把画布的无障碍名称改由调用方提供。但 spec 呈现约定要求读回的字节等于源字节，而 Three.js 渲染器默认以 sRGB 输出，会对着色器输出再做编码，本机 Chrome 实测最大误差 73。
+  - 浏览器表面工厂与 `AppPorts.createSurface` 因此改为接收 `RenderSurfaceOptions`：无障碍名称加输出颜色空间。
+  - 合成演示传原名称与默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`（线性输出，实测误差 0）。
+  - 10 的所有者以 `createSurface(container, VIEWER_SURFACE)` 创建表面。不改变任何验收，详见 [08 的完成证据](./subtasks/08-viewer-render-foundation.md#完成证据)。
 
 ## 审批
 

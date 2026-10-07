@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { createBrowserSessionHost } from '../../platform/browser/browser-session-host.ts';
 import { createBrowserKeyboardSource } from '../../platform/input/browser-keyboard-source.ts';
 import { createBrowserWebGLSurface } from '../../render/webgl/browser-webgl-surface.ts';
+import { SYNTHETIC_SURFACE } from '../../render/synthetic/synthetic-appearance.ts';
 import type { SyntheticRendererOptions } from '../../render/synthetic/synthetic-renderer.ts';
 import type { SyntheticDemoLifecycle } from './synthetic-demo-lifecycle.ts';
 import { createSyntheticDemoOwner, type SyntheticDemoOwner } from './synthetic-demo-owner.ts';
@@ -19,7 +20,7 @@ import { createSyntheticDemoOwner, type SyntheticDemoOwner } from './synthetic-d
 function createRender(container: HTMLElement): SyntheticRendererOptions {
   const report = (error: unknown): void => { reportError(error); };
   try {
-    return { surface: createBrowserWebGLSurface(container), reportError: report };
+    return { surface: createBrowserWebGLSurface(container, SYNTHETIC_SURFACE), reportError: report };
   } catch (error) {
     return { unavailable: error, reportError: report };
   }

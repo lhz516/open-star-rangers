@@ -183,6 +183,11 @@ src/
       synthetic-renderer.ts
     viewport/
       viewport-layout.ts
+    viewer/
+      viewer-display.ts
+      viewer-pictures.ts
+      viewer-presentation.ts
+      viewer-renderer.ts
     webgl/
       browser-webgl-surface.ts
       webgl-surface.ts
@@ -219,7 +224,7 @@ src/
     production-package.ts
 ```
 
-[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）与 `effects/` 中的效果 payload（见[效果 payload](#效果-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
+[workers/](../../src/workers/) 由 [P2-04](../plan/p2/04/spec.md) 逐步交付，见[导入 Worker](#导入-worker)。[content/](../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）与 `effects/` 中的效果 payload（见[效果 payload](#效果-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](#原版来源映射)）。`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；P2-11 新增 `render/viewer/` 的资源查看渲染（见[资源查看渲染](#资源查看渲染)）；`ui/render/` 的合成画面组件与开发面板的渲染诊断已接入页面。P1-06 已交付：`ui/game/` 的投影 store（Zustand vanilla，React 只取得只读句柄）、会话桥接（状态即时写入、10 Hz 投影采样）、命令反馈（Core 接受/拒绝、取消、故障未确认）、会话控制与 React selector hook；`ui/dev/` 的合成开发面板；[app/composition/](../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号；`ui/pages/` 的三个画面组件。[App](../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型；菜单、合成画面与开发面板都是工程原型，不是原版界面或飞行 HUD。
 
 [platform/storage/](../../src/platform/storage/) 由 [P2-10](../plan/p2/10/goal.md) 交付资源缓存：
 
@@ -914,6 +919,35 @@ src/
   - `source` 层的默认句与“结构或转换校验”同句，对应 spec 的“其余 code”。
   - `ui/` 不能导入 `original-data`，所以 disc 与 source 的 code 以字面量列出；测试以 `Record<DiscReadErrorData['code'] | SourceErrorCode | ImportErrorCode, …>` 的期望表逐一核对，上游新增 code 时类型检查失败。`import` 层的内部错误类别由 `IMPORT_ERROR_CODES` 派生。
   - 缓存的 13 个 code 各有一句，句子表的类型为 `Record<ResourceCacheFailureCode, string>`。
+
+### 资源查看渲染
+
+[P2-11](../plan/p2/11/spec.md) 的查看渲染在 [render/viewer/](../../src/render/viewer/) 中，DOM-free，由 Node 测试覆盖（[08](../plan/p2/11/subtasks/08-viewer-render-foundation.md)）。目前只有二维项；模型与效果归 09，所有者归 10，页面与浏览器读回归 11。
+
+- **入口：** [viewer-renderer.ts](../../src/render/viewer/viewer-renderer.ts) 的 `createViewerRenderer({ surface, reportError })`；表面无法创建时传 `{ unavailable, reportError }`，渲染器只报告原因。连接失败时先释放表面再抛出原因，释放也失败时抛 `RollbackError`。
+  - **状态：** `ready`、`context-lost`、`failed`、`unavailable`、`disposed`，`failed` 与 `unavailable` 附原始错误。只在状态变化时通知，开始释放后不再通知。
+  - **显示：** `show(item | null)` 每次显示一项。查看项携带内容消费函数的结果：图像为 `expandImage` 的结果，布局为 `composeLayout` 的结果，调色板与字库为 payload。读取与展开由调用方完成，所以内容错误只标记该项，不使渲染失败。种类、ID 与内容对象都相同的项视为未变。
+  - **诊断：** 状态、当前项的 kind 与 ID、成功绘制次数、`gpuStats()` 的三项计数（释放后为 null）、布局，以及当前画面在绘制缓冲中的位置 `placement`（设备像素，自左上角起）。
+- **按需绘制：** 只在显示项变化、布局（尺寸或像素比）变化与上下文恢复时同步绘制一次；相同的项或布局不绘制，也不请求动画帧。上下文丢失期间仍可换项但不绘制，恢复后重画一次。构建、布局或绘制的任何失败都使渲染器进入终止的 `failed`。
+- **显示与资源：** [viewer-display.ts](../../src/render/viewer/viewer-display.ts) 的每个显示独占它创建的几何、材质与纹理。
+  - **换项：** 先建成新的显示，再释放旧的；新显示构建失败时场景不变。没有跨项存活的 GPU 资源，所以 GPU 计数只取决于当前项，`show(null)` 后为零。
+  - **释放：** 撤销表面观察 → 当前显示的全部资源 → 表面；每步都尝试，失败汇总为 AggregateError。释放后迟到的表面回调不再绘制。
+- **二维项：** 在绘制缓冲像素中绘制（正交相机，y 向上），由 [viewer-pictures.ts](../../src/render/viewer/viewer-pictures.ts) 的纯函数给出画面与位置。
+  - **位置：** `placePicture` 把图像、调色板与字库按能放下的最大整数倍放大并居中（比缓冲大时缩小到能放下）；布局拉伸覆盖整个 4:3 缓冲。
+  - **透明：** 画面矩形下是中性棋盘格（灰度 102 与 153，每格 8 个缓冲像素），从透明像素中透出。
+  - **调色板与字库：** `paletteSheet` 为每行 16 个 7×7 色块；`glyphSheet` 按字形序号每行 16 个单元，单元为单元宽 × 单元高，置位为白、否则为黑，单元以外的位与行不显示。格线为 1 像素的灰度 64，末行多余的单元透明。
+- **呈现约定（二维部分）：** 集中在 [viewer-presentation.ts](../../src/render/viewer/viewer-presentation.ts)。P2-12 用原版截图判定，有误时只改这一处，不重新导入，也不改 payload schema。
+
+  | 项 | 选择 | 依据与置信度 |
+  |---|---|---|
+  | 颜色空间 | 纹理为 `NoColorSpace`，不解码；查看器画布的输出颜色空间为线性 sRGB（`VIEWER_SURFACE`），着色器输出不再编码；材质不做 tone mapping。读回的字节等于源字节 | 项目选择（spec 呈现约定）：原版是 8 位调色板画面，查看器不引入颜色变换。本机 Chrome 的读回误差为 0，见 [08 的完成证据](../plan/p2/11/subtasks/08-viewer-render-foundation.md#完成证据) |
+  | 过滤与 mipmap | 放大与缩小都用最近邻，不生成 mipmap | 原版软件渲染的采样方式未确认；最近邻不引入原版没有的颜色 |
+  | 方向 | 画面的第 0 行（`expandImage` 输出的首行）在 v = 0，纹理不翻转；二维四边形的上边为 v = 0 | 未确认：可逆的初始约定，由 P2-12 判定 |
+  | 透明 | alpha 只有 0 与 255，以 alpha 测试丢弃透明纹素，不混合 | 项目选择：与 payload 的二值掩码一致 |
+
+  三维部分（手性、绕序、光照、效果颜色与量化）归 09。
+- **表面选项：** [render-surface.ts](../../src/render/scene/render-surface.ts) 的 `RenderSurfaceOptions` 由画在表面上的渲染逻辑选择，含画布的无障碍名称与渲染器的输出颜色空间。浏览器工厂 `createBrowserWebGLSurface(container, options)` 按它设置画布与渲染器；应用端口 `createSurface(container, options)` 同样接收它。合成演示传 `SYNTHETIC_SURFACE`，即原来的名称与 Three.js 默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`。
+- **测试替身：** `RecordingSurface` 只记录可见的网格，并按材质上的纹理模拟纹理计数。
 
 ## 职责与依赖
 

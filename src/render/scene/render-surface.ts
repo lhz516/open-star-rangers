@@ -4,8 +4,16 @@
  * port owns observation of container size, device pixel ratio and context loss; the render logic
  * owns layout decisions, scene contents and when to draw. Contract: docs/plan/p1/07/spec.md.
  */
-import type { Camera, Scene } from 'three';
+import type { Camera, ColorSpace, Scene } from 'three';
 import type { ViewportLayout } from '../viewport/viewport-layout.ts';
+
+/** What the render logic that will draw on a surface chooses when it is created. */
+export interface RenderSurfaceOptions {
+  /** Accessible name of the canvas. */
+  readonly label: string;
+  /** The renderer's output colour space; linear shader output is encoded to it before it reaches the canvas. */
+  readonly outputColorSpace: ColorSpace;
+}
 
 export interface RenderSurfaceSize {
   /** Container content box, CSS px. */
