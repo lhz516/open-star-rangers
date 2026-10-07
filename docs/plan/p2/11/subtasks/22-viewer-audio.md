@@ -40,8 +40,8 @@ updated: 2026-10-06
 
 ## 验收标准
 
-- [ ] AC-15（Node，音频部分）：延迟解锁只播放一次；取消后迟到的 `running` 不播放；`close()` 的完成与拒绝由包装观察；声音列表与 `audio` 组一一对应；不可用的音频能力如实报告。
-- [ ] `app/viewer/` 不导入 `original-data`、DOM 或 React；`pnpm check` 通过。
+- [x] AC-15（Node，音频部分）：延迟解锁只播放一次；取消后迟到的 `running` 不播放；`close()` 的完成与拒绝由包装观察；声音列表与 `audio` 组一一对应；不可用的音频能力如实报告。
+- [x] `app/viewer/` 不导入 `original-data`、DOM 或 React；`pnpm check` 通过。
 
 ## 验证方法
 
@@ -49,3 +49,35 @@ updated: 2026-10-06
 - 浏览器部分见 11。按 execute-goal 做 rubber-duck 与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **实现：** [viewer-audio.ts](../../../../../src/app/viewer/viewer-audio.ts) 的 `createViewerAudio(options, audioGroup)`：
+  - 为一份资源包创建 P2-08 控制器，载入完整 `audio` 组的全部声音，快照列出每个 sound Asset 的 ID 与角色；
+  - `audition` 在 `running` 时立即播放，否则记下一次待播放意图，进入 `running` 时恰好播放一次；停止、取消、页面隐藏、`pagehide`、控制器失败与释放都丢弃该意图；
+  - 包装音频能力，记录上下文 `close()` 的结果；`dispose()` 返回同一个 promise，结果为 `no-context`、`closed` 或 `close-failed`（附原因）；
+  - 经包装取得每个新发声的端口并监听其结束，`stop(id)` 只停止仍在播放的本声音发声。
+- **测试支持：** P2-08 控制器测试的宿主替身移到 [audio-controller.test-support.ts](../../../../../src/platform/audio/audio-controller.test-support.ts)，`FakeContext.closing` 可设为拒绝（默认，原有测试不变）、完成、悬置或同步抛错。
+- **测试：** [viewer-audio.test.ts](../../../../../src/app/viewer/viewer-audio.test.ts) 共 24 条：
+  - **声音列表：** 与合成 `audio` 组的 5 个 Asset 一一对应（ID 与角色），全部载入；没有组时列表为空、载入为 null，试听报 `unknown-sound`；缓冲创建失败时如实报告 `audio-failed`。
+  - **试听：**
+    - `running` 时立即播放；延迟解锁时只播放一次，后一次点击取代前一次，之后的挂起与恢复不重播；
+    - 停止该声音、停止全部、取消、释放、页面隐藏、`pagehide` 之后，迟到的 `running` 都不播放；上下文关闭使控制器失败时丢弃意图；
+    - 不可用的音频能力报 `audio-unavailable`，载入不受影响。
+  - **停止与发声：** `stop(id)` 只停止该声音的发声，`stopAll` 停止全部；订阅者在发声开始的通知中即可停止它（证伪：去掉播放期间的保护后该测试失败）；结束的发声被删除，正在播放的发声不受影响，其结束监听在停止后撤销。
+  - **关闭观察：**
+    - 从未解锁时为 `no-context`；
+    - `close()` 完成、拒绝、同步抛错分别得到 `closed`、`close-failed`、`close-failed`，`close()` 只调用一次，页面生命周期监听全部撤销；
+    - 悬置的关闭不会被当作完成；宿主已关闭的上下文不再调用 `close()`，算作 `closed`；
+    - 释放后不再通知订阅者，试听报 `disposed`。
+- **边界：** [engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts) 的 DOM-free 检查扩展到 `app/viewer/`。
+- **检查：**
+  - `pnpm exec vitest run src/app/viewer src/platform/audio`：64 条通过；
+  - `pnpm check`：149 个文件 4,434 条测试，构建通过。
+- **Rubber-duck：** 没有阻塞问题。两项非阻塞问题均已采纳：
+  - 控制器在 `play()` 返回之前就通知，订阅者此时停止会找不到发声：播放期间不发布，并补测试；
+  - 已结束的发声只在全部结束时清除，有循环声音时会累积：改为监听每个发声的结束，并补测试。
+- **Simplify：** 采纳一项：发布前先比较字段，再构建快照。
+
+  未采纳：
+  - 抽出通用的订阅与通知工具：需要改动 02 与作业持有者；
+  - 复用 `render/scene/cleanup.ts` 的 `attemptAll`：`app/viewer/` 不能导入 `render/`。
+- **文档影响：** [源码结构](../../../../engineering/source-structure.md)新增“查看器音频”一节，当前目录加入 `app/viewer/`。工程约定与 STATUS 无需改动。

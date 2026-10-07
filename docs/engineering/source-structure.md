@@ -47,6 +47,8 @@ src/
       session-host.ts
       session-errors.ts
       synthetic-session.ts
+    viewer/
+      viewer-audio.ts
   core/
     errors.ts
     determinism/
@@ -904,6 +906,24 @@ src/
 
   只凭作业 `finished` 得不到“完整资源可查看”。
 - **通知与释放：** 监听与订阅者同步收到通知，抛出的错误交给 `reportError`；`reportError` 本身抛错也被吞下，不影响替换与其他监听。`dispose()` 可重复调用：中止提交，丢弃资源包与全部监听；之后的列出、提交与恢复结果都被忽略，也不通知任何人。持有者不拥有缓存实例，不关闭它。
+
+### 查看器音频
+
+[app/viewer/viewer-audio.ts](../../src/app/viewer/viewer-audio.ts) 是 P2-11 查看器的试听（[spec S-08、S-12](../plan/p2/11/spec.md)），DOM-free，由 Node 测试覆盖；与 `app/resources/` 共用 DOM-free 的边界回归。
+
+- **创建：** `createViewerAudio({ capability, lifecycle, reportError }, audioGroup)` 为一份资源包创建 P2-08 控制器，并载入完整 `audio` 组的全部声音。快照列出组内每个 sound Asset 的 ID 与角色（清单顺序）和载入结果；没有 `audio` 组时列表为空、载入结果为 null。
+- **试听：** `audition(id)` 在可信点击中调用 `unlock()`。
+  - 控制器已在 `running` 时立即播放；否则记下一次待播放意图（后一次点击取代前一次），控制器进入 `running` 时恰好播放一次。
+  - 控制器进入 `unavailable`、`failed` 或 `disposed`，或调用 `stop`、`stopAll`、`cancelPending`（离开或替换资源包时由所有者调用）、页面隐藏（`visibilitychange` 为隐藏、`pagehide`）与释放，都丢弃该意图。控制器本身不排队。
+  - 未知的声音、不可用或失败的控制器如实拒绝。
+- **停止：** `stop(id)` 停止本查看器为该声音启动的发声，`stopAll()` 停止全部。控制器只报告发声数，所以查看器经包装的能力取得每个新发声的端口，并监听它的结束；结束、停止或控制器释放全部发声（如隐藏或失败）时，记录随即删除。播放期间控制器自己的通知不发布，所以订阅者看到新发声时它已有记录，可以立即停止。
+- **关闭观察：** 查看器包装传入的音频能力，记录上下文 `close()` 的结果。`dispose()` 释放控制器与页面生命周期监听，并返回同一个 promise，结果为：
+  - `no-context`：从未创建上下文；
+  - `closed`：`close()` 完成，或宿主已先关闭了上下文；
+  - `close-failed`：`close()` 被拒绝或同步抛错，附原因。
+
+  “已关闭”只以此为准，不以控制器的 `disposed` 快照代替；锁存与“关闭确认前不重建”由查看器所有者负责。
+- **测试支持：** P2-08 控制器测试的宿主替身移到 [audio-controller.test-support.ts](../../src/platform/audio/audio-controller.test-support.ts)，`FakeContext.closing` 可设为拒绝（默认）、完成、悬置或同步抛错。
 
 ### 失败文案
 

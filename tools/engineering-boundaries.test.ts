@@ -696,20 +696,20 @@ describe('resource cache boundaries', () => {
   });
 });
 
-describe('app resource boundaries', () => {
-  // docs/plan/p2/11/spec.md S-03/S-12/AC-22: the resource holder is DOM-free logic owned by the app shell. It uses no
-  // network API, window, document or local storage, imports no package and neither the render nor the ui layer, and
-  // every one of its modules is checked in the Node program.
+describe('app resource and viewer boundaries', () => {
+  // docs/plan/p2/11/spec.md S-03/S-08/S-12/AC-22: the resource holder and the viewer's DOM-free logic are owned by the
+  // app shell. They use no network API, window, document or local storage, import no package and neither the render nor
+  // the ui layer, and every one of their modules is checked in the Node program.
   const src = join(root, 'src');
   const relativeSource = (fileName: string): string => relative(src, fileName).split(sep).join('/');
   const appProgram = sharedAppProgram();
   const resources = appProgram.getRootFileNames()
-    .filter(fileName => relativeSource(fileName).startsWith('app/resources/') && !fileName.endsWith('.test-support.ts'))
+    .filter(fileName => /^app\/(?:resources|viewer)\//.test(relativeSource(fileName)) && !fileName.endsWith('.test-support.ts'))
     .map(fileName => appProgram.getSourceFile(fileName)!);
   const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'sendBeacon', 'EventSource', 'window', 'document', 'localStorage']);
 
   it('uses no network API, window, document, package, render or ui import', () => {
-    expect(resources.length).toBeGreaterThanOrEqual(2);
+    expect(resources.length).toBeGreaterThanOrEqual(4);
     const violations = resources.flatMap(file => [
       ...[...identifierNames(file)].filter(name => banned.has(name)),
       ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || /\/(?:render|ui)(?:\/|$)/.test(specifier)),
@@ -717,7 +717,7 @@ describe('app resource boundaries', () => {
     expect(violations).toEqual([]);
   });
 
-  it('checks every app resource module in the Node program', () => {
+  it('checks every app resource and viewer module in the Node program', () => {
     const nodeFiles = sharedNodeFiles();
     expect(resources.filter(file => !nodeFiles.has(resolve(file.fileName))).map(file => relativeSource(file.fileName))).toEqual([]);
   });
