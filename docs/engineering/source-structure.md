@@ -49,6 +49,8 @@ src/
       synthetic-session.ts
     viewer/
       viewer-audio.ts
+      viewer-items.ts
+      viewer-owner.ts
   core/
     errors.ts
     determinism/
@@ -925,6 +927,22 @@ src/
   “已关闭”只以此为准，不以控制器的 `disposed` 快照代替；锁存与“关闭确认前不重建”由查看器所有者负责。
 - **测试支持：** P2-08 控制器测试的宿主替身移到 [audio-controller.test-support.ts](../../src/platform/audio/audio-controller.test-support.ts)，`FakeContext.closing` 可设为拒绝（默认）、完成、悬置或同步抛错。
 
+### 查看器所有者
+
+[app/viewer/viewer-owner.ts](../../src/app/viewer/viewer-owner.ts) 是 P2-11 查看器的所有者与每个应用实例一个的查看器槽位（[spec S-07、S-12](../plan/p2/11/spec.md)），由 Node 测试以真实的查看渲染、录制用表面替身与音频替身覆盖。`app/viewer/` 可以导入 `render/`（它拥有渲染器），仍不导入 `ui/`。
+
+- **条目：** [viewer-items.ts](../../src/app/viewer/viewer-items.ts) 的 `viewerCatalog(groups)` 按组顺序与清单顺序列出持有资源包各完整组中的图像、布局、调色板与字库，并按 Asset ID 索引整个资源包的 payload。`resolveItem` 只经 `content/` 的读取器与 `expandImage`、`composeLayout` 得到渲染器的条目；所需的调色板与图像在资源包中按 Asset ID 查找，缺失时为 `binding-mismatch`。内容错误成为该条目的失败（code、路径与原因），其他异常视为缺陷。模型与效果由 09 加入。
+- **所有者：** 槽位以 `{ holder, render, audio, reportError }` 创建所有者。
+  - `render` 是表面或不可用的原因，交给 `createViewerRenderer`；
+  - `select(id)` 显示所列条目，或以 null 不显示；读取或展开失败时不显示，只记下该条目的失败；
+  - 快照含所示资源包的代际、条目、所选条目、失败与 22 的查看器音频。
+- **替换：** 资源持有者替换资源包前（`beforeReplace`），所有者先以渲染器的 `releaseItem()` 释放所示条目的全部 GPU 资源（渲染器已失败时也释放，释放失败时锁存），丢弃待播放意图并释放音频。新资源包的音频只在此前每一次音频关闭都确认后才创建：所有者与槽位保持一个只会累加的关闭屏障，连续替换或重开查看器都不会越过仍在进行的关闭；任何一次关闭失败都锁存，且不再创建。
+- **创建失败：** 表面连接失败但已干净释放时，所有者改用不可用的渲染器，条目与试听照常；释放也失败（`RollbackError`）或持有者订阅无法撤销时，槽位锁存并抛出。
+- **槽位：** `createViewerLifecycle({ onCleanupFailure, reportError })`。
+  - `open(options)` 先关闭仍打开的所有者，锁存时返回 null；新所有者的音频等到上一次音频上下文确认关闭后才创建。
+  - `close()` 撤销持有者订阅并释放渲染器与音频，每步都尝试：同步的失败立即锁存，音频 `close-failed` 在观察到时锁存。
+  - 锁存只记第一次失败，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）；锁存后不再创建所有者，导入与演示不受影响。React 接线与页面归 11。
+
 ### 失败文案
 
 [ui/import/failure-copy.ts](../../src/ui/import/failure-copy.ts) 是 P2-11 的纯文案模块（[spec 失败反馈](../plan/p2/11/spec.md#失败反馈)），由 Node 测试覆盖：
@@ -952,6 +970,7 @@ src/
 - **显示与资源：** [viewer-display.ts](../../src/render/viewer/viewer-display.ts) 的每个显示独占它创建的几何、材质与纹理。
   - **换项：** 先建成新的显示，再释放旧的；新显示构建失败时场景不变。没有跨项存活的 GPU 资源，所以 GPU 计数只取决于当前项，`show(null)` 后为零。
   - **释放：** 撤销表面观察 → 当前显示的全部资源 → 表面；每步都尝试，失败汇总为 AggregateError。释放后迟到的表面回调不再绘制。
+  - **只释放当前项（P2-11 子任务 10）：** `releaseItem()` 在除 `disposed` 以外的任何状态（包括 `failed`）下释放当前显示，就绪时画一次空画面；释放失败时抛出 AggregateError，并使渲染器进入 `failed`。查看器所有者在资源包被替换前调用它，`show(null)` 在 `failed` 状态下不做任何事。
 - **二维项：** 在绘制缓冲像素中绘制（正交相机，y 向上），由 [viewer-pictures.ts](../../src/render/viewer/viewer-pictures.ts) 的纯函数给出画面与位置。
   - **位置：** `placePicture` 把图像、调色板与字库按能放下的最大整数倍放大并居中（比缓冲大时缩小到能放下）；布局拉伸覆盖整个 4:3 缓冲。
   - **透明：** 画面矩形下是中性棋盘格（灰度 102 与 153，每格 8 个缓冲像素），从透明像素中透出。

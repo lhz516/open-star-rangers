@@ -302,6 +302,41 @@ describe('viewer renderer status and release', () => {
     expect(() => renderer.dispose()).not.toThrow();
   });
 
+  it('releases the shown item on request, even when failed, and throws a failed release', () => {
+    const { surface, renderer } = setup();
+    surface.resize();
+    renderer.show(syntheticItems()[0]);
+    const draws = surface.draws.length;
+    renderer.releaseItem();
+    expect(renderer.diagnostics()).toMatchObject({ state: 'ready', item: null, placement: null, draws: draws + 1 });
+    expect(surface.gpuStats().textures).toBe(0);
+    renderer.releaseItem();
+    expect(surface.draws).toHaveLength(draws + 1);
+
+    const failed = setup();
+    failed.surface.resize();
+    failed.renderer.show(syntheticItems()[0]);
+    failed.surface.layoutFailure = new Error('layout');
+    failed.surface.resize(800, 600);
+    expect(failed.renderer.getSnapshot().state).toBe('failed');
+    expect(failed.surface.gpuStats().textures).toBeGreaterThan(0);
+    failed.renderer.releaseItem();
+    expect(failed.renderer.diagnostics().item).toBeNull();
+    expect(failed.surface.gpuStats()).toEqual({ geometries: 0, textures: 0, programs: 0 });
+
+    const failing = setup();
+    failing.surface.resize();
+    failing.renderer.show(syntheticItems()[0]);
+    const texture = mapOf(failing.surface.lastDraw!.objects[1].material);
+    const failure = new Error('texture');
+    texture.dispose = () => { throw failure; };
+    let thrown: unknown;
+    try { failing.renderer.releaseItem(); } catch (error) { thrown = error; }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([failure]);
+    expect(failing.renderer.getSnapshot()).toEqual({ state: 'failed', error: thrown });
+  });
+
   it('disposes a surface it cannot connect, and reports a failed rollback as a RollbackError', () => {
     const surface = new RecordingSurface();
     const failure = new Error('connect');
@@ -325,6 +360,7 @@ describe('viewer renderer status and release', () => {
     renderer.show(item);
     expect(renderer.getSnapshot()).toEqual({ state: 'unavailable', error: cause });
     expect(renderer.diagnostics()).toEqual({ state: 'unavailable', item: null, draws: 0, gpu: null, layout: null, placement: null });
+    renderer.releaseItem();
     renderer.dispose();
     expect(renderer.getSnapshot()).toEqual({ state: 'disposed', error: null });
   });

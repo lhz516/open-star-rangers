@@ -698,8 +698,8 @@ describe('resource cache boundaries', () => {
 
 describe('app resource and viewer boundaries', () => {
   // docs/plan/p2/11/spec.md S-03/S-08/S-12/AC-22: the resource holder and the viewer's DOM-free logic are owned by the
-  // app shell. They use no network API, window, document or local storage, import no package and neither the render nor
-  // the ui layer, and every one of their modules is checked in the Node program.
+  // app shell. They use no network API, window, document or local storage, import no package and not the ui layer, and
+  // every one of their modules is checked in the Node program. Only the viewer, which owns its renderer, sees render.
   const src = join(root, 'src');
   const relativeSource = (fileName: string): string => relative(src, fileName).split(sep).join('/');
   const appProgram = sharedAppProgram();
@@ -708,12 +708,15 @@ describe('app resource and viewer boundaries', () => {
     .map(fileName => appProgram.getSourceFile(fileName)!);
   const banned = new Set(['fetch', 'XMLHttpRequest', 'WebSocket', 'sendBeacon', 'EventSource', 'window', 'document', 'localStorage']);
 
-  it('uses no network API, window, document, package, render or ui import', () => {
+  it('uses no network API, window, document, package or ui import, and render only in the viewer', () => {
     expect(resources.length).toBeGreaterThanOrEqual(4);
-    const violations = resources.flatMap(file => [
-      ...[...identifierNames(file)].filter(name => banned.has(name)),
-      ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || /\/(?:render|ui)(?:\/|$)/.test(specifier)),
-    ].map(entry => `${relativeSource(file.fileName)}: ${entry}`));
+    const violations = resources.flatMap(file => {
+      const layers = relativeSource(file.fileName).startsWith('app/viewer/') ? /\/ui(?:\/|$)/ : /\/(?:render|ui)(?:\/|$)/;
+      return [
+        ...[...identifierNames(file)].filter(name => banned.has(name)),
+        ...moduleSpecifiers(file).filter(specifier => !/^\.\.?\//.test(specifier) || layers.test(specifier)),
+      ].map(entry => `${relativeSource(file.fileName)}: ${entry}`);
+    });
     expect(violations).toEqual([]);
   });
 

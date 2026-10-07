@@ -113,7 +113,7 @@ updated: 2026-10-06
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08, 24 | pending |
-| [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | pending |
+| [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | completed |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |

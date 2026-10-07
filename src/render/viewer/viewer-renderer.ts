@@ -61,6 +61,12 @@ export interface ViewerRenderer {
    */
   show(item: ViewerItem | null): void;
   /**
+   * Releases the shown item's display in any state but disposed, so nothing it created outlives content about to go
+   * away, and draws the empty picture when ready. Throws an AggregateError of the release failures, which also make
+   * the renderer failed.
+   */
+  releaseItem(): void;
+  /**
    * Stops observation, disposes every geometry, material and texture, then the surface; attempts every step, throws an
    * AggregateError of the failures, and is idempotent.
    */
@@ -105,6 +111,7 @@ class UnavailableRenderer implements ViewerRenderer {
     state: this.#status.state, item: null, draws: 0, gpu: null, layout: null, placement: null,
   });
   show(): void {}
+  releaseItem(): void {}
   dispose(): void { this.#status = Object.freeze({ state: 'disposed', error: null }); }
 }
 
@@ -173,6 +180,18 @@ class Renderer implements ViewerRenderer {
     } catch (cause) {
       this.#fail(cause);
       return;
+    }
+    this.#draw();
+  }
+
+  releaseItem(): void {
+    if (this.#status.state === 'disposed' || this.#shown === null) return;
+    const errors = this.#release();
+    this.#placement = null;
+    if (errors.length > 0) {
+      const error = new AggregateError(errors, 'Viewer item release failed', { cause: errors[0] });
+      this.#fail(error);
+      throw error;
     }
     this.#draw();
   }
