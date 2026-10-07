@@ -85,7 +85,7 @@ updated: 2026-10-06
 | AC-10 | 04、11 | 04 Node；11 E2E |
 | AC-11 | 09 | 09 Node；11 像素读回 |
 | AC-12 | 08 | 08 Node；11 像素读回 |
-| AC-13 | 09 | 09 Node；11 像素读回 |
+| AC-13 | 24、09 | 24 碎片面表 Node；09 Node；11 像素读回 |
 | AC-14 | 08、10、11 | 08 绘制计数；11 帧、画布、上下文丢失与 WebGL 关闭 E2E |
 | AC-15 | 22、10、11 | 22、10 Node；11 音频探针 E2E |
 | AC-16 | 06、07、10、11 | 13 开发项目 E2E |
@@ -112,21 +112,22 @@ updated: 2026-10-06
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
-| [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |
+| [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08, 24 | pending |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | pending |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | pending |
 | [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
-| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17 | pending |
+| [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | pending |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | pending |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | pending |
 | [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
 | [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | completed |
 | [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | pending |
 | [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | pending |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23 | pending |
+| [24-debris-face-pairs.md](./subtasks/24-debris-face-pairs.md) | — | pending |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -150,6 +151,9 @@ updated: 2026-10-06
   - **只应用第 0 个旋转：** 导弹预建的 32 个旋转映射中，原版只应用第 0 个；每枚导弹的元素都是带第 0 个坐标的副本，随机序号不影响贴图坐标。spec 的“每个旋转序号”输出与查看器的 32 选 1 仍可实现，但不对应原版可见的差异。16 开始前，需由用户确认是否保留这两项。
   - **接缝插值未确认：** 受影响的面是导弹元素 3 个侧面中的 1 个（另一面表模板 6 个面中的 2 个）和碎片唯一的面。按 spec“不以猜测的映射贴图”，16 的 AC-18 像素断言不能用这些面，除非用户先决定其显示方式，例如按顶点坐标线性插值并标注“接缝插值未确认”。
   - **碎片面表解析有误（P2-06 实现缺陷）：** 碎片构建函数传入逐顶点法线，`0x80c14` 因此把每个角读作（顶点序号，法线序号）一对，两种碎片模板各是一个 6 角面，executable 的面表结论已更正。`content/effects` 的 `faceList`、`faceTriangles` 与 `effectExpansionSize` 按纯顶点序号解析，碎片被展开成 6 角面加 5 角面，共 7 个三角形，几何错误。payload 保存的是原始字，导入不受影响。修正需在 09 与 16 之前安排，由用户决定归入 P2-06 修复还是本 goal 新增的修复子任务。15 只改原版文档，没有修改代码。
+- **2026-10-06 — 合并 08、15 后的安排：** 用户要求合并两个分支并删除其分支与工作树，已完成（合并提交见 git 记录）。按用户“需要回答的问题按最推荐的答案”的授权，对 15 交接的事项作如下安排：
+  - **碎片面表解析缺陷：** 归入本 goal，新增修复子任务 24（无依赖），09 与 16 改为依赖它，最终对齐 20 也依赖它。payload 字节与 schema 不变，不递增转换器组件。
+  - **16 的两项决定（32 个旋转映射、跨接缝面的显示）：** 只影响 16，16 还依赖 11 与 17，留到 16 开始时决定并记录。
 
 ## 审批
 
