@@ -122,7 +122,7 @@ updated: 2026-10-07
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | completed |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | completed |
-| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | in-progress |
+| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | blocked |
 | [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | completed |
 | [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | completed |
 | [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | completed |
@@ -163,6 +163,10 @@ updated: 2026-10-07
 - **2026-10-07 — 16 集成时的记录：**
   - **效果 payload 去掉旋转步长：** schema 2 除新增碎片倍数 K 外，还从导弹常量中去掉 P2-06 schema 1 已导入的旋转步长（常量区由 7 个 `f64` 变为 6 个），因为只用第 0 个旋转时它不参与任何输出。这与用户所选方案一致（另一方案才导入步长），其余既有字段的语义不变；本地核对 6 个保留常量与 2 个映射字段，差异均为 0。
   - **留给 18 的文档缺口：** [源码结构](../../../engineering/source-structure.md)“生产转换器版本”一节仍写 `models-1`，18 核对源码结构时改为当前值。
+- **2026-10-07 — 子任务 19 blocked：** 等待用户在真实机器上完成 AC-21 的核对，agent 不能代替。
+  Evidence: 14、16、18 已集成；协调者在 `63bccee` 构建并启动本地生产预览，`curl -I` 得到 200 与拟定 CSP，入口 chunk 引用 `/assets/` 下带哈希的导入 Worker。向用户发起核对时用户不在，预览已停止。
+  Affected acceptance: AC-21；19 的两项验收；最终对齐 20 依赖 19。
+  Resume when: 用户按[本地导入指南](../../../guides/local-import.md#用户实机核对)用当前 goal 分支的生产预览完成核对，并提供文字结论（日期、Chrome 版本、各项结论与作业、保存、恢复耗时，以及错误 code）。
 
 ## 审批
 
