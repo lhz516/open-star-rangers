@@ -59,7 +59,8 @@ node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
 # (counts, failure codes and observed graphics maxima only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 
-# Next spec/review/goal/execute workflow node for a task (reads planning docs only)
+# Next spec/review/goal/execute workflow node for a task, plus the parallel
+# dispatch schedule during execution (reads planning docs only)
 node tools/task-state.ts p1/03 [--json]
 ```
 

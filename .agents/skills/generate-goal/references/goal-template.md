@@ -33,7 +33,7 @@ updated: "[YYYY-MM-DD]"
 
 ## 子任务跟踪
 
-状态只在此维护：`pending` / `in-progress` / `blocked` / `completed`。依赖项全部 completed 后才能开始；验收结果和证据写在相应 subtask 文档，不在阶段索引重复状态。
+状态只在此维护：`pending` / `in-progress` / `blocked` / `completed`。依赖项全部 completed 后才能开始；验收结果和证据写在相应 subtask 文档，不在阶段索引重复状态。并行执行时，本表与执行记录只由协调者修改。
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|

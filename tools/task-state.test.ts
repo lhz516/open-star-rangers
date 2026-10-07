@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { markReviewed, resolveTask, routeTask, specReviewHash, withReviewMarker } from './task-state.ts';
+import { markReviewed, parseSubtask, resolveTask, routeTask, scopesOverlap, specReviewHash, withReviewMarker } from './task-state.ts';
 
 const TASK = 'p1/07';
 const DIR = 'docs/plan/p1/07';
@@ -75,6 +75,9 @@ interface Row {
   deps?: string[];
   status?: string;
   fileDeps?: string[];
+  mode?: string;
+  /** 写入范围 entries; '无' writes the section with no paths; absent omits the section. */
+  scope?: string[] | '无';
 }
 
 function goal(rows: Row[], { status = 'accepted', coverage = ['S-01', 'S-02', 'AC-01', 'AC-02'] } = {}): string {
@@ -110,14 +113,20 @@ function goal(rows: Row[], { status = 'accepted', coverage = ['S-01', 'S-02', 'A
   ].join('\n');
 }
 
-function subtask(deps: string[]): string {
-  return `---\ntype: plan\nstatus: active\n---\n\n# 合成\n\n**依赖：** ${deps.length ? `${deps.join(', ')}。` : '无。'}\n`;
+function subtask(deps: string[], { mode, scope }: Pick<Row, 'mode' | 'scope'> = {}): string {
+  return [
+    '---\ntype: plan\nstatus: active\n---\n\n# 合成\n',
+    `**依赖：** ${deps.length ? `${deps.join(', ')}。` : '无。'}`,
+    ...(mode ? [`**执行方式：** ${mode}`] : []),
+    ...(scope ? ['', '## 写入范围', '', ...(scope === '无' ? ['无。'] : scope.map((entry) => `- \`${entry}\`：说明。`))] : []),
+    '',
+  ].join('\n');
 }
 
 function plan(rows: Row[], options?: Parameters<typeof goal>[1]): void {
   write('spec.md', spec(ACCEPTED));
   write('goal.md', goal(rows, options));
-  for (const row of rows) write(`subtasks/${row.id}-work.md`, subtask(row.fileDeps ?? row.deps ?? []));
+  for (const row of rows) write(`subtasks/${row.id}-work.md`, subtask(row.fileDeps ?? row.deps ?? [], row));
 }
 
 const route = () => routeTask(root, TASK);
@@ -267,6 +276,172 @@ describe('goal stages', () => {
     expect(route().fingerprint).toBe(before);
     write('subtasks/01-work.md', `${subtask([])}\n## 完成证据\n\n- 合成证据。\n`);
     expect(route().fingerprint).not.toBe(before);
+  });
+});
+
+describe('subtask execution metadata', () => {
+  it('reads the mode and write scope, defaulting to automatic with no scope', () => {
+    expect(parseSubtask(subtask(['01']))).toEqual({ deps: ['01'], mode: 'auto', scope: undefined, problems: [] });
+    expect(parseSubtask(subtask([], { mode: '需用户：用户实机核对。', scope: ['./src/app/', 'e2e/import-*.spec.ts'] }))).toEqual({
+      deps: [],
+      mode: 'user',
+      scope: ['src/app/**', 'e2e/import-*.spec.ts'],
+      problems: [],
+    });
+    expect(parseSubtask(subtask([], { mode: '自动。', scope: '无' }))).toMatchObject({ mode: 'auto', scope: [], problems: [] });
+    expect(parseSubtask(subtask([], { scope: ['src/./a.ts', 'src//b/', '**'] }))).toMatchObject({
+      scope: ['src/a.ts', 'src/b/**', '**'],
+      problems: [],
+    });
+  });
+
+  it('reports invalid modes, entries and empty scopes', () => {
+    const text = subtask([], { mode: '并行', scope: ['src/ok.ts', '/abs/path', '../outside', 'src\\win.ts', '', '.', './'] });
+    expect(parseSubtask(text)).toMatchObject({
+      scope: ['src/ok.ts'],
+      problems: [
+        '执行方式 "并行" is not 自动 or 需用户',
+        '写入范围 entry "/abs/path" is not a repository-relative path',
+        '写入范围 entry "../outside" is not a repository-relative path',
+        '写入范围 entry "src\\win.ts" is not a repository-relative path',
+        '写入范围 entry "" is not a repository-relative path',
+        '写入范围 entry "." is not a repository-relative path',
+        '写入范围 entry "./" is not a repository-relative path',
+      ],
+    });
+    expect(parseSubtask('**依赖：** 无。\n\n## 写入范围\n\n待定。\n').problems).toEqual([
+      '写入范围 lists no paths; write 无 when the subtask writes only its own document',
+    ]);
+  });
+
+  it.each([
+    ['src/app/a.ts', 'src/app/a.ts', true],
+    ['src/app/a.ts', 'src/app/b.ts', false],
+    ['src/a.ts', 'src/a.ts.map', false],
+    ['src/app/**', 'src/app/a.ts', true],
+    ['src/app', 'src/app/a.ts', true],
+    ['src/app/**', 'src/render/**', false],
+    ['e2e/import-*.spec.ts', 'e2e/support/probe.ts', true],
+    ['*.md', 'src/a.ts', true],
+    ['**', 'src/a.ts', true],
+  ])('scopes %s and %s overlap: %s', (a, b, expected) => {
+    expect(scopesOverlap(a, b)).toBe(expected);
+    expect(scopesOverlap(b, a)).toBe(expected);
+  });
+});
+
+describe('parallel schedule', () => {
+  it('dispatches ready rows with disjoint write scopes, lowest ID first', () => {
+    plan([
+      { id: '01', status: 'completed', scope: ['src/core/**'] },
+      { id: '02', deps: ['01'], scope: ['src/app/**', 'e2e/app.spec.ts'] },
+      { id: '03', deps: ['01'], scope: ['src/app/holder.ts'] },
+      { id: '04', deps: ['01'], scope: ['src/render/**'] },
+      { id: '05', deps: ['02'], scope: ['docs/guides/x.md'] },
+      { id: '06', deps: ['01', '02', '03', '04', '05'] },
+    ]);
+    expect(route()).toMatchObject({
+      node: 'execute-goal',
+      subtask: '02',
+      schedule: {
+        ready: ['02', '03', '04'],
+        active: [],
+        blocked: [],
+        wave: ['02', '04'],
+        deferred: [{ id: '03', overlaps: ['02'] }],
+        coordinator: [],
+        unscoped: [],
+      },
+    });
+  });
+
+  it('keeps the scopes of in-progress and blocked rows held', () => {
+    plan([
+      { id: '01', status: 'completed', scope: ['src/core/**'] },
+      { id: '02', deps: ['01'], status: 'in-progress', scope: ['src/app/**'] },
+      { id: '03', status: 'blocked', scope: ['docs/guides/**'] },
+      { id: '04', deps: ['01'], scope: ['src/app/holder.ts'] },
+      { id: '05', deps: ['01'], scope: ['docs/guides/x.md'] },
+      { id: '06', deps: ['01'], scope: ['src/render/**'] },
+      { id: '07', deps: ['01', '02', '03', '04', '05', '06'] },
+    ]);
+    expect(route()).toMatchObject({
+      subtask: '02',
+      schedule: {
+        ready: ['02', '04', '05', '06'],
+        active: ['02'],
+        blocked: ['03'],
+        wave: ['06'],
+        deferred: [
+          { id: '04', overlaps: ['02'] },
+          { id: '05', overlaps: ['03'] },
+        ],
+      },
+    });
+  });
+
+  it('runs a row without a write scope alone and reports it', () => {
+    plan([{ id: '01' }, { id: '02', scope: ['src/a.ts'] }, { id: '03', scope: '无' }, { id: '04', deps: ['01', '02', '03'] }]);
+    expect(route().schedule).toMatchObject({
+      wave: ['01'],
+      deferred: [
+        { id: '02', overlaps: ['01'] },
+        { id: '03', overlaps: ['01'] },
+      ],
+      unscoped: ['01'],
+    });
+  });
+
+  it('leaves rows that need the user and the final alignment to the coordinator', () => {
+    const rows: Row[] = [
+      { id: '01', status: 'completed', scope: ['src/a.ts'] },
+      { id: '02', deps: ['01'], mode: '需用户：实机核对。', scope: ['docs/guides/x.md'] },
+      { id: '03', deps: ['01'], scope: ['src/b.ts'] },
+      { id: '04', deps: ['01', '02', '03'] },
+    ];
+    plan(rows);
+    expect(route().schedule).toMatchObject({ ready: ['02', '03'], wave: ['03'], coordinator: ['02'], unscoped: [] });
+    plan(rows.map((row) => (row.id === '04' ? row : { ...row, status: 'completed' })));
+    expect(route().schedule).toMatchObject({ ready: ['04'], wave: [], coordinator: ['04'] });
+  });
+
+  it('checks rows that need the user for overlap like the wave', () => {
+    plan([
+      { id: '01', status: 'completed', scope: ['src/a.ts'] },
+      { id: '02', deps: ['01'], mode: '需用户', scope: ['docs/guides/x.md'] },
+      { id: '03', deps: ['01'], scope: ['docs/guides/**'] },
+      { id: '04', deps: ['01'], status: 'in-progress', scope: ['src/app/**'] },
+      { id: '05', deps: ['01'], mode: '需用户', scope: ['src/app/x.ts'] },
+      { id: '06', status: 'blocked', scope: ['src/render/**'] },
+      { id: '07', deps: ['01'], mode: '需用户', scope: ['src/render/x.ts'] },
+      { id: '08', deps: ['01', '02', '03', '04', '05', '06', '07'] },
+    ]);
+    expect(route().schedule).toMatchObject({
+      wave: [],
+      coordinator: ['02'],
+      deferred: [
+        { id: '03', overlaps: ['02'] },
+        { id: '05', overlaps: ['04'] },
+        { id: '07', overlaps: ['06'] },
+      ],
+    });
+  });
+
+  it('rejects malformed metadata and automatic scopes over coordinator-owned documents', () => {
+    plan([
+      { id: '01', scope: ['docs/STATUS.md'] },
+      { id: '02', mode: '并行', scope: ['docs/plan/p1/07/*.md'] },
+      { id: '03', mode: '需用户', scope: ['docs/plan/p1/tasks.md'] },
+      { id: '04', deps: ['01', '02', '03'], scope: ['docs/plan/p1/07/goal.md'] },
+    ]);
+    expect(route()).toMatchObject({
+      node: 'repair-plan',
+      details: [
+        'subtasks/01-work.md write scope docs/STATUS.md covers coordinator-owned docs/STATUS.md',
+        'subtasks/02-work.md: 执行方式 "并行" is not 自动 or 需用户',
+        'subtasks/02-work.md write scope docs/plan/p1/07/*.md covers coordinator-owned docs/plan/p1/07/goal.md',
+      ],
+    });
   });
 });
 
