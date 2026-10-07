@@ -1,9 +1,10 @@
 // Deterministic router for the spec -> review -> goal -> execute task graph.
-// Reads only the task's planning documents and reports the next node; it never runs a skill.
+// Reads only the task's planning documents and reports the next node, plus a parallel dispatch schedule for execute-goal;
+// it never runs a skill.
 // Usage: node tools/task-state.ts <p1/03 | docs/plan/p1/03[/spec.md|/goal.md]> [--json] [--mark-reviewed]
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type NodeId =
@@ -28,6 +29,8 @@ export interface TaskState {
   command?: string;
   /** Next subtask ID for execute-goal. */
   subtask?: string;
+  /** Parallel dispatch plan for execute-goal. */
+  schedule?: Schedule;
   details: string[];
   /** Hash of all planning documents; unchanged across a node means no progress. */
   fingerprint: string;
@@ -47,6 +50,34 @@ export interface TrackerRow {
   status: string;
 }
 
+export type ExecutionMode = 'auto' | 'user';
+
+/** Execution metadata of one subtask document. */
+export interface SubtaskPlan {
+  deps?: string[];
+  /** `**执行方式：**`; documents without the line run automatically. */
+  mode: ExecutionMode;
+  /** `## 写入范围` paths and globs; undefined when the section is absent, which conflicts with every other row. */
+  scope?: string[];
+  problems: string[];
+}
+
+export interface Schedule {
+  /** Pending or in-progress rows whose dependencies are all completed. */
+  ready: string[];
+  /** In-progress rows. They and blocked rows hold their write scopes. */
+  active: string[];
+  blocked: string[];
+  /** Ready pending automatic rows, lowest ID first, overlapping neither each other, a coordinator row nor a held scope. Dispatch a prefix. */
+  wave: string[];
+  /** Ready pending rows left out of the wave or coordinator list, with the rows they overlap. */
+  deferred: { id: string; overlaps: string[] }[];
+  /** Ready rows the coordinator runs itself (rows that need the user, and the final alignment); pending ones were overlap-checked like the wave. */
+  coordinator: string[];
+  /** Unfinished rows other than the final alignment that have no write scope. */
+  unscoped: string[];
+}
+
 const KIND: Record<NodeId, NodeKind> = {
   'generate-spec': 'agent',
   'review-spec': 'agent',
@@ -62,6 +93,8 @@ const KIND: Record<NodeId, NodeKind> = {
 const TRACKER_STATUSES = new Set(['pending', 'in-progress', 'blocked', 'completed']);
 const DOC_STATUSES = new Set(['draft', 'accepted']);
 const NO_DEPS = new Set(['', '—', '-', '无']);
+const MODES: Record<string, ExecutionMode> = { 自动: 'auto', 需用户: 'user' };
+const GLOB = /[*?[{]/;
 
 export function resolveTask(selector: string): TaskRef {
   const match = /(?:^|[\\/])(p[1-6])[\\/](\d{2,})(?:[\\/]|$)/.exec(selector.trim());
@@ -152,6 +185,101 @@ export function parseTracker(goal: string): TrackerRow[] {
   return rows;
 }
 
+/** Dependencies, execution mode and write scope declared by a subtask document. */
+export function parseSubtask(text: string): SubtaskPlan {
+  const problems: string[] = [];
+  const deps = /^\*\*依赖：\*\*\s*(.*)$/m.exec(text)?.[1];
+  const modeLine = /^\*\*执行方式：\*\*\s*(.*)$/m.exec(text)?.[1]?.trim();
+  const modeName = modeLine?.split(/[：:。.，,；;\s]/)[0];
+  let mode: ExecutionMode = 'auto';
+  if (modeName !== undefined) {
+    if (Object.hasOwn(MODES, modeName)) mode = MODES[modeName];
+    else problems.push(`执行方式 "${modeLine}" is not 自动 or 需用户`);
+  }
+  const body = section(text, '写入范围');
+  let scope: string[] | undefined;
+  if (body !== undefined) {
+    scope = [];
+    for (const line of body.split('\n').filter((item) => /^\s*[-*]\s/.test(item))) {
+      for (const [, raw] of line.matchAll(/`([^`]*)`/g)) {
+        const value = raw.trim();
+        const normal = posix.normalize(value);
+        if (
+          value === '' ||
+          value.startsWith('/') ||
+          value.includes('\\') ||
+          value.split('/').includes('..') ||
+          normal === '.' ||
+          normal === './'
+        ) {
+          problems.push(`写入范围 entry "${raw}" is not a repository-relative path`);
+        } else scope.push(normal.replace(/\/$/, '/**'));
+      }
+    }
+    if (scope.length === 0 && !body.replace(/^[-*]\s*/, '').startsWith('无')) {
+      problems.push('写入范围 lists no paths; write 无 when the subtask writes only its own document');
+    }
+  }
+  return { deps: deps === undefined ? undefined : parseIds(deps), mode, scope, problems };
+}
+
+/** Literal directory a scope entry can write under; a plain path is its own root. */
+function scopeRoot(entry: string): string {
+  const glob = entry.search(GLOB);
+  return glob < 0 ? entry : entry.slice(0, Math.max(entry.lastIndexOf('/', glob), 0));
+}
+
+const within = (dir: string, path: string) => dir === '' || path === dir || path.startsWith(`${dir}/`);
+
+/** Conservative overlap of two write-scope entries; a false positive only serializes work. */
+export function scopesOverlap(a: string, b: string): boolean {
+  const [x, y] = [scopeRoot(a), scopeRoot(b)];
+  return within(x, y) || within(y, x);
+}
+
+/** Subtask documents by row ID; rows whose file is missing are absent. */
+export function readPlans(rows: TrackerRow[], taskDir: string): Map<string, SubtaskPlan> {
+  const plans = new Map<string, SubtaskPlan>();
+  for (const row of rows) {
+    const path = join(taskDir, row.file);
+    if (existsSync(path)) plans.set(row.id, parseSubtask(readFileSync(path, 'utf8')));
+  }
+  return plans;
+}
+
+/** Which ready rows may run concurrently: in-progress and blocked rows hold their scopes; a missing scope conflicts with everything. */
+export function schedule(rows: TrackerRow[], plans: Map<string, SubtaskPlan>): Schedule {
+  const status = new Map(rows.map((row) => [row.id, row.status]));
+  const final = rows.at(-1)?.id;
+  const ids = (keep: (row: TrackerRow) => boolean) => rows.filter(keep).map((row) => row.id);
+  const ready = ids(
+    (row) => (row.status === 'pending' || row.status === 'in-progress') && row.deps.every((dep) => status.get(dep) === 'completed'),
+  );
+  const active = ids((row) => row.status === 'in-progress');
+  const blocked = ids((row) => row.status === 'blocked');
+  const conflict = (a: string, b: string) => {
+    const [x, y] = [plans.get(a)?.scope, plans.get(b)?.scope];
+    return !x || !y || x.some((p) => y.some((q) => scopesOverlap(p, q)));
+  };
+  const wave: string[] = [];
+  const deferred: Schedule['deferred'] = [];
+  const coordinator: string[] = [];
+  for (const id of ready) {
+    if (status.get(id) === 'pending') {
+      const holders = new Set([...active, ...blocked, ...wave, ...coordinator]);
+      const overlaps = ids((row) => holders.has(row.id) && conflict(id, row.id));
+      if (overlaps.length > 0) {
+        deferred.push({ id, overlaps });
+        continue;
+      }
+    }
+    if (id === final || plans.get(id)?.mode === 'user') coordinator.push(id);
+    else if (status.get(id) === 'pending') wave.push(id);
+  }
+  const unscoped = ids((row) => row.status !== 'completed' && row.id !== final && plans.get(row.id)?.scope === undefined);
+  return { ready, active, blocked, wave, deferred, coordinator, unscoped };
+}
+
 function findCycle(rows: TrackerRow[]): string[] | undefined {
   const deps = new Map(rows.map((row) => [row.id, row.deps]));
   const state = new Map<string, 'visiting' | 'done'>();
@@ -178,11 +306,12 @@ function findCycle(rows: TrackerRow[]): string[] | undefined {
   return undefined;
 }
 
-/** Structural problems that make the tracker unsafe to execute. */
-export function trackerProblems(rows: TrackerRow[], taskDir: string): string[] {
+/** Structural problems that make the tracker unsafe to execute. `coordinatorOwned` paths may not be in an automatic row's write scope. */
+export function trackerProblems(rows: TrackerRow[], taskDir: string, coordinatorOwned: string[] = []): string[] {
   if (rows.length === 0) return ['goal tracker has no subtask rows'];
   const problems: string[] = [];
   const ids = new Set<string>();
+  const final = rows.at(-1)!;
   for (const row of rows) {
     if (!/^\d{2,}$/.test(row.id)) problems.push(`subtask "${row.id}" is not a zero-padded numeric ID`);
     if (ids.has(row.id)) problems.push(`duplicate subtask ID ${row.id}`);
@@ -200,11 +329,17 @@ export function trackerProblems(rows: TrackerRow[], taskDir: string): string[] {
       problems.push(`subtask file missing: ${row.file}`);
       continue;
     }
-    const line = /^\*\*依赖：\*\*\s*(.*)$/m.exec(readFileSync(path, 'utf8'))?.[1];
-    const fileDeps = line === undefined ? undefined : parseIds(line);
-    if (fileDeps === undefined) problems.push(`${row.file} has no **依赖：** line`);
-    else if ([...fileDeps].sort().join() !== [...row.deps].sort().join()) {
-      problems.push(`${row.file} dependencies (${fileDeps.join(', ') || '无'}) differ from tracker (${row.deps.join(', ') || '无'})`);
+    const plan = parseSubtask(readFileSync(path, 'utf8'));
+    if (plan.deps === undefined) problems.push(`${row.file} has no **依赖：** line`);
+    else if ([...plan.deps].sort().join() !== [...row.deps].sort().join()) {
+      problems.push(`${row.file} dependencies (${plan.deps.join(', ') || '无'}) differ from tracker (${row.deps.join(', ') || '无'})`);
+    }
+    problems.push(...plan.problems.map((problem) => `${row.file}: ${problem}`));
+    if (row !== final && plan.mode === 'auto') {
+      for (const entry of plan.scope ?? []) {
+        const owned = coordinatorOwned.find((ownedPath) => scopesOverlap(entry, ownedPath));
+        if (owned) problems.push(`${row.file} write scope ${entry} covers coordinator-owned ${owned}`);
+      }
     }
   }
   const subtaskDir = join(taskDir, 'subtasks');
@@ -216,7 +351,6 @@ export function trackerProblems(rows: TrackerRow[], taskDir: string): string[] {
   }
   const cycle = findCycle(rows);
   if (cycle) problems.push(`dependency cycle: ${cycle.join(' -> ')}`);
-  const final = rows.at(-1)!;
   const missing = rows.slice(0, -1).filter((row) => !final.deps.includes(row.id));
   if (missing.length > 0) {
     problems.push(`final alignment ${final.id} must depend on every other subtask; missing ${missing.map((r) => r.id).join(', ')}`);
@@ -298,7 +432,8 @@ export function routeTask(root: string, selector: string): TaskState {
   }
 
   const rows = parseTracker(goal);
-  const problems = trackerProblems(rows, taskDir);
+  const coordinatorOwned = [goalPath, `docs/plan/${ref.phase}/tasks.md`, 'docs/STATUS.md'];
+  const problems = trackerProblems(rows, taskDir, coordinatorOwned);
   if (problems.length > 0) return state('repair-plan', 'goal tracker is structurally invalid', { details: problems });
 
   const goalStatus = frontMatter(goal).get('status') ?? '';
@@ -316,6 +451,7 @@ export function routeTask(root: string, selector: string): TaskState {
     return state('execute-goal', `subtask ${next.id} is ${next.status === 'in-progress' ? 'in progress' : 'eligible'}`, {
       command: `/execute-goal ${goalPath}`,
       subtask: next.id,
+      schedule: schedule(rows, readPlans(rows, taskDir)),
     });
   }
   const blocked = rows.filter((row) => row.status === 'blocked');
@@ -334,11 +470,24 @@ export function markReviewed(root: string, selector: string): string {
 }
 
 function format(state: TaskState): string {
+  const list = (ids: string[]) => ids.join(', ') || '—';
+  const plan = state.schedule;
   return [
     `${state.task} -> ${state.node} (${state.kind})`,
     `reason: ${state.reason}`,
     ...(state.command ? [`run: ${state.command}`] : []),
     ...(state.subtask ? [`next subtask: ${state.subtask}`] : []),
+    ...(plan
+      ? [
+          `ready: ${list(plan.ready)}`,
+          `active: ${list(plan.active)}`,
+          `blocked: ${list(plan.blocked)}`,
+          `wave: ${list(plan.wave)}`,
+          `deferred: ${list(plan.deferred.map(({ id, overlaps }) => `${id} (overlaps ${overlaps.join(', ')})`))}`,
+          `coordinator: ${list(plan.coordinator)}`,
+          `unscoped: ${list(plan.unscoped)}`,
+        ]
+      : []),
     ...state.details.map((detail) => `- ${detail}`),
     `fingerprint: ${state.fingerprint}`,
   ].join('\n');

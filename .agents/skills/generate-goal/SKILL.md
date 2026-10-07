@@ -59,6 +59,7 @@ Resolve data models in the actual `src/core/`, `src/content/`, `src/original-dat
 8. For browser criteria, explicitly reference [browser-testing](../browser-testing/SKILL.md); for implementation cleanup, reference [simplify](../simplify/SKILL.md) with the current subtask scope.
 9. Distinguish Node/Core tests, synthetic browser checks, and human real-device/original comparisons. Never replace a required measurement with a cheaper proxy.
 10. Cloud mutations, push, deployment, and destructive actions are not authorized by goal execution. If the approved contract requires such an external outcome, preserve it as an explicit unmet prerequisite/check; do not weaken the spec or promise full completion from local checks.
+11. Give every subtask a conservative `## 写入范围` listing each path or glob it may create or modify. execute-goal runs dependency-ready subtasks in parallel only when their scopes do not overlap. Rows that write the same files are therefore serialized without a dependency; do not add dependencies just to order them. Split a shared hot file's edits into one owning subtask when that keeps the others independent. Mark subtasks that need the user's own action with `**执行方式：** 需用户`.
 
 Assign stable numeric subtask IDs, padded to at least two digits. Dependencies reference IDs within this goal; cross-task prerequisites belong in the goal's prerequisite section with concrete completion evidence.
 
@@ -78,6 +79,7 @@ Use [the goal template](./references/goal-template.md) and [the subtask template
 - Tracker status vocabulary is exactly `pending`, `in-progress`, `blocked`, `completed`.
 - Subtasks contain acceptance checkboxes and an initially empty evidence section, not another execution-status field.
 - Dependencies in each subtask exactly match the tracker.
+- Write scopes never include `goal.md`, the phase `tasks.md` or `docs/STATUS.md`; only the execution coordinator edits them. The final alignment may write `无`.
 - Goal execution notes start empty; they are not a routine work log.
 - Keep the goal concise: context, prerequisites, coverage, dependency tracker, approval, and material execution notes.
 - Fill contract and scope content completely. Only execution evidence/notes and pending approval remain intentionally unfilled.
@@ -91,12 +93,13 @@ Check:
 - Unique IDs; one tracker row per existing subtask file, with no orphan files.
 - Every dependency names a real, different subtask; the graph is acyclic.
 - The final row depends on every other subtask.
+- Every non-final subtask has a write scope and an execution mode, and `node tools/task-state.ts <task>` reports no plan problem.
 - Every scope item and acceptance criterion is covered.
 - All proposed files are accurately marked existing/new.
 - Required checks exist or their setup is explicitly scoped; no invented commands.
 - No unresolved behavioral choices or accidental scope changes.
 - Relative links, metadata, and phase navigation resolve.
 
-Report the goal path, number of subtasks, meaningful dependency structure, and any external prerequisites. Ask for goal approval if not already given, and provide `/execute-goal docs/plan/<phase>/<task>/goal.md`.
+Report the goal path, number of subtasks, meaningful dependency structure, the parallel waves the write scopes allow, and any external prerequisites. Ask for goal approval if not already given, and provide `/execute-goal docs/plan/<phase>/<task>/goal.md`.
 
 Do not execute or commit.

@@ -1,7 +1,7 @@
 ---
 name: run-task
 description: 'Drive one Open Star Rangers task through the spec -> review -> goal -> execute graph, routing each step with tools/task-state.ts and stopping at every human approval gate. Use only when explicitly asked to run-task.'
-argument-hint: 'p1/03 [task description] [--plan-only]'
+argument-hint: 'p1/03 [task description] [--plan-only] [--parallel N | --sequential]'
 disable-model-invocation: true
 ---
 
@@ -19,7 +19,7 @@ Explicitly invoking this skill authorizes running those four node skills for the
 - Answering a node's consequential question on the user's behalf.
 - Push, deployment, cloud mutation, destructive cleanup, or work on another task.
 
-With `--plan-only`, stop when the router reaches `execute-goal`.
+With `--plan-only`, stop when the router reaches `execute-goal`. Pass `--parallel N` or `--sequential` through to execute-goal unchanged; without either, execute-goal runs in its default parallel mode. `--worker` is not accepted here.
 
 ## Graph
 
@@ -65,7 +65,7 @@ Node-specific inputs:
 
 - **generate-spec:** the task description comes from the invocation argument or from the task's row in the phase `tasks.md`. If neither settles it, ask.
 - **review-spec:** confirm the router no longer returns `review-spec` for the same fingerprint. If the marker is missing, the review pass did not complete.
-- **execute-goal:** one run continues until the goal completes or no safe work remains. Its local commits are the only commits this workflow makes.
+- **execute-goal:** one run continues until the goal completes or no safe work remains. Its local commits are the only commits this workflow makes. In parallel mode, run it in this session rather than a subagent, because the coordinator starts worker sessions, integrates their commits and asks the user directly. A `--sequential` run may use a subagent as before.
 
 ## Human gates
 
