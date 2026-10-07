@@ -9,12 +9,29 @@
  * - Filtering: nearest for magnification and minification, no mipmaps.
  * - Orientation: row 0 of a picture, the top row of `expandImage` output, is at v = 0; textures are not flipped.
  * - Transparency: alpha is 0 or 255, so an alpha test discards transparent texels and nothing is blended.
+ *
+ * 3D part (models and effects):
+ * - Camera: a perspective camera with a VIEWER_FOV vertical field of view, framing the bounding sphere; zoom magnifies
+ *   without moving the camera.
+ * - Axes: source coordinates are read as left-handed with y up, so positions and normals get z negated for three.js.
+ *   Unconfirmed: a reversible initial choice.
+ * - Winding: both sides are drawn and nothing is culled, so the unconfirmed winding changes nothing.
+ * - Textures: as in 2D (display bytes, nearest, no mipmaps, v = 0 at row 0); model textures repeat on both axes.
+ * - Lighting: unlit by default, showing the part colour, or the texel for a textured part, as is. Optionally a neutral
+ *   light, which is not the original's lighting (P3, U-028). Effects have no normals and stay unlit.
+ * - Effect colour: the three floats are RGB, each clamped to [0, 1] and quantised to round(v × 255). A shape without a
+ *   colour gets DIAGNOSTIC_GREY, which is not an original colour. A shape with a texture is drawn without it, and
+ *   marked, while the effect texture coordinates are unknown (P2-11 spec, 效果贴图坐标).
  */
 import {
-  ClampToEdgeWrapping, DataTexture, LinearSRGBColorSpace, MeshBasicMaterial, NearestFilter, NoColorSpace, RepeatWrapping,
-  RGBAFormat, UnsignedByteType, type Texture, type Wrapping,
+  AmbientLight, ClampToEdgeWrapping, Color, DataTexture, DirectionalLight, DoubleSide, LinearSRGBColorSpace, MeshBasicMaterial,
+  MeshLambertMaterial, NearestFilter, NoColorSpace, RepeatWrapping, RGBAFormat, UnsignedByteType, type Light, type Material,
+  type Texture, type Wrapping,
 } from 'three';
+import type { EffectColour } from '../../content/effects/effect-payload.ts';
+import type { EffectShape } from '../../content/effects/expand-effects.ts';
 import type { ExpandedImage } from '../../content/graphics/expand-image.ts';
+import type { PartMaterial } from '../../content/models/model-parts.ts';
 import type { RenderSurfaceOptions } from '../scene/render-surface.ts';
 
 /** The viewer canvas: its accessible name, and output without a transfer encoding. */
@@ -41,14 +58,19 @@ function dataTexture(rgba: Uint8Array<ArrayBuffer>, width: number, height: numbe
   return texture;
 }
 
-/** Uploads a picture's RGBA unchanged, clamped at its edges; the texture shares the picture's buffer. */
-export function pictureTexture(picture: ExpandedImage): DataTexture {
+function pictureData(picture: ExpandedImage, wrap: Wrapping): DataTexture {
   const { width, height, rgba } = picture;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || rgba.length !== width * height * 4) {
     throw new RangeError(`A picture needs width × height × 4 RGBA bytes, got ${String(width)} × ${String(height)} and ${String(rgba.length)}`);
   }
-  return dataTexture(rgba, width, height, ClampToEdgeWrapping);
+  return dataTexture(rgba, width, height, wrap);
 }
+
+/** Uploads a picture's RGBA unchanged, clamped at its edges; the texture shares the picture's buffer. */
+export const pictureTexture = (picture: ExpandedImage): DataTexture => pictureData(picture, ClampToEdgeWrapping);
+
+/** Uploads a model texture's RGBA unchanged, repeating on both axes as the part materials address it. */
+export const modelTexture = (picture: ExpandedImage): DataTexture => pictureData(picture, RepeatWrapping);
 
 /** A 2 × 2 repeating checkerboard; the caller sets `repeat` so that one texel covers CHECKER_SQUARE buffer pixels. */
 export function checkerTexture(): DataTexture {
@@ -60,4 +82,65 @@ export function checkerTexture(): DataTexture {
 /** An unlit material that shows its texels unchanged: white base colour, no tone mapping, no depth, binary alpha. */
 export function pictureMaterial(map: Texture): MeshBasicMaterial {
   return new MeshBasicMaterial({ map, alphaTest: 0.5, toneMapped: false, depthTest: false, depthWrite: false });
+}
+
+/** Vertical field of view of the 3D camera, in degrees. */
+export const VIEWER_FOV = 40;
+
+/** The fixed neutral grey of an effect shape without a colour, on every channel. */
+export const DIAGNOSTIC_GREY = 128;
+
+type Rgb = readonly [number, number, number];
+
+const WHITE: Rgb = Object.freeze([255, 255, 255] as const);
+
+/** Display bytes a model part's material multiplies its texels by: white for a textured part, else its colour. */
+export const partColour = (material: PartMaterial): Rgb => ('texture' in material ? WHITE : material.colour);
+
+/** Display bytes of an effect colour: each channel clamped to [0, 1], then round(v × 255). */
+export const effectColourBytes = (colour: EffectColour): Rgb =>
+  Object.freeze(colour.map(value => Math.round(Math.min(1, Math.max(0, value)) * 255)) as [number, number, number]);
+
+/** How the viewer shows one effect shape. */
+export interface EffectAppearance {
+  /** Display bytes drawn: the clamped colour, or DIAGNOSTIC_GREY without one. */
+  readonly rgb: Rgb;
+  /** The expanded colour as given, for display as numbers; null when the builder sets none. */
+  readonly colour: EffectColour | null;
+  /** True when the shape has a texture the viewer cannot map yet, because its texture coordinates are not known. */
+  readonly textureUnmapped: boolean;
+}
+
+export const effectAppearance = ({ colour, texture }: EffectShape): EffectAppearance => Object.freeze({
+  rgb: colour === null ? Object.freeze([DIAGNOSTIC_GREY, DIAGNOSTIC_GREY, DIAGNOSTIC_GREY] as const) : effectColourBytes(colour),
+  colour,
+  textureUnmapped: texture !== null,
+});
+
+/** x, y, z coordinates converted to three.js space: a copy with every z negated. */
+export function toViewerSpace(coordinates: Float32Array): Float32Array {
+  const converted = coordinates.slice();
+  for (let z = 2; z < converted.length; z += 3) converted[z] = -converted[z];
+  return converted;
+}
+
+/**
+ * A two-sided material showing `rgb` display bytes, times the texels of `map` when given, with binary alpha and no tone
+ * mapping: unlit, or lit by the neutral light.
+ */
+export function solidMaterial(rgb: Rgb, map: Texture | null, lit: boolean): Material {
+  const color = new Color().setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, LinearSRGBColorSpace);
+  const parameters = { color, map, side: DoubleSide, toneMapped: false, alphaTest: map === null ? 0 : 0.5 };
+  return lit ? new MeshLambertMaterial(parameters) : new MeshBasicMaterial(parameters);
+}
+
+/**
+ * The neutral light: white ambient fill and a white directional light from the upper right front, fixed in the world.
+ * Lambert materials divide by π, so a face turned to the light shows exactly its colour.
+ */
+export function neutralLights(): readonly Light[] {
+  const ambient = new AmbientLight(0xffffff, Math.PI * 0.4);
+  const directional = new DirectionalLight(0xffffff, Math.PI * 0.6);
+  directional.position.set(1, 2, 3);
+  return Object.freeze([ambient, directional]);
 }

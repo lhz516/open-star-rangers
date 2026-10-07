@@ -112,7 +112,7 @@ updated: 2026-10-06
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
 | [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
-| [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08, 24 | pending |
+| [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08, 24 | completed |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | completed |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
@@ -154,6 +154,7 @@ updated: 2026-10-06
 - **2026-10-06 — 合并 08、15 后的安排：** 用户要求合并两个分支并删除其分支与工作树，已完成（合并提交见 git 记录）。按用户“需要回答的问题按最推荐的答案”的授权，对 15 交接的事项作如下安排：
   - **碎片面表解析缺陷：** 归入本 goal，新增修复子任务 24（无依赖），09 与 16 改为依赖它，最终对齐 20 也依赖它。payload 字节与 schema 不变，不递增转换器组件。
   - **16 的两项决定（32 个旋转映射、跨接缝面的显示）：** 只影响 16，16 还依赖 11 与 17，留到 16 开始时决定并记录。
+- **2026-10-06 — 09 一并把所有者扩展到模型与效果：** 10 按其范围只实现了二维条目（其完成证据已注明“模型与效果由 09 接入”），而 11 的页面只经 hook 使用所有者。因此 09 除 `render/viewer/` 外，还扩展 `app/viewer/` 的条目与解析（模型部件列表与效果视图作为变体，附置信度与外观），并在所有者上提供变体选择与视图操作。spec 与验收标准不变。
 
 ## 审批
 

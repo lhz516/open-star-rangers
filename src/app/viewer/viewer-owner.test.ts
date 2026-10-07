@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readAssetId, type AssetId } from '../../content/asset-id.ts';
+import { encodeEffectPayload } from '../../content/effects/effect-payload.ts';
+import { syntheticDebris, syntheticMissile, syntheticProjectile } from '../../content/effects/effects.test-support.ts';
 import { encodeFontPayload } from '../../content/graphics/font-payload.ts';
 import { packMask } from '../../content/graphics/graphics.test-support.ts';
 import { encodeImagePayload } from '../../content/graphics/image-payload.ts';
@@ -8,6 +10,9 @@ import { encodePalettePayload } from '../../content/graphics/palette-payload.ts'
 import { SYNTHETIC_ASSETS, syntheticGroup } from '../../content/synthetic-content.test-support.ts';
 import { FakeAudio, FakeLifecycle, sound } from '../../platform/audio/audio-controller.test-support.ts';
 import { RecordingSurface } from '../../render/scene/render-surface.test-support.ts';
+import { effectViews } from '../../render/viewer/viewer-effects.ts';
+import { INITIAL_VIEW } from '../../render/viewer/viewer-view.ts';
+import { syntheticModelBytes } from '../../render/viewer/viewer.test-support.ts';
 import { RollbackError } from '../session/rollback-error.ts';
 import type { ImportedGroup } from '../import/import-job-owner.ts';
 import { allGroups, finishedJob, flush, imported, SYNTHETIC_FINGERPRINT, testHolder } from '../resources/resource-holder.test-support.ts';
@@ -51,8 +56,47 @@ function audioGroup(): ImportedGroup {
   return imported('audio', input);
 }
 
-const packageGroups = (options: { broken?: boolean } = {}): ImportedGroup[] =>
-  allGroups().map(group => (group.group === 'cockpit-hud-map' ? cockpitGroup(options) : group.group === 'audio' ? audioGroup() : group));
+const HULL = id('image/synthetic-hull');
+const EFFECTS = [
+  { id: 'data/synthetic-debris-visuals', role: 'debris', dependencies: ['image/synthetic-debris'], bytes: encodeEffectPayload(syntheticDebris()) },
+  { id: 'data/synthetic-missile-visuals', role: 'missile', dependencies: ['image/synthetic-missile'], bytes: encodeEffectPayload(syntheticMissile()) },
+  { id: 'data/synthetic-projectile-visuals', role: 'projectile', bytes: encodeEffectPayload(syntheticProjectile()) },
+];
+
+/**
+ * The synthetic models group with real model, texture and effect payloads; the effects' textures are images too.
+ * `brokenTexture` gives the hull texture bytes the reader rejects.
+ */
+function modelsGroup({ brokenTexture = false } = {}): ImportedGroup {
+  const bytes: Record<string, Uint8Array> = {
+    'image/synthetic-debris': image(),
+    'image/synthetic-hull': brokenTexture ? Uint8Array.of(1, 2, 3) : image(),
+    'image/synthetic-missile': image(),
+    'model/synthetic-base': syntheticModelBytes({ texture: HULL }),
+    'model/synthetic-enemy-a': syntheticModelBytes({ texture: HULL }),
+    'model/synthetic-enemy-b': syntheticModelBytes({ texture: null }),
+    'model/synthetic-missile': syntheticModelBytes({ texture: null }),
+    'model/synthetic-player': syntheticModelBytes({ texture: HULL, sound: id('sound/synthetic-engine') }),
+    'model/synthetic-projectile': syntheticModelBytes({ texture: null }),
+  };
+  const specs = [...SYNTHETIC_ASSETS.models, ...EFFECTS, { id: 'image/synthetic-missile', role: 'model-texture' }]
+    .sort((left, right) => (left.id < right.id ? -1 : 1))
+    .map(spec => ({ ...spec, bytes: 'bytes' in spec ? spec.bytes : bytes[spec.id] }));
+  const input = syntheticGroup('models', specs, { origin: { type: 'original-import', sourceFingerprint: SYNTHETIC_FINGERPRINT } });
+  input.sources = { sourceFingerprint: SYNTHETIC_FINGERPRINT, states: specs.map(({ id: asset }) => ({ id: asset, state: 'verified', unknowns: [] })) };
+  return imported('models', input);
+}
+
+/** `models` adds the real models group; otherwise its payloads are placeholders the readers reject. */
+const packageGroups = (options: { broken?: boolean; models?: boolean; brokenTexture?: boolean } = {}): ImportedGroup[] =>
+  allGroups().map(group => {
+    switch (group.group) {
+      case 'cockpit-hud-map': return cockpitGroup(options);
+      case 'audio': return audioGroup();
+      case 'models': return options.models ? modelsGroup(options) : group;
+      default: return group;
+    }
+  });
 
 function setup({ groups = packageGroups(), initialState = 'running' } = {}) {
   const { holder } = testHolder();
@@ -75,11 +119,21 @@ function setup({ groups = packageGroups(), initialState = 'running' } = {}) {
 }
 
 describe('viewer items', () => {
-  it('lists the 2D Assets of every complete group in group and manifest order', () => {
-    const groups = packageGroups();
+  it('lists the models, effects and 2D Assets of every complete group in group and manifest order', () => {
+    const groups = packageGroups({ models: true });
     expect(viewerCatalog(groups).entries.map(({ kind, id: asset, group }) => [kind, asset, group])).toEqual([
+      ['effect', 'data/synthetic-debris-visuals', 'models'],
+      ['effect', 'data/synthetic-missile-visuals', 'models'],
+      ['effect', 'data/synthetic-projectile-visuals', 'models'],
       ['image', 'image/synthetic-debris', 'models'],
       ['image', 'image/synthetic-hull', 'models'],
+      ['image', 'image/synthetic-missile', 'models'],
+      ['model', 'model/synthetic-base', 'models'],
+      ['model', 'model/synthetic-enemy-a', 'models'],
+      ['model', 'model/synthetic-enemy-b', 'models'],
+      ['model', 'model/synthetic-missile', 'models'],
+      ['model', 'model/synthetic-player', 'models'],
+      ['model', 'model/synthetic-projectile', 'models'],
       ['font', 'font/synthetic-hud', 'cockpit-hud-map'],
       ['image', 'image/synthetic-mfd', 'cockpit-hud-map'],
       ['image', 'image/synthetic-panel', 'cockpit-hud-map'],
@@ -176,6 +230,87 @@ describe('viewer owner', () => {
     expect(lifecycle.cleanupFailure()).toEqual({ cause: new Error('close rejected') });
     expect(owner.getSnapshot().audio).toBeNull();
     expect(capability.contexts).toHaveLength(1);
+  });
+});
+
+describe('viewer owner models, effects and view', () => {
+  it('shows each part list of a model with its notes, and ignores a list that does not exist', () => {
+    const { open, surfaces } = setup({ groups: packageGroups({ models: true }) });
+    const owner = open()!;
+    owner.select(id('model/synthetic-player'));
+    expect(owner.getSnapshot()).toMatchObject({ selected: 'model/synthetic-player', variant: 0 });
+    expect(owner.getSnapshot().variants).toEqual([
+      { kind: 'part-list', list: 0, parts: 2, content: 'intact', confidence: 'likely' },
+      { kind: 'part-list', list: 1, parts: 1, content: 'fragments', confidence: 'confirmed' },
+      { kind: 'part-list', list: 2, parts: 0, content: 'unknown', confidence: 'unconfirmed' },
+    ]);
+    expect(owner.renderer.diagnostics().item).toEqual({ kind: 'model', id: 'model/synthetic-player' });
+    expect(surfaces[0].gpuStats()).toMatchObject({ geometries: 2, textures: 1 });
+    const { variants } = owner.getSnapshot();
+    owner.select(id('model/synthetic-player'), 2);
+    expect(owner.getSnapshot().variant).toBe(2);
+    expect(owner.getSnapshot().variants).toBe(variants);
+    expect(surfaces[0].lastDraw!.objects).toEqual([]);
+    expect(surfaces[0].gpuStats()).toMatchObject({ geometries: 0, textures: 0 });
+    const before = owner.getSnapshot();
+    owner.select(id('model/synthetic-player'), 3);
+    owner.select(id('model/synthetic-player'), -1);
+    owner.select(id('image/synthetic-hull'), 1);
+    expect(owner.getSnapshot()).toBe(before);
+  });
+
+  it('marks a model failed when its payload or a texture cannot be read', () => {
+    const owner = setup().open()!;
+    owner.select(id('model/synthetic-base'));
+    expect(owner.getSnapshot()).toMatchObject({ variants: [], failures: { 'model/synthetic-base': { code: 'invalid-model-payload' } } });
+    expect(owner.renderer.diagnostics().item).toBeNull();
+    const textured = setup({ groups: packageGroups({ models: true, brokenTexture: true }) }).open()!;
+    textured.select(id('model/synthetic-base'));
+    expect(textured.getSnapshot().failures['model/synthetic-base']).toMatchObject({
+      code: 'invalid-graphics-payload', path: expect.stringContaining('images[image/synthetic-hull]'),
+    });
+    textured.select(id('model/synthetic-enemy-b'));
+    expect(textured.renderer.diagnostics().item).toEqual({ kind: 'model', id: 'model/synthetic-enemy-b' });
+  });
+
+  it('shows each view of an effect with its appearance, and ignores a view that does not exist', () => {
+    const { open, surfaces } = setup({ groups: packageGroups({ models: true }) });
+    const owner = open()!;
+    const debris = id('data/synthetic-debris-visuals');
+    owner.select(debris, 3);
+    const { variants } = owner.getSnapshot();
+    expect(variants.map(variant => (variant.kind === 'effect-view' ? `${variant.label} ${variant.index}` : variant.kind))).toEqual(
+      effectViews(syntheticDebris()).map(({ label, index }) => `${label} ${index}`),
+    );
+    expect(variants[3]).toMatchObject({ shapes: [{ rgb: [255, 32, 0], textureUnmapped: true }] });
+    expect(owner.renderer.diagnostics().item).toEqual({ kind: 'effect', id: debris });
+    expect(surfaces[0].lastDraw!.objects).toHaveLength(1);
+    // Another view of the same effect reuses what was read and expanded.
+    owner.select(debris, 0);
+    expect(owner.getSnapshot()).toMatchObject({ variant: 0 });
+    expect(owner.getSnapshot().variants).toBe(variants);
+    owner.select(id('data/synthetic-missile-visuals'));
+    expect(owner.getSnapshot().variants[0]).toMatchObject({ kind: 'effect-view', label: 'missile-type', shapes: expect.arrayContaining([expect.objectContaining({ colour: null })]) });
+    const before = owner.getSnapshot();
+    owner.select(id('data/synthetic-missile-visuals'), effectViews(syntheticMissile()).length);
+    expect(owner.getSnapshot()).toBe(before);
+  });
+
+  it('changes the view through the renderer, keeps it across items, and rejects an invalid action', () => {
+    const { open, surfaces } = setup({ groups: packageGroups({ models: true }) });
+    const owner = open()!;
+    owner.select(id('model/synthetic-base'));
+    const draws = surfaces[0].draws.length;
+    owner.changeView({ type: 'rotate', axis: 'vertical', steps: 1 });
+    expect(owner.getSnapshot().view).toEqual({ ...INITIAL_VIEW, yaw: 15 });
+    expect(owner.renderer.diagnostics().view).toBe(owner.getSnapshot().view);
+    expect(surfaces[0].draws.length).toBe(draws + 1);
+    const snapshot = owner.getSnapshot();
+    owner.changeView({ type: 'rotate', axis: 'vertical', steps: 0 });
+    expect(owner.getSnapshot()).toBe(snapshot);
+    owner.select(id('model/synthetic-enemy-b'));
+    expect(owner.getSnapshot().view.yaw).toBe(15);
+    expect(() => owner.changeView({ type: 'mapping-rotation', index: 32 })).toThrow(RangeError);
   });
 });
 

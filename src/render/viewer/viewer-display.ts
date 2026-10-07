@@ -9,11 +9,14 @@ import { attemptAll } from '../scene/cleanup.ts';
 import type { ViewportLayout } from '../viewport/viewport-layout.ts';
 import { CHECKER_SQUARE, checkerTexture, pictureMaterial, pictureTexture } from './viewer-presentation.ts';
 import { placePicture, type PictureFit, type PicturePlacement } from './viewer-pictures.ts';
+import type { ViewerView } from './viewer-view.ts';
 
 export interface ViewerDisplay {
   readonly camera: Camera;
   /** Fits the camera and objects to the drawing buffer; returns where the picture is. */
   place(layout: ViewportLayout): PicturePlacement;
+  /** Applies a view, returning whether the picture changed; a 2D picture never changes. */
+  view(view: ViewerView): boolean;
   /** Removes its objects from the scene and disposes everything it created, attempting every step; returns the failures. */
   dispose(): unknown[];
 }
@@ -52,6 +55,7 @@ export function createPictureDisplay(scene: Scene, picture: ExpandedImage, fit: 
       checker.repeat.set(width / (2 * CHECKER_SQUARE), height / (2 * CHECKER_SQUARE));
       return placement;
     },
+    view: () => false,
     dispose() {
       scene.remove(checkerMesh, mesh);
       return attemptAll([material, texture, checkerMaterial, checker, quad].map(resource => () => { resource.dispose(); }));

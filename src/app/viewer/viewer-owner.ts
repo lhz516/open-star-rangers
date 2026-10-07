@@ -1,25 +1,34 @@
 /**
  * The resource viewer's owner and the viewer slot of one app instance (P2-11 S-07, S-08, S-12, technical decision 1).
- * The owner holds the renderer and the audition of the held package, lists the package's items and shows the selected
- * one. Before the holder replaces the package it releases what references the outgoing content: the shown item's GPU
+ * The owner holds the renderer and the audition of the held package, lists the package's items, shows the selected
+ * one and keeps the 3D view. Before the holder replaces the package it releases what references the outgoing content: the shown item's GPU
  * resources and the audio, whose context must be confirmed closed before the next package's audio exists. Any failed
  * release latches the slot, so no viewer is created again until the page reloads; import and the demo are unaffected.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import { attemptAll } from '../../render/scene/cleanup.ts';
 import { createViewerRenderer, type ViewerRenderer, type ViewerRendererOptions } from '../../render/viewer/viewer-renderer.ts';
+import { applyViewAction, INITIAL_VIEW, type ViewerView, type ViewerViewAction } from '../../render/viewer/viewer-view.ts';
 import { RollbackError } from '../session/rollback-error.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
 import { createViewerAudio, type AudioCloseOutcome, type ViewerAudio, type ViewerAudioOptions } from './viewer-audio.ts';
-import { resolveItem, viewerCatalog, type PackagePayloads, type ViewerEntry, type ViewerItemFailure } from './viewer-items.ts';
+import {
+  resolveEntry, viewerCatalog, type PackagePayloads, type ResolvedEntry, type ViewerEntry, type ViewerItemFailure, type ViewerVariant,
+} from './viewer-items.ts';
 
 export interface ViewerOwnerSnapshot {
   /** The generation of the package shown; null without one. */
   readonly generation: number | null;
-  /** The 2D items of the package's complete groups. */
+  /** The models, effects and 2D items of the package's complete groups. */
   readonly entries: readonly ViewerEntry[];
   /** The selected item, or null. */
   readonly selected: AssetId | null;
+  /** The selected variant: a model's part list or an effect's view; 0 otherwise. */
+  readonly variant: number;
+  /** The selected item's variants; empty for 2D items, failed items and without a selection. */
+  readonly variants: readonly ViewerVariant[];
+  /** The 3D view, kept across items and packages. */
+  readonly view: ViewerView;
   /** Items that could not be read or expanded, by Asset ID. */
   readonly failures: Readonly<Record<string, ViewerItemFailure>>;
   /** The package's audition; null until the previous audio context is confirmed closed, and without a package. */
@@ -31,8 +40,13 @@ export interface ViewerOwner {
   /** Frozen, and the same object until the next change. */
   getSnapshot(): ViewerOwnerSnapshot;
   subscribe(listener: () => void): () => void;
-  /** Shows a listed item, or nothing for null; an item that cannot be read or expanded is only marked failed. */
-  select(id: AssetId | null): void;
+  /**
+   * Shows a variant of a listed item (a model's part list or an effect's view, 0 for 2D items), or nothing for null. An
+   * item that cannot be read or expanded is only marked failed; an unknown item or variant changes nothing.
+   */
+  select(id: AssetId | null, variant?: number): void;
+  /** Changes the 3D view; the renderer draws once when the picture changes. Throws a RangeError for an invalid action. */
+  changeView(action: ViewerViewAction): void;
 }
 
 export interface ViewerOwnerOptions {
@@ -63,6 +77,8 @@ class Owner implements ViewerOwner {
   readonly #listeners = new Set<{ readonly listener: () => void }>();
   readonly #cleanups: (() => void)[] = [];
   #payloads: PackagePayloads = new Map();
+  /** The selected entry, read and expanded once for all its variants. */
+  #resolved: { readonly id: AssetId; readonly entry: ResolvedEntry } | null = null;
   #snapshot: ViewerOwnerSnapshot;
   /** Settles once the previous audio context closed: true when it may be followed by a new one. */
   #audioReady: Promise<boolean>;
@@ -87,7 +103,9 @@ class Owner implements ViewerOwner {
       renderer = createViewerRenderer({ unavailable: error, reportError });
     }
     this.renderer = renderer;
-    this.#snapshot = Object.freeze({ generation: null, entries: EMPTY, selected: null, failures: NO_FAILURES, audio: null });
+    this.#snapshot = Object.freeze({
+      generation: null, entries: EMPTY, selected: null, variant: 0, variants: EMPTY, view: INITIAL_VIEW, failures: NO_FAILURES, audio: null,
+    });
     try {
       this.#cleanups.push(holder.beforeReplace(() => this.#releaseContent()));
       this.#cleanups.push(holder.subscribe(() => this.#follow()));
@@ -110,21 +128,39 @@ class Owner implements ViewerOwner {
     return () => { this.#listeners.delete(entry); };
   }
 
-  select(id: AssetId | null): void {
-    if (this.#disposed || id === this.#snapshot.selected) return;
-    const entry = id === null ? null : this.#snapshot.entries.find(candidate => candidate.id === id);
+  select(id: AssetId | null, variant = 0): void {
+    const { selected, variant: current, entries, failures } = this.#snapshot;
+    if (this.#disposed || (id === selected && (id === null || variant === current))) return;
+    const entry = id === null ? null : entries.find(candidate => candidate.id === id);
     if (entry === undefined) return;
     if (entry === null) {
+      this.#resolved = null;
       this.renderer.show(null);
-      return this.#set({ selected: null });
+      return this.#set({ selected: null, variant: 0, variants: EMPTY });
     }
-    const resolved = resolveItem(entry, this.#payloads);
-    if (resolved.status === 'failed') {
-      this.renderer.show(null);
-      return this.#set({ selected: entry.id, failures: Object.freeze({ ...this.#snapshot.failures, [entry.id]: resolved.failure }) });
+    let resolved = this.#resolved?.id === entry.id ? this.#resolved.entry : null;
+    if (resolved === null) {
+      const resolution = resolveEntry(entry, this.#payloads);
+      if (resolution.status === 'failed') {
+        this.#resolved = null;
+        this.renderer.show(null);
+        return this.#set({ selected: entry.id, variant, variants: EMPTY, failures: Object.freeze({ ...failures, [entry.id]: resolution.failure }) });
+      }
+      resolved = resolution.entry;
     }
-    this.renderer.show(resolved.item);
-    this.#set({ selected: entry.id });
+    const item = resolved.item(variant);
+    if (item === null) return;
+    this.#resolved = { id: entry.id, entry: resolved };
+    this.renderer.show(item);
+    this.#set({ selected: entry.id, variant, variants: resolved.variants });
+  }
+
+  changeView(action: ViewerViewAction): void {
+    if (this.#disposed) return;
+    const view = applyViewAction(this.#snapshot.view, action);
+    if (view === this.#snapshot.view) return;
+    this.renderer.setView(view);
+    this.#set({ view });
   }
 
   /**
@@ -135,6 +171,7 @@ class Owner implements ViewerOwner {
     this.#disposed = true;
     this.#listeners.clear();
     this.#payloads = new Map();
+    this.#resolved = null;
     const failures = attemptAll([...this.#cleanups.splice(0), () => { this.renderer.dispose(); }]);
     return { failures, closed: this.#afterClose(this.#releaseAudio()) };
   }
@@ -148,7 +185,8 @@ class Owner implements ViewerOwner {
     }
     this.#audioReady = this.#afterClose(this.#releaseAudio());
     this.#payloads = new Map();
-    this.#set({ generation: null, entries: EMPTY, selected: null, failures: NO_FAILURES, audio: null });
+    this.#resolved = null;
+    this.#set({ generation: null, entries: EMPTY, selected: null, variant: 0, variants: EMPTY, failures: NO_FAILURES, audio: null });
   }
 
   /**
@@ -180,7 +218,7 @@ class Owner implements ViewerOwner {
     if (!held || held.generation === this.#snapshot.generation) return;
     const { entries, payloads } = viewerCatalog(held.groups);
     this.#payloads = payloads;
-    this.#set({ generation: held.generation, entries, selected: null, failures: NO_FAILURES, audio: null });
+    this.#set({ generation: held.generation, entries, selected: null, variant: 0, variants: EMPTY, failures: NO_FAILURES, audio: null });
     const audioGroup = held.groups.find(({ group }) => group === 'audio') ?? null;
     const generation = held.generation;
     void this.#audioReady.then(ready => {

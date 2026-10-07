@@ -9,6 +9,7 @@ import { RecordingSurface, type DrawRecord, type DrawnObject } from '../scene/re
 import { CHECKER_GREYS, CHECKER_SQUARE, VIEWER_SURFACE } from './viewer-presentation.ts';
 import { glyphSheet, paletteSheet } from './viewer-pictures.ts';
 import { createViewerRenderer, type ViewerItem, type ViewerRenderer } from './viewer-renderer.ts';
+import { INITIAL_VIEW } from './viewer-view.ts';
 import {
   expandSynthetic, syntheticFont, syntheticImage, syntheticItems, syntheticLayout, syntheticPalette,
 } from './viewer.test-support.ts';
@@ -359,7 +360,8 @@ describe('viewer renderer status and release', () => {
     const item: ViewerItem = syntheticItems()[0];
     renderer.show(item);
     expect(renderer.getSnapshot()).toEqual({ state: 'unavailable', error: cause });
-    expect(renderer.diagnostics()).toEqual({ state: 'unavailable', item: null, draws: 0, gpu: null, layout: null, placement: null });
+    expect(renderer.diagnostics()).toEqual({ state: 'unavailable', item: null, draws: 0, gpu: null, layout: null, placement: null, view: INITIAL_VIEW });
+    renderer.setView({ ...INITIAL_VIEW, yaw: 15 });
     renderer.releaseItem();
     renderer.dispose();
     expect(renderer.getSnapshot()).toEqual({ state: 'disposed', error: null });
