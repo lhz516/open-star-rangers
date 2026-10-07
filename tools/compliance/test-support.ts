@@ -35,12 +35,17 @@ export async function fixture<T>(run: (root: string, write: (path: string, conte
   try { return await run(root, write); } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-export function installedBuildFixture(root: string, write: (path: string, content: string | Uint8Array) => void): void {
+/** The project manifest, lock and a code-owned application, without installing packages. */
+export function buildFixtureFiles(write: (path: string, content: string | Uint8Array) => void): void {
   const project = new URL('../../', import.meta.url);
   for (const name of ['package.json', 'pnpm-lock.yaml', 'LICENSE']) write(name, readFileSync(new URL(name, project)));
   write('.gitignore', 'node_modules/\ndist/\nlocal/\n');
   write('docs/original/manifest.md', syntheticManifest());
   write('index.html', '<main>Code-owned compliance fixture</main><script type="module" src="/main.js"></script>');
   write('main.js', 'document.body.dataset.fixture = "code-owned synthetic application";');
+}
+
+export function installedBuildFixture(root: string, write: (path: string, content: string | Uint8Array) => void): void {
+  buildFixtureFiles(write);
   queryPnpm(['install', '--offline', '--frozen-lockfile', '--ignore-scripts', '--ignore-pnpmfile', '--ignore-workspace', '--reporter=silent'], root);
 }

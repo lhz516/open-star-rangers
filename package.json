@@ -19,7 +19,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.e2e.json",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "test:e2e": "pnpm build && playwright test",

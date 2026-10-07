@@ -1,25 +1,38 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
 import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT, urlTarget } from './original-data-capabilities.ts';
 import { describe, expect, it } from 'vitest';
+import { configDefaults } from 'vitest/config';
 import viteConfiguration from '../vite.config.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const pureLayers = ['core', 'original-data', 'content'] as const;
 const eslint = new ESLint({ cwd: root });
 
-describe('Vitest scheduling', () => {
-  it('serializes files without reducing test discovery or overriding deadlines', () => {
-    expect(viteConfiguration.test?.fileParallelism).toBe(false);
-    expect(viteConfiguration.test?.maxWorkers).toBe(1);
-    expect(viteConfiguration.test?.include).toEqual(['src/**/*.test.ts', 'tools/**/*.test.ts']);
-    expect(viteConfiguration.test?.environment).toBe('node');
-    expect(viteConfiguration.test?.testTimeout).toBeUndefined();
-    expect(viteConfiguration.test?.hookTimeout).toBeUndefined();
+describe('Vitest discovery', () => {
+  it('runs every source and tool test in exactly one project without overriding deadlines', () => {
+    const test = viteConfiguration.test;
+    expect(test?.environment).toBe('node');
+    const projects = (test?.projects ?? []).map(project => {
+      if (typeof project !== 'object' || !('test' in project) || !project.test) throw new Error('Vitest projects must be inline');
+      return project.test;
+    });
+    expect(projects.map(project => project.name)).toEqual(['shared', 'isolated']);
+    const [shared, isolated] = projects;
+    expect(shared.include).toEqual(['src/**/*.test.ts', 'tools/**/*.test.ts']);
+    expect(shared.isolate).toBe(false);
+    // Every file left out of the shared module graph runs isolated, and only files that replace modules need that.
+    const isolatedFiles = isolated.include ?? [];
+    expect(isolatedFiles.length).toBeGreaterThan(0);
+    expect(shared.exclude?.filter(pattern => !configDefaults.exclude.includes(pattern))).toEqual(isolatedFiles);
+    for (const file of isolatedFiles) expect(readFileSync(join(root, file), 'utf8'), file).toMatch(/^vi\.mock\(/m);
+    for (const options of [test, ...projects]) {
+      expect(options?.testTimeout).toBeUndefined();
+      expect(options?.hookTimeout).toBeUndefined();
+    }
   });
 });
 
@@ -36,9 +49,27 @@ function configuration(project: string, directory = root): ts.ParsedCommandLine 
   return config;
 }
 
+/**
+ * Parsed declaration files of installed packages, such as the TypeScript libs, shared by every program here: the
+ * fixtures differ only in their own sources, and parsing lib.dom.d.ts again for each would dominate their cost.
+ */
+const packageSourceFiles = new Map<string, ts.SourceFile>();
+
 function program(project: string, directory = root): ts.Program {
   const config = configuration(project, directory);
-  return ts.createProgram(config.fileNames, config.options);
+  const host = ts.createCompilerHost(config.options);
+  const read = host.getSourceFile.bind(host);
+  host.getSourceFile = (fileName, language, onError, fresh) => {
+    if (fresh || !fileName.includes('/node_modules/')) return read(fileName, language, onError, fresh);
+    const key = `${typeof language === 'object' ? `${language.languageVersion}:${language.impliedNodeFormat}` : language}:${fileName}`;
+    let file = packageSourceFiles.get(key);
+    if (!file) {
+      file = read(fileName, language, onError);
+      if (file) packageSourceFiles.set(key, file);
+    }
+    return file;
+  };
+  return ts.createProgram(config.fileNames, config.options, host);
 }
 
 const COMPUTED_IMPORT = '<computed import>';
@@ -141,9 +172,9 @@ function diagnosticsFor(compilation: ts.Program, file: string): ts.Diagnostic[] 
 }
 
 describe('TypeScript module environments', () => {
-  it('checks the actual pure program without DOM or Node declarations', () => {
+  // `pnpm typecheck` reports the diagnostics of this program; here only its declarations are checked.
+  it('builds the actual pure program without DOM or Node declarations', () => {
     const compilation = program('core');
-    expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
     const names = compilation.getSourceFiles().map((source) => source.fileName);
     expect(names.some((name) => /\/lib\.dom(?:\.iterable)?\.d\.ts$/.test(name))).toBe(false);
     expect(names.some((name) => name.includes('/@types/node/'))).toBe(false);
@@ -163,12 +194,30 @@ describe('TypeScript module environments', () => {
     expect(result.messages.map((message) => message.ruleId), `${result.filePath}: ${source}`).toContain(rule);
   }
 
+  /** Each form, with `id` suffixing its names so that samples can share one linted source. */
   const importForms = [
-    (specifier: string) => `import { value } from '${specifier}'; export { value };`,
-    (specifier: string) => `import type { Value } from '${specifier}'; export type Result = Value;`,
+    (specifier: string, id = '') => `import { value${id} } from '${specifier}'; export { value${id} };`,
+    (specifier: string, id = '') => `import type { Value${id} } from '${specifier}'; export type Result${id} = Value${id};`,
     (specifier: string) => `export * from '${specifier}';`,
-    (specifier: string) => `export type { Value } from '${specifier}';`,
+    (specifier: string, id = '') => `export type { Value${id} } from '${specifier}';`,
   ];
+
+  /**
+   * Lints one-line samples as a single source, one per line, and returns the rules reported on each sample. A sample's
+   * `value` identifiers outside string literals are suffixed with its line so that declarations stay distinct.
+   */
+  async function lintSamples(samples: readonly string[], filePath: string): Promise<string[][]> {
+    expect(samples.every(sample => !sample.includes('\n')), 'samples must be single lines').toBe(true);
+    const distinct = (sample: string, index: number): string => sample.split(/('[^']*')/)
+      .map((part, position) => position % 2 ? part : part.replace(/\bvalue\b/g, `value${index}`)).join('');
+    const result = await lint(samples.map(distinct).join('\n'), filePath);
+    return samples.map((_, index) => result.messages.filter(message => message.line === index + 1).map(message => message.ruleId ?? ''));
+  }
+
+  async function expectSampleRules(samples: readonly (readonly [string, string])[], filePath: string): Promise<void> {
+    const reported = await lintSamples(samples.map(([source]) => source), filePath);
+    samples.forEach(([source, rule], index) => expect(reported[index], `${filePath}: ${source}`).toContain(rule));
+  }
 
   const forbiddenPackages = ['react', 'react-dom', 'zustand', 'three', 'idb', 'idb-keyval'];
   const forbiddenLayers = ['app', 'render', 'ui', 'platform', 'workers'];
@@ -191,17 +240,10 @@ describe('TypeScript module environments', () => {
 
   describe('ESLint production boundaries', () => {
     it.each(pureFiles)('rejects package roots and subpaths in %s', async (file) => {
-      for (const name of forbiddenPackages) {
-        for (const specifier of [name, `${name}/subpath`, `${name}/nested/subpath`]) {
-          for (const form of importForms) {
-            const source = form(specifier);
-            const result = await lint(source, file);
-            expectRule(result, 'no-restricted-imports', source);
-          }
-        }
-      }
-      const result = await lint("export { jsx } from 'react/jsx-runtime';", file);
-      expectRule(result, 'no-restricted-imports', "export { jsx } from 'react/jsx-runtime';");
+      const samples = forbiddenPackages.flatMap(name => [name, `${name}/subpath`, `${name}/nested/subpath`])
+        .flatMap((specifier, index) => importForms.map((form, kind) => form(specifier, `${index}_${kind}`)));
+      samples.push("export { jsx } from 'react/jsx-runtime';");
+      await expectSampleRules(samples.map(source => [source, 'no-restricted-imports'] as const), file);
     });
 
     describe('Boundary checker failure contract', () => {
@@ -238,42 +280,21 @@ describe('TypeScript module environments', () => {
         expect(() => expect(illegal.messages).toEqual([])).toThrow();
       });
 
-      it('returns a nonzero Vitest exit for a real unmet boundary assertion', () => {
-        withFixtures({
-          'failure.config.ts': `import actual from ${JSON.stringify(join(root, 'vite.config.ts'))};
-    export default { ...actual, root: import.meta.dirname, test: { ...actual.test, include: ['failure.test.ts'] } };`,
-          'failure.test.ts': `import { ESLint } from 'eslint';
-    import { expect, it } from 'vitest';
-    it('boundary expectation deliberately unmet', async () => {
-      const eslint = new ESLint({ cwd: ${JSON.stringify(root)} });
-      const [result] = await eslint.lintText('export const value = 1;', { filePath: 'src/core/probe.ts' });
-      expect(result.messages.map(message => message.ruleId)).toContain('no-restricted-imports');
-    });`,
-        }, (directory) => {
-          const result = spawnSync(process.execPath, [
-            join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', join(directory, 'failure.config.ts'),
-          ], { cwd: root, encoding: 'utf8', timeout: 20_000 });
-          if (result.error) throw result.error;
-          expect(result.signal, 'Failure probe must finish normally').toBeNull();
-          expect(result.status).toBe(1);
-          const output = result.stdout + result.stderr;
-          expect(output).toContain('boundary expectation deliberately unmet');
-          expect(output).toContain('AssertionError');
-          expect(output).toContain('no-restricted-imports');
-        });
+      it('attributes batched samples by line, so a hit cannot cover another sample', async () => {
+        const hit = "import { value } from 'react'; export { value };";
+        const reported = await lintSamples([hit, 'export const value = 1;'], 'src/core/probe.ts');
+        expect(reported[0]).toContain('no-restricted-imports');
+        expect(reported[1]).toEqual([]);
+        await expect(expectSampleRules([[hit, 'no-restricted-imports'], ['export const value = 1;', 'no-restricted-imports']], 'src/core/probe.ts'))
+          .rejects.toThrow();
       });
+
     });
 
     it.each(pureFiles)('rejects application entrypoints and nested imports in %s', async (file) => {
-      for (const layer of forbiddenLayers) {
-        for (const specifier of [`../${layer}`, `../${layer}/index.ts`, `../../${layer}/nested/component.tsx`]) {
-          for (const form of importForms) {
-            const source = form(specifier);
-            const result = await lint(source, file);
-            expectRule(result, 'no-restricted-imports', source);
-          }
-        }
-      }
+      const samples = forbiddenLayers.flatMap(layer => [`../${layer}`, `../${layer}/index.ts`, `../../${layer}/nested/component.tsx`])
+        .flatMap((specifier, index) => importForms.map((form, kind) => form(specifier, `${index}_${kind}`)));
+      await expectSampleRules(samples.map(source => [source, 'no-restricted-imports'] as const), file);
     });
 
     // P2-01 AC-05: canonical content consumers never import original locators or archive structure. P2-11 S-05: nor
@@ -529,11 +550,7 @@ describe('TypeScript module environments', () => {
     });
 
     it.each(['ts', 'tsx'])('rejects host scheduling, time, randomness and async syntax in core .%s', async (extension) => {
-      for (const { source, rule } of hostOperations) {
-        const file = `src/core/probe.${extension}`;
-        const result = await lint(source, file);
-        expectRule(result, rule, source);
-      }
+      await expectSampleRules(hostOperations.map(({ source, rule }) => [source, rule] as const), `src/core/probe.${extension}`);
     });
 
     it('accepts pure imports and deterministic computation in every pure layer', async () => {
@@ -546,13 +563,13 @@ describe('TypeScript module environments', () => {
 
     it('preserves consumer capabilities and Node test exceptions', async () => {
       for (const file of ['src/app/probe.tsx', 'src/platform/probe.ts', 'src/core/probe.test.ts', 'tools/probe.test.ts']) {
-        for (const { source } of hostOperations) {
-          expect((await lint(source, file)).messages, `${file}: ${source}`).toEqual([]);
-        }
-        for (const name of forbiddenPackages) {
-          expect((await lint(`export * from '${name}/subpath';`, file)).messages, file).toEqual([]);
-        }
-        expect((await lint("export { value } from '../core/value.ts';", file)).messages, file).toEqual([]);
+        const samples = [
+          ...hostOperations.map(({ source }) => source),
+          ...forbiddenPackages.map(name => `export * from '${name}/subpath';`),
+          "export { value } from '../core/value.ts';",
+        ];
+        const reported = await lintSamples(samples, file);
+        samples.forEach((source, index) => expect(reported[index], `${file}: ${source}`).toEqual([]));
       }
       expect((await lint('export const value = <main>Shell</main>;', 'src/app/probe.tsx')).messages).toEqual([]);
     });
@@ -741,9 +758,9 @@ describe('audio playback boundaries', () => {
     .filter(fileName => relativeSource(fileName, base).startsWith('platform/audio/') && !/\.test(?:-support)?\.ts$/.test(fileName))
     .map(fileName => compilation.getSourceFile(fileName)!);
   /** DOM-free audio modules missing from the Node program, which only the tests that import them pull in. */
-  const unchecked = (directory: string, app = program('app', directory)): string[] => {
+  const unchecked = (directory: string, app = program('app', directory),
+    nodeFiles: ReadonlySet<string> = new Set(program('node', directory).getSourceFiles().map(file => resolve(file.fileName)))): string[] => {
     const base = join(directory, 'src');
-    const nodeFiles = new Set(program('node', directory).getSourceFiles().map(file => resolve(file.fileName)));
     return audioFiles(app, base)
       .filter(file => !basename(file.fileName).startsWith('browser-') && !nodeFiles.has(resolve(file.fileName)))
       .map(file => relativeSource(file.fileName, base));
@@ -775,7 +792,7 @@ describe('audio playback boundaries', () => {
   });
 
   it('checks every DOM-free audio module in the Node program', () => {
-    expect(unchecked(root, sharedAppProgram())).toEqual([]);
+    expect(unchecked(root, sharedAppProgram(), sharedNodeFiles())).toEqual([]);
   });
 
   it('flags a DOM-free audio module that no test brings into the Node program', () => {

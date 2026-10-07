@@ -2,6 +2,7 @@
   // Node-side code: build config, research tools, and tests.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.cache/tsc/node.tsbuildinfo",
     "lib": ["ES2023"],
     "types": ["node"]
   },
