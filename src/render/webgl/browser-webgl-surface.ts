@@ -1,28 +1,27 @@
 /**
  * Browser factory for the WebGL drawing port: creates the canvas and a WebGL 2 `WebGLRenderer`,
- * then hands them with ResizeObserver and resolution media-query watchers to the DOM-free surface.
+ * named and colour-managed as the caller's options say, then hands them with ResizeObserver and
+ * resolution media-query watchers to the DOM-free surface.
  * Throws, leaving no canvas in the container, when WebGL 2 is unavailable; it never falls back.
  * A RollbackError means the canvas or context it had acquired could not be released.
  */
 import { WebGLRenderer } from 'three';
 import { RollbackError } from '../../app/session/rollback-error.ts';
-import type { RenderSurface } from '../scene/render-surface.ts';
+import type { RenderSurface, RenderSurfaceOptions } from '../scene/render-surface.ts';
 import { attemptAll } from '../scene/cleanup.ts';
 import { createWebGLSurface } from './webgl-surface.ts';
 
-/** Accessible name of the synthetic view's canvas. */
-export const SYNTHETIC_CANVAS_LABEL = 'Synthetic demo view (P1 engineering demo, not original graphics)';
-
-export function createBrowserWebGLSurface(container: HTMLElement): RenderSurface {
+export function createBrowserWebGLSurface(container: HTMLElement, options: RenderSurfaceOptions): RenderSurface {
   const canvas = document.createElement('canvas');
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', SYNTHETIC_CANVAS_LABEL);
+  canvas.setAttribute('aria-label', options.label);
   Object.assign(canvas.style, { position: 'absolute', display: 'none' });
   let renderer: WebGLRenderer | null = null;
   let loseContext: (() => void) | null = null;
   try {
     // Constructed before any application listener, so Three.js restores its resources first.
     renderer = new WebGLRenderer({ canvas, antialias: false });
+    renderer.outputColorSpace = options.outputColorSpace;
     const gl = renderer.getContext();
     const viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
     const maxDrawingBufferSize = Math.min(viewport[0], viewport[1], gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);

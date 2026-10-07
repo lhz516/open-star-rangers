@@ -78,6 +78,7 @@ test('native controls, trusted movement, Core results and same-owner resize', as
   await expect(page.getByTestId('pending')).toHaveText('None.');
 
   const canvas = await page.locator('canvas').elementHandle();
+  await expect(page.locator('canvas')).toHaveAttribute('aria-label', 'Synthetic demo view (P1 engineering demo, not original graphics)');
   const run = (await projection(page)).run;
   const wide = await verifyLayout(page);
   await page.setViewportSize({ width: 480, height: 900 });

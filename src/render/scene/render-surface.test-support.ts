@@ -1,8 +1,8 @@
 /**
  * A recording RenderSurface for Node tests. It stores what each draw showed, emulates the WebGL
- * renderer's geometry/program counters from what was drawn and disposed, and fails on request.
+ * renderer's geometry/texture/program counters from what was drawn and disposed, and fails on request.
  */
-import { Mesh, type Camera, type Material, type BufferGeometry, type Scene } from 'three';
+import { Mesh, Texture, type Camera, type Material, type BufferGeometry, type Scene } from 'three';
 import type { ViewportLayout } from '../viewport/viewport-layout.ts';
 import type { RenderGpuStats, RenderSurface, RenderSurfaceEvents, RenderSurfaceSize } from './render-surface.ts';
 
@@ -35,6 +35,7 @@ export class RecordingSurface implements RenderSurface {
   disconnectFailure: unknown;
   disposeFailure: unknown;
   readonly #geometries = new Set<BufferGeometry>();
+  readonly #textures = new Set<Texture>();
   readonly #programs = new Set<Material>();
   #drawAttempts = 0;
 
@@ -54,19 +55,20 @@ export class RecordingSurface implements RenderSurface {
     this.calls.push('draw');
     if (this.drawFailure !== undefined && this.#drawAttempts++ === this.drawFailureAt) throw this.drawFailure;
     const objects: DrawnObject[] = [];
-    for (const mesh of scene.children) {
-      if (!(mesh instanceof Mesh)) continue;
+    // Like the WebGL renderer, only visible objects are drawn and uploaded.
+    scene.traverseVisible(mesh => {
+      if (!(mesh instanceof Mesh)) return;
       const material = mesh.material as Material;
       this.#upload(mesh.geometry, material);
       objects.push(Object.freeze({
         mesh, name: mesh.name, position: mesh.position.toArray() as [number, number, number], geometry: mesh.geometry, material,
       }));
-    }
+    });
     this.draws.push(Object.freeze({ objects, camera, projection: [...camera.projectionMatrix.elements] }));
   }
 
   gpuStats(): RenderGpuStats {
-    return { geometries: this.#geometries.size, textures: 0, programs: this.#programs.size };
+    return { geometries: this.#geometries.size, textures: this.#textures.size, programs: this.#programs.size };
   }
 
   disconnect(): void {
@@ -98,6 +100,11 @@ export class RecordingSurface implements RenderSurface {
     if (!this.#programs.has(material)) {
       this.#programs.add(material);
       material.addEventListener('dispose', () => { this.#programs.delete(material); });
+    }
+    for (const texture of Object.values(material)) {
+      if (!(texture instanceof Texture) || this.#textures.has(texture)) continue;
+      this.#textures.add(texture);
+      texture.addEventListener('dispose', () => { this.#textures.delete(texture); });
     }
   }
 }

@@ -1,5 +1,5 @@
 import type { AudioCapability, PageLifecycleHost } from '../platform/audio/audio-controller.ts';
-import type { RenderSurface } from '../render/scene/render-surface.ts';
+import type { RenderSurface, RenderSurfaceOptions } from '../render/scene/render-surface.ts';
 import type { ExpectedPackageProfile } from '../workers/production-package.ts';
 import type { ImportWorkerPortFactory } from './import/import-worker-port.ts';
 import type { ResourceCachePort } from './resources/resource-holder.ts';
@@ -15,8 +15,8 @@ export interface AppPorts {
   readonly cache: ResourceCachePort;
   /** The viewer's audio: the capability its controller uses and the page lifecycle it follows. */
   readonly audio: { readonly capability: AudioCapability; readonly lifecycle: PageLifecycleHost };
-  /** Creates the viewer's WebGL 2 surface in a container; throws when WebGL 2 is unavailable. */
-  readonly createSurface: (container: HTMLElement) => RenderSurface;
+  /** Creates the viewer's WebGL 2 surface in a container with the viewer's options; throws when WebGL 2 is unavailable. */
+  readonly createSurface: (container: HTMLElement, options: RenderSurfaceOptions) => RenderSurface;
   /** Which cached package may be restored, and the budget of commits and restores. */
   readonly profile: ExpectedPackageProfile;
   /** Receives errors no screen reports itself. */

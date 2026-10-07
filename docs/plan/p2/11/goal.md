@@ -111,7 +111,7 @@ updated: 2026-10-06
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | completed |
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | pending |
-| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | pending |
+| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | completed |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08 | pending |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
@@ -132,6 +132,10 @@ updated: 2026-10-06
 - **2026-10-06 — 子任务 03 前的 spec 澄清：** spec“包预算与生产身份”原写“提交前的空间检查以 `payloadBytes` 加上 `measure` 的元数据估计为需求”。但行为表与 S-04 把空间检查放在开始导入之前，此时没有组输入，`measure` 无法计算元数据。
   - 改为：导入前以包预算的 `payloadBytes` 为需求，这是 [P2-10 spec](../10/spec.md) 操作表允许的估计；该上限（11,943,936 字节）远大于实际 payload 与元数据之和。
   - 同步修改了 spec 与子任务 03 的措辞，不影响其他验收。
+- **2026-10-06 — 子任务 08 的表面选项扩展：** 计划只把画布的无障碍名称改由调用方提供。但 spec 呈现约定要求读回的字节等于源字节，而 Three.js 渲染器默认以 sRGB 输出，会对着色器输出再做编码，本机 Chrome 实测最大误差 73。
+  - 浏览器表面工厂与 `AppPorts.createSurface` 因此改为接收 `RenderSurfaceOptions`：无障碍名称加输出颜色空间。
+  - 合成演示传原名称与默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`（线性输出，实测误差 0）。
+  - 10 的所有者以 `createSurface(container, VIEWER_SURFACE)` 创建表面。不改变任何验收，详见 [08 的完成证据](./subtasks/08-viewer-render-foundation.md#完成证据)。
 
 ## 审批
 

@@ -1,10 +1,17 @@
 /**
- * Synthetic look of the P1 demo: one shared, unlit geometry and material per entity kind, built
- * in code. The shapes and colours are invented engineering values, not original-game assets; P2
+ * Synthetic look of the P1 demo: its canvas options, and one shared, unlit geometry and material per entity kind,
+ * built in code. The shapes and colours are invented engineering values, not original-game assets; P2
  * replaces them with Asset ID mappings. Contract: docs/plan/p1/07/spec.md "合成外观表".
  */
-import { BoxGeometry, MeshBasicMaterial, OctahedronGeometry, type BufferGeometry } from 'three';
+import { BoxGeometry, MeshBasicMaterial, OctahedronGeometry, SRGBColorSpace, type BufferGeometry } from 'three';
+import type { RenderSurfaceOptions } from '../scene/render-surface.ts';
 import type { SyntheticEntityKind } from './synthetic-render-frame.ts';
+
+/** The synthetic view's canvas: its accessible name, and Three.js's default sRGB output. */
+export const SYNTHETIC_SURFACE: RenderSurfaceOptions = Object.freeze({
+  label: 'Synthetic demo view (P1 engineering demo, not original graphics)',
+  outputColorSpace: SRGBColorSpace,
+});
 
 /** Frame background inside the 4:3 view; the letterbox around it is the container's black. */
 export const SYNTHETIC_BACKGROUND_COLOR = 0x102040;
