@@ -60,20 +60,20 @@ updated: 2026-10-06
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 |---|---|---|
-| S-01 | 06 | 06 流转测试与菜单 E2E；13 往返；14 生产预览 |
+| S-01 | 06 | 06 流转测试与菜单 E2E；13 往返；21 生产预览 |
 | S-02 | 07 | 07 Node 与开发项目 E2E |
 | S-03 | 02 | 02 持有者测试 |
 | S-04 | 03、06、07 | 03 伪造缓存测试；07、12 真实 IndexedDB E2E |
 | S-05 | 01 | 01 一致性测试；03 包预算核算 |
 | S-06 | 04、11 | 04 摘要与引用校验测试；11 E2E |
 | S-07 | 08、09 | 08、09 场景构建测试；11 像素读回 |
-| S-08 | 10、11 | 10 所有者与音频测试；11 E2E |
+| S-08 | 22、10、11 | 22 试听与音频测试；10 所有者测试；11 E2E |
 | S-09 | 08、09 | 08、09 Node；11 像素读回；源码结构记录 |
 | S-10 | 15、16 | 15 文档审阅；16 Node、本地核对与 E2E |
-| S-11 | 14 | 14 生产项目 E2E 与产物检查 |
-| S-12 | 02、03、07、10、11 | 各子任务的释放测试；13 StrictMode、Fast Refresh 与往返 |
+| S-11 | 21、14 | 21 生产项目 E2E 与产物检查；14 生产项目的查看路径 E2E |
+| S-12 | 02、03、07、22、10、11 | 各子任务的释放测试；13 StrictMode、Fast Refresh 与往返 |
 | S-13 | 07、11、15、16、18 | 各子任务的文档影响；18 指南与文档；20 链接与元数据 |
-| AC-01 | 06 | 06 流转测试与开发项目 E2E；13 往返；14 生产项目 |
+| AC-01 | 06 | 06 流转测试与开发项目 E2E；13 往返；21 生产项目 |
 | AC-02 | 07 | 07 开发项目 E2E |
 | AC-03 | 07 | 07 开发项目 E2E |
 | AC-04 | 05、07 | 05 文案表驱动测试；07 失败场景 E2E |
@@ -87,12 +87,12 @@ updated: 2026-10-06
 | AC-12 | 08 | 08 Node；11 像素读回 |
 | AC-13 | 09 | 09 Node；11 像素读回 |
 | AC-14 | 08、10、11 | 08 绘制计数；11 帧、画布、上下文丢失与 WebGL 关闭 E2E |
-| AC-15 | 10、11 | 10 Node；11 音频探针 E2E |
+| AC-15 | 22、10、11 | 22、10 Node；11 音频探针 E2E |
 | AC-16 | 06、07、10、11 | 13 开发项目 E2E |
 | AC-17 | 15 | 15 只读研究与文档审阅 |
 | AC-18 | 16（贴图）；09、11（未确认时的回退显示） | 16 Node、本地核对与 E2E；11 回退显示 E2E |
-| AC-19 | 14 | 14 生产项目 E2E 与产物检查 |
-| AC-20 | 17 | 17 本地 Node 脚本 |
+| AC-19 | 21、14 | 21 生产项目 E2E 与产物检查；14 查看路径 E2E |
+| AC-20 | 23、17 | 23、17 本地 Node 脚本 |
 | AC-21 | 19 | 19 用户手工核对 |
 | AC-22 | 07、18 | 07 权利文案 E2E；18 网络 API 源码检查、链接与元数据 |
 | AC-23 | 全部 | 20 工程检查与依赖 diff |
@@ -111,19 +111,22 @@ updated: 2026-10-06
 | [05-failure-copy.md](./subtasks/05-failure-copy.md) | — | completed |
 | [06-app-shell-flow.md](./subtasks/06-app-shell-flow.md) | 03, 05 | completed |
 | [07-import-page.md](./subtasks/07-import-page.md) | 04, 05, 06 | completed |
-| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | pending |
+| [08-viewer-render-foundation.md](./subtasks/08-viewer-render-foundation.md) | — | in-progress |
 | [09-viewer-models-effects.md](./subtasks/09-viewer-models-effects.md) | 08 | pending |
-| [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08 | pending |
+| [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | pending |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | pending |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | pending |
 | [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |
-| [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11 | pending |
-| [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | pending |
+| [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | pending |
+| [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | in-progress |
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17 | pending |
-| [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 03, 04, 09 | pending |
+| [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | pending |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | pending |
 | [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 | pending |
+| [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | pending |
+| [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | pending |
+| [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | pending |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -132,6 +135,12 @@ updated: 2026-10-06
 - **2026-10-06 — 子任务 03 前的 spec 澄清：** spec“包预算与生产身份”原写“提交前的空间检查以 `payloadBytes` 加上 `measure` 的元数据估计为需求”。但行为表与 S-04 把空间检查放在开始导入之前，此时没有组输入，`measure` 无法计算元数据。
   - 改为：导入前以包预算的 `payloadBytes` 为需求，这是 [P2-10 spec](../10/spec.md) 操作表允许的估计；该上限（11,943,936 字节）远大于实际 payload 与元数据之和。
   - 同步修改了 spec 与子任务 03 的措辞，不影响其他验收。
+- **2026-10-06 — 为并行执行拆分子任务：** 08 与 15 由用户在另外两个工作树中并行执行（分支 `agents/p2-08`、`agents/p2-15`），本工作树不执行它们，跟踪表中标为 in-progress。用户随后要求找出可同时进行的工作，因此把 10、14、17 中不依赖 08 的部分拆出，新增：
+  - 21：生产预览的 CSP、Worker 入口与回退、构建产物与 AC-01 生产部分，依赖 07；14 只保留预置缓存的完整查看路径，并改为依赖 21。
+  - 22：查看器的试听与音频 `close()` 观察，依赖 02；10 保留所有者、GPU、替换与锁存，并改为依赖 22。
+  - 23：本地真实数据的导入、全包判定、任务载入与耗时，依赖 03、04；17 只保留场景构建，依赖改为 09、23。
+
+  验收覆盖随之更新；spec 与各验收项不变。最终对齐 20 增加对 21、22、23 的依赖，仍为最后一行。
 
 ## 审批
 
