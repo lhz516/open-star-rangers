@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import type { ExpectedPackageProfile } from '../../src/workers/production-package.ts';
+import { syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
 
 // The P2-11 development test entry: the production App with synthetic ports chosen by the page query (see
 // src/app/app-entry.test-support.tsx). The development server alone serves it.
@@ -24,4 +25,13 @@ export async function openTestEntry(page: Page, options: TestEntryOptions = {}):
 /** P2-11 AC-01: no page text claims anything is playable or offers to play or start a mission. */
 export async function expectNoPlayClaim(page: Page): Promise<void> {
   expect(await page.locator('body').innerText()).not.toMatch(/playable|play mission|start mission/i);
+}
+
+/** A file for the import page's file chooser. */
+export interface FilePayload { readonly name: string; readonly mimeType: string; readonly buffer: Buffer }
+
+/** The CloneCD files of a synthetic disc holding `covered`, whose names contain the file-name marker. */
+export async function discFiles(covered: Parameters<typeof syntheticImport>[0]): Promise<FilePayload[]> {
+  const { files } = await syntheticImport(covered);
+  return Promise.all(files.map(async file => ({ name: file.name, mimeType: 'application/octet-stream', buffer: Buffer.from(await file.arrayBuffer()) })));
 }

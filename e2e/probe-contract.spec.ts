@@ -1,3 +1,4 @@
+import type { BrowserContext } from '@playwright/test';
 import { test, expect, collectBrowserErrors, settleDiagnostics } from './support/browser-test.ts';
 import { diagnostics, enterDemo, frameWindow, stableAxis } from './support/demo-observations.ts';
 import { image, verifyLayout } from './support/image-observations.ts';
@@ -54,12 +55,21 @@ test('probe preserves native listener, observer and frame behavior', async ({ pa
   expect(restored.after).toBe(restored.before);
 });
 
-test('probe records Workers without changing module loading, messaging or termination', async ({ page }) => {
+/**
+ * Serves `source` as a same-origin JavaScript Worker script at `/__probe/<name>.js`, which the production preview's strict
+ * policy allows where a Blob URL would not be.
+ */
+async function serveWorker(context: BrowserContext, name: string, source: string): Promise<string> {
+  const path = `/__probe/${name}.js`;
+  await context.route(`**${path}`, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: source }));
+  return path;
+}
+
+test('probe records Workers without changing module loading, messaging or termination', async ({ page, context }) => {
+  // `import.meta` parses only in a module script, so a reply proves the Worker still loads as a module.
+  const url = await serveWorker(context, 'echo', 'const base = import.meta.url; self.onmessage = event => self.postMessage({ doubled: event.data * 2, module: typeof base });');
   await page.goto('/');
-  const result = await page.evaluate(async () => {
-    // `import.meta` parses only in a module script, so a reply proves the Worker still loads as a module.
-    const source = 'const base = import.meta.url; self.onmessage = event => self.postMessage({ doubled: event.data * 2, module: typeof base });';
-    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+  const result = await page.evaluate(async url => {
     const worker = new Worker(url, { type: 'module', name: 'probe-worker' });
     const replied = new Promise<unknown>(resolve => { worker.addEventListener('message', event => resolve(event.data), { once: true }); });
     const listening = window.osrProbe.snapshot().listeners.filter(entry => entry.group === 'worker');
@@ -67,7 +77,6 @@ test('probe records Workers without changing module loading, messaging or termin
     const reply = await replied;
     worker.terminate();
     worker.terminate();
-    URL.revokeObjectURL(url);
     const after = window.osrProbe.snapshot();
     return {
       reply, instance: worker instanceof Worker, prototype: Object.getPrototypeOf(worker) === Worker.prototype,
@@ -75,7 +84,7 @@ test('probe records Workers without changing module loading, messaging or termin
       records: after.workers.map(({ viteWorker, type, name, posts, terminations }) => ({ viteWorker, type, name, posts, terminations })),
       active: after.listeners.filter(entry => entry.group === 'worker' && entry.active).length,
     };
-  });
+  }, url);
   expect(result).toEqual({
     reply: { doubled: 42, module: 'string' }, instance: true, prototype: true, listening: [['message', true]],
     records: [{ viteWorker: false, type: 'module', name: 'probe-worker', posts: 1, terminations: 2 }], active: 0,
@@ -137,15 +146,13 @@ test('error collector retains console, native exception and failed HTTP reasons'
 });
 
 test('error collector retains Worker console errors and settles declared diagnostics exactly', async ({ page, context, expectDiagnostic }) => {
+  const url = await serveWorker(context, 'console', "console.error('controlled-worker-console');");
   await page.goto('/');
   const child = await context.newPage();
   try {
     const collected = collectBrowserErrors(child);
     await child.goto(page.url());
-    await child.evaluate(() => {
-      const url = URL.createObjectURL(new Blob(["console.error('controlled-worker-console');"], { type: 'text/javascript' }));
-      new Worker(url, { type: 'module' });
-    });
+    await child.evaluate(url => { new Worker(url, { type: 'module' }); }, url);
     await expect.poll(() => collected.errors.some(error => error.startsWith('worker console: ') && error.endsWith(': controlled-worker-console'))).toBe(true);
   } finally {
     await child.close();

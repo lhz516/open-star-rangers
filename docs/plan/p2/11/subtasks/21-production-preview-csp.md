@@ -41,10 +41,10 @@ updated: 2026-10-06
 
 ## 验收标准
 
-- [ ] AC-19（不含查看器路径）：策略响应头、Worker 入口、识别失败、404 与 HTML 回退、无 CSP 违规与未声明的控制台错误、构建产物不含测试入口，都如上。
-- [ ] AC-01（生产）：页面往返与禁用词断言在策略下通过。
-- [ ] 策略未放宽；策略文本与回退要求已写入工程约定。
-- [ ] `pnpm check` 与 `pnpm test:e2e` 通过。
+- [x] AC-19（不含查看器路径）：策略响应头、Worker 入口、识别失败、404 与 HTML 回退、无 CSP 违规与未声明的控制台错误、构建产物不含测试入口，都如上。
+- [x] AC-01（生产）：页面往返与禁用词断言在策略下通过。
+- [x] 策略未放宽；策略文本与回退要求已写入工程约定。
+- [x] `pnpm check` 与 `pnpm test:e2e` 通过。
 
 ## 验证方法
 
@@ -52,3 +52,34 @@ updated: 2026-10-06
 - 完成前 `pnpm check`。按 execute-goal 做 rubber-duck 与 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **策略：** [preview-csp.ts](../../../../../tools/preview-csp.ts) 定义 `default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`。
+  - [vite.config.ts](../../../../../vite.config.ts) 只在 `preview.headers` 发送它，开发服务器不变。
+  - [preview-csp.test.ts](../../../../../tools/preview-csp.test.ts) 核对：同源与 `'none'` 之外没有任何来源，不含 `unsafe`、`blob:`、`data:`、通配符或 URL；预览发送策略，开发服务器不发送。
+  - 策略没有放宽，也不需要改应用代码：React 的 `style` 属性经 CSSOM 设置，Three.js、Web Audio 与 IndexedDB 都不受影响。
+- **生产项目 E2E：** [production-preview.spec.ts](../../../../../e2e/production-preview.spec.ts)，只在 production 项目运行，共 5 条：
+  - **Worker 入口：** 页面与 Worker 脚本的响应都带策略。生产尺寸的合成文件经真实 Worker 识别失败，显示 `source/version` 的类别与 `unsupported-version`。
+    - Worker 入口为 `/assets/import-worker-<hash>.js`，响应 200 且为 JavaScript 类型，恰好构造一次并终止一次。
+    - 页面 chunk 含 Vite Worker 转换生成的 `new Worker(new URL(…, import.meta.url), { type: 'module' })`。开发服务器的 `worker_file` 标记在构建中不存在，所以探针的 `viteWorker` 为 false。
+  - **Worker 回退：** 路由让 Worker 脚本返回 404，或返回 200 的 HTML 时，都以 `import/worker-start-failed` 结束，Worker 已终止，没有资源状态，返回菜单后仍没有原版数据。
+    - 404 时声明 `HTTP 404`；Chrome 自己的加载失败报告（控制台与 `net::ERR_FAILED`）不总是出现，出现时只能是这两种，并逐条声明。
+    - 连续运行 3 次通过。
+  - **策略合规：** 菜单、导入页面与合成演示在策略下没有 `securitypolicyviolation`，也没有未声明的控制台错误。
+  - **构建产物：** `dist/` 只有 `index.html` 一个页面；source map 的来源超过 100 个，都不含测试、测试支持、`e2e/` 或测试入口；JS 与 HTML 都不含 `MARKER`、`osrTestEntry` 与合成场景名。
+- **探针契约：** [probe-contract.spec.ts](../../../../../e2e/probe-contract.spec.ts) 的两个 Worker 用例原用 Blob URL，策略禁止它，改由 Playwright 路由在同源 `/__probe/*.js` 提供脚本。模块载入、消息、原型、监听与终止的断言不变，开发与生产项目都通过。
+- **AC-01 生产部分：** [app-shell.spec.ts](../../../../../e2e/app-shell.spec.ts)、[compliance-text.spec.ts](../../../../../e2e/compliance-text.spec.ts) 等全部生产用例在策略下通过。
+- **检查：**
+  - `pnpm check`：146 个文件 4,381 条测试，构建通过；
+  - `pnpm test:e2e`：三个项目共 84 条通过；
+  - simplify 后，生产项目的预览与探针用例 10 条、开发项目的导入与探针用例 17 条再次通过，`pnpm lint` 与 `pnpm typecheck` 通过。
+- **Rubber-duck：** 没有阻塞或非阻塞问题。
+- **Simplify：** 采纳四项：
+  - 只核对响应头的用例并入 Worker 入口用例；
+  - 生产尺寸的合成文件只生成一次；
+  - 文件 payload 的构造移到 [app-entry.ts](../../../../../e2e/support/app-entry.ts)，与导入页面用例共用；
+  - `dist/` 枚举复用合规工具的 `ordinaryFiles`。
+
+  未采纳：
+  - fixture 级的可选诊断机制：只有一个用例需要；
+  - 把产物检查移到 Vitest：`pnpm check` 在构建之前运行测试，`dist/` 未必存在。
+- **文档影响：** [工程约定](../../../../engineering/README.md)新增“生产预览的 CSP”：策略文本，生产用例与探针的做法，以及作为 P5 输入的“SPA 回退必须排除 `/assets/*`”和生产响应头；并注明真实 SWA 实测归 P5。

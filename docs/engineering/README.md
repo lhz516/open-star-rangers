@@ -135,6 +135,21 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
+- **生产预览的 CSP（P2-11 S-11、技术决定 11）：** [vite.config.ts](../../vite.config.ts) 只让 `vite preview` 发送 [preview-csp.ts](../../tools/preview-csp.ts) 中的严格策略：
+  - 策略文本为 `default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`；
+  - 不含 `unsafe-inline`、`unsafe-eval`、`blob:`、`data:`、通配符或其他来源；开发服务器的客户端依赖内联脚本，不发送策略；
+  - [preview-csp.test.ts](../../tools/preview-csp.test.ts) 核对这些性质，以及只有预览发送策略。
+
+  全部 `production` 项目用例都在该策略下运行。[production-preview.spec.ts](../../e2e/production-preview.spec.ts) 只在该项目运行，核对：
+  - 页面与 Worker 脚本的响应都带策略；
+  - 导入 Worker 是 `/assets/` 下带哈希的模块脚本，由页面 chunk 的 `new Worker(new URL(…, import.meta.url))` 创建（开发服务器的 `worker_file` 标记在构建中不存在）；
+  - 生产尺寸的合成文件得到 `source/unsupported-version`；
+  - Worker 脚本返回 404 或 200 的 HTML 时，导入以 `import/worker-start-failed` 结束，Worker 已终止，没有资源包。404 时浏览器自己的加载失败报告不总是出现，出现时才声明；
+  - 菜单、导入页面与合成演示没有 `securitypolicyviolation`；
+  - `dist/` 只有 `index.html` 一个页面，产物与 source map 来源不含测试入口、测试支持或合成目录。
+
+  探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
+  - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
 - **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现、真实失败传播和占用端口隔离。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
