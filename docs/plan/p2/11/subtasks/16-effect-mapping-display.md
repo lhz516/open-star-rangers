@@ -48,6 +48,7 @@ updated: 2026-10-07
 - `src/render/viewer/`、`src/ui/viewer/`：效果贴图的显示与标记。
 - `e2e/viewer-page.spec.ts`、`e2e/import-worker.spec.ts`、`e2e/support/viewer-observations.ts`：开发项目 E2E。
 - `docs/engineering/source-structure.md`：效果 payload 布局与呈现约定。
+- `docs/engineering/README.md`：查看器 E2E 说明中的贴图映射标记与旋转选择（执行中扩展）。
 - `docs/original/`：executable 的本地核对结论与 unknowns。
 - `local/research/p2-11/`：本地核对脚本与输出（被忽略，不提交）。
 
