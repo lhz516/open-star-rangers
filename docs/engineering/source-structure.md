@@ -19,6 +19,8 @@ src/
   main.tsx
   app/
     App.tsx
+    ImportScreen.tsx
+    ViewerScreen.tsx
     app.css
     browser-ports.ts
     ports.ts

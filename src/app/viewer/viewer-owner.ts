@@ -37,6 +37,8 @@ export interface ViewerOwnerSnapshot {
 
 export interface ViewerOwner {
   readonly renderer: ViewerRenderer;
+  /** This owner's number in its slot, from 1: a diagnostic of which owner is live. */
+  readonly serial: number;
   /** Frozen, and the same object until the next change; bound, as `subscribe` is. */
   getSnapshot(): ViewerOwnerSnapshot;
   subscribe(listener: () => void): () => void;
@@ -49,12 +51,21 @@ export interface ViewerOwner {
   changeView(action: ViewerViewAction): void;
 }
 
+/** A selection and view to start from. */
+export interface ViewerStart {
+  readonly selected: AssetId | null;
+  readonly variant: number;
+  readonly view: ViewerView;
+}
+
 export interface ViewerOwnerOptions {
   readonly holder: ResourceHolder;
   /** The renderer's surface, or why none could be created. */
   readonly render: ViewerRendererOptions;
   readonly audio: Omit<ViewerAudioOptions, 'reportError'>;
   readonly reportError: (error: unknown) => void;
+  /** Applied once the held package is listed: the view, and the selection if the package still lists it. */
+  readonly initial?: ViewerStart | null;
 }
 
 /** What one release left: its synchronous failures, and when every audio context it closed is confirmed closed. */
@@ -69,6 +80,7 @@ const EMPTY = Object.freeze([]) as readonly never[];
 
 class Owner implements ViewerOwner {
   readonly renderer: ViewerRenderer;
+  readonly serial: number;
   readonly #holder: ResourceHolder;
   readonly #audioOptions: ViewerAudioOptions;
   readonly #reportError: (error: unknown) => void;
@@ -89,7 +101,10 @@ class Owner implements ViewerOwner {
    * Throws a RollbackError when the renderer or the holder subscriptions could not be undone after a failed creation.
    * A surface that cannot be connected but is released cleanly leaves the viewer without a picture, still listing items.
    */
-  constructor({ holder, render, audio, reportError }: ViewerOwnerOptions, audioReady: Promise<boolean>, latch: (cause: unknown) => void) {
+  constructor(
+    { holder, render, audio, reportError, initial = null }: ViewerOwnerOptions, audioReady: Promise<boolean>, latch: (cause: unknown) => void, serial: number,
+  ) {
+    this.serial = serial;
     this.#holder = holder;
     this.#audioOptions = { ...audio, reportError };
     this.#reportError = reportError;
@@ -110,6 +125,7 @@ class Owner implements ViewerOwner {
       this.#cleanups.push(holder.beforeReplace(() => this.#releaseContent()));
       this.#cleanups.push(holder.subscribe(() => this.#follow()));
       this.#follow();
+      if (initial) this.#start(initial);
     } catch (cause) {
       const { failures } = this.dispose();
       if (failures.length > 0) throw new RollbackError(cause, failures, 'Viewer creation and cleanup failed');
@@ -173,6 +189,14 @@ class Owner implements ViewerOwner {
     this.#resolved = null;
     const failures = attemptAll([...this.#cleanups.splice(0), () => { this.renderer.dispose(); }]);
     return { failures, closed: this.#afterClose(this.#releaseAudio()) };
+  }
+
+  #start({ selected, variant, view }: ViewerStart): void {
+    if (view !== this.#snapshot.view) {
+      this.renderer.setView(view);
+      this.#set({ view });
+    }
+    if (selected !== null) this.select(selected, variant);
   }
 
   /** Before the holder replaces the package: nothing shown, no pending audition, the audio released. */
@@ -276,6 +300,7 @@ class Lifecycle implements ViewerLifecycle {
   readonly #options: ViewerLifecycleOptions;
   #failure: { readonly cause: unknown } | null = null;
   #owner: Owner | null = null;
+  #serial = 0;
   /** The latest audio close: true once confirmed, false when it failed. */
   #closed: Promise<boolean> = Promise.resolve(true);
 
@@ -288,7 +313,7 @@ class Lifecycle implements ViewerLifecycle {
     this.close();
     if (this.#failure) return null;
     try {
-      this.#owner = new Owner(create(), this.#closed, cause => this.#latch(cause));
+      this.#owner = new Owner(create(), this.#closed, cause => this.#latch(cause), ++this.#serial);
     } catch (error) {
       if (error instanceof RollbackError) this.#latch(error);
       throw error;

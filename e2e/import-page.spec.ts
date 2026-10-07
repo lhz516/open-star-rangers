@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { discFiles, expectNoPlayClaim, openTestEntry, sliceFiles, type FilePayload as Payload, type TestEntryOptions } from './support/app-entry.ts';
+import { discFiles, expectNoPlayClaim, openTestEntry, sliceFiles, smallFile as small, type FilePayload as Payload, type TestEntryOptions } from './support/app-entry.ts';
 import { consoleText, test, expect } from './support/browser-test.ts';
 import { loadCacheModules, readStoredRecords } from './support/resource-cache.ts';
 import { MARKER } from '../src/original-data/disc/disc.test-support.ts';
@@ -9,7 +9,6 @@ import { generatedContent, sliceCoveredFiles } from '../src/workers/synthetic-im
 // synthetic CloneCD files generated here. Every generated file name contains MARKER, which must reach neither the page
 // nor the console.
 
-const small = (name: string): Payload => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from(`synthetic ${name}`) });
 
 async function openImport(page: Page, options: TestEntryOptions = {}): Promise<void> {
   await openTestEntry(page, options);

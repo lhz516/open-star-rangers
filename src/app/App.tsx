@@ -6,19 +6,16 @@
  */
 import { useState, type ReactNode } from 'react';
 import { describeError } from '../ui/game/describe-error.ts';
-import { ImportPage } from '../ui/import/ImportPage.tsx';
 import { MainMenuPage } from '../ui/pages/MainMenuPage.tsx';
 import { SyntheticDemoPage } from '../ui/pages/SyntheticDemoPage.tsx';
-import { ViewerPage } from '../ui/viewer/ViewerPage.tsx';
 import { createSyntheticDemoLifecycle, type SyntheticDemoLifecycle } from './composition/synthetic-demo-lifecycle.ts';
 import { useResourceHolder } from './composition/use-resource-holder.ts';
 import { useSyntheticDemoOwner } from './composition/use-synthetic-demo-owner.ts';
-import { useViewerOwner } from './composition/use-viewer-owner.ts';
-import { useImportJob } from './import/use-import-job.ts';
+import { ImportScreen } from './ImportScreen.tsx';
 import { INITIAL_APP_FLOW, nextAppFlow, type AppFlowInput, type AppFlowState } from './flow/app-flow.ts';
 import type { AppPorts } from './ports.ts';
-import type { ResourceHolder, ResourceHolderSnapshot } from './resources/resource-holder.ts';
-import { createViewerLifecycle, type ViewerLifecycle } from './viewer/viewer-owner.ts';
+import { createViewerLifecycle } from './viewer/viewer-owner.ts';
+import { ViewerScreen } from './ViewerScreen.tsx';
 
 /** Creates and releases the demo owner with the screen's view container. */
 function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
@@ -28,37 +25,6 @@ function DemoScreen({ lifecycle, demoBlocked, onReturn }: {
 }) {
   const { owner, containerRef } = useSyntheticDemoOwner(lifecycle);
   return <SyntheticDemoPage demo={owner} viewRef={containerRef} demoBlocked={demoBlocked} onReturn={onReturn} />;
-}
-
-/** Creates and releases the import page's job owner with the screen. */
-function ImportScreen({ ports, holder, resources, onReturn }: {
-  readonly ports: AppPorts;
-  readonly holder: ResourceHolder | null;
-  readonly resources: ResourceHolderSnapshot | null;
-  readonly onReturn: () => void;
-}) {
-  const job = useImportJob(ports, holder);
-  return (
-    <ImportPage
-      job={job}
-      resources={resources}
-      checkSpace={async () => (holder ? holder.checkSpace() : null)}
-      onSave={() => { holder?.save(); }}
-      onReturn={onReturn}
-    />
-  );
-}
-
-/** Creates and releases the viewer owner with the screen's picture area. */
-function ViewerScreen({ lifecycle, ports, holder, resources, onReturn }: {
-  readonly lifecycle: ViewerLifecycle;
-  readonly ports: AppPorts;
-  readonly holder: ResourceHolder | null;
-  readonly resources: ResourceHolderSnapshot | null;
-  readonly onReturn: () => void;
-}) {
-  const { owner, containerRef, container } = useViewerOwner(lifecycle, ports, holder);
-  return <ViewerPage viewer={owner} viewRef={containerRef} view={container} resources={resources} onReturn={onReturn} />;
 }
 
 /** A failure the shell reports itself, with its original cause. */

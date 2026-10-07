@@ -3,7 +3,7 @@ import { RESOURCE_GROUPS, type ResourceGroup } from '../../content/asset-contrac
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { SYNTHETIC_ASSETS, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
 import { IMPORT_PROTOCOL_VERSION, type ImportStartMessage } from '../../workers/import-protocol.ts';
-import { createImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
+import { createImportJobOwner, liveImportJobOwners, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerEvents, ImportWorkerPort } from './import-worker-port.ts';
 
 const MARKER = 'PRIVATE-MARKER';
@@ -86,6 +86,21 @@ function isDeepFrozen(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || ArrayBuffer.isView(value)) return true;
   return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen);
 }
+
+describe('owner diagnostics', () => {
+  it('numbers owners in creation order and counts those not yet disposed', () => {
+    const create = () => createImportJobOwner({ createPort: () => { throw new Error('unused'); }, reportError: () => undefined });
+    const live = liveImportJobOwners();
+    const [first, second] = [create(), create()];
+    expect(second.serial).toBe(first.serial + 1);
+    expect(liveImportJobOwners()).toBe(live + 2);
+    first.dispose();
+    first.dispose();
+    expect(liveImportJobOwners()).toBe(live + 1);
+    second.dispose();
+    expect(liveImportJobOwners()).toBe(live);
+  });
+});
 
 describe('normal import', () => {
   it('moves from idle through starting and running to finished, terminating the Worker once', () => {

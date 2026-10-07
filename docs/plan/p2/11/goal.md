@@ -116,7 +116,7 @@ updated: 2026-10-06
 | [10-viewer-owner-audio.md](./subtasks/10-viewer-owner-audio.md) | 02, 08, 22 | completed |
 | [11-viewer-page.md](./subtasks/11-viewer-page.md) | 04, 06, 09, 10 | completed |
 | [12-cache-browser-recovery.md](./subtasks/12-cache-browser-recovery.md) | 07, 11 | completed |
-| [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | pending |
+| [13-lifecycle-hot-reload.md](./subtasks/13-lifecycle-hot-reload.md) | 07, 11 | completed |
 | [14-production-preview-csp.md](./subtasks/14-production-preview-csp.md) | 07, 11, 21 | pending |
 | [15-effect-mapping-research.md](./subtasks/15-effect-mapping-research.md) | — | completed |
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | pending |

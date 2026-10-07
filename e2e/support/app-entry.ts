@@ -57,3 +57,6 @@ export async function importFiles(page: Page, files: readonly FilePayload[], opt
   await button(page, 'Start import').click();
   await expect(page.getByTestId('import-statuses')).toContainText(until, { timeout: 60_000 });
 }
+
+/** A small file with synthetic text content, for start rules and Worker scenarios that never read it. */
+export const smallFile = (name: string): FilePayload => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from(`synthetic ${name}`) });

@@ -70,7 +70,7 @@ export function ImportPage({ job, resources, checkSpace, onSave, onReturn }: Imp
   const imported = held !== null && held.generation === job.resultGeneration ? held : null;
   const unsaved = unsavedCache(imported);
   return (
-    <section aria-labelledby="import-heading">
+    <section aria-labelledby="import-heading" data-job-owner={job.owners.serial ?? ''} data-live-job-owners={job.owners.live}>
       <h2 id="import-heading" ref={heading} tabIndex={-1}>Import original game data</h2>
       <p>
         Select the CloneCD files of your own Star Rangers disc: a <code>.ccd</code> file and the <code>.img</code> file with the

@@ -319,6 +319,33 @@ describe('viewer owner models, effects and view', () => {
   });
 });
 
+describe('viewer owner initial state', () => {
+  it('starts from a given selection, variant and view, and only from the view for an entry no longer listed', () => {
+    const { holder, lifecycle, surfaces, open } = setup({ groups: packageGroups({ models: true }) });
+    const first = open()!;
+    first.select(id('model/synthetic-player'), 1);
+    first.changeView({ type: 'rotate', axis: 'vertical', steps: 2 });
+    const { selected, variant, view } = first.getSnapshot();
+    const surface = new RecordingSurface();
+    const second = lifecycle.open(() => ({
+      holder, render: { surface, reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn(),
+      initial: { selected, variant, view },
+    }))!;
+    surface.resize();
+    expect(second).not.toBe(first);
+    expect([first.serial, second.serial]).toEqual([1, 2]);
+    expect(second.getSnapshot()).toMatchObject({ selected: 'model/synthetic-player', variant: 1, view: { yaw: 30 } });
+    expect(second.renderer.diagnostics()).toMatchObject({ item: { kind: 'model', id: 'model/synthetic-player' }, view: { yaw: 30 } });
+    expect(surfaces[0].calls).toContain('dispose');
+
+    const third = lifecycle.open(() => ({
+      holder, render: { surface: new RecordingSurface(), reportError: vi.fn() }, audio: { capability: new FakeAudio(), lifecycle: new FakeLifecycle() }, reportError: vi.fn(),
+      initial: { selected: id('model/no-longer-listed'), variant: 0, view },
+    }))!;
+    expect(third.getSnapshot()).toMatchObject({ selected: null, view: { yaw: 30 } });
+  });
+});
+
 describe('viewer owner release barriers and failures', () => {
   it('keeps every replacement waiting for the first pending close', async () => {
     const { holder, open, capability } = setup();

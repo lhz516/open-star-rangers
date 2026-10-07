@@ -201,6 +201,7 @@ export function ViewerPage({ viewer, viewRef, view, resources, onReturn }: Viewe
         aria-label={`Resource viewer picture: ${selected ? selected.id : 'nothing selected'}`}
         aria-describedby="viewer-keys"
         data-testid="viewer-view"
+        data-owner={viewer?.serial ?? ''}
       />
       <p id="viewer-keys">With the picture focused, the arrow keys turn models and effects, + and - zoom, and 0 resets the view.</p>
       <div role="group" aria-label="View">

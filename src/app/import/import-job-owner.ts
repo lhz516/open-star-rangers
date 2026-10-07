@@ -50,6 +50,8 @@ export type ImportStartResult =
   | { readonly status: 'busy' | 'invalid-files' | 'disposed' };
 
 export interface ImportJobOwner {
+  /** This owner's number in the page, from 1: a diagnostic of which owner is live (S-12). */
+  readonly serial: number;
   /**
    * Starts a job with a new job ID and a new Worker when no job is active. The accepted files are copied at once to a
    * private `{ name, blob }` list holding only the Blob references; later changes to the array do not reach the job.
@@ -134,7 +136,14 @@ class Job {
   }
 }
 
+/** Owners created in this page and those not yet disposed, for the S-12 diagnostics. */
+const owners = { created: 0, live: 0 };
+
+/** Job owners not yet disposed in this page. */
+export const liveImportJobOwners = (): number => owners.live;
+
 class Owner implements ImportJobOwner {
+  readonly serial = ++owners.created;
   readonly #createPort: ImportWorkerPortFactory;
   readonly #reportError: (error: unknown) => void;
   readonly #listeners = new Set<{ readonly listener: () => void }>();
@@ -149,6 +158,7 @@ class Owner implements ImportJobOwner {
   constructor({ createPort, reportError }: ImportJobOwnerOptions) {
     this.#createPort = createPort;
     this.#reportError = reportError;
+    owners.live++;
   }
 
   start(files: readonly File[]): ImportStartResult {
@@ -189,6 +199,7 @@ class Owner implements ImportJobOwner {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    owners.live--;
     this.#results = null;
     this.#listeners.clear();
     const job = this.#job;

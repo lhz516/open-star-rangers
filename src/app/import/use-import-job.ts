@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AppPorts } from '../ports.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
-import { createImportJobOwner, type ImportJobOwner, type ImportJobSnapshot, type ImportStartResult } from './import-job-owner.ts';
+import { createImportJobOwner, liveImportJobOwners, type ImportJobOwner, type ImportJobSnapshot, type ImportStartResult } from './import-job-owner.ts';
 
 export interface ImportJobHandle {
   /** Null before the effect runs and between owners. */
@@ -18,6 +18,8 @@ export interface ImportJobHandle {
   readonly durationMs: number | null;
   /** The holder generation of the package this page's latest job produced; null before it was handed over. */
   readonly resultGeneration: number | null;
+  /** Diagnostics of S-12's one owner per screen: the owner's number in this page, and how many are not yet disposed. */
+  readonly owners: { readonly serial: number | null; readonly live: number };
   start(files: readonly File[]): ImportStartResult;
 }
 
@@ -84,5 +86,8 @@ export function useImportJob({ createImportPort, reportError }: Pick<AppPorts, '
     }
     return outcome;
   }, [owner]);
-  return { owner, snapshot, durationMs, resultGeneration: result?.holder === holder ? result.generation : null, start };
+  return {
+    owner, snapshot, durationMs, resultGeneration: result?.holder === holder ? result.generation : null, start,
+    owners: { serial: owner?.serial ?? null, live: liveImportJobOwners() },
+  };
 }

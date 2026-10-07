@@ -319,13 +319,17 @@ P1-08 的 React 菜单原型，契约见 [P1-08 spec](../plan/p1/08/spec.md)。�
   - 只测缓存适配的浏览器用例经 [resource-cache.ts](../../e2e/support/resource-cache.ts) 的 `loadCacheModules` 打开不含应用的 [blank.html](../../e2e/entries/blank.html)，因为应用一载入就列出缓存，会打开（从而创建）数据库。
   - 入口：持有资源包时有 `View resources`；未持有且有可恢复条目时有 `Open saved resources`（恢复中禁用，由它发起的恢复成功后焦点移到 `View resources`）；完整资源包未保存时有 `Save again`（保存中禁用）。
   - 查看器入口在查看器锁存后禁用并说明原因；外壳以 `viewer-cleanup-failure` 警告显示锁存的原因，导入与演示照常可用。
-- **查看器页面（P2-11 S-07 至 S-09）：** [ViewerPage](../../src/ui/viewer/ViewerPage.tsx) 由外壳内的 `ViewerScreen` 渲染，后者调用 [use-viewer-owner.ts](../../src/app/composition/use-viewer-owner.ts)。
+- **画面模块与 Fast Refresh（P2-11 S-12）：** 外壳的资源持有者在 `App` 自己的 effect 中创建，`App.tsx` 的 Fast Refresh 会重建它并丢掉持有的资源包。因此 [ImportScreen](../../src/app/ImportScreen.tsx) 与 [ViewerScreen](../../src/app/ViewerScreen.tsx) 各在自己的模块中：编辑它们或它们的 hook 时，只刷新该画面，外壳与资源包保留。
+  - **StrictMode 下的重跑：** 刷新时 React 只经刷新重建的依赖（`useCallback`、`useMemo` 的结果）重跑 effect；依赖都是 props 与 state 的 effect 不会重跑。所以两个 hook 的 effect 都依赖一个 memo 化的回调：`useImportJob` 的移交，`useViewerOwner` 的 `optionsFor`。编辑 hook 后，作业持有者或查看器所有者即被替换。
+  - **接续：** 查看器所有者被替换时（StrictMode 重跑、Fast Refresh），hook 在 effect 清理时记下它所选的条目、变体与视图，交给下一个所有者作为起始状态（`ViewerOwnerOptions.initial`）；离开查看器后再打开则从未选中开始。
+  - **诊断：** 查看器槽位从 1 起为所有者编号（`ViewerOwner.serial`），画面区域的 `data-owner` 显示它；作业持有者在页面中同样编号（`ImportJobOwner.serial`），并以 `liveImportJobOwners()` 计数尚未释放的；导入页面的 section 以 `data-job-owner` 与 `data-live-job-owners` 显示。E2E 用它们区分真正的替换与只重渲染。
+- **查看器页面（P2-11 S-07 至 S-09）：** [ViewerPage](../../src/ui/viewer/ViewerPage.tsx) 由 `ViewerScreen` 渲染，后者调用 [use-viewer-owner.ts](../../src/app/composition/use-viewer-owner.ts)。
   - **所有者：** hook 在画面区域挂载后经外壳的查看器槽位（`createViewerLifecycle`）打开所有者。表面由端口的 `createSurface(container, VIEWER_SURFACE)` 在槽位决定创建所有者之后才创建，所以锁存后不会再有画布；创建失败时改为不可用的渲染器，回滚也失败（`RollbackError`）时槽位锁存；卸载、StrictMode 重跑、Fast Refresh 与更换容器时关闭槽位。“Return to menu”先同步关闭槽位再切换画面，所以同步的释放失败在菜单出现前锁存；音频 `close()` 被拒绝则在观察到时锁存。
   - **页面：** 完整资源包显示其内容身份（manifest 身份与转换器版本），供核对恢复前后是否相同；按种类（模型、效果、图像、调色板、布局、字库）列出条目，默认不选中；所选条目显示失败（code、位置、原因）或变体：模型的部件列表单选（附内容与置信度）、效果的视图单选（附各形状的原值、绘制字节与“Texture mapping unconfirmed”标记）、模型的中性光开关、导弹的贴图旋转序号。资源包不完整时始终显示说明与各组状态。
   - **画面：** 4:3 区域（`viewer-view`）可用 Tab 到达，有焦点轮廓与含当前 Asset ID 的无障碍名称；键盘操作见[键位文档](./keyboard-input.md#资源查看器的诊断键p2-11)，同样的操作有按钮。渲染状态以 `status` 或 `alert` 显示；“Refresh diagnostics”按需读出渲染诊断（状态、条目、绘制次数、GPU 计数、布局、位置与视图）。
   - **试听与任务：** [ViewerAudioPanel](../../src/ui/viewer/ViewerAudioPanel.tsx) 列出声音及播放、停止与全部停止按钮，显示音频状态、发声数与失败原因；任务一节以 [viewer-copy.ts](../../src/ui/viewer/viewer-copy.ts) 的文字显示 04 的结构摘要与引用校验（逐个列出解析到的模型及其是否在模型组中），失败时以 `FailureNotice` 显示类别与技术细节。只显示结构与计数，不显示原版文字。
   - React 只提交意图，按所有者、渲染器与音频的快照变化渲染，不随绘制重渲染。所有者与音频的 `getSnapshot`、`subscribe` 是绑定的函数，可直接交给 `useSyncExternalStore`。
-- **导入页面（P2-11 S-02）：** [ImportPage](../../src/ui/import/ImportPage.tsx) 由外壳内的 `ImportScreen` 渲染，后者调用 [use-import-job.ts](../../src/app/import/use-import-job.ts)。
+- **导入页面（P2-11 S-02）：** [ImportPage](../../src/ui/import/ImportPage.tsx) 由 `ImportScreen` 渲染，后者调用 [use-import-job.ts](../../src/app/import/use-import-job.ts)。
   - **作业持有者：** hook 在 effect 中以端口的 Worker 工厂创建作业持有者，卸载、StrictMode 重跑与 Fast Refresh 时释放并终止 Worker。作业结束时，hook 在持有者自己的通知中把组交给资源持有者，所以随即离开页面也不丢组；此刻没有可用的资源持有者时，移交等到下一个持有者出现，新作业开始时放弃。提交属于资源持有者，不因离开页面中断。hook 另以页面时钟记录每个作业从开始到结束的耗时，并记下本页最近作业所得资源包的持有者实例与代际。
   - **控件：** 文件输入（`.ccd,.img,.sub,.cue`，可多选）、`Start import`、`Cancel import` 与 `Return to menu`。
   - **开始：** 资源持有者存在后才能开始。先做建议性的空间检查；`insufficient` 时先显示所需与可用的 MiB，由玩家选择 `Import anyway` 或 `Do not import`。检查进行中与等待选择时，开始按钮与文件输入都禁用；更换文件、开始作业或离开页面会使未完成的检查作废，所以开始的总是当前显示的文件。启动规则不符时显示 `start/file-rules` 文案，不创建 Worker。
