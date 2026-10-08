@@ -122,7 +122,7 @@ updated: 2026-10-08
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | completed |
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
 | [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | completed |
-| [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | in-progress |
+| [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | completed |
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | pending |
 | [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | pending |
 | [25-engineering-docs.md](./subtasks/25-engineering-docs.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | completed |
@@ -136,6 +136,7 @@ updated: 2026-10-08
 - **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 原拟由 17 的本地脚本估计，后经 rubber-duck 指出 17 的范围不含截图级贴图可见性，改在 21 中视觉判定（2026-10-08 技术决定 8 修订后由 agent 完成）。
 - **2026-10-08 — 21 完成，部分验收仍开放：** 用户完成导入、恢复与任务诊断（身份一致）及 12 项试听（与 WAV 一致，完整播放与 Stop 正常）。agent 按技术决定 8 的修订完成 V-1、V-2、V-3 与 V-4（123 项）的视觉核对，明细在被忽略的 `local/research/p2-12/session/record.md`。3 项差异交 22：基地贴图 02、04 的方向与原版相差约 90°；两种敌机的部件列表 2 在原版中受击时以抖动半透明方式显示，查看器中为不透明纯色。仍开放：AC-14、AC-15（33 项因延后的补拍为无法判定，按用户决定由 26 新增修复子任务）；AC-18（用户称已在原版中对照，待注明开火、导弹、Warp、爆炸各自对照的 Asset 后补记）。
 - **2026-10-08 — 17 完成，AC-17 的 agent 部分仍 blocked：** 17 的覆盖表与核对已完成。23 个图像（gauge-bar 0/3、status-display background-2、overlay 0–5/8、unit-marker 0/1/7/8/14/17/26–28、zoom-icon 26–28、image/missile）、palette/missile 与 font/hud/4x6 为“无法判定”，原因是 C-07/C-08/C-09/C-10 的补拍被延后（见 15 的用户决定）。按用户“记录缺口，相应验收保持 blocked，稍后重做”的决定，本行按已完成记录，AC-17 的缺口交 26 新增修复子任务处理；恢复条件为补拍上述场景。U-030：文字后的状态显示屏标记与 srangers_068 的左显示屏不能排除缺少切片图形，交 24 判断。
+- **2026-10-08 — 22 完成，无呈现修正；发现模型贴图坐标的转换缺陷：** 呈现约定逐行判定完毕，没有需要修正的约定。21 的差异 1（基地贴图 02、04 的方向）来自 MESH 贴图坐标块的读取（现按每顶点成对交错读取；按两个连续数组读取时，全部 486 个 MESH 中 453 个更合理，并与本地截图一致，高概率）。缺陷在规范 payload 的值，按 spec“不包含”回责任任务 P2-06 修复：修订其 spec/goal 并经用户批准，改读取、合成构建器与测试、mesh §1，递增模型转换器版本，得到新候选后重新导入。缺陷影响全部带贴图的模型部件，21 中 V-1 的 5 项“一致”是在错误映射下判定的，已在本地记录中改为待复核。差异 2、3（敌机第 2 列表受击时的点阵半透明）属运行时表现（P3，U-027），不修正；其静态外形为无法判定。AC-14 与完整的 AC-21 保持 blocked，恢复条件：P2-06 修复并递增模型转换器版本，在新候选上重跑受影响的 agent 脚本，并复核 V-1 中 10 个带贴图模型项（各模型列表 0、1）。按 spec 的“发现转换或内容缺陷”与候选变化规则，这一复核不属于 23（23 只复核 22 的呈现修正），由 26 新增修复子任务。P2-06 的修订待用户批准。
 - **2026-10-08 — 视频次级基准（用户批准）：** 用户指定一个公开实机视频播放列表，并批准其帧作 V-1、V-2、地图图标与 HUD 状态的次级基准；以视频为基准的判定最高为高概率，逐像素比较仍只用本地截图。spec 与指南已同步。
 - **2026-10-08 — 技术决定 8 修订（用户批准）：** 用户要求并明确批准 21、23 中的视觉对照（C-05、C-12、V-1、V-2、二维显示）改由 agent 经 Computer Use 完成，试听仍由用户完成。spec、工作流、指南与 21、23 已同步修订。此前（2026-10-07 23:55）一次只读文本读取时，工具自动附带了查看器截图，其中有一张原版贴图；当时尚未修订，该截图未用于任何判定。
 - **2026-10-07 — 负载相关的检查超时：** 高负载（load ≈ 13–30）下 `pnpm check` 中 `tools/engineering-boundaries.test.ts` 的渲染边界用例偶发 5 s 超时（单独运行约 1.8 s 通过；06、09 的 worker 在不含对方改动的基线上也遇到）。集成时以 `vitest run --maxWorkers=3` 加 typecheck、lint、build 代替完整并行运行，未改超时。26 应在低负载下运行 `pnpm check`。
