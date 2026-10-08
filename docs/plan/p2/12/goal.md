@@ -118,7 +118,7 @@ updated: 2026-10-07
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | in-progress |
 | [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | pending |
 | [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | pending |
-| [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | in-progress |
+| [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | in-progress |
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
 | [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | pending |
