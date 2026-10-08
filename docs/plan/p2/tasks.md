@@ -82,10 +82,10 @@ P2 要证明的是**用户本地原版数据可以成为 P3 实际消费的、�
 | P2-09 | [单任务与战略地图/Warp 数据](./09/spec.md)（[goal](./09/goal.md)） | SCEN/SCCT 定向解析、必要参数、规范任务和 Core 纯载入 | P2-04 |
 | P2-10 | [IndexedDB 最小资源缓存](./10/spec.md)（[goal](./10/goal.md)） | 版本化缓存键、完整包原子提交、恢复校验与存储失败反馈 | P2-03 |
 | P2-11 | [真实导入流程与最小资源查看器](./11/spec.md)（[goal](./11/goal.md)、[本地导入指南](../../guides/local-import.md)） | React 导入闭环、缓存接线、资源实际预览、任务载入诊断 | P2-06、P2-07、P2-08、P2-09、P2-10 |
-| P2-12 | [资源管线联合验证与本地对照](#p2-12-资源管线联合验证与本地对照) | 合成端到端、坏输入/取消/缓存回归、原版本地保真与无上传证据 | P2-11 |
+| P2-12 | [资源管线联合验证与本地对照](./12/spec.md)（[goal](./12/goal.md)） | 合成端到端、坏输入/取消/缓存回归、原版本地保真与无上传证据 | P2-11 |
 | P2-13 | [P2 退出评审与 P3 交接](#p2-13-p2-退出评审与-p3-交接) | 逐项核验阶段退出条件，形成新评审与资源/规则责任交接 | P2-01 至 P2-12 |
 
-P2-01 的 spec 与 goal 已创建并获批准，执行进度只在其 [goal tracker](./01/goal.md#子任务跟踪) 维护；P2-02 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./02/goal.md#子任务跟踪) 维护；P2-03 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./03/goal.md#子任务跟踪) 维护；P2-04 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./04/goal.md#子任务跟踪) 维护；P2-10 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./10/goal.md#子任务跟踪) 维护；P2-05 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./05/goal.md#子任务跟踪) 维护；P2-08 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./08/goal.md#子任务跟踪) 维护；P2-09 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./09/goal.md#子任务跟踪) 维护；P2-06 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./06/goal.md#子任务跟踪) 维护；P2-07 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./07/goal.md#子任务跟踪) 维护；P2-11 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./11/goal.md#子任务跟踪) 维护；其余任务尚未创建 spec/goal。索引只维护导航，不复制任务状态；后续按需在 `04/` 等目录生成实际契约。
+P2-01 的 spec 与 goal 已创建并获批准，执行进度只在其 [goal tracker](./01/goal.md#子任务跟踪) 维护；P2-02 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./02/goal.md#子任务跟踪) 维护；P2-03 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./03/goal.md#子任务跟踪) 维护；P2-04 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./04/goal.md#子任务跟踪) 维护；P2-10 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./10/goal.md#子任务跟踪) 维护；P2-05 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./05/goal.md#子任务跟踪) 维护；P2-08 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./08/goal.md#子任务跟踪) 维护；P2-09 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./09/goal.md#子任务跟踪) 维护；P2-06 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./06/goal.md#子任务跟踪) 维护；P2-07 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./07/goal.md#子任务跟踪) 维护；P2-11 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./11/goal.md#子任务跟踪) 维护；P2-12 的 spec 与 goal 见上表链接，执行进度只在其 [goal tracker](./12/goal.md#子任务跟踪) 维护；其余任务尚未创建 spec/goal。索引只维护导航，不复制任务状态；后续按需在 `04/` 等目录生成实际契约。
 
 ## 4. 任务范围与责任
 
