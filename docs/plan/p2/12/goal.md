@@ -120,7 +120,7 @@ updated: 2026-10-07
 | [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | pending |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | pending |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | pending |
-| [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | in-progress |
+| [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
 | [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | pending |
 | [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | pending |
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | pending |
