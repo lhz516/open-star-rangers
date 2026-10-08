@@ -117,7 +117,7 @@ updated: 2026-10-08
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | completed |
 | [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | completed |
-| [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | in-progress |
+| [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | completed |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | completed |
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
@@ -133,7 +133,8 @@ updated: 2026-10-08
 ## 执行记录
 
 - **2026-10-07 — 协调方式：** 本机宿主不能在协调者创建的文件夹中启动会话，worker 改用应用创建的 worktree（从 `goal/p2-12` 分出，分支经 rename 为带应用前缀的 `lhz516-exec-p2-12-NN`，代替 `exec/p2-12-NN`）；集成按 `Worker-Commit` trailer 核对。协调者在 `open-star-rangers.worktrees/goal-p2-12` 维护目标分支；用户会话使用固定在 `9e6188f` 的单独检出（构建指纹与 12 的候选相同）。
-- **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 由 17 的本地脚本估计。
+- **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 原拟由 17 的本地脚本估计，后经 rubber-duck 指出 17 的范围不含截图级贴图可见性，改在 21 中视觉判定（2026-10-08 技术决定 8 修订后由 agent 完成）。
+- **2026-10-08 — 17 完成，AC-17 的 agent 部分仍 blocked：** 17 的覆盖表与核对已完成。23 个图像（gauge-bar 0/3、status-display background-2、overlay 0–5/8、unit-marker 0/1/7/8/14/17/26–28、zoom-icon 26–28、image/missile）、palette/missile 与 font/hud/4x6 为“无法判定”，原因是 C-07/C-08/C-09/C-10 的补拍被延后（见 15 的用户决定）。按用户“记录缺口，相应验收保持 blocked，稍后重做”的决定，本行按已完成记录，AC-17 的缺口交 26 新增修复子任务处理；恢复条件为补拍上述场景。U-030：文字后的状态显示屏标记与 srangers_068 的左显示屏不能排除缺少切片图形，交 24 判断。
 - **2026-10-08 — 视频次级基准（用户批准）：** 用户指定一个公开实机视频播放列表，并批准其帧作 V-1、V-2、地图图标与 HUD 状态的次级基准；以视频为基准的判定最高为高概率，逐像素比较仍只用本地截图。spec 与指南已同步。
 - **2026-10-08 — 技术决定 8 修订（用户批准）：** 用户要求并明确批准 21、23 中的视觉对照（C-05、C-12、V-1、V-2、二维显示）改由 agent 经 Computer Use 完成，试听仍由用户完成。spec、工作流、指南与 21、23 已同步修订。此前（2026-10-07 23:55）一次只读文本读取时，工具自动附带了查看器截图，其中有一张原版贴图；当时尚未修订，该截图未用于任何判定。
 - **2026-10-07 — 负载相关的检查超时：** 高负载（load ≈ 13–30）下 `pnpm check` 中 `tools/engineering-boundaries.test.ts` 的渲染边界用例偶发 5 s 超时（单独运行约 1.8 s 通过；06、09 的 worker 在不含对方改动的基线上也遇到）。集成时以 `vitest run --maxWorkers=3` 加 typecheck、lint、build 代替完整并行运行，未改超时。26 应在低负载下运行 `pnpm check`。
