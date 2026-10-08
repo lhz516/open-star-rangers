@@ -1,10 +1,9 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import type { Page } from '@playwright/test';
 import { variantLabel } from '../src/ui/viewer/viewer-copy.ts';
 import { button, openTestEntry, sliceFiles, smallFile } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { expect, test } from './support/browser-test.ts';
+import { connectedCanvases, jobOwners, markDocument, viewerOwner, withEdits } from './support/fast-refresh.ts';
 import { entryButton, firstEntry, openViewer, viewerDiagnostics, type ViewerDiagnostics } from './support/viewer-observations.ts';
 
 // P2-11 subtask 13 (AC-16): StrictMode, Fast Refresh and round trips of the production App on the development test
@@ -14,49 +13,10 @@ import { entryButton, firstEntry, openViewer, viewerDiagnostics, type ViewerDiag
 
 test.describe.configure({ timeout: 180_000 });
 
-declare global {
-  interface Window { osrRefreshDocument?: string }
-}
-
-/** Replaces `path`'s content in one rename, so a reader never sees a partial file. */
-async function writeAtomically(path: string, content: string): Promise<void> {
-  const temporary = `${path}.fast-refresh-e2e.tmp`;
-  await writeFile(temporary, content);
-  await rename(temporary, path);
-}
-
-/**
- * Runs `run` with an `edit(n)` that rewrites `file` with a distinct trailing comment, then restores the file and checks
- * it, whether or not `run` failed.
- */
-async function withEdits(file: string, run: (edit: (n: number) => Promise<void>) => Promise<void>): Promise<void> {
-  const path = resolve(file);
-  const original = await readFile(path, 'utf8');
-  try {
-    await run(n => writeAtomically(path, `${original}// Fast Refresh edit ${n} by e2e/fast-refresh.spec.ts; the test restores this file.\n`));
-  } finally {
-    await writeAtomically(path, original);
-    expect(await readFile(path, 'utf8'), `${file} is restored`).toBe(original);
-  }
-}
-
-/** Marks the document, so a full reload, which would replace it, is told apart from a Fast Refresh. */
-async function markDocument(page: Page): Promise<string> {
-  const mark = `document-${Date.now()}`;
-  await page.evaluate(value => { window.osrRefreshDocument = value; }, mark);
-  return mark;
-}
-
-const connectedCanvases = (page: Page) => page.evaluate(() => window.osrProbe.snapshot().canvases.filter(({ connected }) => connected).map(({ id }) => id));
 const liveWorkers = (page: Page) => page.evaluate(() => window.osrProbe.snapshot().workers.filter(({ terminations }) => terminations === 0).map(({ id, name }) => ({ id, name })));
 const allWorkers = (page: Page) => page.evaluate(() => window.osrProbe.snapshot().workers.map(({ id, terminations }) => ({ id, terminations })));
 const started = (page: Page) => page.evaluate(() => window.osrAudioProbe.started());
 const contexts = (page: Page) => page.evaluate(() => window.osrAudioProbe.contexts());
-const viewerOwner = (page: Page) => page.getByTestId('viewer-view').getAttribute('data-owner');
-const jobOwners = async (page: Page) => {
-  const section = page.locator('section[data-job-owner]');
-  return { serial: await section.getAttribute('data-job-owner'), live: await section.getAttribute('data-live-job-owners') };
-};
 
 test('a Fast Refresh of the viewer owner hook replaces the owner three times, keeping the shell and the shown item (AC-16)', async ({ page }) => {
   await page.addInitScript(installAudioProbe);

@@ -110,7 +110,7 @@ updated: 2026-10-08
 | [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | completed |
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | completed |
-| [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | in-progress |
+| [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | completed |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |

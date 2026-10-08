@@ -8,7 +8,10 @@ import type * as OwnershipModule from '../../src/content/ownership.ts';
 import type * as SliceModule from '../../src/content/slice-definition.ts';
 import type * as SyntheticModule from '../../src/content/synthetic-content.test-support.ts';
 import type * as CacheModule from '../../src/platform/storage/browser-resource-cache.ts';
-import { RESOURCE_CACHE_DATABASE } from '../../src/platform/storage/resource-cache-records.ts';
+import { packageRecordKey, payloadRecordKey, type ResourceCacheKey } from '../../src/platform/storage/resource-cache-contract.ts';
+import {
+  buildPackageRecord, buildStoredPayload, inDefinitionOrder, readGroupInputs, RESOURCE_CACHE_DATABASE,
+} from '../../src/platform/storage/resource-cache-records.ts';
 import type * as RecordsModule from '../../src/platform/storage/resource-cache-records.ts';
 import { collectBrowserErrors } from './browser-test.ts';
 import { installedBrowser } from './environment.ts';
@@ -168,7 +171,10 @@ export async function loadCacheModules(page: Page): Promise<void> {
   });
 }
 
-/** Wraps native IndexedDB methods to record transactions, write requests, abort calls and final events. */
+/**
+ * Wraps native IndexedDB methods to record transactions, write requests, abort calls and final events. The probe's own
+ * listeners are removed once their transaction, open request or connection ends, so a resource balance finds none left.
+ */
 export async function installIdbProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     if (window.osrIdbProbe) return;
@@ -198,9 +204,22 @@ export async function installIdbProbe(page: Page): Promise<void> {
       }
       const created = transaction.apply(this, args);
       record({ kind: 'transaction', mode: created.mode });
-      // Registered before the adapter assigns its handlers, so these run first.
-      created.addEventListener('complete', () => record({ kind: 'complete', mode: created.mode }));
-      created.addEventListener('abort', () => record({ kind: 'abort', mode: created.mode, ...(created.error ? { error: created.error.name } : {}) }));
+      // Registered before the adapter assigns its handlers, so these run first; both are removed once the transaction
+      // ends, so an ended transaction leaves no registration for a resource balance to count.
+      const ended = (): void => {
+        created.removeEventListener('complete', complete);
+        created.removeEventListener('abort', abort);
+      };
+      const complete = (): void => {
+        ended();
+        record({ kind: 'complete', mode: created.mode });
+      };
+      const abort = (): void => {
+        ended();
+        record({ kind: 'abort', mode: created.mode, ...(created.error ? { error: created.error.name } : {}) });
+      };
+      created.addEventListener('complete', complete);
+      created.addEventListener('abort', abort);
       return created;
     };
     for (const method of ['put', 'delete'] as const) {
@@ -222,13 +241,40 @@ export async function installIdbProbe(page: Page): Promise<void> {
       };
     }
     const open = IDBFactory.prototype.open;
+    /** How to remove the probe's listeners from each open connection. */
+    const connections = new WeakMap<IDBDatabase, () => void>();
     IDBFactory.prototype.open = function (this: IDBFactory, ...args: Parameters<IDBFactory['open']>) {
       const request = open.apply(this, args);
-      request.addEventListener('success', () => {
-        request.result.addEventListener('versionchange', () => record({ kind: 'versionchange' }));
-        request.result.addEventListener('close', () => record({ kind: 'close' }));
-      });
+      const settled = (): void => {
+        request.removeEventListener('success', opened);
+        request.removeEventListener('error', settled);
+      };
+      const opened = (): void => {
+        settled();
+        const db = request.result;
+        const versionchange = (): void => record({ kind: 'versionchange' });
+        const closed = (): void => {
+          forget();
+          record({ kind: 'close' });
+        };
+        const forget = (): void => {
+          connections.delete(db);
+          db.removeEventListener('versionchange', versionchange);
+          db.removeEventListener('close', closed);
+        };
+        db.addEventListener('versionchange', versionchange);
+        db.addEventListener('close', closed);
+        connections.set(db, forget);
+      };
+      request.addEventListener('success', opened);
+      request.addEventListener('error', settled);
       return request;
+    };
+    // A connection closed by script never receives `close`, so its listeners are removed here.
+    const close = IDBDatabase.prototype.close;
+    IDBDatabase.prototype.close = function (this: IDBDatabase) {
+      connections.get(this)?.();
+      close.call(this);
     };
     const abort = IDBTransaction.prototype.abort;
     IDBTransaction.prototype.abort = function (this: IDBTransaction) {
@@ -316,6 +362,85 @@ export async function readStoredRecords(page: Page, exact = false): Promise<Stor
     }
   }, exact);
 }
+
+/** FNV-1a of `bytes`, as `readStoredRecords` digests each stored payload. */
+function digest(bytes: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of bytes) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  return hash.toString(16);
+}
+
+/** Stored records in key order, each package record parsed, so records built or seeded in another order compare equal. */
+export function comparableRecords({ packages, payloads }: StoredRecords) {
+  const byKey = (left: { key: unknown[] }, right: { key: unknown[] }) => {
+    const [a, b] = [JSON.stringify(left.key), JSON.stringify(right.key)];
+    return a < b ? -1 : a > b ? 1 : 0;
+  };
+  return {
+    packages: [...packages].sort(byKey).map(({ key, value }) => ({ key, value: JSON.parse(value) as unknown })),
+    payloads: [...payloads].sort(byKey).map(({ key, schemaVersion, byteLength, digest: hash }) => ({ key, schemaVersion, byteLength, digest: hash })),
+  };
+}
+
+/**
+ * The records the cache stores for one complete package of group inputs, built in Node by the adapter's own record
+ * builders: its package record and each payload's length and digest, comparable with `comparableRecords`.
+ */
+export function expectedRecords(groups: readonly unknown[]): ReturnType<typeof comparableRecords> {
+  const ordered = inDefinitionOrder(readGroupInputs(groups, 'invalid-request'), 'invalid-request');
+  const record = buildPackageRecord(ordered);
+  return comparableRecords({
+    packages: [{ key: packageRecordKey(record.key), value: JSON.stringify(record) }],
+    payloads: ordered.flatMap(({ payloads }) => payloads.map(payload => {
+      const { schemaVersion, bytes } = buildStoredPayload(payload);
+      return { key: payloadRecordKey(record.key, payload.id), schemaVersion, byteLength: bytes.byteLength, digest: digest(new Uint8Array(bytes)) };
+    })),
+  });
+}
+
+/** How `damageStoredPackage` damages a stored package, named after the restore failure it causes. */
+export type StoredDamage = 'not-found' | 'cache-corrupt' | 'cache-incompatible';
+
+/**
+ * Damages the package stored under `key` from the test's own connection, as the browser clearing it, a damaged disk or
+ * a newer version in another tab could: deletes its package and payload records, flips the first byte of one payload,
+ * or rewrites its package record as format version 2. The database must exist; it is never created or upgraded.
+ */
+export const damageStoredPackage = (page: Page, key: ResourceCacheKey, damage: StoredDamage): Promise<void> => page.evaluate(async ({ database, packageKey, damage }) => {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(database.name, database.version);
+    request.onupgradeneeded = () => { request.transaction?.abort(); };
+    request.onsuccess = () => { resolve(request.result); };
+    request.onerror = () => { reject(new Error('The cache database must exist before it is damaged')); };
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction([database.packageStore, database.payloadStore], 'readwrite');
+      transaction.oncomplete = () => { resolve(); };
+      transaction.onabort = () => { reject(transaction.error ?? new Error('aborted')); };
+      const packages = transaction.objectStore(database.packageStore);
+      const payloads = transaction.objectStore(database.payloadStore);
+      const range = IDBKeyRange.bound(packageKey, [...packageKey, []]);
+      if (damage === 'not-found') {
+        packages.delete(packageKey);
+        payloads.delete(range);
+      } else if (damage === 'cache-corrupt') {
+        const cursor = payloads.openCursor(range);
+        cursor.onsuccess = () => {
+          const value = cursor.result!.value as { bytes: ArrayBuffer };
+          const bytes = new Uint8Array(value.bytes.slice(0));
+          bytes[0] ^= 1;
+          cursor.result!.update({ ...value, bytes: bytes.buffer });
+        };
+      } else {
+        const read = packages.get(packageKey);
+        read.onsuccess = () => { packages.put({ ...(read.result as object), formatVersion: 2 }, packageKey); };
+      }
+    });
+  } finally {
+    db.close();
+  }
+}, { database: RESOURCE_CACHE_DATABASE, packageKey: packageRecordKey(key), damage });
 
 /** Records every request the page issues while `run` executes. */
 export async function requestsDuring<T>(page: Page, run: () => Promise<T>): Promise<{ result: T; requests: string[] }> {
