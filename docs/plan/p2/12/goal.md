@@ -112,7 +112,7 @@ updated: 2026-10-07
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | pending |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
-| [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | in-progress |
+| [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | pending |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | pending |
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | pending |
