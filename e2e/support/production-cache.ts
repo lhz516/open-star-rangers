@@ -1,5 +1,7 @@
-import { expect, type Page } from '@playwright/test';
-import { validatePackage } from '../../src/content/completeness.ts';
+import type { Page } from '@playwright/test';
+import type { HeldGroup } from '../../src/app/resources/resource-holder.ts';
+import { validatePackage, type GroupInput } from '../../src/content/completeness.ts';
+import type { ContentIdentity } from '../../src/content/content-identity.ts';
 import { applyManifestIdentity } from '../../src/content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../../src/content/slice-definition.ts';
 import { packageRecordKey, payloadRecordKey } from '../../src/platform/storage/resource-cache-contract.ts';
@@ -9,12 +11,20 @@ import {
 import { PRODUCTION_PACKAGE } from '../../src/workers/production-package.ts';
 import { modelsPackage } from './viewer-observations.ts';
 
+/** The package a seed stored: its groups under the production identity, in slice definition order. */
+export interface SeededPackage {
+  readonly identity: ContentIdentity;
+  readonly groups: readonly GroupInput[];
+}
+
 /**
- * Seeds only an isolated test context with converted synthetic content under the production identity. Record builders
- * run in Node; the page creates the stored ArrayBuffers. No test modules or alternate app entry are served by preview.
+ * Seeds only an isolated test context with converted synthetic content under the production identity: the `models`
+ * package, or `converted`, such as the canary package (P2-12 S-06). The manifest identity is derived anew for the
+ * production basis; payloads are unchanged. Record builders run in Node; the page creates the stored ArrayBuffers. No
+ * test modules or alternate app entry are served by preview. Resolves to what it stored.
  */
-export async function seedProductionCache(page: Page): Promise<void> {
-  const inputs = readGroupInputs(await modelsPackage(), 'invalid-request');
+export async function seedProductionCache(page: Page, converted?: readonly HeldGroup[]): Promise<SeededPackage> {
+  const inputs = readGroupInputs(converted ?? await modelsPackage(), 'invalid-request');
   const { schemaVersion, sliceId, sliceDefinitionVersion } = inputs[0].manifest.identity;
   const groups = applyManifestIdentity({
     schemaVersion, sliceId, sliceDefinitionVersion,
@@ -25,7 +35,8 @@ export async function seedProductionCache(page: Page): Promise<void> {
     sources: sources && { ...sources, sourceFingerprint: PRODUCTION_PACKAGE.sourceFingerprint },
   })));
   chargeDeclaredBudget(PRODUCTION_PACKAGE.limits, groups, 'groups');
-  expect(validatePackage(CLASSIC_P2_SLICE, groups).status).toBe('complete');
+  const completeness = validatePackage(CLASSIC_P2_SLICE, groups);
+  if (completeness.status !== 'complete') throw new Error('The seeded package must be complete');
   const record = buildPackageRecord(groups);
   await page.evaluate(async ({ database, record, key, payloads }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -61,4 +72,5 @@ export async function seedProductionCache(page: Page): Promise<void> {
       return { key: payloadRecordKey(record.key, payload.id), schemaVersion: stored.schemaVersion, bytes: [...new Uint8Array(stored.bytes)] };
     })),
   });
+  return Object.freeze({ identity: completeness.identity, groups });
 }

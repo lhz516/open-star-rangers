@@ -1,6 +1,8 @@
+import { sha256Fingerprint } from '../sha256.ts';
+import type { GroupDraft } from '../manifest-identity.ts';
 import { syntheticGroup } from '../synthetic-content.test-support.ts';
-import type { LogicRole } from './logic-content.ts';
-import { encodeLogicPayload } from './logic-payload.ts';
+import type { CraftTypeTable, LogicRole, WingmanRoster } from './logic-content.ts';
+import { decodeLogicPayload, encodeLogicPayload } from './logic-payload.ts';
 
 // Code-generated synthetic logic content for tests; it never holds original data. Builders return fresh mutable plain
 // data that a test may corrupt. Names carry MARKER so privacy assertions can prove they never reach diagnostics.
@@ -106,4 +108,33 @@ export function syntheticLogicAsset(role: LogicRole, content: unknown = { missio
   const bytes = encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]);
   const [descriptor] = syntheticGroup('logic', [{ ...ASSETS[role], role, bytes }]).manifest.assets;
   return { bytes, descriptor };
+}
+
+/**
+ * A converted logic group draft whose first wingman option takes the player craft type: each payload still reads on its
+ * own and the group stays complete, but `loadMission` rejects the cross-Asset precondition at
+ * `input.wingmanRoster.content.options[<option index>].craftType`. The roster's payload and payload identity are
+ * replaced; every other Asset is unchanged.
+ */
+export function withPlayerWingmanOption(draft: GroupDraft): GroupDraft {
+  const decode = (role: LogicRole) => {
+    const descriptor = draft.assets.find(asset => asset.role === role);
+    const payload = draft.payloads.find(({ id }) => id === descriptor?.id);
+    if (!descriptor || !payload) throw new Error(`The logic draft has no ${role} Asset`);
+    return { descriptor, payload, content: decodeLogicPayload(payload.bytes, descriptor).content };
+  };
+  const player = (decode('craft-types').content as CraftTypeTable).entries.find(({ side }) => side === 'player')!.craftType;
+  const roster = decode('wingman-roster');
+  const content = roster.content as WingmanRoster;
+  const bytes = encodeLogicPayload({
+    role: 'wingman-roster',
+    content: { ...content, options: content.options.map((option, index) => (index === 0 ? { ...option, craftType: player } : option)) },
+  });
+  const { schemaVersion } = roster.descriptor.payloadIdentity;
+  const descriptor = { ...roster.descriptor, payloadIdentity: { schemaVersion, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) } };
+  return {
+    ...draft,
+    assets: draft.assets.map(asset => (asset.id === descriptor.id ? descriptor : asset)),
+    payloads: draft.payloads.map(payload => (payload.id === descriptor.id ? { ...payload, bytes } : payload)),
+  };
 }

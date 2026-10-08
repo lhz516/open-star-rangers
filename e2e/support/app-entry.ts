@@ -6,18 +6,42 @@ import { sliceCoveredFiles, syntheticImport } from '../../src/workers/synthetic-
 // src/app/app-entry.test-support.tsx). The development server alone serves it.
 
 declare global {
-  interface Window { osrTestEntry?: { readonly profile: ExpectedPackageProfile } }
+  interface Window {
+    osrTestEntry?: {
+      readonly profile: ExpectedPackageProfile;
+      readonly cache: {
+        held(operation: 'commit' | 'list' | 'restore'): number;
+        release(operation: 'commit' | 'list' | 'restore'): number;
+      };
+    };
+  }
 }
 
 export interface TestEntryOptions {
-  /** The import Worker scenario, `production` or `missing`; `models` by default. */
+  /** An import Worker scenario of import-scenarios.test-support.ts, `production` or `missing`; `models` by default. */
   readonly worker?: string;
   /** `unavailable`, or a P2-10 failure code the first commit returns. */
   readonly cache?: string;
   readonly capacity?: 'insufficient';
   /** `unavailable` for audio without Web Audio. */
   readonly audio?: 'unavailable';
+  /**
+   * Comma-separated cache operations, such as `commit,restore`, whose settled results wait until `releaseCacheResults`
+   * delivers them (P2-12 F-12).
+   */
+  readonly hold?: string;
 }
+
+/** A cache operation whose results the `hold` option can delay. */
+export type HeldCacheOperation = 'commit' | 'list' | 'restore';
+
+/** How many settled results of `operation` wait for release. */
+export const heldCacheResults = (page: Page, operation: HeldCacheOperation): Promise<number> =>
+  page.evaluate(name => window.osrTestEntry!.cache.held(name), operation);
+
+/** Delivers every waiting result of `operation`, in call order, and resolves to how many there were. */
+export const releaseCacheResults = (page: Page, operation: HeldCacheOperation): Promise<number> =>
+  page.evaluate(name => window.osrTestEntry!.cache.release(name), operation);
 
 export async function openTestEntry(page: Page, options: TestEntryOptions = {}): Promise<void> {
   const query = new URLSearchParams(Object.entries(options).filter((entry): entry is [string, string] => entry[1] !== undefined));
@@ -32,10 +56,13 @@ export async function expectNoPlayClaim(page: Page): Promise<void> {
 /** A file for the import page's file chooser. */
 export interface FilePayload { readonly name: string; readonly mimeType: string; readonly buffer: Buffer }
 
+/** Files for the file chooser, such as the files of a failure matrix case. */
+export const filePayloads = (files: readonly File[]): Promise<FilePayload[]> =>
+  Promise.all(files.map(async file => ({ name: file.name, mimeType: 'application/octet-stream', buffer: Buffer.from(await file.arrayBuffer()) })));
+
 /** The CloneCD files of a synthetic disc holding `covered`, whose names contain the file-name marker. */
 export async function discFiles(covered: Parameters<typeof syntheticImport>[0]): Promise<FilePayload[]> {
-  const { files } = await syntheticImport(covered);
-  return Promise.all(files.map(async file => ({ name: file.name, mimeType: 'application/octet-stream', buffer: Buffer.from(await file.arrayBuffer()) })));
+  return filePayloads((await syntheticImport(covered)).files);
 }
 
 let slice: Promise<FilePayload[]> | undefined;

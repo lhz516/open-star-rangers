@@ -5,7 +5,7 @@ import { readConverterVersion } from '../content/content-identity.ts';
 import { syntheticIdentity, syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_CONVERTER_VERSION } from '../original-data/conversion/converter-version.ts';
 import { openDiscImage } from '../original-data/disc/disc-image.ts';
-import { MARKER, syntheticFileDisc, type SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
+import { MARKER, syntheticFileDisc, type SyntheticFileContent, type SyntheticFileDisc } from '../original-data/disc/disc.test-support.ts';
 import { identifySource, type VerifiedSource } from '../original-data/source/identify-source.ts';
 import { PRODUCTION_CATALOG, sourceFingerprint } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
@@ -38,7 +38,7 @@ export { MARKER };
 const CHUNK = 1 << 20;
 
 /** An unread file that raises the default read budget, which equals the input size, above a small disc's reads. */
-const PADDING: SyntheticFileContent = { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) };
+export const PADDING: SyntheticFileContent = { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) };
 
 interface SyntheticImport {
   /** The `.ccd` and `.img` Files, whose names contain `MARKER`. */
@@ -74,10 +74,9 @@ export async function syntheticSource(covered: Readonly<Record<string, Synthetic
   return identifySource(await openDiscImage(syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING }).files), catalogFor(covered, versionId));
 }
 
-/** A CloneCD file set holding `covered` plus the padding, by disc path, read out chunk by chunk. */
-export async function syntheticImport(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): Promise<SyntheticImport> {
-  const disc = syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING });
-  const files = await Promise.all(disc.files.map(async ({ name, source }) => {
+/** The CloneCD files of a synthetic disc as `File`s, read out chunk by chunk, keeping their marked names. */
+export async function fileSetOf({ files }: Pick<SyntheticFileDisc, 'files'>): Promise<File[]> {
+  return Promise.all(files.map(async ({ name, source }) => {
     const parts: Uint8Array<ArrayBuffer>[] = [];
     for (let offset = 0; offset < source.byteLength; offset += CHUNK) {
       // Synthetic ports return bytes in fresh, unshared buffers.
@@ -85,6 +84,11 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
     }
     return new File(parts, name);
   }));
+}
+
+/** A CloneCD file set holding `covered` plus the padding, by disc path, read out chunk by chunk. */
+export async function syntheticImport(covered: Readonly<Record<string, SyntheticFileContent>>, versionId = 'synthetic-import'): Promise<SyntheticImport> {
+  const files = await fileSetOf(syntheticFileDisc({ ...covered, 'PAD/PAD.DAT': PADDING }));
   return { files, open: syntheticOpen(covered, versionId) };
 }
 
@@ -363,7 +367,7 @@ export function syntheticGroupsJob(open: OpenSource, groups: SyntheticGroups = b
 }
 
 /** What a test Worker scenario identifies: its covered files and the version ID of its synthetic whitelist. */
-interface ScenarioSource {
+export interface ScenarioSource {
   readonly covered: Readonly<Record<string, SyntheticFileContent>>;
   readonly versionId: string;
 }

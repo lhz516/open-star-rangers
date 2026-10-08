@@ -107,6 +107,11 @@ export interface SyntheticFileDiscOptions {
   readonly lineEnd?: string;
   /** Changes a raw sector after it is built, such as corrupting a file sector. */
   readonly edit?: (lba: number, raw: Uint8Array) => void;
+  /**
+   * Files or directories whose records in their parent directory name an extent starting at the image's sector count,
+   * just past its end, while their content keeps its place: a valid record whose extent lies outside the image.
+   */
+  readonly outOfImage?: readonly string[];
 }
 
 export interface SyntheticFileDisc extends SyntheticDisc {
@@ -135,14 +140,14 @@ export function syntheticFileDisc(files: Readonly<Record<string, SyntheticFileCo
   const join = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
   const isDirectory = (path: string) => children.has(path);
   // Record sizes do not depend on extents, so sizing with placeholders gives each directory's final length.
-  const recordsOf = (path: string, extentOf: (child: string) => number, lengthOf: (child: string) => number) => [
+  const recordsOf = (path: string, extentOf: (child: string) => number, lengthOf: (child: string) => number, childExtent = extentOf) => [
     selfRecord(extentOf(path), lengthOf(path)),
     parentRecord(extentOf(path.split('/').slice(0, -1).join('/')), lengthOf(path.split('/').slice(0, -1).join('/'))),
     ...[...children.get(path)!].sort().map(name => {
       const child = join(path, name);
       return isDirectory(child)
-        ? subdirectoryRecord(name, extentOf(child), lengthOf(child))
-        : fileRecord(`${name};1`, extentOf(child), contentLength(files[child]));
+        ? subdirectoryRecord(name, childExtent(child), lengthOf(child))
+        : fileRecord(`${name};1`, childExtent(child), contentLength(files[child]));
     }),
   ];
   const directoryLength = new Map(directoryPaths.map(path => [path, directoryData(recordsOf(path, () => 0, () => 0)).length]));
@@ -163,9 +168,10 @@ export function syntheticFileDisc(files: Readonly<Record<string, SyntheticFileCo
     next += sectors;
   }
   const sectorCount = next + 1;
+  const recordedExtent = (child: string): number => (options.outOfImage?.includes(child) ? sectorCount : extent.get(child)!);
   const directorySectors = new Map<number, Uint8Array>();
   for (const path of directoryPaths) {
-    const data = directoryData(recordsOf(path, child => extent.get(child)!, child => directoryLength.get(child) ?? 0), directoryLength.get(path));
+    const data = directoryData(recordsOf(path, child => extent.get(child)!, child => directoryLength.get(child) ?? 0, recordedExtent), directoryLength.get(path));
     for (let sector = 0; sector * SYNTHETIC_SECTOR_DATA_BYTES < data.length; sector++) {
       directorySectors.set(extent.get(path)! + sector, data.subarray(sector * SYNTHETIC_SECTOR_DATA_BYTES, (sector + 1) * SYNTHETIC_SECTOR_DATA_BYTES));
     }
