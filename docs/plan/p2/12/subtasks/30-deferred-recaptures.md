@@ -37,6 +37,8 @@ updated: 2026-10-08
 
 - `local/research/p2-12/baselines/**`、`local/research/p2-12/session/**`、`local/research/p2-12/hud/**`、`local/research/p2-12/layouts/**`：补拍登记、判定明细与脚本输出（被忽略）。
 - `docs/original/formats/mesh.md`、`docs/original/formats/hud.md`、`docs/original/formats/textures.md`、`docs/original/formats/cockpit.md`、`docs/original/unknowns.md`：新事实回填。
+- `docs/original/formats/executable.md`：效果来源节中导弹与弹丸记录的对照结论（2026-10-08 放宽）。
+- `docs/original/behavior/B-001-strategic-map.md`、`docs/original/behavior/B-005-campaign-rescue.md`：地图上的跃迁目标标记与救援动画的观察（2026-10-08 放宽）。
 
 ## 验收标准
 
