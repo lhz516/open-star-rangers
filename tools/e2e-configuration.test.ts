@@ -42,7 +42,7 @@ describe('local E2E integration', { timeout: 20_000 }, () => {
   });
 
   // One listing covers every project; the runner's own failure propagation is Playwright's contract, not this config's.
-  it('lists ordinary projects with serial zero-retry settings, never reuses servers, and keeps /src specs on development', () => {
+  it('lists ordinary projects with serial zero-retry settings, never reuses servers, and routes specs to their projects', () => {
     const result = spawnSync(process.execPath, [cli, 'test', '--list', '--reporter=json'], { cwd: root, encoding: 'utf8' });
     expect(result.status, result.stderr).toBe(0);
     interface Suite { file?: string; specs?: { tests: { projectName: string }[] }[]; suites?: Suite[] }
@@ -55,14 +55,17 @@ describe('local E2E integration', { timeout: 20_000 }, () => {
     const servers = [playwrightConfiguration.webServer ?? []].flat();
     expect(servers).toHaveLength(2);
     expect(servers.every(server => server.reuseExistingServer === false)).toBe(true);
+    const projectsOf = (suite: Suite): string[] => [...new Set([
+      ...(suite.specs ?? []).flatMap(({ tests }) => tests.map(({ projectName }) => projectName)),
+      ...(suite.suites ?? []).flatMap(projectsOf),
+    ])];
     for (const spec of ['resource-cache.spec.ts', 'audio-playback.spec.ts']) {
-      const projects = new Set<string>();
-      const visit = (suite: Suite): void => {
-        suite.specs?.forEach(({ tests }) => tests.forEach(({ projectName }) => projects.add(projectName)));
-        suite.suites?.forEach(visit);
-      };
-      report.suites.filter(suite => suite.file === spec).forEach(visit);
-      expect([...projects], spec).toEqual(['development']);
+      expect(projectsOf(report.suites.find(suite => suite.file === spec) ?? {}), spec).toEqual(['development']);
+    }
+    // Holds vacuously until such specs exist, then constrains every new one without another config change.
+    for (const suite of report.suites) {
+      const project = /\.(development|production)\.spec\.ts$/.exec(suite.file ?? '')?.[1];
+      if (project) expect(projectsOf(suite), suite.file).toEqual([project]);
     }
   });
 });

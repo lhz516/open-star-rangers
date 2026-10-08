@@ -20,15 +20,18 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  // New specs choose their project by name: `*.development.spec.ts` and `*.production.spec.ts` run only there; the
+  // explicit lists below keep the older specs' assignments.
   projects: [
     {
       name: 'development',
-      testIgnore: ['**/native-lifecycle.spec.ts', '**/compliance-assets.spec.ts', '**/production-preview.spec.ts'],
+      testIgnore: ['**/*.production.spec.ts', '**/native-lifecycle.spec.ts', '**/compliance-assets.spec.ts', '**/production-preview.spec.ts'],
       use: { baseURL: devOrigin },
     },
     {
       name: 'production',
       testIgnore: [
+        '**/*.development.spec.ts',
         '**/native-lifecycle.spec.ts', '**/browser-replay.spec.ts', '**/import-worker.spec.ts', '**/resource-cache.spec.ts', '**/audio-playback.spec.ts',
         '**/app-shell-resources.spec.ts', '**/import-page.spec.ts', '**/viewer-page.spec.ts', '**/cache-recovery.spec.ts', '**/fast-refresh.spec.ts',
       ],
