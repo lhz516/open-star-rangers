@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "07"
-updated: 2026-10-06
+updated: 2026-10-08
 related: [ADR-0007, ADR-0008, ADR-0009, ADR-0015, U-006, U-029, U-030, B-001]
 reviewed: sha256:86df188dc044
 ---
@@ -84,9 +84,13 @@ reviewed: sha256:86df188dc044
 - **S-08 限值与预算：** 批准本任务的结构限值与生产份额，见[限值与预算](#限值与预算)。
 - **S-09 错误与诊断隐私：**
   - `source` 层沿用 P2-05 的转换错误码，只追加限值名；
-  - `content` 层追加布局合成越界一项，布局读取复用 P2-05 的 code；
+  - `content` 层追加布局合成越界一项，布局读取复用 P2-05 的 code；2026-10-08 修订再追加状态显示屏文字 payload 的 `invalid-status-messages-payload`；
   - 本任务新增的诊断只含规范 Asset ID、结构字段路径与限值，不含原版字节、条目编号、偏移或宿主路径。
 - **S-10 验证：** Node 合成测试、真实 Chromium Worker、本地基准与本地截图比较，并加固 `tools/nob-check.ts` 做全量结构校验。测试只用代码生成的数据，仓库不新增二进制样本。
+- **S-12 左显示屏干扰动画与状态显示屏文字（2026-10-08 修订）：** 转换 HUD 组同时载入的 SNIP 10487 与 DIAG 10489：
+  - SNIP 的 9 帧沿用 P2-05 的图像 payload，2 位像素值经 EXE 中的颜色表换为飞行调色板索引；
+  - DIAG 与 EXE 中的下行格式一起转换为新定义的[状态显示屏文字 payload](#状态显示屏文字-payload)（`data` kind），文字逐字节保留；
+  - 来源语法见[容器子资源](#容器子资源)，生产 Asset 见[生产 Asset 与来源](#生产-asset-与来源)，限值、份额与错误见各节。为此 `cockpit-hud-map` 组允许 `data`（切片定义版本 3），图像映射可在封包条目后加一个 EXE 区域部件，见 [P2-01 spec 的修订](../01/spec.md#审批)。
 - **S-11 文档：** 同步[源码结构](../../../engineering/source-structure.md)、[工程约定](../../../engineering/README.md)与[工具指南](../../../guides/tools.md)；原版事实只写入 `docs/original/`；`tasks.md` 只更新导航。
 
 ### 不包含
@@ -101,14 +105,14 @@ reviewed: sha256:86df188dc044
 - **未入选的画面与资源：**
   - CCKD slot 1、3–7（后视、侧视与窄框）与 LO 组 10101；
   - LO 仪表条 10483、MFDD 10477、BITM 10471，以及只用于另一种玩家机型的 MFDD 10475、BITM 10469 与 TABL 10481；
-  - HUD 组的 SNIP 10487 与 DIAG 10489、10491（不是图像记录列表，转交 P3）；
+  - LO 的 DIAG 10491（结构与 10489 相同，只由 nob-check 校验）；状态显示屏文字的排版、颜色与消息选择（P3）。SNIP 10487 与 DIAG 10489 原转交 P3，2026-10-08 修订改由本任务转换（S-12）；
   - OPTIONS 菜单字体、通讯头像、TABL 10171 的整屏场景与其余 BITM（BITM 10467 除外）；
   - TABL 10399、11375；ANIM 与 EXPL 效果。R6 只做有界检查，不转换 10165。
 - **宽屏与“原版像素”模式：** 驾驶舱是固定 4:3 画幅，缩放与宽屏规则见 [ADR-0009](../../../decisions/ADR-0009-window-scaling-widescreen.md)，归渲染与后续阶段。
 - **其他组与下游：**
   - 模型、材质与 `models` 组归 P2-06；音效与 `audio` 组归 P2-08；任务与 `logic` 组归 P2-09；
   - WebGL 消费、查看器页面与导入 UI 归 P2-11；缓存归 P2-10/11；最终保真判定归 P2-12。
-- **既有契约：** 不改 P2-01 的 kind、角色、基数、资源组与预算维度；不改 P2-05 三类 payload 的 schema 与已有错误码的含义；不改消息形状、阶段集合与顺序规则；不新增依赖。
+- **既有契约：** 不改 P2-01 的 kind、角色、基数、资源组与预算维度（2026-10-08 修订的例外：`cockpit-hud-map` 组允许 `data`、切片定义版本 3，以及图像映射的区域部件，见 S-12）；不改 P2-05 三类 payload 的 schema 与已有错误码的含义；不改消息形状、阶段集合与顺序规则；不新增依赖。
 
 ### 涉及模块
 
@@ -121,7 +125,9 @@ reviewed: sha256:86df188dc044
 | [source-error.ts](../../../../src/original-data/source-error.ts) | 追加本任务的限值名；code 不变 |
 | [import-job.ts](../../../../src/workers/import-job.ts) | 图形步骤的输入扩大；装配 `cockpit-hud-map` 组草稿，与其他组一起写入包身份、校验后发送 |
 | [import-protocol.ts](../../../../src/workers/import-protocol.ts)、[import-host.ts](../../../../src/workers/import-host.ts)、[import-job-owner.ts](../../../../src/app/import/import-job-owner.ts) | 行为不变；相关测试按新的组与用量更新 |
-| [nob-check.ts](../../../../tools/nob-check.ts) | 用同一套容器解析校验全部 CCKD 分组与元素、MFDD 列表与 TABL 图像列表，只输出计数与失败原因 |
+| [nob-check.ts](../../../../tools/nob-check.ts) | 用同一套容器解析校验全部 CCKD 分组与元素、MFDD 列表与 TABL 图像列表，只输出计数与失败原因；2026-10-08 修订起也校验 SNIP 帧与 DIAG 结构 |
+| 2026-10-08 修订新增的 `src/content/hud/` 文字模块 | 状态显示屏文字 payload 的格式常量、编码、严格读取与绑定检查，不导入 `original-data` |
+| [slice-definition.ts](../../../../src/content/slice-definition.ts)、[source-mapping.ts](../../../../src/original-data/source-mapping.ts) | 2026-10-08 修订：`cockpit-hud-map` 组允许 `data`、切片定义版本 3；image 允许 SNIP、data 允许 DIAG 条目；图像映射可在封包条目后加区域部件 |
 | 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、[import-worker.spec.ts](../../../../e2e/import-worker.spec.ts) | 合成 CCKD、MFDD、TABL 与合成光盘，Node 与真实 Worker 用例 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | 研究事实与置信度；模块、payload 字节布局、限值、错误码与命令 |
 
@@ -179,6 +185,8 @@ reviewed: sha256:86df188dc044
 | 发送开始之后仍失败（例如组的转移失败） | 作业以 `failed` 结束；持有者丢弃已收到的全部组，`takeGroups()` 返回 null | 沿用 P2-04 |
 | 图形阶段或发送组之前取消 | 持有者同步变为 `cancelled` 并终止 Worker，之后的消息不改变状态 | 不适用（沿用 P2-04） |
 | 持有者重新验证组 | `group-complete`，没有外部要求 | 映射未就绪或角色不足：`incomplete`，带 P2-01 诊断 |
+| SNIP 的 `frames/<i>` 转换为图像（2026-10-08 修订） | 每个 2 位值经映射第二个部件的 4 字节颜色表换为调色板索引；不透明，按存储行序 | 帧越界：`subresource-not-found`；结构不符：`invalid-payload`；帧数或宽高超限：`limit-exceeded`；缺少或长度不合的颜色表区域、颜色键：`invalid-declaration` |
+| DIAG 整条目转换为状态显示屏文字（2026-10-08 修订） | 文字逐字节保留，下行格式取自映射第二个部件的 EXE 区域 | 结构、重定位、文字或格式不符：`invalid-payload`；启动消息数或文字长度超限：`limit-exceeded`；缺少或长度不合的格式区域、角色不是 `status-messages`：`invalid-declaration` |
 | 入选族的研究未达交付条件 | 生产声明不含猜测的绑定或替代资源，相应验收项保持 blocked，并记录恢复条件 | 不适用（研究门槛，见[风险与恢复](#风险与恢复)） |
 
 ## 数据模型与契约
@@ -205,6 +213,25 @@ reviewed: sha256:86df188dc044
 - **性质：** 纯函数，不读写 DOM 或 GPU；同一输入总是得到同样的字节。同一布局可以混用绑定不同调色板的图像，各自按绑定取色。
 - **尺寸与缩放：** 结果是 HI 画幅中的原始像素。按窗口缩放与设备像素比属于渲染（[viewport-layout.ts](../../../../src/render/viewport/viewport-layout.ts) 与 ADR-0009），不在本函数中。
 
+### 状态显示屏文字 payload
+
+2026-10-08 修订加入。`data` kind 的 payload，schema 1，由 `content/` 中的文字模块定义；字节布局由实现确定并写入[源码结构指南](../../../engineering/source-structure.md#状态显示屏文字-payload)，改变布局或解释须递增 schema。来源结构见 [hud 的 DIAG 10489](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)。
+
+| 数据/字段 | 类型、单位与约束 | 说明 |
+|---|---|---|
+| `upper`、`lower` | 各为 `{ characterTicks, holdTicks }`，0–2^32−1 tick | 上行与下行每打出一个字符的间隔，以及打完后停留的时间 |
+| `statusFormats` | 恰 4 段文字 | 上行依次循环的格式 |
+| `ratings` | 恰 5 项 `{ text, maximum }`，`maximum` 为 32 位有符号整数，按存储顺序 | 系统评级文字及其上限 |
+| `subsystemNames` | 恰 15 段文字 | 下行依次循环的子系统名称 |
+| `stateWords` | 恰 3 段文字 | 子系统状态 0–2 的状态词 |
+| `subsystemFormat` | 1 段文字 | 下行格式，取自 EXE 区域，不含结尾 NUL |
+| `startupMessages` | 0–16 段文字 | 下行在启动阶段轮流显示的消息 |
+
+- **文字：** 字节串，每段 0–255 字节，每个字节为 1–255（不含结尾 NUL）。换行与 printf 风格的转换说明原样保留，转换器与 `content/` 都不解析、不格式化；排版、颜色与消息选择归 P3。
+- **列表长度：** 4、5、15、3 由原版程序的读取方式固定（hud），属于 schema；改变须递增 schema。
+- **读取：** 严格读取；schema 不是 1 为 `unsupported-payload-schema`；截断、尾随字节、启动消息超过 16 条或文字含 0 字节为 `invalid-status-messages-payload`。
+- **绑定：** 描述符为 `data` kind、角色 `status-messages`、没有依赖，否则为 `binding-mismatch`。角色在切片定义之外，不满足也不改变任何必需角色。
+
 ### 容器子资源
 
 | 条目类型 | 子资源 | 提供 | 结构依据 |
@@ -216,10 +243,13 @@ reviewed: sha256:86df188dc044
 | MFDD | `lists/<l>/records/<i>` | image | l 为 0 或 1，列表 l 的第 i 个记录（[cockpit §2](../../../original/formats/cockpit.md#2-mfdd-multi-function-display-images-confirmed-structure)） |
 | TABL | `records/<i>` | image | R3 在 hud 中记录的图像列表结构中的第 i 个记录 |
 | 上述任一图像记录 | `<记录路径>/palette` | palette | 该记录的嵌入调色板（[textures §2](../../../original/formats/textures.md#2-image-record-36-bytes-confirmed)） |
+| SNIP | `frames/<i>` | image | 第 i 帧（[hud 的 SNIP 10487](../../../original/formats/hud.md#snip-10487-confirmed-structure-p2-1227)，已确认）；2026-10-08 修订加入 |
+| DIAG | 整条目 | data | 状态显示屏文字（[hud 的 DIAG 10489](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)，已确认）；2026-10-08 修订加入 |
 
 - `<s>`、`<l>`、`<i>` 为不带前导零的十进制序号；序号越界或 slot 为空时报 `subresource-not-found`。
 - 子资源只决定记录在条目块中的位置。图像解码、透明、行序、结构限值、调色板检查与错误语义都沿用 P2-05。
 - 同一条目可以向多个 Asset 提供子资源，在一个步骤中只物理读取一次。
+- **区域部件（2026-10-08 修订）：** SNIP 帧与 DIAG 的映射恰有两个部件：上表的封包条目，然后是 `MAIN/SRANGERS.EXE` 中的一个区域（P2-06 的区域 locator 语法）。SNIP 帧的区域是 4 字节颜色表，每个字节是 2 位值 0–3 对应的调色板索引；DIAG 的区域是下行格式，以唯一的 NUL 结尾，至多 256 字节。其他来源仍只有一个部件。区域在一个步骤中按 LE 读取器的规则读取，每个 EXE 只打开一次；区域只核对覆盖，转换成功后才与映射一起为 `verified`。
 
 ### 布局转换声明
 
@@ -318,13 +348,15 @@ reviewed: sha256:86df188dc044
 | `image/hud/display-page/background` | `image` / `hud-mfd` | BITM 10467 整条目（偏移 0 的图像记录） | 飞行调色板、`direct`、按存储行序；不透明（没有索引 0 像素） | 已确认（同上；执行期修订加入），U-030 |
 | `image/hud/gauge-bar-1/<i>` | `image` / `hud-mfd` | TABL 10479 的 `records/<i>` | 飞行调色板、`direct`、按存储行序；颜色键 0 | 已确认（同上），U-030 |
 | `image/map/unit-marker/<i>` | `image` / `strategic-map` | TABL 10461 的 `records/<i>` | `palette/map/screen`、`direct`、按存储行序；颜色键 0 | 已确认（同上；执行期修订，原为雷达点），U-030 |
+| `image/hud/display-interference/frame-<i>` | `image` / `hud-mfd` | SNIP 10487 的 `frames/<i>`（全部 9 帧），加 EXE `0x175ed8` 的 4 字节颜色表 | 飞行调色板、`direct`、按存储行序；不透明（整幅绘制） | 已确认（结构、EXE 绘制路径与截图，P2-12/27；2026-10-08 修订加入），U-030 |
+| `data/hud/status-display/messages` | `data` / `status-messages` | DIAG 10489 整条目，加 EXE `0x171e58` 的下行格式（6 字节，含 NUL） | [状态显示屏文字 payload](#状态显示屏文字-payload) schema 1 | 已确认（条目结构与 EXE 使用路径，P2-07/19；2026-10-08 修订加入），U-030 |
 | `image/map/zoom-icon/<i>` | `image` / `strategic-map` | TABL 11401 的 `records/<i>`（全部 29 个记录） | `palette/map/screen`、`direct`、按存储行序；颜色键 0 | 已确认（同上；执行期修订，原按区间分三个前缀），U-030 |
 
 **排除与转交（P2-07/09）：**
 
 - **排除（高概率）：** MFDD 10475、BITM 10469 与 TABL 10481 只在玩家机型的类型字节为 6 时代替 10473、10467 与 10479（EXE），参考画面显示 10473。因此不产生 `image/hud/gauge-bar-2/<i>`。
-- **转交 P3（U-030）：** HUD 组同时载入 SNIP 10487（按时间取帧绘入显示屏的动画，格式未记录）与 DIAG 10489（状态显示屏的消息字符串），二者都不是图像记录列表，本任务不转换。雷达接触点与状态显示屏中两处标记的来源未识别。
-- **用量：** 入选族在本地基准上共 86 个 Asset（2 个布局、83 个图像、1 个调色板），约 44.2 万像素，在[份额](#限值与预算)之内。
+- **转交 P3（U-030，P2-07/09）：** HUD 组同时载入 SNIP 10487（按时间取帧绘入显示屏的动画）与 DIAG 10489（状态显示屏的消息字符串），二者都不是图像记录列表，原定不转换。**2026-10-08 修订：** 二者改由本任务转换（上表两行），LO 的 DIAG 10491 不转换。雷达接触点与状态显示屏中两处标记的来源见 hud（P2-12/27 判为代码绘制）。
+- **用量：** 入选族在本地基准上共 96 个 Asset（2 个布局、92 个图像、1 个调色板、1 个 `data`），约 52.5 万像素，在[份额](#限值与预算)之内（2026-10-08 修订前为 86 个 Asset、约 44.2 万像素）。
 
 **命名与映射规则：**
 
@@ -347,6 +379,7 @@ reviewed: sha256:86df188dc044
 - **`ConverterVersion`：** 沿用已落地的表示：`osr-import.` 后接各被打包转换器的 `<转换器>-<正整数>` 组件，按阶段顺序排列。编写本 spec 时为 `osr-import.logic-1.audio-1`；P2-06 首次打包图形输出（`models` 分区）后为 `osr-import.graphics-1.logic-1.audio-1.models-1`（2026-10-06 前提更新）。
   - `graphics` 组件覆盖图形步骤的全部生产输出：P2-05、P2-06 与本任务的转换规则、payload schema、生产声明、映射与置信度，以及图形份额。其中任一变化都递增该组件。
   - `graphics` 来自 `convert-graphics`，排在 `logic` 之前。本任务加入 `cockpit-hud-map` 组并改变图形输出，因此把它递增为 `graphics-2`，即 `osr-import.graphics-2.logic-1.audio-1.models-1`。
+  - 2026-10-08 修订加入干扰帧与状态显示屏文字，图形输出再次改变，`graphics` 递增为 `graphics-3`，即 `osr-import.graphics-3.logic-1.audio-1.models-3`（`models-3` 来自此后 P2-11 与 P2-06 的修订）。切片定义版本同时递增为 3（P2-01 修订）。
   - 其他组件保持不变；新的常量值记录在源码结构指南。
 - **发送前校验：** 沿用已落地的流程：作业先完成全部组草稿、包身份、转移列表（`checkPackageTransfers`）与结束用量的校验，再发送第一个组。因此转换、预算、身份与草稿校验的失败都发生在发送之前，不会发出任何组。
 - **发送：** 校验通过后，作业经 `ImportReporter.group` 依次发送各组，然后发送 `finished`，其 `groups` 含 `cockpit-hud-map`。
@@ -370,6 +403,12 @@ reviewed: sha256:86df188dc044
 | 元素 +44、+48 | 0 或 1 | 已观察的取值；含义已由 P2-07/08 确认（绘制遍与逐帧重绘），不进入 payload；越出即 `invalid-payload` |
 | 布局画幅 | 宽 1–640，高 1–480 | 安全上限，同 P2-05 的图像上限（HI 画幅，U-006） |
 | 布局元素数 | 1–16 | 等于 `cockpitElements` 的上限；空 slot 不构成布局 |
+| `snipFrames` | 每个 SNIP 1–16 帧（2026-10-08 修订） | 安全上限；已观察 9（hud SNIP 10487） |
+| SNIP 帧块与帧 | +0 的帧块偏移是条目唯一的重定位；帧块从 +8 之后开始并恰好占满条目其余部分；块头 12 字节；宽为 4 的倍数；帧数 × 宽 × 高 / 4 恰为帧数据；宽高沿用图像上限 | 格式规则，hud 已确认；“宽为 4 的倍数”是全部实例都满足的有界检查（2026-10-08 修订） |
+| `diagStartupMessages` | 每个 DIAG 0–16 条启动消息（2026-10-08 修订） | 安全上限；已观察 3 与 0 |
+| `diagTextBytes` | 每段文字 0–255 字节（2026-10-08 修订） | 安全上限，等于 payload 的 `u8` 长度；已观察最多 22 |
+| DIAG 头部与重定位 | 头部 0x98 字节；启动消息列表指针恰在数为 0 时为 0；重定位恰为文字指针字段；指针指向块内以 NUL 结尾的文字 | 格式规则，hud 已确认（2026-10-08 修订） |
+| EXE 区域部件 | SNIP 颜色表恰 4 字节；下行格式至多 256 字节，以唯一的 NUL 结尾 | 格式规则（2026-10-08 修订） |
 
 图像的宽高、调色板条目数与 RLE 等限值沿用 P2-05。
 
@@ -377,12 +416,12 @@ reviewed: sha256:86df188dc044
 
 | 维度 | 份额 | 依据 |
 |---|---|---|
-| `assets` | 96 | 候选最多 92 个：2 个布局、86 个图像、至多 4 个地图调色板；执行期修订加入 BITM 10467 后为 93 个 |
+| `assets` | 112 | 候选最多 92 个：2 个布局、86 个图像、至多 4 个地图调色板；执行期修订加入 BITM 10467 后为 93 个；2026-10-08 修订加入 9 帧与 1 个文字 Asset 后为 103 个（原份额 96） |
 | `dependencyEdges` | 192 | 布局 8 条；每个图像至多 2 条调色板依赖 |
-| `imagePixels` | 524,288 | 按 cockpit 与 hud 记录的尺寸和本地结构计数，候选约 44 万像素，取 2^19 留余量 |
+| `imagePixels` | 655,360 | 按 cockpit 与 hud 记录的尺寸和本地结构计数，候选约 44 万像素；2026-10-08 修订加入 9 帧 96×96（82,944 像素）后，本地基准的实际用量为 524,729，超过原份额 524,288，取 5 × 2^17 留余量 |
 | `paletteEntries` | 1,024 | 至多 4 个 256 色地图调色板 |
 | `glyphs` | 0 | 字库由 P2-05 计入 |
-| `payloadBytes` | 786,432 | 按像素上界、掩码与 payload 头部估算约 63 万字节，留余量 |
+| `payloadBytes` | 917,504 | 按像素上界、掩码与 payload 头部估算约 63 万字节，留余量；2026-10-08 修订随像素上界提高，并计入文字 payload 的上界（约 1.1 万字节），原份额 786,432 |
 | `sourceReadBytes` | 不另设 | 沿用 P2-02 的默认值（输入总字节） |
 | 其余维度 | 0 | |
 
@@ -392,24 +431,25 @@ reviewed: sha256:86df188dc044
 
 ### 错误码
 
-**`source` 层（转换）：** 不新增 code，只向 `SourceError` 的限值名联合追加 `cockpitSlots`、`cockpitElements`、`mfdRecords`、`tableRecords`。本任务新增的失败条件对应如下：
+**`source` 层（转换）：** 不新增 code，只向 `SourceError` 的限值名联合追加 `cockpitSlots`、`cockpitElements`、`mfdRecords`、`tableRecords`，2026-10-08 修订再追加 `snipFrames`、`diagStartupMessages`、`diagTextBytes`。本任务新增的失败条件对应如下：
 
 | code | 新增条件 | `limit` |
 |---|---|---|
-| `invalid-payload` | CCKD 目录或元素数组越出块；元素 +44 或 +48 不为 0 或 1；分组调色板指针越出块、+0x08 不为 768 或分量大于 63；MFDD 头部或记录指针越出块；TABL 不符合 R3 记录的图像列表结构，或记录指针越出块 | null |
-| `limit-exceeded` | 超出上表的容器结构限值 | `{ name, limit, observed }` |
-| `subresource-not-found` | slot、元素、列表或记录的序号越界；slot 为空；记录没有嵌入调色板；分组没有调色板（+0x04 为 0） | null |
-| `invalid-declaration` | 布局映射不是 CCKD 的 `groups/<s>`；元素图像的映射与布局不对应；元素图像未在同一步骤、同一组中声明；子资源与 kind 或条目类型不匹配 | null |
+| `invalid-payload` | CCKD 目录或元素数组越出块；元素 +44 或 +48 不为 0 或 1；分组调色板指针越出块、+0x08 不为 768 或分量大于 63；MFDD 头部或记录指针越出块；TABL 不符合 R3 记录的图像列表结构，或记录指针越出块；2026-10-08 修订：SNIP 不符合 hud 记录的帧块结构或重定位；颜色表不为 4 字节；DIAG 头部越出块、重定位不恰为指针字段、启动消息列表越出块或指针不指向块内以 NUL 结尾的文字；下行格式不以唯一的 NUL 结尾；区域不在 EXE 对象的存储页内或被修正记录改写（P2-06 的 LE 读取规则） | null |
+| `limit-exceeded` | 超出上表的容器结构限值（含 2026-10-08 修订的 SNIP 帧数、启动消息数与文字长度；SNIP 宽高沿用 `imageWidth`、`imageHeight`） | `{ name, limit, observed }` |
+| `subresource-not-found` | slot、元素、列表、记录或 SNIP 帧的序号越界；slot 为空；记录没有嵌入调色板；分组没有调色板（+0x04 为 0） | null |
+| `invalid-declaration` | 布局映射不是 CCKD 的 `groups/<s>`；元素图像的映射与布局不对应；元素图像未在同一步骤、同一组中声明；子资源与 kind 或条目类型不匹配；2026-10-08 修订：SNIP 帧或 DIAG 的映射缺少或多出区域部件、区域长度不合用途，其他来源带区域部件，SNIP 帧声明颜色键，`data` 声明的角色不是 `status-messages` 或组不拥有 `data` | null |
 | `geometry-mismatch` | 分组的实际元素数与声明不符；元素坐标为负，或矩形越出声明的画幅 | null |
 | `budget-exceeded` | 扣除本任务的份额后超出作业预算 | `{ name, limit, observed }`，`name` 为 P2-01 的预算维度 |
 
-位置沿用 P2-05 的 `graphics[<Asset ID>]…` 与 `graphics.declarations[<i>]…`，后接结构字段路径，例如 `graphics[layout/cockpit/front].elements[2].x`。图形阶段中的读取失败保持 P2-02/03 的层、code 与位置。
+位置沿用 P2-05 的 `graphics[<Asset ID>]…` 与 `graphics.declarations[<i>]…`，后接结构字段路径，例如 `graphics[layout/cockpit/front].elements[2].x`；2026-10-08 修订的字段为 `frames`、`colours`、`messages` 与 `format`。图形阶段中的读取失败保持 P2-02/03 的层、code 与位置。
 
 **`content` 层（读取与合成）：** 布局 payload 的读取复用 P2-05 的 `invalid-graphics-payload`、`unsupported-payload-schema` 与 `binding-mismatch`。只追加一个 code：
 
 | code | 条件 |
 |---|---|
 | `layout-out-of-frame` | 合成时，元素按实际图像尺寸越出画幅 |
+| `invalid-status-messages-payload` | 2026-10-08 修订：状态显示屏文字 payload 截断、有尾随字节、启动消息超过 16 条或文字含 0 字节，或编码输入不合 schema |
 
 ### 持久化与兼容
 
@@ -417,6 +457,7 @@ reviewed: sha256:86df188dc044
 - 布局 payload 的 schema 为 1；读取器拒绝未知 schema，不兼容的旧 payload 会在消费时被拒绝。P2-10 只核对身份与哈希，不解读 payload。
 - `ConverterVersion` 递增后缓存键随之变化。P2-11 接线之前，生产内容还没有进入缓存，所以不需要迁移；旧键下的数据不由本任务清理。
 - 合成得到的 RGBA 与 GPU 对象都不缓存。
+- 2026-10-08 修订：`ConverterVersion`（`graphics-3`）与切片定义版本（3）都改变，旧缓存不再恢复，须重新导入；状态显示屏文字 payload 的 schema 为 1，读取器拒绝其他 schema。
 
 ## 技术决定
 
@@ -438,6 +479,13 @@ reviewed: sha256:86df188dc044
 10. **错误：** 容器与布局的转换失败都能用 P2-05 的 code 表达，只追加限值名。content 层只新增合成越界一项，布局读取复用 `invalid-graphics-payload`。
 11. **本地校验与研究分开：** 全量结构校验加固仓库中已有的 nob-check，只输出计数；截图比较与一次性研究脚本放在被忽略的 `local/research/p2-07/`。
 12. **不需要 ADR：** 以上决定细化总计划 §2、§4.1、§7.1、§12 与 [ADR-0009](../../../decisions/ADR-0009-window-scaling-widescreen.md)、[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)，不改变冻结决定，也不引入依赖（[ADR-0008](../../../decisions/ADR-0008-mit-and-dependency-licenses.md)）。P3 可以先用明确标记的临时资源开工（[ADR-0007](../../../decisions/ADR-0007-narrow-p2-overlap-p3.md)），本任务的缺口不改变这一点。
+13. **SNIP 与 DIAG（2026-10-08 修订，用户决定）：**
+    - SNIP 帧沿用图像 payload：2 位值在转换时经 EXE 颜色表换为飞行调色板索引，消费者不需要新格式，查看器按普通图像列出。颜色表从 EXE 读取，源码只有地址与长度，因此图像映射可在封包条目后加一个 EXE 区域部件；
+    - DIAG 定义新的文本 `data` payload：文字逐字节保留，包括换行与 printf 风格的转换说明，不解析或格式化。下行格式不在条目中而在 EXE，作为第二个部件读入同一 payload，使状态显示屏的文字完整；
+    - `cockpit-hud-map` 组因此拥有 `data`，切片定义版本递增为 3（P2-01 修订）。文字的角色 `status-messages` 在切片定义之外，不改变必需角色；SNIP 帧计入 `hud-mfd`；
+    - 仍在同一图形步骤中转换，不新增阶段，协议版本不变；`graphics` 组件递增为 `graphics-3`；
+    - 用户观察（2026-10-08）：SNIP 10487 是机体某些部位受损后出现的干扰画面，与 hud 的高概率结论一致；
+    - 不改变冻结决定，不引入依赖，同样不需要 ADR（见 12）。
 
 ## 验收标准
 
@@ -448,19 +496,22 @@ reviewed: sha256:86df188dc044
 | AC-03 | **CCKD 容器：** 合成 CCKD 含 1 个与 8 个目录项、空 slot，以及编码 0 与 2 的元素。<br>- `groups/<s>` 得到按存储顺序的元素坐标；<br>- `groups/<s>/elements/<i>` 的图像与把同一记录放在偏移 0 时 P2-05 的转换结果逐字节相同；<br>- `…/palette` 得到嵌入调色板。<br>拒绝：slot 或元素序号越界、空 slot → `subresource-not-found`；目录或元素数组越出块、元素 +44 或 +48 为 2 → `invalid-payload`；9 个目录项 → `limit-exceeded`（`cockpitSlots`）；17 个元素 → `limit-exceeded`（`cockpitElements`）。元素记录声明 65535×65535 时只读头部即被拒绝，不出现宿主 `RangeError`。P2-05 的 `fonts/<i>` 测试照常通过。<br>`groups/<s>/palette`（执行期修订）：结果与把同样 768 字节作为 DATA 整条目转换的结果相同；+0x04 为 0 → `subresource-not-found`；指针越出块、+0x08 不为 768 或分量为 64 → `invalid-payload` | Node |
 | AC-04 | **MFDD 与 TABL：** `lists/<l>/records/<i>` 与 `records/<i>` 得到正确的图像。<br>- `l` 为 2 或 `i` 越界 → `subresource-not-found`；<br>- 列表有 17 个记录 → `limit-exceeded`（`mfdRecords`）；<br>- 记录指针越出块 → `invalid-payload`。<br>TABL 用例按 R3 记录的结构生成：结构不符 → `invalid-payload`；65 个记录 → `limit-exceeded`（`tableRecords`）；对没有嵌入调色板的记录取 `…/palette` → `subresource-not-found` | Node |
 | AC-05 | **布局转换与声明：** 从合成 CCKD 转换得到的布局，画幅、元素顺序、坐标与图像引用逐项符合期望，描述符依赖恰为元素图像。<br>拒绝：<br>- 声明的元素数与实际不符、元素坐标为负、元素右边或下边越出画幅 → `geometry-mismatch`；<br>- 某个元素图像的映射不是同一 CCKD 条目的 `groups/<s>/elements/<i>`、在别组或未声明，或布局映射不是 CCKD 的 `groups/<s>` → `invalid-declaration`。<br>布局映射只在转换成功后为 `verified`；任一失败使整个步骤失败，不输出结果 | Node |
-| AC-06 | **组装与包身份：** 在合成映射与声明上运行作业（注入合成识别）：<br>- 发送的 `cockpit-hud-map` 组含 P2-05 的飞行调色板与字库以及本任务的 Asset；描述符、payload 与来源状态按 ID 升序一一对应，每个 payload 独占缓冲；<br>- 持有者重新验证为 `group-complete`，外部要求为空；`takeGroups()` 在 `finished` 之后返回该组；<br>- 删去前视布局，或删去全部 `strategic-map` Asset，或删去全部 `hud-mfd` Asset → `role-cardinality`；把一个映射改为 `unconfirmed` → `source-not-ready`；<br>- 生产声明含已知使用的各族：前视布局与元素、地图边框布局与元素、地图调色板、状态 MFD 背景，由针对生产常量的测试断言；<br>- `converterVersion` 是生产常量，含 `graphics` 组件且已有组件不变，能被 P2-01 的读取器读取；`manifestIdentity` 按 P2-09 的定义推导，同一作业发送的各组相同；改变任一描述符、payload 身份或来源状态，身份随之改变；<br>- `cockpit-hud-map` 组不含 `models` 分区的 Asset，`models` 组仍按 P2-06 的规则发送（2026-10-06 前提更新） | Node，使用结构化克隆端口与真实的宿主和持有者 |
+| AC-06 | **组装与包身份：** 在合成映射与声明上运行作业（注入合成识别）：<br>- 发送的 `cockpit-hud-map` 组含 P2-05 的飞行调色板与字库以及本任务的 Asset；描述符、payload 与来源状态按 ID 升序一一对应，每个 payload 独占缓冲；<br>- 持有者重新验证为 `group-complete`，外部要求为空；`takeGroups()` 在 `finished` 之后返回该组；<br>- 删去前视布局，或删去全部 `strategic-map` Asset，或删去全部 `hud-mfd` Asset → `role-cardinality`；把一个映射改为 `unconfirmed` → `source-not-ready`；<br>- 生产声明含已知使用的各族：前视布局与元素、地图边框布局与元素、地图调色板、状态 MFD 背景，以及 2026-10-08 修订的干扰帧与状态显示屏文字，由针对生产常量的测试断言；<br>- `converterVersion` 是生产常量，含 `graphics` 组件且已有组件不变，能被 P2-01 的读取器读取；`manifestIdentity` 按 P2-09 的定义推导，同一作业发送的各组相同；改变任一描述符、payload 身份或来源状态，身份随之改变；<br>- `cockpit-hud-map` 组不含 `models` 分区的 Asset，`models` 组仍按 P2-06 的规则发送（2026-10-06 前提更新） | Node，使用结构化克隆端口与真实的宿主和持有者 |
 | AC-07 | **预算与读取：** 结构限值与份额以常量导出，并与[限值与预算](#限值与预算)一致；作业限值等于[限值与预算](#限值与预算)所述的组合。<br>- 总量恰等于限值时通过；超出任一维度 → `budget-exceeded`，带维度、`limit` 与 `observed`，不产生部分结果，也不发送组；<br>- 字库、前视布局与地图边框共用的 CCKD 条目在一步内只物理读取一次，由计量端口的读取次数与字节断言；<br>- `finished.usage` 等于最终读取用量与转换用量逐维之和 | Node，使用计量端口 |
 | AC-08 | **作业消息与失败：** 成功作业的消息依次为识别进度、`identified`、各转换阶段的进度（`convert-graphics`、`convert-logic`、`convert-audio`，以及合入时已有的其他阶段）、各组的 `group`（含 `cockpit-hud-map`）、`finished`。`finished.groups` 含 `cockpit-hud-map`，`readBytes` 不减少，第一个 `group` 之后没有进度消息；本任务不改变协议版本与阶段集合。<br>- 识别、图形阶段中的读取与转换三类失败保持 P2-05 规定的层、code 与位置，都不发送组；<br>- 组草稿或结束用量的校验失败发生在发送之前，不发送组；<br>- 注入的转移失败使已发送组之后的作业以 `failed` 结束，持有者丢弃已收的组，`takeGroups()` 返回 null；<br>- 在图形阶段取消时，状态为 `cancelled`，之后的消息不改变状态 | Node，使用结构化克隆端口与真实的宿主和持有者 |
-| AC-09 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试入口处理合成光盘，光盘按生产映射的结构放置合成的 DATA、CCKD、MFDD、TABL 与 BITM 条目（BITM 为执行期修订）。<br>- 收到以转移交出的 `cockpit-hud-map` 组，持有者为 `group-complete`；`finished.usage` 的 `assets`、`imagePixels`、`paletteEntries`、`glyphs` 与 `payloadBytes` 等于合成声明的逐维合计；<br>- 损坏的合成 CCKD 元素使作业以 `source` 层 `invalid-payload` 失败，不发送组；<br>- 收到首条 `convert-graphics` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
+| AC-09 | **真实 Worker：** 在 development 项目中，真实 Chromium 模块 Worker 经测试入口处理合成光盘，光盘按生产映射的结构放置合成的 DATA、CCKD、MFDD、TABL 与 BITM 条目（BITM 为执行期修订；2026-10-08 修订起另含 SNIP、DIAG 条目与带生产区域的合成 EXE）。<br>- 收到以转移交出的 `cockpit-hud-map` 组，持有者为 `group-complete`；`finished.usage` 的 `assets`、`imagePixels`、`paletteEntries`、`glyphs` 与 `payloadBytes` 等于合成声明的逐维合计；<br>- 损坏的合成 CCKD 元素使作业以 `source` 层 `invalid-payload` 失败，不发送组；<br>- 收到首条 `convert-graphics` 进度时取消：状态为 `cancelled`，Worker 终止，之后状态不再改变 | `pnpm test:e2e <用例> --project=development` |
 | AC-10 | **R1、R2（前视来源与地图调色板）：** cockpit 与 U-029 记录：<br>- R1：10097 与 10103 的 slot 0 元素是否相同；不同时以截图比较选定前视来源；<br>- R2：地图边框调色板的来源条目与格式（含 CCKD 分组调色板）、证据类型与置信度（不低于高概率），以及该调色板下地图边框合成与本地地图截图的比较计数（截图、比较像素数、一致数与不一致像素的分类）；<br>- 元素 +44 与调色板的关系，按证据更新。<br>生产映射与文档一致；地图边框不绑定 DATA，除非证据证明它就是地图调色板。调色板不在生产覆盖文件的 IMFAT 条目中，或格式不是 P2-05 的两种之一或 CCKD 分组调色板时，本项 blocked，按[风险与恢复](#风险与恢复)处理 | 本地研究；文档与生产常量对照审阅 |
 | AC-11 | **R3、R4、R6（覆盖表与图像族）：** hud 与 cockpit 记录：<br>- 切片画面覆盖表：每个可见元素的归类（封包位图、字库文字、代码绘制或未识别）及证据；归类为封包位图之前已在 `SR.NOB` 全部可解码的图像记录中检索；<br>- 入选 TABL 的图像列表结构（已确认，由 AC-14 覆盖全部同类实例）；<br>- 每个候选族的用途证据与比较计数、调色板与透明选择及其证据、置信度、入选或排除及排除证据；<br>- R4 选定的 MFDD，以及两个列表按[透明规则单独取证](#研究与入选门槛)的结论；<br>- R6 对 10165 的有界检查结果。<br>U-029、U-030 随之更新，未解决部分写明转交 P3 或 P4。生产声明与映射恰好包含入选族，没有 `unconfirmed` 映射。任一入选族不满足交付条件时，本项 blocked 并记录恢复条件 | 本地研究；文档与生产常量对照审阅 |
 | AC-12 | **R5 与本地合成比较：** 对前视与地图边框两个布局，报告元素之间重叠的不透明像素数。为 0 时记录绘制顺序不影响结果；不为 0 时，截图在重叠像素上必须与存储顺序一致，否则本项 blocked。经生产合成函数得到两张 640×480 画面，与本地截图逐像素比较，记录截图、比较像素数、一致数与不一致像素的分类。本项是研究证据，最终保真判定归 P2-12 | 本地研究脚本；证据只记文件名、计数与判定 |
 | AC-13 | **本地基准（生产路径）：** 在开发者机器上用本地基准镜像，分两部分验证：<br>- **步骤结果：** 在 Node 中经产品入口打开已验证来源，直接调用生产图形步骤。得到 P2-05 的 5 个 Asset 与本任务的全部生产 Asset；`cockpit-hud-map` 分区装配后经 `validateGroup` 为 `group-complete`；两次运行每个 payload 的 SHA-256 相同；各维用量不超过份额，并记录实际用量。<br>- **作业路径：** 经 Worker 的作业、宿主与持有者模块处理同一镜像：阶段顺序正确，发送 `cockpit-hud-map` 组，持有者为 `group-complete`，作业以 `finished` 结束 | 本地 Node 脚本，留在被忽略的 `local/research/p2-07/`；证据只记命令、计数与判定 |
-| AC-14 | **本地全量结构校验：** 加固后的 `tools/nob-check.ts` 经同一套容器解析处理本地基准 `SR.NOB`，以下实例都通过结构校验：<br>- 3 个 CCKD 的目录，以及全部非空 slot 的元素与其图像记录，以及全部 +0x04 非零的分组调色板（执行期修订）；<br>- 3 个 MFDD 的两个列表；<br>- R3 记录为图像列表的全部 TABL 条目（至少包括入选族的来源）。<br>输出只有计数、观察最大值与失败原因。任何实例被拒绝时本项不通过，须按证据修订本 spec，不放宽为静默接受 | 本地运行该工具，记录命令与计数 |
+| AC-14 | **本地全量结构校验：** 加固后的 `tools/nob-check.ts` 经同一套容器解析处理本地基准 `SR.NOB`，以下实例都通过结构校验：<br>- 3 个 CCKD 的目录，以及全部非空 slot 的元素与其图像记录，以及全部 +0x04 非零的分组调色板（执行期修订）；<br>- 3 个 MFDD 的两个列表；<br>- R3 记录为图像列表的全部 TABL 条目（至少包括入选族的来源）；<br>- SNIP 10487 的全部帧与两个 DIAG 条目的结构（2026-10-08 修订）。<br>输出只有计数、观察最大值与失败原因。任何实例被拒绝时本项不通过，须按证据修订本 spec，不放宽为静默接受 | 本地运行该工具，记录命令与计数 |
 | AC-15 | **边界、隐私与工程：**<br>- `content/` 的新模块不导入 `original-data`、DOM、Node 或 Three.js；`original-data` 的转换不使用 DOM；<br>- 本任务新增的诊断不含原版字节、条目编号、偏移、文件名或宿主路径；nob-check 只输出结构计数与失败原因；<br>- `workers/` 仍不使用网络 API；<br>- 没有新依赖，锁文件不变；<br>- `pnpm check`、`pnpm check:original` 与聚焦 E2E 通过 | 命令输出、依赖与锁文件 diff、源码与边界检查 |
-| AC-16 | **文档：**<br>- cockpit、hud 与 unknowns 记录 AC-10 至 AC-12、AC-14、AC-17 与 AC-18 的事实、置信度与观察最大值；<br>- 源码结构记录布局 payload 的字节布局、子资源语法、限值名、错误码与新的 `ConverterVersion`；工具指南记录 nob-check 的新输出；<br>- `tasks.md` 只更新导航；<br>- 文档中没有原版内容 | 文档链接与元数据检查、最终 diff 审阅 |
+| AC-16 | **文档：**<br>- cockpit、hud 与 unknowns 记录 AC-10 至 AC-12、AC-14、AC-17、AC-18 与 AC-21 的事实、置信度与观察最大值，hud 记录 DIAG 10489 的结构（2026-10-08 修订）；<br>- 源码结构记录布局 payload 与状态显示屏文字 payload 的字节布局、子资源语法、限值名、错误码与新的 `ConverterVersion`；工具指南记录 nob-check 的新输出；<br>- `tasks.md` 只更新导航；<br>- 文档中没有原版内容 | 文档链接与元数据检查、最终 diff 审阅 |
 | AC-17 | **R7（字体引用与字形核对）：** hud 为参考画面中的每处文字记录所用的生产字库、字距与置信度，不记录文字内容。核对经生产字体 payload 与字符查找进行：按截图位置逐像素比较字形的置位像素，记录比较像素数与一致数。截图中需要的每个码位都能经生产字符映射得到；不能时，有证据的码位按证据扩展字符映射（递增 `graphics` 组件），没有证据的记为未确认。单元外像素的绘制语义有证据时更新 U-030，否则保持未确认并写明转交 P3 | 本地研究脚本；文档与生产常量对照审阅 |
 | AC-18 | **R8（地图图标对应）：** hud 以 M2ID 机型槽位为键，为所选任务引用的每个机型记录放大窗口中对应的机型图标序号、证据与置信度；未取得的记为未确认并写明检查方法。规范内容中没有机型到图标的查找表 | 本地研究；文档审阅与源码搜索 |
+| AC-19 | **状态显示屏文字 payload（2026-10-08 修订）：** 编码后读取往返相等，同一输入逐字节相同；0、2 与 16 条启动消息、255 字节的文字与全部字节值 1–255 都保留。读取器拒绝截断、尾随字节、缺少文字、17 条启动消息与含 0 字节的文字（`invalid-status-messages-payload`），未知 schema 报 `unsupported-payload-schema`，已转移的字节报 `payload-detached`；编码器拒绝列表长度、整数范围与字节值不合的输入。绑定只接受没有依赖、角色为 `status-messages` 的 `data` 描述符 | Node |
+| AC-20 | **SNIP 与 DIAG 转换（2026-10-08 修订）：** 合成 SNIP 的帧经区域颜色表得到的图像 payload 与按期望索引编码的结果逐字节相同，字节内最左像素在最低两位；合成 DIAG 与格式区域得到的文字 payload 等于期望。同一步骤中 SNIP 与 DIAG 条目各读一次，EXE 只打开一次，区域映射在转换成功后才为 `verified`。拒绝：<br>- 帧越界 → `subresource-not-found`；<br>- SNIP 结构、颜色表长度、DIAG 结构与重定位、未终止的文字、缺少 NUL 的格式 → `invalid-payload`；<br>- 帧数 0 或 17、宽 644、高 481、启动消息 17 条、文字 256 字节 → `limit-exceeded`；<br>- 缺少区域部件、区域长度不合、帧声明颜色键、`data` 声明的角色或组不合 → `invalid-declaration`；<br>- 预算在解码帧或复制文字之前扣除。<br>生产声明含 9 帧与文字 Asset，映射为 confirmed；份额与生产包限值一致；`cockpit-hud-map` 组允许 `data`、切片定义版本 3、图像映射的区域部件规则由 content 与来源映射测试断言 | Node |
+| AC-21 | **SNIP 与 DIAG 本地核对（2026-10-08 修订）：** nob-check 校验本地 `SR.NOB` 的 SNIP 与两个 DIAG 条目并通过。本地基准上，生产路径得到的 9 帧与独立解码逐像素相同，帧 6 经生产调色板与 `srangers_068.png` 左显示屏逐像素比较；文字 payload 与独立读取相同。AC-13 的本地基准重跑，记录含新 Asset 的用量。证据只记命令、计数与判定；最终保真判定归 P2-12 | 本地脚本与 nob-check |
 
 ## 验证策略
 
@@ -536,3 +587,13 @@ reviewed: sha256:86df188dc044
 - **原因：** P2-06 已在 `main` 上实现：图形步骤的切片贴图、`convert-models` 阶段、`models` 组的装配与发送，以及 `ConverterVersion` 的 `graphics-1` 与 `models-1` 组件。本 spec 中“`models` 分区不发送、留给 P2-06”的表述因此过时。
 - **改动：** S-07、当前实现与依据中的并行任务、组结果与包身份的发送一项、技术决定 8 与 AC-06 的最后一项改为：`models` 组按 P2-06 的规则发送，`cockpit-hud-map` 组不含 `models` 分区的 Asset；`graphics` 组件在 P2-06 的值上递增为 `graphics-2`。组结果与包身份中的 `ConverterVersion` 当前值与递增规则、限值与预算中共用限值的组合（加入模型份额）也按落地值更正。范围项、验收项编号与份额不变，本任务的行为没有新增或减少。
 - **审批：** 依据用户在调用 execute-goal 时的授权，记录在 goal 的执行记录中。
+
+2026-10-08 修订（SNIP 10487 与 DIAG 10489，用户决定）：
+- **原因：** P2-12/27 追踪到 `srangers_068.png` 左显示屏的内容是 SNIP 10487 的一帧，判为本任务的资源缺口（[hud](../../../original/formats/hud.md#unidentified-elements-and-the-u-030-impact)），P2-12 的 AC-17（agent 部分）因此 blocked。本 spec 原把 SNIP 10487 与 DIAG 10489 转交 P3。
+- **用户决定（原话）：** 对“31 怎么处理？”，用户选择“SNIP 和 DIAG 都在 P2-07 转换（推荐）”，并说明“SNIP 10487 是在机体某些部位收到损伤后会出现的干扰画面”（作为用户观察记录在 hud）。所选方案为：SNIP 以现有图像 payload 转换为 9 帧图像，颜色经 EXE 中的表取得；DIAG 先做简短的结构研究，再成为新定义 schema 的文本 `data` payload；作为本 spec 与 goal 的修订进行，按需要递增转换器版本，之后由 P2-12 在新候选上复核。
+- **改动：**
+  - 新增 S-12、[状态显示屏文字 payload](#状态显示屏文字-payload)、技术决定 13 与 AC-19 至 AC-21；
+  - 不包含、涉及模块、行为与边界、容器子资源（SNIP `frames/<i>`、DIAG 整条目与区域部件）、生产 Asset 表、组结果与包身份（`graphics-3`）、限值与预算（3 个限值名；份额 `assets` 112、`imagePixels` 655,360、`payloadBytes` 917,504）、错误码与持久化随之更新；
+  - AC-06、AC-09、AC-14 与 AC-16 加入修订的内容；
+  - 实现需要 P2-01 契约的两处配套变化：`cockpit-hud-map` 组允许 `data`（切片定义版本 3），以及图像映射的区域部件。记录在 [P2-01 spec 的审批](../01/spec.md#审批)。
+- **审批：** 依据上述用户决定；修订由 goal 的新增子任务 19–21 执行，记录在 goal 的[执行记录](./goal.md#执行记录)。S-01 至 S-11、AC-01 至 AC-18 的意图不变。

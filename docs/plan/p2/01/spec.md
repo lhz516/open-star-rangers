@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "01"
-updated: 2026-10-06
+updated: 2026-10-08
 related: [ADR-0003, ADR-0007, ADR-0014, ADR-0015, U-001, U-003, U-020, U-022, U-023, U-027, U-028, U-029, U-030]
 reviewed: sha256:b0bc0eaf29f7
 ---
@@ -131,7 +131,7 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 | `AssetDescriptor` | `id`、`kind`、角色、资源组、规范有序依赖及 `PayloadIdentity` | `content/` | manifest 与各转换结果的公共元数据 |
 | `ResourceGroup` | `logic`、`models`、`cockpit-hud-map`、`audio` | `content/` | 支持独立交付状态；全包完整性要求所有必需组 |
 | `SliceDefinition` | 候选结构选择器、基准配置、必需角色及允许基数、组要求 | `content/` | 后续任务只读；更换候选需修订契约 |
-| `OriginalAssetLocator` | 光盘相对路径、archive entry ID/type、可选子资源路径。2026-10-06 修订增加区域形式：只用于 `MAIN/SRANGERS.EXE` 与 `data` kind，entry 为 null，子资源路径给出文件内区域；语法、排序、核验与失败由 [P2-06 的效果几何数据](../06/spec.md#效果几何数据)规定。全为有限纯数据 | `original-data/` | 解析/转换和安全诊断；不交给 Core/Renderer/Audio |
+| `OriginalAssetLocator` | 光盘相对路径、archive entry ID/type、可选子资源路径。2026-10-06 修订增加区域形式：只用于 `MAIN/SRANGERS.EXE` 与 `data` kind，entry 为 null，子资源路径给出文件内区域；语法、排序、核验与失败由 [P2-06 的效果几何数据](../06/spec.md#效果几何数据)规定。2026-10-08 修订：`image` kind 也可在封包条目部件之后另加区域部件（SNIP 帧的颜色表，见 [P2-07](../07/spec.md#审批)），只有区域的图像映射仍被拒绝。全为有限纯数据 | `original-data/` | 解析/转换和安全诊断；不交给 Core/Renderer/Audio |
 | `SourceMapping` | `AssetId` → 一个或多个 locator、置信度、证据/U 项、解析状态 | `original-data/` | 本地研究和转换入口；未确认状态不得显示为已验证 |
 | `ResourceBudgetLimits/Usage` | schema 1 的十二个 S-09 维度均存在且为非负安全整数；未知、缺失或单位不符失败 | `content/` 定义维度，各解析/转换任务给出限值和用量 | 读取/转换前及累计过程中检查，不以溢出后的值判定 |
 | `GroupCompletenessResult` | 判别联合 `group-complete` 或 `incomplete`；成功含规范有序的跨组外部要求和完整包身份，失败含稳定 code、Asset/role 路径和安全原因 | `content/` | 独立转换任务、Worker 和查看器诊断共同消费；不得冒充全包结果 |
@@ -166,7 +166,7 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 
 - `logic`：任务、战略地图/Warp 所需规范数据及其逻辑引用；最终由 P2-09 和 Core 载入边界消费。
 - `models`：玩家、敌机、基地、弹丸/导弹/碎片及纹理/调色板依赖；最终由 P2-05/06 与 Renderer 消费。2026-10-06 修订：本组允许 `data` kind；弹丸、导弹与碎片三个角色允许 `model`、`image` 或 `data` Asset，基数不变（各至少 1 个）。原版这三类效果的部分几何由运行时构建函数生成（[executable](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)）。弹丸没有模型或图像，由其源数据的 `data` Asset 承担角色；导弹与碎片的生成部分同样以 `data` Asset 导入，与已有的模型和图像一起满足角色。
-- `cockpit-hud-map`：前视驾驶舱、HUD/MFD、字体、地图边框/图标及依赖；最终由 P2-05/07 与 Renderer 消费。
+- `cockpit-hud-map`：前视驾驶舱、HUD/MFD、字体、地图边框/图标及依赖；最终由 P2-05/07 与 Renderer 消费。2026-10-08 修订：本组允许 `data` kind，承担 P2-07 导入的状态显示屏文字（角色在切片定义之外）；切片角色与基数不变。
 - `audio`：四类核心音效及必要来源对应；最终由 P2-08 与平台音频适配消费。
 - 一个组可以在其他组未完成时独立得到 `group-complete`：其组内闭包必须完整，跨组引用以规范有序、无重复的外部要求返回；结果必须携带切片、切片定义版本、schema、converter、manifest 和 origin 身份。P2-11 只有在四组身份完全相同、所有外部要求解析且跨组引用共同通过时才可显示整个切片可用。
 - Core 只接收 `logic` 中的规范数据和 Asset ID；Renderer/Audio 通过 ID 解析自己的 payload。任何消费者都不能读取 `OriginalAssetLocator`、NOB type/entry ID、缓存记录或 Worker 消息。
@@ -186,7 +186,7 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 - schema 1 固定 Asset ID 的 8 段、每段 32 字符、总长 128 字符上限，并固定十二个预算维度；这些值足以表达本切片的可审阅语义路径和主要资源规模，同时给验证器明确边界。改变上限、维度或单位属于 schema 变化。
 - 首选三组共用开场任务，中间难度组只作为代表性配置；这利用已确认的共同 SCEN 结构并减少初始分支，不声称中间组是原版默认。若资格验证失败，按 S-02 回退并重新审批。
 - 完整性由纯验证函数推导，部分组和全包使用不同结果；不保存调用者可伪造的完成标志，不用空数组/占位 Asset 形成成功形状。
-- schema 与切片定义初始版本均为 1；转换器版本、manifest 身份、payload 指纹和来源指纹保持独立。Core 的 FNV 状态哈希不是任何内容指纹。2026-10-06 修订把切片定义版本递增为 2（效果角色与 `models` 组允许 `data`）。按版本规则，版本 1 的组与缓存包被判为不兼容，须重新导入。
+- schema 与切片定义初始版本均为 1；转换器版本、manifest 身份、payload 指纹和来源指纹保持独立。Core 的 FNV 状态哈希不是任何内容指纹。2026-10-06 修订把切片定义版本递增为 2（效果角色与 `models` 组允许 `data`）。按版本规则，版本 1 的组与缓存包被判为不兼容，须重新导入。2026-10-08 修订再递增为 3（`cockpit-hud-map` 组允许 `data`），版本 2 的组与缓存包同样不兼容。
 - 契约与验证位于纯 `content/`；来源定位位于 `original-data/`。不建立中央 schema 文件、全局 barrel、浏览器适配或空 Worker 接口，遵守 [ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)。
 - 本任务无需新 ADR：以上决定细化现有总计划、ADR-0007 和模块边界，没有改变冻结阶段范围。若用户要取消 CCD/IMG 主来源、扩成全量内容或改变顶层模块，必须先更新 ADR/总计划。
 
@@ -197,7 +197,7 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 | AC-01 | 仓库只有一份 `classic-p2-slice` 定义，且其中恰有一个经本地资格证据确认的候选；首选 SCCT 共用 slot 0、中间组配置、资格条件和回退规则与 S-01/02 一致；没有合格候选时任务阻塞，后续测试/消费者不复制另一份必需角色清单 | Node 契约测试读取真实生产定义并断言单一已选候选；源码搜索与边界测试证明无第二份生产切片常量；本地研究记录结构选择和资格结果，不记录原版内容；首选不合格时保留回退选择、spec 修订和重新审批证据 |
 | AC-02 | 切片定义包含 S-03 的全部角色、四个资源组及允许基数；敌机恰为 1–2，任务直接/间接引用不能被角色上限裁剪 | 表驱动 Node 测试逐项断言角色/组/基数，负向清单覆盖 0、3 个敌机、缺基地、缺每个固定角色及遗漏任务引用 |
 | AC-03 | Asset ID 语法、kind 一致性、稳定角色 ID 及 8 段/32 字符单段/128 字符总长上限均由单一生产入口验证；原版文件名/entry ID/缓存位置不能作为规范 ID | 合法边界和空段、连续或首尾连字符、遍历、Unicode、分隔符、过长、kind 不符等负向测试；测试证明只更换等价 `OriginalAssetLocator` 不改变 Asset ID/依赖 |
-| AC-04 | 内容 schema=1、切片定义版本=2（2026-10-06 修订；原为 1）、converter version、slice ID、manifest 身份、payload 身份和判别来源均显式存在；synthetic 与 original-import 无法用相同字段形状互相冒充 | 类型检查加运行时读取/验证测试；缺字段、未知版本、非法 SHA-256、fixture 冒充指纹、原版来源缺指纹均失败。版本 2 另须验证：生产与合成身份都带 2；manifest 身份随之改变；版本 1 的组判为包身份不符，1、2 混装被拒绝；版本 1 的缓存记录在列出与读取时都是 `cache-incompatible`；负向样例改用 1 或 3 |
+| AC-04 | 内容 schema=1、切片定义版本=3（2026-10-08 修订；2026-10-06 为 2，原为 1）、converter version、slice ID、manifest 身份、payload 身份和判别来源均显式存在；synthetic 与 original-import 无法用相同字段形状互相冒充 | 类型检查加运行时读取/验证测试；缺字段、未知版本、非法 SHA-256、fixture 冒充指纹、原版来源缺指纹均失败。当前版本 3 另须验证：生产与合成身份都带 3；manifest 身份随之改变；版本 1、2 的组判为包身份不符，与版本 3 混装被拒绝；版本 1、2 的缓存记录在列出与读取时都是 `cache-incompatible`；负向样例用 1、2 或 4（2026-10-08 修订；版本 2 时的同一要求以 1 为负向样例） |
 | AC-05 | 原版定位只存在于 `original-data/` 来源映射；Core、render、platform/audio 和 `content/` 的消费者契约不包含 disc path、NOB type/entry ID 或子资源定位 | TypeScript/ESLint 边界回归与源码依赖检查；合成映射验证一对多、多对一和类型冲突 |
 | AC-06 | 完整性验证从定义、manifest、实际 payload 身份和来源状态推导 `group-complete`/`complete`/`incomplete`，组结果与全包结果是不同判别联合，不接受或保存可伪造完成布尔值 | Node 正向组和全包清单通过；逐项缺角色/组/payload/组内依赖、交换或截断 payload、同长度错误指纹、重复 ID/依赖、自引用、环、kind 错误和未确认来源均返回预期稳定 code |
 | AC-07 | 四个资源组按组内闭包独立判定并输出类型化跨组要求；只有四组包身份完全一致且全部跨组要求有效时全包完整，部分结果不能被 P2-11 当全包 | 组合测试覆盖每个单组及其外部要求、3/4 组、跨组缺失、全组成功，以及不同切片定义版本/manifest/schema/converter/origin 的组混装拒绝；断言结果判别值不同且无成功形回退 |
@@ -241,3 +241,5 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 2026-10-04 修订（事实归属）：最终对齐按 AC-13 发现候选选择记录复述了原版事实，用户选择修订 spec。候选记录与上一条审批记录中的 SCEN 条目，以及 M2ID 槽位与角色的对应，都改为链接 `docs/original/` 中的权威记录。候选、角色构成、配置、S/AC 与其他契约均不变。修订稿经另一模型审阅，未发现问题；用户于 2026-10-04 明确选择“批准修订”，本 spec 恢复为 accepted。
 
 2026-10-06 修订（待批准，P2-06/14）：依据 [U-027](../../../original/unknowns.md#数据与格式) 与 [executable 的效果几何数据](../../../original/formats/executable.md#effect-geometry-data-p2-0614-research)，用户选择方案 A：三个效果角色允许 `data` Asset，`models` 组允许 `data`，切片定义版本递增为 2，并增加 `OriginalAssetLocator` 的文件区域形式。角色、基数、候选、配置与其他 S/AC 不变，AC-04 的版本值随之更新。该修订经另一模型两轮审阅，发现的问题均已修正；用户于 2026-10-06 明确批准，本 spec 恢复为 accepted。
+
+2026-10-08 修订（P2-07 修订附带）：用户于 2026-10-08 就 P2-12 提出的 SNIP 10487 与 DIAG 10489 的处理选择“SNIP 和 DIAG 都在 P2-07 转换（推荐）”，所选方案为：SNIP 以现有图像 payload 转换为 9 帧图像、颜色经 EXE 中的表取得；DIAG 成为新定义 schema 的文本 `data` payload。实现这一方案需要本 spec 的两处配套变化：`cockpit-hud-map` 组允许 `data`，切片定义版本递增为 3；`OriginalAssetLocator` 的区域形式也可作为 `image` 映射在封包条目之后的部件。候选、角色、基数、配置与其他 S/AC 不变，AC-04 的版本值随之更新；版本 3 的验证与版本 2 相同（生产与合成身份带 3，版本 2 的组与缓存记录为包身份不符或 `cache-incompatible`）。修订作为 [P2-07 的 2026-10-08 修订](../07/spec.md#审批)的一部分执行，依据上述用户选择；本 spec 保持 accepted。

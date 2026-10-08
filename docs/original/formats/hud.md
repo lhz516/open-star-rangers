@@ -6,7 +6,7 @@ updated: 2026-10-08
 related: [U-001, U-028, U-029, U-030]
 ---
 
-# HUD graphics, fonts, and ID lists (TABL, SNIP, M2ID, NEBC, EXIC)
+# HUD graphics, fonts, and ID lists (TABL, SNIP, DIAG, M2ID, NEBC, EXIC)
 
 Container format: [IMFAT](./imfat.md); images use the [image record](./textures.md#2-image-record-36-bytes-confirmed). Confidence labels as defined in the IMFAT doc. Structure only; no original content.
 
@@ -203,6 +203,32 @@ The only SNIP entry in `SR.NOB`. The HUD set loads it with the other four famili
 - **Drawing (Confirmed, EXE):** `0x5bfc0` (HI) writes every pixel of the frame to the screen at (x0, y0 + 1) of the display. `0x5c098` (LO) draws every second row and column. `0x4d010` picks the frame from the game time, wrapping at the frame count.
 - **Capture (Confirmed):** in `srangers_068.png`, all 9,216 pixels of the left display at (x0, y0 + 1) equal frame 6, read through the EXE table under the flight palette. No other accepted forward view shows a frame (best 3.8%).
 - **When it is drawn (Confirmed, EXE; meaning of the states Likely):** the left-display dispatcher `0x4ce30` keeps a table at `0x175c7c` of seven page entries: the status display `0x4d0e0`, the bar page `0x4d800` (the energy page of `srangers_100.png`), three entries for `0x4da28`, one for `0x4dc50`, and the Warp page `0x4dcec`. Each entry holds the page's handler, a refresh period and a subsystem index (all pages but the Warp page). `0x4ce30` reads that subsystem's state with `0x52ac4`, the same function `0x4d50c` uses to choose the status overlays. While the state is 2 it draws the SNIP instead of the page. While the state is 1 it switches between the SNIP and the page at random intervals of 64–127 ticks. The states are Likely the subsystem's damage levels. The SNIP is therefore Likely the display's interference animation when the display is damaged.
+- **User observation (2026-10-08, not independently verified):** the user reports from play that this interference picture appears after some parts of the craft are damaged. It agrees with the Likely reading above; the confidence of the state meaning is unchanged.
+- **Conversion (P2-07 revision, 2026-10-08):** the import converts the 9 frames as opaque images `image/hud/display-interference/frame-<i>` under the flight palette. The colour table is read from the executable at `0x175ed8` (LE object 4, offset `0x5ed8`, 4 bytes); every byte value is a valid index of the 256-entry palette. In a local check of [P2-07 subtask 21](../../plan/p2/07/subtasks/21-snip-diag-local-check.md#完成证据), the production frames equal an independent decode of the entry and the table, and frame 6 through the production palette equals all 9,216 pixels of the left display at (58,347) in `srangers_068.png`. The P2-12 recheck on a new candidate is still open.
+
+### DIAG 10489 (Confirmed structure, P2-07 revision)
+
+Read-only research of [P2-07 subtask 19](../../plan/p2/07/subtasks/19-snip-diag-research.md#完成证据), 2026-10-08: the entry's bytes and relocations locally, and the users `0x4d0e0`, `0x4d308`, `0x4d44c`, `0x4f050` and `0x4f108` disassembled in memory from the existing Ghidra project without saving it. Only structure, offsets, counts and addresses are recorded; no text.
+
+The HUD set loads DIAG 10489 for HI and DIAG 10491 for LO (`0x4ca80`). Both have the structure below; 10489 is 489 bytes with 31 relocations, 10491 352 bytes with 27 (no startup messages). Every pointer is an entry-relative offset, relocated when the entry is loaded, and the relocations are exactly the pointer fields (both entries).
+
+| Offset | Content |
+|---|---|
+| +0x00, +0x04 | u32 timings of the upper line: ticks per typed character, then ticks the finished message stays |
+| +0x08, +0x0c | The same for the lower line |
+| +0x10 | 4 u32 pointers: the upper line's formats |
+| +0x20 | 5 {u32 pointer, i32 maximum} ratings |
+| +0x48 | 15 u32 pointers: subsystem names |
+| +0x84 | 3 u32 pointers: state words, by subsystem state 0–2 |
+| +0x90 | u32 pointer to the startup message list (0 when there is none) |
+| +0x94 | u32 count of startup messages (3 in 10489, 0 in 10491) |
+| +0x98 | NUL-terminated texts; in 10489 the startup list (3 u32 pointers) lies among them, not 4-byte aligned |
+
+- **Texts:** NUL-terminated byte strings in the entry. A `\n` byte splits a message into lines: `0x4f050` copies the message and replaces each one with NUL, and `0x4f108` draws the parts on successive lines. The formats hold printf-style conversions. `tools/nob-check.ts` reads 30 texts from 10489 and 27 from 10491, at most 22 bytes long.
+- **Display (Confirmed, EXE):** `0x4d0e0` keeps one message per line and asks for the next when the current one has been typed out and its hold time has passed. `0x4f050` stores the line's timings; `0x4f108` types one more character each interval, then blinks the cursor ([sources](#sources-of-the-unidentified-elements-p2-1227)) until the hold time ends. Each line uses a fixed palette index from the code.
+- **Upper line (`0x4d308`, Confirmed):** cycles format 0–3, formatting each with one value: 0 and 1 a percentage computed from two fields of the displayed craft (1 clamped at 0), 2 a rating text, 3 a field of the craft. The rating: the states of 19 subsystems (`0x52ac4`) are summed and the pairs are searched from the last to the first; the first whose maximum is not below the sum gives the text. When the sum exceeds every maximum the code reads the word before the table (not traced further).
+- **Lower line (`0x4d44c`, Confirmed):** while the startup count is nonzero and a random byte (`0x7453b`) is below 0x55, it shows the next startup message in turn; whether the program later clears the count was not traced. Otherwise it cycles subsystem 0–14 and formats its name and the word of its current state with a format in the executable at `0x171e58` (LE object 4, offset `0x1e58`, 6 bytes with its NUL), not in the entry.
+- **Conversion (P2-07 revision, 2026-10-08):** the import converts DIAG 10489 with that format into the `data` Asset `data/hud/status-display/messages` ([status display messages payload](../../engineering/source-structure.md#状态显示屏文字-payload)). The texts keep their bytes exactly. LO's 10491 is not converted; `tools/nob-check.ts` checks both entries.
 
 ### Slice screen coverage and HUD image families (R3, R4, R6)
 
@@ -245,7 +271,7 @@ Research of [P2-07 subtask 09](../../plan/p2/07/subtasks/09-hud-family-research.
 
 Elements left unidentified here were judged by P2-12 ([impact](#unidentified-elements-and-the-u-030-impact)); finding no source does not by itself hand an element to P3.
 
-**Outside the reference screens:** in seven other forward views, the left display shows BITM 10467 at (58,347). The HUD set also loads SNIP 10487, an animation drawn into a display, and DIAG 10489, the status display's message strings. Neither is an image record list, and neither is converted here (U-030). The SNIP layout and its use are now known ([SNIP 10487](#snip-10487-confirmed-structure-p2-1227)); P2-12/27 records it as a resource gap ([impact](#unidentified-elements-and-the-u-030-impact)).
+**Outside the reference screens:** in seven other forward views, the left display shows BITM 10467 at (58,347). The HUD set also loads SNIP 10487, an animation drawn into a display, and DIAG 10489, the status display's message strings. Neither is an image record list, so P2-07/09 did not convert them (U-030). Their structure and use are now known ([SNIP 10487](#snip-10487-confirmed-structure-p2-1227), [DIAG 10489](#diag-10489-confirmed-structure-p2-07-revision)), and a P2-07 revision (2026-10-08) converts both.
 
 **Image families:** every candidate family is included unless there is at least Likely evidence that the slice does not use it ([P2-07 rules](../../plan/p2/07/spec.md#研究与入选门槛)). Choices marked Confirmed rest on the drawing paths above.
 
@@ -368,6 +394,7 @@ The map labels (`0x4af78`, covering `0x4afc0`–`0x4b360`) are leader lines (`0x
 **Impact (P2-12/27):** seven elements are code drawing or text in a delivered font, each with a traced path and a capture check. None passes to P3 merely for lack of a source.
 
 - **Resource gap for P2-07:** SNIP 10487, needed for the left display's interference animation. The HUD set loads it unconditionally, and `0x4ce30` draws it on the status display and five other page entries while their subsystem state is nonzero (always at 2, intermittently at 1). Slice use is Likely: the slice already delivers the status overlays chosen by the same state function, and nothing limits the slice to undamaged displays. Converting it needs the 9 frames and the four palette indices of the EXE table at `0x175ed8`. AC-17 (agent part) therefore stays blocked on this gap. Resume when P2-07's spec and goal, revised with the user's approval, convert SNIP 10487 (or the user records that the interference is outside the slice), and P2-12 rechecks it on the new candidate against `srangers_068.png` (frame 6).
+  - **Status (2026-10-08):** the user approved the revision, and P2-07 now converts SNIP 10487 ([conversion](#snip-10487-confirmed-structure-p2-1227)) together with DIAG 10489. The P2-12 recheck on a new candidate remains.
 - **Routing rule (unchanged):** an element that needs a graphic the candidate lacks is a resource gap for P2-07 (HUD graphics), not P3. An element shown to be code drawing, or drawn from delivered graphics, passes to P3 as dynamic HUD drawing.
 
 ## 3. ID lists (Confirmed structure)
