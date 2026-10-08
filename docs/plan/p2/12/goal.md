@@ -106,10 +106,10 @@ updated: 2026-10-07
 | [03-responsiveness-probe.md](./subtasks/03-responsiveness-probe.md) | 01, 02 | completed |
 | [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | completed |
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
-| [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | pending |
-| [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | pending |
+| [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | in-progress |
+| [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | in-progress |
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
-| [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | pending |
+| [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | in-progress |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
