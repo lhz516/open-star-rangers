@@ -141,6 +141,12 @@ export function holdAtStage(stage: ImportStage, onHold: () => void = () => undef
   };
 }
 
+/**
+ * The BroadcastChannel on which a browser test releases `held-late-error`: any message posted on it from the page makes
+ * every waiting Worker of that scenario throw. Test wiring only; the import protocol is unchanged.
+ */
+export const LATE_ERROR_RELEASE_CHANNEL = 'osr-test-late-error-release';
+
 /** Milliseconds between the progress messages of `progress-stream`. */
 export const PROGRESS_STREAM_INTERVAL_MS = 2;
 
@@ -192,6 +198,19 @@ export const IMPORT_SCENARIOS: Readonly<Record<string, () => ImportJob>> = Objec
   'late-error': () => (_, report) => {
     report.progress('identify-source', 0);
     setTimeout(() => { throw new Error(EXCEPTION_MARKER); });
+    return new Promise(() => undefined);
+  },
+  /**
+   * F-11, I-7: `late-error` once the test releases it on `LATE_ERROR_RELEASE_CHANNEL`, so the job stays running for a
+   * window of the test's choosing before the Worker's error event reports it.
+   */
+  'held-late-error': () => (_, report) => {
+    report.progress('identify-source', 0);
+    const release = new BroadcastChannel(LATE_ERROR_RELEASE_CHANNEL);
+    release.onmessage = () => {
+      release.close();
+      throw new Error(EXCEPTION_MARKER);
+    };
     return new Promise(() => undefined);
   },
   /** F-04: the graphics payload budget exactly at the budget step's payload usage, which passes. */

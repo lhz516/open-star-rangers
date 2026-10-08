@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RESOURCE_GROUPS, type ResourceGroup } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { SYNTHETIC_ASSETS, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
-import { IMPORT_PROTOCOL_VERSION, type ImportStartMessage } from '../../workers/import-protocol.ts';
+import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportStartMessage } from '../../workers/import-protocol.ts';
 import { createImportJobOwner, liveImportJobOwners, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerEvents, ImportWorkerPort } from './import-worker-port.ts';
 
@@ -235,23 +235,58 @@ describe('cancellation and retry', () => {
     expect(owner.getSnapshot()).toBe(snapshot);
   });
 
-  it('runs a retry in a new Worker with a new job ID, unaffected by late messages of the cancelled job', () => {
+  it('runs a retry in a new Worker with a new job ID, unaffected by whatever the cancelled job still streams, however the two interleave', () => {
     const { owner, ports, snapshots } = setup();
     owner.start(files('A.CCD'));
-    ports[0].send(ready, progress(1, 1));
+    ports[0].send(ready, ...[1, 2, 3, 4, 5].map(sequence => progress(sequence, 1)));
     owner.cancel();
     expect(owner.start(files('B.CCD', 'B.IMG'))).toEqual({ status: 'started', jobId: 2 });
     expect(ports).toHaveLength(2);
     const notified = snapshots.length;
-    ports[0].send(identified(2), group(3), finished(4), failed(5));
+    ports[0].send(progress(6, 1), identified(7));
     ports[0].events.error();
     ports[0].events.messageError();
     expect(snapshots).toHaveLength(notified);
     expect(owner.getSnapshot()).toEqual({ status: 'starting', jobId: 2 });
-    ports[1].send(ready, progress(1, 0, 2), identified(2, 2), finished(3, 2));
+    ports[1].send(ready);
+    ports[0].send(progress(8, 1));
+    ports[1].send(progress(1, 0, 2));
+    ports[0].send(group(9), progress(10, 1));
+    ports[1].send(progress(2, 0, 2), identified(3, 2));
+    ports[0].send(finished(11), failed(12));
+    ports[1].send(finished(4, 2));
+    expect(snapshots.slice(notified).map(snapshot => `${snapshot.status}:${'jobId' in snapshot ? snapshot.jobId : '-'}`))
+      .toEqual(['running:2', 'running:2', 'running:2', 'running:2', 'finished:2']);
     expect(owner.getSnapshot()).toEqual({ status: 'finished', jobId: 2, identity: IDENTITY, groups: [], usage: USAGE });
-    expect(ports[1].posts[0].jobId).toBe(2);
+    expect(ports[1].posts.map(({ jobId }) => jobId)).toEqual([2]);
     expect(ports.map(port => port.terminations)).toEqual([1, 1]);
+  });
+
+  // P2-12 F-12: what a terminated Worker still had in flight, replayed on the port; a real Worker only proves termination.
+  it.each(IMPORT_STAGES)('cancels in %s synchronously, hands nothing over and ignores whatever the terminated Worker still sends', stage => {
+    const { owner, port, snapshots } = running();
+    const index = IMPORT_STAGES.indexOf(stage);
+    const sent = index === 0 ? [progress(1, 0)] : upTo(index);
+    let next = sent.length + 1;
+    const audio = (sequence: number) => ({ type: 'group', jobId: 1, sequence, group: 'audio', input: syntheticSourceGroup('audio', FINGERPRINT) });
+    // In the last stage a complete group has already arrived, a partial result that cancelling must not hand over.
+    port.send(...sent, ...(stage === 'convert-models' ? [audio(next++)] : []));
+    expect(owner.getSnapshot()).toMatchObject({ status: 'running', stage, groups: stage === 'convert-models' ? [{ group: 'audio', status: 'group-complete' }] : [] });
+    let terminatedWhenNotified: number | null = null;
+    owner.subscribe(() => { if (owner.getSnapshot().status === 'cancelled') terminatedWhenNotified = port.terminations; });
+    expect(owner.cancel()).toBe(true);
+    const cancelled = { status: 'cancelled', jobId: 1, stage };
+    expect(owner.getSnapshot()).toEqual(cancelled);
+    expect(snapshots.at(-1)).toEqual(cancelled);
+    expect(terminatedWhenNotified).toBe(1);
+    const notified = snapshots.length;
+    port.send(progress(next, 1, 1, stage), audio(next + 1), { type: 'finished', jobId: 1, sequence: next + 2, groups: ['audio'], usage: USAGE }, failed(next + 3));
+    port.events.error();
+    port.events.messageError();
+    expect(snapshots).toHaveLength(notified);
+    expect(owner.getSnapshot()).toEqual(cancelled);
+    expect(owner.takeGroups()).toBeNull();
+    expect(port.terminations).toBe(1);
   });
 
   it('starts again after a failure', () => {
