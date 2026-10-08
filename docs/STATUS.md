@@ -81,7 +81,7 @@ updated: 2026-10-08
      - **P2-06：** MESH 贴图坐标块按两个连续数组读取（已确认，见 [mesh §1](./original/formats/mesh.md#texture-coordinate-block-order-confirmed)），模型组件为 `models-3`；
      - **P2-07：** 转换 SNIP 10487（左显示屏干扰画面）与 DIAG 10489（状态显示屏文字），图形组件为 `graphics-3`。
 
-     29、31 已在新候选上完成复核，AC-01 在新候选上重新成立；剩余的用户工作是延后的补拍（P2-12/30），之后重跑最终对齐（26）。
+     29、31 已在新候选上完成复核，AC-01 在新候选上重新成立；剩余的用户工作是延后的补拍（P2-12/30，本地清单 `local/research/p2-12/baselines/recapture-30.md`），之后重跑最终对齐（26）。
 
      以上完成后重跑最终对齐，再进行 P2-13 退出评审。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
