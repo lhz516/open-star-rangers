@@ -103,7 +103,7 @@ updated: 2026-10-07
 |---|---|---|
 | [01-e2e-project-routing.md](./subtasks/01-e2e-project-routing.md) | — | completed |
 | [02-network-audit.md](./subtasks/02-network-audit.md) | 01 | completed |
-| [03-responsiveness-probe.md](./subtasks/03-responsiveness-probe.md) | 01, 02 | pending |
+| [03-responsiveness-probe.md](./subtasks/03-responsiveness-probe.md) | 01, 02 | in-progress |
 | [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | completed |
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
 | [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | pending |
