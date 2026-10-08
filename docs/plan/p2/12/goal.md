@@ -116,12 +116,12 @@ updated: 2026-10-07
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | completed |
-| [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | pending |
-| [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | pending |
+| [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | in-progress |
+| [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | in-progress |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | completed |
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
-| [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | pending |
+| [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | in-progress |
 | [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | pending |
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | pending |
 | [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | pending |
