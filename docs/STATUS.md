@@ -53,7 +53,7 @@ updated: 2026-10-08
        - HUD 与地图的绘制路径与透明规则由 EXE 确认；
        - 参考画面的字库与放大窗口图标的对应已记录，见 [cockpit](./original/formats/cockpit.md) 与 [hud](./original/formats/hud.md) §1.2、§2。
 
-       未识别的雷达接触点、地图圆环标记，以及 SNIP/DIAG 条目转交 P3（U-030）。
+       P2-12/27 已追踪雷达接触点、地图圆环标记等未识别元素的来源（代码绘制，交 P3）；SNIP 10487 与 DIAG 10489 按 2026-10-08 的修订转换（见上方“生产”），不再转交 P3（U-030）。
      - **本地验证：** 在本地基准镜像上，`cockpit-hud-map` 组为 `group-complete`，用量在份额内，生产合成与截图比较已记录。
    - [P2-08](./plan/p2/08/goal.md#子任务跟踪)：
      - **转换：** SND 定向解析与规范采样 payload；音频组转换（目录预检、来源核验、预算）；新增 `convert-audio` 阶段，发送 `audio` 组。
@@ -81,7 +81,7 @@ updated: 2026-10-08
      - **P2-06：** MESH 贴图坐标块按两个连续数组读取（已确认，见 [mesh §1](./original/formats/mesh.md#texture-coordinate-block-order-confirmed)），模型组件为 `models-3`；
      - **P2-07：** 转换 SNIP 10487（左显示屏干扰画面）与 DIAG 10489（状态显示屏文字），图形组件为 `graphics-3`。
 
-     下一步由 agent 在新候选上复核（P2-12/29、31）；剩余的用户工作是延后的补拍（P2-12/30）。
+     29、31 已在新候选上完成复核，AC-01 在新候选上重新成立；剩余的用户工作是延后的补拍（P2-12/30），之后重跑最终对齐（26）。
 
      以上完成后重跑最终对齐，再进行 P2-13 退出评审。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
