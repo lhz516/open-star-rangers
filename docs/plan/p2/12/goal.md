@@ -113,7 +113,7 @@ updated: 2026-10-07
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
-| [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | in-progress |
+| [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | pending |
 | [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | pending |
