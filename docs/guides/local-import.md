@@ -107,8 +107,8 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 
 记录日期、Chrome 完整版本、当前提交与预览地址（仅本地），逐项记录通过/失败及安全错误信息：
 
-1. 重新导入当前版本：此前保存的旧转换器版本条目不会提供恢复，必须先完成本次导入。确认识别出版本，四组完整，显示 `Complete resources, viewable`、`Saved in this browser`、`Mission loads into Core`。记录作业耗时与保存耗时。
-2. 在同一源、同一 profile 刷新：用 `Open saved resources` 恢复成功，任务再次载入；记录恢复耗时，并核对查看器身份。
+1. 重新导入当前版本：此前保存的旧转换器版本条目不会提供恢复，必须先完成本次导入。确认识别出版本，四组完整，显示 `Complete resources, viewable`、`Saved in this browser`、`Mission loads into Core`。记录作业耗时与保存耗时：它们不是单独的字段，而是附在句末，分别是导入页面结果行 `Import finished in …` 中的时间，以及状态列表 `Saved in this browser (saved in …)` 括号中的时间（保存完成后才出现）。
+2. 在同一源、同一 profile 刷新：用 `Open saved resources` 恢复成功，任务再次载入；记录恢复耗时（菜单状态列表 `Saved in this browser (restored and verified in …)` 括号中的时间），并核对查看器身份。
 3. 打开玩家、敌机、基地模型；三种效果；每类图像、调色板；两个布局；全部字库，各项无错误。必要时展开效果变体；不把默认空画面当作已检查。呈现差异只记录现象，保真判定留给 P2-12。
 4. 在 `Sounds` 中按角色分别试听开火、导弹、爆炸、Warp，确认实际能听到；确认停止按钮有效，返回菜单后不再发声。短声音可重新播放后立即停止；不能只看发声数。
 5. 核对文档与 Worker 的 CSP 响应头，记录有无 CSP 违规或其他异常。未完成的项明确保留未验证，不凭既有自动化代替。
