@@ -107,7 +107,7 @@ updated: 2026-10-07
 | [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | completed |
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
 | [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | completed |
-| [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | in-progress |
+| [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | completed |
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | completed |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
@@ -131,6 +131,11 @@ updated: 2026-10-07
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-07 — 协调方式：** 本机宿主不能在协调者创建的文件夹中启动会话，worker 改用应用创建的 worktree（从 `goal/p2-12` 分出，分支经 rename 为带应用前缀的 `lhz516-exec-p2-12-NN`，代替 `exec/p2-12-NN`）；集成按 `Worker-Commit` trailer 核对。协调者在 `open-star-rangers.worktrees/goal-p2-12` 维护目标分支；用户会话使用固定在 `9e6188f` 的单独检出（构建指纹与 12 的候选相同）。
+- **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 由 17 的本地脚本估计。
+- **2026-10-07 — 负载相关的检查超时：** 高负载（load ≈ 13–30）下 `pnpm check` 中 `tools/engineering-boundaries.test.ts` 的渲染边界用例偶发 5 s 超时（单独运行约 1.8 s 通过；06、09 的 worker 在不含对方改动的基线上也遇到）。集成时以 `vitest run --maxWorkers=3` 加 typecheck、lint、build 代替完整并行运行，未改超时。26 应在低负载下运行 `pnpm check`。
+- **2026-10-07 — 07 的实际窗口取证（协调者已接受）：** 同文档往返用例的恢复不计入 AC-05：新 context 起始 1–2 s 内，点击的输入任务出现 61–110 ms 的长任务，CDP 追踪显示是点击派发前的渲染等待，与恢复工作无关。AC-05（生产）取 3 轮用例的 7 个窗口（识别 ×3、恢复 ×4，长任务均为 0）；门槛未放宽，记录未过滤。负载下恢复的最大任务距 50 ms 门槛只有约 15–25 ms 余量，26 应在低负载下复跑。
 
 ## 审批
 

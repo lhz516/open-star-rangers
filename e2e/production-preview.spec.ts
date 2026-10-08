@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 import { button, discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { test, expect } from './support/browser-test.ts';
+import { test as audited } from './support/audited-test.ts';
 import { seedProductionCache } from './support/production-cache.ts';
 import { entryButton, expectSamples, firstEntry, pictureOf, pictureSamples, solidSamples, viewerDiagnostics } from './support/viewer-observations.ts';
 import { ordinaryFiles } from '../tools/compliance/distribution.ts';
@@ -15,6 +16,8 @@ import { CHECKER_GREYS } from '../src/render/viewer/viewer-presentation.ts';
 // P2-11 S-11 and AC-19: the local production preview under its strict Content Security
 // Policy. The real import Worker identifies production-sized synthetic files as an unsupported version; a missing or
 // HTML-replaced Worker script fails the import safely. Production project only.
+// The two Worker script fallback cases run with the P2-12 network audit (subtask 07, AC-08 and AC-10): the test's own
+// replaced script is declared as a test request with its expected status, and nothing else is exempted.
 
 const WORKER = '**/assets/import-worker-*.js';
 
@@ -73,7 +76,10 @@ for (const [name, fulfill] of [
   ['missing (404)', { status: 404, contentType: 'text/plain', body: 'Not Found' }],
   ['replaced by the HTML fallback', { status: 200, contentType: 'text/html', body: '<!doctype html><html><body><div id="root"></div></body></html>' }],
 ] as const) {
-  test(`a Worker script ${name} fails the import at the import layer and keeps no package`, async ({ page, expectDiagnostic }) => {
+  audited(`a Worker script ${name} fails the import at the import layer and keeps no package`, async ({ page, expectDiagnostic, audit }) => {
+    audit.declare({ label: `Worker script ${name}`, method: 'GET', path: /^\/assets\/import-worker-[\w-]+\.js$/, expect: fulfill.status });
+    // The chosen files' names carry the marker; it must not leave the browser either.
+    audit.canaries({ name: 'file-name', value: MARKER });
     await recordViolations(page);
     await page.route(WORKER, route => route.fulfill(fulfill));
     // Chrome's own reports of the failed script load, which it does not always make; the page itself adds nothing.
