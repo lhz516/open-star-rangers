@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # 项目进度
@@ -77,7 +77,7 @@ updated: 2026-10-07
    下一步按[推荐执行顺序](./plan/p2/tasks.md#推荐执行顺序)：
    - 批次 4、5 已完成。合入后作业阶段为 `identify-source` → `convert-graphics` → `convert-logic` → `convert-audio` → `convert-models`，协议版本 5，四个组共用同一包身份；
    - 批次 6 已完成：P2-11 的 S/AC 已由最终对齐逐项核对，见其 [goal](./plan/p2/11/goal.md#子任务跟踪)。
-   - 批次 7：[P2-12](./plan/p2/tasks.md#p2-12-资源管线联合验证与本地对照)（资源管线联合验证与本地对照）尚未创建 spec。其中包括呈现约定（坐标轴、UV 原点、跨接缝插值等）的原版截图判定，以及页面与 Worker 的网络审计；之后是 P2-13 退出评审。
+   - 批次 7：[P2-12](./plan/p2/12/goal.md#子任务跟踪)（资源管线联合验证与本地对照）的 spec 与 goal 已批准，正在执行。合成 E2E 设施、联合闭环与失败矩阵（01–10）、候选与本地对照（12–20）已完成，U-032 已确认。下一步是用户在 21 中完成核心音效试听（A-1），之后才能进行呈现约定判定（22）。另有补拍缺口按用户决定延后，相应验收保持 blocked，由最终对齐新增修复子任务。之后是 P2-13 退出评审。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-025、U-015 的剩余部分见 [unknowns](./original/unknowns.md)。
 3. U-022 剩余字段（阵营、基地能力、结果和空间语义）在 P2 中继续，模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
 4. P3 行为研究新增 U-031：战役被毁可进入救援，真实失败/重试条件仍未确认，见 [B-005](./original/behavior/B-005-campaign-rescue.md)；不复用练习模式被毁即失败。
