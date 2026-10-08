@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-06
+updated: 2026-10-08
 related: [U-001, U-006, U-029]
 ---
 
@@ -96,6 +96,29 @@ Local check of [P2-07 subtask 15](../../plan/p2/07/subtasks/15-local-composite-c
 | Map frame (10103 slot 2) | 161 | `srangers_059.png`, `srangers_000.png`, `srangers_001.png`, `srangers_004.png` | 124,701 each | 124,701 each | None |
 
 **Draw order (Confirmed for these layouts):** the front cockpit elements do not overlap. The map frame elements overlap on 161 opaque pixels, where every covering element has the same colour. Any draw order therefore gives the same frame, and the four map screenshots match the stored-order composite there. The production results equal the research composites of P2-07/08.
+
+#### All qualifying captures (P2-12)
+
+Local check of [P2-12 subtask 16](../../plan/p2/12/subtasks/16-layout-comparison.md#完成证据), 2026-10-07, on the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`). The production `composeLayout` output is compared with an expected frame that an independent script decodes from CCKD 10103 and DATA 11075 (§1 and [textures](./textures.md#2-image-record-36-bytes-confirmed)), without the production converters. Each pixel is classed by the original draw path, not by the tested output: *static* (compared), *excluded* (a pass-0 element pixel inside an instrument rectangle, drawn over every frame), *transparent* (inside an element rectangle but not written) or *uncovered* (outside every element). Captures are native 640×480. Script: ignored `local/research/p2-12/layouts/layout-compare.ts`.
+
+| Layout | Captures | Static pixels | Compared pixels | Differing | Excluded |
+|---|---|---:|---:|---:|---|
+| Front cockpit (10103 slot 0) | 46, `srangers_002.png`–`srangers_117.png` as listed in P2-12/13's inventory | 91,220 | 4,196,120 | 0 | The 10 instrument rectangles, 41,285 pixels |
+| Map frame (10103 slot 2) | 10: `srangers_000/001/004/059/088/104–108.png` | 124,701 | 1,247,010 | 0 | None |
+
+- **No selection bias:** over all 118 qualifying captures, the static region matches exactly in these 46 and 10 captures and in no other; every other capture differs on more than 25% of it.
+- **Structure:** element count, order, positions, sizes, palette references, per-pixel masks and indices, and the 256 palette entries of both layouts equal the independent decode; so do the full-frame opaque masks and colours.
+- **Instrument rectangles (front):** every one of the 10 rectangles differs from the panel in at least one capture, so each is drawn at run time in some state. In R1's single screenshot only 8 did: the 183×17 rectangle of type 8 (the message line, 3,111 pixels) and the 73×8 rectangle of type 9 (the strip above the navigation display, 584 pixels) differ in 1 and 25 pixels across the 46 captures. What is drawn there is Unconfirmed.
+
+  | Record (type) | 0 (0) | 1 (1) | 2 (2) | 3 (3) | 4 (5) | 5 (7) | 6 (8) | 7 (6) | 8 (9) | 9 (12) |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | Rectangle | 30×55 | 30×55 | 30×55 | 30×55 | 117×110 | 96×97 | 183×17 | 96×97 | 73×8 | 23×6 |
+  | Pixels differing in at least one capture | 699 | 703 | 672 | 613 | 994 | 9,263 | 1 | 9,312 | 25 | 82 |
+
+  Basis of the exclusion: draw order Confirmed (EXE, [above](#group-palette-and-drawing-confirmed)); rectangle extent Likely (directory +0x18 structure).
+- **Transparency:** opacity comes only from the draw path (raw elements write every pixel; RLE elements write only their opaque runs), never from capture colours. The front layout's three RLE elements leave 52,414 pixels unwritten, and the production frame is transparent at all of them: 47,084 vary across the captures (directly confirmed), the remaining 5,330 rest on the draw path (`0x49c98` through `0x59338`, Confirmed). The raw elements' index-0 pixels (686 front, 909 map) are opaque in the static region and match.
+- **Map palette:** production `palette/map/screen` equals the expansion of slot 2's group palette, and every pixel of the 10 map captures has a colour of that palette. The flight palette check of the forward captures is in [textures](./textures.md#1-data-global-palette-confirmed).
+- **Negative control:** moving one production element by 1 pixel fails both layouts.
 
 ### Bounded canonical graphics projection
 

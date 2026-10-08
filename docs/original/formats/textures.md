@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-06
+updated: 2026-10-08
 related: [U-001, U-006, U-018, U-019, U-028, U-029]
 ---
 
@@ -16,6 +16,8 @@ Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Struc
 ## 1. DATA: global palette (Confirmed)
 
 768 bytes: 256 × RGB, each component a 6-bit VGA value (0–63). Expand to 8 bits by bit replication, `(c << 2) | (c >> 4)`; with this rule every pixel of four in-flight DOSBox-X screenshots matches a DATA colour exactly (Confirmed). This is the palette in effect during flight; the forward cockpit graphics display with correct colours using it (see [cockpit](./cockpit.md)).
+
+**Wider check (P2-12/16, 2026-10-07):** of the 46 qualifying HI forward-view captures in the [cockpit comparison](./cockpit.md#all-qualifying-captures-p2-12), 45 have every pixel in DATA. `srangers_066.png`, taken during a Warp ([B-001](../behavior/B-001-strategic-map.md#战役地图与-warp-补充证据2026-10-03)), has 8,373 pixels whose colours are not in DATA, all outside the cockpit's static region, which matches. Whether the game changes palette entries during a Warp is Unconfirmed.
 
 ## 2. Image record, 36 bytes (Confirmed)
 
@@ -99,9 +101,11 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 ## 4. BITM: bitmaps (Confirmed structure)
 
 - 6 entries embed a 256-colour palette, also BGR: read that way, a portrait shows natural skin tones instead of blue (Likely).
-- 22 entries have no embedded palette. Displayed with DATA, their colours are clearly wrong, so their palette lives elsewhere (Unconfirmed, U-018).
+  - By entry size and relocation count they are entries 10041, 10043, 10045, 10047, 10049 and 10051 (128×128).
+- 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exception (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, craft type 6) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below). Displayed with DATA, the colours of other entries are clearly wrong.
 - Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes.
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
+- **The slice's BITM is drawn top-down (Confirmed):** the HUD blitters read source rows top-down in stored order ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)). In [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage.md#完成证据), 10467 in stored row order under DATA was identified at the left display in seven forward-view captures: 8,601 of its 9,216 pixels are exposed and identical in at least one capture. The other 615 are never exposed there (564 under text, 51 under unidentified graphics) and rest on the same-source read. 10467 is the only BITM in the slice, so U-019 is resolved for the slice and stays open for the portraits.
 
 ## 5. Observed maxima against the P2-05 limits (Confirmed)
 

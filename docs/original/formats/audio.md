@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-08
 related: [U-004, U-016, U-027]
 ---
 
@@ -124,6 +124,12 @@ Evidence (ignored `local/research/p2-08/`):
 - local listening WAV files and `listening-checklist.md`, used in the [listening comparison](#listening-comparison-p2-0810); the developer's judgements are recorded above and in P2-08/10.
 
 The project was opened with `-readOnly -noanalysis`; nothing was saved.
+
+#### Viewer playback path (P2-12)
+
+- **Sample equivalence (Confirmed, [P2-12 subtask 14](../../plan/p2/12/subtasks/14-sound-baseline-equivalence.md#完成证据), 2026-10-07):** for the 12 core Assets of the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`) (4 fire, the missile, the Warp and 6 explosions; entries as in the role table above), the buffers the production viewer hands to Web Audio equal the P2-08/10 local WAVs: one channel, the same rate and frame count, and every one of 115,821 samples equal under the P2-08 float mapping. Each plays once without looping, and the expected entry for each Asset was listed independently of the production sound table.
+- **Listening in the viewer (Confirmed for the WAV comparison, [P2-12 subtask 21](../../plan/p2/12/subtasks/21-user-comparison-session.md#完成证据), 2026-10-08):** after a real import and a same-origin restore, the developer played the 12 Assets one by one in the production viewer (Chrome 155, macOS) and judged each against its WAV: same sound, same pitch and speed, no sign, byte-order or channel noise; each played through once, and Stop stopped it at once.
+- **Against the original:** the original comparison of these entries is the [P2-08/10 listening](#listening-comparison-p2-0810) above, so the viewer path matches the original through the equal WAVs. A direct P2-12 comparison of each role (fire, missile, Warp, explosion) with the original is not recorded: the developer reported comparing with the game but did not name the Asset compared for each role.
 
 ## 2. SONG and MUSC (Unconfirmed)
 

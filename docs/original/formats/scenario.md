@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-08
 related: [U-002, U-003, U-008, U-013, U-014, U-022, U-023, U-027, U-028]
 ---
 
@@ -172,3 +172,15 @@ P2-09 counts every field position of the slice mission, group 0 / slot 1 (SCEN 3
 **Conclusions for the slice mission (Confirmed by data and code):** header 0x00/0x04 define the world extent used by default placement and the world rectangle; sections 3, 5 and 6 and record fields +0x3C, +0x44, +0x48, +0x54 and +0x58 are in use; position fields and +0x40 are zero, so every placement comes from a rectangle, an anchor or a section-5 layout. The section-6 load transform has no effect on this mission's data. Section-5 layout offsets are runtime units, unlike the reference units of records and rectangles.
 
 Evidence (ignored): `local/research/p2-09/field-inventory.ts` with `field-inventory.json`, `pointer-targets.ts` with `pointer-targets-3019.json`, `member-backrefs.ts`, `section2-trigger.ts` and `section2-coverage.ts`; read-only Ghidra probes `local/research/p2-09/ghidra/Probe.java` with `probe-1.txt`–`probe-5.txt`, and the earlier decompiled exports in `local/research/`.
+
+### Independent field comparison and Core load (P2-12)
+
+[P2-12 subtask 18](../../plan/p2/12/subtasks/18-mission-comparison.md#完成证据), 2026-10-07, on the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`). A local script reads SCCT, SCEN 3019, M2ID, MODL, MESH, TEX and SND itself, from §2–§4, [hud §3](./hud.md#3-id-lists-confirmed-structure), [mesh](./mesh.md), [textures](./textures.md#2-image-record-36-bytes-confirmed) and [audio](./audio.md#1-snd-digital-sound-effects-confirmed-on-all-37-entries); it shares only the verified disc and IMFAT readers, not the project's format parsers, converters or classification tables. Script: ignored `local/research/p2-12/mission/mission-check.ts`. Only counts and Asset IDs are recorded.
+
+- **Rule inputs from other evidence:** factions from the [player target modes](./executable.md#player-target-modes-and-enemy-classification) and the player's own kind bit; base interaction from the [interaction-kind mask](./executable.md#bounded-slot-1-interaction-kind-evidence); map axes from [B-001](../behavior/B-001-strategic-map.md#地图框架与坐标轴高概率p2-09) and the [map projection](./executable.md#strategic-map-projection), whose runtime check later confirmed them (U-032); centre and half extent from the [world grid](./executable.md#mission-placement-scheduling-and-world-grid).
+- **Fail-closed source fields (Confirmed for this mission):** the 199 words of the 9 SCEN records and 5 SCCT wingman records that the content model does not convert, or allows only at a default, are all zero; the +0x54 trigger, sections 4–6 and the member back-references satisfy the rules of the [field inventory](#selected-mission-field-inventory-confirmed-structure).
+- **Field comparison:** a source table of 73 rows (35 verbatim, 18 transformed, 14 project identity, 6 research-derived) gives exactly one row to each of the 72 leaf paths of the three logic payloads and to one more path that is an empty array in every item. Mission 271, craft-type table 30 and wingman roster 106 leaf fields equal the independent reading, with no difference; the 15 counts and 3 payload sizes equal the P2-09 record.
+- **Model bindings:** the 6 craft-type entries resolve to 5 model Assets; each model's full content (part flags and colours, textures, complete geometry bytes and empty sound slots) equals exactly one of the 19 MODL entries, the one its M2ID slot names, and the 19 entries are pairwise different. The 15 TEX and 13 SND references map one-to-one to image and sound Assets with equal dimensions and pixel indices, or equal rate, channel and frame count.
+- **Core load:** the pure `loadMission` called twice on freshly decoded payloads gives 418 leaf fields equal to the independent expectation (player claim, groups and members, spawn regions, coordinates and map frame, craft types, factions, models, base interaction and wingman options), and the two results are deep-equal. No randomness or clock was read, and no tick ran.
+
+These results agree with the records above and add no new format fact; U-022 and U-023 are unchanged.

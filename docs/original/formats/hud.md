@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-06
+updated: 2026-10-08
 related: [U-001, U-028, U-029, U-030]
 ---
 
@@ -87,7 +87,7 @@ Research of [P2-07 subtask 10](../../plan/p2/07/subtasks/10-font-text-research.m
 - **Fonts (Likely):** every listed run's set pixels match. In every run but two, every glyph discriminates; in F1-02 and F1-10 three of four do. Each place is therefore drawn by the one font shown. The gauge-area search also found one full-cell alias of `font/hud/8x8-2` overlapping a gauge letter's cell, offset by one column and two rows; at the letter's own origin only `font/hud/8x8-1` matches.
 - **Spacing (Likely):** origin-to-origin advances are constant within each font and run: 6 pixels for `font/hud/8x8-2` text and 8 pixels for `font/hud/8x8-1` text. Whether the advance is a property of the font or of the drawing call is Unconfirmed; drawing text is P3's.
 - **Codes:** every matched glyph is reachable through the production character maps (§1.1), so no map is extended. For the two unmatched places, the font, spacing and the codes needed are Unconfirmed: lines and other labels cross them, and no glyph run matches there.
-- **4×6 font:** a bounded search found no qualifying run of mapped 4×6 glyphs, and no glyph with set pixels outside the 4×6 cell was observed in use. The reference screens give no evidence on clipping such pixels (U-030).
+- **4×6 font:** a bounded search found no qualifying run of mapped 4×6 glyphs, and no glyph with set pixels outside the 4×6 cell was observed in use. The reference screens give no evidence on clipping such pixels (U-030). The wider P2-12 search found no 4×6 run either ([below](#slice-coverage-check-and-u-030-impact-p2-12)).
 - **Map buttons:** the button labels on both sides of the map are part of the frame bitmap ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)), not font text.
 
 ## 2. TABL entries in `SR.NOB` (contents Likely)
@@ -217,7 +217,7 @@ Research of [P2-07 subtask 09](../../plan/p2/07/subtasks/09-hud-family-research.
 | Map | Zoom window icons | Packed bitmap: TABL 11401 | Confirmed | Drawing path above; record 17 exact |
 | Map | Box around a zoom window icon | Code drawing | Confirmed | `0x4abe4` draws it after the icon |
 
-Unidentified elements are handed to P3 and judged by P2-12 and P2-13.
+Unidentified elements are judged by P2-12 ([impact](#unidentified-elements-and-the-u-030-impact)); finding no source does not by itself hand an element to P3.
 
 **Outside the reference screens:** in seven other forward views, the left display shows BITM 10467 at (58,347). The HUD set also loads SNIP 10487, an animation drawn into a display, and DIAG 10489, the status display's message strings. Neither is an image record list, and neither is converted here (U-030).
 
@@ -228,7 +228,7 @@ Unidentified elements are handed to P3 and judged by P2-12 and P2-13.
 | Status display backgrounds, MFDD 10473 list 0 | Confirmed: `0x4d50c` chooses records 0–2 | Flight (Confirmed) | Opaque (Confirmed). Screenshots cannot show it: the 71 index-0 pixels of each record lie at the same positions, all over panel pixels of entry 0's colour | Stored (Confirmed) | Included, delivered |
 | Status display overlays, MFDD 10473 list 1 | Confirmed: `0x4d50c` chooses them per subsystem state | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed) | Included, delivered |
 | Left-display page background, BITM 10467 | Confirmed: `0x4d800`, `0x4da25`, `0x4dce9` | Flight (Confirmed) | No index-0 pixels; drawn opaque | Stored (Confirmed) | Included through a [spec revision](../../plan/p2/07/spec.md#审批); delivered |
-| HI gauge bars, TABL 10479 | Confirmed: `0x4d800` | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed); only the top rows are drawn | Included, delivered |
+| HI gauge bars, TABL 10479 | Confirmed: `0x4d800` | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed); `0x4d800` draws only the top rows (but see the [energy page](#slice-coverage-check-and-u-030-impact-p2-12)) | Included, delivered |
 | Map unit markers, TABL 10461 | Confirmed: `0x49f8c` | Map group palette (Confirmed) | Colour key 0 (Confirmed). Records 20–25 are entirely index 0 and draw nothing | Stored (Confirmed) | Included, delivered |
 | Zoom window icons, TABL 11401 (all 29 records) | Confirmed for the list: `0x49f8c` draws the record a unit field selects. Which records the slice's units select is R8's question | Map group palette (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed) | Included, delivered |
 | MFDD 10475, BITM 10469, TABL 10481 | Loaded instead of 10473, 10467 and 10479 only when the type byte is 6. The reference forward view shows 10473 | — | — | — | Excluded (Likely) |
@@ -269,14 +269,62 @@ A craft's zoom window icon is therefore the 11401 record whose full-list index e
 
 | M2ID slot | 11401 record | Confidence | Seen in the captures |
 |---|---|---|---|
-| 0 | 0 | Confirmed (EXE rule) | Not observed |
-| 1 | 1 | Confirmed (EXE rule) | Not observed |
-| 7 | 7 | Confirmed (EXE rule) | Exact at 5 zoom window places on `srangers_000/001/004.png` |
-| 8 | 8 | Confirmed (EXE rule) | Not observed |
-| 14 | 14 | Confirmed (EXE rule) | Exact at 8 zoom window places on `srangers_000/001/004/088.png` |
-| 17 | 17 | Confirmed (EXE rule) | Exact once on `srangers_059.png` |
+| 0 | 0 | Confirmed (EXE rule) | Exact once on `srangers_104.png` (P2-12) |
+| 1 | 1 | Confirmed (EXE rule) | Exact once on `srangers_104.png` (P2-12) |
+| 7 | 7 | Confirmed (EXE rule) | Exact at 5 zoom window places on `srangers_000/001/004.png`; P2-12: 11 places on 6 captures, adding `srangers_104/105/107.png` |
+| 8 | 8 | Confirmed (EXE rule) | Exact at 4 places on `srangers_105/107.png` (P2-12) |
+| 14 | 14 | Confirmed (EXE rule) | Exact at 8 zoom window places on `srangers_000/001/004/088.png`; P2-12: 11 places on 6 captures, adding `srangers_104/105.png` |
+| 17 | 17 | Confirmed (EXE rule) | Exact once on `srangers_059.png`; P2-12: 5 places on 3 captures, adding `srangers_104/106.png` |
+
+The P2-12 placements are in the right-hand panel of the map ([below](#slice-coverage-check-and-u-030-impact-p2-12)); each record is multi-colour and the only one of its family placed there.
 
 Records 20–28 correspond to bit positions 20–28. M2ID slots 20 and 21 are empty, and kinds 22, 24 and 25 are runtime kinds outside the M2ID table ([executable](./executable.md#player-target-modes-and-enemy-classification)). Canonical content has no craft-to-icon lookup table; P3 defines the map drawing rules (P2-07 technical decision 7). Scripts: `local/research/p2-07/ghidra/` (`ListRange` over the unit loop) and the family searches of subtask 09.
+
+### Slice coverage check and U-030 impact (P2-12)
+
+Research of [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage.md#完成证据), 2026-10-07/08, on the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`). An independent reader is compared with the production import: it shares only the verified disc and IMFAT readers, and re-implements image records, palettes, CCKD, MFDD, TABL, MODL, M2ID and the [nearest-colour rule](./textures.md#nearest-colour-metric-and-tie-rule-confirmed) from these documents. Baselines are 108 captures (the 92 frozen by P2-12/13 and the 16 accepted by P2-12/15): 40 HI forward views and 9 map screens among them. Scripts and the coverage table are in the ignored `local/research/p2-12/hud/`; only IDs, file names and counts are recorded.
+
+**Same source (Confirmed):** all 100 slice images equal the independent read pixel for pixel when read as the [drawing paths](#hud-and-map-drawing-paths-confirmed-exe) draw them. The 20 palettes and the 3 fonts (glyph bytes, cell, 8-byte stride and the §1.1 character maps) are identical.
+
+**Direct comparisons at the confirmed drawing places:**
+
+- **Left display:** at (x0, y0 + 1) of the type-6 instrument rectangle, 38 of the 40 forward views are identified, each needing a match share of at least 0.9 outside text and a lead of at least 0.1 over the next picture. Status background 0 shows in 29, background 1 in 2 and the page background BITM 10467 in 7.
+
+  | Picture | Exposed and identical in at least one capture | Never exposed | Of those, under text in every capture | Under unidentified marks or graphics |
+  |---|---:|---:|---:|---:|
+  | Status background 0 | 8,725 of 9,216 | 491 | 485 | 6 |
+  | Status background 1 | 8,356 of 9,216 | 860 | 858 | 2 |
+  | Page background (BITM 10467) | 8,601 of 9,216 | 615 | 564 | 51 |
+
+  Pixels never exposed rest on the same-source read. None of them is unidentified residue in two or more captures, the pattern a local conversion fault would leave.
+- **Status overlays (MFDD list 1):** overlay 6 in `srangers_102.png` (297 uncovered pixels) and overlay 7 in `srangers_101.png` (826) match with no difference, drawn with colour key 0. The R3 search had found none shown.
+- **Gauge bars on the energy page:** in `srangers_100.png`, TABL 10479 records 1 and 2 are placed whole inside the left display (all 451 and 475 opaque pixels, multi-colour). How this fits the row limit of `0x4d800` ([above](#hud-and-map-drawing-paths-confirmed-exe)) is Unconfirmed: the page may use another path, or the rows `0x4d800` omits may all be colour key 0.
+- **Zoom window icons:** see [R8](#zoom-window-icons-by-craft-type-r8).
+- **Map unit markers:** the two-colour 10461 records 7–10, 12, 13, 16 and 19, which are identical to each other, are placed exactly on all 9 map screens; record 27 (identical to 11401 record 27) once each on 3. With at most 9 pixels, these placements corroborate but do not identify.
+- **Fonts:** all 26 runs of [R7](#12-fonts-used-on-the-reference-screens-r7) are found again, with the same font, glyph counts and set-pixel totals. The search covered the instrument rectangles of types 6, 7, 8, 9 and 12, both sides of the crosshair, and the map's type-10 rectangle:
+  - `font/hud/8x8-1`: 205 runs on 40 captures, 813 glyphs, advance always 8 pixels;
+  - `font/hud/8x8-2`: 416 runs on 49 captures, 1,797 glyphs, advance always 6 pixels;
+  - no matched glyph sets a pixel outside its cell;
+  - `font/hud/4x6`: no run in these regions. Other screens, such as F2 and the communications menu, were not searched, so where it is used remains Unconfirmed.
+- **Coverage limit:** damage-state, page-bar, missile-image, 4×6-text and map-marker captures (P2-12/15, C-07 to C-10) were deferred by the user. 23 images, `palette/missile` and `font/hud/4x6` therefore have only same-source evidence; see the P2-12 subtask for the list.
+
+#### Unidentified elements and the U-030 impact
+
+**Search (P2-12/17):** every one of the 231 decodable `SR.NOB` records was placed whole in each region under the screen palette (index 0 opaque, and for raw records also colour key 0), TEX and BITM records also under their own palette, and TEX records also under the nearest DATA colours; single-colour readings were only counted. Sub-images, cropped or composed drawing, SNIP frames and EXE drawing were outside the search, so a miss does not exclude a source.
+
+| Element | Observation | Graphic source |
+|---|---|---|
+| Status display: marks after text (R3) | 58 single-colour marks on 31 forward views; 52 are 17 pixels in a 6×8 box, 3 are 28 pixels in a 12×8 box with a 2×2 block. No code of the three HUD fonts or of the menu font (`OPTIONS.NOB` TABL 5007) covers any of them under §1.2's rule; no whole record is placed there | Unconfirmed: code drawing, SNIP 10487 or another graphic |
+| Left display content in `srangers_068.png` | Not identified: 4 colours; the four converted display pictures match at most 0.8% outside text, and any `SR.NOB` record at the display origin at most 48.5% | Unconfirmed; a frame of SNIP 10487 is possible |
+| Left display: stripes on the energy page (`srangers_100.png`) and a dotted bar during a Warp (`srangers_066.png`, 655 pixels) | Left after the page background (77.5% outside text on the energy page) and the gauge bars | Unconfirmed |
+| Radar contacts (R3) | On 11 of the 40 forward views, 4×3 shapes in the radar rectangle (type 5) equal single-colour 10461 records: record 0 and those identical to it (1–6, 11, 14, 15, 17, 18), and record 28 with the identical 11401 record 28. No multi-colour record matches | Unconfirmed. A delivered source fits: the only 10461 user outside the map, `0x4c674`, draws one record through `0x4abe4` (not traced). The flight and map palettes differ on only one of the 7 indices 10461 uses, and only the two-colour records use it, none of which is placed in the radar; so if the contacts are 10461 records, the delivered marker images show the same colours |
+| Map: ring markers (R3), the box around selected units and the information window above the zoom window ([B-001](../behavior/B-001-strategic-map.md#交互已确认)) | In the main map only the two-colour 10461 records, 10461 record 27 and 11401 record 27 are placed; in the right panel only 11401 records 0, 1, 7, 8, 14 and 17. No whole record forms a ring, a box or the window's content | Unconfirmed. `0x4abe4` draws a one-pixel box after a record when given a colour (Confirmed for zoom window icons); whether the main map uses it for selected units is not traced |
+
+**Impact (P2-12/24 judgement):** no element above has a conclusive source. The candidates recorded per element (a delivered record for the radar contacts, the `0x4abe4` box for selected units, SNIP 10487 for display content) are untraced, and the rest rests on a bounded search that found nothing. Neither hands an element to P3 ([P2-12 verdict rules](../../plan/p2/12/spec.md#判定分类)), and a missing slice-required graphic cannot be excluded for any of them:
+
+- **Most specific lead for the left-display content:** SNIP 10487. The HUD set loads it with the delivered families, `0x4d010` draws a frame of it chosen by time at (x0, y0 + 1) of a display (the offset at which the delivered left-display pictures are drawn), and it is neither converted nor documented. The 4-colour content of `srangers_068.png` could be such a frame (Unconfirmed).
+- **Routing:** an element that needs a graphic the candidate lacks is a resource gap for P2-07 (HUD graphics), not P3. An element shown to be code drawing, or drawn from delivered graphics, passes to P3 as dynamic HUD drawing.
+- **Checks that would decide it:** decode SNIP 10487 and search its frames at the left display; trace the status display's text drawing in `0x4d0e0` for the marks, `0x4c674` for the radar, and the map's ring, box and label drawing in `0x49f8c`, `0x4abe4` and `0x4afc0`–`0x4b360`.
 
 ## 3. ID lists (Confirmed structure)
 

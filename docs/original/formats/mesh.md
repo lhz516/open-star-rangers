@@ -2,8 +2,8 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-06
-related: [U-001, U-009, U-027]
+updated: 2026-10-08
+related: [U-001, U-009, U-027, U-028]
 ---
 
 # Meshes and models (MESH, MODL)
@@ -22,7 +22,7 @@ Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Struc
 | 0x08 | u32 | 0 |
 | 0x0C | u32 | Vertex count `nv` |
 | | f32 × 3 × `nv` | Vertex positions (x, y, z) |
-| | f32 × 2 × `nv` | Texture coordinates (u, v), one pair per vertex |
+| | f32 × 2 × `nv` | Texture coordinates. Size Confirmed; order Likely two consecutive arrays, `nv` u values then `nv` v values ([below](#texture-coordinate-block-order-likely-p2-12)), not one (u, v) pair per vertex |
 | | u32 | Slot count `ns` (see below) |
 | | f32 × 3 × `nv` | Vertex normals; all unit length |
 | | u32 | Face count `nf` |
@@ -33,9 +33,26 @@ Notes:
 
 - Every face is a triangle.
 - Coordinates are **32-bit floats**. Mesh extents range from about 1.4 to 276 units, consistent with metres (fighters tens of metres, stations hundreds).
-- UVs range from about −11 to 9.6, so textures tile (wrap) across faces.
+- UVs range from about −11 to 9.6, so textures tile (wrap) across faces. Whether the original repeats or mirror-repeats them is Unconfirmed (P2-12/22).
 - The **slot index** of a corner is always below `ns`, and the largest slot index used is exactly `ns − 1`. The slot table itself is not stored. In 288 meshes `ns` equals `nv` (all corners of a vertex share one slot); in 96 meshes `ns` equals the total corner count (every corner has its own slot, i.e. flat shading); the remaining 102 lie in between. Likely a per-corner shading table built at load time, equivalent to smoothing groups.
 - Vertices are in model space: MODL applies no transform.
+
+### Texture-coordinate block order (Likely, P2-12)
+
+[P2-12 subtask 22](../../plan/p2/12/subtasks/22-presentation-verdicts.md#完成证据) (2026-10-08) compared two readings of the f32 × 2 × `nv` block: one (u, v) pair per vertex (*interleaved*, the earlier reading) and two consecutive arrays of `nv` values each (*planar*). Scripts and logs are in the ignored `local/research/p2-12/presentation/`; only counts, angles and ratios are recorded.
+
+- **Texture-space distortion (Confirmed counts):** for each triangle, the ratio σ1/σ2 of the singular values of its texture-to-model mapping (1 means no shear or stretch).
+
+  | Scope | Meshes | Planar better | Interleaved better | Tie | All coordinates equal | Median σ1/σ2, interleaved / planar |
+  |---|---:|---:|---:|---:|---:|---|
+  | All MESH entries | 486 | 453 | 5 | 1 | 27 | 28.35 / 1.43 (12,149 triangles) |
+  | Textured parts of the slice's six models (five craft models and MODL 10383) | 137 parts | 133 | 0 | 0 | 4 (the list-2 parts) | 13.66 / 1.20 (3,474 triangles) |
+
+  Of the 133 slice parts, 128 are better by the median ratio and the other 5 are fully degenerate under the interleaved reading. The base model (MODL 10611) has 42 single-quad parts textured with the slice textures `image/model-texture/02` (28) and `/04` (14). Under the interleaved reading the angle between the u and v gradients of these 84 triangles ranges from 25° to 149°, and each quad's 4 vertices have only 3 distinct coordinates; under the planar reading the two gradients are orthogonal in all 84 and the two triangles of each quad agree.
+- **Screenshot comparison (Likely):** offline renders of the production geometry and textures with the planar reading match the base in `srangers_067.png`, the player craft in `srangers_008.png` and the first enemy type in `srangers_020.png`. The interleaved reading instead reproduces the sheared short stripes that the viewer shows, which none of these captures has.
+- **Axes (Likely):** the first array is u (along texture columns) and the second is v. Swapping them contradicts `srangers_067.png`. Under the project's convention that v = 0 is the texture's first stored row ([source structure](../../engineering/source-structure.md#资源查看渲染)), flipping v also contradicts it; a mirror in u cannot be distinguished, because the compared stripes are uniform along u.
+- **Confidence:** Likely. The native MESH load path (the MESH row of the type callback table at `0x1766b4`) was not traced; tracing it would confirm the order.
+- **Reader status:** the import's `readMesh` still reads one pair per vertex, so the model texture coordinates of the P2-12 candidate (converter version `osr-import.graphics-2.logic-1.audio-1.models-2`) are wrong on every textured part whose coordinates vary: 133 of the slice's 137. The 4 list-2 parts, whose coordinates are all equal, read the same either way. The fix belongs to P2-06 (reader, synthetic builder, tests and a new model converter version) and awaits approval of that task's revision; until then the payload contract is unchanged.
 
 ### Winding and vertex normals (Confirmed counts; meaning Unconfirmed)
 
@@ -46,7 +63,7 @@ Local statistics with the import's readers (`local/research/p2-06/structure-reco
 | The slice's five craft models | 149 | 98 | 51 | 0 | 1,934 / 1,453 / 73 |
 | All MESH entries | 486 | 336 | 150 | 0 | 8,244 / 4,666 / 375 |
 
-No mesh has only near-zero triangles, and every stored normal has unit length within 10⁻³. These are records only. They establish neither a front-face winding nor how the original lights faces (U-028). The payload keeps winding and normals as stored; the consumer boundary is in [source structure](../../engineering/source-structure.md#模型-payload).
+No mesh has only near-zero triangles, and every stored normal has unit length within 10⁻³. These are records only. They establish neither a front-face winding nor how the original lights faces (U-028). The payload keeps winding and normals as stored; the consumer boundary is in [source structure](../../engineering/source-structure.md#模型-payload). In the P2-12 viewer comparison ([§3](#p2-12-viewer-comparison-v-1)), the double-sided renders showed no face that the original hides; the front-face winding remains Unconfirmed.
 
 ## 2. MODL (structure Confirmed on all 19 entries)
 
@@ -76,7 +93,10 @@ Part lists (meaning Unconfirmed, U-027):
 
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
 - **List 1**: hull fragments that look like a wrecked version of the same model. When a craft is destroyed, its fragment effects draw parts of its own model's list 1 (Confirmed by code, see [executable](./executable.md#effect-presentation-sources)). One MODL, 10383, has an empty list 0 and only fragments in list 1; the flight effect setup loads it by ID and fragment effects draw its parts as generic debris (Confirmed by code, same section).
-- **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. Possibly a collision volume or a shield-hit effect. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). Whether and how the original draws it is Unconfirmed.
+- **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). In the slice's 4 list-2 parts all texture coordinates are equal, so the part shows a single texel (Confirmed counts).
+  - **Display (Likely, P2-12/21–22):** on both enemy types the original shows the hull only in frames where the craft is hit, dithered over the craft so that the craft shows through (`srangers_103.png`, `srangers_112.png`, `srangers_114.png`). Captures of the same types without a hit (`srangers_018.png`, `srangers_020.png`, `srangers_101.png`, `srangers_102.png`) show no hull. When it is shown and the dither pattern are runtime behaviour (P3, U-027); its static outline could not be compared, because it appears only dithered.
+  - **No transparency field:** neither MODL nor the image record has a transparency field (Confirmed). Flag value 1 alone is not a translucency flag (Likely): the list-2 parts carry it, but so do list-0 parts that the original shows opaque (the first enemy type's glow part, the second enemy type's window part and the player craft's tail glow). Whether list-2 membership itself selects the dithered drawing is Unconfirmed.
+  - Whether it also serves as a collision volume is Unconfirmed.
 
 ### Part structure by list (Confirmed counts)
 
@@ -89,7 +109,7 @@ Local counts with the import's readers (`local/research/p2-06/structure-records.
 | 2 | 16 | 1: 16 / 0 | 4 | 1: 4 / 0 |
 
 - **Slice parts:** 127, 18 and 4 parts in lists 0, 1 and 2. Within each list every part names a different MESH entry, and no MESH of list 1 or 2 is also used by list 0, so the slice has 149 distinct meshes. The friendly craft model uses only list 0 (2 parts); the other four models use all three lists.
-- **Flags:** flag values do not separate textured from untextured parts, because flags 1 and 3 both occur with and without a TEX entry. Flag meaning is Unconfirmed (U-027).
+- **Flags:** flag values do not separate textured from untextured parts, because flags 1 and 3 both occur with and without a TEX entry. Flag 1 is not a translucency flag (Likely; see list 2 above). Flag meaning is otherwise Unconfirmed (U-027).
 - **Sound slots:** across the five slice models, slots 0–4 are non-empty in 3, 4, 4, 3 and 4 models. Their meanings are the ones recorded in [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08) and §2 above: slots 1, 2 and 4 Confirmed, slots 0 and 3 Unconfirmed. P2-06 assigns none.
 
 ### Observed maxima against the readers' limits (Confirmed)
@@ -139,7 +159,27 @@ Compared against HI-resolution screenshots of all nine views (`local/StarRang/ca
 - **Craft-to-model mapping comes from M2ID** (see [hud](./hud.md) §3). Slot 0 and 1 name MODL 10743, which matches the player craft in the chase-plane view in shape (striped nose spine, wide wings with panels); slot 14 names MODL 11399, the transponder craft (Confirmed for these two). Earlier eye-matching of the player craft to another model was wrong.
 - **Additional geometry comparisons (Confirmed for the pictured targets):** M2ID slot 7 names MODL 11063, whose rendered wing/body geometry matches the target in `local/StarRang/captures/srangers_020.png`; slot 17 names MODL 10611, whose paired circular sections, central surface and support framework match the base target in `srangers_067.png`. The local comparison renders are `local/research/models/MODL_11063.png` and `MODL_10611.png`. This confirms the depicted geometries and table references, not all faction/default-stat semantics or every object in a mission.
 
+### P2-12 viewer comparison (V-1)
+
+Agent visual comparison in [P2-12 subtask 21](../../plan/p2/12/subtasks/21-user-comparison-session.md#完成证据) (2026-10-08): each slice model shown in the production viewer of the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`), built from a checkout with the same build fingerprint (Classic 4:3, unlit) beside the local captures named below, with a user-specified public gameplay video as a secondary reference only where noted. Screenshots were not kept; the per-item record is the ignored `local/research/p2-12/session/record.md`. The model bindings were independently re-read in [P2-12 subtask 18](../../plan/p2/12/subtasks/18-mission-comparison.md#完成证据): six craft-type entries resolve to these five models, and each converted model equals exactly one of the 19 MODL entries, the one its M2ID slot names.
+
+Texture appearance on the textured parts whose coordinates vary is not established by this comparison: the viewer used the interleaved texture-coordinate reading, which is Likely wrong ([§1](#texture-coordinate-block-order-likely-p2-12)). The textured items judged consistent in subtask 21 are therefore held for recheck after the P2-06 fix; only their outline and part layout stand. Where a local capture is named, that consistency is Confirmed for the pictured target, on the same basis as the comparisons above.
+
+| Model (M2ID slot / MODL) | List 0 | List 1 | List 2 |
+|---|---|---|---|
+| Player craft (0, 1 / 10743) | Outline and part layout consistent with `srangers_008.png`; textures held for recheck | Parts consistent with the player's wreckage in `srangers_121.png` and `srangers_044.png`; textures held for recheck | No capture; cannot be judged |
+| First enemy type (7 / 11063) | Outline and part layout consistent with `srangers_020.png`; textures held for recheck | Cannot be judged: the fragments in `srangers_098.png` cannot be attributed to this list | Shown only when hit ([§2](#2-modl-structure-confirmed-on-all-19-entries), list 2); static outline cannot be judged |
+| Second enemy type (8 / 10373) | Outline and part layout consistent with `srangers_018.png`, `srangers_101.png` and `srangers_102.png` (two directions); textures held for recheck | No capture; cannot be judged | As for the first enemy type (`srangers_103.png`) |
+| Friendly transponder craft (14 / 11399) | Outline consistent with `srangers_011.png`; textures held for recheck | — (no list 1) | — |
+| Base (17 / 10611) | Outline and parts consistent with `srangers_067.png` (video frame as secondary reference). The direction of `image/model-texture/02` and `/04` differs by about 90°; cause: the texture-coordinate reading (§1), a conversion defect for P2-06, not a presentation choice | No capture of a destroyed base; cannot be judged | No capture; cannot be judged |
+| Debris (MODL 10383, loaded by ID) | — (empty) | Cannot be judged: the fragments in `srangers_098.png` resemble its texture, but also an enemy type's fragment texture | — |
+
+- **Handedness:** every compared craft is left-right symmetric, so these comparisons cannot confirm handedness. It remains Unconfirmed.
+- **Lighting:** the original's model views are darker overall than the unlit viewer; this is recorded under U-028 and was not used to explain any texture, colour or geometry difference.
+- **Coverage gap:** the "cannot be judged" items lack captures because the recaptures planned in P2-12/15 were deferred by the user; they remain open in P2-12, not settled here.
+
 ## 4. Open questions
 
 - Meaning of part lists 1 and 2 and the part flags (U-027). Sound slots 1, 2 and 4 are confirmed; slots 0 and 3 remain Unconfirmed.
+- The texture-coordinate block order (§1): trace the native MESH loader to confirm it. The original's texture wrap mode and front-face winding.
 - How lighting selects shades (U-028); which craft type each M2ID slot is.
