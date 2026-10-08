@@ -4,13 +4,13 @@ status: active
 phase: P2
 task: "07"
 subtask: "17"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 17 — 最终对齐
 
-**契约来源：** [spec](../spec.md) 的全部范围项 S-01 至 S-11 与验收项 AC-01 至 AC-18；AC-15、AC-16 的最终核对。
-**依赖：** 01、02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、18。
+**契约来源：** [spec](../spec.md) 的全部范围项 S-01 至 S-12 与验收项 AC-01 至 AC-21（S-12、AC-19 至 AC-21 为 2026-10-08 修订）；AC-15、AC-16 的最终核对。
+**依赖：** 01、02、03、04、05、06、07、08、09、10、11、12、13、14、15、16、18、19、20、21。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
@@ -99,3 +99,24 @@ updated: 2026-10-06
   - STATUS 开头的当前阶段说明加入 P2-07。
 
   抽查的验收证据与测试都存在，没有其他阻塞问题。
+
+### 2026-10-08 复核（SNIP 与 DIAG 修订之后）
+
+修订把本行退回 `pending`，19–21 完成后重跑受影响的核对，结果如下。
+
+- **覆盖：** S-12 与 AC-19 至 AC-21 的证据在 [19](./19-snip-diag-research.md#完成证据)、[20](./20-snip-diag-conversion.md#完成证据)、[21](./21-snip-diag-local-check.md#完成证据)；S-08 至 S-11、AC-06、AC-09、AC-14 至 AC-16 的修订部分同样由这三项覆盖。修订记录在 spec 的审批、goal 的执行记录与 P2-01 spec 的审批中。
+- **不变量：**
+  - 图像记录解码、调色板展开与布局合成仍各只有一个实现；SNIP 帧经 `decodeSnipFrame` 得到普通图像 payload，不另设颜色逻辑；
+  - 生产映射没有 `unconfirmed`；SNIP 帧与文字为 confirmed（U-030）；
+  - `PRODUCTION_CONVERTER_VERSION` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，只有 `graphics` 递增；切片定义版本为 3；协议版本与阶段集合未改动；
+  - `cockpit-hud-map` 组仍不含 `models` 分区的 Asset，`models` 组按 P2-06 的规则发送。
+- **AC-15：** 新的 `content/hud/` 模块只导入 `content/` 内模块；新增诊断的原因只含格式规则，测试断言不回显文字；nob-check 只输出计数；`package.json`、`pnpm-lock.yaml`、`.nvmrc` 未改动。
+- **工程检查（2026-10-08）：**
+  - `pnpm check`：156 个文件、4,691 项与构建通过；
+  - `pnpm --silent check:original`：`passed: true`，0 个发现；
+  - `OSR_E2E_DEV_PORT=5163 OSR_E2E_PREVIEW_PORT=5164 pnpm test:e2e`：181 项全部通过（修正前 3 项失败的原因与处理见 20）；
+  - `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB`：失败 0（SNIP 1、DIAG 2 通过）；`MAIN/` 中其余封包失败 0。
+- **AC-16：** hud（DIAG 10489 一节、SNIP 的转换与用户观察、资源缺口的状态）、unknowns 的 U-030、源码结构、工具指南与 P2-01 spec 已更新；改动文档的链接与锚点检查 0 个问题，`updated:` 为 2026-10-08；文档中没有原版文字、字节或反编译代码。
+- **提交范围：** 只有 `src/`、`e2e/`、`tools/nob-check.ts`、`tools/nob-check.test.ts` 与 `docs/`；没有二进制文件或 `local/` 下的文件。本地脚本与输出在被忽略的 `local/research/p2-07/snip-diag/`。
+- **状态：** `node tools/task-state.ts p2/07` 为 `done`，与 tracker 一致。STATUS 归 P2-12 协调者，本修订未改动。
+- **残余：** P2-12 须在新候选上复核 SNIP 帧 6 与 `srangers_068.png`；P2-01 与 P2-07 spec 的 `reviewed:` 标记需要 review-spec 重新标记（见 20）。
