@@ -126,3 +126,21 @@ updated: 2026-10-08
   - `nob-check` 一项不采纳，理由同上；
   - 复核确认补救与文档修正到位，只要求先完成 E2E 复跑再标记完成，已照此执行。
 
+### 2026-10-08 复跑（21 之后）
+
+经用户批准的修订加入补救子任务 [21](./21-mesh-uv-planar.md)（提交 `b0f5245`），本子任务回到 pending 后只复跑这次修订触及的核对。只核对，没有新增功能代码。
+
+- **覆盖：** S-03 与 AC-03 由 02 与 21 覆盖：21 的布局测试在每顶点一对的读法下失败；S-12、S-13、AC-17 增加 21 的测试与文档。AC-11、AC-12 由 21 在最终代码上复跑：09 的本地基准 `passed: true`，四组都为 `group-complete`；全量 nob-check 的 486 个 MESH、19 个 MODL 全部通过。其余 S/AC 的实现未变，沿用上面的结论。
+- **不变量：**
+  - 浮点、绕序、UV 与部件结构仍原样保留：修订只改正源块中贴图坐标的读取布局，数值逐位不变，不做换算，payload schema 不变；
+  - MESH 仍只有 `formats/mesh.ts` 一处读取，导入与 nob-check 共用；[payloads.ts](../../../../../src/original-data/payloads.ts) 中没有 MESH 或 MODL 解析；
+  - 模型输出改变，模型转换器组件随之递增为 `models-3`，生产 `ConverterVersion` 为 `osr-import.graphics-2.logic-1.audio-1.models-3`；当前值的定义与断言都已同步，历史记录保留旧值。
+- **工程检查：** 均在 21 的最终代码上运行。
+  - Vitest 154 个文件、4,596 个测试，以及 `typecheck`、`lint` 与 `build`，都通过；
+  - `pnpm test:e2e` 全部 181 个通过；
+  - `pnpm check:original` 在提交后通过，0 个发现；
+  - 改动文档的链接与锚点检查 0 个问题，P2-12 与 STATUS 指向 mesh §1 旧锚点的链接仍然有效；
+  - `node tools/task-state.ts p2/06` 与 tracker 一致。
+- **依赖与提交范围：** `git diff 235498d HEAD -- package.json pnpm-lock.yaml .nvmrc` 为空。`b0f5245` 没有 `local/` 路径、二进制文件、反编译输出或字节转储；文档只记地址、计数与判定。
+- **交接：** 用旧版本导入的缓存因 `ConverterVersion` 改变而不被恢复，用户须重新导入。模型贴图的视觉复核，以及源码结构“呈现约定”一节、本地导入指南与 STATUS 中的相应说明，归 P2-12/29。
+

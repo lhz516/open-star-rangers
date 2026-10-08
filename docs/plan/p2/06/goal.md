@@ -141,7 +141,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | completed |
 | [20-diagnostic-privacy.md](./subtasks/20-diagnostic-privacy.md) | 05, 18 | completed |
 | [21-mesh-uv-planar.md](./subtasks/21-mesh-uv-planar.md) | 02 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
