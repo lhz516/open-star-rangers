@@ -37,6 +37,7 @@ updated: 2026-10-07
 ## 写入范围
 
 - `e2e/failure-worker-cancel.development.spec.ts`：F-11、F-12 的浏览器用例。
+- `src/workers/import-scenarios.test-support.ts`：按需补充由测试释放的开始后错误场景（I-7）。
 - `src/app/import/import-job-owner.test.ts`：按需补充的受控端口回放。
 - `src/app/resources/resource-holder-cache.test.ts`：按需补充的迟到结果。
 

@@ -41,6 +41,7 @@ updated: 2026-10-07
 ## 写入范围
 
 - `e2e/joint-pipeline.development.spec.ts`：开发项目联合闭环。
+- `src/app/app-entry.test-support.tsx`：按需在自动提交开始时打开响应窗口的测试入口钩子。
 
 ## 验收标准
 
