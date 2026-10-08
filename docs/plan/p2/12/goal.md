@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "12"
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # P2-12：资源管线联合验证与本地对照 — Goal
@@ -49,7 +49,7 @@ updated: 2026-10-07
   - `~/Tools/bin/dosbox-x` 与 `local/research/p2-01/runtime-vrt-map.py`（15、19 需要）。
 
   缺少时相应子任务为 blocked，不能用合成数据代替。
-- **人工前提：** 15、19、21、23 需要用户亲自操作（补拍、配合调试器读数、查看器对照与试听、复核），agent 不能代替（spec 技术决定 8）。
+- **人工前提：** 15、19、21、23 需要用户亲自操作（补拍、配合调试器读数、导入与恢复、试听、复核），agent 不能代替（spec 技术决定 8）。2026-10-08 修订后，21、23 中的视觉对照由 agent 经 Computer Use 完成。
 - **研究前提：** 19（U-032）不保证能定论；两法都不能判定时 AC-20 为 blocked，由用户决定后续安排。22 的修正只在证据达到高概率且能用现有呈现接口表达时进行；需要内容或几何变化的差异转责任任务，新增修复子任务。
 - **原版证据：** [mesh §3](../../../original/formats/mesh.md#3-comparison-with-the-original-partial)、[cockpit R5](../../../original/formats/cockpit.md#production-composites-and-element-overlaps-r5)、[hud 覆盖表](../../../original/formats/hud.md#slice-screen-coverage-and-hud-image-families-r3-r4-r6)、[audio 试听](../../../original/formats/audio.md#listening-comparison-p2-0810)、[scenario 字段清单](../../../original/formats/scenario.md#selected-mission-field-inventory-confirmed-structure)、[executable 地图投影](../../../original/formats/executable.md#strategic-map-projection)、[B-001](../../../original/behavior/B-001-strategic-map.md)，以及 [unknowns](../../../original/unknowns.md) 的 U-004、U-019、U-022、U-023、U-027 至 U-030、U-032。
 
@@ -134,10 +134,13 @@ updated: 2026-10-07
 
 - **2026-10-07 — 协调方式：** 本机宿主不能在协调者创建的文件夹中启动会话，worker 改用应用创建的 worktree（从 `goal/p2-12` 分出，分支经 rename 为带应用前缀的 `lhz516-exec-p2-12-NN`，代替 `exec/p2-12-NN`）；集成按 `Worker-Commit` trailer 核对。协调者在 `open-star-rangers.worktrees/goal-p2-12` 维护目标分支；用户会话使用固定在 `9e6188f` 的单独检出（构建指纹与 12 的候选相同）。
 - **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 由 17 的本地脚本估计。
+- **2026-10-08 — 技术决定 8 修订（用户批准）：** 用户要求并明确批准 21、23 中的视觉对照（C-05、C-12、V-1、V-2、二维显示）改由 agent 经 Computer Use 完成，试听仍由用户完成。spec、工作流、指南与 21、23 已同步修订。此前（2026-10-07 23:55）一次只读文本读取时，工具自动附带了查看器截图，其中有一张原版贴图；当时尚未修订，该截图未用于任何判定。
 - **2026-10-07 — 负载相关的检查超时：** 高负载（load ≈ 13–30）下 `pnpm check` 中 `tools/engineering-boundaries.test.ts` 的渲染边界用例偶发 5 s 超时（单独运行约 1.8 s 通过；06、09 的 worker 在不含对方改动的基线上也遇到）。集成时以 `vitest run --maxWorkers=3` 加 typecheck、lint、build 代替完整并行运行，未改超时。26 应在低负载下运行 `pnpm check`。
 - **2026-10-07 — 15 的补拍缺口（用户决定）：** 用户选择本轮不再补拍，未取得的部分按义务逐项记为无法取得。受影响的 AC-14（手性、敌机/僚机/基地碎片、模型贴图可见性）、AC-15（碎片形状、炮弹、导弹）与 AC-17（导弹图像、状态显示屏、4×6 字库、地图标记、模型贴图）部分保持 blocked，稍后补拍重做；26 发现这些缺口时按 execute-goal §5 新增修复子任务。C-05、C-12 可在 21 会话开始时由用户完成。
 - **2026-10-07 — 07 的实际窗口取证（协调者已接受）：** 同文档往返用例的恢复不计入 AC-05：新 context 起始 1–2 s 内，点击的输入任务出现 61–110 ms 的长任务，CDP 追踪显示是点击派发前的渲染等待，与恢复工作无关。AC-05（生产）取 3 轮用例的 7 个窗口（识别 ×3、恢复 ×4，长任务均为 0）；门槛未放宽，记录未过滤。负载下恢复的最大任务距 50 ms 门槛只有约 15–25 ms 余量，26 应在低负载下复跑。
 
 ## 审批
+
+2026-10-08，用户批准修订 spec 技术决定 8（见执行记录），本 goal 的子任务划分与依赖不变。
 
 用户于 2026-10-07 明确批准本 goal（“approve goal and commit”）。批准范围：子任务 01 至 26 的划分、依赖、执行方式与写入范围，以及验收覆盖表。这不代表实现完成，也不替代 spec 批准（spec 已于同日批准）。

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P2
-updated: 2026-10-07
+updated: 2026-10-08
 related: [ADR-0008, ADR-0012]
 ---
 
@@ -121,8 +121,8 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 
 分工按 [spec 技术决定 8](../plan/p2/12/spec.md#技术决定)：
 
-- **用户本人：** 补拍基准截图，在查看器中对照模型与效果，确认二维显示，试听，确认任务诊断。
-- **agent：** 会话前在 `local/research/p2-12/` 生成会话清单，包括候选身份（[12](../plan/p2/12/subtasks/12-candidate-check.md)）、基准截图与补拍清单（[13](../plan/p2/12/subtasks/13-comparison-baselines.md)）和试听清单（[14](../plan/p2/12/subtasks/14-sound-baseline-equivalence.md)）。agent 只可代为完成不读取原版画面的准备操作：启动 DOSBox-X、调试器与本地脚本。agent 不截图，不查看原版截图、查看器中的原版资源或其派生图像，不代为试听；只读取脚本输出的计数与判定，以及用户写下的文字结论。
+- **用户本人：** 补拍基准截图，导入与恢复，试听，确认任务诊断。
+- **agent：** 会话前在 `local/research/p2-12/` 生成会话清单，包括候选身份（[12](../plan/p2/12/subtasks/12-candidate-check.md)）、基准截图与补拍清单（[13](../plan/p2/12/subtasks/13-comparison-baselines.md)）和试听清单（[14](../plan/p2/12/subtasks/14-sound-baseline-equivalence.md)）。agent 可代为完成不读取原版画面的准备操作：启动 DOSBox-X、调试器与本地脚本。按 [spec 技术决定 8 的修订](../plan/p2/12/spec.md#技术决定)（2026-10-08，用户批准），C-05、C-12 的对应以及模型、效果与二维显示的视觉对照由 agent 完成：在用户机器上用 Computer Use 截取查看器画面、打开本地基准截图。截图不保存，不进入文档或提交。agent 不代为试听。
 - agent 浏览器验证与自动 E2E 只用合成数据，不能替代本节任何一项。
 
 ### 会话准备
