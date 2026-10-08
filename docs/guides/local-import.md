@@ -124,6 +124,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - **用户本人：** 补拍基准截图，导入与恢复，试听，确认任务诊断。
 - **agent：** 会话前在 `local/research/p2-12/` 生成会话清单，包括候选身份（[12](../plan/p2/12/subtasks/12-candidate-check.md)）、基准截图与补拍清单（[13](../plan/p2/12/subtasks/13-comparison-baselines.md)）和试听清单（[14](../plan/p2/12/subtasks/14-sound-baseline-equivalence.md)）。agent 可代为完成不读取原版画面的准备操作：启动 DOSBox-X、调试器与本地脚本。按 [spec 技术决定 8 的修订](../plan/p2/12/spec.md#技术决定)（2026-10-08，用户批准），C-05、C-12 的对应以及模型、效果与二维显示的视觉对照由 agent 完成：在用户机器上用 Computer Use 截取查看器画面、打开本地基准截图。截图不保存，不进入文档或提交。agent 不代为试听。
 - agent 浏览器验证与自动 E2E 只用合成数据，不能替代本节任何一项。
+- **次级基准（2026-10-08，用户批准）：** 缺少本地截图的粗粒度视觉对照项（V-1、V-2、地图图标、HUD 状态），可以用用户指定的公开实机视频帧作基准。判定最高为高概率，记录写明视频地址与时间点。视频帧只临时存放在 `local/`，不保存为证据；逐像素比较仍只用本地截图（[spec](../plan/p2/12/spec.md#原版本地对照)）。
 
 ### 会话准备
 
