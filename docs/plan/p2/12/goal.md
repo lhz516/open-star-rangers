@@ -115,7 +115,7 @@ updated: 2026-10-07
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
-| [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | in-progress |
+| [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | completed |
 | [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | pending |
 | [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | pending |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
@@ -135,6 +135,7 @@ updated: 2026-10-07
 - **2026-10-07 — 协调方式：** 本机宿主不能在协调者创建的文件夹中启动会话，worker 改用应用创建的 worktree（从 `goal/p2-12` 分出，分支经 rename 为带应用前缀的 `lhz516-exec-p2-12-NN`，代替 `exec/p2-12-NN`）；集成按 `Worker-Commit` trailer 核对。协调者在 `open-star-rangers.worktrees/goal-p2-12` 维护目标分支；用户会话使用固定在 `9e6188f` 的单独检出（构建指纹与 12 的候选相同）。
 - **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 由 17 的本地脚本估计。
 - **2026-10-07 — 负载相关的检查超时：** 高负载（load ≈ 13–30）下 `pnpm check` 中 `tools/engineering-boundaries.test.ts` 的渲染边界用例偶发 5 s 超时（单独运行约 1.8 s 通过；06、09 的 worker 在不含对方改动的基线上也遇到）。集成时以 `vitest run --maxWorkers=3` 加 typecheck、lint、build 代替完整并行运行，未改超时。26 应在低负载下运行 `pnpm check`。
+- **2026-10-07 — 15 的补拍缺口（用户决定）：** 用户选择本轮不再补拍，未取得的部分按义务逐项记为无法取得。受影响的 AC-14（手性、敌机/僚机/基地碎片、模型贴图可见性）、AC-15（碎片形状、炮弹、导弹）与 AC-17（导弹图像、状态显示屏、4×6 字库、地图标记、模型贴图）部分保持 blocked，稍后补拍重做；26 发现这些缺口时按 execute-goal §5 新增修复子任务。C-05、C-12 可在 21 会话开始时由用户完成。
 - **2026-10-07 — 07 的实际窗口取证（协调者已接受）：** 同文档往返用例的恢复不计入 AC-05：新 context 起始 1–2 s 内，点击的输入任务出现 61–110 ms 的长任务，CDP 追踪显示是点击派发前的渲染等待，与恢复工作无关。AC-05（生产）取 3 轮用例的 7 个窗口（识别 ×3、恢复 ×4，长任务均为 0）；门槛未放宽，记录未过滤。负载下恢复的最大任务距 50 ms 门槛只有约 15–25 ms 余量，26 应在低负载下复跑。
 
 ## 审批
