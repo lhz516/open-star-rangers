@@ -128,7 +128,7 @@ updated: 2026-10-08
 | [25-engineering-docs.md](./subtasks/25-engineering-docs.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | completed |
 | [27-u030-source-tracing.md](./subtasks/27-u030-source-tracing.md) | — | completed |
 | [28-a1-original-comparison.md](./subtasks/28-a1-original-comparison.md) | — | completed |
-| [29-mesh-uv-recheck.md](./subtasks/29-mesh-uv-recheck.md) | — | pending |
+| [29-mesh-uv-recheck.md](./subtasks/29-mesh-uv-recheck.md) | — | in-progress |
 | [30-deferred-recaptures.md](./subtasks/30-deferred-recaptures.md) | 27, 28, 29, 31 | pending |
 | [31-hud-resource-gap.md](./subtasks/31-hud-resource-gap.md) | 29 | pending |
 | [32-b001-selection-box.md](./subtasks/32-b001-selection-box.md) | — | completed |
