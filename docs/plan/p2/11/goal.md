@@ -122,7 +122,7 @@ updated: 2026-10-07
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | completed |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | completed |
-| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | blocked |
+| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | pending |
 | [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | completed |
 | [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | completed |
 | [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | completed |
@@ -172,6 +172,7 @@ updated: 2026-10-07
   Evidence: 19 的 rubber-duck 审阅认为缺少耗时数值时 AC-21 第一项不能勾选；向用户询问数值时用户不在。已记录的结论、日期与浏览器信息见 [19 的完成证据](./subtasks/19-user-real-machine-check.md#完成证据)。
   Affected acceptance: AC-21（耗时记录）；最终对齐 20 依赖 19。
   Resume when: 用户提供本次核对中页面显示的作业、保存与恢复三项耗时（可附 chrome://version 的版本号），或明确决定免去耗时数值的记录。
+  Resolved (2026-10-07): 用户提供了三项耗时与 Chrome 版本，19 恢复为 pending，见 [19 的完成证据](./subtasks/19-user-real-machine-check.md#完成证据)。
 
 ## 审批
 
