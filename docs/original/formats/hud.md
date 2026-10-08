@@ -6,7 +6,7 @@ updated: 2026-10-08
 related: [U-001, U-028, U-029, U-030]
 ---
 
-# HUD graphics, fonts, and ID lists (TABL, M2ID, NEBC, EXIC)
+# HUD graphics, fonts, and ID lists (TABL, SNIP, M2ID, NEBC, EXIC)
 
 Container format: [IMFAT](./imfat.md); images use the [image record](./textures.md#2-image-record-36-bytes-confirmed). Confidence labels as defined in the IMFAT doc. Structure only; no original content.
 
@@ -43,10 +43,16 @@ Research of P2-05 [subtask 12](../../plan/p2/05/subtasks/12-character-map-resear
   - Read with an 8-byte stride, 136 of the 192 cells are byte-identical to the fonts/1 glyph of the same code, including the shade glyphs at codes 176–178. Read with the header's 6-byte stride, the glyphs line up with neither 8×8 table, and 177 of 256 set pixels beyond 4 columns.
   - The other 56 cells are codes 0x25, 0x27–0x3f, 0x41–0x5d and 0x6b. All but 0x6b are small glyphs of at most 3×5 pixels at the top left of the cell, recognisable as the ASCII character of their code (`%`, `'` to `?` including the digits, `A` to `]`). A 3×5 glyph plus one pixel of spacing fills the header's 4×6 cell. Code 0x6b holds a full-size glyph.
   - So the table is Likely a copy of an 8×8 font with the characters needed for small HUD text redrawn at 3×5. It was written out with the header's 256 × height length, which keeps only the first 192 cells.
-- **Mechanism (Likely):** in every table, text byte c draws glyph c, whose rows start at +4 + 8c. Evidence:
+- **Mechanism (Confirmed, EXE, P2-12/27; earlier Likely):** in every table, text byte c draws glyph c, whose rows start at +4 + 8c; fonts/1 and fonts/2 first replace a–z with A–Z (Drawing, below). Evidence:
   - **Structure and glyph recognition:** the 4×6 table's 8-byte cells and the recognisable glyphs at ASCII positions described above.
   - **Capture pixel match:** each glyph was searched for exact pixel matches across the 92 local captures, at scale 1 and 2 (a match means the glyph's pixels share one colour and no other pixel of the cell has that colour). Only fonts/0 produced qualifying text runs: its glyphs form 231 runs of three or more alphanumeric glyphs at an 8-pixel advance in 47 captures. Read through the identity map, these runs have the shape of text: digit groups followed by lowercase letters, and capitalised words. No alphanumeric runs come from fonts/1 or from the small 4×6 glyphs (tested at advances of 3–6 pixels), so the captures neither confirm nor contradict those two tables.
-  - **EXE:** a bounded search of the local Ghidra decompile found no text-drawing path.
+  - **EXE:** P2-05/12's bounded search of the decompile found no text-drawing path; P2-12/27 found it through the instrument handlers (Drawing, below).
+- **Drawing (Confirmed, EXE, P2-12/27):** `0x49694` builds one record per CCKD font table with `0x5acac` (cell width, cell height, glyph data at +4). It then sets the advance of fonts/1 and fonts/2 to 6 pixels, the height of fonts/2 to 6 rows, and an upper-case flag on both; fonts/0 keeps its cell width (8) as its advance. The text drawer `0x59fc8` replaces a–z with A–Z (`0x75572`) when the flag is set. It then draws the first `height` rows of each glyph with all 8 bit columns, in one colour given by the caller, reading glyphs at an 8-byte stride (16 only when the height exceeds 8), and moves on by the advance. So the game:
+  - never draws rows 6–7 of the 4×6 table;
+  - draws set pixels past the advance over the next cell;
+  - draws lowercase codes with the uppercase glyphs in fonts/1 and fonts/2. The production character maps below do not apply this replacement.
+
+  Which HI code paths use fonts/2 is not settled: most HUD call sites select it only in LO mode, but some take the font index from a variable (U-030).
 - **Codes with evidence:** only these enter the production character maps (`PRODUCTION_GRAPHICS_DECLARATIONS` in [production-graphics.ts](../../../src/original-data/conversion/production-graphics.ts)). Each code maps to the glyph of the same number.
 
   | Table | Codes |
@@ -56,7 +62,7 @@ Research of P2-05 [subtask 12](../../plan/p2/05/subtasks/12-character-map-resear
   | fonts/2 (4×6, 8 rows per glyph) | 0x20, 0x25, 0x27–0x3f, 0x41–0x5d |
 
   The other codes have no evidence of use as text: the control and graphics codes 0x00–0x1f and 0x7f–0xff, fonts/0 0x7b (an arrow whose text byte is unknown), and the 4×6 table's full-size cells.
-- **Pixels outside the cell (draw semantics Unconfirmed, U-030):** neither 8×8 table has any. In the 4×6 table read as 8-row glyphs, 135 of the 192 glyphs set pixels outside the 4×6 cell (the 134 non-empty fonts/1 copies and 0x6b); 115 of them in rows 6–7. Whether the game clips text to the cell is Unconfirmed. Conversion keeps every bit and row.
+- **Pixels outside the cell (draw semantics Confirmed, P2-12/27):** neither 8×8 table has any. In the 4×6 table read as 8-row glyphs, 135 of the 192 glyphs set pixels outside the 4×6 cell (the 134 non-empty fonts/1 copies and 0x6b); 115 of them in rows 6–7. The game does not clip to the cell: it draws rows 0–5 and all 8 columns (Drawing, above). Conversion keeps every bit and row.
 - **Still Unconfirmed:** the meaning of header byte +1.
 
 ### 1.2 Fonts used on the reference screens (R7)
@@ -81,13 +87,13 @@ Research of [P2-07 subtask 10](../../plan/p2/07/subtasks/10-font-text-research.m
 | Map-14–19 | Map | Labels in the map area | `font/hud/8x8-2` | 5 + 6 + 2 + 5 + 3 + 2 | 445 / 445 | 6 | 23 | 23 / 23 |
 | Map-20–24 | Map | Right panel, upper text | `font/hud/8x8-2` | 5 + 6 + 4 + 4 + 4 | 410 / 410 | 6 | 23 | 23 / 23 |
 | Map-25, 26 | Map | Right panel, lower title | `font/hud/8x8-2` | 4 + 6 | 199 / 199 | 6 | 10 | 10 / 10 |
-| — | Map | Energy-cost text beside the selection box | Unconfirmed | 0 | not compared | Unconfirmed | — | Unconfirmed |
-| — | Map | Overlapping labels at the player's position | Unconfirmed | 0 | not compared | Unconfirmed | — | Unconfirmed |
+| — | Map | Energy-cost text beside the selection box | `font/hud/8x8-2` (EXE) | 0 | not compared | 6 (EXE) | — | Unconfirmed |
+| — | Map | Overlapping labels at the player's position | `font/hud/8x8-2` (EXE) | 0 | not compared | 6 (EXE) | — | Unconfirmed |
 
 - **Fonts (Likely):** every listed run's set pixels match. In every run but two, every glyph discriminates; in F1-02 and F1-10 three of four do. Each place is therefore drawn by the one font shown. The gauge-area search also found one full-cell alias of `font/hud/8x8-2` overlapping a gauge letter's cell, offset by one column and two rows; at the letter's own origin only `font/hud/8x8-1` matches.
-- **Spacing (Likely):** origin-to-origin advances are constant within each font and run: 6 pixels for `font/hud/8x8-2` text and 8 pixels for `font/hud/8x8-1` text. Whether the advance is a property of the font or of the drawing call is Unconfirmed; drawing text is P3's.
-- **Codes:** every matched glyph is reachable through the production character maps (§1.1), so no map is extended. For the two unmatched places, the font, spacing and the codes needed are Unconfirmed: lines and other labels cross them, and no glyph run matches there.
-- **4×6 font:** a bounded search found no qualifying run of mapped 4×6 glyphs, and no glyph with set pixels outside the 4×6 cell was observed in use. The reference screens give no evidence on clipping such pixels (U-030). The wider P2-12 search found no 4×6 run either ([below](#slice-coverage-check-and-u-030-impact-p2-12)).
+- **Spacing (Confirmed, P2-12/27; earlier Likely):** origin-to-origin advances are constant within each font and run: 6 pixels for `font/hud/8x8-2` text and 8 pixels for `font/hud/8x8-1` text. The advance is a property of the font record built at load (§1.1 Drawing); drawing text is P3's.
+- **Codes:** every matched glyph is reachable through the production character maps (§1.1), so no map is extended. Lines and other labels cross the two unmatched places, and no glyph run matches there. The EXE draws both with fonts/1 at its advance of 6: the energy-cost text in `0x49f8c`, the labels in `0x4af78` (P2-12/27). The codes they need are Unconfirmed.
+- **4×6 font:** a bounded search found no qualifying run of mapped 4×6 glyphs, and no glyph with set pixels outside the 4×6 cell was observed in use. How such pixels are drawn is settled by the EXE (§1.1 Drawing). The wider P2-12 search found no 4×6 run either ([below](#slice-coverage-check-and-u-030-impact-p2-12)).
 - **Map buttons:** the button labels on both sides of the map are part of the frame bitmap ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)), not font text.
 
 ## 2. TABL entries in `SR.NOB` (contents Likely)
@@ -166,17 +172,37 @@ All four read the source rows top-down in stored order.
 | `0x4ca80` | Loads the five-entry HUD set from one of three tables: HI `0x175e8c` (MFDD 10473, BITM 10467, TABL 10479, SNIP 10487, DIAG 10489); HI `0x175eb4` when the type byte at +0x28 of the object returned by `0x52694` is 6 (10475, 10469, 10481, 10487, 10489); LO `0x175ea0` (10477, 10471, 10483, 10487, 10491) |
 | `0x4d50c` | Status display, into an off-screen buffer: one MFDD list-0 background (record 0, 1 or 2, chosen by thresholds on a ratio of two fields of the displayed craft) with `0x59cbc`, then list-1 records chosen per subsystem state, some blinking, with `0x59d38` |
 | `0x4d0e0` | Copies that buffer with `0x59608` to (x0, y0 + 1) of its instrument rectangle, then draws two lines of message text from the DIAG entry's strings |
-| `0x4d800` | A left-display page: BITM 10467 at (x0, y0 + 1) with `0x59608`; then two 10479 records chosen by fields of the target object, one near each side, with `0x59774`, drawing only the top rows (the record height less a layout constant); then labelled bars and text |
-| `0x4da25`, `0x4dce9` | Other left-display pages: BITM 10467 at (x0, y0 + 1) with `0x59608`, then text |
-| `0x4d010` | A frame of SNIP 10487 chosen by time, at (x0, y0 + 1) of a display. The SNIP layout is not documented |
+| `0x4d800` | A left-display page: BITM 10467 at (x0, y0 + 1) with `0x59608`; then two 10479 records chosen by fields of the target object, one near each side, with `0x59774`; then labelled bars and text. `0x59774` takes inclusive source bounds, and this call passes columns 0 to w and rows 0 to h − 2: every row but the last (which is colour key 0 in all four 10479 records), plus one column that repeats the next row's first pixel (P2-12/27) |
+| `0x4da28`, `0x4dcec` | Other left-display pages: BITM 10467 at (x0, y0 + 1) with `0x59608`, then text. Entry addresses from the page table at `0x175c7c` (P2-12/27; earlier recorded as `0x4da25` and `0x4dce9`, the starts of in-memory disassembly) |
+| `0x4d010` | A frame of SNIP 10487 chosen by time, at (x0, y0 + 1) of a display ([SNIP 10487](#snip-10487-confirmed-structure-p2-1227)) |
 | `0x49e00` | Loads TABL 10461 and 11401 for the strategic map |
 | `0x49f8c` | Strategic map: for each unit, the 10461 record selected by a unit field in the main map area (records 26 and 27 also mark special positions), and the 11401 record selected by another unit field in the zoom window, each through `0x4abe4` |
 | `0x4abe4` | Draws one record with `0x59774`, clipped to the given area. When given a colour, it then draws a one-pixel box from the record's top-left corner, one pixel wider and taller than the record |
 | `0x4b56c` | Moves zoom-window icon positions so that their rectangles do not overlap; reads only record sizes |
 
-No other code uses the 10461 and 11401 handles apart from loading and freeing them; the only other user is `0x4c674`, which draws one 10461 record through `0x4abe4`.
+No other code uses the 10461 and 11401 handles apart from loading and freeing them; the only other user is `0x4c674`, which draws one 10461 record through `0x4abe4`. `0x4c674` is called only by `0x49f8c` and draws in the main map area; it is not a radar path (P2-12/27).
 
 **Palettes:** the forward cockpit group (10103 slot 0) has no group palette, so the forward view and its HUD use the default palette, the DATA global palette ([textures](./textures.md#1-data-global-palette-confirmed), the production flight palette). The map screen uses the map group's palette for the whole screen ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)).
+
+### SNIP 10487 (Confirmed structure, P2-12/27)
+
+The only SNIP entry in `SR.NOB`. The HUD set loads it with the other four families (`0x4ca80`, all three tables).
+
+| Offset | Content |
+|---|---|
+| +0 | u32 offset of the frame block (28); the entry's one relocation is this pointer |
+| +4 | u32 size of the frame block (20,748) |
+| +8 | Zero bytes up to the offset |
+| Block +0 | u32 frame count (9) |
+| Block +4 | u32 height (96) |
+| Block +8 | u32 width (96) |
+| Block +12 | The frames, each width × height / 4 bytes (2,304), in order |
+
+- **Pixels:** 2 bits each, four per byte, the leftmost pixel in the lowest two bits, rows top-down. 12 + 9 × 2,304 bytes fill the block exactly. All four values occur.
+- **Colours:** the entry holds no palette or index. Each 2-bit value selects one of four palette indices in a table in the EXE's initialised data at `0x175ed8`, passed by `0x4d010`.
+- **Drawing (Confirmed, EXE):** `0x5bfc0` (HI) writes every pixel of the frame to the screen at (x0, y0 + 1) of the display. `0x5c098` (LO) draws every second row and column. `0x4d010` picks the frame from the game time, wrapping at the frame count.
+- **Capture (Confirmed):** in `srangers_068.png`, all 9,216 pixels of the left display at (x0, y0 + 1) equal frame 6, read through the EXE table under the flight palette. No other accepted forward view shows a frame (best 3.8%).
+- **When it is drawn (Confirmed, EXE; meaning of the states Likely):** the left-display dispatcher `0x4ce30` keeps a table at `0x175c7c` of seven page entries: the status display `0x4d0e0`, the bar page `0x4d800` (the energy page of `srangers_100.png`), three entries for `0x4da28`, one for `0x4dc50`, and the Warp page `0x4dcec`. Each entry holds the page's handler, a refresh period and a subsystem index (all pages but the Warp page). `0x4ce30` reads that subsystem's state with `0x52ac4`, the same function `0x4d50c` uses to choose the status overlays. While the state is 2 it draws the SNIP instead of the page. While the state is 1 it switches between the SNIP and the page at random intervals of 64–127 ticks. The states are Likely the subsystem's damage levels. The SNIP is therefore Likely the display's interference animation when the display is damaged.
 
 ### Slice screen coverage and HUD image families (R3, R4, R6)
 
@@ -199,11 +225,11 @@ Research of [P2-07 subtask 09](../../plan/p2/07/subtasks/09-hud-family-research.
 | F1 | Cockpit panel, side struts, thin strip, frame of the Warp lamp | Packed bitmap: CCKD 10103 slot 0 | Likely | [cockpit](./cockpit.md#front-cockpit-source-r1); elements 1–3 exact |
 | F1 | Warp indicator | Font text (run F1-05); its frame is in the panel | Likely | The 82 pixels that differ from the panel inside the Warp instrument rectangle are exactly F1-05's set pixels ([§1.2](#12-fonts-used-on-the-reference-screens-r7)) |
 | F1 | Status display (left), image | Packed bitmap: MFDD 10473 list-0 background; no list-1 record shown | Confirmed | Drawing path above; comparison below |
-| F1 | Status display, marks after runs F1-07 and F1-08 | Unidentified | Unconfirmed | Two bracket-shaped 4×8 marks in the next character cells; no glyph of the three production fonts matches them there |
+| F1 | Status display, marks after runs F1-07 and F1-08 | Code drawing: the message cursor | Confirmed | Two marks in the next character cells; no glyph matches them. P2-12/27 traced them ([sources](#sources-of-the-unidentified-elements-p2-1227)) |
 | F1 | Navigation display (right): grid and marker lines | Code drawing | Likely | One-pixel lines |
 | F1 | Gauges in the four corner areas: level stripes | Code drawing | Likely | Horizontal one-pixel stripes. The HI gauge bars are drawn only on a left-display page (`0x4d800`) |
 | F1 | Radar rings and crosshair | Code drawing | Likely | Circles and lines |
-| F1 | Radar contacts | Unidentified | Unconfirmed | Only single-colour records match there (non-unique). TABL 10461, the only list of such small markers, is drawn only by the strategic map |
+| F1 | Radar contacts | Code drawing | Confirmed | Only single-colour records match there (non-unique). P2-12/27 traced the radar handler ([sources](#sources-of-the-unidentified-elements-p2-1227)) |
 | F1 | Aiming reticle in the view | Code drawing | Likely | Circle and tick lines |
 | F1 | Message line and the strip above the navigation display | Nothing drawn | Likely | No pixel of either instrument rectangle differs from the panel (3,111 and 584 pixels) |
 | F1, Map | Text | Font text; two map places unidentified | Likely | [§1.2](#12-fonts-used-on-the-reference-screens-r7). On F1, a colon glyph in the next cell after F1-06 is also matched by both 8×8 fonts, and its code is mapped |
@@ -213,13 +239,13 @@ Research of [P2-07 subtask 09](../../plan/p2/07/subtasks/09-hud-family-research.
 | Map | Range ring, target line, selection box | Code drawing | Likely | Ring, line and rectangle outline |
 | Map | Mouse cursor | No separate cursor drawn | Likely | No pointer shape other than the selection box, which follows the mouse ([B-001](../behavior/B-001-strategic-map.md)) |
 | Map | Small unit markers in the main map area | Packed bitmap: TABL 10461 | Confirmed | Drawing path above; in screenshots only non-unique (single-colour) matches |
-| Map | Red ring markers in the main map area | Unidentified | Unconfirmed | No record matches a whole ring. Two-colour 10461 records match inside four of them, at 7 places (two in three of them), so those matches are not unique |
+| Map | Ring markers in the main map area | Code drawing | Confirmed | No record matches a whole ring. Two-colour 10461 records match inside four of them, at 7 places (two in three of them), so those matches are not unique. P2-12/27 traced the circles ([sources](#sources-of-the-unidentified-elements-p2-1227)) |
 | Map | Zoom window icons | Packed bitmap: TABL 11401 | Confirmed | Drawing path above; record 17 exact |
 | Map | Box around a zoom window icon | Code drawing | Confirmed | `0x4abe4` draws it after the icon |
 
-Unidentified elements are judged by P2-12 ([impact](#unidentified-elements-and-the-u-030-impact)); finding no source does not by itself hand an element to P3.
+Elements left unidentified here were judged by P2-12 ([impact](#unidentified-elements-and-the-u-030-impact)); finding no source does not by itself hand an element to P3.
 
-**Outside the reference screens:** in seven other forward views, the left display shows BITM 10467 at (58,347). The HUD set also loads SNIP 10487, an animation drawn into a display, and DIAG 10489, the status display's message strings. Neither is an image record list, and neither is converted here (U-030).
+**Outside the reference screens:** in seven other forward views, the left display shows BITM 10467 at (58,347). The HUD set also loads SNIP 10487, an animation drawn into a display, and DIAG 10489, the status display's message strings. Neither is an image record list, and neither is converted here (U-030). The SNIP layout and its use are now known ([SNIP 10487](#snip-10487-confirmed-structure-p2-1227)); P2-12/27 records it as a resource gap ([impact](#unidentified-elements-and-the-u-030-impact)).
 
 **Image families:** every candidate family is included unless there is at least Likely evidence that the slice does not use it ([P2-07 rules](../../plan/p2/07/spec.md#研究与入选门槛)). Choices marked Confirmed rest on the drawing paths above.
 
@@ -227,7 +253,7 @@ Unidentified elements are judged by P2-12 ([impact](#unidentified-elements-and-t
 |---|---|---|---|---|---|
 | Status display backgrounds, MFDD 10473 list 0 | Confirmed: `0x4d50c` chooses records 0–2 | Flight (Confirmed) | Opaque (Confirmed). Screenshots cannot show it: the 71 index-0 pixels of each record lie at the same positions, all over panel pixels of entry 0's colour | Stored (Confirmed) | Included, delivered |
 | Status display overlays, MFDD 10473 list 1 | Confirmed: `0x4d50c` chooses them per subsystem state | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed) | Included, delivered |
-| Left-display page background, BITM 10467 | Confirmed: `0x4d800`, `0x4da25`, `0x4dce9` | Flight (Confirmed) | No index-0 pixels; drawn opaque | Stored (Confirmed) | Included through a [spec revision](../../plan/p2/07/spec.md#审批); delivered |
+| Left-display page background, BITM 10467 | Confirmed: `0x4d800`, `0x4da28`, `0x4dcec` | Flight (Confirmed) | No index-0 pixels; drawn opaque | Stored (Confirmed) | Included through a [spec revision](../../plan/p2/07/spec.md#审批); delivered |
 | HI gauge bars, TABL 10479 | Confirmed: `0x4d800` | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed); `0x4d800` draws only the top rows (but see the [energy page](#slice-coverage-check-and-u-030-impact-p2-12)) | Included, delivered |
 | Map unit markers, TABL 10461 | Confirmed: `0x49f8c` | Map group palette (Confirmed) | Colour key 0 (Confirmed). Records 20–25 are entirely index 0 and draw nothing | Stored (Confirmed) | Included, delivered |
 | Zoom window icons, TABL 11401 (all 29 records) | Confirmed for the list: `0x49f8c` draws the record a unit field selects. Which records the slice's units select is R8's question | Map group palette (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed) | Included, delivered |
@@ -298,7 +324,7 @@ Research of [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage
 
   Pixels never exposed rest on the same-source read. None of them is unidentified residue in two or more captures, the pattern a local conversion fault would leave.
 - **Status overlays (MFDD list 1):** overlay 6 in `srangers_102.png` (297 uncovered pixels) and overlay 7 in `srangers_101.png` (826) match with no difference, drawn with colour key 0. The R3 search had found none shown.
-- **Gauge bars on the energy page:** in `srangers_100.png`, TABL 10479 records 1 and 2 are placed whole inside the left display (all 451 and 475 opaque pixels, multi-colour). How this fits the row limit of `0x4d800` ([above](#hud-and-map-drawing-paths-confirmed-exe)) is Unconfirmed: the page may use another path, or the rows `0x4d800` omits may all be colour key 0.
+- **Gauge bars on the energy page:** in `srangers_100.png`, TABL 10479 records 1 and 2 are placed whole inside the left display (all 451 and 475 opaque pixels, multi-colour). This fits `0x4d800` (Confirmed, P2-12/27): the row it omits is the last, which is colour key 0 in all four records. Both records sit exactly at its two places, including the 7 pixels each of its extra column ([above](#hud-and-map-drawing-paths-confirmed-exe)).
 - **Zoom window icons:** see [R8](#zoom-window-icons-by-craft-type-r8).
 - **Map unit markers:** the two-colour 10461 records 7–10, 12, 13, 16 and 19, which are identical to each other, are placed exactly on all 9 map screens; record 27 (identical to 11401 record 27) once each on 3. With at most 9 pixels, these placements corroborate but do not identify.
 - **Fonts:** all 26 runs of [R7](#12-fonts-used-on-the-reference-screens-r7) are found again, with the same font, glyph counts and set-pixel totals. The search covered the instrument rectangles of types 6, 7, 8, 9 and 12, both sides of the crosshair, and the map's type-10 rectangle:
@@ -312,19 +338,37 @@ Research of [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage
 
 **Search (P2-12/17):** every one of the 231 decodable `SR.NOB` records was placed whole in each region under the screen palette (index 0 opaque, and for raw records also colour key 0), TEX and BITM records also under their own palette, and TEX records also under the nearest DATA colours; single-colour readings were only counted. Sub-images, cropped or composed drawing, SNIP frames and EXE drawing were outside the search, so a miss does not exclude a source.
 
-| Element | Observation | Graphic source |
+| Element | Observation | Source (P2-12/27) |
 |---|---|---|
-| Status display: marks after text (R3) | 58 single-colour marks on 31 forward views; 52 are 17 pixels in a 6×8 box, 3 are 28 pixels in a 12×8 box with a 2×2 block. No code of the three HUD fonts or of the menu font (`OPTIONS.NOB` TABL 5007) covers any of them under §1.2's rule; no whole record is placed there | Unconfirmed: code drawing, SNIP 10487 or another graphic |
-| Left display content in `srangers_068.png` | Not identified: 4 colours; the four converted display pictures match at most 0.8% outside text, and any `SR.NOB` record at the display origin at most 48.5% | Unconfirmed; a frame of SNIP 10487 is possible |
-| Left display: stripes on the energy page (`srangers_100.png`) and a dotted bar during a Warp (`srangers_066.png`, 655 pixels) | Left after the page background (77.5% outside text on the energy page) and the gauge bars | Unconfirmed |
-| Radar contacts (R3) | On 11 of the 40 forward views, 4×3 shapes in the radar rectangle (type 5) equal single-colour 10461 records: record 0 and those identical to it (1–6, 11, 14, 15, 17, 18), and record 28 with the identical 11401 record 28. No multi-colour record matches | Unconfirmed. A delivered source fits: the only 10461 user outside the map, `0x4c674`, draws one record through `0x4abe4` (not traced). The flight and map palettes differ on only one of the 7 indices 10461 uses, and only the two-colour records use it, none of which is placed in the radar; so if the contacts are 10461 records, the delivered marker images show the same colours |
-| Map: ring markers (R3), the box around selected units and the information window above the zoom window ([B-001](../behavior/B-001-strategic-map.md#交互已确认)) | In the main map only the two-colour 10461 records, 10461 record 27 and 11401 record 27 are placed; in the right panel only 11401 records 0, 1, 7, 8, 14 and 17. No whole record forms a ring, a box or the window's content | Unconfirmed. `0x4abe4` draws a one-pixel box after a record when given a colour (Confirmed for zoom window icons); whether the main map uses it for selected units is not traced |
+| Status display: marks after text (R3) | 58 single-colour marks on 31 forward views; 52 are 17 pixels in a 6×8 box, 3 are 28 pixels in a 12×8 box with a 2×2 block. No code of the three HUD fonts or of the menu font (`OPTIONS.NOB` TABL 5007) covers any of them under §1.2's rule; no whole record is placed there | Code drawing (the message cursor) and single glyphs of the message text |
+| Left display content in `srangers_068.png` | Not identified: 4 colours; the four converted display pictures match at most 0.8% outside text, and any `SR.NOB` record at the display origin at most 48.5% | SNIP 10487, frame 6; not in the candidate |
+| Left display: stripes on the energy page (`srangers_100.png`) and a dotted bar during a Warp (`srangers_066.png`, 655 pixels) | Left after the page background (77.5% outside text on the energy page) and the gauge bars | Code drawing (bar lines) |
+| Radar contacts (R3) | On 11 of the 40 forward views, 4×3 shapes in the radar rectangle (type 5) equal single-colour 10461 records: record 0 and those identical to it (1–6, 11, 14, 15, 17, 18), and record 28 with the identical 11401 record 28. No multi-colour record matches | Code drawing (contact shapes) |
+| Map: ring markers (R3), the box around selected units and the information window above the zoom window ([B-001](../behavior/B-001-strategic-map.md#交互已确认)) | In the main map only the two-colour 10461 records, 10461 record 27 and 11401 record 27 are placed; in the right panel only 11401 records 0, 1, 7, 8, 14 and 17. No whole record forms a ring, a box or the window's content | Code drawing (circles, icon boxes) and text in `font/hud/8x8-2` |
 
-**Impact (P2-12/24 judgement):** no element above has a conclusive source. The candidates recorded per element (a delivered record for the radar contacts, the `0x4abe4` box for selected units, SNIP 10487 for display content) are untraced, and the rest rests on a bounded search that found nothing. Neither hands an element to P3 ([P2-12 verdict rules](../../plan/p2/12/spec.md#判定分类)), and a missing slice-required graphic cannot be excluded for any of them:
+##### Sources of the unidentified elements (P2-12/27)
 
-- **Most specific lead for the left-display content:** SNIP 10487. The HUD set loads it with the delivered families, `0x4d010` draws a frame of it chosen by time at (x0, y0 + 1) of a display (the offset at which the delivered left-display pictures are drawn), and it is neither converted nor documented. The 4-colour content of `srangers_068.png` could be such a frame (Unconfirmed).
-- **Routing:** an element that needs a graphic the candidate lacks is a resource gap for P2-07 (HUD graphics), not P3. An element shown to be code drawing, or drawn from delivered graphics, passes to P3 as dynamic HUD drawing.
-- **Checks that would decide it:** decode SNIP 10487 and search its frames at the left display; trace the status display's text drawing in `0x4d0e0` for the marks, `0x4c674` for the radar, and the map's ring, box and label drawing in `0x49f8c`, `0x4abe4` and `0x4afc0`–`0x4b360`.
+Read-only analysis of `SRANGERS.EXE` in the existing Ghidra project, 2026-10-08, with every path checked against the accepted captures. Scripts and outputs are in the ignored `local/research/p2-12/u030/` (`verify.ts`). Only addresses, structure, counts, file names and verdicts are recorded; palette indices and positions stay in the local output.
+
+**Instrument handlers (Confirmed, EXE):** `0x49db4` registers a handler set per instrument type, and `0x49b2c` calls the draw handler of each instrument record of the active cockpit slot. The draw handlers include `0x401e8` for type 5 (radar), `0x4ce30` for type 6 (left display), `0x49f8c` for type 10 (strategic map), `0x4e6c0` for type 8 (the scrolling message line) and `0x4f2a0` for type 12.
+
+| Element | Drawing path (Confirmed, EXE) | Graphic read | Capture check (Confirmed) | Routing |
+|---|---|---|---|---|
+| Status display: marks after text | `0x4d0e0` draws the top message at (x0 + 4, y0 + 5) and the bottom message at (x0 + 4, y1 − 20), both with `0x4f108`, in font 1 (`font/hud/8x8-2`) with an 8-pixel line pitch. `0x4f108` types the message out one character at a time. After the last drawn character it draws a one-pixel rectangle outline (`0x5a170`) as wide as the font's advance and as tall as its height (6×8), in the text colour, while a blink flag is set. The flag toggles once the message is complete | None | All 52 marks of 6×8 are the full 24-pixel outline of the cell one advance after the last glyph, in the text colour, on the message grid. 47 follow a detected run (one of them with 3 further pixels inside the outline, not traced) and 5 follow a glyph outside any run. Each 12×8 mark is one mapped glyph of both 8×8 fonts followed by the cursor; each 2×2 block is a detached part of that glyph. Five fixed 5×1 marks are single mapped glyphs on the grid. P2-12/17's 17-pixel count came from 4×6 glyphs matching part of the outline as text | P3: dynamic HUD drawing |
+| Left display in `srangers_068.png` | The SNIP drawn by `0x4ce30` → `0x4d010` → `0x5bfc0` instead of the page: always while the page's subsystem state is 2, at random intervals while it is 1 ([SNIP 10487](#snip-10487-confirmed-structure-p2-1227)) | SNIP 10487, not converted | Frame 6 matches all 9,216 pixels | P2-07: resource gap (impact below) |
+| Energy page stripes | `0x4d800` calls `0x4d6f0` for three bars: one at the display's middle and one each at x0 + 8 and x1 − 8, each in its own fixed palette index. `0x4d6f0` draws horizontal one-pixel lines (`0x5ad00`) every second row from y1 − 3 upward, as many as the bar's value allows. Each line's half-widths come from a 50-entry table that `0x4ca80` builds from a cubic curve, truncated (`0x74518` chops) and clamped to 5–45 pixels. The side bars keep a fixed 5 pixels on their outer side | None | `srangers_100.png`: of the 2,587 pixels that differ from the page background outside text, 1,900 are the predicted stripe pixels in the predicted colours and 687 belong to the two gauge records; none is left, and every predicted stripe pixel outside text is shown | P3 |
+| Warp dotted bar | The Warp page `0x4dcec` calls `0x4e018` for three bars across the display (x0 + 2 to x1 − 2): one at y1 − 40 filled from both ends, one at y1 − 26, and a completion bar at y1 − 12. `0x4e018` draws vertical one-pixel lines every second column, 13 pixels tall (11 for the last bar), each bar in its own fixed index, then its label. The page also draws a history graph whose ticks fall every third column | None | `srangers_066.png`: the 655 pixels are 46 full lines of the first bar, 10 full lines of the completion bar and 12 tick pixels at a 3-pixel pitch; none is left | P3 |
+| Radar contacts | `0x40370` builds up to 120 contacts with a position, a palette index chosen by side, kind and distance, a blink flag and a shape routine; `0x4017c` draws them. The shapes are a 3×3 plus (`0x40a98`), a 3×3 X (`0x40ad4`), a 5×5 X (`0x40b24`), a 5×5 box with its edge midpoints cleared (`0x409f4`, Likely the current target) and single pixels (`0x40a80`). While the radar's subsystem state is nonzero (Likely damage), random contacts are added. All are drawn with `0x5ad00`, `0x5a170` and `0x5afe0` | None | On 25 of the 40 forward views, single-colour 3×3 pluses (27) and Xs (15) in the radar rectangle, each in one of the contact colours. 10461 records 0 and 28 are this plus in a 4×3 box, which is why P2-12/17 matched them | P3 |
+| Map ring markers | `0x4ad1c` (called by `0x49f8c`) handles every unit with a nonzero radius, the radius taken from its type data and scaled to the map. Units in the friendly-plus-player mask `0x6c87f` get a filled disc (`0x5a930`, or `0x5bca0` clipped at the edge); all others get a one-pixel midpoint circle (`0x5a390`) in one fixed index. Both are centred on the unit's position, where `0x4abe4` also draws the unit's marker | None | On the 9 map screens, 1,928 of the 1,947 main-map pixels of that index lie on exact `0x5a390` circles (radius 2–10, mostly 5–6, at least 75% of each circle shown), many centred on a two-colour 10461 marker; 19 pixels on one screen are left | P3 |
+| Box around selected units | A left click in the main map sets a target point (`0x2b9bc`). `0x49f8c` then draws each zoom-window icon through `0x4abe4` with a box colour when the unit lies within a fixed distance of that point on both axes (`0x1864a8`), otherwise without one. `0x4abe4` draws a one-pixel box from the icon's top-left, one pixel wider and taller than the icon, so one click can box several units. Main-map markers are always drawn without a box; while the pointer is in the main map, `0x4c8b0` draws the pointer's rectangle there in the same colour. The boxes B-001 records after a click are Likely the zoom-window boxes | None | 5 boxes on `srangers_001/106/107.png`, each exactly one placed 11401 icon plus 1 pixel; the pointer rectangle shows on the map screens | P3 |
+| Information window above the zoom window | `0x49e74` splits the type-10 rectangle into the square main map, an information area (upper half of the right panel) and the zoom window (lower half). While the pointer is in the main map, `0x4ba80` writes lines about the units in the pointer's area, as many as fit (area height / font height). It draws them with font 1 at (x + 4, y + 4 + 8n), one index per line. `0x4b8fc` frames the three areas, the one under the pointer in a second colour | `font/hud/8x8-2` (delivered) | On all 9 map screens, every pixel in the information area that differs from its background is ink of `font/hud/8x8-2` runs on that grid (no other pixel); every frame pixel is in one of the two frame colours, with the main map's frame drawn last | P3 |
+
+The map labels (`0x4af78`, covering `0x4afc0`–`0x4b360`) are leader lines (`0x5ad00`) and text in font 1, so they are code drawing and font text as well (§1.2).
+
+**Impact (P2-12/27):** seven elements are code drawing or text in a delivered font, each with a traced path and a capture check. None passes to P3 merely for lack of a source.
+
+- **Resource gap for P2-07:** SNIP 10487, needed for the left display's interference animation. The HUD set loads it unconditionally, and `0x4ce30` draws it on the status display and five other page entries while their subsystem state is nonzero (always at 2, intermittently at 1). Slice use is Likely: the slice already delivers the status overlays chosen by the same state function, and nothing limits the slice to undamaged displays. Converting it needs the 9 frames and the four palette indices of the EXE table at `0x175ed8`. AC-17 (agent part) therefore stays blocked on this gap. Resume when P2-07's spec and goal, revised with the user's approval, convert SNIP 10487 (or the user records that the interference is outside the slice), and P2-12 rechecks it on the new candidate against `srangers_068.png` (frame 6).
+- **Routing rule (unchanged):** an element that needs a graphic the candidate lacks is a resource gap for P2-07 (HUD graphics), not P3. An element shown to be code drawing, or drawn from delivered graphics, passes to P3 as dynamic HUD drawing.
 
 ## 3. ID lists (Confirmed structure)
 

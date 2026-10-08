@@ -126,7 +126,7 @@ updated: 2026-10-08
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | completed |
 | [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | completed |
 | [25-engineering-docs.md](./subtasks/25-engineering-docs.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | completed |
-| [27-u030-source-tracing.md](./subtasks/27-u030-source-tracing.md) | — | in-progress |
+| [27-u030-source-tracing.md](./subtasks/27-u030-source-tracing.md) | — | completed |
 | [28-a1-original-comparison.md](./subtasks/28-a1-original-comparison.md) | — | blocked |
 | [29-mesh-uv-recheck.md](./subtasks/29-mesh-uv-recheck.md) | — | blocked |
 | [30-deferred-recaptures.md](./subtasks/30-deferred-recaptures.md) | 27, 28, 29 | pending |
@@ -142,6 +142,7 @@ updated: 2026-10-08
 - **2026-10-08 — 17 完成，AC-17 的 agent 部分仍 blocked：** 17 的覆盖表与核对已完成。23 个图像（gauge-bar 0/3、status-display background-2、overlay 0–5/8、unit-marker 0/1/7/8/14/17/26–28、zoom-icon 26–28、image/missile）、palette/missile 与 font/hud/4x6 为“无法判定”，原因是 C-07/C-08/C-09/C-10 的补拍被延后（见 15 的用户决定）。按用户“记录缺口，相应验收保持 blocked，稍后重做”的决定，本行按已完成记录，AC-17 的缺口交 26 新增修复子任务处理；恢复条件为补拍上述场景。U-030：文字后的状态显示屏标记与 srangers_068 的左显示屏不能排除缺少切片图形，交 24 判断。
 - **2026-10-08 — 22 完成，无呈现修正；发现模型贴图坐标的转换缺陷：** 呈现约定逐行判定完毕，没有需要修正的约定。21 的差异 1（基地贴图 02、04 的方向）来自 MESH 贴图坐标块的读取（现按每顶点成对交错读取；按两个连续数组读取时，全部 486 个 MESH 中 453 个更合理，并与本地截图一致，高概率）。缺陷在规范 payload 的值，按 spec“不包含”回责任任务 P2-06 修复：修订其 spec/goal 并经用户批准，改读取、合成构建器与测试、mesh §1，递增模型转换器版本，得到新候选后重新导入。缺陷影响全部带贴图的模型部件，21 中 V-1 的 5 项“一致”是在错误映射下判定的，已在本地记录中改为待复核。差异 2、3（敌机第 2 列表受击时的点阵半透明）属运行时表现（P3，U-027），不修正；其静态外形为无法判定。AC-14 与完整的 AC-21 保持 blocked，恢复条件：P2-06 修复并递增模型转换器版本，在新候选上重跑受影响的 agent 脚本，并复核 V-1 中 10 个带贴图模型项（各模型列表 0、1）。按 spec 的“发现转换或内容缺陷”与候选变化规则，这一复核不属于 23（23 只复核 22 的呈现修正），由 26 新增修复子任务。P2-06 的修订待用户批准。
 - **2026-10-08 — 11 完成：** 审阅候选 `2f9a8da`（构建指纹与 12 的候选相同）的全部页面与 Worker chunk：应用自有的数据外发调用为 0，依赖中能携带本地资源外发的可达调用为 0，没有未判定的路径；合规检查 0 条发现，依赖与声明自 P1-12 未变。P2-06 的 MESH 修复会改变构建，届时由 26 判断是否在新候选上重跑被忽略的 `local/research/p2-12/outbound/outbound-scan.ts`（含 `--control`）并更新 11 的证据。
+- **2026-10-08 — 27 完成：U-030 未识别元素都有来源，SNIP 10487 为 P2-07 资源缺口：** 8 类元素都已在 EXE 中追踪到绘制路径，并与截图逐像素核对（已确认）：状态显示屏的标记是消息光标，能量页面的条纹与 Warp 的点状条是条形线，雷达接触点是代码形状，地图圆环是中点圆，选中单位的方框是放大窗口的图标框，信息小窗是 `font/hud/8x8-2` 的文字，都转交 P3 的动态 HUD 绘制。`srangers_068` 的左显示屏是 SNIP 10487 的一帧（结构已确认；`0x4ce30` 在子系统状态非零时用它代替左显示屏页面，状态高概率为损伤级别）。SNIP 不在候选中，切片会用到它为高概率，按 spec“不包含”记为 P2-07 的资源缺口，AC-17（agent 部分）保持 blocked；恢复条件：P2-07 经用户批准修订 spec/goal 并转换 SNIP 10487（或用户决定这一干扰动画不在切片内），再在新候选上复核。范围外的观察（未改动）：B-001 记录的“点击后选中单位出现方框”高概率是放大窗口的图标框，代码中主地图的标记不画方框；状态消息字符串高概率来自同样未转换的 DIAG 10489（不是图形，影响 AC-22 的必需资源闭合判断）；EXE 中 fonts/1、fonts/2 先把 a–z 换成 A–Z，生产字符映射不做这一替换（已记入 hud §1.1，交 P2-05 或 P3 决定）；HI 中 4×6 字库的使用位置仍未确认（与 C-09 有关）。
 - **2026-10-08 — Subtask 28 blocked:** 需用户注明开火、爆炸各自直接对照原版的 Asset（导弹、Warp 各只有一个核心 Asset，确认即可），或在基准 DOSBox-X 中补做未对照角色；用户目前不在，两次询问都未得到回答。
   Evidence: 21 的 A-1 记录与被忽略的 `local/research/p2-12/session/record.md` 中“用户称已对照，Asset 待注明”。
   Affected acceptance: AC-18；28 的全部验收；30 与 26 因依赖而等待。
