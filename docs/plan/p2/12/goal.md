@@ -108,7 +108,7 @@ updated: 2026-10-07
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
 | [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | pending |
 | [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | pending |
-| [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | in-progress |
+| [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | pending |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
