@@ -122,7 +122,7 @@ updated: 2026-10-07
 | [16-effect-mapping-display.md](./subtasks/16-effect-mapping-display.md) | 11, 15, 17, 24 | completed |
 | [17-local-real-data-check.md](./subtasks/17-local-real-data-check.md) | 09, 23 | completed |
 | [18-docs-local-import-guide.md](./subtasks/18-docs-local-import-guide.md) | 12, 13, 14 | completed |
-| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | in-progress |
+| [19-user-real-machine-check.md](./subtasks/19-user-real-machine-check.md) | 14, 18 | blocked |
 | [21-production-preview-csp.md](./subtasks/21-production-preview-csp.md) | 07 | completed |
 | [22-viewer-audio.md](./subtasks/22-viewer-audio.md) | 02 | completed |
 | [23-local-real-data-import.md](./subtasks/23-local-real-data-import.md) | 03, 04 | completed |
@@ -168,6 +168,10 @@ updated: 2026-10-07
   Affected acceptance: AC-21；19 的两项验收；最终对齐 20 依赖 19。
   Resume when: 用户按[本地导入指南](../../../guides/local-import.md#用户实机核对)用当前 goal 分支的生产预览完成核对，并提供文字结论（日期、Chrome 版本、各项结论与作业、保存、恢复耗时，以及错误 code）。
   Resolved (2026-10-07): 用户报告“everything passed in Chrome latest version”，19 恢复为 pending；未报告具体耗时数值，证据见 [19](./subtasks/19-user-real-machine-check.md#完成证据)。
+- **2026-10-07 — Subtask 19 blocked:** 用户汇总确认核对全部通过，但没有提供 AC-21 要求记录的作业、保存与恢复耗时数值。
+  Evidence: 19 的 rubber-duck 审阅认为缺少耗时数值时 AC-21 第一项不能勾选；向用户询问数值时用户不在。已记录的结论、日期与浏览器信息见 [19 的完成证据](./subtasks/19-user-real-machine-check.md#完成证据)。
+  Affected acceptance: AC-21（耗时记录）；最终对齐 20 依赖 19。
+  Resume when: 用户提供本次核对中页面显示的作业、保存与恢复三项耗时（可附 chrome://version 的版本号），或明确决定免去耗时数值的记录。
 
 ## 审批
 
