@@ -35,6 +35,7 @@ updated: 2026-10-07
 ## 写入范围
 
 - `docs/engineering/README.md`：联合用例、失败矩阵、网络审计与命名约定。
+- `docs/engineering/source-structure.md`：按需在测试 Worker 入口一段链接 05 新增的场景注册表与 P2-12 场景。
 
 ## 验收标准
 
