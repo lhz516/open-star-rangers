@@ -1,15 +1,16 @@
 // Checks every structure of an IMFAT archive that the import or the research reads, and its cross-references.
 // Usage: node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 // Prints per-type pass and fail counts, failure codes with structural locations, the observed graphics, MESH and MODL
-// maxima and the observed container counts; never pixels, palette values, glyphs, coordinates, offsets or other entry
-// contents.
+// maxima and the observed container, SNIP and DIAG counts; never pixels, palette values, glyphs, coordinates, offsets,
+// text or other entry contents.
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
-  checkPaletteIndices, decodeImageRecord, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readImageRecordHeader,
-  readMfdRecordOffsets, readTableRecordOffsets,
+  checkPaletteIndices, decodeImageRecord, decodeSnipFrame, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette,
+  readImageRecordHeader, readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
-import { entryData, parseImfat } from '../src/original-data/imfat.ts';
+import { readStatusMessages } from '../src/original-data/conversion/source-messages.ts';
+import { entryData, entryRelocations, parseImfat } from '../src/original-data/imfat.ts';
 import { readMesh } from '../src/original-data/formats/mesh.ts';
 import { readModel } from '../src/original-data/formats/modl.ts';
 import { parseIdList, PayloadError } from '../src/original-data/payloads.ts';
@@ -56,6 +57,12 @@ const containers = {
 };
 /** How many elements set each of the two CCKD element flag fields to 1; the others hold 0. */
 const flagsSet = [0, 0];
+/** Observed SNIP and DIAG counts, compared with the P2-07 limits (2026-10-08 revision) in docs/original. */
+const hudSets = { snipFrames: 0, snipFramesDecoded: 0, diagTexts: 0, diagStartupMessages: 0, diagTextBytes: 0 };
+/** Stands in for the executable's colour table, which the archive does not hold, so that every frame is decoded. */
+const IDENTITY_COLOURS = Uint8Array.of(0, 1, 2, 3);
+/** Stands in for the executable's lower-line format; only the entry's own structure is checked. */
+const EMPTY_FORMAT = Uint8Array.of(0);
 
 /** Whether CCKD slot `slot` has a palette; a palette it points to must pass the shared reader. */
 function hasGroupPalette(block: Uint8Array, slot: number): boolean {
@@ -160,6 +167,27 @@ for (const entry of archive.entries) {
         for (const offset of offsets) checkImage(entry.type, block, offset);
         break;
       }
+      case 'SNIP': {
+        const snip = { bytes: block, relocations: entryRelocations(bytes, entry) };
+        const { count, width, height } = readSnipFrames(snip);
+        const entryStats = statsOf(entry.type);
+        entryStats.imageWidth = Math.max(entryStats.imageWidth, width);
+        entryStats.imageHeight = Math.max(entryStats.imageHeight, height);
+        hudSets.snipFrames = Math.max(hudSets.snipFrames, count);
+        for (let frame = 0; frame < count; frame++) decodeSnipFrame(snip, frame, IDENTITY_COLOURS);
+        hudSets.snipFramesDecoded += count;
+        break;
+      }
+      case 'DIAG': {
+        const messages = readStatusMessages({ bytes: block, relocations: entryRelocations(bytes, entry) }, EMPTY_FORMAT);
+        const texts = [
+          ...messages.statusFormats, ...messages.ratings.map(({ text }) => text), ...messages.subsystemNames, ...messages.stateWords, ...messages.startupMessages,
+        ];
+        hudSets.diagTexts += texts.length;
+        hudSets.diagStartupMessages = Math.max(hudSets.diagStartupMessages, messages.startupMessages.length);
+        hudSets.diagTextBytes = Math.max(hudSets.diagTextBytes, ...texts.map(text => text.length));
+        break;
+      }
       case 'M2ID':
       case 'NEBC': {
         const expected = entry.type === 'M2ID' ? 'MODL' : 'BITM';
@@ -239,6 +267,10 @@ const flagText = (set: number) => `${containers.elements - set}×0 ${set}×1`;
 console.log(`    CCKD element flags: first ${flagText(flagsSet[0])}, second ${flagText(flagsSet[1])}`);
 console.log(`    MFDD records per list ${containers.mfdRecords}`);
 console.log(`    TABL records per image list ${containers.tableRecords}; ${containers.otherTables} other TABL entries, ${containers.otherImageLists} parse as image lists`);
+if (counts.has('SNIP')) console.log(`    SNIP frames per entry ${hudSets.snipFrames}, ${hudSets.snipFramesDecoded} frames decoded`);
+if (counts.has('DIAG')) {
+  console.log(`    DIAG startup messages ${hudSets.diagStartupMessages}, ${hudSets.diagTexts} texts read, longest ${hudSets.diagTextBytes} bytes`);
+}
 console.log(`  failures: ${failures.length}`);
 for (const f of failures) console.log(`    ${f}`);
 process.exit(failures.length ? 1 : 0);

@@ -8,6 +8,7 @@ import { effectExpansionSize } from '../../content/effects/expand-effects.ts';
 import { syntheticLeExecutable, type SyntheticEntry } from '../synthetic.ts';
 import { MISSILE_RECORD_BYTES } from './effect-declarations.ts';
 import { PRODUCTION_EFFECT_DECLARATIONS, PRODUCTION_EFFECT_REGIONS, PRODUCTION_RENS_ENTRY } from './production-effects.ts';
+import { PRODUCTION_GRAPHICS_REGION_WRITES } from './production-graphics.test-support.ts';
 
 // Synthetic effect sources at the production RENS entry and executable regions, generated in code from arbitrary
 // values; never original data. The expected payloads come first and are written into the regions their uses name, so
@@ -195,8 +196,8 @@ export const syntheticEffectPayloads = (): ReadonlyMap<string, EffectPayload> =>
 let pristine: Uint8Array | undefined;
 
 /**
- * A synthetic LE executable of four objects whose production regions hold `payloads`; every other byte is a generated
- * pattern. `edit` may change the region bytes of an Asset's use first, and `fixups` adds fixup records by page map
+ * A synthetic LE executable of four objects whose production regions hold `payloads` and the production graphics
+ * regions `PRODUCTION_GRAPHICS_REGION_WRITES`; every other byte is a generated pattern. `edit` may change the region bytes of an Asset's use first, and `fixups` adds fixup records by page map
  * index. Object 1 is a single page. Without arguments it returns a copy of one executable built once.
  */
 export function syntheticEffectExecutable(
@@ -215,6 +216,8 @@ function buildExecutable(
 ): Uint8Array {
   const writes = [...PRODUCTION_EFFECT_REGIONS].flatMap(([id, regions]) => regions.map(({ use, object, offset, length }) =>
     ({ object, offset, bytes: edit(regionBytes(payloads.get(id)!, use, length), id, use) })));
+  // The graphics step reads its own regions of the same executable.
+  writes.push(...PRODUCTION_GRAPHICS_REGION_WRITES);
   const objects = [1, 2, 3, 4].map(object => {
     const size = Math.max(16, ...writes.filter(write => write.object === object).map(({ offset, bytes }) => offset + bytes.length));
     const bytes = Uint8Array.from({ length: size }, (_, index) => (index * 13 + object) & 0xff);

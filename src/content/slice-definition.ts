@@ -2,7 +2,7 @@ import type { AssetKind } from './asset-id.ts';
 import { RESOURCE_GROUPS, type ResourceGroup } from './asset-contract.ts';
 import { SLICE_ID, type SliceDefinitionVersion, type SliceId } from './content-identity.ts';
 
-export const SLICE_DEFINITION_VERSION = 2;
+export const SLICE_DEFINITION_VERSION = 3;
 
 export type SliceRole =
   | 'mission'
@@ -81,7 +81,8 @@ function requirement(
  * The only production slice definition. Changing the candidate, roles, cardinalities or groups
  * is a contract change that requires a spec revision and a new definition version.
  * Projectile, missile and debris allow model, image or data representations: version 2 admits data for the
- * generated effect geometry P2-06 imports (U-027). Core sounds allow several sample clips (U-004/U-027).
+ * generated effect geometry P2-06 imports (U-027); version 3 lets the cockpit-hud-map group own data for the status display
+ * messages P2-07 imports. Core sounds allow several sample clips (U-004/U-027).
  */
 const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   sliceId: SLICE_ID,
@@ -92,7 +93,7 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   groupKinds: Object.freeze({
     logic: Object.freeze(['mission', 'data'] as const),
     models: Object.freeze(['model', 'image', 'palette', 'data'] as const),
-    'cockpit-hud-map': Object.freeze(['image', 'palette', 'font', 'layout'] as const),
+    'cockpit-hud-map': Object.freeze(['image', 'palette', 'font', 'layout', 'data'] as const),
     audio: Object.freeze(['sound'] as const),
   }),
   roles: Object.freeze([

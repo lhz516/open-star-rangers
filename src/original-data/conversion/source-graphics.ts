@@ -4,10 +4,10 @@ import { exclusiveBytes } from '../../content/ownership.ts';
 import { SourceError, type SourceLimitName } from '../source-error.ts';
 
 // Source structure of DATA palettes, 36-byte image records, MFDD record lists, bitmap font tables, CCKD group
-// directories and TABL image lists (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
+// directories, TABL image lists and SNIP frames (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
 // it allocates anything sized by the source, copies its result into new buffers the caller owns and throws a
-// SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`) under the
-// caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
+// SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`, `frames`,
+// `colours`) under the caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
 
 const IMAGE_RECORD_BYTES = 36;
 const DATA_PALETTE_BYTES = 768;
@@ -19,12 +19,15 @@ const COCKPIT_ELEMENT_BYTES = 52;
 
 /**
  * Approved safety caps on container counts above the largest baseline counts (docs/plan/p2/07/spec.md, limits): CCKD
- * directory slots (1–8), elements per slot (0–16, the layout element cap), records per MFDD list (0–16) and records per
- * TABL image list (1–64).
+ * directory slots (1–8), elements per slot (0–16, the layout element cap), records per MFDD list (0–16), records per
+ * TABL image list (1–64) and SNIP frames (1–16).
  */
 export const CONTAINER_LIMITS = Object.freeze({
-  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64,
+  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64, snipFrames: 16,
 });
+
+/** The SNIP colour table: one palette index per 2-bit pixel value (hud, SNIP 10487). */
+export const SNIP_COLOURS = 4;
 
 export interface ImageRecordHeader {
   readonly encoding: 'raw' | 'sprite-rle';
@@ -65,7 +68,8 @@ export interface SourceFont {
   readonly glyphs: Uint8Array<ArrayBuffer>;
 }
 
-const fieldAt = (path: string, field: string): string => (path ? `${path}.${field}` : field);
+/** `field` under the caller's `path`, the location every source reader reports. */
+export const fieldAt = (path: string, field: string): string => (path ? `${path}.${field}` : field);
 
 /** Whether `length` bytes at `offset` lie inside the block, without overflowing. */
 const fits = (block: Uint8Array, offset: number, length: number): boolean => offset <= block.length && length <= block.length - offset;
@@ -253,6 +257,57 @@ export function tableRecordOffset(block: Uint8Array, index: number, path = ''): 
   const offsets = readTableRecordOffsets(block, path);
   if (!isIndex(index, offsets.length)) notFound(fieldAt(path, 'record'), 'the TABL image list has no such record');
   return offsets[index];
+}
+
+/** The frames of a SNIP entry: their count and size, and the block offset of frame 0. */
+export interface SnipFrames {
+  readonly count: number;
+  readonly width: number;
+  readonly height: number;
+  readonly framesOffset: number;
+}
+
+/** An archive entry's bytes and relocations, the block offsets of its 32-bit pointer fields. */
+export interface RelocatedBlock {
+  readonly bytes: Uint8Array;
+  readonly relocations: readonly number[];
+}
+
+/**
+ * A SNIP entry (hud, SNIP 10487): u32 frame block offset and size, then at that offset u32 frame count, height and
+ * width and the frames, each width × height / 4 bytes of 2-bit pixels. The offset must be the entry's only relocation,
+ * the frame block must start after the 8-byte header and fill the rest of the block exactly, and a row must be whole
+ * bytes. Anything else is `invalid-payload`.
+ */
+export function readSnipFrames({ bytes: block, relocations }: RelocatedBlock, path = ''): SnipFrames {
+  const location = fieldAt(path, 'frames');
+  if (!fits(block, 0, 8)) invalid(location, 'the SNIP header extends past the block');
+  if (relocations.length !== 1 || relocations[0] !== 0) invalid(location, 'the frame block offset must be the only relocation');
+  const [offset, size] = [u32(block, 0), u32(block, 4)];
+  if (offset < 8 || offset > block.length || size !== block.length - offset) invalid(location, 'the SNIP frame block must fill the block after its header');
+  if (size < 12) invalid(location, 'the SNIP frame block header extends past the block');
+  const count = withinLimit(u32(block, offset), 'snipFrames', CONTAINER_LIMITS.snipFrames, location);
+  const height = withinLimit(u32(block, offset + 4), 'imageHeight', GRAPHICS_LIMITS.imageHeight, location);
+  const width = withinLimit(u32(block, offset + 8), 'imageWidth', GRAPHICS_LIMITS.imageWidth, location);
+  if (width % 4 !== 0) invalid(location, 'a SNIP frame row must be whole bytes');
+  if (size !== 12 + count * width * height / 4) invalid(location, 'the SNIP frames must fill the frame block exactly');
+  return Object.freeze({ count, width, height, framesOffset: offset + 12 });
+}
+
+/**
+ * Frame `index` of a SNIP entry, the `frames/<index>` subresource, as an opaque image in stored row order: each pixel's
+ * 2-bit value, the leftmost pixel in a byte's lowest two bits, is replaced by that entry of the 4-byte colour table.
+ */
+export function decodeSnipFrame(entry: RelocatedBlock, index: number, colours: Uint8Array, path = ''): SourceImage {
+  const { count, width, height, framesOffset } = readSnipFrames(entry, path);
+  const block = entry.bytes;
+  if (!isIndex(index, count)) notFound(fieldAt(path, 'frames'), 'the SNIP has no such frame');
+  if (colours.length !== SNIP_COLOURS) invalid(fieldAt(path, 'colours'), 'a SNIP colour table must be 4 bytes');
+  const pixels = width * height;
+  const start = framesOffset + index * (pixels / 4);
+  const indices = new Uint8Array(pixels);
+  for (let pixel = 0; pixel < pixels; pixel++) indices[pixel] = colours[(block[start + (pixel >> 2)] >> ((pixel & 3) * 2)) & 3];
+  return Object.freeze({ width, height, indices, mask: null });
 }
 
 /**

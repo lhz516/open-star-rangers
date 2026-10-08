@@ -108,12 +108,16 @@ export interface Sample {
 }
 
 /**
- * The bytes of drawing-buffer pixels as composited on the page: a screenshot of the picture area, decoded in the page.
- * The canvas sits at the layout's frame inside the area, one buffer pixel per screenshot pixel at the frame's device
- * scale.
+ * The bytes of drawing-buffer pixels as composited on the page: a viewport screenshot with the picture area in view,
+ * decoded in the page. The canvas sits at the layout's frame inside the area, one buffer pixel per screenshot pixel at
+ * the frame's device scale. The area's position is read rather than cropped by an element screenshot, whose clip
+ * rounds a fractional position differently from the compositor and can shift every sample by a pixel.
  */
 export async function bufferPixels(page: Page, layout: ViewportLayout, points: readonly { readonly x: number; readonly y: number }[]) {
-  const screenshot = await page.getByTestId('viewer-view').screenshot({ animations: 'disabled', caret: 'hide' });
+  const area = page.getByTestId('viewer-view');
+  await area.scrollIntoViewIfNeeded();
+  const { left, top } = await area.evaluate(element => element.getBoundingClientRect().toJSON() as { left: number; top: number });
+  const screenshot = await page.screenshot({ animations: 'disabled', caret: 'hide' });
   return page.evaluate(async ({ bytes, origin, points: wanted }) => {
     const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
     try {
@@ -129,7 +133,7 @@ export async function bufferPixels(page: Page, layout: ViewportLayout, points: r
     }
   }, {
     bytes: [...screenshot],
-    origin: { x: Math.round(layout.frame.left * layout.pixelRatio), y: Math.round(layout.frame.top * layout.pixelRatio) },
+    origin: { x: Math.round((left + layout.frame.left) * layout.pixelRatio), y: Math.round((top + layout.frame.top) * layout.pixelRatio) },
     points: points.map(({ x, y }) => ({ x, y })),
   });
 }

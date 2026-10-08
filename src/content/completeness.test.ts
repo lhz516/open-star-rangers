@@ -73,7 +73,9 @@ describe('group completeness', () => {
     ['a duplicate dependency', input => {
       input.manifest.assets[3].dependencies = [{ id: 'image/synthetic-hull', kind: 'image' }, { id: 'image/synthetic-hull', kind: 'image' }];
     }, ['duplicate-dependency@manifest.assets[3].dependencies[1]']],
-    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 1; },
+    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 2; },
+      ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
+    ['the first definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 1; },
       ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
     ['a forged complete flag', input => { Object.assign(input.manifest, { complete: true }); }, ['invalid-record@manifest']],
     ['an unknown schema', input => { input.manifest.identity.schemaVersion = 2; }, ['unsupported-schema@manifest.identity.schemaVersion']],
@@ -135,6 +137,7 @@ describe('package completeness', () => {
     ['converter version', { converterVersion: 'synthetic-converter.2' }, 'package-identity-mismatch@groups[2].manifest.identity'],
     ['origin', { origin: { type: 'synthetic', fixtureId: 'p2-01-other' } }, 'package-identity-mismatch@groups[2].manifest.identity'],
     ['slice definition version 1', { sliceDefinitionVersion: 1 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
+    ['slice definition version 2', { sliceDefinitionVersion: 2 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
     ['content schema', { schemaVersion: 2 }, 'unsupported-schema@groups[2].manifest.identity.schemaVersion'],
     ['slice identity', { sliceId: 'another-slice' }, 'invalid-slice-id@groups[2].manifest.identity.sliceId'],
   ])('rejects groups mixed across %s', (_name, overrides, expected) => {

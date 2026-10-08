@@ -3,8 +3,9 @@ import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { imagePayloadLength } from '../../content/graphics/image-payload.ts';
 import { layoutPayloadLength } from '../../content/graphics/layout-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
-import { archiveLocator } from '../source-mapping.ts';
-import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
+import { statusMessagesPayloadLength, type StatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
+import { archiveLocator, executableRegion, isRegionLocator, type ArchiveEntryLocator, type ExecutableRegionLocator } from '../source-mapping.ts';
+import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.ts';
 import {
   cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
 } from './conversion.test-support.ts';
@@ -13,9 +14,10 @@ import { PRODUCTION_MODEL_TEXTURES, modelTexturePaletteId } from './production-m
 
 // A synthetic archive in the production graphics structure, generated in code; never original data.
 
-const locators = PRODUCTION_GRAPHICS_MAPPINGS.mappings.flatMap(({ parts }) => parts.flatMap(({ alternatives }) => alternatives));
+const locators: readonly ArchiveEntryLocator[] = PRODUCTION_GRAPHICS_MAPPINGS.mappings
+  .flatMap(({ parts }) => parts.flatMap(({ alternatives }) => alternatives)).filter(locator => !isRegionLocator(locator)).map(archiveLocator);
 
-type GraphicsBlocks = Partial<Record<'DATA' | 'CCKD' | 'TEX' | 'MFDD' | 'BITM' | 'TABL', Uint8Array | null>>;
+type GraphicsBlocks = Partial<Record<'DATA' | 'CCKD' | 'TEX' | 'MFDD' | 'BITM' | 'TABL' | 'SNIP' | 'DIAG', Uint8Array | null>>;
 
 const TEXTURE = Object.freeze({ width: 4, height: 2, paletteEntries: 4 });
 const FLIGHT_PALETTE = readAssetId('palette/flight/models');
@@ -96,11 +98,60 @@ const GAUGE_BARS = rawImages(4, 51, index => [2, index < 2 ? 5 : 6], COCKPIT_PAL
 const UNIT_MARKERS = rawImages(29, 61, () => [4, 3], MAP_PALETTE, true);
 const ZOOM_ICONS = rawImages(29, 101, index => (index < 20 ? [5, 5] : [4, 3]), MAP_PALETTE, true);
 
+/** The interference animation: nine small frames of 2-bit values that differ by frame, shown through the flight palette. */
+const INTERFERENCE = Object.freeze({ width: 4, height: 2, frames: 9 });
+const interferenceFrame = (frame: number): number[] =>
+  Array.from({ length: INTERFERENCE.width * INTERFERENCE.height }, (_, pixel) => (pixel * 3 + frame) % 4);
+const INTERFERENCE_FRAMES: readonly SyntheticImage[] = Array.from({ length: INTERFERENCE.frames }, () => ({
+  block: new Uint8Array(0), width: INTERFERENCE.width, height: INTERFERENCE.height, palette: COCKPIT_PALETTE, masked: false,
+}));
+
 /** Every synthetic P2-07 image, one per production image Asset. */
 const COCKPIT_HUD_MAP_IMAGES: readonly SyntheticImage[] = [
   ...[...FRONT, ...MAP_FRAME].map(({ image }) => image), ...STATUS_BACKGROUNDS, ...STATUS_OVERLAYS, DISPLAY_PAGE, ...GAUGE_BARS,
-  ...UNIT_MARKERS, ...ZOOM_ICONS,
+  ...UNIT_MARKERS, ...ZOOM_ICONS, ...INTERFERENCE_FRAMES,
 ];
+
+/** Made-up status display texts in the DIAG structure: line breaks, conversions and one startup message. */
+export const SYNTHETIC_STATUS_MESSAGES: SyntheticDiagFields = {
+  timings: [2, 31, 3, 47],
+  statusFormats: ['S1\n%d%%', 'S2\n%d', 'S3\n%s', 'S4 %u'],
+  ratings: [['r-four', 30], ['r-three', 20], ['r-two', 12], ['r-one', 4], ['r-zero', 0]],
+  subsystemNames: Array.from({ length: 15 }, (_, index) => `part ${index}`),
+  stateWords: ['ok?', 'hurt', 'gone'],
+  startupMessages: ['warming\nup'],
+};
+
+/** Made-up palette indices for the interference colour table, one per 2-bit value. */
+const SYNTHETIC_INTERFERENCE_COLOURS = Uint8Array.of(5, 77, 140, 250);
+
+/** The production region a graphics Asset maps to after its entry. */
+const regionOf = (id: string) => {
+  const [, { alternatives: [locator] }] = PRODUCTION_GRAPHICS_MAPPINGS.mappings.find(({ asset }) => asset.id === id)!.parts;
+  return executableRegion(locator as ExecutableRegionLocator);
+};
+const COLOUR_TABLE = regionOf('image/hud/display-interference/frame-0');
+const FORMAT_REGION = regionOf('data/hud/status-display/messages');
+
+/** A made-up lower-line format filling the production format region, its NUL last, as a byte string. */
+export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x7b, 0x25, 0x73, 0x7d][index % 4]));
+
+/** The bytes of each production executable region the graphics Assets map to: the colour table and the format. */
+export const PRODUCTION_GRAPHICS_REGION_WRITES: readonly { readonly object: number; readonly offset: number; readonly bytes: Uint8Array }[] = Object.freeze([
+  Object.freeze({ object: COLOUR_TABLE.object, offset: COLOUR_TABLE.offset, bytes: SYNTHETIC_INTERFERENCE_COLOURS }),
+  Object.freeze({ object: FORMAT_REGION.object, offset: FORMAT_REGION.offset, bytes: Uint8Array.from(`${SYNTHETIC_SUBSYSTEM_FORMAT}\0`, character => character.charCodeAt(0)) }),
+]);
+
+/** A synthetic LE executable of four objects that holds `writes` and a generated pattern elsewhere. */
+export function regionExecutable(writes: readonly { readonly object: number; readonly offset: number; readonly bytes: Uint8Array }[]): Uint8Array {
+  const objects = [1, 2, 3, 4].map(object => {
+    const own = writes.filter(write => write.object === object);
+    const bytes = Uint8Array.from({ length: Math.max(16, ...own.map(({ offset, bytes: written }) => offset + written.length)) }, (_, index) => (index * 13 + object) & 0xff);
+    for (const write of own) bytes.set(write.bytes, write.offset);
+    return { bytes };
+  });
+  return syntheticLeExecutable({ objects });
+}
 
 /** The element positions of the synthetic front cockpit and map frame layouts, by layout Asset ID. */
 export const PRODUCTION_LAYOUT_POSITIONS: Readonly<Record<string, readonly { readonly x: number; readonly y: number }[]>> = Object.freeze({
@@ -125,6 +176,10 @@ export const productionCockpitBlock = (fonts: readonly Uint8Array[] = hudFontTab
 /** The `MAIN/SR.NOB` entry a production Asset maps to. */
 const entryOf = (id: string): number => archiveLocator(PRODUCTION_GRAPHICS_MAPPINGS.mappings.find(({ asset }) => asset.id === id)!.parts[0].alternatives[0]).entry.id;
 
+/** The indices the production interference frame `frame` converts to through the synthetic colour table. */
+export const interferenceIndices = (frame: number): Uint8Array =>
+  Uint8Array.from(interferenceFrame(frame), value => SYNTHETIC_INTERFERENCE_COLOURS[value]);
+
 /** The synthetic CCKD, MFDD, BITM and TABL blocks by the entry the production cockpit, HUD and map Assets map to. */
 const cockpitHudMapBlocks = (): ReadonlyMap<number, Uint8Array> => {
   const blocks = (images: readonly SyntheticImage[]) => images.map(({ block }) => block);
@@ -135,15 +190,25 @@ const cockpitHudMapBlocks = (): ReadonlyMap<number, Uint8Array> => {
     [entryOf('image/hud/gauge-bar-1/0'), tableBlock(blocks(GAUGE_BARS))],
     [entryOf('image/map/unit-marker/0'), tableBlock(blocks(UNIT_MARKERS))],
     [entryOf('image/map/zoom-icon/0'), tableBlock(blocks(ZOOM_ICONS))],
+    [entryOf('image/hud/display-interference/frame-0'), syntheticSnip({
+      ...INTERFERENCE, frames: Array.from({ length: INTERFERENCE.frames }, (_, frame) => interferenceFrame(frame)),
+    }).data],
+    [entryOf('data/hud/status-display/messages'), syntheticDiag(SYNTHETIC_STATUS_MESSAGES).data],
   ]);
 };
+
+/** The relocations of the synthetic SNIP and DIAG entries, which their readers check. */
+const RELOCATIONS: Readonly<Record<string, readonly number[]>> = Object.freeze({
+  SNIP: syntheticSnip({ ...INTERFERENCE, frames: [] }).relocations, DIAG: syntheticDiag(SYNTHETIC_STATUS_MESSAGES).relocations,
+});
 
 /**
  * Synthetic entries at the mapped production graphics locators, in ascending ID order: a DATA palette; a
  * `productionCockpitBlock()` with two 8×8 fonts and one 4×6 font at the mapped indices; a `syntheticTexture` at every TEX
  * entry of the production texture table; an MFDD with 3 + 9 records, a BITM image and TABL image lists of 4, 29 and 29
- * records at the status display, display page, gauge bar, unit marker and zoom icon entries. Every image is small and
- * differs by list and entry. `blocks` replaces every entry of a type, or omits them when null.
+ * records at the status display, display page, gauge bar, unit marker and zoom icon entries; a SNIP of nine 4×2 frames
+ * and a DIAG of `SYNTHETIC_STATUS_MESSAGES`. Every image is small and differs by list and entry. `blocks` replaces every
+ * entry of a type, or omits them when null.
  */
 export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): SyntheticEntry[] {
   const cockpitHudMap = cockpitHudMapBlocks();
@@ -153,20 +218,22 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
     return type === 'DATA' ? dataPaletteBlock() : type === 'TEX' ? syntheticTexture(id) : cockpitHudMap.get(id)!;
   };
   const entries = new Map<number, SyntheticEntry>();
-  for (const { entry: { id, type } } of locators.map(archiveLocator)) {
+  for (const { entry: { id, type } } of locators) {
     if (entries.has(id)) continue;
     const data = content(type, id);
-    if (data) entries.set(id, { id, type, data });
+    if (data) entries.set(id, { id, type, data, ...(RELOCATIONS[type] && { relocations: [...RELOCATIONS[type]] }) });
   }
   return [...entries.values()].sort((left, right) => left.id - right.id);
 }
 
 /**
- * The disc files of a source holding only the production graphics archive with `productionGraphicsEntries`;
- * `extra` adds other entries to the same archive.
+ * The disc files of a source holding the production graphics archive with `productionGraphicsEntries` and an executable
+ * with the graphics regions; `extra` adds other entries to the same archive.
  */
-export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}, extra: readonly SyntheticEntry[] = []): Record<string, Uint8Array> =>
-  ({ [locators[0].discPath]: buildImfat(10_000, [...productionGraphicsEntries(blocks), ...extra].sort((left, right) => left.id - right.id)) });
+export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}, extra: readonly SyntheticEntry[] = []): Record<string, Uint8Array> => ({
+  [locators[0].discPath]: buildImfat(10_000, [...productionGraphicsEntries(blocks), ...extra].sort((left, right) => left.id - right.id)),
+  'MAIN/SRANGERS.EXE': regionExecutable(PRODUCTION_GRAPHICS_REGION_WRITES),
+});
 
 /** The palette of every slice texture, in table order, then of every effect image. */
 const TEXTURE_PALETTES = [
@@ -193,16 +260,30 @@ export const MODEL_TEXTURE_USAGE: BudgetRecord = Object.freeze({
 const layoutBytes = (prefix: string, count: number): number =>
   layoutPayloadLength({ elements: Array.from({ length: count }, (_, index) => ({ image: readAssetId(`${prefix}${index}`), x: 0, y: 0 })) });
 
+/** The status display messages payload converted from the synthetic DIAG and the synthetic format. */
+export const SYNTHETIC_STATUS_MESSAGES_PAYLOAD: StatusMessagesPayload = Object.freeze({
+  upper: { characterTicks: SYNTHETIC_STATUS_MESSAGES.timings[0], holdTicks: SYNTHETIC_STATUS_MESSAGES.timings[1] },
+  lower: { characterTicks: SYNTHETIC_STATUS_MESSAGES.timings[2], holdTicks: SYNTHETIC_STATUS_MESSAGES.timings[3] },
+  statusFormats: SYNTHETIC_STATUS_MESSAGES.statusFormats,
+  ratings: SYNTHETIC_STATUS_MESSAGES.ratings.map(([text, maximum]) => ({ text, maximum })),
+  subsystemNames: SYNTHETIC_STATUS_MESSAGES.subsystemNames,
+  stateWords: SYNTHETIC_STATUS_MESSAGES.stateWords,
+  subsystemFormat: SYNTHETIC_SUBSYSTEM_FORMAT,
+  startupMessages: SYNTHETIC_STATUS_MESSAGES.startupMessages,
+});
+
 /**
  * The graphics conversion usage of the P2-07 Assets on `productionGraphicsEntries()`: every synthetic image with its
- * palette, the 256-entry map palette, and the front cockpit and map frame layouts with an edge per element.
+ * palette, the 256-entry map palette, the front cockpit and map frame layouts with an edge per element, and the status
+ * display messages.
  */
 export const COCKPIT_HUD_MAP_USAGE: BudgetRecord = Object.freeze({
   ...EMPTY_BUDGET_USAGE,
-  assets: COCKPIT_HUD_MAP_IMAGES.length + 1 + 2,
+  assets: COCKPIT_HUD_MAP_IMAGES.length + 1 + 2 + 1,
   dependencyEdges: COCKPIT_HUD_MAP_IMAGES.length + FRONT.length + MAP_FRAME.length,
   paletteEntries: 256,
   imagePixels: COCKPIT_HUD_MAP_IMAGES.reduce((total, { width, height }) => total + width * height, 0),
   payloadBytes: COCKPIT_HUD_MAP_IMAGES.reduce((total, { width, height, palette, masked }) => total + imagePayloadLength({ width, height, palette, display: 'direct' }, masked), 0)
-    + palettePayloadLength(256) + layoutBytes('image/cockpit/front/element-', FRONT.length) + layoutBytes('image/map/frame/element-', MAP_FRAME.length),
+    + palettePayloadLength(256) + layoutBytes('image/cockpit/front/element-', FRONT.length) + layoutBytes('image/map/frame/element-', MAP_FRAME.length)
+    + statusMessagesPayloadLength(SYNTHETIC_STATUS_MESSAGES_PAYLOAD),
 });

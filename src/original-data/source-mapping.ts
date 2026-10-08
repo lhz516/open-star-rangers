@@ -21,12 +21,12 @@ export type SourceResolution = typeof SOURCE_RESOLUTIONS[number];
 export const SOURCE_ENTRY_TYPES = Object.freeze({
   mission: Object.freeze(['SCCT', 'SCEN']),
   model: Object.freeze(['MESH', 'MODL']),
-  image: Object.freeze(['ANIM', 'BITM', 'CCKD', 'MFDD', 'TABL', 'TEX']),
+  image: Object.freeze(['ANIM', 'BITM', 'CCKD', 'MFDD', 'SNIP', 'TABL', 'TEX']),
   palette: Object.freeze(['ANIM', 'BITM', 'CCKD', 'DATA', 'MFDD', 'TABL', 'TEX']),
   font: Object.freeze(['CCKD', 'TABL']),
   layout: Object.freeze(['CCKD', 'TABL']),
   sound: Object.freeze(['SND']),
-  data: Object.freeze(['AICO', 'CINF', 'DFPG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'RENS', 'SCCT', 'TABL']),
+  data: Object.freeze(['AICO', 'CINF', 'DFPG', 'DIAG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'RENS', 'SCCT', 'TABL']),
 } satisfies Record<AssetKind, readonly string[]>);
 
 /** The only files a region locator may name: non-archive files read by byte region (P2-06 spec, effect geometry data). */
@@ -161,9 +161,15 @@ function readLocator(value: unknown, path: string): OriginalAssetLocator {
 const locatorKey = ({ discPath, entry, subresource }: OriginalAssetLocator) =>
   entry === null ? `${discPath}\u0000region\u0000${subresource}` : `${discPath}\u0000${entry.type}\u0000${entry.id}\u0000${subresource ?? ''}`;
 
-/** Whether the locator can supply the Asset's kind: an archive entry type admitted for it, or a region for data. */
+/**
+ * Kinds a region locator may supply: data, or an image whose mapping starts with an archive entry, such as a colour
+ * table the image's record needs (P2-07 spec, status display interference).
+ */
+const REGION_KINDS: readonly AssetKind[] = Object.freeze(['data', 'image']);
+
+/** Whether the locator can supply the Asset's kind: an archive entry type admitted for it, or a region for a region kind. */
 const admits = (asset: AssetReference, entry: OriginalAssetLocator['entry']): boolean =>
-  entry === null ? asset.kind === 'data' : (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
+  entry === null ? REGION_KINDS.includes(asset.kind) : (SOURCE_ENTRY_TYPES[asset.kind] as readonly string[]).includes(entry.type);
 
 /**
  * Canonical locator order: archive entries first, in path, type, ID and sub-resource order; then regions by path,
@@ -222,9 +228,10 @@ function readMapping(value: unknown, path: string, fingerprinted: boolean): Sour
   }
   const asset = readAssetReference(record.asset, `${path}.asset`);
   parts.forEach(({ alternatives }, part) => {
-    if (asset.kind !== 'data' && alternatives.some(isRegionLocator)) {
-      fail('invalid-source-mapping', `${path}.parts[${part}].alternatives[0]`, 'only a data Asset may map to a region');
-    }
+    if (!alternatives.some(isRegionLocator)) return;
+    if (!REGION_KINDS.includes(asset.kind)) fail('invalid-source-mapping', `${path}.parts[${part}].alternatives[0]`, 'only a data or image Asset may map to a region');
+    // Entries sort before regions, so an image's first part is a region only when it has no entry part.
+    if (asset.kind === 'image' && part === 0) fail('invalid-source-mapping', `${path}.parts[0].alternatives[0]`, 'an image mapping must start with an archive entry');
   });
   return Object.freeze({ asset, parts, confidence, unknowns, evidence, resolution });
 }

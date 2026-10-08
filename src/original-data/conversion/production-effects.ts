@@ -4,6 +4,7 @@ import type { EffectKind } from '../../content/effects/effect-payload.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { readEffectDeclarations, type EffectDeclaration } from './effect-declarations.ts';
 import { EFFECT_ARCHIVE } from './effect-step.ts';
+import { objectOffset, PRODUCTION_EXECUTABLE } from './production-executable.ts';
 import { PRODUCTION_TEXTURE_REFERENCES } from './production-model-textures.ts';
 
 // The production effect inputs (docs/plan/p2/06/spec.md, effect geometry data). Every region is named by its address
@@ -17,20 +18,11 @@ import { PRODUCTION_TEXTURE_REFERENCES } from './production-model-textures.ts';
 export const PRODUCTION_EFFECT_PAYLOAD_BOUND = 16_384;
 
 /** The executable the regions are read from. */
-export const EFFECT_EXECUTABLE = 'MAIN/SRANGERS.EXE';
+export const EFFECT_EXECUTABLE = PRODUCTION_EXECUTABLE;
 /** The RENS entry of the projectile records (executable, effect geometry data). */
 export const PRODUCTION_RENS_ENTRY = 10_751;
 /** TEX 10151, the debris shapes' texture (executable, effect presentation sources). */
 const DEBRIS_TEXTURE_ENTRY = 10_151;
-
-/** The objects' base addresses in the documented address space (executable §4): object n is at index n − 1. */
-const OBJECT_BASES = Object.freeze([0x1_0000, 0x2_0000, 0x14_0000, 0x17_0000]);
-
-/** The 1-based object and offset of a documented address. */
-function objectOffset(address: number): { readonly object: number; readonly offset: number } {
-  const index = OBJECT_BASES.findLastIndex(base => base <= address);
-  return { object: index + 1, offset: address - OBJECT_BASES[index] };
-}
 
 type RegionRow = readonly [use: string, address: number, length: number];
 

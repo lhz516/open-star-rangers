@@ -171,10 +171,10 @@ export const FAILURE_MATRIX: readonly FailureCase[] = Object.freeze([
     holder: 'partial-unsaved',
   },
   {
-    // The 4×6 font, charged last, reaches the step usage of 9,210 bytes.
+    // The 4×6 font, charged last, reaches the step usage of 9,624 bytes.
     id: 'F-04 graphics payload budget one byte under the step usage', row: 'F-04', worker: 'graphics-budget-over-limit',
     files: graphicsFiles,
-    expected: failed('source', 'budget-exceeded', 'graphics[font/hud/4x6].glyphs', { name: 'payloadBytes', limit: 9_209, observed: 9_210 }),
+    expected: failed('source', 'budget-exceeded', 'graphics[font/hud/4x6].glyphs', { name: 'payloadBytes', limit: 9_623, observed: 9_624 }),
     holder: 'unchanged',
   },
   {
@@ -195,11 +195,11 @@ export const FAILURE_MATRIX: readonly FailureCase[] = Object.freeze([
     expected: failed('source', 'invalid-payload', 'models[model/base-1].parts[0][1].mesh'), holder: 'unchanged',
   },
   {
-    // Mapping 87 of the production graphics table is the first naming the removed TEX entry; the graphics step verifies
+    // Mapping 97 of the production graphics table is the first naming the removed TEX entry; the graphics step verifies
     // its mappings in table order, and P2-03 reports an absent entry at the mapping's first alternative.
     id: 'F-08 referenced texture missing from an identified disc', row: 'F-08', worker: 'texture-missing',
     files: async () => (await syntheticImport(scenarioSource('texture-missing')!.covered)).files,
-    expected: failed('source', 'entry-not-found', 'sources.mappings[87].parts[0].alternatives[0]'), holder: 'unchanged',
+    expected: failed('source', 'entry-not-found', 'sources.mappings[97].parts[0].alternatives[0]'), holder: 'unchanged',
   },
   {
     // The models group requires the player model's slot-0 sound, eighth of its sound requirements in ID order.

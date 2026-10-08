@@ -4,15 +4,17 @@ import { ContentContractError, fail, readArray, readRecord, requireFields } from
 import { GRAPHICS_LIMITS, readPaletteReference, readReference, requireInteger as integer } from '../../content/graphics/graphics-format.ts';
 import type { ImageDisplay } from '../../content/graphics/image-payload.ts';
 import { layoutFrame, type LayoutFrame } from '../../content/graphics/layout-payload.ts';
+import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { SourceError } from '../source-error.ts';
 
 // Graphics conversion declarations (docs/plan/p2/05/spec.md, graphics conversion declarations, and
-// docs/plan/p2/07/spec.md, layout conversion declarations): plain data paired one to one with source mappings but
-// without locators. Non-default choices (nearest display, colour keys, reversed rows and character map ranges) need
-// evidence linked from the Asset's mapping.
+// docs/plan/p2/07/spec.md, layout conversion declarations and status display messages): plain data paired one to one
+// with source mappings but without locators. Non-default choices (nearest display, colour keys, reversed rows and
+// character map ranges) need evidence linked from the Asset's mapping.
 
-export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout';
+/** The kinds the graphics step converts; its only `data` Asset kind is the status display messages. */
+export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout' | 'data';
 
 interface DeclarationBase<Kind extends GraphicsKind> {
   readonly asset: { readonly id: AssetId; readonly kind: Kind };
@@ -52,6 +54,9 @@ export interface FontDeclaration extends DeclarationBase<'font'> {
   readonly charMap: readonly CharMapRange[];
 }
 
+/** The status display messages; their format comes from the source (P2-07 spec, status display messages). */
+export type MessagesDeclaration = DeclarationBase<'data'>;
+
 export interface LayoutDeclaration extends DeclarationBase<'layout'> {
   readonly frame: LayoutFrame;
   /** 1–16 distinct images in stored element order, each declared in the same set and group. */
@@ -62,13 +67,14 @@ export interface LayoutDeclaration extends DeclarationBase<'layout'> {
 export const declaredGlyphCount = ({ cell, glyphRows }: Pick<FontDeclaration, 'cell' | 'glyphRows'>): number =>
   GRAPHICS_LIMITS.glyphCount * cell.height / glyphRows;
 
-export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration;
+export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration | MessagesDeclaration;
 
 const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
   palette: ['asset', 'role', 'group'],
   image: ['asset', 'role', 'group', 'palette', 'display', 'alpha', 'rowOrder'],
   font: ['asset', 'role', 'group', 'cell', 'glyphRows', 'charMap'],
   layout: ['asset', 'role', 'group', 'frame', 'elements'],
+  data: ['asset', 'role', 'group'],
 };
 
 const isGraphicsKind = (kind: string): kind is GraphicsKind => Object.hasOwn(FIELDS, kind);
@@ -117,11 +123,12 @@ function readLayout(record: Record<string, unknown>, base: DeclarationBase<'layo
 function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   const record = readRecord(value, path);
   const asset = readAssetReference(record.asset, `${path}.asset`);
-  if (!isGraphicsKind(asset.kind)) fail('invalid-kind', `${path}.asset.kind`, 'must be palette, image, font or layout');
+  if (!isGraphicsKind(asset.kind)) fail('invalid-kind', `${path}.asset.kind`, 'must be palette, image, font, layout or data');
   requireFields(record, path, FIELDS[asset.kind]);
   const base = { asset, role: readRole(record.role, `${path}.role`), group: readResourceGroup(record.group, `${path}.group`) };
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
-  if (asset.kind === 'palette') return Object.freeze(base as PaletteDeclaration);
+  if (asset.kind === 'data' && base.role !== STATUS_MESSAGES_ROLE) fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages role');
+  if (asset.kind === 'palette' || asset.kind === 'data') return Object.freeze(base as PaletteDeclaration | MessagesDeclaration);
   if (asset.kind === 'layout') return readLayout(record, base as DeclarationBase<'layout'>, path);
   if (asset.kind === 'font') {
     const fields = readRecord(record.cell, `${path}.cell`);

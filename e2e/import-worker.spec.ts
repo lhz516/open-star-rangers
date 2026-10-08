@@ -317,7 +317,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-3.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);

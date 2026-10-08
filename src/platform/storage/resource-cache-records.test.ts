@@ -140,6 +140,7 @@ describe('stored package record reading', () => {
     ['a future format with another shape', () => ({ format: 'osr-resource-cache', formatVersion: 2, chunks: [] }), 'record.formatVersion'],
     ['content schema 2', record => { at(record, 'groups', 0, 'manifest', 'identity').schemaVersion = 2; return record; }, 'record.groups[0].manifest.identity.schemaVersion'],
     ['slice definition version 1', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 1; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
+    ['slice definition version 2', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 2; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
   ];
 
   it.each(incompatible)('reads %s as cache-incompatible', (_name, change, location) => {

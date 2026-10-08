@@ -135,7 +135,7 @@ test('an insufficient space estimate is shown first, and the player may import a
   const files = await sliceFiles();
   await startImport(page, files);
   const warning = page.getByTestId('space-warning');
-  await expect(warning).toContainText('11.4 MiB may be needed and 0.0 MiB is available');
+  await expect(warning).toContainText('11.5 MiB may be needed and 0.0 MiB is available');
   // While the warning awaits a choice, no other start or file selection can slip in.
   await expect(start(page)).toBeDisabled();
   await expect(page.locator('#import-files')).toBeDisabled();

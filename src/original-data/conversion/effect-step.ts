@@ -12,7 +12,6 @@ import { effectExpansionSize } from '../../content/effects/expand-effects.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
 import type { AssetSourceState } from '../../content/source-state.ts';
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
-import { openLeExecutable, type LeExecutable } from '../formats/le-executable.ts';
 import { SourceError } from '../source-error.ts';
 import {
   archiveLocator, assetSourceStates, executableRegion, isRegionLocator, readSourceMappingTable, type ExecutableRegionLocator, type SourceMapping,
@@ -22,7 +21,7 @@ import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import { chargeConversionBudget, readConversionUsage } from './conversion-budget.ts';
 import { EFFECT_REGION_USES, MISSILE_RECORD_BYTES, readEffectDeclarations, type EffectDeclaration } from './effect-declarations.ts';
 import type { GraphicsStepResult } from './graphics-step.ts';
-import { stepEntryReader } from './step-entry-reader.ts';
+import { stepEntryReader, stepRegionReader } from './step-entry-reader.ts';
 
 // The effect step (docs/plan/p2/06/spec.md, effect geometry data): converts the RENS projectile records and the
 // executable's regions into the three effect `data` payloads. It only reads bytes; no code is executed or emulated.
@@ -272,15 +271,7 @@ export async function runEffectStep(
   const readEntry = stepEntryReader(source);
   // Verification binds the source fingerprint; region mappings stay declared until the regions below are read.
   const bound = await verifySourceMappings(table, source, readEntry);
-  const executables = new Map<string, Promise<LeExecutable>>();
-  const openExecutable = (discPath: string, at: string): Promise<LeExecutable> => {
-    let executable = executables.get(discPath);
-    if (!executable) {
-      executable = source.openFile(discPath).then(file => openLeExecutable({ byteLength: file.entry.byteLength, read: (offset, length) => file.read(offset, length) }, at));
-      executables.set(discPath, executable);
-    }
-    return executable;
-  };
+  const readRegion = stepRegionReader(source);
 
   const assets: { readonly id: AssetId; readonly role: string; readonly payload: EffectPayload }[] = [];
   for (const declaration of ordered) {
@@ -288,8 +279,7 @@ export async function runEffectStep(
     const at = `effects[${id}]`;
     const locators = regionLocators.get(id)!;
     const locations = declaration.regions.map((_, index) => `${at}.regions[${index}]`);
-    const read = await Promise.all(locators.map(async (locator, index) =>
-      (await openExecutable(locator.discPath, `${at}.source`)).readRegion(executableRegion(locator), locations[index])));
+    const read = await Promise.all(locators.map((locator, index) => readRegion(locator, locations[index], `${at}.source`)));
     const regions = new Regions(
       new Map(declaration.regions.map((use, index) => [use, read[index]])),
       new Map(declaration.regions.map((use, index) => [use, locations[index]])),

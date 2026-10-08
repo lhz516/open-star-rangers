@@ -332,7 +332,7 @@ describe('error code grammar', () => {
     'palette-index-out-of-range': true, 'unmapped-character': true, 'layout-out-of-frame': true,
     'invalid-logic-payload': true, 'non-canonical-payload': true, 'logic-reference-mismatch': true,
     'invalid-model-payload': true,
-    'invalid-effect-payload': true,
+    'invalid-effect-payload': true, 'invalid-status-messages-payload': true,
   };
   const limitNames: Record<DiscLimitName | SourceLimitName | BudgetDimension, true> = {
     ...Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => [dimension, true])) as Record<BudgetDimension, true>,
@@ -341,7 +341,7 @@ describe('error code grammar', () => {
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
     payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
     effectRecords: true, missileTypes: true, ringSegments: true, executableObjects: true, executablePages: true, executableRegion: true,
-    cockpitSlots: true, cockpitElements: true, mfdRecords: true, tableRecords: true,
+    cockpitSlots: true, cockpitElements: true, mfdRecords: true, tableRecords: true, snipFrames: true, diagStartupMessages: true, diagTextBytes: true,
   };
 
   it.each([

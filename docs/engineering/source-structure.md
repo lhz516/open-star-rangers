@@ -101,6 +101,8 @@ src/
     effects/
       effect-payload.ts
       expand-effects.ts
+    hud/
+      status-messages-payload.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -143,6 +145,7 @@ src/
       audio-conversion.ts
       converter-version.ts
       source-graphics.ts
+      source-messages.ts
       graphics-declarations.ts
       convert-graphics.ts
       step-entry-reader.ts
@@ -160,6 +163,7 @@ src/
       effect-declarations.ts
       effect-step.ts
       production-effects.ts
+      production-executable.ts
   platform/
     audio/
       audio-controller.ts
@@ -290,7 +294,7 @@ src/
 - 同文件的 `readPayloadIdentity` 要求正安全整数 schema 版本、非负安全整数字节长度及 `sha256:` 加 64 个小写十六进制字符；只检查声明的格式，不生成或核验实际 payload 哈希。
 - [asset-units.ts](../../src/content/asset-units.ts)：`ASSET_UNITS` 与 `INTERNAL_ASSET_ELEMENTS` 固定规范计量粒度。每模型一个 Asset，几何归模型内部；可复用调色板/逻辑数据才有独立身份。源条目数量不是规范 Asset 数，实际拆分/合并及共享身份必须由后续来源映射显式记录。这些常量不是全战役规范图或 S-02 排序证据。
 - [contract-validation.ts](../../src/content/contract-validation.ts)：严格 plain-data 校验和 `ContentContractError`，按稳定 `code`/`path` 分类；诊断不回显非法值或未知属性名。DTO 不接受类实例、函数、accessor 或未知字段。读入口复制并冻结所有基础容器，结构化克隆后可独立修改；`readArray` 统一读取稠密 plain 数组，`readOrderedArray` 在逐项读取的同时检查唯一与升序（首个问题按索引顺序报告）。两者都建立在 `visitArray`/`visitOrderedArray` 之上：这两个函数按索引逐项读取并访问，访问函数一旦返回非 undefined 的值就停止读取，并把该值返回。`original-data` 的来源映射也复用这些校验（依赖方向为 original-data → content，反向被 lint 禁止）。二进制 payload 不能冻结，所有权规则见下方 `ownership.ts`。
-- [slice-definition.ts](../../src/content/slice-definition.ts)（[P2-01/02](../plan/p2/01/subtasks/02-slice-content-contract.md)）：`CLASSIC_P2_SLICE` 是唯一的生产切片定义，深度冻结；`SliceDefinition` 带仅类型品牌，唯一构造由[工程边界回归](./README.md#lint-规则eslintconfigjs)保证。定义记录经批准的候选结构选择器（战役 group 0 / slot 1，僚机可选）、四个必需资源组及各组拥有的 kind（`groupKinds`），以及 S-03 角色的组、允许 kind 与 Asset 数量范围。弹丸/导弹/碎片允许 model、image 或 data，`models` 组也允许 data（版本 2，[P2-01 spec](../plan/p2/01/spec.md) 2026-10-06 修订，承担 P2-06 导入的效果几何数据）；四类核心音效暂允许多个采样片段，待 P2-08 核实后收窄。原版条目 ID 不在此处，由 03 的来源映射记录。更换候选或改变角色、数量范围、分组都须修订 spec 并递增 `SLICE_DEFINITION_VERSION`。
+- [slice-definition.ts](../../src/content/slice-definition.ts)（[P2-01/02](../plan/p2/01/subtasks/02-slice-content-contract.md)）：`CLASSIC_P2_SLICE` 是唯一的生产切片定义，深度冻结；`SliceDefinition` 带仅类型品牌，唯一构造由[工程边界回归](./README.md#lint-规则eslintconfigjs)保证。定义记录经批准的候选结构选择器（战役 group 0 / slot 1，僚机可选）、四个必需资源组及各组拥有的 kind（`groupKinds`），以及 S-03 角色的组、允许 kind 与 Asset 数量范围。弹丸/导弹/碎片允许 model、image 或 data，`models` 组也允许 data（版本 2，[P2-01 spec](../plan/p2/01/spec.md) 2026-10-06 修订，承担 P2-06 导入的效果几何数据）；`cockpit-hud-map` 组也允许 data，`SLICE_DEFINITION_VERSION` 为 3（P2-01 spec 2026-10-08 修订，承担 P2-07 导入的[状态显示屏文字](#状态显示屏文字-payload)）；四类核心音效暂允许多个采样片段，待 P2-08 核实后收窄。原版条目 ID 不在此处，由 03 的来源映射记录。更换候选或改变角色、数量范围、分组都须修订 spec 并递增 `SLICE_DEFINITION_VERSION`。
 - [completeness.ts](../../src/content/completeness.ts)（[P2-01/04](../plan/p2/01/subtasks/04-completeness-validation.md)）：`validateGroup` 用切片定义、组清单（身份、组、按 ID 升序的描述符）、按 ID 升序且唯一的实际 payload 记录和来源状态集推导 `group-complete` 或 `incomplete`。它检查定义版本、组归属、角色的组与 kind、角色数量、组内依赖、自引用与环、payload（[payload.ts](../../src/content/payload.ts) 重新计算 SHA-256，并比对 schema 版本与长度）以及来源就绪。依赖的 kind 若不属于本组拥有的 kind，作为类型化外部要求返回，不判为本组缺失。`validatePackage` 每次都从四组原始输入重新验证，从不接受已有结果；只有每组恰好一份、六项身份一致、ID 跨组唯一、外部要求全部解析且无跨组环时才返回 `complete`。诊断带稳定 code、结构路径、规范 ID、U 项与原因，不含 payload 字节或 locator。
 - [sha256.ts](../../src/content/sha256.ts)：同步、无依赖的 SHA-256，供纯模块计算和核验 `sha256:` payload 指纹。
   - `Sha256` 可分段输入：`update` 接受任意长度（含零长度）的片段，只保留未满一块的尾部，用完即清零，不复制、不保留、不修改调用者的字节；已 detached 的输入或总长超出安全整数时，在改变状态前抛错。
@@ -301,7 +305,7 @@ src/
 - [manifest-identity.ts](../../src/content/manifest-identity.ts)（[P2-09/03](../plan/p2/09/subtasks/03-package-identity.md)）：包身份的唯一推导。
   - **推导：** `deriveManifestIdentity(basis, drafts)` 严格读取身份基础与一个作业的全部组草稿（`GroupDraft`：组、按 ID 升序的描述符、payload 记录、来源状态集或 null），按 `RESOURCE_GROUPS` 顺序编码为带版本前缀的 ASCII 文本，结果为 `manifest:sha256:<64 位小写十六进制>`。任一身份基础字段、描述符字段、依赖、payload 身份或来源状态变化，结果都变化；组的传入顺序与 payload 记录不影响结果，推导也不读取 payload。空列表、重复或未知的组与格式错误的草稿以 `ContentContractError` 拒绝。测试中的固定向量锁定版本 1 编码。
   - **写入：** `applyManifestIdentity` 把同一身份写入每个组，返回冻结的 `IdentifiedGroup` 列表（可直接作为 `GroupInput` 交给完整性验证）。描述符、来源状态与 payload 记录都是读取后的副本，只有 payload 字节沿用调用者的视图，所有权仍按 `ownership.ts` 转移；payload 记录的错误路径使用调用者的草稿序号。
-  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义（P2-09 S-07）。值的格式取自 P2-08：`osr-import.` 后按阶段顺序接作业打包的各转换器组件 `<转换器>-<n>`，目前为 `osr-import.graphics-2.logic-1.audio-1.models-3`（`GRAPHICS_CONVERTER_COMPONENT`、`LOGIC_CONVERTER_COMPONENT`、`AUDIO_CONVERTER_COMPONENT`、`MODEL_CONVERTER_COMPONENT`；P2-06/07 起图形输出随 `models` 组打包，因此加入图形组件 `graphics-1`；[P2-07/13](../plan/p2/07/subtasks/13-group-assembly.md) 起 `cockpit-hud-map` 组也被打包，图形组件递增为 `graphics-2`；[P2-11/16](../plan/p2/11/subtasks/16-effect-mapping-display.md) 更新效果 payload 与映射参数，模型组件递增为 `models-2`；[P2-06/21](../plan/p2/06/subtasks/21-mesh-uv-planar.md) 改正 MESH 贴图坐标的读取，递增为 `models-3`）。任一转换器对同一来源的输出可能变化时，递增它的组件，从而改变这个值；它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。`productionIdentityBasis(指纹)` 给出生产组的身份基础。P2-08 合入前曾另行实现 `computeManifestIdentity`，合入时统一为本节的 `deriveManifestIdentity`/`applyManifestIdentity`。
+  - 生产转换器版本是 [original-data/conversion/converter-version.ts](../../src/original-data/conversion/converter-version.ts) 的 `PRODUCTION_CONVERTER_VERSION`，全部生产转换器共用这一个定义（P2-09 S-07）。值的格式取自 P2-08：`osr-import.` 后按阶段顺序接作业打包的各转换器组件 `<转换器>-<n>`，目前为 `osr-import.graphics-3.logic-1.audio-1.models-3`（`GRAPHICS_CONVERTER_COMPONENT`、`LOGIC_CONVERTER_COMPONENT`、`AUDIO_CONVERTER_COMPONENT`、`MODEL_CONVERTER_COMPONENT`；P2-06/07 起图形输出随 `models` 组打包，因此加入图形组件 `graphics-1`；[P2-07/13](../plan/p2/07/subtasks/13-group-assembly.md) 起 `cockpit-hud-map` 组也被打包，图形组件递增为 `graphics-2`；[P2-11/16](../plan/p2/11/subtasks/16-effect-mapping-display.md) 更新效果 payload 与映射参数，模型组件递增为 `models-2`；[P2-06/21](../plan/p2/06/subtasks/21-mesh-uv-planar.md) 改正 MESH 贴图坐标的读取，递增为 `models-3`；[P2-07/20](../plan/p2/07/subtasks/20-snip-diag-conversion.md) 加入左显示屏干扰帧与状态显示屏文字，图形组件递增为 `graphics-3`）。任一转换器对同一来源的输出可能变化时，递增它的组件，从而改变这个值；它是 [P2-10 缓存键](../plan/p2/10/spec.md#缓存键与身份)的一部分。`productionIdentityBasis(指纹)` 给出生产组的身份基础。P2-08 合入前曾另行实现 `computeManifestIdentity`，合入时统一为本节的 `deriveManifestIdentity`/`applyManifestIdentity`。
 - [logic/](../../src/content/logic/)（[P2-09/04](../plan/p2/09/subtasks/04-logic-content.md)）：`logic` 组的规范逻辑内容，形状与约束见 [P2-09 spec](../plan/p2/09/spec.md#规范逻辑数据)。
   - **类型与限值：** [logic-content.ts](../../src/content/logic/logic-content.ts) 定义 `MissionContent`、`MissionGroup`、`MissionDeclaration`、`CraftTypeTable`、`WingmanRoster`、`StrategicMapFrame`、按角色区分的 `LogicPayload`，以及 `LOGIC_LIMITS` 与 payload schema 版本 1。字段声明顺序就是规范编码顺序；规则输入的字段名不表示语义已确认。
   - **读取器：** [logic-readers.ts](../../src/content/logic/logic-readers.ts) 的 `readMissionContent`、`readCraftTypeTable`、`readWingmanRoster` 与按角色分派的 `readLogicContent` 读取已解码的纯数据，返回冻结副本，-0 规范化为 0。结构、类型、取值范围与限值错误一律为 `invalid-logic-payload`（共用的基础读取器的错误也改报此码，路径不变）；数组先查长度再逐项读取。单个 payload 内的引用错误为 `logic-reference-mismatch`：声明序号与规范顺序（`object` 声明在前，最多 64 条，其后为编组首次使用的声明）、编组模板与成员的来源标记（双向一致）、成员回指、放置矩形与锚点、AI 目标，以及僚机选项不得引用任务结构。跨 Asset 的一致性不在这里检查。
@@ -359,6 +363,22 @@ src/
 - **字符查找：** [glyph-lookup.ts](../../src/content/graphics/glyph-lookup.ts) 的 `glyphFor(font, code)` 在字符映射中查找文本字节的字形，`glyphsFor(font, text)` 逐个查找字节序列。未映射的码位报 `unmapped-character`（序列中为 `text[<i>]`），即使恰有同号字形也不回退；错误不回显码位。
 
 针对性检查为 `pnpm exec vitest run src/content/graphics`。
+
+### 状态显示屏文字 payload
+
+[content/hud/status-messages-payload.ts](../../src/content/hud/status-messages-payload.ts)（[P2-07/20](../plan/p2/07/subtasks/20-snip-diag-conversion.md)，契约见 [P2-07 spec](../plan/p2/07/spec.md#状态显示屏文字-payload)）定义 `cockpit-hud-map` 组唯一的 `data` Asset 的 payload：状态显示屏两行消息的文字与时序，来源结构见 [hud 的 DIAG 10489](../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)。它是纯 TypeScript，不导入 `original-data`。
+
+- **常量：** `STATUS_MESSAGES_SCHEMA_VERSION` 为 1；`STATUS_MESSAGES_ROLE` 为 `status-messages`，消费者按它选择读取器；`STATUS_MESSAGES_COUNTS` 固定各列表长度（状态格式 4、评级 5、子系统名称 15、状态词 3，程序按这些数目读取）；`STATUS_MESSAGES_LIMITS` 为每段文字 0–255 字节、启动消息 0–16 条。
+- **字节布局：** 小端，37 字节头部加文字，总长恰为二者之和：
+  - 0–15：上行与下行各两个 `u32`，依次为每打出一个字符的 tick 数与打完后停留的 tick 数；
+  - 16–35：5 个 `i32` 评级上限，按存储顺序；
+  - 36：`u8` 启动消息数 S（0–16）；
+  - 37 起：28 + S 段文字，每段为 `u8` 长度 L（0–255）加 L 个非零字节，顺序为 4 个状态格式、5 个评级文字、15 个子系统名称、3 个状态词、下行格式、S 条启动消息。
+- **文字：** 每段是字节串，读取结果中每个字符的码位等于一个存储字节（1–255），不含结尾 NUL；换行与 printf 风格的转换说明原样保留，本模块不解释它们。
+- **编码与读取：** `encodeStatusMessagesPayload` 校验字段（列表长度、整数范围、字节值）后写入独占新缓冲；`statusMessagesPayloadLength` 按字段、`statusMessagesLengthOf` 按各段字节数给出编码长度，供转换器先扣除。`readStatusMessagesPayload(bytes, schemaVersion, path)` 返回冻结数据：schema 不是 1 为 `unsupported-payload-schema`，截断、尾随字节、启动消息数超过 16 或文字含 0 字节为 `invalid-status-messages-payload`（[contract-validation.ts](../../src/content/contract-validation.ts) 追加），已转移的字节为 `payload-detached`。诊断只含结构路径，不回显文字。
+- **绑定：** `checkStatusMessagesBinding(descriptor)` 要求 kind 为 `data`、角色为 `status-messages`、没有依赖，否则为 `binding-mismatch`。
+
+针对性检查为 `pnpm exec vitest run src/content/hud`。查看器只列出效果角色的 `data` Asset，不显示这一 payload。
 
 ### 模型 payload
 
@@ -514,13 +534,13 @@ src/
 
 - `readSourceMappingTable` 验证来源映射表：每个规范 Asset 映射到一个或多个部件，部件之间为“全部需要”（例如任务的 SCEN 与 SCCT 记录），同一部件内的多个 locator 为“精确等价，任取其一”（例如字节完全相同的别名条目）。locator 是判别形式：
   - **封包条目**（`ArchiveEntryLocator`）：光盘相对的 8.3 大写路径（与光盘读取共用 [disc-path.ts](../../src/original-data/disc/disc-path.ts) 的 `DiscPath` 规则）、IMFAT entry ID/type 与可选子资源路径。
-  - **可执行文件区域**（`ExecutableRegionLocator`，[P2-06/15](../plan/p2/06/subtasks/15-slice-definition-region-locator.md)）：`entry` 为 null，`subresource` 为规范的 `le/<对象 1–8>/<小写十六进制偏移>/<字节数 1–65,536>`，只允许 `REGION_FILES` 中的 `MAIN/SRANGERS.EXE` 与 `data` kind。
+  - **可执行文件区域**（`ExecutableRegionLocator`，[P2-06/15](../plan/p2/06/subtasks/15-slice-definition-region-locator.md)）：`entry` 为 null，`subresource` 为规范的 `le/<对象 1–8>/<小写十六进制偏移>/<字节数 1–65,536>`，只允许 `REGION_FILES` 中的 `MAIN/SRANGERS.EXE`。`data` kind 可映射到区域；`image` kind 只能在封包条目部件之后另加区域部件（P2-01 spec 2026-10-08 修订，用于 SNIP 帧的颜色表），只有区域的图像映射为 `invalid-source-mapping`。
     - 区域部件只能有一个备选，同一映射内条目排在区域之前，区域按对象、偏移与字节数的数值排序；
     - `executableRegion` 解析出数值；
     - 只处理封包条目的转换用 `archiveLocator` 或类型守卫收窄。
 
   多个 Asset 可以共用同一 locator。每条映射还记录置信度（confirmed/likely/unconfirmed，非 confirmed 必须链接 U 项）、`docs/original/` 证据及 `declared`/`verified` 解析状态。表级 `sourceFingerprint` 在 P2-03 提供前为 null，此时不允许出现 `verified`。
-- `diagnoseSourceMappings` 返回稳定排序、深度冻结的安全诊断，只含规范 ID、结构路径和 U 项，不含 locator 值或原版内容。所有映射都检查条目类型与 Asset kind 是否兼容（`SOURCE_ENTRY_TYPES` 依据 [imfat §5](../original/formats/imfat.md#5-entry-types) 与 [textures §2](../original/formats/textures.md#2-image-record-36-bytes-confirmed)）。必需 Asset 另报缺失、未确认和未验证；likely 不报，但其 U 项保留在映射上。`assetSourceStates` 直接由映射事实为每个已映射 Asset 推导一条不含 locator 的状态（严重度依次为条目类型冲突 conflict、unconfirmed、未验证 unverified，否则 verified），连同表级来源指纹一起交给 content 的完整性验证。
+- `diagnoseSourceMappings` 返回稳定排序、深度冻结的安全诊断，只含规范 ID、结构路径和 U 项，不含 locator 值或原版内容。所有映射都检查条目类型与 Asset kind 是否兼容（`SOURCE_ENTRY_TYPES` 依据 [imfat §5](../original/formats/imfat.md#5-entry-types) 与 [textures §2](../original/formats/textures.md#2-image-record-36-bytes-confirmed)；P2-07 的 2026-10-08 修订为 image 加入 SNIP、为 data 加入 DIAG）。区域对 data 与 image 都不算类型冲突。必需 Asset 另报缺失、未确认和未验证；likely 不报，但其 U 项保留在映射上。`assetSourceStates` 直接由映射事实为每个已映射 Asset 推导一条不含 locator 的状态（严重度依次为条目类型冲突 conflict、unconfirmed、未验证 unverified，否则 verified），连同表级来源指纹一起交给 content 的完整性验证。
 
 - `verified` 由 P2-03 产生：[source/verify-source-mappings.ts](../../src/original-data/source/verify-source-mappings.ts) 的 `verifySourceMappings(table, source)` 在已验证来源中逐个核验 locator，返回绑定来源指纹的新表，详见[版本识别与已验证来源](#版本识别与已验证来源)。
 
@@ -627,27 +647,31 @@ src/
     - 像素数据按记录顺序、无空隙地恰好占满其余部分。
 
     其他任何形态都是 `invalid-payload@…record`，记录头自身的问题沿用 P2-05 的位置。`tableRecordOffset(block, i)` 对应 `records/<i>`，越界为 `subresource-not-found@…record`。这些记录没有嵌入调色板，因此 `records/<i>/palette` 总是 `subresource-not-found@…palette`。
-  - **容器内记录：** CCKD 元素、MFDD 与 TABL 的记录都用记录偏移交给 `decodeImageRecord`、`readEmbeddedPalette`，结果与把同一记录放在偏移 0 时相同。上述四项计数上限以 `CONTAINER_LIMITS` 导出。
+  - **容器内记录：** CCKD 元素、MFDD 与 TABL 的记录都用记录偏移交给 `decodeImageRecord`、`readEmbeddedPalette`，结果与把同一记录放在偏移 0 时相同。上述四项计数上限与 SNIP 帧数上限以 `CONTAINER_LIMITS` 导出。
   - `readFontTable` 要求头部首字节为 0、单元宽与高为 1–8（`limit-exceeded`）、表长恰为 `4 + 256 × 高`，字形字节逐位复制、不切分（每字形行数由声明给出）。CCKD 字体目录须恰为 3 项且都在块内：`readCockpitFonts` 按目录顺序读取全部 3 个字库，`readCockpitFont(block, i)` 只读取 `fonts/<i>`，i 不在 0–2 时为 `subresource-not-found`。
-  - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs`、`fonts`、`groups` 或 `elements`，不含条目编号、偏移或字节。
-- **转换声明：** [graphics-declarations.ts](../../src/original-data/conversion/graphics-declarations.ts)（[P2-05/04](../plan/p2/05/subtasks/04-graphics-conversion.md)）的 `readGraphicsDeclarations` 严格读取一组声明（字段见 [spec](../plan/p2/05/spec.md#图形转换声明)）：`asset` 为 palette/image/font 且组内 ID 唯一，`role` 与 `group` 按 P2-01 规则读取且该组拥有此 kind；图像的 `palette` 与 nearest 目标都须是同一组声明中同组的调色板，`alpha` 为 `encoding` 或 `{ colourKey }`，`rowOrder` 为 `stored`/`reversed`；字体有预期 `cell`、每字形行数 `glyphRows`（`cell.height`–8，且整除 256 × `cell.height`，字形数为二者之商，由 `declaredGlyphCount` 给出）与按码位互不重叠、字形小于字形数的 `charMap` 区间。它复用 content 的严格读取原语，任何问题都转为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 加字段路径。[P2-07/04](../plan/p2/07/subtasks/04-layout-conversion.md) 加入布局声明（字段见 [P2-07 spec](../plan/p2/07/spec.md#布局转换声明)）：`frame` 的宽 1–640、高 1–480，`elements` 为 1–16 个互不相同的 image ID，按存储顺序排列，每个都须是同一声明组、同一资源组中的图像声明。
+  - **SNIP 帧（[P2-07/20](../plan/p2/07/subtasks/20-snip-diag-conversion.md)）：** `readSnipFrames({ bytes, relocations })` 只接受 [hud 的 SNIP 10487](../original/formats/hud.md#snip-10487-confirmed-structure-p2-1227) 记录的结构：+0 帧块偏移是条目唯一的重定位且不小于 8、+4 帧块大小恰为条目的其余部分、块头 12 字节；帧数 1–16（`snipFrames`）、高 1–480、宽 1–640（`imageHeight`、`imageWidth`）先于其余检查判定；宽须为 4 的倍数（每行整字节）；12 + 帧数 × 宽 × 高 / 4 恰为帧块大小。其他形态为 `invalid-payload@…frames`。`decodeSnipFrame(entry, i, colours)` 对应 `frames/<i>`，越界为 `subresource-not-found@…frames`；颜色表须恰为 `SNIP_COLOURS`（4）字节，否则为 `invalid-payload@…colours`。每个像素的 2 位值（字节内最左像素在最低两位，行自上而下）换为颜色表中的索引，结果为不透明的存储行序图像。
+  - **DIAG（同上）：** [source-messages.ts](../../src/original-data/conversion/source-messages.ts) 的 `readStatusMessages({ bytes, relocations }, format, path, reserve)` 读取 [hud 的 DIAG 10489](../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision) 的 0x98 字节头部：启动消息数 0–16（`diagStartupMessages`）先判定；列表指针恰在数为 0 时为 0，非 0 时列表须在块内；条目的重定位须恰为全部文字指针字段（含列表指针与列表项），先比较个数再复制排序；每个指针都须指向块内以 NUL 结尾的文字，文字不超过 255 字节（`diagTextBytes`）。其他形态为 `invalid-payload@…messages`。`format` 是下行格式的区域字节，须以唯一的 NUL 结尾，否则为 `invalid-payload@…format`，超长为 `limit-exceeded@…format`。全部核对完成后，先以编码长度（`statusMessagesLengthOf`）调用 `reserve`，再复制文字；结果是 `StatusMessagesPayload`。
+  - 结果都在调用者独占的新缓冲中，可直接交给 `payloadTransferList`。失败抛出 `SourceError`，位置是调用者 `path` 下的字段名：`palette`、`record`、`pixels`、`glyphs`、`fonts`、`groups`、`elements`、`frames`、`colours`、`messages` 或 `format`，不含条目编号、偏移或字节。
+- **转换声明：** [graphics-declarations.ts](../../src/original-data/conversion/graphics-declarations.ts)（[P2-05/04](../plan/p2/05/subtasks/04-graphics-conversion.md)）的 `readGraphicsDeclarations` 严格读取一组声明（字段见 [spec](../plan/p2/05/spec.md#图形转换声明)）：`asset` 为 palette/image/font 且组内 ID 唯一，`role` 与 `group` 按 P2-01 规则读取且该组拥有此 kind；图像的 `palette` 与 nearest 目标都须是同一组声明中同组的调色板，`alpha` 为 `encoding` 或 `{ colourKey }`，`rowOrder` 为 `stored`/`reversed`；字体有预期 `cell`、每字形行数 `glyphRows`（`cell.height`–8，且整除 256 × `cell.height`，字形数为二者之商，由 `declaredGlyphCount` 给出）与按码位互不重叠、字形小于字形数的 `charMap` 区间。它复用 content 的严格读取原语，任何问题都转为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 加字段路径。[P2-07/04](../plan/p2/07/subtasks/04-layout-conversion.md) 加入布局声明（字段见 [P2-07 spec](../plan/p2/07/spec.md#布局转换声明)）：`frame` 的宽 1–640、高 1–480，`elements` 为 1–16 个互不相同的 image ID，按存储顺序排列，每个都须是同一声明组、同一资源组中的图像声明。[P2-07/20](../plan/p2/07/subtasks/20-snip-diag-conversion.md) 加入 `data` 声明：只有 `asset`、`role`、`group`，角色须为 `status-messages`，组须拥有 `data`。
 - **转换器：** [convert-graphics.ts](../../src/original-data/conversion/convert-graphics.ts) 的 `convertGraphics(declarations, sources, limits, usage)` 先读取声明，再按 Asset ID 取得已读入的源块：
-  - 来源类型为 `data-palette`、`embedded-palette`（记录的嵌入调色板）、`cockpit-group-palette`（`groups/<s>/palette`）、`image-record`、`cockpit-font`（`fonts/<i>`）或 `cockpit-group`（`groups/<s>`）；DATA 整条目与分组调色板都在读取之前按 256 项扣除，嵌入调色板按记录头的条目数扣除；来源与 kind 不符、缺少来源都是 `invalid-declaration`；
+  - 来源类型为 `data-palette`、`embedded-palette`（记录的嵌入调色板）、`cockpit-group-palette`（`groups/<s>/palette`）、`image-record`、`snip-frame`（`frames/<i>` 与颜色表）、`cockpit-font`（`fonts/<i>`）、`cockpit-group`（`groups/<s>`）或 `status-messages`（DIAG 整条目、其重定位与下行格式）；DATA 整条目与分组调色板都在读取之前按 256 项扣除，嵌入调色板按记录头的条目数扣除；来源与 kind 不符、缺少来源都是 `invalid-declaration`；
   - 记录类来源可带 `RecordSelector`：CCKD 元素 `{ slot, index }`、MFDD 记录 `{ list, index }` 或 TABL 记录 `{ index }`，没有时为偏移 0 的整条目记录。转换时经 `cockpitElementRecordOffset`、`mfdRecordOffset`、`tableRecordOffset` 得到记录偏移，此后的读取、解码与检查与整条目相同；
-  - 依次转换调色板、图像、字体与布局，同类按 ID 排序。
+  - 依次转换调色板、图像、字体、文字与布局，同类按 ID 排序。
+  - **SNIP 帧与文字（P2-07/20）：** SNIP 帧按 `readSnipFrames` 的尺寸扣除后再经 `decodeSnipFrame` 解码，透明须为 `encoding`（帧整幅绘制，颜色键为 `invalid-declaration@…alpha`），其余与图像记录相同。文字由 `readStatusMessages` 核对结构与各段长度后，在复制任何文字之前经 `reserve` 按 `assets` 1 与编码长度扣除（拒绝位于 `…messages`），再编码；描述符 schema 为 `STATUS_MESSAGES_SCHEMA_VERSION`，没有依赖。
   - 每个 Asset 在读取或分配之前，用 `chargeBudget` 扣除由记录头或声明推得的 `assets`、`dependencyEdges`、`paletteEntries`、`imagePixels`、`glyphs` 与 `payloadBytes`（`palettePayloadLength`、`imagePayloadLength`、`fontPayloadLength` 与编码器共用同一公式）。被拒绝时报 `budget-exceeded`，限值名为维度，总量超出安全整数时 `observed` 为 null；调用者的用量不变。转换用量不扣 `sourceReadBytes`。
   - 颜色键只用于 raw 图像（否则为 `invalid-declaration@…alpha`），值为 k 的像素变为透明；不透明像素的索引不小于所绑定调色板（同组声明的转换结果）的条目数时为 `palette-index-out-of-range@…pixels`；`reversed` 恰好反转索引与掩码的行序。字体按声明的 `cell` 扣除，实际单元不符为 `geometry-mismatch@…glyphs`，`charMap` 区间展开为按码位升序的条目。
   - **布局（P2-07）：** 用 `readCockpitGroup` 读取分组。元素数与声明不符报 `geometry-mismatch@…elements`；元素坐标为负，或按其记录头的图像尺寸越出声明的画幅，报 `geometry-mismatch@…elements[<i>].x|y`。声明的第 i 个图像与第 i 个存储元素配对。之后扣除 `assets` 1、`dependencyEdges` 为元素数、`payloadBytes` 为 `layoutPayloadLength`，再编码；预算拒绝位于 `…elements`。
   - 结果是按 ID 升序的冻结 `{ descriptor, payload }`：描述符经 `readAssetDescriptor` 生成，依赖为图像引用的调色板（`imagePalettes`），或布局的元素图像（`layoutImages`，kind 为 `image`）；`payloadIdentity` 由实际字节计算；payload 独占缓冲。源结构读取的位置都带上 `graphics[<Asset ID>]` 前缀；任一失败使整组转换失败，不返回部分结果。
 - **转换步骤：** [graphics-step.ts](../../src/original-data/conversion/graphics-step.ts)（[P2-05/05](../plan/p2/05/subtasks/05-graphics-step.md)）的 `runGraphicsStep(source, mappings, declarations, limits, usage)`：
   - **共用读取：** [step-entry-reader.ts](../../src/original-data/conversion/step-entry-reader.ts) 的 `stepEntryReader(source, beforeRead?)` 经 `VerifiedSource.openArchive` 读取，以（光盘路径、条目类型、条目 ID）为键缓存一次步骤内的读取结果，大于 u32 的 ID 与核验一样报 `entry-not-found`。映射核验与转换共用它，同一条目只物理读取一次；缓存随步骤结束释放，没有跨步骤或通用的封包缓存。可选的 `beforeRead` 在读取字节之前收到目录项，供步骤按声明大小拒绝条目（逻辑步骤用它检查条目大小）。
-  - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。每个映射只能有一个部件，取第一个等价备选。子资源的序号都是不带前导零的十进制，越界由读取报 `subresource-not-found`：
+  - **配对与子资源：** 先用共用读取核验映射表，再要求每个声明都有映射、每个映射都有声明（否则为 `invalid-declaration`，位置为 `graphics.declarations[<i>]` 或 `graphics.declarations`）。映射的第一个部件须为封包条目，取它的第一个等价备选；除 SNIP 帧与 DIAG 外只能有这一个部件。子资源的序号都是不带前导零的十进制，越界由读取报 `subresource-not-found`：
     - DATA 整条目为调色板；TEX/BITM 整条目为图像，其 `palette` 为嵌入调色板；
     - CCKD 的 `fonts/<i>` 为字库，`groups/<s>` 为布局，`groups/<s>/palette` 为分组调色板，`groups/<s>/elements/<i>` 为图像；
     - MFDD 的 `lists/<l>/records/<i>` 与 TABL 的 `records/<i>` 为图像；
-    - 任一容器记录路径后接 `/palette` 为该记录的嵌入调色板。
+    - 任一容器记录路径后接 `/palette` 为该记录的嵌入调色板；
+    - SNIP 的 `frames/<i>` 为图像，DIAG 整条目为 `data`（P2-07/20）。二者另须恰有第二个部件，为长度合用途的 EXE 区域：SNIP 帧为 4 字节颜色表，DIAG 为不超过 256 字节的下行格式；不符时为 `invalid-declaration@…colours|format`。区域经 [step-entry-reader.ts](../../src/original-data/conversion/step-entry-reader.ts) 的 `stepRegionReader(source)` 读取：每个 EXE 在一步内只打开一次（`openLeExecutable`），每个区域只按 LE 读取器的规则读出一次，共用区域的 Asset（例如 9 帧共用颜色表）共用其字节；失败位置为首次读取它的 Asset 的 `…colours|format`。效果步骤共用同一读取器。
 
-    其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts|groups`。之后要求每个布局的第 i 个元素图像恰好映射到同一封包、同一 CCKD 条目、同一 slot 的 `groups/<s>/elements/<i>`，否则为 `invalid-declaration@graphics[<布局 ID>].elements[<i>]`。
+    其他组合为 `invalid-declaration@graphics[<ID>].palette|record|fonts|groups|messages`。之后要求每个布局的第 i 个元素图像恰好映射到同一封包、同一 CCKD 条目、同一 slot 的 `groups/<s>/elements/<i>`，否则为 `invalid-declaration@graphics[<布局 ID>].elements[<i>]`。
   - **结果：** 转换成功后才把全部映射（含子资源）置为 `verified`，再用 `assetSourceStates` 得到不带定位的状态。返回冻结的 `{ groups, usage }`：`groups` 只含有 Asset 的组，按 `RESOURCE_GROUPS` 排列，每组的 `descriptors`、`payloads`、`sources` 按 ID 升序一一对应；`usage` 是转换用量。任一失败都抛出且没有结果；读取错误保持 P2-02/P2-03 的层、code 与位置，已发出的读取仍计入已验证来源的 `sourceReadBytes`。
   - **组草稿（[P2-07/13](../plan/p2/07/subtasks/13-group-assembly.md)）：** `stepGroupDraft(group, results, sourceFingerprint)` 把若干步骤结果（形状同 `GraphicsStepResult`）中该组的分区按 Asset ID 升序合并为一个冻结的 `GroupDraft`，不重新转换，payload 保持原字节视图；来源状态绑定给定的来源指纹。重复的 Asset ID 以内容层的 `duplicate-asset` 拒绝，路径为 `<组>.assets` 等；没有该组的分区时得到空组。作业用它装配 `cockpit-hud-map` 组，`modelsGroupDraft` 是它在 `models` 组上的包装。
 - **生产图形：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts)（[P2-05/06](../plan/p2/05/subtasks/06-production-graphics.md)）导出生产图形的声明、映射与预算份额（P2-05 的调色板与字库、P2-06 的切片贴图、P2-07 的驾驶舱、HUD 与地图 Asset）：
@@ -658,18 +682,19 @@ src/
     - **映射：** 调色板为该 TEX 的 `palette` 子资源，confirmed；图像为 TEX 整条目，带 U-028（游戏中的明暗），置信度为 likely。最近色规则已由 P2-06/12 确认，不再有因歧义而未确认的贴图。证据指向 [textures §3](../original/formats/textures.md#3-tex-textures-confirmed) 与最近色一节。
     - **效果图像（[P2-06/11](../plan/p2/06/subtasks/11-effects-research.md)）：** [production-graphics.ts](../../src/original-data/conversion/production-graphics.ts) 的 `PRODUCTION_EFFECT_IMAGES` 列出研究确认的整条目 TEX 效果图像，目前只有导弹。每项声明 `palette/<角色>`（角色 `texture-palette`）与 `image/<角色>`（角色即效果角色），显示、透明与行序同切片贴图。图像映射带 U-027 与 U-028，置信度为 likely；调色板映射为 confirmed。证据另指向 [executable 的效果表现来源](../original/formats/executable.md#effect-presentation-sources)。
     - **份额：** `PRODUCTION_MODEL_TEXTURE_SHARE` 覆盖切片贴图与效果图像，为 `assets` 40、`dependencyEdges` 64、`paletteEntries` 1,024、`imagePixels` 524,288、`payloadBytes` 655,360（份额内全部 Asset 都按最长 ID 的图像、掩码与满额调色板计算的上界不超过它），为研究可能追加的 Asset 留有余量。
-  - **驾驶舱、HUD 与地图（[P2-07/12](../plan/p2/07/subtasks/12-production-cockpit-hud.md)）：** 按 [P2-07 spec 的生产 Asset 表](../plan/p2/07/spec.md#生产-asset-与来源)声明 86 个 `cockpit-hud-map` 组 Asset（2 个布局、83 个图像、1 个调色板），全部来自 `MAIN/SR.NOB`。图像都为 `display: 'direct'`、`rowOrder: 'stored'`；`<i>` 是记录在完整来源列表中的序号，不补零。
+  - **驾驶舱、HUD 与地图（[P2-07/12](../plan/p2/07/subtasks/12-production-cockpit-hud.md)，[P2-07/20](../plan/p2/07/subtasks/20-snip-diag-conversion.md) 修订）：** 按 [P2-07 spec 的生产 Asset 表](../plan/p2/07/spec.md#生产-asset-与来源)声明 96 个 `cockpit-hud-map` 组 Asset（2 个布局、92 个图像、1 个调色板、1 个 `data`），条目都在 `MAIN/SR.NOB`。图像都为 `display: 'direct'`、`rowOrder: 'stored'`；`<i>` 是记录在完整来源列表中的序号，不补零。
     - `layout/cockpit/front`（`front-cockpit`，画幅 640×480，元素为 `image/cockpit/front/element-0`–`3`）映射 CCKD 10103 的 `groups/0`，元素图像（`cockpit-element`，飞行调色板 `palette/flight/cockpit-hud-map`，透明按编码）映射 `groups/0/elements/<i>`：likely，U-029，证据为 [cockpit R1](../original/formats/cockpit.md#front-cockpit-source-r1) 与[分组调色板与绘制](../original/formats/cockpit.md#group-palette-and-drawing-confirmed)。
     - `layout/map/frame`（`strategic-map`，640×480，元素 `image/map/frame/element-0`–`3`）映射 `groups/2`，元素图像（`map-frame-element`，调色板 `palette/map/screen`，透明按编码）映射 `groups/2/elements/<i>`，`palette/map/screen`（`map-palette`）映射 `groups/2/palette`：都为 confirmed，U-029，证据为分组调色板与绘制一节。
     - `hud-mfd`：`image/hud/status-display/background-0`–`2`（MFDD 10473 `lists/0/records/<i>`，透明按编码）与 `overlay-0`–`8`（`lists/1/records/<i>`，颜色键 0）、`image/hud/display-page/background`（BITM 10467 整条目，透明按编码）、`image/hud/gauge-bar-1/0`–`3`（TABL 10479 `records/<i>`，颜色键 0），都用飞行调色板。`strategic-map`：`image/map/unit-marker/0`–`28`（TABL 10461）与 `image/map/zoom-icon/0`–`28`（TABL 11401），都为 `records/<i>`、地图调色板与颜色键 0。这些映射都为 confirmed，U-030，证据为 hud 的[绘制路径](../original/formats/hud.md#hud-and-map-drawing-paths-confirmed-exe)与[画面覆盖和图像族](../original/formats/hud.md#slice-screen-coverage-and-hud-image-families-r3-r4-r6)两节，MFDD 另加 [cockpit §2](../original/formats/cockpit.md#2-mfdd-multi-function-display-images-confirmed-structure)，TABL 另加[图像列表结构](../original/formats/hud.md#tabl-image-lists-confirmed-structure)，放大窗口图标再加 [R8](../original/formats/hud.md#zoom-window-icons-by-craft-type-r8)。
-    - 没有 `unconfirmed` 映射，因此在已识别的来源上该组可以完整；元素数（4 与 4）与记录数（3 + 9、4、29、29）由声明断言，与本地结构核对一致。
-    - **份额：** `PRODUCTION_COCKPIT_HUD_MAP_SHARE` 为 `assets` 96、`dependencyEdges` 192、`imagePixels` 524,288、`paletteEntries` 1,024、`glyphs` 0、`payloadBytes` 786,432，其余维度为 0；它是全部候选 Asset 的上界，不是精确用量。
+    - **干扰帧与文字（2026-10-08 修订）：** `image/hud/display-interference/frame-0`–`8`（`hud-mfd`，飞行调色板，透明按编码）映射 SNIP 10487 的 `frames/<i>` 与 EXE 区域 `le/4/0x5ed8/4`（颜色表）；`data/hud/status-display/messages`（`status-messages`）映射 DIAG 10489 整条目与 `le/4/0x1e58/6`（下行格式）。都为 confirmed，U-030，证据为 hud 的 SNIP 10487 与 DIAG 10489 两节。区域由 [production-executable.ts](../../src/original-data/conversion/production-executable.ts) 的 `executableRegionAt(地址, 长度)` 按文档化的对象基址换算（效果的生产输入共用其中的 `objectOffset`）；源码只有地址与长度。
+    - 没有 `unconfirmed` 映射，因此在已识别的来源上该组可以完整；元素数（4 与 4）、记录数（3 + 9、4、29、29）与帧数（9）由声明断言，与本地结构核对一致。
+    - **份额：** `PRODUCTION_COCKPIT_HUD_MAP_SHARE` 为 `assets` 112、`dependencyEdges` 192、`imagePixels` 655,360、`paletteEntries` 1,024、`glyphs` 0、`payloadBytes` 917,504，其余维度为 0（2026-10-08 修订前为 96、524,288 与 786,432）；它是全部候选 Asset 的上界，不是精确用量。
   - `PRODUCTION_GRAPHICS_SHARE`：P2-05 的份额（`assets` 5、`paletteEntries` 512、`glyphs` 768、`payloadBytes` 16,384；按结构上限与头部算出的上界不超过它，实际字形用量为 256 + 256 + 192）、切片贴图份额与 P2-07 份额之和，即 `assets` 141、`dependencyEdges` 256、`paletteEntries` 2,560、`glyphs` 768、`imagePixels` 1,048,576、`payloadBytes` 1,458,176，其余维度为 0；源读取沿用 P2-02 的默认限值，不另加份额。作业的限值组合不变：读取限值加图形、逻辑与模型份额。
-  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包，供 Node、作业与浏览器测试使用：DATA；`productionCockpitBlock(fonts)` 生成的 CCKD（3 个字库，slot 0 为 4 个前视元素、slot 1 为空、slot 2 为 4 个地图边框元素与分组调色板，元素都在 640×480 画幅内，有的贴住右缘与下缘）；每个生产贴图条目处由条目号决定内容的 4×2 raw 贴图 `syntheticTexture`；3 + 9 个记录的 MFDD、一个 BITM 图像，以及 4、29、29 个记录的 TABL 图像列表。各记录很小，内容随列表与条目不同。`MODEL_TEXTURE_USAGE` 与 `COCKPIT_HUD_MAP_USAGE` 是贴图与 P2-07 Asset 的期望转换用量，`PRODUCTION_LAYOUT_POSITIONS` 是两个合成布局的元素位置。
-- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。P2-07 不新增 code，只追加限值名 `cockpitSlots`、`cockpitElements`、`mfdRecords` 与 `tableRecords`。
+  - [production-graphics.test-support.ts](../../src/original-data/conversion/production-graphics.test-support.ts) 按生产映射的定位生成合成封包，供 Node、作业与浏览器测试使用：DATA；`productionCockpitBlock(fonts)` 生成的 CCKD（3 个字库，slot 0 为 4 个前视元素、slot 1 为空、slot 2 为 4 个地图边框元素与分组调色板，元素都在 640×480 画幅内，有的贴住右缘与下缘）；每个生产贴图条目处由条目号决定内容的 4×2 raw 贴图 `syntheticTexture`；3 + 9 个记录的 MFDD、一个 BITM 图像，以及 4、29、29 个记录的 TABL 图像列表；9 个 4×2 帧的 SNIP（[synthetic.ts](../../src/original-data/synthetic.ts) 的 `syntheticSnip`）与按 `SYNTHETIC_STATUS_MESSAGES` 生成的 DIAG（`syntheticDiag`，含重定位）。各记录很小，内容随列表与条目不同。`productionGraphicsFiles` 另含 `regionExecutable(PRODUCTION_GRAPHICS_REGION_WRITES)` 生成的 `MAIN/SRANGERS.EXE`：生产颜色表与下行格式区域处为编造的索引与格式，`syntheticEffectExecutable` 也写入同样的区域。`MODEL_TEXTURE_USAGE` 与 `COCKPIT_HUD_MAP_USAGE` 是贴图与 P2-07 Asset 的期望转换用量，`PRODUCTION_LAYOUT_POSITIONS` 是两个合成布局的元素位置，`interferenceIndices(i)` 与 `SYNTHETIC_STATUS_MESSAGES_PAYLOAD` 是干扰帧与文字的期望结果。
+- **错误扩展：** [source-error.ts](../../src/original-data/source-error.ts) 的 code 追加 `invalid-payload`、`unsupported-encoding`、`budget-exceeded`、`palette-index-out-of-range`、`subresource-not-found`、`invalid-declaration`、`geometry-mismatch`；限值名追加 `imageWidth`、`imageHeight`、`paletteEntryCount`、`fontCellWidth`、`fontHeight` 与 P2-01 的预算维度；`observed` 允许为 null，只用于超出安全整数的预算总量。P2-03 已有 code 与限值的含义不变。P2-07 不新增 code，只追加限值名 `cockpitSlots`、`cockpitElements`、`mfdRecords` 与 `tableRecords`，2026-10-08 修订再追加 `snipFrames`、`diagStartupMessages` 与 `diagTextBytes`。
 - [payloads.ts](../../src/original-data/payloads.ts) 只保留 ID 列表的研究用解析器 `parseIdList` 与 `PayloadError`；图像、调色板与字体由上述源读取处理，MESH 与 MODL 由 `formats/mesh.ts`、`formats/modl.ts` 处理（见[原版格式转换](#原版格式转换)）。
 
-合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`，P2-07 加入 `groups`、`elements`、`elements[<i>]` 与 `elements[<i>].x|y`）；`cockpitLayoutBlock`、`mfdBlock` 与 `tableBlock` 按 cockpit 与 hud 记录的结构生成带分组、元素、两个记录列表或无头部图像列表的合成容器，记录数据的指针相对条目块；`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
+合成样本、声明、封包与映射由 [conversion.test-support.ts](../../src/original-data/conversion/conversion.test-support.ts) 在代码中生成；其中 `inGraphicsLocationGrammar` 按 spec 定义转换错误的位置语法（声明组 `graphics.declarations`、声明字段路径或 `graphics[<ID>].<字段>`，P2-07 加入 `groups`、`elements`、`elements[<i>]` 与 `elements[<i>].x|y`，其 2026-10-08 修订加入 `frames`、`colours`、`messages` 与 `format`）；`cockpitLayoutBlock`、`mfdBlock` 与 `tableBlock` 按 cockpit 与 hud 记录的结构生成带分组、元素、两个记录列表或无头部图像列表的合成容器，记录数据的指针相对条目块；`expectSourceError` 对 `graphics` 开头的位置逐个核对。针对性检查为 `pnpm exec vitest run src/original-data/conversion`。
 
 ### 原版格式转换
 
@@ -774,7 +799,7 @@ src/
 - **流程：** `runEffectStep(source, mappings, declarations, limits, usage)` 依次执行：
   1. **配对：** 声明与映射一一对应，否则为 `invalid-declaration@effects.declarations[<i>]` 或 `@effects.declarations`。弹丸映射的第一个部件须为 `MAIN/SR.NOB` 中的 RENS 整条目，其余部件都是区域，数量等于声明的用途数；不符时为 `invalid-declaration@effects[<ID>].source`。区域长度不合用途时为 `@effects[<ID>].regions[<k>]`。这些检查都在读取之前。
   2. **核验：** 经步骤内读取用 `verifySourceMappings` 核验：读取 RENS 条目；区域只核对覆盖，未覆盖时为 P2-03 的 `path-not-covered`，位置为 `sources.mappings[…]`。
-  3. **读取：** 每个 EXE 经 `openFile` 打开一次，以 `openLeExecutable` 读结构（失败位置为首个读取它的 Asset 的 `.source`），再按 Asset ID 升序读出全部区域（`.regions[<k>]`）。
+  3. **读取：** 经与图形步骤共用的 `stepRegionReader`，每个 EXE 经 `openFile` 打开一次，以 `openLeExecutable` 读结构（失败位置为首个读取它的 Asset 的 `.source`），再按 Asset ID 升序读出全部区域（`.regions[<k>]`）。
   4. **校验：** 按格式规则校验，位置如下：
      - RENS 头部问题与 `effectRecords` 在 `.source`；
      - 弹丸记录与导弹类型在 `.records[<i>]`，`ringSegments` 也在这里；

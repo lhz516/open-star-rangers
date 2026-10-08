@@ -636,7 +636,7 @@ test('F-13 isolation: other converter versions and fingerprints stay untouched, 
     return result.status === 'listed' ? result.entries.map(({ key: entry, status }) => [entry?.originToken, entry?.converterVersion, status]) : result.code;
   });
   expect(listing).toEqual([
-    [key.originToken, OLDER_CONVERTER, 'compatible'], [key.originToken, key.converterVersion, 'incompatible'], [OTHER_FINGERPRINT, key.converterVersion, 'compatible'],
+    [OTHER_FINGERPRINT, key.converterVersion, 'compatible'], [key.originToken, OLDER_CONVERTER, 'compatible'], [key.originToken, key.converterVersion, 'incompatible'],
   ]);
   await relist(page);
   await expect(dataStatus(page)).toHaveText(NONE);

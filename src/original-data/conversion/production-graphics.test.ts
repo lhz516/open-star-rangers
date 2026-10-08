@@ -12,7 +12,8 @@ import { layoutPayloadLength, readLayoutPayload } from '../../content/graphics/l
 import { palettePayloadLength, readPalettePayload } from '../../content/graphics/palette-payload.ts';
 import { applyManifestIdentity } from '../../content/manifest-identity.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
-import { archiveLocator, diagnoseSourceMappings } from '../source-mapping.ts';
+import { STATUS_MESSAGES_LIMITS, readStatusMessagesPayload, statusMessagesPayloadLength } from '../../content/hud/status-messages-payload.ts';
+import { diagnoseSourceMappings, isRegionLocator } from '../source-mapping.ts';
 import { countedVerifiedSource, hudFontTables } from './conversion.test-support.ts';
 import { productionIdentityBasis } from './converter-version.ts';
 import type { ImageDeclaration } from './graphics-declarations.ts';
@@ -21,7 +22,7 @@ import {
   PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
 } from './production-graphics.ts';
 import {
-  COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_LAYOUT_POSITIONS, productionGraphicsFiles,
+  COCKPIT_HUD_MAP_USAGE, interferenceIndices, MODEL_TEXTURE_USAGE, PRODUCTION_LAYOUT_POSITIONS, productionGraphicsFiles, SYNTHETIC_STATUS_MESSAGES_PAYLOAD,
 } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURE_SHARE } from './production-model-textures.ts';
 
@@ -52,13 +53,16 @@ describe('production graphics', () => {
 
   it('declares exactly the P2-07 cockpit, HUD and map Assets of the spec production table after the P2-05 and texture families', () => {
     expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(COCKPIT_HUD_MAP_START)).toEqual(COCKPIT_HUD_MAP.map(({ declaration }) => declaration));
-    expect(PRODUCTION_GRAPHICS_DECLARATIONS).toHaveLength(COCKPIT_HUD_MAP_START + 86);
+    expect(PRODUCTION_GRAPHICS_DECLARATIONS).toHaveLength(COCKPIT_HUD_MAP_START + 96);
     const kinds = COCKPIT_HUD_MAP.map(({ declaration }) => declaration.asset.kind);
-    expect(['layout', 'image', 'palette'].map(kind => kinds.filter(item => item === kind).length)).toEqual([2, 83, 1]);
-    // The front-cockpit, strategic-map and hud-mfd slice roles, and the element and map palette roles outside the slice definition.
+    expect(['layout', 'image', 'palette', 'data'].map(kind => kinds.filter(item => item === kind).length)).toEqual([2, 92, 1, 1]);
+    // The front-cockpit, strategic-map and hud-mfd slice roles, and the element, map palette and messages roles outside the slice definition.
     const roles = new Map<string, number>();
     for (const { declaration: { role } } of COCKPIT_HUD_MAP) roles.set(role, (roles.get(role) ?? 0) + 1);
-    expect(Object.fromEntries(roles)).toEqual({ 'front-cockpit': 1, 'cockpit-element': 4, 'strategic-map': 1 + 29 + 29, 'map-frame-element': 4, 'map-palette': 1, 'hud-mfd': 3 + 9 + 1 + 4 });
+    expect(Object.fromEntries(roles)).toEqual({
+      'front-cockpit': 1, 'cockpit-element': 4, 'strategic-map': 1 + 29 + 29, 'map-frame-element': 4, 'map-palette': 1, 'hud-mfd': 3 + 9 + 1 + 4 + 9,
+      'status-messages': 1,
+    });
   });
 
   it('maps the flight palettes to the DATA entry, the fonts to the HI cockpit font directory, each texture to its TEX entry and the P2-07 Assets to their records', () => {
@@ -76,7 +80,8 @@ describe('production graphics', () => {
     ]);
     const projected = mappings.map(({ asset, parts, confidence, unknowns, evidence, resolution }) => ({
       id: asset.id,
-      locators: parts.map(({ alternatives }) => alternatives.map(archiveLocator).map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`)),
+      locators: parts.map(({ alternatives }) => alternatives.map(locator => (isRegionLocator(locator)
+        ? `${locator.discPath}#${locator.subresource}` : `${locator.discPath}#${locator.entry.type}:${locator.entry.id}/${locator.subresource ?? ''}`))),
       confidence, unknowns, evidence, resolution,
     }));
     expect(projected).toEqual([
@@ -97,19 +102,19 @@ describe('production graphics', () => {
     expect(new Set(mappings.filter(({ asset }) => cockpitIds.has(asset.id)).map(({ confidence }) => confidence))).toEqual(new Set(['confirmed', 'likely']));
     const diagnostics = diagnoseSourceMappings(PRODUCTION_GRAPHICS_MAPPINGS, mappings.map(({ asset }) => asset));
     // Every declared mapping is only unverified until the job verifies it; none is unconfirmed.
-    expect(diagnostics.map(({ code }) => code)).toEqual(new Array(39 + 86).fill('source-unverified'));
+    expect(diagnostics.map(({ code }) => code)).toEqual(new Array(39 + 96).fill('source-unverified'));
   });
 
   it('exports the approved P2-05, slice texture and P2-07 shares as the graphics step share, each bounding its payloads', () => {
     expect(PRODUCTION_MODEL_TEXTURE_SHARE).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 40, dependencyEdges: 64, paletteEntries: 1_024, imagePixels: 524_288, payloadBytes: 655_360 });
     expect(PRODUCTION_COCKPIT_HUD_MAP_SHARE).toEqual({
-      ...EMPTY_BUDGET_USAGE, assets: 96, dependencyEdges: 192, imagePixels: 524_288, paletteEntries: 1_024, glyphs: 0, payloadBytes: 786_432,
+      ...EMPTY_BUDGET_USAGE, assets: 112, dependencyEdges: 192, imagePixels: 655_360, paletteEntries: 1_024, glyphs: 0, payloadBytes: 917_504,
     });
     const p205Share = { ...EMPTY_BUDGET_USAGE, assets: 5, paletteEntries: 512, glyphs: 768, payloadBytes: 16_384 };
     expect(PRODUCTION_GRAPHICS_SHARE).toEqual(addBudgets(addBudgets(p205Share, PRODUCTION_MODEL_TEXTURE_SHARE), PRODUCTION_COCKPIT_HUD_MAP_SHARE));
     expect(PRODUCTION_GRAPHICS_SHARE).toEqual({
-      ...EMPTY_BUDGET_USAGE, assets: 5 + 40 + 96, dependencyEdges: 64 + 192, paletteEntries: 512 + 1_024 + 1_024, glyphs: 768, imagePixels: 2 * 524_288,
-      payloadBytes: 16_384 + 655_360 + 786_432,
+      ...EMPTY_BUDGET_USAGE, assets: 5 + 40 + 112, dependencyEdges: 64 + 192, paletteEntries: 512 + 1_024 + 1_024, glyphs: 768, imagePixels: 524_288 + 655_360,
+      payloadBytes: 16_384 + 655_360 + 917_504,
     });
     const p205Bound = 2 * palettePayloadLength(GRAPHICS_LIMITS.paletteEntryCount)
       + 3 * fontPayloadLength(GRAPHICS_LIMITS.glyphCount, GRAPHICS_LIMITS.fontHeight, GRAPHICS_LIMITS.charMapEntries);
@@ -122,14 +127,21 @@ describe('production graphics', () => {
       + assets * palettePayloadLength(0) + 3 * paletteEntries;
     expect(textureBound).toBeLessThanOrEqual(payloadBytes);
     // The P2-07 estimate: the pixel bound in images with the longest P2-07 header and a mask, palettes holding every
-    // palette entry the share allows, and the two layouts at 16 elements with the longest P2-07 image ID.
+    // palette entry the share allows, the two layouts at 16 elements with the longest P2-07 image ID, and the status
+    // display messages with every text at its longest and the most startup messages.
     const cockpit = PRODUCTION_COCKPIT_HUD_MAP_SHARE;
     const cockpitImages = COCKPIT_HUD_MAP.map(({ declaration }) => declaration).filter((declaration): declaration is ImageDeclaration => declaration.asset.kind === 'image');
     const cockpitHeader = Math.max(...cockpitImages.map(({ palette, display }) => imagePayloadLength({ width: 0, height: 0, palette, display }, false)));
     const longestImage = cockpitImages.reduce((longest, { asset }) => (asset.id.length > longest.length ? asset.id : longest), '');
     const layoutBound = layoutPayloadLength({ elements: new Array(GRAPHICS_LIMITS.layoutElements).fill({ image: longestImage, x: 0, y: 0 }) });
+    const longest = 'x'.repeat(STATUS_MESSAGES_LIMITS.textBytes);
+    const messagesBound = statusMessagesPayloadLength({
+      ...SYNTHETIC_STATUS_MESSAGES_PAYLOAD, statusFormats: new Array(4).fill(longest), ratings: new Array(5).fill({ text: longest, maximum: 0 }),
+      subsystemNames: new Array(15).fill(longest), stateWords: new Array(3).fill(longest), subsystemFormat: longest,
+      startupMessages: new Array(STATUS_MESSAGES_LIMITS.startupMessages).fill(longest),
+    });
     const cockpitBound = cockpit.assets * cockpitHeader + cockpit.imagePixels + cockpit.imagePixels / 8 + cockpit.assets * GRAPHICS_LIMITS.imageHeight
-      + (cockpit.paletteEntries / GRAPHICS_LIMITS.paletteEntryCount) * palettePayloadLength(GRAPHICS_LIMITS.paletteEntryCount) + 2 * layoutBound;
+      + (cockpit.paletteEntries / GRAPHICS_LIMITS.paletteEntryCount) * palettePayloadLength(GRAPHICS_LIMITS.paletteEntryCount) + 2 * layoutBound + messagesBound;
     expect(cockpitBound).toBeLessThanOrEqual(cockpit.payloadBytes);
   });
 
@@ -176,11 +188,11 @@ describe('production graphics', () => {
       paletteEntries: 512 + MODEL_TEXTURE_USAGE.paletteEntries + COCKPIT_HUD_MAP_USAGE.paletteEntries, glyphs: 256 + 256 + 192,
       imagePixels: MODEL_TEXTURE_USAGE.imagePixels + COCKPIT_HUD_MAP_USAGE.imagePixels, payloadBytes,
     });
-    expect(COCKPIT_HUD_MAP_USAGE).toMatchObject({ assets: 86, dependencyEdges: 83 + 4 + 4, paletteEntries: 256 });
+    expect(COCKPIT_HUD_MAP_USAGE).toMatchObject({ assets: 96, dependencyEdges: 92 + 4 + 4, paletteEntries: 256 });
     // An image and its palette subresource share the one read of their TEX entry; the fonts, both layouts, their
-    // elements and the map palette share the one read of the CCKD entry.
+    // elements and the map palette share the one read of the CCKD entry; the nine frames the one read of the SNIP.
     expect(Object.fromEntries(reads)).toEqual({
-      10103: 1, 11075: 1, 10461: 1, 10467: 1, 10473: 1, 10479: 1, 11401: 1,
+      10103: 1, 11075: 1, 10461: 1, 10467: 1, 10473: 1, 10479: 1, 11401: 1, 10487: 1, 10489: 1,
       ...Object.fromEntries([...TEXTURES, ...EFFECTS.map(([, entry]) => entry)].map(entry => [entry, 1])),
     });
     const payloads = result.groups.flatMap(group => group.payloads);
@@ -224,6 +236,12 @@ describe('production graphics', () => {
         expect(dependencies).toEqual([{ id: palette, kind: 'palette' }]);
         // A colour key always masks; as encoded, only the synthetic front sprite element has transparent pixels.
         expect(image.mask !== null).toBe(alpha !== 'encoding' || id === 'image/cockpit/front/element-3');
+        // Each interference frame's 2-bit values come out as the executable colour table's palette indices.
+        const frame = /^image\/hud\/display-interference\/frame-(\d)$/.exec(id);
+        if (frame) expect(image.indices).toEqual(interferenceIndices(Number(frame[1])));
+      } else if (kind === 'data') {
+        expect(readStatusMessagesPayload(bytes, schemaVersion)).toEqual(SYNTHETIC_STATUS_MESSAGES_PAYLOAD);
+        expect(dependencies).toEqual([]);
       } else {
         expect(readPalettePayload(bytes, schemaVersion).entries).toHaveLength(256 * 3);
         expect(dependencies).toEqual([]);
@@ -273,19 +291,26 @@ const hudPaths = 'docs/original/formats/hud.md#hud-and-map-drawing-paths-confirm
 const hudFamilies = 'docs/original/formats/hud.md#slice-screen-coverage-and-hud-image-families-r3-r4-r6';
 const tableStructure = 'docs/original/formats/hud.md#tabl-image-lists-confirmed-structure';
 const zoomIcons = 'docs/original/formats/hud.md#zoom-window-icons-by-craft-type-r8';
+const snipStructure = 'docs/original/formats/hud.md#snip-10487-confirmed-structure-p2-1227';
+const diagStructure = 'docs/original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision';
 
 type MappingFields = { readonly confidence: string; readonly unknowns: string[]; readonly evidence: string[] };
 const front: MappingFields = { confidence: 'likely', unknowns: ['U-029'], evidence: [cockpitR1, groupPalette] };
 const mapFrame: MappingFields = { confidence: 'confirmed', unknowns: ['U-029'], evidence: [groupPalette] };
 const hud = (...evidence: string[]): MappingFields => ({ confidence: 'confirmed', unknowns: ['U-030'], evidence: [...evidence].sort() });
 
-/** One expected P2-07 Asset: its declaration and its mapping projected as in the mapping test, in the spec's terms. */
-const expected = (declaration: Record<string, unknown> & { asset: { id: string; kind: string }; role: string }, locator: string, fields: MappingFields) => ({
+/**
+ * One expected P2-07 Asset: its declaration and its mapping projected as in the mapping test, in the spec's terms;
+ * `region` is the executable region part of a SNIP frame or the DIAG messages.
+ */
+const expected = (
+  declaration: Record<string, unknown> & { asset: { id: string; kind: string }; role: string }, locator: string, fields: MappingFields, region?: string,
+) => ({
   declaration: { ...declaration, group: 'cockpit-hud-map' },
-  mapping: { id: declaration.asset.id, locators: [[`MAIN/SR.NOB#${locator}`]], ...fields, resolution: 'declared' },
+  mapping: { id: declaration.asset.id, locators: [[`MAIN/SR.NOB#${locator}`], ...(region ? [[`MAIN/SRANGERS.EXE#${region}`]] : [])], ...fields, resolution: 'declared' },
 });
-const imageRows = (ids: string[], role: string, palette: string, alpha: unknown, locator: (index: number) => string, fields: MappingFields) =>
-  ids.map((id, index) => expected({ asset: { id, kind: 'image' }, role, palette, display: 'direct', alpha, rowOrder: 'stored' }, locator(index), fields));
+const imageRows = (ids: string[], role: string, palette: string, alpha: unknown, locator: (index: number) => string, fields: MappingFields, region?: string) =>
+  ids.map((id, index) => expected({ asset: { id, kind: 'image' }, role, palette, display: 'direct', alpha, rowOrder: 'stored' }, locator(index), fields, region));
 
 const FRONT_ELEMENTS = indexed('image/cockpit/front/element-', 4);
 const MAP_FRAME_ELEMENTS = indexed('image/map/frame/element-', 4);
@@ -303,4 +328,7 @@ const COCKPIT_HUD_MAP = [
   ...imageRows(indexed('image/hud/gauge-bar-1/', 4), 'hud-mfd', FLIGHT_PALETTE, COLOUR_KEY_0, index => `TABL:10479/records/${index}`, hud(hudPaths, hudFamilies, tableStructure)),
   ...imageRows(indexed('image/map/unit-marker/', 29), 'strategic-map', MAP_PALETTE, COLOUR_KEY_0, index => `TABL:10461/records/${index}`, hud(hudPaths, hudFamilies, tableStructure)),
   ...imageRows(indexed('image/map/zoom-icon/', 29), 'strategic-map', MAP_PALETTE, COLOUR_KEY_0, index => `TABL:11401/records/${index}`, hud(hudPaths, hudFamilies, tableStructure, zoomIcons)),
+  // 2026-10-08 revision: the colour table at 0x175ed8 and the lower line's format at 0x171e58, in LE object 4.
+  ...imageRows(indexed('image/hud/display-interference/frame-', 9), 'hud-mfd', FLIGHT_PALETTE, 'encoding', index => `SNIP:10487/frames/${index}`, hud(snipStructure), 'le/4/0x5ed8/4'),
+  expected({ asset: { id: 'data/hud/status-display/messages', kind: 'data' }, role: 'status-messages' }, 'DIAG:10489/', hud(diagStructure), 'le/4/0x1e58/6'),
 ];

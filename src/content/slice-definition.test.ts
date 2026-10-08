@@ -26,8 +26,9 @@ describe('classic-p2-slice definition', () => {
   it('records the approved candidate and configuration without source entry IDs', () => {
     expect(CLASSIC_P2_SLICE.sliceId).toBe(SLICE_ID);
     expect(CLASSIC_P2_SLICE.version).toBe(SLICE_DEFINITION_VERSION);
-    // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group.
-    expect(SLICE_DEFINITION_VERSION).toBe(2);
+    // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group; version 3
+    // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data.
+    expect(SLICE_DEFINITION_VERSION).toBe(3);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });
     const serialized = JSON.stringify(CLASSIC_P2_SLICE);
@@ -49,7 +50,7 @@ describe('classic-p2-slice definition', () => {
     expect(CLASSIC_P2_SLICE.groupKinds).toEqual({
       logic: ['mission', 'data'],
       models: ['model', 'image', 'palette', 'data'],
-      'cockpit-hud-map': ['image', 'palette', 'font', 'layout'],
+      'cockpit-hud-map': ['image', 'palette', 'font', 'layout', 'data'],
       audio: ['sound'],
     });
     for (const { role, group, kinds } of CLASSIC_P2_SLICE.roles) {

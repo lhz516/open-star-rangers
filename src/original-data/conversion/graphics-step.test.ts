@@ -5,6 +5,10 @@ import { validateGroup } from '../../content/completeness.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { readLayoutPayload } from '../../content/graphics/layout-payload.ts';
+import { encodeImagePayload } from '../../content/graphics/image-payload.ts';
+import { readStatusMessagesPayload, STATUS_MESSAGES_SCHEMA_VERSION } from '../../content/hud/status-messages-payload.ts';
+import { readAssetId } from '../../content/asset-id.ts';
+import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields } from '../synthetic.ts';
 import { SYNTHETIC_ASSETS, syntheticGroup, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
@@ -15,6 +19,7 @@ import {
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
 import { runGraphicsStep, stepGroupDraft } from './graphics-step.ts';
+import { stepEntryReader } from './step-entry-reader.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 100, dependencyEdges: 100, paletteEntries: 10_000, imagePixels: 10_000, glyphs: 10_000, payloadBytes: 1_000_000 };
 const { data, texture, cockpit, mfd, table } = GRAPHICS_ENTRIES;
@@ -397,5 +402,121 @@ describe('graphics step container sources and layouts', () => {
     const { source } = await containerSource();
     await expect(runGraphicsStep(source, table(), containerDeclarations(), LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location });
     expect(inGraphicsLocationGrammar(location)).toBe(true);
+  });
+});
+
+// P2-07 2026-10-08 revision: SNIP frames through the executable's colour table, and DIAG messages with the
+// executable's lower-line format (hud, SNIP 10487 and DIAG 10489). Everything here is generated in code.
+describe('graphics step SNIP frames and DIAG messages', () => {
+  const EXE = 'MAIN/SRANGERS.EXE';
+  const SNIP_ENTRY = 10_013;
+  const DIAG_ENTRY = 10_015;
+  const COLOURS = [9, 200, 0, 31];
+  const FORMAT = [0x5b, 0x25, 0x73, 0x2f, 0x25, 0x73, 0x5d, 0];
+  const IDS = { flight: 'palette/flight/cockpit-hud-map', frame: 'image/hud/noise/frame-1', messages: 'data/hud/messages' } as const;
+  const frame = (index: number) => Array.from({ length: 16 }, (_, pixel) => (pixel + index * 3 + (pixel >> 2)) % 4);
+  const SNIP = syntheticSnip({ width: 8, height: 2, frames: [frame(0), frame(1), frame(2)] });
+  const DIAG_FIELDS: SyntheticDiagFields = {
+    timings: [2, 30, 4, 50],
+    statusFormats: ['a %d', 'b\n%u', 'c %s', 'd'],
+    ratings: [['q', 9], ['r', 6], ['s', 3], ['t', 1], ['u', 0]],
+    subsystemNames: Array.from({ length: 15 }, (_, index) => `n${index}`),
+    stateWords: ['x', 'y', 'z'],
+    startupMessages: ['boot one'],
+  };
+  const DIAG = syntheticDiag(DIAG_FIELDS);
+  // Object 1 holds the colour table at 0x10 and the format at 0x20; the rest is a generated pattern.
+  const executable = () => {
+    const bytes = Uint8Array.from({ length: 64 }, (_, index) => (index * 7 + 1) & 0xff);
+    bytes.set(COLOURS, 0x10);
+    bytes.set(FORMAT, 0x20);
+    return syntheticLeExecutable({ objects: [{ bytes }] });
+  };
+  const region = (subresource: string) => ({ alternatives: [{ discPath: EXE, entry: null, subresource }] });
+  const withRegion = (mapped: Record<string, unknown>, subresource: string | null) =>
+    (subresource === null ? mapped : { ...mapped, parts: [...(mapped.parts as unknown[]), region(subresource)] });
+  interface TableChanges { frameSub?: string | null; colours?: string | null; diagSub?: string | null; format?: string | null }
+  const tableOf = ({ frameSub = 'frames/1', colours = 'le/1/0x10/4', diagSub = null, format = 'le/1/0x20/8' }: TableChanges = {}) => ({
+    sourceFingerprint: null,
+    mappings: [
+      withRegion(graphicsMapping(IDS.messages, 'DIAG', DIAG_ENTRY, diagSub), format),
+      withRegion(graphicsMapping(IDS.frame, 'SNIP', SNIP_ENTRY, frameSub), colours),
+      graphicsMapping(IDS.flight, 'DATA', data),
+    ],
+  });
+  const declared = (frameChanges: Record<string, unknown> = {}, messagesChanges: Record<string, unknown> = {}) => [
+    paletteDeclaration(IDS.flight),
+    imageDeclaration(IDS.frame, IDS.flight, { role: 'hud-mfd', ...frameChanges }),
+    { asset: { id: IDS.messages, kind: 'data' }, role: 'status-messages', group: 'cockpit-hud-map', ...messagesChanges },
+  ];
+  const sourceOf = async (exe: Uint8Array = executable(), snip = SNIP) => {
+    const archive = buildImfat(10_000, [
+      { id: data, type: 'DATA', data: dataPaletteBlock() },
+      { id: SNIP_ENTRY, type: 'SNIP', ...snip },
+      { id: DIAG_ENTRY, type: 'DIAG', ...DIAG },
+    ]);
+    const { source, reads } = await countedVerifiedSource({ [GRAPHICS_ARCHIVE]: archive, [EXE]: exe });
+    const opened: string[] = [];
+    return { source: { ...source, openFile: (path: string) => { opened.push(path); return source.openFile(path); } } as VerifiedSource, reads, opened };
+  };
+
+  it('converts a frame through the colour table and the messages with the format, reading each entry and the executable once', async () => {
+    const { source, reads, opened } = await sourceOf();
+    const [step] = (await runGraphicsStep(source, tableOf(), declared(), LIMITS)).groups;
+    expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [SNIP_ENTRY]: 1, [DIAG_ENTRY]: 1 });
+    expect(opened).toEqual([EXE]);
+    const payload = (id: string) => step.payloads.find(payload => payload.id === id)!;
+    expect(payload(IDS.frame).bytes).toEqual(encodeImagePayload({
+      width: 8, height: 2, palette: readAssetId(IDS.flight), display: 'direct', indices: Uint8Array.from(frame(1), value => COLOURS[value]), mask: null,
+    }));
+    expect(readStatusMessagesPayload(payload(IDS.messages).bytes, payload(IDS.messages).schemaVersion)).toEqual({
+      upper: { characterTicks: 2, holdTicks: 30 }, lower: { characterTicks: 4, holdTicks: 50 },
+      statusFormats: DIAG_FIELDS.statusFormats, ratings: DIAG_FIELDS.ratings.map(([text, maximum]) => ({ text, maximum })),
+      subsystemNames: DIAG_FIELDS.subsystemNames, stateWords: DIAG_FIELDS.stateWords, subsystemFormat: '[%s/%s]', startupMessages: ['boot one'],
+    });
+    const descriptor = step.descriptors.find(({ id }) => id === IDS.messages)!;
+    expect({ kind: descriptor.kind, dependencies: descriptor.dependencies, schema: descriptor.payloadIdentity.schemaVersion })
+      .toEqual({ kind: 'data', dependencies: [], schema: STATUS_MESSAGES_SCHEMA_VERSION });
+    expect(step.sources.map(({ state }) => state)).toEqual(['verified', 'verified', 'verified']);
+  });
+
+  it('leaves the region mappings declared until the conversion succeeds', async () => {
+    const { source } = await sourceOf();
+    const bound = await verifySourceMappings(tableOf(), source, stepEntryReader(source));
+    expect(bound.mappings.map(({ resolution }) => resolution)).toEqual(['declared', 'declared', 'verified']);
+  });
+
+  it.each<[string, () => { table?: unknown; declarations?: unknown; exe?: Uint8Array; snip?: typeof SNIP }, string, string]>([
+    ['a frame without its colour table', () => ({ table: tableOf({ colours: null }) }), 'invalid-declaration', 'graphics[image/hud/noise/frame-1].colours'],
+    ['a colour table of 3 bytes', () => ({ table: tableOf({ colours: 'le/1/0x10/3' }) }), 'invalid-declaration', 'graphics[image/hud/noise/frame-1].colours'],
+    ['messages without their format', () => ({ table: tableOf({ format: null }) }), 'invalid-declaration', 'graphics[data/hud/messages].format'],
+    ['a format region of 257 bytes', () => ({ table: tableOf({ format: 'le/1/0x20/257' }) }), 'invalid-declaration', 'graphics[data/hud/messages].format'],
+    ['a frame index with a leading zero', () => ({ table: tableOf({ frameSub: 'frames/01' }) }), 'invalid-declaration', 'graphics[image/hud/noise/frame-1].record'],
+    ['a whole SNIP entry', () => ({ table: tableOf({ frameSub: null }) }), 'invalid-declaration', 'graphics[image/hud/noise/frame-1].record'],
+    ['a frame past the SNIP', () => ({ table: tableOf({ frameSub: 'frames/3' }) }), 'subresource-not-found', 'graphics[image/hud/noise/frame-1].frames'],
+    ['messages from a DIAG subresource', () => ({ table: tableOf({ diagSub: 'texts/0' }) }), 'invalid-declaration', 'graphics[data/hud/messages].messages'],
+    ['messages from a DATA entry', () => ({ table: { ...tableOf(), mappings: [withRegion(graphicsMapping(IDS.messages, 'DATA', data), 'le/1/0x20/8'), ...tableOf().mappings.slice(1)] } }),
+      'invalid-declaration', 'graphics[data/hud/messages].messages'],
+    ['a colour key on a frame', () => ({ declarations: declared({ alpha: { colourKey: 0 } }) }), 'invalid-declaration', 'graphics[image/hud/noise/frame-1].alpha'],
+    ['messages of another role', () => ({ declarations: declared({}, { role: 'hud-mfd' }) }), 'invalid-declaration', 'graphics.declarations[2].role'],
+    ['messages in a group that does not own data', () => ({ declarations: declared({}, { group: 'audio' }) }), 'invalid-declaration', 'graphics.declarations[2].group'],
+    ['a colour table outside its object', () => ({ table: tableOf({ colours: 'le/1/0x3e/4' }) }), 'invalid-payload', 'graphics[image/hud/noise/frame-1].colours'],
+    ['a format without its NUL', () => ({ table: tableOf({ format: 'le/1/0x20/7' }) }), 'invalid-payload', 'graphics[data/hud/messages].format'],
+    ['a SNIP without its relocation', () => ({ snip: { ...SNIP, relocations: [] } }), 'invalid-payload', 'graphics[image/hud/noise/frame-1].frames'],
+  ])('rejects %s', async (_, changes, code, location) => {
+    const { table, declarations: declared_ = declared(), exe, snip } = changes();
+    const { source } = await sourceOf(exe, snip);
+    await expect(runGraphicsStep(source, table ?? tableOf(), declared_, LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location });
+    expect(inGraphicsLocationGrammar(location)).toBe(true);
+  });
+
+  it('charges a frame before decoding it and the messages before copying any text', async () => {
+    const { source } = await sourceOf();
+    const pixels = { ...LIMITS, imagePixels: 15 };
+    await expect(runGraphicsStep(source, tableOf(), declared(), pixels))
+      .rejects.toMatchObject({ code: 'budget-exceeded', location: 'graphics[image/hud/noise/frame-1].pixels', limit: { name: 'imagePixels', limit: 15, observed: 16 } });
+    const bytes = { ...LIMITS, payloadBytes: 900 };
+    await expect(runGraphicsStep(source, tableOf(), declared(), bytes))
+      .rejects.toMatchObject({ code: 'budget-exceeded', location: 'graphics[data/hud/messages].messages' });
   });
 });

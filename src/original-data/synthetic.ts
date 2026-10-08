@@ -282,6 +282,69 @@ export function syntheticModl(fields: SyntheticModlFields): { data: Uint8Array; 
   return { data: writer.toBytes(), relocations: headers.flatMap(([pointer], list) => (pointer ? [list * 8] : [])) };
 }
 
+export interface SyntheticSnipFields {
+  width: number;
+  height: number;
+  /** Each frame's 2-bit pixel values, row-major from the top, width × height per frame. */
+  frames: readonly (readonly number[])[];
+  /** Stored fields that default to the consistent values: the frame block offset (28) and size, and the frame count. */
+  blockOffset?: number;
+  blockSize?: number;
+  count?: number;
+}
+
+/**
+ * A code-generated SNIP data block (hud, SNIP 10487) and its relocated frame block pointer at offset 0: the pointer and
+ * size, zero bytes up to the block, then u32 count, height and width and the frames, four pixels per byte with the
+ * leftmost in the lowest two bits.
+ */
+export function syntheticSnip(fields: SyntheticSnipFields): { data: Uint8Array; relocations: number[] } {
+  const { width, height, frames, blockOffset = 28 } = fields;
+  const packed = frames.flatMap(frame => Array.from({ length: Math.ceil(frame.length / 4) }, (_, byte) =>
+    [0, 1, 2, 3].reduce((value, pixel) => value | ((frame[byte * 4 + pixel] ?? 0) & 3) << (pixel * 2), 0)));
+  const block = new ByteWriter().u32(fields.count ?? frames.length, height, width).raw(packed).toBytes();
+  const data = new ByteWriter().u32(blockOffset, fields.blockSize ?? block.length).raw(new Uint8Array(Math.max(0, blockOffset - 8))).raw(block).toBytes();
+  return { data, relocations: [0] };
+}
+
+export interface SyntheticDiagFields {
+  /** Upper line character and hold ticks, then the lower line's. */
+  timings: readonly [number, number, number, number];
+  statusFormats: readonly string[];
+  /** [text, maximum] per rating. */
+  ratings: readonly (readonly [string, number])[];
+  subsystemNames: readonly string[];
+  stateWords: readonly string[];
+  startupMessages: readonly string[];
+}
+
+/**
+ * A code-generated DIAG data block (hud, DIAG 10489) and its relocations: the 0x98-byte header with the timings, text
+ * pointers, rating maxima and the startup list pointer and count (both 0 without startup messages), then every text
+ * NUL-terminated in header order, then the startup list. Texts are byte strings, one character per byte.
+ */
+export function syntheticDiag(fields: SyntheticDiagFields): { data: Uint8Array; relocations: number[] } {
+  const texts: number[] = [];
+  const place = (text: string): number => {
+    const at = 0x98 + texts.length;
+    texts.push(...Array.from(text, character => character.charCodeAt(0)), 0);
+    return at;
+  };
+  const header = new ByteWriter().u32(...fields.timings).u32(...fields.statusFormats.map(place));
+  for (const [text, maximum] of fields.ratings) header.u32(place(text), maximum);
+  header.u32(...fields.subsystemNames.map(place), ...fields.stateWords.map(place));
+  const startup = fields.startupMessages.map(place);
+  const list = startup.length === 0 ? 0 : 0x98 + texts.length;
+  header.u32(list, startup.length);
+  const data = header.raw(texts).u32(...startup).toBytes();
+  const pointers = (start: number, count: number, stride = 4) => Array.from({ length: count }, (_, index) => start + index * stride);
+  const relocations = [
+    ...pointers(0x10, fields.statusFormats.length), ...pointers(0x20, fields.ratings.length, 8),
+    ...pointers(0x48, fields.subsystemNames.length + fields.stateWords.length), ...(list === 0 ? [] : [0x90, ...pointers(list, startup.length)]),
+  ];
+  return { data, relocations };
+}
+
 /** One object of a synthetic LE file: its stored bytes, split into 4,096-byte pages. */
 export interface SyntheticLeObject {
   bytes: Uint8Array;

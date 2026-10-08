@@ -199,7 +199,7 @@ describe('source mapping diagnostics', () => {
   });
 });
 
-// P2-06 AC-18 (locator part): byte regions of a non-archive file, for data Assets only.
+// P2-06 AC-18 (locator part): byte regions of a non-archive file, for data Assets and (P2-07) after an image's entry.
 describe('region locators', () => {
   const region = (subresource: string, discPath = 'MAIN/SRANGERS.EXE') => ({ discPath, entry: null, subresource });
   const dataMapping = (parts: object[][]) => ({ ...mapping('data/synthetic-effects', 'data', [] as never), parts: parts.map(alternatives => ({ alternatives })) });
@@ -240,7 +240,9 @@ describe('region locators', () => {
     ['a repeated region', effectsTable([[region('le/2/0x1a/4')], [region('le/2/0x1a/4')]]), 'duplicate-mapping', 'sources.mappings[0].parts[1]'],
     ['regions out of numeric order', effectsTable([[region('le/2/0x10/4')], [region('le/2/0x9/4')]]), 'mapping-order', 'sources.mappings[0].parts[1]'],
     ['a region before an archive entry', effectsTable([[region('le/2/0x10/4')], [locator('RENS', 7)]]), 'mapping-order', 'sources.mappings[0].parts[1]'],
-    ['a region for another kind', { sourceFingerprint: null, mappings: [{ ...mapping('image/synthetic-effect', 'image', [] as never), parts: [{ alternatives: [region('le/2/0x1a/4')] }], resolution: 'declared' }] },
+    ['a region for another kind', { sourceFingerprint: null, mappings: [{ ...mapping('palette/synthetic-effect', 'palette', [] as never), parts: [{ alternatives: [region('le/2/0x1a/4')] }], resolution: 'declared' }] },
+      'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives[0]'],
+    ['an image mapping of regions only', { sourceFingerprint: null, mappings: [{ ...mapping('image/synthetic-frame', 'image', [] as never), parts: [{ alternatives: [region('le/2/0x1a/4')] }], resolution: 'declared' }] },
       'invalid-source-mapping', 'sources.mappings[0].parts[0].alternatives[0]'],
   ])('rejects %s', (_name, input, code, path) => {
     expect(() => readSourceMappingTable(input)).toThrowError(expect.objectContaining({ code, path }));
@@ -251,5 +253,13 @@ describe('region locators', () => {
     expect(diagnoseSourceMappings(read, [])).toEqual([]);
     expect(assetSourceStates(read).states).toEqual([{ id: 'data/synthetic-effects', state: 'unverified', unknowns: [] }]);
     expect(JSON.stringify(assetSourceStates(read))).not.toMatch(/le\/|SRANGERS|RENS/);
+  });
+
+  // P2-07 2026-10-08 revision: an image record that needs a colour table from the executable.
+  it('admits an image mapping that starts with an archive entry and adds regions', () => {
+    const image = { ...mapping('image/synthetic-frame', 'image', [] as never), parts: [{ alternatives: [locator('SNIP', 7, 'frames/0')] }, { alternatives: [region('le/4/0x10/4')] }] };
+    const read = readSourceMappingTable({ sourceFingerprint: 'source:synthetic-disc', mappings: [{ ...image, resolution: 'declared' }] });
+    expect(diagnoseSourceMappings(read, [])).toEqual([]);
+    expect(assetSourceStates(read).states).toEqual([{ id: 'image/synthetic-frame', state: 'unverified', unknowns: [] }]);
   });
 });

@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { encodeImagePayload, readImagePayload } from '../../content/graphics/image-payload.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
-import { ByteWriter } from '../synthetic.ts';
+import type { SourceLimit } from '../source-error.ts';
+import { ByteWriter, syntheticSnip } from '../synthetic.ts';
 import {
   cockpitBlock as cockpit, cockpitLayoutBlock, dataPaletteBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
   recordBlock as record, spriteImageBlock, tableBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import {
-  checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, mfdRecordOffset, readCockpitFont,
+  checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, decodeSnipFrame, mfdRecordOffset, readCockpitFont,
   readCockpitFonts, readCockpitGroup, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
-  readMfdRecordOffsets, readTableRecordOffsets, tableRecordOffset,
+  readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets, tableRecordOffset,
 } from './source-graphics.ts';
 
 // A 5×3 sprite whose rows differ, as little-endian u16 runs and pixels. Row 0: transparent 0, opaque 2 (1, 2),
@@ -428,5 +429,71 @@ describe('TABL image lists', () => {
     ['an unselected raw record of the wrong size', () => set32(copy(TABLE).subarray(0, -1), 72 + 32, 5), 'pixels'],
   ])('rejects %s as invalid-payload', (_, block, field) => {
     rejects(() => tableRecordOffset(block(), 0, 'graphics[image/a]'), 'invalid-payload', `graphics[image/a].${field}`);
+  });
+});
+
+// P2-07 2026-10-08 revision: SNIP frames of 2-bit pixels drawn through a 4-byte colour table (hud, SNIP 10487).
+describe('SNIP frames', () => {
+  // An asymmetric pattern per frame index: each pixel's value differs from its mirror images.
+  const values = (frame: number, width: number, height: number) =>
+    Array.from({ length: width * height }, (_, pixel) => (pixel * 3 + Math.floor(pixel / width) + frame) % 4);
+  /** A SNIP entry of `count` frames with its one relocation. */
+  const snip = (count = 3, width = 8, height = 3) =>
+    syntheticSnip({ width, height, frames: Array.from({ length: count }, (_, frame) => values(frame, width, height)) });
+  /** Stored bytes with the consistent relocation. */
+  const entryOf = (bytes: Uint8Array) => ({ bytes, relocations: [0] });
+  const COLOURS = Uint8Array.of(200, 7, 255, 0);
+
+  it('reads the frame count and size and decodes each frame through the colour table', () => {
+    const entry = entryOf(snip().data);
+    expect(readSnipFrames(entry)).toEqual({ count: 3, width: 8, height: 3, framesOffset: 40 });
+    for (const frame of [0, 1, 2]) {
+      const decoded = decodeSnipFrame(entry, frame, COLOURS);
+      expect({ ...decoded, indices: [...decoded.indices] }).toEqual({ width: 8, height: 3, indices: values(frame, 8, 3).map(value => COLOURS[value]), mask: null });
+    }
+    const decoded = decodeSnipFrame(entry, 0, COLOURS);
+    entry.bytes.fill(0);
+    expect(decoded.indices[0]).toBe(COLOURS[values(0, 8, 3)[0]]);
+    expect(payloadTransferList([decoded.indices])).toEqual([decoded.indices.buffer]);
+  });
+
+  it('stores four pixels per byte with the leftmost in the lowest two bits, as the oracle writes them', () => {
+    const { data, relocations } = syntheticSnip({ width: 4, height: 2, frames: [[1, 2, 3, 0, 3, 3, 0, 1]] });
+    expect(relocations).toEqual([0]);
+    expect([...data.subarray(0, 8), ...data.subarray(28)]).toEqual([28, 0, 0, 0, 14, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0b00_11_10_01, 0b01_00_11_11]);
+    expect([...decodeSnipFrame(entryOf(data), 0, COLOURS).indices]).toEqual([7, 255, 0, 200, 0, 0, 200, 7]);
+  });
+
+  it('accepts 1 and 16 frames and the largest frame', () => {
+    expect(readSnipFrames(entryOf(snip(1).data)).count).toBe(1);
+    expect(readSnipFrames(entryOf(snip(CONTAINER_LIMITS.snipFrames, 4, 1).data)).count).toBe(16);
+    expect(decodeSnipFrame(entryOf(snip(1, 640, 480).data), 0, COLOURS).indices).toHaveLength(640 * 480);
+  });
+
+  it.each([[3], [-1], [0.5]])('reports frames/%s as a missing subresource', index => {
+    rejects(() => decodeSnipFrame(entryOf(snip().data), index, COLOURS, 'graphics[image/a]'), 'subresource-not-found', 'graphics[image/a].frames');
+  });
+
+  it('rejects a colour table that is not 4 bytes', () => {
+    rejects(() => decodeSnipFrame(entryOf(snip().data), 0, COLOURS.subarray(0, 3), 'graphics[image/a]'), 'invalid-payload', 'graphics[image/a].colours');
+  });
+
+  it.each<[string, () => { bytes: Uint8Array; relocations: number[] }, string, SourceLimit?]>([
+    ['a truncated header', () => entryOf(snip().data.subarray(0, 7)), 'invalid-payload'],
+    ['no relocation', () => ({ bytes: snip().data, relocations: [] }), 'invalid-payload'],
+    ['a relocation elsewhere', () => ({ bytes: snip().data, relocations: [4] }), 'invalid-payload'],
+    ['an extra relocation', () => ({ bytes: snip().data, relocations: [0, 4] }), 'invalid-payload'],
+    ['a block inside the header', () => entryOf(syntheticSnip({ width: 4, height: 1, frames: [[0, 1, 2, 3]], blockOffset: 4 }).data), 'invalid-payload'],
+    ['a block past the end', () => entryOf(set32(copy(snip().data), 0, 1_000)), 'invalid-payload'],
+    ['a block that leaves trailing bytes', () => entryOf(Uint8Array.of(...set32(copy(snip().data), 4, snip().data.length - 28), 0)), 'invalid-payload'],
+    ['a block shorter than its header', () => entryOf(syntheticSnip({ width: 4, height: 1, frames: [], blockSize: 8 }).data.subarray(0, 36)), 'invalid-payload'],
+    ['a row of part of a byte', () => entryOf(syntheticSnip({ width: 6, height: 2, frames: [values(0, 6, 2)] }).data), 'invalid-payload'],
+    ['a frame count larger than the frames', () => entryOf(set32(copy(snip().data), 28, 4)), 'invalid-payload'],
+    ['no frames', () => entryOf(set32(copy(snip().data), 28, 0)), 'limit-exceeded', { name: 'snipFrames', limit: 16, observed: 0 }],
+    ['17 frames', () => entryOf(set32(copy(snip().data), 28, 17)), 'limit-exceeded', { name: 'snipFrames', limit: 16, observed: 17 }],
+    ['a height of 481', () => entryOf(set32(copy(snip().data), 32, 481)), 'limit-exceeded', { name: 'imageHeight', limit: 480, observed: 481 }],
+    ['a width of 644', () => entryOf(set32(copy(snip().data), 36, 644)), 'limit-exceeded', { name: 'imageWidth', limit: 640, observed: 644 }],
+  ])('rejects %s before decoding', (_, entry, code, limit) => {
+    rejects(() => decodeSnipFrame(entry(), 0, COLOURS, 'graphics[image/a]'), code, 'graphics[image/a].frames', limit ?? null);
   });
 });

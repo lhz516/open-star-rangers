@@ -12,6 +12,7 @@ import { DEFAULT_MODEL_IDS, syntheticScenarioArchive } from '../formats/formats.
 import { archiveLocator } from '../source-mapping.ts';
 import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.ts';
 import { countedVerifiedSource, expectSourceError, UNLIMITED_BUDGET } from './conversion.test-support.ts';
+import { syntheticEffectExecutable } from './production-effects.test-support.ts';
 import { convertLogic } from './convert-logic.ts';
 import { convertModels } from './convert-models.ts';
 import { productionIdentityBasis } from './converter-version.ts';
@@ -28,7 +29,9 @@ import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 
 /** The production logic conversion on the synthetic slice disc, and the binding its craft types give on the same M2ID list. */
 async function slice() {
-  const { source, reads } = await countedVerifiedSource({ 'MAIN/SCENARIO.NOB': syntheticScenarioArchive(), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries()) });
+  const { source, reads } = await countedVerifiedSource({
+    'MAIN/SCENARIO.NOB': syntheticScenarioArchive(), 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries()), 'MAIN/SRANGERS.EXE': syntheticEffectExecutable(),
+  });
   const logic = await convertLogic(source, UNLIMITED_BUDGET);
   const craftTypes = logic.draft.assets.find(({ role }) => role === 'craft-types')!;
   const { content } = decodeLogicPayload(logic.draft.payloads.find(({ id }) => id === craftTypes.id)!.bytes, craftTypes) as { content: CraftTypeTable };

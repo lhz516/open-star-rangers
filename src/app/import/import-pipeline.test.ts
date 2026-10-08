@@ -250,8 +250,9 @@ describe('graphics conversion over a structured-clone channel', () => {
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
+      // The status display messages are mapped first; the fonts after them name the missing CCKD entry.
       ['convert-graphics', createImportJob(withoutCockpit.open), withoutCockpit.files,
-        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[0].parts[0].alternatives[0]' }],
+        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[1].parts[0].alternatives[0]' }],
       // Opening the archive again resolves its path from the root directory, the first sector the graphics stage reads.
       ['convert-graphics', createImportJob(failingAfterIdentification(complete.open)), complete.files, { layer: 'disc', code: 'read-failed', location: 'image:lba 18' }],
       ['convert-graphics', createImportJob(brokenFont.open), brokenFont.files,
@@ -362,7 +363,7 @@ describe('audio conversion over a structured-clone channel', () => {
     const audioGroup = taken[1];
     const manifest = readGroupManifest(audioGroup.manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-3.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
     expect((audioGroup.payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
@@ -463,7 +464,7 @@ describe('cockpit-hud-map assembly over a structured-clone channel', () => {
     const drafts = received.map(({ group, input }, index) => ({ group, assets: manifests[index].assets, payloads: [], sources: input.sources }) as GroupDraft);
     const identity = { ...basis, manifestIdentity: deriveManifestIdentity(basis, drafts) };
     expect(manifests.map(({ identity: sent }) => sent)).toEqual(received.map(() => identity));
-    expect(identity.converterVersion).toBe('osr-import.graphics-2.logic-1.audio-1.models-3');
+    expect(identity.converterVersion).toBe('osr-import.graphics-3.logic-1.audio-1.models-3');
 
     // The read usage plus the conversion usage, which counts every sent Asset and payload byte once.
     expect(snapshot.usage).toEqual(addBudgets(source!.usage(), step.usage));

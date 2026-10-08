@@ -4,13 +4,14 @@ import { readAssetId } from '../content/asset-id.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { layoutPayloadLength } from '../content/graphics/layout-payload.ts';
+import { statusMessagesPayloadLength } from '../content/hud/status-messages-payload.ts';
 import { readPayloadRecords } from '../content/payload.ts';
 import { sha256Fingerprint } from '../content/sha256.ts';
 import { createImportJobOwner, type ImportJobOwner, type ImportJobSnapshot } from '../app/import/import-job-owner.ts';
 import type { ImportWorkerPortFactory } from '../app/import/import-worker-port.ts';
 import { allGroups, finishedJob, flush, testHolder } from '../app/resources/resource-holder.test-support.ts';
 import { PRODUCTION_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-graphics.ts';
-import { PRODUCTION_LAYOUT_POSITIONS } from '../original-data/conversion/production-graphics.test-support.ts';
+import { PRODUCTION_LAYOUT_POSITIONS, SYNTHETIC_STATUS_MESSAGES_PAYLOAD } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from '../original-data/conversion/production-model-textures.ts';
 import { archiveLocator } from '../original-data/source-mapping.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
@@ -192,11 +193,11 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
   });
 
   it('fixes the budget step usage from the fixture\'s payload sizes', () => {
-    // The production graphics usage less the two 8×8 fonts and the two layouts the budget step leaves out.
+    // The production graphics usage less the two 8×8 fonts, the two layouts and the messages the budget step leaves out.
     const omitted = fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + Object.entries(PRODUCTION_LAYOUT_POSITIONS)
       .reduce((total, [id, positions]) => total + layoutPayloadLength({
         elements: positions.map((_, index) => ({ image: readAssetId(`image/${id.slice('layout/'.length)}/element-${index}`), x: 0, y: 0 })),
-      }), 0);
+      }), 0) + statusMessagesPayloadLength(SYNTHETIC_STATUS_MESSAGES_PAYLOAD);
     expect(BUDGET_PAYLOAD_BYTES).toBe(GRAPHICS_PAYLOAD_BYTES - omitted);
     expect(BUDGET_LAST_ASSET).toBe('font/hud/4x6');
   });
@@ -213,7 +214,7 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
     };
     expect(await run(BUDGET_PAYLOAD_BYTES - 1)).toMatchObject({
       type: 'failed',
-      error: { layer: 'source', code: 'budget-exceeded', location: 'graphics[font/hud/4x6].glyphs', limit: { name: 'payloadBytes', limit: 9_209, observed: 9_210 } },
+      error: { layer: 'source', code: 'budget-exceeded', location: 'graphics[font/hud/4x6].glyphs', limit: { name: 'payloadBytes', limit: 9_623, observed: 9_624 } },
     });
     expect(await run(BUDGET_PAYLOAD_BYTES)).toMatchObject({
       type: 'failed', error: { layer: 'source', code: 'invalid-payload', location: 'graphics[font/hud/4x6].glyphs', limit: null },
@@ -222,10 +223,10 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
 });
 
 describe('F-08 fixture assumptions', () => {
-  it('removes the texture entry that production graphics mapping 87 names first', () => {
+  it('removes the texture entry that production graphics mapping 97 names first', () => {
     const entry = PRODUCTION_MODEL_TEXTURES[0].entry;
     const first = PRODUCTION_GRAPHICS_MAPPINGS.mappings.findIndex(({ parts }) => archiveLocator(parts[0].alternatives[0]).entry.id === entry);
-    expect(first).toBe(87);
+    expect(first).toBe(97);
     const archive = scenarioSource('texture-missing')!.covered['MAIN/SR.NOB'] as Uint8Array;
     expect(archive.length).toBeLessThan((sliceCoveredFiles()['MAIN/SR.NOB']).length);
   });

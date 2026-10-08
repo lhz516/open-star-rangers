@@ -40,7 +40,8 @@ export type ContentContractErrorCode =
   | 'non-canonical-payload'
   | 'logic-reference-mismatch'
   | 'invalid-model-payload'
-  | 'invalid-effect-payload';
+  | 'invalid-effect-payload'
+  | 'invalid-status-messages-payload';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;

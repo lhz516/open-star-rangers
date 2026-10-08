@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cockpitLayoutBlock, dataPaletteBlock, rawImageBlock } from '../src/original-data/conversion/conversion.test-support.ts';
-import { buildImfat, syntheticMesh, syntheticModl } from '../src/original-data/synthetic.ts';
+import { buildImfat, syntheticDiag, syntheticMesh, syntheticModl, syntheticSnip, type SyntheticDiagFields } from '../src/original-data/synthetic.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const directory = mkdtempSync(join(tmpdir(), 'osr-nob-check-'));
@@ -92,5 +92,48 @@ describe('nob-check on a synthetic CCKD entry', () => {
     const result = checkCockpit('BADPAL.NOB', dataPaletteBlock(index => (index === 5 ? 64 : 0)));
     expect(result.status).toBe(1);
     expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining(['failures: 1', '10001 CCKD: invalid-payload@palette']));
+  });
+});
+
+// P2-07 2026-10-08 revision: SNIP frames and DIAG messages through the import's readers, counts only.
+describe('nob-check on synthetic SNIP and DIAG entries', () => {
+  const SECRET = 'zq-secret-text';
+  const diag = (startup: readonly string[]): SyntheticDiagFields => ({
+    timings: [1, 2, 3, 4],
+    statusFormats: ['f0', 'f1 %d', 'f2', 'f3'],
+    ratings: [['a', 4], ['b', 3], ['c', 2], ['d', 1], ['e', 0]],
+    subsystemNames: Array.from({ length: 15 }, (_, index) => (index === 3 ? SECRET : `s${index}`)),
+    stateWords: ['x', 'y', 'z'],
+    startupMessages: startup,
+  });
+  const run = (name: string, diagEntry: { data: Uint8Array; relocations: number[] }) => {
+    const file = join(directory, name);
+    writeFileSync(file, buildImfat(10_000, [
+      { id: 10_001, type: 'SNIP', ...syntheticSnip({ width: 8, height: 2, frames: [new Array(16).fill(1), new Array(16).fill(2), new Array(16).fill(3)] }) },
+      { id: 10_002, type: 'DIAG', ...diagEntry },
+      { id: 10_003, type: 'DIAG', ...syntheticDiag(diag([])) },
+    ]));
+    return spawnSync(process.execPath, [join(root, 'tools/nob-check.ts'), file], { cwd: root, encoding: 'utf8', timeout: 60_000 });
+  };
+
+  it('decodes every frame and reads every text, printing counts and never text', () => {
+    const result = run('HUD.NOB', syntheticDiag(diag(['boot 1', 'boot 2'])));
+    expect(result.status).toBe(0);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining([
+      'SNIP 1 passed, 0 failed',
+      'DIAG 2 passed, 0 failed',
+      'SNIP image 8x2',
+      'SNIP frames per entry 3, 3 frames decoded',
+      `DIAG startup messages 2, ${27 + 2 + 27} texts read, longest ${SECRET.length} bytes`,
+      'failures: 0',
+    ]));
+    expect(result.stdout).not.toContain(SECRET);
+  });
+
+  it('reports a DIAG whose relocations are not its pointer fields by code and location', () => {
+    const entry = syntheticDiag(diag([]));
+    const result = run('BADDIAG.NOB', { ...entry, relocations: entry.relocations.slice(1) });
+    expect(result.status).toBe(1);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining(['failures: 1', '10002 DIAG: invalid-payload@messages']));
   });
 });

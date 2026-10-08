@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 工具用法
@@ -12,7 +12,7 @@ updated: 2026-10-06
 | 脚本 | 用途 | 用法 |
 |---|---|---|
 | `tools/nob-list.ts` | 列出 IMFAT（`.NOB`）封包目录：条目数、各类型数量与大小 | `node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]` |
-| `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录、CCKD 字体表与分组元素、hud 记录的 TABL 图像列表，并解析 M2ID、NEBC、MESH、MODL 与交叉引用；只输出计数、失败 code、图形、MESH、MODL 的观察最大值与容器计数（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
+| `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录、CCKD 字体表与分组元素、hud 记录的 TABL 图像列表、SNIP 帧与 DIAG 结构，并解析 M2ID、NEBC、MESH、MODL 与交叉引用；只输出计数、失败 code、图形、MESH、MODL 的观察最大值与容器计数（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
@@ -35,12 +35,13 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - DATA 须为 768 字节且分量不大于 63；
   - TEX 与 BITM 的整条目图像记录、MFDD 两个列表中的全部记录（每个列表至多 16 个）都经头部校验并解码；有嵌入调色板时，再核对每个不透明像素的索引都小于条目数；
   - CCKD 的字体目录须恰为 3 项，每个字体表都经读取校验；分组目录（[P2-07](../plan/p2/07/spec.md)）须为 1–8 项，每个 slot 0–16 个元素、元素的两个标志只取 0 或 1，全部元素的图像记录同样解码；目录项 +0x04 非零的分组调色板都经导入共用的读取校验（+0x08 须为 768、768 字节按 DATA 规则）；
-  - [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 记录为图像列表的 TABL 条目（按条目 ID 列出，只属于 `SR.NOB`）须符合该结构，全部记录解码。封包只要含其中任一 ID，就必须以 TABL 类型含全部这些条目，否则为失败；判断与文件名无关。其他 TABL 条目不检查，只统计其中有多少能按图像列表解析，预期为 0。
+  - [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 记录为图像列表的 TABL 条目（按条目 ID 列出，只属于 `SR.NOB`）须符合该结构，全部记录解码。封包只要含其中任一 ID，就必须以 TABL 类型含全部这些条目，否则为失败；判断与文件名无关。其他 TABL 条目不检查，只统计其中有多少能按图像列表解析，预期为 0；
+  - SNIP 条目经导入共用的 `readSnipFrames` 校验结构与重定位，每帧都经 `decodeSnipFrame` 解码（颜色表在 EXE 中，这里用恒等表代替）；DIAG 条目经导入共用的 `readStatusMessages` 校验结构与重定位（下行格式在 EXE 中，这里用空格式代替）（P2-07 的 2026-10-08 修订）。
 - **模型：** MESH 与 MODL 经导入共用的读取校验（MESH 失败位置为 `mesh`，MODL 为 `model`），再核对 MODL 部件的网格与贴图引用、音效槽引用都指向相应类型的条目。
 - **其余：** M2ID、NEBC 的 ID 引用。
-- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元；通过的 MESH 的顶点数、三角形数与着色槽数；通过的 MODL 的部件合计、各列表部件数、颜色分量与见到的全部标志值），观察到的容器计数（CCKD 目录项与每 slot 元素的最大数、解码的元素数、读取的分组调色板数、两个元素标志取 0 与 1 的次数、MFDD 每列表与 TABL 每图像列表的最大记录数、其他 TABL 条目数及其中能按图像列表解析的数量），以及失败列表。失败只写条目 ID、类型与稳定 `code@结构位置`；ID 列表解析与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形、坐标或其他条目内容。
+- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元；通过的 MESH 的顶点数、三角形数与着色槽数；通过的 MODL 的部件合计、各列表部件数、颜色分量与见到的全部标志值），观察到的容器计数（CCKD 目录项与每 slot 元素的最大数、解码的元素数、读取的分组调色板数、两个元素标志取 0 与 1 的次数、MFDD 每列表与 TABL 每图像列表的最大记录数、其他 TABL 条目数及其中能按图像列表解析的数量；有 SNIP 时为每条目最大帧数与解码帧数，有 DIAG 时为最大启动消息数、读取的文字段数与最长文字的字节数），以及失败列表。失败只写条目 ID、类型与稳定 `code@结构位置`；ID 列表解析与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形、坐标、文字或其他条目内容。
 - **退出码：** 没有失败时为 0；有任何失败、文件无法读取或封包不合法时为 1；缺少参数时为 1 并打印用法。
-- 结果对照的观察最大值记录在 [textures §5](../original/formats/textures.md#5-observed-maxima-against-the-p2-05-limits-confirmed)、[hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed)、[mesh](../original/formats/mesh.md#observed-maxima-against-the-readers-limits-confirmed)、[cockpit §3](../original/formats/cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed) 与 [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure)。
+- 结果对照的观察最大值记录在 [textures §5](../original/formats/textures.md#5-observed-maxima-against-the-p2-05-limits-confirmed)、[hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed)、[mesh](../original/formats/mesh.md#observed-maxima-against-the-readers-limits-confirmed)、[cockpit §3](../original/formats/cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed)、[hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 及其 [SNIP 10487](../original/formats/hud.md#snip-10487-confirmed-structure-p2-1227) 与 [DIAG 10489](../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision) 两节。
 
 ## 光盘镜像核对
 

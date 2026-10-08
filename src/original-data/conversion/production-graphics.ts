@@ -1,7 +1,9 @@
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
+import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { readGraphicsDeclarations, type CharMapRange, type GraphicsDeclaration } from './graphics-declarations.ts';
+import { executableRegionAt } from './production-executable.ts';
 import {
   PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_MODEL_TEXTURES, modelTextureImageId, modelTexturePaletteId,
 } from './production-model-textures.ts';
@@ -9,10 +11,10 @@ import {
 // The production graphics: the P2-05 flight palette once per group that owns palettes and the three HUD fonts of the
 // full HI cockpit set (docs/plan/p2/05/spec.md, production Assets and sources), the P2-06 slice textures and
 // research-confirmed effect images with their embedded palettes (docs/plan/p2/06/spec.md), and the P2-07 front cockpit
-// and map frame layouts with their element images, the map palette, and the HUD and map image families
-// (docs/plan/p2/07/spec.md, production Assets and sources). Entry IDs, slots and record indices come from the local
-// structure checks and research recorded in P2-05/06, P2-06/04, P2-06/11 and P2-07/07–09; they stay in original-data
-// and never enter canonical content.
+// and map frame layouts with their element images, the map palette, the HUD and map image families, the left display's
+// interference frames and the status display messages (docs/plan/p2/07/spec.md, production Assets and sources). Entry
+// IDs, slots, record indices and executable addresses come from the local structure checks and research recorded in
+// P2-05/06, P2-06/04, P2-06/11, P2-07/07–09 and P2-07/19; they stay in original-data and never enter canonical content.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** The only DATA entry (imfat §4). */
@@ -26,6 +28,13 @@ const GAUGE_BAR_ENTRY = 10_479;
 /** The strategic map's unit markers and zoom window icons (hud §2). */
 const UNIT_MARKER_ENTRY = 10_461;
 const ZOOM_ICON_ENTRY = 11_401;
+/** The rest of the HI HUD set: the left display's interference animation and the status display's messages (hud §2). */
+const INTERFERENCE_ENTRY = 10_487;
+const STATUS_MESSAGES_ENTRY = 10_489;
+/** The executable's four palette indices that a SNIP frame's 2-bit values select (hud, SNIP 10487). */
+const INTERFERENCE_COLOURS = executableRegionAt(0x17_5ed8, 4);
+/** The executable's format of the status display's lower line, with its NUL (hud, DIAG 10489). */
+const SUBSYSTEM_FORMAT = executableRegionAt(0x17_1e58, 6);
 
 const PALETTE_EVIDENCE = ['docs/original/formats/textures.md#1-data-global-palette-confirmed'];
 const FONT_EVIDENCE = [
@@ -46,6 +55,8 @@ const HUD_PATH_EVIDENCE = [
 const STATUS_DISPLAY_EVIDENCE = ['docs/original/formats/cockpit.md#2-mfdd-multi-function-display-images-confirmed-structure', ...HUD_PATH_EVIDENCE];
 const TABLE_EVIDENCE = [...HUD_PATH_EVIDENCE, 'docs/original/formats/hud.md#tabl-image-lists-confirmed-structure'];
 const ZOOM_ICON_EVIDENCE = [...TABLE_EVIDENCE, 'docs/original/formats/hud.md#zoom-window-icons-by-craft-type-r8'];
+const INTERFERENCE_EVIDENCE = ['docs/original/formats/hud.md#snip-10487-confirmed-structure-p2-1227'];
+const STATUS_MESSAGES_EVIDENCE = ['docs/original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision'];
 
 const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
 const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed';
@@ -129,23 +140,32 @@ const COLOUR_KEY_0 = { colourKey: 0 };
 
 interface CockpitAsset {
   readonly declaration: { readonly asset: { readonly id: string; readonly kind: string }; readonly [field: string]: unknown };
-  readonly mapping: ReturnType<typeof mapping>;
+  /** Plain mapping data: an archive entry part, then a region part for the SNIP frames and DIAG. */
+  readonly mapping: Omit<ReturnType<typeof mapping>, 'parts'> & { readonly parts: readonly { readonly alternatives: readonly object[] }[] };
 }
 
-const cockpitAsset = (declaration: CockpitAsset['declaration'], source: CockpitSource, subresource: string | null): CockpitAsset => ({
-  declaration,
-  mapping: mapping(declaration.asset.id, source.type, source.entry, subresource, source.unknowns, source.evidence, source.confidence),
-});
+/** An Asset of `source`; `region` adds the executable region its conversion also needs as a second part. */
+const cockpitAsset = (
+  declaration: CockpitAsset['declaration'], source: CockpitSource, subresource: string | null, region?: ReturnType<typeof executableRegionAt>,
+): CockpitAsset => {
+  const base = mapping(declaration.asset.id, source.type, source.entry, subresource, source.unknowns, source.evidence, source.confidence);
+  return { declaration, mapping: region ? { ...base, parts: [...base.parts, { alternatives: [region] }] } : base };
+};
 
 /** `<prefix>0` … `<prefix><count − 1>`: the index of a record in its full source list, without zero padding. */
 const indexed = (prefix: string, count: number): string[] => Array.from({ length: count }, (_, index) => `${prefix}${index}`);
 
-/** Images shown directly in stored row order; image i is record `<list>/<i>` of `source`, or the whole entry without `list`. */
-const images = (ids: readonly string[], role: string, paletteId: string, alpha: 'encoding' | typeof COLOUR_KEY_0, source: CockpitSource, list: string | null) =>
-  ids.map((id, index) => cockpitAsset(
-    { asset: { id, kind: 'image' }, role, group: 'cockpit-hud-map', palette: paletteId, display: 'direct', alpha, rowOrder: 'stored' },
-    source, list === null ? null : `${list}/${index}`,
-  ));
+/**
+ * Images shown directly in stored row order; image i is record `<list>/<i>` of `source`, or the whole entry without
+ * `list`, and also needs `region` when given.
+ */
+const images = (
+  ids: readonly string[], role: string, paletteId: string, alpha: 'encoding' | typeof COLOUR_KEY_0, source: CockpitSource, list: string | null,
+  region?: ReturnType<typeof executableRegionAt>,
+) => ids.map((id, index) => cockpitAsset(
+  { asset: { id, kind: 'image' }, role, group: 'cockpit-hud-map', palette: paletteId, display: 'direct', alpha, rowOrder: 'stored' },
+  source, list === null ? null : `${list}/${index}`, region,
+));
 
 /** A 640×480 layout of CCKD slot `slot` whose element i draws `elements[i]`. */
 const layout = (id: string, role: string, elements: readonly string[], source: CockpitSource, slot: number): CockpitAsset =>
@@ -156,10 +176,12 @@ const MAP_FRAME_ELEMENTS = indexed('image/map/frame/element-', 4);
 const STATUS_DISPLAY = hudSource('MFDD', STATUS_DISPLAY_ENTRY, STATUS_DISPLAY_EVIDENCE);
 
 /**
- * The P2-07 Assets with the element and record counts of the local structure check (cockpit §1–3, hud §2). The front
- * cockpit (R1) and the HUD use the default flight palette, the map frame and map symbols the map group palette (R2).
- * CCKD elements, the status display backgrounds and the page background are drawn as encoded, so raw ones are opaque;
- * the status display overlays, gauge bars, unit markers and zoom icons with colour key 0 (R3, R4).
+ * The P2-07 Assets with the element, record and frame counts of the local structure checks (cockpit §1–3, hud §2). The
+ * front cockpit (R1) and the HUD use the default flight palette, the map frame and map symbols the map group palette
+ * (R2). CCKD elements, the status display backgrounds and the page background are drawn as encoded, so raw ones are
+ * opaque; the status display overlays, gauge bars, unit markers and zoom icons with colour key 0 (R3, R4). The SNIP
+ * interference frames are drawn whole through the executable's colour table, and the DIAG messages take the lower
+ * line's format from the executable (2026-10-08 revision).
  */
 const COCKPIT_HUD_MAP_ASSETS: readonly CockpitAsset[] = [
   layout('layout/cockpit/front', 'front-cockpit', FRONT_ELEMENTS, FRONT_COCKPIT, 0),
@@ -173,6 +195,14 @@ const COCKPIT_HUD_MAP_ASSETS: readonly CockpitAsset[] = [
   ...images(indexed('image/hud/gauge-bar-1/', 4), 'hud-mfd', FLIGHT_PALETTE, COLOUR_KEY_0, hudSource('TABL', GAUGE_BAR_ENTRY, TABLE_EVIDENCE), 'records'),
   ...images(indexed('image/map/unit-marker/', 29), 'strategic-map', MAP_PALETTE, COLOUR_KEY_0, hudSource('TABL', UNIT_MARKER_ENTRY, TABLE_EVIDENCE), 'records'),
   ...images(indexed('image/map/zoom-icon/', 29), 'strategic-map', MAP_PALETTE, COLOUR_KEY_0, hudSource('TABL', ZOOM_ICON_ENTRY, ZOOM_ICON_EVIDENCE), 'records'),
+  ...images(
+    indexed('image/hud/display-interference/frame-', 9), 'hud-mfd', FLIGHT_PALETTE, 'encoding', hudSource('SNIP', INTERFERENCE_ENTRY, INTERFERENCE_EVIDENCE),
+    'frames', INTERFERENCE_COLOURS,
+  ),
+  cockpitAsset(
+    { asset: { id: 'data/hud/status-display/messages', kind: 'data' }, role: STATUS_MESSAGES_ROLE, group: 'cockpit-hud-map' },
+    hudSource('DIAG', STATUS_MESSAGES_ENTRY, STATUS_MESSAGES_EVIDENCE), null, SUBSYSTEM_FORMAT,
+  ),
 ];
 
 /** The codes hud §1.1 records per table: printable ASCII whose glyph is that character, and space. */
@@ -212,12 +242,12 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
  */
 export const PRODUCTION_COCKPIT_HUD_MAP_SHARE: BudgetRecord = Object.freeze({
   ...EMPTY_BUDGET_USAGE,
-  assets: 96,
+  assets: 112,
   dependencyEdges: 192,
   paletteEntries: 1_024,
   glyphs: 0,
-  imagePixels: 524_288,
-  payloadBytes: 786_432,
+  imagePixels: 655_360,
+  payloadBytes: 917_504,
 });
 
 /**
