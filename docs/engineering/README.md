@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-07
+updated: 2026-10-08
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -79,7 +79,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 同一回归文件的 render layer 部分（P1-07 AC-01/04/17）用 TypeScript 解析应用程序中的生产源码（忽略注释与普通字符串）：只允许从 `three` 包根导入且只在 `render/`，无 `three/*`、React Three Fiber 或 WebGPURenderer；`render/` 生产代码不出现 rAF、`setAnimationLoop`、定时器或 `queueMicrotask` 等调度标识符。`render/` 中浏览器适配命名为 `browser-*.ts`，与 `.tsx` 一样只由应用程序检查；其余 DOM-free 渲染模块必须出现在真实 `tsconfig.node.json` 程序中（即被某个 `.test.ts` 传递导入），且该程序不得包含任何 `browser-*` 或 `.tsx`。它同样不识别动态拼接的绕过。
 - 同一回归文件的资源缓存部分（P2-10 AC-14/AC-15）解析 `src/platform/storage/` 的生产源码：不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`window`、`document`、`localStorage` 标识符，只能相对导入且不能导入 `original-data`、`render`、`ui`、`app`、`workers`；非 `browser-*` 的模块必须在真实 Node 程序中。`browser-*` 适配不进入 Node 程序由上一条的 render 规则覆盖（它检查 `src/` 中所有浏览器模块）。
 - 同一回归文件的应用资源部分（P2-11 S-03/AC-22）解析 `src/app/resources/` 的生产源码：不得出现与资源缓存相同的网络与宿主标识符，只能相对导入且不能导入 `render`、`ui`；每个模块都必须在真实 Node 程序中。各部分共用一次构建的 Node 程序文件集合。
-- P2-11 AC-22 的主线程网络回归覆盖 `src/app/`、`src/ui/` 与 `src/render/viewer/` 的全部生产 `.ts`/`.tsx`（排除测试与测试支持）：不得引用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource`、`sendBeacon`。复用 TypeScript 程序与标识符解析，另检查字面量下标和解构属性；正反例验证目录范围、全局/属性/解构形式，忽略注释和普通字符串。这是静态源码边界，不是 P2-12 的页面与 Worker 网络审计，也不承诺识别动态拼接的属性名。
+- P2-11 AC-22 的主线程网络回归覆盖 `src/app/`、`src/ui/` 与 `src/render/viewer/` 的全部生产 `.ts`/`.tsx`（排除测试与测试支持）：不得引用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource`、`sendBeacon`。复用 TypeScript 程序与标识符解析，另检查字面量下标和解构属性；正反例验证目录范围、全局/属性/解构形式，忽略注释和普通字符串。这是静态源码边界，不承诺识别动态拼接的属性名；页面与 Worker 实际发出的请求由浏览器 runner 的[网络审计](#网络审计)核对。
 - 同一回归文件的音频播放部分（P2-08 AC-11）与 lint 共同约束 `src/platform/audio/`。
   - **lint：** 用单独一条 `@typescript-eslint/no-restricted-imports` 覆盖平台的通用选项，拒绝任何 `original-data` 导入（包括纯类型导入字节端口），以及 `app`、`render`、`ui`、`workers`。
   - **源码回归：** 解析生产源码，不得出现 `fetch`、`XMLHttpRequest`、`WebSocket`、`sendBeacon`、`EventSource`、`localStorage` 标识符，只能相对导入；沿应用程序的依赖图（含再导出、动态 `import()` 与 `import('…')` 类型）也不能间接到达上述模块，无法核实目标的计算型动态导入同样报错；非 `browser-*` 的模块必须在真实 Node 程序中。
@@ -114,12 +114,12 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - **测试支持与工具**（P2-04 AC-11）：`src/` 下的全部生产模块（含来源族与产品入口）都不得依赖测试、测试支持或 `src/` 之外的文件，也不得把它们当作 `new URL('…', import.meta.url)` 载入，例如测试用的 Worker 入口。
   - **lint：** `osr/original-data-capabilities` 适用于 `src/` 下全部非测试文件，对每个导入者检查这一类目标，也检查 `new URL('…', import.meta.url)` 的字面量说明符。URL 按 URL 语义解析（[original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 的 `urlTarget`，lint 与依赖图共用）：相对路径不论有无 `./` 都相对于模块所在目录，以 `/` 开头的路径相对于仓库根（Vite 在 `/` 提供），反斜杠与浏览器 URL 一样视为路径分隔符，去掉查询与片段，`.js` 视为 `.ts` 源文件，外部 URL 忽略。能力族本身仍只在 `src/workers/` 与 `original-data` 中检查；其他层由上面的消费者规则整体拒绝 `original-data`，不重复报告。
   - **依赖图：** 同一检查对全部生产模块（不再豁免来源族）判定这一类目标，并把 `new URL('…', import.meta.url)` 的字面量当作引用。它不计入原版数据的可达性：Worker 入口单独载入，不是导入。纯类型导入照旧只能私用；参数不是字面量的 `new URL` 无法核实，不在覆盖范围内。
-- **导入 Worker 不用网络**（P2-04 S-09/AC-11）：`src/workers/` 的非测试文件不得以全局名称使用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource` 与 `importScripts`（`no-restricted-globals`），也不得以任何对象的属性访问它们或 `sendBeacon`（`no-restricted-properties`，含 `self.`、`globalThis.`、`navigator.`、字面量计算属性与解构）。这只是静态规则，实际请求审计归 P2-12。
+- **导入 Worker 不用网络**（P2-04 S-09/AC-11）：`src/workers/` 的非测试文件不得以全局名称使用 `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource` 与 `importScripts`（`no-restricted-globals`），也不得以任何对象的属性访问它们或 `sendBeacon`（`no-restricted-properties`，含 `self.`、`globalThis.`、`navigator.`、字面量计算属性与解构）。这只是静态规则；Worker 实际发出的请求由[网络审计](#网络审计)核对。
 
 ## 测试
 
 - Vitest 用两个项目运行全部 `src/**/*.test.ts` 与 `tools/**/*.test.ts`（[vite.config.ts](../../vite.config.ts)）。顶层调用 `vi.mock(` 替换模块的文件进入 isolated 项目，各自拥有模块图；其余文件在 shared 项目中关闭隔离（`isolate: false`），同一 worker 复用模块图，免去每个文件重新启动与导入，这原是全量测试的主要耗时。配置启动时扫描文件自动分组，新增 mock 文件无需登记。`restoreMocks` 在每个用例后还原 spy；shared 项目中的测试不得依赖其他文件留下或改动的模块级状态。
-- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。
+- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。机器负载很高（load 约 13–30，多个会话并行检查）时，该文件的渲染边界用例在全量并行运行中曾超过 Vitest 默认的 5 s（单独运行约 1.8 s）；这时在低负载下复跑或单独运行确认，未改超时。
 - 集成测试只为真实接线启动构建与子进程，其余在进程内覆盖：合规 CLI 回归只跑一次真实聚合构建，原版扫描各作用域与 inventory 校验分别由 [scan.test.ts](../../tools/compliance/scan.test.ts)、[distribution.test.ts](../../tools/compliance/distribution.test.ts) 覆盖；构建插件回归在首次真实审计后复用其结果做失败构建。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
@@ -139,6 +139,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 [Playwright 配置](../../playwright.config.ts)使用已有兼容 Chrome（channel `chrome`），不自动下载浏览器。需要使用其他已安装 Chromium 时设置 `OSR_E2E_EXECUTABLE` 为其可执行文件。缺浏览器是明确失败，不 skip。运行需要普通 WebGL 2 和原生 headed 桌面能力；完整验收见 [P1-10 goal](../plan/p1/10/goal.md)，bootstrap 通过不代表后续生命周期/渲染验收通过。
 
 - 项目为 development、production、development-headed；单 worker、零 retry、禁止 `.only`，前台/后台顺序运行。不能改为多 worker：[fast-refresh](../../e2e/fast-refresh.spec.ts) 编辑真实源码，共享的开发服务器会把热更新推给所有打开的页面，曾替换并行用例中运行的导入任务 owner。
+- **按文件名归属（P2-12 起）：** `*.development.spec.ts` 只在 development 运行，`*.production.spec.ts` 只在 production 运行，二者都不进入只匹配 `native-lifecycle.spec.ts` 的 development-headed；普通 `*.spec.ts` 在 development 与 production 都运行。新用例按此命名，不改配置；较早用例的归属仍由配置中的显式 `testIgnore` 列表维护。
 - 开发服务器启动时预先转换页面与导入 Worker 的模块图（`server.warmup`）。Worker 经 URL 载入，不在页面的静态导入图中，否则首个导入任务要等按需转换。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
@@ -151,7 +152,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 页面与 Worker 脚本的响应都带策略；
   - 导入 Worker 是 `/assets/` 下带哈希的模块脚本，由页面 chunk 的 `new Worker(new URL(…, import.meta.url))` 创建（开发服务器的 `worker_file` 标记在构建中不存在）；
   - 生产尺寸的合成文件得到 `source/unsupported-version`；
-  - Worker 脚本返回 404 或 200 的 HTML 时，导入以 `import/worker-start-failed` 结束，Worker 已终止，没有资源包。404 时浏览器自己的加载失败报告不总是出现，出现时才声明；
+  - Worker 脚本返回 404 或 200 的 HTML 时，导入以 `import/worker-start-failed` 结束，Worker 已终止，没有资源包。404 时浏览器自己的加载失败报告不总是出现，出现时才声明。这两个用例在[网络审计](#网络审计)下运行，被页面路由替换的 Worker 脚本请求以 `audit.declare` 声明，预期状态分别为 404 与 200；
   - 菜单、导入页面与合成演示没有 `securitypolicyviolation`；
   - 在隔离 context 中预置生产身份的合成缓存，同源刷新后经菜单恢复、重新校验，模型、图像与布局的像素读回逐字节一致，试听确实启动声音源，返回菜单后音频上下文关闭，整条路径没有 CSP 违规或控制台错误；
   - `dist/` 只有 `index.html` 一个页面，产物与 source map 来源不含测试入口、测试支持或合成目录。
@@ -160,14 +161,14 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
-- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；预期包配置取该场景的 `scenarioProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
+- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（[import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 注册的名称，默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；`hold` 取 `commit`、`list`、`restore` 中一至三项（逗号分隔），这些缓存操作的结果在缓存结算后等待测试用 [app-entry.ts](../../e2e/support/app-entry.ts) 的 `releaseCacheResults` 释放（`heldCacheResults` 计数），用于迟到结果（P2-12 F-12）。预期包配置取该场景的 `scenarioEntryProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。测试在导航前安装了[响应探针](#响应探针)时，每次提交在开始的同一任务内打开 `commit` 窗口，由用例 `adopt` 后关闭；未安装时行为不变。新增查询键，或超出现有模式的取值，须同时加入 [e2e-network-policy.ts](../../tools/e2e-network-policy.ts) 的 `TEST_ENTRY_QUERY`，否则网络审计把这次导航判为违规；`worker`、`cache` 已接受任意小写连字符名称，新场景名不必改。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - **P2-11 页面回归路线：** 开发项目的 [import-page.spec.ts](../../e2e/import-page.spec.ts)、[viewer-page.spec.ts](../../e2e/viewer-page.spec.ts)、[cache-recovery.spec.ts](../../e2e/cache-recovery.spec.ts) 与 [fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 分别覆盖导入、查看器、缓存恢复/损坏与生命周期；生产项目走上述严格 CSP 与生产身份合成缓存，不使用开发测试入口。聚焦运行可用 `pnpm test:e2e e2e/import-page.spec.ts e2e/viewer-page.spec.ts e2e/cache-recovery.spec.ts e2e/fast-refresh.spec.ts --project=development`，生产路径用 `pnpm test:e2e e2e/production-preview.spec.ts --project=production`。这些自动化只用合成内容；用户真实界面的操作与证据清单见[本地导入指南](../guides/local-import.md#用户实机核对)。
-- 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development）。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
+- 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development），并对 `--list` 中每个 `*.development.spec.ts`、`*.production.spec.ts` 断言其项目集合恰为对应的单一项目。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
 - [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
 - 联合资源测试逐轮打印context扩展能力；缺可选`WEBGL_lose_context`的context以annotation明确“context-loss未验证”，不冒称lost。可用时逐个断言实际lost；完整必需测量及本机结果见[04证据](../plan/p1/10/subtasks/04-joint-resource-regression.md#完成证据)。
 - **导入 Worker 浏览器测试**（P2-04 AC-08）：[import-worker.spec.ts](../../e2e/import-worker.spec.ts) 在页面内从开发服务器动态导入 `/src/…` 模块，所以只在 development 项目运行，生产项目用 `testIgnore` 排除；生产预览中的 Worker 归 P2-11 验证。
-  - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择场景。合成文件在页面内由代码生成，不读取 `local/`。
+  - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 注册的作业场景或协议脚本（`top-level-throw` 由入口自身处理）。合成文件在页面内由代码生成，不读取 `local/`。
   - 探针用 Proxy 包装 `Worker` 构造函数（保持 `instanceof` 与原型），并包装 `terminate`。快照的 `workers` 记录入口路径、URL 是否由 Vite 的 Worker 转换生成、类型、名称，以及 `postMessage` 与 `terminate` 的调用次数（不保留消息内容）；注册在 Worker 对象上的监听归入 `worker` 分组。[probe-contract](../../e2e/probe-contract.spec.ts) 在两个项目中证明包装后仍能载入模块 Worker、收发消息与终止。
   - 失败与生命周期（AC-09、AC-10）：测试入口另有四个场景：`busy` 先发送一条进度，再进入只有终止才能结束的同步循环；`job-throws` 让作业抛错；`late-error` 在 `ready` 之后的异步回调中抛出未捕获错误；`top-level-throw` 在模块求值时抛错。抛出的文本都含文件名标记，用于证明它不进入快照、错误与 console。页面内事件日志按顺序记录快照、可信点击、rAF、取消与释放，作为主页面响应与“之后无通知”的证据，不用耗时阈值。开发服务器对不存在的 `.ts` 入口返回 SPA 回退的 HTML（200），模块 Worker 因此载入失败，与生产静态托管的导航回退一致。
   - 图形阶段（P2-05 AC-12）：`graphics` 场景对生产图形与音效结构的合成光盘运行带图形与音频阶段、不转换逻辑组的生产作业，用例核对快照依次经过识别进度、`identified`、`convert-graphics` 进度、空的 `convert-logic` 阶段、`convert-audio` 进度、没有绑定模型的 `convert-models` 阶段，最后 `finished`；光盘还含生产音效表各条目的合成 SND，因此结束时有一个只含图形分区的不完整 `models` 组和一个完整的生产 `audio` 组，用量的转换维度与测试支持给出的期望一致；`graphics-corrupt` 场景以 `source` 层 `invalid-payload` 失败且没有部分结果。页面侧的持有者订阅可设置 `cancelAtStage`，在首个 `convert-graphics` 快照的通知中同步取消，避免与很快完成的合成转换竞争；之后只允许出现帧事件。
@@ -194,9 +195,102 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
     - 把每个接到已记录 `destination` 的连接另外分接到一个 `AnalyserNode`，该节点经增益为 0 的节点接到 `destination`，因此不改变输出；
     - 运行中的上下文用峰值判断有无声音，不以调用 `start()` 或没有异常作为可听证据；
     - 已挂起或已关闭的上下文不再渲染，分析节点保留最后一帧（实测关闭后峰值仍为 0.5）。此时的无输出证据是上下文状态，加上探针记录的“仍接到 `destination` 的应用节点数”为 0（包装 `connect`/`disconnect`）。
-  - **页面隐藏：** 用 `nativeBrowser([自动播放开关])` 启动 headed 浏览器，在 CDP 自建的 context 中开两个标签页，用 `Target.activateTarget` 切换，得到原生 hidden，并记录原生 `visibilitychange` 日志。
+  - **页面隐藏：** 用 `nativeBrowser([自动播放开关])` 启动 headed 浏览器，在 CDP 自建的 context 中开两个标签页，用 `Target.activateTarget` 切换，得到原生 hidden，并记录原生 `visibilitychange` 日志。机器负载均值约 20–30 时，该用例偶发在恢复可见 300 ms 后仍读到挂起前的分析峰值而失败（同一基线提交上 8 次中 5 次），负载回落后通过；按环境时序处理，在低负载下复跑确认，不靠重试变绿。
   - **聚焦运行：** `pnpm test:e2e audio-playback.spec.ts --project=development`。
 - 完整执行用`pnpm test:e2e`（当前build＋全部3项目）；失败不能靠重试变绿。正常用例采集pageerror/console/失败HTTP与请求以及UI错误，probe自检的受控异常与WebGL-off诊断只在各自场景逐项记录。自动覆盖、历史HMR/window/DPR/故障证据及其相关差异判断见[07证据](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)；源码/构建行为变化后只补失效项，不自动跑源码编辑。
+
+#### P2-12 联合与失败用例
+
+P2-12 的[联合闭环](../plan/p2/12/spec.md#联合闭环)与[失败矩阵](../plan/p2/12/spec.md#失败矩阵)只用代码生成的合成数据。每个用例都在[网络审计](#网络审计)下运行，并用[资源平衡](#资源平衡)核对释放；联合用例另测[主页面响应](#响应探针)。逐项断言与本机结果见各[子任务](../plan/p2/12/goal.md#子任务跟踪)的完成证据。
+
+| 用例 | 项目 | 内容 | 本机耗时 |
+|---|---|---|---|
+| [joint-pipeline.development](../../e2e/joint-pipeline.development.spec.ts) | development | 测试入口 `worker=canary` 的真实 Worker 转换金丝雀光盘：3 轮导入、自动提交、查看与试听、刷新后恢复、合成演示；另有同文档 3 次往返 | 约 1 min |
+| [joint-pipeline.production](../../e2e/joint-pipeline.production.spec.ts) | production | 3 轮：生产尺寸合成文件在真实 `/assets/` Worker 中识别失败（不覆盖生产导入的成功路径）；`seedProductionCache` 只预置一次，刷新后恢复、查看、试听；另有一次缓存恢复后的同文档 3 次查看与试听往返 | 约 1.2 min |
+| [failure-input-content](../../e2e/failure-input-content.development.spec.ts) | development | F-01 至 F-10，`FAILURE_MATRIX` 每例一个用例（20 个） | 约 2.2–2.5 min |
+| [failure-worker-cancel](../../e2e/failure-worker-cancel.development.spec.ts) | development | F-11、F-12（14 个） | 约 1.5 min |
+| [failure-storage-lifecycle](../../e2e/failure-storage-lifecycle.development.spec.ts) | development | F-13、F-14（12 个），含原生 headed 浏览器的真实隐藏 | 连同 fast-refresh 约 1.9 min |
+
+耗时随机器负载变化，全量运行也一样。聚焦运行（`pnpm test:e2e` 先构建；文件名决定项目，不必写 `--project`）：`pnpm test:e2e e2e/joint-pipeline`；`pnpm test:e2e e2e/failure-input-content e2e/failure-worker-cancel e2e/failure-storage-lifecycle e2e/fast-refresh`；设施的控制样本为 `pnpm test:e2e e2e/network-audit-controls e2e/responsiveness e2e/resource-balance-controls`。
+
+- **场景与预期（P2-12/05）：**
+  - 测试 Worker 场景都注册在 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts)：作业场景 `IMPORT_SCENARIOS` 与违反协议的 `PROTOCOL_SCRIPTS`，按名首次使用时构造；Worker 测试入口按 `name` 分派（`top-level-throw` 由入口在模块求值时直接抛错），Node 测试运行同一作业。P2-12 新增失败矩阵各例的场景、`canary`，以及时序场景：`hold-<阶段>` 进入该阶段后文件读取不再返回，直到 Worker 被终止；`progress-stream` 持续发送进度；`held-late-error` 发出进度后等页面在 `BroadcastChannel` `LATE_ERROR_RELEASE_CHANNEL` 上发消息，才在作业外抛错。
+  - [failure-matrix.test-support.ts](../../src/workers/failure-matrix.test-support.ts) 的 `FAILURE_MATRIX` 为 F-01 至 F-10 每例写定 Worker 场景、文件、预期 `{layer, code, location, limit}` 或组/全包/任务结果，以及持有者结局（`unchanged`、`partial-unsaved`、`complete-saved`）。预期在运行被测代码前写定，[failure-matrix.test.ts](../../src/workers/failure-matrix.test.ts) 在 Node 中、浏览器用例在页面上断言同一张表。
+  - [canaries.ts](../../e2e/support/canaries.ts) 组装六个金丝雀：文件名、内容文本、payload 字节标记、payload SHA-256、来源指纹与 manifest 身份。每个标记只为已证明到达的阶段（`input`、`payload`、`cache`）作证，`expectInputArrival`、`expectPayloadArrival`、`expectCacheArrival` 给出证明。开发项目导入 `canaryFiles()`；生产项目导入 `canaryProductionFiles()`，并用 `seedProductionCache(page, await canaryPackage())` 预置。交给审计时写作 `{ name, value: bytes }`。
+  - 新增的测试支持只放在 `*.test-support.ts(x)`、测试或 `e2e/` 中，生产模块图不得包含它们（上文 lint 与工程边界回归）。
+- **失败用例的做法（08–10）：**
+  - **前置：** 每行先持有一个已保存的包：`models` 场景的行先导入切片光盘；`content-invalid` 恢复 `seedProductionCache` 预置的包；其余场景恢复按其包配置用 `seedPackage` 预置的合成包。页面不显示部分包的整包诊断路径，浏览器只核对 “Partial conversion” 与组状态，路径由 Node 断言。
+  - **推迟提交：** 测试在自己的连接上对两个缓存仓库开只读事务，并用链式 `count()` 保持它未完成（只用属性回调，探针不计登记），页面之后的 readwrite 事务就会排队，直到测试结束该事务。
+  - **真实配额：** 不必用持久 profile：在隔离 context 首次使用 IndexedDB 之前调用 `withQuotaOverride`（CDP `Storage.overrideQuotaForOrigin`），覆盖即对写入生效。`withPersistentProfile` 的页面不能 `audit.attachPage`，因为持久 context 的 `context.browser()` 为 null。
+  - **探针与登记：** `installIdbProbe` 在事务、open 请求或连接结束时移除自己的监听，否则资源平衡会把它们计为应用监听。菜单显示失败提示时，React DOM 会在提示的 `<details>` 上登记自己的 `toggle` 监听；这类检查逐条预期恰好这一项。
+  - **原生浏览器：** 用 [native-lifecycle.ts](../../e2e/support/native-lifecycle.ts) 的 headed 浏览器时，两个标签页在导航前都以 `audit.attachTarget` 附加，关闭浏览器前对每个目标调用 `audit.close`。“可见但音频仍挂起”的状态由测试侧的 resume 闸门制造：它暂缓真实的 `AudioContext.prototype.resume()`，直到测试放行。
+  - **Fast Refresh：** 编辑与还原源码的辅助在 [fast-refresh.ts](../../e2e/support/fast-refresh.ts)，`withEdits` 结束时还原并核对文件，[fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 与 F-14 共用。
+
+#### 网络审计
+
+P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-network-policy.ts) 是纯分类，有单元测试；[network-audit.ts](../../e2e/support/network-audit.ts) 负责采集；[audited-test.ts](../../e2e/support/audited-test.ts) 把二者接成 `audit` 夹具。
+
+- **夹具：** 从 `audited-test.ts` 导入的 `test` 扩展 `browser-test.ts`，`audit` 自动启用。它在首次导航前附加用例的 `page`，先于错误收集建立、晚于其拆除。用例结束时以 `close` 阶段关闭页面，再断言零意外违规、零证据缺口、声明的请求都已出现，并附只含合成数据的摘要 `network-audit`。预览 origin 按生产允许集判定，它读取当前 `dist/` 的文件清单，所以要先构建；其他 origin 按开发规则。接口如下：
+  - `canaries(...)`：不得外发的合成标记，至少 8 字节；
+  - `declare(...)`：测试有意发出的请求，按方法、路径（字符串或正则）与允许的查询匹配，不得带请求体，`expect` 核对状态码或 `failed`；
+  - `expectViolations(...)`、`expectGaps(...)`：只用于控制样本，列出故意造成的违规与缺口；
+  - `phase(name)`：标注之后事件的阶段；
+  - `attachPage(page)`、`attachTarget(browser, targetId)`：在导航前附加另一个页面，或另一个 CDP 客户端创建的目标；`close(page 或 targetId)`：以 `close` 阶段关闭已附加的页面，并收齐卸载时的流量；
+  - `ready()`：等主脚本已经过网络层的 Worker 都被观测到；
+  - `serve(url, response)`：只用于控制样本，在浏览器网络层应答；
+  - `report()`：当前的分类结果，审计继续；`mode`：`production` 或 `development`。
+- **采集：** 两个视图按请求 ID 合并。
+  - 页面与专用 Worker（自动附加）各有目标会话，记录发起者、请求头（含网络层加上的 `Cookie`）、CSP 问题、WebSocket 帧、导航与 Service Worker 版本；注入每个文档的钩子报告 cookie 写入与 `register()` 尝试。
+  - 浏览器级会话以 `Fetch` 拦截每个到达网络层的请求并原样继续，同时发现新目标。页面关闭时的 keepalive beacon 只有它能看到。
+
+  请求的 `delivery` 分为 `sent`（经网络层发出）、`intercepted`（路由应答或未到网络层）与 `blocked`（发出前被 CSP 等拒绝）。发起者为 `browser` 指只在网络层看到、按框架归属到已覆盖页面的请求，例如关闭阶段的 beacon。
+- **Worker 覆盖：** Chrome 在模块 Worker 的主脚本到达后才创建它的目标，Playwright 附加后又立即恢复它，所以审计的会话可能晚于 Worker 的第一个动作。为此，主脚本经过网络层后，浏览器会话会暂停其他非文档请求，直到该 Worker 的会话就绪（至多 3 s）。只有主脚本经过网络层，或脚本被拒因而 Worker 从未运行，这个 Worker 才算已覆盖。
+- **规则：**
+  - **生产：** 只放行同源、无请求体、无查询串的 `GET`，路径属于候选 `dist/` 的文件清单，资源类型与扩展名相符。以 `declare` 声明的测试请求不受文件清单、查询与资源类型的限制，但同样须同源、无请求体、方法为 `GET`。浏览器自己的 `/favicon.ico` 探测单列为 `known-404`。WebSocket、EventSource、弹窗、cookie、`Cookie` 头与 Service Worker 注册都是违规。
+  - **开发：** 只放行同源、无请求体的 `GET`/`HEAD`，并逐条列出入口文档、测试入口、Vite 客户端与预构建依赖、仓库中存在的 `src/` 模块，以及各自允许的资源类型与 Vite 查询键，没有“任意同源 GET”。唯一允许的 WebSocket 是协商 `vite-hmr` 的同源 HMR 连接，它的发送帧只能是 Vite 客户端的 `ping` 或 `vite:invalidate`。测试入口的查询键与取值由 `TEST_ENTRY_QUERY` 列出（`worker`、`cache`、`capacity`、`audio`、`hold`）。
+  - **金丝雀：** 在 URL（含 fragment）、请求头、Cookie、请求体、WebSocket 发送帧、cookie 值，以及弹窗、导航、Service Worker 与被 CSP 阻止的 URL 中查找，按原文、百分号或表单解码，以及 Base64（三种字节对齐，标准与 URL 安全字母表）匹配。
+- **使用要点：**
+  - 用例在 Worker 刚启动时就结束它（例如立即取消），须先 `await audit.ready()`；否则 Worker 可能在被观测前结束，成为未覆盖目标。
+  - 页面路由（`page.route`）在网络层之前应答。被它应答的 Worker 脚本不会触发上述暂停，Worker 启动时发出的请求可能先于审计会话；只要脚本没有被拒，这个 Worker 就是未覆盖目标。控制样本要覆盖这样的 Worker，改用 `audit.serve`。产品用例用页面路由替换 Worker 脚本时（生产预览的 404 与 HTML 回退，脚本被拒，Worker 从未运行），以 `audit.declare` 声明该请求，并设 `expect: 404` 或 `expect: 200`。
+  - F-11 的缺失入口由开发服务器的 SPA 回退以 200 HTML 应答，用例声明这次 GET 并预期 200。
+- **控制样本：** [network-audit-controls.spec.ts](../../e2e/network-audit-controls.spec.ts) 在两个项目中证明以下各项都被检出并正确归属：页面 `fetch`、`sendBeacon`（含关闭阶段）、专用 Worker `fetch` 在 URL、头部与请求体中的标记，被动图像、带 fragment 的导航、cookie、弹窗、Service Worker，以及另一 CDP 客户端创建的目标；被 CSP 阻止与实际传出分别判定。[network-audit-controls.development.spec.ts](../../e2e/network-audit-controls.development.spec.ts) 证明 HMR 连接被识别为工具链，非 HMR WebSocket 及其标记帧被检出。控制样本只发往测试路由、浏览器层 `serve`、本机 loopback 接收端或本地服务器，不访问外部主机。
+- **能力边界：** 结论限于本候选与实际执行的路径，结合产物的静态出站审阅；不证明未执行的代码或所有隐蔽编码都不外发。审计不改动请求或响应（`serve` 除外），数据只留在测试进程中。以下情况都报告为证据缺口（`complete: false`），不推断为零泄露：
+  - Worker 会话就绪前开启的 WebSocket；
+  - 由页面路由应答、只见到后续事件的请求；
+  - 未经网络层又未被拒的 Worker 脚本；
+  - 无法归属发起者的事件、读不到的请求体；
+  - 在审计关闭它之前随浏览器一同结束的页面。
+
+#### 响应探针
+
+[responsiveness.ts](../../e2e/support/responsiveness.ts)（P2-12 S-05）：
+
+- **安装：** `installResponsiveness(page)` 须在导航前调用，它在页面脚本之前安装观察 `longtask` 与 `mark` 的 `PerformanceObserver`，对整个文档有效。
+- **窗口：** 测试用 `ResponsivenessWindow.open(page, 操作)` 与 `close()` 开关窗口，或用 `measureResponsiveness(page, 操作, action)` 包住一次操作。测试无法精确开始的操作，由页面代码在同一任务里调用 `window.osrResponsiveness.open(name)` 开窗，测试再以 `ResponsivenessWindow.adopt(page, name)` 接管并关闭，测试入口的 `commit` 窗口就是这样。`close` 先等一帧与一个任务，再以一个 `performance.mark` 的送达证明此前的长任务记录都已到达；API 不可用或 2 s 内未送达时报错，不报告 0。刷新会结束窗口。
+- **记录：** 操作，窗口起止与耗时，相交的长任务（数量、最长、逐条），帧数与最大帧间隔，以及浏览器、机器、起止可见性与探针/CDP 开销；`attachResponsiveness` 把记录附为 `responsiveness`。
+- **输入顺序：** `InputOrder`（I-7）在同一页面顺序里记录可信点击的 `input`/`handled`、帧与导入页的状态变化，`stop` 移除它加入的控件与监听。这些时间只是测试接线，不是性能证据。
+- **门槛：** 联合用例要求导入、提交与恢复窗口（生产项目为识别与恢复）的长任务数为 0，即没有超过 Long Tasks API 50 ms 定义的任务。这是本任务在本机的验收选择，不是浏览器保证，也不是 P5 目标设备的性能结论。超标时定位来源，不过滤记录，也不放宽门槛。
+- **控制样本：** [responsiveness-controls.spec.ts](../../e2e/responsiveness-controls.spec.ts)（两个项目）：人为阻塞被检出，空闲窗口为 0，API 不可用或记录未送达时报错。[responsiveness-busy-worker.development.spec.ts](../../e2e/responsiveness-busy-worker.development.spec.ts)：繁忙 Worker 运行时，可信点击照常处理，取消同步完成。
+
+#### 资源平衡
+
+[resource-balance.ts](../../e2e/support/resource-balance.ts)（P2-12 S-03）把浏览器探针、音频探针与缓存记录键合成每个文档在菜单上的快照，并逐项列出它与同文档基线的全部差异。
+
+- **探针字段：**
+  - [browser-probes.ts](../../e2e/support/browser-probes.ts) 的快照另有 `document`，即每次安装生成的随机文档 ID；
+  - `workers[]` 另有 `jobs`（页面发出的 `start` 消息的 `jobId`）、`messages`（Worker 发来的每条消息只留 `type`、`stage`、`jobId` 与探针序号 `at`）与 `terminatedAt`；
+  - `listeners[]` 另有 `element`（`'react'` 表示 React DOM 在该元素上登记的非委托监听，否则为 null）与 `detached`（目标已离开文档）；
+  - [audio-playback.ts](../../e2e/support/audio-playback.ts) 的 `records()` 给出每个 AudioContext 的状态与每次 `close()` 的结局（`pending`、`resolved`、`rejected`）。Chrome 在调用 `close()` 时就同步把 `state` 设为 `closed`，所以只有已 resolve 的 `close()` 才算已关闭。
+- **用法：**
+  - `ResourceBalance.start(page, testInfo, { packages })` 在已稳定的菜单上取基线；`check(label)` 断言没有差异，`measure` 只报告；
+  - 提交后用 `expectPackages([expectedPackage(key, groups)])` 更新期望的缓存包；
+  - 刷新前用 `beforeReload` 在旧文档中检查并保存释放证据，刷新后用 `rebaseline` 取新基线，未经 `beforeReload` 时它拒绝；
+  - `warm(item, gpu)` 要求同一文档内同一项的暖态 GPU 计数逐轮相等；`attach` 附上全部记录。
+
+  默认要求页面装有音频探针（`installAudioProbe`），只在音频不属于用例范围时传 `audio: false`。缺 `WEBGL_lose_context` 的画布只标注“上下文丢失未验证”，其他必需能力缺失直接失败。
+- **React DOM 的元素监听：** React DOM 在单个元素上登记的非委托监听（如文件输入的 `invalid`、`<details>` 的 `toggle`）永不移除，在开发中归入 `test` 分组，在生产中归入 `other`。比较时按类型统计仍在文档中的这类监听，随元素离开文档的视为已释放；所以菜单上新出现的元素（如失败提示的 `<details>`）会带来一条新增的 `toggle`。
+- **Playwright 的主世界脚本：** Playwright 第一次在页面主世界运行脚本时（`locator.evaluate`、`allInnerTexts`、`allTextContents`、元素截图、`boundingBox()`、`check()` 等），会在 `window` 上登记一组常驻的捕获监听，探针把它们计入 `test` 分组。基线须在这之后取：[joint-pipeline.development.spec.ts](../../e2e/joint-pipeline.development.spec.ts) 的 `settleTooling` 先做一次 `locator.evaluate`。也可以在受检查的文档中改用 `page.evaluate` 读取，用 `page.screenshot` 加裁剪读像素。
+- **控制样本：** [resource-balance-controls.spec.ts](../../e2e/resource-balance-controls.spec.ts)（两个项目）故意泄漏监听、观察器、持续 rAF、未终止的 Worker 与未关闭的 AudioContext，每类只报告对应的问题；另有一条干净路径。
 
 ## 合成 Runtime
 
