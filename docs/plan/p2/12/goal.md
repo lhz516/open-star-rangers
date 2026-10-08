@@ -111,7 +111,7 @@ updated: 2026-10-08
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | completed |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | completed |
-| [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
+| [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | in-progress |
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
@@ -123,7 +123,7 @@ updated: 2026-10-08
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
 | [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | completed |
 | [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | completed |
-| [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | pending |
+| [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | in-progress |
 | [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | pending |
 | [25-engineering-docs.md](./subtasks/25-engineering-docs.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | completed |
 | [26-final-alignment.md](./subtasks/26-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 | pending |
