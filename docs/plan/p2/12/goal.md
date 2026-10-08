@@ -101,11 +101,11 @@ updated: 2026-10-07
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-e2e-project-routing.md](./subtasks/01-e2e-project-routing.md) | — | pending |
+| [01-e2e-project-routing.md](./subtasks/01-e2e-project-routing.md) | — | in-progress |
 | [02-network-audit.md](./subtasks/02-network-audit.md) | 01 | pending |
 | [03-responsiveness-probe.md](./subtasks/03-responsiveness-probe.md) | 01, 02 | pending |
-| [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | pending |
-| [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | pending |
+| [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | in-progress |
+| [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | in-progress |
 | [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | pending |
 | [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | pending |
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | pending |
