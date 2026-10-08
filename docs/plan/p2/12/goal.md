@@ -106,7 +106,7 @@ updated: 2026-10-07
 | [03-responsiveness-probe.md](./subtasks/03-responsiveness-probe.md) | 01, 02 | completed |
 | [04-resource-balance.md](./subtasks/04-resource-balance.md) | — | completed |
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
-| [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | in-progress |
+| [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | completed |
 | [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | in-progress |
 | [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | completed |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | in-progress |

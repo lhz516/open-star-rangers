@@ -14,6 +14,9 @@
  *
  * The profile is published as `window.osrTestEntry.profile` for tests that seed the cache, and the held results as
  * `window.osrTestEntry.cache`: `held(operation)` counts the results waiting and `release(operation)` delivers them.
+ *
+ * When a test installed the P2-12 responsiveness probe (`e2e/support/responsiveness.ts`), every commit opens a `commit`
+ * window as it starts, inside the task that finished the import, which the test then adopts and closes.
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -64,6 +67,12 @@ function held<Result>(operation: HeldOperation, run: () => Promise<Result>): Pro
   }));
 }
 
+/** The part of the P2-12 responsiveness probe the commit window uses; the test installs it before navigating. */
+interface ResponsivenessProbe {
+  readonly unavailable: string | null;
+  open(operation: string): number;
+}
+
 function cache(): ResourceCachePort {
   const option = query.get('cache');
   if (option === 'unavailable') return createResourceCache({ indexedDB: null });
@@ -75,11 +84,15 @@ function cache(): ResourceCachePort {
     checkCapacity: async (requiredBytes: number) => (insufficient
       ? Object.freeze({ status: 'insufficient', requiredBytes, availableBytes: 1024, usage: 0, quota: 1024 } as const)
       : real.checkCapacity(requiredBytes)),
-    commit: (...args: Parameters<ResourceCachePort['commit']>) => held('commit', async () => {
-      if (failure === null || failed) return real.commit(...args);
-      failed = true;
-      return cacheFailure(failure, 'database');
-    }),
+    commit: (...args: Parameters<ResourceCachePort['commit']>) => {
+      const probe = (window as unknown as { osrResponsiveness?: ResponsivenessProbe }).osrResponsiveness;
+      if (probe?.unavailable === null) probe.open('commit');
+      return held('commit', async () => {
+        if (failure === null || failed) return real.commit(...args);
+        failed = true;
+        return cacheFailure(failure, 'database');
+      });
+    },
     list: () => held('list', () => real.list()),
     restore: (...args: Parameters<ResourceCachePort['restore']>) => held('restore', () => real.restore(...args)),
   });
