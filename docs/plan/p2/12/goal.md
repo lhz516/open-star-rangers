@@ -116,7 +116,7 @@ updated: 2026-10-07
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
 | [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | completed |
-| [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | in-progress |
+| [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | completed |
 | [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | in-progress |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | completed |
