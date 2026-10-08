@@ -1,14 +1,34 @@
 export type ListenerGroup = 'keyboard' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
+/**
+ * One message a Worker sent to the page: its `type` and `stage` when they are protocol tokens, its `jobId` when a safe
+ * integer, otherwise null; `at` is the probe sequence when it arrived. Nothing else of the message is kept.
+ */
+export interface WorkerMessageRecord { type: string | null; stage: string | null; jobId: number | null; at: number }
 export interface ProbeSnapshot {
-  listeners: { id: number; target: number; type: string; capture: boolean; group: ListenerGroup; active: boolean; addedAt: number; removedAt: number | null }[];
+  /** A random identity of the document the probe was installed in, so a reload is never mistaken for a release. */
+  document: string;
+  /**
+   * Beyond its group, a listener records `element`: whether React DOM registered it on that one element (its
+   * non-delegated events, such as `invalid` or `toggle`, which React never removes), and `detached`: whether its target
+   * is a node no longer in the document.
+   */
+  listeners: {
+    id: number; target: number; type: string; capture: boolean; group: ListenerGroup; active: boolean; addedAt: number; removedAt: number | null;
+    element: 'react' | null; detached: boolean;
+  }[];
   observers: { id: number; targets: number[] }[];
   canvases: { id: number; connected: boolean; extension: boolean; lost: boolean }[];
   frames: { pending: number; maximum: number; requested: number; delivered: number; cancelled: number };
   /**
    * Every Worker constructed: its script path (no origin or query), whether Vite's Worker transform built the URL, type,
-   * name, and the number of `postMessage()` and `terminate()` calls. Message contents are never kept.
+   * name, and the number of `postMessage()` and `terminate()` calls. Message contents are never kept: `jobs` holds the
+   * `jobId` of each import `start` message the page posted, `messages` what the Worker sent, and `terminatedAt` the
+   * probe sequence of the first `terminate()`.
    */
-  workers: { id: number; entry: string; viteWorker: boolean; type: string; name: string; posts: number; terminations: number }[];
+  workers: {
+    id: number; entry: string; viteWorker: boolean; type: string; name: string; posts: number; terminations: number;
+    jobs: number[]; messages: WorkerMessageRecord[]; terminatedAt: number | null;
+  }[];
   sequence: number;
 }
 
@@ -24,6 +44,8 @@ declare global {
 
 /** Serialized before navigation; all bookkeeping belongs to the test, not the application. */
 export function installBrowserProbes(): void {
+  // `getRandomValues`, unlike `randomUUID`, also exists outside secure contexts.
+  const documentId = [...crypto.getRandomValues(new Uint8Array(16))].map(byte => byte.toString(16).padStart(2, '0')).join('');
   let sequence = 0;
   const ids = new WeakMap<object, number>();
   function id(value: object): number {
@@ -43,7 +65,7 @@ export function installBrowserProbes(): void {
   const OriginalWorker = window.Worker;
   const originalTerminate = OriginalWorker.prototype.terminate;
   const originalPost = OriginalWorker.prototype.postMessage;
-  type Listener = ProbeSnapshot['listeners'][number] & {
+  type Listener = Omit<ProbeSnapshot['listeners'][number], 'detached'> & {
     callback: EventListenerOrEventListenerObject; nativeCallback: EventListenerOrEventListenerObject; object: EventTarget; signal?: AbortSignal;
   };
   const listeners: Listener[] = [];
@@ -59,6 +81,8 @@ export function installBrowserProbes(): void {
   let cancelled = 0;
   const pending = (): number => [...frames.values()].filter(Boolean).length;
   const capture = (options?: boolean | EventListenerOptions): boolean => typeof options === 'boolean' ? options : options?.capture ?? false;
+  /** React DOM's per-instance name of its element event set, once an element shows it. */
+  let reactEvents: string | undefined;
   function group(target: EventTarget, type: string): ListenerGroup {
     if (target instanceof OriginalWorker) return 'worker';
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
@@ -91,9 +115,20 @@ export function installBrowserProbes(): void {
     if (signal?.aborted) return;
     const entry: Listener = {
       id: id(callback), target: id(this), object: this, type, callback, nativeCallback, capture: capturing,
-      group: group(this, type), active: true, addedAt: ++sequence, removedAt: null, signal,
+      group: group(this, type), active: true, addedAt: ++sequence, removedAt: null, signal, element: null,
     };
     listeners.push(entry);
+    // React DOM adds `<type>__bubble` to the element's own `__reactEvents$…` set right after registering its listener,
+    // so only a registration that the marker follows is React's; a later one of the same type is not.
+    if (this instanceof Element && !capturing) {
+      const element = this as Element & Record<string, unknown>;
+      const marked = (): boolean => {
+        reactEvents ??= Object.keys(element).find(key => key.startsWith('__reactEvents$'));
+        const set = reactEvents === undefined ? undefined : element[reactEvents];
+        return set instanceof Set && set.has(`${type}__bubble`);
+      };
+      if (!marked()) queueMicrotask(() => { if (marked()) entry.element = 'react'; });
+    }
   };
   EventTarget.prototype.removeEventListener = function (type, callback, options): void {
     const found = listeners.find(entry => entry.object === this && entry.type === type && entry.callback === callback && entry.capture === capture(options) && entry.active);
@@ -142,41 +177,58 @@ export function installBrowserProbes(): void {
     },
   });
   // A Proxy keeps `Worker.prototype` and `instanceof`; Vite's `new Worker(new URL(...))` resolves the global at call time.
+  const token = (value: unknown): string | null => typeof value === 'string' && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value) && value.length <= 64 ? value : null;
+  const integer = (value: unknown): number | null => (Number.isSafeInteger(value) ? value as number : null);
+  const field = (value: unknown, name: string): unknown => (typeof value === 'object' && value !== null ? Object.getOwnPropertyDescriptor(value, name)?.value : undefined);
   window.Worker = new Proxy(OriginalWorker, {
     construct(target, args: ConstructorParameters<typeof Worker>, newTarget: NewableFunction): object {
       const worker = Reflect.construct(target, args, newTarget) as Worker;
       const [url, options] = args;
       const parsed = new URL(String(url), location.href);
-      const record = {
+      const record: ProbeSnapshot['workers'][number] = {
         id: id(worker), entry: parsed.pathname, viteWorker: parsed.searchParams.has('worker_file'), type: options?.type ?? 'classic',
-        name: options?.name ?? '', posts: 0, terminations: 0,
+        name: options?.name ?? '', posts: 0, terminations: 0, jobs: [], messages: [], terminatedAt: null,
       };
       workers.set(worker, record);
       workerRecords.push(record);
+      // Added natively before any application listener and never recorded; it reads only own data properties.
+      originalAdd.call(worker, 'message', (event: Event) => {
+        const { data } = event as MessageEvent;
+        record.messages.push({ type: token(field(data, 'type')), stage: token(field(data, 'stage')), jobId: integer(field(data, 'jobId')), at: ++sequence });
+      });
       return worker;
     },
   });
   OriginalWorker.prototype.postMessage = function (this: Worker, ...args: Parameters<Worker['postMessage']>): void {
     const record = workers.get(this);
-    if (record) record.posts++;
+    if (record) {
+      record.posts++;
+      const job = integer(field(args[0], 'jobId'));
+      if (field(args[0], 'type') === 'start' && job !== null) record.jobs.push(job);
+    }
     (originalPost as (...values: unknown[]) => void).apply(this, args);
   } as Worker['postMessage'];
   OriginalWorker.prototype.terminate = function (this: Worker): void {
     const record = workers.get(this);
-    if (record) record.terminations++;
+    if (record) {
+      record.terminations++;
+      record.terminatedAt ??= ++sequence;
+    }
     originalTerminate.call(this);
   };
   window.osrProbe = {
     snapshot: () => ({
-      listeners: listeners.map(({ id, target, type, capture, group, active, addedAt, removedAt, signal }) => ({
-        id, target, type, capture, group, active: active && !signal?.aborted, addedAt, removedAt,
+      document: documentId,
+      listeners: listeners.map(({ id, target, type, capture, group, active, addedAt, removedAt, signal, element, object }) => ({
+        id, target, type, capture, group, active: active && !signal?.aborted, addedAt, removedAt, element,
+        detached: object instanceof Node && !object.isConnected,
       })),
       observers: [...observers].map(([observer, targets]) => ({ id: id(observer), targets: [...targets].map(id) })),
       canvases: [...canvases].map(([canvas, { gl, extension }]) => ({
         id: id(canvas), connected: canvas.isConnected, extension, lost: gl.isContextLost(),
       })),
       frames: { pending: pending(), maximum, requested, delivered, cancelled },
-      workers: workerRecords.map(record => ({ ...record })),
+      workers: workerRecords.map(record => ({ ...record, jobs: [...record.jobs], messages: record.messages.map(message => ({ ...message })) })),
       sequence,
     }),
     resetFrames: () => { maximum = pending(); requested = 0; delivered = 0; cancelled = 0; },

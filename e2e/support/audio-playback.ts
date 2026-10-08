@@ -12,9 +12,21 @@ import { nativeBrowser, NativeTarget, until } from './native-lifecycle.ts';
 /** The autoplay policy that blocks Web Audio until a user activation; `user-gesture-required` does not (goal record). */
 const AUTOPLAY_REQUIRES_ACTIVATION = '--autoplay-policy=document-user-activation-required';
 
+/** One AudioContext in construction order, and the outcome of each `close()` call on it, in call order. */
+export interface AudioContextRecord {
+  readonly id: number;
+  readonly state: string;
+  readonly closes: readonly ('pending' | 'resolved' | 'rejected')[];
+}
+
 interface AudioProbe {
   /** States of every AudioContext the page constructed, in order. */
   contexts(): string[];
+  /**
+   * Every AudioContext with its `close()` outcomes. Chrome reports `closed` as soon as `close()` is called, so only a
+   * resolved `close()` shows that closing finished.
+   */
+  records(): AudioContextRecord[];
   /** Every AudioBuffer constructed of at most `maxLength` frames: rate, length and exact channel samples. */
   buffers(maxLength: number): { sampleRate: number; length: number; channels: number[][] }[];
   /**
@@ -47,7 +59,10 @@ export function installAudioProbe(): void {
   const originalConnect = AudioNode.prototype.connect;
   const originalDisconnect = AudioNode.prototype.disconnect;
   const connectNode = originalConnect as (this: AudioNode, destination: AudioNode) => AudioNode;
-  const contexts: { context: AudioContext; analyser: AnalyserNode; data: Float32Array<ArrayBuffer> }[] = [];
+  const originalClose = OriginalContext.prototype.close;
+  const contexts: {
+    context: AudioContext; analyser: AnalyserNode; data: Float32Array<ArrayBuffer>; closes: ('pending' | 'resolved' | 'rejected')[];
+  }[] = [];
   const buffers: AudioBuffer[] = [];
   const routed = new Set<AudioNode>();
   let started = 0;
@@ -69,10 +84,21 @@ export function installAudioProbe(): void {
       mute.gain.value = 0;
       connectNode.call(analyser, mute);
       connectNode.call(mute, context.destination);
-      contexts.push({ context, analyser, data: new Float32Array(analyser.fftSize) });
+      contexts.push({ context, analyser, data: new Float32Array(analyser.fftSize), closes: [] });
       return context;
     },
   });
+  // Returns the same promise. Observing it also handles a rejection, which is recorded here instead of surfacing as
+  // unhandled; the application settles every close itself.
+  OriginalContext.prototype.close = function (this: AudioContext): Promise<void> {
+    const promise = originalClose.call(this);
+    const closes = contexts.find(({ context }) => context === this)?.closes;
+    if (closes) {
+      const call = closes.push('pending') - 1;
+      promise.then(() => { closes[call] = 'resolved'; }, () => { closes[call] = 'rejected'; });
+    }
+    return promise;
+  };
   window.AudioBuffer = new Proxy(OriginalBuffer, {
     construct(target, args: ConstructorParameters<typeof AudioBuffer>, newTarget: NewableFunction): object {
       const buffer = Reflect.construct(target, args, newTarget) as AudioBuffer;
@@ -97,6 +123,7 @@ export function installAudioProbe(): void {
   document.addEventListener('visibilitychange', () => { visibility.push(document.visibilityState); });
   window.osrAudioProbe = {
     contexts: () => contexts.map(({ context }) => context.state),
+    records: () => contexts.map(({ context, closes }, index) => ({ id: index + 1, state: context.state, closes: [...closes] })),
     buffers: maxLength => buffers.filter(buffer => buffer.length <= maxLength).map(buffer => ({
       sampleRate: buffer.sampleRate, length: buffer.length,
       channels: Array.from({ length: buffer.numberOfChannels }, (_, channel) => [...buffer.getChannelData(channel)]),
