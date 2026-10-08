@@ -130,7 +130,7 @@ updated: 2026-10-08
 | [28-a1-original-comparison.md](./subtasks/28-a1-original-comparison.md) | — | completed |
 | [29-mesh-uv-recheck.md](./subtasks/29-mesh-uv-recheck.md) | — | completed |
 | [30-deferred-recaptures.md](./subtasks/30-deferred-recaptures.md) | 27, 28, 29, 31 | pending |
-| [31-hud-resource-gap.md](./subtasks/31-hud-resource-gap.md) | 29 | pending |
+| [31-hud-resource-gap.md](./subtasks/31-hud-resource-gap.md) | 29 | in-progress |
 | [32-b001-selection-box.md](./subtasks/32-b001-selection-box.md) | — | completed |
 | [26-final-alignment.md](./subtasks/26-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32 | pending |
 
