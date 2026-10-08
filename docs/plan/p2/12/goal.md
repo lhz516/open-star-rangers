@@ -124,7 +124,7 @@ updated: 2026-10-08
 | [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | completed |
 | [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | completed |
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | completed |
-| [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | pending |
+| [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | in-progress |
 | [25-engineering-docs.md](./subtasks/25-engineering-docs.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | completed |
 | [26-final-alignment.md](./subtasks/26-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 | pending |
 
