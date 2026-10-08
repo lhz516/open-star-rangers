@@ -108,14 +108,14 @@ updated: 2026-10-07
 | [05-failure-canary-fixtures.md](./subtasks/05-failure-canary-fixtures.md) | — | completed |
 | [06-joint-development.md](./subtasks/06-joint-development.md) | 01, 02, 03, 04, 05 | pending |
 | [07-joint-production.md](./subtasks/07-joint-production.md) | 01, 02, 03, 04, 05 | pending |
-| [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | pending |
+| [08-failure-input-content.md](./subtasks/08-failure-input-content.md) | 01, 02, 04, 05 | in-progress |
 | [09-failure-worker-cancel.md](./subtasks/09-failure-worker-cancel.md) | 01, 02, 03, 04, 05 | pending |
 | [10-failure-storage-lifecycle.md](./subtasks/10-failure-storage-lifecycle.md) | 01, 02, 04, 05 | pending |
 | [11-outbound-compliance-review.md](./subtasks/11-outbound-compliance-review.md) | 22 | pending |
 | [12-candidate-check.md](./subtasks/12-candidate-check.md) | — | completed |
 | [13-comparison-baselines.md](./subtasks/13-comparison-baselines.md) | 12 | completed |
 | [14-sound-baseline-equivalence.md](./subtasks/14-sound-baseline-equivalence.md) | 12 | completed |
-| [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | pending |
+| [15-user-captures.md](./subtasks/15-user-captures.md) | 13 | in-progress |
 | [16-layout-comparison.md](./subtasks/16-layout-comparison.md) | 12, 15 | pending |
 | [17-hud-texture-coverage.md](./subtasks/17-hud-texture-coverage.md) | 12, 15 | pending |
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | in-progress |
