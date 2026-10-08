@@ -121,7 +121,7 @@ updated: 2026-10-08
 | [18-mission-comparison.md](./subtasks/18-mission-comparison.md) | 12 | completed |
 | [19-map-frame.md](./subtasks/19-map-frame.md) | 12 | completed |
 | [20-guide-user-comparison.md](./subtasks/20-guide-user-comparison.md) | — | completed |
-| [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | in-progress |
+| [21-user-comparison-session.md](./subtasks/21-user-comparison-session.md) | 12, 14, 15, 20 | completed |
 | [22-presentation-verdicts.md](./subtasks/22-presentation-verdicts.md) | 16, 17, 21 | pending |
 | [23-user-recheck.md](./subtasks/23-user-recheck.md) | 22 | pending |
 | [24-original-backfill.md](./subtasks/24-original-backfill.md) | 16, 17, 18, 19, 21, 22, 23 | pending |
@@ -134,7 +134,7 @@ updated: 2026-10-08
 
 - **2026-10-07 — 协调方式：** 本机宿主不能在协调者创建的文件夹中启动会话，worker 改用应用创建的 worktree（从 `goal/p2-12` 分出，分支经 rename 为带应用前缀的 `lhz516-exec-p2-12-NN`，代替 `exec/p2-12-NN`）；集成按 `Worker-Commit` trailer 核对。协调者在 `open-star-rangers.worktrees/goal-p2-12` 维护目标分支；用户会话使用固定在 `9e6188f` 的单独检出（构建指纹与 12 的候选相同）。
 - **2026-10-07 — 用户决定：** spec 技术决定 8 保持不变；Computer Use 只用于不显示原版画面的准备操作。C-09 不考虑 LO 分辨率（总计划已以 HI 为 Classic 基准）；C-12 原拟由 17 的本地脚本估计，后经 rubber-duck 指出 17 的范围不含截图级贴图可见性，改在 21 中视觉判定（2026-10-08 技术决定 8 修订后由 agent 完成）。
-- **2026-10-08 — 21 进行中：** 用户在 Chrome 中完成导入、恢复与任务诊断，身份一致。agent 在独立 profile 中导入同一光盘，按技术决定 8 的修订完成 V-1、V-2 与二维显示的视觉对照，记录在被忽略的 `local/research/p2-12/session/record.md`。其中 3 项交 22 判定：基地贴图 02、04 的方向与原版相差约 90°；两种敌机的部件列表 2 在原版中是受击时抖动半透明的紫色外壳，查看器中为不透明纯色。其余项因缺少基准为“无法判定”。试听（A-1）须由用户完成，完成前 21 保持 in-progress，22 及之后各行不能开始。
+- **2026-10-08 — 21 完成，部分验收仍开放：** 用户完成导入、恢复与任务诊断（身份一致）及 12 项试听（与 WAV 一致，完整播放与 Stop 正常）。agent 按技术决定 8 的修订完成 V-1、V-2、V-3 与 V-4（123 项）的视觉核对，明细在被忽略的 `local/research/p2-12/session/record.md`。3 项差异交 22：基地贴图 02、04 的方向与原版相差约 90°；两种敌机的部件列表 2 在原版中受击时以抖动半透明方式显示，查看器中为不透明纯色。仍开放：AC-14、AC-15（33 项因延后的补拍为无法判定，按用户决定由 26 新增修复子任务）；AC-18（用户称已在原版中对照，待注明开火、导弹、Warp、爆炸各自对照的 Asset 后补记）。
 - **2026-10-08 — 17 完成，AC-17 的 agent 部分仍 blocked：** 17 的覆盖表与核对已完成。23 个图像（gauge-bar 0/3、status-display background-2、overlay 0–5/8、unit-marker 0/1/7/8/14/17/26–28、zoom-icon 26–28、image/missile）、palette/missile 与 font/hud/4x6 为“无法判定”，原因是 C-07/C-08/C-09/C-10 的补拍被延后（见 15 的用户决定）。按用户“记录缺口，相应验收保持 blocked，稍后重做”的决定，本行按已完成记录，AC-17 的缺口交 26 新增修复子任务处理；恢复条件为补拍上述场景。U-030：文字后的状态显示屏标记与 srangers_068 的左显示屏不能排除缺少切片图形，交 24 判断。
 - **2026-10-08 — 视频次级基准（用户批准）：** 用户指定一个公开实机视频播放列表，并批准其帧作 V-1、V-2、地图图标与 HUD 状态的次级基准；以视频为基准的判定最高为高概率，逐像素比较仍只用本地截图。spec 与指南已同步。
 - **2026-10-08 — 技术决定 8 修订（用户批准）：** 用户要求并明确批准 21、23 中的视觉对照（C-05、C-12、V-1、V-2、二维显示）改由 agent 经 Computer Use 完成，试听仍由用户完成。spec、工作流、指南与 21、23 已同步修订。此前（2026-10-07 23:55）一次只读文本读取时，工具自动附带了查看器截图，其中有一张原版贴图；当时尚未修订，该截图未用于任何判定。
