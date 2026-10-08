@@ -83,7 +83,8 @@ describe('MESH source reading', () => {
     ['no shading slots', () => block({ shadingSlotCount: 0 }), 'the shading slot count must be 1 to the corner count'],
     ['more shading slots than corners', () => block({ shadingSlotCount: 4 }), 'the shading slot count must be 1 to the corner count'],
     ['a NaN position', () => block({ positions: [0, 0, 0, Number.NaN, 0, 0, 0, 1, 0] }), 'a vertex value is not a finite number'],
-    ['an infinite UV', () => block({ uvs: [0, 0, 1, Infinity, 0, 1] }), 'a vertex value is not a finite number'],
+    ['a NaN u', () => block({ uvs: [0, 0, Number.NaN, 0, 0, 1] }), 'a vertex value is not a finite number'],
+    ['an infinite v', () => block({ uvs: [0, 0, 1, Infinity, 0, 1] }), 'a vertex value is not a finite number'],
     ['a negative infinite normal', () => block({ normals: [0, 0, 1, 0, 0, 1, 0, 0, -Infinity] }), 'a vertex value is not a finite number'],
     ['a face with 4 corners', () => set32(block(), AT.face, 4), 'every face must have 3 corners'],
     ['a vertex index equal to the vertex count', () => block({ faces: [[[0, 0], [3, 0], [1, 1]]] }), 'a corner vertex index is out of range'],
@@ -103,9 +104,18 @@ describe('MESH source reading', () => {
     expectFailure(() => readMesh(set32(block(), offset, observed), PATH), 'limit-exceeded', 'the count is outside the supported range', limit);
   });
 
+  it('pairs the stored u array and v array per vertex', () => {
+    // Distinct values written straight into the block: interleaved reading would yield them in stored order instead.
+    const data = block();
+    const view = new DataView(data.buffer);
+    [1, 2, 3, 4, 5, 6].forEach((value, index) => view.setFloat32(AT.uvs + index * 4, value, true));
+    expect([...readMesh(data, PATH).uvs]).toEqual([1, 4, 2, 5, 3, 6]);
+  });
+
   it('places the fields at the documented offsets', () => {
     const view = new DataView(block().buffer);
     expect([AT.vertices, AT.slots, AT.triangles, AT.face].map(offset => view.getUint32(offset, true))).toEqual([3, 2, 1, 3]);
-    expect([view.getFloat32(AT.positions + 12, true), view.getFloat32(AT.uvs + 8, true), view.getFloat32(AT.normals + 20, true)]).toEqual([1, 1.5, -1]);
+    expect([view.getFloat32(AT.positions + 12, true), view.getFloat32(AT.normals + 20, true)]).toEqual([1, -1]);
+    expect(Array.from({ length: 6 }, (_, index) => view.getFloat32(AT.uvs + index * 4, true))).toEqual([0, 1.5, 0, 0, -11, 9.5]);
   });
 });

@@ -3,8 +3,8 @@ import { SourceError, type SourceLimitName } from '../source-error.ts';
 
 // MESH entry structure (docs/original/formats/mesh.md §1), little-endian:
 //   0x00 u32 structure pointer, 12; 0x04 u32 structure length, the block length less 12; 0x08 u32 0
-//   0x0C u32 vertex count V; V × 3 f32 positions; V × 2 f32 UVs; u32 shading slot count S; V × 3 f32 normals;
-//        u32 triangle count T; T faces of { u32 corner count 3; 3 × { u32 vertex index, u32 shading slot } }; u32 0
+//   0x0C u32 vertex count V; V × 3 f32 positions; V f32 u values, then V f32 v values; u32 shading slot count S;
+//        V × 3 f32 normals; u32 triangle count T; T faces of { u32 corner count 3; 3 × { u32 vertex index, u32 shading slot } }; u32 0
 // The block is therefore exactly 28 + 32V + 28T bytes. Every failure is located at the caller's `path` exactly.
 
 const STRUCTURE_AT = 12;
@@ -52,8 +52,9 @@ export function readMeshCounts(block: Uint8Array, path: string): MeshCounts {
 
 /**
  * Reads a MESH block into a frozen geometry whose arrays are new buffers the caller owns. Floats are kept bit for bit
- * (including -0 and subnormals) and must be finite; faces must be triangles whose vertex indices and shading slots are
- * in range, with 1 to 3T shading slots; triangle order and winding are as stored.
+ * (including -0 and subnormals) and must be finite; the stored u and v arrays become one (u, v) pair per vertex. Faces
+ * must be triangles whose vertex indices and shading slots are in range, with 1 to 3T shading slots; triangle order and
+ * winding are as stored.
  */
 export function readMesh(block: Uint8Array, path: string): ModelGeometry {
   const { vertices, triangles } = readMeshCounts(block, path);
@@ -61,17 +62,23 @@ export function readMesh(block: Uint8Array, path: string): ModelGeometry {
   const slotsAt = VERTICES_AT + vertices * 20;
   const shadingSlotCount = view.getUint32(slotsAt, true);
   if (shadingSlotCount < 1 || shadingSlotCount > triangles * 3) invalid(path, 'the shading slot count must be 1 to the corner count');
+  const float = (offset: number): number => {
+    const value = view.getFloat32(offset, true);
+    if (!Number.isFinite(value)) invalid(path, 'a vertex value is not a finite number');
+    return value;
+  };
   const floats = (offset: number, count: number): Float32Array => {
     const values = new Float32Array(count);
-    for (let index = 0; index < count; index++) {
-      const value = view.getFloat32(offset + index * 4, true);
-      if (!Number.isFinite(value)) invalid(path, 'a vertex value is not a finite number');
-      values[index] = value;
-    }
+    for (let index = 0; index < count; index++) values[index] = float(offset + index * 4);
     return values;
   };
   const positions = floats(VERTICES_AT, vertices * 3);
-  const uvs = floats(VERTICES_AT + vertices * 12, vertices * 2);
+  const uvsAt = VERTICES_AT + vertices * 12;
+  const uvs = new Float32Array(vertices * 2);
+  for (let vertex = 0; vertex < vertices; vertex++) {
+    uvs[vertex * 2] = float(uvsAt + vertex * 4);
+    uvs[vertex * 2 + 1] = float(uvsAt + (vertices + vertex) * 4);
+  }
   const normals = floats(slotsAt + 4, vertices * 3);
   const indices = new Uint16Array(triangles * 3);
   const cornerShading = new Uint16Array(triangles * 3);

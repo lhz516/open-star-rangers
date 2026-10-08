@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "06"
-updated: 2026-10-06
+updated: 2026-10-08
 related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 ---
 
@@ -81,7 +81,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 |---|---|---|
 | S-01 | 01 | 01 编码与严格读取的往返测试 |
 | S-02 | 01 | 01 消费辅助测试，与 `expandImage` 展开一致 |
-| S-03 | 02 | 02 源读取测试；10 本地全量 nob-check |
+| S-03 | 02、21 | 02 源读取测试；21 贴图坐标块的布局测试；10、21 本地全量 nob-check |
 | S-04 | 03、06 | 03 声明与转换测试；06 生产引用表 |
 | S-05 | 04 | 04 生产图形声明与合成光盘上的图形步骤 |
 | S-06 | 05、06、07、11 | 06 模型 ID 与 `bindCraftTypes` 一致；07 作业传递绑定；09 本地；11 研究 Asset 的命名 |
@@ -90,12 +90,12 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | S-09 | 05、07、08 | 05 步骤结果与组草稿；07 阶段、协议与组装；08 Chromium |
 | S-10 | 04、06、11 | 04/06 生产测试；09 本地基准；11 研究 |
 | S-11 | 10、11、12 | 10 部件结构；11 U-027；12 U-028 |
-| S-12 | 01–10 | 各子任务的 Node 测试；08 Chromium；09、10 本地 |
-| S-13 | 01–12、15–18 | 各子任务的文档影响；13 链接、元数据与一致性 |
+| S-12 | 01–10、21 | 各子任务的 Node 测试；08 Chromium；09、10 本地 |
+| S-13 | 01–12、15–18、21 | 各子任务的文档影响；13 链接、元数据与一致性 |
 | S-14 | 15、16、17、18 | 15 切片定义与区域 locator；16 LE 读取；17 payload 与展开；18 步骤与作业；19 本地基准 |
 | AC-01 | 01 | 01 表驱动 Node 测试 |
 | AC-02 | 01 | 01 Node 测试 |
-| AC-03 | 02 | 02 Node 测试 |
+| AC-03 | 02、21 | 02 Node 测试；21 区分两种布局的 Node 测试 |
 | AC-04 | 02 | 02 Node 测试与源码检查 |
 | AC-05 | 03 | 03 Node 测试 |
 | AC-06 | 04 | 04 Node 测试与源码检查 |
@@ -109,7 +109,7 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | AC-14 | 12 | 12 本地研究；文档与映射对照，逐条目展开断言 |
 | AC-15 | 01、10 | 01 源码结构；10 mesh |
 | AC-16 | 01–08、20 | 各子任务 `pnpm typecheck`、`pnpm lint`；20 诊断原因的隐私断言；13 `pnpm check`、`pnpm check:original`、聚焦 E2E、依赖与锁文件 diff |
-| AC-17 | 01–12、15–18 | 13 链接与元数据检查、最终 diff 审阅 |
+| AC-17 | 01–12、15–18、21 | 13 链接与元数据检查、最终 diff 审阅 |
 | AC-18 | 15、16 | 15 locator 与映射核验的 Node 测试；16 LE 读取的 Node 测试与本地区域核对 |
 | AC-19 | 17 | 17 表驱动 Node 测试与源码检查 |
 | AC-20 | 18 | 18 Node、`MessageChannel` 集成与 E2E |
@@ -140,7 +140,8 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
 | [18-effect-step-integration.md](./subtasks/18-effect-step-integration.md) | 15, 16, 17 | completed |
 | [19-local-effect-check.md](./subtasks/19-local-effect-check.md) | 18 | completed |
 | [20-diagnostic-privacy.md](./subtasks/20-diagnostic-privacy.md) | 05, 18 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20 | completed |
+| [21-mesh-uv-planar.md](./subtasks/21-mesh-uv-planar.md) | 02 | completed |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -199,7 +200,14 @@ related: [ADR-0007, ADR-0008, ADR-0015, U-022, U-027, U-028]
   - 同一审阅指出 17 的已勾选验收仍是修订前的措辞，07 与“合入后条款”中的 `ConverterVersion` 早于 P2-07 合入。这两处是文档对齐，在 13 复跑时修正。
   - 07 的 `ConverterVersion` 证据是当时的值。2026-10-06 合入 P2-07 后，图形组件为 `graphics-2`，四个组共用 `osr-import.graphics-2.logic-1.audio-1.models-1`，由 [import-job.test.ts](../../../../src/workers/import-job.test.ts) 断言。
   - `nob-check` 失败行带条目号不算违规：这一格式早于本 goal；AC-16 对 nob-check 只要求“只输出结构计数与失败原因”；条目号的限制针对 S-08 定义的转换诊断。
+- **2026-10-08，P2-12 发现贴图坐标读取缺陷，经用户批准修订并新增 21：**
+  - P2-12/22 的统计与截图对照表明，MESH 贴图坐标块高概率是两个连续数组（先全部 u，后全部 v），而 02 的 `readMesh` 按每顶点一对读取，切片 137 个带贴图部件中坐标不全相同的 133 个都受影响（[mesh §1](../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed)）。
+  - 按 P2-12 spec，实现缺陷回到责任任务、经用户批准修订其 spec 与 goal。用户的决定与批准范围见[审批](#审批)。
+  - 先按批准只读追踪原版 MESH 载入路径：类型回调表 `0x1766b4` 的 MESH 行经 `0x663ac`、`0x663f4` 到 `0x6a7b4`，后者按顶点 i 取块中第 i 个与第 V + i 个值。布局升为已确认，没有出现需要停下的相反结论。
+  - 据此修订 spec（S-03、AC-03、持久化与兼容、技术决定 3 的说明与风险与恢复），新增补救子任务 [21](./subtasks/21-mesh-uv-planar.md)，插在最终对齐之前；13 增加对 21 的依赖，回到 pending，21 完成后复跑与本修订相关的检查。
 
 ## 审批
 
 用户于 2026-10-05 明确批准本 goal，批准范围为上述 13 个子任务的拆分、依赖关系和验收覆盖，以及“代码现状与前提”中据合入后代码落实的协议版本、阶段、`ConverterVersion`、预算组合与 `models` 组发送规则。spec 已于同日获批准。批准不代表实现完成。
+
+**2026-10-08 修订（用户批准）：** 用户对“29 的 P2-06 贴图坐标修复，你选哪种？”选择“批准：先追踪确认，再修复 P2-06（推荐）”。所批准的方案：先只读追踪原版 MESH 载入路径，把“两个连续数组、先 u 后 v”由高概率升为已确认，结论相反时停下、不改代码；确认后修订 P2-06 的 spec 与 goal 并实现——`readMesh` 按两个连续数组读取，输出仍为每顶点一对（payload schema 不变），合成 MESH 构建器与测试同步，模型转换器组件 `models-2` → `models-3`，更新 mesh §1。旧缓存因转换器版本改变而失效，这是预期结果。批准范围即新增的子任务 21、13 对它的依赖及上表相应的覆盖。追踪结果：两个连续数组的布局升为已确认；第一个数组沿贴图列使用（即为 u）仍为高概率，见 [mesh §1](../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed)。

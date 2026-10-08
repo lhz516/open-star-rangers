@@ -22,7 +22,7 @@ Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Struc
 | 0x08 | u32 | 0 |
 | 0x0C | u32 | Vertex count `nv` |
 | | f32 × 3 × `nv` | Vertex positions (x, y, z) |
-| | f32 × 2 × `nv` | Texture coordinates. Size Confirmed; order Likely two consecutive arrays, `nv` u values then `nv` v values ([below](#texture-coordinate-block-order-likely-p2-12)), not one (u, v) pair per vertex |
+| | f32 × `nv`, f32 × `nv` | Texture coordinates: two consecutive arrays, `nv` u values then `nv` v values, not one (u, v) pair per vertex. Order Confirmed by the native loader; axes Likely ([below](#texture-coordinate-block-order-confirmed)) |
 | | u32 | Slot count `ns` (see below) |
 | | f32 × 3 × `nv` | Vertex normals; all unit length |
 | | u32 | Face count `nf` |
@@ -37,11 +37,14 @@ Notes:
 - The **slot index** of a corner is always below `ns`, and the largest slot index used is exactly `ns − 1`. The slot table itself is not stored. In 288 meshes `ns` equals `nv` (all corners of a vertex share one slot); in 96 meshes `ns` equals the total corner count (every corner has its own slot, i.e. flat shading); the remaining 102 lie in between. Likely a per-corner shading table built at load time, equivalent to smoothing groups.
 - Vertices are in model space: MODL applies no transform.
 
-### Texture-coordinate block order (Likely, P2-12)
+<a id="texture-coordinate-block-order-likely-p2-12"></a>
 
-[P2-12 subtask 22](../../plan/p2/12/subtasks/22-presentation-verdicts.md#完成证据) (2026-10-08) compared two readings of the f32 × 2 × `nv` block: one (u, v) pair per vertex (*interleaved*, the earlier reading) and two consecutive arrays of `nv` values each (*planar*). Scripts and logs are in the ignored `local/research/p2-12/presentation/`; only counts, angles and ratios are recorded.
+### Texture-coordinate block order (Confirmed)
 
-- **Texture-space distortion (Confirmed counts):** for each triangle, the ratio σ1/σ2 of the singular values of its texture-to-model mapping (1 means no shear or stretch).
+The block holds two consecutive arrays of `nv` values each (*planar*), not one (u, v) pair per vertex (*interleaved*, the earlier reading). The native loader confirms the order; [P2-12 subtask 22](../../plan/p2/12/subtasks/22-presentation-verdicts.md#完成证据) (2026-10-08) first found it by comparing the two readings, with scripts and logs in the ignored `local/research/p2-12/presentation/` (only counts, angles and ratios are recorded).
+
+- **Native load path (Confirmed, code; [P2-06 subtask 21](../../plan/p2/06/subtasks/21-mesh-uv-planar.md#完成证据), 2026-10-08):** the MESH row of the per-type callback table at `0x1766b4` (row `0x1766d4`) names the load callback `0x663ac`, which queues the completion `0x663f4`; the completion builds the mesh with `0x6a7b4`. That function receives the struct at entry offset 0x0C and locates the fields in the order of the table above: the coordinate block right after the positions, the slot count after 2 × `nv` floats of it, then the normals, the face count and the faces. It passes positions, normals and faces to `0x80c14`, then calls `0x8159c` once per vertex i with (i, block[i], block[`nv` + i]), from two pointers that start at the block and `nv` floats into it and advance together. `0x8159c` stores the two values at +0x10 and +0x14 of that vertex's 48-byte record; it has no other caller. The Ghidra output is in the ignored `local/research/p2-06/mesh-uv/`.
+- **Texture-space distortion (Confirmed counts, P2-12/22):** for each triangle, the ratio σ1/σ2 of the singular values of its texture-to-model mapping (1 means no shear or stretch).
 
   | Scope | Meshes | Planar better | Interleaved better | Tie | All coordinates equal | Median σ1/σ2, interleaved / planar |
   |---|---:|---:|---:|---:|---:|---|
@@ -49,10 +52,9 @@ Notes:
   | Textured parts of the slice's six models (five craft models and MODL 10383) | 137 parts | 133 | 0 | 0 | 4 (the list-2 parts) | 13.66 / 1.20 (3,474 triangles) |
 
   Of the 133 slice parts, 128 are better by the median ratio and the other 5 are fully degenerate under the interleaved reading. The base model (MODL 10611) has 42 single-quad parts textured with the slice textures `image/model-texture/02` (28) and `/04` (14). Under the interleaved reading the angle between the u and v gradients of these 84 triangles ranges from 25° to 149°, and each quad's 4 vertices have only 3 distinct coordinates; under the planar reading the two gradients are orthogonal in all 84 and the two triangles of each quad agree.
-- **Screenshot comparison (Likely):** offline renders of the production geometry and textures with the planar reading match the base in `srangers_067.png`, the player craft in `srangers_008.png` and the first enemy type in `srangers_020.png`. The interleaved reading instead reproduces the sheared short stripes that the viewer shows, which none of these captures has.
-- **Axes (Likely):** the first array is u (along texture columns) and the second is v. Swapping them contradicts `srangers_067.png`. Under the project's convention that v = 0 is the texture's first stored row ([source structure](../../engineering/source-structure.md#资源查看渲染)), flipping v also contradicts it; a mirror in u cannot be distinguished, because the compared stripes are uniform along u.
-- **Confidence:** Likely. The native MESH load path (the MESH row of the type callback table at `0x1766b4`) was not traced; tracing it would confirm the order.
-- **Reader status:** the import's `readMesh` still reads one pair per vertex, so the model texture coordinates of the P2-12 candidate (converter version `osr-import.graphics-2.logic-1.audio-1.models-2`) are wrong on every textured part whose coordinates vary: 133 of the slice's 137. The 4 list-2 parts, whose coordinates are all equal, read the same either way. The fix belongs to P2-06 (reader, synthetic builder, tests and a new model converter version) and awaits approval of that task's revision; until then the payload contract is unchanged.
+- **Screenshot comparison (Likely, P2-12/22):** offline renders of the production geometry and textures with the planar reading match the base in `srangers_067.png`, the player craft in `srangers_008.png` and the first enemy type in `srangers_020.png`. The interleaved reading instead reproduces the sheared short stripes that the viewer shows, which none of these captures has.
+- **Axes (Likely):** the first array is u (along texture columns) and the second is v. The loader passes the first array as the setter's first coordinate (+0x10) and the second as its second (+0x14); which of the two fields the rasterizer applies along texture columns was not traced, because the fields are copied into the render vertices (`0x7db10`) and consumed through driver-dispatched code. Swapping the arrays contradicts `srangers_067.png`. Under the project's convention that v = 0 is the texture's first stored row ([source structure](../../engineering/source-structure.md#资源查看渲染)), flipping v also contradicts it; a mirror in u cannot be distinguished, because the compared stripes are uniform along u.
+- **Reader status:** since [P2-06 subtask 21](../../plan/p2/06/subtasks/21-mesh-uv-planar.md) the import's `readMesh` reads the two arrays and outputs one (u, v) pair per vertex, the first array as u; the model converter component is `models-3` (converter version `osr-import.graphics-2.logic-1.audio-1.models-3`). Imports with earlier converter versions, including the P2-12 candidate (`…models-2`), read one pair per vertex, so their texture coordinates are wrong on every textured part whose coordinates vary: 133 of the slice's 137. The 4 list-2 parts, whose coordinates are all equal, read the same either way. The new converter version keeps such caches from being restored; a re-import produces the corrected values.
 
 ### Winding and vertex normals (Confirmed counts; meaning Unconfirmed)
 
@@ -163,7 +165,7 @@ Compared against HI-resolution screenshots of all nine views (`local/StarRang/ca
 
 Agent visual comparison in [P2-12 subtask 21](../../plan/p2/12/subtasks/21-user-comparison-session.md#完成证据) (2026-10-08): each slice model shown in the production viewer of the P2-12 candidate (commit `97b70de`, converter version `osr-import.graphics-2.logic-1.audio-1.models-2`), built from a checkout with the same build fingerprint (Classic 4:3, unlit) beside the local captures named below, with a user-specified public gameplay video as a secondary reference only where noted. Screenshots were not kept; the per-item record is the ignored `local/research/p2-12/session/record.md`. The model bindings were independently re-read in [P2-12 subtask 18](../../plan/p2/12/subtasks/18-mission-comparison.md#完成证据): six craft-type entries resolve to these five models, and each converted model equals exactly one of the 19 MODL entries, the one its M2ID slot names.
 
-Texture appearance on the textured parts whose coordinates vary is not established by this comparison: the viewer used the interleaved texture-coordinate reading, which is Likely wrong ([§1](#texture-coordinate-block-order-likely-p2-12)). The textured items judged consistent in subtask 21 are therefore held for recheck after the P2-06 fix; only their outline and part layout stand. Where a local capture is named, that consistency is Confirmed for the pictured target, on the same basis as the comparisons above.
+Texture appearance on the textured parts whose coordinates vary is not established by this comparison: the viewer used the interleaved texture-coordinate reading, which is wrong ([§1](#texture-coordinate-block-order-confirmed), Confirmed). The textured items judged consistent in subtask 21 are therefore held for recheck after the P2-06 fix; only their outline and part layout stand. Where a local capture is named, that consistency is Confirmed for the pictured target, on the same basis as the comparisons above.
 
 | Model (M2ID slot / MODL) | List 0 | List 1 | List 2 |
 |---|---|---|---|
@@ -181,5 +183,5 @@ Texture appearance on the textured parts whose coordinates vary is not establish
 ## 4. Open questions
 
 - Meaning of part lists 1 and 2 and the part flags (U-027). Sound slots 1, 2 and 4 are confirmed; slots 0 and 3 remain Unconfirmed.
-- The texture-coordinate block order (§1): trace the native MESH loader to confirm it. The original's texture wrap mode and front-face winding.
+- Which texture-coordinate field the rasterizer applies along texture columns (§1; the first array, Likely). The original's texture wrap mode and front-face winding.
 - How lighting selects shades (U-028); which craft type each M2ID slot is.

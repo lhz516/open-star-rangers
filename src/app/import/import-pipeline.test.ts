@@ -362,7 +362,7 @@ describe('audio conversion over a structured-clone channel', () => {
     const audioGroup = taken[1];
     const manifest = readGroupManifest(audioGroup.manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-2', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-2.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
     expect((audioGroup.payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
@@ -463,7 +463,7 @@ describe('cockpit-hud-map assembly over a structured-clone channel', () => {
     const drafts = received.map(({ group, input }, index) => ({ group, assets: manifests[index].assets, payloads: [], sources: input.sources }) as GroupDraft);
     const identity = { ...basis, manifestIdentity: deriveManifestIdentity(basis, drafts) };
     expect(manifests.map(({ identity: sent }) => sent)).toEqual(received.map(() => identity));
-    expect(identity.converterVersion).toBe('osr-import.graphics-2.logic-1.audio-1.models-2');
+    expect(identity.converterVersion).toBe('osr-import.graphics-2.logic-1.audio-1.models-3');
 
     // The read usage plus the conversion usage, which counts every sent Asset and payload byte once.
     expect(snapshot.usage).toEqual(addBudgets(source!.usage(), step.usage));

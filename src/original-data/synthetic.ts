@@ -207,7 +207,7 @@ export function syntheticSnd(fields: SyntheticSndFields): { data: Uint8Array; re
 export interface SyntheticMeshFields {
   /** x, y, z per vertex. */
   positions: ArrayLike<number>;
-  /** u, v per vertex. */
+  /** u, v per vertex, as a geometry holds them; the block stores every u value, then every v value. */
   uvs: ArrayLike<number>;
   /** x, y, z per vertex. */
   normals: ArrayLike<number>;
@@ -234,9 +234,11 @@ export function syntheticMesh(fields: SyntheticMeshFields): { data: Uint8Array; 
   const f32 = (values: ArrayLike<number>): void => {
     for (let index = 0; index < values.length; index++) view.setFloat32((at += 4) - 4, values[index], true);
   };
-  u32(structurePointer, fields.structureLength ?? length - 12, reserved, positions.length / 3);
+  const vertices = positions.length / 3;
+  if (uvs.length !== vertices * 2) throw new RangeError('a synthetic mesh needs two UV values per vertex');
+  u32(structurePointer, fields.structureLength ?? length - 12, reserved, vertices);
   f32(positions);
-  f32(uvs);
+  for (const component of [0, 1]) f32(Array.from({ length: vertices }, (_, vertex) => uvs[vertex * 2 + component]));
   u32(shadingSlotCount);
   f32(normals);
   u32(faces.length);

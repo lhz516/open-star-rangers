@@ -14,7 +14,7 @@ import { chargeConversionBudget, readConversionUsage } from './conversion-budget
 import { readModelDeclarations } from './model-declarations.ts';
 
 /** The model converter's component of the production `ConverterVersion`; bump it when model output changes. */
-export const MODEL_CONVERTER_COMPONENT = 'models-2';
+export const MODEL_CONVERTER_COMPONENT = 'models-3';
 
 /** Source blocks already read by the step: each declared model's whole MODL entry, and the MESH entries its parts name. */
 export interface ModelSources {

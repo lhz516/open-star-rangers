@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-07
+updated: 2026-10-08
 related: [U-009, U-017, U-022, U-032]
 ---
 
@@ -51,6 +51,7 @@ Addresses are Ghidra addresses with the ghidra-lx-loader defaults (objects mappe
 | 0x6affc | Load an IMFAT entry by ID; returns the relocated block | Likely | Called with constant IDs of `OPTIONS.NOB`, `COMM.NOB`, and `SR.NOB` entries; results used as typed structs |
 | 0x65bcb | Opens the archives and registers per-type callbacks | Likely | References the archive file name strings; walks a table at 0x1766b4 |
 | 0x1766b4 | Per-type callback table: {type tag pointer, three callbacks}, 16 bytes per row | Confirmed (contents) | Four rows: EXPL, TEX, MESH, MODL. No row for SCEN, so missions use no type-specific load callback |
+| 0x6a7b4 | Builds a renderer mesh from a MESH struct; reached from the MESH row of 0x1766b4 through 0x663ac and its completion 0x663f4 | Confirmed (logic) | Field order and the texture-coordinate pairing are in [mesh §1](./mesh.md#texture-coordinate-block-order-confirmed) |
 | 0x39f34 | Cut-scene sequence player | Likely | Plays videos in sequence, loads the matching music entry from a 12-byte-per-row table, and switches the display between 320 and 640 wide depending on the Cinematics HI/LO setting |
 | 0x2cbb4 | Builds the communications menu for the current target | Likely | Chooses one of three `COMM.NOB` menu tables from the target's type value and the flag bits `0x68000` (see [scenario](./scenario.md) §3) |
 | 0x282bf | Handles debug or cheat commands | Likely | References the strings for mission win/fail and mission selection; mission selection calls 0x33170 |
