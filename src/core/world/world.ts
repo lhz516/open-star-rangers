@@ -1,7 +1,7 @@
 /**
  * The formal Core world (docs/plan/p3/02/spec.md, 数据模型与契约; 行为与边界). step() is the only way to advance it;
  * projection() and renderState() read it at any time. Every output is deeply frozen and detached from the world, so
- * later ticks never change it. World creation from logic content belongs to subtask 07 and snapshots to subtask 08.
+ * later ticks never change it. createWorld (create-world.ts) creates it from logic content; snapshots are subtask 08's.
  *
  * Fault latch: when Core itself fails in a step or a read (a broken invariant, or a budget running out while a tick
  * executes), the world keeps the CoreFaultError and publishes nothing from that call; every later step(), projection()
@@ -87,7 +87,7 @@ class CoreWorld implements World {
 }
 
 /**
- * Internal construction of a world around `state`, for world creation (subtask 07) and Core tests; not a public
+ * Internal construction of a world around `state`, for world creation (create-world.ts) and Core tests; not a public
  * entry, and it accepts no handler. The world takes the state over without copying it: world creation keeps no
  * reference, and only Core tests do, to stand in for rule tasks that do not exist yet.
  */

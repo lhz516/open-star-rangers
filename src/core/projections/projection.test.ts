@@ -22,7 +22,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
     state.player.entityId = player.id;
     expect(world.projection()).toEqual({
       clock: { tick: 1, clock: 4, clockUnitsPerTick: 4 },
-      mission: { mission: 'mission/test-mission', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built' },
+      mission: { mission: 'mission/first-campaign', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built' },
       player: { entityId: player.id, viewMode: 0x0c, previousViewMode: 0x0c, subMode: 0, interactionContext: 'flight' },
       flight: { readiness: 'not-implemented' },
       map: { readiness: 'not-implemented' },

@@ -16,13 +16,16 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, initialState, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 
-/** An internal request of one tick, the counterpart of an original dispatcher message; subtask 07 adds spawn requests. */
+/** An internal request of one tick, the counterpart of an original dispatcher message. */
 export type Request =
   /** Message 0x200: an entity's own update asks for its next state. */
   | { readonly type: 'set-state'; readonly entityId: EntityId; readonly state: ObjectState }
   /** Message 0x20: an entity in state area-switch or pending-removal leaves, or switches its parking. */
-  | { readonly type: 'leave'; readonly entityId: EntityId };
+  | { readonly type: 'leave'; readonly entityId: EntityId }
+  /** Message 0x4000: one spawn request of a due queue entry (spawn.ts). */
+  | SpawnRequest;
 
 /**
  * The requests of one tick. Request handling takes them in posting order (mission flow, then object updates in walk
@@ -30,9 +33,9 @@ export type Request =
  * dropped unhandled, as the original clears late messages at the next frame.
  *
  * The count of posts is bounded by CORE_LIMITS.eventsPerTick, a runaway guard rather than an original limit: the
- * stages so far post at most one request per entity update and spawns at most one per instance, a sum (entities +
- * spawn expansion + commands) that limit covers. A rule whose requests fan out further derives its own bound and
- * revises CoreLimits.
+ * stages so far post at most one request per entity update and one per spawn request, of which a world schedules at
+ * most CORE_LIMITS.spawnExpansion in its lifetime, a sum (entities + spawn expansion + commands) that limit covers. A
+ * rule whose requests fan out further derives its own bound and revises CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -168,7 +171,12 @@ function leave(world: WorldState, entity: Entity): void {
   world.entities.remove(entity);
 }
 
-function handleRequest(world: WorldState, request: Request): void {
+function handleRequest(context: TickContext, request: Request): void {
+  const { world } = context;
+  if (request.type === 'spawn') {
+    dispatchSpawn(world, request, (event) => emit(context, event));
+    return;
+  }
   const entity = world.entities.get(request.entityId);
   // The subject was removed earlier in this pass: a reference to a removed entity is invalid.
   if (entity === undefined) return;
@@ -184,7 +192,12 @@ function handleRequest(world: WorldState, request: Request): void {
 
 /** Dispatcher message loop (`0x20d10`): every request of the tick, in posting order. */
 function handleRequests(context: TickContext): void {
-  context.requests.handle((request) => handleRequest(context.world, request));
+  context.requests.handle((request) => handleRequest(context, request));
+}
+
+/** Stage `spawn-queue-check` (`0x67018`): posts the spawn requests of every due queue entry; instantiates nothing. */
+function checkSpawns(context: TickContext): void {
+  checkSpawnQueue(context.world, context.requests);
 }
 
 /** Stage 7 (project boundary): seals the tick's events; requests posted since request handling were dropped. */
@@ -213,8 +226,7 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('object-update', updateObjects),
   // Dispatcher 0x20d10. A due communications reply (0x2cd60): P3-10.
   stage('communications-reply', null),
-  // 0x67018 posts a spawn request per due request and instantiates nothing: subtask 07.
-  stage('spawn-queue-check', null),
+  stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
   // After the message loop, each once: 0x221fc movement (P3-06), then its collision passes 0x29670 and 0x29934 (P3-07).
   stage('movement', null),

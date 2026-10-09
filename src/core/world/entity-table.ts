@@ -11,6 +11,7 @@
  * Rule tasks add their own entity fields through the instantiation extension point (spec 实体与生命周期).
  */
 import type { AssetId } from '../../content/asset-id.ts';
+import type { CraftSide } from '../../content/logic/logic-content.ts';
 import type { EntitySource, Vec3 } from '../contracts/domain-events.ts';
 import { fitsLimit } from '../contracts/limits.ts';
 import { CoreFaultError } from '../errors.ts';
@@ -70,10 +71,31 @@ export type NameReference =
 export type EntityPresentation = { readonly type: 'model'; readonly model: AssetId };
 
 /**
- * A 3×3 matrix in row order. Instantiation produces orientations only once Q-07/Q-11 confirm the initial attitude and
- * the basis convention; Core never outputs a guessed identity.
+ * A 3×3 matrix in row order: the original's three attitude rows (object +0x48, +0x54, +0x60), the third of which
+ * movement advances along. Instantiation gives the player the identity and every other entity its placement attitude
+ * (Q-07, Q-11).
  */
 export type Matrix3 = readonly [number, number, number, number, number, number, number, number, number];
+
+/**
+ * The rule inputs instantiation copies from the entity's record after the record's defaults (Q-04, Q-07), i32 each,
+ * named as in the content's `RuleInputs`: +0x70, +0x74 and +0x78 become the runtime +0xDC, +0xE0 and +0xE4; +0x60,
+ * +0x64 and +0x68 scale craft-record values, which P3-07 derives once the craft records are imported.
+ */
+export interface EntityRuleInputs {
+  /** +0x60. */
+  readonly percentB: number;
+  /** +0x64. */
+  readonly percentC: number;
+  /** +0x68. */
+  readonly percentD: number;
+  /** +0x70, runtime +0xDC. */
+  readonly aiValueA: number;
+  /** +0x74, runtime +0xE0. */
+  readonly aiValueB: number;
+  /** +0x78, runtime +0xE4. */
+  readonly aiValueC: number;
+}
 
 export interface Entity {
   readonly id: EntityId;
@@ -82,12 +104,17 @@ export interface Entity {
   /** The declaration the entity was instantiated from; null for entities the rules create at run time. */
   readonly source: EntitySource | null;
   readonly name: NameReference;
+  /** The player-relative side of the declared craft type; null for an entity the rules create without a declaration. */
+  readonly side: CraftSide | null;
+  /** Whether the declared craft type is in the interaction category (mask 0x68000, Likely base interaction, U-022). */
+  readonly baseInteraction: boolean;
   readonly presentation: EntityPresentation;
   /** Original runtime units. */
   position: Vec3;
   orientation: Matrix3;
   /** 0 at allocation; the rules add 1 at every discontinuous move (Warp arrival, rescue, launch) so renderers do not interpolate across it. */
   placementSerial: number;
+  readonly ruleInputs: EntityRuleInputs;
   state: ObjectState;
   activity: Activity;
   /** The original dead flag +0xD8, written by the rules. Destroyed is not removed: the rescue reuses the player's entity. */
@@ -99,11 +126,14 @@ export interface EntityInit {
   readonly kindBit: number;
   readonly source: EntitySource | null;
   readonly name: NameReference;
+  readonly side: CraftSide | null;
+  readonly baseInteraction: boolean;
   readonly presentation: EntityPresentation;
   readonly position: Vec3;
   readonly orientation: Matrix3;
-  /** Whether a new entity starts parked is Q-07's (`0x67938` parks every new object but the player). */
+  /** Instantiation parks an entity other than the player outside the active area (Q-07, `0x67938`). */
   readonly activity: 'parked' | 'active';
+  readonly ruleInputs: EntityRuleInputs;
 }
 
 /** The state an entity starts in on `activity`, at allocation and whenever its parking switches. */
@@ -134,6 +164,10 @@ function copySource(source: EntitySource | null): EntitySource | null {
   if (source === null) return null;
   const { collection, index, group } = source;
   return Object.freeze({ collection, index, group: group && Object.freeze({ index: group.index, request: group.request, member: group.member }) });
+}
+
+function copyRuleInputs({ percentB, percentC, percentD, aiValueA, aiValueB, aiValueC }: EntityRuleInputs): EntityRuleInputs {
+  return Object.freeze({ percentB, percentC, percentD, aiValueA, aiValueB, aiValueC });
 }
 
 function copyName(name: NameReference): NameReference {
@@ -182,10 +216,13 @@ export class EntityTable {
       kindBit,
       source: copySource(init.source),
       name: copyName(init.name),
+      side: init.side,
+      baseInteraction: init.baseInteraction,
       presentation: Object.freeze({ type: init.presentation.type, model: init.presentation.model }),
       position: Object.freeze({ x, y, z }),
       orientation: Object.freeze([...init.orientation]) as unknown as Matrix3,
       placementSerial: 0,
+      ruleInputs: copyRuleInputs(init.ruleInputs),
       state: initialState(activity),
       activity,
       destroyed: false,

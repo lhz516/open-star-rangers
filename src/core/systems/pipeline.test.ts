@@ -55,7 +55,7 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
   });
 
   it('implements only the stages P3-02 owns and fakes no rule system', () => {
-    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual(['input-registration', 'clock', 'object-update', 'request-handling', 'commit']);
+    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual(['input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'commit']);
   });
 
   it('is what runTick runs', () => {
@@ -69,13 +69,16 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
 
 describe('request queue (P3-02 AC-09, 系统流水线)', () => {
   const request = (entityId: number): Request => ({ type: 'leave', entityId });
+  /** The subject of a leave request; the tests post no other kind. */
+  const subject = (posted: Request): number => (posted.type === 'leave' ? posted.entityId : Number.NaN);
 
   it('handles requests in posting order, then those posted while handling', () => {
     const queue = new RequestQueue();
     queue.post(request(1));
     queue.post(request(2));
     const handled: number[] = [];
-    queue.handle(({ entityId }) => {
+    queue.handle((posted) => {
+      const entityId = subject(posted);
       handled.push(entityId);
       if (entityId === 1) queue.post(request(3));
       if (entityId === 3) queue.post(request(4));
@@ -87,9 +90,9 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
     const queue = new RequestQueue();
     const handled: number[] = [];
     queue.post(request(1));
-    queue.handle(({ entityId }) => handled.push(entityId));
+    queue.handle((posted) => handled.push(subject(posted)));
     queue.post(request(2));
-    expectFault(() => queue.handle(({ entityId }) => handled.push(entityId)), 'invariant-violated', 'pipeline.requests-handled');
+    expectFault(() => queue.handle((posted) => handled.push(subject(posted))), 'invariant-violated', 'pipeline.requests-handled');
     expect(handled).toEqual([1]);
   });
 
@@ -194,7 +197,7 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
   });
 
   it('does not update an entity instantiated in request handling, nor count it active, until its next update', () => {
-    // Instantiation itself is subtask 07's spawn request; the stand-in allocates as request handling ends.
+    // A stand-in allocates as request handling ends; spawn.test.ts covers the real spawn requests.
     const state = testState();
     let late: Entity | undefined;
     const activeAtMovement: boolean[] = [];

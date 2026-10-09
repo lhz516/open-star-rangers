@@ -39,15 +39,18 @@ describe('entity table identity (P3-02 S-05, AC-09 Q-08)', () => {
       name: { type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 1 },
       position: { x: 1, y: 2, z: 3 },
       orientation: [...TEST_ORIENTATION],
+      ruleInputs: { percentB: 1, percentC: 2, percentD: 3, aiValueA: 4, aiValueB: -5, aiValueC: 6 },
     } as unknown as EntityInit;
     const entity = new EntityTable().allocate(init);
     const before = JSON.stringify(entity);
+    Object.assign(init.ruleInputs, { aiValueA: 99 });
     Object.assign((init.source as { group: object }).group, { member: 9 });
     Object.assign((init.name as { declaration: object }).declaration, { index: 7 });
     Object.assign(init.position, { x: 100 });
     (init.orientation as unknown as number[])[0] = 100;
     expect(JSON.stringify(entity)).toBe(before);
-    for (const field of ['source', 'name', 'presentation', 'position', 'orientation'] as const) expect(deepFrozen(entity[field])).toBe(true);
+    for (const field of ['source', 'name', 'presentation', 'position', 'orientation', 'ruleInputs'] as const) expect(deepFrozen(entity[field])).toBe(true);
+    expect(entity.ruleInputs).toEqual({ percentB: 1, percentC: 2, percentD: 3, aiValueA: 4, aiValueB: -5, aiValueC: 6 });
   });
 
   it.each([
