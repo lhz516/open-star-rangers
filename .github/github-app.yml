@@ -1,0 +1,12 @@
+scripts:
+  - name: Link local data
+    # Original game data and research output live only in the main checkout's git-ignored local/.
+    # Link it into every new session worktree; never overwrite or nest inside an existing local entry.
+    command: >-
+      if [ "$COPILOT_WORKSPACE_PATH" != "$COPILOT_ROOT_PATH" ]
+      && [ -d "$COPILOT_ROOT_PATH/local" ]
+      && [ ! -e "$COPILOT_WORKSPACE_PATH/local" ]
+      && [ ! -L "$COPILOT_WORKSPACE_PATH/local" ];
+      then ln -sn "$COPILOT_ROOT_PATH/local" "$COPILOT_WORKSPACE_PATH/local"; fi
+    triggers:
+      - session.create
