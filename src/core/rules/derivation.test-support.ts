@@ -1,8 +1,9 @@
 /**
  * Independent expectations for the rules tests, from the P3-02/02 derivation
  * (docs/plan/p3/02/subtasks/02-placement-numeric-research.md, 完成证据, 交给 06 的独立推导). Float32 rounding works on
- * exact rationals with BigInt, bit by bit, without Math.fround, typed arrays or any code under test; f32 results round
- * toward zero (goal 执行记录, Q-11).
+ * exact rationals with BigInt, bit by bit, without Math.fround, typed arrays or any code under test. R is R_n by
+ * default, the derivation's column for Core: to nearest with ties to even (goal 执行记录, Q-11 revised); chop
+ * ('toward-zero') stays available to show where the two directions differ.
  */
 
 type Float32Rounding = 'toward-zero' | 'nearest';
@@ -67,23 +68,23 @@ export function float32Bits(value: number): number {
 const TWO_30 = 1n << 30n;
 
 /** Rectangle axis (item 2): R(N ÷ 2^30) with N = x0 × 2^30 + |x1 − x0| × r × 32769, for integer ends. */
-export function expectedRectangle(from: number, to: number, rand: number): number {
+export function expectedRectangle(from: number, to: number, rand: number, rounding: Float32Rounding = 'nearest'): number {
   const span = BigInt(Math.abs(to - from));
-  return float32OfRational(BigInt(from) * TWO_30 + span * BigInt(rand) * 32769n, TWO_30, 'toward-zero');
+  return float32OfRational(BigInt(from) * TWO_30 + span * BigInt(rand) * 32769n, TWO_30, rounding);
 }
 
 /** World default axis (item 3): W = 15000 n, h = W ÷ 2, R((W × r × 32769 − h × 2^30) ÷ 2^30). */
-export function expectedWorld(sectors: number, rand: number): number {
+export function expectedWorld(sectors: number, rand: number, rounding: Float32Rounding = 'nearest'): number {
   const extent = 15000n * BigInt(sectors);
-  return float32OfRational(extent * BigInt(rand) * 32769n - (extent / 2n) * TWO_30, TWO_30, 'toward-zero');
+  return float32OfRational(extent * BigInt(rand) * 32769n - (extent / 2n) * TWO_30, TWO_30, rounding);
 }
 
 /**
  * The world check's move (item 6) of a point outside the inset rectangle: L = √(x² + y²) and each double step rounded
  * to nearest as JavaScript does, then dx = R((x × (1 ÷ L)) × −300) and x' = R(x + dx), likewise y.
  */
-export function expectedPull(x: number, y: number): { readonly x: number; readonly y: number } {
+export function expectedPull(x: number, y: number, rounding: Float32Rounding = 'nearest'): { readonly x: number; readonly y: number } {
   const inverse = 1 / Math.sqrt(x * x + y * y);
-  const pull = (value: number): number => float32OfDouble(value + float32OfDouble(value * inverse * -300, 'toward-zero'), 'toward-zero');
+  const pull = (value: number): number => float32OfDouble(value + float32OfDouble(value * inverse * -300, rounding), rounding);
   return { x: pull(x), y: pull(y) };
 }

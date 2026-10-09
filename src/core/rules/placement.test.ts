@@ -7,8 +7,8 @@ import { expectedPull, expectedRectangle, expectedWorld, float32Bits, float32OfD
 import { RandStream, type RandSource } from './original-random.ts';
 import { INITIAL_DIAGONAL, memberPosition, placeRecord, type AttitudeRows, type PlacementRecord } from './placement.ts';
 
-// Expectations follow the Q-02 derivation (02 完成证据, items 4–8) with every f32 store rounded toward zero (goal
-// 执行记录, Q-11). X = 7500 × n; the inset rectangle is |x|, |y| ≤ X − 200.
+// Expectations follow the Q-02 derivation (02 完成证据, items 4–8) with every f32 store rounded to nearest with ties to
+// even, R_n (goal 执行记录, Q-11 revised). X = 7500 × n; the inset rectangle is |x|, |y| ≤ X − 200.
 
 const SIX: WorldFrame = Object.freeze({ sectors: 6 });
 const THREE: WorldFrame = Object.freeze({ sectors: 3 });
@@ -48,9 +48,12 @@ describe('placement route selection (0x68398)', () => {
     expect(rand.used).toBe(6);
     expect(placement.route).toBe('anchor');
     // Offsets: x +400 (even, 0 mod 200), y −599 (odd, 199), z +567 (even, 32767 mod 200 = 167). The z sum is exact in
-    // double precision and rounds once, toward zero.
-    expect(placement.position).toEqual({ x: 1400, y: -2599, z: float32OfDouble(Math.fround(0.7) + 567, 'toward-zero') });
-    expect(placement.position.z).not.toBe(Math.fround(Math.fround(0.7) + 567));
+    // double precision and rounds once: f32(0.7) = 11744051 × 2^-24, and 11744051 × 2^-10 = 11468.79… spacings of
+    // 2^-14 above 567, so nearest gives 567 + 11469 × 2^-14 where chop would give 567 + 11468 × 2^-14.
+    const z = float32OfDouble(Math.fround(0.7) + 567, 'nearest');
+    expect(z).toBe(567 + 11469 * 2 ** -14);
+    expect(float32OfDouble(Math.fround(0.7) + 567, 'toward-zero')).toBe(567 + 11468 * 2 ** -14);
+    expect(placement.position).toEqual({ x: 1400, y: -2599, z });
     expect(placement.attitude).toEqual(attitude(c, -c));
   });
 
@@ -150,15 +153,11 @@ describe('world check after every route', () => {
     expect(stored(200000, 0)).toEqual({ x: 199700, y: 0, z: 0 });
   });
 
-  it('rounds each f32 store toward zero, within one float32 ulp of round-to-nearest', () => {
-    const moved = stored(49152, 49152);
-    const pull = expectedPull(49152, 49152);
-    expect(moved).toEqual({ ...pull, z: 0 });
-    const inverse = 1 / Math.sqrt(2 * 49152 * 49152);
-    const nearest = Math.fround(49152 + Math.fround(49152 * inverse * -300));
-    // Spacing 2^-8 in [32768, 65536).
-    expect(Math.abs(moved.x - nearest)).toBeLessThanOrEqual(2 ** -8);
-    expect(float32Bits(moved.x)).toBe(float32Bits(pull.x));
+  it('rounds each f32 store to nearest', () => {
+    for (const [x, y] of [[49152, 49152], [46000, 1234.5], [45123.25, -3000]]) expect(stored(x, y)).toEqual({ ...expectedPull(x, y), z: 0 });
+    // (46000, 1234.5): nearest gives 45700.109375 where chopping each store would give 45700.10546875.
+    expect(stored(46000, 1234.5).x).toBe(45700.109375);
+    expect(expectedPull(46000, 1234.5, 'toward-zero').x).toBe(45700.10546875);
   });
 
   it('pulls a slice-like rectangle placement that reaches the edge band', () => {
@@ -174,7 +173,10 @@ describe('world check after every route', () => {
       expect(x).toBeGreaterThan(44800);
       expect(place(rand)).toEqual({ ...expectedPull(x, 0), z: 0 });
     }
-    expect(place(32767).x).toBe(float32OfDouble(45000 - 2 ** -8 - 300, 'toward-zero'));
+    // At r = 32767 the rectangle reaches 45000 itself (7500 × 2^-30 is under half the spacing 2^-8), which moves by
+    // exactly 300 along the x axis; chop would have given 45000 − 2^-8 and then 44700 − 2^-8.
+    expect(expectedRectangle(37500, 45000, 32767)).toBe(45000);
+    expect(place(32767).x).toBe(44700);
   });
 
   it('always ends a whole-world default point inside the inset in a world of 3 sectors', () => {
@@ -226,13 +228,15 @@ describe('initial attitude', () => {
 });
 
 describe('section-5 member positions', () => {
-  it('adds the layout offset to the cycle anchor per axis, rounding toward zero', () => {
-    // 1 + 2^-23 + 0.75 × 2^-23 chops to 1 + 2^-23 (nearest would give 1 + 2^-22).
+  it('adds the layout offset to the cycle anchor per axis, rounding to nearest with ties to even', () => {
+    // 1 + 2^-23 + 0.75 × 2^-23 rounds up to 1 + 2^-22 (chop would keep 1 + 2^-23).
     const anchor = { x: 1 + 2 ** -23, y: -(1 + 2 ** -23), z: 100 };
     const offset = { x: 3 * 2 ** -25, y: -3 * 2 ** -25, z: 25 };
-    expect(memberPosition(anchor, offset)).toEqual({ x: 1 + 2 ** -23, y: -(1 + 2 ** -23), z: 125 });
-    expect(Math.fround(anchor.x + offset.x)).toBe(1 + 2 ** -22);
+    expect(memberPosition(anchor, offset)).toEqual({ x: 1 + 2 ** -22, y: -(1 + 2 ** -22), z: 125 });
+    expect(float32OfDouble(anchor.x + offset.x, 'toward-zero')).toBe(1 + 2 ** -23);
     expect(Object.isFrozen(memberPosition(anchor, offset))).toBe(true);
+    // Half an ulp past 1 + 2^-23 (odd) ties up to the even 1 + 2^-22; half an ulp past 1 (even) ties down to 1.
+    expect(memberPosition({ x: 1 + 2 ** -23, y: 1, z: -1 }, { x: 2 ** -24, y: 2 ** -24, z: -(2 ** -24) })).toEqual({ x: 1 + 2 ** -22, y: 1, z: -1 });
   });
 
   it('keeps members of one cycle at fixed offsets from the anchor, with no world check', () => {
@@ -255,7 +259,8 @@ describe('runtime frame and placement together', () => {
       'mission',
     );
     const placement = placeRecord(record({}), frame, scripted([0, 32767]));
-    // (−45000, 44999.99609375) is outside the inset and moves once toward the origin.
-    expect(placement.position).toEqual({ ...expectedPull(-45000, 45000 - 2 ** -8), z: 0 });
+    // (−45000, 45000) is outside the inset and moves once toward the origin, symmetrically on the diagonal.
+    expect(placement.position).toEqual({ ...expectedPull(-45000, 45000), z: 0 });
+    expect(placement.position.y).toBe(-placement.position.x);
   });
 });

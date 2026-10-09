@@ -8,7 +8,6 @@
  */
 import { nextRandom, type RngState } from '../determinism/rng.ts';
 import { CoreFaultError } from '../errors.ts';
-import { toFloat32TowardZero } from './float32.ts';
 
 /** The largest value of the original's rand(). */
 export const RAND_MAX = 32767;
@@ -53,20 +52,20 @@ function requireRand(value: number): number {
 }
 
 /**
- * One axis of rectangle placement `0x6883c`: f32(from + |to − from| × rand × C), rounded toward zero. The span starts
+ * One axis of rectangle placement `0x6883c`: f32(from + |to − from| × rand × C), rounded to nearest. The span starts
  * at `from` whatever the order of the two ends. Within the supported coordinate range the sum is exact in double
  * precision, so the result is the exact value rounded once.
  */
 export function rectangleCoordinate(from: number, to: number, rand: number): number {
-  return toFloat32TowardZero(from + Math.abs(to - from) * requireRand(rand) * RAND_SCALE);
+  return Math.fround(from + Math.abs(to - from) * requireRand(rand) * RAND_SCALE);
 }
 
 /**
  * One axis of whole-world default placement `0x68c98` over the integer world extent W (15000 × sectors): with h = W
- * shifted right by 1, f32(W × rand × C − h), rounded toward zero (exact before the rounding).
+ * shifted right by 1, f32(W × rand × C − h), rounded to nearest (exact before the rounding).
  */
 export function worldCoordinate(extent: number, rand: number): number {
-  return toFloat32TowardZero(extent * requireRand(rand) * RAND_SCALE - (extent >> 1));
+  return Math.fround(extent * requireRand(rand) * RAND_SCALE - (extent >> 1));
 }
 
 /**

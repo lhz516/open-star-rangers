@@ -13,7 +13,6 @@
 import type { SpawnRegion, Vector3 } from '../../content/logic/logic-content.ts';
 import { CoreFaultError } from '../errors.ts';
 import { RUNTIME_SCALE, type WorldFrame } from './coordinates.ts';
-import { toFloat32TowardZero } from './float32.ts';
 import { anchorOffset, rectangleCoordinate, worldCoordinate, type RandSource } from './original-random.ts';
 
 /** Distance from the world edge of the band in which a placed point is pulled toward the origin. */
@@ -71,7 +70,7 @@ function routePoint(record: PlacementRecord, world: WorldFrame, rand: RandSource
     if (!target) return worldDefault(world, rand);
     const axis = (value: number): number => {
       const sign = rand.next();
-      return toFloat32TowardZero(value + anchorOffset(sign, rand.next()));
+      return Math.fround(value + anchorOffset(sign, rand.next()));
     };
     const x = axis(target.x);
     const y = axis(target.y);
@@ -98,7 +97,7 @@ function worldChecked(point: Vector3, { sectors }: WorldFrame): Vector3 {
   const inside = (value: number): boolean => -limit <= value && value <= limit;
   if (inside(point.x) && inside(point.y)) return point;
   const inverseLength = 1 / Math.sqrt(point.x * point.x + point.y * point.y);
-  const pulled = (value: number): number => toFloat32TowardZero(value + toFloat32TowardZero(value * inverseLength * -WORLD_EDGE_PULL));
+  const pulled = (value: number): number => Math.fround(value + Math.fround(value * inverseLength * -WORLD_EDGE_PULL));
   return vector(pulled(point.x), pulled(point.y), point.z);
 }
 
@@ -125,8 +124,8 @@ export function placeRecord(record: PlacementRecord, world: WorldFrame, rand: Ra
 
 /**
  * Position of a section-5 member: f32(A + l) per axis for the layout cycle's anchor A and the member's layout offset l,
- * rounded toward zero. Members are not converted, not checked against the world and take the anchor's attitude.
+ * rounded to nearest. Members are not converted, not checked against the world and take the anchor's attitude.
  */
 export function memberPosition(anchor: Vector3, offset: Vector3): Vector3 {
-  return vector(toFloat32TowardZero(anchor.x + offset.x), toFloat32TowardZero(anchor.y + offset.y), toFloat32TowardZero(anchor.z + offset.z));
+  return vector(Math.fround(anchor.x + offset.x), Math.fround(anchor.y + offset.y), Math.fround(anchor.z + offset.z));
 }

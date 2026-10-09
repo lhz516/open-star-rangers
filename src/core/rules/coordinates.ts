@@ -12,7 +12,7 @@
  */
 import type { MissionCoordinates, MissionDeclaration, SpawnRegion, StrategicMapFrame, Vector3 } from '../../content/logic/logic-content.ts';
 import { CoreInputError } from '../errors.ts';
-import { FLOAT32_MAX, isFiniteFloat32, toFloat32TowardZero } from './float32.ts';
+import { FLOAT32_MAX, isFiniteFloat32 } from './float32.ts';
 
 /** The runtime world scale the mission builder passes at `0x66d3e`: one sector is 15000 runtime units. */
 export const RUNTIME_SCALE = 15000;
@@ -35,7 +35,7 @@ export interface WorldFrame {
 }
 
 export interface RuntimeFrame extends WorldFrame {
-  /** q = f32(15000 ÷ referenceScale), rounded toward zero. */
+  /** q = f32(15000 ÷ referenceScale), rounded to nearest. */
   readonly scaleFactor: number;
 }
 
@@ -80,7 +80,7 @@ export function runtimeFrame(
   }
   return Object.freeze({
     sectors,
-    scaleFactor: toFloat32TowardZero(RUNTIME_SCALE / referenceScale),
+    scaleFactor: Math.fround(RUNTIME_SCALE / referenceScale),
   });
 }
 
@@ -97,7 +97,7 @@ export function runtimePosition(
 ): Vector3 {
   if (!origins.includes('object')) return runtimeVector(position, `${path}.position`);
   // The product of two float32 values is exact in double precision, so this is a single rounding.
-  return mapVector(position, `${path}.position`, (value, at) => requireCoordinate(toFloat32TowardZero(requireFloat32(value, at) * scaleFactor), at));
+  return mapVector(position, `${path}.position`, (value, at) => requireCoordinate(Math.fround(requireFloat32(value, at) * scaleFactor), at));
 }
 
 /**

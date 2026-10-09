@@ -18,8 +18,9 @@ import { PIPELINE, registerTick } from './pipeline.ts';
 import { disableSpawning, isSpawningEnabled, pendingSpawns, placeWorldRecord } from './spawn.ts';
 
 // Expectations are written out from Q-01–Q-07 (docs/original/formats/executable.md, P3-02/02–03, and the selected
-// mission's instantiation list in scenario.md) and the Q-11 decision (f32 stores toward zero). Random values come
-// from the world's Mulberry32 state directly: the original's rand() is the top 15 bits of each 32-bit draw.
+// mission's instantiation list in scenario.md) and the revised Q-11 decision (goal 执行记录: f32 stores round to
+// nearest). Random values come from the world's Mulberry32 state directly: the original's rand() is the top 15 bits of
+// each 32-bit draw.
 
 const Q = 1.875;
 /** f32(0.70710677), bits 0x3F3504F3, read independently of the code under test. */
@@ -147,7 +148,7 @@ describe('instantiation of the slice-shaped mission (P3-02 AC-05, R-02 schedulin
     for (const [leader, follower] of [[43, 44], [45, 46], [47, 48], [49, 50]]) {
       const anchor = state.entities.get(leader)!;
       const member = state.entities.get(follower)!;
-      expect(member.position).toEqual({ x: float32OfDouble(anchor.position.x + 250, 'toward-zero'), y: anchor.position.y, z: anchor.position.z });
+      expect(member.position).toEqual({ x: float32OfDouble(anchor.position.x + 250, 'nearest'), y: anchor.position.y, z: anchor.position.z });
       expect(member.orientation).toEqual(anchor.orientation);
       expect([anchor.activity, member.activity]).toEqual(['parked', 'parked']);
       // Rectangle 1, 30000–37500 on both axes: the attitude faces away from the centre along (+, +).
@@ -229,7 +230,7 @@ describe('spawn enable flag and queue queries (P3-02 AC-05; P3-11 interfaces)', 
 
 describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => {
   const p = { x: Math.fround(1234.5678), y: Math.fround(-987.6543), z: Math.fround(0.3) };
-  const runtime = (value: number) => float32OfDouble(value * Q, 'toward-zero');
+  const runtime = (value: number) => float32OfDouble(value * Q, 'nearest');
 
   /**
    * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 a member
@@ -258,7 +259,7 @@ describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => 
     expect(at(1)).toEqual(once);
     expect(once.x).not.toBe(runtime(runtime(p.x)));
     expect(at(2, 0)).toEqual(once);
-    expect(at(2, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'toward-zero') });
+    expect(at(2, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
     expect(at(4)).toEqual(p);
     // The build fills section-1 records only: the group-only member keeps its source values.
     expect(state.entities.get(events.find(({ source }) => source.index === 2)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
@@ -298,7 +299,7 @@ describe('group dispatch (P3-02 AC-05, Q-02 section-5 dispatch)', () => {
     const second = { x: expectedRectangle(-1500, 1500, r2), y: expectedRectangle(750, 3000, r3), z: 0 };
     expect(members.map(({ source, position }) => [source, position])).toEqual([
       [mission(2, { index: 0, request: 0, member: 0 }), first],
-      [mission(3, { index: 0, request: 0, member: 1 }), { x: float32OfDouble(first.x - 300, 'toward-zero'), y: float32OfDouble(first.y + 20, 'toward-zero'), z: 5 }],
+      [mission(3, { index: 0, request: 0, member: 1 }), { x: float32OfDouble(first.x - 300, 'nearest'), y: float32OfDouble(first.y + 20, 'nearest'), z: 5 }],
       [mission(2, { index: 0, request: 0, member: 2 }), second],
     ]);
     const facing = (x: number): number[] => (x >= 0 ? [-C, C, 0, 0, 0, 1, C, C, 0] : [-C, -C, 0, 0, 0, 1, -C, C, 0]);

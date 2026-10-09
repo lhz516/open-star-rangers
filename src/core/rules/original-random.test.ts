@@ -5,7 +5,8 @@ import { expectedRectangle, expectedWorld } from './derivation.test-support.ts';
 import { anchorOffset, RAND_MAX, RAND_SCALE, randOfUint32, RandStream, rectangleCoordinate, worldCoordinate } from './original-random.ts';
 
 // Expectations follow the Q-02 derivation (02 完成证据, items 2–4): D = {0, …, 32767}, C = 32769 ÷ 2^30, and every
-// f32 result is the exact value rounded toward zero (goal 执行记录, Q-11). Exact values are formed with BigInt.
+// f32 result is the exact value rounded to nearest with ties to even, R_n (goal 执行记录, Q-11 revised). Exact values
+// are formed with BigInt.
 
 const RANDS = Array.from({ length: 32768 }, (_, rand) => rand);
 
@@ -62,23 +63,32 @@ describe('rectangle placement 0x6883c', () => {
     ['a small span far from the origin', 4_000_000, 4_000_001],
     ['reversed ends reaching the edge of the coordinate range', 2 ** 21, 1],
     ['a zero span', 7, 7],
-  ])('maps every rand value to the exact value rounded toward zero: %s', (_, from, to) => {
+  ])('maps every rand value to the exact value rounded to nearest: %s', (_, from, to) => {
     expect(RANDS.map(rand => rectangleCoordinate(from, to, rand))).toEqual(RANDS.map(rand => expectedRectangle(from, to, rand)));
   });
 
-  it('attains the lower end exactly and stops below the upper end', () => {
+  it('attains both ends when the upper end is less than half a spacing above the exact value', () => {
     expect(rectangleCoordinate(-5625, 5625, 0)).toBe(-5625);
-    // 5625 − 11250 × 2^-30 is less than one spacing (2^-11) below 5625: chop gives the float32 before it.
-    expect(rectangleCoordinate(-5625, 5625, RAND_MAX)).toBe(5625 - 2 ** -11);
+    // Item 2: r = 32767 falls δ = |x1 − x0| × 2^-30 short of the upper end. 11250 × 2^-30 is below half the spacing
+    // 2^-11 under 5625, so nearest gives 5625; chop would give 5625 − 2^-11.
+    expect(rectangleCoordinate(-5625, 5625, RAND_MAX)).toBe(5625);
+    expect(expectedRectangle(-5625, 5625, RAND_MAX, 'toward-zero')).toBe(5625 - 2 ** -11);
     // Upper end 0: the deficit 15000 × 2^-30 is exactly representable, so the result is that tiny negative value.
     const nearZero = rectangleCoordinate(-15000, 0, RAND_MAX);
     expect(nearZero).toBe(-15000 * 2 ** -30);
     expect(nearZero).toBeLessThan(0);
-    // A negative upper end: chopping the value just beyond it gives the end itself.
+    // A negative upper end: the value just beyond it rounds back to the end itself.
     expect(rectangleCoordinate(-1000, -200, RAND_MAX)).toBe(-200);
     // The span runs from x0 upwards whatever the order: 100 to 300 here.
     expect(rectangleCoordinate(100, -100, 0)).toBe(100);
-    expect(rectangleCoordinate(100, -100, RAND_MAX)).toBe(300 - 2 ** -15);
+    expect(rectangleCoordinate(100, -100, RAND_MAX)).toBe(300);
+  });
+
+  it('breaks a tie at the upper end to the even significand', () => {
+    // Below 2 the spacing is 2^-23. A span of 64 falls 64 × 2^-30 = 2^-24 short: exactly halfway between the odd
+    // 2 − 2^-23 and the even 2, so the result is 2. A span of 65 falls past halfway and gives 2 − 2^-23.
+    expect(rectangleCoordinate(-62, 2, RAND_MAX)).toBe(2);
+    expect(rectangleCoordinate(-63, 2, RAND_MAX)).toBe(2 - 2 ** -23);
   });
 
   it('gives one preimage per result when the step exceeds the float32 spacing', () => {
@@ -89,12 +99,13 @@ describe('rectangle placement 0x6883c', () => {
   });
 
   it('shares results among several rand values for a small span far from the origin', () => {
-    // Spacing 0.25 at 4,000,000: x0 + k/4 takes r with r × 32769 in [k × 2^28, (k + 1) × 2^28), 8192 values each:
-    // 2^28 ÷ 32769 = 8191.75…, 2 × 2^28 ÷ 32769 = 16383.5…, 3 × 2^28 ÷ 32769 = 24575.25….
+    // Spacing 0.25 at 4,000,000: x0 + k/4 takes r with r × 32769 in [(2k − 1) × 2^27, (2k + 1) × 2^27), never a tie
+    // since 32769 is odd and r < 2^15: 2^27 ÷ 32769 = 4095.87…, 3 × 2^27 ÷ 32769 = 12287.62…, 5 × 2^27 ÷ 32769 =
+    // 20479.37…, 7 × 2^27 ÷ 32769 = 28671.12…. Both ends take half a step's worth of r each.
     const results = RANDS.map(rand => rectangleCoordinate(4_000_000, 4_000_001, rand));
-    expect([...counts(results)]).toEqual([[4_000_000, 8192], [4_000_000.25, 8192], [4_000_000.5, 8192], [4_000_000.75, 8192]]);
-    expect([results[8191], results[8192], results[16383], results[16384], results[24575], results[24576]]).toEqual([
-      4_000_000, 4_000_000.25, 4_000_000.25, 4_000_000.5, 4_000_000.5, 4_000_000.75,
+    expect([...counts(results)]).toEqual([[4_000_000, 4096], [4_000_000.25, 8192], [4_000_000.5, 8192], [4_000_000.75, 8192], [4_000_001, 4096]]);
+    expect([results[4095], results[4096], results[12287], results[12288], results[20479], results[20480], results[28671], results[28672]]).toEqual([
+      4_000_000, 4_000_000.25, 4_000_000.25, 4_000_000.5, 4_000_000.5, 4_000_000.75, 4_000_000.75, 4_000_001,
     ]);
     expect(new Set(RANDS.map(rand => rectangleCoordinate(7, 7, rand)))).toEqual(new Set([7]));
   });
@@ -112,13 +123,18 @@ describe('whole-world default placement 0x68c98', () => {
     // The step W × 32769 × 2^-30 ≥ 0.45 exceeds the spacing below h, so the results are distinct and increasing.
     expect(new Set(results).size).toBe(32768);
     expect(results[0]).toBe(-7500 * sectors);
+    // h − W × 2^-30 = h × (1 − 2^-29) is always less than half a spacing below h (item 3).
+    expect(results[RAND_MAX]).toBe(7500 * sectors);
   });
 
-  it('stops one float32 below h', () => {
-    // h − W × 2^-30 is less than one spacing below h: 2^-8 below 45,000, 2^-7 below 105,000, 0.25 below 4,192,500.
-    expect(worldCoordinate(90000, RAND_MAX)).toBe(45000 - 2 ** -8);
-    expect(worldCoordinate(210_000, RAND_MAX)).toBe(105000 - 2 ** -7);
-    expect(worldCoordinate(8_385_000, RAND_MAX)).toBe(4_192_500 - 0.25);
+  it('attains h, where chop would stop one float32 below it', () => {
+    // h − W × 2^-30 is less than half a spacing below h: spacing 2^-8 at 45,000, 2^-7 at 105,000, 0.25 at 4,192,500.
+    expect(worldCoordinate(90000, RAND_MAX)).toBe(45000);
+    expect(worldCoordinate(210_000, RAND_MAX)).toBe(105000);
+    expect(worldCoordinate(8_385_000, RAND_MAX)).toBe(4_192_500);
+    expect(expectedWorld(6, RAND_MAX, 'toward-zero')).toBe(45000 - 2 ** -8);
+    expect(expectedWorld(14, RAND_MAX, 'toward-zero')).toBe(105000 - 2 ** -7);
+    expect(expectedWorld(559, RAND_MAX, 'toward-zero')).toBe(4_192_500 - 0.25);
   });
 });
 

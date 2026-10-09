@@ -5,7 +5,7 @@ import { COORDINATE_LIMIT, MAX_WORLD_SECTORS, runtimeFrame, runtimePosition, run
 import { float32OfRational } from './derivation.test-support.ts';
 
 // Expectations follow the Q-03 derivation (02 完成证据, item 1): q = R(15000 ÷ s), p' = R(p × q), v' = trunc(v × q),
-// X = 7500 × n with n = 2 × halfExtent ÷ s; R rounds toward zero (goal 执行记录, Q-11).
+// X = 7500 × n with n = 2 × halfExtent ÷ s; R is R_n, to nearest with ties to even (goal 执行记录, Q-11 revised).
 
 const coordinates = (referenceScale: number): MissionCoordinates => ({ unit: 'scen-reference', referenceScale, layoutUnit: 'scen-runtime' });
 const sliceFrame = (halfExtent: number): StrategicMapFrame => ({ rightAxis: '+x', upAxis: '-y', center: { right: 0, up: 0 }, halfExtent });
@@ -33,13 +33,14 @@ describe('runtime frame (Q-03 scale, world rectangle)', () => {
     expect(frameOf(8000, 559 * 4000)).toEqual({ sectors: 559, scaleFactor: 1.875 });
   });
 
-  it('rounds the factor toward zero where round-to-nearest would go up', () => {
-    // 15000 ÷ 11000 = 15/11: nearest rounds up, chop keeps the lower float32.
-    const chopped = float32OfRational(15n, 11n, 'toward-zero');
-    expect(chopped).toBe(Math.fround(15 / 11) - 2 ** -23);
-    expect(frameOf(11000, 11000).scaleFactor).toBe(chopped);
+  it('rounds the factor to nearest where chop would stay below', () => {
+    // 15000 ÷ 11000 = 15/11 = 11439010.909… × 2^-23: nearest takes 11439011, chop would keep 11439010.
+    const nearest = float32OfRational(15n, 11n, 'nearest');
+    expect(nearest).toBe(11439011 * 2 ** -23);
+    expect(frameOf(11000, 11000).scaleFactor).toBe(nearest);
+    expect(nearest).not.toBe(float32OfRational(15n, 11n, 'toward-zero'));
     // 15000 ÷ 7000 = 15/7: both directions agree.
-    expect(frameOf(7000, 7000).scaleFactor).toBe(float32OfRational(15n, 7n, 'toward-zero'));
+    expect(frameOf(7000, 7000).scaleFactor).toBe(float32OfRational(15n, 7n, 'nearest'));
     expect(float32OfRational(15n, 7n, 'toward-zero')).toBe(float32OfRational(15n, 7n, 'nearest'));
   });
 
@@ -91,14 +92,31 @@ describe('runtime positions (Q-03: object records once, others never)', () => {
     },
   );
 
-  it('rounds the product toward zero', () => {
-    // (1 + 2^-23) × 15/8 = 15/8 + 15 × 2^-26 = 15/8 + 1.875 ulp: chop adds one ulp, nearest would add two.
+  it('rounds the product to nearest, ties to even', () => {
+    // (1 + 2^-23) × 15/8 = 15/8 + 15 × 2^-26 = 15/8 + 1.875 ulp: nearest adds two ulps, chop would add one.
     const p = 1 + 2 ** -23;
-    const expected = float32OfRational(15n * ((1n << 23n) + 1n), 8n << 23n, 'toward-zero');
-    expect(expected).toBe(1.875 + 2 ** -23);
-    expect(Math.fround(p * 1.875)).toBe(1.875 + 2 ** -22);
-    const result = runtimePosition(declaration(['object'], { x: p, y: -p, z: 0 }), 1.875, 'd');
-    expect(result).toEqual({ x: expected, y: -expected, z: 0 });
+    const expected = float32OfRational(15n * ((1n << 23n) + 1n), 8n << 23n, 'nearest');
+    expect(expected).toBe(1.875 + 2 ** -22);
+    expect(float32OfRational(15n * ((1n << 23n) + 1n), 8n << 23n, 'toward-zero')).toBe(1.875 + 2 ** -23);
+    expect(runtimePosition(declaration(['object'], { x: p, y: -p, z: 0 }), 1.875, 'd')).toEqual({ x: expected, y: -expected, z: 0 });
+    // (1 + 2^-23) × 3/2 = 3/2 + 1.5 ulp, a tie between the odd 3/2 + 1 ulp and the even 3/2 + 2 ulps.
+    const tie = float32OfRational(3n * ((1n << 23n) + 1n), 1n << 24n, 'nearest');
+    expect(tie).toBe(1.5 + 2 ** -22);
+    expect(runtimePosition(declaration(['object'], { x: -p, y: 0, z: p }), 1.5, 'd')).toEqual({ x: -tie, y: 0, z: tie });
+  });
+
+  it('checks the coordinate range after rounding to nearest', () => {
+    // (2^22 − 0.5) × (1 + 2^-23) = 2^22 − 2^-24 rounds up to 2^22, outside the range; chop would keep 2^22 − 0.25.
+    const q = 1 + 2 ** -23;
+    expect(float32OfRational((1n << 46n) - 1n, 1n << 24n, 'nearest')).toBe(COORDINATE_LIMIT);
+    expect(float32OfRational((1n << 46n) - 1n, 1n << 24n, 'toward-zero')).toBe(COORDINATE_LIMIT - 0.25);
+    expect(inputError(() => runtimePosition(declaration(['object'], { x: 0, y: COORDINATE_LIMIT - 0.5, z: 0 }), q, 'd'))).toMatchObject({
+      path: 'd.position.y',
+      reason: 'is outside the supported coordinate range in runtime units',
+    });
+    // (2^22 − 0.75) × (1 + 2^-23) = 2^22 − 0.25 − 0.75 × 2^-23 rounds to 2^22 − 0.25, inside.
+    expect(float32OfRational(((1n << 24n) - 3n) * ((1n << 23n) + 1n), 1n << 25n, 'nearest')).toBe(COORDINATE_LIMIT - 0.25);
+    expect(runtimePosition(declaration(['object'], { x: 0, y: COORDINATE_LIMIT - 0.75, z: 0 }), q, 'd').y).toBe(COORDINATE_LIMIT - 0.25);
   });
 
   it('rejects positions outside the float32 domain or the coordinate range', () => {
