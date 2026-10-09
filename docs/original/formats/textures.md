@@ -3,10 +3,10 @@ type: format
 status: verified
 phase: P0
 updated: 2026-10-09
-related: [U-001, U-006, U-018, U-019, U-028, U-029]
+related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
 ---
 
-# Palettes and images (DATA, image record, TEX, BITM)
+# Palettes and images (DATA, image record, TEX, BITM, ANIM, EXPL)
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
@@ -26,7 +26,7 @@ Every image in `SR.NOB` uses the same record: TEX and BITM entries start with it
 | Offset | Type | Meaning |
 |---|---|---|
 | +0 | u32 | Bits per pixel; always 8 |
-| +4 | u32 | Encoding: 0 raw, 1 animation (ANIM only, not decoded), 2 sprite RLE |
+| +4 | u32 | Encoding: 0 raw, 1 byte-run sprite RLE (ANIM frames only), 2 sprite RLE |
 | +8 | u32 | Width |
 | +12 | u32 | Height |
 | +16 | u32 | 0 |
@@ -47,18 +47,41 @@ Each row is a sequence of u16 run lengths that alternate between transparent and
 
 Used by 21 cockpit images (CCKD), 33 TABL images, and one BITM (entry 10163, 320×200).
 
-### Encoding 1: animation (Unconfirmed)
+<a id="encoding-1-animation-unconfirmed"></a>
 
-Used only by the 186 ANIM frames; the data is smaller than `width × height`, so it is compressed, possibly as deltas between frames. The loop needs it: every mission start loads 13 of the 17 EXPL entries with their ANIM entries for explosions ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)); decoding is P3-03's (U-001).
+### Encoding 1: byte-run sprite RLE (Confirmed)
+
+Used only by the 186 ANIM frames ([§6](#6-anim-explosion-animations-confirmed)). The only reader is the explosion sprite drawer `0x58d64`, which decodes a frame each time it draws it (P3-03/05).
+
+**Rule (Confirmed, EXE `0x58d64`):** `height` rows, stored top to bottom, with no row header and no end marker. Each row is a sequence of u8 run lengths that alternate between transparent and opaque, starting with a transparent run:
+
+- a transparent run is one byte, its length in pixels;
+- an opaque run is one length byte followed by that many pixel bytes (palette indices);
+- the row ends as soon as its run lengths reach the width, after either kind of run; the next byte starts the next row with a transparent run. Well-formed rows reach it exactly (all 186 frames, below).
+
+This is the alternation of encoding 2 with 1-byte instead of u16 lengths. Decoding is driven by the width and height only; the code does not read the data-size field (+32).
+
+**Every branch of the decoder (Confirmed, code):**
+
+- A transparent run leaves the destination pixel unchanged. Opaque bytes are written unchanged, index 0 included; there is no colour key.
+- A run length of 0 is accepted and means nothing special: a zero transparent run starts the row with an opaque run, and a zero opaque run draws nothing.
+- Run lengths are not bounded by the width: the row ends at the first run that reaches or passes it. An opaque run that passes it still draws all its bytes, beyond the frame's box; a transparent one only advances.
+- Clipping changes only what is drawn: rows above the screen are skipped by reading the same runs, a run that crosses the left edge is split, the rest of a row is still read after the right edge, and rows below the viewport are not read.
+- Each source pixel becomes a square of `scale × scale` screen pixels (an integer from the caller). The whole square is drawn or skipped: it is drawn when it ends left of the screen's right edge and the sprite's depth is not greater than the 16-bit z-buffer value that the 3D renderer left at the square's top-left pixel.
+
+**Not a delta encoding (Confirmed, code):** each frame record has its own pixel pointer, and the drawer decodes that frame alone onto the current frame buffer. No frame reads another frame's data or the previous frame's pixels.
+
+**Baseline (Confirmed, local decode with this rule):** all 186 frames decode and consume exactly their stated data size; no row's runs pass the width; no run length is 0; and no opaque pixel has index 0. Zero-length runs and opaque index 0 are therefore handled by the code but do not occur.
 
 ## 3. TEX: textures (Confirmed)
 
 - Pixel values index the texture's own palette, usually 16 colours, stored as 8-bit **BGR** triplets (0–255), not RGB and not 6-bit VGA values (Confirmed).
 - **In game, texture colours are mapped to the nearest DATA colours.** Evidence: for the three textures of the player craft, 16 of 16, 8 of 14, and 4 of 5 palette colours, read as BGR and quantised to DATA, occur in a screenshot of that craft; read as RGB, almost none do. Rendered this way the craft matches the screenshot in colour (Confirmed).
 - How lighting chooses brighter or darker shades is Unconfirmed (U-028).
-- Observed sizes: 32×32, 64×64, 128×128, 256×256.
-- 58 of 59 TEX entries embed a palette; one has none.
-- Besides model parts, the executable loads two TEX entries by ID for effects: TEX 10151 for debris and TEX 10377 for missiles ([executable](./executable.md#effect-presentation-sources)).
+- Observed sizes: 32×32, 64×64, 96×96, 128×128, 256×256.
+- 58 of 59 TEX entries embed a palette; TEX 11069 has none ([below](#tex-11069-hit-shimmer-band-map-confirmed)).
+- **Header (Confirmed, all 59 entries and EXE):** a TEX entry starts with the 36-byte image record, followed by two u32 that are 0 in every entry; its pixel data starts at +44. At run time `0x660dc` stores the renderer image it builds in +0x24 and the renderer texture in +0x28.
+- Besides model parts, the executable loads two TEX entries by ID for effects: TEX 10151 for debris and TEX 10377 for missiles ([executable](./executable.md#effect-presentation-sources)). Two more serve the hit shimmer (11069) and the right display's background (11089), below.
 
 ### Nearest-colour metric and tie rule (Confirmed)
 
@@ -98,13 +121,55 @@ The confirmed rule resolves every one of them. It was not among the candidates. 
 
 Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-milestone.json`, `exact-source-tex-subgraphs.ts/.json` and private capture files in `local/research/p2-01/`; complete entry data and metadata were independently compared with `parseImfat`/`entryData`, and model references were checked with `parseModel` against `source-profiles.json`. The corpus projection checks 3,481 pairwise comparisons and produces byte-identical JSON on rerun. Original pixels and palette values remain local.
 
+### TEX 11069: hit-shimmer band map (Confirmed)
+
+**Structure (Confirmed):** 64×64, encoding 0 (4,096 bytes), no embedded palette (pointer and count 0, only +0x1C relocated). The stored bytes take 254 distinct values spread over the 8-bit range.
+
+**Its colours are never shown (Confirmed, EXE, P3-03/05):**
+
+- `0x41c00` loads it once per program run through the TEX wrapper `0x65e28` and keeps the entry in `0x193c30`. For a record without a palette, `0x660dc` gives the renderer image a 256-entry default palette (`0x1b41b0`; a raw scan of the image finds that address only in this store and in the release check) and creates a renderer texture.
+- A raw scan finds `0x193c30` only in its store, in its release at shutdown (`0x41dba` → `0x6b03c`), and in four reads in `0x41f88` and `0x4294c`. These read only the image's width, height and pixel buffer. The texture made for TEX 11069 is never applied to a mesh.
+
+**Use as thresholds (Confirmed, EXE):**
+
+- **Copy per struck craft:** for a struck object of a kind in `0x383`, `0x41dcc` → `0x41f88` makes a new texture from the image of the object's list-2 part's texture. That is TEX 11073 in all 16 list-2 parts, also 64×64 ([mesh](./mesh.md#2-modl-structure-confirmed-on-all-19-entries), list 2). Through `0x851cc` it gives that texture a second 8-bit image, a copy of TEX 11069's image. `0x851cc` rejects a second image whose depth is not 8 or whose width or height differs from the texture's image. The device's texture registration `0x7d09c` passes this second image (texture +0x5C) to the driver with the texture.
+- **Band:** `0x4294c` rewrites the copy from the stored value *v* of the same texel and a band position *t*: 0xFF where *t* + 1 < *v* < *t* + 40; otherwise 0x7F where *t* − 3 < *v* < *t* + 43; otherwise 0. The comparisons are signed 32-bit on the zero-extended byte.
+- **Band position:** `0x42664` computes *t* as the mission-clock units since the hit × 1/128 × 255, truncated. When *t* reaches 251 the effect ends.
+- **Shared copies:** kinds in `0xf9c7c` (bases included) share 16 copies, precomputed at *t* = 0, 15, …, 225; each step shows copy min(*t*/15, 15).
+
+**Display (Likely):** 0xFF, 0x7F and 0 are per-texel opacity applied to TEX 11073: opaque in the band, half at its edges, invisible elsewhere. The driver's use of the second image was not traced. That this produces the dithered hull seen in hit captures also stays Likely (U-027).
+
+**Requirements for conversion:**
+
+- The 4,096 stored bytes are threshold values that the code compares in their stored 8-bit form, texel for texel against the part texture. They must be kept exactly and in stored order; remapping them as colour indices (for example to the nearest DATA colour) would move the band.
+- There is no source palette, so no palette Asset can come from TEX 11069. Any palette an image payload is bound to serves only the viewer; it does not describe the game's display.
+
+### TEX 11089: right-display background (Confirmed structure; display Likely)
+
+**Structure (Confirmed):** 96×96, encoding 0 (9,216 bytes), and an embedded 256-entry BGR palette after the pixels. Relocations are at +0x1C and +0x14. The pixels use 14 distinct indices.
+
+**Palette equals DATA (Confirmed, count):** all 256 entries equal the DATA entry of the same index as the renderer expands it (each 6-bit component shifted left by 2). So under the [confirmed nearest-colour rule](#nearest-colour-metric-and-tie-rule-confirmed), every used entry has an exact DATA match with the same colour as its own DATA entry. Direct display under DATA and nearest-DATA mapping show the same colours.
+
+**Drawing path (Confirmed, EXE):**
+
+- `0x42b04` (view switch `0x3f158`) creates the right display's 3D device: 100×100 in HI and 50×50 in LO, 8-bit, with the DATA colour table `0x186c00` as its palette. It loads TEX 11089, or 11091 in view mode 6, with `0x65e28`. The texture made by `0x660dc` (own palette, 4 shades) goes to `0x85730`, which stores it as the scene's background texture (+0x2D8).
+- The viewport clear `0x7b8e0` hands it through `0x7d3c8` to `0x7d09c`, the device texture registration that mesh textures also use.
+- How the background is fitted to the 100×100 viewport, and whether a shade is applied, are inside the renderer and were not traced (P3-13).
+
+**Display (Likely):** colours as for mesh textures, which here equal DATA[index] for every pixel. The display's role is Likely (U-030).
+
+Evidence for this section: ignored `local/research/p3-03/images/` (`tex-survey.ts`, `tex11089.ts`, `list2.ts`, Ghidra probes `out/p8`–`out/p16`).
+
 ## 4. BITM: bitmaps (Confirmed structure)
 
 - 6 entries embed a 256-colour palette, also BGR: read that way, a portrait shows natural skin tones instead of blue (Likely).
   - By entry size and relocation count they are entries 10041, 10043, 10045, 10047, 10049 and 10051 (128×128).
-- 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exception (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, base interior; read as a craft type until P3-01/10) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below). Displayed with DATA, the colours of other entries looked clearly wrong (a visual judgement, not a code result).
+- 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exceptions (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, base interior; read as a craft type until P3-01/10) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below); the 15 nebula backgrounds also show under DATA (below). Displayed with DATA, the colours of other entries looked clearly wrong (a visual judgement, not a code result).
 - Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes: TABL 10171 lists the three of them, and docking shows one chosen at random (Confirmed, EXE, P3-01/10).
-- **The 15 nebula backgrounds (P3-01/10):** NEBC 10661 lists 15 BITMs of 128×128 without an embedded palette; flight draws six of them with `0x5b54c`, a rotated copy of the stored indices into the frame buffer with no colour lookup and no palette change, so they show under DATA (Likely; this disagrees with the visual judgement above, U-018). See [executable](./executable.md#data-loaded-by-the-loop-p3-0110).
+- **The 15 nebula backgrounds (P3-01/10; P3-03/05):** NEBC 10661 lists 15 BITMs ([hud](./hud.md#3-id-lists-confirmed-structure)). Each is 128×128, encoding 0 (16,384 bytes), with no embedded palette; its pixels start at +36 and its only relocation is +0x1C (Confirmed, all 15). Flight draws six of them with `0x5b54c` ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)):
+  - **Display direct under DATA (Confirmed, EXE):** `0x5b54c` copies every stored byte unchanged into the 8-bit frame buffer `0x1762a8`, with no colour lookup and no palette change. The 3D device renders into that buffer with DATA as its palette (`0x3d0b0`, colour table `0x186c00`). Flight setup sets the VGA palette to DATA (`0x3ed04`–`0x3ed09`, through `0x58288`). The cockpit slots of the world views carry no palette, so `0x49848` keeps DATA there ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)). Screen flashes replace the whole palette for a moment (`0x48d64` → `0x48f14`); that is a whole-screen effect (P3-12). For these 15 the code result takes precedence over the earlier visual judgement; the appearance check is P3-03/21.
+  - **Opaque (Confirmed):** every source byte is written; there is no colour key.
+  - **Shape (Confirmed):** the drawer addresses the source as 128 rows of 128 bytes (stride 0x80 in the code) through a rotation table at `0x1b2b20`. Its angle argument selects mirrored and transposed readings, so the drawer requires 128×128. The images are kept in stored row-major order; which orientation appears at which angle is P3-12's.
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
 - **The slice's BITM is drawn top-down (Confirmed):** the HUD blitters read source rows top-down in stored order ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)). In [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage.md#完成证据), 10467 in stored row order under DATA was identified at the left display in seven forward-view captures: 8,601 of its 9,216 pixels are exposed and identical in at least one capture. The other 615 are never exposed there (564 under text, 51 under unidentified graphics) and rest on the same-source read. 10467 is the only BITM in the slice, so U-019 is resolved for the slice and stays open for the portraits.
 
@@ -117,7 +182,7 @@ The P2-05 conversion limits come from [the P2-05 spec](../../plan/p2/05/spec.md#
 - for the 64 records with an embedded palette (58 TEX, 6 BITM), every opaque pixel index is below the palette's entry count;
 - records without an embedded palette are checked for structure only; 8-bit indices cannot exceed 256 entries.
 
-The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-structure-check.md#完成证据). Since P2-07 the same command also decodes the 38 CCKD element records (up to 640×480) and the 70 records of the TABL image lists (up to 20×52), 231 records in total; all fit the same limits ([cockpit §3](./cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed), [hud §2](./hud.md#tabl-image-lists-confirmed-structure)).
+The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-structure-check.md#完成证据). Since P2-07 the same command also decodes the 38 CCKD element records (up to 640×480) and the 70 records of the TABL image lists (up to 20×52), 231 records in total; all fit the same limits ([cockpit §3](./cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed), [hud §2](./hud.md#tabl-image-lists-confirmed-structure)). The 186 ANIM frames (at most 128×128, no embedded palette) also fit them; their own observed values are in [§6](#6-anim-explosion-animations-confirmed).
 
 | Quantity | Baseline maximum | P2-05 limit |
 |---|---:|---:|
@@ -126,3 +191,86 @@ The run is recorded in [P2-05 subtask 09](../../plan/p2/05/subtasks/09-local-str
 | Embedded palette entries | 256 (TEX, BITM) | 256 (format rule) |
 | DATA entries | 256 | exactly 256 (format rule) |
 
+## 6. ANIM: explosion animations (Confirmed)
+
+P3-03/05 established the structure from the EXE readers and all 17 entries. The frame encoding is [encoding 1](#encoding-1-byte-run-sprite-rle-confirmed).
+
+| Offset | Type | Meaning | Evidence |
+|---|---|---|---|
+| +0x00 | u32, relocated pointer | Frame array; 8 in all 17 entries | `0x49004` reads frames through it |
+| +0x04 | i32 | Frame count *n*; 12 in 14 entries, 6 in 3 | `0x2409c` compares the frame index with it by a signed compare (`JL`) |
+| +0x08 | *n* × 40 bytes | Frame records, in display order | Stride 0x28 in `0x49004` |
+
+A **frame record** is a 36-byte [image record](#2-image-record-36-bytes-confirmed) followed by four more bytes. The types of +0 to +32 are those of the image record (Confirmed there); the ANIM readers use only width, height and the pixel pointer:
+
+| Offset | Type | Value in all 186 frames | Read for ANIM frames | Confidence |
+|---|---|---|---|---|
+| +0 bits per pixel | u32 | 8 | No | Confirmed (all frames) |
+| +4 encoding | u32 | 1 | No; the drawer assumes encoding 1 | Confirmed (all frames and the drawer) |
+| +8, +12 width, height | u32, used as signed 32-bit | 128×128 or 48×48; equal within an entry | Yes (`0x49004`, `0x58d64`) | Confirmed (code) |
+| +16 | u32 | 0 | No | Confirmed (all frames) |
+| +20 palette pointer, +24 palette count | u32, u32 | 0 and 0; +20 not relocated | No | Confirmed (all frames) |
+| +28 pixel pointer | u32, relocated pointer | Start of the frame's data | Yes (`0x49004` → `0x58d64`) | Confirmed (code) |
+| +32 data size | u32 | Equals the bytes encoding 1 consumes | No | Confirmed (all frames, local decode) |
+| +36 | Unknown, 4 bytes | 0 | No reader found | Zero in all frames; type Unconfirmed |
+
+- **Layout (Confirmed, all 17):** the relocations are +0x00 and each frame's +28 (1 + *n*). The frames' pixel data follow the frame array without gaps, in frame order, and end exactly at the end of the entry.
+- **No load transform (Confirmed):** ANIM has no row in the per-type table `0x1766b4`. The EXPL loader requests it as a plain entry, so it is only relocated. The frame image is decoded at every draw; nothing is prepared at load.
+- **Readers (Confirmed):** only the explosion object reaches an ANIM, through its EXPL record. `0x2409c` reads the frame count; `0x49004` reads the frame array, each frame's width, height and pixel pointer, and passes them to the drawer `0x58d64` through the queue `0x492d0`/`0x49330`. No reader of frame +16, +32 or +36 was found.
+
+**Frame palette, transparency, row order and display (Confirmed, EXE):**
+
+- **Palette:** the frames have no embedded palette. `0x58d64` writes their stored indices unchanged into the 8-bit frame buffer `0x1762a8`, which the 3D device renders into with DATA as its palette and the VGA palette shows as DATA in the world views ([§4](#4-bitm-bitmaps-confirmed-structure), nebula backgrounds, gives the same chain). So the frames display **directly under DATA**: in project terms `palette/flight/models` with display `direct`.
+- **Transparency:** the transparent runs of encoding 1. Opaque bytes, index 0 included, are drawn.
+- **Row order:** stored order, top-down.
+- **Frames are complete images:** they are not deltas ([encoding 1](#encoding-1-byte-run-sprite-rle-confirmed)).
+
+**Animation parameters (Confirmed, code; the rules belong to P3-07 and P3-12):** the data holds no per-frame duration, offset or anchor; timing and placement are code.
+
+- **Timing:** `0x2409c` shows frame (14 × (*t* − *t*₀)) >> 6, with *t* the mission clock in 1/64 s and *t*₀ the explosion's start. That is 14 frames per second; the rate 14 is written only there. After the last frame the sprite is hidden (frame −1); the object is removed at the first update after the clock passes the start + 0x60 units (1.5 s).
+- **Placement:** `0x49004` centres the frame on the projected position of the explosion. It chooses an integer scale from the distance and the explosion's variant (EXPL, [§7](#7-expl-explosion-records-confirmed)), halved in LO. `0x49330` sorts the queued sprites by depth and draws them after the world.
+
+**Observed values (Confirmed, local decode; counts only):**
+
+| Quantity | Value |
+|---|---:|
+| ANIM entries; bytes in all | 17; 345,059 |
+| Largest entry | 58,087 bytes |
+| Frames per entry | 12 (14 entries), 6 (3 entries) |
+| Frames in all | 186: 84 of 128×128 (the 7 entries of EXIC list 1), 102 of 48×48 |
+| Largest frame data | 7,411 bytes |
+| Length bytes per row, at most | 11 |
+| Longest opaque run; longest transparent run | 111; 128 (a blank 128-wide row) |
+| Decoded pixels; of them opaque | 1,611,264; 299,061 |
+
+Evidence: ignored `local/research/p3-03/images/` (`survey.ts`, `anim-check.ts` with `out/anim-check.txt`, Ghidra probes `out/p1`–`out/p7`, `out/p17`–`out/p23`, `out/p27`–`out/p28`; decoded frames stay in `out/frames/`).
+
+## 7. EXPL: explosion records (Confirmed)
+
+**Structure (Confirmed, all 17 entries and `0x66ad8`):** 8 bytes, no relocations, and no other field:
+
+| Offset | Type | Meaning |
+|---|---|---|
+| +0 | u32 entry ID | SND: the explosion's sound ([audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08)) |
+| +4 | u32 entry ID | ANIM: the explosion's animation ([§6](#6-anim-explosion-animations-confirmed)) |
+
+- **Load transform (Confirmed, EXE):** `0x65d10` reaches the EXPL row's loader `0x66ad8`, which requests both entries. Its completion `0x6685c` overwrites each field in place with the loaded block's pointer. `0x6b090` turns either form back into an ID: an odd value is an entry ID (all 701 IDs in `SR.NOB` are odd), and an even, non-zero value is a loaded block. The dependency lister `0x66a38` uses it to list SND and ANIM.
+- **Readers (Confirmed):** an explosion object (kind `0x400000`) keeps its EXPL record at +0xF4 of its object data. `0x55534` plays +0 ([audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08)); `0x2409c` and `0x49004` read the ANIM at +4.
+
+**EXIC 10211 and the 17 EXPL entries (Confirmed, data):** the three lists ([hud §3](./hud.md#3-id-lists-confirmed-structure)) hold 17 distinct IDs, exactly the 17 EXPL entries. Each EXPL names a different ANIM. Four sounds are used: 10213 by 8 entries, 10217 by 7, and 10215 and 10219 by one each.
+
+| List | Positions | EXPL | ANIM | Sound | Frames |
+|---|---|---|---|---|---|
+| 1 | 1–7 | 10223, 10227, 10231, 10235, 10239, 10243, 10247 | 10183, 10187, 10191, 10195, 10199, 10203, 10207 | 10213, 10215, then 10213 ×5 | 12 × 128×128 |
+| 2 | 1–7 | 10225, 10229, 10233, 10237, 10241, 10245, 10249 | 10185, 10189, 10193, 10197, 10201, 10205, 10209 | 10217, 10219, 10217, 10217, 10217, 10213, 10213 | 12 × 48×48 |
+| 3 | 1–3 | 11389, 11391, 11393 | 11383, 11385, 11387 | 10217 ×3 | 6 × 48×48 |
+
+**Which list an explosion uses (Confirmed, code; the rules belong to P3-07):** the mission build `0x23520` keeps 5, 5 and 3 consecutive entries of the three lists from random starts ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
+
+- **Creation:** `0x23ac8` creates an explosion for a destroyed object and sets its variant byte (+0xF0): 3 when the object's kind has bit `0x100000` (a missile), 0 for kinds in `0xf9c7c`, otherwise 2. For kind 1 the first call only stores a time 0xC0 units (3 s) ahead and creates nothing; a call at or after that time creates the explosion. For kinds in `0xfffff` it adds, through `0x23fdc`, 0–3 secondary explosions at random offsets (2–5 for kinds in `0xf9c7c`), with variant 0 for kinds in `0xf9c7c` and otherwise 2.
+- **Choice of entry:** on its first update `0x2409c` picks a random kept entry.
+  - Variants 0 and 1 take list 1, and variant 3 takes list 3.
+  - Variant 2 takes list 2 when `0x56b50` (Likely the squared distance from the view) is at least 160000.0. Otherwise the variant becomes 1 and the entry comes from list 1.
+- **Scale:** the variant also selects the draw scale in `0x49004`.
+
+Evidence: ignored `local/research/p3-03/images/expl-check.ts` and Ghidra probes `out/p1`, `out/p2`, `out/p5`, `out/p22`.
