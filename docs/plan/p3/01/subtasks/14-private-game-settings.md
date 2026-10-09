@@ -39,6 +39,7 @@ updated: 2026-10-09
 
 - `tools/baseline/recipe.py`、`tools/baseline/session.py`、`tools/baseline/protect.py`、`tools/baseline/report.py`、`tools/baseline/reasons.py`、`tools/baseline/measure.py`：覆盖的解析、应用与记录。
 - `tools/baseline/test_recipe.py`、`tools/baseline/test_session.py`、`tools/baseline/test_protect.py`、`tools/baseline/test_report.py`：相应的测试。
+- `tools/baseline/test_processes.py`、`tools/baseline/fake_debugger.py`：修复 02 的不稳定测试 `test_reclaim_escalates_when_sigterm_is_ignored`（负载下 SIGTERM 可能早于子进程安装忽略处理而到达）。
 
 ## 验收标准
 
