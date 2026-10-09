@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { ESLint } from 'eslint';
 import ts from 'typescript';
 import { capabilityOf, familyOf, isProductEntry, PRODUCT_ENTRY_EXPORT, urlTarget } from './original-data-capabilities.ts';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { configDefaults } from 'vitest/config';
 import viteConfiguration from '../vite.config.ts';
 
@@ -134,6 +134,8 @@ const sharedAppProgram = (): ts.Program => appProgram ??= program('app');
 let nodeProgramFiles: ReadonlySet<string> | undefined;
 /** The resolved files of the real Node program, which type-checks the DOM-free modules its tests import. */
 const sharedNodeFiles = (): ReadonlySet<string> => nodeProgramFiles ??= new Set(program('node').getSourceFiles().map(file => resolve(file.fileName)));
+// Builds the Node program once for its readers: 0.6 s alone, but 7.6 s at load 12 and 13 s at load 90.
+beforeAll(() => void sharedNodeFiles(), 30_000);
 
 function withFixtures<T>(files: Record<string, string>, check: (directory: string) => T): T {
   const directory = mkdtempSync(join(tmpdir(), 'star-rangers-boundaries-'));

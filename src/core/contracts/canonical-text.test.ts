@@ -102,44 +102,49 @@ describe('canonical text (P3-02 AC-11 rules, 快照、哈希与 replay)', () => 
     expect(Object.isFrozen(value)).toBe(true);
   });
 
-  it(`accepts a text of exactly ${LIMIT} characters and rejects one more`, () => {
-    expect(canonicalText('a'.repeat(LIMIT - 2))).toHaveLength(LIMIT);
-    expect(canonicalText(['a'.repeat(LIMIT - 4)])).toHaveLength(LIMIT);
-    const reason = `makes the canonical text longer than ${LIMIT} characters`;
-    expectInputError(() => canonicalText('a'.repeat(LIMIT - 1)), 'value', reason);
-    expectInputError(() => canonicalText(['a'.repeat(LIMIT - 3)]), 'value', reason);
-  });
-
-  it('counts every escape exactly at the limit', () => {
-    // Written widths: é 6, " 2, newline 2, U+0001 6, lone surrogate 6, surrogate pair 12, DEL 1, U+2028 6; 41 in all.
-    const special = '\u00e9"\n\u0001\ud800\u{1f680}\u007f\u2028';
-    const filler = LIMIT - 2 - 41;
-    expect(canonicalText(special + 'a'.repeat(filler))).toHaveLength(LIMIT);
-    expectInputError(() => canonicalText(special + 'a'.repeat(filler + 1)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
-  });
-
-  it('rejects a string whose escapes exceed the limit before encoding it', () => {
-    const stringify = vi.spyOn(JSON, 'stringify');
-    // Fits as raw code units; written as \u00e9 each, it is 6 times longer.
-    expectInputError(() => canonicalText('\u00e9'.repeat(LIMIT / 4)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
-    expectInputError(() => canonicalText('\u0001'.repeat(LIMIT / 4)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
-    expect(stringify).not.toHaveBeenCalled();
-  });
-
-  it('stops writing at the first piece past the limit, without visiting the rest', () => {
-    const piece = 'x'.repeat(2 ** 20);
-    let visited = 0;
-    const endless = new Proxy(new Array<string>(2 ** 31), {
-      get(target, key, receiver) {
-        if (typeof key === 'string' && /^\d+$/.test(key)) {
-          visited++;
-          return piece;
-        }
-        return Reflect.get(target, key, receiver);
-      },
+  // Each case writes or scans texts of the limit's size: 0.1–0.4 s per case alone, but up to 19 s at load 90.
+  describe('limit-sized texts', { timeout: 30_000 }, () => {
+    it(`writes exactly ${LIMIT} characters from a string and rejects one more`, () => {
+      expect(canonicalText('a'.repeat(LIMIT - 2))).toHaveLength(LIMIT);
+      expectInputError(() => canonicalText('a'.repeat(LIMIT - 1)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
     });
-    expectInputError(() => canonicalText(endless), 'value[15]', `makes the canonical text longer than ${LIMIT} characters`);
-    expect(visited).toBe(16);
+
+    it(`writes exactly ${LIMIT} characters from a list and rejects one more`, () => {
+      expect(canonicalText(['a'.repeat(LIMIT - 4)])).toHaveLength(LIMIT);
+      expectInputError(() => canonicalText(['a'.repeat(LIMIT - 3)]), 'value', `makes the canonical text longer than ${LIMIT} characters`);
+    });
+
+    it('counts every escape exactly at the limit', () => {
+      // Written widths: é 6, " 2, newline 2, U+0001 6, lone surrogate 6, surrogate pair 12, DEL 1, U+2028 6; 41 in all.
+      const special = '\u00e9"\n\u0001\ud800\u{1f680}\u007f\u2028';
+      const filler = LIMIT - 2 - 41;
+      expect(canonicalText(special + 'a'.repeat(filler))).toHaveLength(LIMIT);
+      expectInputError(() => canonicalText(special + 'a'.repeat(filler + 1)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
+    });
+
+    it('rejects a string whose escapes exceed the limit before encoding it', () => {
+      const stringify = vi.spyOn(JSON, 'stringify');
+      // Fits as raw code units; written as \u00e9 each, it is 6 times longer.
+      expectInputError(() => canonicalText('\u00e9'.repeat(LIMIT / 4)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
+      expectInputError(() => canonicalText('\u0001'.repeat(LIMIT / 4)), 'value', `makes the canonical text longer than ${LIMIT} characters`);
+      expect(stringify).not.toHaveBeenCalled();
+    });
+
+    it('stops writing at the first piece past the limit, without visiting the rest', () => {
+      const piece = 'x'.repeat(2 ** 20);
+      let visited = 0;
+      const endless = new Proxy(new Array<string>(2 ** 31), {
+        get(target, key, receiver) {
+          if (typeof key === 'string' && /^\d+$/.test(key)) {
+            visited++;
+            return piece;
+          }
+          return Reflect.get(target, key, receiver);
+        },
+      });
+      expectInputError(() => canonicalText(endless), 'value[15]', `makes the canonical text longer than ${LIMIT} characters`);
+      expect(visited).toBe(16);
+    });
   });
 
   it('hashes to 16 lowercase hex digits of FNV-1a 64 over the text', () => {
