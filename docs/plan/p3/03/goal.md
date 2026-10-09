@@ -122,7 +122,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [16-flight-graphics.md](./subtasks/16-flight-graphics.md) | 13, 14 | completed |
 | [17-flight-data-step.md](./subtasks/17-flight-data-step.md) | 16 | completed |
 | [18-event-hud-sounds.md](./subtasks/18-event-hud-sounds.md) | — | completed |
-| [19-package-integration.md](./subtasks/19-package-integration.md) | 07, 15, 17, 18 | pending |
+| [19-package-integration.md](./subtasks/19-package-integration.md) | 07, 15, 17, 18 | in-progress |
 | [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19 | pending |
 | [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19 | pending |
 | [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21 | pending |
