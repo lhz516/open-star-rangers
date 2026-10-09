@@ -88,12 +88,12 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | pending |
-| [02-engineering-checks.md](./subtasks/02-engineering-checks.md) | — | pending |
+| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | in-progress |
+| [02-engineering-checks.md](./subtasks/02-engineering-checks.md) | — | in-progress |
 | [03-browser-regression.md](./subtasks/03-browser-regression.md) | — | pending |
 | [04-compliance-artifacts.md](./subtasks/04-compliance-artifacts.md) | — | pending |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | pending |
-| [06-unknowns-ownership.md](./subtasks/06-unknowns-ownership.md) | — | pending |
+| [06-unknowns-ownership.md](./subtasks/06-unknowns-ownership.md) | — | in-progress |
 | [07-exit-review-handoff.md](./subtasks/07-exit-review-handoff.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 
