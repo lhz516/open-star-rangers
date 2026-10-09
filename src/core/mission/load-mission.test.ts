@@ -63,7 +63,7 @@ function thrown(value: unknown): Error & { path?: string; code?: string; reason?
 }
 
 describe('loadMission', () => {
-  it('resolves every declaration and copies the mission frame, pool, regions and groups, in the spec field order', () => {
+  it('resolves every declaration and copies the mission frame, pool, regions, groups and event triggers, in the spec field order', () => {
     const content = mission();
     const roster = syntheticRoster();
     const setup = load(input());
@@ -77,9 +77,27 @@ describe('loadMission', () => {
       declarations: content.declarations.map((declaration, index) => ({ ...declaration, ...MISSION_RESOLUTION[index] })),
       player: 0,
       groups: content.groups,
+      eventTriggers: content.eventTriggers,
       wingmanOptions: roster.options.map(option => ({ ...option, ...resolved('friendly', 'model/player-ship') })),
     });
-    expect(Object.keys(setup)).toEqual(['mission', 'campaign', 'coordinates', 'mapFrame', 'namePool', 'spawnRegions', 'declarations', 'player', 'groups', 'wingmanOptions']);
+    expect(Object.keys(setup)).toEqual([
+      'mission', 'campaign', 'coordinates', 'mapFrame', 'namePool', 'spawnRegions', 'declarations', 'player', 'groups', 'eventTriggers', 'wingmanOptions',
+    ]);
+    expect(setup.declarations.map(({ eventTrigger }) => eventTrigger)).toEqual([null, null, null, 0, 0, 1]);
+    expect(setup.wingmanOptions.every(({ eventTrigger }) => eventTrigger === null)).toBe(true);
+  });
+
+  it('passes event triggers through without interpreting them', () => {
+    const triggers = [
+      { ranges: [{ lower: 100, upper: -100, messages: ['\u0001\u00ff'], summarySelector: -128 }, { lower: 5, upper: 5, messages: [], summarySelector: 127 }] },
+    ];
+    const setup = load(changed(value => {
+      Object.assign(value.mission.content, { eventTriggers: triggers });
+      value.mission.content.declarations.forEach(declaration => { declaration.eventTrigger = declaration.index === 5 ? 0 : null; });
+    }));
+    expect(setup.eventTriggers).toEqual(triggers);
+    expect(setup.declarations.map(({ eventTrigger }) => eventTrigger)).toEqual([null, null, null, null, null, 0]);
+    expect(load(changed(value => { value.mission.content.eventTriggers = []; value.mission.content.declarations.forEach(declaration => { declaration.eventTrigger = null; }); })).eventTriggers).toEqual([]);
   });
 
   it('takes the scale and map frame from the input', () => {
@@ -102,6 +120,11 @@ describe('loadMission', () => {
     source.mission.content.namePool[0] = 'changed';
     source.mission.content.declarations[0].placement.region = 1;
     source.craftTypes.content.entries[0].model.id = 'model/other';
+    source.mission.content.eventTriggers[0].ranges[0].messages[0] = 'changed';
+    source.mission.content.eventTriggers[1].ranges.pop();
+    expect(first.eventTriggers).not.toBe(source.mission.content.eventTriggers);
+    expect(first.eventTriggers[0].ranges[0].messages[0]).toBe(`${MARKER}-won`);
+    expect(first.eventTriggers[1].ranges).toHaveLength(1);
     expect(first.namePool[0]).toBe(`${MARKER}-pool-1`);
     expect(first.declarations[0]).toMatchObject({ placement: { region: 0 }, model: 'model/player-ship' });
     expect(load(input())).toEqual(first);
@@ -141,6 +164,14 @@ describe('loadMission', () => {
       'invalid-logic-payload', 'input.craftTypes.content.entries'],
     ['a wingman option referencing a mission structure', () => changed(value => { value.wingmanRoster.content.options[0].aiTarget = 0; }),
       'logic-reference-mismatch', 'input.wingmanRoster.content.options[0]'],
+    ['a wingman option with an event trigger', () => changed(value => { value.wingmanRoster.content.options[1].eventTrigger = 0; }),
+      'logic-reference-mismatch', 'input.wingmanRoster.content.options[1]'],
+    ['a declaration event trigger beyond the triggers', () => changed(value => { value.mission.content.declarations[2].eventTrigger = 2; }),
+      'logic-reference-mismatch', 'input.mission.content.declarations[2].eventTrigger'],
+    ['an event trigger no declaration references', () => changed(value => { value.mission.content.declarations[5].eventTrigger = null; }),
+      'logic-reference-mismatch', 'input.mission.content.eventTriggers[1]'],
+    ['a message with a NUL byte', () => changed(value => { value.mission.content.eventTriggers[0].ranges[1].messages[0] = `${MARKER}\u0000`; }),
+      'invalid-logic-payload', 'input.mission.content.eventTriggers[0].ranges[1].messages[0]'],
   ] satisfies [string, () => unknown, string, string][])('passes the content error for %s through unchanged', (_, build, code, path) => {
     const error = thrown(build());
     expect(error).toBeInstanceOf(ContentContractError);

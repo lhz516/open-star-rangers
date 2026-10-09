@@ -24,7 +24,7 @@ export interface RecordLinks {
   readonly region: number | null;
   /** +0x48: the placement anchor record. */
   readonly anchor: number | null;
-  /** +0x54: a section-2 event trigger. */
+  /** +0x54: a section-2 event trigger, which must be an element start of section 2. */
   readonly trigger: number | null;
   /** +0x58: the AI target record. */
   readonly aiTarget: number | null;
@@ -51,8 +51,10 @@ function bitPositions(mask: number): readonly number[] {
 export function readObjectRecord(block: PayloadBlock, offset: number, path: string): ObjectRecord {
   block.require(offset, RECORD_BYTES, path);
   block.requireRelocations(offset, RECORD_BYTES, POINTER_FIELDS, path);
-  block.unsupportedPointer(offset + 0x30, 1, `${path}/formation`, 'the record uses an unsupported field');
-  if (block.u32(offset + 0x38, `${path}/formationIndex`) !== 0) block.unsupported(`${path}/formationIndex`, 'the record uses an unsupported field');
+  // +0x30 and +0x38 register the record as a spawn pair of an event trigger instead of a timed spawn; spawn pairs are
+  // not supported, so both must be zero (docs/original/formats/scenario.md, section-2 event triggers).
+  block.unsupportedPointer(offset + 0x30, 1, `${path}/spawnTrigger`, 'the record is spawned by an event trigger');
+  if (block.u32(offset + 0x38, `${path}/spawnRange`) !== 0) block.unsupported(`${path}/spawnRange`, 'the record is spawned by an event trigger');
   block.unsupportedPointer(offset + 0x4c, 1, `${path}/route`, 'the record uses an unsupported field');
   for (const at of RESERVED_WORDS) {
     if (block.hasNonZero(offset + at, 4, `${path}/words[${at / 4}]`)) block.unsupported(`${path}/words[${at / 4}]`, 'a reserved word is not zero');

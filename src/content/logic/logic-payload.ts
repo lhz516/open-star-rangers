@@ -7,7 +7,7 @@ import { LOGIC_LIMITS, LOGIC_PAYLOAD_SCHEMA_VERSION, type LogicPayload, type Log
 import { readLogicContent } from './logic-readers.ts';
 
 // Logic payloads are the canonical JSON of their content (canonical-json.ts); the readers build every object in
-// contract field order and allow only printable ASCII strings.
+// contract field order and allow only printable ASCII names and byte-string messages, which the encoding keeps ASCII.
 const FORMAT: CanonicalJsonFormat = Object.freeze({
   name: 'logic payload', byteLimit: LOGIC_LIMITS.payloadBytes, invalid: 'invalid-logic-payload',
 });

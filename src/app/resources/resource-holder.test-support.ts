@@ -3,7 +3,7 @@ import type { ResourceGroup } from '../../content/asset-contract.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { validatePackage, type GroupInput } from '../../content/completeness.ts';
 import { readConverterVersion, readSourceFingerprint, type ContentIdentity } from '../../content/content-identity.ts';
-import type { LogicRole } from '../../content/logic/logic-content.ts';
+import { LOGIC_PAYLOAD_SCHEMA_VERSION, type LogicRole } from '../../content/logic/logic-content.ts';
 import { LOGIC_IDS, syntheticCraftTypes, syntheticMission, syntheticRoster } from '../../content/logic/logic-content.test-support.ts';
 import { encodeLogicPayload } from '../../content/logic/logic-payload.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
@@ -63,7 +63,7 @@ export function logicGroupInput(
   { mission = syntheticMission(), craftTypes = packageCraftTypes(), missionBytes, duplicates = [] }: LogicContents = {},
 ): GroupInput {
   const asset = (role: LogicRole, id: string, content: unknown, dependencies: readonly string[]) =>
-    ({ id, role, dependencies, bytes: encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]) });
+    ({ id, role, dependencies, schemaVersion: LOGIC_PAYLOAD_SCHEMA_VERSION, bytes: encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]) });
   const models = [...new Set(craftTypes.entries.map(({ model }) => model.id))].sort();
   const tables = (id: string) => asset('craft-types', id, craftTypes, models);
   const rosters = (id: string) => asset('wingman-roster', id, syntheticRoster(), [LOGIC_IDS.craftTypes]);

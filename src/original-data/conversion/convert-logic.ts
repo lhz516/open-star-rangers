@@ -61,11 +61,11 @@ class BudgetMeter {
 }
 
 /**
- * References a declaration makes, each counted once: its craft type, spawn rectangle, anchor, group and AI target.
- * Names, rule inputs, AI target craft types and layouts are not references.
+ * References a declaration makes, each counted once: its craft type, spawn rectangle, anchor, group, AI target and
+ * event trigger. Names, rule inputs, AI target craft types, layouts and event trigger contents are not references.
  */
-const declarationReferences = (declarations: readonly MissionDeclaration[]): number => declarations.reduce((sum, { craftType, placement, memberOf, aiTarget }) =>
-  sum + [craftType, placement.region, placement.anchor, memberOf, aiTarget].filter(value => value !== null).length, 0);
+const declarationReferences = (declarations: readonly MissionDeclaration[]): number => declarations.reduce((sum, { craftType, placement, memberOf, aiTarget, eventTrigger }) =>
+  sum + [craftType, placement.region, placement.anchor, memberOf, aiTarget, eventTrigger].filter(value => value !== null).length, 0);
 
 /** A group references its template and every member position. */
 const groupReferences = (groups: readonly MissionGroup[]): number => groups.reduce((sum, { members }) => sum + 1 + members.length, 0);
@@ -118,7 +118,7 @@ export async function convertLogic(source: VerifiedSource, limits: unknown, usag
   const rosterAt = locatorOf(table, LOGIC_ASSETS.wingmanRoster, 'SCCT');
   const scenario = parseScenario(missionAt.discPath, await readEntry(missionAt));
   const modelIds = parseModelIdList(modelListAt.discPath, await readEntry(modelListAt));
-  const { declarations, groups } = scenario;
+  const { declarations, groups, eventTriggers } = scenario;
   const { wingmen } = campaign;
 
   const referenced = [...declarations, ...wingmen].flatMap(({ craftType }) => (craftType === null ? [] : [craftType]));
@@ -141,6 +141,7 @@ export async function convertLogic(source: VerifiedSource, limits: unknown, usag
     spawnRegions: scenario.spawnRegions,
     declarations,
     groups,
+    eventTriggers,
   };
   const plans: readonly AssetPlan[] = [
     {

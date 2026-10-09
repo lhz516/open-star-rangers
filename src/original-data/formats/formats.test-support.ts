@@ -3,9 +3,9 @@ import { LOGIC_SOURCE_ENTRIES } from '../conversion/logic-sources.ts';
 import { MARKER } from '../disc/disc.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 
-// Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09 tests; they never hold original data, and their
-// numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned, and
-// relocation tables are written in reverse order. Names carry MARKER for privacy assertions.
+// Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09 and P3-03 tests; they never hold original data, and
+// their numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned, and
+// relocation tables are written in reverse order. Names and messages carry MARKER for privacy assertions.
 
 export { MARKER };
 
@@ -42,6 +42,11 @@ class BlockWriter {
     return this;
   }
 
+  i8(at: number, value: number): this {
+    this.#view.setInt8(at, value);
+    return this;
+  }
+
   f32(at: number, value: number): this {
     this.#view.setFloat32(at, value, true);
     return this;
@@ -52,7 +57,7 @@ class BlockWriter {
     return this.u32(at, target);
   }
 
-  /** Appends a NUL-terminated ASCII name and returns its offset. */
+  /** Appends a NUL-terminated byte string, one byte per code unit, and returns its offset. */
   name(text: string): number {
     const at = this.alloc(text.length + 1);
     for (let index = 0; index < text.length; index++) this.#bytes[at + index] = text.charCodeAt(index);
@@ -102,8 +107,8 @@ export interface RecordSpec {
   /** Record indexes for +0x48 and +0x58. */
   anchor?: number;
   aiTarget?: number;
-  /** Points +0x54 at the section-2 trigger. */
-  trigger?: boolean;
+  /** Section-2 index for +0x54. */
+  trigger?: number;
 }
 
 export interface GroupSpec {
@@ -113,6 +118,22 @@ export interface GroupSpec {
   members: number[];
 }
 
+export interface RangeSpec {
+  lower: number;
+  upper: number;
+  /** Written NUL-terminated through the message-pointer array; none leaves the array pointer null. */
+  messages?: string[];
+  /** The selector byte, written as i8. */
+  selector?: number;
+}
+
+export interface TriggerSpec {
+  /** None leaves the range table pointer null. */
+  ranges: RangeSpec[];
+  /** A stored spawn pair count, written with a pair array of that size. */
+  pairs?: number;
+}
+
 export interface ScenarioSpec {
   sectors?: [number, number];
   scale?: number;
@@ -120,8 +141,8 @@ export interface ScenarioSpec {
   names?: string[];
   records: RecordSpec[];
   regions?: [number, number, number, number][];
-  /** The section-2 event trigger: its range count and spawn pair count. */
-  trigger?: { ranges: number; pairs?: number };
+  /** Section-2 event triggers. */
+  triggers?: TriggerSpec[];
   groups?: GroupSpec[];
   /** Raw (file) layout elements, before the load transform. */
   layouts?: [number, number, number][][];
@@ -135,10 +156,12 @@ export interface ScenarioOffsets {
   readonly groups: readonly number[];
   readonly regions: number;
   readonly layoutTable: number;
-  readonly trigger: number | null;
+  readonly triggers: readonly number[];
+  /** Each trigger's range offsets. */
+  readonly ranges: readonly (readonly number[])[];
 }
 
-function writeRecord(writer: BlockWriter, at: number, spec: RecordSpec, targets: { records: number[]; groups: number[]; regions: number; trigger: number | null }): void {
+function writeRecord(writer: BlockWriter, at: number, spec: RecordSpec, targets: { records: number[]; groups: number[]; regions: number; triggers: readonly number[] }): void {
   writer.u32(at, spec.kind ?? 0);
   if (spec.names?.length) writer.pointer(at + 0x04, writer.nameList(spec.names)).u32(at + 0x08, spec.names.length);
   for (const [offset, value] of Object.entries(spec.words ?? {})) writer.u32(at + Number(offset), value);
@@ -147,7 +170,7 @@ function writeRecord(writer: BlockWriter, at: number, spec: RecordSpec, targets:
   if (spec.member !== undefined) writer.pointer(at + 0x3c, targets.groups[spec.member]);
   if (spec.region !== undefined) writer.pointer(at + 0x44, targets.regions + spec.region * 16);
   if (spec.anchor !== undefined) writer.pointer(at + 0x48, targets.records[spec.anchor]);
-  if (spec.trigger) writer.pointer(at + 0x54, targets.trigger!);
+  if (spec.trigger !== undefined) writer.pointer(at + 0x54, targets.triggers[spec.trigger]);
   if (spec.aiTarget !== undefined) writer.pointer(at + 0x58, targets.records[spec.aiTarget]);
 }
 
@@ -160,12 +183,23 @@ export function syntheticScenario(spec: ScenarioSpec): SyntheticBlock & { readon
   const pool = names.length ? writer.nameList(names) : 0;
   const recordStart = writer.alloc(spec.records.length * 132);
   const records = spec.records.map((_, index) => recordStart + index * 132);
-  let trigger: number | null = null;
-  if (spec.trigger) {
-    trigger = writer.alloc(28 + spec.trigger.ranges * 20);
-    writer.pointer(trigger, trigger + 28).u32(trigger + 4, spec.trigger.ranges);
-    if (spec.trigger.pairs) writer.pointer(trigger + 20, writer.alloc(spec.trigger.pairs * 8)).u32(trigger + 24, spec.trigger.pairs);
-  }
+  // The trigger table, then each trigger's range table followed by each range's message pointers and strings.
+  const triggerSpecs = spec.triggers ?? [];
+  const triggerTable = writer.alloc(triggerSpecs.length * 28);
+  const triggers = triggerSpecs.map((_, index) => triggerTable + index * 28);
+  const ranges = triggerSpecs.map((trigger, index) => {
+    const at = triggers[index];
+    const table = writer.alloc(trigger.ranges.length * 20);
+    if (trigger.ranges.length) writer.pointer(at, table).i32(at + 4, trigger.ranges.length);
+    if (trigger.pairs) writer.pointer(at + 20, writer.alloc(trigger.pairs * 8)).u32(at + 24, trigger.pairs);
+    return trigger.ranges.map((range, position) => {
+      const rangeAt = table + position * 20;
+      writer.i32(rangeAt, range.lower).i32(rangeAt + 4, range.upper).i8(rangeAt + 16, range.selector ?? 0);
+      const messages = range.messages ?? [];
+      if (messages.length) writer.pointer(rangeAt + 8, writer.nameList(messages)).i32(rangeAt + 12, messages.length);
+      return rangeAt;
+    });
+  });
   const regionSpecs = spec.regions ?? [];
   const regions = writer.alloc(regionSpecs.length * 16);
   regionSpecs.forEach((region, index) => region.forEach((value, field) => writer.i32(regions + index * 16 + field * 4, value)));
@@ -181,7 +215,7 @@ export function syntheticScenario(spec: ScenarioSpec): SyntheticBlock & { readon
       writer.pointer(at + 12, array).u32(at + 16, group.members.length);
     }
   });
-  spec.records.forEach((record, index) => writeRecord(writer, records[index], record, { records, groups, regions, trigger }));
+  spec.records.forEach((record, index) => writeRecord(writer, records[index], record, { records, groups, regions, triggers }));
   // The layout table and the count word after it come last, so `tail: null` leaves that word outside the block.
   const layoutSpecs = spec.layouts ?? [];
   const arrays = layoutSpecs.map(elements => {
@@ -202,16 +236,18 @@ export function syntheticScenario(spec: ScenarioSpec): SyntheticBlock & { readon
   };
   section(0, pool, names.length);
   section(1, recordStart, spec.records.length);
-  section(2, trigger ?? 0, trigger === null ? 0 : 1);
+  section(2, triggerTable, triggerSpecs.length);
   section(3, regions, regionSpecs.length);
   section(5, groupStart, groupSpecs.length);
   section(6, layoutTable, layoutSpecs.length);
-  return { ...writer.toBlock(), offsets: { records, groups, regions, layoutTable, trigger } };
+  return { ...writer.toBlock(), offsets: { records, groups, regions, layoutTable, triggers, ranges } };
 }
 
 /**
  * A mission shaped like the slice's: placement only by rectangle, anchor or layout, member back-references, an AI
- * target, a message-only trigger, a name pool and one record with name candidates.
+ * target, a name pool and one record with name candidates. Two message-only triggers: the first has three ranges, with
+ * one message and a negative selector, without messages, and with two messages, and two records reference it; the
+ * second has one range with one message and a positive selector.
  */
 export function defaultScenarioSpec(): ScenarioSpec {
   return {
@@ -220,15 +256,24 @@ export function defaultScenarioSpec(): ScenarioSpec {
       { kind: 1 << 0, region: 2, signed: { 0x70: 6, 0x74: 7, 0x78: 33 } },
       { region: 0, words: { 0x1c: 90 } },
       { region: 0, words: { 0x1c: 120 } },
-      { kind: 1 << 7, anchor: 0, aiTarget: 0, words: { 0x5c: (1 << 0) | (1 << 17) } },
+      { kind: 1 << 7, anchor: 0, aiTarget: 0, words: { 0x5c: (1 << 0) | (1 << 17) }, trigger: 0 },
       { kind: 1 << 7, member: 0, words: { 0x0c: 0x80000000 }, signed: { 0x60: -5 } },
       { kind: 1 << 7, member: 2 },
       { kind: 1 << 8, member: 1, words: { 0x10: 2 } },
-      { kind: 1 << 17, region: 2, trigger: true },
-      { kind: 1 << 14, region: 1, words: { 0x10: 5 }, names: [`${MARKER}-x`, `${MARKER}-y`] },
+      { kind: 1 << 17, region: 2, trigger: 0 },
+      { kind: 1 << 14, region: 1, words: { 0x10: 5 }, names: [`${MARKER}-x`, `${MARKER}-y`], trigger: 1 },
     ],
     regions: [[-2000, 1000, 2000, 2000], [-2600, -2600, 2600, 2600], [-2000, -2000, 2000, 0]],
-    trigger: { ranges: 2 },
+    triggers: [
+      {
+        ranges: [
+          { lower: 70, upper: 90, messages: [`${MARKER}-won`], selector: -4 },
+          { lower: 40, upper: 69 },
+          { lower: -7, upper: 39, messages: [`${MARKER}-held `, `${MARKER}-lost`] },
+        ],
+      },
+      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], selector: 6 }] },
+    ],
     groups: [
       { spawnCount: 2, layout: 0, template: 1, members: [4, 4] },
       { spawnCount: 2, layout: 1, template: 1, members: [6, 6] },
@@ -256,7 +301,7 @@ export function syntheticCampaign(spec: CampaignSpec): SyntheticBlock {
     writer.pointer(groupTable + index * 8, array).u32(groupTable + index * 8 + 4, slots.length);
   });
   const wingmen = writer.alloc(spec.wingmen.length * 132);
-  spec.wingmen.forEach((record, index) => writeRecord(writer, wingmen + index * 132, record, { records: [], groups: [], regions: 0, trigger: null }));
+  spec.wingmen.forEach((record, index) => writeRecord(writer, wingmen + index * 132, record, { records: [], groups: [], regions: 0, triggers: [] }));
   if (spec.groups.length) writer.pointer(header, groupTable).u32(header + 4, spec.groups.length);
   if (spec.wingmen.length) writer.pointer(header + 8, wingmen).u32(header + 12, spec.wingmen.length);
   return writer.toBlock();

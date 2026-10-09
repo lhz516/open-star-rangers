@@ -43,11 +43,34 @@ describe('logic content readers', () => {
       value.declarations[0].ruleInputs.percentB = -0x80000000;
       value.declarations[0].ruleInputs.aiValueA = 0x7fffffff;
       value.declarations[0].ruleInputs.craftCount = 0;
+      value.eventTriggers[0].ranges[1].lower = -0;
+      value.eventTriggers[1].ranges[0].summarySelector = -0;
     }));
     expect(Object.is(mission.declarations[0].position.x, 0)).toBe(true);
     expect(Object.is(mission.groups[0].layout[0].z, 0)).toBe(true);
     expect(mission.declarations[0].ruleInputs).toMatchObject({ percentB: -0x80000000, aiValueA: 0x7fffffff, craftCount: 0 });
     expect(mission.declarations[2].ruleInputs.percentA).toBe(0xffffffff);
+    expect(Object.is(mission.eventTriggers[0].ranges[1].lower, 0) && Object.is(mission.eventTriggers[1].ranges[0].summarySelector, 0)).toBe(true);
+  });
+
+  it('keeps event range bounds, selectors and message bytes as stored', () => {
+    const message = String.fromCharCode(1, 0x1f, 0x7f, 0x80, 0xff);
+    const mission = readMissionContent(changed(syntheticMission, value => {
+      value.eventTriggers[1].ranges[0] = { lower: -0x80000000, upper: 0x7fffffff, messages: [message], summarySelector: -128 };
+      value.eventTriggers[0].ranges[0].summarySelector = 127;
+      value.eventTriggers[0].ranges[1].messages = [];
+    }));
+    expect(mission.eventTriggers[1].ranges[0]).toEqual({ lower: -0x80000000, upper: 0x7fffffff, messages: [message], summarySelector: -128 });
+    expect(mission.eventTriggers[0].ranges.map(({ summarySelector, messages }) => [summarySelector, messages.length])).toEqual([[127, 1], [0, 0]]);
+  });
+
+  it('accepts a trigger without ranges and several declarations sharing a trigger', () => {
+    const mission = readMissionContent(changed(syntheticMission, value => {
+      value.eventTriggers[1].ranges = [];
+      value.declarations[0].eventTrigger = 1;
+    }));
+    expect(mission.eventTriggers[1].ranges).toEqual([]);
+    expect(mission.declarations.map(({ eventTrigger }) => eventTrigger)).toEqual([1, null, null, 0, 0, 1]);
   });
 
   it('accepts a declaration that is both a group template and a member of another group', () => {
@@ -67,8 +90,15 @@ describe('logic content readers', () => {
       value.spawnRegions = Array.from({ length: LOGIC_LIMITS.spawnRegions }, () => ({ x0: 0, y0: 0, x1: 1, y1: 1 }));
       value.groups[0].layout = Array.from({ length: LOGIC_LIMITS.layoutElements }, () => ({ x: 0, y: 0, z: 0 }));
       value.groups[0].members = Array.from({ length: LOGIC_LIMITS.groupMembers }, () => 2);
+      value.eventTriggers[0].ranges = Array.from({ length: LOGIC_LIMITS.eventRanges }, (_, index) => ({
+        lower: index, upper: index, messages: Array(LOGIC_LIMITS.eventMessages).fill('\xff'.repeat(LOGIC_LIMITS.eventMessageBytes)), summarySelector: 0,
+      }));
     });
-    expect(readMissionContent(mission).groups[0].members).toHaveLength(LOGIC_LIMITS.groupMembers);
+    const read = readMissionContent(mission);
+    expect(read.groups[0].members).toHaveLength(LOGIC_LIMITS.groupMembers);
+    expect(read.eventTriggers).toHaveLength(LOGIC_LIMITS.eventTriggers);
+    expect(read.eventTriggers[0].ranges).toHaveLength(LOGIC_LIMITS.eventRanges);
+    expect(read.eventTriggers[0].ranges[7].messages.map(message => message.length)).toEqual(Array(LOGIC_LIMITS.eventMessages).fill(LOGIC_LIMITS.eventMessageBytes));
     // At most 64 section-1 declarations, then group-only members in first-use order up to the declaration limit.
     const full = changed(syntheticMission, value => {
       for (let index = 5; index < LOGIC_LIMITS.objects; index++) value.declarations.splice(index, 0, declaration(index));
@@ -146,6 +176,29 @@ describe('logic content readers', () => {
     ['a missing spawn region', value => { value.declarations[0].placement.region = 2; }, 'logic-reference-mismatch', 'mission.declarations[0].placement.region'],
     ['a missing anchor', value => { value.declarations[3].placement.anchor = 6; }, 'logic-reference-mismatch', 'mission.declarations[3].placement.anchor'],
     ['a missing AI target', value => { value.declarations[3].aiTarget = 6; }, 'logic-reference-mismatch', 'mission.declarations[3].aiTarget'],
+    ['no event triggers field', value => { delete (value as Partial<Mission>).eventTriggers; }, 'invalid-logic-payload', 'mission.eventTriggers'],
+    ['no declaration event trigger field', value => { delete (value.declarations[1] as { eventTrigger?: unknown }).eventTrigger; }, 'invalid-logic-payload', 'mission.declarations[1].eventTrigger'],
+    ['an unknown trigger field', value => { Object.assign(value.eventTriggers[1], { counters: [] }); }, 'invalid-logic-payload', 'mission.eventTriggers[1]'],
+    ['an unknown range field', value => { Object.assign(value.eventTriggers[0].ranges[1], { reserved: 0 }); }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1]'],
+    ['a missing selector', value => { delete (value.eventTriggers[1].ranges[0] as { summarySelector?: unknown }).summarySelector; }, 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].summarySelector'],
+    ['ranges that are no array', value => { (value.eventTriggers[0] as { ranges: unknown }).ranges = {}; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges'],
+    ['a fractional bound', value => { value.eventTriggers[0].ranges[0].lower = 0.5; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[0].lower'],
+    ['a bound beyond i32', value => { value.eventTriggers[0].ranges[1].upper = 2 ** 31; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1].upper'],
+    ['a bound below i32', value => { value.eventTriggers[0].ranges[1].lower = -(2 ** 31) - 1; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1].lower'],
+    ['a selector above i8', value => { value.eventTriggers[1].ranges[0].summarySelector = 128; }, 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].summarySelector'],
+    ['a selector below i8', value => { value.eventTriggers[1].ranges[0].summarySelector = -129; }, 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].summarySelector'],
+    ['a string selector', value => { (value.eventTriggers[1].ranges[0] as { summarySelector: unknown }).summarySelector = '9'; }, 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].summarySelector'],
+    ['an empty message', value => { value.eventTriggers[0].ranges[1].messages[0] = ''; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1].messages[0]'],
+    ['a NUL in a message', value => { value.eventTriggers[0].ranges[0].messages[0] = `${MARKER}\u0000`; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[0].messages[0]'],
+    ['a message character above 255', value => { value.eventTriggers[0].ranges[1].messages[1] = `${MARKER}\u0100`; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1].messages[1]'],
+    ['a message beyond the byte limit', value => { value.eventTriggers[0].ranges[0].messages[0] = 'm'.repeat(LOGIC_LIMITS.eventMessageBytes + 1); }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[0].messages[0]'],
+    ['a message that is no string', value => { (value.eventTriggers[0].ranges[0] as { messages: unknown[] }).messages[0] = 7; }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[0].messages[0]'],
+    ['too many event triggers', value => { value.eventTriggers = Array(LOGIC_LIMITS.eventTriggers + 1).fill(value.eventTriggers[1]); }, 'invalid-logic-payload', 'mission.eventTriggers'],
+    ['too many ranges', value => { value.eventTriggers[0].ranges = Array(LOGIC_LIMITS.eventRanges + 1).fill(value.eventTriggers[0].ranges[0]); }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges'],
+    ['too many messages', value => { value.eventTriggers[0].ranges[1].messages = Array(LOGIC_LIMITS.eventMessages + 1).fill('m'); }, 'invalid-logic-payload', 'mission.eventTriggers[0].ranges[1].messages'],
+    ['a negative event trigger', value => { value.declarations[0].eventTrigger = -1; }, 'invalid-logic-payload', 'mission.declarations[0].eventTrigger'],
+    ['a missing event trigger', value => { value.declarations[2].eventTrigger = 2; }, 'logic-reference-mismatch', 'mission.declarations[2].eventTrigger'],
+    ['an event trigger no declaration references', value => { value.declarations[5].eventTrigger = 0; }, 'logic-reference-mismatch', 'mission.eventTriggers[1]'],
   ];
 
   it.each(missionCases)('rejects a mission with %s', (_, change, code, path) => {
@@ -175,6 +228,8 @@ describe('logic content readers', () => {
     ['an anchor', value => { value.options[1].placement.anchor = 0; }, 'logic-reference-mismatch', 'wingmanRoster.options[1]'],
     ['a group membership', value => { value.options[0].memberOf = 0; }, 'logic-reference-mismatch', 'wingmanRoster.options[0]'],
     ['an AI target', value => { value.options[1].aiTarget = 0; }, 'logic-reference-mismatch', 'wingmanRoster.options[1]'],
+    ['an event trigger', value => { value.options[0].eventTrigger = 0; }, 'logic-reference-mismatch', 'wingmanRoster.options[0]'],
+    ['no event trigger field', value => { delete (value.options[1] as { eventTrigger?: unknown }).eventTrigger; }, 'invalid-logic-payload', 'wingmanRoster.options[1].eventTrigger'],
     ['a non-data craft type reference', value => { value.references.craftTypes = 'mission/craft-types'; }, 'invalid-logic-payload', 'wingmanRoster.references.craftTypes'],
   ];
 
@@ -195,6 +250,8 @@ describe('logic content readers', () => {
       () => readMissionContent(changed(syntheticMission, value => { value.namePool[0] = `${MARKER}\u0001`; })),
       () => readMissionContent(changed(syntheticMission, value => { Object.assign(value.declarations[0], { [MARKER]: MARKER }); })),
       () => readMissionContent(changed(syntheticMission, value => { value.declarations[0].position.x = Number.NaN; })),
+      () => readMissionContent(changed(syntheticMission, value => { value.eventTriggers[0].ranges[1].messages[1] = `${MARKER}\u0000`; })),
+      () => readMissionContent(changed(syntheticMission, value => { value.eventTriggers[0].ranges[0].messages[0] = MARKER.repeat(LOGIC_LIMITS.eventMessageBytes); })),
     ];
     for (const failure of failures) {
       expect(failure).toThrowError();

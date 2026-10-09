@@ -277,7 +277,7 @@ describe('logic conversion', () => {
     // The graphics and sound usage, the three logic Assets with their eight edges, mission data and payload bytes, and
     // the bound models.
     const logicBytes = drafts[0].assets.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0);
-    const logicUsage = { ...EMPTY_BUDGET_USAGE, assets: 3, dependencyEdges: 8, missionObjects: 11, missionReferences: 37, payloadBytes: logicBytes };
+    const logicUsage = { ...EMPTY_BUDGET_USAGE, assets: 3, dependencyEdges: 8, missionObjects: 11, missionReferences: 40, payloadBytes: logicBytes };
     expect(last.usage).toEqual({
       ...addBudgets(addBudgets(addBudgets(PRODUCTION_CONVERSION_USAGE, logicUsage), PRODUCTION_MODEL_USAGE), PRODUCTION_EFFECT_USAGE),
       sourceReadBytes: readUsage.sourceReadBytes,

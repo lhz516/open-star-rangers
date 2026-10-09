@@ -4,10 +4,17 @@ import type { AssetId } from '../asset-id.ts';
 // Canonical logic content of the `logic` group (P2-09 spec, 规范逻辑数据). Field order here is the canonical encoding
 // order. Raw rule inputs keep their source values; their semantics and the rules that use them belong to P3.
 
-/** Schema version of every logic payload; an incompatible shape change increments it and the converter version. */
-export const LOGIC_PAYLOAD_SCHEMA_VERSION = 1;
+/**
+ * Schema version of every logic payload; an incompatible shape change increments it and the converter version.
+ * Version 2 adds the mission's section-2 event triggers and each declaration's `eventTrigger` (P3-03 S-02).
+ */
+export const LOGIC_PAYLOAD_SCHEMA_VERSION = 2;
 
-/** Structural limits a logic payload must satisfy; payload bytes is the `logic` group's budget limit. */
+/**
+ * Structural limits a logic payload must satisfy; payload bytes is the `logic` group's budget limit. The event limits
+ * are twice the SCEN 3019 maxima (1 trigger, 3 ranges per trigger, 1 message per range, 57 bytes per message), rounded
+ * up to a power of two (P3-03 spec, 限值与预算; docs/original/formats/scenario.md, section-2 event triggers).
+ */
 export const LOGIC_LIMITS = Object.freeze({
   payloadBytes: 1_048_576,
   /** Declarations after merging aliases; those with origin `object` are section-1 records, at most `objects`. */
@@ -21,6 +28,13 @@ export const LOGIC_LIMITS = Object.freeze({
   groupMembers: 64,
   layoutElements: 256,
   wingmanOptions: 16,
+  eventTriggers: 2,
+  /** Ranges of one event trigger. */
+  eventRanges: 8,
+  /** Messages of one range. */
+  eventMessages: 2,
+  /** Bytes of one message, without its NUL. */
+  eventMessageBytes: 128,
 });
 
 export interface Vector3 {
@@ -95,6 +109,8 @@ export interface MissionDeclaration {
   readonly memberOf: number | null;
   /** Declaration index of the AI target record. */
   readonly aiTarget: number | null;
+  /** Index in `eventTriggers` of the trigger counting this object's events (record +0x54); null for wingman options. */
+  readonly eventTrigger: number | null;
   readonly ruleInputs: RuleInputs;
   /** Ascending unique craft types 0–31. */
   readonly aiTargetCraftTypes: readonly number[];
@@ -111,6 +127,33 @@ export interface MissionGroup {
   readonly layout: readonly Vector3[];
 }
 
+/**
+ * One 20-byte range of a section-2 event trigger (docs/original/formats/scenario.md, section-2 event triggers), kept as
+ * stored. How the ranges are chosen and what the selector selects belong to the rules (P3-11).
+ */
+export interface EventRange {
+  /** i32, inclusive lower bound (+0x00). */
+  readonly lower: number;
+  /** i32, inclusive upper bound (+0x04). */
+  readonly upper: number;
+  /**
+   * The strings of the message-pointer array (+0x08, count +0x0C) in array order: byte strings whose code units are the
+   * stored bytes, 1–255 each, without the NUL. The original appends them without separators.
+   */
+  readonly messages: readonly string[];
+  /** The summary selector byte (+0x10), consumed as i8. */
+  readonly summarySelector: number;
+}
+
+/**
+ * A section-2 event trigger without its runtime fields: the three event counters and the spawn pairs are reset when the
+ * mission is built, and spawn pairs are not supported in stored form.
+ */
+export interface EventTrigger {
+  /** The range table (+0x00, count +0x04) in table order. */
+  readonly ranges: readonly EventRange[];
+}
+
 export interface MissionContent {
   readonly campaign: { readonly group: number; readonly slot: number };
   readonly coordinates: MissionCoordinates;
@@ -121,6 +164,8 @@ export interface MissionContent {
   readonly spawnRegions: readonly SpawnRegion[];
   readonly declarations: readonly MissionDeclaration[];
   readonly groups: readonly MissionGroup[];
+  /** Section-2 event triggers in section order; each is the `eventTrigger` of at least one declaration. */
+  readonly eventTriggers: readonly EventTrigger[];
 }
 
 export type CraftSide = 'player' | 'friendly' | 'enemy';
@@ -140,7 +185,7 @@ export interface CraftTypeTable {
 
 export interface WingmanRoster {
   readonly references: { readonly craftTypes: AssetId };
-  /** Origins are exactly `wingman-option`; placement, membership and AI target are null. */
+  /** Origins are exactly `wingman-option`; placement, membership, AI target and event trigger are null. */
   readonly options: readonly MissionDeclaration[];
 }
 

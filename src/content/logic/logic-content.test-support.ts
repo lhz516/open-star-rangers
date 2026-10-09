@@ -1,7 +1,7 @@
 import { sha256Fingerprint } from '../sha256.ts';
 import type { GroupDraft } from '../manifest-identity.ts';
 import { syntheticGroup } from '../synthetic-content.test-support.ts';
-import type { CraftTypeTable, LogicRole, WingmanRoster } from './logic-content.ts';
+import { LOGIC_PAYLOAD_SCHEMA_VERSION, type CraftTypeTable, type LogicRole, type WingmanRoster } from './logic-content.ts';
 import { decodeLogicPayload, encodeLogicPayload } from './logic-payload.ts';
 
 // Code-generated synthetic logic content for tests; it never holds original data. Builders return fresh mutable plain
@@ -37,6 +37,7 @@ export const declaration = (index: number, overrides: Record<string, unknown> = 
   placement: { region: null as number | null, anchor: null as number | null },
   memberOf: null as number | null,
   aiTarget: null as number | null,
+  eventTrigger: null as number | null,
   ruleInputs: ruleInputs(),
   aiTargetCraftTypes: [] as number[],
   ...overrides,
@@ -45,7 +46,9 @@ export const declaration = (index: number, overrides: Record<string, unknown> = 
 /**
  * A mission covering every field in canonical declaration order: a player, a kind-0 template and a craft template, a
  * member listed twice and, last, one only reachable through its group; placement by rectangle and anchor, an AI target,
- * layouts and a name pool.
+ * layouts and a name pool. Two event triggers: the first, referenced by two declarations, has a range with one message
+ * and a negative selector and a range with two messages, one holding a byte above 0x7E and a control byte; the second
+ * has one range without messages.
  */
 export function syntheticMission() {
   return {
@@ -62,13 +65,24 @@ export function syntheticMission() {
         origins: ['object', 'group-member'], craftType: 7, memberOf: 0, nameCandidates: [`${MARKER}-a`, `${MARKER}-b`],
         aiTargetCraftTypes: [0, 17], ruleInputs: ruleInputs({ percentA: 0xffffffff, craftCount: 2, percentB: -5 }),
       }),
-      declaration(3, { origins: ['object', 'group-template'], craftType: 7, placement: { region: null, anchor: 0 }, aiTarget: 0, spawnTime: 180 }),
-      declaration(4, { craftType: 17, placement: { region: 0, anchor: null } }),
-      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1, gridSpacing: -40, position: { x: 1.5, y: -2.25, z: 0.125 } }),
+      declaration(3, {
+        origins: ['object', 'group-template'], craftType: 7, placement: { region: null, anchor: 0 }, aiTarget: 0, spawnTime: 180, eventTrigger: 0,
+      }),
+      declaration(4, { craftType: 17, placement: { region: 0, anchor: null }, eventTrigger: 0 }),
+      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1, gridSpacing: -40, position: { x: 1.5, y: -2.25, z: 0.125 }, eventTrigger: 1 }),
     ],
     groups: [
       { template: 1, members: [2, 2], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 25, y: 0, z: 0 }] },
       { template: 3, members: [5], spawnCount: 3, layout: [{ x: 0, y: 5, z: -5 }, { x: 0, y: 0, z: 60 }] },
+    ],
+    eventTriggers: [
+      {
+        ranges: [
+          { lower: 61, upper: 100, messages: [`${MARKER}-won`], summarySelector: -2 },
+          { lower: 0, upper: 60, messages: [`${MARKER}-part-1 `, `${MARKER}-part-2\u00e9\u0001`], summarySelector: 0 },
+        ],
+      },
+      { ranges: [{ lower: -5, upper: 5, messages: [] as string[], summarySelector: 9 }] },
     ],
   };
 }
@@ -106,7 +120,7 @@ const ASSETS: Readonly<Record<LogicRole, { readonly id: string; readonly depende
 /** The canonical bytes and a matching mutable descriptor for one role's synthetic content. */
 export function syntheticLogicAsset(role: LogicRole, content: unknown = { mission: syntheticMission, 'craft-types': syntheticCraftTypes, 'wingman-roster': syntheticRoster }[role]()) {
   const bytes = encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]);
-  const [descriptor] = syntheticGroup('logic', [{ ...ASSETS[role], role, bytes }]).manifest.assets;
+  const [descriptor] = syntheticGroup('logic', [{ ...ASSETS[role], role, bytes, schemaVersion: LOGIC_PAYLOAD_SCHEMA_VERSION }]).manifest.assets;
   return { bytes, descriptor };
 }
 

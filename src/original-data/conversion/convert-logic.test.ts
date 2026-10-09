@@ -56,11 +56,23 @@ const model = (id: string) => ({ id, kind: 'model' });
 /** Mission references counted by the spec rule from decoded declarations, written independently of the converter. */
 function countedReferences(declarations: readonly MissionDeclaration[]): number {
   let count = 0;
-  for (const { craftType, placement, memberOf, aiTarget } of declarations) {
-    for (const value of [craftType, placement.region, placement.anchor, memberOf, aiTarget]) if (value !== null) count++;
+  for (const { craftType, placement, memberOf, aiTarget, eventTrigger } of declarations) {
+    for (const value of [craftType, placement.region, placement.anchor, memberOf, aiTarget, eventTrigger]) if (value !== null) count++;
   }
   return count;
 }
+
+/** The default synthetic mission's event triggers (formats.test-support.ts) in canonical form. */
+const DEFAULT_EVENT_TRIGGERS = [
+  {
+    ranges: [
+      { lower: 70, upper: 90, messages: [`${MARKER}-won`], summarySelector: -4 },
+      { lower: 40, upper: 69, messages: [], summarySelector: 0 },
+      { lower: -7, upper: 39, messages: [`${MARKER}-held `, `${MARKER}-lost`], summarySelector: 0 },
+    ],
+  },
+  { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], summarySelector: 6 }] },
+];
 
 describe('logic group conversion', () => {
   it('converts the synthetic source into the three canonical payloads field by field', async () => {
@@ -78,18 +90,19 @@ describe('logic group conversion', () => {
         declaration(0, { craftType: 0, ...region(2), ruleInputs: ruleInputs({ aiValueA: 6, aiValueB: 7, aiValueC: 33 }) }),
         declaration(1, { origins: ['object', 'group-template'], ...region(0), spawnTime: 90 }),
         declaration(2, { ...region(0), spawnTime: 120 }),
-        declaration(3, { origins: ['object', 'group-template'], craftType: 7, placement: { region: null, anchor: 0 }, aiTarget: 0, aiTargetCraftTypes: [0, 17] }),
+        declaration(3, { origins: ['object', 'group-template'], craftType: 7, placement: { region: null, anchor: 0 }, aiTarget: 0, eventTrigger: 0, aiTargetCraftTypes: [0, 17] }),
         declaration(4, { origins: ['object', 'group-member'], craftType: 7, memberOf: 0, ruleInputs: ruleInputs({ percentA: 0x80000000, percentB: -5 }) }),
         declaration(5, { origins: ['object', 'group-member'], craftType: 7, memberOf: 2 }),
         declaration(6, { origins: ['object', 'group-member'], craftType: 8, memberOf: 1, ruleInputs: ruleInputs({ craftCount: 2 }) }),
-        declaration(7, { craftType: 17, ...region(2) }),
-        declaration(8, { craftType: 14, ...region(1), nameCandidates: [`${MARKER}-x`, `${MARKER}-y`], ruleInputs: ruleInputs({ craftCount: 5 }) }),
+        declaration(7, { craftType: 17, ...region(2), eventTrigger: 0 }),
+        declaration(8, { craftType: 14, ...region(1), nameCandidates: [`${MARKER}-x`, `${MARKER}-y`], eventTrigger: 1, ruleInputs: ruleInputs({ craftCount: 5 }) }),
       ],
       groups: [
         { template: 1, members: [4, 4], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }] },
         { template: 1, members: [6, 6], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 70 }] },
         { template: 3, members: [5, 5], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }] },
       ],
+      eventTriggers: DEFAULT_EVENT_TRIGGERS,
     });
     expect(craftTypes).toEqual({
       entries: [
@@ -121,6 +134,22 @@ describe('logic group conversion', () => {
       position: { x: 1.5, y: -2.25, z: 0.125 }, gridSpacing: -40, spawnTime: 0xffffffff, ruleInputs: ruleInputs({ craftCount: 0xffffffff, percentC: -0x80000000 }),
     });
     expect(mission.groups[1].layout).toEqual([{ x: 1, y: 3, z: 2 }, { x: 4, y: 5, z: 6 }]);
+  });
+
+  it('carries event triggers through with every message byte, selector and bound as stored', async () => {
+    const message = String.fromCharCode(1, 0x7f, 0x80, 0xff);
+    const { mission } = decoded((await convert({
+      scenario: spec => {
+        spec.triggers![1].ranges.push({ lower: -0x80000000, upper: 0x7fffffff, messages: [message], selector: -128 }, { lower: 3, upper: 2, selector: 127 });
+        spec.records[1].trigger = 1;
+      },
+    })).result);
+    expect(mission.eventTriggers[1].ranges).toEqual([
+      DEFAULT_EVENT_TRIGGERS[1].ranges[0],
+      { lower: -0x80000000, upper: 0x7fffffff, messages: [message], summarySelector: -128 },
+      { lower: 3, upper: 2, messages: [], summarySelector: 127 },
+    ]);
+    expect(mission.declarations.map(({ eventTrigger }) => eventTrigger)).toEqual([null, 1, null, 0, null, null, null, 0, 1]);
   });
 
   it.each([[[6, 6], 900, 2700], [[11, 11], 1234.5, 6789.75]] as const)(
@@ -175,7 +204,7 @@ describe('logic group conversion', () => {
     const { mission, craftTypes, roster } = decoded(result);
     const groupReferences = mission.groups.reduce((sum, { members }) => sum + 1 + members.length, 0);
     const missionReferences = countedReferences(mission.declarations) + groupReferences + 2 + countedReferences(roster.options) + 1 + craftTypes.entries.length;
-    expect(missionReferences).toBe(37);
+    expect(missionReferences).toBe(40);
     expect(result.usage).toEqual({
       ...EMPTY_BUDGET_USAGE,
       assets: 3,
@@ -186,6 +215,16 @@ describe('logic group conversion', () => {
     });
     expect(result.usage.dependencyEdges).toBe(8);
     expect(result.usage.missionObjects).toBe(11);
+  });
+
+  it('charges each event trigger reference and every message byte, but no other trigger content, as mission references', async () => {
+    const base = (await convert()).result.usage;
+    const longer = (await convert({ scenario: spec => { spec.triggers![0].ranges[0].messages![0] += 'x'.repeat(20); } })).result.usage;
+    expect(longer).toEqual({ ...base, payloadBytes: base.payloadBytes + 20 });
+    const referenced = (await convert({ scenario: spec => { spec.records[2].trigger = 1; } })).result.usage;
+    expect(referenced.missionReferences).toBe(base.missionReferences + 1);
+    const ranges = (await convert({ scenario: spec => { spec.triggers![1].ranges.push({ lower: 1, upper: 1 }); } })).result.usage;
+    expect(ranges.missionReferences).toBe(base.missionReferences);
   });
 
   it('reads each directory and mapped entry once after identification, sharing reads between verification and conversion', async () => {
@@ -234,7 +273,7 @@ describe('logic group budget', () => {
     // 64 groups listing their own record 64 times: 64 × 65 group references alone pass the limit.
     const records = Array.from({ length: 64 }, (_, index) => ({ kind: index === 0 ? 1 : 0, member: index }));
     const groups = records.map((_, index) => ({ spawnCount: 1, layout: 0, template: index, members: Array<number>(64).fill(index) }));
-    const result = await failure({ scenario: spec => Object.assign(spec, { names: [], regions: [], trigger: undefined, records, groups, layouts: [[[0, 0, 0]]] }) });
+    const result = await failure({ scenario: spec => Object.assign(spec, { names: [], regions: [], triggers: undefined, records, groups, layouts: [[[0, 0, 0]]] }) });
     // Craft types 2 (player and wingman type), roster 2 + 1, mission 65 + 64 × 65 + 2.
     expect(result).toEqual({ code: 'budget-exceeded', location: SCENARIO_AT, limit: { name: 'missionReferences', limit: 4_096, observed: 4_232 } });
   });
@@ -243,7 +282,7 @@ describe('logic group budget', () => {
     const value = Math.fround(-0.1);
     const layouts = Array.from({ length: 16 }, () => Array.from({ length: 256 }, (): [number, number, number] => [value, value, value]));
     const groups = Array.from({ length: 64 }, (_, index) => ({ spawnCount: 0, layout: index % 16, template: 0, members: [] }));
-    const result = await failure({ scenario: spec => Object.assign(spec, { names: [], regions: [], trigger: undefined, records: [{ kind: 1 }], groups, layouts }) });
+    const result = await failure({ scenario: spec => Object.assign(spec, { names: [], regions: [], triggers: undefined, records: [{ kind: 1 }], groups, layouts }) });
     expect(result).toMatchObject({ code: 'budget-exceeded', location: SCENARIO_AT, limit: { name: 'payloadBytes', limit: 1_048_576 } });
     expect((result.limit as { observed: number }).observed).toBeGreaterThan(1_048_576);
   });
@@ -298,6 +337,11 @@ describe('logic group assembly', () => {
 
   it('passes parsing and binding failures through without a partial group', async () => {
     await expect(failure({ scenario: spec => { spec.sectors = [6, 7]; } })).resolves.toMatchObject({ code: 'unsupported-payload', location: `${SCENARIO_AT}/header/height` });
+    await expect(failure({ scenario: spec => { delete spec.records[8].trigger; } })).resolves.toEqual({ code: 'unsupported-payload', location: `${SCENARIO_AT}/triggers[1]`, limit: null });
+    await expect(failure({ scenario: spec => { spec.triggers![0].pairs = 2; } })).resolves.toEqual({ code: 'unsupported-payload', location: `${SCENARIO_AT}/triggers[0]/spawnPairs`, limit: null });
+    await expect(failure({ scenario: spec => { spec.triggers![1].ranges[0].messages = ['m'.repeat(129)]; } })).resolves.toEqual({
+      code: 'limit-exceeded', location: `${SCENARIO_AT}/triggers[1]/ranges[0]/messages[0]`, limit: { name: 'textBytes', limit: 128, observed: 129 },
+    });
     await expect(failure({ campaign: spec => { spec.groups[0][1][0] = 3121; } })).resolves.toMatchObject({ code: 'subresource-mismatch' });
   });
 });

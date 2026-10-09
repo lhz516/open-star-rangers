@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { payloadTransferList } from '../ownership.ts';
-import { LOGIC_LIMITS, type LogicRole } from './logic-content.ts';
+import { LOGIC_LIMITS, LOGIC_PAYLOAD_SCHEMA_VERSION, type LogicRole } from './logic-content.ts';
 import { MARKER, syntheticLogicAsset, syntheticMission } from './logic-content.test-support.ts';
 import { decodeLogicPayload, encodeLogicPayload } from './logic-payload.ts';
 import { readLogicContent } from './logic-readers.ts';
@@ -20,6 +20,10 @@ function editedMission(edit: (json: string) => string) {
 }
 
 describe('logic payload encoding', () => {
+  it('declares schema version 2, which adds the event triggers', () => {
+    expect(LOGIC_PAYLOAD_SCHEMA_VERSION).toBe(2);
+  });
+
   it.each(ROLES)('round-trips %s byte for byte', role => {
     const { bytes, descriptor } = syntheticLogicAsset(role);
     const decoded = decode(bytes, descriptor);
@@ -47,6 +51,21 @@ describe('logic payload encoding', () => {
     expect(json).toContain('"position":{"x":0,"y":0,"z":0}');
     expect(json).not.toMatch(/[\n\r\t]|": |, /);
     expect(JSON.parse(json).namePool[0]).toBe(mission.namePool[0]);
+  });
+
+  it('writes message bytes outside printable ASCII as lower-case escapes and round-trips every byte from 1 to 255', () => {
+    const mission = syntheticMission();
+    const every = Array.from({ length: 255 }, (_, index) => String.fromCharCode(index + 1)).join('');
+    mission.eventTriggers[1].ranges[0].messages = [every.slice(0, 128), every.slice(128)];
+    const { bytes, descriptor } = syntheticLogicAsset('mission', mission);
+    const json = text(bytes);
+    expect(json).toContain(`"messages":["${MARKER}-part-1 ","${MARKER}-part-2\\u00e9\\u0001"]`);
+    expect(json).toContain('\\u001f !\\"#');
+    expect(json).toContain('}~\\u007f\\u0080');
+    expect(bytes.every(byte => byte >= 0x20 && byte <= 0x7e)).toBe(true);
+    const decoded = decode(bytes, descriptor);
+    expect(decoded.role === 'mission' && decoded.content.eventTriggers[1].ranges[0].messages.join('')).toBe(every);
+    expect(encodeLogicPayload(decoded)).toEqual(bytes);
   });
 
   it('round-trips names with quotes and backslashes and numbers in exponent form', () => {
@@ -108,6 +127,15 @@ describe('logic payload decoding', () => {
     ['an unknown field', (json: string) => json.replace('"slot":1}', '"slot":1,"extra":1}'), 'invalid-logic-payload', 'mission.campaign'],
     ['a wrong type', (json: string) => json.replace('"spawnCount":3', '"spawnCount":"3"'), 'invalid-logic-payload', 'mission.groups[1].spawnCount'],
     ['a reference error', (json: string) => json.replace('"template":3', '"template":9'), 'logic-reference-mismatch', 'mission.groups[1].template'],
+    ['an upper-case byte escape', (json: string) => json.replace('\\u00e9', '\\u00E9'), 'non-canonical-payload', 'payload'],
+    ['a short byte escape', (json: string) => json.replace('\\u0001', '\\x01'), 'invalid-logic-payload', 'payload'],
+    ['another event trigger field order', (json: string) => json.replace('"lower":-5,"upper":5', '"upper":5,"lower":-5'), 'non-canonical-payload', 'payload'],
+    ['a selector of -0', (json: string) => json.replace('"summarySelector":0', '"summarySelector":-0'), 'non-canonical-payload', 'payload'],
+    ['a missing event triggers field', (json: string) => json.replace(/,"eventTriggers":.*}$/, '}'), 'invalid-logic-payload', 'mission.eventTriggers'],
+    ['a missing range field', (json: string) => json.replace(',"summarySelector":9', ''), 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].summarySelector'],
+    ['a range bound of the wrong type', (json: string) => json.replace('"upper":5', '"upper":"5"'), 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].upper'],
+    ['a non-finite bound', (json: string) => json.replace('"upper":5', '"upper":1e999'), 'invalid-logic-payload', 'mission.eventTriggers[1].ranges[0].upper'],
+    ['an event trigger reference error', (json: string) => json.replace('"eventTrigger":1', '"eventTrigger":2'), 'logic-reference-mismatch', 'mission.declarations[5].eventTrigger'],
   ])('rejects %s', (_, edit, code, path) => {
     const { bytes, descriptor } = editedMission(edit);
     expect(() => decode(bytes, descriptor)).toThrowError(contractError(code, path));
@@ -152,7 +180,8 @@ describe('logic payload decoding', () => {
   it.each([
     ['an unknown role', (descriptor: { role: string }) => { descriptor.role = 'strategic-map-frame'; }, 'invalid-logic-payload', 'descriptor.role'],
     ['a kind that does not fit the role', (descriptor: { role: string }) => { descriptor.role = 'craft-types'; }, 'invalid-logic-payload', 'descriptor.kind'],
-    ['another schema version', (descriptor: { payloadIdentity: { schemaVersion: number } }) => { descriptor.payloadIdentity.schemaVersion = 2; }, 'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
+    ['the previous schema version', (descriptor: { payloadIdentity: { schemaVersion: number } }) => { descriptor.payloadIdentity.schemaVersion = 1; }, 'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
+    ['a later schema version', (descriptor: { payloadIdentity: { schemaVersion: number } }) => { descriptor.payloadIdentity.schemaVersion = 3; }, 'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
   ] as const)('rejects a descriptor with %s', (_, change, code, path) => {
     const { bytes, descriptor } = syntheticLogicAsset('mission');
     change(descriptor as never);

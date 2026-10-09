@@ -1,7 +1,7 @@
 import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import type {
-  CraftSide, CraftTypeEntry, MissionContent, MissionDeclaration, MissionGroup, SpawnRegion, StrategicMapFrame,
+  CraftSide, CraftTypeEntry, EventTrigger, MissionContent, MissionDeclaration, MissionGroup, SpawnRegion, StrategicMapFrame,
 } from '../../content/logic/logic-content.ts';
 import { readCraftTypeTable, readMissionContent, readWingmanRoster } from '../../content/logic/logic-readers.ts';
 import { CoreInputError } from '../errors.ts';
@@ -41,6 +41,11 @@ export interface MissionSetup {
   /** Index of the only declaration whose side is `player`. */
   readonly player: number;
   readonly groups: readonly MissionGroup[];
+  /**
+   * The mission's event triggers as its content holds them, which declarations' `eventTrigger` indexes. Core neither
+   * interprets nor schedules them here; their rules belong to P3.
+   */
+  readonly eventTriggers: readonly EventTrigger[];
   readonly wingmanOptions: readonly ResolvedDeclaration[];
 }
 
@@ -123,6 +128,7 @@ export function loadMission(value: LoadMissionInput): MissionSetup {
     declarations,
     player: players[0].index,
     groups: mission.groups,
+    eventTriggers: mission.eventTriggers,
     wingmanOptions,
   });
 }

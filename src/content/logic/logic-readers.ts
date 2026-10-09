@@ -4,8 +4,8 @@ import { ContentContractError, fail, matchesWhole, readArray, readOrderedArray, 
 import { CLASSIC_P2_SLICE } from '../slice-definition.ts';
 import {
   LOGIC_LIMITS,
-  type CraftSide, type CraftTypeEntry, type CraftTypeTable, type DeclarationOrigin, type LogicPayload, type LogicRole,
-  type MapAxis, type MissionContent, type MissionDeclaration, type MissionGroup, type RuleInputs, type SpawnRegion,
+  type CraftSide, type CraftTypeEntry, type CraftTypeTable, type DeclarationOrigin, type EventRange, type EventTrigger, type LogicPayload,
+  type LogicRole, type MapAxis, type MissionContent, type MissionDeclaration, type MissionGroup, type RuleInputs, type SpawnRegion,
   type StrategicMapFrame, type Vector3, type WingmanRoster,
 } from './logic-content.ts';
 
@@ -56,6 +56,7 @@ function readInteger(value: unknown, path: string, min: number, max: number): nu
 
 const readU32 = (value: unknown, path: string): number => readInteger(value, path, 0, 0xffffffff);
 const readI32 = (value: unknown, path: string): number => readInteger(value, path, -0x80000000, 0x7fffffff);
+const readI8 = (value: unknown, path: string): number => readInteger(value, path, -0x80, 0x7f);
 const readIndex = (value: unknown, path: string): number => readInteger(value, path, 0, Number.MAX_SAFE_INTEGER);
 const readCraftType = (value: unknown, path: string): number => readInteger(value, path, 0, 31);
 
@@ -77,6 +78,14 @@ const NAME = new RegExp(`[\\x20-\\x7e]{1,${LOGIC_LIMITS.nameLength}}`);
 
 function readName(value: unknown, path: string): string {
   if (!matchesWhole(value, NAME)) invalid(path, `must be 1 to ${LOGIC_LIMITS.nameLength} printable ASCII characters`);
+  return value;
+}
+
+/** A byte string: each code unit is one stored byte of 1–255; the NUL that ends it in the source is not part of it. */
+const MESSAGE = new RegExp(`[\\x01-\\xff]{1,${LOGIC_LIMITS.eventMessageBytes}}`);
+
+function readMessage(value: unknown, path: string): string {
+  if (!matchesWhole(value, MESSAGE)) invalid(path, `must be a byte string of 1 to ${LOGIC_LIMITS.eventMessageBytes} bytes from 1 to 255`);
   return value;
 }
 
@@ -157,7 +166,7 @@ function readRuleInputs(value: unknown, path: string): RuleInputs {
 function readDeclaration(value: unknown, path: string, allowedOrigins: readonly DeclarationOrigin[]): MissionDeclaration {
   const record = readFields(value, path, [
     'index', 'origins', 'craftType', 'nameCandidates', 'position', 'spawnTime', 'gridSpacing', 'placement', 'memberOf',
-    'aiTarget', 'ruleInputs', 'aiTargetCraftTypes',
+    'aiTarget', 'eventTrigger', 'ruleInputs', 'aiTargetCraftTypes',
   ]);
   return Object.freeze({
     index: readIndex(record.index, `${path}.index`),
@@ -170,6 +179,7 @@ function readDeclaration(value: unknown, path: string, allowedOrigins: readonly 
     placement: readPlacement(record.placement, `${path}.placement`),
     memberOf: readNullable(record.memberOf, `${path}.memberOf`, readIndex),
     aiTarget: readNullable(record.aiTarget, `${path}.aiTarget`, readIndex),
+    eventTrigger: readNullable(record.eventTrigger, `${path}.eventTrigger`, readIndex),
     ruleInputs: readRuleInputs(record.ruleInputs, `${path}.ruleInputs`),
     aiTargetCraftTypes: readAscending(record.aiTargetCraftTypes, `${path}.aiTargetCraftTypes`, 32, readCraftType, type => type),
   });
@@ -191,6 +201,21 @@ function readGroup(value: unknown, path: string): MissionGroup {
     spawnCount: readU32(record.spawnCount, `${path}.spawnCount`),
     layout: readList(record.layout, `${path}.layout`, LOGIC_LIMITS.layoutElements, readVector3, 1),
   });
+}
+
+function readEventRange(value: unknown, path: string): EventRange {
+  const record = readFields(value, path, ['lower', 'upper', 'messages', 'summarySelector']);
+  return Object.freeze({
+    lower: readI32(record.lower, `${path}.lower`),
+    upper: readI32(record.upper, `${path}.upper`),
+    messages: readList(record.messages, `${path}.messages`, LOGIC_LIMITS.eventMessages, readMessage),
+    summarySelector: readI8(record.summarySelector, `${path}.summarySelector`),
+  });
+}
+
+function readEventTrigger(value: unknown, path: string): EventTrigger {
+  const record = readFields(value, path, ['ranges']);
+  return Object.freeze({ ranges: readList(record.ranges, `${path}.ranges`, LOGIC_LIMITS.eventRanges, readEventRange) });
 }
 
 /** Declaration indexes are consecutive from 0. */
@@ -219,9 +244,12 @@ function checkDeclarationOrder(content: MissionContent, path: string): void {
   if (next < declarations.length) mismatch(`${path}.declarations[${next}]`, 'must follow the object declarations or be first used by a group');
 }
 
-/** Checks every reference inside one mission payload: indexes, placement, AI targets, groups and their membership. */
+/**
+ * Checks every reference inside one mission payload: indexes, placement, AI targets, event triggers, groups and their
+ * membership. Every event trigger must be the `eventTrigger` of some declaration, as every section-2 element is.
+ */
 function checkMissionReferences(content: MissionContent, path: string): void {
-  const { declarations, groups, spawnRegions } = content;
+  const { declarations, groups, spawnRegions, eventTriggers } = content;
   checkIndexes(declarations, `${path}.declarations`);
   const inRange = (index: number | null, length: number, at: string, reason: string): void => {
     if (index !== null && index >= length) mismatch(at, reason);
@@ -244,6 +272,7 @@ function checkMissionReferences(content: MissionContent, path: string): void {
     inRange(declaration.placement.region, spawnRegions.length, `${at}.placement.region`, 'must index a spawn region');
     inRange(declaration.placement.anchor, declarations.length, `${at}.placement.anchor`, 'must index a declaration');
     inRange(declaration.aiTarget, declarations.length, `${at}.aiTarget`, 'must index a declaration');
+    inRange(declaration.eventTrigger, eventTriggers.length, `${at}.eventTrigger`, 'must index an event trigger');
     if (declaration.origins.includes('group-template') !== templates.has(index)) {
       mismatch(`${at}.origins`, 'must mark group-template exactly when a group uses the declaration as template');
     }
@@ -253,13 +282,19 @@ function checkMissionReferences(content: MissionContent, path: string): void {
     // A listed member already has a memberOf equal to its group, so a non-null memberOf must come from a listing.
     if ((declaration.memberOf !== null) !== members.has(index)) mismatch(`${at}.memberOf`, 'must name the group that lists the declaration');
   });
+  const referenced = new Set(declarations.map(({ eventTrigger }) => eventTrigger));
+  eventTriggers.forEach((_, index) => {
+    if (!referenced.has(index)) mismatch(`${path}.eventTriggers[${index}]`, 'must be the event trigger of a declaration');
+  });
   checkDeclarationOrder(content, path);
 }
 
 /** Reads a mission payload (`mission/…`, role `mission`). */
 export function readMissionContent(value: unknown, path = 'mission'): MissionContent {
   return asLogic(() => {
-    const record = readFields(value, path, ['campaign', 'coordinates', 'references', 'mapFrame', 'namePool', 'spawnRegions', 'declarations', 'groups']);
+    const record = readFields(value, path, [
+      'campaign', 'coordinates', 'references', 'mapFrame', 'namePool', 'spawnRegions', 'declarations', 'groups', 'eventTriggers',
+    ]);
     const campaign = readFields(record.campaign, `${path}.campaign`, ['group', 'slot']);
     const group = readIndex(campaign.group, `${path}.campaign.group`);
     const slot = readIndex(campaign.slot, `${path}.campaign.slot`);
@@ -284,6 +319,7 @@ export function readMissionContent(value: unknown, path = 'mission'): MissionCon
       declarations: readList(record.declarations, `${path}.declarations`, LOGIC_LIMITS.declarations,
         (item, at) => readDeclaration(item, at, MISSION_ORIGINS)),
       groups: readList(record.groups, `${path}.groups`, LOGIC_LIMITS.groups, readGroup),
+      eventTriggers: readList(record.eventTriggers, `${path}.eventTriggers`, LOGIC_LIMITS.eventTriggers, readEventTrigger),
     });
     if (content.references.craftTypes === content.references.wingmanRoster) {
       mismatch(`${path}.references.wingmanRoster`, 'must name another Asset than craftTypes');
@@ -333,8 +369,8 @@ export function readWingmanRoster(value: unknown, path = 'wingmanRoster'): Wingm
     });
     checkIndexes(roster.options, `${path}.options`);
     roster.options.forEach((option, index) => {
-      const { placement, memberOf, aiTarget } = option;
-      if (placement.region !== null || placement.anchor !== null || memberOf !== null || aiTarget !== null) {
+      const { placement, memberOf, aiTarget, eventTrigger } = option;
+      if (placement.region !== null || placement.anchor !== null || memberOf !== null || aiTarget !== null || eventTrigger !== null) {
         mismatch(`${path}.options[${index}]`, 'must not reference mission structures');
       }
     });

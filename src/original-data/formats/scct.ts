@@ -62,6 +62,7 @@ export function parseCampaignTable(archive: DiscPath, read: ArchiveEntryRead, ca
         placement: Object.freeze({ region: null, anchor: null }),
         memberOf: null,
         aiTarget: null,
+        eventTrigger: null,
         ruleInputs: record.ruleInputs,
         aiTargetCraftTypes: record.aiTargetCraftTypes,
       });

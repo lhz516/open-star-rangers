@@ -289,7 +289,7 @@ describe('logic conversion over a structured-clone channel', () => {
     expect(snapshot.groups[1].assets).toBe(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets);
     expect(snapshot.usage).toMatchObject({
       assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
-      missionObjects: 11, missionReferences: 37,
+      missionObjects: 11, missionReferences: 40,
       vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     });
     const taken = owner.takeGroups()!;
@@ -308,12 +308,12 @@ describe('logic conversion over a structured-clone channel', () => {
       syntheticImport(sliceCoveredFiles(), 'slice-disc'),
       syntheticImport(sliceCoveredFiles({ scenario: syntheticScenario(unequal) }), 'slice-disc'),
     ]);
-    const tight: LogicStepInput = { ...PRODUCTION_LOGIC_STEP, share: { ...PRODUCTION_LOGIC_STEP.share, missionReferences: 36 } };
+    const tight: LogicStepInput = { ...PRODUCTION_LOGIC_STEP, share: { ...PRODUCTION_LOGIC_STEP.share, missionReferences: 39 } };
     const failing: LogicStepInput = { convert: async () => fail('invalid-logic-payload', 'payload', 'is not a logic payload'), share: EMPTY_BUDGET_USAGE };
     const cases: [ImportJob, readonly File[], Record<string, unknown>][] = [
       [createImportJob(unsupported.open), unsupported.files, { layer: 'source', code: 'unsupported-payload', location: 'archive:/MAIN/SCENARIO.NOB#3019/header/height', limit: null }],
       [createImportJob(slice.open, NO_GRAPHICS, tight), slice.files,
-        { layer: 'source', code: 'budget-exceeded', location: 'archive:/MAIN/SCENARIO.NOB#3019', limit: { name: 'missionReferences', limit: 36, observed: 37 } }],
+        { layer: 'source', code: 'budget-exceeded', location: 'archive:/MAIN/SCENARIO.NOB#3019', limit: { name: 'missionReferences', limit: 39, observed: 40 } }],
       [createImportJob(slice.open, NO_GRAPHICS, failing), slice.files, { layer: 'content', code: 'invalid-logic-payload', location: 'payload', limit: null }],
     ];
     for (const [job, files, error] of cases) {

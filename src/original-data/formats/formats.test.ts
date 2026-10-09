@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { LOGIC_LIMITS } from '../../content/logic/logic-content.ts';
 import { readMissionContent } from '../../content/logic/logic-readers.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { SourceError, type SourceLimit } from '../source-error.ts';
 import { inLocationGrammar } from '../source-error.test-support.ts';
 import {
   DEFAULT_MODEL_IDS, ENTRY_IDS, MARKER, defaultCampaignSpec, defaultScenarioSpec, entryRead, syntheticCampaign,
-  syntheticModelList, syntheticScenario, type CampaignSpec, type ScenarioSpec, type SyntheticBlock,
+  syntheticModelList, syntheticScenario, type CampaignSpec, type RangeSpec, type ScenarioSpec, type SyntheticBlock, type TriggerSpec,
 } from './formats.test-support.ts';
 import { MODEL_LIST_LIMITS, parseModelIdList } from './m2id.ts';
 import { CAMPAIGN_LIMITS, parseCampaignTable } from './scct.ts';
@@ -99,12 +100,24 @@ describe('SCEN parsing', () => {
     expect(declarations[6].ruleInputs.craftCount).toBe(2);
     expect(declarations[8]).toMatchObject({ nameCandidates: [`${MARKER}-x`, `${MARKER}-y`], placement: { region: 1, anchor: null } });
     expect(declarations.every(({ position, gridSpacing }) => position.x === 0 && position.y === 0 && position.z === 0 && gridSpacing === 0)).toBe(true);
+    expect(declarations.map(({ eventTrigger }) => eventTrigger)).toEqual([null, null, null, 0, null, null, null, 0, 1]);
+    expect(parsed.eventTriggers).toEqual([
+      {
+        ranges: [
+          { lower: 70, upper: 90, messages: [`${MARKER}-won`], summarySelector: -4 },
+          { lower: 40, upper: 69, messages: [], summarySelector: 0 },
+          { lower: -7, upper: 39, messages: [`${MARKER}-held `, `${MARKER}-lost`], summarySelector: 0 },
+        ],
+      },
+      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], summarySelector: 6 }] },
+    ]);
     expect(groups).toEqual([
       { template: 1, members: [4, 4], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }] },
       { template: 1, members: [6, 6], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 70 }] },
       { template: 3, members: [5, 5], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }] },
     ]);
     expect(Object.isFrozen(parsed) && Object.isFrozen(declarations[0].placement) && Object.isFrozen(groups[0].layout[0])).toBe(true);
+    expect(Object.isFrozen(parsed.eventTriggers[0].ranges[2].messages) && Object.isFrozen(parsed.eventTriggers[1].ranges[0])).toBe(true);
   });
 
   it('forms mission content its canonical reader accepts', () => {
@@ -136,7 +149,32 @@ describe('SCEN parsing', () => {
 
   it('accepts a mission without names, regions, groups, layouts or triggers', () => {
     const parsed = parseScen(syntheticScenario({ records: [{ kind: 1 }] }));
-    expect(parsed).toMatchObject({ namePool: [], spawnRegions: [], groups: [], declarations: [{ index: 0, craftType: 0, origins: ['object'] }] });
+    expect(parsed).toMatchObject({ namePool: [], spawnRegions: [], groups: [], eventTriggers: [], declarations: [{ index: 0, craftType: 0, origins: ['object'], eventTrigger: null }] });
+  });
+
+  it('keeps every message byte from 1 to 255 and the selector extremes as stored', () => {
+    const message = String.fromCharCode(1, 0x1f, 0x7f, 0x80, 0xe9, 0xff);
+    const parsed = parseScen(scenarioWith(spec => {
+      spec.triggers![1].ranges = [{ lower: -0x80000000, upper: 0x7fffffff, messages: [message, `${MARKER}\t`], selector: -128 }, { lower: 1, upper: 2, selector: 127 }];
+    }));
+    expect(parsed.eventTriggers[1].ranges).toEqual([
+      { lower: -0x80000000, upper: 0x7fffffff, messages: [message, `${MARKER}\t`], summarySelector: -128 },
+      { lower: 1, upper: 2, messages: [], summarySelector: 127 },
+    ]);
+  });
+
+  it('accepts a trigger without ranges', () => {
+    const parsed = parseScen(scenarioWith(spec => { spec.triggers![1] = { ranges: [] }; }));
+    expect(parsed.eventTriggers[1]).toEqual({ ranges: [] });
+    expect(parsed.declarations[8].eventTrigger).toBe(1);
+  });
+
+  it('neither converts nor checks the event counters, which the mission build resets', () => {
+    const plain = parseScen(syntheticScenario(defaultScenarioSpec()));
+    const counted = parseScen(rawScenario((view, block) => {
+      for (const at of block.offsets.triggers) [8, 12, 16].forEach((offset, index) => view.setInt32(at + offset, index === 1 ? -1 : 0x12345 + index, true));
+    }));
+    expect(counted).toEqual(plain);
   });
 
   it.each<BlockCase>([
@@ -149,10 +187,26 @@ describe('SCEN parsing', () => {
     ['an unlisted section pointer', () => rawScenario((_, block) => { unlist(block, 0x28); }), '/sections[3]'],
     ['a section overlapping the header', () => rawScenario((_, block) => { pointTo(block, 0x28, 0x10); }), '/sections[3]'],
     ['a section-2 count without pointer', () => rawScenario((view, block) => { unlist(block, 0x20); view.setUint32(0x20, 0, true); }), '/sections[2]'],
-    ['an unlisted formation pointer', () => scenarioWith(spec => { spec.records[2].words = { 0x30: 1 }; }), '/records[2]/formation'],
+    ['an unlisted spawn trigger pointer', () => scenarioWith(spec => { spec.records[2].words = { 0x30: 1 }; }), '/records[2]/spawnTrigger'],
     ['an unlisted route pointer', () => scenarioWith(spec => { spec.records[2].words = { 0x4c: 1 }; }), '/records[2]/route'],
     ['an unlisted runtime object pointer', () => rawScenario((view, block) => { view.setUint32(block.offsets.groups[2] + 24, 4, true); }), '/groups[2]/runtime'],
-    ['an unlisted spawn pair pointer', () => rawScenario((view, block) => { view.setUint32(block.offsets.trigger! + 20, 4, true); }), '/trigger'],
+    ['an unlisted spawn pair pointer', () => rawScenario((view, block) => { view.setUint32(block.offsets.triggers[0] + 20, 4, true); }), '/triggers[0]/spawnPairs'],
+    ['an unlisted range table pointer', () => rawScenario((_, block) => { unlist(block, block.offsets.triggers[1]); }), '/triggers[1]/ranges'],
+    ['an unlisted message array pointer', () => rawScenario((_, block) => { unlist(block, block.offsets.ranges[0][2] + 8); }), '/triggers[0]/ranges[2]/messages'],
+    ['an unlisted message pointer', () => rawScenario((view, block) => { unlist(block, view.getUint32(block.offsets.ranges[0][2] + 8, true) + 4); }), '/triggers[0]/ranges[2]/messages[1]'],
+    ['a relocated event counter', () => rawScenario((_, block) => { block.relocations.push(block.offsets.triggers[1] + 12); }), '/triggers[1]'],
+    ['a relocated range bound', () => rawScenario((_, block) => { block.relocations.push(block.offsets.ranges[0][1] + 4); }), '/triggers[0]/ranges[1]'],
+    ['a relocated selector', () => rawScenario((_, block) => { block.relocations.push(block.offsets.ranges[1][0] + 16); }), '/triggers[1]/ranges[0]'],
+    ['a relocation across two ranges', () => rawScenario((_, block) => { block.relocations.push(block.offsets.ranges[0][1] - 2); }), '/triggers[0]/ranges[0]'],
+    ['a relocation inside a message', () => rawScenario((view, block) => { block.relocations.push(view.getUint32(view.getUint32(block.offsets.ranges[1][0] + 8, true), true) + 3); }), '/triggers[1]/ranges[0]/messages[0]'],
+    ['a range count without table', () => rawScenario((view, block) => { unlist(block, block.offsets.triggers[1]); view.setUint32(block.offsets.triggers[1], 0, true); }), '/triggers[1]/ranges'],
+    ['a message count without array', () => rawScenario((view, block) => { unlist(block, block.offsets.ranges[1][0] + 8); view.setUint32(block.offsets.ranges[1][0] + 8, 0, true); }), '/triggers[1]/ranges[0]/messages'],
+    ['a range table past the block', () => rawScenario((_, block) => { pointTo(block, block.offsets.triggers[1], block.bytes.length - 10); }), '/triggers[1]/ranges'],
+    ['a message past the block', () => rawScenario((view, block) => { pointTo(block, view.getUint32(block.offsets.ranges[1][0] + 8, true), block.bytes.length); }), '/triggers[1]/ranges[0]/messages[0]'],
+    ['a message without NUL', () => rawScenario((view, block) => {
+      block.bytes[block.bytes.length - 1] = 0x41;
+      pointTo(block, view.getUint32(block.offsets.ranges[1][0] + 8, true), block.bytes.length - 1);
+    }), '/triggers[1]/ranges[0]/messages[0]'],
     ['a relocated sector count', () => rawScenario((_, block) => { block.relocations.push(0); }), '/header/width'],
     ['a relocated rectangle value', () => rawScenario((_, block) => { block.relocations.push(block.offsets.regions + 2); }), '/regions[0]'],
     ['a relocated layout element', () => rawScenario((view, block) => { block.relocations.push(view.getUint32(block.offsets.layoutTable, true) + 12); }), '/layouts[0]/elements[1]'],
@@ -179,7 +233,8 @@ describe('SCEN parsing', () => {
     ['a non-finite reference scale', () => scenarioWith(spec => { spec.scale = Number.NaN; }), '/header/scale'],
     ['a group without layout', () => rawScenario((view, block) => { view.setUint32(block.offsets.groups[0] + 4, 0, true); block.relocations.splice(block.relocations.indexOf(block.offsets.groups[0] + 4), 1); }), '/groups[0]/layout'],
     ['a layout count word past the block', () => scenarioWith(spec => { spec.tail = null; }), '/layouts'],
-    ['a section-2 trigger header past the block', () => rawScenario((_, block) => { pointTo(block, 0x20, block.bytes.length - 10); }), '/sections[2]'],
+    ['a section-2 trigger header past the block', () => rawScenario((_, block) => { pointTo(block, 0x20, block.bytes.length - 40); }), '/sections[2]'],
+    ['a section-2 table overlapping the header', () => rawScenario((_, block) => { pointTo(block, 0x20, 0x30); }), '/sections[2]'],
   ])('rejects %s as invalid-payload', (_, build, path) => {
     expectSourceError(() => parseScen(build()), 'invalid-payload', `${scenarioAt}${path}`);
   });
@@ -189,13 +244,25 @@ describe('SCEN parsing', () => {
     ['a non-square world', () => scenarioWith(spec => { spec.sectors = [6, 7]; }), '/header/height'],
     ['a sector count beyond 16 bits', () => scenarioWith(spec => { spec.sectors = [32_768, 32_768]; }), '/header/width'],
     ['section 4', () => rawScenario(view => { view.setUint32(0x34, 1, true); }), '/sections[4]'],
-    ...([[0x30, 'formation'], [0x4c, 'route']] as const).map(([offset, field]) =>
+    ...([[0x30, 'spawnTrigger'], [0x4c, 'route']] as const).map(([offset, field]) =>
       [`record pointer ${field}`, () => rawScenario((_, block) => { pointTo(block, block.offsets.records[2] + offset, block.offsets.regions); }), `/records[2]/${field}`] satisfies BlockCase),
-    ['record field formationIndex', () => scenarioWith(spec => { spec.records[2].words = { 0x38: 1 }; }), '/records[2]/formationIndex'],
+    ['a record spawned by an event trigger', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[2] + 0x30, block.offsets.triggers[0]); }), '/records[2]/spawnTrigger'],
+    ['record field spawnRange', () => scenarioWith(spec => { spec.records[2].words = { 0x38: 1 }; }), '/records[2]/spawnRange'],
     ['a section-4 pointer', () => rawScenario((_, block) => { pointTo(block, 0x30, block.offsets.regions); }), '/sections[4]'],
     ['a section-2 pointer without elements', () => rawScenario(view => { view.setUint32(0x24, 0, true); }), '/sections[2]'],
     ['a group runtime object pointer', () => rawScenario((_, block) => { pointTo(block, block.offsets.groups[2] + 24, block.offsets.regions); }), '/groups[2]/runtime'],
-    ['a spawn pair pointer', () => rawScenario((_, block) => { pointTo(block, block.offsets.trigger! + 20, block.offsets.regions); }), '/trigger'],
+    ['a spawn pair pointer', () => rawScenario((_, block) => { pointTo(block, block.offsets.triggers[0] + 20, block.offsets.regions); }), '/triggers[0]/spawnPairs'],
+    ['a stored spawn pair array', () => scenarioWith(spec => { spec.triggers![1].pairs = 1; }), '/triggers[1]/spawnPairs'],
+    ['a spawn pair count without array', () => rawScenario((view, block) => { view.setInt32(block.offsets.triggers[1] + 24, 1, true); }), '/triggers[1]/spawnPairs'],
+    ['a negative spawn pair count', () => rawScenario((view, block) => { view.setInt32(block.offsets.triggers[0] + 24, -1, true); }), '/triggers[0]/spawnPairs'],
+    ['a negative range count', () => rawScenario((view, block) => { view.setInt32(block.offsets.triggers[1] + 4, -1, true); }), '/triggers[1]/ranges'],
+    ['a range table pointer without ranges', () => rawScenario((view, block) => { view.setUint32(block.offsets.triggers[1] + 4, 0, true); }), '/triggers[1]/ranges'],
+    ['a negative message count', () => rawScenario((view, block) => { view.setInt32(block.offsets.ranges[0][1] + 12, -2, true); }), '/triggers[0]/ranges[1]/messages'],
+    ['a message array pointer without messages', () => rawScenario((view, block) => { view.setUint32(block.offsets.ranges[1][0] + 12, 0, true); }), '/triggers[1]/ranges[0]/messages'],
+    ...[17, 18, 19].map(offset =>
+      [`unread range byte ${offset}`, () => rawScenario((_, block) => { block.bytes[block.offsets.ranges[0][1] + offset] = 1; }), '/triggers[0]/ranges[1]/reserved'] satisfies BlockCase),
+    ['an empty message', () => scenarioWith(spec => { spec.triggers![0].ranges[2].messages![1] = ''; }), '/triggers[0]/ranges[2]/messages[1]'],
+    ['a trigger no record references', () => scenarioWith(spec => { delete spec.records[8].trigger; }), '/triggers[1]'],
     ...[0x14, 0x18, 0x20, 0x34, 0x50, 0x6c, 0x7c, 0x80].map(offset =>
       [`reserved record word ${offset}`, () => scenarioWith(spec => { spec.records[1].words = { 0x1c: 90, [offset]: 1 }; }), `/records[1]/words[${offset / 4}]`] satisfies BlockCase),
     ['a name list pointer without names', () => rawScenario((view, block) => { view.setUint32(block.offsets.records[8] + 8, 0, true); }), '/records[8]/names'],
@@ -213,8 +280,13 @@ describe('SCEN parsing', () => {
     ['a rectangle that is not a section-3 element', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[0] + 0x44, block.offsets.regions + 4); }), '/records[0]/region'],
     ['an anchor that is not a record', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[3] + 0x48, block.offsets.records[0] + 4); }), '/records[3]/anchor'],
     ['an AI target that is not a record', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[3] + 0x58, block.offsets.regions); }), '/records[3]/aiTarget'],
-    ['a trigger that is not the first section-2 element', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[7] + 0x54, block.offsets.trigger! + 28); }), '/records[7]/trigger'],
-    ['a trigger that schedules spawns', () => scenarioWith(spec => { spec.trigger = { ranges: 2, pairs: 1 }; }), '/trigger'],
+    ['a trigger that is not a section-2 element start', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[7] + 0x54, block.offsets.triggers[0] + 4); }), '/records[7]/trigger'],
+    ['a trigger that is a range', () => rawScenario((_, block) => { pointTo(block, block.offsets.records[3] + 0x54, block.offsets.ranges[0][0]); }), '/records[3]/trigger'],
+    ['a trigger in a mission without section 2', () => rawScenario((_, block) => {
+      new DataView(block.bytes.buffer).setUint32(0x24, 0, true);
+      new DataView(block.bytes.buffer).setUint32(0x20, 0, true);
+      unlist(block, 0x20);
+    }), '/records[3]/trigger'],
   ])('rejects %s as unsupported-payload', (_, build, path) => {
     expectSourceError(() => parseScen(build()), 'unsupported-payload', `${scenarioAt}${path}`);
   });
@@ -225,6 +297,8 @@ describe('SCEN parsing', () => {
     records: [{}], groups: [{ spawnCount: 1, layout: 0, template: 0, members: [] }],
     layouts: [Array.from({ length: elements }, () => [0, 0, 0] as const)],
   });
+  const triggerSpec = (triggers: TriggerSpec[]): ScenarioSpec => ({ records: triggers.map((_, trigger) => ({ trigger })), triggers });
+  const range = (messages: string[] = []): RangeSpec => ({ lower: 0, upper: 1, messages });
   const limitCases: readonly (readonly [string, number, (count: number) => ScenarioSpec, string, 'payloadItems' | 'textBytes'])[] = [
     ['pool names', SCENARIO_LIMITS.names, count => ({ names: names(count), records: [{}] }), '/sections[0]', 'payloadItems'],
     ['records', SCENARIO_LIMITS.records, count => ({ records: records(count) }), '/sections[1]', 'payloadItems'],
@@ -235,7 +309,12 @@ describe('SCEN parsing', () => {
     ['layout elements', SCENARIO_LIMITS.layoutElements, layoutSpec, '/layouts[0]', 'payloadItems'],
     ['name candidates', 32, count => ({ records: [{ names: names(count) }] }), '/records[0]/names', 'payloadItems'],
     ['name bytes', 63, length => ({ records: [{}], names: ['n'.repeat(length)] }), '/names[0]', 'textBytes'],
+    ['event triggers', LOGIC_LIMITS.eventTriggers, count => triggerSpec(Array.from({ length: count }, () => ({ ranges: [range()] }))), '/sections[2]', 'payloadItems'],
+    ['ranges', LOGIC_LIMITS.eventRanges, count => triggerSpec([{ ranges: Array.from({ length: count }, () => range()) }]), '/triggers[0]/ranges', 'payloadItems'],
+    ['messages', LOGIC_LIMITS.eventMessages, count => triggerSpec([{ ranges: [range(names(count))] }]), '/triggers[0]/ranges[0]/messages', 'payloadItems'],
+    ['message bytes', LOGIC_LIMITS.eventMessageBytes, length => triggerSpec([{ ranges: [range(['m'.repeat(length)])] }]), '/triggers[0]/ranges[0]/messages[0]', 'textBytes'],
   ];
+
 
   it.each(limitCases)('accepts %s at the limit and rejects one more', (_, limit, spec, path, name) => {
     expect(() => parseScen(syntheticScenario(spec(limit)))).not.toThrow();
@@ -245,6 +324,8 @@ describe('SCEN parsing', () => {
   it('rejects a huge declared count before reading or allocating its array', () => {
     const block = rawScenario(view => { view.setUint32(0x1c, 0xffffffff, true); });
     expectSourceError(() => parseScen(block), 'limit-exceeded', `${scenarioAt}/sections[1]`, { name: 'payloadItems', limit: SCENARIO_LIMITS.records, observed: 0xffffffff });
+    const ranges = rawScenario((view, block) => { view.setInt32(block.offsets.triggers[0] + 4, 0x7fffffff, true); });
+    expectSourceError(() => parseScen(ranges), 'limit-exceeded', `${scenarioAt}/triggers[0]/ranges`, { name: 'payloadItems', limit: LOGIC_LIMITS.eventRanges, observed: 0x7fffffff });
   });
 
   it('checks the entry size first, accepting exactly the limit', () => {
@@ -263,7 +344,7 @@ describe('SCCT parsing', () => {
     expect(parsed.scenarioEntryId).toBe(ENTRY_IDS.scenario);
     expect(parsed.wingmen).toEqual([0, 1].map(index => ({
       index, origins: ['wingman-option'], craftType: 1, nameCandidates: [`${MARKER}-w${index}`], position: { x: 0, y: 0, z: 0 },
-      spawnTime: 0, gridSpacing: 0, placement: { region: null, anchor: null }, memberOf: null, aiTarget: null,
+      spawnTime: 0, gridSpacing: 0, placement: { region: null, anchor: null }, memberOf: null, aiTarget: null, eventTrigger: null,
       ruleInputs: { ...nulls, aiValueA: index === 0 ? 3 : 5, aiValueB: index === 0 ? 4 : 5 }, aiTargetCraftTypes: [],
     })));
     expect(parseCampaignTable(SCENARIO_NOB, entryRead(ENTRY_IDS.campaign, 'SCCT', syntheticCampaign(defaultCampaignSpec())), { campaignGroup: 1, campaignSlot: 1 }).scenarioEntryId).toBe(3037);
@@ -280,7 +361,7 @@ describe('SCCT parsing', () => {
     ['a mission reference', () => campaignWith(spec => { spec.wingmen[0] = { ...spec.wingmen[0], region: 0 }; }), '/wingmen[0]/region'],
     ['a position', () => campaignWith(spec => { spec.wingmen[1] = { ...spec.wingmen[1], position: [0, 0, 1] }; }), '/wingmen[1]/position'],
     ['a grid spacing', () => campaignWith(spec => { spec.wingmen[0] = { ...spec.wingmen[0], signed: { 0x40: 5 } }; }), '/wingmen[0]/gridSpacing'],
-    ...([[0x30, 'formation'], [0x3c, 'member'], [0x48, 'anchor'], [0x54, 'trigger'], [0x58, 'aiTarget']] as const).map(([offset, field]) =>
+    ...([[0x30, 'spawnTrigger'], [0x3c, 'member'], [0x48, 'anchor'], [0x54, 'trigger'], [0x58, 'aiTarget']] as const).map(([offset, field]) =>
       [`a ${field} pointer`, () => rawCampaign((_, block, wingmen) => { pointTo(block, wingmen + 132 + offset, wingmen); }), `/wingmen[1]/${field}`] as const),
   ] as const)('rejects a wingman with %s as unsupported-payload', (_, build, path) => {
     expectSourceError(() => parseScct(build()), 'unsupported-payload', `${campaignAt}${path}`);
@@ -289,7 +370,7 @@ describe('SCCT parsing', () => {
   it.each([
     ['the wingman list', () => rawCampaign((_, block) => { unlist(block, 8); }), '/wingmen'],
     ['an unselected group slot list', () => rawCampaign((view, block) => { unlist(block, view.getUint32(0, true) + 16); }), '/groups[2]/slots'],
-    ['a wingman formation', () => rawCampaign((view, _, wingmen) => { view.setUint32(wingmen + 0x30, 2, true); }), '/wingmen[0]/formation'],
+    ['a wingman spawn trigger', () => rawCampaign((view, _, wingmen) => { view.setUint32(wingmen + 0x30, 2, true); }), '/wingmen[0]/spawnTrigger'],
   ])('rejects an unlisted pointer in %s as invalid-payload', (_, build, path) => {
     expectSourceError(() => parseScct(build()), 'invalid-payload', `${campaignAt}${path}`);
   });

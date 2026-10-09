@@ -86,6 +86,8 @@ const largest = (values: readonly number[]): number => values.reduce((most, valu
 function measure(mission: MissionContent, craftTypes: CraftTypeTable, roster: WingmanRoster, payloads: readonly PayloadRecord[]) {
   const declarations = [...mission.declarations, ...roster.options];
   const sides = (side: string) => craftTypes.entries.filter(entry => entry.side === side).length;
+  const ranges = mission.eventTriggers.flatMap(trigger => trigger.ranges);
+  const messages = ranges.flatMap(range => range.messages);
   const counts = {
     declarations: mission.declarations.length,
     namePool: mission.namePool.length,
@@ -97,6 +99,11 @@ function measure(mission: MissionContent, craftTypes: CraftTypeTable, roster: Wi
     placementAnchors: nonNull(mission.declarations.map(({ placement }) => placement.anchor)),
     memberOf: nonNull(mission.declarations.map(({ memberOf }) => memberOf)),
     aiTargets: nonNull(mission.declarations.map(({ aiTarget }) => aiTarget)),
+    eventTriggerReferences: nonNull(mission.declarations.map(({ eventTrigger }) => eventTrigger)),
+    eventTriggers: mission.eventTriggers.length,
+    eventRanges: ranges.length,
+    eventMessages: messages.length,
+    eventMessageBytes: messages.reduce((sum, message) => sum + message.length, 0),
     wingmanOptions: roster.options.length,
     craftTypes: craftTypes.entries.length,
     playerCraftTypes: sides('player'),
@@ -115,6 +122,10 @@ function measure(mission: MissionContent, craftTypes: CraftTypeTable, roster: Wi
     { name: 'nameCandidates', observed: largest(declarations.map(({ nameCandidates }) => nameCandidates.length)), limit: LOGIC_LIMITS.nameCandidates },
     { name: 'nameLength', observed: largest(names.map(name => name.length)), limit: LOGIC_LIMITS.nameLength },
     { name: 'wingmanOptions', observed: counts.wingmanOptions, limit: LOGIC_LIMITS.wingmanOptions },
+    { name: 'eventTriggers', observed: counts.eventTriggers, limit: LOGIC_LIMITS.eventTriggers },
+    { name: 'eventRanges', observed: largest(mission.eventTriggers.map(trigger => trigger.ranges.length)), limit: LOGIC_LIMITS.eventRanges },
+    { name: 'eventMessages', observed: largest(ranges.map(range => range.messages.length)), limit: LOGIC_LIMITS.eventMessages },
+    { name: 'eventMessageBytes', observed: largest(messages.map(message => message.length)), limit: LOGIC_LIMITS.eventMessageBytes },
     { name: 'payloadBytes', observed: payloads.reduce((sum, { bytes }) => sum + bytes.length, 0), limit: PRODUCTION_LOGIC_SHARE.payloadBytes },
   ];
   return { counts, limits };

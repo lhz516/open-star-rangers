@@ -61,14 +61,22 @@ describe('logic check', () => {
       ['data/wingman-roster', 'wingman-roster', true, true],
       ['mission/first-campaign', 'mission', true, true],
     ]);
+    const messageBytes = [`${MARKER}-won`, `${MARKER}-held `, `${MARKER}-lost`, `${MARKER}-ended`].map(message => message.length);
     expect(report.counts).toEqual({
       declarations: 9, namePool: 3, spawnRegions: 3, groups: 3, memberPositions: 6, layoutElements: 6,
-      placementRegions: 5, placementAnchors: 1, memberOf: 3, aiTargets: 1, wingmanOptions: 2,
-      craftTypes: 6, playerCraftTypes: 1, friendlyCraftTypes: 3, enemyCraftTypes: 2,
+      placementRegions: 5, placementAnchors: 1, memberOf: 3, aiTargets: 1,
+      eventTriggerReferences: 3, eventTriggers: 2, eventRanges: 4, eventMessages: 4, eventMessageBytes: messageBytes.reduce((sum, bytes) => sum + bytes, 0),
+      wingmanOptions: 2, craftTypes: 6, playerCraftTypes: 1, friendlyCraftTypes: 3, enemyCraftTypes: 2,
     });
     expect(report.limits.map(({ name }) => name)).toEqual([
       'declarations', 'objects', 'namePool', 'spawnRegions', 'groups', 'groupMembers', 'layoutElements', 'nameCandidates', 'nameLength',
-      'wingmanOptions', 'payloadBytes',
+      'wingmanOptions', 'eventTriggers', 'eventRanges', 'eventMessages', 'eventMessageBytes', 'payloadBytes',
+    ]);
+    expect(report.limits.filter(({ name }) => name.startsWith('event'))).toEqual([
+      { name: 'eventTriggers', observed: 2, limit: 2 },
+      { name: 'eventRanges', observed: 3, limit: 8 },
+      { name: 'eventMessages', observed: 2, limit: 2 },
+      { name: 'eventMessageBytes', observed: Math.max(...messageBytes), limit: 128 },
     ]);
     expect(report.limits.every(item => Object.keys(item).join() === 'name,observed,limit' && item.observed <= item.limit)).toBe(true);
     expect(report.limits.find(({ name }) => name === 'nameLength')).toEqual({ name: 'nameLength', observed: `${MARKER}-pool-a`.length, limit: 63 });
