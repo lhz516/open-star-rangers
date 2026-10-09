@@ -2,8 +2,8 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-08
-related: [U-001, U-006, U-029]
+updated: 2026-10-09
+related: [U-001, U-006, U-011, U-029]
 ---
 
 # Cockpit and MFD graphics (CCKD, MFDD)
@@ -31,7 +31,7 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 
 | Record offset | Type | Meaning | Status |
 |---|---|---|---|
-| +0x00 | 4 bytes | Group metadata | Unconfirmed |
+| +0x00 | i32 | Layout number: `0x49848` shows the slot whose +0x00 equals the layout number that `0x3f158` derives from the current view mode ([executable](./executable.md#automatic-views-and-cameras-p3-0109)). Slots 0–7 of 10103 and of 10101 hold 0, 5, 6, 1, 2, 3, 4 and 8; the only slot of 10097 holds 0 | Confirmed (EXE and data, P3-01/09) |
 | +0x04 | u32 ptr | The group's palette: 256 entries of 6-bit VGA RGB (768 bytes, the DATA format); 0 when the group has none, which selects the default palette | Confirmed (EXE and screenshots, [below](#group-palette-and-drawing-confirmed)) |
 | +0x08 | u32 | 768 when +0x04 is set, otherwise 0 (observed on every slot of all 3 entries); Likely the palette size in bytes. The palette path does not read it | Observed invariant; meaning Likely |
 | +0x0C | u32 | Passed to the instrument handlers each frame | Meaning Unconfirmed |
@@ -40,7 +40,7 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 | +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Structure Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); other fields Unconfirmed |
 | +0x1C | u32 | Instrument record count | Likely (EXE) |
 
-The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. U-029 remains open for the remaining metadata and the selection of slots 3–6.
+The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. Each slot is selected by the view modes whose layout number it carries (+0x00, above); U-029 remains open for +0x0C, the instrument record fields and when 10097 is used.
 
 ### Element, 52 bytes (Confirmed)
 
@@ -56,11 +56,12 @@ The element pointer/count layout is validated by parsing every non-empty slot in
 
 | Directory slot | Elements | Likely role | Evidence |
 |---|---|---|---|
-| 0 | 4: bottom panel 640×164 at y 316, two side struts, a thin strip | Forward cockpit (F1) | Composite matches the original F1 screenshot except where instruments are drawn over it (DATA palette, [below](#front-cockpit-source-r1)) |
-| 1, 7 | Empty | Unconfirmed | Zero element counts |
-| 2 | 4: top 640×48, sides 82 and 79 wide, bottom 640×51 | Strategic-map frame | Every pixel the frame covers matches the original map screens under the group's own palette ([below](#group-palette-and-drawing-confirmed)) |
-| 3–5 | 2 each: one large sprite plus a lower panel | Looking back, left, and right from the cockpit | Show the seat and side consoles from those angles; which keys select them is Unconfirmed |
-| 6 | 3: two 480-high side pillars and a top bar | A narrow full-height frame | Role Unconfirmed |
+| 0 | 4: bottom panel 640×164 at y 316, two side struts, a thin strip | Forward cockpit (F1) | Composite matches the original F1 screenshot except where instruments are drawn over it (DATA palette, [below](#front-cockpit-source-r1)). Layout 0, used by F1 (view mode 0xC), the Warp (mode 1) and the base interior (mode 6) (Confirmed, EXE) |
+| 1 | Empty | Full-screen view (F2) | Layout 5, used by view mode 0xD, which F2 selects (Confirmed, EXE); zero element count |
+| 7 | Empty | External views | Layout 8, used by view mode 0x11: the F3–F10 external views and the automatic destruction view (Confirmed, EXE); zero element count |
+| 2 | 4: top 640×48, sides 82 and 79 wide, bottom 640×51 | Strategic-map frame | Every pixel the frame covers matches the original map screens under the group's own palette ([below](#group-palette-and-drawing-confirmed)). Layout 6, used by the map (view mode 8) (Confirmed, EXE) |
+| 3–5 | 2 each: one large sprite plus a lower panel | Looking back, left, and right from the cockpit | Show the seat and side consoles from those angles. Layouts 1, 2 and 3, used by view modes 0x10, 0xF and 0xE, which the flight key handler posts for the Down, Left and Right cursor-key codes (Confirmed, EXE); whether those keys reach that handler in flight is U-011 |
+| 6 | 3: two 480-high side pillars and a top bar | A narrow full-height frame | Layout 4, used by view mode 0x12 (the keypad-centre code; Confirmed, EXE); role Unconfirmed |
 
 The LO set uses the same structure with 320×240 coordinates; its slot 2 still uses 640×480 coordinates, so the map frame is shared between modes (Likely). Both sets' slot-2 palettes are identical.
 
@@ -159,5 +160,5 @@ The two element flag fields after the position (+44, +48) hold only 0 or 1 on ev
 
 ## 4. Open questions
 
-- Directory +0x00 and +0x0C, the meaning of +0x08, and the instrument record fields after the rectangle, including the pointer at +36 that some records hold (U-029). The records give the HUD instrument areas, which P2-07 leaves to P3.
-- Which key or state selects CCKD slots 3–6, and when 10097 is used.
+- Directory +0x0C, the meaning of +0x08, and the instrument record fields after the rectangle, including the pointer at +36 that some records hold (U-029). The records give the HUD instrument areas, which P2-07 leaves to P3.
+- Whether the cursor keys that select slots 3–6 reach the flight key handler during flight (U-011), and when 10097 is used.

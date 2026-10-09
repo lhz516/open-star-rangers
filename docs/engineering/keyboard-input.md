@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-06
+updated: 2026-10-09
 related: [ADR-0004, U-011, U-012]
 ---
 
@@ -112,12 +112,18 @@ P1 只有合成演示这一个使用游戏键的画面。下表的动作全部�
 | 能力 | 政策来源 | 计划接入时机 |
 |---|---|---|
 | Alt/Option 开火；`AltRight`/`AltGraph` 视为开火并过滤合成的 `ControlLeft`；飞行中拦截 Alt 组合 | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围) | 首个原版开火绑定（P3） |
-| F1–F9 视角及其拦截 | 同上 | P3 视角 |
-| 全屏 + Keyboard Lock | 同上 | 飞行画面接入时；跨系统实机验证在 P5 |
+| F1 驾驶舱前视；飞行中拦截 F1–F9，F2–F9 只显示 G-08 标注、不切换视角 | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围)、[P3-01 视角范围](../plan/p3/01/spec.md#视角范围) | P3（绑定与拦截 P3-05，F1 画面 P3-12、P3-13） |
+| F2–F9 视角（其他驾驶舱布局与视角选择，U-029） | [P3-01 视角范围](../plan/p3/01/spec.md#视角范围) | P4 |
+| 闭环的自动相机：玩家被毁时的被毁视角，只为这一自动流程实现，不开放为可选视角 | [P3-01 视角范围](../plan/p3/01/spec.md#视角范围)；原版事实见 [B-005](../original/behavior/B-005-campaign-rescue.md#被毁与救援时的视角p3-0109) | P3-12（进入与结束的时机 P3-11） |
+| 全屏 + Keyboard Lock | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围) | 飞行画面接入时；跨系统实机验证在 P5 |
 | `beforeunload` 关闭确认，以及 Windows/Linux 的 Alt+F4 风险提示 | 同上 | 有需要保护的任务进度时（P3 及以后） |
 | 单独重映射开火键或视角键（默认值不变） | 同上 | 设置界面落地后 |
 | Pointer Lock，以及退出锁定时清键 | 同上 | 战略地图等实际需要时 |
 | 原版方向/横滚键与其余快捷键 | [U-011](../original/unknowns.md) | P0 试玩确认后，在 P3 加入 |
 | 系统快捷键冲突的实机验证 | [键位表](../original/input/key-map.md) | P0/P5 |
+
+- **G-08 的边界：** G-08 的处理只在正式飞行输入区有效，不占用 React 菜单或文本控件。页面层的 `preventDefault` 不能保证拦截系统组合键，G-08 不解决 Alt+F4 风险；该风险按上表的关闭确认与提示处理。
+- **自动相机的范围：** P3-01/09 从原版代码确认，闭环中只有被毁视角是非 F1 的自动相机；出发、停靠等待、基地内部、离港、Warp、能量耗尽、救援与任务结束都不需要另外的相机（[executable](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)）。这只说明闭环的这些衔接，不推及原版的其他流程。
+- **原版的其他视角键：** 原版飞行按键处理中 F10 也切换视角，若干光标键的键码也对应视角切换（这些键在飞行中是否送达未追踪，U-011）；Warp、地图与基地内部不处理视角键（[executable](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)）。它们不在总计划 §1.2 与 G-08 的列表中，P3 中是否拦截由 P3-05 决定。
 
 不实现 Gamepad、鼠标飞行（原版不支持，见 [U-012](../original/input/key-map.md#鼠标飞行已确认u-012)）或触控输入。

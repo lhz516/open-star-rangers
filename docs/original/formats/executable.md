@@ -3,7 +3,7 @@ type: format
 status: draft
 phase: P0
 updated: 2026-10-09
-related: [U-008, U-009, U-010, U-017, U-022, U-031, U-032]
+related: [U-008, U-009, U-010, U-011, U-017, U-022, U-029, U-031, U-032]
 ---
 
 # Main executable (`SRANGERS.EXE`)
@@ -54,6 +54,8 @@ Addresses are Ghidra addresses with the ghidra-lx-loader defaults (objects mappe
 | 0x6a7b4 | Builds a renderer mesh from a MESH struct; reached from the MESH row of 0x1766b4 through 0x663ac and its completion 0x663f4 | Confirmed (logic) | Field order and the texture-coordinate pairing are in [mesh §1](./mesh.md#texture-coordinate-block-order-confirmed) |
 | 0x39f34 | Cut-scene list player | Confirmed (logic) | Plays a list of rows of the cut-scene table `CINC` 10095 (file and `SONG` entry per row) in order, switching the display to 320 or 640 wide by the `CINEMATIC` setting; Esc, Enter or Space ends the current clip; all ten callers are listed in [cut-scenes](#cut-scenes-and-loop-transitions-p3-0108) |
 | 0x38ff4 | Docking and launch: dispatcher message 0x400000, sub-commands 0–4 | Confirmed (logic) | Plays the docking and launch clips and switches to and from the base-interior view mode 6 (see [cut-scenes](#cut-scenes-and-loop-transitions-p3-0108)) |
+| 0x216d4 | Sets the player's view mode and sub-mode, then switches the display through `0x3f158` | Confirmed (logic) | Used by the flight handler's view keys, the destruction view, docking and launch; the map and Warp transitions write the mode directly. All writers of the view mode are listed in [automatic views](#automatic-views-and-cameras-p3-0109) |
+| 0x30ef0 | Places the camera for the current view mode, once per dispatcher pass while the player state holds a player object | Confirmed (logic) | Per-mode and per-sub-mode function tables `0x174b88` and `0x174bdc`; see [automatic views](#automatic-views-and-cameras-p3-0109) |
 | 0x2cbb4 | Builds the communications menu for the current target | Likely | Chooses one of three `COMM.NOB` menu tables from the target's type value and the flag bits `0x68000` (see [scenario](./scenario.md) §3) |
 | 0x282bf | Handles debug or cheat commands | Confirmed (logic) | References the strings for mission win/fail and mission selection; win/fail post a request through `0x33874`, four kill commands use dispatcher event 0x800, and mission selection calls 0x33170 (see [mission result](#mission-result-success-path-and-campaign-restart-p3-0104)); how commands are entered is not traced |
 | 0x33170 | Jump to mission N: stores the mission number in a global and sets the game state | Confirmed (logic) | Called from the debug command handler with N − 1; enters campaign mode at main-flow state 0 |
@@ -172,7 +174,7 @@ Uses the globals and the endings table of [mission result](#mission-result-succe
 
 **Confirmed (destruction sequence):** the damage handler `0x2a694` ignores the player while the destruction view follows an object (+0x90 set) or while flag `0x174ed8` is non-zero. That flag is 0 in the image and changes only through the typed cheat-code table at `0x174ee8` (rows of 0x18 bytes), which `0x3c970` matches against keys typed in flight; its row lies beyond the first 16, which are the only rows active until the table's master toggle `0x174ed0` has been typed. In normal play the player is therefore damageable. When `0x2a830` leaves no hull, `0x2a694` flags the object dead, reports event type 0 or 1 to `0x6977c`, and for kind 1 calls `0x32d74` and the explosion constructor `0x23ac8`.
 
-1. `0x32d74` (state 3, sub-state not already 2) sets in-mission sub-state 2 and, through `0x216d4` and `0x31094`, puts the player-state in view mode 0x11, sub-mode 8: an external camera initialised from the player object's orientation and position. This automatic view replaces the cockpit without a key press.
+1. `0x32d74` (state 3, sub-state not already 2) sets in-mission sub-state 2 and, through `0x216d4` and `0x31094`, puts the player-state in view mode 0x11, sub-mode 8: an external camera initialised from the player object's orientation and position. This automatic view replaces the cockpit without a key press; its camera is described in [automatic views](#automatic-views-and-cameras-p3-0109).
 2. For kind 1, `0x23ac8` first only arms `0x174ae4` for 0xC0 clock units. At the end of each dispatcher pass, `0x23808` calls it again for the player object when that time has passed. It then creates the explosion and, through producer `0x24d78` in mode 3, one [fragment](#effect-presentation-sources) (kind `0x1000000`, discriminator 3) per list-1 part of the player's model, except parts 1 and 2, which `0x25124` skips for kinds 1 and 2.
 3. The part-0 fragment becomes the followed object (+0x90). Its update callback `0x24ac4` gives it an expiry 0x140 units ahead (other fragments get random or no expiry; a wingman's part 0 gets 0x780) and, when it expires, posts message 0x10000. The dispatcher passes that message to `0x256e4`, which, for a fragment of source kind 1, discriminator 3 and part 0, clears +0x90 and calls `0x32e14(1)`.
 
@@ -309,9 +311,68 @@ The base interior is view mode 6 of the running main loop, not a clip and not a 
 
 Nominal lengths are frame count × frame interval from each file's header, not measured: row 2 about 14 s, row 3 about 24 s, row 4 about 8 s, rows 5, 6 and 7 about 19, 21 and 6 s, row 8 about 29 s, rows 9–12 about 14 s each, row 16 about 9 s, row 20 about 20 s, each medal and promotion row about 5 s.
 
-**Engine parts of the same transitions:** the destruction sequence and its external view (view mode 0x11, [mission failure](#mission-failure-player-loss-and-rescue-p3-0105)), the energy-beacon wait, the all-clear message and the result delays ([mission result](#mission-result-success-path-and-campaign-restart-p3-0104)), the docking countdown, the base interior (view mode 6) and the whole Warp (view mode 1) are drawn by the engine. The timed ones end at due times that `0x3266c` or the dispatcher checks every frame, and none of them calls the pause routine `0x258f8` (whose only callers are the four key contexts' `p` and the page runner `0x32fec`) or a page, so the main loop, object updates and the clock keep running through them; the spawn queue keeps running until the status becomes 4. Keys go to the context of the current view mode: during the destruction view (0x11) that is the flight handler `0x264a0`, and during the energy-beacon wait and the result delays whichever context the player's current view selects; what the flight commands do while the player is destroyed or out of energy was not traced. The cameras these phases use are the subject of P3-01/09.
+**Engine parts of the same transitions:** the destruction sequence and its external view (view mode 0x11, [mission failure](#mission-failure-player-loss-and-rescue-p3-0105)), the energy-beacon wait, the all-clear message and the result delays ([mission result](#mission-result-success-path-and-campaign-restart-p3-0104)), the docking countdown, the base interior (view mode 6) and the whole Warp (view mode 1) are drawn by the engine. The timed ones end at due times that `0x3266c` or the dispatcher checks every frame, and none of them calls the pause routine `0x258f8` (whose only callers are the four key contexts' `p` and the page runner `0x32fec`) or a page, so the main loop, object updates and the clock keep running through them; the spawn queue keeps running until the status becomes 4. Keys go to the context of the current view mode: during the destruction view (0x11) that is the flight handler `0x264a0`, and during the energy-beacon wait and the result delays whichever context the player's current view selects; what the flight commands do while the player is destroyed or out of energy was not traced. The views and cameras of these phases are in [automatic views](#automatic-views-and-cameras-p3-0109).
 
 Evidence: ignored `local/research/p3-01/transitions/` (`ghidra_scripts/TransProbe.java`, `probe.sh`, outputs `out/p1.txt`–`out/p40.txt`; `cinc.ts`, `scen-clips.ts`, `trigger-refs.ts`, `spawn-times.ts`, `smk-meta.ts` with their `out/*.json`, which hold file names, entry IDs, small selector values, counts and header metadata only). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. The list bytes, the flag bits and key codes, the success-list conditions, the docking jump table, the key-context switch and the Warp entry and exit were read from native instructions and data; callers were checked by raw scans of relative calls and of 32-bit values. Behaviour: [B-003](../behavior/B-003-campaign-flow.md#出发与任务结束的衔接p3-0108), [B-004](../behavior/B-004-base-communications.md#入港与离港的衔接p3-0108), [B-005](../behavior/B-005-campaign-rescue.md#被毁救援与失败的衔接p3-0108), [B-001](../behavior/B-001-strategic-map.md#warp-的衔接p3-0108).
+
+### Automatic views and cameras (P3-01/09)
+
+Static answers to the automatic-view question of the [P3-01 spec](../../plan/p3/01/spec.md#视角范围): which engine views and cameras the loop's transitions use, apart from the Smacker clips of [cut-scenes](#cut-scenes-and-loop-transitions-p3-0108). Uses the player-state block of [mission failure](#mission-failure-player-loss-and-rescue-p3-0105) (`0x1b0638`: +0x28 view mode, +0x29 previous view mode, +0x2A view sub-mode, +0x8C player object, +0x90 the object the destruction view follows). Nothing here was observed at runtime; the screenshot correspondences are in the behaviour documents linked at the end.
+
+**Confirmed (switching views):** `0x3104c` stores the new view mode in +0x28 and the old one in +0x29; entering 0x11 from another mode clears the sub-mode. `0x216d4(object, mode, sub-mode)` calls it. For mode 0x11 it then sets the sub-mode through `0x31094`; a negative sub-mode selects the next one through `0x31168`, which cycles over 0–8 (count 9 at `0x174c00`) and skips 8. It also posts a renderer message that `0x3d9f8` handles: for mode 0x11 the player's own model is added to the scene, for every other mode it is removed (roles Likely). `0x3f158(new, old)` switches the display: for the new mode it selects a cockpit layout through `0x49848` and sets up the map, base and Warp screens. A whole-image scan for byte stores at +0x28 and +0x2A and raw call scans of `0x3104c`, `0x216d4`, `0x31094` and `0x3f158` find only these writers of the view mode:
+
+| Writer | When | New view mode |
+|---|---|---|
+| Object instantiation `0x67938` (player kind, also sets +0x29) and main-flow state 2 at `0x32842` (after building the mission) | Mission start | 0xC |
+| Flight key handler `0x264a0` → message 0x400, sub-command 0xC–0x12 → dispatcher `0x20d10` → `0x216d4` | View keys (below) | The key's mode and sub-mode |
+| `0x32d74` → `0x216d4` | The player craft is destroyed (state 3, sub-state not yet 2), unless the view is already 0x11/8 | 0x11, sub-mode 8 |
+| `0x67b98` (sets +0x28 and +0x29) and `0x32e14` | Rescue, after its clip list | 0xC |
+| `0x38ff4` sub-command 0 → `0x216d4` | Docking, after the docking clip | 6 |
+| `0x38ff4` sub-command 4 → `0x216d4` | Launch, after the launch clip | +0x29, at least 0xC |
+| Dispatcher, message 0x400 sub-commands 8 and 9 | `m` opens the map when `0x33504` allows it; closing it | 8; then +0x29 |
+| Dispatcher, sub-command 0 | Warp start accepted by `0x2be00` | 1 |
+| `0x2bf08`; dispatcher sub-command 2 (sender not traced) | Warp end | +0x29, with 8 becoming 0xC |
+| `0x334bc` | Main-flow state 0, before the teardown | 0x13 |
+| `0x3f500` | A display-resolution change made on the options page | 0xC |
+
+The energy-loss handler `0x33464`, the beacon wait, the all-clear wait and result delays, the docking countdown (sub-states 3–4), the failure handler and the pages change no view. None of the writers reads the mission number or SCEN data, and `0x32d74` does not test the campaign flag, so the views of the loop are the same in every campaign mission, the selected one included. Across the loop, the destruction view is therefore the only automatic view whose camera differs from F1's: the departure and the rescue end in 0xC; the docking countdown, the beacon wait and the success waits keep the current view; the base interior and the map draw no world; and the Warp uses the F1 camera pose (below).
+
+**Confirmed (view keys by key context):** the key context follows the view mode (`0x26284`, see [cut-scenes](#cut-scenes-and-loop-transitions-p3-0108)). Of the four key contexts, only the flight handler `0x264a0` has view keys; it serves every mode except 0–3 (the Warp handler), 6 (base) and 8 (map), so also the destruction view. The DOS key reader `0x75048` turns F1–F10 into codes 0x96–0x9F and the extended cursor scan codes into 0x80–0x8C (table `0x74f30`).
+
+| Key | View mode, sub-mode | Cockpit layout (`0x3f158`) |
+|---|---|---|
+| F1; Up | 0xC | 0 |
+| F2; Home | 0xD | 5 |
+| F3–F8 | 0x11, sub-modes 0–5 | 8 |
+| F9 | 0x11, sub-mode 7 | 8 |
+| F10 | 0x11, sub-mode 6 | 8 |
+| PgUp | 0x11, the next sub-mode (8 skipped) | 8 |
+| Right; Left; Down; keypad centre | 0xE; 0xF; 0x10; 0x12 | 3; 2; 1; 4 |
+
+Several Ctrl combinations produce the same extended codes. Whether the cursor keys reach this handler during flight, and whether they also steer, is part of U-011 and was not traced. The map handler `0x27118`, the Warp handler `0x27360` and the base handler `0x271e0` handle no view key, so the view keys do nothing in the map, during a Warp and in the base; the base handler's two selection keys are the Up and Down cursor keys. No key selects sub-mode 8. The other layouts are: Warp (mode 1) 0, base (mode 6) 0, map (mode 8) 6, teardown (0x13) none. `0x49848` selects the CCKD slot whose directory +0x00 equals the layout number ([cockpit](./cockpit.md#group-directory-confirmed-structure-on-all-three-entries)).
+
+**Confirmed (cameras and what each view draws):** the dispatcher calls `0x21584` once per pass, after its message loop; while the player state holds a player object (+0x8C), it calls `0x30ef0`. For mode 0x11 that takes a camera function from `0x174bdc` by sub-mode (nine entries; sub-mode 8 is `0x31bdc`); for mode 8 it runs `0x2b8ec` (Likely the map's visibility messages) and has no camera function; for every other mode it takes one from `0x174b88` by mode. Modes 0xC and 0xD use `0x31400`, which keeps the camera at the player craft's own position and orientation; modes 0xE, 0xF, 0x10 and 0x12 have their own functions (`0x31424`, `0x314ac`, `0x31524`, `0x315bc`, not analysed); modes 0–0xB and 0x13 have none. Without a function the camera takes the craft's position and orientation as well, so the Warp mode 1 places the camera exactly as F1 does. `0x31400` also derives a 0–100 value from the craft's model (stored at `0x1b0758`, consumer not traced), which is 0 without a function. The frame render `0x3ee58` then draws by mode:
+
+| View mode | Drawn |
+|---|---|
+| 0xC, 0xD, 0x11 | The world and the overlay routines `0x488b4`, `0x44f00`, `0x493d8`, `0x3d318`, `0x456e4`, `0x489d0`, `0x49004` and `0x45de0`; in mode 0x11, `0x45de0` draws the view label (below) |
+| 0xE, 0xF, 0x10, 0x12 | The same without `0x456e4` |
+| 1 (Warp) | The world and the Warp effect (`0x50508`, `0x505cc`), but none of those overlay routines; `0x3f158` switches the left display to page 6 on entry and back on exit (`0x4cdf0`) |
+| 6 (base) | The base screens (`0x4f524`, `0x4f550`) inside layout 0; the scene routine `0x3d4e4` is passed 0x13 and draws no world |
+| 8 (map) | The map; `0x3d4e4` draws no world |
+| 0x13 | Nothing |
+
+Which HUD elements each overlay routine draws in each mode belongs to P3-13.
+
+**Confirmed (the destruction view, mode 0x11 sub-mode 8):**
+
+- **Entry:** `0x31094` copies the player craft's orientation and position into the camera (`0x186514`–`0x186534`, `0x1864e4`–`0x1864ec`), rotates the orientation by 32° (0.5585 rad, `0x228cc`) about the axis of its first row, marks the follow distance `0x1864e0` as unset (−1) and records the time in seconds (`0x186538`, from `0x18641c`). The renderer message adds the player's own model (Likely, above), and layout 8 has no elements: the whole screen is the external view.
+- **Before the explosion** (+0x90 empty; the explosion is due 0xC0 clock units after the hit, see [mission failure](#mission-failure-player-loss-and-rescue-p3-0105)): `0x31bdc` sets the camera position to the craft's current position plus the camera's third orientation row times −30 × the seconds since entry, with the entry orientation, so the camera recedes from the craft at 30 units per nominal second.
+- **Following the escape pod** (+0x90 is the part-0 fragment, which expires 0x140 units later): each pass it turns the camera towards the fragment, rebuilds the other two axes from the previous ones by cross products, sets the distance to the current one when it is unset and then moves it a quarter of the way towards 30 units, and places the camera at that distance from the fragment along the view direction. The easing is per dispatcher pass, so it depends on the frame rate ([time base](#simulation-time-base-p3-0106)).
+- **Label:** in mode 0x11, `0x45de0` draws the label of the current sub-mode at the top-left corner (position from `0x459a0`) with the text drawer `0x59f90`. The labels are rows of `TABL` 10399 of `SR.NOB`, which `0x45420` loads through `0x6affc` when it is not yet loaded and keeps in `0x175984`, indexed by the sub-mode (indices 0–8); the entry holds 13 string pointers, and the use of indices 9–12 was not traced.
+- **Exit:** the fragment's expiry clears +0x90 and calls `0x32e14` in the same pass. In a campaign the rescue clip list follows and the view becomes 0xC; a third loss goes to the failure clips and pages, and state 0 then sets 0x13. Because the destruction view uses the flight key context, F1, F2 and the other external keys switch away from it with no further test, and so would the cursor view keys if they reach that handler (U-011); the destruction sequence and its end do not depend on the view, and the rescue still sets 0xC. No key or cycle returns to sub-mode 8 before the next loss.
+
+Evidence: ignored `local/research/p3-01/views/` (`ghidra_scripts/ViewProbe.java`, `probe.sh`, outputs `out/p1.txt`–`out/p34.txt`; `labels.ts` and `cckd-ids.ts` with `out/labels-10399.json` and `out/cckd-ids.json`, which hold offsets, lengths, counts, comparison results and directory numbers only). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. The key-code translation, the compare chain of `0x264a0`, the dispatcher's sub-commands, the camera tables and the destruction-camera constants were read from native instructions and data. Behaviour: [B-005](../behavior/B-005-campaign-rescue.md#被毁与救援时的视角p3-0109), [B-004](../behavior/B-004-base-communications.md#停靠时的视角p3-0109), [B-001](../behavior/B-001-strategic-map.md#warp-时的视角p3-0109).
 
 ### Strategic map projection
 
