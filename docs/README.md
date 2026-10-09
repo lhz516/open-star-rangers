@@ -13,7 +13,7 @@ updated: 2026-10-08
 |---|---|---|---|
 | [STATUS.md](./STATUS.md) | 当前阶段摘要、各阶段任务索引入口、下一步、项目级阻塞项。**项目总进度入口**，不跟踪退出条件或复制任务状态 | 活文档，随时更新 | 中文 |
 | [plan/master-plan.md](./plan/master-plan.md) | 总计划：产品方向、技术选型、架构、阶段与验收 | 稳定，只能通过 ADR 修改 | 中文 |
-| [plan/](./plan/) 下的 `p1/`–`p6/` | `tasks.md` 合并承载阶段计划与导航；任务号目录内的 spec、goal 与 subtasks 分别记录契约、执行状态和验收证据。P1 已拆分本地任务，P5 承接 CI/部署范围，其余阶段仍为占位 | 活文档，随阶段规划更新 | 中文 |
+| [plan/](./plan/) 下的 `p1/`–`p6/` | `tasks.md` 合并承载阶段计划与导航；任务号目录内的 spec、goal 与 subtasks 分别记录契约、执行状态和验收证据。P1–P3 已拆分任务，P5 承接 CI/部署范围，其余阶段仍为占位 | 活文档，随阶段规划更新 | 中文 |
 | [decisions/](./decisions/) | 架构决策记录 `ADR-NNNN` | 只追加；被取代时标记 `superseded` | 中文 |
 | [original/](./original/) | 关于原版游戏的一切知识：待确认登记表、文件清单、格式、行为规范、键位 | 参考类，核实后更新 | 见下 |
 | [original/unknowns.md](./original/unknowns.md) | 待确认事项登记表 `U-###` | 活文档 | 中文 |

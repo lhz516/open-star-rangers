@@ -18,7 +18,7 @@ updated: 2026-10-08
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
 | P2 玩法所需资源管线 | 退出评审已通过 | [P2 tasks](./plan/p2/tasks.md) | [P2-exit](./reviews/P2-exit.md) |
-| P3 完整玩法切片 | 未开始（可与 P2 重叠） | [P3 tasks](./plan/p3/tasks.md) | — |
+| P3 完整玩法切片 | 任务拆分已批准，未开始实施 | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
 | P6 Enhanced 美化 | 未开始 | [P6 tasks](./plan/p6/tasks.md) | — |
@@ -79,7 +79,7 @@ updated: 2026-10-08
    - 批次 6 已完成：P2-11 的 S/AC 已由最终对齐逐项核对，见其 [goal](./plan/p2/11/goal.md#子任务跟踪)。
    - 批次 7：[P2-12](./plan/p2/12/goal.md#子任务跟踪)（资源管线联合验证与本地对照）已完成：联合闭环、失败矩阵、网络审计与产物出站审阅都已通过；原版本地对照逐类完成，结论见[最终对齐](./plan/p2/12/subtasks/26-final-alignment.md#第四次运行2026-10-08通过)。期间合入了用户批准的 P2-06（MESH 贴图坐标按两个连续数组读取）与 P2-07（转换 SNIP 10487 与 DIAG 10489）修订，当前生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`。缺少原版基准的少数项（第 2 列表外壳的静态外形、导弹类型 0、2、3 的飞行外观、跨接缝面）经用户批准记为范围例外。
    - [P2-13](./plan/p2/13/goal.md#子任务跟踪)（P2 退出评审与 P3 交接）已完成：在构建与内容身份同 P2-12 的最终候选上重跑了工程、Python、三个项目的浏览器回归、聚合合规与真实数据候选核对，都首次通过；用户在最终候选上复核了导入、刷新恢复与模型、SNIP 帧的查看；以 P2 为负责阶段的 8 个未知项，P2 部分都已关闭或切片不需要，负责阶段移到后续阶段。
-   - **下一步：** 明确授权阶段切换及 [P3](./plan/p3/tasks.md) 规划；[P2 退出评审](./reviews/P2-exit.md)已于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露），不自动启动下游任务。交接入口见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)。
+   - **下一步：** [P3 任务拆分](./plan/p3/tasks.md)已于 2026-10-08 获用户批准（16 项任务及其依赖与验收覆盖，尚无 spec/goal），按[推荐执行顺序](./plan/p3/tasks.md#推荐执行顺序)从 P3-01 的 spec 开始；阶段切换仍须明确授权。[P2 退出评审](./reviews/P2-exit.md)已于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露），不自动启动下游任务。交接入口见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)。
 2. P0 收尾（用户）：试玩回答 U-011、U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 3. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
 4. P3 行为研究新增 U-031：战役被毁可进入救援，真实失败/重试条件仍未确认，见 [B-005](./original/behavior/B-005-campaign-rescue.md)；不复用练习模式被毁即失败。
