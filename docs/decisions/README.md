@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # 架构决策记录（ADR）
@@ -28,4 +28,5 @@ updated: 2026-10-06
 | [ADR-0013](./ADR-0013-task-graph-orchestration.md) | 用确定性路由编排任务工作流图 | accepted |
 | [ADR-0014](./ADR-0014-status-summary-only.md) | STATUS 只维护项目摘要 | accepted |
 | [ADR-0015](./ADR-0015-source-module-structure.md) | 保持顶层模块，按职责细化源码目录 | accepted |
-| [ADR-0016](./ADR-0016-parallel-goal-execution.md) | goal 默认由协调者并行执行 | accepted |
+| [ADR-0016](./ADR-0016-parallel-goal-execution.md) | goal 默认由协调者并行执行 | superseded by ADR-0017 |
+| [ADR-0017](./ADR-0017-coordinator-current-checkout.md) | goal 协调者在当前 checkout 中运行 | accepted |

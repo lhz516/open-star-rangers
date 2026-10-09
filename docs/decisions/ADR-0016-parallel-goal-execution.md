@@ -1,13 +1,15 @@
 ---
 id: ADR-0016
 type: adr
-status: accepted
+status: superseded
 phase: all
-updated: 2026-10-06
-related: [ADR-0013, ADR-0014]
+updated: 2026-10-07
+related: [ADR-0013, ADR-0014, ADR-0017]
 ---
 
 # ADR-0016：goal 默认由协调者并行执行
+
+本记录已被 [ADR-0017](./ADR-0017-coordinator-current-checkout.md) 取代。协调者改为在当前 checkout 中运行，不再使用专用 goal worktree；其余决定由 ADR-0017 继续沿用。
 
 ## 背景
 

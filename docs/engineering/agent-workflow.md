@@ -3,7 +3,7 @@ type: guide
 status: active
 phase: all
 updated: 2026-10-08
-related: [ADR-0013, ADR-0014, ADR-0015, ADR-0016]
+related: [ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017]
 ---
 
 # Agent 任务工作流
@@ -110,14 +110,15 @@ generate-spec → review-spec → ⏸ approve-spec → generate-goal → ⏸ app
 
 ## 并行执行
 
-execute-goal 默认并行执行，决定见 [ADR-0016](../decisions/ADR-0016-parallel-goal-execution.md)，操作细则见 [parallel.md](../../.agents/skills/execute-goal/references/parallel.md)。
+execute-goal 默认并行执行，决定见 [ADR-0017](../decisions/ADR-0017-coordinator-current-checkout.md)（取代 [ADR-0016](../decisions/ADR-0016-parallel-goal-execution.md)），操作细则见 [parallel.md](../../.agents/skills/execute-goal/references/parallel.md)。
 
 | 方式 | 调用 | 行为 |
 |---|---|---|
-| 并行（默认） | `/execute-goal p2/11`、`--parallel N` | 协调者在专用 goal worktree 中分派最多 3 个（或 N 个）worker，逐个集成 |
+| 并行（默认） | `/execute-goal p2/11`、`--parallel N` | 协调者在当前 checkout（主 worktree 或用户创建的 worktree）中认领子任务，为每个 worker 新建 worktree，最多 3 个（或 N 个），逐个集成 |
 | 顺序 | `--sequential` | 原单会话行为，在当前 checkout 中逐个执行，不接手已被 worker 认领的行 |
 | worker | `--worker NN` | 在 `exec/<phase>-<task>-NN` worktree 中只执行已认领的子任务 NN |
 
+- **工作区：** 协调者不为自己新建或切换 worktree，当前分支（可以是基础分支）即 goal 分支，认领与集成都是该分支上的本地提交。无关的用户修改须未暂存且不在本 goal 的路径中，作为基线保留；其他分支已在协调同一 goal 时先询问用户。
 - **调度：** subtask 文档以 `**执行方式：**`（`自动`/`需用户`）和 `## 写入范围` 声明执行元数据。路由器的 `schedule` 列出可同时分派的 `wave`，规则如下：
   - 只选依赖已完成、写入范围与已选行、`in-progress` 行、`blocked` 行都不重叠的行，编号小的优先。
   - 缺少写入范围的行与所有行冲突。
@@ -128,7 +129,7 @@ execute-goal 默认并行执行，决定见 [ADR-0016](../decisions/ADR-0016-par
   2. 在集成后的代码上重跑检查；冲突或失败时退回 worker 修复。
   3. 附 `Worker-Commit` trailer 提交，保持一个子任务一个提交。
 - **恢复：** 每次启动都把 tracker 与 `exec/` 分支、worktree、worker 会话对照，因此从头执行和执行到一半的 goal 走同一路径。旧 goal 没有写入范围时，由协调者补写并单独提交，不改变契约。
-- **清理：** worker 的 worktree 与分支在集成后立即删除；阻塞中的保留到恢复或用户放弃。goal 完成时不留任何 `exec/` 分支或 worktree。goal 分支由用户合并。
+- **清理：** worker 的 worktree 与分支在集成后立即删除；阻塞中的保留到恢复或用户放弃。goal 完成时不留任何 `exec/` 分支或 worktree。当前分支的 push 或合并由用户决定。
 - **环境：** 每个 worker 按子任务编号使用独立端口（`5100 + 3 × NN` 起），执行 `pnpm install --frozen-lockfile`，并链接主仓库的 `local/`。
 
 ## 数据模型的定位
@@ -158,7 +159,7 @@ execute-goal 默认并行执行，决定见 [ADR-0016](../decisions/ADR-0016-par
 - 先跑针对性检查；TypeScript/app 变更按[工程约定](./README.md)运行 `pnpm check`。Python/Ghidra 的检查单独执行。文档修改检查链接、元数据与结构，不运行无关构建。
 - 每个 subtask 在 simplify 或完成前，用 rubber-duck subagent 按当前项 diff、契约和验收标准做一次审查；处理适用问题并重跑受影响检查，不重复委派同一审查。
 - 每个 subtask 完成前检查文档影响；接口、命令、检查规则或操作步骤变化时同步 `engineering/`、`guides/` 等直接相关文档，无需修改时在完成证据中说明原因。
-- 明确调用 execute-goal 授权逐项本地 commit，并授权创建、使用和删除该 goal 自己的 worker worktree、`exec/` 分支与 worker 会话；不授权 push、合入基础分支、云资源修改、部署或破坏性操作。当前仅创建这些 skills，不等于调用 execute-goal。
+- 明确调用 execute-goal 授权在当前分支（可以是基础分支）上逐项本地 commit，并授权创建、使用和删除该 goal 自己的 worker worktree、`exec/` 分支与 worker 会话；不授权 push、把当前分支合入其他分支、云资源修改、部署或破坏性操作。当前仅创建这些 skills，不等于调用 execute-goal。
 - 已批准 spec 要求的实机、原版对照或部署结果若尚未验证，仍是未完成验收，不可用本地代理检查替代后宣称完成；任务范围之外的后续操作才可以作为残余事项记录。
 - 执行不为已决定的事项反复提问；出现新的行为歧义或契约冲突时先记录阻塞，必要时向用户澄清，不能为了长时间无人值守而猜测。
 

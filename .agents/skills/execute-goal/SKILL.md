@@ -1,6 +1,6 @@
 ---
 name: execute-goal
-description: 'Execute or resume an approved Open Star Rangers goal at docs/plan/<phase>/<task>/goal.md, from its first subtask or from a partly executed state. By default coordinates up to three worker sessions in separate worktrees on dependency-ready subtasks with disjoint write scopes, then integrates one verified local commit per subtask; --parallel N changes the limit, --sequential runs in this session, --worker NN runs one claimed subtask. Includes game-specific tests, browser-testing, rubber-duck review, simplify, documentation alignment and acceptance evidence. Use only when explicitly asked to execute-goal.'
+description: 'Execute or resume an approved Open Star Rangers goal at docs/plan/<phase>/<task>/goal.md, from its first subtask or from a partly executed state. By default coordinates from the current checkout, claiming subtasks there and running up to three worker sessions in new worktrees on dependency-ready subtasks with disjoint write scopes, then integrates one verified local commit per subtask; --parallel N changes the limit, --sequential runs in this session, --worker NN runs one claimed subtask. Includes game-specific tests, browser-testing, rubber-duck review, simplify, documentation alignment and acceptance evidence. Use only when explicitly asked to execute-goal.'
 argument-hint: 'p1/01 [--parallel N | --sequential | --worker NN]'
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Continue a selected goal through every safe, eligible subtask and final alignment. Do not stop for routine approval between steps.
 
-Explicit invocation authorizes implementation and focused local commits for that goal. It also authorizes creating, using and removing that goal's own worker worktrees, `exec/` branches and worker sessions. It does not authorize push, merging into the base branch, deployment, cloud mutation, deleting work it does not own, unrelated work, or changing the approved behavior.
+Explicit invocation authorizes implementation and focused local commits for that goal on the current branch, which may be the base branch. It also authorizes creating, using and removing that goal's own worker worktrees, `exec/` branches and worker sessions. It does not authorize push, merging the current branch into another branch, deployment, cloud mutation, deleting work it does not own, unrelated work, or changing the approved behavior.
 
 Read [AGENTS.md](../../../AGENTS.md), [the task workflow](../../../docs/engineering/agent-workflow.md), [engineering conventions](../../../docs/engineering/README.md), and [the subtask procedure](./references/subtask-procedure.md). In parallel and worker modes, also read [parallel execution](./references/parallel.md).
 
@@ -17,8 +17,8 @@ Read [AGENTS.md](../../../AGENTS.md), [the task workflow](../../../docs/engineer
 
 | Invocation | Mode | Runs in |
 |---|---|---|
-| `/execute-goal p2/11` | Parallel coordinator, at most 3 workers | The goal worktree |
-| `/execute-goal p2/11 --parallel N` | Parallel coordinator, at most N workers (integer N ≥ 1) | The goal worktree |
+| `/execute-goal p2/11` | Parallel coordinator, at most 3 workers | The current checkout; workers in new worktrees |
+| `/execute-goal p2/11 --parallel N` | Parallel coordinator, at most N workers (integer N ≥ 1) | The current checkout; workers in new worktrees |
 | `/execute-goal p2/11 --sequential` | One subtask at a time in this session | The current checkout |
 | `/execute-goal p2/11 --worker NN` | Only claimed subtask NN, for a coordinator | That subtask's worker worktree |
 
@@ -47,7 +47,7 @@ Before editing code:
 7. Discover and load relevant skills. Use [browser-testing](../browser-testing/SKILL.md) for browser acceptance and [simplify](../simplify/SKILL.md) for scoped code cleanup. Do not require nonexistent skills, model files, or test commands.
 8. Record goal approval truthfully if this invocation supplies it. Keep document approval separate from tracker execution state. In parallel mode, the approval is part of the approved-plan commit made before the first claim.
 9. Mode checks:
-   - Parallel: establish the coordinator workspace and reconcile the tracker with worker branches, worktrees and sessions ([parallel execution](./references/parallel.md)).
+   - Parallel: check the current checkout as the coordinator workspace, without creating or moving to another worktree, and reconcile the tracker with worker branches, worktrees and sessions ([parallel execution](./references/parallel.md)).
    - Worker: run the worker preflight in the same reference.
 
 The spec is the task contract within the master plan, active ADRs, and original-game evidence. It cannot override frozen project decisions or turn unresolved original behavior into a fact.
@@ -93,7 +93,7 @@ Missing evidence or authorization for an explicitly required external check is a
 
 ## 5. Final alignment and remediation
 
-The final subtask is verification-only. In parallel mode the coordinator runs it in the goal worktree after every other row is integrated.
+The final subtask is verification-only. In parallel mode the coordinator runs it in the coordinator checkout after every other row is integrated.
 
 - Reconcile all `S-xx` and `AC-xx` requirements with implementation and evidence.
 - Check feature-specific invariants, relevant full engineering checks, and required browser/manual results.
@@ -120,6 +120,6 @@ Report:
 - Checks and evidence.
 - Unresolved blockers and any retained worktrees with their reasons.
 - Residual external actions.
-- The goal branch awaiting the user's merge.
+- The goal branch and its unpushed commits, for the user to push or merge.
 
-Stop only at completion, a user pause, or when no safe eligible work remains. Never push, merge into the base branch, or claim unverified phase exit criteria passed.
+Stop only at completion, a user pause, or when no safe eligible work remains. Never push, merge the current branch into another branch, or claim unverified phase exit criteria passed.

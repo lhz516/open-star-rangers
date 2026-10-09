@@ -1,13 +1,14 @@
 # Parallel execution
 
-The default mode. One **coordinator** session runs in the goal worktree. It dispatches dependency-ready subtasks with disjoint write scopes to at most N **worker** sessions (default 3, `--parallel N`), each in its own worktree. It then integrates their commits one at a time. [ADR-0016](../../../../docs/decisions/ADR-0016-parallel-goal-execution.md) records the decision.
+The default mode. One **coordinator** session runs in the current checkout and claims subtasks there. It dispatches dependency-ready subtasks with disjoint write scopes to at most N **worker** sessions (default 3, `--parallel N`), each in a new worktree. It then integrates their commits one at a time. [ADR-0017](../../../../docs/decisions/ADR-0017-coordinator-current-checkout.md) records the decision, superseding [ADR-0016](../../../../docs/decisions/ADR-0016-parallel-goal-execution.md).
 
 ## Names
 
 | Item | Value |
 |---|---|
 | Primary checkout `<primary>` | First `worktree` entry of `git worktree list --porcelain` |
-| Goal branch | The coordinator's current branch |
+| Coordinator checkout | The checkout where `/execute-goal` was invoked: the primary worktree or a linked worktree the user created |
+| Goal branch | The coordinator checkout's current branch; it may be the base branch (normally `main`) |
 | Worker branch | `exec/<phase>-<task>-<NN>`, e.g. `exec/p2-11-12` |
 | Worker worktree | `<primary>.worktrees/exec-<phase>-<task>-<NN>` |
 | Worker ports, `B = 5100 + 3 × NN` | `OSR_E2E_DEV_PORT=B`, `OSR_E2E_PREVIEW_PORT=B+1`, browser-testing dev server `B+2` |
@@ -27,15 +28,22 @@ A worker branch is the claim marker: a row whose `exec/` branch exists belongs t
 
 ## Coordinator workspace
 
-The coordinator runs in a linked worktree on a branch other than the base branch (normally `main`). The worktree must be clean except for this goal's uncommitted planning documents and partial work of one of this goal's `in-progress` rows (see [Reconcile](#reconcile-on-every-start)). An agent session's own worktree qualifies when it meets those conditions.
+The coordinator runs in the coordinator checkout, on whatever branch is checked out there. It never creates, switches to or moves this session into another worktree or branch for itself. Claims, scope records, blocker records and integrations are local commits on the goal branch; only workers get new worktrees ([Dispatch](#dispatch)).
 
-If the current checkout does not qualify, do not coordinate here:
+Before the first claim, check:
 
-1. The goal's approved planning documents must be committed before branching. If they are uncommitted here, ask the user before committing them here; offer `--sequential` as the alternative. If unrelated changes make the checkout dirty, leave them alone.
-2. Move this session into a new worktree when the host supports it, for example `isolate_session`. That worktree's branch becomes the goal branch.
-3. Otherwise create `<primary>.worktrees/goal-<phase>-<task>` on branch `goal/<phase>-<task>` from `HEAD`, ask the user to rerun the same command there, and stop.
+1. `HEAD` is on a branch, not detached, and that branch is not an `exec/` worker branch.
+2. Every dirty path, staged or not, is one of:
+   - this goal's uncommitted approved planning documents, committed at the first [dispatch](#dispatch);
+   - partial work of one of this goal's `in-progress` rows (see [Reconcile](#reconcile-on-every-start));
+   - an unrelated user change that is unstaged and outside this goal's directory, the coordinator-owned documents and every row's `写入范围`. Record these as the baseline. Never stage, restore, stash, reset or commit them.
 
-Never merge the goal branch into the base branch or push it. After completion the user merges it, for example with the merge skill.
+   Otherwise report the offending paths, leave them alone and ask the user to commit or move them; offer `--sequential` as the alternative.
+3. One branch coordinates a goal. List commits on other local branches that touch this goal's `goal.md` but are not in `HEAD`: `git log --branches --not HEAD -- docs/plan/<phase>/<task>/goal.md`. Workers never edit `goal.md`, so a hit means another branch may be coordinating it, such as a `goal/<phase>-<task>` worktree made by an earlier version of this skill. Report those branches and their worktrees and ask the user before claiming anything here. If the user continues here, leave those branches and their workers alone.
+
+Recheck the index and dirty paths before every coordinator commit and integration, since the user may keep working in this checkout. Pause and ask when a new change appears in the index or in a goal path.
+
+Never push the goal branch or merge it into another branch. After completion the user decides whether to push or merge it.
 
 ## Reconcile on every start
 
@@ -133,16 +141,16 @@ If a worker session fails or stops responding, inspect its worktree, then start 
 
 ## Integrate
 
-Integrate one worker at a time, in the order reports arrive, from a clean goal worktree.
+Integrate one worker at a time, in the order reports arrive, in the coordinator checkout. Start with nothing staged and no dirty path other than the recorded baseline.
 
 1. **Check the branch.** `git log <goal branch>..exec/<…>` must contain exactly one commit. The worker worktree must be clean. Changed paths must stay inside the row's scope as recorded on the goal branch, plus its own document, and must not include coordinator-owned documents. Otherwise send the worker back.
-2. **Apply.** Run `git cherry-pick --no-commit <sha>`. On conflict, undo it with `git reset --merge`; `cherry-pick --abort` does not work after `--no-commit`. Then ask the worker to rebase onto the goal branch, resolve the conflict inside its scope, rerun its checks and report the new commit. Never resolve a worker's conflict in the goal worktree.
+2. **Apply.** Run `git cherry-pick --no-commit <sha>`. On conflict, undo it with `git reset --merge`; `cherry-pick --abort` does not work after `--no-commit`. Then ask the worker to rebase onto the goal branch, resolve the conflict inside its scope, rerun its checks and report the new commit. Never resolve a worker's conflict in the coordinator checkout.
 3. **Update the tracker.** Set the row to `completed` and update `goal.md`'s `updated:`. Apply that subtask's accepted proposals to the coordinator-owned documents.
 4. **Validate the integrated tree.**
    - Run `pnpm check` for TypeScript/app changes; documentation-only changes get link and metadata checks.
    - If another subtask was integrated after the worker's base, also rerun the focused checks recorded in this subtask's evidence.
-   - On failure, restore only the paths this integration touched (`git restore --source=HEAD --staged --worktree -- <paths>`). Then send the failure to the worker to rebase, fix and report again.
-5. **Commit.** Run `git commit -C <sha> --trailer "Worker-Commit: <sha>"`. This reuses the worker's message and trailer and records which worker commit was integrated, for reconciliation. Verify that the commit exists and the goal worktree is clean.
+   - On failure, restore only the paths this integration touched (`git restore --source=HEAD --staged --worktree -- <paths>`). Then send the failure to the worker to rebase, fix and report again. If the failure comes from a baseline path rather than the integrated commit, do not send it to the worker; stop integrating and ask the user.
+5. **Commit.** Run `git commit -C <sha> --trailer "Worker-Commit: <sha>"`. This reuses the worker's message and trailer and records which worker commit was integrated, for reconciliation. Verify that the commit exists and that the coordinator checkout has no dirty path other than the baseline.
 6. **Clean up.** Run `git worktree remove <worktree>` without `--force`, then `git branch -D exec/<…>`. If removal is refused, keep both and report it. Leave the worker session as history.
 
 ## Worker mode
@@ -171,4 +179,4 @@ Rules:
 - Keep blocked or questioned workers' worktrees until the row is resumed or the user abandons it.
 - Never use `--force`, delete a branch with unintegrated commits, or delete a dirty worktree without the user's explicit confirmation.
 - At goal completion, no `exec/<phase>-<task>-*` branch or worktree remains. Run `git worktree prune`. Every server, browser and port opened by the coordinator or by workers is closed.
-- The goal branch and its worktree stay until the user merges them.
+- Leave the coordinator checkout and the goal branch in place; pushing or merging them is the user's decision.
