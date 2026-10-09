@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
-| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14, 15 | blocked |
+| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14, 15 | in-progress |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | completed |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | completed |
@@ -114,6 +114,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 10 以静态证据完成：** 宿主限制下没有基准运行；决定表 46 行，影响闭环的待研究来源为 0，余下的运行时选择（各爆炸所用 EXPL、星云起点、`0x38780` 是否可达、`0x46ecc` 的取值）作为覆盖限制带 U 项交负责任务。更正 P2-07 对 `0x4ca80` 的读法：条件是视角模式 6（基地内部），不是机型字节；CCKD 10097、MFDD 10475、BITM 10469、TABL 10481、TEX 11091 只用于基地内部。IMFAT flags 的载入与释放语义已确认，U-020 改为部分确认。
 - **2026-10-09 — 交 11、12 的要点（各行提出，待其执行时采用）：** 11 的指南与命令表：`measure.py run|baseline-version`、操作者协议（`status.json`；`operator/<pause>-<n>.json` 的 confirm（含任务与配置身份）/skip/abort；`operator/abort.json`）、退出码 0/1/2/3、研究根目录的会话锁、默认保护范围（`local/StarRang` 严格保护与 `local/research` 既有文件）、`maxReadBytes` 须覆盖映射与复核窗口及页查找、配方 `gameSettings`（白名单、取值、报告的 `gameConfig.overrides`、`game-config-invalid`），以及本机 Computer Use 无法操作 DOSBox-X 的限制对[原版证据获取](../../../guides/original-evidence.md#agent-运行原版)的影响。12 的交接：10 完成证据中的决定表（P3-03 新增导入项与 G/不使用项）、09 的视角交接（P3-05：F10 与光标键码；P3-13：Warp 中跳过的叠加绘制与被毁视角标签）、08 的 G-02 占位时间与勋章判定（见上）。
 - **2026-10-09 — 07 的第一次运行与新增 15：** 用户在场，协调者运行 `tb-c40000-01`：4 个标记全部确认，146 个读数全部合格，原版文件核对通过，但以 `cleanup-failed` 结束（SIGKILL 后两次各 5 秒内 DOSBox-X 未退出，之后自行退出，没有遗留进程）。按工具契约该次不计为合格运行。经用户选择，新增 02 的修复项 15：SIGKILL 后的等待改为有限的 30 秒并记录实际等待时间；07 与最终对齐加入对 15 的依赖。15 完成后用新编号重做 40000 cycles 的运行。
+- **2026-10-09 — 07 恢复：** 用户在场可操作运行，15 已集成，恢复条件满足；07 回到 `in-progress`，其写入范围恢复 executable.md 与 unknowns.md（此时没有重叠行在进行）。
 
 ## 审批
 
