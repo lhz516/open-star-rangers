@@ -89,7 +89,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [07-world-creation-instantiation.md](./subtasks/07-world-creation-instantiation.md) | 03, 05, 06 | in-progress |
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | pending |
 | [09-real-content-check.md](./subtasks/09-real-content-check.md) | 07 | pending |
-| [10-original-runtime-evidence.md](./subtasks/10-original-runtime-evidence.md) | 02, 03 | pending |
+| [10-original-runtime-evidence.md](./subtasks/10-original-runtime-evidence.md) | 02, 03 | in-progress |
 | [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10 | pending |
 | [13-heavy-test-timeouts.md](./subtasks/13-heavy-test-timeouts.md) | 04 | in-progress |
 | [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | pending |
