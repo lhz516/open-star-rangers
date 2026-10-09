@@ -86,12 +86,12 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | pending |
-| [08-transition-media.md](./subtasks/08-transition-media.md) | — | pending |
+| [08-transition-media.md](./subtasks/08-transition-media.md) | — | in-progress |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | pending |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | pending |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
 | [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | pending |
-| [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | pending |
+| [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | in-progress |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
