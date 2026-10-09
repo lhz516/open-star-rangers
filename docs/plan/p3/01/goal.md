@@ -83,7 +83,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [02-debugger-session-protection.md](./subtasks/02-debugger-session-protection.md) | 01 | pending |
 | [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | in-progress |
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
-| [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | pending |
+| [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | in-progress |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | pending |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06 | pending |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | pending |
