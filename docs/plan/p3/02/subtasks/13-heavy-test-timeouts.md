@@ -45,6 +45,7 @@ updated: 2026-10-09
 
 - `src/core/contracts/canonical-text.test.ts`：上限测试的超时与重计算。
 - `tools/engineering-boundaries.test.ts`：渲染边界测试的超时与重计算。
+- `docs/engineering/README.md`：测试一节中关于负载下超时的说明（只改这一处）。
 
 ## 验收标准
 
