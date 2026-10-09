@@ -255,6 +255,16 @@ describe('region locators', () => {
     expect(JSON.stringify(assetSourceStates(read))).not.toMatch(/le\/|SRANGERS|RENS/);
   });
 
+  // P3-03: an explosion animation is a data Asset of a whole ANIM entry, whose frames are image Assets.
+  it('admits a whole ANIM entry for a data Asset as well as its frames for image Assets', () => {
+    const read = readSourceMappingTable({
+      sourceFingerprint: 'source:synthetic-disc',
+      mappings: [mapping('data/synthetic-animation', 'data', [[locator('ANIM', 7)]]), mapping('image/synthetic-frame', 'image', [[locator('ANIM', 7, 'frames/0')]])],
+    });
+    expect(diagnoseSourceMappings(read, [])).toEqual([]);
+    expect(assetSourceStates(read).states.map(({ state }) => state)).toEqual(['verified', 'verified']);
+  });
+
   // P2-07 2026-10-08 revision: an image record that needs a colour table from the executable.
   it('admits an image mapping that starts with an archive entry and adds regions', () => {
     const image = { ...mapping('image/synthetic-frame', 'image', [] as never), parts: [{ alternatives: [locator('SNIP', 7, 'frames/0')] }, { alternatives: [region('le/4/0x10/4')] }] };
