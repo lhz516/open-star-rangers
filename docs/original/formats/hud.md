@@ -108,8 +108,8 @@ TABL is a generic container; its meaning depends on the entry.
 | 10461 | 29 unit markers of 4×3 drawn in the strategic map's main area (records 20–25 are empty) | Confirmed (EXE drawing path); image list structure Confirmed |
 | 10479, 10481 | 4 images each, 20×51 and 20×52: vertical gauge bars drawn on a left-display page; 10481 replaces 10479 in the base interior (view mode 6) | Confirmed (EXE drawing path); image list structure Confirmed |
 | 10483 | 4 images, 12×26: LO version of the gauge bars | Likely; image list structure Confirmed |
-| 10165 | Base interior items: 11 records of 0x7C bytes, each three 320×200 sprite-RLE [image records](./textures.md#2-image-record-36-bytes-confirmed) (+0x00, +0x24, +0x48; each image holds only a small part at a fixed position), a subsystem selector (+0x6C), two pointers (+0x70, +0x74) and a small integer (+0x78); data and strings follow the records | Record layout Confirmed (data and the base code, [executable](./executable.md#data-loaded-by-the-loop-p3-0110)); +0x70–+0x78 and the three images' roles Unconfirmed (U-030) |
-| 10399 | 13 string pointers: the view labels of mode 0x11, indexed by sub-mode ([executable](./executable.md#automatic-views-and-cameras-p3-0109)) | Confirmed (EXE, P3-01/09); use of indices 9–12 Unconfirmed |
+| 10165 | Base interior items: 11 records of 0x7C bytes, each three 320×200 sprite-RLE [image records](./textures.md#2-image-record-36-bytes-confirmed) (+0x00, +0x24, +0x48; each image holds only a small part at a fixed position), a u32 subsystem selector (+0x6C; type, domain and readers [below](#tabl-10165-selectors-and-tabl-10399-labels-p3-0304)), two pointers (+0x70, +0x74) and a small integer (+0x78); data and strings follow the records. The record count comes from the EXE, not the entry | Record layout Confirmed (data and the base code, [executable](./executable.md#data-loaded-by-the-loop-p3-0110)); +0x6C Confirmed (P3-03/04); +0x70–+0x78 and the three images' roles Unconfirmed (U-030) |
+| 10399 | 13 relocated string pointers, then their 13 NUL-terminated strings: the view labels of mode 0x11, indexed by sub-mode ([executable](./executable.md#automatic-views-and-cameras-p3-0109)); item 8 is the destruction view's label ([below](#tabl-10165-selectors-and-tabl-10399-labels-p3-0304)) | Confirmed (EXE, P3-01/09; layout and text rules P3-03/04); use of indices 9–12 Unconfirmed |
 | 11375 | 20 records of 32 bytes, one per kind bit, read only by the cameras of the external views ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)) | Use Confirmed (EXE, P3-01/10); fields Unconfirmed |
 
 ### TABL image lists (Confirmed structure)
@@ -149,6 +149,52 @@ The count rule is derived from these instances. A TABL list with embedded palett
 One path draws every record of the list, selected by a unit field ([below](#hud-and-map-drawing-paths-confirmed-exe)), so the intervals share palette, transparency and row order. Which craft selects which record is R8's question.
 
 **10165 has another structure.** Offset 0 holds an image record header of a 320×200 sprite, but record 0's first data offset is not a multiple of 36, and its 78 relocations include more than record pointer fields. It does not satisfy the rules above and is not parsed as an image list; its layout and purpose remain U-030.
+
+### TABL 10165 selectors and TABL 10399 labels (P3-03/04)
+
+Research of P3-03 [subtask 04](../../plan/p3/03/subtasks/04-comm-hud-text-research.md), 2026-10-09: read-only static analysis on a private copy of the Ghidra project (`-noanalysis -readOnly`), and a survey of both entries through the verified source chain that prints only offsets, lengths, counts and predicates. No selector values or label text are reproduced here.
+
+**TABL 10165, locating the records (Confirmed, code and data):**
+
+- Record k starts at k × 0x7C from offset 0; there is no header.
+- The entry has no count field. The code takes the count, 11, from the word `0x174e18` in the EXE's data object. That word is initialised in the image and never written; its only references are reads in `0x39664`.
+- The 11 records take 1,364 bytes of the 69,407-byte block. The rest of the records and the data after them are base-interior content (G-05) and are not described further.
+- Docking sub-command 0 (`0x38ff4`) loads the entry through `0x6affc` into `0x174e14`, and sub-command 4 releases it. Nothing transforms the block at load beyond IMFAT relocation, and +0x6C is not relocated in any record.
+
+**+0x6C, subsystem selector (Confirmed, code):** u32. The sort `0x39664` (run when docking), the state function `0x39cb4`, the repair step `0x398ec`, the display helper `0x39c94` (called by `0x4f550`) and docking sub-command 3 all read it with 32-bit loads; `0x39d24` also reads it but has no caller. Every comparison of the value is unsigned (`JBE`/`JA` against 5, 7, 8, 0x21 and 0x22).
+
+- **Groups:** 0x21 (33) and 0x22 (34) select groups. `0x39cb4` aggregates the states of subsystem slots 15–18 and 10–14 respectively, and `0x398ec` repairs every slot of the group.
+- **Single slots:** any other value v is one slot. It reaches the slot accessors `0x52ac4` and `0x52a84`, which index three 32-entry tables: `0x1760b4` (bit shift), `0x1760d4` (word index) and `0x1760f4` (mask). Together they address 32 two-bit states in the two words at object +0xE8 and +0xEC.
+- **Domain:** 0–31, 33 and 34. The value 32 and values above 34 index past the 32-entry tables.
+- **Special cases:** `0x398ec` also treats the slots 5, 7 and 8 specially (extra calls), all within 0–31.
+
+What the slots and repairs mean is P3-10's.
+
+**+0x6C observed (Confirmed, data):** the 11 values are distinct. Nine are single slots and two are the group values; all lie in the set the P3-01 closure gives (0–9, 33 and 34), which is inside the domain above.
+
+**TABL 10399, layout (Confirmed, data):**
+
+- The block is 242 bytes: 13 u32 pointers at offsets 0–0x30, then 13 strings.
+- The relocation table lists exactly the 13 pointer positions.
+- The pointers ascend. The strings follow from offset 52 in index order, each starting right after the previous NUL, and the last ends exactly at the end of the block. No string is shared.
+
+**TABL 10399, readers (Confirmed, code):** `0x45420` loads the entry into `0x175984` and the teardown at `0x4564d` releases it. Two readers index the pointer array by the player-state byte +0x2A (the sub-mode):
+
+- the view setup `0x459a0`, for view mode 0x11, measures the string with a byte scan to its NUL to size the label box;
+- `0x45de0` draws the string with `0x59f90` while the view mode is 0x11.
+
+Item 8 is read when the sub-mode is 8, the destruction view ([automatic views](./executable.md#automatic-views-and-cameras-p3-0109)).
+
+**Item 8 (Confirmed, data):** the pointer at +0x20 targets the string area. The string is 16 bytes without its NUL; it starts right after item 7's NUL, and item 9 starts right after its own NUL.
+
+**Text rules (Confirmed):**
+
+- Each label ends with a NUL inside the block.
+- `0x59f90` measures the label to its NUL and `0x59fc8` draws every byte as its glyph, so no control or format codes exist.
+- The font is that of the flight-overlay parameter block `[[0x175afc]]`, which is fonts/1 in HI; fonts/1 upper-cases a–z when drawing (§1.1). Conversion keeps the stored bytes.
+- Any non-zero byte (1–255) can be stored and is drawn alike. In the baseline, all 13 labels are 10–18 bytes long without the NUL, and every byte is printable ASCII (0x20–0x7E), with no control bytes, no bytes of 0x80 or above and no `%`. These are observations, not constraints of the format.
+
+**Static coverage:** the image was scanned for every 32-bit occurrence of the block pointers `0x174e14` and `0x175984` and of the count word `0x174e18`. The readers above are the only ones; no pointer is stored elsewhere. The [P3-01/10 ID scan](./executable.md#data-loaded-by-the-loop-p3-0110) finds 10165 as an immediate only in `0x38ff4`, and 10399 only in `0x45420` and its teardown. Evidence (ignored): `local/research/p3-03/comm-hud-text/` (`ghidra_scripts/CommProbe.java` outputs `out/d1`, `out/d2`, `out/d8`, `out/w1`, `out/x1`, `out/x9`, `out/x11`, `out/x12`; `structure.ts` with `out/structure.json`).
 
 ### HUD and map drawing paths (Confirmed, EXE)
 
