@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [03-spawn-defaults-names-research.md](./subtasks/03-spawn-defaults-names-research.md) | — | in-progress |
 | [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | completed |
 | [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | in-progress |
-| [06-placement-coordinates.md](./subtasks/06-placement-coordinates.md) | 02, 04 | in-progress |
+| [06-placement-coordinates.md](./subtasks/06-placement-coordinates.md) | 02, 04 | completed |
 | [07-world-creation-instantiation.md](./subtasks/07-world-creation-instantiation.md) | 03, 05, 06 | pending |
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | pending |
 | [09-real-content-check.md](./subtasks/09-real-content-check.md) | 07 | pending |
