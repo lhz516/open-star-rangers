@@ -1,6 +1,6 @@
 ---
 type: review
-status: draft
+status: accepted
 phase: P2
 updated: 2026-10-08
 related: [ADR-0007, ADR-0008, ADR-0012, ADR-0014, U-001, U-004, U-020, U-023, U-027, U-028, U-029, U-031]
@@ -8,11 +8,11 @@ related: [ADR-0007, ADR-0008, ADR-0012, ADR-0014, U-001, U-004, U-020, U-023, U-
 
 # P2 退出评审与 P3 交接
 
-> **Draft，待负责人确认。** 本记录给出 P2 退出的建议结论、逐项证据与交接。负责人明确确认具体结论之前，结论不生效，本记录可以修正；确认后记录实际日期与范围，改为 accepted 并冻结，之后的变化写进新的评审记录或 ADR。批准或执行 [P2-13](../plan/p2/13/spec.md) 的 spec/goal 不等于确认本结论，也不授权阶段切换、P3 规划、push、部署或首次公开。
+> 2026-10-08 项目负责人明确批准本记录（“approve the exit doc.”），P2 退出结论为“通过”，本记录已 accepted 并冻结。确认范围为本记录的四项退出条件、阶段责任覆盖 15 行与 8 项主要交付的判定与证据，高概率判定与范围例外的披露，以及第 4 节的交接与遗留边界。确认不授权阶段切换、P3 规划、push、部署或首次公开；之后的变化写进新的评审记录或 ADR。
 
 ## 1. 结论
 
-**通过（建议结论，待负责人确认）。** 最终候选上，[总计划 §12](../plan/master-plan.md#12-开发阶段与验收条件) 的四项 P2 退出条件、[阶段责任覆盖](../plan/p2/tasks.md#6-阶段验收覆盖)的 15 行与总计划 P2 行的 8 项主要交付，都有有效证据并通过：
+**通过。** 最终候选上，[总计划 §12](../plan/master-plan.md#12-开发阶段与验收条件) 的四项 P2 退出条件、[阶段责任覆盖](../plan/p2/tasks.md#6-阶段验收覆盖)的 15 行与总计划 P2 行的 8 项主要交付，都有有效证据并通过：
 
 - 本轮实际运行的工程、Python、完整浏览器回归、聚合合规与真实数据候选核对，首次运行即全部通过，没有重跑；
 - 原版对照按 [P2-13 判定规则](../plan/p2/13/spec.md#判定规则)计入：没有“差异，待修复”，必需项没有“无法判定”。高概率判定与用户批准的范围例外在[第一项](#第一项资源与原版本地截图对照)逐项披露；
@@ -26,7 +26,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
 
 - **候选：** P2-12 的最终候选 `f925d21` 之后只改了文档、技能与 `AGENTS.md`。本轮各检查绑定的提交都在其后，构建与测试输入都与 `f925d21` 相同：
   - 01、02、06：`c2018af`；03：`13f8625`；04：`6ea5c64`；05：`f6879f6`；09：`2158020`；
-  - 本记录起草时为 `60e5feb`，`f925d21..60e5feb` 共 22 个提交，`git diff --stat f925d21 60e5feb` 在 `docs/`、`.agents/` 与 `AGENTS.md` 之外为空。最终 HEAD 由 [08](../plan/p2/13/subtasks/08-final-alignment.md) 再核对。
+  - 本记录起草时为 `60e5feb`，`f925d21..60e5feb` 共 22 个提交，`git diff --stat f925d21 60e5feb` 在 `docs/`、`.agents/` 与 `AGENTS.md` 之外为空。最终 HEAD 由 [08](../plan/p2/13/subtasks/08-final-alignment.md#完成证据) 再核对并通过（`8b14361`，`check:original` 发现 0）。负责人随后确认本记录；本轮只记录确认并同步文档摘要，不改变候选、判据或证据。
 - **构建指纹：** `sha256:ec5af1f5d9d46fe3d9654d8715151682e2ca7d7f6c6c0b06e189b35bdac1f690`（9 个文件，7,096,735 字节），与 P2-12 的 `final-26b` 及其最后一次出站扫描绑定的构建逐字节相同（[04](../plan/p2/13/subtasks/04-compliance-artifacts.md#完成证据)、[05](../plan/p2/13/subtasks/05-real-data-candidate.md#完成证据)）。
 - **`ContentIdentity`：** schema 1；切片 `classic-p2-slice`，定义版本 3；`ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`；manifest `manifest:sha256:6d91667b375fd2b7f1201ec76400fcdced5b735f48660f85161e0446ddacfad5`；来源 `original-import` / `source:sha256:fd97bcea3c3aee835c9058419469786587a4580e96b431bb9ce9c127ff2181be`，版本 ID `star-rangers-1995-cd`。与 `final-26b` 深度相同，165 项 payload 指纹逐项相同（[05](../plan/p2/13/subtasks/05-real-data-candidate.md#完成证据)）。
 - **环境：** macOS 26.6（25G72，arm64，Apple M2）；Node 22.22.0、pnpm 12.8.1、Python 3.12.3；TypeScript 6.0.3、ESLint 10.11.0、Vitest 5.0.3、Vite 8.3.1、Playwright 1.63.0；E2E 用已安装的 Google Chrome 155.0.8059.39；用户复核用 Chrome 154.0.8037.98。
@@ -35,7 +35,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
   - [02 工程与 Python](../plan/p2/13/subtasks/02-engineering-checks.md#完成证据)；[03 完整浏览器回归](../plan/p2/13/subtasks/03-browser-regression.md#完成证据)；[04 合规与产物适用性](../plan/p2/13/subtasks/04-compliance-artifacts.md#完成证据)；[05 真实数据候选核对](../plan/p2/13/subtasks/05-real-data-candidate.md#完成证据)；
   - [06 P2 负责的未知项](../plan/p2/13/subtasks/06-unknowns-ownership.md#完成证据)；[09 用户在最终候选上的复核](../plan/p2/13/subtasks/09-user-recheck.md#完成证据)；
   - 修复子任务：无。
-- **确认状态：** 待负责人确认。[P2 阶段索引](../plan/p2/tasks.md)的 front matter 仍为 `draft`，并写有“本稿待用户 review”；本记录只记录这一状态，是否改变由用户另行决定。
+- **确认状态：** 负责人于 2026-10-08 确认（见卷首）。[P2 阶段索引](../plan/p2/tasks.md)的 front matter 仍为 `draft`，并写有“本稿待用户 review”；是否改变由用户另行决定。
 
 ## 2. 退出条件逐项核对
 
@@ -144,7 +144,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
 | 12 | 指纹 + 转换器版本的 IndexedDB 最小缓存 | 通过；迁移与清理归 P5 | 03：`resource-cache` 18/18、`cache-recovery` 3/3、F-13 9/9；09：用户同源刷新后恢复并校验约 30 ms，任务再次可载入 |
 | 13 | 仅为切片建设的最小资源查看器 | 通过 | 03：`viewer-page` 12/12、联合闭环的查看往返；09 重做受影响的模型与 SNIP 帧，其余类别沿用 P2-11/19（payload 与查看器代码未变） |
 | 14 | 工程边界、合成自动测试、原版隔离与许可 | 通过 | 02：四个类型程序、ESLint、Vitest 与构建，Python 3 项，退出码都为 0；04：`check:compliance` 为 `osr-local-compliance`/1，各范围完成，0 条发现。评审定稿后的 `check:original` 由 08 运行；它不通过时 goal 不能完成，本记录须先修正 |
-| 15 | 退出判定及 P3/P4/P5 交接 | 本记录 | 负责人确认在 P2-13 goal 之外 |
+| 15 | 退出判定及 P3/P4/P5 交接 | 通过 | 本记录；负责人于 2026-10-08 在 P2-13 goal 之外确认 |
 
 总计划 P2 行的主要交付都落在上表中（映射见 [01](../plan/p2/13/subtasks/01-candidate-evidence-map.md#退出映射ac-11-的输入)）：
 
@@ -263,6 +263,6 @@ P2-13 的处置列只适用于负责阶段曾含 P2 的 8 项（[06](../plan/p2/
 
 ### 负责人关卡
 
-- 本记录为 draft：负责人确认前，STATUS 只更新任务完成摘要与“下一步”，P2 阶段状态不写通过，评审记录列不变；确认后同步阶段状态与评审记录列，本记录改为 accepted 并冻结。
+- 负责人已于 2026-10-08 确认本记录：STATUS 已同步 P2 阶段状态与评审记录列，本记录为 accepted 并冻结。
 - 当前阶段不自动切换为 P3。[P3 索引](../plan/p3/tasks.md)仍是占位，P3 的 spec、goal 与任务拆分须另行授权，从本节的交接入口开始。
 - 本 goal 没有 push、部署或首次公开。
