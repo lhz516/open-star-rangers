@@ -53,6 +53,48 @@ const literalSpecifier = (source) => {
   return source?.type === 'TemplateLiteral' && source.expressions.length === 0 ? source.quasis[0].value.cooked : undefined;
 };
 
+/** The project path a relative specifier resolves to from `filename`; undefined for package and computed specifiers. */
+const relativeTarget = (filename, specifier) =>
+  typeof specifier === 'string' && specifier.startsWith('.') ? projectPath(resolve(dirname(filename), specifier)) : undefined;
+
+/**
+ * Visitors that call `check(node, specifier)` for every module reference: import declarations unless `skipImport`
+ * says otherwise, re-exports, and dynamic imports and import types with a literal specifier.
+ */
+const moduleReferenceVisitors = (check, skipImport = () => false) => ({
+  ImportDeclaration(node) { if (!skipImport(node)) check(node, node.source.value); },
+  ExportNamedDeclaration(node) { if (node.source) check(node, node.source.value); },
+  ExportAllDeclaration(node) { check(node, node.source.value); },
+  ImportExpression(node) { check(node, literalSpecifier(node.source)); },
+  TSImportType(node) { check(node, literalSpecifier(node.source ?? node.argument?.literal)); },
+});
+
+// P3-02 AC-01: formal Core and the P1 synthetic skeleton in core/synthetic/ never import each other. Both may use the
+// neutral modules errors.ts and determinism/, which import neither. Every other core/ module is formal. A relative
+// specifier is classified by the path it resolves to, so bare directory and extensionless forms count too.
+const coreArea = (path) => {
+  if (!/^src\/core(?:\/|$)/.test(path)) return null;
+  if (/^src\/core\/synthetic(?:\/|$)/.test(path)) return 'synthetic';
+  return /^src\/core\/(?:errors(?:\.[jt]s)?$|determinism(?:\/|$))/.test(path) ? 'neutral' : 'formal';
+};
+const coreAreaImports = { formal: ['formal', 'neutral'], synthetic: ['synthetic', 'neutral'], neutral: ['neutral'] };
+
+const coreSyntheticBoundary = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { boundary: 'Formal Core and core/synthetic/ must not import each other; they share only errors.ts and determinism/, which import neither.' },
+  },
+  create(context) {
+    // The rule is configured for src/core/ files only, so the importer always has an area.
+    const allowed = coreAreaImports[coreArea(projectPath(context.filename))];
+    return moduleReferenceVisitors((node, specifier) => {
+      const target = coreArea(relativeTarget(context.filename, specifier) ?? '');
+      if (target !== null && !allowed.includes(target)) context.report({ node, messageId: 'boundary' });
+    });
+  },
+};
+
 const originalDataCapabilities = {
   meta: {
     type: 'problem',
@@ -73,8 +115,8 @@ const originalDataCapabilities = {
       else if (capability && familyChecked && capability !== own) context.report({ node, messageId: 'restricted' });
     };
     const check = (node, specifier) => {
-      if (typeof specifier !== 'string' || !specifier.startsWith('.')) return;
-      let target = projectPath(resolve(dirname(context.filename), specifier));
+      let target = relativeTarget(context.filename, specifier);
+      if (target === undefined) return;
       if (/\.js$/.test(target)) target = target.replace(/\.js$/, '.ts');
       else if (!/\.tsx?$/.test(target)) target += '.ts';
       classify(node, target);
@@ -89,11 +131,7 @@ const originalDataCapabilities = {
     const moduleUrl = (node) => node.callee.type === 'Identifier' && node.callee.name === 'URL' && node.arguments[1]?.type === 'MemberExpression'
       && node.arguments[1].object.type === 'MetaProperty' && node.arguments[1].property.name === 'url';
     const references = {
-      ImportDeclaration(node) { if (!typeOnly(node)) check(node, node.source.value); },
-      ExportNamedDeclaration(node) { if (node.source) check(node, node.source.value); },
-      ExportAllDeclaration(node) { check(node, node.source.value); },
-      ImportExpression(node) { check(node, literalSpecifier(node.source)); },
-      TSImportType(node) { check(node, literalSpecifier(node.source ?? node.argument?.literal)); },
+      ...moduleReferenceVisitors(check, typeOnly),
       NewExpression(node) { if (moduleUrl(node)) checkUrl(node, literalSpecifier(node.arguments[0])); },
     };
     if (!isProductEntry(importer)) return references;
@@ -117,6 +155,9 @@ const originalDataCapabilities = {
     };
   },
 };
+
+// One plugin object, so every config entry that uses it refers to the same plugin.
+const osrPlugin = { meta: osrMeta, rules: { 'original-data-capabilities': originalDataCapabilities, 'core-synthetic-boundary': coreSyntheticBoundary } };
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
@@ -204,8 +245,15 @@ export default tseslint.config(
     // P2-04 AC-11: no production module depends on tests, test support or tools.
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
-    plugins: { osr: { meta: osrMeta, rules: { 'original-data-capabilities': originalDataCapabilities } } },
+    plugins: { osr: osrPlugin },
     rules: { 'osr/original-data-capabilities': 'error' },
+  },
+  {
+    // P3-02 AC-01: formal Core and core/synthetic/ never import each other; tests and test support are exempt.
+    files: ['src/core/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
+    plugins: { osr: osrPlugin },
+    rules: { 'osr/core-synthetic-boundary': 'error' },
   },
   {
     // P2-04 S-09/AC-11: import Workers handle local data only. This is a static rule; the request audit belongs to P2-12.

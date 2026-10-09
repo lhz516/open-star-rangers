@@ -357,6 +357,67 @@ describe('TypeScript module environments', () => {
       expect((await lint(allowed, file)).messages, allowed).toEqual([]);
     });
 
+    // P3-02 AC-01: formal Core and the synthetic skeleton in core/synthetic/ never import each other in any form; they
+    // share only errors.ts and determinism/, which import neither. Tests, test support and other layers are exempt.
+    it('keeps formal Core and core/synthetic/ from importing each other', async () => {
+      const rule = 'osr/core-synthetic-boundary';
+      const forms = [
+        ...importForms,
+        (specifier: string) => `import '${specifier}';`,
+        (specifier: string) => `export const value = () => import('${specifier}');`,
+        (specifier: string) => `export const value = () => import(\`${specifier}\`);`,
+        (specifier: string, id = '') => `export type Query${id} = import('${specifier}').Value;`,
+      ];
+      const expectReported = async (cases: readonly (readonly [string, string])[], reported: boolean): Promise<void> => {
+        // One linted source per file; each case contributes every form, with names made distinct by case and form.
+        const samplesByFile = new Map<string, string[]>();
+        cases.forEach(([file, specifier], caseIndex) => {
+          const samples = samplesByFile.get(file) ?? [];
+          samples.push(...forms.map((form, formIndex) => form(specifier, `${caseIndex}_${formIndex}`)));
+          samplesByFile.set(file, samples);
+        });
+        for (const [file, samples] of samplesByFile) {
+          const rules = await lintSamples(samples, file);
+          samples.forEach((sample, index) => expect(rules[index].includes(rule), `${file}: ${sample}`).toBe(reported));
+        }
+      };
+      await expectReported([
+        ['src/core/contracts/probe.ts', '../synthetic/synthetic-scene.ts'],
+        ['src/core/contracts/probe.ts', '../synthetic/synthetic-scene'],
+        ['src/core/contracts/probe.ts', '../synthetic/synthetic-scene.js'],
+        ['src/core/contracts/probe.ts', '../synthetic'],
+        ['src/core/world/nested/probe.ts', '../../synthetic/synthetic-replay.ts'],
+        ['src/core/mission/probe.ts', '../synthetic/synthetic-snapshot.ts'],
+        ['src/core/probe.ts', './synthetic/synthetic-scene.ts'],
+        ['src/core/synthetic/probe.ts', '../contracts/tick-input.ts'],
+        ['src/core/synthetic/probe.ts', '../world/world'],
+        ['src/core/synthetic/probe.ts', '../mission/load-mission.ts'],
+        ['src/core/synthetic/probe.ts', '../probe.ts'],
+        ['src/core/synthetic/nested/probe.ts', '../../replay/replay.ts'],
+        ['src/core/determinism/probe.ts', '../synthetic/synthetic-scene.ts'],
+        ['src/core/determinism/probe.ts', '../contracts/limits.ts'],
+        ['src/core/errors.ts', './contracts/limits.ts'],
+        ['src/core/errors.ts', './synthetic/synthetic-scene.ts'],
+      ], true);
+      await expectReported([
+        ['src/core/contracts/probe.ts', '../errors.ts'],
+        ['src/core/contracts/probe.ts', '../determinism/fnv1a64.ts'],
+        ['src/core/contracts/probe.ts', './limits.ts'],
+        ['src/core/world/probe.ts', '../contracts/tick-input.ts'],
+        ['src/core/mission/probe.ts', '../../content/logic/logic-content.ts'],
+        ['src/core/synthetic/probe.ts', '../errors.ts'],
+        ['src/core/synthetic/probe.ts', '../determinism/rng.ts'],
+        ['src/core/synthetic/probe.ts', './synthetic-scene.ts'],
+        ['src/core/determinism/probe.ts', '../errors.ts'],
+        ['src/core/determinism/probe.ts', './rng.ts'],
+        ['src/core/contracts/probe.test.ts', '../synthetic/synthetic-scene.ts'],
+        ['src/core/synthetic/probe.test.ts', '../contracts/limits.ts'],
+        ['src/core/contracts/probe.test-support.ts', '../synthetic/synthetic-scene.ts'],
+        ['src/app/runtime/probe.ts', '../../core/synthetic/synthetic-scene.ts'],
+        ['src/app/runtime/probe.ts', '../../core/contracts/tick-input.ts'],
+      ], false);
+    });
+
     it('keeps original-data available to itself, the import workers and tests', async () => {
       const cases = [
         ['src/original-data/probe.ts', "export { readSourceMappingTable } from './source-mapping.ts';"],
@@ -1503,6 +1564,84 @@ describe('original-data dependency boundary', () => {
     const worker = reachableFrom(sharedAppProgram(), join(root, 'src/workers/import-worker.ts'));
     expect(worker.filter(path => path.startsWith('src/original-data/')).length).toBeGreaterThan(10);
     expect(page).not.toContain('src/workers/import-worker.ts');
+  });
+});
+
+describe('formal and synthetic Core dependency boundary', () => {
+  // docs/plan/p3/02/spec.md AC-01: lint checks each import declaration; the dependency graph also follows re-exports,
+  // import types and other layers, so neither side reaches the other through content or another intermediary. The
+  // classification is the one of eslint.config.js: core/synthetic/ is synthetic, errors.ts and determinism/ are
+  // neutral, every other core/ module is formal.
+  const area = (path: string): 'formal' | 'synthetic' | 'neutral' | null => {
+    if (!path.startsWith('src/core/')) return null;
+    if (path.startsWith('src/core/synthetic/')) return 'synthetic';
+    return path === 'src/core/errors.ts' || path.startsWith('src/core/determinism/') ? 'neutral' : 'formal';
+  };
+  const reachable = { formal: ['formal', 'neutral'], synthetic: ['synthetic', 'neutral'], neutral: ['neutral'] } as const;
+
+  /** Production Core modules whose transitive source dependencies reach the other side, or an unverifiable computed import. */
+  function coreCrossings(compilation: ts.Program, directory: string): string[] {
+    const project = (fileName: string): string => relative(directory, fileName).split(sep).join('/');
+    const dependencies = sourceDependencies(compilation, directory);
+    const found = new Set<string>();
+    for (const start of compilation.getRootFileNames()) {
+      const origin = project(start);
+      const own = area(origin);
+      if (own === null || /\.test(?:-support)?\.tsx?$/.test(origin)) continue;
+      const allowed: readonly string[] = reachable[own];
+      const seen = new Set([start]);
+      const queue = [start];
+      for (let index = 0; index < queue.length; index++) {
+        for (const next of dependencies(queue[index])) {
+          if (next === COMPUTED_IMPORT) {
+            found.add(`${origin} -> computed import in ${project(queue[index])}`);
+            continue;
+          }
+          if (seen.has(next)) continue;
+          seen.add(next);
+          const target = area(project(next));
+          if (target !== null && !allowed.includes(target)) found.add(`${origin} -> ${project(next)}`);
+          else queue.push(next);
+        }
+      }
+    }
+    return [...found].sort();
+  }
+
+  it('follows re-exports, import types and other layers, and rejects computed imports', () => {
+    withFixtures({
+      'src/core/errors.ts': 'export class CoreInputError extends Error {}',
+      'src/core/determinism/rng.ts': "export { CoreInputError } from '../errors.ts';",
+      'src/core/synthetic/scene.ts': "export { CoreInputError } from '../determinism/rng.ts'; export const scene = 1;",
+      'src/core/contracts/limits.ts': "export { CoreInputError } from '../errors.ts'; export interface Limits { readonly entities: number }",
+      'src/core/contracts/clean.ts': "export type Seen = import('./limits.ts').Limits; export { value } from '../../content/value.ts';",
+      'src/content/value.ts': 'export const value = 1;',
+      'src/content/scene-bridge.ts': "export { scene } from '../core/synthetic/scene.ts';",
+      'src/content/limits-bridge.ts': "export type { Limits } from '../core/contracts/limits.ts';",
+      'src/core/contracts/via-content.ts': "export { scene } from '../../content/scene-bridge.ts';",
+      'src/core/world/type-query.ts': "export type Scene = typeof import('../synthetic/scene.ts').scene;",
+      'src/core/synthetic/via-content.ts': "import type { Limits } from '../../content/limits-bridge.ts'; export type Seen = Limits;",
+      'src/core/determinism/leak.ts': "export { scene } from '../synthetic/scene.ts';",
+      'src/core/mission/dynamic.ts': 'export const load = (name: string) => import(name);',
+      'src/core/contracts/support.test-support.ts': "export { scene } from '../synthetic/scene.ts';",
+    }, (directory) => {
+      const compilation = program('app', directory);
+      expect(ts.getPreEmitDiagnostics(compilation)).toEqual([]);
+      expect(coreCrossings(compilation, directory)).toEqual([
+        'src/core/contracts/via-content.ts -> src/core/synthetic/scene.ts',
+        'src/core/determinism/leak.ts -> src/core/synthetic/scene.ts',
+        'src/core/mission/dynamic.ts -> computed import in src/core/mission/dynamic.ts',
+        'src/core/synthetic/via-content.ts -> src/core/contracts/limits.ts',
+        'src/core/world/type-query.ts -> src/core/synthetic/scene.ts',
+      ]);
+    });
+  });
+
+  it('keeps formal Core and core/synthetic/ apart in the real program', () => {
+    const compilation = sharedAppProgram();
+    const sides = new Set(compilation.getRootFileNames().map(fileName => area(relative(root, fileName).split(sep).join('/'))));
+    expect([...sides].filter(side => side !== null).sort()).toEqual(['formal', 'neutral', 'synthetic']);
+    expect(coreCrossings(compilation, root)).toEqual([]);
   });
 });
 
