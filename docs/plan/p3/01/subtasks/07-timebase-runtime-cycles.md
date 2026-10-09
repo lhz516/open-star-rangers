@@ -38,10 +38,10 @@ updated: 2026-10-09
 ## 写入范围
 
 - `docs/original/behavior/B-006-simulation-timing.md`：新建，时基与 cycles 的测量方法、样本与结论。
-- `docs/original/formats/executable.md`：时基节的运行时交叉核对结论。
-- `docs/original/unknowns.md`：U-008、U-021 的线索（负责阶段不改）。
 - `tools/baseline/recipes/**`：可选的时基配方（只含地址、类型与单位）。
 - `local/research/p3-01/timing-runtime/**`：配方草稿、私有运行目录、报告与截图（被忽略）。
+
+阻塞期间暂不持有：executable 时基节的运行时交叉核对结论与 U-008、U-021 的线索。本项在这两处没有部分改动；恢复时由协调者在没有重叠行进行时重新加入（见 goal 执行记录 2026-10-09）。
 
 ## 验收标准
 
