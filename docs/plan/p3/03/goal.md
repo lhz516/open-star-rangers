@@ -118,7 +118,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | completed |
 | [13-scene-label-parsers.md](./subtasks/13-scene-label-parsers.md) | 09 | completed |
 | [14-anim-explosion-parsers.md](./subtasks/14-anim-explosion-parsers.md) | 09 | completed |
-| [15-rule-data-conversion.md](./subtasks/15-rule-data-conversion.md) | 10, 11, 12 | pending |
+| [15-rule-data-conversion.md](./subtasks/15-rule-data-conversion.md) | 10, 11, 12 | in-progress |
 | [16-flight-graphics.md](./subtasks/16-flight-graphics.md) | 13, 14 | in-progress |
 | [17-flight-data-step.md](./subtasks/17-flight-data-step.md) | 16 | pending |
 | [18-event-hud-sounds.md](./subtasks/18-event-hud-sounds.md) | — | completed |
