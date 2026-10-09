@@ -13,7 +13,7 @@ Container format: [IMFAT](./imfat.md). Both types live in `SCENARIO.NOB`. Confid
 ## 1. Where mission content lives (Confirmed)
 
 - `SCENARIO.NOB` holds 52 `SCEN` entries and one `SCCT` entry.
-- Every `SCEN` contains its own object names, group names, and in-mission message text.
+- Every `SCEN` contains its own object names; 45 of them also hold summary text in their section-2 event triggers ([§2](#section-2-event-triggers-p3-03)).
 - None of the 99 distinct strings of 20+ characters found in `SCEN` blocks occurs in `SRANGERS.EXE`. The EXE's long strings are installer hints, support messages, error/assert text, library text, and one generic in-game system message.
 
 Conclusion: mission **content** is data in `SCENARIO.NOB`, not embedded in the EXE. Whether the EXE contains mission-specific hard-coded *logic* (e.g. special cases keyed on mission ID) is still open (U-022).
@@ -34,7 +34,7 @@ Section pointers are relocated (see IMFAT §3). Spatial fields below are those t
 |---|---|---|---|---|---|
 | 0 | 0x10 | 0–20 | u32 pointer | Pointers to NUL-terminated object names: the mission's **fallback name pool**. Name assignment `0x67d44` picks a random unused name from it for a record without candidate names whose kind is outside masks `0x6001`, `0x93780` and `0x78000` | Confirmed (access) |
 | 1 | 0x18 | 9–32 | 132-byte record | Mission objects (see §3) | Structure Confirmed, fields partly Likely |
-| 2 | 0x20 | 0–2 | variable | Group-name pointers and message text, read by the in-mission message code (Likely). An element referenced from record +0x54 is an **event trigger**: a 28-byte header {range-table pointer, range count, three runtime counters, spawn-pair pointer, pair count}, 20-byte ranges with a message reference at +8, and the referenced text. `0x6977c`/`0x695c0` count events against the referencing object; on each update, each pair whose range contains the current counter ratio schedules a section-1 record (index ≥ 0) or a section-5 entry (−1 − index) | Access Confirmed; meaning Likely |
+| 2 | 0x20 | 0–2 | 28-byte event trigger | **Event triggers**, referenced by record +0x54 (and +0x30): each has a table of 20-byte ranges, each with a summary selector byte and optional summary text, three runtime event counters and a spawn-pair array built at run time. See [section-2 event triggers](#section-2-event-triggers-p3-03) | Structure and access Confirmed (code; all 52 missions); rule meaning P3-11 |
 | 3 | 0x28 | 0–6 | 16 bytes | **Spawn rectangle**: four i32 x0, y0, x1, y1 (all rescaled). Records reference it through +0x44; `0x6883c` places an object uniformly inside it at z = 0, and `0x685e0` places on a grid inside it | Confirmed (placement logic) |
 | 4 | 0x30 | 0–1 | 36 bytes | Eight i32 spatial values from +4 to +0x20 (all rescaled); Likely a zone or path | Likely |
 | 5 | 0x38 | 2–8 | 28 bytes | Group spawns: see [section-5 member records](#section-5-member-records-confirmed-access) | Access Confirmed |
@@ -43,6 +43,79 @@ Section pointers are relocated (see IMFAT §3). Spatial fields below are those t
 Structs are packed with 1-byte alignment; several pointer fields are unaligned.
 
 **Section-6 load transform (Confirmed by native instructions):** the last loop of `0x68d2c` never advances its element index. For each section-6 entry whose count is positive, it swaps the f32 at +4 and +8 of element 0, then reads the next entry; it keeps going while counts stay positive, so after a final positive count it also reads the 8 bytes following the table. The remaining elements are never swapped. All 191 section-5 layout pointers in the 52 missions target section-6 entries.
+
+### Section-2 event triggers (P3-03)
+
+Read-only static analysis, 2026-10-09, on a private copy of the Ghidra project (`-noanalysis -readOnly`), and a structural survey of all 52 `SCEN` entries read through the verified source chain. Structure, counts and addresses only; no bounds, text or selector values are reproduced.
+
+**Element kind (Confirmed by code and data):** section 2 is an array of 28-byte event-trigger headers. Header 0x20 points at the first and header 0x24 gives their number; every native reader steps through all of them with a stride of 0x1C (`0x6953c`, `0x69a70`, `0x69c54`). There is no type field and no other element kind, so every section-2 element is a trigger; the earlier reading of section 2 as group-name pointers is superseded. In the data:
+
+- all 59 elements, in the 46 missions whose section 2 is not empty, are referenced by at least one record +0x54; 2 of them are also referenced by +0x30, both in SCEN 3121;
+- every +0x54 and +0x30 pointer targets an element start;
+- the trigger table, the range tables, the message-pointer arrays and their strings are laid out from the trigger table onwards without gaps or overlaps, and no array or string is shared.
+
+**Trigger header, 28 bytes:**
+
+| Offset | Type | Role | Evidence |
+|---|---|---|---|
+| +0x00 | u32 ptr | Range table: the first of +0x04 consecutive 20-byte ranges | Confirmed: read by `0x695c0` and `0x69c54`; relocated and inside the block in all 59 |
+| +0x04 | i32 | Range count | Confirmed: signed tests and loop bounds in both readers |
+| +0x08 | i32 | Runtime counter of instantiation events reported to `0x6977c` ([mission result](./executable.md#mission-result-success-path-and-campaign-restart-p3-0104) step 1) | Confirmed: `0x695c0` increments it; both readers load it with `FILD` (signed 32-bit) |
+| +0x0C | i32 | Runtime counter of destruction events: every event type other than instantiation and world exit | As +0x08 |
+| +0x10 | i32 | Runtime counter of world-exit events | As +0x08 |
+| +0x14 | u32 heap pointer | Spawn-pair array, built at run time (below) | Confirmed: `0x69708` allocates it (`0x74190`) or enlarges it (`0x741ec`); `0x6953c` releases a non-zero value through `0x7422c` |
+| +0x18 | i32 | Spawn-pair count, built at run time | Confirmed: `0x69708` increments it; signed tests in `0x695c0` and `0x69a70` |
+
+**Range, 20 bytes:**
+
+| Offset | Type | Role | Evidence |
+|---|---|---|---|
+| +0x00 | i32 | Lower bound, inclusive, compared with the scaled ratio (below) | Confirmed: signed `JL` in `0x695c0` and `0x69c54` |
+| +0x04 | i32 | Upper bound, inclusive | Confirmed: signed `JG` in both |
+| +0x08 | u32 ptr | Message-pointer array; null when +0x0C is 0 | Confirmed: read only by `0x69c54`; relocated whenever non-zero; null in exactly the 2 ranges whose count is 0 |
+| +0x0C | i32 | Number of message pointers | Confirmed: signed loop bound in `0x69c54` |
+| +0x10 | 8-bit, consumed as i8 | Summary selector byte | Confirmed: `0x69c54` copies the byte to `0x186864`; `0x3b8dc` compares it as a signed byte and sign-extends it; observed values in the [success list](./executable.md#cut-scenes-and-loop-transitions-p3-0108) |
+| +0x11 to +0x13 | 3 bytes, storage type Unconfirmed | No reader found | Zero in all 125 ranges (Confirmed, data) |
+
+**Messages (Confirmed by code):** range +0x08 points at +0x0C consecutive u32 pointers, each to a NUL-terminated byte string. The array ends by count, not by a null entry. `0x69c54` measures each string with a byte scan to its NUL, allocates the total length plus one through `0x74190`, and appends the strings in array order without separators. The result is the summary text `0x186860`, which page 0xF shows in its summary chapter ([mission result](./executable.md#mission-result-success-path-and-campaign-restart-p3-0104) step 5). When the total length is 0, nothing is allocated, but the selector byte is still copied. No byte is translated or interpreted on this path. How page 0xF draws the text was not traced (G-06).
+
+**Spawn pairs (Confirmed by code):** pairs are not file data. At mission build, when +0x30 of a scheduled section-1 record (non-zero kind, zero +0x3C) or of a section-5 entry's template is non-zero, `0x6721c` calls `0x69708` instead of queueing it by time (§3). `0x69708` appends an 8-byte pair to the trigger at +0x30: the range index taken from +0x38, and an i32 target, which is the section-1 record index or −1 − the section-5 entry index. The wave mode `0x68f4c` (header 0x0C) appends pairs the same way for section-5 entries 0 and 1. `0x695c0` reads the pairs with a stride of 8. `0x69a70` instead reads the first +0x18 32-bit words of the array with a stride of 4 and treats each word as a target.
+
+**Reset (Confirmed by code):** the builder `0x66c00` loads the SCEN and rescales it (`0x68d2c`), then calls `0x694f8`, which calls `0x6953c`, before `0x6721c` schedules the mission. `0x6953c` does the following for every trigger:
+
+- sets +0x08, +0x0C and +0x10 to zero;
+- passes a non-zero +0x14 to the heap release `0x7422c`;
+- sets +0x14 and +0x18 to zero.
+
+The stored counters are therefore never read, and a stored non-zero pair pointer would be released as a heap block. `0x6953c` is also called by the wave mode `0x68f4c` and by `0x66f78`, which also releases the entries loaded by the builder and the spawn queue. `0x66f78` is reached only through the table entry at `0x174894`; that it is the module's shutdown routine is Likely.
+
+**Consumers (Confirmed by code; rule semantics belong to P3-11):**
+
+- `0x6977c` takes record +0x54 of the runtime object's source record (object +0x190) and passes it, with the event type, to `0x695c0`, which increments the matching counter. When the pair count is positive, `0x695c0` divides the sum of +0x0C and +0x10 by +0x08 and scales the quotient by the f64 constant at `0x172613`. The result is truncated toward zero, because `0x74518` switches the FPU to chop mode for `FRNDINT`. For every range containing the result, it queues each pair whose range index equals that range's index. The due time is the elapsed mission time plus the +0x34 delay (§3) of the target record, or of the target entry's template.
+- `0x69c54`, on success, takes the first trigger in section order whose +0x08 or +0x0C is non-zero. It divides +0x0C by +0x08 and scales the quotient by the f64 constant at `0x17261b`, truncated toward zero; the value is 0 when +0x08 is not positive. It then uses the first of that trigger's ranges that contains the value; when none does, it continues with the next trigger. The chosen range supplies the summary text and the selector byte.
+- `0x69a70` treats each word it reads from the pair array (above) as a target and counts one of an enemy kind as a pending enemy ([mission result](./executable.md#mission-result-success-path-and-campaign-restart-p3-0104) step 2). With a stride of 4 it does not visit the target of every pair: it reads range indices and targets alike, and stops halfway through the array.
+
+**Load transforms (Confirmed by code):** none beyond IMFAT relocation of trigger +0x00, range +0x08 and the message pointers. The rescaling and the section-6 swap in `0x68d2c` do not touch section 2.
+
+**Text rules (Confirmed, data):** every message string is NUL-terminated inside the block and is 1–72 bytes long without the NUL. All bytes lie in 0x20–0x7A (printable ASCII); there are no control bytes and no bytes of 0x80 or above.
+
+**Observed maxima:**
+
+| Quantity | SCEN 3019 | All 52 `SCEN` |
+|---|---|---|
+| Triggers per mission | 1 | 2 (59 in total; 6 missions have none) |
+| Ranges per trigger | 3 | 3 (at least 1; 125 in total) |
+| Message pointers per range | 1 (3 in total) | 6 (318 in total; the 2 ranges without any are the only ranges of SCEN 3121's two triggers, which also have zero selectors) |
+| Bytes per message, without NUL | 57 | 72 |
+| Bytes of a range's messages together | 57 | 310 |
+| Records referencing one trigger through +0x54 | 1 | 134 references; 28 triggers have more than one |
+| Ranges with a non-zero selector | 1 | 57 |
+
+**Zero in the baseline (Confirmed, data):** trigger +0x08 to +0x18 in all 59 triggers (the runtime fields reset above), and range +0x11 to +0x13 in all 125 ranges. Within each trigger the ranges do not overlap, every bound lies within the values the scaled ratio can take, and no lower bound exceeds its upper bound; 3 triggers leave gaps between their ranges. In SCEN 3019, the three ranges are contiguous, together cover every value the scaled ratio can take, are stored in descending order, and only the first has a non-zero selector. +0x30, +0x38 and +0x54 are zero in all 5 SCCT wingman records.
+
+**Static coverage (Confirmed method):** a scan of the whole image for the 32-bit address of the scene pointer `0x1766fc` (every hit lies in the scenario module `0x66c00`–`0x69e5c`); decompilation of every function in that module and disassembly of its undecoded routine `0x66f78`; scans for relative calls to `0x694f8`, `0x6953c`, `0x695c0`, `0x69708`, `0x69a70`, `0x69c54` and `0x6977c`; and a heuristic scan for loads of record +0x54 after loads of runtime-object +0x190, which found no other reader. Triggers are reachable only through header 0x20 and record +0x30/+0x54, whose readers are listed above; the wave mode also copies +0x54 from a template to generated records (`0x69194`). Not covered: accesses through computed pointers not derived from these.
+
+Evidence (ignored): `local/research/p3-03/scen-events/` (`ghidra_scripts/ScenProbe.java` with outputs `out/p1.txt`–`out/p11.txt`, `section2-survey.ts` with `out/section2-survey.json`, `s3019-ranges.ts` with `out/s3019-ranges.json`).
 
 ## 3. 132-byte object record (structure Confirmed, fields partly Likely)
 
@@ -59,14 +132,15 @@ Field meanings come from the mission loader and spawn code ([executable](./execu
 | +0x1C | u32 | Spawn time in seconds: shifted left by 6 into clock units of 1/64 s ([time base](./executable.md#simulation-time-base-p3-0106)) and inserted into a time-ordered spawn queue, relative to the mission's scheduling origin | Confirmed (code) | Spawn code; time base |
 | +0x20 | u32 | When positive, `0x67018` re-queues the entry this many seconds (shifted left by 6) after its previous due time | Confirmed (unit); Likely a repeat interval | `0x67018` |
 | +0x24, +0x28, +0x2C | f32 × 3 | Position x, y, z (rescaled at load) | Confirmed spatial, Likely position | World-scale code |
-| +0x30, +0x38 | u32 | When +0x30 is non-zero the object spawns through a different path that uses both fields (Likely a formation or path reference) | Likely | Spawn code |
+| +0x30 | u32 ptr | **Spawn-pair trigger**: a section-2 event trigger. When non-zero, `0x6721c` does not queue the record by time but registers it with that trigger as a spawn pair (`0x69708`); a section-5 template's +0x30 does the same for its entry ([section-2 event triggers](#section-2-event-triggers-p3-03)) | Confirmed (code) | `0x6721c`, `0x69708`; non-zero in 2 records of SCEN 3121 only, both targeting element starts |
+| +0x38 | 32-bit; signedness Unconfirmed (compared only for equality) | Range index within the +0x30 trigger, stored in the pair and compared for equality with a range's index | Confirmed (code) | `0x69708`, `0x695c0`; zero whenever +0x30 is zero, and below the trigger's range count otherwise (all 52 missions) |
 | +0x34 | u32 | Delay in seconds (shifted left by 6) before a spawn scheduled by a section-2 event trigger; `0x695c0` adds it to the elapsed mission time | Confirmed (unit); Likely (role) | `0x695c0` |
 | +0x3C | u32 ptr | **Member back-reference**: the section-5 entry that lists this record as a member. Scheduler `0x6721c` does not schedule a section-1 record whose +0x3C is non-zero | Confirmed (scheduling); Likely (membership meaning) | `0x6721c`; see below |
 | +0x40 | i32 | **Grid spacing** (rescaled at load): when non-zero, the object is placed on a grid with this spacing inside the +0x44 rectangle | Confirmed (placement logic) | `0x68398`, `0x685e0` |
 | +0x44 | u32 ptr | **Spawn rectangle**: a section-3 element | Confirmed (placement logic) | `0x68398`, `0x68598`, `0x6883c` |
 | +0x48 | u32 ptr | **Placement anchor**: a record; the object is placed near the runtime object created from that record, with a random offset, or at a whole-world default position when none exists. For kind 2 the loader also sets it to the kind-1 record | Confirmed (placement logic); kind-2 default Likely | `0x68708`; default-filling code |
 | +0x4C, +0x50 | u32 ptr, u8 | Path-based placement through `0x688c4` when position, +0x44 and +0x48 are all zero | Likely | `0x68598` |
-| +0x54 | u32 ptr | **Event trigger**: a section-2 element (§2) | Confirmed (access) | `0x6977c` |
+| +0x54 | u32 ptr | **Event trigger**: a section-2 element, whose counters count this object's events ([section-2 event triggers](#section-2-event-triggers-p3-03)) | Confirmed (access) | `0x6977c` |
 | +0x58 | u32 ptr | **AI target record**: while that record's spawn counter (+0x18) is positive, `0x68018` targets its kind; otherwise the +0x5C mask applies | Confirmed (logic) | `0x68018` |
 | +0x5C | u32 | Default AI target-kind mask, used when the descriptor at +0x58 is absent or inactive; not the object's own base capability flag | Confirmed (fallback target selection) | `0x68018`; communication code `0x2cbb4` tests the runtime object's kind instead |
 | +0x60, +0x64, +0x68 | i32 | Default 100 when 0; negative values clamp to 0 | Likely percentages (e.g. hull, shields, energy) | Default-filling code |
