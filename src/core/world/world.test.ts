@@ -67,7 +67,7 @@ describe('world step (P3-02 AC-03, AC-04)', () => {
   it('has no way to advance time other than step()', () => {
     const world = constructWorld(testState());
     expect(Object.keys(world)).toEqual([]);
-    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(world)).sort()).toEqual(['constructor', 'projection', 'renderState', 'step']);
+    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(world)).sort()).toEqual(['constructor', 'projection', 'renderState', 'snapshot', 'step']);
   });
 
   it('gives every valid command exactly one rejected/not-implemented result in order and changes nothing else', () => {
@@ -142,6 +142,7 @@ describe('fault latch (P3-02 AC-09, 行为与边界)', () => {
     expect(thrownBy(() => world.step({} as never))).toBe(fault);
     expect(thrownBy(() => world.projection())).toBe(fault);
     expect(thrownBy(() => world.renderState())).toBe(fault);
+    expect(thrownBy(() => world.snapshot())).toBe(fault);
   });
 
   it.each([
@@ -156,6 +157,7 @@ describe('fault latch (P3-02 AC-09, 行为与边界)', () => {
     expect(thrownBy(() => world.step(tickInput()))).toBe(fault);
     expect(thrownBy(() => world.projection())).toBe(fault);
     expect(thrownBy(() => world.renderState())).toBe(fault);
+    expect(thrownBy(() => world.snapshot())).toBe(fault);
   });
 
   it('turns any other failure during a tick into a latched broken invariant at its site', () => {
@@ -174,6 +176,7 @@ describe('fault latch (P3-02 AC-09, 行为与边界)', () => {
   it.each([
     ['projection', 'missionStatus'],
     ['renderState', 'tick'],
+    ['snapshot', 'clock'],
   ] as const)('latches a failure while reading the %s', (method, field) => {
     const state = testState();
     const world = constructWorld(state);
@@ -199,6 +202,7 @@ describe('world reads (P3-02 AC-10)', () => {
     const before = stateText(state);
     world.projection();
     world.renderState();
+    world.snapshot();
     world.projection();
     expect(stateText(state)).toBe(before);
   });
@@ -207,7 +211,7 @@ describe('world reads (P3-02 AC-10)', () => {
     const state = populatedState();
     const world = constructWorld(state);
     const events = world.step(tickInput([{ type: 'launch' }]));
-    const outputs = [events, world.projection(), world.renderState()];
+    const outputs = [events, world.projection(), world.renderState(), world.snapshot()];
     const texts = outputs.map((output) => JSON.stringify(output));
     for (const output of outputs) expect(deepFrozen(output)).toBe(true);
 

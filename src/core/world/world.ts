@@ -1,17 +1,18 @@
 /**
  * The formal Core world (docs/plan/p3/02/spec.md, 数据模型与契约; 行为与边界). step() is the only way to advance it;
- * projection() and renderState() read it at any time. Every output is deeply frozen and detached from the world, so
- * later ticks never change it. createWorld (create-world.ts) creates it from logic content; snapshots are subtask 08's.
+ * projection(), renderState() and snapshot() read it at any time. Every output is deeply frozen and detached from the
+ * world, so later ticks never change it. createWorld (create-world.ts) creates it from logic content.
  *
  * Fault latch: when Core itself fails in a step or a read (a broken invariant, or a budget running out while a tick
- * executes), the world keeps the CoreFaultError and publishes nothing from that call; every later step(), projection()
- * and renderState() throws that same error. P3-04 stops the run.
+ * executes), the world keeps the CoreFaultError and publishes nothing from that call; every later step(),
+ * projection(), renderState() and snapshot() throws that same error. P3-04 stops the run.
  */
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type TickInput } from '../contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { projectWorld, type Projection } from '../projections/projection.ts';
 import { renderWorld, type RenderState } from '../projections/render-state.ts';
+import { takeSnapshot, type GameSnapshot } from '../replay/snapshot.ts';
 import { registerTick, runTick, type TickContext } from '../systems/pipeline.ts';
 import type { WorldState } from './world-state.ts';
 
@@ -24,6 +25,8 @@ export interface World {
   step(tickInput: TickInput): readonly DomainEvent[];
   projection(): Projection;
   renderState(): RenderState;
+  /** The world's complete authoritative state (replay/snapshot.ts); a diagnostic, not a save. */
+  snapshot(): GameSnapshot;
 }
 
 class CoreWorld implements World {
@@ -57,6 +60,11 @@ class CoreWorld implements World {
   renderState(): RenderState {
     this.#throwIfFaulted();
     return this.#guard('world.renderState', () => renderWorld(this.#state));
+  }
+
+  snapshot(): GameSnapshot {
+    this.#throwIfFaulted();
+    return this.#guard('world.snapshot', () => takeSnapshot(this.#state));
   }
 
   #throwIfFaulted(): void {

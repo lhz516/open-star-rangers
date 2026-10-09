@@ -1,11 +1,11 @@
 import { expect } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
-import { canonicalObject, canonicalText, type CanonicalValue } from '../contracts/canonical-text.ts';
 import type { Command, TickInput } from '../contracts/tick-input.ts';
 import { CoreFaultError } from '../errors.ts';
+import { snapshotText, takeSnapshot } from '../replay/snapshot.ts';
 import { initialWorldState } from './create-world.ts';
 import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
-import { ALL_KINDS, type EntityInit, type EntityRuleInputs, type Matrix3 } from './entity-table.ts';
+import type { EntityInit, EntityRuleInputs, Matrix3 } from './entity-table.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
 
@@ -53,33 +53,9 @@ export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {})
 
 export const tickInput = (commands: readonly Command[] = []): TickInput => ({ axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commands] });
 
-/** Plain data as a canonical value, object members in sorted key order. */
-function plain(value: unknown): CanonicalValue {
-  if (Array.isArray(value)) return value.map(plain);
-  if (typeof value === 'object' && value !== null) {
-    return canonicalObject(Object.keys(value).sort().map((key): [string, CanonicalValue] => [key, plain((value as Record<string, unknown>)[key])]));
-  }
-  return value as CanonicalValue;
-}
-
-/**
- * A temporary canonical text of everything a world state holds but its static setup, for comparing states in tests;
- * the formal snapshot is subtask 08's.
- */
+/** The canonical text of everything a world state holds but its static setup: its formal snapshot's. */
 export function stateText(state: WorldState): string {
-  const { config, tick, clock, rngState, missionStatus, entities, player, spawn } = state;
-  return canonicalText(plain({
-    config,
-    tick,
-    clock,
-    rngState,
-    missionStatus,
-    nextEntityId: entities.nextId,
-    entities: [...entities.byId()],
-    walkOrder: [...entities.walk(ALL_KINDS)].map(({ id }) => id),
-    player,
-    spawn,
-  }));
+  return snapshotText(takeSnapshot(state));
 }
 
 /** The world's record of a mission declaration or of the selected wingman option. */
