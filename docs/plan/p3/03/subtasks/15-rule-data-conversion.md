@@ -62,6 +62,8 @@ updated: 2026-10-09
 - `src/original-data/conversion/production-rule-data.ts`：生产映射表与份额常量（新建）。
 - `src/original-data/conversion/production-rule-data.test.ts`：映射表的读取与形状测试（新建）。
 - `src/original-data/conversion/rule-data.test-support.ts`：合成封包与合成光盘（新建）。
+- `src/original-data/conversion/step-entry-reader.ts`：内置表区域改用 `readFixedUpRegion` 读取（派发时扩大，见 goal 执行记录中 11 的交接）。
+- `src/original-data/conversion/step-entry-reader.test.ts`：对应测试（新建或扩展）。
 
 ## 验收标准
 
