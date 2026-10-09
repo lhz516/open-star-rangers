@@ -52,6 +52,7 @@ updated: 2026-10-09
 
 - `docs/original/formats/executable.md`：Q-08 至 Q-10 的代码事实（新节）。
 - `docs/original/unknowns.md`：受影响 U 项的状态与线索（负责阶段不改）。
+- `docs/original/behavior/B-005-campaign-rescue.md`：更正被 Q-10 推翻的被毁视角按键说明。
 - `local/research/p3-02/pipeline/**`：Ghidra 脚本、输出与私有项目副本（被忽略）。
 
 ## 验收标准
