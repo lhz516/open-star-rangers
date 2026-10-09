@@ -5,17 +5,20 @@ import { validateGroup } from '../../content/completeness.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { readLayoutPayload } from '../../content/graphics/layout-payload.ts';
-import { encodeImagePayload } from '../../content/graphics/image-payload.ts';
+import { encodeImagePayload, imagePayloadLength, readImagePayload } from '../../content/graphics/image-payload.ts';
+import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { readStatusMessagesPayload, STATUS_MESSAGES_SCHEMA_VERSION } from '../../content/hud/status-messages-payload.ts';
+import { decodeViewLabelsPayload, encodeViewLabelsPayload, VIEW_LABELS_SCHEMA_VERSION } from '../../content/hud/view-labels-payload.ts';
 import { readAssetId } from '../../content/asset-id.ts';
-import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields } from '../synthetic.test-support.ts';
+import { animFrame, expectedFrame, patternFrame, solidFrame, syntheticAnimation, type SyntheticAnimFrame } from '../formats/anim.test-support.ts';
+import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { SYNTHETIC_ASSETS, syntheticGroup, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import {
-  cockpitBlock, cockpitLayoutBlock, countedVerifiedSource, dataPaletteBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping,
-  imageDeclaration, inGraphicsLocationGrammar, layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock,
-  textureBlock,
+  animEntry, blockEntry, cockpitBlock, cockpitLayoutBlock, countedVerifiedSource, dataPaletteBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES,
+  graphicsArchive, graphicsMapping, imageDeclaration, inGraphicsLocationGrammar, layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock,
+  tableBlock, textureBlock, viewLabelBlock, viewLabelTable,
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
 import { runGraphicsStep, stepGroupDraft } from './graphics-step.ts';
@@ -518,5 +521,179 @@ describe('graphics step SNIP frames and DIAG messages', () => {
     const bytes = { ...LIMITS, payloadBytes: 900 };
     await expect(runGraphicsStep(source, tableOf(), declared(), bytes))
       .rejects.toMatchObject({ code: 'budget-exceeded', location: 'graphics[data/hud/messages].messages' });
+  });
+});
+
+// P3-03 (spec S-08, S-10; field rule 9): ANIM explosion frames decoded by the ANIM reader (textures §6) and the TABL
+// view label of sub-mode 8 (hud, TABL 10399). Everything here is generated in code.
+describe('graphics step ANIM frames and view labels', () => {
+  const ANIM_ENTRY = 10_017;
+  const LABELS_ENTRY = 10_019;
+  // Frames of different sizes: transparent and opaque runs, a fully transparent frame and an opaque index 0.
+  const FRAMES = [patternFrame(13, 9, 3), solidFrame(4, 2, null), solidFrame(5, 3, 0), patternFrame(9, 4, 77)];
+  // Made-up label bytes, including 1, 0x7F and bytes 128–255.
+  const LABEL = String.fromCharCode(1, 0x51, 0x7f, 0x80, 0xc9, 0xff, 0x20, 0x33);
+  const IDS = { models: 'palette/flight/models', hud: 'palette/flight/cockpit-hud-map', labels: 'data/hud/view-labels' } as const;
+  const frameId = (index: number) => `image/explosion/01/${String(index + 1).padStart(2, '0')}`;
+  const FRAME_IDS = FRAMES.map((_, index) => frameId(index));
+
+  const archiveOf = ({ anim = animEntry(ANIM_ENTRY, FRAMES), labels = blockEntry(LABELS_ENTRY, 'TABL', viewLabelTable(LABEL)) }: { anim?: SyntheticEntry; labels?: SyntheticEntry } = {}) =>
+    buildImfat(10_000, [{ id: data, type: 'DATA', data: dataPaletteBlock() }, anim, labels]);
+  const sourceOf = (entries: Parameters<typeof archiveOf>[0] = {}) => verifiedSource(archiveOf(entries));
+
+  interface TableChanges { frames?: (string | null)[]; labels?: string | null; labelsType?: string }
+  // In ascending Asset ID order, as the mapping table requires.
+  const tableOf = ({ frames = FRAMES.map((_, index) => `frames/${index}`), labels = 'labels/8', labelsType = 'TABL' }: TableChanges = {}) => ({
+    sourceFingerprint: null,
+    mappings: [
+      graphicsMapping(IDS.labels, labelsType, labelsType === 'TABL' ? LABELS_ENTRY : ANIM_ENTRY, labels),
+      ...frames.map((subresource, index) => graphicsMapping(frameId(index), 'ANIM', ANIM_ENTRY, subresource)),
+      graphicsMapping(IDS.hud, 'DATA', data),
+      graphicsMapping(IDS.models, 'DATA', data),
+    ],
+  });
+  const declared = (frameChanges: Record<string, unknown> = {}, labelChanges: Record<string, unknown> = {}) => [
+    paletteDeclaration(IDS.models, 'models'),
+    paletteDeclaration(IDS.hud),
+    ...FRAME_IDS.map(id => imageDeclaration(id, IDS.models, { role: 'explosion-frame', group: 'models', ...frameChanges })),
+    { asset: { id: IDS.labels, kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map', ...labelChanges },
+  ];
+
+  /** The conversion usage of `tableOf()` and `declared()`, computed from the frames, palettes and label alone. */
+  const EXPECTED_USAGE = {
+    ...EMPTY_BUDGET_USAGE,
+    assets: 2 + FRAMES.length + 1,
+    dependencyEdges: FRAMES.length,
+    paletteEntries: 2 * 256,
+    imagePixels: FRAMES.reduce((total, { width, height }) => total + width * height, 0),
+    payloadBytes: 2 * palettePayloadLength(256)
+      + FRAMES.reduce((total, { width, height }) => total + imagePayloadLength({ width, height, palette: readAssetId(IDS.models), display: 'direct' }, true), 0)
+      + encodeViewLabelsPayload({ labels: [{ subMode: 8, text: LABEL }] }).length,
+  };
+
+  it('converts every ANIM frame pixel for pixel and the view label, reading each entry once', async () => {
+    const { source, reads } = await sourceOf();
+    const result = await runGraphicsStep(source, tableOf(), declared(), LIMITS);
+    expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [ANIM_ENTRY]: 1, [LABELS_ENTRY]: 1 });
+    const [models, hud] = result.groups;
+    expect(models.descriptors.map(({ id }) => id)).toEqual([...FRAME_IDS, IDS.models]);
+    expect(hud.descriptors.map(({ id }) => id)).toEqual([IDS.labels, IDS.hud]);
+    expect(result.groups.flatMap(({ sources }) => sources.map(({ state }) => state))).toEqual(new Array(FRAMES.length + 3).fill('verified'));
+    FRAMES.forEach((frame, index) => {
+      const { schemaVersion, bytes } = models.payloads[index];
+      const image = readImagePayload(bytes, schemaVersion);
+      const expected = expectedFrame(frame);
+      expect({ ...image, indices: [...image.indices], mask: image.mask && [...image.mask] }).toEqual({
+        kind: 'image', width: expected.width, height: expected.height, palette: IDS.models, display: 'direct', indices: expected.indices, mask: expected.mask,
+      });
+      expect(models.descriptors[index]).toMatchObject({ role: 'explosion-frame', dependencies: [{ id: IDS.models, kind: 'palette' }] });
+    });
+    const [labelsDescriptor] = hud.descriptors;
+    expect(labelsDescriptor).toMatchObject({ kind: 'data', role: 'view-labels', dependencies: [], payloadIdentity: { schemaVersion: VIEW_LABELS_SCHEMA_VERSION } });
+    expect(decodeViewLabelsPayload(hud.payloads[0].bytes, labelsDescriptor)).toEqual({ labels: [{ subMode: 8, text: LABEL }] });
+    expect(result.usage).toEqual(EXPECTED_USAGE);
+    const shape = JSON.stringify(result, (key, value: unknown) => (value instanceof Uint8Array ? `${value.length} bytes` : key === 'fingerprint' ? 'sha256' : value));
+    expect(shape).not.toMatch(/SR\.NOB|MAIN|100(01|17|19)|ANIM|TABL|frames\/|labels\/|discPath|subresource|entry/);
+  });
+
+  it('leaves the frame and label mappings declared until the conversion succeeds and returns nothing when one fails', async () => {
+    const { source } = await sourceOf();
+    const bound = await verifySourceMappings(tableOf(), source, stepEntryReader(source));
+    expect(bound.mappings.map(({ resolution }) => resolution)).toEqual([...new Array(FRAMES.length + 1).fill('declared'), 'verified', 'verified']);
+    const short = await sourceOf({ anim: animEntry(ANIM_ENTRY, FRAMES.slice(0, -1)) });
+    await expect(runGraphicsStep(short.source, tableOf(), declared(), LIMITS))
+      .rejects.toMatchObject({ name: 'SourceError', code: 'subresource-not-found', location: `archive:/${GRAPHICS_ARCHIVE}#${ANIM_ENTRY}/frames` });
+  });
+
+  /** An ANIM of `FRAMES` whose frame 1 is replaced by `frame`. */
+  const animWith = (frame: SyntheticAnimFrame): SyntheticEntry =>
+    blockEntry(ANIM_ENTRY, 'ANIM', syntheticAnimation(FRAMES.map((item, index) => (index === 1 ? frame : animFrame(item)))));
+  const truncated = { ...animFrame(FRAMES[1]), data: animFrame(FRAMES[0]).data.subarray(0, 10) };
+
+  it.each<[string, () => { table?: unknown; declarations?: unknown; anim?: SyntheticEntry; labels?: SyntheticEntry }, string, string]>([
+    ['a frame index with a leading zero', () => ({ table: tableOf({ frames: ['frames/0', 'frames/01', 'frames/2', 'frames/3'] }) }), 'invalid-declaration', `graphics[${frameId(1)}].record`],
+    ['a whole ANIM entry as an image', () => ({ table: tableOf({ frames: ['frames/0', null, 'frames/2', 'frames/3'] }) }), 'invalid-declaration', `graphics[${frameId(1)}].record`],
+    ['a frame palette subresource', () => ({ table: tableOf({ frames: ['frames/0', 'frames/1/palette', 'frames/2', 'frames/3'] }) }), 'invalid-declaration', `graphics[${frameId(1)}].record`],
+    ['an index past the frames', () => ({ table: tableOf({ frames: ['frames/0', 'frames/12345678901', 'frames/2', 'frames/3'] }) }), 'subresource-not-found', `archive:/${GRAPHICS_ARCHIVE}#${ANIM_ENTRY}/frames`],
+    ['a colour key on a frame', () => ({ declarations: declared({ alpha: { colourKey: 0 } }) }), 'invalid-declaration', `graphics[${frameId(0)}].alpha`],
+    ['labels of another sub-mode', () => ({ table: tableOf({ labels: 'labels/7' }) }), 'invalid-declaration', `graphics[${IDS.labels}].messages`],
+    ['a label index with a leading zero', () => ({ table: tableOf({ labels: 'labels/08' }) }), 'invalid-declaration', `graphics[${IDS.labels}].messages`],
+    ['labels from a whole TABL entry', () => ({ table: tableOf({ labels: null }) }), 'invalid-declaration', `graphics[${IDS.labels}].messages`],
+    ['labels from an ANIM entry', () => ({ table: tableOf({ labelsType: 'ANIM' }) }), 'invalid-declaration', `graphics[${IDS.labels}].messages`],
+    ['status messages from the view label', () => ({ declarations: declared({}, { role: 'status-messages' }) }), 'invalid-declaration', `graphics[${IDS.labels}].messages`],
+    ['a data Asset of another role', () => ({ declarations: declared({}, { role: 'view-label' }) }), 'invalid-declaration', `graphics.declarations[${FRAMES.length + 2}].role`],
+    ['a truncated frame', () => ({ anim: animWith(truncated) }), 'invalid-payload', `archive:/${GRAPHICS_ARCHIVE}#${ANIM_ENTRY}/frames[1]/pixels`],
+    ['a frame of encoding 2', () => ({ anim: animWith({ ...animFrame(FRAMES[1]), encoding: 2 }) }), 'unsupported-encoding', `archive:/${GRAPHICS_ARCHIVE}#${ANIM_ENTRY}/frames[1]/record`],
+    ['an unregistered label pointer', () => ({ labels: { ...blockEntry(LABELS_ENTRY, 'TABL', viewLabelTable(LABEL)), relocations: [0, 4] } }), 'invalid-payload', `archive:/${GRAPHICS_ARCHIVE}#${LABELS_ENTRY}/labels[8]`],
+  ])('rejects %s', async (_, changes, code, location) => {
+    const { table, declarations: set = declared(), anim, labels } = changes();
+    const { source } = await sourceOf({ anim, labels });
+    await expect(runGraphicsStep(source, table ?? tableOf(), set, LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location });
+    if (location.startsWith('graphics')) expect(inGraphicsLocationGrammar(location)).toBe(true);
+  });
+
+  it.each([
+    ['ANIM', () => ({ anim: blockEntry(ANIM_ENTRY, 'ANIM', { bytes: new Uint8Array(131_073), relocations: [] }) }), ANIM_ENTRY, 131_072],
+    ['view label TABL', () => ({ labels: blockEntry(LABELS_ENTRY, 'TABL', { bytes: new Uint8Array(513), relocations: [] }) }), LABELS_ENTRY, 512],
+  ])('rejects an %s entry over its limit by its directory size before reading it', async (_, entries, entry, limit) => {
+    const { source, reads } = await sourceOf(entries());
+    await expect(runGraphicsStep(source, tableOf(), declared(), LIMITS)).rejects.toMatchObject({
+      name: 'SourceError', code: 'limit-exceeded', limit: { name: 'payloadEntryBytes', limit, observed: limit + 1 },
+    });
+    expect(reads.has(entry)).toBe(false);
+  });
+
+  it.each([
+    ['ANIM', () => ({ anim: blockEntry(ANIM_ENTRY, 'ANIM', { bytes: new Uint8Array(131_072), relocations: [] }) }), ANIM_ENTRY, '/frames'],
+    ['view label TABL', () => ({ labels: blockEntry(LABELS_ENTRY, 'TABL', { bytes: new Uint8Array(512), relocations: [] }) }), LABELS_ENTRY, '/labels[8]'],
+  ])('reads an %s entry exactly at its limit and leaves its structure to the reader', async (_, entries, entry, path) => {
+    const { source, reads } = await sourceOf(entries());
+    await expect(runGraphicsStep(source, tableOf(), declared(), LIMITS))
+      .rejects.toMatchObject({ name: 'SourceError', code: 'invalid-payload', location: `archive:/${GRAPHICS_ARCHIVE}#${entry}${path}` });
+    expect(reads.get(entry)).toBe(1);
+  });
+
+  it('applies the label limit only to TABL entries mapped as view labels', async () => {
+    const wide = rawImageBlock(23, 23, Array.from({ length: 23 * 23 }, (_, index) => index % 251));
+    const listEntry = 10_021;
+    const archive = buildImfat(10_000, [
+      { id: data, type: 'DATA', data: dataPaletteBlock() }, animEntry(ANIM_ENTRY, FRAMES), blockEntry(LABELS_ENTRY, 'TABL', viewLabelTable(LABEL)),
+      { id: listEntry, type: 'TABL', data: tableBlock([wide]) },
+    ]);
+    const { source } = await verifiedSource(archive);
+    const table = tableOf();
+    table.mappings.splice(table.mappings.length - 2, 0, graphicsMapping('image/hud/wide', 'TABL', listEntry, 'records/0'));
+    const result = await runGraphicsStep(source, table, [...declared(), imageDeclaration('image/hud/wide', IDS.hud)], LIMITS);
+    expect(tableBlock([wide]).length).toBeGreaterThan(512);
+    expect(result.groups[1].descriptors.map(({ id }) => id)).toContain('image/hud/wide');
+  });
+
+  it('passes a budget equal to the usage and charges each frame before decoding it and the label before its payload', async () => {
+    const { source } = await sourceOf();
+    expect((await runGraphicsStep(source, tableOf(), declared(), EXPECTED_USAGE)).usage).toEqual(EXPECTED_USAGE);
+    for (const dimension of ['assets', 'dependencyEdges', 'paletteEntries', 'imagePixels', 'payloadBytes'] as const) {
+      const limits = { ...EXPECTED_USAGE, [dimension]: EXPECTED_USAGE[dimension] - 1 };
+      await expect(runGraphicsStep(source, tableOf(), declared(), limits)).rejects.toMatchObject({
+        code: 'budget-exceeded', limit: { name: dimension, limit: EXPECTED_USAGE[dimension] - 1, observed: EXPECTED_USAGE[dimension] },
+      });
+    }
+    // The truncated frame is charged first: its pixels exceed the budget before its data is decoded.
+    const broken = await sourceOf({ anim: animWith(truncated) });
+    const before = FRAMES[0].width * FRAMES[0].height;
+    await expect(runGraphicsStep(broken.source, tableOf(), declared(), { ...LIMITS, imagePixels: before + FRAMES[1].width * FRAMES[1].height - 1 })).rejects.toMatchObject({
+      code: 'budget-exceeded', location: `graphics[${frameId(1)}].pixels`, limit: { name: 'imagePixels', observed: before + FRAMES[1].width * FRAMES[1].height },
+    });
+    const labelBytes = encodeViewLabelsPayload({ labels: [{ subMode: 8, text: LABEL }] }).length;
+    await expect(runGraphicsStep(source, tableOf(), declared(), { ...EXPECTED_USAGE, payloadBytes: EXPECTED_USAGE.payloadBytes - labelBytes })).rejects.toMatchObject({
+      code: 'budget-exceeded', location: `graphics[${IDS.labels}].messages`,
+    });
+  });
+
+  it('keeps the label bytes and a different label as stored, and ignores the other labels', async () => {
+    const other = String.fromCharCode(0x80, 0x7e, 2);
+    const labels = blockEntry(LABELS_ENTRY, 'TABL', viewLabelBlock(Array.from({ length: 13 }, (_, index) => (index === 8 ? other : index > 8 ? 'x'.repeat(40) : ''))));
+    const { source } = await sourceOf({ labels });
+    const [, hud] = (await runGraphicsStep(source, tableOf(), declared(), LIMITS)).groups;
+    expect(decodeViewLabelsPayload(hud.payloads[0].bytes, hud.descriptors[0])).toEqual({ labels: [{ subMode: 8, text: other }] });
   });
 });

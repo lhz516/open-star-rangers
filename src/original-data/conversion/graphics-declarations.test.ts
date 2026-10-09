@@ -107,3 +107,27 @@ describe('layout conversion declarations', () => {
     expectSourceError(() => readGraphicsDeclarations(value), 'invalid-declaration', location);
   });
 });
+
+describe('data conversion declarations', () => {
+  const dataSet = () => [
+    { asset: { id: 'data/hud/status-display/messages', kind: 'data' }, role: 'status-messages', group: 'cockpit-hud-map' },
+    { asset: { id: 'data/hud/view-labels', kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map' },
+  ];
+
+  it('reads the status messages and view labels data Assets', () => {
+    const input = dataSet();
+    const declarations = readGraphicsDeclarations(input);
+    expect(declarations).toEqual(input);
+    expect(declarations.every(Object.isFrozen)).toBe(true);
+  });
+
+  it.each<[string, Mutation, string]>([
+    ['another data role', set => { set[1].role = 'view-label'; }, 'graphics.declarations[1].role'],
+    ['an extra field', set => { set[1].palette = 'palette/flight'; }, 'graphics.declarations[1]'],
+    ['a group that does not own data', set => { set[1].group = 'audio'; }, 'graphics.declarations[1].group'],
+  ])('rejects %s as invalid-declaration', (_, mutate, location) => {
+    const set = dataSet() as Record<string, unknown>[];
+    const value = mutate(set) ?? set;
+    expectSourceError(() => readGraphicsDeclarations(value), 'invalid-declaration', location);
+  });
+});

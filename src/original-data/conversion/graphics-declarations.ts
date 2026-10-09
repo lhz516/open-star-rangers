@@ -5,15 +5,16 @@ import { GRAPHICS_LIMITS, readPaletteReference, readReference, requireInteger as
 import type { ImageDisplay } from '../../content/graphics/image-payload.ts';
 import { layoutFrame, type LayoutFrame } from '../../content/graphics/layout-payload.ts';
 import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
+import { VIEW_LABELS_ROLE } from '../../content/hud/view-labels-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { SourceError } from '../source-error.ts';
 
 // Graphics conversion declarations (docs/plan/p2/05/spec.md, graphics conversion declarations, and
-// docs/plan/p2/07/spec.md, layout conversion declarations and status display messages): plain data paired one to one
-// with source mappings but without locators. Non-default choices (nearest display, colour keys, reversed rows and
-// character map ranges) need evidence linked from the Asset's mapping.
+// docs/plan/p2/07/spec.md, layout conversion declarations and status display messages; docs/plan/p3/03/spec.md, S-08):
+// plain data paired one to one with source mappings but without locators. Non-default choices (nearest display, colour
+// keys, reversed rows and character map ranges) need evidence linked from the Asset's mapping.
 
-/** The kinds the graphics step converts; its only `data` Asset kind is the status display messages. */
+/** The kinds the graphics step converts; its `data` Assets are the status display messages and the view labels. */
 export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout' | 'data';
 
 interface DeclarationBase<Kind extends GraphicsKind> {
@@ -54,8 +55,16 @@ export interface FontDeclaration extends DeclarationBase<'font'> {
   readonly charMap: readonly CharMapRange[];
 }
 
-/** The status display messages; their format comes from the source (P2-07 spec, status display messages). */
-export type MessagesDeclaration = DeclarationBase<'data'>;
+/** The roles a graphics `data` Asset may have, each with the source type it converts from (convert-graphics.ts). */
+export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 'view-labels'>> = Object.freeze({
+  [STATUS_MESSAGES_ROLE]: 'status-messages', [VIEW_LABELS_ROLE]: 'view-labels',
+});
+
+/**
+ * The status display messages, whose format comes from the source (P2-07 spec, status display messages), or the view
+ * labels (P3-03 spec, S-08); the role selects which.
+ */
+export type DataDeclaration = DeclarationBase<'data'>;
 
 export interface LayoutDeclaration extends DeclarationBase<'layout'> {
   readonly frame: LayoutFrame;
@@ -67,7 +76,7 @@ export interface LayoutDeclaration extends DeclarationBase<'layout'> {
 export const declaredGlyphCount = ({ cell, glyphRows }: Pick<FontDeclaration, 'cell' | 'glyphRows'>): number =>
   GRAPHICS_LIMITS.glyphCount * cell.height / glyphRows;
 
-export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration | MessagesDeclaration;
+export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration | DataDeclaration;
 
 const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
   palette: ['asset', 'role', 'group'],
@@ -127,8 +136,10 @@ function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   requireFields(record, path, FIELDS[asset.kind]);
   const base = { asset, role: readRole(record.role, `${path}.role`), group: readResourceGroup(record.group, `${path}.group`) };
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
-  if (asset.kind === 'data' && base.role !== STATUS_MESSAGES_ROLE) fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages role');
-  if (asset.kind === 'palette' || asset.kind === 'data') return Object.freeze(base as PaletteDeclaration | MessagesDeclaration);
+  if (asset.kind === 'data' && !Object.hasOwn(GRAPHICS_DATA_SOURCES, base.role)) {
+    fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages or view labels role');
+  }
+  if (asset.kind === 'palette' || asset.kind === 'data') return Object.freeze(base as PaletteDeclaration | DataDeclaration);
   if (asset.kind === 'layout') return readLayout(record, base as DeclarationBase<'layout'>, path);
   if (asset.kind === 'font') {
     const fields = readRecord(record.cell, `${path}.cell`);

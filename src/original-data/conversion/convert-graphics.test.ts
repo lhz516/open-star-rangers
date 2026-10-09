@@ -5,12 +5,18 @@ import { checkGraphicsBinding } from '../../content/graphics/graphics-binding.ts
 import { readImagePayload } from '../../content/graphics/image-payload.ts';
 import { readLayoutPayload } from '../../content/graphics/layout-payload.ts';
 import { readPalettePayload } from '../../content/graphics/palette-payload.ts';
+import { decodeViewLabelsPayload } from '../../content/hud/view-labels-payload.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { payloadMismatch } from '../../content/payload.ts';
+import type { DiscPath } from '../disc/disc-path.ts';
+import { decodeAnimationFrame } from '../formats/anim.ts';
+import { animFrame, expectedFrame, patternFrame, syntheticAnimation } from '../formats/anim.test-support.ts';
+import { entryRead } from '../formats/formats.test-support.ts';
 import type { SourceError } from '../source-error.ts';
+import { syntheticDiag } from '../synthetic.test-support.ts';
 import {
   cockpitBlock, cockpitLayoutBlock, dataPaletteBlock, expectSourceError, fontDeclaration, hudFontTables, imageDeclaration, layoutDeclaration,
-  mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, type SyntheticElement,
+  mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, viewLabelTable, type SyntheticElement,
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource, type RecordSelector } from './convert-graphics.ts';
 import { readDataPalette } from './source-graphics.ts';
@@ -311,5 +317,87 @@ describe('layout and container record conversion', () => {
       expectSourceError(() => convertLayouts({}, {}, { ...exact, [dimension]: exact[dimension] - 1 }), 'budget-exceeded', 'graphics[layout/map].elements',
         { name: dimension, limit: exact[dimension] - 1, observed: exact[dimension] });
     });
+  });
+});
+
+// P3-03: ANIM frames and the view label read whole from their entries (spec S-08, S-10); generated in code.
+describe('ANIM frame and view label conversion', () => {
+  const ARCHIVE = 'MAIN/SR.NOB' as DiscPath;
+  const FRAMES = [patternFrame(11, 7, 5), patternFrame(6, 3, 9)];
+  const ANIM = entryRead(30_017, 'ANIM', syntheticAnimation(FRAMES.map(animFrame)));
+  const LABEL = String.fromCharCode(0x80, 0x41, 0xfe);
+  const LABELS = entryRead(30_019, 'TABL', viewLabelTable(LABEL));
+  const DIAG = syntheticDiag({
+    timings: [1, 2, 3, 4], statusFormats: ['a', 'b', 'c', 'd'], ratings: [['q', 4], ['r', 3], ['s', 2], ['t', 1], ['u', 0]],
+    subsystemNames: Array.from({ length: 15 }, (_, index) => `n${index}`), stateWords: ['x', 'y', 'z'], startupMessages: [],
+  });
+
+  const set = (labelsRole = 'view-labels') => [
+    paletteDeclaration('palette/flight', 'models'),
+    imageDeclaration('image/explosion/01/01', 'palette/flight', { role: 'explosion-frame', group: 'models' }),
+    imageDeclaration('image/explosion/01/02', 'palette/flight', { role: 'explosion-frame', group: 'models' }),
+    { asset: { id: 'data/hud/view-labels', kind: 'data' }, role: labelsRole, group: 'cockpit-hud-map' },
+  ];
+  const frameSources = (overrides: Record<string, GraphicsSource> = {}): Map<string, GraphicsSource> => new Map(Object.entries({
+    'palette/flight': { type: 'data-palette', block: DATA },
+    'image/explosion/01/01': { type: 'anim-frame', archive: ARCHIVE, read: ANIM, index: 0 },
+    'image/explosion/01/02': { type: 'anim-frame', archive: ARCHIVE, read: ANIM, index: 1 },
+    'data/hud/view-labels': { type: 'view-labels', archive: ARCHIVE, read: LABELS },
+    ...overrides,
+  } satisfies Record<string, GraphicsSource>));
+
+  it('decodes each frame into a masked image of the bound palette and the label into a view labels payload', () => {
+    const result = convertGraphics(set(), frameSources(), LIMITS);
+    FRAMES.forEach((frame, index) => {
+      const image = imageOf(result, `image/explosion/01/0${index + 1}`);
+      const expected = expectedFrame(frame);
+      expect({ width: image.width, height: image.height, palette: image.palette, display: image.display, indices: [...image.indices], mask: [...image.mask!] })
+        .toEqual({ ...expected, palette: 'palette/flight', display: 'direct' });
+    });
+    const { descriptor, payload } = result.assets.find(({ descriptor: { id } }) => id === 'data/hud/view-labels')!;
+    expect(payloadMismatch(descriptor.payloadIdentity, payload)).toBeNull();
+    expect(decodeViewLabelsPayload(payload.bytes, descriptor)).toEqual({ labels: [{ subMode: 8, text: LABEL }] });
+    const payloadBytes = result.assets.reduce((total, { payload: { bytes } }) => total + bytes.length, 0);
+    expect(result.usage).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 4, dependencyEdges: 2, paletteEntries: 256, imagePixels: 77 + 18, payloadBytes });
+  });
+
+  it.each<[string, () => ReturnType<typeof convertGraphics>, string, string]>([
+    ['a palette from an ANIM frame', () => convertGraphics(set(), frameSources({ 'palette/flight': { type: 'anim-frame', archive: ARCHIVE, read: ANIM, index: 0 } }), LIMITS),
+      'invalid-declaration', 'graphics[palette/flight].palette'],
+    ['an image from the view labels', () => convertGraphics(set(), frameSources({ 'image/explosion/01/01': { type: 'view-labels', archive: ARCHIVE, read: LABELS } }), LIMITS),
+      'invalid-declaration', 'graphics[image/explosion/01/01].record'],
+    ['view labels from DIAG messages', () => convertGraphics(set(), frameSources({
+      'data/hud/view-labels': { type: 'status-messages', block: DIAG.data, relocations: DIAG.relocations, format: Uint8Array.of(0x25, 0x73, 0) },
+    }), LIMITS), 'invalid-declaration', 'graphics[data/hud/view-labels].messages'],
+    ['status messages from the view labels', () => convertGraphics(set('status-messages'), frameSources(), LIMITS), 'invalid-declaration', 'graphics[data/hud/view-labels].messages'],
+    ['a colour key on a frame', () => convertGraphics(set().map((declaration, index) => (index === 1 ? { ...declaration, alpha: { colourKey: 3 } } : declaration)), frameSources(), LIMITS),
+      'invalid-declaration', 'graphics[image/explosion/01/01].alpha'],
+    ...[2, -1, 0.5, Number.NaN].map((index): [string, () => ReturnType<typeof convertGraphics>, string, string] => [
+      `frame index ${index}`, () => convertGraphics(set(), frameSources({ 'image/explosion/01/02': { type: 'anim-frame', archive: ARCHIVE, read: ANIM, index } }), LIMITS),
+      'subresource-not-found', 'archive:/MAIN/SR.NOB#30017/frames',
+    ]),
+  ])('rejects %s', (_, run, code, location) => expectSourceError(run, code, location));
+
+  it('reports a missing frame exactly as the ANIM frame decoder does', () => {
+    const failure = (run: () => unknown) => {
+      try {
+        run();
+      } catch (error) {
+        const { name, code, location, reason, limit } = error as SourceError;
+        return { name, code, location, reason, limit };
+      }
+      return null;
+    };
+    const converted = failure(() => convertGraphics(set(), frameSources({ 'image/explosion/01/02': { type: 'anim-frame', archive: ARCHIVE, read: ANIM, index: 2 } }), LIMITS));
+    expect(converted).toEqual(failure(() => decodeAnimationFrame(ARCHIVE, ANIM, 2)));
+    expect(converted).toMatchObject({ code: 'subresource-not-found' });
+  });
+
+  it('charges a frame before decoding it', () => {
+    const broken = entryRead(30_017, 'ANIM', syntheticAnimation([animFrame(FRAMES[0]), { ...animFrame(FRAMES[1]), data: animFrame(FRAMES[1]).data.subarray(0, 4) }]));
+    const sources = frameSources({ 'image/explosion/01/02': { type: 'anim-frame', archive: ARCHIVE, read: broken, index: 1 } });
+    expectSourceError(() => convertGraphics(set(), sources, { ...LIMITS, imagePixels: 77 + 17 }), 'budget-exceeded', 'graphics[image/explosion/01/02].pixels',
+      { name: 'imagePixels', limit: 94, observed: 95 });
+    expectSourceError(() => convertGraphics(set(), sources, LIMITS), 'invalid-payload', 'archive:/MAIN/SR.NOB#30017/frames[1]/pixels');
   });
 });

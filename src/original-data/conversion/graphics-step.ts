@@ -6,9 +6,14 @@ import { readAssetDescriptors } from '../../content/manifest.ts';
 import { readPayloadRecords, type PayloadRecord } from '../../content/payload.ts';
 import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '../../content/source-state.ts';
 import { STATUS_MESSAGES_LIMITS } from '../../content/hud/status-messages-payload.ts';
+import { VIEW_LABELS_FORMAT } from '../../content/hud/view-labels-payload.ts';
+import { ANIM_LIMITS } from '../formats/anim.ts';
+import { requireEntryBytes } from '../formats/payload-block.ts';
+import { VIEW_LABEL_LIMITS } from '../formats/view-labels.ts';
 import { SourceError } from '../source-error.ts';
 import {
   assetSourceStates, compareLocators, executableRegion, isRegionLocator, readSourceMappingTable, type ArchiveEntryLocator, type SourceMapping,
+  type SourceMappingTable,
 } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
@@ -63,10 +68,20 @@ const GROUP_PALETTE_SUBRESOURCE = new RegExp(`^groups/${INDEX}/palette$`);
 const ELEMENT_SUBRESOURCE = new RegExp(`^groups/${INDEX}/elements/${INDEX}(/palette)?$`);
 const MFD_SUBRESOURCE = new RegExp(`^lists/${INDEX}/records/${INDEX}(/palette)?$`);
 const TABLE_SUBRESOURCE = new RegExp(`^records/${INDEX}(/palette)?$`);
-const SNIP_FRAME_SUBRESOURCE = new RegExp(`^frames/${INDEX}$`);
+/** A SNIP or ANIM frame. */
+const FRAME_SUBRESOURCE = new RegExp(`^frames/${INDEX}$`);
+/** The one TABL view label the view labels payload holds (P3-03 spec, S-08). */
+const VIEW_LABEL_SUBRESOURCE = `labels/${VIEW_LABELS_FORMAT.subMode}`;
+/** Structural entry limits by source type, judged on an entry's directory size before it is read (P3-03 spec, 限值与预算). */
+const ENTRY_LIMITS: Readonly<Partial<Record<GraphicsSource['type'], number>>> = Object.freeze({
+  'anim-frame': ANIM_LIMITS.entryBytes, 'view-labels': VIEW_LABEL_LIMITS.entryBytes,
+});
 
-/** What a source needs besides its entry's bytes: the relocations of a DIAG entry, the region of a SNIP or DIAG mapping. */
-type Extra = 'block' | 'relocations' | 'colours' | 'format';
+/**
+ * What a source needs besides its entry's bytes: the relocations of a DIAG entry, the region of a SNIP or DIAG mapping,
+ * or the whole entry read of an ANIM frame or the view labels.
+ */
+type Extra = 'block' | 'relocations' | 'colours' | 'format' | 'archive' | 'read';
 type WithoutBytes<Source> = Source extends unknown ? Omit<Source, Extra> : never;
 type SourceKind = WithoutBytes<GraphicsSource>;
 
@@ -95,9 +110,12 @@ function recordOf(entryType: string, subresource: string | null): { readonly rec
 
 /** What a locator supplies for an Asset kind, or null when it supplies nothing of that kind. */
 function sourceKindOf(kind: string, entryType: string, subresource: string | null): SourceKind | null {
-  if (kind === 'data') return entryType === 'DIAG' && subresource === null ? { type: 'status-messages' } : null;
-  const frame = kind === 'image' && entryType === 'SNIP' && subresource !== null ? SNIP_FRAME_SUBRESOURCE.exec(subresource) : null;
-  if (frame) return { type: 'snip-frame', index: Number(frame[1]) };
+  if (kind === 'data') {
+    if (entryType === 'DIAG' && subresource === null) return { type: 'status-messages' };
+    return entryType === 'TABL' && subresource === VIEW_LABEL_SUBRESOURCE ? { type: 'view-labels' } : null;
+  }
+  const frame = kind === 'image' && (entryType === 'SNIP' || entryType === 'ANIM') && subresource !== null ? FRAME_SUBRESOURCE.exec(subresource) : null;
+  if (frame) return { type: entryType === 'SNIP' ? 'snip-frame' : 'anim-frame', index: Number(frame[1]) };
   if (kind === 'palette' && subresource === null) return entryType === 'DATA' ? { type: 'data-palette' } : null;
   const groupPalette = kind === 'palette' && entryType === 'CCKD' && subresource !== null ? GROUP_PALETTE_SUBRESOURCE.exec(subresource) : null;
   if (groupPalette) return { type: 'cockpit-group-palette', slot: Number(groupPalette[1]) };
@@ -128,8 +146,9 @@ const locatorOf = (mapping: SourceMapping): ArchiveEntryLocator | null => (mappi
 /**
  * The typed source of one Asset from its mapping: a whole DATA entry; a whole-entry image record, a CCKD element, an
  * MFDD list record or a TABL image list record, or the embedded palette of any of them; `fonts/<i>`, `groups/<s>` or
- * `groups/<s>/palette` of a CCKD entry; a SNIP frame with its colour table, or a whole DIAG entry with the lower line's
- * format. Only the last two have a second part, one region of the length their use accepts.
+ * `groups/<s>/palette` of a CCKD entry; `frames/<i>` of an ANIM entry; `labels/8` of a TABL view label entry; a SNIP
+ * frame with its colour table, or a whole DIAG entry with the lower line's format. Only the last two have a second
+ * part, one region of the length their use accepts.
  */
 async function graphicsSource({ id, kind }: GraphicsDeclaration['asset'], mapping: SourceMapping, readEntry: EntryReader, readRegion: RegionReader): Promise<GraphicsSource> {
   const entry = entryOf(mapping);
@@ -142,7 +161,10 @@ async function graphicsSource({ id, kind }: GraphicsDeclaration['asset'], mappin
   if (regionPart ? !fitting : second !== undefined) {
     throw new SourceError('invalid-declaration', `graphics[${id}].${regionPart?.field ?? SOURCE_FIELDS[kind]}`, 'the mapping does not have the parts this source needs');
   }
-  const { bytes, relocations } = await readEntry(entry);
+  const read = await readEntry(entry);
+  // The format readers of ANIM frames and the view labels take the whole entry read.
+  if (source.type === 'anim-frame' || source.type === 'view-labels') return { ...source, archive: entry.discPath, read };
+  const { bytes, relocations } = read;
   const extra = regionPart && fitting ? { [regionPart.field]: await readRegion(fitting, `graphics[${id}].${regionPart.field}`) } : {};
   // SNIP frames and DIAG check their entry's relocations, the pointer fields their structure names.
   return { ...source, block: bytes, ...(regionPart && { relocations }), ...extra } as GraphicsSource;
@@ -166,9 +188,31 @@ function checkLayoutElements(declarations: readonly GraphicsDeclaration[], mappi
 }
 
 /**
+ * The step's entry reader, shared by mapping verification and conversion: an entry a mapping of `table` locates as a
+ * source type with an entry limit must be within it by its directory size before its bytes are read.
+ */
+function graphicsEntryReader(source: VerifiedSource, table: SourceMappingTable): EntryReader {
+  const key = (discPath: string, type: string, id: number) => `${discPath}\u0000${type}\u0000${id}`;
+  const limits = new Map<string, number>();
+  for (const { asset, parts } of table.mappings) {
+    for (const locator of parts.flatMap(({ alternatives }) => alternatives)) {
+      if (isRegionLocator(locator)) continue;
+      const type = sourceKindOf(asset.kind, locator.entry.type, locator.subresource)?.type;
+      const limit = type && ENTRY_LIMITS[type];
+      if (limit) limits.set(key(locator.discPath, locator.entry.type, locator.entry.id), limit);
+    }
+  }
+  return stepEntryReader(source, (discPath, entry) => {
+    const limit = limits.get(key(discPath, entry.type, entry.id));
+    if (limit !== undefined) requireEntryBytes(discPath, entry, limit);
+  });
+}
+
+/**
  * Runs the graphics conversion step: verifies the mapping table, pairs each declaration with its mapping, requires
  * each layout's element images to be mapped to that layout's group elements, converts the Assets from step-shared
- * entry reads, and only then marks their mappings, including subresource ones, verified.
+ * entry reads (ANIM and view label entries limited by their directory size first), and only then marks their mappings,
+ * including subresource ones such as ANIM frames and the view label, verified.
  * Returns frozen locator-free results by resource group. Any failure rejects the whole step without results; read
  * failures keep their P2-02/P2-03 layer, code and location, and reads already issued stay charged to the source.
  */
@@ -179,9 +223,10 @@ export async function runGraphicsStep(
   limits: unknown,
   usage: unknown = EMPTY_BUDGET_USAGE,
 ): Promise<GraphicsStepResult> {
-  const readEntry = stepEntryReader(source);
+  const declared = readSourceMappingTable(mappings);
+  const readEntry = graphicsEntryReader(source, declared);
   const readRegion = stepRegionReader(source);
-  const table = await verifySourceMappings(mappings, source, readEntry);
+  const table = await verifySourceMappings(declared, source, readEntry);
   const checked = readGraphicsDeclarations(declarations);
   const mappingById = new Map<string, SourceMapping>(table.mappings.map(mapping => [mapping.asset.id, mapping]));
   checked.forEach(({ asset }, index) => {

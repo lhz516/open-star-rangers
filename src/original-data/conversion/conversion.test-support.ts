@@ -4,10 +4,12 @@ import type { ModelGeometry } from '../../content/models/model-payload.ts';
 import { kindOf } from '../../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../disc/disc-image.ts';
 import { syntheticFileDisc, type SyntheticFileContent } from '../disc/disc.test-support.ts';
+import { animFrame, syntheticAnimation, type SyntheticFrame } from '../formats/anim.test-support.ts';
+import type { SyntheticBlock } from '../formats/formats.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
 import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
 import { catalogFor } from '../source/source.test-support.ts';
-import { buildImfat, ByteWriter, imageRecord, syntheticMesh } from '../synthetic.test-support.ts';
+import { buildImfat, ByteWriter, imageRecord, syntheticMesh, type SyntheticEntry } from '../synthetic.test-support.ts';
 
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
 
@@ -264,6 +266,31 @@ export function graphicsArchive(blocks: { data?: Uint8Array; texture?: Uint8Arra
     ...(blocks.table ? [{ id: GRAPHICS_ENTRIES.table, type: 'TABL', data: blocks.table }] : []),
   ]);
 }
+
+/** The archive entry `id` of type `type` holding a synthetic block and its relocations. */
+export const blockEntry = (id: number, type: string, { bytes, relocations }: SyntheticBlock): SyntheticEntry => ({ id, type, data: bytes, relocations: [...relocations] });
+
+/** An ANIM entry (textures §6) of `frames` in display order, each encoded by the documented encoding-1 rule. */
+export const animEntry = (id: number, frames: readonly SyntheticFrame[]): SyntheticEntry => blockEntry(id, 'ANIM', syntheticAnimation(frames.map(animFrame)));
+
+/**
+ * A TABL view label entry (hud, TABL 10399): one relocated u32 pointer per label in label order, then each label's bytes
+ * (character codes 1–255) and its NUL.
+ */
+export function viewLabelBlock(labels: readonly string[]): SyntheticBlock {
+  const writer = new ByteWriter();
+  let offset = labels.length * 4;
+  for (const label of labels) {
+    writer.u32(offset);
+    offset += label.length + 1;
+  }
+  for (const label of labels) writer.raw(Array.from(label, character => character.charCodeAt(0))).u8(0);
+  return { bytes: writer.toBytes(), relocations: labels.map((_, index) => index * 4) };
+}
+
+/** Thirteen made-up view labels with `label` at sub-mode 8; every other label differs from it and from each other. */
+export const viewLabelTable = (label: string): SyntheticBlock =>
+  viewLabelBlock(Array.from({ length: 13 }, (_, index) => (index === 8 ? label : `v${index}${'-'.repeat(index)}`)));
 
 export const layoutDeclaration = (id: string, elements: readonly string[], overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   asset: { id, kind: 'layout' }, role: 'front-cockpit', group: 'cockpit-hud-map', frame: { width: 640, height: 480 }, elements, ...overrides,

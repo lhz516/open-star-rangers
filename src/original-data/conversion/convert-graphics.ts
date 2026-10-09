@@ -9,13 +9,19 @@ import { encodeImagePayload, imagePayloadLength, maskStride } from '../../conten
 import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement } from '../../content/graphics/layout-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { STATUS_MESSAGES_SCHEMA_VERSION, encodeStatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
+import { VIEW_LABELS_SCHEMA_VERSION, encodeViewLabelsPayload } from '../../content/hud/view-labels-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
+import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
+import type { DiscPath } from '../disc/disc-path.ts';
+import { decodeAnimationFrame, readAnimationFrames, type AnimationFrame } from '../formats/anim.ts';
+import { entryLocation } from '../formats/payload-block.ts';
+import { parseViewLabels } from '../formats/view-labels.ts';
 import { SourceError } from '../source-error.ts';
 import { readConversionUsage } from './conversion-budget.ts';
 import {
-  declaredGlyphCount, readGraphicsDeclarations, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind, type ImageDeclaration,
-  type LayoutDeclaration, type MessagesDeclaration, type PaletteDeclaration,
+  declaredGlyphCount, GRAPHICS_DATA_SOURCES, readGraphicsDeclarations, type DataDeclaration, type FontDeclaration, type GraphicsDeclaration, type GraphicsKind,
+  type ImageDeclaration, type LayoutDeclaration, type PaletteDeclaration,
 } from './graphics-declarations.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, decodeSnipFrame, mfdRecordOffset, readCockpitFont, readCockpitGroup,
@@ -74,6 +80,14 @@ interface SnipFrameSource {
   readonly colours: Uint8Array;
 }
 
+interface AnimFrameSource {
+  /** The `frames/<index>` subresource of an ANIM entry, read whole with its relocations (textures §6). */
+  readonly type: 'anim-frame';
+  readonly archive: DiscPath;
+  readonly read: ArchiveEntryRead;
+  readonly index: number;
+}
+
 interface FontSource {
   /** The `fonts/<index>` subresource of a CCKD entry. */
   readonly type: 'cockpit-font';
@@ -96,8 +110,19 @@ interface MessagesSource {
   readonly format: Uint8Array;
 }
 
-/** The source bytes of one Asset, already read from its mapped entry and, for SNIP frames and DIAG, its region. */
-export type GraphicsSource = PaletteSource | ImageSource | SnipFrameSource | FontSource | LayoutSource | MessagesSource;
+interface ViewLabelsSource {
+  /** The `labels/8` subresource of a TABL view label entry, read whole with its relocations (hud, TABL 10399). */
+  readonly type: 'view-labels';
+  readonly archive: DiscPath;
+  readonly read: ArchiveEntryRead;
+}
+
+/**
+ * The source bytes of one Asset, already read from its mapped entry and, for SNIP frames and DIAG, its region; ANIM
+ * frames and view labels keep their whole entry read for the format readers.
+ */
+export type GraphicsSource =
+  | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource;
 
 export interface ConvertedGraphic {
   readonly descriptor: AssetDescriptor;
@@ -112,9 +137,10 @@ export interface GraphicsConversion {
   readonly usage: BudgetRecord;
 }
 
-const SOURCE_TYPES: Readonly<Record<GraphicsKind, readonly GraphicsSource['type'][]>> = Object.freeze({
-  palette: ['data-palette', 'embedded-palette', 'cockpit-group-palette'], image: ['image-record', 'snip-frame'], font: ['cockpit-font'],
-  layout: ['cockpit-group'], data: ['status-messages'],
+/** The source types of each kind but `data`, whose role selects its one source type (`GRAPHICS_DATA_SOURCES`). */
+const SOURCE_TYPES: Readonly<Record<Exclude<GraphicsKind, 'data'>, readonly GraphicsSource['type'][]>> = Object.freeze({
+  palette: ['data-palette', 'embedded-palette', 'cockpit-group-palette'], image: ['image-record', 'snip-frame', 'anim-frame'], font: ['cockpit-font'],
+  layout: ['cockpit-group'],
 });
 export const SOURCE_FIELDS: Readonly<Record<GraphicsKind, string>> = Object.freeze({ palette: 'palette', image: 'record', font: 'fonts', layout: 'groups', data: 'messages' });
 /** The field a budget rejection is reported at, per kind. */
@@ -127,6 +153,42 @@ function recordOffset(block: Uint8Array, record: RecordSelector | undefined, at:
     case 'cockpit-element': return cockpitElementRecordOffset(block, record.slot, record.index, at);
     case 'mfd-record': return mfdRecordOffset(block, record.list, record.index, at);
     case 'table-record': return tableRecordOffset(block, record.index, at);
+  }
+}
+
+/**
+ * Frame `index` of an ANIM source after the whole entry's structure is checked, without decoding any frame data; a frame
+ * past the array is `subresource-not-found` at the entry's frame array, as the frame decoder reports it.
+ */
+function animationFrame({ archive, read, index }: AnimFrameSource): AnimationFrame {
+  const frames = readAnimationFrames(archive, read);
+  if (!Number.isInteger(index) || index < 0 || index >= frames.length) {
+    throw new SourceError('subresource-not-found', `${entryLocation(archive, read.entry)}/frames`, 'the ANIM has no such frame');
+  }
+  return frames[index];
+}
+
+type ImageSourceOf = ImageSource | SnipFrameSource | AnimFrameSource;
+
+/**
+ * The encoding and size of an image source, checked without decoding its pixels; `offset` locates an image record. A
+ * SNIP frame is drawn whole (hud, SNIP 10487), like an opaque raw record; an ANIM frame is byte-run sprite RLE, whose
+ * transparent runs are its mask (textures §6).
+ */
+function imageHeader(source: ImageSourceOf, offset: number, at: string): { readonly encoding: string; readonly width: number; readonly height: number } {
+  switch (source.type) {
+    case 'image-record': return readImageRecordHeader(source.block, offset, at);
+    case 'anim-frame': return { encoding: 'byte-run', ...animationFrame(source) };
+    case 'snip-frame': return { encoding: 'snip', ...readSnipFrames({ bytes: source.block, relocations: source.relocations }, at) };
+  }
+}
+
+/** The pixels of an image source, decoded into new buffers in stored row order. */
+function decodeImage(source: ImageSourceOf, offset: number, at: string): SourceImage {
+  switch (source.type) {
+    case 'image-record': return decodeImageRecord(source.block, offset, at);
+    case 'anim-frame': return decodeAnimationFrame(source.archive, source.read, source.index);
+    case 'snip-frame': return decodeSnipFrame({ bytes: source.block, relocations: source.relocations }, source.index, source.colours, at);
   }
 }
 
@@ -190,23 +252,20 @@ class Conversion {
     this.#add(declaration, [], encodePalettePayload({ entries }, at));
   }
 
-  image(declaration: ImageDeclaration, source: ImageSource | SnipFrameSource): void {
+  image(declaration: ImageDeclaration, source: ImageSourceOf): void {
     const { asset: { id }, palette, display, alpha, rowOrder } = declaration;
     const at = `graphics[${id}]`;
-    // A SNIP frame is drawn whole (hud, SNIP 10487), like an opaque raw record that a colour key does not apply to.
     const offset = source.type === 'image-record' ? recordOffset(source.block, source.record, at) : 0;
-    const { encoding, width, height } = source.type === 'image-record'
-      ? readImageRecordHeader(source.block, offset, at) : { encoding: 'snip', ...readSnipFrames({ bytes: source.block, relocations: source.relocations }, at) };
+    const { encoding, width, height } = imageHeader(source, offset, at);
     if (alpha !== 'encoding' && encoding !== 'raw') throw new SourceError('invalid-declaration', `${at}.alpha`, 'a colour key applies only to raw images');
-    const masked = encoding === 'sprite-rle' || alpha !== 'encoding';
+    const masked = encoding === 'sprite-rle' || encoding === 'byte-run' || alpha !== 'encoding';
     const dependencies = imagePalettes(declaration);
     this.#charge(declaration, {
       dependencyEdges: dependencies.length,
       imagePixels: width * height,
       payloadBytes: imagePayloadLength({ width, height, palette, display }, masked),
     });
-    const decoded: SourceImage = source.type === 'image-record'
-      ? decodeImageRecord(source.block, offset, at) : decodeSnipFrame({ bytes: source.block, relocations: source.relocations }, source.index, source.colours, at);
+    const decoded = decodeImage(source, offset, at);
     const indices = decoded.indices;
     const mask = alpha === 'encoding' ? decoded.mask : colourKeyMask(indices, width, height, alpha.colourKey);
     checkPaletteIndices({ width, height, indices, mask }, this.#paletteEntries.get(palette)!, at);
@@ -255,10 +314,16 @@ class Conversion {
   }
 
   /** The status display messages of a DIAG entry, charged once their structure is checked and before any text is copied. */
-  messages(declaration: MessagesDeclaration, { block, relocations, format }: MessagesSource): void {
+  messages(declaration: DataDeclaration, { block, relocations, format }: MessagesSource): void {
     const at = `graphics[${declaration.asset.id}]`;
     const payload = readStatusMessages({ bytes: block, relocations }, format, at, payloadBytes => this.#charge(declaration, { payloadBytes }));
     this.#add(declaration, [], encodeStatusMessagesPayload(payload, at), 'palette', STATUS_MESSAGES_SCHEMA_VERSION);
+  }
+
+  /** The view labels of a TABL view label entry, charged before their payload is allocated. */
+  viewLabels(declaration: DataDeclaration, { archive, read }: ViewLabelsSource): void {
+    const bytes = encodeViewLabelsPayload(parseViewLabels(archive, read), payloadBytes => this.#charge(declaration, { payloadBytes }));
+    this.#add(declaration, [], bytes, 'palette', VIEW_LABELS_SCHEMA_VERSION);
   }
 
   /** A layout of checked elements; the element images themselves are converted as images. */
@@ -289,8 +354,9 @@ function reverseRows(rows: Uint8Array, rowBytes: number, height: number): Uint8A
 }
 
 /**
- * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, messages and layouts,
- * each kind in Asset ID order. Layouts are checked against their groups before anything is converted, so an element the group lacks
+ * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, data (status messages
+ * and view labels, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
+ * checked against their groups before anything is converted, so an element the group lacks
  * is reported as the layout's count mismatch rather than as its image's missing record. Every Asset is charged against
  * `limits` on top of `usage`, the conversion usage of earlier steps (never source reads), before anything sized by it
  * is read or allocated. Any failure rejects the whole set without results; a rejected charge leaves the caller's usage
@@ -307,12 +373,12 @@ export function convertGraphics(
   const order = (kind: GraphicsDeclaration['asset']['kind']) =>
     checked.filter(({ asset }) => asset.kind === kind).sort((left, right) => compareText(left.asset.id, right.asset.id));
   const sourceOf = (declaration: GraphicsDeclaration): GraphicsSource => {
-    const { id, kind } = declaration.asset;
+    const { asset: { id, kind }, role } = declaration;
     const source = sources.get(id);
     if (!source) {
       throw new SourceError('invalid-declaration', `graphics.declarations[${checked.indexOf(declaration)}]`, 'the Asset has no source');
     }
-    if (!SOURCE_TYPES[kind].includes(source.type)) {
+    if (kind === 'data' ? source.type !== GRAPHICS_DATA_SOURCES[role] : !SOURCE_TYPES[kind].includes(source.type)) {
       throw new SourceError('invalid-declaration', `graphics[${id}].${SOURCE_FIELDS[kind]}`, 'the source does not supply this kind');
     }
     return source;
@@ -322,9 +388,10 @@ export function convertGraphics(
   for (const declaration of [...order('palette'), ...order('image'), ...order('font'), ...order('data')]) {
     const source = sourceOf(declaration);
     if (declaration.asset.kind === 'palette') conversion.palette(declaration as PaletteDeclaration, source as PaletteSource);
-    else if (declaration.asset.kind === 'image') conversion.image(declaration as ImageDeclaration, source as ImageSource | SnipFrameSource);
+    else if (declaration.asset.kind === 'image') conversion.image(declaration as ImageDeclaration, source as ImageSourceOf);
     else if (declaration.asset.kind === 'font') conversion.font(declaration as FontDeclaration, source as FontSource);
-    else conversion.messages(declaration as MessagesDeclaration, source as MessagesSource);
+    else if (source.type === 'view-labels') conversion.viewLabels(declaration as DataDeclaration, source);
+    else conversion.messages(declaration as DataDeclaration, source as MessagesSource);
   }
   layouts.forEach((declaration, index) => conversion.layout(declaration, layoutElements[index]));
   return Object.freeze({
