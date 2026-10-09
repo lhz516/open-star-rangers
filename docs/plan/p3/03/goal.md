@@ -104,9 +104,9 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-scen-event-research.md](./subtasks/01-scen-event-research.md) | — | pending |
-| [02-craft-debris-research.md](./subtasks/02-craft-debris-research.md) | — | pending |
-| [03-ai-data-research.md](./subtasks/03-ai-data-research.md) | — | pending |
+| [01-scen-event-research.md](./subtasks/01-scen-event-research.md) | — | in-progress |
+| [02-craft-debris-research.md](./subtasks/02-craft-debris-research.md) | — | in-progress |
+| [03-ai-data-research.md](./subtasks/03-ai-data-research.md) | — | in-progress |
 | [04-comm-hud-text-research.md](./subtasks/04-comm-hud-text-research.md) | — | pending |
 | [05-image-research.md](./subtasks/05-image-research.md) | — | pending |
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | pending |
@@ -131,6 +131,8 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-09 — 并行执行安排：** 协调者在 `p3-03-rule-data-spec` 分支上执行，同时运行的 worker 不超过 3 个（默认）。沿用 P3-01 的宿主做法：worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-03-NN` 作为认领标记；主仓库的 `local` 以符号链接接入，研究输出只写入本行自己的 `local/research/p3-03/<主题>/`，其余位置只读。本任务不运行原版；Ghidra 只读，必要时使用本行范围内的私有副本。
 
 ## 审批
 
