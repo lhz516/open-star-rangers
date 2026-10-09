@@ -38,6 +38,7 @@ CODE_WINDOW_SIZES = (64, 512)  # inclusive, multiple of 16 (anchor chunks)
 DATA_WINDOW_SIZES = (16, 512)
 MAX_OBJECT_NUMBER = 255
 MAX_IDENTITY_KEYS = 16
+CYCLES_RANGE = (1000, 2_000_000)  # fixed DOSBox-X cycles a recipe may request for its private configuration
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)*")
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:+-]*")
@@ -128,6 +129,7 @@ class Recipe:
     fields: dict  # field ID -> Field, in declaration order
     limits: Limits
     fingerprint: str
+    emulator: dict  # recipe-allowed emulator settings of the private configuration, e.g. {"cycles": 40000}
 
     def pause(self, pause_id):
         for pause in self.pauses:
@@ -247,7 +249,7 @@ def _token(value, path):
 
 def _recipe(document):
     _object(document, "$", ("schemaVersion", "recipeId", "source", "identity", "correlation", "pauses", "fields",
-                            "limits"))
+                            "limits"), ("emulator",))
     version = document["schemaVersion"]
     if type(version) is not int or version != SCHEMA_VERSION:
         raise BaselineError("recipe-version-unsupported", "schemaVersion")
@@ -258,6 +260,7 @@ def _recipe(document):
     exe_sha256 = _string(source["exeSha256"], "source.exeSha256", _SHA256)
 
     limits = _limits(document["limits"])
+    emulator = _emulator(document.get("emulator", {}))
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
     identity = _identity(document["identity"], fields, pauses)
@@ -287,7 +290,15 @@ def _recipe(document):
 
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
     return Recipe(recipe_id, baseline_version, exe_sha256, identity, code_window, data_window, pauses, fields, limits,
-                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest())
+                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator)
+
+
+def _emulator(value):
+    """Settings the private emulator configuration may change from the baseline: only fixed cycles."""
+    _object(value, "emulator", (), ("cycles",))
+    if "cycles" in value:
+        return {"cycles": _int(value["cycles"], "emulator.cycles", *CYCLES_RANGE, "recipe-value-invalid")}
+    return {}
 
 
 def _limits(value):

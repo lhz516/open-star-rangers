@@ -14,7 +14,7 @@ from reasons import REASON_SET, BaselineError, ordered
 from recipe import SCALAR_RANGES
 
 SCHEMA_VERSION = 1
-_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:+-]{0,127}")
 
 
@@ -77,7 +77,7 @@ def _passed(value, where):
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
                  cleanup, cancelled=False, failures=()):
     """The report dict. `run_end` None marks an unfinished run (the state a report is first written in)."""
-    if type(run_id) is not str or not _RUN_ID.fullmatch(run_id):
+    if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("report-invalid", "runId")
     tool = _section(tool, "tool")
     if set(tool) != {"version", "source"} or not all(type(v) is str and _LABEL.fullmatch(v) for v in tool.values()):

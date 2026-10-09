@@ -61,6 +61,18 @@ class RecipeTests(unittest.TestCase):
         recipe = parse_recipe(text(self.mutated(change)))
         self.assertFalse(recipe.fields["speed"].required)
 
+    def test_emulator_settings(self):
+        self.assertEqual(parse_recipe(text(scenario_recipe(SHA))).emulator, {})
+        recipe = parse_recipe(text(self.mutated(lambda d: d.update(emulator={"cycles": 30000}))))
+        self.assertEqual(recipe.emulator, {"cycles": 30000})
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(scenario_recipe(SHA))).fingerprint)
+        self.assertRejected("recipe-key-unknown", self.mutated(lambda d: d.update(emulator={"core": "dynamic"})))
+        self.assertRejected("recipe-type-invalid", self.mutated(lambda d: d.update(emulator=[])))
+        for cycles, code in ((999, "recipe-value-invalid"), (2_000_001, "recipe-value-invalid"),
+                             ("40000", "recipe-type-invalid"), (1.5, "recipe-type-invalid"),
+                             (True, "recipe-type-invalid")):
+            self.assertRejected(code, self.mutated(lambda d: d.update(emulator={"cycles": cycles})))
+
     def test_unknown_or_missing_version(self):
         for version in (2, 0, "1", 1.0, True, None):
             self.assertRejected("recipe-version-unsupported", self.mutated(lambda d: d.update(schemaVersion=version)))

@@ -66,6 +66,8 @@ REASONS = (
     "run-cancelled",
     # Session layer (subtask 02): the rejection classes AC-07 and the session contract enumerate
     "emulator-already-running",
+    "session-busy",
+    "emulator-unverified",
     "private-copy-invalid",
     "debugger-unparsed",
     "breakpoint-unconfirmed",
@@ -78,6 +80,8 @@ REASONS = (
     "report-write-failed",
     "log-budget-exceeded",
     "original-changed",
+    "operator-invalid",
+    "tool-error",
 )
 
 REASON_SET = frozenset(REASONS)
