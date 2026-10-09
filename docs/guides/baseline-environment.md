@@ -2,13 +2,13 @@
 type: guide
 status: active
 phase: P0
-updated: 2026-10-08
+updated: 2026-10-09
 related: [U-016, U-021]
 ---
 
 # 基准环境搭建与运行
 
-用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。agent 可以用 Computer Use 自行运行原版，见[原版证据获取](./original-evidence.md#agent-运行原版)。
+用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。agent 可以用 Computer Use 运行与观察原版，见[原版证据获取](./original-evidence.md#agent-运行原版)；本机的 Computer Use 无法向 DOSBox-X 输入，需要游戏操作时由用户在键盘上操作。在私有副本中运行并在调试器暂停点读取内存的测量方法见[运行时测量](./runtime-measurement.md)。
 
 ## 工具
 
@@ -40,7 +40,7 @@ related: [U-016, U-021]
 
 基准设置（修改须记录，并重新测量受影响的行为）：
 
-- CPU：`cputype=pentium`，`cycles=fixed 40000`。初始值，待校准后冻结（U-021）。
+- CPU：`cputype=pentium`，`cycles=fixed 40000`。初始值，待校准后冻结（U-021）。在所选任务中，游戏时钟速率与帧率依赖 cycles（[B-006](../original/behavior/B-006-simulation-timing.md)）；测量其他 cycles 值时只改私有配置副本，见[运行时测量](./runtime-measurement.md#私有配置与游戏设置)。
 - 声卡：Sound Blaster 16；音效 `SB16.DIG`，音乐 `SBPRO2.MDI`（OPL3，Nuked 精确模拟）。沿用原安装的 Miles 配置（U-016）。
 - 游戏内画面设置：全部取最高，即过场 HI、背景细节 ON、Gouraud 着色 ON、贴图 ON、游戏分辨率 HI。设置界面的 7 个选项与 `SRANGER.CFG` 中的 `SOUND_LEVEL`、`MUSIC_LEVEL`、`CINEMATIC`、`DETAIL`、`SHADING`、`TEXTURE`、`GAMEHIRES` 一一对应。初始快照中 `DETAIL=FALSE`（首次运行时游戏按机器性能自动选择），基准应为 TRUE。
 - 录像、截图、录音：菜单 **Capture**，输出到 `local/StarRang/captures/`。截图是游戏原始像素，可用于判断分辨率。

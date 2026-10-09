@@ -2,12 +2,12 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # 工具用法
 
-`tools/` 下包含本地研究、任务路由与合规工具，直接用 Node 22 运行。研究脚本只输出结构信息，不输出原版文件内容；原版解析逻辑放在 `src/original-data/`，浏览器端和工具共用同一份代码。合规工具不读取原版来源，聚合命令会构建当前网站。
+`tools/` 下包含本地研究、任务路由与合规工具，直接用 Node 22 运行；`tools/ghidra/` 的补丁脚本与 `tools/baseline/` 的运行时测量工具用 Python 3 标准库运行。研究脚本只输出结构信息，不输出原版文件内容；运行时测量的报告含读数，只写在被忽略的 `local/research/` 中，终端不显示。原版解析逻辑放在 `src/original-data/`，浏览器端和工具共用同一份代码。合规工具不读取原版来源，聚合命令会构建当前网站。
 
 | 脚本 | 用途 | 用法 |
 |---|---|---|
@@ -18,6 +18,7 @@ updated: 2026-10-08
 | `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；在 `execute-goal` 节点同时给出按依赖与写入范围计算的并行调度 `schedule`（见[并行执行](../engineering/agent-workflow.md#并行执行)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
+| `tools/baseline/measure.py` | 在私有副本中运行原版，在 DOSBox-X 调试器暂停点读取配方声明的字段，写出带合格性、文件保护与回收结果的报告（见[运行时测量](#运行时测量)） | `python3 -B tools/baseline/measure.py baseline-version`；`python3 -B tools/baseline/measure.py run --recipe <配方> --out local/research/<任务>/<主题> --run-id <id> [--smoke]` |
 | `tools/ghidra/patch-watcom-cspec.py` | 给 Ghidra 加入 Watcom 调用约定 | 见 [baseline-environment](./baseline-environment.md#静态分析) |
 | `tools/ghidra/DecompileAll.java` | 反编译全部函数到一个文件 | `-postScript DecompileAll.java <输出文件>` |
 | `tools/ghidra/DumpCallers.java` | 反编译某个函数的全部调用者 | `-postScript DumpCallers.java <输出文件> <函数地址>` |
@@ -99,6 +100,15 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
   不输出名称、坐标、字段值、宿主路径或宿主错误文本。测试可注入合成白名单（`runLogicCheck(paths, { catalog })`）。
 - **退出码：** 通过时为 0，核对失败为 1，用法错误为 2。
+
+## 运行时测量
+
+`tools/baseline/measure.py` 在开发者本地的基准环境中运行原版并读取运行时字段（[P3-01](../plan/p3/01/spec.md#运行时测量) 的 S-05）。配方、操作者协议、读数的合格条件、计时、原版文件保护与证据存放见[运行时测量指南](./runtime-measurement.md)，这里只列要点。
+
+- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话；暂停点之间由操作者游玩，并以运行目录中的应答文件确认。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点在启动阶段即可到达的专门烟测配方；它的报告不是测量证据。
+- **输出：** 报告、调试器日志与证明文件都写在 `local/research/` 下的新运行目录中，不覆盖已有文件。终端只有阶段、原因码、计数与相对路径，不输出读数、原版内容或私人绝对路径。
+- **退出码：** `complete` 为 0；失败为 1；运行前拒绝为 2（什么也不写）；取消为 3。
+- **测试：** `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`，不属于 `pnpm check`；测试只用合成数据与临时目录，不读取 `local/` 或原版文件。
 
 ## 本地合规
 

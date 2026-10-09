@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # 原版证据的自助获取
@@ -109,9 +109,11 @@ ffmpeg -loglevel error -y -framerate 1 -pattern_type glob -i 'local/research/vid
 
 - 按基准环境指南启动 DOSBox-X。DOSBox-X 窗口由像素绘制，需要截图模式观察，并用按键操作游戏。
 - 原始像素截图用 DOSBox-X 的 **Capture** 菜单保存到 `local/StarRang/captures/`；它们是基准版本的原始像素，可以用来判断分辨率与颜色。
-- 游戏会改写 `SRANGER.CFG` 与 `SRHISCOR.RAW`：运行前备份，结束后还原，不覆盖用户的存档。
+- 游戏会改写 `SRANGER.CFG` 与 `SRHISCOR.RAW`：运行前备份，结束后还原，不覆盖用户的存档。用测量工具运行时，游戏只在私有副本中运行，不需要这一步。
+- 需要运行中的内存数值、计数或时间关系，或按容差测量时，用 `tools/baseline/measure.py` 在私有副本中运行，见[运行时测量](./runtime-measurement.md)。
 - 遵守 Computer Use 自身的确认与交接规则；用户正在使用该应用时让出操作。
 - 同一时间只能有一个会话操作基准环境。并行执行 goal 时，由协调者统一进行。
+- **本机限制（2026-10-08/09 实测）：** 本机的 Computer Use 无法向 DOSBox-X 送达按键，也无法移动游戏内光标。需要游戏操作的运行因此由用户在键盘上操作，agent 负责启动、观察（截图或用户报告）、应答与记录，分工见[运行时测量的角色与本机限制](./runtime-measurement.md#角色单一会话与本机限制)。不得用 shell 或 AppleScript 注入按键来绕过这一限制。
 - Computer Use 无法可靠地完成所需操作时，在记录中说明原因，再按[先自助，再问用户](#先自助再问用户)请用户帮助。
 
 ## 记录

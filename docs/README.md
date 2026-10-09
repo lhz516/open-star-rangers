@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # 文档索引与写作约定
@@ -29,6 +29,7 @@ updated: 2026-10-08
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
 | [guides/local-import.md](./guides/local-import.md) | 本地生产预览、原版数据导入、缓存恢复与最小资源查看器操作；实机核对清单 | 参考类 | 中文 |
 | [guides/original-evidence.md](./guides/original-evidence.md) | agent 自行获取原版证据的途径与顺序、参考视频索引与取帧方法、证据限度，以及何时才请用户帮助 | 参考类 | 中文 |
+| [guides/runtime-measurement.md](./guides/runtime-measurement.md) | 用 `tools/baseline/` 在私有副本中运行原版并读取调试器暂停点的字段：测量方案、配方、操作者协议、读数的合格条件、计时与参考钟、原版文件保护、证据存放与本机限制 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |
 
 仓库根目录的 [AGENTS.md](../AGENTS.md)（英文）是 coding agent 和新贡献者的入口。

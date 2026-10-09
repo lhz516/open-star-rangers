@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-08
+updated: 2026-10-09
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -36,6 +36,13 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 | `pnpm check:compliance` | 先当前build，再执行两类检查，任一失败整体非零 |
 
 `tools/` 中的研究脚本直接用 `node tools/<脚本>.ts` 运行，见 [tools](../guides/tools.md)。
+
+Python 工具的测试用标准库 `unittest`，不属于 `pnpm check`，改动相应目录后单独运行：
+
+| 命令 | 作用 |
+|---|---|
+| `python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'` | Ghidra 编译器规范补丁的测试 |
+| `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` | 运行时测量工具的测试：合成 LE 映像、假调试器与临时目录，不读取 `local/` 或原版文件；用法见[运行时测量](../guides/runtime-measurement.md) |
 
 `pnpm typecheck` 与 `pnpm lint` 只重新检查变化的文件：各 tsconfig 启用 `incremental`，构建信息写入 `node_modules/.cache/tsc/`；ESLint 按文件内容缓存于 `node_modules/.cache/eslint/`。缓存键覆盖配置与依赖，自定义插件 `osr` 的版本取 `eslint.config.js` 与 [original-data-capabilities.ts](../../tools/original-data-capabilities.ts) 的内容摘要，规则源码一变缓存即失效。怀疑缓存有误时删除 `node_modules/.cache` 即回到全量检查。
 
@@ -131,6 +138,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   这项检查用于防止无意中读取文件，并不针对刻意混淆的代码。
 - 调色板、图像记录、MFDD 列表、点阵字体与驾驶舱字体目录的源结构读取属于 [source-graphics.ts](../../src/original-data/conversion/source-graphics.ts)，`tools/nob-check.ts` 只负责调度与报告；合成样本覆盖目录顺序与恰为 3 项的约束。
 - Ghidra 编译器规范补丁另有标准库 `unittest` 测试：`python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'`，验证 XML 结构变换、备份与幂等性。
+- 运行时测量工具（`tools/baseline/`）的 `unittest` 测试用代码生成的合成 LE 映像、假调试器子进程与临时目录。每个测试模块先导入 `access_guard.py`，它安装审计钩子，使打开或列出 `local/` 及原版文件名的操作失败；`test_boundaries.py` 检查各模块只导入标准库与同目录模块、纯逻辑模块不访问文件、进程或时钟，以及源码中没有嵌入的字节串。
 - 工程边界回归的临时项目复制实际配置、链接已安装依赖，结束由 finally 清理，不读取 `local/` 或真实 Ghidra。各 TypeScript 程序共用已安装包声明文件（如 `lib.dom.d.ts`）的解析结果，样本项目只另行解析自身源码；ESLint 样本矩阵按文件合成一次 lint，逐行核对每个样本命中的规则。真实纯模块程序的类型诊断由 `pnpm typecheck` 报告，回归只核对其中没有 DOM/Node 声明。断言失败使 Vitest 非零退出是 Vitest 自身的契约，不另设子进程回归。
 - 快速只跑边界回归：`pnpm exec vitest run tools/engineering-boundaries.test.ts`。资源缓存的 DOM-free 逻辑：`pnpm exec vitest run src/platform/storage`；Node 中没有 IndexedDB，也不引入模拟实现，事务、配额、中断与刷新恢复只在浏览器 runner 中验证。不要用测试数量代替覆盖证明；当前证据见 [P1-01 subtasks](../plan/p1/01/goal.md#子任务跟踪)。
 

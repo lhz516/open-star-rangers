@@ -50,6 +50,7 @@ pnpm test -- src/original-data/payloads.test.ts
 
 # Python tool tests (not included in pnpm check)
 python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'
+python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'
 
 # List the directory of IMFAT (.NOB) archives (structure only, never contents)
 node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
@@ -64,7 +65,7 @@ node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 node tools/task-state.ts p1/03 [--json]
 ```
 
-Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and research commands are in [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md); script usage is in [`docs/guides/tools.md`](docs/guides/tools.md). Those tools and original data may be absent on other machines. Prefer read-only Ghidra analysis; reimporting with `-overwrite` is an explicit setup operation, not a routine validation step.
+Node also runs the `.ts` tools directly. DOSBox-X/Ghidra installation and research commands are in [`docs/guides/baseline-environment.md`](docs/guides/baseline-environment.md); script usage is in [`docs/guides/tools.md`](docs/guides/tools.md); runtime measurement of the original game in a private copy (`tools/baseline/measure.py`) is in [`docs/guides/runtime-measurement.md`](docs/guides/runtime-measurement.md). Those tools and original data may be absent on other machines. Prefer read-only Ghidra analysis; reimporting with `-overwrite` is an explicit setup operation, not a routine validation step.
 
 ## Before you finish a task
 
