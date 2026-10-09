@@ -43,6 +43,8 @@ updated: 2026-10-09
 - `src/original-data/formats/ai.ts`：AISTUFF 与内置表解析（新建）。
 - `src/original-data/formats/ai.test.ts`：测试（新建）。
 - `src/original-data/formats/ai.test-support.ts`：合成 AISTUFF 块与 EXE 区域（新建）。
+- `src/original-data/formats/le-executable.ts`：读取内置表区域时解码其 LE fixup（派发时扩大，见 goal 执行记录中 03 的交接）。
+- `src/original-data/formats/le-executable.test.ts`：对应测试。
 
 ## 验收标准
 
