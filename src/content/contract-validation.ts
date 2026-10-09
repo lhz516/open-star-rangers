@@ -41,7 +41,9 @@ export type ContentContractErrorCode =
   | 'logic-reference-mismatch'
   | 'invalid-model-payload'
   | 'invalid-effect-payload'
-  | 'invalid-status-messages-payload';
+  | 'invalid-status-messages-payload'
+  | 'invalid-flight-data-payload'
+  | 'flight-data-reference-mismatch';
 
 export class ContentContractError extends Error {
   readonly code: ContentContractErrorCode;
