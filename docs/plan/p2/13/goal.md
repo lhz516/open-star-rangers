@@ -92,7 +92,7 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 | [02-engineering-checks.md](./subtasks/02-engineering-checks.md) | — | completed |
 | [03-browser-regression.md](./subtasks/03-browser-regression.md) | — | completed |
 | [04-compliance-artifacts.md](./subtasks/04-compliance-artifacts.md) | — | in-progress |
-| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | pending |
+| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | in-progress |
 | [06-unknowns-ownership.md](./subtasks/06-unknowns-ownership.md) | — | completed |
 | [07-exit-review-handoff.md](./subtasks/07-exit-review-handoff.md) | 01, 02, 03, 04, 05, 06, 09 | pending |
 | [09-user-recheck.md](./subtasks/09-user-recheck.md) | — | completed |
@@ -104,6 +104,7 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 
 ## 执行记录
 
+- **2026-10-08 — 05 与 04 并行：** 用户指出 05 没有依赖。02–05 写入范围中的 `dist/` 是各 worker 工作树各自被忽略的构建输出，并不共享；两行的 `local/` 输出也不相交。协调者把 05 的构建输出记为工作树内路径，05 与 04 并行执行。
 - **2026-10-08 — 新增子任务 09：** 01 判定 P2-11 AC-21 中导入与状态、刷新恢复、模型与 SNIP 帧查看及耗时受最终候选的生产差异影响，agent 的真实数据会话不能代替用户核对（[问题 P-1](./subtasks/01-candidate-evidence-map.md#问题ac-12)）。按本 goal 的前提，协调者新增需用户的复核子任务 09，07 与 08 依赖它。试听不受影响，沿用 P2-11/19。
 
 ## 审批
