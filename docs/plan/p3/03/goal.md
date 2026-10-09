@@ -116,7 +116,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [10-craft-debris-parsers.md](./subtasks/10-craft-debris-parsers.md) | 08 | in-progress |
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | pending |
 | [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | pending |
-| [13-scene-label-parsers.md](./subtasks/13-scene-label-parsers.md) | 09 | in-progress |
+| [13-scene-label-parsers.md](./subtasks/13-scene-label-parsers.md) | 09 | completed |
 | [14-anim-explosion-parsers.md](./subtasks/14-anim-explosion-parsers.md) | 09 | in-progress |
 | [15-rule-data-conversion.md](./subtasks/15-rule-data-conversion.md) | 10, 11, 12 | pending |
 | [16-flight-graphics.md](./subtasks/16-flight-graphics.md) | 13, 14 | pending |
@@ -145,6 +145,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 07 完成：** 段 2 事件触发经 `scen.ts` 解析、写入任务 payload（logic payload schema 2），`loadMission` 原样透传到 `MissionSetup.eventTriggers`。执行中按申请扩大了写入范围（`scct.ts` 的僚机 `eventTrigger: null`、两处测试的计数与 schema 版本），没有与其他行重叠。基准本地核对（只记计数）：SCEN 3019 为 1 个触发、3 个区间、每区间 1 条消息、最长 57 字节，与 scenario 一致，在限值 2/8/2/128 之内。LOGIC_CONVERTER_COMPONENT 未递增，由 19 处理。交 21 或 22：工具用法中 logic-check 的 `counts` 与 `limits` 列表加入事件各项；交 22 的接口变化见 07 的完成证据。
 - **2026-10-09 — 09 完成（交 13、14、16、17、19、22）：** `src/content/flight/` 提供 models 组 4 个 data 角色的规范 JSON payload（各自 schema 1），`src/content/hud/view-labels-payload.ts` 提供 `view-labels`。限值：`explosionListItems` 16、`animationFrames` 32、`nebulaImages` 32、视角标签 `textBytes` 32（观测值 7、12、15、16 的 2 倍），解析前的 `payloadBytes` 上限为 16,384 与 256。`flightDataDependencies()` 为 17 生成描述符依赖；爆炸列表与星云列表接受 0 项（无格式下限），帧至少 1 项；引用为带固定 kind 的 `AssetReference`，可以重复。scene-settings 只用已确认的用途命名字段，+0x19–+0x1B 不转换。交 22 的模块分册条目见 09 的完成证据。
 - **2026-10-09 — 08 完成（交 10、11、12、15、22）：** `src/content/rule-data/` 提供 logic 组 6 个规则数据角色的规范 JSON payload；payload 字节上限沿用 `LOGIC_LIMITS.payloadBytes`。交解析器与转换的要点（详见 08 的完成证据）：规范 JSON 不能承载 −0，读取器把它读为 0，因此转换器须把来源中的 −0.0 `f32` 判为 `unsupported-payload`（基准中没有）；程序表 +0x2C 的 ±0 映射为 null，`kindMask` 为 0 时同样为 null，读取器拒绝字面的 0。弹体记录的所有非指针、非数量位置都按机型的类型转换，包括形状的 +0x00/+0x04/+0x08–+0x1C；机型形状的 at00/at08 恰在 boxes 非空时为 null。`ai-programs` 的 `entries` 按 `0x649c8` 首次到达的顺序排列：每个程序依次为其 +0x1C 条目、安装脚本，再按偏移顺序排列各状态列表。TABL 2009 只承载第 0 项的文字（`objectListLastEntry`）；COMM 列表与脚本保留终止项。限值与 06 的来源限值名的对应见 08 的完成证据。
+- **2026-10-09 — 13 完成：** RENS 头部与视角标签的解析器。RENS 条目上限为 2048：现有效果步骤的上限（0x60 + 64 × 28 = 1888）向上取整到 2 的幂，因为 2 × 376 的推导值 1024 会低于现有限值；TABL 10399 的条目上限为 512，标签文字用 `VIEW_LABELS_LIMITS.textBytes`（32）。指向指针表本身的标签指针按字段处理规则 4 判为 `unsupported-payload`。可共用的后续简化（识别 −0 的 `f32` 读取、`payload-block.ts` 中共用的字节串读取）超出本行范围，未做。交 22 的 API 见 13 的完成证据。
 
 ## 审批
 
