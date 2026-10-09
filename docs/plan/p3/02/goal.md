@@ -84,7 +84,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | in-progress |
 | [03-spawn-defaults-names-research.md](./subtasks/03-spawn-defaults-names-research.md) | — | pending |
 | [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | completed |
-| [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | blocked |
+| [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | pending |
 | [06-placement-coordinates.md](./subtasks/06-placement-coordinates.md) | 02, 04 | pending |
 | [07-world-creation-instantiation.md](./subtasks/07-world-creation-instantiation.md) | 03, 05, 06 | pending |
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | pending |
@@ -105,6 +105,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
   Evidence: [executable 的对象表、帧流水线与输入轮询一节](../../../original/formats/executable.md#object-table-frame-pipeline-and-input-polling-p3-0201)；01 的完成证据。
   Affected acceptance: AC-09、AC-10（Render State 的可呈现实体）；05 与依赖它的 07、08。
   Resume when: 用户批准按上述结论修订 spec 的系统流水线、实体与生命周期、Render State 与 AC-09，修订已提交。
+- **2026-10-09 — 05 解除阻塞：** 用户批准了 spec 修订（系统流水线、实体与生命周期、Render State、AC-09/AC-10），修订与子任务 05、07 的同步已提交；05 回到 `pending`。
 
 ## 审批
 
