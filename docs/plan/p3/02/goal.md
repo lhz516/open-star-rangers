@@ -81,7 +81,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-pipeline-entity-input-research.md](./subtasks/01-pipeline-entity-input-research.md) | — | completed |
-| [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | in-progress |
+| [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | completed |
 | [03-spawn-defaults-names-research.md](./subtasks/03-spawn-defaults-names-research.md) | — | pending |
 | [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | completed |
 | [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | in-progress |
