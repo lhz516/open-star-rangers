@@ -1,5 +1,6 @@
 import access_guard  # noqa: F401  (installs the no-original-access guard first)
 
+import contextlib
 import json
 import os
 import subprocess
@@ -8,9 +9,11 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import processes
 from debugger import Debugger
-from processes import PtyTransport, emulators, process_names
+from processes import KILL_WAIT, PtyTransport, emulators, process_names
 from reasons import BaselineError
 from sandbox import Sandbox
 from screen import Screen
@@ -96,6 +99,63 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(report["returnCode"], -9)
         self.assertTrue(report["passed"] and report["pidGone"] and report["groupGone"])
         self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual((report["killWait"]["limit"], report["killWait"]["limitReached"]), (30, False))
+        self.assertLess(report["killWait"]["seconds"], 5)
+
+    def slow_exit(self, transport, reap_delay, group_delay):
+        """Simulates an emulator that is reaped `reap_delay` seconds after it actually exits and whose process group
+        outlives that reap by `group_delay` seconds."""
+        real_poll, real_group_alive = transport.child.poll, processes._group_alive
+        exited_at = reaped_at = None
+
+        def poll():
+            nonlocal exited_at, reaped_at
+            code = real_poll()
+            if code is None:
+                return None
+            exited_at = exited_at or time.monotonic()
+            if time.monotonic() < exited_at + reap_delay:
+                return None
+            reaped_at = reaped_at or time.monotonic()
+            return code
+
+        def group_alive(pgid):
+            if pgid != transport.pid:
+                return real_group_alive(pgid)
+            return reaped_at is None or time.monotonic() < reaped_at + group_delay or real_group_alive(pgid)
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(transport.child, "poll", poll))
+        stack.enter_context(mock.patch.object(processes, "_group_alive", group_alive))
+        return stack
+
+    def test_reclaim_waits_for_a_slow_exit_within_the_bound(self):
+        transport = self.launch(ignore_term=True)
+        self.wait_ready(transport)
+        with self.slow_exit(transport, 0.6, 0.6):
+            report = transport.reclaim(0.3)
+        self.assertEqual(report["signals"], ["SIGTERM", "SIGKILL"])
+        self.assertEqual(report["returnCode"], -9)
+        self.assertTrue(report["passed"] and report["reaped"] and report["pidGone"] and report["groupGone"])
+        wait = report["killWait"]
+        self.assertEqual((wait["limit"], wait["limitReached"]), (KILL_WAIT, False))
+        self.assertGreaterEqual(wait["seconds"], 1.2)
+        self.assertLess(wait["seconds"], KILL_WAIT)
+
+    def test_reap_and_group_share_one_bound(self):
+        # Each stage alone fits in 1.5 s; together they need at least 1.6 s, so one shared 1.5 s bound fails.
+        transport = self.launch(ignore_term=True)
+        self.wait_ready(transport)
+        started = time.monotonic()
+        with self.slow_exit(transport, 0.2, 1.4):
+            report = transport.reclaim(0.3, kill_wait=1.5)
+        self.assertLess(time.monotonic() - started, 6)
+        self.assertEqual(report["signals"], ["SIGTERM", "SIGKILL"])
+        self.assertFalse(report["groupGone"])
+        self.assertFalse(report["passed"])
+        self.assertEqual((report["killWait"]["limit"], report["killWait"]["limitReached"]), (1.5, True))
+        self.assertGreaterEqual(report["killWait"]["seconds"], 1.5)
+        self.assertEqual(transport.child.wait(timeout=10), -9)
 
     def test_child_exit_is_detected_and_reclaimed(self):
         transport = self.launch(exit_after=1)
@@ -129,9 +189,19 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(report["status"], "complete")
         self.assertEqual(report["cleanup"]["signals"], ["SIGTERM"])
         self.assertTrue(report["cleanup"]["pidGone"])
+        self.assertIsNone(report["cleanup"]["killWait"])
         self.assertEqual(report["environment"]["process"]["executable"], self.name)
         self.assertTrue(box.unchanged_outside_run())
         self.assertGreater((box.run_dir / "debugger.raw").stat().st_size, 0)
+
+    def test_escalated_reclaim_is_recorded_in_the_report(self):
+        box = self.sandbox(ignore_term=True)
+        self.assertEqual(box.run(smoke=True), 0, box.lines)
+        cleanup = box.report()["cleanup"]
+        self.assertEqual(cleanup["signals"], ["SIGTERM", "SIGKILL"])
+        self.assertTrue(cleanup["passed"])
+        self.assertEqual((cleanup["killWait"]["limit"], cleanup["killWait"]["limitReached"]), (KILL_WAIT, False))
+        self.assertLess(cleanup["killWait"]["seconds"], KILL_WAIT)
 
     def test_child_exit_during_a_run(self):
         box = self.sandbox(exit_after=6)

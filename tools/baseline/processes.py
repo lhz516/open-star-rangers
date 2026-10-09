@@ -4,7 +4,8 @@ The emulator is started in a new session, so its process group ID is its own PID
 reaped, its PID cannot be reused) and its process group (POSIX does not reuse a group ID while the group exists) are
 ever signalled; an existing DOSBox-X found before launch is refused, never attached to or terminated. Reclaim sends
 SIGTERM to the group, escalates to SIGKILL after a bounded grace period (an emulator at the title screen can ignore
-SIGTERM), reaps the child and proves that the PID and the group are gone.
+SIGTERM), then waits one bounded total for the child to be reaped and the PID and the group to be gone, and records
+how long that took after SIGKILL.
 """
 import errno
 import fcntl
@@ -21,7 +22,7 @@ from reasons import BaselineError
 from screen import COLS, ROWS
 
 TERM_GRACE = 3.0
-KILL_WAIT = 5.0
+KILL_WAIT = 30.0
 OWNERSHIP_WAIT = 10.0
 
 
@@ -136,7 +137,8 @@ class PtyTransport:
             sleep(0.1)
 
     def reclaim(self, grace=TERM_GRACE, kill_wait=KILL_WAIT):
-        """SIGTERM to the owned group, SIGKILL after `grace` seconds, reap, and prove the PID and group are gone."""
+        """SIGTERM to the owned group, SIGKILL after `grace` seconds, then wait at most `kill_wait` seconds in total for
+        the child to be reaped and the PID and group to be gone. `killWait` records that wait when SIGKILL was sent."""
         report = {"pid": self.pid, "signals": [], "exitedBeforeReclaim": self.child.poll() is not None}
         if self.child.poll() is None:
             self._signal_group(signal.SIGTERM, report)
@@ -144,24 +146,32 @@ class PtyTransport:
                 self.child.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 pass
-        if self.child.poll() is None or _group_alive(self.pid):
+        killed = self.child.poll() is None or _group_alive(self.pid)
+        if killed:
             self._signal_group(signal.SIGKILL, report)
-        try:
-            self.child.wait(timeout=kill_wait)
-        except subprocess.TimeoutExpired:
-            pass
-        report["returnCode"] = self.child.returncode
-        report["reaped"] = self.child.returncode is not None
-        deadline = time.monotonic() + kill_wait
-        while _group_alive(self.pid) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        report["pidGone"] = report["reaped"] and not _alive(self.pid)
-        report["groupGone"] = not _group_alive(self.pid)
-        report["passed"] = report["reaped"] and report["pidGone"] and report["groupGone"]
+        started = time.monotonic()
+        deadline = started + kill_wait
+        state = self._exit_state()
+        while not state["passed"] and (remaining := deadline - time.monotonic()) > 0:
+            time.sleep(min(0.05, remaining))
+            state = self._exit_state()
+        waited = time.monotonic() - started
+        report.update(state)
+        report["killWait"] = None if not killed else {
+            "seconds": round(waited, 3), "limit": kill_wait, "limitReached": not state["passed"]}
         if not self.closed:
             os.close(self.master)
             self.closed = True
         return report
+
+    def _exit_state(self):
+        """One observation of the reap, the PID and the group; the last one within the bound is the reported result."""
+        code = self.child.poll()
+        state = {"returnCode": code, "reaped": code is not None}
+        state["pidGone"] = state["reaped"] and not _alive(self.pid)
+        state["groupGone"] = not _group_alive(self.pid)
+        state["passed"] = state["reaped"] and state["pidGone"] and state["groupGone"]
+        return state
 
     def _signal_group(self, number, report):
         try:
