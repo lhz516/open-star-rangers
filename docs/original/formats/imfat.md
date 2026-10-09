@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-05
+updated: 2026-10-09
 related: [U-001, U-020]
 ---
 
@@ -46,7 +46,7 @@ Every entry lies inside the file and no two entries overlap. The following detai
 
 - **IDs:** the first entry's ID is the ID base + 1, and each later ID is exactly 2 above the previous one.
 - **Type tags:** every tag is 3 or 4 characters of `A–Z` and `0–9`, followed only by NUL padding.
-- **Flags:** observed values per file are `SR.NOB` {0, 0x10, 0x50}, `COMM.NOB` {0, 0x50}, `CRAFT.NOB` {0, 0x10}, `DEBRIS.NOB` {0x10}, and only 0 elsewhere. Their meaning remains Unconfirmed (U-020).
+- **Flags:** observed values per file are `SR.NOB` {0, 0x10, 0x50}, `COMM.NOB` {0, 0x50}, `CRAFT.NOB` {0, 0x10}, `DEBRIS.NOB` {0x10}, and only 0 elsewhere. **Use by the game (Confirmed, EXE, P3-01/10):** when an archive opens (`0x6ac98`), an entry with bit 0x10 is loaded at once and one with bit 0x80 is queued for loading; releasing the last reference (`0x6b03c`) frees an entry only when neither bit 0x20 nor 0x40 is set. So 0x10 means loaded at start and 0x50 also never released. The 0x50 entries are the nine sounds played by ID and the five communications menus; the 0x10 entries are TABL 4003, DEBRIS TABL 4501, RENS 10751 and TABL 11375 ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)). Other readers of the field were not searched exhaustively (U-020).
 - **Layout:** directory order is data order. The first block starts at the data-start offset; each later entry starts exactly where the previous entry's block and relocation table end (`offset + size + 4 × relocationCount`); and the last relocation table ends exactly at the end of the file. There are no gaps and no trailing bytes.
 - **Block sizes:** every block is at least 8 bytes.
 
@@ -70,7 +70,7 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 | `AISTUFF.NOB` | 45 | TABL 38, DFPG 6, AICO 1 |
 | `COMM.NOB` | 7 | TABL 7 |
 | `DEBRIS.NOB` | 1 | TABL 1 |
-| `COMMFACE.NOB` / `COMMFAC2.NOB` (CD only) | 498 / 498 | CMOV 481, TABL 17 |
+| `COMMFACE.NOB` / `COMMFAC2.NOB` (CD only) | 498 / 498 | CMOV 481, TABL 17; ID base 20000 in both |
 
 ## 5. Entry types
 
@@ -83,12 +83,12 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 | MODL | Model: three part lists of {MESH, TEX, colour} plus five SND IDs | Structure Confirmed | [mesh](./mesh.md) |
 | SND / SONG / MUSC | Raw PCM sound effect / music (Likely XMIDI) / mission music | SND Confirmed; SONG and MUSC Unconfirmed | [audio](./audio.md) |
 | CCKD / MFDD | Cockpit layouts (positioned sprites) / multi-function display images | Element and image structure Confirmed; CCKD group table Unconfirmed | [cockpit](./cockpit.md) |
-| ANIM / EXPL / EXIC | Animation (frames use image encoding 1) / explosion / explosion-related | Unconfirmed | [textures](./textures.md) §2 |
+| ANIM / EXPL / EXIC | Animation (frames use image encoding 1) / explosion: {SND ID, ANIM ID} / three lists of EXPL IDs | ANIM Unconfirmed; EXPL and EXIC Confirmed (structure and use) | [textures](./textures.md) §2, [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08), [hud](./hud.md) §3 |
 | SCEN / SCCT | Missions (52) / campaign table | Structure Confirmed, field meanings partly Unconfirmed | [scenario](./scenario.md) |
-| CINF | Craft info, 24 craft | Unconfirmed (file name `CRAFT`) | |
+| CINF | Craft info: gun, missile and craft records, chosen by `CRAFT.NOB` TABL 4003 per campaign slot and group | Record arrays Confirmed (EXE); fields mostly Unconfirmed | [executable](./executable.md#weapon-records-and-the-first-missions-shooters-p2-1230) |
 | MESC | Menu scene | Unconfirmed (large; in `OPTIONS`) | |
 | CMOV | Comm-screen face animation | Unconfirmed (file name `COMMFACE`; the two files may hold two resolutions) | |
-| DFPG / AICO | AI data | Unconfirmed (file name `AISTUFF`) | |
+| DFPG / AICO | AI data; `AISTUFF.NOB` TABL 6003/6005/6007 are per-group AI program tables naming further TABL and DFPG entries | Loading structure Confirmed (EXE); contents Unconfirmed | [executable](./executable.md#data-loaded-by-the-loop-p3-0110) |
 | TABL | Generic container: ID lists, HUD image groups, fonts, and other tables, depending on the entry | Per entry, see hud | [hud](./hud.md) §2 |
 | M2ID / NEBC / EXIC | ID lists: craft type → MODL / nebula BITMs / explosion EXPLs | Confirmed structure | [hud](./hud.md) §3 |
 
@@ -106,4 +106,4 @@ The P2-03 reader limits are product constraints from [the P2-03 spec](../../plan
 ## 7. Open questions
 
 - Meaning of `flags` (U-020).
-- Cross-entry references: at least `SCCT` refers to `SCEN` and `MUSC` entries by **entry ID** (Confirmed, see [scenario](./scenario.md) §4). Whether other types do the same, and how references across files work, is Unconfirmed.
+- Cross-entry references: entries refer to other entries by **entry ID**. Every chain confirmed so far stays within one archive; whether references can cross archives for other types is Unconfirmed. Confirmed: `SCCT` → `SCEN` and `MUSC` ([scenario](./scenario.md) §4), M2ID → MODL, MODL → MESH, TEX and SND, EXIC → EXPL → SND and ANIM, NEBC → BITM, CINC → `SONG`, TABL 10099 → CCKD, TABL 10171 → BITM, `CRAFT.NOB` TABL 4003 → CINF, the `AISTUFF.NOB` program tables → TABL and DFPG, and the four `COMMFACE` TABL entries the EXE names → TABL lists → CMOV (20983 lists CMOV directly). A scan of the other loop-loaded entries (COMM, CINF 4037, DEBRIS, SCENARIO TABL, RENS, DIAG, the HUD and map TABLs, TABL 10165, 10399, 11375) finds no aligned value equal to an entry ID ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)). The EXE names the remaining entries by constant IDs.

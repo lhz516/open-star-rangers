@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-08
+updated: 2026-10-09
 related: [U-001, U-028, U-029, U-030]
 ---
 
@@ -106,11 +106,11 @@ TABL is a generic container; its meaning depends on the entry.
 | 10171 | Three BITM entry IDs (the 640×316 full-screen scenes) | Confirmed (IDs resolve to BITM) |
 | 11401 | 29 image records, drawn in the strategic map's zoom window by an index from a unit field | Confirmed (EXE drawing path, [below](#hud-and-map-drawing-paths-confirmed-exe)); image list structure Confirmed, see [below](#tabl-image-lists-confirmed-structure) |
 | 10461 | 29 unit markers of 4×3 drawn in the strategic map's main area (records 20–25 are empty) | Confirmed (EXE drawing path); image list structure Confirmed |
-| 10479, 10481 | 4 images each, 20×51 and 20×52: vertical gauge bars drawn on a left-display page; 10481 replaces 10479 for one craft type | Confirmed (EXE drawing path); image list structure Confirmed |
+| 10479, 10481 | 4 images each, 20×51 and 20×52: vertical gauge bars drawn on a left-display page; 10481 replaces 10479 in the base interior (view mode 6) | Confirmed (EXE drawing path); image list structure Confirmed |
 | 10483 | 4 images, 12×26: LO version of the gauge bars | Likely; image list structure Confirmed |
-| 10165 | 33 sprite-RLE images on a 320×200 canvas; each contains only a small part at a fixed position | Purpose Unconfirmed (U-030); not an image list as defined below |
-| 10399 | 13 offsets, Likely a string or record table | Unconfirmed |
-| 11375 | 640 bytes of floats | Unconfirmed |
+| 10165 | Base interior items: 11 records of 0x7C bytes, each three 320×200 sprite-RLE [image records](./textures.md#2-image-record-36-bytes-confirmed) (+0x00, +0x24, +0x48; each image holds only a small part at a fixed position), a subsystem selector (+0x6C), two pointers (+0x70, +0x74) and a small integer (+0x78); data and strings follow the records | Record layout Confirmed (data and the base code, [executable](./executable.md#data-loaded-by-the-loop-p3-0110)); +0x70–+0x78 and the three images' roles Unconfirmed (U-030) |
+| 10399 | 13 string pointers: the view labels of mode 0x11, indexed by sub-mode ([executable](./executable.md#automatic-views-and-cameras-p3-0109)) | Confirmed (EXE, P3-01/09); use of indices 9–12 Unconfirmed |
+| 11375 | 20 records of 32 bytes, one per kind bit, read only by the cameras of the external views ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)) | Use Confirmed (EXE, P3-01/10); fields Unconfirmed |
 
 ### TABL image lists (Confirmed structure)
 
@@ -169,7 +169,7 @@ All four read the source rows top-down in stored order.
 
 | Function | Draws |
 |---|---|
-| `0x4ca80` | Loads the five-entry HUD set from one of three tables: HI `0x175e8c` (MFDD 10473, BITM 10467, TABL 10479, SNIP 10487, DIAG 10489); HI `0x175eb4` when the type byte at +0x28 of the object returned by `0x52694` is 6 (10475, 10469, 10481, 10487, 10489); LO `0x175ea0` (10477, 10471, 10483, 10487, 10491) |
+| `0x4ca80` | Loads the five-entry HUD set from one of three tables: HI `0x175e8c` (MFDD 10473, BITM 10467, TABL 10479, SNIP 10487, DIAG 10489); HI `0x175eb4` when byte +0x28 of the block returned by `0x52694` is 6 (10475, 10469, 10481, 10487, 10489); LO `0x175ea0` (10477, 10471, 10483, 10487, 10491). That byte is the player-state view mode, and 6 is the base interior (corrected P3-01/10, [executable](./executable.md#data-loaded-by-the-loop-p3-0110)); the view switch `0x3f158` reloads the set through `0x4cd68` |
 | `0x4d50c` | Status display, into an off-screen buffer: one MFDD list-0 background (record 0, 1 or 2, chosen by thresholds on a ratio of two fields of the displayed craft) with `0x59cbc`, then list-1 records chosen per subsystem state, some blinking, with `0x59d38` |
 | `0x4d0e0` | Copies that buffer with `0x59608` to (x0, y0 + 1) of its instrument rectangle, then draws two lines of message text from the DIAG entry's strings |
 | `0x4d800` | A left-display page: BITM 10467 at (x0, y0 + 1) with `0x59608`; then two 10479 records chosen by fields of the target object, one near each side, with `0x59774`; then labelled bars and text. `0x59774` takes inclusive source bounds, and this call passes columns 0 to w and rows 0 to h − 2: every row but the last (which is colour key 0 in all four 10479 records), plus one column that repeats the next row's first pixel (P2-12/27) |
@@ -286,7 +286,7 @@ Elements left unidentified here were judged by P2-12 ([impact](#unidentified-ele
 | HI gauge bars, TABL 10479 | Confirmed: `0x4d800` | Flight (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed); `0x4d800` draws only the top rows (but see the [energy page](#slice-coverage-check-and-u-030-impact-p2-12)) | Included, delivered |
 | Map unit markers, TABL 10461 | Confirmed: `0x49f8c` | Map group palette (Confirmed) | Colour key 0 (Confirmed). Records 20–25 are entirely index 0 and draw nothing | Stored (Confirmed) | Included, delivered |
 | Zoom window icons, TABL 11401 (all 29 records) | Confirmed for the list: `0x49f8c` draws the record a unit field selects. Which records the slice's units select is R8's question | Map group palette (Confirmed) | Colour key 0 (Confirmed) | Stored (Confirmed) | Included, delivered |
-| MFDD 10475, BITM 10469, TABL 10481 | Loaded instead of 10473, 10467 and 10479 only when the type byte is 6. The reference forward view shows 10473 | — | — | — | Excluded (Likely) |
+| MFDD 10475, BITM 10469, TABL 10481 | Loaded instead of 10473, 10467 and 10479 only in view mode 6, the base interior (P3-01/10). The reference forward view shows 10473 | — | — | — | Excluded (Confirmed: not in flight) |
 
 **Comparisons:** non-zero pixels of the record under the stated palette, at its drawing place.
 
@@ -304,9 +304,9 @@ Elements left unidentified here were judged by P2-12 ([impact](#unidentified-ele
 
 The LO families (MFDD 10477, BITM 10471, TABL 10483) are outside the slice (HI only). The earlier purpose labels in §2 (radar blips for 10461; craft icons, blips and symbols for the 11401 intervals) were visual guesses; the drawing paths replace them.
 
-**R4 (Confirmed):** in HI the status display is MFDD 10473 unless the type byte is 6, which selects 10475; the slice's reference view shows 10473 (Likely the slice's craft is not type 6). List 0 is drawn opaque and list 1 with colour key 0.
+**R4 (Confirmed):** in HI the status display is MFDD 10473 unless the view mode is 6 (the base interior), which selects 10475; the slice's reference view shows 10473. The condition was read as a craft type byte until P3-01/10. List 0 is drawn opaque and list 1 with colour key 0.
 
-**R6 (bounded check):** TABL 10165 holds 33 records that decode through its pixel pointers, each with at least two colour indices. None has an exact placement in any of the 92 captures, at scale 1 or 2, under the flight or map palette. The program loads 10165 only in `0x38ff4`, within a distance threshold of an object and together with a screen-mode change. It is therefore Likely not part of the reference screens, and its remaining questions pass to P4 (U-030).
+**R6 (bounded check):** TABL 10165 holds 33 records that decode through its pixel pointers, each with at least two colour indices. None has an exact placement in any of the 92 captures, at scale 1 or 2, under the flight or map palette. The program loads 10165 only in `0x38ff4`, within a distance threshold of an object and together with a screen-mode change. It is therefore Likely not part of the reference screens, and its remaining questions pass to P4 (U-030). P3-01/10: the load is the docking step (`0x38ff4` sub-command 0), and the records' structure and use are in §2 above.
 
 ### Zoom window icons by craft type (R8)
 
@@ -418,7 +418,7 @@ The map labels (`0x4af78`, covering `0x4afc0`–`0x4b360`) are leader lines (`0x
 | Type | Entry | Content |
 |---|---|---|
 | M2ID | 10649 | **Craft type → MODL ID**, 22 slots (two are 0). The EXE loads this entry by its ID when it opens the archives. Slot 0 and 1 both name the player craft's model; slot 14 names the transponder craft's model. Both match screenshots in shape (see [mesh](./mesh.md) §3) |
-| NEBC | 10039, 10661 | Lists of BITM IDs; Likely nebula backgrounds |
-| EXIC | 10211 | Three ID lists at 0x00, 0x08, 0x10 (7, 7, and 3 IDs), all EXPL entries; Likely explosion variants by size or kind |
+| NEBC | 10039, 10661 | Lists of BITM IDs (6 and 15). 10661: the background set; each mission start takes six consecutive entries from index (clock sample mod 15), drawn at six fixed directions. 10039 (the six BITMs with embedded palettes) replaces them only through a cheat code (Confirmed, EXE; [executable](./executable.md#data-loaded-by-the-loop-p3-0110)) |
+| EXIC | 10211 | Three ID lists at 0x00, 0x08, 0x10 (7, 7, and 3 IDs), all EXPL entries. Each mission start loads 5, 5 and 3 consecutive entries of the three lists from random starts (Confirmed, EXE); Likely explosion variants by size or kind |
 
 Additional slot/geometry comparisons are recorded in [mesh](./mesh.md#3-comparison-with-the-original-partial), including slots 7 and 17. The campaign source profiles in [scenario](./scenario.md#campaign-candidate-source-profiles-confirmed-structure) resolve the referenced slots without treating target labels as Asset IDs.

@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-08
+updated: 2026-10-09
 related: [U-001, U-006, U-018, U-019, U-028, U-029]
 ---
 
@@ -49,7 +49,7 @@ Used by 21 cockpit images (CCKD), 33 TABL images, and one BITM (entry 10163, 320
 
 ### Encoding 1: animation (Unconfirmed)
 
-Used only by the 186 ANIM frames; the data is smaller than `width × height`, so it is compressed, possibly as deltas between frames. Not needed before P4 (explosions and similar effects may need it in P3).
+Used only by the 186 ANIM frames; the data is smaller than `width × height`, so it is compressed, possibly as deltas between frames. The loop needs it: every mission start loads 13 of the 17 EXPL entries with their ANIM entries for explosions ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)); decoding is P3-03's (U-001).
 
 ## 3. TEX: textures (Confirmed)
 
@@ -102,8 +102,9 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 
 - 6 entries embed a 256-colour palette, also BGR: read that way, a portrait shows natural skin tones instead of blue (Likely).
   - By entry size and relocation count they are entries 10041, 10043, 10045, 10047, 10049 and 10051 (128×128).
-- 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exception (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, craft type 6) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below). Displayed with DATA, the colours of other entries are clearly wrong.
-- Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes.
+- 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exception (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, base interior; read as a craft type until P3-01/10) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below). Displayed with DATA, the colours of other entries looked clearly wrong (a visual judgement, not a code result).
+- Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes: TABL 10171 lists the three of them, and docking shows one chosen at random (Confirmed, EXE, P3-01/10).
+- **The 15 nebula backgrounds (P3-01/10):** NEBC 10661 lists 15 BITMs of 128×128 without an embedded palette; flight draws six of them with `0x5b54c`, a rotated copy of the stored indices into the frame buffer with no colour lookup and no palette change, so they show under DATA (Likely; this disagrees with the visual judgement above, U-018). See [executable](./executable.md#data-loaded-by-the-loop-p3-0110).
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
 - **The slice's BITM is drawn top-down (Confirmed):** the HUD blitters read source rows top-down in stored order ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)). In [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage.md#完成证据), 10467 in stored row order under DATA was identified at the left display in seven forward-view captures: 8,601 of its 9,216 pixels are exposed and identical in at least one capture. The other 615 are never exposed there (564 under text, 51 under unidentified graphics) and rest on the same-source read. 10467 is the only BITM in the slice, so U-019 is resolved for the slice and stays open for the portraits.
 

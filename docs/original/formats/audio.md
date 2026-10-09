@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-08
+updated: 2026-10-09
 related: [U-004, U-016, U-027]
 ---
 
@@ -133,7 +133,33 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 - **Direct comparison per role (Confirmed by listening, [P2-12 subtask 28](../../plan/p2/12/subtasks/28-a1-original-comparison.md#完成证据), 2026-10-08):** the developer compared one viewer Asset per role directly with the game in the baseline DOSBox-X, first campaign mission, each a match: fire `sound/fire/player` (10669), missile `sound/missile` (10647), Warp `sound/warp` (10401), and for explosion the longer blasts as a set, `sound/explosion/blast-v1` to `blast-v4` (10213, 10215, 10217, 10219): every blast heard at a kill in the game matched one of the four in the viewer. Which variant played each time was not noted (the game picks one per occurrence, as above), so this is a role-level comparison, not a per-variant one.
 - **Observation (Unconfirmed):** in that session the developer hardly heard `sound/explosion/other` (10177) at kills, while the P2-08/10 listening records it heard and matching at an enemy kill. It may be masked by the longer blast. This does not change the role table; when and how audibly 10177 plays is a trigger question for P3.
 
+#### Sounds played by ID and HUD sounds (P3-01/10)
+
+**Confirmed (every play-by-ID poster):** a play-by-ID event is a sound message whose +8 holds an entry ID; `0x55924` loads that entry with `0x6affc` and plays it. Every poster writes a constant ID (the scan of all message allocations is in [executable](./executable.md#data-loaded-by-the-loop-p3-0110)):
+
+| SND | Poster | Trigger |
+|---|---|---|
+| 11087 | Dispatcher, message type 2 | Posted by the target selection helpers `0x2799c`, `0x27a04`, `0x27884` and `0x27910` (the `t`/`f`, `u` and `r`/`y` cases of the [target modes](./executable.md#player-target-modes-and-enemy-classification)) |
+| 11381 | Dispatcher, message type 4 | Posted by `0x2e4ec` when the player's gun or missile selection changes (through `0x2d6dc`, `0x2d6f0`) |
+| 10485 | Dispatcher, message type 0x100000, after an optional left-display page change (`0x4cdf0`) | Posted by the flight key handler `0x264a0` (two sites), `0x27ab4` and the communications command handler `0x27b44` (seven sites) |
+| 10463 | Map click `0x2b9bc` | A Warp destination is set |
+| 10401 | Warp start `0x2be00` | As above |
+| 10181 | Warp end `0x2bf08` | Arrival |
+| 10055 | `0x38780` | A transponder-kind object (`0x4000`) is created at run time ([allocator paths](./executable.md#two-allocator-paths-native-inputs-and-profile-comparison)); whether the slice reaches it is Unconfirmed |
+| 10167 | Docking `0x38ff4`, sub-commands 1 and 2 | The two selection keys of the base interior |
+| 10169 | Docking `0x38ff4`, sub-command 3 | Enter, the selected base action |
+
+These nine entries are exactly the `SR.NOB` entries whose directory flags are 0x50 ([imfat](./imfat.md) §2): loaded when the archive opens and never released.
+
+**Confirmed (other loop sounds outside the models and EXPL):**
+
+- SND 10455 and 10457, loaded at start-up by `0x45420`, are played by `0x46ecc`, which the overlay routine `0x45de0` and the view switch call with a target object and a value. For a live target (byte +3 at least 7), value 0 starts 10455 as a loop; a positive value plays 10457 once whenever the clock passes a due time and sets the next one value ÷ 2 units later. Likely a tone that speeds up as a condition tightens (a lock or approach); the value's source was not traced.
+- SND 10409 is loaded by the initialiser of instrument type 9 (`0x4eaa0`; the 73×8 strip above the navigation display) and played by that instrument's functions, as a loop while a flag (`0x175f10`) is set. Its role is Unconfirmed.
+- SND 10405 is played by the menu page runner (`0x33e8c`) and belongs to the pages.
+
+**Confirmed (EXPL choice at mission start):** `0x23520` loads, from the three EXIC 10211 lists of 7, 7 and 3 EXPL entries, 5, 5 and 3 consecutive entries from random starts. Which loaded entry an explosion uses (`0x2409c`) is runtime state; across missions every one of the 17 entries and the four effect sounds can occur.
+
 ## 2. SONG and MUSC (Unconfirmed)
 
-- `SR.NOB` has 12 `SONG` entries; `SCENARIO.NOB` has 5 `MUSC` entries, referenced by ID from the campaign table and the cut-scene table.
+- `SR.NOB` has 12 `SONG` entries; `SCENARIO.NOB` has 5 `MUSC` entries, referenced by ID from the campaign table and the cut-scene table. The selected mission's slot (group 0, slot 1) names MUSC 3005, which the mission builder loads (Confirmed, data and EXE).
 - Music is played through the Miles MIDI drivers (`.MDI`), so `SONG` is Likely XMIDI or a similar event format. Decoding is part of the music spike (master plan §3.4) and is not needed before P4.

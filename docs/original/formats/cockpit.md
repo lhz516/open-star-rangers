@@ -18,7 +18,7 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 |---|---|---|---|
 | 10103 | 827 KB | HI (640×480) cockpit set: 6 element groups | Confirmed (layout), Likely (roles) |
 | 10101 | 312 KB | LO (320×240) cockpit set: the same 6 non-empty slots at half size, except slot 2 | Confirmed (layout) |
-| 10097 | 142 KB | HI forward cockpit only (one slot, same layout as 10103 slot 0) | Confirmed (layout) |
+| 10097 | 142 KB | HI forward cockpit only (one slot, same layout as 10103 slot 0); the cockpit set of the base interior (view mode 6) | Confirmed (layout; use by EXE, P3-01/10) |
 
 ### Header (partly decoded)
 
@@ -40,7 +40,7 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 | +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Structure Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); other fields Unconfirmed |
 | +0x1C | u32 | Instrument record count | Likely (EXE) |
 
-The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. Each slot is selected by the view modes whose layout number it carries (+0x00, above); U-029 remains open for +0x0C, the instrument record fields and when 10097 is used.
+The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. Each slot is selected by the view modes whose layout number it carries (+0x00, above); U-029 remains open for +0x0C and the instrument record fields. **Which set is loaded (Confirmed, EXE, P3-01/10):** TABL 10099 lists 10103, 10097 and 10101, and `0x497a0(n)` loads entry n − 1. The HUD set-up loads 10103 at start-up; entering the base interior (view mode 6) the view switch loads 10097, and leaving it loads 10103 again, or 10101 in LO ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
 
 ### Element, 52 bytes (Confirmed)
 
@@ -139,7 +139,7 @@ Local check of [P2-12 subtask 16](../../plan/p2/12/subtasks/16-layout-comparison
 | Entry | Images | Content |
 |---|---|---|
 | 10473 | 3 + 9 of 96×96 | Ship status display: list 0 holds three full backgrounds (the ship outline with different shield-glow levels), list 1 holds nine labelled subsystem-damage overlays on a black background |
-| 10475 | 3 + 9 of 96×96 | Same structure; replaces 10473 in HI for one player craft type (Confirmed, EXE; [hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)) |
+| 10475 | 3 + 9 of 96×96 | Same structure; replaces 10473 in HI in the base interior, view mode 6 (Confirmed, EXE; [hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe); read as a craft type until P3-01/10) |
 | 10477 | 3 + 9 of 48×48 | LO version |
 
 All images are raw (encoding 0) and display with correct colours using DATA. The status display draws one list-0 background opaque and then the list-1 overlays with colour key 0 (Confirmed, EXE; [hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)).
@@ -161,4 +161,4 @@ The two element flag fields after the position (+44, +48) hold only 0 or 1 on ev
 ## 4. Open questions
 
 - Directory +0x0C, the meaning of +0x08, and the instrument record fields after the rectangle, including the pointer at +36 that some records hold (U-029). The records give the HUD instrument areas, which P2-07 leaves to P3.
-- Whether the cursor keys that select slots 3–6 reach the flight key handler during flight (U-011), and when 10097 is used.
+- Whether the cursor keys that select slots 3–6 reach the flight key handler during flight (U-011).

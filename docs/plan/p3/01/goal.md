@@ -88,7 +88,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | blocked |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | completed |
-| [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | in-progress |
+| [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | completed |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
 | [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | pending |
 | [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | completed |
@@ -110,6 +110,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
   Resume when: 用户可按 `local/research/p3-01/timing-runtime/procedure.md` 在 DOSBox-X 中只用键盘操作 4 次运行（每次约 8–12 分钟；协调者同时运行工具并写操作确认），且没有与 07 重叠的行在进行。
 - **2026-10-09 — 07 阻塞期间暂缩写入范围：** 07 在 executable.md 与 unknowns.md 中没有部分改动（B-006 草稿只在 `local/`），为让不依赖 07 的 09、10 继续，暂从其写入范围移去这两处；恢复 07 时在没有重叠行进行的情况下重新加入，07 以届时的 goal 分支为基继续。
 - **2026-10-09 — 09 以静态证据完成：** 基准运行未进行（同 05、08 的宿主限制）；全部视角模式写入者由代码穷举，分类已确认（所选任务与其他战役任务相同），截图对应 092 已确认、066/073 高概率；闭环中需保留的非 F1 自动相机只有被毁视角（P3-12，时机 P3-11）；运行核对步骤记在 B-001、B-004、B-005 的本项小节。另发现原版 F10 与若干光标键码也切换视角；G-08 与总计划未改，已在键位文档 §7 交 P3-05，是否纳入 G-08 由用户决定。
+- **2026-10-09 — 10 以静态证据完成：** 宿主限制下没有基准运行；决定表 46 行，影响闭环的待研究来源为 0，余下的运行时选择（各爆炸所用 EXPL、星云起点、`0x38780` 是否可达、`0x46ecc` 的取值）作为覆盖限制带 U 项交负责任务。更正 P2-07 对 `0x4ca80` 的读法：条件是视角模式 6（基地内部），不是机型字节；CCKD 10097、MFDD 10475、BITM 10469、TABL 10481、TEX 11091 只用于基地内部。IMFAT flags 的载入与释放语义已确认，U-020 改为部分确认。
 
 ## 审批
 
