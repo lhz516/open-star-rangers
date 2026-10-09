@@ -35,6 +35,8 @@ updated: 2026-10-08
 ## 写入范围
 
 - `docs/original/formats/scenario.md`：难度读取路径的结构事实。
+- `docs/original/unknowns.md`：U-003、U-013、U-022 的线索（负责阶段不改）。
+- `docs/original/formats/executable.md`：难度组 getter `0x694f0` 的描述更正。
 - `local/research/p3-01/difficulty/**`：研究脚本、Ghidra 输出与私有项目副本（被忽略）。
 
 ## 验收标准
