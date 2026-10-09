@@ -110,8 +110,8 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [04-comm-hud-text-research.md](./subtasks/04-comm-hud-text-research.md) | — | completed |
 | [05-image-research.md](./subtasks/05-image-research.md) | — | completed |
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | completed |
-| [07-mission-events.md](./subtasks/07-mission-events.md) | 01, 06 | pending |
-| [08-rule-data-payloads.md](./subtasks/08-rule-data-payloads.md) | 02, 03, 04, 06 | pending |
+| [07-mission-events.md](./subtasks/07-mission-events.md) | 01, 06 | in-progress |
+| [08-rule-data-payloads.md](./subtasks/08-rule-data-payloads.md) | 02, 03, 04, 06 | in-progress |
 | [09-flight-data-payloads.md](./subtasks/09-flight-data-payloads.md) | 04, 05, 06 | pending |
 | [10-craft-debris-parsers.md](./subtasks/10-craft-debris-parsers.md) | 08 | pending |
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | pending |
