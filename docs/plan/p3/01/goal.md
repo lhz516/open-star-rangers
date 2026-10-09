@@ -83,7 +83,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [02-debugger-session-protection.md](./subtasks/02-debugger-session-protection.md) | 01 | in-progress |
 | [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | in-progress |
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
-| [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | in-progress |
+| [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | pending |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06 | pending |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | pending |
@@ -98,6 +98,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 ## 执行记录
 
 - **2026-10-08 — 并行执行安排：** 协调者在 `p3-01-execute-goal` 分支上执行，同时运行的 worker 不超过 4 个（用户指定）。宿主不能在指定文件夹启动会话，worker 改在应用管理的 worktree 中运行（以认领提交为基），其分支改名为 `exec-p3-01-NN` 作为认领标记，`local` 以符号链接接入。原版运行（工具烟测、Computer Use 与运行时读数）仍由协调者统一进行。
+- **2026-10-08 — 05 的基准复现未取得：** 协调者两次在私有副本中启动原版（基准文件哈希不变）。本机 Computer Use 无法操作 DOSBox-X：按键只在 DOSBox-X 为前台应用时送达，合成点击能触发按钮但不移动游戏内光标，选项、战役、简报与僚机页面都靠鼠标；用户当时无法协助。依 spec 终态可达性门槛“至少高概率”与有界核实“必要时复现”，05 以代码、数据与既有用户观察完成于高概率；已确认的规则证据与真实内容失败运行仍归 P3-11（P3-15 之前）。需要进入所选任务的运行（07 的合格读数）须由用户操作游戏。
 
 ## 审批
 
