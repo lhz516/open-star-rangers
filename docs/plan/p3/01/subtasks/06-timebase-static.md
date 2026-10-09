@@ -38,6 +38,7 @@ updated: 2026-10-08
 
 - `docs/original/formats/executable.md`：时基的代码事实（新节）。
 - `docs/original/unknowns.md`：U-008 的时间部分（负责阶段不改）。
+- `docs/original/formats/scenario.md`：§3 时间字段的单位与 §4 难度读取路径中的时间间隔更正。
 - `local/research/p3-01/timing/**`：研究脚本、Ghidra 输出与私有项目副本（被忽略）。
 
 ## 验收标准
