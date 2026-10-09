@@ -90,9 +90,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | completed |
 | [09-real-content-check.md](./subtasks/09-real-content-check.md) | 07 | completed |
 | [10-original-runtime-evidence.md](./subtasks/10-original-runtime-evidence.md) | 02, 03 | in-progress |
-| [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10 | pending |
+| [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10, 14 | pending |
 | [13-heavy-test-timeouts.md](./subtasks/13-heavy-test-timeouts.md) | 04 | completed |
-| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | pending |
+| [14-float32-round-to-nearest.md](./subtasks/14-float32-round-to-nearest.md) | 06, 07 | pending |
+| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -110,6 +111,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 - **2026-10-09 — Q-11 舍入方向（协调者决定）：** 02 已确认（代码）：启动时为双精度、就近舍入；渲染器把舍入改为向零后不再恢复；位置与姿态以 f32 存储；浮点转整数向零截断。原版单次放置的舍入方向因此取决于运行历史：重试、后续任务以及任务首个渲染帧之后的放置为向零（高概率）；启动后第一个任务的开局放置可能为就近（未确认）。Core 不建模渲染与会话历史，06 对所有 f32 写回一律向零舍入（与重试、后续任务和延迟生成一致）；双精度中间运算仍按 JS 的就近舍入，原版在向零模式下逐步舍入，结果至多相差一个 f32 ulp。这是对已确认的原版行为二选一，不改变 spec 的数值策略（f32 写回与 i32 截断照常在对应边界实现），因此不修订 spec。差异由 11 写入 Core 文档的已知差异；10 的支持集按 02 对两种舍入的推导核对。
 - **2026-10-09 — 新增修复子任务 13：** 集成 05 时 `pnpm check` 中 04 的规范文本上限测试与渲染边界测试在负载约 12 时超过 Vitest 默认的 5 秒（单独运行分别约 0.7 秒与 0.5 秒），重跑通过；06 的 worker 也遇到前者超时。后续每次集成都依赖 `pnpm check`，因此新增 13（依赖 04），插在最终对齐之前并加入其依赖。
 - **2026-10-09 — spec 第 5 行补充（用户批准）：** 05 指出系统流水线表第 5 行漏列 01 已确认的 `0x2cd60`（到期通讯回复，P3-10）与 `0x2ede0`（重建对象集合，未分析）；05 已为两者保留空阶段。用户批准补入，见 spec 审批节的“修订（二）”；代码与验收不变。05 的另一建议（为规则请求单独设上限）暂不采纳：请求数沿用 `CORE_LIMITS.eventsPerTick`，07 接入生成请求时若发现一个 tick 的请求可能超过该上限，在报告中提出。
+- **2026-10-09 — Q-11 舍入方向改为就近（用户批准）：** 10 的两次合格运行（`inst-nowing-01`、`inst-wing1-01`）中，可区分两种舍入的 77 个放置位置只与就近舍入一致，没有一个只与向零一致，开局与飞行约 5 分钟后的延迟生成都如此。这推翻了先前决定所依据的“渲染后向零（高概率）”。矛盾的原因（遗漏的控制字恢复路径，或模拟器行为）未查明，由 10 记入 `docs/original/` 与 U-009。用户批准 Core 的 f32 写回改为就近舍入，取代上面的“Q-11 舍入方向（协调者决定）”；双精度中间运算与原版的一个 ulp 差异随之不再成立。新增修复子任务 14（依赖 06、07），插在 11 与最终对齐之前并加入两者的依赖；06 的完成证据保留当时的决定作为历史记录。
 
 ## 审批
 
