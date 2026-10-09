@@ -41,9 +41,9 @@ updated: 2026-10-08
 
 ## 验收标准
 
-- [ ] 用户确认上述 4 项，记录日期、Chrome 完整版本、所用提交、各项结论与三项耗时。
-- [ ] 所用提交的构建输入与最终候选一致（或其构建指纹等于 05 的记录）。
-- [ ] 证据不含原版画面、文字或声音；截图（如有）只留在 `local/`。
+- [x] 用户确认上述 4 项，记录日期、Chrome 完整版本、所用提交、各项结论与三项耗时。
+- [x] 所用提交的构建输入与最终候选一致（或其构建指纹等于 05 的记录）。
+- [x] 证据不含原版画面、文字或声音；截图（如有）只留在 `local/`。
 
 ## 验证方法
 
@@ -51,3 +51,24 @@ updated: 2026-10-08
 
 ## 完成证据
 
+- **核对人与日期：** 用户本人，2026-10-08，在自己的机器上按[本地导入指南](../../../../guides/local-import.md#用户实机核对)完成；agent 未参与浏览器操作，也未接触用户的原版数据。
+- **构建与环境：**
+  - 协调者在协调检出（提交 `2158020`）中运行 `pnpm build`，再以 `vite preview --port 4173 --strictPort` 提供本地生产预览。构建输出只写在该检出被忽略的 `dist/` 中，与各 worker 工作树无关；预览在核对后已停止。
+  - `git diff --name-only f925d21 2158020` 在 `docs/`、`.agents/` 与 `AGENTS.md` 之外没有差异，构建输入与最终候选相同。入口 chunk `index-aXSeUMy4.js` 的 SHA-256 前缀 `42178e76a9e2` 与 [02](./02-engineering-checks.md#完成证据) 记录的一致；入口代码中的生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`。构建指纹与 `ContentIdentity` 以 [05](./05-real-data-candidate.md) 的记录为准，由 08 核对。
+  - 核对前 `curl -I` 得到页面与导入 Worker 均为 200，并带拟定 CSP。
+  - 浏览器：Chrome 154.0.8037.98（Official Build）(arm64)，由用户报告。
+- **用户原话与解释边界：** 用户先回复“import 400ms, save 30ms, reload 30ms. no errors.”，随后在协调者的两次追问中：
+  - 选择“Yes — all of those were confirmed”：导入后与刷新恢复后都出现 `Mission loads into Core`，并在查看器中打开了玩家、敌机与基地模型以及至少一个 SNIP 帧；
+  - 选择“Yes — version identified and all three statuses appeared in order”：导入后识别出版本，并依次出现 `Complete resources, viewable`、`Saved in this browser`、`Mission loads into Core`。
+
+  据此逐项：
+  1. 导入：识别出版本，三种状态依次出现（第二次追问）；
+  2. 同源刷新后经 `Open saved resources` 恢复并校验成功，任务再次可载入（耗时与第一次追问）；
+  3. 玩家、敌机、基地模型与 SNIP 帧打开，无错误（“no errors”与第一次追问）；
+  4. 页面显示的耗时：作业约 400 ms，保存 30 ms，恢复并校验 30 ms。
+
+  没有报告任何错误 code。用户未说明所开敌机与 SNIP 帧的具体条目。
+- **结论：** P-1 的恢复条件满足；P2-11 AC-21 受影响的部分在最终候选上有用户核对，试听沿用 [P2-11/19](../../11/subtasks/19-user-real-machine-check.md#完成证据)。
+- **内容边界：** 证据只有文字结论、耗时与版本号，不含原版画面、文字、声音、截图或文件名；用户未提交截图。
+- **Rubber-duck：** 一次审阅。阻塞问题：初稿把耗时与“no errors”当作版本识别与三种状态依次出现的依据，证据不足；已向用户追问并取得明确确认，现逐项写明各结论的来源。其余结论（构建输入相同、内容边界、构建指纹与 `ContentIdentity` 交 05/08 核对）审阅认可。
+- **文档影响：** 无需修改。本地导入指南的核对清单与本次步骤一致；STATUS 与阶段索引的修改由 07 的建议统一处理。
