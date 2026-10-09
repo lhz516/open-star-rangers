@@ -96,7 +96,7 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 | [06-unknowns-ownership.md](./subtasks/06-unknowns-ownership.md) | — | completed |
 | [07-exit-review-handoff.md](./subtasks/07-exit-review-handoff.md) | 01, 02, 03, 04, 05, 06, 09 | completed |
 | [09-user-recheck.md](./subtasks/09-user-recheck.md) | — | completed |
-| [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 09 | pending |
+| [08-final-alignment.md](./subtasks/08-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 09 | in-progress |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
