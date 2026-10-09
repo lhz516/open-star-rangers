@@ -50,7 +50,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | S-02 | 03 | 03：难度读取路径与影响；13：切片配置未被改动，或修订已重新批准 |
 | S-03 | 04、05 | 04：成功路径与重开入口；05：失败终态、被毁与救援；13：门槛逐项满足或已按 spec 阻塞 |
 | S-04 | 06、07 | 06：T-1 至 T-3 的代码依据；07：运行时核对、T-4/T-5 与 B-006；13：核心时基已确认 |
-| S-05 | 01、02、11、14 | 01、02：合成测试；07：首次合格运行；11：指南与命令入口；13：重跑工具测试 |
+| S-05 | 01、02、11、14、15 | 01、02：合成测试；07：首次合格运行；11：指南与命令入口；13：重跑工具测试 |
 | S-06 | 10 | 10：数据闭包决定表与格式文档；13：影响闭环的待研究项为零 |
 | S-07 | 08 | 08：每条衔接的媒体、状态与跳过记录；13：G-02 实例齐全 |
 | S-08 | 12 | 12：G-01 至 G-08 的依据、必要信息、标注与补齐责任；13：与 spec 一致 |
@@ -63,7 +63,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | AC-04 | 04 | 04：重开入口的行为（至少高概率）或未确认原因写入 B-003 |
 | AC-05 | 06、07 | 06：T-1 至 T-3 的代码依据与其他计时消费量的逐项结论；07：运行时交叉核对；13：核心关系已确认，U-008 已更新 |
 | AC-06 | 07 | 07：B-006 的测量方案、两个 cycles 的重复样本、误差预算与依赖判定；STATUS 前提建议交协调者；13：U-021 未被关闭，基准配置哈希不变 |
-| AC-07 | 01、02、14 | 01：纯逻辑的正负单元测试；02：每类拒绝的端到端假调试器测试；13：重跑 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` |
+| AC-07 | 01、02、14、15 | 01：纯逻辑的正负单元测试；02：每类拒绝的端到端假调试器测试；13：重跑 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` |
 | AC-08 | 07 | 07：所选任务飞行状态中两个暂停点之间有有效运行时段的合格报告；13：报告只在 `local/`，证据只记身份、统计与判定 |
 | AC-09 | 11 | 11：指南内容与四处链接，AGENTS.md 与工程约定的命令表；13：链接检查 |
 | AC-10 | 10 | 10：起点、线索与 L/R/V 依赖全覆盖，处置与身份绑定；13：影响闭环的待研究项为零 |
@@ -85,14 +85,15 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
-| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | blocked |
+| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14, 15 | blocked |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | completed |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | completed |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
 | [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | pending |
 | [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | completed |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
+| [15-reclaim-wait.md](./subtasks/15-reclaim-wait.md) | 02, 14 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -112,6 +113,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 09 以静态证据完成：** 基准运行未进行（同 05、08 的宿主限制）；全部视角模式写入者由代码穷举，分类已确认（所选任务与其他战役任务相同），截图对应 092 已确认、066/073 高概率；闭环中需保留的非 F1 自动相机只有被毁视角（P3-12，时机 P3-11）；运行核对步骤记在 B-001、B-004、B-005 的本项小节。另发现原版 F10 与若干光标键码也切换视角；G-08 与总计划未改，已在键位文档 §7 交 P3-05，是否纳入 G-08 由用户决定。
 - **2026-10-09 — 10 以静态证据完成：** 宿主限制下没有基准运行；决定表 46 行，影响闭环的待研究来源为 0，余下的运行时选择（各爆炸所用 EXPL、星云起点、`0x38780` 是否可达、`0x46ecc` 的取值）作为覆盖限制带 U 项交负责任务。更正 P2-07 对 `0x4ca80` 的读法：条件是视角模式 6（基地内部），不是机型字节；CCKD 10097、MFDD 10475、BITM 10469、TABL 10481、TEX 11091 只用于基地内部。IMFAT flags 的载入与释放语义已确认，U-020 改为部分确认。
 - **2026-10-09 — 交 11、12 的要点（各行提出，待其执行时采用）：** 11 的指南与命令表：`measure.py run|baseline-version`、操作者协议（`status.json`；`operator/<pause>-<n>.json` 的 confirm（含任务与配置身份）/skip/abort；`operator/abort.json`）、退出码 0/1/2/3、研究根目录的会话锁、默认保护范围（`local/StarRang` 严格保护与 `local/research` 既有文件）、`maxReadBytes` 须覆盖映射与复核窗口及页查找、配方 `gameSettings`（白名单、取值、报告的 `gameConfig.overrides`、`game-config-invalid`），以及本机 Computer Use 无法操作 DOSBox-X 的限制对[原版证据获取](../../../guides/original-evidence.md#agent-运行原版)的影响。12 的交接：10 完成证据中的决定表（P3-03 新增导入项与 G/不使用项）、09 的视角交接（P3-05：F10 与光标键码；P3-13：Warp 中跳过的叠加绘制与被毁视角标签）、08 的 G-02 占位时间与勋章判定（见上）。
+- **2026-10-09 — 07 的第一次运行与新增 15：** 用户在场，协调者运行 `tb-c40000-01`：4 个标记全部确认，146 个读数全部合格，原版文件核对通过，但以 `cleanup-failed` 结束（SIGKILL 后两次各 5 秒内 DOSBox-X 未退出，之后自行退出，没有遗留进程）。按工具契约该次不计为合格运行。经用户选择，新增 02 的修复项 15：SIGKILL 后的等待改为有限的 30 秒并记录实际等待时间；07 与最终对齐加入对 15 的依赖。15 完成后用新编号重做 40000 cycles 的运行。
 
 ## 审批
 
