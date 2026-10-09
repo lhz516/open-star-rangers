@@ -91,7 +91,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [09-real-content-check.md](./subtasks/09-real-content-check.md) | 07 | pending |
 | [10-original-runtime-evidence.md](./subtasks/10-original-runtime-evidence.md) | 02, 03 | pending |
 | [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10 | pending |
-| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11 | pending |
+| [13-heavy-test-timeouts.md](./subtasks/13-heavy-test-timeouts.md) | 04 | pending |
+| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -107,6 +108,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
   Resume when: 用户批准按上述结论修订 spec 的系统流水线、实体与生命周期、Render State 与 AC-09，修订已提交。
 - **2026-10-09 — 05 解除阻塞：** 用户批准了 spec 修订（系统流水线、实体与生命周期、Render State、AC-09/AC-10），修订与子任务 05、07 的同步已提交；05 回到 `pending`。
 - **2026-10-09 — Q-11 舍入方向（协调者决定）：** 02 已确认（代码）：启动时为双精度、就近舍入；渲染器把舍入改为向零后不再恢复；位置与姿态以 f32 存储；浮点转整数向零截断。原版单次放置的舍入方向因此取决于运行历史：重试、后续任务以及任务首个渲染帧之后的放置为向零（高概率）；启动后第一个任务的开局放置可能为就近（未确认）。Core 不建模渲染与会话历史，06 对所有 f32 写回一律向零舍入（与重试、后续任务和延迟生成一致）；双精度中间运算仍按 JS 的就近舍入，原版在向零模式下逐步舍入，结果至多相差一个 f32 ulp。这是对已确认的原版行为二选一，不改变 spec 的数值策略（f32 写回与 i32 截断照常在对应边界实现），因此不修订 spec。差异由 11 写入 Core 文档的已知差异；10 的支持集按 02 对两种舍入的推导核对。
+- **2026-10-09 — 新增修复子任务 13：** 集成 05 时 `pnpm check` 中 04 的规范文本上限测试与渲染边界测试在负载约 12 时超过 Vitest 默认的 5 秒（单独运行分别约 0.7 秒与 0.5 秒），重跑通过；06 的 worker 也遇到前者超时。后续每次集成都依赖 `pnpm check`，因此新增 13（依赖 04），插在最终对齐之前并加入其依赖。
 
 ## 审批
 
