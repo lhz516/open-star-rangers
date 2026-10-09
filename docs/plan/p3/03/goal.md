@@ -106,7 +106,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 |---|---|---|
 | [01-scen-event-research.md](./subtasks/01-scen-event-research.md) | — | completed |
 | [02-craft-debris-research.md](./subtasks/02-craft-debris-research.md) | — | in-progress |
-| [03-ai-data-research.md](./subtasks/03-ai-data-research.md) | — | in-progress |
+| [03-ai-data-research.md](./subtasks/03-ai-data-research.md) | — | completed |
 | [04-comm-hud-text-research.md](./subtasks/04-comm-hud-text-research.md) | — | in-progress |
 | [05-image-research.md](./subtasks/05-image-research.md) | — | pending |
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | pending |
@@ -134,6 +134,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 
 - **2026-10-09 — 并行执行安排：** 协调者在 `p3-03-rule-data-spec` 分支上执行，同时运行的 worker 不超过 3 个（默认）。沿用 P3-01 的宿主做法：worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-03-NN` 作为认领标记；主仓库的 `local` 以符号链接接入，研究输出只写入本行自己的 `local/research/p3-03/<主题>/`，其余位置只读。本任务不运行原版；Ghidra 只读，必要时使用本行范围内的私有副本。
 - **2026-10-09 — 01 完成（交 07、22 的要点）：** 段 2 只由 28 字节的事件触发组成，全部 59 个都被 +0x54 引用；三个运行时计数在任务构建时（`0x66c00`→`0x694f8`→`0x6953c`）调度之前被重置，07 不转换也不检查它们；生成配对（+0x14/+0x18）只在运行时由记录 +0x30/+0x38 建立，存储值只能为零，07 保留 `object-record.ts` 对 +0x30/+0x38 非零的拒绝。区间为 i32 下界、i32 上界、指向计数的消息指针数组（数量为 0 时为空指针）、i32 数量、8 位选择值与 3 个未读字节，观测值见 [scenario](../../../original/formats/scenario.md#section-2-event-triggers-p3-03)。交 22：U-022 的线索（+0x30/+0x38 已确认为生成配对的触发指针与区间序号；段 2 文字是成功后总结页按区间拼接的文字，不是任务中的消息；段 2 路径由数据驱动），U-002 中“任务内文字”的措辞，以及 [executable 任务结果](../../../original/formats/executable.md#mission-result-success-path-and-campaign-restart-p3-0104)第 2 步对 `0x69a70` 的描述（按 4 字节步长读取前若干个计数字）的更正。
+- **2026-10-09 — 03 完成；AICO 6001 的导入范围（协调者判定，待用户复核）：** 03 发现闭环除组 0 三元组外，还在组 0 中读取 AICO 6001 的头部 +0x08…+0x48 与 +0x18 所指的 5 × 16 字节 `f32` 数组（[ai §2](../../../original/formats/ai.md)），认为 S-05、Asset 表与 `ai-programs` 只列三元组，触发研究门槛 3。用户当时无法回答（“Work autonomously and make good decisions”）。协调者判定门槛 3 未触发，不修订 spec：spec 规定导入范围以 P3-01 数据闭包为准，闭包 [#22](../01/subtasks/10-data-closure.md#决定表) 把 AICO 6001 整个条目列为导入；字段处理规则 7 规定按难度组的选择只取所选部分，整条目载入的结构按条目完整导入。因此 `ai-programs` 导入闭环读取的 AICO 6001 全部字段：按组 0 选出的三元组、头部字段与该数组（数量字按布局核对）；S-05 与 payload 表中的“组 0 三元组”是不完整的列举，不是范围限制。闭包没有新增依赖，不必向 P3-01 追加。用户可在复核时改为只取三元组并拆出后续任务。交 08、11、15：内置表 `0x1762f8` 的区域带 20 个 LE fixup（+0x00 指向对象 4 中的 10 个名称字串，+0x18 指向对象 2 的处理程序），现有区域读取器拒绝被 fixup 修补的区域，11 派发时加入 `le-executable.ts` 的写入范围。交 22：文档地图链接 ai.md；executable 的 AISTUFF 闭包一段对 AICO 的描述与其 Limits 中解释器未追踪的说法已被 ai §1、§5 取代；imfat §5 的 DFPG/AICO 行改为结构已确认并链接 ai.md；U-001、U-022 的线索见 03 的完成证据。
 
 ## 审批
 
