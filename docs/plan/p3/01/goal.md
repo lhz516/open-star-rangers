@@ -79,10 +79,10 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-recipe-report-contracts.md](./subtasks/01-recipe-report-contracts.md) | — | pending |
+| [01-recipe-report-contracts.md](./subtasks/01-recipe-report-contracts.md) | — | in-progress |
 | [02-debugger-session-protection.md](./subtasks/02-debugger-session-protection.md) | 01 | pending |
-| [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | pending |
-| [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | pending |
+| [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | in-progress |
+| [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | in-progress |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | pending |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | pending |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06 | pending |
@@ -96,6 +96,8 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-08 — 并行执行安排：** 协调者在 `p3-01-execute-goal` 分支上执行，同时运行的 worker 不超过 4 个（用户指定）。宿主不能在指定文件夹启动会话，worker 改在应用管理的 worktree 中运行（以认领提交为基），其分支改名为 `exec-p3-01-NN` 作为认领标记，`local` 以符号链接接入。原版运行（工具烟测、Computer Use 与运行时读数）仍由协调者统一进行。
 
 ## 审批
 
