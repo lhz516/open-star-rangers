@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fileRecord, parentRecord, selfRecord, subdirectoryRecord, volumeSectors } from '../src/original-data/disc/disc.test-support.ts';
-import { cloneCdSections, cloneCdText, directoryData, sectorImageSource } from '../src/original-data/synthetic.ts';
+import { cloneCdSections, cloneCdText, directoryData, sectorImageSource } from '../src/original-data/synthetic.test-support.ts';
 import { sha256 } from './compliance/report.ts';
 import { runDiscCheck, type DiscCheckOptions } from './disc-check.ts';
 import { NodeByteSource, type ClosableByteSource } from './node-byte-source.ts';

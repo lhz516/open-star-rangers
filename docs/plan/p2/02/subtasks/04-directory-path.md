@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "02"
 subtask: "04"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 04 — 目录遍历与路径解析
@@ -34,7 +34,7 @@ updated: 2026-10-04
   - 解析目标的不支持特性（多段、交错、扩展属性、记录格式/保护标志、非零保留 flag、卷序号不为 1）返回 `unsupported-layout`。
   - extent 用安全算术证明在卷空间内；长度为 0 的普通文件不检查 extent，目录不能为空。
 - **失败与隐私：** 查找失败不损坏句柄；诊断位置使用已解析的路径前缀与记录序号或偏移，不回显记录原名。
-- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)，生成多级目录、版本名、非 8.3 兄弟记录、关联文件记录与各种缺陷记录。
+- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)，生成多级目录、版本名、非 8.3 兄弟记录、关联文件记录与各种缺陷记录。
 
 ## 不包含
 
@@ -47,7 +47,7 @@ updated: 2026-10-04
 - **修改：**
   - [source-mapping.ts](../../../../../src/original-data/source-mapping.ts) 改用共享路径规则，现有测试保持通过；
   - `src/original-data/disc/disc-image.ts` 增加查找操作；
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts) 增加目录构建器。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 增加目录构建器。
 
 ## 验收标准
 
@@ -75,7 +75,7 @@ updated: 2026-10-04
     - 匹配到的记录当场依次检查：不支持特性、类型、目录长度、extent（空文件跳过）、目录 64 KiB 上限（中间目录与目标目录相同）、循环；
     - 扫描完整个目录后才返回结果。
   - 诊断位置只用已解析的路径前缀与记录序号，形如 `dir:/MAIN`、`dir:/MAIN[2]`；类型不符与循环位于已解析路径，例如 `dir:/MAIN/LOOP`。
-  - [disc-image.ts](../../../../../src/original-data/disc/disc-image.ts) 的句柄新增 `lookup(path)`。[synthetic.ts](../../../../../src/original-data/synthetic.ts) 新增 `directoryData`，按扇区装箱且记录不跨扇区；测试辅助新增 `.`、`..`、子目录与文件记录构建器。
+  - [disc-image.ts](../../../../../src/original-data/disc/disc-image.ts) 的句柄新增 `lookup(path)`。[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 新增 `directoryData`，按扇区装箱且记录不跨扇区；测试辅助新增 `.`、`..`、子目录与文件记录构建器。
   - 基准盘的本地只读名称核对（只看计数）：359 个文件全部带 `;1`，没有结尾 `.`，没有关联、隐藏或保留标志，规范化后无重名，单目录最多 79 条记录。这与严格的名称规则一致；事实记录由 09 写入 `docs/original/`。
 - **测试：**
   - [disc-path.test.ts](../../../../../src/original-data/disc/disc-path.test.ts)：路径语法的 6 种合法形式、15 种非法形式与非文本值。

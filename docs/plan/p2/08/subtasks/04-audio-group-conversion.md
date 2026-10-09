@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "08"
 subtask: "04"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 04 — 音频组转换、目录预检与预算
@@ -64,7 +64,7 @@ updated: 2026-10-05
   - [budget.ts](../../../../../src/content/budget.ts) 的 `chargeBudget`、`EMPTY_BUDGET_USAGE`；
   - [completeness.ts](../../../../../src/content/completeness.ts) 的 `validateGroup`（测试中验证草稿加合成身份后的结果）；
   - 01、03 的模块。
-- **测试支持：** [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)、[source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)。
+- **测试支持：** [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)、[source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)。
 
 ## 验收标准
 
@@ -105,6 +105,6 @@ updated: 2026-10-05
   - **采纳：** 预检首遍即缓存首个 locator 的块大小，不再重复查找；角色 ID 正则在模块级预编译；打开封包的失败也改写为映射路径，并补充测试。
   - **未采纳：** 把定位与错误改写抽成与 `verify-source-mappings.ts` 共用的辅助函数，因为要改动 P2-03 已批准的模块，超出本子任务范围；测试共用一个已识别来源，因为会牺牲用例间的计量隔离。
   - 复跑检查通过。
-- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录加入 `conversion-budget.ts` 与 `audio-conversion.ts`，并新增“转换预算”“音频组”两条（音效表、常量、流程、输出与门槛）。工程约定无需修改：能力边界与命令不变。
+- **文档影响：** [源码结构指南](../../../../engineering/modules/original-data.md#原版格式转换)的目录加入 `conversion-budget.ts` 与 `audio-conversion.ts`，并新增“转换预算”“音频组”两条（音效表、常量、流程、输出与门槛）。工程约定无需修改：能力边界与命令不变。
 
 - **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。预检与预算的错误改为 `SourceError`（`invalid-payload`、`limit-exceeded`）。合并 P2-05 后，预算超限再改为 `budget-exceeded`（执行期修订三）。本条以上的证据记录的是本子任务完成时的状态。

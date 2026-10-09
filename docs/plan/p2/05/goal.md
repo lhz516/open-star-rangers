@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "05"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # P2-05：调色板、索引图像与字体转换 — Goal
@@ -28,7 +28,7 @@ updated: 2026-10-05
   - **已验证来源：** [open-verified-source.ts](../../../../src/original-data/source/open-verified-source.ts) 的产品入口；[archive-reader.ts](../../../../src/original-data/archive/archive-reader.ts) 的 `read` 返回独占的 `{ entry, bytes, relocations }`。
   - **现有解析器：** [payloads.ts](../../../../src/original-data/payloads.ts) 的 `parseVgaPalette`、`parseImage`、`decodeSpriteRle`、`parseMfdImages`、`parseBitmapFont`、`parseCockpitFonts` 都缺乏预算与部分校验，抛出无类型的 `PayloadError`（见 spec [当前实现与依据](./spec.md#当前实现与依据)）。MESH/MODL 解析归 P2-06，不在本任务修改。
   - **Worker：** [import-protocol.ts](../../../../src/workers/import-protocol.ts)（`IMPORT_STAGES` 只有 `identify-source`，协议版本 1）、[import-host.ts](../../../../src/workers/import-host.ts)、[import-job.ts](../../../../src/workers/import-job.ts)（以 `source.usage()` 结束）、[import-job-owner.ts](../../../../src/app/import/import-job-owner.ts)（`LATE_PROGRESS` 只拒绝识别之后的识别进度）。
-  - **测试支持：** [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `buildImfat`（显式条目 ID）、`imageRecord`、`ByteWriter`；[disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`；[source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)；[import-worker.test-support.ts](../../../../src/workers/import-worker.test-support.ts)（按 Worker `name` 选场景）；[import-pipeline.test.ts](../../../../src/app/import/import-pipeline.test.ts)（`MessageChannel` 集成）；[synthetic-content.test-support.ts](../../../../src/content/synthetic-content.test-support.ts)；`e2e/import-worker.spec.ts`。
+  - **测试支持：** [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `buildImfat`（显式条目 ID）、`imageRecord`、`ByteWriter`；[disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`；[source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)；[import-worker.test-support.ts](../../../../src/workers/import-worker.test-support.ts)（按 Worker `name` 选场景）；[import-pipeline.test.ts](../../../../src/app/import/import-pipeline.test.ts)（`MessageChannel` 集成）；[synthetic-content.test-support.ts](../../../../src/content/synthetic-content.test-support.ts)；`e2e/import-worker.spec.ts`。
 - **计划新增（均尚不存在）：**
   - `src/content/graphics/`：三类 payload 契约与纯展开、查找；
   - `src/original-data/conversion/`：源结构读取、转换声明与转换器、图形步骤、生产声明与映射、测试支持；

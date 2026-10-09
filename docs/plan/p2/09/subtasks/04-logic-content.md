@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "04"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 04 — 规范逻辑内容：类型、编码与读取器
@@ -30,7 +30,7 @@ updated: 2026-10-05
   - 核对 payload 内的 Asset 引用与描述符依赖一致，不一致为 `logic-reference-mismatch`。
 - **错误码：** 在 `ContentContractErrorCode` 追加 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`；路径只含结构名与下标。
 - **测试支持：** 计划新增 `content/logic/` 的合成逻辑内容 test-support，供 06、09、11 复用；合成名称包含 `MARKER`，用于隐私断言。
-- **文档：** 在[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)中记录逻辑内容模块、编码规则与错误码。
+- **文档：** 在[源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)中记录逻辑内容模块、编码规则与错误码。
 
 ## 不包含
 
@@ -101,4 +101,4 @@ updated: 2026-10-05
   - **未采纳：**
     - 给共用基础读取器增加错误码与上下限参数：属于更大的共用设施改动，超出本子任务；
     - 测试表格改用工厂函数：只改变写法。
-- **文档影响：** 已在[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)记录 `content/logic/` 的类型、读取器、编码规则与错误码。工程约定、工具指南与 STATUS 无需更新：没有新命令或检查规则。
+- **文档影响：** 已在[源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)记录 `content/logic/` 的类型、读取器、编码规则与错误码。工程约定、工具指南与 STATUS 无需更新：没有新命令或检查规则。

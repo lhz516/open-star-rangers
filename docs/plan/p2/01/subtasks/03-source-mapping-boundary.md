@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "03"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 03 — 原版来源映射边界
@@ -48,4 +48,4 @@ updated: 2026-10-04
 - **审查：** rubber-duck 提出 2 个阻塞问题和 2 个其他问题。阻塞问题：① 边界可经 ui/app、import 类型、动态 import 或中间模块绕过，已扩展 lint 并新增传递依赖图检查，复核后又补上计算型动态 import；② “等价物”未强制等价，已要求同类型同子资源，并写明 `verified` 的含义。其他问题：③ 诊断与调用者共享 U 项数组，已改为复制并冻结；④ 重构改变了依赖读取的错误优先级，已恢复为按索引顺序报错。同一审查者复核确认全部解决。
 - **simplify：** 采纳复用 `ImfatEntry` 字段类型、合并重复的字符串比较器、依赖图与 render 规则共用一个模块说明符解析器（同时覆盖 import 类型）、以键集合代替 JSON 序列化检测重复、以首次索引映射代替重复扫描、按说明符合并 import 形式（lint 调用从 144 次降至 36 次）、游标队列，以及删除冗余断言。跳过两项：来源映射错误 code 不迁出 content 的统一错误 code 枚举，因为 spec 要求整个契约的错误 code 统一枚举并含来源/研究类别，迁出须改动本 diff 之外的共享基础设施；依赖图可达性不做记忆化，因为约 150 个文件的逐根 BFS 只需毫秒级，且违规对更直观。
 - **验证：** `pnpm exec vitest run src/original-data src/content tools/engineering-boundaries.test.ts` 为 9 个文件 286 项通过；`pnpm check` 为 62 个文件 1505 项通过，四个 TypeScript 程序、lint 与生产构建均通过；依赖与锁文件未变。不适用 browser-testing。
-- **文档影响：** [工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)记录消费者边界与依赖图规则，以及 P2-02 放行字节端口时的处理方式；[源码结构](../../../../engineering/source-structure.md#原版来源映射)新增来源映射 API 说明。原版事实与 U 项状态不变，没有升级置信度。
+- **文档影响：** [工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)记录消费者边界与依赖图规则，以及 P2-02 放行字节端口时的处理方式；[源码结构](../../../../engineering/modules/original-data.md#原版来源映射)新增来源映射 API 说明。原版事实与 U 项状态不变，没有升级置信度。

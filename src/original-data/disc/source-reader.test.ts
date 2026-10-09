@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
-import { deferredByteSource, memoryByteSource, SyntheticByteSource } from '../synthetic.ts';
+import { deferredByteSource, memoryByteSource, SyntheticByteSource } from '../synthetic.test-support.ts';
 import { failure, failureOf, MARKER, rejection } from './disc.test-support.ts';
 import { MAX_PORT_READ_BYTES, readCancellation, readSourceLimits, snapshotSource, SourceReader, type CancellationProbe } from './source-reader.ts';
 

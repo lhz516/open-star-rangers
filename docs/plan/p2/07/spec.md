@@ -128,7 +128,7 @@ reviewed: sha256:86df188dc044
 | [nob-check.ts](../../../../tools/nob-check.ts) | 用同一套容器解析校验全部 CCKD 分组与元素、MFDD 列表与 TABL 图像列表，只输出计数与失败原因；2026-10-08 修订起也校验 SNIP 帧与 DIAG 结构 |
 | 2026-10-08 修订新增的 `src/content/hud/` 文字模块 | 状态显示屏文字 payload 的格式常量、编码、严格读取与绑定检查，不导入 `original-data` |
 | [slice-definition.ts](../../../../src/content/slice-definition.ts)、[source-mapping.ts](../../../../src/original-data/source-mapping.ts) | 2026-10-08 修订：`cockpit-hud-map` 组允许 `data`、切片定义版本 3；image 允许 SNIP、data 允许 DIAG 条目；图像映射可在封包条目后加区域部件 |
-| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、[import-worker.spec.ts](../../../../e2e/import-worker.spec.ts) | 合成 CCKD、MFDD、TABL 与合成光盘，Node 与真实 Worker 用例 |
+| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.test-support.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、[import-worker.spec.ts](../../../../e2e/import-worker.spec.ts) | 合成 CCKD、MFDD、TABL 与合成光盘，Node 与真实 Worker 用例 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | 研究事实与置信度；模块、payload 字节布局、限值、错误码与命令 |
 
 ## 当前实现与依据
@@ -215,7 +215,7 @@ reviewed: sha256:86df188dc044
 
 ### 状态显示屏文字 payload
 
-2026-10-08 修订加入。`data` kind 的 payload，schema 1，由 `content/` 中的文字模块定义；字节布局由实现确定并写入[源码结构指南](../../../engineering/source-structure.md#状态显示屏文字-payload)，改变布局或解释须递增 schema。来源结构见 [hud 的 DIAG 10489](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)。
+2026-10-08 修订加入。`data` kind 的 payload，schema 1，由 `content/` 中的文字模块定义；字节布局由实现确定并写入[源码结构指南](../../../engineering/modules/content.md#状态显示屏文字-payload)，改变布局或解释须递增 schema。来源结构见 [hud 的 DIAG 10489](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)。
 
 | 数据/字段 | 类型、单位与约束 | 说明 |
 |---|---|---|
@@ -515,7 +515,7 @@ reviewed: sha256:86df188dc044
 
 ## 验证策略
 
-- **单元/契约测试：** 布局 payload 与合成放在 `content/graphics/` 相邻的 `*.test.ts`；容器解析、布局声明与转换、图形步骤与生产常量放在 `original-data/conversion/` 相邻的测试；组装、包身份与作业消息放在 `src/workers/` 与 `src/app/import/` 的既有测试。合成 CCKD、MFDD 与 TABL 由代码生成，扩展 [synthetic.ts](../../../../src/original-data/synthetic.ts) 与转换测试支持；覆盖每个新错误条件、限值边界（恰等于与超出 1）与非对称样本。
+- **单元/契约测试：** 布局 payload 与合成放在 `content/graphics/` 相邻的 `*.test.ts`；容器解析、布局声明与转换、图形步骤与生产常量放在 `original-data/conversion/` 相邻的测试；组装、包身份与作业消息放在 `src/workers/` 与 `src/app/import/` 的既有测试。合成 CCKD、MFDD 与 TABL 由代码生成，扩展 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 与转换测试支持；覆盖每个新错误条件、限值边界（恰等于与超出 1）与非对称样本。
 - **Replay/一致性：** 不涉及 Core、tick 或 replay。确定性由“同一输入两次转换、合成逐字节相同”与 SHA-256 断言证明（AC-01、02、13）。
 - **浏览器验证：** 只验证真实 Worker 路径（AC-09），扩展 [import-worker.spec.ts](../../../../e2e/import-worker.spec.ts) 并只用合成光盘。本任务没有页面或 Canvas/WebGL 输出；4:3 合成的位置、颜色与透明在 Node 中逐像素断言，查看器中的实际显示归 P2-11。
 - **原版本地对照：** 开发者机器上的本地基准镜像与 `local/StarRang/captures/` 截图，用于 AC-10 至 AC-14、AC-17 与 AC-18。脚本与输出留在 `local/research/p2-07/`；证据只记命令、文件名、计数与判定，不记像素、颜色值或原版文字。最终保真判定归 P2-12，本任务的比较只决定研究结论与入选。

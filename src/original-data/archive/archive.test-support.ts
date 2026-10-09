@@ -1,5 +1,5 @@
 import type { SourceErrorCode, SourceLimit } from '../source-error.ts';
-import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
+import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { IMFAT_ENTRY_BYTES, IMFAT_HEADER_BYTES, MAX_ARCHIVE_ENTRIES, MAX_ENTRY_BYTES, type ImfatEntry } from './imfat-rules.ts';
 
 /** Marker planted in block bytes; it must never reach a diagnostic. */

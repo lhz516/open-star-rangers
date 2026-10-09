@@ -13,7 +13,7 @@ import { SourceError } from '../source-error.ts';
 import { inLocationGrammar } from '../source-error.test-support.ts';
 import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
 import { catalogFor } from '../source/source.test-support.ts';
-import { buildImfat, syntheticSnd, type SyntheticEntry, type SyntheticSndFields } from '../synthetic.ts';
+import { buildImfat, syntheticSnd, type SyntheticEntry, type SyntheticSndFields } from '../synthetic.test-support.ts';
 import {
   AUDIO_BUDGET_LIMITS, AUDIO_CONVERTER_COMPONENT, convertAudioGroup, readSoundTable, type AudioConversionOptions,
 } from './audio-conversion.ts';

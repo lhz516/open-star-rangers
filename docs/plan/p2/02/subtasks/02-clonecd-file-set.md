@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "02"
 subtask: "02"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 02 — CloneCD 文件组与描述解析
@@ -38,7 +38,7 @@ updated: 2026-10-04
   - `MODE=1`、`INDEX 1=0`，且没有其他 INDEX 键。
   - 其余不支持的布局返回 `unsupported-layout`。
 - **诊断位置：** 只回显白名单内的节与键，未知或畸形的节/键只给行号。
-- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)，可生成与基准盘同形的合成描述，并为各个负向用例逐字段变异。
+- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)，可生成与基准盘同形的合成描述，并为各个负向用例逐字段变异。
 
 ## 不包含
 
@@ -48,7 +48,7 @@ updated: 2026-10-04
 ## 关键文件与契约
 
 - **计划新增：** `src/original-data/disc/clone-cd.ts`（文件组配对与描述解析）、`src/original-data/disc/disc-image.ts`（打开入口：本子任务做到描述与镜像大小，03 再接入卷），以及相邻 `*.test.ts`。
-- **依赖：** 01 的端口、受控读取与错误 DTO；[synthetic.ts](../../../../../src/original-data/synthetic.ts)。
+- **依赖：** 01 的端口、受控读取与错误 DTO；[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)。
 
 ## 验收标准
 
@@ -90,7 +90,7 @@ updated: 2026-10-04
     - `[TRACK 1]` 中除 `INDEX 1` 外的 `INDEX ` 键按行号报 `unsupported-layout`；
     - 0 字节的 `.ccd` 报 `limit-exceeded`（limit 1）；
     - 非法取消探针或选项报 `invalid-record`，位置为 `cancellation`/`options`。
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts) 新增 `cloneCdSections`/`cloneCdText`：与基准盘同形（节、键、CRLF、十六进制 Point/ADR/Control），数值由扇区数生成；0xa0/0xa1 的 PLBA 按公开格式由 MSF 推导，不是地址。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 新增 `cloneCdSections`/`cloneCdText`：与基准盘同形（节、键、CRLF、十六进制 Point/ADR/Control），数值由扇区数生成；0xa0/0xa1 的 PLBA 按公开格式由 MSF 推导，不是地址。
 - **测试：**
   - [clone-cd.test.ts](../../../../../src/original-data/disc/clone-cd.test.ts)、[disc-image.test.ts](../../../../../src/original-data/disc/disc-image.test.ts)，以及共用的纯测试辅助 [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)（标记、首个错误、隐私与 plain data 检查）；[source-reader.test.ts](../../../../../src/original-data/disc/source-reader.test.ts) 改用该辅助。
   - AC-01：

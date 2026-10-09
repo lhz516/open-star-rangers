@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE, addBudgets, type BudgetRecord } from '../../content/budget.ts';
 import { encodeEffectPayload, readEffectPayload, type EffectKind } from '../../content/effects/effect-payload.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
-import { buildImfat, leInternalFixup, type SyntheticEntry } from '../synthetic.ts';
+import { buildImfat, leInternalFixup, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { UNLIMITED_BUDGET, countedVerifiedSource, expectSourceError } from './conversion.test-support.ts';
 import { runEffectStep } from './effect-step.ts';
 import { PRODUCTION_EFFECT_DECLARATIONS, PRODUCTION_EFFECT_MAPPINGS, PRODUCTION_EFFECT_REGIONS } from './production-effects.ts';

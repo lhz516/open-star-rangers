@@ -7,7 +7,7 @@ import { syntheticFileDisc, type SyntheticFileContent } from '../disc/disc.test-
 import type { SourceLimit } from '../source-error.ts';
 import { identifySource, type VerifiedSource } from '../source/identify-source.ts';
 import { catalogFor } from '../source/source.test-support.ts';
-import { buildImfat, ByteWriter, imageRecord, syntheticMesh } from '../synthetic.ts';
+import { buildImfat, ByteWriter, imageRecord, syntheticMesh } from '../synthetic.test-support.ts';
 
 // Code-generated original-format blocks and graphics declarations for conversion tests; never original data.
 

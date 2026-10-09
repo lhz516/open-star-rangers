@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "09"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 09 — 加固 nob-check 与本地全量结构校验
@@ -84,5 +84,5 @@ updated: 2026-10-05
   未采纳：
   - 复用 content 的 `expandImage`：它属于 content 层，`original-data` 的诊断须为 `source` 层；
   - 合并重复读取的 36 字节头：这是 03 审查后有意保留的，约 123 条记录的开销可忽略。
-- **文档影响：** 除上述原版文档与工具文档外，[源码结构](../../../../engineering/source-structure.md#图形转换)补充了 `checkPaletteIndices`。
+- **文档影响：** 除上述原版文档与工具文档外，[源码结构](../../../../engineering/modules/original-data.md#图形转换)补充了 `checkPaletteIndices`。
 

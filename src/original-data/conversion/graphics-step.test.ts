@@ -8,7 +8,7 @@ import { readLayoutPayload } from '../../content/graphics/layout-payload.ts';
 import { encodeImagePayload } from '../../content/graphics/image-payload.ts';
 import { readStatusMessagesPayload, STATUS_MESSAGES_SCHEMA_VERSION } from '../../content/hud/status-messages-payload.ts';
 import { readAssetId } from '../../content/asset-id.ts';
-import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields } from '../synthetic.ts';
+import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields } from '../synthetic.test-support.ts';
 import { SYNTHETIC_ASSETS, syntheticGroup, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';

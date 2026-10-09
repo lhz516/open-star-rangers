@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { openDiscImage } from '../../original-data/disc/disc-image.ts';
 import { snapshotSource, SourceReader } from '../../original-data/disc/source-reader.ts';
-import { directoryData } from '../../original-data/synthetic.ts';
+import { directoryData } from '../../original-data/synthetic.test-support.ts';
 import { fileRecord, parentRecord, selfRecord, syntheticDisc, volumeSectors } from '../../original-data/disc/disc.test-support.ts';
 import { BlobByteSource } from './blob-byte-source.ts';
 

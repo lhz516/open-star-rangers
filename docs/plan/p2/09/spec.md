@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "09"
-updated: 2026-10-05
+updated: 2026-10-08
 related: [ADR-0003, ADR-0007, ADR-0015, U-003, U-008, U-022, U-023, U-025, U-026, U-028, U-031, U-032, B-001, B-003, B-004, B-005]
 reviewed: sha256:3590e3a126bc
 ---
@@ -475,7 +475,7 @@ S-02 的结论必须是以下四种之一：
   - 组装配（AC-09）；
   - Core 载入（AC-11）。
 
-  合成 SCCT/SCEN/M2ID 由扩展的 [synthetic.ts](../../../../src/original-data/synthetic.ts) 或模块内 test-support 生成，带重定位表。
+  合成 SCCT/SCEN/M2ID 由扩展的 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 或模块内 test-support 生成，带重定位表。
 - **集成测试：** 复用 P2-04 的宿主、合成作业、结构化克隆端口与 app 持有者测试支持（AC-10）。合成光盘与白名单沿用 P2-03 的测试支持。
 - **Replay 与一致性：** 本任务不推进 tick，不产生事件，因此不涉及 replay。确定性由两次转换的编码、身份与 `MissionSetup` 深度相等证明；不宣称跨浏览器逐位一致。
 - **浏览器验证：** 不新增，理由见技术决定 12。若实现修改了 Worker 宿主、平台适配或构建配置，重跑 P2-04 的浏览器 Worker 用例。

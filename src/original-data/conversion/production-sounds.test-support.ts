@@ -1,7 +1,7 @@
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../../content/sound-payload.ts';
 import { archiveLocator } from '../source-mapping.ts';
-import { syntheticSnd, type SyntheticEntry } from '../synthetic.ts';
+import { syntheticSnd, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 
 // Synthetic SND entries at the production sound table's entry IDs, generated in code; never original data. Each uses a

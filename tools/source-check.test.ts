@@ -7,7 +7,7 @@ import { BASE_ARCHIVE } from '../src/original-data/archive/archive.test-support.
 import { syntheticFileDisc, type SyntheticFileContent } from '../src/original-data/disc/disc.test-support.ts';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
 import { sourceFingerprint } from '../src/original-data/source/source-catalog.ts';
-import { buildImfat } from '../src/original-data/synthetic.ts';
+import { buildImfat } from '../src/original-data/synthetic.test-support.ts';
 import { NodeByteSource, type ClosableByteSource } from './node-byte-source.ts';
 import { main, RESEARCH_ARCHIVES, runSourceCheck, type SourceCheckOptions } from './source-check.ts';
 

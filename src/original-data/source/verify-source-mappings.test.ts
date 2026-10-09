@@ -7,7 +7,7 @@ import { assetSourceStates, readSourceMappingTable } from '../source-mapping.ts'
 import { SourceError } from '../source-error.ts';
 import { inLocationGrammar } from '../source-error.test-support.ts';
 import { block } from '../archive/archive.test-support.ts';
-import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
+import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { identifySource, type VerifiedSource } from './identify-source.ts';
 import { catalogFor } from './source.test-support.ts';
 import * as verifySourceMappingsModule from './verify-source-mappings.ts';

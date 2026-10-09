@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { expectSourceError } from '../conversion/conversion.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
-import { syntheticModl, type SyntheticModlFields, type SyntheticModlPart } from '../synthetic.ts';
+import { syntheticModl, type SyntheticModlFields, type SyntheticModlPart } from '../synthetic.test-support.ts';
 import { readModel } from './modl.ts';
 
 const PATH = 'models[model/synthetic-ship].model';

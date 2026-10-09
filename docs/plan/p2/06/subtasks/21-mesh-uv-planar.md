@@ -30,7 +30,7 @@ updated: 2026-10-08
 
 ## 关键文件与契约
 
-- [formats/mesh.ts](../../../../../src/original-data/formats/mesh.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)、[convert-models.ts](../../../../../src/original-data/conversion/convert-models.ts) 的 `MODEL_CONVERTER_COMPONENT`、[production-package.ts](../../../../../src/workers/production-package.ts)，以及断言转换器版本的测试。
+- [formats/mesh.ts](../../../../../src/original-data/formats/mesh.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)、[convert-models.ts](../../../../../src/original-data/conversion/convert-models.ts) 的 `MODEL_CONVERTER_COMPONENT`、[production-package.ts](../../../../../src/workers/production-package.ts)，以及断言转换器版本的测试。
 - 原版证据：[mesh §1](../../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed)。
 
 ## 写入范围
@@ -69,7 +69,7 @@ updated: 2026-10-08
   - 结论与 P2-12/22 一致，没有需要停下的相反证据。两个字段中哪一个沿贴图列使用经 `0x7db10` 进入驱动分派的代码，未追踪；轴向仍为高概率（截图对照）。
 - **实现：**
   - [mesh.ts](../../../../../src/original-data/formats/mesh.ts) 的 `readMesh` 对每个顶点读取块[i] 与块[V + i]，经同一个有限性检查，输出每顶点一对；
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts) 的 `syntheticMesh` 输入不变，写入时存为先 u 后 v 的两个数组；UV 个数不是顶点数的 2 倍时抛出 `RangeError`，不再写出缺值；
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 的 `syntheticMesh` 输入不变，写入时存为先 u 后 v 的两个数组；UV 个数不是顶点数的 2 倍时抛出 `RangeError`，不再写出缺值；
   - `MODEL_CONVERTER_COMPONENT` 为 `models-3`，[production-package.ts](../../../../../src/workers/production-package.ts) 与 5 处断言同步。
 - **测试：** [mesh.test.ts](../../../../../src/original-data/formats/mesh.test.ts) 新增“pairs the stored u array and v array per vertex”：直接把 1–6 写入块中的贴图坐标位置，期望读出 `[1, 4, 2, 5, 3, 6]`；字段位置测试断言构建器写入的六个值为两个数组；非有限值分别放在 u 数组与 v 数组中。现有往返测试的期望值未改。
   - **证伪：** 暂时把读取改回每顶点一对，恰有 4 个测试失败（新测试、两条往返与模型转换测试），其余通过；还原后通过。

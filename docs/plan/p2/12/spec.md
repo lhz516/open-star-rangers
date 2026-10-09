@@ -81,7 +81,7 @@ P2-01 至 P2-11 已分别验证各自的层，并在页面上接成导入、缓�
   - **地图框架：** 按 U-032 读取或测量地图换算，确认地图框架的方向与范围。
   - **载入：** Core 在最终候选上载入成功。
 - **S-11 呈现约定判定与修正：**
-  - **判定：** 对[源码结构：资源查看渲染](../../../engineering/source-structure.md#资源查看渲染)中的每项呈现约定给出判定。
+  - **判定：** 对[源码结构：资源查看渲染](../../../engineering/modules/render.md#资源查看渲染)中的每项呈现约定给出判定。
   - **修正：** 证据至少达到高概率，且能用现有呈现接口表达时，修改 [viewer-presentation.ts](../../../../src/render/viewer/viewer-presentation.ts) 及对应测试、文档。若需要逐角 UV、几何展开或新的数据输入，记录缺口并交 P2-11/对应消费者任务处理，不能承诺任意差异都能只改一个文件。
 - **S-12 判定汇总、差异处理与研究回填：**
   - **判定：** 每个对照项都按[判定分类](#判定分类)给出结论。
@@ -165,7 +165,7 @@ P2-01 至 P2-11 已分别验证各自的层，并在页面上接成导入、缓�
   - 已确认结构与保留的规则输入见 [scenario](../../../original/formats/scenario.md#selected-mission-field-inventory-confirmed-structure)；地图方向与范围仍为高概率，见 [B-001](../../../original/behavior/B-001-strategic-map.md#地图框架与坐标轴高概率p2-09)、[executable](../../../original/formats/executable.md#strategic-map-projection)（U-032）。
   - 运行时 CODE/DATA 对应只对被核验的进程成立，不能复用历史加载地址，见 [executable](../../../original/formats/executable.md#bounded-runtime-codedata-object-correlation)。
   - 本地截图入口与生成方法见[基准环境](../../../guides/baseline-environment.md#运行原版)。
-- **呈现约定现状：** 集中在 [viewer-presentation.ts](../../../../src/render/viewer/viewer-presentation.ts)，置信度见[源码结构](../../../engineering/source-structure.md#资源查看渲染)。方向（UV 原点）、坐标轴与手性、跨接缝插值为“未确认，由 P2-12 判定”；光照、颜色空间、透明与相机是项目选择。
+- **呈现约定现状：** 集中在 [viewer-presentation.ts](../../../../src/render/viewer/viewer-presentation.ts)，置信度见[源码结构](../../../engineering/modules/render.md#资源查看渲染)。方向（UV 原点）、坐标轴与手性、跨接缝插值为“未确认，由 P2-12 判定”；光照、颜色空间、透明与相机是项目选择。
 
 ## 行为与边界
 
@@ -343,7 +343,7 @@ P2-01 至 P2-11 已分别验证各自的层，并在页面上接成导入、缓�
 
 ### 呈现约定判定
 
-逐行判定[源码结构](../../../engineering/source-structure.md#资源查看渲染)中的呈现约定：
+逐行判定[源码结构](../../../engineering/modules/render.md#资源查看渲染)中的呈现约定：
 
 | 约定 | 判定要求 |
 |---|---|

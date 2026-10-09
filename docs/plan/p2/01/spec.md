@@ -63,7 +63,7 @@ P1 已证明合成 Core、Runtime、渲染和 UI 可以端到端运行，但当�
 
 - `src/content/` 和 `src/workers/` 当前不存在；[源码结构指南](../../../engineering/source-structure.md#职责与依赖)只规定其计划职责，不是已有 API。
 - [imfat.ts](../../../../src/original-data/imfat.ts)定义 `ImfatEntry`/`ImfatArchive`，所有条目仍以原版 ID、type、offset、size 表示；[payloads.ts](../../../../src/original-data/payloads.ts)返回图像、字体、网格和模型的解析结构。两者均没有稳定 Asset ID、内容版本、切片角色或完整包判定。
-- [synthetic.ts](../../../../src/original-data/synthetic.ts)只构造原版格式测试字节；它不是规范内容 fixture，也不能作为原版来源身份。
+- [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts)只构造原版格式测试字节；它不是规范内容 fixture，也不能作为原版来源身份。
 - [core 类型配置](../../../../tsconfig.core.json)已经把 `src/content` 与 `src/core`、`src/original-data` 放在同一个无 DOM/Node 的纯模块程序；[工程约定](../../../engineering/README.md#typescript-配置)和 [ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)禁止建立全局 schema 或空目录。
 - [P0 可行性评审](../../../reviews/P0-feasibility.md#3-p2-所需资源类型的现状)确认主要资源类型可解析，但浏览器导入、规范内容、Worker 和缓存均未实现；不能把研究工具输出当作本任务已经存在的清单。
 - 任务内容位于 `SCENARIO.NOB` 已确认；SCCT 三组 slot 0 指向同一个 SCEN 的结构已确认，但“三组是三个难度版本”为**高概率**，见 [scenario §4](../../../original/formats/scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)和 U-003。采用中间组是首选 slot 0 的代表性基准选择，不宣称为原版默认难度；首选不合格后的实际基准组见[候选选择记录](#候选选择记录)。

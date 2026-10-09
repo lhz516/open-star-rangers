@@ -23,6 +23,7 @@ updated: 2026-10-08
 | [original/input/key-map.md](./original/input/key-map.md) | 原版键位与浏览器冲突表 | 参考类 | 中文 |
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
 | [engineering/source-structure.md](./engineering/source-structure.md) | 当前源码目录、职责边界、后续扩展落点与历史路径迁移；决定见 ADR-0015 | 参考类 | 中文 |
+| [engineering/modules/](./engineering/source-structure.md#模块说明) | 源码结构指南的模块分册：各模块已交付代码的当前 API 与契约要点 | 参考类 | 中文 |
 | [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 本项目当前构建的键位绑定、按键功能、焦点/拦截/清键规则与尚未实现的键盘能力；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |

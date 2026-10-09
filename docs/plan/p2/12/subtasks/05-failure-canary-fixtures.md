@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "12"
 subtask: "05"
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # 05 — 失败与金丝雀合成场景及 Node 固定预期
@@ -37,7 +37,7 @@ updated: 2026-10-07
 
 ## 关键文件与契约
 
-- [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts)、[synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts)、[app-entry.test-support.tsx](../../../../../src/app/app-entry.test-support.tsx)、[disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)、[logic-content.test-support.ts](../../../../../src/content/logic/logic-content.test-support.ts)。
+- [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts)、[synthetic-import.test-support.ts](../../../../../src/workers/synthetic-import.test-support.ts)、[app-entry.test-support.tsx](../../../../../src/app/app-entry.test-support.tsx)、[disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)、[logic-content.test-support.ts](../../../../../src/content/logic/logic-content.test-support.ts)。
 - [app-entry.ts](../../../../../e2e/support/app-entry.ts)（`TestEntryOptions`）、[production-cache.ts](../../../../../e2e/support/production-cache.ts)。
 - 错误契约依据：[import-host.ts](../../../../../src/workers/import-host.ts) 的层级映射、[import-job-owner.ts](../../../../../src/app/import/import-job-owner.ts) 的协议错误、disc 与 source 的既有测试。
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
-import { directoryData, memoryByteSource } from '../synthetic.ts';
+import { directoryData, memoryByteSource } from '../synthetic.test-support.ts';
 import { openDiscImage } from './disc-image.ts';
 import {
   failure, failureOf, fileRecord, MARKER, parentRecord, rejection, selfRecord, syntheticDisc, volumeSectors,

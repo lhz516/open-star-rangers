@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "18"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 18 — 效果步骤、生产输入与作业集成
@@ -116,4 +116,4 @@ updated: 2026-10-06
 - **检查：**
   - `pnpm check` 通过（137 个文件，4,024 个测试）。
   - `pnpm test:e2e e2e/import-worker.spec.ts` 通过（15 个）。simplify 之前的全部 E2E 也通过（61 个）。
-- **文档：** [源码结构](../../../../engineering/source-structure.md#效果步骤)新增“效果步骤”一节，并同步作业、注入点、合成光盘与组草稿；[工程约定](../../../../engineering/README.md)同步 E2E 模型场景。
+- **文档：** [源码结构](../../../../engineering/modules/original-data.md#效果步骤)新增“效果步骤”一节，并同步作业、注入点、合成光盘与组草稿；[工程约定](../../../../engineering/README.md)同步 E2E 模型场景。

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as payloads from './payloads.ts';
 import { parseIdList } from './payloads.ts';
-import { ByteWriter } from './synthetic.ts';
+import { ByteWriter } from './synthetic.test-support.ts';
 
 describe('parseIdList', () => {
   it('reads an ID list', () => {

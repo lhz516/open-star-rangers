@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "02"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # P2-02：CCD/IMG 与 ISO9660 按需读取 — Goal
@@ -21,7 +21,7 @@ updated: 2026-10-05
 ## 代码现状与前提
 
 - **现有解析只接受内存字节：** [imfat.ts](../../../../src/original-data/imfat.ts) 与 [payloads.ts](../../../../src/original-data/payloads.ts) 只解析已在内存中的完整字节。仓库中没有光盘镜像读取代码；`src/original-data/io/`、`src/original-data/disc/`、`src/platform/files/` 与 `workers/` 都不存在。
-- **合成构建器：** [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `ByteWriter` 只有小端写入，需要扩展大端或双端序写入，才能生成合成 ISO9660 结构。
+- **合成构建器：** [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `ByteWriter` 只有小端写入，需要扩展大端或双端序写入，才能生成合成 ISO9660 结构。
 - **路径规则：** 光盘路径语法目前是 [source-mapping.ts](../../../../src/original-data/source-mapping.ts) 中的私有常量（`DOS_NAME`/`DISC_PATH`），须抽出供两处共用，且不改变来源映射行为。
 - **P2-01 已完成**（`node tools/task-state.ts p2/01` 输出 `done`），本任务可直接复用：
   - [budget.ts](../../../../src/content/budget.ts) 的 `readBudgetRecord`、`chargeBudget`、`EMPTY_BUDGET_USAGE`；

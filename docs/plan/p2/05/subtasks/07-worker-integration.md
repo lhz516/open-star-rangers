@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "07"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 07 — 导入作业接入图形阶段
@@ -94,7 +94,7 @@ updated: 2026-10-05
   - 作业与集成测试的阶段断言改为直接判断。
 
   未采纳“节流进度”：spec 要求每次端口读取完成发送一次进度。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#导入-worker)的“导入 Worker”一节更新：
+- **文档影响：** [源码结构](../../../../engineering/modules/workers.md#导入-worker)的“导入 Worker”一节更新：
   - 协议版本 2、两个阶段与 `canReportStage`，宿主与持有者的阶段顺序规则；
   - 作业的阶段计量、图形转换、限值与用量合并，`groups` 为空，注入点；
   - `NO_GRAPHICS` 测试支持与集成测试覆盖。

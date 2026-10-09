@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ByteSource } from '../io/byte-source.ts';
 import { SourceError } from '../source-error.ts';
-import { leInternalFixup, syntheticLeExecutable, type SyntheticLeFields } from '../synthetic.ts';
+import { leInternalFixup, syntheticLeExecutable, type SyntheticLeFields } from '../synthetic.test-support.ts';
 import { EXECUTABLE_LIMITS, openLeExecutable } from './le-executable.ts';
 
 // P2-06 AC-18 (EXE part): code-generated LE files only.

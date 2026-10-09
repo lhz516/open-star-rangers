@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "07"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 07 — 导入作业、协议与 `models` 组
@@ -133,7 +133,7 @@ updated: 2026-10-06
   - 删除 `models-corrupt` 场景：08 会使用它；
   - `syntheticSource` 改用 `syntheticVerifiedSource`：后者没有版本 ID 参数，填充文件也不同，得不到相同的指纹。
 - **文档影响：** 已更新：
-  - [源码结构](../../../../engineering/source-structure.md#导入-worker)：协议版本 5 与相邻规则、宿主规则、作业的五个阶段、预算组合、`models` 组装配、`ConverterVersion`、注入点、测试支持与集成测试；
+  - [源码结构](../../../../engineering/modules/workers.md#导入-worker)：协议版本 5 与相邻规则、宿主规则、作业的五个阶段、预算组合、`models` 组装配、`ConverterVersion`、注入点、测试支持与集成测试；
   - [工程约定](../../../../engineering/README.md#本地浏览器-runner)：导入 Worker 浏览器测试的阶段与身份推导；
   - [工具指南](../../../../guides/tools.md#逻辑组核对)：logic-check 的核对内容与读取量字段。
 

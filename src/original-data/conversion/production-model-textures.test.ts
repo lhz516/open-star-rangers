@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
 import { quadGeometry } from '../../content/models/models.test-support.ts';
-import { syntheticModl } from '../synthetic.ts';
+import { syntheticModl } from '../synthetic.test-support.ts';
 import { countedVerifiedSource, meshBlockFor, textureBlock } from './conversion.test-support.ts';
 import { convertModels } from './convert-models.ts';
 import { runGraphicsStep } from './graphics-step.ts';

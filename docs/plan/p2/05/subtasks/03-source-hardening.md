@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 03 — 源结构加固与 `SourceError` 扩展
@@ -29,7 +29,7 @@ updated: 2026-10-05
   - **CCKD 字体目录：** 恰为 3 项，各项在块内，否则报 `invalid-payload`；`fonts/<i>` 在 i ≥ 3 时报 `subresource-not-found`。
   - **MFDD 列表：** 计数以块内能容纳的记录数为界，每条记录经上述头部校验；供 09 的全量校验使用，容器语义仍归 P2-07。
 - **[payloads.ts](../../../../../src/original-data/payloads.ts)：** 图像、调色板与字体函数改为委托上述实现，或删除并更新全部已跟踪的调用者（[nob-check.ts](../../../../../tools/nob-check.ts)、[payloads.test.ts](../../../../../src/original-data/payloads.test.ts)）。不保留第二套解码逻辑；`PayloadError` 只留给 MESH/MODL（归 P2-06）。
-- **测试：** 用 [synthetic.ts](../../../../../src/original-data/synthetic.ts) 的 `ByteWriter` 与 `imageRecord` 生成样本：
+- **测试：** 用 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 的 `ByteWriter` 与 `imageRecord` 生成样本：
   - **AC-01：** DATA 分量 0、1、32、63 展开为 0、4、130、255；块长 767 或 769、分量 64 被拒绝；BGR (1, 2, 3) 得到 RGB (3, 2, 1)；条目数 1 与 256 通过、257 被拒绝；没有嵌入调色板时报 `subresource-not-found`。
   - **AC-02：** 3×2 raw 与 5×3 RLE 的非对称样本，含长度为 0 的首个透明段与全透明行；结果逐像素与期望相同；修改源块后结果不变，结果缓冲可交给 `payloadTransferList`。
   - **AC-03：** 位深、保留字段、指针越界、raw 长度、RLE 三类错误、编码 1 与 3、宽高为 0、宽 641、高 481。声明 65535×65535 的记录只读头部即以 `limit-exceeded` 拒绝，不出现 `RangeError`。
@@ -69,7 +69,7 @@ updated: 2026-10-05
 - **实现（2026-10-05）：**
   - [source-error.ts](../../../../../src/original-data/source-error.ts) 追加 7 个 code、5 个结构限值名与 P2-01 的全部预算维度，`observed` 改为 `number | null`。消费者核对：Worker 宿主按层原样转换，协议的 `readLimit` 本已接受 null，其余生产代码只构造数值的 `observed`。
   - 新增 [source-graphics.ts](../../../../../src/original-data/conversion/source-graphics.ts)：`readDataPalette`、`readImageRecordHeader`、`decodeImageRecord`、`readEmbeddedPalette`、`readMfdRecordOffsets`、`readFontTable`、`readCockpitFonts` 与 `readCockpitFont`。按 spec 的顺序校验，越界比较不做加法，头部之后才按尺寸分配。解码与读取嵌入调色板都从块中重新校验记录头。输出放在独占的新缓冲中（经 `exclusiveBytes`，其返回类型细化为 `Uint8Array<ArrayBuffer>`），失败抛出 `SourceError`，位置为调用者 `path` 下的 `palette`、`record`、`pixels`、`glyphs` 或 `fonts`。
-  - [payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseVgaPalette`、`parseImage`、`decodeSpriteRle`、`parseMfdImages`、`parseBitmapFont`、`parseCockpitFonts` 及其类型，只留 ID 列表与 MESH/MODL；[payloads.test.ts](../../../../../src/original-data/payloads.test.ts) 相应删减。[nob-check.ts](../../../../../tools/nob-check.ts) 改用新读取，额外读取 TEX/BITM 的嵌入调色板。[synthetic.ts](../../../../../src/original-data/synthetic.ts) 的 `imageRecord` 增加可选的位深与保留字段。
+  - [payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseVgaPalette`、`parseImage`、`decodeSpriteRle`、`parseMfdImages`、`parseBitmapFont`、`parseCockpitFonts` 及其类型，只留 ID 列表与 MESH/MODL；[payloads.test.ts](../../../../../src/original-data/payloads.test.ts) 相应删减。[nob-check.ts](../../../../../tools/nob-check.ts) 改用新读取，额外读取 TEX/BITM 的嵌入调色板。[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 的 `imageRecord` 增加可选的位深与保留字段。
 - **测试：** `pnpm exec vitest run src/original-data/conversion`，[source-graphics.test.ts](../../../../../src/original-data/conversion/source-graphics.test.ts) 57 项通过：
   - **AC-01：** DATA 分量 0、1、32、63 展开为 0、4、130、255，结果独占；767、769 字节与分量 64 都报 `invalid-payload@…palette`，不截断。BGR (1, 2, 3) 得到 (3, 2, 1)；1 与 256 项通过；257 项为 `limit-exceeded@palette`，limit `{paletteEntryCount, 256, 257}`。没有嵌入调色板时为 `subresource-not-found`。
   - **AC-02：** 3×2 raw 逐像素相同，修改源块后结果不变，可交给 `payloadTransferList`。5×3 RLE（首个透明段长度为 0、含全透明行）的索引与掩码字节逐位符合期望，并能经 01 的编码器往返。另有长度为 0 的不透明段、对齐 16 像素与不对齐 14 像素的长段（整字节与边缘位），以及块内偏移处的记录。
@@ -80,5 +80,5 @@ updated: 2026-10-05
 - **回归：** `pnpm exec vitest run src/original-data src/content` 35 个文件 1173 项通过，P2-03 的核验与位置语法测试不变。本地 `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` 改动前后计数相同（TEX 59、BITM 28、CCKD 3、MFDD 3 及其余类型），失败均为 0；输出只有计数。`pnpm typecheck`、`pnpm lint` 与 `pnpm check` 通过。
 - **Rubber-duck：** 两项 Medium 已修复：解码与读取嵌入调色板原先信任调用者传入的头部，现改为从块中重新校验；CCKD 字体表原先返回源块视图，现在只公开解析后的独占结果。Low（缺少长度为 0 的不透明段用例）已补。
 - **Simplify：** 采纳 `exclusiveBytes` 复制、测试改用共享的 `imageRecord`（新增可选字段）、只在本模块使用的常量与 `fieldAt` 改为私有、每个记录头只建一个 `DataView`、RLE 掩码按整字节写入（并补长段用例），以及 RLE 样本只保留一份。未采纳：nob-check 合并 TEX 读取（重读 36 字节头是为不信任头部而有意付出的代价）、MFDD 返回区间（列表长度已以块长为界）、只为所选 CCKD 字库建视图（只有 3 项）。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)新增“图形转换”一节（源结构读取、位置与 `SourceError` 扩展），目录树加入 `conversion/`。[工程约定](../../../../engineering/README.md#测试)的字体目录条目改为新模块。[hud](../../../../original/formats/hud.md) 与 [textures](../../../../original/formats/textures.md) 的解析器指针更新，原版事实不变。工具指南中 nob-check 的描述仍然准确，输出格式由 09 调整。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#图形转换)新增“图形转换”一节（源结构读取、位置与 `SourceError` 扩展），目录树加入 `conversion/`。[工程约定](../../../../engineering/README.md#测试)的字体目录条目改为新模块。[hud](../../../../original/formats/hud.md) 与 [textures](../../../../original/formats/textures.md) 的解析器指针更新，原版事实不变。工具指南中 nob-check 的描述仍然准确，输出格式由 09 调整。
 

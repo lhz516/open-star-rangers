@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteWriter, directoryRecord, ISO_DIRECTORY_FLAG, primaryVolumeDescriptor, volumeDescriptor } from '../synthetic.ts';
+import { ByteWriter, directoryRecord, ISO_DIRECTORY_FLAG, primaryVolumeDescriptor, volumeDescriptor } from '../synthetic.test-support.ts';
 import { openDiscImage } from './disc-image.ts';
 import { failure, failureOf, requestedLbas, rootRecord, syntheticDisc, volumeSectors } from './disc.test-support.ts';
 

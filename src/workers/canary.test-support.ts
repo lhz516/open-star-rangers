@@ -4,7 +4,7 @@ import { PRODUCTION_SOUND_TABLE } from '../original-data/conversion/production-s
 import type { SyntheticFileContent } from '../original-data/disc/disc.test-support.ts';
 import { PRODUCTION_CATALOG } from '../original-data/source/source-catalog.ts';
 import { archiveLocator } from '../original-data/source-mapping.ts';
-import { buildImfat, syntheticSnd } from '../original-data/synthetic.ts';
+import { buildImfat, syntheticSnd } from '../original-data/synthetic.test-support.ts';
 import { productionSizedFiles, sliceCoveredFiles } from './synthetic-import.test-support.ts';
 
 // P2-12 network canaries (spec, network audit): code-generated synthetic markers placed where the import reads them and,

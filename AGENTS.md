@@ -28,7 +28,7 @@ Keep this entry point short. Detailed rules belong in the engineering guides. `d
 - **Dependency licenses:** permissive licenses are allowed; LGPL only as a separately loaded module; no GPL/AGPL in the shipped web build (see master plan §9.2).
 - **`src/core` must stay pure:** no React, Zustand, Three.js, DOM, IndexedDB, `Math.random`, `Date.now`, or `performance.now` (master plan §4.1, §5). `pnpm typecheck` and `pnpm lint` enforce this.
 - **Keep state and side effects separate:** Core owns game state and returns domain events; Runtime owns scheduling, command queues, and Event Bus dispatch. UI and rendering must not mutate Core state (master plan §4–5).
-- **Automated tests and public CI never read original files.** Build format test data with [`src/original-data/synthetic.ts`](src/original-data/synthetic.ts). Local reference experiments may use original files, but their output stays in `local/`.
+- **Automated tests and public CI never read original files.** Build format test data with [`src/original-data/synthetic.test-support.ts`](src/original-data/synthetic.test-support.ts). Local reference experiments may use original files, but their output stays in `local/`.
 
 ## Languages
 

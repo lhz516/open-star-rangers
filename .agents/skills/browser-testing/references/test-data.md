@@ -10,7 +10,7 @@ Some of these modules may not exist yet. Do not invent a storage schema or assum
 
 ## Format fixtures
 
-Reuse [synthetic.ts](../../../../src/original-data/synthetic.ts) and nearby parser tests:
+Reuse [synthetic.test-support.ts](../../../../src/original-data/synthetic.test-support.ts) and nearby parser tests:
 
 - `ByteWriter` builds explicit little-endian fields.
 - `buildImfat` builds code-owned archive directories/payloads.

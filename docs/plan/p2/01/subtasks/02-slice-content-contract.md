@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "02"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 02 — 切片定义与角色清单
@@ -48,4 +48,4 @@ updated: 2026-10-04
 - **审查：** rubber-duck 提出 3 个阻塞问题。① 音效“恰好 1 个”把未确认语义固化，已改为至少 1 个；② 按角色字面量搜索唯一性既会误报也会漏报，已改为名义类型加类型检查器边界规则；③ 几何身份测试是同义反复，已删除，并把验收第 4 项按依赖关系限定为契约层保证，字节层要求明确交由 04/05 实现、06 验证（06 工作范围已列出对应用例）。①已经复核确认解决，②③按审查者提出的最小修正实施，同一审查者复核后确认三项均已解决、无剩余修正。
 - **simplify：** 四个角度的审查一致指出唯一性检测放错了层级、重复了已有基础设施、每次运行都重复扫描源码，已移入工程边界回归并复用共享的应用程序构建；与 S-03 用例或 08 测试重复的断言已删除。没有跳过的发现。
 - **验证：** `pnpm exec vitest run src/content tools/engineering-boundaries.test.ts` 为 6 个文件 217 项通过；`pnpm check` 为 61 个文件 1457 项通过，四个 TypeScript 程序、lint 与生产构建均通过；依赖与锁文件未变。不适用 browser-testing。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)与[工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)已更新；原版事实、命令与操作指南无变化。
+- **文档影响：** [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)与[工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)已更新；原版事实、命令与操作指南无变化。

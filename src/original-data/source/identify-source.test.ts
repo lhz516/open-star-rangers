@@ -10,7 +10,7 @@ import {
 } from '../disc/disc.test-support.ts';
 import { SourceError } from '../source-error.ts';
 import { inLocationGrammar } from '../source-error.test-support.ts';
-import { SYNTHETIC_RAW_SECTOR_BYTES as RAW, SYNTHETIC_SECTOR_DATA_BYTES as SECTOR, SyntheticByteSource } from '../synthetic.ts';
+import { SYNTHETIC_RAW_SECTOR_BYTES as RAW, SYNTHETIC_SECTOR_DATA_BYTES as SECTOR, SyntheticByteSource } from '../synthetic.test-support.ts';
 import { HASH_SEGMENT_BYTES, identifySource } from './identify-source.ts';
 import { openVerifiedSource } from './open-verified-source.ts';
 import { PRODUCTION_CATALOG, readSourceCatalog, sourceFingerprint, type SourceCatalog } from './source-catalog.ts';

@@ -113,7 +113,7 @@ reviewed: sha256:78d7582af903
 | [source-error.ts](../../../../src/original-data/source-error.ts)、[contract-validation.ts](../../../../src/content/contract-validation.ts) | 追加本任务的限值名与 content code；已有 code 与限值的含义不变 |
 | [import-job.ts](../../../../src/workers/import-job.ts)、[import-protocol.ts](../../../../src/workers/import-protocol.ts)、[import-job-owner.ts](../../../../src/app/import/import-job-owner.ts) | 合入后：追加模型阶段，递增协议版本，装配并发送 `models` 组；持有者按新的阶段集合校验顺序 |
 | [nob-check.ts](../../../../tools/nob-check.ts) | 改用加固后的 MESH 与 MODL 读取，只输出计数与失败原因 |
-| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.ts)、`src/workers/` 的测试支持、`e2e/import-worker.spec.ts` | 合成网格、模型、贴图与封包，Node 与真实 Worker 用例 |
+| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.test-support.ts)、`src/workers/` 的测试支持、`e2e/import-worker.spec.ts` | 合成网格、模型、贴图与封包，Node 与真实 Worker 用例 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | 研究事实与置信度、模块与命令说明 |
 
 ## 当前实现与依据
@@ -125,7 +125,7 @@ reviewed: sha256:78d7582af903
   - [completeness.ts](../../../../src/content/completeness.ts) 的 `validateGroup` 检查角色基数、组内依赖闭包、payload 身份与来源状态。依赖非本组 kind（如 `sound`）时，作为类型化外部要求返回；来源状态不是 `verified` 时组不完整（`source-not-ready`）。
   - [budget.ts](../../../../src/content/budget.ts) 已有 `vertices` 与 `triangles` 维度，以及 `addBudgets`。
 - **图形管线（P2-05）：**
-  - [图形 payload](../../../engineering/source-structure.md#图形-payload)：`expandImage` 是唯一的调色板查找与最近色实现，最近色规则暂定（U-028）。
+  - [图形 payload](../../../engineering/modules/content.md#图形-payload)：`expandImage` 是唯一的调色板查找与最近色实现，最近色规则暂定（U-028）。
   - [转换声明](../05/spec.md#图形转换声明)支持整条目 TEX 图像、`palette` 子资源与 `{ nearest: … }` 显示映射。
   - [生产图形](../../../../src/original-data/conversion/production-graphics.ts)已在 `models` 组产生 `palette/flight/models`。
   - [图形步骤](../../../../src/original-data/conversion/graphics-step.ts)按资源组分区返回描述符、payload 与来源状态，留待 P2-06/07 装配。
@@ -498,7 +498,7 @@ schema 版本为 1，由计划新增的 `content/` 模块定义。编码为小�
   - 步骤与 `models` 组：AC-08；
   - 作业、协议与持有者：AC-09。
 
-  合成样本由 [synthetic.ts](../../../../src/original-data/synthetic.ts) 的构造器生成，测试不读取 `local/`。
+  合成样本由 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的构造器生成，测试不读取 `local/`。
 - **Replay/一致性：** 不适用。本任务不改变 Core、Runtime 或 replay；确定性只要求同一输入与声明的 payload 字节与 SHA-256 相同。
 - **浏览器验证：** AC-10 在 Playwright 的 development 项目中用合成光盘运行真实模块 Worker；按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 使用合成数据与隔离上下文。本任务没有画面，不做 WebGL 断言；模型渲染的浏览器验证归 P2-11。
 - **实机/原版对照：**

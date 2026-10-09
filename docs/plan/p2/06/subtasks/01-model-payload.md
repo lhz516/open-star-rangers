@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "01"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 01 — 规范模型 payload 与消费辅助
@@ -76,7 +76,7 @@ updated: 2026-10-05
 - **实现：** [model-payload.ts](../../../../../src/content/models/model-payload.ts) 定义 schema 1：22 字节头部（显式存储列表数 3 与音效槽数 5，供读取器拒绝不符的值）、严格升序且恰为实际使用 ID 的引用表、11 字节部件、按首次使用排序的几何（位置、UV、法线分平面存储），同一模型只有一种字节表示。`encodeModelPayload` 与 `readModelPayload` 共用同一组规则；读取器先检查计数范围、确认字节存在，然后才分配。另有 `MODEL_LIMITS`、`MODEL_PAYLOAD_LAYOUT`、`modelPayloadLength`、`modelReferences` 与 `checkModelBinding`。[model-parts.ts](../../../../../src/content/models/model-parts.ts) 提供 `modelPartItems` 与 `expandModelTextures`，后者只调用 `expandImage`。[contract-validation.ts](../../../../../src/content/contract-validation.ts) 追加 `invalid-model-payload`，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的类型完整记录同步。
 - **AC-01：** [model-payload.test.ts](../../../../../src/content/models/model-payload.test.ts) 用 [models.test-support.ts](../../../../../src/content/models/models.test-support.ts) 的合成模型覆盖：列表 2 为空、两个部件共用几何 0、有无贴图、颜色 0 与 255、标志字 0xFFFFFFFF 等原值、同一 sound 占两个槽、空槽。往返后按位比较浮点（含负零、最小与最大次正规数、最大有限值），容器冻结，几何数组各占独立缓冲且与 payload 和输入互不影响；两次编码逐字节与 SHA-256 相同，长度等于 `modelPayloadLength`；4,096 顶点与三角形、256 部件的边界往返通过。读取器按表逐项拒绝截断、尾随字节、列表数 2、槽数 6、几何数 0 或超过部件数、部件数 0 或 257、顶点或三角形数 0 或 4,097、着色槽数 0 或超过角点数、索引等于顶点数、角点槽等于槽数、NaN 与正负无穷、几何序号越界或不按首次使用、引用越界、kind 不符、引用乱序或未使用，均报 `invalid-model-payload` 与字段路径；声明 65,535 个顶点的头部按计数字段拒绝。颜色以 u8 存储，大于 255 不可表示，由编码器拒绝（256、−1、0.5 与稀疏数组）。schema 2 报 `unsupported-payload-schema`；已转移的字节或数组报 `payload-detached`；`checkModelBinding` 对非 model、缺少或多出依赖、kind 不符报 `binding-mismatch`。
 - **AC-02：** [model-parts.test.ts](../../../../../src/content/models/model-parts.test.ts) 覆盖列表 0–2 的部件项与几何、无贴图部件只有 `colour` 一个字段、有贴图部件为 `{ colour, texture, wrap: 'repeat' }`；返回项冻结，修改返回的数组不影响 payload 与后续调用。列表序号 3、−1、0.5、NaN 报 `invalid-model-payload@list`。用合成的 nearest 图像（其一带掩码）与飞行调色板，`expandModelTextures` 的结果与直接调用 `expandImage` 逐字节相同；缺少、多出或改名的图像报 `binding-mismatch@images`，缺少或多出调色板报 `binding-mismatch@palettes`。
-- **AC-15、AC-16：** [源码结构](../../../../engineering/source-structure.md#模型-payload)新增“模型 payload”一节与目录树条目：字节布局、限值、编码与读取规则、payload 不承载的含义、消费者边界（坐标、轴向、手性、绕序、UV 原点不作解释；GPU 纹理按 image ID 共享；几何不跨模型共享）与 P2-12 对照入口。新模块只导入 `content/` 内的模块，`pnpm exec vitest run tools/engineering-boundaries.test.ts` 通过（88 项）。
+- **AC-15、AC-16：** [源码结构](../../../../engineering/modules/content.md#模型-payload)新增“模型 payload”一节与目录树条目：字节布局、限值、编码与读取规则、payload 不承载的含义、消费者边界（坐标、轴向、手性、绕序、UV 原点不作解释；GPU 纹理按 image ID 共享；几何不跨模型共享）与 P2-12 对照入口。新模块只导入 `content/` 内的模块，`pnpm exec vitest run tools/engineering-boundaries.test.ts` 通过（88 项）。
 - **检查：** `pnpm exec vitest run src/content src/workers/import-protocol.test.ts` 通过（23 个文件、986 项）；`pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过（124 个文件、3,727 项，生产构建成功）。
 - **rubber-duck：** 无阻塞问题。采纳一项：编码器原本接受稀疏数组，现改用 `readArray` 拒绝空洞，并增加颜色、音效槽与部件列表的稀疏数组用例。审查确认了浮点按位保留、计数先于分配、拒绝用例命中预期条件、规范形式不会拒绝合法的转换输出（列表 0 为空、跨列表共用 MESH、重复音效槽），以及诊断不回显取值。
 - **simplify：** 采纳：读取器的逐元素映射回调改为预分配数组加循环；`expandModelTextures` 对每个贴图只计算一次 `imagePalettes`；几何断言移入测试支持供两份测试共用；`floatBits` 不再复制数组；`set16`、`set32` 移入 [graphics.test-support.ts](../../../../../src/content/graphics/graphics.test-support.ts)，图像测试改用共享版本。未采纳：

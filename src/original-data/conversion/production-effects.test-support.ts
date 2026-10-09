@@ -5,7 +5,7 @@ import {
 } from '../../content/effects/effect-payload.ts';
 import { bitsOf } from '../../content/effects/effects.test-support.ts';
 import { effectExpansionSize } from '../../content/effects/expand-effects.ts';
-import { syntheticLeExecutable, type SyntheticEntry } from '../synthetic.ts';
+import { syntheticLeExecutable, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { MISSILE_RECORD_BYTES } from './effect-declarations.ts';
 import { PRODUCTION_EFFECT_DECLARATIONS, PRODUCTION_EFFECT_REGIONS, PRODUCTION_RENS_ENTRY } from './production-effects.ts';
 import { PRODUCTION_GRAPHICS_REGION_WRITES } from './production-graphics.test-support.ts';

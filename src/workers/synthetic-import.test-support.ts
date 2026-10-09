@@ -24,7 +24,7 @@ import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data
 import { syntheticEffectExecutable } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
-import { buildImfat, syntheticSnd } from '../original-data/synthetic.ts';
+import { buildImfat, syntheticSnd } from '../original-data/synthetic.test-support.ts';
 import type { ImportJob } from './import-host.ts';
 import {
   createImportJob, type AudioStageInput, type GraphicsStepInput, type LogicStepInput, type ModelStepInput, type OpenSource,

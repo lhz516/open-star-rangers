@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "04"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 04 — 图形转换声明与转换器
@@ -88,5 +88,5 @@ updated: 2026-10-05
 - **工程：** `pnpm typecheck`、`pnpm lint`、`pnpm check`（含工程边界回归）通过；`conversion/` 只值导入 content、`source-error.ts` 与同目录模块，不触及 `archive/` 或 `imfat.ts`。
 - **Rubber-duck：** 无 Blocker/High。Medium（起始用量可带入 `sourceReadBytes`，违反转换用量为 0 且可能重复计量）已改为拒绝并加测试。Low（字符映射在扣除前展开）已改为先按区间计数扣除、再展开。
 - **Simplify：** 采纳声明读取复用 `requireInteger` 与 `readPaletteReference`、像素越界检查先比索引再查掩码、测试支持去掉断言式类型与多余导出。未采纳：嵌套 kind 判别无法让 TypeScript 收窄，类型断言保留；`checkBindings` 改用 `imagePalettes` 会失去按字段的错误位置；重读 36 字节头是 03 审查后有意保留的；行反转与编码融合只影响需要证据的少数图像；声明分桶与字符映射展开规模很小。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)的“图形转换”一节补充转换声明与转换器（来源类型、顺序、预算扣除、错误位置），“图形 payload”一节补充长度辅助与 `imagePalettes`，content 概述补充 `readRole`，目录树加入两个文件。工程约定、工具指南与原版文档无需更新：没有新命令或原版事实。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#图形转换)的“图形转换”一节补充转换声明与转换器（来源类型、顺序、预算扣除、错误位置），“图形 payload”一节补充长度辅助与 `imagePalettes`，content 概述补充 `readRole`，目录树加入两个文件。工程约定、工具指南与原版文档无需更新：没有新命令或原版事实。
 

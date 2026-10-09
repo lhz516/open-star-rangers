@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "16"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 16 — LE 可执行文件的区域读取
@@ -21,7 +21,7 @@ updated: 2026-10-06
   - 越出对象、跨入不由文件页支持的部分、与修正记录的目标位置重叠，都报 `invalid-payload`；
   - 对象数、页数与区域长度先于分配检查，超出报 `limit-exceeded`（`executableObjects`、`executablePages`、`executableRegion`）。
 - 在 [source-error.ts](../../../../../src/original-data/source-error.ts) 追加 spec 的六个效果限值名。
-- 在 [synthetic.ts](../../../../../src/original-data/synthetic.ts) 新增代码生成的合成 LE 文件：MZ 头、LE 头、对象表、页映射、修正页表与修正记录，可指定对象内容与修正位置。
+- 在 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 新增代码生成的合成 LE 文件：MZ 头、LE 头、对象表、页映射、修正页表与修正记录，可指定对象内容与修正位置。
 - 原版格式的结构写入 [executable](../../../../original/formats/executable.md) §1（只记结构）。
 
 ## 不包含
@@ -54,7 +54,7 @@ updated: 2026-10-06
   - `readRegion` 按页映射定位存储页，按页映射序号取修正记录。每页的修正记录只解析一次并缓存；结果为新的独立缓冲。
   - 修正记录按源类型 {0:1, 2:2, 3:4, 5:2, 6:6, 7:4, 8:4} 计算改写字节，支持列表形式、加数与导入目标的各种宽度。保留位、保留目标标志、偏移类型上的别名标志与未知源类型一律 `invalid-payload`。
   - [source-error.ts](../../../../../src/original-data/source-error.ts) 追加六个效果限值名，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 同步。
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts) 新增 `syntheticLeExecutable` 与 `leInternalFixup`。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 新增 `syntheticLeExecutable` 与 `leInternalFixup`。
   - [executable §1](../../../../original/formats/executable.md) 补充 LE 结构表（只记结构）。
 - **AC-18（EXE）：** [le-executable.test.ts](../../../../../src/original-data/formats/le-executable.test.ts) 共 37 个测试，全部只用合成 LE 文件：
   - 跨页、跨对象的区域与输入逐字节相等；修改一次结果不影响下一次读取。

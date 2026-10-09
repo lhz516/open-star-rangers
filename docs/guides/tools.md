@@ -29,7 +29,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 ## 封包结构核对
 
-`tools/nob-check.ts` 在内存中解析一个 IMFAT 封包，用与导入相同的代码核对其结构（[P2-05](../plan/p2/05/spec.md) 的图形源结构读取见[源码结构](../engineering/source-structure.md#图形转换)，[P2-06](../plan/p2/06/spec.md) 的 MESH 与 MODL 读取见[原版格式转换](../engineering/source-structure.md#原版格式转换)）。
+`tools/nob-check.ts` 在内存中解析一个 IMFAT 封包，用与导入相同的代码核对其结构（[P2-05](../plan/p2/05/spec.md) 的图形源结构读取见[源码结构](../engineering/modules/original-data.md#图形转换)，[P2-06](../plan/p2/06/spec.md) 的 MESH 与 MODL 读取见[原版格式转换](../engineering/modules/original-data.md#原版格式转换)）。
 
 - **图形：**
   - DATA 须为 768 字节且分量不大于 63；

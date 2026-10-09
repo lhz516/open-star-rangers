@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteWriter } from '../original-data/synthetic.ts';
+import { ByteWriter } from '../original-data/synthetic.test-support.ts';
 import { chargeManifestBudget, EMPTY_BUDGET_USAGE, type BudgetRecord, type BudgetResult } from './budget.ts';
 import { validateGroup, validatePackage } from './completeness.ts';
 import { exclusiveBytes, payloadTransferList } from './ownership.ts';

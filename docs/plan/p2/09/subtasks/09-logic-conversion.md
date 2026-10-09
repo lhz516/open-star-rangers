@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "09"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 09 — `logic` 组转换、装配与预算
@@ -115,7 +115,7 @@ updated: 2026-10-05
     - 并行读取 SCEN 与 M2ID：会失去确定的错误顺序，收益很小；
     - 用位置参数调用替代 Asset 计划记录：具名字段更清楚；
     - 引用计数中的小数组分配：开销可忽略。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#逻辑组转换)记录了以下内容：转换步骤、生产份额、计量时机、计数规则、`productionIdentityBasis`、`reserve`、共用的步骤内读取与 `sourceFailure`。spec 与 goal 记录了 AC-09 更正与 P2-05 对齐。工程约定、工具指南与 STATUS 无需更新。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#逻辑组转换)记录了以下内容：转换步骤、生产份额、计量时机、计数规则、`productionIdentityBasis`、`reserve`、共用的步骤内读取与 `sourceFailure`。spec 与 goal 记录了 AC-09 更正与 P2-05 对齐。工程约定、工具指南与 STATUS 无需更新。
 - **P2-05 合入后的对齐（2026-10-05，变基后）：** 原因见 [goal 执行记录](../goal.md#执行记录)。以上实现与测试按对齐后的状态记录；对齐前的差异如下：
   - 预算常量为 `LOGIC_BUDGET_LIMITS`，从空用量起算，超限报 `limit-exceeded`，溢出报 `invalid-payload`；
   - 封包缓存是 `verify-source-mappings.ts` 中的 `openEachArchiveOnce`，SCCT 读 3 次，SCEN 与 M2ID 各读 2 次；

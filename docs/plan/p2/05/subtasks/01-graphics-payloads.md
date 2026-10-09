@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "01"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 01 — 规范图形 payload 契约
@@ -74,4 +74,4 @@ updated: 2026-10-05
 - **边界与工程：** 新模块只导入 `content` 内模块（逐文件核对 import）；`pnpm exec vitest run src/content src/workers/import-protocol.test.ts` 15 个文件 613 项、`pnpm typecheck`、`pnpm lint` 与 `pnpm check`（含工程边界回归）通过。
 - **Rubber-duck：** 以本子任务 diff 为范围审查，无 Blocker/High/Medium/Low 发现。
 - **Simplify：** 采纳 `payloadView` 复用 `requireBytes`、复制改用 `ownership.ts` 的 `exclusiveBytes`、图像按掩码字节跳过不透明像素并由编码器与读取器共用一个透明像素遍历、读取器先校验后复制、字体编码不再为每条映射分配对象、测试共用 [graphics.test-support.ts](../../../../../src/content/graphics/graphics.test-support.ts)。未采纳：`readPaletteReference` 把 ID 错误归为 `invalid-graphics-payload` 是 spec 规定的分类；共用的已转移检查需改动本 diff 之外的模块；`GRAPHICS_SCHEMA_VERSION` 供 04 的 `PayloadRecord` 使用，保留导出。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形-payload)新增“图形 payload”一节（字节布局、常量及两类限值、编码、读取、绑定与错误码）并在目录树与 content 概述中加入 `graphics/`。工程约定与工具指南没有列出 content code 或相关命令，无需更新；原版文档不受影响。
+- **文档影响：** [源码结构](../../../../engineering/modules/content.md#图形-payload)新增“图形 payload”一节（字节布局、常量及两类限值、编码、读取、绑定与错误码）并在目录树与 content 概述中加入 `graphics/`。工程约定与工具指南没有列出 content code 或相关命令，无需更新；原版文档不受影响。

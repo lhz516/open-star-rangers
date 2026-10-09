@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 03 — 包身份与生产转换器版本
@@ -24,7 +24,7 @@ updated: 2026-10-05
 - **身份写入：** 提供把同一身份写入每个组清单的纯函数，输出 P2-01 `GroupInput` 形状（`{ manifest: { identity, group, assets }, payloads, sources }`）。返回值冻结，不改变调用者的草稿或 payload 视图的所有权。
 - **生产转换器版本：** 在 `original-data/conversion/` 新增唯一的生产常量 `PRODUCTION_CONVERTER_VERSION`，值为符合 `readConverterVersion` 语法的 ASCII 标识，并注明任一生产转换器输出变化都要递增。
 - **测试：** 相同输入结果相同；任一描述符字段、依赖、payload 身份、来源状态、`ConverterVersion`、来源类别或令牌变化，结果都不同；组的传入顺序不影响结果；结果能被 `readContentIdentity` 读取；写入身份后的每个组都能以合成内容通过 `validateGroup`。
-- **文档：** 在[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)中记录推导函数、写入函数与生产常量的位置与用途。
+- **文档：** 在[源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)中记录推导函数、写入函数与生产常量的位置与用途。
 
 ## 不包含
 
@@ -86,4 +86,4 @@ updated: 2026-10-05
     - 把 `readAssetDescriptors` 移到 asset-contract：它与 `visitGroupManifest` 共用排序码；
     - 流式哈希与把编码器移到各契约旁：规模有界，固定向量已锁定编码；
     - 在完整性验证中跳过重复读取：验证边界按设计重新读取。
-- **文档影响：** 已更新[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)：目录树、身份基础读取、`readAssetDescriptors`、推导与写入、生产转换器版本。工程约定、工具指南与 STATUS 无需更新：没有新命令、检查规则或阶段变化。
+- **文档影响：** 已更新[源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)：目录树、身份基础读取、`readAssetDescriptors`、推导与写入、生产转换器版本。工程约定、工具指南与 STATUS 无需更新：没有新命令、检查规则或阶段变化。

@@ -8,7 +8,7 @@ import { rangeLbas, rejection, requestedLbas, syntheticFileDisc, type SyntheticF
 import { entryData, entryRelocations, parseImfat } from '../imfat.ts';
 import { SourceError, type SourceErrorData } from '../source-error.ts';
 import { inLocationGrammar } from '../source-error.test-support.ts';
-import { SyntheticByteSource } from '../synthetic.ts';
+import { SyntheticByteSource } from '../synthetic.test-support.ts';
 import { ARCHIVE_SAMPLES, BASE_ARCHIVE, BASE_ENTRIES, type SampleFailure } from './archive.test-support.ts';
 import { openImfatArchive } from './archive-reader.ts';
 import { entrySpan, IMFAT_ENTRY_BYTES, MAX_ARCHIVE_ENTRIES } from './imfat-rules.ts';

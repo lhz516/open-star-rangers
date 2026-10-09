@@ -5,7 +5,7 @@ import { layoutPayloadLength } from '../../content/graphics/layout-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { statusMessagesPayloadLength, type StatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { archiveLocator, executableRegion, isRegionLocator, type ArchiveEntryLocator, type ExecutableRegionLocator } from '../source-mapping.ts';
-import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.ts';
+import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
 import {
   cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
 } from './conversion.test-support.ts';

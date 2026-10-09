@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "08"
 subtask: "01"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 01 — 规范采样 payload 与浮点映射
@@ -72,4 +72,4 @@ updated: 2026-10-05
 - **命令：** `pnpm exec vitest run src/content src/workers/import-protocol.test.ts`（549 通过）；`pnpm check` 通过（96 个测试文件、2,831 个测试，构建成功），其中包含 `pnpm typecheck` 与 `pnpm lint`。
 - **rubber-duck：** 审查范围为本子任务的全部文件，结论为无阻塞、无非阻塞问题。
 - **simplify：** 按建议把浮点映射的编码分支提到循环外并改为递增偏移，测试辅助复用单个 `DataView`；未采纳“用 `SOUND_ENCODINGS` 的编码值代替 `SOUND_ENCODING_BYTES`”，因为编码值与字节宽度只是数值巧合。复跑上述检查通过。
-- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#内容基础契约与切片定义)新增目录项与 `sound-payload.ts` 一条（布局、写入、读取与映射公式）。工程约定的命令、边界与测试规则不变，无需修改。
+- **文档影响：** [源码结构指南](../../../../engineering/modules/content.md#内容基础契约与切片定义)新增目录项与 `sound-payload.ts` 一条（布局、写入、读取与映射公式）。工程约定的命令、边界与测试规则不变，无需修改。

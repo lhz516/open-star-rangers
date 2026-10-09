@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "06"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 06 — 生产图形 Asset、映射与预算份额
@@ -84,6 +84,6 @@ updated: 2026-10-05
 - **Simplify：** 采纳份额断言改为字面量、测试支持只导出 `productionGraphicsFiles` 并去掉类型断言、同一条目只建一次。未采纳：
   - 生产模块与测试支持共用声明和映射构造：生产代码不能导入测试支持，提升为公开构造会扩大生产 API；
   - 删除份额中显式的 0：它们逐项对应 spec 批准的份额表。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)补充“生产图形”（Asset、映射位置、份额、字符映射由 12 填入、合成封包），目录树加入 `production-graphics.ts`。原版事实（DATA 与 CCKD 结构）已在 imfat、cockpit 与 hud 中，探查结果与之一致，无需更新；工程约定与工具指南无需更新。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#图形转换)补充“生产图形”（Asset、映射位置、份额、字符映射由 12 填入、合成封包），目录树加入 `production-graphics.ts`。原版事实（DATA 与 CCKD 结构）已在 imfat、cockpit 与 hud 中，探查结果与之一致，无需更新；工程约定与工具指南无需更新。
 
 - **执行期修订（2026-10-05，[12](./12-character-map-research.md)）：** 12 填入有证据的字符映射（94、95、56 条），三个字库声明 `glyphRows` 8，映射都带 U-029 与 U-030，证据增加 hud §1.1。4×6 字库因此为 192 个字形：步骤用量的 glyphs 由 768 变为 704（份额仍为 768），payload 上界按 7 字节字体头计算为 9,241 字节。见 [goal 执行记录](../goal.md#执行记录)。以上为修订前的记录。

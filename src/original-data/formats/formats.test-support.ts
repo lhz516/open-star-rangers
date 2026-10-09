@@ -1,7 +1,7 @@
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
 import { LOGIC_SOURCE_ENTRIES } from '../conversion/logic-sources.ts';
 import { MARKER } from '../disc/disc.test-support.ts';
-import { buildImfat, type SyntheticEntry } from '../synthetic.ts';
+import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 
 // Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09 tests; they never hold original data, and their
 // numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned, and

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "09"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 09 — 结果隔离与来源类型判别补救
@@ -64,4 +64,4 @@ updated: 2026-10-04
   - `pnpm check` 为 67 个文件 1642 项通过，四个 TypeScript 程序、lint 与生产构建均通过；
   - 依赖与锁文件未变；
   - 不适用 browser-testing。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)对来源判别、完整性与来源状态的说明仍然准确，不需要修改。限制与所有权说明已写入代码注释，工程约定、guides 与 STATUS 也不受影响。
+- **文档影响：** [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)对来源判别、完整性与来源状态的说明仍然准确，不需要修改。限制与所有权说明已写入代码注释，工程约定、guides 与 STATUS 也不受影响。

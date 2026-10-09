@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "08"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 08 — 生产来源映射与子资源核验
@@ -28,7 +28,7 @@ updated: 2026-10-05
   - 一致时把这些映射升为 `verified`，返回新的冻结表（经 `readSourceMappingTable` 重新读取）；
   - 不一致时为 `subresource-mismatch`，位置为 `sources.mappings[i].parts[j].alternatives[k]`。
 - **来源状态：** 以 `assetSourceStates` 从最终表推导 `GroupInput.sources`，状态绑定已识别指纹。
-- **文档：** 在[源码结构](../../../../engineering/source-structure.md#原版来源映射)中记录生产映射表与子资源核验的位置与规则。
+- **文档：** 在[源码结构](../../../../engineering/modules/original-data.md#原版来源映射)中记录生产映射表与子资源核验的位置与规则。
 
 ## 不包含
 
@@ -86,7 +86,7 @@ updated: 2026-10-05
     - 与 `verifySourceMappings` 共用封包缓存，或在其中执行读取前限值：当时会改动 P2-03 的通用核验器。P2-05 合入后已改用其步骤内读取，见下；
     - 把条目 ID 留在格式测试支持本地：会产生两份 ID；
     - 避免重复读取映射表：开销可忽略。
-- **文档影响：** 已在[源码结构](../../../../engineering/source-structure.md#逻辑组转换)记录生产映射表与 `verifyLogicSources` 的步骤。工程约定、工具指南与 STATUS 无需更新。
+- **文档影响：** 已在[源码结构](../../../../engineering/modules/original-data.md#逻辑组转换)记录生产映射表与 `verifyLogicSources` 的步骤。工程约定、工具指南与 STATUS 无需更新。
 - **P2-05 合入后的对齐（2026-10-05，变基后）：** 原因见 [goal 执行记录](../goal.md#执行记录)。以上实现与测试按对齐后的状态记录；对齐前的差异如下：
   - 核验接收带缓存的封包打开函数 `openArchive`，先单独预检目录，再由 `verifySourceMappings` 与 SCCT 解析各读一次条目；
   - 超限位置是条目位置；

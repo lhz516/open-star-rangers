@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "08"
-updated: 2026-10-05
+updated: 2026-10-08
 related: [ADR-0005, ADR-0007, ADR-0008, ADR-0015, U-004, U-027]
 reviewed: sha256:b71a3cf9dbc9
 ---
@@ -121,7 +121,7 @@ P2 退出条件要求切片的核心音效（开火、导弹、爆炸、Warp）�
 | 模块 | 责任与影响 |
 |---|---|
 | `src/original-data/`（计划新增模块） | SND 解析与转换、生产音效表、生产 `ConverterVersion` 常量，以及 `SourceError` 的追加 code 与预算限值名。只经产品入口与 `verifySourceMappings` 取得原版字节，受现有[底层能力边界](../../../engineering/README.md#lint-规则eslintconfigjs)约束 |
-| [src/original-data/synthetic.ts](../../../../src/original-data/synthetic.ts) | 扩展合成 SND 与含 SND 的 IMFAT 构造，供测试使用；不含原版字节 |
+| [src/original-data/synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) | 扩展合成 SND 与含 SND 的 IMFAT 构造，供测试使用；不含原版字节 |
 | `src/content/`（计划新增模块） | 规范采样 payload 的写入、读取与浮点映射；`ManifestIdentity` 的纯计算。既有导出与契约不变 |
 | [src/workers/](../../../../src/workers/) | 协议版本递增（`convert-audio` 阶段与顺序规则）、生产作业的音频阶段与包身份组装；宿主的错误转换不变。测试可注入合成识别与合成音效表 |
 | [src/app/import/](../../../../src/app/import/) | 持有者接受新阶段，执行新增的顺序规则；组结果的验证顺序不变 |
@@ -445,7 +445,7 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 
 - **单元/契约测试：**
   - 计划新增的 `original-data/`、`content/`、`platform/audio/` 模块各有相邻的 `*.test.ts`；`src/workers/`、`src/app/import/` 中的既有测试按新的协议版本更新。
-  - 合成 SND 与含 SND 的 IMFAT 由 [synthetic.ts](../../../../src/original-data/synthetic.ts) 生成，合成光盘沿用 P2-04 的测试支持。
+  - 合成 SND 与含 SND 的 IMFAT 由 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 生成，合成光盘沿用 P2-04 的测试支持。
   - 覆盖 AC-01 至 AC-09 的正向、边界与失败路径。
   - 迭代时运行 `pnpm exec vitest run src/original-data src/content src/workers src/app/import src/platform/audio tools/engineering-boundaries.test.ts`，按实际路径收窄。
 - **Replay/一致性：** 不适用。本任务不创建或推进 Core 世界，音频是一次性反馈的消费端，不影响 Core 状态或 replay。转换的确定性由 AC-06 与 AC-04 证明：相同输入得到相同的 payload 指纹与 manifest 身份。

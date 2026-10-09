@@ -25,7 +25,7 @@ import { PRODUCTION_SOUND_USAGE } from '../original-data/conversion/production-s
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
 import { DEFAULT_MODEL_IDS } from '../original-data/formats/formats.test-support.ts';
 import type { VerifiedSource } from '../original-data/source/open-verified-source.ts';
-import { buildImfat, type SyntheticEntry } from '../original-data/synthetic.ts';
+import { buildImfat, type SyntheticEntry } from '../original-data/synthetic.test-support.ts';
 import { runImportHost, type ImportJob } from './import-host.ts';
 import {
   checkPackageTransfers, createImportJob, PRODUCTION_LOGIC_STEP, type AudioStageInput, type GraphicsStepInput, type LogicStepGroups, type LogicStepInput,

@@ -10,7 +10,7 @@ import { productionSliceEntries } from '../original-data/conversion/production-m
 import { PRODUCTION_SND_RULES, PRODUCTION_SOUND_TABLE } from '../original-data/conversion/production-sounds.ts';
 import { sourceFingerprint } from '../original-data/source/source-catalog.ts';
 import { catalogFor } from '../original-data/source/source.test-support.ts';
-import { buildImfat } from '../original-data/synthetic.ts';
+import { buildImfat } from '../original-data/synthetic.test-support.ts';
 import { canaryCoveredFiles } from './canary.test-support.ts';
 import type { ImportJob } from './import-host.ts';
 import { createImportJob, PRODUCTION_LOGIC_STEP, type OpenSource } from './import-job.ts';

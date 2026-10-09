@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "02"
-updated: 2026-10-04
+updated: 2026-10-08
 related: [ADR-0003, ADR-0007, ADR-0008, ADR-0015]
 reviewed: sha256:d0bc261275f3
 ---
@@ -66,7 +66,7 @@ reviewed: sha256:d0bc261275f3
 | `src/original-data/io/`（计划新增） | 只含类型的字节读取端口；不导入任何模块 |
 | `src/original-data/disc/`（计划新增） | 文件组配对、CloneCD 描述、原始扇区、ISO9660 卷与目录、路径解析、范围读取与错误类型；文件划分由实现决定 |
 | [source-mapping.ts](../../../../src/original-data/source-mapping.ts) | 与光盘路径读取共用同一条 8.3 路径语法规则，来源映射行为不变 |
-| [synthetic.ts](../../../../src/original-data/synthetic.ts) | 扩展合成 CloneCD 描述、原始扇区与 ISO9660 构建器 |
+| [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) | 扩展合成 CloneCD 描述、原始扇区与 ISO9660 构建器 |
 | [budget.ts](../../../../src/content/budget.ts) | 只读复用 P2-01 的预算记录与计量，不修改契约 |
 | `src/platform/files/`（计划新增） | 浏览器 `File`/`Blob` 的端口实现；不包含选择 UI、Worker 或作业编排 |
 | `tools/`（计划新增脚本） | Node 端口实现与本地核对 CLI；复用或最小扩展 [manifest 解析](../../../../tools/compliance/manifest.ts)，取得路径、大小与哈希，不复制另一份 manifest 表 |
@@ -77,8 +77,8 @@ reviewed: sha256:d0bc261275f3
 
 - **现有解析：** `parseImfat` 等解析器只接受内存中的完整字节。仓库中没有任何光盘镜像读取代码；`original-data/io/`、`original-data/disc/`、`platform/files/` 与 `workers/` 都不存在。
 - **P2-01 已提供：**
-  - [来源映射](../../../engineering/source-structure.md#原版来源映射)的 `OriginalAssetLocator.discPath` 语法：8.3 大写，最多 8 段；
-  - [预算契约](../../../engineering/source-structure.md#内容基础契约与切片定义)：十二维预算记录与 `chargeBudget`，其中 `sourceReadBytes` 的具体限值由读取任务批准（见 [P2-01 spec](../01/spec.md#范围) S-09/S-10）；
+  - [来源映射](../../../engineering/modules/original-data.md#原版来源映射)的 `OriginalAssetLocator.discPath` 语法：8.3 大写，最多 8 段；
+  - [预算契约](../../../engineering/modules/content.md#内容基础契约与切片定义)：十二维预算记录与 `chargeBudget`，其中 `sourceReadBytes` 的具体限值由读取任务批准（见 [P2-01 spec](../01/spec.md#范围) S-09/S-10）；
   - 二进制 payload 的独占副本与转移规则。
 - **边界：**
   - 消费者 lint 与依赖图禁止 `platform` 等层导入 `original-data`。[工程约定](../../../engineering/README.md#lint-规则eslintconfigjs)已写明：若 P2-02 需要平台实现端口，须显式放行该端口模块。
@@ -308,7 +308,7 @@ reviewed: sha256:d0bc261275f3
 ## 验证策略
 
 - **单元/契约测试：**
-  - 在计划新增的 `src/original-data/disc/` 旁放置 `*.test.ts`，用扩展后的 [synthetic.ts](../../../../src/original-data/synthetic.ts) 在内存中生成合成文件组。
+  - 在计划新增的 `src/original-data/disc/` 旁放置 `*.test.ts`，用扩展后的 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 在内存中生成合成文件组。
   - 记录读取的内存端口用来断言读取范围；超大镜像用按需生成扇区的端口表示，不分配整个镜像。
   - 测试覆盖 AC-01 至 AC-08 的全部正负路径，按 code 与位置断言。
   - 平台适配测试放在 `src/platform/files/`，Node 适配与 CLI 测试放在 `tools/`。

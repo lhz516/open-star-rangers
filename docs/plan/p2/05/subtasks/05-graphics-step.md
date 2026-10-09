@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "05"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 05 — 图形转换步骤
@@ -30,7 +30,7 @@ updated: 2026-10-05
   6. 返回冻结的结果：只含有 Asset 的组，按 `RESOURCE_GROUPS` 顺序；每组的描述符、payload 与来源状态都按 Asset ID 升序、一一对应；外加转换用量。
 
   任一失败都抛出，不返回部分结果，也不输出任何 Asset 的状态或 payload。读取错误保持 P2-02/P2-03 的层、code 与位置。
-- **测试：** 用 [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`、[synthetic.ts](../../../../../src/original-data/synthetic.ts) 的 `buildImfat`，以及 [source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 构造已验证来源。端口带计量。
+- **测试：** 用 [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 的 `buildImfat`，以及 [source.test-support.ts](../../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 构造已验证来源。端口带计量。
   - **AC-09：**
     - 整条目映射经核验后为 `verified`；含 `palette` 或 `fonts/<i>` 的映射只在转换成功后为 `verified`；
     - 损坏的字体使步骤失败、无结果；
@@ -101,7 +101,7 @@ updated: 2026-10-05
   - 不重读映射表：P2-03 也用 `readSourceMappingTable` 构造新表；
   - 单遍分组：只有 4 个组。
 - **文档影响：**
-  - [源码结构](../../../../engineering/source-structure.md#图形转换)补充转换步骤（共用读取、配对、子资源语法、结果形状与失败语义）、测试支持中的位置语法，以及“版本识别与已验证来源”一节的可选读取参数；目录树加入 `graphics-step.ts`。
+  - [源码结构](../../../../engineering/modules/original-data.md#图形转换)补充转换步骤（共用读取、配对、子资源语法、结果形状与失败语义）、测试支持中的位置语法，以及“版本识别与已验证来源”一节的可选读取参数；目录树加入 `graphics-step.ts`。
   - [spec](../spec.md#错误码) 的位置语法按授权澄清，见 goal 执行记录。
   - 工程约定、工具指南与原版文档无需更新。
 

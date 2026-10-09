@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
-import { ByteWriter, cloneCdSections, cloneCdText, memoryByteSource, SyntheticByteSource, type CloneCdSection } from '../synthetic.ts';
+import { ByteWriter, cloneCdSections, cloneCdText, memoryByteSource, SyntheticByteSource, type CloneCdSection } from '../synthetic.test-support.ts';
 import { MAX_DESCRIPTOR_BYTES, MAX_IMAGE_SECTORS, MIN_IMAGE_SECTORS, openCloneCd, RAW_SECTOR_BYTES, type DiscInputFile, type OpenDiscOptions } from './clone-cd.ts';
 import { failure, failureOf, MARKER } from './disc.test-support.ts';
 

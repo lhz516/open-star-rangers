@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE } from '../../content/budget.ts';
-import { sectorImageSource, SYNTHETIC_RAW_SECTOR_BYTES as RAW, SYNTHETIC_SECTOR_DATA_BYTES } from '../synthetic.ts';
+import { sectorImageSource, SYNTHETIC_RAW_SECTOR_BYTES as RAW, SYNTHETIC_SECTOR_DATA_BYTES } from '../synthetic.test-support.ts';
 import { failure, failureOf } from './disc.test-support.ts';
 import { readSectors } from './raw-sector.ts';
 import { snapshotSource, SourceReader } from './source-reader.ts';

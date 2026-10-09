@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "05"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 05 — 模型转换步骤与 `models` 组草稿
@@ -84,4 +84,4 @@ updated: 2026-10-05
   - 把 `modelsGroupDraft` 移到单独模块：它只装配 `models` 组，放在模型步骤旁更直接；
   - MODL 只解析一次、MESH 并发读取：前者的代价很小；后者在先前读取失败后仍会发出后续读取，改变“失败即停止”的读取计量；
   - 不导出 `MODEL_ARCHIVE` 与 `ModelStepResult`：06、07 会使用它们。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#模型转换步骤)新增“模型转换步骤”一节（流程、共用读取、位置改写、结果与组草稿合并）与目录树条目。工程约定、工具指南与 `docs/original/` 无需改动：没有新命令，也没有新的原版事实。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#模型转换步骤)新增“模型转换步骤”一节（流程、共用读取、位置改写、结果与组草稿合并）与目录树条目。工程约定、工具指南与 `docs/original/` 无需改动：没有新命令，也没有新的原版事实。

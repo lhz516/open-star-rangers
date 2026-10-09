@@ -1,7 +1,7 @@
 /**
  * The resource viewer's presentation conventions (P2-11 S-09), kept here alone so that a correction from the P2-12
  * screenshot comparison changes only this module: no re-import and no payload schema change. The basis and confidence
- * of each choice are recorded in docs/engineering/source-structure.md ("资源查看渲染").
+ * of each choice are recorded in docs/engineering/modules/render.md ("资源查看渲染").
  *
  * 2D part:
  * - Colour: bytes are display values. Textures carry no colour space, so they are not decoded; the surface outputs

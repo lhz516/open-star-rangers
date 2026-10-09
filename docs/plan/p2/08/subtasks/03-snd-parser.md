@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "08"
 subtask: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 03 — SND 解析、格式规则与 `conversion` 错误层
@@ -38,7 +38,7 @@ updated: 2026-10-05
   通过后用 01 的写入函数生成规范 payload，样本原样复制到新的独占缓冲，不修改源视图。头部按小端读取。
 
   失败时抛出 `ConversionError`：结构问题为 `invalid-sound`，取值不在接受范围为 `unsupported-sound-format`。位置由调用方给出的结构前缀加字段名组成。
-- **合成构造：** 在 [synthetic.ts](../../../../../src/original-data/synthetic.ts) 中增加合成 SND 块的构造函数，返回块字节与重定位，供 `buildImfat` 使用。内容只由代码生成。
+- **合成构造：** 在 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 中增加合成 SND 块的构造函数，返回块字节与重定位，供 `buildImfat` 使用。内容只由代码生成。
 - **测试：** 相邻的 `snd.test.ts` 与 `conversion-error.test.ts`。
 - **文档：** 在源码结构指南记录新目录、`ConversionError` 与解析规则。
 
@@ -51,7 +51,7 @@ updated: 2026-10-05
 ## 关键文件与契约
 
 - **计划新增：** `src/original-data/conversion/conversion-error.ts`、`src/original-data/formats/snd.ts`，以及各自的 `.test.ts`。
-- **修改：** [synthetic.ts](../../../../../src/original-data/synthetic.ts)（追加合成 SND 构造，既有导出不变）。
+- **修改：** [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)（追加合成 SND 构造，既有导出不变）。
 - **复用：** 01 的 `src/content/sound-payload.ts`。
 - **边界：** 新模块属于 [original-data-capabilities.ts](../../../../../tools/original-data-capabilities.ts) 中的“其他使用者”，不得值导入 `disc/`、`archive/`、`imfat.ts` 或来源族的受限模块。
 
@@ -85,7 +85,7 @@ updated: 2026-10-05
 - **实现：**
   - `conversion-error.ts`（已由 14 移除）：`ConversionError` 与 `SourceError` 同形，code 为 `invalid-sound`、`unsupported-sound-format`、`limit-exceeded`，`limit.name` 为 P2-01 预算维度。
   - [snd.ts](../../../../../src/original-data/formats/snd.ts)：`readSndHeader` 负责结构核对；`convertSnd` 依次核对位宽、采样率与 `flags`，最后核对整帧，然后用 `writeSoundPayload` 输出；`SndFormatRules` 为 `{ flags: [{ value, channels, loop }], s16le }`。
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts)：新增 `syntheticSnd`，可直接展开为 `buildImfat` 的条目。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)：新增 `syntheticSnd`，可直接展开为 `buildImfat` 的条目。
   - 生产规则不在本子任务中写入。
 - **测试：**
   - [snd.test.ts](../../../../../src/original-data/formats/snd.test.ts)，使用合成 `flags` 取值 100–103，测试含义只在测试中：
@@ -98,6 +98,6 @@ updated: 2026-10-05
 - **命令：** `pnpm exec vitest run src/original-data tools/engineering-boundaries.test.ts` 通过，其中包括能力边界与依赖图回归。`pnpm check` 通过（99 个测试文件、2,889 个测试，构建成功）。
 - **rubber-duck：** 无阻塞、无非阻塞问题。
 - **simplify：** 采纳效率一项：`syntheticSnd` 直接写入单个 `Uint8Array`，不再经 `ByteWriter` 的数组，以便后续预算测试构造大块。复用、简化与层次三个角度无发现。复跑检查通过。
-- **文档影响：** [源码结构指南](../../../../engineering/source-structure.md#原版格式转换)的目录树加入 `conversion/` 与 `formats/`，并新增“原版格式转换”一节（`conversion` 错误层、SND 结构与规则、转换顺序、合成数据）。工程约定的边界规则已覆盖“其他使用者”，无需修改。
+- **文档影响：** [源码结构指南](../../../../engineering/modules/original-data.md#原版格式转换)的目录树加入 `conversion/` 与 `formats/`，并新增“原版格式转换”一节（`conversion` 错误层、SND 结构与规则、转换顺序、合成数据）。工程约定的边界规则已覆盖“其他使用者”，无需修改。
 
 - **后续修订：** 2026-10-05 按修订后的 spec，由 [14](./14-shared-mechanism-alignment.md) 改为与 P2-05、P2-09 共享的机制（见 [goal 执行记录](../goal.md#执行记录)）。`ConversionError` 改为 `SourceError`，code 改为 `invalid-payload`/`unsupported-payload`。本条以上的证据记录的是本子任务完成时的状态。

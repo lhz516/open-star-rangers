@@ -3,7 +3,7 @@ import { payloadTransferList } from '../../content/ownership.ts';
 import { readSoundPayload } from '../../content/sound-payload.ts';
 import { SourceError } from '../source-error.ts';
 import { entryData, entryRelocations, parseImfat } from '../imfat.ts';
-import { buildImfat, syntheticSnd, type SyntheticSndFields } from '../synthetic.ts';
+import { buildImfat, syntheticSnd, type SyntheticSndFields } from '../synthetic.test-support.ts';
 import { convertSnd, readSndHeader, SND_HEADER_BYTES, SND_HEADER_OFFSETS, type SndBlock, type SndFormatRules } from './snd.ts';
 
 // Synthetic flag values with test meanings only; production meanings come from research.

@@ -4,7 +4,7 @@ import {
   cloneCdSections, cloneCdText, directoryData, directoryRecord, ISO_DIRECTORY_FLAG, memoryByteSource, primaryVolumeDescriptor, sectorImageSource,
   SYNTHETIC_RAW_SECTOR_BYTES, SYNTHETIC_SECTOR_DATA_BYTES, volumeDescriptor, type DirectoryRecordFields,
   type SyntheticByteSource,
-} from '../synthetic.ts';
+} from '../synthetic.test-support.ts';
 import { DiscReadError, type DiscReadErrorData } from './disc-error.ts';
 
 /** Planted in host names, host error text and unknown descriptor names; no diagnostic may contain it. */

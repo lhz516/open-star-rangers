@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "08"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 08 — 真实 Worker 的模型阶段浏览器验证
@@ -69,4 +69,4 @@ updated: 2026-10-06
   3. 失败用例中 `takeGroups()` 为 null 在失败后恒成立，无法证明没有组被发送。现断言 `received` 为空，取消用例同样补上。
   审阅者确认取消用例的日志切片与顺序正确，`framesAfter` 使“之后只有帧事件”不会空成立。
 - **Simplify：** 本子任务只修改浏览器测试与文档，没有实现代码。按 execute-goal，simplify 只用于实现代码，因此不运行（与 P2-05/08 相同）。
-- **文档影响：** [工程约定](../../../../engineering/README.md#本地浏览器-runner)的导入 Worker 浏览器测试新增模型阶段条目，记录 `received` 端口记录、Node 对照与期望来源。[源码结构](../../../../engineering/source-structure.md#导入-worker)已在 07 记录两个场景，无需改动。
+- **文档影响：** [工程约定](../../../../engineering/README.md#本地浏览器-runner)的导入 Worker 浏览器测试新增模型阶段条目，记录 `received` 端口记录、Node 对照与期望来源。[源码结构](../../../../engineering/modules/workers.md#导入-worker)已在 07 记录两个场景，无需改动。

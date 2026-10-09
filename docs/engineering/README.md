@@ -10,7 +10,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 
 本项目代码的结构、命令与检查规则。架构决定见[总计划](../plan/master-plan.md) §4–5；本文只记录落地方式。
 
-当前源码目录、Runtime/Session 的分工、helper 归属与后续阶段扩展落点见[源码结构指南](./source-structure.md)，决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。历史源码路径的对应关系与本轮验证只在[迁移记录](./source-structure.md#p1-06-前迁移记录)维护。
+当前源码目录、Runtime/Session 的分工、helper 归属与后续阶段扩展落点见[源码结构指南](./source-structure.md)，各模块已交付代码的 API 与契约要点见其[模块分册](./source-structure.md#模块说明)，决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。历史源码路径的对应关系与本轮验证只在[迁移记录](./source-structure.md#p1-06-前迁移记录)维护。
 
 按 spec、goal 与 subtasks 开发的路径、审批、进度维护和 skills 入口见[Agent 任务工作流](./agent-workflow.md)。
 
@@ -123,7 +123,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 集成测试只为真实接线启动构建与子进程，其余在进程内覆盖：合规 CLI 回归只跑一次真实聚合构建，原版扫描各作用域与 inventory 校验分别由 [scan.test.ts](../../tools/compliance/scan.test.ts)、[distribution.test.ts](../../tools/compliance/distribution.test.ts) 覆盖；构建插件回归在首次真实审计后复用其结果做失败构建。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
-- **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.ts` 在代码中生成，内容契约的合成包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。工程边界回归会检查 `src/content` 与 `src/original-data` 的测试和 test-support 文件：
+- **测试不得读取原版文件。** 原版格式的测试数据由 `src/original-data/synthetic.test-support.ts` 在代码中生成，内容契约的合成包由 [synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts) 生成；用原版文件做的完整性检查放在 `tools/nob-check.ts`，只在本地运行。工程边界回归会检查 `src/content` 与 `src/original-data` 的测试和 test-support 文件：
   - 只能导入 `vitest`、作为哈希对照的 `node:crypto`，以及这两层自身的模块；相对路径按真实路径解析，不能借符号链接指向别处。
   - 不能使用 `require`、`process`、`vi` 或 `import.meta` 这类绕开 import 声明的加载方式。
   - 文件系统、工具脚本和计算型动态 import 都会被拒绝（P2-01 AC-11）。
@@ -395,7 +395,7 @@ P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/
 P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07/spec.md)。它是渲染消费者，不是第二条游戏循环；几何、颜色、相机与像素比上限都是合成演示值，不代表原版画面。
 
 - 依赖：`three`（dependencies）与 `@types/three`（devDependencies）同为 0.186 次版本，只从包根导入、只构造 `WebGLRenderer`（WebGL 2，不回退）；不用 React Three Fiber、addons、WebGPU、Worker 或 OffscreenCanvas。生产构建主块因此约 798 kB（gzip 约 216 kB），Vite 的 500 kB 块体积警告按 spec 只记录，包体优化归 P5。
-- DOM-free 模块由 Node 测试覆盖：[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts)（固定 4:3、等比居中、DPR 上限 2 与设备尺寸上限 M）、[synthetic-render-frame.ts](../../src/render/synthetic/synthetic-render-frame.ts)（整帧校验与位置插值，每个运行一份历史）、[synthetic-camera.ts](../../src/render/synthetic/synthetic-camera.ts)、[synthetic-appearance.ts](../../src/render/synthetic/synthetic-appearance.ts)、[render-surface.ts](../../src/render/scene/render-surface.ts)（绘制端口）、[synthetic-renderer.ts](../../src/render/synthetic/synthetic-renderer.ts) 与 [webgl-surface.ts](../../src/render/webgl/webgl-surface.ts)。浏览器专用的 [browser-webgl-surface.ts](../../src/render/webgl/browser-webgl-surface.ts) 只创建画布、`WebGLRenderer`、`ResizeObserver` 与 resolution 媒体查询；画布的无障碍名称与渲染器的输出颜色空间由调用方的 `RenderSurfaceOptions` 指定，合成演示传 `SYNTHETIC_SURFACE`（原名称与 Three.js 默认的 sRGB 输出），P2-11 查看器的选择见[资源查看渲染](./source-structure.md#资源查看渲染)。边界回归要求非 `browser-*` 的渲染模块位于 Node 类型程序中（见上文 Lint 规则）。
+- DOM-free 模块由 Node 测试覆盖：[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts)（固定 4:3、等比居中、DPR 上限 2 与设备尺寸上限 M）、[synthetic-render-frame.ts](../../src/render/synthetic/synthetic-render-frame.ts)（整帧校验与位置插值，每个运行一份历史）、[synthetic-camera.ts](../../src/render/synthetic/synthetic-camera.ts)、[synthetic-appearance.ts](../../src/render/synthetic/synthetic-appearance.ts)、[render-surface.ts](../../src/render/scene/render-surface.ts)（绘制端口）、[synthetic-renderer.ts](../../src/render/synthetic/synthetic-renderer.ts) 与 [webgl-surface.ts](../../src/render/webgl/webgl-surface.ts)。浏览器专用的 [browser-webgl-surface.ts](../../src/render/webgl/browser-webgl-surface.ts) 只创建画布、`WebGLRenderer`、`ResizeObserver` 与 resolution 媒体查询；画布的无障碍名称与渲染器的输出颜色空间由调用方的 `RenderSurfaceOptions` 指定，合成演示传 `SYNTHETIC_SURFACE`（原名称与 Three.js 默认的 sRGB 输出），P2-11 查看器的选择见[资源查看渲染](./modules/render.md#资源查看渲染)。边界回归要求非 `browser-*` 的渲染模块位于 Node 类型程序中（见上文 Lint 规则）。
 - 绘制只发生在：表面首次得到有效布局、接线（读 `run.renderFrame()`）、绑定运行的每次 `SessionFrame`（含暂停静止帧）、运行结束（空帧）、布局变化（相同布局不重绘）与上下文恢复。渲染代码不调用 rAF、`setAnimationLoop`、定时器或微任务；暂停时只有后三类事件会重绘。
 - 每帧先完整校验（alpha、tick、ID 顺序、kind、坐标、两份状态与运行历史一致、tick 不倒退）再原子更新场景；表面绘制失败时把场景退回上一份成功画面。任何映射或绘制错误使渲染器进入终止的 failed，帧监听与运行收尾从不向 Session 抛错；状态监听抛错经 `reportError` 报告，报告本身失败时丢弃，以保持会话健康。恢复方式（P1-08）：返回菜单后重新进入，会重建会话与渲染器并丢弃本次合成状态；会话不自动暂停，只有释放成功才允许重新进入。
 - 初始化回滚失败用 [rollback-error.ts](../../src/app/session/rollback-error.ts) 的 `RollbackError`（`AggregateError` 子类，`cause` 为原始失败，`errors` 依次为原始失败与回滚失败）表示。以下几处在回滚失败时抛出它：`createSyntheticRenderer` 的连接回滚、渲染器 `attach()` 的本地回滚、`createBrowserWebGLSurface` 转交前的回滚。回滚成功时原样抛出原始原因，因此不必按消息或 AggregateError 类型猜测是否释放失败。

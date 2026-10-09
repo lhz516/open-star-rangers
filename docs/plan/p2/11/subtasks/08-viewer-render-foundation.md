@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "08"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 08 — 查看渲染基础与二维项
@@ -59,7 +59,7 @@ updated: 2026-10-06
 
 ## 完成证据
 
-- **查看渲染：** [render/viewer/](../../../../../src/render/viewer/)，DOM-free，结构与约定见[源码结构](../../../../engineering/source-structure.md#资源查看渲染)。
+- **查看渲染：** [render/viewer/](../../../../../src/render/viewer/)，DOM-free，结构与约定见[源码结构](../../../../engineering/modules/render.md#资源查看渲染)。
   - [viewer-renderer.ts](../../../../../src/render/viewer/viewer-renderer.ts) 的 `createViewerRenderer` 接收 `RenderSurface`，或在表面不可用时只报告原因。状态为五种，失败附原始错误；诊断含绘制次数、`gpuStats()`、布局与画面位置 `placement`。
   - `show(item | null)` 的查看项携带内容消费函数的结果（`expandImage`、`composeLayout` 的结果，调色板与字库 payload）。读取与展开留给 10 的所有者，内容错误因此只标记该项。
   - [viewer-display.ts](../../../../../src/render/viewer/viewer-display.ts) 的每个显示独占自己的几何、材质与纹理。换项时先建新显示再释放旧显示，没有跨项存活的 GPU 资源。

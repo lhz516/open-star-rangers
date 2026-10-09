@@ -4,7 +4,7 @@ import { payloadTransferList } from '../../content/ownership.ts';
 import { sha256Fingerprint as sha256 } from '../../content/sha256.ts';
 import {
   directoryData, primaryVolumeDescriptor, sectorImageSource, SYNTHETIC_RAW_SECTOR_BYTES as RAW, SyntheticByteSource, volumeDescriptor,
-} from '../synthetic.ts';
+} from '../synthetic.test-support.ts';
 import type { CancellationProbe } from './source-reader.ts';
 import { openDiscImage } from './disc-image.ts';
 import {

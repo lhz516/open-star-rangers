@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "17"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 17 — 效果 payload 与展开函数
@@ -66,7 +66,7 @@ updated: 2026-10-06
     - 面表不超过 `MAX_FACE_WORDS`（65,535）。
   - [expand-effects.ts](../../../../../src/content/effects/expand-effects.ts) 有三个展开函数和 `effectExpansionSize`。
   - [contract-validation.ts](../../../../../src/content/contract-validation.ts) 追加 `invalid-effect-payload`，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 同步。
-  - 字节布局与展开规则写入[源码结构](../../../../engineering/source-structure.md#效果-payload)。
+  - 字节布局与展开规则写入[源码结构](../../../../engineering/modules/content.md#效果-payload)。
 - **AC-19（payload）：** [effect-payload.test.ts](../../../../../src/content/effects/effect-payload.test.ts) 共 66 个测试。
   - 三种 payload 编码再读取逐项相等：负零与次正规数逐位保留，64 位常量取最大值与最小次正规数；结果冻结且为独立副本，再编码字节相同。
   - 读取器的 31 个负例都报 `invalid-effect-payload` 与结构路径：截断、尾随字节、记录数与类型数的 0 和上限 + 1、部件数 0 与 5、段数 2 与 65、25 位颜色、面的角数 2 与 5、序号越界、缺少结束标记，以及各位置的 NaN 与无穷。

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "10"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 10 — 导入作业的 `convert-logic` 阶段
@@ -29,7 +29,7 @@ updated: 2026-10-05
   - `syntheticGroupsJob` 改为只识别、不运行生产转换，保持 [import-worker.test-support.ts](../../../../../src/workers/import-worker.test-support.ts) 的 `synthetic` 场景只发送四个合成组；
   - [import-job.test.ts](../../../../../src/workers/import-job.test.ts) 与 [import-pipeline.test.ts](../../../../../src/app/import/import-pipeline.test.ts) 中“识别后无组结束”的用例，改为使用含合成 `SCENARIO.NOB`/`SR.NOB` 的白名单得到 `logic` 组，或注入空转换并说明理由；
   - 生产白名单拒绝合成光盘的用例保持不变。
-- **文档：** 在[源码结构](../../../../engineering/source-structure.md#导入-worker)中更新协议版本、阶段集合、阶段顺序与转换注入点；在[工程约定](../../../../engineering/README.md)中更新相关测试说明。
+- **文档：** 在[源码结构](../../../../engineering/modules/workers.md#导入-worker)中更新协议版本、阶段集合、阶段顺序与转换注入点；在[工程约定](../../../../engineering/README.md)中更新相关测试说明。
 
 ## 不包含
 
@@ -100,6 +100,6 @@ updated: 2026-10-05
     - 继续精简测试辅助函数：它们是在 P2-05 原有函数上推广到三个阶段；
     - 把 `sliceCoveredFiles` 移到 original-data：P2-05 的 `graphicsCoveredFiles` 也在同一 Worker 测试支持中，保持一致。
 - **文档影响：**
-  - [源码结构](../../../../engineering/source-structure.md#导入-worker)更新了协议版本、阶段集合、作业的限值、发送顺序与注入点、测试支持与管线覆盖；
+  - [源码结构](../../../../engineering/modules/workers.md#导入-worker)更新了协议版本、阶段集合、作业的限值、发送顺序与注入点、测试支持与管线覆盖；
   - [工程约定](../../../../engineering/README.md)更新了浏览器用例的阶段序列，并注明逻辑阶段由 Node 管线测试验证；
   - STATUS 无需更新。

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "03"
 subtask: "06"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 06 — 来源映射核验
@@ -42,7 +42,7 @@ updated: 2026-10-05
   - [source-mapping.ts](../../../../../src/original-data/source-mapping.ts) 的 `readSourceMappingTable`、`assetSourceStates`；
   - 05 的已验证来源，03 的条目读取，02 的错误类；
   - 03/04 的合成光盘与白名单 helper。
-- **文档：** [源码结构](../../../../engineering/source-structure.md#原版来源映射)中关于来源指纹与 `verified` 产生方式的说明。
+- **文档：** [源码结构](../../../../engineering/modules/original-data.md#原版来源映射)中关于来源指纹与 `verified` 产生方式的说明。
 
 ## 验收标准
 
@@ -98,5 +98,5 @@ updated: 2026-10-05
     - 抽取共享的映射与失败测试辅助（不同模块，投影方式不同）；
     - 跨部件缓存条目字节（与“不跨部件保留字节”冲突）；
     - 直接冻结输出（经读取器再次读取可以证明满足 P2-01 契约）。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#版本识别与已验证来源)补充映射核验，“原版来源映射”一节写明 `verified` 的产生方式，并更新目录树。工程约定与工具指南无受影响内容。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#版本识别与已验证来源)补充映射核验，“原版来源映射”一节写明 `verified` 的产生方式，并更新目录树。工程约定与工具指南无受影响内容。
 

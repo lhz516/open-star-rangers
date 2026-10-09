@@ -5,7 +5,7 @@ import { MODEL_PAYLOAD_SCHEMA_VERSION, encodeModelPayload, readModelPayload } fr
 import { SOUND_A, SOUND_B, TEXTURE_A, TEXTURE_B, pairGeometry, quadGeometry, syntheticModel } from '../../content/models/models.test-support.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { sha256Fingerprint } from '../../content/sha256.ts';
-import { syntheticMesh, syntheticModl, type SyntheticModlFields } from '../synthetic.ts';
+import { syntheticMesh, syntheticModl, type SyntheticModlFields } from '../synthetic.test-support.ts';
 import { expectSourceError, meshBlockFor } from './conversion.test-support.ts';
 import { MODEL_CONVERTER_COMPONENT, convertModels, type ModelReferences, type ModelSources } from './convert-models.ts';
 

@@ -16,7 +16,7 @@ updated: 2026-10-08
 
 ## 工作范围
 
-- 按 21 的 V-1、V-2 判定与 16、17 的二维结果，逐行判定[源码结构](../../../../engineering/source-structure.md#资源查看渲染)中的呈现约定：方向（UV 原点，必判）、坐标轴与手性、正面绕序与双面渲染、过滤与环绕、效果的跨接缝插值（区分算法未知与实际外观未验证）、效果颜色、颜色空间与透明。相机与诊断光是项目选择，只记录冲突。
+- 按 21 的 V-1、V-2 判定与 16、17 的二维结果，逐行判定[源码结构](../../../../engineering/modules/render.md#资源查看渲染)中的呈现约定：方向（UV 原点，必判）、坐标轴与手性、正面绕序与双面渲染、过滤与环绕、效果的跨接缝插值（区分算法未知与实际外观未验证）、效果颜色、颜色空间与透明。相机与诊断光是项目选择，只记录冲突。
 - **修正：** 只在证据达到高概率或已确认，且能用现有呈现接口表达时，修改 [viewer-presentation.ts](../../../../../src/render/viewer/viewer-presentation.ts)：
   - 同步单元测试，期望由独立计算得到；同步 E2E 像素期望（[viewer-page.spec.ts](../../../../../e2e/viewer-page.spec.ts)、[viewer-observations.ts](../../../../../e2e/support/viewer-observations.ts)，生产用例受影响时含 [production-preview.spec.ts](../../../../../e2e/production-preview.spec.ts)），不只把当前结果更新成新基准；
   - 更新源码结构中该行的选择与置信度，以及[本地导入指南](../../../../guides/local-import.md)的呈现限制说明；
@@ -30,7 +30,7 @@ updated: 2026-10-08
 
 ## 关键文件与契约
 
-- [viewer-presentation.ts](../../../../../src/render/viewer/viewer-presentation.ts) 及 `src/render/viewer/` 的测试；[源码结构：资源查看渲染](../../../../engineering/source-structure.md#资源查看渲染)。
+- [viewer-presentation.ts](../../../../../src/render/viewer/viewer-presentation.ts) 及 `src/render/viewer/` 的测试；[源码结构：资源查看渲染](../../../../engineering/modules/render.md#资源查看渲染)。
 
 ## 写入范围
 
@@ -103,7 +103,7 @@ updated: 2026-10-08
   - 用户对照中受影响的只有 V-1 中有贴图坐标变化的 10 个模型项（各模型的列表 0、1）：贴图方向与细节；修正后的贴图可能提供不对称特征，可再试手性。4 个第 2 列表项的坐标全部相同，两种读取结果一样。
   - V-2 的效果贴图坐标由 EXE 的 wrap 计算，不经 MESH；二维项与音效不受影响。
 - **文档影响：**
-  - 已更新[源码结构的呈现约定表](../../../../engineering/source-structure.md#资源查看渲染)与[本地导入指南的呈现限制](../../../../guides/local-import.md#查看器操作与限制)。
+  - 已更新[源码结构的呈现约定表](../../../../engineering/modules/render.md#资源查看渲染)与[本地导入指南的呈现限制](../../../../guides/local-import.md#查看器操作与限制)。
   - MESH 贴图坐标块的布局（mesh §1）及其 U 项、第 2 列表的受击表现（U-027），不在本项写入范围。原版事实交 24 或修复子任务回填。
   - 工程约定与键位文档无需改动。
 - **检查：** 只有文档修改，不运行构建。会话内的临时脚本按 GitHub 锚点规则检查 3 份改动文档：`updated:` 都是 2026-10-08，422 个相对链接与锚点没有问题。对照样本证明脚本能检出缺失文件与错误锚点。

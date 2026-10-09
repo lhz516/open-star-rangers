@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "08"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # P2-08：核心音效转换与播放适配 — Goal
@@ -52,7 +52,7 @@ updated: 2026-10-05
     - [import-job-owner.ts](../../../../src/app/import/import-job-owner.ts)：进度检查（P2-05 合入后为 `canReportStage` 与 `STAGE_OUT_OF_ORDER`）与 `INVALID_READ_BYTES`，组的验证顺序，`finished` 只核对组列表，不核对用量；
     - [import-worker.ts](../../../../src/workers/import-worker.ts) 调用无参的 `createImportJob()`。
   - **测试支持：**
-    - [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `buildImfat`、`ByteWriter`；
+    - [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `buildImfat`、`ByteWriter`；
     - [disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc`；
     - [source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；
     - [synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport`、`syntheticOpen`、`syntheticGroupsJob`。`syntheticGroupsJob` 经生产作业识别（P2-05 合入后注入 `NO_GRAPHICS`），所以作业加入音频阶段后要同步它；

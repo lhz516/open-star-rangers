@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "02"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 02 — MESH/MODL 源结构读取加固
@@ -32,7 +32,7 @@ updated: 2026-10-05
   这几项不符时为 `invalid-payload`（第 2 项除外）。
 - **位置：** 两个读取函数都以调用者给出的 `path` 为失败位置，不附加条目编号或偏移；03 传入 `models[<Asset ID>].model` 或 `….parts[<l>][<p>].mesh`。
 - **错误：** [source-error.ts](../../../../../src/original-data/source-error.ts) 的 `SourceLimitName` 追加 `meshVertices`、`meshTriangles`、`modelParts`，已有 code 与限值的含义不变。同步 [import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 中类型完整的限值名记录。
-- **移除旧解析器：** [payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseMesh`、`parseModel` 及其类型与测试，只保留 ID 列表与 `PayloadError`。合成构造器移入 [synthetic.ts](../../../../../src/original-data/synthetic.ts)，计划新增 `syntheticMesh`、`syntheticModel`。
+- **移除旧解析器：** [payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseMesh`、`parseModel` 及其类型与测试，只保留 ID 列表与 `PayloadError`。合成构造器移入 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)，计划新增 `syntheticMesh`、`syntheticModel`。
 - **nob-check：** [nob-check.ts](../../../../../tools/nob-check.ts) 改用这两个读取函数，以条目为单位的位置只用于本地输出；计数与交叉引用核对不变，输出仍只有计数与失败原因。
 - **测试：** 计划新增 `formats/mesh.test.ts`、`formats/modl.test.ts`，覆盖 AC-03、AC-04 的全部输入；nob-check 的现有测试继续通过。
 - **文档：** [源码结构](../../../../engineering/source-structure.md)的原版格式读取一节与目录树；[mesh](../../../../original/formats/mesh.md) 开头的解析器链接改为新的读取函数（只改指针，不改格式事实）；nob-check 的输出若有变化，同步[工具指南](../../../../guides/tools.md#封包结构核对)。
@@ -45,7 +45,7 @@ updated: 2026-10-05
 ## 关键文件与契约
 
 - 计划新增 `src/original-data/formats/mesh.ts`、`modl.ts` 及测试。
-- 修改 [payloads.ts](../../../../../src/original-data/payloads.ts)、[payloads.test.ts](../../../../../src/original-data/payloads.test.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)、[source-error.ts](../../../../../src/original-data/source-error.ts)、[nob-check.ts](../../../../../tools/nob-check.ts)、[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts)。
+- 修改 [payloads.ts](../../../../../src/original-data/payloads.ts)、[payloads.test.ts](../../../../../src/original-data/payloads.test.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)、[source-error.ts](../../../../../src/original-data/source-error.ts)、[nob-check.ts](../../../../../tools/nob-check.ts)、[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts)。
 - 复用 01 的 `MODEL_LIMITS` 与 [payload-block.ts](../../../../../src/original-data/formats/payload-block.ts) 的块读取（适用处）。`formats/` 只处理已读入的块，不打开封包。
 
 ## 验收标准
@@ -64,7 +64,7 @@ updated: 2026-10-05
 
 ## 完成证据
 
-- **实现：** [mesh.ts](../../../../../src/original-data/formats/mesh.ts) 的 `readMeshCounts` 与 `readMesh`，以及 [modl.ts](../../../../../src/original-data/formats/modl.ts) 的 `readModel`，都只接收已读入的块，失败位置恰为调用者给出的 `path`。沿用 P2-05 源读取的做法，不经 `PayloadBlock`：后者的位置带 `archive:/…#ID`，且会把 −0 规范化。`readMesh` 返回 01 的 `ModelGeometry`（新缓冲，浮点按位保留）；`readModel` 返回 `{ partLists, soundEntries }`，条目号不在这里解析。[source-error.ts](../../../../../src/original-data/source-error.ts) 追加限值名 `meshVertices`、`meshTriangles`、`modelParts`，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的类型完整记录同步。[payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseMesh`、`parseModel` 及其类型，只剩 `parseIdList` 与 `PayloadError`。[synthetic.ts](../../../../../src/original-data/synthetic.ts) 新增 `syntheticMesh` 与 `syntheticModl`，按类型标签命名，同 `syntheticSnd`，避免与 01 的 `syntheticModel` 同名。[nob-check.ts](../../../../../tools/nob-check.ts) 改用新的读取函数，位置为 `mesh`、`model`。
+- **实现：** [mesh.ts](../../../../../src/original-data/formats/mesh.ts) 的 `readMeshCounts` 与 `readMesh`，以及 [modl.ts](../../../../../src/original-data/formats/modl.ts) 的 `readModel`，都只接收已读入的块，失败位置恰为调用者给出的 `path`。沿用 P2-05 源读取的做法，不经 `PayloadBlock`：后者的位置带 `archive:/…#ID`，且会把 −0 规范化。`readMesh` 返回 01 的 `ModelGeometry`（新缓冲，浮点按位保留）；`readModel` 返回 `{ partLists, soundEntries }`，条目号不在这里解析。[source-error.ts](../../../../../src/original-data/source-error.ts) 追加限值名 `meshVertices`、`meshTriangles`、`modelParts`，[import-protocol.test.ts](../../../../../src/workers/import-protocol.test.ts) 的类型完整记录同步。[payloads.ts](../../../../../src/original-data/payloads.ts) 删除 `parseMesh`、`parseModel` 及其类型，只剩 `parseIdList` 与 `PayloadError`。[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 新增 `syntheticMesh` 与 `syntheticModl`，按类型标签命名，同 `syntheticSnd`，避免与 01 的 `syntheticModel` 同名。[nob-check.ts](../../../../../tools/nob-check.ts) 改用新的读取函数，位置为 `mesh`、`model`。
 - **格式规则的补充：** 本地探查（`local/research/p2-06/modl-pointers.ts`，只输出计数）显示，19 个 MODL 的三个列表都按列表顺序紧接头部连续存放，6 个空列表的指针都为 0；全部部件的 +16 字段与 486 个 MESH 的 0x08 字段都为 0。`readModel` 据此要求列表连续、空列表指针为 0，从而每个部件恰好读取一次。这一事实已以“已确认”记入 [mesh §2](../../../../original/formats/mesh.md#2-modl-structure-confirmed-on-all-19-entries)。这比 spec 逐条列出的拒绝项更严格，但不改变契约：它仍属于 S-03 的“指针与长度”校验，AC-12 的全量核对也覆盖它。
 - **AC-03：** [mesh.test.ts](../../../../../src/original-data/formats/mesh.test.ts) 覆盖以下读取结果：
   - 3 个顶点、1 个三角形的网格：位置含 −0、最小与最大次正规数、最大有限值，读出后按位相等；
@@ -90,7 +90,7 @@ updated: 2026-10-05
   - 让 `readMesh` 复用已经读出的计数：重复的头部检查开销固定且很小，保留它可以让 `readMesh` 单独调用时仍自我校验；
   - 改写 `ByteWriter.f32` 的逐字节写入：属于本子任务以外的既有代码。
 - **文档影响：** 已更新：
-  - [源码结构](../../../../engineering/source-structure.md#原版格式转换)：目录树与“MESH 与 MODL”说明，`payloads.ts` 的职责，测试数据构造器；
+  - [源码结构](../../../../engineering/modules/original-data.md#原版格式转换)：目录树与“MESH 与 MODL”说明，`payloads.ts` 的职责，测试数据构造器；
   - [mesh](../../../../original/formats/mesh.md)：读取函数的链接，以及列表连续存放与保留字段为 0 的已确认事实；
   - [工具指南](../../../../guides/tools.md#封包结构核对)：nob-check 的模型核对与失败文字。
 

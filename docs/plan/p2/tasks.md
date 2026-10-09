@@ -42,7 +42,7 @@ P2 要证明的是**用户本地原版数据可以成为 P3 实际消费的、�
 
 - [P1 退出评审与交接](../../reviews/P1-exit.md#4-对后续阶段的影响)已给出可复用设施和必须另行设计的合成项；[P0 可行性评审](../../reviews/P0-feasibility.md)是研究起点，不等于已有浏览器资源管线。
 - [imfat.ts](../../../src/original-data/imfat.ts)已有内存字节上的封包目录、条目与重定位位置读取；[payloads.ts](../../../src/original-data/payloads.ts)已有调色板、raw/RLE 图像、MFDD、点阵字体、ID 列表、MESH/MODL 解析。它们可复用，但尚不是完整的输入预算、内容语义与跨资源校验方案。
-- [synthetic.ts](../../../src/original-data/synthetic.ts)、[封包测试](../../../src/original-data/imfat.test.ts)、[payload 测试](../../../src/original-data/payloads.test.ts)和[本地检查工具](../../../tools/nob-check.ts)可继续扩展。当前工具的 CCKD 检查只覆盖字体，不能据此宣称驾驶舱分组已接入；当前源码也没有 SND、SCEN/SCCT 的正式转换入口。
+- [synthetic.ts](../../../src/original-data/synthetic.test-support.ts)、[封包测试](../../../src/original-data/imfat.test.ts)、[payload 测试](../../../src/original-data/payloads.test.ts)和[本地检查工具](../../../tools/nob-check.ts)可继续扩展。当前工具的 CCKD 检查只覆盖字体，不能据此宣称驾驶舱分组已接入；当前源码也没有 SND、SCEN/SCCT 的正式转换入口。
 - [App](../../../src/app/App.tsx)、[页面流转](../../../src/app/flow/app-flow.ts)和导入占位页（`src/ui/pages/ImportPlaceholderPage.tsx`，P2-11 已删除）尚无文件读取、导入作业或存储接线；`content/`、`workers/`仍是计划目录。P2 只在实际实现时创建目录，不先建空模块。
 - [绘制端口](../../../src/render/scene/render-surface.ts)、[WebGL 表面](../../../src/render/webgl/webgl-surface.ts)和[视口布局](../../../src/render/viewport/viewport-layout.ts)提供渲染与清理基础，但当前显示的是合成几何，不是模型/位图资源消费者。Core、Runtime 和 Session 的 synthetic 契约也不能直接改名冒充正式任务。
 - [原版 manifest](../../original/manifest.md)提供版本识别依据；[本地合规工具](../../../tools/compliance/)与独立 [E2E](../../../e2e/) 可复用。后续新增 Worker、依赖或资源消费链仍需验证构建来源、许可声明和原版隔离。

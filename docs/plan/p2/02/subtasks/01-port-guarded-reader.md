@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "02"
 subtask: "01"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 01 — 字节端口、受控读取、预算与错误
@@ -28,7 +28,7 @@ updated: 2026-10-04
   - 等待结束后先检查取消，再核对返回值：必须是精确长度的 `Uint8Array`，不能已 detached，不能由 SharedArrayBuffer 支持。否则返回 `read-failed`；已发出的请求用量不回滚。
   - 提供整次操作的预算预检，不改变用量；`usage()` 返回完整十二维、冻结且脱离内部状态的快照。
   - 取消探针形如 `{ readonly aborted: boolean }`，保留实时引用；第一次观察到取消后，该读取上下文保持取消。
-- **合成测试端口**（扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)）：
+- **合成测试端口**（扩展 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)）：
   - 基于内存字节、记录每次请求 `(offset, length)` 的端口；
   - 可控 Promise 的端口，用于复现重叠与等待期间取消；
   - 可返回错误类型、长度或缓冲状态的故障端口。
@@ -46,7 +46,7 @@ updated: 2026-10-04
   - `src/original-data/disc/source-reader.ts`：受控读取、计量与取消；
   - 相邻 `*.test.ts`。
 - **复用：** [budget.ts](../../../../../src/content/budget.ts)（`readBudgetRecord`、`chargeBudget`、`EMPTY_BUDGET_USAGE`）、[ownership.ts](../../../../../src/content/ownership.ts)（`isDetached`）、[contract-validation.ts](../../../../../src/content/contract-validation.ts)（`ContentContractError`）。
-- **修改：** [synthetic.ts](../../../../../src/original-data/synthetic.ts) 增加合成端口。
+- **修改：** [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 增加合成端口。
 
 ## 验收标准
 
@@ -78,7 +78,7 @@ updated: 2026-10-04
     - `SourceReader.read` 依次检查：参数 → 减法式源内边界 → 单次端口上限 → 取消 → `chargeBudget` 计量（等待前写入共享用量）→ 等待 → 取消 → 宿主失败或返回值校验。
     - 返回值经 `%TypedArray%.prototype` 与 `ArrayBuffer.prototype` 的内在 getter 校验，子类、Proxy、改写的访问器或原型都无法伪装；结果统一为普通 `Uint8Array` 视图。
     - `precheck` 不改变用量；`usage()` 返回冻结的十二维记录；观察到取消后保持取消。
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts)：`SyntheticByteSource`（记录请求，`respond` 可返回任意值、Promise 或抛错，因此同时承担生成端口与故障端口），以及 `memoryByteSource`、`deferredByteSource`（可控 Promise）。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)：`SyntheticByteSource`（记录请求，`respond` 可返回任意值、Promise 或抛错，因此同时承担生成端口与故障端口），以及 `memoryByteSource`、`deferredByteSource`（可控 Promise）。
 - **测试：** [source-reader.test.ts](../../../../../src/original-data/disc/source-reader.test.ts) 与 [disc-error.test.ts](../../../../../src/original-data/disc/disc-error.test.ts) 均按 code/location/limit 断言，并检查诊断中不含植入标记、错误对象上不挂字节、DTO 可结构化克隆。覆盖内容：
   - 端口契约失败：拒绝、同步抛错、短/长数据、普通数组、DataView、Int8Array、detached、SharedArrayBuffer、标记文本、undefined、Proxy、伪装普通缓冲的共享视图、原型改为 ArrayBuffer 的共享缓冲、谎报 byteLength 的短视图，全部返回 `read-failed` 且仍计量；
   - 正向：带偏移的池化视图、子类结果被规范为普通视图、被改写的访问器不执行、恰好 4,816,896 字节的请求；

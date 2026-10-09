@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "03"
 subtask: "02"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 02 — 封包格式规则、错误类型与内存解析
@@ -27,7 +27,7 @@ updated: 2026-10-05
   - **位置：** 按 spec 的语法生成（`archive`、`[i]`、`#ID`、`#ID.relocations[k]`），可带 `:/路径` 前缀；只回显通过语法的类型标签。
 - **内存解析：** [imfat.ts](../../../../../src/original-data/imfat.ts) 的 `parseImfat` 与条目辅助函数改用上述规则与错误码，`ImfatEntry` 形状保持不变。若改名或移动导出，须同步 [nob-list](../../../../../tools/nob-list.ts)、[nob-check](../../../../../tools/nob-check.ts) 与测试，研究工具的输出不含新增的原版内容。
 - **合成样本：**
-  - 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)，可构造任意覆写文件头、保留字、原始类型标签字节、偏移、尾随字节与块内指针值的合成封包；
+  - 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)，可构造任意覆写文件头、保留字、原始类型标签字节、偏移、尾随字节与块内指针值的合成封包；
   - 新增共用的正负样本表，每条为 `(名称, 字节, 期望目录/重定位或期望 code 与位置)`，供本子任务与 03 的一致性测试使用。
 
 ## 不包含
@@ -43,7 +43,7 @@ updated: 2026-10-05
   - `src/original-data/archive/imfat-rules.ts`：文件头、目录与重定位规则及限值常量；
   - `src/original-data/archive/archive.test-support.ts`：共用正负样本表；
   - 相邻的 `*.test.ts`。
-- **修改：** [imfat.ts](../../../../../src/original-data/imfat.ts)、[imfat.test.ts](../../../../../src/original-data/imfat.test.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.ts)，以及按需修改 [nob-list](../../../../../tools/nob-list.ts)、[nob-check](../../../../../tools/nob-check.ts)。
+- **修改：** [imfat.ts](../../../../../src/original-data/imfat.ts)、[imfat.test.ts](../../../../../src/original-data/imfat.test.ts)、[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)，以及按需修改 [nob-list](../../../../../tools/nob-list.ts)、[nob-check](../../../../../tools/nob-check.ts)。
 - **文档：** [源码结构](../../../../engineering/source-structure.md)的目录树与新增的封包读取说明。
 
 ## 验收标准
@@ -96,5 +96,5 @@ updated: 2026-10-05
 - **Simplify：**
   - 采纳：类型标签检查复用 `matchesWhole`；错误模块移到根目录；所有权改为以字节为键的 `WeakMap`，条目不会让整份封包常驻；重叠检查改用 `Float64Array` 的原生数值排序；收窄 test-support 的导出，去掉别名，4,096 条目只构建一次，增加失败 helper。
   - 未采纳：与 `DiscReadError` 抽公共基类（需要修改 P2-02 代码）；复用 disc 的异步测试 helper；延迟构建 4 MiB 样本（只影响测试内存）；把辅助函数改为绑定方法（会改变工具接口）。
-- **文档影响：** 更新[源码结构](../../../../engineering/source-structure.md#封包读取)的目录树与“封包读取”一节。[工具指南](../../../../guides/tools.md)中 `nob-list`/`nob-check` 的描述仍然准确，工程约定无受影响规则。
+- **文档影响：** 更新[源码结构](../../../../engineering/modules/original-data.md#封包读取)的目录树与“封包读取”一节。[工具指南](../../../../guides/tools.md)中 `nob-list`/`nob-check` 的描述仍然准确，工程约定无受影响规则。
 

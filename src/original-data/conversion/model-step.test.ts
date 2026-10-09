@@ -9,7 +9,7 @@ import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { DiscReadError } from '../disc/disc-error.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
-import { buildImfat, syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
+import { buildImfat, syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.test-support.ts';
 import {
   countedVerifiedSource, dataPaletteBlock, expectSourceError, graphicsMapping, imageDeclaration, meshBlockFor, textureBlock, triangleMeshBlock, withMeshReads,
 } from './conversion.test-support.ts';

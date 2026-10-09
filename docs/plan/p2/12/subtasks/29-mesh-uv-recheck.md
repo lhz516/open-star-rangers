@@ -21,7 +21,7 @@ updated: 2026-10-08
   - 记录新候选 `{ commit, buildFingerprint, contentIdentity }`，重跑 [12](./12-candidate-check.md#完成证据) 的候选核对；
   - 重跑 agent 可运行的脚本：16 的布局比较、17 的覆盖核对、18 的任务核对，以及 [11](./11-outbound-compliance-review.md#完成证据) 的出站扫描（含 `--control`）；结论与原候选不同时，写明差异与影响；
   - 在新候选的本地生产预览中复核 V-1 的 10 个带贴图模型项（各模型列表 0、1）：贴图方向与细节；可再尝试手性。21 中按错误映射判为“一致”的 5 项在此重新判定；
-  - 更新 [mesh §1](../../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed) 中读取器状态，并删去[源码结构](../../../../engineering/source-structure.md#资源查看渲染)与[本地导入指南](../../../../guides/local-import.md#查看器操作与限制)中“当前候选的模型贴图与原版不同”的限制说明。
+  - 更新 [mesh §1](../../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed) 中读取器状态，并删去[源码结构](../../../../engineering/modules/render.md#资源查看渲染)与[本地导入指南](../../../../guides/local-import.md#查看器操作与限制)中“当前候选的模型贴图与原版不同”的限制说明。
 - 复核不通过时，相应 AC 保持 blocked，回 P2-06 或 22。
 
 ## 不包含
@@ -106,7 +106,7 @@ updated: 2026-10-08
 - **文档更新：**
   - [mesh §1](../../../../original/formats/mesh.md#texture-coordinate-block-order-confirmed) 的读取器状态后新增复核一条：独立字节核对为已确认，查看器对照为高概率。旧锚点 `texture-coordinate-block-order-likely-p2-12` 仍被 goal 与 24 引用，保留别名；本文件的链接已改指新锚点。
   - [mesh §3](../../../../original/formats/mesh.md#p2-12-viewer-comparison-v-1) 的表格以本项的贴图判定取代 21 的，并新增“Shared reading”一条，写明等价链。
-  - [源码结构的呈现约定](../../../../engineering/source-structure.md#资源查看渲染)：引言、“方向”行与“模型贴图（三维）”行删去“当前候选与原版不同”，改记复核结果与置信度。
+  - [源码结构的呈现约定](../../../../engineering/modules/render.md#资源查看渲染)：引言、“方向”行与“模型贴图（三维）”行删去“当前候选与原版不同”，改记复核结果与置信度。
   - [本地导入指南的呈现限制](../../../../guides/local-import.md#查看器操作与限制)：删去模型贴图一条；第 2 列表、手性、跨接缝插值与光照的说明保留。
   - 未改 `local/research/p2-12/session/record.md`（不在写入范围）：其中 5 行“待复核”的新判定在 `recheck/record.md`。
 - **未改仓库代码：** 本地脚本与改写副本都不提交，不需要 simplify。

@@ -3,7 +3,7 @@ import {
   ENTRY_IDS, MARKER, defaultCampaignSpec, defaultScenarioSpec, syntheticCampaign, syntheticModelArchive, syntheticScenario,
   syntheticScenarioArchive,
 } from '../formats/formats.test-support.ts';
-import { buildImfat } from '../synthetic.ts';
+import { buildImfat } from '../synthetic.test-support.ts';
 import { archiveLocator, readSourceMappingTable } from '../source-mapping.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
 import { loggedReads, syntheticVerifiedSource } from '../source/source.test-support.ts';

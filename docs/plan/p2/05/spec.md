@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "05"
-updated: 2026-10-06
+updated: 2026-10-08
 related: [ADR-0007, ADR-0008, ADR-0015, U-001, U-018, U-019, U-028, U-029, U-030]
 reviewed: sha256:1c6f9c5f4028
 ---
@@ -108,12 +108,12 @@ reviewed: sha256:1c6f9c5f4028
 | [import-job.ts](../../../../src/workers/import-job.ts)、[import-protocol.ts](../../../../src/workers/import-protocol.ts)、[import-host.ts](../../../../src/workers/import-host.ts) | 作业追加图形步骤与合并用量；新增阶段并递增协议版本；宿主把转换错误按 `source` 层转换 |
 | [import-job-owner.ts](../../../../src/app/import/import-job-owner.ts) | 按新的阶段顺序规则校验进度消息 |
 | [nob-check.ts](../../../../tools/nob-check.ts) | 改用同一套转换校验，只输出计数与失败原因 |
-| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、`e2e/` | 合成图像、调色板、字体与封包，Node 与真实 Worker 用例 |
+| 相邻 `*.test.ts`、[synthetic.ts](../../../../src/original-data/synthetic.test-support.ts)、[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)、`e2e/` | 合成图像、调色板、字体与封包，Node 与真实 Worker 用例 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | 研究事实与置信度、模块与命令说明 |
 
 ## 当前实现与依据
 
-- **现有解析器：** [payloads.ts](../../../../src/original-data/payloads.ts) 中 `parseVgaPalette` 只要求至少 768 字节，并以 `& 63` 截掉分量高位。`parseImage` 只检查位深与指针范围：raw 像素直接引用源块，嵌入调色板按 BGR 转为 RGB，编码 1 报错。`decodeSpriteRle` 先分配 `width × height` 再解码，拒绝越行、截断与尾随字节。`parseBitmapFont` 要求宽 1–8、表长 `4 + 256 × height`，高度不设上限；`parseCockpitFonts` 与 `parseMfdImages` 的计数不设上限。全部失败都抛出无类型的 `PayloadError`。[payloads.test.ts](../../../../src/original-data/payloads.test.ts) 与 [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `imageRecord`、`buildImfat` 可继续用于构造合成样本。
+- **现有解析器：** [payloads.ts](../../../../src/original-data/payloads.ts) 中 `parseVgaPalette` 只要求至少 768 字节，并以 `& 63` 截掉分量高位。`parseImage` 只检查位深与指针范围：raw 像素直接引用源块，嵌入调色板按 BGR 转为 RGB，编码 1 报错。`decodeSpriteRle` 先分配 `width × height` 再解码，拒绝越行、截断与尾随字节。`parseBitmapFont` 要求宽 1–8、表长 `4 + 256 × height`，高度不设上限；`parseCockpitFonts` 与 `parseMfdImages` 的计数不设上限。全部失败都抛出无类型的 `PayloadError`。[payloads.test.ts](../../../../src/original-data/payloads.test.ts) 与 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `imageRecord`、`buildImfat` 可继续用于构造合成样本。
 - **内容契约（P2-01）：**
   - [asset-contract.ts](../../../../src/content/asset-contract.ts) 的描述符含 `id`、`kind`、`role`、`group`、有序依赖与 `payloadIdentity`；[payload.ts](../../../../src/content/payload.ts) 的 `PayloadRecord` 为 `{ id, schemaVersion, bytes }`。
   - [budget.ts](../../../../src/content/budget.ts) 已有 `imagePixels`、`paletteEntries`、`glyphs` 与 `payloadBytes` 维度；[ownership.ts](../../../../src/content/ownership.ts) 的 `payloadTransferList` 要求每个 payload 独占整个缓冲。

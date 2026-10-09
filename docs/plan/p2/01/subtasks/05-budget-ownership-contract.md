@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "05"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 05 — 预算与数据所有权契约
@@ -95,7 +95,7 @@ updated: 2026-10-04
   - `pnpm check` 为 66 个文件 1633 项通过，四个 TypeScript 程序、lint 与生产构建均通过；
   - 依赖与锁文件未变；
   - 不适用 browser-testing，实际 Worker 转移归 P2-04。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)更新了以下内容：
+- **文档影响：** [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)更新了以下内容：
   - 目录树新增 `manifest.ts`、`budget.ts`、`ownership.ts`；
   - 新增 `visitArray`/`visitOrderedArray`、`readGroupManifest`/`visitGroupManifest`、预算与所有权的说明；
   - 删除“二进制所有权仍由 05 实现”的过时说明。

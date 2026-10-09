@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "01"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # P2-01：切片资源边界与内容契约 — Goal
@@ -14,7 +14,7 @@ updated: 2026-10-04
 
 ## 代码现状与前提
 
-- [imfat.ts](../../../../src/original-data/imfat.ts)、[payloads.ts](../../../../src/original-data/payloads.ts)和[synthetic.ts](../../../../src/original-data/synthetic.ts)已提供原版格式解析/合成字节基础，但没有 Asset ID、内容清单或来源映射契约。
+- [imfat.ts](../../../../src/original-data/imfat.ts)、[payloads.ts](../../../../src/original-data/payloads.ts)和[synthetic.ts](../../../../src/original-data/synthetic.test-support.ts)已提供原版格式解析/合成字节基础，但没有 Asset ID、内容清单或来源映射契约。
 - [08](./subtasks/08-base-content-contract.md) 已新增纯 `src/content/` 基础契约及相邻合成测试；正式切片定义、来源选择与完整性/预算验证仍由后续子任务实现，继续保持纯模块边界。
 - [P2 tasks](../tasks.md)、[P0 可行性评审](../../../reviews/P0-feasibility.md)及 [U-003/U-022/U-023](../../../original/unknowns.md)提供研究范围；本地合法原版数据只读研究留在 `local/`，公开文档仅记录安全结构结论。
 - 外部前提：必须能访问开发者本地基准数据以取得候选资格证据；无数据或语义无法区分时，01 进入 blocked，不能用合成 fixture 代替。

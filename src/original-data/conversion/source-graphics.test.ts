@@ -3,7 +3,7 @@ import { encodeImagePayload, readImagePayload } from '../../content/graphics/ima
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
 import type { SourceLimit } from '../source-error.ts';
-import { ByteWriter, syntheticSnip } from '../synthetic.ts';
+import { ByteWriter, syntheticSnip } from '../synthetic.test-support.ts';
 import {
   cockpitBlock as cockpit, cockpitLayoutBlock, dataPaletteBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
   recordBlock as record, spriteImageBlock, tableBlock, type SyntheticElement,

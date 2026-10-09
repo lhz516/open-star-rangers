@@ -10,7 +10,7 @@ import { MODEL_LIMITS, MODEL_PAYLOAD_LAYOUT } from '../../content/models/model-p
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { DEFAULT_MODEL_IDS, syntheticScenarioArchive } from '../formats/formats.test-support.ts';
 import { archiveLocator } from '../source-mapping.ts';
-import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.ts';
+import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.test-support.ts';
 import { countedVerifiedSource, expectSourceError, UNLIMITED_BUDGET } from './conversion.test-support.ts';
 import { syntheticEffectExecutable } from './production-effects.test-support.ts';
 import { convertLogic } from './convert-logic.ts';

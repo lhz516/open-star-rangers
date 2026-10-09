@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "11"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 11 — Core 纯载入 `loadMission`
@@ -90,6 +90,6 @@ updated: 2026-10-05
     - 与 `core/synthetic` 的记录校验共用：本子任务不触及 `core/synthetic/`；
     - 把 `deepFrozen` 移到更通用的测试支持：本测试核对的是读取器产出的数据，逻辑内容测试支持是合适位置。
 - **文档影响：**
-  - [源码结构](../../../../engineering/source-structure.md#core-任务载入)新增目录项与“Core 任务载入”一节；
+  - [源码结构](../../../../engineering/modules/core.md#core-任务载入)新增目录项与“Core 任务载入”一节；
   - [工程约定](../../../../engineering/README.md)补充 `pnpm exec vitest run src/core/mission`；
   - STATUS 无需更新。

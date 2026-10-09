@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "03"
 subtask: "01"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 01 — 分段 SHA-256
@@ -31,7 +31,7 @@ updated: 2026-10-05
 ## 关键文件与契约
 
 - **修改：** [sha256.ts](../../../../../src/content/sha256.ts)、[sha256.test.ts](../../../../../src/content/sha256.test.ts)。
-- **文档：** [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)中 `sha256.ts` 的说明。
+- **文档：** [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)中 `sha256.ts` 的说明。
 
 ## 验收标准
 
@@ -71,5 +71,5 @@ updated: 2026-10-05
 - **Simplify：**
   - 采纳：复用 `isDetached`；由总长推导尾部长度，去掉同步字段；缓存尾部 `DataView`；完成时只清零所需范围；去掉与原有一次性测试重复的断言。
   - 保留：压缩后的清零，用于满足“只保留未完成尾部”的要求。
-- **文档影响：** 更新[源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)中 `sha256.ts` 的说明；工程约定与工具指南无受影响内容。
+- **文档影响：** 更新[源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)中 `sha256.ts` 的说明；工程约定与工具指南无受影响内容。
 

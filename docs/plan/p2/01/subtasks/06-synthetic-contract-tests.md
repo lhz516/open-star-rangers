@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "06"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 06 — 合成契约测试与工程边界
@@ -27,7 +27,7 @@ updated: 2026-10-04
 
 ## 关键文件与契约
 
-- 复用 [synthetic.ts](../../../../../src/original-data/synthetic.ts)的测试数据生成模式，但新增内容 fixture 归 `src/content` owner。
+- 复用 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)的测试数据生成模式，但新增内容 fixture 归 `src/content` owner。
 - 计划新增邻接 `*.test.ts`；测试不输出原版 payload。
 
 ## 验收标准
@@ -118,6 +118,6 @@ updated: 2026-10-04
   - 不适用 browser-testing。
 - **文档影响：**
   - [工程约定](../../../../engineering/README.md#测试)的测试规则加入内容 fixture 与测试数据守卫；
-  - [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)说明 fixture 与跨契约测试。
+  - [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)说明 fixture 与跨契约测试。
 
   guides、架构决策与 STATUS 不受影响，原版事实与 U 项状态不变。

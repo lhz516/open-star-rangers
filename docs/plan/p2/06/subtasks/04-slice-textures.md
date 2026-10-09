@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "06"
 subtask: "04"
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # 04 — 切片贴图与调色板
@@ -98,4 +98,4 @@ updated: 2026-10-06
   - 测试中的贴图 ID 改用生产函数生成：测试有意独立写出命名规则；
   - original-data 的测试改用 workers 的用量常量：会让下层测试依赖上层；
   - 删除重复出现的 15：已批准的表正好 15 行。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#图形转换)的“生产图形”一节新增贴图表、声明、映射与份额，更新 `PRODUCTION_GRAPHICS_SHARE` 的合计与合成封包说明，目录树新增 `production-model-textures.ts`。本地探查结果只记在本证据中。`docs/original/` 无需改动：本子任务只采用已有的歧义条目清单与结构事实，没有新的原版事实。
+- **文档影响：** [源码结构](../../../../engineering/modules/original-data.md#图形转换)的“生产图形”一节新增贴图表、声明、映射与份额，更新 `PRODUCTION_GRAPHICS_SHARE` 的合计与合成封包说明，目录树新增 `production-model-textures.ts`。本地探查结果只记在本证据中。`docs/original/` 无需改动：本子任务只采用已有的歧义条目清单与结构事实，没有新的原版事实。

@@ -2,7 +2,7 @@ import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content
 import { modelPayloadLength } from '../../content/models/model-payload.ts';
 import { pairGeometry, quadGeometry } from '../../content/models/models.test-support.ts';
 import { DEFAULT_MODEL_IDS, syntheticModelEntries } from '../formats/formats.test-support.ts';
-import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.ts';
+import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.test-support.ts';
 import { meshBlockFor, triangleMeshBlock } from './conversion.test-support.ts';
 import { syntheticRensEntry } from './production-effects.test-support.ts';
 import { productionGraphicsEntries } from './production-graphics.test-support.ts';

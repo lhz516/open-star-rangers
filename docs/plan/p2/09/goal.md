@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "09"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # P2-09：单任务与战略地图/Warp 数据 — Goal
@@ -28,7 +28,7 @@ updated: 2026-10-05
   - **来源与读取：** [identify-source.ts](../../../../src/original-data/source/identify-source.ts) 的 `VerifiedSource`；[archive-reader.ts](../../../../src/original-data/archive/archive-reader.ts) 的 `ImfatArchiveHandle.read`；[source-mapping.ts](../../../../src/original-data/source-mapping.ts) 的 `readSourceMappingTable`、`assetSourceStates`；[verify-source-mappings.ts](../../../../src/original-data/source/verify-source-mappings.ts)；[source-error.ts](../../../../src/original-data/source-error.ts) 的 `SourceError`。
   - **导入作业：** [import-job.ts](../../../../src/workers/import-job.ts)、[import-host.ts](../../../../src/workers/import-host.ts)、[import-protocol.ts](../../../../src/workers/import-protocol.ts)（`IMPORT_PROTOCOL_VERSION` 为 1，`IMPORT_STAGES` 只有 `identify-source`）、[import-job-owner.ts](../../../../src/app/import/import-job-owner.ts)。
   - **Core：** [errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError`；当前只有 [synthetic/](../../../../src/core/synthetic/)。
-  - **测试支持：** [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `ByteWriter`、`buildImfat`；[disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 与 `MARKER`；[source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；[source-error.test-support.ts](../../../../src/original-data/source-error.test-support.ts) 的位置语法 oracle `inLocationGrammar`；[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport`、`syntheticOpen`、`syntheticGroupsJob`；[import-host.test-support.ts](../../../../src/workers/import-host.test-support.ts)。
+  - **测试支持：** [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `ByteWriter`、`buildImfat`；[disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 与 `MARKER`；[source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor`；[source-error.test-support.ts](../../../../src/original-data/source-error.test-support.ts) 的位置语法 oracle `inLocationGrammar`；[synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport`、`syntheticOpen`、`syntheticGroupsJob`；[import-host.test-support.ts](../../../../src/workers/import-host.test-support.ts)。
 - **计划新增（均尚不存在）：**
   - `src/original-data/formats/`：指针安全的数据块读取与 SCCT/SCEN/M2ID 解析，以及合成样本 test-support；
   - `src/original-data/conversion/`：生产 `ConverterVersion`、机型与模型绑定、生产来源映射表与子资源核验、`logic` 转换编排；

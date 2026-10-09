@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 related: [ADR-0003, ADR-0007, ADR-0008, ADR-0015, U-001, U-017, U-020]
 reviewed: sha256:165fb8274512
 ---
@@ -76,7 +76,7 @@ reviewed: sha256:165fb8274512
 | `src/original-data/source/`（计划新增） | 产品入口、版本白名单、版本识别、来源指纹、已验证来源句柄与来源映射核验 |
 | [source-mapping.ts](../../../../src/original-data/source-mapping.ts) | 只读复用表读取与状态推导；表形状不变 |
 | [sha256.ts](../../../../src/content/sha256.ts) | 增加分段输入能力；`sha256Fingerprint` 行为不变 |
-| [synthetic.ts](../../../../src/original-data/synthetic.ts) 与相邻 test-support | 扩展可覆写字段的合成封包、带重定位指针的数据块、含多个文件的合成光盘与合成版本白名单 |
+| [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 与相邻 test-support | 扩展可覆写字段的合成封包、带重定位指针的数据块、含多个文件的合成光盘与合成版本白名单 |
 | `tools/`（计划新增脚本） | 本地来源核对 CLI；白名单与 manifest 的一致性测试复用 [manifest 解析](../../../../tools/compliance/manifest.ts)；[nob-list](../../../../tools/nob-list.ts) 与 [nob-check](../../../../tools/nob-check.ts) 随内存解析获得同样的校验 |
 | [eslint.config.js](../../../../eslint.config.js)、[engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) | 新增 S-07 的底层能力限制：Worker 与 `original-data` 内其他模块只能经产品入口取得镜像与封包；消费者既有限制不放宽 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | S-13 的事实记录、模块说明、边界规则与工具用法 |
@@ -86,15 +86,15 @@ reviewed: sha256:165fb8274512
 - **现有封包解析：** [imfat.ts](../../../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 只作用于内存中的完整字节，校验缺口见[问题与目标](#问题与目标)，失败时抛出只带消息的 `ImfatError`。
   - [payloads.ts](../../../../src/original-data/payloads.ts) 的解析器直接读取块内偏移，不使用重定位表。
   - [nob-list](../../../../tools/nob-list.ts) 与 [nob-check](../../../../tools/nob-check.ts) 读取本地安装目录中的文件，再调用内存解析。
-  - [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `buildImfat` 生成连续布局的合成封包。
-- **P2-02 已提供：** [光盘镜像读取](../../../engineering/source-structure.md#光盘镜像读取)。
+  - [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `buildImfat` 生成连续布局的合成封包。
+- **P2-02 已提供：** [光盘镜像读取](../../../engineering/modules/original-data.md#光盘镜像读取)。
   - `openDiscImage` 返回冻结的句柄：`lookup(path)` 给出 `DiscEntry`，`openFile(path)` 给出可读取任意字节范围的 `DiscFile`，读取返回独占字节。
   - 每次端口读取都计量 `sourceReadBytes` 并检查取消；内部没有缓存。
   - 失败统一为 `DiscReadError`，其 `toData()` 给出 `{ code, location, reason, limit }`。
   - 单次范围读取上限为 16 MiB，见 [P2-02 限值](../02/spec.md#限值与预算)。
 - **P2-01 已提供：**
-  - [内容契约](../../../engineering/source-structure.md#内容基础契约与切片定义)：`readSourceFingerprint` 只接受 `source:` 命名空间的受限 ASCII 标识，并只校验形状；`sha256Fingerprint` 是同步一次性的纯 SHA-256；`exclusiveBytes`、`payloadTransferList` 规定字节所有权。
-  - [来源映射](../../../engineering/source-structure.md#原版来源映射)：`readSourceMappingTable` 要求 `verified` 映射必须带表级指纹；`assetSourceStates` 只把 `verified` 视为可用。
+  - [内容契约](../../../engineering/modules/content.md#内容基础契约与切片定义)：`readSourceFingerprint` 只接受 `source:` 命名空间的受限 ASCII 标识，并只校验形状；`sha256Fingerprint` 是同步一次性的纯 SHA-256；`exclusiveBytes`、`payloadTransferList` 规定字节所有权。
+  - [来源映射](../../../engineering/modules/original-data.md#原版来源映射)：`readSourceMappingTable` 要求 `verified` 映射必须带表级指纹；`assetSourceStates` 只把 `verified` 视为可用。
   - [P2-01 spec](../01/spec.md#清单来源与版本)把来源指纹的生成交给本任务，并规定文件名、卷标与 FNV 状态哈希都不能作为来源指纹。
 - **边界：** [工程边界回归](../../../../tools/engineering-boundaries.test.ts)目前允许 `src/workers/` 导入任何 `original-data` 模块，只禁止 core/content/render/ui/app/platform 等消费者（`platform` 可纯类型导入字节端口）。因此“只经已验证来源读取”须由本任务新增限制，不能只靠约定。
 - **冻结决定：**
@@ -363,7 +363,7 @@ P2-02 的 `DiscReadError` 原样传递（同一实例，`toData()` 不变，位�
 ## 验证策略
 
 - **单元/契约测试：**
-  - 在计划新增的 `src/original-data/archive/`、`src/original-data/source/` 旁放置 `*.test.ts`，用扩展后的 [synthetic.ts](../../../../src/original-data/synthetic.ts) 与 P2-02 的 [disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 生成合成封包和含多个文件的合成光盘。
+  - 在计划新增的 `src/original-data/archive/`、`src/original-data/source/` 旁放置 `*.test.ts`，用扩展后的 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 与 P2-02 的 [disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 生成合成封包和含多个文件的合成光盘。
   - 用记录读取的端口断言读取范围、顺序与分段大小。
   - 内存解析与按需读取共用同一张正负样本表（AC-03）。
   - 分段 SHA-256 测试放在 `src/content/`。白名单与 manifest 的一致性测试、CLI 测试放在 `tools/`。

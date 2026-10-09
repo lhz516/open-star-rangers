@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "02"
 subtask: "03"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 03 — 原始扇区与 ISO9660 卷
@@ -35,7 +35,7 @@ updated: 2026-10-04
   - 结构须合法：34 字节，标识为单字节 0，带目录标志，不使用不支持的特性；extent、数据长度与卷序号的双端序一致；长度与 extent 在卷空间内。结构或范围无效返回 `invalid-volume`。
   - 长度合法但超过 65,536 字节时返回 `limit-exceeded`。
 - **接入打开流程：** `disc-image.ts` 的打开流程接入卷校验。打开成功只读取 `.ccd` 与卷描述符所在扇区，返回冻结的卷信息 `{ sectorCount, volumeSectors }`。
-- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.ts)：增加大端或双端序写入；生成原始扇区（含头部）与卷描述符序列；提供按需生成扇区的超大镜像端口，不分配整个镜像。
+- **合成构建器：** 扩展 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)：增加大端或双端序写入；生成原始扇区（含头部）与卷描述符序列；提供按需生成扇区的超大镜像端口，不分配整个镜像。
 
 ## 不包含
 
@@ -45,7 +45,7 @@ updated: 2026-10-04
 ## 关键文件与契约
 
 - **计划新增：** `src/original-data/disc/raw-sector.ts`、`src/original-data/disc/iso9660-volume.ts`，以及相邻 `*.test.ts`。
-- **修改：** 02 新增的 `src/original-data/disc/disc-image.ts`（打开流程）；[synthetic.ts](../../../../../src/original-data/synthetic.ts)（`ByteWriter` 增加大端或双端序写入，并加入扇区与卷构建器）。
+- **修改：** 02 新增的 `src/original-data/disc/disc-image.ts`（打开流程）；[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)（`ByteWriter` 增加大端或双端序写入，并加入扇区与卷构建器）。
 
 ## 验收标准
 
@@ -74,7 +74,7 @@ updated: 2026-10-04
     - 根目录记录须为 34 字节，标识为 0，带目录标志，非关联记录，无不支持特性，长度为 2,048 的正整数倍，extent 在卷空间内；以上失败均为 `invalid-volume`，位置为 `image:lba 16/<字段>`；
     - 根目录合法但超过 65,536 字节时，最后报 `limit-exceeded`（directoryBytes）。
   - [disc-image.ts](../../../../../src/original-data/disc/disc-image.ts)：打开流程接入 `readVolume`，冻结卷信息为 `{ sectorCount, volumeSectors }`。
-  - [synthetic.ts](../../../../../src/original-data/synthetic.ts)：`ByteWriter` 新增大端与双端序写入；新增原始扇区、按需生成扇区的镜像端口（不分配整盘，整扇区直接写入响应）、目录记录、卷描述符与主卷描述符构建器。
+  - [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)：`ByteWriter` 新增大端与双端序写入；新增原始扇区、按需生成扇区的镜像端口（不分配整盘，整扇区直接写入响应）、目录记录、卷描述符与主卷描述符构建器。
   - [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)：新增最小卷布局、合成光盘文件组与按扇区解析请求日志的辅助函数。
 - **测试：**
   - [raw-sector.test.ts](../../../../../src/original-data/disc/raw-sector.test.ts)（AC-03 扇区部分）：

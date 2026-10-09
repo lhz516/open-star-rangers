@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { directoryData, ISO_DIRECTORY_FLAG, primaryVolumeDescriptor, volumeDescriptor } from '../synthetic.ts';
+import { directoryData, ISO_DIRECTORY_FLAG, primaryVolumeDescriptor, volumeDescriptor } from '../synthetic.test-support.ts';
 import { isDiscPath } from './disc-path.ts';
 import { openDiscImage } from './disc-image.ts';
 import {

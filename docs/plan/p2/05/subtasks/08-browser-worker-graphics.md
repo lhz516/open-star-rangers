@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "05"
 subtask: "08"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 08 — 真实 Chromium Worker 中的图形阶段
@@ -65,6 +65,6 @@ updated: 2026-10-05
 - **清理：** runner 自行启动和停止开发服务器与浏览器；没有遗留进程。报告与 trace 只在被忽略的 `test-results/`、`playwright-report/` 中。
 - **Rubber-duck：** 无发现。审阅者确认：在订阅通知中取消符合同步通知契约；Worker 端口先移除监听再终止，排队的消息不会改变状态；`GRAPHICS_PAYLOAD_BYTES` 与实际字节一致；差异只涉及测试、测试支持与文档。
 - **Simplify：** 本子任务只修改测试、测试支持与文档，没有实现代码，按 execute-goal 不需要代码清理。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#导入-worker)补充两个测试场景与期望值来源；[工程约定](../../../../engineering/README.md#本地浏览器-runner)的导入 Worker 浏览器测试补充图形阶段用例与 `cancelAtStage`。配置回归不需要改动。
+- **文档影响：** [源码结构](../../../../engineering/modules/workers.md#导入-worker)补充两个测试场景与期望值来源；[工程约定](../../../../engineering/README.md#本地浏览器-runner)的导入 Worker 浏览器测试补充图形阶段用例与 `cancelAtStage`。配置回归不需要改动。
 
 - **执行期修订（2026-10-05，[12](./12-character-map-research.md)）：** `GRAPHICS_PAYLOAD_BYTES` 按修订后的布局与生产映射变为 7,683，E2E 断言的 glyphs 变为 704（256 + 256 + 192）；2026-10-05 复跑 `pnpm test:e2e import-worker.spec.ts --project=development`，11 项通过。见 [goal 执行记录](../goal.md#执行记录)。以上为修订前的记录。

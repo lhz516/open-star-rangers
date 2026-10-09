@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readSoundPayload } from '../../content/sound-payload.ts';
 import { convertSnd } from '../formats/snd.ts';
 import { archiveLocator, readSourceMappingTable } from '../source-mapping.ts';
-import { syntheticSnd } from '../synthetic.ts';
+import { syntheticSnd } from '../synthetic.test-support.ts';
 import { AUDIO_BUDGET_LIMITS, convertAudioGroup } from './audio-conversion.ts';
 import { countedVerifiedSource, expectSourceError } from './conversion.test-support.ts';
 import { productionGraphicsFiles } from './production-graphics.test-support.ts';

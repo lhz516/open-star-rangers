@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "05"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 05 — SCCT/SCEN/M2ID 定向解析
@@ -44,7 +44,7 @@ updated: 2026-10-05
 ## 关键文件与契约
 
 - **修改：** [source-error.ts](../../../../../src/original-data/source-error.ts)（追加错误码与限值名）；[source-error.test-support.ts](../../../../../src/original-data/source-error.test-support.ts)（位置语法）。
-- **复用：** [archive-reader.ts](../../../../../src/original-data/archive/archive-reader.ts) 的 `ArchiveEntryRead`（类型导入）；[synthetic.ts](../../../../../src/original-data/synthetic.ts) 的 `ByteWriter`、`buildImfat`；[slice-definition.ts](../../../../../src/content/slice-definition.ts) 的候选。
+- **复用：** [archive-reader.ts](../../../../../src/original-data/archive/archive-reader.ts) 的 `ArchiveEntryRead`（类型导入）；[synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts) 的 `ByteWriter`、`buildImfat`；[slice-definition.ts](../../../../../src/content/slice-definition.ts) 的候选。
 - **计划新增：** `src/original-data/formats/` 下的数据块读取工具、SCCT/SCEN/M2ID 解析器、相邻测试与 test-support。
 
 ## 验收标准
@@ -119,4 +119,4 @@ updated: 2026-10-05
     - 共用的错误断言 helper：现有测试各有自己的 helper，只在这里新增不能减少重复；
     - 合成封包构建函数：08、09、10、12 会使用；
     - 重定位探测、表序号与数组头的进一步抽象：规模有界，逻辑集中。
-- **文档影响：** 已在[源码结构](../../../../engineering/source-structure.md#任务数据的定向解析)新增“任务数据的定向解析”一节，并在目录树中加入 `formats/`。工程约定、工具指南与 STATUS 无需更新：没有新命令或检查规则。
+- **文档影响：** 已在[源码结构](../../../../engineering/modules/original-data.md#任务数据的定向解析)新增“任务数据的定向解析”一节，并在目录树中加入 `formats/`。工程约定、工具指南与 STATUS 无需更新：没有新命令或检查规则。

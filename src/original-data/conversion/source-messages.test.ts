@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STATUS_MESSAGES_LIMITS, statusMessagesPayloadLength } from '../../content/hud/status-messages-payload.ts';
-import { syntheticDiag, type SyntheticDiagFields } from '../synthetic.ts';
+import { syntheticDiag, type SyntheticDiagFields } from '../synthetic.test-support.ts';
 import { expectSourceError as rejects } from './conversion.test-support.ts';
 import { readStatusMessages } from './source-messages.ts';
 

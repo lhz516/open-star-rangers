@@ -62,7 +62,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
 | M-1 至 M-4 任务 | 4 | 4：M-1、M-2、M-4 差异为 0；M-3 为调试器读数（已确认） | 0 | 0 | 0 | 0 | 0 |
 | 合计 | 200 | 159 | 9 | 0 | 0 | 13 | 19 |
 
-- **呈现约定（10 行）：** 无修正（已修正 0）。每行区分项目选择、已验证外观与未知算法；方向的必判结论为二维已验证、三维高概率（[22](../plan/p2/12/subtasks/22-presentation-verdicts.md#完成证据)、[33](../plan/p2/12/subtasks/33-presentation-table-alignment.md#完成证据)，当前表在[源码结构](../engineering/source-structure.md#资源查看渲染)）。
+- **呈现约定（10 行）：** 无修正（已修正 0）。每行区分项目选择、已验证外观与未知算法；方向的必判结论为二维已验证、三维高概率（[22](../plan/p2/12/subtasks/22-presentation-verdicts.md#完成证据)、[33](../plan/p2/12/subtasks/33-presentation-table-alignment.md#完成证据)，当前表在[源码结构](../engineering/modules/render.md#资源查看渲染)）。
 - **待修复与无法判定：** 没有“差异，待修复”；必需项没有“无法判定”。范围例外按用户 2026-10-08 的批准不计为一致，也不阻止通过。
 - **依据链接：** V-1 [mesh §3](../original/formats/mesh.md#p2-12-viewer-comparison-v-1)；V-2 [executable](../original/formats/executable.md#weapon-records-and-the-first-missions-shooters-p2-1230)；V-3 [cockpit](../original/formats/cockpit.md#all-qualifying-captures-p2-12)；V-4 [hud](../original/formats/hud.md#slice-coverage-check-and-u-030-impact-p2-12)；A-1 [audio](../original/formats/audio.md#viewer-playback-path-p2-12)；M [P2-12/18](../plan/p2/12/subtasks/18-mission-comparison.md#完成证据)、[19](../plan/p2/12/subtasks/19-map-frame.md#完成证据)。原版事实只在这些文档中，本记录不复制。
 
@@ -92,7 +92,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
 
 **切片之外、已确认不使用（19 项）：** 弹丸记录 3、4、5、7、8、9；导弹类型 4–8 及其 5 个跨接缝面；无贴图碎片形状 0–2。依据为所选任务的开火者与碎片产生路径（[executable](../original/formats/executable.md#weapon-records-and-the-first-missions-shooters-p2-1230)）。另有 `font/hud/4x6`：与来源同源一致，计入 V-4 的一致；HI 不画它（已确认），画面对照不适用。
 
-**呈现约定中仍未确认的项：** 都已在查看器与[源码结构](../engineering/source-structure.md#资源查看渲染)中标注，交 P3 设计飞行渲染时参考，不当作飞行渲染契约：
+**呈现约定中仍未确认的项：** 都已在查看器与[源码结构](../engineering/modules/render.md#资源查看渲染)中标注，交 P3 设计飞行渲染时参考，不当作飞行渲染契约：
 
 - 坐标轴与手性（可对照的机型左右对称）；
 - 正面绕序（双面渲染，不要求定论）；
@@ -105,7 +105,7 @@ P2 证明的是“用户本地原版数据可以成为 P3 消费的、经过验�
 
 - **P2-12 的对照：** M-1 字段来源表完整，任务 271、机型表 30、僚机名单 106 个叶子字段与独立读取差异为 0；M-2 的 6 个机型条目解析到 5 个 model Asset，绑定全部一致；M-3 地图框架由调试器读数确认（U-032 已确认）；M-4 两次 `loadMission` 深度一致，418 个叶子字段与独立预期差异为 0（[18](../plan/p2/12/subtasks/18-mission-comparison.md#完成证据)、[19](../plan/p2/12/subtasks/19-map-frame.md#完成证据)，在 `final-31` 上重跑不变，见 [31](../plan/p2/12/subtasks/31-hud-resource-gap.md#完成证据)）。
 - **本轮：** [05](../plan/p2/13/subtasks/05-real-data-candidate.md#完成证据) 在最终候选上从光盘镜像导入两次：`loadMission` 都成功，`diagnoseMission` 为 `loaded`，两次 `MissionSetup` 相同，摘要 `sha256:714f3bff…a6f0` 与 `final-26b` 相同；不推进 tick。负向运行（去掉 audio 组）以退出码 1 报告不完整。[09](../plan/p2/13/subtasks/09-user-recheck.md#完成证据) 中，用户在真实界面导入后与刷新恢复后都看到 `Mission loads into Core`。
-- **已验证与归 P3 的区分：** 已验证的是所选任务的初始数据：声明、编组与成员、生成区域、坐标与地图框架、机型、阵营、模型与僚机选项，以及 `loadMission` 产出冻结 `MissionSetup` 的纯边界（[源码结构](../engineering/source-structure.md#core-任务载入)）。M-1 中的研究派生字段（阵营已确认；基地交互的含义为高概率，U-022）与 8 个规则输入只按来源原样核对，语义未知。生成时刻与顺序、选择语义与生成门禁、阵营与基地能力的规则、结果判定、战争迷雾、跃迁能量与失败/救援都是 P3 的规则语义（U-022、U-023、U-025、U-026、U-031），不属于 P2 的通过依据。
+- **已验证与归 P3 的区分：** 已验证的是所选任务的初始数据：声明、编组与成员、生成区域、坐标与地图框架、机型、阵营、模型与僚机选项，以及 `loadMission` 产出冻结 `MissionSetup` 的纯边界（[源码结构](../engineering/modules/core.md#core-任务载入)）。M-1 中的研究派生字段（阵营已确认；基地交互的含义为高概率，U-022）与 8 个规则输入只按来源原样核对，语义未知。生成时刻与顺序、选择语义与生成门禁、阵营与基地能力的规则、结果判定、战争迷雾、跃迁能量与失败/救援都是 P3 的规则语义（U-022、U-023、U-025、U-026、U-031），不属于 P2 的通过依据。
 
 ### 第三项：越界或损坏的输入被安全拒绝
 
@@ -233,10 +233,10 @@ P2-13 的处置列只适用于负责阶段曾含 P2 的 8 项（[06](../plan/p2/
 |---|---|---|
 | 内容契约 | [content/](../../src/content/)：Asset ID 与 8 种 kind、[ContentIdentity](../../src/content/content-identity.ts)（内容 schema 1）、[切片定义](../../src/content/slice-definition.ts)（定义版本 3，四个资源组）、完整性、预算与所有权 | 只消费经 `validatePackage` 判为 `complete` 的包；payload 都带 schema 版本：图形、模型、逻辑、音效与状态显示屏文字为 1，效果为 2 |
 | 实际资源集合 | 生产包 165 个 Asset：logic 3、models 44、cockpit-hud-map 100、audio 18；按 kind 为 image 109、palette 20、sound 18、data 6、model 6、font 3、layout 2、mission 1；15 个切片角色都在定义的上下限内 | 来源版本与转换器版本见第 1 节；转换器版本递增后旧缓存不恢复，须重新导入 |
-| 任务载入边界 | [load-mission.ts](../../src/core/mission/load-mission.ts) 的 `loadMission` 产出冻结的 `MissionSetup`（[源码结构](../engineering/source-structure.md#core-任务载入)）；应用的 `diagnoseMission` | 不推进 tick，不应用默认值，不推导生成时刻、顺序或位置；这些由 P3 的规则决定 |
-| 导入 | [workers/](../../src/workers/)：导入协议版本 5、生产作业与 [生产包配置](../../src/workers/production-package.ts)；[应用资源持有者](../engineering/source-structure.md#应用资源持有者) | 导入 Worker 不拥有游戏循环；主线程只载入常量配置，不载入转换器 |
+| 任务载入边界 | [load-mission.ts](../../src/core/mission/load-mission.ts) 的 `loadMission` 产出冻结的 `MissionSetup`（[源码结构](../engineering/modules/core.md#core-任务载入)）；应用的 `diagnoseMission` | 不推进 tick，不应用默认值，不推导生成时刻、顺序或位置；这些由 P3 的规则决定 |
+| 导入 | [workers/](../../src/workers/)：导入协议版本 5、生产作业与 [生产包配置](../../src/workers/production-package.ts)；[应用资源持有者](../engineering/modules/app.md#应用资源持有者) | 导入 Worker 不拥有游戏循环；主线程只载入常量配置，不载入转换器 |
 | 缓存 | [platform/storage/](../../src/platform/storage/)：键为来源指纹 + 转换器版本，完整包原子提交，恢复时重新校验 | 迁移、清理与玩家缓存管理归 P5 |
-| 音频 | [platform/audio/](../../src/platform/audio/) 的 Web Audio 控制器（[查看器音频](../engineering/source-structure.md#查看器音频)是第一个消费者） | 适合由 Runtime 的帧后事件消费者调用；播放哪种声音与何时播放由 P3 定 |
+| 音频 | [platform/audio/](../../src/platform/audio/) 的 Web Audio 控制器（[查看器音频](../engineering/modules/app.md#查看器音频)是第一个消费者） | 适合由 Runtime 的帧后事件消费者调用；播放哪种声音与何时播放由 P3 定 |
 | 查看器 | [render/viewer/](../../src/render/viewer/) 与集中的[呈现约定](../../src/render/viewer/viewer-presentation.ts) | 只用于检查资源；呈现约定不是飞行渲染契约，未确认项见第一项 |
 
 本地真实数据的操作与隐私边界见[本地导入指南](../guides/local-import.md)。自动测试与 agent 浏览器验证仍只用代码生成的合成数据。

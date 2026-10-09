@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "09"
 subtask: "06"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 06 — 机型与模型绑定
@@ -57,10 +57,10 @@ updated: 2026-10-05
   - 同类机型指向同一 MODL 时共用 ID，指向不同 MODL 时依次编号；基地类多个模型按机型编号；
   - 失败：玩家机型缺失、M2ID 槽位为 0、机型越出表长（`invalid-payload`）；机型不属任何阵营（`unsupported-payload`）；敌方与玩家共用、基地与敌方共用、友方与基地共用（`invalid-payload`）。位置都是 `archive:/MAIN/SR.NOB#10649/ids[N]` 并通过位置语法检查，原因不含数值。
 - **源码搜索：** 生产代码中出现 `player-ship`、`enemy-ship`、`friendly-craft` 与这组掩码的文件只有 `craft-binding.ts` 与 `slice-definition.ts`；后者是切片角色名，不是机型表。生产代码中没有第二份机型到模型的表；M2ID 解析结果只经此绑定转为模型 ID。
-- **交接：** P2-06 必须用 `bindCraftTypes` 命名其 model Asset（spec S-05），并在自己的验收中核对 MODL 一致；已写入[源码结构](../../../../engineering/source-structure.md#逻辑组转换)。
+- **交接：** P2-06 必须用 `bindCraftTypes` 命名其 model Asset（spec S-05），并在自己的验收中核对 MODL 一致；已写入[源码结构](../../../../engineering/modules/original-data.md#逻辑组转换)。
 - **工程检查：** `pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过：101 个测试文件、3082 个测试与生产构建。
 - **rubber-duck：** 无阻塞、无其他意见。审阅确认掩码、类型 31 的位运算、编号、共用规则、`unsupported-payload` 的分类与返回形状都符合契约。
 - **simplify：**
   - **已采纳：** 排序改用 `compareText`；类别顺序与命名合为一个描述数组；去掉测试中多余的重复读取。
   - **未采纳：** 与记录解析共用位判断 helper：这里是阵营分类，不是字段解码。
-- **文档影响：** 已在[源码结构](../../../../engineering/source-structure.md#逻辑组转换)新增“逻辑组转换”一节，记录绑定的位置、命名规则来源与 P2-06 的使用要求。工程约定、工具指南与 STATUS 无需更新。
+- **文档影响：** 已在[源码结构](../../../../engineering/modules/original-data.md#逻辑组转换)新增“逻辑组转换”一节，记录绑定的位置、命名规则来源与 P2-06 的使用要求。工程约定、工具指南与 STATUS 无需更新。

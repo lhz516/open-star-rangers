@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "01"
 subtask: "04"
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # 04 — 资源组与完整性验证
@@ -95,4 +95,4 @@ updated: 2026-10-04
   - `pnpm check` 为 64 个文件 1571 项通过，四个 TypeScript 程序、lint 与生产构建均通过；
   - 依赖与锁文件未变；
   - 不适用 browser-testing。
-- **文档影响：** [源码结构](../../../../engineering/source-structure.md#内容基础契约与切片定义)新增 content 的 `source-state.ts`、`sha256.ts`、`payload.ts`、`completeness.ts`，以及完整性、SHA-256、来源状态、`readOrderedArray`、`groupKinds` 与 `assetSourceStates` 说明。工程约定、guides、架构决策与 STATUS 不受影响：本项没有新增命令、lint 规则或模块边界，P2-01 仍在执行。原版事实与 U 项状态不变。
+- **文档影响：** [源码结构](../../../../engineering/modules/content.md#内容基础契约与切片定义)新增 content 的 `source-state.ts`、`sha256.ts`、`payload.ts`、`completeness.ts`，以及完整性、SHA-256、来源状态、`readOrderedArray`、`groupKinds` 与 `assetSourceStates` 说明。工程约定、guides、架构决策与 STATUS 不受影响：本项没有新增命令、lint 规则或模块边界，P2-01 仍在执行。原版事实与 U 项状态不变。

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # P2-03：NOB、基准版本识别与输入校验 — Goal
@@ -22,7 +22,7 @@ updated: 2026-10-05
 
 - **现有封包解析：** [imfat.ts](../../../../src/original-data/imfat.ts) 的 `parseImfat`、`entryData`、`entryRelocations` 只作用于内存字节，校验缺口见 spec 的[问题与目标](./spec.md#问题与目标)；失败抛出只带消息的 `ImfatError`。
   - 调用者为 [nob-list](../../../../tools/nob-list.ts)、[nob-check](../../../../tools/nob-check.ts)、[imfat.test.ts](../../../../src/original-data/imfat.test.ts)；[source-mapping.ts](../../../../src/original-data/source-mapping.ts) 只纯类型导入 `ImfatEntry`。
-  - [synthetic.ts](../../../../src/original-data/synthetic.ts) 的 `buildImfat` 只生成合法的连续布局，不能覆写文件头、保留字或偏移。
+  - [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 的 `buildImfat` 只生成合法的连续布局，不能覆写文件头、保留字或偏移。
 - **P2-02 已完成**（`node tools/task-state.ts p2/02` 输出 `done`），本任务直接复用：
   - [disc-image.ts](../../../../src/original-data/disc/disc-image.ts) 的 `openDiscImage`、`DiscImage.lookup`/`openFile`、`DiscFile.read`；
   - [disc-error.ts](../../../../src/original-data/disc/disc-error.ts) 的 `DiscReadError`；

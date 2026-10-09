@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteWriter, directoryRecord, ISO_DIRECTORY_FLAG } from '../synthetic.ts';
+import { ByteWriter, directoryRecord, ISO_DIRECTORY_FLAG } from '../synthetic.test-support.ts';
 import { bothEndian16, bothEndian32, extentFits, readDirectoryRecord, unsupportedFeature, type DirectoryRecord } from './iso9660-record.ts';
 
 const record = (fields: Partial<Parameters<typeof directoryRecord>[0]> = {}): Uint8Array =>

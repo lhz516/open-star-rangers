@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "01"
-updated: 2026-10-01
+updated: 2026-10-08
 related: [ADR-0002, ADR-0006, ADR-0012]
 ---
 
@@ -61,7 +61,7 @@ related: [ADR-0002, ADR-0006, ADR-0012]
   - `react/jsx-runtime`、`idb-keyval` 子路径和 `../app` 目录入口导入未被拦截；type-only `three` 导入与 `../app/App.tsx` 已被拦截。
   - 不含 `await` 的 `async` 函数没有诊断。
 - [vite.config.ts](../../../../vite.config.ts) 使用 React 插件和 Node 环境 Vitest，目前发现 `src/**/*.test.ts` 与 `tools/**/*.test.ts`；`.test.tsx`、DOM 单元测试和 E2E runner 不是现有能力。
-- [IMFAT 测试](../../../../src/original-data/imfat.test.ts)、[payload 测试](../../../../src/original-data/payloads.test.ts) 使用 [synthetic.ts](../../../../src/original-data/synthetic.ts) 构造数据。[Python 测试](../../../../tools/ghidra/test_patch_watcom_cspec.py) 使用临时合成 XML，不需要安装 Ghidra。
+- [IMFAT 测试](../../../../src/original-data/imfat.test.ts)、[payload 测试](../../../../src/original-data/payloads.test.ts) 使用 [synthetic.ts](../../../../src/original-data/synthetic.test-support.ts) 构造数据。[Python 测试](../../../../tools/ghidra/test_patch_watcom_cspec.py) 使用临时合成 XML，不需要安装 Ghidra。
 - [应用入口](../../../../src/main.tsx) 启用 StrictMode，[App](../../../../src/app/App.tsx) 只显示项目标题和未包含原版内容的占位说明；没有游戏场景或会话。
 - [nob-list](../../../../tools/nob-list.ts)、[nob-check](../../../../tools/nob-check.ts) 复用共享解析器。它们可被静态检查，但原版文件实验命令不能进入本任务的自动检查链。
 - [.gitignore](../../../../.gitignore) 排除本地研究、依赖、构建产物和环境文件；这不等于已经具备内容哈希扫描。

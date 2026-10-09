@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "03"
 subtask: "07"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 07 — 底层能力边界
@@ -81,5 +81,5 @@ updated: 2026-10-05
   - 采纳：合并引用遍历；语法选择器 helper 与平台规则共用。
   - 未采纳：与 P2-01/P2-02 依赖图共享带缓存的解析 helper（需要重构既有检查，收益小）。
 - **说明：** `TSImportType.argument` 的弃用警告在原有平台规则中已经存在，这里沿用同一写法。`import('…')` 类型本身也被既有的 `consistent-type-imports` 拒绝。
-- **文档影响：** [工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)新增“原版数据的底层能力”规则，说明受限模块、放行范围、族间限制、lint 匹配方式与依赖图；[源码结构](../../../../engineering/source-structure.md#封包读取)链接该规则。
+- **文档影响：** [工程约定](../../../../engineering/README.md#lint-规则eslintconfigjs)新增“原版数据的底层能力”规则，说明受限模块、放行范围、族间限制、lint 匹配方式与依赖图；[源码结构](../../../../engineering/modules/original-data.md#封包读取)链接该规则。
 

@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "03"
 subtask: "03"
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # 03 — 按需封包读取
@@ -44,7 +44,7 @@ updated: 2026-10-05
   - 02 的规则模块、错误类与共用样本表；
   - [disc-image.ts](../../../../../src/original-data/disc/disc-image.ts) 的 `DiscFile`（纯类型）；
   - [ownership.ts](../../../../../src/content/ownership.ts) 的 `exclusiveBytes`、`payloadTransferList`。
-- **修改：** [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)，以及必要时修改 [synthetic.ts](../../../../../src/original-data/synthetic.ts)。
+- **修改：** [disc.test-support.ts](../../../../../src/original-data/disc/disc.test-support.ts)，以及必要时修改 [synthetic.ts](../../../../../src/original-data/synthetic.test-support.ts)。
 - **文档：** [源码结构](../../../../engineering/source-structure.md)中的封包读取说明（API、读取次序、不缓存）。
 
 ## 验收标准
@@ -91,5 +91,5 @@ updated: 2026-10-05
 - **Simplify：**
   - 采纳：复用 `requestedLbas` 与 `rejection`；改用一次性的 `reached` 承诺取代轮询；`syntheticDisc` 与 `syntheticFileDisc` 共用文件组装配；生成内容改为按范围读取，避免逐字节回调。
   - 未采纳：用线性查找替代 ID 映射（转换任务会多次查找）；把块与重定位表分两次读取（会增加端口请求）。
-- **文档影响：** 更新[源码结构](../../../../engineering/source-structure.md#封包读取)：目录树、按需读取 API、底层能力说明与 `syntheticFileDisc`。工程约定与工具指南无受影响内容。
+- **文档影响：** 更新[源码结构](../../../../engineering/modules/original-data.md#封包读取)：目录树、按需读取 API、底层能力说明与 `syntheticFileDisc`。工程约定与工具指南无受影响内容。
 

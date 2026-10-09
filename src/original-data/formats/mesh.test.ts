@@ -4,7 +4,7 @@ import { set32 } from '../../content/graphics/graphics.test-support.ts';
 import { floatBits } from '../../content/models/models.test-support.ts';
 import { expectSourceError } from '../conversion/conversion.test-support.ts';
 import type { SourceLimit } from '../source-error.ts';
-import { syntheticMesh, type SyntheticMeshFields } from '../synthetic.ts';
+import { syntheticMesh, type SyntheticMeshFields } from '../synthetic.test-support.ts';
 import { readMesh, readMeshCounts } from './mesh.ts';
 
 const PATH = 'models[model/synthetic-ship].parts[0][1].mesh';

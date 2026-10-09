@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cockpitLayoutBlock, dataPaletteBlock, rawImageBlock } from '../src/original-data/conversion/conversion.test-support.ts';
-import { buildImfat, syntheticDiag, syntheticMesh, syntheticModl, syntheticSnip, type SyntheticDiagFields } from '../src/original-data/synthetic.ts';
+import { buildImfat, syntheticDiag, syntheticMesh, syntheticModl, syntheticSnip, type SyntheticDiagFields } from '../src/original-data/synthetic.test-support.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const directory = mkdtempSync(join(tmpdir(), 'osr-nob-check-'));
