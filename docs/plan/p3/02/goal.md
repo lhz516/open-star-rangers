@@ -81,10 +81,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-pipeline-entity-input-research.md](./subtasks/01-pipeline-entity-input-research.md) | — | completed |
-| [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | pending |
+| [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | in-progress |
 | [03-spawn-defaults-names-research.md](./subtasks/03-spawn-defaults-names-research.md) | — | pending |
 | [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | completed |
-| [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | pending |
+| [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | blocked |
 | [06-placement-coordinates.md](./subtasks/06-placement-coordinates.md) | 02, 04 | pending |
 | [07-world-creation-instantiation.md](./subtasks/07-world-creation-instantiation.md) | 03, 05, 06 | pending |
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | pending |
@@ -98,6 +98,13 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 ## 执行记录
 
 - **2026-10-09 — 并行执行安排：** 协调者在 `p3-02-core-contract-spec` 分支上执行（本 worktree，`local` 以符号链接接入主仓库的 `local/`），同时运行的 worker 不超过 3 个。与 P3-01 相同，宿主由应用为每个 worker 管理 worktree（以认领提交为基），worker 把分支改名为 `exec-p3-02-NN` 作为认领标记。P3-03 同时在其他 worktree 中执行；基准环境的单会话锁与两个分支对 `docs/original/` 的并行修改（合并时可能冲突）由协调者留意。
+- **2026-10-09 — Subtask 05 blocked:** 01 的 Q-08/Q-09 结论与 spec 的系统流水线及实体生命周期冲突，spec 规定冲突时先修订 spec，再实现流水线。冲突共三处：
+  - 原版对象更新是按种类位升序的实时遍历，本帧在更高种类位新分配的对象会在同一遍中更新（spec 写的是遍历 tick 开始时的实体）。
+  - 生成队列只发出生成请求，实例化发生在其后的消息处理中，次序在任务流程与对象更新阶段的请求之后（spec 写的是“先生成”）。
+  - 移除不在统一的帧尾边界：对象在下一次自身更新时发出移除请求，在该帧的消息处理中移除，因此同帧或延后一帧，期间仍在种类表中。另需采用原版的对象状态与停放（activity）模型。
+  Evidence: [executable 的对象表、帧流水线与输入轮询一节](../../../original/formats/executable.md#object-table-frame-pipeline-and-input-polling-p3-0201)；01 的完成证据。
+  Affected acceptance: AC-09、AC-10（Render State 的可呈现实体）；05 与依赖它的 07、08。
+  Resume when: 用户批准按上述结论修订 spec 的系统流水线、实体与生命周期、Render State 与 AC-09，修订已提交。
 
 ## 审批
 
