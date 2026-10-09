@@ -56,6 +56,8 @@ updated: 2026-10-09
 - `src/original-data/conversion/production-flight-data.ts`：生产映射、声明与份额常量（新建）。
 - `src/original-data/conversion/production-flight-data.test.ts`：测试（新建）。
 - `src/original-data/conversion/flight-data.test-support.ts`：合成条目与合成光盘（新建）。
+- `src/original-data/source-mapping.ts`：在 `SOURCE_ENTRY_TYPES.data` 中加入 ANIM，使 `data/explosion-animation/<nn>` 可映射整个 ANIM 条目（2026-10-09 由协调者扩展）。
+- `src/original-data/source-mapping.test.ts`：对应测试（2026-10-09 由协调者扩展）。
 
 ## 验收标准
 
