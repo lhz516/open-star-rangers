@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | pending |
-| [08-transition-media.md](./subtasks/08-transition-media.md) | — | in-progress |
+| [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | pending |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | pending |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
@@ -103,6 +103,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 06 更正 03 的一处时间间隔：** 03 记录的速度辅助“至多每 8 个时间单位”来自反编译对 int* 全局量的指针运算；按代码实为样本 + 0x20 时钟单位（0.5 秒），06 已在 scenario §4 更正，并确认 §3 的生成时间单位为 1/64 秒。
 - **2026-10-09 — 新增 14，07 改为依赖 14：** 07 的静态路线分析确认本机无需用户的进入路线：页面只按 INT 33h 的移动计数移动光标、按钮读取按下状态而非按下次数，计时窗口的标记也需要按键。07 的合格运行须由用户操作游戏，协调者运行工具并写操作确认。按 07“工具功能扩展记为 02 的修复项，由协调者新增子任务”，新增 14：配方可声明私有副本的 `STARTUP_PRACTICE` 与 `CURR_LEVEL` 覆盖，使用户只用键盘即可进入难度恰为 19 的所选任务。07 依赖 14，暂回 `pending`；其 worker 会话与 `exec-p3-01-07` 分支（无提交）保留待命，测量方案、路线分析与配方草稿在 `local/research/p3-01/timing-runtime/`。最终对齐加入对 14 的依赖。
 - **2026-10-09 — 14 完成并修复 02 的不稳定测试：** 配方新增 `gameSettings`（`STARTUP_PRACTICE` 布尔值、`CURR_LEVEL` 为练习与战役两个 0–100 的值）与原因码 `game-config-invalid`；07 可用 `{"STARTUP_PRACTICE": false, "CURR_LEVEL": [100, 19]}`。集成时发现 02 的 `test_reclaim_escalates_when_sigterm_is_ignored` 在负载下偶发失败（子进程尚未安装 SIGTERM 忽略处理即被终止），经扩大 14 的写入范围在同一提交中修复。
+- **2026-10-09 — 08 以静态证据完成：** 工作范围中的基准运行未进行（同 05 的宿主限制）；各衔接字段的依据为代码与数据（已确认），与用户观察的对应为高概率；运行核对步骤记在 08 的完成证据。08 提出的下游交接（G-02 占位时间的计入方式由 P3-02 与 P3-04/P3-10/P3-11 决定，所选任务勋章的判定与显示由 P3-11 在 G-06 下决定）交 12 的交接记录。
 
 ## 审批
 
