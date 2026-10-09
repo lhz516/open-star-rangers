@@ -117,7 +117,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | in-progress |
 | [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | in-progress |
 | [13-scene-label-parsers.md](./subtasks/13-scene-label-parsers.md) | 09 | completed |
-| [14-anim-explosion-parsers.md](./subtasks/14-anim-explosion-parsers.md) | 09 | in-progress |
+| [14-anim-explosion-parsers.md](./subtasks/14-anim-explosion-parsers.md) | 09 | completed |
 | [15-rule-data-conversion.md](./subtasks/15-rule-data-conversion.md) | 10, 11, 12 | pending |
 | [16-flight-graphics.md](./subtasks/16-flight-graphics.md) | 13, 14 | pending |
 | [17-flight-data-step.md](./subtasks/17-flight-data-step.md) | 16 | pending |
@@ -147,6 +147,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 08 完成（交 10、11、12、15、22）：** `src/content/rule-data/` 提供 logic 组 6 个规则数据角色的规范 JSON payload；payload 字节上限沿用 `LOGIC_LIMITS.payloadBytes`。交解析器与转换的要点（详见 08 的完成证据）：规范 JSON 不能承载 −0，读取器把它读为 0，因此转换器须把来源中的 −0.0 `f32` 判为 `unsupported-payload`（基准中没有）；程序表 +0x2C 的 ±0 映射为 null，`kindMask` 为 0 时同样为 null，读取器拒绝字面的 0。弹体记录的所有非指针、非数量位置都按机型的类型转换，包括形状的 +0x00/+0x04/+0x08–+0x1C；机型形状的 at00/at08 恰在 boxes 非空时为 null。`ai-programs` 的 `entries` 按 `0x649c8` 首次到达的顺序排列：每个程序依次为其 +0x1C 条目、安装脚本，再按偏移顺序排列各状态列表。TABL 2009 只承载第 0 项的文字（`objectListLastEntry`）；COMM 列表与脚本保留终止项。限值与 06 的来源限值名的对应见 08 的完成证据。
 - **2026-10-09 — 13 完成：** RENS 头部与视角标签的解析器。RENS 条目上限为 2048：现有效果步骤的上限（0x60 + 64 × 28 = 1888）向上取整到 2 的幂，因为 2 × 376 的推导值 1024 会低于现有限值；TABL 10399 的条目上限为 512，标签文字用 `VIEW_LABELS_LIMITS.textBytes`（32）。指向指针表本身的标签指针按字段处理规则 4 判为 `unsupported-payload`。可共用的后续简化（识别 −0 的 `f32` 读取、`payload-block.ts` 中共用的字节串读取）超出本行范围，未做。交 22 的 API 见 13 的完成证据。
 - **2026-10-09 — 10 完成（交 15、22）：** `parseCraftTable(archive, read, candidate)` 返回 `{ craftInfoEntryId, hitDamageScale }`（行为槽、列为组；槽 ≥ 18 或组 ≥ 3 为 `subresource-mismatch`）；`parseCraftInfo(archive, read, hitDamageScale)` 返回 `CraftInfo`；`parseDebrisParameters(archive, read)` 返回 `DebrisParameters`。条目上限：TABL 4003 为格式大小 432（超出为 `limit-exceeded`，更小为 `invalid-payload`），CINF 为 65,536，DEBRIS 为 32,768（`CRAFT_TABLE_FORMAT`、`CRAFT_INFO_ENTRY_BYTES`、`DEBRIS_ENTRY_BYTES`，15 在读取前用它们调用 `requireEntryBytes`）。新增规则：载入代码就地改写，因此结构之间不得共享字节（`unsupported-payload`）。机型数不为 20 时为 `unsupported-payload`；空文字予以接受。合成块由 08 的规范内容生成（`syntheticCraftTable`、`syntheticCraftInfoBlock`、`syntheticDebrisBlock`），15 可配合 `buildImfat` 使用。交 22 的 API 与限值表见 10 的完成证据。
+- **2026-10-09 — 14 完成（交 16、17、21、22）：** `anim.ts` 提供 `ANIM_LIMITS`（entryBytes 131,072、frames 32、frameBytes 16,384）、只核对结构的 `readAnimationFrames`（供帧数与预算），以及 `decodeAnimationFrame`（子资源 `frames/<index>`，返回含掩码的 `SourceImage`）。`explosion.ts` 提供 `EXPLOSION_LIMITS`（listEntryBytes 256、listItems 16、recordBytes 8）、`parseExplosionLists` 与 `parseExplosionRecord`，后两者返回条目 ID，ID 链归 17。`source-graphics` 的 `readImageRecordHeader` 与 `decodeImageRecord` 新增可选参数 `kind`（`'image' | 'anim-frame'`），编码 1 只在 `'anim-frame'` 中接受。协调者接受 14 的四项解释：(1) 越过宽度的透明行段予以接受，因为绘制代码只结束该行，解码无损；越过宽度的不透明行段为 `invalid-payload`；(2) 编码字段不为 1 的 ANIM 帧为 `unsupported-encoding`；(3) 空帧数组、自带调色板与 +36 非零为 `unsupported-payload`，编码 1 的每个分支都由代码确认；(4) 布局严格：帧数组在 +8，帧数据按帧序连续到条目末尾，重定位只在 +0 与帧的 +20/+28。交 22 的分册与 textures 解析器条目见 14 的完成证据。
 
 ## 审批
 

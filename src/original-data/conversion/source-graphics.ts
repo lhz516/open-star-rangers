@@ -29,8 +29,14 @@ export const CONTAINER_LIMITS = Object.freeze({
 /** The SNIP colour table: one palette index per 2-bit pixel value (hud, SNIP 10487). */
 export const SNIP_COLOURS = 4;
 
+/**
+ * Where an image record is read (textures §2): an ANIM frame uses only encoding 1, byte-run sprite RLE, which its drawer
+ * assumes; every other record only encodings 0 and 2.
+ */
+export type ImageRecordKind = 'image' | 'anim-frame';
+
 export interface ImageRecordHeader {
-  readonly encoding: 'raw' | 'sprite-rle';
+  readonly encoding: 'raw' | 'sprite-rle' | 'byte-run';
   readonly width: number;
   readonly height: number;
   /** Block-relative offset of the embedded BGR palette; meaningful only when `paletteCount` is not 0. */
@@ -68,8 +74,11 @@ export interface SourceFont {
   readonly glyphs: Uint8Array<ArrayBuffer>;
 }
 
-/** `field` under the caller's `path`, the location every source reader reports. */
-export const fieldAt = (path: string, field: string): string => (path ? `${path}.${field}` : field);
+/**
+ * `field` under the caller's `path`, the location every source reader reports: a `/field` segment under an archive
+ * structure path such as `archive:/MAIN/SR.NOB#10183/frames[2]`, otherwise `.field`.
+ */
+export const fieldAt = (path: string, field: string): string => (path ? `${path}${path.startsWith('archive') ? '/' : '.'}${field}` : field);
 
 /** Whether `length` bytes at `offset` lie inside the block, without overflowing. */
 const fits = (block: Uint8Array, offset: number, length: number): boolean => offset <= block.length && length <= block.length - offset;
@@ -104,18 +113,19 @@ export function readDataPalette(block: Uint8Array, path = ''): Uint8Array<ArrayB
   return Uint8Array.from(block, component => (component << 2) | (component >> 4));
 }
 
-/** Reads and checks only the 36-byte record at `offset`, including that its palette and pixel ranges fit the block. */
-export function readImageRecordHeader(block: Uint8Array, offset = 0, path = ''): ImageRecordHeader {
+/**
+ * Reads and checks only the 36-byte record at `offset`, including that its palette and pixel ranges fit the block. An
+ * encoding outside those `kind` allows is `unsupported-encoding`.
+ */
+export function readImageRecordHeader(block: Uint8Array, offset = 0, path = '', kind: ImageRecordKind = 'image'): ImageRecordHeader {
   const record = fieldAt(path, 'record');
   if (!fits(block, offset, IMAGE_RECORD_BYTES)) invalid(record, 'the image record extends past the block');
   const view = new DataView(block.buffer, block.byteOffset + offset, IMAGE_RECORD_BYTES);
   const field = (at: number) => view.getUint32(at, true);
   if (field(0) !== 8) invalid(record, 'an image must have 8 bits per pixel');
   if (field(16) !== 0) invalid(record, 'the reserved field must be 0');
-  const encoding = field(4);
-  if (encoding !== 0 && encoding !== 2) throw new SourceError('unsupported-encoding', record, 'only raw and sprite RLE images are supported');
   const header: ImageRecordHeader = Object.freeze({
-    encoding: encoding === 0 ? 'raw' : 'sprite-rle',
+    encoding: recordEncoding(field(4), kind, record),
     width: withinLimit(field(8), 'imageWidth', GRAPHICS_LIMITS.imageWidth, record),
     height: withinLimit(field(12), 'imageHeight', GRAPHICS_LIMITS.imageHeight, record),
     paletteOffset: field(20),
@@ -133,21 +143,34 @@ export function readImageRecordHeader(block: Uint8Array, offset = 0, path = ''):
   return header;
 }
 
+function recordEncoding(encoding: number, kind: ImageRecordKind, location: string): ImageRecordHeader['encoding'] {
+  if (kind === 'anim-frame') {
+    if (encoding !== 1) throw new SourceError('unsupported-encoding', location, 'an ANIM frame must use byte-run sprite RLE');
+    return 'byte-run';
+  }
+  if (encoding !== 0 && encoding !== 2) throw new SourceError('unsupported-encoding', location, 'only raw and sprite RLE images are supported');
+  return encoding === 0 ? 'raw' : 'sprite-rle';
+}
+
 /**
- * Sprite RLE: each row alternates u16 transparent and opaque run lengths, starting with a transparent run; each opaque
- * run is followed by its pixels, and a row ends when its runs add up to the width.
+ * Sprite RLE (encoding 2) and byte-run sprite RLE (encoding 1, ANIM frames only; drawer `0x58d64`): each row alternates
+ * transparent and opaque run lengths, u16 and u8 respectively, starting with a transparent run; each opaque run is
+ * followed by its pixels, and zero-length runs carry nothing. An encoding-2 row ends when its runs add up to the width.
+ * An encoding-1 row ends at the first run that reaches or passes it: a transparent run past the width only ends the
+ * row, while an opaque one would draw outside the image, which a complete frame cannot hold.
  */
-function decodeSpriteRle(data: Uint8Array, width: number, height: number, location: string): SourceImage {
+function decodeSprite(data: Uint8Array, width: number, height: number, location: string, encoding: 'sprite-rle' | 'byte-run'): SourceImage {
+  const lengthBytes = encoding === 'byte-run' ? 1 : 2;
   const indices = new Uint8Array(width * height);
   const stride = maskStride(width);
   const mask = new Uint8Array(stride * height);
   let offset = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0, transparent = true; x < width; transparent = !transparent) {
-      if (offset + 2 > data.length) invalid(location, 'a sprite row is truncated');
-      const run = data[offset] | (data[offset + 1] << 8);
-      offset += 2;
-      if (run > width - x) invalid(location, 'a sprite run overflows the row');
+      if (offset + lengthBytes > data.length) invalid(location, 'a sprite row is truncated');
+      const run = lengthBytes === 1 ? data[offset] : data[offset] | (data[offset + 1] << 8);
+      offset += lengthBytes;
+      if (run > width - x && (encoding === 'sprite-rle' || !transparent)) invalid(location, 'a sprite run overflows the row');
       if (!transparent) {
         if (run > data.length - offset) invalid(location, 'a sprite row is truncated');
         indices.set(data.subarray(offset, offset + run), y * width + x);
@@ -173,13 +196,13 @@ function requireRawSize({ width, height, dataSize }: ImageRecordHeader, path: st
   if (dataSize !== width * height) invalid(fieldAt(path, 'pixels'), 'raw image data must be width * height bytes');
 }
 
-/** Checks the record at `offset`, then decodes its pixels into new buffers; stored row order is kept. */
-export function decodeImageRecord(block: Uint8Array, offset = 0, path = ''): SourceImage {
-  const header = readImageRecordHeader(block, offset, path);
+/** Checks the record at `offset` as `kind` allows, then decodes its pixels into new buffers; stored row order is kept. */
+export function decodeImageRecord(block: Uint8Array, offset = 0, path = '', kind: ImageRecordKind = 'image'): SourceImage {
+  const header = readImageRecordHeader(block, offset, path, kind);
   const location = fieldAt(path, 'pixels');
   const { width, height } = header;
   const data = block.subarray(header.pixelOffset, header.pixelOffset + header.dataSize);
-  if (header.encoding === 'sprite-rle') return decodeSpriteRle(data, width, height, location);
+  if (header.encoding !== 'raw') return decodeSprite(data, width, height, location, header.encoding);
   requireRawSize(header, path);
   return Object.freeze({ width, height, indices: exclusiveBytes(data), mask: null });
 }

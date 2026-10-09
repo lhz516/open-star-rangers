@@ -3,13 +3,14 @@ import { encodeImagePayload, readImagePayload } from '../../content/graphics/ima
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readAssetId } from '../../content/asset-id.ts';
 import type { SourceLimit } from '../source-error.ts';
+import { inLocationGrammar } from '../source-error.test-support.ts';
 import { ByteWriter, syntheticSnip } from '../synthetic.test-support.ts';
 import {
   cockpitBlock as cockpit, cockpitLayoutBlock, dataPaletteBlock, expectSourceError as rejects, fontTable, hudFontTables, mfdBlock, rawImageBlock,
   recordBlock as record, spriteImageBlock, tableBlock, type SyntheticElement,
 } from './conversion.test-support.ts';
 import {
-  checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, decodeSnipFrame, mfdRecordOffset, readCockpitFont,
+  checkPaletteIndices, cockpitElementRecordOffset, CONTAINER_LIMITS, decodeImageRecord, decodeSnipFrame, fieldAt, mfdRecordOffset, readCockpitFont,
   readCockpitFonts, readCockpitGroup, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette, readFontTable, readImageRecordHeader,
   readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets, tableRecordOffset,
 } from './source-graphics.ts';
@@ -138,6 +139,56 @@ describe('image record source', () => {
 
   it('places locations under the caller path', () => {
     rejects(() => readImageRecordHeader(record({ bitsPerPixel: 4, width: 1, height: 1, size: 1 }, [0]), 0, 'graphics[image/a]'), 'invalid-payload', 'graphics[image/a].record');
+  });
+});
+
+// P3-03: encoding 1, byte-run sprite RLE, read only for ANIM frames (textures §2). A 5×2 frame as u8 runs and pixels.
+// Row 0: transparent 1, opaque 2 (0, 9), transparent 2. Row 1: transparent 0, opaque 5 (1–5).
+const BYTE_RUNS = [1, 2, 0, 9, 2, 0, 5, 1, 2, 3, 4, 5];
+const byteRunRecord = (runs: readonly number[] = BYTE_RUNS, encoding = 1) => record({ encoding, width: 5, height: 2, size: runs.length }, runs);
+const ANIM_FRAME_PATH = 'archive:/MAIN/SR.NOB#30011/frames[2]';
+
+describe('byte-run sprite RLE', () => {
+  it('decodes encoding 1 as an ANIM frame, drawing opaque index 0, and nowhere else', () => {
+    expect(readImageRecordHeader(byteRunRecord(), 0, '', 'anim-frame').encoding).toBe('byte-run');
+    const image = decodeImageRecord(byteRunRecord(), 0, '', 'anim-frame');
+    expect({ indices: [...image.indices], mask: [...image.mask!] }).toEqual({ indices: [0, 0, 9, 0, 0, 1, 2, 3, 4, 5], mask: [0b0110_0000, 0b1111_1000] });
+    expect(payloadTransferList([image.indices, image.mask!])).toHaveLength(2);
+    rejects(() => decodeImageRecord(byteRunRecord()), 'unsupported-encoding', 'record');
+  });
+
+  it('keeps encoding 1 unsupported in TABL, MFDD and CCKD records', () => {
+    rejects(() => readTableRecordOffsets(tableBlock([byteRunRecord()])), 'unsupported-encoding', 'record');
+    const mfd = mfdBlock([[byteRunRecord()], []]);
+    rejects(() => decodeImageRecord(mfd, mfdRecordOffset(mfd, 0, 0)), 'unsupported-encoding', 'record');
+    const layout = cockpitLayoutBlock([[{ record: byteRunRecord(), x: 0, y: 0 }]]);
+    rejects(() => decodeImageRecord(layout, cockpitElementRecordOffset(layout, 0, 0)), 'unsupported-encoding', 'record');
+  });
+
+  it.each([0, 2, 3])('rejects encoding %i in an ANIM frame', encoding => {
+    rejects(() => decodeImageRecord(record({ encoding, width: 1, height: 1, size: 1 }, [0]), 0, 'graphics[image/a]', 'anim-frame'), 'unsupported-encoding', 'graphics[image/a].record');
+  });
+
+  it('ends a row at a transparent run past the width and alternates across zero-length runs', () => {
+    // Row 0: transparent 1, opaque 1 (4), transparent 200. Row 1: transparent 0, opaque 1 (6), transparent 0, opaque 0,
+    // transparent 2, opaque 2 (7, 8).
+    const image = decodeImageRecord(byteRunRecord([1, 1, 4, 200, 0, 1, 6, 0, 0, 2, 2, 7, 8]), 0, '', 'anim-frame');
+    expect({ indices: [...image.indices], mask: [...image.mask!] }).toEqual({ indices: [0, 4, 0, 0, 0, 6, 0, 0, 7, 8], mask: [0b0100_0000, 0b1001_1000] });
+  });
+
+  it.each([
+    ['a truncated opaque run', BYTE_RUNS.slice(0, -1)],
+    ['a missing row', BYTE_RUNS.slice(0, 5)],
+    ['a row without its next run', [1, 2, 0, 9]],
+    ['an opaque run past the row', [1, 5, 1, 2, 3, 4, 5, 5]],
+    ['trailing bytes', [...BYTE_RUNS, 0]],
+  ])('rejects %s', (_, runs) => rejects(() => decodeImageRecord(byteRunRecord(runs), 0, 'graphics[image/a]', 'anim-frame'), 'invalid-payload', 'graphics[image/a].pixels'));
+
+  it('places fields under an archive structure path as path segments', () => {
+    expect([fieldAt(ANIM_FRAME_PATH, 'pixels'), fieldAt('graphics[image/a]', 'pixels'), fieldAt('', 'pixels')])
+      .toEqual([`${ANIM_FRAME_PATH}/pixels`, 'graphics[image/a].pixels', 'pixels']);
+    rejects(() => decodeImageRecord(byteRunRecord([6]), 0, ANIM_FRAME_PATH, 'anim-frame'), 'invalid-payload', `${ANIM_FRAME_PATH}/pixels`);
+    expect(inLocationGrammar({ location: `${ANIM_FRAME_PATH}/record` })).toBe(true);
   });
 });
 
