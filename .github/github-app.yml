@@ -1,0 +1,13 @@
+# GitHub Copilot app project configuration
+# (https://docs.github.com/copilot/reference/github-copilot-app-reference/repository-configuration).
+scripts:
+  # Every new worktree shares the main checkout's git-ignored local/ (original data and research output) through a
+  # symlink, like git.worktreeSymlinkFolders in .vscode/settings.json does for VS Code worktrees. It never replaces an
+  # existing local entry and does nothing in the main checkout itself.
+  - name: Link local
+    command: >-
+      if [ "$COPILOT_WORKSPACE_PATH" != "$COPILOT_ROOT_PATH" ] && [ -d "$COPILOT_ROOT_PATH/local" ]
+      && [ ! -e "$COPILOT_WORKSPACE_PATH/local" ] && [ ! -L "$COPILOT_WORKSPACE_PATH/local" ];
+      then ln -s "$COPILOT_ROOT_PATH/local" "$COPILOT_WORKSPACE_PATH/local"; fi
+    triggers:
+      - session.create

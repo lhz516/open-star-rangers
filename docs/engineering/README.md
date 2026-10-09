@@ -18,6 +18,13 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 
 - Node 22（`.nvmrc`；`package.json` 要求 ≥ 22.18，以便直接运行 `.ts`），pnpm 12（`packageManager` 字段，由 corepack 提供）。
 - 依赖用 `pnpm-lock.yaml` 锁定，升级经测试后合入。
+- 原版数据与研究输出只在主 worktree 的 `local/`（被忽略）。每个新建的 worktree 都把 `local` 链接到主 worktree 的 `local`：
+  - VS Code 由 [.vscode/settings.json](../../.vscode/settings.json) 的 `git.worktreeSymlinkFolders` 完成；
+  - GitHub Copilot app 由 [.github/github-app.yml](../../.github/github-app.yml) 的 `session.create` 脚本完成，配置须先在 app 中审阅并接受；
+  - execute-goal 的 worker 由其[派发步骤](../../.agents/skills/execute-goal/references/parallel.md#dispatch)完成；
+  - 其他方式创建的 worktree，在其根目录运行 `ln -s <主 worktree>/local local`。
+
+  不复制 `local/`，也不在 worktree 中另建一份。
 
 ## 命令
 

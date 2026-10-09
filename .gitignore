@@ -1,6 +1,7 @@
 # Original game content, disc images and local research output. Never commit.
 # /local is the repository-root local directory. It has no trailing slash because in worktrees it is a symlink to the
-# main checkout's directory (git.worktreeSymlinkFolders in .vscode/settings.json), and Git treats a symlink as a file.
+# main checkout's directory (git.worktreeSymlinkFolders in .vscode/settings.json, the session.create script in
+# .github/github-app.yml), and Git treats a symlink as a file.
 /local
 *.ccd
 *.img

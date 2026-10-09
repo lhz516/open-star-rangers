@@ -161,7 +161,7 @@ Preflight:
 
 - The current branch is `exec/<phase>-<task>-<NN>` in a linked worktree.
 - Row NN is `in-progress` in this checkout's `goal.md`, and its dependencies are `completed`.
-- Install dependencies with `pnpm install --frozen-lockfile` when `node_modules` is missing. Link `local` as in [Dispatch](#dispatch) when the subtask needs it.
+- Install dependencies with `pnpm install --frozen-lockfile` when `node_modules` is missing. Link `local` as in [Dispatch](#dispatch) if the worktree does not have it yet; every worktree links it ([engineering conventions](../../../../docs/engineering/README.md#环境)).
 - Use the assigned ports. Without assigned ports, derive them from the [Names](#names) formula.
 
 Rules:
