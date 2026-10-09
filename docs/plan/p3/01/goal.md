@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | completed |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | completed |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | in-progress |
-| [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | in-progress |
+| [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | completed |
 | [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | completed |
 | [15-reclaim-wait.md](./subtasks/15-reclaim-wait.md) | 02, 14 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15 | pending |
@@ -116,6 +116,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 07 的第一次运行与新增 15：** 用户在场，协调者运行 `tb-c40000-01`：4 个标记全部确认，146 个读数全部合格，原版文件核对通过，但以 `cleanup-failed` 结束（SIGKILL 后两次各 5 秒内 DOSBox-X 未退出，之后自行退出，没有遗留进程）。按工具契约该次不计为合格运行。经用户选择，新增 02 的修复项 15：SIGKILL 后的等待改为有限的 30 秒并记录实际等待时间；07 与最终对齐加入对 15 的依赖。15 完成后用新编号重做 40000 cycles 的运行。
 - **2026-10-09 — 07 恢复：** 用户在场可操作运行，15 已集成，恢复条件满足；07 回到 `in-progress`，其写入范围恢复 executable.md 与 unknowns.md（此时没有重叠行在进行）。
 - **2026-10-09 — 07 的运行与用户决定：** 用户操作、协调者确认标记，`tb-c40000-03`、`tb-c20000-01`、`tb-c20000-02`、`tb-c40000-02` 均为 `complete`（各 146 个读数全部合格，原文件保护与回收通过；15 之后 SIGKILL 后约 0.06 秒退出），`tb-c40000-01` 因清理超时失败而不计。运行时确认了时基的结构关系（来源、每帧可变步长、1/64 秒单位与换算），但游戏时钟相对无丢失预期的速率判据未满足：40000 cycles 时慢 0.03%–3.2%，20000 时慢约 4.3%；原因（IRQ0 在已确认的丢弃路径上丢失）为高概率，未量化。用户于同日决定接受 AC-05：以结构关系确认核心时基，速率差作为依赖 cycles 的 T-4 结果交 U-021，不视为通过了预先写定的速率判据，见 [B-006](../../../original/behavior/B-006-simulation-timing.md)。
+- **2026-10-09 — 12 完成；待用户决定的事项：** 12 的交接记录与 [P3 阶段索引](../tasks.md) §4 的措辞建议（P3-02、P3-05、P3-07、P3-11、P3-12、P3-13、P3-14 的范围补充）写在 [12 的完成证据](./subtasks/12-catalog-handoff.md#完成证据)。这些建议改变已批准的下游任务范围，协调者未改阶段索引，交用户决定。另一未决事项：G-08 是否也覆盖原版的 F10 与光标、小键盘扩展键码（09 发现；须在 P3-05 spec 之前决定；若纳入须修订 spec 的 G-08 与视角范围并重新批准）。
 
 ## 审批
 
