@@ -81,7 +81,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 |---|---|---|
 | [01-recipe-report-contracts.md](./subtasks/01-recipe-report-contracts.md) | — | completed |
 | [02-debugger-session-protection.md](./subtasks/02-debugger-session-protection.md) | 01 | in-progress |
-| [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | in-progress |
+| [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | completed |
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | pending |
