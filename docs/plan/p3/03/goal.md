@@ -107,7 +107,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [01-scen-event-research.md](./subtasks/01-scen-event-research.md) | — | completed |
 | [02-craft-debris-research.md](./subtasks/02-craft-debris-research.md) | — | in-progress |
 | [03-ai-data-research.md](./subtasks/03-ai-data-research.md) | — | in-progress |
-| [04-comm-hud-text-research.md](./subtasks/04-comm-hud-text-research.md) | — | pending |
+| [04-comm-hud-text-research.md](./subtasks/04-comm-hud-text-research.md) | — | in-progress |
 | [05-image-research.md](./subtasks/05-image-research.md) | — | pending |
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | pending |
 | [07-mission-events.md](./subtasks/07-mission-events.md) | 01, 06 | pending |
