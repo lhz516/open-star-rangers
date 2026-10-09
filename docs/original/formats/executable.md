@@ -467,6 +467,8 @@ Within `0x3ec70`: `0x3cfbb` loads RENS 10751, TEX 10377 (`0x444ac`), TEX 11069 w
 
 **Limits:** loads through pointers computed from bases other than the loaders above are not excluded; the data-driven AI programs interpreted by `0x64cb8` were not followed beyond the loader's lists (no load call exists outside the scanned sites); and no baseline run checked the requested IDs. Evidence: ignored `local/research/p3-01/closure/` (`ghidra_scripts/ClosureProbe.java`, `probe.sh`, outputs `out/p1`–`out/p54`, `out/id-immediates.txt`; `id-tables.ts`, `aistuff-comm.ts`, `data-id-refs.ts`, `model-meshes.ts`, `tabl-10165.ts`, `slot-musc.ts` and `delivered.ts` with their `out/*.json`, which hold entry IDs, offsets and counts only). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Register arguments and the immediates were read from native instructions.
 
+**Addendum (P3-03/24, EXE text drawn without `0x4e9e8`):** the paragraph on EXE text above covers only the strings queued through `0x4e9e8`. HUD, map and communications code also draws literals of object 4 directly, or formats them first. In the selected mission, 64 such regions lie on the view paths of the HI forward cockpit and the map; their reachability is stated per literal. The others serve LO, the F2 view, typed cheats, the wave mode, the base interior or the menu pages. Literals, draw sites, conditions and coverage: [HUD, map and communications text from the EXE](#hud-map-and-communications-text-from-the-exe-p3-0324). Dispositions: the handoff record at the end of the [P3-01/10 completion evidence](../../plan/p3/01/subtasks/10-data-closure.md#完成证据).
+
 ### Flight message strings and the RENS header (P3-03/04)
 
 Research of P3-03 [subtask 04](../../plan/p3/03/subtasks/04-comm-hud-text-research.md), 2026-10-09: read-only static analysis on a private copy of the Ghidra project (`-noanalysis -readOnly`). It used probes through the verified source chain that print only offsets, lengths, byte classes and predicates: the EXE regions through the shared LE reader (`le-executable.ts`), and RENS 10751. No text or field values are reproduced here.
@@ -520,6 +522,120 @@ No code formats or interprets these strings: no formatting call is involved, so 
 - **Meanings:** they are P3-12's. The light types and the distance thresholds remain Likely as stated above.
 
 Evidence (ignored): `local/research/p3-03/comm-hud-text/`. It holds `ghidra_scripts/CommProbe.java` and `probe.sh` with the outputs `out/d1`, `out/d2`, `out/w1`, `out/x1`–`out/x6`, `out/x9`, `out/x10` and `out/x16`, and `structure.ts` and `extra.ts` with `out/structure.json` and `out/extra.json`.
+
+### HUD, map and communications text from the EXE (P3-03/24)
+
+Research of P3-03 [subtask 24](../../plan/p3/03/subtasks/24-hud-exe-text-research.md), 2026-10-09: a bounded, read-only static trace on a private copy of the Ghidra project (`-noanalysis -readOnly`), plus a probe through the verified source chain and the shared LE reader that prints only verdicts, lengths and byte-class counts. No text is reproduced here. Dispositions are in the [P3-01/10 handoff record](../../plan/p3/01/subtasks/10-data-closure.md#完成证据).
+
+**Coverage (Confirmed method):**
+
+- **Drawers:** glyphs reach the screen only through `0x59fc8`, which draws them inline from a font record. Font records are built only by `0x5acac`, which is called at `0x33ed6` (the OPTIONS screen font `0x186924`) and at `0x496f1` (the three CCKD fonts, handed out only by `0x49a58`; [hud §1.1](./hud.md#11-glyph-layout-and-character-maps-likely)). Raw scans find 52 calls of `0x59f90`, which measures a string and calls `0x59fc8`, and 17 calls of `0x59fc8`, all direct. Every call's string argument was traced back to its source.
+- **Message line:** instrument type 8 draws the queue `0x175f08`, which only `0x4e9e8` fills. It has 11 callers: the seven sites of [flight message strings](#flight-message-strings-and-the-rens-header-p3-0304), `0x3cb30`, `0x4e3fd`, `0x4e461` and `0x68ff9` (below).
+- **Formatting:** `0x74a3f` takes a buffer, a format and values, calls the formatter `0x8fe92` and ends the result with NUL (Likely the C library's `sprintf`). `0x74b67` writes an integer's decimal digits (Likely `itoa`). Each formatted buffer is drawn by the sites below.
+- **Object names (+0x15C):** the target display, the target box and the map draw them. Their only writers are the mission build's name assignment `0x67d44` (CINF craft record +0x04, [craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes), or SCEN names, [scenario](./scenario.md)), the allocator's clear (`0x521ff`) and the map marker builder `0x3cb80` (below). Of the 32-bit values 0x15C in the game code, the remaining hits belong to other structures: a pilot record (`0x3acb7`, `0x3aec2`) and an AI state (`0x63c82`, `0x63cda`).
+- **References:** for every literal below, the 32-bit occurrences of its address in the image are exactly the listed sites; for the Warp page titles, they are the parameter-block pointers. The regions of the drawn-in-mission literals and of the LO, F2, cheat, wave and base-interior literals (81 in all; not the menu pages' or the delivered `0x171e58`) lie in file-backed pages of object 4, start 4-byte aligned, end at their only NUL and contain no fixup: the shared reader accepted each exact region.
+- **Limits:** static analysis only; no baseline run. Each instrument below is drawn on every frame of its view (Confirmed). Formatted values are named only by their code source.
+
+**Text rules (Confirmed):** `0x59fc8` draws every byte as its glyph, so no byte acts as a control code. A literal that the code passes to `0x74a3f` is a format string; its conversions are listed, and `%%` yields one `%`. The other literals are drawn verbatim; `0x171e8c` holds one `%` byte, drawn as its glyph. In every region below, each byte before the NUL is printable ASCII (0x20–0x7E), except `0x171ec8` and `0x171ecc` (one control byte each, base interior) and the delivered `0x171e58` (one control byte).
+
+**On the selected mission's view paths.** These are instruments of CCKD 10103 slot 0 (forward cockpit, F1) and slot 2 (map) ([cockpit](./cockpit.md#group-directory-confirmed-structure-on-all-three-entries)), plus the flight-view overlays; all are drawn in the selected mission. Regions are given as locators; the length includes the NUL. **Reachability** of each literal in the selected mission is Confirmed when the stated condition needs only the view, a target or the player's own input (key and map commands that the handlers accept). Otherwise the row ends with (Likely) or (Unconfirmed): the condition then depends on rules, AI behaviour or input not traced here.
+
+*Target display* (instrument type 7, `0x42d80`). The formatted lines go to the buffers `0x19b20e`, `0x19b222`, `0x19b218` and `0x19b204` and are drawn at `0x43da6`–`0x43e17` in HI. The target's name (+0x15C) follows at `0x43e47`.
+
+| Address | Region | Conversions | Site | When drawn |
+|---|---|---|---|---|
+| `0x171a34` | `le/4/0x1a34/7` | — | Copied to `0x19b1e4` at `0x42e1d`, drawn at `0x43079` for 20 frames | The target's +0xCC is 1, which the Warp start `0x2be00` sets on the warping object (also `0x214e7`, `0x2f7d2`); the display then drops the target (`0x528bc`). Needs a targeted object to warp (Unconfirmed) |
+| `0x171a44` | `le/4/0x1a44/10` | — | `0x431c8` | HI, while there is no target |
+| `0x171a50` | `le/4/0x1a50/6` | `%.0f` | `0x433cf`, `0x43a65` | Distance from the player to the target, below the `f32` at `0x171a8f` |
+| `0x171a58` | `le/4/0x1a58/7` | `%.0f` | `0x433cf`, `0x43a65` | Otherwise: the distance times the `f64` at `0x171a93` |
+| `0x171a60` | `le/4/0x1a60/8` | `%.0f` | `0x436e3` | The `f32` at +0x08 of the block at target +0x08, when that block exists |
+| `0x171a68` | `le/4/0x1a68/7` | `%.0f`, `%%` | `0x437ca` | Target +0x2C over +0x5C of its craft record (object +0x1C), times the `f64` at `0x171ab3` |
+| `0x171a70` | `le/4/0x1a70/7` | `%.0f` | `0x438a8` | The `f32` at +0x08 of that craft record, scaled by `0x171a93` twice when the once-scaled value exceeds the `f32` at `0x171abf` |
+| `0x171a78` | `le/4/0x1a78/6` | `%.0f` | `0x438ee` | Otherwise, scaled once |
+| `0x171a80` | `le/4/0x1a80/5` | none | `0x43a77` | Target of kind `0x2000000` (the map marker): these three take the places of `0x171a60`, `0x171a68` and `0x171a70`/`0x171a78`. Needs the marker as the target (Likely) |
+| `0x171a88` | `le/4/0x1a88/4` | `%%` | `0x43a89` | As above |
+| `0x171a8c` | `le/4/0x1a8c/3` | none | `0x43a9b` | As above |
+
+*Bar gauges* (instrument types 0–3; the helpers `0x41680` and `0x417a4` draw the label the caller passes, at `0x41776`, `0x41969` or `0x41b79`):
+
+| Address | Region | Instrument | Pushed at |
+|---|---|---|---|
+| `0x1719bc` | `le/4/0x19bc/2` | Type 0, `0x4117c` | `0x41201`, `0x41219` |
+| `0x1719cc` | `le/4/0x19cc/2` | Type 1, `0x41238` | `0x412e4`, `0x412fc` |
+| `0x1719dc` | `le/4/0x19dc/2` | Type 2, `0x4131c` | `0x4144d`, `0x41466` |
+| `0x1719f4` | `le/4/0x19f4/2` | Type 3, `0x41484` | `0x41599`, `0x415b2` |
+
+*Flight-view overlays* (`0x45de0`, called by the frame routine `0x3ee58`). They are drawn in view modes 0xC (F1) and 0xD (F2), for which `0x459a0` sets `0x19b898` to 1. `0x459a0` sets it to 2 for mode 1, but the frame routine does not call `0x45de0` during a Warp ([cameras](#automatic-views-and-cameras-p3-0109)), and the cursor views leave it at 0. The overlays are skipped while the player's subsystem slot 9 is in state 2, and at random while it is in state 1.
+
+| Address | Region | Conversions | Site | When drawn |
+|---|---|---|---|---|
+| `0x171c30` | `le/4/0x1c30/13` | — | `0x46b78` (four sites) | Blinks for a few steps of 0x26 ticks after the autopilot flag `0x174b24` changes. `0x27ee4` sets that flag and installs built-in AI record 0 on the player ([ai](./ai.md)); the flight key handler toggles it at `0x26eff`, and `0x2626c` calls it for a pending command |
+| `0x171c40` | `le/4/0x1c40/14` | — | `0x46d38` (four sites) | Blinks while the step counter `0x174b28` runs and the autopilot is off. The speed-assist toggle starts it at `0x269d4`, and so does `0x27f68` at `0x27ff0` and `0x280aa` |
+| `0x171c60` | `le/4/0x1c60/15` | — | `0x47e50` (`0x47f3a`) | Blinks every 8 ticks while `0x2e080` returns 0 for the player, that is, while the byte at +0xF4 +0x24 of the player object is 4 (Likely) |
+| `0x171c70` | `le/4/0x1c70/6` | `%d` | `0x48055`, `0x48135` | Two integer readouts: one from the player's block (+0x08 → +0x08), one relative to the target |
+| `0x171c78` | `le/4/0x1c78/5` | `%d`, `%%` | `0x48083` | A percentage |
+| `0x171c80` | `le/4/0x1c80/3` | — | Copied into the last two readout buffers | No target, or a distance above 10,000 |
+| `0x171c84` | `le/4/0x1c84/4` | `%d` | `0x481bf` | The integer distance up to 10,000 |
+| `0x170fc4` | `le/4/0xfc4/5` | — | Returned by `0x2dcf0`, drawn at `0x47dfc` | No weapon in the slot; otherwise the name is CINF gun or missile record +0x04 ([craft §3.3](./craft.md#33-gun-record-48-bytes)). Needs an empty weapon slot (Unconfirmed) |
+| `0x171860` | `le/4/0x1860/10` | — | Copied to the new object's +0x15C by `0x3cb80` | The name of the map/Warp marker (kind `0x2000000`) that the first left click in the main map creates ([strategic map projection](#strategic-map-projection)). It is drawn as the target's name (`0x43e47`, `0x47abd`) while the marker is the target (Likely: the target display has a branch for that kind) |
+
+The four readout buffers (`0x19ba04`, `0x19ba0c`, `0x19ba14`, `0x19ba1c`) are refreshed every 16 ticks and drawn at `0x48272`, `0x48292`, `0x482ce` and `0x482ee`. The target box shows up to 16 bytes of the target's name (`0x47abd`). The ammunition count beside the weapon name (`0x483e4`, drawn at `0x47e42`) comes from the 70-pointer table `0x175b38` for counts below 70 and from `0x74b67` otherwise. Pointer i of that table addresses the decimal digits of i (local check, all 70 entries), so the count is code-drawn digits.
+
+*Strategic map* (instrument type 10, `0x49f8c`; view mode 8, CCKD 10103 slot 2):
+
+| Address | Region | Conversions | Site | When drawn |
+|---|---|---|---|---|
+| `0x171d18` | `le/4/0x1d18/12` | — | `0x4a76b` | Every map frame, at the top left of the main map |
+| `0x171d10` | `le/4/0x1d10/8` | `%d`, `%%` | `0x4a43f` → `0x4a507`; `0x4a5f0` → `0x4a664` | Beside the marker and the cursor: a value computed through the Warp cost routine `0x30d2c` (U-026), at least 1, coloured by thresholds 100 and 66 |
+| `0x171d24` | `le/4/0x1d24/5` | none | `0x4a826` → `0x4a8a5` | Cursor readout when `0x4c3ec` returns −1 |
+| `0x171d2c` | `le/4/0x1d2c/8` | `%.0f` | `0x4a84f` → `0x4a8a5` | Cursor readout otherwise |
+| `0x171d44` | `le/4/0x1d44/3` | `%d` | `0x4ba60` (in `0x4b98c`), drawn at `0x4a9e3` | Per-unit labels while the map flag `0x18649c` is 1. It is written at `0x2b8ab` and `0x2bc06` and cleared at `0x49e41` when the map opens; which input sets it was not traced (Unconfirmed) |
+
+The information window (`0x4ba80`; [hud](./hud.md#sources-of-the-unidentified-elements-p2-1227)) draws its lines at `0x4bf7c` and `0x4c2e5`. For each unit in the zoom window's range whose kind is in `0x6c87f` and is not `0x4000`, it formats a kind word with no argument, appends the name through `0x171db4`, and writes a line with three position components. It counts the units of the other listed kinds and writes one line per kind with a count. In the selected mission, SCEN 3019's records have kinds 1, 0x80, 0x100, 0x4000 and 0x20000, and the wingman roster has kind 2 ([selected-mission field inventory](./scenario.md#selected-mission-field-inventory-confirmed-structure); kinds read from the local P2-09 record table). So only the kind words of kinds 1, 2 and 0x20000 and the count lines of kinds 0x80, 0x100 and 0x4000 can appear there; the others need kinds the mission does not declare:
+
+- **Kind words** (no conversion; `0x4bbf3`–`0x4bce6`): kind 1 `0x171d50` (`le/4/0x1d50/9`); 2 `0x171d74` (`le/4/0x1d74/7`); 4 `0x171d94` (`le/4/0x1d94/9`); 8 `0x171da0` (`le/4/0x1da0/8`); 0x10 `0x171da8` (`le/4/0x1da8/10`); 0x20 `0x171d88` (`le/4/0x1d88/9`); 0x40 and 0x800 `0x171d7c` (`le/4/0x1d7c/9`); 0x8000 `0x171d5c` (`le/4/0x1d5c/7`); 0x20000 `0x171d64` (`le/4/0x1d64/8`); 0x40000 `0x171d6c` (`le/4/0x1d6c/8`).
+- **Name and position:** `0x171db4` (`le/4/0x1db4/3`, `%s` with the unit's +0x15C, `0x4bd1c`); `0x171db8` (`le/4/0x1db8/8`), `0x171dc0` (`le/4/0x1dc0/7`) and `0x171dc8` (`le/4/0x1dc8/6`), one `%.0f` each (`0x4bd90`, `0x4bdcf`, `0x4be2f`).
+- **Count lines** (one `%d` each; `0x4bfea`–`0x4c292`): kind 0x80 `0x171dd0` (`le/4/0x1dd0/10`); 0x100 `0x171ddc` (`le/4/0x1ddc/12`); 0x200 `0x171de8` (`le/4/0x1de8/11`); 0x400 `0x171df4` (`le/4/0x1df4/12`); 0x80000 `0x171e00` (`le/4/0x1e00/12`); 0x2000 `0x171e0c` (`le/4/0x1e0c/9`); 0x4000 `0x171e18` (`le/4/0x1e18/12`); 0x10000 `0x171e24` (`le/4/0x1e24/10`); 0x1000 `0x171e30` (`le/4/0x1e30/11`).
+
+The map labels (`0x4af78`) are the units' names (+0x15C) for kinds in `0x6887f`; they use no literal.
+
+*Left display* (instrument type 6, `0x4ce30`):
+
+| Address | Region | Site | When drawn |
+|---|---|---|---|
+| `0x171e60`, `0x171e64`, `0x171e68` | `le/4/0x1e60/2`, `le/4/0x1e64/2`, `le/4/0x1e68/2` | Energy page `0x4d800` → `0x4d6f0` (`0x4d7f1`) | Labels of the page's three bars |
+| `0x171e6c` | `le/4/0x1e6c/15` | Communications panel `0x4da28` (`0x4db3c`) | HI, when the panel's argument is 0 |
+| `0x170f98` | `le/4/0xf98/3` | Copied by `0x2c9d0` (`0x2caaa`) into each object-list entry, between the generated key and the object's name; drawn by the panel (`0x4dbec`) | Communications object lists ([comm](./comm.md)) |
+| `0x171e44` | `le/4/0x1e44/9` | Warp page `0x4dcec` (`0x4df2a`), through the pointer at +0x68 of the HI parameter block `0x175d80` (at `0x175de8`) | Warp page title |
+| `0x171e7c`, `0x171e84`, `0x171e8c` | `le/4/0x1e7c/6`, `le/4/0x1e84/6`, `le/4/0x1e8c/11` | `0x4e018` (`0x4e1a8`), called at `0x4df6a`, `0x4dfaa` and `0x4dfed`; drawn verbatim | Labels of the Warp page's three bars |
+
+The key of a communications entry at position p comes from the 36-byte table `0x174b40` (count `0x174b64`) when p < 36, and from `0x74b67` otherwise. `0x2c850` and `0x2c9d0` both do this; `0x2ce1c` does the same but has no caller. Byte i of the table is the i-th upper-case base-36 digit symbol (local check, all 36 bytes), so the keys are a code rule.
+
+*Indicators* (instrument types 9 and 12 of slot 0):
+
+| Address | Region | Site | When drawn |
+|---|---|---|---|
+| `0x171e98` | `le/4/0x1e98/5` | Type 9, `0x4eb3c` (`0x4ec81`) | Blinks while `0x175f14` is set. Every 0x40 or 0x80 ticks, `0x4edf4` sets it when `0x4f000` finds a missile (kind `0x100000`, +0x02 = 1, +0x03 ≥ 7) whose +0x8C is the player, while the player's subsystem slot 0xC is in state 0 or 1. Needs an enemy missile aimed at the player (Unconfirmed) |
+| `0x171ea0` | `le/4/0x1ea0/5` | Type 9 (`0x4ed45`) | Blinks while `0x175f10` is set: `0x4ef9c` finds an object of kinds `0x780` whose +0x8C is the player and whose byte at +0xF4 +0x24 is 3 or 4, while slot 0xC is in state 0. The selected mission's enemy kinds 0x80 and 0x100 are in that mask (Likely) |
+| `0x171ea8` | `le/4/0x1ea8/5` | Type 12, `0x4f2a0` (`0x4f352`, `0x4f3d8`) | While `0x175f38` is set: `0x4f3e4` sets it when object +0xC8 is 0 or when 64 times the craft record's +0xA4 (the Warp interval, [craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes)) has passed since +0xC8. `0x4f3e4` does this only while `0x33504` reports the state byte `0x186882` as 1 (Likely) |
+
+**Not drawn in the selected mission (Confirmed):**
+
+- **LO only:** `0x171a3c` (`le/4/0x1a3c/8`), the target display without a target. `0x171e50` (`le/4/0x1e50/5`), the Warp page title through the LO block `0x175e04` (+0x68, at `0x175e6c`). The slice runs HI.
+- **F2 only:** `0x171a0c` (`le/4/0x1a0c/2`), the label of bar type 4 (`0x415d0`). Type 4 occurs only in slot 1 (layout 5, the F2 view) of CCKD 10101 and 10103 (local count of instrument types per slot).
+- **Typed cheats** ([mission failure](#mission-failure-player-loss-and-rescue-p3-0105)):
+  - The information-window header `0x171d48` (`le/4/0x1d48/7`) and the AI-target labels `0x171d3c` (`le/4/0x1d3c/5`, `%s`, drawn at `0x4b354`) depend on `0x174edc`, the flag of cheat row 20 (pointer at `0x1750d8`).
+  - `0x3c970` posts each matched row's own text, or formats it with `0x171858` (`le/4/0x1858/3`) or `0x17185c` (`le/4/0x185c/4`), through `0x4e9e8` (`0x3cb30`).
+  - The frame counter `0x3f474` (digits through `0x74b67`) depends on `0x174a80`, the flag of row 1 (pointer at `0x174f10`).
+- **Wave mode:** `0x68f4c` queues `0x1725ec` (`le/4/0x25ec/19`) at `0x68ff9`. This is the wave mode of [difficulty path 9](./scenario.md#difficulty-readers-p3-01), which SCEN 3019 does not use.
+- **Base interior** (view mode 6; the frame routine calls `0x4f524` and then `0x4f550` at `0x3eee4`): besides TABL 10165 texts, `0x4f550` draws `0x171eb0`, `0x171eb8` and `0x171ec0` (5 bytes each), `0x171ec8` (2 bytes, two sites), `0x171ecc` (2), `0x171ed0` (22; `%d`, `%%`), `0x171ee8` (5; `%15s` with the weapon name from `0x2dcf0`), `0x171ef0` (5; `%d`) and `0x171ef8` (17).
+- **Menu pages:** `0x33e8c` → `0x35158` → `0x37438` draw only with the OPTIONS font (8 drawer calls). The literals they reference are `0x171204`, `0x171208`, `0x171210`, `0x17121c`, `0x17122c`, `0x171234` and `0x1712a0`.
+
+**Already delivered:** the status display's lower line formats a subsystem's name and state word with the EXE format `0x171e58` (`le/4/0x1e58/6`, two `%s`; formatted at `0x4d4e3` and drawn through `0x4f108`), which is converted with DIAG 10489 into `data/hud/status-display/messages` ([hud](./hud.md#diag-10489-confirmed-structure-p2-07-revision)).
+
+**No EXE literal:** the sub-mode labels (TABL 10399); the communications menus (COMM TABL, [comm](./comm.md)); the status display's other text (DIAG 10489); object and weapon names; and the message-line text that `0x4e368` posts from a streamed entry. `0x4e308` requests that entry through `0x6b998` with the ID of a queued message, and the entry's first word points to the text. It runs only while `0x1863d8` is 0 (Likely the communications-face stream). Outside the drawers, `0x49e00` passes `0x171cc0` and `0x171ce8` to `0x74270` only when a map TABL fails to load.
+
+Evidence (ignored): `local/research/p3-03/hud-text/`. It holds `ghidra_scripts/HudTextProbe.java` and `probe.sh` with the outputs `out/a1`, `out/a2`, `out/d1`–`out/d9`, `out/e1`–`out/e19`, `out/f1`–`out/f7` and `out/s1`–`out/s3`, and `instrument-types.ts` and `regions.ts` with `out/instrument-types.json` and `out/regions.json` (instrument types, verdicts, lengths and byte-class counts only). Ghidra ran on a private copy of the project; functions created in memory were discarded.
 
 ### Strategic map projection
 **Confirmed (map-to-world conversion and Warp marker):** `0x2b9bc` classifies a mouse point against three screen rectangles. Inside the main map rectangle (origin and size at `0x186444`–`0x186450`) it converts the point with `0x4c4c0`, stores it as the cursor's world point and lets `0x2bc30` set the zoom-window bounds around it, clamped to the world rectangle of `0x3a41c`. On a left click it also stores the point as the target: `0x4c310` finds the nearest map icon, and `0x2bd74` replaces the target's z with that icon's stored value (0 when none is hit) while a player-state field is set. It then either creates the runtime kind-25 map/Warp marker at the target through `0x3cb80` or moves the existing marker to it. The vertical component therefore comes from runtime state, not mission data. `0x4c4c0` computes world x and y as the world rectangle's minimum corner plus the point's offset from the map origin times a per-axis world-per-pixel factor (`0x18646c`, `0x186470`), and sets z to 0. `0x4c310` picks the map icon nearest to a point within three pixels. Map icon labels are drawn by unanalysed code near `0x4afc0`–`0x4b360` from per-object screen coordinates relative to the same map origin.
