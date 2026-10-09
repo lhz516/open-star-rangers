@@ -90,7 +90,7 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 |---|---|---|
 | [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | in-progress |
 | [02-engineering-checks.md](./subtasks/02-engineering-checks.md) | — | completed |
-| [03-browser-regression.md](./subtasks/03-browser-regression.md) | — | pending |
+| [03-browser-regression.md](./subtasks/03-browser-regression.md) | — | in-progress |
 | [04-compliance-artifacts.md](./subtasks/04-compliance-artifacts.md) | — | pending |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | pending |
 | [06-unknowns-ownership.md](./subtasks/06-unknowns-ownership.md) | — | in-progress |
