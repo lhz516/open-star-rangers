@@ -80,10 +80,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-pipeline-entity-input-research.md](./subtasks/01-pipeline-entity-input-research.md) | — | pending |
+| [01-pipeline-entity-input-research.md](./subtasks/01-pipeline-entity-input-research.md) | — | in-progress |
 | [02-placement-numeric-research.md](./subtasks/02-placement-numeric-research.md) | — | pending |
 | [03-spawn-defaults-names-research.md](./subtasks/03-spawn-defaults-names-research.md) | — | pending |
-| [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | pending |
+| [04-core-contract-foundation.md](./subtasks/04-core-contract-foundation.md) | — | in-progress |
 | [05-world-pipeline-read-models.md](./subtasks/05-world-pipeline-read-models.md) | 01, 04 | pending |
 | [06-placement-coordinates.md](./subtasks/06-placement-coordinates.md) | 02, 04 | pending |
 | [07-world-creation-instantiation.md](./subtasks/07-world-creation-instantiation.md) | 03, 05, 06 | pending |
@@ -96,6 +96,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-09 — 并行执行安排：** 协调者在 `p3-02-core-contract-spec` 分支上执行（本 worktree，`local` 以符号链接接入主仓库的 `local/`），同时运行的 worker 不超过 3 个。与 P3-01 相同，宿主由应用为每个 worker 管理 worktree（以认领提交为基），worker 把分支改名为 `exec-p3-02-NN` 作为认领标记。P3-03 同时在其他 worktree 中执行；基准环境的单会话锁与两个分支对 `docs/original/` 的并行修改（合并时可能冲突）由协调者留意。
 
 ## 审批
 
