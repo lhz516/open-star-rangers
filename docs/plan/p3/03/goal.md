@@ -111,7 +111,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [05-image-research.md](./subtasks/05-image-research.md) | — | completed |
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | completed |
 | [07-mission-events.md](./subtasks/07-mission-events.md) | 01, 06 | completed |
-| [08-rule-data-payloads.md](./subtasks/08-rule-data-payloads.md) | 02, 03, 04, 06 | in-progress |
+| [08-rule-data-payloads.md](./subtasks/08-rule-data-payloads.md) | 02, 03, 04, 06 | completed |
 | [09-flight-data-payloads.md](./subtasks/09-flight-data-payloads.md) | 04, 05, 06 | completed |
 | [10-craft-debris-parsers.md](./subtasks/10-craft-debris-parsers.md) | 08 | pending |
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | pending |
@@ -144,6 +144,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 24 完成；HUD 直接绘制的 EXE 文字（研究门槛 3 与 4，待用户决定）：** 闭包追加 #47–#54（[P3-01/10 的追加记录](../01/subtasks/10-data-closure.md#完成证据)）。#47 为闭环直接绘制的 64 个 EXE 文字区域：目标显示屏 11、0–3 型仪表 4、飞行叠加 8、地图标记名 1、地图与信息窗 28、左侧显示屏 9、9/12 型指示 3；只取所选任务可达的最小集合时为 51 条。其余为 LO、F2/G-08、作弊、波次、G-05、菜单或代码规则，不导入。结构事实见 [executable](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)。导入须修订 spec 并经用户批准，三种方案：A（24 推荐）新增 cockpit-hud-map 组的 data 角色 `hud-text`（`data/hud/text`），payload 只存字节，换算列表作为 schema 常量；B 并入 `flight-messages`；C 新增 G 缺省（与 P3-13 的“文字来自 Core 与导入内容”冲突）。修订获批前不导入；受影响的子任务为 06（限值名）、09、12 或 13、16、19、21、22、23，修订后由协调者新增修复子任务。交 22：U-030、U-026、U-029 的线索；audio 中 SND 10409 的循环标志不完整（`0x175f14` 为导弹通道 `0x175f20`，`0x175f10` 为通道 `0x175f1c`）；comm 可补 `0x2c9d0` 的对象列表项（键、`0x170f98` 与名称）以及 `0x174b40` 属代码规则。详见 24 的完成证据。
 - **2026-10-09 — 07 完成：** 段 2 事件触发经 `scen.ts` 解析、写入任务 payload（logic payload schema 2），`loadMission` 原样透传到 `MissionSetup.eventTriggers`。执行中按申请扩大了写入范围（`scct.ts` 的僚机 `eventTrigger: null`、两处测试的计数与 schema 版本），没有与其他行重叠。基准本地核对（只记计数）：SCEN 3019 为 1 个触发、3 个区间、每区间 1 条消息、最长 57 字节，与 scenario 一致，在限值 2/8/2/128 之内。LOGIC_CONVERTER_COMPONENT 未递增，由 19 处理。交 21 或 22：工具用法中 logic-check 的 `counts` 与 `limits` 列表加入事件各项；交 22 的接口变化见 07 的完成证据。
 - **2026-10-09 — 09 完成（交 13、14、16、17、19、22）：** `src/content/flight/` 提供 models 组 4 个 data 角色的规范 JSON payload（各自 schema 1），`src/content/hud/view-labels-payload.ts` 提供 `view-labels`。限值：`explosionListItems` 16、`animationFrames` 32、`nebulaImages` 32、视角标签 `textBytes` 32（观测值 7、12、15、16 的 2 倍），解析前的 `payloadBytes` 上限为 16,384 与 256。`flightDataDependencies()` 为 17 生成描述符依赖；爆炸列表与星云列表接受 0 项（无格式下限），帧至少 1 项；引用为带固定 kind 的 `AssetReference`，可以重复。scene-settings 只用已确认的用途命名字段，+0x19–+0x1B 不转换。交 22 的模块分册条目见 09 的完成证据。
+- **2026-10-09 — 08 完成（交 10、11、12、15、22）：** `src/content/rule-data/` 提供 logic 组 6 个规则数据角色的规范 JSON payload；payload 字节上限沿用 `LOGIC_LIMITS.payloadBytes`。交解析器与转换的要点（详见 08 的完成证据）：规范 JSON 不能承载 −0，读取器把它读为 0，因此转换器须把来源中的 −0.0 `f32` 判为 `unsupported-payload`（基准中没有）；程序表 +0x2C 的 ±0 映射为 null，`kindMask` 为 0 时同样为 null，读取器拒绝字面的 0。弹体记录的所有非指针、非数量位置都按机型的类型转换，包括形状的 +0x00/+0x04/+0x08–+0x1C；机型形状的 at00/at08 恰在 boxes 非空时为 null。`ai-programs` 的 `entries` 按 `0x649c8` 首次到达的顺序排列：每个程序依次为其 +0x1C 条目、安装脚本，再按偏移顺序排列各状态列表。TABL 2009 只承载第 0 项的文字（`objectListLastEntry`）；COMM 列表与脚本保留终止项。限值与 06 的来源限值名的对应见 08 的完成证据。
 
 ## 审批
 
