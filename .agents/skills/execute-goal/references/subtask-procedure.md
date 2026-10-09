@@ -33,7 +33,7 @@ Run the checks required by the subtask and repository:
 - Python/Ghidra changes use the relevant guide's separate checks.
 - Documentation-only work uses structure, metadata, and link checks.
 - Browser criteria use browser-testing, including observable rendered results, error paths, persisted synthetic state where relevant, and cleanup. A worker uses its assigned ports.
-- Required real-device/original/deployment evidence must actually be obtained or remain unmet. Never relabel an unavailable required check as passed because a mock or screenshot looks plausible.
+- Obtain required original-game evidence yourself through [original evidence](../../../../docs/guides/original-evidence.md) before treating it as unavailable. Required real-device/original/deployment evidence must actually be obtained or remain unmet. Never relabel an unavailable required check as passed because a mock or screenshot looks plausible.
 
 Do not mark green while a required check is failing, skipped, or running. For a pre-existing failure, establish baseline evidence and report it; do not hide it or silently lower acceptance.
 

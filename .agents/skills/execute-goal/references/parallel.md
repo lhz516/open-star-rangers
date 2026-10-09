@@ -87,7 +87,7 @@ Repeat until the router leaves `execute-goal`. Then handle `done`, `resolve-bloc
 4. Claim and dispatch the first `N − running workers` entries of `schedule.wave` ([Dispatch](#dispatch)).
 5. Run these rows yourself with the subtask procedure, claiming pending ones in the same claim commit before you start them:
    - Partial work found in this checkout during reconciliation.
-   - `schedule.coordinator` rows that need the user. Ask when no worker report is waiting; workers keep running meanwhile.
+   - `schedule.coordinator` rows that need the user. If the row needs evidence about the original game, and the approved spec does not require the user's own judgment or perception, obtain that evidence yourself first ([original evidence](../../../../docs/guides/original-evidence.md)). Record the row's `执行方式` as `自动` in the same way as a write scope ([Write scopes](#write-scopes)), and run it yourself without asking. Otherwise ask when no worker report is waiting; workers keep running meanwhile.
    - Final alignment, only when it is the only ready row and no worker is running.
 6. If nothing above applied, wait for worker progress. Use completion notifications when the host provides them; otherwise check worker sessions and branches every few minutes. Then handle each report ([Worker report](#worker-report)).
 
@@ -133,7 +133,7 @@ detail: <blocker with resume condition, question with options, or requested path
 | Result | Coordinator action |
 |---|---|
 | `committed` | Integrate. |
-| `question` | Ask the user one question with the worker's options and relay the answer with `send_message`. |
+| `question` | Answer it yourself when the evidence sources settle it, including a Computer Use run of the original game ([original evidence](../../../../docs/guides/original-evidence.md)), and send the answer with `send_message`. Otherwise ask the user one question with the worker's options and relay the answer the same way. |
 | `scope-request` | If the paths overlap no other `in-progress`, `blocked` or claimed row's scope: add them to the row's `写入范围` on the goal branch, commit that document alone ([Write scopes](#write-scopes)), rerun the router, then tell the worker to continue. Otherwise wait until the overlapping row is integrated, then do the same and tell the worker to rebase first. The worker never edits its own `写入范围`. |
 | `blocked` | Set the row to `blocked`, add the execution record from SKILL.md, and commit only `goal.md`. Keep the worktree and branch. |
 
@@ -169,7 +169,7 @@ Rules:
 - Follow the [subtask procedure](./subtask-procedure.md) for NN only, committing as a worker.
 - Never edit coordinator-owned documents. Never touch other branches or worktrees. Never push, merge, or remove your own worktree.
 - Stay inside the write scope; outside it, send a `scope-request` and wait.
-- Do not ask the user. Report a `question` and wait for the coordinator's message.
+- Do not ask the user. Settle original-game facts yourself ([original evidence](../../../../docs/guides/original-evidence.md)), except Computer Use runs of the baseline environment, which the coordinator performs. Report a `question` for a decision, a needed Computer Use observation, or a fact those sources could not settle, saying what you tried. Then wait for the coordinator's message.
 - Stop servers and browsers you started before reporting.
 - After reporting, wait for follow-up messages (rebase, fix, scope answer) and handle them in the same worktree.
 

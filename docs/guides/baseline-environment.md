@@ -2,13 +2,13 @@
 type: guide
 status: active
 phase: P0
-updated: 2026-10-01
+updated: 2026-10-08
 related: [U-016, U-021]
 ---
 
 # 基准环境搭建与运行
 
-用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。
+用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。agent 可以用 Computer Use 自行运行原版，见[原版证据获取](./original-evidence.md#agent-运行原版)。
 
 ## 工具
 

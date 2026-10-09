@@ -70,6 +70,8 @@ In every mode:
 
 Do not ask about already-settled decisions or routine implementation choices. Resolve those from the contract and repository. A new consequential behavior ambiguity, unsafe overlap, or contradiction is a blocker requiring clarification, not permission to guess. A worker reports it to the coordinator, and the coordinator asks the user.
 
+Before blocking or asking, try to unblock yourself. Facts about the original game come from [original evidence](../../../docs/guides/original-evidence.md): existing records, local data, reverse engineering, the reference gameplay videos, and Computer Use on the baseline environment. Do not ask the user to play or check the original game on your behalf. Only a decision, or a fact those sources could not settle, goes to the user, together with what you tried.
+
 ## 3. Execute a subtask
 
 Every subtask follows [the subtask procedure](./references/subtask-procedure.md), whichever session runs it: claim and scope, implement, verify, rubber-duck review, simplify, documentation impact, evidence, and one focused local commit. In parallel mode, workers commit on their branches and the coordinator integrates each commit, together with the row's `completed` state, into the goal branch.
@@ -87,7 +89,7 @@ The tracker owner marks a row `blocked`; a worker reports the blocker instead. B
 
 Preserve partial work in the current checkout or the worker worktree. Do not present partial work as a completed commit. A blocked row keeps its write scope, so overlapping rows wait.
 
-Continue only independent eligible work whose write scopes do not overlap blocked changes. Stop when no safe work remains. Ask one focused clarification when a new user decision is required; routine confirmations remain unnecessary.
+Continue only independent eligible work whose write scopes do not overlap blocked changes. Stop when no safe work remains. Ask one focused clarification when a new user decision is required, after the self-unblocking attempt in §2; routine confirmations remain unnecessary.
 
 Missing evidence or authorization for an explicitly required external check is a real incomplete criterion. Operations outside the approved task scope may be reported as residual actions instead. Local deployment-tooling checks do not fulfill the master plan's actual SWA deployment exit criterion.
 

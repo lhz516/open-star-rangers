@@ -58,7 +58,11 @@ These are responsibility locations, not a claim that every directory or type exi
 
 For fidelity work, link the relevant `U-###`, `B-###`, format documents, and evidence confidence in `docs/original/`. Do not copy original content or treat inferred rules as confirmed. A prototype using synthetic or approximate behavior must be explicitly scoped as such.
 
+When a fact about the original game is missing, gather the evidence yourself before asking the user, following [original evidence](../../../docs/guides/original-evidence.md): existing records, local original data, reverse engineering, the reference gameplay videos, and running the baseline environment through Computer Use. Record what you found with its source and confidence.
+
 ## 3. Ask only consequential questions
+
+Before asking, check whether you can settle the question yourself (§2). Ask the user for decisions: behavior choices, scope, tradeoffs, numerical targets, approval. Ask about a fact only when the evidence sources could not settle it, and say what you tried.
 
 Use the question tool, one question at a time, with concrete choices where useful.
 
@@ -70,7 +74,7 @@ Resolve applicable topics:
 - **Rendering/UI/input:** React versus in-flight rendering responsibilities, aspect ratio, views, keyboard/mouse behavior, focus loss, and lifecycle cleanup.
 - **Data:** fields, types, units, ownership, validation boundaries, serialization, and content identifiers.
 - **Persistence, only when needed:** IndexedDB/localStorage ownership, schema/save version, content fingerprint, atomic writes, old saves, corrupt input, quota/eviction, export/import, and recovery.
-- **Verification:** exact assertions, measurable thresholds, Node versus browser checks, and any required real-device or original-game comparison.
+- **Verification:** exact assertions, measurable thresholds, Node versus browser checks, and any required real-device or original-game comparison. The agent performs original-game comparisons itself through the evidence guide. Assign one to the user only when no agent method can produce the required evidence, and state why.
 - **Risk:** reversible changes, save/cache compatibility, and recovery for medium/high-risk work.
 
 Do not add unrelated systems, speculative general-purpose engine work, or later-phase features. No Gamepad implementation in the first release.

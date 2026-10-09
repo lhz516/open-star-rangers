@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # 文档索引与写作约定
@@ -27,6 +27,7 @@ updated: 2026-10-07
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
 | [guides/local-import.md](./guides/local-import.md) | 本地生产预览、原版数据导入、缓存恢复与最小资源查看器操作；实机核对清单 | 参考类 | 中文 |
+| [guides/original-evidence.md](./guides/original-evidence.md) | agent 自行获取原版证据的途径与顺序、参考视频索引与取帧方法、证据限度，以及何时才请用户帮助 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |
 
 仓库根目录的 [AGENTS.md](../AGENTS.md)（英文）是 coding agent 和新贡献者的入口。
@@ -70,4 +71,4 @@ related: [U-001, ADR-0002]
 
 ## 置信度标记
 
-研究结论逐条标记：中文文档用 **已确认 / 高概率 / 未确认**；英文文档用 **Confirmed / Likely / Unconfirmed**。每条结论注明证据：实验、文件统计、代码偏移或截图（截图只存放在 `local/`，文档中写相对路径）。
+研究结论逐条标记：中文文档用 **已确认 / 高概率 / 未确认**；英文文档用 **Confirmed / Likely / Unconfirmed**。每条结论注明证据：实验、文件统计、代码偏移、截图（截图只存放在 `local/`，文档中写相对路径）或参考视频的时间点（置信度上限见[原版证据获取](./guides/original-evidence.md#证据限度)）。

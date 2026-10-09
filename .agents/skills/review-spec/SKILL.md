@@ -43,7 +43,7 @@ Check applicable React versus in-flight rendering ownership, Classic aspect rati
 
 ### Privacy, resource handling, and verification
 
-Check local-only resource handling, synthetic public fixtures, parser size/offset limits, diagnostic privacy, dependency policy, and acceptance evidence. Keep real-device, original-game, performance, and deployment requirements visible when they are actually in scope.
+Check local-only resource handling, synthetic public fixtures, parser size/offset limits, diagnostic privacy, dependency policy, and acceptance evidence. Keep real-device, original-game, performance, and deployment requirements visible when they are actually in scope. Flag original-game checks assigned to the user that an agent could perform with [original evidence](../../../docs/guides/original-evidence.md).
 
 For every applicable concern, assess clarity, completeness, and testability. Omit style preferences and unrelated scope expansion.
 
@@ -80,6 +80,8 @@ Use this findings shape:
 Fix broken links, stale proven file/type names, duplicate wording, malformed structure, and imprecise wording whose intended meaning is already settled. Keep unaffected sections intact.
 
 ### Ask before changing
+
+Settle factual questions about the original game yourself first, following [original evidence](../../../docs/guides/original-evidence.md). Ask about original-rule interpretation only when that evidence cannot settle it, and say what you tried.
 
 Use the question tool, one question at a time, for behavior, scope, numerical targets, original-rule interpretation, compatibility, data retention, architecture choices, or weakening acceptance. Do not guess or change a frozen decision in the spec.
 
