@@ -33,15 +33,28 @@ export const AUDIO_BUDGET_LIMITS: BudgetRecord = Object.freeze({
   payloadBytes: 8_388_608,
 });
 
-/** The four core sound roles of `CLASSIC_P2_SLICE`, with their ID stems, and `model-sound` for other model clips. */
+/**
+ * The four core sound roles of `CLASSIC_P2_SLICE`, with their ID stems; `model-sound` for other model clips; and, with
+ * their stems, `event-sound` and `hud-sound` for samples the game plays by entry ID and the HUD's own sounds (P3-03 S-13).
+ */
 const CORE_ROLE_STEMS = Object.freeze({ 'explosion-sound': 'explosion', 'fire-sound': 'fire', 'missile-sound': 'missile', 'warp-sound': 'warp' } as const);
-export const SOUND_ROLES = Object.freeze([...Object.keys(CORE_ROLE_STEMS) as (keyof typeof CORE_ROLE_STEMS)[], 'model-sound'] as const);
+const NAMED_ROLE_STEMS = Object.freeze({ 'event-sound': 'event', 'hud-sound': 'hud' } as const);
+export const SOUND_ROLES = Object.freeze([
+  ...Object.keys(CORE_ROLE_STEMS) as (keyof typeof CORE_ROLE_STEMS)[], 'model-sound', ...Object.keys(NAMED_ROLE_STEMS) as (keyof typeof NAMED_ROLE_STEMS)[],
+] as const);
 export type SoundRole = typeof SOUND_ROLES[number];
 
-/** The Asset ID rule of each role: a core stem with at most one variant segment, or a two-digit model clip. */
+const NAME = '[a-z0-9]+(?:-[a-z0-9]+)*';
+const stemRules = (stems: Readonly<Record<string, string>>, name: string) =>
+  Object.fromEntries(Object.entries(stems).map(([role, stem]) => [role, new RegExp(`^sound/${stem}${name}$`)]));
+/**
+ * The Asset ID rule of each role: a core stem with at most one variant segment, a two-digit model clip, or an event or
+ * HUD stem with exactly one kebab-case name.
+ */
 const ROLE_IDS: Readonly<Record<SoundRole, RegExp>> = Object.freeze({
-  ...Object.fromEntries(Object.entries(CORE_ROLE_STEMS).map(([role, stem]) => [role, new RegExp(`^sound/${stem}(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?$`)])),
+  ...stemRules(CORE_ROLE_STEMS, `(?:/${NAME})?`),
   'model-sound': /^sound\/model-clip\/\d{2}$/,
+  ...stemRules(NAMED_ROLE_STEMS, `/${NAME}`),
 } as Record<SoundRole, RegExp>);
 
 /** One sound Asset: its role and its single-part P2-01 mapping to whole SND entries of `MAIN/SR.NOB`. */
@@ -63,7 +76,7 @@ export function readSoundTable(value: unknown, path = 'sounds'): readonly SoundT
   const rows = readArray(value, path, 'invalid-record', (item, at) => {
     const record = readRecord(item, at);
     requireFields(record, at, ['role', 'mapping']);
-    if (!SOUND_ROLES.some(role => role === record.role)) fail('invalid-role', `${at}.role`, 'must be a core sound role or model-sound');
+    if (!SOUND_ROLES.some(role => role === record.role)) fail('invalid-role', `${at}.role`, 'must be a core, model, event or HUD sound role');
     return { role: record.role as SoundRole, mapping: record.mapping };
   });
   const { mappings } = readSourceMappingTable({ sourceFingerprint: null, mappings: rows.map(({ mapping }) => mapping) });

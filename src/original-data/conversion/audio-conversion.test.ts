@@ -283,11 +283,32 @@ describe('sound table', () => {
     expect(readSoundTable([row('fire-sound', 'sound/fire/v1', [1]), row('fire-sound', 'sound/fire/v2', [2])])).toHaveLength(2);
   });
 
+  it('reads event and HUD sounds by one kebab-case name each, beside the core rows', () => {
+    const [explosion, fire, ...rest] = table();
+    const rows = readSoundTable([
+      row('event-sound', 'sound/event/a', [10_007]),
+      row('event-sound', 'sound/event/target-select', [10_008]),
+      explosion, fire,
+      row('hud-sound', 'sound/hud/instrument-9-loop', [10_009], 'likely'),
+      ...rest,
+    ]);
+    expect(rows.map(({ role, mapping }) => [role, mapping.asset.id])).toEqual([
+      ['event-sound', 'sound/event/a'], ['event-sound', 'sound/event/target-select'],
+      ['explosion-sound', 'sound/explosion'], ['fire-sound', 'sound/fire'], ['hud-sound', 'sound/hud/instrument-9-loop'],
+      ['missile-sound', 'sound/missile'], ['model-sound', 'sound/model-clip/01'], ['warp-sound', 'sound/warp'],
+    ]);
+  });
+
   it.each([
     ['an unknown role', edit('sound/fire', item => { item.role = 'engine-sound'; }), 'invalid-role', 'sounds[1].role'],
     ['an ID unlike its role', edit('sound/fire', item => { item.role = 'missile-sound'; }), 'invalid-role', 'sounds[1].role'],
     ['a model clip without a two-digit number', [row('model-sound', 'sound/model-clip/1', [1])], 'invalid-role', 'sounds[0].role'],
     ['a core variant with two extra segments', [row('fire-sound', 'sound/fire/a/b', [1])], 'invalid-role', 'sounds[0].role'],
+    ['an event sound without a name', [row('event-sound', 'sound/event', [1])], 'invalid-role', 'sounds[0].role'],
+    ['an event sound with two name segments', [row('event-sound', 'sound/event/a/b', [1])], 'invalid-role', 'sounds[0].role'],
+    ['an event sound under a core stem', [row('event-sound', 'sound/fire/select', [1])], 'invalid-role', 'sounds[0].role'],
+    ['a HUD sound without a name', [row('hud-sound', 'sound/hud', [1])], 'invalid-role', 'sounds[0].role'],
+    ['a HUD sound under the event stem', [row('hud-sound', 'sound/event/overlay', [1])], 'invalid-role', 'sounds[0].role'],
     ['a non-sound kind', [{ role: 'fire-sound', mapping: { ...row('fire-sound', 'sound/fire', [1]).mapping, asset: { id: 'image/fire', kind: 'image' } } }], 'kind-mismatch', 'sounds[0].mapping.asset.kind'],
     ['two parts', edit('sound/fire', item => { item.mapping.parts.push({ alternatives: [locator(10_009)] }); }), 'invalid-source-mapping', 'sounds[1].mapping.parts'],
     ['another archive', edit('sound/fire', item => { item.mapping.parts[0].alternatives = [locator(10_001, 'SND', 'MAIN/OTHER.NOB')]; }), 'invalid-source-mapping', 'sounds[1].mapping.parts[0].alternatives[0]'],
@@ -299,6 +320,7 @@ describe('sound table', () => {
     ['an invalid mapping', edit('sound/fire', item => { item.mapping.confidence = 'certain'; }), 'invalid-source-mapping', 'sources.mappings[1].confidence'],
     ['one entry for two core roles', edit('sound/fire', item => { item.mapping.parts[0].alternatives = [locator(10_002)]; }), 'duplicate-mapping', 'sounds[1].mapping.parts[0].alternatives[0]'],
     ['a core entry reused as a model clip alias', edit('sound/model-clip/01', item => { item.mapping.parts[0].alternatives.unshift(locator(10_003)); }), 'duplicate-mapping', 'sounds[3].mapping.parts[0].alternatives[0]'],
+    ['a core entry reused as an event sound', [row('event-sound', 'sound/event/a', [10_001]), ...table()], 'duplicate-mapping', 'sounds[2].mapping.parts[0].alternatives[0]'],
   ])('rejects %s', (_name, rows, code, path) => {
     expect(rejected(rows)).toEqual({ code, path });
   });
