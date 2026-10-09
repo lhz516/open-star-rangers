@@ -65,6 +65,10 @@ updated: 2026-10-09
 - `tools/logic-check.ts`：任务形状变化后的读取与计数。
 - `tools/logic-check.test.ts`：对应测试。
 - `e2e/joint-pipeline.development.spec.ts`：随任务形状更新的断言（如受影响）。
+- `src/original-data/formats/scct.ts`：僚机声明加入 `eventTrigger: null`（执行中扩大）。
+- `src/app/resources/resource-holder.test-support.ts`：logic payload 声明 schema 版本 2（执行中扩大）。
+- `src/workers/import-job.test.ts`：合成任务的 `missionReferences` 计数（执行中扩大）。
+- `src/app/import/import-pipeline.test.ts`：同一计数与份额边界用例（执行中扩大）。
 
 ## 验收标准
 
