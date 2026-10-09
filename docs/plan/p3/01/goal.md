@@ -50,7 +50,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | S-02 | 03 | 03：难度读取路径与影响；13：切片配置未被改动，或修订已重新批准 |
 | S-03 | 04、05 | 04：成功路径与重开入口；05：失败终态、被毁与救援；13：门槛逐项满足或已按 spec 阻塞 |
 | S-04 | 06、07 | 06：T-1 至 T-3 的代码依据；07：运行时核对、T-4/T-5 与 B-006；13：核心时基已确认 |
-| S-05 | 01、02、11 | 01、02：合成测试；07：首次合格运行；11：指南与命令入口；13：重跑工具测试 |
+| S-05 | 01、02、11、14 | 01、02：合成测试；07：首次合格运行；11：指南与命令入口；13：重跑工具测试 |
 | S-06 | 10 | 10：数据闭包决定表与格式文档；13：影响闭环的待研究项为零 |
 | S-07 | 08 | 08：每条衔接的媒体、状态与跳过记录；13：G-02 实例齐全 |
 | S-08 | 12 | 12：G-01 至 G-08 的依据、必要信息、标注与补齐责任；13：与 spec 一致 |
@@ -63,7 +63,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | AC-04 | 04 | 04：重开入口的行为（至少高概率）或未确认原因写入 B-003 |
 | AC-05 | 06、07 | 06：T-1 至 T-3 的代码依据与其他计时消费量的逐项结论；07：运行时交叉核对；13：核心关系已确认，U-008 已更新 |
 | AC-06 | 07 | 07：B-006 的测量方案、两个 cycles 的重复样本、误差预算与依赖判定；STATUS 前提建议交协调者；13：U-021 未被关闭，基准配置哈希不变 |
-| AC-07 | 01、02 | 01：纯逻辑的正负单元测试；02：每类拒绝的端到端假调试器测试；13：重跑 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` |
+| AC-07 | 01、02、14 | 01：纯逻辑的正负单元测试；02：每类拒绝的端到端假调试器测试；13：重跑 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` |
 | AC-08 | 07 | 07：所选任务飞行状态中两个暂停点之间有有效运行时段的合格报告；13：报告只在 `local/`，证据只记身份、统计与判定 |
 | AC-09 | 11 | 11：指南内容与四处链接，AGENTS.md 与工程约定的命令表；13：链接检查 |
 | AC-10 | 10 | 10：起点、线索与 L/R/V 依赖全覆盖，处置与身份绑定；13：影响闭环的待研究项为零 |
@@ -85,13 +85,14 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
-| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06 | in-progress |
+| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | pending |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | pending |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | pending |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | pending |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
 | [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | pending |
-| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | pending |
+| [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | pending |
+| [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -100,6 +101,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-08 — 并行执行安排：** 协调者在 `p3-01-execute-goal` 分支上执行，同时运行的 worker 不超过 4 个（用户指定）。宿主不能在指定文件夹启动会话，worker 改在应用管理的 worktree 中运行（以认领提交为基），其分支改名为 `exec-p3-01-NN` 作为认领标记，`local` 以符号链接接入。原版运行（工具烟测、Computer Use 与运行时读数）仍由协调者统一进行。
 - **2026-10-08 — 05 的基准复现未取得：** 协调者两次在私有副本中启动原版（基准文件哈希不变）。本机 Computer Use 无法操作 DOSBox-X：按键只在 DOSBox-X 为前台应用时送达，合成点击能触发按钮但不移动游戏内光标，选项、战役、简报与僚机页面都靠鼠标；用户当时无法协助。依 spec 终态可达性门槛“至少高概率”与有界核实“必要时复现”，05 以代码、数据与既有用户观察完成于高概率；已确认的规则证据与真实内容失败运行仍归 P3-11（P3-15 之前）。需要进入所选任务的运行（07 的合格读数）须由用户操作游戏。
 - **2026-10-09 — 06 更正 03 的一处时间间隔：** 03 记录的速度辅助“至多每 8 个时间单位”来自反编译对 int* 全局量的指针运算；按代码实为样本 + 0x20 时钟单位（0.5 秒），06 已在 scenario §4 更正，并确认 §3 的生成时间单位为 1/64 秒。
+- **2026-10-09 — 新增 14，07 改为依赖 14：** 07 的静态路线分析确认本机无需用户的进入路线：页面只按 INT 33h 的移动计数移动光标、按钮读取按下状态而非按下次数，计时窗口的标记也需要按键。07 的合格运行须由用户操作游戏，协调者运行工具并写操作确认。按 07“工具功能扩展记为 02 的修复项，由协调者新增子任务”，新增 14：配方可声明私有副本的 `STARTUP_PRACTICE` 与 `CURR_LEVEL` 覆盖，使用户只用键盘即可进入难度恰为 19 的所选任务。07 依赖 14，暂回 `pending`；其 worker 会话与 `exec-p3-01-07` 分支（无提交）保留待命，测量方案、路线分析与配方草稿在 `local/research/p3-01/timing-runtime/`。最终对齐加入对 14 的依赖。
 
 ## 审批
 
