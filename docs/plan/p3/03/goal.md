@@ -126,7 +126,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19 | pending |
 | [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19 | pending |
 | [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21 | pending |
-| [24-hud-exe-text-research.md](./subtasks/24-hud-exe-text-research.md) | — | pending |
+| [24-hud-exe-text-research.md](./subtasks/24-hud-exe-text-research.md) | — | in-progress |
 | [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
