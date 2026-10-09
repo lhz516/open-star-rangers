@@ -88,7 +88,7 @@ related: [ADR-0007, ADR-0014, ADR-0017]
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | in-progress |
+| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | completed |
 | [02-engineering-checks.md](./subtasks/02-engineering-checks.md) | — | completed |
 | [03-browser-regression.md](./subtasks/03-browser-regression.md) | — | in-progress |
 | [04-compliance-artifacts.md](./subtasks/04-compliance-artifacts.md) | — | pending |
