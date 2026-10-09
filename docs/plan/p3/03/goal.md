@@ -115,7 +115,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [09-flight-data-payloads.md](./subtasks/09-flight-data-payloads.md) | 04, 05, 06 | completed |
 | [10-craft-debris-parsers.md](./subtasks/10-craft-debris-parsers.md) | 08 | completed |
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | in-progress |
-| [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | pending |
+| [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | in-progress |
 | [13-scene-label-parsers.md](./subtasks/13-scene-label-parsers.md) | 09 | completed |
 | [14-anim-explosion-parsers.md](./subtasks/14-anim-explosion-parsers.md) | 09 | in-progress |
 | [15-rule-data-conversion.md](./subtasks/15-rule-data-conversion.md) | 10, 11, 12 | pending |
