@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "01"
 subtask: "09"
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # 09 — 闭环中的自动视角
@@ -38,6 +38,8 @@ updated: 2026-10-08
 - `docs/original/behavior/B-005-campaign-rescue.md`：被毁与救援时的视角。
 - `docs/original/formats/executable.md`：视角切换的代码事实（如有）。
 - `docs/engineering/keyboard-input.md`：§7 的视角接入时机。
+- `docs/original/formats/cockpit.md`：CCKD 组目录 +0x00 的含义（视角布局编号）。
+- `docs/original/unknowns.md`：U-029、U-011 的线索（状态与负责阶段不改）。
 - `local/research/p3-01/views/**`：研究脚本、私有运行目录与截图（被忽略）。
 
 ## 验收标准
