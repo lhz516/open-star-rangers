@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
-| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | in-progress |
+| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14 | blocked |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | pending |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | pending |
@@ -104,6 +104,11 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 新增 14，07 改为依赖 14：** 07 的静态路线分析确认本机无需用户的进入路线：页面只按 INT 33h 的移动计数移动光标、按钮读取按下状态而非按下次数，计时窗口的标记也需要按键。07 的合格运行须由用户操作游戏，协调者运行工具并写操作确认。按 07“工具功能扩展记为 02 的修复项，由协调者新增子任务”，新增 14：配方可声明私有副本的 `STARTUP_PRACTICE` 与 `CURR_LEVEL` 覆盖，使用户只用键盘即可进入难度恰为 19 的所选任务。07 依赖 14，暂回 `pending`；其 worker 会话与 `exec-p3-01-07` 分支（无提交）保留待命，测量方案、路线分析与配方草稿在 `local/research/p3-01/timing-runtime/`。最终对齐加入对 14 的依赖。
 - **2026-10-09 — 14 完成并修复 02 的不稳定测试：** 配方新增 `gameSettings`（`STARTUP_PRACTICE` 布尔值、`CURR_LEVEL` 为练习与战役两个 0–100 的值）与原因码 `game-config-invalid`；07 可用 `{"STARTUP_PRACTICE": false, "CURR_LEVEL": [100, 19]}`。集成时发现 02 的 `test_reclaim_escalates_when_sigterm_is_ignored` 在负载下偶发失败（子进程尚未安装 SIGTERM 忽略处理即被终止），经扩大 14 的写入范围在同一提交中修复。
 - **2026-10-09 — 08 以静态证据完成：** 工作范围中的基准运行未进行（同 05 的宿主限制）；各衔接字段的依据为代码与数据（已确认），与用户观察的对应为高概率；运行核对步骤记在 08 的完成证据。08 提出的下游交接（G-02 占位时间的计入方式由 P3-02 与 P3-04/P3-10/P3-11 决定，所选任务勋章的判定与显示由 P3-11 在 G-06 下决定）交 12 的交接记录。
+- **2026-10-09 — Subtask 07 blocked:** 合格运行须进入所选任务的飞行状态并在窗口边界按键，只能由用户操作游戏：本机 Computer Use 无法向 DOSBox-X 送达按键或移动游戏内光标，用户当前无法协助。
+  Evidence: 协调者三次私有副本试验（`local/research/p3-01/failure/cu-recon-*`、`cu-run1-*` 与 `timing-runtime/cu-cursor-probe-*` 的 run-notes，基准哈希均未变）；07 的静态路线分析与测量方案（`local/research/p3-01/timing-runtime/route-analysis.md`、`plan.md`），两份配方已通过解析与映像核对。
+  Affected acceptance: 07 的 AC-05（运行时交叉核对）、AC-06、AC-08；依赖 07 的 11、12 与最终对齐 13。
+  Resume when: 用户可按 `local/research/p3-01/timing-runtime/procedure.md` 在 DOSBox-X 中只用键盘操作 4 次运行（每次约 8–12 分钟；协调者同时运行工具并写操作确认），且没有与 07 重叠的行在进行。
+- **2026-10-09 — 07 阻塞期间暂缩写入范围：** 07 在 executable.md 与 unknowns.md 中没有部分改动（B-006 草稿只在 `local/`），为让不依赖 07 的 09、10 继续，暂从其写入范围移去这两处；恢复 07 时在没有重叠行进行的情况下重新加入，07 以届时的 goal 分支为基继续。
 
 ## 审批
 
