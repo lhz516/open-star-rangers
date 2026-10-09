@@ -264,6 +264,8 @@ def serve(arguments):
             options = json.load(stream)
     if options.get("ignore_term"):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    # Readiness: the first screen (rendered by the constructor) is written only after the scenario's signal
+    # handling above is installed, so a reader that has seen any output knows it is in effect.
     exit_after = options.pop("exit_after", None)
     fake = FakeDebugger(options)
     descriptor = sys.stdin.fileno()

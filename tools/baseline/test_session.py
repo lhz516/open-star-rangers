@@ -12,7 +12,8 @@ import measure
 import runfiles
 from fake_debugger import CODE_SITE
 from reasons import REASON_SET
-from sandbox import Sandbox
+from recipe import exe_fingerprint, parse_recipe
+from sandbox import SETTINGS, Sandbox
 from synthetic import BASES, HEAP
 
 DATA = BASES[4]
@@ -20,6 +21,8 @@ TICKS = DATA + 0x800
 SPEED = DATA + 0x808
 CHAIN = DATA + 0x820
 SCENARIO = DATA + 0x830
+GAME_SETTINGS = b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 53\r\nSTARTUP_PRACTICE=TRUE\r\nDETAIL=TRUE\r\n"
+OVERRIDDEN = b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 19\r\nSTARTUP_PRACTICE=FALSE\r\nDETAIL=TRUE\r\n"
 
 
 def after_bp(action):
@@ -112,6 +115,10 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(report["environment"]["emulator"]["changes"], {"captures": 1, "mount-c": 1})
         self.assertEqual(report["environment"]["privateCopy"]["files"], 4)
         self.assertEqual(report["run"]["end"]["endedBy"], "completed")
+        settings = (box.install / SETTINGS).read_bytes()  # without gameSettings the private copy is left as copied
+        self.assertEqual(report["gameConfig"], {"file": SETTINGS, "present": True, "sha256": exe_fingerprint(settings),
+                                                "settings": {"SOUND_LEVEL": "100", "DETAIL": "TRUE"}})
+        self.assertEqual((box.run_dir / "install" / SETTINGS).read_bytes(), settings)
         for item in report["samples"]:
             for ref in item["proof"].values():
                 self.assertTrue((box.run_dir / ref).is_file(), ref)
@@ -157,6 +164,85 @@ class SessionTests(unittest.TestCase):
         self.assertIn("cycles          = fixed 30000", (box.run_dir / "dosbox-x.conf").read_text())
         identity = json.loads((box.run_dir / "pauses/start/identity.json").read_text())
         self.assertEqual(identity["config"]["cycles"], 30000)  # observed by the tool, not declared
+
+    def settings_box(self, settings=None, data=GAME_SETTINGS):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        (box.install / SETTINGS).write_bytes(data)
+        if settings is not None:
+            box.document["gameSettings"] = settings
+            box.write_recipe(box.document)
+        return box
+
+    def test_private_game_settings(self):
+        settings = {"STARTUP_PRACTICE": False, "CURR_LEVEL": [100, 19]}
+        for game_write, writes in ((None, []), (OVERRIDDEN + b"GAMEHIRES=TRUE\r\n", [SETTINGS])):
+            with self.subTest(game_write=game_write):
+                box = self.settings_box(settings)
+                if game_write is not None:
+                    def write(fake, box=box, data=game_write):
+                        (box.run_dir / "install" / SETTINGS).write_bytes(data)
+                    box.debugger.scenario["on_command"] = after_bp(write)
+                self.assertEqual(box.run(), 0)
+                report = box.report()
+                self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+                without = {key: value for key, value in box.document.items() if key != "gameSettings"}
+                self.assertEqual(report["recipe"]["fingerprint"], parse_recipe(json.dumps(box.document)).fingerprint)
+                self.assertNotEqual(report["recipe"]["fingerprint"], parse_recipe(json.dumps(without)).fingerprint)
+                self.assertEqual(report["gameConfig"], {
+                    "file": SETTINGS, "present": True, "sha256": exe_fingerprint(OVERRIDDEN),
+                    "settings": {"SOUND_LEVEL": "100", "CURR_LEVEL": "100 19", "STARTUP_PRACTICE": "FALSE",
+                                 "DETAIL": "TRUE"},
+                    "overrides": {"requested": settings,
+                                  "before": {"sha256": exe_fingerprint(GAME_SETTINGS), "settings": {
+                                      "SOUND_LEVEL": "100", "CURR_LEVEL": "100 53", "STARTUP_PRACTICE": "TRUE",
+                                      "DETAIL": "TRUE"}}}})
+                self.assertEqual((box.run_dir / "install" / SETTINGS).read_bytes(), game_write or OVERRIDDEN)
+                self.assertEqual((box.install / SETTINGS).read_bytes(), GAME_SETTINGS)  # baseline untouched
+                self.assertTrue(box.unchanged_outside_run())
+                self.assertTrue(report["integrity"]["passed"])
+                # The tool's own rewrite is not a run write; the game's later write to the private copy is.
+                self.assertEqual(report["integrity"]["privateCopyWrites"], {"changed": writes, "added": []})
+
+    def test_game_settings_rejected_before_side_effects(self):
+        cases = (
+            ("recipe-key-unknown", {"DETAIL": True}, GAME_SETTINGS),
+            ("recipe-type-invalid", {"STARTUP_PRACTICE": "FALSE"}, GAME_SETTINGS),
+            ("recipe-value-invalid", {"CURR_LEVEL": [100, 101]}, GAME_SETTINGS),
+            ("game-config-invalid", {"CURR_LEVEL": [100, 19]}, b"SOUND_LEVEL=100\r\nDETAIL=TRUE\r\n"),
+            ("game-config-invalid", {"STARTUP_PRACTICE": False},
+             GAME_SETTINGS + b"STARTUP_PRACTICE=TRUE\r\n"),
+        )
+        for code, settings, data in cases:
+            with self.subTest(code=code, settings=settings):
+                box = self.settings_box(settings, data)
+                self.assertRejected(box, code)
+                self.assertEqual((box.install / SETTINGS).read_bytes(), data)
+        box = self.settings_box()
+        box.write_recipe(json.dumps(box.document)[:-1]
+                         + ', "gameSettings": {"CURR_LEVEL": [100, 19], "CURR_LEVEL": [100, 20]}}')
+        self.assertRejected(box, "recipe-json-invalid")
+        box = self.settings_box({"STARTUP_PRACTICE": False})
+        (box.install / SETTINGS).unlink()
+        self.assertRejected(box, "game-config-invalid")
+
+    def test_game_settings_inapplicable_to_the_private_copy(self):
+        box = self.settings_box({"CURR_LEVEL": [100, 19]})
+        clock = box.env.clock
+
+        def start():  # the run's first clock reading, after preflight: someone rewrites the baseline file
+            (box.install / SETTINGS).write_bytes(b"SOUND_LEVEL=100\r\n")
+            box.env.clock = clock
+            return clock()
+        box.env.clock = start
+        self.assertEqual(box.run(), 1)
+        report = box.report()
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("game-config-invalid", report["reasons"])
+        self.assertEqual(report["gameConfig"], {"file": SETTINGS, "present": False})
+        self.assertEqual(box.launches, [])
+        self.assertEqual(report["cleanup"], {"passed": True, "launched": False})
+        self.assertEqual((box.run_dir / "install" / SETTINGS).read_bytes(), b"SOUND_LEVEL=100\r\n")
+        self.assertTerminalSafe(box)
 
     def test_operator_skip_resumes_to_the_next_hit(self):
         box = self.box()

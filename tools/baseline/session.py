@@ -2,11 +2,12 @@
 
 Preflight parses the recipe, validates the output location, refuses to run beside an existing DOSBox-X and verifies
 the baseline source against the manifest and the recipe, all before any side effect. The run then records the
-original-file hashes, makes the private copy and configuration, launches the owned emulator in its debugger,
-establishes the CODE/DATA object correlation at a startup pause and takes the recipe's pauses in order. At each
-pause the correlation is re-verified, the fields are read and judged, and proof files are written beside the
-report. Whatever happens (completion, failure, timeout, cancellation), the owned process is reclaimed, the original
-files are re-hashed and the final report is written; only a run whose every check passed is `complete`.
+original-file hashes, makes the private copy (with the recipe's game settings) and configuration, launches the owned
+emulator in its debugger, establishes the CODE/DATA object correlation at a startup pause and takes the recipe's
+pauses in order. At each pause the correlation is re-verified, the fields are read and judged, and proof files are
+written beside the report. Whatever happens (completion, failure, timeout, cancellation), the owned process is
+reclaimed, the original files are re-hashed and the final report is written; only a run whose every check passed is
+`complete`.
 
 The tool never sends game input. Between pauses the operator (an agent using Computer Use on the game window) plays
 to the requested state; the tool asks for each confirmation through `status.json` and reads the operator's answer
@@ -29,8 +30,9 @@ from debugger import Debugger, DebuggerPort
 from le_image import LeImage
 from locate import AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address, prove_mapping
 from processes import TERM_GRACE, PtyTransport, emulators, process_names
-from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, Protection, copy_writes, game_config, parse_manifest,
-                     private_config, private_copy, verify_images, verify_install, verify_media)
+from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, TEXT_LIMIT, Protection, copy_writes, game_config,
+                     override_game_config, override_settings, parse_manifest, private_config, private_copy,
+                     verify_images, verify_install, verify_media)
 from qualify import PauseEvidence, ReadBudget, Sample, StopProof, collect_pause, judge_pause
 from reasons import BaselineError, ordered
 from recipe import MAX_RECIPE_BYTES, Window, exe_fingerprint, parse_recipe, verify_source
@@ -151,7 +153,8 @@ def _read_bounded(path, limit, code):
 
 
 def preflight(options, env):
-    """All checks that need no side effect: recipe, output location, no running emulator, source identity."""
+    """All checks that need no side effect: recipe, output location, no running emulator, source identity and the
+    applicability of the recipe's game settings to the baseline settings file (read only)."""
     recipe = parse_recipe(_read_bounded(options.recipe, MAX_RECIPE_BYTES, "recipe-json-invalid"))
     paths = resolve_output(options.out, options.run_id, env.research_root)
     if emulators(env.processes(), env.emulator_name):
@@ -165,6 +168,9 @@ def preflight(options, env):
     verify_source(recipe, manifest.version, exe_sha256)
     image = LeImage(exe)
     check_recipe_image(recipe, image)
+    if recipe.game_settings:
+        override_settings(_read_bounded(Path(env.install, env.game_config_path), TEXT_LIMIT, "game-config-invalid"),
+                          recipe.game_settings)
     return Plan(recipe, paths, manifest, image, exe_sha256)
 
 
@@ -379,7 +385,13 @@ class Run:
         }
         self.environment["privateCopy"] = {"directory": "install", "files": len(self.copied), "links": 0}
         self.environment["protection"] = protection
-        self.game_config = game_config(run_dir / "install" / env.game_config_path, env.game_config_path)
+        if self.recipe.game_settings:
+            self.paths.contained()
+            self.game_config = override_game_config(run_dir / "install", self.recipe.game_settings,
+                                                    env.game_config_path)
+            self.copied[env.game_config_path] = self.game_config["sha256"]  # later writes are the game's own
+        else:
+            self.game_config = game_config(run_dir / "install" / env.game_config_path, env.game_config_path)
         self.check_deadline()
 
     # -- emulator session --------------------------------------------------------------------------------------------

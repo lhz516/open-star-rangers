@@ -79,9 +79,17 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "emulator-unverified")
         self.assertTrue(transport.reclaim(2.0)["passed"])
 
+    def wait_ready(self, transport, limit=10):
+        """Waits for the served fake's first screen, which it writes only after installing its scenario's signal
+        handling; until then a signal may still meet the interpreter's default action."""
+        end = time.monotonic() + limit
+        while not transport.read(0.1):
+            self.assertLess(time.monotonic(), end, "the fake debugger wrote no screen")
+
     def test_reclaim_escalates_when_sigterm_is_ignored(self):
         transport = self.launch(ignore_term=True)
         transport.verify_owner(self.name, time.monotonic, time.sleep)
+        self.wait_ready(transport)
         started = time.monotonic()
         report = transport.reclaim(0.3)
         self.assertEqual(report["signals"], ["SIGTERM", "SIGKILL"])

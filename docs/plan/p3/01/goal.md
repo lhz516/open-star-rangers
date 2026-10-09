@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | pending |
 | [11-measurement-guide.md](./subtasks/11-measurement-guide.md) | 02, 07 | pending |
 | [12-catalog-handoff.md](./subtasks/12-catalog-handoff.md) | 03, 04, 05, 07, 08, 09, 10 | pending |
-| [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | in-progress |
+| [14-private-game-settings.md](./subtasks/14-private-game-settings.md) | 02 | completed |
 | [13-final-alignment.md](./subtasks/13-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -102,6 +102,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-08 — 05 的基准复现未取得：** 协调者两次在私有副本中启动原版（基准文件哈希不变）。本机 Computer Use 无法操作 DOSBox-X：按键只在 DOSBox-X 为前台应用时送达，合成点击能触发按钮但不移动游戏内光标，选项、战役、简报与僚机页面都靠鼠标；用户当时无法协助。依 spec 终态可达性门槛“至少高概率”与有界核实“必要时复现”，05 以代码、数据与既有用户观察完成于高概率；已确认的规则证据与真实内容失败运行仍归 P3-11（P3-15 之前）。需要进入所选任务的运行（07 的合格读数）须由用户操作游戏。
 - **2026-10-09 — 06 更正 03 的一处时间间隔：** 03 记录的速度辅助“至多每 8 个时间单位”来自反编译对 int* 全局量的指针运算；按代码实为样本 + 0x20 时钟单位（0.5 秒），06 已在 scenario §4 更正，并确认 §3 的生成时间单位为 1/64 秒。
 - **2026-10-09 — 新增 14，07 改为依赖 14：** 07 的静态路线分析确认本机无需用户的进入路线：页面只按 INT 33h 的移动计数移动光标、按钮读取按下状态而非按下次数，计时窗口的标记也需要按键。07 的合格运行须由用户操作游戏，协调者运行工具并写操作确认。按 07“工具功能扩展记为 02 的修复项，由协调者新增子任务”，新增 14：配方可声明私有副本的 `STARTUP_PRACTICE` 与 `CURR_LEVEL` 覆盖，使用户只用键盘即可进入难度恰为 19 的所选任务。07 依赖 14，暂回 `pending`；其 worker 会话与 `exec-p3-01-07` 分支（无提交）保留待命，测量方案、路线分析与配方草稿在 `local/research/p3-01/timing-runtime/`。最终对齐加入对 14 的依赖。
+- **2026-10-09 — 14 完成并修复 02 的不稳定测试：** 配方新增 `gameSettings`（`STARTUP_PRACTICE` 布尔值、`CURR_LEVEL` 为练习与战役两个 0–100 的值）与原因码 `game-config-invalid`；07 可用 `{"STARTUP_PRACTICE": false, "CURR_LEVEL": [100, 19]}`。集成时发现 02 的 `test_reclaim_escalates_when_sigterm_is_ignored` 在负载下偶发失败（子进程尚未安装 SIGTERM 忽略处理即被终止），经扩大 14 的写入范围在同一提交中修复。
 
 ## 审批
 

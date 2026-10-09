@@ -2,8 +2,9 @@
 contract).
 
 A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, LE object
-locations, scalar types, unit labels and run limits. Every key is known, every value has a fixed JSON type and every
-string is a restricted token, so a recipe cannot carry expressions, debugger commands or shell strings.
+locations, scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy (fixed
+emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). Every key is known, every value has a fixed JSON
+type and every string is a restricted token, so a recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
 import json
@@ -39,6 +40,7 @@ DATA_WINDOW_SIZES = (16, 512)
 MAX_OBJECT_NUMBER = 255
 MAX_IDENTITY_KEYS = 16
 CYCLES_RANGE = (1000, 2_000_000)  # fixed DOSBox-X cycles a recipe may request for its private configuration
+LEVEL_RANGE = (0, 100)  # each raw difficulty of CURR_LEVEL (practice, campaign), the range the game's parser keeps
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)*")
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:+-]*")
@@ -130,6 +132,7 @@ class Recipe:
     limits: Limits
     fingerprint: str
     emulator: dict  # recipe-allowed emulator settings of the private configuration, e.g. {"cycles": 40000}
+    game_settings: dict  # recipe-preset game settings of the private copy, e.g. {"CURR_LEVEL": (100, 19)}
 
     def pause(self, pause_id):
         for pause in self.pauses:
@@ -249,7 +252,7 @@ def _token(value, path):
 
 def _recipe(document):
     _object(document, "$", ("schemaVersion", "recipeId", "source", "identity", "correlation", "pauses", "fields",
-                            "limits"), ("emulator",))
+                            "limits"), ("emulator", "gameSettings"))
     version = document["schemaVersion"]
     if type(version) is not int or version != SCHEMA_VERSION:
         raise BaselineError("recipe-version-unsupported", "schemaVersion")
@@ -261,6 +264,7 @@ def _recipe(document):
 
     limits = _limits(document["limits"])
     emulator = _emulator(document.get("emulator", {}))
+    game_settings = _game_settings(document.get("gameSettings", {}))
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
     identity = _identity(document["identity"], fields, pauses)
@@ -290,7 +294,7 @@ def _recipe(document):
 
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
     return Recipe(recipe_id, baseline_version, exe_sha256, identity, code_window, data_window, pauses, fields, limits,
-                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator)
+                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator, game_settings)
 
 
 def _emulator(value):
@@ -299,6 +303,25 @@ def _emulator(value):
     if "cycles" in value:
         return {"cycles": _int(value["cycles"], "emulator.cycles", *CYCLES_RANGE, "recipe-value-invalid")}
     return {}
+
+
+def _game_settings(value):
+    """The game's own user settings the private copy's settings file may preset: STARTUP_PRACTICE (boolean) and
+    CURR_LEVEL (practice and campaign raw difficulty, two integers)."""
+    _object(value, "gameSettings", (), ("STARTUP_PRACTICE", "CURR_LEVEL"))
+    settings = {}
+    if "STARTUP_PRACTICE" in value:
+        if type(value["STARTUP_PRACTICE"]) is not bool:
+            raise BaselineError("recipe-type-invalid", "gameSettings.STARTUP_PRACTICE")
+        settings["STARTUP_PRACTICE"] = value["STARTUP_PRACTICE"]
+    if "CURR_LEVEL" in value:
+        path = "gameSettings.CURR_LEVEL"
+        levels = _list(value["CURR_LEVEL"], path, "recipe-value-invalid")
+        if len(levels) != 2:
+            raise BaselineError("recipe-value-invalid", path)
+        settings["CURR_LEVEL"] = tuple(_int(level, f"{path}[{index}]", *LEVEL_RANGE, "recipe-value-invalid")
+                                       for index, level in enumerate(levels))
+    return settings
 
 
 def _limits(value):

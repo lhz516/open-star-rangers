@@ -69,6 +69,7 @@ REASONS = (
     "session-busy",
     "emulator-unverified",
     "private-copy-invalid",
+    "game-config-invalid",
     "debugger-unparsed",
     "breakpoint-unconfirmed",
     "breakpoint-wrong-hit",

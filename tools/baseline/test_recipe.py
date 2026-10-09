@@ -73,6 +73,51 @@ class RecipeTests(unittest.TestCase):
                              (True, "recipe-type-invalid")):
             self.assertRejected(code, self.mutated(lambda d: d.update(emulator={"cycles": cycles})))
 
+    def test_game_settings(self):
+        base = parse_recipe(text(scenario_recipe(SHA)))
+        self.assertEqual(base.game_settings, {})
+        recipe = parse_recipe(text(self.mutated(
+            lambda d: d.update(gameSettings={"STARTUP_PRACTICE": False, "CURR_LEVEL": [100, 19]}))))
+        self.assertEqual(recipe.game_settings, {"STARTUP_PRACTICE": False, "CURR_LEVEL": (100, 19)})
+        self.assertNotEqual(recipe.fingerprint, base.fingerprint)
+        other = parse_recipe(text(self.mutated(
+            lambda d: d.update(gameSettings={"STARTUP_PRACTICE": False, "CURR_LEVEL": [100, 20]}))))
+        self.assertNotEqual(other.fingerprint, recipe.fingerprint)
+        for settings, expected in (({"STARTUP_PRACTICE": True}, {"STARTUP_PRACTICE": True}),
+                                   ({"CURR_LEVEL": [0, 100]}, {"CURR_LEVEL": (0, 100)}), ({}, {})):
+            document = self.mutated(lambda d: d.update(gameSettings=settings))
+            self.assertEqual(parse_recipe(text(document)).game_settings, expected)
+
+    def test_game_settings_rejections(self):
+        cases = (
+            ("recipe-key-unknown", {"DETAIL": True}),
+            ("recipe-key-unknown", {"JOYSTICK": "0 0"}),
+            ("recipe-key-unknown", {"curr_level": [100, 19]}),
+            ("recipe-key-unknown", {"STARTUP_PRACTICE": False, "SOUND_LEVEL": 100}),
+            ("recipe-type-invalid", []),
+            ("recipe-type-invalid", "STARTUP_PRACTICE=FALSE"),
+            ("recipe-type-invalid", {"STARTUP_PRACTICE": "FALSE"}),
+            ("recipe-type-invalid", {"STARTUP_PRACTICE": 0}),
+            ("recipe-type-invalid", {"STARTUP_PRACTICE": None}),
+            ("recipe-type-invalid", {"CURR_LEVEL": "100 19"}),
+            ("recipe-type-invalid", {"CURR_LEVEL": {"practice": 100, "campaign": 19}}),
+            ("recipe-type-invalid", {"CURR_LEVEL": [100, 19.0]}),
+            ("recipe-type-invalid", {"CURR_LEVEL": [True, 19]}),
+            ("recipe-type-invalid", {"CURR_LEVEL": ["100", 19]}),
+            ("recipe-value-invalid", {"CURR_LEVEL": []}),
+            ("recipe-value-invalid", {"CURR_LEVEL": [19]}),
+            ("recipe-value-invalid", {"CURR_LEVEL": [100, 19, 0]}),
+            ("recipe-value-invalid", {"CURR_LEVEL": [101, 19]}),
+            ("recipe-value-invalid", {"CURR_LEVEL": [-1, 19]}),
+            ("recipe-value-invalid", {"CURR_LEVEL": [100, 101]}),
+        )
+        for code, settings in cases:
+            with self.subTest(settings=settings):
+                self.assertRejected(code, self.mutated(lambda d: d.update(gameSettings=settings)))
+        duplicate = text(self.mutated(lambda d: d.update(gameSettings={"CURR_LEVEL": [100, 19]}))).replace(
+            '"CURR_LEVEL": [100, 19]', '"CURR_LEVEL": [100, 19], "CURR_LEVEL": [0, 0]')
+        self.assertEqual(self.assertRejected("recipe-json-invalid", duplicate).where, "CURR_LEVEL")
+
     def test_unknown_or_missing_version(self):
         for version in (2, 0, "1", 1.0, True, None):
             self.assertRejected("recipe-version-unsupported", self.mutated(lambda d: d.update(schemaVersion=version)))

@@ -7,11 +7,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from protect import (Protection, emulator_settings, inventory, parse_manifest, private_config, private_copy,
-                     verify_install, verify_media)
+from protect import (Protection, emulator_settings, game_config, inventory, override_game_config, override_settings,
+                     parse_manifest, private_config, private_copy, sha256_file, verify_install, verify_media)
 from reasons import BaselineError
 from recipe import exe_fingerprint
 from sandbox import EXE, manifest_text
+
+SETTINGS = b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 53\r\nSTARTUP_PRACTICE=TRUE\r\nDETAIL=TRUE\r\n"
+REQUESTED = {"STARTUP_PRACTICE": False, "CURR_LEVEL": (100, 19)}
 
 BASE_CONFIG = """[dosbox]
 memsize         = 16
@@ -183,6 +186,76 @@ class ProtectTests(unittest.TestCase):
         (self.install / "MAIN/LINK.BIN").symlink_to("/nonexistent/target")
         found = inventory([self.install], self.tmp)
         self.assertTrue(found["install/MAIN/LINK.BIN"].startswith("link:"))
+
+    def test_game_settings_rewrite_only_their_lines(self):
+        cases = (
+            (SETTINGS, REQUESTED, b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 19\r\nSTARTUP_PRACTICE=FALSE\r\nDETAIL=TRUE\r\n"),
+            (SETTINGS, {}, SETTINGS),
+            (SETTINGS, {"STARTUP_PRACTICE": True}, SETTINGS),
+            (b"A=1\n  CURR_LEVEL = 1 2 \t\rB=2\r\nSTARTUP_PRACTICE=\r\nC=CURR_LEVEL=9", REQUESTED,
+             b"A=1\n  CURR_LEVEL = 100 19 \t\rB=2\r\nSTARTUP_PRACTICE=FALSE\r\nC=CURR_LEVEL=9"),
+            (b"X=1\r\nCURR_LEVEL=0 0", {"CURR_LEVEL": (0, 100)}, b"X=1\r\nCURR_LEVEL=0 100"),
+        )
+        for data, settings, expected in cases:
+            with self.subTest(data=data, settings=settings):
+                self.assertEqual(override_settings(data, settings), expected)
+
+    def test_game_settings_refusals(self):
+        for data in (b"SOUND_LEVEL=100\r\nSTARTUP_PRACTICE=TRUE\r\n",  # CURR_LEVEL missing
+                     SETTINGS + b"CURR_LEVEL=0 0\r\n",
+                     SETTINGS + b"curr_level=0 0\r\n",
+                     SETTINGS.replace(b"CURR_LEVEL", b"Curr_Level"),
+                     b"CURR_LEVEL 100 53\r\nSTARTUP_PRACTICE=TRUE\r\n",
+                     b"",
+                     SETTINGS + b"#" * (1 << 20)):
+            with self.subTest(data=data[:48]):
+                self.assertCode("game-config-invalid", override_settings, data, REQUESTED)
+
+    def private_settings(self, name, data=SETTINGS):
+        install = self.tmp / name
+        (install / "MAIN").mkdir(parents=True)
+        (install / "MAIN/GAME.CFG").write_bytes(data)
+        return install
+
+    def test_private_game_config_is_written_in_place_and_recorded(self):
+        install = self.private_settings("private")
+        path = install / "MAIN/GAME.CFG"
+        inode = os.lstat(path).st_ino
+        record = override_game_config(install, REQUESTED, "MAIN/GAME.CFG")
+        self.assertEqual(path.read_bytes(), override_settings(SETTINGS, REQUESTED))
+        self.assertEqual(os.lstat(path).st_ino, inode)
+        self.assertEqual(record, {**game_config(path, "MAIN/GAME.CFG"), "overrides": {
+            "requested": REQUESTED, "before": {"sha256": exe_fingerprint(SETTINGS), "settings": {
+                "SOUND_LEVEL": "100", "CURR_LEVEL": "100 53", "STARTUP_PRACTICE": "TRUE", "DETAIL": "TRUE"}}}})
+        self.assertEqual(record["sha256"], sha256_file(path))
+        self.assertEqual((record["settings"]["CURR_LEVEL"], record["settings"]["STARTUP_PRACTICE"]),
+                         ("100 19", "FALSE"))
+
+    def test_private_game_config_refuses_links_and_missing_files(self):
+        baseline = self.private_settings("baseline")
+        target = baseline / "MAIN/GAME.CFG"
+        leaf_link = self.private_settings("leaf-link")
+        (leaf_link / "MAIN/GAME.CFG").unlink()
+        (leaf_link / "MAIN/GAME.CFG").symlink_to(target)
+        hard = self.private_settings("hard")
+        (hard / "MAIN/GAME.CFG").unlink()
+        os.link(self.private_settings("hard-source") / "MAIN/GAME.CFG", hard / "MAIN/GAME.CFG")
+        ancestor = self.tmp / "ancestor"  # a single-link baseline file reached through a linked directory
+        ancestor.mkdir()
+        (ancestor / "MAIN").symlink_to(baseline / "MAIN")
+        root = self.tmp / "root-link"
+        root.symlink_to(baseline)
+        missing = self.private_settings("missing")
+        (missing / "MAIN/GAME.CFG").unlink()
+        directory = self.private_settings("directory")
+        (directory / "MAIN/GAME.CFG").unlink()
+        (directory / "MAIN/GAME.CFG").mkdir()
+        broken = self.private_settings("broken", b"SOUND_LEVEL=100\r\n")
+        for install in (leaf_link, hard, ancestor, root, missing, directory, broken, self.tmp / "absent"):
+            with self.subTest(install=install.name):
+                self.assertCode("game-config-invalid", override_game_config, install, REQUESTED, "MAIN/GAME.CFG")
+        self.assertEqual(target.read_bytes(), SETTINGS)
+        self.assertEqual((broken / "MAIN/GAME.CFG").read_bytes(), b"SOUND_LEVEL=100\r\n")
 
 
 if __name__ == "__main__":

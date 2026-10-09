@@ -8,7 +8,8 @@ directory; on failure the snapshot and copies of the changed files are kept as e
 
 The game runs only in a private copy of the installation inside the run directory, verified against the baseline
 manifest (docs/original/manifest.md) and free of links to baseline files, with a private emulator configuration that
-differs from the baseline configuration only in the paths it redirects and the recipe-allowed settings.
+differs from the baseline configuration only in the paths it redirects and the recipe-allowed settings. A recipe's
+game settings rewrite only their own lines of the private copy's settings file.
 """
 import hashlib
 import json
@@ -29,6 +30,10 @@ _IMAGE_ROW = re.compile(r"^\|\s*`([A-Za-z0-9_.-]+\.(?:img|sub))`[^|]*\|\s*`([0-9
 _SECTION = re.compile(r"^\s*\[([A-Za-z0-9_]+)\]\s*$")
 _SETTING = re.compile(r"^(\s*)([A-Za-z0-9_]+)(\s*=\s*)(.*?)\s*$")
 _MOUNT = re.compile(r"^\s*(mount|imgmount)\s+([A-Za-z])\s+(\"[^\"]*\"|\S+)(.*)$", re.I)
+_GAME_SETTING = re.compile(rb"[ \t]*([A-Za-z0-9_]+)[ \t]*=[ \t]*(.*?)[ \t]*")
+# Value text of the recipe-allowed game settings, as the game itself writes them.
+GAME_SETTING_TEXT = {"STARTUP_PRACTICE": lambda flag: "TRUE" if flag else "FALSE",
+                     "CURR_LEVEL": lambda levels: " ".join(map(str, levels))}
 EMULATOR_KEYS = {"cycles": "cpu", "core": "cpu", "cputype": "cpu", "machine": "dosbox", "memsize": "dosbox"}
 FORBIDDEN_KEYS = ("mapperfile", "logfile")
 
@@ -283,12 +288,82 @@ def game_config(path, relative=GAME_CONFIG):
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     with os.fdopen(descriptor, "rb") as stream:
         data = stream.read(TEXT_LIMIT + 1)
+    return _config_record(data, relative)
+
+
+def _config_record(data, relative):
     settings = {}
     for line in data[:TEXT_LIMIT].decode("latin-1").splitlines():
         key, sep, value = line.strip().partition("=")
         if sep and re.fullmatch(r"[A-Z0-9_]{1,32}", key):
             settings[key] = value.strip()[:128]
     return {"file": relative, "present": True, "sha256": hashlib.sha256(data).hexdigest(), "settings": settings}
+
+
+def override_settings(data, settings):
+    """Settings-file bytes with each recipe game setting (key -> typed value) written as the value text of its own
+    line; every other byte, the line order and each line ending are kept. A key on no line, on several lines or in
+    another letter case (which the recorded settings would not show), or a file beyond the text limit, is refused."""
+    if len(data) > TEXT_LIMIT:
+        raise BaselineError("game-config-invalid", "size")
+    lines = data.splitlines(keepends=True)
+    found = {key: [] for key in settings}
+    for index, line in enumerate(lines):
+        match = _GAME_SETTING.fullmatch(line.rstrip(b"\r\n"))
+        if match:
+            found.get(match[1].decode("ascii").upper(), []).append((index, match))
+    for key, hits in found.items():
+        if len(hits) != 1:
+            raise BaselineError("game-config-invalid", key)
+        index, match = hits[0]
+        if match[1] != key.encode("ascii"):
+            raise BaselineError("game-config-invalid", key)
+        text = GAME_SETTING_TEXT[key](settings[key]).encode("ascii")
+        lines[index] = lines[index][:match.start(2)] + text + lines[index][match.end(2):]
+    return b"".join(lines)
+
+
+def _open_below(root, relative, flags):
+    """`relative` below the directory `root`, opened one component at a time without following any link."""
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
+    *parents, leaf = Path(relative).parts
+    directory = os.open(root, directory_flags)
+    try:
+        for part in parents:
+            child = os.open(part, directory_flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        return os.open(leaf, flags | nofollow, dir_fd=directory)
+    finally:
+        os.close(directory)
+
+
+def override_game_config(install, settings, relative=GAME_CONFIG):
+    """Applies a recipe's game settings in place to the settings file of the private installation `install`. The
+    file is reached without following any link and only a singly linked regular file is written, so the write
+    cannot reach a baseline file. Returns the gameConfig record of the rewritten file with the requested settings
+    and the file's prior digest and settings."""
+    try:
+        descriptor = _open_below(install, relative, os.O_RDWR)
+    except OSError:
+        raise BaselineError("game-config-invalid", "file") from None
+    with os.fdopen(descriptor, "r+b") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise BaselineError("game-config-invalid", "file")
+        data = stream.read(TEXT_LIMIT + 1)
+        updated = override_settings(data, settings)
+        stream.seek(0)
+        stream.write(updated)
+        stream.truncate()
+        stream.flush()
+        os.fsync(stream.fileno())
+    before = _config_record(data, relative)
+    record = _config_record(updated, relative)
+    record["overrides"] = {"requested": dict(settings),
+                           "before": {"sha256": before["sha256"], "settings": before["settings"]}}
+    return record
 
 
 # -- private emulator configuration ---------------------------------------------------------------------------------

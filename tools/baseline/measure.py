@@ -12,6 +12,10 @@
       {"action": "confirm", "mission": {...}, "config": {...}}, {"action": "skip"} or {"action": "abort"};
       `operator/abort.json` cancels at any time. --smoke takes the pauses at startup without an operator; a smoke
       report is never measurement evidence.
+      A recipe may preset the game's own settings in the private copy's settings file, e.g.
+      "gameSettings": {"STARTUP_PRACTICE": false, "CURR_LEVEL": [100, 19]} (CURR_LEVEL: practice and campaign raw
+      difficulty, 0-100); only these keys are accepted, and the report's `gameConfig` records the requested settings
+      and the file before and after the rewrite.
 
 The terminal shows only stable reason codes, counts and relative paths. Exit status: 0 complete, 1 failed,
 2 rejected before the run (nothing written), 3 cancelled.
