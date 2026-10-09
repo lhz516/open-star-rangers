@@ -112,7 +112,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [06-shared-contract-foundation.md](./subtasks/06-shared-contract-foundation.md) | 01, 02, 03, 04, 05 | completed |
 | [07-mission-events.md](./subtasks/07-mission-events.md) | 01, 06 | completed |
 | [08-rule-data-payloads.md](./subtasks/08-rule-data-payloads.md) | 02, 03, 04, 06 | in-progress |
-| [09-flight-data-payloads.md](./subtasks/09-flight-data-payloads.md) | 04, 05, 06 | in-progress |
+| [09-flight-data-payloads.md](./subtasks/09-flight-data-payloads.md) | 04, 05, 06 | completed |
 | [10-craft-debris-parsers.md](./subtasks/10-craft-debris-parsers.md) | 08 | pending |
 | [11-ai-parsers.md](./subtasks/11-ai-parsers.md) | 08 | pending |
 | [12-comm-text-parsers.md](./subtasks/12-comm-text-parsers.md) | 08 | pending |
@@ -143,6 +143,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 06 完成（交 07–17、22）：** 新增限值名 `aiProgramRecords`、`aiScriptItems`、`aiEntries`、`commMenuItems`、`animFrameBytes`，其余结构沿用 `payloadEntryBytes`、`payloadItems`、`textBytes`、`executableRegion`（对应关系写在 `SourceLimitName` 的注释中）；`PayloadBlock.array()` 总是报告 `payloadItems`，使用新限值名的结构（以终止项结束的列表、ANIM 帧数据字节）须在读取前调用 `block.limit(path, name, …)`。新增内容错误码 `invalid-flight-data-payload`、`flight-data-reference-mismatch`。规范 JSON 在 `src/content/canonical-json.ts`：0x7F 及以上的码元写成小写 `\uXXXX`，码位 1–255 的字节串可以作为 JSON 字符串携带；`f32` 逐位往返（含次正规数），−0 编码为 0。logic payload 的字节不变。交 22 的模块分册条目见 06 的完成证据。
 - **2026-10-09 — 24 完成；HUD 直接绘制的 EXE 文字（研究门槛 3 与 4，待用户决定）：** 闭包追加 #47–#54（[P3-01/10 的追加记录](../01/subtasks/10-data-closure.md#完成证据)）。#47 为闭环直接绘制的 64 个 EXE 文字区域：目标显示屏 11、0–3 型仪表 4、飞行叠加 8、地图标记名 1、地图与信息窗 28、左侧显示屏 9、9/12 型指示 3；只取所选任务可达的最小集合时为 51 条。其余为 LO、F2/G-08、作弊、波次、G-05、菜单或代码规则，不导入。结构事实见 [executable](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)。导入须修订 spec 并经用户批准，三种方案：A（24 推荐）新增 cockpit-hud-map 组的 data 角色 `hud-text`（`data/hud/text`），payload 只存字节，换算列表作为 schema 常量；B 并入 `flight-messages`；C 新增 G 缺省（与 P3-13 的“文字来自 Core 与导入内容”冲突）。修订获批前不导入；受影响的子任务为 06（限值名）、09、12 或 13、16、19、21、22、23，修订后由协调者新增修复子任务。交 22：U-030、U-026、U-029 的线索；audio 中 SND 10409 的循环标志不完整（`0x175f14` 为导弹通道 `0x175f20`，`0x175f10` 为通道 `0x175f1c`）；comm 可补 `0x2c9d0` 的对象列表项（键、`0x170f98` 与名称）以及 `0x174b40` 属代码规则。详见 24 的完成证据。
 - **2026-10-09 — 07 完成：** 段 2 事件触发经 `scen.ts` 解析、写入任务 payload（logic payload schema 2），`loadMission` 原样透传到 `MissionSetup.eventTriggers`。执行中按申请扩大了写入范围（`scct.ts` 的僚机 `eventTrigger: null`、两处测试的计数与 schema 版本），没有与其他行重叠。基准本地核对（只记计数）：SCEN 3019 为 1 个触发、3 个区间、每区间 1 条消息、最长 57 字节，与 scenario 一致，在限值 2/8/2/128 之内。LOGIC_CONVERTER_COMPONENT 未递增，由 19 处理。交 21 或 22：工具用法中 logic-check 的 `counts` 与 `limits` 列表加入事件各项；交 22 的接口变化见 07 的完成证据。
+- **2026-10-09 — 09 完成（交 13、14、16、17、19、22）：** `src/content/flight/` 提供 models 组 4 个 data 角色的规范 JSON payload（各自 schema 1），`src/content/hud/view-labels-payload.ts` 提供 `view-labels`。限值：`explosionListItems` 16、`animationFrames` 32、`nebulaImages` 32、视角标签 `textBytes` 32（观测值 7、12、15、16 的 2 倍），解析前的 `payloadBytes` 上限为 16,384 与 256。`flightDataDependencies()` 为 17 生成描述符依赖；爆炸列表与星云列表接受 0 项（无格式下限），帧至少 1 项；引用为带固定 kind 的 `AssetReference`，可以重复。scene-settings 只用已确认的用途命名字段，+0x19–+0x1B 不转换。交 22 的模块分册条目见 09 的完成证据。
 
 ## 审批
 
