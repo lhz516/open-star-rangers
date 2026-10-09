@@ -84,7 +84,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [03-difficulty-readers.md](./subtasks/03-difficulty-readers.md) | — | completed |
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
-| [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | pending |
+| [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | in-progress |
 | [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06 | pending |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | pending |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | pending |
