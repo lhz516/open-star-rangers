@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 | [04-success-result-restart.md](./subtasks/04-success-result-restart.md) | — | completed |
 | [05-failure-destruction-rescue.md](./subtasks/05-failure-destruction-rescue.md) | 04 | completed |
 | [06-timebase-static.md](./subtasks/06-timebase-static.md) | — | completed |
-| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14, 15 | in-progress |
+| [07-timebase-runtime-cycles.md](./subtasks/07-timebase-runtime-cycles.md) | 02, 06, 14, 15 | completed |
 | [08-transition-media.md](./subtasks/08-transition-media.md) | — | completed |
 | [09-automatic-views.md](./subtasks/09-automatic-views.md) | 08 | completed |
 | [10-data-closure.md](./subtasks/10-data-closure.md) | 02, 08 | completed |
@@ -115,6 +115,7 @@ related: [ADR-0004, ADR-0014, ADR-0017, U-008, U-010, U-021, U-022, U-031]
 - **2026-10-09 — 交 11、12 的要点（各行提出，待其执行时采用）：** 11 的指南与命令表：`measure.py run|baseline-version`、操作者协议（`status.json`；`operator/<pause>-<n>.json` 的 confirm（含任务与配置身份）/skip/abort；`operator/abort.json`）、退出码 0/1/2/3、研究根目录的会话锁、默认保护范围（`local/StarRang` 严格保护与 `local/research` 既有文件）、`maxReadBytes` 须覆盖映射与复核窗口及页查找、配方 `gameSettings`（白名单、取值、报告的 `gameConfig.overrides`、`game-config-invalid`），以及本机 Computer Use 无法操作 DOSBox-X 的限制对[原版证据获取](../../../guides/original-evidence.md#agent-运行原版)的影响。12 的交接：10 完成证据中的决定表（P3-03 新增导入项与 G/不使用项）、09 的视角交接（P3-05：F10 与光标键码；P3-13：Warp 中跳过的叠加绘制与被毁视角标签）、08 的 G-02 占位时间与勋章判定（见上）。
 - **2026-10-09 — 07 的第一次运行与新增 15：** 用户在场，协调者运行 `tb-c40000-01`：4 个标记全部确认，146 个读数全部合格，原版文件核对通过，但以 `cleanup-failed` 结束（SIGKILL 后两次各 5 秒内 DOSBox-X 未退出，之后自行退出，没有遗留进程）。按工具契约该次不计为合格运行。经用户选择，新增 02 的修复项 15：SIGKILL 后的等待改为有限的 30 秒并记录实际等待时间；07 与最终对齐加入对 15 的依赖。15 完成后用新编号重做 40000 cycles 的运行。
 - **2026-10-09 — 07 恢复：** 用户在场可操作运行，15 已集成，恢复条件满足；07 回到 `in-progress`，其写入范围恢复 executable.md 与 unknowns.md（此时没有重叠行在进行）。
+- **2026-10-09 — 07 的运行与用户决定：** 用户操作、协调者确认标记，`tb-c40000-03`、`tb-c20000-01`、`tb-c20000-02`、`tb-c40000-02` 均为 `complete`（各 146 个读数全部合格，原文件保护与回收通过；15 之后 SIGKILL 后约 0.06 秒退出），`tb-c40000-01` 因清理超时失败而不计。运行时确认了时基的结构关系（来源、每帧可变步长、1/64 秒单位与换算），但游戏时钟相对无丢失预期的速率判据未满足：40000 cycles 时慢 0.03%–3.2%，20000 时慢约 4.3%；原因（IRQ0 在已确认的丢弃路径上丢失）为高概率，未量化。用户于同日决定接受 AC-05：以结构关系确认核心时基，速率差作为依赖 cycles 的 T-4 结果交 U-021，不视为通过了预先写定的速率判据，见 [B-006](../../../original/behavior/B-006-simulation-timing.md)。
 
 ## 审批
 

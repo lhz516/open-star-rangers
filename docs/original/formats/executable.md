@@ -235,7 +235,34 @@ Owners for the exact behaviour of these consumers: spawn timing P3-02; movement 
 
 **Other time sources (Confirmed, not simulation):** the Smacker player uses its own Miles timer and reprograms and reads PIT channel 0 directly (`0x20100`, `0x200a0`, `0x202a0`, `0x20700`). `0x74e5c` returns the DOS time of day in 1/100 s; besides the seed it is used by page animation in the page dispatcher (`0x35158`), a disk-speed probe (`0x3cc48`) and a diagnostic print (`0x2637f`). The resource layer is given a getter of the raw counter (`0x65de4`, passed to `0x6abc0`); its use was not traced.
 
-**Rate (code expectation for P3-01/07):** 64 units per nominal second of the timer service. Miles converts a period to PIT counts with ×10000 ÷ 8380 (`0x878fc`), while the PIT counts at about 1,193,182 Hz, so a nominal second lasts slightly longer than a guest second. When the game's 31,250 µs period sets the PIT, the raw counter should advance by 63.993 units per guest second if no IRQ0 is discarded. A faster Miles timer, such as an audio driver's, sets the PIT instead and changes this slightly through the truncation of its PIT count; which Miles timers run in flight was not traced. The BIOS tick count (linear `0x46c`), driven by slot 15 from the same accumulators, keeps a fixed ratio of 2 × 54,925 ÷ 31,250 = 3.5152 raw units per tick whatever the PIT period. It therefore checks the callback accounting but cannot reveal discarded interrupts, which affect both counts. How guest time relates to host time at a given cycles value is not set by the code.
+**Rate (code expectation for P3-01/07):** 64 units per nominal second of the timer service. Miles converts a period to PIT counts with ×10000 ÷ 8380 (`0x878fc`), while the PIT counts at about 1,193,182 Hz, so a nominal second lasts slightly longer than a guest second. When the game's 31,250 µs period sets the PIT, the raw counter should advance by 63.993 units per guest second if no IRQ0 is discarded. A faster Miles timer, such as an audio driver's, sets the PIT instead and changes this slightly through the truncation of its PIT count; in flight a 2,000 µs timer sets it (runtime cross-check below). The BIOS tick count (linear `0x46c`), driven by slot 15 from the same accumulators, keeps a fixed ratio of 2 × 54,925 ÷ 31,250 = 3.5152 raw units per tick whatever the PIT period. It therefore checks the callback accounting but cannot reveal discarded interrupts, which affect both counts. How guest time relates to host time at a given cycles value is not set by the code.
+
+**Runtime cross-check (P3-01/07):** four complete measurement runs in the selected mission, two at fixed 40000 cycles and two at 20000. The mission was campaign mission 1 (group 0 / slot 1) at raw difficulty 19 with wingman selector 1, in the cockpit view. Each window is one uninterrupted emulator run between two debugger stops in flight, and emulated time is DOSBox-X's PIC clock at the stops. Method, error budget, statistics and the cycles decisions are in [B-006](../behavior/B-006-simulation-timing.md).
+
+- **Confirmed (agrees with the code above):**
+  - At all 16 stops (24 window ends) the raw counter equalled the frame's sample, and over each window the sample advanced exactly as the raw counter did.
+  - Steps were even.
+  - The f32 seconds equalled the sample ÷ 64.
+  - The pause mark, the spawn-queue origin and the rescue counter stayed constant.
+- **Confirmed (runtime, Miles timers in flight):** four Miles timers run in flight:
+  - the game timer (its record's handle selects the third entry, 31,250 µs);
+  - slot 15 (the 54,925 µs BIOS chain);
+  - two timers of 5,000 µs and 2,000 µs, whose owners were not traced. The 200 Hz Smacker timer of [cut-scenes](#cut-scenes-and-loop-transitions-p3-0108) has the 5,000 µs period; whether this is that timer was not checked.
+
+  The PIT therefore runs at 2,000 µs, and the no-loss expectation is 64.010 raw units per emulated second.
+- **Measured rate:** below that expectation in all 12 windows, and by more than the per-window resolution in 11 of them:
+  - 63.95–63.99 in one 40000 run (−0.03 to −0.09 %);
+  - 61.97–63.59 in the other, falling from window to window while the CPU cycles per frame rose (a load effect is Likely; load was not controlled);
+  - 61.26–61.29 in all six windows at 20000 (−4.3 %).
+
+  The pre-registered rate criterion was therefore not met.
+- **Likely cause (not quantified):** some IRQ0s produce no callbacks.
+  - The handler accumulates every timer, sends the end-of-interrupt and re-enables interrupts (`0x8782d`) before making the due callbacks. An IRQ0 that arrives during the callbacks is a nested entry and is discarded for every timer (above).
+  - With a 2 ms PIT period, this happens whenever the callbacks of the two faster timers and the game timer take longer than 2 ms. That time grows as cycles fall.
+  - Requests merged at the interrupt controller while interrupts are disabled elsewhere are another possible path.
+  - The share of each path, and whether they account for the whole deficit, was not measured.
+- **Consequence:** the game clock keeps its own 1/64 s conversion, but runs slower than emulated time. Its dependence on cycles passed the pre-registered rule against emulated time; against host time the rule did not detect it (resolution). By the user's decision of 2026-10-09, P3-01 accepts the time base on the structural relations above. The rate shortfall is a cycles-dependent result handed to U-021, not a pass of the pre-registered rate criterion.
+- **Other relations:** emulated time kept pace with host time at both settings within the measurement bound. The frame rate (about 30 and 13 per emulated second) and the mean step (about 2.1 and 4.8 units) depend on cycles.
 
 Evidence: ignored `local/research/p3-01/timing/` (`ghidra_scripts/TimeProbe.java`, `probe.sh`, outputs `out/p1`–`out/p50`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Register and stack arguments, the Miles API names (the library's trace strings) and the conversion constants were read from native instructions and data, and direct calls to the timer helpers were checked by a raw scan of relative call targets.
 
