@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ByteSource } from '../io/byte-source.ts';
 import { SourceError } from '../source-error.ts';
-import { leInternalFixup, syntheticLeExecutable, type SyntheticLeFields } from '../synthetic.test-support.ts';
+import { ByteWriter, leInternalFixup, syntheticLeExecutable, type SyntheticLeFields } from '../synthetic.test-support.ts';
 import { EXECUTABLE_LIMITS, openLeExecutable } from './le-executable.ts';
 
-// P2-06 AC-18 (EXE part): code-generated LE files only.
+// P2-06 AC-18 (EXE part) and P3-03 AC-18: code-generated LE files only.
 
 const PAGE = 4_096;
 const pattern = (length: number, seed: number) => Uint8Array.from({ length }, (_, index) => (index * 7 + seed) & 0xff);
@@ -191,5 +191,117 @@ describe('LE region reader', () => {
     const executable = await open(valid());
     expect(await failure(() => executable.readRegion({ object: 1, offset: 0, length: EXECUTABLE_LIMITS.regionBytes + 1 }, 'r')))
       .toEqual({ code: 'limit-exceeded', location: 'r', limit: { name: 'executableRegion', limit: 65_536, observed: 65_537 } });
+  });
+});
+
+/**
+ * A non-additive internal 32-bit offset fixup (source type 7) to `target` in `object`, at `offsets` of its page; several
+ * offsets make a list record. `wide` selects the 16-bit object number and the 32-bit target offset forms.
+ */
+function offsetFixup(offsets: readonly number[], object: number, target: number, wide = { object: false, target: target > 0xffff }): number[] {
+  const list = offsets.length > 1;
+  const writer = new ByteWriter().u8(list ? 0x27 : 0x07, (wide.object ? 0x40 : 0) | (wide.target ? 0x10 : 0));
+  if (list) writer.u8(offsets.length);
+  else writer.u16(offsets[0]);
+  if (wide.object) writer.u16(object);
+  else writer.u8(object);
+  if (wide.target) writer.u32(target);
+  else writer.u16(target);
+  if (list) writer.u16(...offsets);
+  return Array.from(writer.toBytes());
+}
+
+describe('LE fixed-up region reader (P3-03, the built-in AI table)', () => {
+  it('returns the stored bytes and each fixup with its target, in position order', async () => {
+    // Page 2 is object 1's second page: a list record (offsets 40 and 20, 16-bit target) and a 32-bit target record.
+    const fixups = [...offsetFixup([40, 20], 2, 0x10), ...offsetFixup([8], 1, 0x1234)];
+    const executable = await open(valid({ fixups: { 2: fixups } }));
+    const region = { object: 1, offset: PAGE + 4, length: 48 };
+    expect(await executable.readFixedUpRegion(region, 'r')).toEqual({
+      bytes: BIG.slice(PAGE + 4, PAGE + 52),
+      fixups: [{ at: 4, object: 1, offset: 0x1234 }, { at: 16, object: 2, offset: 0x10 }, { at: 36, object: 2, offset: 0x10 }],
+    });
+    await expectInvalid(() => executable.readRegion(region, 'r'));
+    // A region without fixups reads as with readRegion.
+    expect(await executable.readFixedUpRegion({ object: 1, offset: PAGE + 44, length: 8 }, 'r')).toEqual({ bytes: BIG.slice(PAGE + 44, PAGE + 52), fixups: [] });
+  });
+
+  it('decodes the 8-bit and 16-bit object numbers and the 16-bit and 32-bit target offsets', async () => {
+    const records = [
+      ...offsetFixup([4], 2, 0x63, { object: true, target: true }), ...offsetFixup([12], 1, 0x1_2345),
+      ...offsetFixup([20], 2, 0x41, { object: true, target: false }),
+    ];
+    const executable = await open(valid({ objects: [{ bytes: BIG, virtualSize: 0x2_0000 }, { bytes: SMALL }], fixups: { 1: records } }));
+    expect((await executable.readFixedUpRegion({ object: 1, offset: 0, length: 24 }, 'r')).fixups).toEqual([
+      { at: 4, object: 2, offset: 0x63 }, { at: 12, object: 1, offset: 0x1_2345 }, { at: 20, object: 2, offset: 0x41 },
+    ]);
+  });
+
+  it('joins the two records of a fixup that crosses a page boundary', async () => {
+    const executable = await open(valid({ fixups: { 1: offsetFixup([PAGE - 2], 2, 5), 2: offsetFixup([-2], 2, 5) } }));
+    expect((await executable.readFixedUpRegion({ object: 1, offset: PAGE - 8, length: 16 }, 'r')).fixups).toEqual([{ at: 6, object: 2, offset: 5 }]);
+    // Either half alone is a fixup that the region does not wholly contain.
+    await expectInvalid(() => executable.readFixedUpRegion({ object: 1, offset: PAGE - 8, length: 8 }, 'r'));
+    await expectInvalid(() => executable.readFixedUpRegion({ object: 1, offset: PAGE, length: 8 }, 'r'));
+    const disagreeing = await open(valid({ fixups: { 1: offsetFixup([PAGE - 2], 2, 5), 2: offsetFixup([-2], 2, 6) } }));
+    await expectInvalid(() => disagreeing.readFixedUpRegion({ object: 1, offset: PAGE - 8, length: 16 }, 'r'));
+    // Recorded on one of its pages only, it is still one fixup.
+    const once = await open(valid({ fixups: { 1: offsetFixup([PAGE - 2], 2, 5) } }));
+    expect((await once.readFixedUpRegion({ object: 1, offset: PAGE - 8, length: 16 }, 'r')).fixups).toEqual([{ at: 6, object: 2, offset: 5 }]);
+  });
+
+  it('rejects a fixup recorded more than once otherwise', async () => {
+    const region = { object: 1, offset: PAGE - 8, length: 16 };
+    const repeated: Record<number, number[]>[] = [
+      { 2: [...offsetFixup([4], 2, 5), ...offsetFixup([4], 2, 5)] },
+      { 1: offsetFixup([PAGE - 2, PAGE - 2], 2, 5) },
+      { 1: offsetFixup([PAGE - 2], 2, 5), 2: [...offsetFixup([-2], 2, 5), ...offsetFixup([-2], 2, 5)] },
+    ];
+    for (const fixups of repeated) {
+      const executable = await open(valid({ fixups }));
+      await expectInvalid(() => executable.readFixedUpRegion(region, 'r'));
+    }
+  });
+
+  it.each([
+    ['an additive internal offset', [0x07, 0x14, 100, 0, 2, 0, 0, 0, 0, 5, 0]],
+    ['an import by ordinal', [0x07, 0x01, 100, 0, 1, 7, 0]],
+    ['an internal entry', [0x07, 0x03, 100, 0, 1]],
+    ['a 16-bit offset', [0x05, 0x00, 100, 0, 2, 0, 0]],
+    ['a 16:32 pointer', [0x06, 0x00, 100, 0, 2, 0, 0]],
+    ['a self-relative offset', [0x08, 0x00, 100, 0, 2, 0, 0]],
+    ['a 32-bit offset starting before the region', offsetFixup([94], 2, 0)],
+    ['a 32-bit offset ending after the region', offsetFixup([110], 2, 0)],
+  ])('rejects %s that patches the region', async (_name, record) => {
+    const executable = await open(valid({ fixups: { 1: record } }));
+    expect(await failure(() => executable.readFixedUpRegion({ object: 1, offset: 96, length: 16 }, 'effects[data/x].regions[0]')))
+      .toEqual({ code: 'invalid-payload', location: 'effects[data/x].regions[0]', limit: null });
+    // The same record outside the region does not matter.
+    expect((await executable.readFixedUpRegion({ object: 1, offset: 200, length: 16 }, 'r')).fixups).toEqual([]);
+  });
+
+  it('rejects a target outside the objects of the file', async () => {
+    // Object 2 is SMALL, 100 bytes long.
+    const inside = await open(valid({ fixups: { 1: offsetFixup([100], 2, 99) } }));
+    expect((await inside.readFixedUpRegion({ object: 1, offset: 96, length: 16 }, 'r')).fixups).toEqual([{ at: 4, object: 2, offset: 99 }]);
+    for (const record of [offsetFixup([100], 2, 100), offsetFixup([100], 3, 0)]) {
+      const executable = await open(valid({ fixups: { 1: record } }));
+      await expectInvalid(() => executable.readFixedUpRegion({ object: 1, offset: 96, length: 16 }, 'r'));
+    }
+  });
+
+  it('rejects overlapping fixups', async () => {
+    const executable = await open(valid({ fixups: { 1: [...offsetFixup([100], 2, 0), ...offsetFixup([102], 2, 0)] } }));
+    await expectInvalid(() => executable.readFixedUpRegion({ object: 1, offset: 96, length: 16 }, 'r'));
+    const apart = await open(valid({ fixups: { 1: [...offsetFixup([100], 2, 0), ...offsetFixup([104], 2, 0)] } }));
+    expect((await apart.readFixedUpRegion({ object: 1, offset: 96, length: 16 }, 'r')).fixups).toHaveLength(2);
+  });
+
+  it('applies the region checks of readRegion', async () => {
+    const executable = await open(valid());
+    expect(await failure(() => executable.readFixedUpRegion({ object: 1, offset: 0, length: EXECUTABLE_LIMITS.regionBytes + 1 }, 'r')))
+      .toEqual({ code: 'limit-exceeded', location: 'r', limit: { name: 'executableRegion', limit: 65_536, observed: 65_537 } });
+    await expectInvalid(() => executable.readFixedUpRegion({ object: 3, offset: 0, length: 4 }, 'r'));
+    await expectInvalid(() => executable.readFixedUpRegion({ object: 2, offset: 98, length: 4 }, 'r'));
   });
 });
