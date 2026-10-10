@@ -52,6 +52,8 @@ updated: 2026-10-10
 - `tools/e2e-configuration.test.ts`：对应回归。
 - `tools/compliance/notices.ts`：`ORIGINAL_RIGHTS_BOUNDARY` 不再提合成演示，其余声明不变。
 - `tools/compliance/notices.test.ts`：对应断言。
+- `e2e/support/app-entry.ts`：只改 `expectNoPlayClaim`（开始入口按资格启用、页面不声称原版玩法可玩）。
+- `e2e/support/browser-test.ts`：测试后检查的意外失败 ID 改为正式应用的 ID。
 
 ## 验收标准
 
