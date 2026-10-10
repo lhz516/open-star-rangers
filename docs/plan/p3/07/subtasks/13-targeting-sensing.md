@@ -56,6 +56,9 @@ updated: 2026-10-10
 - `src/core/rules/targeting.test.ts`：候选测试（新建）。
 - `src/core/rules/radar.ts`：雷达接触点（新建）。
 - `src/core/rules/radar.test.ts`：雷达测试（新建）。
+- `src/core/systems/commands.test.ts`：`target` 不再是未实现命令、自动选敌入口不再“不改变状态”对应的断言更新。
+- `src/core/systems/flight-control.test.ts`：作为未实现命令示例的 `target` 换成其他未实现命令。
+- `src/core/world/world.test.ts`：`target` 命令结果的断言更新。
 
 ## 验收标准
 
