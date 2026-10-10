@@ -2654,7 +2654,7 @@ Only for objects with +0xC4 = 1. Instantiation (`0x68050`) gives +0xC4 = 1 to ki
 1. Copies its own position (+0x6C/+0x70/+0x74). Engagement radius² m := f32(R × R), R = craft record (+0x1C) +0x0C
    (FMUL then FSTP f32).
 2. Walks kinds `0xfffff` and collects, in walk order, every object that passes the **side gate** (self kind in
-   `0x6c87f` ? candidate kind ∉ A : candidate kind ∉ B) and whose squared distance from `0x56b50` is < m (strict; a NaN
+   `0x6c87f` ? candidate kind ∉ A : candidate kind ∉ B, where A = `0x6c07f` and B = `0x93f80` are disjoint with union `0xfffff`, and `0x6c87f` = A + `0x800`) and whose squared distance from `0x56b50` is < m (strict; a NaN
    would pass). `0x56b50`(a, b) = (dy·f32(dy) + dx·f32(dx)) + dz·f32(dz) in double, with d = a − b per axis in double,
    each factor's second copy stored as f32 first. **No activity, state, dead-flag, Warp or self test**: active, docked
    and parked objects, new objects and destroyed ones are collected. Self is collected only for kind `0x800` (the only
