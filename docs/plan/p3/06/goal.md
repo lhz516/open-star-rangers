@@ -91,11 +91,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | completed |
-| [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
+| [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | in-progress |
 | [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | pending |
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | pending |
 | [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | pending |
-| [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | pending |
+| [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | in-progress |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | pending |
