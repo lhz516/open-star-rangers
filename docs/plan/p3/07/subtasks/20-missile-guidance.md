@@ -54,6 +54,7 @@ updated: 2026-10-10
 
 - `src/core/systems/missiles.ts`：导弹更新、引信、起爆与熄火。
 - `src/core/systems/missiles.test.ts`：导弹系统测试（新建）。
+- `src/core/systems/pipeline.test.ts`、`src/core/systems/destruction.test.ts`：导弹回调与 `steer`/`expire` 处理实现后，夹具中的导弹补上制导块，占位故障行改为路由测试。
 
 ## 验收标准
 
