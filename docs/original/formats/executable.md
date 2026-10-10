@@ -540,9 +540,9 @@ Messages posted after the loop are cleared at the next frame without being handl
 
 **Confirmed (keyboard poll `0x26284`):**
 
-- It acts only when the sample is strictly greater than the due time, and then sets the due time to the sample + 4 in view mode 6 or + 16 in every other mode, whether or not a key is waiting. Overdue polls are not caught up. Because samples are even, two polls are at least 6 units apart in the base interior and 18 in other modes, and more when frames are long.
+- It acts only when the sample is strictly greater than the due time, and then sets the due time to the sample + 4 in view mode 6 or + 16 in every other mode, whether or not a key is waiting. Overdue polls are not caught up. Because samples change in steps of 2 and keep the parity set at initialisation ([time base](#simulation-time-base-p3-0106)), a due time has the parity of every later sample, so two polls are at least 6 units apart in the base interior and 18 in other modes, and more when frames are long.
 - If DOS reports a waiting key (INT 21h function 0Bh, `0x74e8c`), it reads one with `0x3c970` (INT 21h function 07h, translation `0x75048`, case swap from the BIOS keyboard flags at `0x417`, typed-cheat matching) and passes it to the context of the view mode read at this poll: modes 0–3 `0x27360`, 6 `0x271e0`, 8 `0x27118`, all others `0x264a0`. It then reads and discards every other waiting key; each still goes through the cheat matching.
-- At most one command per poll is therefore handled. Further keys typed between two polls are lost, and a held key acts at most once per poll through the BIOS key repeat.
+- At most one command per poll is therefore handled. Further keys typed between two polls are lost, and a held key acts at most once per poll through the BIOS key repeat ([keyboard hardware and repeat](#keyboard-hardware-and-repeat-p3-0507)).
 - Most commands post dispatcher messages (views and the map: 0x400; the options page: 0x400 sub-command 10; Warp: 0x400 sub-command 0), which this frame's loop handles after the update walk. Some act at once inside the callback: target selection (`0x2799c` and the cycling helpers), the secondary trigger (below) and the throttle keys, which write the throttle field +0x1C and mark +0x0C, so that the same callback posts it with message 0x20000.
 
 **Confirmed (device poll `0x273e4`):** the device is the game-port joystick, read by `0x57d70` through the driver table at `0x176204` (selected by `0x1761e4`); `0x57d70` marks each axis that changed since the previous read.
@@ -566,6 +566,32 @@ Messages posted after the loop are cleared at the next frame without being handl
 - The primary level and the axes are read only in flight modes (modes 0–1 read the axes only; modes 6 and 8 read neither), while the trigger calls run every frame. A primary level read at the last flight-mode device read before the map, a Warp or the base interior stays in effect until the next flight-mode read. Not observed at runtime.
 
 Evidence: ignored `local/research/p3-02/pipeline/` (`ghidra_scripts/PipeProbe.java`, `probe.sh`, outputs `out/p1.txt`–`out/p41.txt`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. The list insertion, the walk, the states the callbacks post, the message clearing, the dispatcher order, the poll intervals and comparisons, the context switch, the trigger fields and the dead-flag test were read from native instructions. Callers were checked by raw scans of relative calls and of 32-bit values, and the message posts after the loop by a direct-call reachability search from each root.
+
+#### Keyboard hardware and repeat (P3-05/07)
+
+**Confirmed (the game leaves the keyboard and its repeat to the BIOS):** this adds to the keyboard sources in [flight controls](#flight-controls-and-rotation-p3-0602), which already rule out reads of ports 0x60/0x64 and a game INT 9 hook. The program also never programs the keyboard or its typematic delay and rate. A held key therefore repeats at whatever rate the keyboard, or the emulator's keyboard, puts into the BIOS buffer. The rate in the baseline and the cadence it gives with the polls above are in the [key map](../input/key-map.md#按住与自动重复q-06p3-0507).
+
+- **No keyboard command:** no instruction writes port 0x60 or 0x64 either. Every `IN` and `OUT` goes to the VGA registers, the game port 0x201 or a port that Miles code computes from a driver's base address.
+- **No game path invokes INT 16h:** no INT 16h instruction appears in the listing.
+  - The only INT 16h opcode in the loaded objects is entry 0x16 of a table of 256 `INT n; RET` stubs at `0x99c90`. The generic interrupt caller `0x87085` (→ `0x99c0f`, `0x99c5c`) indexes that table with its interrupt-number argument.
+  - The caller's only callers are the DOS key helpers `0x74e8c` (INT 21h function 0Bh) and `0x74ec8` (INT 21h function 07h; after a 0 it reads again and returns that value shifted left by 8). Both pass 0x21.
+  - The only DPMI real-mode interrupt call (`0x87e2b`, function 0300h) issues INT 66h, the Miles driver interface.
+- **Interrupt vectors written:**
+  - INT 8, the Miles timer ([time base](#simulation-time-base-p3-0106));
+  - the real-mode INT 66h vector (`AIL_set_real_vect`, `0x6f3db`);
+  - the restore of a sound-driver IRQ handler (`AIL_restore_USE16_ISR`, `0x6f4de` → `0x87d7b`);
+  - INT 23h and INT 1Bh, the C library's break handlers (`0x8f687`, `0x8f83b`, `0x8f873`, `0x8f98c`, through `0x9d019` and `0x9d044`);
+  - INT 24h (`0x74726`);
+  - the FPU exception vectors INT 2 and INT 75h (`0x13e95c`–`0x13eaea`, from `0xa4fa2`).
+
+  The Miles API names come from the library's own trace strings.
+
+Evidence: ignored `local/research/p3-05/repeat/` (`ghidra_scripts/PipeProbe.java` with added context, raw-byte and in-memory disassembly commands, `probe.sh`, outputs `out/p1-scan`–`out/p16`, notes in `notes.md`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; instructions and functions created in memory were discarded. Bounded search:
+
+- every `IN`, `OUT`, INT 16h, INT 9, INT 21h and INT 31h instruction in Ghidra's listing, with the instructions before each interrupt;
+- raw byte scans of all loaded objects, including code Ghidra had not disassembled, for the opcodes of INT 16h, INT 9, `IN`/`OUT` with port 0x60 or 0x64, `MOV AL,0F3h`, and `MOV EDX`/`MOV DX` with 0x60 or 0x64.
+
+Every hit outside the listing was checked. Apart from the stub table, the bytes are parts of the addresses or immediate values of other instructions, or call arguments.
 
 ### Placement, runtime scale and numbers (P3-02/02)
 
