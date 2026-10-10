@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | completed |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | in-progress |
-| [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | pending |
+| [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | in-progress |
 | [15-owner-input-control.md](./subtasks/15-owner-input-control.md) | 09 | pending |
 | [16-speed-preset-command.md](./subtasks/16-speed-preset-command.md) | 10 | pending |
 | [17-map-cursor-render.md](./subtasks/17-map-cursor-render.md) | — | pending |
