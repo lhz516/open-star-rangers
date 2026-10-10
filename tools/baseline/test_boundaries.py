@@ -11,7 +11,7 @@ from reasons import REASONS, REASON_SET, BaselineError, ordered
 HERE = Path(__file__).resolve().parent
 SOURCES = sorted(HERE.glob("*.py"))
 SIBLINGS = {path.stem for path in SOURCES}
-PURE = {"reasons", "recipe", "le_image", "locate", "qualify", "report"}
+PURE = {"reasons", "recipe", "inputs", "le_image", "locate", "qualify", "report"}
 PURE_STDLIB = {"dataclasses", "hashlib", "json", "math", "re", "struct"}
 
 

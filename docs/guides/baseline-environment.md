@@ -2,19 +2,19 @@
 type: guide
 status: active
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-016, U-021]
 ---
 
 # 基准环境搭建与运行
 
-用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。agent 可以用 Computer Use 运行与观察原版，见[原版证据获取](./original-evidence.md#agent-运行原版)；本机的 Computer Use 无法向 DOSBox-X 输入，需要游戏操作时由用户在键盘上操作。在私有副本中运行并在调试器暂停点读取内存的测量方法见[运行时测量](./runtime-measurement.md)。
+用于运行原版游戏做行为对照，以及对原版文件做静态分析。以下路径以 macOS（Apple Silicon）为准。agent 可以用 Computer Use 运行与观察原版，见[原版证据获取](./original-evidence.md#agent-运行原版)；本机的 Computer Use 无法向 DOSBox-X 输入。需要游戏操作时，能写成测量配方的输入由测量工具在模拟器内施加，其余由用户在键盘上操作。在私有副本中运行、在调试器暂停点读取内存并施加输入的测量方法见[运行时测量](./runtime-measurement.md)。
 
 ## 工具
 
 | 工具 | 位置 | 说明 |
 |---|---|---|
-| DOSBox-X 2026.08.31（arm64） | `~/Applications/dosbox-x.app` | 从官方 GitHub 发布页下载；自带调试器（`-break-start`） |
+| DOSBox-X 2026.08.31（arm64） | `~/Applications/dosbox-x.app` | 从官方 GitHub 发布页下载；自带调试器（`-break-start`），测量工具用它的 `DV` 读、`SMV` 写线性内存 |
 | OpenJDK 21 | Homebrew `openjdk@21` | 不加入系统 PATH，只供 Ghidra 使用 |
 | Ghidra 12.0.1 | `~/Tools/ghidra_12.0.1_PUBLIC` | 必须使用 12.0.1，以匹配 LE 加载插件；不要用 Homebrew 的版本 |
 | ghidra-lx-loader 12.0.1 | Ghidra 的 `Ghidra/Extensions/` | 用于载入 LE 格式的 `SRANGERS.EXE` |

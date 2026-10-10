@@ -1,9 +1,10 @@
 """Measurement report, schemaVersion 1 (P3-01 spec, tool data contract: report identity, samples, run conclusion).
 
 `build_report` assembles the report object from the session's identities and the judged samples and derives its
-status. Only a run whose every planned required sample was taken in order and qualified, whose original-file
-integrity and process cleanup passed, which finished, was not cancelled and reported no other failure is `complete`.
-Zero samples, missing samples or a qualified prefix are never complete. Writing the report is the session's job.
+status. Only a run whose every planned required sample was taken in order and qualified, whose every declared stimulus
+was applied in order, whose original-file integrity and process cleanup passed, which finished, was not cancelled and
+reported no other failure is `complete`. Zero samples, missing samples or a qualified prefix are never complete.
+Writing the report is the session's job.
 """
 import json
 import math
@@ -75,8 +76,9 @@ def _passed(value, where):
 
 
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
-                 cleanup, cancelled=False, failures=()):
-    """The report dict. `run_end` None marks an unfinished run (the state a report is first written in)."""
+                 cleanup, cancelled=False, failures=(), stimuli=None):
+    """The report dict. `run_end` None marks an unfinished run (the state a report is first written in). `stimuli`,
+    the records of the stimuli applied or attempted, is reported only for a recipe that declares stimuli."""
     if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("report-invalid", "runId")
     tool = _section(tool, "tool")
@@ -107,6 +109,24 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
     if any(not sample.qualified and (sample.pause, sample.field) in required for sample in samples):
         reasons.add("samples-unqualified")
 
+    counts = {
+        "planned": len(planned),
+        "actual": len(keys),
+        "qualified": sum(sample.qualified for sample in samples),
+        "requiredPlanned": len(required),
+        "requiredQualified": sum(sample.qualified and (sample.pause, sample.field) in required for sample in samples),
+    }
+    extra = {}
+    if recipe.stimuli:
+        records = _plain(list(stimuli or ()), "stimuli")
+        if any(type(record) is not dict for record in records):
+            raise BaselineError("report-invalid", "stimuli")
+        applied = [(record.get("id"), record.get("pause")) for record in records if record.get("status") == "applied"]
+        if applied != [(stimulus.id, stimulus.pause) for stimulus in recipe.stimuli]:
+            reasons.add("stimuli-missing")
+        counts.update(stimuliPlanned=len(recipe.stimuli), stimuliApplied=len(applied))
+        extra["stimuli"] = records
+
     integrity, integrity_passed = _passed(integrity, "integrity")
     cleanup, cleanup_passed = _passed(cleanup, "cleanup")
     if not integrity_passed:
@@ -132,14 +152,8 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         "run": {"start": _section(run_start, "run.start"),
                 "end": None if run_end is None else _section(run_end, "run.end")},
         "samples": [sample.to_json() for sample in samples],
-        "counts": {
-            "planned": len(planned),
-            "actual": len(keys),
-            "qualified": sum(sample.qualified for sample in samples),
-            "requiredPlanned": len(required),
-            "requiredQualified": sum(sample.qualified and (sample.pause, sample.field) in required
-                                     for sample in samples),
-        },
+        **extra,
+        "counts": counts,
         "integrity": integrity,
         "cleanup": cleanup,
     }

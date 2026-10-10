@@ -245,6 +245,14 @@ def scenario_process(bases=None, space_base=0, duplicate_code=False, owner="pid:
     return process
 
 
+def bios_keyboard(process, head=0x1E, tail=0x1E, start=0x1E, end=0x3E, flags=0x20):
+    """A BIOS data area with keyboard buffer pointers and shift flags, identity-mapped like the real first page."""
+    process.poke(0x41A, struct.pack("<HH", head, tail))
+    process.poke(0x480, struct.pack("<HH", start, end))
+    process.poke(0x417, bytes((flags,)))
+    process.physical[0] = 0
+
+
 def scenario_recipe(exe_sha256, **changes):
     """Recipe document (a dict) for the scenario; `changes` replaces top-level keys."""
     fields = [{"id": name, "address": {"object": 4, "offset": offset, **({"pointers": pointers} if pointers else {})},

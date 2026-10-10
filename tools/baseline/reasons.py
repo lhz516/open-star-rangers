@@ -53,6 +53,9 @@ REASONS = (
     "identity-mismatch",
     "value-nonfinite",
     "proof-ref-invalid",
+    # Input stimuli (P3-06 subtask 22)
+    "stimulus-rejected",
+    "stimulus-unverified",
     # Report and run
     "report-invalid",
     "samples-empty",
@@ -60,6 +63,7 @@ REASONS = (
     "samples-unplanned",
     "samples-order",
     "samples-unqualified",
+    "stimuli-missing",
     "integrity-failed",
     "cleanup-failed",
     "run-unfinished",
@@ -78,6 +82,7 @@ REASONS = (
     "child-exited",
     "output-path-invalid",
     "output-exists",
+    "evidence-scope-invalid",
     "report-write-failed",
     "log-budget-exceeded",
     "original-changed",

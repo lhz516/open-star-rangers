@@ -283,6 +283,9 @@ def check_recipe_image(recipe, image):
         first = 4 if field.address.pointers else field.size
         if field.address.offset + first > obj.virtual_size:
             raise BaselineError("location-outside-object", field.id)
+    for device in recipe.devices.values():
+        if device.object is not None and device.offset + device.size > image.object(device.object).virtual_size:
+            raise BaselineError("location-outside-object", device.id)
     for pause in recipe.pauses:
         if pause.stop.site is not None:
             obj = image.object(pause.stop.site.object)

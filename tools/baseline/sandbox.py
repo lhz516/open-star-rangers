@@ -118,10 +118,11 @@ class Sandbox:
     def snapshot(self):
         return inventory([self.local], self.local)
 
-    def run(self, run_id="run-01", smoke=False, out=None):
+    def run(self, run_id="run-01", smoke=False, out=None, evidence=None):
         self.before = self.snapshot()
         self.run_id = run_id
-        return execute(Options(str(self.recipe_path), str(out or self.out), run_id, smoke), self.env)
+        return execute(Options(str(self.recipe_path), str(out or self.out), run_id, smoke,
+                               None if evidence is None else str(evidence)), self.env)
 
     @property
     def run_dir(self):
