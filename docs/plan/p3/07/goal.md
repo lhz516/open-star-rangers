@@ -64,7 +64,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | S-08 | 16、23 | 16：能量、档位、页面、命令与速度消耗（读 P3-06 的指令速度）的 Node 测试；23：战斗组资源读数 |
 | S-09 | 21、35 | 21：`0x30150` 规则的 Node 测试；35：停放更新接线 |
 | S-10 | 18、12 | 18：爆炸生命周期、判别值 3 碎片与到期的 Node 测试；12：EXPL 帧数一致性的载入检查（EXPL 选择、额外爆炸与判别值 1/2 碎片归表现层，CR-11） |
-| S-11 | 01–07、09、10、26、27、30、31 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；27：R-06 至 R-10 的结论 |
+| S-11 | 01–07、09、10、26、27、30、31、37 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；37：对照工具与新版连续运行；27：R-06 至 R-10 的结论 |
 | S-12 | 28、36 | 28：Core 模块说明、源码结构与交接；36：25、27 的结论；29：链接与元数据 |
 | AC-01 | 08、11 | 11：边界测试、合成测试不改、版本拒绝；29：`pnpm check` |
 | AC-02 | 12、34 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
@@ -81,7 +81,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | AC-13 | 24 | 24：连锁、单次死亡、归因、待处理状态、快照完整、replay 与上限 |
 | AC-14 | 25 | 25：本地真实内容两种僚机配置的私有核对 |
 | AC-15 | 01–07、26、30、31 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
-| AC-16 | 09、10、26、27 | 10：判据获批；26：≥2 次合格运行；27：单次转移与连续行为的结论 |
+| AC-16 | 09、10、26、27、37 | 10：判据获批；26：≥2 次合格运行；37：对照工具；27：单次转移与连续行为的结论 |
 | AC-17 | 28、33、36 | 28：模块说明与交接；36：核对结论的已知差异；29：`pnpm check`、链接与 `updated:` |
 
 ## 子任务跟踪
@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | in-progress |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -125,7 +125,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36 | pending |
+| [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | in-progress |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -170,6 +171,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 24 已集成：** 世界创建以与 `initialGuidance` 共用的判定拒绝可实例化导弹记录的负制导时间（P3-02 CR-01 检查 5 补一句）。内容层把 +0x48 读作 0 至 2³¹−1，负值在内容层已被拒绝，实际到达世界创建检查的只有 +0x44。合成 `missile()` 的寿命默认改为 320，去掉 22 的局部覆盖。比较器在一个 tick 内拒绝同一实体第二次 `object-destroyed` 与被毁后的 `hit`。新增连锁测试（一次死亡、`lost-shooter`、CR-13 交接不伪造、CR-06 跨阶段次序、延迟消费、预算与故障锁存）与战斗 replay 测试；`snapshot.ts`、`limits.ts` 经审阅无遗漏，未改，未发现规则缺陷。
 - **2026-10-10 — 从 28 拆出 36：** 26 的正式采样要与 P3-05、P3-06 轮流使用基准环境，耗时较长，27 须等 26 完成后才能开始。28 的大部分内容只依赖已完成的实现，依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把“25 与 27 的结论写入 core.md 的已知差异”拆到 36（依赖 25、27、28），28 改为依赖 24、33 并先行。29 加入对 36 的依赖。
 - **2026-10-10 — 25 已集成：** 真实内容本地核对通过：4 次运行，带与不带僚机各 2 次，每次主炮与导弹各击毁一架开场敌机。武器引用、爆炸与判别值 3 碎片与独立期望一致，15 个期望变体全部检出。导弹计时字段 9/9 非负，世界创建都被接受。没有差异，不需要修复子任务。逃生舱、大型种类永不到期的碎片、被击落的碎片、种类位 8 的敌机与 `speed match-target` 在真实运行中没有出现，只有静态判据；这些分支的原版对照归 27。
+- **2026-10-10 — 从 27 拆出 37：** 26 有 12 个正式配方，与 P3-05、P3-06 轮流使用基准环境，第一次正式运行用时约 47 分钟，全部完成要以小时计。27 的工具与新版一侧不需要等全部样本。依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者新增 37（依赖 09、10、24、25）：先建单次转移工具、独立的 Φ 脚本与新版连续运行，并只读地在已有运行上试运行，试运行不作结论。27 改为依赖 24、26、37，29 加入对 37 的依赖。D-02 判据已获批，37 与 27 都不能修改。
 
 ## 审批
 
