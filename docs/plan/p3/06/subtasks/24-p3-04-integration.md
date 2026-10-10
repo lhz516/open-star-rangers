@@ -47,6 +47,10 @@ updated: 2026-10-10
 - `src/app/**`、`src/ui/**`：调用者、事件、会话桥及其测试与 test-support。
 - `e2e/**`：受影响的规格与夹具。
 - `docs/engineering/modules/app.md`、`docs/engineering/modules/ui.md`：受影响段落。
+- `src/original-data/conversion/production-rule-data.test-support.ts`：使生产结构的合成 craft-info 满足 Core 的语义检查（2026-10-10 协调者按 scope-request 加入）。
+- `src/workers/mission-scenarios.test.ts`：世界创建输入加入 `craftInfo`（同上）。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：replay 内容从同一已验证资源包读取 `data/craft-info`，事件样本表列出四个新事件（同上）。
+- `docs/engineering/README.md`：正式会话 `start` 输入的说明（同上）。
 
 ## 验收标准
 
