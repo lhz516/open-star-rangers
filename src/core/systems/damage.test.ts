@@ -25,8 +25,15 @@ interface Scene {
   readonly player: CraftEntity;
 }
 
+/**
+ * A world at CLOCK with the player standing. Every kind but the player's gets rule data without model parts, so a
+ * destroyed craft explodes holding its source and sheds no fragments: destruction.test.ts covers what follows.
+ */
 function scene(config: Partial<WorldConfig> = {}): Scene {
-  const state = testState(config);
+  const base = testState(config);
+  const { craft } = base.ruleData;
+  const partless = { ...craft[0]!, parts: 0, debris: [] };
+  const state: WorldState = { ...base, ruleData: { ...base.ruleData, craft: craft.map((kind) => kind ?? partless) } };
   state.clock = CLOCK;
   const player = addPlayerEntity(state) as CraftEntity;
   arm(player, 50, 100);
@@ -309,7 +316,8 @@ describe('the destruction in 0x2a694 (D2, D8, CR-06, AC-09)', () => {
     expect(destructions(context).map(({ entityId, outcome, activity }) => [entityId, outcome, activity])).toEqual([
       [player.id, 'delayed', 'active'], [enemy.id, 'explodes', 'active'], [docked.id, 'explodes', 'docked'], [parkedWingman.id, 'removed', 'parked'],
     ]);
-    expect([player.state, enemy.state, docked.state, parkedWingman.state]).toEqual(['presentation-ready', 'presentation-ready', 'presentation-ready', 'pending-removal']);
+    expect([player.state, enemy.state, docked.state, parkedWingman.state]).toEqual(['presentation-ready', 'destroyed-source', 'destroyed-source', 'pending-removal']);
+    expect(state.player.delayedExplosionClock).toBe(CLOCK + 0xc0);
   });
 
   it('counts only the player\'s kills of the counted kinds, also of a parked craft, and gives them event class 0', () => {

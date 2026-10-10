@@ -1,10 +1,10 @@
 /**
  * Builders of the movement blocks and poses of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-03 and CR-09;
- * docs/original/formats/executable.md, W7, W11 and H1): the parameter item `0x218e8` builds from a source object for
- * mode 1, the mode-1 branch of `0x21794` that turns an item into a `linear` block, the frame completion `0x56d18`, the
- * offset position the launch constructors and the aim solution compute inline, and a missile's guided launch speed
- * `0x21a3c` and launch scatter. Mode 2 (fragments) is P3-07/18's; mode 0 (missiles, the rescue, kind 0x4000) is P3-06's
- * craftMovementBlock and rebuiltMovementBlock.
+ * docs/original/formats/executable.md, W7, W11, H1, X2 and X6): the parameter item `0x218e8` builds from a source object
+ * for modes 1 and 2, the branches of `0x21794` that turn an item into a `linear` or `spinning` block, the frame completion
+ * `0x56d18`, the offset position the launch constructors and the aim solution compute inline, and a missile's guided
+ * launch speed `0x21a3c` and launch scatter. Mode 0 (missiles, the rescue, kind 0x4000) is P3-06's craftMovementBlock
+ * and rebuiltMovementBlock.
  *
  * Numbers follow the original's write-back points (W13): every arithmetic step is a JavaScript double operation, as
  * the x87 rounds at double precision, and every f32 store is `Math.fround`. A product of two f32 values is exact in
@@ -13,7 +13,7 @@
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
-import type { Entity, LinearMovementBlock, Matrix3, MovementBlock, SteeredMovementBlock } from '../world/entity-table.ts';
+import type { Entity, LinearMovementBlock, Matrix3, MovementBlock, SpinningMovementBlock, SteeredMovementBlock } from '../world/entity-table.ts';
 import { rotateRows } from './flight-motion.ts';
 import { speedRatio } from './flight-state.ts';
 import { normalise } from './load-transforms.ts';
@@ -83,8 +83,8 @@ export interface MovementItem {
 
 /**
  * `0x218e8(source, its block, mode 1)`: the source's position and rows and its block's speed. For a `spinning` (mode 2)
- * source, row 3 is first replaced by the source's velocity and the frame completed (`0x56d18`). The speed of the source
- * is copied, not added: the constructors that use the item set their own.
+ * source, row 3 is first replaced by the source's velocity and the frame completed (`0x56d18`), whatever the new mode.
+ * The speed of the source is copied, not added: the constructors that use the item set their own.
  */
 export function linearItem(position: Vec3, orientation: Matrix3, block: MovementBlock): MovementItem {
   if (block.mode !== 'spinning') return { position, orientation, speed: block.speed };
@@ -92,13 +92,41 @@ export function linearItem(position: Vec3, orientation: Matrix3, block: Movement
   return { position, orientation: orthonormalFrame(frozenMatrix([...orientation.slice(0, 6), x, y, z])), speed: block.speed };
 }
 
+/** F(row 3 × speed) per component: the velocity of a mode-1 block and the base velocity of a mode-2 item. */
+function alongRow3(orientation: Matrix3, speed: number): Vec3 {
+  const { x, y, z } = rowOf(orientation, 2);
+  return vec(store(x * speed), store(y * speed), store(z * speed));
+}
+
 /**
  * The mode-1 branch of `0x21794` for an item: speed, velocity F(row 3 × speed) per component, the item's position as the
  * position before the first move, and the hit-test flag (projectiles true, explosions false).
  */
 export function linearBlock({ position, orientation, speed }: MovementItem, hitTest: boolean): LinearMovementBlock {
-  const { x, y, z } = rowOf(orientation, 2);
-  return { mode: 'linear', speed, velocity: vec(store(x * speed), store(y * speed), store(z * speed)), previousPosition: position, hitTest };
+  return { mode: 'linear', speed, velocity: alongRow3(orientation, speed), previousPosition: position, hitTest };
+}
+
+/** The parameter item of `0x218e8` for mode 2: a mode-1 item with a base velocity. */
+export interface SpinningItem extends MovementItem {
+  /** f32. */
+  readonly velocity: Vec3;
+}
+
+/**
+ * `0x218e8(source, its block, mode 2)`: the mode-1 item (with a `spinning` source's frame completed the same way) and
+ * the base velocity F(row 3 × the source's speed) per component. The fragment constructors add their own push to it.
+ */
+export function spinningItem(position: Vec3, orientation: Matrix3, block: MovementBlock): SpinningItem {
+  const item = linearItem(position, orientation, block);
+  return { ...item, velocity: alongRow3(item.orientation, item.speed) };
+}
+
+/**
+ * The mode-2 branch of `0x21794`: the item's speed and velocity as they are, the angle the rows turn by at every move
+ * (f32 radians, not scaled by the step) and the axis byte that picks the rotation helper.
+ */
+export function spinningBlock(speed: number, velocity: Vec3, spin: number, spinAxis: 0 | 1 | 2): SpinningMovementBlock {
+  return { mode: 'spinning', speed, velocity, spin, spinAxis };
 }
 
 /**

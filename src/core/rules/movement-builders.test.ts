@@ -4,7 +4,7 @@ import type { Matrix3, MovementBlock, SteeredMovementBlock } from '../world/enti
 import { rotateRows } from './flight-motion.ts';
 import { craftMovementBlock } from './flight-state.ts';
 import {
-  applyGuidedLaunchSpeed, linearBlock, linearItem, offsetPosition, orthonormalFrame, scatteredRows,
+  applyGuidedLaunchSpeed, linearBlock, linearItem, offsetPosition, orthonormalFrame, scatteredRows, spinningBlock, spinningItem,
 } from './movement-builders.ts';
 import { RAND_SCALE } from './original-random.ts';
 import { scriptedRand } from './rand.test-support.ts';
@@ -79,6 +79,28 @@ describe('0x218e8 mode 1 and 0x21794 mode 1 (CR-03)', () => {
       mode: 'linear', speed: 3, velocity: vec(f(f(0.6) * 3), 0, f(f(0.8) * 3)), previousPosition: position, hitTest: true,
     });
     expect(linearBlock({ position, orientation: TURNED, speed: 2 }, false)).toMatchObject({ velocity: vec(0, 0, 2), hitTest: false });
+  });
+});
+
+describe('0x218e8 mode 2 and 0x21794 mode 2 (CR-03, X6)', () => {
+  it('makes the item of a source from its pose and speed, with the base velocity F(row 3 × speed)', () => {
+    const rows = matrix(1, 0, 0, 0, f(0.8), -f(0.6), 0, f(0.6), f(0.8));
+    const item = spinningItem(vec(1, 2, 3), rows, craftMovementBlock(0x80, 48, 96));
+    expect(item).toEqual({ position: vec(1, 2, 3), orientation: rows, speed: 48, velocity: vec(0, f(f(0.6) * 48), f(f(0.8) * 48)) });
+  });
+
+  it('completes a spinning source\'s frame first, as for mode 1, and takes row 3 of the completed frame', () => {
+    // Velocity (0, 3, 4) normalised is row 3 (0, f(0.6), f(0.8)); row 1 = old row 2 (0, 1, 0) × row 3 = (f(0.8), 0, 0),
+    // normalised to (1, 0, 0); row 2 = row 3 × row 1 = (0, f(0.8), −f(0.6)).
+    const spinning: MovementBlock = { mode: 'spinning', speed: 5, velocity: vec(0, 3, 4), spin: 0.1, spinAxis: 1 };
+    const item = spinningItem(vec(0, 0, 0), matrix(0, 0, 1, 0, 1, 0, -1, 0, 0), spinning);
+    expect(item.orientation.map((value) => value + 0)).toEqual([1, 0, 0, 0, f(0.8), -f(0.6), 0, f(0.6), f(0.8)]);
+    expect(item.velocity).toEqual(vec(0, f(f(0.6) * 5), f(f(0.8) * 5)));
+    expect(item.speed).toBe(5);
+  });
+
+  it('builds a spinning block from the speed, velocity, spin and axis as given', () => {
+    expect(spinningBlock(48, vec(1, 2, 3), f(0.25), 2)).toEqual({ mode: 'spinning', speed: 48, velocity: vec(1, 2, 3), spin: f(0.25), spinAxis: 2 });
   });
 });
 

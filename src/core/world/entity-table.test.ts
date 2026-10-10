@@ -379,7 +379,7 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
     ['a fragment of a missile', 24, { combat: { ...kindDefaults(24).combat, sourceKindBit: 20 } }],
     ['a fragment expiring at a fractional clock', 24, { combat: { ...kindDefaults(24).combat, expiry: { type: 'at', clock: 0.5 } } }],
     ['a fragment without DEBRIS parameters that is no escape pod', 24, { combat: { ...kindDefaults(24).combat, debris: null } }],
-    ['an escape pod with DEBRIS parameters', 24, { combat: { ...kindDefaults(24).combat, sourceKindBit: 2 } }],
+    ['an escape pod with DEBRIS parameters', 24, { combat: { ...kindDefaults(24).combat, sourceKindBit: 1 } }],
     ['a depletion latch that is no boolean', 7, { combat: { ...blankCraftCombat(), depleted: 1 as unknown as boolean } }],
     ['a losing lock that is no boolean', 7, { combat: (() => { const combat = busyCraft(); combat.weapons.lock.losing = 'yes' as unknown as boolean; return combat; })() }],
     ['a detonation flag that is no boolean', 20, { combat: missile({ detonate: 0 as unknown as boolean }) }],
@@ -416,17 +416,19 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
     }
   });
 
-  it('draws a kind 1 or 2 source\'s part 0, the escape pod without DEBRIS parameters, as parts 0–2', () => {
+  it('draws a kind 1 or 2 source\'s part 0 (kind bits 0 and 1), the escape pod without DEBRIS parameters, as parts 0–2', () => {
     const table = new EntityTable();
-    for (const sourceKindBit of [1, 2]) {
+    for (const sourceKindBit of [0, 1]) {
       const combat = { ...kindDefaults(24).combat, sourceKindBit, debris: null };
       const presentation = { type: 'fragment', model: TEST_MODEL, part: 0, display: 'parts-0-2' } as const;
       expect(table.allocate(entityInit(24, { combat, presentation })).presentation).toEqual(presentation);
       expectFault(() => table.allocate(entityInit(24, { combat })), 'invariant-violated', 'entities.presentation');
     }
-    // Part 3 of a player source has its parameters and is an ordinary fragment.
-    const part = { ...kindDefaults(24).combat, sourceKindBit: 1, part: 3, debris: 0 };
+    // Part 3 of a player source has its parameters and is an ordinary fragment; part 0 of kind bit 2 is no pod.
+    const part = { ...kindDefaults(24).combat, sourceKindBit: 0, part: 3, debris: 0 };
     expect(table.allocate(entityInit(24, { combat: part, presentation: { type: 'fragment', model: TEST_MODEL, part: 3, display: 'part' } })).combat).toEqual(part);
+    const other = { ...kindDefaults(24).combat, sourceKindBit: 2 };
+    expect(table.allocate(entityInit(24, { combat: other })).presentation).toMatchObject({ part: 0, display: 'part' });
   });
 
   it('copies the linear and spinning blocks detached and checks their f32 values', () => {

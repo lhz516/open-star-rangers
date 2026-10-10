@@ -768,8 +768,11 @@ const isNullableClock = (value: number | null): boolean => value === null || isC
 const isUpTo = (value: number, maximum: number): boolean => Number.isInteger(value) && value >= 0 && value <= maximum;
 const isFloat32Matrix = (matrix: Matrix3): boolean => matrix.length === 9 && matrix.every(isFiniteFloat32);
 const isCraftKindBit = (kindBit: number): boolean => combatTypeOf(kindBit) === 'craft';
-/** Part 0 of a kind 1 (player) or 2 (wingman) source, which draws the source model's parts 0–2. */
-const isEscapePod = ({ sourceKindBit, part }: FragmentCombat): boolean => (sourceKindBit === 1 || sourceKindBit === 2) && part === 0;
+/**
+ * Whether a fragment is the escape pod: part 0 of a kind 1 (player, kind bit 0) or kind 2 (wingman, kind bit 1) source,
+ * which has no DEBRIS parameters and draws the source model's parts 0–2 (X6).
+ */
+export const isEscapePod = (sourceKindBit: number, part: number): boolean => (sourceKindBit === 0 || sourceKindBit === 1) && part === 0;
 const isClockReference = (reference: { readonly entity: EntityId; readonly clock: number } | null): boolean =>
   reference === null || (isEntityId(reference.entity) && isClock(reference.clock));
 
@@ -826,7 +829,7 @@ function isValidCombat(combat: EntityCombat): boolean {
     case 'fragment':
       // Only part 0 of a kind 1 or 2 source, the escape pod, has no DEBRIS parameters (craft §4.1).
       return isCraftKindBit(combat.sourceKindBit) && isIndex(combat.part)
-        && (isEscapePod(combat) ? combat.debris === null : combat.debris !== null && isIndex(combat.debris))
+        && (isEscapePod(combat.sourceKindBit, combat.part) ? combat.debris === null : combat.debris !== null && isIndex(combat.debris))
         && isInt32(combat.durability) && isBoolean(combat.explodeOnExpiry) && isNullableId(combat.handOff)
         && (combat.expiry.type === 'pending' || combat.expiry.type === 'never' || (combat.expiry.type === 'at' && isClock(combat.expiry.clock)));
     default:
@@ -846,7 +849,7 @@ function presentationFits(presentation: EntityPresentation, combat: EntityCombat
     case 'explosion':
       return combat.type === 'explosion' && presentation.variant === combat.variant;
     case 'fragment':
-      return combat.type === 'fragment' && presentation.part === combat.part && presentation.display === (isEscapePod(combat) ? 'parts-0-2' : 'part');
+      return combat.type === 'fragment' && presentation.part === combat.part && presentation.display === (isEscapePod(combat.sourceKindBit, combat.part) ? 'parts-0-2' : 'part');
     default:
       return false;
   }

@@ -107,7 +107,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [15-damage-subsystems.md](./subtasks/15-damage-subsystems.md) | 04, 12, 14 | completed |
 | [16-energy-displays.md](./subtasks/16-energy-displays.md) | 04, 12, 13, 30 | completed |
 | [17-projectile-hits.md](./subtasks/17-projectile-hits.md) | 03, 14, 15, 18 | pending |
-| [18-destruction-fragments.md](./subtasks/18-destruction-fragments.md) | 06, 07, 12, 15 | in-progress |
+| [18-destruction-fragments.md](./subtasks/18-destruction-fragments.md) | 06, 07, 12, 15 | completed |
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | pending |
 | [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31, 32 | pending |
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | completed |

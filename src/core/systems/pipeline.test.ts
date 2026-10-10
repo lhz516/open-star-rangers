@@ -62,8 +62,8 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
 
   it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'energy', 'parked-update', 'area-check',
-      'frame-end', 'commit',
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'delayed-player-explosion', 'energy',
+      'parked-update', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
@@ -312,8 +312,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   it('reads the runs of its stages from their rule modules, those not implemented yet without a run', () => {
     expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
       .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
-    expect([collisionStage, delayedPlayerExplosionStage]).toEqual([null, null]);
-    expect([typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function']);
+    expect(collisionStage).toBeNull();
+    expect([typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function']);
   });
 
   /** A craft (1), a missile (2), a projectile (3), a fragment (4) and an explosion (5), all active. */
@@ -329,11 +329,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     ['steer', { type: 'steer', entityId: 2, control }, 'missiles.steer'],
     ['a missile\'s expiry', { type: 'expire', entityId: 2 }, 'missiles.expire'],
     ['a projectile\'s expiry', { type: 'expire', entityId: 3 }, 'projectiles.expire'],
-    ['a fragment\'s expiry', { type: 'expire', entityId: 4 }, 'destruction.expire'],
     ['a craft\'s expiry', { type: 'expire', entityId: 1 }, 'requests.expire'],
     ['an explosion\'s expiry', { type: 'expire', entityId: 5 }, 'requests.expire'],
-    ['release-held', { type: 'release-held', entityId: 5 }, 'destruction.release-held'],
-    ['hand-off', { type: 'hand-off', entityId: 1, fragment: 4 }, 'destruction.hand-off'],
   ] as [string, Request, string][])('routes %s to its module in request handling, which no rule posts yet', (_, request, site) => {
     const [state] = runtimeKinds();
     expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
@@ -347,21 +344,14 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expect(stateText(state)).toBe(stateText(reference));
   });
 
-  it('keeps the runtime kinds\' own updates and an explosion\'s state requests to the generic lifecycle', () => {
-    const [state, entities] = withEntities([20], [21], [22], [24]);
+  it('keeps the own updates of missiles and projectiles to the generic lifecycle (explosions and fragments: destruction.test.ts)', () => {
+    const [state, entities] = withEntities([20], [21]);
     const atMovement: string[] = [];
     // Their movement faults until P3-07 subtask 22: a missile has no body record there yet, the other modes no integrator.
     expectFault(() => runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) }),
       'invariant-violated', 'movement.record');
-    expect(atMovement).toEqual(['active', 'active', 'active', 'active']);
-    const explosion = entities[2];
-    explosion.state = 'presentation-ready';
-    for (const entity of entities) if (entity !== explosion) entity.state = 'pending-removal';
-    // Posted after its own update's request for state 7, so it stays out of movement.
-    runTickWith(state, { 'spawn-queue-check': ({ requests }) => requests.post(setState(explosion, 'area-switch')) });
-    expect(state.entities.size).toBe(1);
-    expect(explosion).toMatchObject({ state: 'area-switch', activity: 'active' });
-    explosion.state = 'pending-removal';
+    expect(atMovement).toEqual(['active', 'active']);
+    for (const entity of entities) entity.state = 'pending-removal';
     runTickWith(state);
     expect(state.entities.size).toBe(0);
   });
@@ -369,6 +359,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   it.each([[21, 'linear'], [22, 'linear'], [24, 'spinning']] as const)('faults on kind %i\'s %s block in the movement stage until P3-07 subtask 22', (kindBit, _mode) => {
     const [state, [entity]] = withEntities([kindBit]);
     entity.state = 'active';
+    // An active explosion has been activated, or its update faults in request handling first.
+    if (entity.combat.type === 'explosion') Object.assign(entity.combat, { activationClock: 0, removalAfterClock: 0x60 });
     expectFault(() => runTickWith(state), 'invariant-violated', 'movement.mode');
   });
 
