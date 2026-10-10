@@ -14,12 +14,16 @@ import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import { chargeConversionBudget } from './conversion-budget.ts';
+import { stepEntryReader } from './step-entry-reader.ts';
 
 // The audio group converter (P2-08 S-03/S-05): a sound table of SND mappings becomes the `audio` group's descriptors,
 // exclusive canonical payloads and locator-free source states, within the audio conversion budget.
 
-/** This converter's `ConverterVersion` component; any change to its output for the same source increments it. */
-export const AUDIO_CONVERTER_COMPONENT = 'audio-1';
+/**
+ * This converter's `ConverterVersion` component; any change to its output for the same source increments it. Version 2
+ * adds the P3-03 event and HUD sounds; the P2-08 sounds are unchanged.
+ */
+export const AUDIO_CONVERTER_COMPONENT = 'audio-2';
 /** The only archive sound Assets come from. */
 export const AUDIO_SOURCE_ARCHIVE = 'MAIN/SR.NOB';
 
@@ -156,9 +160,9 @@ async function preflight(archive: ImfatArchiveHandle, mappings: readonly SourceM
 
 /**
  * Converts a sound table into the audio group draft: preflight on the `MAIN/SR.NOB` directory, `verifySourceMappings`,
- * then each row's first locator read and converted under `rules` and charged by its actual payload bytes and sample
- * points. Mappings below the readiness threshold still convert; completeness validation reports them. The first failure
- * rejects the whole group.
+ * then each row's first locator converted under `rules` and charged by its actual payload bytes and sample points;
+ * verification and conversion share one step-local read of each entry (P3-03 spec, 来源映射与核验). Mappings below the
+ * readiness threshold still convert; completeness validation reports them. The first failure rejects the whole group.
  */
 export async function convertAudioGroup(
   source: VerifiedSource,
@@ -171,14 +175,15 @@ export async function convertAudioGroup(
   const mappings = rows.map(({ mapping }) => mapping);
   const archive = rows.length === 0 ? null : await atMapping(alternativePath(0, 0), () => source.openArchive(AUDIO_SOURCE_ARCHIVE));
   if (archive) await preflight(archive, mappings, checkedLimits);
-  const sources = assetSourceStates(await verifySourceMappings({ sourceFingerprint: null, mappings }, source));
+  const readEntry = stepEntryReader(source);
+  const sources = assetSourceStates(await verifySourceMappings({ sourceFingerprint: null, mappings }, source, readEntry));
 
   let usage = EMPTY_BUDGET_USAGE;
   const assets: AssetDescriptor[] = [];
   const payloads: PayloadRecord[] = [];
   for (const [row, { role, mapping }] of rows.entries()) {
     const at = alternativePath(row, 0);
-    const block = await atMapping(at, () => archive!.read(archiveLocator(mapping.parts[0].alternatives[0]).entry.id, 'SND'));
+    const block = await atMapping(at, () => readEntry(archiveLocator(mapping.parts[0].alternatives[0])));
     const { payload, samplePoints } = convertSnd(block, rules, at);
     usage = chargeConversionBudget(checkedLimits, usage, { assets: 1, payloadBytes: payload.byteLength, audioSamples: samplePoints }, at);
     const { id } = mapping.asset;

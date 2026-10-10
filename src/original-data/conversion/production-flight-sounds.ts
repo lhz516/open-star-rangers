@@ -4,7 +4,7 @@ import { AUDIO_SOURCE_ARCHIVE, readSoundTable, type SoundRole, type SoundTableRo
 // The P3-03 S-13 sounds outside the models and EXPL (docs/original/formats/audio.md): the samples the game plays by
 // entry ID and the HUD's own sounds. Names follow the confirmed poster or use; the IDs are frozen like the P2-08 table's
 // and never derived from entry IDs. Whether a sample loops stays the P2-08 `flags` rule; when it plays belongs to P3-14.
-// P3-03 subtask 19 merges these rows into `PRODUCTION_SOUND_TABLE`; until then no production job converts them.
+// `PRODUCTION_SOUND_TABLE` merges these rows with the P2-08 sounds.
 
 const BY_ID = 'docs/original/formats/audio.md#sounds-played-by-id-and-hud-sounds-p3-0110';
 

@@ -56,8 +56,15 @@ describe('logic check', () => {
     expect(Object.keys(report.group!)).toEqual(['status', 'manifestIdentity', 'payloads']);
     expect(report.group).toMatchObject({ status: 'group-complete', manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/) });
     expect(report.group!.payloads.every(payload => Object.keys(payload).join() === 'id,role,bytes,fingerprint')).toBe(true);
+    // The logic Assets and the P3-03 rule-data Assets of the group, by Asset ID.
     expect(report.group!.payloads.map(({ id, role, bytes, fingerprint }) => [id, role, bytes > 0, /^sha256:[0-9a-f]{64}$/.test(fingerprint)])).toEqual([
+      ['data/ai-programs', 'ai-programs', true, true],
+      ['data/base-repair-items', 'base-repair-items', true, true],
+      ['data/comm-menus', 'comm-menus', true, true],
+      ['data/craft-info', 'craft-info', true, true],
       ['data/craft-types', 'craft-types', true, true],
+      ['data/debris-parameters', 'debris-parameters', true, true],
+      ['data/flight-messages', 'flight-messages', true, true],
       ['data/wingman-roster', 'wingman-roster', true, true],
       ['mission/first-campaign', 'mission', true, true],
     ]);

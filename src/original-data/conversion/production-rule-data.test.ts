@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BUDGET_USAGE, readBudgetRecord } from '../../content/budget.ts';
+import { decodeRuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import { AI_PROGRAMS_LIMITS } from '../../content/rule-data/ai-programs.ts';
 import { FLIGHT_MESSAGES_LIMITS } from '../../content/rule-data/flight-messages.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
   assetSourceStates, diagnoseSourceMappings, executableRegion, isRegionLocator, readSourceMappingTable, type OriginalAssetLocator,
 } from '../source-mapping.ts';
+import { buildImfat } from '../synthetic.test-support.ts';
+import { countedVerifiedSource } from './conversion.test-support.ts';
+import { convertRuleData } from './convert-rule-data.ts';
 import { objectOffset } from './production-executable.ts';
+import { regionExecutable } from './production-graphics.test-support.ts';
+import { productionRuleData } from './production-rule-data.test-support.ts';
 import {
   PRODUCTION_RULE_DATA_MAPPINGS, PRODUCTION_RULE_DATA_SHARE, PRODUCTION_RULE_DATA_SOURCES, ruleDataLocators, ruleDataMappings,
 } from './production-rule-data.ts';
@@ -101,9 +107,32 @@ describe('production rule-data mappings', () => {
   });
 });
 
+describe('production rule-data sources in the production structure', () => {
+  it('convert with the production plan and share, reading each mapped entry once and no decoy', async () => {
+    const synthetic = productionRuleData();
+    const { source, reads } = await countedVerifiedSource({
+      ...synthetic.archives,
+      'MAIN/SR.NOB': buildImfat(10_000, [...synthetic.srEntries]),
+      'MAIN/SRANGERS.EXE': regionExecutable(synthetic.writes, synthetic.fixups),
+    });
+    const { partition, usage } = await convertRuleData(source, PRODUCTION_RULE_DATA_SHARE);
+    expect(usage).toEqual(synthetic.usage);
+    expect(partition.assets.map((descriptor, index) => decodeRuleDataPayload(partition.payloads[index].bytes, descriptor)))
+      .toEqual(partition.assets.map(({ role }) => ({ role, content: synthetic.contents[role as keyof typeof synthetic.contents] })));
+    expect(partition.sources?.states.every(({ state }) => state === 'verified')).toBe(true);
+    const { aiPrograms, craftInfo, debrisParameters, commMenus, baseRepairItems } = PRODUCTION_RULE_DATA_SOURCES;
+    const mapped = [
+      craftInfo.table, craftInfo.craftInfo, debrisParameters.table, aiPrograms.globals, aiPrograms.table, ...aiPrograms.parameters, ...aiPrograms.scripts,
+      ...Object.values(commMenus.tables), baseRepairItems.table,
+    ];
+    expect([...reads.keys()].sort()).toEqual([...mapped].sort());
+    expect([...reads.values()].every(count => count === 1)).toBe(true);
+  });
+});
+
 describe('production rule-data share', () => {
-  it('is a complete budget record, empty until the job integration derives it', () => {
-    expect(readBudgetRecord(PRODUCTION_RULE_DATA_SHARE, 'share')).toEqual(EMPTY_BUDGET_USAGE);
+  it('is a complete frozen budget record of Assets and payload bytes (derived in production-package.test.ts)', () => {
+    expect(readBudgetRecord(PRODUCTION_RULE_DATA_SHARE, 'share')).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 16, payloadBytes: 262_144 });
     expect(Object.isFrozen(PRODUCTION_RULE_DATA_SHARE)).toBe(true);
   });
 });

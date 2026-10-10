@@ -141,6 +141,8 @@ describe('stored package record reading', () => {
     ['content schema 2', record => { at(record, 'groups', 0, 'manifest', 'identity').schemaVersion = 2; return record; }, 'record.groups[0].manifest.identity.schemaVersion'],
     ['slice definition version 1', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 1; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
     ['slice definition version 2', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 2; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
+    // P3-03 AC-15: a package of slice definition version 3, stored before P3-03.
+    ['slice definition version 3', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 3; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
   ];
 
   it.each(incompatible)('reads %s as cache-incompatible', (_name, change, location) => {
@@ -269,7 +271,7 @@ describe('declared budget charge', () => {
     // The last defined group (audio) is first in the input, so it is charged last and overflows the limit.
     const reversed = [...groups()].reverse();
     const failure = failureOf(() => chargeDeclaredBudget(generous({ assets: assets.length - 1 }), reversed, 'groups'));
-    expect(failure).toMatchObject({ code: 'over-budget', location: 'groups[0].manifest.assets[4]' });
+    expect(failure).toMatchObject({ code: 'over-budget', location: `groups[0].manifest.assets[${SYNTHETIC_ASSETS.audio.length - 1}]` });
     expect(failure.budget).toEqual([expect.objectContaining({ code: 'budget-exceeded', dimension: 'assets', limit: assets.length - 1 })]);
   });
 });
@@ -299,7 +301,7 @@ describe('restored group assembly', () => {
     ['an extra payload record', (keys: unknown[][], values: unknown[]) => { keys.push([...keys[0].slice(0, 3), 'image/synthetic-other']); values.push(values[0]); }, 'payloads[image/synthetic-other]'],
     ['a malformed payload key', (keys: unknown[][]) => { keys[0] = [...keys[0].slice(0, 3), 'Bad/Id']; }, 'payloads'],
     ['a short payload key', (keys: unknown[][]) => { keys[0] = keys[0].slice(0, 3); }, 'payloads'],
-    ['a malformed payload value', (_keys: unknown[][], values: unknown[]) => { values[0] = { schemaVersion: 1 }; }, 'payloads[font/synthetic-hud].bytes'],
+    ['a malformed payload value', (_keys: unknown[][], values: unknown[]) => { values[0] = { schemaVersion: 1 }; }, 'payloads[data/synthetic-ai-programs].bytes'],
   ])('reads %s as cache-corrupt', (_name, change, location) => {
     const { read, keys, values } = stored();
     change(keys, values);

@@ -100,6 +100,7 @@ describe('graphics payload bindings', () => {
       'image/synthetic-mfd': imageBytes('direct', FLIGHT),
       [MAP_FRAME]: imageBytes('direct', FLIGHT),
       [PANEL]: imageBytes('direct', FLIGHT),
+      'image/synthetic-target-display': imageBytes('direct', FLIGHT),
       ...Object.fromEntries(Object.entries(layoutElements).map(([id, images]) => [id, layoutBytes(images)])),
       [FLIGHT]: paletteBytes(),
     };

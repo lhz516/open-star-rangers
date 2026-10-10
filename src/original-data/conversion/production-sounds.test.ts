@@ -17,9 +17,12 @@ const block = (bitsPerSample: number, flags: number) => {
 const locatorOf = ({ mapping }: (typeof PRODUCTION_SOUND_TABLE)[number]) =>
   mapping.parts.flatMap(({ alternatives }) => alternatives.map(archiveLocator).map(({ discPath, entry, subresource }) => `${discPath}#${entry.type}:${entry.id}/${subresource ?? ''}`));
 
+/** The P2-08 rows: every row but the P3-03 event and HUD sounds, which production-flight-sounds.test.ts checks. */
+const P2_08_ROWS = PRODUCTION_SOUND_TABLE.filter(({ role }) => role !== 'event-sound' && role !== 'hud-sound');
+
 describe('production sound table', () => {
   it('maps every variant of the four core roles and the other model clips, each to one whole SND entry', () => {
-    expect(PRODUCTION_SOUND_TABLE.map(row => [row.role, row.mapping.asset.id, ...locatorOf(row)])).toEqual([
+    expect(P2_08_ROWS.map(row => [row.role, row.mapping.asset.id, ...locatorOf(row)])).toEqual([
       ['explosion-sound', 'sound/explosion/blast-v1', 'MAIN/SR.NOB#SND:10213/'],
       ['explosion-sound', 'sound/explosion/blast-v2', 'MAIN/SR.NOB#SND:10215/'],
       ['explosion-sound', 'sound/explosion/blast-v3', 'MAIN/SR.NOB#SND:10217/'],
@@ -43,7 +46,7 @@ describe('production sound table', () => {
   });
 
   it('declares every row confirmed from docs/original, with U-027 on the clips whose slot meaning is open', () => {
-    for (const { role, mapping } of PRODUCTION_SOUND_TABLE) {
+    for (const { role, mapping } of P2_08_ROWS) {
       const { asset, confidence, unknowns, evidence, resolution } = mapping;
       expect([confidence, resolution]).toEqual(['confirmed', 'declared']);
       // Core roles rest on the listening comparison and the role research; clips on the role research and the MODL slots.
@@ -65,11 +68,12 @@ describe('production sound table', () => {
     expect(draft.sources.states.every(({ state }) => state === 'verified')).toBe(true);
     expect(draft.usage).toEqual(PRODUCTION_SOUND_USAGE);
     expect(PRODUCTION_SOUND_USAGE.assets).toBeLessThanOrEqual(AUDIO_BUDGET_LIMITS.assets);
-    // Only the three slot-0 engine clips loop; every other sound, slot-3 clips included, plays once.
+    // Of the P2-08 sounds only the three slot-0 engine clips loop; every other one, slot-3 clips included, plays once.
+    // The two P3-03 loop sounds loop by their made-up flags.
     expect(draft.payloads.filter(({ bytes }) => readSoundPayload(bytes).loop === 'whole').map(({ id }) => id))
-      .toEqual(['sound/model-clip/01', 'sound/model-clip/02', 'sound/model-clip/03']);
-    // Each entry is read twice: once by mapping verification and once by conversion.
-    expect([...reads.values()].every(count => count === 2)).toBe(true);
+      .toEqual(['sound/hud/instrument-9-loop', 'sound/hud/overlay-loop', 'sound/model-clip/01', 'sound/model-clip/02', 'sound/model-clip/03']);
+    // Mapping verification and conversion share one read of each entry.
+    expect([...reads.values()].every(count => count === 1)).toBe(true);
     expect(reads.size).toBe(PRODUCTION_SOUND_TABLE.length);
   });
 });

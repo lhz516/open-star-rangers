@@ -61,6 +61,16 @@ describe('cache listing', () => {
     expect(restorableEntry([entryFor(production)], PRODUCTION_PACKAGE)).toEqual(entryFor(production));
   });
 
+  it('never offers a production package of the converter version before P3-03, which users import again', () => {
+    const previous = readConverterVersion('osr-import.graphics-3.logic-1.audio-1.models-3');
+    expect(previous).not.toBe(PRODUCTION_PACKAGE.converterVersion);
+    const origin = { type: 'original-import' as const, sourceFingerprint: PRODUCTION_PACKAGE.sourceFingerprint };
+    const old = { ...IDENTITY, converterVersion: previous, origin };
+    expect(restorableEntry([entryFor(old)], PRODUCTION_PACKAGE)).toBeNull();
+    const current = { ...old, converterVersion: PRODUCTION_PACKAGE.converterVersion };
+    expect(restorableEntry([entryFor(old), entryFor(current)], PRODUCTION_PACKAGE)).toEqual(entryFor(current));
+  });
+
   it('shows storage that cannot be listed as unavailable, reporting an unexpected rejection as read-failed', async () => {
     const { holder, cache, reportError } = testHolder();
     cache.lists[0].resolve(failed('storage-unavailable'));

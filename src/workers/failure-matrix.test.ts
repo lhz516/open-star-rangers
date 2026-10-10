@@ -10,6 +10,7 @@ import { sha256Fingerprint } from '../content/sha256.ts';
 import { createImportJobOwner, type ImportJobOwner, type ImportJobSnapshot } from '../app/import/import-job-owner.ts';
 import type { ImportWorkerPortFactory } from '../app/import/import-worker-port.ts';
 import { allGroups, finishedJob, flush, testHolder } from '../app/resources/resource-holder.test-support.ts';
+import { FLIGHT_GRAPHICS_USAGE } from '../original-data/conversion/production-flight-graphics.test-support.ts';
 import { PRODUCTION_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-graphics.ts';
 import { PRODUCTION_LAYOUT_POSITIONS, SYNTHETIC_STATUS_MESSAGES_PAYLOAD } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from '../original-data/conversion/production-model-textures.ts';
@@ -193,8 +194,9 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
   });
 
   it('fixes the budget step usage from the fixture\'s payload sizes', () => {
-    // The production graphics usage less the two 8×8 fonts, the two layouts and the messages the budget step leaves out.
-    const omitted = fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + Object.entries(PRODUCTION_LAYOUT_POSITIONS)
+    // The production graphics usage less the two 8×8 fonts, the two layouts, the messages and the P3-03 flight graphics
+    // the budget step leaves out.
+    const omitted = FLIGHT_GRAPHICS_USAGE.payloadBytes + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + Object.entries(PRODUCTION_LAYOUT_POSITIONS)
       .reduce((total, [id, positions]) => total + layoutPayloadLength({
         elements: positions.map((_, index) => ({ image: readAssetId(`image/${id.slice('layout/'.length)}/element-${index}`), x: 0, y: 0 })),
       }), 0) + statusMessagesPayloadLength(SYNTHETIC_STATUS_MESSAGES_PAYLOAD);
@@ -223,10 +225,10 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
 });
 
 describe('F-08 fixture assumptions', () => {
-  it('removes the texture entry that production graphics mapping 97 names first', () => {
+  it('removes the texture entry that production graphics mapping 286 names first', () => {
     const entry = PRODUCTION_MODEL_TEXTURES[0].entry;
     const first = PRODUCTION_GRAPHICS_MAPPINGS.mappings.findIndex(({ parts }) => archiveLocator(parts[0].alternatives[0]).entry.id === entry);
-    expect(first).toBe(97);
+    expect(first).toBe(286);
     const archive = scenarioSource('texture-missing')!.covered['MAIN/SR.NOB'] as Uint8Array;
     expect(archive.length).toBeLessThan((sliceCoveredFiles()['MAIN/SR.NOB']).length);
   });

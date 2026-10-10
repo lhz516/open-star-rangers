@@ -4,6 +4,7 @@ import { ContentContractError } from '../content/contract-validation.ts';
 import { withPlayerWingmanOption } from '../content/logic/logic-content.test-support.ts';
 import { syntheticSourceGroup } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_CONVERTER_VERSION } from '../original-data/conversion/converter-version.ts';
+import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-flight-graphics.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
 import { PRODUCTION_MODEL_TEXTURES } from '../original-data/conversion/production-model-textures.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
@@ -72,16 +73,19 @@ export const BUDGET_LAST_ASSET = 'font/hud/4x6';
  */
 export const BUDGET_PAYLOAD_BYTES = 9_624;
 
+const FLIGHT_GRAPHICS: ReadonlySet<string> = new Set(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings.map(({ asset }) => asset.id));
+
 /**
- * The budget scenarios' graphics step: the production graphics without the layouts, the two 8×8 fonts and the status
- * display messages, with the payload share replaced by `payloadBytes`, and no logic step or model, on the disc of
+ * The budget scenarios' graphics step: the production graphics without the layouts, the two 8×8 fonts, the status
+ * display messages and the P3-03 flight graphics, with the payload share replaced by `payloadBytes`, and no logic step
+ * or model, on the disc of
  * `scenario`. Palettes, images and fonts are charged in that order, each in Asset ID order, so the 4×6 font is charged
  * last, and its table is read only after its charge. Without logic and model shares the job's payload limit is `payloadBytes`, and the graphics step
  * charges from zero, so `BUDGET_PAYLOAD_BYTES` passes and one byte less fails at the 4×6 font.
  */
 export function graphicsBudgetJob(payloadBytes: number, scenario: 'graphics' | 'graphics-corrupt' = 'graphics'): ImportJob {
   const kept = ({ asset: { id } }: { readonly asset: { readonly id: string } }) =>
-    !id.startsWith('layout/') && !id.startsWith('data/') && (!id.startsWith('font/') || id === BUDGET_LAST_ASSET);
+    !id.startsWith('layout/') && !id.startsWith('data/') && !FLIGHT_GRAPHICS.has(id) && (!id.startsWith('font/') || id === BUDGET_LAST_ASSET);
   const graphics = {
     mappings: { ...PRODUCTION_GRAPHICS_MAPPINGS, mappings: PRODUCTION_GRAPHICS_MAPPINGS.mappings.filter(kept) },
     declarations: PRODUCTION_GRAPHICS_DECLARATIONS.filter(kept),

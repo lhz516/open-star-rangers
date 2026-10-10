@@ -15,13 +15,15 @@ import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
 import {
   cockpitLayoutBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration,
-  layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock,
+  layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, viewLabelTable,
 } from '../original-data/conversion/conversion.test-support.ts';
+import { FLIGHT_GRAPHICS_USAGE } from '../original-data/conversion/production-flight-graphics.test-support.ts';
 import {
-  COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionCockpitBlock, productionGraphicsFiles,
+  COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_GRAPHICS_REGION_WRITES, productionCockpitBlock, productionGraphicsFiles, regionExecutable,
 } from '../original-data/conversion/production-graphics.test-support.ts';
+import { productionRuleData } from '../original-data/conversion/production-rule-data.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
-import { syntheticEffectExecutable } from '../original-data/conversion/production-effects.test-support.ts';
+import { productionEffectRegionWrites } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.test-support.ts';
@@ -116,31 +118,46 @@ export const NO_LOGIC: LogicStepInput = Object.freeze({
   share: EMPTY_BUDGET_USAGE,
 });
 
-/** A model stage with no models or effects to convert whatever the logic step bound; the models group holds only the graphics partition. */
+/**
+ * A model stage with no models, effects or flight data to convert whatever the logic step bound; the models group holds
+ * only the graphics partition.
+ */
 export const NO_MODELS: ModelStepInput = Object.freeze({
   inputs: () => ({ mappings: { sourceFingerprint: null, mappings: [] }, declarations: [] }),
   references: Object.freeze({ textures: new Map(), sounds: new Map() }),
   effects: Object.freeze({ mappings: { sourceFingerprint: null, mappings: [] }, declarations: [] }),
+  flightData: Object.freeze({
+    mappings: { sourceFingerprint: null, mappings: [] }, declarations: { assets: [], references: { sourceFingerprint: null, mappings: [] } },
+  }),
   share: EMPTY_BUDGET_USAGE,
 });
 
+let sliceExecutable: Uint8Array | undefined;
+
 /**
- * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics entries, the M2ID
- * list with valid models for the craft types the default mission binds and their meshes, the effect model, the RENS
- * entry and synthetic samples at every entry of the production sound table; `MAIN/SCENARIO.NOB` with the campaign
- * table and `scenario` as the selected mission; and `MAIN/SRANGERS.EXE`, a synthetic LE executable with effect data
- * at the production regions. `corruptMesh` breaks the mesh five models share, which the model step rejects as
- * `invalid-payload`.
+ * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics and flight graphics
+ * entries, the M2ID list with valid models for the craft types the default mission binds and their meshes, the effect
+ * model, the RENS entry, the explosion and nebula lists, the base repair TABL and synthetic samples at every entry of
+ * the production sound table; `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the selected mission; the
+ * production-structure CRAFT, DEBRIS, AISTUFF and COMM archives of the rule data; and `MAIN/SRANGERS.EXE`, a synthetic
+ * LE executable with the effect, graphics and rule-data regions at their production addresses. `corruptMesh` breaks the
+ * mesh five models share, which the model step rejects as `invalid-payload`.
  */
 export function sliceCoveredFiles(
   { scenario = syntheticScenario(defaultScenarioSpec()), corruptMesh = false }: { readonly scenario?: ReturnType<typeof syntheticScenario>; readonly corruptMesh?: boolean } = {},
 ): Record<string, Uint8Array> {
+  const ruleData = productionRuleData();
+  sliceExecutable ??= regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...ruleData.writes], ruleData.fixups);
   return {
     'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario),
     'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
-    'MAIN/SRANGERS.EXE': syntheticEffectExecutable(),
+    ...ruleData.archives,
+    'MAIN/SRANGERS.EXE': sliceExecutable.slice(),
   };
 }
+
+/** The rule-data conversion usage on `sliceCoveredFiles()`. */
+export const RULE_DATA_USAGE: BudgetRecord = productionRuleData().usage;
 
 /** An audio stage with nothing to convert; its group has no Assets. */
 export const NO_AUDIO: AudioStageInput = Object.freeze({ table: [], rules: Object.freeze({ flags: Object.freeze([]), s16le: false }) });
@@ -148,13 +165,22 @@ export const NO_AUDIO: AudioStageInput = Object.freeze({ table: [], rules: Objec
 /** A `flags` value with a test meaning only; production meanings come from research. */
 const SYNTHETIC_FLAGS = 7;
 
-/** The four core sounds of the synthetic audio disc, in ascending Asset ID order, at entry IDs no graphics entry uses. */
-const SOUNDS = Object.freeze([
+/** A one-sample 8-bit sound of a version 4 event or HUD role at `entry`. */
+const namedSound = (role: 'event-sound' | 'hud-sound', index: number, entry: number) =>
+  ({ role, id: `sound/${role === 'event-sound' ? 'event' : 'hud'}/synthetic-${index + 1}`, entry, bitsPerSample: 8, samples: [entry & 0xff] });
+
+/**
+ * The sounds of the synthetic audio disc, in ascending Asset ID order, at entry IDs no graphics entry uses: the four
+ * core sounds and the eight event and three HUD sounds slice definition version 4 requires.
+ */
+const SOUNDS: readonly { readonly role: string; readonly id: string; readonly entry: number; readonly bitsPerSample: number; readonly samples: readonly number[] }[] = Object.freeze([
+  ...Array.from({ length: 8 }, (_, index) => namedSound('event-sound', index, 12_005 + index)),
   { role: 'explosion-sound', id: 'sound/explosion', entry: 12_001, bitsPerSample: 16, samples: [0x00, 0x80, 0xff, 0x7f] },
   { role: 'fire-sound', id: 'sound/fire', entry: 12_002, bitsPerSample: 8, samples: [0, 64, 128, 192, 255] },
+  ...Array.from({ length: 3 }, (_, index) => namedSound('hud-sound', index, 12_013 + index)),
   { role: 'missile-sound', id: 'sound/missile', entry: 12_003, bitsPerSample: 8, samples: [10, 20, 30] },
   { role: 'warp-sound', id: 'sound/warp', entry: 12_004, bitsPerSample: 8, samples: [200, 100, 50, 25, 12, 6] },
-] as const);
+]);
 
 /** The synthetic sound table and rules that convert the sounds of `audioCoveredFiles()` into a complete audio group. */
 export const SYNTHETIC_AUDIO: AudioStageInput = Object.freeze({
@@ -172,7 +198,7 @@ export const SYNTHETIC_AUDIO: AudioStageInput = Object.freeze({
   rules: Object.freeze({ flags: Object.freeze([Object.freeze({ value: SYNTHETIC_FLAGS, channels: 1, loop: 'none' })]), s16le: true }),
 });
 
-/** The audio conversion usage of `SYNTHETIC_AUDIO` on `audioCoveredFiles()`: four mono clips, one of them 16-bit. */
+/** The audio conversion usage of `SYNTHETIC_AUDIO` on `audioCoveredFiles()`: 15 mono clips, one of them 16-bit. */
 export const AUDIO_CONVERSION_USAGE: BudgetRecord = Object.freeze({
   ...EMPTY_BUDGET_USAGE,
   assets: SOUNDS.length,
@@ -180,13 +206,16 @@ export const AUDIO_CONVERSION_USAGE: BudgetRecord = Object.freeze({
   audioSamples: SOUNDS.reduce((total, { bitsPerSample, samples }) => total + samples.length / (bitsPerSample / 8), 0),
 });
 
+/** The index of the fire sound in `SYNTHETIC_AUDIO`'s table, which `audioCoveredFiles(true)` corrupts. */
+export const SYNTHETIC_FIRE_SOUND = SOUNDS.findIndex(({ id }) => id === 'sound/fire');
+
 /**
  * The covered files of a disc in the production graphics structure whose `MAIN/SR.NOB` also holds the synthetic SND
  * entries of `SYNTHETIC_AUDIO`; `corrupt` gives the fire sound a `flags` value the rules do not accept.
  */
 export function audioCoveredFiles(corrupt = false): Record<string, Uint8Array> {
   return productionGraphicsFiles({}, SOUNDS.map(({ entry, bitsPerSample, samples }, index) => ({
-    id: entry, type: 'SND', ...syntheticSnd({ samples: [...samples], bitsPerSample, flags: corrupt && index === 1 ? SYNTHETIC_FLAGS + 1 : SYNTHETIC_FLAGS }),
+    id: entry, type: 'SND', ...syntheticSnd({ samples: [...samples], bitsPerSample, flags: corrupt && index === SYNTHETIC_FIRE_SOUND ? SYNTHETIC_FLAGS + 1 : SYNTHETIC_FLAGS }),
   })));
 }
 
@@ -216,16 +245,17 @@ const P2_05_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + fontPayloadLength(25
 
 /**
  * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
- * the P2-05 palettes and fonts, the slice textures with their palettes, and the P2-07 cockpit, HUD and map Assets.
+ * the P2-05 palettes and fonts, the slice textures with their palettes, the P2-07 cockpit, HUD and map Assets and the
+ * P3-03 flight graphics.
  */
-export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes;
+export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes + FLIGHT_GRAPHICS_USAGE.payloadBytes;
 
 /**
  * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
- * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures and the P2-07
- * cockpit, HUD and map Assets.
+ * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures, the P2-07
+ * cockpit, HUD and map Assets and the P3-03 flight graphics.
  */
-export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE, FLIGHT_GRAPHICS_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   paletteEntries: 512,
@@ -239,7 +269,7 @@ export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COC
  */
 export const PRODUCTION_CONVERSION_USAGE: BudgetRecord = addBudgets(GRAPHICS_CONVERSION_USAGE, PRODUCTION_SOUND_USAGE, 'usage');
 
-const { data: DATA_ENTRY, texture: TEX_ENTRY, cockpit: CCKD_ENTRY, mfd: MFDD_ENTRY, table: TABL_ENTRY } = GRAPHICS_ENTRIES;
+const { data: DATA_ENTRY, texture: TEX_ENTRY, cockpit: CCKD_ENTRY, mfd: MFDD_ENTRY, table: TABL_ENTRY, labels: LABELS_ENTRY } = GRAPHICS_ENTRIES;
 const FLIGHT_PALETTE = 'palette/flight/cockpit-hud-map';
 const MAP_PALETTE = 'palette/map/frame/element-0';
 const FRONT_ELEMENTS = ['image/cockpit/front/element-0', 'image/cockpit/front/element-1'];
@@ -261,9 +291,10 @@ const cockpitAsset = (declaration: Record<string, unknown>, type: string, entry:
 
 /**
  * The Assets of the synthetic cockpit disc in ascending ID order. The `cockpit-hud-map` partition fills every role of
- * the group with the P2-05 shapes (the flight palette and three fonts) and the P2-07 ones (the front and map frame
- * layouts with their CCKD element images, an element's embedded palette, MFDD and TABL records); the `models`
- * partition is one texture with its palette and the models flight palette.
+ * the group with the P2-05 shapes (the flight palette and three fonts), the P2-07 ones (the front and map frame layouts
+ * with their CCKD element images, an element's embedded palette, MFDD and TABL records) and the P3-03 ones (a target
+ * display image from the TEX entry with its embedded palette, and the view labels); the `models` partition is one
+ * texture with its palette and the models flight palette.
  */
 const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   cockpitAsset(fontDeclaration('font/hud/4x6', { cell: { width: 4, height: 6 } }), 'CCKD', CCKD_ENTRY, 'fonts/2'),
@@ -284,6 +315,11 @@ const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   cockpitAsset(paletteDeclaration('palette/flight/models', 'models'), 'DATA', DATA_ENTRY),
   cockpitAsset({ ...paletteDeclaration(MAP_PALETTE), role: 'map-palette' }, 'CCKD', CCKD_ENTRY, 'groups/2/elements/0/palette'),
   cockpitAsset({ ...paletteDeclaration('palette/model-texture/01', 'models'), role: 'texture-palette' }, 'TEX', TEX_ENTRY, 'palette'),
+  cockpitAsset(imageDeclaration('image/hud/target-display', 'palette/hud/target-display', {
+    role: 'target-display', display: { nearest: FLIGHT_PALETTE },
+  }), 'TEX', TEX_ENTRY),
+  cockpitAsset({ ...paletteDeclaration('palette/hud/target-display'), role: 'texture-palette' }, 'TEX', TEX_ENTRY, 'palette'),
+  cockpitAsset({ asset: { id: 'data/hud/view-labels', kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map' }, 'TABL', LABELS_ENTRY, 'labels/8'),
 ].sort((left, right) => compareText(left.id, right.id));
 
 /** The ID, role and group of every Asset `cockpitGraphics()` converts, in ascending ID order. */
@@ -326,7 +362,7 @@ const MFD = mfdBlock([[rawImageBlock(3, 2, [9, 8, 7, 6, 5, 4])], [rawImageBlock(
 const TABLE = tableBlock([rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]), rawImageBlock(1, 2, [0, 15])]);
 
 /**
- * The covered files of a synthetic disc whose `MAIN/SR.NOB` holds the DATA, TEX, CCKD, MFDD and TABL entries
+ * The covered files of a synthetic disc whose `MAIN/SR.NOB` holds the DATA, TEX, CCKD, MFDD and the two TABL entries
  * `cockpitGraphics()` maps: the CCKD has the front layout in slot 0, an empty slot 1 and the map frame in slot 2.
  * `corrupt` sets a front element's +44 field to 2, which the converter rejects as `invalid-payload`.
  */
@@ -336,7 +372,7 @@ export function cockpitCoveredFiles(corrupt = false): Record<string, Uint8Array>
     [],
     [{ record: MAP_FRAME, x: 1, y: 1, flags: [1, 0] }],
   ]);
-  return { [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE }) };
+  return { [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE, labels: viewLabelTable('\x80synthetic-label') }) };
 }
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */

@@ -2,7 +2,7 @@ import type { ResourceGroup } from './asset-contract.ts';
 import type { GroupCompletenessResult, PackageCompletenessResult } from './completeness.ts';
 import { SLICE_ID } from './content-identity.ts';
 import { sha256Fingerprint } from './sha256.ts';
-import { CLASSIC_P2_SLICE } from './slice-definition.ts';
+import { CLASSIC_P2_SLICE, type SliceDefinition, type SliceRole } from './slice-definition.ts';
 
 // Code-generated synthetic content for contract tests; it never holds original data. The package covers every
 // CLASSIC_P2_SLICE role, and builders return fresh mutable plain data that a test may corrupt.
@@ -16,11 +16,31 @@ export interface SyntheticAssetSpec {
   readonly schemaVersion?: number;
 }
 
+/** The eight event sounds and three HUD sounds version 4 requires exactly. */
+const EVENT_SOUNDS = Array.from({ length: 8 }, (_, index) => ({ id: `sound/synthetic-signal-${index + 1}`, role: 'event-sound' }));
+const HUD_SOUNDS = Array.from({ length: 3 }, (_, index) => ({ id: `sound/synthetic-tone-${index + 1}`, role: 'hud-sound' }));
+
 export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly SyntheticAssetSpec[]>> = {
-  logic: [{ id: 'mission/synthetic-first', role: 'mission', dependencies: ['model/synthetic-base', 'model/synthetic-enemy-a', 'model/synthetic-enemy-b', 'model/synthetic-player'] }],
+  logic: [
+    { id: 'data/synthetic-ai-programs', role: 'ai-programs' },
+    { id: 'data/synthetic-base-repair', role: 'base-repair-items' },
+    { id: 'data/synthetic-comm-menus', role: 'comm-menus' },
+    { id: 'data/synthetic-craft-info', role: 'craft-info' },
+    { id: 'data/synthetic-debris-parameters', role: 'debris-parameters' },
+    { id: 'data/synthetic-flight-messages', role: 'flight-messages' },
+    { id: 'mission/synthetic-first', role: 'mission', dependencies: ['model/synthetic-base', 'model/synthetic-enemy-a', 'model/synthetic-enemy-b', 'model/synthetic-player'] },
+  ],
   models: [
+    // The explosion table and the nebula list require their animations, frames and images through their dependencies.
+    { id: 'data/synthetic-animation', role: 'explosion-animation', dependencies: ['image/synthetic-spark'] },
+    { id: 'data/synthetic-explosions', role: 'explosion-table', dependencies: ['data/synthetic-animation', 'sound/synthetic-explosion'] },
+    { id: 'data/synthetic-nebulae', role: 'nebula-backgrounds', dependencies: ['image/synthetic-nebula'] },
+    { id: 'data/synthetic-scene', role: 'scene-settings' },
     { id: 'image/synthetic-debris', role: 'debris' },
     { id: 'image/synthetic-hull', role: 'model-texture' },
+    { id: 'image/synthetic-nebula', role: 'nebula-background' },
+    { id: 'image/synthetic-shimmer', role: 'hit-shimmer' },
+    { id: 'image/synthetic-spark', role: 'explosion-frame' },
     { id: 'model/synthetic-base', role: 'base', dependencies: ['image/synthetic-hull'] },
     { id: 'model/synthetic-enemy-a', role: 'enemy-ship', dependencies: ['image/synthetic-hull'] },
     { id: 'model/synthetic-enemy-b', role: 'enemy-ship' },
@@ -29,9 +49,11 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'model/synthetic-projectile', role: 'projectile' },
   ],
   'cockpit-hud-map': [
+    { id: 'data/synthetic-view-labels', role: 'view-labels' },
     { id: 'font/synthetic-hud', role: 'font' },
     { id: 'image/synthetic-mfd', role: 'hud-mfd' },
     { id: 'image/synthetic-panel', role: 'cockpit-image' },
+    { id: 'image/synthetic-target-display', role: 'target-display' },
     { id: 'layout/synthetic-front', role: 'front-cockpit', dependencies: ['font/synthetic-hud', 'image/synthetic-panel'] },
     { id: 'layout/synthetic-map', role: 'strategic-map', dependencies: ['font/synthetic-hud'] },
   ],
@@ -40,6 +62,8 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'sound/synthetic-explosion', role: 'explosion-sound' },
     { id: 'sound/synthetic-fire', role: 'fire-sound' },
     { id: 'sound/synthetic-missile', role: 'missile-sound' },
+    ...EVENT_SOUNDS,
+    ...HUD_SOUNDS,
     { id: 'sound/synthetic-warp', role: 'warp-sound' },
   ],
 };
@@ -99,3 +123,17 @@ export const syntheticPackage = () => CLASSIC_P2_SLICE.groups.map(group => synth
 /** `code@path` of each diagnostic: the stable classification tests assert on, never the reason text. */
 export const diagnosticCodes = (result: GroupCompletenessResult | PackageCompletenessResult): string[] =>
   ('diagnostics' in result ? result.diagnostics : []).map(({ code, path }) => `${code}@${path}`);
+
+/** The roles slice definition version 4 added (P3-03 spec, 切片定义版本 4), in definition order. */
+export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
+  'craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages', 'scene-settings', 'explosion-table',
+  'nebula-backgrounds', 'hit-shimmer', 'target-display', 'view-labels', 'event-sound', 'hud-sound',
+]);
+
+/**
+ * `CLASSIC_P2_SLICE` with only the roles version 3 required, for tests of a step whose group lacks the Assets P3-03
+ * steps add to it.
+ */
+export const P2_ROLES_SLICE: SliceDefinition = Object.freeze({
+  ...CLASSIC_P2_SLICE, roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !VERSION_4_ROLES.includes(role))),
+});

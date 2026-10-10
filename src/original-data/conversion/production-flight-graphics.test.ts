@@ -141,13 +141,13 @@ describe('production flight graphics', () => {
     expect(diagnostics.map(({ code }) => code)).toEqual(new Array(mappings.length).fill('source-unverified'));
   });
 
-  it('joins the production graphics tables without a repeated Asset or an unbound palette', () => {
-    const declarations = readGraphicsDeclarations([...PRODUCTION_GRAPHICS_DECLARATIONS, ...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS]);
-    expect(declarations).toHaveLength(PRODUCTION_GRAPHICS_DECLARATIONS.length + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length);
-    const table = readSourceMappingTable({
-      sourceFingerprint: null,
-      mappings: [...PRODUCTION_GRAPHICS_MAPPINGS.mappings, ...PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings].sort((left, right) => compareText(left.asset.id, right.asset.id)),
-    });
+  it('is part of the production graphics tables, without a repeated Asset or an unbound palette', () => {
+    const flight = new Set(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings.map(({ asset }) => asset.id));
+    expect(PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ asset }) => flight.has(asset.id))).toEqual(PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS);
+    expect(PRODUCTION_GRAPHICS_MAPPINGS.mappings.filter(({ asset }) => flight.has(asset.id))).toEqual(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings);
+    // The merged tables read as one: unique IDs, every bound palette declared, one mapping per declaration.
+    const declarations = readGraphicsDeclarations(PRODUCTION_GRAPHICS_DECLARATIONS);
+    const table = readSourceMappingTable(PRODUCTION_GRAPHICS_MAPPINGS);
     expect(table.mappings.map(({ asset }) => asset.id)).toEqual(declarations.map(({ asset }) => asset.id).sort(compareText));
   });
 

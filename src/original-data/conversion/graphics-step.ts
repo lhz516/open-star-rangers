@@ -45,10 +45,26 @@ export interface GraphicsStepResult {
  * draft is an empty group.
  */
 export function stepGroupDraft(group: ResourceGroup, results: readonly GraphicsStepResult[], sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
-  const items = results
-    .flatMap(({ groups }) => groups.filter(partition => partition.group === group))
-    .flatMap(({ descriptors, payloads, sources }) => descriptors.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources[index] })))
-    .sort((left, right) => compareText(left.descriptor.id, right.descriptor.id));
+  const partitions = results.flatMap(({ groups }) => groups.filter(partition => partition.group === group));
+  return mergedDraft(group, partitions.flatMap(({ descriptors, payloads, sources }) =>
+    descriptors.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources[index] }))), sourceFingerprint);
+}
+
+/**
+ * The draft of `group` merged by Asset ID from drafts of it, such as the logic and rule-data drafts of the logic group,
+ * as `stepGroupDraft` merges step partitions. Each draft's assets, payloads and source states are in the same ID order.
+ */
+export function mergeGroupDrafts(group: ResourceGroup, drafts: readonly GroupDraft[], sourceFingerprint: SourceStateSet['sourceFingerprint']): GroupDraft {
+  return mergedDraft(group, drafts.flatMap(({ assets, payloads, sources }) =>
+    assets.map((descriptor, index) => ({ descriptor, payload: payloads[index], state: sources?.states[index] }))), sourceFingerprint);
+}
+
+function mergedDraft(
+  group: ResourceGroup,
+  unordered: readonly { readonly descriptor: AssetDescriptor; readonly payload: PayloadRecord; readonly state: AssetSourceState | undefined }[],
+  sourceFingerprint: SourceStateSet['sourceFingerprint'],
+): GroupDraft {
+  const items = [...unordered].sort((left, right) => compareText(left.descriptor.id, right.descriptor.id));
   return Object.freeze({
     group,
     assets: readAssetDescriptors(items.map(({ descriptor }) => descriptor), `${group}.assets`),

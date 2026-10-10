@@ -2,7 +2,7 @@ import type { AssetKind } from './asset-id.ts';
 import { RESOURCE_GROUPS, type ResourceGroup } from './asset-contract.ts';
 import { SLICE_ID, type SliceDefinitionVersion, type SliceId } from './content-identity.ts';
 
-export const SLICE_DEFINITION_VERSION = 3;
+export const SLICE_DEFINITION_VERSION = 4;
 
 export type SliceRole =
   | 'mission'
@@ -19,7 +19,21 @@ export type SliceRole =
   | 'fire-sound'
   | 'missile-sound'
   | 'explosion-sound'
-  | 'warp-sound';
+  | 'warp-sound'
+  | 'craft-info'
+  | 'debris-parameters'
+  | 'ai-programs'
+  | 'comm-menus'
+  | 'base-repair-items'
+  | 'flight-messages'
+  | 'scene-settings'
+  | 'explosion-table'
+  | 'nebula-backgrounds'
+  | 'hit-shimmer'
+  | 'target-display'
+  | 'view-labels'
+  | 'event-sound'
+  | 'hud-sound';
 
 /**
  * Structural campaign selector from the approved spec selection record.
@@ -82,7 +96,10 @@ function requirement(
  * is a contract change that requires a spec revision and a new definition version.
  * Projectile, missile and debris allow model, image or data representations: version 2 admits data for the
  * generated effect geometry P2-06 imports (U-027); version 3 lets the cockpit-hud-map group own data for the status display
- * messages P2-07 imports. Core sounds allow several sample clips (U-004/U-027).
+ * messages P2-07 imports. Core sounds allow several sample clips (U-004/U-027). Version 4 (P3-03 spec, 切片定义版本 4)
+ * requires exactly one Asset for each root of the rule-data and flight-data closure and exactly the eight event and three
+ * HUD sounds; the explosion animations and frames, the nebula images and their palettes are required through the
+ * dependency closure of those roots, not as roles.
  */
 const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   sliceId: SLICE_ID,
@@ -112,6 +129,14 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
     requirement('missile-sound', 'audio', ['sound'], 1, null),
     requirement('explosion-sound', 'audio', ['sound'], 1, null),
     requirement('warp-sound', 'audio', ['sound'], 1, null),
+    ...(['craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages'] as const)
+      .map(role => requirement(role, 'logic', ['data'], 1, 1)),
+    ...(['scene-settings', 'explosion-table', 'nebula-backgrounds'] as const).map(role => requirement(role, 'models', ['data'], 1, 1)),
+    requirement('hit-shimmer', 'models', ['image'], 1, 1),
+    requirement('target-display', 'cockpit-hud-map', ['image'], 1, 1),
+    requirement('view-labels', 'cockpit-hud-map', ['data'], 1, 1),
+    requirement('event-sound', 'audio', ['sound'], 8, 8),
+    requirement('hud-sound', 'audio', ['sound'], 3, 3),
   ]),
 };
 

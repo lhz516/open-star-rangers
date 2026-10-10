@@ -103,7 +103,7 @@ describe('model conversion', () => {
     expect(convert({ usage: start, limits: { ...LIMITS, assets: 5, payloadBytes: totals().payloadBytes + 100 } }).usage)
       .toEqual({ ...totals(), assets: 5, payloadBytes: totals().payloadBytes + 100 });
     expect(convertModels([], { models: new Map(), meshes: new Map() }, REFERENCES, LIMITS, start)).toEqual({ assets: [], usage: start });
-    expect(MODEL_CONVERTER_COMPONENT).toBe('models-3');
+    expect(MODEL_CONVERTER_COMPONENT).toBe('models-4');
   });
 
   it('passes when the totals equal the limits exactly', () => {

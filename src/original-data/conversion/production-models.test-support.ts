@@ -4,10 +4,11 @@ import { pairGeometry, quadGeometry } from '../../content/models/models.test-sup
 import { DEFAULT_MODEL_IDS, syntheticModelEntries } from '../formats/formats.test-support.ts';
 import { syntheticModl, type SyntheticEntry, type SyntheticModlFields } from '../synthetic.test-support.ts';
 import { meshBlockFor, triangleMeshBlock } from './conversion.test-support.ts';
-import { syntheticRensEntry } from './production-effects.test-support.ts';
+import { productionFlightDataEntries } from './flight-data.test-support.ts';
 import { productionGraphicsEntries } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from './production-model-textures.ts';
 import { PRODUCTION_EFFECT_MODELS, PRODUCTION_MODEL_REFERENCES } from './production-models.ts';
+import { productionRuleData } from './production-rule-data.test-support.ts';
 import { productionSoundEntries } from './production-sounds.test-support.ts';
 
 // Valid synthetic models for the five MODL entries the default synthetic mission binds and for the effect models, with
@@ -72,17 +73,26 @@ export function productionModelReferences(entry: number): { readonly textures: r
   };
 }
 
+/** A MUSC entry no production mapping names, which no job may read (P3-03 spec, AC-16). */
+export const SLICE_DECOY_ENTRY = 21_101;
+
+/** The flight data entries the graphics entries lack: the RENS entry with its scene settings header, EXIC, EXPL and NEBC. */
+const FLIGHT_DATA_TYPES: ReadonlySet<string> = new Set(['RENS', 'EXIC', 'EXPL', 'NEBC']);
+
 /**
- * The `MAIN/SR.NOB` entries of the synthetic production disc, in ascending ID order: the production graphics, the M2ID
- * list with the valid bound models, the effect models, their meshes, the synthetic RENS entry and synthetic samples at
- * every production sound table entry. `corruptMesh` breaks the shared quad mesh.
+ * The `MAIN/SR.NOB` entries of the synthetic production disc, in ascending ID order: the production graphics with the
+ * flight graphics, the M2ID list with the valid bound models, the effect models, their meshes, the production RENS entry
+ * with the effect records and scene settings, the explosion and nebula lists, the base repair TABL of the rule data,
+ * synthetic samples at every production sound table entry and the decoy MUSC entry. `corruptMesh` breaks the shared
+ * quad mesh.
  */
 export const productionSliceEntries = (corruptMesh = false): SyntheticEntry[] => {
   const blocks = productionModelBlocks();
   return [
     ...productionGraphicsEntries(), ...syntheticModelEntries(DEFAULT_MODEL_IDS, blocks),
     ...EFFECT_MODEL_ENTRIES.map(id => ({ id, type: 'MODL', ...blocks.get(id)! })), ...productionMeshEntries(corruptMesh), ...productionSoundEntries(),
-    syntheticRensEntry(),
+    ...productionFlightDataEntries().filter(({ type }) => FLIGHT_DATA_TYPES.has(type)), ...productionRuleData().srEntries,
+    { id: SLICE_DECOY_ENTRY, type: 'MUSC', data: Uint8Array.from({ length: 32 }, (_, index) => index + 1) },
   ].sort((left, right) => left.id - right.id);
 };
 

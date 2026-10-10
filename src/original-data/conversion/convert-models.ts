@@ -13,8 +13,11 @@ import { SourceError } from '../source-error.ts';
 import { chargeConversionBudget, readConversionUsage } from './conversion-budget.ts';
 import { readModelDeclarations } from './model-declarations.ts';
 
-/** The model converter's component of the production `ConverterVersion`; bump it when model output changes. */
-export const MODEL_CONVERTER_COMPONENT = 'models-3';
+/**
+ * The model stage's component of the production `ConverterVersion`: the models, effects and flight data it converts into
+ * the models group. Bump it when that output changes; version 4 adds the P3-03 flight data Assets.
+ */
+export const MODEL_CONVERTER_COMPONENT = 'models-4';
 
 /** Source blocks already read by the step: each declared model's whole MODL entry, and the MESH entries its parts name. */
 export interface ModelSources {

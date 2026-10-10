@@ -71,10 +71,11 @@ export interface SyntheticRuleData {
   readonly executable: Uint8Array;
 }
 
-const entryOf = (id: number, type: string, { bytes, relocations }: SyntheticBlock): SyntheticEntry => ({ id, type, data: bytes, relocations });
+/** The archive entry `id` of type `type` holding `block`. */
+export const entryOf = (id: number, type: string, { bytes, relocations }: SyntheticBlock): SyntheticEntry => ({ id, type, data: bytes, relocations });
 
 /** TABL 10165: one 0x7C-byte record per selector over filler, with two image pointers to the trailing data, then that data. */
-function baseRepairBlock(selectors: readonly number[]): SyntheticBlock {
+export function baseRepairBlock(selectors: readonly number[]): SyntheticBlock {
   const recordsEnd = selectors.length * BASE_REPAIR_RECORD.bytes;
   const bytes = Uint8Array.from({ length: recordsEnd + 64 }, (_, index) => ((index * 29) % 255) + 1);
   const view = new DataView(bytes.buffer);

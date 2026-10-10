@@ -4,8 +4,7 @@ import { validateGroup } from '../../content/completeness.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
 import { readSoundPayload } from '../../content/sound-payload.ts';
-import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
-import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
+import { P2_ROLES_SLICE, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../disc/disc-image.ts';
 import { syntheticFileDisc } from '../disc/disc.test-support.ts';
 import type { SndFormatRules } from '../formats/snd.ts';
@@ -120,7 +119,8 @@ async function failure(rows: unknown, options: AudioConversionOptions = {}) {
   throw new Error('expected the conversion to fail');
 }
 
-const group = (draft: Awaited<ReturnType<typeof convertAudioGroup>>, sourceFingerprint: string) => validateGroup(CLASSIC_P2_SLICE, {
+// The event and HUD sounds, whose exact counts these core-role tables do not fill, are production-flight-sounds.test.ts's.
+const group = (draft: Awaited<ReturnType<typeof convertAudioGroup>>, sourceFingerprint: string) => validateGroup(P2_ROLES_SLICE, {
   manifest: { identity: syntheticIdentity({ origin: { type: 'original-import', sourceFingerprint } }), group: 'audio', assets: draft.assets },
   payloads: draft.payloads,
   sources: draft.sources,
@@ -145,9 +145,9 @@ describe('audio group conversion', () => {
     expect(formats).toEqual([[22_050, 1, 's16le', 'none', 2], [11_025, 1, 'u8', 'none', 5], [8_000, 2, 'u8', 'whole', 3], [11_025, 1, 'u8', 'none', 3], [44_100, 1, 'u8', 'none', 4]]);
     expect(draft.payloads.every(({ schemaVersion }, index) => schemaVersion === 1 && draft.assets[index].payloadIdentity.schemaVersion === 1)).toBe(true);
     expect(payloadTransferList(draft.payloads.map(({ bytes }) => bytes))).toHaveLength(5);
-    // Only the first alternative of the aliased clip is converted; verification read both beforehand.
-    expect(blockReads).toEqual([10_002, 10_001, 10_003, 10_005, 10_006, 10_004, 10_002, 10_001, 10_003, 10_005, 10_004]);
-    expect(AUDIO_CONVERTER_COMPONENT).toBe('audio-1');
+    // Verification reads every alternative once, the aliased clip's both; conversion shares those reads.
+    expect(blockReads).toEqual([10_002, 10_001, 10_003, 10_005, 10_006, 10_004]);
+    expect(AUDIO_CONVERTER_COMPONENT).toBe('audio-2');
   });
 
   it('charges each payload once by its whole bytes and its sample points', async () => {

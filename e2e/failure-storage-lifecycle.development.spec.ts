@@ -2,6 +2,7 @@ import type { CDPSession, Page, TestInfo } from '@playwright/test';
 import type { HeldGroup } from '../src/app/resources/resource-holder.ts';
 import type { GroupInput } from '../src/content/completeness.ts';
 import { readConverterVersion, type ContentIdentity } from '../src/content/content-identity.ts';
+import { compareText } from '../src/content/contract-validation.ts';
 import { applyManifestIdentity } from '../src/content/manifest-identity.ts';
 import { asciiBytes } from '../src/content/graphics/graphics-format.ts';
 import { sha256Fingerprint } from '../src/content/sha256.ts';
@@ -635,9 +636,12 @@ test('F-13 isolation: other converter versions and fingerprints stay untouched, 
     subject.close();
     return result.status === 'listed' ? result.entries.map(({ key: entry, status }) => [entry?.originToken, entry?.converterVersion, status]) : result.code;
   });
+  // In key order: by fingerprint, then converter version.
+  const keyOrder = ([leftToken, leftVersion]: readonly string[], [rightToken, rightVersion]: readonly string[]) =>
+    compareText(`${leftToken}\u0000${leftVersion}`, `${rightToken}\u0000${rightVersion}`);
   expect(listing).toEqual([
     [OTHER_FINGERPRINT, key.converterVersion, 'compatible'], [key.originToken, OLDER_CONVERTER, 'compatible'], [key.originToken, key.converterVersion, 'incompatible'],
-  ]);
+  ].sort(keyOrder));
   await relist(page);
   await expect(dataStatus(page)).toHaveText(NONE);
   await expect(button(page, 'Open saved resources')).toHaveCount(0);

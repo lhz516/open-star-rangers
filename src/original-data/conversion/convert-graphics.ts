@@ -29,8 +29,11 @@ import {
 } from './source-graphics.ts';
 import { readStatusMessages } from './source-messages.ts';
 
-/** The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. */
-export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-3';
+/**
+ * The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. Version 4
+ * adds the P3-03 flight images and view labels.
+ */
+export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-4';
 
 /**
  * An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`), an MFDD list record

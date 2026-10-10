@@ -5,7 +5,7 @@ import { compareText } from '../../content/contract-validation.ts';
 import { validateGroup } from '../../content/completeness.ts';
 import { applyManifestIdentity } from '../../content/manifest-identity.ts';
 import { pairGeometry, quadGeometry } from '../../content/models/models.test-support.ts';
-import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
+import { P2_ROLES_SLICE } from '../../content/synthetic-content.test-support.ts';
 import { DiscReadError } from '../disc/disc-error.ts';
 import { SourceError } from '../source-error.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
@@ -116,7 +116,8 @@ describe('model step', () => {
     expect(draft.payloads.map(({ id: asset }) => asset)).toEqual(draft.assets.map(({ id: asset }) => asset));
     expect(draft.sources?.states.map(({ id: asset }) => asset)).toEqual(draft.assets.map(({ id: asset }) => asset));
     const [group] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [draft]);
-    expect(validateGroup(CLASSIC_P2_SLICE, group)).toMatchObject({
+    // The flight data and images of the group are P3-03 steps'.
+    expect(validateGroup(P2_ROLES_SLICE, group)).toMatchObject({
       status: 'group-complete', group: 'models',
       externalRequirements: [{ id: 'sound/synthetic-a', kind: 'sound' }, { id: 'sound/synthetic-b', kind: 'sound' }],
     });
@@ -126,7 +127,7 @@ describe('model step', () => {
     const { source } = await countedVerifiedSource(archive());
     const graphics = await runGraphicsStep(source, graphicsMappings({ confidence: 'unconfirmed', unknowns: ['U-028'] }), GRAPHICS_DECLARATIONS, LIMITS);
     const [group] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [modelsGroupDraft([graphics, await step(source)], source.identity.fingerprint)]);
-    expect(validateGroup(CLASSIC_P2_SLICE, group)).toMatchObject({
+    expect(validateGroup(P2_ROLES_SLICE, group)).toMatchObject({
       status: 'incomplete',
       diagnostics: [expect.objectContaining({ code: 'source-not-ready', assetId: 'image/synthetic-texture', unknowns: ['U-028'] })],
     });

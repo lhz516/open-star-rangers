@@ -1,4 +1,5 @@
 import { readAssetId, type AssetId } from '../../content/asset-id.ts';
+import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import { VIEW_LABELS_FORMAT, VIEW_LABELS_ROLE } from '../../content/hud/view-labels-payload.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
@@ -10,7 +11,7 @@ import { readGraphicsDeclarations, type GraphicsDeclaration } from './graphics-d
 // follows P3-03/05 (textures §3, §4, §6) and the coordinator's decisions in the goal's execution record: the frames,
 // the nebulae and the hit-shimmer thresholds keep their stored indices and bind the models group's flight palette with
 // direct display, so there is neither a hit-shimmer nor an explosion palette. Entry IDs stay in original-data and never
-// enter canonical content. P3-03/19 merges these tables into the production graphics tables and sets their share.
+// enter canonical content. production-graphics.ts merges these tables and this share into the production graphics step.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** Hit-shimmer band thresholds without a palette (textures, TEX 11069). */
@@ -134,7 +135,7 @@ const BOUND_PALETTES = ['models', 'cockpit-hud-map'].map(group => ({ asset: { id
 
 /**
  * The flight graphics declarations, checked together with the flight palettes they bind but without them, so that
- * P3-03/19 can append them to the production graphics declarations.
+ * the production graphics declarations append them.
  */
 export const PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = Object.freeze(
   readGraphicsDeclarations([...BOUND_PALETTES, ...FLIGHT_GRAPHICS.map(({ declaration }) => declaration)]).slice(BOUND_PALETTES.length),
@@ -145,4 +146,17 @@ export const PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS: SourceMappingTable = readSourc
   sourceFingerprint: null,
   mappings: FLIGHT_GRAPHICS.map(({ mapping }) => mapping)
     .sort((left, right) => compareText((left.asset as { id: string }).id, (right.asset as { id: string }).id)),
+});
+
+/**
+ * The approved flight graphics share (P3-03 spec, 限值与预算): twice each dimension of these Assets' conversion usage on
+ * the baseline, rounded up to a power of two (observations in the P3-03/19 completion evidence).
+ */
+export const PRODUCTION_FLIGHT_GRAPHICS_SHARE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE,
+  assets: 512,
+  dependencyEdges: 512,
+  paletteEntries: 512,
+  imagePixels: 4_194_304,
+  payloadBytes: 4_194_304,
 });

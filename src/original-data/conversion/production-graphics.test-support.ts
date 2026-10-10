@@ -9,12 +9,16 @@ import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type S
 import {
   cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
 } from './conversion.test-support.ts';
+import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from './production-flight-graphics.ts';
+import { productionFlightGraphicsEntries } from './production-flight-graphics.test-support.ts';
 import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
 import { PRODUCTION_MODEL_TEXTURES, modelTexturePaletteId } from './production-model-textures.ts';
 
 // A synthetic archive in the production graphics structure, generated in code; never original data.
 
-const locators: readonly ArchiveEntryLocator[] = PRODUCTION_GRAPHICS_MAPPINGS.mappings
+const FLIGHT_GRAPHICS = new Set(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings.map(({ asset }) => asset.id));
+/** The archive locators of the P2-05 to P2-07 graphics; the P3-03 flight graphics have their own synthetic entries. */
+const locators: readonly ArchiveEntryLocator[] = PRODUCTION_GRAPHICS_MAPPINGS.mappings.filter(({ asset }) => !FLIGHT_GRAPHICS.has(asset.id))
   .flatMap(({ parts }) => parts.flatMap(({ alternatives }) => alternatives)).filter(locator => !isRegionLocator(locator)).map(archiveLocator);
 
 type GraphicsBlocks = Partial<Record<'DATA' | 'CCKD' | 'TEX' | 'MFDD' | 'BITM' | 'TABL' | 'SNIP' | 'DIAG', Uint8Array | null>>;
@@ -137,20 +141,65 @@ const FORMAT_REGION = regionOf('data/hud/status-display/messages');
 export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x7b, 0x25, 0x73, 0x7d][index % 4]));
 
 /** The bytes of each production executable region the graphics Assets map to: the colour table and the format. */
-export const PRODUCTION_GRAPHICS_REGION_WRITES: readonly { readonly object: number; readonly offset: number; readonly bytes: Uint8Array }[] = Object.freeze([
+export const PRODUCTION_GRAPHICS_REGION_WRITES: readonly RegionWrite[] = Object.freeze([
   Object.freeze({ object: COLOUR_TABLE.object, offset: COLOUR_TABLE.offset, bytes: SYNTHETIC_INTERFERENCE_COLOURS }),
   Object.freeze({ object: FORMAT_REGION.object, offset: FORMAT_REGION.offset, bytes: Uint8Array.from(`${SYNTHETIC_SUBSYSTEM_FORMAT}\0`, character => character.charCodeAt(0)) }),
 ]);
 
-/** A synthetic LE executable of four objects that holds `writes` and a generated pattern elsewhere. */
-export function regionExecutable(writes: readonly { readonly object: number; readonly offset: number; readonly bytes: Uint8Array }[]): Uint8Array {
+/** Bytes to place at an offset of an executable object. */
+export interface RegionWrite {
+  readonly object: number;
+  readonly offset: number;
+  readonly bytes: Uint8Array;
+}
+
+/** A non-additive internal 32-bit offset fixup at `offset` of `object`, targeting `target`. */
+export interface PositionedFixup {
+  readonly object: number;
+  readonly offset: number;
+  readonly target: { readonly object: number; readonly offset: number };
+}
+
+const LE_PAGE = 4_096;
+
+/** The LE fixup record of an internal 32-bit offset at `offset` of its page (negative on the later of two pages). */
+function fixupRecord(offset: number, { object, offset: target }: PositionedFixup['target']): number[] {
+  const wide = target > 0xffff;
+  const record = [0x07, wide ? 0x10 : 0x00, offset & 0xff, (offset >>> 8) & 0xff, object];
+  for (let index = 0; index < (wide ? 4 : 2); index++) record.push((target >>> (index * 8)) & 0xff);
+  return record;
+}
+
+/**
+ * A synthetic LE executable of four objects that holds `writes` and a generated pattern elsewhere. `fixups` adds a fixup
+ * record on each page an internal offset touches; `pageFixups` adds raw fixup records by page map index.
+ */
+export function regionExecutable(
+  writes: readonly RegionWrite[],
+  fixups: readonly PositionedFixup[] = [],
+  pageFixups: Readonly<Record<number, readonly number[]>> = {},
+): Uint8Array {
   const objects = [1, 2, 3, 4].map(object => {
     const own = writes.filter(write => write.object === object);
     const bytes = Uint8Array.from({ length: Math.max(16, ...own.map(({ offset, bytes: written }) => offset + written.length)) }, (_, index) => (index * 13 + object) & 0xff);
     for (const write of own) bytes.set(write.bytes, write.offset);
     return { bytes };
   });
-  return syntheticLeExecutable({ objects });
+  // Page map indexes, from 1: each object takes whole pages after the previous objects'.
+  const firstPages: number[] = [];
+  let next = 1;
+  for (const { bytes } of objects) {
+    firstPages.push(next);
+    next += Math.ceil(bytes.length / LE_PAGE);
+  }
+  const records: Record<number, number[]> = Object.fromEntries(Object.entries(pageFixups).map(([page, bytes]) => [page, [...bytes]]));
+  for (const fixup of fixups) {
+    const page = Math.floor(fixup.offset / LE_PAGE);
+    for (const recorded of fixup.offset + 4 > (page + 1) * LE_PAGE ? [page, page + 1] : [page]) {
+      (records[firstPages[fixup.object - 1] + recorded] ??= []).push(...fixupRecord(fixup.offset - recorded * LE_PAGE, fixup.target));
+    }
+  }
+  return syntheticLeExecutable({ objects, fixups: records });
 }
 
 /** The element positions of the synthetic front cockpit and map frame layouts, by layout Asset ID. */
@@ -208,7 +257,7 @@ const RELOCATIONS: Readonly<Record<string, readonly number[]>> = Object.freeze({
  * entry of the production texture table; an MFDD with 3 + 9 records, a BITM image and TABL image lists of 4, 29 and 29
  * records at the status display, display page, gauge bar, unit marker and zoom icon entries; a SNIP of nine 4×2 frames
  * and a DIAG of `SYNTHETIC_STATUS_MESSAGES`. Every image is small and differs by list and entry. `blocks` replaces every
- * entry of a type, or omits them when null.
+ * such entry of a type, or omits them when null. The entries of `productionFlightGraphicsEntries()` follow unchanged.
  */
 export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): SyntheticEntry[] {
   const cockpitHudMap = cockpitHudMapBlocks();
@@ -223,7 +272,7 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
     const data = content(type, id);
     if (data) entries.set(id, { id, type, data, ...(RELOCATIONS[type] && { relocations: [...RELOCATIONS[type]] }) });
   }
-  return [...entries.values()].sort((left, right) => left.id - right.id);
+  return [...entries.values(), ...productionFlightGraphicsEntries()].sort((left, right) => left.id - right.id);
 }
 
 /**

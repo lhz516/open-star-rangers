@@ -211,8 +211,7 @@ export const PRODUCTION_RULE_DATA_SOURCES: RuleDataSources = Object.freeze({
 export const PRODUCTION_RULE_DATA_MAPPINGS: SourceMappingTable = ruleDataMappings(PRODUCTION_RULE_DATA_SOURCES);
 
 /**
- * The budget share the rule-data Assets add to the logic step (spec, 限值与预算). Subtask 19 derives its values from the
- * locally observed usage by the spec's rule (twice the observation, rounded up to a power of two) when it wires
- * `convertRuleData` into the job; until then it is empty, so no rule-data Asset fits it.
+ * The budget share the rule-data Assets add to the logic step (spec, 限值与预算): twice each dimension of their conversion
+ * usage on the baseline, rounded up to a power of two (observations in the P3-03/19 completion evidence).
  */
-export const PRODUCTION_RULE_DATA_SHARE: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE });
+export const PRODUCTION_RULE_DATA_SHARE: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE, assets: 16, payloadBytes: 262_144 });

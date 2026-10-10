@@ -12,11 +12,14 @@ import { deriveManifestIdentity, type GroupDraft } from '../src/content/manifest
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { PRODUCTION_SOUND_USAGE } from '../src/original-data/conversion/production-sounds.test-support.ts';
 import {
-  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, sliceCoveredFiles, syntheticImport, syntheticSource,
+  AUDIO_CONVERSION_USAGE, audioCoveredFiles, GRAPHICS_CONVERSION_USAGE, PRODUCTION_CONVERSION_USAGE, RULE_DATA_USAGE, sliceCoveredFiles, syntheticImport,
+  syntheticSource,
 } from '../src/workers/synthetic-import.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../src/original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
 import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
+import { PRODUCTION_FLIGHT_DATA_USAGE } from '../src/original-data/conversion/flight-data.test-support.ts';
+import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS } from '../src/original-data/conversion/production-flight-graphics.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
 import type { BudgetRecord } from '../src/content/budget.ts';
 import { validateGroup, type GroupInput } from '../src/content/completeness.ts';
@@ -27,6 +30,16 @@ import {
 } from '../src/original-data/conversion/production-graphics.ts';
 
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
+/** The P3-03 flight graphics of the cockpit-hud-map group: the target display image, its palette and the view labels. */
+const FLIGHT_COCKPIT_ASSETS = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
+
+/**
+ * The models group of the slice disc: the flight palette, the textures, the flight images of the group, the bound
+ * models, the effect data and the flight data.
+ */
+const MODELS_ASSETS = 1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length - FLIGHT_COCKPIT_ASSETS
+  + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets + PRODUCTION_FLIGHT_DATA_USAGE.assets;
+
 // The page imports modules from the development server, so this spec runs in the development project only. Every file
 // name contains MARKER, and every failing test scenario throws text that contains it too.
 
@@ -266,7 +279,7 @@ test('test entry converts the production graphics and sounds after identificatio
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
   expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
-  expect(final.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] });
+  expect(final.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS, diagnostics: [] });
   expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
   expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
@@ -295,10 +308,10 @@ test('test entry converts the synthetic sounds after the graphics and hands over
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
   expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
-  expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
+  expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: AUDIO_CONVERSION_USAGE.assets, diagnostics: [] });
   const graphicsPayloadBytes = await page.evaluate(() => window.osrImport.graphicsPayloadBytes);
   expect(final.usage).toMatchObject({
-    assets: GRAPHICS_CONVERSION_USAGE.assets + 4, dependencyEdges: GRAPHICS_CONVERSION_USAGE.dependencyEdges,
+    assets: GRAPHICS_CONVERSION_USAGE.assets + AUDIO_CONVERSION_USAGE.assets, dependencyEdges: GRAPHICS_CONVERSION_USAGE.dependencyEdges,
     paletteEntries: GRAPHICS_CONVERSION_USAGE.paletteEntries, glyphs: GRAPHICS_CONVERSION_USAGE.glyphs, imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,
     payloadBytes: graphicsPayloadBytes + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
   });
@@ -317,7 +330,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-3.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-4.logic-2.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);
@@ -388,29 +401,30 @@ test('test entry converts the models after the audio stage, and the receiver val
   ]);
   const node = await nodeSliceRun();
   expect(validateGroup(CLASSIC_P2_SLICE, node.groups.get('models')!)).toMatchObject({ status: 'group-complete', group: 'models' });
-  // The P2-05 palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
+  // The P2-05 palette and fonts with the production cockpit, HUD and map Assets and the P3-03 target display and view
+  // labels complete the cockpit-hud-map group.
   expect(validateGroup(CLASSIC_P2_SLICE, node.groups.get('cockpit-hud-map')!)).toMatchObject({ status: 'group-complete', externalRequirements: [] });
   expect(final.groups).toEqual([
-    { group: 'logic', status: 'group-complete', assets: 3, diagnostics: [] },
-    { group: 'models', status: 'group-complete', assets: 1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets, diagnostics: [] },
-    { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] },
+    { group: 'logic', status: 'group-complete', assets: 3 + RULE_DATA_USAGE.assets, diagnostics: [] },
+    { group: 'models', status: 'group-complete', assets: MODELS_ASSETS, diagnostics: [] },
+    { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS, diagnostics: [] },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
-  // The models manifest the owner received is the one Node sent: the flight palette, the textures, the bound models and
-  // the effect data.
+  // The models manifest the owner received is the one Node sent: the flight palette, the textures, the flight images,
+  // the bound models, the effect data and the flight data.
   const received = await page.evaluate(() => window.osrImport.received);
   expect(received.map(({ group }) => group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
   const models = readGroupManifest(received[1].manifest);
   expect(models).toEqual(readGroupManifest(node.groups.get('models')!.manifest));
-  expect(models.assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets);
+  expect(models.assets).toHaveLength(MODELS_ASSETS);
   // The usage equals the Node run's. Independently of the job, the dimensions the contract names are the test support's
   // layout-derived graphics, sound, model and effect usage plus the logic Assets the owner received.
   expect(final.usage).toEqual(node.usage);
   const logic = readGroupManifest(received[0].manifest).assets;
   expect(final.usage).toMatchObject({
-    assets: PRODUCTION_CONVERSION_USAGE.assets + logic.length + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
+    assets: PRODUCTION_CONVERSION_USAGE.assets + logic.length + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets + PRODUCTION_FLIGHT_DATA_USAGE.assets,
     payloadBytes: PRODUCTION_CONVERSION_USAGE.payloadBytes + PRODUCTION_MODEL_USAGE.payloadBytes + PRODUCTION_EFFECT_USAGE.payloadBytes
-      + logic.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
+      + PRODUCTION_FLIGHT_DATA_USAGE.payloadBytes + logic.reduce((sum, { payloadIdentity }) => sum + payloadIdentity.byteLength, 0),
     vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices,
     triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     imagePixels: GRAPHICS_CONVERSION_USAGE.imagePixels,

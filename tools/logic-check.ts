@@ -9,6 +9,7 @@ import { LOGIC_LIMITS, type CraftTypeTable, type MissionContent, type WingmanRos
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import type { GroupManifest } from '../src/content/manifest.ts';
 import type { PayloadRecord } from '../src/content/payload.ts';
+import { decodeRuleDataPayload, RULE_DATA_ROLES } from '../src/content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { loadMission } from '../src/core/mission/load-mission.ts';
@@ -22,7 +23,8 @@ import { createImportJob, type OpenSource } from '../src/workers/import-job.ts';
 import type { ImportFile, ImportStage } from '../src/workers/import-protocol.ts';
 
 // Local logic check (P2-09 S-14, AC-14): runs the production import job the Worker runs on a CloneCD file set, then
-// validates the `logic` group, decodes its payloads and loads the mission in Core. Output holds only verdicts, counts,
+// validates the `logic` group, decodes its payloads (the P3-03 rule-data payloads with their own reader) and loads the
+// mission in Core. Output holds only verdicts, counts,
 // limits, read amounts and hashes: never names, coordinates, field values, host paths or host error text.
 
 export interface LogicCheckOptions {
@@ -138,10 +140,16 @@ interface DecodedLogic {
   readonly wingmanRoster: { readonly id: AssetId; readonly content: WingmanRoster };
 }
 
-/** Decodes each logic payload with its descriptor. */
+const isRuleData = ({ role }: AssetDescriptor): boolean => (RULE_DATA_ROLES as readonly string[]).includes(role);
+
+/** Decodes each payload with its descriptor; the rule-data payloads are only checked, since Core does not take them. */
 function decodeLogicGroup(assets: readonly AssetDescriptor[], payloads: readonly PayloadRecord[]): DecodedLogic {
   const decoded: Partial<{ -readonly [Key in keyof DecodedLogic]: DecodedLogic[Key] }> = {};
   assets.forEach((descriptor, index) => {
+    if (isRuleData(descriptor)) {
+      decodeRuleDataPayload(payloads[index].bytes, descriptor);
+      return;
+    }
     const payload = decodeLogicPayload(payloads[index].bytes, descriptor);
     const { id } = descriptor;
     if (payload.role === 'mission') decoded.mission = { id, content: payload.content };
@@ -210,7 +218,8 @@ export async function runLogicCheck(paths: readonly string[], options: LogicChec
       payloads: manifest.assets.map(({ id, role, payloadIdentity }) => ({ id, role, bytes: payloadIdentity.byteLength, fingerprint: payloadIdentity.fingerprint })),
     };
     const input = decodeLogicGroup(manifest.assets, payloads);
-    measured = measure(input.mission.content, input.craftTypes.content, input.wingmanRoster.content, payloads);
+    // The payload limit is the logic step's; the rule-data payloads have their own share.
+    measured = measure(input.mission.content, input.craftTypes.content, input.wingmanRoster.content, payloads.filter((_, index) => !isRuleData(manifest.assets[index])));
     loadMission(input);
     const over = measured.limits.find(({ observed, limit }) => observed > limit);
     if (over) throw new CheckStop('limit-exceeded', `limits.${over.name}`);

@@ -250,20 +250,26 @@ export const fontDeclaration = (id: string, overrides: Record<string, unknown> =
 });
 
 export const GRAPHICS_ARCHIVE = 'MAIN/SR.NOB';
-export const GRAPHICS_ENTRIES = Object.freeze({ data: 10_001, texture: 10_003, cockpit: 10_005, mfd: 10_009, table: 10_011 });
+export const GRAPHICS_ENTRIES = Object.freeze({ data: 10_001, texture: 10_003, cockpit: 10_005, mfd: 10_009, table: 10_011, labels: 10_013 });
 
 /** A 4×2 raw texture with distinct indices and an 8-colour embedded BGR palette. */
 export const textureBlock = (): Uint8Array =>
   rawImageBlock(4, 2, [0, 1, 2, 3, 4, 5, 6, 7], Array.from({ length: 24 }, (_, index) => (index * 9) & 0xff));
 
-/** An archive with one DATA, one TEX and one CCKD entry, any of which a test may replace, and MFDD and TABL entries when given. */
-export function graphicsArchive(blocks: { data?: Uint8Array; texture?: Uint8Array; cockpit?: Uint8Array; mfd?: Uint8Array; table?: Uint8Array } = {}): Uint8Array {
+/**
+ * An archive with one DATA, one TEX and one CCKD entry, any of which a test may replace, and MFDD, TABL image list and
+ * TABL view label entries when given.
+ */
+export function graphicsArchive(
+  blocks: { data?: Uint8Array; texture?: Uint8Array; cockpit?: Uint8Array; mfd?: Uint8Array; table?: Uint8Array; labels?: SyntheticBlock } = {},
+): Uint8Array {
   return buildImfat(10_000, [
     { id: GRAPHICS_ENTRIES.data, type: 'DATA', data: blocks.data ?? dataPaletteBlock() },
     { id: GRAPHICS_ENTRIES.texture, type: 'TEX', data: blocks.texture ?? textureBlock() },
     { id: GRAPHICS_ENTRIES.cockpit, type: 'CCKD', data: blocks.cockpit ?? cockpitBlock(hudFontTables()) },
     ...(blocks.mfd ? [{ id: GRAPHICS_ENTRIES.mfd, type: 'MFDD', data: blocks.mfd }] : []),
     ...(blocks.table ? [{ id: GRAPHICS_ENTRIES.table, type: 'TABL', data: blocks.table }] : []),
+    ...(blocks.labels ? [blockEntry(GRAPHICS_ENTRIES.labels, 'TABL', blocks.labels)] : []),
   ]);
 }
 

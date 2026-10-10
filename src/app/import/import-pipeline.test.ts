@@ -16,6 +16,8 @@ import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionGraphicsFiles } f
 import { fail } from '../../content/contract-validation.ts';
 import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
+import { PRODUCTION_FLIGHT_DATA_USAGE } from '../../original-data/conversion/flight-data.test-support.ts';
+import { FLIGHT_GRAPHICS_USAGE } from '../../original-data/conversion/production-flight-graphics.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
 import type { VerifiedSource } from '../../original-data/source/open-verified-source.ts';
@@ -23,8 +25,8 @@ import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenS
 import { IMPORT_PROTOCOL_VERSION } from '../../workers/import-protocol.ts';
 import {
   AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, COCKPIT_GRAPHICS_ASSETS, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE,
-  GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, sliceCoveredFiles,
-  SYNTHETIC_AUDIO, syntheticGroupsJob, syntheticImport, syntheticSource, type SyntheticGroups,
+  GRAPHICS_PAYLOAD_BYTES, MARKER, NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, productionCoveredFiles, RULE_DATA_USAGE,
+  sliceCoveredFiles, SYNTHETIC_AUDIO, SYNTHETIC_FIRE_SOUND, syntheticGroupsJob, syntheticImport, syntheticSource, type SyntheticGroups,
 } from '../../workers/synthetic-import.test-support.ts';
 import { createImportJobOwner, type ImportJobOwner, type ImportJobSnapshot } from './import-job-owner.ts';
 import type { ImportWorkerPortFactory } from './import-worker-port.ts';
@@ -225,11 +227,11 @@ describe('graphics conversion over a structured-clone channel', () => {
     const { owner, traffic } = await run(createImportJob(graphics.open, undefined, NO_LOGIC, undefined, NO_MODELS), graphics.files);
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
-    // With no bound craft model, the models group is incomplete: no craft roles. The P2-05
-    // palette and fonts with the production cockpit, HUD and map Assets complete the cockpit-hud-map group.
+    // With no bound craft model, the models group is incomplete: no craft roles. The P2-05 palette and fonts with the
+    // production cockpit, HUD and map Assets and the P3-03 target display and view labels complete the cockpit-hud-map group.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
-      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets, diagnostics: [] },
+      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + 3, diagnostics: [] },
       { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
     ]);
     expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
@@ -250,9 +252,9 @@ describe('graphics conversion over a structured-clone channel', () => {
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
-      // The status display messages are mapped first; the fonts after them name the missing CCKD entry.
+      // The status display messages and the view labels are mapped first; the fonts after them name the missing CCKD entry.
       ['convert-graphics', createImportJob(withoutCockpit.open), withoutCockpit.files,
-        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[1].parts[0].alternatives[0]' }],
+        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[2].parts[0].alternatives[0]' }],
       // Opening the archive again resolves its path from the root directory, the first sector the graphics stage reads.
       ['convert-graphics', createImportJob(failingAfterIdentification(complete.open)), complete.files, { layer: 'disc', code: 'read-failed', location: 'image:lba 18' }],
       ['convert-graphics', createImportJob(brokenFont.open), brokenFont.files,
@@ -279,16 +281,21 @@ describe('logic conversion over a structured-clone channel', () => {
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
-    // Every effect role has its data Asset (AC-20) and no texture mapping is unconfirmed (AC-14), so all four groups are complete.
+    // Every effect role has its data Asset (AC-20), every P3-03 role its Assets, and no texture mapping is unconfirmed
+    // (AC-14), so all four groups are complete.
     expect(snapshot.groups.map(({ group, status, diagnostics }) => [group, status, diagnostics]))
       .toEqual(['logic', 'models', 'cockpit-hud-map', 'audio'].map(group => [group, 'group-complete', []]));
     // The receiver's validation of the models group equals Node's validation of the group message it received.
     const received = (traffic.fromWorker as { type: string; group?: string; input?: GroupInput }[]).find(({ type, group }) => type === 'group' && group === 'models')!;
     const expected = validateGroup(CLASSIC_P2_SLICE, received.input!);
     if (expected.status !== 'group-complete') throw new Error('expected a complete models group');
-    expect(snapshot.groups[1].assets).toBe(1 + MODEL_TEXTURE_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets);
+    // The models group adds the flight graphics of the group and the flight data.
+    const flightModels = FLIGHT_GRAPHICS_USAGE.assets - 3;
+    expect(snapshot.groups[1].assets)
+      .toBe(1 + MODEL_TEXTURE_USAGE.assets + flightModels + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets + PRODUCTION_FLIGHT_DATA_USAGE.assets);
     expect(snapshot.usage).toMatchObject({
-      assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets + PRODUCTION_EFFECT_USAGE.assets,
+      assets: GRAPHICS_CONVERSION_USAGE.assets + 3 + RULE_DATA_USAGE.assets + PRODUCTION_SOUND_USAGE.assets + PRODUCTION_MODEL_USAGE.assets
+        + PRODUCTION_EFFECT_USAGE.assets + PRODUCTION_FLIGHT_DATA_USAGE.assets,
       missionObjects: 11, missionReferences: 40,
       vertices: PRODUCTION_MODEL_USAGE.vertices + PRODUCTION_EFFECT_USAGE.vertices, triangles: PRODUCTION_MODEL_USAGE.triangles + PRODUCTION_EFFECT_USAGE.triangles,
     });
@@ -352,9 +359,9 @@ describe('audio conversion over a structured-clone channel', () => {
     expect(stepsOf(traffic.fromWorker as { type: string; stage?: string }[]))
       .toEqual(['ready', 'identify-source', 'identified', 'convert-graphics', 'convert-logic', 'convert-audio', 'convert-models', 'group', 'finished']);
     expect(snapshot.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
-    expect(snapshot.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: 4, diagnostics: [] });
+    expect(snapshot.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: AUDIO_CONVERSION_USAGE.assets, diagnostics: [] });
     expect(snapshot.usage).toMatchObject({
-      assets: GRAPHICS_CONVERSION_USAGE.assets + 4, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
+      assets: GRAPHICS_CONVERSION_USAGE.assets + AUDIO_CONVERSION_USAGE.assets, payloadBytes: GRAPHICS_PAYLOAD_BYTES + AUDIO_CONVERSION_USAGE.payloadBytes, audioSamples: AUDIO_CONVERSION_USAGE.audioSamples,
     });
     expect(sent).toHaveLength(3);
     expect(sent.flatMap(({ payloads }) => payloads as { bytes: Uint8Array }[]).every(({ bytes }) => bytes.byteLength === 0 && bytes.buffer.byteLength === 0)).toBe(true);
@@ -363,7 +370,7 @@ describe('audio conversion over a structured-clone channel', () => {
     const audioGroup = taken[1];
     const manifest = readGroupManifest(audioGroup.manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.graphics-3.logic-1.audio-1.models-3', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-4.logic-2.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
     expect((audioGroup.payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
@@ -373,7 +380,7 @@ describe('audio conversion over a structured-clone channel', () => {
     const corrupt = await syntheticImport(audioCoveredFiles(true), 'audio-disc');
     const job = createImportJob(corrupt.open, undefined, NO_LOGIC, SYNTHETIC_AUDIO, NO_MODELS);
     const expected = await hostError(job, corrupt.files);
-    expect(expected).toMatchObject({ layer: 'source', code: 'unsupported-payload', location: 'sources.mappings[1].parts[0].alternatives[0].flags' });
+    expect(expected).toMatchObject({ layer: 'source', code: 'unsupported-payload', location: `sources.mappings[${SYNTHETIC_FIRE_SOUND}].parts[0].alternatives[0].flags` });
     const { owner, traffic, snapshots } = await run(job, corrupt.files);
     expect(owner.getSnapshot()).toEqual({ status: 'failed', jobId: 1, stage: 'convert-audio', error: expected });
     expect(traffic.fromWorker.some(message => (message as { type: string }).type === 'group')).toBe(false);
@@ -446,7 +453,7 @@ describe('cockpit-hud-map assembly over a structured-clone channel', () => {
     const manifest = readGroupManifest(cockpit.manifest);
     expect(manifest.assets).toEqual(expected.assets);
     expect(manifest.assets.map(({ id }) => id)).toEqual(COCKPIT_IDS);
-    expect(new Set(manifest.assets.map(({ kind }) => kind))).toEqual(new Set(['font', 'image', 'layout', 'palette']));
+    expect(new Set(manifest.assets.map(({ kind }) => kind))).toEqual(new Set(['data', 'font', 'image', 'layout', 'palette']));
     const payloads = cockpit.payloads as { readonly id: string; readonly bytes: Uint8Array }[];
     expect(payloads.map(({ id, bytes }) => [id, [...bytes]])).toEqual(expected.payloads.map(({ id, bytes }) => [id, [...bytes]]));
     expect(payloads.every(({ bytes }) => bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength)).toBe(true);
@@ -464,7 +471,7 @@ describe('cockpit-hud-map assembly over a structured-clone channel', () => {
     const drafts = received.map(({ group, input }, index) => ({ group, assets: manifests[index].assets, payloads: [], sources: input.sources }) as GroupDraft);
     const identity = { ...basis, manifestIdentity: deriveManifestIdentity(basis, drafts) };
     expect(manifests.map(({ identity: sent }) => sent)).toEqual(received.map(() => identity));
-    expect(identity.converterVersion).toBe('osr-import.graphics-3.logic-1.audio-1.models-3');
+    expect(identity.converterVersion).toBe('osr-import.graphics-4.logic-2.audio-2.models-4');
 
     // The read usage plus the conversion usage, which counts every sent Asset and payload byte once.
     expect(snapshot.usage).toEqual(addBudgets(source!.usage(), step.usage));

@@ -6,7 +6,7 @@ import type { CraftTypeTable, MissionContent, MissionDeclaration, WingmanRoster 
 import { decodeLogicPayload } from '../../content/logic/logic-payload.ts';
 import { applyManifestIdentity } from '../../content/manifest-identity.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
-import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
+import { P2_ROLES_SLICE } from '../../content/synthetic-content.test-support.ts';
 import {
   DEFAULT_MODEL_IDS, ENTRY_IDS, MARKER, defaultCampaignSpec, defaultScenarioSpec, syntheticCampaign, syntheticModelArchive, syntheticScenario,
   syntheticScenarioArchive, type CampaignSpec, type ScenarioSpec,
@@ -185,7 +185,8 @@ describe('logic group conversion', () => {
     ]);
 
     const [group] = applyManifestIdentity(productionIdentityBasis(fingerprint), [result.draft]);
-    const validation = validateGroup(CLASSIC_P2_SLICE, group);
+    // The rule-data Assets of the group are convert-rule-data.ts's.
+    const validation = validateGroup(P2_ROLES_SLICE, group);
     expect(validation).toMatchObject({
       status: 'group-complete',
       group: 'logic',
@@ -196,7 +197,7 @@ describe('logic group conversion', () => {
 
     const { bytes } = group.payloads[2];
     bytes[bytes.length - 2] ^= 1;
-    expect(validateGroup(CLASSIC_P2_SLICE, group).status).toBe('incomplete');
+    expect(validateGroup(P2_ROLES_SLICE, group).status).toBe('incomplete');
   });
 
   it('charges exactly the usage the counting rules give for the decoded payloads', async () => {

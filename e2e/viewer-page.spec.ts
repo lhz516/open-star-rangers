@@ -339,8 +339,10 @@ test('controls answer the keyboard, keys turn and zoom only the focused picture,
   await button(page, 'Reset view').focus();
   await page.keyboard.press('Enter');
 
-  // Tab reaches the picture, which shows a focus indicator and names the item.
+  // Tab from the last item of the list reaches the picture, which shows a focus indicator and names the item. The list
+  // holds every image of the package, so tabbing around the whole page would take hundreds of presses.
   const view = page.getByTestId('viewer-view');
+  await page.getByTestId('viewer-entries').getByRole('button').last().focus();
   for (let presses = 0; presses < 400 && !(await view.evaluate(element => element === document.activeElement)); presses++) await page.keyboard.press('Tab');
   await expect(view).toBeFocused();
   expect(await view.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
@@ -374,7 +376,8 @@ test('controls answer the keyboard, keys turn and zoom only the focused picture,
 });
 
 test('lays the picture out by the 4:3 rule in wide and narrow windows at two pixel ratios, with the same pixels (AC-24)', async ({ browser, baseURL }) => {
-  const image = await firstEntry('image');
+  // The missile image, an opaque picture; the masked explosion frames that now come first are P3-03/20's.
+  const image = await firstEntry('image', 'missile');
   const picture = pictureOf(image.resolved.item(0)!);
   for (const deviceScaleFactor of [1, 2]) {
     const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 }, deviceScaleFactor });

@@ -1,12 +1,15 @@
 import type { AssetId } from '../../content/asset-id.ts';
+import { compareText } from '../../content/contract-validation.ts';
 import type { SndFormatRules } from '../formats/snd.ts';
 import { archiveLocator } from '../source-mapping.ts';
 import { AUDIO_SOURCE_ARCHIVE, readSoundTable, type SoundRole, type SoundTableRow } from './audio-conversion.ts';
+import { PRODUCTION_FLIGHT_SOUND_TABLE } from './production-flight-sounds.ts';
 
 // The production sound table and SND interpretations, from the P2-08 research and the developer's listening comparison
 // (docs/original/formats/audio.md). The table is the only binding between SND entries and sound Asset IDs; P2-06 looks
 // model-to-sample edges up here. Variant ordinals and model-clip numbers were assigned once and are frozen: they are
-// never derived from entry IDs or slots, and a change of source entry keeps the ID.
+// never derived from entry IDs or slots, and a change of source entry keeps the ID. The P3-03 sounds played by ID and the
+// HUD sounds join from production-flight-sounds.ts.
 
 const ROLES = 'docs/original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08';
 const LISTENING = 'docs/original/formats/audio.md#listening-comparison-p2-0810';
@@ -31,8 +34,8 @@ const core = (role: SoundRole, id: string, entry: number) => row(role, id, entry
 // Model-referenced samples of slots 0 and 3, whose meanings stay open (U-027); the ID does not express a slot.
 const clip = (id: string, entry: number) => row('model-sound', id, entry, [ROLES, MODL], ['U-027']);
 
-/** The slice's sound Assets, in ascending Asset ID order. */
-export const PRODUCTION_SOUND_TABLE: readonly SoundTableRow[] = readSoundTable([
+/** The P2-08 sound Assets, in ascending Asset ID order. */
+const P2_08_SOUNDS = [
   // The longer blast after a destruction; which of the four plays varies between occurrences.
   core('explosion-sound', 'sound/explosion/blast-v1', 10_213),
   core('explosion-sound', 'sound/explosion/blast-v2', 10_215),
@@ -55,7 +58,13 @@ export const PRODUCTION_SOUND_TABLE: readonly SoundTableRow[] = readSoundTable([
   clip('sound/model-clip/06', 10_035),
   // The Warp start plays this entry, a byte-identical twin of the missile's that only this Asset maps.
   core('warp-sound', 'sound/warp', 10_401),
-], 'PRODUCTION_SOUND_TABLE');
+];
+
+/** The slice's sound Assets in ascending Asset ID order: the P2-08 sounds and the P3-03 event and HUD sounds. */
+export const PRODUCTION_SOUND_TABLE: readonly SoundTableRow[] = readSoundTable(
+  [...P2_08_SOUNDS, ...PRODUCTION_FLIGHT_SOUND_TABLE].sort((left, right) => compareText(left.mapping.asset.id, right.mapping.asset.id)),
+  'PRODUCTION_SOUND_TABLE',
+);
 
 /**
  * The SND interpretations research confirmed for the slice: mono samples, 8-bit unsigned or 16-bit signed little-endian,

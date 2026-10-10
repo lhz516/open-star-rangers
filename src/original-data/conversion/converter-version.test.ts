@@ -9,7 +9,7 @@ import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from './convert
 
 describe('production converter version', () => {
   it('is osr-import followed by the packaged converters\' components in stage order', () => {
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-3.logic-1.audio-1.models-3');
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-4.logic-2.audio-2.models-4');
     expect(PRODUCTION_CONVERTER_VERSION.split('.').slice(1))
       .toEqual([GRAPHICS_CONVERTER_COMPONENT, LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT, MODEL_CONVERTER_COMPONENT]);
   });
@@ -30,7 +30,7 @@ describe('production converter version', () => {
       origin: { type: 'original-import', sourceFingerprint },
     });
     expect(Object.isFrozen(productionIdentityBasis(sourceFingerprint))).toBe(true);
-    // P2-01 AC-04 (2026-10-08 revision): production and synthetic identities carry slice definition version 3.
-    expect([productionIdentityBasis(sourceFingerprint).sliceDefinitionVersion, syntheticIdentity().sliceDefinitionVersion]).toEqual([3, 3]);
+    // P3-03 切片定义版本 4: production and synthetic identities carry slice definition version 4.
+    expect([productionIdentityBasis(sourceFingerprint).sliceDefinitionVersion, syntheticIdentity().sliceDefinitionVersion]).toEqual([4, 4]);
   });
 });

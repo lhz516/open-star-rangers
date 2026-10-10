@@ -24,7 +24,10 @@ const drafts = () => RESOURCE_GROUPS.map(group => {
   return { group, assets: manifest.assets, payloads, sources };
 });
 type MutableDrafts = ReturnType<typeof drafts>;
-const logic = (list: MutableDrafts) => list[0].assets[0];
+const MISSION = 'mission/synthetic-first';
+/** The logic group's mission, which sorts after its data Assets. */
+const logic = (list: MutableDrafts) => list[0].assets.find(({ id }) => id === MISSION)!;
+const missionState = (list: MutableDrafts) => list[0].sources!.states.find(({ id }) => id === MISSION)!;
 
 // The functions read their input strictly, so tests pass deliberately malformed plain data through these helpers.
 const derive = (draftList: unknown = drafts(), identityBasis = basis()) =>
@@ -75,7 +78,7 @@ describe('manifest identity derivation', () => {
     ['a removed Asset', list => { models(list).assets.pop(); }],
     ['a removed group', list => { list.pop(); }],
     ['a source state', list => { list[0].sources!.states[0].state = 'unverified'; }],
-    ['a source state Asset ID', list => { list[0].sources!.states[0].id = 'mission/synthetic-second'; }],
+    ['a source state Asset ID', list => { missionState(list).id = 'mission/synthetic-second'; }],
     ['a source unknown item', list => { list[0].sources!.states[0].unknowns.push('U-022'); }],
     ['a source state fingerprint', list => { list[0].sources!.sourceFingerprint = 'source:other-disc'; }],
     ['sources replaced by null', list => { list[0].sources = null; }],
@@ -113,7 +116,7 @@ describe('manifest identity derivation', () => {
     ['a repeated group', () => [...drafts(), drafts()[2]], 'invalid-resource-group', 'drafts[4].group'],
     ['an unknown group', () => { const list = drafts(); (list[3] as { group: string }).group = 'extras'; return list; }, 'invalid-resource-group', 'drafts[3].group'],
     ['an unknown draft field', () => drafts().map((draft, index) => (index === 1 ? { ...draft, extra: 1 } : draft)), 'invalid-record', 'drafts[1]'],
-    ['a malformed Asset ID', () => { const list = drafts(); logic(list).id = 'Mission/First'; return list; }, 'invalid-asset-id', 'drafts[0].assets[0].id'],
+    ['a malformed Asset ID', () => { const list = drafts(); list[0].assets[0].id = 'Data/First'; return list; }, 'invalid-asset-id', 'drafts[0].assets[0].id'],
     ['descending Assets', () => { const list = drafts(); models(list).assets.reverse(); return list; }, 'asset-order', 'drafts[1].assets[1]'],
     ['a malformed source state set', () => { const list = drafts(); list[0].sources!.states[0].state = 'ready'; return list; }, 'invalid-source-mapping', 'drafts[0].sources.states[0].state'],
   ] as const)('rejects %s', (_, build, code, path) => {
@@ -155,10 +158,11 @@ describe('writing the manifest identity', () => {
       logicInput.manifest.assets[0], logicInput.payloads, logicInput.payloads[0], sources, sources.states]) {
       expect(Object.isFrozen(value)).toBe(true);
     }
+    const states = source[0].sources!.states.length;
     logic(source).id = 'mission/changed';
     source[0].sources!.states.pop();
-    expect(logicInput.manifest.assets[0].id).toBe('mission/synthetic-first');
-    expect(sources.states).toHaveLength(1);
+    expect(logicInput.manifest.assets.at(-1)!.id).toBe(MISSION);
+    expect(sources.states).toHaveLength(states);
   });
 
   it('rejects malformed drafts and payload records at the caller\'s draft index', () => {

@@ -12,7 +12,7 @@ import { decodeViewLabelsPayload, encodeViewLabelsPayload, VIEW_LABELS_SCHEMA_VE
 import { readAssetId } from '../../content/asset-id.ts';
 import { animFrame, expectedFrame, patternFrame, solidFrame, syntheticAnimation, type SyntheticAnimFrame } from '../formats/anim.test-support.ts';
 import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
-import { SYNTHETIC_ASSETS, syntheticGroup, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
+import { P2_ROLES_SLICE, SYNTHETIC_ASSETS, syntheticGroup, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { VerifiedSource } from '../source/identify-source.ts';
 import { verifySourceMappings } from '../source/verify-source-mappings.ts';
 import {
@@ -292,7 +292,8 @@ describe('graphics step container sources and layouts', () => {
       payloads: step.payloads,
       sources: { sourceFingerprint, states: step.sources },
     };
-    expect(validateGroup(CLASSIC_P2_SLICE, input)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map' });
+    // The P3-03 roles of the group are not part of this container set.
+    expect(validateGroup(P2_ROLES_SLICE, input)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map' });
   });
 
   it('leaves container mappings declared until a conversion succeeds and returns nothing when it fails', async () => {

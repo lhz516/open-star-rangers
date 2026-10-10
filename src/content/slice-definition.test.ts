@@ -3,7 +3,7 @@ import { RESOURCE_GROUPS } from './asset-contract.ts';
 import { SLICE_ID } from './content-identity.ts';
 import { CLASSIC_P2_SLICE, SLICE_DEFINITION_VERSION } from './slice-definition.ts';
 
-// Spec S-03 oracle: [role, group, allowed kinds, min, max].
+// Oracle of the P2-01 spec S-03 roles and the P3-03 version 4 additions: [role, group, allowed kinds, min, max].
 const S03_ROLES = [
   ['mission', 'logic', ['mission'], 1, 1],
   ['player-ship', 'models', ['model'], 1, 1],
@@ -20,6 +20,20 @@ const S03_ROLES = [
   ['missile-sound', 'audio', ['sound'], 1, null],
   ['explosion-sound', 'audio', ['sound'], 1, null],
   ['warp-sound', 'audio', ['sound'], 1, null],
+  ['craft-info', 'logic', ['data'], 1, 1],
+  ['debris-parameters', 'logic', ['data'], 1, 1],
+  ['ai-programs', 'logic', ['data'], 1, 1],
+  ['comm-menus', 'logic', ['data'], 1, 1],
+  ['base-repair-items', 'logic', ['data'], 1, 1],
+  ['flight-messages', 'logic', ['data'], 1, 1],
+  ['scene-settings', 'models', ['data'], 1, 1],
+  ['explosion-table', 'models', ['data'], 1, 1],
+  ['nebula-backgrounds', 'models', ['data'], 1, 1],
+  ['hit-shimmer', 'models', ['image'], 1, 1],
+  ['target-display', 'cockpit-hud-map', ['image'], 1, 1],
+  ['view-labels', 'cockpit-hud-map', ['data'], 1, 1],
+  ['event-sound', 'audio', ['sound'], 8, 8],
+  ['hud-sound', 'audio', ['sound'], 3, 3],
 ] as const;
 
 describe('classic-p2-slice definition', () => {
@@ -27,12 +41,14 @@ describe('classic-p2-slice definition', () => {
     expect(CLASSIC_P2_SLICE.sliceId).toBe(SLICE_ID);
     expect(CLASSIC_P2_SLICE.version).toBe(SLICE_DEFINITION_VERSION);
     // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group; version 3
-    // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data.
-    expect(SLICE_DEFINITION_VERSION).toBe(3);
+    // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data; version 4 (P3-03) adds the rule-data,
+    // flight-data, event and HUD sound roles.
+    expect(SLICE_DEFINITION_VERSION).toBe(4);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });
     const serialized = JSON.stringify(CLASSIC_P2_SLICE);
-    expect(serialized).not.toMatch(/entry|nob|scen|scct|m2id|locator|path/i);
+    // `scene-settings` names a role, not the SCEN entry type.
+    expect(serialized).not.toMatch(/entry|nob|\bscen\b|scct|m2id|locator|path/i);
     expect(serialized).not.toMatch(/\d{3,}/);
   });
 
@@ -41,7 +57,7 @@ describe('classic-p2-slice definition', () => {
     expect(matches).toEqual([{ role, group, kinds, minAssets: min, maxAssets: max }]);
   });
 
-  it('defines exactly the S-03 roles and all four resource groups', () => {
+  it('defines exactly the S-03 and version 4 roles and all four resource groups', () => {
     expect(CLASSIC_P2_SLICE.roles.map(requirement => requirement.role)).toEqual(S03_ROLES.map(([role]) => role));
     expect(CLASSIC_P2_SLICE.groups).toEqual([...RESOURCE_GROUPS]);
   });

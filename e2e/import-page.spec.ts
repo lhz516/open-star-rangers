@@ -3,6 +3,7 @@ import { discFiles, expectNoPlayClaim, openTestEntry, sliceFiles, smallFile as s
 import { consoleText, test, expect } from './support/browser-test.ts';
 import { loadCacheModules, readStoredRecords } from './support/resource-cache.ts';
 import { MARKER } from '../src/original-data/disc/disc.test-support.ts';
+import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 import { generatedContent, sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
 
 // P2-11 AC-02 to AC-04 and AC-07 (browser): the import page of the production App on the development test entry, with
@@ -135,7 +136,8 @@ test('an insufficient space estimate is shown first, and the player may import a
   const files = await sliceFiles();
   await startImport(page, files);
   const warning = page.getByTestId('space-warning');
-  await expect(warning).toContainText('11.5 MiB may be needed and 0.0 MiB is available');
+  // The estimate is the package budget's payload bytes.
+  await expect(warning).toContainText(`${(PRODUCTION_PACKAGE.limits.payloadBytes / 2 ** 20).toFixed(1)} MiB may be needed and 0.0 MiB is available`);
   // While the warning awaits a choice, no other start or file selection can slip in.
   await expect(start(page)).toBeDisabled();
   await expect(page.locator('#import-files')).toBeDisabled();

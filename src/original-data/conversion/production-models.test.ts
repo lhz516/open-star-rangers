@@ -7,7 +7,7 @@ import type { CraftTypeTable } from '../../content/logic/logic-content.ts';
 import { decodeLogicPayload } from '../../content/logic/logic-payload.ts';
 import { applyManifestIdentity } from '../../content/manifest-identity.ts';
 import { MODEL_LIMITS, MODEL_PAYLOAD_LAYOUT } from '../../content/models/model-payload.ts';
-import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
+import { P2_ROLES_SLICE } from '../../content/synthetic-content.test-support.ts';
 import { DEFAULT_MODEL_IDS, syntheticScenarioArchive } from '../formats/formats.test-support.ts';
 import { archiveLocator } from '../source-mapping.ts';
 import { buildImfat, syntheticMesh, syntheticModl } from '../synthetic.test-support.ts';
@@ -121,7 +121,8 @@ describe('production models', () => {
     const models = await runModelStep(source, productionModelMappings(binding.models), productionModelDeclarations(binding.models), PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE);
     const draft = modelsGroupDraft([graphics, models], source.identity.fingerprint);
     const [logicGroup] = applyManifestIdentity(productionIdentityBasis(source.identity.fingerprint), [logic.draft, draft]);
-    const result = validateGroup(CLASSIC_P2_SLICE, logicGroup);
+    // The rule-data Assets of the group are convert-rule-data.ts's.
+    const result = validateGroup(P2_ROLES_SLICE, logicGroup);
     if (result.status !== 'group-complete') throw new Error('expected a complete logic group');
     const owned = new Set(draft.assets.map(({ id }) => id));
     expect(result.externalRequirements.map(({ id, kind }) => [id, kind])).toEqual(binding.models.map(({ id }) => [id, 'model']));

@@ -29,9 +29,9 @@ const flightEntries = (): SyntheticEntry[] => PRODUCTION_FLIGHT_SOUND_TABLE.map(
 const flagsOf = ({ data }: SyntheticEntry) => new DataView(data.buffer, data.byteOffset).getUint32(16, true);
 
 const disc = (entries: SyntheticEntry[]) => ({ 'MAIN/SR.NOB': buildImfat(10_000, [...entries].sort((left, right) => left.id - right.id)) });
-/** Both tables, merged as P3-03 subtask 19 will: one table in ascending Asset ID order. */
-const merged = () => [...PRODUCTION_SOUND_TABLE, ...PRODUCTION_FLIGHT_SOUND_TABLE]
-  .sort((left, right) => compareText(left.mapping.asset.id, right.mapping.asset.id));
+const FLIGHT_IDS = new Set(PRODUCTION_FLIGHT_SOUND_TABLE.map(({ mapping }) => mapping.asset.id));
+/** The production table without the flight rows: the 18 P2-08 sounds as they were before P3-03. */
+const P2_08_TABLE = PRODUCTION_SOUND_TABLE.filter(({ mapping }) => !FLIGHT_IDS.has(mapping.asset.id));
 
 describe('production flight sound table', () => {
   it('maps the eight sounds played by ID and the three HUD sounds, each to one whole SND entry', () => {
@@ -75,10 +75,14 @@ describe('production flight sound table', () => {
       .toHaveLength(PRODUCTION_FLIGHT_SOUND_TABLE.length);
   });
 
-  it('reads with the production sound table as one table, sharing no SND entry with it', () => {
-    const rows = readSoundTable(merged(), 'merged');
-    expect(rows).toHaveLength(PRODUCTION_SOUND_TABLE.length + PRODUCTION_FLIGHT_SOUND_TABLE.length);
-    expect(new Set(rows.map(entryOf)).size).toBe(rows.length);
+  it('joins the production sound table as one table in Asset ID order, sharing no SND entry with the P2-08 sounds', () => {
+    expect(P2_08_TABLE).toHaveLength(18);
+    expect(PRODUCTION_SOUND_TABLE).toHaveLength(29);
+    expect(PRODUCTION_SOUND_TABLE.filter(({ mapping }) => FLIGHT_IDS.has(mapping.asset.id))).toEqual(PRODUCTION_FLIGHT_SOUND_TABLE);
+    const ids = PRODUCTION_SOUND_TABLE.map(({ mapping }) => mapping.asset.id);
+    expect(ids).toEqual([...ids].sort(compareText));
+    expect(new Set(PRODUCTION_SOUND_TABLE.map(entryOf)).size).toBe(PRODUCTION_SOUND_TABLE.length);
+    expect(readSoundTable(PRODUCTION_SOUND_TABLE, 'merged')).toEqual(PRODUCTION_SOUND_TABLE);
   });
 
   it('converts code-generated SND blocks into 11 sound Assets with their roles, looping only by the P2-08 flags rule', async () => {
@@ -100,9 +104,9 @@ describe('production flight sound table', () => {
     expect([...reads.keys()].sort()).toEqual(entries.map(({ id }) => id).sort());
   });
 
-  it('leaves the 18 production sound Assets unchanged when both tables convert as one', async () => {
-    const { source } = await countedVerifiedSource(disc([...productionSoundEntries(), ...flightEntries()]));
-    const [alone, together] = await Promise.all([PRODUCTION_SOUND_TABLE, merged()].map(table => convertAudioGroup(source, table, PRODUCTION_SND_RULES)));
+  it('leaves the 18 P2-08 sound Assets unchanged in ID, role and payload bytes when the merged table converts', async () => {
+    const { source } = await countedVerifiedSource(disc(productionSoundEntries()));
+    const [alone, together] = await Promise.all([P2_08_TABLE, PRODUCTION_SOUND_TABLE].map(table => convertAudioGroup(source, table, PRODUCTION_SND_RULES)));
     expect(together.assets).toHaveLength(29);
     const existing = new Set(alone.assets.map(({ id }) => id));
     expect(together.assets.filter(({ id }) => existing.has(id))).toEqual(alone.assets);

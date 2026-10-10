@@ -8,6 +8,8 @@ import { LOGIC_IDS, syntheticCraftTypes, syntheticMission, syntheticRoster } fro
 import { encodeLogicPayload } from '../../content/logic/logic-payload.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
 import { readPayloadRecords } from '../../content/payload.ts';
+import { encodeRuleDataPayload, RULE_DATA_SCHEMA_VERSIONS, type RuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
+import { SYNTHETIC_RULE_DATA } from '../../content/rule-data/rule-data.test-support.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { readSourceStateSet } from '../../content/source-state.ts';
 import { syntheticGroup, syntheticSourceGroup } from '../../content/synthetic-content.test-support.ts';
@@ -56,8 +58,9 @@ export interface LogicContents {
 }
 
 /**
- * A logic group of real logic payloads (mission, craft types and wingman roster) bound to `SYNTHETIC_FINGERPRINT`,
- * whose craft types use the synthetic models group's models; the mission and the table default to the synthetic logic content.
+ * A logic group of real logic payloads (mission, craft types and wingman roster) and the six rule-data payloads of the
+ * synthetic rule-data content, bound to `SYNTHETIC_FINGERPRINT`, whose craft types use the synthetic models group's
+ * models; the mission and the table default to the synthetic logic content.
  */
 export function logicGroupInput(
   { mission = syntheticMission(), craftTypes = packageCraftTypes(), missionBytes, duplicates = [] }: LogicContents = {},
@@ -67,7 +70,12 @@ export function logicGroupInput(
   const models = [...new Set(craftTypes.entries.map(({ model }) => model.id))].sort();
   const tables = (id: string) => asset('craft-types', id, craftTypes, models);
   const rosters = (id: string) => asset('wingman-roster', id, syntheticRoster(), [LOGIC_IDS.craftTypes]);
+  const ruleData = (Object.keys(SYNTHETIC_RULE_DATA) as RuleDataPayload['role'][]).map(role => ({
+    id: `data/${role}`, role, dependencies: [], schemaVersion: RULE_DATA_SCHEMA_VERSIONS[role],
+    bytes: encodeRuleDataPayload({ role, content: SYNTHETIC_RULE_DATA[role]() } as RuleDataPayload),
+  }));
   const specs = [
+    ...ruleData,
     tables(LOGIC_IDS.craftTypes),
     rosters(LOGIC_IDS.wingmanRoster),
     ...duplicates.map(role => (role === 'craft-types' ? tables(`${LOGIC_IDS.craftTypes}-copy`) : rosters(`${LOGIC_IDS.wingmanRoster}-copy`))),

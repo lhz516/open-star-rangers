@@ -99,10 +99,17 @@ const once = (files: () => Promise<readonly File[]>) => {
 const sliceFiles = once(async () => (await syntheticImport(sliceCoveredFiles())).files);
 const graphicsFiles = once(async () => (await syntheticImport(productionCoveredFiles())).files);
 
-/** The slice disc whose root directory holds `records` records: `.`, `..`, `MAIN`, `PAD` and empty filler files. */
+/** Unread padding that keeps the read budget, which equals the input size, above the reads of a large root directory. */
+const ROOT_PADDING = { byteLength: 3 << 20, read: (_: number, length: number) => new Uint8Array(length) };
+
+/**
+ * The slice disc whose root directory holds `records` records: `.`, `..`, `MAIN`, `PAD` and empty filler files. Every
+ * path lookup reads the whole root directory, and the steps look up the slice's seven files many times, so a second
+ * padding file in `PAD`, outside the whitelist, raises the read budget above those reads.
+ */
 const rootRecords = async (records: number) => {
   const fillers = Object.fromEntries(Array.from({ length: records - 4 }, (_, index) => [`F${String(index).padStart(4, '0')}.DAT`, new Uint8Array(0)]));
-  return (await syntheticImport({ ...sliceCoveredFiles(), ...fillers })).files;
+  return fileSetOf(syntheticFileDisc({ ...sliceCoveredFiles(), ...fillers, 'PAD/PAD.DAT': PADDING, 'PAD/PAD2.DAT': ROOT_PADDING }));
 };
 
 
@@ -181,10 +188,10 @@ export const FAILURE_MATRIX: readonly FailureCase[] = Object.freeze([
     // The whitelist checks presence in path order, and its first path is missing.
     id: 'F-05 disc the whitelist does not cover', row: 'F-05', worker: 'models',
     files: async () => (await syntheticImport({ 'MAIN/OTHER.DAT': generatedContent(4_096, 7) })).files,
-    expected: failed('source', 'unsupported-version', 'file:/MAIN/SCENARIO.NOB'), holder: 'unchanged',
+    expected: failed('source', 'unsupported-version', 'file:/MAIN/AISTUFF.NOB'), holder: 'unchanged',
   },
   {
-    // Every presence and size check passes; the second file in path order has another digest.
+    // Every presence and size check passes; only the digest of SR.NOB differs.
     id: 'F-06 covered file with the whitelisted size and other contents', row: 'F-06', worker: 'models', files: changedContent,
     expected: failed('source', 'unsupported-version', 'file:/MAIN/SR.NOB'), holder: 'unchanged',
   },
@@ -195,18 +202,21 @@ export const FAILURE_MATRIX: readonly FailureCase[] = Object.freeze([
     expected: failed('source', 'invalid-payload', 'models[model/base-1].parts[0][1].mesh'), holder: 'unchanged',
   },
   {
-    // Mapping 97 of the production graphics table is the first naming the removed TEX entry; the graphics step verifies
-    // its mappings in table order, and P2-03 reports an absent entry at the mapping's first alternative.
+    // Mapping 286 of the production graphics table is the first naming the removed TEX entry: the 97 P2 mappings before
+    // it and the 189 P3-03 flight mappings whose IDs sort before it (the view labels, 186 explosion frames, the
+    // hit-shimmer and the target display background). The graphics step verifies its mappings in table order, and P2-03
+    // reports an absent entry at the mapping's first alternative.
     id: 'F-08 referenced texture missing from an identified disc', row: 'F-08', worker: 'texture-missing',
     files: async () => (await syntheticImport(scenarioSource('texture-missing')!.covered)).files,
-    expected: failed('source', 'entry-not-found', 'sources.mappings[97].parts[0].alternatives[0]'), holder: 'unchanged',
+    expected: failed('source', 'entry-not-found', 'sources.mappings[286].parts[0].alternatives[0]'), holder: 'unchanged',
   },
   {
-    // The models group requires the player model's slot-0 sound, eighth of its sound requirements in ID order.
+    // The models group requires the player model's slot-0 sound, twelfth of its sound requirements in ID order: after
+    // the four blast sounds the explosion table names and the seven other sounds the models name.
     id: 'F-08 cross-group sound dependency missing from the package', row: 'F-08', worker: 'sound-missing', files: sliceFiles,
     expected: {
       status: 'finished', groups: ALL_COMPLETE,
-      package: { status: 'incomplete', diagnostics: [{ code: 'missing-dependency', path: 'groups[1].externalRequirements[7]', assetId: MISSING_SOUND }] },
+      package: { status: 'incomplete', diagnostics: [{ code: 'missing-dependency', path: 'groups[1].externalRequirements[11]', assetId: MISSING_SOUND }] },
       mission: { status: 'loaded' },
     },
     holder: 'partial-unsaved',

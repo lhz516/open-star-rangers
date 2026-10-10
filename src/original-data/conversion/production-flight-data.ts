@@ -13,7 +13,7 @@ import { PRODUCTION_SOUND_TABLE } from './production-sounds.ts';
 // RENS 10751 header, the explosion table of EXIC 10211 and its 17 EXPL records, one animation per ANIM, and the nebula
 // list of NEBC 10661. The frames and nebula images are P3-03/16's (production-flight-graphics.ts) and the explosion
 // sounds the delivered audio table's (production-sounds.ts); their mappings are this step's references. Entry IDs stay in
-// original-data and never enter canonical content. P3-03/19 wires the step into the import job and sets its share.
+// original-data and never enter canonical content. The import job runs the step after the effect step.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** The three lists of EXPL entries (hud §3, textures §7). */
@@ -118,7 +118,7 @@ export const PRODUCTION_FLIGHT_DATA_DECLARATIONS: FlightDataDeclarations = (() =
 })();
 
 /**
- * The approved flight data step share (P3-03 spec, 限值与预算). P3-03/19 derives its values from the step's baseline
- * usage by the spec's rule; until then it is empty, and the step is not part of the import job.
+ * The approved flight data step share (P3-03 spec, 限值与预算): twice each dimension of the step's conversion usage on the
+ * baseline, rounded up to a power of two (observations in the P3-03/19 completion evidence).
  */
-export const PRODUCTION_FLIGHT_DATA_SHARE: BudgetRecord = EMPTY_BUDGET_USAGE;
+export const PRODUCTION_FLIGHT_DATA_SHARE: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE, assets: 64, dependencyEdges: 512, payloadBytes: 32_768 });
