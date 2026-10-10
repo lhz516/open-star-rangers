@@ -11,6 +11,9 @@
  * - `audio`: `unavailable` for an audio capability whose context cannot be created, as without Web Audio.
  * - `hold`: comma-separated cache operations (`commit`, `list`, `restore`) whose results, once the cache has settled
  *   them, wait until the test releases them, so a result can arrive late (P2-12 F-12). Nothing else changes.
+ * - `seeds`: comma-separated uint32 values the mission's seed source draws in order, one per world creation attempt
+ *   (P3-04 S-09); once they are used up, it draws from `crypto.getRandomValues` as in production. Values outside uint32
+ *   are drawn as they are, so the owner reports them as a failed start.
  *
  * The profile is published as `window.osrTestEntry.profile` for tests that seed the cache, and the held results as
  * `window.osrTestEntry.cache`: `held(operation)` counts the results waiting and `release(operation)` delivers them.
@@ -110,12 +113,20 @@ function audio(): AppPorts['audio'] {
   });
 }
 
+/** The browser seed source after the query's `seeds`, drawn in order. */
+function missionPorts(): AppPorts['mission'] {
+  const seeds = (query.get('seeds') ?? '').split(',').filter(value => value !== '').map(Number);
+  if (seeds.length === 0) return browser.mission;
+  return Object.freeze({ ...browser.mission, seed: () => seeds.shift() ?? browser.mission.seed() });
+}
+
 const ports: AppPorts = Object.freeze({
   ...browser,
   createImportPort: importPort(),
   cache: cache(),
   audio: audio(),
   profile: scenarioEntryProfile(worker) ?? browser.profile,
+  mission: missionPorts(),
 });
 window.osrTestEntry = Object.freeze({
   profile: ports.profile,

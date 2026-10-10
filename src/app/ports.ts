@@ -2,7 +2,25 @@ import type { AudioCapability, PageLifecycleHost } from '../platform/audio/audio
 import type { RenderSurface, RenderSurfaceOptions } from '../render/scene/render-surface.ts';
 import type { ExpectedPackageProfile } from '../workers/production-package.ts';
 import type { ImportWorkerPortFactory } from './import/import-worker-port.ts';
+import type { FileSave, LeaveGuard, MonotonicClock, OneShotTimer, SeedSource } from './mission/mission-ports.ts';
 import type { ResourceCachePort } from './resources/resource-holder.ts';
+import type { SessionHost } from './session/session-host.ts';
+
+/** What every mission owner is given from the host (P3-04 S-05, the "应用端口" row of the spec's data model). */
+export interface MissionPorts {
+  /** Draws the uint32 seed of each world creation attempt. */
+  readonly seed: SeedSource;
+  /** Times placeholders, UI sampling and development frame timing. */
+  readonly clock: MonotonicClock;
+  /** Schedules the placeholders' one-shot timers. */
+  readonly timer: OneShotTimer;
+  /** Registers the leave-page confirmation while a run exists. */
+  readonly leaveGuard: LeaveGuard;
+  /** Creates the session host of each mission owner. */
+  readonly createSessionHost: () => SessionHost;
+  /** Creates the file save of each owner's development diagnostics; null in production builds, which have none. */
+  readonly createFileSave: (() => FileSave) | null;
+}
 
 /**
  * What the app shell is built from (P2-11 S-01): the production entry passes the browser implementations and the
@@ -19,6 +37,7 @@ export interface AppPorts {
   readonly createSurface: (container: HTMLElement, options: RenderSurfaceOptions) => RenderSurface;
   /** Which cached package may be restored, and the budget of commits and restores. */
   readonly profile: ExpectedPackageProfile;
+  readonly mission: MissionPorts;
   /** Receives errors no screen reports itself. */
   readonly reportError: (error: unknown) => void;
 }

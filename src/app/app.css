@@ -1,4 +1,4 @@
-/* Shell styles of the P1 menu prototype: a responsive web page, not the original interface. */
+/* Shell styles of the project pages: a responsive web page, not the original interface. */
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
@@ -28,11 +28,6 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-.synthetic-input:focus {
-  outline: 3px solid #1a5fb4;
-  outline-offset: 2px;
-}
-
 .menu-entries {
   display: grid;
   gap: 1rem;
@@ -57,4 +52,43 @@ button:focus-visible {
 
 .viewer-variant {
   display: block;
+}
+
+/* P3-04 mission pages. The game view area stays empty until the flight view arrives (P3-12, P3-13); the status bar is
+   project UI outside it. */
+.mission-view {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  max-width: 40rem;
+  margin: 1rem 0;
+  border: 1px solid #77767b;
+  background: #241f31;
+  color: #f6f5f4;
+  text-align: center;
+}
+
+.mission-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0.5rem 0;
+  border-block: 1px solid #77767b;
+}
+
+.mission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mission-choice {
+  display: block;
+  padding: 0.25rem 0;
+}
+
+input:focus-visible,
+h2:focus-visible {
+  outline: 3px solid #1a5fb4;
+  outline-offset: 2px;
 }
