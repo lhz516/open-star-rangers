@@ -99,7 +99,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | completed |
-| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | in-progress |
+| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | completed |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | completed |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | completed |
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | completed |
@@ -164,6 +164,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 从 22 拆出 35：** 22 原本等 20，而其中大部分接线只依赖已完成的 13 至 19 与 21。依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把非导弹的接线拆到 35：玩家更新的两处调用、`linear`/`spinning` 的分派与弹丸命中检测、停放交战、把跳过移动阶段的测试改为正式 `step`。22 只保留导弹的接线，依赖改为 08、20、35。
 - **2026-10-10 — 09 的执行：** 09 以变体配方 C、M、X、Y、V 代替单纯的重复运行：锁定需要导弹 3（导弹 1 只能尾追），爆炸需要炮火。排除三次运行：两次因宿主显示器唤醒使 DOSBox-X 崩溃，一次因等待超时。基准锁与 P3-06 协商共用。协调者批准 `tools/baseline/` 增加 `low` 字段地址（线性第 0 页），用于读取线性地址 0x2C（31 的读数）。
 - **2026-10-10 — 35 已集成：** 导弹锁定与自动选敌接入后（CR-07），追踪导弹会向自动选定的目标发射；在 22 接入导弹飞行之前，其移动在移动阶段故障（`movement.record`）。`game-session-replay.test.ts` 暂用 `select-missile`，由 22 恢复 `fire secondary`。
+- **2026-10-10 — D-02 定稿（10）：** 判据按每个链节记录的偏差归一化后精确核对，批准记在 P3-07 spec 的审批节，早于 26 的正式采样与 27 的新版对照。B 文档为 B-009（B-008 由 P3-06 使用）。
 
 ## 审批
 
