@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
 | [01-targeting-radar-research.md](./subtasks/01-targeting-radar-research.md) | — | in-progress |
-| [02-weapons-firing-research.md](./subtasks/02-weapons-firing-research.md) | — | in-progress |
+| [02-weapons-firing-research.md](./subtasks/02-weapons-firing-research.md) | — | completed |
 | [03-motion-hit-collision-research.md](./subtasks/03-motion-hit-collision-research.md) | — | in-progress |
 | [04-damage-energy-research.md](./subtasks/04-damage-energy-research.md) | — | pending |
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | pending |
