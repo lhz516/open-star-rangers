@@ -34,6 +34,13 @@ function withEntities(...inits: Parameters<typeof entityInit>[]): [WorldState, E
 
 const setState = (entity: Entity, state: Entity['state']): Request => ({ type: 'set-state', entityId: entity.id, state });
 
+/** Gives a missile the G of one that has detonated (phase 4), so that its state-7 callback does nothing more (P3-07/20). */
+function spendGuidance(missile: Entity): void {
+  Object.assign(missile.combat, {
+    guidance: { phase: 4, lifetimeClock: 0, armClock: 0, fuseRadiusSquared: 0, detonationClock: 0, checkInterval: 0, nextCheckClock: 0 },
+  });
+}
+
 describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
   it('is the one fixed order of the spec and Q-09', () => {
     expect(PIPELINE.map(({ id }) => id)).toEqual([
@@ -315,23 +322,48 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expect([typeof collisionStage, typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function', 'function']);
   });
 
-  /** A craft (1), a missile (2), a projectile (3), a fragment (4) and an explosion (5), all active. */
+  /** A craft (1), a missile (2) that has detonated, a projectile (3), a fragment (4) and an explosion (5), all active. */
   function runtimeKinds(): [WorldState, Entity[]] {
     const [state, entities] = withEntities([7], [20], [21], [24], [22]);
     for (const entity of entities) entity.state = 'active';
+    spendGuidance(entities[1]);
     return [state, entities];
   }
 
   const control = { scale: 1, axes: [{ clear: false, set: true, value: 0.5 }, { clear: true, set: false, value: 0 }, { clear: false, set: false, value: 0 }], speedFactor: null } as const;
   it.each([
     ['select-target', { type: 'select-target', entityId: 1, target: 2, targetKindBit: 20, origin: 'command', commandIndex: 0 }, 'targeting.select-target'],
-    ['steer', { type: 'steer', entityId: 2, control }, 'missiles.steer'],
-    ['a missile\'s expiry', { type: 'expire', entityId: 2 }, 'missiles.expire'],
     ['a craft\'s expiry', { type: 'expire', entityId: 1 }, 'requests.expire'],
     ['an explosion\'s expiry', { type: 'expire', entityId: 5 }, 'requests.expire'],
   ] as [string, Request, string][])('routes %s to its module in request handling, which no rule posts yet', (_, request, site) => {
     const [state] = runtimeKinds();
     expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
+  });
+
+  it('routes steer to missiles.ts (P3-07/20): 0x21fd8 on the missile\'s block with its body record', () => {
+    const [state, [missile]] = withEntities([20]);
+    missile.state = 'active';
+    spendGuidance(missile);
+    let block: unknown = null;
+    // The missile's movement faults until P3-07 subtask 22, which gives it its body record there.
+    expectFault(() => runTickWith(state, {
+      'mission-flow': ({ requests }) => requests.post({ type: 'steer', entityId: missile.id, control }),
+      movement: () => void (block = structuredClone(missile.movement)),
+    }), 'invariant-violated', 'movement.record');
+    // Row 1 set to 0.5 at scale 1: F(body +0xAC (1) × −1 × 0.5); row 2 cleared: yaw's rate 0 and its flag kept; row 3 untouched.
+    expect(block).toMatchObject({ steering: { pitch: { rate: -0.5, enabled: true }, yaw: { rate: 0, enabled: false }, roll: { rate: 0, enabled: false } } });
+  });
+
+  it('routes a missile\'s expiry to missiles.ts (P3-07/20): it fizzles, emits missile-ended and leaves at its next update', () => {
+    const [state, [missile]] = withEntities([20]);
+    missile.state = 'active';
+    spendGuidance(missile);
+    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post({ type: 'expire', entityId: missile.id }) })).toMatchObject([
+      { type: 'missile-ended', entityId: missile.id, shooterEntityId: null, outcome: 'fizzled' },
+    ]);
+    expect(missile.state).toBe('pending-removal');
+    runTickWith(state);
+    expect(state.entities.size).toBe(0);
   });
 
   it('routes a projectile\'s expiry to projectiles.ts (P3-07/17): pending removal, its shooter let go', () => {
@@ -350,8 +382,11 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expect(stateText(state)).toBe(stateText(reference));
   });
 
-  it('keeps the own updates of missiles and projectiles to the generic lifecycle (explosions and fragments: destruction.test.ts)', () => {
+  it('routes the own updates of missiles and projectiles to their modules: state 7 at once, removal from pending removal (explosions and fragments: destruction.test.ts)', () => {
     const [state, entities] = withEntities([20], [21]);
+    // The synthetic missile records have a negative lifetime, which a new G rejects; G is made once, so this missile's
+    // first callback only asks for state 7.
+    spendGuidance(entities[0]);
     const atMovement: string[] = [];
     // The missile's movement faults until P3-07 subtask 22, which gives it its body record there.
     expectFault(() => runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) }),

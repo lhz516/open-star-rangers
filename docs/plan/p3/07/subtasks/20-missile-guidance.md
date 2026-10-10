@@ -58,10 +58,10 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-07（规则）：H5 的回调、阶段、寿命、引信（接触与近炸）、起爆与熄火分支全部覆盖；引信在对象更新中以上一 tick 末的位置运行，起爆在请求处理中；起爆包括停靠者，对种类不在 `0xf9c7c` 的受击者施加 `0x2b628`；`missile-ended` 与 `hit` 的次序符合 CR-06。
-- [ ] 共享转向模块按 CR-09 实现导弹使用的子集，输出 `ControlBlock` 经 `steer` 请求投递；无制导导弹在阶段 0 直接调用 `0x21fd8`；没有替代积分器或近似追踪。
-- [ ] 冲突 29 的常量按两种取值参数化且都有测试；生产取值按 H5 记录的运行时读数设定，不择一写死。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-07（规则）：H5 的回调、阶段、寿命、引信（接触与近炸）、起爆与熄火分支全部覆盖；引信在对象更新中以上一 tick 末的位置运行，起爆在请求处理中；起爆包括停靠者，对种类不在 `0xf9c7c` 的受击者施加 `0x2b628`；`missile-ended` 与 `hit` 的次序符合 CR-06。
+- [x] 共享转向模块按 CR-09 实现导弹使用的子集，输出 `ControlBlock` 经 `steer` 请求投递；无制导导弹在阶段 0 直接调用 `0x21fd8`；没有替代积分器或近似追踪。
+- [x] 冲突 29 的常量按两种取值参数化且都有测试；生产取值按 H5 记录的运行时读数设定，不择一写死。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -69,3 +69,18 @@ updated: 2026-10-10
 - 流水线与共用积分的集成在 22；连续追踪的对照见 27。
 
 ## 完成证据
+
+- **实现（基于 `5fb0f75e`，35 集成之后）：** [missiles.ts](../../../../../src/core/systems/missiles.ts) 按 32 交接的调用次序调用 32 的 `guidance.ts` 与 `steering.ts`，不重新实现规则：
+  - 首次回调（状态 1）：G 只建一次（相对值，`initialGuidance` 用 12 的 `fuseRadiusSquared`）；两种程序都置 `contact = null`（CR-11 的差异 6）；追踪导弹以 34 的 `world.ruleData.homingPrograms[programRecord(program)]` 安装程序（`initialHoming`，模式 0），其控制块按返回次序投递为 `steer`，然后投递状态 7。重复的首次回调只再投递状态 7（原生指令：G 已存在时跳到投递）。状态 0 为故障（与弹丸相同，运行时种类不会处于新建）。
+  - 状态 7：追踪导弹在 `isHomingUpdateDue` 时以模式 1 运行程序并投递 `steer`，然后 `advanceGuidance`：`control` 在对象更新中直接经 P3-06 的 `0x21fd8`（`applyFloatControl`，弹体记录的速率、`maximumSpeed`、世界 RNG）应用，`expire` 投递到期请求。引信因此读上一 tick 移动留下的位置。
+  - 状态 6（复现 `0x5ddd4`）：追踪导弹以模式 2 调用处理程序（投递转向块，不抽取），再由通用部分投递离开。原生次序已在本地只读核对：`0x2ab00` 在 G 存在时先调 `0x5ddd4`，再调通用回调 `0x20ae4`。转向请求先于离开被处理，对移动块与控制器的改变随导弹移除；保留它是为了请求与可能的故障与原版一致，代价只是每个导弹一次请求。其他状态走通用部分。
+  - `steer` 请求：`ControlBlock` 的行 1、2、3 对应 pitch、yaw、roll；`set ≠ 0` 取值，否则 `clear ≠ 0` 为清除，否则不变（executable 的 `0x21fd8`）；经 `applyFloatControl` 应用。只有导弹投递，其他实体为故障（P3-08 扩展）。
+  - `expire`（`0x2b408`）：先发 `missile-ended`（`shooterEntityId` 为仍可解析的发射者，否则 null；位姿为导弹的）。起爆：18 的 `constructExplosion`（导弹成为被持有的被毁源），再按 `blastHits` 的惰性遍历，每个受击者先 `blastShake`（本 tick 的 `MotionStep.time`，世界 RNG），再 15 的 `applyShotHit`（无撞击点）。熄火：待移除、释放发射者、清空目标。
+  - **冲突 29：** `UNGUIDED_CHECK_INTERVAL = 'halved'`（31 写入 H5 的运行时读数），作为 `updateMissile` 的可选参数的默认值；流水线不传参，测试传两种取值。
+  - P3-06 的 `0x21fd8` 浮点路径已可调用，所以阶段 0 的直接调用与 `steer` 的应用都在 `missiles.ts` 中接上；导弹的移动（`movement.ts` 给导弹弹体记录）与经积分的集成测试仍归 22（目前导弹进入状态 7 后移动阶段为 `movement.record` 故障）。
+- **测试：** [missiles.test.ts](../../../../../src/core/systems/missiles.test.ts)（25 项，期望按 H5 与记录手算，不调用被测函数）：首次回调（无制导的 G 与 `contact`、追踪导弹的油门块与转向块先于状态 7、目标失效时只安装、热寻的模式 0 的放弃抽取世界 RNG 一次、G 只建一次、状态 0 故障）；状态 7（阶段 0 的时钟化与经 `0x21fd8` 的满油门、到期的模式 1 更新与期限 `(时钟 + 周期) SHR 1`、未严格到期不更新、目标失效不投递不推进期限、寿命严格到期熄火且不检查引信、近炸在当前位置触发、生产取值减半与 `'full'` 取整个间隔、接触后下一次回调起爆）；状态 6（模式 2 投递转向块且不抽取、再离开；无制导只离开）；`steer`（设与清、行到轴的映射与弹体速率、速度因子、锁定时不变、非导弹故障）；`expire`（熄火的事件与释放、发射者失效时为 null；起爆的事件次序 `missile-ended`、按遍历次序的 `hit` 与 `object-destroyed`，含停靠者、发射者与玩家，跳过停放、被毁、Warp 与状态 < 7、超出半径；导弹与被毁受击者各自被爆炸持有；`0xf9c7c` 之外的冲量；6 次抽取的震动先于伤害的抽取，时间为 F(640 ÷ 64)；豁免种类不震动只为伤害抽取）。变异检查：把生产取值改为 `'full'`、去掉模式 2、把震动移到伤害之后、以时钟代替任务时间、把 `missile-ended` 移到起爆之后、让清除优先于设置、不清 `contact`、不应用阶段 0 的控制块，各自使测试失败。
+- **既有测试的适配（协调者 2026-10-10 扩大写入范围）：** [pipeline.test.ts](../../../../../src/core/systems/pipeline.test.ts) 与 [destruction.test.ts](../../../../../src/core/systems/destruction.test.ts) 中处于状态 7 的导弹补上阶段 4 的 G（已起爆，回调不再做事）；占位故障行 `missiles.steer`、`missiles.expire` 改为路由测试：`steer` 经 `0x21fd8` 写入导弹移动块（行 1 设 0.5、行 2 清除），一个导弹的到期熄火并发出 `missile-ended`、下一 tick 离开；原“导弹与弹丸保持通用生命周期”的测试改为两者经各自模块的首次回调进入状态 7、从待移除离开（导弹预置 G，因为合成导弹记录的寿命为负）。
+- **检查：** `pnpm exec vitest run src/core/systems/missiles.test.ts src/core/systems/pipeline.test.ts src/core/systems/destruction.test.ts` 84 项通过；`pnpm check`（typecheck、lint、261 个文件 7,834 项测试，含 `src/core` 与 `tools/engineering-boundaries.test.ts`，build）通过，build 的大块警告为既有。
+- **rubber-duck：** 对照 H5、`0x21fd8`、CR-05/06/08/09/11 与 32 的交接审阅 `missiles.ts` 与测试，无问题。
+- **simplify：** 采纳：合并 `homingProgram` 与 `homingCall` 中重复的 `unguided` 守卫；`missile-ended` 只在一处发出、内联单用的熄火函数；测试复用 `steer` 请求构造。未采纳：复用 `flight-control.ts` 的 `craftMovement`（未导出，超出写入范围）；世界 RNG 的辅助函数（与兄弟系统的内联写法一致）；按 tick 缓存引信场景、任务时间或 RNG（至多 32 个导弹，可忽略）；把 `ControlBlock` 的解码移入 `rules/flight-control.ts`（P3-06 的文件，超出范围，交 22/P3-08 考虑）；去掉 `updateMissile` 的冲突 29 参数（本项验收要求两种取值经导弹系统都有测试）。
+- **文档影响：** `docs/engineering/modules/core.md` 不逐个列出 P3-07 的系统模块（28 更新）；STATUS、tasks.md 无变化；U 项不变。原版事实建议由协调者补入 executable 的 H5（见交接报告）：`0x2ab00` 在状态 0/1 中 G 已存在时仍投递状态 7；在状态 6 中先 `0x5ddd4` 后 `0x20ae4`。

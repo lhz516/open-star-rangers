@@ -216,6 +216,10 @@ describe('a held source (X2, X4, CR-08, AC-12)', () => {
     const { state } = world();
     const missile = state.entities.allocate(entityInit(20, { position: { x: 5, y: 5, z: 5 } }));
     missile.state = 'active';
+    // A detonated missile's G is in phase 4, so its state-7 callback does nothing more (P3-07/20).
+    Object.assign(missile.combat, {
+      guidance: { phase: 4, lifetimeClock: 0, armClock: 0, fuseRadiusSquared: 0, detonationClock: 0, checkInterval: 0, nextCheckClock: 0 },
+    });
     // The destroyed missile is still moved, which needs its body record (P3-07/22): no movement stage here.
     tick(state, { 'request-handling': (context) => constructExplosion(context, missile) }, false);
     const [explosion] = ofKind(state, 22);
