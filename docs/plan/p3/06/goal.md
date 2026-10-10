@@ -92,7 +92,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | completed |
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | completed |
-| [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | in-progress |
+| [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | completed |
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | pending |
 | [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | pending |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
@@ -122,6 +122,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 11 完成（交 12–16、18、19、P3-07）：** 运动阶段接入第 8 阶段；模式 0/3 积分为 `rules/flight-motion.ts` 的纯函数（`rotateRows`、`motionStep`、`integrateCraft`、`integrateWarp`），按块的 mode 穷尽分派，P3-07 在 `movement.ts` 的分派与 `motionRecord` 处加入模式 1/2 与弹体记录；期望值来自精确有理数参照（与 01 的本地独立评估器逐位一致）；每个 f32 写回点非有限即故障；活动实体现在每 tick 运动，测试中需固定位置时用 `stillEntityInit`；步长须可表示为 f32（超大步长的合成配置在运动阶段故障，未改 P3-02 的运行配置契约）。交 18：`motionStep` 与积分函数可作为有界的私有校准入口。交 19：core 分册的阶段表第 8 行与源码结构。
 - **2026-10-10 — 16 完成（交 18、19、P3-07、P3-09）：** 真实内容经同包验证与解码进入 Core，30 次运行（僚机无与 0–4，各 5 个种子）的玩家起飞初态、相对时刻与其他对象的初始块与首次运动均符合独立期望；种类位 25 不影响所选任务（52 个 SCEN 与 SCCT 中都没有种类位 ≥ 20 的记录）；首次可操纵更新后的目标与 `0x3060c` 的抽取留给 P3-07 与 18 重跑本地脚本。交 P3-09/P3-13：运行时的种类 25 地图标记若以带块的活动对象出现，需要不依赖机型记录的模式 4 块变体，否则运动阶段故障。交 19：executable 最高速度一节“Local data”中所选任务 CINF 受能量限制的组合数应为 6/16（03 的本地输出与 16 的独立计算一致），不是 7。
 - **2026-10-10 — 12 完成（交 13、15、19、P3-05、P3-07、P3-08）：** 玩家更新在对象更新开头判定命令并消费轴；可用 = 存在、未被毁、状态 7，可用玩家缺控制状态为故障；判定次序为 not-implemented（本上下文不归 P3-06）→ player-unavailable → wrong-context；读回按批次开始时的指令速度与前序请求的推算（锁定时不变）；请求在玩家更新末尾按次序投递，轴并入最后一个 `control` 请求或单独投递；`control` 请求在请求处理中按 `0x21dd0` 应用（扰动时 3 次抽取）。交 P3-07/P3-08：浮点路径为 `rules/flight-control.ts` 的 `applyFloatControl`，`0x21d88` 即 10 交付的 `applyRecomputedMaximum`；导弹锁定与自动选择目标的插入点已在代码注释中标出。交 13：在 `judgeCommands` 之前加入失效目标清除与辅助；`match-target`、`toggle-auto-match`、`confirm-selection` 目前为 not-implemented，读回推算须计入 `match-speed` 请求。交 19：core 分册的原因码、请求类型与命令判定、扩展规则段已过时；executable 可补入新确认的数值细节（见 12 的完成证据）。
+- **2026-10-10 — 13 完成（交 14、15、19、P3-07、P3-08）：** 手动匹配（`match-speed` 请求）、自动辅助与开关按检查点 A 实现；失效目标清除只在玩家可用时运行（与原版状态 7 的分支一致），不可用期间保留的过期 ID 在下一次可用更新或玩家移除时清除；玩家移除时 `leave` 已同时清除 `player.target` 与 `player.control`（10 的交接已完成），停放时的目标清除仍归 14。为 P3-08 导出 `matchedSpeed`、`speedMatch`、`applySpeedMatch`（`0x21adc`）与辅助判定。P3-07 的插入点注释保留。P3-07 已把本分支（至 12）合并到其分支（`510a230`），并在其一侧解决了 `pipeline.ts` 的冲突（命令委托 `judge`、`craftMovement`），本分支不需改动。交 19：core 分册补 `match-speed` 请求、辅助与匹配事件的发出位置及玩家移除时的清除。
 
 ## 审批
 

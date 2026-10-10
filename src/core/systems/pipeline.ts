@@ -16,7 +16,7 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, initialState, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { applyControlRequest, updatePlayer, type ControlRequest } from './flight-control.ts';
+import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { moveEntities } from './movement.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 
@@ -29,7 +29,9 @@ export type Request =
   /** Message 0x4000: one spawn request of a due queue entry (spawn.ts). */
   | SpawnRequest
   /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
-  | ControlRequest;
+  | ControlRequest
+  /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
+  | MatchSpeedRequest;
 
 /**
  * The requests of one tick. Request handling takes them in posting order (mission flow, then object updates in walk
@@ -162,9 +164,11 @@ function updateObjects(context: TickContext): void {
 
 /**
  * Message 0x20 (`0x20d10`): an entity in area-switch toggles its parking and starts its state again; any other entity
- * is removed. Removal clears the player-state reference to it (the original clears it for kind 1, the player's) and
- * makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name becomes free because no
- * entity holds it any more (Q-08). The player's target, cleared when that entity parks, belongs to P3-07.
+ * is removed. Removal of the player's entity clears the player-state reference to it (the original clears it for
+ * kind 1, the player's) together with the player's target and control state, which exist only with a player entity
+ * (P3-06 D-03). Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts
+ * keep counting spawns, and a name becomes free because no entity holds it any more (Q-08). The player's target,
+ * cleared when that entity parks, belongs to P3-06/14.
  */
 function leave(world: WorldState, entity: Entity): void {
   if (entity.state === 'area-switch') {
@@ -172,7 +176,11 @@ function leave(world: WorldState, entity: Entity): void {
     entity.state = initialState(entity.activity);
     return;
   }
-  if (world.player.entityId === entity.id) world.player.entityId = null;
+  if (world.player.entityId === entity.id) {
+    world.player.entityId = null;
+    world.player.target = null;
+    world.player.control = null;
+  }
   world.entities.remove(entity);
 }
 
@@ -194,6 +202,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'control':
       applyControlRequest(world, entity, request);
+      return;
+    case 'match-speed':
+      applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
       return;
   }
 }

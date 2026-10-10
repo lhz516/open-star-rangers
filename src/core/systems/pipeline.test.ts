@@ -4,6 +4,7 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
 import { entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { emit, PIPELINE, registerTick, RequestQueue, runTick, type Request, type TickContext } from './pipeline.ts';
@@ -235,18 +236,22 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     expect([...state.entities.walk(1 << 3)]).toEqual([]);
   });
 
-  it('clears the player reference when it removes the player, and only then', () => {
+  it('clears the player reference, target and control state when it removes the player, and only then', () => {
     const [state, [player, other, sameKind]] = withEntities([0], [6], [0]);
+    const target = state.entities.allocate(entityInit(7, { activity: 'parked' }));
     state.player.entityId = player.id;
+    state.player.target = target.id;
+    state.player.control = initialPlayerControl(0);
     other.state = 'pending-removal';
     sameKind.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBe(player.id);
+    expect(state.player).toMatchObject({ entityId: player.id, target: target.id, control: initialPlayerControl(0) });
     player.state = 'pending-removal';
+    target.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBeNull();
+    expect(state.player).toMatchObject({ entityId: null, target: null, control: null });
     expect(state.entities.size).toBe(0);
-    expect(state.entities.nextId).toBe(4);
+    expect(state.entities.nextId).toBe(5);
   });
 
   it.each([
