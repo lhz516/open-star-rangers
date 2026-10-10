@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | completed |
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | blocked |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
@@ -136,6 +136,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: `p3-06-flight-motion-spec` 的 tracker 中 06 为 in-progress（认领提交 `27e3269`）；P3-07 的 01 至 07 已完成，事件与请求上界已发给 P3-06 协调者供其容量核算。
   Affected acceptance: 08 全部验收项；其后的 11 至 29（经依赖）。
   Resume when: P3-06 的子任务 06 在其分支上为 completed，协调者把该分支合并到本分支后，把 08 改为 pending 并派发。
+- **2026-10-10 — Subtask 08 unblocked：** 恢复条件已满足。P3-06 的子任务 06 为 completed（提交 `d379d31`，P3-02 spec 新增“P3-06 的契约修订（检查点 A）”）；协调者以合并提交 `7e05c7b` 把 P3-06 分支合并到本分支，08 由 blocked 改为 pending。
 
 ## 审批
 
