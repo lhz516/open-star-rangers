@@ -93,8 +93,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [08-replay-check-tool.md](./subtasks/08-replay-check-tool.md) | 01 | completed |
 | [09-pages-app-wiring.md](./subtasks/09-pages-app-wiring.md) | 05, 06, 07 | completed |
 | [10-e2e-mission-flow.md](./subtasks/10-e2e-mission-flow.md) | 08, 09 | completed |
-| [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | pending |
-| [12-e2e-shell-production.md](./subtasks/12-e2e-shell-production.md) | 10 | pending |
+| [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | in-progress |
+| [12-e2e-shell-production.md](./subtasks/12-e2e-shell-production.md) | 10 | in-progress |
 | [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12 | pending |
 | [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | pending |
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | pending |
