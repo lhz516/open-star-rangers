@@ -16,14 +16,28 @@ export const CORE_LIMITS = Object.freeze({
   /** Instances one world may schedule from its declarations (requests × members, summed): over 25 times the selected mission, and half of `entities`. */
   spawnExpansion: 1024,
   /**
-   * Events of one tick, and separately the requests of one tick (pipeline.ts), above the bounds the rules derive
-   * (docs/plan/p3/06/spec.md, 容量核算). Events: commandsPerTick results + commandsPerTick additional speed events (at most
-   * one per command) + 1 speed assist event + spawnExpansion instantiations + entities world exits (P3-06's
-   * `object-left-world` takes the one rule event per entity P3-02 reserved) = 3,201. Requests: entities lifecycle
-   * requests + spawnExpansion spawn requests + commandsPerTick speed command requests + 2 (the assist's and the axes'
-   * control requests) = 3,138. A rule task that adds terms derives the sum again (P3-07).
+   * Events of one tick, a runaway budget above the bounds the rules derive (docs/plan/p3/02/spec.md, CR-14), not an
+   * original limit. P3-02 and P3-06 (docs/plan/p3/06/spec.md, 容量核算): commandsPerTick results + commandsPerTick
+   * additional speed events + 1 speed assist event + spawnExpansion instantiations + entities world exits = 3,201 at the
+   * entity limit, 1,185 with 32 world exits. P3-07's `hit` has quadratic terms, so its bound takes a generous slice at
+   * once (32 craft of which 24 in collision group A, 256 mounts, 64 commands with fire chains of 4, 512 live
+   * projectiles, 32 missiles, 256 fragments, 64 explosions; 32 destructions, detonations and AI area damages in one
+   * tick, 256 fragments expiring or shot down, 32 parked objects engaging 32 candidates each): `hit` 512 + (32 + 32) ×
+   * 32 + 2 × 32 + 256 + 2 × 24 × 32 + 32 × 32 + 32 = 5,472, `shot-fired` 512, `explosion-started` 353,
+   * `fragment-expired` and `source-released` 256 each, `object-destroyed`, `energy-depleted` and `missile-ended` 32
+   * each, `target-changed` 65 and `target-cleared` 1, the per-command `weapon-selected`, `energy-allocation-changed`
+   * and `left-page-changed` 64: 7,075. This is about four times the total of 8,260. At the entity limit the quadratic
+   * terms have no fixed bound, and exceeding the budget is a fault.
    */
-  eventsPerTick: 4096,
+  eventsPerTick: 32_768,
+  /**
+   * Requests of one tick (pipeline.ts), the same kind of budget (CR-14). P3-02 and P3-06: entities lifecycle requests +
+   * spawnExpansion spawn requests + commandsPerTick speed command requests + 2 control requests = 3,138 at the entity
+   * limit. At the slice above: `select-target` 65, launches 512, at most 2 per live object's own update (an explosion's
+   * release and leave, a part-0 fragment's hand-off and expiry) 2 × 896, `steer` 64, and P3-02's and P3-06's spawn
+   * requests 1,024 and speed requests 66: 3,523. This is about 4.6 times that.
+   */
+  requestsPerTick: 16_384,
   /** Ticks of one recording or replay: 68 minutes at the default rate, several times a slice mission. */
   recordedTicks: 131_072,
   /** Commands of one recording: 2 per tick on average, e.g. fire held every tick plus one more action. */
@@ -32,7 +46,10 @@ export const CORE_LIMITS = Object.freeze({
   recordedEvents: 524_288,
   /** Checkpoints of one recording: tick 0 and one per tick, so an interval of 1 always fits. */
   recordedCheckpoints: 131_073,
-  /** Characters of one canonical text: a snapshot at the entity limit with 4 KiB per entity is 8 MiB, half of this. */
+  /**
+   * Characters of one canonical text. A snapshot at the entity limit is about 10.5 MiB with P3-07's combat state
+   * (CR-14): at most spawnExpansion craft at about 8.5 KiB each with 18 mounts, about 2 KiB for every other entity.
+   */
   canonicalTextLength: 16_777_216,
 });
 

@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
-| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | in-progress |
+| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | completed |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | pending |
 | [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12, 30 | pending |

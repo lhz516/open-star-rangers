@@ -2,14 +2,19 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   COMMAND_OUTCOMES,
   COMMAND_RESULT_REASONS,
+  type Attacker,
   type CommandResultEvent,
   type DomainEvent,
   type EntitySource,
+  type HitEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
+  type TargetChangedEvent,
+  type WeaponSelectedEvent,
 } from './domain-events.ts';
 import { COMMAND_TYPES, type CommandType } from './tick-input.ts';
 
@@ -28,15 +33,42 @@ const matchedByAssist: SpeedMatchedEvent = { type: 'speed-matched', tick: 5, tar
 const released: SpeedAssistReleasedEvent = { type: 'speed-assist-released', tick: 6 };
 const leftWorld: ObjectLeftWorldEvent = { type: 'object-left-world', tick: 7, entityId: 3, kindBit: 8, source: { collection: 'mission', index: 6, group: null } };
 
-describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06)', () => {
+// P3-07's events (docs/plan/p3/02/spec.md, CR-06), one of each type.
+const at = { x: 1, y: -2, z: 0.5 };
+const shooter: Attacker = { type: 'shooter', entityId: 1, kindBit: 0 };
+const combatEvents: DomainEvent[] = [
+  { type: 'target-changed', tick: 8, playerEntityId: 1, previousTarget: null, target: 5, targetKindBit: 7, mode: 'enemy', origin: 'command', commandIndex: 0 },
+  { type: 'target-changed', tick: 8, playerEntityId: 1, previousTarget: 5, target: 6, targetKindBit: 8, mode: 'enemy', origin: 'automatic', commandIndex: null },
+  { type: 'target-cleared', tick: 8, playerEntityId: 1, previousTarget: 6, cause: 'warp' },
+  { type: 'weapon-selected', tick: 8, entityId: 1, list: 1, index: -1, mount: null, changed: false, commandIndex: 1 },
+  { type: 'shot-fired', tick: 8, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: at, entityId: 9, family: 'gun', weapon: 2, mount: 3, position: at,
+    trigger: { type: 'command', channel: 'primary', commandIndex: 2 } },
+  { type: 'hit', tick: 8, victimEntityId: 5, victimKindBit: 7, victimPosition: at, cause: 'projectile', sourceEntityId: 9, attacker: shooter, damage: 40, gated: false,
+    shield: { before: 30, after: 0 }, hull: { before: 100, after: 90 }, shieldWasEmpty: false, impact: { point: at, local: at, face: 5 }, projectile: 'removed' },
+  { type: 'object-destroyed', tick: 8, entityId: 5, kindBit: 7, source: null, position: at, activity: 'active', attacker: { type: 'lost-shooter' }, eventClass: 1,
+    outcome: 'explodes' },
+  { type: 'explosion-started', tick: 9, entityId: 10, sourceEntityId: 5, sourceKindBit: 7, variant: 'other', position: at, activationClock: 18 },
+  { type: 'missile-ended', tick: 9, entityId: 11, shooterEntityId: null, outcome: 'fizzled', position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+  { type: 'fragment-expired', tick: 9, entityId: 12, sourceKindBit: 1, part: 0, position: at, outcome: 'escape-pod' },
+  { type: 'source-released', tick: 9, entityId: 1, kindBit: 0, fragmentEntityId: 12, removed: false },
+  { type: 'energy-depleted', tick: 9, entityId: 1, kindBit: 0, position: at },
+  { type: 'energy-allocation-changed', tick: 9, entityId: 1, shieldLevel: 3, chargeLevel: 0, commandIndex: 0 },
+  { type: 'left-page-changed', tick: 9, page: 1, previousPage: 0, commandIndex: null },
+];
+
+describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06; P3-07 CR-05, CR-06)', () => {
   it('has closed, frozen outcome and reason lists', () => {
     expect(COMMAND_OUTCOMES).toEqual(['accepted', 'rejected', 'ignored']);
-    expect(COMMAND_RESULT_REASONS).toEqual(['not-implemented', 'player-unavailable', 'wrong-context', 'no-target']);
+    expect(COMMAND_RESULT_REASONS).toEqual([
+      'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
+      // P3-07 (CR-05).
+      'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+    ]);
     expect(Object.isFrozen(COMMAND_OUTCOMES) && Object.isFrozen(COMMAND_RESULT_REASONS)).toBe(true);
   });
 
   it('is plain data that survives a JSON round trip unchanged', () => {
-    const events: DomainEvent[] = [rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld];
+    const events: DomainEvent[] = [rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
     expect(Object.keys(instantiated)).toEqual(['type', 'tick', 'entityId', 'kindBit', 'source', 'position']);
@@ -44,8 +76,15 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06)
 
   it('types the union, command types and sources exactly', () => {
     expectTypeOf<DomainEvent['type']>().toEqualTypeOf<
-      'command-result' | 'object-instantiated' | 'speed-assist-toggled' | 'speed-matched' | 'speed-assist-released' | 'object-left-world'
+      | 'command-result' | 'object-instantiated' | 'speed-assist-toggled' | 'speed-matched' | 'speed-assist-released' | 'object-left-world'
+      | 'target-changed' | 'target-cleared' | 'weapon-selected' | 'shot-fired' | 'hit' | 'object-destroyed' | 'explosion-started' | 'missile-ended'
+      | 'fragment-expired' | 'source-released' | 'energy-depleted' | 'energy-allocation-changed' | 'left-page-changed'
     >();
+    expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
+    expectTypeOf<Attacker['type']>().toEqualTypeOf<'shooter' | 'lost-shooter' | 'none'>();
+    expectTypeOf<ShotTrigger['type']>().toEqualTypeOf<'command' | 'ai' | 'automatic'>();
+    expectTypeOf<HitEvent['cause']>().toEqualTypeOf<'projectile' | 'missile' | 'collision' | 'area' | 'parked'>();
+    expectTypeOf<WeaponSelectedEvent['commandIndex']>().toEqualTypeOf<number | null>();
     expectTypeOf<SpeedMatchedEvent['origin']>().toEqualTypeOf<'command' | 'assist'>();
     expectTypeOf<ObjectLeftWorldEvent['source']>().toEqualTypeOf<EntitySource | null>();
     expectTypeOf<CommandResultEvent['commandType']>().toEqualTypeOf<CommandType>();
@@ -62,8 +101,18 @@ function checkTypes(): unknown[] {
   const acceptedWithReason: CommandResultEvent = { ...accepted, reason: 'not-implemented' };
   // @ts-expect-error A rejected command needs a reason.
   const rejectedWithoutReason: CommandResultEvent = { ...rejected, reason: null };
-  // @ts-expect-error Reasons are closed.
-  const unknownReason: CommandResultEvent = { ...rejected, reason: 'cooldown' };
+  // @ts-expect-error Reasons are closed: P3-07 reuses player-unavailable instead.
+  const unknownReason: CommandResultEvent = { ...rejected, reason: 'no-player' };
+  const cooldown: CommandResultEvent = { ...rejected, outcome: 'ignored', reason: 'cooldown' };
+  const command = { type: 'target-changed', tick: 1, playerEntityId: 1, previousTarget: null, target: 2, targetKindBit: 7, mode: 'enemy' } as const;
+  // @ts-expect-error A command's selection names its command.
+  const commandWithoutIndex: TargetChangedEvent = { ...command, origin: 'command', commandIndex: null };
+  // @ts-expect-error An automatic selection has no command.
+  const automaticWithIndex: TargetChangedEvent = { ...command, origin: 'automatic', commandIndex: 0 };
+  // @ts-expect-error A lost shooter has no entity.
+  const lostWithEntity: Attacker = { type: 'lost-shooter', entityId: 1, kindBit: 0 };
+  // @ts-expect-error An automatic mount's shot has no channel.
+  const automaticWithChannel: ShotTrigger = { type: 'automatic', channel: 0 };
   // @ts-expect-error Command types are those of the TickInput union.
   const unknownCommand: CommandResultEvent = { ...rejected, commandType: 'add-marker' };
   // @ts-expect-error Sources have a closed namespace.
@@ -81,7 +130,7 @@ function checkTypes(): unknown[] {
   instantiated.position.x = 0;
   return [
     accepted, ignored, wingman, acceptedWithReason, rejectedWithoutReason, unknownReason, unknownCommand, unknownCollection, omittedGroup, noTarget,
-    commandWithDifference, assistWithCommand, omittedSource,
+    commandWithDifference, assistWithCommand, omittedSource, cooldown, commandWithoutIndex, automaticWithIndex, lostWithEntity, automaticWithChannel,
   ];
 }
 void checkTypes;

@@ -3,7 +3,9 @@
  * tick, deeply frozen and detached from the world. Entities are listed in ascending ID order. A parked entity is not
  * presentable (the original keeps no renderer object for it); a destroyed one stays listed until it is removed, and a
  * removed one is gone. A new ID is drawn from its current pose only; a changed placement serial on the same ID marks a
- * discontinuous move that renderers do not interpolate across. Consumers other than renderers never derive rule
+ * discontinuous move that renderers do not interpolate across. Each entity carries its presentation selector (CR-02)
+ * and the clocks of a craft's latest hit and an explosion's activation (CR-12); renderers judge the original's
+ * conditions for the hit shimmer and the screen flash themselves. Consumers other than renderers never derive rule
  * information (map markers, target lists) from it. The Runtime keeps two frames of one run (P3-04).
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
@@ -18,10 +20,16 @@ export interface RenderEntity {
   readonly position: Vec3;
   readonly orientation: Matrix3;
   readonly placementSerial: number;
+  /** A craft's latest hit feedback clock (CR-12); null for every other kind and before a craft's first hit. */
+  readonly hitShimmerStart: number | null;
+  /** An explosion's activation clock (CR-12); null for every other kind and before activation. */
+  readonly explosionStart: number | null;
 }
 
 export interface RenderState {
   readonly tick: number;
+  /** Mission clock units, which the presentation clocks above count in. */
+  readonly clock: number;
   readonly viewMode: number;
   /** The entity the view follows: the player's, null before its instantiation and after its removal. */
   readonly observedEntityId: EntityId | null;
@@ -29,7 +37,7 @@ export interface RenderState {
   readonly entities: readonly RenderEntity[];
 }
 
-function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial }: Entity): RenderEntity {
+function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat }: Entity): RenderEntity {
   return Object.freeze({
     id,
     kindBit,
@@ -38,6 +46,8 @@ function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orient
     position: Object.freeze({ x, y, z }),
     orientation: Object.freeze([...orientation]) as unknown as Matrix3,
     placementSerial,
+    hitShimmerStart: combat.type === 'craft' ? combat.hitFeedbackClock : null,
+    explosionStart: combat.type === 'explosion' ? combat.activationClock : null,
   });
 }
 
@@ -48,6 +58,7 @@ export function renderWorld(world: WorldState): RenderState {
   }
   return Object.freeze({
     tick: world.tick,
+    clock: world.clock,
     viewMode: world.player.viewMode,
     observedEntityId: world.player.entityId,
     entities: Object.freeze(entities),

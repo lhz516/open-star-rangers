@@ -7,7 +7,7 @@ import { referenceFrame } from '../rules/flight-motion.test-support.ts';
 import { FLOAT32_MAX } from '../rules/float32.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput, type CraftInfoDraft } from '../world/create-world.test-support.ts';
-import type { Activity, Entity, Matrix3, ObjectState } from '../world/entity-table.ts';
+import type { Activity, Entity, Matrix3, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -18,7 +18,7 @@ import { moveEntities, movesThisTick } from './movement.ts';
 // rules/flight-motion.test.ts.
 
 /** A copy that keeps the sign of zeros. */
-const poseAndBlock = ({ position, orientation, movement }: Entity) => structuredClone({ position, orientation, block: movement! });
+const poseAndBlock = ({ position, orientation, movement }: Entity) => structuredClone({ position, orientation, block: movement as SteeredMovementBlock });
 
 /** What the reference expects of `entity` after one movement at `step` with its kind's craft record. */
 function expected(state: WorldState, entity: Entity, step: MotionStep) {
@@ -39,7 +39,7 @@ const STEERING = { pitch: { rate: 0.5, enabled: true }, yaw: { rate: -0.75, enab
 
 /** Sets the entity's steady steering to STEERING; the axes object itself is frozen, its axes are not. */
 function steer(entity: Entity): void {
-  const { steering } = entity.movement!;
+  const { steering } = entity.movement as SteeredMovementBlock;
   for (const axis of ['pitch', 'yaw', 'roll'] as const) Object.assign(steering[axis], STEERING[axis]);
 }
 
@@ -93,12 +93,12 @@ describe('movement stage 0x221fc (P3-06 AC-02, M-01)', () => {
       Object.assign(entity.movement!, { speed: 40, atCommandedSpeed: false });
       steer(entity);
       // t = 640 ÷ 64 = 10: a rotation ending at 10 is still on.
-      entity.movement!.timedRotation.roll = { rate: 1.5, decay: 0.5, end: 10 };
+      (entity.movement as SteeredMovementBlock).timedRotation.roll = { rate: 1.5, decay: 0.5, end: 10 };
     }
     const wants = entities.map((entity) => expected(world, entity, { seconds: 4 / 64, time: 10 }));
     moveEntities(world);
     expect(entities.map(poseOf)).toEqual(wants);
-    expect(entities.map((entity) => entity.movement!.timedRotation.roll)).toEqual(entities.map(() => ({ rate: 1.5 - 0.5 / 16, decay: 0.5, end: 10 })));
+    expect(entities.map((entity) => (entity.movement as SteeredMovementBlock).timedRotation.roll)).toEqual(entities.map(() => ({ rate: 1.5 - 0.5 / 16, decay: 0.5, end: 10 })));
   });
 
   it('integrates a warp block with 0x22600: it turns and speeds up but does not translate', () => {
@@ -125,7 +125,7 @@ describe('movement stage 0x221fc (P3-06 AC-02, M-01)', () => {
 
   it('faults on a moving entity of a kind without a craft record', () => {
     const state = testState();
-    state.entities.allocate(entityInit(25)).state = 'active';
+    state.entities.allocate(entityInit(20)).state = 'active';
     expectFault(() => moveEntities(state), 'invariant-violated', 'movement.record');
   });
 });
@@ -156,7 +156,7 @@ describe('movement in a running world (P3-06 AC-02, AC-07)', () => {
     const world = constructWorld(state);
     const entity = state.entities.allocate(entityInit(3));
     entity.maximumSpeed = 10;
-    applyRecomputedMaximum(entity.movement, 10);
+    applyRecomputedMaximum(entity.movement as SteeredMovementBlock, 10);
     for (let tick = 0; tick < 3; tick++) world.step(tickInput());
     // The first step makes the entity active, before movement: three steps of 16 × 1/32.
     expect(entity.movement).toMatchObject({ speed: 48 - 1.5, commandedSpeed: 10, atCommandedSpeed: false });

@@ -113,6 +113,8 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       ['another version with other fields', (record: Mutable) => { record.version = 2; record.frames = []; }, 'record.version'],
       ['another rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['the rules version before P3-06', (record: Mutable) => { record.rulesVersion = 1; }, 'record.rulesVersion'],
+      // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14); the record shape and format version are unchanged.
+      ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = 2; }, 'record.rulesVersion'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],
       ['an empty producer', (record: Mutable) => { record.producer = ''; }, 'record.producer'],

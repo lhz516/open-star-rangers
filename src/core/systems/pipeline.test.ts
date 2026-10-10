@@ -5,7 +5,12 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
 import { entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
+import { initialPlayerTargeting } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { collisionStage } from './collision.ts';
+import { delayedPlayerExplosionStage } from './destruction.ts';
+import { frameEndStage } from './displays.ts';
+import { energyStage } from './energy.ts';
 import { emit, PIPELINE, registerTick, RequestQueue, runTick, type Request, type TickContext } from './pipeline.ts';
 
 /** Stand-ins for rules that do not exist yet: each runs just before the stage with its ID. */
@@ -98,9 +103,9 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
     expect(handled).toEqual([1]);
   });
 
-  it('takes at most CORE_LIMITS.eventsPerTick posts in a tick, late ones included, a budget fault beyond', () => {
+  it('takes at most CORE_LIMITS.requestsPerTick posts in a tick, late ones included, a budget fault beyond', () => {
     const queue = new RequestQueue();
-    for (let count = 0; count < CORE_LIMITS.eventsPerTick - 1; count++) queue.post(request(count + 1));
+    for (let count = 0; count < CORE_LIMITS.requestsPerTick - 1; count++) queue.post(request(count + 1));
     queue.handle(() => {});
     queue.post(request(0));
     expectFault(() => queue.post(request(0)), 'budget-exhausted', 'pipeline.requests');
@@ -287,5 +292,108 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     const [state, [entity]] = withEntities([2]);
     entity.state = 'new';
     expectFault(() => runTickWith(state), 'invariant-violated', 'object-update.new');
+  });
+});
+
+describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
+  const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
+
+  it('reads the runs of its stages from their rule modules, all still without a run', () => {
+    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
+      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
+    expect([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]).toEqual([null, null, null, null]);
+  });
+
+  /** A craft (1), a missile (2), a projectile (3), a fragment (4) and an explosion (5), all active. */
+  function runtimeKinds(): [WorldState, Entity[]] {
+    const [state, entities] = withEntities([7], [20], [21], [24], [22]);
+    for (const entity of entities) entity.state = 'active';
+    return [state, entities];
+  }
+
+  const control = { scale: 1, axes: [{ clear: false, set: true, value: 0.5 }, { clear: true, set: false, value: 0 }, { clear: false, set: false, value: 0 }], speedFactor: null } as const;
+  it.each([
+    ['select-target', { type: 'select-target', entityId: 1, target: 2, targetKindBit: 20, origin: 'command', commandIndex: 0 }, 'targeting.select-target'],
+    ['a gun launch', { type: 'launch', family: 'gun', shooter: 1, gun: 0, mount: 0, offset: { x: 0, y: 0, z: 1 }, orientation: null, trigger: { type: 'automatic' } }, 'weapons.launch'],
+    ['a missile launch of a removed shooter', { type: 'launch', family: 'missile', shooter: 99, missile: 0, mount: 1, offset: { x: 0, y: 0, z: 1 }, launchByte: 2, target: null, trigger: { type: 'ai', channel: 1 } }, 'weapons.launch'],
+    ['steer', { type: 'steer', entityId: 2, control }, 'missiles.steer'],
+    ['a missile\'s expiry', { type: 'expire', entityId: 2 }, 'missiles.expire'],
+    ['a projectile\'s expiry', { type: 'expire', entityId: 3 }, 'projectiles.expire'],
+    ['a fragment\'s expiry', { type: 'expire', entityId: 4 }, 'destruction.expire'],
+    ['a craft\'s expiry', { type: 'expire', entityId: 1 }, 'requests.expire'],
+    ['an explosion\'s expiry', { type: 'expire', entityId: 5 }, 'requests.expire'],
+    ['release-held', { type: 'release-held', entityId: 5 }, 'destruction.release-held'],
+    ['hand-off', { type: 'hand-off', entityId: 1, fragment: 4 }, 'destruction.hand-off'],
+  ] as [string, Request, string][])('routes %s to its module in request handling, which no rule posts yet', (_, request, site) => {
+    const [state] = runtimeKinds();
+    expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
+  });
+
+  it('drops a new request whose subject is gone, as every request', () => {
+    const [state] = withEntities([7]);
+    const [reference] = withEntities([7]);
+    runTickWith(state, { 'mission-flow': ({ requests }) => ['expire', 'release-held'].forEach((type) => requests.post({ type, entityId: 99 } as Request)) });
+    runTickWith(reference);
+    expect(stateText(state)).toBe(stateText(reference));
+  });
+
+  it('keeps the runtime kinds\' own updates and an explosion\'s state requests to the generic lifecycle', () => {
+    const [state, entities] = withEntities([20], [21], [22], [24]);
+    const atMovement: string[] = [];
+    // Their movement faults until P3-07 subtask 22: a missile has no body record there yet, the other modes no integrator.
+    expectFault(() => runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) }),
+      'invariant-violated', 'movement.record');
+    expect(atMovement).toEqual(['active', 'active', 'active', 'active']);
+    const explosion = entities[2];
+    explosion.state = 'presentation-ready';
+    for (const entity of entities) if (entity !== explosion) entity.state = 'pending-removal';
+    // Posted after its own update's request for state 7, so it stays out of movement.
+    runTickWith(state, { 'spawn-queue-check': ({ requests }) => requests.post(setState(explosion, 'area-switch')) });
+    expect(state.entities.size).toBe(1);
+    expect(explosion).toMatchObject({ state: 'area-switch', activity: 'active' });
+    explosion.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.entities.size).toBe(0);
+  });
+
+  it.each([[21, 'linear'], [22, 'linear'], [24, 'spinning']] as const)('faults on kind %i\'s %s block in the movement stage until P3-07 subtask 22', (kindBit, _mode) => {
+    const [state, [entity]] = withEntities([kindBit]);
+    entity.state = 'active';
+    expectFault(() => runTickWith(state), 'invariant-violated', 'movement.mode');
+  });
+
+  it('clears the player\'s targeting state with its entity, and leaves the target to P3-06', () => {
+    const [state, [player, target]] = withEntities([0], [7]);
+    Object.assign(state.player, { entityId: player.id, target: target.id, targeting: initialPlayerTargeting() });
+    target.state = 'pending-removal';
+    expect(runTickWith(state)).toEqual([]);
+    expect(state.player).toMatchObject({ entityId: player.id, target: target.id, targeting: { mode: 'enemy', autoTargetDueClock: 0 } });
+    player.state = 'pending-removal';
+    expect(runTickWith(state)).toEqual([]);
+    expect(state.player).toMatchObject({ entityId: null, target: target.id, targeting: null });
+  });
+});
+
+describe('pending requests (P3-07 CR-05)', () => {
+  const request = (entityId: number): Request => ({ type: 'leave', entityId });
+  const isLeave = (posted: Request): posted is Extract<Request, { type: 'leave' }> => posted.type === 'leave';
+  const lastPending = (queue: RequestQueue): number | undefined => queue.findLastPending(isLeave)?.entityId;
+
+  it('finds the last matching request not taken yet, and none once handling is over', () => {
+    const queue = new RequestQueue();
+    expect(lastPending(queue)).toBeUndefined();
+    queue.post(request(1));
+    queue.post(request(2));
+    queue.post({ type: 'set-state', entityId: 3, state: 'active' });
+    expect(lastPending(queue)).toBe(2);
+    const seen: (number | undefined)[] = [];
+    queue.handle((posted) => {
+      seen.push(lastPending(queue));
+      if (posted.type === 'leave' && posted.entityId === 1) queue.post(request(4));
+    });
+    expect(seen).toEqual([2, 4, 4, undefined]);
+    expect(lastPending(queue)).toBeUndefined();
+    queue.post(request(5));
+    expect(lastPending(queue)).toBeUndefined();
   });
 });

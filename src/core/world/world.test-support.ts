@@ -6,7 +6,10 @@ import { snapshotText, takeSnapshot } from '../replay/snapshot.ts';
 import { initialWorldState } from './create-world.ts';
 import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
 import { craftMovementBlock, initialMovementBlock } from '../rules/flight-state.ts';
-import { allocatorFlightState, type EntityInit, type EntityRuleInputs, type Matrix3 } from './entity-table.ts';
+import {
+  allocatorFlightState, blankCraftCombat, combatTypeOf, SUBSYSTEM_COUNT, type EntityCombat, type EntityInit, type EntityRuleInputs, type Matrix3,
+  type SubsystemState,
+} from './entity-table.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
 
@@ -39,20 +42,70 @@ export function testState(overrides: Partial<WorldConfig> = {}): WorldState {
 /** A test maximum speed and craft base: an f32 the block's ratio of 0.5 represents exactly. */
 export const TEST_MAXIMUM_SPEED = 48;
 export const TEST_BASE_MAXIMUM_SPEED = 96;
+export const TEST_VISUALS = readAssetId('data/projectile-visuals');
+
+type KindDefaults = Pick<EntityInit, 'combat' | 'presentation' | 'movement'> & Partial<Pick<EntityInit, 'side' | 'ruleInputs' | 'maximumSpeed'>>;
+
+const ZERO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+/** The fields a runtime kind takes from the allocator (CR-02) where entityInit's craft defaults differ. */
+const RUNTIME = { side: null, ruleInputs: ZERO_RULE_INPUTS, maximumSpeed: 0 } as const;
 
 /**
- * Instantiation data of an entity of `kindBit`, active by default; an active one gets the initial movement block of
- * TEST_MAXIMUM_SPEED, a parked one none, unless `overrides` say otherwise.
+ * Combat state, presentation and active movement block of a minimal entity of `kindBit` (CR-02, CR-03): a blank craft
+ * with its model; or a runtime kind's first record, its variant's block at rest, no references and the allocator's
+ * fields (a missile keeps TEST_MAXIMUM_SPEED). Kinds without a combat type get a craft's, which allocation rejects.
+ */
+export function kindDefaults(kindBit: number): KindDefaults {
+  const still = { speed: 0, velocity: { x: 0, y: 0, z: 0 } };
+  const steered = initialMovementBlock(TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED);
+  switch (combatTypeOf(kindBit)) {
+    case 'missile':
+      return {
+        ...RUNTIME,
+        maximumSpeed: TEST_MAXIMUM_SPEED,
+        combat: { type: 'missile', missile: 0, shooter: null, target: null, launchByte: 0, program: 'unguided', detonate: false, contact: null, guidance: null, homing: null },
+        presentation: { type: 'missile', missile: 0 },
+        movement: steered,
+      };
+    case 'projectile':
+      return {
+        ...RUNTIME,
+        combat: { type: 'projectile', gun: 0, shooter: null, expiry: null },
+        presentation: { type: 'projectile', visuals: TEST_VISUALS, record: 0 },
+        movement: { mode: 'linear', ...still, previousPosition: { x: kindBit, y: 2, z: 3 }, hitTest: true },
+      };
+    case 'explosion':
+      return {
+        ...RUNTIME,
+        combat: { type: 'explosion', source: 1, sourceKindBit: 7, variant: 'other', heldSource: null, activationClock: null, removalAfterClock: null },
+        presentation: { type: 'explosion', variant: 'other' },
+        movement: { mode: 'linear', ...still, previousPosition: { x: kindBit, y: 2, z: 3 }, hitTest: false },
+      };
+    case 'fragment':
+      return {
+        ...RUNTIME,
+        combat: { type: 'fragment', sourceKindBit: 7, part: 0, debris: 0, durability: 0, explodeOnExpiry: false, expiry: { type: 'pending' }, handOff: null },
+        presentation: { type: 'fragment', model: TEST_MODEL, part: 0, display: 'part' },
+        movement: { mode: 'spinning', ...still, spin: 0, spinAxis: 0 },
+      };
+    default:
+      return { combat: blankCraftCombat(), presentation: { type: 'model', model: TEST_MODEL }, movement: steered };
+  }
+}
+
+/**
+ * Instantiation data of an entity of `kindBit`, active by default; an active one gets its kind's movement block at
+ * rest (a craft or missile the initial block of TEST_MAXIMUM_SPEED), a parked one none, unless `overrides` say otherwise.
  */
 export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {}): EntityInit {
   const active = (overrides.activity ?? 'active') === 'active';
+  const { movement, ...defaults } = kindDefaults(kindBit);
   return {
     kindBit,
     source: null,
     name: { type: 'none' },
     side: 'friendly',
     baseInteraction: false,
-    presentation: { type: 'model', model: TEST_MODEL },
     position: { x: kindBit, y: 2, z: 3 },
     orientation: TEST_ORIENTATION,
     activity: 'active',
@@ -60,7 +113,8 @@ export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {})
     ...allocatorFlightState(),
     maximumSpeed: TEST_MAXIMUM_SPEED,
     lastParkedUpdateClock: 0,
-    movement: active ? initialMovementBlock(TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED) : null,
+    ...defaults,
+    movement: active ? movement : null,
     ...overrides,
   };
 }
@@ -68,6 +122,42 @@ export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {})
 /** Like entityInit, but active with a block at throttle 0: movement leaves its position as a test sets it. */
 export function stillEntityInit(kindBit: number, overrides: Partial<EntityInit> = {}): EntityInit {
   return entityInit(kindBit, { movement: craftMovementBlock(0, TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED), ...overrides });
+}
+
+/**
+ * Combat state of an entity of `kindBit` with every optional part set, as P3-07's rules write it (CR-02), matching
+ * kindDefaults' presentation; a kind without a combat type gets a craft's.
+ */
+export function busyCombat(kindBit: number): EntityCombat {
+  const { combat } = kindDefaults(kindBit);
+  switch (combat.type) {
+    case 'missile':
+      return {
+        ...combat, shooter: 3, target: 4, launchByte: 3, program: 'homing', detonate: true, contact: 5,
+        guidance: { phase: 2, lifetimeClock: 100, armClock: 10, fuseRadiusSquared: 2.5, detonationClock: 0, checkInterval: -3, nextCheckClock: 8 },
+        homing: { period: 40, nextUpdateClock: 12, turnFraction: Math.fround(0.65), speedFraction: 1, targetValid: true, targetDistance: 300 },
+      };
+    case 'projectile':
+      return { ...combat, shooter: 3, expiry: { clock: 70, firstHitPending: true } };
+    case 'explosion':
+      return { ...combat, source: 3, sourceKindBit: 20, heldSource: 3, activationClock: 6, removalAfterClock: 102 };
+    case 'fragment':
+      return { ...combat, debris: 2, durability: 1200, explodeOnExpiry: true, expiry: { type: 'at', clock: 1 }, handOff: 3 };
+    case 'craft':
+      return {
+        ...combat, energy: -5, shield: 3, charge: 2, shieldLevel: 1, chargeLevel: 2, sparePower: 7, fullSpeedPower: 9, lastEnergyClock: 4,
+        nextEnergyClock: 132, depleted: true, hull: -1, subsystems: Array.from({ length: SUBSYSTEM_COUNT }, (_, index) => (index % 4) as SubsystemState),
+        weapons: {
+          selections: [{ index: 1, mount: 0 }, { index: -1, mount: null }, { index: 0, mount: 1 }],
+          lock: { level: 3, stageDueClock: 12, losing: true, graceDueClock: 14, nextUpdateClock: 16 },
+          mounts: [
+            { lastShotClock: null, ammunition: 4, damage: 0, burst: 0, aim: [0, 0, 0, 0, 0, 0, 0, 0, 0], autoTarget: null, retargetClock: 0 },
+            { lastShotClock: 20, ammunition: -1, damage: 2, burst: 3, aim: [...TEST_ORIENTATION] as unknown as Matrix3, autoTarget: 5, retargetClock: 22 },
+          ],
+        },
+        hitFeedbackClock: 6, proximity: { entity: 2, distanceSquared: 0.5 }, lastVictim: { entity: 3, clock: 8 }, lastAttacker: { entity: 4, clock: 10 },
+      };
+  }
 }
 
 export const tickInput = (commands: readonly Command[] = []): TickInput => ({ axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commands] });

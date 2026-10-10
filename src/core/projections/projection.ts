@@ -10,8 +10,8 @@
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import type { EntityId, Matrix3, NameReference } from '../world/entity-table.ts';
-import { interactionContext, type InteractionContext } from '../world/player-state.ts';
+import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
+import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
 
 export interface ClockProjection {
@@ -51,22 +51,79 @@ export interface ResourceReading {
   readonly maximum: number;
 }
 
-/** The named flight resources and their units: P3-07, once their rules are confirmed. */
-export type FlightResourceName = never;
-/** A weapon's content record: P3-03 imports the records, P3-07 fixes the reference. */
-export type WeaponRecordReference = never;
-
-export interface WeaponReading {
-  readonly record: WeaponRecordReference;
-  readonly ammunition: number;
+/**
+ * The player's combat resources and their full scales (D16): energy / c54, shield / c5C, charge / c74, hull (raw, may
+ * be negative) / c9C, spare power E / T.
+ */
+export type FlightResourceName = 'energy' | 'shield' | 'charge' | 'hull' | 'spare-power';
+/** A gun or missile record of the world's craft info (`asset` is its Asset ID). */
+export interface WeaponRecordReference {
+  readonly asset: AssetId;
+  readonly family: 'gun' | 'missile';
+  readonly index: number;
 }
 
-export interface FlightTarget {
+/** The target information the right display reads (T7). */
+export interface CombatTarget {
   readonly entityId: EntityId;
   readonly kindBit: number;
   readonly name: NameReference;
-  /** Runtime units. */
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  /** f32: the Euclidean distance of the f32 coordinate differences, square root in double precision. */
   readonly distance: number;
+  /** The target's movement block speed; null without a block. */
+  readonly speed: number | null;
+  /** A craft's shield and its full scale c5C; null for every other kind. */
+  readonly shield: ResourceReading | null;
+}
+
+/** A radar contact (T6); P3-13 projects it on the screen with its own camera. */
+export interface RadarContact {
+  readonly entityId: EntityId;
+  /** f32: the contact's position minus the player's. */
+  readonly offset: Vec3;
+  /** A missile by its shooter when that resolves, otherwise hostile; a marker is P3-09's kind 0x2000000. */
+  readonly class: 'friendly' | 'hostile' | 'marker';
+  /** Blinks. */
+  readonly missile: boolean;
+  /** The Manhattan distance truncated to i32 is below 600. */
+  readonly near: boolean;
+  /** The player's target, drawn with the target box. */
+  readonly target: boolean;
+}
+
+/** One weapon list's reading. */
+export interface WeaponListReading {
+  readonly index: number;
+  readonly mount: number | null;
+  readonly weapon: WeaponRecordReference | null;
+  /** A missile list's ammunition summed over the alternation chain from the current mount (`0x2dd04`); null for guns. */
+  readonly ammunition: number | null;
+  /** The current mount's damage. */
+  readonly damage: 0 | 1 | 2 | null;
+  /** The list's mount status (`0x2e438`, `0x2e264`). */
+  readonly status: 0 | 1 | 2;
+}
+
+/** The player's combat readings (docs/plan/p3/02/spec.md, CR-12). */
+export interface CombatPlayer {
+  readonly entityId: EntityId;
+  /** The destroyed flag: the destruction view until the rescue. */
+  readonly destroyed: boolean;
+  readonly targetMode: TargetMode;
+  readonly target: CombatTarget | null;
+  /** `status` is subsystem 12; at 2 there are no real contacts. */
+  readonly radar: { readonly status: 0 | 1 | 2; readonly contacts: readonly RadarContact[] };
+  readonly resources: Readonly<Record<FlightResourceName, ResourceReading>>;
+  readonly allocation: { readonly shieldLevel: Level; readonly chargeLevel: Level };
+  /** Lists 0 (main weapons) and 1 (missiles). */
+  readonly weapons: readonly [WeaponListReading, WeaponListReading];
+  /** `progress` as `0x2e080` gives it (W8). */
+  readonly lock: { readonly level: 0 | 1 | 2 | 3 | 4; readonly losing: boolean; readonly progress: number };
+  /** The SUBSYSTEM_COUNT two-bit fields. */
+  readonly subsystems: readonly SubsystemState[];
+  readonly leftPage: LeftPage;
 }
 
 /**
@@ -98,18 +155,19 @@ export interface MotionReady {
   readonly player: MotionPlayer | null;
 }
 
-/** The flight partition's combat group (P3-07, which fixes its ready shape). */
+/** The flight partition's combat group (P3-07): null without a player entity, never made-up zero resources. */
 export interface CombatReady {
   readonly readiness: 'ready';
-  readonly target: FlightTarget | null;
-  readonly resources: Readonly<Record<FlightResourceName, ResourceReading>>;
-  readonly weapons: readonly WeaponReading[];
+  readonly player: CombatPlayer | null;
 }
+
+/** The combat group, not implemented until P3-07's combat readings are ready (P3-07 subtask 23). */
+export type FlightCombat = NotImplementedPartition | CombatReady;
 
 /** Flight HUD data in two groups, each ready on its own; neither overwrites the other. */
 export interface FlightProjection {
   readonly motion: NotImplementedPartition | MotionReady;
-  readonly combat: NotImplementedPartition | CombatReady;
+  readonly combat: FlightCombat;
 }
 
 /** The strategic map frame converted to runtime units. */

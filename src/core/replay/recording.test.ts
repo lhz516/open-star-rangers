@@ -162,7 +162,8 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
       expect(fits({ ticks: 0, commands: recordedCommands - commandsPerTick, events: 0 }, commandsPerTick)).toBeUndefined();
       expect(fits({ ticks: 0, commands: recordedCommands - commandsPerTick + 1, events: 0 }, commandsPerTick))
         .toMatchObject({ path: 'recording', reason: `would exceed ${recordedCommands} recorded commands` });
-      // A tick's events are unknown before it runs: it must fit at the per-tick bound.
+      // A tick's events are unknown before it runs: it must fit at the per-tick bound, which P3-07 raised (CR-14).
+      expect(recordedEvents - eventsPerTick).toBe(491_520);
       expect(fits({ ticks: 0, commands: 0, events: recordedEvents - eventsPerTick }, 0)).toBeUndefined();
       expect(fits({ ticks: 0, commands: 0, events: recordedEvents - eventsPerTick + 1 }, 0))
         .toMatchObject({ path: 'recording', reason: `could exceed ${recordedEvents} recorded events` });

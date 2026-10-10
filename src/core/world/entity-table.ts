@@ -18,6 +18,7 @@ import type { EntitySource, Vec3 } from '../contracts/domain-events.ts';
 import { fitsLimit } from '../contracts/limits.ts';
 import { CoreFaultError } from '../errors.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
+import { toInt32 } from '../rules/record-defaults.ts';
 
 /** Positive safe integer, allocated from 1 in creation order and never reused within a world. */
 export type EntityId = number;
@@ -66,12 +67,22 @@ export type NameReference =
   | { readonly type: 'pool'; readonly index: number }
   | { readonly type: 'craft-type'; readonly kindBit: number };
 
+/** The three explosion variants Core creates (mb +0xF0 = 0, 2, 3); variant 1 is the presentation layer's (CR-11). */
+export type ExplosionVariant = 'large' | 'other' | 'missile';
+
 /**
- * What a renderer draws: the model Asset of a declared craft. Runtime kinds without a model (projectiles, missiles,
- * explosions, debris, map markers) get their own variants from the tasks that implement them and cannot be created
- * before. Model Asset IDs, craft-type slots and presentation selectors are never merged into one number.
+ * What a renderer draws, a closed union fixed at allocation (docs/plan/p3/02/spec.md, CR-02): the model Asset of a
+ * craft; a missile record, whose look the presentation layer resolves from content; a projectile-visuals record; an
+ * explosion variant, whose EXPL list and item the presentation layer selects (CR-11); one part of the first part list
+ * of a source model, or for a kind 1 or 2 source's part 0 its parts 0–2. Model Asset IDs, craft-type slots and
+ * record indexes are never merged into one number.
  */
-export type EntityPresentation = { readonly type: 'model'; readonly model: AssetId };
+export type EntityPresentation =
+  | { readonly type: 'model'; readonly model: AssetId }
+  | { readonly type: 'missile'; readonly missile: number }
+  | { readonly type: 'projectile'; readonly visuals: AssetId; readonly record: number }
+  | { readonly type: 'explosion'; readonly variant: ExplosionVariant }
+  | { readonly type: 'fragment'; readonly model: AssetId; readonly part: number; readonly display: 'part' | 'parts-0-2' };
 
 /**
  * A 3×3 matrix in row order: the original's three attitude rows (object +0x48, +0x54, +0x60), the third of which
@@ -138,11 +149,12 @@ export interface Impulse {
 export type Disturbance = { readonly level: 1 } | { readonly level: 2; readonly biases: readonly [number, number, number] };
 
 /**
- * The movement block (object +8) of an active or docked entity; null while parked or removed. A union discriminated by
- * `mode`: P3-06 has the steered variant of the original's modes 0 and 3, and P3-07 and P3-09 add the variants of the
- * other modes beside it through the extension rules.
+ * The movement block (object +8) of an active or docked entity; null while parked or removed. A closed union
+ * discriminated by `mode` (docs/plan/p3/02/spec.md, CR-03): P3-06's steered variant of the original's modes 0 and 3
+ * (craft and missiles), and P3-07's linear (mode 1: projectiles and explosions) and spinning (mode 2: fragments)
+ * variants. Every variant has `speed` (+8), which aiming, speed matching and `0x218e8` read.
  */
-export type MovementBlock = SteeredMovementBlock;
+export type MovementBlock = SteeredMovementBlock | LinearMovementBlock | SpinningMovementBlock;
 
 /**
  * The block of the original's modes 0 (`craft`) and 3 (`warp`), which share their fields; the Warp start and completion
@@ -167,6 +179,32 @@ export interface SteeredMovementBlock {
   disturbance: Disturbance | null;
 }
 
+/** The original's mode 1 (`0x22818`): projectiles and explosions move in a straight line. Its f32 fields hold `Math.fround` values. */
+export interface LinearMovementBlock {
+  readonly mode: 'linear';
+  /** +8, f32 runtime units/s: a projectile's gun +0x08, an explosion's source speed at the time. */
+  speed: number;
+  /** +0x5C–+0x64, f32 runtime units/s: fixed at construction; a ricochet rewrites it. */
+  velocity: Vec3;
+  /** +0x0C–+0x14, f32: the position before the last move; the birth position at construction. */
+  previousPosition: Vec3;
+  /** +0x68: true for a projectile, false for an explosion. */
+  hitTest: boolean;
+}
+
+/** The original's mode 2 (`0x2285c`): fragments move in a straight line and spin. Its f32 fields hold `Math.fround` values. */
+export interface SpinningMovementBlock {
+  readonly mode: 'spinning';
+  /** +8, f32 runtime units/s. */
+  speed: number;
+  /** +0x5C–+0x64, f32 runtime units/s. */
+  velocity: Vec3;
+  /** +0x68, f32 radians per move, not scaled by the step. */
+  spin: number;
+  /** +0x6C: the row rotation it applies, 2 → `0x228cc`, 1 → `0x22a50`, 0 → `0x22990`. */
+  spinAxis: 0 | 1 | 2;
+}
+
 /** AI modes (+0xC4) with the original values that instantiation writes; P3-08 adds the others through the extension rules. */
 export type AiMode = 0 | 1 | 2 | 4 | 5;
 
@@ -183,7 +221,11 @@ export interface AiState {
   goal: Vec3;
   /** +0xB8–+0xC0, f32 runtime units. */
   targetOffset: Vec3;
-  /** +0x8C of a non-player object, written by P3-08's AI; the player's +0x8C is PlayerState.target, so the player's stays null. */
+  /**
+   * +0x8C of a craft other than the player: its target, which aimed guns, guided missiles and the parked engagement
+   * read and P3-08's AI and multi-target engagement write. The player's +0x8C is PlayerState.target, so the player's
+   * stays null; the runtime kinds keep their +0x8C in their combat state, so theirs is always null (CR-02).
+   */
   objectTarget: EntityId | null;
 }
 
@@ -216,6 +258,268 @@ export function allocatorFlightState(): Pick<EntityInit, 'warpClock' | 'inWarp' 
 export interface Formation {
   readonly leader: EntityId;
   readonly offset: Vec3;
+}
+
+/** The kind bits of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-02); craft are kind bits 0–19 (mask 0xfffff). */
+export const MISSILE_KIND_BIT = 20;
+export const PROJECTILE_KIND_BIT = 21;
+export const EXPLOSION_KIND_BIT = 22;
+export const FRAGMENT_KIND_BIT = 24;
+const CRAFT_KIND_BITS = 20;
+
+/** A two-bit subsystem field: damage writes 0–2, and only other writers 3. */
+export type SubsystemState = 0 | 1 | 2 | 3;
+/** An energy allocation level. */
+export type Level = 0 | 1 | 2 | 3;
+/** The two-bit subsystem fields 0–18 (+0xE8/+0xEC). */
+export const SUBSYSTEM_COUNT = 19;
+
+/**
+ * A craft's combat state (docs/plan/p3/02/spec.md, CR-02: original object +0x20–+0x47, +0xD0, +0xE8/+0xEC,
+ * +0xF4–+0x158, +0x94–+0xA8). Integers are i32, clocks mission clock units. Instantiation writes the initial values
+ * (`0x2d400`, `0x3060c`, CR-07); the spec's table of ranges and lifetimes says which rule changes each field later.
+ */
+export interface CraftCombat {
+  readonly type: 'craft';
+  /** +0x28. */
+  energy: number;
+  /** +0x2C. */
+  shield: number;
+  /** +0x30. */
+  charge: number;
+  /** +0x34 (L1). */
+  shieldLevel: Level;
+  /** +0x38 (L2). */
+  chargeLevel: Level;
+  /** +0x3C (E). */
+  sparePower: number;
+  /** +0x40 (T). */
+  fullSpeedPower: number;
+  /** +0x20. */
+  lastEnergyClock: number;
+  /** +0x24. */
+  nextEnergyClock: number;
+  /** Project latch: the last energy update ended in the depleted branch, so `energy-depleted` is emitted once per transition. */
+  depleted: boolean;
+  /** +0xD0; may be negative. */
+  hull: number;
+  /** Fields 0–18 of +0xE8/+0xEC, exactly SUBSYSTEM_COUNT. */
+  subsystems: readonly SubsystemState[];
+  weapons: WeaponBlock;
+  /** The clock of the latest hit feedback item (`0x2a40c`, `0x2a5fc`); Render State's hitShimmerStart. */
+  hitFeedbackClock: number | null;
+  /** +0x94/+0x98: written by the two collision passes, read by P3-08; the distance squared is f32. */
+  proximity: { readonly entity: EntityId; readonly distanceSquared: number } | null;
+  /** +0x9C/+0xA0: written on the shooter when its projectile or missile hits while it is valid; read by P3-08. */
+  lastVictim: { readonly entity: EntityId; readonly clock: number } | null;
+  /** +0xA4/+0xA8: written on the victim of such a hit; read by P3-08. */
+  lastAttacker: { readonly entity: EntityId; readonly clock: number } | null;
+}
+
+/** The weapon block `0x2d400` builds (W1). */
+export interface WeaponBlock {
+  /** Lists 0, 1 and 2 (+0x100–+0x114). */
+  selections: readonly [ListSelection, ListSelection, ListSelection];
+  /** +0x118–+0x128; the lock runs only for the player (W8), every other object keeps its initial values. */
+  lock: MissileLock;
+  /** +0x154/+0x158: one per craft mount, in mount order; empty for a craft without mounts. */
+  mounts: readonly MountState[];
+}
+
+export interface ListSelection {
+  /** i32; −1 for an empty list (W3). */
+  index: number;
+  /** The current mount's index; null for an empty list. */
+  mount: number | null;
+}
+
+export interface MissileLock {
+  level: 0 | 1 | 2 | 3 | 4;
+  /** 0 initially; compared as usual. */
+  stageDueClock: number;
+  losing: boolean;
+  graceDueClock: number;
+  nextUpdateClock: number;
+}
+
+export interface MountState {
+  /** +0x04; null when never written (the original's 0): a cooldown has expired, and alternation puts it before any clock. */
+  lastShotClock: number | null;
+  /** +0x08. */
+  ammunition: number;
+  /** +0x0C. */
+  damage: 0 | 1 | 2;
+  /** +0x20: an automatic mount's burst count. */
+  burst: number;
+  /** +0x24–+0x44, f32 rows: an automatic mount's aim, all zero initially. */
+  aim: Matrix3;
+  /** +0x48: an automatic mount's target (P3-08 selects it). */
+  autoTarget: EntityId | null;
+  /** +0x4C: the hold value P3-08 writes as it is (W9); a non-negative integer. */
+  retargetClock: number;
+}
+
+/** A missile's flight program, fixed at construction. */
+export type MissileProgram = 'unguided' | 'heat-seeker' | 'homing';
+
+/** Kind bit 20 (`0x2b00c`, `0x2aa40`/`0x2ab00`, `0x2ac10`; W11, H5). */
+export interface MissileCombat {
+  readonly type: 'missile';
+  /** mb +0xF4: the missile record; its +0x14 is the body record. */
+  readonly missile: number;
+  /** mb +0xFC: attribution and the proximity fuse's side; cleared when it fizzles. */
+  shooter: EntityId | null;
+  /** Missile +0x8C: the launch request's saved target when it resolves at construction; the homing program rewrites it. */
+  target: EntityId | null;
+  /** mb +0x100. */
+  readonly launchByte: 0 | 1 | 2 | 3 | 4;
+  readonly program: MissileProgram;
+  /** mb +0xF8: the kind of the expiry request, detonation (true) or fizzling (false). */
+  detonate: boolean;
+  /** mb +0x104: the object a contact fuse fired on. */
+  contact: EntityId | null;
+  /** Guidance block G; null before the first callback. */
+  guidance: MissileGuidance | null;
+  /** Non-null for a homing program after its first callback; always null for an unguided missile. */
+  homing: HomingState | null;
+}
+
+/** Guidance block G: the four times are relative values until phase 0 adds the clock to them. */
+export interface MissileGuidance {
+  /** G+0x14. */
+  phase: 0 | 1 | 2 | 3 | 4;
+  /** G+0. */
+  lifetimeClock: number;
+  /** G+4. */
+  armClock: number;
+  /** G+8, f32. */
+  fuseRadiusSquared: number;
+  /** G+0x0C: the proximity fuse adds the clock; a contact sets it to 0. */
+  detonationClock: number;
+  /** G+0x10, i32. */
+  checkInterval: number;
+  /** G+0x18. */
+  nextCheckClock: number;
+}
+
+/** The part of the homing controller the missile path uses (H5). */
+export interface HomingState {
+  /** C+0xF4, clock units. */
+  period: number;
+  /** C+0xF0. */
+  nextUpdateClock: number;
+  /** S+0xCC, f32. */
+  turnFraction: number;
+  /** S+0xC8, f32. */
+  speedFraction: number;
+  /** S+0x0C. */
+  targetValid: boolean;
+  /** S+0x28, f32: selects the lifetime and the fuse interval. */
+  targetDistance: number;
+}
+
+/** Kind bit 21 (`0x25b0c`, `0x259b0`, `0x25f48`; W11, H2). */
+export interface ProjectileCombat {
+  readonly type: 'projectile';
+  /** mb +0xF4: the gun record. */
+  readonly gun: number;
+  /** mb +0xFC; cleared by the removal request. */
+  shooter: EntityId | null;
+  /** The timer block: null before the first callback; a ricochet's first state-8 callback clears `firstHitPending`. */
+  expiry: { clock: number; firstHitPending: boolean } | null;
+}
+
+/** Kind bit 22 (`0x23ac8`, `0x23838`, `0x2409c`; X2, X4). */
+export interface ExplosionCombat {
+  readonly type: 'explosion';
+  /** The destroyed source it was made from, not held: only its identity, for `explosion-started`. */
+  readonly source: EntityId;
+  /** mb +0x104: a craft kind bit 0–19, 20 or 24. */
+  readonly sourceKindBit: number;
+  /** mb +0xF0. */
+  readonly variant: ExplosionVariant;
+  /** +0x8C: the source it holds, when the source is no craft or making fragments failed. */
+  heldSource: EntityId | null;
+  /** +0xFC (t₀); null before activation. */
+  activationClock: number | null;
+  /** +0x10C = t₀ + 0x60. */
+  removalAfterClock: number | null;
+}
+
+/** When a fragment expires: pending before its first callback; never for a large source or once triggered. */
+export type FragmentExpiry = { readonly type: 'pending' } | { readonly type: 'never' } | { readonly type: 'at'; readonly clock: number };
+
+/** Kind bit 24 with discriminator 3 (`0x25124`, `0x24ac4`, `0x256e4`; X6, X7); discriminators 1 and 2 are the presentation layer's. */
+export interface FragmentCombat {
+  readonly type: 'fragment';
+  /** mb +0xF0: a craft kind bit 0–19. */
+  readonly sourceKindBit: number;
+  /** mb +0xF5: the part's index in the source model's first part list. */
+  readonly part: number;
+  /** Index in the source kind's DEBRIS parameter table (craft §4.1); null for part 0 of kinds 1 and 2. */
+  readonly debris: number | null;
+  /** +0xD0, i32. */
+  durability: number;
+  /** mb +0xF6. */
+  explodeOnExpiry: boolean;
+  /** Timer block +8. */
+  expiry: FragmentExpiry;
+  /** +0x8C: only part 0 holds its source, until the hand-off. */
+  handOff: EntityId | null;
+}
+
+/** An entity's combat state, a closed union by runtime kind (CR-02); its type must match the entity's kind bit. */
+export type EntityCombat = CraftCombat | MissileCombat | ProjectileCombat | ExplosionCombat | FragmentCombat;
+export type CombatType = EntityCombat['type'];
+
+/** The combat type an entity of `kindBit` must have; null for a kind no task has given one (CR-02). */
+export function combatTypeOf(kindBit: number): CombatType | null {
+  if (Number.isInteger(kindBit) && kindBit >= 0 && kindBit < CRAFT_KIND_BITS) return 'craft';
+  switch (kindBit) {
+    case MISSILE_KIND_BIT:
+      return 'missile';
+    case PROJECTILE_KIND_BIT:
+      return 'projectile';
+    case EXPLOSION_KIND_BIT:
+      return 'explosion';
+    case FRAGMENT_KIND_BIT:
+      return 'fragment';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The combat state a craft is allocated with, before instantiation's extension point writes its initial values
+ * (CR-07): every number and level 0, every subsystem 0, the selections of a craft without mounts, an initial lock and
+ * no references. It is not an original value; no rule reads these fields before instantiation writes them.
+ */
+export function blankCraftCombat(): CraftCombat {
+  const emptyList = (): ListSelection => ({ index: -1, mount: null });
+  return {
+    type: 'craft',
+    energy: 0,
+    shield: 0,
+    charge: 0,
+    shieldLevel: 0,
+    chargeLevel: 0,
+    sparePower: 0,
+    fullSpeedPower: 0,
+    lastEnergyClock: 0,
+    nextEnergyClock: 0,
+    depleted: false,
+    hull: 0,
+    subsystems: Object.freeze(Array.from({ length: SUBSYSTEM_COUNT }, (): SubsystemState => 0)),
+    weapons: {
+      selections: Object.freeze([emptyList(), emptyList(), emptyList()] as const),
+      lock: { level: 0, stageDueClock: 0, losing: false, graceDueClock: 0, nextUpdateClock: 0 },
+      mounts: Object.freeze([]),
+    },
+    hitFeedbackClock: null,
+    proximity: null,
+    lastVictim: null,
+    lastAttacker: null,
+  };
 }
 
 export interface Entity {
@@ -255,6 +559,8 @@ export interface Entity {
   movement: MovementBlock | null;
   ai: AiState;
   formation: Formation | null;
+  /** Fixed in type at allocation; its contents change by the rules of CR-02. */
+  readonly combat: EntityCombat;
 }
 
 /** What instantiation supplies; the table assigns the ID, the state, the placement serial and the destroyed flag. */
@@ -278,6 +584,8 @@ export interface EntityInit {
   readonly movement: MovementBlock | null;
   readonly ai: AiState;
   readonly formation: Formation | null;
+  /** Of the type combatTypeOf(kindBit) gives. */
+  readonly combat: EntityCombat;
 }
 
 /** The state an entity starts in on `activity`, at allocation and whenever its parking switches. */
@@ -290,7 +598,7 @@ export function initialState(activity: Activity): ObjectState {
  * its state starts again, and the block is present exactly while not parked. The block becomes the entity's own.
  */
 export function setActivity(entity: Entity, activity: Activity, movement: MovementBlock | null): void {
-  if ((activity === 'parked') !== (movement === null) || (movement !== null && !isValidMovement(movement))) {
+  if ((activity === 'parked') !== (movement === null) || (movement !== null && !(movementFits(movement, entity.combat) && isValidMovement(movement)))) {
     throw new CoreFaultError('invariant-violated', 'entities.movement');
   }
   entity.activity = activity;
@@ -338,16 +646,50 @@ const isFloat32Vec = ({ x, y, z }: Vec3): boolean => isFiniteFloat32(x) && isFin
 const isClock = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 const AI_MODES: readonly number[] = [0, 1, 2, 4, 5];
 
-function isValidMovement(block: SteeredMovementBlock): boolean {
+function isValidSteeredMovement(block: SteeredMovementBlock): boolean {
   const { steering, timedRotation, impulse, disturbance } = block;
-  return (block.mode === 'craft' || block.mode === 'warp')
-    && [block.speed, block.commandedSpeed, block.speedRatio].every(isFiniteFloat32)
+  return [block.speed, block.commandedSpeed, block.speedRatio].every(isFiniteFloat32)
     && ROTATION_AXES.every((axis) => {
       const timed = timedRotation[axis];
       return isFiniteFloat32(steering[axis].rate) && (timed === null || [timed.rate, timed.decay, timed.end].every(isFiniteFloat32));
     })
     && (impulse === null || (isFloat32Vec(impulse.direction) && isFiniteFloat32(impulse.magnitude)))
     && (disturbance === null || disturbance.level === 1 || (disturbance.level === 2 && disturbance.biases.every(Number.isSafeInteger)));
+}
+
+const SPIN_AXES: readonly number[] = [0, 1, 2];
+
+function isValidMovement(block: MovementBlock): boolean {
+  switch (block.mode) {
+    case 'craft':
+    case 'warp':
+      return isValidSteeredMovement(block);
+    case 'linear':
+      return isFiniteFloat32(block.speed) && isFloat32Vec(block.velocity) && isFloat32Vec(block.previousPosition) && isBoolean(block.hitTest);
+    case 'spinning':
+      return isFiniteFloat32(block.speed) && isFloat32Vec(block.velocity) && isFiniteFloat32(block.spin) && SPIN_AXES.includes(block.spinAxis);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether an entity with `combat` moves with `block`'s variant (CR-03, H1): a craft steered (modes 0 and 3), a missile
+ * in mode 0, a projectile linear with its hit test, an explosion linear without, a fragment spinning.
+ */
+function movementFits(block: MovementBlock, combat: EntityCombat): boolean {
+  switch (combat.type) {
+    case 'craft':
+      return block.mode === 'craft' || block.mode === 'warp';
+    case 'missile':
+      return block.mode === 'craft';
+    case 'projectile':
+      return block.mode === 'linear' && block.hitTest === true;
+    case 'explosion':
+      return block.mode === 'linear' && block.hitTest === false;
+    case 'fragment':
+      return block.mode === 'spinning';
+  }
 }
 
 /** The flight state's invariants (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约): f32 values, clocks and modes. */
@@ -359,7 +701,37 @@ function isValidFlightState(init: EntityInit): boolean {
     && (formation === null || isFloat32Vec(formation.offset));
 }
 
-/** A detached, mutable copy of a movement block whose immutable parts are frozen; also for the movement rules. */
+const isZeroVec = ({ x, y, z }: Vec3): boolean => x === 0 && y === 0 && z === 0;
+
+/**
+ * The fields a runtime kind (CR-02) takes from the allocator rather than a declaration and keeps: created active; no
+ * source, side, name or interaction; zero rule inputs; the allocator's AI state with its object target null, as the
+ * runtime kinds keep their +0x8C in their combat state; no formation, parked-update clock or Warp; and a maximum speed
+ * of 0 but for a missile, whose body record's +0xB8 the missile constructor checks.
+ */
+function hasRuntimeKindDefaults(init: EntityInit): boolean {
+  const { ruleInputs: inputs, ai } = init;
+  return init.activity === 'active' && init.source === null && init.side === null && init.name.type === 'none' && !init.baseInteraction
+    && [inputs.percentB, inputs.percentC, inputs.percentD, inputs.aiValueA, inputs.aiValueB, inputs.aiValueC].every((value) => value === 0)
+    && ai.mode === ALLOCATOR_AI_MODE && ai.target === null && ai.objectTarget === null && isZeroVec(ai.goal) && isZeroVec(ai.targetOffset)
+    && init.formation === null && init.lastParkedUpdateClock === 0 && init.warpClock === 0 && !init.inWarp
+    && (init.combat.type === 'missile' || init.maximumSpeed === 0);
+}
+
+/** A detached, mutable copy of any movement block variant whose immutable parts are frozen. */
+function copyMovementBlock(block: MovementBlock): MovementBlock {
+  switch (block.mode) {
+    case 'craft':
+    case 'warp':
+      return copyMovement(block);
+    case 'linear':
+      return { mode: 'linear', speed: block.speed, velocity: frozenVec(block.velocity), previousPosition: frozenVec(block.previousPosition), hitTest: block.hitTest };
+    case 'spinning':
+      return { mode: 'spinning', speed: block.speed, velocity: frozenVec(block.velocity), spin: block.spin, spinAxis: block.spinAxis };
+  }
+}
+
+/** A detached, mutable copy of a steered movement block whose immutable parts are frozen; also for the movement rules. */
 export function copyMovement(block: SteeredMovementBlock): SteeredMovementBlock {
   const steering = (axis: RotationAxis): SteeringAxis => ({ rate: block.steering[axis].rate, enabled: block.steering[axis].enabled });
   const timed = (axis: RotationAxis): TimedRotation | null => {
@@ -385,6 +757,208 @@ function copyDisturbance(disturbance: Disturbance): Disturbance {
   if (disturbance.level === 1) return Object.freeze({ level: 1 });
   const [first, second, third] = disturbance.biases;
   return Object.freeze({ level: 2, biases: Object.freeze([first, second, third] as const) });
+}
+
+const isBoolean = (value: boolean): boolean => typeof value === 'boolean';
+const isInt32 = (value: number): boolean => toInt32(value) === value;
+const isIndex = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
+const isEntityId = (value: number): boolean => Number.isSafeInteger(value) && value >= 1;
+const isNullableId = (value: EntityId | null): boolean => value === null || isEntityId(value);
+const isNullableClock = (value: number | null): boolean => value === null || isClock(value);
+const isUpTo = (value: number, maximum: number): boolean => Number.isInteger(value) && value >= 0 && value <= maximum;
+const isFloat32Matrix = (matrix: Matrix3): boolean => matrix.length === 9 && matrix.every(isFiniteFloat32);
+const isCraftKindBit = (kindBit: number): boolean => combatTypeOf(kindBit) === 'craft';
+/** Part 0 of a kind 1 (player) or 2 (wingman) source, which draws the source model's parts 0–2. */
+const isEscapePod = ({ sourceKindBit, part }: FragmentCombat): boolean => (sourceKindBit === 1 || sourceKindBit === 2) && part === 0;
+const isClockReference = (reference: { readonly entity: EntityId; readonly clock: number } | null): boolean =>
+  reference === null || (isEntityId(reference.entity) && isClock(reference.clock));
+
+function isValidMount(mount: MountState): boolean {
+  return isNullableClock(mount.lastShotClock) && isInt32(mount.ammunition) && isUpTo(mount.damage, 2) && isInt32(mount.burst)
+    && isFloat32Matrix(mount.aim) && isNullableId(mount.autoTarget) && isIndex(mount.retargetClock);
+}
+
+function isValidWeapons({ selections, lock, mounts }: WeaponBlock): boolean {
+  return selections.length === 3
+    && selections.every(({ index, mount }) => isInt32(index) && index >= -1 && (mount === null || (isIndex(mount) && mount < mounts.length)))
+    && isUpTo(lock.level, 4) && isClock(lock.stageDueClock) && isBoolean(lock.losing) && isClock(lock.graceDueClock) && isClock(lock.nextUpdateClock)
+    && mounts.every(isValidMount);
+}
+
+function isValidCraftCombat(combat: CraftCombat): boolean {
+  const { proximity } = combat;
+  return [combat.energy, combat.shield, combat.charge, combat.sparePower, combat.fullSpeedPower, combat.hull].every(isInt32)
+    && isUpTo(combat.shieldLevel, 3) && isUpTo(combat.chargeLevel, 3)
+    && isClock(combat.lastEnergyClock) && isClock(combat.nextEnergyClock) && isBoolean(combat.depleted)
+    && combat.subsystems.length === SUBSYSTEM_COUNT && combat.subsystems.every((state) => isUpTo(state, 3))
+    && isValidWeapons(combat.weapons)
+    && isNullableClock(combat.hitFeedbackClock)
+    && (proximity === null || (isEntityId(proximity.entity) && isFiniteFloat32(proximity.distanceSquared)))
+    && isClockReference(combat.lastVictim) && isClockReference(combat.lastAttacker);
+}
+
+const MISSILE_PROGRAMS: readonly string[] = ['unguided', 'heat-seeker', 'homing'];
+const EXPLOSION_VARIANTS: readonly string[] = ['large', 'other', 'missile'];
+
+function isValidMissileCombat({ missile, shooter, target, launchByte, program, detonate, contact, guidance, homing }: MissileCombat): boolean {
+  return isIndex(missile) && isNullableId(shooter) && isNullableId(target) && isUpTo(launchByte, 4) && MISSILE_PROGRAMS.includes(program)
+    && isBoolean(detonate) && isNullableId(contact)
+    && (guidance === null || (isUpTo(guidance.phase, 4) && isFiniteFloat32(guidance.fuseRadiusSquared) && isInt32(guidance.checkInterval)
+      && [guidance.lifetimeClock, guidance.armClock, guidance.detonationClock, guidance.nextCheckClock].every(isClock)))
+    && (homing === null || (isClock(homing.period) && isClock(homing.nextUpdateClock) && isBoolean(homing.targetValid)
+      && [homing.turnFraction, homing.speedFraction, homing.targetDistance].every(isFiniteFloat32)));
+}
+
+function isValidCombat(combat: EntityCombat): boolean {
+  switch (combat.type) {
+    case 'craft':
+      return isValidCraftCombat(combat);
+    case 'missile':
+      return isValidMissileCombat(combat);
+    case 'projectile':
+      return isIndex(combat.gun) && isNullableId(combat.shooter)
+        && (combat.expiry === null || (isClock(combat.expiry.clock) && isBoolean(combat.expiry.firstHitPending)));
+    case 'explosion':
+      return isEntityId(combat.source)
+        && (isCraftKindBit(combat.sourceKindBit) || combat.sourceKindBit === MISSILE_KIND_BIT || combat.sourceKindBit === FRAGMENT_KIND_BIT)
+        && EXPLOSION_VARIANTS.includes(combat.variant) && isNullableId(combat.heldSource)
+        && isNullableClock(combat.activationClock) && isNullableClock(combat.removalAfterClock);
+    case 'fragment':
+      // Only part 0 of a kind 1 or 2 source, the escape pod, has no DEBRIS parameters (craft §4.1).
+      return isCraftKindBit(combat.sourceKindBit) && isIndex(combat.part)
+        && (isEscapePod(combat) ? combat.debris === null : combat.debris !== null && isIndex(combat.debris))
+        && isInt32(combat.durability) && isBoolean(combat.explodeOnExpiry) && isNullableId(combat.handOff)
+        && (combat.expiry.type === 'pending' || combat.expiry.type === 'never' || (combat.expiry.type === 'at' && isClock(combat.expiry.clock)));
+    default:
+      return false;
+  }
+}
+
+/** Whether `presentation` is the variant of `combat`'s type and names the same record, variant or part (CR-02). */
+function presentationFits(presentation: EntityPresentation, combat: EntityCombat): boolean {
+  switch (presentation.type) {
+    case 'model':
+      return combat.type === 'craft';
+    case 'missile':
+      return combat.type === 'missile' && presentation.missile === combat.missile;
+    case 'projectile':
+      return combat.type === 'projectile' && presentation.record === combat.gun;
+    case 'explosion':
+      return combat.type === 'explosion' && presentation.variant === combat.variant;
+    case 'fragment':
+      return combat.type === 'fragment' && presentation.part === combat.part && presentation.display === (isEscapePod(combat) ? 'parts-0-2' : 'part');
+    default:
+      return false;
+  }
+}
+
+function copyPresentation(presentation: EntityPresentation): EntityPresentation {
+  switch (presentation.type) {
+    case 'model':
+      return Object.freeze({ type: 'model', model: presentation.model });
+    case 'missile':
+      return Object.freeze({ type: 'missile', missile: presentation.missile });
+    case 'projectile':
+      return Object.freeze({ type: 'projectile', visuals: presentation.visuals, record: presentation.record });
+    case 'explosion':
+      return Object.freeze({ type: 'explosion', variant: presentation.variant });
+    case 'fragment':
+      return Object.freeze({ type: 'fragment', model: presentation.model, part: presentation.part, display: presentation.display });
+  }
+}
+
+const frozenMatrix = (matrix: Matrix3): Matrix3 => Object.freeze([...matrix]) as unknown as Matrix3;
+
+function copyMount(mount: MountState): MountState {
+  const { lastShotClock, ammunition, damage, burst, aim, autoTarget, retargetClock } = mount;
+  return { lastShotClock, ammunition, damage, burst, aim: frozenMatrix(aim), autoTarget, retargetClock };
+}
+
+function copyCraftCombat(combat: CraftCombat): CraftCombat {
+  const { selections, lock, mounts } = combat.weapons;
+  const selection = ({ index, mount }: ListSelection): ListSelection => ({ index, mount });
+  const { proximity, lastVictim, lastAttacker } = combat;
+  return {
+    type: 'craft',
+    energy: combat.energy,
+    shield: combat.shield,
+    charge: combat.charge,
+    shieldLevel: combat.shieldLevel,
+    chargeLevel: combat.chargeLevel,
+    sparePower: combat.sparePower,
+    fullSpeedPower: combat.fullSpeedPower,
+    lastEnergyClock: combat.lastEnergyClock,
+    nextEnergyClock: combat.nextEnergyClock,
+    depleted: combat.depleted,
+    hull: combat.hull,
+    subsystems: Object.freeze([...combat.subsystems]),
+    weapons: {
+      selections: Object.freeze([selection(selections[0]), selection(selections[1]), selection(selections[2])] as const),
+      lock: { level: lock.level, stageDueClock: lock.stageDueClock, losing: lock.losing, graceDueClock: lock.graceDueClock, nextUpdateClock: lock.nextUpdateClock },
+      mounts: Object.freeze(mounts.map(copyMount)),
+    },
+    hitFeedbackClock: combat.hitFeedbackClock,
+    proximity: proximity && Object.freeze({ entity: proximity.entity, distanceSquared: proximity.distanceSquared }),
+    lastVictim: lastVictim && Object.freeze({ entity: lastVictim.entity, clock: lastVictim.clock }),
+    lastAttacker: lastAttacker && Object.freeze({ entity: lastAttacker.entity, clock: lastAttacker.clock }),
+  };
+}
+
+function copyMissileCombat(combat: MissileCombat): MissileCombat {
+  const { guidance, homing } = combat;
+  return {
+    type: 'missile',
+    missile: combat.missile,
+    shooter: combat.shooter,
+    target: combat.target,
+    launchByte: combat.launchByte,
+    program: combat.program,
+    detonate: combat.detonate,
+    contact: combat.contact,
+    guidance: guidance && {
+      phase: guidance.phase,
+      lifetimeClock: guidance.lifetimeClock,
+      armClock: guidance.armClock,
+      fuseRadiusSquared: guidance.fuseRadiusSquared,
+      detonationClock: guidance.detonationClock,
+      checkInterval: guidance.checkInterval,
+      nextCheckClock: guidance.nextCheckClock,
+    },
+    homing: homing && {
+      period: homing.period,
+      nextUpdateClock: homing.nextUpdateClock,
+      turnFraction: homing.turnFraction,
+      speedFraction: homing.speedFraction,
+      targetValid: homing.targetValid,
+      targetDistance: homing.targetDistance,
+    },
+  };
+}
+
+function copyFragmentExpiry(expiry: FragmentExpiry): FragmentExpiry {
+  return Object.freeze(expiry.type === 'at' ? { type: 'at', clock: expiry.clock } : { type: expiry.type });
+}
+
+/** A detached, mutable copy whose immutable parts are frozen. */
+function copyCombat(combat: EntityCombat): EntityCombat {
+  switch (combat.type) {
+    case 'craft':
+      return copyCraftCombat(combat);
+    case 'missile':
+      return copyMissileCombat(combat);
+    case 'projectile': {
+      const { expiry } = combat;
+      return { type: 'projectile', gun: combat.gun, shooter: combat.shooter, expiry: expiry && { clock: expiry.clock, firstHitPending: expiry.firstHitPending } };
+    }
+    case 'explosion': {
+      const { source, sourceKindBit, variant, heldSource, activationClock, removalAfterClock } = combat;
+      return { type: 'explosion', source, sourceKindBit, variant, heldSource, activationClock, removalAfterClock };
+    }
+    case 'fragment': {
+      const { sourceKindBit, part, debris, durability, explodeOnExpiry, expiry, handOff } = combat;
+      return { type: 'fragment', sourceKindBit, part, debris, durability, explodeOnExpiry, expiry: copyFragmentExpiry(expiry), handOff };
+    }
+  }
 }
 
 /**
@@ -413,13 +987,18 @@ export class EntityTable {
    * original outcome: the original allocator has no rule-level limit.
    */
   allocate(init: EntityInit): Entity {
-    const { kindBit, activity, movement, ai, formation } = init;
+    const { kindBit, activity, movement, ai, formation, combat } = init;
     if (!Number.isInteger(kindBit) || kindBit < 0 || kindBit >= KIND_BITS) throw new CoreFaultError('invariant-violated', 'entities.kind');
     if (!isFiniteVec(init.position) || init.orientation.length !== 9 || !init.orientation.every(Number.isFinite)) {
       throw new CoreFaultError('invariant-violated', 'entities.pose');
     }
-    if ((activity === 'parked') !== (movement === null)) throw new CoreFaultError('invariant-violated', 'entities.movement');
+    if (combat.type !== combatTypeOf(kindBit) || !isValidCombat(combat)) throw new CoreFaultError('invariant-violated', 'entities.combat');
+    if (!presentationFits(init.presentation, combat)) throw new CoreFaultError('invariant-violated', 'entities.presentation');
+    if ((activity === 'parked') !== (movement === null) || (movement !== null && !movementFits(movement, combat))) {
+      throw new CoreFaultError('invariant-violated', 'entities.movement');
+    }
     if (!isValidFlightState(init)) throw new CoreFaultError('invariant-violated', 'entities.flight');
+    if (combat.type !== 'craft' && !hasRuntimeKindDefaults(init)) throw new CoreFaultError('invariant-violated', 'entities.runtime-kind');
     if (!fitsLimit('entities', this.#byId.size, 1)) throw new CoreFaultError('budget-exhausted', 'entities.count');
     const id = this.#nextId;
     if (!Number.isSafeInteger(id + 1)) throw new CoreFaultError('budget-exhausted', 'entities.id');
@@ -431,7 +1010,7 @@ export class EntityTable {
       name: copyName(init.name),
       side: init.side,
       baseInteraction: init.baseInteraction,
-      presentation: Object.freeze({ type: init.presentation.type, model: init.presentation.model }),
+      presentation: copyPresentation(init.presentation),
       position: Object.freeze({ x, y, z }),
       orientation: Object.freeze([...init.orientation]) as unknown as Matrix3,
       placementSerial: 0,
@@ -443,9 +1022,10 @@ export class EntityTable {
       lastParkedUpdateClock: init.lastParkedUpdateClock,
       warpClock: init.warpClock,
       inWarp: init.inWarp,
-      movement: movement && copyMovement(movement),
+      movement: movement && copyMovementBlock(movement),
       ai: { mode: ai.mode, target: ai.target, goal: frozenVec(ai.goal), targetOffset: frozenVec(ai.targetOffset), objectTarget: ai.objectTarget },
       formation: formation && Object.freeze({ leader: formation.leader, offset: frozenVec(formation.offset) }),
+      combat: copyCombat(combat),
     };
     this.#nextId = id + 1;
     this.#byId.set(id, entity);

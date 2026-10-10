@@ -45,8 +45,12 @@ function moveEntity(world: WorldState, entity: Entity, block: MovementBlock, ste
       entity.movement = moved.block;
       return;
     }
+    case 'linear':
+    case 'spinning':
+      // P3-07's modes 1 and 2 (projectiles, explosions, fragments) move only from its subtask 22 on.
+      throw new CoreFaultError('invariant-violated', 'movement.mode');
     default:
-      unhandledMode(block.mode);
+      unhandledMode(block);
   }
 }
 

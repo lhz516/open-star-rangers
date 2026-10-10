@@ -6,7 +6,7 @@ const names = Object.keys(CORE_LIMITS) as CoreLimitName[];
 describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
   it('covers every budget the spec names with a frozen positive safe integer', () => {
     expect(names).toEqual([
-      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick',
+      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick', 'requestsPerTick',
       'recordedTicks', 'recordedCommands', 'recordedEvents', 'recordedCheckpoints', 'canonicalTextLength',
     ]);
     expect(Object.isFrozen(CORE_LIMITS)).toBe(true);
@@ -14,12 +14,27 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
   });
 
   it('keeps the relations its documented basis relies on', () => {
-    const { commandsPerTick, entities, spawnExpansion, eventsPerTick, recordedTicks, recordedCommands, recordedEvents, recordedCheckpoints } = CORE_LIMITS;
-    // P3-02 and P3-06's derived bounds of one tick (docs/plan/p3/06/spec.md, 容量核算).
+    const { commandsPerTick, entities, spawnExpansion, eventsPerTick, requestsPerTick, recordedTicks, recordedCommands, recordedEvents, recordedCheckpoints } = CORE_LIMITS;
+    // P3-02 and P3-06's derived bounds of one tick at the entity limit (docs/plan/p3/06/spec.md, 容量核算).
     const events = commandsPerTick + commandsPerTick + 1 + spawnExpansion + entities;
     const requests = entities + spawnExpansion + commandsPerTick + 2;
     expect([events, requests]).toEqual([3201, 3138]);
-    expect(eventsPerTick).toBeGreaterThanOrEqual(Math.max(events, requests));
+    expect(eventsPerTick).toBeGreaterThanOrEqual(events);
+    expect(requestsPerTick).toBeGreaterThanOrEqual(requests);
+    // P3-07's bounds at the generous slice of docs/plan/p3/02/spec.md, CR-14, with P3-02's and P3-06's terms there.
+    const [craft, groupA, mounts, chain, projectiles, missiles, fragments, explosions, perTick, engaging] = [32, 24, 256, 4, 512, 32, 256, 64, 32, 32];
+    const hits = projectiles + (perTick + perTick) * craft + 2 * perTick + fragments + 2 * groupA * craft + engaging * craft + perTick;
+    const combatEvents = hits + (mounts + commandsPerTick * chain) + (perTick * 3 + fragments + 1) + 2 * fragments + 3 * perTick + (commandsPerTick + 1 + 1)
+      + commandsPerTick;
+    const otherEvents = commandsPerTick + commandsPerTick + 1 + spawnExpansion + craft;
+    expect([hits, combatEvents, combatEvents + otherEvents]).toEqual([5472, 7075, 8260]);
+    const liveObjects = craft + projectiles + missiles + fragments + explosions;
+    const combatRequests = (commandsPerTick + 1) + (mounts + commandsPerTick * chain) + 2 * liveObjects + commandsPerTick + spawnExpansion + (commandsPerTick + 2);
+    expect([liveObjects, combatRequests]).toEqual([896, 3523]);
+    // About four times each sum, as runaway budgets (CR-14).
+    expect([eventsPerTick, requestsPerTick]).toEqual([32_768, 16_384]);
+    expect(eventsPerTick).toBeGreaterThan(3.9 * (combatEvents + otherEvents));
+    expect(requestsPerTick).toBeGreaterThan(4.6 * combatRequests);
     expect(spawnExpansion).toBeLessThanOrEqual(entities);
     expect(recordedCheckpoints).toBe(recordedTicks + 1);
     expect(recordedCommands).toBeGreaterThanOrEqual(recordedTicks);

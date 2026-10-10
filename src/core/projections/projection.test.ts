@@ -4,8 +4,10 @@ import { constructWorld } from '../world/world.ts';
 import { entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import {
   projectWorld,
+  type CombatPlayer,
   type CombatReady,
   type CommunicationsReady,
+  type FlightCombat,
   type FlightResourceName,
   type MapReady,
   type MotionPlayer,
@@ -14,6 +16,8 @@ import {
   type Projection,
   type ResultReady,
   type SpeedLimitStatus,
+  type WeaponListReading,
+  type WeaponRecordReference,
 } from './projection.ts';
 
 describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
@@ -60,10 +64,17 @@ describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
     expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
-    // Owners define the resources (and the other `never` fields) by revising the spec before a partition can be ready.
-    expectTypeOf<FlightResourceName>().toBeNever();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
+    // P3-07 CR-12: the combat group is the flight partition's, ready with the player's readings or null without one.
+    expectTypeOf<FlightCombat>().toEqualTypeOf<NotImplementedPartition | CombatReady>();
     expectTypeOf<CombatReady['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<CombatReady['player']>().toEqualTypeOf<CombatPlayer | null>();
+    expectTypeOf<keyof CombatPlayer>().toEqualTypeOf<
+      'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage'
+    >();
+    expectTypeOf<FlightResourceName>().toEqualTypeOf<'energy' | 'shield' | 'charge' | 'hull' | 'spare-power'>();
+    expectTypeOf<WeaponRecordReference['family']>().toEqualTypeOf<'gun' | 'missile'>();
+    expectTypeOf<CombatPlayer['weapons']>().toEqualTypeOf<readonly [WeaponListReading, WeaponListReading]>();
     expectTypeOf<MotionReady['player']>().toEqualTypeOf<MotionPlayer | null>();
     expectTypeOf<keyof MotionPlayer>().toEqualTypeOf<
       'entityId' | 'position' | 'orientation' | 'speed' | 'commandedSpeed' | 'maximumSpeed' | 'speedLimitStatus' | 'speedAssist'

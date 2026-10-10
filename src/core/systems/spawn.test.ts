@@ -474,7 +474,10 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });
     expect(recordOf(state, 'wingman', index).spawnCount).toBe(1);
     expect(world.projection().mission.wingman).toBe(index);
-    expect(world.renderState().entities[1]).toEqual({ id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0 });
+    expect(world.renderState().entities[1]).toEqual({
+      id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0,
+      hitShimmerStart: null, explosionStart: null,
+    });
   });
 });
 

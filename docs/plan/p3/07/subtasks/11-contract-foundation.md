@@ -99,11 +99,11 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-01：共享形状与 CR-02 至 CR-06、CR-12、CR-14 逐项一致；类型、校验、序列化与比较器一致，快照写入器与事件字段表覆盖每个新成员；战斗组位于 `flight` 之内，为 `not-implemented`。
-- [ ] AC-01：`eventsPerTick` 为 32,768，`requestsPerTick` 为 16,384 且请求队列使用它，两者的 limit 与 limit + 1 有测试；快照格式版本与 `RULES_VERSION` 相对合入时各递增一次，replay 格式版本不变；旧规则版本的 replay 被拒绝且不执行。
-- [ ] AC-01：既有纯度、原子拒绝、生命周期与输出冻结的不变量测试保留；只更新获批变化对应的断言；合成 Core 的测试不改；正式与合成模块互不依赖。
-- [ ] 接入点改造后行为不变：P3-07 的每个命令仍有恰好一个 `rejected`/`not-implemented` 结果，P3-06 的命令结果不变；未实现阶段的 `run` 仍为 null；没有假系统、空调用点或生产注入入口；`leave()` 不调用目标模块。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-01：共享形状与 CR-02 至 CR-06、CR-12、CR-14 逐项一致；类型、校验、序列化与比较器一致，快照写入器与事件字段表覆盖每个新成员；战斗组位于 `flight` 之内，为 `not-implemented`。
+- [x] AC-01：`eventsPerTick` 为 32,768，`requestsPerTick` 为 16,384 且请求队列使用它，两者的 limit 与 limit + 1 有测试；快照格式版本与 `RULES_VERSION` 相对合入时各递增一次，replay 格式版本不变；旧规则版本的 replay 被拒绝且不执行。
+- [x] AC-01：既有纯度、原子拒绝、生命周期与输出冻结的不变量测试保留；只更新获批变化对应的断言；合成 Core 的测试不改；正式与合成模块互不依赖。
+- [x] 接入点改造后行为不变：P3-07 的每个命令仍有恰好一个 `rejected`/`not-implemented` 结果，P3-06 的命令结果不变；未实现阶段的 `run` 仍为 null；没有假系统、空调用点或生产注入入口；`leave()` 不调用目标模块。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -112,3 +112,27 @@ updated: 2026-10-10
 - 不涉及浏览器或原版对照。
 
 ## 完成证据
+
+- **实现（基于认领提交 `a2ffdd8`，提交前变基到目标分支 `aa9a8e2`，其中含 P3-06 子任务 11 的运动阶段，合并提交 `c222318`）：**
+  - CR-02、CR-03：[entity-table.ts](../../../../../src/core/world/entity-table.ts) 的 `EntityCombat` 五个变体（`CraftCombat`、`WeaponBlock`、`MountState`、`MissileCombat`、`ProjectileCombat`、`ExplosionCombat`、`FragmentCombat` 等）、`combatTypeOf`、`EntityPresentation` 五个变体与 `MovementBlock` 联合（`linear`、`spinning`）。分配时校验并脱离复制：`combat.type` 与种类位不符、值越出 CR-02 表的范围（含布尔字段）为 `entities.combat`；表现与战斗状态的类型、记录、变体、部件不一致，或逃生舱以外的碎片绘制部件 0–2，为 `entities.presentation`；移动块变体与种类不符（机体 `craft`/`warp`、导弹只 `craft`、弹丸 `linear` 且命中检测、爆炸 `linear` 不检测、碎片 `spinning`）为 `entities.movement`；运行时种类不取分配器缺省（活动、无来源/阵营/名称/交互、规则输入为 0、AI 缺省且 `objectTarget` 为 null、无编队与 Warp、导弹以外最高速度为 0）为 `entities.runtime-kind`。碎片的 `debris` 只在种类 1、2 的第 0 部件为 null。`setActivity` 同样检查变体。`blankCraftCombat()` 是分配时的空白机体战斗状态（不是原版值，12 按 CR-07 写入实例化值；写入范围中记作 `allocatorCraftCombat()`，名称按其含义改为 blank）。
+  - CR-04：[player-state.ts](../../../../../src/core/world/player-state.ts) 的八个字段与初值、`initialPlayerTargeting()`（供 12 在实例化时写入）；[pipeline.ts](../../../../../src/core/systems/pipeline.ts) 的 `leave()` 在移除玩家实体时清空 `targeting`，不清除目标、不发事件。
+  - CR-05、CR-06：[domain-events.ts](../../../../../src/core/contracts/domain-events.ts) 的九个原因码、`Attacker`、`ShotTrigger` 与 CR-06 正文列出的 13 种事件（工作范围写作 14 种，CR-06 只有 13 种）；`Request` 的新变体、`ControlBlock`、`AxisControl` 与 `RequestOf`。[compare.ts](../../../../../src/core/replay/compare.ts) 的事件字段表与逐字段读取；每 tick 的次序按 CR-06：附加事件紧随所属命令的结果、请求处理阶段的事件、能量阶段、帧尾至多一个 `target-cleared`、导弹的命中在其起爆之后、`object-destroyed` 在同一实体的 `hit` 之后、命中与被毁不早于对象更新。
+  - CR-12：[projection.ts](../../../../../src/core/projections/projection.ts) 的 `FlightCombat`、`CombatReady`、`CombatPlayer`、`CombatTarget`、`RadarContact`、`WeaponListReading`、`FlightResourceName`、`WeaponRecordReference` 定稿，战斗组仍为 `not-implemented`；[render-state.ts](../../../../../src/core/projections/render-state.ts) 增加 `clock`、`hitShimmerStart`、`explosionStart`。
+  - CR-14：[limits.ts](../../../../../src/core/contracts/limits.ts) 的 `eventsPerTick` 32,768、`requestsPerTick` 16,384 与上界依据，`RequestQueue` 改用 `requestsPerTick`；[snapshot.ts](../../../../../src/core/replay/snapshot.ts) 覆盖全部新成员（按变体分派的写入器），快照格式版本与 [`RULES_VERSION`](../../../../../src/core/replay/rules-version.ts) 都由 2 变为 3；replay 格式版本仍为 1，`replay.ts`、`recording.ts` 不改。
+  - CR-07 接入点：[commands.ts](../../../../../src/core/systems/commands.ts) 按命令类型分派到 [targeting.ts](../../../../../src/core/systems/targeting.ts)、[weapons.ts](../../../../../src/core/systems/weapons.ts)、[energy.ts](../../../../../src/core/systems/energy.ts)（仍为 `rejected`/`not-implemented`），并导出 CR-05 的共同前置判定 `combatCommandPlayer` 供 13、14、16 使用（未接入，结果不变）；种类 20、21、22、24 的自身更新分派到 [missiles.ts](../../../../../src/core/systems/missiles.ts)、[projectiles.ts](../../../../../src/core/systems/projectiles.ts)、[destruction.ts](../../../../../src/core/systems/destruction.ts)，暂时沿用通用生命周期；种类 22 的 `set-state` 转到 `setExplosionState`（同样沿用）；新请求类型分派到各模块的处理函数，没有投递者，到达即为 Core 故障；`collision`、`delayed-player-explosion`、`energy`、`frame-end` 的 `run` 由 [collision.ts](../../../../../src/core/systems/collision.ts)、destruction.ts、energy.ts、[displays.ts](../../../../../src/core/systems/displays.ts) 导出且为 null，`PIPELINE` 在运行时读取（避免从规则模块进入的循环导入在初始化前读取）；参照目标查询 `referenceTarget` 经 `RequestQueue.findLastPending`。
+  - **未接入的两处玩家更新调用：** 本分支没有 P3-06 的玩家更新（`flight-control.ts` 未合并），按协调者指示只导出 `updateMissileLock`（weapons.ts）与 `selectAutomaticTarget`（targeting.ts），不改变状态，没有调用点。待 P3-06 的 11 至 13 合并后另行接入。
+  - **与 P3-06 运动阶段的衔接：** [movement.ts](../../../../../src/core/systems/movement.ts) 的模式分派对 `linear`、`spinning` 为 `movement.mode` Core 故障，22 接入之前不可达（穷尽检查改为 `unhandledMode(block)`）；导弹的机体移动块在运动阶段因没有弹体记录而为 `movement.record` 故障，同样由 22 接入。P3-06 导出的 `copyMovement` 仍复制机体移动块，分配时按变体分派的是 `copyMovementBlock`。
+  - 获批的范围外改动：[spawn.ts](../../../../../src/core/systems/spawn.ts) 分配时传入 `blankCraftCombat()`；spawn.test.ts、create-world.test.ts 的 Render State 断言；flight-state.test.ts 的一处类型标注；movement.ts 的上述分支；movement.test.ts 一个用例改用种类 20，另有五处收窄为 `SteeredMovementBlock` 的类型标注。
+- **测试：** 变基后 `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 通过（43 个文件，1,519 项）；`pnpm typecheck`、`pnpm lint` 通过；`pnpm check` 通过（214 个文件，6,902 项，生产构建成功）。新增或更新的断言：
+  - entity-table.test.ts：种类到战斗类型的映射；空白机体状态；各变体的脱离复制与冻结部分；每类非法值、表现与移动块不符、逃生舱、运行时种类缺省的故障点位；预算测试改用机体种类，遍历测试以种类 24 代替无战斗类型的种类 31。
+  - player-state.test.ts、domain-events.test.ts、projection.test.ts、render-state.test.ts：初值、联合与类型、Render State 新成员。
+  - snapshot.test.ts：覆盖测试加入机体与四种运行时种类的全部可选部分及玩家新字段，任一叶值改变都改变规范文本；版本为 3、3。
+  - compare.test.ts：13 种事件的往返匹配、逐字段差异、非法值与次序；全部原因码。
+  - limits.test.ts：新上限、两者的 limit 与 limit + 1、CR-14 的上界算式（7,075、8,260、3,523）。
+  - pipeline.test.ts、commands.test.ts（新建）：P3-07 的 16 种命令操作与其他命令各恰好一个 `not-implemented` 结果且状态不变；共同前置判定；参照目标；新请求的路由与被移除主体的丢弃；运行时种类沿用生命周期，在运动阶段为 22 之前的 Core 故障；移除玩家清空 `targeting` 且不清除目标；两个玩家更新入口不改变状态；未实现阶段的 `run` 为 null。snapshot.test.ts 中经过一 tick 的用例先让运行时种类离开。
+  - recording.test.ts：录制可用事件总量 491,520；replay.test.ts：规则版本 2（P3-07 之前）被拒绝。合成 Core 的测试不改。
+- **改造前后对照：** 用同一合成任务（僚机 0、每 tick 64 单位）与含 P3-07、P3-06 及其他命令的 400 tick 输入，在 `a2ffdd8` 与本改动上各录制一次，变基后又在 `aa9a8e2`（含 P3-06 的运动阶段）与本改动上各录制一次，两次对照都是事件流逐项相同（986 个事件，929 个命令结果）；最终快照去掉实体的 `combat`、玩家的八个新字段与两个版本号后完全相同。
+- **rubber-duck：** 采纳全部四项：表现与移动块的交叉约束（导弹只 `craft`、弹丸与爆炸的 `hitTest`、逃生舱的 `debris` 与 `parts-0-2`）；新布尔字段的类型检查；运行时种类缺省的校验；比较器中 `hit` 与 `object-destroyed`、导弹命中与起爆的次序。`object-instantiated` 仍不排序，沿用 P3-06 的既有测试与决定。
+- **simplify：** 采纳：快照的选择列表用 `canonicalList`；i32 判断复用 `toInt32`；`RequestQueue.pending()` 的复制改为不复制的 `findLastPending`；比较器的数值规则提为模块常量。未采纳：删除 CR-06/CR-02 定稿的冗余字段（`shieldWasEmpty`、`eventClass`、`activationClock`、`removalAfterClock`、表现中的身份字段，属契约）；把 `TickContext` 等移出 pipeline.ts 以去掉 `ruleStage` 与 commands.ts 的循环（与 P3-06 并行修改 pipeline.ts 冲突，且超出本项）；流式快照写入（超出本项）。
+- **文档影响：** [core.md](../../../../engineering/modules/core.md) 的上限表（`eventsPerTick` 4,096、请求借用事件上限）、请求类型、`flight` 的 `never` 占位与快照版本已不准确；按 goal，core.md 与 [source-structure.md](../../../../engineering/source-structure.md) 的更新归 28，本项不改。没有新的原版事实，`docs/original/` 与 U 项不变。
+

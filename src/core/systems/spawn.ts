@@ -22,7 +22,7 @@ import { assignName } from '../rules/name-assignment.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { memberPosition, placeRecord, type AttitudeRows, type Placement, type PlacementRecord } from '../rules/placement.ts';
 import { firingRecord, PLAYER_KIND_BIT, postsRequests } from '../rules/spawn-schedule.ts';
-import { allocatorFlightState, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
+import { allocatorFlightState, blankCraftCombat, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
 import { COCKPIT_VIEW_MODE, initialPlayerControl } from '../world/player-state.ts';
 import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-state.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -156,6 +156,8 @@ function instantiate(
     maximumSpeed: initialMaximumSpeed(kindBit, craft),
     lastParkedUpdateClock: 0,
     movement: null,
+    // P3-07's instantiation writes its initial values (CR-07).
+    combat: blankCraftCombat(),
   });
   entity.ai = initialAiState(world.entities, entity, aiCandidates(record, world.spawn, world.setup), world.spawn.frame, rand);
   entity.lastParkedUpdateClock = world.clock;
