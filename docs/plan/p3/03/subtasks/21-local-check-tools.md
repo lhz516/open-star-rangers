@@ -10,7 +10,7 @@ updated: 2026-10-09
 # 21 — 本地核对工具与基准核对
 
 **契约来源：** [spec](../spec.md) 的 S-16、S-17（工具用法与 `AGENTS.md`）、AC-19、AC-20（工具部分）、AC-18（CLI 输出）；[技术决定](../spec.md#技术决定) 11、13。
-**依赖：** 19。
+**依赖：** 19, 26, 27。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -30,9 +30,9 @@ updated: 2026-10-09
   - 测试可注入合成白名单，退出码与 [logic-check.ts](../../../../../tools/logic-check.ts) 相同。
 - **基准核对**（输出只在 `local/research/p3-03/local-check/`）：
   - 在开发者本机的基准镜像上运行 nob-check 与 package-check；
-  - 用只共用光盘与 IMFAT 读取的本地独立读取脚本，按格式文档读取各导入项，与规范数据逐项比较，只记录结论、计数与哈希；
+  - 用只共用光盘与 IMFAT 读取的本地独立读取脚本，按格式文档读取各导入项（含 `data/hud/text` 的 64 个 EXE 区域与 `warp-arrival` 的播放次数，spec 修订 1），与规范数据逐项比较，只记录结论、计数与哈希；
   - 把生产解码的 ANIM 帧渲染为本地图像，与至少一处本地截图（例如 `local/StarRang/captures/` 中的爆炸画面）或参考视频中的爆炸外观比较。记录方法、来源与置信度，单凭视频最高为高概率；比较用图像只临时存放在 `local/`。
-- **文档：** 在 [工具用法](../../../../guides/tools.md) 中加入 package-check 一节，并补充 nob-check 的新增核对；在 `AGENTS.md` 的命令表中加入 package-check。
+- **文档：** 在 [工具用法](../../../../guides/tools.md) 中加入 package-check 一节，并补充 nob-check 的新增核对；按 07 的交接更新 logic-check 一节的事件计数；在 `AGENTS.md` 的命令表中加入 package-check。
 
 ## 不包含
 

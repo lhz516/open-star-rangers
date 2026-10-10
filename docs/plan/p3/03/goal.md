@@ -66,36 +66,36 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | S-05 | 03、08、11、15 | 11：组 0 闭包与不透明代码标识；15：ID 链；19：装配 |
 | S-06 | 04、08、12、15 | 12：菜单解析；15：转换；19：装配 |
 | S-07 | 04、08、12、15 | 12：选择值与值域；15：子资源映射；19：装配 |
-| S-08 | 04、08、09、12、13、15、16 | 12：EXE 字串；13：视角标签；15、16：转换；19：装配 |
+| S-08 | 04、08、09、12、13、15、16、24、25、26 | 12：EXE 字串；13：视角标签；15、16：转换；19：装配；24：#47 研究；25：`hud-text` 契约；26：HUD 文字的转换与装配 |
 | S-09 | 04、05、09、13、16、17 | 13：RENS 头部；16：TEX 11069；17：场景设置；19：装配 |
 | S-10 | 05、09、14、16、17 | 14：编码 1 解码；16：帧图像；17：爆炸表与动画；21：全部 186 帧 |
 | S-11 | 05、09、16、17 | 16：BITM 图像；17：星云列表与 ID 链 |
 | S-12 | 05、16 | 16：TEX 11089 的图像与调色板 |
-| S-13 | 18、19 | 18：角色与 Asset ID 规则；19：并入音频表 |
-| S-14 | 06、15–17、19 | 19：切片定义版本 4、接线、份额、组件与包身份；23：复核 |
-| S-15 | 07–19 | 各行的合成样本测试；19：合成内容包与合成导入；20：浏览器回归 |
+| S-13 | 18、19、27 | 18：角色与 Asset ID 规则；19：并入音频表；27：sound payload schema 2 与重复播放 |
+| S-14 | 06、15–17、19、26 | 19：切片定义版本 4、接线、份额、组件与包身份；26：`hud-text` 角色与份额；23：复核 |
+| S-15 | 07–19、25–27 | 各行的合成样本测试；19：合成内容包与合成导入；26、27：合成 HUD 文字与 `repeat` 声音；20：浏览器回归 |
 | S-16 | 21 | 21：本地 CLI、nob-check、独立读取与外观核对 |
 | S-17 | 21、22 | 21：工具用法与 `AGENTS.md`；22：分册、目录树、指南、文档地图；23：链接检查 |
-| AC-01 | 01–05、22 | 01–05：结构、类型、计数、引用、变换、文字规则与零值位置；14：ANIM 解码按代码确认的规则实现；22：U 项；23：文档无原版内容 |
+| AC-01 | 01–05、22、24 | 01–05、24：结构、类型、计数、引用、变换、文字规则与零值位置；14：ANIM 解码按代码确认的规则实现；22：U 项；23：文档无原版内容；门槛条款由 spec 修订 1 的批准满足 |
 | AC-02 | 07 | 07：段 2 的正向与拒绝表驱动测试，`loadMission` 透传、冻结与确定性 |
 | AC-03 | 10、15 | 10：TABL 4003 的选择与 CINF 记录；15：`subresource-mismatch` 与越界拒绝 |
 | AC-04 | 10、15 | 10：20 组记录、嵌套数组与 +0x0C 不转换；15：转换 |
 | AC-05 | 11、15 | 11：程序表、`entries`、代码标识与组 0 三元组；15：多出或缺少条目时报 `subresource-mismatch` |
-| AC-06 | 12、13、15、16 | 12、13：解析与拒绝；15、16：只含本任务的部分 |
+| AC-06 | 12、13、15、16、25、26 | 12、13：解析与拒绝；15、16：只含本任务的部分；25：HUD 文字的键集与格式常量；26：64 条的转换与拒绝 |
 | AC-07 | 13、16、17 | 13：RENS 头部字段；16：两个 TEX；17：`data/projectile-visuals` 不变 |
 | AC-08 | 14、16、17 | 14：合成编码与解码逐像素相等，覆盖全部分支与拒绝；16：帧图像；17：爆炸表与 ID 链 |
 | AC-09 | 16、17 | 16：BITM 图像绑定 `palette/flight/models`；17：顺序与 ID 链 |
-| AC-10 | 18、19 | 18：11 个 sound Asset 与唯一性；19：既有 18 个声音的 ID、角色与字节不变 |
-| AC-11 | 07、08、09 | 07–09：各 payload 族的往返、拒绝与隔离测试 |
-| AC-12 | 19 | 19：版本 4 完整、逐一缺少角色时不完整、版本 3 报 `definition-version-mismatch`；工程边界回归 |
-| AC-13 | 15–18 | 15–17：子资源部件只在解析后才为 `verified`，四条 ID 链；18：音频映射 |
-| AC-14 | 06、08–17、19 | 06：限值名；08–14：结构限值恰等于上限通过、超出 1 拒绝；15–17：份额计量；19：份额推导与 `PRODUCTION_PACKAGE`；22：记录 |
-| AC-15 | 19、20 | 19：组件递增、旧版本记录为 `cache-incompatible`、版本 4 提交与恢复（Node）；20：`resource-cache`、`cache-recovery` |
-| AC-16 | 19 | 19：生产作业的四组结果、读取日志、失败不发送组、协议与回归 |
-| AC-17 | 20 | 20：E2E 与 browser-testing 的画面与声音核对 |
-| AC-18 | 06–21 | 各行的边界与诊断测试；23：边界回归、ESLint、代码审阅与 `pnpm check:original` |
+| AC-10 | 18、19、27 | 18：11 个 sound Asset 与唯一性；19：既有 18 个声音的 ID、角色与字节不变；27：`flags` 8 为 `repeat`、既有字节不变与重复播放 |
+| AC-11 | 07、08、09、25、27 | 07–09、25：各 payload 族的往返、拒绝与隔离测试；27：sound payload schema 2 |
+| AC-12 | 19、26 | 19：版本 4 完整、逐一缺少角色时不完整、版本 3 报 `definition-version-mismatch`；工程边界回归；26：`hud-text` |
+| AC-13 | 15–18、26 | 15–17：子资源部件只在解析后才为 `verified`，四条 ID 链；18：音频映射；26：HUD 文字的 64 个区域 |
+| AC-14 | 06、08–17、19、25、26 | 06：限值名；08–14、25：结构限值恰等于上限通过、超出 1 拒绝；15–17：份额计量；19、26：份额推导与 `PRODUCTION_PACKAGE`；22：记录 |
+| AC-15 | 19、20、27 | 19：组件递增、旧版本记录为 `cache-incompatible`、版本 4 提交与恢复（Node）；27：schema 1 的声音不再恢复；20：`resource-cache`、`cache-recovery` |
+| AC-16 | 19、26 | 19：生产作业的四组结果、读取日志、失败不发送组、协议与回归；26：读取日志含 HUD 文字区域 |
+| AC-17 | 20、27 | 20：E2E 与 browser-testing 的画面与声音核对，含 `repeat` 声音；27：合成 `repeat` 声音 |
+| AC-18 | 06–21、25–27 | 各行的边界与诊断测试；23：边界回归、ESLint、代码审阅与 `pnpm check:original` |
 | AC-19 | 21 | 21：本地 CLI、nob-check、独立读取与外观核对，输出只在 `local/` |
-| AC-20 | 21、22 | 21：工具用法与 `AGENTS.md`；22：S-17 的其余文档；23：`updated:`、链接与锚点 |
+| AC-20 | 21、22 | 21：工具用法与 `AGENTS.md`；22：S-17 的其余文档与 audio 的 `flags` 8；23：`updated:`、链接与锚点 |
 | AC-21 | 19–23 | 23：`pnpm check` 与 `pnpm test:e2e` |
 
 ## 子任务跟踪
@@ -123,11 +123,14 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [17-flight-data-step.md](./subtasks/17-flight-data-step.md) | 16 | completed |
 | [18-event-hud-sounds.md](./subtasks/18-event-hud-sounds.md) | — | completed |
 | [19-package-integration.md](./subtasks/19-package-integration.md) | 07, 15, 17, 18 | completed |
-| [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19 | pending |
-| [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19 | pending |
-| [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21 | pending |
+| [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19, 26, 27 | pending |
+| [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19, 26, 27 | pending |
+| [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21, 25, 26, 27 | pending |
 | [24-hud-exe-text-research.md](./subtasks/24-hud-exe-text-research.md) | — | completed |
-| [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24 | pending |
+| [25-hud-text-payload.md](./subtasks/25-hud-text-payload.md) | 06, 09, 24 | pending |
+| [26-hud-text-assembly.md](./subtasks/26-hud-text-assembly.md) | 25, 27 | pending |
+| [27-sound-repeat.md](./subtasks/27-sound-repeat.md) | 19 | pending |
+| [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -156,9 +159,12 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 17 完成（交 19、22）：** `runFlightDataStep(source, mappings, declarations, limits, usage)`，其中 `declarations = { assets, references }`；references 是其他步骤对 186 个帧、15 个星云图像与 blast-v1–v4 的映射，只用于定位、从不读取。四条 ID 链不一致时在 archive 结构路径处报 subresource-mismatch；声明表与映射表之间的不一致在任何读取之前报 invalid-declaration；没有 EXPL 引用的已声明音效也报 subresource-mismatch（`#EXIC/lists`），所以 `data/explosions` 恰好依赖声明的爆炸音效；绑定到其他来源指纹的引用映射表在读取前报 fingerprint-mismatch。`NEBULA_LIST_LIMITS.entryBytes` 为 256（观测 68）。`SOURCE_ENTRY_TYPES.data` 加入 ANIM（见上文范围扩展，规格未改）。`PRODUCTION_FLIGHT_DATA_SHARE` 是留给 19 的空占位；未接入 import-job.ts；effect-step.ts 未改，`data/projectile-visuals` 仍只含记录。交 19：在效果步骤之后用 `PRODUCTION_FLIGHT_DATA_MAPPINGS`/`PRODUCTION_FLIGHT_DATA_DECLARATIONS` 运行 `runFlightDataStep`，并入 models 组草稿并填写份额（合成生产结构计量：20 个 Asset、222 条依赖边）。交 22：original-data 分册新增飞行数据步骤一节（API、ID 链、位置与限值）、`production-flight-data.ts` 的导出，以及在 P2-07 DIAG/SNIP 的说明旁补记 ANIM。可选后续整理（不属本任务）：把私有 NEBC 解析器移入 `formats/`，拆出 flight-data-declarations.ts，给 `readSourceMappingTable` 增加根路径参数。
 - **2026-10-09 — P3-02 测量窗口：** 应 P3-02 协调者请求（用户同意），窗口期间各工作者不修改 `local/research/` 下的既有文件、不触碰 `local/StarRang/`，私有基线核对推迟；P3-02 于 16:43 通知窗口结束，约束解除。15 因此未做私有核对（见 15 的记录），19 的份额推导在窗口结束后运行。
 - **2026-10-09 — 19 完成（交 20、21、22）：** 切片定义版本 4 与 13 个新增必需角色；logic 步骤合并 `convertRuleData` 的分区，图形步骤并入 16 的映射与声明（`mergeGroupDrafts`），模型阶段在效果步骤之后运行 `runFlightDataStep`，音频表并入 18 的 11 行，音频步骤改为与核验共用一次读取（输出不变）。本地基准份额（2 倍取 2 的幂）：飞行图形 assets 512、边 512、调色板项 512、像素 4,194,304、字节 4,194,304；规则数据 assets 16、字节 262,144；飞行数据 assets 64、边 512、字节 32,768；logic 与音频在既有限值内。`PRODUCTION_PACKAGE.limits` 为 810 assets、1,408 边、16,564,224 字节、5,373,952 像素、3,072 调色板项。读取日志测试加入闭包外的 MUSC 诱饵与未读条目的全量核对。已知缺口：基准上的生产作业与 logic-check 在 `warp-arrival` 的 `flags` 8 处失败关闭（`unsupported-payload`）；仅为测量而接受 8 时，基准作业得到限值内的完整版本 4 包。该缺口由 spec 修订 1 与后续修复子任务处理。交 20：查看器的第一个图像现在是带掩码的爆炸帧；AC-24 布局对照在透明纹素上的棋盘灰（102）与实际渲染的灰（153）不一致，19 把该测试改用不透明的导弹图像，20 须判明哪一方正确。交 22：模块分册（`mergeGroupDrafts`、音频共用读取、`ModelStepInput.flightData`、三个份额常量与 `PRODUCTION_PACKAGE.limits`、组件版本、`VERSION_4_ROLES`/`P2_ROLES_SLICE`、`regionExecutable` 的 fixup）、本地导入指南的重新导入说明、audio.md 中 11 个新 SND 的 `flags`（8 个为 1，10409 与 10455 为 0，10181 为 8）。
+- **2026-10-09 — spec 修订 1 与修复子任务 25–27：** 用户就两项契约变化选择了推荐方案：HUD 直接绘制的 EXE 文字按方案 A 新增 cockpit-hud-map 组的 data 角色 `hud-text`，导入闭包 #47 的全部 64 条（24 的门槛 3 与 4）；SND 10181 的 `flags` 8 把 sound payload 递增为 schema 2，增加 `repeat` 循环方式（19 发现）。协调者据此修订 spec（修订 1，并把执行中的 AICO、调色板与 ANIM 来源类型判断写入技术决定 16），审阅后用户于同日批准，并要求向 goal 加入修复子任务。新增 25（`hud-text` 的 payload 契约）、26（HUD 文字的转换与装配，依赖 25、27）与 27（sound payload schema 2 与重复播放）；20 与 21 改为依赖 26、27，22 依赖 25–27，最终对齐 23 依赖全部其他行。20 加入 `repeat` 声音的浏览器断言与 19 交接的棋盘灰差异，21 的独立读取加入 64 个区域与播放次数，22 的写入范围加入 platform 分册、audio.md 与 ai.md。已完成行的证据不变。组件不再另行递增：19 的 `graphics-4` 与 `audio-2` 的中间输出没有在真实来源上产生过完整的包（基准作业在 `flags` 8 处失败关闭），因此最终输出仍用这两个组件版本。
 
 ## 审批
 
 用户于 2026-10-09 明确批准本 goal（“approve the goal and commit”）。批准范围为 23 个子任务的拆分、依赖、执行方式与写入范围，以及验收覆盖表；跟踪表全部为 `pending`。
 
 本次只记录批准，不代表实现完成，也不替代 spec 的批准；执行仍须由 execute-goal 进行。
+
+用户于 2026-10-09 批准 spec 修订 1，并要求向 goal 加入修复子任务（“Approve the revised spec (revision 1); then add the remediation subtasks to the goal”）。据此加入 25–27，并调整 20–23 的依赖与范围，见执行记录。
