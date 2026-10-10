@@ -1,11 +1,11 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
- * from the world, in partitions. clock, mission and player are ready. flight (in two groups, motion and combat:
- * docs/plan/p3/06/spec.md, D-05), map, communications and result fix the boundary their owners fill; until a rule makes
- * one ready it is `not-implemented`, never an empty list, a zero value, a fully visible map or a victory. The
- * projection gives only what the original shows or a rule needs, never the list of all entities. Fields the spec leaves
- * to an owner's research are `never` here: the owner defines them by revising the spec (扩展规则) before its partition
- * can become ready.
+ * from the world, in partitions. clock, mission and player are ready, and so is flight's combat group (P3-07,
+ * combat.ts). flight's motion group (docs/plan/p3/06/spec.md, D-05), map, communications and result fix the boundary
+ * their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a fully
+ * visible map or a victory. The projection gives only what the original shows or a rule needs, never the list of all
+ * entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the spec
+ * (扩展规则) before its partition can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
@@ -13,6 +13,7 @@ import type { Vec3 } from '../contracts/domain-events.ts';
 import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
 import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
+import { projectCombat } from './combat.ts';
 
 export interface ClockProjection {
   readonly tick: number;
@@ -168,7 +169,7 @@ export interface CombatReady {
   readonly player: CombatPlayer | null;
 }
 
-/** The combat group, not implemented until P3-07's combat readings are ready (P3-07 subtask 23). */
+/** The combat group: `not-implemented` until P3-07's readings were ready; combat.ts now always makes it ready (CR-12). */
 export type FlightCombat = NotImplementedPartition | CombatReady;
 
 /** Flight HUD data in two groups, each ready on its own; neither overwrites the other. */
@@ -255,7 +256,6 @@ export interface Projection {
 }
 
 const NOT_IMPLEMENTED: NotImplementedPartition = Object.freeze({ readiness: 'not-implemented' });
-const FLIGHT_NOT_IMPLEMENTED: FlightProjection = Object.freeze({ motion: NOT_IMPLEMENTED, combat: NOT_IMPLEMENTED });
 
 export function projectWorld(world: WorldState): Projection {
   const { config, player } = world;
@@ -276,7 +276,7 @@ export function projectWorld(world: WorldState): Projection {
       subMode: player.subMode,
       interactionContext: interactionContext(player.viewMode),
     }),
-    flight: FLIGHT_NOT_IMPLEMENTED,
+    flight: Object.freeze({ motion: NOT_IMPLEMENTED, combat: projectCombat(world) }),
     map: NOT_IMPLEMENTED,
     communications: NOT_IMPLEMENTED,
     result: NOT_IMPLEMENTED,

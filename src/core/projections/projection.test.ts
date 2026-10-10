@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { constructWorld } from '../world/world.ts';
-import { entityInit, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import {
   PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
@@ -22,21 +22,37 @@ import {
 } from './projection.ts';
 
 describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
-  it('has the clock, mission and player partitions ready and the rule partitions, both flight groups included, not implemented', () => {
+  it('has the clock, mission and player partitions and the combat group ready, the other rule partitions and the motion group not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
-    const player = state.entities.allocate(entityInit(0));
-    state.player.entityId = player.id;
+    const player = addPlayerEntity(state);
     expect(world.projection()).toEqual({
       clock: { tick: 1, clock: 4, clockUnitsPerTick: 4 },
       mission: { mission: 'mission/first-campaign', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built' },
       player: { entityId: player.id, viewMode: 0x0c, previousViewMode: 0x0c, subMode: 0, interactionContext: 'flight' },
-      flight: { motion: { readiness: 'not-implemented' }, combat: { readiness: 'not-implemented' } },
+      flight: { motion: { readiness: 'not-implemented' }, combat: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id }) } },
       map: { readiness: 'not-implemented' },
       communications: { readiness: 'not-implemented' },
       result: { readiness: 'not-implemented' },
     });
+  });
+
+  it('keeps the combat group\'s four states apart: not implemented, no player, a live player and a destroyed one (P3-07 AC-04)', () => {
+    const stateOf = (combat: FlightCombat): string => {
+      if (combat.readiness === 'not-implemented') return 'not-implemented';
+      if (combat.player === null) return 'no-player';
+      return combat.player.destroyed ? 'destroyed' : 'live';
+    };
+    const state = testState();
+    const combat = () => stateOf(projectWorld(state).flight.combat);
+    expect(stateOf({ readiness: 'not-implemented' })).toBe('not-implemented');
+    expect(combat()).toBe('no-player');
+    const player = addPlayerEntity(state);
+    expect(combat()).toBe('live');
+    player.destroyed = true;
+    expect(combat()).toBe('destroyed');
+    expect(projectWorld(state).flight.motion).toEqual({ readiness: 'not-implemented' });
   });
 
   it('derives the interaction context from the view mode', () => {

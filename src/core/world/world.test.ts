@@ -4,7 +4,7 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { COMMAND_TYPES, type Command } from '../contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { EntityTable } from './entity-table.ts';
-import { initialPlayerControl } from './player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting } from './player-state.ts';
 import { constructWorld } from './world.ts';
 import { entityInit, expectFault, stateText, testConfig, testState, thrownBy, tickInput } from './world.test-support.ts';
 import type { WorldState } from './world-state.ts';
@@ -37,6 +37,7 @@ function populatedState(overrides: Parameters<typeof testState>[0] = {}): WorldS
   const player = state.entities.allocate(entityInit(0));
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(state.config.group);
+  state.player.targeting = initialPlayerTargeting();
   state.entities.allocate(entityInit(7, { activity: 'parked' }));
   state.entities.allocate(entityInit(7)).state = 'active';
   return state;
