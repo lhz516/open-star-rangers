@@ -328,12 +328,19 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     ['select-target', { type: 'select-target', entityId: 1, target: 2, targetKindBit: 20, origin: 'command', commandIndex: 0 }, 'targeting.select-target'],
     ['steer', { type: 'steer', entityId: 2, control }, 'missiles.steer'],
     ['a missile\'s expiry', { type: 'expire', entityId: 2 }, 'missiles.expire'],
-    ['a projectile\'s expiry', { type: 'expire', entityId: 3 }, 'projectiles.expire'],
     ['a craft\'s expiry', { type: 'expire', entityId: 1 }, 'requests.expire'],
     ['an explosion\'s expiry', { type: 'expire', entityId: 5 }, 'requests.expire'],
   ] as [string, Request, string][])('routes %s to its module in request handling, which no rule posts yet', (_, request, site) => {
     const [state] = runtimeKinds();
     expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
+  });
+
+  it('routes a projectile\'s expiry to projectiles.ts (P3-07/17): pending removal, its shooter let go', () => {
+    const [state, [projectile]] = withEntities([21, { combat: { type: 'projectile', gun: 0, shooter: 7, expiry: null } }]);
+    projectile.state = 'active';
+    runTickWith(state, { 'mission-flow': ({ requests }) => requests.post({ type: 'expire', entityId: projectile.id }) });
+    expect(projectile.state).toBe('pending-removal');
+    expect(projectile.combat).toMatchObject({ shooter: null });
   });
 
   it('drops a new request whose subject is gone, as every request', () => {
