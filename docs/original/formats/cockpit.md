@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-001, U-006, U-011, U-029]
 ---
 
@@ -37,10 +37,40 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 | +0x0C | u32 | Passed to the instrument handlers each frame | Meaning Unconfirmed |
 | +0x10 | u32 ptr | Contiguous array of 52-byte elements | Confirmed |
 | +0x14 | u32 | Element count; zero for empty slots | Confirmed |
-| +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Structure Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); other fields Unconfirmed |
-| +0x1C | u32 | Instrument record count | Likely (EXE) |
+| +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Type at +0, the 48-byte stride and the dispatch Confirmed (EXE, [below](#instrument-types-per-slot-confirmed-p3-0730)); rectangle Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); other fields Unconfirmed |
+| +0x1C | u32 | Instrument record count | Confirmed (EXE, `0x49b2c`) |
 
 The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. Each slot is selected by the view modes whose layout number it carries (+0x00, above); U-029 remains open for +0x0C and the instrument record fields. **Which set is loaded (Confirmed, EXE, P3-01/10):** TABL 10099 lists 10103, 10097 and 10101, and `0x497a0(n)` loads entry n − 1. The HUD set-up loads 10103 at start-up; entering the base interior (view mode 6) the view switch loads 10097, and leaving it loads 10103 again, or 10101 in LO ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
+
+### Instrument types per slot (Confirmed, P3-07/30)
+
+**Dispatch (Confirmed, EXE; native instructions read on a private read-only copy of the Ghidra project):**
+
+- The frame render `0x3ee58` calls `0x49b2c` once per frame, only in view modes 1, 6, 8 and 0xC–0x12 (not in 0x13).
+- `0x49b2c` returns when the loaded set has no selected slot (−1). Otherwise it walks the selected slot's instrument records in ascending order, 48 bytes apart, up to the count at +0x1C. For each record that is due, or when the draw is forced (gate in [T7](./executable.md#t7-right-target-display-confirmed-code)), it calls the first registered handler whose type equals the record's +0.
+- The slot is the one whose +0x00 equals the layout number that `0x3f158` derives from the view mode ([automatic views](./executable.md#automatic-views-and-cameras-p3-0109); its jump table was re-read for this section and agrees).
+
+**Types in record order (Confirmed, data):**
+
+| Entry | Slot | Layout | Records | Types, in record order |
+|---|---|---|---:|---|
+| 10103 | 0 | 0 | 10 | 0, 1, 2, 3, 5, 7, 8, 6, 9, 12 |
+| 10103 | 1 | 5 | 11 | 1, 0, 2, 3, 4, 5, 7, 8, 6, 9, 12 |
+| 10103 | 2 | 6 | 2 | 10, 8 |
+| 10103 | 3–7 | 1, 2, 3, 4, 8 | 1 each | 8 |
+| 10101 | 0 | 0 | 10 | 0, 1, 2, 3, 5, 7, 6, 8, 9, 12 |
+| 10101 | 1 | 5 | 11 | 1, 0, 2, 3, 4, 5, 7, 6, 9, 12, 8 |
+| 10101 | 2 | 6 | 2 | 10, 8 |
+| 10101 | 3–7 | 1, 2, 3, 4, 8 | 1 each | 8 |
+| 10097 | 0 | 0 | 10 | 0, 1, 2, 3, 5, 7, 8, 6, 9, 12 |
+
+No type occurs twice in a slot. The ignored script `local/research/p3-07/contract-facts/instrument-order.ts` reads only the directory and each record's +0, through the shared IMFAT reader with bounds checks.
+
+**Consequences (Confirmed, EXE and data):**
+
+- Types 7 (right display, [T7](./executable.md#t7-right-target-display-confirmed-code)) and 6 (left display, [T8](./executable.md#t8-left-display-no-target-reads-confirmed-code)) occur once each in layouts 0 and 5 and in no other slot. Their handlers therefore run only in view modes 0xC and 1 (layout 0), 6 (layout 0 of 10097) and 0xD (layout 5). The cursor-key views (layouts 1–4) and the external views (layout 8) have only type 8, the message line; the map (layout 6) has types 10 and 8.
+- In every slot that holds them, type 7 comes before type 6. When both are due in the same frame, the right display's target clearing (T7) therefore runs before the left display's page-0 status display ([D9](./executable.md#d9-status-display-writes-subsystem-fields-1-5-and-8--confirmed-code)).
+- The LO set places type 8 differently from the HI set; the order of types 7 and 6 is the same in all three entries.
 
 ### Element, 52 bytes (Confirmed)
 

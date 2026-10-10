@@ -831,8 +831,8 @@ Craft use modes 0 and 3 only. Mode 3 is written only by the Warp start, and that
 | +0x5C | i32 | Control lock ([controls](#flight-controls-and-rotation-p3-0602)) | 0 | `0x21ba0` |
 | +0x60, +0x64, +0x68 | f32 | Steady rotation rate about row 1, 2, 3 (rad/s, Likely, following the craft rates) | 0 | `0x21dd0`, `0x21fd8` |
 | +0x6C | f32 | Commanded speed, units/s | The initial speed | `0x21dd0`, `0x21adc`, `0x21ba0`, `0x21d88`, `0x2bf08`, `0x50188`, `0x21a3c` |
-| +0x70 | f32 | Reference maximum speed: a copy of C +0xB8 | C +0xB8 | `0x21794`, `0x218e8`, `0x21a3c` |
-| +0x74 | f32 | Speed ratio | F(D(speed ÷ +0x70)) when +0x70 > 0, else 0 | Builders; integrators; `0x21a3c` |
+| +0x70 | f32 | Reference maximum speed: a copy of C +0xB8 | C +0xB8 | `0x21794`, `0x218e8`, `0x21a3c` (mode 0, only when it holds ±0; [W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code)) |
+| +0x74 | f32 | Speed ratio | F(D(speed ÷ +0x70)) when +0x70 > 0 or the compare is unordered, else 0 | Builders; integrators; `0x21a3c` |
 | +0x78 | i32 | Commanded speed reached | 1 | Set by the integrators, `0x2bf08` and `0x21a3c`; cleared by every other writer of +0x6C |
 | +0x7C, +0x80, +0x84 | i32 | Steady rotation enabled about row 1, 2, 3 | 0 | `0x21dd0`, `0x21fd8` |
 | +0x88–+0xA0 | mixed | Disturbance level and biases ([controls](#flight-controls-and-rotation-p3-0602)) | 0 | `0x21bd4` |
@@ -2075,14 +2075,37 @@ calls `0x3060c(missile, body, 100, 0, 0)` (resource initialisation, [D13](#d13-r
 valid (`0x528bc`), read **at construction**; callback `0x2ab00` when guided and lock byte ≥ 2, otherwise `0x2aa40`
 ([H5](#h5-missiles--confirmed-code-unless-marked)); movement block +0xFC = shooter, +0xF0 = 1, +0xF4 = missile record, +0x100 = lock byte. Position
 as for projectiles, rows = shooter rows (no aim). Mode byte 0 with throttle value 0 (guided, missile +0x18 ≠ 0) or 0x80 (unguided); the mode-0
-initial speed it gives belongs to P3-06. Guided: `0x21a3c` then sets speed = the smaller of object +0x78
-and the shooter's speed (movement +0x08). When missile +0x20 ≠ 0, three rand: roll by u·π/2 − π/4 (`0x22990`), then a coin
+initial speed it gives belongs to P3-06. Guided: `0x21a3c` then sets the speed, the commanded speed and the ratio
+from the smaller of object +0x78 and the shooter's speed (movement +0x08) (below). When missile +0x20 ≠ 0, three rand: roll by u·π/2 − π/4 (`0x22990`), then a coin
 (rand & 1) chooses `0x22a50` (rows 1 and 3) or `0x228cc` (rows 2 and 3) for an angle u·2° − 1° (u = rand × 1/32767;
 angles rounded to f32). Posts presentation item 4. Player shooter: player-state +0x40 += 1 (missiles fired), and
 `0x3118c` stores the missile handle in `0x174c0c` (camera code, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)).
 `0x2b00c` reads no clock and sets no lifetime: the missile's first callback (`0x2aa40` or `0x2ab00`, state 0)
 allocates its guidance block at object +0x14 and posts state 7, and the timers live in that block and `0x2ac10`
 ([H5](#h5-missiles--confirmed-code-unless-marked)).
+
+**Guided launch speed `0x21a3c(EAX = missile, EDX = its movement block, EBX = shooter)`** (Confirmed, native
+instructions, P3-07/30). Its only caller is `0x2b00c` at `0x2b304` (raw call scan; no stored pointer to it), right after `0x21794`
+has built the block, and only when the missile record's byte +0x18 is non-zero (guided):
+
+1. It returns without writing anything when the missile's record pointer (object +0x1C) or the shooter's block
+   pointer (shooter object +0x08) is null. It makes no validity test of the shooter handle.
+2. **Block mode 0** (+0x04 = 0), in this order:
+   - +0x78 ← 1 (commanded speed reached);
+   - v ← object +0x78 (the missile's maximum speed, which `0x3060c` set to record +0xB8,
+     [D13](#d13-resource-initialisation-0x3060ceax-h-edx-craft-ebx-a-ecx-b-stack-c--confirmed-code)) when it
+     compares below the shooter's block +0x08, otherwise the shooter's speed. Equal values give the shooter's;
+     an unordered compare gives object +0x78. The value is copied as bits, not rounded;
+   - speed +0x08 ← v, then commanded speed +0x6C ← v;
+   - when +0x70 is ±0 (every bit but the sign clear), +0x70 ← record +0xB8 (object +0x1C);
+   - ratio +0x74 ← F(D(speed ÷ +0x70)) when 0 < +0x70 (an unordered compare also divides), otherwise 0.
+3. **Any other mode:** only speed +0x08 ← the shooter's block +0x08, as bits. There is no minimum, and +0x6C,
+   +0x70, +0x74 and +0x78 are not written.
+
+On its only path the block is in mode 0: `0x2b00c` passes mode 0 to `0x21794`, which copies record +0xB8 of the
+same object to +0x70 and sets +0x78 = 1 ([movement stage](#movement-stage-and-integration-p3-0601)). The effective
+writes are therefore the speed, the commanded speed and the ratio; the ±0 test rewrites the value already there,
+and step 3 is not reached.
 
 **Timing:** the player's and the AI's triggers run in update callbacks (`0x20938` walk), so message 8 is handled in
 the same frame's message loop, after earlier messages; the new object is neither moved nor collision-tested in that
