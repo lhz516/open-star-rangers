@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Page, TestInfo } from '@playwright/test';
 import { diagnoseMission } from '../src/app/resources/mission-diagnostics.ts';
 import { resolveEntry, viewerCatalog, type ResolvedEntry, type ViewerEntry } from '../src/app/viewer/viewer-items.ts';
@@ -25,7 +24,7 @@ import type { ProbeSnapshot } from './support/browser-probes.ts';
 import {
   canaryFiles, canaryPackage, developmentCanaries, expectCacheArrival, expectInputArrival, expectPayloadArrival, type CanarySet,
 } from './support/canaries.ts';
-import { diagnostics as demoDiagnostics, enterDemo } from './support/demo-observations.ts';
+import { endPlaceholder, enterMission, expectAdvancingTick, missionEntry } from './support/mission-observations.ts';
 import { expectedPackage, ResourceBalance, type ExpectedPackage } from './support/resource-balance.ts';
 import {
   attachResponsiveness, describeResponsiveness, installResponsiveness, measureResponsiveness, ResponsivenessWindow, type ResponsivenessRecord,
@@ -35,9 +34,9 @@ import { bufferPixels, entryButton, pictureOf, pictureSamples, solidSamples, vie
 // P2-12 subtask 06 (S-02, S-03, S-05 and AC-02, AC-04, AC-05 development parts, AC-10): the joint pipeline on the
 // development test entry. The real module Worker runs the whole production job of the `canary` scenario on the canary
 // slice disc, chosen through the import page's file chooser; the package is committed, viewed and auditioned, restored
-// after a same-origin reload and viewed again, and the synthetic demo runs beside it. Expected pixels, sounds, identity
-// and mission summary come from the same disc converted in Node by the same job and from the fixture's own scenario
-// spec. Resource balance, the real import, commit and restore windows, and the network audit with every canary run
+// after a same-origin reload and viewed again, and a mission run starts from it beside them (P3-04 replaced the retired
+// synthetic demo). Expected pixels, sounds, identity and mission summary come from the same disc converted in Node by
+// the same job and from the fixture's own scenario spec. Resource balance, the real import, commit and restore windows, and the network audit with every canary run
 // throughout; nothing slows the Worker.
 
 test.describe.configure({ timeout: 600_000 });
@@ -466,38 +465,32 @@ async function toMenu(page: Page): Promise<void> {
   await expect(statuses(page, 'resource-statuses')).toHaveText(SAVED_MENU);
 }
 
-/** What the demo draws: its entities, the GPU resources its renderer holds, and the SHA-256 of its view's pixels. */
-interface DemoReading { readonly entities: number; readonly gpu: readonly number[]; readonly picture: string }
+/** What a mission visit showed: its owner and the ticks the run advanced over. */
+interface MissionReading { readonly owner: number | null; readonly ticks: { readonly from: number; readonly to: number } }
 
 /**
- * Starts and leaves the synthetic demo. It draws the same picture as `reference`, the demo with no package held, with as
- * many entities and GPU resources; it shows
- * nothing of the package, creates no Worker or audio, and leaves the held package as it was.
+ * Runs the mission beside the held package (P3-04, replacing the retired synthetic demo): it starts a run from the main
+ * menu with the preselected wingman, sees its tick advance, and returns. It creates no Worker, audio context or WebGL
+ * surface and leaves the held package and its statuses as they were.
  */
-async function runDemo(page: Page, reference: DemoReading | null): Promise<DemoReading> {
+async function runMission(page: Page): Promise<MissionReading> {
   const menu = await statuses(page, 'resource-statuses').allInnerTexts();
-  const count = () => page.evaluate(() => ({ workers: window.osrProbe.snapshot().workers.length, contexts: window.osrAudioProbe.records().length }));
+  const count = () => page.evaluate(() => {
+    const { workers, canvases } = window.osrProbe.snapshot();
+    return { workers: workers.length, canvases: canvases.length, contexts: window.osrAudioProbe.records().length };
+  });
   const before = await count();
-  await enterDemo(page);
-  await expect(page.getByTestId('render-status')).toHaveAttribute('data-state', 'ready');
-  await expect(page.getByTestId('synthetic-view-notice')).toContainText('not original graphics');
-  const { entities, gpu } = await demoDiagnostics(page);
-  expect(gpu).not.toBeNull();
-  // The view keeps its picture without input, so equal pictures across visits compare what is drawn.
-  const view = page.getByTestId('synthetic-view');
-  const shot = async () => createHash('sha256').update(await view.screenshot({ animations: 'disabled', caret: 'hide' })).digest('hex');
-  const picture = await shot();
-  await page.waitForTimeout(200);
-  expect(await shot(), 'the demo picture is stable').toBe(picture);
-  if (reference) expect({ entities, gpu, picture }, 'the demo without and with the package').toEqual(reference);
-  const text = await page.locator('body').innerText();
-  expect(text).not.toContain('Package identity');
-  expect(text).not.toMatch(/\b(?:model|effect|image|palette|layout|font|sound|mission|craft-types|wingman-roster)\/[a-z0-9]/);
-  await button(page, 'Return to menu').click();
-  await expect(button(page, 'Start synthetic demo')).toBeVisible();
+  const { owner } = await enterMission(page);
+  await endPlaceholder(page, 'G-02/1', 'button');
+  await button(page, 'Start').click();
+  await endPlaceholder(page, 'G-02/2', 'button');
+  const ticks = await expectAdvancingTick(page);
+  await button(page, 'Mission menu').click();
+  await button(page, 'Return to main menu').click();
+  await expect(missionEntry(page)).toBeFocused();
   expect(await count()).toEqual(before);
   expect(await statuses(page, 'resource-statuses').allInnerTexts()).toEqual(menu);
-  return { entities, gpu: gpu!, picture };
+  return { owner, ticks };
 }
 
 /**
@@ -541,14 +534,14 @@ function expectNoLongTasks(testInfo: TestInfo, records: readonly ResponsivenessR
     .toEqual(records.map(({ operation }) => ({ operation, longTaskCount: 0, longTasks: [] })));
 }
 
-test('three rounds of real import, commit, viewing, reload and verified restore, with the demo apart (AC-02, AC-04, AC-05, AC-10)', async ({ page, audit }, testInfo) => {
+test('three rounds of real import, commit, viewing, reload and verified restore, with the mission apart (AC-02, AC-04, AC-05, AC-10)', async ({ page, audit }, testInfo) => {
   const { set, files, want } = await open(page, audit);
   const records: ResponsivenessRecord[] = [];
   const auditions: Audition[] = [];
   const cacheRounds: number[] = [];
   const rounds: unknown[] = [];
-  // The demo with no package held, as the reference the demo must equal once a package is held.
-  const reference = await runDemo(page, null);
+  // Without a package the mission cannot start; each round's package can.
+  await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'no-package');
   await settleTooling(page);
   const balance = await ResourceBalance.start(page, testInfo, { packages: [] });
   try {
@@ -584,11 +577,11 @@ test('three rounds of real import, commit, viewing, reload and verified restore,
       auditions.push(...restored.auditions);
       await balance.check(`round ${round}: restored and viewed`);
 
-      audit.phase(`round ${round}: demo`);
-      await runDemo(page, reference);
+      audit.phase(`round ${round}: mission`);
+      const mission = await runMission(page);
       await expect(page.getByTestId('original-data-status')).toHaveText(HELD);
-      await balance.check(`round ${round}: after the demo`);
-      rounds.push({ round, states: imported.states, steps: imported.steps, identity: viewed.identity });
+      await balance.check(`round ${round}: after the mission`);
+      rounds.push({ round, states: imported.states, steps: imported.steps, identity: viewed.identity, mission });
     }
   } finally {
     await testInfo.attach('joint-rounds', { contentType: 'application/json', body: JSON.stringify({ rounds, auditions }, null, 1) });

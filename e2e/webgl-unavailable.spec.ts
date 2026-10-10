@@ -1,7 +1,21 @@
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
+import { button } from './support/app-entry.ts';
+import type { ProbeSnapshot } from './support/browser-probes.ts';
 import { test as observed, expect } from './support/browser-test.ts';
 import { installedBrowser } from './support/environment.ts';
-import { diagnostics, enterDemo, focusView, frameWindow, stableAxis } from './support/demo-observations.ts';
+import {
+  endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, leaveGuards, missionEntry, missionFrame,
+} from './support/mission-observations.ts';
+import { missionPackage, seedProductionCache } from './support/production-cache.ts';
+import { settleTooling } from './support/resource-balance.ts';
+import { openHeldViewer } from './support/version-4.ts';
+import { viewerDiagnostics } from './support/viewer-observations.ts';
+
+// A real Chromium with WebGL disabled, in the development and production projects. P3-04 (docs/plan/p3/04/spec.md,
+// 合成演示退役) moves the WebGL-unavailable fallback from the retired synthetic demo to the resource viewer, the one
+// screen with a WebGL surface: its explanation, its lists and its release on two visits, in both builds (viewer-page.spec.ts
+// covers one development visit with sounds and the mission summary). The mission flow, which has no WebGL surface, stays
+// usable. The startable mission package is seeded into the test's own context and restored through the real menu.
 
 const test = observed.extend({
   page: async ({ baseURL, viewport }, use) => {
@@ -17,44 +31,79 @@ const test = observed.extend({
   },
 });
 test.use({ webglUnavailable: true });
+test.describe.configure({ timeout: 120_000 });
 
-test('real WebGL-off browser retains Core input, controls and clean re-entry', async ({ page }, testInfo) => {
+const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
+
+/** The last probe sequence number a listener of `snapshot` was added at. */
+const lastAdded = ({ listeners }: ProbeSnapshot): number => Math.max(0, ...listeners.map(({ addedAt }) => addedAt));
+
+/**
+ * Back on the menu after a screen: no frame is pending, no observer watches, and no application listener added since
+ * `baseline` is still active on a connected target.
+ */
+async function expectReleased(page: Page, baseline: number) {
+  const menu = await frameWindow(page);
+  expect(menu.frames.pending).toBe(0);
+  expect(menu.observers.filter(({ targets }) => targets.length > 0)).toEqual([]);
+  expect(menu.listeners.filter(({ active, detached, addedAt, group }) => active && !detached && addedAt > baseline && !['test', 'vite'].includes(group))).toEqual([]);
+  return menu;
+}
+
+test('without WebGL the viewer explains it and releases on each visit, and the mission flow creates no WebGL surface', async ({ page }, testInfo) => {
+  const mission = missionPackage();
   await page.goto('/');
   const browser = page.context().browser();
   if (!browser) throw new Error('Missing owned WebGL-off browser');
   expect(await page.evaluate(() => document.createElement('canvas').getContext('webgl2') === null)).toBe(true);
+  await seedProductionCache(page, await mission);
+  await page.reload();
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText(RESTORED, { timeout: 30_000 });
+  await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'eligible');
+  await settleTooling(page);
+  const baseline = lastAdded(await frameWindow(page));
+
+  // The viewer, twice: each visit explains the fallback, keeps its list usable and releases everything on return.
   const visits = [];
   for (let visit = 1; visit <= 2; visit++) {
-    await enterDemo(page);
-    await expect(page.getByTestId('render-status')).toHaveAttribute('data-state', 'unavailable');
-    await expect(page.getByTestId('render-status')).toContainText('Error creating WebGL context');
-    await expect(page.getByTestId('render-status')).toContainText('The session is not affected.');
-    await expect(page.locator('canvas')).toHaveCount(0);
-    await focusView(page);
-    await page.keyboard.press('n');
-    await expect(page.getByTestId('results').locator('li')).toHaveCount(1);
-    await expect(page.getByTestId('results').locator('li')).toHaveAttribute('data-outcome', 'accepted');
-    await expect(page.getByTestId('marker')).not.toHaveText('none');
-    await page.keyboard.press('p');
-    await expect(page.getByTestId('phase')).toHaveText('paused');
-    const pausedTick = await page.getByTestId('tick').textContent();
-    await page.waitForTimeout(350);
-    await expect(page.getByTestId('tick')).toHaveText(pausedTick!);
-    await page.keyboard.press('p');
-    const resumed = await stableAxis(page);
-    await page.getByRole('button', { name: 'Pause', exact: true }).click();
-    await expect(page.getByTestId('phase')).toHaveText('paused');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
-    const buttonResume = await stableAxis(page);
-    const renderer = await diagnostics(page);
-    expect(renderer.state).toBe('unavailable');
-    expect(renderer.gpu).toBeNull();
-    await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Start synthetic demo', exact: true })).toBeEnabled();
-    const menu = await frameWindow(page);
-    expect(menu.frames.pending).toBe(0);
-    expect(menu.listeners.filter(entry => entry.active && ['keyboard', 'session', 'render'].includes(entry.group))).toEqual([]);
-    visits.push({ visit, pausedTick, resumed, buttonResume, renderer, menu });
+    await openHeldViewer(page);
+    const status = page.getByTestId('viewer-render-status');
+    await expect(status).toHaveAttribute('role', 'alert');
+    await expect(status).toContainText('WebGL 2 is unavailable');
+    await expect(page.getByTestId('viewer-view').locator('canvas')).toHaveCount(0);
+    const entries = page.getByTestId('viewer-entries').getByRole('button');
+    expect(await entries.count()).toBeGreaterThan(0);
+    await entries.first().click();
+    await expect(entries.first()).toHaveAttribute('aria-pressed', 'true');
+    const viewer = await viewerDiagnostics(page);
+    expect(viewer).toMatchObject({ state: 'unavailable', gpu: null, layout: null, placement: null });
+    await button(page, 'Return to menu').click();
+    await expect(button(page, 'View resources')).toBeFocused();
+    visits.push({ visit, viewer, released: (await expectReleased(page, baseline)).frames });
   }
-  await testInfo.attach('webgl-unavailable', { body: JSON.stringify({ browser: browser.version(), origin: page.url(), visits }), contentType: 'application/json' });
+
+  // The mission flow runs, pauses and resumes without any canvas, then releases on return.
+  const { owner } = await enterMission(page);
+  await endPlaceholder(page, 'G-02/1', 'button');
+  await button(page, 'Start').click();
+  await endPlaceholder(page, 'G-02/2', 'button');
+  const running = await expectAdvancingTick(page);
+  await button(page, 'Pause').click();
+  const paused = await expectStableTick(page, 400);
+  await button(page, 'Resume').click();
+  const resumed = await expectAdvancingTick(page);
+  expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
+  expect(await page.evaluate(() => document.querySelectorAll('canvas').length)).toBe(0);
+  await button(page, 'Mission menu').click();
+  await button(page, 'Return to main menu').click();
+  await expect(missionEntry(page)).toBeFocused();
+  expect(await leaveGuards(page)).toBe(0);
+  const afterMission = await expectReleased(page, baseline);
+  // Neither screen ever got a WebGL context.
+  expect(afterMission.canvases).toEqual([]);
+  await testInfo.attach('webgl-unavailable', {
+    body: JSON.stringify({ browser: browser.version(), origin: page.url(), visits, mission: { running, paused, resumed, released: afterMission.frames } }),
+    contentType: 'application/json',
+  });
 });
