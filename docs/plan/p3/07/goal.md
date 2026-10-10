@@ -111,7 +111,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | completed |
 | [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31, 32, 34 | completed |
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | completed |
-| [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | pending |
+| [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | in-progress |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | pending |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | pending |
