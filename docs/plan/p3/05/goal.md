@@ -100,8 +100,8 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | completed |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | in-progress |
-| [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | in-progress |
-| [15-owner-input-control.md](./subtasks/15-owner-input-control.md) | 09 | in-progress |
+| [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | pending |
+| [15-owner-input-control.md](./subtasks/15-owner-input-control.md) | 09 | pending |
 | [16-speed-preset-command.md](./subtasks/16-speed-preset-command.md) | 10 | pending |
 | [17-map-cursor-render.md](./subtasks/17-map-cursor-render.md) | — | pending |
 | [18-input-state-core.md](./subtasks/18-input-state-core.md) | 12 | pending |
@@ -133,6 +133,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-10 — 临时把并行 worker 上限改为 5：** 用户指示临时把同时运行的 worker 上限改为 5，为可开始的子任务另开会话。协调者据此在 01、02、03 之外认领 07 与 12。
 - **2026-10-10 — 提前集成 P3-06（10 解除阻塞）：** 用户指示现在把 P3-06 分支合并进本分支（选择“现在合并 P3-06 分支并核对，之后有新提交再补合”）。合并提交 `a98f89de` 合入 `p3-06-flight-motion-spec` 的 `42db4ec2`；唯一冲突在阶段索引的相邻两行，保留两边的 spec/goal 链接，并把 P3-06 写入的 P3-05 范围中“普通飞行的 `select-number` 绑定 Shift+数字”改为指向 P3-05 已批准的 `speed-preset`。核对：`presetThrottle` 与速度规则、`tools/baseline/inputs.py`（BIOS 键盘缓冲注入）已在本分支；集成基线 `RULES_VERSION` 为 2、`GAME_REPLAY_VERSION` 为 1；`pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；Vitest 全量在机器负载很高时有三个 5 秒超时（engineering-boundaries、import-job、image-payload 各一项，两次运行失败项不同），单独重跑三个文件全部通过；`tools/baseline` unittest 166 项通过。10 的恢复条件已满足，改回 pending。P3-06 之后的新提交须再合并并重做同样核对；P3-05 因此只能在 P3-06 之后或与之一起进入 `main`。
 - **2026-10-10 — B-001 的地图 Esc 更正（用户）：** 用户说明此前的手动测试有误：原版中按 Esc 可以退出战略地图。这与 02 的代码结论一致：地图按键处理 `0x27118` 对 Esc 与 `m` 发出同一个无条件的关闭地图命令。B-001 中“Esc 不能关闭地图”的观察作废，由 05（写入范围含 B-001）更正，由 04 记录地图上下文的 Esc 事实。P3-05 spec 目前引用该观察，并规定地图中 Esc 无游戏动作；08 须按检查点 K 规则 2 重新决定未锁指针时地图中的 Esc。锁指针时 Esc 只解除锁定，这一点不变（总计划 §1.2）。06 仍按 Q-05 取地图 Esc 的运行样本，但它不再是消解此冲突的唯一依据。
+- **2026-10-10 — 并行 worker 上限改回 3：** 为避免 Copilot 速率限制，用户指示把同时运行的 worker 上限改为 3。当时 01、07（变基中）与 13 正在运行；刚认领、尚未派出 worker 的 14 与 15 改回 pending，等有空位时再认领。
 
 ## 审批
 
