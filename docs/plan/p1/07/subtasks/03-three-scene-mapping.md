@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "03"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 03 — Three.js 合成场景与实体映射
@@ -26,8 +26,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- 新增 [render-surface.ts](../../../../../src/render/scene/render-surface.ts)（DOM-free 绘制端口）、[synthetic-renderer.ts](../../../../../src/render/synthetic/synthetic-renderer.ts) 及 [synthetic-renderer.test.ts](../../../../../src/render/synthetic/synthetic-renderer.test.ts)；测试替身 [render-surface.test-support.ts](../../../../../src/render/scene/render-surface.test-support.ts) 不进入生产导入链。纯色资源已在 02 交付。
-- 复用 [SyntheticRunBinding](../../../../../src/ui/game/synthetic-session-bridge.ts) 的 `isCurrent`/`own`，以及 [Runtime RenderFrame](../../../../../src/app/runtime/synthetic-runtime.ts)。
+- 新增 [render-surface.ts](../../../../../src/render/scene/render-surface.ts)（DOM-free 绘制端口）、[synthetic-renderer.ts](../../../../engineering/source-structure.md#r2-合成渲染) 及 [synthetic-renderer.test.ts](../../../../engineering/source-structure.md#r2-合成渲染)；测试替身 [render-surface.test-support.ts](../../../../../src/render/scene/render-surface.test-support.ts) 不进入生产导入链。纯色资源已在 02 交付。
+- 复用 [SyntheticRunBinding](../../../../engineering/source-structure.md#r6-合成-ui-层) 的 `isCurrent`/`own`，以及 [Runtime RenderFrame](../../../../engineering/source-structure.md#r3-合成-runtime)。
 
 ## 验收标准
 

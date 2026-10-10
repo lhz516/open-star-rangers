@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "04"
 subtask: "04"
-updated: 2026-10-05
+updated: 2026-10-10
 ---
 
 # 04 — 作业持有者：状态机、取消、释放与隔离
@@ -51,7 +51,7 @@ updated: 2026-10-05
 ## 关键文件与契约
 
 - **新增：** `src/app/import/import-worker-port.ts`、`src/app/import/import-job-owner.ts`、`src/app/import/import-job-owner.test.ts`（尚不存在）。
-- **复用：** 01 的协议模块。先例：P1 的 owner 释放模式见 [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)，Session 端口与平台实现的分工见 [session-host.ts](../../../../../src/app/session/session-host.ts)。
+- **复用：** 01 的协议模块。先例：P1 的 owner 释放模式见 [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)，Session 端口与平台实现的分工见 [session-host.ts](../../../../../src/app/session/session-host.ts)。
 
 ## 验收标准
 

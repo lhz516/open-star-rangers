@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "09"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 09 — 故障收尾空帧的 Node 证据
@@ -24,7 +24,7 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- 新增 [synthetic-renderer-fault.test.ts](../../../../../src/render/synthetic/synthetic-renderer-fault.test.ts)，复用 [render-surface.test-support.ts](../../../../../src/render/scene/render-surface.test-support.ts) 与 [synthetic-ui.test-support.ts](../../../../../src/ui/game/synthetic-ui.test-support.ts)。
+- 新增 [synthetic-renderer-fault.test.ts](../../../../engineering/source-structure.md#r2-合成渲染)，复用 [render-surface.test-support.ts](../../../../../src/render/scene/render-surface.test-support.ts) 与 [synthetic-ui.test-support.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)。
 
 ## 验收标准
 

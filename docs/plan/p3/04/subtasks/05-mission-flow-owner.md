@@ -43,7 +43,7 @@ updated: 2026-10-10
 - [mission-diagnostics.ts](../../../../../src/app/resources/mission-diagnostics.ts)：提取共用解码，行为不变。
 - [resource-holder.ts](../../../../../src/app/resources/resource-holder.ts)：只读消费 `current()`、`getSnapshot()`、`beforeReplace`；不改其销毁语义。
 - 03 的 `src/app/session/game-session.ts`；04 的 `src/app/mission/mission-ports.ts`。
-- 参照：[synthetic-demo-lifecycle.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.ts) 的槽位与锁存；[viewer-owner.ts](../../../../../src/app/viewer/viewer-owner.ts) 的关闭屏障。
+- 参照：[synthetic-demo-lifecycle.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 的槽位与锁存；[viewer-owner.ts](../../../../../src/app/viewer/viewer-owner.ts) 的关闭屏障。
 
 ## 写入范围
 

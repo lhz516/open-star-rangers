@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "08"
 subtask: "04"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 04 — 菜单画面与应用外壳
@@ -18,7 +18,7 @@ updated: 2026-10-02
 - 把 [App](../../../../../src/app/App.tsx) 改为应用外壳：一个 `main`，h1 `Open Star Rangers` 与“不含原版内容”声明；持有 01 的页面流转状态（含锁存），只渲染当前画面；不在加载时创建 owner；锁存与原始原因不依赖演示画面或开发面板存活。
 - 主菜单：标题 `Main menu`；原版数据状态（没有已验证数据、本构建无法导入或验证）；按顺序的 `Start synthetic demo` 与 `Import original game data` 两个原生按钮，说明经 `aria-describedby` 关联；锁存时显示含原因与刷新提示的 alert，Start 原生禁用并说明原因，导入仍可用。没有原版玩法入口或成功标记。
 - 导入占位：标题 `Import original game data`；说明未实现、不读取/存储/上传用户原版文件、以后版本在浏览器本地处理用户自有数据，不声称支持任何格式；唯一控件 `Return to menu`；无文件输入、拖放区或 Worker。
-- 合成演示画面：标题 `Synthetic demo`；`Return to menu` 位于画面与开发面板全部控件之前；preparing 状态；组合 03 的 hook、[SyntheticRenderView](../../../../../src/ui/render/SyntheticRenderView.tsx) 与 [SyntheticDevPanel](../../../../../src/ui/dev/SyntheticDevPanel.tsx)；初始化失败、faulted、清理失败时 Return 仍可用。
+- 合成演示画面：标题 `Synthetic demo`；`Return to menu` 位于画面与开发面板全部控件之前；preparing 状态；组合 03 的 hook、[SyntheticRenderView](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 与 [SyntheticDevPanel](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)；初始化失败、faulted、清理失败时 Return 仍可用。
 - 焦点：打开画面时把焦点移到画面标题（`tabIndex=-1`，不在 Tab 顺序中）；返回菜单时按 `focusTarget` 聚焦入口或菜单标题；首次加载不抢焦点。按钮有可见键盘焦点指示。只用原生按钮，不在 window/document 注册键盘监听。
 - 文案与标题层级：failed 的说明改为“会话不受影响，可返回菜单重新启动演示尝试恢复（会丢弃本次合成状态）”，不再写刷新页面；unavailable 说明会话不受影响；开发面板清理失败提示与锁存一致。调整已有组件标题层级，使画面标题唯一、不跳级；订阅、诊断读取与派发方式不变。
 - 响应式布局：1280×800 与 360×640 下无横向溢出、按钮不裁切、入口说明可见。
@@ -31,7 +31,7 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- 修改 [App.tsx](../../../../../src/app/App.tsx)、[SyntheticRenderView.tsx](../../../../../src/ui/render/SyntheticRenderView.tsx)（failed 文案、标题层级）、[SyntheticDevPanel.tsx](../../../../../src/ui/dev/SyntheticDevPanel.tsx)（标题层级、清理失败说明）。
+- 修改 [App.tsx](../../../../../src/app/App.tsx)、[SyntheticRenderView.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)（failed 文案、标题层级）、[SyntheticDevPanel.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)（标题层级、清理失败说明）。
 - 计划新增 `src/ui/pages/MainMenuPage.tsx`、`src/ui/pages/ImportPlaceholderPage.tsx`、`src/ui/pages/SyntheticDemoPage.tsx`，均尚不存在；`.tsx` 只由应用类型程序检查。
 - 页面组件、页面流转与 App 不导入 `original-data`、`content`、`workers`，不使用存储、文件、Worker 或 `fetch` API（AC-08）。
 
@@ -52,7 +52,7 @@ updated: 2026-10-02
 
 - **应用外壳：** [App.tsx](../../../../../src/app/App.tsx) 由以下几部分组成：
   - 一个 `main`、h1 与“不含原版内容”声明。
-  - 持有 [app-flow](../../../../../src/app/flow/app-flow.ts) 状态与一个[演示生命周期](../../../../../src/app/composition/synthetic-demo-lifecycle.ts)（`onCleanupFailure` 派发 `demo-release-failed`）。
+  - 持有 [app-flow](../../../../../src/app/flow/app-flow.ts) 状态与一个[演示生命周期](../../../../engineering/source-structure.md#r5-演示所有者与槽位)（`onCleanupFailure` 派发 `demo-release-failed`）。
   - 只渲染当前画面，演示画面以 `demoVisit` 为 key。
   - 锁存时，在所有画面的标题之后显示含原始原因（`describeError`）与刷新提示的 alert，不依赖 owner 或面板。
   - 演示的“Return to menu”先同步 `lifecycle.release()` 再派发 `return-to-menu`。
@@ -62,11 +62,11 @@ updated: 2026-10-02
 - **画面组件：**
   - [MainMenuPage](../../../../../src/ui/pages/MainMenuPage.tsx)：h2 `Main menu`（`tabIndex=-1`）、原版数据状态、按顺序的两个原生按钮，各以 `aria-describedby` 关联说明。锁存时 Start 原生禁用，说明追加原因。`focusTarget` 变化或挂载时聚焦对应入口或标题；为 null 时不移动焦点。
   - `src/ui/pages/ImportPlaceholderPage.tsx`（P2-11 已删除）：标题、未实现说明（不读取、存储或上传；以后在浏览器本地处理用户自有数据）和唯一的 `Return to menu` 按钮。
-  - [SyntheticDemoPage](../../../../../src/ui/pages/SyntheticDemoPage.tsx)：标题后首个控件为 `Return to menu`，随后是合成画面与开发面板。锁存且无 owner 时只显示状态说明，不创建容器。
+  - [SyntheticDemoPage](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)：标题后首个控件为 `Return to menu`，随后是合成画面与开发面板。锁存且无 owner 时只显示状态说明，不创建容器。
   - 进入画面时由 [useFocusOnMount](../../../../../src/ui/pages/use-focus-on-mount.ts) 聚焦标题。
 - **文案与层级：**
-  - [SyntheticRenderView](../../../../../src/ui/render/SyntheticRenderView.tsx) 的标题改为 h3；failed 文案改为“会话不受影响，返回菜单并重新启动演示可尝试恢复，会丢弃当前合成状态”。
-  - [SyntheticDevPanel](../../../../../src/ui/dev/SyntheticDevPanel.tsx) 的标题改为 h3 `Development panel`，各区块改为 h4，使 `Synthetic demo` 在整页唯一、不跳级；清理失败提示改为“无法创建新演示，刷新页面”。
+  - [SyntheticRenderView](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 的标题改为 h3；failed 文案改为“会话不受影响，返回菜单并重新启动演示可尝试恢复，会丢弃当前合成状态”。
+  - [SyntheticDevPanel](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 的标题改为 h3 `Development panel`，各区块改为 h4，使 `Synthetic demo` 在整页唯一、不跳级；清理失败提示改为“无法创建新演示，刷新页面”。
   - `describeError` 移到 [describe-error.ts](../../../../../src/ui/game/describe-error.ts)，供面板与外壳共用。订阅、诊断读取与派发方式不变。
 - **禁止项（AC-08 实现部分）：** 新增页面、外壳与页面流转不导入 `original-data`、`content`、`workers`，不使用存储、文件、Worker、`fetch` 或文件输入；没有原版玩法入口或成功标记。完整源码检索记录归 [05](./05-docs-isolation-checks.md)。
 - **工程检查：** `pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；`pnpm check`：43 个文件 1094 passed（仅既有块体积警告）。

@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P1
 task: "09"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0004, ADR-0012, ADR-0015, U-011, U-012]
-reviewed: sha256:3b610cac805b
 ---
 
 # P1-09：最小键盘适配与输入隔离 — Spec
@@ -75,35 +74,35 @@ P1-05 至 P1-08 已交付会话生命周期、React 指令闭环、合成画面�
 | 模块 | 责任与影响 |
 |---|---|
 | `src/platform/input/`（计划新增） | 不依赖 DOM 的键盘事件记录、输入源端口、按键分类与按住表；以及浏览器键盘源 `browser-*.ts`，负责元素键盘监听和浏览器焦点/生命周期通知、默认行为处理与登记/撤销。具体文件名由 goal 确定 |
-| `src/ui/game/`（扩展） | 合成演示的绑定表与动作分流（计划新增模块）。[synthetic-session-bridge.ts](../../../../src/ui/game/synthetic-session-bridge.ts) 的运行绑定窄扩展出 `setInput`；[synthetic-game-store.ts](../../../../src/ui/game/synthetic-game-store.ts) 的 actionError 增加 `input` 操作 |
+| `src/ui/game/`（扩展） | 合成演示的绑定表与动作分流（计划新增模块）。[synthetic-session-bridge.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 的运行绑定窄扩展出 `setInput`；[synthetic-game-store.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 的 actionError 增加 `input` 操作 |
 | [src/app/composition/](../../../../src/app/composition/) | owner 接收键盘源并接线，规定释放顺序和失败处理；hook 为容器创建浏览器键盘源并交给 owner |
-| [src/ui/render/SyntheticRenderView.tsx](../../../../src/ui/render/SyntheticRenderView.tsx)、[src/ui/pages/SyntheticDemoPage.tsx](../../../../src/ui/pages/SyntheticDemoPage.tsx)、[src/app/app.css](../../../../src/app/app.css) | 输入区的可聚焦性、可见焦点样式、名称、按键说明与键盘状态文字；不新增 window/document 键盘监听 |
+| [src/ui/render/SyntheticRenderView.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[src/ui/pages/SyntheticDemoPage.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[src/app/app.css](../../../../src/app/app.css) | 输入区的可聚焦性、可见焦点样式、名称、按键说明与键盘状态文字；不新增 window/document 键盘监听 |
 | `src/core/`、[src/app/runtime/](../../../../src/app/runtime/)、[src/app/session/](../../../../src/app/session/) | 不修改 |
 | [docs/engineering/](../../../engineering/) | 键位文档定稿；工程约定与源码结构指南同步 |
 
 ## 当前实现与依据
 
-- **Core 输入：** [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 的 `MoveInput { moveX }` 取值在 [−1, 1]，按 `SYNTHETIC_MOVE_SPEED`（1 单位/秒）乘以 tick 时长沿 x 移动 mover。`Command` 只有 `add-marker` 与 `remove-marker`。这些都是合成规则，不是原版数值。
-- **Runtime：** [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts) 的 `setInput` 保存最新快照，不自动归零；`submitCommand` 返回 commandId；`clearIntent()` 清空队列并把 `moveX` 归零。
-- **Session：** [synthetic-session.ts](../../../../src/app/session/synthetic-session.ts)
+- **Core 输入：** [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 的 `MoveInput { moveX }` 取值在 [−1, 1]，按 `SYNTHETIC_MOVE_SPEED`（1 单位/秒）乘以 tick 时长沿 x 移动 mover。`Command` 只有 `add-marker` 与 `remove-marker`。这些都是合成规则，不是原版数值。
+- **Runtime：** [synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime) 的 `setInput` 保存最新快照，不自动归零；`submitCommand` 返回 commandId；`clearIntent()` 清空队列并把 `moveX` 归零。
+- **Session：** [synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话)
   - 运行句柄 `SessionRun.setInput/submitCommand` 只在 running 时接受，否则抛出 `invalid-state`。
   - 用户暂停、页面隐藏和运行结束时调用 `clearIntent`。
   - 控制只有 `start/pause/resume/restart/exit/dispose`；resume 要求页面可见。
   - 状态通知使用 `status` 回调模式；`SessionRun.setInput/submitCommand` 要求 `open` 模式，所以不能在状态通知或桥接的新运行 `attach` 中提交输入。取消、错误与清理通知同样不能提交输入或控制。
   - [P1-05 spec](../05/spec.md) 把“窗口 blur 与原始按键状态的清理”留给了本任务。
 - **UI 反馈：**
-  - [synthetic-command-feedback.ts](../../../../src/ui/game/synthetic-command-feedback.ts) 的 `submit(type)` 把命令记为 pending，再按 Core 的域事件结算。
-  - [synthetic-game-controls.ts](../../../../src/ui/game/synthetic-game-controls.ts) 提供 `syntheticControlAvailability(status)`、`control(type)` 和面板分发器。
-  - [synthetic-session-bridge.ts](../../../../src/ui/game/synthetic-session-bridge.ts) 的 `SyntheticRunBinding` 目前只有 `submitCommand`，没有 `setInput`。
+  - [synthetic-command-feedback.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 的 `submit(type)` 把命令记为 pending，再按 Core 的域事件结算。
+  - [synthetic-game-controls.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 提供 `syntheticControlAvailability(status)`、`control(type)` 和面板分发器。
+  - [synthetic-session-bridge.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 的 `SyntheticRunBinding` 目前只有 `submitCommand`，没有 `setInput`。
 - **装配：**
-  - [synthetic-demo-owner.ts](../../../../src/app/composition/synthetic-demo-owner.ts) 在接收 WebGL 表面后创建会话。表面释放失败时抛 `RollbackError`，按初始化失败处理；dispose 依次停止状态订阅、销毁会话、解绑桥接、释放渲染器；`cleanupFailure()` 锁存首个清理失败。
-  - [use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts) 按容器元素创建表面与 owner，并经[演示生命周期](../../../../src/app/composition/synthetic-demo-lifecycle.ts)保证先释放旧 owner、再创建新 owner。
+  - [synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 在接收 WebGL 表面后创建会话。表面释放失败时抛 `RollbackError`，按初始化失败处理；dispose 依次停止状态订阅、销毁会话、解绑桥接、释放渲染器；`cleanupFailure()` 锁存首个清理失败。
+  - [use-synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 按容器元素创建表面与 owner，并经[演示生命周期](../../../engineering/source-structure.md#r5-演示所有者与槽位)保证先释放旧 owner、再创建新 owner。
 - **页面与焦点：**
-  - [SyntheticRenderView.tsx](../../../../src/ui/render/SyntheticRenderView.tsx) 的 `synthetic-view` 容器目前不可聚焦。
-  - [SyntheticDemoPage.tsx](../../../../src/ui/pages/SyntheticDemoPage.tsx) 打开时，焦点落在画面标题。
-  - P1-08 规定页面不注册全局键盘监听（[工程约定](../../../engineering/README.md#页面流转与演示生命周期)）。
+  - [SyntheticRenderView.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 的 `synthetic-view` 容器目前不可聚焦。
+  - [SyntheticDemoPage.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 打开时，焦点落在画面标题。
+  - P1-08 规定页面不注册全局键盘监听（[工程约定](../../../engineering/source-structure.md#r10-菜单入口键位与工程文档)）。
 - **浏览器宿主：** [browser-session-host.ts](../../../../src/platform/browser/browser-session-host.ts) 只登记 visibilitychange、pagehide、pageshow 三种监听，不处理窗口 blur。
-- **测试约束：** `.test.ts` 只在 Node 中运行；`tsconfig.node.json` 不含 DOM lib，因此被测试导入的模块不能使用 DOM 类型。项目不使用 jsdom 或 React Testing Library。可复用 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts) 与 [synthetic-ui.test-support.ts](../../../../src/ui/game/synthetic-ui.test-support.ts)。
+- **测试约束：** `.test.ts` 只在 Node 中运行；`tsconfig.node.json` 不含 DOM lib，因此被测试导入的模块不能使用 DOM 类型。项目不使用 jsdom 或 React Testing Library。可复用 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts) 与 [synthetic-ui.test-support.ts](../../../engineering/source-structure.md#r6-合成-ui-层)。
 - **政策与原版依据（事实只在链接的记录中维护）：**
   - [总计划 §1.2](../../master-plan.md#12-首版交付范围)：默认键位即原版键位，按 `code` 识别，非飞行界面不拦截，失焦/隐藏/退出锁定时清空按住状态，合成按键不能证明拦截有效。
   - [总计划 §5](../../master-plan.md#5-状态管理与通信约定)：`p` 走 Runtime 控制通道。
@@ -146,7 +145,7 @@ Core、Runtime、Session 的类型不变。
 
 | 数据/字段 | 类型、单位与约束 | 权威所有者 | 输入/输出或序列化边界 |
 |---|---|---|---|
-| `MoveInput.moveX` | 数值，范围 [−1, 1]；键盘只产生 −1、0、+1 | Core（[synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)） | 经 `SessionRun.setInput` 进入 Runtime 快照，按 tick 进入 `TickInput` |
+| `MoveInput.moveX` | 数值，范围 [−1, 1]；键盘只产生 −1、0、+1 | Core（[synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core)） | 经 `SessionRun.setInput` 进入 Runtime 快照，按 tick 进入 `TickInput` |
 | `Command['type']` | `add-marker` 或 `remove-marker` | Core | 经命令反馈的 `submit` 进入队列，返回 commandId |
 | `SessionControl['type']` | 键盘只使用 `pause` 与 `resume` | Session | 经 `SyntheticGameControls.control` 执行 |
 | `SessionStatus` | `phase`、`environmentVisible` 等 | Session | 决定可用性与 running 不变式 |
@@ -234,7 +233,7 @@ Core、Runtime、Session 的类型不变。
   - `platform/input`：分类、修饰键、输入法、重复事件、按住推导，覆盖 AC-01/02/05。
   - `platform/input` 中实际生产的监听管理与资格逻辑：用不含 DOM 类型的最小宿主替身注入登记/撤销失败、保留回调；覆盖 AC-07/12，而不是只测手写的假输入源。
   - `ui/game`：键盘消费者与绑定表，结合真实 Session、store 与 ControlledHost，覆盖 AC-02/03/04/06/07；扩展运行绑定的邻接测试，验证 setInput 在 retired/unbind/旧 run 后不触及运行，并保持 paused 状态错误来自 Session。
-  - `app/composition`：扩展 [synthetic-demo-owner.test.ts](../../../../src/app/composition/synthetic-demo-owner.test.ts)，覆盖键盘源的所有权、释放顺序、失败与锁存，以及 unavailable 渲染器（AC-11/12）。
+  - `app/composition`：扩展 [synthetic-demo-owner.test.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位)，覆盖键盘源的所有权、释放顺序、失败与锁存，以及 unavailable 渲染器（AC-11/12）。
   - 已有的 P1-05 至 P1-08 测试保持通过。不引入 jsdom 或 DOM lib 到 Node/Core；DOM-free 生产逻辑与浏览器连接分开验证，实际 DOM 接线仍须浏览器证据。
 - **Replay/一致性：** 键盘只通过既有的 `setInput`/`submitCommand` 进入 Runtime，不改变 TickInput、录制或哈希格式。AC-02 要求键盘驱动的投影与参考 Core 逐位一致；P1-03 的 replay 契约不变。
 - **浏览器验证：**

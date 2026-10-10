@@ -98,7 +98,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12, 18 | completed |
 | [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | completed |
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | completed |
-| [16-history-links.md](./subtasks/16-history-links.md) | 15 | in-progress |
+| [16-history-links.md](./subtasks/16-history-links.md) | 15 | completed |
 | [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | completed |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
 
@@ -126,6 +126,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 18 完成（交 13、17）：** `openTestEntry` 在 `page.goto` 之后以 `page.locator('#root > *').first().waitFor({ state: 'attached' })` 等待入口首次渲染（工具世界，不注入主世界轮询）；F-12 用例修复前可复现 3 个失败，修复后连续 3 次 14/14 通过，`pnpm test:e2e --project=development` 158/158 通过。用例文件未改。
 - **2026-10-10 — 13 完成（交 15、16、17）：** 删除 57 个文件（P1 演示链与 `e2e/support/demo-observations.ts`）及 lint 规则 `osr/core-synthetic-boundary` 与其回归；删除前最后包含这些路径的提交为 `84a3f454`（最后一次内容改动 `87690599`），删除清单见 13 的完成证据。完整 `pnpm test:e2e` 最终一次 196/196 通过（development 158、production 37、development-headed 1）；此前一次与单独重复运行中 `audio-playback.spec.ts` 仍间歇出现释放后残留 `ended` 监听（P3-04 未改音频代码），记为本 goal 范围外的负载相关抖动，在最终报告中列为残余。协调者决定（13 的选项 A）：保留 `e2e/production-preview.spec.ts` 中断言生产 source map 不含已退役路径的负向正则，作为防止重新引入的检查；它不是模块引用，17 按已说明的例外核对。`src/platform/input/browser-keyboard-source.ts`（P1-09 的正式平台模块）现在没有导入者，不在删除边界内，保留给 P3-05。删除规则后，“errors.ts 与 determinism/ 不导入其他 Core 模块”这一附带约束不再强制，属于已批准的删除。交 15：工程 README、`modules/core.md` 与 `source-structure.md` 仍描述 core/synthetic、演示与该规则；退役记录使用上述提交。
 - **2026-10-10 — 15 完成（交 16、协调者）：** 工程约定、模块分册、源码结构指南、键位文档、本地导入与工具指南、文档地图与根 README 已同步，新增 `docs/engineering/slice-gaps.md`；`source-structure.md` 的退役记录锚点为 `#p3-04-合成演示退役记录` 与 `#r1-合成-core` 至 `#r10-菜单入口键位与工程文档`（R1 `src/core/synthetic/`、R2 `src/render/synthetic/`、R3 合成 Runtime、R4 合成会话、R5 演示所有者与槽位、R6 合成 UI 层、R7 演示页面、开发面板与画面、R8 `demo-observations.ts`、R9 lint 规则、R10 菜单入口、键位与工程文档）。工程 README 中被改名的三个小节使 6 个历史锚点失效（`#合成-runtime`：p1/04 的 04、05，p1/05 的 02 与本任务 spec；`#合成渲染`：p1/07 的 07；`#页面流转与演示生命周期`：p1/09 的 spec），协调者决定由 16 以同样“只改链接目标”的规则一并改指向 R10（R10 列出旧锚点与新小节的对应）。全仓库链接与锚点检查的失败数由 476 降为 457（含上述 6 个新失效，16 处理）。协调者已按 15 的建议改写阶段 `tasks.md` 中“已有起点”的失效源码链接与页面流转说明（保留其为 P3 起点的描述）。15 的范围外观察：根 README 第 13 行“功能可用不代表 P2 已通过退出评审”在 P2 退出评审通过后已过时，不属于本 goal 的契约，列为残余。
+- **2026-10-10 — 16 完成（交 17）：** 86 份历史文档中的 420 个链接目标改指退役记录（414 个被删路径分别指向 R1–R8，6 个改名锚点指向 R10），文字与链接数不变；按 ADR-0015 的先例删除 9 个已过期的 `reviewed:` 标记（P1-07、P1-08、P1-09、P1-10、P2-04、P2-09、P2-11、P3-02 与本任务 spec，改写前就已与 spec 摘要不符），批准记录不变；29 个任务的路由除指纹外与改写前相同。全仓库链接与锚点检查由 453 降为 33 个失败，剩余 33 个都是改写前就存在且与本 goal 无关的失效（STATUS 的两个锚点 ×7、mesh/textures 锚点 ×5、skill 模板占位 ×9、p2/13 子任务 07 ×12），列为残余。
 
 ## 审批
 

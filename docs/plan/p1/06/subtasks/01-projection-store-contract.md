@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "01"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 01 — 投影 store 契约与依赖
@@ -38,7 +38,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - [package.json](../../../../../package.json)、[pnpm-lock.yaml](../../../../../pnpm-lock.yaml)（已有，本项修改依赖）。
-- 复用类型：[synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 Command/DomainEvent/SyntheticUiProjection；[synthetic-session.ts](../../../../../src/app/session/synthetic-session.ts) 的 SessionStatus/SessionControl/SessionCommandsCancelled；[session-errors.ts](../../../../../src/app/session/session-errors.ts) 的 GameSessionError。
+- 复用类型：[synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 的 Command/DomainEvent/SyntheticUiProjection；[synthetic-session.ts](../../../../engineering/source-structure.md#r4-合成会话) 的 SessionStatus/SessionControl/SessionCommandsCancelled；[session-errors.ts](../../../../../src/app/session/session-errors.ts) 的 GameSessionError。
 - 计划新增：`src/ui/game/synthetic-game-store.ts`、`src/ui/game/synthetic-game-store.test.ts`。
 
 ## 验收标准
@@ -61,8 +61,8 @@ updated: 2026-10-02
 
 - 2026-10-02：前提核验——P1-05 的 08 最终对齐已 completed（提交 `8fb36e8`），证据覆盖其 AC-01 至 AC-14。
 - 依赖：`zustand@^5.0.15` 加入 dependencies，锁文件只新增 zustand 5.0.15 条目（React/@types/react 为可选 peer，解析到 19.3.0）。`pnpm licenses list --prod` 显示 MIT；`pnpm install --frozen-lockfile` 通过。
-- 实现：[synthetic-game-store.ts](../../../../../src/ui/game/synthetic-game-store.ts) 定义 UI 状态与结果类型、`createSyntheticGameStore()`、只读 `reader`（仅 getState/getInitialState/subscribe 且冻结）与写入口 `commit(change)`，以及 phase/runId/tick/markerId 标量 selector。写入口只在 ui/game 模块内部流转，不进入组件公共入口（07 再核验 hook 导出）。
-- 测试：[synthetic-game-store.test.ts](../../../../../src/ui/game/synthetic-game-store.test.ts) 6 项通过，覆盖：
+- 实现：[synthetic-game-store.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 定义 UI 状态与结果类型、`createSyntheticGameStore()`、只读 `reader`（仅 getState/getInitialState/subscribe 且冻结）与写入口 `commit(change)`，以及 phase/runId/tick/markerId 标量 selector。写入口只在 ui/game 模块内部流转，不进入组件公共入口（07 再核验 hook 导出）。
+- 测试：[synthetic-game-store.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 6 项通过，覆盖：
   - 初始 state 精确值、冻结与只读句柄；两处 `@ts-expect-error`（无 setState、只读数组）经 node 类型程序检查。
   - 同值 commit 不通知；非冻结 status 被复制并冻结，改动原输入不影响 store；actionError 复制冻结、cause 保持原引用。
   - 用真实 Core 投影推进 3 tick：tick 通知 3 次，markerId/phase/runId/pending 列表各 0 次；加 marker 与改 phase 各 1 次。

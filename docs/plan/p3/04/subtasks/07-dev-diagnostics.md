@@ -35,7 +35,7 @@ updated: 2026-10-10
 
 - 计划新增：`src/ui/dev/event-log.ts`、`frame-stats.ts`、`command-draft.ts`、`recording-export.ts`、`MissionDevPanel.tsx` 及测试；`src/app/mission/dev-frame-timing.ts` 及测试（文件名可调整）。
 - 只读消费：[recording.ts](../../../../../src/core/replay/recording.ts)、[snapshot.ts](../../../../../src/core/replay/snapshot.ts)、[tick-input.ts](../../../../../src/core/contracts/tick-input.ts)；04 的文件保存与时钟端口；05 的所有者登记接口；06 的命令反馈。
-- 参照：[SyntheticDevPanel.tsx](../../../../../src/ui/dev/SyntheticDevPanel.tsx) 的面板结构（不复用其合成语义）。
+- 参照：[SyntheticDevPanel.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 的面板结构（不复用其合成语义）。
 
 ## 写入范围
 

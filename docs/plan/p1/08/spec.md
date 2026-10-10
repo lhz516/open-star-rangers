@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P1
 task: "08"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0003, ADR-0004, ADR-0012, ADR-0015]
-reviewed: sha256:7d3b80bd1ccd
 ---
 
 # P1-08：菜单与导入占位 — Spec
@@ -79,7 +78,7 @@ P1-06 与 P1-07 已把合成开发面板和 Three.js 合成画面接入页面，
 | `src/app/flow/`（计划新增） | DOM-free 的页面流转状态与转换规则；按[源码结构指南](../../../engineering/source-structure.md#职责与依赖)，页面流转归 `app/`；由邻接 Node 测试覆盖 |
 | [app/composition](../../../../src/app/composition/)（已有） | owner 新增一个只读的清理失败记录；装配把失败与原始原因交给页面流转，覆盖创建前回滚、初始化、正常释放与 owner 替换。仅演示画面可以创建 owner；释放顺序不变，创建/一次性启动/释放的接线可在 Node 中验证 |
 | `src/ui/pages/`（计划新增） | 主菜单、导入占位和合成演示画面的 React 组件；演示画面组合已有的画面组件、开发面板与“返回菜单” |
-| [ui/render](../../../../src/ui/render/)、[ui/dev](../../../../src/ui/dev/)（已有） | 复用。只修改恢复说明文字和标题层级，不改变订阅、读取或派发方式 |
+| [ui/render](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[ui/dev](../../../../src/ui/dev/)（已有） | 复用。只修改恢复说明文字和标题层级，不改变订阅、读取或派发方式 |
 | [App](../../../../src/app/App.tsx)（已有） | 改为应用外壳：持有页面流转状态，只渲染当前画面；不再在加载时直接创建合成 owner |
 | [app/session](../../../../src/app/session/)、[app/runtime](../../../../src/app/runtime/)、[core](../../../../src/core/)（已有） | 契约与行为不变 |
 | [render](../../../../src/render/)（已有） | 状态机、绘制和释放顺序不变；如初始化回滚结果目前无法可靠传到装配，允许只补充必要的结构化失败信号，不增加恢复、绘制或调度接口 |
@@ -93,23 +92,23 @@ P1-06 与 P1-07 已把合成开发面板和 Three.js 合成画面接入页面，
   - 目前没有菜单、页面状态或导入入口，也不会自动 start。
   - [index.html](../../../../index.html) 的语言为 `en`，现有界面文字都是英文。
 - **owner 与 hook：**
-  - [synthetic-demo-owner.ts](../../../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的 owner，用固定的 `SYNTHETIC_DEMO_OPTIONS`（种子 0）创建 store、命令反馈、渲染器、桥接和会话。
+  - [synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 是 DOM-free 的 owner，用固定的 `SYNTHETIC_DEMO_OPTIONS`（种子 0）创建 store、命令反馈、渲染器、桥接和会话。
   - 初始化失败时，owner 尝试全部回滚，并写入 `actionError{operation:'initialize'}`。此后 `dispatch` 不做任何事，`dispose()` 直接返回。
   - `dispose()` 是幂等的，依次释放会话、解绑桥接、释放渲染器；失败汇总为 `AggregateError`，写入 `actionError{operation:'cleanup'}` 后抛出。
-  - [use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts) 返回 `{owner, containerRef}`。容器元素存在时创建 owner；容器被替换、组件卸载、StrictMode 重跑或 Fast Refresh 时，先释放旧 owner 再创建新的。当前实现只经 `reportError` 报告释放失败，没有阻断后续重建；这不是 P1-05 的失败恢复保证，本任务须补齐阻断。
-  - owner 当前会把渲染器创建异常转成 unavailable，即使异常还包含回滚清理失败。浏览器表面创建也可能在转交 owner 之前回滚失败；这两条路径不能仅因展示了 unavailable 就视为资源已安全释放，见 [createSyntheticRenderer](../../../../src/render/synthetic/synthetic-renderer.ts) 与 [createBrowserWebGLSurface](../../../../src/render/webgl/browser-webgl-surface.ts)。
-  - owner 的现有测试见 [synthetic-demo-owner.test.ts](../../../../src/app/composition/synthetic-demo-owner.test.ts)。
-- **会话语义：** 见 [P1-05](../05/spec.md) 与 [synthetic-session.ts](../../../../src/app/session/synthetic-session.ts)。
+  - [use-synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 返回 `{owner, containerRef}`。容器元素存在时创建 owner；容器被替换、组件卸载、StrictMode 重跑或 Fast Refresh 时，先释放旧 owner 再创建新的。当前实现只经 `reportError` 报告释放失败，没有阻断后续重建；这不是 P1-05 的失败恢复保证，本任务须补齐阻断。
+  - owner 当前会把渲染器创建异常转成 unavailable，即使异常还包含回滚清理失败。浏览器表面创建也可能在转交 owner 之前回滚失败；这两条路径不能仅因展示了 unavailable 就视为资源已安全释放，见 [createSyntheticRenderer](../../../engineering/source-structure.md#r2-合成渲染) 与 [createBrowserWebGLSurface](../../../../src/render/webgl/browser-webgl-surface.ts)。
+  - owner 的现有测试见 [synthetic-demo-owner.test.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位)。
+- **会话语义：** 见 [P1-05](../05/spec.md) 与 [synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话)。
   - phase 为 idle、running、paused、faulted 或 disposed。exit 结束当前运行并回到 idle，但不负责切换 React 菜单。
   - 页面隐藏时 start 的运行处于 paused（原因 hidden）。
   - `status.cleanupFailed` 一旦为真就阻断 start 和 restart。P1-05 技术决定规定：不能用新实例掩盖清理失败，也不提供“忽略错误继续”；由操作者处理，必要时刷新后重建 owner。
-  - 测试宿主见 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)。
+  - 测试宿主见 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)。
 - **会话的浏览器宿主：** 每个会话的 [browser-session-host.ts](../../../../src/platform/browser/browser-session-host.ts) 是唯一的 rAF 来源，并注册 `visibilitychange`、`pagehide`、`pageshow` 三个生命周期监听。
-- **开发面板：** [SyntheticDevPanel.tsx](../../../../src/ui/dev/SyntheticDevPanel.tsx) 提供会话控制（Start/Pause/Resume/Restart/Exit）、marker 命令、状态、投影、命令反馈、错误区和渲染诊断。
+- **开发面板：** [SyntheticDevPanel.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 提供会话控制（Start/Pause/Resume/Restart/Exit）、marker 命令、状态、投影、命令反馈、错误区和渲染诊断。
   - 全部使用原生按钮，不注册全局键盘监听。
   - 清理失败时提示“Reload the page to create a new session.”。
-  - 可用性规则见 [synthetic-game-controls.ts](../../../../src/ui/game/synthetic-game-controls.ts)：faulted 时 Restart/Exit 可用；cleanupFailed 时 Start/Restart 不可用。
-- **合成画面组件：** [SyntheticRenderView.tsx](../../../../src/ui/render/SyntheticRenderView.tsx) 按渲染状态显示 status 或 alert。
+  - 可用性规则见 [synthetic-game-controls.ts](../../../engineering/source-structure.md#r6-合成-ui-层)：faulted 时 Restart/Exit 可用；cleanupFailed 时 Start/Restart 不可用。
+- **合成画面组件：** [SyntheticRenderView.tsx](../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 按渲染状态显示 status 或 alert。
   - failed 的文字目前写“reloading the page restores the picture”。
   - 画布、上下文、观察器的释放与 GPU 统计见 [P1-07 spec](../07/spec.md) 及其[最终对齐证据](../07/subtasks/08-final-browser-alignment.md#完成证据)。
 - **导入与原版数据：**
@@ -178,11 +177,11 @@ P1-06 与 P1-07 已把合成开发面板和 Three.js 合成画面接入页面，
 
 | 数据/字段 | 类型、单位与约束 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|
-| `SyntheticDemoOwner` | `{store, renderer, dispatch(action), dispose()}`；`dispose` 幂等，失败时抛出 `AggregateError` | [app/composition](../../../../src/app/composition/synthetic-demo-owner.ts) | 只由演示画面的 hook 创建和释放；页面流转不持有 owner 引用 |
-| `SessionStatus.cleanupFailed` | boolean，为真时阻断 start/restart（P1-05） | [Session](../../../../src/app/session/synthetic-session.ts) | owner 据此得出“曾发生清理失败”，见下表 |
-| `UiActionError` | `{operation, cause:unknown}`，operation 为 `SessionControl['type']`、`Command['type']`、`'initialize'` 或 `'cleanup'` | [UI store](../../../../src/ui/game/synthetic-game-store.ts) | 面板照常显示；页面流转接收装配明确交付的清理失败，不猜测错误类别 |
-| `SyntheticRendererStatus` | ready、context-lost、failed、unavailable 或 disposed，附原始错误 | [渲染器](../../../../src/render/synthetic/synthetic-renderer.ts) | 画面组件按状态显示说明与恢复方式；本任务不改变状态机 |
-| `SyntheticPanelAction` | start、pause、resume、restart、exit、add-marker、remove-marker | [UI 控制](../../../../src/ui/game/synthetic-game-controls.ts) | 进入演示时的 start 经同一派发路径执行，同步失败写入 `actionError` |
+| `SyntheticDemoOwner` | `{store, renderer, dispatch(action), dispose()}`；`dispose` 幂等，失败时抛出 `AggregateError` | [app/composition](../../../engineering/source-structure.md#r5-演示所有者与槽位) | 只由演示画面的 hook 创建和释放；页面流转不持有 owner 引用 |
+| `SessionStatus.cleanupFailed` | boolean，为真时阻断 start/restart（P1-05） | [Session](../../../engineering/source-structure.md#r4-合成会话) | owner 据此得出“曾发生清理失败”，见下表 |
+| `UiActionError` | `{operation, cause:unknown}`，operation 为 `SessionControl['type']`、`Command['type']`、`'initialize'` 或 `'cleanup'` | [UI store](../../../engineering/source-structure.md#r6-合成-ui-层) | 面板照常显示；页面流转接收装配明确交付的清理失败，不猜测错误类别 |
+| `SyntheticRendererStatus` | ready、context-lost、failed、unavailable 或 disposed，附原始错误 | [渲染器](../../../engineering/source-structure.md#r2-合成渲染) | 画面组件按状态显示说明与恢复方式；本任务不改变状态机 |
+| `SyntheticPanelAction` | start、pause、resume、restart、exit、add-marker、remove-marker | [UI 控制](../../../engineering/source-structure.md#r6-合成-ui-层) | 进入演示时的 start 经同一派发路径执行，同步失败写入 `actionError` |
 
 ### 计划新增契约
 
@@ -193,7 +192,7 @@ P1-06 与 P1-07 已把合成开发面板和 Three.js 合成画面接入页面，
 | 页面流转状态 | 冻结的内存快照：`screen:'menu'\|'import'\|'demo'`；`demoVisit`：非负安全整数，初始 0，每次进入演示严格递增；`focusTarget:'demo-entry'\|'import-entry'\|'menu-heading'\|null`（菜单上的程序焦点目标，非菜单为 null，首次加载为 null）；`cleanupFailure:Readonly<{cause:unknown}>\|null`（清理失败锁存）。初始值为 `{screen:'menu', demoVisit:0, focusTarget:null, cleanupFailure:null}`；失败记录外壳冻结，不冻结原异常 | `src/app/flow/`（DOM-free） | React 外壳持有当前值并据此渲染与聚焦；不包含 owner 或世界引用。`cleanupFailure !== null` 即阻断新 owner；不写入存储、URL 或 history |
 | 页面流转输入 | `{type:'open-demo'\|'open-import'\|'return-to-menu'}` 或 `{type:'demo-release-failed', cause:unknown}`。返回演示的 `return-to-menu` 只在全部清理尝试及失败交付完成后提交 | 同上 | 对合法输入输出新状态，或原样返回同一对象（转换不适用时），不执行副作用；`demoVisit` 已到 `Number.MAX_SAFE_INTEGER` 时再进入须抛 `RangeError`，应用显式显示错误且不创建 owner |
 | 转换规则 | menu + `open-demo` → demo，`demoVisit+1`、`focusTarget=null`（已锁存时不适用）。menu + `open-import` → import、`focusTarget=null`。demo + `return-to-menu` → menu，焦点目标为 demo-entry；已锁存时改为 menu-heading。import + `return-to-menu` → menu，焦点目标为 import-entry。任何画面首次收到 `demo-release-failed` 都保留 `{cause}`；当前为 menu 时焦点目标改为 menu-heading。重复失败不覆盖首个原因，也不抢夺后来正常导航的焦点；后续独立错误仍须报告。其余组合不适用 | 同上 | 锁存只能从 null 变为失败记录；旧 owner 的真实释放失败也不能因身份过期而被忽略 |
-| owner 清理失败记录 | `SyntheticDemoOwner` 新增只读查询，返回 `Readonly<{cause:unknown}>\|null`；初始化回滚失败、该 owner 的会话曾报告 `cleanupFailed`、`dispose()` 失败时保留首个包含清理原因的原始错误，释放后仍可读取。无清理失败的初始化失败、会话 faulted、渲染 failed 或 unavailable 不设置记录 | [app/composition](../../../../src/app/composition/synthetic-demo-owner.ts) | 所有独立清理仍尝试；错误照常显示/抛出，不因锁存被吞掉。装配在重建或返回前取得记录，先把失败交给应用外壳再允许后续页面动作 |
+| owner 清理失败记录 | `SyntheticDemoOwner` 新增只读查询，返回 `Readonly<{cause:unknown}>\|null`；初始化回滚失败、该 owner 的会话曾报告 `cleanupFailed`、`dispose()` 失败时保留首个包含清理原因的原始错误，释放后仍可读取。无清理失败的初始化失败、会话 faulted、渲染 failed 或 unavailable 不设置记录 | [app/composition](../../../engineering/source-structure.md#r5-演示所有者与槽位) | 所有独立清理仍尝试；错误照常显示/抛出，不因锁存被吞掉。装配在重建或返回前取得记录，先把失败交给应用外壳再允许后续页面动作 |
 | owner 创建前与渲染器创建回滚 | 浏览器表面工厂、渲染器初始化与运行消费者部分接线发生回滚失败时，装配接收明确的清理结果和原始原因；在 owner 尚不存在或 Session 尚未创建时也成立 | 各初始化边界拥有清理结果；装配统一阻断 | 不通过错误消息、`AggregateError` 类型或渲染 unavailable 状态猜测“是否清理失败”。成功回滚的 WebGL 不可用保留 P1-07 的无画面演示行为；回滚失败则锁存，不再创建/启动新资源 |
 | 进入时的 start 与 owner 身份 | 每个初始化成功且仍为当前的 owner，在该次进入意图有效时恰好派发一次 `start`；一次尝试失败也消耗这次自动启动意图。重复 effect、父级重渲染、同 owner 的 phase 变化不重复派发；已被替换、已释放或因初始化失败不可用的 owner 不收到 start | [app/composition](../../../../src/app/composition/) 的演示装配 | 不在页面加载时 start；不在纯状态转换/React render 中创建、释放或派发。返回、替换和取消意图会立即使旧 owner 的启动接线失效；React 不发布已失效 owner 为当前值 |
 
@@ -248,7 +247,7 @@ P1-06 与 P1-07 已把合成开发面板和 Three.js 合成画面接入页面，
 
 - **单元/契约测试：**
   - 页面流转的转换表与冻结性：`src/app/flow/` 的邻接测试（计划新增）。
-  - owner 清理失败记录、渲染/表面初始化回滚信号，以及 AC-15 的生产装配接线：扩展 [synthetic-demo-owner.test.ts](../../../../src/app/composition/synthetic-demo-owner.test.ts) 并在实际装配模块邻接测试，复用 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts) 与已有的故障注入；不向生产页面增加测试后门。
+  - owner 清理失败记录、渲染/表面初始化回滚信号，以及 AC-15 的生产装配接线：扩展 [synthetic-demo-owner.test.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 并在实际装配模块邻接测试，复用 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts) 与已有的故障注入；不向生产页面增加测试后门。
   - 已有的 P1-06/07 测试保持通过。
 - **Replay/一致性：** 不适用。页面流转不进入 Core，也不改变 tick、命令或 RNG；演示中 Core 的行为与 replay 契约沿用 P1-03/06/07 已有的测试，本任务不改变它们。
 - **浏览器验证：**

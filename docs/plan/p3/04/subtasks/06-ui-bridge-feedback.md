@@ -35,7 +35,7 @@ updated: 2026-10-10
 ## 关键文件与契约
 
 - 计划新增：`src/ui/game/game-store.ts`、`game-session-bridge.ts`、`game-command-feedback.ts`、`use-game.ts` 及相邻测试。
-- 参照：[synthetic-game-store.ts](../../../../../src/ui/game/synthetic-game-store.ts)、[synthetic-session-bridge.ts](../../../../../src/ui/game/synthetic-session-bridge.ts)、[synthetic-command-feedback.ts](../../../../../src/ui/game/synthetic-command-feedback.ts)（P1-06 的附着与反馈语义）。
+- 参照：[synthetic-game-store.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)、[synthetic-session-bridge.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)、[synthetic-command-feedback.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)（P1-06 的附着与反馈语义）。
 - 只读消费：[projection.ts](../../../../../src/core/projections/projection.ts)、[domain-events.ts](../../../../../src/core/contracts/domain-events.ts)、03 的会话类型。
 
 ## 写入范围

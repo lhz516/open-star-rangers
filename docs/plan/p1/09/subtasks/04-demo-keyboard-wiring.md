@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "09"
 subtask: "04"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 04 — 演示 owner 所有权、输入区与失败呈现
@@ -30,9 +30,9 @@ updated: 2026-10-03
 
 ## 关键文件与契约
 
-- **扩展现有：** [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts)及[测试](../../../../../src/app/composition/synthetic-demo-owner.test.ts)、[use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)。
-- **扩展现有测试：** [synthetic-demo-lifecycle.test.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.test.ts)，适配真实 owner 创建参数并验证锁存与源生命周期；[生命周期实现](../../../../../src/app/composition/synthetic-demo-lifecycle.ts)维持 P1-08 规则。
-- **扩展现有 UI：** [SyntheticRenderView.tsx](../../../../../src/ui/render/SyntheticRenderView.tsx)、[SyntheticDemoPage.tsx](../../../../../src/ui/pages/SyntheticDemoPage.tsx)、[app.css](../../../../../src/app/app.css)。如 readonly props 接线需要，限定于[App.tsx](../../../../../src/app/App.tsx)的 DemoScreen，不改导航行为。
+- **扩展现有：** [synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)及[测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。
+- **扩展现有测试：** [synthetic-demo-lifecycle.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)，适配真实 owner 创建参数并验证锁存与源生命周期；[生命周期实现](../../../../engineering/source-structure.md#r5-演示所有者与槽位)维持 P1-08 规则。
+- **扩展现有 UI：** [SyntheticRenderView.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[SyntheticDemoPage.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[app.css](../../../../../src/app/app.css)。如 readonly props 接线需要，限定于[App.tsx](../../../../../src/app/App.tsx)的 DemoScreen，不改导航行为。
 - 使用 02/03 新增的源/消费者；复用 [RecordingSurface](../../../../../src/render/scene/render-surface.test-support.ts)与[RollbackError](../../../../../src/app/session/rollback-error.ts)，不在 Session 里增加清理类型。
 
 ## 验收标准
@@ -52,8 +52,8 @@ updated: 2026-10-03
 
 ## 完成证据
 
-- 2026-10-03：[owner](../../../../../src/app/composition/synthetic-demo-owner.ts)复用同一 feedback/controls 并在 Session/bridge 建立后连接键盘消费者；输入释放先于 Session/bridge/renderer。早期失败尚未连接输入源；连接失败的成功回滚仅使键盘 unavailable，失败回滚保留 RollbackError 并完整收尾、锁存、不启动。
-- [owner 测试](../../../../../src/app/composition/synthetic-demo-owner.test.ts)使用实际 Source 的九项登记/撤销逻辑，覆盖多个撤销失败、原始原因、保留旧回调无写入/拦截、先释放输入、渲染不可用仍能键盘驱动、同 owner Restart/Exit→Start 不增登记且 repeat 无移动。[生命周期测试](../../../../../src/app/composition/synthetic-demo-lifecycle.test.ts)覆盖输入回滚/释放失败后禁止下个 owner 及 start。
-- [hook](../../../../../src/app/composition/use-synthetic-demo-owner.ts)为实际容器创建无导入副作用的输入源并交接 owner；[画面组件](../../../../../src/ui/render/SyntheticRenderView.tsx)名称、说明、Tab/点击画布和黑边焦点、可见样式及三种状态接线已审阅。unavailable 显示 describeError 的实际原因；进入时仍聚焦原标题，无导航或 GPU 行为变化。真实页面观察留给 05。
+- 2026-10-03：[owner](../../../../engineering/source-structure.md#r5-演示所有者与槽位)复用同一 feedback/controls 并在 Session/bridge 建立后连接键盘消费者；输入释放先于 Session/bridge/renderer。早期失败尚未连接输入源；连接失败的成功回滚仅使键盘 unavailable，失败回滚保留 RollbackError 并完整收尾、锁存、不启动。
+- [owner 测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)使用实际 Source 的九项登记/撤销逻辑，覆盖多个撤销失败、原始原因、保留旧回调无写入/拦截、先释放输入、渲染不可用仍能键盘驱动、同 owner Restart/Exit→Start 不增登记且 repeat 无移动。[生命周期测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)覆盖输入回滚/释放失败后禁止下个 owner 及 start。
+- [hook](../../../../engineering/source-structure.md#r5-演示所有者与槽位)为实际容器创建无导入副作用的输入源并交接 owner；[画面组件](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)名称、说明、Tab/点击画布和黑边焦点、可见样式及三种状态接线已审阅。unavailable 显示 describeError 的实际原因；进入时仍聚焦原标题，无导航或 GPU 行为变化。真实页面观察留给 05。
 - 目标 Vitest 11 文件 / 196 测试通过；cleanup 后 `pnpm check` 46 文件 / 1185 测试、类型/lint/构建全通过，只有既有 chunk 提示。rubber-duck 无阻断问题；采纳 preparing 文字建议。scoped simplify 直接检查本项七个实现/测试文件，去掉无真实来源的初始化错误占位并使用明确已有导出类型，无进一步复用或效率改动。
 - 文档影响：核对工程指南的 owner API/释放顺序及源码结构，变更由已计划 06 统一定稿，不能把尚未进行的 05 浏览器验收写成完成。代码注释同步释放顺序；无原版事实、命令/环境或冻结决定变化。

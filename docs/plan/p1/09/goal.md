@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "09"
-updated: 2026-10-03
+updated: 2026-10-10
 related: [ADR-0004, ADR-0012, ADR-0015]
 ---
 
@@ -15,11 +15,11 @@ related: [ADR-0004, ADR-0012, ADR-0015]
 
 ## 代码现状与前提
 
-- **当前输入出口：** [Core](../../../../src/core/synthetic/synthetic-scene.ts) 已定义 `MoveInput {moveX}`、两个 marker 命令与域事件；[Session](../../../../src/app/session/synthetic-session.ts) 只有 running/open 通知边界接受输入。暂停清 Runtime 意图，页面恢复可见不自动继续；不得在状态/取消/错误/清理通知或新运行 attach 中补发输入。
-- **已有 UI 通道：** [运行绑定](../../../../src/ui/game/synthetic-session-bridge.ts)尚无 `setInput`；[命令反馈](../../../../src/ui/game/synthetic-command-feedback.ts)已有 pending/accepted/rejected/cancelled/unconfirmed；[控制与可用性](../../../../src/ui/game/synthetic-game-controls.ts)已有 pause/resume 分流；[store](../../../../src/ui/game/synthetic-game-store.ts)尚无 `input` 错误操作。03 复用这些通道，不新建队列。
-- **已有装配：** [owner](../../../../src/app/composition/synthetic-demo-owner.ts)拥有会话、桥接与渲染器并记录首个清理失败；[hook](../../../../src/app/composition/use-synthetic-demo-owner.ts)按容器创建 owner；[演示生命周期](../../../../src/app/composition/synthetic-demo-lifecycle.ts)保证先释放后创建及失败锁存。[演示页](../../../../src/ui/pages/SyntheticDemoPage.tsx)进入时聚焦标题，[画面容器](../../../../src/ui/render/SyntheticRenderView.tsx)尚不可聚焦。
+- **当前输入出口：** [Core](../../../engineering/source-structure.md#r1-合成-core) 已定义 `MoveInput {moveX}`、两个 marker 命令与域事件；[Session](../../../engineering/source-structure.md#r4-合成会话) 只有 running/open 通知边界接受输入。暂停清 Runtime 意图，页面恢复可见不自动继续；不得在状态/取消/错误/清理通知或新运行 attach 中补发输入。
+- **已有 UI 通道：** [运行绑定](../../../engineering/source-structure.md#r6-合成-ui-层)尚无 `setInput`；[命令反馈](../../../engineering/source-structure.md#r6-合成-ui-层)已有 pending/accepted/rejected/cancelled/unconfirmed；[控制与可用性](../../../engineering/source-structure.md#r6-合成-ui-层)已有 pause/resume 分流；[store](../../../engineering/source-structure.md#r6-合成-ui-层)尚无 `input` 错误操作。03 复用这些通道，不新建队列。
+- **已有装配：** [owner](../../../engineering/source-structure.md#r5-演示所有者与槽位)拥有会话、桥接与渲染器并记录首个清理失败；[hook](../../../engineering/source-structure.md#r5-演示所有者与槽位)按容器创建 owner；[演示生命周期](../../../engineering/source-structure.md#r5-演示所有者与槽位)保证先释放后创建及失败锁存。[演示页](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)进入时聚焦标题，[画面容器](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)尚不可聚焦。
 - **计划新增而非现有实现：** `src/platform/input/keyboard-input.ts` 与邻接测试（纯事件/状态/源端口）；`keyboard-source.ts` 与邻接测试（生产监听生命周期与资格逻辑）；`browser-keyboard-source.ts`（薄 DOM 连接）；`src/ui/game/synthetic-keyboard-input.ts` 与邻接测试（合成映射及会话消费者）。具体职责由 01–03 限定，不建立全局 schema 或通用引擎。
-- **测试设施：** 复用 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts)、[TestClock/真实桥接测试](../../../../src/ui/game/synthetic-ui.test-support.ts)，以及 owner/生命周期现有测试。Node 程序不含 DOM；浏览器连接不被 `.test.ts` 导入，不引入 jsdom、Playwright 或新依赖。
+- **测试设施：** 复用 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts)、[TestClock/真实桥接测试](../../../engineering/source-structure.md#r6-合成-ui-层)，以及 owner/生命周期现有测试。Node 程序不含 DOM；浏览器连接不被 `.test.ts` 导入，不引入 jsdom、Playwright 或新依赖。
 
 ### 跨任务与环境前提
 

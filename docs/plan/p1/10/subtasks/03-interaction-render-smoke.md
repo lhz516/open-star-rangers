@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "10"
 subtask: "03"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 03 — 代表性交互、像素与缩放回归
@@ -28,8 +28,8 @@ updated: 2026-10-03
 ## 关键文件与契约
 
 - 计划新增 e2e/interaction-render.spec.ts；复用02的观测/像素helper。
-- 只读[App](../../../../../src/app/App.tsx)、[面板](../../../../../src/ui/dev/SyntheticDevPanel.tsx)、[画面](../../../../../src/ui/render/SyntheticRenderView.tsx)、[键位规则](../../../../engineering/keyboard-input.md)。
-- 只读[Core输入](../../../../../src/core/synthetic/synthetic-scene.ts)、[布局函数](../../../../../src/render/viewport/viewport-layout.ts)，不改世界/录制/相机。
+- 只读[App](../../../../../src/app/App.tsx)、[面板](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[画面](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[键位规则](../../../../engineering/keyboard-input.md)。
+- 只读[Core输入](../../../../engineering/source-structure.md#r1-合成-core)、[布局函数](../../../../../src/render/viewport/viewport-layout.ts)，不改世界/录制/相机。
 
 ## 验收标准
 
@@ -50,5 +50,5 @@ updated: 2026-10-03
 - AC-03：左右各等待1100ms（实测持有窗口≥1000ms），10Hz投影x沿预期方向变化>0.8，前后截图mover像素≥9且中心x同向；松键后新投影4样本跨≥360ms稳定。N/X/X分别accepted/accepted/rejected、同run且递增唯一commandId、pending为空；marker投影/实体2及≥9色像素一致，移除后marker色0。±3颜色判据直接复用02实际截图解码。
 - AC-04：P暂停后400ms tick/draws均不变；可信repeat=true/isTrusted事件记录证明重复down不会恢复被清除的轴，fresh down后数字x增加>0.1再失焦仍running且停止。P恢复、按钮Pause/Resume、Restart、Exit→Start和新owner分别取得首新投影后4样本/≥360ms、tick推进且x相同；换run清marker/results，重进run1、旧canvas断开。没有在paused等待tick增长。
 - AC-06：同canvas保持connected且run不变，宽→窄真实容器/设备上限通过现有布局函数的CSS四项≤1px、buffer完全相等及4:3取整≤1px；窄画面mover/marker可见，单N只新增一个accepted结果。
-- rubber-duck指出fresh移动断言原先混用数字/格式化字符串可能空通过，已改为数值位移>0.1并实际重跑；补同run/递增身份与repeat意图注释。尚在review阶段未勾框不是缺失执行证据，最终证据随本项提交。simplify限定本文件及[观测helper](../../../../../e2e/support/demo-observations.ts)新增focusView，抽出重复聚焦供后续场景复用，未改生产规则。
+- rubber-duck指出fresh移动断言原先混用数字/格式化字符串可能空通过，已改为数值位移>0.1并实际重跑；补同run/递增身份与repeat意图注释。尚在review阶段未勾框不是缺失执行证据，最终证据随本项提交。simplify限定本文件及[观测helper](../../../../engineering/source-structure.md#r8-e2e-演示观察)新增focusView，抽出重复聚焦供后续场景复用，未改生产规则。
 - `pnpm check`通过（47文件/1192测试、4类型程序、lint、build），产物未变。文档影响：现有键位、工程命令与架构继续准确，本项只补验收证据；完整覆盖/来源映射属07，无新原版事实/ADR/阶段退出。runner收尾自有contexts/browser/servers；合成附件在ignored目录，不提交截图。

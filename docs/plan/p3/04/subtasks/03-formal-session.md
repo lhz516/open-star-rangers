@@ -25,7 +25,7 @@ updated: 2026-10-10
   - 取消原因：user-pause、hidden、transition、focus-loss、pointer-lock-exit、recording-capacity、exit、dispose、failure；只对确定未执行的 ID 取消，结果不明者交给反馈层标为 unconfirmed。
   - 帧：每个有效回调先核对可见性与 pagehide 阻断；0 tick 帧也通知；静止帧 `report=null`；帧报告 `{ ticks, capped, stop }`；故障不发成功形状的帧。
   - 句柄：`currentRun()` 在 transition/running/paused/stopped/faulted 有值；旧句柄退役后拒绝读写与新订阅；faulted 下禁止新快照与录制导出；exit 与 dispose 幂等；`cleanupFailed` 一经置位不清除；无世界的 start 失败保持 idle，已有世界但接线或调度失败进入 faulted。
-- 计划新增中性测试支持 `src/app/session/session-host.test-support.ts`（从 [synthetic-session.test-support.ts](../../../../../src/app/session/synthetic-session.test-support.ts) 复制 `ControlledHost`）；旧文件保留到 13 删除。
+- 计划新增中性测试支持 `src/app/session/session-host.test-support.ts`（从 [synthetic-session.test-support.ts](../../../../engineering/source-structure.md#r4-合成会话) 复制 `ControlledHost`）；旧文件保留到 13 删除。
 - 按需扩展 [session-errors.ts](../../../../../src/app/session/session-errors.ts) 的 phase 与原因，不改变合成会话的行为。
 - 必要时对 02 的 Runtime 做与会话接口相关的增量修改，并同步其测试。
 

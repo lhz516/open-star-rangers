@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "04"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 04 — 取消、故障未确认与会话控制
@@ -39,8 +39,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-session.ts](../../../../../src/app/session/synthetic-session.ts) 的 `SessionCommandsCancelled`、`SessionControl`、`SyntheticSession.control`（已有，只读复用）。
-- [会话故障测试](../../../../../src/app/session/synthetic-session-fault.test.ts)：在 Vitest 创建边界注入 Core step 失败的先例。
+- [synthetic-session.ts](../../../../engineering/source-structure.md#r4-合成会话) 的 `SessionCommandsCancelled`、`SessionControl`、`SyntheticSession.control`（已有，只读复用）。
+- [会话故障测试](../../../../engineering/source-structure.md#r4-合成会话)：在 Vitest 创建边界注入 Core step 失败的先例。
 - `src/ui/game/synthetic-command-feedback.ts`（03 计划新增，本项扩展）。
 - 计划新增：`src/ui/game/synthetic-game-controls.ts`、`src/ui/game/synthetic-game-controls.test.ts`、`src/ui/game/synthetic-command-outcomes.test.ts`。
 
@@ -63,15 +63,15 @@ updated: 2026-10-02
 ## 完成证据
 
 - 2026-10-02：实现。
-  - [synthetic-command-feedback.ts](../../../../../src/ui/game/synthetic-command-feedback.ts) 新增 `onCommandsCancelled`：匹配的 pending 记为 cancelled，保留 Session 原 reason，并与最新投影同次写入。新增 `faulted(binding)`：剩余 pending 标为 unconfirmed/session-failed，由桥接与 faulted 状态在同一次写入中提交。
-  - [synthetic-game-controls.ts](../../../../../src/ui/game/synthetic-game-controls.ts) 提供 `syntheticControlAvailability(status)`：以面板动作 ID 为键，同一状态组合返回同一个冻结对象。另提供 `createSyntheticGameControls(store, session).control(type)`。
+  - [synthetic-command-feedback.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 新增 `onCommandsCancelled`：匹配的 pending 记为 cancelled，保留 Session 原 reason，并与最新投影同次写入。新增 `faulted(binding)`：剩余 pending 标为 unconfirmed/session-failed，由桥接与 faulted 状态在同一次写入中提交。
+  - [synthetic-game-controls.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 提供 `syntheticControlAvailability(status)`：以面板动作 ID 为键，同一状态组合返回同一个冻结对象。另提供 `createSyntheticGameControls(store, session).control(type)`。
   - 桥接新增 `SyntheticRunBinding.own(cleanup)`：consumer 每完成一项注册即交出撤销函数，部分附着失败由桥接统一回滚。
 - 测试：UI 目录 5 个文件 / 56 项通过。
-  - [synthetic-command-outcomes.test.ts](../../../../../src/ui/game/synthetic-command-outcomes.test.ts)：
+  - [synthetic-command-outcomes.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)：
     - AC-07：user-pause、hidden、restart、exit、dispose、failure 六种 reason 均按 ID 与 FIFO 记为 cancelled，没有一条变成 rejected。pause/hidden 的结果在恢复后保留，旧命令不会执行；restart/exit/dispose 先可观察取消、再清空当前运行反馈。
     - AC-07（隔离）：重启后 commandId 1 被新运行重用，用记录的旧运行取消监听重放通知，store 不变；两个 owner 的 runId 都为 1，彼此不写入。
     - AC-08：用 `vi.mock` 包装真实 Core。同一帧第二个 tick 失败时，第一个 tick 已提交 marker，投影为 tick 1 且含 marker；命令被标为 unconfirmed/session-failed，不显示成功或取消。所有 faulted 快照里 pending 都为空；重启后新运行没有 pending，也不自动重提。第一个 tick 失败时，命令尚未消耗，只产生 failure 取消。已收到的 accepted 在之后的 consumer 故障中保留，不被改成 unconfirmed。
-  - [synthetic-game-controls.test.ts](../../../../../src/ui/game/synthetic-game-controls.test.ts)：
+  - [synthetic-game-controls.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)：
     - 九种状态组合下的可用性与 spec 表逐项一致，且同一组合返回同一对象。
     - AC-09：idle 时 pause 得到 Session 的 invalid-state，写入 actionError，sessionError 不受影响。成功 start 时，第一个通知就已清空 actionError，所有 running 快照都不带旧错误。
     - AC-09（cleanupFailed）：release 失败后，帧内排队的 restart 产生 control 错误，经 onError 写入 sessionError；cleanupFailed 仍禁用 start/restart，restart 得到“cleanup previously failed”，exit 回到 idle 后 start 仍被拒绝。

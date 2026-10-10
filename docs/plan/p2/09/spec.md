@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P2
 task: "09"
-updated: 2026-10-08
+updated: 2026-10-10
 related: [ADR-0003, ADR-0007, ADR-0015, U-003, U-008, U-022, U-023, U-025, U-026, U-028, U-031, U-032, B-001, B-003, B-004, B-005]
-reviewed: sha256:3590e3a126bc
 ---
 
 # P2-09：单任务与战略地图/Warp 数据 — Spec
@@ -15,7 +14,7 @@ reviewed: sha256:3590e3a126bc
 [P2-01](../01/spec.md#候选选择记录) 已把切片锁定为 SCCT group 0 / slot 1，并规定 `logic` 资源组承载任务与逻辑数据；[P2-03](../03/spec.md) 提供了已验证来源与按需封包读取；[P2-04](../04/spec.md) 提供了 Worker 导入作业与组结果协议。但目前：
 
 - 没有 SCCT/SCEN 的产品解析器，也没有把任务对象转换为规范内容的入口；仓库中只有研究工具对任务结构的只读统计。
-- `content/` 没有规范任务、机型或空间框架的数据形状；Core 只有明确标记的[合成场景](../../../../src/core/synthetic/synthetic-scene.ts)，没有消费正式任务数据的入口。
+- `content/` 没有规范任务、机型或空间框架的数据形状；Core 只有明确标记的[合成场景](../../../engineering/source-structure.md#r1-合成-core)，没有消费正式任务数据的入口。
 - 生产导入作业只识别来源，不产生任何组结果；生产 `ConverterVersion` 与 `ManifestIdentity` 的生成方式尚无任务承担，而四个资源组必须共享同一身份才能组成完整包。
 - [U-022](../../../original/unknowns.md#数据与格式) 中切片实际依赖的空间字段（段 6、编组布局）和地图框架在本 spec 首次批准时仍未确认，[U-023](../../../original/unknowns.md#数据与格式) 的僚机记录用途为高概率。S-01、S-02 的研究结果见[研究门槛与阻塞](#研究门槛与阻塞)。
 
@@ -105,7 +104,7 @@ reviewed: sha256:3590e3a126bc
 | `src/content/` 计划新增的逻辑内容模块 | 规范逻辑数据的类型、编码与读取器；`ManifestIdentity` 推导；追加内容错误码 |
 | [workers/import-job.ts](../../../../src/workers/import-job.ts) 与 [import-protocol.ts](../../../../src/workers/import-protocol.ts) | 追加 `convert-logic` 阶段与组发送，递增协议版本；宿主与 app 持有者的处理规则不变 |
 | [app/import/](../../../../src/app/import/) | 仅随协议版本与阶段集合同步测试，不改状态机 |
-| `src/core/` 计划新增的任务模块 | `loadMission` 与 `MissionSetup`；不触及 [synthetic/](../../../../src/core/synthetic/) |
+| `src/core/` 计划新增的任务模块 | `loadMission` 与 `MissionSetup`；不触及 [synthetic/](../../../engineering/source-structure.md#r1-合成-core) |
 | `tools/` | 计划新增或扩展本地核对 CLI；随 [engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) 更新边界回归 |
 | `docs/original/`、`docs/engineering/`、`docs/guides/` | 研究结论、模块与工具说明 |
 
@@ -130,7 +129,7 @@ reviewed: sha256:3590e3a126bc
   - [import-host.ts](../../../../src/workers/import-host.ts) 把 `SourceError`、`DiscReadError`、`ContentContractError` 分别映射到对应错误层，其余异常一律报 `internal-error`。
   - [app 作业持有者](../../../../src/app/import/import-job-owner.ts)以 `validateGroup` 重新验证每个组。组消息格式与验证顺序见 [P2-04 消息协议](../04/spec.md#消息协议)。
 - **Core：**
-  - 当前只有 [synthetic/](../../../../src/core/synthetic/) 场景、[errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError` 与确定性 helper。
+  - 当前只有 [synthetic/](../../../engineering/source-structure.md#r1-合成-core) 场景、[errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError` 与确定性 helper。
   - [ESLint 配置](../../../../eslint.config.js)允许 Core 导入 `content/`，禁止导入 `original-data/` 与宿主时间、随机数。
   - [tsconfig.core.json](../../../../tsconfig.core.json) 不含 DOM 与 Node 类型，纯模块没有 `TextDecoder`。
 - **原版依据（只链接；事实与置信度以链接文档为准）：**

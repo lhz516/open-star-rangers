@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
-reviewed: sha256:c1490a818a11
 ---
 
 # P3-04：正式 Runtime、游戏会话与应用流程 — Spec
@@ -14,7 +13,7 @@ reviewed: sha256:c1490a818a11
 
 [P3-02](../02/spec.md) 交付了正式 Core（[Core 模块说明](../../../engineering/modules/core.md#正式-core)），但应用里没有任何东西推进它：
 
-- [app/runtime/](../../../../src/app/runtime/) 与 [app/session/](../../../../src/app/session/) 只驱动 P1 的合成场景（[synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts)、[synthetic-session.ts](../../../../src/app/session/synthetic-session.ts)），输入、命令、事件、projection 与录制都是合成契约，不能改名充当正式玩法（[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)）。
+- [app/runtime/](../../../../src/app/runtime/) 与 [app/session/](../../../../src/app/session/) 只驱动 P1 的合成场景（[synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime)、[synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话)），输入、命令、事件、projection 与录制都是合成契约，不能改名充当正式玩法（[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)）。
 - [页面流转](../../../../src/app/flow/app-flow.ts)只有菜单、导入、合成演示与查看器；没有任务开始入口、开始配置、出发衔接、任务中的暂停与菜单、重开或返回。
 - 没有离页保护，没有消费正式 Core 的 projection 桥接、命令反馈或开发诊断，也没有在 Node 中重放浏览器录制的入口。
 
@@ -71,7 +70,7 @@ P3-05 至 P3-14 都要把输入、画面、HUD、音效与 React 页面接到同
 | `ui/game/`、`ui/pages/`、`ui/mission/`（计划新增）、`ui/dev/` | 正式 store、桥接与命令反馈；菜单入口、开始配置、占位、任务画面与任务菜单；开发诊断面板。删除 `synthetic-*`、`SyntheticDemoPage`、`SyntheticDevPanel`、`SyntheticRenderView` |
 | [platform/browser/](../../../../src/platform/browser/) | 复用会话宿主；计划新增 `beforeunload` 适配器 |
 | [render/](../../../../src/render/) | 删除 `render/synthetic/`；共用的表面、视口与清理模块不变（查看器在用，P3-12 将使用） |
-| [core/synthetic/](../../../../src/core/synthetic/) 与 lint 规则 `osr/core-synthetic-boundary` | 随合成场景一起删除；同步 [eslint.config.js](../../../../eslint.config.js) 与 [engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) |
+| [core/synthetic/](../../../engineering/source-structure.md#r1-合成-core) 与 lint 规则 `osr/core-synthetic-boundary` | 随合成场景一起删除；同步 [eslint.config.js](../../../../eslint.config.js) 与 [engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) |
 | [content/](../../../../src/content/)、[workers/](../../../../src/workers/) 的测试支持 | 合成任务包扩展；生产内容契约、切片定义与转换器版本不变 |
 | `tools/replay-check.ts`（计划新增） | Node 中以 CloneCD 文件组重放录制并比较 |
 | [e2e/](../../../../e2e/) | 依赖合成演示的用例迁到正式流程；新增任务流程、生命周期与离页保护用例 |
@@ -83,7 +82,7 @@ P3-05 至 P3-14 都要把输入、画面、HUD、音效与 React 页面接到同
 - **正式 Core：** 创建与推进使用 [create-world.ts](../../../../src/core/world/create-world.ts) 的 `CreateWorldInput` / `createWorld`、[world.ts](../../../../src/core/world/world.ts) 的 `World`、[recording.ts](../../../../src/core/replay/recording.ts) 的 `createRecordingSession`；读取与重放使用其公开方法及 [Core 模块说明](../../../engineering/modules/core.md#正式-core)列出的入口。动作规范化复用 [tick-input.ts](../../../../src/core/contracts/tick-input.ts) 的 `readTickInput`，预算读取 [limits.ts](../../../../src/core/contracts/limits.ts)，不调用内部世界构造器。创建时从同一个已验证包解码三份逻辑 Asset 并传入其身份；其余约束见 [Core 交接](../../../engineering/modules/core.md#交接)与 [P3-02 时间模型](../02/spec.md#时间模型)。尤其注意：Core 故障会锁存到所有后续读取，不能沿用合成 Core 的故障后快照或前缀导出语义。
 - **时间模型：** 时钟单位 1/64 秒，默认每 tick 2 单位（[P3-02 时间模型](../02/spec.md#时间模型)）。“G-02 占位期间不推进、结束后不补计时间”由 P3-02 [技术决定](../02/spec.md#技术决定) 2 提出，要求 P3-04、P3-10、P3-11 在各自 spec 中接纳。
 - **输入契约：** `TickInput` 为 `{ axes, commands }`，命令是 16 个变体的封闭联合；按住开火由 Runtime 依采样的按住状态每 tick 产生一个 `fire` 命令，两次采样之间的短按保留一次；Core 没有按键缓冲（[P3-02 输入与命令](../02/spec.md#输入与命令)）。
-- **P1 的运行骨架：** [P1-04](../../p1/04/spec.md) 的 Runtime（固定步长、补跑上限 5、命令队列、帧后 Event Bus、两帧 Render State、录制、故障）；[P1-05](../../p1/05/spec.md) 的会话（控制通道、唯一帧请求、运行身份、通知边界、隐藏自动暂停、显式继续、重新锚定、资源所有权与清理锁存）；[P1-06](../../p1/06/spec.md) 的 projection 桥接与命令反馈；[P1-08](../../p1/08/spec.md) 的页面流转与生命周期槽位。现状与接线见[工程约定](../../../engineering/README.md#合成-runtime)及其后各节。按 [P1 退出评审](../../../reviews/P1-exit.md#可复用设施与必须替换的合成项)，这些机制可以复用，“真实第二场景出现后才设计复用”；本任务就是这个时机。
+- **P1 的运行骨架：** [P1-04](../../p1/04/spec.md) 的 Runtime（固定步长、补跑上限 5、命令队列、帧后 Event Bus、两帧 Render State、录制、故障）；[P1-05](../../p1/05/spec.md) 的会话（控制通道、唯一帧请求、运行身份、通知边界、隐藏自动暂停、显式继续、重新锚定、资源所有权与清理锁存）；[P1-06](../../p1/06/spec.md) 的 projection 桥接与命令反馈；[P1-08](../../p1/08/spec.md) 的页面流转与生命周期槽位。现状与接线见[工程约定](../../../engineering/source-structure.md#r10-菜单入口键位与工程文档)及其后各节。按 [P1 退出评审](../../../reviews/P1-exit.md#可复用设施与必须替换的合成项)，这些机制可以复用，“真实第二场景出现后才设计复用”；本任务就是这个时机。
 - **资源持有者：** [resource-holder.ts](../../../../src/app/resources/resource-holder.ts) 至多持有一份资源包，含 `validatePackage` 的全包判定；缓存恢复的资源包同样经过校验（[应用资源持有者](../../../engineering/modules/app.md#应用资源持有者)）。[mission-diagnostics.ts](../../../../src/app/resources/mission-diagnostics.ts) 在持有 `logic` 组时解码三份逻辑 Asset 并调用 `loadMission`，结果为 `loaded`，或带类别、路径与原因的 `failed`。
 - **原版依据与置信度：** 出发顺序、媒体变体与时间关系见 [B-003 出发](../../../original/behavior/B-003-campaign-flow.md#出发l-02)及 [executable](../../../original/formats/executable.md#cut-scenes-and-loop-transitions-p3-0108)（已确认，代码；媒体与截图对应为高概率）；默认僚机及预选见 [spawn queue](../../../original/formats/executable.md#spawn-queue-p3-0203)（已确认，代码）；重开与 Esc 页面对应见 [B-003](../../../original/behavior/B-003-campaign-flow.md#重开任务p3-0104)（高概率）。暂停、地图与按键门禁分别见[时基](../../../original/formats/executable.md#simulation-time-base-p3-0106)、[B-001](../../../original/behavior/B-001-strategic-map.md#打开与关闭已确认)与[输入轮询](../../../original/formats/executable.md#input-polling-p3-0201)（已确认，范围以原文为准）。G-02 实例归属见 [P3-01/08](../01/subtasks/08-transition-media.md#完成证据)，本 spec 不另建事实清单。
 - **闭环与缺省：** [闭环步骤](../01/spec.md#闭环步骤)、[切片配置](../01/spec.md#切片配置)、[缺省清单](../01/spec.md#缺省清单)、[标注规则](../01/spec.md#标注规则)。G 项的 P3 实现任务见 [P3-01/12 的交接](../01/subtasks/12-catalog-handoff.md#完成证据)：G-02/1、G-02/2、G-04、G-07、G-06（重试与返回的流程）与 G-01（建议）归本任务。R-13 的控制部分归本任务（[规则对照目录](../01/spec.md#规则对照目录)）。

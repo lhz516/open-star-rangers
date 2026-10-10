@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 05 — UI 接入的 replay 与确定性不变量
@@ -31,8 +31,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts) 的 `replaySyntheticRecord`、`compareSyntheticReplayResults`（已有，只读）。
-- [会话录制测试](../../../../../src/app/session/synthetic-session-replay.test.ts)（已有对照先例）。
+- [synthetic-replay.ts](../../../../engineering/source-structure.md#r1-合成-core) 的 `replaySyntheticRecord`、`compareSyntheticReplayResults`（已有，只读）。
+- [会话录制测试](../../../../engineering/source-structure.md#r4-合成会话)（已有对照先例）。
 - 计划新增：`src/ui/game/synthetic-game-replay.test.ts`。
 
 ## 验收标准
@@ -50,7 +50,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：新增 [synthetic-game-replay.test.ts](../../../../../src/ui/game/synthetic-game-replay.test.ts)，5 项通过；没有生产代码改动。三种模式驱动相同的宿主帧、逐 tick 输入与实际执行命令（种子 7、50 Hz）：不接桥接、接桥接且采样时钟为 1 倍宿主时间、接桥接且为 10 倍宿主时间。脚本覆盖同 tick add→remove、暂停取消、显式恢复、补跑上限与重启。
+- 2026-10-02：新增 [synthetic-game-replay.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)，5 项通过；没有生产代码改动。三种模式驱动相同的宿主帧、逐 tick 输入与实际执行命令（种子 7、50 Hz）：不接桥接、接桥接且采样时钟为 1 倍宿主时间、接桥接且为 10 倍宿主时间。脚本覆盖同 tick add→remove、暂停取消、显式恢复、补跑上限与重启。
 - AC-14：
   - 检查点间隔 1 和 4 下，三种模式的事件流与两次运行的导出记录（含逐个检查点状态哈希，哈希包含 rngState）完全相等。
   - 事件流精确为 `[1,marker-added,1,0,1]`、`[1,marker-removed,1,1,2]`、`[1,marker-added,3,0,3]`、`[1,marker-removed,6,0,5]`、`[2,marker-added,1,0,1]`，并与各自记录的 `result.events` 对应。

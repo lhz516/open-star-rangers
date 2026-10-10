@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "10"
-updated: 2026-10-06
+updated: 2026-10-10
 ---
 
 # 10 — 查看器所有者与音频
@@ -15,7 +15,7 @@ updated: 2026-10-06
 
 ## 工作范围
 
-- 新增查看器所有者与生命周期（`src/app/viewer/`），沿用 [synthetic-demo-lifecycle.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.ts) 的锁存模式：
+- 新增查看器所有者与生命周期（`src/app/viewer/`），沿用 [synthetic-demo-lifecycle.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 的锁存模式：
   - **创建：** 每次进入查看器创建一个所有者，含查看渲染（08、09）与 22 的查看器音频，由应用端口提供表面工厂与音频能力。
   - **显示：** 读取资源持有者的当前资源包：只列出已完整验证的组，并解析查看意图（Asset ID 与序号），把对应的内容交给查看渲染。读取或展开失败只标记该项。
   - **替换：** 资源持有者替换资源包前，所有者先释放引用旧内容的 GPU 资源与已载入的声音，再采用新内容。
@@ -99,6 +99,6 @@ updated: 2026-10-06
   - 不含二维条目的组不建立 payload 索引。
 
   未采纳：
-  - 与 [synthetic-demo-lifecycle.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.ts) 共用锁存槽位：两者的释放结果不同（查看器有异步音频关闭），抽取超出本子任务；
+  - 与 [synthetic-demo-lifecycle.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 共用锁存槽位：两者的释放结果不同（查看器有异步音频关闭），抽取超出本子任务；
   - 按代缓存已解析的查看项：只在选择时解析一次，收益不明显。
 - **文档影响：** [源码结构](../../../../engineering/source-structure.md)新增“查看器所有者”一节，“资源查看渲染”一节补 `releaseItem()`，目录树加入两个新文件。工程约定与 STATUS 无需改动。

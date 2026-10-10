@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 05 — Owner 与渲染消费者接线
@@ -26,9 +26,9 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts)、[use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)。
-- [synthetic-session-bridge.ts](../../../../../src/ui/game/synthetic-session-bridge.ts) 的公开 consumer binding。
-- 适配器直接内联在 owner 中（`{attach: binding => renderer.attach(binding)}`），无需单独文件；测试扩展现有 [synthetic-demo-owner.test.ts](../../../../../src/app/composition/synthetic-demo-owner.test.ts)。[App](../../../../../src/app/App.tsx) 暂以无样式容器接线，样式化画面组件属于 06。
+- [synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。
+- [synthetic-session-bridge.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 的公开 consumer binding。
+- 适配器直接内联在 owner 中（`{attach: binding => renderer.attach(binding)}`），无需单独文件；测试扩展现有 [synthetic-demo-owner.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。[App](../../../../../src/app/App.tsx) 暂以无样式容器接线，样式化画面组件属于 06。
 
 ## 验收标准
 

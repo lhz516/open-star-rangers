@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "02"
 subtask: "08"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 08 — 正式快照、哈希、录制、replay 与比较
@@ -32,7 +32,7 @@ updated: 2026-10-09
 
 ## 关键文件与契约
 
-- [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts)：比较算法可借鉴，但不复用为正式格式，也不从正式模块导入。
+- [synthetic-replay.ts](../../../../engineering/source-structure.md#r1-合成-core)：比较算法可借鉴，但不复用为正式格式，也不从正式模块导入。
 - [content-identity.ts](../../../../../src/content/content-identity.ts)：`contentIdentityKey`。
 - 04 的规范文本与上限；05、07 的世界状态。
 - 计划新增：`src/core/replay/snapshot.ts`、`recording.ts`、`replay.ts`、`compare.ts` 及相邻测试（文件名可调整，职责不变）。

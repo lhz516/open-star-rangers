@@ -3,16 +3,15 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
-reviewed: sha256:5bb70a8568ff
 ---
 
 # P3-02：Core 正式契约与任务实例化 — Spec
 
 ## 问题与目标
 
-Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core/synthetic/](../../../../src/core/synthetic/)），以及 P2 的 [`loadMission`](../../../../src/core/mission/load-mission.ts)。`loadMission` 产出冻结的 `MissionSetup`，不推进 tick、不应用缺省值，也不推导生成时刻、顺序或位置。P3-04 至 P3-14 都要消费同一个正式 Core，但以下内容都还没有：
+Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core/synthetic/](../../../engineering/source-structure.md#r1-合成-core)），以及 P2 的 [`loadMission`](../../../../src/core/mission/load-mission.ts)。`loadMission` 产出冻结的 `MissionSetup`，不推进 tick、不应用缺省值，也不推导生成时刻、顺序或位置。P3-04 至 P3-14 都要消费同一个正式 Core，但以下内容都还没有：
 
 - 正式的实体身份与种类、输入与命令、领域事件、projection 与 Render State；
 - 以原版时基（[R-01](../01/spec.md#规则对照目录)）为依据的 tick、时间单位与数值表示；
@@ -64,7 +63,7 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
 | `src/core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（计划新增，按需创建，不建空目录） | 正式契约；世界与实体表；流水线与生成系统；原版规则辅助（放置、缺省、名称、随机映射、数学）；projection；快照与 replay。落点见[源码结构指南](../../../engineering/source-structure.md#后续扩展方向) |
 | [core/determinism/](../../../../src/core/determinism/) | 复用 RNG 与 FNV-1a，不改其契约 |
 | [core/mission/load-mission.ts](../../../../src/core/mission/load-mission.ts) | 世界创建先复用它获得 `MissionSetup`，再进行正式世界的语义校验；不改既有 API |
-| [core/synthetic/](../../../../src/core/synthetic/) | 行为与格式不变。若把通用校验 helper 移到中性的 Core 模块，合成模块改为从那里导入，测试不改 |
+| [core/synthetic/](../../../engineering/source-structure.md#r1-合成-core) | 行为与格式不变。若把通用校验 helper 移到中性的 Core 模块，合成模块改为从那里导入，测试不改 |
 | [core/errors.ts](../../../../src/core/errors.ts) | 复用 `CoreInputError`；计划新增一个与之可区分的内部故障错误 |
 | [content/](../../../../src/content/) | 只读消费 `ContentIdentity`、`AssetId` 与逻辑内容类型，不改 |
 | [tools/engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) 或 ESLint 配置 | 计划新增：正式模块与合成模块互不依赖的边界检查 |
@@ -81,8 +80,8 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
   - 导入层已以 `unsupported` 拒绝多种路径（见[不包含](#不包含)）。
   - `MissionSetup` 不含原始难度、本次的僚机选择，也不含任何运行状态（[P3-01 切片配置](../01/spec.md#切片配置)）。
 - **合成骨架：** 以下做法可以借鉴，但不是正式格式（[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)）：
-  - [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)：先校验整个 tick 输入再改状态，返回冻结的事件；projection 与 Render State 是脱离内部状态的冻结数据。
-  - [synthetic-snapshot.ts](../../../../src/core/synthetic/synthetic-snapshot.ts) 与 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts)：规范文本、FNV-1a 哈希、检查点与 replay 比较。
+  - [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core)：先校验整个 tick 输入再改状态，返回冻结的事件；projection 与 Render State 是脱离内部状态的冻结数据。
+  - [synthetic-snapshot.ts](../../../engineering/source-structure.md#r1-合成-core) 与 [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core)：规范文本、FNV-1a 哈希、检查点与 replay 比较。
   - [app/runtime/](../../../../src/app/runtime/) 的固定步长与两帧 Render State 将由 P3-04 改为消费正式 Core。
 - **原版时基与主循环（R-01）：** [executable 时基](../../../original/formats/executable.md#simulation-time-base-p3-0106)记录已确认的计时来源、单位、每帧可变步长与主循环顺序；[B-006](../../../original/behavior/B-006-simulation-timing.md)记录运行时交叉核对及 cycles 依赖，U-021 未关闭。它们不是“原版按固定 32 Hz 模拟”的证据。
 - **调度、放置与别名（R-02）：** [放置与调度](../../../original/formats/executable.md#mission-placement-scheduling-and-world-grid)、[scenario §3](../../../original/formats/scenario.md#3-132-byte-object-record-structure-confirmed-fields-partly-likely)与[段 5 成员](../../../original/formats/scenario.md#section-5-member-records-confirmed-access)是原版事实的权威记录；结构/访问已确认，部分字段含义仍为高概率（U-022）。下方任务表只选择实现范围，不另建事实清单。

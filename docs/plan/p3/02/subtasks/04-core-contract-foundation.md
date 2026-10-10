@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "02"
 subtask: "04"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 04 — 正式契约基础：错误、上限、时钟、动作输入与规范文本
@@ -28,7 +28,7 @@ updated: 2026-10-09
   - `object-instantiated`：`{ type, tick, entityId, kindBit, source, position }`；`source` 为带命名空间的声明引用 `{ collection: 'mission' | 'wingman', index }` 与可空的编组信息（编组索引、第几次请求、成员位置）；`position` 为运行时单位的向量。
   事件的产生归 05、07。
 - **规范文本：** 显式字段次序的紧凑 JSON 写入器：不依赖对象插入次序；−0 写为 0；拒绝非有限值；非 ASCII 字符转义为 `\uXXXX`，使结果可交给 [fnv1a64.ts](../../../../../src/core/determinism/fnv1a64.ts)；超过长度上限时在生成过程中拒绝。哈希为 16 位小写十六进制。
-- **校验 helper：** 正式模块需要的结构与数值读取 helper 放在中性的 Core 模块中。若从 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 移出既有 helper，合成模块只改导入路径，行为、格式与测试不变。
+- **校验 helper：** 正式模块需要的结构与数值读取 helper 放在中性的 Core 模块中。若从 [synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 移出既有 helper，合成模块只改导入路径，行为、格式与测试不变。
 - **边界：** 增加规则与回归测试：正式模块不导入 `src/core/synthetic/`，合成模块不导入正式模块（测试与 test-support 文件按现有约定处理）。
 - **测试：** 每个契约的正例与每类拒绝；冻结与脱离调用者对象；规范文本的字段次序、插入次序无关、−0、非有限值、非 ASCII 转义与长度上限；`CoreLimits` 的 limit 与 limit + 1。
 
@@ -42,7 +42,7 @@ updated: 2026-10-09
 
 - [errors.ts](../../../../../src/core/errors.ts)：增加内部故障错误。
 - [fnv1a64.ts](../../../../../src/core/determinism/fnv1a64.ts)：复用，不改契约。
-- [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts)、[synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts)：只在移出通用 helper 时改导入路径。
+- [synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core)、[synthetic-replay.ts](../../../../engineering/source-structure.md#r1-合成-core)：只在移出通用 helper 时改导入路径。
 - [eslint.config.js](../../../../../eslint.config.js)、[engineering-boundaries.test.ts](../../../../../tools/engineering-boundaries.test.ts)：正式与合成模块的边界。
 - 计划新增：`src/core/contracts/limits.ts`、`time.ts`、`tick-input.ts`、`domain-events.ts`、`canonical-text.ts`、`validation.ts` 及相邻 `*.test.ts`（文件名可调整，职责不变）。
 

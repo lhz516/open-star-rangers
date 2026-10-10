@@ -16,7 +16,7 @@ updated: 2026-10-10
 
 ## 工作范围
 
-- 计划新增 `e2e/support/mission-observations.ts`：进入任务、读取只读 `data-owner`/`data-run`/`data-tick`、等待 tick 前进或稳定、读取开发诊断；并迁入 [demo-observations.ts](../../../../../e2e/support/demo-observations.ts) 中仍被通用用例使用的 `frameWindow` 等 helper（原文件由 13 删除，本项不改其使用者）。
+- 计划新增 `e2e/support/mission-observations.ts`：进入任务、读取只读 `data-owner`/`data-run`/`data-tick`、等待 tick 前进或稳定、读取开发诊断；并迁入 [demo-observations.ts](../../../../engineering/source-structure.md#r8-e2e-演示观察) 中仍被通用用例使用的 `frameWindow` 等 helper（原文件由 13 删除，本项不改其使用者）。
 - 计划新增 `e2e/mission-flow.development.spec.ts`（测试入口，01 的合成场景）：
   - 开始资格：没有包、部分包、`loadMission` 失败、`createWorld` 拒绝（留在配置页）与可开始。
   - 完整流程，带与不带僚机各一次：介绍占位（跳过按钮、Enter、Space、Esc 与 3 秒自然结束都覆盖，repeat 与尾事件不推进下一页）→ 配置 → 出发占位（变体标注）→ 飞行（tick 前进、出发时 tick 0）→ 暂停稳定与继续 → 任务菜单（菜单期间不能被旁路继续）→ 重开（新 run、预选上次僚机）→ 返回主菜单（焦点规则）。开发诊断显示玩家与按选择出现的僚机，诊断提交的命令得到带 commandId 的 `not-implemented`。
@@ -63,7 +63,7 @@ updated: 2026-10-10
 
 - **环境：** Google Chrome 155.0.8059.39（`channel: chrome`，headless，1280×800，像素比 1），Node v22.22.0，V8 12.4.254.21-node.33；开发服务器 `127.0.0.1:5130`，生产预览 `127.0.0.1:5131`（`OSR_E2E_DEV_PORT=5130 OSR_E2E_PREVIEW_PORT=5131`）。全部用例在网络审计（[audited-test.ts](../../../../../e2e/support/audited-test.ts)）与浏览器错误收集下运行，每个用例一个隔离 context，只用合成内容；没有合成 visibility/pagehide 事件，也没有替换 getter。
 - **命令：** `pnpm test:e2e e2e/mission-flow.development.spec.ts --project=development` 6 个通过；`pnpm test:e2e e2e/mission-flow.production.spec.ts --project=production` 1 个通过；`pnpm check` 通过（typecheck、lint、245 个测试文件 6,979 个测试、构建）。
-- **共用 helper：** [mission-observations.ts](../../../../../e2e/support/mission-observations.ts) 经 `page.evaluate` 读取 `mission-screen` 的 `data-owner`/`data-run`/`data-tick`/`data-position`（不启动 Playwright 主世界脚本，供 11 的资源平衡复用），提供 tick 前进/稳定的页内采样、五种占位结束方式（自然结束以 MutationObserver 记录的位置提交时刻计时，用后断开）、按住键的 repeat 与 keyup 尾事件、缺省标注读取、`beforeunload` 监听计数（既有浏览器探针）、真实离页请求（CDP `Page.reload` 或 `page.close({ runBeforeUnload: true })`，以 `page.on('dialog')` 应答；没有监听时 Playwright 会自行接受 `beforeunload`，`waitForEvent` 不能阻止）、开发诊断读取与命令提交，以及从 [demo-observations.ts](../../../../../e2e/support/demo-observations.ts) 复制的 `frameWindow`（原文件与其使用者未改，由 13 删除）。[app-entry.ts](../../../../../e2e/support/app-entry.ts) 增加 `seeds` 选项；[production-cache.ts](../../../../../e2e/support/production-cache.ts) 增加 `missionPackage()`（`mission-startable` 作业发出的全部组，每个 worker 进程转换一次），由既有 `seedProductionCache` 以 P3-03 `PRODUCTION_PACKAGE` 的转换器版本、来源指纹与预算重新派生版本 4 的身份并校验完整。
+- **共用 helper：** [mission-observations.ts](../../../../../e2e/support/mission-observations.ts) 经 `page.evaluate` 读取 `mission-screen` 的 `data-owner`/`data-run`/`data-tick`/`data-position`（不启动 Playwright 主世界脚本，供 11 的资源平衡复用），提供 tick 前进/稳定的页内采样、五种占位结束方式（自然结束以 MutationObserver 记录的位置提交时刻计时，用后断开）、按住键的 repeat 与 keyup 尾事件、缺省标注读取、`beforeunload` 监听计数（既有浏览器探针）、真实离页请求（CDP `Page.reload` 或 `page.close({ runBeforeUnload: true })`，以 `page.on('dialog')` 应答；没有监听时 Playwright 会自行接受 `beforeunload`，`waitForEvent` 不能阻止）、开发诊断读取与命令提交，以及从 [demo-observations.ts](../../../../engineering/source-structure.md#r8-e2e-演示观察) 复制的 `frameWindow`（原文件与其使用者未改，由 13 删除）。[app-entry.ts](../../../../../e2e/support/app-entry.ts) 增加 `seeds` 选项；[production-cache.ts](../../../../../e2e/support/production-cache.ts) 增加 `missionPackage()`（`mission-startable` 作业发出的全部组，每个 worker 进程转换一次），由既有 `seedProductionCache` 以 P3-03 `PRODUCTION_PACKAGE` 的转换器版本、来源指纹与预算重新派生版本 4 的身份并校验完整。
 
 | 验收 | 设置与操作 | 观察 | 结果 |
 |---|---|---|---|

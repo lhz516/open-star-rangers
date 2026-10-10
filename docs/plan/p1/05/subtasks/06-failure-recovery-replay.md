@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "05"
 subtask: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 06 — 故障汇总、恢复与录制一致性
@@ -31,7 +31,7 @@ updated: 2026-10-02
 
 - `src/app/synthetic-session.ts`（04/05 计划交付，本项修改）；必要时扩展其 test-support 故障能力。
 - 计划新增 `src/app/synthetic-session-fault.test.ts`、`src/app/synthetic-session-replay.test.ts`。
-- [既有 Runtime 故障测试](../../../../../src/app/runtime/synthetic-runtime-fault.test.ts)（只读先例）；[replay](../../../../../src/core/synthetic/synthetic-replay.ts)（只读，真实函数）。
+- [既有 Runtime 故障测试](../../../../engineering/source-structure.md#r3-合成-runtime)（只读先例）；[replay](../../../../engineering/source-structure.md#r1-合成-core)（只读，真实函数）。
 
 ## 验收标准
 
@@ -51,7 +51,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：[故障测试](../../../../../src/app/session/synthetic-session-fault.test.ts) 22 项、[replay 测试](../../../../../src/app/session/synthetic-session-replay.test.ts) 3 项，与既有 session 共 74 项通过；最终 `pnpm check` typecheck/lint/27 文件 598 测试/build 成功。
+- 2026-10-02：[故障测试](../../../../engineering/source-structure.md#r4-合成会话) 22 项、[replay 测试](../../../../engineering/source-structure.md#r4-合成会话) 3 项，与既有 session 共 74 项通过；最终 `pnpm check` typecheck/lint/27 文件 598 测试/build 成功。
 - 真实 Core 的 step 前故障 1/2 成功前缀、listener-failed、无成功 onFrame、折叠故障状态、非法时间/read/request/cancel、创建失败 idle 与首次请求 faulted 均有精确断言。cancel 的 scheduler 错同时置 cleanupFailed；保留一个物理请求的场景实际送达后无法推进/续排，并只尝试取消一次。
 - Consumer→取消 consumer→逆序 cleanup→状态 consumer 的原错有序进入唯一末尾 onError；失败状态观察者取消，其他观察者继续。先请求 exit/restart 再抛错仍收尾；正常故障允许 restart，资源/宿主独立撤销全尝试、exit idle/dispose disposed 均保留错误且不重试已尝试项。
 - 排队 resume 的 request 失败保留异步来源，不抛给同步 pause 调用者；onError 自身失败停止健康 control-only 运行，AggregateError 包含原会话错、出口错与额外 cleanup 错，不再报告第二次。没有 broad catch 或成功形状 fallback。

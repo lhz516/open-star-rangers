@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "10"
 subtask: "06"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 06 — 原生后台与 WebGL 降级持久回归
@@ -29,7 +29,7 @@ updated: 2026-10-03
 
 - 计划新增 e2e/native-lifecycle.spec.ts、e2e/webgl-unavailable.spec.ts、e2e/support/native-lifecycle.ts；按本项新增文件精确分配01配置中的项目，必要修改仅限配置/helper。
 - 只读[已验证CDP路线](../../../../engineering/README.md#已验证的-cdp-自动化路线)、[P1-09真实输入证据](../../09/subtasks/05-browser-input-evidence.md#完成证据)。
-- 只读[会话](../../../../../src/app/session/synthetic-session.ts)、[键盘消费者](../../../../../src/ui/game/synthetic-keyboard-input.ts)、[降级文案](../../../../../src/ui/render/SyntheticRenderView.tsx)。
+- 只读[会话](../../../../engineering/source-structure.md#r4-合成会话)、[键盘消费者](../../../../engineering/source-structure.md#r6-合成-ui-层)、[降级文案](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)。
 
 ## 验收标准
 

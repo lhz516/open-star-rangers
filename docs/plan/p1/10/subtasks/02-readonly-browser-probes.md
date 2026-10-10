@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "10"
 subtask: "02"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 02 — 只读观测与错误采集
@@ -28,7 +28,7 @@ updated: 2026-10-03
 
 ## 关键文件与契约
 
-- 只读[面板](../../../../../src/ui/dev/SyntheticDevPanel.tsx)、[输入区](../../../../../src/ui/render/SyntheticRenderView.tsx)、[布局](../../../../../src/render/viewport/viewport-layout.ts)、[外观](../../../../../src/render/synthetic/synthetic-appearance.ts)。
+- 只读[面板](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[输入区](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)、[布局](../../../../../src/render/viewport/viewport-layout.ts)、[外观](../../../../engineering/source-structure.md#r2-合成渲染)。
 - 只读[键盘连接](../../../../../src/platform/input/browser-keyboard-source.ts)、[Session host](../../../../../src/platform/browser/browser-session-host.ts)、[WebGL表面](../../../../../src/render/webgl/browser-webgl-surface.ts)：按实际登记边界归属，不按全页总数。
 - 计划新增 e2e/support/browser-probes.ts、e2e/support/demo-observations.ts、e2e/support/image-observations.ts、e2e/probe-contract.spec.ts；类型仅在E2E程序，不把DOM helper传递导入Node测试。
 
@@ -45,7 +45,7 @@ updated: 2026-10-03
 
 ## 完成证据
 
-- 2026-10-03：新增 [browser-probes](../../../../../e2e/support/browser-probes.ts)、[默认错误fixture](../../../../../e2e/support/browser-test.ts)、[DOM/采样](../../../../../e2e/support/demo-observations.ts)、[截图/布局](../../../../../e2e/support/image-observations.ts)及[探针契约](../../../../../e2e/probe-contract.spec.ts)。所有探针仅在测试context内包装宿主方法；不进入App、不改变Core、时钟、输入或visibility。
+- 2026-10-03：新增 [browser-probes](../../../../../e2e/support/browser-probes.ts)、[默认错误fixture](../../../../../e2e/support/browser-test.ts)、[DOM/采样](../../../../engineering/source-structure.md#r8-e2e-演示观察)、[截图/布局](../../../../../e2e/support/image-observations.ts)及[探针契约](../../../../../e2e/probe-contract.spec.ts)。所有探针仅在测试context内包装宿主方法；不进入App、不改变Core、时钟、输入或visibility。
 - `pnpm test:e2e probe-contract.spec.ts --project=development --project=production`：6/6真实通过，Chrome154/macOS、4173/4174、1280×800/DPR1。自有节点验证相同callback/capture去重、错误capture不撤销、once仅执行一次、this不变、无效receiver原生TypeError、rAF取消/交付与ResizeObserver归零；restore后新登记不再被记录。
 - 应用只读交叉核对：mover实际色像素≥9、marker为0，真实CSS容器与设备限制计算布局误差≤1px；首个新投影后4样本跨≥360ms，tick增加而x不变。每次显式刷新diagnostics，真实running窗口rAF最大1；9项键盘/3项Session的具体type组成均精确断言。菜单后应用监听、observer、pending帧归零，旧canvas断开，扩展可用时context lost。
 - 默认fixture收集console/pageerror/HTTP/requestfailed和UI错误；独立child page生成受控console、宿主异步异常和404，错误原因均保留，child finally关闭。只有favicon404逐项记录，WebGL白名单尚只供06使用。最初404样本被Vite SPA fallback返回200，改为`Accept: application/javascript`取得真正404，不以伪造响应代替。

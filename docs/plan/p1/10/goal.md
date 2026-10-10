@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "10"
-updated: 2026-10-03
+updated: 2026-10-10
 related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 ---
 
@@ -16,10 +16,10 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
 ## 代码现状与前提
 
 - [package.json](../../../../package.json)已有 typecheck/lint/Vitest/build，没有 Playwright/E2E。[Vite](../../../../vite.config.ts)只发现 src/tools 的 .test.ts；[Node tsconfig](../../../../tsconfig.node.json)无 DOM。01 新建独立 E2E 类型程序，不扩展纯模块/Node 的环境或 Vitest 发现。
-- [App](../../../../src/app/App.tsx)与 [hook](../../../../src/app/composition/use-synthetic-demo-owner.ts)已拥有页面/owner 生命周期；[输入区](../../../../src/ui/render/SyntheticRenderView.tsx)已有名称、说明、tabIndex与键盘状态。[面板](../../../../src/ui/dev/SyntheticDevPanel.tsx)可读 phase/run-id/tick/mover/marker/results 及按需渲染诊断，投影10 Hz、非整数文本保留3位。测试优先使用现有DOM入口，不新增生产调试API。
-- [owner](../../../../src/app/composition/synthetic-demo-owner.ts)种子0、默认60 Hz、录制关闭；[Session](../../../../src/app/session/synthetic-session.ts)是唯一调度/控制权威；[浏览器host](../../../../src/platform/browser/browser-session-host.ts)拥有3项生命周期监听，[keyboard source](../../../../src/platform/input/keyboard-source.ts)拥有9项输入登记。Restart/Exit→Start保留owner，返回菜单释放owner。
-- [渲染器](../../../../src/render/synthetic/synthetic-renderer.ts)提供drawnTick/draws/entities/gpu/layout；[布局函数](../../../../src/render/viewport/viewport-layout.ts)与[合成外观](../../../../src/render/synthetic/synthetic-appearance.ts)可只读复用。真实像素与GPU基线不能由Canvas存在或Node替身代替。
-- [replay](../../../../src/core/synthetic/synthetic-replay.ts)已有 SyntheticReplayRecord/Result 和生产 replay/比较器；[Session录制测试](../../../../src/app/session/synthetic-session-replay.test.ts)已有seed0/50 Hz、interval1的4个成功tick输入。05只补浏览器执行，不向App开启录制。
+- [App](../../../../src/app/App.tsx)与 [hook](../../../engineering/source-structure.md#r5-演示所有者与槽位)已拥有页面/owner 生命周期；[输入区](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)已有名称、说明、tabIndex与键盘状态。[面板](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)可读 phase/run-id/tick/mover/marker/results 及按需渲染诊断，投影10 Hz、非整数文本保留3位。测试优先使用现有DOM入口，不新增生产调试API。
+- [owner](../../../engineering/source-structure.md#r5-演示所有者与槽位)种子0、默认60 Hz、录制关闭；[Session](../../../engineering/source-structure.md#r4-合成会话)是唯一调度/控制权威；[浏览器host](../../../../src/platform/browser/browser-session-host.ts)拥有3项生命周期监听，[keyboard source](../../../../src/platform/input/keyboard-source.ts)拥有9项输入登记。Restart/Exit→Start保留owner，返回菜单释放owner。
+- [渲染器](../../../engineering/source-structure.md#r2-合成渲染)提供drawnTick/draws/entities/gpu/layout；[布局函数](../../../../src/render/viewport/viewport-layout.ts)与[合成外观](../../../engineering/source-structure.md#r2-合成渲染)可只读复用。真实像素与GPU基线不能由Canvas存在或Node替身代替。
+- [replay](../../../engineering/source-structure.md#r1-合成-core)已有 SyntheticReplayRecord/Result 和生产 replay/比较器；[Session录制测试](../../../engineering/source-structure.md#r4-合成会话)已有seed0/50 Hz、interval1的4个成功tick输入。05只补浏览器执行，不向App开启录制。
 - **计划新增：** playwright.config.ts、tsconfig.e2e.json、e2e/下的用例和support；tools/e2e-configuration.test.ts只验证runner接入/失败传播。各文件职责在子任务限定；默认不改生产源码。
 
 ### 跨任务与环境前提

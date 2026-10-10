@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0002, ADR-0006, ADR-0008, ADR-0012, ADR-0015]
 ---
 
@@ -45,7 +45,7 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0012, ADR-0015]
 
 | 模块 | 责任与影响 |
 |---|---|
-| [core/synthetic](../../../../src/core/synthetic/)（已有） | 复用纯投影、Command、DomainEvent 与 replay；不修改规则、版本或时间单位 |
+| [core/synthetic](../../../engineering/source-structure.md#r1-合成-core)（已有） | 复用纯投影、Command、DomainEvent 与 replay；不修改规则、版本或时间单位 |
 | [app/session](../../../../src/app/session/)、[app/runtime](../../../../src/app/runtime/)（已有） | 使用公开 Session/SessionRun 和帧后 EventDelivery，不暴露内部 frame/step/publish |
 | `src/ui/game/`（计划新增） | synthetic 命名的 vanilla store、投影桥接、命令反馈及 selector；不创建整个世界的镜像 |
 | `src/ui/dev/`（计划新增） | 合成开发面板、状态和错误反馈；与正式菜单和飞行 HUD 分开 |
@@ -55,11 +55,11 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0012, ADR-0015]
 
 ## 当前实现与依据
 
-- [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 已定义 `Command`、`DomainEvent`、`SyntheticUiProjection` 和 `SyntheticScene.uiProjection()`。投影是脱离内部状态、深冻结的纯数据；读取不推进 tick、不消耗 RNG。字段依据 [P1-02 契约](../02/spec.md#数据模型与契约)，不是正式玩家世界。
-- [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts) 已负责 FIFO 命令队列，`submitCommand()` 返回运行内 commandId；[synthetic-event-bus.ts](../../../../src/app/runtime/synthetic-event-bus.ts) 的 `EventDelivery.commandId` 用于关联，Core 的 `commandIndex` 不是该 ID。帧末事件观察者读到本帧最终状态，而非事件发生时的中间状态。
-- [synthetic-session.ts](../../../../src/app/session/synthetic-session.ts) 已有 `SessionStatus`、`SessionFrame`、`SessionCommandsCancelled`、`SessionRun`、`SyntheticSession`。`onStatus` 不回放历史；晚接消费者先主动读取当前状态/投影。暂停时游戏输入拒绝，但会话控制仍可用。
+- [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 已定义 `Command`、`DomainEvent`、`SyntheticUiProjection` 和 `SyntheticScene.uiProjection()`。投影是脱离内部状态、深冻结的纯数据；读取不推进 tick、不消耗 RNG。字段依据 [P1-02 契约](../02/spec.md#数据模型与契约)，不是正式玩家世界。
+- [synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime) 已负责 FIFO 命令队列，`submitCommand()` 返回运行内 commandId；[synthetic-event-bus.ts](../../../engineering/source-structure.md#r3-合成-runtime) 的 `EventDelivery.commandId` 用于关联，Core 的 `commandIndex` 不是该 ID。帧末事件观察者读到本帧最终状态，而非事件发生时的中间状态。
+- [synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话) 已有 `SessionStatus`、`SessionFrame`、`SessionCommandsCancelled`、`SessionRun`、`SyntheticSession`。`onStatus` 不回放历史；晚接消费者先主动读取当前状态/投影。暂停时游戏输入拒绝，但会话控制仍可用。
 - [session-errors.ts](../../../../src/app/session/session-errors.ts) 定义同步/异步错误数据；`cleanupFailed` 是持续阻断事实，不能仅通过最近 error 推断可否重启。故障后的 run 可读最后成功投影，但不能注册消费者或提交输入。
-- [Runtime 事件测试](../../../../src/app/runtime/synthetic-runtime-events.test.ts)、[Session 消费者测试](../../../../src/app/session/synthetic-session-consumers.test.ts)及[故障测试](../../../../src/app/session/synthetic-session-fault.test.ts)已有 FIFO、帧末读取、取消顺序、资源清理和成功前缀先例。尤其 Core 在补跑第二个 tick 失败时，首 tick 可能已提交，但整帧域事件未投递；不能把剩余 UI pending 一律解释为“没有执行”。
+- [Runtime 事件测试](../../../engineering/source-structure.md#r3-合成-runtime)、[Session 消费者测试](../../../engineering/source-structure.md#r4-合成会话)及[故障测试](../../../engineering/source-structure.md#r4-合成会话)已有 FIFO、帧末读取、取消顺序、资源清理和成功前缀先例。尤其 Core 在补跑第二个 tick 失败时，首 tick 可能已提交，但整帧域事件未投递；不能把剩余 UI pending 一律解释为“没有执行”。
 - [main.tsx](../../../../src/main.tsx) 已启用 StrictMode；[package.json](../../../../package.json)尚无 Zustand，[vite.config.ts](../../../../vite.config.ts)只发现 `.test.ts` 并运行于 Node，无 React DOM 或 E2E runner。`ui/` 和新组件/测试仍是计划新增，不能视作已交付。
 - 冻结依据：[总计划 §4–5](../../master-plan.md#4-总体架构)、[ADR-0006](../../../decisions/ADR-0006-core-returns-events.md)、[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md)。目录基线见[源码结构指南](../../../engineering/source-structure.md)，本地验证边界见 [ADR-0012](../../../decisions/ADR-0012-local-p1-defer-ci-deployment.md)。
 - 本任务不产生原版研究结论，不新增 U/B 事实或依赖未知规则。所有 marker 行为、坐标与测试数值均为已有合成契约，不能当作原版保真证据。
@@ -108,10 +108,10 @@ related: [ADR-0002, ADR-0006, ADR-0008, ADR-0012, ADR-0015]
 
 | 数据/字段 | 类型、单位与约束 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|
-| `SyntheticUiProjection` | `{scenario:'synthetic',tick,tickRateHz,mover,marker}`；tick 为已提交 tick，tickRateHz 为每秒 tick 数；实体为 `{id,position:{x,y,z}}`，marker 可为 null；坐标仅为合成单位 | [Core 场景](../../../../src/core/synthetic/synthetic-scene.ts) | store 保存最新冻结投影，不加入 seed/rngState/nextEntityId、RenderFrame 或完整 snapshot；null 投影表示没有当前世界，不是 marker 缺失 |
+| `SyntheticUiProjection` | `{scenario:'synthetic',tick,tickRateHz,mover,marker}`；tick 为已提交 tick，tickRateHz 为每秒 tick 数；实体为 `{id,position:{x,y,z}}`，marker 可为 null；坐标仅为合成单位 | [Core 场景](../../../engineering/source-structure.md#r1-合成-core) | store 保存最新冻结投影，不加入 seed/rngState/nextEntityId、RenderFrame 或完整 snapshot；null 投影表示没有当前世界，不是 marker 缺失 |
 | `Command` / `DomainEvent` | 已有 add/remove 判别联合及 marker-added、marker-removed、command-rejected；事件有 tick/commandIndex，拒绝有 commandType/reason | Core | UI 提交原类型，不新增“接受”Core 事件或私自判定规则 |
-| `EventDelivery.commandId` | 运行内正安全整数；不同 run 可再次出现同一值 | [Runtime 总线](../../../../src/app/runtime/synthetic-event-bus.ts) | 与 owner 身份、runId 共同关联命令；不入 Core/replay，不等于 entityId 或 commandIndex |
-| `SessionStatus` / `SessionFrame` | 沿用现有只读字段，status.phase 为 idle/running/paused/faulted/disposed；frame.phase 仅为 running/paused，含真实 projection/render/report | [Session](../../../../src/app/session/synthetic-session.ts) | status 即时消费，frame 只取 UI 需要的投影；不把 render/interpolation 塞入 store |
+| `EventDelivery.commandId` | 运行内正安全整数；不同 run 可再次出现同一值 | [Runtime 总线](../../../engineering/source-structure.md#r3-合成-runtime) | 与 owner 身份、runId 共同关联命令；不入 Core/replay，不等于 entityId 或 commandIndex |
+| `SessionStatus` / `SessionFrame` | 沿用现有只读字段，status.phase 为 idle/running/paused/faulted/disposed；frame.phase 仅为 running/paused，含真实 projection/render/report | [Session](../../../engineering/source-structure.md#r4-合成会话) | status 即时消费，frame 只取 UI 需要的投影；不把 render/interpolation 塞入 store |
 | `SessionCommandsCancelled` | `{runId,commandIds,reason}`，reason 沿用 user-pause/hidden/restart/exit/dispose/failure | Session | 只对匹配 pending ID 终结；未出现的 ID 不能被臆测为已取消 |
 | `GameSessionError` | kind 为 invalid-argument/invalid-state/operation-failed，保留可用 path/reason/operation/failures/cause | [会话错误模块](../../../../src/app/session/session-errors.ts) | 在 UI 展示摘要，完整原因供开发诊断；非玩家存档或可序列化 Core 数据 |
 
@@ -177,9 +177,9 @@ store 只保留 UI pending 与当前运行的有界最近终态，不保存事�
 
 ## 验证策略
 
-- **单元/契约测试：** 计划在 `src/ui/game/` 新增邻接 `.test.ts`，测试 vanilla store、采样、命令关联、selector、同步失败、故障未确认及清理；应用装配有真实需要时在其所属模块增加 Node 可测生命周期测试。复用 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts) 和真实 Core/Session，不导入测试支持到生产，不为测试伪造 marker 世界。
+- **单元/契约测试：** 计划在 `src/ui/game/` 新增邻接 `.test.ts`，测试 vanilla store、采样、命令关联、selector、同步失败、故障未确认及清理；应用装配有真实需要时在其所属模块增加 Node 可测生命周期测试。复用 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话) 和真实 Core/Session，不导入测试支持到生产，不为测试伪造 marker 世界。
 - **目标回归：** 实施后的目标命令为 `pnpm exec vitest run src/ui/game src/app/runtime src/app/session src/core/synthetic`；存在 app/composition 测试时一并加入同一 runner。当前 `ui/game/` 尚不存在，该命令是实施后要求，不是已通过证据。
-- **Replay/一致性：** 使用已有 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) 和录制选项，逐 tick 输入、事件、检查点/最终哈希对照真实基线；采样时钟只影响发布时刻。无跨引擎逐位一致承诺，也不通过事件回放构造 UI。
+- **Replay/一致性：** 使用已有 [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) 和录制选项，逐 tick 输入、事件、检查点/最终哈希对照真实基线；采样时钟只影响发布时刻。无跨引擎逐位一致承诺，也不通过事件回放构造 UI。
 - **浏览器验证：** 按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 使用自有 Chromium context、真实 Vite origin/rAF 和自建合成场景。覆盖接受/两种拒绝、pending/取消、暂停恢复、实际页面隐藏、selector、StrictMode、HMR 与释放；采用已有浏览器工具和[生命周期复现路线](../../../engineering/README.md#浏览器生命周期复现)，不先建设 P1-10 runner。pending 与取消只存在于下一帧前，须在同一任务内触发真实按钮 click 并同步读取 DOM；不能直接写 store 代替交互。HMR 的临时编辑完成后必须还原。
 - **证据边界：** 精确毫秒和故障注入由 Node 证明；DOM 可见反馈与实际 React 生命周期必须取得浏览器证据。仅 HTTP 200、页面截图或旧 P1-05 的 Session 探针不能代替当前消费者验证。临时自有探针清理后不进入产物；实际 hidden 或 HMR 无法取得时对应 AC 仍未完成，不用模拟结果豁免。
 - **实机/原版对照：** 不适用。本任务无原版规则、GPU、媒体或浏览器快捷键拦截承诺；后续任务的原版保真、Safari/跨系统输入与真实设备门槛不被合成 DOM 测试免除。

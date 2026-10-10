@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-06：UI projection 与 React 指令闭环 — Goal
@@ -17,17 +17,17 @@ updated: 2026-10-02
 ## 代码现状与前提
 
 - **跨任务前提 P1-05 尚未最终对齐：** 生成本 goal 时，[P1-05 tracker](../05/goal.md#子任务跟踪)的 01–07 为 completed，[08 最终对齐](../05/subtasks/08-final-alignment.md)为 pending。开始 01 前须确认 P1-05 的 08 为 completed，且完成证据覆盖其 AC-01 至 AC-14；否则 01 应记为 blocked，恢复条件为该证据存在。目录迁移验证或 01–07 的局部证据不能代替。
-- **Core（只读）：** [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 定义 `Command`、`DomainEvent`、`SyntheticUiProjection`；[synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) 提供 `replaySyntheticRecord` 与 `compareSyntheticReplayResults`。本目标不改 Core、合成规则或录制格式。
-- **Runtime/Session（只读复用）：** [synthetic-session.ts](../../../../src/app/session/synthetic-session.ts) 提供 `createSyntheticSession(options, host, onError)`、`SyntheticSession`、`SessionRun`、`SessionStatus`、`SessionFrame`、`SessionCommandsCancelled`、`SessionControl`；[synthetic-event-bus.ts](../../../../src/app/runtime/synthetic-event-bus.ts) 提供 `EventDelivery.commandId`；[session-errors.ts](../../../../src/app/session/session-errors.ts) 定义 `GameSessionError`。已有行为：
+- **Core（只读）：** [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 定义 `Command`、`DomainEvent`、`SyntheticUiProjection`；[synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) 提供 `replaySyntheticRecord` 与 `compareSyntheticReplayResults`。本目标不改 Core、合成规则或录制格式。
+- **Runtime/Session（只读复用）：** [synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话) 提供 `createSyntheticSession(options, host, onError)`、`SyntheticSession`、`SessionRun`、`SessionStatus`、`SessionFrame`、`SessionCommandsCancelled`、`SessionControl`；[synthetic-event-bus.ts](../../../engineering/source-structure.md#r3-合成-runtime) 提供 `EventDelivery.commandId`；[session-errors.ts](../../../../src/app/session/session-errors.ts) 定义 `GameSessionError`。已有行为：
   - 状态通知中可为新的 running/paused 运行注册消费者。
   - 转换通知顺序为取消→静止帧→清理→状态→onError。
   - 故障运行可读最后成功投影，但拒绝注册与输入。
   - 如需修改这些 app 契约，属于 spec 外变更，须先停下。
 - **平台：** [browser-session-host.ts](../../../../src/platform/browser/browser-session-host.ts) 的 `createBrowserSessionHost()` 实现真实 rAF/visibility/pagehide/pageshow，只在应用装配中创建。
 - **测试先例：**
-  - [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)：可控请求、可见性与失败注入。
-  - [会话故障测试](../../../../src/app/session/synthetic-session-fault.test.ts)：在 Vitest 创建边界包装真实场景，注入 step 失败。
-  - [会话录制测试](../../../../src/app/session/synthetic-session-replay.test.ts)：真实 Session 与裸 Runtime 的 replay 对照。
+  - [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)：可控请求、可见性与失败注入。
+  - [会话故障测试](../../../engineering/source-structure.md#r4-合成会话)：在 Vitest 创建边界包装真实场景，注入 step 失败。
+  - [会话录制测试](../../../engineering/source-structure.md#r4-合成会话)：真实 Session 与裸 Runtime 的 replay 对照。
   - UI 测试复用这些方式，不给生产 API 加测试后门。
 - **应用入口：** [App.tsx](../../../../src/app/App.tsx) 仍为占位页；[main.tsx](../../../../src/main.tsx) 已启用 StrictMode，本目标不修改 main。
 - **依赖：** [package.json](../../../../package.json) 已有 React 19.3，尚无 Zustand。生成时 npm `latest` 为 zustand 5.0.15（MIT，React/@types/react 是 >=18 的可选 peer），符合 [ADR-0008](../../../decisions/ADR-0008-mit-and-dependency-licenses.md)。01 在执行时加入兼容的 5.x 并同步 [pnpm-lock.yaml](../../../../pnpm-lock.yaml)；不新增其他运行时依赖、Playwright 或 DOM 测试框架。
@@ -118,7 +118,7 @@ updated: 2026-10-02
 ## 执行记录
 
 - **2026-10-02 — 最终对齐 09 发现契约缺口，新增修复项 10：** spec 的 AC-08 写有“同次故障的 failure 取消与 unconfirmed 同时保留”，字面要求一次真实故障同时产生两类结果。但真实 Runtime 中，首个 tick 失败时命令未消耗，只产生取消；后续 tick 失败时命令已在首个 tick 消耗、事件被丢弃，只产生 unconfirmed。实现与测试满足保留语义（两类都不覆盖已有终态），但 09 的“全部 AC 有完整证据”不能按字面勾选。
-  Evidence: 04 的真实 Core 注入测试；P1-05 的 [故障测试](../../../../src/app/session/synthetic-session-fault.test.ts)也说明取消只出现在首个 tick 失败时；09 的 rubber-duck 复核。
+  Evidence: 04 的真实 Core 注入测试；P1-05 的 [故障测试](../../../engineering/source-structure.md#r4-合成会话)也说明取消只出现在首个 tick 失败时；09 的 rubber-duck 复核。
   Affected acceptance: AC-08，以及 09 的第一项验收。
   Resume when: 10 完成 AC-08 与技术决定 5 的更正后，重新执行 09。这是删除一项无法满足要求的窄范围契约放宽，其余要求、行为与测试断言不变。按用户“需要提问时直接采用最推荐答案”的指示采用此方案，最终报告中提请用户确认。
 

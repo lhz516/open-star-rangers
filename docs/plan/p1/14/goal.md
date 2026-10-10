@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "14"
-updated: 2026-10-03
+updated: 2026-10-10
 related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 ---
 
@@ -16,8 +16,8 @@ related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 ## 代码现状与前提
 
 - 规划基线 HEAD 为 `e5383d8`，执行起点为 `831d231`（干净工作树/索引，见01）；规划新增本 Goal、六项证据文档，执行已新增[draft退出评审](../../../reviews/P1-exit.md)。现有源码未重写，未发现需独立修复项的既定P1缺陷，不预建空修复文件或新功能；最终差异/身份见06。
-- [合成 Core](../../../../src/core/synthetic/synthetic-scene.ts)、[snapshot](../../../../src/core/synthetic/synthetic-snapshot.ts)、[replay](../../../../src/core/synthetic/synthetic-replay.ts)已提供纯输入/命令/事件、投影、两种状态读取及 `osr-synthetic-replay`/1。其单位、规则和版本不成为正式玩法/存档契约。
-- [Runtime](../../../../src/app/runtime/synthetic-runtime.ts)、[Session](../../../../src/app/session/synthetic-session.ts)、[UI store](../../../../src/ui/game/synthetic-game-store.ts)和[App](../../../../src/app/App.tsx)已形成命令/控制分流、帧后反馈、只读消费及菜单/合成场景闭环，输入/渲染的落点见[结构指南](../../../engineering/source-structure.md)。
+- [合成 Core](../../../engineering/source-structure.md#r1-合成-core)、[snapshot](../../../engineering/source-structure.md#r1-合成-core)、[replay](../../../engineering/source-structure.md#r1-合成-core)已提供纯输入/命令/事件、投影、两种状态读取及 `osr-synthetic-replay`/1。其单位、规则和版本不成为正式玩法/存档契约。
+- [Runtime](../../../engineering/source-structure.md#r3-合成-runtime)、[Session](../../../engineering/source-structure.md#r4-合成会话)、[UI store](../../../engineering/source-structure.md#r6-合成-ui-层)和[App](../../../../src/app/App.tsx)已形成命令/控制分流、帧后反馈、只读消费及菜单/合成场景闭环，输入/渲染的落点见[结构指南](../../../engineering/source-structure.md)。
 - [package.json](../../../../package.json)已有工程、E2E、三合规命令；[Python 测试](../../../../tools/ghidra/test_patch_watcom_cspec.py)只用临时合成 XML，独立于 `pnpm check`。无缺失 runner 或新增依赖前提。
 - [Playwright 配置](../../../../playwright.config.ts)已有 development、production、development-headed，单 worker/零重试/严格端口；[环境 helper](../../../../e2e/support/environment.ts)支持现有兼容浏览器和端口覆盖。规划发现数为 21（10/10/1），执行时按实际配置核对，不把列表或旧 18+3 结果当本轮通过。
 - [合规 CLI](../../../../tools/compliance/cli.ts)、[报告](../../../../tools/compliance/report.ts)、[分发工具](../../../../tools/compliance/distribution.ts)、[声明生成器](../../../../tools/compliance/notices.ts)已有七范围聚合、完整文本与身份核对，合法多文档 lock 无修复任务；人工来源/全文审阅仍需保留。

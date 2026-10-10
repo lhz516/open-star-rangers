@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-05：会话与浏览器生命周期 — Goal
@@ -19,10 +19,10 @@ updated: 2026-10-02
 ## 代码现状与前提
 
 - **直接前提 P1-04 已完成：** [最终证据](../04/subtasks/06-final-alignment.md#完成证据)记录 21 文件、513 项测试和完整工程检查；最终提交 `7c576ff`。其传递前提 P1-02/03 提供真实 Core 与录制/replay，均已有完成证据。
-- **现有 Runtime：** [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts)定义 `SyntheticRuntimeOptions`、`RenderFrame`、`SyntheticRuntime` 和统一创建入口。其私有队列带 commandId，成功首 tick 才消费；没有重置时钟、清队列/轴、折叠状态对或清空订阅入口。02 添加这些显式操作，既有正常行为与测试不放宽。
-- **现有内部设施：** [fixed-step-clock.ts](../../../../src/app/runtime/fixed-step-clock.ts)有时间基准/最后时间/相对 tick 数，无 reset；[synthetic-event-bus.ts](../../../../src/app/runtime/synthetic-event-bus.ts)提供类型化同步事件与幂等取消，无全量清理。[runtime-errors.ts](../../../../src/app/runtime/runtime-errors.ts)四种 kind 保持原样。
-- **Core 只读：** 输入、领域事件、UI projection、Render State 归 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)；录制格式、导出、replay 与结果比对归 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts)。会话数据归 app，不新增统一 schema 或 Core 生命周期字段。
-- **测试先例：** [事件测试](../../../../src/app/runtime/synthetic-runtime-events.test.ts)覆盖帧末意图/重入；[故障测试](../../../../src/app/runtime/synthetic-runtime-fault.test.ts)在 Vitest 创建边界包装真实场景，仅在 step 前抛错。06 复用该方式，不给生产 API 添加故障开关。
+- **现有 Runtime：** [synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime)定义 `SyntheticRuntimeOptions`、`RenderFrame`、`SyntheticRuntime` 和统一创建入口。其私有队列带 commandId，成功首 tick 才消费；没有重置时钟、清队列/轴、折叠状态对或清空订阅入口。02 添加这些显式操作，既有正常行为与测试不放宽。
+- **现有内部设施：** [fixed-step-clock.ts](../../../../src/app/runtime/fixed-step-clock.ts)有时间基准/最后时间/相对 tick 数，无 reset；[synthetic-event-bus.ts](../../../engineering/source-structure.md#r3-合成-runtime)提供类型化同步事件与幂等取消，无全量清理。[runtime-errors.ts](../../../../src/app/runtime/runtime-errors.ts)四种 kind 保持原样。
+- **Core 只读：** 输入、领域事件、UI projection、Render State 归 [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core)；录制格式、导出、replay 与结果比对归 [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core)。会话数据归 app，不新增统一 schema 或 Core 生命周期字段。
+- **测试先例：** [事件测试](../../../engineering/source-structure.md#r3-合成-runtime)覆盖帧末意图/重入；[故障测试](../../../engineering/source-structure.md#r3-合成-runtime)在 Vitest 创建边界包装真实场景，仅在 step 前抛错。06 复用该方式，不给生产 API 添加故障开关。
 - **计划新增文件，当前均不存在：**
 
 | 新文件 | 责任子任务 |

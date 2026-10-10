@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "04"
 subtask: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 05 — 可选录制与故障导出一致性
@@ -33,8 +33,8 @@ updated: 2026-10-02
 - `src/app/synthetic-runtime.ts`（04 计划交付，本项修改）：创建分支、recording 选项与 export。
 - `src/app/synthetic-runtime-fault.test.ts`（04 计划交付，本项扩展）：相同真实创建边界的录制模式故障，保留原无录制断言。
 - 计划新增 `src/app/synthetic-runtime-recording.test.ts`：完整录制与 replay 集成测试。
-- [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts)（已有，只读）：`SyntheticRecordingSession`、`SyntheticRecording`、录制创建/导出/replay/比对。
-- [录制测试](../../../../../src/core/synthetic/synthetic-replay-record.test.ts)（已有，只读）：配置/input 单次取值、副本冻结与失败不入记录的先例。
+- [synthetic-replay.ts](../../../../engineering/source-structure.md#r1-合成-core)（已有，只读）：`SyntheticRecordingSession`、`SyntheticRecording`、录制创建/导出/replay/比对。
+- [录制测试](../../../../engineering/source-structure.md#r1-合成-core)（已有，只读）：配置/input 单次取值、副本冻结与失败不入记录的先例。
 
 ## 验收标准
 
@@ -57,7 +57,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：[录制集成测试](../../../../../src/app/runtime/synthetic-runtime-recording.test.ts) 12 项、[故障测试](../../../../../src/app/runtime/synthetic-runtime-fault.test.ts) 4 项通过；最终 `pnpm check` 21 文件、513 项通过，typecheck/lint/build 成功。
+- 2026-10-02：[录制集成测试](../../../../engineering/source-structure.md#r3-合成-runtime) 12 项、[故障测试](../../../../engineering/source-structure.md#r3-合成-runtime) 4 项通过；最终 `pnpm check` 21 文件、513 项通过，typecheck/lint/build 成功。
 - rubber-duck 确认只有一份场景、成功 step 才入记录、故障注入在真实提交之前；按建议强化 recording.* 错误路径、录制创建的 Core cause 和非法调用后的独立对照实例。
 - 随后执行 simplify 四个独立角度检查。移除冗余 recording 引用/双参数，Runtime 只保留一个场景，通过实际能力导出。保留创建前的三行间隔校验（unknown → number 的边界且在分配场景前失败）；不删除 spec 明确要求的 checkpoint/replay/冻结集成断言，避免把必需验收当作重复测试删掉。
-- 文档检查：更新 [engineering](../../../../engineering/README.md#合成-runtime) 的开启方式、内存边界与故障导出语义；没有新的持久化/浏览器操作，guides 无需新增步骤。
+- 文档检查：更新 [engineering](../../../../engineering/source-structure.md#r10-菜单入口键位与工程文档) 的开启方式、内存边界与故障导出语义；没有新的持久化/浏览器操作，guides 无需新增步骤。
