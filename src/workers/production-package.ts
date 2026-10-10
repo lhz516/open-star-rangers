@@ -25,10 +25,10 @@ export const PRODUCTION_PACKAGE: ExpectedPackageProfile = Object.freeze({
     'PRODUCTION_PACKAGE.sourceFingerprint',
   ),
   limits: readBudgetRecord({
-    assets: 810,
+    assets: 812,
     dependencyEdges: 1408,
     sourceReadBytes: 0,
-    payloadBytes: 16_564_224,
+    payloadBytes: 16_568_320,
     vertices: 8192,
     triangles: 8192,
     imagePixels: 5_373_952,

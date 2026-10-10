@@ -21,6 +21,8 @@ import { PRODUCTION_FLIGHT_DATA_DECLARATIONS, PRODUCTION_FLIGHT_DATA_MAPPINGS } 
 import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-flight-graphics.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
 import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
+import { PRODUCTION_HUD_TEXT_MAPPINGS } from '../original-data/conversion/production-hud-text.ts';
+import { HUD_TEXT_USAGE } from '../original-data/conversion/production-hud-text.test-support.ts';
 import {
   PRODUCTION_MODEL_REFERENCES, PRODUCTION_MODEL_SHARE, productionModelDeclarations, productionModelMappings,
 } from '../original-data/conversion/production-models.ts';
@@ -30,7 +32,8 @@ import {
 import { PRODUCTION_RULE_DATA_MAPPINGS, PRODUCTION_RULE_DATA_SOURCES } from '../original-data/conversion/production-rule-data.ts';
 import { PRODUCTION_SOUND_TABLE } from '../original-data/conversion/production-sounds.ts';
 import { PRODUCTION_SOUND_USAGE } from '../original-data/conversion/production-sounds.test-support.ts';
-import { archiveLocator, isRegionLocator, type SourceMappingTable } from '../original-data/source-mapping.ts';
+import { archiveLocator, executableRegion, isRegionLocator, type ExecutableRegionLocator, type SourceMappingTable } from '../original-data/source-mapping.ts';
+import { openLeExecutable } from '../original-data/formats/le-executable.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
 import { DEFAULT_MODEL_IDS } from '../original-data/formats/formats.test-support.ts';
 import type { VerifiedSource } from '../original-data/source/open-verified-source.ts';
@@ -241,11 +244,11 @@ describe('production conversion', () => {
     const flightModels = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'models').length;
     expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + flightModels);
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
-    // The P2-05 palette and fonts with the production cockpit, HUD and map Assets and the flight graphics of the group
-    // fill every role of the group.
+    // The P2-05 palette and fonts with the production cockpit, HUD and map Assets, the flight graphics of the group and
+    // the HUD text fill every role of the group.
     const cockpit = sentGroup(messages, 'cockpit-hud-map').input;
     const cockpitIds = PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').map(({ asset }) => asset.id).sort();
-    expect(cockpitIds).toHaveLength(4 + COCKPIT_HUD_MAP_USAGE.assets + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length - flightModels);
+    expect(cockpitIds).toHaveLength(4 + COCKPIT_HUD_MAP_USAGE.assets + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length - flightModels + HUD_TEXT_USAGE.assets);
     expect(readGroupManifest(cockpit.manifest).assets.map(({ id }) => id)).toEqual(cockpitIds);
     expect(validateGroup(CLASSIC_P2_SLICE, cockpit)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map', externalRequirements: [] });
   });
@@ -347,16 +350,29 @@ describe('logic conversion', () => {
 });
 
 describe('production package (P3-03 slice definition version 4)', () => {
-  /** The production job on the slice disc, logging each archive entry read with the stage it falls in. */
+  /**
+   * The production job on the slice disc, logging each archive entry read and each `offset+length` read of a non-archive
+   * file, such as the executable, with the stage it falls in.
+   */
   async function loggedJob() {
     const imported = await syntheticImport(sliceCoveredFiles(), 'package-disc');
     let stage = '';
     const reads: { readonly stage: string; readonly archive: string; readonly entry: number }[] = [];
+    const fileReads: { readonly stage: string; readonly path: string; readonly read: string }[] = [];
     const open: OpenSource = async inputs => {
       const source = await imported.open(inputs);
       return {
         identity: source.identity,
-        openFile: path => source.openFile(path),
+        openFile: async path => {
+          const file = await source.openFile(path);
+          return {
+            entry: file.entry,
+            read: (offset, length) => {
+              fileReads.push({ stage, path, read: `${offset}+${length}` });
+              return file.read(offset, length);
+            },
+          };
+        },
         usage: () => source.usage(),
         openArchive: async path => {
           const archive = await source.openArchive(path);
@@ -384,11 +400,37 @@ describe('production package (P3-03 slice definition version 4)', () => {
       for (const read of reads.filter(item => item.archive === archive && item.entry === entry)) counts.set(read.stage, (counts.get(read.stage) ?? 0) + 1);
       return Object.fromEntries(counts);
     };
-    return { groups, reads, readsOf };
+    return { groups, reads, readsOf, fileReads };
+  }
+
+  /** One logged run shared by the tests below, which only read its logs and groups. */
+  let logged: ReturnType<typeof loggedJob> | undefined;
+  const loggedOnce = () => (logged ??= loggedJob());
+
+  /**
+   * The `offset+length` reads a fresh LE reader makes of `file`: those that open it, then those that read `regions` in
+   * order, each region's bytes being the last read it makes.
+   */
+  async function executableReads(file: Uint8Array, regions: readonly ExecutableRegionLocator[]) {
+    const reads: string[] = [];
+    const executable = await openLeExecutable({
+      byteLength: file.length,
+      read: async (offset, length) => {
+        reads.push(`${offset}+${length}`);
+        return file.slice(offset, offset + length);
+      },
+    }, 'executable');
+    const opening = reads.splice(0);
+    const regionBytes: string[] = [];
+    for (const region of regions) {
+      await executable.readRegion(executableRegion(region), 'region');
+      regionBytes.push(reads.at(-1)!);
+    }
+    return { opening, regions: reads, regionBytes };
   }
 
   it('sends four complete groups that form a complete version 4 package with every new role', async () => {
-    const { groups } = await loggedJob();
+    const { groups } = await loggedOnce();
     expect(groups.map(input => readGroupManifest(input.manifest).group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     const result = validatePackage(CLASSIC_P2_SLICE, groups);
     if (result.status !== 'complete') throw new Error(`expected a complete package, got ${JSON.stringify(result)}`);
@@ -403,7 +445,7 @@ describe('production package (P3-03 slice definition version 4)', () => {
   });
 
   it('reads each mapped P3-03 entry once in each step that maps it and no entry outside the closure', async () => {
-    const { reads, readsOf } = await loggedJob();
+    const { reads, readsOf } = await loggedOnce();
     const { craftInfo, debrisParameters, aiPrograms, commMenus, baseRepairItems } = PRODUCTION_RULE_DATA_SOURCES;
     // The rule-data archives: exactly the mapped entries, once each, in the logic step; never the other CINF, the
     // AISTUFF entries of the other groups or the COMM tables of G-03.
@@ -448,6 +490,26 @@ describe('production package (P3-03 slice definition version 4)', () => {
     for (const { mapping } of PRODUCTION_SOUND_TABLE) {
       expect(readsOf(SR, archiveLocator(mapping.parts[0].alternatives[0]).entry.id)).toEqual({ 'convert-audio': 1 });
     }
+  });
+
+  it('reads the 64 HUD text regions once each in the graphics stage, with only the executable regions the graphics step maps', async () => {
+    const { fileReads } = await loggedOnce();
+    const EXE = 'MAIN/SRANGERS.EXE';
+    const regionsOf = (table: SourceMappingTable) => [...new Map(table.mappings.flatMap(({ parts }) => parts.map(({ alternatives: [locator] }) => locator))
+      .filter(isRegionLocator).map(locator => [locator.subresource, locator])).values()];
+    // The colour table, the status display format and the HUD texts.
+    const mapped = regionsOf(PRODUCTION_GRAPHICS_MAPPINGS);
+    expect(mapped).toHaveLength(2 + 64);
+    const graphics = await executableReads(sliceCoveredFiles()[EXE], mapped);
+    const hudText = new Set(regionsOf(PRODUCTION_HUD_TEXT_MAPPINGS).map(({ subresource }) => subresource));
+    const hudTextReads = graphics.regionBytes.filter((_, index) => hudText.has(mapped[index].subresource));
+    expect(new Set(hudTextReads).size).toBe(64);
+    for (const read of hudTextReads) {
+      expect(fileReads.filter(item => item.path === EXE && item.read === read).map(({ stage }) => stage), read).toEqual(['convert-graphics']);
+    }
+    // The graphics stage opens the executable once and reads exactly the regions the production graphics tables map.
+    const graphicsReads = fileReads.filter(({ stage, path }) => stage === 'convert-graphics' && path === EXE).map(({ read }) => read);
+    expect([...graphicsReads].sort()).toEqual([...graphics.opening, ...graphics.regions].sort());
   });
 
   it('fails without a group when the rule-data Assets exceed the logic stage share, with the complete limit', async () => {
@@ -553,12 +615,15 @@ describe('audio conversion', () => {
       share: PRODUCTION_GRAPHICS_SHARE,
     };
     const [withCockpit, withoutCockpit] = (await Promise.all([audioJob(), audioJob({ graphics })])).map(({ messages }) => messages);
-    // Without the cockpit-hud-map flight palette, the three fonts, the cockpit, HUD and map Assets and the flight graphics
-    // of that group.
+    // Without the cockpit-hud-map flight palette, the three fonts, the cockpit, HUD and map Assets, and the flight
+    // graphics and HUD text of that group.
     const flightCockpit = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
     expect(withoutCockpit.at(-1)).toMatchObject({
       type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'],
-      usage: { assets: GRAPHICS_CONVERSION_USAGE.assets - 4 - COCKPIT_HUD_MAP_USAGE.assets - flightCockpit + AUDIO_CONVERSION_USAGE.assets, glyphs: 0 },
+      usage: {
+        assets: GRAPHICS_CONVERSION_USAGE.assets - 4 - COCKPIT_HUD_MAP_USAGE.assets - flightCockpit - HUD_TEXT_USAGE.assets + AUDIO_CONVERSION_USAGE.assets,
+        glyphs: 0,
+      },
     });
     expect(manifest(withoutCockpit, 'cockpit-hud-map').assets).toEqual([]);
     expect(manifest(withoutCockpit, 'models').assets).toEqual(manifest(withCockpit, 'models').assets);

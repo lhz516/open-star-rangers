@@ -9,6 +9,10 @@ import { encodeImagePayload, imagePayloadLength, readImagePayload } from '../../
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { readStatusMessagesPayload, STATUS_MESSAGES_SCHEMA_VERSION } from '../../content/hud/status-messages-payload.ts';
 import { decodeViewLabelsPayload, encodeViewLabelsPayload, VIEW_LABELS_SCHEMA_VERSION } from '../../content/hud/view-labels-payload.ts';
+import {
+  decodeHudTextPayload, encodeHudTextPayload, HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS, HUD_TEXT_SCHEMA_VERSION, type HudTextKey,
+} from '../../content/hud/hud-text-payload.ts';
+import { syntheticHudText } from '../../content/hud/hud-text.test-support.ts';
 import { readAssetId } from '../../content/asset-id.ts';
 import { animFrame, expectedFrame, patternFrame, solidFrame, syntheticAnimation, type SyntheticAnimFrame } from '../formats/anim.test-support.ts';
 import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
@@ -22,6 +26,7 @@ import {
 } from './conversion.test-support.ts';
 import { convertGraphics, type GraphicsSource } from './convert-graphics.ts';
 import { runGraphicsStep, stepGroupDraft } from './graphics-step.ts';
+import { hudTextGraphic, type HudTextRegionTable } from './production-hud-text.ts';
 import { stepEntryReader } from './step-entry-reader.ts';
 
 const LIMITS = { ...EMPTY_BUDGET_USAGE, assets: 100, dependencyEdges: 100, paletteEntries: 10_000, imagePixels: 10_000, glyphs: 10_000, payloadBytes: 1_000_000 };
@@ -696,5 +701,174 @@ describe('graphics step ANIM frames and view labels', () => {
     const { source } = await sourceOf({ labels });
     const [, hud] = (await runGraphicsStep(source, tableOf(), declared(), LIMITS)).groups;
     expect(decodeViewLabelsPayload(hud.payloads[0].bytes, hud.descriptors[0])).toEqual({ labels: [{ subMode: 8, text: other }] });
+  });
+});
+
+// P3-03 (spec S-08, technical decision 14; AC-06, AC-13, AC-14): the HUD text from 64 EXE region parts, each paired by
+// the declaration with the key it fills, read through the step's region reader alongside the DIAG format. Everything here
+// is generated in code.
+describe('graphics step HUD text', () => {
+  const EXE = 'MAIN/SRANGERS.EXE';
+  const DIAG_ENTRY = 10_015;
+  const ID = 'data/hud/text';
+  const FORMAT = '[%s/%s]';
+  const DIAG_FIELDS: SyntheticDiagFields = {
+    timings: [1, 2, 3, 4],
+    statusFormats: ['a', 'b', 'c', 'd'],
+    ratings: [['q', 9], ['r', 6], ['s', 3], ['t', 1], ['u', 0]],
+    subsystemNames: Array.from({ length: 15 }, (_, index) => `n${index}`),
+    stateWords: ['x', 'y', 'z'],
+    startupMessages: [],
+  };
+  /** Synthetic texts with a verbatim `%` and bytes 0x01, 0x7F, 0x80 and 0xFF. */
+  const TEXTS: Record<HudTextKey, string> = { ...syntheticHudText('g').entries, barGauge2Label: '\x01\x7f\x80\xff%', mapInfoPosition2: '\xa0%.0f\xfe' };
+  const MESSAGES_ID = 'data/hud/messages';
+
+  /** Object 1: the DIAG format at 0, then every text and its NUL in reverse key order, and then `tail` filler bytes. */
+  function executableOf(texts: Record<HudTextKey, string> = TEXTS) {
+    const bytes = Array.from(`${FORMAT}\0`, character => character.charCodeAt(0));
+    const regions = {} as Record<HudTextKey, HudTextRegionTable[HudTextKey]>;
+    for (const key of [...HUD_TEXT_KEYS].reverse()) {
+      regions[key] = { object: 1, offset: bytes.length, length: texts[key].length + 1 };
+      bytes.push(...Array.from(`${texts[key]}\0`, character => character.charCodeAt(0)));
+    }
+    return { executable: syntheticLeExecutable({ objects: [{ bytes: Uint8Array.from(bytes) }] }), regions: regions as HudTextRegionTable };
+  }
+  const graphic = (regions: HudTextRegionTable) => hudTextGraphic(regions, EXE as Parameters<typeof hudTextGraphic>[1]);
+
+  /** The step's input: the flight palette, the status messages with their format region, and the HUD text. */
+  function inputOf(regions: HudTextRegionTable, change: (hud: ReturnType<typeof graphic>) => void = () => undefined) {
+    const hud = graphic(regions);
+    change(hud);
+    const format = { alternatives: [{ discPath: EXE, entry: null, subresource: `le/1/0x0/${FORMAT.length + 1}` }] };
+    const messages = graphicsMapping(MESSAGES_ID, 'DIAG', DIAG_ENTRY);
+    return {
+      table: {
+        sourceFingerprint: null,
+        mappings: [{ ...messages, parts: [...(messages.parts as unknown[]), format] }, hud.mapping, graphicsMapping('palette/flight/cockpit-hud-map', 'DATA', data)],
+      },
+      declarations: [
+        paletteDeclaration('palette/flight/cockpit-hud-map'),
+        { asset: { id: MESSAGES_ID, kind: 'data' }, role: 'status-messages', group: 'cockpit-hud-map' },
+        hud.declaration,
+      ],
+      hud,
+    };
+  }
+
+  const ARCHIVE = buildImfat(10_000, [{ id: data, type: 'DATA', data: dataPaletteBlock() }, { id: DIAG_ENTRY, type: 'DIAG', ...syntheticDiag(DIAG_FIELDS) }]);
+
+  async function sourceOf(executable: Uint8Array) {
+    const { source, reads } = await countedVerifiedSource({ [GRAPHICS_ARCHIVE]: ARCHIVE, [EXE]: executable });
+    const opened: string[] = [];
+    const fileReads: string[] = [];
+    const counted = {
+      ...source,
+      openFile: async (path: string) => {
+        opened.push(path);
+        const file = await source.openFile(path);
+        return { entry: file.entry, read: (offset: number, length: number) => { fileReads.push(`${offset}+${length}`); return file.read(offset, length); } };
+      },
+    } as VerifiedSource;
+    return { source: counted, reads, opened, fileReads };
+  }
+
+  const hudBytes = encodeHudTextPayload({ entries: TEXTS }).length;
+
+  it('converts the texts from the region parts the declaration pairs with keys, opening the executable once and reading each region once', async () => {
+    const { executable, regions } = executableOf();
+    const { table, declarations, hud } = inputOf(regions);
+    expect(hud.declaration.regions).not.toEqual(HUD_TEXT_KEYS);
+    expect(hud.mapping.parts).toHaveLength(64);
+    const { source, reads, opened, fileReads } = await sourceOf(executable);
+    const result = await runGraphicsStep(source, table, declarations, LIMITS);
+    expect(Object.fromEntries(reads)).toEqual({ [data]: 1, [DIAG_ENTRY]: 1 });
+    expect(opened).toEqual([EXE]);
+    // The object fits one page: each region is one read of its bytes, after the reads that open the file.
+    const regionReads = fileReads.filter(read => fileReads.indexOf(read) === fileReads.lastIndexOf(read));
+    expect(new Set(fileReads).size).toBe(fileReads.length);
+    expect(regionReads.length).toBeGreaterThanOrEqual(65);
+    const [step] = result.groups;
+    const index = step.descriptors.findIndex(({ id }) => id === ID);
+    expect(step.descriptors[index]).toMatchObject({ kind: 'data', role: 'hud-text', group: 'cockpit-hud-map', dependencies: [] });
+    expect(step.descriptors[index].payloadIdentity.schemaVersion).toBe(HUD_TEXT_SCHEMA_VERSION);
+    expect(decodeHudTextPayload(step.payloads[index].bytes, step.descriptors[index])).toEqual({ entries: TEXTS });
+    expect(step.sources[index]).toEqual({ id: ID, state: 'verified', unknowns: ['U-026', 'U-030'] });
+    expect(result.usage).toMatchObject({ assets: 3, payloadBytes: step.payloads.reduce((total, { bytes }) => total + bytes.length, 0) });
+    expect(step.payloads[index].bytes).toHaveLength(hudBytes);
+  });
+
+  it('gives each text to the key the declaration names for its part', async () => {
+    const { executable, regions } = executableOf();
+    const { table, declarations } = inputOf(regions, ({ declaration }) => {
+      const [first, second] = ['barGauge0Label', 'leftWarpTitle'].map(key => declaration.regions.indexOf(key as HudTextKey));
+      [declaration.regions[first], declaration.regions[second]] = [declaration.regions[second], declaration.regions[first]];
+    });
+    expect([HUD_TEXT_FORMATS.barGauge0Label, HUD_TEXT_FORMATS.leftWarpTitle]).toEqual([null, null]);
+    const [step] = (await runGraphicsStep((await sourceOf(executable)).source, table, declarations, LIMITS)).groups;
+    const index = step.descriptors.findIndex(({ id }) => id === ID);
+    expect(decodeHudTextPayload(step.payloads[index].bytes, step.descriptors[index]).entries)
+      .toEqual({ ...TEXTS, barGauge0Label: TEXTS.leftWarpTitle, leftWarpTitle: TEXTS.barGauge0Label });
+  });
+
+  it('leaves the region mapping declared until the conversion succeeds', async () => {
+    const { executable, regions } = executableOf();
+    const { table } = inputOf(regions);
+    const { source } = await sourceOf(executable);
+    const bound = await verifySourceMappings(table, source, stepEntryReader(source));
+    expect(bound.mappings.map(({ asset, resolution }) => [asset.id, resolution])).toEqual([[MESSAGES_ID, 'declared'], [ID, 'declared'], ['palette/flight/cockpit-hud-map', 'verified']]);
+  });
+
+  /** The location of the part the declaration pairs with `key`: its place in the table (the HUD text is mapping 1), then the key. */
+  const at = (regions: HudTextRegionTable, key: HudTextKey) =>
+    `sources.mappings[1].parts[${graphic(regions).declaration.regions.indexOf(key)}].alternatives[0]/entries/${key}`;
+  /** The region locations: a mapping part followed by the path of the key it fills. */
+  const REGION_LOCATION = /^sources\.mappings\[\d+\]\.parts\[\d+\]\.alternatives\[0\]\/entries\/[A-Za-z0-9]+$/;
+  const { textBytes } = HUD_TEXT_LIMITS;
+  const lastKey = HUD_TEXT_KEYS[0];
+  /** Changes the length of the mapping's last region part, that of the first key, by `delta`. */
+  const resizeLast = (delta: number) => ({ mapping }: ReturnType<typeof graphic>) => {
+    const [locator] = mapping.parts[63].alternatives;
+    mapping.parts[63] = { alternatives: [{ ...locator, subresource: locator.subresource.replace(/\/(\d+)$/, (_, length) => `/${Number(length) + delta}`) }] };
+  };
+
+  it.each<[string, () => { texts?: Record<HudTextKey, string>; change?: (hud: ReturnType<typeof graphic>) => void }, string, (regions: HudTextRegionTable) => string, unknown]>([
+    ['a mapping with one region part fewer', () => ({ change: ({ mapping }) => { mapping.parts.pop(); } }), 'invalid-declaration', () => `graphics[${ID}].regions`, null],
+    ['a mapping with an archive entry part', () => ({
+      change: ({ mapping }) => {
+        mapping.parts.pop();
+        mapping.parts.unshift({ alternatives: [{ discPath: GRAPHICS_ARCHIVE, entry: { id: DIAG_ENTRY, type: 'DIAG' }, subresource: null } as never] });
+      },
+    }), 'invalid-declaration', () => `graphics[${ID}].regions`, null],
+    ['a format string with another conversion', () => ({ texts: { ...TEXTS, targetDistance: '%d' } }), 'unsupported-payload', regions => at(regions, 'targetDistance'), null],
+    ['a format string without its conversion', () => ({ texts: { ...TEXTS, mapUnitLabel: 'n' } }), 'unsupported-payload', regions => at(regions, 'mapUnitLabel'), null],
+    ['a text over the limit', () => ({ texts: { ...TEXTS, leftCommPanelTitle: 'x'.repeat(textBytes + 1) } }), 'limit-exceeded', regions => at(regions, 'leftCommPanelTitle'),
+      { name: 'textBytes', limit: textBytes, observed: textBytes + 1 }],
+    ['a region without its NUL', () => ({ change: resizeLast(-1) }), 'invalid-payload', regions => at(regions, lastKey), null],
+    ['a region past its object', () => ({ change: resizeLast(1) }), 'invalid-payload', regions => at(regions, lastKey), null],
+  ])('rejects %s without results', async (_name, changes, code, location, limit) => {
+    const { texts, change } = changes();
+    const { executable, regions } = executableOf(texts);
+    const { table, declarations } = inputOf(regions, change);
+    const { source } = await sourceOf(executable);
+    const where = location(regions);
+    await expect(runGraphicsStep(source, table, declarations, LIMITS)).rejects.toMatchObject({ name: 'SourceError', code, location: where, limit });
+    expect(inGraphicsLocationGrammar(where) || REGION_LOCATION.test(where)).toBe(true);
+  });
+
+  it('passes a budget equal to the usage and charges the text before its payload is allocated', async () => {
+    const { executable, regions } = executableOf();
+    const { table, declarations } = inputOf(regions);
+    const { source } = await sourceOf(executable);
+    const { usage } = await runGraphicsStep(source, table, declarations, LIMITS);
+    const exact = { ...LIMITS, assets: usage.assets, payloadBytes: usage.payloadBytes };
+    expect((await runGraphicsStep(source, table, declarations, exact)).usage).toEqual(usage);
+    // The HUD text is charged last of the data Assets, in Asset ID order after the messages.
+    for (const dimension of ['assets', 'payloadBytes'] as const) {
+      await expect(runGraphicsStep(source, table, declarations, { ...exact, [dimension]: exact[dimension] - 1 })).rejects.toMatchObject({
+        code: 'budget-exceeded', location: `graphics[${ID}].messages`, limit: { name: dimension, limit: exact[dimension] - 1, observed: exact[dimension] },
+      });
+    }
+    expect(usage.payloadBytes).toBeGreaterThan(hudBytes);
   });
 });

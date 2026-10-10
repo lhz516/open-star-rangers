@@ -32,6 +32,7 @@ export type SliceRole =
   | 'hit-shimmer'
   | 'target-display'
   | 'view-labels'
+  | 'hud-text'
   | 'event-sound'
   | 'hud-sound';
 
@@ -97,9 +98,9 @@ function requirement(
  * Projectile, missile and debris allow model, image or data representations: version 2 admits data for the
  * generated effect geometry P2-06 imports (U-027); version 3 lets the cockpit-hud-map group own data for the status display
  * messages P2-07 imports. Core sounds allow several sample clips (U-004/U-027). Version 4 (P3-03 spec, 切片定义版本 4)
- * requires exactly one Asset for each root of the rule-data and flight-data closure and exactly the eight event and three
- * HUD sounds; the explosion animations and frames, the nebula images and their palettes are required through the
- * dependency closure of those roots, not as roles.
+ * requires exactly one Asset for each root of the rule-data and flight-data closure, and for the HUD text its revision 1
+ * adds, and exactly the eight event and three HUD sounds; the explosion animations and frames, the nebula images and
+ * their palettes are required through the dependency closure of those roots, not as roles.
  */
 const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   sliceId: SLICE_ID,
@@ -135,6 +136,7 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
     requirement('hit-shimmer', 'models', ['image'], 1, 1),
     requirement('target-display', 'cockpit-hud-map', ['image'], 1, 1),
     requirement('view-labels', 'cockpit-hud-map', ['data'], 1, 1),
+    requirement('hud-text', 'cockpit-hud-map', ['data'], 1, 1),
     requirement('event-sound', 'audio', ['sound'], 8, 8),
     requirement('hud-sound', 'audio', ['sound'], 3, 3),
   ]),

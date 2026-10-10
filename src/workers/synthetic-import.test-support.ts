@@ -18,6 +18,7 @@ import {
   layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, viewLabelTable,
 } from '../original-data/conversion/conversion.test-support.ts';
 import { FLIGHT_GRAPHICS_USAGE } from '../original-data/conversion/production-flight-graphics.test-support.ts';
+import { HUD_TEXT_USAGE, syntheticHudTextSource } from '../original-data/conversion/production-hud-text.test-support.ts';
 import {
   COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_GRAPHICS_REGION_WRITES, productionCockpitBlock, productionGraphicsFiles, regionExecutable,
 } from '../original-data/conversion/production-graphics.test-support.ts';
@@ -269,16 +270,17 @@ const P2_05_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + fontPayloadLength(25
 /**
  * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
  * the P2-05 palettes and fonts, the slice textures with their palettes, the P2-07 cockpit, HUD and map Assets and the
- * P3-03 flight graphics.
+ * P3-03 flight graphics and HUD text.
  */
-export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes + FLIGHT_GRAPHICS_USAGE.payloadBytes;
+export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes + FLIGHT_GRAPHICS_USAGE.payloadBytes
+  + HUD_TEXT_USAGE.payloadBytes;
 
 /**
  * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
  * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures, the P2-07
- * cockpit, HUD and map Assets and the P3-03 flight graphics.
+ * cockpit, HUD and map Assets and the P3-03 flight graphics and HUD text.
  */
-export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE, FLIGHT_GRAPHICS_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE, FLIGHT_GRAPHICS_USAGE, HUD_TEXT_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   paletteEntries: 512,
@@ -312,12 +314,15 @@ const cockpitAsset = (declaration: Record<string, unknown>, type: string, entry:
   return { id, role: declaration.role as string, group: declaration.group as ResourceGroup, declaration, mapping: graphicsMapping(id, type, entry, subresource) };
 };
 
+/** The HUD text of the synthetic cockpit disc: its regions in the disc's small executable. */
+const COCKPIT_HUD_TEXT = syntheticHudTextSource();
+
 /**
  * The Assets of the synthetic cockpit disc in ascending ID order. The `cockpit-hud-map` partition fills every role of
  * the group with the P2-05 shapes (the flight palette and three fonts), the P2-07 ones (the front and map frame layouts
  * with their CCKD element images, an element's embedded palette, MFDD and TABL records) and the P3-03 ones (a target
- * display image from the TEX entry with its embedded palette, and the view labels); the `models` partition is one
- * texture with its palette and the models flight palette.
+ * display image from the TEX entry with its embedded palette, the view labels, and the HUD text from the executable's
+ * regions); the `models` partition is one texture with its palette and the models flight palette.
  */
 const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   cockpitAsset(fontDeclaration('font/hud/4x6', { cell: { width: 4, height: 6 } }), 'CCKD', CCKD_ENTRY, 'fonts/2'),
@@ -343,6 +348,7 @@ const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   }), 'TEX', TEX_ENTRY),
   cockpitAsset({ ...paletteDeclaration('palette/hud/target-display'), role: 'texture-palette' }, 'TEX', TEX_ENTRY, 'palette'),
   cockpitAsset({ asset: { id: 'data/hud/view-labels', kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map' }, 'TABL', LABELS_ENTRY, 'labels/8'),
+  { id: 'data/hud/text', role: 'hud-text', group: 'cockpit-hud-map' as const, declaration: COCKPIT_HUD_TEXT.declaration, mapping: COCKPIT_HUD_TEXT.mapping },
 ].sort((left, right) => compareText(left.id, right.id));
 
 /** The ID, role and group of every Asset `cockpitGraphics()` converts, in ascending ID order. */
@@ -386,8 +392,9 @@ const TABLE = tableBlock([rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]), rawImageBlock
 
 /**
  * The covered files of a synthetic disc whose `MAIN/SR.NOB` holds the DATA, TEX, CCKD, MFDD and the two TABL entries
- * `cockpitGraphics()` maps: the CCKD has the front layout in slot 0, an empty slot 1 and the map frame in slot 2.
- * `corrupt` sets a front element's +44 field to 2, which the converter rejects as `invalid-payload`.
+ * `cockpitGraphics()` maps, and whose `MAIN/SRANGERS.EXE` holds the HUD text regions: the CCKD has the front layout in
+ * slot 0, an empty slot 1 and the map frame in slot 2. `corrupt` sets a front element's +44 field to 2, which the
+ * converter rejects as `invalid-payload`.
  */
 export function cockpitCoveredFiles(corrupt = false): Record<string, Uint8Array> {
   const cockpit = cockpitLayoutBlock([
@@ -395,7 +402,10 @@ export function cockpitCoveredFiles(corrupt = false): Record<string, Uint8Array>
     [],
     [{ record: MAP_FRAME, x: 1, y: 1, flags: [1, 0] }],
   ]);
-  return { [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE, labels: viewLabelTable('\x80synthetic-label') }) };
+  return {
+    [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE, labels: viewLabelTable('\x80synthetic-label') }),
+    'MAIN/SRANGERS.EXE': COCKPIT_HUD_TEXT.executable.slice(),
+  };
 }
 
 /** The groups a synthetic job sends once the source is identified, given the identified fingerprint. */

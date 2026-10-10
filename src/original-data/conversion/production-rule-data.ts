@@ -11,7 +11,7 @@ import {
   compareLocators, readSourceMappingTable, type ArchiveEntryLocator, type ExecutableRegion, type ExecutableRegionLocator,
   type OriginalAssetLocator, type SourceConfidence, type SourceMappingTable,
 } from '../source-mapping.ts';
-import { objectOffset, PRODUCTION_EXECUTABLE } from './production-executable.ts';
+import { executableRegionOf, regionLocator } from './production-executable.ts';
 
 // The production sources of the six rule-data Assets of the `logic` group (P3-03 spec, Asset 与角色 and 来源映射与核验),
 // their source mapping table and the budget share they add. Entry IDs, addresses and lengths are structural facts of
@@ -65,8 +65,7 @@ const BASE_REPAIR_SUBRESOURCE = 'records/subsystem-selector';
 const entry = (discPath: DiscPath, id: number, type: string, subresource: string | null = null): ArchiveEntryLocator =>
   Object.freeze({ discPath, entry: Object.freeze({ id, type }), subresource });
 
-const region = ({ object, offset, length }: ExecutableRegion): ExecutableRegionLocator =>
-  Object.freeze({ discPath: PRODUCTION_EXECUTABLE as DiscPath, entry: null, subresource: `le/${object}/0x${offset.toString(16)}/${length}` });
+const region = (part: ExecutableRegion): ExecutableRegionLocator => regionLocator(part);
 
 const mapValues = <T, U>(record: T, map: (value: T[keyof T]) => U): { readonly [K in keyof T]: U } =>
   Object.freeze(Object.fromEntries(Object.entries(record as object).map(([key, value]) => [key, map(value as T[keyof T])]))) as { readonly [K in keyof T]: U };
@@ -163,7 +162,7 @@ export function ruleDataMappings(sources: RuleDataSources): SourceMappingTable {
 }
 
 /** A region of `length` bytes at a documented address (executable.md §4). */
-const regionAt = (address: number, length: number): ExecutableRegion => Object.freeze({ ...objectOffset(address), length });
+const regionAt = executableRegionOf;
 
 /**
  * The production sources: the slice candidate's selections (group 0, slot 1); TABL 4003 and CINF 4037 (craft.md §1–§2);

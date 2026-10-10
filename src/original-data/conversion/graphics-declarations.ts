@@ -4,17 +4,19 @@ import { ContentContractError, fail, readArray, readRecord, requireFields } from
 import { GRAPHICS_LIMITS, readPaletteReference, readReference, requireInteger as integer } from '../../content/graphics/graphics-format.ts';
 import type { ImageDisplay } from '../../content/graphics/image-payload.ts';
 import { layoutFrame, type LayoutFrame } from '../../content/graphics/layout-payload.ts';
+import { HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_ROLE, type HudTextKey } from '../../content/hud/hud-text-payload.ts';
 import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_ROLE } from '../../content/hud/view-labels-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { SourceError } from '../source-error.ts';
 
 // Graphics conversion declarations (docs/plan/p2/05/spec.md, graphics conversion declarations, and
-// docs/plan/p2/07/spec.md, layout conversion declarations and status display messages; docs/plan/p3/03/spec.md, S-08):
+// docs/plan/p2/07/spec.md, layout conversion declarations and status display messages; docs/plan/p3/03/spec.md, S-08
+// and technical decision 14):
 // plain data paired one to one with source mappings but without locators. Non-default choices (nearest display, colour
 // keys, reversed rows and character map ranges) need evidence linked from the Asset's mapping.
 
-/** The kinds the graphics step converts; its `data` Assets are the status display messages and the view labels. */
+/** The kinds the graphics step converts; its `data` Assets are the status display messages, the view labels and the HUD text. */
 export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout' | 'data';
 
 interface DeclarationBase<Kind extends GraphicsKind> {
@@ -56,8 +58,8 @@ export interface FontDeclaration extends DeclarationBase<'font'> {
 }
 
 /** The roles a graphics `data` Asset may have, each with the source type it converts from (convert-graphics.ts). */
-export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 'view-labels'>> = Object.freeze({
-  [STATUS_MESSAGES_ROLE]: 'status-messages', [VIEW_LABELS_ROLE]: 'view-labels',
+export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 'view-labels' | 'hud-text'>> = Object.freeze({
+  [STATUS_MESSAGES_ROLE]: 'status-messages', [VIEW_LABELS_ROLE]: 'view-labels', [HUD_TEXT_ROLE]: 'hud-text',
 });
 
 /**
@@ -65,6 +67,15 @@ export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 
  * labels (P3-03 spec, S-08); the role selects which.
  */
 export type DataDeclaration = DeclarationBase<'data'>;
+
+/**
+ * The HUD text (P3-03 spec, S-08 and technical decision 14), whose mapping has only EXE region parts, each exactly a
+ * string and its NUL.
+ */
+export interface HudTextDeclaration extends DataDeclaration {
+  /** The payload key each region part of the mapping fills, in part order: every key of the schema exactly once. */
+  readonly regions: readonly HudTextKey[];
+}
 
 export interface LayoutDeclaration extends DeclarationBase<'layout'> {
   readonly frame: LayoutFrame;
@@ -76,6 +87,7 @@ export interface LayoutDeclaration extends DeclarationBase<'layout'> {
 export const declaredGlyphCount = ({ cell, glyphRows }: Pick<FontDeclaration, 'cell' | 'glyphRows'>): number =>
   GRAPHICS_LIMITS.glyphCount * cell.height / glyphRows;
 
+/** A `data` declaration of the HUD text role is a `HudTextDeclaration` (`isHudTextDeclaration`). */
 export type GraphicsDeclaration = PaletteDeclaration | ImageDeclaration | FontDeclaration | LayoutDeclaration | DataDeclaration;
 
 const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
@@ -86,7 +98,14 @@ const FIELDS: Readonly<Record<GraphicsKind, readonly string[]>> = {
   data: ['asset', 'role', 'group'],
 };
 
+/** A HUD text declaration also names its regions' keys. */
+const HUD_TEXT_FIELDS: readonly string[] = [...FIELDS.data, 'regions'];
+
 const isGraphicsKind = (kind: string): kind is GraphicsKind => Object.hasOwn(FIELDS, kind);
+
+/** Whether `declaration` is the HUD text, which a `data` Asset's role selects. */
+export const isHudTextDeclaration = (declaration: GraphicsDeclaration): declaration is HudTextDeclaration =>
+  declaration.asset.kind === 'data' && declaration.role === HUD_TEXT_ROLE;
 
 function readDisplay(value: unknown, path: string): ImageDisplay {
   if (value === 'direct') return value;
@@ -117,6 +136,18 @@ function readCharMap(value: unknown, glyphCount: number, path: string): readonly
   });
 }
 
+function readHudTextRegions(value: unknown, path: string): readonly HudTextKey[] {
+  const seen = new Set<string>();
+  const regions = readArray(value, path, 'invalid-record', (item, at) => {
+    if (typeof item !== 'string' || !Object.hasOwn(HUD_TEXT_FORMATS, item)) fail('invalid-record', at, 'must be a key of the HUD text schema');
+    if (seen.has(item)) fail('invalid-record', at, 'must name each key once');
+    seen.add(item);
+    return item as HudTextKey;
+  });
+  if (regions.length !== HUD_TEXT_KEYS.length) fail('invalid-record', path, 'must name every key of the HUD text schema');
+  return regions;
+}
+
 function readLayout(record: Record<string, unknown>, base: DeclarationBase<'layout'>, path: string): LayoutDeclaration {
   const fields = readRecord(record.frame, `${path}.frame`);
   requireFields(fields, `${path}.frame`, ['width', 'height']);
@@ -133,11 +164,14 @@ function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   const record = readRecord(value, path);
   const asset = readAssetReference(record.asset, `${path}.asset`);
   if (!isGraphicsKind(asset.kind)) fail('invalid-kind', `${path}.asset.kind`, 'must be palette, image, font, layout or data');
-  requireFields(record, path, FIELDS[asset.kind]);
+  requireFields(record, path, asset.kind === 'data' && record.role === HUD_TEXT_ROLE ? HUD_TEXT_FIELDS : FIELDS[asset.kind]);
   const base = { asset, role: readRole(record.role, `${path}.role`), group: readResourceGroup(record.group, `${path}.group`) };
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
   if (asset.kind === 'data' && !Object.hasOwn(GRAPHICS_DATA_SOURCES, base.role)) {
-    fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages or view labels role');
+    fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages, view labels or HUD text role');
+  }
+  if (asset.kind === 'data' && base.role === HUD_TEXT_ROLE) {
+    return Object.freeze({ ...base as DataDeclaration, regions: readHudTextRegions(record.regions, `${path}.regions`) });
   }
   if (asset.kind === 'palette' || asset.kind === 'data') return Object.freeze(base as PaletteDeclaration | DataDeclaration);
   if (asset.kind === 'layout') return readLayout(record, base as DeclarationBase<'layout'>, path);

@@ -15,10 +15,10 @@ import { buildImfat, ByteWriter, imageRecord, syntheticMesh, type SyntheticEntry
 
 // The closed P2-05 location grammar (docs/plan/p2/05/spec.md, error codes), written from the spec as an oracle: the
 // declaration set, a declaration's field path, or a field of a canonical Asset. P2-07 adds the CCKD container fields,
-// and its 2026-10-08 revision the SNIP frame and DIAG fields and their regions.
+// and its 2026-10-08 revision the SNIP frame and DIAG fields and their regions; P3-03 the HUD text's region parts.
 const GRAPHICS_LOCATION = new RegExp(`^graphics(?:${[
   String.raw`\.declarations(?:\[\d+\](?:\.[A-Za-z]+(?:\[\d+\])?)*)?`,
-  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\]\.(?:record|palette|pixels|mask|glyphs|charMap|fonts|display|alpha|rowOrder|groups|frames|colours|messages|format|elements(?:\[\d+\](?:\.[xy])?)?)`,
+  String.raw`\[[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\]\.(?:record|palette|pixels|mask|glyphs|charMap|fonts|display|alpha|rowOrder|groups|frames|colours|messages|format|elements(?:\[\d+\](?:\.[xy])?)?|regions)`,
 ].join('|')})$`);
 
 /** Whether a conversion diagnostic location belongs to the P2-05 grammar. */

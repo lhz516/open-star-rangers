@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS, readHudText, type HudTextKey } from '../../content/hud/hud-text-payload.ts';
+import { syntheticHudText } from '../../content/hud/hud-text.test-support.ts';
 import { FLIGHT_MESSAGES_LIMITS, readFlightMessages, type FlightMessages } from '../../content/rule-data/flight-messages.ts';
 import { MARKER, deepFrozen, syntheticFlightMessages, text } from '../../content/rule-data/rule-data.test-support.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
 import { executableRegion, type ExecutableRegionLocator } from '../source-mapping.ts';
 import { leInternalFixup, syntheticLeExecutable } from '../synthetic.test-support.ts';
-import { parseFlightMessages, readExecutableText, type ExecutableRegionRead, type FlightMessageRegions, type LocatedRegion } from './executable-text.ts';
+import {
+  parseFlightMessages, parseHudText, readExecutableText, type ExecutableRegionRead, type FlightMessageRegions, type HudTextRegions, type LocatedRegion,
+} from './executable-text.ts';
 import { openLeExecutable } from './le-executable.ts';
 
 // P3-03 AC-06 (flight message part), AC-14 and AC-18: a code-generated LE file only. Each string is followed by filler
@@ -140,3 +144,115 @@ describe('EXE flight message reading', () => {
     expect((await sourceFailure(async () => parseFlightMessages(bad, await reader(bytes)), HIDDEN)).location).toBe(pathOf(1));
   });
 });
+
+// P3-03 AC-06 (HUD text part), AC-14 and AC-18: the 64 HUD texts (executable.md, HUD, map and communications text from
+// the EXE) from code-generated texts that fit each key's schema format, laid out in reverse key order so that region
+// order and key order differ.
+describe('EXE HUD text reading', () => {
+  const HUD_OBJECT_BYTES = 4_096;
+  /** The synthetic texts, the first verbatim key holding MARKER and the first format key bytes 0x01, 0x7F, 0x80 and 0xFF. */
+  const TEXTS: Record<HudTextKey, string> = {
+    ...syntheticHudText('h').entries,
+    targetWarpNotice: `${MARKER}\x01\x7f\x80\xff%`,
+    targetDistance: '\x80%.0f\xff\x01',
+  };
+  const indexOf = (key: HudTextKey) => HUD_TEXT_KEYS.indexOf(key);
+
+  /** Object 1 with every text after non-zero filler, in reverse key order, and each key's region and part path. */
+  function hudRegions(texts: Record<HudTextKey, string> = TEXTS) {
+    const bytes = Uint8Array.from({ length: HUD_OBJECT_BYTES }, (_, index) => ((index * 11) % 255) + 1);
+    const regions = {} as Record<HudTextKey, LocatedRegion>;
+    let at = 3;
+    for (const key of [...HUD_TEXT_KEYS].reverse()) {
+      bytes.set(Array.from(texts[key], character => character.charCodeAt(0)), at);
+      bytes[at + texts[key].length] = 0;
+      regions[key] = { locator: locator(at, texts[key].length + 1), path: pathOf(indexOf(key)) };
+      at += texts[key].length + 3;
+    }
+    return { bytes, regions: regions as HudTextRegions };
+  }
+
+  async function hudReader(texts?: Record<HudTextKey, string>) {
+    const { bytes, regions } = hudRegions(texts);
+    return { read: await reader(bytes), regions };
+  }
+
+  it('reads the 64 texts in key order, every byte kept as stored', async () => {
+    const { read, regions } = await hudReader();
+    const parsed = await parseHudText(regions, read);
+    expect(parsed).toEqual({ entries: TEXTS });
+    expect(Object.keys(parsed.entries)).toEqual(HUD_TEXT_KEYS);
+    expect(deepFrozen(parsed)).toBe(true);
+    expect(readHudText(parsed)).toEqual(parsed);
+    expect(read.reads).toEqual(HUD_TEXT_KEYS.map(key => pathOf(indexOf(key))));
+    // A `%` byte in a verbatim text is a glyph, not a conversion.
+    expect(parsed.entries.targetWarpNotice.endsWith('%')).toBe(true);
+    expect([...parsed.entries.targetDistance].map(character => character.charCodeAt(0))).toEqual([0x80, 0x25, 0x2e, 0x30, 0x66, 0xff, 0x01]);
+  });
+
+  it('follows the input bytes and the caller\'s pairing of regions with keys', async () => {
+    const other = { ...syntheticHudText('k').entries, mapCornerLabel: '', leftCommListSeparator: '\xfe' };
+    const { read, regions } = await hudReader(other);
+    expect((await parseHudText(regions, read)).entries).toEqual(other);
+    const swapped = { ...regions, barGauge0Label: regions.barGauge1Label, barGauge1Label: regions.barGauge0Label };
+    expect((await parseHudText(swapped, await reader(hudRegions(other).bytes))).entries)
+      .toEqual({ ...other, barGauge0Label: other.barGauge1Label, barGauge1Label: other.barGauge0Label });
+  });
+
+  it('limits each text before reading its region', async () => {
+    const { textBytes } = HUD_TEXT_LIMITS;
+    const exact = { ...TEXTS, leftCommPanelTitle: text(textBytes) };
+    const { read, regions } = await hudReader(exact);
+    expect((await parseHudText(regions, read)).entries.leftCommPanelTitle).toHaveLength(textBytes);
+    const long = await hudReader({ ...TEXTS, leftCommPanelTitle: text(textBytes + 1) });
+    const at = pathOf(indexOf('leftCommPanelTitle'));
+    expect(await sourceFailure(() => parseHudText(long.regions, long.read), HIDDEN))
+      .toEqual({ code: 'limit-exceeded', location: at, limit: { name: 'textBytes', limit: textBytes, observed: textBytes + 1 } });
+    expect(long.read.reads).not.toContain(at);
+    expect(long.read.reads).toHaveLength(indexOf('leftCommPanelTitle'));
+  });
+
+  it.each<[string, HudTextKey, string]>([
+    ['a missing conversion', 'targetCraftPercent', `${MARKER}%.0f`],
+    ['an extra conversion', 'overlayValueReadout', `${MARKER}%d %d`],
+    ['another conversion', 'targetDistance', `${MARKER}%d`],
+    ['another precision', 'mapInfoPosition1', `${MARKER}%.1f`],
+    ['conversions out of order', 'overlayPercentReadout', `%%${MARKER}%d`],
+    ['a conversion in a text without any', 'targetMarkerBlockValue', `${MARKER}%s`],
+    ['an incomplete conversion', 'mapUnitLabel', `%d${MARKER}%`],
+  ])('rejects a format string with %s as unsupported-payload at its region', async (_name, key, value) => {
+    expect(HUD_TEXT_FORMATS[key]).not.toBeNull();
+    const { read, regions } = await hudReader({ ...TEXTS, [key]: value });
+    expect(await sourceFailure(() => parseHudText(regions, read), HIDDEN)).toEqual({ code: 'unsupported-payload', location: pathOf(indexOf(key)), limit: null });
+  });
+
+  it('accepts any bytes in a verbatim text, conversions included', async () => {
+    const verbatim = HUD_TEXT_KEYS.filter(key => HUD_TEXT_FORMATS[key] === null);
+    expect(verbatim).toHaveLength(25);
+    const { read, regions } = await hudReader({ ...TEXTS, [verbatim[1]]: '%d%s%', [verbatim[2]]: '%.0f%%' });
+    expect((await parseHudText(regions, read)).entries).toMatchObject({ [verbatim[1]]: '%d%s%', [verbatim[2]]: '%.0f%%' });
+  });
+
+  it.each<[string, (region: LocatedRegion) => ExecutableRegionLocator]>([
+    ['ends before the NUL', ({ locator: { subresource } }) => resized(subresource, -1)],
+    ['ends past the NUL', ({ locator: { subresource } }) => resized(subresource, 1)],
+    ['lies past the end of its object', () => locator(HUD_OBJECT_BYTES - 2, 4)],
+    ['is patched by a fixup', () => locator(FIXUP_AT + 2, 3)],
+  ])('rejects a region that %s as invalid-payload at its location', async (_name, region) => {
+    const { bytes, regions } = hudRegions();
+    const bad = { ...regions, mapCornerLabel: { ...regions.mapCornerLabel, locator: region(regions.mapCornerLabel) } };
+    expect(await sourceFailure(async () => parseHudText(bad, await reader(bytes)), HIDDEN))
+      .toEqual({ code: 'invalid-payload', location: pathOf(indexOf('mapCornerLabel')), limit: null });
+  });
+
+  it('reports the first failing text in key order', async () => {
+    const { read, regions } = await hudReader({ ...TEXTS, indicatorWarpInterval: text(40), mapInfoUnitName: `${MARKER}%d` });
+    expect((await sourceFailure(() => parseHudText(regions, read), HIDDEN)).location).toBe(pathOf(indexOf('mapInfoUnitName')));
+  });
+});
+
+/** `subresource`'s region with its length changed by `delta`. */
+function resized(subresource: string, delta: number): ExecutableRegionLocator {
+  const [, object, offset, length] = subresource.split('/');
+  return locator(parseInt(offset, 16), Number(length) + delta, Number(object));
+}

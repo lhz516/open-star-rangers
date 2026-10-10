@@ -12,6 +12,7 @@ import {
 import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from './production-flight-graphics.ts';
 import { productionFlightGraphicsEntries } from './production-flight-graphics.test-support.ts';
 import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
+import { PRODUCTION_HUD_TEXT_REGION_WRITES } from './production-hud-text.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES, modelTexturePaletteId } from './production-model-textures.ts';
 
 // A synthetic archive in the production graphics structure, generated in code; never original data.
@@ -140,10 +141,14 @@ const FORMAT_REGION = regionOf('data/hud/status-display/messages');
 /** A made-up lower-line format filling the production format region, its NUL last, as a byte string. */
 export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x7b, 0x25, 0x73, 0x7d][index % 4]));
 
-/** The bytes of each production executable region the graphics Assets map to: the colour table and the format. */
+/**
+ * The bytes of each production executable region the graphics Assets map to: the colour table, the format and the 64
+ * HUD texts.
+ */
 export const PRODUCTION_GRAPHICS_REGION_WRITES: readonly RegionWrite[] = Object.freeze([
   Object.freeze({ object: COLOUR_TABLE.object, offset: COLOUR_TABLE.offset, bytes: SYNTHETIC_INTERFERENCE_COLOURS }),
   Object.freeze({ object: FORMAT_REGION.object, offset: FORMAT_REGION.offset, bytes: Uint8Array.from(`${SYNTHETIC_SUBSYSTEM_FORMAT}\0`, character => character.charCodeAt(0)) }),
+  ...PRODUCTION_HUD_TEXT_REGION_WRITES,
 ]);
 
 /** Bytes to place at an offset of an executable object. */
@@ -277,7 +282,7 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
 
 /**
  * The disc files of a source holding the production graphics archive with `productionGraphicsEntries` and an executable
- * with the graphics regions; `extra` adds other entries to the same archive.
+ * with the graphics regions, the HUD texts included; `extra` adds other entries to the same archive.
  */
 export const productionGraphicsFiles = (blocks: GraphicsBlocks = {}, extra: readonly SyntheticEntry[] = []): Record<string, Uint8Array> => ({
   [locators[0].discPath]: buildImfat(10_000, [...productionGraphicsEntries(blocks), ...extra].sort((left, right) => left.id - right.id)),

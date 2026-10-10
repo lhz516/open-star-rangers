@@ -32,6 +32,7 @@ const S03_ROLES = [
   ['hit-shimmer', 'models', ['image'], 1, 1],
   ['target-display', 'cockpit-hud-map', ['image'], 1, 1],
   ['view-labels', 'cockpit-hud-map', ['data'], 1, 1],
+  ['hud-text', 'cockpit-hud-map', ['data'], 1, 1],
   ['event-sound', 'audio', ['sound'], 8, 8],
   ['hud-sound', 'audio', ['sound'], 3, 3],
 ] as const;
@@ -42,7 +43,7 @@ describe('classic-p2-slice definition', () => {
     expect(CLASSIC_P2_SLICE.version).toBe(SLICE_DEFINITION_VERSION);
     // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group; version 3
     // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data; version 4 (P3-03) adds the rule-data,
-    // flight-data, event and HUD sound roles.
+    // flight-data, HUD text, event and HUD sound roles.
     expect(SLICE_DEFINITION_VERSION).toBe(4);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });

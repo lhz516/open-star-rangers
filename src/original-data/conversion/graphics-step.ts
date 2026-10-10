@@ -8,6 +8,7 @@ import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '
 import { STATUS_MESSAGES_LIMITS } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_FORMAT } from '../../content/hud/view-labels-payload.ts';
 import { ANIM_LIMITS } from '../formats/anim.ts';
+import { parseHudText, type HudTextRegions } from '../formats/executable-text.ts';
 import { requireEntryBytes } from '../formats/payload-block.ts';
 import { VIEW_LABEL_LIMITS } from '../formats/view-labels.ts';
 import { SourceError } from '../source-error.ts';
@@ -18,7 +19,9 @@ import {
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
 import { convertGraphics, SOURCE_FIELDS, type GraphicsSource, type RecordSelector } from './convert-graphics.ts';
-import { readGraphicsDeclarations, type GraphicsDeclaration, type LayoutDeclaration } from './graphics-declarations.ts';
+import {
+  isHudTextDeclaration, readGraphicsDeclarations, type GraphicsDeclaration, type HudTextDeclaration, type LayoutDeclaration,
+} from './graphics-declarations.ts';
 import { SNIP_COLOURS } from './source-graphics.ts';
 import { stepEntryReader, stepRegionReader, type RegionReader } from './step-entry-reader.ts';
 
@@ -97,7 +100,7 @@ const ENTRY_LIMITS: Readonly<Partial<Record<GraphicsSource['type'], number>>> = 
  * What a source needs besides its entry's bytes: the relocations of a DIAG entry, the region of a SNIP or DIAG mapping,
  * or the whole entry read of an ANIM frame or the view labels.
  */
-type Extra = 'block' | 'relocations' | 'colours' | 'format' | 'archive' | 'read';
+type Extra = 'block' | 'relocations' | 'colours' | 'format' | 'archive' | 'read' | 'content';
 type WithoutBytes<Source> = Source extends unknown ? Omit<Source, Extra> : never;
 type SourceKind = WithoutBytes<GraphicsSource>;
 
@@ -187,6 +190,24 @@ async function graphicsSource({ id, kind }: GraphicsDeclaration['asset'], mappin
 }
 
 /**
+ * The HUD text from its mapping, `mappings[index]` of the step's table, whose parts must be exactly one EXE region per
+ * key the declaration names, in part order. Each region is read through the step's region reader, so it shares the
+ * executable and region reads of the step's other Assets. A failure in a region is located at its locator's place in
+ * the table followed by its key's structural path, as the rule-data step locates its regions.
+ */
+async function hudTextSource(
+  { asset: { id }, regions: keys }: HudTextDeclaration, mapping: SourceMapping, index: number, readRegion: RegionReader,
+): Promise<GraphicsSource> {
+  const locators = mapping.parts.map(({ alternatives: [locator] }) => locator);
+  if (locators.length !== keys.length || !locators.every(isRegionLocator)) {
+    throw new SourceError('invalid-declaration', `graphics[${id}].regions`, 'the mapping must have exactly one region part per declared key');
+  }
+  const regions = Object.fromEntries(keys.map((key, part) =>
+    [key, { locator: locators[part], path: `sources.mappings[${index}].parts[${part}].alternatives[0]/entries/${key}` }])) as HudTextRegions;
+  return { type: 'hud-text', content: await parseHudText(regions, readRegion) };
+}
+
+/**
  * Requires element i of every layout to be mapped to `groups/<s>/elements/<i>` of the layout's own CCKD entry and slot,
  * so the layout and its element images describe the same records.
  */
@@ -227,8 +248,9 @@ function graphicsEntryReader(source: VerifiedSource, table: SourceMappingTable):
 /**
  * Runs the graphics conversion step: verifies the mapping table, pairs each declaration with its mapping, requires
  * each layout's element images to be mapped to that layout's group elements, converts the Assets from step-shared
- * entry reads (ANIM and view label entries limited by their directory size first), and only then marks their mappings,
- * including subresource ones such as ANIM frames and the view label, verified.
+ * entry and region reads (ANIM and view label entries limited by their directory size first; the HUD text from its EXE
+ * regions, read like the SNIP colour table and the DIAG format), and only then marks their mappings, including
+ * subresource and region ones such as ANIM frames, the view label and the HUD text, verified.
  * Returns frozen locator-free results by resource group. Any failure rejects the whole step without results; read
  * failures keep their P2-02/P2-03 layer, code and location, and reads already issued stay charged to the source.
  */
@@ -250,7 +272,12 @@ export async function runGraphicsStep(
   });
   if (table.mappings.length !== checked.length) throw new SourceError('invalid-declaration', 'graphics.declarations', 'every mapped Asset must be declared');
   const sources = new Map<string, GraphicsSource>();
-  for (const { asset } of checked) sources.set(asset.id, await graphicsSource(asset, mappingById.get(asset.id)!, readEntry, readRegion));
+  for (const declaration of checked) {
+    const mapping = mappingById.get(declaration.asset.id)!;
+    sources.set(declaration.asset.id, isHudTextDeclaration(declaration)
+      ? await hudTextSource(declaration, mapping, table.mappings.indexOf(mapping), readRegion)
+      : await graphicsSource(declaration.asset, mapping, readEntry, readRegion));
+  }
   checkLayoutElements(checked, mappingById);
   const conversion = convertGraphics(checked, sources, limits, usage);
   const verified = readSourceMappingTable({ ...table, mappings: table.mappings.map(mapping => ({ ...mapping, resolution: 'verified' })) });

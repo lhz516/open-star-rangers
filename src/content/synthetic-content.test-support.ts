@@ -50,6 +50,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'model/synthetic-projectile', role: 'projectile' },
   ],
   'cockpit-hud-map': [
+    { id: 'data/synthetic-hud-text', role: 'hud-text' },
     { id: 'data/synthetic-view-labels', role: 'view-labels' },
     { id: 'font/synthetic-hud', role: 'font' },
     { id: 'image/synthetic-mfd', role: 'hud-mfd' },
@@ -129,7 +130,8 @@ export const diagnosticCodes = (result: GroupCompletenessResult | PackageComplet
 /** The roles slice definition version 4 added (P3-03 spec, 切片定义版本 4), in definition order. */
 export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
   'craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages', 'scene-settings', 'explosion-table',
-  'nebula-backgrounds', 'hit-shimmer', 'target-display', 'view-labels', 'event-sound', 'hud-sound',
+  'nebula-backgrounds', 'hit-shimmer', 'target-display', 'view-labels', 'hud-text', 'event-sound',
+  'hud-sound',
 ]);
 
 /**

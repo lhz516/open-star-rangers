@@ -7,6 +7,7 @@ import { executableRegionAt } from './production-executable.ts';
 import {
   PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS, PRODUCTION_FLIGHT_GRAPHICS_SHARE,
 } from './production-flight-graphics.ts';
+import { PRODUCTION_HUD_TEXT_DECLARATIONS, PRODUCTION_HUD_TEXT_MAPPINGS, PRODUCTION_HUD_TEXT_SHARE } from './production-hud-text.ts';
 import {
   PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_MODEL_TEXTURES, modelTextureImageId, modelTexturePaletteId,
 } from './production-model-textures.ts';
@@ -15,10 +16,11 @@ import {
 // full HI cockpit set (docs/plan/p2/05/spec.md, production Assets and sources), the P2-06 slice textures and
 // research-confirmed effect images with their embedded palettes (docs/plan/p2/06/spec.md), and the P2-07 front cockpit
 // and map frame layouts with their element images, the map palette, the HUD and map image families, the left display's
-// interference frames and the status display messages (docs/plan/p2/07/spec.md, production Assets and sources), and the
-// P3-03 flight images and view labels of production-flight-graphics.ts. Entry IDs, slots, record indices and executable
-// addresses come from the local structure checks and research recorded in P2-05/06, P2-06/04, P2-06/11, P2-07/07–09,
-// P2-07/19 and P3-03/05; they stay in original-data and never enter canonical content.
+// interference frames and the status display messages (docs/plan/p2/07/spec.md, production Assets and sources), the
+// P3-03 flight images and view labels of production-flight-graphics.ts, and the HUD text of production-hud-text.ts.
+// Entry IDs, slots, record indices and executable addresses come from the local structure checks and research recorded
+// in P2-05/06, P2-06/04, P2-06/11, P2-07/07–09, P2-07/19, P3-03/05 and P3-03/24; they stay in original-data and never
+// enter canonical content.
 
 const ARCHIVE = 'MAIN/SR.NOB';
 /** The only DATA entry (imfat §4). */
@@ -219,6 +221,7 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
   ...texImageDeclarations,
   ...COCKPIT_HUD_MAP_ASSETS.map(({ declaration }) => declaration),
   ...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS,
+  ...PRODUCTION_HUD_TEXT_DECLARATIONS,
 ]);
 
 /** Each TEX image maps to its whole record; its palette, the embedded BGR palette, is confirmed. */
@@ -239,6 +242,7 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
     ...texImageMappings,
     ...COCKPIT_HUD_MAP_ASSETS.map(asset => asset.mapping),
     ...PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings,
+    ...PRODUCTION_HUD_TEXT_MAPPINGS.mappings,
   ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
 });
 
@@ -257,11 +261,13 @@ export const PRODUCTION_COCKPIT_HUD_MAP_SHARE: BudgetRecord = Object.freeze({
 });
 
 /**
- * The approved budget share of these Assets: the P2-05 share plus the P2-06 slice texture, P2-07 cockpit, HUD and map
- * and P3-03 flight graphics shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural limits;
- * source reads keep the P2-02 default limit, so no share adds any.
+ * The approved budget share of these Assets: the P2-05 share plus the P2-06 slice texture, P2-07 cockpit, HUD and map,
+ * P3-03 flight graphics and HUD text shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural
+ * limits; source reads keep the P2-02 default limit, so no share adds any.
  */
-export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = [PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE].reduce(
+export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = [
+  PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE, PRODUCTION_HUD_TEXT_SHARE,
+].reduce(
   (total, share) => addBudgets(total, share, 'share'),
   Object.freeze({
     ...EMPTY_BUDGET_USAGE,

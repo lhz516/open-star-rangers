@@ -8,6 +8,7 @@ import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics
 import { encodeImagePayload, imagePayloadLength, maskStride } from '../../content/graphics/image-payload.ts';
 import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement } from '../../content/graphics/layout-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
+import { HUD_TEXT_SCHEMA_VERSION, encodeHudTextPayload, type HudText } from '../../content/hud/hud-text-payload.ts';
 import { STATUS_MESSAGES_SCHEMA_VERSION, encodeStatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_SCHEMA_VERSION, encodeViewLabelsPayload } from '../../content/hud/view-labels-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
@@ -120,12 +121,19 @@ interface ViewLabelsSource {
   readonly read: ArchiveEntryRead;
 }
 
+interface HudTextSource {
+  /** The HUD text, already read from the mapping's EXE regions and checked against the schema (`parseHudText`). */
+  readonly type: 'hud-text';
+  readonly content: HudText;
+}
+
 /**
  * The source bytes of one Asset, already read from its mapped entry and, for SNIP frames and DIAG, its region; ANIM
- * frames and view labels keep their whole entry read for the format readers.
+ * frames and view labels keep their whole entry read for the format readers, and the HUD text is already read from its
+ * regions.
  */
 export type GraphicsSource =
-  | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource;
+  | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource | HudTextSource;
 
 export interface ConvertedGraphic {
   readonly descriptor: AssetDescriptor;
@@ -329,6 +337,12 @@ class Conversion {
     this.#add(declaration, [], bytes, 'palette', VIEW_LABELS_SCHEMA_VERSION);
   }
 
+  /** The HUD text, charged before its payload is allocated. */
+  hudText(declaration: DataDeclaration, { content }: HudTextSource): void {
+    const bytes = encodeHudTextPayload(content, payloadBytes => this.#charge(declaration, { payloadBytes }));
+    this.#add(declaration, [], bytes, 'palette', HUD_TEXT_SCHEMA_VERSION);
+  }
+
   /** A layout of checked elements; the element images themselves are converted as images. */
   layout(declaration: LayoutDeclaration, elements: readonly LayoutElement[]): void {
     const at = `graphics[${declaration.asset.id}]`;
@@ -357,8 +371,8 @@ function reverseRows(rows: Uint8Array, rowBytes: number, height: number): Uint8A
 }
 
 /**
- * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, data (status messages
- * and view labels, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
+ * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, data (status messages,
+ * view labels and the HUD text, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
  * checked against their groups before anything is converted, so an element the group lacks
  * is reported as the layout's count mismatch rather than as its image's missing record. Every Asset is charged against
  * `limits` on top of `usage`, the conversion usage of earlier steps (never source reads), before anything sized by it
@@ -394,6 +408,7 @@ export function convertGraphics(
     else if (declaration.asset.kind === 'image') conversion.image(declaration as ImageDeclaration, source as ImageSourceOf);
     else if (declaration.asset.kind === 'font') conversion.font(declaration as FontDeclaration, source as FontSource);
     else if (source.type === 'view-labels') conversion.viewLabels(declaration as DataDeclaration, source);
+    else if (source.type === 'hud-text') conversion.hudText(declaration as DataDeclaration, source);
     else conversion.messages(declaration as DataDeclaration, source as MessagesSource);
   }
   layouts.forEach((declaration, index) => conversion.layout(declaration, layoutElements[index]));

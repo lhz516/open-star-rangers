@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { HUD_TEXT_KEYS } from '../../content/hud/hud-text-payload.ts';
 import { expectSourceError, fontDeclaration, imageDeclaration, layoutDeclaration, paletteDeclaration } from './conversion.test-support.ts';
-import { readGraphicsDeclarations, type LayoutDeclaration } from './graphics-declarations.ts';
+import { isHudTextDeclaration, readGraphicsDeclarations, type HudTextDeclaration, type LayoutDeclaration } from './graphics-declarations.ts';
 
 const validSet = () => [
   paletteDeclaration('palette/flight'),
@@ -109,22 +110,35 @@ describe('layout conversion declarations', () => {
 });
 
 describe('data conversion declarations', () => {
+  /** The HUD text keys in an order other than the schema's, as a mapping's part order would give them. */
+  const REGION_KEYS = [...HUD_TEXT_KEYS.slice(40), ...HUD_TEXT_KEYS.slice(0, 40).reverse()];
   const dataSet = () => [
     { asset: { id: 'data/hud/status-display/messages', kind: 'data' }, role: 'status-messages', group: 'cockpit-hud-map' },
     { asset: { id: 'data/hud/view-labels', kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map' },
+    { asset: { id: 'data/hud/text', kind: 'data' }, role: 'hud-text', group: 'cockpit-hud-map', regions: [...REGION_KEYS] },
   ];
 
-  it('reads the status messages and view labels data Assets', () => {
+  it('reads the status messages, view labels and HUD text data Assets, the HUD text with its regions\' keys', () => {
     const input = dataSet();
     const declarations = readGraphicsDeclarations(input);
     expect(declarations).toEqual(input);
     expect(declarations.every(Object.isFrozen)).toBe(true);
+    expect(declarations.map(isHudTextDeclaration)).toEqual([false, false, true]);
+    expect(Object.isFrozen((declarations[2] as HudTextDeclaration).regions)).toBe(true);
   });
 
   it.each<[string, Mutation, string]>([
     ['another data role', set => { set[1].role = 'view-label'; }, 'graphics.declarations[1].role'],
     ['an extra field', set => { set[1].palette = 'palette/flight'; }, 'graphics.declarations[1]'],
     ['a group that does not own data', set => { set[1].group = 'audio'; }, 'graphics.declarations[1].group'],
+    ['regions on another data role', set => { set[1].regions = [...REGION_KEYS]; }, 'graphics.declarations[1]'],
+    ['HUD text without regions', set => { delete set[2].regions; }, 'graphics.declarations[2].regions'],
+    ['HUD text regions that are not an array', set => { set[2].regions = {}; }, 'graphics.declarations[2].regions'],
+    ['a region of an unknown key', set => { (set[2].regions as string[])[5] = 'targetName'; }, 'graphics.declarations[2].regions[5]'],
+    ['a region of an inherited key', set => { (set[2].regions as string[])[5] = 'toString'; }, 'graphics.declarations[2].regions[5]'],
+    ['a key named twice', set => { (set[2].regions as string[])[63] = REGION_KEYS[0]; }, 'graphics.declarations[2].regions[63]'],
+    ['a key left out', set => { (set[2].regions as string[]).pop(); }, 'graphics.declarations[2].regions'],
+    ['one region more', set => { (set[2].regions as string[]).push('targetNone'); }, 'graphics.declarations[2].regions[64]'],
   ])('rejects %s as invalid-declaration', (_, mutate, location) => {
     const set = dataSet() as Record<string, unknown>[];
     const value = mutate(set) ?? set;

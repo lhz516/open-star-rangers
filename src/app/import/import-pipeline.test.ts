@@ -18,6 +18,7 @@ import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/productio
 import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_FLIGHT_DATA_USAGE } from '../../original-data/conversion/flight-data.test-support.ts';
 import { FLIGHT_GRAPHICS_USAGE } from '../../original-data/conversion/production-flight-graphics.test-support.ts';
+import { HUD_TEXT_USAGE } from '../../original-data/conversion/production-hud-text.test-support.ts';
 import { PRODUCTION_SOUND_USAGE } from '../../original-data/conversion/production-sounds.test-support.ts';
 import { defaultScenarioSpec, syntheticScenario } from '../../original-data/formats/formats.test-support.ts';
 import type { VerifiedSource } from '../../original-data/source/open-verified-source.ts';
@@ -228,10 +229,11 @@ describe('graphics conversion over a structured-clone channel', () => {
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     // With no bound craft model, the models group is incomplete: no craft roles. The P2-05 palette and fonts with the
-    // production cockpit, HUD and map Assets and the P3-03 target display and view labels complete the cockpit-hud-map group.
+    // production cockpit, HUD and map Assets, the P3-03 target display with its palette and view labels, and the HUD text
+    // complete the cockpit-hud-map group.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
-      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + 3, diagnostics: [] },
+      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + 3 + HUD_TEXT_USAGE.assets, diagnostics: [] },
       { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
     ]);
     expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
@@ -252,9 +254,10 @@ describe('graphics conversion over a structured-clone channel', () => {
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
-      // The status display messages and the view labels are mapped first; the fonts after them name the missing CCKD entry.
+      // The status display messages, the HUD text and the view labels are mapped first; the fonts after them name the
+      // missing CCKD entry.
       ['convert-graphics', createImportJob(withoutCockpit.open), withoutCockpit.files,
-        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[2].parts[0].alternatives[0]' }],
+        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[3].parts[0].alternatives[0]' }],
       // Opening the archive again resolves its path from the root directory, the first sector the graphics stage reads.
       ['convert-graphics', createImportJob(failingAfterIdentification(complete.open)), complete.files, { layer: 'disc', code: 'read-failed', location: 'image:lba 18' }],
       ['convert-graphics', createImportJob(brokenFont.open), brokenFont.files,

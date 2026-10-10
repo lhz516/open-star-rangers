@@ -77,7 +77,7 @@ const FLIGHT_GRAPHICS: ReadonlySet<string> = new Set(PRODUCTION_FLIGHT_GRAPHICS_
 
 /**
  * The budget scenarios' graphics step: the production graphics without the layouts, the two 8×8 fonts, the status
- * display messages and the P3-03 flight graphics, with the payload share replaced by `payloadBytes`, and no logic step
+ * display messages, the HUD text and the P3-03 flight graphics, with the payload share replaced by `payloadBytes`, and no logic step
  * or model, on the disc of
  * `scenario`. Palettes, images and fonts are charged in that order, each in Asset ID order, so the 4×6 font is charged
  * last, and its table is read only after its charge. Without logic and model shares the job's payload limit is `payloadBytes`, and the graphics step

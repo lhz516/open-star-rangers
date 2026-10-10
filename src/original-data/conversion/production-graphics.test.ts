@@ -22,6 +22,8 @@ import {
   PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS, PRODUCTION_FLIGHT_GRAPHICS_SHARE,
 } from './production-flight-graphics.ts';
 import { FLIGHT_GRAPHICS_USAGE, productionFlightGraphicsEntries } from './production-flight-graphics.test-support.ts';
+import { HUD_TEXT_ASSET, PRODUCTION_HUD_TEXT_DECLARATIONS, PRODUCTION_HUD_TEXT_MAPPINGS, PRODUCTION_HUD_TEXT_SHARE } from './production-hud-text.ts';
+import { HUD_TEXT_USAGE } from './production-hud-text.test-support.ts';
 import {
   PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE,
 } from './production-graphics.ts';
@@ -30,9 +32,12 @@ import {
 } from './production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURE_SHARE } from './production-model-textures.ts';
 
-/** The P3-03 flight graphics the production tables append; production-flight-graphics.test.ts checks them. */
+/**
+ * The P3-03 flight graphics and HUD text the production tables append; production-flight-graphics.test.ts and
+ * production-hud-text.test.ts check them.
+ */
 const FLIGHT = new Set<string>(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings.map(({ asset }) => asset.id));
-const notFlight = (id: string) => !FLIGHT.has(id);
+const notFlight = (id: string) => !FLIGHT.has(id) && id !== HUD_TEXT_ASSET.id;
 
 describe('production graphics', () => {
   it('declares the five P2-05 Assets with their roles, groups, font cells and the hud §1.1 character maps', () => {
@@ -59,9 +64,9 @@ describe('production graphics', () => {
     ]);
   });
 
-  it('declares exactly the P2-07 cockpit, HUD and map Assets of the spec production table after the P2-05 and texture families, then the P3-03 flight graphics', () => {
+  it('declares exactly the P2-07 cockpit, HUD and map Assets of the spec production table after the P2-05 and texture families, then the P3-03 flight graphics and HUD text', () => {
     expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(COCKPIT_HUD_MAP_START, COCKPIT_HUD_MAP_START + 96)).toEqual(COCKPIT_HUD_MAP.map(({ declaration }) => declaration));
-    expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(COCKPIT_HUD_MAP_START + 96)).toEqual(PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS);
+    expect(PRODUCTION_GRAPHICS_DECLARATIONS.slice(COCKPIT_HUD_MAP_START + 96)).toEqual([...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, ...PRODUCTION_HUD_TEXT_DECLARATIONS]);
     const kinds = COCKPIT_HUD_MAP.map(({ declaration }) => declaration.asset.kind);
     expect(['layout', 'image', 'palette', 'data'].map(kind => kinds.filter(item => item === kind).length)).toEqual([2, 92, 1, 1]);
     // The front-cockpit, strategic-map and hud-mfd slice roles, and the element, map palette and messages roles outside the slice definition.
@@ -110,21 +115,22 @@ describe('production graphics', () => {
     expect(new Set(mappings.filter(({ asset }) => cockpitIds.has(asset.id)).map(({ confidence }) => confidence))).toEqual(new Set(['confirmed', 'likely']));
     const diagnostics = diagnoseSourceMappings(PRODUCTION_GRAPHICS_MAPPINGS, mappings.map(({ asset }) => asset));
     // Every declared mapping is only unverified until the job verifies it; none is unconfirmed.
-    expect(diagnostics.map(({ code }) => code)).toEqual(new Array(39 + 96 + FLIGHT.size).fill('source-unverified'));
+    expect(diagnostics.map(({ code }) => code)).toEqual(new Array(39 + 96 + FLIGHT.size + 1).fill('source-unverified'));
     expect(mappings.filter(({ asset }) => FLIGHT.has(asset.id))).toEqual(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings);
+    expect(mappings.filter(({ asset }) => asset.id === HUD_TEXT_ASSET.id)).toEqual(PRODUCTION_HUD_TEXT_MAPPINGS.mappings);
   });
 
-  it('exports the approved P2-05, slice texture, P2-07 and P3-03 flight shares as the graphics step share, each bounding its payloads', () => {
+  it('exports the approved P2-05, slice texture, P2-07, P3-03 flight and HUD text shares as the graphics step share, each bounding its payloads', () => {
     expect(PRODUCTION_MODEL_TEXTURE_SHARE).toEqual({ ...EMPTY_BUDGET_USAGE, assets: 40, dependencyEdges: 64, paletteEntries: 1_024, imagePixels: 524_288, payloadBytes: 655_360 });
     expect(PRODUCTION_COCKPIT_HUD_MAP_SHARE).toEqual({
       ...EMPTY_BUDGET_USAGE, assets: 112, dependencyEdges: 192, imagePixels: 655_360, paletteEntries: 1_024, glyphs: 0, payloadBytes: 917_504,
     });
     const p205Share = { ...EMPTY_BUDGET_USAGE, assets: 5, paletteEntries: 512, glyphs: 768, payloadBytes: 16_384 };
-    expect(PRODUCTION_GRAPHICS_SHARE).toEqual([PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE]
+    expect(PRODUCTION_GRAPHICS_SHARE).toEqual([PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE, PRODUCTION_HUD_TEXT_SHARE]
       .reduce((total, share) => addBudgets(total, share), p205Share));
     expect(PRODUCTION_GRAPHICS_SHARE).toEqual({
-      ...EMPTY_BUDGET_USAGE, assets: 5 + 40 + 112 + 512, dependencyEdges: 64 + 192 + 512, paletteEntries: 512 + 1_024 + 1_024 + 512, glyphs: 768,
-      imagePixels: 524_288 + 655_360 + 4_194_304, payloadBytes: 16_384 + 655_360 + 917_504 + 4_194_304,
+      ...EMPTY_BUDGET_USAGE, assets: 5 + 40 + 112 + 512 + 2, dependencyEdges: 64 + 192 + 512, paletteEntries: 512 + 1_024 + 1_024 + 512, glyphs: 768,
+      imagePixels: 524_288 + 655_360 + 4_194_304, payloadBytes: 16_384 + 655_360 + 917_504 + 4_194_304 + 4_096,
     });
     const p205Bound = 2 * palettePayloadLength(GRAPHICS_LIMITS.paletteEntryCount)
       + 3 * fontPayloadLength(GRAPHICS_LIMITS.glyphCount, GRAPHICS_LIMITS.fontHeight, GRAPHICS_LIMITS.charMapEntries);
@@ -169,9 +175,10 @@ describe('production graphics', () => {
       ['models', ['image/missile', ...images, 'palette/flight/models', 'palette/missile', ...palettes]],
       ['cockpit-hud-map', cockpitHudMap.map(({ id }) => id)],
     ]);
-    // The flight graphics join their declared groups.
-    expect(result.groups.flatMap(({ group, descriptors }) => descriptors.filter(({ id }) => FLIGHT.has(id)).map(({ id }) => `${group}:${id}`)).sort())
-      .toEqual(PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.map(({ group, asset }) => `${group}:${asset.id}`).sort());
+    // The flight graphics and the HUD text join their declared groups, the HUD text verified with its unknowns.
+    expect(result.groups.flatMap(({ group, descriptors }) => descriptors.filter(({ id }) => !notFlight(id)).map(({ id }) => `${group}:${id}`)).sort())
+      .toEqual([...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, ...PRODUCTION_HUD_TEXT_DECLARATIONS].map(({ group, asset }) => `${group}:${asset.id}`).sort());
+    expect(result.groups[1].sources.find(({ id }) => id === HUD_TEXT_ASSET.id)).toEqual({ id: HUD_TEXT_ASSET.id, state: 'verified', unknowns: ['U-026', 'U-030'] });
     const states = result.groups.flatMap(({ sources }) => sources.filter(({ id }) => notFlight(id)).map(({ id, state, unknowns }) => `${id}:${state}:${unknowns.join()}`));
     expect(states).toEqual([
       'image/missile:verified:U-027,U-028',
@@ -196,13 +203,14 @@ describe('production graphics', () => {
       .toEqual(['palette/missile', ...palettes].map(id => [id, []]));
     const payloadBytes = result.groups.flatMap(({ payloads }) => payloads).reduce((total, { bytes }) => total + bytes.length, 0);
     expect(result.usage).toEqual({
-      ...EMPTY_BUDGET_USAGE, assets: 5 + MODEL_TEXTURE_USAGE.assets + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_GRAPHICS_USAGE.assets,
+      ...EMPTY_BUDGET_USAGE, assets: 5 + MODEL_TEXTURE_USAGE.assets + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_GRAPHICS_USAGE.assets + HUD_TEXT_USAGE.assets,
       dependencyEdges: MODEL_TEXTURE_USAGE.dependencyEdges + COCKPIT_HUD_MAP_USAGE.dependencyEdges + FLIGHT_GRAPHICS_USAGE.dependencyEdges,
       paletteEntries: 512 + MODEL_TEXTURE_USAGE.paletteEntries + COCKPIT_HUD_MAP_USAGE.paletteEntries + FLIGHT_GRAPHICS_USAGE.paletteEntries, glyphs: 256 + 256 + 192,
       imagePixels: MODEL_TEXTURE_USAGE.imagePixels + COCKPIT_HUD_MAP_USAGE.imagePixels + FLIGHT_GRAPHICS_USAGE.imagePixels, payloadBytes,
     });
     expect(result.groups.flatMap(({ payloads }) => payloads).filter(({ id }) => FLIGHT.has(id)).reduce((total, { bytes }) => total + bytes.length, 0))
       .toBe(FLIGHT_GRAPHICS_USAGE.payloadBytes);
+    expect(result.groups.flatMap(({ payloads }) => payloads).find(({ id }) => id === HUD_TEXT_ASSET.id)!.bytes).toHaveLength(HUD_TEXT_USAGE.payloadBytes);
     expect(COCKPIT_HUD_MAP_USAGE).toMatchObject({ assets: 96, dependencyEdges: 92 + 4 + 4, paletteEntries: 256 });
     // An image and its palette subresource share the one read of their TEX entry; the fonts, both layouts, their
     // elements and the map palette share the one read of the CCKD entry; the nine frames the one read of the SNIP.

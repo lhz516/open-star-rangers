@@ -20,6 +20,7 @@ import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/producti
 import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_FLIGHT_DATA_USAGE } from '../src/original-data/conversion/flight-data.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS } from '../src/original-data/conversion/production-flight-graphics.ts';
+import { HUD_TEXT_USAGE } from '../src/original-data/conversion/production-hud-text.test-support.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
 import type { BudgetRecord } from '../src/content/budget.ts';
 import { validateGroup, type GroupInput } from '../src/content/completeness.ts';
@@ -32,6 +33,8 @@ import {
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 /** The P3-03 flight graphics of the cockpit-hud-map group: the target display image, its palette and the view labels. */
 const FLIGHT_COCKPIT_ASSETS = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
+/** The cockpit-hud-map group of a production graphics disc: the P2-05 palette and fonts, the P2-07 Assets, the flight graphics and the HUD text. */
+const COCKPIT_ASSETS = 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS + HUD_TEXT_USAGE.assets;
 
 /**
  * The models group of the slice disc: the flight palette, the textures, the flight images of the group, the bound
@@ -279,7 +282,7 @@ test('test entry converts the production graphics and sounds after identificatio
     'running:convert-logic:identified', 'running:convert-audio:identified', 'running:convert-models:identified', 'finished',
   ]);
   expect(final.groups.map(({ group, status }) => [group, status])).toEqual([['models', 'incomplete'], ['cockpit-hud-map', 'group-complete'], ['audio', 'group-complete']]);
-  expect(final.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS, diagnostics: [] });
+  expect(final.groups[1]).toEqual({ group: 'cockpit-hud-map', status: 'group-complete', assets: COCKPIT_ASSETS, diagnostics: [] });
   expect(final.groups[2]).toEqual({ group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] });
   expect(final.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: final.usage.sourceReadBytes });
   const reads = observed.flatMap(snapshot => (snapshot.status === 'running' ? [snapshot.readBytes] : []));
@@ -407,7 +410,7 @@ test('test entry converts the models after the audio stage, and the receiver val
   expect(final.groups).toEqual([
     { group: 'logic', status: 'group-complete', assets: 3 + RULE_DATA_USAGE.assets, diagnostics: [] },
     { group: 'models', status: 'group-complete', assets: MODELS_ASSETS, diagnostics: [] },
-    { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS, diagnostics: [] },
+    { group: 'cockpit-hud-map', status: 'group-complete', assets: COCKPIT_ASSETS, diagnostics: [] },
     { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
   ]);
   // The models manifest the owner received is the one Node sent: the flight palette, the textures, the flight images,
