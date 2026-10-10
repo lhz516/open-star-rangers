@@ -89,7 +89,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 |---|---|---|
 | [01-flight-context-keys-research.md](./subtasks/01-flight-context-keys-research.md) | — | in-progress |
 | [02-other-context-keys-research.md](./subtasks/02-other-context-keys-research.md) | — | completed |
-| [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | in-progress |
+| [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | completed |
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | pending |
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | pending |
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
