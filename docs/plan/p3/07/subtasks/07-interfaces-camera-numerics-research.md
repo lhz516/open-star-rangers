@@ -49,6 +49,7 @@ updated: 2026-10-09
 - `docs/original/formats/hud.md`：左显示屏页面与资源满刻度。
 - `docs/original/formats/textures.md`：EXPL/ANIM 的生命周期规则。
 - `docs/original/formats/mesh.md`：第 1 列表部件的元数据用途。
+- `docs/original/formats/audio.md`：02、04 发现的呈现项更正（11381 的投递条件、slot 2 的作弊例外、slot 3/4 的受击标志含义）。
 - `docs/original/unknowns.md`：U-008、U-009、U-022、U-027 与 U-011、U-031 的交接记录（负责阶段不改）。
 - `local/research/p3-07/interfaces/**`：Ghidra 脚本、输出与私有项目副本（被忽略）。
 
