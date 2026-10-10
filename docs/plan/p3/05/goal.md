@@ -95,7 +95,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | in-progress |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
-| [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | in-progress |
+| [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
 | [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | blocked |
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | in-progress |
