@@ -99,7 +99,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | completed |
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | pending |
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | pending |
-| [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | in-progress |
+| [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | completed |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -123,6 +123,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 12 完成（交 13、15）：** 每个旧用例的去向见 12 的完成证据。`ORIGINAL_RIGHTS_BOUNDARY` 改为 “This independent project is not original gameplay or an officially authorized product.”，其余声明不变。`expectNoPlayClaim` 改为：去掉任务骨架说明自身的措辞后不得声称可玩，开始入口只在 `data-eligibility="eligible"` 时可用且说明含骨架文字；`browser-test.ts` 测试后检查的意外失败 ID 改为 `cleanup-failure`、`open-mission-failure`、`mission-open-failure`、`mission-action-error`、`mission-placeholder-failure`。`image-observations.ts` 去掉 `image()`，`verifyLayout` 读取 `viewer-view`。11 必须先于 12 集成（12 删除了 11 迁移前仍导入的导出），已按此次序集成。交 15：工程 README 的生产预览小节（菜单、导入页面与任务流程无 CSP 违规；产物与 source map 来源也不含开发诊断、帧计时、文件保存与下载、app-version 与演示链）与 WebGL 降级小节（降级改在查看器上核对，任务流程没有 canvas）；`source-structure.md` 第 399 行描述 interaction-render（只用键盘的任务流程、任务画面与查看器的同所有者 resize）、browser-replay（正式 `replayRecord`）与 webgl-unavailable（查看器降级）的新验收面。
 - **2026-10-10 — 14 完成（交 15、17）：** 本地真实内容在开发构建中重新导入（四组 complete），带僚机与不带僚机各一次正式运行，玩家 1 个、种类位 1 的对象 1/0 个、tick 前进；两份导出录制经生产 CLI 与同一 CloneCD 文件组核对一致（退出码 0）。私有输出只在 `local/research/p3-04/`。AC-20 的 R-13 控制子集与 L-01、L-02、L-10 流程部分的结论、依据与差异见 14 的完成证据。交 15：工具指南可引用 14 的 AC-17 行作为 CLI 的真实内容成功路径。
 - **2026-10-10 — 12 集成后的完整 E2E 与修复子任务 18（协调者决定，用户已预先同意新增解除阻塞的子任务）：** 在 goal 分支 `35b68ce6` 上运行完整 `pnpm test:e2e`（development、production、development-headed）：192 个通过，4 个失败。`audio-playback.spec.ts` 的 1 个失败（释放后仍有一个 `ended` 监听）在当时负载下出现，单独重跑 3 次都通过，记为负载抖动，由 17 的完整运行复核。`failure-worker-cancel.development.spec.ts` 的 3 个 F-12 用例因 09 引入的开发期顶层 `await import()` 推迟了测试入口的模块求值，在入口设置 `window.osrTestEntry` 之前读取而失败，不在任何既有子任务的写入范围内。新增修复子任务 18（`openTestEntry` 等待入口首次渲染），13 的验收要求 `pnpm test:e2e` 全部通过，因此 13 增加对 18 的依赖，17 依赖 18。
+- **2026-10-10 — 18 完成（交 13、17）：** `openTestEntry` 在 `page.goto` 之后以 `page.locator('#root > *').first().waitFor({ state: 'attached' })` 等待入口首次渲染（工具世界，不注入主世界轮询）；F-12 用例修复前可复现 3 个失败，修复后连续 3 次 14/14 通过，`pnpm test:e2e --project=development` 158/158 通过。用例文件未改。
 
 ## 审批
 

@@ -37,9 +37,9 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] `pnpm test:e2e e2e/failure-worker-cancel.development.spec.ts --project=development` 全部通过，含 3 个 F-12 用例；连续运行 3 次稳定。
-- [ ] 所有调用 `openTestEntry` 的开发用例（含资源平衡、探针契约与任务流程用例）通过，资源平衡基线不受等待影响。
-- [ ] `pnpm check` 通过。
+- [x] `pnpm test:e2e e2e/failure-worker-cancel.development.spec.ts --project=development` 全部通过，含 3 个 F-12 用例；连续运行 3 次稳定。
+- [x] 所有调用 `openTestEntry` 的开发用例（含资源平衡、探针契约与任务流程用例）通过，资源平衡基线不受等待影响。
+- [x] `pnpm check` 通过。
 
 ## 验证方法
 
@@ -47,3 +47,12 @@ updated: 2026-10-10
 - 不适用原版对照。
 
 ## 完成证据
+
+- **复现（修复前，本 worktree，基线 `d5885b3c`）：** `OSR_E2E_DEV_PORT=5154 OSR_E2E_PREVIEW_PORT=5155 pnpm test:e2e e2e/failure-worker-cancel.development.spec.ts --project=development`：11 个通过、3 个失败，正是 F-12 late restore、late commit、late listing，均在 `openModels` 读取 `window.osrTestEntry!.profile` 时报 `Cannot read properties of undefined (reading 'profile')`。
+- **修复：** [app-entry.ts](../../../../../e2e/support/app-entry.ts) 的 `openTestEntry` 在 `page.goto` 之后以 `page.locator('#root > *').first().waitFor({ state: 'attached' })` 等待入口首次渲染。`app.html` 的 `#root` 初始为空，入口先设置 `window.osrTestEntry` 再 `createRoot(...).render`，`App` 首次渲染总是输出 `<main>`，因此 `#root` 出现子元素即说明入口已就绪。纯 CSS 选择器在 Playwright 的工具世界中轮询，重试间隔由 Playwright 服务端计时，不经过页面主世界的 `addEventListener`、`requestAnimationFrame` 与 `setTimeout`，资源平衡与探针看不到这次等待。生产代码、查询键和其他用例的断言均未改动；`failure-worker-cancel.development.spec.ts` 不需要修改。
+- **F-12 用例（修复后）：** 同一命令连续运行 3 次，每次 14 个全部通过（各约 1.0 分钟）。
+- **全部开发用例：** `OSR_E2E_DEV_PORT=5154 OSR_E2E_PREVIEW_PORT=5155 pnpm test:e2e --project=development`：158 个全部通过（9.4 分钟），包括所有调用 `openTestEntry` 的用例（资源平衡、探针契约、任务流程、Fast Refresh、导入页、查看器、缓存恢复与失败矩阵）。
+- **`pnpm check`：** 通过（245 个测试文件、6980 个测试，生产构建成功）。
+- **rubber-duck：** 未发现阻塞或非阻塞问题。核对了就绪顺序（`#root` 初始为空，`osrTestEntry` 先于渲染，`App` 没有渲染为空的初始路径）、Playwright 1.63 的 `waitFor` 对纯 CSS 选择器使用工具世界、各调用者的基线（`importFiles`、Fast Refresh 和 late listing 在基线前另有等待），以及超时由测试超时约束。
+- **simplify：** 改动只有一条定位器等待，未找到可复用的既有就绪等待；等待放在共用的 `openTestEntry` 中，覆盖全部调用者，层级合适，无需清理。
+- **文档影响：** [工程约定](../../../../engineering/README.md)的 P2-11 测试入口条目说明用例经 `app-entry.ts` 打开，仍然准确；就绪等待属于该辅助函数的内部行为，不需要更新文档。

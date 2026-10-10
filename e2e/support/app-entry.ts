@@ -49,9 +49,15 @@ export const heldCacheResults = (page: Page, operation: HeldCacheOperation): Pro
 export const releaseCacheResults = (page: Page, operation: HeldCacheOperation): Promise<number> =>
   page.evaluate(name => window.osrTestEntry!.cache.release(name), operation);
 
+/**
+ * Opens the test entry and waits for its first render, which follows `window.osrTestEntry`. The entry's development-only
+ * top-level `await import()`s (P3-04 subtask 09) let its evaluation finish after the load event `page.goto` waits for.
+ * The locator polls in Playwright's utility world, so the page's own registrations stay unchanged.
+ */
 export async function openTestEntry(page: Page, options: TestEntryOptions = {}): Promise<void> {
   const query = new URLSearchParams(Object.entries(options).filter((entry): entry is [string, string] => entry[1] !== undefined));
   await page.goto(`/e2e/entries/app.html${query.size > 0 ? `?${query}` : ''}`);
+  await page.locator('#root > *').first().waitFor({ state: 'attached' });
 }
 
 /**
