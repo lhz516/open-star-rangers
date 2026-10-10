@@ -101,7 +101,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | completed |
 | [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | completed |
 | [19-audio-test-readiness.md](./subtasks/19-audio-test-readiness.md) | — | completed |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19 | in-progress |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -130,6 +130,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 16 完成（交 17）：** 86 份历史文档中的 420 个链接目标改指退役记录（414 个被删路径分别指向 R1–R8，6 个改名锚点指向 R10），文字与链接数不变；按 ADR-0015 的先例删除 9 个已过期的 `reviewed:` 标记（P1-07、P1-08、P1-09、P1-10、P2-04、P2-09、P2-11、P3-02 与本任务 spec，改写前就已与 spec 摘要不符），批准记录不变；29 个任务的路由除指纹外与改写前相同。全仓库链接与锚点检查由 453 降为 33 个失败，剩余 33 个都是改写前就存在且与本 goal 无关的失效（STATUS 的两个锚点 ×7、mesh/textures 锚点 ×5、skill 模板占位 ×9、p2/13 子任务 07 ×12），列为残余。
 - **2026-10-10 — 17 第一次最终对齐未通过，新增修复子任务 19：** 16 集成后（代码与 `eaa3b061` 相同）的完整 `pnpm test:e2e` 为 195/196，唯一失败是 `audio-playback.spec.ts` 释放后残留活动的 `ended` 监听（13 时曾记为负载抖动）。协调者在同一机器上以临时 worktree 交替对照（每批 `--repeat-each 10`）：基线 `bb639ef` 90/90 通过，goal 分支 83/90；去掉 11 的计时器探针仍失败，去掉 09 的开发期顶层 `await import()` 后 60/60，在 `withAudioTargets` 的载入等待中加入应用首次渲染后 90/90。因此这是本 goal 引入的回归，不是负载抖动（更正 13 完成记录中的判断），根因与 18 相同。按最终对齐的规则，17 回到 pending，新增修复子任务 19（只改 `e2e/support/audio-playback.ts` 的载入等待），17 依赖 19。其余最终对齐核对（`pnpm check`、`pnpm check:compliance`、`git grep`、元数据与链接、Core 未改、生产产物不含开发诊断）在 19 之后重新运行。
 - **2026-10-10 — 19 完成（交 17）：** `withAudioTargets` 的载入等待加上 `#root > *`。残留的活动 `ended` 是 React 根在 `#root` 上的常驻捕获监听（分组 `react`）：在 09 的顶层 `await` 下 `createRoot` 可能晚于 `setUpAudioPage` 记录 `listenersFrom`，因而被计入；不是产品泄漏。修复前 84/90，修复后连续 3 批 90/90，headed 隐藏用例 5/5（该用例在 development 项目中自行启动有界面的 Chrome；`development-headed` 项目只匹配 native-lifecycle，子任务验收中的项目名按此理解），`pnpm check` 通过。
+- **2026-10-10 — 17 第二轮最终对齐通过，goal 完成：** 19 集成后重新核对，全部 S 与 AC 都有当前证据，不变量与原版隔离通过；`pnpm check`（213 个文件、6,268 个测试与构建）、完整 `pnpm test:e2e`（196 项）、`pnpm check:compliance` 与 `pnpm check:original`（无发现）通过。残余与披露见 17 的完成证据。没有 `exec-p3-04-*` 分支或 worktree 残留。
 
 ## 审批
 
