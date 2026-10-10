@@ -347,6 +347,21 @@ describe('rule-data inputs (CR-01): semantic checks', () => {
     expectAccepted(worldInput({ craftInfo: craftInfoWith((info) => void info.guns.push(gun({ at24: -1 }) as never)) }));
   });
 
+  it('rejects the guidance times of reachable missiles that the first callback would fault on (P3-07/24)', () => {
+    const missiles = (change: (info: CraftInfoDraft) => void) => worldInput({ craftInfo: craftInfoWith(change) });
+    // +0x44 is the one guidance time the content reads as an i32, so the one that can be negative.
+    expectAccepted(missiles((info) => Object.assign(info.missiles[1], { at44: 0, at48: 0, at54: 0 })));
+    expectAccepted(missiles((info) => Object.assign(info.missiles[1], { at44: 0x7fffffff, at48: 0x7fffffff, at54: 0xffffffff, at58: -0x8000_0000 })));
+    expectRejected(missiles((info) => void (info.missiles[1].at44 = -1)), `${CRAFT_INFO}.missiles[1].at44`, 'must not be negative, as it is the lifetime');
+    expectRejected(missiles((info) => void (info.missiles[1].at44 = -0x8000_0000)), `${CRAFT_INFO}.missiles[1].at44`, 'must not be negative');
+    // The content reader already holds +0x48 non-negative, +0x54 to u32 and +0x58 to i32.
+    expectRejected(missiles((info) => void (info.missiles[1].at48 = -1)), `${CRAFT_INFO}.missiles[1].at48`, undefined, ContentContractError);
+    expectRejected(missiles((info) => void (info.missiles[1].at54 = -1)), `${CRAFT_INFO}.missiles[1].at54`, undefined, ContentContractError);
+    expectRejected(missiles((info) => void (info.missiles[1].at58 = 2 ** 31)), `${CRAFT_INFO}.missiles[1].at58`, undefined, ContentContractError);
+    // Missile 0 is on no mount.
+    expectAccepted(missiles((info) => void (info.missiles[0].at44 = -1)));
+  });
+
   it('rejects i32 overflow of the hull and the resources at an instantiable record\'s percentages', () => {
     const record = 'input.mission.content.declarations[3]';
     const hull = worldInput({ craftInfo: craftInfoWith((info) => void (info.craft[7].at9C = 0x7fffffff)) });
@@ -380,8 +395,8 @@ describe('static rule data (CR-01)', () => {
     const { ruleData } = create(worldInput());
     // Both guns are mounted by the player, missile 1 only.
     expect(ruleData.guns).toEqual([{ range: 1.5625, rangeSquared: 2.44140625 }, { range: 1.5625, rangeSquared: 2.44140625 }]);
-    // Missile 1: lifetime −11 × 1/64 × body 1's +0xB8 64 = −11; fuse 1.75² = 3.0625.
-    expect(ruleData.missiles).toEqual([null, { range: -11, rangeSquared: 121, fuseRadiusSquared: 3.0625 }]);
+    // Missile 1: lifetime 320 × 1/64 × body 1's +0xB8 64 = 320; fuse 1.75² = 3.0625.
+    expect(ruleData.missiles).toEqual([null, { range: 320, rangeSquared: 102_400, fuseRadiusSquared: 3.0625 }]);
     expect(ruleData.craft.map((craft, kindBit) => (craft === null ? null : kindBit)).filter((kindBit) => kindBit !== null)).toEqual([0, 7, 8, 14, 17]);
     const player = ruleData.craft[0]!;
     // Boxes (−1, −2, −3)–(1, 2, 3) and (−5, −5, −5)–(0, 0, 0): r = √75, the inner box from +0x2C.

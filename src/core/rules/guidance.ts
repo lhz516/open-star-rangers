@@ -54,12 +54,24 @@ export type MissileEntity = Entity & { readonly combat: MissileCombat };
 export type GuidanceRecord = Pick<MissileRecord, 'at44' | 'at48' | 'at54' | 'at58'>;
 
 /**
+ * The first field of G's record that initialGuidance cannot take, or null: the times +0x44, +0x48 and +0x54 must be
+ * clocks (non-negative safe integers) and the interval +0x58 an i32. The original adds a negative time as a u32, so a
+ * negative lifetime ends the missile at once; the project does not reproduce that. World creation rejects a reachable
+ * missile record this names (docs/plan/p3/02/spec.md, CR-01 check 5), so no missile of a created world faults here.
+ */
+export function invalidGuidanceField(record: GuidanceRecord): keyof GuidanceRecord | null {
+  for (const field of ['at44', 'at48', 'at54'] as const) if (!isClock(record[field])) return field;
+  return toInt32(record.at58) === record.at58 ? null : 'at58';
+}
+
+/**
  * G as the first callback writes it, with relative times: lifetime +0x44, arming +0x48, the fuse radius squared +0x50
  * (`fuseRadiusSquared`, the load transform's (+0x4C)²), detonation +0x54, check interval +0x58; phase 0, next check 0.
- * A time that is no clock (negative) or an interval outside i32 is a fault.
+ * A record invalidGuidanceField names, or a fuse radius squared that is no finite f32, is a fault.
  */
-export function initialGuidance({ at44, at48, at54, at58 }: GuidanceRecord, fuseRadiusSquared: number): MissileGuidance {
-  if (![at44, at48, at54].every(isClock) || toInt32(at58) !== at58 || !isFiniteFloat32(fuseRadiusSquared)) throw fault('record');
+export function initialGuidance(record: GuidanceRecord, fuseRadiusSquared: number): MissileGuidance {
+  if (invalidGuidanceField(record) !== null || !isFiniteFloat32(fuseRadiusSquared)) throw fault('record');
+  const { at44, at48, at54, at58 } = record;
   return { phase: 0, lifetimeClock: at44, armClock: at48, fuseRadiusSquared, detonationClock: at54, checkInterval: at58, nextCheckClock: 0 };
 }
 

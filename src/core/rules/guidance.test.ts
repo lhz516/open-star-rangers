@@ -6,8 +6,8 @@ import {
 import { entityInit, expectFault } from '../world/world.test-support.ts';
 import type { CollisionShape, ShapeBox } from './collision-shapes.ts';
 import {
-  advanceGuidance, blastDamage, blastHits, blastShake, checkFuse, initialGuidance, initialHoming, isBlastVictim, isOwnerSide, type FuseScene,
-  type MissileEntity, type UnguidedCheckInterval,
+  advanceGuidance, blastDamage, blastHits, blastShake, checkFuse, initialGuidance, initialHoming, invalidGuidanceField, isBlastVictim, isOwnerSide,
+  type FuseScene, type MissileEntity, type UnguidedCheckInterval,
 } from './guidance.ts';
 import { scriptedRand } from './rand.test-support.ts';
 
@@ -59,11 +59,23 @@ describe('the guidance block of the first callback', () => {
   });
 
   it.each([
-    ['a negative lifetime', { at44: -1, at48: 0, at54: 0, at58: 0 }],
-    ['a negative arming delay', { at44: 0, at48: -1, at54: 0, at58: 0 }],
-    ['an interval beyond i32', { at44: 0, at48: 0, at54: 0, at58: 2 ** 31 }],
-  ])('faults on %s', (_, record) => {
+    ['a negative lifetime', { at44: -1, at48: 0, at54: 0, at58: 0 }, 'at44'],
+    ['a negative arming delay', { at44: 0, at48: -1, at54: 0, at58: 0 }, 'at48'],
+    ['a negative detonation delay', { at44: 0, at48: 0, at54: -1, at58: 0 }, 'at54'],
+    ['a fractional lifetime', { at44: 0.5, at48: 0, at54: 0, at58: 0 }, 'at44'],
+    ['an interval beyond i32', { at44: 0, at48: 0, at54: 0, at58: 2 ** 31 }, 'at58'],
+  ] as const)('faults on %s, the field world creation rejects (P3-07/24)', (_, record, field) => {
+    expect(invalidGuidanceField(record)).toBe(field);
     expectFault(() => initialGuidance(record, 1), 'invariant-violated', 'guidance.record');
+  });
+
+  it('takes every record invalidGuidanceField accepts: zero times, the u32 and i32 bounds', () => {
+    for (const record of [{ at44: 0, at48: 0, at54: 0, at58: -(2 ** 31) }, { at44: 2 ** 31 - 1, at48: 2 ** 31 - 1, at54: 2 ** 32 - 1, at58: 2 ** 31 - 1 }]) {
+      expect(invalidGuidanceField(record)).toBeNull();
+      expect(initialGuidance(record, 0)).toMatchObject({ lifetimeClock: record.at44, armClock: record.at48, detonationClock: record.at54, checkInterval: record.at58 });
+    }
+    // The fuse radius squared is the load transform's, which world creation checks on its own (CR-01 check 5).
+    expectFault(() => initialGuidance({ at44: 0, at48: 0, at54: 0, at58: 0 }, Infinity), 'invariant-violated', 'guidance.record');
   });
 
   it('installs the controller and runs the program in mode 0, which posts nothing without a target', () => {

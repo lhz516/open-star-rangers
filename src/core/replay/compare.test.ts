@@ -454,6 +454,9 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       ['a command result after a hit', (result) => void result.events.splice(1, 0, hit(1)), '.events[2]'],
       ['a destruction before its hit', (result) => void result.events.splice(12, 2, result.events[13], result.events[12]), '.events[12].entityId'],
       ['a destruction of another entity than the one hit', (result) => { result.events[13].entityId = 6; }, '.events[13].entityId'],
+      ['a second destruction of an entity', (result) => void result.events.splice(14, 0, destroyed(1)), '.events[14].entityId'],
+      ['a hit of an entity destroyed earlier in the tick', (result) => void result.events.splice(14, 0, { ...hit(1), cause: 'collision', sourceEntityId: null,
+        attacker: { type: 'none' }, impact: null, projectile: null }), '.events[14].victimEntityId'],
       ['a missile\'s hit before its detonation', (result) => void result.events.splice(11, 0, { ...hit(1), cause: 'missile', sourceEntityId: 11, projectile: null }), '.events[11].sourceEntityId'],
       ['a hit of a missile that fizzled', (result) => { Object.assign(result.events[11], { outcome: 'fizzled' }); Object.assign(result.events[12], { cause: 'missile', sourceEntityId: 11 }); }, '.events[12].sourceEntityId'],
     ];

@@ -431,7 +431,8 @@ const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, e
  * `energy-allocation-changed` and `left-page-changed` right after their command's result; a manual match's
  * `speed-matched`, a command's `target-changed` and a command's shots after their command's result; at most one
  * additional event per command, shots aside; a missile's hits after its detonation; an `object-destroyed` after a
- * `hit` of the same entity; at most one `target-cleared`.
+ * `hit` of the same entity, once, and no `hit` of it after (a destroyed victim takes no hit, CR-06); at most one
+ * `target-cleared`.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
@@ -442,6 +443,7 @@ class TickOrder {
   readonly #extended = new Set<number>();
   readonly #detonated = new Set<number>();
   readonly #hit = new Set<number>();
+  readonly #destroyed = new Set<number>();
 
   reset(): void {
     this.#previous = null;
@@ -452,6 +454,7 @@ class TickOrder {
     this.#extended.clear();
     this.#detonated.clear();
     this.#hit.clear();
+    this.#destroyed.clear();
   }
 
   /** Checks `event`, the next of the tick, and returns whether it is a command result. */
@@ -506,11 +509,14 @@ class TickOrder {
         if (event.cause === 'missile' && (event.sourceEntityId === null || !this.#detonated.has(event.sourceEntityId))) {
           throw new CoreInputError(`${path}.sourceEntityId`, 'must be a missile whose detonation came earlier in the tick');
         }
+        if (this.#destroyed.has(event.victimEntityId)) throw new CoreInputError(`${path}.victimEntityId`, 'must not be an entity destroyed earlier in the tick');
         this.#hit.add(event.victimEntityId);
         return false;
       case 'object-destroyed':
         this.#reach(STAGE.objects);
         if (!this.#hit.has(event.entityId)) throw new CoreInputError(`${path}.entityId`, 'must be an entity hit earlier in the tick');
+        if (this.#destroyed.has(event.entityId)) throw new CoreInputError(`${path}.entityId`, 'must not be an entity destroyed earlier in the tick');
+        this.#destroyed.add(event.entityId);
         return false;
       case 'energy-depleted':
         this.#enter(STAGE.energy, path);

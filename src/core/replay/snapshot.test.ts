@@ -139,7 +139,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(second.state.entities[0]).not.toBe(first.state.entities[0]);
     expect(second.state.spawn.records[0]).not.toBe(first.state.spawn.records[0]);
     const text = snapshotText(first);
-    // The runtime kinds leave in this tick: they cannot move before P3-07 subtask 22.
+    // The runtime kinds leave in this tick rather than run their callbacks on busyCombat's made-up combat states.
     for (const kindBit of RUNTIME_KIND_BITS) for (const entity of state.entities.walk(1 << kindBit)) entity.state = 'pending-removal';
     world.step(tickInput([{ type: 'launch' }]));
     state.entities.get(1)!.placementSerial++;

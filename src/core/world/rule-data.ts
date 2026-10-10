@@ -45,6 +45,7 @@ import type { CollisionShape, ShapeBox } from '../rules/collision-shapes.ts';
 import { initialHull, resourceArithmetic } from '../rules/combat-init.ts';
 import { INITIAL_ALLOCATION } from '../rules/flight-state.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
+import { invalidGuidanceField } from '../rules/guidance.ts';
 import {
   AUTOMATIC_GUN, craftShape, debrisRuleData, gunRuleData, missileRuleData, mountOffsets,
   type DebrisRuleData, type GunRuleData, type MissileRuleData,
@@ -328,6 +329,18 @@ function checkInstantiation({ kindBit, ruleInputs, path }: InstantiableRecord, c
   }
 }
 
+/**
+ * Why a missile record's guidance field is rejected (CR-01 check 5): the first callback's guard (guidance.ts) would
+ * fault. The craft-info reader already holds +0x48 to 0–2³¹−1, +0x54 to u32 and +0x58 to i32, so of these only a
+ * negative +0x44 reaches the check from content; the others keep the shared predicate whole.
+ */
+const GUIDANCE_FIELD_REASONS = Object.freeze({
+  at44: 'must not be negative, as it is the lifetime of the missile\'s guidance',
+  at48: 'must not be negative, as it is the arming delay of the missile\'s guidance',
+  at54: 'must not be negative, as it is the detonation delay of the missile\'s guidance',
+  at58: 'must be an i32, as it is the check interval of the missile\'s guidance',
+});
+
 /** Reachable guns and missiles: the weapons the mounts of instantiable kinds name. */
 function reachableWeapons(info: CraftInfo, kinds: Iterable<number>): { guns: Set<number>; missiles: Set<number> } {
   const guns = new Set<number>();
@@ -380,6 +393,8 @@ export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: 
     if (!reachable.missiles.has(index)) return null;
     const path = `${CRAFT_INFO}.missiles[${index}]`;
     if (missile.at60 === missile.at64) throw new CoreInputError(`${path}.at64`, 'must differ from at60, as the blast falloff divides by their difference');
+    const timer = invalidGuidanceField(missile);
+    if (timer !== null) throw new CoreInputError(`${path}.${timer}`, GUIDANCE_FIELD_REASONS[timer]);
     const data = missileRuleData(missile, info.missileBodies[missile.body]);
     if (!isFiniteFloat32(data.rangeSquared)) throw new CoreInputError(`${path}.at44`, 'makes the range or its square leave the f32 range');
     if (!isFiniteFloat32(data.fuseRadiusSquared)) throw new CoreInputError(`${path}.at4C`, 'makes the fuse radius squared leave the f32 range');

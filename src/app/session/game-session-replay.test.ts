@@ -7,7 +7,7 @@ import { replayRecord } from '../../core/replay/replay.ts';
 import { contentOf, roundTrip } from '../../core/replay/replay.test-support.ts';
 import type { FrameReport } from '../runtime/game-runtime.ts';
 import { NEUTRAL_AXES, recordingOptions, TICK_MS } from '../runtime/game-runtime.test-support.ts';
-import type { GameCommandsCancelled, GameRunSpec } from './game-session.ts';
+import type { GameCommandsCancelled } from './game-session.ts';
 import { current, departure, runSpec, sessionSetup } from './game-session.test-support.ts';
 
 // AC-06: a run taken through the session's lifecycle records exactly the input its successful ticks executed. The
@@ -18,19 +18,13 @@ const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'fire', channe
 const DOOMED: Command = { type: 'cockpit-front' };
 const PRIMARY_FIRE = JSON.stringify({ type: 'fire', channel: 'primary' });
 
-/** `spec` with a lifetime its missiles' guidance accepts: the synthetic records' is negative, which it rejects (P3-07/20). */
-function flyable(spec: GameRunSpec): GameRunSpec {
-  for (const missile of (spec.craftInfo.content as unknown as { missiles: { at44: number }[] }).missiles) missile.at44 = 320;
-  return spec;
-}
-
 /**
  * From the initial departure hold (hidden during it), through a user pause, a hidden pause, a menu-style pause, held
  * and pressed fire, commands deferred over several ticks, zero-tick and capped frames, and clearing input on focus loss
  * and on a Pointer Lock exit.
  */
 function lifecycle(recording: RecordingOptions | null) {
-  const spec = flyable(runSpec({ run: { wingman: 2 }, recording, initialTransition: departure('wingman') }));
+  const spec = runSpec({ run: { wingman: 2 }, recording, initialTransition: departure('wingman') });
   const { session, host, errors } = sessionSetup();
   session.control({ type: 'start', spec });
   const run = current(session);

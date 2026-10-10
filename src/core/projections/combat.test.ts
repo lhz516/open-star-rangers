@@ -365,8 +365,8 @@ describe('flight.combat purity (AC-04)', () => {
   });
 
   it('reading it every tick or never gives the same events, checkpoints and final state', () => {
-    // Target, energy and selection commands; the primary fire stays on the gun the synthetic charge cannot pay for, as
-    // projectiles and missiles do not move before P3-07/22.
+    // Target, energy and selection commands; the primary fire stays on the gun the synthetic charge cannot pay for, so
+    // nothing is launched: the reads are what this compares (combat-replay.test.ts replays shots, hits and destructions).
     const commands: Record<number, readonly Command[]> = {
       2: [{ type: 'target', operation: 'friendly' }],
       3: [{ type: 'energy', operation: 'open' }, { type: 'energy', operation: 'shield-increase' }],
