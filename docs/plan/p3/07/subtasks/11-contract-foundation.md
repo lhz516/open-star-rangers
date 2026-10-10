@@ -93,6 +93,7 @@ updated: 2026-10-10
 - `src/core/systems/spawn.ts`：`instantiate` 传入战斗状态的分配初值（`allocatorCraftCombat()`，12 再按 CR-07 写入实例化值）。
 - `src/core/systems/spawn.test.ts`：Render State 新成员对应的断言更新。
 - `src/core/world/create-world.test.ts`：Render State `clock` 对应的断言更新。
+- `src/core/rules/flight-state.test.ts`：P3-06 测试辅助的类型标注随 `MovementBlock` 联合收窄为 `SteeredMovementBlock`（不改行为）。
 
 ## 验收标准
 
