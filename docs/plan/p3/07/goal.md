@@ -32,7 +32,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   - 内容读取器：[craft-info.ts](../../../../src/content/rule-data/craft-info.ts)、[debris-parameters.ts](../../../../src/content/rule-data/debris-parameters.ts)、[flight-data-readers.ts](../../../../src/content/flight/flight-data-readers.ts) 的 `readExplosionTable`/`readExplosionAnimation`（读对象）；[effect-payload.ts](../../../../src/content/effects/effect-payload.ts) 的 `readEffectPayload` 与 [model-payload.ts](../../../../src/content/models/model-payload.ts) 的 `readModelPayload`（读规范字节）。
   - 测试辅助：Core 的 [create-world.test-support.ts](../../../../src/core/world/create-world.test-support.ts)、[world.test-support.ts](../../../../src/core/world/world.test-support.ts)、[replay.test-support.ts](../../../../src/core/replay/replay.test-support.ts)；内容的 [rule-data.test-support.ts](../../../../src/content/rule-data/rule-data.test-support.ts)、[flight-data.test-support.ts](../../../../src/content/flight/flight-data.test-support.ts)、[effects.test-support.ts](../../../../src/content/effects/effects.test-support.ts)、[models.test-support.ts](../../../../src/content/models/models.test-support.ts)。
   - 工具：[tools/baseline/](../../../../tools/baseline/) 的运行时测量（[指南](../../../guides/runtime-measurement.md)）；[logic-check.ts](../../../../tools/logic-check.ts) 与 [package-check.ts](../../../../tools/package-check.ts) 是本地真实内容核对的先例。
-- **计划新增：** `src/core/systems/` 与 `src/core/rules/` 下按规则族命名的模块及相邻测试（文件名见各 subtask，可在实现时调整，职责不变）；`src/core/projections/combat.ts`；`src/core/world/rule-data.ts`；战斗行为文档 `docs/original/behavior/B-008-combat-rules.md`（创建时若编号已被占用，取下一个未用编号）；被忽略的 `local/research/p3-07/<主题>/`。
+- **计划新增：** `src/core/systems/` 与 `src/core/rules/` 下按规则族命名的模块及相邻测试（文件名见各 subtask，可在实现时调整，职责不变）；`src/core/projections/combat.ts`；`src/core/world/rule-data.ts`；战斗行为文档 `docs/original/behavior/B-009-combat-rules.md`（B-008 由 P3-06 使用；创建时若编号已被占用，取下一个未用编号）；被忽略的 `local/research/p3-07/<主题>/`。
 - **跨任务前提：**
   - P3-02、P3-03 已完成（各自 goal 全部 completed），本 goal 消费其契约与导入内容。
   - **P3-06（spec 与 goal 已获批，正在分支 `p3-06-flight-motion-spec` 上并行执行）：** 两任务修改同一共享契约与 Core 文件。为避免两套并行的类型与 P3-02 修订：
@@ -47,7 +47,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   - DOSBox-X 基准环境同一时间只有一个会话操作（工具在 `local/research/` 上加锁）。
 - **原版证据：**
   - 01 至 07 由 agent 用只读 Ghidra 与本地数据取得。01 至 06 只把结论写入各自的 `local/research/p3-07/<主题>/findings.md`，由 07 统一写入 `docs/original/`。这样它们不共享跟踪文件，可以并行。spec 起草时从本地反编译导出读到的线索未核对原生指令，研究须按原生指令核实，不把线索当作事实。
-  - 09 与 26 需要在所选任务中射击、被击中与被毁。P3-01、P3-02 实测本机 Computer Use 无法向 DOSBox-X 送达按键或移动游戏内光标，因此标为需用户：用户只做键盘操作，agent 负责方案、配方、运行、读数、判定与记录。执行时若该限制已解除，协调者改为自动。
+  - 09 与 26 需要在所选任务中射击、被击中与被毁。本机 Computer Use 无法向 DOSBox-X 送达按键；P3-06 的子任务 22 为测量工具加入了经配方声明并记录的模拟器内输入（2026-10-10 合并到本分支），因此 09、26 由 agent 独自完成，执行方式为自动。
   - 达不到 spec 门槛的研究项按 spec 阻塞，不按猜测实现。
 
 ## 验收覆盖
@@ -98,7 +98,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | in-progress |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | blocked |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | pending |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
@@ -131,6 +131,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: [运行时测量指南](../../../guides/runtime-measurement.md#角色单一会话与本机限制)记录的本机限制；用户 2026-10-10 说明接下来几小时无法操作；P3-06 的子任务 22（模拟器内输入）在其分支上进行中，尚未集成。
   Affected acceptance: 09 全部验收项；经 10 影响 AC-16 的判据，经 26、27 影响 AC-15（运行时部分）与 AC-16。
   Resume when: P3-06 的子任务 22 烟测通过并集成到其分支，协调者把该分支合并到本 goal 分支并把 09 改为自动；或用户可以在键盘上操作。
+- **2026-10-10 — Subtask 09 unblocked：** 恢复条件已满足。P3-06 的子任务 22 烟测通过（三项烟测在无宿主输入的私有运行中 `complete`，baseline 工具 163 项测试通过），协调者以合并提交 `41b788a` 把 P3-06 分支合并到本分支，并把 09、26 的执行方式改为自动。09 的状态由 blocked 改为 pending。B-008 由 P3-06 使用，本任务的行为文档改为 B-009，10、26 的写入范围已同步。
 
 ## 审批
 

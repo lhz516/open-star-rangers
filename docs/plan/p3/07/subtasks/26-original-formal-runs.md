@@ -4,14 +4,14 @@ status: active
 phase: P3
 task: "07"
 subtask: "26"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 26 — 原版正式运行
 
 **契约来源：** [spec](../spec.md) 的 S-11、AC-15（运行时确认部分）、AC-16（原版采样部分）；[对照方法与判据](../spec.md#对照方法与判据)的采样覆盖下限，以及 10 获批的 D-02 判据。
 **依赖：** 07, 10。
-**执行方式：** 需用户：在 DOSBox-X 的私有副本中只用键盘按操作手册进入所选任务，选目标、射击、发射导弹、管理能量、被击中、摧毁敌机，并完成一次玩家被毁序列（可能需要多次约 10–20 分钟的运行）。原因：P3-01、P3-02 实测本机 Computer Use 无法向 DOSBox-X 送达按键或移动游戏内光标。agent 负责方案、配方、启动、读数、应答、判定与记录。执行时若该限制已解除，协调者改为自动。
+**执行方式：** 自动。需要游戏操作的运行由 agent 用 P3-06 子任务 22 加入的[模拟器内输入](../../../../guides/runtime-measurement.md#模拟器内输入)独自完成，经配方声明并逐条记录（协调者 2026-10-10 合并 P3-06 分支后改为自动）。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
@@ -34,17 +34,17 @@ updated: 2026-10-09
 ## 不包含
 
 - 新版的对照与结论（27）；判据的修改（回到 10 的关卡，且只能在看到新版结果之前）。
-- 不注入游戏输入：工具与指南都不允许用 shell 或其他自动化向 DOSBox-X 发送按键。
+- 不在宿主层注入输入（shell、AppleScript、后台按键）。游戏操作只用工具经配方声明并记录的[模拟器内输入](../../../../guides/runtime-measurement.md#模拟器内输入)。
 
 ## 关键文件与契约
 
-- 10 新建的 B 文档 `docs/original/behavior/B-008-combat-rules.md`（编号以 10 的实际结果为准）与 spec 中获批的 D-02 判据。
+- 10 新建的 B 文档 `docs/original/behavior/B-009-combat-rules.md`（编号以 10 的实际结果为准）与 spec 中获批的 D-02 判据。
 - [运行时测量指南](../../../../guides/runtime-measurement.md)、[tools/baseline/](../../../../../tools/baseline/)、[B-006](../../../../original/behavior/B-006-simulation-timing.md)。
 - 09 的预实验配方与操作手册。
 
 ## 写入范围
 
-- `docs/original/behavior/B-008-combat-rules.md`：样本、统计量与原版判定（编号以 10 的实际结果为准）。
+- `docs/original/behavior/B-009-combat-rules.md`：样本、统计量与原版判定（编号以 10 的实际结果为准）。
 - `docs/original/formats/executable.md`：运行时确认的事实。
 - `docs/original/formats/craft.md`：运行时确认的数据消费事实。
 - `docs/original/unknowns.md`：受影响 U 项的状态。
