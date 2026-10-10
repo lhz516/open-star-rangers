@@ -20,6 +20,14 @@ export interface ProbeSnapshot {
   canvases: { id: number; connected: boolean; extension: boolean; lost: boolean }[];
   frames: { pending: number; maximum: number; requested: number; delivered: number; cancelled: number };
   /**
+   * One-shot timers the application scheduled with `setTimeout`, each by its ID, the probe sequence when it was
+   * scheduled: those still pending, neither fired nor cleared with `clearTimeout`, with their numeric delay (null when
+   * it was not a number); how many were scheduled; and the IDs of those that fired and of those that were cleared, in
+   * that order. Timers of the test, its tooling or the dev server's client, and string handlers, are passed through
+   * unrecorded.
+   */
+  timers: { pending: { id: number; delay: number | null }[]; scheduled: number; fired: number[]; cleared: number[] };
+  /**
    * Every Worker constructed: its script path (no origin or query), whether Vite's Worker transform built the URL, type,
    * name, and the number of `postMessage()` and `terminate()` calls. Message contents are never kept: `jobs` holds the
    * `jobId` of each import `start` message the page posted, `messages` what the Worker sent, and `terminatedAt` the
@@ -62,6 +70,8 @@ export function installBrowserProbes(): void {
   const originalUnobserve = ResizeObserver.prototype.unobserve;
   const originalDisconnect = ResizeObserver.prototype.disconnect;
   const originalContext = HTMLCanvasElement.prototype.getContext;
+  const originalSetTimeout = window.setTimeout;
+  const originalClearTimeout = window.clearTimeout;
   const OriginalWorker = window.Worker;
   const originalTerminate = OriginalWorker.prototype.terminate;
   const originalPost = OriginalWorker.prototype.postMessage;
@@ -79,6 +89,10 @@ export function installBrowserProbes(): void {
   let requested = 0;
   let delivered = 0;
   let cancelled = 0;
+  // Keyed by the native handle, which `setTimeout` still returns unchanged.
+  const timers = new Map<number, ProbeSnapshot['timers']['pending'][number]>();
+  const firedTimers: number[] = [];
+  const clearedTimers: number[] = [];
   const pending = (): number => [...frames.values()].filter(Boolean).length;
   const capture = (options?: boolean | EventListenerOptions): boolean => typeof options === 'boolean' ? options : options?.capture ?? false;
   /** React DOM's per-instance name of its element event set, once an element shows it. */
@@ -88,7 +102,9 @@ export function installBrowserProbes(): void {
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
     if (/\/@(?:vite\/client|react-refresh)/.test(new Error().stack ?? '')) return 'vite';
     if (!application()) return 'test';
-    if (target instanceof HTMLElement && target.dataset.testid === 'synthetic-view') return 'keyboard';
+    // The mission screen's input area (P3-05) is the keyboard's; React DOM registers its own element listeners before
+    // the element joins the document, so they never match.
+    if (target instanceof Element && target.closest('[data-testid="mission-screen"]')) return 'keyboard';
     if ((target === window && ['focus', 'blur'].includes(type))) return 'keyboard';
     if ((target === document && type === 'visibilitychange') || (target === window && ['pagehide', 'pageshow'].includes(type))) {
       // Session registers first; the input source registers the second distinct callback.
@@ -151,6 +167,29 @@ export function installBrowserProbes(): void {
     if (frames.get(handle)) cancelled++;
     frames.delete(handle);
   };
+  // Only the callback is wrapped, to clear its record as it fires; `this`, the delay, the arguments and the handle are
+  // the native ones. `clearInterval` is not wrapped: a timeout it cleared would stay pending here.
+  window.setTimeout = function (this: unknown, handler: TimerHandler, timeout?: number, ...args: unknown[]): number {
+    if (typeof handler !== 'function' || !application()) return Reflect.apply(originalSetTimeout, this, [handler, timeout, ...args]) as number;
+    const record = { id: ++sequence, delay: typeof timeout === 'number' ? timeout : null };
+    const handle = Reflect.apply(originalSetTimeout, this, [function (this: unknown, ...values: unknown[]): unknown {
+      if (timers.get(handle) === record) {
+        timers.delete(handle);
+        firedTimers.push(record.id);
+      }
+      return Reflect.apply(handler, this, values);
+    }, timeout, ...args]) as number;
+    timers.set(handle, record);
+    return handle;
+  } as typeof window.setTimeout;
+  window.clearTimeout = function (this: unknown, handle?: unknown): void {
+    Reflect.apply(originalClearTimeout, this, [handle]);
+    const record = typeof handle === 'number' ? timers.get(handle) : undefined;
+    if (record) {
+      timers.delete(handle as number);
+      clearedTimers.push(record.id);
+    }
+  } as typeof window.clearTimeout;
   ResizeObserver.prototype.observe = function (target, options): void {
     originalObserve.call(this, target, options);
     const targets = observers.get(this) ?? new Set<Element>();
@@ -228,6 +267,7 @@ export function installBrowserProbes(): void {
         id: id(canvas), connected: canvas.isConnected, extension, lost: gl.isContextLost(),
       })),
       frames: { pending: pending(), maximum, requested, delivered, cancelled },
+      timers: { pending: [...timers.values()].map(timer => ({ ...timer })), scheduled: timers.size + firedTimers.length + clearedTimers.length, fired: [...firedTimers], cleared: [...clearedTimers] },
       workers: workerRecords.map(record => ({ ...record, jobs: [...record.jobs], messages: record.messages.map(message => ({ ...message })) })),
       sequence,
     }),
@@ -241,6 +281,8 @@ export function installBrowserProbes(): void {
       ResizeObserver.prototype.unobserve = originalUnobserve;
       ResizeObserver.prototype.disconnect = originalDisconnect;
       HTMLCanvasElement.prototype.getContext = originalContext;
+      window.setTimeout = originalSetTimeout;
+      window.clearTimeout = originalClearTimeout;
       window.Worker = OriginalWorker;
       OriginalWorker.prototype.terminate = originalTerminate;
       OriginalWorker.prototype.postMessage = originalPost;

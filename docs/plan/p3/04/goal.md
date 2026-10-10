@@ -93,7 +93,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [08-replay-check-tool.md](./subtasks/08-replay-check-tool.md) | 01 | completed |
 | [09-pages-app-wiring.md](./subtasks/09-pages-app-wiring.md) | 05, 06, 07 | completed |
 | [10-e2e-mission-flow.md](./subtasks/10-e2e-mission-flow.md) | 08, 09 | completed |
-| [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | in-progress |
+| [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | completed |
 | [12-e2e-shell-production.md](./subtasks/12-e2e-shell-production.md) | 10 | in-progress |
 | [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12 | pending |
 | [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | pending |
@@ -118,6 +118,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 共享 `local/` 中的自环链接（协调者的失误，已清理）：** 第一批 worker 的启动提示要求在 worktree 根执行 `ln -s …/local local`，而应用的 session.create 脚本（`.github/github-app.yml`）已经建立了该链接，因此 01:03 在共享目录中生成了指向自身的 `local/local`，使 `pnpm dev` 以 ELOOP 失败（09 发现）。协调者已只删除该符号链接（确认其目标为共享目录本身），之后的启动提示改为只在 `local` 不存在时才链接。
 - **2026-10-10 — 声明文字的归属（协调者决定）：** 09 发现构建声明 `tools/compliance/notices.ts` 的 `ORIGINAL_RIGHTS_BOUNDARY` 仍称本项目为 “independent synthetic engineering demo”，根 `README.md` 第 11 行也仍介绍 P1 合成工程演示；spec 的合成演示退役要求权利与隐私声明不再提合成演示。前者加入 12 的写入范围（与合规 E2E 同步），后者加入 15 的写入范围。
 - **2026-10-10 — 10 完成（交 11、12、13、15）：** Chrome 155.0.8059.39。`e2e/support/mission-observations.ts` 经 `page.evaluate` 读取任务画面属性（不注入主世界脚本，供 11 的资源平衡复用），提供 tick 前进/稳定采样、五种占位结束方式、按住键的 repeat 与尾事件、缺省标注读取、离页监听计数、真实离页请求与开发诊断，并复制了 `frameWindow`（`demo-observations.ts` 及其使用者未改，由 12 改导入、13 删除）。`production-cache.ts` 新增 `missionPackage()`（`mission-startable` 作业的全部组，每个进程转换一次），供 11、12 的生产用例预置。离页确认的取证：Playwright 在没有 `dialog` 监听时自行接受 `beforeunload`；`page.reload()` 在取消后等到超时，因此改用 CDP `Page.reload` 与 `page.close({ runBeforeUnload: true })`。交 15：工程 README 的测试入口与生产预置小节补充 `seeds` 查询键、`missionPackage()`、`mission-observations.ts`、上述取证方法与两条聚焦命令。
+- **2026-10-10 — 11 完成（交 12、13、14、15、17）：** 浏览器探针快照增加 `timers`（`pending { id, delay }`、`scheduled`、已触发与已清除的 ID），只记录应用以函数为处理器的 `setTimeout`/`clearTimeout`，不包装 `clearInterval`；去掉 `synthetic-view` 分组，`keyboard` 改指任务画面内元素上的应用监听（供 P3-05）；离页保护计为 `other`，Vite 自身的 `beforeunload` 计为 `vite`。`NativeTarget` 新增 `press(name)`（按可访问名称的稳定可信点击）、`setInputFiles(selector, paths)` 与 `until(…, timeout)`，移除 `key()`。AC-13 在 native-lifecycle，AC-14 在 joint-resources（两种构建）与 fast-refresh 的往返中。交 14（AC-20）：R-13 的浏览器证据为 11 完成证据中的 AC-13 行。交 15：工程 README 的资源平衡、本地浏览器 runner（joint-resources 的 `WEBGL_lose_context` 一行不再适用）与 Fast Refresh 小节（细节见 11 的文档影响）。11 在扫描其他使用探针的用例时发现 `e2e/failure-worker-cancel.development.spec.ts` 的 3 个 F-12 用例（late restore、late commit、late listing）在基线 `ed2b815a` 上已失败（读取 `profile` 时 `window.osrTestEntry` 为 undefined），不在任何子任务的写入范围内，见下一条。
 
 ## 审批
 

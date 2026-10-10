@@ -6,7 +6,7 @@ import { button, discFiles, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { expect, test } from './support/browser-test.ts';
 import type { ProbeSnapshot } from './support/browser-probes.ts';
-import { enterDemo } from './support/demo-observations.ts';
+import { endPlaceholder, enterMission, expectAdvancingTick, missionEntry, waitForFrame } from './support/mission-observations.ts';
 import { seedProductionCache } from './support/production-cache.ts';
 import {
   cacheProblems, compareBalance, expectedPackage, ResourceBalance, warmProblems, type BalanceKind, type BalanceSnapshot, type StoredCacheKeys,
@@ -14,9 +14,10 @@ import {
 import { entryButton, firstEntry, modelsPackage, viewerDiagnostics } from './support/viewer-observations.ts';
 import { RESOURCE_CACHE_DATABASE } from '../src/platform/storage/resource-cache-records.ts';
 
-// P2-12 subtask 04 (S-03, AC-04): controls for the resource balance helper, in both projects on the production entry.
-// Deliberate leaks come from a same-origin module under /assets/, so the probes attribute them to the application as
-// they would an application leak; a clean path through import, cached restore, viewer, audio and demo stays balanced.
+// P2-12 subtask 04 (S-03, AC-04) and P3-04 subtask 11 (AC-14): controls for the resource balance helper, in both
+// projects on the production entry. Deliberate leaks come from a same-origin module under /assets/, so the probes
+// attribute them to the application as they would an application leak; a timer that fires is not one. A clean path
+// through import, cached restore, viewer, audio and a mission run stays balanced.
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -54,6 +55,19 @@ export function audio() {
   const context = new AudioContext();
   return () => context.close();
 }
+export function timer() {
+  const handle = setTimeout(() => {}, 600000);
+  return () => clearTimeout(handle);
+}
+export function firedTimer() {
+  setTimeout(() => {}, 0);
+  return () => {};
+}
+export function beforeunload() {
+  const callback = event => { event.preventDefault(); };
+  window.addEventListener('beforeunload', callback);
+  return () => window.removeEventListener('beforeunload', callback);
+}
 export function input() {
   const element = document.querySelector('#import-files');
   const callback = () => {};
@@ -84,18 +98,33 @@ async function runLeak(page: Page, leak: string): Promise<void> {
 
 const kinds = (problems: readonly { kind: BalanceKind }[]): BalanceKind[] => [...new Set(problems.map(({ kind }) => kind))];
 
-test('reports each deliberate leak of a listener, observer, frame loop, Worker and AudioContext, and passes once it is undone', async ({ page, context }, testInfo) => {
+test('reports each deliberate leak of a listener, observer, frame loop, Worker, AudioContext, timer and leave guard, and passes once it is undone', async ({ page, context }, testInfo) => {
   await serveLeaks(context);
   await openMenu(page);
   const balance = await ResourceBalance.start(page, testInfo, { packages: [] });
-  for (const [leak, kind] of [['listener', 'listener'], ['observer', 'observer'], ['frame', 'frame'], ['worker', 'worker'], ['audio', 'audio']] as const) {
+  const leaks = [
+    ['listener', 'listener'], ['observer', 'observer'], ['frame', 'frame'], ['worker', 'worker'], ['audio', 'audio'], ['timer', 'timer'], ['beforeunload', 'listener'],
+  ] as const;
+  for (const [leak, kind] of leaks) {
     await runLeak(page, leak);
     const leaked = await balance.measure(`${leak} leaked`, 1_500);
     expect(kinds(leaked.problems), `${leak}: ${JSON.stringify(leaked.problems)}`).toEqual([kind]);
     console.info(`${testInfo.project.name} ${leak} leak: ${leaked.problems.map(({ detail }) => detail).join('; ')}`);
+    if (leak === 'timer') expect(leaked.problems.map(({ detail }) => detail)).toEqual([expect.stringMatching(/^pending timer added since the baseline: \d+ \(600000 ms\)$/)]);
+    if (leak === 'beforeunload') expect(leaked.problems.map(({ detail }) => detail)).toEqual([expect.stringMatching(/^other listener added since the baseline: \d+:beforeunload:\d+:false$/)]);
     await page.evaluate(async () => { await window.osrBalanceUndo?.(); });
-    await balance.check(`${leak} undone`);
+    const undone = await balance.check(`${leak} undone`);
+    if (leak === 'timer') {
+      const [{ id }] = leaked.snapshot.probe.timers.pending;
+      expect(undone.snapshot.probe.timers).toMatchObject({ pending: [], cleared: [id] });
+    }
   }
+  // A timer that fired is no longer pending: nothing to report.
+  const { scheduled, fired } = (await balance.check('before a fired timer')).snapshot.probe.timers;
+  await runLeak(page, 'firedTimer');
+  const afterFired = await balance.check('timer fired');
+  expect(afterFired.snapshot.probe.timers).toMatchObject({ pending: [], scheduled: scheduled + 1 });
+  expect(afterFired.snapshot.probe.timers.fired).toHaveLength(fired.length + 1);
   // An application listener on an element React rendered is still the application's once React removes the element.
   await button(page, 'Import original game data').click();
   await runLeak(page, 'input');
@@ -140,7 +169,7 @@ async function viewRound(page: Page, balance: ResourceBalance, item: string, rou
   await expect(button(page, 'View resources')).toBeFocused();
 }
 
-test('a clean path through import, cached restore, three viewer and audio rounds and the demo stays balanced, with release kept before each reload', async ({ page }, testInfo) => {
+test('a clean path through import, cached restore, three viewer and audio rounds and a mission run stays balanced, with release kept before each reload', async ({ page }, testInfo) => {
   await openMenu(page);
   const balance = await ResourceBalance.start(page, testInfo, { packages: [] });
 
@@ -195,9 +224,17 @@ test('a clean path through import, cached restore, three viewer and audio rounds
     expect(report.snapshot.probe.canvases.length).toBe(round);
     expect(report.snapshot.probe.workers).toEqual([]);
   }
-  await enterDemo(page);
-  await button(page, 'Return to menu').click();
-  await balance.check('demo');
+  // A mission run: the owner's session listeners, placeholder timers, leave guard and frame loop all end with it.
+  await enterMission(page);
+  await endPlaceholder(page, 'G-02/1', 'button');
+  await button(page, 'Start').click();
+  await waitForFrame(page, frame => frame.position === 'departure');
+  await endPlaceholder(page, 'G-02/2', 'button');
+  await expectAdvancingTick(page);
+  await button(page, 'Mission menu').click();
+  await button(page, 'Return to main menu').click();
+  await expect(missionEntry(page)).toBeFocused();
+  await balance.check('mission');
 
   // A missing payload and an orphan in the test's own cache are both reported against the complete package.
   await page.evaluate(async ({ name, payloadStore }) => {
@@ -244,13 +281,13 @@ function snapshot(changes: Partial<ProbeSnapshot> = {}, rest: Partial<Omit<Balan
     label: 'synthetic', audio: null, cache: null, ...rest,
     probe: {
       document: 'a', listeners: [], observers: [], canvases: [], workers: [], sequence: 0,
-      frames: { pending: 0, maximum: 0, requested: 0, delivered: 0, cancelled: 0 }, ...changes,
+      frames: { pending: 0, maximum: 0, requested: 0, delivered: 0, cancelled: 0 }, timers: { pending: [], scheduled: 0, fired: [], cleared: [] }, ...changes,
     },
   };
 }
 const details = (baseline: BalanceSnapshot, current: BalanceSnapshot, audio = false) => compareBalance(baseline, current, { audio }).problems.map(({ kind, detail }) => `${kind}: ${detail}`);
 
-pure('compares listener groups, Workers, audio, canvases, cache keys and warm GPU counts by their rules', () => {
+pure('compares listener groups, Workers, pending timers, audio, canvases, cache keys and warm GPU counts by their rules', () => {
   const base = snapshot({ listeners: [listener(1, 'react'), listener(2, 'vite'), listener(3, 'test')] });
   expect(details(base, base)).toEqual([]);
   // React, Vite, test and unknown groups are all held to the baseline, never ignored.
@@ -301,6 +338,15 @@ pure('compares listener groups, Workers, audio, canvases, cache keys and warm GP
   const frames = (pending: number, maximum: number, requested: number) => details(base, snapshot({ ...base.probe, frames: { pending, maximum, requested, delivered: 0, cancelled: 0 } }));
   expect(frames(0, 1, 0)).toEqual(['frame: up to 1 owned frames pending, 0 at the end, and 0 requested in the idle window']);
   expect(frames(1, 1, 3)).toEqual(['frame: up to 1 owned frames pending, 1 at the end, and 3 requested in the idle window']);
+  // Only pending timers count: one scheduled since the baseline and still pending is a leak, whatever fired or was cleared.
+  const timers = (pending: ProbeSnapshot['timers']['pending'], fired: number[] = [], cleared: number[] = []) => ({ pending, scheduled: pending.length + fired.length + cleared.length, fired, cleared });
+  const withTimer = snapshot({ ...base.probe, timers: timers([{ id: 7, delay: 3000 }]) });
+  expect(details(base, snapshot({ ...base.probe, timers: timers([], [1, 2], [3]) }))).toEqual([]);
+  expect(details(base, withTimer)).toEqual(['timer: pending timer added since the baseline: 7 (3000 ms)']);
+  expect(details(withTimer, snapshot({ ...base.probe, timers: timers([{ id: 7, delay: 3000 }], [8]) }))).toEqual([]);
+  expect(details(withTimer, snapshot({ ...base.probe, timers: timers([{ id: 9, delay: null }], [], [7]) }))).toEqual([
+    'timer: pending timer added since the baseline: 9 (non-numeric delay)', 'timer: pending timer gone since the baseline: 7 (3000 ms)',
+  ]);
 
   // Exactly the expected packages with the expected manifests and payloads: no truncated record, orphan or foreign key.
   const key = ['original-import', PRODUCTION_KEY.originToken, PRODUCTION_KEY.converterVersion];

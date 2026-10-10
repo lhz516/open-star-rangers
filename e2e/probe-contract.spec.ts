@@ -1,11 +1,15 @@
-import type { BrowserContext } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
+import { button } from './support/app-entry.ts';
 import { test, expect, collectBrowserErrors, settleDiagnostics } from './support/browser-test.ts';
-import { diagnostics, enterDemo, frameWindow, stableAxis } from './support/demo-observations.ts';
-import { image, verifyLayout } from './support/image-observations.ts';
+import {
+  devState, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, missionEntry, missionFrame, waitForFrame,
+} from './support/mission-observations.ts';
+import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 
-test('probe preserves native listener, observer and frame behavior', async ({ page }) => {
+test('probe preserves native listener, observer, frame and timer behavior', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
+    const timers = window.osrProbe.snapshot().timers;
     const node = document.createElement('div');
     document.body.append(node);
     let calls = 0;
@@ -34,10 +38,18 @@ test('probe preserves native listener, observer and frame behavior', async ({ pa
     node.dispatchEvent(new Event('probe-once'));
     node.dispatchEvent(new Event('probe-once'));
     node.remove();
+    // The test's own timers keep their native behaviour and are not the application's.
+    const fired = await new Promise<{ self: boolean; values: unknown[] }>(resolve => {
+      setTimeout(function (this: unknown, ...values: unknown[]) { resolve({ self: this === window, values }); }, 1, 'a', 2);
+    });
+    let cleared = true;
+    clearTimeout(setTimeout(() => { cleared = false; }, 0));
+    await new Promise(resolve => setTimeout(resolve, 20));
     const after = window.osrProbe.snapshot();
-    return { calls, correctThis, registered, observed, nativeError, onceCalls, time, after };
+    return { calls, correctThis, registered, observed, nativeError, onceCalls, time, fired, cleared, timers, after };
   });
-  expect(result).toMatchObject({ calls: 2, correctThis: true, registered: 1, observed: 1, nativeError: true, onceCalls: 1 });
+  expect(result).toMatchObject({ calls: 2, correctThis: true, registered: 1, observed: 1, nativeError: true, onceCalls: 1, fired: { self: true, values: ['a', 2] }, cleared: true });
+  expect(result.after.timers).toEqual(result.timers);
   expect(result.time).toBeGreaterThan(0);
   expect(result.after.listeners.filter(entry => entry.type === 'probe' && entry.active)).toEqual([]);
   expect(result.after.listeners.filter(entry => entry.type === 'probe-once' && entry.active)).toEqual([]);
@@ -50,9 +62,50 @@ test('probe preserves native listener, observer and frame behavior', async ({ pa
     const callback = () => {};
     node.addEventListener('after-restore', callback);
     node.removeEventListener('after-restore', callback);
-    return { before, after: window.osrProbe.snapshot().listeners.length };
+    return { before, after: window.osrProbe.snapshot().listeners.length, timers: window.setTimeout.toString().includes('[native code]') };
   });
   expect(restored.after).toBe(restored.before);
+  expect(restored.timers).toBe(true);
+});
+
+const TIMERS = '/assets/osr-probe-timers.js';
+
+test('probe records the application\'s one-shot timers without changing their scheduling, arguments, handles or clearing', async ({ page, context }) => {
+  // Served under /assets/, so the probes attribute its timers to the application.
+  await context.route(`**${TIMERS}`, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: `
+export function schedule(delay, ...values) {
+  return new Promise(resolve => {
+    const handle = setTimeout(function (...received) { resolve({ handle, self: this === window, received }); }, delay, ...values);
+  });
+}
+export function start(delay) { return setTimeout(() => { throw new Error('A cleared timer fired'); }, delay); }
+export function stop(handle) { clearTimeout(handle); }
+` }));
+  await page.goto('/');
+  const result = await page.evaluate(async path => {
+    const timers = await import(path) as {
+      schedule(delay: number, ...values: unknown[]): Promise<{ handle: number; self: boolean; received: unknown[] }>;
+      start(delay: number): number; stop(handle: number): void;
+    };
+    const before = window.osrProbe.snapshot().timers;
+    const long = timers.start(60_000);
+    const pending = window.osrProbe.snapshot().timers;
+    timers.stop(long);
+    timers.stop(long);
+    const fired = await timers.schedule(1, 'x', 3);
+    const after = window.osrProbe.snapshot().timers;
+    return { before, long, pending, fired, after };
+  }, TIMERS);
+  expect(Number.isSafeInteger(result.long) && result.long > 0).toBe(true);
+  expect(result.pending.pending).toEqual([...result.before.pending, { id: expect.any(Number), delay: 60_000 }]);
+  expect(result.pending.scheduled).toBe(result.before.scheduled + 1);
+  expect(result.fired).toMatchObject({ self: true, received: ['x', 3] });
+  expect(Number.isSafeInteger(result.fired.handle) && result.fired.handle !== result.long).toBe(true);
+  const [{ id: long }] = result.pending.pending.slice(-1);
+  expect(result.after).toEqual({
+    pending: result.before.pending, scheduled: result.before.scheduled + 2, fired: [...result.before.fired, expect.any(Number)], cleared: [...result.before.cleared, long],
+  });
+  expect(result.after.fired.at(-1)).toBeGreaterThan(long);
 });
 
 /**
@@ -91,38 +144,61 @@ test('probe records Workers without changing module loading, messaging or termin
   });
 });
 
-test('reads real pixels, fresh projections, layout and owner resources', async ({ page }, testInfo) => {
+const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
+
+/** Seeds the startable synthetic mission package under the production identity and restores it through the menu. */
+async function restoreMission(page: Page): Promise<void> {
+  const mission = missionPackage();
   await page.goto('/');
-  await enterDemo(page);
-  await expect(page.getByTestId('render-status')).toHaveAttribute('data-state', 'ready');
-  const pixels = await image(page);
-  expect(pixels.mover.count).toBeGreaterThanOrEqual(9);
-  expect(pixels.marker.count).toBe(0);
-  const layout = await verifyLayout(page);
-  const samples = await stableAxis(page);
-  const read = await diagnostics(page);
-  expect(read.state).toBe('ready');
-  expect(read.entities).toBe(1);
+  await expect(page.getByTestId('original-data-status')).toHaveText('Original game data: None in this browser.');
+  await seedProductionCache(page, await mission);
+  await page.reload();
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText(RESTORED, { timeout: 30_000 });
+}
+
+test('reads the mission screen\'s run attributes, development diagnostics and owner resources', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const development = testInfo.project.name === 'development';
+  await restoreMission(page);
+  const { owner } = await enterMission(page);
+  await endPlaceholder(page, 'G-02/1', 'button');
+  await button(page, 'Start').click();
+  const departure = await waitForFrame(page, frame => frame.position === 'departure');
+  expect(departure).toEqual({ owner, run: 1, tick: 0, position: 'departure' });
+  await endPlaceholder(page, 'G-02/2', 'button');
+  // Fresh attributes: the same run's tick advances while running and holds while paused.
+  const advancing = await expectAdvancingTick(page);
   const resources = await frameWindow(page);
+  await button(page, 'Pause').click();
+  await expect(page.getByTestId('mission-status')).toHaveAttribute('data-pause', 'user');
+  const stable = await expectStableTick(page);
+  expect(stable).toBeGreaterThanOrEqual(advancing.to);
+  expect(await missionFrame(page)).toEqual({ owner, run: 1, tick: stable, position: 'flight' });
+  // The diagnostics read the same run's snapshot (development builds); production builds have no panel.
+  const diagnostics = development ? await devState(page) : null;
+  if (diagnostics) expect(diagnostics).toMatchObject({ run: 1, tick: stable, wingman: 0 });
+  else expect(await page.locator('[data-testid="mission-dev-panel"], [data-testid^="dev-"]').count()).toBe(0);
+  // While running: one frame loop, the session's lifecycle listeners, one leave guard, no timer, canvas or observer.
   expect(resources.frames.maximum).toBeLessThanOrEqual(1);
   expect(resources.frames.delivered).toBeGreaterThan(0);
-  expect(resources.listeners.filter(entry => entry.active && entry.group === 'keyboard')).toHaveLength(9);
-  expect(resources.listeners.filter(entry => entry.active && entry.group === 'session')).toHaveLength(3);
-  expect(resources.listeners.filter(entry => entry.active && entry.group === 'keyboard').map(entry => entry.type).sort())
-    .toEqual(['blur', 'focus', 'focusin', 'focusout', 'keydown', 'keyup', 'pagehide', 'pageshow', 'visibilitychange']);
-  expect(resources.listeners.filter(entry => entry.active && entry.group === 'session').map(entry => entry.type).sort())
-    .toEqual(['pagehide', 'pageshow', 'visibilitychange']);
-  expect(resources.listeners.some(entry => entry.active && entry.group === 'react')).toBe(true);
-  expect(resources.canvases).toHaveLength(1);
-  expect(resources.canvases[0]).toMatchObject({ connected: true, lost: false });
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
+  const active = resources.listeners.filter(entry => entry.active);
+  expect(active.filter(entry => entry.group === 'session').map(entry => entry.type).sort()).toEqual(['pagehide', 'pageshow', 'visibilitychange']);
+  expect(active.filter(entry => ['keyboard', 'render'].includes(entry.group))).toEqual([]);
+  expect(active.filter(entry => entry.type === 'beforeunload' && entry.group !== 'vite').map(entry => entry.group)).toEqual(['other']);
+  expect(active.some(entry => entry.group === 'react')).toBe(true);
+  expect(resources.timers.pending).toEqual([]);
+  expect(resources.canvases).toEqual([]);
+  expect(resources.observers.every(entry => entry.targets.length === 0)).toBe(true);
+  await button(page, 'Mission menu').click();
+  await button(page, 'Return to main menu').click();
+  await expect(missionEntry(page)).toBeFocused();
   const after = await frameWindow(page);
-  expect(after.frames.pending).toBe(0);
-  expect(after.listeners.filter(entry => entry.active && ['keyboard', 'session', 'render'].includes(entry.group))).toEqual([]);
-  expect(after.observers.every(entry => entry.targets.length === 0)).toBe(true);
-  expect(after.canvases.every(canvas => !canvas.connected && (!canvas.extension || canvas.lost))).toBe(true);
+  expect(after.frames).toMatchObject({ pending: 0, maximum: 0, requested: 0 });
+  expect(after.listeners.filter(entry => entry.active && (['keyboard', 'session', 'render'].includes(entry.group) || (entry.type === 'beforeunload' && entry.group !== 'vite')))).toEqual([]);
+  expect(after.timers.pending).toEqual([]);
   await testInfo.attach('readonly-observations', {
-    body: JSON.stringify({ pixels, layout, samples, resources, after }), contentType: 'application/json',
+    body: JSON.stringify({ departure, advancing, stable, diagnostics, resources, after }), contentType: 'application/json',
   });
 });
 
