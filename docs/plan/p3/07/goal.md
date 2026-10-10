@@ -119,7 +119,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27, 33 | pending |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
-| [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | in-progress |
+| [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
