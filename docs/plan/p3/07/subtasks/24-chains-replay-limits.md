@@ -31,6 +31,8 @@ updated: 2026-10-10
   - 依据注释与 CR-14 不一致时修正注释并报告协调者；数值的改变须回到 08 的关卡。
 - **修复：** 发现缺陷时，修复只针对连锁或 replay 暴露的问题；超出本项的行为缺陷，由协调者新增修复子任务。
 
+- **导弹计时字段的语义检查（20 的建议）：** 在 CR-01 的世界创建检查中拒绝可实例化导弹记录中负的 +0x44、+0x48、+0x54（寿命与计时）。否则 32 的 `initialGuidance` 只会在首次回调时故障；原版按 u32 回绕，负寿命立即熄火，项目不复现。在 P3-02 spec 的 CR-01 中补一句并加拒绝测试。
+
 ## 不包含
 
 - P3-11 的任务计数、救援与失败；完整闭环的 replay（P3-15）。
@@ -51,6 +53,8 @@ updated: 2026-10-10
 - `src/core/replay/replay.test-support.ts`：测试辅助。
 - `src/core/systems/**`：连锁测试（`combat-chains.test.ts`，新建）与连锁缺陷的修复。
 - `src/core/rules/**`：连锁缺陷的修复。
+- `src/core/world/rule-data.ts`、`src/core/world/rule-data.test.ts`：导弹计时字段的拒绝。
+- `docs/plan/p3/02/spec.md`：CR-01 中的对应一句。
 
 ## 验收标准
 
