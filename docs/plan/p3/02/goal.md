@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [13-heavy-test-timeouts.md](./subtasks/13-heavy-test-timeouts.md) | 04 | completed |
 | [14-float32-round-to-nearest.md](./subtasks/14-float32-round-to-nearest.md) | 06, 07 | completed |
 | [15-remove-original-ui-labels.md](./subtasks/15-remove-original-ui-labels.md) | 10 | completed |
-| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14, 15 | pending |
+| [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14, 15 | in-progress |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
