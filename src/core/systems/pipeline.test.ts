@@ -3,9 +3,10 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
+import { rotateRows } from '../rules/flight-motion.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
-import { addPlayerEntity, entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, expectFault, stateText, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { initialPlayerTargeting } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { collisionStage } from './collision.ts';
@@ -340,18 +341,21 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
   });
 
-  it('routes steer to missiles.ts (P3-07/20): 0x21fd8 on the missile\'s block with its body record', () => {
+  it('routes steer to missiles.ts (P3-07/20): 0x21fd8 on the missile\'s block with its body record, before the movement (P3-07/22)', () => {
     const [state, [missile]] = withEntities([20]);
     missile.state = 'active';
     spendGuidance(missile);
     let block: unknown = null;
-    // The missile's movement faults until P3-07 subtask 22, which gives it its body record there.
-    expectFault(() => runTickWith(state, {
+    runTickWith(state, {
       'mission-flow': ({ requests }) => requests.post({ type: 'steer', entityId: missile.id, control }),
       movement: () => void (block = structuredClone(missile.movement)),
-    }), 'invariant-violated', 'movement.record');
+    });
     // Row 1 set to 0.5 at scale 1: F(body +0xAC (1) × −1 × 0.5); row 2 cleared: yaw's rate 0 and its flag kept; row 3 untouched.
     expect(block).toMatchObject({ steering: { pitch: { rate: -0.5, enabled: true }, yaw: { rate: 0, enabled: false }, roll: { rate: 0, enabled: false } } });
+    // The same tick's movement integrates the block with the body record: body +0xC8 ≠ 0 makes the turn factor the step,
+    // so pitch turns rows 2 and 3 by F(−0.5 × 1/32) (CR-09, executable.md 0x222f0).
+    const turned = rotateRows(TEST_ORIENTATION, 'pitch', Math.fround(-0.5 / 32));
+    expect(missile.orientation).toEqual(turned);
   });
 
   it('routes a missile\'s expiry to missiles.ts (P3-07/20): it fizzles, emits missile-ended and leaves at its next update', () => {
@@ -388,10 +392,12 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     // first callback only asks for state 7.
     spendGuidance(entities[0]);
     const atMovement: string[] = [];
-    // The missile's movement faults until P3-07 subtask 22, which gives it its body record there.
-    expectFault(() => runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) }),
-      'invariant-violated', 'movement.record');
+    const before = entities.map(({ position }) => position);
+    runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) });
     expect(atMovement).toEqual(['active', 'active']);
+    // Both move in the tick that activates them: the missile by mode 0 with its body record (P3-07/22), at its block's
+    // speed 48 along row 3 (0, 0, 1) of TEST_ORIENTATION for 1/32 s; the projectile's block is at rest.
+    expect(entities.map(({ position }) => position)).toEqual([{ ...before[0], z: before[0].z + 1.5 }, before[1]]);
     for (const entity of entities) entity.state = 'pending-removal';
     runTickWith(state);
     expect(state.entities.size).toBe(0);

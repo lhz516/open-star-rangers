@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { CraftRecord, MissileBodyRecord } from '../../content/rule-data/craft-info.ts';
+import type { CraftRecord, MissileBodyRecord, MissileRecord } from '../../content/rule-data/craft-info.ts';
 import { craft, missileBody, mount } from '../../content/rule-data/rule-data.test-support.ts';
 import { EntityTable, MISSILE_KIND_BIT, type CraftCombat, type EntityInit, type Matrix3 } from '../world/entity-table.ts';
 import { busyCombat, entityInit, expectFault, kindDefaults, TEST_RULE_INPUTS } from '../world/world.test-support.ts';
 import {
-  buildWeaponBlock, craftMaximumSpeed, initialHull, initialiseCraftCombat, initialiseResources, missileMaximumSpeed, rebuildWeaponBlock,
+  buildWeaponBlock, craftMaximumSpeed, initialHull, initialiseCraftCombat, initialiseResources, missileBodyRecord, missileMaximumSpeed, rebuildWeaponBlock,
   resourceArithmetic, runtimeKindDefaults, type CraftEntity,
 } from './combat-init.ts';
 import { scriptedRand } from './rand.test-support.ts';
@@ -170,6 +170,12 @@ describe('instantiation\'s steps (CR-07) and the rescue\'s reuse (CR-13)', () =>
 describe('the runtime kinds (CR-02)', () => {
   it('give a missile its body\'s +0xB8, the non-craft branch of 0x3060c', () => {
     expect(missileMaximumSpeed(missileBody({ atB8: 412.5 }) as unknown as MissileBodyRecord)).toBe(412.5);
+  });
+
+  it('find a missile record\'s body record by its +0x14, or nothing when either record is missing (W11)', () => {
+    const missileBodies = [missileBody({ atB8: 1 }), missileBody({ atB8: 2 })] as unknown as MissileBodyRecord[];
+    const missiles = [{ body: 1 }, { body: 2 }] as unknown as MissileRecord[];
+    expect([0, 1, 2].map((missile) => missileBodyRecord({ missiles, missileBodies }, missile))).toEqual([missileBodies[1], undefined, undefined]);
   });
 
   it('take the allocator\'s fields, which the entity table accepts for every runtime kind', () => {

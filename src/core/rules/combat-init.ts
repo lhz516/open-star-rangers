@@ -8,7 +8,7 @@
  * Integer arithmetic is the original's i32 (signed `IDIV` truncating toward zero); world creation proves that no step
  * overflows for the records the run can instantiate (rule-data.ts), so a step that does is a Core fault.
  */
-import type { CraftRecord, Mount, MissileBodyRecord } from '../../content/rule-data/craft-info.ts';
+import type { CraftInfo, CraftRecord, Mount, MissileBodyRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
 import {
   allocatorFlightState, SUBSYSTEM_COUNT,
@@ -161,6 +161,15 @@ export function initialiseCraftCombat(entity: CraftEntity, craft: CraftRecord, c
  * speed is the body record's +0xB8; no resource, level or energy clock, and no draw.
  */
 export const missileMaximumSpeed = (body: MissileBodyRecord): number => body.atB8;
+
+/**
+ * The body record of missile record `missile` (missile +0x14), which a missile's object +0x1C holds (W11) and its
+ * movement and controls read; undefined when either record is missing.
+ */
+export function missileBodyRecord({ missiles, missileBodies }: Pick<CraftInfo, 'missiles' | 'missileBodies'>, missile: number): MissileBodyRecord | undefined {
+  const record = missiles[missile];
+  return record && missileBodies[record.body];
+}
 
 const NO_RULE_INPUTS = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
 

@@ -130,9 +130,31 @@ describe('movement stage 0x221fc (P3-06 AC-02, M-01)', () => {
     expectFault(() => moveEntities(state, noHitTest), 'invariant-violated', 'movement.block');
   });
 
-  it('faults on a moving entity of a kind without a craft record', () => {
-    const state = testState();
-    state.entities.allocate(entityInit(20)).state = 'active';
+  it('integrates a missile\'s craft block with its body record (missile +0x14), not a craft record of its kind (P3-07 CR-09)', () => {
+    const info = craftInfoContent();
+    // Missile 1's body is record 1, which turns with the speed ratio (+0xC8 = 0) and couples yaw into roll; body 0 does not.
+    Object.assign(info.missileBodies[1], { atB8: 64, atBC: 6, atC0: 9, atC4: 1, atC8: 0 });
+    const state = stateWith(info);
+    const missile = state.entities.allocate(entityInit(20));
+    Object.assign(missile.combat, { missile: 1 });
+    missile.state = 'active';
+    Object.assign(missile.movement!, { speed: 40, atCommandedSpeed: false });
+    steer(missile);
+    const step = motionStep(2, 0);
+    const [body0, body1] = state.craftInfo.content.missileBodies;
+    const want = referenceFrame(poseAndBlock(missile), body1, step);
+    expect(referenceFrame(poseAndBlock(missile), body0, step).orientation).not.toEqual(want.orientation);
+    moveEntities(state, noHitTest);
+    expect(poseOf(missile)).toEqual({ position: want.position, orientation: want.orientation, movement: want.block });
+  });
+
+  it.each([['missile', 9], ['body', 0]] as const)('faults on a moving missile whose %s record is missing', (_, missile) => {
+    const base = testState();
+    const { content } = base.craftInfo;
+    const state: WorldState = missile === 0 ? { ...base, craftInfo: { ...base.craftInfo, content: { ...content, missileBodies: [] } } } : base;
+    const entity = state.entities.allocate(entityInit(20));
+    Object.assign(entity.combat, { missile });
+    entity.state = 'active';
     expectFault(() => moveEntities(state, noHitTest), 'invariant-violated', 'movement.record');
   });
 });

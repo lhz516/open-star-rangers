@@ -19,29 +19,25 @@ import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 // removal 49 ticks after it and leaves one tick later; the player explodes in the first tick whose clock is past its
 // destruction clock + 0xC0 (97 ticks later), and its pod expires 0x140 units (160 ticks) after its first callback.
 //
-// The ticks are the formal step, every PIPELINE stage in order, so explosions and fragments move (CR-03, P3-07/35);
-// hooks only add the destruction a test needs. A missile moves only from P3-07/22 on, so its test skips the movement
-// stage until then.
+// The ticks are the formal step, every PIPELINE stage in order, so explosions, fragments (CR-03, P3-07/35) and missiles
+// (CR-09, P3-07/22) move; hooks only add the destruction a test needs.
 
 type Hooks = Readonly<Record<string, (context: TickContext) => void>>;
 
-/**
- * One formal tick; each hook runs just before the stage of its ID. Without `movement`, the movement stage is skipped.
- * Returns the tick's events.
- */
-function tick(state: WorldState, hooks: Hooks = {}, movement = true): readonly DomainEvent[] {
+/** One formal tick; each hook runs just before the stage of its ID. Returns the tick's events. */
+function tick(state: WorldState, hooks: Hooks = {}): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
     hooks[stage.id]?.(context);
-    if (movement || stage.id !== 'movement') stage.run?.(context);
+    stage.run?.(context);
   }
   return context.events;
 }
 
 /** Runs ticks until `tick` is the world's last one, returning the events of each. */
-function runTo(state: WorldState, last: number, movement = true): (readonly DomainEvent[])[] {
+function runTo(state: WorldState, last: number): (readonly DomainEvent[])[] {
   const events: (readonly DomainEvent[])[] = [];
-  while (state.tick < last) events.push(tick(state, {}, movement));
+  while (state.tick < last) events.push(tick(state));
   return events;
 }
 
@@ -220,18 +216,20 @@ describe('a held source (X2, X4, CR-08, AC-12)', () => {
     Object.assign(missile.combat, {
       guidance: { phase: 4, lifetimeClock: 0, armClock: 0, fuseRadiusSquared: 0, detonationClock: 0, checkInterval: 0, nextCheckClock: 0 },
     });
-    // The destroyed missile is still moved, which needs its body record (P3-07/22): no movement stage here.
-    tick(state, { 'request-handling': (context) => constructExplosion(context, missile) }, false);
+    tick(state, { 'request-handling': (context) => constructExplosion(context, missile) });
     const [explosion] = ofKind(state, 22);
     expect(explosionOf(explosion)).toMatchObject({ variant: 'missile', sourceKindBit: 20, heldSource: missile.id });
     expect(explosion.presentation).toEqual({ type: 'explosion', variant: 'missile' });
-    tick(state, {}, false);
+    tick(state);
     const activation = state.tick;
-    runTo(state, activation + 13, false);
+    const held = missile.position;
+    runTo(state, activation + 13);
     expect(missile.state).toBe('destroyed-source');
-    tick(state, {}, false);
+    // The held missile keeps moving by mode 0 with its body record (X9, CR-09): 48 units/s along row 3, (0, 0, 1).
+    expect(missile.position).toEqual({ ...held, z: held.z + 13 * 1.5 });
+    tick(state);
     expect(missile.state).toBe('pending-removal');
-    tick(state, {}, false);
+    tick(state);
     expect(state.entities.get(missile.id)).toBeUndefined();
   });
 

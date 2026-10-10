@@ -13,9 +13,10 @@
  * `0x22818`) moves projectiles and explosions, and a block with the hit-test flag (a projectile's) is hit-tested right
  * after its own move, so the craft and missiles before it in the walk are tested where they now stand and the fragments
  * after it where they stood; `spinning` (mode 2, `0x2285c`) moves fragments. The hit test needs the tick context, so
- * the stage passes it in.
+ * the stage passes it in. Missiles keep a `craft` block and move by mode 0 with their body record (CR-09).
  */
 import { CoreFaultError } from '../errors.ts';
+import { missileBodyRecord } from '../rules/combat-init.ts';
 import { integrateCraft, integrateWarp, motionStep, type MotionRecord, type MotionStep } from '../rules/flight-motion.ts';
 import { spinFragment } from '../rules/fragments.ts';
 import { moveLinear } from '../rules/projectile-motion.ts';
@@ -28,11 +29,12 @@ export function movesThisTick({ activity, state }: Entity): boolean {
 }
 
 /**
- * The record at object +0x1C that the steered modes read: the craft record of the entity's kind. World creation binds
- * every instantiable kind to one (D-01). P3-07 gives a missile its body record here.
+ * The record at object +0x1C that the steered modes read: the craft record of the entity's kind, which world creation
+ * binds to every instantiable kind (D-01), or a missile's body record (missile +0x14, W11; P3-07, CR-09).
  */
-function motionRecord(world: WorldState, entity: Entity): MotionRecord {
-  const record = world.craftInfo.content.craft[entity.kindBit];
+function motionRecord(world: WorldState, { kindBit, combat }: Entity): MotionRecord {
+  const { content } = world.craftInfo;
+  const record = combat.type === 'missile' ? missileBodyRecord(content, combat.missile) : content.craft[kindBit];
   if (record === undefined) throw new CoreFaultError('invariant-violated', 'movement.record');
   return record;
 }

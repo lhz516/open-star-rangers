@@ -20,8 +20,8 @@ import { registerTick, type ControlBlock, type Request, type RequestOf, type Tic
 
 // docs/plan/p3/02/spec.md, CR-02 and CR-05 to CR-11; docs/original/formats/executable.md, H5 and the float path of
 // `0x21fd8`. Every expectation is worked out by hand from H5 and the records below; rules/guidance.test.ts and
-// rules/steering.test.ts cover the rules' arithmetic, systems/damage.test.ts the damage entry. The movement stage does
-// not move a missile until P3-07/22 wires it, so these tests call the callback and the request handlers directly.
+// rules/steering.test.ts cover the rules' arithmetic, systems/damage.test.ts the damage entry. These tests call the
+// callback and the request handlers directly; missile-wiring.test.ts runs missiles through the formal step (P3-07/22).
 
 const CLOCK = 640;
 const f32 = Math.fround;

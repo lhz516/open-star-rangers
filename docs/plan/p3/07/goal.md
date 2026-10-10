@@ -111,7 +111,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | completed |
 | [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31, 32, 34 | completed |
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | completed |
-| [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | in-progress |
+| [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | completed |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | pending |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | pending |
@@ -165,6 +165,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 09 的执行：** 09 以变体配方 C、M、X、Y、V 代替单纯的重复运行：锁定需要导弹 3（导弹 1 只能尾追），爆炸需要炮火。排除三次运行：两次因宿主显示器唤醒使 DOSBox-X 崩溃，一次因等待超时。基准锁与 P3-06 协商共用。协调者批准 `tools/baseline/` 增加 `low` 字段地址（线性第 0 页），用于读取线性地址 0x2C（31 的读数）。
 - **2026-10-10 — 35 已集成：** 导弹锁定与自动选敌接入后（CR-07），追踪导弹会向自动选定的目标发射；在 22 接入导弹飞行之前，其移动在移动阶段故障（`movement.record`）。`game-session-replay.test.ts` 暂用 `select-missile`，由 22 恢复 `fire secondary`。
 - **2026-10-10 — D-02 定稿（10）：** 判据按每个链节记录的偏差归一化后精确核对，批准记在 P3-07 spec 的审批节，早于 26 的正式采样与 27 的新版对照。B 文档为 B-009（B-008 由 P3-06 使用）。
+- **2026-10-10 — 22 已集成：** `movement.ts` 的 `motionRecord` 为导弹给出弹体记录（共用 `rules/combat-init.ts` 的 `missileBodyRecord`），导弹经 P3-06 的 `integrateCraft` 运动。流水线次序已符合 H5（引信在对象更新，起爆与 steer 在请求处理，都在移动之前），阶段表未改。`game-session-replay.test.ts` 恢复 `fire secondary`；合成导弹记录的寿命 +0x44 为负（20 的 `initialGuidance` 拒绝），该测试局部把寿命设为 320。负的导弹计时字段由 24 在世界创建时拒绝，25 核对真实内容中没有负值。
 
 ## 审批
 

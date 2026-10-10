@@ -25,6 +25,7 @@
  */
 import type { MissileBodyRecord, MissileRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
+import { missileBodyRecord } from '../rules/combat-init.ts';
 import { applyFloatControl, type FloatAxisControl, type FloatControl } from '../rules/flight-control.ts';
 import { motionStep } from '../rules/flight-motion.ts';
 import {
@@ -55,7 +56,7 @@ function missileRecord(world: WorldState, missile: MissileCombat): MissileRecord
 
 /** The record at a missile's object +0x1C, which `0x21fd8` reads: its body record (missile +0x14). */
 function bodyRecord(world: WorldState, missile: MissileCombat): MissileBodyRecord {
-  const body = world.craftInfo.content.missileBodies[missileRecord(world, missile).body];
+  const body = missileBodyRecord(world.craftInfo.content, missile.missile);
   if (body === undefined) throw fault('body');
   return body;
 }

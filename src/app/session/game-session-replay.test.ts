@@ -7,17 +7,22 @@ import { replayRecord } from '../../core/replay/replay.ts';
 import { contentOf, roundTrip } from '../../core/replay/replay.test-support.ts';
 import type { FrameReport } from '../runtime/game-runtime.ts';
 import { NEUTRAL_AXES, recordingOptions, TICK_MS } from '../runtime/game-runtime.test-support.ts';
-import type { GameCommandsCancelled } from './game-session.ts';
+import type { GameCommandsCancelled, GameRunSpec } from './game-session.ts';
 import { current, departure, runSpec, sessionSetup } from './game-session.test-support.ts';
 
 // AC-06: a run taken through the session's lifecycle records exactly the input its successful ticks executed. The
-// commands that end up cancelled are all `cockpit-front`, which no executed command uses. The secondary fire is a
-// missile selection until P3-07/22 lets missiles fly: with P3-07's automatic target selection, it would launch a
-// guided missile, whose movement faults until then.
+// commands that end up cancelled are all `cockpit-front`, which no executed command uses. The secondary fire launches
+// guided missiles at the automatically selected target, which then fly (P3-07/22).
 
-const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'select-missile', direction: 'next' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
+const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'fire', channel: 'secondary' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
 const DOOMED: Command = { type: 'cockpit-front' };
 const PRIMARY_FIRE = JSON.stringify({ type: 'fire', channel: 'primary' });
+
+/** `spec` with a lifetime its missiles' guidance accepts: the synthetic records' is negative, which it rejects (P3-07/20). */
+function flyable(spec: GameRunSpec): GameRunSpec {
+  for (const missile of (spec.craftInfo.content as unknown as { missiles: { at44: number }[] }).missiles) missile.at44 = 320;
+  return spec;
+}
 
 /**
  * From the initial departure hold (hidden during it), through a user pause, a hidden pause, a menu-style pause, held
@@ -25,7 +30,7 @@ const PRIMARY_FIRE = JSON.stringify({ type: 'fire', channel: 'primary' });
  * and on a Pointer Lock exit.
  */
 function lifecycle(recording: RecordingOptions | null) {
-  const spec = runSpec({ run: { wingman: 2 }, recording, initialTransition: departure('wingman') });
+  const spec = flyable(runSpec({ run: { wingman: 2 }, recording, initialTransition: departure('wingman') }));
   const { session, host, errors } = sessionSetup();
   session.control({ type: 'start', spec });
   const run = current(session);
@@ -115,6 +120,8 @@ describe('session lifecycle recording', () => {
     expect(record.ticks.slice(9).map((input) => input.axes)).toEqual([{ pitch: -1, yaw: 0, roll: 0.5 }, NEUTRAL_AXES, NEUTRAL_AXES, NEUTRAL_AXES]);
     expect(result.checkpoints.map((checkpoint) => checkpoint.tick)).toEqual(interval === 1 ? Array.from({ length: 14 }, (_, tick) => tick) : [0, 4, 8, 12, 13]);
     expect(delivered).toEqual(result.events);
+    // The tick-10 missile flies through ticks 11 to 13 in both runs.
+    expect(result.events.flatMap((event) => (event.type === 'shot-fired' && event.family === 'missile' ? [event.tick] : []))).toEqual([10, 13]);
     const text = JSON.stringify(record);
     expect(text).not.toMatch(/commandId|runId|nowMs|cockpit-front|G-02|resumeRequired|pause/);
     const replayed = replayRecord(roundTrip(record), contentOf(spec as never));
