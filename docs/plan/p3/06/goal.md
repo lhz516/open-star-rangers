@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | completed |
 | [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | completed |
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | completed |
-| [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | pending |
+| [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | in-progress |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
