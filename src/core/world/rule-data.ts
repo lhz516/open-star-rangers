@@ -1,6 +1,6 @@
 /**
  * The rule-data inputs of world creation and the world's static rule data (docs/plan/p3/02/spec.md, CR-01;
- * docs/plan/p3/07/spec.md, 规则数据输入). Beside the craft info, creation takes five top-level inputs of the package the
+ * docs/plan/p3/07/spec.md, 规则数据输入). Beside the craft info, creation takes six top-level inputs of the package the
  * logic Assets came from, which the caller decoded with that package's payload readers:
  *
  * - `debrisParameters` `{ id, content }`: `data/debris-parameters`, read strictly with readDebrisParameters;
@@ -9,15 +9,20 @@
  * - `explosions` `{ id, content }`: `data/explosions`, read strictly with readExplosionTable; Core keeps each entry's
  *   animation reference;
  * - `explosionAnimations` `{ id, content }[]`: each read strictly with readExplosionAnimation; Core keeps the frame count;
- * - `models` `{ id, content }[]`: model payload content; Core reads only `kind` and the length of part list 1.
+ * - `models` `{ id, content }[]`: model payload content; Core reads only `kind` and the length of part list 1;
+ * - `aiPrograms` `{ id, content }`: `data/ai-programs`, read strictly with readAiPrograms; the rules read only built-in
+ *   program records 1 and 2's +0x14, +0x24 and +0x2C, the homing missiles' programs (steering.ts). P3-08 extends its
+ *   reading of the same input.
  *
  * Core checks the limits before it copies, freezes what it keeps and keeps nothing of the input. The two lists are in
  * strictly ascending Asset ID order, and each is exactly the set the rules read: the animations the explosion table
- * names, and the models the instantiable craft are bound to (setup-check.ts, instantiableRecords). Records the run
- * cannot reach are neither read nor rejected.
+ * names, and the models the instantiable craft are bound to (setup-check.ts, instantiableRecords). Craft-info and DEBRIS
+ * records the run cannot reach are neither read nor rejected; built-in program records 1 and 2 are always checked, since
+ * whether a missile homes depends on its launch.
  *
  * The static rule data (CR-01) is computed once from them and the craft info, in the original's storage types
- * (load-transforms.ts), for the reachable records only; it is never part of a snapshot, as setupHash binds its inputs.
+ * (load-transforms.ts), for the reachable records only, with the two homing programs; it is never part of a snapshot,
+ * as setupHash binds its inputs.
  *
  * Errors, before any world exists: a missing or extra field, a wrong kind or role and every semantic failure are
  * CoreInputError at a structural path with a fixed reason; a malformed Asset ID and the content readers' failures keep
@@ -31,6 +36,7 @@ import { FLIGHT_DATA_FORMAT, FLIGHT_DATA_LIMITS } from '../../content/flight/fli
 import { readExplosionAnimation, readExplosionTable } from '../../content/flight/flight-data-readers.ts';
 import { MODEL_LIMITS } from '../../content/models/model-payload.ts';
 import { CRAFT_INFO_COUNTS, type CraftInfo, type CraftRecord, type Mount } from '../../content/rule-data/craft-info.ts';
+import { readAiPrograms, type AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readDebrisParameters, type DebrisParameters } from '../../content/rule-data/debris-parameters.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { readDataRecord, readExactRecord, readList, readNumber } from '../contracts/validation.ts';
@@ -45,17 +51,19 @@ import {
 } from '../rules/load-transforms.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
+import type { SteeringProgram } from '../rules/steering.ts';
 import type { Level } from './entity-table.ts';
 import type { InstantiableRecord } from './setup-check.ts';
 
 /** The top-level rule-data inputs of world creation, in their order. */
-export const RULE_DATA_FIELDS = ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models'] as const;
+export const RULE_DATA_FIELDS = ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms'] as const;
 
 /** The Asset of each single rule-data input in the slice (P3-03, P2-11); `original-import` content uses no other. */
 export const PRODUCTION_RULE_DATA = Object.freeze({
   debrisParameters: 'data/debris-parameters',
   projectileVisuals: 'data/projectile-visuals',
   explosions: 'data/explosions',
+  aiPrograms: 'data/ai-programs',
 });
 /** The production explosion animations are `data/explosion-animation/<nn>`, numbered from 01. */
 const PRODUCTION_ANIMATION = /^data\/explosion-animation\/(?!00)\d{2}$/;
@@ -82,7 +90,12 @@ export interface RuleDataInputs {
   readonly explosionAnimations: readonly { readonly id: AssetId; readonly frames: number }[];
   /** Part list 1's part count of each model. */
   readonly models: readonly { readonly id: AssetId; readonly parts: number }[];
+  /** The complete content as read. */
+  readonly aiPrograms: { readonly id: AssetId; readonly content: AiPrograms };
 }
+
+/** The built-in program records homing missiles install, by record number (steering.ts, programRecord). */
+export type HomingPrograms = { readonly [Record in 1 | 2]: SteeringProgram };
 
 /** The static rule data of an instantiable craft kind. */
 export interface CraftRuleData {
@@ -107,12 +120,15 @@ export interface WorldRuleData {
   readonly missiles: readonly (MissileRuleData | null)[];
   /** By kind bit 0–19; null for a kind the run cannot instantiate. */
   readonly craft: readonly (CraftRuleData | null)[];
+  /** Built-in program records 1 and 2's +0x14, +0x24 and +0x2C, copied from `inputs.aiPrograms`. */
+  readonly homingPrograms: HomingPrograms;
 }
 
 const INPUT = 'input';
 const CRAFT_INFO = 'input.craftInfo.content';
 const DEBRIS = 'input.debrisParameters.content';
 const EXPLOSIONS = 'input.explosions.content';
+const AI_PROGRAMS = 'input.aiPrograms.content';
 
 /** An Asset ID of a `data` input; for original-import content only the production Asset is accepted. */
 function readDataId(value: unknown, path: string, identity: ContentIdentity, production: (id: AssetId) => boolean): AssetId {
@@ -155,7 +171,7 @@ function readAscending<Item extends { readonly id: AssetId }>(value: unknown, pa
   return items;
 }
 
-/** Reads the five rule-data inputs of `input` (the creation input record) for content of `identity`. */
+/** Reads the six rule-data inputs of `input` (the creation input record) for content of `identity`. */
 export function readRuleDataInputs(input: Record<string, unknown>, identity: ContentIdentity): RuleDataInputs {
   const asset = (field: (typeof RULE_DATA_FIELDS)[number]) => readExactRecord(input[field], `${INPUT}.${field}`, ['id', 'content']);
   const production = (field: keyof typeof PRODUCTION_RULE_DATA) => (id: AssetId): boolean => id === PRODUCTION_RULE_DATA[field];
@@ -183,7 +199,12 @@ export function readRuleDataInputs(input: Record<string, unknown>, identity: Con
     if (!id.startsWith('model/')) throw new CoreInputError(`${at}.id`, 'must be a model Asset ID');
     return { id, parts: readModelParts(content, `${at}.content`) };
   });
-  return Object.freeze({ debrisParameters, projectileVisuals, explosions, explosionAnimations, models });
+  const programs = asset('aiPrograms');
+  const aiPrograms = Object.freeze({
+    id: readDataId(programs.id, `${INPUT}.aiPrograms.id`, identity, production('aiPrograms')),
+    content: readAiPrograms(programs.content, AI_PROGRAMS),
+  });
+  return Object.freeze({ debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms });
 }
 
 const isInt32 = (value: number): boolean => toInt32(value) === value;
@@ -350,6 +371,7 @@ export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: 
     const path = `${CRAFT_INFO}.guns[${index}]`;
     if (gun.at28 === 1 && gun.at08 === 0) throw new CoreInputError(`${path}.at08`, 'must not be 0 for an aimed gun, as the aim divides by it');
     if (gun.at14 < 0 || gun.at14 > 32) throw new CoreInputError(`${path}.at14`, 'must be 0 to 32, as the parked engagement multiplies its shot count by it');
+    if (gun.at24 < 0) throw new CoreInputError(`${path}.at24`, 'must not be negative, as it is the lifetime of the gun\'s projectiles');
     const data = gunRuleData(gun);
     if (!isFiniteFloat32(data.rangeSquared)) throw new CoreInputError(`${path}.at24`, 'makes the range or its square leave the f32 range');
     return data;
@@ -385,5 +407,22 @@ export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: 
     guns: Object.freeze(guns),
     missiles: Object.freeze(missiles),
     craft: Object.freeze(craft),
+    homingPrograms: homingPrograms(inputs.aiPrograms.content),
   });
+}
+
+/**
+ * Built-in program records 1 and 2 (CR-01 check 6), which a guided missile installs (executable.md H5): both must exist
+ * and the update period +0x14 must not be negative, which the original reads as a far u32 deadline. The content reader
+ * already holds +0x14 to i32 and +0x24 and +0x2C to finite f32 values. Checked whatever the run mounts, as whether a
+ * missile homes depends on its launch.
+ */
+function homingPrograms({ builtInPrograms }: AiPrograms): HomingPrograms {
+  const record = (number: 1 | 2): SteeringProgram => {
+    const program = builtInPrograms[number];
+    if (program === undefined) throw new CoreInputError(`${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2, the homing missiles\' programs');
+    if (program.at14 < 0) throw new CoreInputError(`${AI_PROGRAMS}.builtInPrograms[${number}].at14`, 'must not be negative, as it is a homing missile\'s update period');
+    return Object.freeze({ at14: program.at14, at24: program.at24, at2C: program.at2C });
+  };
+  return Object.freeze({ 1: record(1), 2: record(2) });
 }

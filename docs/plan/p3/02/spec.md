@@ -358,7 +358,7 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
 
 #### CR-01 世界创建输入与静态规则数据（D-01）
 
-- **输入：** `CreateWorldInput`、录制入口与 `ReplayContent` 在 `craftInfo` 旁增加五项必需输入。外层规则同 P3-06：缺字段或多字段为 `CoreInputError`；校验 Asset ID 的 kind 与角色；`original-import` 只接受唯一切片的对应 Asset；错误只带结构路径与稳定原因，不回显导入值。
+- **输入：** `CreateWorldInput`、录制入口与 `ReplayContent` 在 `craftInfo` 旁增加六项必需输入（`aiPrograms` 由 P3-07 的子任务 34 增补，见本 spec 审批节的相应修订）。外层规则同 P3-06：缺字段或多字段为 `CoreInputError`；校验 Asset ID 的 kind 与角色；`original-import` 只接受唯一切片的对应 Asset；错误只带结构路径与稳定原因，不回显导入值。
 
   ```ts
   debrisParameters: { id: AssetId; content: unknown };               // data/debris-parameters，readDebrisParameters 严格读取
@@ -366,20 +366,24 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
   explosions: { id: AssetId; content: unknown };                     // data/explosions，readExplosionTable
   explosionAnimations: readonly { id: AssetId; content: unknown }[];  // data/explosion-animation/<nn>，readExplosionAnimation；ID 升序、无重复
   models: readonly { id: AssetId; content: unknown }[];              // 模型 Asset；Core 只校验并提取 partLists[1] 的长度（第 1 列表的部件数）；ID 升序、无重复
+  aiPrograms: { id: AssetId; content: unknown };                     // data/ai-programs，readAiPrograms 严格读取；Core 提取内置程序记录 1、2 的 +0x14、+0x24、+0x2C
   ```
 
   - 读取结果冻结并与输入脱离。`projectileVisuals` 与 `models` 没有对象读取器：Core 只校验被读取的字段（类型、不超过内容的结构上限、有限值），不展开几何，不引入 `original-data` 解析器。
-  - 六份规则输入与三份逻辑 Asset 来自同一经 `validatePackage` 验证的包，由调用者保证。
+  - 七份规则输入（含 `craftInfo`）与三份逻辑 Asset 来自同一经 `validatePackage` 验证的包，由调用者保证。
+  - `aiPrograms` 是 `logic` 组中角色 `ai-programs` 的 Asset，与其他规则输入并列，不嵌套在别的输入中。本修订只读取追踪导弹需要的部分；P3-08 在同一输入上扩展 AI 所需的其余读取，不另建输入。
 - **集合完整（`CoreInputError`）：** `explosionAnimations` 恰为 `explosions` 三张列表引用的动画集合；`models` 恰为可实例化机体（直接与延迟声明、编组成员、僚机选项）在 `craftTypes` 中绑定的模型集合。多一份或少一份都拒绝。
 - **语义检查（`CoreInputError`）：** 只检查可实例化种类实际会读到的记录，未用的记录不读也不拒绝：
   1. **爆炸帧数：** 列表 1、2 都非空，它们的全部项的帧数（`ExplosionAnimation.frames` 的长度）相同，记为 n₁₂。列表 3 非空时其全部项帧数相同，记为 n₃；可实例化机体有导弹挂点而列表 3 为空时拒绝。这项载入核对保证 EXPL 项的选择（归表现层，CR-11）不改变 Core 的来源释放时刻（X4）。
   2. **碎片参数映射：** 每个种类位的第 1 列表部件数 c 与其 DEBRIS 参数表按 [craft §4.1](../../../original/formats/craft.md#41-loading-and-lookup-confirmed-code) 的映射一致：种类 1、2 恰需 max(c − 3, 0) 项，其他种类恰需 c 项，不越界。种类 1、2 要求 c ≥ 1，否则爆炸会持有并移除玩家或僚机对象（X2、X4），属切片外。种类 1、2 的第 0 部件是原版明确的无参数部件，不算缺失。
   3. **炮挂点长度：** 每个非自动炮挂点（挂点类型 0、炮记录 +0x28 ≠ 2）的炮序号都有弹丸记录长度。
   4. **挂点链：** +0x18、+0x1C 链接无环；列表项的同时开火链上只有首个组可以带交替链接，首项不得同时带两种链接。原版对后两种排列会保留跨调用的“已尝试”标志（W5），切片数据中没有，Core 拒绝而不保存该标志。
-  5. **除数与定义域：** 玩家机型的 c9C、c5C 为正（状态显示步的除数，CR-10）；有护盾（c5C > 0）的机型 c60 ≠ 0；瞄准炮（+0x28 = 1）的 +0x08 ≠ 0；导弹记录 +0x60 ≠ +0x64（爆炸衰减的分母）；可达炮记录的 +0x14 在 [0, 32] 内（E5：停放交战射击次数的 FISTP 不溢出）；实例化与能量的 i32 运算按记录百分比不溢出。导弹 +0x2C 的反余弦只供 P3-08，本修订不计算也不校验。
+  5. **除数与定义域：** 玩家机型的 c9C、c5C 为正（状态显示步的除数，CR-10）；有护盾（c5C > 0）的机型 c60 ≠ 0；瞄准炮（+0x28 = 1）的 +0x08 ≠ 0；导弹记录 +0x60 ≠ +0x64（爆炸衰减的分母）；可达炮记录的 +0x14 在 [0, 32] 内（E5：停放交战射击次数的 FISTP 不溢出）；可达炮记录的 +0x24（弹丸寿命，H2 的到期时刻 = 首次回调时钟 + +0x24）非负，原版对负值按 u32 回绕为遥远的到期，项目不复现；实例化与能量的 i32 运算按记录百分比不溢出。导弹 +0x2C 的反余弦只供 P3-08，本修订不计算也不校验。
+  6. **追踪导弹的程序：** `aiPrograms` 的内置程序表有记录 1 与 2（[executable 的 H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)：热寻的导弹装记录 1，其他追踪导弹装记录 2；记录号即 `builtInPrograms` 的下标），两者的 +0x14（更新周期）都非负。+0x14 为 i32、+0x24（角度）与 +0x2C（饱和值）为有限 f32 由内容读取器保证，其失败保留 `ContentContractError`。这是上述“只检查可实例化种类实际会读到的记录”的例外：导弹是否追踪取决于发射时的锁定，所以不论运行装备什么都检查这两条记录。
 - **静态规则数据（`WorldState`，冻结）：** 创建时按原版存储类型计算一次，之后不变：
   - [craft §3.8](../../../original/formats/craft.md#38-load-transforms-in-0x2cf38-confirmed-code) 与 [§4.4](../../../original/formats/craft.md#44-load-transforms-in-0x246a0-confirmed-code) 的消费者变换：炮与导弹的射程及其平方、导弹引信半径平方、带 box 机型的半径与界、炮挂点 +0x08 加弹丸长度（机型记录 0、1 先乘代码常量）、DEBRIS 向量取反与归一化、box 外扩、半径、+0x5C 类别；
-  - n₁₂、n₃ 与按种类位的第 1 列表部件数。
+  - n₁₂、n₃ 与按种类位的第 1 列表部件数；
+  - 内置程序记录 1、2 的 +0x14、+0x24、+0x2C，按记录号复制为有界的纯数据（`homingPrograms`，即 P3-07 共享转向模块的 `SteeringProgram`），原值不变换。
 
   它们由 setupHash 绑定的输入决定，不进快照，也不与原内容形成两份可变事实。
 - **setupHash：** 在 `MissionSetup` 与 `craftInfo`（P3-06）之后，按以下次序与字段覆盖（外观字段不覆盖）：
@@ -391,6 +395,9 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
   | `explosions` | ID 与三张列表按次序的动画引用 | 声音引用 |
   | `explosionAnimations` | 按 ID 次序的 ID 与帧数 | 帧图像引用 |
   | `models` | 按 ID 次序的 ID 与第 1 列表部件数 | 几何、贴图、颜色、部件标志、声音 |
+  | `aiPrograms` | ID 与完整内容 | — |
+
+  `aiPrograms` 的内容全是规则数据，覆盖完整内容使 P3-08 扩展读取时不必改变绑定。按 CR-14，它是静态输入：不进快照，快照格式版本与 `RULES_VERSION` 沿用 P3-07 已递增的版本，replay 记录形状不变。
 
 - **建造期抽取：** 无。EXIC 子集的 3 次抽取（X8）归表现层（CR-11），不在 Core 中抽取，也不进快照。
 
@@ -1066,3 +1073,20 @@ type Attacker =
   7. **选择命令在所选挂点不变时也为 `accepted`（CR-05）。** 原版此时仍更新序号、清除锁定并请求音效（W3）。被排除的方案是返回 `no-change`，它会掩盖锁定被清除。
   8. **发射者失效后不保留归因（CR-06）。** 原版以分类掩码代替种类，不计击杀（H4）；玩家对象从不被移除，玩家的击杀不受影响。被排除的是 P3-07 spec 原先的“保留归因”。
 - 本修订对 P3-07 spec 方向的改动记在 [P3-07 spec 的审批](../07/spec.md#审批)。
+
+**2026-10-10 修订（P3-07 的子任务 34：追踪导弹的 AI 程序输入，依用户 2026-10-09/10 的预先授权）：**
+
+- **范围：** 只改 CR-01：新增 `aiPrograms` 输入、语义检查 6、可达炮记录 +0x24 的非负检查（检查 5）、静态规则数据中的两条程序记录与 setupHash 表中的一行，以及本条记录。CR-14 不需修改：该输入是静态输入，按 CR-14 不进快照，沿用 P3-07 已递增的快照格式版本与 `RULES_VERSION`，replay 记录形状不变。其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **起因：** P3-07 的子任务 32 实现共享转向模块时发现，追踪导弹的程序读取内置 AI 程序记录 1、2 的 +0x14、+0x24、+0x2C（[H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)），而 CR-01 的输入与静态规则数据都没有 AI 程序，Core 拿不到；原版数值不能写进代码。P3-07 的子任务 17 另建议在世界创建时拒绝负的炮 +0x24：否则 Core 只会在弹丸的首次回调时故障。
+- **授权出处与用户原话：**
+  - [P3-07 goal 的审批节](../07/goal.md#审批)：用户 2026-10-09 决定执行中新增的子任务不需审阅，需要改变 spec 契约时直接批准最推荐的方案。P3-07 的协调者据此新增子任务 34（见该 goal 的执行记录）。
+  - 用户 2026-10-10 对 P3-07 协调者的指示，原话由协调者在派发 34 时转引：“从现在开始，我接下来几个小时都不能接手或回答你的问题。如果有任何问题，你都按你最推荐的回答来做。如果需要修改spec或goal，我都同意。如果要增加新的subtasks来unblock一个subtasks，我也同意。”
+  - 授权不涵盖总计划与 ADR 中的冻结决定，也不放宽阶段退出条件；本修订不涉及它们。
+- **所选方案与理由：** 34 的推荐方案。`CreateWorldInput`、录制入口与 `ReplayContent` 增加顶层的 `aiPrograms`（同一包中 `data/ai-programs` 的规范内容，按内容读取器严格读取），与其他规则输入并列，Asset ID 按 CR-01 的规则校验。静态规则数据只复制记录 1、2 的三个字段，并在世界创建时校验。setupHash 覆盖该输入的 ID 与完整内容。这样 Core 读到的是导入内容本身，绑定与其他规则输入一致；P3-08 扩展 AI 读取时沿用同一输入与同一绑定。
+- **被排除的方案：**
+  1. **由调用者先提取三个字段，作为新输入传入。** 把规则所需的提取放到 App，setupHash 只绑定提取结果而不绑定导入内容，P3-08 还要再建输入。
+  2. **把字段并入 `craftInfo` 或其他已有输入。** 需要修改内容契约与导入链，超出范围，也会让一个 Asset 的绑定混入另一个 Asset 的内容。
+  3. **在代码中写入原版数值。** 违反项目的内容规则（不分发原版内容）。
+  4. **只在可实例化机体装有追踪导弹时才要求记录 1、2。** 导弹是否追踪取决于发射时的锁定（W11、H5 的发射字节），要按运行推断“不会追踪”既复杂又易错；生产内容的内置表总有这两条记录，P3-08 也会读整张表。
+  5. **setupHash 只覆盖三个提取的字段。** P3-08 扩展读取时要再改绑定；该内容没有只影响外观的字段，全部覆盖与 CR-01 对 `debrisParameters` 的做法一致。
+  6. **允许负的炮 +0x24 并在运行中按 u32 回绕。** 原版的回绕造成遥远的到期，项目的时钟契约不复现 u32 回绕；创建时拒绝比运行中故障更早、更清楚。

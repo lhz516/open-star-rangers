@@ -122,7 +122,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | in-progress |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
-| [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | in-progress |
+| [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | in-progress |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35 | pending |
 

@@ -24,7 +24,7 @@ import { loadMission } from '../../core/mission/load-mission.ts';
 import type { RecordingOptions } from '../../core/replay/recording.ts';
 import { PRODUCTION_RAW_DIFFICULTY } from '../../core/world/run-config.ts';
 import { missionFailureOf, type MissionFailure } from '../resources/mission-diagnostics.ts';
-import { craftInfoInput, missionInput, ruleDataInputs, runModelInputs } from '../resources/mission-input.ts';
+import { craftInfoInput, missionInput, ruleDataInputs, runModelInputs, type RuleDataInputs } from '../resources/mission-input.ts';
 import type { HeldPackage, ResourceHolder } from '../resources/resource-holder.ts';
 import {
   createGameSession, type DepartureTransition, type GameRunSpec, type GameSession, type GameSessionControl, type GameSessionRun,
@@ -219,7 +219,7 @@ const creationRefusal = (error: unknown): MissionFailure | null =>
   (error instanceof GameSessionError && error.kind === 'invalid-argument' ? missionFailureOf(error.cause) : null);
 
 /** The content world creation takes from the bound package beside the logic Assets, whatever the run. */
-type PackageContent = Pick<GameRunSpec, 'craftInfo' | 'debrisParameters' | 'projectileVisuals' | 'explosions' | 'explosionAnimations'>;
+type PackageContent = Pick<GameRunSpec, 'craftInfo' | keyof RuleDataInputs>;
 
 type Decoded<Value> = { readonly input: Value } | { readonly failure: MissionFailure };
 

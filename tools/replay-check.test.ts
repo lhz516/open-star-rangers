@@ -132,6 +132,7 @@ async function record(): Promise<{ readonly recording: Recording; readonly ident
     explosions,
     explosionAnimations: animations.map(flightData),
     models: instantiableModelIds(base).map(id => models(item => item.id === id, (bytes, descriptor) => readModelPayload(bytes, descriptor.payloadIdentity.schemaVersion))),
+    aiPrograms: asset('ai-programs', decodeRuleDataPayload),
   };
   const session = createRecordingSession(input, { producer: 'open-star-rangers replay-check test', checkpointInterval: INTERVAL });
   for (let tick = 1; tick <= TICKS; tick++) session.step(script(tick));

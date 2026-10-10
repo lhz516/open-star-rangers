@@ -4,9 +4,10 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { MARKER as CRAFT_INFO_MARKER, debrisRecord, gun, mount } from '../../content/rule-data/rule-data.test-support.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from './create-world.ts';
+import { programRecord } from '../rules/steering.ts';
 import {
-  animationContent, animationId, asCreateInput, craftInfoContent, debrisContent, declaration, MARKER, modelContent, modelOf, originalImportIdentity,
-  playerOnlyMission, projectileVisualsContent, rosterContent, ruleInputs, worldInput, type CraftInfoDraft, type WorldInputParts,
+  aiProgramsContent, animationContent, animationId, asCreateInput, craftInfoContent, debrisContent, declaration, MARKER, modelContent, modelOf,
+  originalImportIdentity, playerOnlyMission, projectileVisualsContent, rosterContent, ruleInputs, worldInput, type CraftInfoDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { RULE_DATA_LIMITS } from './rule-data.ts';
 import { thrownBy } from './world.test-support.ts';
@@ -21,6 +22,7 @@ type Lists = { animation: { id: string }; sound: unknown }[][];
 const CRAFT_INFO = 'input.craftInfo.content';
 const DEBRIS = 'input.debrisParameters.content';
 const EXPLOSIONS = 'input.explosions.content';
+const AI_PROGRAMS = 'input.aiPrograms.content';
 
 /** The default creation input after `change`. */
 function inputWith(change: (input: Input & Record<string, unknown>) => void, parts: WorldInputParts = {}): Input {
@@ -29,7 +31,7 @@ function inputWith(change: (input: Input & Record<string, unknown>) => void, par
   return input;
 }
 
-const asset = (input: Input, field: 'debrisParameters' | 'projectileVisuals' | 'explosions') => input[field] as unknown as Asset;
+const asset = (input: Input, field: 'debrisParameters' | 'projectileVisuals' | 'explosions' | 'aiPrograms') => input[field] as unknown as Asset;
 const listsOf = (input: Input) => asset(input, 'explosions').content.lists as Lists;
 const models = (input: Input) => input.models as { id: string; content: ReturnType<typeof modelContent> }[];
 const animations = (input: Input) => input.explosionAnimations as { id: string; content: ReturnType<typeof animationContent> }[];
@@ -67,6 +69,7 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     expect(inputs.explosionAnimations).toEqual([1, 2, 3, 4].map((number) => ({ id: animationId(number), frames: number === 4 ? 6 : 12 })));
     // The slice-shaped mission instantiates kinds 0, 7, 8, 14 and 17; the parts follow the synthetic DEBRIS counts.
     expect(inputs.models).toEqual([[0, 4], [14, 0], [17, 3], [7, 2], [8, 3]].map(([kindBit, parts]) => ({ id: modelOf(kindBit), parts })));
+    expect(inputs.aiPrograms).toEqual({ id: 'data/ai-programs', content: aiProgramsContent() });
     expect(deepFrozen(ruleData)).toBe(true);
   });
 
@@ -79,6 +82,10 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     animations(input)[0].content.frames.pop();
     models(input)[0].content.partLists[1].pop();
     (asset(input, 'debrisParameters').content.byCraftType as { at00: number[] }[][])[0][0].at00[0] = 50;
+    const builtIn = asset(input, 'aiPrograms').content.builtInPrograms as { at14: number; at24: number }[];
+    builtIn[1].at14 = 99;
+    builtIn[2].at24 = 7;
+    (asset(input, 'aiPrograms').content.globals as { at08: number }).at08 = 1;
     const typed = Float32Array.of(1, 2);
     const withTyped = worldInput();
     (models(withTyped)[0].content as Record<string, unknown>).geometries = [{ positions: typed }];
@@ -88,27 +95,30 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     expect(typedState.ruleData).toEqual(before);
   });
 
-  it('requires the five fields, each exactly { id, content }', () => {
-    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models'] as const) {
+  it('requires the six fields, each exactly { id, content }', () => {
+    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms'] as const) {
       expectRejected(inputWith((input) => void Reflect.deleteProperty(input, field)), `input.${field}`, 'is required');
     }
     expectRejected(inputWith((input) => void (input.extra = {})), 'input', 'contains unknown fields');
     expectRejected(inputWith((input) => void Reflect.deleteProperty(input.debrisParameters, 'content')), 'input.debrisParameters.content', 'is required');
     expectRejected(inputWith((input) => void ((input.explosions as Record<string, unknown>).extra = 1)), 'input.explosions', 'contains unknown fields');
+    expectRejected(inputWith((input) => void Reflect.deleteProperty(input.aiPrograms, 'id')), 'input.aiPrograms.id', 'is required');
     expectRejected(inputWith((input) => void ((input.models as Record<string, unknown>[])[0].extra = 1)), 'input.models[0]', 'contains unknown fields');
     expectRejected(inputWith((input) => void (input.explosionAnimations = {} as never)), 'input.explosionAnimations', 'must be an array');
   });
 
-  it('checks Asset IDs: malformed keeps the content error; data for the four data inputs, model for the models', () => {
+  it('checks Asset IDs: malformed keeps the content error; data for the five data inputs, model for the models', () => {
     expectRejected(inputWith((input) => void (asset(input, 'explosions').id = 'Data/Bad')), 'input.explosions.id', undefined, ContentContractError);
     expectRejected(inputWith((input) => void (asset(input, 'debrisParameters').id = 'model/debris-parameters')), 'input.debrisParameters.id', 'must be a data Asset ID');
+    expectRejected(inputWith((input) => void (asset(input, 'aiPrograms').id = 'model/ai-programs')), 'input.aiPrograms.id', 'must be a data Asset ID');
+    expectRejected(inputWith((input) => void (asset(input, 'aiPrograms').id = 'data/AI')), 'input.aiPrograms.id', undefined, ContentContractError);
     expectRejected(inputWith((input) => void (animations(input)[0].id = 'image/explosion-animation/01')), 'input.explosionAnimations[0].id', 'must be a data Asset ID');
     expectRejected(inputWith((input) => void (models(input)[0].id = 'data/craft-0')), 'input.models[0].id', 'must be a model Asset ID');
   });
 
   it('takes only the production Assets for original-import content, and any data Asset for synthetic content', () => {
-    const renamed = (field: 'debrisParameters' | 'projectileVisuals' | 'explosions') => (input: Input) => void (asset(input, field).id = 'data/other');
-    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions'] as const) {
+    const renamed = (field: 'debrisParameters' | 'projectileVisuals' | 'explosions' | 'aiPrograms') => (input: Input) => void (asset(input, field).id = 'data/other');
+    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms'] as const) {
       expectAccepted(inputWith(renamed(field)));
       expectRejected(inputWith(renamed(field), { identity: originalImportIdentity() }), `input.${field}.id`, 'must be the production Asset');
     }
@@ -139,10 +149,12 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     expectAccepted(worldInput({ identity: originalImportIdentity() }));
   });
 
-  it('keeps the content readers\' ContentContractError for the debris parameters, the table and the animations', () => {
+  it('keeps the content readers\' ContentContractError for the debris parameters, the table, the animations and the AI programs', () => {
     expectRejected(inputWith((input) => void ((asset(input, 'debrisParameters').content.byCraftType as unknown[]).pop())), `${DEBRIS}.byCraftType`, undefined, ContentContractError);
     expectRejected(inputWith((input) => void (listsOf(input)[0][0].sound = { id: 'sound/x', kind: 'image' })), `${EXPLOSIONS}.lists[0][0].sound.kind`, undefined, ContentContractError);
     expectRejected(inputWith((input) => void (animations(input)[1].content.frames = [])), 'input.explosionAnimations[1].content.frames', undefined, ContentContractError);
+    expectRejected(inputWith((input) => void ((asset(input, 'aiPrograms').content.programs as { parameters: number }[])[0].parameters = 1)),
+      `${AI_PROGRAMS}.programs[0].parameters`, undefined, ContentContractError);
   });
 
   it('reads of the projectile visuals only the kind and each record\'s finite f32 length', () => {
@@ -325,6 +337,16 @@ describe('rule-data inputs (CR-01): semantic checks', () => {
     expectAccepted(worldInput({ craftInfo: craftInfoWith((info) => void info.guns.push(gun({ at14: 99 }) as never)) }));
   });
 
+  it('rejects a negative +0x24, the projectile lifetime, of reachable guns', () => {
+    const lifetime = (gunIndex: number, value: number) => worldInput({ craftInfo: craftInfoWith((info) => void (info.guns[gunIndex].at24 = value)) });
+    expectAccepted(lifetime(0, 0));
+    expectAccepted(lifetime(1, 0x7fff));
+    expectRejected(lifetime(0, -1), `${CRAFT_INFO}.guns[0].at24`, 'must not be negative');
+    expectRejected(lifetime(1, -0x8000_0000), `${CRAFT_INFO}.guns[1].at24`, 'must not be negative');
+    // A gun no instantiable craft mounts is not read.
+    expectAccepted(worldInput({ craftInfo: craftInfoWith((info) => void info.guns.push(gun({ at24: -1 }) as never)) }));
+  });
+
   it('rejects i32 overflow of the hull and the resources at an instantiable record\'s percentages', () => {
     const record = 'input.mission.content.declarations[3]';
     const hull = worldInput({ craftInfo: craftInfoWith((info) => void (info.craft[7].at9C = 0x7fffffff)) });
@@ -371,5 +393,59 @@ describe('static rule data (CR-01)', () => {
     expect(player.debris[0].weights).toEqual({ x: -0, y: -0, z: 1 });
     expect(ruleData.craft[14]).toMatchObject({ parts: 0, debris: [] });
     expect(ruleData.craft[7]!.shape).toMatchObject({ radius: 4, radiusSquared: 16 });
+  });
+});
+
+describe('AI program input (CR-01): the homing missiles\' programs', () => {
+  type BuiltIn = { at14: number; at24: number; at2C: number };
+  /** The default input with built-in records changed by `change`, other parts as given. */
+  const builtIn = (change: (records: BuiltIn[]) => void, parts: WorldInputParts = {}) => {
+    const content = aiProgramsContent();
+    change(content.builtInPrograms as BuiltIn[]);
+    return worldInput({ ...parts, aiPrograms: content });
+  };
+  const at = (record: number, field: string) => `${AI_PROGRAMS}.builtInPrograms[${record}].${field}`;
+
+  it('copies built-in records 1 and 2\'s period, angle and saturation, by the record a guided missile installs', () => {
+    const { homingPrograms } = create(worldInput()).ruleData;
+    // aiProgramsContent: record 1 (16, 30, 0.75), record 2 (0, 2.5, 1).
+    expect(homingPrograms).toEqual({ 1: { at14: 16, at24: 30, at2C: 0.75 }, 2: { at14: 0, at24: 2.5, at2C: 1 } });
+    expect(homingPrograms[programRecord('heat-seeker')]).toEqual({ at14: 16, at24: 30, at2C: 0.75 });
+    expect(homingPrograms[programRecord('homing')]).toEqual({ at14: 0, at24: 2.5, at2C: 1 });
+    expect(deepFrozen(homingPrograms)).toBe(true);
+  });
+
+  it('requires records 1 and 2, whatever the run mounts', () => {
+    expectRejected(builtIn((records) => void records.pop()), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
+    expectRejected(builtIn((records) => void records.splice(0)), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
+    const unarmed = craftInfoWith((info) => {
+      info.craft[0].mounts = [];
+      info.craft[0].mountLists = [[], [], []];
+    });
+    expectRejected(builtIn((records) => void records.pop(), { craftInfo: unarmed }), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
+    // Records past 2 are not required, and more are kept as read.
+    expect(create(builtIn((records) => void records.push({ ...records[0] }))).ruleData.inputs.aiPrograms.content.builtInPrograms).toHaveLength(4);
+  });
+
+  it('rejects a negative period of record 1 or 2, and only of those records', () => {
+    expectRejected(builtIn((records) => void (records[1].at14 = -1)), at(1, 'at14'), 'must not be negative');
+    expectRejected(builtIn((records) => void (records[2].at14 = -0x8000_0000)), at(2, 'at14'), 'must not be negative');
+    expectAccepted(builtIn((records) => void (records[0].at14 = -1)));
+    expect(create(builtIn((records) => void (records[2].at14 = 0x7fff_ffff))).ruleData.homingPrograms[2].at14).toBe(0x7fff_ffff);
+    // Beyond i32 the content reader rejects it.
+    expectRejected(builtIn((records) => void (records[1].at14 = 0x8000_0000)), at(1, 'at14'), undefined, ContentContractError);
+  });
+
+  it('rejects a non-finite or non-f32 angle or saturation through the content reader', () => {
+    for (const [record, field, value] of [
+      [1, 'at24', Number.POSITIVE_INFINITY],
+      [2, 'at24', Number.NaN],
+      [1, 'at2C', Number.NEGATIVE_INFINITY],
+      [2, 'at2C', 0.1],
+    ] as const) {
+      expectRejected(builtIn((records) => void (records[record][field] = value)), at(record, field), undefined, ContentContractError);
+    }
+    // Negative and zero angles and saturations are finite f32 values, as the original stores them.
+    expect(create(builtIn((records) => Object.assign(records[1], { at24: -0, at2C: -2 }))).ruleData.homingPrograms[1]).toEqual({ at14: 16, at24: 0, at2C: -2 });
   });
 });

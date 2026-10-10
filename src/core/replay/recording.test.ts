@@ -154,13 +154,15 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
   });
 
   it('takes the rule-data inputs as world creation does and embeds none of them in the record (P3-07 AC-02, CR-01)', () => {
-    const withoutModels: Record<string, unknown> = { ...longInput() };
-    delete withoutModels.models;
-    expect(thrownBy(() => createRecordingSession(withoutModels as never, options(1)))).toMatchObject({ path: 'input.models', reason: 'is required' });
+    for (const field of ['models', 'aiPrograms']) {
+      const without: Record<string, unknown> = { ...longInput() };
+      delete without[field];
+      expect(thrownBy(() => createRecordingSession(without as never, options(1)))).toMatchObject({ path: `input.${field}`, reason: 'is required' });
+    }
     const input = longInput();
     const { record } = createRecordingSession(input, options(1)).exportRecording();
     const text = JSON.stringify(record);
-    for (const embedded of ['debris-parameters', 'projectile-visuals', 'explosion-animation', input.models[0].id]) expect(text).not.toContain(embedded);
+    for (const embedded of ['debris-parameters', 'projectile-visuals', 'explosion-animation', 'ai-programs', input.models[0].id]) expect(text).not.toContain(embedded);
     // The record binds them through setupHash only.
     expect(record.setupHash).toBe(initialWorldState(input).config.setupHash);
   });

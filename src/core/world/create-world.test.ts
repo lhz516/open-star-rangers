@@ -638,8 +638,9 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     const lists = (input: Record<string, Item>) => input.explosions.content.lists as { sound: { id: string }; animation: { id: string } }[][];
     const records = (input: Record<string, Item>) => input.projectileVisuals.content.records as { selector: number; width: number; length: number; colour: number[] }[];
     const partsOf = (model: Item) => (model.content.partLists as unknown[][])[1];
+    const builtIn = (input: Record<string, Item>) => input.aiPrograms.content.builtInPrograms as { at14: number; at24: number; at28: number; at2C: number; handler: { offset: number } }[];
 
-    it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts and part counts', () => {
+    it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts, part counts and AI programs', () => {
       const hash = hashOf();
       expect(changedHash(() => undefined)).toBe(hash);
       const changes: ((input: Record<string, Item & Item[]>) => void)[] = [
@@ -664,6 +665,17 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
           partsOf(input.models[1]).push({ ...(partsOf(input.models[0])[0] as object) });
           (input.debrisParameters.content.byCraftType as unknown[][])[14].push(structuredClone((input.debrisParameters.content.byCraftType as unknown[][])[0][0]));
         },
+        // The AI programs: the ID and the complete content, the homing records' fields and those the rules do not read yet.
+        (input) => void (input.aiPrograms.id = 'data/other-ai-programs'),
+        (input) => void (builtIn(input)[1].at14 = 17),
+        (input) => void (builtIn(input)[2].at24 = 3),
+        (input) => void (builtIn(input)[1].at2C = 0.5),
+        (input) => void (builtIn(input)[0].at28 = 9),
+        (input) => void (builtIn(input)[2].handler.offset = 0x200),
+        (input) => void builtIn(input).push(structuredClone(builtIn(input)[0])),
+        (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
+        (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
+        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
       ];
       const hashes = changes.map((change) => changedHash(change));
       for (const changed of hashes) expect(changed).not.toBe(hash);
@@ -686,7 +698,7 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('does not depend on the key order of the rule-data inputs', () => {
       expect(changedHash((input) => {
-        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions'] as const) input[field].content = reversedKeys(input[field].content);
+        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms'] as const) input[field].content = reversedKeys(input[field].content);
         input.models = input.models.map(reversedKeys) as never;
       })).toBe(hashOf());
     });

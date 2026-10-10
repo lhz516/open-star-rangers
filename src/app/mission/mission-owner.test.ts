@@ -246,6 +246,11 @@ describe('mission owner start', () => {
       { kind: 'content', path: 'logic[data/debris-parameters].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
     ],
     [
+      'AI programs that do not decode',
+      () => nextSchemaJob('logic', 'data/ai-programs'),
+      { kind: 'content', path: 'logic[data/ai-programs].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
+    ],
+    [
       'an explosion table that does not decode',
       () => nextSchemaJob('models', 'data/explosions'),
       {

@@ -2,7 +2,7 @@ import { readAssetId } from '../../content/asset-id.ts';
 import { readContentIdentity } from '../../content/content-identity.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import { declaration, LOGIC_IDS, MARKER, ruleInputs, syntheticMission } from '../../content/logic/logic-content.test-support.ts';
-import { syntheticCraftInfo, syntheticDebrisParameters } from '../../content/rule-data/rule-data.test-support.ts';
+import { builtInProgram, syntheticAiPrograms, syntheticCraftInfo, syntheticDebrisParameters } from '../../content/rule-data/rule-data.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { loadMission } from '../mission/load-mission.ts';
 import { RandStream } from '../rules/original-random.ts';
@@ -161,6 +161,21 @@ export function craftInfoContent() {
 /** DEBRIS parameters with records for some kinds (syntheticDebrisParameters): (kind bit mod 3) + 1, none for 13 and 14. */
 export const debrisContent = () => syntheticDebrisParameters();
 
+/**
+ * The content readers' synthetic AI programs (syntheticAiPrograms) with three built-in records, so that records 1 and
+ * 2, the homing missiles' programs, exist: record 1 has period 16, angle 30 and saturation 0.75, record 2 period 0,
+ * angle 2.5 and saturation 1; record 0 keeps the builder's values.
+ */
+export function aiProgramsContent() {
+  const programs = syntheticAiPrograms();
+  programs.builtInPrograms = [
+    builtInProgram(0x100),
+    builtInProgram(0x140, { at14: 16, at24: 30, at2C: 0.75 }),
+    builtInProgram(0x180, { at14: 0, at24: 2.5, at2C: 1 }),
+  ];
+  return programs;
+}
+
 /** Projectile visuals with one record per length, in the effect content's shape; Core reads only the lengths. */
 export function projectileVisualsContent(lengths: readonly number[] = [1.5, 6]) {
   return {
@@ -223,6 +238,8 @@ export interface WorldInputParts {
   readonly explosionAnimations?: unknown;
   /** `{ id, content }` items; defaults to those of the craft the run can instantiate (instantiableModels). */
   readonly models?: unknown;
+  /** Defaults to aiProgramsContent(). */
+  readonly aiPrograms?: unknown;
   readonly identity?: Record<string, unknown>;
   readonly run?: Record<string, unknown>;
 }
@@ -282,6 +299,7 @@ export function worldInput(parts: WorldInputParts = {}) {
     explosions: { id: readAssetId(PRODUCTION_RULE_DATA.explosions), content: parts.explosions ?? explosionsContent() },
     explosionAnimations: parts.explosionAnimations ?? animationsContent(),
     models: parts.models ?? modelsFor(instantiableModels(base), debris as ReturnType<typeof debrisContent>),
+    aiPrograms: { id: readAssetId(PRODUCTION_RULE_DATA.aiPrograms), content: parts.aiPrograms ?? aiProgramsContent() },
     identity,
     run,
   };

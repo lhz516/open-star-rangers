@@ -68,10 +68,11 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
       return { ...group, manifest: { ...manifest, assets: change(manifest.assets) } };
     });
 
-  it('decodes the DEBRIS table, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
+  it('decodes the DEBRIS table, the AI programs, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
     const groups = await groupsOf();
     const inputs = ruleDataInputs(groups);
     expect(inputs.debrisParameters?.id).toBe('data/debris-parameters');
+    expect(inputs.aiPrograms).toMatchObject({ id: 'data/ai-programs', content: { builtInPrograms: expect.any(Array) } });
     expect(inputs.projectileVisuals).toMatchObject({ id: 'data/projectile-visuals', content: { kind: 'projectile' } });
     expect(inputs.explosions?.id).toBe('data/explosions');
     const named = (inputs.explosions!.content as ExplosionTable).lists.flat().map(({ animation }) => animation.id as string);
@@ -84,7 +85,15 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     const groups = await groupsOf();
     expect(ruleDataInputs(groups.filter(({ group }) => group !== 'models'))).toEqual({
       debrisParameters: expect.objectContaining({ id: 'data/debris-parameters' }), projectileVisuals: undefined, explosions: undefined, explosionAnimations: [],
+      aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }),
     });
+    const withoutAi = groups.map((group) => {
+      if (group.group !== 'logic') return group;
+      const manifest = group.manifest as { assets: AssetDescriptor[] };
+      return { ...group, manifest: { ...manifest, assets: manifest.assets.filter(({ role }) => role !== 'ai-programs') } };
+    });
+    expect(ruleDataInputs(withoutAi).aiPrograms).toBeUndefined();
+    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'logic'))).toMatchObject({ debrisParameters: undefined, aiPrograms: undefined });
     const twice = withModelsManifest(groups, (assets) => [...assets, { ...assets.find(({ id }) => id === 'data/projectile-visuals')!, id: 'data/projectile-copy' as AssetId }]
       .sort((left, right) => (left.id < right.id ? -1 : 1)));
     expect(ruleDataInputs(twice).projectileVisuals).toBeUndefined();
