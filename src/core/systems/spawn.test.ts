@@ -359,9 +359,12 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
     const [oldest] = entities(state).filter(({ source }) => source?.index === 1);
     oldest.destroyed = true;
     oldest.state = 'destroyed-source';
+    // Record 2 is due at tick 33: its anchor is where the destroyed source, which keeps moving, is when tick 33 starts.
+    stepTo(world, state, 32);
+    const anchor = oldest.position;
     const later = randValues(state.rngState, 6);
     const due = stepTo(world, state, 33).find(({ source }) => source.index === 2)!;
-    expect(due.position).toEqual(near(oldest.position, later));
+    expect(due.position).toEqual(near(anchor, later));
   });
 
   it('serves the rescue: places a world record now, a stored position without drawing', () => {
@@ -462,7 +465,8 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     ]);
     const offset = (sign: number, size: number) => (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200));
     const wingman = state.entities.get(2)!;
-    expect(wingman.position).toEqual({ x: 100 * Q + offset(r[2], r[3]), y: 200 * Q + offset(r[4], r[5]), z: offset(r[6], r[7]) });
+    // Where it was instantiated; it has moved since.
+    expect(events[1].position).toEqual({ x: 100 * Q + offset(r[2], r[3]), y: 200 * Q + offset(r[4], r[5]), z: offset(r[6], r[7]) });
     // Like the player, the wingman draws no Warp timer.
     expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[8]), y: expectedWorld(6, r[9]), z: 0 } } });
     expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });

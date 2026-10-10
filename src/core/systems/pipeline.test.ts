@@ -54,8 +54,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02 owns and fakes no rule system', () => {
-    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual(['input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'commit']);
+  it('implements only the stages P3-02 and P3-06 own and fakes no rule system', () => {
+    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'commit',
+    ]);
   });
 
   it('is what runTick runs', () => {

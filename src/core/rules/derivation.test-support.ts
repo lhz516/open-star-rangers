@@ -38,8 +38,8 @@ export function float32OfRational(numerator: bigint, denominator: bigint, roundi
   return negative ? -value : value;
 }
 
-/** The exact rational value of a finite double, as numerator ÷ 2^k. */
-function rationalOfDouble(value: number): { readonly numerator: bigint; readonly denominator: bigint } {
+/** The exact rational value of a finite double, as numerator ÷ 2^k; −0 gives 0. */
+export function rationalOfDouble(value: number): { readonly numerator: bigint; readonly denominator: bigint } {
   if (!Number.isFinite(value)) throw new Error('value must be finite');
   let scaled = value;
   let power = 0n;

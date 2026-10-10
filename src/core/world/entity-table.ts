@@ -359,8 +359,8 @@ function isValidFlightState(init: EntityInit): boolean {
     && (formation === null || isFloat32Vec(formation.offset));
 }
 
-/** A detached, mutable copy whose immutable parts are frozen. */
-function copyMovement(block: SteeredMovementBlock): SteeredMovementBlock {
+/** A detached, mutable copy of a movement block whose immutable parts are frozen; also for the movement rules. */
+export function copyMovement(block: SteeredMovementBlock): SteeredMovementBlock {
   const steering = (axis: RotationAxis): SteeringAxis => ({ rate: block.steering[axis].rate, enabled: block.steering[axis].enabled });
   const timed = (axis: RotationAxis): TimedRotation | null => {
     const rotation = block.timedRotation[axis];
