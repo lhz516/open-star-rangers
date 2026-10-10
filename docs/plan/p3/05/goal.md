@@ -107,7 +107,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [18-input-state-core.md](./subtasks/18-input-state-core.md) | 12 | completed |
 | [19-binding-table.md](./subtasks/19-binding-table.md) | 08, 11, 16, 18 | pending |
 | [20-input-consumer.md](./subtasks/20-input-consumer.md) | 15, 18 | completed |
-| [21-capability-lifecycle.md](./subtasks/21-capability-lifecycle.md) | 13, 14, 20 | pending |
+| [21-capability-lifecycle.md](./subtasks/21-capability-lifecycle.md) | 13, 14, 20 | in-progress |
 | [22-map-input.md](./subtasks/22-map-input.md) | 17, 21 | pending |
 | [23-mission-shell-input-ui.md](./subtasks/23-mission-shell-input-ui.md) | — | completed |
 | [24-slice-gap-copy.md](./subtasks/24-slice-gap-copy.md) | 11 | pending |
