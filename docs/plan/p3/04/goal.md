@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [01-synthetic-mission-package.md](./subtasks/01-synthetic-mission-package.md) | — | in-progress |
 | [02-formal-runtime.md](./subtasks/02-formal-runtime.md) | — | in-progress |
 | [03-formal-session.md](./subtasks/03-formal-session.md) | 02 | pending |
-| [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | in-progress |
+| [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | completed |
 | [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | pending |
 | [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | pending |
 | [07-dev-diagnostics.md](./subtasks/07-dev-diagnostics.md) | 04, 05, 06 | pending |
@@ -106,6 +106,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 ## 执行记录
 
 - **2026-10-10 — 并行执行安排：** 用户以 `/orchestrate` 调用 execute-goal（默认并行，同时运行的 worker 不超过 3 个），并说明“从现在开始，我接下来几个小时都不能接手或回答你的问题。如果有任何问题，你都按你最推荐的回答来做。如果需要修改spec或goal，我都同意。如果要增加新的subtasks来unblock一个subtasks，我也同意。”协调者据此自行决定执行中出现的问题，必要的 spec/goal 修订与新增解除阻塞的子任务记录在本节。协调者在 `p3-04-runtime-session-spec` 分支上执行（本 worktree，`local` 以符号链接接入主仓库的 `local/`）。沿用 P3-01 至 P3-03 的宿主做法：worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-04-NN` 作为认领标记，并同样链接 `local`。执行开始时的基线核对：`pnpm install --frozen-lockfile` 后 `pnpm check` 通过（208 个文件、6,438 个测试与构建）。P3-06、P3-07 的 spec 同时在其他 worktree 中起草，不影响本 goal 的写入范围。
+- **2026-10-10 — 04 完成（交 05、07、09、15）：** 边界规则不允许 browser- 前缀的文件进入 Node 程序，因此按 keyboard-source 的先例拆为 DOM-free 核心（`seed.ts`、`timer.ts`、`leave-guard.ts`、`file-save.ts`，Node 测试）与薄的浏览器连接（`browser-seed.ts`、`browser-timer.ts`、`browser-file-save.ts`），写入范围已相应扩大。端口形状（`mission-ports.ts`）：`SeedSource` 为 `() => number`；`MonotonicClock` 为 `() => number`（非有限或倒退时抛出）；`OneShotTimer` 为 `{ schedule(callback, delayMs): number; cancel(handle): undefined }`（句柄从 0 起，延迟 0–2,147,483,647 ms，迟到回调不执行）；`LeaveGuard` 为 `() => Revoke`；`FileSave` 为 `{ save(name, text): FileSaveResult; dispose(): undefined }`（结果 requested/failed/cleanup-failed/disposed）。交 09：`AppPorts` 以 `createBrowserSeedSource()`、`createBrowserClock()`、`createBrowserTimer()`、`createLeaveGuard(window)` 接线，`createBrowserFileSave` 作为工厂传入，每个所有者释放自己的实例。交 15：platform 与 app 分册记录这些端口与核心/连接的划分。
 
 ## 审批
 
