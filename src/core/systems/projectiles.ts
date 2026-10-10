@@ -1,7 +1,7 @@
 /**
  * Projectiles (docs/plan/p3/02/spec.md, CR-02, CR-05 to CR-08; docs/original/formats/executable.md, H2–H4): the kind 21
  * callback `0x259b0`, a projectile's `expire` request (`0x25f48`) and the hit test `0x28450` with its results. The
- * movement stage (P3-07/22) calls hitTestProjectile right after a projectile's mode-1 move (rules/projectile-motion.ts);
+ * movement stage calls hitTestProjectile right after a projectile's mode-1 move (rules/projectile-motion.ts);
  * rules/hit-tests.ts finds the struck object and computes a ricochet.
  *
  * Lifecycle (H2, CR-08): a projectile made in tick N by request handling gets its timer at its first callback in N+1,

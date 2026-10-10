@@ -24,18 +24,22 @@ function craftData(): CraftRuleData {
   return { shape, mountOffsets: [], parts: 0, debris: [] };
 }
 
+/** An automatic selection due clock no test reaches: the formal step's automatic selection (CR-07) stays out of the way. */
+const NOT_DUE = 1e9;
+
 /**
  * A world (speed assist off) whose player is active at the origin, facing +z, with its control and targeting state,
- * every craft kind with rule data. Its craft stand still, so movement keeps the positions a test places.
+ * every craft kind with rule data. Its craft stand still, so movement keeps the positions a test places. The automatic
+ * selection is due after `autoTargetDueClock`, by default never in these tests.
  */
-function flightWorld(): [WorldState, Entity] {
+function flightWorld(autoTargetDueClock = NOT_DUE): [WorldState, Entity] {
   const base = testState({ group: 1 });
   const state: WorldState = { ...base, ruleData: { ...base.ruleData, craft: Array.from({ length: 20 }, craftData) } };
   const player = state.entities.allocate(stillEntityInit(0, { position: at(0, 0, 0), orientation: IDENTITY }));
   player.state = 'active';
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(1);
-  state.player.targeting = initialPlayerTargeting();
+  state.player.targeting = { ...initialPlayerTargeting(), autoTargetDueClock };
   return [state, player];
 }
 
@@ -270,7 +274,7 @@ describe('the automatic selection (CR-07, T3)', () => {
   }
 
   it('once the clock is past its due clock, posts the nearest enemy, writes the enemy mode and is due again 0x40 later', () => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     add(state, 14, at(0, 0, 5));
     const enemy = add(state, 8, at(0, 0, 10));
     add(state, 7, at(0, 0, 20));
@@ -283,7 +287,7 @@ describe('the automatic selection (CR-07, T3)', () => {
   });
 
   it('compares strictly: not due at its due clock', () => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     add(state, 7, at(0, 0, 10));
     const clock = state.clock + state.config.clockUnitsPerTick;
     targeting(state).autoTargetDueClock = clock;
@@ -305,7 +309,7 @@ describe('the automatic selection (CR-07, T3)', () => {
     ['view 0x11 in another sub-mode', 0x11, 0, true],
     ['the Warp view 2', 2, 0, true],
   ] as const)('in %s selects: %s, and is due again either way', (_, viewMode, subMode, selects) => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     add(state, 7, at(0, 0, 10));
     targeting(state).mode = 'friendly';
     state.player.viewMode = viewMode;
@@ -316,14 +320,14 @@ describe('the automatic selection (CR-07, T3)', () => {
   });
 
   it('looks at the actual target: none while one is set, but one despite a command\'s pending selection, applied after it', () => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     add(state, 7, at(0, 0, 10));
     const friendly = add(state, 14, at(0, 0, 20));
     state.player.target = friendly.id;
     expect(automatic(state, player).events).toEqual([]);
     expect(state.player.target).toBe(friendly.id);
 
-    const [fresh, freshPlayer] = flightWorld();
+    const [fresh, freshPlayer] = flightWorld(0);
     const freshEnemy = add(fresh, 7, at(0, 0, 10));
     const freshFriendly = add(fresh, 14, at(0, 0, 20));
     targeting(fresh).mode = 'friendly';
@@ -335,7 +339,7 @@ describe('the automatic selection (CR-07, T3)', () => {
   });
 
   it('without an enemy candidate posts nothing and keeps the mode', () => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     add(state, 14, at(0, 0, 10));
     add(state, 7, at(0, 0, 20), { inWarp: true });
     targeting(state).mode = 'friendly';
@@ -345,7 +349,7 @@ describe('the automatic selection (CR-07, T3)', () => {
   });
 
   it('faults when the next due clock passes the safe integers', () => {
-    const [state, player] = flightWorld();
+    const [state, player] = flightWorld(0);
     state.clock = Number.MAX_SAFE_INTEGER - state.config.clockUnitsPerTick - 10;
     const [context] = tickOf(state);
     expectFault(() => selectAutomaticTarget(context, player), 'budget-exhausted', 'targeting.due-clock');

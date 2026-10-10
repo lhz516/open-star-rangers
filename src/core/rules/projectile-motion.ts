@@ -1,8 +1,8 @@
 /**
  * Mode-1 motion and the projectile timer (docs/plan/p3/02/spec.md, CR-02 and CR-03; docs/original/formats/executable.md,
  * H1, H2 and H8): the move `0x22818` that projectiles and explosions share, and the timer block of the projectile
- * callback `0x259b0`. systems/projectiles.ts runs the callback; the movement stage (P3-07/22) calls the move, and for a
- * block with the hit-test flag the hit test right after it.
+ * callback `0x259b0`. systems/projectiles.ts runs the callback; the movement stage calls the move, and for a block
+ * with the hit-test flag the hit test right after it.
  *
  * Numbers follow the original's write-back points (W13): the frame step is an f32, so its product with an f32 velocity
  * component is exact in double precision; the sum rounds to double as the x87 does at the start-up precision, and the

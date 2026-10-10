@@ -28,10 +28,11 @@ import { energyStage } from './energy.ts';
 import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
-import { expireProjectile, updateProjectile } from './projectiles.ts';
+import { engageParked } from './parked-engagement.ts';
+import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
-import { applySelectTarget } from './targeting.ts';
-import { applyLaunch } from './weapons.ts';
+import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
+import { applyLaunch, updateMissileLock } from './weapons.ts';
 
 /** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
 export interface AxisControl {
@@ -219,18 +220,22 @@ function advanceClock(context: TickContext): void {
  * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
  * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
  * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
- * rejected/not-implemented. With an available player it consumes the axes. The rule tasks add their commands and steps
+ * rejected/not-implemented. With an available player it runs P3-07's missile lock after the invalid-target drop and
+ * consumes the axes, and the automatic target selection ends it (CR-07). The rule tasks add their commands and steps
  * there.
  */
 function updatePlayerControls(context: TickContext): void {
   const { world, input, time, requests } = context;
-  updatePlayer(world, input, time.tick, {
+  const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
     judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+    lockMissiles: (entity) => updateMissileLock(context, entity),
   });
-  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000.
+  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
+  // the automatic selection follows them (T3).
   requests.release();
+  if (player !== null) selectAutomaticTarget(context, player);
 }
 
 /**
@@ -391,14 +396,17 @@ function checkSpawns(context: TickContext): void {
   checkSpawnQueue(context.world, context.requests);
 }
 
-/** Stage `movement` (`0x221fc`, movement.ts). */
+/** Stage `movement` (`0x221fc`, movement.ts), with P3-07's projectile hit test right after each projectile's move (H3). */
 function move(context: TickContext): void {
-  moveEntities(context.world);
+  moveEntities(context.world, (entity) => hitTestProjectile(context, entity));
 }
 
-/** Stage `parked-update` (`0x2f1b0`, area.ts), where a parked object's true exit emits `object-left-world`. */
+/**
+ * Stage `parked-update` (`0x2f1b0`, area.ts), where a parked object's true exit emits `object-left-world`, with P3-07's
+ * parked engagement after each object's parked travel (CR-09).
+ */
 function updateParkedObjects(context: TickContext): void {
-  updateParked(context.world, (event) => emit(context, event));
+  updateParked(context.world, (event) => emit(context, event), (entity, elapsed) => engageParked(context, entity, elapsed));
 }
 
 /** Stage `area-check` (`0x3a468`, area.ts). */

@@ -353,7 +353,7 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   it('keeps the own updates of missiles and projectiles to the generic lifecycle (explosions and fragments: destruction.test.ts)', () => {
     const [state, entities] = withEntities([20], [21]);
     const atMovement: string[] = [];
-    // Their movement faults until P3-07 subtask 22: a missile has no body record there yet, the other modes no integrator.
+    // The missile's movement faults until P3-07 subtask 22, which gives it its body record there.
     expectFault(() => runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) }),
       'invariant-violated', 'movement.record');
     expect(atMovement).toEqual(['active', 'active']);
@@ -362,12 +362,19 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expect(state.entities.size).toBe(0);
   });
 
-  it.each([[21, 'linear'], [22, 'linear'], [24, 'spinning']] as const)('faults on kind %i\'s %s block in the movement stage until P3-07 subtask 22', (kindBit, _mode) => {
-    const [state, [entity]] = withEntities([kindBit]);
-    entity.state = 'active';
+  it('moves kind 21\'s and 22\'s linear blocks and kind 24\'s spinning block in the movement stage (P3-07/35)', () => {
+    const [state, entities] = withEntities([21], [22], [24]);
+    for (const entity of entities) {
+      entity.state = 'active';
+      Object.assign(entity.movement!, { velocity: { x: 0, y: 0, z: 64 } });
+    }
     // An active explosion has been activated, or its update faults in request handling first.
-    if (entity.combat.type === 'explosion') Object.assign(entity.combat, { activationClock: 0, removalAfterClock: 0x60 });
-    expectFault(() => runTickWith(state), 'invariant-violated', 'movement.mode');
+    Object.assign(entities[1].combat, { activationClock: 0, removalAfterClock: 0x60 });
+    const before = entities.map(({ position }) => position);
+    runTickWith(state);
+    // 64 units per second for 2/64 s; the linear blocks keep the position before the move.
+    expect(entities.map(({ position }) => position)).toEqual(before.map(({ x, y, z }) => ({ x, y, z: z + 2 })));
+    expect(entities.slice(0, 2).map(({ movement }) => movement)).toMatchObject(before.slice(0, 2).map((previousPosition) => ({ mode: 'linear', previousPosition })));
   });
 
   it('clears the player\'s targeting state with its entity, together with P3-06\'s target', () => {

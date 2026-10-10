@@ -96,7 +96,7 @@ export function judgeWeaponCommand(context: TickContext, command: CommandOf<'fir
 
 /**
  * The missile lock `0x2ddbc` (W8) in the player's update, after P3-06's clearing of an invalid target and before the
- * speed assist (CR-07), on the player's actual target. P3-07/22 places the call in P3-06's player update.
+ * speed assist (CR-07), on the player's actual target; P3-06's player update calls it (P3-07/35).
  */
 export function updateMissileLock(context: TickContext, player: Entity): void {
   const { world } = context;

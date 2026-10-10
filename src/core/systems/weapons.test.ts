@@ -230,10 +230,14 @@ describe('fire and the reference target (CR-05)', () => {
     const far = add(state, 7, at(0, 0, 80));
     const events = constructWorld(state).step(tickInput([{ type: 'target', operation: 'enemy' }, FIRE_SECONDARY, { type: 'target', operation: 'previous' }]));
     expect(events.filter(({ type }) => type === 'command-result')).toEqual([result(0, 'target'), result(1, 'fire'), result(2, 'target')]);
-    // Request handling applies the selections around the launch: the missile keeps the target its command read.
+    // Request handling applies both selections before the deferred launch: the missile keeps the target its command
+    // read. The automatic selection, which sees no actual target yet, posts the nearest enemy last (CR-07, T3).
     const [shot] = shots(events);
     expect(state.entities.get(shot.entityId)?.combat).toMatchObject({ type: 'missile', missile: 0, shooter: player.id, target: near.id });
-    expect(state.player.target).toBe(far.id);
+    expect(events.flatMap((event) => (event.type === 'target-changed' ? [[event.target, event.origin]] : []))).toEqual([
+      [near.id, 'command'], [far.id, 'command'], [near.id, 'automatic'],
+    ]);
+    expect(state.player.target).toBe(near.id);
   });
 
   it('gives no-target to a guided missile before any target, and a target selected after it does not help', () => {

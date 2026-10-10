@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import { initialPlayerControl } from '../world/player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, busyCombat, entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
@@ -102,6 +102,7 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     const player = state.entities.allocate(stillEntityInit(0));
     state.player.entityId = player.id;
     state.player.control = initialPlayerControl(0);
+    state.player.targeting = initialPlayerTargeting();
     const moving = state.entities.allocate(stillEntityInit(3, { position: { x: 0, y: 0, z: 0 } }));
     const leaving = state.entities.allocate(stillEntityInit(3));
     const warping = state.entities.allocate(stillEntityInit(5, { position: { x: 0, y: 0, z: 0 } }));

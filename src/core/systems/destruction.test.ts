@@ -19,25 +19,29 @@ import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 // removal 49 ticks after it and leaves one tick later; the player explodes in the first tick whose clock is past its
 // destruction clock + 0xC0 (97 ticks later), and its pod expires 0x140 units (160 ticks) after its first callback.
 //
-// The ticks run every PIPELINE stage but movement: modes 1 and 2 move only from P3-07/22 on, and the movement stage
-// faults on an active explosion or fragment until then. 22 switches these lifecycle tests to the formal step.
+// The ticks are the formal step, every PIPELINE stage in order, so explosions and fragments move (CR-03, P3-07/35);
+// hooks only add the destruction a test needs. A missile moves only from P3-07/22 on, so its test skips the movement
+// stage until then.
 
 type Hooks = Readonly<Record<string, (context: TickContext) => void>>;
 
-/** One tick through every stage but movement; each hook runs just before the stage of its ID. Returns the tick's events. */
-function tick(state: WorldState, hooks: Hooks = {}): readonly DomainEvent[] {
+/**
+ * One formal tick; each hook runs just before the stage of its ID. Without `movement`, the movement stage is skipped.
+ * Returns the tick's events.
+ */
+function tick(state: WorldState, hooks: Hooks = {}, movement = true): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
     hooks[stage.id]?.(context);
-    if (stage.id !== 'movement') stage.run?.(context);
+    if (movement || stage.id !== 'movement') stage.run?.(context);
   }
   return context.events;
 }
 
 /** Runs ticks until `tick` is the world's last one, returning the events of each. */
-function runTo(state: WorldState, last: number): (readonly DomainEvent[])[] {
+function runTo(state: WorldState, last: number, movement = true): (readonly DomainEvent[])[] {
   const events: (readonly DomainEvent[])[] = [];
-  while (state.tick < last) events.push(tick(state));
+  while (state.tick < last) events.push(tick(state, {}, movement));
   return events;
 }
 
@@ -51,7 +55,7 @@ const PARTLESS = 13;
 /**
  * The test world with the player standing at (0, 2, 3), and rule data for SMALL (DEBRIS records 0 small and 1 large),
  * LARGE (one large record) and PARTLESS. The player's own rule data has 4 parts: the pod, parts 1 and 2 without objects,
- * and part 3 on record 0.
+ * and part 3 on record 0. The player's automatic target selection (CR-07) is never due, so it adds no event.
  */
 function world(): { readonly state: WorldState; readonly player: CraftEntity } {
   const base = testState();
@@ -64,7 +68,9 @@ function world(): { readonly state: WorldState; readonly player: CraftEntity } {
   kinds[LARGE] = { ...own, parts: 1, debris: [large] };
   kinds[PARTLESS] = { ...own, parts: 0, debris: [] };
   const state: WorldState = { ...base, ruleData: { ...base.ruleData, craft: kinds } };
-  return { state, player: addPlayerEntity(state) as CraftEntity };
+  const player = addPlayerEntity(state) as CraftEntity;
+  state.player.targeting = { ...state.player.targeting!, autoTargetDueClock: 1e9 };
+  return { state, player };
 }
 
 /** A standing craft of `kindBit` near the player, without shield and with 1 hull. */
@@ -210,17 +216,18 @@ describe('a held source (X2, X4, CR-08, AC-12)', () => {
     const { state } = world();
     const missile = state.entities.allocate(entityInit(20, { position: { x: 5, y: 5, z: 5 } }));
     missile.state = 'active';
-    tick(state, { 'request-handling': (context) => constructExplosion(context, missile) });
+    // The destroyed missile is still moved, which needs its body record (P3-07/22): no movement stage here.
+    tick(state, { 'request-handling': (context) => constructExplosion(context, missile) }, false);
     const [explosion] = ofKind(state, 22);
     expect(explosionOf(explosion)).toMatchObject({ variant: 'missile', sourceKindBit: 20, heldSource: missile.id });
     expect(explosion.presentation).toEqual({ type: 'explosion', variant: 'missile' });
-    tick(state);
+    tick(state, {}, false);
     const activation = state.tick;
-    runTo(state, activation + 13);
+    runTo(state, activation + 13, false);
     expect(missile.state).toBe('destroyed-source');
-    tick(state);
+    tick(state, {}, false);
     expect(missile.state).toBe('pending-removal');
-    tick(state);
+    tick(state, {}, false);
     expect(state.entities.get(missile.id)).toBeUndefined();
   });
 
@@ -359,11 +366,14 @@ describe('a fragment shot down (H4, X7, CR-08)', () => {
     const [, part1] = ofKind(state, 24);
     tick(state);
     tick(state, { collision: () => void expect(shootDown(fragmentOf(part1))).toBe(true) });
+    // It expires in request handling, before this tick's movement, which still moves it as a destroyed source (X9).
+    const before = part1.position;
     const expired = tick(state);
-    expect(expired).toEqual([{ type: 'fragment-expired', tick: state.tick, entityId: part1.id, sourceKindBit: SMALL, part: 1, position: part1.position, outcome: 'explodes' }]);
+    expect(expired).toEqual([{ type: 'fragment-expired', tick: state.tick, entityId: part1.id, sourceKindBit: SMALL, part: 1, position: before, outcome: 'explodes' }]);
     const [, second] = ofKind(state, 22);
     expect(explosionOf(second)).toMatchObject({ source: part1.id, sourceKindBit: 24, variant: 'other', heldSource: part1.id });
     expect(part1.state).toBe('destroyed-source');
+    expect(part1.position).not.toEqual(before);
     expect(types(tick(state))).toEqual(['explosion-started']);
     const activation = state.tick;
     runTo(state, activation + 28);

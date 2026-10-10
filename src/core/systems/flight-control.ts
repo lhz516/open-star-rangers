@@ -14,8 +14,9 @@
  * The map and base contexts read no stick in the original, which keeps the steering applied before; Core takes their
  * manual axes as 0 instead, a deliberate difference (spec 技术决定 10). Core keeps no key or command across ticks.
  *
- * Before the commands, the update drops a target that no longer resolves and runs the speed assist (`0x27f68`), whose
- * match writes the block directly and whose restoring request goes before the commands' requests (匹配速度与速度辅助).
+ * Before the commands, the update drops a target that no longer resolves, runs P3-07's missile lock and then the speed
+ * assist (`0x27f68`), whose match writes the block directly and whose restoring request goes before the commands'
+ * requests (匹配速度与速度辅助).
  * A manual match (`match-target`, or `confirm-selection` in flight) is a `match-speed` request instead, applied in
  * request handling (message 0x80000), so that same-tick speed commands keep their array order.
  */
@@ -61,13 +62,14 @@ export type PlayerRequest = ControlRequest | MatchSpeedRequest;
 
 /**
  * Where the player's update sends what it produces, the tick's events and its requests (`control` and `match-speed`),
- * and the judgement of every command it does not handle itself (commands.ts), which emits that command's one result
- * and posts its own requests.
+ * the judgement of every command it does not handle itself (commands.ts), which emits that command's one result and
+ * posts its own requests, and P3-07's missile lock `0x2ddbc` on the available player (weapons.ts; CR-07).
  */
 export interface PlayerUpdateOutput {
   emit(event: DomainEvent): void;
   post(request: PlayerRequest): void;
   judge(command: Command, commandIndex: number): void;
+  lockMissiles(player: Entity): void;
 }
 
 /**
@@ -258,17 +260,19 @@ function runSpeedAssist(world: WorldState, player: Entity, assist: SpeedAssist, 
 }
 
 /**
- * The player's update in the object update stage (spec D-08): the invalid-target drop, the speed assist, the commands
- * and the axes, in that order, then the requests in the order they were made, the assist's first.
+ * The player's update in the object update stage (spec D-08): the invalid-target drop, P3-07's missile lock, the speed
+ * assist, the commands and the axes, in that order, then the requests in the order they were made, the assist's first.
+ * Returns the available player it ran for, or null; P3-07's automatic target selection (`0x2799c`), which ends the
+ * original's update, follows the release of the fire commands' launches (pipeline.ts; CR-07).
  */
-export function updatePlayer(world: WorldState, input: TickInput, tick: number, { emit, post, judge }: PlayerUpdateOutput): void {
+export function updatePlayer(world: WorldState, input: TickInput, tick: number, { emit, post, judge, lockMissiles }: PlayerUpdateOutput): Entity | null {
   const player = availablePlayer(world);
   const control = player && world.player.control;
   if (player !== null && control === null) throw new CoreFaultError('invariant-violated', 'flight-control.player-control');
   if (player !== null && control !== null) {
     // The original drops a handle whose object is gone; a removed entity's ID never resolves again.
     if (world.player.target !== null && targetOf(world) === undefined) world.player.target = null;
-    // P3-07's missile lock `0x2ddbc` goes here, between the drop and the assist.
+    lockMissiles(player);
     const restoring = runSpeedAssist(world, player, control.speedAssist, tick, emit);
     if (restoring !== null) post(restoring);
   }
@@ -281,7 +285,7 @@ export function updatePlayer(world: WorldState, input: TickInput, tick: number, 
     else requests.push({ type: 'control', entityId: player.id, throttle: null, axes });
   }
   for (const request of requests) post(request);
-  // P3-07's automatic target selection (`0x2799c`) ends the player's update.
+  return player;
 }
 
 /**

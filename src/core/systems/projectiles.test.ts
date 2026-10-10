@@ -15,15 +15,16 @@ import type { Entity, FragmentCombat, LinearMovementBlock, Matrix3, ProjectileCo
 import type { CraftRuleData } from '../world/rule-data.ts';
 import { addPlayerEntity, entityInit, expectFault, stillEntityInit, TEST_MODEL, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { PIPELINE, registerTick, type Request, type TickContext } from './pipeline.ts';
+import { registerTick, runTick, type Request, type TickContext } from './pipeline.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 
 // docs/plan/p3/02/spec.md, CR-02, CR-03 and CR-05 to CR-08; docs/original/formats/executable.md, H2–H4 and H8. Every
 // expectation is worked out by hand from the shapes, the segments and the rand values set below; rules/hit-tests.test.ts
 // covers the geometry and the ricochet's arithmetic, systems/damage.test.ts the damage rule.
 //
-// The movement stage does not move a projectile until P3-07/22 wires it, so the hit tests call hitTestProjectile on a
-// projectile placed after its move, and the lifecycle ticks run every PIPELINE stage but movement.
+// The hit tests call hitTestProjectile on a projectile placed after its move; the lifecycle ticks are the formal step,
+// whose movement stage moves each projectile and hit-tests it right after (P3-07/35; its pipeline tests are in
+// combat-wiring.test.ts).
 
 const CLOCK = 640;
 /** Gun 0: damage +0x1C and lifetime +0x24. */
@@ -113,15 +114,8 @@ function posted(state: WorldState, work: (context: TickContext) => void): Reques
   return requests;
 }
 
-/** One tick through every stage but movement, `hook` just before the movement stage. Returns the tick's events. */
-function tick(state: WorldState, hook: (context: TickContext) => void = () => {}): readonly DomainEvent[] {
-  const context = contextOf(state);
-  for (const stage of PIPELINE) {
-    if (stage.id === 'movement') hook(context);
-    else stage.run?.(context);
-  }
-  return context.events;
-}
+/** One formal tick; returns its events. */
+const tick = (state: WorldState): readonly DomainEvent[] => runTick(contextOf(state));
 
 /** Sets the world RNG to the first state from `from` whose next `count` rand values `accept` takes. */
 function drawNext(state: WorldState, count: number, accept: (values: readonly number[]) => boolean, from = 0): number {
@@ -337,8 +331,11 @@ describe('a projectile striking a fragment (H3, H4, CR-08, AC-08)', () => {
   it('shoots a fragment down when its durability reaches 0: the fragment explodes at its next callback', () => {
     const { state, player } = world();
     const fragment = fragmentAt(state, at(0, 0, 0), 0, DAMAGE);
-    const shot = projectileAt(state, FROM, TO, player.id);
-    expect(tick(state, (context) => hitTestProjectile(context, shot))).toEqual([]);
+    // At 512 units per second, the formal step of 1/32 s moves it from FROM to TO, through the fragment's box.
+    const shot = projectileAt(state, FROM, FROM, player.id);
+    blockOf(shot).velocity = at(0, 0, 512);
+    expect(tick(state)).toEqual([]);
+    expect([shot.position, shot.state]).toEqual([TO, 'pending-removal']);
     expect([fragmentOf(fragment).durability, fragmentOf(fragment).explodeOnExpiry, fragmentOf(fragment).expiry]).toEqual([0, true, { type: 'at', clock: 1 }]);
     expect(fragment.state).toBe('active');
     const next = tick(state);

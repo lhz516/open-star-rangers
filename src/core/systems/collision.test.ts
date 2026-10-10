@@ -19,8 +19,7 @@ import { PIPELINE, registerTick } from './pipeline.ts';
 // damage, filters and orders are worked out here from H6. The exact response fields and their arithmetic are
 // rules/collision.test.ts's; here the block fields are compared with the response rule applied to the bodies H6 names,
 // in the order H6 names them, from the RNG state the stage starts with (nothing earlier in these quiet ticks draws).
-// Craft move in the formal step; fragments cannot move before P3-07/22 (the movement stage faults on their blocks), so
-// the fragment tests run every stage but movement, as destruction.test.ts does, until 22 switches them to the step.
+// Craft and fragments move in the formal step (fragments since P3-07/35); the fragments here are at rest.
 
 const f = Math.fround;
 const at = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -112,18 +111,15 @@ function expected(rule: ContactRule, first: Entity, second: Entity, state: World
   return { response: rule(body(first), body(second), time(state), rand), rng: rand.state };
 }
 
-/** One tick through every stage, `before` running just before the collision stage; without movement unless `move`. */
-function tickWith(state: WorldState, { move = false, before = () => {} }: { readonly move?: boolean; readonly before?: () => void } = {}): readonly DomainEvent[] {
+/** One formal tick, `before` running just before the collision stage. */
+function tickWith(state: WorldState, before: () => void): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
     if (stage.id === 'collision') before();
-    if (move || stage.id !== 'movement') stage.run?.(context);
+    stage.run?.(context);
   }
   return context.events;
 }
-
-/** One tick through every stage but movement (fragments cannot move before P3-07/22). */
-const tickWithoutMovement = (state: WorldState): readonly DomainEvent[] => tickWith(state);
 
 describe('0x29670, the player against the craft (H6, AC-08)', () => {
   it.each([[0, 114], [1, 171], [2, 342]])('glances off a craft that is not large at group %i: raw 2 × 96 + 150 ÷ (3 − g) = %i to the player, then to the craft', (group, damage) => {
@@ -170,7 +166,7 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
     blockOf(craft).timedRotation.yaw = { rate: 2, decay: 0.5, end: 1000 };
     let moved: unknown = null;
     let rng = state.rngState;
-    const events = tickWith(state, { move: true, before: () => { moved = structuredClone(craft.movement); rng = state.rngState; } });
+    const events = tickWith(state, () => { moved = structuredClone(craft.movement); rng = state.rngState; });
     expect(hitList(events)).toEqual([[player.id, 50], [craft.id, 25]]);
     expect(craft.movement).toEqual(moved);
     expect(blockOf(craft).impulse!.magnitude).toBeLessThan(9);
@@ -315,26 +311,26 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
 
 describe('0x29670, the player against the fragments (H6, AC-08)', () => {
   it('glances off a small-record fragment for half the raw damage, at most g × 2 + 2 times per tick, counting every contact', () => {
-    const { state, player } = scene(1);
+    const { state, world, player } = scene(1);
     const fragments = [0, 1, 2, 3, 4].map((index) => fragmentAt(state, at(index, 0, 0), 0));
     // Raw 150, SAR 1 = 75, ÷ (3 − 1) = 37: the player takes it from the first 4 contacts; every fragment loses it.
-    const events = tickWithoutMovement(state);
+    const events = world.step(tickInput());
     expect(hitList(events)).toEqual([[player.id, 37], [player.id, 37], [player.id, 37], [player.id, 37]]);
     expect(fragments.map((fragment) => fragmentOf(fragment).durability)).toEqual([1163, 1163, 1163, 1163, 1163]);
     // A fragment's spinning block has no push fields: it stays as it was. The player holds the last glance's knock.
     expect(fragments[4].movement).toEqual(entityInit(24).movement);
     expect(blockOf(player).impulse).toEqual({ direction: at(0, 0, 1), magnitude: 0 });
     // The counter is the pass's own: the next tick starts again.
-    expect(hits(tickWithoutMovement(state))).toHaveLength(4);
+    expect(hits(world.step(tickInput()))).toHaveLength(4);
   });
 
   it('bounces off a large-record fragment for the full damage, which the small-fragment limit does not stop', () => {
-    const { state, player } = scene();
+    const { state, world, player } = scene();
     const [small, other, large] = [fragmentAt(state, at(1, 0, 0), 0), fragmentAt(state, at(0, 1, 0), 0), fragmentAt(state, at(0, 0, 1), 1)];
     const extra = fragmentAt(state, at(1, 1, 0), 0);
     const rng = state.rngState;
     // Group 0: small contacts give 75 ÷ 3 = 25 twice, the third small one none; the large one 150 ÷ 3 = 50.
-    expect(hitList(tickWithoutMovement(state))).toEqual([[player.id, 25], [player.id, 25], [player.id, 50]]);
+    expect(hitList(world.step(tickInput()))).toEqual([[player.id, 25], [player.id, 25], [player.id, 50]]);
     expect([small, other, large, extra].map((fragment) => fragmentOf(fragment).durability)).toEqual([1175, 1175, 1150, 1175]);
     // The large fragment's bounce knocked the player last before the fourth glance.
     let draws = rng;
@@ -343,9 +339,9 @@ describe('0x29670, the player against the fragments (H6, AC-08)', () => {
   });
 
   it('shoots down a fragment whose durability falls to 0 or below; it no longer takes part', () => {
-    const { state, player } = scene();
+    const { state, world, player } = scene();
     const [spent, kept] = [fragmentAt(state, at(1, 0, 0), 1, 50), fragmentAt(state, at(0, 1, 0), 1, 51)];
-    expect(hitList(tickWithoutMovement(state))).toEqual([[player.id, 50], [player.id, 50]]);
+    expect(hitList(world.step(tickInput()))).toEqual([[player.id, 50], [player.id, 50]]);
     expect([fragmentOf(spent), fragmentOf(kept)]).toMatchObject([
       { durability: 0, explodeOnExpiry: true, expiry: { type: 'at', clock: 1 } },
       { durability: 1, explodeOnExpiry: false, expiry: { type: 'at', clock: 1e9 } },
@@ -353,23 +349,23 @@ describe('0x29670, the player against the fragments (H6, AC-08)', () => {
   });
 
   it('makes each contact\'s 6 draws and wears each fragment down, also over the limit and with the player\'s destroyed flag set', () => {
-    const { state, player } = scene();
+    const { state, world, player } = scene();
     player.destroyed = true;
     const fragments = [fragmentAt(state, at(1, 0, 0), 0), fragmentAt(state, at(0, 1, 0), 0), fragmentAt(state, at(0, 0, 1), 0), fragmentAt(state, at(1, 1, 1), 1)];
     const rng = state.rngState;
-    expect(tickWithoutMovement(state)).toEqual([]);
+    expect(world.step(tickInput())).toEqual([]);
     expect(state.rngState).toBe(rngStateAfter(rng, 24));
     expect(fragments.map((fragment) => fragmentOf(fragment).durability)).toEqual([1175, 1175, 1175, 1150]);
   });
 
   it('skips fragments without DEBRIS parameters, without durability, inactive or below state 7', () => {
-    const { state } = scene();
+    const { state, world } = scene();
     fragmentAt(state, at(1, 0, 0), null, 1200);
     fragmentAt(state, at(0, 1, 0), 0, 0);
     fragmentAt(state, at(0, 0, 1), 0, -5);
     fragmentAt(state, at(1, 1, 0), 0).state = 'pending-removal';
     const rng = state.rngState;
-    expect(hits(tickWithoutMovement(state))).toEqual([]);
+    expect(hits(world.step(tickInput()))).toEqual([]);
     expect(state.rngState).toBe(rng);
   });
 });

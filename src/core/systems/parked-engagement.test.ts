@@ -15,8 +15,8 @@ import { engageParked } from './parked-engagement.ts';
 import { registerTick, type TickContext } from './pipeline.ts';
 
 // docs/plan/p3/02/spec.md, CR-06 and CR-09; docs/original/formats/executable.md, E1–E6. Through the entry P3-06's parked
-// update calls (its wiring is P3-07/22's). Every expectation is worked out by hand from the synthetic records below;
-// rules/parked-engagement.test.ts covers the arithmetic and the draws' mappings.
+// update calls; combat-wiring.test.ts covers that call through the formal step. Every expectation is worked out by
+// hand from the synthetic records below; rules/parked-engagement.test.ts covers the arithmetic and the draws' mappings.
 //
 // Records: gun 0 (cooldown +0x14 8, damage +0x1C 5, range 100) and gun 1 (32, 3, range 50); missile 0 (+0x5C 40, range
 // 200) and missile 1 (+0x5C 70, range 80). Every craft record has collection radius +0x0C 300, shape radius 4 and the

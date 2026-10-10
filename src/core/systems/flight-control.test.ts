@@ -3,7 +3,7 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
 import { RandStream } from '../rules/original-random.ts';
 import type { Entity, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
-import { initialPlayerControl } from '../world/player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -21,6 +21,12 @@ const WARP = 1;
 const BASE = 6;
 const MAP = 8;
 
+/**
+ * The player's targeting state (CR-04) with P3-07's automatic target selection not due in these tests, so that it
+ * neither selects a target nor emits.
+ */
+const quietTargeting = (): PlayerTargeting => ({ ...initialPlayerTargeting(), autoTargetDueClock: 1e9 });
+
 /** A drained world with an available player at full throttle (commanded speed 48), its assist off. */
 function withPlayer(): [WorldState, Entity] {
   const state = testState({ group: 1 });
@@ -28,6 +34,7 @@ function withPlayer(): [WorldState, Entity] {
   player.state = 'active';
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(1);
+  state.player.targeting = quietTargeting();
   return [state, player];
 }
 
@@ -53,6 +60,7 @@ function update(state: WorldState, commands: readonly Command[] = [], axes: Tick
     emit: (event) => events.push(event),
     post: (request) => requests.push(request),
     judge: ({ type }, commandIndex) => events.push({ type: 'command-result', tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' }),
+    lockMissiles: () => {},
   });
   return { events, requests };
 }
@@ -444,6 +452,24 @@ describe('player target reference (P3-06 S-05, D-03)', () => {
     expect(state.player.target).toBeNull();
   });
 
+  it('runs P3-07\'s missile lock on the available player after the drop and before the speed assist (CR-07)', () => {
+    const [state, player] = withAssist();
+    const target = addTarget(state);
+    const seen: [number, number | null, number][] = [];
+    const run = () => updatePlayer(state, input(), state.tick + 1, {
+      emit: () => {}, post: () => {}, judge: () => {}, lockMissiles: (entity) => void seen.push([entity.id, state.player.target, craftBlock(player).commandedSpeed]),
+    });
+    // The assist, due and in range, matches the target's 30 after the lock has seen the block at 48.
+    expect(run()).toBe(player);
+    expect([seen, craftBlock(player).commandedSpeed]).toEqual([[[player.id, target.id, 48]], 30]);
+    state.entities.remove(target);
+    run();
+    expect(seen[1]).toEqual([player.id, null, 30]);
+    player.state = 'presentation-ready';
+    expect(run()).toBeNull();
+    expect(seen).toHaveLength(2);
+  });
+
   it('keeps a resolvable target, destroyed or pending removal included', () => {
     const [state] = withPlayer();
     const target = addTarget(state);
@@ -798,6 +824,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     player.state = 'active';
     state.player.entityId = player.id;
     state.player.control = initialPlayerControl(state.config.group);
+    state.player.targeting = quietTargeting();
     const target = addTarget(state);
     const world = constructWorld(state);
     expect(world.step(input())).toEqual([assistMatched(1, target.id, true)]);

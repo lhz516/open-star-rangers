@@ -183,12 +183,13 @@ describe('mission diagnostics', () => {
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
       .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...outcomeOf(type)]));
-    // P3-07's events of the accepted commands reach the log by their own fields.
+    // P3-07's events of the accepted commands reach the log by their own fields; the automatic target selection, which
+    // sees no actual target yet, follows the command's (CR-07).
     const combat = setup.state().log.entries.filter(({ type }) => ['target-changed', 'weapon-selected', 'left-page-changed'].includes(type));
     expect(combat.map(({ type, fields }) => [type, fields.find(([name]) => name === 'commandIndex')?.[1]])).toEqual([
       ['weapon-selected', COMMAND_TYPES.indexOf('cycle-main-weapon')], ['weapon-selected', COMMAND_TYPES.indexOf('select-missile')],
       ['left-page-changed', COMMAND_TYPES.indexOf('energy')], ['left-page-changed', COMMAND_TYPES.indexOf('damage-report')],
-      ['target-changed', COMMAND_TYPES.indexOf('target')],
+      ['target-changed', COMMAND_TYPES.indexOf('target')], ['target-changed', null],
     ]);
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
     expect(pendingCommands).toEqual([]);

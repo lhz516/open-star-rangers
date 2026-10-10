@@ -181,8 +181,9 @@ const validated = () => ({
 describe('replay check', () => {
   it('replays a synthetic recording on the same synthetic disc and passes, leaving the file as it was', async () => {
     expect(MISSION_SCENARIOS[SCENARIO].stage).toBe('world');
-    // The run spawned craft, answered commands and switched the speed assist, so events and checkpoints are both compared.
-    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled']));
+    // The run spawned craft, answered commands, switched the speed assist and selected a target automatically, so events
+    // and checkpoints are both compared.
+    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled', 'target-changed']));
     const text = JSON.stringify(recording);
     const path = file(text);
     const report = await runReplayCheck(path, disc, { catalog });

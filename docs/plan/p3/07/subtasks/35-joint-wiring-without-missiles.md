@@ -80,11 +80,11 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] CR-07：玩家更新在规定位置调用导弹锁定与自动选敌，经正式 `step` 的测试覆盖两者的时序与结果。
-- [ ] AC-06（发射帧）：经正式流水线，发射帧的新对象不运动、不碰撞。
-- [ ] AC-08（流水线）：高速弹丸在流水线中的穿过、擦边与完整漏过符合证据；弹丸在自身移动后立即做命中检测。
-- [ ] AC-11（接线）：停放交战通过固定阶段接线，抽取与 P3-06 的停放更新正确交错；停放/活动切换不重复结算、不丢失目标；死亡与移除遵循原版门禁。
-- [ ] `linear`、`spinning` 的分派与首次运动符合 CR-03、CR-08；原先跳过移动阶段的测试已改为正式 `step`；`pnpm check` 通过。
+- [x] CR-07：玩家更新在规定位置调用导弹锁定与自动选敌，经正式 `step` 的测试覆盖两者的时序与结果。
+- [x] AC-06（发射帧）：经正式流水线，发射帧的新对象不运动、不碰撞。
+- [x] AC-08（流水线）：高速弹丸在流水线中的穿过、擦边与完整漏过符合证据；弹丸在自身移动后立即做命中检测。
+- [x] AC-11（接线）：停放交战通过固定阶段接线，抽取与 P3-06 的停放更新正确交错；停放/活动切换不重复结算、不丢失目标；死亡与移除遵循原版门禁。
+- [x] `linear`、`spinning` 的分派与首次运动符合 CR-03、CR-08；原先跳过移动阶段的测试已改为正式 `step`；`pnpm check` 通过。
 
 ## 验证方法
 
@@ -92,3 +92,22 @@ updated: 2026-10-10
 - 在完成证据中写明所依赖的 P3-06 交付的提交。
 
 ## 完成证据
+
+- **依赖的 P3-06 交付：** 移动阶段 `d5c48db`（P3-06/11）、飞行控制与玩家更新 `c5a9267`、`1496f49`（P3-06/12、13）、停放更新 `5cd098f`（P3-06/14），经 33 的合并 `efbc762` 与 `37c929f` 进入本分支；本项基于 `3913a30`。
+- **实现：**
+  - 玩家更新（[flight-control.ts](../../../../../src/core/systems/flight-control.ts)，P3-06 的文件，只增补）：`PlayerUpdateOutput` 增加 `lockMissiles(player)`，在失效目标清除之后、速度辅助之前调用；`updatePlayer` 返回其运行所针对的可用玩家（否则 null）。[pipeline.ts](../../../../../src/core/systems/pipeline.ts) 的 `updatePlayerControls` 以 14 的 `updateMissileLock` 接入锁定，在 `requests.release()`（玩家开火命令的发射）之后、对可用玩家调用 13 的 `selectAutomaticTarget`（T3）。
+  - 移动阶段（[movement.ts](../../../../../src/core/systems/movement.ts)）：去掉 11 为 `linear`/`spinning` 留的 `movement.mode` 故障；`linear` 调用 17 的 `moveLinear`，块的 `hitTest` 为真时随即调用注入的命中检测（流水线传入 `hitTestProjectile(context, …)`，它自己只测状态 7）；`spinning` 调用 18 的 `spinFragment`。本 tick 新建的实体仍由 P3-06 的 `movesThisTick` 跳过（CR-08）。导弹仍以机体移动块经 `motionRecord` 得到 `movement.record` 故障，归 22。
+  - 停放更新（[area.ts](../../../../../src/core/systems/area.ts)）：`updateParked` 增加 `engage(entity, elapsed)`，对每个本次更新且不在 Warp 过境中的对象在 `travelParked` 之后调用；调用前写回 `world.rngState = rand.state`，调用后从 `world.rngState` 重建 `RandStream`（E4）。流水线传入 21 的 `engageParked(context, …)`，其 2³² 经过时间故障留在入口。
+  - 注释：[weapons.ts](../../../../../src/core/systems/weapons.ts)、[projectiles.ts](../../../../../src/core/systems/projectiles.ts)、[projectile-motion.ts](../../../../../src/core/rules/projectile-motion.ts) 中“由 22 接入”的说明改为现状。
+- **测试改用正式 `step`：** [destruction.test.ts](../../../../../src/core/systems/destruction.test.ts) 的 tick 跑全部阶段（只有导弹来源的用例在 22 之前仍跳过移动阶段：被毁的导弹仍移动，需要弹体记录），击落碎片的 `fragment-expired` 位置取本 tick 移动前，并断言被毁源仍移动（X9）；[collision.test.ts](../../../../../src/core/systems/collision.test.ts) 的碎片用例与 [projectiles.test.ts](../../../../../src/core/systems/projectiles.test.ts) 的生命周期与击落用例经正式 `step`（击落改为弹丸以 512/s 一步从 z −6 移到 10）；[pipeline.test.ts](../../../../../src/core/systems/pipeline.test.ts) 的三个 `movement.mode` 故障用例改为三种块经流水线移动 v × 步长。自动选敌在正式 `step` 中运行后：P3-06 与 13 的测试夹具补上 CR-04 要求的 `targeting`，并把自动选敌设为不到期（flight-control、targeting 的命令用例、destruction、area 的一个用例），13 的自动选敌用例显式设为到期；[weapons.test.ts](../../../../../src/core/systems/weapons.test.ts) 的“参照目标”用例按 CR-07 增加自动选敌在同 tick 最后投递最近敌方的结果。
+- **集成测试**（新增 [combat-wiring.test.ts](../../../../../src/core/systems/combat-wiring.test.ts)，19 项，全部经正式 `step`，期望由各测试设置的记录与位置独立推导）：
+  - CR-07：锁定在命令之前运行（等级 3、阶段到期时开火的导弹 `launchByte` 为 4，锁定若在命令之后则为 3；下次更新 2 + 0x15）；已移除的目标先被清除，锁定降为 0，自动选敌同一更新中看到空目标并选中另一敌方；发射在 P3-06 请求之后释放（`speed-matched` 先于 `shot-fired`），自动选敌在发射之后（`shot-fired` 先于自动 `target-changed`）；玩家不可用时不运行、到期不变，到期严格比较（时钟 68 不选，70 选，下次到期 70 + 0x40），其间右显示屏在 tick 3 末清除离开的目标（CR-10）。
+  - AC-06、CR-08：开火 tick 的弹丸停在发射点 (1, 0, 1.25)、`presentation-ready`、不做命中检测（发射点在敌机包围盒内也不命中），下一 tick 移动 3.125 并命中、移除；弹丸按 v × 步长匀速飞行，首次回调后 40 单位到期、下一 tick 离开；弹丸命中致死时爆炸与两块碎片停在构造位置、不运动，下一 tick 爆炸在构造处 `explosion-started` 后按 F(row 3 × 48) 移动，碎片激活并按各自速度移动（有自旋者转向），被毁源继续移动；致死 tick 新碎片与玩家重叠而不碰撞，下一 tick 玩家与两块碎片各接触一次。
+  - AC-08、H3：一 tick 2,000 单位的高速弹丸两端都在 4 单位宽的包围盒外而穿过、沿面 x = 2 擦边均命中，x = F(2 + 2⁻²²) 完整漏过；机体按其本 tick 移动后的位置受测（自 x −3.5 移到 −2 后才覆盖弹道），碎片按移动前的位置受测（自 2.5 移到 4.5 前覆盖弹道）；状态 8 的弹丸照常移动、不再命中。
+  - 碰撞写入的冲量与定时旋转被下一 tick 的 P3-06 积分消费：玩家与迎面机体在 tick 1 接触，tick 2 两者的位姿等于 P3-06 精确有理参考 `referenceFrame` 对 tick 1 写下的块的结果。
+  - AC-11：两个会掷类别的停放对象（种类 10、12）与受害者（14）的抽取按“10 的到期 → 10 的类别 → 12 的到期 → 12 的类别 → 14 的到期”交错，选定的 RNG 使 10 交战、12 放弃，共 5 次抽取，`hit` 字段逐项（经过时间 1002：125 发 × 27 = 3375，护盾全吸收）、双方能量时钟；停放行进使对象离开世界后同一更新仍交战（`object-left-world` 先于 `hit`）；停放受害者被击毁时 `object-destroyed` 为 `removed`、无爆炸，后面的射手门禁不通过、受害者自身不再更新，下一 tick 离开，击杀者的能量更新随之运行；停放 → 活动 → 停放的整个过程只在两次到期的停放更新中交战（tick 501 经过时间 640，tick 603 经过时间 204，含活动期间），活动期间与切换 tick 不交战，`ai.target` 保持。
+  - P3-06 文件的单元测试：[movement.test.ts](../../../../../src/core/systems/movement.test.ts) 的 `linear` 移动与只对有标志的块、在其自身移动后做命中检测，`spinning` 的旋转不乘步长；[area.test.ts](../../../../../src/core/systems/area.test.ts) 的交战回调时机、经过时间与 RNG 交错，Warp 过境对象不交战；[flight-control.test.ts](../../../../../src/core/systems/flight-control.test.ts) 的锁定在清除之后、辅助之前，不可用玩家不调用。
+- **检查：** `pnpm check`（typecheck、lint、Vitest 260 个文件 7,809 项、build）在 `ebd17a4` 上通过。自动选敌与 CR-04 夹具使写入范围后来加入的 5 个测试文件需要调整（协调者批准，见写入范围）：[game-runtime-input.test.ts](../../../../../src/app/runtime/game-runtime-input.test.ts)、[mission-diagnostics.test.ts](../../../../../src/ui/dev/mission-diagnostics.test.ts) 与 [replay-check.test.ts](../../../../../tools/replay-check.test.ts) 增加自动选敌的 `target-changed`（不指向命令）；[render-state.test.ts](../../../../../src/core/projections/render-state.test.ts) 的玩家补上 `targeting`；[game-session-replay.test.ts](../../../../../src/app/session/game-session-replay.test.ts) 的 `fire secondary` 暂改为 `select-missile`，因为自动选敌后引导导弹会发射，而其移动在 22 之前为 `movement.record` 故障（22 恢复）。高负载（load average 约 140）下 image-payload、budget、snapshot 测试曾偶发 5 秒超时，单独运行通过，耗时与基础提交相同；最终一次 `pnpm check` 全部通过。
+- **Rubber-duck：** 无阻塞问题。采纳两项：增加对次序敏感的用例（手动匹配的 `speed-matched` 先于发射的 `shot-fired`）与状态 8 弹丸移动而不再命中的用例。确认玩家更新次序、停放更新的 RNG 交接、移动分派（含 `moveLinear` 返回新块后再做命中检测）与集成测试的独立性，以及对 game-session-replay 测试的处理。
+- **Simplify：** 采纳：area 单元测试用 `rngStateAfter` 代替手写抽取；集成测试的玩家改用 `addPlayerEntity`；`parkedAt` 改为只取选项。未采纳：把其他测试文件的私有夹具提升为共享辅助（范围外）；锁定入口每 tick 的分配（14 的代码，不在本项改动内）；停放更新每次交战重建 `RandStream`（为保持 P3-06 模块不依赖 `TickContext` 的最小增补）；切换与自动选敌用例中的多次正式 `step`（跨越活动期间正是要验证的内容）。
+- **文档影响：** `docs/original/` 无新事实，U 项不变。[core.md](../../../../engineering/modules/core.md) 中流水线表的 `object-update`、`movement`、`parked-update` 行与“代码注释标出 P3-07 的导弹锁定、自动选择目标、停放战斗的位置”两处随本项过时；按 goal 执行记录“11 的后续并入 22”，core.md 与 source-structure.md 的过时内容由 28 更新，已在交接中提请。

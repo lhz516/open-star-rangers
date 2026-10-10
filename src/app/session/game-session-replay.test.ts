@@ -11,9 +11,11 @@ import type { GameCommandsCancelled } from './game-session.ts';
 import { current, departure, runSpec, sessionSetup } from './game-session.test-support.ts';
 
 // AC-06: a run taken through the session's lifecycle records exactly the input its successful ticks executed. The
-// commands that end up cancelled are all `cockpit-front`, which no executed command uses.
+// commands that end up cancelled are all `cockpit-front`, which no executed command uses. The secondary fire is a
+// missile selection until P3-07/22 lets missiles fly: with P3-07's automatic target selection, it would launch a
+// guided missile, whose movement faults until then.
 
-const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'fire', channel: 'secondary' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
+const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'select-missile', direction: 'next' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
 const DOOMED: Command = { type: 'cockpit-front' };
 const PRIMARY_FIRE = JSON.stringify({ type: 'fire', channel: 'primary' });
 

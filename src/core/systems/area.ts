@@ -9,8 +9,8 @@
  *   the world exit, the one true exit, which emits `object-left-world`.
  *
  * None of them bounds an active object: it may fly anywhere, and only parking hands it to the parked update. Until
- * P3-08 the parked travel follows the AI state instantiation wrote; parked combat (P3-07, P3-08), the base reports of
- * P3-10 and the area centre during the player's Warp (P3-09) join at the marked places.
+ * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel, and
+ * the base reports of P3-10 and the area centre during the player's Warp (P3-09) join at the marked places.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
@@ -223,12 +223,20 @@ function travelParked(world: WorldState, entity: Entity, elapsed: number, rand: 
 }
 
 /**
+ * The parked combat that follows an entity's parked travel (P3-07's engageParked, `0x2ffec` in AI mode 1 and `0x30150`
+ * otherwise; docs/plan/p3/02/spec.md, CR-09): it draws from the world RNG itself.
+ */
+export type ParkedEngagement = (entity: Entity, elapsed: number) => void;
+
+/**
  * Stage 13 (`0x2f1b0`): every parked craft in state 7 or above and not destroyed draws once from the world RNG, every
  * tick, for its due check. A due one first takes the elapsed time and the clock as its last parked update; then one in
- * Warp transit is done, and any other travels.
+ * Warp transit is done, and any other travels and then engages (`engage`), even when its travel has just made it leave
+ * the world (E1). The engagement's draws follow the entity's own and precede the next entity's (E4), and an entity it
+ * destroys later in the walk is no longer selected.
  */
-export function updateParked(world: WorldState, emit: (event: ObjectLeftWorldEvent) => void): void {
-  const rand = new RandStream(world.rngState);
+export function updateParked(world: WorldState, emit: (event: ObjectLeftWorldEvent) => void, engage: ParkedEngagement): void {
+  let rand = new RandStream(world.rngState);
   for (const entity of world.entities.walk(PARKED_UPDATE_KINDS)) {
     if (entity.activity !== 'parked' || !isActiveState(entity.state) || entity.destroyed) continue;
     if (!isParkedUpdateDue(world.clock, entity.lastParkedUpdateClock, rand.next())) continue;
@@ -236,7 +244,9 @@ export function updateParked(world: WorldState, emit: (event: ObjectLeftWorldEve
     entity.lastParkedUpdateClock = world.clock;
     if (checkWarpTransit(world, entity)) continue;
     travelParked(world, entity, elapsed, rand, emit);
-    // P3-07 and P3-08: the parked combat, 0x2ffec in AI mode 1 and 0x30150 otherwise, with their draws.
+    world.rngState = rand.state;
+    engage(entity, elapsed);
+    rand = new RandStream(world.rngState);
   }
   world.rngState = rand.state;
 }
