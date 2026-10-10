@@ -1938,11 +1938,18 @@ type-2 gun placed in a list like a fixed gun).
 - Arc (mount +0x20 bits, d = row 3 of out, compared with the shooter's rows): 0x01 requires d·row3 ≥ +0x24; 0x08
   requires d·row3 ≤ −(+0x24); 0x02 requires d·row1 ≥ +0x28; 0x10 requires d·row1 ≤ −(+0x28); 0x04 requires d·row2 ≥
   +0x2C; 0x20 requires d·row2 ≤ −(+0x2C). Returns 1 when all present bits pass.
+- **Numerics (Confirmed, native instructions, P3-07/14):** the origin is built like a spawn position of W11 with
+  k = mount +0x08. t is stored to f32. With L = target speed × t, the aim point's x and y are F(F(L × row 3) +
+  target) and row 3's x and y are F(aim − origin); z skips both stores: F((L × row3_z + target_z) − origin_z). Each
+  arc product (the y, then z, then x terms) is stored to f32 before its comparison, unlike the general rule of W13.
+  With the arguments of its two P3-07 callers (`0x2e9d4`, and `0x218e8` for a mode-2 source), `0x56d18` normalises
+  row 3 (`0x56aa8`), sets row 1 = row 2 × row 3 (each component F(a·b − c·d)) and normalises it, then sets row 2 =
+  row 3 × row 1 without normalising; the old row 1 is not read.
 
 `0x2d894(shooter, target, state)`: returns 0 when |target − shooter|² > weapon +0x10 (range², non-strict in range);
 then, with v = target − shooter (positions only, no mount offset), bit 0x01 requires v·row3 ≥ 0, 0x08 requires
 v·row3 < 0, 0x02 requires v·row1 ≥ 0, 0x10 v·row1 < 0, 0x04 v·row2 ≥ 0, 0x20 v·row2 < 0. Callers: AI target choice
-`0x5e444` only.
+`0x5e444` only. The products v·row (y, z, then x terms) stay in double and are compared with 0 (P3-07/14).
 
 ##### W8. Missile launch `0x2e86c` and the missile lock `0x2ddbc` — Confirmed (code)
 
@@ -1993,12 +2000,15 @@ Helpers: `0x2dd04(state)` = sum of ammunition over the +0x18 chain of a missile 
   in mount order: skip unless weapon +0x28 = 2, level ≠ 2, burst counter +0x20 > 0 and state +0x04 + weapon +0x14 ≤
   clock (signed). At level 1 one rand: fire only when (rand & 0xFF) < 0x80 (½). On fire it posts message 8 with the
   stored aim orientation (+0x24–+0x44) and the mount offset plus a jitter: a random direction from `0x56b8c` (two draws,
-  [direction table](#numbers-on-the-movement-path-p3-0601)), each component multiplied by its own (rand × 1/32767 × 3 + 2). Fired or not, the
+  [direction table](#numbers-on-the-movement-path-p3-0601)), each component multiplied by its own (rand × 1/32767 × 3 + 2); each
+  jitter component F(that × u) is stored before F(offset + jitter) (P3-07/14). Fired or not, the
   burst counter decrements and +0x04 = clock. The routine does not test the mount type; no missile record in any of
   the 24 CINF has 2 in the byte at +0x28 (local count), so only guns fire this way.
 - **Acquisition `0x2da58(handle, state)`:** target = `0x527d8` (state +0x48, dropped when invalid); when valid and
   `0x2e9d4` (no cache) passes the mount's arc, burst counter = weapon +0x2C. The burst is then fired along the
-  orientation computed here; mid-burst mounts are not re-aimed (`0x2d72c` skips them).
+  orientation computed here; mid-burst mounts are not re-aimed (`0x2d72c` skips them). `0x2e9d4` writes the solution
+  into the state's aim before its arc test, so a failed test still changes the aim; only the burst waits for a pass
+  (P3-07/14).
 - **A separate policy, not the list path:** automatic mounts never go through `0x2d578`/`0x2e5e8`. Compared with a
   list gun they have no charge gate or cost (also for the player), their own damage roll ((rand & 0xFF) < 0x80
   instead of rand & 1), a burst counter that is consumed and a cooldown that restarts on a failed roll as well, no
@@ -2064,9 +2074,11 @@ shooter (`0x218e8`): rows = shooter rows, position p:
 
 - p1 = f32(pos + f32(row1 · ox)), p2 = f32(p1 + f32(row2 · oy)) per component;
 - k = oz + shooterSpeed × step when the shooter handle is valid (shooterSpeed = shooter movement block +0x08), else
-  oz; p = f32(p2 + f32(row3 · k)).
+  oz; p = f32(p2 + f32(row3 · k)). k is not stored: the speed from `0x21c78` times the f32 frame step `0x186424` (an
+  exact product), plus oz, rounded once in double (Confirmed, native instructions, P3-07/14).
 
-When weapon +0x28 ≠ 0 the rows are replaced by the message orientation. `0x21794` then writes position and rows,
+When weapon +0x28 ≠ 0 the rows are replaced by the message orientation, after the position above is computed with the
+shooter's rows. `0x21794` then writes position and rows,
 clears movement block +0x04–+0xA3, and sets (movement-block offsets) mode byte +0x04 = 1, start position +0x0C–+0x14,
 speed +0x08 = gun +0x08, velocity +0x5C–+0x64 = f32(row3 × speed) and +0x68 = 1. The shooter's velocity is **not**
 added. Posts presentation item 8 for the new object

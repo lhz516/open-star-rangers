@@ -79,9 +79,9 @@ describe('world step (P3-02 AC-03, AC-04)', () => {
     const idle = populatedState();
     const events = constructWorld(commanded).step(tickInput(commands));
     constructWorld(idle).step(tickInput());
-    // P3-06 handles the speed commands, select-number and confirm-selection in flight, P3-07 the target commands, and the
-    // player becomes active only in this step's request handling.
-    const unavailable = new Set<Command['type']>(['speed', 'select-number', 'confirm-selection', 'target']);
+    // P3-06 handles the speed commands, select-number and confirm-selection in flight, P3-07 the target and weapon commands,
+    // and the player becomes active only in this step's request handling.
+    const unavailable = new Set<Command['type']>(['speed', 'select-number', 'confirm-selection', 'target', 'fire', 'cycle-main-weapon', 'select-missile']);
     expect(events).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
       tick: 1,

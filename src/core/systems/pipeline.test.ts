@@ -324,8 +324,6 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   const control = { scale: 1, axes: [{ clear: false, set: true, value: 0.5 }, { clear: true, set: false, value: 0 }, { clear: false, set: false, value: 0 }], speedFactor: null } as const;
   it.each([
     ['select-target', { type: 'select-target', entityId: 1, target: 2, targetKindBit: 20, origin: 'command', commandIndex: 0 }, 'targeting.select-target'],
-    ['a gun launch', { type: 'launch', family: 'gun', shooter: 1, gun: 0, mount: 0, offset: { x: 0, y: 0, z: 1 }, orientation: null, trigger: { type: 'automatic' } }, 'weapons.launch'],
-    ['a missile launch of a removed shooter', { type: 'launch', family: 'missile', shooter: 99, missile: 0, mount: 1, offset: { x: 0, y: 0, z: 1 }, launchByte: 2, target: null, trigger: { type: 'ai', channel: 1 } }, 'weapons.launch'],
     ['steer', { type: 'steer', entityId: 2, control }, 'missiles.steer'],
     ['a missile\'s expiry', { type: 'expire', entityId: 2 }, 'missiles.expire'],
     ['a projectile\'s expiry', { type: 'expire', entityId: 3 }, 'projectiles.expire'],
@@ -405,5 +403,29 @@ describe('pending requests (P3-07 CR-05)', () => {
     expect(lastPending(queue)).toBeUndefined();
     queue.post(request(5));
     expect(lastPending(queue)).toBeUndefined();
+  });
+
+  it('holds a deferred request, counted at once, until release appends the held ones in order (CR-07)', () => {
+    const queue = new RequestQueue();
+    queue.post(request(1));
+    queue.defer(request(2));
+    queue.defer(request(3));
+    queue.post(request(4));
+    expect(lastPending(queue)).toBe(4);
+    queue.release();
+    expect(lastPending(queue)).toBe(3);
+    const handled: number[] = [];
+    queue.handle((posted) => void (isLeave(posted) && handled.push(posted.entityId)));
+    expect(handled).toEqual([1, 4, 2, 3]);
+    const full = new RequestQueue();
+    for (let count = 0; count < CORE_LIMITS.requestsPerTick - 1; count++) full.post(request(count + 1));
+    full.defer(request(0));
+    expectFault(() => full.post(request(0)), 'budget-exhausted', 'pipeline.requests');
+  });
+
+  it('faults when handling finds a request still held', () => {
+    const queue = new RequestQueue();
+    queue.defer(request(1));
+    expectFault(() => queue.handle(() => {}), 'invariant-violated', 'pipeline.requests-deferred');
   });
 });

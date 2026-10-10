@@ -12,7 +12,7 @@ import { referenceTarget } from './targeting.ts';
 import { updateMissileLock } from './weapons.ts';
 
 // docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, which
-// keep the not-implemented result until subtasks 13 (targeting.test.ts), 14 and 16 implement them. The player's update (flight-control.ts)
+// keep the not-implemented result until subtasks 13 (targeting.test.ts), 14 (weapons.test.ts) and 16 implement them. The player's update (flight-control.ts)
 // is the one command loop: it judges P3-06's throttle, speed match and speed assist commands itself and hands every
 // other command to judgeCommand.
 
@@ -28,7 +28,7 @@ const COMBAT_COMMANDS: readonly Command[] = [
   { type: 'damage-report' },
 ];
 /** P3-07's commands whose rules are not implemented yet. */
-const UNIMPLEMENTED_COMBAT_COMMANDS = COMBAT_COMMANDS.filter(({ type }) => type !== 'target');
+const UNIMPLEMENTED_COMBAT_COMMANDS = COMBAT_COMMANDS.filter(({ type }) => !['target', 'fire', 'cycle-main-weapon', 'select-missile'].includes(type));
 
 /** P3-06's commands, which the player's update judges itself in flight: throttle, and Enter's speed match. */
 const P3_06_COMMANDS: readonly Command[] = [
@@ -90,6 +90,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
       commandType: type,
       ...(commandIndex === 1 ? { outcome: 'accepted', reason: null }
         : type === 'target' ? { outcome: 'ignored', reason: 'no-candidate' }
+        : type === 'fire' ? { outcome: 'ignored', reason: 'no-weapon' }
         : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
   });
@@ -159,7 +160,7 @@ describe('the reference target (CR-05)', () => {
 });
 
 describe('the player update\'s P3-07 entry points (CR-07)', () => {
-  it('change nothing until subtask 14 implements the missile lock', () => {
+  it('the missile lock changes nothing without a target, and emits and posts nothing', () => {
     const [state, player] = flightState();
     const context = registerTick(state, readTickInput(tickInput()));
     const before = stateText(state);

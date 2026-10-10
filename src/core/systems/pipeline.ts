@@ -116,11 +116,31 @@ export class RequestQueue {
   /** The next request handling takes; it and those after it are pending. */
   #next = 0;
   #handled = false;
+  /** Requests held by defer() until release(). */
+  readonly #deferred: Request[] = [];
 
   post(request: Request): void {
+    this.#count();
+    if (!this.#handled) this.#requests.push(request);
+  }
+
+  /**
+   * Holds `request` until release(), counting it now: the launches of the player's fire commands, which the original
+   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07).
+   */
+  defer(request: Request): void {
+    this.#count();
+    this.#deferred.push(request);
+  }
+
+  /** Appends the held requests in the order they were deferred. */
+  release(): void {
+    for (const request of this.#deferred.splice(0)) if (!this.#handled) this.#requests.push(request);
+  }
+
+  #count(): void {
     if (!fitsLimit('requestsPerTick', this.#posted, 1)) throw new CoreFaultError('budget-exhausted', 'pipeline.requests');
     this.#posted++;
-    if (!this.#handled) this.#requests.push(request);
   }
 
   /** The last request of this tick that handling has not taken yet and `match` accepts; none once handling is over. */
@@ -135,6 +155,7 @@ export class RequestQueue {
   /** Handles every request in posting order, including those `handle` posts itself; once per tick. */
   handle(handle: (request: Request) => void): void {
     if (this.#handled) throw new CoreFaultError('invariant-violated', 'pipeline.requests-handled');
+    if (this.#deferred.length > 0) throw new CoreFaultError('invariant-violated', 'pipeline.requests-deferred');
     // The length is read again after every request, so requests posted meanwhile are handled in the same pass.
     while (this.#next < this.#requests.length) handle(this.#requests[this.#next++]);
     this.#handled = true;
@@ -208,6 +229,8 @@ function updatePlayerControls(context: TickContext): void {
     post: (request) => requests.post(request),
     judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
   });
+  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000.
+  requests.release();
 }
 
 /**
