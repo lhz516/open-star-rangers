@@ -24,7 +24,9 @@ const COMMAND_FIELDS = {
   fire: { channel: choice('primary', 'secondary') },
   /** P3-06. */
   speed: { operation: choice('increase', 'decrease', 'zero', 'maximum', 'match-target', 'toggle-auto-match') },
-  /** Interpreted by the current context: menu item, base choice, speed setting, … */
+  /** P3-06: the original's Shift+n fixed speed preset n (Shift+1 is zero; Shift+0 is `speed` `maximum`). */
+  'speed-preset': { level: number(integerIn(1, 9)) },
+  /** Interpreted by the current context: communications menu item, base choice, …; it does not change speed in flight. */
   'select-number': { value: number(integerIn(1, 9)) },
   'navigate-selection': { direction: choice('previous', 'next') },
   'confirm-selection': {},

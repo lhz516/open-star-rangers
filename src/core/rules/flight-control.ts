@@ -94,10 +94,10 @@ export function decreasedThrottle(readback: number): number {
   return Math.max(readback - THROTTLE_STEP, 0);
 }
 
-/** `select-number` n, the original's Shift+n preset: 14 × (n − 1), so 1 is zero and 9 is 112 (Shift+0 is `maximum`). */
-export function presetThrottle(value: number): number {
-  if (!Number.isInteger(value) || value < 1 || value > 9) throw fault('preset');
-  return PRESET_STEP * (value - 1);
+/** `speed-preset` level n, the original's Shift+n preset: 14 × (n − 1), so 1 is zero and 9 is 112 (Shift+0 is `maximum`). */
+export function presetThrottle(level: number): number {
+  if (!Number.isInteger(level) || level < 1 || level > 9) throw fault('preset');
+  return PRESET_STEP * (level - 1);
 }
 
 /** The record fields the control paths read: the craft's turn rates, which the axes scale. */

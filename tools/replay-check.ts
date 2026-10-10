@@ -105,6 +105,7 @@ const LONGEST_SOURCE = { collection: 'wingman', index: SAFE, group: { index: SAF
 const LONGEST_COMMANDS: { readonly [Type in CommandType]: Extract<Command, { readonly type: Type }> } = {
   fire: { type: 'fire', channel: 'secondary' },
   speed: { type: 'speed', operation: 'toggle-auto-match' },
+  'speed-preset': { type: 'speed-preset', level: 9 },
   'select-number': { type: 'select-number', value: 9 },
   'navigate-selection': { type: 'navigate-selection', direction: 'previous' },
   'confirm-selection': { type: 'confirm-selection' },

@@ -16,9 +16,11 @@ function everyDraft(type: CommandType): CommandDraft[] {
 }
 
 describe('command draft', () => {
-  it('describes exactly the 16 Core command variants in Core\'s order', () => {
+  it('describes exactly the 17 Core command variants in Core\'s order', () => {
     expect(Object.keys(COMMAND_FORMS)).toEqual([...COMMAND_TYPES]);
-    expect(COMMAND_TYPES).toHaveLength(16);
+    expect(COMMAND_TYPES).toHaveLength(17);
+    expect(COMMAND_FORMS['speed-preset']).toEqual([{ name: 'level', kind: 'number', min: 1, max: 9, integer: true }]);
+    expect(COMMAND_FORMS['select-number']).toEqual([{ name: 'value', kind: 'number', min: 1, max: 9, integer: true }]);
     expect(COMMAND_FORMS['map-point']).toEqual([
       { name: 'operation', kind: 'choice', options: ['hover', 'select'] },
       { name: 'right', kind: 'number', min: 0, max: 1, integer: false },
@@ -40,6 +42,8 @@ describe('command draft', () => {
 
   it('reads number text as Core does, including -0 and exponents', () => {
     expect(readDraft(editDraft(commandDraft('select-number'), 'value', ' 9 '))).toEqual({ valid: true, command: { type: 'select-number', value: 9 } });
+    expect(readDraft(editDraft(commandDraft('speed-preset'), 'level', '9'))).toEqual({ valid: true, command: { type: 'speed-preset', level: 9 } });
+    expect(readDraft(editDraft(commandDraft('speed-preset'), 'level', '1e0'))).toEqual({ valid: true, command: { type: 'speed-preset', level: 1 } });
     const point = editDraft(editDraft(commandDraft('map-point'), 'right', '-0'), 'down', '5e-1');
     const reading = readDraft(point);
     expect(reading).toEqual({ valid: true, command: { type: 'map-point', operation: 'hover', right: 0, down: 0.5 } });
@@ -51,6 +55,12 @@ describe('command draft', () => {
     ['select-number', 'value', '2.5', 'must be an integer from 1 to 9'],
     ['select-number', 'value', '', 'must be an integer from 1 to 9'],
     ['select-number', 'value', '0x3', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', '0', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', '10', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', '4.5', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', '-1', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', '', 'must be an integer from 1 to 9'],
+    ['speed-preset', 'level', 'Infinity', 'must be an integer from 1 to 9'],
     ['map-point', 'down', '1.01', 'must be a number from 0 to 1'],
     ['map-point', 'right', 'NaN', 'must be a number from 0 to 1'],
     ['fire', 'channel', 'tertiary', 'must be one of primary, secondary'],
@@ -67,6 +77,7 @@ describe('command draft', () => {
   it('starts each variant at its first choice or minimum, and edits without changing the draft', () => {
     expect(commandDraft('energy')).toEqual({ type: 'energy', values: { operation: 'open' } });
     expect(commandDraft('select-number')).toEqual({ type: 'select-number', values: { value: '1' } });
+    expect(commandDraft('speed-preset')).toEqual({ type: 'speed-preset', values: { level: '1' } });
     expect(commandDraft('launch')).toEqual({ type: 'launch', values: {} });
     const draft = commandDraft('fire');
     const edited = editDraft(draft, 'channel', 'secondary');

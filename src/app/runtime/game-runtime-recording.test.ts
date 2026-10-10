@@ -11,7 +11,10 @@ import type { EventDelivery } from './game-event-bus.ts';
 import { COMMAND_QUEUE_LIMIT, createGameRuntime, type FrameReport, type GameRuntime } from './game-runtime.ts';
 import { NEUTRAL_AXES as NEUTRAL, recordingOptions, runtimeSpec, TICK_MS } from './game-runtime.test-support.ts';
 
-const COMMANDS: readonly Command[] = [{ type: 'launch' }, { type: 'fire', channel: 'secondary' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
+const COMMANDS: readonly Command[] = [
+  { type: 'launch' }, { type: 'fire', channel: 'secondary' }, { type: 'select-number', value: 3 }, { type: 'speed-preset', level: 5 },
+  { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 },
+];
 
 /**
  * Drives `runtime` through held and pressed fire, commands deferred over several ticks, zero-tick and capped frames,

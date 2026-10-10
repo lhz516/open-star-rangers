@@ -75,8 +75,9 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = createWorld(asCreateInput(input)).snapshot();
     expect(Object.keys(snapshot)).toEqual(['format', 'version', 'rulesVersion', 'state']);
     expect(snapshot).toMatchObject({ format: GAME_SNAPSHOT_FORMAT, version: GAME_SNAPSHOT_VERSION, rulesVersion: RULES_VERSION });
-    // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07).
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 2, 2]);
+    // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07); P3-05's speed-preset only the rules version
+    // (docs/plan/p3/05/spec.md, 持久化与兼容).
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 2, 3]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual(['config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'player']);
     expect(state.config).toEqual({
@@ -231,7 +232,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":2,"rulesVersion":2,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":2,"rulesVersion":3,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

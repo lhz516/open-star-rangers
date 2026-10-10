@@ -49,20 +49,21 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
   it('exports the record and the result, deeply frozen, with the effective configuration and the inputs as run', () => {
     const input = asCreateInput(worldInput({ run: { wingman: 1 } }));
     const session = createRecordingSession(input, options(2));
-    const caller = { commands: [{ value: 3, type: 'select-number' }], axes: { roll: 0, yaw: -0.25, pitch: -0 } } as unknown as TickInput;
+    const caller = { commands: [{ value: 3, type: 'select-number' }, { level: 3, type: 'speed-preset' }], axes: { roll: 0, yaw: -0.25, pitch: -0 } } as unknown as TickInput;
     const events = [session.step(caller), session.step(tickInput()), session.step(tickInput([{ type: 'launch' }]))];
     const { record, result } = session.exportRecording();
 
     expect(Object.keys(record)).toEqual(['format', 'version', 'rulesVersion', 'producer', 'content', 'mission', 'setupHash', 'run', 'checkpointInterval', 'ticks']);
     expect(record).toMatchObject({ format: GAME_REPLAY_FORMAT, version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION, producer: PRODUCER, checkpointInterval: 2 });
-    expect([GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION]).toEqual(['osr-game-replay', 1]);
+    // P3-05's speed-preset incremented the format version once (docs/plan/p3/05/spec.md, 持久化与兼容).
+    expect([GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION]).toEqual(['osr-game-replay', 2]);
     expect(record.content).toEqual(syntheticIdentity());
     expect(record.mission).toBe('mission/first-campaign');
     expect(record.setupHash).toBe(session.snapshot().state.config.setupHash);
     expect(record.run).toEqual({ rawDifficulty: SYNTHETIC_RUN.rawDifficulty, wingman: 1, seed: SYNTHETIC_RUN.seed, clockUnitsPerTick: 2 });
     // The canonical copy of what ran: fields in contract order, -0 as 0.
     expect(record.ticks).toHaveLength(3);
-    expect(JSON.stringify(record.ticks[0])).toBe('{"axes":{"pitch":0,"yaw":-0.25,"roll":0},"commands":[{"type":"select-number","value":3}]}');
+    expect(JSON.stringify(record.ticks[0])).toBe('{"axes":{"pitch":0,"yaw":-0.25,"roll":0},"commands":[{"type":"select-number","value":3},{"type":"speed-preset","level":3}]}');
     expect(Object.is(record.ticks[0].axes.pitch, 0)).toBe(true);
     expect(record.ticks.slice(1)).toEqual([tickInput(), tickInput([{ type: 'launch' }])]);
 
@@ -115,9 +116,13 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
     expect(checkpointTicks(session)).toEqual(expected);
   });
 
-  it.each([
+  it.each<[string, unknown]>([
     ['a missing field', { commands: [] }],
     ['an unknown command', tickInput([{ type: 'self-destruct' } as unknown as Command])],
+    ...[0, 10, 2.5, Number.NaN, Infinity].map((level): [string, unknown] => [`the speed preset level ${level}`, tickInput([{ type: 'speed-preset', level }])]),
+    ['a speed preset without its level', tickInput([{ type: 'speed-preset' } as unknown as Command])],
+    ['a speed preset with an extra field', tickInput([{ type: 'speed-preset', level: 1, value: 1 } as unknown as Command])],
+    ['a valid speed preset after an invalid one', tickInput([{ type: 'speed-preset', level: 9 }, { type: 'speed-preset', level: 0 }])],
     ['too many commands', tickInput(Array.from({ length: CORE_LIMITS.commandsPerTick + 1 }, (): Command => ({ type: 'launch' })))],
   ])('rejects %s without changing the world or the recording', (_, input) => {
     const session = createRecordingSession(longInput(), options(2));

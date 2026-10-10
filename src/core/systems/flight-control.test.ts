@@ -58,7 +58,8 @@ const throttles = ({ requests }: { requests: readonly PlayerRequest[] }) => requ
 const requestAxes = ({ requests }: { requests: readonly PlayerRequest[] }) => requests.map((request) => (request.type === 'control' ? request.axes : request.type));
 
 const speed = (operation: 'increase' | 'decrease' | 'zero' | 'maximum' | 'match-target' | 'toggle-auto-match'): Command => ({ type: 'speed', operation });
-const preset = (value: number): Command => ({ type: 'select-number', value });
+const preset = (level: number): Command => ({ type: 'speed-preset', level });
+const selectNumber = (value: number): Command => ({ type: 'select-number', value });
 const results = (events: readonly DomainEvent[]) => events.flatMap((event) => (event.type === 'command-result' ? [[event.commandIndex, event.outcome, event.reason]] : []));
 const steering = ({ movement }: Entity) => {
   const { pitch, yaw, roll } = movement!.steering;
@@ -79,12 +80,21 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
     ['decrease', speed('decrease'), 43.5],
     ['zero', speed('zero'), 0],
     ['maximum', speed('maximum'), 48],
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((value): [string, Command, number] => [`select-number ${value} (Shift+${value})`, preset(value), 5.25 * (value - 1)]),
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((level): [string, Command, number] => [`speed-preset ${level} (Shift+${level})`, preset(level), 5.25 * (level - 1)]),
   ])('sets %s from full throttle as commanded speed %d and clears the arrival', (_, command, commanded) => {
     const [state, player] = withPlayer();
     const before = player.movement!.speed;
     stepControls(state, [command]);
     expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed, player.movement!.speed]).toEqual([commanded, false, before]);
+  });
+
+  it('gives speed-preset 1 (Shift+1) exactly what zero gives: the same request, state and result', () => {
+    const [zeroState] = withPlayer();
+    const [presetState] = withPlayer();
+    expect(update(presetState, [preset(1)]).requests).toEqual(update(zeroState, [speed('zero')]).requests);
+    const [zeroed, presetted] = [stepControls(zeroState, [speed('zero')]), stepControls(presetState, [preset(1)])];
+    expect(presetted).toEqual(zeroed.map((event) => (event.type === 'command-result' ? { ...event, commandType: 'speed-preset' } : event)));
+    expect(presetState).toEqual(zeroState);
   });
 
   it('keeps no throttle: each request carries its own, and nothing persists but the commanded speed', () => {
@@ -153,7 +163,8 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
 describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const THROTTLE_COMMANDS = [speed('increase'), speed('decrease'), speed('zero'), speed('maximum'), preset(5)];
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
-  const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS];
+  // select-number passes P3-06's gates outside the base and map contexts, but has no effect (P3-05 S-06).
+  const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS, selectNumber(5)];
   const OTHERS = [{ type: 'launch' }, { type: 'target', operation: 'forward' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
 
   type Unavailable = (state: WorldState, player: Entity) => void;
@@ -188,7 +199,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     ['Warp', WARP, 'wrong-context'],
     ['base', BASE, 'not-implemented'],
     ['map', MAP, 'not-implemented'],
-  ] as const)('ignores speed commands as wrong-context in the %s context; select-number and confirm-selection there: %s', (_, viewMode, selectionReason) => {
+  ] as const)('ignores speed commands and presets as wrong-context in the %s context; select-number and confirm-selection there: %s', (_, viewMode, selectionReason) => {
     const [state, player] = withPlayer();
     state.player.viewMode = viewMode;
     state.player.target = state.entities.allocate(entityInit(7)).id;
@@ -200,10 +211,11 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [1, 'ignored', 'wrong-context'],
       [2, 'ignored', 'wrong-context'],
       [3, 'ignored', 'wrong-context'],
-      [4, selection, selectionReason],
+      [4, 'ignored', 'wrong-context'],
       [5, 'ignored', 'wrong-context'],
       [6, 'ignored', 'wrong-context'],
       [7, selection, selectionReason],
+      [8, selection, selectionReason],
       ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
@@ -215,7 +227,24 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     const [state] = withPlayer();
     state.player.viewMode = MAP;
     state.player.entityId = null;
-    expect(results(stepControls(state, [speed('zero'), preset(1)]))).toEqual([[0, 'ignored', 'player-unavailable'], [1, 'rejected', 'not-implemented']]);
+    expect(results(stepControls(state, [speed('zero'), preset(1), selectNumber(1)]))).toEqual([
+      [0, 'ignored', 'player-unavailable'],
+      [1, 'ignored', 'player-unavailable'],
+      [2, 'rejected', 'not-implemented'],
+    ]);
+  });
+
+  it('ignores select-number as wrong-context in flight: it changes no speed and posts nothing (P3-05 S-06)', () => {
+    const [state, player] = withPlayer();
+    const control = structuredClone(state.player.control);
+    const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(selectNumber);
+    expect(update(state, digits).requests).toEqual([]);
+    const events = stepControls(state, digits);
+    expect(events).toEqual(digits.map((_, commandIndex) => ({ type: 'command-result', tick: 1, commandIndex, commandType: 'select-number', outcome: 'ignored', reason: 'wrong-context' })));
+    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed]).toEqual([48, true]);
+    expect(state.player.control).toEqual(control);
+    // Between throttle commands it leaves the readback chain as it is.
+    expect(throttles(update(state, [speed('decrease'), selectNumber(1), speed('decrease')]))).toEqual([116, 104]);
   });
 
   it('leaves every command of other tasks not implemented in flight', () => {
