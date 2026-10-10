@@ -2,19 +2,39 @@ export interface KeyboardInput {
   readonly type: 'keydown' | 'keyup';
   readonly code: string;
   readonly repeat: boolean;
+  readonly shiftKey: boolean;
   readonly ctrlKey: boolean;
   readonly altKey: boolean;
+  /** `getModifierState('AltGraph')` as reported by the browser. */
+  readonly altGraph: boolean;
   readonly metaKey: boolean;
+  /** `getModifierState('NumLock')` as reported by the browser. */
+  readonly numLock: boolean;
   readonly isComposing: boolean;
 }
 
 export function normalizeKeyboardInput(event: KeyboardInput): KeyboardInput {
-  const { type, code, repeat, ctrlKey, altKey, metaKey, isComposing } = event;
-  return Object.freeze({ type, code, repeat, ctrlKey, altKey, metaKey, isComposing });
+  const { type, code, repeat, shiftKey, ctrlKey, altKey, altGraph, metaKey, numLock, isComposing } = event;
+  return Object.freeze({ type, code, repeat, shiftKey, ctrlKey, altKey, altGraph, metaKey, numLock, isComposing });
+}
+
+/** The parts of a DOM KeyboardEvent the browser connection reads; `key` and `keyCode` are deliberately absent. */
+export type KeyboardEventLike = Omit<KeyboardInput, 'type' | 'altGraph' | 'numLock'> & {
+  getModifierState(key: 'AltGraph' | 'NumLock'): boolean;
+};
+
+/** Extracts the agreed fields; the keyboard source normalizes and freezes them. */
+export function readKeyboardEvent(type: KeyboardInput['type'], event: KeyboardEventLike): KeyboardInput {
+  const { code, repeat, shiftKey, ctrlKey, altKey, metaKey, isComposing } = event;
+  return {
+    type, code, repeat, shiftKey, ctrlKey, altKey, metaKey, isComposing,
+    altGraph: event.getModifierState('AltGraph'),
+    numLock: event.getModifierState('NumLock'),
+  };
 }
 
 export type KeyboardSignalType =
-  | 'initial' | 'focusin' | 'focusout' | 'focus' | 'blur'
+  | 'initial' | 'bind' | 'unbind' | 'focusin' | 'focusout' | 'focus' | 'blur'
   | 'visibilitychange' | 'pagehide' | 'pageshow';
 
 export interface KeyboardSignal {
@@ -31,6 +51,18 @@ export interface KeyboardSink {
 export interface KeyboardSource {
   /** One owner, one connection. Throws on registration failure; release invalidates first. */
   connect(sink: KeyboardSink): () => void;
+}
+
+/** `Zone` is the host's input zone, e.g. the focusable container element in a browser. */
+export interface KeyboardZoneBinding<Zone> {
+  /**
+   * Binds, replaces or (with null) removes the source's input zone without changing its connection or sink. A
+   * failed registration on the new zone is rolled back and keeps the previous binding. Otherwise the previous
+   * zone's callbacks are inert at once, its listeners are removed, and a connected sink gets a `bind`/`unbind`
+   * signal before any removal failure is thrown. Rebinding the current zone, and any call after release, does
+   * nothing. Bound to its source, so it can be handed over directly as a callback, e.g. a React callback ref.
+   */
+  readonly bind: (zone: Zone | null) => void;
 }
 
 export interface KeyboardClassification {

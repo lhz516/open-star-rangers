@@ -1,25 +1,80 @@
 import { describe, expect, it } from 'vitest';
-import { classifyKeyboardInput, HeldKeyboardAxis, normalizeKeyboardInput } from './keyboard-input.ts';
+import { classifyKeyboardInput, HeldKeyboardAxis, normalizeKeyboardInput, readKeyboardEvent } from './keyboard-input.ts';
 import type { KeyboardInput } from './keyboard-input.ts';
 
 function key(code: string, patch: Partial<KeyboardInput> = {}): KeyboardInput {
   return normalizeKeyboardInput({
-    type: 'keydown', code, repeat: false, ctrlKey: false, altKey: false, metaKey: false, isComposing: false, ...patch,
+    type: 'keydown', code, repeat: false, shiftKey: false, ctrlKey: false, altKey: false, altGraph: false,
+    metaKey: false, numLock: false, isComposing: false, ...patch,
   });
 }
 
+const forbidden = {
+  get key(): never { throw new Error('key read'); },
+  get keyCode(): never { throw new Error('keyCode read'); },
+};
+
+const MODIFIER_FLAGS = ['shiftKey', 'altGraph', 'numLock'] as const;
+
 describe('keyboard input contract', () => {
-  it('copies and freezes only the agreed fields without reading key/keyCode/shiftKey', () => {
-    const event = {
-      ...key('ArrowLeft'),
-      get key(): never { throw new Error('key read'); },
-      get keyCode(): never { throw new Error('keyCode read'); },
-      get shiftKey(): never { throw new Error('shift read'); },
+  it('copies and freezes every agreed field, modifier states included, without reading key/keyCode', () => {
+    const fields: KeyboardInput = {
+      type: 'keyup', code: 'Numpad5', repeat: true, shiftKey: true, ctrlKey: false, altKey: true, altGraph: true,
+      metaKey: false, numLock: true, isComposing: false,
     };
+    const event = Object.defineProperties({ ...fields, extra: 1 }, Object.getOwnPropertyDescriptors(forbidden));
     const normalized = normalizeKeyboardInput(event);
-    expect(normalized).toEqual(key('ArrowLeft'));
+    expect(normalized).toStrictEqual(fields);
     expect(Object.isFrozen(normalized)).toBe(true);
     expect(normalized === event).toBe(false);
+  });
+
+  it.each([[false, false], [true, false], [false, true], [true, true]])(
+    'reads the reported AltGraph=%s and NumLock=%s states and Shift from a browser-shaped event',
+    (altGraph, numLock) => {
+      const queried: string[] = [];
+      // DOM KeyboardEvent fields are prototype getters, so the reader must not rely on spreading the event.
+      const prototype = Object.defineProperties({
+        getModifierState(name: string) {
+          queried.push(name);
+          return name === 'AltGraph' ? altGraph : name === 'NumLock' ? numLock : true;
+        },
+      }, {
+        ...Object.getOwnPropertyDescriptors(forbidden),
+        code: { get: () => 'Digit1' },
+        repeat: { get: () => false },
+        shiftKey: { get: () => true },
+        ctrlKey: { get: () => true },
+        altKey: { get: () => false },
+        metaKey: { get: () => false },
+        isComposing: { get: () => false },
+      });
+      const event = readKeyboardEvent('keydown', Object.create(prototype) as Parameters<typeof readKeyboardEvent>[1]);
+      expect(event).toStrictEqual({ ...key('Digit1', { shiftKey: true, ctrlKey: true, altGraph, numLock }) });
+      expect(queried).toEqual(['AltGraph', 'NumLock']);
+    },
+  );
+
+  it.each(MODIFIER_FLAGS)('keeps classification and the held axis unchanged by %s', flag => {
+    for (const type of ['keydown', 'keyup'] as const) {
+      for (const repeat of [false, true]) {
+        for (const bound of [false, true]) {
+          for (const eligible of [false, true]) {
+            const plain = key('ArrowRight', { type, repeat });
+            expect(classifyKeyboardInput(key('ArrowRight', { type, repeat, [flag]: true }), bound, eligible))
+              .toEqual(classifyKeyboardInput(plain, bound, eligible));
+          }
+        }
+      }
+    }
+    const held = new HeldKeyboardAxis({ ArrowLeft: -1, ArrowRight: 1 });
+    expect(held.apply(key('ArrowRight', { [flag]: true }), true, true)).toBe(true);
+    expect(held.value()).toBe(1);
+    expect(held.apply(key('ArrowLeft', { [flag]: true }), true, true)).toBe(true);
+    expect(held.value()).toBe(0);
+    expect(held.apply(key('ArrowLeft', { type: 'keyup' }), true, true)).toBe(true);
+    expect(held.apply(key('ArrowRight', { type: 'keyup', [flag]: true }), true, true)).toBe(true);
+    expect(held.value()).toBe(0);
   });
 
   it.each(['Tab', 'Escape', 'Space', 'Enter', 'AltLeft', 'F5', 'toString'])('leaves unbound %s native', code => {
