@@ -4,7 +4,7 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
-import { entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
 
 const lerp = (from: Vec3, to: Vec3, alpha: number): Vec3 => ({
@@ -66,15 +66,16 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
   it('keeps destroyed entities listed until they are removed', () => {
     const state = testState();
     const world = constructWorld(state);
+    const player = addPlayerEntity(state);
     const [destroyed, source] = [state.entities.allocate(entityInit(3)), state.entities.allocate(entityInit(3))];
     world.step(tickInput());
     destroyed.destroyed = true;
     source.state = 'destroyed-source';
     world.step(tickInput());
-    expect(world.renderState().entities.map(({ id }) => id)).toEqual([destroyed.id, source.id]);
+    expect(world.renderState().entities.map(({ id }) => id)).toEqual([player.id, destroyed.id, source.id]);
     destroyed.state = 'pending-removal';
     world.step(tickInput());
-    expect(world.renderState().entities.map(({ id }) => id)).toEqual([source.id]);
+    expect(world.renderState().entities.map(({ id }) => id)).toEqual([player.id, source.id]);
   });
 
   it('gives a two-frame consumer what it needs for new, removed and discontinuously moved entities', () => {
@@ -87,7 +88,8 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     const moving = state.entities.allocate(stillEntityInit(3, { position: { x: 0, y: 0, z: 0 } }));
     const leaving = state.entities.allocate(stillEntityInit(3));
     const warping = state.entities.allocate(stillEntityInit(5, { position: { x: 0, y: 0, z: 0 } }));
-    state.entities.allocate(entityInit(7, { activity: 'parked' }));
+    // Parked outside the active area, so that the area check leaves it parked.
+    state.entities.allocate(entityInit(7, { activity: 'parked', position: { x: 20000, y: 0, z: 0 } }));
     world.step(tickInput());
     const previous = world.renderState();
 
@@ -108,5 +110,33 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
       { id: warping.id, position: { x: 5000, y: 0, z: 0 } },
       { id: arriving.id, position: { x: 7, y: 8, z: 9 } },
     ]);
+  });
+
+  it('counts a parked travel as a discontinuous move, so a consumer does not interpolate across the parking (P3-06/14)', () => {
+    const state = testState();
+    const world = constructWorld(state);
+    const player = addPlayerEntity(state, { position: { x: 0, y: 0, z: 0 } });
+    const craft = state.entities.allocate(stillEntityInit(7, { position: { x: 1000, y: 0, z: 0 } }));
+    world.step(tickInput());
+    const before = world.renderState();
+    expect(before.entities.map(({ id, placementSerial }) => [id, placementSerial])).toEqual([[player.id, 0], [craft.id, 0]]);
+
+    // Stand-ins for the player flying off and back. Away, the area check parks the craft, which travels toward a goal
+    // 400 units on (AI mode 4) at its first parked update; back, the area check resumes it.
+    player.position = { x: 20000, y: 0, z: 0 };
+    world.step(tickInput());
+    world.step(tickInput());
+    expect([craft.activity, world.renderState().entities.map(({ id }) => id)]).toEqual(['parked', [player.id]]);
+    craft.ai = { ...craft.ai, mode: 4, goal: { x: 1400, y: 0, z: 0 } };
+    for (let tick = 0; tick < 70 && craft.placementSerial === 0; tick++) world.step(tickInput());
+    expect(craft.placementSerial).toBe(1);
+    expect(craft.position.x).toBeGreaterThan(1000);
+    player.position = { x: 0, y: 0, z: 0 };
+    world.step(tickInput());
+    world.step(tickInput());
+    const after = world.renderState();
+    const resumed = after.entities.find(({ id }) => id === craft.id)!;
+    expect(resumed).toMatchObject({ position: craft.position, placementSerial: 1 });
+    expect(drawBetween(before, after, 0.5).find(({ id }) => id === craft.id)).toEqual({ id: craft.id, position: craft.position });
   });
 });

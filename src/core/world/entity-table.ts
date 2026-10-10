@@ -198,7 +198,7 @@ export function allocatorAiState(): AiState {
   return { mode: ALLOCATOR_AI_MODE, target: null, goal: ZERO_VECTOR, targetOffset: ZERO_VECTOR, objectTarget: null };
 }
 
-const ZERO_VECTOR: Vec3 = Object.freeze({ x: 0, y: 0, z: 0 });
+export const ZERO_VECTOR: Vec3 = Object.freeze({ x: 0, y: 0, z: 0 });
 
 /**
  * The flight fields the allocator gives every new object (no Warp timer, not in Warp, the allocator's AI state, no
