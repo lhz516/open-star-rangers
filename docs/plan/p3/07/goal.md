@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
-| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | blocked |
+| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | pending |
 | [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12, 30 | pending |
@@ -148,6 +148,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: `p3-06-flight-motion-spec` 的 tracker 中 09 为 completed（`10abf2b`），10 为 in-progress（认领提交 `cad5f70`）。
   Affected acceptance: 11 全部验收项；经依赖影响 12 至 25、27 至 29。
   Resume when: P3-06 的子任务 10 在其分支上为 completed，协调者把该分支合并到本分支，再把 11 改为 pending 并派发。
+- **2026-10-10 — Subtask 11 unblocked：** 恢复条件已满足。P3-06 的子任务 10 为 completed（`87d6b53`）；协调者把 P3-06 分支合并到本分支（`pnpm check` 通过），11 由 blocked 改为 pending。P3-06 的玩家更新挂接点、`0x21fd8` 浮点路径与 `0x21d88` 随其子任务 11 至 13 交付，届时再合并。
 
 ## 审批
 
