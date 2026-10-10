@@ -19,9 +19,9 @@ export default defineConfig({
   server: {
     // Transform the page and import Worker graphs when the server starts rather than on first request, which delayed
     // the first page and import job, such as those of the first browser tests on a fresh server. Workers load by URL,
-    // so their graphs are not reached from the page; the test entry and its Worker are what the browser tests load.
+    // so their graphs are not reached from the page; the test entries and that Worker are what the browser tests load.
     warmup: {
-      clientFiles: ['./index.html', './src/workers/import-worker.ts', './e2e/entries/app.html', './src/workers/import-worker.test-support.ts'],
+      clientFiles: ['./index.html', './src/workers/import-worker.ts', './e2e/entries/*.html', './src/workers/import-worker.test-support.ts'],
     },
   },
   // P2-04: import Workers are module Workers with the page's ES module semantics.

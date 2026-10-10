@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Star Rangers (development map input test entry)</title>
+    <style>
+      html, body { margin: 0; background: #202020; }
+      /* React's root, as the browser probes know it, holds the input zone at the page origin: screenshot and client
+         coordinates only differ by the device pixel ratio. */
+      #root { position: absolute; left: 0; top: 0; width: 800px; height: 600px; }
+      /* No border or padding: the geometry's frame is measured in the Pointer Lock target's content box. */
+      .game-input-zone { position: absolute; inset: 0; background: #000; outline: none; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/ui/game-input/map-input-entry.test-support.tsx"></script>
+  </body>
+</html>

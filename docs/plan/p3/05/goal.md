@@ -113,7 +113,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [24-slice-gap-copy.md](./subtasks/24-slice-gap-copy.md) | 11 | pending |
 | [25-composition-wiring.md](./subtasks/25-composition-wiring.md) | 19, 22, 23, 24 | pending |
 | [26-map-policy-wiring.md](./subtasks/26-map-policy-wiring.md) | 05, 25 | pending |
-| [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | in-progress |
+| [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | completed |
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | pending |
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | pending |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | pending |
@@ -142,6 +142,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-10 — 06 由协调者执行：** [原版证据指南](../../../guides/original-evidence.md)规定同一时间只有一个会话操作基准环境，并行执行时由协调者统一进行，因此 06 不派 worker，由协调者在本 worktree 中执行（含其子代理）。基准环境当时被 P3-07 的运行占用，P3-06 的 17 也有原版运行；协调者已向两方的协调者请求时段，在确认前只准备配方，不启动 DOSBox-X。
 - **2026-10-10 — 20 的清键约束（交 21、22、25）：** 会话只通过取消已排队命令告知其他消费者发生了 clear-input，队列为空时没有通知；为避免本地按住状态残留，20 约定本运行的一切清键都经 `GameInputConsumer.clear(reason)`，21 与 22 的能力退出须照此调用。25 在输入状态的 `focusHint` 与 23 的 `focusHintShown` 中只保留一个。
 - **2026-10-10 — 21 的接口变化（交 22、25）：** `InputConsumerOptions` 去掉 20 的 `pointerLocked` 谓词，改为接收全屏与 Pointer Lock 的端口工厂和 `keyLockCodes`（创建时校验非空且不含 Escape/Tab/Meta/F12）；`consumer.capabilities` 提供 `startWithFullscreen(start)`、`requestFullscreen`、`exitFullscreen`、`retryKeyboardLock`、`requestPointerLock`、`exitPointerLock`、`pointerLocked`，输入状态增加 `capabilities.{fullscreen,keyboardLock,pointerLock}`。25 把开始按钮接为 `capabilities.startWithFullscreen(() => owner.start())`（对应 23 的“先全屏回调再开始”）；22 经 `CapabilityContext` 的可选 `pointer(input)` 接收指针输入。21 的判断：关闭屏障在 `previousClosed` 落定（真或假）时打开；锁键等待期间新的全屏或 Pointer Lock 申请以 `closing` 失败；重开与回滚的开始按运行离开时的阶段区分（`transition` 为回滚）；锁键失败后须新手势才再锁。
+- **2026-10-10 — 27 的发现（交 25、33）：** 本机 Chrome 在 Pointer Lock 下以 CSS 像素报告 `movementX/Y`（DPR 1 与 2 相同），25 的生产 `movementScale` 取 1；物理鼠标的单位与速度仍由 30/31 核对。headless Chrome 在 http 源上支持 Pointer Lock，因此不需要 headed 项目。27 另发现：同一帧内快速两次 `m` 使地图在本所有者的解锁尚未完成时重新取得资格，`capabilities.requestPointerLock` 因旧锁已撤销而提前返回，既不申请也不记为 `closing`；解锁完成后地图停在“点击以锁定”，点击即可重锁，不会卡住，但与 `capabilities.ts` 的注释不符。由 33 判断是否需要修复项。
 
 ## 审批
 
