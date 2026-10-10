@@ -85,8 +85,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | completed |
 | [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | completed |
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | completed |
-| [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | pending |
-| [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | pending |
+| [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | in-progress |
+| [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | pending |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | pending |
