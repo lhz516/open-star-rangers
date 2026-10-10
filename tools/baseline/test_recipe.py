@@ -184,8 +184,17 @@ class RecipeTests(unittest.TestCase):
     def test_empty_recipe_parts(self):
         self.assertRejected("recipe-empty", self.mutated(lambda d: d.update(pauses=[])))
         self.assertRejected("recipe-empty", self.mutated(lambda d: d.update(fields=[])))
-        self.assertRejected("recipe-empty", self.mutated(lambda d: d["pauses"][1].update(fields=[])))
         self.assertRejected("recipe-empty", self.mutated(lambda d: d["identity"].update(mission={})))
+        self.assertRejected("recipe-type-invalid", self.mutated(lambda d: d["pauses"][1].update(fields="ticks")))
+
+    def test_pauses_without_readings(self):
+        def change(d):
+            d["pauses"][1]["fields"] = []
+            d["pauses"].insert(0, {"id": "gate", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1FA0}})
+        recipe = parse_recipe(text(self.mutated(change)))
+        self.assertEqual((recipe.pause("gate").fields, recipe.pause("end").fields), ((), ()))
+        self.assertEqual({pause for pause, _ in recipe.planned()}, {"start"})  # the identity check binds "start"
+        self.assertEqual(recipe.identity.checks[0].field, "scenario")
 
     def test_identifiers_and_references(self):
         self.assertRejected("recipe-id-duplicate", self.mutated(lambda d: d["fields"][1].update(id="ticks")))
@@ -236,6 +245,97 @@ class RecipeTests(unittest.TestCase):
         self.assertRejected("recipe-budget-exceeded", self.mutated(lambda d: d["limits"].update(maxFields=7)))
         self.assertRejected("recipe-budget-exceeded", self.mutated(lambda d: d["limits"].update(maxChainDepth=1)))
         self.assertRejected("recipe-budget-exceeded", self.mutated(lambda d: d["limits"].update(maxReadBytes=300)))
+
+    def stimuli(self, devices=None, stimuli=None, change=None):
+        def apply(d):
+            d["pauses"].insert(0, {"id": "gate", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1FA0}})
+            d["devices"] = devices if devices is not None else [
+                {"id": "stick", "address": {"register": "ESI", "offset": 12}, "type": "i32"},
+                {"id": "latch", "address": {"object": 4, "offset": 0x840}, "type": "u16"}]
+            d["stimuli"] = stimuli if stimuli is not None else [
+                {"id": "enter", "pause": "gate", "kind": "key", "ascii": 13, "scan": 28},
+                {"id": "ctrl", "pause": "start", "kind": "shift", "flags": {"ctrl": True, "caps": False}},
+                {"id": "deflect", "pause": "start", "kind": "device", "device": "stick", "value": -128},
+                {"id": "latch", "pause": "end", "kind": "device", "device": "latch", "value": 513}]
+            if change:
+                change(d)
+        return self.mutated(apply)
+
+    def test_stimuli_and_devices(self):
+        recipe = parse_recipe(text(self.stimuli()))
+        stick, latch = recipe.devices.values()
+        self.assertEqual((stick.register, stick.object, stick.offset, stick.size), ("ESI", None, 12, 4))
+        self.assertEqual((latch.register, latch.object, latch.offset, latch.type), (None, 4, 0x840, "u16"))
+        self.assertEqual([s.id for s in recipe.stimuli], ["enter", "ctrl", "deflect", "latch"])
+        enter, ctrl, deflect, last = recipe.stimuli
+        self.assertEqual((enter.kind, enter.key), ("key", (13, 28)))
+        self.assertEqual((ctrl.kind, ctrl.flags), ("shift", (("ctrl", True), ("caps", False))))
+        self.assertEqual((deflect.device, deflect.value), ("stick", -128))
+        self.assertEqual([s.id for s in recipe.pause_stimuli("start")], ["ctrl", "deflect"])
+        self.assertEqual(recipe.pause_stimuli("missing"), ())
+        self.assertEqual(recipe.objects(), frozenset({4}))
+        self.assertEqual(recipe.planned(), parse_recipe(text(scenario_recipe(SHA))).planned())
+        plain = parse_recipe(text(scenario_recipe(SHA)))
+        self.assertEqual((plain.devices, plain.stimuli), ({}, ()))
+        self.assertNotEqual(recipe.fingerprint, plain.fingerprint)
+        changed = parse_recipe(text(self.stimuli(change=lambda d: d["stimuli"][2].update(value=127))))
+        self.assertNotEqual(changed.fingerprint, recipe.fingerprint)
+        for boundary in (-0x80000000, 0x7FFFFFFF):
+            self.assertEqual(parse_recipe(text(self.stimuli(
+                change=lambda d: d["stimuli"][2].update(value=boundary)))).stimuli[2].value, boundary)
+        only_keys = parse_recipe(text(self.stimuli(change=lambda d: d.pop("devices"), stimuli=[
+            {"id": "enter", "pause": "gate", "kind": "key", "ascii": 13, "scan": 28},
+            {"id": "minus", "pause": "start", "kind": "key", "ascii": 45, "scan": 12}])))
+        self.assertEqual((only_keys.devices, len(only_keys.stimuli)), ({}, 2))
+
+    def test_stimulus_rejections(self):
+        cases = (
+            ("recipe-key-unknown", lambda d: d["stimuli"][0].update(command="SM 0:0 0")),
+            ("recipe-key-unknown", lambda d: d["stimuli"][0].update(value=1)),
+            ("recipe-key-unknown", lambda d: d["stimuli"][1]["flags"].update(numlock=True)),
+            ("recipe-key-unknown", lambda d: d["devices"][0]["address"].update(pointers=[4])),
+            ("recipe-key-missing", lambda d: d["stimuli"][0].pop("scan")),
+            ("recipe-key-missing", lambda d: d["stimuli"][3].pop("value")),
+            ("recipe-type-invalid", lambda d: d["stimuli"][0].update(kind=1)),
+            ("recipe-type-invalid", lambda d: d["stimuli"][0].update(ascii="13")),
+            ("recipe-type-invalid", lambda d: d["stimuli"][1].update(flags=["ctrl"])),
+            ("recipe-type-invalid", lambda d: d["stimuli"][1]["flags"].update(ctrl=1)),
+            ("recipe-type-invalid", lambda d: d["stimuli"][2].update(value=1.0)),
+            ("recipe-type-invalid", lambda d: d["devices"][0]["address"].update(register=1)),
+            ("recipe-type-invalid", lambda d: d.update(stimuli={})),
+            ("recipe-empty", lambda d: d["stimuli"][1].update(flags={})),
+            ("recipe-empty", lambda d: d.update(stimuli=[])),
+            ("recipe-value-invalid", lambda d: d["stimuli"][0].update(kind="mouse")),
+            ("recipe-value-invalid", lambda d: d["stimuli"][0].update(ascii=256)),
+            ("recipe-value-invalid", lambda d: d["stimuli"][0].update(scan=-1)),
+            ("recipe-value-invalid", lambda d: d["stimuli"][2].update(value=1 << 31)),
+            ("recipe-value-invalid", lambda d: d["stimuli"][3].update(value=-1)),
+            ("recipe-value-invalid", lambda d: d["devices"][0].update(type="f32")),
+            ("recipe-value-invalid", lambda d: d["devices"][0]["address"].update(register="EIP")),
+            ("recipe-value-invalid", lambda d: d["stimuli"].append(
+                {"id": "again", "pause": "gate", "kind": "key", "ascii": 27, "scan": 1})),
+            ("recipe-value-invalid", lambda d: d["stimuli"][0].update(id="a;b")),
+            ("recipe-value-invalid", lambda d: d["stimuli"].reverse()),  # declaration order is application order
+            ("recipe-id-duplicate", lambda d: d["stimuli"][1].update(id="enter")),
+            ("recipe-id-duplicate", lambda d: d["devices"][1].update(id="stick")),
+            ("recipe-reference-invalid", lambda d: d["stimuli"][0].update(pause="missing")),
+            ("recipe-reference-invalid", lambda d: d["stimuli"][2].update(device="missing")),
+            ("recipe-reference-invalid", lambda d: d["stimuli"][2].update(pause="end")),  # register at a VRT stop
+            ("recipe-reference-invalid", lambda d: d["stimuli"].pop(3)),  # a declared device nothing writes
+            ("recipe-reference-invalid", lambda d: d.pop("devices")),
+            ("recipe-address-invalid", lambda d: d["devices"][0]["address"].update(object=4)),
+            ("recipe-address-invalid", lambda d: d["devices"][1]["address"].pop("object")),
+            ("recipe-address-invalid", lambda d: d["devices"][0]["address"].update(offset=0x10000)),
+            ("recipe-address-invalid", lambda d: d["devices"][0]["address"].update(offset=-0x10001)),
+            ("recipe-address-invalid", lambda d: d["devices"][1]["address"].update(offset=(1 << 32) - 1)),
+            ("recipe-address-invalid", lambda d: d["devices"][1]["address"].update(object=0)),
+            ("recipe-budget-exceeded", lambda d: d["limits"].update(maxReadBytes=306)),
+        )
+        self.assertEqual(parse_recipe(text(self.stimuli(change=lambda d: d["limits"].update(
+            maxReadBytes=306 + 20 + 4 + 12 + 6)))).id, "synthetic-timebase")
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.stimuli(change=change))
 
     def test_source_verification(self):
         recipe = parse_recipe(text(scenario_recipe(SHA)))

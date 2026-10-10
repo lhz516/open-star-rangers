@@ -199,6 +199,33 @@ class ReportTests(unittest.TestCase):
                     self.build(samples=samples[:position] + [broken] + samples[position + 1:])
                 self.assertEqual(caught.exception.code, "report-invalid")
 
+    def test_stimuli_must_all_be_applied_in_order(self):
+        def declare(d):
+            d["stimuli"] = [{"id": "enter", "pause": "start", "kind": "key", "ascii": 13, "scan": 28},
+                            {"id": "ctrl", "pause": "end", "kind": "shift", "flags": {"ctrl": True}}]
+        recipe = self.parse(declare)
+        applied = [{"id": "enter", "pause": "start", "kind": "key", "status": "applied", "writes": [
+                       {"channel": "key-slot", "linear": "0000041e", "before": "0000", "written": "0d1c",
+                        "readback": "0d1c", "pages": {"0": "0"}}]},
+                   {"id": "ctrl", "pause": "end", "kind": "shift", "status": "applied"}]
+        report = self.build(recipe=recipe, samples=self.samples(recipe), stimuli=applied)
+        self.assertEqual(report["status"], "complete")
+        self.assertEqual(report["stimuli"], applied)
+        self.assertEqual((report["counts"]["stimuliPlanned"], report["counts"]["stimuliApplied"]), (2, 2))
+        failed = [applied[0], {**applied[1], "status": "stimulus-unverified", "detail": "readback-mismatch"}]
+        for records in ([], applied[:1], applied[::-1], failed, None):
+            with self.subTest(records=records):
+                report = self.build(recipe=recipe, samples=self.samples(recipe), stimuli=records)
+                self.assertFailed(report, "stimuli-missing")
+        self.assertEqual(report["counts"]["stimuliApplied"], 0)
+        for records in ([1], [{"id": float("nan")}]):
+            with self.assertRaises(BaselineError) as caught:
+                self.build(recipe=recipe, samples=self.samples(recipe), stimuli=records)
+            self.assertEqual(caught.exception.code, "report-invalid")
+        plain = self.build(stimuli=applied)  # a recipe without stimuli reports none
+        self.assertNotIn("stimuli", plain)
+        self.assertNotIn("stimuliPlanned", plain["counts"])
+
     def test_serialization_rejects_non_finite_numbers(self):
         report = self.build()
         report["environment"]["drift"] = float("inf")

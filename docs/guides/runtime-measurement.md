@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-021, B-006]
 ---
 
@@ -13,16 +13,17 @@ related: [U-021, B-006]
 - 工具契约见 P3-01 spec 的[运行时测量](../plan/p3/01/spec.md#运行时测量)与[工具数据契约](../plan/p3/01/spec.md#工具数据契约)；实现与测试在 [tools/baseline/](../../tools/baseline/)。
 - 本指南只写方法与规则。原版的地址、字段含义与测量结论写在 [original/](../original/)；测量方案、配方、运行目录与读数只放在 `local/research/<任务>/<主题>/`。
 - 先按[原版证据获取](./original-evidence.md)的顺序用代价更低的途径。只看画面、不读内存时，按 [agent 运行原版](./original-evidence.md#agent-运行原版)操作，不需要本工具。
-- 工具不注入游戏输入，不提供任意内存导出或通用调试，只读取配方声明的字段。
+- 工具不经宿主注入输入。它只读取配方声明的字段，只在配方声明的输入通道中写入游戏输入（[模拟器内输入](#模拟器内输入)），不提供任意内存导出、任意写入或通用调试。
 
 ## 角色、单一会话与本机限制
 
-- **操作者：** 在游戏窗口中操作，把游戏带到配方要求的状态，并在暂停点触发停止。
+- **操作者：** 把游戏带到配方要求的状态，并在暂停点触发停止。可以是在游戏窗口中操作的人，也可以是配方声明的[模拟器内输入](#模拟器内输入)：这时 agent 独自完成整次运行。
 - **运行者（agent）：** 启动工具，观察终端、`status.json` 与游戏窗口，写操作者应答文件，记录运行笔记，运行后核对报告。
 - **本机限制（协调者 2026-10-08/09 实测）：** 本机的 Computer Use 无法向 DOSBox-X 送达按键，也无法移动游戏内光标（合成点击能触发按钮，但光标不动）。
-  - 因此需要游戏操作的运行由用户在键盘上操作，agent 承担运行者的全部工作。观察画面可以用 Computer Use 截图，也可以请用户口头报告。
-  - 不得用 shell、AppleScript 或其他自动化向 DOSBox-X 注入按键来绕过这一限制。
-  - 只有启动烟测（`--smoke`，见[烟测](#烟测)）不需要操作者。
+  - 所需的游戏操作能写成配方的模拟器内输入时，由 agent 独自运行（[流程](#agent-独自运行)）。
+  - 不能写成配方输入的操作（例如持续的自由驾驶）仍由用户在键盘上操作，agent 承担运行者的全部工作。观察画面可以用 Computer Use 截图，也可以请用户口头报告。
+  - 不得用 shell、AppleScript、Computer Use 或其他宿主层自动化向 DOSBox-X 注入按键来绕过这一限制。
+  - 启动烟测（`--smoke`，见[烟测](#烟测)）不需要操作者。
 - **单一会话：** 同一时间只有一个会话操作基准环境。
   - 工具在研究根目录 `local/research/` 上取得独占锁（解析符号链接后加锁，所以链接同一个 `local/` 的各 worktree 共用这把锁）。锁已被占用时，工具以 `session-busy` 拒绝运行。
   - 运行前及启动后，只要发现任何 DOSBox 进程，工具就以 `emulator-already-running` 拒绝。它不附着、也不结束别人的进程；请等该进程退出，或请用户自己关闭。
@@ -32,7 +33,7 @@ related: [U-021, B-006]
 
 1. 采集前写定测量方案（[测量方案](#测量方案)）。
 2. 写配方并预检（[配方](#配方)）。
-3. 为操作者写本地操作手册：进入路线、窗口内允许与禁止的输入、出现哪些情况要立即报告。
+3. 为操作者写本地操作手册：进入路线、窗口内允许与禁止的输入、出现哪些情况要立即报告。全部输入都由配方声明时，手册改为记录每个刺激的暂停点、取值与依据（[模拟器内输入](#模拟器内输入)）。
 4. 逐次运行并应答暂停点（[运行](#运行)）。
 5. 核对报告与运行后的状态（[报告、退出码与原因码](#报告退出码与原因码)）。
 6. 分析并记录事实与证据（[样本与容差的记录](#样本与容差的记录)），清理自有资源（[证据的存放与自有资源清理](#证据的存放与自有资源清理)）。
@@ -64,11 +65,13 @@ related: [U-021, B-006]
 | `source` | `baselineVersion` 与 `exeSha256`，照抄 `measure.py baseline-version` 的输出 |
 | `identity` | `mission` 与 `config`：所选任务与配置的身份，各 1–16 个键，值为布尔、整数或受限记号。`checks`：每个暂停点都必须读到且等于给定值的字段列表，用读数证实身份 |
 | `correlation` | `code`：`object`、`size`（64–512，16 的倍数），可选 `offset`；`data`：`object`、`offset`、`size`（16–512）。用于在每个进程中建立 LE 对象与线性地址的对应 |
-| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫） |
+| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
 | `fields` | `id`；`address`：`object`、`offset`，可选 `pointers`（每跳解引用后加上的非负偏移）；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
 | `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes` |
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
+| `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
+| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入) |
 
 形状示意（尖括号处换成实际值；地址取自 `docs/original/` 记录的 LE 对象与偏移）：
 
@@ -95,6 +98,8 @@ related: [U-021, B-006]
 ### 校验与指纹
 
 - 未知键、类型错误、越界取值、重复 ID 或无效引用，都在任何副作用之前以 `recipe-*` 原因码拒绝（退出码 2）。配方不能携带表达式、调试器命令或 shell 字串。
+- 写入只能落在声明的输入通道：引用未声明设备的刺激、未被写入的设备、在 VRT 暂停点写寄存器地址的设备、同一暂停点的第二个按键，都在解析时拒绝。刺激须按暂停点的顺序声明，声明顺序就是施加顺序。
+- `identity.checks` 的字段须出现在每个读字段的暂停点中；没有字段的暂停点不检查身份。
 - 地址只写 LE 对象号与偏移，不写上一次运行得到的绝对线性地址。
 - 报告的 `recipe.fingerprint` 是规范化 JSON 的 SHA-256，`emulator` 与 `gameSettings` 都计入。采集开始后不要修改配方：改动后指纹变化，新旧运行不能合并统计。
 
@@ -110,6 +115,7 @@ related: [U-021, B-006]
   - 每个暂停点的复核：一个 CODE 窗口加一个 DATA 窗口。
   - 每个暂停点的字段读取：`repeatReads` ×（每个字段 4 × 指针跳数 + 标量大小）。
   - 页查找：读取前后，对涉及的每一页各计 16 字节。
+  - 刺激：写入前的读取、写入本身与写回后的回读都计入；按键另读缓冲指针与边界各 4 字节，换档标志另读 1 字节。页查找取自同一次显示，不另计。解析时按每个按键 20 字节、每个换档 4 字节、每个设备写入 3 倍字段大小估算。
 
   据此估算后留足余量。超出即 `budget-exceeded`，运行失败。07 每次 4 个暂停点、至多 53 个字段，配方取 1 MiB。
 - **`maxLogBytes`** 是调试器原始输出与命令记录的总量上限。调试器每条命令都会重绘屏幕，07 的每次运行约产生 3.3–3.8 MB；配方取 128 MiB。超出即 `log-budget-exceeded`。
@@ -137,15 +143,17 @@ python3 -B tools/baseline/measure.py baseline-version
 python3 -B tools/baseline/measure.py run \
   --recipe local/research/<任务>/<主题>/recipes/<配方>.json \
   --out local/research/<任务>/<主题> \
-  --run-id <运行 ID>
+  --run-id <运行 ID> \
+  [--evidence local/research/<任务>/<主题>]
 ```
 
 - **`--out`** 解析后必须位于 `local/research/` 之内：不得含 `..`，也不得经符号链接逃出。
+- **`--evidence`**（可选）：把既有证据的保护范围缩小到 `local/research/` 内的一个目录，见[原版文件保护](#原版文件保护与意外变化)。它必须包含运行目录，不得含 `..`、经符号链接逃出或位于研究根目录之外，否则以 `evidence-scope-invalid` 拒绝（退出码 2）。
 - **运行 ID 与路径段**都是受限记号（字母或数字开头，只含字母、数字与 `._-`，至多 64 个字符）。运行目录 `<out>/<运行 ID>` 必须尚不存在。
   - 每次尝试用新的运行 ID，例如 `<主题>-<配置>-NN` 依次递增。
   - 写过任何文件的运行 ID 不再使用；退出码 2 的运行什么也没写，可以沿用同一 ID。
 - **预检**在任何副作用之前完成，失败即退出码 2：
-  - 配方校验与输出位置；
+  - 配方校验、输出位置与证据范围；
   - 没有正在运行的 DOSBox；
   - manifest 与 EXE 指纹，以及配方的 `source`；
   - 配方的位置与窗口对照 LE 映像；
@@ -168,9 +176,10 @@ python3 -B tools/baseline/measure.py run \
 | `running pause=<id>` | 已布下断点并让游戏运行，`signal` 指向 `operator/abort.json` | 开始或继续操作，在要求的状态触发停止 |
 | `awaiting-confirmation pause=<id>` | 停在暂停点，等待 `operator/<id>-<n>.json` | 运行者核对画面后应答 |
 | `reading pause=<id>` | 读取字段；游戏画面冻结，07 中为几秒到约半分钟 | 等画面恢复 |
+| `input pause=<id>` | 读字段之后施加该暂停点的刺激，逐个写入并回读 | 等待 |
 | `finished` | 全部暂停点完成 | 工具回收仿真器，写出最终报告 |
 
-VRT 暂停点没有 `running` 阶段：工具运行到下一次回扫就停止。
+VRT 暂停点没有 `running` 阶段：工具运行到下一次回扫就停止。没有字段的暂停点没有 `awaiting-confirmation` 与 `reading`。
 
 应答文件写在 `operator/` 中，内容是 JSON 对象，至多 4 KiB，键不得重复：
 
@@ -213,16 +222,70 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 
 `--smoke` 不等待操作者：每个暂停点都自动以任务身份 `{"context": "startup"}` 与空的配置声明确认，报告记录 `mode: smoke` 与 `measurementEvidence: false`。它不改写配方的暂停点，所以要用专门的烟测配方：
 
-- 每个停止点都必须在启动阶段无需输入即可到达（VRT 停止，或启动过程中必然命中的断点）；需要游戏操作才能到达的断点会等到 `wait-timeout`。
+- 每个停止点都必须无需操作者即可到达（VRT 停止、启动过程中必然命中的断点，或由配方刺激带到的断点）；需要人操作才能到达的断点会等到 `wait-timeout`。
 - `identity.mission` 为 `{"context": "startup"}`，`identity.config` 只含仿真器键（例如 `{"cycles": 40000}`，由工具按私有配置填入）；否则样本为 `identity-mismatch`。
 
 烟测只核对工具与环境，永远不能作为测量证据。
 
+## 模拟器内输入
+
+配方可以声明刺激（P3-06/22）：工具在暂停点用 DOSBox-X 调试器的 `SMV` 命令改写被暂停的客户机内存，由原版自己的读取路径取得这一输入。它不产生宿主键盘或鼠标事件，也不经 DOSBox-X 的映射器。第一次使用是 [P3-06/22](../plan/p3/06/subtasks/22-agent-driven-input.md) 的烟测：只用配方按键进入所选任务的飞行，在飞行中施加油门键，并写入一次摇杆偏转，全程没有宿主输入。
+
+### 通道与取值
+
+| `kind` | 键 | 写入 | 原版如何读到 |
+|---|---|---|---|
+| `key` | `ascii`、`scan`（各 0–255） | BIOS 键盘缓冲：头指针 `0x41A`、尾指针 `0x41C`，缓冲边界在 `0x480`/`0x482`。把 ASCII 与扫描码写在尾部，再推进尾指针。缓冲必须为空 | DOSBox-X 的 DOS 控制台与 INT 16h 从这一缓冲取键，原版经 INT 21h 0Bh/07h 读键（[输入轮询](../original/formats/executable.md#input-polling-p3-0201)） |
+| `shift` | `flags`：`rshift`、`lshift`、`ctrl`、`alt`、`caps` 到布尔值的对象 | BIOS 换档标志字节 `0x417`：列出的位置 1 或清 0，其余位不变 | 原版直接读这一字节 |
+| `device` | `device`（`devices` 中的 ID）、`value`（按字段类型的整数） | 声明的输入设备状态字段 | 原版自己的设备读取与变化比较 |
+
+- 刺激在暂停点的字段读数之后，按配方顺序施加。同一暂停点至多一个按键：原版每次轮询只处理一个键，其余读出丢弃（[输入轮询](../original/formats/executable.md#input-polling-p3-0201)）。
+- 读字段的暂停点上，只有身份与停止证据合格时才施加刺激：任一样本带 `identity-mismatch`、`stop-unverified` 或 `owner-changed`，或暂停点级的读取失败（例如对应关系变化），都以 `stimulus-rejected` 拒绝，什么也不写。
+- 每次写入都先读写前字节与页查找，再用 `SMV` 写入，并要求调试器确认写入的字节数，然后回读。回读须等于写入值，前后页查找须相同。BIOS 数据区所在的页须是恒等映射（线性页 0 对应物理页 0），因为 BIOS 与 DOS 的读键代码按物理地址访问它。该暂停点的刺激全部写完后再核对寄存器未变，然后才把它们记为已施加。
+- 写入的每个值都带前导 0（例如 `0AF`），以免调试器把 `AF`、`CF`、`DF` 解释为标志名。
+- 只能写声明的通道：BIOS 键盘缓冲的尾槽与尾指针、换档标志字节，以及 `devices` 中声明的字段。被测的运动、控制或任务状态不得声明为设备。
+
+### 选择暂停点
+
+- 刺激在原版下一次读取时才生效。按键的暂停点应位于原版检查键盘之前，并确定处于目标画面，例如页面读键函数的入口，或飞行键盘轮询中已通过到期判断、尚未调用 INT 21h 0Bh 的位置。页面载入时会清空键盘缓冲，不要在载入之前施加。
+- 同一断点在多个画面命中时，用不读字段的“门”暂停点把刺激限定在预期画面，例如页面调度的入口（`stop.json` 的寄存器记录页面号）。
+- 设备字段在设备读取之后、变化比较之前写入，原版才把它当作新的设备值。原版只在设备值变化时应用；保持偏转与回到零各需要怎样的写入或读取，以相应的原版文档为准。
+- 写入时模拟时间不前进。刺激只改变输入，不改变游戏状态；后续暂停点的读数要证明原版按自己的路径处理了它，例如键处理函数入口的 AL、已经清空的缓冲，以及按预期变化的状态字段。
+
+### 刺激记录
+
+报告的 `stimuli` 与 `pauses/<id>/stimuli.json` 逐条记录：
+
+- `id`、`pause`、`kind`、`status`、`utc`，以及该暂停点的 `emulatedMs` 与 `cycleCount`。`status` 为 `applied`；或为结束运行的原因码，另有 `detail`；或为 `written`：已写入并回读，但同一暂停点后面的刺激或寄存器核对失败，所以不算已施加；
+- 每次写入的 `channel`、`linear`、`before`、`written`、`readback` 与 `pages`；
+- 按键另记 `key` 与写入前的缓冲指针和边界，换档记 `flags`，设备记 `device` 与 `value`。
+
+`stop.json` 另有 `stimuli`（记录文件）与 `registersUnchangedAfterStimuli`。
+
+刺激失败即结束运行：
+
+- `stimulus-rejected`：施加前的条件不满足。`detail` 为 `pause-<原因码>`（暂停点不合格）、`key-buffer-busy`（缓冲非空）、`key-buffer-invalid`、`mapping-not-identity`、`mapping-unverified`、`device-out-of-range`、`context-unqualified`，或读数错误码。
+- `stimulus-unverified`：调试器没有确认写入（`write-unacknowledged`）、回读不一致（`readback-mismatch`）、页查找改变（`mapping-changed`）或寄存器改变（`registers-changed`）。
+
+刺激没有全部施加时，报告另有 `stimuli-missing`。
+
+### agent 独自运行
+
+1. 用代码与已有记录确定每个输入的暂停点与取值，写进配方。读字段的暂停点用 `identity.checks` 证实配方身份的每一项：agent 不看画面时，身份声明只能由检查读数支持。
+2. 预检与运行同[运行](#运行)。agent 作为操作者，在每个 `awaiting-confirmation` 核对 `status.json` 中的暂停点，然后原子写入确认，`mission` 与 `config` 照抄 `expects`。这一步可以交给只写应答文件的本地脚本。
+3. 运行后核对报告：`status` 为 `complete`，`stimuli` 全部为 `applied`，并按方案核对每个刺激在后续读数中的效果。
+
+### 不采用的方式
+
+- **宿主层输入：** 用 shell、AppleScript、Computer Use 或其他自动化向 DOSBox-X 窗口发送按键，仍然禁止。
+- **DOSBox-X 的 `AUTOTYPE`：** 它在宿主线程上按宿主时间等待与间隔（DOSBox-X 源码 `src/gui/sdl_mapper.cpp` 的 `Typer`），调试器暂停时照样发键，而且只能发键盘事件。按键时刻因此不受暂停点控制，不用于测量运行。
+- **模拟摇杆：** 私有配置启用 DOSBox-X 的游戏端口摇杆后，摇杆位置只随宿主事件或映射器事件变化，调试器没有命令能设定它。转向输入因此改为写设备状态字段。
+
 ## 场景的进入与配置记录
 
 - **进入场景：** 在私有运行中从启动开始正常游玩，进入所选场景。
-  - 工具不注入输入。Computer Use 的权限、启动与输入规则见[原版证据获取](./original-evidence.md#agent-运行原版)，本机限制见[上文](#角色单一会话与本机限制)。
-  - 不得改写内存或游戏状态来证明某个状态正常可达。
+  - 进入路线可以由配方的按键刺激完成（[模拟器内输入](#模拟器内输入)）：每个键都是玩家在该画面能按的键，经原版自己的读键路径生效。工具不经宿主注入输入；Computer Use 的权限、启动与输入规则见[原版证据获取](./original-evidence.md#agent-运行原版)，本机限制见[上文](#角色单一会话与本机限制)。
+  - 不得改写内存或游戏状态来证明某个状态正常可达；刺激只写输入通道，不写被测的游戏状态。
 - **即时存档：** 当前工具不管理即时存档，P3-01 也未使用。若将来用即时存档缩短准备过程，存档只能放在本次运行目录中，并须重新核对来源、任务与配置；对象对应照样在每个进程中重新建立。
 - **难度与僚机：**
   - 记录原始难度值，不记难度组，并写明用的是练习值还是战役值；同时记录僚机选择。
@@ -263,6 +326,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 只有同时满足以下条件，报告才是 `complete`：
 
 - 计划的样本全部按顺序取得，且每个必需样本都合格；
+- 配方声明的刺激全部按顺序施加并回读一致（只适用于声明了刺激的配方）；
 - 文件保护与进程回收都通过；
 - 运行正常结束，未取消。
 
@@ -306,6 +370,11 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 - **默认保护范围：** 运行前后计算哈希并比较。
   - `local/StarRang/` 整个目录严格保护：任何修改、删除或新增都使运行失败。
   - `local/research/` 中的既有文件（本次运行目录除外）：被修改或删除即失败，新增文件不受影响。
+- **缩小的证据范围（`--evidence`）：** 其他会话在 `local/research/` 的别处同时写入时（例如并行执行中的 Ghidra 研究会改写各自私有项目的索引文件与笔记），默认范围会把这些写入判为 `original-changed`。这时用 `--evidence` 指定包含本次运行的主题目录，例如 `local/research/<任务>/<主题>`：
+  - 只有该目录中的既有文件受保护；研究根目录其余部分的变化不再被发现，所以这一保证比默认范围窄。
+  - `local/StarRang/` 的严格保护、快照、私有副本与 manifest 核对完全不变。
+  - 报告的 `environment.protection` 记录 `evidenceScope`（`research-root` 或 `declared`）与 `evidenceRoots`。
+  - 没有其他会话写入时不要使用它。
   - 前后清单写在 `protection/before.json` 与 `after.json`。快照 `protection/before/` 保存快照范围内除已按 manifest 核验的原版文件以外的全部文件，核对通过后删除。
 - **运行期间的规则：** 不要动 `local/StarRang/`，也不要修改 `local/research/` 中已有的文件，包括其他主题的方案与笔记；其他会话同样如此。新的笔记可以写成新文件，或在运行结束后再改。
 - **意外变化时：**
@@ -327,7 +396,8 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | `gameConfig` | 见[场景的进入与配置记录](#场景的进入与配置记录) |
 | `run` | `start` 与 `end`（UTC、`elapsedSeconds`、`endedBy`） |
 | `samples` | 每个样本：暂停点、字段、`status`、类型、单位、`required`、值、原因码与证明引用 |
-| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified` |
+| `stimuli` | 只在配方声明了刺激时出现：施加或尝试过的每个刺激，见[刺激记录](#刺激记录) |
+| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied` |
 | `integrity` | 保护核对结果与 `privateCopyWrites` |
 | `cleanup` | 回收结果，见下 |
 
@@ -345,11 +415,11 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | 类别 | 原因码 | 处理 |
 |---|---|---|
 | 配方 | `recipe-*` | 修正配方；退出码 2 |
-| 来源与预检 | `source-mismatch`、`output-path-invalid`、`output-exists`、`emulator-already-running`、`session-busy`、`game-config-invalid` | 来源不符时不运行，先查明原因；其余按原因码处理后重试 |
+| 来源与预检 | `source-mismatch`、`output-path-invalid`、`output-exists`、`evidence-scope-invalid`、`emulator-already-running`、`session-busy`、`game-config-invalid` | 来源不符时不运行，先查明原因；其余按原因码处理后重试 |
 | 定位与对应 | `le-invalid`、`object-missing`、`object-not-executable`、`location-outside-object`、`window-outside-image`、`window-weak`、`code-unmatched`、`code-ambiguous`、`data-mismatch`、`mapping-contradiction`、`base-invalid`、`object-unmapped` | 检查配方的位置与窗口。预检阶段发现的退出码为 2；启动时始终无法建立对应则运行失败 |
 | 读数 | `read-*`、`pointer-*`、`repeat-*`、`mapping-unverified`、`mapping-changed`、`owner-changed`、`stop-unverified`、`identity-mismatch`、`value-nonfinite` | 样本不合格；按[读数的合格条件](#读数的合格条件)查原因 |
-| 运行 | `wait-timeout`、`run-timeout`、`child-exited`、`debugger-unparsed`、`breakpoint-unconfirmed`、`breakpoint-wrong-hit`、`operator-invalid`、`budget-exceeded`、`log-budget-exceeded`、`report-write-failed`、`emulator-unverified`、`private-copy-invalid`、`tool-error` | 结束运行；排除原因后用新的运行 ID 重做 |
-| 结论 | `samples-*`、`integrity-failed`、`original-changed`、`cleanup-failed`、`run-unfinished`、`run-cancelled` | 不是合格运行；`original-changed` 与 `cleanup-failed` 须先停下报告 |
+| 运行 | `wait-timeout`、`run-timeout`、`child-exited`、`debugger-unparsed`、`breakpoint-unconfirmed`、`breakpoint-wrong-hit`、`operator-invalid`、`stimulus-rejected`、`stimulus-unverified`、`budget-exceeded`、`log-budget-exceeded`、`report-write-failed`、`emulator-unverified`、`private-copy-invalid`、`tool-error` | 结束运行；排除原因后用新的运行 ID 重做。刺激失败的细节见报告 `stimuli` 中该刺激的 `detail` |
+| 结论 | `samples-*`、`stimuli-missing`、`integrity-failed`、`original-changed`、`cleanup-failed`、`run-unfinished`、`run-cancelled` | 不是合格运行；`original-changed` 与 `cleanup-failed` 须先停下报告 |
 
 **回收（`cleanup`）：**
 
@@ -366,11 +436,11 @@ local/research/<任务>/<主题>/
   plan.md、procedure.md、run-notes.md、recipes/、scripts/、out/
   <运行 ID>/
     report.json、status.json、dosbox-x.conf、debugger.raw、commands.log、mapping-startup.json
-    pauses/<暂停点>/（stop.json、mapping.json、identity.json、reads.json）
+    pauses/<暂停点>/（stop.json、mapping.json、identity.json、reads.json；有刺激时另有 stimuli.json）
     operator/、captures/、install/（私有副本）、protection/
 ```
 
-- **受跟踪的记录只写：** 运行 ID、`status` 与计数、配方指纹、工具源码摘要、基准版本、配置哈希、统计量与判定。不写读数原值、截图或私人绝对路径，也不把运行目录中的任何内容复制进受跟踪文件。
+- **受跟踪的记录只写：** 运行 ID、`status` 与计数、配方指纹、工具源码摘要、基准版本、配置哈希、统计量与判定。不写读数原值、刺激的写前与回读字节、截图或私人绝对路径，也不把运行目录中的任何内容复制进受跟踪文件。
 - **保留全部运行目录：** 包括失败与取消的运行；排除的运行在记录中写明原因。不删除、不改写既有证据，这也是[原版文件保护](#原版文件保护与意外变化)的要求。
 - **每次运行后：**
   - 记下运行 ID、退出码，以及报告的 `status`、`reasons`、`integrity.passed`、`cleanup.passed` 与 `killWait`。

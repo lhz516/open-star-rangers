@@ -20,6 +20,7 @@ DV_ROWS = 7
 ROW_BYTES = 16
 MARKER_BASE = 0xFFFF0000
 MARKER_SLOTS = 4096
+MAX_WRITE = 16  # bytes per SMV command
 SETTLE_QUIET = 0.05
 SETTLE_LIMIT = 1.0
 STEP = 0.02
@@ -45,6 +46,7 @@ _PHY = re.compile(r"PHY=([0-9A-Fa-f]{8}|X{8})\b")
 _PREFIX = re.compile(r"^\s*(?:(?:LOG|DEBUG):\s*)+")
 _CPU = re.compile(r"cr0:([0-9A-Fa-f]{8}) cr2:([0-9A-Fa-f]{8}) cr3:([0-9A-Fa-f]{8})")
 _EFLAGS = re.compile(r"eflags:([0-9A-Fa-f]{8})\b")
+_MEMORY_ACK = re.compile(r"^Memory changed \(([0-9]+) bytes\)$")
 
 
 @dataclass(frozen=True)
@@ -447,6 +449,19 @@ class Debugger:
             raise BaselineError("breakpoint-wrong-hit", f"{selector:04x}:{offset:08x}")
         self.clear_breakpoints()
         return registers, {"registration": registration, "waitedSeconds": round(waited, 3)}
+
+    def write_memory(self, linear, data):
+        """Writes bytes at a linear address of the paused guest (SMV) and requires the debugger's acknowledgement of
+        exactly that many bytes. Each value carries a leading 0 so that the debugger's expression parser cannot read
+        it as a flag or register name (AF, CF, DF ...). The acknowledgement does not prove the bytes landed (a page
+        fault is still counted); the caller reads them back."""
+        data = bytes(data)
+        if not 0 < len(data) <= MAX_WRITE or not 0 <= linear <= 0xFFFFFFFF - len(data) + 1:
+            raise BaselineError("stimulus-rejected", "write-range")
+        response = self.command(f"SMV 0{linear:08X} " + " ".join(f"0{value:02X}" for value in data))
+        acks = [int(match[1]) for line in response for match in [_MEMORY_ACK.match(_message(line))] if match]
+        if acks != [len(data)]:
+            raise BaselineError("stimulus-unverified", "write-unacknowledged")
 
     def view(self, address, rows):
         """Shows `rows` data-view rows from `address`; returns ({row address: tokens}, physical lookup or None)."""

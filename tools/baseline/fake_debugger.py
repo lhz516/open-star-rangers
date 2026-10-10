@@ -1,11 +1,11 @@
 """A synthetic DOSBox-X debugger for the baseline tool's tests (no emulator, no original data).
 
-`FakeDebugger` answers the commands the session sends (VRT, RUN, DV, CPU, SELINFO, BP, BPDEL, BPLIST) with full-screen
-redraws in the installed debugger's layout: register pane, data view with pf fault markers and a PHY footer, code
-view, output area and input line. Its memory is a `synthetic.FakeProcess` holding a code-generated LE image at
-per-object bases. `FakeTransport` serves it in-process on a virtual clock; running this module as a script serves it
-on its own terminal (a real PTY) in real time, so process launch, ownership and reclaim can be tested end to end.
-Scenario knobs inject the failures the tests need.
+`FakeDebugger` answers the commands the session sends (VRT, RUN, DV, SMV, CPU, SELINFO, BP, BPDEL, BPLIST) with
+full-screen redraws in the installed debugger's layout: register pane, data view with pf fault markers and a PHY
+footer, code view, output area and input line. Its memory is a `synthetic.FakeProcess` holding a code-generated LE
+image at per-object bases. `FakeTransport` serves it in-process on a virtual clock; running this module as a script
+serves it on its own terminal (a real PTY) in real time, so process launch, ownership and reclaim can be tested end to
+end. Scenario knobs inject the failures the tests need.
 """
 import json
 import os
@@ -93,6 +93,14 @@ class FakeDebugger:
         if name == "DV":
             self.data_view = int(words[1], 16)
             self.log.append(f"DEBUG: Set data overview to 0000:{self.data_view:04X}")
+        elif name == "SMV":
+            address, values = int(words[1], 16), [int(word, 16) for word in words[2:]]
+            for at, value in enumerate(values):
+                linear = address + at
+                if linear // PAGE_SIZE not in self.process.faults and not self.scenario.get("smv_drop"):
+                    self.process.poke(linear, bytes((value,)))  # a faulting write is lost but still counted
+            if self.scenario.get("smv_ack", True):
+                self.log.append(f"DEBUG: Memory changed ({len(values)} bytes)")
         elif name == "CPU":
             protected = self.mode != "Real"
             cr0 = 0x80000011 if protected else 0x00000010
