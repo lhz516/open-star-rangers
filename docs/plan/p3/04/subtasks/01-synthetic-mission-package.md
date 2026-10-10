@@ -49,10 +49,10 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] S-09：可开始场景的完整包经生产导入作业转换后 `validatePackage` 为 `complete`，诊断 `loaded`，`createWorld` 以生产配置对 null 与 0–4 各创建成功。
-- [ ] 部分包、`loadMission` 失败、`createWorld` 拒绝三个场景分别在预期阶段失败，失败类别与路径稳定。
-- [ ] 既有场景的语义与其测试不变；新增场景名符合 `TEST_ENTRY_QUERY` 的 `worker` 规则（小写连字符）。
-- [ ] `pnpm exec vitest run src/workers src/original-data src/content` 与 `pnpm check` 通过。
+- [x] S-09：可开始场景的完整包经生产导入作业转换后 `validatePackage` 为 `complete`，诊断 `loaded`，`createWorld` 以生产配置对 null 与 0–4 各创建成功。
+- [x] 部分包、`loadMission` 失败、`createWorld` 拒绝三个场景分别在预期阶段失败，失败类别与路径稳定。
+- [x] 既有场景的语义与其测试不变；新增场景名符合 `TEST_ENTRY_QUERY` 的 `worker` 规则（小写连字符）。
+- [x] `pnpm exec vitest run src/workers src/original-data src/content` 与 `pnpm check` 通过。
 
 ## 验证方法
 
@@ -60,3 +60,16 @@ updated: 2026-10-10
 - 不适用浏览器或原版对照；浏览器使用由 10 验证。
 
 ## 完成证据
+
+- **基线核对（2026-10-10，P3-03 之上）：** `models` 场景经生产作业后全包 `complete`、任务诊断 `loaded`，`createWorld` 以生产配置对 null、0、1 成功，但其名单只有 2 项（`defaultCampaignSpec`），索引 2–4 被 `input.run.wingman` 拒绝，不满足“僚机 5 项”。因此新增可开始场景，不改 `models`。
+- **新增场景**（[import-scenarios.test-support.ts](../../../../../src/workers/import-scenarios.test-support.ts) 的 `MISSION_SCENARIOS` 记录各场景停下的阶段与稳定失败；名称都符合 `TEST_ENTRY_QUERY.worker`）：
+  - `mission-startable`：任务光盘为 `sliceCoveredFiles({ campaign })`，战役表换成 [formats.test-support.ts](../../../../../src/original-data/formats/formats.test-support.ts) 新增的 `fiveWingmanCampaignSpec()`（5 个僚机选项，名字候选为 `FIVE_WINGMAN_NAMES`：1、2、0、1、3 个，供配置页显示，不带 `MARKER`，其一含 `<b>…</b> &` 以核对纯文本呈现）；运行完整生产作业。
+  - `mission-partial`：同一光盘，音效表去掉唯一的 `warp-sound`（`sound/warp`），`audio` 组 `role-cardinality@roles.warp-sound` 不被持有，全包 `group-missing@groups.audio`，任务仍 `loaded`（只有资格条件 1 不满足）。
+  - `mission-load-failed`：同一光盘，转换后名单第一项取玩家机种（与既有 `mission-invalid` 共用 `PLAYER_WINGMAN_LOGIC`，`mission-invalid` 行为不变），全包 `complete`，诊断 `failed`：`core-input`、`input.wingmanRoster.content.options[0].craftType`、`must not be the player craft type`。
+  - `mission-create-rejected`：玩家记录 +0x10 请求两架（新增 `twoPlayerRequestsScenarioSpec()`），全包 `complete`、诊断 `loaded`，`createWorld` 对 null 与 0–4 都抛 `CoreInputError`：`input.mission.content.declarations[0].ruleInputs.craftCount`、`must give the player one request`（[setup-check.ts](../../../../../src/core/world/setup-check.ts) 的 `checkPlayer`）。
+- **下游入口：** `scenarioFiles(name)` 给出场景光盘的 CloneCD 文件组（08）；`scenarioEntryProfile(name)` 给出预期包配置（`mission-partial`、`mission-load-failed` 与 `mission-startable` 相同）；`scenarioGroups(name)` 在调用线程运行场景作业并返回发送的全部组，形状同持有者的组，可直接传给 `seedProductionCache`（10）；测试入口经现有的 `worker` 查询键选择这些场景。
+- **Node 核对：** [mission-scenarios.test.ts](../../../../../src/workers/mission-scenarios.test.ts)（5 项）按导入作业所有者与持有者的规则（只保留 `group-complete` 的组、按切片定义排序、`validatePackage`、`diagnoseMission`）判定；可开始场景的身份为 `original-import` 且与 `scenarioEntryProfile` 一致，`createWorld` 以 `mission/first-campaign`、难度 19、默认步长对 null 与 0–4 各创建 tick 0 世界，projection 的任务/组/槽位/难度/僚机正确，首个 tick 实例化 1 个玩家、选了僚机时恰好 1 个僚机；失败场景断言阶段、错误类型、路径与原因。
+- **检查：** `pnpm exec vitest run src/workers src/original-data src/content` 通过（103 个文件、3,888 项）；`pnpm check` 通过（typecheck、lint、209 个文件 6,443 项测试与生产构建；同机负载很高时第一次运行有 2 项与本改动无关的 5 s 超时：`tools/engineering-boundaries.test.ts` 与 `tools/package-check.test.ts`，单独重跑通过，整套重跑通过）。既有 `failure-matrix.test.ts` 与 `import-job.test.ts` 遍历全部场景/光盘的入口配置测试包含新场景并通过；既有场景的测试未改。
+- **Rubber-duck：** 一项阻塞——僚机显示名带 `MARKER` 会与“页面不含 `MARKER`”的隐私断言冲突（例如 `joint-pipeline.development.spec.ts`）；已改为不带标记的显示名并在测试中断言。其余无发现。
+- **Simplify：** 改用 `thrownBy`、`tickInput`；逻辑 Asset 与入口配置各只求一次；`MISSION_PARTIAL_SOUND` 不再导出；SCCT/SCEN 样本移到 `formats.test-support.ts`。保留 `MISSION_SCENARIOS` 的 `stage`（供 05/10 使用）；未改生产模块 `mission-diagnostics.ts` 以共用解码。
+- **文档影响：** [workers 模块分册](../../../../engineering/modules/workers.md)的测试支持一节补充 `sliceCoveredFiles` 的 `campaign` 参数与“任务场景（P3-04）”一项（四个场景、下游入口与 Node 核对），写入范围经协调者扩大后修改。其他文档无需改动：工程约定的测试入口说明已写明新场景名不必改查询规则。

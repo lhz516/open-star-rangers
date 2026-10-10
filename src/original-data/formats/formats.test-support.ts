@@ -3,9 +3,10 @@ import { LOGIC_SOURCE_ENTRIES } from '../conversion/logic-sources.ts';
 import { MARKER } from '../disc/disc.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 
-// Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09 and P3-03 tests; they never hold original data, and
-// their numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned, and
-// relocation tables are written in reverse order. Names and messages carry MARKER for privacy assertions.
+// Code-generated synthetic SCEN, SCCT and M2ID blocks for P2-09, P3-03 and P3-04 tests; they never hold original data,
+// and their numbers deliberately differ from the original's. Structures start at odd offsets, so pointers are unaligned,
+// and relocation tables are written in reverse order. Names and messages carry MARKER for privacy assertions, except the
+// wingman display names of `FIVE_WINGMAN_NAMES`.
 
 export { MARKER };
 
@@ -320,6 +321,35 @@ export function defaultCampaignSpec(): CampaignSpec {
       { kind: 1 << 1, names: [`${MARKER}-w1`], signed: { 0x70: 5, 0x74: 5 } },
     ],
   };
+}
+
+/**
+ * The name candidates of the five wingman options of `fiveWingmanCampaignSpec()`, in roster order: one, two, none, one
+ * and three, so a start page shows each case, with markup-like text that only plain-text rendering shows as written.
+ * They are meant for display, so unlike every other synthetic name they do not carry MARKER.
+ */
+export const FIVE_WINGMAN_NAMES: readonly (readonly string[])[] = Object.freeze([
+  ['Synthetic wingman A'],
+  ['Synthetic wingman B1', 'Synthetic wingman B2'],
+  [],
+  ['Synthetic wingman D'],
+  ['Synthetic wingman E1', 'Synthetic wingman E2', '<b>Synthetic wingman E3</b> & co'],
+].map(names => Object.freeze(names)));
+
+/** The default campaign table with five wingman options, as many as the production roster, named by `FIVE_WINGMAN_NAMES`. */
+export function fiveWingmanCampaignSpec(): CampaignSpec {
+  return {
+    ...defaultCampaignSpec(),
+    wingmen: FIVE_WINGMAN_NAMES.map((names, option) => ({ kind: 1 << 1, names: [...names], signed: { 0x70: 3 + option, 0x74: 4 } })),
+  };
+}
+
+/** The default mission whose player, record 0, requests two craft (+0x10), which world creation rejects. */
+export function twoPlayerRequestsScenarioSpec(): ScenarioSpec {
+  const spec = defaultScenarioSpec();
+  const [player] = spec.records;
+  spec.records[0] = { ...player, words: { ...player.words, 0x10: 2 } };
+  return spec;
 }
 
 /** Craft types the default mission and roster reference, mapped to synthetic MODL entry IDs; slots 0 and 1 share one. */

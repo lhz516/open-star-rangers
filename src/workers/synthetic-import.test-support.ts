@@ -26,7 +26,10 @@ import { productionRuleData } from '../original-data/conversion/production-rule-
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import { productionEffectRegionWrites } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
-import { defaultScenarioSpec, syntheticScenario, syntheticScenarioArchive } from '../original-data/formats/formats.test-support.ts';
+import {
+  defaultCampaignSpec, defaultScenarioSpec, fiveWingmanCampaignSpec, syntheticCampaign, syntheticScenario, syntheticScenarioArchive,
+  twoPlayerRequestsScenarioSpec,
+} from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.test-support.ts';
 import type { ImportJob } from './import-host.ts';
 import {
@@ -141,16 +144,19 @@ let sliceExecutable: Uint8Array | undefined;
  * model, the RENS entry, the explosion and nebula lists, the base repair TABL and synthetic samples at every entry of
  * the production sound table; `MAIN/SCENARIO.NOB` with the campaign table and `scenario` as the selected mission; the
  * production-structure CRAFT, DEBRIS, AISTUFF and COMM archives of the rule data; and `MAIN/SRANGERS.EXE`, a synthetic
- * LE executable with the effect, graphics and rule-data regions at their production addresses. `corruptMesh` breaks the
- * mesh five models share, which the model step rejects as `invalid-payload`.
+ * LE executable with the effect, graphics and rule-data regions at their production addresses. `campaign` replaces the
+ * default campaign table and its wingman roster. `corruptMesh` breaks the mesh five models share, which the model step
+ * rejects as `invalid-payload`.
  */
-export function sliceCoveredFiles(
-  { scenario = syntheticScenario(defaultScenarioSpec()), corruptMesh = false }: { readonly scenario?: ReturnType<typeof syntheticScenario>; readonly corruptMesh?: boolean } = {},
-): Record<string, Uint8Array> {
+export function sliceCoveredFiles({ scenario = syntheticScenario(defaultScenarioSpec()), campaign = syntheticCampaign(defaultCampaignSpec()), corruptMesh = false }: {
+  readonly scenario?: ReturnType<typeof syntheticScenario>;
+  readonly campaign?: ReturnType<typeof syntheticCampaign>;
+  readonly corruptMesh?: boolean;
+} = {}): Record<string, Uint8Array> {
   const ruleData = productionRuleData();
   sliceExecutable ??= regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...ruleData.writes], ruleData.fixups);
   return {
-    'MAIN/SCENARIO.NOB': syntheticScenarioArchive(undefined, scenario),
+    'MAIN/SCENARIO.NOB': syntheticScenarioArchive(campaign, scenario),
     'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
     ...ruleData.archives,
     'MAIN/SRANGERS.EXE': sliceExecutable.slice(),
@@ -443,7 +449,8 @@ export interface ScenarioSource {
 
 /**
  * The synthetic disc of each test Worker scenario that identifies one, shared by the Worker entry and the app test
- * entry, so the profile the app expects is that of the package the scenario sends.
+ * entry, so the profile the app expects is that of the package the scenario sends. The P3-04 mission discs are the slice
+ * disc with the five-option roster of `fiveWingmanCampaignSpec()`, and that disc with the player requesting two craft.
  */
 export const SCENARIO_SOURCES = Object.freeze({
   synthetic: (): ScenarioSource => ({ covered: productionSizedFiles(), versionId: 'synthetic-browser' }),
@@ -453,6 +460,13 @@ export const SCENARIO_SOURCES = Object.freeze({
   audio: (): ScenarioSource => ({ covered: audioCoveredFiles(), versionId: 'synthetic-audio' }),
   models: (): ScenarioSource => ({ covered: sliceCoveredFiles(), versionId: 'synthetic-models' }),
   'models-corrupt': (): ScenarioSource => ({ covered: sliceCoveredFiles({ corruptMesh: true }), versionId: 'synthetic-models' }),
+  'mission-startable': (): ScenarioSource => ({
+    covered: sliceCoveredFiles({ campaign: syntheticCampaign(fiveWingmanCampaignSpec()) }), versionId: 'synthetic-mission',
+  }),
+  'mission-create-rejected': (): ScenarioSource => ({
+    covered: sliceCoveredFiles({ campaign: syntheticCampaign(fiveWingmanCampaignSpec()), scenario: syntheticScenario(twoPlayerRequestsScenarioSpec()) }),
+    versionId: 'synthetic-mission',
+  }),
 });
 
 export type IdentifyingScenario = keyof typeof SCENARIO_SOURCES;
