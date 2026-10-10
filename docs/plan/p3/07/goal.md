@@ -114,7 +114,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | completed |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
-| [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | in-progress |
+| [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | in-progress |
@@ -169,6 +169,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 22 已集成：** `movement.ts` 的 `motionRecord` 为导弹给出弹体记录（共用 `rules/combat-init.ts` 的 `missileBodyRecord`），导弹经 P3-06 的 `integrateCraft` 运动。流水线次序已符合 H5（引信在对象更新，起爆与 steer 在请求处理，都在移动之前），阶段表未改。`game-session-replay.test.ts` 恢复 `fire secondary`；合成导弹记录的寿命 +0x44 为负（20 的 `initialGuidance` 拒绝），该测试局部把寿命设为 320。负的导弹计时字段由 24 在世界创建时拒绝，25 核对真实内容中没有负值。
 - **2026-10-10 — 24 已集成：** 世界创建以与 `initialGuidance` 共用的判定拒绝可实例化导弹记录的负制导时间（P3-02 CR-01 检查 5 补一句）。内容层把 +0x48 读作 0 至 2³¹−1，负值在内容层已被拒绝，实际到达世界创建检查的只有 +0x44。合成 `missile()` 的寿命默认改为 320，去掉 22 的局部覆盖。比较器在一个 tick 内拒绝同一实体第二次 `object-destroyed` 与被毁后的 `hit`。新增连锁测试（一次死亡、`lost-shooter`、CR-13 交接不伪造、CR-06 跨阶段次序、延迟消费、预算与故障锁存）与战斗 replay 测试；`snapshot.ts`、`limits.ts` 经审阅无遗漏，未改，未发现规则缺陷。
 - **2026-10-10 — 从 28 拆出 36：** 26 的正式采样要与 P3-05、P3-06 轮流使用基准环境，耗时较长，27 须等 26 完成后才能开始。28 的大部分内容只依赖已完成的实现，依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把“25 与 27 的结论写入 core.md 的已知差异”拆到 36（依赖 25、27、28），28 改为依赖 24、33 并先行。29 加入对 36 的依赖。
+- **2026-10-10 — 25 已集成：** 真实内容本地核对通过：4 次运行，带与不带僚机各 2 次，每次主炮与导弹各击毁一架开场敌机。武器引用、爆炸与判别值 3 碎片与独立期望一致，15 个期望变体全部检出。导弹计时字段 9/9 非负，世界创建都被接受。没有差异，不需要修复子任务。逃生舱、大型种类永不到期的碎片、被击落的碎片、种类位 8 的敌机与 `speed match-target` 在真实运行中没有出现，只有静态判据；这些分支的原版对照归 27。
 
 ## 审批
 
