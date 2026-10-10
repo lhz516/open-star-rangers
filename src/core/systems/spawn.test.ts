@@ -666,7 +666,6 @@ describe('combat state at instantiation (P3-07 AC-05, CR-07)', () => {
 
   it('writes the weapon block, the hull, the resources with their one draw and cleared fields, then the player\'s targeting', () => {
     const { state, world } = setUp();
-    state.player.statusDisplay.redraw = false;
     // The player's placement (2), its first energy update, its goal (2); record 3's craft: placement (6), its first
     // energy update, its goal (2), its Warp timer.
     const r = randValues(state.rngState, 15);
@@ -689,7 +688,8 @@ describe('combat state at instantiation (P3-07 AC-05, CR-07)', () => {
     });
     expect(player.maximumSpeed).toBe(64);
     expect(state.player.targeting).toEqual({ mode: 'enemy', autoTargetDueClock: 0 });
-    expect(state.player.statusDisplay.redraw).toBe(true);
+    // Instantiation sets redraw, which the same tick's frame-end status display consumes (CR-10; displays.test.ts).
+    expect(state.player.statusDisplay.redraw).toBe(false);
     // Another kind keeps levels 0 and 0: E = 200 − (c64[0] + c78[0]) = 193; it has no mounts.
     const next = state.entities.get(2)!;
     expect(next.combat).toMatchObject({

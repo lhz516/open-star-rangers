@@ -1,10 +1,12 @@
 import { expect } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
+import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { Command, TickInput } from '../contracts/tick-input.ts';
 import { CoreFaultError } from '../errors.ts';
 import { snapshotText, takeSnapshot } from '../replay/snapshot.ts';
 import { initialWorldState } from './create-world.ts';
-import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
+import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput } from './create-world.test-support.ts';
+import { buildWeaponBlock } from '../rules/combat-init.ts';
 import { craftMovementBlock, initialMovementBlock } from '../rules/flight-state.ts';
 import {
   allocatorFlightState, blankCraftCombat, combatTypeOf, SUBSYSTEM_COUNT, type Entity, type EntityCombat, type EntityInit, type EntityRuleInputs,
@@ -45,6 +47,15 @@ export const TEST_MAXIMUM_SPEED = 48;
 export const TEST_BASE_MAXIMUM_SPEED = 96;
 export const TEST_VISUALS = readAssetId('data/projectile-visuals');
 
+/**
+ * A blank craft combat state whose weapon block `0x2d400` builds from the synthetic craft info's record of `kindBit`,
+ * so that rules reading the mounts find one state per mount; only the player's record (kind bit 0) has mounts.
+ */
+function craftCombat(kindBit: number): EntityCombat {
+  const record = craftInfoContent().craft[kindBit];
+  return record === undefined ? blankCraftCombat() : { ...blankCraftCombat(), weapons: buildWeaponBlock(record as unknown as CraftRecord) };
+}
+
 type KindDefaults = Pick<EntityInit, 'combat' | 'presentation' | 'movement'> & Partial<Pick<EntityInit, 'side' | 'ruleInputs' | 'maximumSpeed'>>;
 
 const ZERO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
@@ -52,8 +63,8 @@ const ZERO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC
 const RUNTIME = { side: null, ruleInputs: ZERO_RULE_INPUTS, maximumSpeed: 0 } as const;
 
 /**
- * Combat state, presentation and active movement block of a minimal entity of `kindBit` (CR-02, CR-03): a blank craft
- * with its model; or a runtime kind's first record, its variant's block at rest, no references and the allocator's
+ * Combat state, presentation and active movement block of a minimal entity of `kindBit` (CR-02, CR-03): a blank craft,
+ * its weapon block its synthetic record's, with its model; or a runtime kind's first record, its variant's block at rest, no references and the allocator's
  * fields (a missile keeps TEST_MAXIMUM_SPEED). Kinds without a combat type get a craft's, which allocation rejects.
  */
 export function kindDefaults(kindBit: number): KindDefaults {
@@ -90,7 +101,7 @@ export function kindDefaults(kindBit: number): KindDefaults {
         movement: { mode: 'spinning', ...still, spin: 0, spinAxis: 0 },
       };
     default:
-      return { combat: blankCraftCombat(), presentation: { type: 'model', model: TEST_MODEL }, movement: steered };
+      return { combat: craftCombat(kindBit), presentation: { type: 'model', model: TEST_MODEL }, movement: steered };
   }
 }
 

@@ -132,6 +132,13 @@ export interface CombatPlayer {
  */
 export type SpeedLimitStatus = 'initial-only' | 'live';
 
+/**
+ * The status of the player's maximum speed, which the motion group reports: `live`, as P3-07 recomputes it from the
+ * live E, T and field 2 at instantiation and at every allocation level change (docs/plan/p3/02/spec.md, CR-09;
+ * systems/energy.ts). It never falls back to `initial-only`.
+ */
+export const PLAYER_SPEED_LIMIT_STATUS: SpeedLimitStatus = 'live';
+
 /** The player's motion. */
 export interface MotionPlayer {
   readonly entityId: EntityId;

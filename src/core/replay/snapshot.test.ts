@@ -120,7 +120,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const player = state.entities.get(1)!;
     expect(snapshot.state.entities[0].combat).toEqual(player.combat);
     expect(snapshot.state.entities[0].maximumSpeed).toBe(player.maximumSpeed);
-    expect(snapshot.state.player).toMatchObject({ targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: true } });
+    // The frame-end status display has consumed the redraw instantiation set (CR-10).
+    expect(snapshot.state.player).toMatchObject({ targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: false } });
     // Nothing of the static data is written: replacing it leaves the text as it is.
     const text = snapshotText(snapshot);
     expect(text).not.toContain('explosion-animation');

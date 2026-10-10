@@ -60,9 +60,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02 and P3-06 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'parked-update', 'area-check', 'commit',
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'energy', 'parked-update', 'area-check',
+      'frame-end', 'commit',
     ]);
   });
 
@@ -308,10 +309,11 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
 describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
 
-  it('reads the runs of its stages from their rule modules, all still without a run', () => {
+  it('reads the runs of its stages from their rule modules, those not implemented yet without a run', () => {
     expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
       .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
-    expect([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]).toEqual([null, null, null, null]);
+    expect([collisionStage, delayedPlayerExplosionStage]).toEqual([null, null]);
+    expect([typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function']);
   });
 
   /** A craft (1), a missile (2), a projectile (3), a fragment (4) and an explosion (5), all active. */
@@ -372,7 +374,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
 
   it('clears the player\'s targeting state with its entity, together with P3-06\'s target', () => {
     const [state, [player, target]] = withEntities([0], [7]);
-    Object.assign(state.player, { entityId: player.id, target: target.id, targeting: initialPlayerTargeting() });
+    // In an external view (0x13), whose layout has no right display to clear the target that is gone (CR-10).
+    Object.assign(state.player, { entityId: player.id, target: target.id, targeting: initialPlayerTargeting(), viewMode: 0x13 });
     target.state = 'pending-removal';
     expect(runTickWith(state)).toEqual([]);
     expect(state.player).toMatchObject({ entityId: player.id, target: target.id, targeting: { mode: 'enemy', autoTargetDueClock: 0 } });

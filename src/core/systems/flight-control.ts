@@ -19,6 +19,7 @@
  * A manual match (`match-target`, or `confirm-selection` in flight) is a `match-speed` request instead, applied in
  * request handling (message 0x80000), so that same-tick speed commands keep their array order.
  */
+import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { CommandResultReason, DomainEvent } from '../contracts/domain-events.ts';
 import type { Command, TickAxes, TickInput } from '../contracts/tick-input.ts';
 import { CoreFaultError } from '../errors.ts';
@@ -135,11 +136,31 @@ function toggleAssist(assist: SpeedAssist): void {
 }
 
 /**
+ * The commanded speed the commands' requests posted so far will leave, by the rules of their application at the
+ * player's current maximum speed: from the block's, a throttle unless the block is locked, a match that writes even
+ * then. Folded afresh at every read, as a level key (P3-07) judged in between may have recomputed the maximum speed and
+ * applied it to the block (`0x21d88`).
+ */
+function pendingCommandedSpeed(world: WorldState, player: Entity, record: CraftRecord | undefined, requests: readonly PlayerRequest[]): number | null {
+  const block = craftMovement(player);
+  let commandedSpeed = block?.commandedSpeed ?? null;
+  for (const request of requests) {
+    if (request.type === 'control') {
+      if (request.throttle !== null && controlApplies(block, record)) commandedSpeed = throttleSpeed(request.throttle, player.maximumSpeed);
+      continue;
+    }
+    const target = world.entities.get(request.targetEntityId);
+    const matched = target === undefined ? null : speedMatch(block, record, player.maximumSpeed, target.movement);
+    if (matched !== null && block?.mode === 'craft') commandedSpeed = matched;
+  }
+  return commandedSpeed;
+}
+
+/**
  * Judges the commands in array order. A P3-06 command needs an available player and the flight context, the only one
  * whose key handler (`0x264a0`) takes the throttle keys, Enter and Ctrl+Enter. `+` and `−` read back the commanded
- * speed as the requests posted before them leave it, by the same rules as their application: a locked block keeps its
- * commanded speed, which a match still writes. A match needs a target with a block, else it is `no-target`. Every other
- * command goes to `judge` in its place in the order.
+ * speed as the requests posted before them leave it (pendingCommandedSpeed). A match needs a target with a block, else
+ * it is `no-target`. Every other command goes to `judge` in its place in the order.
  */
 function judgeCommands(
   world: WorldState,
@@ -153,7 +174,6 @@ function judgeCommands(
 ): void {
   const context = interactionContext(world.player.viewMode);
   const record = player === null ? undefined : world.craftInfo.content.craft[player.kindBit];
-  let commandedSpeed = (player && craftMovement(player))?.commandedSpeed ?? null;
   for (const [commandIndex, command] of commands.entries()) {
     const action = flightAction(command, context);
     if (action === undefined) {
@@ -181,17 +201,12 @@ function judgeCommands(
         continue;
       }
       requests.push({ type: 'match-speed', entityId: player.id, targetEntityId: target.id, commandIndex });
-      const block = craftMovement(player);
-      const matched = speedMatch(block, record, player.maximumSpeed, target.movement);
-      if (matched !== null && block?.mode === 'craft') commandedSpeed = matched;
       emit(accepted(tick, commandIndex, command));
       continue;
     }
-    const throttle = action === 'increase' ? increasedThrottle(throttleReadback(commandedSpeed, player.maximumSpeed))
-      : action === 'decrease' ? decreasedThrottle(throttleReadback(commandedSpeed, player.maximumSpeed))
-      : action;
+    const readback = (): number => throttleReadback(pendingCommandedSpeed(world, player, record, requests), player.maximumSpeed);
+    const throttle = action === 'increase' ? increasedThrottle(readback()) : action === 'decrease' ? decreasedThrottle(readback()) : action;
     requests.push({ type: 'control', entityId: player.id, throttle, axes: UNCHANGED_AXES });
-    if (controlApplies(craftMovement(player), record)) commandedSpeed = throttleSpeed(throttle, player.maximumSpeed);
     emit(accepted(tick, commandIndex, command));
   }
 }

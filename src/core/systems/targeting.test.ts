@@ -248,6 +248,8 @@ describe('the select-target request (CR-05, CR-06, T1)', () => {
 
   it('is never emitted for a clearing: a removed target is dropped without an event', () => {
     const [state] = flightWorld();
+    // An external view (0x13) has no right display, whose clearing would emit target-cleared first (CR-10).
+    state.player.viewMode = 0x13;
     const doomed = add(state, 7, at(0, 0, 10));
     state.player.target = doomed.id;
     doomed.state = 'pending-removal';

@@ -11,10 +11,10 @@ import { registerTick, type Request } from './pipeline.ts';
 import { referenceTarget } from './targeting.ts';
 import { updateMissileLock } from './weapons.ts';
 
-// docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, which
-// keep the not-implemented result until subtasks 13 (targeting.test.ts), 14 (weapons.test.ts) and 16 implement them. The player's update (flight-control.ts)
-// is the one command loop: it judges P3-06's throttle, speed match and speed assist commands itself and hands every
-// other command to judgeCommand.
+// docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, whose own
+// tests judge them (targeting.test.ts, weapons.test.ts, energy.test.ts). The player's update (flight-control.ts) is the
+// one command loop: it judges P3-06's throttle, speed match and speed assist commands itself and hands every other
+// command to judgeCommand, which gives a command no rule handles yet rejected/not-implemented.
 
 /** Every operation of P3-07's six command types. */
 const COMBAT_COMMANDS: readonly Command[] = [
@@ -27,8 +27,6 @@ const COMBAT_COMMANDS: readonly Command[] = [
   ...(['open', 'shield-increase', 'shield-decrease', 'gun-increase', 'gun-decrease'] as const).map((operation): Command => ({ type: 'energy', operation })),
   { type: 'damage-report' },
 ];
-/** P3-07's commands whose rules are not implemented yet. */
-const UNIMPLEMENTED_COMBAT_COMMANDS = COMBAT_COMMANDS.filter(({ type }) => !['target', 'fire', 'cycle-main-weapon', 'select-missile'].includes(type));
 
 /** P3-06's commands, which the player's update judges itself in flight: throttle, and Enter's speed match. */
 const P3_06_COMMANDS: readonly Command[] = [
@@ -68,17 +66,14 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
     expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
-  it.each([['P3-07\'s unimplemented commands', UNIMPLEMENTED_COMBAT_COMMANDS], ['every other command', OTHER_COMMANDS]])(
-    'gives %s exactly one rejected/not-implemented result each, in order, and changes nothing else',
-    (_, commands) => {
-      const [judged] = flightState();
-      const [idle] = flightState();
-      const events = constructWorld(judged).step(tickInput(commands));
-      constructWorld(idle).step(tickInput());
-      expect(events).toEqual(notImplemented(commands, 1));
-      expect(stateText(judged)).toBe(stateText(idle));
-    },
-  );
+  it('gives every other command exactly one rejected/not-implemented result each, in order, and changes nothing else', () => {
+    const [judged] = flightState();
+    const [idle] = flightState();
+    const events = constructWorld(judged).step(tickInput(OTHER_COMMANDS));
+    constructWorld(idle).step(tickInput());
+    expect(events).toEqual(notImplemented(OTHER_COMMANDS, 1));
+    expect(stateText(judged)).toBe(stateText(idle));
+  });
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
     const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[5]];
@@ -90,7 +85,9 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
       commandType: type,
       ...(commandIndex === 1 ? { outcome: 'accepted', reason: null }
         : type === 'target' ? { outcome: 'ignored', reason: 'no-candidate' }
-        : type === 'fire' ? { outcome: 'ignored', reason: 'no-weapon' }
+        // The player's craft record mounts gun 0 on list 0, and its charge is 0.
+        : type === 'fire' ? { outcome: 'ignored', reason: 'insufficient-charge' }
+        : type === 'damage-report' ? { outcome: 'ignored', reason: 'no-change' }
         : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
   });

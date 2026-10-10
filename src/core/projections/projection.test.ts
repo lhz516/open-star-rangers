@@ -3,6 +3,7 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import {
+  PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
   type CombatPlayer,
   type CombatReady,
@@ -81,5 +82,9 @@ describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
     >();
     expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
     expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
+  });
+
+  it('reports the player\'s maximum speed as live, which P3-07 recomputes from the live energy state (CR-09)', () => {
+    expect(PLAYER_SPEED_LIMIT_STATUS).toBe('live');
   });
 });
