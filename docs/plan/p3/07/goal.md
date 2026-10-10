@@ -99,7 +99,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | completed |
-| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
+| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | in-progress |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | completed |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | completed |
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | completed |
@@ -119,7 +119,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27, 33 | pending |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
-| [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
+| [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | in-progress |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | in-progress |
