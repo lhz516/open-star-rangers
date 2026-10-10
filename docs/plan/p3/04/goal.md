@@ -96,7 +96,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | completed |
 | [12-e2e-shell-production.md](./subtasks/12-e2e-shell-production.md) | 10 | in-progress |
 | [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12 | pending |
-| [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | pending |
+| [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | in-progress |
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | pending |
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | pending |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16 | pending |
