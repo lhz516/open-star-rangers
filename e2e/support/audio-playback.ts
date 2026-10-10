@@ -319,6 +319,9 @@ interface AudioTargets {
 /**
  * Launches an owned Chrome with the activation-requiring autoplay policy (headed for real page hiding), creates an
  * owned CDP context and tabs, loads the development origin with the probes, and disposes everything afterwards.
+ * The load also waits for the application's first render, so its own root listeners precede each test's listener
+ * baseline: its development-only top-level `await import()`s (P3-04 subtask 09) let its evaluation finish after
+ * `document.readyState` reaches `complete`.
  */
 export async function withAudioTargets(
   baseURL: string,
@@ -344,7 +347,8 @@ export async function withAudioTargets(
     await app.command('Page.navigate', { url: baseURL });
     await root.send('Target.activateTarget', { targetId: appId });
     const target = app;
-    await until(() => target.evaluate(() => document.readyState === 'complete' && 'osrAudioProbe' in window), ready => ready, 'Application load');
+    await until(() => target.evaluate(() => document.readyState === 'complete' && 'osrAudioProbe' in window
+      && document.querySelector('#root > *') !== null), ready => ready, 'Application load');
     await run({ browser, root, app, appId, alternateId });
   } finally {
     app?.dispose();
