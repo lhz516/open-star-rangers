@@ -121,7 +121,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
-| [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | in-progress |
+| [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | pending |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34 | pending |
 
@@ -159,6 +159,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 新增 33（合并 main 后接入 P3-04）：** P3-04 已快进合入 `main`，P3-06 已把 `main` 合入其分支并接入 P3-04 的调用者（其子任务 24）。再合并 P3-06 分支时，P3-04 的世界创建、录制与 replay 调用者需要 P3-07 的规则输入。依用户对新增解除阻塞子任务的预先授权，新增 33：由 worker 在其分支上完成合并与接入，作为一个合并提交，协调者以 `git merge` 集成（不用 cherry-pick）。28 改为依赖 33。
 - **2026-10-10 — 33 的范围与合并冲突：** 协调者批准 33 为解决合并而修改 `projection.ts`（P3-06 的 `motionPlayer` 收窄为受操纵的块）、P3-06 的 `budget.test.ts`（适配 CR-02/CR-03，只断言 P3-06 自身的项），并由 Core 导出 `instantiableModelIds`（`create-world.ts`，CR-01 的可实例化模型集合）。`tasks.md` 为协调者所有，其合并冲突按协调者给出的文本解决：任务表下的导航句同时提及 P3-01 至 P3-04、P3-06 与 P3-07 的 spec 与 goal。
 - **2026-10-10 — 新增 34（追踪导弹的 AI 程序输入）：** 32 发现追踪导弹的程序读取内置 AI 程序记录 1、2 的三个字段，而 CR-01 的世界创建输入没有 AI 程序。依用户对新增解除阻塞子任务与修改契约的预先授权，新增 34：修订 CR-01 并接入 `aiPrograms` 输入（推荐方案见 34），20 改为依赖 34。34 依赖 33（与其写入范围重叠的 `create-world.ts` 及 App 的输入路径）。
+- **2026-10-10 — 33 已集成（合并提交 `efbc762`，快进）：** 33 在其分支上把 P3-06 的 `fb6ea0b`（含 `main` 的 P3-04）合并到本分支，并让 P3-04 的任务输入、任务所有者、Runtime、Session、事件总线、开发工具、replay 核对与 e2e 接入 P3-07 的世界创建输入与事件；协调者快进集成，`pnpm check` 通过（7,782 项）。`RECORDING_MAX_BYTES` 随最长事件 `hit`（720 字节）变为 427,820,671。P3-06 此后的提交（`42db4ec`：B-008、键位与 `tools/baseline/`）未合并：09 正在使用 `tools/baseline/`，待 09 集成后再合并。
 
 ## 审批
 
