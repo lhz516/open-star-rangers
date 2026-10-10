@@ -79,13 +79,15 @@ describe('world step (P3-02 AC-03, AC-04)', () => {
     const idle = populatedState();
     const events = constructWorld(commanded).step(tickInput(commands));
     constructWorld(idle).step(tickInput());
-    // P3-06 handles select-number in flight, and the player becomes active only in this step's request handling.
+    // P3-06 handles the speed commands, select-number and confirm-selection in flight, and the player becomes active only
+    // in this step's request handling.
+    const p306 = new Set<Command['type']>(['speed', 'select-number', 'confirm-selection']);
     expect(events).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
       tick: 1,
       commandIndex,
       commandType: type,
-      ...(type === 'select-number' ? { outcome: 'ignored', reason: 'player-unavailable' } : { outcome: 'rejected', reason: 'not-implemented' }),
+      ...(p306.has(type) ? { outcome: 'ignored', reason: 'player-unavailable' } : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
     expect(deepFrozen(events)).toBe(true);
     expect(stateText(commanded)).toBe(stateText(idle));

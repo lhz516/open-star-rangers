@@ -4,6 +4,7 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
 import { entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import { initialPlayerTargeting } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -240,18 +241,22 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     expect([...state.entities.walk(1 << 3)]).toEqual([]);
   });
 
-  it('clears the player reference when it removes the player, and only then', () => {
+  it('clears the player reference, target and control state when it removes the player, and only then', () => {
     const [state, [player, other, sameKind]] = withEntities([0], [6], [0]);
+    const target = state.entities.allocate(entityInit(7, { activity: 'parked' }));
     state.player.entityId = player.id;
+    state.player.target = target.id;
+    state.player.control = initialPlayerControl(0);
     other.state = 'pending-removal';
     sameKind.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBe(player.id);
+    expect(state.player).toMatchObject({ entityId: player.id, target: target.id, control: initialPlayerControl(0) });
     player.state = 'pending-removal';
+    target.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBeNull();
+    expect(state.player).toMatchObject({ entityId: null, target: null, control: null });
     expect(state.entities.size).toBe(0);
-    expect(state.entities.nextId).toBe(4);
+    expect(state.entities.nextId).toBe(5);
   });
 
   it.each([
@@ -362,7 +367,7 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expectFault(() => runTickWith(state), 'invariant-violated', 'movement.mode');
   });
 
-  it('clears the player\'s targeting state with its entity, and leaves the target to P3-06', () => {
+  it('clears the player\'s targeting state with its entity, together with P3-06\'s target', () => {
     const [state, [player, target]] = withEntities([0], [7]);
     Object.assign(state.player, { entityId: player.id, target: target.id, targeting: initialPlayerTargeting() });
     target.state = 'pending-removal';
@@ -370,7 +375,7 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     expect(state.player).toMatchObject({ entityId: player.id, target: target.id, targeting: { mode: 'enemy', autoTargetDueClock: 0 } });
     player.state = 'pending-removal';
     expect(runTickWith(state)).toEqual([]);
-    expect(state.player).toMatchObject({ entityId: null, target: target.id, targeting: null });
+    expect(state.player).toMatchObject({ entityId: null, target: null, targeting: null });
   });
 });
 

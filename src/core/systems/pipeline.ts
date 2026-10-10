@@ -24,7 +24,7 @@ import { judgeCommand } from './commands.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
-import { applyControlRequest, updatePlayer, type ControlRequest } from './flight-control.ts';
+import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
 import { expireProjectile, updateProjectile } from './projectiles.ts';
@@ -59,6 +59,8 @@ export type Request =
   | SpawnRequest
   /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
   | ControlRequest
+  /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
+  | MatchSpeedRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -193,9 +195,10 @@ function advanceClock(context: TickContext): void {
 /**
  * The player's update (flight-control.ts), where the original polls game input: the player (kind bit 0) comes first in
  * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
- * the throttle commands itself, every other command through judgeCommand (commands.ts), which routes P3-07's to their
- * rule modules and gives every command no rule handles yet rejected/not-implemented. With an available player it
- * consumes the axes. The rule tasks add their commands and steps there.
+ * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
+ * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
+ * rejected/not-implemented. With an available player it consumes the axes. The rule tasks add their commands and steps
+ * there.
  */
 function updatePlayerControls(context: TickContext): void {
   const { world, input, time, requests } = context;
@@ -269,10 +272,12 @@ function updateObjects(context: TickContext): void {
 
 /**
  * Message 0x20 (`0x20d10`): an entity in area-switch toggles its parking and starts its state again; any other entity
- * is removed. Removal clears the player-state reference to it (the original clears it for kind 1, the player's) and
- * makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name becomes free because no
- * entity holds it any more (Q-08). The player's targeting state goes with the player's entity (CR-04); clearing the
- * player's target when it parks or goes belongs to P3-06, and emits nothing (CR-06).
+ * is removed. Removal of the player's entity clears the player-state reference to it (the original clears it for
+ * kind 1, the player's) together with the player's target and control state, which exist only with a player entity
+ * (P3-06 D-03), and its targeting state, which goes with the player's entity (CR-04). Removal makes the ID
+ * unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name
+ * becomes free because no entity holds it any more (Q-08). Clearing the player's target when that entity parks belongs
+ * to P3-06/14 and emits nothing (CR-06).
  */
 function leave(world: WorldState, entity: Entity): void {
   if (entity.state === 'area-switch') {
@@ -282,6 +287,8 @@ function leave(world: WorldState, entity: Entity): void {
   }
   if (world.player.entityId === entity.id) {
     world.player.entityId = null;
+    world.player.target = null;
+    world.player.control = null;
     world.player.targeting = null;
   }
   world.entities.remove(entity);
@@ -330,6 +337,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'control':
       applyControlRequest(world, entity, request);
+      return;
+    case 'match-speed':
+      applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
       return;
     case 'select-target':
       applySelectTarget(context, entity, request);

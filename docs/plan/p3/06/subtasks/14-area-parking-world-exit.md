@@ -42,6 +42,7 @@ updated: 2026-10-10
 - `src/core/systems/spawn*.ts`：共用区域判定。
 - `src/core/rules/**`：区域、停放与世界边界纯函数（新建）及测试。
 - `src/core/world/**`、`src/core/projections/render-state*.ts`：状态读写与放置序号测试所需的最小改动。
+- `src/core/systems/movement.test.ts`、`src/core/systems/flight-control.test.ts`：区域检查与停放切换接入后，修正假定它们不存在的既有测试（只改测试；2026-10-10 协调者按 scope-request 加入）。
 
 ## 验收标准
 

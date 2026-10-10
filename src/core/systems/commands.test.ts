@@ -13,7 +13,8 @@ import { updateMissileLock } from './weapons.ts';
 
 // docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, which
 // keep the not-implemented result until subtasks 13, 14 and 16 implement them. The player's update (flight-control.ts)
-// is the one command loop: it judges P3-06's throttle commands itself and hands every other command to judgeCommand.
+// is the one command loop: it judges P3-06's throttle, speed match and speed assist commands itself and hands every
+// other command to judgeCommand.
 
 /** Every operation of P3-07's six command types. */
 const COMBAT_COMMANDS: readonly Command[] = [
@@ -27,16 +28,16 @@ const COMBAT_COMMANDS: readonly Command[] = [
   { type: 'damage-report' },
 ];
 
-/** P3-06's throttle commands, which the player's update judges itself in flight. */
-const THROTTLE_COMMANDS: readonly Command[] = [
+/** P3-06's commands, which the player's update judges itself in flight: throttle, and Enter's speed match. */
+const P3_06_COMMANDS: readonly Command[] = [
   { type: 'speed', operation: 'increase' },
   { type: 'select-number', value: 3 },
+  { type: 'confirm-selection' },
 ];
 
 /** One command of every other type. */
 const OTHER_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
-  { type: 'confirm-selection' },
   { type: 'toggle-map' },
   { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 },
   { type: 'request-warp' },
@@ -61,7 +62,7 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...THROTTLE_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
+    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
   it.each([['P3-07\'s commands', COMBAT_COMMANDS], ['every other command', OTHER_COMMANDS]])(
@@ -77,7 +78,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   );
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], THROTTLE_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[6]];
+    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[5]];
     const [state] = flightState();
     expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',

@@ -1,11 +1,11 @@
 /**
  * Command judgement of formal Core (docs/plan/p3/02/spec.md, 输入与命令; CR-05): every command of a tick gets exactly one
  * `command-result`, in command order, from the rule module of its type. The player's update (flight-control.ts) is the
- * one command loop (CR-07): it judges P3-06's throttle commands itself and hands every other command to judgeCommand
- * in its place in the order. P3-07's six command types go to targeting.ts (`target`), weapons.ts (`fire`,
- * `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`); every other type is
- * rejected/not-implemented until its rule task routes it. A module emits a command's additional events right after its
- * result.
+ * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
+ * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
+ * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`); every other
+ * type is rejected/not-implemented until its rule task routes it. A module emits a command's additional events right
+ * after its result.
  */
 import type { CommandResultReason } from '../contracts/domain-events.ts';
 import type { Command, CommandType } from '../contracts/tick-input.ts';
