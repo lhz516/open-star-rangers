@@ -51,7 +51,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | S-07 | 07、09 | 07：诊断模型与导出的 Node 测试；10：开发下载；12：生产产物与 DOM 中不存在 |
 | S-08 | 08 | 08：工具 Node 测试；10：浏览器导出后的核对；14：生产 CLI 与真实内容 |
 | S-09 | 01 | 01：合成场景的 Node 核对；10：经测试入口与生产缓存使用 |
-| S-10 | 09、10、11、12、13、16 | 13：删除与引用检查；16：历史链接；17：`git grep`、`pnpm check`、`pnpm test:e2e` |
+| S-10 | 09、10、11、12、13、16、18 | 13：删除与引用检查；18：测试入口就绪；16：历史链接；17：`git grep`、`pnpm check`、`pnpm test:e2e` |
 | S-11 | 09、15 | 10：界面标注文字；15：`slice-gaps.md`；17：代码 G ID 与文档一致 |
 | S-12 | 14、15、16 | 14：对照结论；15、16：文档同步；17：链接与元数据 |
 | AC-01 | 02 | 02：时间序列与读模型测试 |
@@ -71,7 +71,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | AC-15 | 09 | 12：生产 CSP、网络审计与产物检查 |
 | AC-16 | 07、08 | 08：Node limit/limit+1、失败码与退出码；10：浏览器下载后核对 |
 | AC-17 | — | 14：本地真实内容运行、导出与生产 CLI 核对 |
-| AC-18 | 09、10、11、12、13、16 | 13：删除与引用；16：历史链接；17：复核 |
+| AC-18 | 09、10、11、12、13、16、18 | 13：删除与引用；18：`pnpm test:e2e` 的 F-12 用例；16：历史链接；17：复核 |
 | AC-19 | 09、15 | 10：界面标注；15：`slice-gaps.md`；17：代码与文档一致 |
 | AC-20 | — | 14：R-13 控制子集与 L 流程部分的对照记录（引用 03、11 的证据） |
 | AC-21 | 15、16 | 17：`pnpm check`、`pnpm check:compliance`、链接与 `updated:` |
@@ -95,11 +95,12 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [10-e2e-mission-flow.md](./subtasks/10-e2e-mission-flow.md) | 08, 09 | completed |
 | [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | completed |
 | [12-e2e-shell-production.md](./subtasks/12-e2e-shell-production.md) | 10 | completed |
-| [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12 | pending |
+| [13-retire-synthetic-demo.md](./subtasks/13-retire-synthetic-demo.md) | 09, 11, 12, 18 | pending |
 | [14-real-content-comparison.md](./subtasks/14-real-content-comparison.md) | 08, 09, 11 | completed |
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | pending |
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | pending |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16 | pending |
+| [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | pending |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -121,6 +122,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 11 完成（交 12、13、14、15、17）：** 浏览器探针快照增加 `timers`（`pending { id, delay }`、`scheduled`、已触发与已清除的 ID），只记录应用以函数为处理器的 `setTimeout`/`clearTimeout`，不包装 `clearInterval`；去掉 `synthetic-view` 分组，`keyboard` 改指任务画面内元素上的应用监听（供 P3-05）；离页保护计为 `other`，Vite 自身的 `beforeunload` 计为 `vite`。`NativeTarget` 新增 `press(name)`（按可访问名称的稳定可信点击）、`setInputFiles(selector, paths)` 与 `until(…, timeout)`，移除 `key()`。AC-13 在 native-lifecycle，AC-14 在 joint-resources（两种构建）与 fast-refresh 的往返中。交 14（AC-20）：R-13 的浏览器证据为 11 完成证据中的 AC-13 行。交 15：工程 README 的资源平衡、本地浏览器 runner（joint-resources 的 `WEBGL_lose_context` 一行不再适用）与 Fast Refresh 小节（细节见 11 的文档影响）。11 在扫描其他使用探针的用例时发现 `e2e/failure-worker-cancel.development.spec.ts` 的 3 个 F-12 用例（late restore、late commit、late listing）在基线 `ed2b815a` 上已失败（读取 `profile` 时 `window.osrTestEntry` 为 undefined），不在任何子任务的写入范围内，见下一条。
 - **2026-10-10 — 12 完成（交 13、15）：** 每个旧用例的去向见 12 的完成证据。`ORIGINAL_RIGHTS_BOUNDARY` 改为 “This independent project is not original gameplay or an officially authorized product.”，其余声明不变。`expectNoPlayClaim` 改为：去掉任务骨架说明自身的措辞后不得声称可玩，开始入口只在 `data-eligibility="eligible"` 时可用且说明含骨架文字；`browser-test.ts` 测试后检查的意外失败 ID 改为 `cleanup-failure`、`open-mission-failure`、`mission-open-failure`、`mission-action-error`、`mission-placeholder-failure`。`image-observations.ts` 去掉 `image()`，`verifyLayout` 读取 `viewer-view`。11 必须先于 12 集成（12 删除了 11 迁移前仍导入的导出），已按此次序集成。交 15：工程 README 的生产预览小节（菜单、导入页面与任务流程无 CSP 违规；产物与 source map 来源也不含开发诊断、帧计时、文件保存与下载、app-version 与演示链）与 WebGL 降级小节（降级改在查看器上核对，任务流程没有 canvas）；`source-structure.md` 第 399 行描述 interaction-render（只用键盘的任务流程、任务画面与查看器的同所有者 resize）、browser-replay（正式 `replayRecord`）与 webgl-unavailable（查看器降级）的新验收面。
 - **2026-10-10 — 14 完成（交 15、17）：** 本地真实内容在开发构建中重新导入（四组 complete），带僚机与不带僚机各一次正式运行，玩家 1 个、种类位 1 的对象 1/0 个、tick 前进；两份导出录制经生产 CLI 与同一 CloneCD 文件组核对一致（退出码 0）。私有输出只在 `local/research/p3-04/`。AC-20 的 R-13 控制子集与 L-01、L-02、L-10 流程部分的结论、依据与差异见 14 的完成证据。交 15：工具指南可引用 14 的 AC-17 行作为 CLI 的真实内容成功路径。
+- **2026-10-10 — 12 集成后的完整 E2E 与修复子任务 18（协调者决定，用户已预先同意新增解除阻塞的子任务）：** 在 goal 分支 `35b68ce6` 上运行完整 `pnpm test:e2e`（development、production、development-headed）：192 个通过，4 个失败。`audio-playback.spec.ts` 的 1 个失败（释放后仍有一个 `ended` 监听）在当时负载下出现，单独重跑 3 次都通过，记为负载抖动，由 17 的完整运行复核。`failure-worker-cancel.development.spec.ts` 的 3 个 F-12 用例因 09 引入的开发期顶层 `await import()` 推迟了测试入口的模块求值，在入口设置 `window.osrTestEntry` 之前读取而失败，不在任何既有子任务的写入范围内。新增修复子任务 18（`openTestEntry` 等待入口首次渲染），13 的验收要求 `pnpm test:e2e` 全部通过，因此 13 增加对 18 的依赖，17 依赖 18。
 
 ## 审批
 
