@@ -67,6 +67,8 @@ updated: 2026-10-10
 - `src/core/systems/commands.test.ts`：`fire`、`cycle-main-weapon`、`select-missile` 不再是未实现命令、导弹锁定入口对应的断言更新。
 - `src/core/systems/flight-control.test.ts`：受武器命令影响的断言更新。
 - `src/core/world/world.test.ts`：武器命令结果的断言更新。
+- `src/core/systems/pipeline.test.ts`：请求路由表中两条 `launch` 占位故障行的删除（构造已实现）。
+- `docs/original/formats/executable.md`：W7、W9、W11 的指令级事实（已确认，代码；只记结构，不记数值）。
 
 ## 验收标准
 
