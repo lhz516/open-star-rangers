@@ -64,6 +64,9 @@ updated: 2026-10-10
 - `src/core/rules/movement-builders.test.ts`：构造测试（新建）。
 - `src/core/systems/launch.ts`：弹丸与导弹的构造（新建）。
 - `src/core/systems/launch.test.ts`：构造测试（新建）。
+- `src/core/systems/commands.test.ts`：`fire`、`cycle-main-weapon`、`select-missile` 不再是未实现命令、导弹锁定入口对应的断言更新。
+- `src/core/systems/flight-control.test.ts`：受武器命令影响的断言更新。
+- `src/core/world/world.test.ts`：武器命令结果的断言更新。
 
 ## 验收标准
 
