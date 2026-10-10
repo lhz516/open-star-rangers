@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | completed |
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | blocked |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
@@ -132,6 +132,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Affected acceptance: 09 全部验收项；经 10 影响 AC-16 的判据，经 26、27 影响 AC-15（运行时部分）与 AC-16。
   Resume when: P3-06 的子任务 22 烟测通过并集成到其分支，协调者把该分支合并到本 goal 分支并把 09 改为自动；或用户可以在键盘上操作。
 - **2026-10-10 — Subtask 09 unblocked：** 恢复条件已满足。P3-06 的子任务 22 烟测通过（三项烟测在无宿主输入的私有运行中 `complete`，baseline 工具 163 项测试通过），协调者以合并提交 `41b788a` 把 P3-06 分支合并到本分支，并把 09、26 的执行方式改为自动。09 的状态由 blocked 改为 pending。B-008 由 P3-06 使用，本任务的行为文档改为 B-009，10、26 的写入范围已同步。
+- **2026-10-10 — Subtask 08 blocked:** 跨任务前提未满足：P3-06 的检查点 A（其子任务 06）尚未提交，而 08 须在其 P3-02 修订之上增补（见跨任务前提）。
+  Evidence: `p3-06-flight-motion-spec` 的 tracker 中 06 为 in-progress（认领提交 `27e3269`）；P3-07 的 01 至 07 已完成，事件与请求上界已发给 P3-06 协调者供其容量核算。
+  Affected acceptance: 08 全部验收项；其后的 11 至 29（经依赖）。
+  Resume when: P3-06 的子任务 06 在其分支上为 completed，协调者把该分支合并到本分支后，把 08 改为 pending 并派发。
 
 ## 审批
 
