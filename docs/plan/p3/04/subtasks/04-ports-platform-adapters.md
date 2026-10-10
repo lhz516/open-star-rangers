@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "04"
 subtask: "04"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 04 — 应用端口与平台适配器
@@ -45,6 +45,7 @@ updated: 2026-10-09
 - `src/platform/browser/browser-timer*.ts`：时钟与计时器适配器与测试。
 - `src/platform/browser/leave-guard*.ts`：离页保护适配器与测试。
 - `src/platform/files/browser-file-save*.ts`：文件保存适配器与测试。
+- `src/platform/browser/seed*.ts`、`src/platform/browser/timer*.ts`、`src/platform/files/file-save*.ts`：DOM-free 核心与 Node 测试（边界规则不允许 browser- 前缀的文件进入 Node 程序，这类文件只保留薄连接，沿用 keyboard-source 的先例）。
 
 ## 验收标准
 
