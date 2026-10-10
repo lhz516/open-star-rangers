@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
 | [08-snapshot-replay.md](./subtasks/08-snapshot-replay.md) | 07 | completed |
 | [09-real-content-check.md](./subtasks/09-real-content-check.md) | 07 | completed |
 | [10-original-runtime-evidence.md](./subtasks/10-original-runtime-evidence.md) | 02, 03 | completed |
-| [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10, 14 | pending |
+| [11-comparison-docs-handoff.md](./subtasks/11-comparison-docs-handoff.md) | 08, 09, 10, 14 | in-progress |
 | [13-heavy-test-timeouts.md](./subtasks/13-heavy-test-timeouts.md) | 04 | completed |
 | [14-float32-round-to-nearest.md](./subtasks/14-float32-round-to-nearest.md) | 06, 07 | completed |
 | [12-final-alignment.md](./subtasks/12-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14 | pending |
