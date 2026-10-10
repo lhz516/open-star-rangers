@@ -31,6 +31,13 @@ class AddressSpace:
             if type(value) is not int or not 0 <= value < UINT32_END:
                 raise BaselineError("base-invalid", "address-space")
 
+    def linear(self, offset, size):
+        """Linear address of `size` bytes at a segment offset (e.g. a register value plus a displacement), or None
+        when they do not lie inside the segment."""
+        if offset < 0 or offset + size - 1 > self.limit or self.base + offset + size > UINT32_END:
+            return None
+        return self.base + offset
+
 
 @dataclass(frozen=True)
 class WindowRead:
@@ -279,7 +286,7 @@ def prove_mapping(image, window, match, read, space, owner):
 def check_recipe_image(recipe, image):
     """Recipe locations against the verified LE image, before any session side effect."""
     for field in recipe.fields.values():
-        if field.address.object is None:  # `low`: a linear address in page 0, bounded when parsed
+        if field.address.object is None:  # register-relative: located at the stop; `low`: bounded when parsed
             continue
         obj = image.object(field.address.object)
         first = 4 if field.address.pointers else field.size

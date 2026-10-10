@@ -1,13 +1,13 @@
 """Measurement recipe, schemaVersion 1: parsing and validation before any session side effect (P3-01 spec, tool data
 contract).
 
-A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, LE object
-locations (or `low` linear addresses in page 0, the real-mode vectors and BIOS data area), scalar types, unit labels
-and run limits, plus the few allowlisted settings of its private copy (fixed
-emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06 subtask 22):
-at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field (`inputs.py`).
-Every key is known, every value has a fixed JSON type and every string is a restricted token, so a recipe cannot carry
-expressions, debugger commands or shell strings.
+A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, field
+locations (LE objects, registers at a breakpoint stop, or `low` linear addresses in page 0, the real-mode vectors and
+BIOS data area), scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy
+(fixed emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06
+subtask 22): at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field
+(`inputs.py`). Every key is known, every value has a fixed JSON type and every string is a restricted token, so a
+recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
 import json
@@ -30,7 +30,7 @@ SCALAR_RANGES = {"u8": (0, 0xFF), "u16": (0, 0xFFFF), "u32": (0, 0xFFFFFFFF), "i
 POINTER_SIZE = 4
 STOP_KINDS = ("breakpoint", "vrt")
 STIMULUS_KINDS = ("key", "shift", "device")
-REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a device field addressed from a register at a breakpoint
+REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register at a breakpoint
 # Bytes one stimulus reads and writes, for the static budget check: key: buffer pointers and bounds, then the slot
 # and the tail each read before, written and read back; shift: the flags, then the same three; device: three times.
 KEY_STIMULUS_BYTES = 4 + 4 + 3 * (2 + 2)
@@ -69,9 +69,15 @@ class Location:
 
 @dataclass(frozen=True)
 class Address:
-    object: object  # LE object number, or None for a linear address in page 0 (`low`)
-    offset: int
+    object: object  # LE object number, or None for a register address or a linear address in page 0 (`low`)
+    offset: int  # object offset, the signed offset from the register value, or the linear address in page 0
     pointers: tuple  # non-negative offsets added to each dereferenced 32-bit pointer
+    register: object = None  # register name at a breakpoint stop (EAX ... ESP), or None
+
+    @property
+    def low(self):
+        """A `{"low": n}` field address: a linear address in page 0, neither an LE object nor a register."""
+        return self.object is None and self.register is None
 
 
 @dataclass(frozen=True)
@@ -414,24 +420,23 @@ def _fields(value, limits):
         required = item.get("required", True)
         if type(required) is not bool:
             raise BaselineError("recipe-type-invalid", path + ".required")
+        where = path + ".address"
         if type(item["address"]) is dict and "low" in item["address"]:  # linear page 0: vectors, BIOS data area
-            address = _object(item["address"], path + ".address", ("low",))
-            location = Address(None, _int(address["low"], path + ".address.low", 0, PAGE_SIZE - SCALAR_SIZES[kind],
+            address = _object(item["address"], where, ("low",))
+            location = Address(None, _int(address["low"], where + ".low", 0, PAGE_SIZE - SCALAR_SIZES[kind],
                                           "recipe-address-invalid"), ())
             fields[field_id] = Field(field_id, location, kind, unit, required)
             continue
-        address = _object(item["address"], path + ".address", ("object", "offset"), ("pointers",))
+        address = _object(item["address"], where, ("offset",), ("object", "register", "pointers"))
         pointers = address.get("pointers", [])
         if type(pointers) is not list:
-            raise BaselineError("recipe-type-invalid", path + ".address.pointers")
+            raise BaselineError("recipe-type-invalid", where + ".pointers")
         if len(pointers) > limits.max_chain_depth:
-            raise BaselineError("recipe-budget-exceeded", path + ".address.pointers")
-        first = POINTER_SIZE if pointers else SCALAR_SIZES[kind]
-        location = Address(
-            _int(address["object"], path + ".address.object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid"),
-            _int(address["offset"], path + ".address.offset", 0, UINT32_END - first, "recipe-address-invalid"),
-            tuple(_int(pointer, f"{path}.address.pointers[{hop}]", 0, UINT32_END - 1, "recipe-address-invalid")
-                  for hop, pointer in enumerate(pointers)))
+            raise BaselineError("recipe-budget-exceeded", where + ".pointers")
+        hops = tuple(_int(pointer, f"{where}.pointers[{hop}]", 0, UINT32_END - 1, "recipe-address-invalid")
+                     for hop, pointer in enumerate(pointers))
+        number, register, offset = _base(address, where, POINTER_SIZE if pointers else SCALAR_SIZES[kind])
+        location = Address(number, offset, hops, register)
         fields[field_id] = Field(field_id, location, kind, unit, required)
     return fields
 
@@ -474,6 +479,8 @@ def _pauses(value, fields, limits):
                 raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
             if name in names:
                 raise BaselineError("recipe-id-duplicate", f"{path}.fields[{slot}]")
+            if fields[name].address.register is not None and kind != "breakpoint":  # VRT stops have no register
+                raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
             names.append(name)
         used.update(names)
         pauses.append(Pause(pause_id, Stop(kind, site), tuple(names)))
@@ -481,6 +488,22 @@ def _pauses(value, fields, limits):
         if field_id not in used:
             raise BaselineError("recipe-reference-invalid", field_id)
     return tuple(pauses)
+
+
+def _base(address, where, size):
+    """(LE object, None, offset) or (None, register, signed offset) of a field or device address: exactly one of an
+    LE object location or a register at a breakpoint stop; `size` bytes are read or written first."""
+    if ("object" in address) == ("register" in address):
+        raise BaselineError("recipe-address-invalid", where)
+    if "object" in address:
+        return (_int(address["object"], where + ".object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid"), None,
+                _int(address["offset"], where + ".offset", 0, UINT32_END - size, "recipe-address-invalid"))
+    register = address["register"]
+    if type(register) is not str:
+        raise BaselineError("recipe-type-invalid", where + ".register")
+    if register not in REGISTERS:
+        raise BaselineError("recipe-value-invalid", where + ".register")
+    return None, register, _int(address["offset"], where + ".offset", *REGISTER_OFFSETS, "recipe-address-invalid")
 
 
 def _devices(value):
@@ -500,22 +523,8 @@ def _devices(value):
         if kind not in SCALAR_RANGES:  # the integer scalar types
             raise BaselineError("recipe-value-invalid", path + ".type")
         where = path + ".address"
-        address = _object(item["address"], where, ("offset",), ("object", "register"))
-        if ("object" in address) == ("register" in address):
-            raise BaselineError("recipe-address-invalid", where)
-        if "object" in address:
-            number = _int(address["object"], where + ".object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid")
-            register = None
-            offset = _int(address["offset"], where + ".offset", 0, UINT32_END - SCALAR_SIZES[kind],
-                          "recipe-address-invalid")
-        else:
-            number = None
-            register = address["register"]
-            if type(register) is not str:
-                raise BaselineError("recipe-type-invalid", where + ".register")
-            if register not in REGISTERS:
-                raise BaselineError("recipe-value-invalid", where + ".register")
-            offset = _int(address["offset"], where + ".offset", *REGISTER_OFFSETS, "recipe-address-invalid")
+        number, register, offset = _base(_object(item["address"], where, ("offset",), ("object", "register")), where,
+                                         SCALAR_SIZES[kind])
         devices[device_id] = Device(device_id, number, register, offset, kind)
     return devices
 

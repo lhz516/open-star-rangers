@@ -7,7 +7,7 @@ import struct
 import unittest
 
 from le_image import LeImage
-from locate import AddressSpace
+from locate import AddressSpace, check_recipe_image
 from qualify import (PauseEvidence, ReadBudget, ReadResult, StopProof, collect_pause, judge_pause, read_error)
 from reasons import REASON_SET, BaselineError
 from recipe import exe_fingerprint, parse_recipe
@@ -99,6 +99,43 @@ class QualifyTests(unittest.TestCase):
     def test_pointer_outside_the_address_space_limit(self):
         narrow = dataclasses.replace(self.mapping, space=AddressSpace(0, HEAP + 0x100))
         self.assertOnly(self.judge(mapping=narrow), "chained", "pointer-out-of-range")
+
+    def test_register_relative_fields(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"] += [
+            {"id": "subject", "address": {"register": "ESI", "offset": 0x10, "pointers": [8]}, "type": "u32",
+             "unit": "count"},
+            {"id": "direct", "address": {"register": "EBX", "offset": -8}, "type": "u32", "unit": "count"}]
+        document["pauses"][0]["fields"] += ["subject", "direct"]
+        self.recipe = parse_recipe(json.dumps(document))
+        check_recipe_image(self.recipe, self.image)  # register fields have no LE location to check
+        registers = {"ESI": HEAP, "EBX": HEAP + 0x1010}
+        reads = collect_pause(self.recipe, "start", self.mapping, self.process, ReadBudget(4096), registers)
+        samples = self.judge(reads=reads)
+        self.assertEqual((samples["subject"].value, samples["direct"].value), (99, 99))
+        self.assertTrue(all(sample.qualified for sample in samples.values()))
+        narrow = dataclasses.replace(self.mapping, space=AddressSpace(0, 0x3FFFFFFF))
+        for field, values in (("direct", {"ESI": HEAP, "EBX": 4}),  # below the start of the data segment
+                              ("subject", {"ESI": 0x3FFFFFFD - 0x10, "EBX": HEAP + 0x1010})):  # crosses its limit
+            with self.subTest(field=field):
+                reads = collect_pause(self.recipe, "start", narrow, self.process, ReadBudget(4096), values)
+                self.assertOnly(self.judge(mapping=narrow, reads=reads), field, "pointer-out-of-range")
+
+    def test_low_and_register_fields_together(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"] += [
+            {"id": "vector", "address": {"low": 0x2C}, "type": "f32", "unit": "raw"},
+            {"id": "direct", "address": {"register": "EBX", "offset": -8}, "type": "u32", "unit": "count"}]
+        document["pauses"][0]["fields"] += ["vector", "direct"]
+        self.recipe = parse_recipe(json.dumps(document))
+        check_recipe_image(self.recipe, self.image)  # neither kind has an LE location to check
+        self.process.poke(0x2C, struct.pack("<f", 12.5))
+        registers = {"EBX": HEAP + 0x1010}
+        reads = collect_pause(self.recipe, "start", self.mapping, self.process, ReadBudget(4096), registers)
+        samples = self.judge(reads=reads)
+        self.assertEqual((samples["vector"].value, samples["direct"].value), (12.5, 99))
+        self.assertTrue(all(sample.qualified for sample in samples.values()))
+        self.assertEqual([read for read in self.process.reads if read == (0x2C, 4)], [(0x2C, 4), (0x2C, 4)])
 
     def test_fault_markers_and_short_reads(self):
         self.process.faults.add((HEAP + 0x1008) // 4096)

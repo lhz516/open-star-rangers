@@ -345,6 +345,36 @@ class SessionTests(unittest.TestCase):
         self.assertTerminalSafe(box)
         self.assertTrue(box.unchanged_outside_run())
 
+    def test_register_relative_fields_are_read_at_the_stop(self):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        document = box.document
+        document["fields"].append({"id": "subject", "address": {"register": "ESI", "offset": 0x10, "pointers": [8]},
+                                   "type": "u32", "unit": "count"})
+        document["pauses"][0]["fields"].append("subject")
+        box.write_recipe(document)
+        box.debugger.registers["ESI"] = HEAP
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["planned"]), ("complete", 11))
+        values = {(item["pause"], item["field"]): item["value"] for item in report["samples"]}
+        self.assertEqual(values[("start", "subject")], 99)
+        stop = json.loads((box.run_dir / "pauses/start/stop.json").read_text())
+        self.assertTrue(stop["registersUnchangedAfterReads"])
+        self.assertTrue(box.unchanged_outside_run())
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        box.write_recipe(document)
+        box.debugger.hide_registers = {"ESI"}  # a register pane without the addressed register
+        self.assertIn("debugger-unparsed", self.assertFailed(box, "debugger-unparsed")["reasons"])
+        box = self.stimulus_box()  # the same for a register-addressed device written at that stop
+        box.debugger.hide_registers = {"ESI"}
+        self.assertIn("debugger-unparsed", self.assertFailed(box, "debugger-unparsed")["reasons"])
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario={"ds_limit": 0x3FFFFFFF})
+        box.write_recipe(document)
+        box.debugger.registers["ESI"] = 0x3FFFFFFD - 0x10  # the pointer read would cross the DS limit
+        report = self.assertFailed(box, "pointer-out-of-range", sample=True)
+        subject = next(item for item in report["samples"] if item["field"] == "subject")
+        self.assertEqual((subject["status"], subject["reasons"]), ("unqualified", ["pointer-out-of-range"]))
+
     def test_stimulus_rejections_end_the_run(self):
         box = self.stimulus_box(head=0x1E, tail=0x20)
         self.assertStimulusFailed(box, "stimulus-rejected", "key-buffer-busy")
