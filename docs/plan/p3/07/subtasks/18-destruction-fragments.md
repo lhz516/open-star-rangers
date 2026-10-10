@@ -69,6 +69,10 @@ updated: 2026-10-10
 - `src/core/rules/fragments.test.ts`：碎片测试（新建）。
 - `src/core/rules/movement-builders.ts`：`0x218e8` 的模式 2 与 `spinning` 来源（14 新建）。
 - `src/core/rules/movement-builders.test.ts`：构造测试。
+- `src/core/world/entity-table.ts`：逃生舱判定按种类位 0、1（玩家、僚机），修正 11 的种类位误用。
+- `src/core/world/entity-table.test.ts`：逃生舱测试的种类位。
+- `src/core/systems/pipeline.test.ts`：`delayed-player-explosion` 的 `run`、碎片请求的路由与爆炸生命周期对既有断言的影响。
+- `docs/original/formats/executable.md`：X6 的指令级舍入次序与 `0x218e8` 模式 2 的事实（已确认，代码）。
 
 ## 验收标准
 
