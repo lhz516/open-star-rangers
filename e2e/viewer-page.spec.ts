@@ -5,21 +5,30 @@ import { MARKER } from '../src/original-data/disc/disc.test-support.ts';
 import { computeViewportLayout } from '../src/render/viewport/viewport-layout.ts';
 import type { ViewerItem } from '../src/render/viewer/viewer-renderer.ts';
 import { applyViewAction, INITIAL_VIEW, type ViewerView } from '../src/render/viewer/viewer-view.ts';
+import { CHECKER_GREYS } from '../src/render/viewer/viewer-presentation.ts';
 import { variantLabel } from '../src/ui/viewer/viewer-copy.ts';
 import { productionCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
 import { button, discFiles, expectNoPlayClaim, openTestEntry, sliceFiles } from './support/app-entry.ts';
-import { installAudioProbe } from './support/audio-playback.ts';
+import { audioSources, installAudioProbe } from './support/audio-playback.ts';
+import { test as audited } from './support/audited-test.ts';
 import { expect, test } from './support/browser-test.ts';
 import { frameWindow } from './support/demo-observations.ts';
 import { installedBrowser } from './support/environment.ts';
+import { expectedPackage, ResourceBalance, settleTooling } from './support/resource-balance.ts';
 import { loadCacheModules, seedPackage } from './support/resource-cache.ts';
 import {
-  entryButton, expectSamples, firstEntry, maxDrawingBufferSize, modelsEntries, modelsPackage, openViewer, pictureOf, pictureSamples,
-  solidSamples, viewerDiagnostics, type Sample, type ViewerDiagnostics,
+  decodedSound, expectNewImages, expectSilentVoices, NEW_DATA_ROLES, NEW_SOUND_ROLES, newDataIds, openHeldViewer, playSound, REPEAT_SOUND,
+  soundsByRole,
+} from './support/version-4.ts';
+import {
+  checkerNeighbours, entryButton, expectSamples, firstEntry, maxDrawingBufferSize, modelsEntries, modelsPackage, openViewer, pictureOf,
+  pictureSamples, solidSamples, viewerDiagnostics, type Sample, type ViewerDiagnostics,
 } from './support/viewer-observations.ts';
 
 // P2-11 subtask 11 (AC-10 to AC-15, AC-18, AC-24): the resource viewer of the production App on the development test
 // entry, after importing the synthetic `models` scenario. Expected values come from the same package converted in Node.
+// P3-03/20 (AC-17) adds the version 4 flow: import, save, reload and restore, the new images and sounds, under the
+// network audit and the menu's resource balance; version-4-viewer.spec.ts repeats the viewer part in the preview.
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -376,9 +385,12 @@ test('controls answer the keyboard, keys turn and zoom only the focused picture,
 });
 
 test('lays the picture out by the 4:3 rule in wide and narrow windows at two pixel ratios, with the same pixels (AC-24)', async ({ browser, baseURL }) => {
-  // The missile image, an opaque picture; the masked explosion frames that now come first are P3-03/20's.
-  const image = await firstEntry('image', 'missile');
+  // The first image, a masked explosion frame: its samples cover opaque texels and the checkerboard behind transparent
+  // ones, whose squares are a fixed number of drawing-buffer pixels at each pixel ratio.
+  const image = await firstEntry('image');
+  expect(image.entry.role).toBe('explosion-frame');
   const picture = pictureOf(image.resolved.item(0)!);
+  const isGrey = ({ rgb }: Sample) => CHECKER_GREYS.some(grey => rgb.every(channel => channel === grey));
   for (const deviceScaleFactor of [1, 2]) {
     const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 }, deviceScaleFactor });
     try {
@@ -397,7 +409,11 @@ test('lays the picture out by the 4:3 rule in wide and narrow windows at two pix
           return { left: inner.left - outer.left, top: inner.top - outer.top, width: inner.width, height: inner.height };
         });
         expect(canvas).toEqual(layout!.frame);
-        await expectSamples(page, layout!, pictureSamples(picture, placement!));
+        const grid = pictureSamples(picture, placement!);
+        const samples = [...grid, ...checkerNeighbours(picture, placement!, grid)];
+        expect(new Set(samples.filter(isGrey).map(({ rgb }) => rgb[0])), 'both checkerboard greys').toEqual(new Set(CHECKER_GREYS));
+        expect(samples.some(sample => !isGrey(sample)), 'an opaque texel').toBe(true);
+        await expectSamples(page, layout!, samples);
       }
     } finally {
       await context.close();
@@ -427,4 +443,80 @@ test('keeps the lists, the mission and the sounds in a browser without WebGL (AC
   } finally {
     await browser.close();
   }
+});
+
+audited('imports the version 4 package, saves it, restores it after a reload, and shows its new images and sounds (P3-03 AC-17)', async ({ page, audit }, testInfo) => {
+  audit.canaries({ name: 'file-name', value: MARKER });
+  await page.addInitScript(installAudioProbe);
+  await openTestEntry(page);
+  const status = page.getByTestId('original-data-status');
+  await expect(status).toHaveText('Original game data: None in this browser.');
+  const { sourceFingerprint, converterVersion } = await page.evaluate(() => window.osrTestEntry!.profile);
+  await settleTooling(page);
+  const balance = await ResourceBalance.start(page, testInfo, { packages: [] });
+
+  await button(page, 'Import original game data').click();
+  await page.locator('#import-files').setInputFiles(await sliceFiles());
+  await button(page, 'Start import').click();
+  await audit.ready();
+  await expect(page.getByTestId('import-statuses').locator('li')).toHaveText([
+    'Source identified', 'Complete resources, viewable', /^Saved in this browser \(saved in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core',
+  ], { timeout: 60_000 });
+  await button(page, 'Return to menu').click();
+  await expect(status).toHaveText('Original game data: Resources are held in this page.');
+  balance.expectPackages([expectedPackage({ originType: 'original-import', originToken: sourceFingerprint, converterVersion }, await modelsPackage())]);
+  await balance.check('imported and saved');
+
+  await balance.beforeReload();
+  await page.reload();
+  await expect(status).toHaveText('Original game data: Saved resources found in this browser, not yet verified.');
+  await settleTooling(page);
+  await balance.rebaseline();
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText([
+    'Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core',
+  ]);
+  await openHeldViewer(page);
+
+  // The new images, pixel for pixel; the new data Assets are not listed.
+  await expectNewImages(page);
+  const listed = await page.evaluate(() => [...document.querySelectorAll('[data-testid="viewer-entries"] button')].map(item => item.textContent ?? ''));
+  const hidden = await newDataIds();
+  expect(hidden.length).toBeGreaterThanOrEqual(NEW_DATA_ROLES.length);
+  for (const id of hidden) expect(listed.filter(text => text.startsWith(`${id} (`)), id).toEqual([]);
+
+  // Every new sound is listed; a new one-shot waveform plays its exact samples and ends.
+  const byRole = await soundsByRole();
+  const playable = await page.evaluate(() => [...document.querySelectorAll('[data-testid="viewer-sounds"] button')]
+    .map(item => item.getAttribute('aria-label') ?? '').filter(label => label.startsWith('Play ')));
+  for (const [role, count] of Object.entries(NEW_SOUND_ROLES)) {
+    expect(byRole.get(role), role).toHaveLength(count);
+    for (const id of byRole.get(role)!) expect(playable).toContain(`Play ${id}`);
+  }
+  const hud = await Promise.all(byRole.get('hud-sound')!.map(async id => ({ id, decoded: await decodedSound(id) })));
+  const { id: waveform, decoded } = hud.find(({ decoded: { loop } }) => loop === 'none')!;
+  const source = await playSound(page, waveform);
+  const { sampleRate, length, channels } = source;
+  expect({ sampleRate, length, channels }, waveform).toEqual(decoded.buffer);
+  expect(source).toMatchObject({ loop: false, start: { when: null } });
+  await expectSilentVoices(page);
+  expect((await audioSources(page)).at(-1)!.stops, 'it ends by itself').toEqual([]);
+
+  // The repeat event sound: one looping source over the whole buffer, stopped by schedule after its passes, which
+  // ends by itself.
+  const { plays, pass, buffer } = await decodedSound(REPEAT_SOUND);
+  expect(plays).toBeGreaterThan(1);
+  const repeat = await playSound(page, REPEAT_SOUND);
+  await expectSilentVoices(page);
+  expect({ sampleRate: repeat.sampleRate, length: repeat.length, channels: repeat.channels }).toEqual(buffer);
+  expect(repeat).toMatchObject({ loop: true, loopStart: 0, loopEnd: 0 });
+  const stops = (await audioSources(page)).at(-1)!.stops;
+  expect(stops.map(({ when }) => (when === null ? 'now' : 'scheduled')), 'no stop beyond the scheduled one').toEqual(['scheduled']);
+  expect(stops[0].when).toBeCloseTo(repeat.start.when! + plays * pass, 9);
+
+  await button(page, 'Return to menu').click();
+  await expect(button(page, 'View resources')).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.osrAudioProbe.contexts())).toEqual(['closed']);
+  await balance.check('after the viewer and the auditions');
+  await balance.attach();
 });

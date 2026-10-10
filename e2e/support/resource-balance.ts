@@ -253,6 +253,13 @@ async function readBalance(page: Page, label: string, cache: boolean): Promise<B
 }
 
 /**
+ * Lets Playwright set up its own listeners in the page's current document before a menu baseline: its main-world
+ * script, created on first use and kept for the document, registers capture listeners on `window` that the probes
+ * count as test registrations.
+ */
+export const settleTooling = (page: Page): Promise<void> => page.locator('body').evaluate(() => undefined);
+
+/**
  * Resource balance of one page across its documents. `start` takes the menu baseline; `check` waits up to its timeout
  * for the page to return to it. Before a reload, `beforeReload` checks and keeps the release evidence; after it,
  * `rebaseline` takes the new document's baseline, and refuses to unless that evidence was kept. All reports stay in the

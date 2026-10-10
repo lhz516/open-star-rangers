@@ -404,9 +404,11 @@ export type StoredDamage = 'not-found' | 'cache-corrupt' | 'cache-incompatible';
 /**
  * Damages the package stored under `key` from the test's own connection, as the browser clearing it, a damaged disk or
  * a newer version in another tab could: deletes its package and payload records, flips the first byte of one payload,
- * or rewrites its package record as format version 2. The database must exist; it is never created or upgraded.
+ * or rewrites its package record as format version 2. With `sliceDefinitionVersion`, `cache-incompatible` instead
+ * rewrites every group's identity to name that slice definition, as a release with it wrote the record (P3-03 AC-15).
+ * The database must exist; it is never created or upgraded.
  */
-export const damageStoredPackage = (page: Page, key: ResourceCacheKey, damage: StoredDamage): Promise<void> => page.evaluate(async ({ database, packageKey, damage }) => {
+export const damageStoredPackage = (page: Page, key: ResourceCacheKey, damage: StoredDamage, sliceDefinitionVersion?: number): Promise<void> => page.evaluate(async ({ database, packageKey, damage, sliceDefinitionVersion }) => {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(database.name, database.version);
     request.onupgradeneeded = () => { request.transaction?.abort(); };
@@ -434,13 +436,18 @@ export const damageStoredPackage = (page: Page, key: ResourceCacheKey, damage: S
         };
       } else {
         const read = packages.get(packageKey);
-        read.onsuccess = () => { packages.put({ ...(read.result as object), formatVersion: 2 }, packageKey); };
+        read.onsuccess = () => {
+          const record = read.result as { formatVersion: number; groups: { manifest: { identity: { sliceDefinitionVersion: number } } }[] };
+          if (sliceDefinitionVersion === null) record.formatVersion = 2;
+          else for (const { manifest } of record.groups) manifest.identity.sliceDefinitionVersion = sliceDefinitionVersion;
+          packages.put(record, packageKey);
+        };
       }
     });
   } finally {
     db.close();
   }
-}, { database: RESOURCE_CACHE_DATABASE, packageKey: packageRecordKey(key), damage });
+}, { database: RESOURCE_CACHE_DATABASE, packageKey: packageRecordKey(key), damage, sliceDefinitionVersion: sliceDefinitionVersion ?? null });
 
 /** Records every request the page issues while `run` executes. */
 export async function requestsDuring<T>(page: Page, run: () => Promise<T>): Promise<{ result: T; requests: string[] }> {

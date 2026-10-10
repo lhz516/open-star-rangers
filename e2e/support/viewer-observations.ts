@@ -111,7 +111,11 @@ export interface Sample {
  * The bytes of drawing-buffer pixels as composited on the page: a viewport screenshot with the picture area in view,
  * decoded in the page. The canvas sits at the layout's frame inside the area, one buffer pixel per screenshot pixel at
  * the frame's device scale. The area's position is read rather than cropped by an element screenshot, whose clip
- * rounds a fractional position differently from the compositor and can shift every sample by a pixel.
+ * rounds a fractional position differently from the compositor and can shift every sample by a pixel. Chrome draws
+ * the canvas at its position rounded to a whole CSS pixel, then scaled: at a pixel ratio of 2, a canvas at 50.25 CSS
+ * pixels is drawn from device row 100, and one at 50.5 from row 102, not 101 (P3-03/20, measured with a WebGL canvas
+ * at eighth-pixel offsets). Rounding the device position instead shifted the frame by a row at fractional positions,
+ * which only texels larger than a pixel, such as a checkerboard square's edge, revealed.
  */
 export async function bufferPixels(page: Page, layout: ViewportLayout, points: readonly { readonly x: number; readonly y: number }[]) {
   const area = page.getByTestId('viewer-view');
@@ -133,7 +137,7 @@ export async function bufferPixels(page: Page, layout: ViewportLayout, points: r
     }
   }, {
     bytes: [...screenshot],
-    origin: { x: Math.round((left + layout.frame.left) * layout.pixelRatio), y: Math.round((top + layout.frame.top) * layout.pixelRatio) },
+    origin: { x: Math.round(left + layout.frame.left) * layout.pixelRatio, y: Math.round(top + layout.frame.top) * layout.pixelRatio },
     points: points.map(({ x, y }) => ({ x, y })),
   });
 }
@@ -172,6 +176,38 @@ export function pictureSamples(picture: ExpandedImage, placement: PicturePlaceme
     samples.push({ x, y, rgb: opaque ? [rgba[at], rgba[at + 1], rgba[at + 2]] : [grey, grey, grey] });
   }
   return samples;
+}
+
+/** The texel of `picture` placed at `placement` that buffer pixel (x, y) shows, by nearest sampling. */
+const texelAt = ({ width, height }: ExpandedImage, placement: PicturePlacement, x: number, y: number): number =>
+  Math.floor(((y + 0.5 - placement.top) * height) / placement.height) * width + Math.floor(((x + 0.5 - placement.left) * width) / placement.width);
+
+const isCheckerGrey = (rgb: readonly number[]): boolean => CHECKER_GREYS.some(grey => rgb.every(channel => channel === grey));
+
+/** `pictureSamples` plus one opaque texel that is not a checkerboard grey, so content, not only background, is read. */
+export function contentSamples(picture: ExpandedImage, placement: PicturePlacement): Sample[] {
+  const { width, height, rgba } = picture;
+  const at = rgba.findIndex((alpha, index) => index % 4 === 3 && alpha === 255 && !isCheckerGrey([...rgba.subarray(index - 3, index)]));
+  if (at < 3) throw new Error('The picture has no opaque texel outside the checkerboard greys');
+  const texel = (at - 3) / 4;
+  return [...pictureSamples(picture, placement), {
+    x: Math.floor(placement.left + ((texel % width + 0.5) * placement.width) / width),
+    y: Math.floor(placement.top + ((Math.floor(texel / width) + 0.5) * placement.height) / height),
+    rgb: [rgba[at - 3], rgba[at - 2], rgba[at - 1]],
+  }];
+}
+
+/**
+ * For each checkerboard sample of `samples`, the pixel one checkerboard square to its right when that still shows a
+ * transparent texel: the other grey, so that both greys and the squares' phase are read.
+ */
+export function checkerNeighbours(picture: ExpandedImage, placement: PicturePlacement, samples: readonly Sample[]): Sample[] {
+  return samples.filter(({ rgb }) => isCheckerGrey(rgb)).flatMap(({ x, y, rgb: [grey] }) => {
+    const right = x + CHECKER_SQUARE;
+    if (right >= placement.left + placement.width || picture.rgba[texelAt(picture, placement, right, y) * 4 + 3] === 255) return [];
+    const other = CHECKER_GREYS.find(value => value !== grey)!;
+    return [{ x: right, y, rgb: [other, other, other] as const }];
+  });
 }
 
 /** The item drawn in Node by the viewer's renderer on a surface of the page's size, and the recording of that draw. */
