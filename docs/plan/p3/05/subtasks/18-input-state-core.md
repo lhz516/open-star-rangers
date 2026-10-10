@@ -44,13 +44,23 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 轴、Ctrl 路由、AltGr、主炮电平与上下文清零符合契约（AC-03、AC-04 的 Node 部分）。
-- [ ] 重复的起点、到期、每帧至多一次、不追赶与全部取消条件按精确时钟断言（AC-06 的纯逻辑部分）。
-- [ ] 拦截优先级矩阵逐项成立（AC-11 的 Node 部分）；本地清理不复活旧状态（AC-13 的本地部分）。
-- [ ] 模块 DOM-free；`pnpm exec vitest run src/ui/game-input` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；`pnpm typecheck` 与 `pnpm lint` 通过。
+- [x] 轴、Ctrl 路由、AltGr、主炮电平与上下文清零符合契约（AC-03、AC-04 的 Node 部分）。
+- [x] 重复的起点、到期、每帧至多一次、不追赶与全部取消条件按精确时钟断言（AC-06 的纯逻辑部分）。
+- [x] 拦截优先级矩阵逐项成立（AC-11 的 Node 部分）；本地清理不复活旧状态（AC-13 的本地部分）。
+- [x] 模块 DOM-free；`pnpm exec vitest run src/ui/game-input` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；`pnpm typecheck` 与 `pnpm lint` 通过。
 
 ## 验证方法
 
 - Node 测试以合成事件、合成 projection 时钟与测试绑定表驱动。
 
 ## 完成证据
+
+- **动作与匹配（[input-action.ts](../../../../../src/ui/game-input/input-action.ts)）：** `InputAction` 为 `steer`（轴 `pitch`/`yaw`/`roll` 与方向 ±1，按 `TickAxes` 的符号）、`primary-fire`、`command`（Core `Command`）、`session`（`toggle-pause`/`open-menu`）与 `gap`（`G-08`/`G-09`/`G-10`）；`Binding` 带 `code`、`shift`/`ctrl`（有效 Ctrl）/`numLock` 的 `true`/`false`/`'any'` 规则、`contexts`、`action`、`repeatable` 与 `source`（`original`/`project`/`gap`）。`createBindingTable` 复制并深冻结条目，载入时拒绝空 code、空/重复/未知上下文、非命令的可重复项、操纵出现在 flight/warp 以外或主炮出现在 flight 以外（spec 输入上下文：map/base 轴恒为 0、无主炮），以及任何冲突；`findBindingConflicts` 报告同一 code、重叠上下文、Shift/Ctrl/NumLock 规则重叠的每对条目（供 19 的矩阵测试）。`resolve` 只按 code、修饰与上下文匹配，不读 `key`/`keyCode`；`bound` 不看上下文，供页面拦截。Alt 不是匹配修饰，Meta 与组合输入在匹配前拒绝。
+- **本地状态（[input-state.ts](../../../../../src/ui/game-input/input-state.ts)）：** `InputState` 接收规范化事件与 `InputMoment { eligible, running, runId, context, clock }`（consumer 每次从最新完整 projection 读取），返回 `{ action, intentChanged, preventDefault }`；`frame(moment)` 返回到期重复，`cancelRepeat(code)` 供同步提交失败，`sync`/`clear` 供状态通知与失焦。资格由真变假、离开 running、换运行或换上下文都清空按住表、Ctrl/Alt 跟踪与重复；非 running 时只接受会话控制。已按住的操纵键每次按当前有效修饰重新解析，因此有效 Ctrl 把左右键路由到横滚、否则偏航，另一轴为 0，俯仰不变，Shift 与 Alt 不改变；同轴相反键按位记录，结果与次序无关。主炮只由解析为 `primary-fire` 的新按下建立；`altKey=false` 释放左 Alt，`altKey` 与 `altGraph` 都为假才释放右 Alt。AltGr：观察到的右 Alt、AltGraph 标志，或没有观察到左 Alt 的 Alt 标志期间，只有观察到的 `ControlRight` 算 Ctrl；此期间见到的左或无法识别的 Ctrl 保持屏蔽，直到不再有这样的 Ctrl（`ctrlKey=false` 或其 keyup），因此 Alt 释放后不残留。被屏蔽的 Ctrl 在匹配与拦截中都视为没有 Ctrl（AltGr+Enter 为 `confirm-selection`）。Meta 与组合输入不启动动作；带组合标志的事件取消按住与重复；keyup 始终释放。
+- **重复（[key-repeat.ts](../../../../../src/ui/game-input/key-repeat.ts)）：** 首次新按下由 consumer 立即提交，`KeyRepeat` 以按下时的 `clock` 为起点 c，c+32 到期；每次 `due(clock)` 每键至多一次，下次到期为观察值 +16，按开始次序返回，不追赶。`InputState` 只在 running 且合格的帧中询问；松开、决定动作的 Shift/有效 Ctrl/NumLock 改变（重新解析的条目不同即取消，恢复修饰不复活）、上下文、资格、暂停、停止、换运行、`clear` 与 `cancelRepeat` 都取消；Alt 不是匹配修饰，不影响重复身份。
+- **拦截（[page-intercept.ts](../../../../../src/ui/game-input/page-intercept.ts)）：** `shouldPreventDefault` 按优先级 1–4 给出唯一决定：无资格（含过期回调）、组合、Meta 组合与 Meta 键、Tab、F12 放行；Alt 键本身与带 Alt/AltGraph 标志的事件拦截（不论 Ctrl 标志）；之后 Escape 放行，有效 Ctrl 组合只在已绑定时拦截，其余已绑定（任一上下文）、刚释放按住键的 keyup 与 F1–F11 拦截；其他放行。`InputState` 先释放再判定。
+- **测试：** `pnpm exec vitest run src/ui/game-input`：4 个文件 116 个用例通过（input-action 23、input-state 58、key-repeat 7、page-intercept 28），都用 [game-input.test-support.ts](../../../../../src/ui/game-input/game-input.test-support.ts) 的合成事件、合成 moment 与测试绑定表（形同 spec 草案，注明不是生产数据）。覆盖：四个方向键、相反键两种次序、Ctrl 路由（按住中按下/松开 Ctrl、带 Ctrl 按下）、Shift/Alt 不改变操纵、Warp 有轴无主炮、map/base 不登记操纵与开火、暂停中只有会话控制；上下文切换清零且回到飞行不恢复（帧与按键两种途径）；主炮只由新按下建立、双 Alt、漏掉的 Alt keyup 由标志释放、AltGraph 保持右 Alt、失焦后 repeat/`altKey`/focus 不恢复、Alt 不阻止其他绑定；AltGr 的 CtrlLeft→AltRight 按下与两种抬起次序（已按住操纵键、Enter 为 confirm-selection、不残留 Ctrl）、Alt 释放后被屏蔽的左 Ctrl 直到其释放、AltGraph 标志与未观察到的 Alt、无 AltGraph 标志但观察到右 Alt、明确的 ControlRight 保留 Ctrl、观察到的左 Alt 不屏蔽、无 Ctrl/Alt 标志的 AltGr、孤立 Ctrl 无命令；新按下一个动作、repeat 与重复 keydown 无动作、G 项与会话控制、map 中 Esc 无动作且不拦截、不读 `key`/`keyCode`；Meta/组合不启动但 keyup 释放、组合开始取消意图与重复；重复的精确时钟（c+32、每帧至多一次、+16、迟到帧不追赶；KeyRepeat 另覆盖每帧 1 tick、0 tick 帧、5 tick 帧与一帧跨多个期限）、同帧按首次按下次序、非 running/不合格帧无重复、十种取消条件（松开、提交失败、暂停、停止帧、失资格、换运行、换上下文、clear、Ctrl 与 Shift 改变后恢复）均须新按下、能量减不会变为加、不决定动作的 Shift 与 Alt 不取消、被屏蔽的合成 Ctrl 不取消、NumLock 改变取消；拦截矩阵（Alt+Tab、Alt+F12、Ctrl+F1、Meta+Alt、AltGr 的 Ctrl 标志、keyup 修饰变化、F1–F11 带与不带 Shift/Ctrl/Meta、Escape、map 中的已绑定键、未绑定 Ctrl 组合）。变异检查：去掉屏蔽的保持、重复取消、Alt 标志释放、未观察 Alt 的屏蔽、ControlRight 例外、组合清除、同步意图报告、按位方向或表的上下文校验，各自使用例失败。
+- **工程检查：** `pnpm typecheck`、`pnpm exec eslint src/ui/game-input` 通过；`pnpm check`（typecheck、lint、233 个文件 7086 个用例、build）通过，本次无超时。模块不使用 DOM 类型或全局对象，只依赖 core 契约类型与 platform 的 `KeyboardInput`。
+- **Rubber-duck：** 无阻塞、非阻塞问题或建议。
+- **Simplify：** 采纳：轴改为按位记录、去掉每次更新的 Map/Set；`KeyRepeat` 改为以 code 为键、节奏常量不导出（行为用例已断言 32/16）；冲突检测与按 code 分组改用索引循环与原地追加；无重复的帧返回共享的冻结结果；“map/base 无轴、主炮只在 flight”从状态中的特例移到建表校验，状态只信任表的上下文。未采纳：不导出 `SessionControl`、`InputGapId`、`BindingSource`（19、20 的契约需要）。
+- **文档影响：** 需更新、归[子任务 32](./32-comparison-docs.md)：[键位文档](../../../../engineering/keyboard-input.md)写明本地状态、Ctrl 路由、AltGr 规范化及其披露的限制（与右 Alt 重叠的真实左 Ctrl 也被屏蔽，直到松开；macOS 右 Option 同样屏蔽左 Ctrl，只有右 Ctrl 可在此期间横滚；Windows 合成的 ControlLeft 先于 AltRight 到达，在那一刻按 Ctrl 计，可能短暂横滚或取消一个无 Ctrl 变体的重复）、拦截优先级与重复节奏；[ui 模块说明](../../../../engineering/modules/ui.md)与[源码结构指南](../../../../engineering/source-structure.md)加入 `src/ui/game-input/`。本子任务的写入范围不含这些文档，未编辑；没有新的原版事实。

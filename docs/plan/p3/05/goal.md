@@ -104,7 +104,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [15-owner-input-control.md](./subtasks/15-owner-input-control.md) | 09 | completed |
 | [16-speed-preset-command.md](./subtasks/16-speed-preset-command.md) | 10 | completed |
 | [17-map-cursor-render.md](./subtasks/17-map-cursor-render.md) | — | completed |
-| [18-input-state-core.md](./subtasks/18-input-state-core.md) | 12 | in-progress |
+| [18-input-state-core.md](./subtasks/18-input-state-core.md) | 12 | completed |
 | [19-binding-table.md](./subtasks/19-binding-table.md) | 08, 11, 16, 18 | pending |
 | [20-input-consumer.md](./subtasks/20-input-consumer.md) | 15, 18 | pending |
 | [21-capability-lifecycle.md](./subtasks/21-capability-lifecycle.md) | 13, 14, 20 | pending |
