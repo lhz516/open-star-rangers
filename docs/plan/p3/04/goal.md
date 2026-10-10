@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | pending |
 | [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | pending |
 | [07-dev-diagnostics.md](./subtasks/07-dev-diagnostics.md) | 04, 05, 06 | pending |
-| [08-replay-check-tool.md](./subtasks/08-replay-check-tool.md) | 01 | pending |
+| [08-replay-check-tool.md](./subtasks/08-replay-check-tool.md) | 01 | in-progress |
 | [09-pages-app-wiring.md](./subtasks/09-pages-app-wiring.md) | 05, 06, 07 | pending |
 | [10-e2e-mission-flow.md](./subtasks/10-e2e-mission-flow.md) | 08, 09 | pending |
 | [11-e2e-lifecycle-resources.md](./subtasks/11-e2e-lifecycle-resources.md) | 10 | pending |
