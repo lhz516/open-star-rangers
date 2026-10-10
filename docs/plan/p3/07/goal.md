@@ -117,7 +117,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37 | pending |
-| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | in-progress |
+| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
@@ -172,6 +172,13 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 从 28 拆出 36：** 26 的正式采样要与 P3-05、P3-06 轮流使用基准环境，耗时较长，27 须等 26 完成后才能开始。28 的大部分内容只依赖已完成的实现，依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把“25 与 27 的结论写入 core.md 的已知差异”拆到 36（依赖 25、27、28），28 改为依赖 24、33 并先行。29 加入对 36 的依赖。
 - **2026-10-10 — 25 已集成：** 真实内容本地核对通过：4 次运行，带与不带僚机各 2 次，每次主炮与导弹各击毁一架开场敌机。武器引用、爆炸与判别值 3 碎片与独立期望一致，15 个期望变体全部检出。导弹计时字段 9/9 非负，世界创建都被接受。没有差异，不需要修复子任务。逃生舱、大型种类永不到期的碎片、被击落的碎片、种类位 8 的敌机与 `speed match-target` 在真实运行中没有出现，只有静态判据；这些分支的原版对照归 27。
 - **2026-10-10 — 从 27 拆出 37：** 26 有 12 个正式配方，与 P3-05、P3-06 轮流使用基准环境，第一次正式运行用时约 47 分钟，全部完成要以小时计。27 的工具与新版一侧不需要等全部样本。依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者新增 37（依赖 09、10、24、25）：先建单次转移工具、独立的 Φ 脚本与新版连续运行，并只读地在已有运行上试运行，试运行不作结论。27 改为依赖 24、26、37，29 加入对 37 的依赖。D-02 判据已获批，37 与 27 都不能修改。
+- **2026-10-10 — 28 已集成：** `core.md` 记录了以下内容：
+  - P3-07 的 API：六项规则数据输入、静态规则数据、`instantiableModelIds`、`CONTENT_INPUT_FIELDS`；
+  - 战斗状态与表现选择器、阶段与玩家更新中的接入点、命令与原因码表、13 种事件与 `TickOrder`、`flight.combat` 与 Render State、版本；
+  - CR-14 的上限依据、CR-11 的十条已批准差异、P3-07 的项目规则与高概率结论；
+  - 给 P3-04、P3-05、P3-06、P3-08 至 P3-14 的交接。
+
+  `source-structure.md` 列出 34 个新模块，`content.md` 新增 Core 消费的规则输入。25、27 的结论留给 36。28 依预先授权的决定记在其完成证据中：左页面 2–5 交 P3-10、6 交 P3-09；碰撞可视化的交接不新增 API；`target-changed` 以高概率列入 P3-14 的音效。
 
 ## 审批
 
