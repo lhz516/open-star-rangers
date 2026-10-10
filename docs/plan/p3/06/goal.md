@@ -79,7 +79,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-motion-integration-research.md](./subtasks/01-motion-integration-research.md) | — | in-progress |
+| [01-motion-integration-research.md](./subtasks/01-motion-integration-research.md) | — | completed |
 | [02-controls-keys-research.md](./subtasks/02-controls-keys-research.md) | — | in-progress |
 | [03-speed-assist-research.md](./subtasks/03-speed-assist-research.md) | — | completed |
 | [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | in-progress |
@@ -107,6 +107,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 
 - **2026-10-10 — 并行执行安排：** 协调者在 `p3-06-flight-motion-spec` 分支（本 worktree）上执行，同时运行的 worker 不超过 3 个（默认）。沿用 P3-01、P3-03 的宿主做法：宿主不能在指定文件夹启动会话，worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-06-NN` 作为认领标记，`local` 以符号链接接入主仓库。原版运行（07、17）与 Computer Use 只由协调者进行。用户在接下来数小时内不能回答问题，并授权：问题按推荐答案处理；需要时修改 spec 与 goal；为解除阻塞新增子任务（2026-10-10，`/orchestrate` 调用）。授权不涵盖总计划与 ADR 中的冻结决定。
 - **2026-10-10 — 03 完成（交 05、06、21）：** 油门不是持久状态（每帧的待发送值，持久的是移动块的指令速度）；速度档位在 Shift+数字的码上，未按 Shift 的数字在飞行中无作用，与键位表“速度 1–9”和 AC-04 的措辞冲突；辅助失去目标时恢复最大油门，spec 未列对应事件；上限降低后 `−` 可越出油门表，须定项目规则；最高速度只在实例化、救援与能量分配变化时重算。这些由 06 在检查点 A 定稿，入档由 21 完成（见 03 的完成证据）。
+- **2026-10-10 — 01 完成（交 05、06、07、08、21）：** 积分从不读实体最高速度：上限降低后当前速度可暂时高于上限，按减速率下降；移动筛选包括停靠与被毁（状态 4）对象，被毁源按最后的角速率与速度继续运动；模式 3 只由玩家 Warp 开始写入，P3-06 可交付其积分、触发留给 P3-09；驾驶舱读取的第三行角速率不在计划的运动 projection 中（交 P3-12/P3-13）；玩家建块姿态为单位矩阵，运动方向为 +z，与放置一节把 z 记为高度的关系交 05。检查点 B 的运算次序与误差来源见 01 的完成证据。
 
 ## 审批
 
