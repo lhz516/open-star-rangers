@@ -27,7 +27,8 @@ function richState(): WorldState {
   const state = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
   constructWorld(state).step(tickInput());
   state.entities.allocate(entityInit(25, { name: { type: 'pool', index: 1 }, side: null, activity: 'parked' }));
-  const runtime = state.entities.allocate(entityInit(25, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } } }));
+  // Active with a movement block, so of a kind with a craft record: movement reads it.
+  const runtime = state.entities.allocate(entityInit(19, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } } }));
   const block = runtime.movement!;
   Object.assign(block.timedRotation, { pitch: { rate: 0.5, decay: -0.25, end: 3 }, yaw: { rate: -1, decay: 0.5, end: 4 }, roll: { rate: 2, decay: -1, end: 5 } });
   block.impulse = { direction: { x: 0, y: 1, z: 0 }, magnitude: 5 };

@@ -3,7 +3,7 @@ import { readAssetId } from '../../content/asset-id.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { constructWorld } from '../world/world.ts';
-import { entityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
+import { entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
 
 const lerp = (from: Vec3, to: Vec3, alpha: number): Vec3 => ({
@@ -79,11 +79,12 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
   it('gives a two-frame consumer what it needs for new, removed and discontinuously moved entities', () => {
     const state = testState();
     const world = constructWorld(state);
-    const player = state.entities.allocate(entityInit(0));
+    // Standing still, so that movement leaves the stand-ins' positions as they set them.
+    const player = state.entities.allocate(stillEntityInit(0));
     state.player.entityId = player.id;
-    const moving = state.entities.allocate(entityInit(3, { position: { x: 0, y: 0, z: 0 } }));
-    const leaving = state.entities.allocate(entityInit(3));
-    const warping = state.entities.allocate(entityInit(5, { position: { x: 0, y: 0, z: 0 } }));
+    const moving = state.entities.allocate(stillEntityInit(3, { position: { x: 0, y: 0, z: 0 } }));
+    const leaving = state.entities.allocate(stillEntityInit(3));
+    const warping = state.entities.allocate(stillEntityInit(5, { position: { x: 0, y: 0, z: 0 } }));
     state.entities.allocate(entityInit(7, { activity: 'parked' }));
     world.step(tickInput());
     const previous = world.renderState();
@@ -93,7 +94,7 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     leaving.state = 'pending-removal';
     warping.position = { x: 5000, y: 0, z: 0 };
     warping.placementSerial += 1;
-    const arriving = state.entities.allocate(entityInit(1, { position: { x: 7, y: 8, z: 9 } }));
+    const arriving = state.entities.allocate(stillEntityInit(1, { position: { x: 7, y: 8, z: 9 } }));
     world.step(tickInput());
     const current = world.renderState();
 

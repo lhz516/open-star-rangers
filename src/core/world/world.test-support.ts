@@ -5,7 +5,7 @@ import { CoreFaultError } from '../errors.ts';
 import { snapshotText, takeSnapshot } from '../replay/snapshot.ts';
 import { initialWorldState } from './create-world.ts';
 import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
-import { initialMovementBlock } from '../rules/flight-state.ts';
+import { craftMovementBlock, initialMovementBlock } from '../rules/flight-state.ts';
 import { allocatorFlightState, type EntityInit, type EntityRuleInputs, type Matrix3 } from './entity-table.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
@@ -63,6 +63,11 @@ export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {})
     movement: active ? initialMovementBlock(TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED) : null,
     ...overrides,
   };
+}
+
+/** Like entityInit, but active with a block at throttle 0: movement leaves its position as a test sets it. */
+export function stillEntityInit(kindBit: number, overrides: Partial<EntityInit> = {}): EntityInit {
+  return entityInit(kindBit, { movement: craftMovementBlock(0, TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED), ...overrides });
 }
 
 export const tickInput = (commands: readonly Command[] = []): TickInput => ({ axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commands] });

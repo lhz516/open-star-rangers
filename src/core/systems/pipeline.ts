@@ -16,6 +16,7 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, initialState, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { moveEntities } from './movement.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 
 /** An internal request of one tick, the counterpart of an original dispatcher message. */
@@ -200,6 +201,11 @@ function checkSpawns(context: TickContext): void {
   checkSpawnQueue(context.world, context.requests);
 }
 
+/** Stage `movement` (`0x221fc`, movement.ts). */
+function move(context: TickContext): void {
+  moveEntities(context.world);
+}
+
 /** Stage 7 (project boundary): seals the tick's events; requests posted since request handling were dropped. */
 function commit(context: TickContext): void {
   Object.freeze(context.events);
@@ -228,8 +234,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('communications-reply', null),
   stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
-  // After the message loop, each once: 0x221fc movement (P3-06), then its collision passes 0x29670 and 0x29934 (P3-07).
-  stage('movement', null),
+  // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
+  stage('movement', move),
   stage('collision', null),
   // 0x23808 (P3-07).
   stage('delayed-player-explosion', null),
