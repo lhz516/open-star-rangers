@@ -128,7 +128,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21, 25, 26, 27 | pending |
 | [24-hud-exe-text-research.md](./subtasks/24-hud-exe-text-research.md) | — | completed |
 | [25-hud-text-payload.md](./subtasks/25-hud-text-payload.md) | 06, 09, 24 | completed |
-| [26-hud-text-assembly.md](./subtasks/26-hud-text-assembly.md) | 25, 27 | pending |
+| [26-hud-text-assembly.md](./subtasks/26-hud-text-assembly.md) | 25, 27 | in-progress |
 | [27-sound-repeat.md](./subtasks/27-sound-repeat.md) | 19 | completed |
 | [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27 | pending |
 
