@@ -17,7 +17,7 @@ updated: 2026-10-10
 ## 工作范围
 
 - **Core 模块说明（[core.md](../../../../engineering/modules/core.md)）：** 记录以下内容：
-  - 新 API：`createWorld`、录制入口与 `ReplayContent` 的五项顶层规则输入（与 P3-06 的 `craftInfo` 并列）及 setupHash 的覆盖字段；
+  - 新 API：`createWorld`、录制入口与 `ReplayContent` 的六项顶层规则输入（与 P3-06 的 `craftInfo` 并列，含 34 的 `aiPrograms`）、静态规则数据中的 `homingPrograms`，以及 setupHash 的覆盖字段；
   - 阶段责任、玩家更新中的接入点与直接创建的例外（CR-07、CR-08）；
   - 实体的战斗状态、移动块的新变体、表现选择器、领域事件、`flight.combat` 与原因码的对应关系；
   - 上限及其依据（CR-14）；

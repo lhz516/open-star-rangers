@@ -18,7 +18,7 @@ updated: 2026-10-10
 
 - **脚本：** 在被忽略的 `local/research/p3-07/real-content/` 写本地核对脚本，按 [P3-02 的真实内容核对](../../02/subtasks/09-real-content-check.md)的做法：
   - 用生产导入作业转换本地 CloneCD 文件组，经 `validatePackage` 取得资源包与 `ContentIdentity`；
-  - 解码三份逻辑 Asset 与六项规则输入（P3-06 的 `craftInfo` 与 CR-01 的五项），用正式 `createWorld` 建世界；
+  - 解码三份逻辑 Asset 与七项规则输入（P3-06 的 `craftInfo` 与 CR-01 的六项，含 34 加入的 `aiPrograms`），用正式 `createWorld` 建世界；
   - `local` 是指向主仓库的符号链接，因此脚本从当前工作目录动态载入被测代码。
 - **运行：** 用已记录的种子与有界的脚本命令（选目标、开火、发射导弹，以及 P3-06 已集成的运动命令）连续运行正式 World。不回写位置或血量，不代入原版逐步前态。带与不带僚机各至少一次。
 - **核对：**

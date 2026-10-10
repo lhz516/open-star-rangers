@@ -53,9 +53,27 @@ updated: 2026-10-10
 
 ## 写入范围
 
-- `src/core/systems/**`：移动、停放与玩家更新的接线及集成测试。
-- `src/core/rules/**`：接线需要的规则函数调整。
-- `src/core/world/world.test-support.ts`：集成测试的辅助。
+协调者 2026-10-10 把原来的 `src/core/systems/**`、`src/core/rules/**` 收窄为下列文件，以便 20（`missiles.ts`）并行；需要其他路径时发 scope-request。
+
+- `src/core/rules/projectile-motion.ts`
+- `src/core/systems/area.ts`
+- `src/core/systems/area.test.ts`
+- `src/core/systems/collision.test.ts`
+- `src/core/systems/destruction.test.ts`
+- `src/core/systems/flight-control.ts`
+- `src/core/systems/flight-control.test.ts`
+- `src/core/systems/movement.ts`
+- `src/core/systems/movement.test.ts`
+- `src/core/systems/parked-engagement.test.ts`
+- `src/core/systems/pipeline.ts`
+- `src/core/systems/pipeline.test.ts`
+- `src/core/systems/projectiles.ts`
+- `src/core/systems/projectiles.test.ts`
+- `src/core/systems/targeting.test.ts`
+- `src/core/systems/weapons.ts`
+- `src/core/systems/weapons.test.ts`
+- `src/core/systems/combat-wiring.test.ts`
+- `src/core/world/world.test-support.ts`
 
 ## 验收标准
 
