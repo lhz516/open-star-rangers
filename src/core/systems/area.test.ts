@@ -7,7 +7,7 @@ import { initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput, type CraftInfoDraft, type WorldInputParts } from '../world/create-world.test-support.ts';
 import type { Entity, EntityInit } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, entityInit, stillEntityInit, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, stillEntityInit, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 
@@ -21,7 +21,7 @@ import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, 
 function worldWith(change: (info: CraftInfoDraft) => void = () => {}, parts: WorldInputParts = { mission: playerOnlyMission() }): WorldState {
   const info = craftInfoContent();
   change(info);
-  const state = initialWorldState(asCreateInput(worldInput({ ...parts, craftInfo: info })));
+  const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ ...parts, craftInfo: info }))));
   state.spawn.queue.length = 0;
   return state;
 }

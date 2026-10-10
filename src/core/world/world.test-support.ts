@@ -13,6 +13,7 @@ import {
   type Matrix3, type SubsystemState,
 } from './entity-table.ts';
 import { initialPlayerControl, initialPlayerTargeting } from './player-state.ts';
+import type { CraftRuleData } from './rule-data.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
 
@@ -38,8 +39,27 @@ export function testConfig(overrides: Partial<WorldConfig> = {}): WorldConfig {
 
 /** An empty world whose spawn queue has drained, with configuration `overrides` (only projections read them). */
 export function testState(overrides: Partial<WorldConfig> = {}): WorldState {
-  const state = drainedState();
+  const state = withEveryKindBound(drainedState());
   return { ...state, config: Object.freeze({ ...state.config, ...overrides }) };
+}
+
+const ORIGIN_BOX = Object.freeze({ lower: Object.freeze({ x: 0, y: 0, z: 0 }), upper: Object.freeze({ x: 0, y: 0, z: 0 }) });
+/** Static rule data no point is inside (one empty box), with no model parts: a craft that never collides and sheds nothing. */
+const UNBOUND_KIND: CraftRuleData = Object.freeze({
+  shape: Object.freeze({ radius: 0, radiusSquared: 0, bounds: ORIGIN_BOX, boxes: Object.freeze([ORIGIN_BOX]), innerBox: null }),
+  mountOffsets: Object.freeze([]),
+  parts: 0,
+  debris: Object.freeze([]),
+});
+
+/**
+ * `state` with static rule data for every craft kind its mission cannot instantiate, which Core tests allocate anyway:
+ * UNBOUND_KIND, so the collision passes (P3-07/19), which read every active craft's shape each tick, find such a craft
+ * in no contact, and a destroyed one explodes holding its source. A created world never holds such a craft.
+ */
+export function withEveryKindBound(state: WorldState): WorldState {
+  const craft = Object.freeze(state.ruleData.craft.map((kind) => kind ?? UNBOUND_KIND));
+  return { ...state, ruleData: Object.freeze({ ...state.ruleData, craft }) };
 }
 
 /** A test maximum speed and craft base: an f32 the block's ratio of 0.5 represents exactly. */

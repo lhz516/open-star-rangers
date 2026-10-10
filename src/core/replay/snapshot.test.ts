@@ -8,7 +8,7 @@ import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
 import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { busyCombat, entityInit, stateText, thrownBy, tickInput } from '../world/world.test-support.ts';
+import { busyCombat, entityInit, stateText, thrownBy, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
@@ -26,7 +26,7 @@ type Mutable = Record<string | number, unknown>;
  * movement block variant. The player state has P3-07's targeting and references set.
  */
 function richState(): WorldState {
-  const state = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
+  const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } }))));
   constructWorld(state).step(tickInput());
   state.entities.allocate(entityInit(12, { name: { type: 'pool', index: 1 }, side: null, activity: 'parked' }));
   const runtime = state.entities.allocate(entityInit(19, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } }, combat: busyCombat(19) }));

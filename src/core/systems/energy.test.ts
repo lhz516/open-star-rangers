@@ -11,7 +11,7 @@ import {
 } from '../world/entity-table.ts';
 import type { LeftPage } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, entityInit, stateText, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, stateText, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { energyStage } from './energy.ts';
 import { registerTick } from './pipeline.ts';
@@ -37,7 +37,7 @@ function energyState(player: Record<string, unknown> = {}): WorldState {
   const info = craftInfoContent();
   Object.assign(info.craft[0], PLAYER_RECORD, player);
   Object.assign(info.craft[OTHER], OTHER_RECORD);
-  const state = initialWorldState(asCreateInput(worldInput({ mission: playerOnlyMission(), craftInfo: info })));
+  const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ mission: playerOnlyMission(), craftInfo: info }))));
   state.spawn.queue.length = 0;
   return state;
 }

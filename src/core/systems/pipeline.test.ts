@@ -62,7 +62,7 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
 
   it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'delayed-player-explosion', 'energy',
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
       'parked-update', 'area-check', 'frame-end', 'commit',
     ]);
   });
@@ -309,11 +309,10 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
 describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
 
-  it('reads the runs of its stages from their rule modules, those not implemented yet without a run', () => {
+  it('reads the runs of its stages from their rule modules', () => {
     expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
       .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
-    expect(collisionStage).toBeNull();
-    expect([typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function']);
+    expect([typeof collisionStage, typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function', 'function']);
   });
 
   /** A craft (1), a missile (2), a projectile (3), a fragment (4) and an explosion (5), all active. */
