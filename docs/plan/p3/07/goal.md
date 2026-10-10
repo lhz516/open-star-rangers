@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "07"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-011, U-021, U-022, U-027, U-031]
 ---
 
@@ -86,9 +86,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-targeting-radar-research.md](./subtasks/01-targeting-radar-research.md) | — | pending |
-| [02-weapons-firing-research.md](./subtasks/02-weapons-firing-research.md) | — | pending |
-| [03-motion-hit-collision-research.md](./subtasks/03-motion-hit-collision-research.md) | — | pending |
+| [01-targeting-radar-research.md](./subtasks/01-targeting-radar-research.md) | — | in-progress |
+| [02-weapons-firing-research.md](./subtasks/02-weapons-firing-research.md) | — | in-progress |
+| [03-motion-hit-collision-research.md](./subtasks/03-motion-hit-collision-research.md) | — | in-progress |
 | [04-damage-energy-research.md](./subtasks/04-damage-energy-research.md) | — | pending |
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | pending |
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | pending |
@@ -119,6 +119,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-10 — 并行执行的 worker 分支：** 本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此 worker 不使用 `exec/p3-07-NN` 分支与 `<primary>.worktrees/exec-p3-07-NN` 目录，而是使用应用为每个 worker 会话创建的 worktree 与分支（基于认领提交，`local` 由仓库的会话脚本链接）。其余照 execute-goal 的并行规则：协调者认领、逐个以 `Worker-Commit:` 拖车集成并清理。协调者在本会话中记录子任务与 worker 会话、分支的对应关系。
 
 ## 审批
 
