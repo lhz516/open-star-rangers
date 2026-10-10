@@ -65,7 +65,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | S-09 | 21、35 | 21：`0x30150` 规则的 Node 测试；35：停放更新接线 |
 | S-10 | 18、12 | 18：爆炸生命周期、判别值 3 碎片与到期的 Node 测试；12：EXPL 帧数一致性的载入检查（EXPL 选择、额外爆炸与判别值 1/2 碎片归表现层，CR-11） |
 | S-11 | 01–07、09、10、26、27、30、31 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；27：R-06 至 R-10 的结论 |
-| S-12 | 28 | 28：Core 模块说明、源码结构与交接；29：链接与元数据 |
+| S-12 | 28、36 | 28：Core 模块说明、源码结构与交接；36：25、27 的结论；29：链接与元数据 |
 | AC-01 | 08、11 | 11：边界测试、合成测试不改、版本拒绝；29：`pnpm check` |
 | AC-02 | 12、34 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
 | AC-03 | 13 | 13：每个候选筛选、并列、模式切换、前方判定与失效的独立期望测试 |
@@ -82,7 +82,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | AC-14 | 25 | 25：本地真实内容两种僚机配置的私有核对 |
 | AC-15 | 01–07、26、30、31 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
 | AC-16 | 09、10、26、27 | 10：判据获批；26：≥2 次合格运行；27：单次转移与连续行为的结论 |
-| AC-17 | 28、33 | 28：模块说明与交接；29：`pnpm check`、链接与 `updated:` |
+| AC-17 | 28、33、36 | 28：模块说明与交接；36：核对结论的已知差异；29：`pnpm check`、链接与 `updated:` |
 
 ## 子任务跟踪
 
@@ -117,14 +117,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | in-progress |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
-| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27, 33 | pending |
+| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | in-progress |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35 | pending |
+| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -167,6 +168,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — D-02 定稿（10）：** 判据按每个链节记录的偏差归一化后精确核对，批准记在 P3-07 spec 的审批节，早于 26 的正式采样与 27 的新版对照。B 文档为 B-009（B-008 由 P3-06 使用）。
 - **2026-10-10 — 22 已集成：** `movement.ts` 的 `motionRecord` 为导弹给出弹体记录（共用 `rules/combat-init.ts` 的 `missileBodyRecord`），导弹经 P3-06 的 `integrateCraft` 运动。流水线次序已符合 H5（引信在对象更新，起爆与 steer 在请求处理，都在移动之前），阶段表未改。`game-session-replay.test.ts` 恢复 `fire secondary`；合成导弹记录的寿命 +0x44 为负（20 的 `initialGuidance` 拒绝），该测试局部把寿命设为 320。负的导弹计时字段由 24 在世界创建时拒绝，25 核对真实内容中没有负值。
 - **2026-10-10 — 24 已集成：** 世界创建以与 `initialGuidance` 共用的判定拒绝可实例化导弹记录的负制导时间（P3-02 CR-01 检查 5 补一句）。内容层把 +0x48 读作 0 至 2³¹−1，负值在内容层已被拒绝，实际到达世界创建检查的只有 +0x44。合成 `missile()` 的寿命默认改为 320，去掉 22 的局部覆盖。比较器在一个 tick 内拒绝同一实体第二次 `object-destroyed` 与被毁后的 `hit`。新增连锁测试（一次死亡、`lost-shooter`、CR-13 交接不伪造、CR-06 跨阶段次序、延迟消费、预算与故障锁存）与战斗 replay 测试；`snapshot.ts`、`limits.ts` 经审阅无遗漏，未改，未发现规则缺陷。
+- **2026-10-10 — 从 28 拆出 36：** 26 的正式采样要与 P3-05、P3-06 轮流使用基准环境，耗时较长，27 须等 26 完成后才能开始。28 的大部分内容只依赖已完成的实现，依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把“25 与 27 的结论写入 core.md 的已知差异”拆到 36（依赖 25、27、28），28 改为依赖 24、33 并先行。29 加入对 36 的依赖。
 
 ## 审批
 
