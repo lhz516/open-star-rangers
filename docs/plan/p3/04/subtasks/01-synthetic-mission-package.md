@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "04"
 subtask: "01"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 01 — 合成任务包与导入场景
@@ -45,6 +45,7 @@ updated: 2026-10-09
 - `src/workers/mission-scenarios.test.ts`：计划新增的 Node 核对。
 - `src/original-data/formats/formats.test-support.ts`：必要时增量扩展 SCEN 样本。
 - `src/content/logic/logic-content.test-support.ts`：必要时增量扩展逻辑合成内容。
+- `docs/engineering/modules/workers.md`：Worker 场景列表与 `sliceCoveredFiles` 选项的说明。
 
 ## 验收标准
 
