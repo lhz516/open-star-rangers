@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-021, U-031]
 ---
 
@@ -83,10 +83,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-synthetic-mission-package.md](./subtasks/01-synthetic-mission-package.md) | — | pending |
-| [02-formal-runtime.md](./subtasks/02-formal-runtime.md) | — | pending |
+| [01-synthetic-mission-package.md](./subtasks/01-synthetic-mission-package.md) | — | in-progress |
+| [02-formal-runtime.md](./subtasks/02-formal-runtime.md) | — | in-progress |
 | [03-formal-session.md](./subtasks/03-formal-session.md) | 02 | pending |
-| [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | pending |
+| [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | in-progress |
 | [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | pending |
 | [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | pending |
 | [07-dev-diagnostics.md](./subtasks/07-dev-diagnostics.md) | 04, 05, 06 | pending |
@@ -104,6 +104,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-10 — 并行执行安排：** 用户以 `/orchestrate` 调用 execute-goal（默认并行，同时运行的 worker 不超过 3 个），并说明“从现在开始，我接下来几个小时都不能接手或回答你的问题。如果有任何问题，你都按你最推荐的回答来做。如果需要修改spec或goal，我都同意。如果要增加新的subtasks来unblock一个subtasks，我也同意。”协调者据此自行决定执行中出现的问题，必要的 spec/goal 修订与新增解除阻塞的子任务记录在本节。协调者在 `p3-04-runtime-session-spec` 分支上执行（本 worktree，`local` 以符号链接接入主仓库的 `local/`）。沿用 P3-01 至 P3-03 的宿主做法：worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-04-NN` 作为认领标记，并同样链接 `local`。执行开始时的基线核对：`pnpm install --frozen-lockfile` 后 `pnpm check` 通过（208 个文件、6,438 个测试与构建）。P3-06、P3-07 的 spec 同时在其他 worktree 中起草，不影响本 goal 的写入范围。
 
 ## 审批
 
