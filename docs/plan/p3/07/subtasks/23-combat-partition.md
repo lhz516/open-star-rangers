@@ -43,6 +43,7 @@ updated: 2026-10-10
 - `src/core/projections/combat.test.ts`：消费者契约测试（新建）。
 - `src/core/projections/projection.ts`：把战斗组接入 `flight`。
 - `src/core/projections/projection.test.ts`：判别测试。
+- `src/core/world/world.test.ts`：`populatedState()` 的玩家实体补上 `targeting`（CR-04 的不变量），不改断言。
 
 ## 验收标准
 
