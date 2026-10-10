@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { COMMAND_TYPES, readTickInput, type Command, type CommandType } from '../contracts/tick-input.ts';
 import type { Entity } from '../world/entity-table.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -11,7 +12,8 @@ import { referenceTarget, selectAutomaticTarget } from './targeting.ts';
 import { updateMissileLock } from './weapons.ts';
 
 // docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, which
-// keep the not-implemented result until subtasks 13, 14 and 16 implement them.
+// keep the not-implemented result until subtasks 13, 14 and 16 implement them. The player's update (flight-control.ts)
+// is the one command loop: it judges P3-06's throttle commands itself and hands every other command to judgeCommand.
 
 /** Every operation of P3-07's six command types. */
 const COMBAT_COMMANDS: readonly Command[] = [
@@ -25,10 +27,14 @@ const COMBAT_COMMANDS: readonly Command[] = [
   { type: 'damage-report' },
 ];
 
-/** One command of every other type. */
-const OTHER_COMMANDS: readonly Command[] = [
+/** P3-06's throttle commands, which the player's update judges itself in flight. */
+const THROTTLE_COMMANDS: readonly Command[] = [
   { type: 'speed', operation: 'increase' },
   { type: 'select-number', value: 3 },
+];
+
+/** One command of every other type. */
+const OTHER_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
   { type: 'confirm-selection' },
   { type: 'toggle-map' },
@@ -45,6 +51,7 @@ function flightState(): [WorldState, Entity] {
   const player = state.entities.allocate(entityInit(0));
   player.state = 'active';
   state.player.entityId = player.id;
+  state.player.control = initialPlayerControl(state.config.group);
   return [state, player];
 }
 
@@ -54,7 +61,7 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
+    expect(new Set([...COMBAT_COMMANDS, ...THROTTLE_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
   it.each([['P3-07\'s commands', COMBAT_COMMANDS], ['every other command', OTHER_COMMANDS]])(
@@ -69,10 +76,16 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
     },
   );
 
-  it('keeps the results in command order across the modules, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], OTHER_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[8]];
+  it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
+    const commands = [COMBAT_COMMANDS[0], THROTTLE_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[6]];
     const [state] = flightState();
-    expect(constructWorld(state).step(tickInput(commands))).toEqual(notImplemented(commands, 1));
+    expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
+      type: 'command-result',
+      tick: 1,
+      commandIndex,
+      commandType: type,
+      ...(commandIndex === 1 ? { outcome: 'accepted', reason: null } : { outcome: 'rejected', reason: 'not-implemented' }),
+    })));
   });
 });
 

@@ -24,6 +24,7 @@ import { judgeCommand } from './commands.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
+import { applyControlRequest, updatePlayer, type ControlRequest } from './flight-control.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
 import { expireProjectile, updateProjectile } from './projectiles.ts';
@@ -56,6 +57,8 @@ export type Request =
   | { readonly type: 'leave'; readonly entityId: EntityId }
   /** Message 0x4000: one spawn request of a due queue entry (spawn.ts). */
   | SpawnRequest
+  /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
+  | ControlRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -96,8 +99,13 @@ export type RequestOf<Type extends Request['type']> = Extract<Request, { readonl
  * dropped unhandled, as the original clears late messages at the next frame.
  *
  * The count of posts is bounded by CORE_LIMITS.requestsPerTick, a runaway guard rather than an original limit, above
- * the bounds the rules derive (docs/plan/p3/02/spec.md, CR-14; limits.ts). A rule whose requests fan out further
- * derives its own bound and revises CoreLimits.
+ * the bounds the rules derive (docs/plan/p3/02/spec.md, CR-14; limits.ts). P3-02's and P3-06's part: one lifecycle
+ * request per entity update and one per spawn request, of which a world schedules at most CORE_LIMITS.spawnExpansion
+ * in its lifetime; the player's update posts at most one request per speed command and two more (the speed assist's
+ * restoring request and one carrying only the axes), and an available player posts no lifecycle request
+ * (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the limits. CR-14's bound
+ * covers it together with P3-07's requests. A rule whose requests fan out further derives its own bound and revises
+ * CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -183,13 +191,19 @@ function advanceClock(context: TickContext): void {
 }
 
 /**
- * Judges the commands in array order where the original polls game input, in the player's update; the player (kind
- * bit 0) comes first in the walk, so that is the start of the stage. Each command gets exactly one result
- * (commands.ts): P3-07's go to their rule modules, and every command no rule handles yet gets rejected/not-implemented
- * and changes nothing.
+ * The player's update (flight-control.ts), where the original polls game input: the player (kind bit 0) comes first in
+ * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
+ * the throttle commands itself, every other command through judgeCommand (commands.ts), which routes P3-07's to their
+ * rule modules and gives every command no rule handles yet rejected/not-implemented. With an available player it
+ * consumes the axes. The rule tasks add their commands and steps there.
  */
-function judgeCommands(context: TickContext): void {
-  context.input.commands.forEach((command, commandIndex) => judgeCommand(context, command, commandIndex));
+function updatePlayerControls(context: TickContext): void {
+  const { world, input, time, requests } = context;
+  updatePlayer(world, input, time.tick, {
+    emit: (event) => emit(context, event),
+    post: (request) => requests.post(request),
+    judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+  });
 }
 
 /**
@@ -247,7 +261,7 @@ function updateObject(context: TickContext, entity: Entity): void {
  * kind bit is updated in the same walk. A destroyed source (state 4) gets no update.
  */
 function updateObjects(context: TickContext): void {
-  judgeCommands(context);
+  updatePlayerControls(context);
   for (const entity of context.world.entities.walk(ALL_KINDS)) {
     if (entity.state !== 'destroyed-source') updateObject(context, entity);
   }
@@ -313,6 +327,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'leave':
       leave(world, entity);
+      return;
+    case 'control':
+      applyControlRequest(world, entity, request);
       return;
     case 'select-target':
       applySelectTarget(context, entity, request);
