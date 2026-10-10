@@ -2,7 +2,7 @@
 type: plan
 status: active
 phase: P3
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0009, ADR-0012, ADR-0014, ADR-0015, B-001, B-002, B-003, B-004, B-005, U-001, U-004, U-008, U-009, U-010, U-011, U-020, U-021, U-022, U-023, U-025, U-026, U-027, U-028, U-029, U-030, U-031]
 ---
 
@@ -45,8 +45,8 @@ P3 要证明的是**用户本地导入的原版内容能在浏览器中驱动一
 
 - [P2 退出评审](../../reviews/P2-exit.md#4-对后续阶段的影响)给出 P3 可消费的内容与适配、必须另行设计的部分、外观复核项与规则研究项；[P1 退出评审](../../reviews/P1-exit.md#4-对后续阶段的影响)给出可复用设施与必须替换的合成项。二者是起点，不是玩法已实现的证据。
 - **内容与任务载入：** [content/](../../../src/content/) 的 Asset ID、`ContentIdentity`、唯一切片定义与 `validatePackage`，以及图形、模型、效果、逻辑、音效与状态显示屏文字 payload 和展开、合成辅助。[load-mission.ts](../../../src/core/mission/load-mission.ts) 的 `loadMission` 产出冻结的 `MissionSetup`，不推进 tick、不应用默认值，也不推导生成时刻、顺序或位置；规则输入按来源原样保留（[logic-content.ts](../../../src/content/logic/logic-content.ts) 的 `RuleInputs`），语义归 P3。
-- **运行骨架：** [core/determinism/](../../../src/core/determinism/) 的种子随机数与状态哈希，[core/synthetic/](../../../src/core/synthetic/) 的合成场景、快照与 replay；[app/runtime/](../../../src/app/runtime/) 与 [app/session/](../../../src/app/session/) 的固定步长、命令队列、帧后 Event Bus、两帧 Render State、控制通道与清理；[ui/game/](../../../src/ui/game/) 的投影 store、会话桥接与命令反馈。这些机制可复用，但 synthetic 契约不能改名冒充正式玩法（[ADR-0015](../../decisions/ADR-0015-source-module-structure.md)）。
-- **应用与资源：** [页面流转](../../../src/app/flow/app-flow.ts)目前只有菜单、导入、合成演示与查看器；[app/resources/](../../../src/app/resources/) 持有经验证的资源包并给出任务载入诊断。[workers/](../../../src/workers/) 的导入协议与[生产包配置](../../../src/workers/production-package.ts)、[platform/storage/](../../../src/platform/storage/) 的资源缓存，是 P3 扩充内容时沿用的导入与缓存链。
+- **运行骨架：** [core/determinism/](../../../src/core/determinism/) 的种子随机数与状态哈希，[core/synthetic/](../../engineering/source-structure.md#r1-合成-core) 的合成场景、快照与 replay（P3-04 已退役，见[退役记录](../../engineering/source-structure.md#p3-04-合成演示退役记录)）；[app/runtime/](../../../src/app/runtime/) 与 [app/session/](../../../src/app/session/) 的固定步长、命令队列、帧后 Event Bus、两帧 Render State、控制通道与清理；[ui/game/](../../../src/ui/game/) 的投影 store、会话桥接与命令反馈。这些机制可复用，但 synthetic 契约不能改名冒充正式玩法（[ADR-0015](../../decisions/ADR-0015-source-module-structure.md)）。
+- **应用与资源：** [页面流转](../../../src/app/flow/app-flow.ts)在 P3 开始时只有菜单、导入、合成演示与查看器（P3-04 起以任务流程取代合成演示，当前缺省见 [slice-gaps](../../engineering/slice-gaps.md)）；[app/resources/](../../../src/app/resources/) 持有经验证的资源包并给出任务载入诊断。[workers/](../../../src/workers/) 的导入协议与[生产包配置](../../../src/workers/production-package.ts)、[platform/storage/](../../../src/platform/storage/) 的资源缓存，是 P3 扩充内容时沿用的导入与缓存链。
 - **表现与平台：** [render/](../../../src/render/) 有绘制端口、WebGL 表面、4:3 视口布局、合成渲染器与资源查看渲染；查看器的[呈现约定](../../../src/render/viewer/viewer-presentation.ts)只用于检查资源，不是飞行渲染契约。[platform/input/](../../../src/platform/input/) 只有焦点限定的键盘源，尚无原版绑定、Pointer Lock 或 Keyboard Lock（[键位文档 §7](../../engineering/keyboard-input.md#7-尚未实现的键盘能力)）；[platform/audio/](../../../src/platform/audio/) 的 Web Audio 控制器以查看器为第一个消费者。
 - **原版研究：** [B-001](../../original/behavior/B-001-strategic-map.md) 至 [B-005](../../original/behavior/B-005-campaign-rescue.md) 记录地图、练习、战役流程、通讯与救援的观察；[键位表](../../original/input/key-map.md)记录已知键位；[executable](../../original/formats/executable.md#4-code-landmarks) 记录任务调度、地图投影、目标模式、武器记录与效果来源的代码地标，[hud](../../original/formats/hud.md#hud-and-map-drawing-paths-confirmed-exe) 记录 HUD 与地图的绘制路径。它们是规则研究的入口，不等于规则已经确认。[基准环境](../../guides/baseline-environment.md)、[Ghidra 脚本](../../../tools/ghidra/)与 P2-12 的调试器读数方法可以复用。
 - **测试与合规：** 独立 [E2E](../../../e2e/) runner（含网络审计与资源平衡）、[本地合规工具](../../../tools/compliance/)与[工程边界回归](../../../tools/engineering-boundaries.test.ts)可继续扩展；新增系统、依赖或资源消费链仍须重验构建来源、许可与原版隔离。

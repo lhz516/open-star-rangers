@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0015]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/platform/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-[platform/](../../../src/platform/) 实现文件、输入、音频、存储与浏览器生命周期；键盘输入的当前绑定见[键位文档](../keyboard-input.md)，输入源与消费者的分工见[职责与依赖](../source-structure.md#职责与依赖)。
+[platform/](../../../src/platform/) 实现文件、输入、音频、存储、种子、计时与浏览器生命周期；键盘输入的当前绑定见[键位文档](../keyboard-input.md)，输入源与消费者的分工见[职责与依赖](../source-structure.md#职责与依赖)。
 
 ## 资源缓存
 
@@ -55,3 +55,17 @@ related: [ADR-0015]
   - **生命周期：** `document.visibilityState` 与 `document` 的 `visibilitychange`、`window` 的 `pagehide`/`pageshow`。
   - **范围：** 无导入副作用，没有测试注入口；只由应用程序检查，不进入 Node 程序。Chrome 中的验证见[工程约定](../README.md#本地浏览器-runner)。
 - **边界：** `platform/audio/` 不导入 `original-data`（字节端口也不行）、`render`、`ui`、`app`、`workers`，不使用网络 API 或 `localStorage`，见[工程约定](../README.md#lint-规则eslintconfigjs)。
+
+## 任务端口的浏览器适配
+
+[P3-04](../../plan/p3/04/spec.md) 的任务流程端口（类型在 [mission-ports.ts](../../../src/app/mission/mission-ports.ts)，见 [app 模块说明](./app.md#端口)）由 `platform/browser/` 与 `platform/files/` 实现。边界规则不允许 `browser-*` 文件进入 Node 程序，所以每个适配都拆为 DOM-free 的核心（注入宿主，Node 测试）与薄的浏览器连接（只由应用程序检查）。都没有导入副作用。[browser-ports.ts](../../../src/app/browser-ports.ts) 装配它们：种子来源、时钟、计时器与离页保护在应用端口中各有一份，由先后的任务所有者共用（计时器的每个句柄与离页保护的每次登记由取得它的所有者撤销）；文件保存以工厂传入，每个开发诊断实例创建并释放自己的 `FileSave`。
+
+- **种子：** [seed.ts](../../../src/platform/browser/seed.ts) 的 `createSeedSource(random)` 每次抽取时向新的单元素 `Uint32Array` 调用 `getRandomValues`，所以值总是 uint32；宿主异常原样抛出，不回退为固定种子或宿主时间。[browser-seed.ts](../../../src/platform/browser/browser-seed.ts) 的 `createBrowserSeedSource()` 传入 `crypto`。
+- **时钟与计时器：** [timer.ts](../../../src/platform/browser/timer.ts) 的 `createMonotonicClock(now)` 对非有限或倒退的读数抛 RangeError；`createOneShotTimer(host)` 的句柄是适配器自己从 0 起的计数（与宿主返回什么无关），延迟限于 0–2,147,483,647 ms（浏览器超过有符号 32 位毫秒会立即触发），回调以登记项为准，所以取消后或宿主取消后迟到的回调都不会执行。[browser-timer.ts](../../../src/platform/browser/browser-timer.ts) 的 `createBrowserClock()` 读 `performance.now()`，`createBrowserTimer()` 用 `setTimeout`/`clearTimeout`。
+- **离页保护：** [leave-guard.ts](../../../src/platform/browser/leave-guard.ts) 的 `createLeaveGuard(target)` 每次登记安装一个 `beforeunload` 监听，处理器只调用 `preventDefault()`（请求浏览器自己的确认，不定制文字）；登记时宿主抛错则先尝试移除再抛出，移除也失败时为 `RollbackError`。撤销先使监听失效（即使移除抛错也不再请求确认），再移除，可重复调用。浏览器传 `window`；只有本机 Chrome 的刷新与关闭路径有证据（[工程约定](../README.md#本地浏览器-runner)）。
+- **文件保存（只在开发构建）：** [file-save.ts](../../../src/platform/files/file-save.ts) 的 `createFileSave(host)` 每次保存创建 Blob、对象 URL 与临时下载链接，点击后按逆序释放，各尝试一次：点击开始下载时 blob URL 已被解析，所以随即撤销是安全的。结果为 `{ status: 'requested' }`，或 `status: 'failed'` 加原因：`failed`（宿主失败，已释放，带 `error`）、`cleanup-failed`（释放抛错，带 `error`）或 `disposed`（所有者已释放，之后不再取得任何资源）。[browser-file-save.ts](../../../src/platform/files/browser-file-save.ts) 的 `createBrowserFileSave()` 用 `URL.createObjectURL` 与加入 `body` 的隐藏 `<a download>`；它只在开发构建中经动态导入载入，生产构建中没有。
+- **会话宿主：** [browser-session-host.ts](../../../src/platform/browser/browser-session-host.ts) 的 `createBrowserSessionHost()`（P1-05）提供真实 rAF 与 visibilitychange/pagehide/pageshow，见[工程约定](../README.md#会话端口与错误)。
+
+## 键盘源
+
+[platform/input/](../../../src/platform/input/)（P1-09）提供冻结的键盘事件与信号、纯按住轴、`KeyboardSource` 端口、DOM-free 的资格与监听管理（[keyboard-source.ts](../../../src/platform/input/keyboard-source.ts)）与浏览器连接 [browser-keyboard-source.ts](../../../src/platform/input/browser-keyboard-source.ts)。它的合成五键消费者已于 P3-04 退役，当前构建没有消费者，浏览器连接暂无导入者，留给 P3-05 的原版键位。通用规则见[键位文档](../keyboard-input.md#3-平台键盘源的通用规则)与[工程约定](../README.md#键盘源与输入区)。
