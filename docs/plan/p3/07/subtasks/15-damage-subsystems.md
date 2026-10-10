@@ -55,10 +55,10 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-09：入口门禁（已被毁、玩家的被毁视角、作弊标志恒为 0）；护盾吸收与子系统失效的支持集；船体扣减。
-- [ ] AC-09：子系统选择的支持集、原像计数与特例（5、8、7 的扰动、零船体伤害的强制抽取）；倍率只在原版乘入的路径上；击杀计数只计玩家的击杀；重伤记录与 `statusDisplay.redraw` 的写入。
-- [ ] 多次受击只有一次 `object-destroyed`；发射者失效时归因退为 `lost-shooter`、不计击杀（H4）；两个包装的统计、归因与 `hitFeedbackClock` 正确；`hit` 与 `object-destroyed` 的字段与次序符合 CR-06；其他任务的调用点只在注释中记录。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-09：入口门禁（已被毁、玩家的被毁视角、作弊标志恒为 0）；护盾吸收与子系统失效的支持集；船体扣减。
+- [x] AC-09：子系统选择的支持集、原像计数与特例（5、8、7 的扰动、零船体伤害的强制抽取）；倍率只在原版乘入的路径上；击杀计数只计玩家的击杀；重伤记录与 `statusDisplay.redraw` 的写入。
+- [x] 多次受击只有一次 `object-destroyed`；发射者失效时归因退为 `lost-shooter`、不计击杀（H4）；两个包装的统计、归因与 `hitFeedbackClock` 正确；`hit` 与 `object-destroyed` 的字段与次序符合 CR-06；其他任务的调用点只在注释中记录。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -66,3 +66,17 @@ updated: 2026-10-10
 - 不涉及浏览器；原版对照见 26、27。
 
 ## 完成证据
+
+- **实现（基于认领提交 `1c1b255`，快进到目标分支 `7328198`，其中含本项获批的写入范围扩展）：**
+  - [rules/damage.ts](../../../../../src/core/rules/damage.ts)：护盾 `0x30c60`（`absorbByShield`：子系统 4 为 1 时 1 次抽取、低字节 < 0x54 绕过并保留护盾；状态 0、2、3 不抽取；有符号比较，伤害小于护盾时扣减并余 0，否则清零并余 伤害 − 原护盾）；`0x2a830` 第 1 步的船体扣减（`damageHull`：只扣正值，i32）。
+  - [rules/subsystems.ts](../../../../../src/core/rules/subsystems.ts)：`0x2a830` 第 2–10 步（`damageSubsystems`）：强制抽取只在攻击者种类为 0（碰撞、AI 范围伤害）或来源为导弹时进行；零船体伤害且未强制即结束；船体 ≤ 0 时损坏抽取必然成功且不抽取，否则 t = trunc(768 × 船体伤害 ÷ 扣后船体)（i32 乘法）与低字节有符号比较，t = 0 也抽取；玩家 rand % 19、其他（含僚机）rand % 9；只有强制抽取时依次找 s 起、再 0 起的第一个未损字段，全损时再抽一次；状态 < 2 时施加：5、8 调用 14 的 `damageListMount`（列表 1、0）且不改字段，10、13 在状态 1 时仍写 1，7 另调用扰动；玩家在选中字段后（含状态 2）按非零字段数给出 `0x69e5c` 的 0 或 1。扰动 `0x21bd4`（`disturb`）：只对 `craft` 模式的移动块，等级 2 时 3 次抽取，偏置 rand % 193 − 96。
+  - [systems/damage.ts](../../../../../src/core/systems/damage.ts)：`0x2a694`（门禁：已被毁；玩家在 `followedEntity` 非空时的被毁视角门禁，只保护玩家，`hit` 的 `gated` 为 true 且不改变任何状态、不抽取；作弊标志在 Core 中不存在）→ 护盾 → 船体与子系统（世界 RNG 依原版次序抽取，在被毁处理之前写回）→ 玩家子系统施加时置 `statusDisplay.redraw`、写 `heavyDamage` → `hit` → 船体 ≤ 0 且护盾未全吸收时被毁。三个入口：`applyShotHit`（`0x2a40c`：受击者已移除或已被毁时返回 null 且什么都不做；攻击者为仍有效的发射者，否则 `lost-shooter`；玩家发射者递增 `projectileHits`/`missileHits`；写发射者的 `lastVictim` 与受击者的 `lastAttacker`；写 `hitFeedbackClock`；返回 `absorbed` 与弹丸结局，跳弹的条件为全吸收且受击者不是玩家或视角模式为 0x11，与 `hit` 的 `projectile` 一致；导弹不得带命中点）、`applyContactDamage`（`0x2a5fc`：攻击者 `none`，原因 `collision`/`area`，写 `hitFeedbackClock`）、`applyEngagementDamage`（21 的 `0x2a694` 调用：攻击者为射击者，原因 `parked`，不写 `hitFeedbackClock`）。三者都不乘 TABL 4003 倍率与难度因子。被毁：置被毁标志 → `object-destroyed`（`eventClass` 在玩家击杀时为 0；`outcome` 玩家 `delayed`、停放 `removed`、其他 `explodes`）→ 只计玩家对非玩家、非僚机且属 D8 八个种类的击杀（停放对象也计）→ 停放对象进入待移除，其他调用 `destroyEntity`。CR-13 的 `0x3c208`、`0x3c0f4`、`0x6977c`、`0x32d74`、`0x32dec` 的位置只写在模块注释中。
+  - [destruction.ts](../../../../../src/core/systems/destruction.ts)（获批的范围扩展）：只新增 `destroyEntity`，18 实现前不改变状态，被毁对象保持被毁、不爆炸。
+- **原版事实（已确认，代码，P3-07/15）：** [executable](../../../../original/formats/executable.md#flight-controls-and-rotation-p3-0602) 的扰动段补充 `0x21bd4` 的偏置算术（rand % 193 − 96，按抽取次序存入 +0x98/+0x9C/+0xA0）与无移动块或模式字节 ≠ 0 时不写不抽；[D2](../../../../original/formats/executable.md#d2-damage-entry-0x2a694eax-attackerkind-edx-source-ebx-victim-ecx-damage--confirmed-code) 的 `noAttacker` 记法改为“attackerKind = 0 的比较结果”（`SETZ`）；D12 的抽取行同步。来源：只读核对原生指令（P3-06/02 与 P3-07/04 的私有探针输出，被忽略的 `local/research/`）。没有新的未决项，U 项不变。
+- **测试：** `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 通过（64 个文件，2,090 项）；`pnpm typecheck`、`pnpm lint`、`pnpm check:compliance` 通过；`pnpm check` 通过（235 个文件，7,473 项，生产构建成功）。期望由 D2–D11、H4 独立推导，随机部分对 0–32767 全部 rand 值计数原像，不用卡方：
+  - [rules/damage.test.ts](../../../../../src/core/rules/damage.test.ts)：护盾的小于、等于、大于、零伤害、负护盾与 i32 回绕；子系统 4 为 1 时绕过 84 × 128 = 10,752 个 rand 值，状态 0、2、3 不抽取；船体扣减与 i32。
+  - [rules/subsystems.test.ts](../../../../../src/core/rules/subsystems.test.ts)：扰动等级 1 不抽取、等级 2 的偏置与次序、偏置 −96…54 各 170 与 55…96 各 169 个原像、无块与 Warp 不写不抽；强制抽取的条件与 50 × 128 = 6,400 个原像；损坏抽取 t = 85 时 10,880 个原像、t ≥ 256 必然、t ≤ 0 不成功、768 × 2²² 的 i32 回绕、船体 ≤ 0 不抽取；字段 rand % 19（0–11 各 1,725、12–18 各 1,724）与 rand % 9（0–7 各 3,641、8 为 3,640，含僚机）；强制搜索的前进、回绕、全损再抽与玩家 19 个字段；状态 0→1→2、2 与 3 不变、10/13、7 的扰动等级与抽取、5/8 的挂点损坏与抽取次数、5 已为 2 与无挂点；重伤记录的 8/9/13/14 阈值、状态 2 时仍记录、非玩家不记录。
+  - [systems/damage.test.ts](../../../../../src/core/systems/damage.test.ts)：已被毁与已移除的受击者什么都不做；玩家弹丸的统计、两条记录、`hitFeedbackClock` 与完整 `hit`；全吸收的跳弹、玩家受击时移除而视角 0x11 时跳弹；船体受损时移除与抽取次数；导弹的统计、强制抽取与 `projectile: null`；其他射击者只记录不计数；发射者已移除或为空时 `lost-shooter`、不写记录；已被毁但仍在表中的发射者照常归因并计击杀；故障（来源、受击者、伤害非 i32、导弹带命中点、发射者非机体）；门禁只挡玩家、`gated` 的 `hit` 不改变状态与 RNG、记录与受击时钟仍写；碰撞与范围伤害的字段与强制抽取；停放交战的归因、不写受击时钟、停放受击者被毁后待移除；`hit` 后紧接一次 `object-destroyed`、再受击不再发出；四种 `outcome`；击杀只计玩家对 D8 种类（含停放对象）、`eventClass`；全吸收时船体 ≤ 0 也不被毁；事件经 `compareReplayResults` 校验；子系统经入口的抽取次序、`statusDisplay.redraw` 与 `heavyDamage`；不同难度与 `hitDamageScale` 下伤害不缩放。
+- **rubber-duck：** 采纳 3 项：(1) 阻断：受击者已被移除时 `0x2a40c` 仍施加伤害——改为返回 null 且不改变任何状态，另两个入口对未在表中的受击者为 Core 故障；(2) 导弹命中可带非空 `impact`——改为 Core 故障；(3) 补“已被毁但仍在表中的发射者”的归因与击杀测试。
+- **simplify：** 采纳：规则常量不导出；子系统规则从实体读取扣后船体，不再另传；偏置改为模块级函数；字段计数用循环；规则测试的穷举改用共同的 `histogram`。未采纳：复用 weapons.ts 的 `withRand`（私有，导出需改范围外文件）；把强制抽取的条件压成一个布尔量（它是 `0x2a830` 自身的规则，留在规则模块）；把停放对象的待移除移到 destruction.ts（spec 与本项工作范围规定停放对象在伤害中直接待移除）；去掉 `SubsystemRoll.field`（测试用它直接断言选中的字段）；每次受击的 `RandStream` 与 10/13 状态 1 时的数组复制（非热点）。
+- **文档影响：** 原版事实如上写入 `docs/original/`。[core.md](../../../../engineering/modules/core.md) 与 [source-structure.md](../../../../engineering/source-structure.md) 的模块清单（damage、subsystems 与伤害入口）按 goal 归 28 更新，本项不改。STATUS 与阶段索引无需改动。

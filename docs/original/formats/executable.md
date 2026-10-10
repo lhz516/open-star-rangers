@@ -944,7 +944,7 @@ Evidence: ignored `local/research/p3-06/motion/` (`ghidra_scripts/MotionProbe.ja
 
 - `0x21794` clears the lock, the rates and flags, the disturbance and its biases at every build.
 - **Lock** `0x21ba0(object, value)` is the only other writer of block +0x5C and acts only in mode 0; value 1 also clears +0x78 and sets the commanded speed to 0, so the craft slows to a stop. Callers: the energy updates `0x3071c` (the player-state's craft) and `0x30994` (kinds `0xffffe`) set 1 when the object's energy +0x28 reaches zero or below and `0x30590` passed them the block (the player unless docked; other objects when active in state 7 or above; parked objects get none). The base repair `0x398ec` (selector 7) and `0x280ec` set 0; `0x280ec` (full repair and unlock of the player) is referenced only by a pointer at `0x1750a0` (Likely a debug or cheat table). While locked, both paths do nothing: throttle keys and steering are dropped and nothing is drawn. The enable flags are not cleared and the integrators do not test the lock, so a rotation in progress continues.
-- **Disturbance** `0x21bd4(object, level)` is the only other writer of block +0x88 and acts only in mode 0; level 2 also draws three integer biases (three draws) and stores them with float copies at +0x8C/+0x90/+0x94 (scaled by the f64 constant `0x170054`). The damage routine `0x2a830` (from `0x2a694`, P3-07) raises it to 1 or 2 when the randomly chosen subsystem slot is 7 and its state was below 2 (the player has 19 slots and other craft 9; both include slot 7). The full repair `0x39820` (called by `0x280ec`, the parked update `0x2f314`, docking and launch `0x38ff4`, AI code at `0x61bd0`, the rescue `0x67b98` and `0x68f4c`) and the base repair `0x398ec` reset it to 0.
+- **Disturbance** `0x21bd4(object, level)` is the only other writer of block +0x88 and acts only in mode 0: without a movement block or with a mode byte other than 0 it writes and draws nothing. It stores the level as given; level 2 also draws three integer biases, each rand % 193 − 96 (signed `IDIV` by 0xC1, then −0x60, so −96…96), stores them in draw order at +0x98/+0x9C/+0xA0 and their float copies at +0x8C/+0x90/+0x94 (scaled by the f64 constant `0x170054`) (Confirmed, code, P3-07/15). The damage routine `0x2a830` (from `0x2a694`, P3-07) raises it to 1 or 2 when the randomly chosen subsystem slot is 7 and its state was below 2 (the player has 19 slots and other craft 9; both include slot 7). The full repair `0x39820` (called by `0x280ec`, the parked update `0x2f314`, docking and launch `0x38ff4`, AI code at `0x61bd0`, the rescue `0x67b98` and `0x68f4c`) and the base repair `0x398ec` reset it to 0.
 - The lock and disturbance writers belong to P3-07 (energy, damage), the resets to the base (P3-10) and the rescue (P3-01); P3-06 owns their consumers above.
 
 **Sign chain (Confirmed, code), frame meaning (Likely), handedness (Unconfirmed):**
@@ -2321,8 +2321,10 @@ So objects other than the player keep L1 = L2 = 0; only the player's keys change
 2. rem = `0x30c60`(victim, damage) (D3).
 3. When attackerKind ≠ 0: `0x3c208`(attackerKind, source, victim, damage) — communications reaction
    ([C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code)). It can draw rand (D12).
-4. rem = 0 → `0x2a830`(victim, source, 0, attackerKind = 0) and **return 1**. Otherwise hull = `0x2a830`(victim,
-   source, rem, attackerKind = 0); hull > 0 → return 0.
+4. rem = 0 → `0x2a830`(victim, source, 0, noAttacker) and **return 1**. Otherwise hull = `0x2a830`(victim,
+   source, rem, noAttacker); hull > 0 → return 0. noAttacker is the comparison attackerKind = 0 (1 when it is 0,
+   else 0; `SETZ` before each call), so only collisions and AI area damage pass a non-zero noAttacker (Confirmed, code,
+   P3-07/15).
 5. **Destruction (hull ≤ 0):** +0xD8 = 1; `0x3c0f4`(attackerKind, source, victim) (communications, [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code); can draw
    rand); `0x6977c`(victim, event) with event 0 when attackerKind = 1 (destroyed by the player) and 1 otherwise.
    Then by victim kind:
@@ -2504,7 +2506,7 @@ is unreachable with shipped data. Step 3 sets the other level to 0, not back to 
 | `0x2a830` step 6 | f or p | rand % n |
 | `0x2a830` step 7 | forced only, all n fields non-zero | rand % n |
 | `0x2e150`/`0x2e310` | s = 5/8, st < 2 | rand % count, then rand % ammunition when it applies ([W4](#w4-mount-damage-repair-and-status-subsystems-5-and-8--confirmed-code)) |
-| `0x21bd4` | s = 7 at new level 2, mode-0 block | 3 × rand % 193 (P3-06) |
+| `0x21bd4` | s = 7 at new level 2, mode-0 block | 3 × (rand % 193 − 96) (P3-06) |
 | `0x23ac8` | destruction | explosion draws ([X11](#x11-numbers-and-random-draws--confirmed-code)) |
 | `0x3060c` | kinds in `0xfffff` | rand % 64 |
 
