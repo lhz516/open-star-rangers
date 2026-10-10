@@ -122,13 +122,23 @@ function replayState(record: ReplayRecord, value: unknown): WorldState {
 }
 
 /**
+ * Internal, for replayRecord and for Core tests that stand in for rule tasks not implemented yet; not a public entry:
+ * the validated record and its world's initial state on `content`, before any tick. Throws as replayRecord does
+ * before its first tick.
+ */
+export function startReplay(record: unknown, content: ReplayContent): { readonly record: ReplayRecord; readonly state: WorldState } {
+  const replayed = readRecord(record);
+  return { record: replayed, state: replayState(replayed, content) };
+}
+
+/**
  * Replays `record` on `content` in a new world and returns the result recording would: the events, the checkpoints
  * and the final tick. See the module comment for the checks and errors; a CoreInputError of a tick, such as the
  * recording capacity, is at `record.ticks[k]`.
  */
 export function replayRecord(record: unknown, content: ReplayContent): ReplayResult {
-  const replayed = readRecord(record);
-  const session = recordState(replayState(replayed, content), { producer: replayed.producer, checkpointInterval: replayed.checkpointInterval });
+  const { record: replayed, state } = startReplay(record, content);
+  const session = recordState(state, { producer: replayed.producer, checkpointInterval: replayed.checkpointInterval });
   replayed.ticks.forEach((input, index) => {
     try {
       session.step(input);

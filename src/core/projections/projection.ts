@@ -1,15 +1,16 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
- * from the world, in partitions. clock, mission and player are ready. flight (in two groups, motion and combat:
- * docs/plan/p3/06/spec.md, D-05), map, communications and result fix the boundary their owners fill; until a rule makes
- * one ready it is `not-implemented`, never an empty list, a zero value, a fully visible map or a victory. The
- * projection gives only what the original shows or a rule needs, never the list of all entities. Fields the spec leaves
- * to an owner's research are `never` here: the owner defines them by revising the spec (扩展规则) before its partition
- * can become ready.
+ * from the world, in partitions. clock, mission and player are ready, and so is the flight partition's motion group
+ * (docs/plan/p3/06/spec.md, D-05; P3-06). The flight partition's combat group (P3-07), map, communications and result
+ * fix the boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero
+ * value, a fully visible map or a victory. The projection gives only what the original shows or a rule needs, never
+ * the list of all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by
+ * revising the spec (扩展规则) before its partition can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { CoreFaultError } from '../errors.ts';
 import type { EntityId, Matrix3, NameReference } from '../world/entity-table.ts';
 import { interactionContext, type InteractionContext } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
@@ -190,7 +191,39 @@ export interface Projection {
 }
 
 const NOT_IMPLEMENTED: NotImplementedPartition = Object.freeze({ readiness: 'not-implemented' });
-const FLIGHT_NOT_IMPLEMENTED: FlightProjection = Object.freeze({ motion: NOT_IMPLEMENTED, combat: NOT_IMPLEMENTED });
+
+/** Every maximum speed is the instantiation value until P3-07 recomputes it from the live energy state. */
+const SPEED_LIMIT_STATUS: SpeedLimitStatus = 'initial-only';
+
+/**
+ * The player's motion, or null without a player entity. A player entity always has its control state, and its movement
+ * block, which only parking releases and the area check never parks the player's kind; missing either is Core's fault.
+ */
+function motionPlayer(world: WorldState): MotionPlayer | null {
+  const { entityId, control } = world.player;
+  if (entityId === null) return null;
+  const entity = world.entities.get(entityId);
+  const movement = entity?.movement;
+  if (!entity || !movement || !control) throw new CoreFaultError('invariant-violated', 'projection.motion');
+  const { position: { x, y, z }, orientation } = entity;
+  const { enabled, engaged } = control.speedAssist;
+  return Object.freeze({
+    entityId,
+    position: Object.freeze({ x, y, z }),
+    orientation: Object.freeze([...orientation]) as unknown as Matrix3,
+    speed: movement.speed,
+    commandedSpeed: movement.commandedSpeed,
+    maximumSpeed: entity.maximumSpeed,
+    speedLimitStatus: SPEED_LIMIT_STATUS,
+    speedAssist: Object.freeze({ enabled, engaged }),
+  });
+}
+
+/** The flight partition: the motion group is ready (P3-06), the combat group not yet (P3-07). */
+function flightProjection(world: WorldState): FlightProjection {
+  const motion: MotionReady = Object.freeze({ readiness: 'ready', player: motionPlayer(world) });
+  return Object.freeze({ motion, combat: NOT_IMPLEMENTED });
+}
 
 export function projectWorld(world: WorldState): Projection {
   const { config, player } = world;
@@ -211,7 +244,7 @@ export function projectWorld(world: WorldState): Projection {
       subMode: player.subMode,
       interactionContext: interactionContext(player.viewMode),
     }),
-    flight: FLIGHT_NOT_IMPLEMENTED,
+    flight: flightProjection(world),
     map: NOT_IMPLEMENTED,
     communications: NOT_IMPLEMENTED,
     result: NOT_IMPLEMENTED,
