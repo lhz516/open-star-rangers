@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
-| [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | pending |
+| [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | in-progress |
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
 | [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | pending |
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | pending |
