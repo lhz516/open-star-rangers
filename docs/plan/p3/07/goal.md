@@ -95,7 +95,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [03-motion-hit-collision-research.md](./subtasks/03-motion-hit-collision-research.md) | — | completed |
 | [04-damage-energy-research.md](./subtasks/04-damage-energy-research.md) | — | in-progress |
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | in-progress |
-| [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | pending |
+| [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | in-progress |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | pending |
