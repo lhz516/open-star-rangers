@@ -87,8 +87,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [02-formal-runtime.md](./subtasks/02-formal-runtime.md) | — | completed |
 | [03-formal-session.md](./subtasks/03-formal-session.md) | 02 | completed |
 | [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | completed |
-| [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | pending |
-| [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | pending |
+| [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | in-progress |
+| [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | in-progress |
 | [07-dev-diagnostics.md](./subtasks/07-dev-diagnostics.md) | 04, 05, 06 | pending |
 | [08-replay-check-tool.md](./subtasks/08-replay-check-tool.md) | 01 | completed |
 | [09-pages-app-wiring.md](./subtasks/09-pages-app-wiring.md) | 05, 06, 07 | pending |
