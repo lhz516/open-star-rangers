@@ -96,7 +96,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | in-progress |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
-| [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | blocked |
+| [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | pending |
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | in-progress |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | pending |
@@ -131,6 +131,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   Affected acceptance: 10 的全部验收；经依赖影响 16（AC-07）及其下游 19、25。
   Resume when: P3-06 合入 `main`，协调者把 `main` 合并进本分支并完成 goal [跨任务前提](#代码现状与前提)中的核对（或用户指示提前合并 P3-06 分支的某个提交并完成同样核对）。
 - **2026-10-10 — 临时把并行 worker 上限改为 5：** 用户指示临时把同时运行的 worker 上限改为 5，为可开始的子任务另开会话。协调者据此在 01、02、03 之外认领 07 与 12。
+- **2026-10-10 — 提前集成 P3-06（10 解除阻塞）：** 用户指示现在把 P3-06 分支合并进本分支（选择“现在合并 P3-06 分支并核对，之后有新提交再补合”）。合并提交 `a98f89de` 合入 `p3-06-flight-motion-spec` 的 `42db4ec2`；唯一冲突在阶段索引的相邻两行，保留两边的 spec/goal 链接，并把 P3-06 写入的 P3-05 范围中“普通飞行的 `select-number` 绑定 Shift+数字”改为指向 P3-05 已批准的 `speed-preset`。核对：`presetThrottle` 与速度规则、`tools/baseline/inputs.py`（BIOS 键盘缓冲注入）已在本分支；集成基线 `RULES_VERSION` 为 2、`GAME_REPLAY_VERSION` 为 1；`pnpm typecheck`、`pnpm lint`、`pnpm build` 通过；Vitest 全量在机器负载很高时有三个 5 秒超时（engineering-boundaries、import-job、image-payload 各一项，两次运行失败项不同），单独重跑三个文件全部通过；`tools/baseline` unittest 166 项通过。10 的恢复条件已满足，改回 pending。P3-06 之后的新提交须再合并并重做同样核对；P3-05 因此只能在 P3-06 之后或与之一起进入 `main`。
 
 ## 审批
 
