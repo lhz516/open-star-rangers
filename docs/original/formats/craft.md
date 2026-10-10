@@ -3,7 +3,7 @@ type: format
 status: draft
 phase: P3
 updated: 2026-10-10
-related: [U-001, U-008, U-026, U-027]
+related: [U-001, U-008, U-022, U-026, U-027]
 ---
 
 # Craft and debris parameter tables (CRAFT.NOB, DEBRIS.NOB)
@@ -36,7 +36,7 @@ The **Handling** column applies the [field handling rules](../../plan/p3/03/spec
 
 - **Start-up:** module initialiser `0x2ce90` opens `CRAFT.NOB` and loads TABL 4003 into `0x174b68`; it also stores the block size divided by 24 at `0x174b6c`, which no code reads (whole-image scan for the address). Its shutdown function `0x2ced8` releases the current CINF and TABL 4003. Initialiser `0x246a0` opens `DEBRIS.NOB`, loads TABL 4501 into `0x174b00`, sets the pair count `0x174b04` to the constant 20 and applies the transforms of §4.4.
 - **CINF selection:** the mission builder `0x66c00` clamps its group argument to [0, SCCT group count − 1] and its slot argument to [0, the group's slot count − 1] (signed compares), then calls `0x2cf38` (its only caller) with the slot as the row and the group as the column selector. SCCT 3123 has 3 groups of 18 slots ([scenario](./scenario.md#4-scct-campaign-table-confirmed-structure-likely-meaning)), so the row stays inside TABL 4003. `0x2cf38` does not clamp the row; it takes pair 0 for group 0, pair 1 for group 1 and pair 2 for any other value, releases the previous CINF, loads the pair's CINF by entry ID into `0x174b70`, stores the pair's scale at `0x1864d4` and applies the transforms of §3.8. The selected first mission (group 0, slot 1) uses CINF 4037.
-- **Scale reader:** `0x2cf0c` returns the scale as an `f32` (`FLD`), or the `f32` 1.0 while no CINF is loaded; its only caller `0x30150` multiplies the summed weapon-hit damage by it ([difficulty readers](./scenario.md#difficulty-readers-p3-01), path 1).
+- **Scale reader:** `0x2cf0c` returns the scale as an `f32` (`FLD`), or the `f32` 1.0 while no CINF is loaded; its only caller, the parked-object engagement `0x30150`, multiplies that engagement's summed damage by it ([difficulty readers](./scenario.md#difficulty-readers-p3-01), path 1; [parked engagement](./executable.md#parked-object-engagement-p3-0705)). Projectile, missile and collision damage are not scaled.
 - **Record lookup:** `0x2d2d8(kind, i)` returns missile body record i for kind `0x100000` (no bounds check on i). For any other kind it returns the craft record at the kind's bit index (kinds are single bits), or null when that index is not below the header's craft count; so kinds above bit 19, such as the marker kind `0x2000000` of [the allocator paths](./executable.md#two-allocator-paths-native-inputs-and-profile-comparison), get no record. `0x2d3c4(i)` and `0x2d3dc(i)` return gun and missile record i; `0x2d3fc` returns a weapon record's first word.
 - **Users of the record:** spawning (`0x67938`, `0x67b98`) and `0x38780` store the craft record in the object's +0x1C; the missile constructor `0x2b00c` stores the missile record's body record there. `0x3060c` initialises an object's state from it, and generic object code (physics, collision, damage) reads it through +0x1C. Shots carry their weapon record (event payload +0x58, then the projectile or missile object's auxiliary +0xF4).
 - **Runtime writes:** after load, the only store into a CINF record found is `0x28110`, the function of row 19 of the typed cheat table `0x174ee8`, which writes 0 into the player's craft record +0xA4. TABL 4003 and DEBRIS records are not written after load.
@@ -86,7 +86,7 @@ Counts in all 24: 10 guns, 9 missiles, 20 craft, 9 bodies.
 | +0x0C | f32 | Confirmed (code): written by `0x2cf38` (§3.8); read by `0x30150`, `0x5dfec` | not converted |
 | +0x10 | f32 | Confirmed (code): written by `0x2cf38`; float compares in `0x2d894`, `0x2ddbc` | not converted |
 | +0x14 | i32 | Confirmed (code): `FILD` in `0x30150`; added to a clock value in `0x2dad0`, `0x2e5e8` | convert |
-| +0x18 | int32 | Likely (data) | convert |
+| +0x18 | i32 | Confirmed (code): signed compare with object +0x30 in `0x30cc8`, subtract in `0x30cec` | convert |
 | +0x1C | int32 | Confirmed (code, width): integer add in `0x30150`, subtract in `0x28450` | convert |
 | +0x20 | f32 | Likely (data) | convert |
 | +0x24 | i32 | Confirmed (code): `FILD` in `0x2cf38`; added to the clock in `0x259b0` | convert |
@@ -135,7 +135,7 @@ Craft records are indexed by kind bit (§1). Missile body records use the same l
 |---|---|---|---|
 | +0x00 | pointer to text | Pointer Confirmed (relocation in all 480 craft records); text Likely (data: §3.7); no reader found | text |
 | +0x04 | pointer to text | Confirmed (code): `0x67d44` copies it byte by byte into the object's +0x15C, the name the communications code matches ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)) | text |
-| +0x08 | f32 | Likely (data) | convert |
+| +0x08 | f32 | Confirmed (code): `FLD` in `0x42d80` (display only) | convert |
 | +0x0C | f32 | Confirmed (code): float reads in `0x62aa0`, `0x62760`, `0x2ee60`, `0x2f314`, `0x2ffec`, `0x3c040`, `0x3c3b0`. Uses (P3-06/04): the parked Warp jump needs a squared goal distance above its square times the f32 constant `0x170fd4` (`0x2f314`); the random offset length of parked travel toward a target, in AI mode 2 without a valid +0x8C, is drawn from the target's value; the range of parked combat (`0x2ffec`) and of map visibility (`0x2ee60`, 2-D) ([parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
 | +0x10–+0x53 | collision shape (§3.5.1) | Confirmed (code) | see §3.5.1 |
 | +0x54 | i32 | Confirmed (code): signed divide in `0x3060c`, unsigned divide in `0x39664`; signed compare in `0x398ec`; `FILD` in `0x2b814` | convert |
@@ -245,11 +245,52 @@ Classification for the import: the index rewrite only places the index, so it is
 | Pairs per craft (every list) / craft with a pair list | 3 / 14 | 3 / 14 |
 | Strings / longest gun, missile, craft +0x00, craft +0x04 name (bytes) | 59 / 18, 15, 26, 7 | same maxima |
 
+### 3.10 Field roles in the combat rules (P3-07)
+
+What the combat code does with each value (Confirmed, code, from native instructions, P3-07/01–06). Names such as "shield" or "hull" follow those uses and the HUD gauges; they are Likely only where marked. The rules themselves are in the linked [executable](./executable.md#combat-rules-p3-07) sections. P3-06 records the movement roles (for example of craft +0x88, +0xAC–+0xB8).
+
+| Record | Offset | Role | Where |
+|---|---|---|---|
+| Gun | +0x08 | Projectile speed along the shot's forward row; the aim's time-of-flight divisor | [W7](./executable.md#w7-aim-solution-0x2e9d4-and-hemisphere-test-0x2d894--confirmed-code), [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
+| Gun | +0x0C, +0x10 | Range (returned by `0x2dd54`; strict range test of the parked engagement) and range² (≤ in `0x2d894`); no in-flight reader | [W7](./executable.md#w7-aim-solution-0x2e9d4-and-hemisphere-test-0x2d894--confirmed-code), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [H2](./executable.md#h2-gun-projectiles--confirmed-code) |
+| Gun | +0x14 | Cooldown in clock units (signed compare, fires at equality); also the multiplier of the parked shot count | [W6](./executable.md#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code), [W9](./executable.md#w9-automatic-mounts--confirmed-code), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
+| Gun | +0x18 | Charge per shot, player only | [W6](./executable.md#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code) |
+| Gun | +0x1C | Damage per hit (unscaled); fragment durability decrement; damage per parked shot | [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code), [H4](./executable.md#h4-impact-ricochet-attribution-and-fragment-kills--confirmed-code), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
+| Gun | +0x24 | Projectile lifetime from its first update | [H2](./executable.md#h2-gun-projectiles--confirmed-code) |
+| Gun | +0x28 | Firing type: 0 fixed, 1 aimed, 2 automatic; non-zero: the projectile takes the launch message's rows | [W6](./executable.md#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code), [W9](./executable.md#w9-automatic-mounts--confirmed-code), [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
+| Gun | +0x2C | Automatic-mount burst length | [W9](./executable.md#w9-automatic-mounts--confirmed-code) |
+| Missile | +0x0C, +0x10 | Range (parked missile choice, strict) and lock range² (strict) | [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
+| Missile | +0x18 | Guidance: 0 unguided; non-zero requires a target at launch and runs the lock; with launch byte ≥ 2, 1 selects the heat-seeking built-in program and any other value the other homing program | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
+| Missile | +0x1C | Launch cooldown (signed, fires at equality) | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
+| Missile | +0x20 | Non-zero: random launch rotation | [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
+| Missile | +0x28, +0x2C | Cosine of the lock half-angle (strict); its arc cosine (load) is read only by AI code. Neither is read in flight | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
+| Missile | +0x30–+0x40 | Lock delay to level 1, stage duration (also the HUD progress divisor), grace interval, aspect-test switch and threshold | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
+| Missile | +0x44–+0x58 | Lifetime, arming delay, fuse radius and its square, proximity detonation delay, fuse check interval | [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
+| Missile | +0x5C–+0x64 | Blast damage (also the damage of a parked missile), full-damage radius, zero-damage radius | [H5](./executable.md#h5-missiles--confirmed-code-unless-marked), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
+| Craft | +0x08 | Shown × 0.001 on the right display (meaning Unconfirmed) | [T7](./executable.md#t7-right-target-display-confirmed-code) |
+| Craft | +0x0C | Engagement radius of the multi-target parked engagement (squared, strict) | [E2](./executable.md#e2-multi-target-engagement-0x2ffecobject-elapsed--confirmed-code) |
+| Craft | +0x10 (shape +0x00) | Radius subtracted from the parked engagement's L1 distance; not read by the hit or collision tests | [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code) |
+| Craft | +0x14 (shape +0x04) | r²: collision point tests (non-strict), missile contact fuse (strict), forward-target lateral limit | [H7](./executable.md#h7-point-tests--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked), [T2](./executable.md#t2-selection-helpers-confirmed-code) |
+| Craft | +0x18–+0x2C (shape +0x08–+0x1C) | Unrotated world-axis box of the projectile segment test | [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code) |
+| Craft | +0x54, +0x5C, +0x74, +0x9C | Capacities of energy (meaning Likely), shield, charge and hull: initial values with the record percentages, recharge limits, full repair, HUD full scales | [D13](./executable.md#d13-resource-initialisation-0x3060ceax-h-edx-craft-ebx-a-ecx-b-stack-c--confirmed-code), [D14](./executable.md#d14-energy-updates--confirmed-code), [D16](./executable.md#d16-hud-full-scales--confirmed-code-for-operands-drawing-p3-13) |
+| Craft | +0x58, +0x64–+0x70, +0x78–+0x84 | Power budget; shield and charge recharge rates per level (energy per 64 clock units), which are also each level's power draw | [D10](./executable.md#d10-energy-levels-keys-ssgg--confirmed-code), [D14](./executable.md#d14-energy-updates--confirmed-code) |
+| Craft | +0x60 | Energy cost per shield point × 1000 | [D14](./executable.md#d14-energy-updates--confirmed-code) |
+| Craft | +0x88, +0x8C, +0x90 | Energy per speed unit × 1000; commanded-speed thresholds for double and triple speed cost (+0x90 is 0 in every record, so triple cost is unreachable) | [D14](./executable.md#d14-energy-updates--confirmed-code) |
+| Mount | +0x00–+0x08 | Spawn offset of shots; aim origin when +0x34 ≠ 0 | [W7](./executable.md#w7-aim-solution-0x2e9d4-and-hemisphere-test-0x2d894--confirmed-code), [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
+| Mount | +0x0C | Initial ammunition; the parked engagement needs it non-zero for missile mounts and decrements the chosen one | [W1](./executable.md#w1-per-object-weapon-block-and-mount-states--confirmed-code), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
+| Mount | +0x10 | 0 gun, 1 missile (other values contribute nothing to the parked engagement) | [W5](./executable.md#w5-trigger-routine-0x2d578handle-channel-value--confirmed-code), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
+| Mount | +0x18, +0x1C | Fire-together link and alternate link | [W5](./executable.md#w5-trigger-routine-0x2d578handle-channel-value--confirmed-code) |
+| Mount | +0x20–+0x2C | Arc bits and cone thresholds | [W7](./executable.md#w7-aim-solution-0x2e9d4-and-hemisphere-test-0x2d894--confirmed-code) |
+| Mount | +0x30, +0x34 | Unaimed fallback even with an alternate; aim origin includes the mount offset | [W6](./executable.md#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code), [W7](./executable.md#w7-aim-solution-0x2e9d4-and-hemisphere-test-0x2d894--confirmed-code) |
+| Craft | +0xCC, +0xD4, +0xDC | Mount lists 0 (main weapons, channel 0), 1 (missiles, channel 1) and 2 (channel 2, AI only) | [W2](./executable.md#w2-the-three-mount-lists--confirmed-code-slice-contents-confirmed-data) |
+| DEBRIS | +0x00–+0x08 | Negated weights of the source's rows for the fragment's offset and launch direction | [X6](./executable.md#x6-discriminator-3-fragments-mode-3--confirmed-code) |
+| DEBRIS | +0x5C | ≠ 0: durability 1200, a hitting projectile is always removed, half contact damage within the per-frame limit; = 0: durability 4000, a hit ricochets with probability 1/4, full bounce damage. 19 of the 67 records are non-zero after the load transform | [X6](./executable.md#x6-discriminator-3-fragments-mode-3--confirmed-code), [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code), [H6](./executable.md#h6-collision-passes--confirmed-code-collision-helper-spot-checked) |
+
 ## 4. DEBRIS TABL 4501
 
 ### 4.1 Loading and lookup (Confirmed, code)
 
-`0x246a0` loads the block at start-up (§1). `0x249dc(kind, part)` returns `part × 0x60` plus the record pointer of the pair at the kind's bit index; for the kinds 1 and 2 it first subtracts 3 from `part` and returns null when the result is negative. It does not check `part` against the pair's count. Its only caller is the mode-3 fragment constructor `0x25124`, which stores the record in the fragment object's +0x1C ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
+`0x246a0` loads the block at start-up (§1). `0x249dc(kind, part)` returns `part × 0x60` plus the record pointer of the pair at the kind's bit index; for the kinds 1 and 2 it first subtracts 3 from `part` and returns null when the result is negative. It does not check `part` against the pair's count; in the shipped data no lookup goes past a pair's count or into a zero-count pair, and the only null results are part 0 of kinds 1 and 2 ([fragments](./executable.md#destruction-explosions-and-fragments-p3-0706)). Its only caller is the mode-3 fragment constructor `0x25124`, which stores the record in the fragment object's +0x1C ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
 
 ### 4.2 Layout (Confirmed)
 
@@ -292,8 +333,8 @@ Code-side constants of the data object, by address and type (values not recorded
 
 ## 6. Open questions
 
-- Field meanings are Unconfirmed beyond the uses stated above (U-001). Craft +0x08 and gun +0x18, +0x20 have no traced reader; their types rest on the data. P3-06/01 found the readers of craft +0xBC, +0xC0 and +0xC8.
-- The meanings given as Likely for +0x58, +0x64–+0x84 (the energy allocation) and the unit of +0xAC–+0xB4 rest on the arithmetic, the data and the printed manual; the energy rules belong to P3-07.
+- Field meanings are Unconfirmed beyond the uses stated above and in §3.10 (U-001). Gun +0x20 has no traced reader; its type rests on the data. P3-06/01 found the readers of craft +0xBC, +0xC0 and +0xC8.
+- The unit of +0xAC–+0xB4 rests on the arithmetic, the data and the printed manual. The roles of +0x58 and +0x64–+0x84 in the energy rules are in §3.10 (P3-07/04, Confirmed, code); their names (power budget, recharge rates) remain Likely.
 - +0xA4 is now typed i32 (above); the project reader `craft-info.ts` still reads it as int32, which rejects a value with bit 31 set. No baseline value is affected; aligning the reader is P3-03's.
 - Body record positions other than the six non-zero ones are typed only through the shared layout.
 

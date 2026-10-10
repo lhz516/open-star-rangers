@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-004, U-016, U-027]
 ---
 
@@ -84,8 +84,8 @@ The 18 studied samples are the 13 slice samples, Warp entry 10401 and the four E
     - **Slot 0:** retuned through `0x55d20`/`0x53fec` after it starts. Its three slice samples are the only `flags` 0 (loop) samples, and by listening they sound like the in-flight engine hum.
     - **Slot 3:** the code plays it when a hit leaves the object intact (see slot 4); not compared by listening.
   - **Slot 1:** when a gun projectile object (kind `0x200000`, M2ID slot 21, no MODL) is created, from the firing ship's model. The gun message builder `0x2e5e8` posts that kind.
-  - **Slot 2:** when a missile object (kind `0x100000`, M2ID slot 20, no MODL) is created, from the launching ship's model. The missile builder `0x2e86c` posts that kind and decrements an ammunition count. Both builders are called from `0x2d578`.
-  - **Slot 4:** the impact builders `0x2a40c` (projectile or missile hit) and `0x2a5fc` post a hit event on the struck object. When its value at +0x2c is below 1, i.e. the object is destroyed, slot 4 plays; otherwise slot 3 does.
+  - **Slot 2:** when a missile object (kind `0x100000`, M2ID slot 20, no MODL) is created, from the launching ship's model. The missile builder `0x2e86c` posts that kind and decrements an ammunition count, except while the typed-cheat flag `0x174ed8` is set for the player ([W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code)). Both builders are called from `0x2d578`.
+  - **Slot 4:** the impact builders `0x2a40c` (projectile or missile hit) and `0x2a5fc` post a hit event on the struck object. When the object's shield (+0x2c) was below 1 before the hit, that is, the hit reaches the hull or no shield is up, slot 4 plays; otherwise slot 3 does (Confirmed, code, P3-07/04, [D5](./executable.md#d5-other-entries-into-the-damage-rule--confirmed-code); corrected from "the object is destroyed": destruction is the dead flag +0xD8).
 - **Warp start:** `0x2be00` runs for the Warp command (dispatcher `0x20d10`, message `0x400` sub-command 0). It takes the destination the map click stored (`0x2b9bc`), computes the distance and an energy cost (`0x30d2c`, see U-026), and refuses when energy is short. On success it posts a play-by-ID event for entry **10401**, and the dispatcher enters warp mode.
   - **Shared sample:** 10401 and the missile sample 10647 are the exact duplicate pair recorded above, so the missile launch and the Warp start use the same sound.
 - **Explosion effects:** every EXPL record is {SND entry ID at +0, ANIM entry ID at +4}. The 17 EXPL entries reference four distinct sounds: 10213, 10215, 10217 and 10219 (1.05–2.20 s, against 0.12–0.29 s for the slot-4 samples). Effect objects of kind `0x400000` play their record's sound through `0x55534`.
@@ -97,7 +97,7 @@ Role correspondences:
 |---|---|---|
 | Fire | Slot 1: 10669 (player), 10179 and 10037 (the two enemy types), 10155 (base) | Confirmed (code and listening); the slice's base does fire |
 | Missile | Slot 2: 10647 (all four models with sounds) | Confirmed (code and listening) |
-| Explosion | Slot 4: 10175 (player destroyed), 10177 (other ships destroyed); EXPL effect sounds 10213, 10215, 10217, 10219 (longer blast after an enemy kill, a missile kill and the player's death in the first campaign mission) | Confirmed (code and listening) for slot 4, and by listening for the four effect sounds in those contexts; the choice among them follows the explosion's variant and a random kept EXPL entry (Confirmed, code, [textures §7](./textures.md#7-expl-explosion-records-confirmed)) |
+| Explosion | Slot 4: 10175 (player destroyed), 10177 (other ships destroyed); EXPL effect sounds 10213, 10215, 10217, 10219 (longer blast after an enemy kill, a missile kill and the player's death in the first campaign mission) | Confirmed (code and listening) for slot 4, which the code plays on every hit that finds the shield down, the destroying hit included (P3-07/04), and by listening for the four effect sounds in those contexts; the choice among them follows the explosion's variant and a random kept EXPL entry (Confirmed, code, [textures §7](./textures.md#7-expl-explosion-records-confirmed)) |
 | Warp | 10401 at the Warp start (same bytes as 10647) | Confirmed (code and listening) |
 
 #### Listening comparison (P2-08/10)
@@ -140,7 +140,7 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 | SND | Poster | Trigger |
 |---|---|---|
 | 11087 | Dispatcher, message type 2 | Posted by the target selection helpers `0x2799c`, `0x27a04`, `0x27884` and `0x27910` (the `t`/`f`, `u` and `r`/`y` cases of the [target modes](./executable.md#player-target-modes-and-enemy-classification)) |
-| 11381 | Dispatcher, message type 4 | Posted by `0x2e4ec` when the player's gun or missile selection changes (through `0x2d6dc`, `0x2d6f0`) |
+| 11381 | Dispatcher, message type 4 | Posted by `0x2e4ec` on every selection key the player presses in a flight view (`/`, `.`, `>`, `,`, `<`; through `0x2d6dc`, `0x2d6f0`), also when the selection does not change, and when the rescue or the base re-arm cycles the player's lists; never for other objects ([W3](./executable.md#w3-selection--confirmed-code)) |
 | 10485 | Dispatcher, message type 0x100000, after an optional left-display page change (`0x4cdf0`) | Posted by the flight key handler `0x264a0` (two sites), `0x27ab4` and the communications command handler `0x27b44` (seven sites) |
 | 10463 | Map click `0x2b9bc` | A Warp destination is set |
 | 10401 | Warp start `0x2be00` | As above |
