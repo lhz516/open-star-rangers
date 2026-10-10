@@ -6,13 +6,13 @@ import { expectedRectangle, expectedWorld, float32OfDouble } from '../rules/deri
 import { RandStream } from '../rules/original-random.ts';
 import { initialWorldState } from '../world/create-world.ts';
 import {
-  asCreateInput, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, worldInput,
-  type MissionDraft, type WorldInputParts,
+  asCreateInput, craftInfoContent, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, sliceMission,
+  worldInput, type MissionDraft, type WorldInputParts,
 } from '../world/create-world.test-support.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
 import { constructWorld, type World } from '../world/world.ts';
-import { recordOf, tickInput } from '../world/world.test-support.ts';
+import { recordOf, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { PIPELINE, registerTick } from './pipeline.ts';
 import { disableSpawning, isSpawningEnabled, pendingSpawns, placeWorldRecord } from './spawn.ts';
@@ -33,6 +33,13 @@ const C = (() => {
 function setUp(parts: WorldInputParts = {}): { readonly state: WorldState; readonly world: World } {
   const state = initialWorldState(asCreateInput(worldInput(parts)));
   return { state, world: constructWorld(state) };
+}
+
+/** The RNG state after `count` draws from `state`. */
+function stateAfter(state: RngState, count: number): RngState {
+  let current = state;
+  for (let index = 0; index < count; index++) current = nextRandom(current).state;
+  return current;
 }
 
 /** The next `count` rand values (0–32767) a world would draw from `state`. */
@@ -291,12 +298,14 @@ describe('group dispatch (P3-02 AC-05, Q-02 section-5 dispatch)', () => {
 
   it('takes offset i mod L and places a new anchor from the template at each cycle\'s start, drawing x then y', () => {
     const { state, world } = setUp({ mission: cycleMission() });
-    const [r0, r1, r2, r3] = randValues(state.rngState, 4);
+    // The player at its stored position draws its AI goal (two); each member then draws only its Warp timer, since the
+    // AI target it copies is the player, near and of the other side (P3-06, 0x68050).
+    const [, , r2, r3, , , r6, r7] = randValues(state.rngState, 8);
     const events = instantiated(world.step(tickInput()));
     const members = events.filter(({ source }) => source.group?.index === 0);
     // Rectangle 0 in runtime units: x −1500 to 1500, y 750 to 3000.
-    const first = { x: expectedRectangle(-1500, 1500, r0), y: expectedRectangle(750, 3000, r1), z: 0 };
-    const second = { x: expectedRectangle(-1500, 1500, r2), y: expectedRectangle(750, 3000, r3), z: 0 };
+    const first = { x: expectedRectangle(-1500, 1500, r2), y: expectedRectangle(750, 3000, r3), z: 0 };
+    const second = { x: expectedRectangle(-1500, 1500, r6), y: expectedRectangle(750, 3000, r7), z: 0 };
     expect(members.map(({ source, position }) => [source, position])).toEqual([
       [mission(2, { index: 0, request: 0, member: 0 }), first],
       [mission(3, { index: 0, request: 0, member: 1 }), { x: float32OfDouble(first.x - 300, 'nearest'), y: float32OfDouble(first.y + 20, 'nearest'), z: 5 }],
@@ -335,17 +344,18 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
     );
     m.groups = [{ template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] }];
     const { state, world } = setUp({ mission: m });
-    const r = randValues(state.rngState, 16);
+    const r = randValues(state.rngState, 27);
     const events = instantiated(world.step(tickInput()));
     const player = { x: 100 * Q, y: 200 * Q, z: 0 };
     const near = (base: { x: number; y: number; z: number }, values: number[]) => ({
       x: base.x + offset(values[0], values[1]), y: base.y + offset(values[2], values[3]), z: base.z + offset(values[4], values[5]),
     });
     const byIndex = (index: number) => events.filter(({ source }) => source.index === index).map(({ position }) => position);
-    expect(byIndex(1)).toEqual([near(player, r.slice(0, 6)), near(player, r.slice(6, 12))]);
+    // After its placement draws each object draws its AI goal (two) and, but the player, its Warp timer (one).
+    expect(byIndex(1)).toEqual([near(player, r.slice(2, 8)), near(player, r.slice(11, 17))]);
     // Record 4 has not spawned yet and record 5 has kind 0: the whole-world default, x then y.
-    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }]);
-    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[14]), y: expectedWorld(6, r[15]), z: 0 }]);
+    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[20]), y: expectedWorld(6, r[21]), z: 0 }]);
+    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[25]), y: expectedWorld(6, r[26]), z: 0 }]);
     const [oldest] = entities(state).filter(({ source }) => source?.index === 1);
     oldest.destroyed = true;
     oldest.state = 'destroyed-source';
@@ -442,7 +452,8 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     const { state, world } = setUp({ mission: shortMission(), run: { wingman: index } });
     // Creation draws +0x78 for the player, the wingman and record 1, in that order.
     const [, wingmanDraw] = randValues(0x1234_5678, 3);
-    const r = randValues(state.rngState, 6);
+    // The player draws its AI goal first; the wingman then draws six for its anchor and two for its own AI goal.
+    const r = randValues(state.rngState, 10);
     const events = stepTo(world, state, 40);
     expect(events.map(({ entityId, kindBit, source }) => [entityId, kindBit, source])).toEqual([
       [1, 0, mission(0)],
@@ -451,7 +462,9 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     ]);
     const offset = (sign: number, size: number) => (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200));
     const wingman = state.entities.get(2)!;
-    expect(wingman.position).toEqual({ x: 100 * Q + offset(r[0], r[1]), y: 200 * Q + offset(r[2], r[3]), z: offset(r[4], r[5]) });
+    expect(wingman.position).toEqual({ x: 100 * Q + offset(r[2], r[3]), y: 200 * Q + offset(r[4], r[5]), z: offset(r[6], r[7]) });
+    // Like the player, the wingman draws no Warp timer.
+    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[8]), y: expectedWorld(6, r[9]), z: 0 } } });
     expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });
     expect([wingman.side, wingman.baseInteraction]).toEqual(['friendly', false]);
     expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });
@@ -487,8 +500,8 @@ describe('names in a running world (P3-02 AC-07, Q-05)', () => {
     const roster = rosterContent();
     roster.options[0].nameCandidates = [];
     const { state, world } = setUp({ mission: m, roster, run: { wingman: 0 } });
-    // The player at its stored position draws nothing; the wingman anchored on it draws six, then its name.
-    const start = randValues(state.rngState, 7)[6] % 2;
+    // The player at its stored position draws its AI goal (two); the wingman anchored on it draws six, then its name.
+    const start = randValues(state.rngState, 9)[8] % 2;
     world.step(tickInput());
     expect(entities(state)[1].name).toEqual({ type: 'pool', index: start });
     expect(state.spawn.namePoolUses).toEqual(start === 0 ? [1, 0] : [0, 1]);
@@ -508,5 +521,134 @@ describe('outputs of instantiation (P3-02 AC-10)', () => {
     expect(state.entities.get(2)!.source).toEqual({ collection: 'wingman', index: 0, group: null });
     expect(render.observedEntityId).toBe(1);
     expect(deepFrozen(render)).toBe(true);
+  });
+});
+
+describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 实例化扩展)', () => {
+  const still = { rate: 0, enabled: false };
+  const quiet = { steering: { pitch: still, yaw: still, roll: still }, timedRotation: { pitch: null, yaw: null, roll: null }, impulse: null, locked: false, disturbance: null };
+  const ZERO = { x: 0, y: 0, z: 0 };
+  /** f32(base + anchor offset) per axis from six draws. */
+  const near = (base: { x: number; y: number; z: number }, r: number[]) => {
+    const axis = (value: number, sign: number, size: number) => float32OfDouble(value + (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200)), 'nearest');
+    return { x: axis(base.x, r[0], r[1]), y: axis(base.y, r[2], r[3]), z: axis(base.z, r[4], r[5]) };
+  };
+
+  it('gives the player its take-off state, drawing its AI goal after its placement, and the next object its draws after those', () => {
+    const { state, world } = setUp();
+    const r = randValues(state.rngState, 13);
+    world.step(tickInput());
+    const player = state.entities.get(1)!;
+    // Rectangle 0 in runtime units: −3750 to 3750 on both axes.
+    expect(player.position).toEqual({ x: expectedRectangle(-3750, 3750, r[0]), y: expectedRectangle(-3750, 3750, r[1]), z: 0 });
+    // The synthetic player record keeps the base 64 at the initial levels: E = 200 − (2 + 8) is not below T = 0.
+    expect(player).toMatchObject({ orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 0, inWarp: false, formation: null });
+    expect(player.movement).toEqual({ mode: 'craft', speed: 64, commandedSpeed: 64, atCommandedSpeed: true, speedRatio: 1, ...quiet });
+    // 0x68050 never writes the player's target; the player record names no candidates, so a world goal in mode 4.
+    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[2]), y: expectedWorld(6, r[3]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(state.player).toMatchObject({ entityId: 1, target: null, control: { lastAxes: { pitch: 0, yaw: 0, roll: 0 }, speedAssist: { enabled: true, dueClock: 0, engaged: false } } });
+    // Record 3's first craft (kind bit 7), anchored on the player: placement, its AI goal, then its Warp timer.
+    const next = state.entities.get(2)!;
+    expect(next.position).toEqual(near(player.position, r.slice(4, 10)));
+    expect(next).toMatchObject({ activity: 'active', maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 2 + (r[12] % 0x2d00), inWarp: false });
+    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(next.movement).toEqual(player.movement);
+    expect(next.movement).not.toBe(player.movement);
+  });
+
+  it('gives each kind of the slice its AI mode: a search with no candidates for 0x80, mode 1 for 0x20000, mode 5 for 0x4000', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    const modes = new Map<number, Set<number>>();
+    for (const entity of entities(state)) modes.set(entity.kindBit, (modes.get(entity.kindBit) ?? new Set()).add(entity.ai.mode));
+    expect(modes).toEqual(new Map([[0, new Set([4])], [7, new Set([4])], [17, new Set([1])], [14, new Set([5])], [8, new Set([4])]]));
+    for (const entity of entities(state)) expect(entity.warpClock > 2 && entity.warpClock <= 2 + 0x2cff).toBe(entity.kindBit !== 0);
+  });
+
+  it('keeps an energy-limited player maximum at the initial levels, every other kind at its base, a block only when active', () => {
+    const craftInfo = craftInfoContent();
+    // E = 50 − (10 + 5) = 35 < T = trunc(100 × 500 ÷ 1000) = 50: trunc(35,000 ÷ 500) = 70.
+    Object.assign(craftInfo.craft[0], { at58: 50, at64: [99, 10, 99, 99], at78: [99, 99, 5, 99], atB8: 100, at88: 500 });
+    Object.assign(craftInfo.craft[7], { at58: 50, at64: [99, 10, 99, 99], at78: [99, 99, 5, 99], atB8: 100.5, at88: 500 });
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0), stored(2, 8, 20000, 0), stored(3, 7, 0, 400, { spawnTime: 1 }));
+    const { state, world } = setUp({ mission: m, craftInfo, run: { clockUnitsPerTick: 4 } });
+    world.step(tickInput());
+    const [player, near7, far8] = entities(state);
+    expect(player.maximumSpeed).toBe(70);
+    expect(player.movement).toMatchObject({ speed: 70, commandedSpeed: 70, speedRatio: float32OfDouble(0.7, 'nearest') });
+    expect(near7).toMatchObject({ activity: 'active', maximumSpeed: 100.5, movement: { speed: 100.5, commandedSpeed: 100.5, speedRatio: 1 } });
+    expect(far8).toMatchObject({ activity: 'parked', maximumSpeed: 64, movement: null, lastParkedUpdateClock: 4 });
+    // A later spawn takes the clock of its own tick: due at 64 units, at tick 17 with 4 units per tick.
+    stepTo(world, state, 17);
+    const late = entities(state)[3];
+    expect(late.source).toEqual(mission(3));
+    expect(late.lastParkedUpdateClock).toBe(68);
+    expect(late.warpClock).toBeGreaterThan(68);
+  });
+
+  it('searches the AI target record\'s objects while it has spawned, the record\'s kinds otherwise, drawing nothing on a near target', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(
+      stored(1, 7, 400, 0),
+      // Record 3 has not spawned yet, so record 2 searches its kinds [7]: record 1's craft, its own side (0x93f80).
+      stored(2, 8, 0, 400, { aiTarget: 3, aiTargetCraftTypes: [7] }),
+      stored(3, 7, -400, 0, { spawnTime: 10 }),
+      // Record 1 has spawned, so record 4 searches its objects and not the kinds [0], which would give the player.
+      stored(4, 8, 0, -400, { aiTarget: 1, aiTargetCraftTypes: [0] }),
+    );
+    const { state, world } = setUp({ mission: m });
+    // The player's goal (2), record 1's goal (2) and Warp timer (1), then one Warp timer each for records 2 and 4.
+    const before = state.rngState;
+    const r = randValues(before, 7);
+    world.step(tickInput());
+    const [, first, second, fourth] = entities(state);
+    expect(first.ai).toMatchObject({ mode: 4, target: null });
+    expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
+    expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
+    expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[4] % 0x2d00), 2 + (r[5] % 0x2d00), 2 + (r[6] % 0x2d00)]);
+    expect(state.rngState).toBe(stateAfter(before, 7));
+  });
+
+  it('gives a wingman whose option names the player\'s kind the player as its target, in mode 2, with no AI or Warp draw', () => {
+    const roster = rosterContent();
+    roster.options[0].aiTargetCraftTypes = [0];
+    const { state, world } = setUp({ mission: playerOnlyMission(), roster, run: { wingman: 0 } });
+    const before = state.rngState;
+    world.step(tickInput());
+    const wingman = entities(state)[1];
+    expect(wingman).toMatchObject({ kindBit: 1, warpClock: 0, ai: { mode: 2, target: 1, goal: ZERO } });
+    // The player's goal (2) and the wingman's anchor (6) are all the draws.
+    expect(state.rngState).toBe(stateAfter(before, 8));
+  });
+
+  it('faults rather than store a Warp timer past the safe integers', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0));
+    const { state, world } = setUp({ mission: m });
+    state.clock = Number.MAX_SAFE_INTEGER - 2;
+    // The player's goal (2) and record 1's goal (2) come before its Warp delay.
+    expect(randValues(state.rngState, 5)[4] % 0x2d00).toBeGreaterThan(0);
+    expect(thrownBy(() => world.step(tickInput()))).toMatchObject({ code: 'budget-exhausted', site: 'flight-state.warp-clock' });
+  });
+
+  it('records each layout cycle\'s first member as the formation leader of the others, at f32(l − layout[0])', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    for (const [leader, follower] of [[43, 44], [45, 46], [47, 48], [49, 50]]) {
+      expect(state.entities.get(leader)!.formation).toBeNull();
+      expect(state.entities.get(follower)!.formation).toEqual({ leader, offset: { x: 250, y: 0, z: 0 } });
+    }
+    expect(entities(state).filter(({ formation }) => formation !== null).map(({ id }) => id)).toEqual([44, 46, 48, 50]);
+
+    const m = sliceMission();
+    const first = { x: Math.fround(0.3), y: -2, z: 0 };
+    m.groups[0].layout = [first, { x: 1000, y: 20, z: 5 }];
+    const rounded = setUp({ mission: m });
+    rounded.world.step(tickInput());
+    const [leader, follower] = entities(rounded.state).filter(({ source }) => source?.group?.index === 0);
+    expect(leader.formation).toBeNull();
+    expect(follower.formation).toEqual({ leader: leader.id, offset: { x: float32OfDouble(1000 - first.x, 'nearest'), y: 22, z: 5 } });
+    expect(follower.formation!.offset.x).not.toBe(1000 - first.x);
   });
 });

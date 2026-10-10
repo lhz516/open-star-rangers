@@ -15,10 +15,11 @@ import { CLOCK_UNITS_PER_SECOND } from '../contracts/time.ts';
 import { readExactRecord } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
 import type { MissionSetup } from '../mission/load-mission.ts';
+import { ALLOCATION_LEVELS, ENERGY_SCALE } from '../rules/flight-state.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
-import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
-import { MISSION_PATH, ROSTER_PATH, WINGMAN_KIND_BIT } from './setup-check.ts';
-import type { RuntimeRecord, SpawnEntry, SpawnState } from './spawn-state.ts';
+import { PLAYER_KIND_BIT, postsRequests, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
+import { MISSION_PATH, ROSTER_PATH } from './setup-check.ts';
+import type { SpawnState } from './spawn-state.ts';
 
 /** The world's read-only rule content: the craft info as read, with its Asset ID. */
 export interface WorldCraftInfo {
@@ -31,11 +32,6 @@ export const PRODUCTION_CRAFT_INFO = 'data/craft-info';
 
 const PATH = 'input.craftInfo';
 const CONTENT_PATH = `${PATH}.content`;
-
-/** The code constant of the energy arithmetic of `0x3060c` and `0x30e0c`: a code rule (spec 技术决定 11). */
-const ENERGY_SCALE = 1000;
-/** The levels each of the two energy allocations can take (P3-07). */
-const ALLOCATION_LEVELS = [0, 1, 2, 3] as const;
 
 const isInt32 = (value: number): boolean => toInt32(value) === value;
 
@@ -52,9 +48,8 @@ export function readCraftInfoInput(value: unknown, identity: ContentIdentity): W
 
 /**
  * Every kind the run can instantiate, with the path of the first declaration that names it, in firing order: those of
- * the queue entries that post requests (as checkSpawnQueue decides: at least one request and a firing record whose
- * probability is 100). A record entry instantiates its record's kind, a group entry its members' and the wingman entry
- * kind bit 1.
+ * the queue entries that post requests (postsRequests). A record entry instantiates its record's kind, a group entry its
+ * members' and the wingman entry kind bit 1.
  */
 function instantiableKinds(setup: MissionSetup, spawn: SpawnState): Map<number, string> {
   const kinds = new Map<number, string>();
@@ -62,12 +57,8 @@ function instantiableKinds(setup: MissionSetup, spawn: SpawnState): Map<number, 
     if (kindBit !== null && !kinds.has(kindBit)) kinds.set(kindBit, path);
   };
   const declarationPath = (index: number): string => `${MISSION_PATH}.declarations[${index}].craftType`;
-  const firing = ({ source, index }: SpawnEntry): RuntimeRecord => {
-    if (source === 'record') return spawn.records[index];
-    return source === 'group' ? spawn.records[setup.groups[index].template] : (spawn.wingman as RuntimeRecord);
-  };
   for (const entry of spawn.queue) {
-    if (entry.requests <= 0 || firing(entry).ruleInputs.percentA < 100) continue;
+    if (!postsRequests(spawn, setup, entry)) continue;
     const { source, index } = entry;
     if (source === 'record') add(setup.declarations[index].craftType, declarationPath(index));
     else if (source === 'wingman') add(WINGMAN_KIND_BIT, `${ROSTER_PATH}.options[${index}].craftType`);

@@ -19,14 +19,20 @@ type Mutable = Record<string | number, unknown>;
 
 /**
  * The slice-shaped world with the first wingman after its first tick (51 entities from section-1 records, groups and
- * the wingman, with craft-type and candidate names), plus two entities the rules would create at run time: one named
- * from the pool, one unnamed.
+ * the wingman, with craft-type and candidate names, active and parked, with and without a formation), plus two entities
+ * the rules would create at run time: one named from the pool, one unnamed whose flight state has every optional part
+ * other tasks write (a formation, a timed rotation, an impulse, a disturbance, AI targets).
  */
 function richState(): WorldState {
   const state = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
   constructWorld(state).step(tickInput());
   state.entities.allocate(entityInit(25, { name: { type: 'pool', index: 1 }, side: null, activity: 'parked' }));
-  state.entities.allocate(entityInit(25));
+  const runtime = state.entities.allocate(entityInit(25, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } } }));
+  const block = runtime.movement!;
+  Object.assign(block.timedRotation, { pitch: { rate: 0.5, decay: -0.25, end: 3 }, yaw: { rate: -1, decay: 0.5, end: 4 }, roll: { rate: 2, decay: -1, end: 5 } });
+  block.impulse = { direction: { x: 0, y: 1, z: 0 }, magnitude: 5 };
+  block.disturbance = { level: 2, biases: [1, -2, 3] };
+  Object.assign(runtime.ai, { target: 1, objectTarget: 2 });
   state.spawn.namePoolUses[1] = 1;
   return state;
 }
@@ -84,7 +90,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       clockUnitsPerTick: 2,
     });
     expect(state).toMatchObject({ tick: 0, clock: 0, nextEntityId: 1, entities: [], kindOrder: [], missionStatus: 'built' });
-    expect(state.player).toEqual({ entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0 });
+    expect(state.player).toEqual({ entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0, target: null, control: null });
     expect(state.spawn.records).toHaveLength(9);
     expect(state.spawn.wingman?.declaration).toEqual({ collection: 'wingman', index: 3 });
     // Seven declared entries and the wingman's.
@@ -131,9 +137,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       ...['config', 'tick', 'clock', 'rngState', 'missionStatus', 'player', 'spawn'].map((key) => [state as unknown as Mutable, key] as const),
       ...[...shapes.values()].flatMap((entity) => Object.keys(entity).map((key) => [entity as unknown as Mutable, key] as const)),
     ];
-    // A null in a nullable object field (a region, a source, a group membership) cannot become 0; the same fields hold
-    // objects elsewhere in this state, whose members are leaves themselves.
-    const nullableObjects = new Set(['region', 'source', 'group']);
+    // A null in a nullable object field (a region, a source, a group membership, a movement block, a formation, a timed
+    // rotation about an axis, an impulse, a disturbance) cannot become 0; the same fields hold objects elsewhere in this
+    // state, whose members are leaves themselves.
+    const nullableObjects = new Set(['region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance']);
     const baseline = textOf(state);
     let changes = 0;
     for (const [holder, key] of holders) {

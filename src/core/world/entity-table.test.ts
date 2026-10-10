@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
-import { ALL_KINDS, EntityTable, isActiveState, isLive, type Entity, type EntityInit, type ObjectState } from './entity-table.ts';
+import { initialMovementBlock } from '../rules/flight-state.ts';
+import {
+  ALL_KINDS, allocatorAiState, allocatorFlightState, EntityTable, isActiveState, isLive, setActivity, type Entity, type EntityInit,
+  type MovementBlock, type ObjectState,
+} from './entity-table.ts';
 import { entityInit, expectFault, TEST_ORIENTATION } from './world.test-support.ts';
 
 const ids = (entities: Iterable<Entity>): number[] => [...entities].map(({ id }) => id);
@@ -146,5 +150,105 @@ describe('entity table walks (P3-02 AC-09 Q-08)', () => {
       'projectile-hit': true,
     };
     for (const [state, active] of Object.entries(states)) expect(isActiveState(state as ObjectState)).toBe(active);
+  });
+});
+
+describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与契约)', () => {
+  /** A block with every optional part set, as other tasks' rules write them. */
+  function busyBlock(): MovementBlock {
+    const block = initialMovementBlock(70, 100);
+    block.steering.yaw.rate = -0.5;
+    block.steering.yaw.enabled = true;
+    block.timedRotation.pitch = { rate: 1.5, decay: -0.25, end: 12 };
+    block.impulse = { direction: { x: 0, y: 0, z: 1 }, magnitude: 4 };
+    block.disturbance = { level: 2, biases: [3, -1, 0] };
+    return block;
+  }
+
+  it('gives allocator defaults that runtime-kind constructors share: AI mode 5, no targets, zero vectors, no Warp, no formation', () => {
+    expect(allocatorAiState()).toEqual({ mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null });
+    expect(allocatorAiState()).not.toBe(allocatorAiState());
+    expect(allocatorFlightState()).toEqual({ warpClock: 0, inWarp: false, ai: allocatorAiState(), formation: null });
+  });
+
+  it('copies the flight state detached: a mutable block and AI state, frozen vectors, a frozen formation', () => {
+    const init = entityInit(7, {
+      maximumSpeed: 70, lastParkedUpdateClock: 6, warpClock: 900, inWarp: true, movement: busyBlock(),
+      ai: { mode: 2, target: 4, goal: { x: 1, y: 2, z: 3 }, targetOffset: { x: -1, y: 0, z: 0 }, objectTarget: 5 },
+      formation: { leader: 3, offset: { x: 1, y: 2, z: 3 } },
+    }) as unknown as { movement: MovementBlock; ai: { goal: { x: number } }; formation: { offset: { x: number } } };
+    const entity = new EntityTable().allocate(init as unknown as EntityInit);
+    const before = JSON.stringify(entity);
+    expect(entity).toMatchObject({ maximumSpeed: 70, lastParkedUpdateClock: 6, warpClock: 900, inWarp: true, movement: busyBlock(), ai: { mode: 2, target: 4, objectTarget: 5 } });
+    const block = init.movement;
+    block.speed = 1;
+    block.steering.yaw.rate = 9;
+    block.timedRotation.pitch!.rate = 9;
+    (block.impulse!.direction as { z: number }).z = 9;
+    (block.disturbance as unknown as { biases: number[] }).biases[0] = 9;
+    init.ai.goal.x = 9;
+    init.formation.offset.x = 9;
+    expect(JSON.stringify(entity)).toBe(before);
+    expect(deepFrozen(entity.formation)).toBe(true);
+    for (const frozen of [entity.ai.goal, entity.ai.targetOffset, entity.movement!.steering, entity.movement!.impulse!.direction, entity.movement!.disturbance]) {
+      expect(Object.isFrozen(frozen)).toBe(true);
+    }
+    // The rules write the block, its axes and the AI state in place.
+    entity.movement!.speed = 2;
+    entity.movement!.steering.pitch.rate = 2;
+    entity.ai.mode = 4;
+    expect(entity.movement).toMatchObject({ speed: 2, steering: { pitch: { rate: 2 } } });
+  });
+
+  it('holds a movement block exactly while not parked', () => {
+    const table = new EntityTable();
+    expectFault(() => table.allocate(entityInit(7, { movement: null })), 'invariant-violated', 'entities.movement');
+    expectFault(() => table.allocate(entityInit(7, { activity: 'parked', movement: initialMovementBlock(1, 1) })), 'invariant-violated', 'entities.movement');
+    expect(table.allocate(entityInit(7, { activity: 'parked' })).movement).toBeNull();
+    expect(table.size).toBe(1);
+  });
+
+  it('switches the activity with its block, starting the state again, and refuses an inconsistent or invalid pair', () => {
+    const entity = new EntityTable().allocate(entityInit(7, { activity: 'parked' }));
+    const block = initialMovementBlock(1, 1);
+    setActivity(entity, 'active', block);
+    expect(entity).toMatchObject({ activity: 'active', state: 'presentation-ready' });
+    expect(entity.movement).toBe(block);
+    setActivity(entity, 'parked', null);
+    expect(entity).toMatchObject({ activity: 'parked', state: 'new', movement: null });
+    expectFault(() => setActivity(entity, 'docked', null), 'invariant-violated', 'entities.movement');
+    expectFault(() => setActivity(entity, 'parked', initialMovementBlock(1, 1)), 'invariant-violated', 'entities.movement');
+    expectFault(() => setActivity(entity, 'active', { ...initialMovementBlock(1, 1), speed: Number.NaN }), 'invariant-violated', 'entities.movement');
+    expect(entity).toMatchObject({ activity: 'parked', state: 'new', movement: null });
+  });
+
+  const withBlock = (change: (block: Record<string, unknown>) => void): Partial<EntityInit> => {
+    const block = busyBlock() as unknown as Record<string, unknown>;
+    change(block);
+    return { movement: block as unknown as MovementBlock };
+  };
+  const ai = (change: Record<string, unknown>): Partial<EntityInit> => ({ ai: { ...allocatorAiState(), ...change } as EntityInit['ai'] });
+
+  it.each([
+    ['a maximum speed that is not an f32', { maximumSpeed: 0.1 }],
+    ['a non-finite maximum speed', { maximumSpeed: Number.POSITIVE_INFINITY }],
+    ['a negative parked-update clock', { lastParkedUpdateClock: -1 }],
+    ['a fractional Warp clock', { warpClock: 1.5 }],
+    ['a mode outside the block\'s variant', withBlock((block) => { block.mode = 'linear'; })],
+    ['a non-f32 speed', withBlock((block) => { block.speed = 0.1; })],
+    ['a non-finite commanded speed', withBlock((block) => { block.commandedSpeed = Number.NaN; })],
+    ['a non-finite steering rate', withBlock((block) => { (block.steering as Record<string, { rate: number }>).roll.rate = Number.NaN; })],
+    ['a non-f32 timed-rotation end', withBlock((block) => { (block.timedRotation as Record<string, unknown>).yaw = { rate: 0, decay: 0, end: 0.1 }; })],
+    ['a non-finite impulse direction', withBlock((block) => { block.impulse = { direction: { x: Number.NaN, y: 0, z: 0 }, magnitude: 1 }; })],
+    ['a fractional disturbance bias', withBlock((block) => { block.disturbance = { level: 2, biases: [0.5, 0, 0] }; })],
+    ['an unknown disturbance level', withBlock((block) => { block.disturbance = { level: 3 }; })],
+    ['AI mode 3', ai({ mode: 3 })],
+    ['a non-f32 AI goal', ai({ goal: { x: 0.1, y: 0, z: 0 } })],
+    ['a non-finite AI target offset', ai({ targetOffset: { x: 0, y: Number.NaN, z: 0 } })],
+    ['a non-finite formation offset', { formation: { leader: 1, offset: { x: 0, y: 0, z: Number.POSITIVE_INFINITY } } }],
+  ] as [string, Partial<EntityInit>][])('rejects %s as a broken invariant', (_, overrides) => {
+    const table = new EntityTable();
+    expectFault(() => table.allocate(entityInit(7, overrides)), 'invariant-violated', 'entities.flight');
+    expect(table.size).toBe(0);
   });
 });

@@ -89,7 +89,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
-| [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | in-progress |
+| [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | pending |
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
 | [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | pending |
@@ -118,6 +118,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 21 完成（交 06、07、P3-03）：** 01–05 的结论已写入 `docs/original/`：executable 新节“Flight motion, controls, speed, parking and take-off (P3-06)”及旧文更正、craft、scenario、键位表（原版无键盘操纵、速度档位在 Shift+数字）与 U-001、U-008、U-009、U-011、U-021、U-022、U-024–U-026（状态与负责阶段未改）。craft +0xA4 按有符号比较改为 i32，`src/content/rule-data/craft-info.ts` 仍按 int32 读取并拒绝第 31 位，交 P3-03 对齐（基准数据不受影响）。B-008 所需的支持域、误差项、试键与暂停点仍在 local findings，交 07、08。
 - **2026-10-10 — 06 完成，检查点 A、C 定稿（交 07、09–15、P3-05、P3-07、P3-08、P3-09）：** 本 spec、P3-02 spec（新节“P3-06 的契约修订（检查点 A）”，D-01 至 D-08）与 P3-01 缺省清单（G-09、G-10）按协调者的十条裁定与推荐答案修订并记录，09–15 的工作范围与验收标准已同步。要点：项目轴为原版整数路径上的数字摇杆（±1 满偏，非整数向零截断，Medium 固定，只在变化时应用）；`select-number` 对应 Shift+n 档位；油门不持久；新增 `speed-assist-released`；`0x68050` 初态与停放中的 Warp 跳跃归 P3-06；活动对象无边界处理；编队领队与偏移补入 P3-02；`CORE_LIMITS` 不变。总计划“原版的键盘或鼠标”一语是否以 ADR 更正留待用户，不阻塞。阶段索引的 P3-05、P3-06、P3-08、P3-09 段与 U-011 行已按 06 的提议更新。
 - **2026-10-10 — 09 完成（交 10、14、16、19）：** 世界创建输入、录制与 `ReplayContent` 增加 `craftInfo`，语义检查只针对实际发帖的生成项；setupHash 覆盖严格读取后的 craft-info；新增原因码与四个事件，比较按 tick 内的阶段顺序校验；`flight` 拆为 `{ motion, combat }`；`RULES_VERSION` 与快照格式版本各递增到 2。交 14：停放中 Warp 计时只校验 i32 范围，负的持续时间在原版无符号比较下的行为由 14 定（本地 480 条记录都非负）。交 16：种类位 25 没有机型记录，D-01 拒绝任何发帖的种类 25 实例，真实内容核对须确认所选任务不受影响。交 19：core 分册与源码结构指南需同步（输入、事件、分区、版本与新模块 `world/craft-info-input.ts`）。可选整理：`spawn.ts` 与 `craft-info-input.ts` 的发帖记录判定可合并（拥有 `spawn.ts` 的行处理）。
+- **2026-10-10 — 10 完成（交 11–15、19、P3-07）：** 实体飞行状态、玩家控制状态与实例化扩展按检查点 A 的次序写入（分配器初态 → 最高速度 → `0x68050` 初始 AI → 停放时刻 → `warpClock` → 活动与移动块 → 玩家状态，编队在成员实例化后写入）；快照覆盖新状态。为 P3-07 导出纯函数 `craftMovementBlock`、`playerMaximumSpeed`、`initialMaximumSpeed`、`applyRecomputedMaximum` 等，`MovementBlock` 为可扩展的联合别名（P3-07 增加变体时须同时扩展 entity-table 的校验与复制及快照写入器）；`firingRecord` 等合并到 `rules/spawn-schedule.ts`。交 13：玩家移除时 `leave` 须同时清除 `player.target` 与 `player.control`。交 14：停放切换改用 `setActivity`（停放时释放移动块，恢复时用 `initialMovementBlock`），在此之前被切换实体的移动块是旧的。交 15：P3-07 接入前 `speedLimitStatus` 报 `'initial-only'`。交 19：core 分册与源码结构；executable 中 `0x56b8c` 方向表布局、`0x68050` 搜索评分与阈值比较、`0x218e8` 无旧块时的油门（仅结构，见 10 的完成证据）。
 
 ## 审批
 

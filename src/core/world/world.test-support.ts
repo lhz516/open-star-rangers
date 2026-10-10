@@ -5,7 +5,8 @@ import { CoreFaultError } from '../errors.ts';
 import { snapshotText, takeSnapshot } from '../replay/snapshot.ts';
 import { initialWorldState } from './create-world.ts';
 import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
-import type { EntityInit, EntityRuleInputs, Matrix3 } from './entity-table.ts';
+import { initialMovementBlock } from '../rules/flight-state.ts';
+import { allocatorFlightState, type EntityInit, type EntityRuleInputs, type Matrix3 } from './entity-table.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
 
@@ -35,7 +36,16 @@ export function testState(overrides: Partial<WorldConfig> = {}): WorldState {
   return { ...state, config: Object.freeze({ ...state.config, ...overrides }) };
 }
 
+/** A test maximum speed and craft base: an f32 the block's ratio of 0.5 represents exactly. */
+export const TEST_MAXIMUM_SPEED = 48;
+export const TEST_BASE_MAXIMUM_SPEED = 96;
+
+/**
+ * Instantiation data of an entity of `kindBit`, active by default; an active one gets the initial movement block of
+ * TEST_MAXIMUM_SPEED, a parked one none, unless `overrides` say otherwise.
+ */
 export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {}): EntityInit {
+  const active = (overrides.activity ?? 'active') === 'active';
   return {
     kindBit,
     source: null,
@@ -47,6 +57,10 @@ export function entityInit(kindBit: number, overrides: Partial<EntityInit> = {})
     orientation: TEST_ORIENTATION,
     activity: 'active',
     ruleInputs: TEST_RULE_INPUTS,
+    ...allocatorFlightState(),
+    maximumSpeed: TEST_MAXIMUM_SPEED,
+    lastParkedUpdateClock: 0,
+    movement: active ? initialMovementBlock(TEST_MAXIMUM_SPEED, TEST_BASE_MAXIMUM_SPEED) : null,
     ...overrides,
   };
 }

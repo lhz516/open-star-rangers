@@ -5,23 +5,25 @@
  * objects one after another, a group request member by member.
  *
  * Draws, in the original's order: a request's placement draws (each group member's layout cycle placing its anchor
- * first), then each instantiation's own (name fallbacks only so far). The rule tasks add their instantiation draws at
- * the marked extension point, in Q-07's order: `0x3060c` (P3-07), `0x68050` (P3-08), the Warp timer +0xC8 (P3-09),
- * `0x20990` (P3-08), `0x38cd4` (P3-10).
+ * first), then each instantiation's own: name fallbacks, then P3-06's at the extension point (docs/plan/p3/06/spec.md,
+ * 实例化扩展): the initial AI state `0x68050` and the Warp timer +0xC8. The other rule tasks add theirs at the marked
+ * places: `0x3060c`'s energy timer (P3-07), `0x20990` (P3-08), `0x38cd4` (P3-10).
  *
- * Instantiation writes only what does not depend on craft records (Q-07). The original's resource test `0x6a0b8`
- * after allocation, whose failure conditions were not established, always passes here (a disclosed difference).
+ * The original's resource test `0x6a0b8` after allocation, whose failure conditions were not established, always
+ * passes here (a disclosed difference).
  */
 import type { Vector3 } from '../../content/logic/logic-content.ts';
 import type { EntitySource, ObjectInstantiatedEvent } from '../contracts/domain-events.ts';
 import { isDue } from '../contracts/time.ts';
 import { CoreFaultError } from '../errors.ts';
+import { initialMaximumSpeed, initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
+import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
 import { assignName } from '../rules/name-assignment.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { memberPosition, placeRecord, type AttitudeRows, type Placement, type PlacementRecord } from '../rules/placement.ts';
-import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
-import type { Entity, EntityRuleInputs, Matrix3 } from '../world/entity-table.ts';
-import { COCKPIT_VIEW_MODE } from '../world/player-state.ts';
+import { firingRecord, PLAYER_KIND_BIT, postsRequests } from '../rules/spawn-schedule.ts';
+import { allocatorFlightState, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
+import { COCKPIT_VIEW_MODE, initialPlayerControl } from '../world/player-state.ts';
 import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 
@@ -44,30 +46,17 @@ const IDENTITY: Matrix3 = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]) as unknown 
 
 /**
  * Stage `spawn-queue-check` (`0x67018`), while spawning is enabled: takes every entry due at this tick's clock, in queue
- * order, and posts its requests. The probability roll needs no draw in supported content: world creation admits only
- * 100 (always posts) and, on a group template the build does not fill, a source 0 (never posts); the original draws
- * one rand even then. Entries never repeat, since supported content has no repeat interval, and no limit applies.
+ * order, and posts its requests when it posts any (postsRequests: the probability roll needs no draw in supported
+ * content). Entries never repeat, since supported content has no repeat interval, and no limit applies.
  */
 export function checkSpawnQueue(world: WorldState, requests: { post(request: SpawnRequest): void }): void {
-  const { spawn, clock } = world;
+  const { spawn, setup, clock } = world;
   if (!spawn.enabled) return;
   while (spawn.queue.length > 0 && isDue(clock, spawn.queue[0].due)) {
-    const { source, index, requests: count } = spawn.queue.shift() as SpawnEntry;
-    if (firingRecord(world, source, index).ruleInputs.percentA < 100) continue;
-    for (let request = 0; request < count; request++) requests.post({ type: 'spawn', source, index, request });
-  }
-}
-
-/** The record whose probability a firing reads: the record itself, a group's template or the wingman option. */
-function firingRecord({ spawn, setup }: WorldState, source: SpawnSourceType, index: number): RuntimeRecord {
-  switch (source) {
-    case 'record':
-      return spawn.records[index];
-    case 'group':
-      return spawn.records[setup.groups[index].template];
-    case 'wingman':
-      if (spawn.wingman === null) throw new CoreFaultError('invariant-violated', 'spawn.wingman');
-      return spawn.wingman;
+    const entry = spawn.queue.shift() as SpawnEntry;
+    if (!postsRequests(spawn, setup, entry)) continue;
+    const { source, index } = entry;
+    for (let request = 0; request < entry.requests; request++) requests.post({ type: 'spawn', source, index, request });
   }
 }
 
@@ -145,12 +134,13 @@ function instantiate(
 ): Entity {
   const declaration = (source.collection === 'mission' ? world.setup.declarations : world.setup.wingmanOptions)[source.index];
   const kindBit = declaration.craftType;
-  // World creation admits no kind-0 record that spawns and binds every kind to a model.
-  if (kindBit === null || declaration.model === null) throw new CoreFaultError('invariant-violated', 'spawn.kind');
+  // World creation admits no kind-0 record that spawns and binds every kind to a model and a craft record (D-01).
+  const craft = kindBit === null ? undefined : world.craftInfo.content.craft[kindBit];
+  if (kindBit === null || declaration.model === null || craft === undefined) throw new CoreFaultError('invariant-violated', 'spawn.kind');
   const name = assignName(world.setup, world.entities, world.spawn.namePoolUses, { declaration: record.declaration, kindBit }, rand);
-  const player = kindBit === PLAYER_KIND_BIT;
-  const active = player || startsActive(world, position);
-  // An active player's movement block takes the identity instead of the placement attitude (0x2c3b0, 0x21794).
+  // Allocated as the allocator leaves an object, parked and without a block; the steps below write the rest in the
+  // original's order (docs/plan/p3/06/spec.md, 实例化扩展). The maximum speed is written where `0x3060c` runs, without
+  // a draw; P3-07 adds its energy fields and timer draw there, then the two-bit fields.
   const entity = world.entities.allocate({
     kindBit,
     source,
@@ -159,19 +149,39 @@ function instantiate(
     baseInteraction: declaration.baseInteraction,
     presentation: { type: 'model', model: declaration.model },
     position,
-    orientation: player ? IDENTITY : matrixOf(attitude),
-    activity: active ? 'active' : 'parked',
+    orientation: matrixOf(attitude),
+    activity: 'parked',
     ruleInputs: entityRuleInputs(record.ruleInputs),
+    ...allocatorFlightState(),
+    maximumSpeed: initialMaximumSpeed(kindBit, craft),
+    lastParkedUpdateClock: 0,
+    movement: null,
   });
-  // Extension point: the rule tasks' instantiation fields and draws go here, in Q-07's order (module comment).
+  entity.ai = initialAiState(world.entities, entity, aiCandidates(record, world.spawn, world.setup), world.spawn.frame, rand);
+  entity.lastParkedUpdateClock = world.clock;
+  entity.warpClock = initialWarpClock(kindBit, world.clock, rand);
+  // `0x20990` (P3-08) goes here.
+  const player = kindBit === PLAYER_KIND_BIT;
+  if (player || startsActive(world, position)) {
+    // An active object gets its block at full throttle (0x2c3b0); the player's takes the identity instead of the
+    // placement attitude, which 0x21794 writes back.
+    setActivity(entity, 'active', initialMovementBlock(entity.maximumSpeed, craft.atB8));
+    if (player) entity.orientation = IDENTITY;
+  }
+  // `0x38cd4` (P3-10) goes here.
   if (player) {
     world.player.entityId = entity.id;
     world.player.viewMode = COCKPIT_VIEW_MODE;
     world.player.previousViewMode = COCKPIT_VIEW_MODE;
+    world.player.target = null;
+    world.player.control = initialPlayerControl(world.config.group);
   }
   emit({ type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
   return entity;
 }
+
+const formationOffset = (offset: Vector3, first: Vector3): Vector3 =>
+  Object.freeze({ x: Math.fround(offset.x - first.x), y: Math.fround(offset.y - first.y), z: Math.fround(offset.z - first.z) });
 
 /** A group request (`0x67678`, source 1): every member, a layout cycle at a time, then the group's count. */
 function dispatchGroup(world: WorldState, index: number, request: number, rand: RandStream, emit: (event: ObjectInstantiatedEvent) => void): void {
@@ -192,7 +202,10 @@ function dispatchGroup(world: WorldState, index: number, request: number, rand: 
       if (templateRecord.aiTargetCraftTypes.length > 0) memberRecord.aiTargetCraftTypes = templateRecord.aiTargetCraftTypes;
       const source: EntitySource = { collection: 'mission', index: member, group: { index, request, member: position } };
       const entity = instantiate(world, memberRecord, source, memberPosition(anchor.position, layout[cycle]), anchor.attitude, rand, emit);
-      if (cycle === 0) group.leader = entity.id;
+      // After instantiation: the cycle's first member leads, the later ones follow it at f32(l − layout[0]) (+0x7C,
+      // +0x80–+0x88).
+      if (group.leader === null) group.leader = entity.id;
+      else entity.formation = Object.freeze({ leader: group.leader, offset: formationOffset(layout[cycle], layout[0]) });
     }
   }
   group.spawnCount++;
@@ -208,7 +221,7 @@ export function dispatchSpawn(world: WorldState, request: SpawnRequest, emit: (e
   if (request.source === 'group') {
     dispatchGroup(world, request.index, request.request, rand, emit);
   } else {
-    const record = firingRecord(world, request.source, request.index);
+    const record = firingRecord(world.spawn, world.setup, request.source, request.index);
     const placement = placeWorldRecord(world, record, rand);
     const source: EntitySource = { collection: request.source === 'record' ? 'mission' : 'wingman', index: request.index, group: null };
     instantiate(world, record, source, placement.position, placement.attitude, rand, emit);
