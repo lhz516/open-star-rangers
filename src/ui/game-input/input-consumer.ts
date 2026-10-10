@@ -18,6 +18,9 @@
  *   the run one `clear-input('focus-loss')`; hidden and pagehide clear only the local state, as the session pauses
  *   itself. Status, cancellation and cleanup notifications only read and clear local state. Nothing but a new press
  *   restores a held key.
+ * - **Capabilities** (`capabilities.ts`): fullscreen, Keyboard Lock and Pointer Lock connect with the keyboard source
+ *   and are released after it. Leaving fullscreen clears through `clear('focus-loss')` and the end of this owner's
+ *   Pointer Lock through `clear('pointer-lock-exit')`; while the pointer is locked, Esc only releases it.
  */
 import type {
   MissionConsumerConnection, MissionInputContext, MissionOwnerConsumer, MissionRunInputControl, MissionSessionView,
@@ -28,6 +31,9 @@ import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import type { KeyboardInput, KeyboardSignal, KeyboardSink, KeyboardSource, KeyboardZoneBinding } from '../../platform/input/keyboard-input.ts';
 import type { GameCommandFeedback } from '../game/game-command-feedback.ts';
+import {
+  createInputCapabilities, type CapabilityFacts, type CapabilityPorts, type InputCapabilities, type InputCapabilityController,
+} from './capabilities.ts';
 import type { BindingTable, DiscreteAction } from './input-action.ts';
 import { InputState, type InputMoment } from './input-state.ts';
 import { createInputStatus, type InputOperation, type InputStatusReader } from './input-status.ts';
@@ -35,7 +41,8 @@ import { createInputStatus, type InputOperation, type InputStatusReader } from '
 /** The part of the command feedback the consumer submits through. */
 export type CommandSubmitter = Pick<GameCommandFeedback, 'submit'>;
 
-export interface InputConsumerOptions<Zone> {
+/** `fullscreen`, `pointerLock` and `keyLockCodes` are the capabilities' ports; without them those stay unsupported. */
+export interface InputConsumerOptions<Zone> extends CapabilityPorts {
   /** Creates the owner's keyboard source, once, as the owner connects the consumer. */
   readonly keyboard: () => KeyboardSource & KeyboardZoneBinding<Zone>;
   readonly bindings: BindingTable;
@@ -44,12 +51,12 @@ export interface InputConsumerOptions<Zone> {
    * `submit` shows a refusal, a full queue included, as the game store's action error.
    */
   readonly feedback: () => CommandSubmitter | null;
-  /** Whether this task's Pointer Lock holds the pointer, so that Esc only releases it (subtasks 21, 22); never if omitted. */
-  readonly pointerLocked?: () => boolean;
 }
 
 export interface GameInputConsumer<Zone> extends MissionOwnerConsumer<'input'> {
   readonly status: InputStatusReader;
+  /** Fullscreen, Keyboard Lock and Pointer Lock requests; inert until the owner connects the consumer. */
+  readonly capabilities: InputCapabilities;
   /** Binds, replaces or (with null) removes the keyboard source's input zone; stable, as a React callback ref. */
   readonly bindZone: (zone: Zone | null) => void;
   /**
@@ -74,6 +81,12 @@ const LOCAL_ONLY: ReadonlySet<KeyboardSignal['type']> = new Set(['visibilitychan
 
 const noRun = (eligible: boolean): InputMoment => ({ eligible, running: false, runId: null, context: null, clock: 0 });
 
+/** Throws nothing for no failure, one failure as it is, and several as an AggregateError. */
+function throwAll(failures: readonly unknown[], message: string): void {
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, message);
+}
+
 /** Hands `cleanup` to the run; if that fails, cancels it at once, and a failed cancellation leaves a RollbackError. */
 function own(run: GameSessionRun, cleanup: SessionCleanup): void {
   try {
@@ -93,6 +106,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   readonly #options: InputConsumerOptions<Zone>;
   readonly #state: InputState;
   readonly #status = createInputStatus();
+  readonly #capabilities: InputCapabilityController;
   #source: (KeyboardSource & KeyboardZoneBinding<Zone>) | null = null;
   #zone: Zone | null = null;
   #session: MissionSessionView | null = null;
@@ -104,10 +118,15 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   constructor(options: InputConsumerOptions<Zone>) {
     this.#options = options;
     this.#state = new InputState(options.bindings);
+    this.#capabilities = createInputCapabilities(options);
   }
 
   get status(): InputStatusReader {
     return this.#status.reader;
+  }
+
+  get capabilities(): InputCapabilities {
+    return this.#capabilities;
   }
 
   readonly bindZone = (zone: Zone | null): void => {
@@ -120,7 +139,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     signal: (signal: KeyboardSignal) => { this.#signal(signal); },
   });
 
-  connect({ session, control }: MissionInputContext): MissionConsumerConnection {
+  connect({ ownerId, session, previousClosed, control }: MissionInputContext): MissionConsumerConnection {
     if (this.#connected) throw new Error('An input consumer connects to one owner, once');
     this.#connected = true;
     this.#session = session;
@@ -128,12 +147,36 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     this.#source = source;
     source.bind(this.#zone);
     const disconnect = source.connect(this.#sink);
+    try {
+      this.#capabilities.connect({
+        ownerId, session, previousClosed, status: this.#status, facts: this.#facts, clear: (reason) => { this.clear(reason); },
+      });
+    } catch (cause) {
+      try {
+        disconnect();
+      } catch (failure) {
+        throw new RollbackError(cause, [failure], 'Input connection and rollback failed');
+      }
+      throw cause;
+    }
     return {
+      // An asynchronous close while a capability request or exit is still open; it fails with every failure.
       release: () => {
         this.#released = true;
         this.#run = null;
         this.#state.clear();
-        disconnect();
+        const failures: unknown[] = [];
+        try {
+          disconnect();
+        } catch (cause) {
+          failures.push(cause);
+        }
+        const { errors, closes } = this.#capabilities.release();
+        failures.push(...errors);
+        const message = 'Input release failed';
+        if (closes) return closes.then((late) => { throwAll([...failures, ...late], message); });
+        throwAll(failures, message);
+        return undefined;
       },
       attachRun: (run, { runId }) => { this.#attach(run, control.forRun(runId)); },
     };
@@ -182,6 +225,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     this.#run = null;
     this.#state.clear();
     this.#refresh();
+    this.#capabilities.detached(wired.handle.runId);
   }
 
   #key(event: KeyboardInput, eligible: boolean): boolean {
@@ -237,9 +281,15 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   #qualify(eligible: boolean): boolean {
     const qualified = this.#eligible;
     this.#eligible = eligible;
-    if (qualified !== eligible) this.#refresh();
+    if (qualified !== eligible) {
+      this.#refresh();
+      this.#capabilities.update();
+    }
     return qualified && !eligible;
   }
+
+  /** What the capabilities need of the moment: the wired run while it is the session's, whether it runs, qualification. */
+  readonly #facts = (): CapabilityFacts => this.#moment(this.#eligible);
 
   /** The facts of now: the wired run counts only while it is the session's run. */
   #moment(eligible: boolean, status = this.#session?.status()): InputMoment {
@@ -273,7 +323,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
       case 'session':
         if (!port) return false;
         if (action.control === 'toggle-pause') return this.#attempt('toggle-pause', () => { port.togglePause(); });
-        return !this.#options.pointerLocked?.() && this.#attempt('open-menu', () => { port.openMenu(); });
+        return !this.#capabilities.pointerLocked() && this.#attempt('open-menu', () => { port.openMenu(); });
     }
   }
 

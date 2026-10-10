@@ -10,6 +10,7 @@ import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import type { Command, TickAxes, TickInput } from '../../core/contracts/tick-input.ts';
 import type { Projection } from '../../core/projections/projection.ts';
 import type { KeyboardInput, KeyboardSignal, KeyboardSink, KeyboardSource, KeyboardZoneBinding } from '../../platform/input/keyboard-input.ts';
+import type { PointerLockPort } from '../../platform/input/pointer-lock.ts';
 import { createKeyboardSource, type KeyboardHost, type KeyboardPageEventType, type KeyboardZoneEventType } from '../../platform/input/keyboard-source.ts';
 import { createGameCommandFeedback, type GameCommandFeedback } from '../game/game-command-feedback.ts';
 import { createGameSessionBridge } from '../game/game-session-bridge.ts';
@@ -154,6 +155,11 @@ function instrumented(consumer: GameInputConsumer<string>, tools: Tools): Missio
   };
 }
 
+/** A Pointer Lock port that only reports whether it holds the pointer, as `locked` says. */
+const heldPointer = (locked: () => boolean): PointerLockPort => ({
+  supported: () => true, locked, connect: () => () => undefined, request: () => new Promise(() => undefined), exit: () => undefined,
+});
+
 interface Submission {
   /** Null when the feedback refused it. */
   readonly id: number | null;
@@ -166,8 +172,8 @@ interface Submission {
  * An owner with a recording, the input consumer on a fake keyboard and the test bindings, and a `ui` consumer that
  * creates the store, bridge and command feedback as the app's assembly does.
  */
-async function setup({ pointerLocked, consumers = [] }: {
-  readonly pointerLocked?: () => boolean;
+async function setup({ pointerLock, consumers = [] }: {
+  readonly pointerLock?: () => PointerLockPort;
   /** Connected after the input and `ui` consumers. */
   readonly consumers?: readonly MissionOwnerConsumer[];
 } = {}) {
@@ -201,7 +207,7 @@ async function setup({ pointerLocked, consumers = [] }: {
         },
       };
     },
-    pointerLocked,
+    pointerLock,
   });
   const mission = await openMission('mission-startable', {
     recording: developmentRecording('osr-test'), consumers: [instrumented(consumer, tools), uiConsumer, ...consumers],
@@ -328,7 +334,7 @@ describe('intent', () => {
   });
 
   it('shows a failure to set the intent in the input status; only the next new press that goes through clears it', async () => {
-    const { keyboard, tools, consumer } = await flying({ pointerLocked: () => true });
+    const { keyboard, tools, consumer } = await flying({ pointerLock: () => heldPointer(() => true) });
     const failure = new Error('intent refused');
     tools.setIntentFailure = failure;
     keyboard.press('KeyI');
@@ -538,7 +544,7 @@ describe('session control keys', () => {
 
   it('opens the menu with an Esc the page received outside Pointer Lock, in flight, Warp and the base but not the map', async () => {
     let locked = true;
-    const f = await flying({ pointerLocked: () => locked });
+    const f = await flying({ pointerLock: () => heldPointer(() => locked) });
     const { keyboard, owner, tools } = f;
     expect(keyboard.press('Escape')).toBe(false);
     keyboard.lift('Escape');
