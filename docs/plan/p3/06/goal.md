@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | completed |
 | [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | completed |
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | completed |
-| [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | in-progress |
+| [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | completed |
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | pending |
@@ -116,6 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 22 的证据保护范围（协调者决定，依预先授权）：** 测量工具在运行后核对 `local/research/` 中所有既有文件未被改动或删除（P3-01 的工具契约），而其他任务的会话（P3-04、P3-07）正持续改写其中的文件，约 10 分钟的运行几乎必然报 `original-changed`，按指南须停止所有运行等待用户。协调者不采用“请其他会话暂停”或“等待其空闲”，而让 22 增加可选的证据范围：运行可声明 `local/research/` 内、包含运行目录的一个目录，只在其中保护既有文件；`local/StarRang`、基准快照与私有副本的核对不变；不声明时仍为整个研究根目录；报告记录实际的证据根。指南写明其保证较窄及适用情形。
 - **2026-10-10 — 22 完成，07、17 改为自动：** 工具新增经配方声明、逐次回读并记入报告的模拟器内输入：在调试器暂停点把按键写入 BIOS 键盘缓冲（缓冲须为空，每键只被读一次）、改写换档标志位，或写入声明的输入设备字段；`AUTOTYPE` 因在宿主线程中计时、调试器暂停时仍运行且不能驱动摇杆而不用。可选的 `--evidence` 证据范围按上一条的决定实现。私有烟测（无宿主输入）进入了所选任务，`-` 一次后的指令速度与 Backspace 恢复都符合 03 的预测，摇杆偏航刺激的速率、标志与“只在变化时应用”都符合 02 的预测（运行 smoke-03、smoke-04 均为 complete）。交 07、17：私有副本中没有摇杆页，进入路线为标题 Enter → 战役选项 Enter → 简报 Esc；group 0 开局速度辅助为开并自动选取目标，油门样本前须用 Ctrl+Enter 关闭或计入；持续偏转须在每次设备读取时写入，或写入上次读数的副本；过场不可跳过（40000 cycles 下约 1.5 分钟）。按 07、17 的“执行时若该限制已解除…改为自动”，协调者把两者改为自动。
 - **2026-10-10 — 21 完成（交 06、07、P3-03）：** 01–05 的结论已写入 `docs/original/`：executable 新节“Flight motion, controls, speed, parking and take-off (P3-06)”及旧文更正、craft、scenario、键位表（原版无键盘操纵、速度档位在 Shift+数字）与 U-001、U-008、U-009、U-011、U-021、U-022、U-024–U-026（状态与负责阶段未改）。craft +0xA4 按有符号比较改为 i32，`src/content/rule-data/craft-info.ts` 仍按 int32 读取并拒绝第 31 位，交 P3-03 对齐（基准数据不受影响）。B-008 所需的支持域、误差项、试键与暂停点仍在 local findings，交 07、08。
+- **2026-10-10 — 06 完成，检查点 A、C 定稿（交 07、09–15、P3-05、P3-07、P3-08、P3-09）：** 本 spec、P3-02 spec（新节“P3-06 的契约修订（检查点 A）”，D-01 至 D-08）与 P3-01 缺省清单（G-09、G-10）按协调者的十条裁定与推荐答案修订并记录，09–15 的工作范围与验收标准已同步。要点：项目轴为原版整数路径上的数字摇杆（±1 满偏，非整数向零截断，Medium 固定，只在变化时应用）；`select-number` 对应 Shift+n 档位；油门不持久；新增 `speed-assist-released`；`0x68050` 初态与停放中的 Warp 跳跃归 P3-06；活动对象无边界处理；编队领队与偏移补入 P3-02；`CORE_LIMITS` 不变。总计划“原版的键盘或鼠标”一语是否以 ADR 更正留待用户，不阻塞。阶段索引的 P3-05、P3-06、P3-08、P3-09 段与 U-011 行已按 06 的提议更新。
 
 ## 审批
 

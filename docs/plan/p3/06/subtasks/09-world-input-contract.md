@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "06"
 subtask: "09"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 09 — 世界创建的机型输入与共享契约
@@ -19,16 +19,16 @@ updated: 2026-10-09
 - **D-01 世界创建输入：**
   - `CreateWorldInput`、`createRecordingSession` 的输入与 `ReplayContent` 增加必需的 `craftInfo`（`{ id, content }`）；外层字段由 `readExactRecord` 校验，内容经 `readCraftInfo` 严格读取并冻结、与输入脱离；
   - 校验 Asset ID 的 kind；`original-import` 只接受唯一切片的 `data/craft-info`，synthetic 可用合法的 data Asset ID；
-  - 语义检查按检查点 A 定稿：玩家、所选僚机、全部直接、延迟与编组实例的机型绑定，以及实际使用字段的数值域；错误只带结构路径与稳定原因，不回显导入值；
+  - 语义检查按检查点 A 的定稿清单（[spec 的 D-01](../spec.md#对-p3-02-契约的增量)）：可实例化的每个种类位（玩家、所选僚机、全部直接、延迟与编组实例）都有机型记录；P3-06 读取的机型 f32 字段有限，+0x0C 截断后为正，其余零值不拒绝；玩家机型 +0x88 不为 0，且全部分配等级组合下能量运算不溢出 i32、上限有限；停放 Warp 的计时运算不溢出。错误只带结构路径与稳定原因，不回显导入值；
   - setupHash 在 `MissionSetup` 之后按固定字段顺序覆盖完整 craft-info（含 ID）；`WorldState` 显式保存冻结的机型内容；
   - replay 拒绝同一声明身份下换了 craft-info 的内容。
 - **D-04 原因码：** `COMMAND_RESULT_REASONS` 增加 `player-unavailable`、`wrong-context`、`no-target`；比较校验同步。
-- **D-06 领域事件：** 按检查点 A 定稿的形状加入 `speed-assist-toggled`、`speed-matched`、`object-left-world`，以及 [compare.ts](../../../../../src/core/replay/compare.ts) 的事件字段表与校验。本项只定义类型，发出归 12–14。
+- **D-06 领域事件：** 按[检查点 A 定稿的形状](../spec.md#检查点-a-定稿的状态与契约)加入 `speed-assist-toggled`、`speed-matched`（`command`/`assist` 两个变体，后者带速度差标志）、`speed-assist-released`、`object-left-world`，以及 [compare.ts](../../../../../src/core/replay/compare.ts) 的事件字段表与校验。本项只定义类型，发出归 12–14。
 - **D-05 分区结构：** `flight` 拆为 `{ motion, combat }`，两者各为 `not-implemented` 或各自的 ready 联合；本项两者都保持 `not-implemented`（运动组的就绪归 15，战斗组归 P3-07）。
-- **D-07 版本：** `RULES_VERSION` 与 `GAME_SNAPSHOT_VERSION` 相对合入基线各递增一次；本 goal 后续子任务不再递增，20 相对主线复核。
-- **D-08 预算：** 按检查点 A 的容量核算修订 `CORE_LIMITS`（如需要），测试 limit/limit+1。
+- **D-07 版本：** `RULES_VERSION` 与 `GAME_SNAPSHOT_VERSION` 相对合入基线各递增一次；replay 格式版本不变（记录形状不变）。本 goal 后续子任务不再递增，20 相对主线复核。
+- **D-08 预算：** 检查点 A 核算后 `CORE_LIMITS` 不变（事件界 3,201、请求界 3,138）；更新 `limits.ts` 的依据注释（`pipeline.ts` 中请求上界的注释由 12 更新）。
 - **调用者与 test-support：** 更新 Core 测试与 test-support 中的世界创建输入（[create-world.test-support.ts](../../../../../src/core/world/create-world.test-support.ts)、[world.test-support.ts](../../../../../src/core/world/world.test-support.ts)、[replay.test-support.ts](../../../../../src/core/replay/replay.test-support.ts)），合成机型数据用 [rule-data.test-support.ts](../../../../../src/content/rule-data/rule-data.test-support.ts)。执行时若 P3-04 已接入正式 Core，同时更新其调用者，并按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 运行其既有合成会话回归。
-- **测试：** 创建、各类拒绝、setupHash 的覆盖与无关性（键序、种子、僚机）、replay 拒绝、原因码与新事件的比较校验、版本拒绝。
+- **测试：** 创建、各类拒绝（含每条语义检查的边界：+0x0C 为 0、为小于 1 的正数与为 1；其余字段的零值不拒绝）、setupHash 的覆盖与无关性（键序、种子、僚机）、replay 拒绝、原因码与新事件的比较校验、版本拒绝。
 
 ## 不包含
 
@@ -53,9 +53,9 @@ updated: 2026-10-09
 
 ## 验收标准
 
-- [ ] AC-01：合法 craft-info 被严格读取、冻结并保存；缺字段、内容错误、kind/生产 ID/绑定/数值域不符各在创建前按约定的错误类型拒绝；setupHash 随内容变化，与键序、种子、僚机无关；同身份下换 craft-info 的 replay 被拒绝。
-- [ ] 三个原因码与三个事件变体在类型与比较校验中就位；`flight` 分区拆为两组且都未就绪。
-- [ ] 版本各递增一次；旧版本的 replay 记录被拒绝；预算的 limit/limit+1 测试通过（若修订了上限）。
+- [ ] AC-01：合法 craft-info 被严格读取、冻结并保存；缺字段、内容错误、kind/生产 ID/绑定/定稿的数值域不符各在创建前按约定的错误类型拒绝，定稿列为合法的零值不被拒绝；setupHash 随内容变化，与键序、种子、僚机无关；同身份下换 craft-info 的 replay 被拒绝。
+- [ ] 三个原因码与四个事件类型（`speed-matched` 含两个变体）在类型与比较校验中就位；`flight` 分区拆为两组且都未就绪。
+- [ ] 快照格式版本与规则版本各递增一次、replay 格式版本不变；旧版本的 replay 记录被拒绝；`CORE_LIMITS` 的依据注释与定稿核算一致。
 - [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 与 `pnpm check` 通过；P3-04 已接入时其浏览器回归通过。
 
 ## 验证方法
