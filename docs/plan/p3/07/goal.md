@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
-| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
+| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | blocked |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | pending |
 | [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12, 30 | pending |
@@ -144,6 +144,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   - 新增 30（08 补取的两项事实写入 `docs/original/`）与 31（线性地址 0x2C 处 f32 的运行时读数写入 H5，使 20 不必等 26）。
   - 依赖改为：13、14 增加 30；16 增加 13、30；20 增加 18、31；最终对齐增加 30、31。
   - 阶段索引中 P3-12、P3-14 的职责改为承担表现层的 EXPL 选择与额外效果。
+- **2026-10-10 — Subtask 11 blocked:** 跨任务前提未满足：11 须在 P3-06 的子任务 09（世界创建输入与共享飞行契约）与 10（飞行状态与实例化）的类型上扩展（见跨任务前提），而 P3-06 的 10 尚在进行。
+  Evidence: `p3-06-flight-motion-spec` 的 tracker 中 09 为 completed（`10abf2b`），10 为 in-progress（认领提交 `cad5f70`）。
+  Affected acceptance: 11 全部验收项；经依赖影响 12 至 25、27 至 29。
+  Resume when: P3-06 的子任务 10 在其分支上为 completed，协调者把该分支合并到本分支，再把 11 改为 pending 并派发。
 
 ## 审批
 
