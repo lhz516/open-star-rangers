@@ -71,7 +71,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | AC-15 | 09 | 12：生产 CSP、网络审计与产物检查 |
 | AC-16 | 07、08 | 08：Node limit/limit+1、失败码与退出码；10：浏览器下载后核对 |
 | AC-17 | — | 14：本地真实内容运行、导出与生产 CLI 核对 |
-| AC-18 | 09、10、11、12、13、16、18 | 13：删除与引用；18：`pnpm test:e2e` 的 F-12 用例；16：历史链接；17：复核 |
+| AC-18 | 09、10、11、12、13、16、18、19 | 13：删除与引用；18：`pnpm test:e2e` 的 F-12 用例；19：音频回放用例的就绪等待；16：历史链接；17：复核 |
 | AC-19 | 09、15 | 10：界面标注；15：`slice-gaps.md`；17：代码与文档一致 |
 | AC-20 | — | 14：R-13 控制子集与 L 流程部分的对照记录（引用 03、11 的证据） |
 | AC-21 | 15、16 | 17：`pnpm check`、`pnpm check:compliance`、链接与 `updated:` |
@@ -100,7 +100,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | completed |
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | completed |
 | [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | completed |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | in-progress |
+| [19-audio-test-readiness.md](./subtasks/19-audio-test-readiness.md) | — | pending |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -127,6 +128,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 - **2026-10-10 — 13 完成（交 15、16、17）：** 删除 57 个文件（P1 演示链与 `e2e/support/demo-observations.ts`）及 lint 规则 `osr/core-synthetic-boundary` 与其回归；删除前最后包含这些路径的提交为 `84a3f454`（最后一次内容改动 `87690599`），删除清单见 13 的完成证据。完整 `pnpm test:e2e` 最终一次 196/196 通过（development 158、production 37、development-headed 1）；此前一次与单独重复运行中 `audio-playback.spec.ts` 仍间歇出现释放后残留 `ended` 监听（P3-04 未改音频代码），记为本 goal 范围外的负载相关抖动，在最终报告中列为残余。协调者决定（13 的选项 A）：保留 `e2e/production-preview.spec.ts` 中断言生产 source map 不含已退役路径的负向正则，作为防止重新引入的检查；它不是模块引用，17 按已说明的例外核对。`src/platform/input/browser-keyboard-source.ts`（P1-09 的正式平台模块）现在没有导入者，不在删除边界内，保留给 P3-05。删除规则后，“errors.ts 与 determinism/ 不导入其他 Core 模块”这一附带约束不再强制，属于已批准的删除。交 15：工程 README、`modules/core.md` 与 `source-structure.md` 仍描述 core/synthetic、演示与该规则；退役记录使用上述提交。
 - **2026-10-10 — 15 完成（交 16、协调者）：** 工程约定、模块分册、源码结构指南、键位文档、本地导入与工具指南、文档地图与根 README 已同步，新增 `docs/engineering/slice-gaps.md`；`source-structure.md` 的退役记录锚点为 `#p3-04-合成演示退役记录` 与 `#r1-合成-core` 至 `#r10-菜单入口键位与工程文档`（R1 `src/core/synthetic/`、R2 `src/render/synthetic/`、R3 合成 Runtime、R4 合成会话、R5 演示所有者与槽位、R6 合成 UI 层、R7 演示页面、开发面板与画面、R8 `demo-observations.ts`、R9 lint 规则、R10 菜单入口、键位与工程文档）。工程 README 中被改名的三个小节使 6 个历史锚点失效（`#合成-runtime`：p1/04 的 04、05，p1/05 的 02 与本任务 spec；`#合成渲染`：p1/07 的 07；`#页面流转与演示生命周期`：p1/09 的 spec），协调者决定由 16 以同样“只改链接目标”的规则一并改指向 R10（R10 列出旧锚点与新小节的对应）。全仓库链接与锚点检查的失败数由 476 降为 457（含上述 6 个新失效，16 处理）。协调者已按 15 的建议改写阶段 `tasks.md` 中“已有起点”的失效源码链接与页面流转说明（保留其为 P3 起点的描述）。15 的范围外观察：根 README 第 13 行“功能可用不代表 P2 已通过退出评审”在 P2 退出评审通过后已过时，不属于本 goal 的契约，列为残余。
 - **2026-10-10 — 16 完成（交 17）：** 86 份历史文档中的 420 个链接目标改指退役记录（414 个被删路径分别指向 R1–R8，6 个改名锚点指向 R10），文字与链接数不变；按 ADR-0015 的先例删除 9 个已过期的 `reviewed:` 标记（P1-07、P1-08、P1-09、P1-10、P2-04、P2-09、P2-11、P3-02 与本任务 spec，改写前就已与 spec 摘要不符），批准记录不变；29 个任务的路由除指纹外与改写前相同。全仓库链接与锚点检查由 453 降为 33 个失败，剩余 33 个都是改写前就存在且与本 goal 无关的失效（STATUS 的两个锚点 ×7、mesh/textures 锚点 ×5、skill 模板占位 ×9、p2/13 子任务 07 ×12），列为残余。
+- **2026-10-10 — 17 第一次最终对齐未通过，新增修复子任务 19：** 16 集成后（代码与 `eaa3b061` 相同）的完整 `pnpm test:e2e` 为 195/196，唯一失败是 `audio-playback.spec.ts` 释放后残留活动的 `ended` 监听（13 时曾记为负载抖动）。协调者在同一机器上以临时 worktree 交替对照（每批 `--repeat-each 10`）：基线 `bb639ef` 90/90 通过，goal 分支 83/90；去掉 11 的计时器探针仍失败，去掉 09 的开发期顶层 `await import()` 后 60/60，在 `withAudioTargets` 的载入等待中加入应用首次渲染后 90/90。因此这是本 goal 引入的回归，不是负载抖动（更正 13 完成记录中的判断），根因与 18 相同。按最终对齐的规则，17 回到 pending，新增修复子任务 19（只改 `e2e/support/audio-playback.ts` 的载入等待），17 依赖 19。其余最终对齐核对（`pnpm check`、`pnpm check:compliance`、`git grep`、元数据与链接、Core 未改、生产产物不含开发诊断）在 19 之后重新运行。
 
 ## 审批
 
