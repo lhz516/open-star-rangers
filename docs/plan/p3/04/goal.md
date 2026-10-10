@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 | [15-engineering-docs-gaps.md](./subtasks/15-engineering-docs-gaps.md) | 13 | completed |
 | [16-history-links.md](./subtasks/16-history-links.md) | 15 | completed |
 | [18-test-entry-readiness.md](./subtasks/18-test-entry-readiness.md) | — | completed |
-| [19-audio-test-readiness.md](./subtasks/19-audio-test-readiness.md) | — | pending |
+| [19-audio-test-readiness.md](./subtasks/19-audio-test-readiness.md) | — | in-progress |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
