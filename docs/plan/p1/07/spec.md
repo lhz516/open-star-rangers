@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P1
 task: "07"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0002, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
-reviewed: sha256:b7121d14dee8
 ---
 
 # P1-07：Three.js 合成渲染 — Spec
@@ -68,39 +67,39 @@ Core 每个 tick 都产出 `SyntheticRenderState`，Runtime 保存上一 tick �
 
 | 模块 | 责任与影响 |
 |---|---|
-| [core/synthetic](../../../../src/core/synthetic/)（已有） | 复用 `SyntheticRenderState`、`SyntheticRenderEntity`、`Vec3` 及 marker 坐标范围常量；不修改规则、字段或版本 |
+| [core/synthetic](../../../engineering/source-structure.md#r1-合成-core)（已有） | 复用 `SyntheticRenderState`、`SyntheticRenderEntity`、`Vec3` 及 marker 坐标范围常量；不修改规则、字段或版本 |
 | [app/runtime](../../../../src/app/runtime/)、[app/session](../../../../src/app/session/)（已有） | 复用 `RenderFrame`、`SessionFrame` 及 `SessionRun` 的 `onFrame`/`renderFrame`/`ownCleanup`；不新增接口，不改变调度 |
 | `src/render/`（计划新增） | DOM-free 部分：合成实体映射、插值、相机、视口布局、渲染状态与诊断。浏览器部分：WebGL 表面（`WebGLRenderer`、画布、尺寸/DPR 观察、上下文事件）。按[源码结构指南](../../../engineering/source-structure.md#后续扩展方向)的 `render/scene/`、`render/viewport/`、`render/synthetic/` 落点细化；具体文件和函数拆分由实现决定 |
 | [app/composition](../../../../src/app/composition/)（已有） | owner 接收 DOM-free 的渲染端口，复用 P1-06 的运行消费者接线，并统一释放。React hook 用容器创建浏览器表面，后续步骤失败时回滚 |
-| [src/ui](../../../../src/ui/)（已有） | React 画面容器组件与渲染状态显示；[开发面板](../../../../src/ui/dev/SyntheticDevPanel.tsx)加入只读渲染诊断；不按帧重渲染 |
+| [src/ui](../../../../src/ui/)（已有） | React 画面容器组件与渲染状态显示；[开发面板](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)加入只读渲染诊断；不按帧重渲染 |
 | [App](../../../../src/app/App.tsx)（已有） | 页面加入合成画面容器，与现有开发面板并存 |
 | [package.json](../../../../package.json)、[pnpm-lock.yaml](../../../../pnpm-lock.yaml)（已有） | 实施时加入依赖并同步锁文件；生成本 Spec 时不安装 |
 | [工程约定](../../../engineering/README.md)、[源码结构指南](../../../engineering/source-structure.md)（已有） | 实施时补充渲染约定、当前目录与验证方式 |
 
 ## 当前实现与依据
 
-- **场景数据：** [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)
+- **场景数据：** [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core)
   - `SyntheticRenderState` 为 `{tick, entities}`，`entities` 按 ID 升序。
   - `SyntheticRenderEntity` 为 `{id, kind:'mover'|'marker', position:{x,y,z}}`，Render State 不含朝向、尺寸或外观。
   - mover（ID 1）从原点出发，只沿 X 轴移动，速度为 `moveX` × 每秒 1 合成单位。
   - marker 至多一个，各轴坐标位于 `[SYNTHETIC_MARKER_MIN, SYNTHETIC_MARKER_MAX)`，即 [-5, 5)。
   - 实体 ID 在一个场景生命周期内唯一；新场景从相同 ID 重新分配。
   - 以上都是 [P1-02](../02/spec.md) 的合成契约，不是原版规则。
-- **Runtime：** [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts)
+- **Runtime：** [synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime)
   - `RenderFrame` 为冻结的 `{previous, current, alpha}`，`alpha` ∈ [0,1)。
   - 一帧补跑多个 tick 时，`previous`/`current` 是最后两个已执行 tick。
   - `foldRenderState` 把状态折叠为 previous=current、alpha=0。
   - Runtime 自身不插值，实体出现或消失时如何渲染由本任务决定（[P1-04 技术决定 8](../04/spec.md#技术决定)）。
-- **Session：** [synthetic-session.ts](../../../../src/app/session/synthetic-session.ts)
+- **Session：** [synthetic-session.ts](../../../engineering/source-structure.md#r4-合成会话)
   - running 时每个 rAF 帧通知一次 `SessionFrame`；进入暂停时发出一次 `report=null` 的静止帧。
   - 运行结束时清除帧监听，并逆序执行 `ownCleanup`。
   - 在状态通知中新增的订阅，从下一批通知起生效。
   - 帧监听器抛错时，Session 记为 consumer 故障并终止运行。
   - 隐藏状态下开始的运行处于 paused，在 resume 之前不会收到帧。
-- **P1-06 接线：** [synthetic-session-bridge.ts](../../../../src/ui/game/synthetic-session-bridge.ts) 的 `SyntheticRunConsumer`/`SyntheticRunBinding` 已提供逐运行接线：失败时事务式回滚，并提供 `own(cleanup)` 与 `isCurrent()`。
+- **P1-06 接线：** [synthetic-session-bridge.ts](../../../engineering/source-structure.md#r6-合成-ui-层) 的 `SyntheticRunConsumer`/`SyntheticRunBinding` 已提供逐运行接线：失败时事务式回滚，并提供 `own(cleanup)` 与 `isCurrent()`。
 - **装配：**
-  - [synthetic-demo-owner.ts](../../../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的 owner，统一创建和释放 store、桥接与会话，并带测试。
-  - [use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts) 在 React effect 中用浏览器宿主创建 owner，并在 cleanup 时释放。
+  - [synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 是 DOM-free 的 owner，统一创建和释放 store、桥接与会话，并带测试。
+  - [use-synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 在 React effect 中用浏览器宿主创建 owner，并在 cleanup 时释放。
   - [browser-session-host.ts](../../../../src/platform/browser/browser-session-host.ts) 提供唯一的真实 rAF。
 - **工程配置：**
   - [eslint.config.js](../../../../eslint.config.js) 已禁止纯模块导入 `three`。
@@ -177,9 +176,9 @@ Core 每个 tick 都产出 `SyntheticRenderState`，Runtime 保存上一 tick �
 
 | 数据/字段 | 类型、单位与约束 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|
-| `SyntheticRenderState` / `SyntheticRenderEntity` | `{tick, entities}`，`entities` 按 ID 升序，每项为 `{id, kind:'mover'\|'marker', position:Vec3}`；坐标是有限的合成单位；深冻结 | [Core 场景](../../../../src/core/synthetic/synthetic-scene.ts) | 渲染器只读，不修改、不补字段；`kind` 只用于选择合成外观 |
-| `RenderFrame` | 冻结的 `{previous, current, alpha}`，`alpha` ∈ [0,1)；暂停或收尾后 previous=current、alpha=0 | [Runtime](../../../../src/app/runtime/synthetic-runtime.ts) | 插值的唯一输入；渲染器不自行推进时间、不外推 |
-| `SessionFrame`、`SessionRun` | `SessionFrame` 含 `runId`、`phase`、`render`、`projection`、`report`。渲染器只使用 `SessionRun` 的 `runId`、`renderFrame()`、`onFrame()`、`ownCleanup()`，外加 P1-06 运行绑定的 `isCurrent()`/`own()` | [Session](../../../../src/app/session/synthetic-session.ts)、[P1-06 桥接](../../../../src/ui/game/synthetic-session-bridge.ts) | 渲染端口的类型上不包含 `submitCommand`、`setInput`、`control`；渲染器不写 UI store |
+| `SyntheticRenderState` / `SyntheticRenderEntity` | `{tick, entities}`，`entities` 按 ID 升序，每项为 `{id, kind:'mover'\|'marker', position:Vec3}`；坐标是有限的合成单位；深冻结 | [Core 场景](../../../engineering/source-structure.md#r1-合成-core) | 渲染器只读，不修改、不补字段；`kind` 只用于选择合成外观 |
+| `RenderFrame` | 冻结的 `{previous, current, alpha}`，`alpha` ∈ [0,1)；暂停或收尾后 previous=current、alpha=0 | [Runtime](../../../engineering/source-structure.md#r3-合成-runtime) | 插值的唯一输入；渲染器不自行推进时间、不外推 |
+| `SessionFrame`、`SessionRun` | `SessionFrame` 含 `runId`、`phase`、`render`、`projection`、`report`。渲染器只使用 `SessionRun` 的 `runId`、`renderFrame()`、`onFrame()`、`ownCleanup()`，外加 P1-06 运行绑定的 `isCurrent()`/`own()` | [Session](../../../engineering/source-structure.md#r4-合成会话)、[P1-06 桥接](../../../engineering/source-structure.md#r6-合成-ui-层) | 渲染端口的类型上不包含 `submitCommand`、`setInput`、`control`；渲染器不写 UI store |
 | marker 坐标范围 | `SYNTHETIC_MARKER_MIN`/`MAX` = −5/5 合成单位 | Core 场景 | 只用于证明合成相机能看到全部可能的 marker 位置；不作为渲染规则 |
 
 ### 计划新增的渲染契约
@@ -246,9 +245,9 @@ DOM-free 的渲染模块（映射、插值、相机、布局、状态、诊断�
 
 ## 验证策略
 
-- **单元/契约测试：** 计划在 `src/render/` 新增邻接的 `.test.ts`，覆盖映射、插值、相机、布局、状态、诊断、失败隔离、上下文转换与释放；扩展 [owner 测试](../../../../src/app/composition/synthetic-demo-owner.test.ts)，覆盖渲染端口的装配、回滚与释放顺序。复用 [ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)、[UI 测试支持](../../../../src/ui/game/synthetic-ui.test-support.ts)以及真实 Core/Session。绘制端口替身只放在测试支持中，不进入生产导入链。
+- **单元/契约测试：** 计划在 `src/render/` 新增邻接的 `.test.ts`，覆盖映射、插值、相机、布局、状态、诊断、失败隔离、上下文转换与释放；扩展 [owner 测试](../../../engineering/source-structure.md#r5-演示所有者与槽位)，覆盖渲染端口的装配、回滚与释放顺序。复用 [ControlledHost](../../../engineering/source-structure.md#r4-合成会话)、[UI 测试支持](../../../engineering/source-structure.md#r6-合成-ui-层)以及真实 Core/Session。绘制端口替身只放在测试支持中，不进入生产导入链。
 - **目标回归：** 实施后的目标命令为 `pnpm exec vitest run src/render src/app/composition src/ui/game src/app/session src/app/runtime src/core/synthetic`。当前 `src/render/` 还不存在，这条命令是实施要求，不是已通过的证据。
-- **Replay/一致性：** 使用已有的 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) 和录制选项，在相同种子、逐 tick 输入（包括 `moveX` 与连续 add/remove）下，对照接入和不接入渲染器的事件流、检查点与状态哈希。布局、诊断和渲染状态不进入记录。
+- **Replay/一致性：** 使用已有的 [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) 和录制选项，在相同种子、逐 tick 输入（包括 `moveX` 与连续 add/remove）下，对照接入和不接入渲染器的事件流、检查点与状态哈希。布局、诊断和渲染状态不进入记录。
 - **浏览器验证：** 按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 执行。
   - 环境：在空闲端口启动自有 Vite 开发服务器，用隔离 profile 运行本机 Google Chrome（当前为 154 / macOS）；生产路径另用 `pnpm build` 与 `vite preview` 冒烟。只使用合成种子 0 的演示 owner，不读取或修改用户存储。
   - 截图：保持 Three.js 默认的 `preserveDrawingBuffer:false`，不依赖 `canvas.toDataURL()` 或事后 `readPixels`。浏览器工具取得截图 Buffer 后转 base64，在同一任务的 `page.evaluate` 中解码为 Blob，再用 `createImageBitmap` 做像素采样；只以文字记录坐标、颜色和尺寸，截图不入库。

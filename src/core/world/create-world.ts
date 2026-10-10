@@ -11,7 +11,9 @@
  * coordinate or payload. Creation is pure: equal input gives equal worlds, and no world shares mutable state with its
  * input or with another world.
  */
+import type { AssetId } from '../../content/asset-id.ts';
 import { readContentIdentity, type ContentIdentity } from '../../content/content-identity.ts';
+import { compareText } from '../../content/contract-validation.ts';
 import { readExactRecord } from '../contracts/validation.ts';
 import { loadMission, type LogicAssetInput } from '../mission/load-mission.ts';
 import { RandStream } from '../rules/original-random.ts';
@@ -68,6 +70,23 @@ export function initialWorldState(value: CreateWorldInput): WorldState {
   const ruleData = buildRuleData(ruleInputs, craftInfo.content, instantiableRecords(setup, spawn));
   const config = { content, mission: setup.mission, setupHash: setupHash(setup, craftInfo, ruleInputs), group, slot: setup.campaign.slot, ...run };
   return createWorldState(config, setup, craftInfo, ruleData, spawn, rand.state);
+}
+
+const MODEL_SET_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'identity', 'run'] as const;
+
+/**
+ * The model Asset IDs `models` must hold for a run of `value` (docs/plan/p3/02/spec.md, CR-01): those the craft type
+ * table binds to the craft the run can instantiate (setup-check.ts, instantiableRecords), once each in ascending ID
+ * order, so a caller decodes exactly these from the package. It reads these fields as createWorld does and throws its
+ * errors for them; its draws come from its own stream.
+ */
+export function instantiableModelIds(value: Pick<CreateWorldInput, (typeof MODEL_SET_FIELDS)[number]>): readonly AssetId[] {
+  const input = readExactRecord(value, 'input', MODEL_SET_FIELDS);
+  const setup = loadMission({ mission: input.mission, craftTypes: input.craftTypes, wingmanRoster: input.wingmanRoster } as Parameters<typeof loadMission>[0]);
+  const run = readRunConfig(input.run, 'input.run', setup, readContentIdentity(input.identity, 'input.identity'));
+  const geometry = checkSetup(setup, run.wingman);
+  const spawn = buildSpawnState(setup, geometry, { group: difficultyGroup(run.rawDifficulty), wingman: run.wingman }, new RandStream(run.seed));
+  return Object.freeze([...new Set(instantiableRecords(setup, spawn).map(({ model }) => model))].sort(compareText));
 }
 
 /** Creates a world from logic content, the craft info, the rule data, their identity and a run configuration; see the module comment. */

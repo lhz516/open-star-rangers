@@ -50,25 +50,25 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 | --- | --- | --- |
-| S-01 | 01、02、03、04、05、21；07、17（运行部分） | 01–05：M-01 至 M-10 的结论（local findings）；21：写入 `docs/original/` 与 U 项；17：舍入方向的运行结论；20：门槛与 U 项核对 |
-| S-02 | 09 | 09：craft-info 输入、拒绝与 setupHash 的 Node 测试；16：真实内容创建 |
+| S-01 | 01、02、03、04、05、21、23；07、17（运行部分） | 01–05：M-01 至 M-10 的结论（local findings）；21：写入 `docs/original/` 与 U 项；17：舍入方向的运行结论；20：门槛与 U 项核对 |
+| S-02 | 09、24 | 09：craft-info 输入、拒绝与 setupHash 的 Node 测试；16：真实内容创建 |
 | S-03 | 11 | 11：movement 阶段与积分各分支的独立期望测试 |
 | S-04 | 12 | 12：逐 tick 轴、中立输入、地图门禁与映射的 Node 测试 |
 | S-05 | 10、12、13 | 10：最高速度与初始移动块测试；12：速度命令测试；13：匹配与辅助的条件矩阵 |
 | S-06 | 14 | 14：活动区域、停放、离开世界与世界边界测试 |
 | S-07 | 10 | 10：合成起飞初态测试；16：真实内容核对；18：R-05a |
-| S-08 | 09、10、15 | 09：契约类型、事件、版本；10：实体与玩家状态的快照；15：运动 projection 与 replay |
+| S-08 | 09、10、15、24 | 09：契约类型、事件、版本；10：实体与玩家状态的快照；15：运动 projection 与 replay |
 | S-09 | 22、07、08、17、18 | 22：模拟器内输入能力与烟测；07：B-008 方案与预实验；08：检查点 B；17：正式采集；18：R-04、R-05 判定 |
 | S-10 | 06、19 | 06：P3-02 与 P3-01 的修订及批准；19：Core 模块说明与源码结构指南；20：链接与元数据 |
-| AC-01 | 09 | 09：创建、拒绝、setupHash 与 replay 拒绝的 Node 测试 |
+| AC-01 | 09、24 | 09：创建、拒绝、setupHash 与 replay 拒绝的 Node 测试 |
 | AC-02 | 11 | 11：阶段筛选、模式、公式、步长 0/2/4/6 与故障锁存测试 |
 | AC-03 | 12 | 12：轴消费、非零→零、地图中非零、退出后中立输入、扰动抽取测试 |
 | AC-04 | 10、12、13 | 10：最高速度各分支与初速；12：四种速度操作与数字 1–9、同 tick 多命令、各原因码；13：`match-target`、`toggle-auto-match` 与确认键别名的结果 |
 | AC-05 | 13 | 13：初值、目标各状态、距离与计时边界、事件次序 |
 | AC-06 | 10、14 | 10：停放时刻与 Warp 计时的保存与抽取；14：区域边界、停放切换、退场事件、放置序号 |
 | AC-07 | 10、11、16 | 10：实例化与首次活动的合成初态；11：首次运动后的初态；16：本地真实内容核对 |
-| AC-08 | 09、10、15 | 09：分区类型、事件校验、版本；10：快照覆盖新状态；15：projection 就绪、JSON 往返 replay、预算 |
-| AC-09 | 01、02、03、04、05、21、06 | 01–05：研究门槛；21：入档与 U 项；06：G-09/G-10 的依据；20：原版隔离审阅、`pnpm check:compliance` |
+| AC-08 | 09、10、15、24 | 09：分区类型、事件校验、版本；10：快照覆盖新状态；15：projection 就绪、JSON 往返 replay、预算 |
+| AC-09 | 01、02、03、04、05、21、23、06 | 01–05：研究门槛；21：入档与 U 项；06：G-09/G-10 的依据；20：原版隔离审阅、`pnpm check:compliance` |
 | AC-10 | 22、07、08、17 | 22：无需宿主输入的原版运行能力；07：方案与预实验；08：批准的判据；17：合格运行报告 |
 | AC-11 | 18 | 18：全部 R 项按批准判据的判定（含 P3-07 集成） |
 | AC-12 | 06、19 | 06：检查点 A、C 的批准记录早于依赖代码；19：文档与交接；20：`pnpm check` |
@@ -94,13 +94,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | completed |
 | [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | completed |
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | completed |
-| [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | in-progress |
+| [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | completed |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
-| [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | pending |
+| [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22 | pending |
+| [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
+| [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -124,6 +126,13 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 12 完成（交 13、15、19、P3-05、P3-07、P3-08）：** 玩家更新在对象更新开头判定命令并消费轴；可用 = 存在、未被毁、状态 7，可用玩家缺控制状态为故障；判定次序为 not-implemented（本上下文不归 P3-06）→ player-unavailable → wrong-context；读回按批次开始时的指令速度与前序请求的推算（锁定时不变）；请求在玩家更新末尾按次序投递，轴并入最后一个 `control` 请求或单独投递；`control` 请求在请求处理中按 `0x21dd0` 应用（扰动时 3 次抽取）。交 P3-07/P3-08：浮点路径为 `rules/flight-control.ts` 的 `applyFloatControl`，`0x21d88` 即 10 交付的 `applyRecomputedMaximum`；导弹锁定与自动选择目标的插入点已在代码注释中标出。交 13：在 `judgeCommands` 之前加入失效目标清除与辅助；`match-target`、`toggle-auto-match`、`confirm-selection` 目前为 not-implemented，读回推算须计入 `match-speed` 请求。交 19：core 分册的原因码、请求类型与命令判定、扩展规则段已过时；executable 可补入新确认的数值细节（见 12 的完成证据）。
 - **2026-10-10 — 13 完成（交 14、15、19、P3-07、P3-08）：** 手动匹配（`match-speed` 请求）、自动辅助与开关按检查点 A 实现；失效目标清除只在玩家可用时运行（与原版状态 7 的分支一致），不可用期间保留的过期 ID 在下一次可用更新或玩家移除时清除；玩家移除时 `leave` 已同时清除 `player.target` 与 `player.control`（10 的交接已完成），停放时的目标清除仍归 14。为 P3-08 导出 `matchedSpeed`、`speedMatch`、`applySpeedMatch`（`0x21adc`）与辅助判定。P3-07 的插入点注释保留。P3-07 已把本分支（至 12）合并到其分支（`510a230`），并在其一侧解决了 `pipeline.ts` 的冲突（命令委托 `judge`、`craftMovement`），本分支不需改动。交 19：core 分册补 `match-speed` 请求、辅助与匹配事件的发出位置及玩家移除时的清除。
 - **2026-10-10 — 14 完成（交 15、18、19、P3-07–P3-10）：** 区域检查、停放切换（`setActivity` 释放或重建移动块，只清恰为该实体的玩家目标）、过境门禁（玩家种类除外）、停放更新与行进、停放中的 Warp 跳跃、编队跟随、唯一退场与 `object-left-world`；停放时写位置使放置序号加 1。项目规则：负的 +0xA8 或 +0xA8 + +0xA4 按精确整数（不回绕）计算，过境首次检查即结束、不推迟 Warp。没有玩家实体时区域检查把所有非玩家实体判为区外并停放（与原版一致），之后的测试若以无玩家的世界推进替身实体，须注意这一点。插入点注释：P3-07/P3-08 的停放战斗、P3-10 的基地报告、P3-09 玩家 Warp 期间的区域中心。交 19：core 分册阶段表、`leave`、过境门禁、新模块与上述项目规则；executable 可补数值细节（见 14 的完成证据）。
+- **2026-10-10 — 15 完成（交 18、19、P3-07、P3-13）：** `flight.motion` 就绪（无玩家实体时为 null；`speedLimitStatus` 恒为 `'initial-only'`，P3-07 接入实时最高速度重算时改为 `'live'`；玩家实体缺移动块或控制状态、或 ID 不能解析时为 `projection.motion` 故障），`combat` 仍未就绪。`replay.ts` 新增内部入口 `startReplay`；运动 replay 测试以替身代替尚未实现的目标与 AI 写入者（录制与 replay 相同），160 tick 的录制经 JSON 往返后事件与检查点全部相等。`budget.test.ts` 在实体上限下以真实流水线核对 P3-06 的事件与请求项及快照文本长度；P3-07 增加预算项时须同步其中的上界。交 19：core 分册的 `flight` 就绪说明与内部函数列表。
+- **2026-10-10 — 新增 23（依预先授权，不需审阅）：** 10、12、14 在实现中对照原生指令确认了若干结构细节，16 发现 executable 最高速度一节的计数有误（应为 6/16）。19 只写工程文档、17 只写运行结论，这些原版事实没有归属，由 23 写入 executable 的 P3-06 一节。最终对齐加入对 23 的依赖。
+- **2026-10-10 — 23 完成：** 10、12、14 实现中确认的结构、运算次序与舍入点经原生指令复核后写入 executable 的 P3-06 一节；16 的计数更正为 6/16。U 项不变。未记录、留待需要时补入：`0x568b0` 在启动时还循环调用 `0x56b8c` 生成另一张随机表（启动时消耗随机数）。Core 的随机目标距离平方阈值与原版的舍入写法不同，但在比例由代码固定时结果相同，比例变为输入时须复核。
+- **2026-10-10 — 合并 main（P3-04），在最终对齐之前（协调者决定，依预先授权）：** P3-04 已快进进入 main，其正式 Runtime/Session 与 e2e 调用 `createWorld` 与 `ReplayContent`。不合并则本分支与 P3-04 的调用者在合入时冲突，最终对齐无法证明可合并。合并提交 `854cfdb2`：文字冲突只有阶段索引的导航句（合并两侧）；main 删除了 P1 合成演示并重组了工程文档。已知的语义冲突（合并后 `pnpm check` 的类型检查失败）：任务所有者未传 `craftInfo`、事件总线与事件日志未列出 P3-06 的四个事件、会话桥读取旧的 `flight.readiness`。由新增的修复子任务 24 处理并做浏览器回归；在 24 集成前，本分支的类型检查为红。另：P3-07 指出 `judgeCommands` 在 tick 开头读取一次指令速度，P3-07 的能量键在同 tick 内改写上限后读回会过期；P3-06 自身不改变 tick 内的上限，P3-07 在其分支修正并在合并时处理，本分支不改。
+- **2026-10-10 — 新增 24 并认领（依预先授权，不需审阅）：** 合并 main 后 P3-04 的调用者与 P3-06 契约不符（见上一条），由 24 修复：任务开始从同一资源包读取 `craftInfo`，事件总线与开发事件日志列出四个新事件，会话桥改用拆分后的 `flight` 分区，更新受影响的测试与 e2e 夹具，并按 browser-testing 做浏览器回归。这是 goal 前提中“09 执行时若 P3-04 已接入，同时更新其调用者”的延后执行。最终对齐加入对 24 的依赖。
+- **2026-10-10 — 19 完成：** core 分册与源码结构按 09–16 的集成代码同步（输入、阶段、请求、事件、版本、新模块、项目规则、已知差异），并写明对 P3-03、P3-04、P3-05、P3-07–P3-14 的交接；在合并 main 后的文档上写入，P3-04 的条目保留，24 将改变的 app/ui 行为未写入。交 20（可选）：spec 实例化扩展第 3 步与 P3-02 修订 D-08 写 `0x68050` 抽取“0–3 次”，Core 只能抽 0–2 次（原版 +0x4C 路径在 Core 中不可达），core 分册已说明，spec 可补一句澄清，行为不变。
+- **2026-10-10 — 24 完成，合并后的分支恢复为绿：** 任务开始从同一资源包解码唯一的 craft-info 作为 `craftInfo`（解码失败按 `rejected` 报告，缺 craft-info 的包为 `package-incomplete`，任务资格与诊断不读 craft-info）；事件总线与开发事件日志列出四个新事件；会话桥改用拆分后的 `flight` 分区；`replay-check` 从同包读取 craft-info。共用的生产结构合成 craft-info 的 +0x0C 改为满足 Core 语义检查的值（原值被所有任务场景拒绝）；replay-check 的“其他规则版本”用例改用 `RULES_VERSION + 1`。`pnpm check` 与完整 `pnpm test:e2e`（196 项）通过。待办：`docs/guides/tools.md` 录制重放核对一节的两处说明（解码顺序加入 craft-info；`content-failed` 含 craft-info）与 07 的写入范围重叠，07 集成后由协调者补入（见 24 的完成证据）。
 
 ## 审批
 

@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P1
 task: "10"
-updated: 2026-10-03
+updated: 2026-10-10
 related: [ADR-0002, ADR-0006, ADR-0008, ADR-0009, ADR-0012, ADR-0015]
-reviewed: sha256:783e3c006dea
 ---
 
 # P1-10：浏览器集成与回归冒烟 — Spec
@@ -57,17 +56,17 @@ P1-03 至 P1-09 已交付 replay、调度、React、Three.js、菜单和键盘�
 
 | 已有交付 | 证据/代码入口 | 本任务不再做的工作 |
 |---|---|---|
-| 快照、哈希、录制、replay/比较 | [P1-03 最终证据](../03/subtasks/07-final-alignment.md#完成证据)、[synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) | 不再实现序列化/恢复/偏差检测，不复制负向矩阵 |
-| 会话暂停/隐藏与真实通知边界 | [Session](../../../../src/app/session/synthetic-session.ts)、[录制回归](../../../../src/app/session/synthetic-session-replay.test.ts)、[P1-05 真实可见性](../05/subtasks/07-browser-lifecycle-evidence.md#完成证据) | 不重建调度、取消、运行身份和 Node 生命周期验证 |
-| 渲染/布局/资源/录制不变性 | [P1-07 浏览器证据](../07/subtasks/08-final-browser-alignment.md#完成证据)、[renderer replay 测试](../../../../src/render/synthetic/synthetic-renderer-replay.test.ts) | 不重做相机、插值、布局、GPU 管理或录制接线 |
+| 快照、哈希、录制、replay/比较 | [P1-03 最终证据](../03/subtasks/07-final-alignment.md#完成证据)、[synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) | 不再实现序列化/恢复/偏差检测，不复制负向矩阵 |
+| 会话暂停/隐藏与真实通知边界 | [Session](../../../engineering/source-structure.md#r4-合成会话)、[录制回归](../../../engineering/source-structure.md#r4-合成会话)、[P1-05 真实可见性](../05/subtasks/07-browser-lifecycle-evidence.md#完成证据) | 不重建调度、取消、运行身份和 Node 生命周期验证 |
+| 渲染/布局/资源/录制不变性 | [P1-07 浏览器证据](../07/subtasks/08-final-browser-alignment.md#完成证据)、[renderer replay 测试](../../../engineering/source-structure.md#r2-合成渲染) | 不重做相机、插值、布局、GPU 管理或录制接线 |
 | 菜单、焦点、资源往返、降级 UI | [P1-08 最终证据](../08/subtasks/06-final-browser-alignment.md#完成证据)、[App](../../../../src/app/App.tsx) | 不重做页面流转、owner/latch 或导入占位 |
 | 当前五键、清键、唯一源、真实 hidden、HMR | [P1-09 浏览器证据](../09/subtasks/05-browser-input-evidence.md#完成证据)、[最终对齐](../09/subtasks/07-final-alignment.md#完成证据)、[键位文档](../../../engineering/keyboard-input.md) | 不重做适配、失败回滚、keyup/修饰键矩阵及手工 HMR |
 
 ### 尚缺与执行前核对
 
 - [Vite 配置](../../../../vite.config.ts) 的 Vitest 只发现 `src/**/*.test.ts`、`tools/**/*.test.ts`，且为 Node 环境；[Node tsconfig](../../../../tsconfig.node.json) 无 DOM。E2E 不混入该发现范围，不给既有 Core/Node 检查增加 DOM。
-- [开发面板](../../../../src/ui/dev/SyntheticDevPanel.tsx)已有 phase/runId/tick/mover/marker/results 和按需刷新的渲染诊断；[SyntheticRenderView](../../../../src/ui/render/SyntheticRenderView.tsx)已有可聚焦输入区与状态。优先复用 role、testid、既有读数。
-- [owner](../../../../src/app/composition/synthetic-demo-owner.ts)固定 seed 0、默认 60 Hz，`SYNTHETIC_DEMO_OPTIONS` 未设置 recording，也没有向 React 暴露 `SessionRun.exportRecording`。浏览器 replay 检查是独立合成记录验证，不伪装成 UI 录制。
+- [开发面板](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)已有 phase/runId/tick/mover/marker/results 和按需刷新的渲染诊断；[SyntheticRenderView](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)已有可聚焦输入区与状态。优先复用 role、testid、既有读数。
+- [owner](../../../engineering/source-structure.md#r5-演示所有者与槽位)固定 seed 0、默认 60 Hz，`SYNTHETIC_DEMO_OPTIONS` 未设置 recording，也没有向 React 暴露 `SessionRun.exportRecording`。浏览器 replay 检查是独立合成记录验证，不伪装成 UI 录制。
 - 受版本控制的 [pnpm-lock.yaml](../../../../pnpm-lock.yaml) 是 pnpm 12 的多文档锁：第一文档只锁 packageManagerDependencies/pnpm，第二文档以 `importers` 锁定 manifest 中全部应用/开发依赖。2026-10-03 复核 `pnpm install --frozen-lockfile --offline --lockfile-only` 通过且无差异，因此**不存在需修复的锁文件缺口**。新增 runner 依赖只需用 pnpm 正常更新同一文件，提交后 frozen 安装仍通过，且不放宽 pnpm 现有供应链策略；与 P1-12 涉及同一 manifest/锁文件时顺序编辑。
 - [工程指南的 CDP 路线](../../../engineering/README.md#已验证的-cdp-自动化路线)与 P1-09 实测已证明本机 Chrome 154/macOS 可取得原生 hidden。普通 CDP 页签切换曾持续 visible；不能据此假定 headless/任意标签切换能完成该判据。
 
@@ -89,10 +88,10 @@ P1-03 至 P1-09 已交付 replay、调度、React、Three.js、菜单和键盘�
 
 | 数据 | 类型/约束 | 权威所有者 | 测试边界 |
 |---|---|---|---|
-| `MoveInput`、`Command`、投影 | 现有 `moveX`、marker 命令、tick/位置 | [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) | UI 文本非整数保留3位小数，不作为精确哈希来源 |
+| `MoveInput`、`Command`、投影 | 现有 `moveX`、marker 命令、tick/位置 | [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) | UI 文本非整数保留3位小数，不作为精确哈希来源 |
 | `SessionStatus`、`SessionFrame` | runId、phase、pauseReason、Core tick；宿主时间为毫秒 | Session | 测试只读状态，经公开输入/控制驱动；不调用内部 frame/step |
-| `SyntheticReplayRecord/Result` | `osr-synthetic-replay`/1；config、成功 tick 的输入；events/checkpoints | [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) | 复用 JSON 数据与生产校验/比较器，不改版本 |
-| `SyntheticRenderDiagnostics` | drawnTick/draws/entities/gpu/layout | [synthetic-renderer.ts](../../../../src/render/synthetic/synthetic-renderer.ts) | 每次断言先 Refresh diagnostics，读数不是权威世界 |
+| `SyntheticReplayRecord/Result` | `osr-synthetic-replay`/1；config、成功 tick 的输入；events/checkpoints | [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) | 复用 JSON 数据与生产校验/比较器，不改版本 |
+| `SyntheticRenderDiagnostics` | drawnTick/draws/entities/gpu/layout | [synthetic-renderer.ts](../../../engineering/source-structure.md#r2-合成渲染) | 每次断言先 Refresh diagnostics，读数不是权威世界 |
 | 资源探针记录（计划新增） | 目标/回调/句柄身份、登记/撤销、仍连接画布、上下文释放、rAF 最大待交付数 | E2E 测试 | 区分应用、Three.js、React 与测试自身；不改应用状态或传播 |
 
 ### 持久化与兼容

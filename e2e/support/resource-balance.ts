@@ -4,16 +4,18 @@ import { packageRecordKey, payloadRecordKey, type ResourceCacheKey } from '../..
 import { inDefinitionOrder, readGroupInputs, RESOURCE_CACHE_DATABASE } from '../../src/platform/storage/resource-cache-records.ts';
 import type { AudioContextRecord } from './audio-playback.ts';
 import type { ProbeSnapshot } from './browser-probes.ts';
-import { frameWindow } from './demo-observations.ts';
+import { frameWindow } from './mission-observations.ts';
 
-// P2-12 S-03 and AC-04: resource balance of one document at the menu. A snapshot combines the browser probes, the audio
-// probe and the resource cache's record keys; the comparison reports every difference from the same document's menu
-// baseline rather than stopping at the first. Release is proven in the document that held the resources: a reload
-// replaces the probes, so the old document's evidence is kept in the test process before a new baseline is taken.
-// After exit, GPU release is the viewer canvas leaving the document with its context lost; the renderer's own counts
-// are readable only while it is shown, so warm counts that stay equal round to round show nothing accumulates.
+// P2-12 S-03 and AC-04, P3-04 AC-14: resource balance of one document at the menu. A snapshot combines the browser
+// probes, the audio probe and the resource cache's record keys; the comparison reports every difference from the same
+// document's menu baseline rather than stopping at the first: listeners of every group (a `beforeunload` leave guard
+// among them), observers, canvases, owned animation frames, Workers, pending one-shot timers, audio and the cache.
+// Release is proven in the document that held the resources: a reload replaces the probes, so the old document's
+// evidence is kept in the test process before a new baseline is taken. After exit, GPU release is the viewer canvas
+// leaving the document with its context lost; the renderer's own counts are readable only while it is shown, so warm
+// counts that stay equal round to round show nothing accumulates.
 
-export type BalanceKind = 'document' | 'listener' | 'observer' | 'canvas' | 'frame' | 'worker' | 'audio' | 'cache' | 'gpu';
+export type BalanceKind = 'document' | 'listener' | 'observer' | 'canvas' | 'frame' | 'worker' | 'timer' | 'audio' | 'cache' | 'gpu';
 
 export interface BalanceProblem {
   readonly kind: BalanceKind;
@@ -102,6 +104,9 @@ function reactElementKeys({ listeners }: ProbeSnapshot): string[] {
 const observerKeys = ({ observers }: ProbeSnapshot): string[] =>
   observers.filter(({ targets }) => targets.length > 0).map(({ id, targets }) => `${id} on ${[...targets].sort((a, b) => a - b).join(',')}`);
 
+/** The application's pending one-shot timers by ID and delay; one that fired or was cleared is no longer pending. */
+const timerKeys = ({ timers }: ProbeSnapshot): string[] => timers.pending.map(({ id, delay }) => `${id} (${delay === null ? 'non-numeric delay' : `${delay} ms`})`);
+
 /**
  * Workers of the whole document, each by ID: `terminate()`d exactly once and given at most one job. Job IDs are local to
  * the import owner, which a new import screen replaces, so equal IDs on different Workers are separate jobs. A Worker
@@ -159,7 +164,8 @@ export function cacheProblems(stored: StoredCacheKeys, expected: readonly Expect
 
 /**
  * Every difference of `current` from the same document's `baseline`: listeners of every group, observed targets,
- * connected canvases and lost contexts, owned frames in the idle window, Workers, audio and, when expected, the cache.
+ * connected canvases and lost contexts, owned frames in the idle window, Workers, pending timers, audio and, when
+ * expected, the cache.
  */
 export function compareBalance(baseline: BalanceSnapshot, current: BalanceSnapshot, expectation: BalanceExpectation = {}): Pick<BalanceReport, 'problems' | 'unverifiedContextLoss'> {
   const { probe: before } = baseline;
@@ -180,6 +186,7 @@ export function compareBalance(baseline: BalanceSnapshot, current: BalanceSnapsh
   const { pending, maximum, requested } = after.frames;
   if (maximum !== 0) problems.push({ kind: 'frame', detail: `up to ${maximum} owned frames pending, ${pending} at the end, and ${requested} requested in the idle window` });
   problems.push(...workerProblems(after));
+  problems.push(...difference('timer', 'pending timer', timerKeys(before), timerKeys(after)));
   problems.push(...audioProblems(current.audio, expectation.audio ?? true));
   if (expectation.packages) {
     if (current.cache === null) problems.push({ kind: 'cache', detail: 'the cache was not read' });

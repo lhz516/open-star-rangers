@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "10"
 subtask: "04"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 04 — 键盘与会话、GPU同轮资源回归
@@ -28,8 +28,8 @@ updated: 2026-10-03
 ## 关键文件与契约
 
 - 计划新增 e2e/joint-resources.spec.ts；使用02 browser-probes/demo-observations。
-- 只读[owner](../../../../../src/app/composition/synthetic-demo-owner.ts)、[hook](../../../../../src/app/composition/use-synthetic-demo-owner.ts)、[生命周期](../../../../../src/app/composition/synthetic-demo-lifecycle.ts)。
-- 只读[源管理](../../../../../src/platform/input/keyboard-source.ts)、[host](../../../../../src/platform/browser/browser-session-host.ts)、[表面](../../../../../src/render/webgl/browser-webgl-surface.ts)、[渲染器](../../../../../src/render/synthetic/synthetic-renderer.ts)。
+- 只读[owner](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[hook](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[生命周期](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。
+- 只读[源管理](../../../../../src/platform/input/keyboard-source.ts)、[host](../../../../../src/platform/browser/browser-session-host.ts)、[表面](../../../../../src/render/webgl/browser-webgl-surface.ts)、[渲染器](../../../../engineering/source-structure.md#r2-合成渲染)。
 
 ## 验收标准
 
@@ -40,7 +40,7 @@ updated: 2026-10-03
 
 ## 验证方法
 
-按[browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)运行持久用例；保存每轮owner/目标/回调/句柄及GPU表，正常进/出和同owner换run对照。Node既有[owner测试](../../../../../src/app/composition/synthetic-demo-owner.test.ts)等只引用其订阅/旧通知证据，不重复穷举。无原版或实机性能要求。
+按[browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)运行持久用例；保存每轮owner/目标/回调/句柄及GPU表，正常进/出和同owner换run对照。Node既有[owner测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)等只引用其订阅/旧通知证据，不重复穷举。无原版或实机性能要求。
 
 ## 完成证据
 
@@ -49,4 +49,4 @@ updated: 2026-10-03
 - GPU在实际两kind绘制后为`2 geometries / 0 textures / 1 program`，各轮及同owner两种run切换后再预热完全相等。菜单owner级所有listener有真实removedAt、observer targets空、canvas断开；旧组最大撤销序号小于新组最小登记序号。React/Vite/test独立排除，未知other应用登记与菜单基线完全一致。
 - 两构建每轮累计context lost为1/1、2/2、3/3，扩展缺失0，取得本机真实释放证据。未来缺可选扩展时输出具体未支持数量及`context-loss-capability` annotation，不冒称该context lost；已支持context逐个断言lost。
 - rubber-duck要求消除条件context断言的静默空集合、建议render精确组成；已逐项记录能力并断言每个支持的context、pin render6。没有把可选扩展改为Spec之外强制前提，本机全支持证据明确。simplify限定本用例及probe新增addedAt字段，把key目标同一性改为Set，继续复用02/03helper。
-- `pnpm check`通过（47文件/1192测试、type/lint/build）。旧回调/不可见订阅由既有[owner测试](../../../../../src/app/composition/synthetic-demo-owner.test.ts)、[lifecycle测试](../../../../../src/app/composition/synthetic-demo-lifecycle.test.ts)支持；不调用retained生产callback、不修改Core或调度。工程/键位/架构文档仍准确，本项只补联合证据，没有原版事实/ADR/阶段结论；自有runner资源收尾，附件在ignored目录。
+- `pnpm check`通过（47文件/1192测试、type/lint/build）。旧回调/不可见订阅由既有[owner测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[lifecycle测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)支持；不调用retained生产callback、不修改Core或调度。工程/键位/架构文档仍准确，本项只补联合证据，没有原版事实/ADR/阶段结论；自有runner资源收尾，附件在ignored目录。

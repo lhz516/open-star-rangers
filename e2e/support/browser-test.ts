@@ -80,7 +80,8 @@ export const test = base.extend<{
         await testInfo.attach('browser-errors', { body: JSON.stringify({ errors: unexpected, declared: matched, missing, allowed }), contentType: 'application/json' });
         expect(unexpected, 'Unexpected browser errors').toEqual([]);
         expect(missing, 'Declared diagnostics that did not occur').toEqual([]);
-        for (const name of ['action-error', 'session-error', 'cleanup-failure', 'open-demo-failure']) {
+        // The formal application's failures no case expects; a start refusal (`mission-start-failure`) is an expected outcome.
+        for (const name of ['cleanup-failure', 'open-mission-failure', 'mission-open-failure', 'mission-action-error', 'mission-placeholder-failure']) {
           expect(await page.getByTestId(name).count(), `Unexpected ${name}`).toBe(0);
         }
       } finally {

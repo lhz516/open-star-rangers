@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "09"
 subtask: "03"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 03 — 合成键位映射、会话动作分流与清键
@@ -32,8 +32,8 @@ updated: 2026-10-03
 ## 关键文件与契约
 
 - **计划新增：** `src/ui/game/synthetic-keyboard-input.ts`、`synthetic-keyboard-input.test.ts`。
-- **扩展现有：** [synthetic-session-bridge.ts](../../../../../src/ui/game/synthetic-session-bridge.ts)及[邻接测试](../../../../../src/ui/game/synthetic-session-bridge.test.ts)；[synthetic-game-store.ts](../../../../../src/ui/game/synthetic-game-store.ts)及[邻接测试](../../../../../src/ui/game/synthetic-game-store.test.ts)。
-- **复用不另写判定：** [命令反馈](../../../../../src/ui/game/synthetic-command-feedback.ts)、[控制/可用性](../../../../../src/ui/game/synthetic-game-controls.ts)及[真实 UI 测试设施](../../../../../src/ui/game/synthetic-ui.test-support.ts)；测试设施如需记录 setInput，仅增加观测包装。
+- **扩展现有：** [synthetic-session-bridge.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)及[邻接测试](../../../../engineering/source-structure.md#r6-合成-ui-层)；[synthetic-game-store.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)及[邻接测试](../../../../engineering/source-structure.md#r6-合成-ui-层)。
+- **复用不另写判定：** [命令反馈](../../../../engineering/source-structure.md#r6-合成-ui-层)、[控制/可用性](../../../../engineering/source-structure.md#r6-合成-ui-层)及[真实 UI 测试设施](../../../../engineering/source-structure.md#r6-合成-ui-层)；测试设施如需记录 setInput，仅增加观测包装。
 
 ## 验收标准
 
@@ -55,7 +55,7 @@ updated: 2026-10-03
 
 ### 2026-10-03：实现与接口
 
-- 新增 [synthetic-keyboard-input.ts](../../../../../src/ui/game/synthetic-keyboard-input.ts) 与[邻接测试](../../../../../src/ui/game/synthetic-keyboard-input.test.ts)。冻结的 `SYNTHETIC_KEYBOARD_BINDINGS` 恰好含 ArrowLeft/ArrowRight/KeyN/KeyX/KeyP；轴表从该映射派生，分类与按住推导复用 01 的 `classifyKeyboardInput`/`HeldKeyboardAxis`。消费者只依赖通用源端口，不导入浏览器源。
+- 新增 [synthetic-keyboard-input.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 与[邻接测试](../../../../engineering/source-structure.md#r6-合成-ui-层)。冻结的 `SYNTHETIC_KEYBOARD_BINDINGS` 恰好含 ArrowLeft/ArrowRight/KeyN/KeyX/KeyP；轴表从该映射派生，分类与按住推导复用 01 的 `classifyKeyboardInput`/`HeldKeyboardAxis`。消费者只依赖通用源端口，不导入浏览器源。
 - owner04 的准确接线接口：
 
   ```ts
@@ -66,7 +66,7 @@ updated: 2026-10-03
   ```
 
   在 bridge 已绑定到同一个 session、已有 feedback/controls 后创建；键盘不用加入 bridge 的 run consumers。连接时同步 initial 信号重核 active/inactive，但同步初始按键不提交动作。外部只向 React 交出 `keyboard.reader`（冻结的 `getSnapshot`/`subscribe`），owner 持有 `keyboard.dispose()`；先 dispose 键盘，再销毁 Session，之后继续其他独立清理并锁存失败。此处仅交付接口，未修改 owner、hook 或页面，也未执行 04。
-- `SyntheticRunBinding.setInput` 与 command 相同先做 retired/unbind 保护，Session 保留 run identity/phase/通知模式的最终判定。store 只窄扩展 `UiActionError.operation='input'`；[测试设施](../../../../../src/ui/game/synthetic-ui.test-support.ts)只增加 setInput 观测并暴露桥接所用的稳定 Session 包装，不伪造模拟结果。
+- `SyntheticRunBinding.setInput` 与 command 相同先做 retired/unbind 保护，Session 保留 run identity/phase/通知模式的最终判定。store 只窄扩展 `UiActionError.operation='input'`；[测试设施](../../../../engineering/source-structure.md#r6-合成-ui-层)只增加 setInput 观测并暴露桥接所用的稳定 Session 包装，不伪造模拟结果。
 - 每次按键读取当前 Session/status 与 bridge binding；命令复用 feedback，P 复用 availability/controls，不依赖 store 的旧状态。状态订阅只做本地清表，所有暂停/结束/替换后 start/resume/repeat 均不补轴。源失焦信号只有在合法 running 边界且轴数值实际变化时发送 0；不取消已排队命令。
 - reader 快照为冻结判别联合 `{state:'active'|'inactive'}` / `{state:'unavailable',error}`，同状态保持引用，tick 与会话 phase 不通知；dispose 后为 inactive、订阅停止、旧 sink/status 回调无效。普通 source 登记错误（包括普通 AggregateError）显示 unavailable 并保留原 error；source 或 unavailable 中的 `RollbackError` 始终向装配层抛出，先回滚已取得的状态订阅；消费层回滚失败也保留原始异常与全部新增原因。
 - dispose 先逻辑失效/清表，再释放 source、取消状态订阅；两项独立失败全部尝试并汇总为 AggregateError，正常和失败后的重复 dispose 均无效果。失败不宣称物理监听已释放；后续 owner04 必须纳入既有清理失败锁存。

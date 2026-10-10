@@ -1,4 +1,4 @@
-import { RESOURCE_GROUPS } from '../content/asset-contract.ts';
+import { RESOURCE_GROUPS, type ResourceGroup } from '../content/asset-contract.ts';
 import type { GroupInput } from '../content/completeness.ts';
 import { ContentContractError } from '../content/contract-validation.ts';
 import { withPlayerWingmanOption } from '../content/logic/logic-content.test-support.ts';
@@ -14,17 +14,18 @@ import { catalogFor } from '../original-data/source/source.test-support.ts';
 import { buildImfat } from '../original-data/synthetic.test-support.ts';
 import { canaryCoveredFiles } from './canary.test-support.ts';
 import type { ImportJob } from './import-host.ts';
-import { createImportJob, PRODUCTION_LOGIC_STEP, type OpenSource } from './import-job.ts';
+import { createImportJob, PRODUCTION_LOGIC_STEP, type LogicStepInput, type OpenSource } from './import-job.ts';
 import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportStage } from './import-protocol.ts';
 import { PRODUCTION_PACKAGE, type ExpectedPackageProfile } from './production-package.ts';
 import {
   boundGroups, MARKER, NO_LOGIC, NO_MODELS, SCENARIO_SOURCES, scenarioOpen, scenarioProfile, sliceCoveredFiles, SYNTHETIC_AUDIO,
-  syntheticGroupsJob, syntheticOpen, type IdentifyingScenario, type ScenarioSource, type SyntheticGroups,
+  syntheticGroupsJob, syntheticImport, syntheticOpen, type IdentifyingScenario, type ScenarioSource, type SyntheticGroups,
 } from './synthetic-import.test-support.ts';
 
 // The import Worker test scenarios by name. The browser test Worker entry runs the one its `name` option selects, and
 // Node tests run the same job or script, so both observe one fixture. Each is built on first use; none holds original
-// data. P2-12 adds the failure matrix, timing and canary scenarios to the P2-04 to P2-11 ones.
+// data. P2-12 adds the failure matrix, timing and canary scenarios to the P2-04 to P2-11 ones, and P3-04 the mission
+// scenarios.
 
 /** Text the failing scenarios throw with; it contains the file-name marker, which must never reach a snapshot, error or console. */
 export const EXCEPTION_MARKER = `${MARKER}-exception`;
@@ -164,6 +165,62 @@ const progressStream: ImportJob = async (_, report) => {
 
 const holdScenarios = Object.fromEntries(IMPORT_STAGES.map(stage => [`hold-${stage}`, () => holdAtStage(stage)]));
 
+/**
+ * The production logic step with a converted roster whose first option is the player craft type: every payload still
+ * reads and the logic group stays complete, but `loadMission` rejects the cross-Asset precondition.
+ */
+const PLAYER_WINGMAN_LOGIC: LogicStepInput = Object.freeze({
+  ...PRODUCTION_LOGIC_STEP,
+  convert: async (...args: Parameters<typeof PRODUCTION_LOGIC_STEP.convert>) => {
+    const converted = await PRODUCTION_LOGIC_STEP.convert(...args);
+    return { ...converted, drafts: converted.drafts.map(withPlayerWingmanOption) };
+  },
+});
+
+/** The sound `mission-partial` leaves out of the audio stage: the only one of its role, so the audio group is incomplete. */
+const MISSION_PARTIAL_SOUND = 'sound/warp';
+
+/** Where a P3-04 mission scenario stops on the way to a formal world, with the stable failure it gives there. */
+export type MissionScenarioOutcome =
+  /** The package is complete, the mission loads and `createWorld` accepts the production run configuration. */
+  | { readonly stage: 'world' }
+  /** The job finishes, but `group` is incomplete and not held, so the held package is not complete; the mission loads. */
+  | {
+    readonly stage: 'package';
+    readonly group: ResourceGroup;
+    readonly groupDiagnostic: { readonly code: string; readonly path: string };
+    readonly packageDiagnostic: { readonly code: string; readonly path: string };
+  }
+  /** The package is complete, and the mission diagnosis fails. */
+  | { readonly stage: 'load-mission'; readonly failure: { readonly kind: 'core-input'; readonly path: string; readonly reason: string } }
+  /** The package is complete and the mission loads, and `createWorld` throws a CoreInputError for every wingman choice. */
+  | { readonly stage: 'create-world'; readonly failure: { readonly path: string; readonly reason: string } };
+
+/**
+ * The P3-04 mission scenarios (docs/plan/p3/04/spec.md, 合成任务包), by Worker name: the whole production job on the
+ * mission disc, a slice disc whose mission is the production slice mission (`mission/first-campaign`, group 0 / slot 1)
+ * with a five-option roster, and three scenarios that each differ from it in one place.
+ */
+export const MISSION_SCENARIOS = Object.freeze({
+  'mission-startable': Object.freeze({ stage: 'world' }),
+  'mission-partial': Object.freeze({
+    stage: 'package',
+    group: 'audio',
+    groupDiagnostic: Object.freeze({ code: 'role-cardinality', path: 'roles.warp-sound' }),
+    packageDiagnostic: Object.freeze({ code: 'group-missing', path: 'groups.audio' }),
+  }),
+  'mission-load-failed': Object.freeze({
+    stage: 'load-mission',
+    failure: Object.freeze({ kind: 'core-input', path: 'input.wingmanRoster.content.options[0].craftType', reason: 'must not be the player craft type' }),
+  }),
+  'mission-create-rejected': Object.freeze({
+    stage: 'create-world',
+    failure: Object.freeze({ path: 'input.mission.content.declarations[0].ruleInputs.craftCount', reason: 'must give the player one request' }),
+  }),
+} satisfies Readonly<Record<string, MissionScenarioOutcome>>);
+
+export type MissionScenario = keyof typeof MISSION_SCENARIOS;
+
 /** Import job scenarios by Worker name. */
 export const IMPORT_SCENARIOS: Readonly<Record<string, () => ImportJob>> = Object.freeze({
   synthetic: () => synthetic,
@@ -234,19 +291,24 @@ export const IMPORT_SCENARIOS: Readonly<Record<string, () => ImportJob>> = Objec
   /** F-09: identifies the slice disc, then sends the four synthetic groups with the models group bound to another source. */
   'mixed-identity': () => syntheticGroupsJob(scenarioOpen('models'), mixedGroups),
   /** F-10: the whole production job on the slice disc, with a converted roster whose first option is the player craft type. */
-  'mission-invalid': () => createImportJob(scenarioOpen('models'), undefined, {
-    ...PRODUCTION_LOGIC_STEP,
-    convert: async (...args: Parameters<typeof PRODUCTION_LOGIC_STEP.convert>) => {
-      const converted = await PRODUCTION_LOGIC_STEP.convert(...args);
-      return { ...converted, drafts: converted.drafts.map(withPlayerWingmanOption) };
-    },
-  }),
+  'mission-invalid': () => createImportJob(scenarioOpen('models'), undefined, PLAYER_WINGMAN_LOGIC),
   /** F-12: `hold-<stage>` stays in that stage until terminated. */
   ...holdScenarios,
   /** F-12: continuous identification progress until terminated. */
   'progress-stream': () => progressStream,
   /** S-06: the whole production job on the canary slice disc. */
   canary: () => createImportJob(entryOpen('canary')),
+  /** P3-04 S-09: the whole production job on the mission disc. */
+  'mission-startable': () => createImportJob(scenarioOpen('mission-startable')),
+  /** P3-04 S-09: the same, with a sound table lacking `MISSION_PARTIAL_SOUND`. */
+  'mission-partial': () => createImportJob(scenarioOpen('mission-startable'), undefined, undefined, {
+    table: PRODUCTION_SOUND_TABLE.filter(({ mapping }) => mapping.asset.id !== MISSION_PARTIAL_SOUND),
+    rules: PRODUCTION_SND_RULES,
+  }),
+  /** P3-04 S-09: the same, with a converted roster whose first option is the player craft type. */
+  'mission-load-failed': () => createImportJob(scenarioOpen('mission-startable'), undefined, PLAYER_WINGMAN_LOGIC),
+  /** P3-04 S-09: the whole production job on the mission disc whose player record requests two craft. */
+  'mission-create-rejected': () => createImportJob(scenarioOpen('mission-create-rejected')),
 });
 
 /** The part of a Worker scope a protocol script uses. */
@@ -293,6 +355,8 @@ const SCENARIO_DISCS: Readonly<Record<string, () => ScenarioSource>> = Object.fr
   'sound-missing': SCENARIO_SOURCES.models,
   'mixed-identity': SCENARIO_SOURCES.models,
   'mission-invalid': SCENARIO_SOURCES.models,
+  'mission-partial': SCENARIO_SOURCES['mission-startable'],
+  'mission-load-failed': SCENARIO_SOURCES['mission-startable'],
   ...Object.fromEntries(IMPORT_STAGES.map(stage => [`hold-${stage}`, SCENARIO_SOURCES.models])),
 });
 
@@ -300,8 +364,8 @@ const SCENARIO_DISCS: Readonly<Record<string, () => ScenarioSource>> = Object.fr
 export const scenarioSource = (name: string): ScenarioSource | null => (Object.hasOwn(SCENARIO_DISCS, name) ? SCENARIO_DISCS[name]() : null);
 
 /**
- * The expected package profile of the test entry for a Worker scenario: `scenarioProfile` for the P2-04 to P2-11
- * scenarios, and for the P2-12 ones the identified disc's fingerprint with the production converter version and
+ * The expected package profile of the test entry for a Worker scenario: `scenarioProfile` for the scenarios of
+ * `SCENARIO_SOURCES`, and for the others the identified disc's fingerprint with the production converter version and
  * package budget; null for a scenario that identifies no disc.
  */
 export function scenarioEntryProfile(name: string): ExpectedPackageProfile | null {
@@ -313,4 +377,31 @@ export function scenarioEntryProfile(name: string): ExpectedPackageProfile | nul
     sourceFingerprint: sourceFingerprint(catalogFor(source.covered, source.versionId)),
     limits: PRODUCTION_PACKAGE.limits,
   });
+}
+
+/** The CloneCD file set of a scenario's disc, with the padding of every synthetic import; throws for a scenario without one. */
+export async function scenarioFiles(name: string): Promise<readonly File[]> {
+  const source = scenarioSource(name);
+  if (!source) throw new Error(`The ${name} scenario identifies no disc`);
+  return (await syntheticImport(source.covered, source.versionId)).files;
+}
+
+/** A group a scenario's job sent, in the shape the resource holder keeps. */
+export interface ScenarioGroup extends GroupInput {
+  readonly group: ResourceGroup;
+}
+
+/**
+ * Every group a scenario's job sends for its disc's files, run in the calling thread, in send order: incomplete groups
+ * included, as the import job owner receives them before it keeps only the complete ones.
+ */
+export async function scenarioGroups(name: string): Promise<readonly ScenarioGroup[]> {
+  const files = await scenarioFiles(name);
+  const groups: ScenarioGroup[] = [];
+  await IMPORT_SCENARIOS[name]()(files.map(file => ({ name: file.name, blob: file })), {
+    progress: () => undefined,
+    identified: () => undefined,
+    group: (group, input) => { groups.push(Object.freeze({ group, ...input })); },
+  });
+  return Object.freeze(groups);
 }

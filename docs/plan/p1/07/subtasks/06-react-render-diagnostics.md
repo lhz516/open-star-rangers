@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 06 — React 画面与渲染诊断
@@ -26,8 +26,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [App.tsx](../../../../../src/app/App.tsx)、[SyntheticDevPanel.tsx](../../../../../src/ui/dev/SyntheticDevPanel.tsx)。
-- 新增 [SyntheticRenderView.tsx](../../../../../src/ui/render/SyntheticRenderView.tsx)（样式内联，无单独样式文件或 hook）；修改 [SyntheticDevPanel.tsx](../../../../../src/ui/dev/SyntheticDevPanel.tsx) 与 [App.tsx](../../../../../src/app/App.tsx)。
+- [App.tsx](../../../../../src/app/App.tsx)、[SyntheticDevPanel.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)。
+- 新增 [SyntheticRenderView.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)（样式内联，无单独样式文件或 hook）；修改 [SyntheticDevPanel.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 与 [App.tsx](../../../../../src/app/App.tsx)。
 
 ## 验收标准
 

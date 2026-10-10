@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "08"
 subtask: "03"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 03 — 演示生命周期接线
@@ -20,7 +20,7 @@ updated: 2026-10-02
   - 每个初始化成功且仍为当前的 owner 恰好派发一次 `start`；首次 start 失败不重试；重复通知、Exit 后的 idle 与同 owner 的 phase 变化不重复派发；已释放、替换或初始化失败的 owner 不收到 start。
   - 进入意图在 owner 创建前撤销时不创建；创建后立即撤销时完整释放；重复释放只清理一次。
   - 浏览器表面工厂回滚失败、owner 失败记录、`dispose()` 抛错都以 `demo-release-failed` 交付 01 的页面流转，且在任何后续启动机会之前同步交付；`reportError` 自身抛错也不丢失阻断；后续独立错误仍报告。
-- 重写 [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts) 以使用该接线：容器作为 effect 依赖不变；React 不发布已失效 owner；清理失败锁存后不再创建 owner（覆盖 StrictMode setup→cleanup→setup、容器替换、Fast Refresh）。
+- 重写 [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 以使用该接线：容器作为 effect 依赖不变；React 不发布已失效 owner；清理失败锁存后不再创建 owner（覆盖 StrictMode setup→cleanup→setup、容器替换、Fast Refresh）。
 - 演示入口只使用 `SYNTHETIC_DEMO_OPTIONS`，不接受内容、导入或存档参数。
 - 邻接 Node 测试覆盖 AC-15 的全部条目，以及 AC-10 的“无清理失败的 failed/faulted 返回后可重新进入、得到新 owner 与 run 1”和“锁存后工厂调用数不再增加”。
 
@@ -33,8 +33,8 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 计划新增 `src/app/composition/synthetic-demo-lifecycle.ts`（名称可由实现调整）与 `synthetic-demo-lifecycle.test.ts`，均尚不存在。保持 DOM-free，由测试传递导入。
-- 修改 [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)：接收页面流转的失败交付回调与“进入意图”，返回值仍提供 owner 与容器回调 ref。
-- 复用 [createSyntheticDemoOwner](../../../../../src/app/composition/synthetic-demo-owner.ts)、[ControlledHost](../../../../../src/app/session/synthetic-session.test-support.ts)、[RecordingSurface](../../../../../src/render/scene/render-surface.test-support.ts)、[TestClock](../../../../../src/ui/game/synthetic-ui.test-support.ts)；不另建逻辑替身。
+- 修改 [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)：接收页面流转的失败交付回调与“进入意图”，返回值仍提供 owner 与容器回调 ref。
+- 复用 [createSyntheticDemoOwner](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[ControlledHost](../../../../engineering/source-structure.md#r4-合成会话)、[RecordingSurface](../../../../../src/render/scene/render-surface.test-support.ts)、[TestClock](../../../../engineering/source-structure.md#r6-合成-ui-层)；不另建逻辑替身。
 
 ## 验收标准
 
@@ -51,14 +51,14 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-demo-lifecycle.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.ts) 是每个应用实例一个的 DOM-free 演示槽位，持有同步锁存：
+- **实现：** [synthetic-demo-lifecycle.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 是每个应用实例一个的 DOM-free 演示槽位，持有同步锁存：
   - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit，未锁存时才调用工厂；随后锁存 owner 的初始化回滚记录，否则只派发一次 start 并再次检查记录。同一 visit 再次 `open` 返回 null，失败的 start 不重试。
   - `close()` 幂等：释放 owner、交付其清理失败记录，再报告 dispose 抛出的错误。
   - `release()` 供“返回菜单”在切换画面前同步释放当前 owner。
   - 两个出口自身抛错都被吞掉，锁存不受影响。
-- **hook：** [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts) 改为接收生命周期，effect 依赖仍为 `[container, lifecycle]`：setup 中 `open` 并发布 owner，cleanup 中先发布 null 再 `close`。锁存后 `open` 返回 null，不创建表面或 owner，StrictMode 重跑、容器替换和 Fast Refresh 都走这一路径。演示入口仍只用 `SYNTHETIC_DEMO_OPTIONS`。
+- **hook：** [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 改为接收生命周期，effect 依赖仍为 `[container, lifecycle]`：setup 中 `open` 并发布 owner，cleanup 中先发布 null 再 `close`。锁存后 `open` 返回 null，不创建表面或 owner，StrictMode 重跑、容器替换和 Fast Refresh 都走这一路径。演示入口仍只用 `SYNTHETIC_DEMO_OPTIONS`。
 - **过渡状态：** [App](../../../../../src/app/App.tsx) 在本提交中只做最小适配（以 `reportError` 作为失败出口），因此暂时会在加载时自动启动；[04](./04-menu-pages-shell.md) 改为菜单外壳后消除。
-- **Node 测试：** [synthetic-demo-lifecycle.test.ts](../../../../../src/app/composition/synthetic-demo-lifecycle.test.ts) 使用真实 owner/Core/Session（`ControlledHost`、`TestClock`、`RecordingSurface`），工厂与 start/dispose 均计数并记录顺序：
+- **Node 测试：** [synthetic-demo-lifecycle.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 使用真实 owner/Core/Session（`ControlledHost`、`TestClock`、`RecordingSurface`），工厂与 start/dispose 均计数并记录顺序：
   - **一次性 start：** 每个 owner 只 start 一次；重复 `open` 与 Exit 后都不再 start，Exit 后保持 idle。
   - **失败与隐藏：** 首次 start 失败不重试。隐藏页面 start 后为 paused/hidden 且无帧请求，转为可见后仍 paused，显式 Resume 才调度。
   - **owner 身份：** 已关闭或已被替换的 visit 不再 start。初始化失败的 owner 忽略 start：store 状态为 null，host 无资源。

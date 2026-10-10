@@ -181,7 +181,7 @@ describe('the development rules', () => {
   it('allow entry documents, test entries with their declared query, the Vite client and existing project modules', () => {
     expect(allowedAs(development(), request('/', { resourceType: 'Document' }))).toBe('product');
     expect(allowedAs(development(), request('/e2e/entries/app.html?worker=models-corrupt&cache=quota-exceeded', { resourceType: 'Document' }))).toBe('test');
-    expect(Object.keys(TEST_ENTRY_QUERY)).toEqual(['worker', 'cache', 'capacity', 'audio', 'hold']);
+    expect(Object.keys(TEST_ENTRY_QUERY)).toEqual(['worker', 'cache', 'capacity', 'audio', 'hold', 'seeds']);
     expect(allowedAs(development(), request('/@vite/client'))).toBe('toolchain');
     expect(allowedAs(development(), request('/@react-refresh'))).toBe('toolchain');
     expect(allowedAs(development(), request('/node_modules/.pnpm/vite@8.3.1_@types+node@22.20.4/node_modules/vite/dist/client/env.mjs'))).toBe('toolchain');
@@ -202,8 +202,13 @@ describe('the development rules', () => {
       expect(allowedAs(development(), entry(`worker=busy&hold=${hold}`)), hold).toBe('test');
     }
     expect(allowedAs(development(), entry('worker=canary&capacity=insufficient&audio=unavailable&cache=write-failed&hold=commit'))).toBe('test');
+    const sixteenSeeds = Array.from({ length: 16 }, (_, index) => index * 268_435_456).join(',');
+    for (const seeds of ['0', '4294967295', '1,2,3', '9999999999', sixteenSeeds, '1%2C2']) {
+      expect(allowedAs(development(), entry(`worker=mission-startable&seeds=${seeds}`)), seeds).toBe('test');
+    }
     for (const query of ['hold=commit,upload', 'hold=commit,', 'hold=,commit', 'hold=commit;list', 'hold=commit,list,restore,commit', 'hold=',
-      'capacity=plenty', 'audio=available', `worker=${'a'.repeat(41)}`, 'cache=Write-Failed']) {
+      'capacity=plenty', 'audio=available', `worker=${'a'.repeat(41)}`, 'cache=Write-Failed',
+      'seeds=', 'seeds=1,', 'seeds=,1', 'seeds=-1', 'seeds=1.5', 'seeds=0x10', 'seeds=12345678901', `seeds=${sixteenSeeds},1`, 'seeds=1;2']) {
       expect(categories(development(), entry(query)), query).toEqual(['query']);
     }
   });

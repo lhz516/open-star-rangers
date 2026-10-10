@@ -1,4 +1,7 @@
+/** The phases of the P1 synthetic session (docs/plan/p1/05/spec.md). */
 export type SessionPhase = 'idle' | 'running' | 'paused' | 'faulted' | 'disposed';
+/** The formal session adds the initial departure hold and the recording-capacity stop (docs/plan/p3/04/spec.md, 会话). */
+export type GameSessionPhase = SessionPhase | 'transition' | 'stopped';
 export type SessionFailurePhase = 'runtime' | 'scheduler' | 'consumer' | 'cleanup' | 'control';
 
 export interface SessionFailure {
@@ -8,7 +11,7 @@ export interface SessionFailure {
 
 export type GameSessionErrorDetails =
   | { readonly kind: 'invalid-argument'; readonly path: string; readonly reason: string; readonly cause?: unknown }
-  | { readonly kind: 'invalid-state'; readonly operation: string; readonly phase: SessionPhase; readonly runId: number | null; readonly reason: string }
+  | { readonly kind: 'invalid-state'; readonly operation: string; readonly phase: GameSessionPhase; readonly runId: number | null; readonly reason: string }
   | { readonly kind: 'operation-failed'; readonly failures: readonly SessionFailure[] };
 
 export type SessionErrorListener = (error: GameSessionError) => undefined;
@@ -18,7 +21,7 @@ export class GameSessionError extends Error {
   declare readonly path?: string;
   declare readonly reason?: string;
   declare readonly operation?: string;
-  declare readonly phase?: SessionPhase;
+  declare readonly phase?: GameSessionPhase;
   declare readonly runId?: number | null;
   declare readonly failures?: readonly SessionFailure[];
 

@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "07"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 07 — React 开发面板与应用接线
@@ -55,9 +55,9 @@ updated: 2026-10-02
 ## 完成证据
 
 - 2026-10-02：实现。
-  - [use-synthetic-game.ts](../../../../../src/ui/game/use-synthetic-game.ts) 把 Zustand 的 `useStore(reader, selector)` 封装为只读 hook，不导出写入口。
-  - [SyntheticDevPanel.tsx](../../../../../src/ui/dev/SyntheticDevPanel.tsx) 只接收只读 `store` 与 `dispatch`，不导入 app 装配。各区块分别订阅：控件区只订阅缓存的可用性对象，状态区订阅 status，投影区订阅 projection，反馈区订阅 pending 与结果列表，错误区订阅两种错误与 cleanupFailed。面板醒目标明“P1 synthetic engineering demo — not original gameplay”；cleanupFailed 时提示重新加载页面。所有动作都是原生 button，无全局键盘监听。
-  - [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts) 在 effect 中用 `createBrowserSessionHost()` 与 `performance.now` 创建 owner，cleanup 时 dispose，失败经 `reportError` 报告。
+  - [use-synthetic-game.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 把 Zustand 的 `useStore(reader, selector)` 封装为只读 hook，不导出写入口。
+  - [SyntheticDevPanel.tsx](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 只接收只读 `store` 与 `dispatch`，不导入 app 装配。各区块分别订阅：控件区只订阅缓存的可用性对象，状态区订阅 status，投影区订阅 projection，反馈区订阅 pending 与结果列表，错误区订阅两种错误与 cleanupFailed。面板醒目标明“P1 synthetic engineering demo — not original gameplay”；cleanupFailed 时提示重新加载页面。所有动作都是原生 button，无全局键盘监听。
+  - [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 在 effect 中用 `createBrowserSessionHost()` 与 `performance.now` 创建 owner，cleanup 时 dispose，失败经 `reportError` 报告。
   - [App.tsx](../../../../../src/app/App.tsx) 保留“无原版内容”说明并渲染面板，不按环境隐藏、不自动 start；main 与 StrictMode 未改。
 - 浏览器冒烟（[browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)）：
   - 环境：自有 Vite `pnpm dev --host 127.0.0.1 --port 5173 --strictPort`；macOS 上本机 Chrome 154.0.8037.95，headed 运行，使用全新临时 profile（`/tmp/osr-p106-chrome`）并开 `--remote-debugging-port=9339`；VS Code `runPlaywrightCode` 经 `connectOverCDP` 驱动，窗口约 1000×900。

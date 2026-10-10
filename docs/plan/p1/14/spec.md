@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "14"
-updated: 2026-10-03
+updated: 2026-10-10
 related: [ADR-0008, ADR-0012, ADR-0014, ADR-0015]
 ---
 
@@ -54,8 +54,8 @@ P1-01 至 P1-10、P1-12 已交付合成运行闭环、本地浏览器回归和�
 ### 已有，直接复用
 
 - 草案核对基线为本地提交 `e5383d8`，工作树干净。已有 11 个前置任务的路由均为 `done`，见 [P1-01](../01/goal.md)、[P1-02](../02/goal.md)、[P1-03](../03/goal.md)、[P1-04](../04/goal.md)、[P1-05](../05/goal.md)、[P1-06](../06/goal.md)、[P1-07](../07/goal.md)、[P1-08](../08/goal.md)、[P1-09](../09/goal.md)、[P1-10](../10/goal.md)、[P1-12](../12/goal.md)。执行时仍须核验其 tracker 和证据，路由或 `accepted` 标签本身不是验收证明。
-- [合成 Core](../../../../src/core/synthetic/synthetic-scene.ts) 已有 `TickInput`、`Command`、`DomainEvent`、纯 UI projection 与 Render State；[snapshot](../../../../src/core/synthetic/synthetic-snapshot.ts) 和 [replay](../../../../src/core/synthetic/synthetic-replay.ts) 已提供显式快照、状态哈希、录制、重放及结果比较。这些不是原版玩法或正式存档。
-- [Runtime](../../../../src/app/runtime/synthetic-runtime.ts) 持有输入/命令与帧后事件分发；[Session](../../../../src/app/session/synthetic-session.ts) 持有运行身份、控制、帧调度许可和清理；[UI store](../../../../src/ui/game/synthetic-game-store.ts) 区分投影、pending、接受/拒绝/取消/未确认结果。消费者不拥有另一套游戏事实。
+- [合成 Core](../../../engineering/source-structure.md#r1-合成-core) 已有 `TickInput`、`Command`、`DomainEvent`、纯 UI projection 与 Render State；[snapshot](../../../engineering/source-structure.md#r1-合成-core) 和 [replay](../../../engineering/source-structure.md#r1-合成-core) 已提供显式快照、状态哈希、录制、重放及结果比较。这些不是原版玩法或正式存档。
+- [Runtime](../../../engineering/source-structure.md#r3-合成-runtime) 持有输入/命令与帧后事件分发；[Session](../../../engineering/source-structure.md#r4-合成会话) 持有运行身份、控制、帧调度许可和清理；[UI store](../../../engineering/source-structure.md#r6-合成-ui-层) 区分投影、pending、接受/拒绝/取消/未确认结果。消费者不拥有另一套游戏事实。
 - [App](../../../../src/app/App.tsx) 已装配菜单、明确未实现的导入页及合成演示，并由 P1-12 加入静态权利说明；当前最小键位权威在[键位文档](../../../engineering/keyboard-input.md)，不另做绑定表。
 - [package.json](../../../../package.json)、[Playwright 配置](../../../../playwright.config.ts) 和[工程约定](../../../engineering/README.md#命令) 已提供本地检查链。草案阶段仅用 `pnpm exec playwright test --list` 确认当前发现 9 文件/21 用例，development 10、production 10、development-headed 1；这不是运行通过证据，也不是长期固定数量目标。
 - [P1-10 汇总](../10/subtasks/07-evidence-docs-alignment.md#完成证据)记录当时完整 18 用例及历史证据适用性；[P1-12 实际证据](../12/subtasks/08-local-evidence-docs.md#完成证据)和[最终对齐](../12/subtasks/09-final-alignment.md#完成证据)记录后续工程/合规通过及相关浏览器 3 用例。P1-12 后完整 21 用例尚未在该证据中一起重跑，本任务不把两个版本的数量相加冒充最终集成通过。
@@ -105,9 +105,9 @@ P1-01 至 P1-10、P1-12 已交付合成运行闭环、本地浏览器回归和�
 
 | 数据 | 类型、单位与约束 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|
-| `TickInput`、`DomainEvent`、projection、Render State | 现有纯数据；tick 为模拟步，频率显式；合成单位不解释为原版物理量 | [合成 Core](../../../../src/core/synthetic/synthetic-scene.ts) | 沿用 Node/浏览器现有测试，不向运行世界写参考数据 |
-| `SyntheticReplayRecord`、`SyntheticReplayResult` | 既有 `osr-synthetic-replay`/1；配置、成功 tick 输入、events、checkpoints | [replay 模块](../../../../src/core/synthetic/synthetic-replay.ts) | 使用既有生产校验/比较器，不修改格式或启用 UI 录制 |
-| `SessionStatus`、`SessionFrame`、UI 指令结果 | 既有 run/command 身份、控制状态和结果分类 | [Session](../../../../src/app/session/synthetic-session.ts)、[UI store](../../../../src/ui/game/synthetic-game-store.ts) | 只读观察控制/反馈，不以乐观状态代替 Core 结果 |
+| `TickInput`、`DomainEvent`、projection、Render State | 现有纯数据；tick 为模拟步，频率显式；合成单位不解释为原版物理量 | [合成 Core](../../../engineering/source-structure.md#r1-合成-core) | 沿用 Node/浏览器现有测试，不向运行世界写参考数据 |
+| `SyntheticReplayRecord`、`SyntheticReplayResult` | 既有 `osr-synthetic-replay`/1；配置、成功 tick 输入、events、checkpoints | [replay 模块](../../../engineering/source-structure.md#r1-合成-core) | 使用既有生产校验/比较器，不修改格式或启用 UI 录制 |
+| `SessionStatus`、`SessionFrame`、UI 指令结果 | 既有 run/command 身份、控制状态和结果分类 | [Session](../../../engineering/source-structure.md#r4-合成会话)、[UI store](../../../engineering/source-structure.md#r6-合成-ui-层) | 只读观察控制/反馈，不以乐观状态代替 Core 结果 |
 | 合规报告与 inventory | 既有 `osr-local-compliance`/1 与 `osr-distribution-inventory`/1；counts、findings、输入/产物指纹及 platform/arch 覆盖 | [报告](../../../../tools/compliance/report.ts)、[分发工具](../../../../tools/compliance/distribution.ts) | 聚合成功必须七个必需范围 completed、零 findings、exit 0；inventory 自身不是通过报告或签名 |
 | 评审身份与逐项结果（文档新增） | 评审日期、候选 Git revision/差异、配置/环境；每项含判据来源、责任、证据链接、通过/未通过/未验证及理由 | 新 P1 评审 | 必须区分当前重跑、有效历史复用和缺失证据；不维护另一份 subtask tracker |
 | 问题/残余/交接（文档新增） | 事项、是否阻塞 P1、影响、权威记录/置信度引用、负责阶段/任务、解除或后续验收条件 | 新 P1 评审引用现有权威记录 | 不复制原版事实、不发明后续任务编号或负责人的确认 |
@@ -140,7 +140,7 @@ P1-01 至 P1-10、P1-12 已交付合成运行闭环、本地浏览器回归和�
 | AC-03 | 最终候选实际运行 `pnpm check` 与独立 Python 合成测试，记录四类型程序、lint、Vitest、build、Python 解释器版本与各自结果/退出码；只有全部通过才支持相应退出项通过，不改已有发现范围/边界或降低断言 | 当前命令结果、配置/源码差异；旧测试总数不硬编码成长期目标 |
 | AC-04 | 当前完整 `pnpm test:e2e` 实际执行 development、production、development-headed 所有应路由用例，包含许可 DOM/生产文件；发现数与实际通过/失败/未运行数相符，必需用例无 skip；任何重跑符合技术决定 5 并保留首次失败 | 配置/`--list` 与真实执行报告、browser/OS/origin/viewport；缺能力、启动失败或意外错误明确未通过/未验证 |
 | AC-05 | 浏览器退出证据实际包含 Core 接受/拒绝与投影/像素、键盘隔离、暂停/重启、联合循环/监听/GPU、真实 hidden 和 WebGL-off；按 P1-10 原阈值判定，不只检查 Canvas 或 HTTP 200 | 既有 E2E 场景的真实观测与附件；StrictMode/清理及 HMR 结合 AC-07，不新增代理测试 |
-| AC-06 | Node replay 正/负契约及既有浏览器 replay 在最终相关实现上有效；相同记录的 events/checkpoints 精确一致，比较器成功、合法 hash 偏差和非法版本拒绝均有断言证据 | [Node replay 测试](../../../../src/core/synthetic/synthetic-replay.test.ts)、[比较测试](../../../../src/core/synthetic/synthetic-replay-compare.test.ts)、[浏览器 replay](../../../../e2e/browser-replay.spec.ts)的当前结果；不推广为跨引擎普遍逐位一致 |
+| AC-06 | Node replay 正/负契约及既有浏览器 replay 在最终相关实现上有效；相同记录的 events/checkpoints 精确一致，比较器成功、合法 hash 偏差和非法版本拒绝均有断言证据 | [Node replay 测试](../../../engineering/source-structure.md#r1-合成-core)、[比较测试](../../../engineering/source-structure.md#r1-合成-core)、[浏览器 replay](../../../../e2e/browser-replay.spec.ts)的当前结果；不推广为跨引擎普遍逐位一致 |
 | AC-07 | HMR、原生窗口焦点、DPR/上下文/压力、故障/取消/回滚等复用类别均有来源版本、相关变化核对及复用理由或补验证据；P1-12 的真实改动未被写成整棵生产树零差异 | 历史完成证据、候选差异及适用性表；失效的必需项补验，无法取得证据则 blocked/未验证 |
 | AC-08 | 当前聚合合规命令真实输出 `format:'osr-local-compliance'`、`version:1`、`kind:'compliance'`，记录七范围 counts、findings、coverage 及输入/产物身份；全部 completed、零 findings、`passed:true`/exit 0 才支持合规项通过，最终文档后的四范围扫描有效 | 当前 CLI 结果和最终 `check:original`；分别核对 worktree/index/untracked/build 与 dependencies/distribution/artifacts，不写死文件/实例数 |
 | AC-09 | 当前生成的三声明/inventory 文件及实际分发归属、完整许可/版权/NOTICE核对有效，根/App 权利说明准确；来源/完整文件/产物人工审阅有证据并保留完整 hash 的局限 | P1-12 原正/负及人工证据适用性、当前报告/产物、[生产文件用例](../../../../e2e/compliance-assets.spec.ts)；不以 inventory 或工具 passed 充当法律/片段无泄露/秘密检查保证 |
@@ -152,7 +152,7 @@ P1-01 至 P1-10、P1-12 已交付合成运行闭环、本地浏览器回归和�
 
 ## 验证策略
 
-- **单元/契约测试：** 常规核验复用既有测试；实际缺陷修复补针对性回归。`pnpm check` 复用 [Core](../../../../src/core/synthetic/)、[Runtime](../../../../src/app/runtime/)、[Session](../../../../src/app/session/)、[UI bridge/反馈](../../../../src/ui/game/)、[输入](../../../../src/platform/input/)及[合规](../../../../tools/compliance/)的邻接测试；正/负场景沿各已批准契约，不单独再造故障矩阵。修复在本 Goal 独立项内进行，不能改成宽松断言。
+- **单元/契约测试：** 常规核验复用既有测试；实际缺陷修复补针对性回归。`pnpm check` 复用 [Core](../../../engineering/source-structure.md#r1-合成-core)、[Runtime](../../../../src/app/runtime/)、[Session](../../../../src/app/session/)、[UI bridge/反馈](../../../../src/ui/game/)、[输入](../../../../src/platform/input/)及[合规](../../../../tools/compliance/)的邻接测试；正/负场景沿各已批准契约，不单独再造故障矩阵。修复在本 Goal 独立项内进行，不能改成宽松断言。
 - **Replay/一致性：** Node 沿 P1-03 测试配置，浏览器沿 P1-10 既有 seed 0、50 Hz、四 tick、checkpointInterval 1 记录及真实比较器；默认演示的 60 Hz/不录制配置不变。记录代码/记录身份与运行时，只证明已测版本/样本，不把 replay 事件当状态重建。
 - **浏览器验证：** 使用已有安装 Chrome/兼容 Chromium、隔离的合成 context 和当前三个项目，按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md)核验真实观测及清理。完整 runner 实际执行；修复后的相关结果重验，旧 HMR、窗口焦点和 DPR 证据按 AC-07 更新适用性，必需失效项才有界补测。不能关闭/解锁个人 profile、复用未知服务器、静默安装浏览器或用 synthetic visibility 替代 native hidden。
 - **实机/原版对照：** 本任务不增加原版或发布设备验收。P1 已要求的真实后台/窗口与 HMR 证据仍须有效；P0 cycles/设备/键位、P3 保真、P5 多引擎与真实平台/性能/系统快捷键/发布验证保持后续责任，合成通过不豁免。

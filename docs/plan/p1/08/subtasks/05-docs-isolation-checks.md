@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "08"
 subtask: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 05 — 工程文档与隔离检查
@@ -47,11 +47,11 @@ updated: 2026-10-02
 
 - **AC-08 源码检索：** 范围为页面流转、页面组件、App/样式/入口、三个 composition 文件与 `describe-error.ts`。检索项：`original-data`、`/content/`、`workers`、`indexedDB`、`localStorage`、`sessionStorage`、`caches`、`FileReader`、`showOpenFilePicker`、`showDirectoryPicker`、`Worker`、`fetch(`、`type="file"`、`<input`、`addEventListener`、`keydown`/`keyup`/`keypress`、`history.`、`location.`。
   - 命中只有两处：[MainMenuPage.tsx](../../../../../src/ui/pages/MainMenuPage.tsx) 第 2 行的文档注释，以及第 29 行的 `data-testid="original-data-status"` 字符串。都不是导入或 API 调用，其余为零。
-  - 调用点审阅：`SYNTHETIC_DEMO_OPTIONS` 只在 [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts) 中传给 `createSyntheticSession`。`createSyntheticDemoOwner(host, clock, render)` 没有内容、导入或存档参数；唯一生产调用点是 [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)。
+  - 调用点审阅：`SYNTHETIC_DEMO_OPTIONS` 只在 [synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 中传给 `createSyntheticSession`。`createSyntheticDemoOwner(host, clock, render)` 没有内容、导入或存档参数；唯一生产调用点是 [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。
 - **AC-10 审阅证据（代码审阅，不是浏览器复现）：**
-  - **failed：** [SyntheticRenderView](../../../../../src/ui/render/SyntheticRenderView.tsx) 以 alert 显示原始错误、说明会话不受影响、返回菜单并重新启动可尝试恢复且会丢弃本次合成状态。
+  - **failed：** [SyntheticRenderView](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 以 alert 显示原始错误、说明会话不受影响、返回菜单并重新启动可尝试恢复且会丢弃本次合成状态。
   - **unavailable：** alert 说明 WebGL 2 不可用、会话不受影响。
-  - **Return 始终可用：** [SyntheticDemoPage](../../../../../src/ui/pages/SyntheticDemoPage.tsx) 无条件渲染 `Return to menu`，初始化失败、faulted、清理失败时都可用。初始化/启动失败的恢复说明由修复子任务 [07](./07-start-failure-recovery-text.md) 补齐。
+  - **Return 始终可用：** [SyntheticDemoPage](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 无条件渲染 `Return to menu`，初始化失败、faulted、清理失败时都可用。初始化/启动失败的恢复说明由修复子任务 [07](./07-start-failure-recovery-text.md) 补齐。
   - **faulted 返回不锁存：** 无清理失败的 faulted 返回后不锁存，由 [03](./03-demo-lifecycle-wiring.md) 的“session fault 后重进得到 run 1”Node 测试证明。
   - **锁存时：** [App](../../../../../src/app/App.tsx) 在所有画面显示含 `describeError(cause)` 与刷新提示的 alert，原因来自页面流转状态，不依赖 owner 或面板。[MainMenuPage](../../../../../src/ui/pages/MainMenuPage.tsx) 原生禁用 Start 并在说明中写明原因，Import 照常可用。
   - **焦点：** 演示返回焦点为 menu-heading、导入返回为 import-entry，由 [01](./01-app-flow-state.md) 的 Node 测试证明；菜单按 `focusTarget` 聚焦。

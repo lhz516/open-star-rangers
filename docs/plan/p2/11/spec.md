@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P2
 task: "11"
-updated: 2026-10-07
+updated: 2026-10-10
 related: [ADR-0003, ADR-0005, ADR-0007, ADR-0008, ADR-0012, ADR-0015, U-027, U-028]
-reviewed: sha256:b648fab4dd52
 ---
 
 # P2-11：真实导入流程与最小资源查看器 — Spec
@@ -208,7 +207,7 @@ P2-01 至 P2-10 已分别交付读取、识别、Worker 作业、四个资源组
   - **音效：** [sound-payload.ts](../../../../src/content/sound-payload.ts) 是采样 payload 的读取器。
 - **渲染：**
   - [webgl-surface.ts](../../../../src/render/webgl/webgl-surface.ts) 与 [browser-webgl-surface.ts](../../../../src/render/webgl/browser-webgl-surface.ts) 只创建 WebGL 2，不回退。画布的无障碍名称固定为合成演示的文字。
-  - [synthetic-renderer.ts](../../../../src/render/synthetic/synthetic-renderer.ts) 与 [synthetic-demo-owner.ts](../../../../src/app/composition/synthetic-demo-owner.ts) 是可参照的所有权与释放模式。依赖中已有 Three.js 0.186。
+  - [synthetic-renderer.ts](../../../engineering/source-structure.md#r2-合成渲染) 与 [synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 是可参照的所有权与释放模式。依赖中已有 Three.js 0.186。
 - **音频：** `createAudioController` 提供 `unlock`、`load`、`play`、`stop`、`stopAll`、快照、订阅与 `dispose`，同时发声上限为 8；浏览器能力见 [browser-audio-controller.ts](../../../../src/platform/audio/browser-audio-controller.ts)。
   - `unlock()` 可能先返回 `locked`，之后经 `statechange` 进入 `running`；`play()` 在此之前被拒绝，控制器不排队，见 [audio-playback.spec.ts](../../../../e2e/audio-playback.spec.ts)。
   - `dispose()` 返回 `void`，上下文 `close()` 的拒绝不向调用方报告。所以“已关闭”须由应用包装的能力观察。

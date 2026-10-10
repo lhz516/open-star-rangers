@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "07"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-07：Three.js 合成渲染 — Goal
@@ -14,8 +14,8 @@ updated: 2026-10-02
 
 ## 代码现状与前提
 
-- [SyntheticRenderState](../../../../src/core/synthetic/synthetic-scene.ts)、[RenderFrame](../../../../src/app/runtime/synthetic-runtime.ts) 和 [SyntheticSession](../../../../src/app/session/synthetic-session.ts) 已提供实体、双帧插值输入和唯一调度。
-- [P1-06 bridge](../../../../src/ui/game/synthetic-session-bridge.ts) 与 [demo owner](../../../../src/app/composition/synthetic-demo-owner.ts) 已提供 consumer 接线和统一释放基础，需要扩展渲染资源所有权与初始化回滚。
+- [SyntheticRenderState](../../../engineering/source-structure.md#r1-合成-core)、[RenderFrame](../../../engineering/source-structure.md#r3-合成-runtime) 和 [SyntheticSession](../../../engineering/source-structure.md#r4-合成会话) 已提供实体、双帧插值输入和唯一调度。
+- [P1-06 bridge](../../../engineering/source-structure.md#r6-合成-ui-层) 与 [demo owner](../../../engineering/source-structure.md#r5-演示所有者与槽位) 已提供 consumer 接线和统一释放基础，需要扩展渲染资源所有权与初始化回滚。
 - 本任务新增 `src/render/` DOM-free 合同、视口、Three.js 场景、浏览器表面，以及 `src/ui/render/` React 画面模块。
 - 依赖前提是 P1-05、P1-06 已完成；实现时加入 `three`/`@types/three` 并同步 [package.json](../../../../package.json) 与 [pnpm-lock.yaml](../../../../pnpm-lock.yaml)。不新增 R3F、WebGPU、addons、Worker、OffscreenCanvas、jsdom 或 canvas 模拟。
 - 不产生原版研究结论；合成几何、相机、颜色和 DPR 上限均遵循本 spec。

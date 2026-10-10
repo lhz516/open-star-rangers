@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0002, ADR-0006, ADR-0015]
 
 本项目代码的结构、命令与检查规则。架构决定见[总计划](../plan/master-plan.md) §4–5；本文只记录落地方式。
 
-当前源码目录、Runtime/Session 的分工、helper 归属与后续阶段扩展落点见[源码结构指南](./source-structure.md)，各模块已交付代码的 API 与契约要点见其[模块分册](./source-structure.md#模块说明)，决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。历史源码路径的对应关系与本轮验证只在[迁移记录](./source-structure.md#p1-06-前迁移记录)维护。
+当前源码目录、Runtime/Session 的分工、helper 归属与后续阶段扩展落点见[源码结构指南](./source-structure.md)，各模块已交付代码的 API 与契约要点见其[模块分册](./source-structure.md#模块说明)，决定见 [ADR-0015](../decisions/ADR-0015-source-module-structure.md)。历史源码路径的对应关系与本轮验证只在[迁移记录](./source-structure.md#p1-06-前迁移记录)维护；P3-04 退役的 P1 合成演示（源码、lint 规则与本文原有的合成小节）见[退役记录](./source-structure.md#p3-04-合成演示退役记录)。
 
 按 spec、goal 与 subtasks 开发的路径、审批、进度维护和 skills 入口见[Agent 任务工作流](./agent-workflow.md)。
 
@@ -87,7 +87,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
 - **纯模块**（`src/core`、`src/original-data`、`src/content`）的非测试 `.ts`/`.tsx` 不得导入或 re-export React、React DOM、Zustand、Three.js、IndexedDB 封装库的包根/子路径，也不得导入 `app`、`render`、`ui`、`platform`、`workers` 的目录入口或子模块。
 - **`src/core`** 不得使用 `Math.random`、`Date`、`performance.now`、定时器、`requestAnimationFrame`、`await` 或任何 `async` 函数形式。随机数来自 Core 自己的带种子生成器，时间来自 tick 计数（总计划 §5）。其他消费层仍允许宿主调度和异步。
-- **正式 Core 与合成 Core 互不依赖**（P3-02 AC-01）：本地规则 `osr/core-synthetic-boundary`（定义在 `eslint.config.js`）只配置在 `src/core/` 的非测试、非 test-support 文件上。`core/synthetic/` 为合成模块，`core/errors.ts` 与 `core/determinism/` 为中性模块，其余 `core/` 模块（含 `mission/`）为正式模块；正式与合成互不导入，中性模块两侧都不导入。说明符按解析后的真实路径分类（带或不带扩展名、`.js` 与目录形式都识别），覆盖值与类型导入、副作用导入、再导出（含 `export type`、`export *`）、字面量动态 `import()` 与 `import('…')` 类型。lint 只看直接引用，同一回归文件还沿真实应用程序的依赖图检查传递可达性：经 `content/` 等中间模块、再导出或导入类型绕到另一侧，以及参数无法核实的动态导入都报错。它与 `osr/original-data-capabilities` 共用说明符解析与引用访问器。分类与原因见 [Core 模块说明](./modules/core.md#模块边界)。
+- P3-02 的 `osr/core-synthetic-boundary`（正式 Core 与合成 Core 互不依赖）已随 `core/synthetic/` 于 P3-04 删除，见[退役记录](./source-structure.md#r9-lint-规则-osrcore-synthetic-boundary)。
 - 类型导入必须写成 `import type`。
 - 持久正/负回归在 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts)，进入现有 `pnpm test`/`pnpm check`。TypeScript 样本在自有临时项目中使用仓库原配置和真实 include/exclude，ESLint 使用虚拟源与真实逻辑路径，不在生产目录留违规文件。负向必须命中目标诊断，正向须通过；空项目、ignored/parser 错误及误配预期均会失败。
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
@@ -169,22 +169,27 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - 导入 Worker 是 `/assets/` 下带哈希的模块脚本，由页面 chunk 的 `new Worker(new URL(…, import.meta.url))` 创建（开发服务器的 `worker_file` 标记在构建中不存在）；
   - 生产尺寸的合成文件得到 `source/unsupported-version`；
   - Worker 脚本返回 404 或 200 的 HTML 时，导入以 `import/worker-start-failed` 结束，Worker 已终止，没有资源包。404 时浏览器自己的加载失败报告不总是出现，出现时才声明。这两个用例在[网络审计](#网络审计)下运行，被页面路由替换的 Worker 脚本请求以 `audit.declare` 声明，预期状态分别为 404 与 200；
-  - 菜单、导入页面与合成演示没有 `securitypolicyviolation`；
+  - 菜单、导入页面与任务流程（预置并恢复 `missionPackage()` 后，从介绍、开始配置、出发到飞行、任务菜单与返回主菜单）没有 `securitypolicyviolation`，网络审计没有违规、缺口或外发请求；介绍、配置、飞行与任务菜单中没有开发面板或任何 `dev-*` 元素，任务画面没有画布；
   - 在隔离 context 中预置生产身份的合成缓存，同源刷新后经菜单恢复、重新校验，模型、图像与布局的像素读回逐字节一致，试听确实启动声音源，返回菜单后音频上下文关闭，整条路径没有 CSP 违规或控制台错误；
-  - `dist/` 只有 `index.html` 一个页面，产物与 source map 来源不含测试入口、测试支持或合成目录。
+  - `dist/` 只有 `index.html` 一个页面。产物与 source map 来源（按 map 所在目录解析为仓库路径）不含测试入口、测试支持与 `e2e/`，不含开发诊断（`src/ui/dev/`）、帧计时（`dev-frame-timing.ts`）、文件保存（`file-save.ts`、`browser-file-save.ts`）与 `app-version.ts`，也不含已退役的合成演示路径；JS 与 HTML 中没有这些模块独有的字符串（如 `mission-dev-panel`、`osr-recording-`、`createObjectURL`）。开发专用的模块经 `import.meta.env.DEV` 之后的顶层动态导入载入，构建时整段剔除；改为静态导入会使 source map 列出 `src/ui/dev/`，该用例即失败（[P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据) 的反证）。
 
-  预置支持 [production-cache.ts](../../e2e/support/production-cache.ts) 复用合成 `models` 包、生产身份常量与 P2-10 的记录/键构造函数。Node 侧把转换器版本与来源指纹换成生产配置，经 `applyManifestIdentity` 重新派生合成包的 manifest 身份，再校验完整性与声明预算。可序列化的合成记录交给测试页面，由页面重建 `ArrayBuffer` 并在单个 IndexedDB 事务中写入；生产页面不载入 `/src/`、开发测试入口或测试支持模块，也不注入应用端口。仅限测试拥有的隔离 context，不接触用户缓存。
+  预置支持 [production-cache.ts](../../e2e/support/production-cache.ts) 复用合成 `models` 包、生产身份常量与 P2-10 的记录/键构造函数；`missionPackage()`（P3-04）给出 `mission-startable` 场景作业发出的全部组（每个进程只转换一次），供任务流程的生产用例以 `seedProductionCache(page, await missionPackage())` 预置。Node 侧把转换器版本与来源指纹换成生产配置，经 `applyManifestIdentity` 重新派生合成包的 manifest 身份，再校验完整性与声明预算。可序列化的合成记录交给测试页面，由页面重建 `ArrayBuffer` 并在单个 IndexedDB 事务中写入；生产页面不载入 `/src/`、开发测试入口或测试支持模块，也不注入应用端口。仅限测试拥有的隔离 context，不接触用户缓存。生产中的运行推进只从任务画面的只读 `data-tick` 与宿主探针观察；实体明细与录制在开发项目中核对。
 
   探针契约用例的 Worker 因此改由 Playwright 路由在同源路径 `/__probe/*.js` 提供，不用 Blob URL。
   - **SWA 的输入（P5）：** 静态站点的回退（SPA fallback）必须排除 `/assets/*`，缺失的脚本应返回 404 而不是 `index.html`，否则 Worker 载入失败会被 HTML 掩盖；生产响应头应采用同一策略。本地预览的结果不能代替真实 SWA 的回退与响应头实测，后者归 P5。
-- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（[import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 注册的名称，默认 `models`，另有 `production` 与 `missing`）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；`hold` 取 `commit`、`list`、`restore` 中一至三项（逗号分隔），这些缓存操作的结果在缓存结算后等待测试用 [app-entry.ts](../../e2e/support/app-entry.ts) 的 `releaseCacheResults` 释放（`heldCacheResults` 计数），用于迟到结果（P2-12 F-12）。预期包配置取该场景的 `scenarioEntryProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。测试在导航前安装了[响应探针](#响应探针)时，每次提交在开始的同一任务内打开 `commit` 窗口，由用例 `adopt` 后关闭；未安装时行为不变。新增查询键，或超出现有模式的取值，须同时加入 [e2e-network-policy.ts](../../tools/e2e-network-policy.ts) 的 `TEST_ENTRY_QUERY`，否则网络审计把这次导航判为违规；`worker`、`cache` 已接受任意小写连字符名称，新场景名不必改。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
+- **P2-11 测试入口：** 开发服务器另提供 [e2e/entries/app.html](../../e2e/entries/app.html)，以 [app-entry.test-support.tsx](../../src/app/app-entry.test-support.tsx) 挂载生产 `App` 并注入合成端口：查询参数 `worker` 选择导入 Worker 的测试场景（[import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 注册的名称，默认 `models`，另有 `production` 与 `missing`；P3-04 的任务场景 `mission-startable`、`mission-partial`、`mission-load-failed`、`mission-create-rejected` 见 [workers 模块说明](./modules/workers.md)）；`cache=unavailable` 换成没有 IndexedDB 的缓存，`cache=<P2-10 失败码>` 让第一次提交返回该失败；`capacity=insufficient` 让空间检查报告只有 1 KiB 可用；`audio=unavailable` 换成无法创建音频上下文的音频能力；`seeds`（P3-04）为逗号分隔的十进制值（至多 16 个，每个至多 10 位），任务的种子来源按序为每次创建世界的尝试抽取一个，用完后回到 `crypto.getRandomValues`，非 uint32 的值原样交给任务所有者，用于验证开始失败；`hold` 取 `commit`、`list`、`restore` 中一至三项（逗号分隔），这些缓存操作的结果在缓存结算后等待测试用 [app-entry.ts](../../e2e/support/app-entry.ts) 的 `releaseCacheResults` 释放（`heldCacheResults` 计数），用于迟到结果（P2-12 F-12）。预期包配置取该场景的 `scenarioEntryProfile`，并发布为 `window.osrTestEntry.profile` 供用例预置缓存。测试在导航前安装了[响应探针](#响应探针)时，每次提交在开始的同一任务内打开 `commit` 窗口，由用例 `adopt` 后关闭；未安装时行为不变。新增查询键，或超出现有模式的取值，须同时加入 [e2e-network-policy.ts](../../tools/e2e-network-policy.ts) 的 `TEST_ENTRY_QUERY`，否则网络审计把这次导航判为违规；`worker`、`cache` 已接受任意小写连字符名称，新场景名不必改。生产构建只以 `index.html` 为入口，不含它；用例经 [app-entry.ts](../../e2e/support/app-entry.ts) 打开，只在 development 项目运行。
 - **P2-11 页面回归路线：** 开发项目的 [import-page.spec.ts](../../e2e/import-page.spec.ts)、[viewer-page.spec.ts](../../e2e/viewer-page.spec.ts)、[cache-recovery.spec.ts](../../e2e/cache-recovery.spec.ts) 与 [fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 分别覆盖导入、查看器、缓存恢复/损坏与生命周期；生产项目走上述严格 CSP 与生产身份合成缓存，不使用开发测试入口。聚焦运行可用 `pnpm test:e2e e2e/import-page.spec.ts e2e/viewer-page.spec.ts e2e/cache-recovery.spec.ts e2e/fast-refresh.spec.ts --project=development`，生产路径用 `pnpm test:e2e e2e/production-preview.spec.ts --project=production`。这些自动化只用合成内容；用户真实界面的操作与证据清单见[本地导入指南](../guides/local-import.md#用户实机核对)。
 - **P3-03 版本 4 回归（[P3-03/20](../plan/p3/03/subtasks/20-browser-verification.md)）：** [version-4-viewer.spec.ts](../../e2e/version-4-viewer.spec.ts) 是普通 `*.spec.ts`，在生产预览与开发服务器两个项目中都运行：合成文件在生产预览中只能到 `source/unsupported-version`，所以它按 [production-cache.ts](../../e2e/support/production-cache.ts) 的 `seedProductionCache` 在测试自己的 context 中以生产身份预置版本 4 的合成包，经菜单恢复并重新校验，再在查看器中核对四类新图像与可计时的 `repeat` 声音（[version-4.ts](../../e2e/support/version-4.ts) 的 `LONG_REPEAT`）；导入、保存与刷新恢复的完整流程在开发测试入口的 [viewer-page.spec.ts](../../e2e/viewer-page.spec.ts) 中。两者都在网络审计与资源平衡下运行。聚焦运行：`pnpm test:e2e e2e/version-4-viewer.spec.ts --project=development --project=production`。
   - **画面定位：** [viewer-observations.ts](../../e2e/support/viewer-observations.ts) 的 `bufferPixels` 按 Chrome 的规则定位画面：先把画布位置取整到 CSS 像素，再乘像素比（像素比 2 时 50.25 → 设备行 100，50.5 → 102），不是 round(CSS 位置 × 像素比)；画面区域位于小数 CSS 位置时，旧算法读到相邻的行。像素比 1 时两种算法相同。[joint-pipeline.production.spec.ts](../../e2e/joint-pipeline.production.spec.ts) 的 `framePixels` 仍用旧规则，只在像素比 1 下运行；以后在像素比 2 下使用时宜改用同一规则。
+- **P3-04 任务流程回归：** [mission-flow.development.spec.ts](../../e2e/mission-flow.development.spec.ts) 经测试入口导入 01 的任务场景，核对开始资格（没有包、包不完整、载入失败、创建被拒绝与可开始）、完整流程（五种占位结束方式、两种僚机配置、暂停与任务菜单、重开、返回焦点、按住键的 repeat 与尾事件不触发下一页）、缺省标注、离页确认、开发诊断与录制下载；下载的录制在测试进程中以 [replay-check.ts](../../tools/replay-check.ts) 的 `runReplayCheck(录制, 光盘文件, { catalog })` 用同一合成光盘的白名单核对（CLI 始终只用生产白名单）。[mission-flow.production.spec.ts](../../e2e/mission-flow.production.spec.ts) 以 `missionPackage()` 预置并恢复后走同样的流程，并确认生产 DOM 中没有开发面板。逐项结果见 [P3-04/10](../plan/p3/04/subtasks/10-e2e-mission-flow.md#完成证据)。
+  - **观察：** [mission-observations.ts](../../e2e/support/mission-observations.ts) 经 `page.evaluate` 读取任务画面根的 `data-owner`、`data-run`、`data-tick`、`data-position`，不启动 Playwright 的主世界脚本（否则资源平衡会多出常驻监听，见[资源平衡](#资源平衡)）；另提供 tick 前进或稳定的页内采样、占位的五种结束方式、按住键、缺省标注读取、离页监听计数、开发诊断读取与命令提交，以及 `frameWindow`。
+  - **离页确认的取证：** 没有 `dialog` 监听时 Playwright 会自行接受 `beforeunload`，所以用例以 `page.on('dialog')` 应答；取消后 `page.reload()` 会一直等到超时，因此刷新改用 CDP `Page.reload`，关闭用 `page.close({ runBeforeUnload: true })`。确认只在可信点击开始之后、有运行的位置出现（出发、飞行、暂停、任务菜单），介绍、配置、主菜单与 exit 之后不出现；任何意外的对话框都使用例失败。这只证明本机 Chrome 的刷新与关闭路径，不代表所有浏览器、系统快捷键或 BFCache。
+  - **聚焦运行：** `pnpm test:e2e e2e/mission-flow.development.spec.ts --project=development`；`pnpm test:e2e e2e/mission-flow.production.spec.ts --project=production`。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development），并对 `--list` 中每个 `*.development.spec.ts`、`*.production.spec.ts` 断言其项目集合恰为对应的单一项目。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
-- [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。正常项目必须有实际WebGL2画面。
-- 联合资源测试逐轮打印context扩展能力；缺可选`WEBGL_lose_context`的context以annotation明确“context-loss未验证”，不冒称lost。可用时逐个断言实际lost；完整必需测量及本机结果见[04证据](../plan/p1/10/subtasks/04-joint-resource-regression.md#完成证据)。
+  - **P3-04 起的用例：** 经测试入口 `worker=mission-startable` 导入（合成光盘经 CDP `DOM.setFileInputFiles` 选入，真实模块 Worker 导入并保存），之后的操作都是 [native-lifecycle.ts](../../e2e/support/native-lifecycle.ts) 的 `NativeTarget.press`：按可访问名称找到按钮，等它的位置连续两帧不变且为命中目标后再发可信 CDP 点击（另有 `setInputFiles` 方法与等待条件的 `until` 函数）。用例覆盖出发保持中的隐藏（占位等待、计时器撤销、tick 0；返回可见后跳过进入 `paused`/`hidden`）、飞行中的隐藏（自动暂停、无 rAF、无计时器、tick 稳定；返回可见后仍暂停），以及显式 Resume 后不补跑：页面内记录可信点击、该点击请求的首帧时间戳与之后每次显示的 tick，每个显示的 tick 都不超过 ⌊(显示时刻 − 首帧)/31.25⌋ + 1。逐项结果见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据)。
+- [WebGL降级](../../e2e/webgl-unavailable.spec.ts)用独立浏览器进程的disable-WebGL flags跑开发/生产；只有该场景允许当前Three.js具体创建失败诊断（逐项记录），其他异常/请求/控件错误仍失败。P3-04 起降级在查看器上核对（WebGL 2 不可用的 alert、没有画布、列表可用、两次进出后帧、观察器与监听都释放），任务流程照常推进且没有画布。正常项目中查看器必须有实际 WebGL2 画面；任务画面尚无画布（飞行画面归 P3-12、P3-13）。
+- [joint-resources](../../e2e/joint-resources.spec.ts)（P3-04 起）在两个项目中预置并恢复 `missionPackage()`，做三次菜单 → 任务 → 菜单的往返（僚机依次为 0、无、4，每次含任务菜单中的重开），在每个流程位置以帧窗口读取会话监听、计时器、离页保护与帧请求，返回菜单后与同文档基线逐项一致（[资源平衡](#资源平衡)）。任务画面尚无输入源与画布，画布释放、GPU 计数与 `WEBGL_lose_context` 的能力记录由查看器路径覆盖（resource-balance-controls 的干净路径、version-4-viewer 与 fast-refresh 的查看器用例）；P1 的完整必需测量及本机结果见[04证据](../plan/p1/10/subtasks/04-joint-resource-regression.md#完成证据)。
 - **导入 Worker 浏览器测试**（P2-04 AC-08）：[import-worker.spec.ts](../../e2e/import-worker.spec.ts) 在页面内从开发服务器动态导入 `/src/…` 模块，所以只在 development 项目运行，生产项目用 `testIgnore` 排除；生产预览中的 Worker 归 P2-11 验证。
   - 生产入口经平台适配默认载入；测试入口 [import-worker.test-support.ts](../../src/workers/import-worker.test-support.ts) 由 Worker 的 `name` 选择 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 注册的作业场景或协议脚本（`top-level-throw` 由入口自身处理）。合成文件在页面内由代码生成，不读取 `local/`。
   - 探针用 Proxy 包装 `Worker` 构造函数（保持 `instanceof` 与原型），并包装 `terminate`。快照的 `workers` 记录入口路径、URL 是否由 Vite 的 Worker 转换生成、类型、名称，以及 `postMessage` 与 `terminate` 的调用次数（不保留消息内容）；注册在 Worker 对象上的监听归入 `worker` 分组。[probe-contract](../../e2e/probe-contract.spec.ts) 在两个项目中证明包装后仍能载入模块 Worker、收发消息与终止。
@@ -226,7 +231,7 @@ P2-12 的[联合闭环](../plan/p2/12/spec.md#联合闭环)与[失败矩阵](../
 
 | 用例 | 项目 | 内容 | 本机耗时 |
 |---|---|---|---|
-| [joint-pipeline.development](../../e2e/joint-pipeline.development.spec.ts) | development | 测试入口 `worker=canary` 的真实 Worker 转换金丝雀光盘：3 轮导入、自动提交、查看与试听、刷新后恢复、合成演示；另有同文档 3 次往返 | 约 1 min |
+| [joint-pipeline.development](../../e2e/joint-pipeline.development.spec.ts) | development | 测试入口 `worker=canary` 的真实 Worker 转换金丝雀光盘：3 轮导入、自动提交、查看与试听、刷新后恢复，以及从持有的包开始任务到飞行再返回（P3-04 起，不新建 Worker、音频上下文或画布）；另有同文档 3 次往返 | 约 1 min |
 | [joint-pipeline.production](../../e2e/joint-pipeline.production.spec.ts) | production | 3 轮：生产尺寸合成文件在真实 `/assets/` Worker 中识别失败（不覆盖生产导入的成功路径）；`seedProductionCache` 只预置一次，刷新后恢复、查看、试听；另有一次缓存恢复后的同文档 3 次查看与试听往返 | 约 1.2 min |
 | [failure-input-content](../../e2e/failure-input-content.development.spec.ts) | development | F-01 至 F-10，`FAILURE_MATRIX` 每例一个用例（20 个） | 约 2.2–2.5 min |
 | [failure-worker-cancel](../../e2e/failure-worker-cancel.development.spec.ts) | development | F-11、F-12（14 个） | 约 1.5 min |
@@ -245,7 +250,7 @@ P2-12 的[联合闭环](../plan/p2/12/spec.md#联合闭环)与[失败矩阵](../
   - **真实配额：** 不必用持久 profile：在隔离 context 首次使用 IndexedDB 之前调用 `withQuotaOverride`（CDP `Storage.overrideQuotaForOrigin`），覆盖即对写入生效。`withPersistentProfile` 的页面不能 `audit.attachPage`，因为持久 context 的 `context.browser()` 为 null。
   - **探针与登记：** `installIdbProbe` 在事务、open 请求或连接结束时移除自己的监听，否则资源平衡会把它们计为应用监听。菜单显示失败提示时，React DOM 会在提示的 `<details>` 上登记自己的 `toggle` 监听；这类检查逐条预期恰好这一项。
   - **原生浏览器：** 用 [native-lifecycle.ts](../../e2e/support/native-lifecycle.ts) 的 headed 浏览器时，两个标签页在导航前都以 `audit.attachTarget` 附加，关闭浏览器前对每个目标调用 `audit.close`。“可见但音频仍挂起”的状态由测试侧的 resume 闸门制造：它暂缓真实的 `AudioContext.prototype.resume()`，直到测试放行。
-  - **Fast Refresh：** 编辑与还原源码的辅助在 [fast-refresh.ts](../../e2e/support/fast-refresh.ts)，`withEdits` 结束时还原并核对文件，[fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 与 F-14 共用。
+  - **Fast Refresh：** 编辑与还原源码的辅助在 [fast-refresh.ts](../../e2e/support/fast-refresh.ts)，`withEdits` 结束时还原并核对文件，[fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 与 F-14 共用。P3-04 起 fast-refresh 另覆盖：任务 hook（`use-mission-owner.ts`）与任务画面模块（`MissionScreen.tsx`）在飞行中刷新时换成新所有者（ownerId 加 1，回到介绍，同一文档，会话监听恰 3 个且都在旧所有者之后登记），在介绍计时器待触发时刷新只留下新所有者的计时器，已确认的僚机选择保留；外壳（`use-resource-holder.ts`）刷新后回到主菜单、资源包被丢弃，会话监听、离页保护、计时器与帧都为 0；三次菜单 → 导入 → 查看器 → 任务 → 菜单的往返回到基线（见[页面流转与任务生命周期](#页面流转与任务生命周期)）。
 
 #### 网络审计
 
@@ -268,7 +273,7 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
 - **Worker 覆盖：** Chrome 在模块 Worker 的主脚本到达后才创建它的目标，Playwright 附加后又立即恢复它，所以审计的会话可能晚于 Worker 的第一个动作。为此，主脚本经过网络层后，浏览器会话会暂停其他非文档请求，直到该 Worker 的会话就绪（至多 3 s）。只有主脚本经过网络层，或脚本被拒因而 Worker 从未运行，这个 Worker 才算已覆盖。
 - **规则：**
   - **生产：** 只放行同源、无请求体、无查询串的 `GET`，路径属于候选 `dist/` 的文件清单，资源类型与扩展名相符。以 `declare` 声明的测试请求不受文件清单、查询与资源类型的限制，但同样须同源、无请求体、方法为 `GET`。浏览器自己的 `/favicon.ico` 探测单列为 `known-404`。WebSocket、EventSource、弹窗、cookie、`Cookie` 头与 Service Worker 注册都是违规。
-  - **开发：** 只放行同源、无请求体的 `GET`/`HEAD`，并逐条列出入口文档、测试入口、Vite 客户端与预构建依赖、仓库中存在的 `src/` 模块，以及各自允许的资源类型与 Vite 查询键，没有“任意同源 GET”。唯一允许的 WebSocket 是协商 `vite-hmr` 的同源 HMR 连接，它的发送帧只能是 Vite 客户端的 `ping` 或 `vite:invalidate`。测试入口的查询键与取值由 `TEST_ENTRY_QUERY` 列出（`worker`、`cache`、`capacity`、`audio`、`hold`）。
+  - **开发：** 只放行同源、无请求体的 `GET`/`HEAD`，并逐条列出入口文档、测试入口、Vite 客户端与预构建依赖、仓库中存在的 `src/` 模块，以及各自允许的资源类型与 Vite 查询键，没有“任意同源 GET”。唯一允许的 WebSocket 是协商 `vite-hmr` 的同源 HMR 连接，它的发送帧只能是 Vite 客户端的 `ping` 或 `vite:invalidate`。测试入口的查询键与取值由 `TEST_ENTRY_QUERY` 列出（`worker`、`cache`、`capacity`、`audio`、`hold`、`seeds`）。
   - **金丝雀：** 在 URL（含 fragment）、请求头、Cookie、请求体、WebSocket 发送帧、cookie 值，以及弹窗、导航、Service Worker 与被 CSP 阻止的 URL 中查找，按原文、百分号或表单解码，以及 Base64（三种字节对齐，标准与 URL 安全字母表）匹配。
 - **使用要点：**
   - 用例在 Worker 刚启动时就结束它（例如立即取消），须先 `await audit.ready()`；否则 Worker 可能在被观测前结束，成为未覆盖目标。
@@ -302,61 +307,68 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
   - `workers[]` 另有 `jobs`（页面发出的 `start` 消息的 `jobId`）、`messages`（Worker 发来的每条消息只留 `type`、`stage`、`jobId` 与探针序号 `at`）与 `terminatedAt`；
   - `listeners[]` 另有 `element`（`'react'` 表示 React DOM 在该元素上登记的非委托监听，否则为 null）与 `detached`（目标已离开文档）；
   - [audio-playback.ts](../../e2e/support/audio-playback.ts) 的 `records()` 给出每个 AudioContext 的状态与每次 `close()` 的结局（`pending`、`resolved`、`rejected`）。Chrome 在调用 `close()` 时就同步把 `state` 设为 `closed`，所以只有已 resolve 的 `close()` 才算已关闭。
+  - **单次计时器（P3-04）：** 探针包装 `setTimeout`/`clearTimeout`，`this`、延迟、参数与返回的原生句柄都不变，只记录调用栈属于应用（`/src/` 或 `/assets/`）且处理器为函数的计时器（测试自己的计时器不记录）。快照的 `timers` 给出未触发也未清除的 `pending`（ID 与延迟）、`scheduled`，以及已触发与已清除的 ID；`restore()` 还原原函数。`clearInterval` 不包装，应用不用它清除 timeout。
+  - **监听分组：** `keyboard` 组为 window 的 focus/blur、第二个生命周期登记者，以及任务画面（`[data-testid="mission-screen"]`）内元素上的应用监听，留给 P3-05 的输入源（React DOM 的元素监听在元素进入文档前登记，不会落入）；会话宿主的 visibilitychange/pagehide/pageshow 为 `session` 组；任务所有者的离页保护（`beforeunload`）属 `other` 组，而 Vite 客户端自己登记的 `beforeunload` 属 `vite` 组，计数离页保护时排除它。P1 的 `synthetic-view` 分组随合成画面删除。
 - **用法：**
   - `ResourceBalance.start(page, testInfo, { packages })` 在已稳定的菜单上取基线；`check(label)` 断言没有差异，`measure` 只报告；
   - 提交后用 `expectPackages([expectedPackage(key, groups)])` 更新期望的缓存包；
   - 刷新前用 `beforeReload` 在旧文档中检查并保存释放证据，刷新后用 `rebaseline` 取新基线，未经 `beforeReload` 时它拒绝；
   - `warm(item, gpu)` 要求同一文档内同一项的暖态 GPU 计数逐轮相等；`attach` 附上全部记录。
+  - 比较另含 `timer` 类：基线之后新增或消失的待触发计时器都报告，已触发或已清除的不算；任务流程中只有占位的单次计时器，返回菜单后应为 0。
 
   默认要求页面装有音频探针（`installAudioProbe`），只在音频不属于用例范围时传 `audio: false`。缺 `WEBGL_lose_context` 的画布只标注“上下文丢失未验证”，其他必需能力缺失直接失败。
 - **React DOM 的元素监听：** React DOM 在单个元素上登记的非委托监听（如文件输入的 `invalid`、`<details>` 的 `toggle`）永不移除，在开发中归入 `test` 分组，在生产中归入 `other`。比较时按类型统计仍在文档中的这类监听，随元素离开文档的视为已释放；所以菜单上新出现的元素（如失败提示的 `<details>`）会带来一条新增的 `toggle`。
 - **Playwright 的主世界脚本：** Playwright 第一次在页面主世界运行脚本时（`locator.evaluate`、`allInnerTexts`、`allTextContents`、元素截图、`boundingBox()`、`check()` 等），会在 `window` 上登记一组常驻的捕获监听，探针把它们计入 `test` 分组。基线须在这之后取：[joint-pipeline.development.spec.ts](../../e2e/joint-pipeline.development.spec.ts) 的 `settleTooling` 先做一次 `locator.evaluate`。也可以在受检查的文档中改用 `page.evaluate` 读取，用 `page.screenshot` 加裁剪读像素。
-- **控制样本：** [resource-balance-controls.spec.ts](../../e2e/resource-balance-controls.spec.ts)（两个项目）故意泄漏监听、观察器、持续 rAF、未终止的 Worker 与未关闭的 AudioContext，每类只报告对应的问题；另有一条干净路径。
+- **控制样本：** [resource-balance-controls.spec.ts](../../e2e/resource-balance-controls.spec.ts)（两个项目）故意泄漏监听、观察器、持续 rAF、未终止的 Worker、未关闭的 AudioContext、待触发的计时器与 `beforeunload` 监听，每类只报告对应的问题；已触发的计时器作为干净样本不报告。另有一条干净路径（识别失败的导入、缓存恢复、三轮查看与试听、一次任务飞行与返回），每步都与基线一致。
 
-## 合成 Runtime
+## 正式 Runtime
 
-- [synthetic-runtime.ts](../../src/app/runtime/synthetic-runtime.ts) 是 P1 合成运行入口，契约见 [P1-04 spec](../plan/p1/04/spec.md)。它不是原版玩法；现已由 Session 与应用 owner 接入合成页面，Runtime 不直接拥有浏览器帧循环。
-- 调用者向 `frame(nowMs)` 提供单调不减的毫秒时间戳；首帧只锚定。只在 Runtime 内推进 Core；时钟和 Event Bus 的内部发布入口不能交给消费者。
-- `setInput` 保存连续轴，`submitCommand` 返回 Runtime commandId；它不同于 Core entityId。命令结果在整帧模拟结束后通知，持续事实从 `uiProjection`/`renderFrame` 读取。
-- `on`/`onAny` 仅接收同步、返回 undefined 的回调。监听器抛错前的副作用不会回滚；帧末 `listener-failed` 不意味着 tick 未提交，不可重试已完成 tick。Core `faulted` 后禁止模拟和输入，读取与订阅清理仍可用；恢复会话属于 P1-05。
-- 录制默认关闭；创建时传 `recording: {checkpointInterval}` 开启，`exportRecording()` 返回 P1-03 格式的冻结记录/结果，关闭时为 null。较大间隔仅减少检查点，不减少逐 tick 输入和事件；没有有界内存或自动持久化。
-- 故障帧已经成功的 tick 和事件保留在录制中，但该帧通知不投递。因此故障导出仍可 replay 一致，却不是 Event Bus 投递日志。测试用真实合成 Core；故障测试只在 Vitest 创建边界注入 step 前异常，不向生产接口加入测试后门。
-- owner 可在 frame/事件批次之外显式调用 `resetClock`（丢弃全部宿主时间进度）、`clearIntent`（清轴/队列并返回冻结 FIFO ID）、`foldRenderState`（previous=current、alpha=0）和 `clearSubscriptions`。faulted 也可收尾，但不解除故障；批次内调用抛 reentrant-call。它们不改 Core、RNG、ID 分配或录制；没有调用时裸 Runtime 行为不变。
-- Runtime 与会话的针对性检查使用 `pnpm exec vitest run src/app/runtime src/app/session`；完整检查仍为 `pnpm check`。Core 回归可用 `pnpm exec vitest run src/core/determinism src/core/synthetic`；任务载入（P2-09）用 `pnpm exec vitest run src/core/mission`。
+- [game-runtime.ts](../../src/app/runtime/game-runtime.ts) 是正式 Core 唯一的 Runtime（P3-04 S-01，契约见 [spec：Runtime](../plan/p3/04/spec.md#runtime)），API 见 [app 模块说明](./modules/app.md#正式-runtime)。每个运行一份，由[游戏会话](#会话端口与错误)创建与持有，不直接拥有浏览器帧循环。复用 P1-04 的 [fixed-step-clock.ts](../../src/app/runtime/fixed-step-clock.ts)（锚定、补跑上限、alpha）与 [runtime-errors.ts](../../src/app/runtime/runtime-errors.ts)，帧后事件由 [game-event-bus.ts](../../src/app/runtime/game-event-bus.ts) 分发。P1 的合成 Runtime 已退役（[R3](./source-structure.md#r3-合成-runtime)）。
+- **时间：** 只用 Core 的默认步长（64 ÷ 2 = 32 Hz），不另设频率。调用者向 `frame(nowMs)` 提供单调不减的毫秒时间戳，首帧只锚定；每帧至多 5 tick（`MAX_TICKS_PER_FRAME`），超出的部分丢弃且该帧 alpha=0。宿主时间不进入 Core。
+- **输入：** 连续意图 `{ axes, primaryFire }` 跨帧保持，直到再次设置或被清除。组批时，`primaryFire` 为真或自上次成功 step 以来曾由假变真，就加入一个主炮 `fire` 命令，所以按住期间每 tick 一个，两 tick 之间的短按也保留一次，不读 OS 自动重复。单次请求（如导弹）是普通命令：`submitCommand` 按公开的 `readTickInput` 规则校验并保存副本，返回从 1 起的 commandId；待执行队列上限 256（`COMMAND_QUEUE_LIMIT`，满时 `command-queue-full`），每 tick 至多 `CORE_LIMITS.commandsPerTick`（64）个（自动开火占一个名额），按 FIFO 顺延，非法或满队列的提交什么也不改变。0 tick 帧不消费队列或短按标记。
+- **输出：** 帧末按 tick 与发出次序分发冻结的事件与 `{ commandId }`：只有已提交命令的 `command-result` 带 ID，自动开火与非命令事件为 null；关联按每个 tick 自己的批次。监听器只能同步；抛错时本批其余接收者照常收到，帧末报 `listener-failed`，已提交的 tick 不回滚。每个成功 step 后同时取得同 tick 的 projection 与 Render State，全部成功才一起更新缓存；`projection()` 在两次成功 step 之间是同一对象，`renderFrame()` 给出本运行最近两份 Render State。暂停、保持、停止与故障时读模型折叠为最后一组完整缓存（previous=current、alpha=0）。
+- **故障与录制容量：** Core 故障或 Runtime 内部错误使 Runtime 故障：本帧事件都不投递，读模型保留最后完整的一组（可能早于故障点），`snapshot()` 与 `exportRecording()` 抛出该故障；当前抛错的 step 已可能执行的命令记为 `unconfirmed`，仍在队列中的确定未执行。录制容量不足（Core 以路径 `recording` 的 `CoreInputError` 拒绝）不是故障：只拒绝该 tick，本帧此前成功的 tick 照常投递，报告 `stop: 'recording-capacity'`，之后的输入与帧都被拒绝，快照与录制仍可读取。逐项规则见 [spec：失败帧与录制容量](../plan/p3/04/spec.md#失败帧与录制容量)。
+- **生命周期操作：** `resetClock`、`clearIntent`（清意图与短按标记，返回队列中确定未执行的 FIFO ID）、`foldRenderState`、`clearSubscriptions` 只由会话在帧外调用，帧内调用抛 `reentrant-call`；它们不改 Core、RNG、实体 ID 或录制。
+- **录制：** 运行规格带 `RecordingOptions` 时用 `createRecordingSession`，否则用 `createWorld`。开发构建默认从 tick 0 录制，检查点间隔 32，`producer` 为应用名、版本与构建模式；生产不录制（见[开发诊断与录制导出](#开发诊断与录制导出)）。录制只含实际执行的输入、事件与检查点，不含宿主时间、暂停、保持、运行 ID 或取消的命令。
+- **测试：** Node 测试运行真实正式 Core 与合成任务（[create-world.test-support.ts](../../src/core/world/create-world.test-support.ts)）；故障只在测试文件中以顶层 `vi.mock` 替换创建边界注入（这些文件由 Vitest 的 isolated 项目运行），不向生产接口加入后门。commandId 耗尽只经代码审查确认。
+- **针对性检查：** Runtime 与会话 `pnpm exec vitest run src/app/runtime src/app/session`；全部 Core 与边界回归 `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`；任务载入（P2-09）`pnpm exec vitest run src/core/mission`。完整检查仍为 `pnpm check`。
 
 ## 会话端口与错误
 
-- [session-host.ts](../../src/app/session/session-host.ts) 是 app 的 DOM-free 调度/生命周期端口。回调在请求返回非负安全整数句柄之后异步交付（0 合法）；注册失败由宿主回收未交给 owner 的部分资源。取消和所有通知均同步返回 undefined。
-- [session-errors.ts](../../src/app/session/session-errors.ts) 定义会话参数、状态及执行失败，不替代 Runtime 错误。执行失败保存有序 runtime/scheduler/consumer/cleanup/control 原因，冻结副本与条目但不冻结原异常；onError 不接受 Promise。
+- [session-host.ts](../../src/app/session/session-host.ts) 是 app 的 DOM-free 调度/生命周期端口。回调在请求返回非负安全整数句柄之后异步交付（0 合法）；注册失败由宿主回收未交给调用者的部分资源。取消和所有通知均同步返回 undefined。
 - [browser-session-host.ts](../../src/platform/browser/browser-session-host.ts) 在 platform 提供真实 rAF 与 visibilitychange/pagehide/pageshow，无导入副作用或独立循环。每份订阅拥有三个监听，撤销逐项尝试且幂等，部分注册失败先回滚再抛错。只用 app 的 DOM 类型检查；不要导入当前 Node 测试程序或给 Core 加 DOM。
-- [synthetic-session.ts](../../src/app/session/synthetic-session.ts) 的 `createSyntheticSession(options,host,onError)` 创建 idle controller，配置复制/验证后只订阅一次宿主。`control` 独立处理 start/pause/resume/restart/exit/dispose；唯一请求凭证按运行与请求身份隔离，0 句柄合法。SessionRun 没有 frame/step/world/publish；结束后读写/注册拒绝，faulted 最后状态仍可读。
-- 暂停/隐藏时清瞬时意图、折叠呈现并停止循环；pagehide 独立阻断，返回可见不自动继续。显式 resume 首回调重新锚定，保留最新呈现，不补跑后台时长。`onFrame` 包含真实 projection/render/report，暂停静止通知 report=null。owner 必须 dispose 后再创建，不靠全局单例；现有 React hook/演示生命周期已接入开发与生产合成页面并处理卸载/StrictMode/Fast Refresh 清理。
-- rAF、同步控制及宿主通知各构成一个通知边界。域/帧消费者的控制、宿主通知与故障按 FIFO 在当前批次后处理；静止帧也不递归控制。状态通知允许为新运行接线，禁止控制；取消/错误/清理仅允许读取或取消订阅。新增订阅下一批生效，取消立即生效。
-- `onCommandsCancelled` 的冻结 FIFO ID 及 reason 是会话反馈，不是 Core 拒绝或 replay 数据。转换通知按取消→暂停静止帧→适用收尾→状态→错误出口排序。`ownCleanup` 同步逆序收尾、至多尝试一次，release 即时移除/执行；释放后的 token 不再保有 owner/run/cleanup。release 失败只置 `cleanupFailed` 并同步抛错，不主动停止运行；后续 start/restart 均被阻断，exit/dispose 仍可执行。error 只保留最近错误，不是历史日志。
-- 调用者自身同步操作失败直接抛出；同一同步边界内排队控制的失败单独在末尾交 onError，不合并或重报，排队 resume/start 的请求错误也保留其排队来源。异步边界汇总错误一次，剩余消费者/独立清理仍继续。Runtime listener-failed 提升为 consumer 故障，nowMs/read/request/cancel 为 scheduler；cancel 另置 cleanupFailed，实际迟到回调仍无效。Core faulted 为 runtime，资源/订阅释放为 cleanup。
-- 故障保留最后成功 Core/recording 与折叠视图，停止调度并释放运行消费者/资源；无清理失败可 restart，清理失败只能结束并重建 owner。Runtime.frame 抛错不发成功形状帧。onError 抛错时也停止原本健康的循环，以 AggregateError 保留会话错、出口错及后续独立清理错，不重复调用出口。
-- recording 使用 P1-03 原格式；wall-clock、runId、暂停/取消都不入记录。间隔 1/4 跨 pause/hidden/resume 的成功 tick 输入、事件与 checkpoint 用真实 replay/独立裸 Runtime 对照；故障前缀仍可导出，restart 记录从 tick 0 重建，旧冻结导出不变。Node 仅证明同版本同运行时一致，真实 Chromium 生命周期证据另见 P1-05 的 03/07。
+- [session-errors.ts](../../src/app/session/session-errors.ts) 定义 `GameSessionError`：`invalid-argument`（带路径与原因）、`invalid-state`（带操作、phase、runId 与原因）与 `operation-failed`（有序的 runtime/scheduler/consumer/cleanup/control 失败项）。错误冻结副本与条目，但不冻结原异常；`onError` 不接受 Promise。[rollback-error.ts](../../src/app/session/rollback-error.ts) 的 `RollbackError`（`AggregateError` 子类，`cause` 为原始失败，`errors` 依次为原始失败与回滚失败）表示初始化回滚也失败；回滚成功时原样抛出原始原因。
+- [game-session.ts](../../src/app/session/game-session.ts) 是正式游戏会话（P3-04 S-02，契约见 [spec：会话](../plan/p3/04/spec.md#会话)），API 见 [app 模块说明](./modules/app.md#游戏会话)。它沿用 P1-05 的控制器契约，差异如下：
+  - **开始：** `createGameSession(host, onError)` 创建 idle 控制器，只订阅一次宿主。`start` 只在 idle 接受，带运行规格（三份逻辑 Asset、同包的 craft-info 与规则数据输入、运行可实例化机体的模型、内容身份、运行配置、录制选项与初始出发保持），校验并复制后创建唯一运行；没有 restart，重开是 exit → 配置 → start。世界创建的拒绝以 `invalid-argument` 抛出（路径 `control.spec…`，原错误为 cause），会话保持 idle。
+  - **状态：** phase 增加 `transition`（只用于初始出发 G-02/2：tick 0、无帧请求、无输入、读模型折叠）与 `stopped`（录制容量，不是任务失败）。`complete-departure { runId }` 对当前运行只生效一次，过期或重复的以 `invalid-state` 拒绝；保持期间 hidden 或 pagehide 锁存 `resumeRequired`，结束保持后只进入 paused（hidden），必须显式继续。
+  - **暂停与隐藏：** 隐藏或离页自动暂停并清除意图与队列，折叠读模型，停止循环；pagehide 独立阻断，返回可见不自动继续。显式 resume 的首个回调只重新锚定，不补跑暂停时长；任务菜单是同一种用户暂停。会话不读取 Core 状态来决定是否暂停。
+  - **输入：** `setIntent` 与 `submitCommand` 只在 running 可用，其他状态明确拒绝且不分配 commandId。`clear-input`（原因 `focus-loss`、`pointer-lock-exit`，供 P3-05）清除意图、短按标记与未执行命令并逐个通知取消，不暂停、不重新锚定；在 paused 与 transition 为空操作。
+  - **唯一循环与通知边界：** 一个控制器至多一个有效帧请求，迟到或重复的回调不推进；rAF、同步控制及宿主通知各构成一个通知边界，域事件 → 帧消费者 → 边界内排队的控制（FIFO）→ 状态/错误，状态通知允许为新运行接线、禁止控制，取消、错误与清理回调只读或撤销。
+  - **取消与结果不明：** `onCommandsCancelled` 的冻结 FIFO ID 只列确定未执行的命令，原因为 user-pause、hidden、transition、focus-loss、pointer-lock-exit、recording-capacity、exit、dispose 或 failure；故障中结果不明的 ID 只在 `status.error` 的 `GameRuntimeError`（`unconfirmed`）中。
+  - **故障与停止：** faulted 后不再提供新的快照或录制导出（已取得的冻结副本仍有效），不能 resume，只能 exit 后重新 start；stopped 保留录制供导出，直到 exit 或 dispose。`ownCleanup` 同步逆序、至多尝试一次；清理失败置 `cleanupFailed` 并在控制器生命期内锁存，之后不能再 start。
+  - **错误归类：** Runtime 的 `listener-failed` 提升为 consumer 故障，时间、读取、请求与取消失败为 scheduler（取消失败另置 `cleanupFailed`），Core 故障为 runtime，资源与订阅释放为 cleanup，排队控制的失败为 control。异步边界的错误汇总后交 `onError` 一次，剩余消费者与独立清理继续。
+- **测试支持：** 手动驱动的 `ControlledHost` 在 [session-host.test-support.ts](../../src/app/session/session-host.test-support.ts)，正式会话的组合在 [game-session.test-support.ts](../../src/app/session/game-session.test-support.ts)。[game-session-replay.test.ts](../../src/app/session/game-session-replay.test.ts) 证明经过出发保持、暂停、隐藏、任务菜单、按住开火、命令顺延与清输入后，录制 JSON 往返的 replay 与全部检查点一致；[game-session-pause-timing.test.ts](../../src/app/session/game-session-pause-timing.test.ts) 是 R-13 控制子集的 Node 证据（五种暂停途径 × 四种长度：暂停期间不执行 tick，继续首帧为 0 tick）。
 
 ### 浏览器生命周期复现
 
-以下保留 P1-05 公共 Session API 的独立复现方法；当前完整应用已有合成页面及上述 E2E runner，常规验收优先运行 `pnpm test:e2e`，不必重新执行本手工矩阵。
+常规验收运行[本地浏览器 runner](#本地浏览器-runner) 的 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，它按下一节的路线自动完成。需要人工复现时：
 
-1. 端口空闲时启动自有 `pnpm dev --host 127.0.0.1 --port 5173 --strictPort`，在独立 Chromium profile/context 打开 `http://127.0.0.1:5173/`，保持菜单未进入演示以免同时创建应用 owner；不改 App/main、不操作用户存储。
-2. 在该 origin 的 DevTools 用动态 import 导入 `/src/app/session/synthetic-session.ts` 的 `createSyntheticSession` 和 `/src/platform/browser/browser-session-host.ts` 的 `createBrowserSessionHost`。以 `{scene:{seed:0,tickRateHz:50}}`、实际 host、必填同步错误出口创建 controller。用公共 onStatus/onFrame 与一个自有临时 `<pre>` 显示 phase/runId/tick/error，监听器返回 undefined；只读 projection/render，不写 Core。
-3. 通过 `control({type:'start'})` 开始，正常 rAF 驱动 tick。pause 后跨实际 rAF 观察 tick 不变、静止 pair 相同/alpha=0；resume 首通知为 0 tick，pair 仍为最新 tick。restart 得到新 runId/tick0；exit→start 与 dispose→新 controller 分别观察请求/旧句柄隔离。
-4. 切到另一实际标签页/窗口，再返回。记录实际 `document.visibilityState` 的变化、hidden 时与返回时的 status/tick；应为 hidden→visible、自动 paused/hidden、返回仍 paused 且 tick 不变，只有显式 resume 才继续。可以单独注册 visibilitychange 观察监听存入自有数组，以便返回后检查；记录时与 host 的三个监听分开计数。
-5. 浏览器事件探针可派发 pagehide/pageshow 验证适配绑定/离页阻断，但这不是实际 hidden 或 BFCache 证据。工具若所有标签页持续 visible，该判据保持 blocked；不能覆盖 getter 或使用合成事件代替。
-6. 正常 dispose 后 host 的 document visibilitychange、window pagehide/pageshow 各撤销一次，晚到旧回调不产生通知。移除自有探针/额外观察监听，关闭自有 context，停止自有服务器；不清站点全部数据。当前实测结果/工具限制见 [P1-05 浏览器证据](../plan/p1/05/subtasks/07-browser-lifecycle-evidence.md#完成证据)。
+1. 端口空闲时启动自有 `pnpm dev --host 127.0.0.1 --port 5173 --strictPort`，在独立的 Chromium profile 或 context 中打开 `http://127.0.0.1:5173/`，导入自己的本地数据或恢复已保存的完整包；只用代码生成的内容时，打开测试入口 `/e2e/entries/app.html?worker=mission-startable`，把 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts) 的 `scenarioFiles('mission-startable')` 在 Node 中生成的 CloneCD 文件组写到临时目录后选入，用完删除。不改 App/main，不操作用户的其他站点数据。
+2. 从主菜单 `Start mission`，跳过介绍，选择僚机后 `Start`，跳过出发进入飞行。只读取任务画面根（`data-testid="mission-screen"`）的 `data-owner`、`data-run`、`data-tick` 与状态栏（`mission-status` 的 `data-phase`、`data-pause`）；开发构建另可在诊断面板刷新快照。不写 Core，也不调用内部入口。
+3. `Pause` 后跨实际 rAF 观察 tick 不变；`Resume` 后首帧为 0 tick，之后前进。任务菜单期间 tick 不变，按键不能旁路继续；`Restart mission` 得到新的 run（`data-run` 加 1），出发时 tick 为 0；返回主菜单释放所有者。
+4. 切到另一实际标签页或窗口，再返回。记录实际 `document.visibilityState` 的变化与 hidden 时、返回时的状态栏与 tick：应为 hidden → visible，自动 paused（hidden），返回后仍暂停且 tick 不变，只有显式 `Resume` 才继续。可以单独注册 visibilitychange 观察监听存入自有数组，以便返回后检查；记录时与会话宿主的三个监听分开计数。
+5. 浏览器事件探针可派发 pagehide/pageshow 验证适配绑定与离页阻断，但这不是实际 hidden 或 BFCache 证据。工具若所有标签页持续 visible，该判据保持 blocked；不能覆盖 getter 或使用合成事件代替。
+6. 返回主菜单后，会话宿主的 document visibilitychange、window pagehide/pageshow 与离页保护的 `beforeunload` 各撤销一次，迟到的旧回调不产生通知。移除自有探针与额外观察监听，关闭自有 context，停止自有服务器；不清站点全部数据。P1-05 合成会话的实测结果与工具限制见 [P1-05 浏览器证据](../plan/p1/05/subtasks/07-browser-lifecycle-evidence.md#完成证据)，正式会话见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据)。
 
 #### 已验证的 CDP 自动化路线
 
-普通 Playwright 页面切换持续报告 visible 时，可使用已有工具的 Playwright/CDP 能力创建独立 context，而不是伪造 visibility。2026-10-02 已通过 VS Code 的 `runPlaywrightCode` 在外部 headed Chromium 154.0.8037.95 / macOS 验证该路线；VS Code 是执行入口，不是浏览器引擎或必需的唯一工具。普通页面路线失败的具体原因尚未确认。
+普通 Playwright 页面切换持续报告 visible 时，可使用已有工具的 Playwright/CDP 能力创建独立 context，而不是伪造 visibility。2026-10-02 已通过 VS Code 的 `runPlaywrightCode` 在外部 headed Chromium 154.0.8037.95 / macOS 验证该路线；VS Code 是执行入口，不是浏览器引擎或必需的唯一工具。普通页面路线失败的具体原因尚未确认。[native-lifecycle](../../e2e/native-lifecycle.spec.ts) 以 [native-lifecycle.ts](../../e2e/support/native-lifecycle.ts) 自动化同一路线。
 
 1. 选择本机已有兼容 Chromium 二进制，以 `browserType().launch()` 启动自有浏览器；本轮使用 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`，`headless:false`、`args:['--enable-automation']`，并用 `ignoreDefaultArgs` 移除 `--disable-backgrounding-occluded-windows`、`--disable-renderer-backgrounding`、`--disable-background-timer-throttling`。不下载浏览器或新增项目 runner。
 2. 用 `browser.newBrowserCDPSession()`，通过 `Target.createBrowserContext` 取得自有 `browserContextId`；在此 context 用 `Target.createTarget` 创建探针页和另一标签页。不要用普通 `browser.newContext()` 页面未触发 hidden 的结果冒充该路线通过。
-3. 用 `Target.attachToTarget({targetId,flatten:false})` 取得探针页 session，通过 `Target.sendMessageToTarget` 发送 `Runtime.evaluate`，按 sessionId/消息 ID 接收 `Target.receivedMessageFromTarget` 的结果；明确检查协议错误和 exceptionDetails。探针页先导航到固定 Vite origin，再导入前述公共模块和安装临时 DOM/只读观测，不能在 data URL 的能力预检上宣称 Runtime 已通过。
-4. 用 `Target.activateTarget` 激活探针页，确认原生 visible 且 tick 前进；激活另一标签页，确认原生 hidden、自动 paused 与稳定 tick；再次激活探针页，确认 visible 后跨真实 rAF 仍 paused/tick 不变，再显式 resume 验证首帧重锚与后续推进。记录原生 visibilitychange 日志；不使用合成事件、visibility getter 替换或强制生命周期命令。
-5. 先 dispose 会话、撤销自有探针和包装，再用 `Target.disposeBrowserContext` 关闭自有 context、关闭自有浏览器/入口页并停止自有 Vite。只清理本轮拥有的资源，不关闭用户 profile 或其他项目的浏览器/服务器。
+3. 用 `Target.attachToTarget({targetId,flatten:false})` 取得探针页 session，通过 `Target.sendMessageToTarget` 发送 `Runtime.evaluate`，按 sessionId/消息 ID 接收 `Target.receivedMessageFromTarget` 的结果；明确检查协议错误和 exceptionDetails。探针页先导航到固定 Vite origin，按上一节进入任务飞行（文件经 `DOM.setFileInputFiles` 选入，按钮用可信的 CDP 点击），再安装只读观测，不能在 data URL 的能力预检上宣称 Runtime 已通过。
+4. 用 `Target.activateTarget` 激活探针页，确认原生 visible 且 tick 前进；激活另一标签页，确认原生 hidden、自动 paused 与稳定 tick；再次激活探针页，确认 visible 后跨真实 rAF 仍 paused/tick 不变，再以可信点击显式继续，验证首帧重锚与后续推进。记录原生 visibilitychange 日志；不使用合成事件、visibility getter 替换或强制生命周期命令。
+5. 先返回主菜单释放任务所有者、撤销自有探针和包装，再用 `Target.disposeBrowserContext` 关闭自有 context、关闭自有浏览器/入口页并停止自有 Vite。只清理本轮拥有的资源，不关闭用户 profile 或其他项目的浏览器/服务器。
 
 2026-10-02 P1-06 浏览器验收补充的工具约束（同一机器与工具）：
 
@@ -366,89 +378,86 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
 - `context.addInitScript` 随本次连接注册；重新连接后若要重载页面并保留探针，需要在同一次连接中再次注册。
 - 2026-10-02 P1-07 补充（Chrome 154.0.8037.95 / macOS，shell 启动的临时 profile + `connectOverCDP`）：只改变 `Emulation.setDeviceMetricsOverride` 的 `deviceScaleFactor`（CSS 宽高不变）后，`devicePixelRatio` 与 `matchMedia(...).matches` 会变，但 `MediaQueryList` 的 `change` 事件要等媒体查询重新求值才派发。每次改 DPR 后交替发送 `Emulation.setEmulatedMedia({media:'screen'})` 与 `{media:''}`（对普通页面同义）即可触发 Chrome 自己派发真实的 `change`；连续发送相同值不会再次求值。这不是合成事件或 getter 替换，但只证明仿真路径，真实多显示器 DPR 切换仍归 P5。
 
+
 ## UI 投影与指令反馈
 
-P1-06 的合成 UI 层位于 `src/ui/game/`，契约见 [P1-06 spec](../plan/p1/06/spec.md)。它不创建会话、宿主、rAF 或定时器，只消费 Session 的公开通知。
+P3-04 的正式 UI 层位于 `src/ui/game/`，契约见 [spec：UI 桥接与命令反馈](../plan/p3/04/spec.md#ui-桥接与命令反馈)，附着与时钟规则沿用 [P1-06](../plan/p1/06/spec.md)；API 见 [UI 模块说明](./modules/ui.md#游戏-store桥接与命令反馈)。它不创建会话、宿主、rAF 或定时器，只消费会话的公开通知；P1 的合成 UI 层已退役（[R6](./source-structure.md#r6-合成-ui-层)）。
 
-- [synthetic-game-store.ts](../../src/ui/game/synthetic-game-store.ts) 是 Zustand vanilla store。React 只拿到只读 `reader`（getState/getInitialState/subscribe）；UI 模块内部通过单次 `commit(change)` 原子写入一次转换（状态、投影、pending 增减与结果、清空当前运行反馈），无变化时不通知。状态与数组冻结；Core 投影与事件本已深冻结，错误保持原引用。
-- [synthetic-session-bridge.ts](../../src/ui/game/synthetic-session-bridge.ts) 按 owner 绑定一个控制器：
-  - 状态通知即时写入。新的 running/paused 运行立即发布投影并重建采样基准；idle/disposed 清空投影与运行反馈；faulted 保留最后成功投影。
-  - 常规投影在现有 onFrame 中按 10 Hz（100 ms）采样，以“运行 + tick”去重；暂停静止帧立即发布未发布的 tick；恢复后不补发历史快照。
-  - 采样时钟由装配层注入（浏览器为 `performance.now`），必须是有限且不倒退的毫秒值；只在需要锚定基准或判断新 tick 是否到期时读取。读取失败或非法值在帧监听器中抛出，由 Session 记为 consumer 故障：
-    - 附着发生在状态通知内时，失败延到下一帧报告，避免状态监听因抛错被 Session 移除。
-    - 已暂停的运行（如隐藏时 start）附着时不读时钟，在恢复后的首帧锚定基准，因此失败不会被无限期延迟。
-    - 立即发布结果时时钟失败，已收到的结果与最新投影先写入，再抛出。
-  - 附着是事务性的：运行监听全部注册成功后才写入 running/paused。运行级 consumer 每完成一项注册就用 `binding.own` 交出撤销函数；任一注册失败时，桥接逆序撤销已交出的注册，并在重新订阅状态后再抛出，以便继续观察随之而来的故障。撤销本身也失败时抛 `RollbackError`（P1-08，见下文“页面流转与演示生命周期”），绑定回滚失败同样如此。
-  - 一个桥接实例只服务一个会话；成功绑定后 unbind 即终止，只有首次绑定失败可以重试。`onError` 只写 sessionError，必须作为创建 Session 时的错误出口传入；新运行开始且会话 error 为空时清空 sessionError。
-- [synthetic-command-feedback.ts](../../src/ui/game/synthetic-command-feedback.ts) 是桥接的运行级 consumer：`submit(type)` 经当前运行提交已有 marker 命令，只有拿到 Runtime commandId 后才记为 pending，投影不提前改变。结果只来自 Core 的域事件：按 `delivery.commandId`（不是 commandIndex 或 entityId）匹配当前运行的 pending，生成 accepted/rejected，并与帧末最新投影同次写入，不等采样窗。其他消费者的命令和重复投递不会生成本面板结果；同步失败写入 actionError 并保留原 cause，暂停或已结束运行的错误来自 Session 本身。提交经 `SyntheticRunBinding.submitCommand` 转发：桥接回滚或 unbind 后该 binding 被注销，不再触及仍在运行的会话。成功提交时，清除旧 actionError 与新增 pending 在同一次写入中完成。
-  - Session 的取消通知把匹配的 pending 记为 cancelled 并保留原 reason（user-pause/hidden/restart/exit/dispose/failure），不是 Core 拒绝。运行故障时，仍未终结的 pending 与 faulted 状态在同一次写入中标为 unconfirmed/session-failed：这些命令可能已在被丢弃事件的 tick 中执行，因此既不显示成功，也不自动重提。真实 Runtime 中，同一帧首个 tick 失败只会产生取消（命令尚未消耗），后续 tick 失败只会产生 unconfirmed。
-- [synthetic-game-controls.ts](../../src/ui/game/synthetic-game-controls.ts) 的 `syntheticControlAvailability(status)` 按 spec“控件可用性”从状态纯函数推导可用性。结果以面板动作 ID（start/pause/resume/restart/exit/add-marker/remove-marker）为键，同一状态组合返回同一个冻结对象，便于 React selector 按引用比较。`createSyntheticGameControls(store, session).control(type)` 先清空 actionError 再调用 Session 控制，同步失败时写入。Session 仍是唯一判定者，UI 不放宽其判断；cleanupFailed 在 error 被替换后仍禁用 start/restart。
-- [synthetic-keyboard-input.ts](../../src/ui/game/synthetic-keyboard-input.ts)（P1-09）提供已接入 owner/页面的 DOM-free 五键消费者，当前绑定及规则见独立[键位文档](./keyboard-input.md)。桥接绑定后调用 `createSyntheticKeyboardInput({store, session, bridge, feedback, controls}, {source})`，也可传 `{unavailable: cause}`。`session` 必须与桥接绑定的是同一控制器；反馈和 controls 复用该 owner 的实例。返回 `{reader, dispose}`：`reader.getSnapshot()/subscribe()` 只读、句柄与快照冻结，active/inactive 只随输入源资格变化，unavailable 保存原始 error，不随 tick 或暂停刷新。释放后读到 inactive，不再通知或接受旧回调。
-  - 方向轴只从合法输入回调经 `SyntheticRunBinding.setInput` 转发；与 submitCommand 相同，retired/unbind 时先拒绝，当前运行身份、phase 与通知模式由 Session 校验。每个动作读取实时 Session 状态，不用 store 的旧缓存；命令走现有反馈，P 走现有可用性与 controls。
-  - Session 状态订阅仅清本地按住表（所有暂停、结束和运行替换），不提交输入、命令或控制。start/resume 不补发；repeat 不能重建已清状态。源失焦/hidden/pagehide 在仍合法 running 时立即发送变化后的零轴，其余状态依赖 Session 清意图。setInput 同步失败写 actionError=input 并保留 cause；成功的实际轴变更只清旧 input 错误，忽略/no-op 不清错，也不覆盖独立错误。
-  - 创建时先取得状态订阅再连接 source；connect 的同步初始信号只更新资格，不接受同步按键或提交输入。普通登记失败（包括回滚成功的 AggregateError）降为 unavailable；`RollbackError`（包括传入的 unavailable 原因）保持初始化失败，撤销已取得的订阅；若消费层回滚也失败，以新的 RollbackError 保留全部原因。dispose 先失效并清本地状态，再逐项释放 source、取消状态订阅，继续独立清理，以 AggregateError 报告全部失败；  owner 已先调用它再销毁 Session，并把失败纳入清理锁存。
-- 测试用 [synthetic-ui.test-support.ts](../../src/ui/game/synthetic-ui.test-support.ts) 组合真实 Session、`ControlledHost`、可控时钟，以及记录监听器的会话包装，用来重放旧运行通知。
-- [synthetic-demo-owner.ts](../../src/app/composition/synthetic-demo-owner.ts) 是 DOM-free 的应用装配 owner：`createSyntheticDemoOwner(host, clock, render, input)` 依次创建 store、反馈、渲染器（P1-07）、桥接、会话（种子0、Core默认频率，均为合成值）与键盘消费者，不自动 start、无全局单例。input 为 `{source}` 或 `{unavailable: cause}`；兼容未传入时显式报告未连接的 unavailable。对外只读 `store`、`renderer`、`keyboard`（getSnapshot/subscribe），以及 `dispatch(action)`、`dispose()`、`cleanupFailure()`。渲染器仍是桥接第二个运行级consumer，键盘源属于owner而非run。
-  - `dispatch` 使用 controls 模块的 `createSyntheticPanelDispatcher`：marker 命令交给命令反馈，其余交给会话控制，动作分类留在 UI 层。
-  - 传入的渲染表面在会话创建前即归 owner 所有；表面连接失败且释放成功时改为 unavailable，演示照常运行。表面释放也失败（渲染器抛 `RollbackError`，或表面工厂交来的 `unavailable` 本身是 `RollbackError`）时按初始化失败处理，不创建会话。  会话、桥接或键盘初始化失败时，依次尝试释放已连接输入、销毁已创建会话、解绑桥接与释放渲染器（含表面），store原子重置为status=null，actionError为initialize。回滚失败保持RollbackError及全部独立原因；普通输入登记失败且回滚成功仅键盘unavailable，演示继续可用。
-  - `dispose` 先失效/释放键盘，再销毁会话、解绑桥接、释放渲染器，每项清理都会尝试；失败时把同一个 AggregateError 写入 actionError（cleanup）并抛出。重复调用无效果，dispose 或初始化失败后的 dispatch 被忽略。
-  - `cleanupFailure()` 返回首个包含清理失败的错误记录 `{cause}`，外壳冻结、此后不再替换或清除，dispose 后仍可读。以下情况会设置记录：
-    - 初始化回滚失败（`RollbackError`）。
-    - 会话状态首次报告 `cleanupFailed`，或会话错误的失败项中出现 `RollbackError`（运行消费者自有撤销失败）。
-    - `dispose` 失败：dispose 先停止 owner 的状态订阅，因此记录的就是抛出的错误。
+- **store：** 每个任务所有者一个 Zustand vanilla store（[game-store.ts](../../src/ui/game/game-store.ts) 的 `createGameStore(ownerId)`），状态为会话状态、projection 采样、流程位置、待确认命令与最近结果、操作错误与会话错误。React 只拿到只读 `reader`，经 [use-game.ts](../../src/ui/game/use-game.ts) 的 `useGame(reader, selector)` 订阅单个标量或稳定切片；写入者只有桥接、命令反馈与所有者的装配，每次转换单次原子写入，状态冻结，无变化时不通知。
+- **桥接：** [game-session-bridge.ts](../../src/ui/game/game-session-bridge.ts) 的 `createGameSessionBridge({ store, clock, consumers })` 在开始前 `bind` 所有者的会话（只读 `status`、`currentRun`、`onStatus`），之后自动附着每个新运行；`bridge.onError` 作为创建会话时的错误出口，只写 sessionError。
+  - 会话状态、新运行，以及暂停、保持、停止的静止边界立即写入；常规 projection 在既有帧通知中按 100 ms 采样，按 ownerId、runId 与 tick 去重，不另开定时器。`mission.status`、`player.interactionContext`、各分区的就绪状态与结果内容在帧末立即发布，按这些字段比较而不是按每 tick 新建的对象引用。
+  - 采样时钟由装配层注入（浏览器为 `performance.now`），必须是有限且不倒退的毫秒值；读取失败或非法值在帧监听器中抛出，由会话记为 consumer 故障。附着发生在状态通知内时，失败延到该运行的下一帧报告，避免状态监听因抛错被移除。
+  - 附着是事务性的：运行级消费者每完成一项注册就交出撤销函数，任一注册失败时逆序撤销并重新抛出，撤销也失败时为 `RollbackError`。一个桥接只服务一个会话，成功绑定后 `unbind` 即终止。
+- **命令反馈：** [game-command-feedback.ts](../../src/ui/game/game-command-feedback.ts) 的 `createGameCommandFeedback(store)` 是桥接的运行级消费者，`submit(command)` 经当前运行提交，拿到 commandId 后才记为 pending，同步失败写 actionError 并返回 null。结果按 ownerId、runId 与 commandId 匹配：本消费者命令的 `command-result` 给出 accepted、rejected 或 ignored 与原因，并与帧末最新 projection 同次写入，不先乐观更新；会话取消记为 cancelled 并保留原因；运行故障时仍未终结的记为 unconfirmed（`session-failed`），不自动重提。未知、重复、其他消费者或 null 的 ID 不产生结果；最近结果保留 10 个，运行结束时清空。
+- **范围：** 桥接只供 React 页面使用。Classic 飞行 HUD 将由渲染器每帧直接读取运行的 projection，不经 store（[总计划 §5](../plan/master-plan.md#5-状态管理与通信约定)）。接线见下文[页面流转与任务生命周期](#页面流转与任务生命周期)。
+- **测试：** [game-ui.test-support.ts](../../src/ui/game/game-ui.test-support.ts) 组合真实会话、`ControlledHost`、可控时钟与记录监听器的会话包装，用来重放旧运行的通知；尚无规则的 accepted/ignored 等分支用通知替身验证，不修改 Core 规则。针对性检查：`pnpm exec vitest run src/ui/game`。
 
-    Core/调度故障、渲染 failed/unavailable，以及回滚成功的业务 AggregateError 都不设置。
-  - 持有方必须先 dispose 旧 owner 再创建新 owner；应用中由下文的演示生命周期保证。
-- React 接线：[use-synthetic-demo-owner.ts](../../src/app/composition/use-synthetic-demo-owner.ts) 的 `useSyntheticDemoOwner(lifecycle)` 返回 `{owner, containerRef}`。
-  - 容器回调 ref 把元素本身存入 state，作为 effect 依赖：容器为空时不建 owner；画面子树重挂载或换了容器元素时，effect 关闭旧 visit 再打开新 visit。
-  - 每次 effect 打开一个visit：先创建 `createBrowserKeyboardSource(container)`（此时未登记监听），再创建WebGL表面，与browser Session host及performance.now交给owner，最后start一次。owner负责所有获取/回滚/释放；hook不单独释放表面或输入源。源在Session与bridge成功后才connect，先前初始化失败不会漏掉输入监听；源登记回滚失败则连同已取得的表面完整收尾，不启动。
-  - 卸载、StrictMode 重跑或 Fast Refresh 时，cleanup 先发布 null 再关闭 visit。清理失败锁存后不再创建表面或 owner。
-  - 渲染状态监听错误与 dispose 抛出的错误经 `reportError` 报告。[use-synthetic-game.ts](../../src/ui/game/use-synthetic-game.ts) 用 Zustand 的 `useStore(reader, selector)` 订阅单个标量或稳定切片。[SyntheticDevPanel.tsx](../../src/ui/dev/SyntheticDevPanel.tsx) 只接收只读 `store`、`dispatch` 与只读渲染器，按区块分别订阅，使用原生按钮且不注册全局键盘监听；渲染诊断区只在挂载、点击刷新或渲染器更换时读取一次快照。[SyntheticRenderView.tsx](../../src/ui/render/SyntheticRenderView.tsx)（P1-07）提供画面容器（内容盒宽 100%、高 `clamp(240px, 70vh, 720px)`、相对定位、裁剪、黑底；React 不向其中渲染子节点，画布由 WebGL 表面管理）、合成标注，以及用 `useSyncExternalStore` 只在渲染状态转换时更新的状态文字（ready/context-lost 为 status，unavailable/failed 为 alert）。开发面板标题为 h3 `Development panel`、各区块为 h4，画面标题为 h3，以便演示画面的 h2 唯一。它们只在 P1-08 的合成演示画面中出现（开发与生产构建相同），见下文。
+## 开发诊断与录制导出
+
+P3-04 S-07（[spec：开发诊断](../plan/p3/04/spec.md#开发诊断)），API 见 [UI 模块说明](./modules/ui.md#开发诊断)与 [app 模块说明](./modules/app.md#开发帧计时)。
+
+- **只在开发构建：** Vite 开发服务器（含测试入口）的任务画面才有诊断面板。帧计时、诊断、面板与浏览器文件保存都在 `import.meta.env.DEV` 之后以顶层动态 `import()` 载入，生产构建在编译期剔除它们，生产的录制选项为 null；[production-preview](../../e2e/production-preview.spec.ts) 核对生产 DOM 与产物中都没有它们（[本地浏览器 runner](#本地浏览器-runner)）。不要改为静态导入：Rolldown 会保留这些模块顶层的冻结调用与命令表单数据，source map 随之列出 `src/ui/dev/`。
+- **帧计时：** [dev-frame-timing.ts](../../src/app/mission/dev-frame-timing.ts) 的 `createFrameTiming(host, clock)` 包装所有者的会话宿主，在会话处理一次有效帧的前后各读一次单调时钟：窗口包含 Runtime 的模拟、帧后事件与帧消费者，不含等待下一个 rAF 的时间。时钟抛错、非有限或倒退时给出失败通知，从不记为 0 ms。它不是 GPU 或显示器耗时，没有通过阈值，也不另开循环。
+- **诊断：** [mission-diagnostics.ts](../../src/ui/dev/mission-diagnostics.ts) 的 `createMissionDiagnostics({ timing, fileSave })` 是所有者级的 `ui` 消费者，每个新运行清空：
+  - 事件日志保留最近 500 条结构化摘要与 commandId，超出时丢弃最旧的并显示已截断；
+  - 帧统计保留最近 120 个 `{ processingMs, ticks, capped }` 样本，给出平均与最大处理时间、tick 数与触顶帧数；
+  - 实体与任务状态只在点击刷新时读取一次 Core 快照，名称只显示引用；
+  - 命令编辑器可填写任一 Core 命令变体，按 `readTickInput` 规则校验后经命令反馈正常提交，尚无规则的命令得到 `not-implemented`；
+  - 录制导出在通知边界之外同步取得同一成功 tick 的 `Recording`，以紧凑 JSON 经平台文件保存下载，文件名为 `osr-recording-<setupHash>-<种子>-<finalTick>.json`。`requested` 只表示浏览器接受了下载请求；保存失败保留这份副本以便重试；faulted 不提供新导出，stopped 仍可导出。
+
+  这些窗口是开发显示的选择，不是性能或玩法阈值。变化按 UI 的采样间隔发布，状态变化、停止、计时失败与用户操作立即发布；诊断不进入录制、Core 状态或 RNG。
+- **面板：** [MissionDevPanel.tsx](../../src/ui/dev/MissionDevPanel.tsx) 用原生控件，按区块分别订阅，不注册全局键盘监听。重开、返回与 HMR 不自动导出，面板提示这些操作会丢弃未导出的录制。E2E 读取的 `data-testid` 有 `mission-dev-panel`、`dev-entities`/`dev-entity`（`data-entity-id`、`data-kind-bit`、`data-source`）、`dev-log`、`dev-frames`、`dev-command-type`、`dev-command-submit`、`dev-results`（`li` 带 `data-command-id`、`data-outcome`、`data-reason`）、`dev-recording-export`、`dev-recording-retry` 与 `dev-recording-status`（`data-status`）。
+- **录制：** 开发装配传 `developmentRecording(appProducer(import.meta.env.MODE))`，检查点间隔 32，`producer` 如 `open-star-rangers 0.0.1 development`。[app-version.ts](../../src/app/app-version.ts) 的名称与版本是手写常量，须与 `package.json` 一起更新：导入 `package.json` 会使开发页面请求 `/package.json`，被开发网络审计拒绝。导出的文件可用 `node tools/replay-check.ts` 以同一 CloneCD 文件组在 Node 中重放核对（[工具指南](../guides/tools.md#录制重放核对)）。
+- **针对性检查：** `pnpm exec vitest run src/ui/dev src/app/mission/dev-frame-timing.test.ts src/platform/files tools/replay-check.test.ts`。
 
 ## 键盘源与输入区
 
-[keyboard-input.ts](../../src/platform/input/keyboard-input.ts)定义冻结事件/信号/端口和纯按住轴；[keyboard-source.ts](../../src/platform/input/keyboard-source.ts)实现实际生产资格与监听管理，最小DOM-free Host驱动故障测试；[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts)只连接DOM，不被Node测试导入。容器拥有keydown/keyup/focusin/focusout，window只有focus/blur/pagehide/pageshow，document只有visibilitychange。释放先逻辑失效，再逐项撤销，撤销失败保留原因，不能声称物理清理成功。
+[keyboard-input.ts](../../src/platform/input/keyboard-input.ts) 定义冻结事件/信号/端口和纯按住轴；[keyboard-source.ts](../../src/platform/input/keyboard-source.ts) 实现实际生产资格与监听管理，最小 DOM-free Host 驱动故障测试；[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts) 只连接 DOM，不被 Node 测试导入。容器拥有 keydown/keyup/focusin/focusout，window 只有 focus/blur/pagehide/pageshow，document 只有 visibilitychange。释放先逻辑失效，再逐项撤销，撤销失败保留原因，不能声称物理清理成功。
 
-[SyntheticRenderView](../../src/ui/render/SyntheticRenderView.tsx)的现有容器可Tab聚焦，点击canvas或黑边也聚焦，有名称、aria-describedby绑定说明和可见焦点；useSyncExternalStore只订阅键盘状态转换，不按tick刷新。进入演示仍聚焦标题，原生按钮和Tab不受干扰。规则与支持范围只在独立[键位文档](./keyboard-input.md)维护；目标检查为 `pnpm exec vitest run src/platform/input src/ui/game src/app/composition`，完整工程检查仍为 `pnpm check`。实际开发/生产、原生hidden、窗口focus与新owner HMR证据见 [P1-09/05](../plan/p1/09/subtasks/05-browser-input-evidence.md#完成证据)。
+P1-09 的合成五键消费者与其输入区已随合成演示退役（[R6](./source-structure.md#r6-合成-ui-层)、[R7](./source-structure.md#r7-演示页面开发面板与画面)）。当前构建没有游戏输入区或键盘消费者，`browser-keyboard-source.ts` 暂无导入者；P3-05 加入原版键位时在任务画面中建立输入区，并经任务所有者的 `input` 阶段登记。任务流程的项目页面按键（占位的 Enter/Space/Esc、入口的 repeat 抑制）在 [page-keys.ts](../../src/ui/mission/page-keys.ts)。规则与支持范围只在独立[键位文档](./keyboard-input.md)维护；目标检查为 `pnpm exec vitest run src/platform/input src/ui/mission`，完整工程检查仍为 `pnpm check`。
 
-## 合成渲染
+## 渲染表面与视口
 
-P1-07 的合成画面位于 `src/render/`，契约见 [P1-07 spec](../plan/p1/07/spec.md)。它是渲染消费者，不是第二条游戏循环；几何、颜色、相机与像素比上限都是合成演示值，不代表原版画面。
+P1-07 的共用渲染设施位于 `src/render/scene/`、`src/render/viewport/` 与 `src/render/webgl/`，契约见 [P1-07 spec](../plan/p1/07/spec.md)；现由 P2-11 的资源查看器使用（[资源查看渲染](./modules/render.md#资源查看渲染)）。P1 的合成渲染器已退役（[R2](./source-structure.md#r2-合成渲染)）；任务画面尚无画布，飞行画面由 P3-12、P3-13 作为会话的运行级消费者接入，不另建游戏循环。
 
-- 依赖：`three`（dependencies）与 `@types/three`（devDependencies）同为 0.186 次版本，只从包根导入、只构造 `WebGLRenderer`（WebGL 2，不回退）；不用 React Three Fiber、addons、WebGPU、Worker 或 OffscreenCanvas。生产构建主块因此约 798 kB（gzip 约 216 kB），Vite 的 500 kB 块体积警告按 spec 只记录，包体优化归 P5。
-- DOM-free 模块由 Node 测试覆盖：[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts)（固定 4:3、等比居中、DPR 上限 2 与设备尺寸上限 M）、[synthetic-render-frame.ts](../../src/render/synthetic/synthetic-render-frame.ts)（整帧校验与位置插值，每个运行一份历史）、[synthetic-camera.ts](../../src/render/synthetic/synthetic-camera.ts)、[synthetic-appearance.ts](../../src/render/synthetic/synthetic-appearance.ts)、[render-surface.ts](../../src/render/scene/render-surface.ts)（绘制端口）、[synthetic-renderer.ts](../../src/render/synthetic/synthetic-renderer.ts) 与 [webgl-surface.ts](../../src/render/webgl/webgl-surface.ts)。浏览器专用的 [browser-webgl-surface.ts](../../src/render/webgl/browser-webgl-surface.ts) 只创建画布、`WebGLRenderer`、`ResizeObserver` 与 resolution 媒体查询；画布的无障碍名称与渲染器的输出颜色空间由调用方的 `RenderSurfaceOptions` 指定，合成演示传 `SYNTHETIC_SURFACE`（原名称与 Three.js 默认的 sRGB 输出），P2-11 查看器的选择见[资源查看渲染](./modules/render.md#资源查看渲染)。边界回归要求非 `browser-*` 的渲染模块位于 Node 类型程序中（见上文 Lint 规则）。
-- 绘制只发生在：表面首次得到有效布局、接线（读 `run.renderFrame()`）、绑定运行的每次 `SessionFrame`（含暂停静止帧）、运行结束（空帧）、布局变化（相同布局不重绘）与上下文恢复。渲染代码不调用 rAF、`setAnimationLoop`、定时器或微任务；暂停时只有后三类事件会重绘。
-- 每帧先完整校验（alpha、tick、ID 顺序、kind、坐标、两份状态与运行历史一致、tick 不倒退）再原子更新场景；表面绘制失败时把场景退回上一份成功画面。任何映射或绘制错误使渲染器进入终止的 failed，帧监听与运行收尾从不向 Session 抛错；状态监听抛错经 `reportError` 报告，报告本身失败时丢弃，以保持会话健康。恢复方式（P1-08）：返回菜单后重新进入，会重建会话与渲染器并丢弃本次合成状态；会话不自动暂停，只有释放成功才允许重新进入。
-- 初始化回滚失败用 [rollback-error.ts](../../src/app/session/rollback-error.ts) 的 `RollbackError`（`AggregateError` 子类，`cause` 为原始失败，`errors` 依次为原始失败与回滚失败）表示。以下几处在回滚失败时抛出它：`createSyntheticRenderer` 的连接回滚、渲染器 `attach()` 的本地回滚、`createBrowserWebGLSurface` 转交前的回滚。回滚成功时原样抛出原始原因，因此不必按消息或 AggregateError 类型猜测是否释放失败。
-- 状态为 ready/context-lost/failed/unavailable/disposed，只在转换时通知；开始释放后不再通知。诊断快照（state、runId、drawnTick、draws、entities、当前 `renderer.info` 的 GPU 三项、layout）只按需读取。
-- 释放顺序：撤销上下文监听、DPR 查询与尺寸观察 → 每种 kind 的共享几何与材质各释放一次 → `WebGLRenderer.dispose()` → 若有 `WEBGL_lose_context` 则强制丢弃（缺失只是能力限制）→ 移除画布；每步都尝试，失败汇总为 AggregateError。owner 释放顺序为输入 → 会话 → 桥接 → 渲染器。
-- 测试替身 [render-surface.test-support.ts](../../src/render/scene/render-surface.test-support.ts) 记录每次绘制的对象、位置与相机，并按绘制/释放模拟 GPU 统计；它不进入生产导入链。目标回归：`pnpm exec vitest run src/render src/app/composition src/ui/game src/app/session src/app/runtime src/core/synthetic`。[synthetic-renderer-replay.test.ts](../../src/render/synthetic/synthetic-renderer-replay.test.ts) 证明不接、绘制中、failed、context-lost 与无布局时 Core 事件、录制与状态哈希一致。
+- **依赖：** `three`（dependencies）与 `@types/three`（devDependencies）同为 0.186 次版本，只从包根导入、只构造 `WebGLRenderer`（WebGL 2，不回退）；不用 React Three Fiber、addons、WebGPU、Worker 或 OffscreenCanvas。Vite 的 500 kB 块体积警告按 P1-07 spec 只记录，包体优化归 P5。
+- **DOM-free 模块由 Node 测试覆盖：** [viewport-layout.ts](../../src/render/viewport/viewport-layout.ts)（固定 4:3、等比居中、DPR 上限 2 与设备尺寸上限）、[render-surface.ts](../../src/render/scene/render-surface.ts)（绘制端口与 `RenderSurfaceOptions`）、[cleanup.ts](../../src/render/scene/cleanup.ts) 与 [webgl-surface.ts](../../src/render/webgl/webgl-surface.ts)。浏览器专用的 [browser-webgl-surface.ts](../../src/render/webgl/browser-webgl-surface.ts) 只创建画布、`WebGLRenderer`、`ResizeObserver` 与 resolution 媒体查询；画布的无障碍名称与渲染器的输出颜色空间由调用方的 `RenderSurfaceOptions` 指定（查看器为 `VIEWER_SURFACE`）。边界回归要求非 `browser-*` 的渲染模块位于 Node 类型程序中（见上文 Lint 规则）。
+- `createBrowserWebGLSurface` 转交前的回滚失败抛 `RollbackError`；回滚成功时原样抛出原始原因，因此不必按消息或 AggregateError 类型猜测是否释放失败。
+- 测试替身 [render-surface.test-support.ts](../../src/render/scene/render-surface.test-support.ts) 记录每次绘制并按绘制/释放模拟 GPU 统计；它不进入生产导入链。目标回归：`pnpm exec vitest run src/render`。
 - 浏览器取证：截图保持 `preserveDrawingBuffer:false`，用元素截图的 Buffer 在页面内 `createImageBitmap` 解码采样；DPR 变化用上文“已验证的 CDP 自动化路线”中的仿真加媒体重新求值；WebGL 不可用用 `--disable-webgl --disable-webgl2 --disable-3d-apis` 启动的隔离 Chrome；上下文丢失用页面画布的 `WEBGL_lose_context`。
 
-## 页面流转与演示生命周期
+## 页面流转与任务生命周期
 
-P1-08 的 React 菜单原型由 P2-11 接入导入、缓存与查看器，契约见 [P1-08 spec](../plan/p1/08/spec.md) 与 [P2-11 spec](../plan/p2/11/spec.md)。它是现代网页界面，不是原版菜单，不提供原版玩法入口；用户操作见[本地导入指南](../guides/local-import.md)。
+P1-08 的 React 菜单原型由 P2-11 接入导入、缓存与查看器，P3-04 接入正式任务流程，契约见 [P1-08 spec](../plan/p1/08/spec.md)、[P2-11 spec](../plan/p2/11/spec.md) 与 [P3-04 spec](../plan/p3/04/spec.md)。它是现代网页界面，不是原版菜单（G-07，见[切片缺省清单](./slice-gaps.md)）；任务画面是正式运行骨架，不是完整可玩切片。用户操作见[本地导入指南](../guides/local-import.md)。
 
 - [app-flow.ts](../../src/app/flow/app-flow.ts) 是 DOM-free 的页面流转，由邻接 Node 测试覆盖。
-  - 冻结快照为 `{screen:'menu'|'import'|'demo'|'viewer', demoVisit, focusTarget, cleanupFailure, viewerFailure}`。
-  - 输入为 open-demo、open-import、`{open-viewer, holdsPackage}`、return-to-menu、`{demo-release-failed, cause}` 与 `{viewer-release-failed, cause}`。不适用的输入原样返回同一对象；未持有资源包或查看器已锁存时不能进入查看器（P2-11）；`demoVisit` 耗尽时抛 `RangeError`。两种锁存都只记第一次的原因，各自只阻止自己的画面。
-  - 返回菜单的焦点目标：导入画面回到导入入口，查看器回到 `View resources`，演示回到演示入口；对应的锁存已生效时回到菜单标题，在菜单上收到锁存时也移到标题。
-  - 页面状态只在内存中，不用路由或 history；刷新后回到主菜单。
-- [synthetic-demo-lifecycle.ts](../../src/app/composition/synthetic-demo-lifecycle.ts) 是每个应用实例一个的演示槽位，持有同步锁存，由真实 owner/Session 的 Node 测试覆盖。
-  - `visit()` 表示一次进入意图。`open(create)` 先关闭仍持有 owner 的其他 visit；锁存时不调用工厂；否则创建 owner，交付其初始化回滚记录，未锁存时只派发一次 start。同一 visit 不会再次 start，失败的 start 也不重试。
-  - `close()` 幂等，释放 owner、交付其清理失败记录，再报告 dispose 抛出的错误。`release()` 供“返回菜单”在切换画面前同步释放。
-  - 失败经 `onCleanupFailure` 交给页面流转。该出口抛错时改经 `reportError` 报告；`reportError` 自身抛错被丢弃。无论出口是否失败，锁存都已生效。
-- **应用端口（P2-11）：** [App](../../src/app/App.tsx) 由入口传入 [AppPorts](../../src/app/ports.ts)：导入 Worker 端口工厂、资源缓存端口、音频能力与页面生命周期、WebGL 表面工厂、预期包配置与 `reportError`。[main.tsx](../../src/main.tsx) 只传 [createBrowserPorts()](../../src/app/browser-ports.ts) 的生产实现与生产包配置；生产代码不读 URL 参数或全局开关。
-  - [use-resource-holder.ts](../../src/app/composition/use-resource-holder.ts) 在 effect 中创建应用外壳的资源持有者（随即列出缓存），卸载、StrictMode 重跑与 Fast Refresh 时释放；外壳每次返回菜单都调用 `relist()`。
+  - 冻结快照为 `{screen:'menu'|'import'|'mission'|'viewer', missionVisit, focusTarget, cleanupFailure, viewerFailure}`。
+  - 输入为 open-import、return-to-menu、`{open-mission, eligible}`、`{open-viewer, holdsPackage}`、`{mission-release-failed, cause}` 与 `{viewer-release-failed, cause}`。不适用的输入原样返回同一对象；不满足开始资格或任务已锁存时不能进入任务画面，未持有资源包或查看器已锁存时不能进入查看器；`missionVisit` 耗尽时抛 `RangeError`。两种锁存都只记第一次的原因，各自只阻止自己的画面。
+  - 返回菜单的焦点目标：导入画面回到导入入口，查看器回到 `View resources`，任务画面回到 `Start mission`；对应的锁存已生效（或任务入口因其他原因禁用）时回到菜单标题，在菜单上收到锁存时也移到标题。
+  - 页面状态只在内存中，不用路由或 history；刷新后回到主菜单，不恢复任务。
+- **任务槽位与所有者（P3-04）：** DOM-free，API 见 [app 模块说明](./modules/app.md#任务流程与所有者)。
+  - **槽位：** [App](../../src/app/App.tsx) 在自己的 state 中持有一个 [mission-slot.ts](../../src/app/composition/mission-slot.ts) 的槽位：同一时刻至多一个任务所有者，先释放旧的再创建新的，ownerId 从 1 递增、不复用；它还保存本应用实例内上次确认的僚机选择与异步关闭屏障。任何所有者的清理失败（含初始化回滚失败）都锁存槽位，经 `onCleanupFailure` 交给页面流转的 `mission-release-failed`：之后不再创建所有者，入口禁用并说明原因，所有画面显示 `cleanup-failure` 警告，直到重新载入页面；导入与查看器不受影响，查看器的锁存与它互相独立。
+  - **资格：** 主菜单以 `missionEligibility(holder 快照, flow.cleanupFailure)` 决定 `Start mission` 是否可用（持有全包 `complete` 的资源包、任务诊断 `loaded`、未锁存），否则禁用并说明原因；入口资格只允许进入开始配置，世界创建在确认开始时才校验。
+  - **流程：** 所有者从 G-02/1 介绍占位开始，经开始配置（G-04、G-07）、确认后创建 tick 0 世界并进入 G-02/2 出发占位（会话 `transition`），再进入飞行；任务菜单是暂停式的页面。重开先以 exit 结束运行，全部收尾成功才回到介绍；返回主菜单先 `slot.release()` 再切换画面，使同步的释放失败在菜单出现前锁存。占位在页面可见且无 pagehide 时累计 3,000 ms 自然结束（项目的呈现时长），也可提前跳过；隐藏时保留剩余时长并撤销计时器；计时器或时钟失败使占位永久停止，只能返回主菜单。
+  - **所有权与释放：** 运行级消费者随每个运行登记，运行结束时由会话逆序释放；所有者级资源按阶段登记。所有者在有运行时（出发、飞行、暂停、停止、故障）登记一份离页保护，exit 或释放时撤销。释放顺序为占位计时器与输入 → 会话 → UI 桥接与开发诊断 → 离页保护 → 画面、音频等媒体；每项都尝试，任何失败都锁存。
+  - **包替换与外壳收尾：** 资源持有者替换资源包前（`beforeReplace`），槽位同步释放绑定旧包的所有者（先锁存失败），外壳随即返回主菜单并显示 `mission-package-replaced`。`ResourceHolder.dispose()` 不通知任何监听，所以外壳卸载、StrictMode 重跑与外壳的 Fast Refresh 由 `teardownMissionAndHolder(slot, holder)` 显式先释放槽位、再销毁持有者，不依赖 React effect 的先后。外壳记下进入任务画面时的持有者；渲染时持有者已不同（外壳刷新）就返回主菜单。
+- **应用端口（P2-11、P3-04）：** [App](../../src/app/App.tsx) 由入口传入 [AppPorts](../../src/app/ports.ts)：导入 Worker 端口工厂、资源缓存端口、音频能力与页面生命周期、WebGL 表面工厂、预期包配置、任务端口与 `reportError`。任务端口 `mission` 为 `{ seed, clock, timer, leaveGuard, createSessionHost, createFileSave }`。[main.tsx](../../src/main.tsx) 只传 [createBrowserPorts()](../../src/app/browser-ports.ts) 的生产实现与生产包配置：种子来自 `crypto.getRandomValues`，时钟为 `performance.now`，计时器为 `setTimeout`，离页保护在 `window` 上登记 `beforeunload`，会话宿主用真实 rAF 与页面生命周期，文件保存只在开发构建中以动态导入取得、生产为 null。生产代码不读 URL 参数或全局开关；只有开发测试入口注入合成端口（含 `seeds`，见上文测试入口）。
+  - [use-resource-holder.ts](../../src/app/composition/use-resource-holder.ts) 在 effect 中创建应用外壳的资源持有者（随即列出缓存），卸载、StrictMode 重跑与外壳的 Fast Refresh 时按上述顺序先释放任务槽位再销毁它；外壳每次返回菜单都调用 `relist()`。
   - 主菜单按持有者快照显示原版数据状态：正在检查存储、没有、找到已保存的资源（尚未校验）或存储不可用；持有资源包时列出状态阶梯（保存与恢复附耗时）。存储、恢复与保存的失败以 [FailureNotice](../../src/ui/import/FailureNotice.tsx) 显示 05 的文案与技术细节；持有资源包时存储不可用也照常显示，除非它就是该资源包未保存的原因。
-  - 演示生命周期的错误同样交给端口的 `reportError`。
   - 只测缓存适配的浏览器用例经 [resource-cache.ts](../../e2e/support/resource-cache.ts) 的 `loadCacheModules` 打开不含应用的 [blank.html](../../e2e/entries/blank.html)，因为应用一载入就列出缓存，会打开（从而创建）数据库。
   - 入口：持有资源包时有 `View resources`；未持有且有可恢复条目时有 `Open saved resources`（恢复中禁用，由它发起的恢复成功后焦点移到 `View resources`）；完整资源包未保存时有 `Save again`（保存中禁用）。
-  - 查看器入口在查看器锁存后禁用并说明原因；外壳以 `viewer-cleanup-failure` 警告显示锁存的原因，导入与演示照常可用。
-- **画面模块与 Fast Refresh（P2-11 S-12）：** 外壳的资源持有者在 `App` 自己的 effect 中创建，`App.tsx` 的 Fast Refresh 会重建它并丢掉持有的资源包。因此 [ImportScreen](../../src/app/ImportScreen.tsx) 与 [ViewerScreen](../../src/app/ViewerScreen.tsx) 各在自己的模块中：编辑它们或它们的 hook 时，只刷新该画面，外壳与资源包保留。
-  - **StrictMode 下的重跑：** 刷新时 React 只经刷新重建的依赖（`useCallback`、`useMemo` 的结果）重跑 effect；依赖都是 props 与 state 的 effect 不会重跑。所以两个 hook 的 effect 都依赖一个 memo 化的回调：`useImportJob` 的移交，`useViewerOwner` 的 `optionsFor`。编辑 hook 后，作业持有者或查看器所有者即被替换。
-  - **接续：** 查看器所有者被替换时（StrictMode 重跑、Fast Refresh），hook 在 effect 清理时记下它所选的条目、变体与视图，交给下一个所有者作为起始状态（`ViewerOwnerOptions.initial`）；离开查看器后再打开则从未选中开始。
-  - **诊断：** 查看器槽位从 1 起为所有者编号（`ViewerOwner.serial`），画面区域的 `data-owner` 显示它；作业持有者在页面中同样编号（`ImportJobOwner.serial`），并以 `liveImportJobOwners()` 计数尚未释放的；导入页面的 section 以 `data-job-owner` 与 `data-live-job-owners` 显示。E2E 用它们区分真正的替换与只重渲染。
+  - 任务入口 `Start mission` 带 `data-eligibility`（`checking` 或资格状态）；不可用时以 `mission-entry-reason` 说明原因（没有资源包、不完整的组或整包诊断、任务未载入或载入失败的类别/路径/原因、清理锁存），说明中含正式运行骨架的声明与 G-07 标注。入口上的 Enter/Space repeat 被抑制，从任务画面按住返回键回到菜单时不会再次进入。
+  - 查看器入口在查看器锁存后禁用并说明原因；外壳以 `viewer-cleanup-failure` 警告显示锁存的原因，导入与任务照常可用。
+  - 任务所有者、槽位与外壳的错误同样交给端口的 `reportError`。
+- **画面模块与 Fast Refresh（P2-11 S-12、P3-04）：** [ImportScreen](../../src/app/ImportScreen.tsx)、[ViewerScreen](../../src/app/ViewerScreen.tsx) 与 [MissionScreen](../../src/app/MissionScreen.tsx) 各在自己的模块中：编辑它们或它们的 hook 时只刷新该画面，外壳的资源包与已确认的僚机选择保留。外壳（`App.tsx` 或 `use-resource-holder.ts`）的 Fast Refresh 重建持有者的创建函数，从而重跑持有者的 effect：先释放任务槽位，再销毁持有者，丢掉资源包并回到主菜单（P3-04/09 实测）。P2-11 时持有者的 effect 只依赖 props，外壳刷新实际上不会重跑它，此前“`App.tsx` 的 Fast Refresh 会重建持有者”的说法依赖了这一不成立的前提，现以记忆化的创建函数实现。
+  - **StrictMode 下的重跑：** 刷新时 React 只经刷新重建的依赖（`useCallback`、`useMemo` 的结果）重跑 effect；依赖都是 props 与 state 的 effect 不会重跑。所以各 hook 的 effect 都依赖一个 memo 化的函数：`useImportJob` 的移交，`useViewerOwner` 的 `optionsFor`，`useMissionOwner` 的 `assembleFor`，`useResourceHolder` 的 `create`。编辑 hook 后，作业持有者、查看器所有者或任务所有者即被替换。
+  - **接续：** 查看器所有者被替换时（StrictMode 重跑、Fast Refresh），hook 在 effect 清理时记下它所选的条目、变体与视图，交给下一个所有者作为起始状态（`ViewerOwnerOptions.initial`）；离开查看器后再打开则从未选中开始。任务所有者被替换时，旧所有者先失效并释放，新所有者从 G-02/1 开始，不恢复运行世界，只保留资源包与已确认的僚机选择。
+  - **诊断：** 查看器槽位从 1 起为所有者编号（`ViewerOwner.serial`），画面区域的 `data-owner` 显示它；作业持有者在页面中同样编号（`ImportJobOwner.serial`），并以 `liveImportJobOwners()` 计数尚未释放的；导入页面的 section 以 `data-job-owner` 与 `data-live-job-owners` 显示。任务画面根（`mission-screen`）带 `data-owner`（ownerId）、`data-run`、`data-tick`（最新采样的 Core tick）与 `data-position`（流程位置），只有这一层随 tick 重渲染。E2E 用它们区分真正的替换与只重渲染。
+- **任务画面（P3-04）：** [MissionScreen](../../src/app/MissionScreen.tsx) 调用 [use-mission-owner.ts](../../src/app/composition/use-mission-owner.ts) 并渲染 [MissionPage](../../src/ui/mission/MissionPage.tsx)。
+  - **所有者：** hook 在 effect 中经槽位打开所有者；槽位决定创建后才创建会话宿主与 `ui` 消费者。该消费者在所有者连接它时以 ownerId 创建 store、会话桥接与命令反馈，绑定所有者的会话，并以 `{ release: bridge.unbind, onSessionError: bridge.onError }` 返回；所有者每次发布快照时，hook 把冻结的流程值写入 store。开发构建另以帧计时包装宿主、加入帧计时与诊断两个消费者并传入开发录制选项（见[开发诊断与录制导出](#开发诊断与录制导出)）。effect 的清理释放槽位（卸载、StrictMode 重跑、Fast Refresh）；打开失败（如资格已变化的 `MissionUnavailableError`）以 `mission-open-failure` 显示并报告。
+  - **页面：** `MissionPage` 按流程位置显示 G-02 占位（[PlaceholderPage](../../src/ui/mission/PlaceholderPage.tsx)）、开始配置（[StartConfigPage](../../src/ui/mission/StartConfigPage.tsx)）、任务壳（[MissionShell](../../src/ui/mission/MissionShell.tsx)）或任务菜单（[MissionMenuPage](../../src/ui/mission/MissionMenuPage.tsx)），按 ownerId 作 key，下方是开发构建的诊断面板。页面只渲染所有者的快照，并在事件处理中调用其意图（`skip`、`select`、`start`、`pause`、`resume`、`openMenu`、`continueFromMenu`、`restart`），开始与继续直接来自可信点击。缺省标注的位置见[切片缺省清单](./slice-gaps.md)。
+  - **焦点与按键：** 占位打开时焦点在 Skip，本页范围内新的 Enter、Space、Esc 提前结束一次，repeat 一律阻止默认行为，所以上一页按住的键不会结束占位或激活按钮；计时失败时只给 alert 与 `Return to main menu`（焦点移到它）。开始配置、任务壳与任务菜单进入时聚焦标题；开始配置的失败以 `role=alert` 显示类别、路径与原因，不能重试时只保留返回并获焦；任务壳的暂停/继续是一个切换控件，焦点不丢，不能继续（页面隐藏或离页）时禁用并说明原因，暂停状态显示在游戏区域之外的状态栏中。键位见[键位文档](./keyboard-input.md)。
+  - **测试 ID：** `mission-screen`；`mission-placeholder`（`data-gap`、`data-status`）与 `mission-placeholder-variant`（`data-variant` 为 `solo` 或 `wingman`）；`mission-config`（单选的 `data-wingman` 为索引或 `none`）与 `mission-start-failure`（`data-kind`）；`mission-shell`、`mission-view`、`mission-status`（`data-phase`、`data-pause`）与 `mission-ended`（`data-ended`）；`mission-menu`；主菜单的 `mission-entry-reason`，以及 `mission-open-failure`、`mission-package-replaced`。
 - **查看器页面（P2-11 S-07 至 S-09）：** [ViewerPage](../../src/ui/viewer/ViewerPage.tsx) 由 `ViewerScreen` 渲染，后者调用 [use-viewer-owner.ts](../../src/app/composition/use-viewer-owner.ts)。
   - **所有者：** hook 在画面区域挂载后经外壳的查看器槽位（`createViewerLifecycle`）打开所有者。表面由端口的 `createSurface(container, VIEWER_SURFACE)` 在槽位决定创建所有者之后才创建，所以锁存后不会再有画布；创建失败时改为不可用的渲染器，回滚也失败（`RollbackError`）时槽位锁存；卸载、StrictMode 重跑、Fast Refresh 与更换容器时关闭槽位。“Return to menu”先同步关闭槽位再切换画面，所以同步的释放失败在菜单出现前锁存；音频 `close()` 被拒绝则在观察到时锁存。
   - **页面：** 完整资源包显示其内容身份（manifest 身份与转换器版本），供核对恢复前后是否相同；按种类（模型、效果、图像、调色板、布局、字库）列出条目，默认不选中；所选条目显示失败（code、位置、原因）或变体：模型的部件列表单选（附内容与置信度）、效果的视图单选（附各形状的原值、绘制字节与贴图状态；仅含跨接缝面的项显示“Seam interpolation unconfirmed”标记）、模型的中性光开关。导弹贴图只应用旋转 0，不提供旋转选择。资源包不完整时始终显示说明与各组状态。
@@ -463,10 +472,9 @@ P1-08 的 React 菜单原型由 P2-11 接入导入、缓存与查看器，契约
   - **结果：** 结束后显示结果与耗时；失败经失败文案显示类别与技术细节；取消说明没有保留部分结果。
   - **资源状态：** 页面列出状态阶梯（含来源已识别）、本次导入各组的状态与诊断 code、部分转换的说明、保存失败与 `Save again`，以及任务载入失败。这些只针对本页最近作业所得的资源包（同一持有者实例与代际）；之前持有的资源包不当作本次结果，仍由菜单显示。
   - **文案：** 页首新增隐私说明：原版数据只在本浏览器中读取、转换与保存，不上传；权利说明保持 MIT 不覆盖原版内容、不是官方产品、不授予原版权利。
-- [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态与生命周期，只渲染当前画面；演示画面以 `demoVisit` 为 key，由外壳内的 `DemoScreen` 调用上述 hook。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start synthetic demo`，导入入口照常可用。进入演示前，外壳先用当前状态同步校验转换：`demoVisit` 耗尽时以 alert 显示 `RangeError` 并停留在主菜单，不创建 owner；实际提交仍走函数式更新，双击时每次激活至多一次转换。
-- [ui/pages/](../../src/ui/pages/) 提供菜单与合成演示画面及页面焦点 helper，不在 window/document 注册键盘监听；导入与查看器分别在 `ui/import/`、`ui/viewer/`。
-  - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存时聚焦菜单标题；首次加载不移动焦点。
-  - 演示画面中，`Return to menu` 是标题之后的第一个控件。
+- [App](../../src/app/App.tsx) 是应用外壳，持有页面流转状态、任务槽位与查看器槽位，只渲染当前画面；任务画面以 `missionVisit` 为 key。锁存后在所有画面显示含原始原因的 alert，并提示刷新页面；主菜单原生禁用 `Start mission`，导入入口照常可用。进入任务画面前，外壳先用当前状态同步校验转换：`missionVisit` 耗尽时以 `open-mission-failure` 显示 `RangeError` 并停留在主菜单，不创建所有者；实际提交仍走函数式更新，双击时每次激活至多一次转换。页首的权利与隐私声明说明本项目是独立项目、不是原版玩法或官方授权产品，原版数据只在本浏览器中读取、转换与保存。
+- [ui/pages/](../../src/ui/pages/) 提供主菜单与页面焦点 helper，[ui/mission/](../../src/ui/mission/) 提供任务页面，都不在 window/document 注册键盘监听；导入与查看器分别在 `ui/import/`、`ui/viewer/`。
+  - 画面标题为 h2，`tabIndex=-1`：进入画面时聚焦标题（占位页聚焦 Skip）；返回菜单时按 `focusTarget` 聚焦打开该画面的入口，锁存或入口禁用时聚焦菜单标题；首次加载不移动焦点。
   - 导入页面（P2-11，[ImportPage](../../src/ui/import/ImportPage.tsx)）见上文“导入页面”。
-  - 样式在 [app.css](../../src/app/app.css)：响应式、按钮 `:focus-visible` 有可见 outline。
-- 验证分层：页面流转、owner 记录与生命周期接线用 Node 测试。React 画面、焦点、键盘与往返释放用上文“已验证的 CDP 自动化路线”在开发服务器与 `vite preview` 中取证。稀有失败（failed、faulted、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不伪造浏览器复现。不引入 jsdom、React Testing Library 或 Playwright 依赖。
+  - 样式在 [app.css](../../src/app/app.css)：响应式、按钮与输入 `:focus-visible` 有可见 outline。
+- 验证分层：页面流转、任务流程、所有者、槽位与收尾顺序用 Node 测试（[mission.test-support.ts](../../src/app/mission/mission.test-support.ts) 提供可控的时钟、计时器、种子、离页保护与测试消费者）。React 画面、焦点、键盘、离页确认与往返释放由[本地浏览器 runner](#本地浏览器-runner) 的 mission-flow、app-shell、interaction-render、native-lifecycle、joint-resources 与 fast-refresh 用例在开发服务器与 `vite preview` 中取证。稀有失败（占位计时失败、清理与回滚失败、锁存）的 React 文案与焦点接线以 Node 测试加代码审阅为证，不加后门伪造浏览器复现。不引入 jsdom、React Testing Library 或额外的浏览器依赖。

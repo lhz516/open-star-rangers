@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "11"
-updated: 2026-10-07
+updated: 2026-10-10
 ---
 
 # P2-11：真实导入流程与最小资源查看器 — Goal
@@ -29,10 +29,10 @@ updated: 2026-10-07
   - **Core：** [load-mission.ts](../../../../src/core/mission/load-mission.ts) 的 `loadMission`。
   - **音频：** [audio-controller.ts](../../../../src/platform/audio/audio-controller.ts) 的 `createAudioController`；[browser-audio-controller.ts](../../../../src/platform/audio/browser-audio-controller.ts)。
   - **渲染：** [render-surface.ts](../../../../src/render/scene/render-surface.ts)、[webgl-surface.ts](../../../../src/render/webgl/webgl-surface.ts)、[browser-webgl-surface.ts](../../../../src/render/webgl/browser-webgl-surface.ts)（无障碍名称目前固定为合成演示的文字）、[viewport-layout.ts](../../../../src/render/viewport/viewport-layout.ts)、[cleanup.ts](../../../../src/render/scene/cleanup.ts)。
-  - **页面：** [App.tsx](../../../../src/app/App.tsx)、[app-flow.ts](../../../../src/app/flow/app-flow.ts)、[MainMenuPage.tsx](../../../../src/ui/pages/MainMenuPage.tsx)、`src/ui/pages/ImportPlaceholderPage.tsx`（P2-11 已删除）、[main.tsx](../../../../src/main.tsx)。可参照的生命周期与锁存模式：[synthetic-demo-lifecycle.ts](../../../../src/app/composition/synthetic-demo-lifecycle.ts)、[use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts)。
+  - **页面：** [App.tsx](../../../../src/app/App.tsx)、[app-flow.ts](../../../../src/app/flow/app-flow.ts)、[MainMenuPage.tsx](../../../../src/ui/pages/MainMenuPage.tsx)、`src/ui/pages/ImportPlaceholderPage.tsx`（P2-11 已删除）、[main.tsx](../../../../src/main.tsx)。可参照的生命周期与锁存模式：[synthetic-demo-lifecycle.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位)、[use-synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位)。
   - **测试设施：**
     - [import-worker.test-support.ts](../../../../src/workers/import-worker.test-support.ts) 的合成 Worker 场景（`synthetic`、`models`、`models-corrupt` 等）与 [synthetic-import.test-support.ts](../../../../src/workers/synthetic-import.test-support.ts)；
-    - E2E 探针 [browser-probes.ts](../../../../e2e/support/browser-probes.ts)、[resource-cache.ts](../../../../e2e/support/resource-cache.ts)、[audio-playback.ts](../../../../e2e/support/audio-playback.ts)、[image-observations.ts](../../../../e2e/support/image-observations.ts)、[demo-observations.ts](../../../../e2e/support/demo-observations.ts)；
+    - E2E 探针 [browser-probes.ts](../../../../e2e/support/browser-probes.ts)、[resource-cache.ts](../../../../e2e/support/resource-cache.ts)、[audio-playback.ts](../../../../e2e/support/audio-playback.ts)、[image-observations.ts](../../../../e2e/support/image-observations.ts)、[demo-observations.ts](../../../engineering/source-structure.md#r8-e2e-演示观察)；
     - WebGL 关闭用例 [webgl-unavailable.spec.ts](../../../../e2e/webgl-unavailable.spec.ts)、联合资源用例 [joint-resources.spec.ts](../../../../e2e/joint-resources.spec.ts)；
     - Playwright 的 `development`、`production`、`development-headed` 项目（[playwright.config.ts](../../../../playwright.config.ts)）。
 - **计划新增（均尚不存在）：**

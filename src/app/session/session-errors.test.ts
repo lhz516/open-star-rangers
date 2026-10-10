@@ -27,6 +27,14 @@ describe('GameSessionError', () => {
     expect(new GameSessionError({ kind: 'invalid-state', operation: 'start', phase: 'idle', runId: null, reason: 'exhausted' }).runId).toBeNull();
   });
 
+  it('carries the formal session\'s hold and stop phases', () => {
+    for (const phase of ['transition', 'stopped'] as const) {
+      const error = new GameSessionError({ kind: 'invalid-state', operation: 'pause', phase, runId: 2, reason: 'not running' });
+      expect(error).toMatchObject({ kind: 'invalid-state', operation: 'pause', phase, runId: 2 });
+      expect(error.message).toBe(`pause is invalid in ${phase}: not running`);
+    }
+  });
+
   it('copies and freezes entries in order without freezing original causes', () => {
     const cause = new Error('runtime');
     const failures: SessionFailure[] = [
@@ -65,6 +73,8 @@ function checkTypes() {
   new GameSessionError({ kind: 'invalid-argument' });
   // @ts-expect-error State errors require phase and identity.
   new GameSessionError({ kind: 'invalid-state', operation: 'start', reason: 'invalid' });
+  // @ts-expect-error Only the session phases are permitted.
+  new GameSessionError({ kind: 'invalid-state', operation: 'start', phase: 'held', runId: null, reason: 'invalid' });
   // @ts-expect-error Failures require explicit original causes.
   new GameSessionError({ kind: 'operation-failed', failures: [{ phase: 'cleanup' }] });
   // @ts-expect-error Only the five failure phases are permitted.

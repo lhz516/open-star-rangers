@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0015]
 ---
 
@@ -10,7 +10,85 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/app/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的合成演示 owner 与创建、销毁它的 React effect hook。P1-08 已实现（最终对齐见 [P1-08 goal](../../plan/p1/08/goal.md#子任务跟踪)）：[app/flow/](../../../src/app/flow/) 中 DOM-free 的页面流转（主菜单、导入占位、合成演示，内存状态，不用路由）；`app/composition/` 中每个应用实例一个的演示生命周期（一次性 start、先释放后创建、清理失败锁存）；`app/session/` 的 `RollbackError` 结构化回滚失败信号。P2-11 以导入与查看器页面取代了导入占位，见[工程约定](../README.md#页面流转与演示生命周期)。[App](../../../src/app/App.tsx) 是应用外壳，加载时显示 P1 React 菜单原型。
+`src/app/` 中已交付：[P3-04](../../plan/p3/04/spec.md) 的正式 Runtime（[app/runtime/](../../../src/app/runtime/)）、游戏会话（[app/session/](../../../src/app/session/)）、DOM-free 的任务流程与所有者（[app/mission/](../../../src/app/mission/)）及其应用槽位（[app/composition/](../../../src/app/composition/) 的 `mission-slot.ts`）；P2-11 的资源持有者与任务载入诊断（[app/resources/](../../../src/app/resources/)）、查看器音频与所有者（[app/viewer/](../../../src/app/viewer/)）；P1-08 起的 DOM-free 页面流转（[app/flow/](../../../src/app/flow/)，菜单、导入、任务与查看器，内存状态，不用路由）。[App](../../../src/app/App.tsx) 是应用外壳；React hook、画面模块、应用端口与接线见[工程约定](../README.md#页面流转与任务生命周期)。P1 的合成演示所有者、演示槽位与合成 Runtime/Session 已于 P3-04 退役，见[退役记录](../source-structure.md#p3-04-合成演示退役记录)。
+
+## 正式 Runtime
+
+[game-runtime.ts](../../../src/app/runtime/game-runtime.ts) 的 `createGameRuntime(spec)`（[spec：Runtime](../../plan/p3/04/spec.md#runtime)），由 Node 测试以真实正式 Core 与合成任务覆盖。工程上的要点见[工程约定](../README.md#正式-runtime)。
+
+- **规格：** `GameRuntimeSpec` 为 `CreateWorldInput` 除 `run` 外的内容字段（Core 的 `CONTENT_INPUT_FIELDS`：`mission`、`craftTypes`、`wingmanRoster`、`craftInfo`（同包的 `data/craft-info`，[P3-06 D-01](../../plan/p3/06/spec.md#对-p3-02-契约的增量)）、规则数据输入 `debrisParameters`、`projectileVisuals`、`explosions`、`explosionAnimations` 与 `models`（[P3-07 CR-01](../../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）、`identity`；Runtime 与会话按这份列表读取，Core 新增内容输入时不需改动），`run: { rawDifficulty, wingman, seed }`（`GameRunConfig`，没有步长：只用 Core 默认步长）与 `recording: RecordingOptions | null`。有录制时用 `createRecordingSession`，否则 `createWorld`。Core 的创建错误原样抛出，不创建 Runtime；规格形状错误为 `GameRuntimeError` 的 `invalid-argument`。
+- **帧：** `frame(nowMs)` 返回 `{ ticks, capped, stop: 'recording-capacity' | null }`，`ticks` 只计成功的 step。时间非有限、倒退或无法换算时抛 `invalid-argument`（归调度者），什么也不改变；监听器失败在整批投递后抛 `listener-failed`（归消费者，Runtime 本身不故障）；故障抛 `faulted`，带冻结的 `unconfirmed` FIFO ID（结果不明）；容量停止后抛 `recording-capacity`。`MAX_TICKS_PER_FRAME` 为 5。
+- **输入：** `setIntent({ axes, primaryFire })` 在下一 tick 起生效（帧后投递中也允许）；`submitCommand(command)` 返回从 1 起的 commandId，越出 Core 契约为 `invalid-argument`，队列中已有 `COMMAND_QUEUE_LIMIT`（256）个时为 `command-queue-full`，都不改变状态；签发到 `Number.MAX_SAFE_INTEGER - 1` 之后的提交使 Runtime 故障。故障或停止后两者都被拒绝。
+- **订阅与读取：** `on(type, listener)`、`onAny(listener)` 返回撤销函数；`type` 只接受 Core 的事件类型（[game-event-bus.ts](../../../src/app/runtime/game-event-bus.ts) 的 `EVENT_TYPES`，含 P3-06 的 `speed-assist-toggled`、`speed-matched`、`speed-assist-released` 与 `object-left-world`，以及 P3-07 的 13 种战斗事件（[CR-06](../../plan/p3/02/spec.md#cr-06-领域事件与次序d-01)）；新变体不列入就不能编译），其他为 `invalid-argument`。监听器收到 `(event, { commandId })`（`EventDelivery`）：只有提交的命令自己的 `command-result` 带其 ID，其他事件（包括带 `commandIndex` 的速度事件）为 null。`projection()` 与 `renderFrame()`（`{ previous, current, alpha }`）读最后完整的读模型；`snapshot()` 与 `exportRecording()`（无录制时为 null）是帧外的按需 Core 读取，帧内调用抛 `reentrant-call`，读取时发现 Core 故障也使 Runtime 故障；停止后仍可调用。
+- **生命周期操作：** `resetClock()`、`clearIntent()`（返回确定未执行的 FIFO ID，供会话以取消通知）、`foldRenderState()`、`clearSubscriptions()`，帧内调用抛 `reentrant-call`，在任何状态都可调用。
+- **测试：** [game-runtime.test-support.ts](../../../src/app/runtime/game-runtime.test-support.ts) 提供轴与意图的样本；故障注入的测试文件以顶层 `vi.mock` 替换创建边界，由 Vitest 的 isolated 项目运行。
+
+## 游戏会话
+
+[game-session.ts](../../../src/app/session/game-session.ts) 的 `createGameSession(host, onError)`（[spec：会话](../../plan/p3/04/spec.md#会话)），由 Node 测试以 `ControlledHost` 与真实 Runtime 覆盖。与 P1-05 的差异与通知边界见[工程约定](../README.md#会话端口与错误)。
+
+- **控制：** `control(c)` 接受 `{ type: 'start', spec: GameRunSpec }`、`pause`、`resume`、`exit`、`dispose`、`{ type: 'complete-departure', runId }` 与 `{ type: 'clear-input', reason: 'focus-loss' | 'pointer-lock-exit' }`；类型封闭，额外字段拒绝。`GameRunSpec` 是 `GameRuntimeSpec` 加 `initialTransition: { gap: 'G-02/2', variant: 'solo' | 'wingman' } | null`，变体须与 Core 实际生效的僚机一致。
+- **状态：** `status()` 为冻结的 `{ phase, runId, environmentVisible, pauseReason, transition, resumeRequired, stopReason, cleanupFailed, error }`；phase 为 `idle`、`transition`、`running`、`paused`、`stopped`、`faulted`、`disposed`；`onStatus(listener)` 订阅变化。
+- **开始的失败：** 世界创建的拒绝（Runtime 的规格形状错误、`CoreInputError`、`ContentContractError`）抛 `GameSessionError` 的 `invalid-argument`，路径为 `control.spec…`，原错误为 cause，会话保持 idle（任务所有者从 cause 读取类别、路径与原因）；创建时的 `CoreFaultError` 为 `operation-failed`（runtime）。非 idle 的 start 以 `invalid-state` 拒绝。
+- **运行句柄：** `currentRun()` 在 transition、running、paused、stopped、faulted 时有值，提供 `runId`、`setIntent`、`submitCommand`、`on`/`onAny`、`onFrame`（`{ runId, phase, render, projection, report }`，静止帧的 report 为 null）、`onCommandsCancelled`（`{ runId, commandIds, reason }`）、`ownCleanup`、`projection`、`renderFrame`、`snapshot` 与 `exportRecording`。faulted 时后两者拒绝；旧句柄退役后读写与新订阅一律拒绝。
+- **拒绝的原因：** 队列已满、容量停止与投递中的重入在 `submitCommand` 上为 `invalid-state`，原因分别为 `command-queue-full`、`recording-capacity` 与 `unavailable during event delivery`。`clear-input` 在 paused 与 transition 为空操作，在 idle、stopped、faulted、disposed 拒绝。
+- **测试支持：** [session-host.test-support.ts](../../../src/app/session/session-host.test-support.ts) 的 `ControlledHost`（帧回调等 `deliver(now)` 交付，生命周期事件经 `emit` 发出，每个端口操作都可设为失败）；[game-session.test-support.ts](../../../src/app/session/game-session.test-support.ts) 组合正式会话的测试设置。
+
+## 任务流程与所有者
+
+[app/mission/](../../../src/app/mission/) 与 [mission-slot.ts](../../../src/app/composition/mission-slot.ts) 是 DOM-free 的任务流程（[spec：应用流程](../../plan/p3/04/spec.md#应用流程)、[开始资格](../../plan/p3/04/spec.md#开始资格)、[任务开始配置](../../plan/p3/04/spec.md#任务开始配置)、[衔接占位](../../plan/p3/04/spec.md#衔接占位)、[消费者接线与释放](../../plan/p3/04/spec.md#消费者接线与释放)、[离页保护](../../plan/p3/04/spec.md#离页保护)），宿主能力经端口传入，由 Node 测试以真实会话、真实持有者与可控端口覆盖。React 接线与页面见[工程约定](../README.md#页面流转与任务生命周期)。
+
+### 端口
+
+[mission-ports.ts](../../../src/app/mission/mission-ports.ts) 只含类型，导入时不安装任何东西，由 [platform](./platform.md#任务端口的浏览器适配) 实现、`AppPorts.mission` 装配：
+
+- `SeedSource`：`() => number`，每次创建世界的尝试抽取一个 uint32；抛错或其他值报开始失败，不回退为固定种子或宿主时间，允许重复。
+- `MonotonicClock`：`() => number`，有限且不倒退的毫秒值，否则抛错。
+- `OneShotTimer`：`schedule(callback, delayMs)` 返回非负安全整数句柄（0 合法），延迟 0–2,147,483,647 ms，之后异步回调一次（宿主可能略早，调用者以单调时钟核对）；`cancel(handle)` 幂等，取消后的回调不执行。
+- `LeaveGuard`：`() => Revoke`，登记一份原生离页确认（`beforeunload`），不定制文字，也不在处理器中退出、清理或导出；登记失败先回滚再抛错，撤销失败抛错以便锁存。
+- `FileSave`：开发诊断的文件保存，`save(name, text)` 返回 `{ status: 'requested' }`、`{ status: 'failed', reason: 'disposed' }` 或 `{ status: 'failed', reason: 'failed' | 'cleanup-failed', error }`，`dispose()` 幂等。`requested` 只表示浏览器接受了下载请求，不表示已写入文件。
+
+### 开始资格
+
+[mission-eligibility.ts](../../../src/app/mission/mission-eligibility.ts) 的 `missionEligibility(holderSnapshot, cleanupFailure)` 按次序给出第一个适用的原因：`cleanup-failed`、`no-package`、`package-incomplete`（不完整或缺失的组与整包诊断）、`mission-not-attempted`、`mission-failed`（任务载入诊断的类别、路径与原因），否则为 `eligible` 并带持有包的代际。只读持有者的全包判定、任务载入诊断与槽位的清理锁存：可恢复的缓存条目、已结束的导入作业或已保存都不能代替它们，未保存或保存失败的完整包仍可开始。资格只允许进入开始配置。
+
+### 任务流程
+
+[mission-flow.ts](../../../src/app/mission/mission-flow.ts) 是纯函数 `nextMissionFlow(state, input)`，不适用的输入返回同一对象。
+
+- **位置：** `intro`（G-02/1）、`config`（开始配置，G-04、G-07）、`departure`（G-02/2，会话 `transition`）、`flight`（running 或 paused）、`menu`（暂停式任务菜单）与 `ended`（运行 faulted、stopped，或重开的收尾失败 `cleanup-failed`）；`FLOW_SESSION_PHASES` 列出各位置对应的会话 phase。
+- **状态：** `{ position, selection, startFailure, runId, ended }`。开始失败 `MissionStartFailure` 为 `package-changed`、`cleanup-failed`、`seed`、`rejected`（世界创建的类别、路径与原因，会话保持 idle）或 `assembly`（`session`、`consumer`、`leave-guard` 阶段的装配失败，`rolledBack` 为 false 时已锁存）。
+- **僚机预选：** `preselectWingman(confirmed, identityKey, optionCount)`：同一内容身份下预选上次成功确认的选择（含无僚机），否则名单第 1 项，名单为空时无僚机；记住的索引超出名单时回到默认。不能只凭同一索引推断是同一名单。
+
+### 任务所有者
+
+[mission-owner.ts](../../../src/app/mission/mission-owner.ts) 的所有者由槽位以 `MissionOwnerSetup` 创建：`{ holder, host, seed, clock, timer, leaveGuard, recording, consumers?, reportError }`，`recording` 在开发中为 `developmentRecording(producer)`（检查点间隔 `DEVELOPMENT_CHECKPOINT_INTERVAL` 32），在生产中为 null，所有者本身不读构建模式。
+
+- **创建：** 资格不为 `eligible` 时抛 `MissionUnavailableError`（带 `eligibility`），什么也不取得。否则从持有包的 `logic` 组经 [mission-input.ts](../../../src/app/resources/mission-input.ts)（与任务载入诊断共用）解码三份逻辑 Asset 并 `loadMission`，以 `craftInfoInput` 解码同组的 `craft-info` Asset，以 `ruleDataInputs` 解码与运行无关的规则数据输入（`logic` 组的 DEBRIS 表，`models` 组的爆炸表及其列出的动画、唯一的 `projectile` 类 `data` Asset；诊断不读它们，解码失败留作每次开始的失败），绑定该包的代际与完整内容身份；创建会话，订阅其状态与持有者的 `beforeReplace`，按次序连接各消费者，然后进入 G-02/1。中途失败时释放已取得的部分，释放也失败时抛 `RollbackError`。
+- **快照：** `getSnapshot()`（绑定函数，两次变化之间为同一冻结对象）为 `{ ownerId, released, config, flow, placeholder, session, actionError, cleanupFailure }`；`config` 为任务 Asset ID、战役组与槽位、固定难度 19 与按名单次序的僚机选项 `{ index, nameCandidates }`（名字只作纯文本）；`placeholder` 为 `{ id, gap, variant, status: 'timing' | 'waiting' | 'failed', failure }`。`subscribe(listener)` 返回撤销函数。
+- **意图：** `skip(placeholderId)`、`select(wingman)`（null 或名单中的索引，其他值抛 RangeError）、`start()`、`pause()`、`resume()`、`openMenu()`（先暂停 running 的运行，已暂停的保留原因）、`continueFromMenu()`（resume 成功才关闭菜单）、`restart()`（exit 并在全部收尾成功后回到 G-02/1，保留选择）。每个意图只在流程提供它的位置生效，其他位置、释放后或另一意图执行中都被忽略；同步失败记为 `actionError`。
+- **开始：** 重读持有者的 `current()`，对象、代际或内容身份变化时为 `package-changed`；抽取一个种子（非 uint32 为 `seed` 失败）；craft-info 或规则数据输入解码失败时为 `rejected`（类别 `content`，路径 `<组>[<Asset ID>]…`），与世界创建的拒绝同样留在开始配置页。再从重读的同一份包以 `runModelInputs` 解码本次运行可实例化机体的模型（模型不能解码时同为 `rejected`；Core 拒绝该运行时不解码模型，由世界创建同样拒绝）。以本次选择、难度 19 与绑定包的三份逻辑 Asset、craft-info、规则数据输入、模型和身份组成运行规格（组中缺少某项时由世界创建在其输入位置拒绝），`initialTransition` 的变体按选择为 `solo` 或 `wingman`。会话 start、运行级消费者接线与离页保护登记任一失败都回滚已取得的资源；回滚成功可重试，失败则锁存。成功时记下确认的选择，进入 `departure`。
+- **占位：** 一次只有一个单次计时器，以单调时钟核对实际经过的可见时间，累计 `PLACEHOLDER_MS`（3,000 ms）后结束；页面隐藏或 pagehide 时保留剩余时长并撤销计时器，可见后继续。每个占位只结束一次（自然或跳过），迟到或取消的回调不起作用。计时器登记、取消或时钟读取失败使占位永久停止（`failed`），跳过与自然结束都不再生效，只能离开界面；取消失败另锁存。出发占位结束时以当前 runId 发 `complete-departure`，已消费的回调被忽略。
+- **消费者：** `MissionOwnerConsumer` 为 `{ stage: 'input' | 'ui' | 'media', connect(context) }`，`context` 为 `{ ownerId, session: { status, currentRun, onStatus }, previousClosed }`（只读视图，不能控制会话）。`connect` 返回 `{ release, attachRun?, onSessionError? }`：`attachRun(run, { ownerId, runId })` 在每个新运行的出发保持期间为它登记运行级消费者，撤销函数交给 `run.ownCleanup`，由会话在运行结束时逆序释放；`release` 返回 thenable 时为异步关闭，确认前同类资源不得重建（`previousClosed`）。
+- **离页保护：** 有运行时（transition、running、paused，以及仍保有诊断或录制的 stopped、faulted）登记一份，exit 或释放时撤销；介绍、配置与主菜单不登记。
+- **释放：** `release()` 只执行一次，重复调用返回第一次的 `{ failures, closed }`：先失效占位回调并撤销计时器，再依次释放 `input` 阶段、会话、`ui` 阶段、离页保护与 `media` 阶段；每项都尝试，第一个清理失败经槽位锁存。
+
+### 任务槽位与收尾
+
+[mission-slot.ts](../../../src/app/composition/mission-slot.ts) 的 `createMissionSlot({ onCleanupFailure, reportError, onPackageReplaced })` 每个应用实例一个。
+
+- `open(() => MissionOwnerSetup)` 先释放旧所有者；锁存时返回 null 且不调用创建函数；ownerId 从 1 递增、不复用。创建抛出的 `MissionUnavailableError` 原样抛出，`RollbackError` 先锁存再抛出。
+- `release()` 释放当前所有者，失败锁存；`current()` 与 `cleanupFailure()` 只读。锁存只记第一次的原因，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）。槽位还保存本应用实例内上次确认的僚机选择，以及所有所有者异步关闭的屏障。
+- 持有者替换绑定的包时，槽位先释放该所有者（先锁存失败），再调用 `onPackageReplaced(ownerId)`。
+- `teardownMissionAndHolder(slot, holder)` 是应用外壳的收尾顺序：先释放槽位，再销毁持有者（即使槽位释放抛错也销毁）。`ResourceHolder.dispose()` 不通知任何监听，所以任务的消费者必须在它们读取的包仍被持有时释放。
+
+### 开发帧计时
+
+[dev-frame-timing.ts](../../../src/app/mission/dev-frame-timing.ts) 的 `createFrameTiming(host, clock)` 只在开发构建中装配：返回包装后的 `host`（作为 `MissionOwnerSetup.host`）、一个运行级帧监听的 `consumer` 与 `subscribe(listener)`。它在会话处理一次有效帧回调的前后各读一次时钟，样本为 `{ processingMs, ticks, capped }`；被会话取消或没有报告的回调（隐藏页面上的暂停、Runtime 故障）不产生样本，时钟失败给出失败通知而不是 0 ms。它不自行调度，所有请求、取消与生命周期订阅原样交给被包装的宿主。诊断与面板见 [UI 模块说明](./ui.md#开发诊断)。
+
+### 测试支持
+
+[mission.test-support.ts](../../../src/app/mission/mission.test-support.ts) 提供 `openMission`、`missionHolder`、可控的 `TestClock`、`TestTimer`、`TestSeeds`、`TestLeaveGuard`、记录调用的 `TestConsumer`，以及走到配置、出发与飞行的 `toConfig`、`toDeparture`、`toFlight`。合成任务包来自 01 的任务场景（[workers 模块说明](./workers.md)）。
 
 ## 应用资源持有者
 
@@ -31,7 +109,7 @@ P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的�
 - **提交：** 来自导入且全包 `complete` 的资源包立即以 `profile.limits` 与 `AbortSignal` 提交，状态为 `saving`，成功为 `saved`，失败为 `not-saved` 并附 P2-10 失败；部分结果与来自缓存的资源包不自动提交。`save()` 在完整资源包为 `not-saved` 时再次提交，不论来源（spec 行为表：列表中已没有该键时提供重新保存），保存中返回 false。意外拒绝报 `write-failed@commit`。替换与释放中止进行中的提交，其结果被丢弃。
 - **恢复：** `restore()` 只在未持有资源包、列出有可恢复条目且没有恢复进行时，以 `profile.limits` 恢复该键。结果的身份与预期配置不一致时为 `cache-incompatible@identity`，重新校验不完整时为 `cache-corrupt@groups`，都不持有；成功时以来源 `cache`、缓存状态 `saved` 替换资源包。意外拒绝报 `read-failed@restore`。恢复期间资源包被替换时，恢复立即结束，迟到的结果被静默丢弃。
 - **空间检查：** `checkSpace()` 以包预算的 `payloadBytes` 调用 `checkCapacity`，结果原样返回，只用于导入前的提示。
-- **任务载入诊断：** [mission-diagnostics.ts](../../../src/app/resources/mission-diagnostics.ts) 的 `diagnoseMission(groups)` 在持有 `logic` 组时，取出并解码唯一的任务 Asset，再按任务引用的 Asset ID 取出机型表与僚机名单（切片只约束任务角色，组中可能有同角色的其他 Asset），都以 `decodeLogicPayload` 解码，然后调用 Core 的 `loadMission`。
+- **任务载入诊断：** [mission-diagnostics.ts](../../../src/app/resources/mission-diagnostics.ts) 的 `diagnoseMission(groups)` 在持有 `logic` 组时，取出并解码唯一的任务 Asset，再按任务引用的 Asset ID 取出机型表与僚机名单（切片只约束任务角色，组中可能有同角色的其他 Asset），都以 `decodeLogicPayload` 解码，然后调用 Core 的 `loadMission`。解码在 [mission-input.ts](../../../src/app/resources/mission-input.ts) 的 `missionInput(logic)` 中，P3-04 的任务所有者用同一函数从同一份包取得开始所需的三份 Asset，并用同文件的 `craftInfoInput(logic)` 以 `decodeRuleDataPayload` 解码同组唯一的 `craft-info` Asset（解码错误同样位于 `logic[<Asset ID>].…`）。同文件的 `ruleDataInputs(groups)` 解码 CR-01 中与运行无关的规则数据输入：`logic` 组的 `debris-parameters`（`decodeRuleDataPayload`），`models` 组的 `explosion-table` 及其三张列表引用的动画（`decodeFlightDataPayload`，按 ID 升序、恰为所列集合）与唯一的 `projectile` 类 `data` Asset（`readEffectPayload` 与 `checkEffectBinding`；不唯一时留空）；`modelInputs(groups, ids)` 按给定 ID 次序以 `readModelPayload` 与 `checkModelBinding` 解码模型；`runModelInputs(groups, input)` 以 Core 的 `instantiableModelIds` 取得一次运行的模型 ID 再解码，Core 拒绝该运行的逻辑 Asset、身份或运行配置时返回空列表，由世界创建以同一输入在其路径上拒绝。包中缺少的留空或略去，由世界创建拒绝；解码错误位于 `<组>[<Asset ID>].…`。tools/replay-check.ts 与任务场景测试用 `ruleDataInputs` 与 `runModelInputs`；`missionFailureOf(error)` 把 Core 与内容的拒绝转为下文的 `failed` 结构，开始配置页的创建失败也用它。
   - **结果：** 没有 `logic` 组时为 `not-attempted`。成功为 `loaded`，附结构摘要与引用校验；`CoreInputError` 与 `ContentContractError` 分别为 `failed` 的 `core-input` 与 `content`，附路径与原因。缺少某个角色的 Asset 时，由 `loadMission` 在对应的输入位置报 `CoreInputError`；解码错误保留 code 与原因，路径为 `logic[<Asset ID>].<路径>`；其他异常视为缺陷，继续抛出。
   - **摘要：** 只含任务 Asset ID、`campaign`、地图轴向、坐标与编队偏移的单位标注、玩家声明序号，以及声明、编组、生成区域、僚机选项与名称池的条目数和各阵营的声明数；不含名称、消息或其他原版文字。
   - **引用校验：** 解析到模型的声明数与僚机选项数，持有的资源包是否有完整的 `models` 组，以及每个模型 Asset ID 是否在其中。
@@ -83,4 +161,4 @@ P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的�
 - **槽位：** `createViewerLifecycle({ onCleanupFailure, reportError })`。
   - `open(create)` 先关闭仍打开的所有者，锁存时返回 null 且不调用 `create`，所以锁存后不会再创建表面；否则以 `create()` 的选项创建所有者。`create` 或所有者抛出的 `RollbackError` 锁存后抛出。新所有者的音频等到上一次音频上下文确认关闭后才创建。
   - `close()` 撤销持有者订阅并释放渲染器与音频，每步都尝试：同步的失败立即锁存，音频 `close-failed` 在观察到时锁存。
-  - 锁存只记第一次失败，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）；锁存后不再创建所有者，导入与演示不受影响。React 接线与页面见[工程约定](../README.md#页面流转与演示生命周期)的“查看器页面”。
+  - 锁存只记第一次失败，经 `onCleanupFailure` 交出（出口抛错改经 `reportError`）；锁存后不再创建所有者，导入与任务不受影响。React 接线与页面见[工程约定](../README.md#页面流转与任务生命周期)的“查看器页面”。

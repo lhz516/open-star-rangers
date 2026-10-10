@@ -5,10 +5,10 @@ import { syntheticIdentity } from '../../content/synthetic-content.test-support.
 import { nextRandom } from '../determinism/rng.ts';
 import { CoreInputError } from '../errors.ts';
 import { loadMission } from '../mission/load-mission.ts';
-import { createWorld, initialWorldState } from './create-world.ts';
+import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, originalImportIdentity, playerOnlyMission,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
   reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
@@ -147,6 +147,30 @@ describe('world creation input structure (P3-02 AC-02)', () => {
     const error = thrownBy(() => createWorld(asCreateInput(worldInput({ identity: syntheticIdentity({ origin: { type: 'other' } }) }))));
     expect(error).toBeInstanceOf(ContentContractError);
     expect(error).toMatchObject({ path: 'input.identity.origin.type' });
+  });
+});
+
+describe('instantiable model IDs (P3-07 CR-01)', () => {
+  const modelSet = ({ mission, craftTypes, wingmanRoster, identity, run }: ReturnType<typeof worldInput>) =>
+    instantiableModelIds(asCreateInput({ mission, craftTypes, wingmanRoster, identity, run }));
+
+  it('are the models world creation takes, once each in ascending order, and depend on the wingman', () => {
+    for (const wingman of [null, 0]) {
+      const input = worldInput({ run: { wingman } });
+      const ids = modelSet(input);
+      expect(ids).toEqual((input.models as { readonly id: string }[]).map(({ id }) => id));
+      expect(Object.isFrozen(ids)).toBe(true);
+      expect((ids as readonly string[]).includes(modelOf(1)), String(wingman)).toBe(wingman !== null);
+      expect(() => createWorld(asCreateInput(input))).not.toThrow();
+    }
+    expect(modelSet(worldInput())).toEqual([0, 7, 8, 14, 17].map(modelOf).sort());
+  });
+
+  it('throw what creation throws for the fields they read, and reject any other field', () => {
+    const input = worldInput({ run: { wingman: 5 } });
+    expect(thrownBy(() => modelSet(input))).toMatchObject({ name: 'CoreInputError', path: 'input.run.wingman' });
+    expectRejected(input, 'input.run.wingman');
+    expect(thrownBy(() => instantiableModelIds(asCreateInput(worldInput())))).toMatchObject({ name: 'CoreInputError', path: 'input' });
   });
 });
 

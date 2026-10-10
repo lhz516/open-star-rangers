@@ -8,6 +8,7 @@ import { packageRecordKey, payloadRecordKey } from '../../src/platform/storage/r
 import {
   buildPackageRecord, buildStoredPayload, chargeDeclaredBudget, readGroupInputs, RESOURCE_CACHE_DATABASE,
 } from '../../src/platform/storage/resource-cache-records.ts';
+import { scenarioGroups } from '../../src/workers/import-scenarios.test-support.ts';
 import { PRODUCTION_PACKAGE } from '../../src/workers/production-package.ts';
 import { modelsPackage } from './viewer-observations.ts';
 
@@ -17,9 +18,17 @@ export interface SeededPackage {
   readonly groups: readonly GroupInput[];
 }
 
+let mission: Promise<readonly HeldGroup[]> | undefined;
+
+/**
+ * The P3-04 startable mission package: every group the whole production job converts from the `mission-startable`
+ * disc, whose mission creates a world with each production run configuration (S-09). Converted once per worker process.
+ */
+export const missionPackage = (): Promise<readonly HeldGroup[]> => (mission ??= scenarioGroups('mission-startable'));
+
 /**
  * Seeds only an isolated test context with converted synthetic content under the production identity: the `models`
- * package, or `converted`, such as the canary package (P2-12 S-06). The manifest identity is derived anew for the
+ * package, or `converted`, such as the canary package (P2-12 S-06) or `missionPackage()` (P3-04 S-09). The manifest identity is derived anew for the
  * production basis; payloads are unchanged. Record builders run in Node; the page creates the stored ArrayBuffers. No
  * test modules or alternate app entry are served by preview. Resolves to what it stored.
  */

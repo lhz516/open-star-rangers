@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import type { Page } from '@playwright/test';
 import { button, discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { test, expect } from './support/browser-test.ts';
 import { test as audited } from './support/audited-test.ts';
-import { seedProductionCache } from './support/production-cache.ts';
+import { endPlaceholder, enterMission, expectAdvancingTick, missionEntry, missionFrame } from './support/mission-observations.ts';
+import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 import { entryButton, expectSamples, firstEntry, pictureOf, pictureSamples, solidSamples, viewerDiagnostics } from './support/viewer-observations.ts';
 import { ordinaryFiles } from '../tools/compliance/distribution.ts';
 import { PREVIEW_CONTENT_SECURITY_POLICY } from '../tools/preview-csp.ts';
@@ -18,6 +19,10 @@ import { CHECKER_GREYS } from '../src/render/viewer/viewer-presentation.ts';
 // HTML-replaced Worker script fails the import safely. Production project only.
 // The two Worker script fallback cases run with the P2-12 network audit (subtask 07, AC-08 and AC-10): the test's own
 // replaced script is declared as a test request with its expected status, and nothing else is exempted.
+// P3-04 (docs/plan/p3/04/spec.md, 合成演示退役 and 开发诊断; AC-15 and the production part of AC-22) replaces the synthetic
+// demo with the mission flow, started from the startable mission package seeded into the test's own context, under the
+// policy and the network audit; the build and its source maps hold no development diagnostics or test support, and the
+// production DOM shows no diagnostics panel. The whole production flow is in mission-flow.production.spec.ts.
 
 const WORKER = '**/assets/import-worker-*.js';
 
@@ -32,6 +37,16 @@ async function recordViolations(page: Page): Promise<void> {
 
 const violations = (page: Page) => page.evaluate(() => (window as unknown as { osrViolations: string[] }).osrViolations);
 const workers = (page: Page) => page.evaluate(() => window.osrProbe.snapshot().workers.map(({ entry, viteWorker, type, terminations }) => ({ entry, viteWorker, type, terminations })));
+
+const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
+
+/** The production DOM holds no development diagnostics: no panel, state, log, frame statistics, command editor or export. */
+async function expectNoDiagnostics(page: Page): Promise<void> {
+  expect(await page.evaluate(() => ({
+    elements: document.querySelectorAll('[data-testid="mission-dev-panel"], [data-testid^="dev-"]').length,
+    buttons: [...document.querySelectorAll('button')].map(({ textContent }) => textContent?.trim()).filter(name => name === 'Refresh state' || name === 'Submit command' || name === 'Export recording'),
+  }))).toEqual({ elements: 0, buttons: [] });
+}
 
 let productionSized: Promise<FilePayload[]> | undefined;
 
@@ -111,17 +126,42 @@ for (const [name, fulfill] of [
   });
 }
 
-test('the menu, import page and synthetic demo run under the policy without a violation', async ({ page }) => {
+audited('the menu, import page and mission flow from a restored cache run under the policy and the network audit without a violation, and show no diagnostics', async ({ page }) => {
+  // Converted in Node while the page loads.
+  const mission = missionPackage();
   await recordViolations(page);
-  await page.goto('/');
+  const response = await page.goto('/');
+  expect(response?.headers()['content-security-policy']).toBe(PREVIEW_CONTENT_SECURITY_POLICY);
   await expect(page.getByTestId('original-data-status')).toHaveText('Original game data: None in this browser.');
-  await page.getByRole('button', { name: 'Import original game data', exact: true }).click();
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
-  await page.getByRole('button', { name: 'Start synthetic demo', exact: true }).click();
-  await expect(page.getByTestId('phase')).toHaveText('running');
-  await expect(page.getByTestId('render-status')).toHaveAttribute('data-state', 'ready');
+  await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'no-package');
+  await button(page, 'Import original game data').click();
+  await expect(page.getByRole('heading', { name: 'Import original game data', exact: true })).toBeFocused();
+  await button(page, 'Return to menu').click();
+  await seedProductionCache(page, await mission);
+  await page.reload();
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText(RESTORED, { timeout: 30_000 });
+  await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'eligible');
   await expectNoPlayClaim(page);
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
+
+  const { owner } = await enterMission(page);
+  await expectNoDiagnostics(page);
+  await endPlaceholder(page, 'G-02/1', 'button');
+  await expectNoDiagnostics(page);
+  await button(page, 'Start').click();
+  await endPlaceholder(page, 'G-02/2', 'button');
+  await expectAdvancingTick(page);
+  expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
+  // The mission flow creates no WebGL surface; the flight view is P3-12's.
+  await expect(page.locator('canvas')).toHaveCount(0);
+  expect(await page.evaluate(() => window.osrProbe.snapshot().canvases)).toEqual([]);
+  await expectNoDiagnostics(page);
+  await expectNoPlayClaim(page);
+  await button(page, 'Mission menu').click();
+  await expectNoDiagnostics(page);
+  await button(page, 'Return to main menu').click();
+  await expect(missionEntry(page)).toBeFocused();
+  expect(await workers(page)).toEqual([]);
   expect(await violations(page)).toEqual([]);
 });
 
@@ -136,9 +176,7 @@ test('restores synthetic cached resources through the production menu, renders t
   await page.reload();
   await expect(page.getByTestId('original-data-status')).toContainText('not yet verified');
   await button(page, 'Open saved resources').click();
-  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText([
-    'Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core',
-  ]);
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText(RESTORED);
   await button(page, 'View resources').click();
   await expect(page.getByRole('heading', { name: 'Resource viewer', exact: true })).toBeFocused();
   for (const kind of ['model', 'image', 'layout'] as const) {
@@ -184,18 +222,51 @@ test('restores synthetic cached resources through the production menu, renders t
   expect(await violations(page)).toEqual([]);
 });
 
-test('the build holds one page and no test entry, test support or synthetic catalog', () => {
+/**
+ * Development-only modules (docs/plan/p3/04/spec.md, 开发诊断: 生产边界), each with strings only it puts in a bundle: the
+ * diagnostics panel with its state, event log, frame statistics, command editor and recording export; the frame timing
+ * that measures the session's frames; the recording download, its file adapter and the application version that labels
+ * a recording.
+ */
+const DEVELOPMENT_ONLY: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'src/ui/dev/MissionDevPanel.tsx': ['mission-dev-panel', 'dev-state-run', 'dev-entities', 'dev-log', 'dev-frames', 'dev-command-submit', 'dev-recording-export'],
+  'src/ui/dev/mission-diagnostics.ts': [],
+  'src/ui/dev/event-log.ts': [],
+  'src/ui/dev/frame-stats.ts': [],
+  'src/ui/dev/command-draft.ts': [],
+  'src/ui/dev/entity-inspection.ts': [],
+  'src/ui/dev/recording-export.ts': ['osr-recording-'],
+  'src/app/mission/dev-frame-timing.ts': [],
+  'src/platform/files/file-save.ts': [],
+  'src/platform/files/browser-file-save.ts': ['createObjectURL'],
+  'src/app/app-version.ts': [],
+});
+
+test('the build holds one page and no test entry, test support, synthetic demo or development diagnostics', () => {
   const root = join(import.meta.dirname, '..');
   const dist = join(root, 'dist');
   const files = ordinaryFiles(root, 'dist').map(path => path.slice('dist/'.length));
   expect(files.filter(file => file.endsWith('.html'))).toEqual(['index.html']);
-  const sources = files.filter(file => file.endsWith('.map'))
-    .flatMap(file => (JSON.parse(readFileSync(join(dist, file), 'utf8')) as { sources: string[] }).sources);
+  // Every source as a repository path; a map lists its sources relative to its own directory.
+  const sources = files.filter(file => file.endsWith('.map')).flatMap(file => (JSON.parse(readFileSync(join(dist, file), 'utf8')) as { sources: string[] })
+    .sources.map(source => relative(root, join(dist, dirname(file), source))));
   expect(sources.length).toBeGreaterThan(100);
-  expect(sources.filter(source => /\.test(?:-support)?\.tsx?$|\/e2e\/|app-entry/.test(source))).toEqual([]);
+  // The production mission owner is listed under the same path form the checks below exclude modules by.
+  expect(sources).toContain('src/app/mission/mission-owner.ts');
+  expect(sources.filter(source => /\.test(?:-support)?\.tsx?$|^e2e\/|app-entry/.test(source))).toEqual([]);
+  // The retired P1 demo's chain (合成演示退役) and the development diagnostics are compiled out.
+  expect(sources.filter(source => /^src\/(?:core|render)\/synthetic\/|^src\/.*\/(?:synthetic-[\w-]+|Synthetic\w+)\.tsx?$|^src\/ui\/dev\//.test(source))).toEqual([]);
+  const markers = [MARKER, 'osrTestEntry', 'synthetic-browser', 'synthetic-models', 'import-worker.test-support'];
+  for (const [module, strings] of Object.entries(DEVELOPMENT_ONLY)) {
+    // Each module and string exists in the sources, so its absence from the build is not vacuous.
+    const text = readFileSync(join(root, module), 'utf8');
+    for (const marker of strings) expect(text, `${module} holds ${marker}`).toContain(marker);
+    expect(sources, `the build contains ${module}`).not.toContain(module);
+    markers.push(...strings);
+  }
   for (const file of files.filter(file => /\.(?:js|html)$/.test(file))) {
     const text = readFileSync(join(dist, file), 'utf8');
-    for (const marker of [MARKER, 'osrTestEntry', 'synthetic-browser', 'synthetic-models', 'import-worker.test-support']) {
+    for (const marker of markers) {
       expect(text.includes(marker), `${file} contains ${marker}`).toBe(false);
     }
   }

@@ -76,7 +76,7 @@ describe('flight.combat readiness (CR-12, AC-04)', () => {
   it('is ready with a null player before the player entity exists, beside the motion group it leaves alone', () => {
     const state = testState();
     for (const kindBit of [1, 7, 20]) add(state, kindBit, at(0, 0, kindBit));
-    expect(projectWorld(state).flight).toEqual({ motion: { readiness: 'not-implemented' }, combat: { readiness: 'ready', player: null } });
+    expect(projectWorld(state).flight).toEqual({ motion: { readiness: 'ready', player: null }, combat: { readiness: 'ready', player: null } });
   });
 
   it('is ready with a null player again once the player entity is removed', () => {

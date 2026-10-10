@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "10"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 10 — 画面容器重挂载时重建 owner
@@ -24,7 +24,7 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts)、[App.tsx](../../../../../src/app/App.tsx)。
+- [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[App.tsx](../../../../../src/app/App.tsx)。
 
 ## 验收标准
 
@@ -39,7 +39,7 @@ updated: 2026-10-02
 ## 完成证据
 
 - **缺陷复现：** 修复前，执行回合临时给 App 的画面加 `Profiler` 包裹（结构性 Fast Refresh）后，React 重挂载画面子树并生成新容器，owner effect 只依赖稳定 ref 对象而未重跑：页面 0 个已连接画布，探针记录的 2 个画布均脱离文档，状态仍显示 ready。
-- **修复：** [use-synthetic-demo-owner.ts](../../../../../src/app/composition/use-synthetic-demo-owner.ts) 以容器元素 state 为 effect 依赖并返回 `{owner, containerRef}`，元素为空时不创建 owner，清理时置空 owner 再 dispose；[App.tsx](../../../../../src/app/App.tsx) 只把 `containerRef` 交给画面。
+- **修复：** [use-synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 以容器元素 state 为 effect 依赖并返回 `{owner, containerRef}`，元素为空时不创建 owner，清理时置空 owner 再 dispose；[App.tsx](../../../../../src/app/App.tsx) 只把 `containerRef` 交给画面。
 - **浏览器（修复后最终代码，本机 Chrome 154 / macOS，自有 Vite，页面作用域探针）：** StrictMode 首次挂载只创建 1 个画布（首轮 effect 时容器尚未写入 state）；同一结构性 `Profiler` 编辑后旧画布断开且 `isContextLost()=true`，新容器内 1 个已连接画布，监听净值为一组（1 个 resolution 查询、1 个 ResizeObserver、4 个上下文监听）；Profiler 记录画面子树挂载阶段 mount + 2 次 nested-update，运行 2.2 s（265 次绘制）期间 0 次提交。回归子集（idle/start/add/暂停 draws 不变/布局公式/DPR 2/上下文丢失恢复/restart/exit 像素）与修复前结果一致，无错误。临时编辑全部还原，`cmp` 确认 App 与修复版本一致。
 - **检查：** `pnpm check` 通过（41 个测试文件/1030 个测试、构建）。React 组件与 hook 无 Node 测试入口（`.tsx`/DOM 不进 Node 程序），以浏览器证据为准。
 - **审阅：** rubber-duck 无发现；simplify 采纳“hook 自持容器回调 ref 并返回句柄”“清理直接置空 owner”，未采纳在回调 ref 中直接建 owner（会绕开 effect 清理顺序）。

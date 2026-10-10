@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ownLicense, thirdPartyNotices } from './notices.ts';
+import { ORIGINAL_RIGHTS_BOUNDARY, ownLicense, thirdPartyNotices } from './notices.ts';
 import { fixture } from './test-support.ts';
 import { sha256, type DependencyEvidence } from './report.ts';
 import type { PackageAudit } from './packages.ts';
@@ -34,6 +34,17 @@ describe('complete local licensing texts', () => {
     expect(notice.text).not.toContain(root);
     expect(thirdPartyNotices(root, a, evidence(a))).toEqual(notice);
     expect(ownLicense(root).text).toContain('does not grant rights to original Star Rangers');
+  }));
+  it('states the rights boundary as an independent project without the retired synthetic demo (P3-04)', async () => fixture((root, write) => {
+    write('LICENSE', mit);
+    write('node_modules/fixture-package/LICENSE', mit);
+    const a = audit('MIT');
+    write('node_modules/fixture-package/package.json', metadata('MIT'));
+    for (const { text } of [ownLicense(root), thirdPartyNotices(root, a, evidence(a))]) {
+      expect(text).toContain(`\n${ORIGINAL_RIGHTS_BOUNDARY}\n`);
+      expect(text).toContain('This independent project is not original gameplay or an officially authorized product.');
+      expect(text).not.toMatch(/demo/i);
+    }
   }));
   it('rejects empty/truncated/missing text and missing package evidence', async () => fixture((root, write) => {
     const a = audit('MIT');

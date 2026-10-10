@@ -86,27 +86,56 @@ export class NativeTarget {
     return response.result.value as T;
   }
 
+  /** A trusted click at the centre of the element `selector` matches. */
   async click(selector: string): Promise<void> {
-    const point = await this.evaluate(selector => {
+    await this.#clickAt(await this.evaluate(selector => {
       const element = document.querySelector(selector);
       if (!(element instanceof HTMLElement)) throw new Error(`Missing click target: ${selector}`);
       element.scrollIntoView({ block: 'center' });
       const rect = element.getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    }, selector);
+    }, selector));
+  }
+
+  /**
+   * A trusted click on the enabled button with this accessible name (its label, else its text), once its position held
+   * for two animation frames, within 60, and it is the element at its centre. The page must be visible, as for any real
+   * click.
+   */
+  async press(name: string): Promise<void> {
+    await this.#clickAt(await this.evaluate(async label => {
+      const element = [...document.querySelectorAll('button')].find(candidate => (candidate.getAttribute('aria-label') ?? candidate.textContent) === label);
+      if (!element || element.disabled) throw new Error(`No enabled button named ${label}`);
+      element.scrollIntoView({ block: 'center' });
+      const centre = () => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      };
+      let previous = centre();
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const current = centre();
+        if (current.x === previous.x && current.y === previous.y && element.contains(document.elementFromPoint(current.x, current.y))) return current;
+        previous = current;
+      }
+      throw new Error(`The button named ${label} did not settle where it can be clicked`);
+    }, name));
+  }
+
+  async #clickAt(point: { x: number; y: number }): Promise<void> {
     if (typeof point.x !== 'number' || typeof point.y !== 'number') throw new Error('Invalid click coordinates');
     for (const type of ['mousePressed', 'mouseReleased']) {
       await this.command('Input.dispatchMouseEvent', { type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
     }
   }
 
-  async key(code: 'ArrowRight' | 'KeyP', type: 'keyDown' | 'keyUp', autoRepeat = false): Promise<void> {
-    const right = code === 'ArrowRight';
-    await this.command('Input.dispatchKeyEvent', {
-      type, code, key: right ? 'ArrowRight' : 'p', windowsVirtualKeyCode: right ? 39 : 80,
-      nativeVirtualKeyCode: right ? 39 : 80, autoRepeat,
-      ...(right || type === 'keyUp' ? {} : { text: 'p', unmodifiedText: 'p' }),
-    });
+  /** Sets the files of the file input `selector` to the files at `paths`, as the file chooser would. */
+  async setInputFiles(selector: string, paths: readonly string[]): Promise<void> {
+    const document = await this.command('DOM.getDocument', { depth: 0 });
+    if (!object(document) || !object(document.root) || typeof document.root.nodeId !== 'number') throw new Error('Missing DOM.getDocument root');
+    const found = await this.command('DOM.querySelector', { nodeId: document.root.nodeId, selector });
+    if (!object(found) || typeof found.nodeId !== 'number' || found.nodeId === 0) throw new Error(`Missing file input: ${selector}`);
+    await this.command('DOM.setFileInputFiles', { nodeId: found.nodeId, files: [...paths] });
   }
 
   dispose(): void {
@@ -127,8 +156,8 @@ export async function nativeBrowser(args: readonly string[] = []) {
   });
 }
 
-export async function until<T>(read: () => Promise<T>, accepted: (value: T) => boolean, description: string): Promise<T> {
-  const deadline = Date.now() + 5000;
+export async function until<T>(read: () => Promise<T>, accepted: (value: T) => boolean, description: string, timeout = 5000): Promise<T> {
+  const deadline = Date.now() + timeout;
   let last = await read();
   while (!accepted(last)) {
     if (Date.now() >= deadline) throw new Error(`${description} timed out; last observation: ${JSON.stringify(last)}`);

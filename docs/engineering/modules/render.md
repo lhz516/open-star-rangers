@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-10
 related: [ADR-0015]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/render/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-`render/` 由 P1-07 逐步交付（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：目前有 DOM-free 的 4:3 视口布局、合成帧校验与插值、固定合成相机、合成外观、绘制端口与合成渲染器，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂）；P2-11 新增 `render/viewer/` 的资源查看渲染（见[资源查看渲染](#资源查看渲染)）。
+`render/` 目前有 P1-07 的共用设施（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：DOM-free 的 4:3 视口布局、绘制端口与释放 helper，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂），工程要点见[渲染表面与视口](../README.md#渲染表面与视口)；以及 P2-11 的 `render/viewer/` 资源查看渲染（见[资源查看渲染](#资源查看渲染)）。P1-07 的合成帧、相机、外观与合成渲染器已于 P3-04 随合成演示退役（[R2](../source-structure.md#r2-合成渲染)）；任务画面尚无画布，飞行画面归 P3-12、P3-13。
 
 ## 资源查看渲染
 
@@ -51,5 +51,5 @@ related: [ADR-0015]
   | 相机（三维） | 40° 竖直视场的透视相机，按包围球取景，缩放不移动相机 | 项目选择：查看器的诊断视图，不是原版相机 |
   | 光照（三维） | 默认不受光照，直接显示部件颜色或纹素；可切换为中性光：白色环境光与来自右上前方的白色方向光，强度为 π × 0.4 与 π × 0.6，正对光的面恰为原色。效果没有法线，始终不受光照 | 不是原版光照：原版光照与明暗级归 P3（U-028）。P2-12/21 中原版整体更暗，按 U-028 记录 |
   | 效果颜色（三维） | 无贴图时三个浮点按 RGB 解释，各截断到 [0, 1] 后按 round(v × 255) 量化；无贴图且没有颜色的形状用固定的诊断灰色 128。有贴图时直接显示纹素，源颜色仍以数字列出 | 取值范围与通道含义未确认（P2-06）；诊断灰色不是原版颜色。P2-12/21、30：第一关用到的弹丸记录 0、1、2、6 与原版一致（记录 6 以 `srangers_128` 直接对照）；记录 3、4、5、7、8、9 在切片之外（已确认不使用，见 [executable](../../original/formats/executable.md#weapon-records-and-the-first-missions-shooters-p2-1230)）；没有映射到调色板最近色的证据，不修改 |
-- **表面选项：** [render-surface.ts](../../../src/render/scene/render-surface.ts) 的 `RenderSurfaceOptions` 由画在表面上的渲染逻辑选择，含画布的无障碍名称与渲染器的输出颜色空间。浏览器工厂 `createBrowserWebGLSurface(container, options)` 按它设置画布与渲染器；应用端口 `createSurface(container, options)` 同样接收它。合成演示传 `SYNTHETIC_SURFACE`，即原来的名称与 Three.js 默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`。
+- **表面选项：** [render-surface.ts](../../../src/render/scene/render-surface.ts) 的 `RenderSurfaceOptions` 由画在表面上的渲染逻辑选择，含画布的无障碍名称与渲染器的输出颜色空间。浏览器工厂 `createBrowserWebGLSurface(container, options)` 按它设置画布与渲染器；应用端口 `createSurface(container, options)` 同样接收它。目前只有查看器使用，传 `VIEWER_SURFACE`。
 - **测试替身：** `RecordingSurface` 只记录可见的网格，并按材质上的纹理模拟纹理计数。

@@ -1,4 +1,5 @@
 import { test, expect } from './support/browser-test.ts';
+import { ORIGINAL_RIGHTS_BOUNDARY } from '../tools/compliance/notices.ts';
 import { object } from '../tools/compliance/packages.ts';
 
 test('production preview serves readable full licensing texts and distribution metadata', async ({ page, browser, baseURL }, testInfo) => {
@@ -21,11 +22,15 @@ test('production preview serves readable full licensing texts and distribution m
   expect(own).toContain('MIT License');
   expect(own).toContain('Copyright (c) 2026 Hanz');
   expect(own).toContain('does not grant rights to original Star Rangers');
+  // The rights boundary names the independent project, not the retired synthetic demo (P3-04).
+  expect(own).toContain(ORIGINAL_RIGHTS_BOUNDARY);
+  expect(own).not.toMatch(/demo/i);
   const thirdPartyResponse = await page.goto('/THIRD-PARTY-NOTICES.txt');
   expect(thirdPartyResponse?.status()).toBe(200);
   expect(thirdPartyResponse?.headers()['content-type']).toContain('text/plain');
   const notices = await page.locator('body').innerText();
   for (const identity of shipped) expect(notices).toContain(identity);
+  expect(notices).toContain(ORIGINAL_RIGHTS_BOUNDARY);
   expect(notices).toContain('THIRD-PARTY-LICENSE');
   expect(notices).toContain('Selected obligations: MIT');
   await page.goto('/');

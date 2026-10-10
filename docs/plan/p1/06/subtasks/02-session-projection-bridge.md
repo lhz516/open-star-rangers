@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "02"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 02 — 会话状态绑定与投影采样
@@ -44,8 +44,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-session.ts](../../../../../src/app/session/synthetic-session.ts)（已有，只读复用）：`SyntheticSession.onStatus/currentRun/status`、`SessionRun.onFrame/ownCleanup/uiProjection`、`SessionFrame`。
-- [ControlledHost](../../../../../src/app/session/synthetic-session.test-support.ts)（已有测试支持，仅测试导入）。
+- [synthetic-session.ts](../../../../engineering/source-structure.md#r4-合成会话)（已有，只读复用）：`SyntheticSession.onStatus/currentRun/status`、`SessionRun.onFrame/ownCleanup/uiProjection`、`SessionFrame`。
+- [ControlledHost](../../../../engineering/source-structure.md#r4-合成会话)（已有测试支持，仅测试导入）。
 - 01 计划新增的 store 写入口（本项使用）。
 - 计划新增：`src/ui/game/synthetic-session-bridge.ts`、`src/ui/game/synthetic-session-bridge.test.ts`。
 
@@ -67,8 +67,8 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：实现 [synthetic-session-bridge.ts](../../../../../src/ui/game/synthetic-session-bridge.ts)：`createSyntheticSessionBridge(store, clock, consumers)` 提供 bind/unbind/currentRun/onError，并为 03/04 留出 `SyntheticRunBinding`/`SyntheticRunConsumer` 扩展点（consumer 只能写 addPending/settle）。测试支持 [synthetic-ui.test-support.ts](../../../../../src/ui/game/synthetic-ui.test-support.ts) 组合真实 Session、`ControlledHost`、可控时钟和记录监听的会话包装。
-- 测试：[synthetic-session-bridge.test.ts](../../../../../src/ui/game/synthetic-session-bridge.test.ts) 19 项（UI 目录合计 25 项）通过：
+- 2026-10-02：实现 [synthetic-session-bridge.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)：`createSyntheticSessionBridge(store, clock, consumers)` 提供 bind/unbind/currentRun/onError，并为 03/04 留出 `SyntheticRunBinding`/`SyntheticRunConsumer` 扩展点（consumer 只能写 addPending/settle）。测试支持 [synthetic-ui.test-support.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 组合真实 Session、`ControlledHost`、可控时钟和记录监听的会话包装。
+- 测试：[synthetic-session-bridge.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 19 项（UI 目录合计 25 项）通过：
   - AC-01：绑定 idle 时 status=idle、projection=null、待交付请求为 0；start 立即得到与 `run.uiProjection()` 深相等的 tick 0 投影。晚绑定到已有 marker 的 running/paused 运行时，无需事件即可读到 marker。
   - AC-02：宿主与采样时钟分开控制，依次在 0/99/100/199/200/450/500/560/700 ms 送帧。发布记录精确为 `[[0,0],[5,100],[10,200],[15,450],[16,560]]`：560 是 0 tick 但到期且 tick 16 尚未发布的帧；700 是同 tick 帧，不再写入。NaN、Infinity、非数字与倒退值均成为 consumer 故障，sessionError 与错误出口相同，并保留最后成功投影。
   - AC-03（状态部分）：隐藏通知在同一边界写入 paused/hidden/environmentVisible=false，暂停静止帧立即发布未发布的 tick 2；可见后仍 paused；release 失败后 cleanupFailed 立即可见。store 不含 RenderFrame。

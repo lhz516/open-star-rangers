@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-023]
 ---
 
@@ -29,7 +29,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, U-009, U-021, U-022, U-
   - [content-identity.ts](../../../../src/content/content-identity.ts) 的 `readContentIdentity` 与 `contentIdentityKey`。
   - [rng.ts](../../../../src/core/determinism/rng.ts)（Mulberry32，`value` 为 uint32 ÷ 2³²，可还原 uint32）与 [fnv1a64.ts](../../../../src/core/determinism/fnv1a64.ts)（只接受 ASCII，规范文本须转义非 ASCII）。
   - [errors.ts](../../../../src/core/errors.ts) 只有 `CoreInputError`。
-  - [core/synthetic/](../../../../src/core/synthetic/) 的合成场景与 replay；通用校验 helper（`requireExactRecord`、`readNumber` 等）目前从 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 导出。
+  - [core/synthetic/](../../../engineering/source-structure.md#r1-合成-core) 的合成场景与 replay；通用校验 helper（`requireExactRecord`、`readNumber` 等）目前从 [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 导出。
   - [eslint.config.js](../../../../eslint.config.js) 对 `src/core/**` 的纯度与确定性规则；[engineering-boundaries.test.ts](../../../../tools/engineering-boundaries.test.ts) 的边界回归；目前没有正式模块与合成模块互不依赖的规则。
   - [logic-content.test-support.ts](../../../../src/content/logic/logic-content.test-support.ts) 的合成任务、机型表与僚机名单。
   - [tools/logic-check.ts](../../../../tools/logic-check.ts) 用生产导入作业在本地 CloneCD 上载入任务，是真实内容核对的先例。

@@ -1,202 +1,144 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { button } from './support/app-entry.ts';
 import { test, expect } from './support/browser-test.ts';
-import { diagnostics, focusView, projection, stableAxis } from './support/demo-observations.ts';
-import { image, verifyLayout } from './support/image-observations.ts';
+import {
+  checkedWingman, expectAdvancingTick, expectStableTick, leaveGuards, missionEntry, missionFrame, waitForFrame,
+} from './support/mission-observations.ts';
+import { verifyLayout } from './support/image-observations.ts';
+import { missionPackage, seedProductionCache } from './support/production-cache.ts';
+import { openHeldViewer } from './support/version-4.ts';
+import { viewerDiagnostics } from './support/viewer-observations.ts';
 
-async function isolatedKeys(page: Page): Promise<void> {
-  for (const key of ['n', 'x', 'p', 'ArrowLeft']) await page.keyboard.press(key);
+// Native controls and same-owner resize, in the development and production projects. P3-04 (docs/plan/p3/04/spec.md,
+// 合成演示退役) retires the synthetic demo's key bindings, mover and marker picture and marker commands with it: this
+// build has no game key bindings (P3-05) and no flight view (P3-12). What stays generic moves to the mission screen: the
+// whole flow runs by keyboard on its native controls, keys elsewhere act on nothing, and a window resize keeps the same
+// mission owner and run; the resize of a WebGL picture moves to the resource viewer, the one screen that draws one. The
+// startable mission package is seeded into the test's own context and restored first.
+
+const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
+/** The P1 demo's game keys and arrows; none is bound in this build. */
+const UNBOUND = ['n', 'x', 'p', 'ArrowLeft', 'ArrowRight'];
+
+/** Moves focus with Tab (or Shift+Tab) until `target` has it; fails after `limit` presses. */
+async function tabTo(page: Page, target: Locator, key: 'Tab' | 'Shift+Tab' = 'Tab', limit = 20): Promise<void> {
+  for (let press = 0; press < limit; press++) {
+    if (await target.evaluate(element => element === document.activeElement)) return;
+    await page.keyboard.press(key);
+  }
+  await expect(target).toBeFocused();
 }
 
-test('native controls, trusted movement, Core results and same-owner resize', async ({ page }, testInfo) => {
+/** Seeds the startable mission package, restores it through the real menu and waits until it is held. */
+async function restoreMission(page: Page): Promise<void> {
+  const mission = missionPackage();
   await page.goto('/');
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Start synthetic demo', exact: true })).toBeFocused();
-  await isolatedKeys(page);
-  await expect(page.getByRole('heading', { name: 'Main menu', exact: true })).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Synthetic demo', exact: true })).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Return to menu', exact: true })).toBeFocused();
-  await isolatedKeys(page);
-  await expect(page.getByTestId('phase')).toHaveText('running');
-  await expect(page.getByTestId('results')).toHaveText('None.');
-  await page.keyboard.press('Tab');
-  const view = page.getByRole('region', { name: 'Synthetic view and game key input', exact: true });
-  await expect(view).toBeFocused();
-  await expect(view).toHaveAttribute('aria-describedby', 'synthetic-keyboard-help');
-  await expect(page.locator('#synthetic-keyboard-help')).toContainText('ArrowLeft / ArrowRight');
-  await expect(page.getByTestId('keyboard-status')).toHaveAttribute('data-state', 'active');
+  await seedProductionCache(page, await mission);
+  await page.reload();
+  await button(page, 'Open saved resources').click();
+  await expect(page.getByTestId('resource-statuses').locator('li')).toHaveText(RESTORED, { timeout: 30_000 });
+  await expect(button(page, 'View resources')).toBeFocused();
+}
 
-  const movements = [];
-  for (const [key, direction] of [['ArrowRight', 1], ['ArrowLeft', -1]] as const) {
-    const before = await projection(page);
-    const beforeImage = await image(page);
-    const started = Date.now();
-    await page.keyboard.down(key);
-    await page.waitForTimeout(1100);
-    const after = await projection(page);
-    const afterImage = await image(page);
-    await page.keyboard.up(key);
-    const duration = Date.now() - started;
-    expect(duration).toBeGreaterThanOrEqual(1000);
-    expect((after.x - before.x) * direction).toBeGreaterThan(0.8);
-    expect(beforeImage.mover.count).toBeGreaterThanOrEqual(9);
-    expect(afterImage.mover.count).toBeGreaterThanOrEqual(9);
-    expect(beforeImage.mover.x).not.toBeNull();
-    expect(afterImage.mover.x).not.toBeNull();
-    expect((afterImage.mover.x! - beforeImage.mover.x!) * direction).toBeGreaterThan(0);
-    const samples = await stableAxis(page);
-    movements.push({ key, duration, before, after, beforeImage, afterImage, samples });
+test('native controls run the mission flow by keyboard alone, unbound keys act on nothing, and a resize keeps the same owner and run', async ({ page }, testInfo) => {
+  await restoreMission(page);
+
+  // The menu: the mission entry is the first entry; keys on it other than activation do nothing.
+  await tabTo(page, missionEntry(page), 'Shift+Tab');
+  for (const key of UNBOUND) await page.keyboard.press(key);
+  expect(await missionFrame(page)).toBeNull();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('mission-placeholder')).toHaveAttribute('data-gap', 'G-02/1');
+  await expect(button(page, 'Skip')).toBeFocused();
+  const { owner } = await waitForFrame(page, frame => frame.position === 'intro');
+  await page.keyboard.press('Space');
+
+  // The start page: arrow keys choose a wingman on the native radio group; Enter on Start starts the run.
+  await expect(page.getByRole('heading', { name: 'Mission start', exact: true })).toBeFocused();
+  expect(await checkedWingman(page)).toBe(0);
+  await tabTo(page, page.locator('[data-testid="mission-wingmen"] input:checked'));
+  await page.keyboard.press('ArrowDown');
+  expect(await checkedWingman(page)).toBe(1);
+  await tabTo(page, button(page, 'Start'));
+  await page.keyboard.press('Enter');
+  await waitForFrame(page, frame => frame.position === 'departure');
+  await expect(button(page, 'Skip')).toBeFocused();
+  await page.keyboard.press('Escape');
+
+  // Flight: no key outside a control is bound; the run keeps running.
+  await waitForFrame(page, frame => frame.position === 'flight');
+  await expect(page.getByRole('heading', { name: 'Mission', exact: true })).toBeFocused();
+  const status = page.getByTestId('mission-status');
+  for (const key of UNBOUND) await page.keyboard.press(key);
+  await expect(status).toHaveAttribute('data-phase', 'running');
+  const unbound = await expectAdvancingTick(page);
+  expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
+
+  // A resize changes no owner or run, and the game view area stays the same element.
+  const view = await page.getByTestId('mission-view').elementHandle();
+  const resized = [];
+  for (const size of [{ width: 480, height: 900 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(size);
+    const ticks = await expectAdvancingTick(page);
+    expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
+    expect(await view!.evaluate(element => element.isConnected)).toBe(true);
+    resized.push({ size, ticks });
   }
-  const commandRun = (await projection(page)).run;
-  await page.keyboard.press('n');
-  const results = page.getByTestId('results').locator('li');
-  await expect(results).toHaveCount(1);
-  await expect(results.nth(0)).toHaveAttribute('data-outcome', 'accepted');
-  await expect(page.getByTestId('marker')).not.toHaveText('none');
-  const markerImage = await image(page);
-  expect(markerImage.marker.count).toBeGreaterThanOrEqual(9);
-  expect((await diagnostics(page)).entities).toBe(2);
-  await focusView(page);
-  await page.keyboard.press('x');
-  await expect(results).toHaveCount(2);
-  await expect(results.nth(1)).toHaveAttribute('data-outcome', 'accepted');
-  await expect(page.getByTestId('marker')).toHaveText('none');
-  expect((await image(page)).marker.count).toBe(0);
-  await page.keyboard.press('x');
-  await expect(results).toHaveCount(3);
-  await expect(results.nth(2)).toHaveAttribute('data-outcome', 'rejected');
-  const identities = (await results.allTextContents()).map(text => {
-    const identity = /^run (\d+) · #(\d+)/.exec(text);
-    if (!identity) throw new Error(`Missing result identity: ${text}`);
-    return { run: identity[1], command: Number(identity[2]) };
-  });
-  expect(identities.every(identity => identity.run === commandRun)).toBe(true);
-  expect(new Set(identities.map(identity => identity.command)).size).toBe(3);
-  expect(identities[1].command).toBeGreaterThan(identities[0].command);
-  expect(identities[2].command).toBeGreaterThan(identities[1].command);
-  await expect(page.getByTestId('pending')).toHaveText('None.');
+  expect(await leaveGuards(page)).toBe(1);
 
-  const canvas = await page.locator('canvas').elementHandle();
-  await expect(page.locator('canvas')).toHaveAttribute('aria-label', 'Synthetic demo view (P1 engineering demo, not original graphics)');
-  const run = (await projection(page)).run;
-  const wide = await verifyLayout(page);
-  await page.setViewportSize({ width: 480, height: 900 });
-  await page.waitForTimeout(150);
-  const narrow = await verifyLayout(page);
-  expect((await projection(page)).run).toBe(run);
-  expect(await canvas!.evaluate(node => node.isConnected)).toBe(true);
-  await focusView(page);
-  await page.keyboard.press('n');
-  await expect(results).toHaveCount(4);
-  await expect(results.nth(3)).toHaveAttribute('data-outcome', 'accepted');
-  const narrowImage = await image(page);
-  expect(narrowImage.mover.count).toBeGreaterThan(0);
-  expect(narrowImage.marker.count).toBeGreaterThan(0);
-  expect((await diagnostics(page)).entities).toBe(2);
-
-  await page.getByRole('button', { name: 'Pause', exact: true }).focus();
-  await isolatedKeys(page);
-  await expect(page.getByTestId('phase')).toHaveText('running');
-  await expect(results).toHaveCount(4);
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).focus();
+  // Pause and resume on the one toggle, which keeps focus; the mission menu and the way back by keyboard.
+  await tabTo(page, button(page, 'Pause'));
   await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Start synthetic demo', exact: true })).toBeFocused();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Space');
-  await expect(page.getByRole('heading', { name: 'Import original game data', exact: true })).toBeFocused();
-  await isolatedKeys(page);
-  await expect(page.locator('canvas')).toHaveCount(0);
-  await expect(page.locator('input[type="file"]')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).focus();
+  await expect(status).toHaveAttribute('data-phase', 'paused');
+  await expect(button(page, 'Resume')).toBeFocused();
+  const paused = await expectStableTick(page, 400);
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: 'Import original game data', exact: true })).toBeFocused();
-  await testInfo.attach('interaction-render', { body: JSON.stringify({ movements, identities, markerImage, wide, narrow, narrowImage }), contentType: 'application/json' });
+  await expect(status).toHaveAttribute('data-phase', 'running');
+  await expect(button(page, 'Pause')).toBeFocused();
+  await tabTo(page, button(page, 'Mission menu'));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Mission menu', exact: true })).toBeFocused();
+  await tabTo(page, button(page, 'Return to main menu'));
+  await page.keyboard.press('Space');
+  await expect(missionEntry(page)).toBeFocused();
+  expect(await missionFrame(page)).toBeNull();
+  expect(await leaveGuards(page)).toBe(0);
+  for (const key of UNBOUND) await page.keyboard.press(key);
+  await expect(missionEntry(page)).toBeFocused();
+  expect(await missionFrame(page)).toBeNull();
+  await testInfo.attach('interaction', { body: JSON.stringify({ owner, unbound, resized, paused }), contentType: 'application/json' });
 });
 
-test('pause, focus loss and run changes clear held movement without stale repeat', async ({ page }, testInfo) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Start synthetic demo', exact: true }).click();
-  await expect(page.getByTestId('phase')).toHaveText('running');
-  await focusView(page);
-  await page.evaluate(() => {
-    const view = document.querySelector('[data-testid="synthetic-view"]');
-    if (!view) throw new Error('Missing input view');
-    const log: { code: string; repeat: boolean; trusted: boolean }[] = [];
-    view.addEventListener('keydown', event => {
-      if (!(event instanceof KeyboardEvent)) throw new Error('Expected keyboard event');
-      log.push({ code: event.code, repeat: event.repeat, trusted: event.isTrusted });
-      view.setAttribute('data-test-keys', JSON.stringify(log));
-    });
-  });
-  await page.keyboard.down('ArrowRight');
-  await page.waitForTimeout(250);
-  await page.keyboard.press('p');
-  await expect(page.getByTestId('phase')).toHaveText('paused');
-  const paused = await diagnostics(page);
-  const pausedProjection = await projection(page);
-  await page.waitForTimeout(400);
-  expect((await diagnostics(page)).draws).toBe(paused.draws);
-  expect((await projection(page)).tick).toBe(pausedProjection.tick);
-  await focusView(page);
-  await page.keyboard.press('p');
-  // A second down without up produces a trusted repeat, not a fresh press.
-  await page.keyboard.down('ArrowRight');
-  const resumedSamples = await stableAxis(page);
-  await page.keyboard.up('ArrowRight');
-  const beforeFresh = await projection(page);
-  await page.keyboard.down('ArrowRight');
-  await page.waitForTimeout(250);
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).focus();
-  const blurred = await stableAxis(page);
-  expect(Number(blurred[0].x) - beforeFresh.x).toBeGreaterThan(0.1);
-  await expect(page.getByTestId('phase')).toHaveText('running');
-  await focusView(page);
-  await page.keyboard.down('ArrowRight');
-  const repeated = await stableAxis(page);
-  await page.keyboard.up('ArrowRight');
-  const keys = JSON.parse(await page.getByTestId('synthetic-view').getAttribute('data-test-keys') ?? 'null') as { code: string; repeat: boolean; trusted: boolean }[];
-  expect(keys.every(key => key.trusted)).toBe(true);
-  expect(keys.filter(key => key.code === 'ArrowRight' && key.repeat)).toHaveLength(2);
-
-  await page.getByRole('button', { name: 'Pause', exact: true }).click();
-  await expect(page.getByTestId('phase')).toHaveText('paused');
-  await page.getByRole('button', { name: 'Resume', exact: true }).click();
-  const buttonSamples = await stableAxis(page);
-  const oldRun = (await projection(page)).run;
-  await focusView(page);
-  await page.keyboard.down('ArrowLeft');
-  await page.getByRole('button', { name: 'Restart', exact: true }).click();
-  await expect(page.getByTestId('run-id')).not.toHaveText(oldRun);
-  await focusView(page);
-  await page.keyboard.down('ArrowLeft');
-  const restartSamples = await stableAxis(page);
-  expect(restartSamples.every(sample => Number(sample.x) === 0)).toBe(true);
-  await page.keyboard.up('ArrowLeft');
-  await expect(page.getByTestId('marker')).toHaveText('none');
-  await expect(page.getByTestId('results')).toHaveText('None.');
-  const restartRun = (await projection(page)).run;
-  await focusView(page);
-  await page.keyboard.down('ArrowLeft');
-  await page.getByRole('button', { name: 'Exit', exact: true }).click();
-  await expect(page.getByTestId('phase')).toHaveText('idle');
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.getByTestId('run-id')).not.toHaveText(restartRun);
-  await focusView(page);
-  await page.keyboard.down('ArrowLeft');
-  const startSamples = await stableAxis(page);
-  expect(startSamples.every(sample => Number(sample.x) === 0)).toBe(true);
-  await page.keyboard.up('ArrowLeft');
-  const oldCanvas = await page.locator('canvas').elementHandle();
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
-  expect(await oldCanvas!.evaluate(canvas => canvas.isConnected)).toBe(false);
-  await page.getByRole('button', { name: 'Start synthetic demo', exact: true }).click();
-  await expect(page.getByTestId('run-id')).toHaveText('1');
-  const ownerSamples = await stableAxis(page);
-  expect(ownerSamples.every(sample => Number(sample.x) === 0)).toBe(true);
-  await page.getByRole('button', { name: 'Return to menu', exact: true }).click();
-  await testInfo.attach('clear-axis', {
-    body: JSON.stringify({ paused, pausedProjection, resumedSamples, blurred, repeated, keys, buttonSamples, restartSamples, startSamples, ownerSamples }),
-    contentType: 'application/json',
-  });
+test('a window resize keeps the viewer\'s canvas and renderer, redraws the picture and lays it out by the 4:3 rule', async ({ page }, testInfo) => {
+  await restoreMission(page);
+  await openHeldViewer(page);
+  const entry = page.getByTestId('viewer-entries').getByRole('button').first();
+  await entry.click();
+  await expect(entry).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await viewerDiagnostics(page)).state).toBe('ready');
+  const canvas = await page.getByTestId('viewer-view').locator('canvas').elementHandle();
+  const first = { diagnostics: await viewerDiagnostics(page), layout: await verifyLayout(page) };
+  let previous = first;
+  const resized = [];
+  for (const size of [{ width: 480, height: 900 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(size);
+    // Each resize changes the layout, which the canvas follows by the rule.
+    let layout = previous.layout;
+    await expect(async () => {
+      layout = await verifyLayout(page);
+      expect(layout.expected).not.toEqual(previous.layout.expected);
+    }).toPass({ timeout: 5_000 });
+    // The same renderer, holding as much, draws the same item again at the new size.
+    let diagnostics = previous.diagnostics;
+    await expect.poll(async () => (diagnostics = await viewerDiagnostics(page)).layout).toEqual(layout.expected);
+    expect(diagnostics).toMatchObject({ state: 'ready', item: first.diagnostics.item, gpu: first.diagnostics.gpu });
+    expect(diagnostics.draws).toBeGreaterThan(previous.diagnostics.draws);
+    expect(await canvas!.evaluate(element => element.isConnected)).toBe(true);
+    previous = { diagnostics, layout };
+    resized.push({ size, ...previous });
+  }
+  await button(page, 'Return to menu').click();
+  await expect(button(page, 'View resources')).toBeFocused();
+  expect(await canvas!.evaluate(element => element.isConnected)).toBe(false);
+  await testInfo.attach('viewer-resize', { body: JSON.stringify({ first, resized }), contentType: 'application/json' });
 });

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0006, ADR-0012]
 ---
 
@@ -49,17 +49,17 @@ P1-04 已交付宿主无关的合成 Runtime，但调用者仍须手动推进 `f
 | 计划新增 `src/app/synthetic-session.ts` 及同目录测试 | 控制器、运行身份、控制通道、消费者边界与资源释放；目前不存在 |
 | 计划新增 `src/app/session-host.ts`、`src/app/session-errors.ts` | DOM-free 宿主端口和会话错误契约；目前不存在，具体拆分由 goal 核实 |
 | 计划新增 `src/platform/browser-session-host.ts` | rAF/可见性/页面事件适配；platform 目录目前不存在，不是把浏览器逻辑放入 Core |
-| [synthetic-runtime.ts](../../../../src/app/runtime/synthetic-runtime.ts)、[fixed-step-clock.ts](../../../../src/app/runtime/fixed-step-clock.ts)、[synthetic-event-bus.ts](../../../../src/app/runtime/synthetic-event-bus.ts)（已有） | 增加会话内部所需的最小重置/清理操作；不改变没有调用这些操作时的 P1-04 行为 |
-| [Core 场景](../../../../src/core/synthetic/synthetic-scene.ts)、[replay](../../../../src/core/synthetic/synthetic-replay.ts)（已有） | 只读复用输入、事件、projection、录制与重放，不增加生命周期字段 |
+| [synthetic-runtime.ts](../../../engineering/source-structure.md#r3-合成-runtime)、[fixed-step-clock.ts](../../../../src/app/runtime/fixed-step-clock.ts)、[synthetic-event-bus.ts](../../../engineering/source-structure.md#r3-合成-runtime)（已有） | 增加会话内部所需的最小重置/清理操作；不改变没有调用这些操作时的 P1-04 行为 |
+| [Core 场景](../../../engineering/source-structure.md#r1-合成-core)、[replay](../../../engineering/source-structure.md#r1-合成-core)（已有） | 只读复用输入、事件、projection、录制与重放，不增加生命周期字段 |
 | [App](../../../../src/app/App.tsx)、[main](../../../../src/main.tsx)（已有） | 不接线，不更改生产页面 |
 
 ## 当前实现与依据
 
-- [SyntheticRuntime](../../../../src/app/runtime/synthetic-runtime.ts) 已提供 `frame`、`submitCommand`、`setInput`、`on/onAny`、`renderFrame`、`uiProjection`、`exportRecording`。内部私有持有场景、时钟、命令队列和总线；消费者没有 Core step 或发布事件入口。
+- [SyntheticRuntime](../../../engineering/source-structure.md#r3-合成-runtime) 已提供 `frame`、`submitCommand`、`setInput`、`on/onAny`、`renderFrame`、`uiProjection`、`exportRecording`。内部私有持有场景、时钟、命令队列和总线；消费者没有 Core step 或发布事件入口。
 - [FixedStepClock](../../../../src/app/runtime/fixed-step-clock.ts) 只允许时间单调不减，没有 reset；继续运行若直接传新宿主时间，会把间隔当成长帧。因此本任务须提供保持世界不变的时钟重新锚定能力，不能靠 5 tick 上限假装“没有后台补跑”。
-- [SyntheticEventBus](../../../../src/app/runtime/synthetic-event-bus.ts) 有幂等取消、帧内增删订阅和同步错误汇总，但没有清空全部订阅的生命周期入口。[GameRuntimeError](../../../../src/app/runtime/runtime-errors.ts) 的四种 kind 不表达会话失效状态或资源清理批次，保持其既有语义，新增会话边界错误。
+- [SyntheticEventBus](../../../engineering/source-structure.md#r3-合成-runtime) 有幂等取消、帧内增删订阅和同步错误汇总，但没有清空全部订阅的生命周期入口。[GameRuntimeError](../../../../src/app/runtime/runtime-errors.ts) 的四种 kind 不表达会话失效状态或资源清理批次，保持其既有语义，新增会话边界错误。
 - [P1-04 spec](../04/spec.md) 明确把浏览器调度、暂停/继续、清键与恢复交给本任务；其正常帧、commandId、帧末事件及故障成功前缀仍有效。会话控制器不是第二个模拟器。
-- [事件测试](../../../../src/app/runtime/synthetic-runtime-events.test.ts)已有监听器产生后续命令、同步失败不回滚和重入证据；[故障测试](../../../../src/app/runtime/synthetic-runtime-fault.test.ts)已有 step 前注入及可 replay 的成功前缀，复用这类方法而非提供可编辑世界的测试入口。
+- [事件测试](../../../engineering/source-structure.md#r3-合成-runtime)已有监听器产生后续命令、同步失败不回滚和重入证据；[故障测试](../../../engineering/source-structure.md#r3-合成-runtime)已有 step 前注入及可 replay 的成功前缀，复用这类方法而非提供可编辑世界的测试入口。
 - [ADR-0006](../../../decisions/ADR-0006-core-returns-events.md)冻结 Core 返回事件/Runtime 分发；[总计划 §5](../../master-plan.md#5-状态管理与通信约定)冻结控制与游戏命令分离；[§8](../../master-plan.md#8-浏览器运行存档与隐私)要求后台自动暂停、清瞬时输入与校准时钟。回前台是否自动继续、暂停是否持续渲染尚未规定，本草案在技术决定中选择。
 - [工程约定](../../../engineering/README.md)与[package.json](../../../../package.json)已有 Node Vitest 和 `pnpm check`。目前没有 Playwright 项目依赖/脚本、DOM 测试 runner 或平台适配器；不能把计划新增的浏览器验证说成已可通过 `pnpm test:e2e` 运行。
 
@@ -205,7 +205,7 @@ P1-04 已交付宿主无关的合成 Runtime，但调用者仍须手动推进 `f
 | 浏览器宿主创建 | 计划新增 `createBrowserSessionHost()`，返回 SessionHost；不在模块导入时安装监听或启动 rAF | platform；实际监听在 subscribeLifecycle 时安装并撤销，宿主策略仍归 app |
 | 宿主通知 | `{type:'visibility',visibility}`、`{type:'pagehide'}`、`{type:'pageshow',visibility}`；浏览器适配器发出 | platform 只报告环境，不持有 Core、策略或单独游戏循环 |
 | `GameSessionError` | 三种 kind 与字段见错误节；onError 签名 `(error:GameSessionError)=>undefined` | app；公开错误可观察，不在 Core 插入宿主通知 |
-| Core/Runtime 既有数据 | `MoveInput`、`Command`、`DomainEvent`、`SyntheticUiProjection`、`SyntheticRenderState`、`RenderFrame`、`SyntheticRecording` | 分别复用 [Core](../../../../src/core/synthetic/synthetic-scene.ts)、[Runtime](../../../../src/app/runtime/synthetic-runtime.ts)、[replay](../../../../src/core/synthetic/synthetic-replay.ts)，不重新定义 |
+| Core/Runtime 既有数据 | `MoveInput`、`Command`、`DomainEvent`、`SyntheticUiProjection`、`SyntheticRenderState`、`RenderFrame`、`SyntheticRecording` | 分别复用 [Core](../../../engineering/source-structure.md#r1-合成-core)、[Runtime](../../../engineering/source-structure.md#r3-合成-runtime)、[replay](../../../engineering/source-structure.md#r1-合成-core)，不重新定义 |
 
 生命周期实现可以在 app 内为 Runtime 增加以下显式生命周期操作：重新锚定时钟、折叠状态对、清空队列与轴、关闭订阅，并返回被取消的 ID 供控制器通知。
 - 这些操作在 Runtime faulted 后仍可调用。

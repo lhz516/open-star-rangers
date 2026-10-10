@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "09"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 09 — 完整 UI 指令闭环最终对齐
@@ -36,7 +36,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - [spec](../spec.md)、[goal](../goal.md) 与 01–08 子任务文档。
-- 01–07 交付的 `src/ui/`、`src/app/composition/`、[App.tsx](../../../../../src/app/App.tsx)，以及只读核验的 [Core](../../../../../src/core/synthetic/synthetic-scene.ts)、[Session](../../../../../src/app/session/synthetic-session.ts) 与 [replay](../../../../../src/core/synthetic/synthetic-replay.ts)。
+- 01–07 交付的 `src/ui/`、`src/app/composition/`、[App.tsx](../../../../../src/app/App.tsx)，以及只读核验的 [Core](../../../../engineering/source-structure.md#r1-合成-core)、[Session](../../../../engineering/source-structure.md#r4-合成会话) 与 [replay](../../../../engineering/source-structure.md#r1-合成-core)。
 - [package.json](../../../../../package.json)、[pnpm-lock.yaml](../../../../../pnpm-lock.yaml)。
 
 ## 验收标准
