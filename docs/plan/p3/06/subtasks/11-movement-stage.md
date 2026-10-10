@@ -42,6 +42,7 @@ updated: 2026-10-10
 - `src/core/systems/movement*.ts`：运动阶段（新建）与测试。
 - `src/core/rules/**`：积分与旋转纯函数（新建）与测试。
 - `src/core/world/**`：位姿写回与故障所需的最小改动。
+- `src/core/systems/spawn.test.ts`、`src/core/projections/render-state.test.ts`、`src/core/replay/recording.test.ts`、`src/core/replay/snapshot.test.ts`：活动实体开始运动后，修正假定活动实体不动的既有测试（只改测试；2026-10-10 协调者按 scope-request 加入）。
 
 ## 验收标准
 
