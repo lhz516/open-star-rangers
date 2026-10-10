@@ -94,6 +94,8 @@ updated: 2026-10-10
 - `src/core/systems/spawn.test.ts`：Render State 新成员对应的断言更新。
 - `src/core/world/create-world.test.ts`：Render State `clock` 对应的断言更新。
 - `src/core/rules/flight-state.test.ts`：P3-06 测试辅助的类型标注随 `MovementBlock` 联合收窄为 `SteeredMovementBlock`（不改行为）。
+- `src/core/systems/movement.ts`：P3-06 的模式分派为 `linear`、`spinning` 增加 Core 故障分支（22 之前不可达）。
+- `src/core/systems/movement.test.ts`：一个用例改用有战斗类型的种类（种类 20）以到达原断言的故障。
 
 ## 验收标准
 
