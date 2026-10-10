@@ -36,7 +36,9 @@ updated: 2026-10-10
 - `src/app/ports.ts`、`src/app/browser-ports.ts`、`src/app/app-entry.test-support.tsx`、`src/app/MissionScreen.tsx`
 - `src/app/composition/**`
 - `src/ui/mission/MissionPage.tsx`、`src/ui/mission/MissionShell.tsx`、`src/ui/mission/StartConfigPage.tsx`
+- `src/ui/mission/InputNotices.tsx`、`src/ui/mission/mission-copy.ts`、`src/ui/mission/mission-copy.test.ts`：接通后“没有游戏控件”的骨架说明不再成立，能力与地图状态的文字也放在这里（2026-10-10 协调者依 23 的报告加入）。
 - `e2e/support/app-entry.ts`
+- `e2e/interaction-render.spec.ts`：接通输入后进入飞行的焦点改落输入区，原用例断言标题焦点（同上）。
 
 ## 验收标准
 
