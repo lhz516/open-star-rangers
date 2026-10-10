@@ -92,6 +92,8 @@ updated: 2026-10-10
 - `src/core/replay/recording.ts`：录制会话的输入。
 - `src/core/replay/recording.test.ts`：录制测试。
 - `src/core/replay/snapshot.test.ts`：新初值进入快照、静态规则数据不进快照的测试。
+- `docs/original/formats/craft.md`：§3.8、§4.4 载入变换的指令级算术（已确认，代码）。
+- `docs/original/formats/executable.md`：H7、T10 与实例化中点测试、点积、归一化与船体常量类型的指令级事实（已确认，代码）。
 
 ## 验收标准
 
