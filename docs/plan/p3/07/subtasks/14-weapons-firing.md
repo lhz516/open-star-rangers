@@ -67,7 +67,8 @@ updated: 2026-10-10
 - `src/core/systems/commands.test.ts`：`fire`、`cycle-main-weapon`、`select-missile` 不再是未实现命令、导弹锁定入口对应的断言更新。
 - `src/core/systems/flight-control.test.ts`：受武器命令影响的断言更新。
 - `src/core/world/world.test.ts`：武器命令结果的断言更新。
-- `src/core/systems/pipeline.test.ts`：请求路由表中两条 `launch` 占位故障行的删除（构造已实现）。
+- `src/core/systems/pipeline.ts`：`RequestQueue` 的 `defer`/`release`（玩家命令的发射请求排在 P3-06 的 control/match 请求之后，按原版 T3 的帧内次序），`updatePlayerControls` 在玩家更新之后释放。
+- `src/core/systems/pipeline.test.ts`：请求路由表中两条 `launch` 占位故障行的删除（构造已实现），以及 `defer`/`release` 的测试。
 - `docs/original/formats/executable.md`：W7、W9、W11 的指令级事实（已确认，代码；只记结构，不记数值）。
 
 ## 验收标准
