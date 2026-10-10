@@ -44,6 +44,7 @@ updated: 2026-10-10
 - `src/core/systems/flight-control*.ts`：命令与操纵应用（新建）及测试。
 - `src/core/rules/**`：操纵与油门纯函数（新建）及测试。
 - `src/core/world/**`：控制状态读写所需的最小改动。
+- `src/core/projections/render-state.test.ts`、`src/core/replay/replay.test.ts`：输入开始生效后，修正假定没有规则处理输入的既有测试（只改测试；2026-10-10 协调者按 scope-request 加入）。
 
 ## 验收标准
 
