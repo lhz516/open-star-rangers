@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | completed |
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | in-progress |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
