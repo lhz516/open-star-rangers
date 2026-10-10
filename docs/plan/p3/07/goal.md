@@ -96,9 +96,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [04-damage-energy-research.md](./subtasks/04-damage-energy-research.md) | — | completed |
 | [05-parked-engagement-research.md](./subtasks/05-parked-engagement-research.md) | — | completed |
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
-| [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | pending |
+| [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | in-progress |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | pending |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | blocked |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
@@ -127,6 +127,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 并行执行的 worker 分支：** 本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此 worker 不使用 `exec/p3-07-NN` 分支与 `<primary>.worktrees/exec-p3-07-NN` 目录，而是使用应用为每个 worker 会话创建的 worktree 与分支（基于认领提交，`local` 由仓库的会话脚本链接）。其余照 execute-goal 的并行规则：协调者认领、逐个以 `Worker-Commit:` 拖车集成并清理。协调者在本会话中记录子任务与 worker 会话、分支的对应关系。
 - **2026-10-10 — 以 P3-06 为共享契约的基础：** P3-06 的 spec 与 goal 已获批并在并行执行，其检查点 A 修订 P3-02，其子任务 09、10 实现 `craftInfo` 输入、实体飞行状态与玩家目标引用。按用户授权取推荐方案：08 等待并合并 P3-06 的检查点 A，11、12 等待并合并 P3-06 的 09、10，本任务在其上增补（见跨任务前提）。依赖不变；等待期间按 execute-goal 记为 blocked，写明恢复条件。
 - **2026-10-10 — 原版运行改用模拟器内输入（计划）：** P3-06 新增其子任务 22，为 `tools/baseline/` 增加经配方声明并记录的模拟器内输入（`AUTOTYPE` 进入路线、BIOS 键盘缓冲区定时按键、摇杆偏转），不经宿主输入。其烟测通过并集成到 P3-06 分支后，协调者把该分支合并到本 goal 分支，并把 09、26 的执行方式改为自动，由 agent 用该工具完成需要游戏操作的运行（射击、选目标、导弹与能量按键按 01、02 的键码以定时按键施加）。不可行时 09、26 保持需用户，按恢复条件记为 blocked。P3-06 的 07 将建立 B-008，本任务的行为文档按 10 的规则取下一个未用编号，协调者届时同步 10、26 的写入范围。
+- **2026-10-10 — Subtask 09 blocked:** 需要在 DOSBox-X 中进行游戏操作，而本机 Computer Use 无法送达按键，用户在执行期间不可用。
+  Evidence: [运行时测量指南](../../../guides/runtime-measurement.md#角色单一会话与本机限制)记录的本机限制；用户 2026-10-10 说明接下来几小时无法操作；P3-06 的子任务 22（模拟器内输入）在其分支上进行中，尚未集成。
+  Affected acceptance: 09 全部验收项；经 10 影响 AC-16 的判据，经 26、27 影响 AC-15（运行时部分）与 AC-16。
+  Resume when: P3-06 的子任务 22 烟测通过并集成到其分支，协调者把该分支合并到本 goal 分支并把 09 改为自动；或用户可以在键盘上操作。
 
 ## 审批
 
