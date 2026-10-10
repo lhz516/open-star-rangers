@@ -337,6 +337,44 @@ class RecipeTests(unittest.TestCase):
             with self.subTest(code=code):
                 self.assertRejected(code, self.stimuli(change=change))
 
+    def register_field(self, change=None, pause="start"):
+        def apply(d):
+            d["fields"].append({"id": "subject", "address": {"register": "ESI", "offset": 0x10, "pointers": [8]},
+                                "type": "u32", "unit": "count"})
+            for item in d["pauses"]:
+                if item["id"] == pause:
+                    item["fields"].append("subject")
+            if change:
+                change(d)
+        return self.mutated(apply)
+
+    def test_register_relative_fields(self):
+        recipe = parse_recipe(text(self.register_field()))
+        subject = recipe.fields["subject"].address
+        self.assertEqual((subject.register, subject.object, subject.offset, subject.pointers), ("ESI", None, 0x10, (8,)))
+        self.assertIsNone(recipe.fields["ticks"].address.register)
+        self.assertEqual(recipe.objects(), frozenset({4}))
+        self.assertIn(("start", "subject"), recipe.planned())
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(scenario_recipe(SHA))).fingerprint)
+        for offset in (-0x10000, 0xFFFF):
+            self.assertEqual(parse_recipe(text(self.register_field(
+                lambda d: d["fields"][-1]["address"].update(offset=offset)))).fields["subject"].address.offset, offset)
+        cases = (
+            ("recipe-address-invalid", lambda d: d["fields"][-1]["address"].update(object=4)),
+            ("recipe-address-invalid", lambda d: d["fields"][-1]["address"].pop("register")),
+            ("recipe-address-invalid", lambda d: d["fields"][-1]["address"].update(offset=0x10000)),
+            ("recipe-address-invalid", lambda d: d["fields"][-1]["address"].update(offset=-0x10001)),
+            ("recipe-address-invalid", lambda d: d["fields"][-1]["address"].update(pointers=[-1])),
+            ("recipe-type-invalid", lambda d: d["fields"][-1]["address"].update(register=1)),
+            ("recipe-value-invalid", lambda d: d["fields"][-1]["address"].update(register="EIP")),
+            ("recipe-key-missing", lambda d: d["fields"][-1]["address"].pop("offset")),
+            ("recipe-budget-exceeded", lambda d: d["fields"][-1]["address"].update(pointers=[0, 0, 0])),
+        )
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.register_field(change))
+        self.assertRejected("recipe-reference-invalid", self.register_field(pause="end"))  # a VRT stop has none
+
     def test_source_verification(self):
         recipe = parse_recipe(text(scenario_recipe(SHA)))
         verify_source(recipe, "synthetic-1", SHA)

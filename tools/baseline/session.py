@@ -32,8 +32,7 @@ from pathlib import Path
 from debugger import Debugger, DebuggerPort
 from inputs import KEY_BOUNDS, KEY_POINTERS, SHIFT_FLAGS, Write, key_writes, shift_writes
 from le_image import LeImage
-from locate import (UINT32_END, AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address,
-                    prove_mapping)
+from locate import AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address, prove_mapping
 from processes import TERM_GRACE, PtyTransport, emulators, process_names
 from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, TEXT_LIMIT, Protection, copy_writes, game_config,
                      override_game_config, override_settings, parse_manifest, private_config, private_copy,
@@ -574,10 +573,19 @@ class Run:
                 del config[key]
         return mission, config
 
+    def stop_with_registers(self, debugger, startup, pause, stimuli):
+        """Stops at the pause; the register pane must show every register its fields and device stimuli address."""
+        registers, stop = self.stop_at(debugger, startup, pause)
+        needed = {self.recipe.fields[name].address.register for name in pause.fields}
+        needed.update(self.recipe.devices[item.device].register for item in stimuli if item.kind == "device")
+        if not needed - {None} <= registers.values.keys():
+            raise BaselineError("debugger-unparsed", "registers")
+        return registers, stop
+
     def take_pause(self, debugger, startup, pause, budget):
         stimuli = self.recipe.pause_stimuli(pause.id)
         if not pause.fields:  # a stop without readings: nothing to confirm, only its stimuli to apply
-            registers, stop = self.stop_at(debugger, startup, pause)
+            registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli)
             base = f"pauses/{pause.id}"
             (self.paths.run_dir / base).mkdir(mode=0o700)
             try:
@@ -588,7 +596,7 @@ class Run:
             return
         attempt = 0
         while True:
-            registers, stop = self.stop_at(debugger, startup, pause)
+            registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli)
             answer = self.confirm(pause, attempt)
             if answer[0] == "confirm":
                 break
@@ -610,7 +618,7 @@ class Run:
             if context is None:
                 raise BaselineError("stop-unverified", pause.id)
             mapping = self.reverify(port, context, startup, budget)
-            reads = collect_pause(self.recipe, pause.id, mapping, port, budget)
+            reads = collect_pause(self.recipe, pause.id, mapping, port, budget, registers.values)
             after = debugger.fresh_registers()
             stop["registersUnchangedAfterReads"] = after.values == registers.values
             stop["context"] = context.to_json()
@@ -713,12 +721,9 @@ class Run:
         if device.object is not None:
             linear = mapping.linear(device.object, device.offset, device.size)
         else:
-            relative = registers.values[device.register] + device.offset
-            space = context.space
-            if relative < 0 or relative + device.size - 1 > space.limit or space.base + relative + device.size > \
-                    UINT32_END:
+            linear = context.space.linear(registers.values[device.register] + device.offset, device.size)
+            if linear is None:
                 raise BaselineError("stimulus-rejected", "device-out-of-range")
-            linear = space.base + relative
         return (Write("device", linear, struct.pack(FORMATS[device.type], stimulus.value)),)
 
     def input_bytes(self, port, linear, size, budget, bios, code="stimulus-rejected"):

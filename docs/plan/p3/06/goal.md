@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | completed |
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | completed |
 | [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | completed |
-| [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
+| [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | completed |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
@@ -134,6 +134,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 19 完成：** core 分册与源码结构按 09–16 的集成代码同步（输入、阶段、请求、事件、版本、新模块、项目规则、已知差异），并写明对 P3-03、P3-04、P3-05、P3-07–P3-14 的交接；在合并 main 后的文档上写入，P3-04 的条目保留，24 将改变的 app/ui 行为未写入。交 20（可选）：spec 实例化扩展第 3 步与 P3-02 修订 D-08 写 `0x68050` 抽取“0–3 次”，Core 只能抽 0–2 次（原版 +0x4C 路径在 Core 中不可达），core 分册已说明，spec 可补一句澄清，行为不变。
 - **2026-10-10 — 24 完成，合并后的分支恢复为绿：** 任务开始从同一资源包解码唯一的 craft-info 作为 `craftInfo`（解码失败按 `rejected` 报告，缺 craft-info 的包为 `package-incomplete`，任务资格与诊断不读 craft-info）；事件总线与开发事件日志列出四个新事件；会话桥改用拆分后的 `flight` 分区；`replay-check` 从同包读取 craft-info。共用的生产结构合成 craft-info 的 +0x0C 改为满足 Core 语义检查的值（原值被所有任务场景拒绝）；replay-check 的“其他规则版本”用例改用 `RULES_VERSION + 1`。`pnpm check` 与完整 `pnpm test:e2e`（196 项）通过。待办：`docs/guides/tools.md` 录制重放核对一节的两处说明（解码顺序加入 craft-info；`content-failed` 含 craft-info）与 07 的写入范围重叠，07 集成后由协调者补入（见 24 的完成证据）。
 - **2026-10-10 — 总计划措辞一项已有用户决定（待文档集成）：** P3-05 会话转告，用户在 P3-05 中明确决定“先做键盘，不做游戏手柄或其他输入”。P3-05 据此在其工作树起草 ADR-0018（keyboard-flight-controls），并同步总计划 §1.2/§13；尚未提交或集成。范围只允许明确标注的项目键盘操纵，不批准具体绑定，也不放宽运动对照。本 spec 未决事项中“总计划措辞是否以 ADR 更正，留待用户”一项改为“已有用户决定，由 P3-05 的 ADR-0018 集成”；本 goal 不另写 ADR，也不合并该工作树，由 20 在最终对齐中按此记录核对。
+- **2026-10-10 — 07 完成（交 08、17）：** B-008 写定测量方案（数值判据留给 08）；预实验 6 次完整运行与 3 次有缺口的运行（登记在被忽略的 `local/research/p3-06/runtime/analysis/runs.md`），全部只用模拟器内输入。91 对同帧运动前后都由独立求值器按就近舍入逐位再现（37 个可区分对无一与向零一致，仅作诊断，U-009 留给 17）；1 秒窗口按固定 2 单位步长推进时，只含 0/2 单位帧的窗口逐位一致，含 4 单位帧时位置差与行方向差有界（数值见 B-008 预实验）；首次运动的步长很长，速度辅助须在首次可操纵更新的那一次轮询关闭；试键结论写入键位表与 U-011；工具新增寄存器寻址的字段（R-05b 读取停放行进与停放切换中被处理的对象）。交 08：误差预算输入在 `analysis/summary.md`。交 17：方案、操作程序与配方生成脚本在同一目录；只在预实验中观察到的原版事实留在 B-008 的预实验一节，待 17 的正式运行后再写入 executable 与 U-009。
 
 ## 审批
 

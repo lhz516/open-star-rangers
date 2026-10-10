@@ -59,6 +59,7 @@ class FakeDebugger:
         self.exited = False
         self.registers = {"EAX": 0, "EBX": 0x63, "ECX": 2, "EDX": 0x3DA, "ESI": 0xB0, "EDI": 0, "EBP": 0x2000,
                           "ESP": 0x1FF0}
+        self.hide_registers = set()  # general registers the register pane leaves unreadable
         self.pfi = 100.0
         self.render()
 
@@ -181,6 +182,8 @@ class FakeDebugger:
         rows[3] = f"ECX={r['ECX']:08X}  EBP={r['EBP']:08X}  ss: b:00000000 type:12 parbg    PAGE  IOPL0  CPL0"
         rows[4] = f"EDX={r['EDX']:08X}  ESP={r['ESP']:08X}      l:FFFFFFFF dpl : 0 10011    cc={self.commands:<8d} RUN"
         rows[5] = f"ST0=00000.00  ST1=00000.00  ST2=00000.00  ST3=00000.00      pfi={self.pfi:.9f}"
+        for name in self.hide_registers:
+            rows[1:5] = [row.replace(f"{name}={r[name]:08X}", f"{name}=--------") for row in rows[1:5]]
         rows[7] = "---(Data view (virtual)                 )---"
         shown = self.scenario.get("dv_rows", {}).get(self.data_view, DV_ROWS)
         for row in range(shown):

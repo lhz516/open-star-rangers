@@ -118,11 +118,23 @@ def read_error(result, size):
     return data_error(getattr(result, "data", None), size)
 
 
-def walk_field(field, mapping, port, budget):
+def base_linear(field, mapping, registers):
+    """Linear address of a field's first read: an LE object location, or the register value at the stop plus the
+    field's offset, which must lie inside the flat data segment (`pointer-out-of-range` otherwise)."""
+    size = POINTER_SIZE if field.address.pointers else field.size
+    if field.address.register is None:
+        return mapping.linear(field.address.object, field.address.offset, size)
+    linear = mapping.space.linear(registers[field.address.register] + field.address.offset, size)
+    if linear is None:
+        raise BaselineError("pointer-out-of-range", field.id)
+    return linear
+
+
+def walk_field(field, mapping, port, budget, registers=None):
     """One read of a field: each pointer hop, then the scalar. Stops at the first unusable hop."""
     pointers = field.address.pointers
     try:
-        linear = mapping.linear(field.address.object, field.address.offset, POINTER_SIZE if pointers else field.size)
+        linear = base_linear(field, mapping, registers)
     except BaselineError as error:
         return FieldPass((), error.code)
     hops = []
@@ -153,12 +165,13 @@ def walk_field(field, mapping, port, budget):
     return FieldPass(tuple(hops), read_error(result, field.size))
 
 
-def collect_pause(recipe, pause_id, mapping, port, budget):
+def collect_pause(recipe, pause_id, mapping, port, budget, registers=None):
     """Reads every field of a pause `repeat_reads` times, with page states before and after the passes.
 
     The session layer's `port` implements the paused-debugger reads: `read(linear, size)` returns a ReadResult that
     should carry the physical lookup of every page it reads; `state(pages)` returns the current PageState, the
-    address-space owner and the lookups of the given pages.
+    address-space owner and the lookups of the given pages. `registers` (name -> value at the stop) resolves
+    register-relative fields, which the recipe allows only at breakpoint stops.
     """
     pause = recipe.pause(pause_id)
     fields = [recipe.fields[name] for name in pause.fields]
@@ -166,11 +179,11 @@ def collect_pause(recipe, pause_id, mapping, port, budget):
     for item in fields:
         size = POINTER_SIZE if item.address.pointers else item.size
         try:
-            static.update(page_range(mapping.linear(item.address.object, item.address.offset, size), size))
+            static.update(page_range(base_linear(item, mapping, registers), size))
         except BaselineError:
             pass  # walk_field records the reason
     before = port.state(frozenset(static))
-    passes = tuple({item.id: walk_field(item, mapping, port, budget) for item in fields}
+    passes = tuple({item.id: walk_field(item, mapping, port, budget, registers) for item in fields}
                    for _ in range(recipe.limits.repeat_reads))
     touched = frozenset(page for reads in passes for walk in reads.values() for hop in walk.hops
                         for page in page_range(hop.linear, hop.size))

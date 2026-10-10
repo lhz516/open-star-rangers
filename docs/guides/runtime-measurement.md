@@ -66,7 +66,7 @@ related: [U-021, B-006]
 | `identity` | `mission` 与 `config`：所选任务与配置的身份，各 1–16 个键，值为布尔、整数或受限记号。`checks`：每个暂停点都必须读到且等于给定值的字段列表，用读数证实身份 |
 | `correlation` | `code`：`object`、`size`（64–512，16 的倍数），可选 `offset`；`data`：`object`、`offset`、`size`（16–512）。用于在每个进程中建立 LE 对象与线性地址的对应 |
 | `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
-| `fields` | `id`；`address`：`object`、`offset`，可选 `pointers`（每跳解引用后加上的非负偏移）；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
+| `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
 | `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes` |
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
@@ -100,7 +100,8 @@ related: [U-021, B-006]
 - 未知键、类型错误、越界取值、重复 ID 或无效引用，都在任何副作用之前以 `recipe-*` 原因码拒绝（退出码 2）。配方不能携带表达式、调试器命令或 shell 字串。
 - 写入只能落在声明的输入通道：引用未声明设备的刺激、未被写入的设备、在 VRT 暂停点写寄存器地址的设备、同一暂停点的第二个按键，都在解析时拒绝。刺激须按暂停点的顺序声明，声明顺序就是施加顺序。
 - `identity.checks` 的字段须出现在每个读字段的暂停点中；没有字段的暂停点不检查身份。
-- 地址只写 LE 对象号与偏移，不写上一次运行得到的绝对线性地址。
+- **寄存器寻址的字段**（P3-06/07）：在同一断点处理多个对象的代码中（例如对每个停放对象调用一次的例程），对象句柄常在寄存器里，LE 对象位置无法指向“这一次的对象”。这样的字段以停止时 `stop.json` 记录的寄存器值加偏移为第一跳的地址，之后与其他字段一样逐跳解引用、重复读取并核对页映射；它不能出现在 VRT 暂停点（解析时拒绝）。第一跳落在 DS 段之外时样本为 `pointer-out-of-range`。读数前后寄存器不变本来就是合格条件，所以各遍读取用的是同一个寄存器值。
+- 地址写 LE 对象号与偏移，或断点处的寄存器与偏移，不写上一次运行得到的绝对线性地址。字段或设备所寻址的寄存器在停止时的寄存器栏中读不到时，运行以 `debugger-unparsed` 失败。
 - 报告的 `recipe.fingerprint` 是规范化 JSON 的 SHA-256，`emulator` 与 `gameSettings` 都计入。采集开始后不要修改配方：改动后指纹变化，新旧运行不能合并统计。
 
 ### 限值与预算

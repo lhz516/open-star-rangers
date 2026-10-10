@@ -21,7 +21,9 @@
       "key" (one keystroke into the empty BIOS keyboard buffer), "shift" ({"flags": {"ctrl": true}}) and "device"
       ({"device": "<id>", "value": n}, a field declared in "devices" by LE object or breakpoint register and offset).
       Each write is read back and recorded in the report's `stimuli`; a pause without "fields" only stops (and applies
-      its stimuli) and needs no confirmation.
+      its stimuli) and needs no confirmation. A field's address is an LE object location, or at a breakpoint pause a
+      register and offset ({"register": "ESI", "offset": 0, "pointers": [...]}), e.g. the object a routine is
+      handling at that stop.
       Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
       to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
       the baseline installation and the private copy stay fully protected.
