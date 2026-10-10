@@ -118,7 +118,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | pending |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27 | pending |
-| [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | pending |
+| [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | in-progress |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31 | pending |
 
