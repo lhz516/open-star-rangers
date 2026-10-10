@@ -48,6 +48,8 @@ updated: 2026-10-10
 - `src/core/world/world-state.ts`：静态规则数据的引用。
 - `src/core/replay/replay.ts`、`src/core/replay/replay.test.ts`、`src/core/replay/replay.test-support.ts`、`src/core/replay/recording.test.ts`：`ReplayContent` 与录制入口。
 - `src/app/**`：P3-04 的任务输入与测试辅助对新输入的接入（若 33 的路径未自动覆盖）。
+- `tools/replay-check.test.ts`：手工构造的 `CreateWorldInput` 加入 `aiPrograms`。
+- `docs/engineering/modules/app.md`：`ruleDataInputs` 解码的 Asset 加入 `ai-programs`。
 
 ## 验收标准
 
