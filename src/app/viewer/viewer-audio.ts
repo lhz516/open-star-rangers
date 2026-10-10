@@ -97,6 +97,7 @@ function observeCapability(capability: AudioCapability): ObservedCapability {
       context = inner;
       return {
         get state() { return inner.state; },
+        get currentTime() { return inner.currentTime; },
         onStateChange: listener => inner.onStateChange(listener),
         resume: () => inner.resume(),
         suspend: () => inner.suspend(),

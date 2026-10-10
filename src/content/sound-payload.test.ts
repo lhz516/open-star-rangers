@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ContentContractError } from './contract-validation.ts';
 import { payloadTransferList } from './ownership.ts';
 import {
-  readSoundPayload, soundChannelData, SOUND_PAYLOAD_HEADER_BYTES, SOUND_PAYLOAD_OFFSETS, SOUND_PAYLOAD_SCHEMA_VERSION,
-  writeSoundPayload, type SoundPayloadInput,
+  readSoundPayload, soundChannelData, SOUND_LOOP_MODES, SOUND_PAYLOAD_HEADER_BYTES, SOUND_PAYLOAD_OFFSETS,
+  SOUND_PAYLOAD_SCHEMA_VERSION, SOUND_REPEAT_PLAYS, writeSoundPayload, type SoundPayloadInput,
 } from './sound-payload.ts';
 
 const s16le = (...values: number[]): Uint8Array => {
@@ -14,7 +14,7 @@ const s16le = (...values: number[]): Uint8Array => {
 };
 
 const input = (overrides: Partial<SoundPayloadInput> = {}): SoundPayloadInput =>
-  ({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.of(0, 128, 255), ...overrides });
+  ({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.of(0, 128, 255), ...overrides } as SoundPayloadInput);
 
 /** A valid payload whose header bytes a test may then corrupt. */
 const payload = (overrides: Partial<SoundPayloadInput> = {}) => {
@@ -33,19 +33,37 @@ const thrown = (action: () => unknown): ContentContractError => {
 };
 
 describe('sound payload layout', () => {
-  it('fixes schema 1 as a 16-byte little-endian header followed by the PCM', () => {
-    expect(SOUND_PAYLOAD_SCHEMA_VERSION).toBe(1);
+  it('fixes schema 2 as a 16-byte little-endian header followed by the PCM', () => {
+    expect(SOUND_PAYLOAD_SCHEMA_VERSION).toBe(2);
     expect(SOUND_PAYLOAD_HEADER_BYTES).toBe(16);
-    expect(SOUND_PAYLOAD_OFFSETS).toEqual({ tag: 0, sampleRate: 4, frames: 8, channels: 12, encoding: 13, loop: 14, reserved: 15, pcm: 16 });
+    expect(SOUND_PAYLOAD_OFFSETS).toEqual({ tag: 0, sampleRate: 4, frames: 8, channels: 12, encoding: 13, loop: 14, plays: 15, pcm: 16 });
+    expect(SOUND_LOOP_MODES).toEqual({ none: 0, whole: 1, repeat: 2 });
+    expect(SOUND_REPEAT_PLAYS).toEqual({ min: 2, max: 255 });
 
     const { bytes, view } = payload({ sampleRate: 22_050, channels: 2, encoding: 's16le', loop: 'whole', pcm: s16le(0x0102, -2, 3, 4) });
     expect(String.fromCharCode(...bytes.subarray(SOUND_PAYLOAD_OFFSETS.tag, SOUND_PAYLOAD_OFFSETS.tag + 4))).toBe('OSRS');
     expect(view.getUint32(SOUND_PAYLOAD_OFFSETS.sampleRate, true)).toBe(22_050);
     expect(view.getUint32(SOUND_PAYLOAD_OFFSETS.frames, true)).toBe(2);
-    expect([SOUND_PAYLOAD_OFFSETS.channels, SOUND_PAYLOAD_OFFSETS.encoding, SOUND_PAYLOAD_OFFSETS.loop, SOUND_PAYLOAD_OFFSETS.reserved]
+    expect([SOUND_PAYLOAD_OFFSETS.channels, SOUND_PAYLOAD_OFFSETS.encoding, SOUND_PAYLOAD_OFFSETS.loop, SOUND_PAYLOAD_OFFSETS.plays]
       .map(offset => bytes[offset])).toEqual([2, 2, 1, 0]);
     expect([...bytes.subarray(SOUND_PAYLOAD_OFFSETS.pcm, SOUND_PAYLOAD_OFFSETS.pcm + 2)]).toEqual([0x02, 0x01]);
     expect(bytes.byteLength).toBe(16 + 8);
+
+    const repeat = payload({ loop: 'repeat', plays: 9 }).bytes;
+    expect([repeat[SOUND_PAYLOAD_OFFSETS.loop], repeat[SOUND_PAYLOAD_OFFSETS.plays]]).toEqual([2, 9]);
+  });
+
+  // Schema 1 had loop codes 0 and 1 and a reserved byte 15 of 0, so its `none` and `whole` sounds keep their bytes.
+  it.each([['none', 0], ['whole', 1]] as const)('writes a %s sound with the bytes schema 1 gave it', (loop, code) => {
+    const pcm = s16le(-3, 7, 0x1234);
+    const schema1 = new Uint8Array(16 + pcm.byteLength);
+    const view = new DataView(schema1.buffer);
+    schema1.set([0x4f, 0x53, 0x52, 0x53]);
+    view.setUint32(4, 17_000, true);
+    view.setUint32(8, 3, true);
+    schema1.set([1, 2, code, 0], 12);
+    schema1.set(pcm, 16);
+    expect([...writeSoundPayload(input({ sampleRate: 17_000, encoding: 's16le', loop, pcm }))]).toEqual([...schema1]);
   });
 
   it.each([
@@ -53,13 +71,17 @@ describe('sound payload layout', () => {
     ['u8 stereo', input({ channels: 2, pcm: Uint8Array.of(1, 2, 3, 4) })],
     ['s16le mono at 96000 Hz', input({ sampleRate: 96_000, encoding: 's16le', pcm: s16le(-32_768, 0, 32_767) })],
     ['s16le stereo looping', input({ channels: 2, encoding: 's16le', loop: 'whole', pcm: s16le(1, -1, 2, -2) })],
+    ['u8 mono repeated twice', input({ loop: 'repeat', plays: 2 })],
+    ['s16le stereo repeated 255 times', input({ channels: 2, encoding: 's16le', loop: 'repeat', plays: 255, pcm: s16le(5, -5) })],
   ])('round-trips %s', (_name, sound) => {
-    const read = readSoundPayload(writeSoundPayload(sound));
+    const bytes = writeSoundPayload(sound);
+    const read = readSoundPayload(bytes);
     expect({ ...read, pcm: [...read.pcm] }).toEqual({
-      sampleRate: sound.sampleRate, channels: sound.channels, encoding: sound.encoding, loop: sound.loop,
-      frames: sound.pcm.byteLength / (sound.channels * (sound.encoding === 'u8' ? 1 : 2)), pcm: [...sound.pcm],
+      ...sound, frames: sound.pcm.byteLength / (sound.channels * (sound.encoding === 'u8' ? 1 : 2)), pcm: [...sound.pcm],
     });
+    expect(Object.hasOwn(read, 'plays')).toBe(sound.loop === 'repeat');
     expect(Object.isFrozen(read)).toBe(true);
+    expect([...writeSoundPayload(read)]).toEqual([...bytes]);
   });
 
   it('reads a payload at an offset inside a larger buffer', () => {
@@ -88,10 +110,13 @@ describe('sound payload rejection', () => {
     ['an unknown encoding', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.encoding] = 3; }, 'payload.encoding', '3'],
     ['0 channels', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.channels] = 0; }, 'payload.channels', '0'],
     ['3 channels', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.channels] = 3; }, 'payload.channels', '3'],
-    ['loop mode 2', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.loop] = 2; }, 'payload.loop', '2'],
+    ['loop mode 3', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.loop] = 3; }, 'payload.loop', '3'],
     ['7999 Hz', ({ view }) => { view.setUint32(SOUND_PAYLOAD_OFFSETS.sampleRate, 7_999, true); }, 'payload.sampleRate', '7999'],
     ['96001 Hz', ({ view }) => { view.setUint32(SOUND_PAYLOAD_OFFSETS.sampleRate, 96_001, true); }, 'payload.sampleRate', '96001'],
-    ['a nonzero reserved byte', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.reserved] = 5; }, 'payload.reserved', '5'],
+    ['a play count for none', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.plays] = 5; }, 'payload.plays', '5'],
+    ['a play count for whole', ({ bytes }) => { bytes.set([1, 2], SOUND_PAYLOAD_OFFSETS.loop); }, 'payload.plays', null],
+    ['repeat with a play count of 0', ({ bytes }) => { bytes[SOUND_PAYLOAD_OFFSETS.loop] = 2; }, 'payload.plays', null],
+    ['repeat with a play count of 1', ({ bytes }) => { bytes.set([2, 1], SOUND_PAYLOAD_OFFSETS.loop); }, 'payload.plays', null],
     ['0 frames', ({ view }) => { view.setUint32(SOUND_PAYLOAD_OFFSETS.frames, 0, true); }, 'payload.frames', null],
     ['one PCM byte too few', ({ view }) => { view.setUint32(SOUND_PAYLOAD_OFFSETS.frames, 4, true); }, 'payload.pcm', '4'],
     ['a trailing byte', ({ view }) => { view.setUint32(SOUND_PAYLOAD_OFFSETS.frames, 2, true); }, 'payload.pcm', null],
@@ -130,6 +155,15 @@ describe('sound payload rejection', () => {
     ['an unknown encoding', { encoding: 's8' as never }, 'sound.encoding'],
     ['an inherited encoding name', { encoding: 'toString' as never }, 'sound.encoding'],
     ['an unknown loop mode', { loop: 'ping-pong' as never }, 'sound.loop'],
+    ['an inherited loop mode name', { loop: 'toString' as never }, 'sound.loop'],
+    ['a play count for none', { loop: 'none', plays: 2 as never }, 'sound.plays'],
+    ['a play count for whole', { loop: 'whole', plays: 2 as never }, 'sound.plays'],
+    ['an undefined play count for none', { loop: 'none', plays: undefined }, 'sound.plays'],
+    ['repeat without a play count', { loop: 'repeat' }, 'sound.plays'],
+    ['repeat with a play count of 1', { loop: 'repeat', plays: 1 }, 'sound.plays'],
+    ['repeat with a play count of 256', { loop: 'repeat', plays: 256 }, 'sound.plays'],
+    ['repeat with a fractional play count', { loop: 'repeat', plays: 2.5 }, 'sound.plays'],
+    ['repeat with a play count string', { loop: 'repeat', plays: '8' as never }, 'sound.plays'],
     ['empty PCM', { pcm: new Uint8Array(0) }, 'sound.pcm'],
     ['a partial s16le sample', { encoding: 's16le', pcm: Uint8Array.of(1, 2, 3) }, 'sound.pcm'],
     ['a partial stereo frame', { channels: 2, pcm: Uint8Array.of(1, 2, 3) }, 'sound.pcm'],

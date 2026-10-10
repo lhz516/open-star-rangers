@@ -157,7 +157,7 @@ export const expectedS16 = [0, 1].map(channel => EXACT_SAMPLES.s16.filter((_, in
  */
 export async function setUpAudioPage(exact: typeof EXACT_SAMPLES): Promise<{ loaded: unknown; activated: boolean }> {
   const load = <T>(path: string): Promise<T> => import(path) as Promise<T>;
-  const [{ createBrowserAudioController }, { writeSoundPayload }] = await Promise.all([
+  const [{ createBrowserAudioController }, { writeSoundPayload, SOUND_PAYLOAD_SCHEMA_VERSION: schemaVersion }] = await Promise.all([
     load<typeof BrowserAudioModule>('/src/platform/audio/browser-audio-controller.ts'),
     load<typeof SoundPayloadModule>('/src/content/sound-payload.ts'),
   ]);
@@ -173,10 +173,10 @@ export async function setUpAudioPage(exact: typeof EXACT_SAMPLES): Promise<{ loa
   // A square wave of amplitude 0.5: 25 frames low, 25 high, at 11025 Hz.
   const square = (frames: number) => Uint8Array.from({ length: frames }, (_, index) => (Math.floor(index / 25) % 2 ? 192 : 64));
   const loaded = controller.load([
-    { id: 'sound/blip', schemaVersion: 1, bytes: writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: square(5_500) }) },
-    { id: 'sound/exact-s16', schemaVersion: 1, bytes: writeSoundPayload({ sampleRate: 22_050, channels: 2, encoding: 's16le', loop: 'none', pcm: s16(exact.s16) }) },
-    { id: 'sound/exact-u8', schemaVersion: 1, bytes: writeSoundPayload({ sampleRate: 8_000, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.from(exact.u8) }) },
-    { id: 'sound/loop', schemaVersion: 1, bytes: writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'whole', pcm: square(2_000) }) },
+    { id: 'sound/blip', schemaVersion, bytes: writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: square(5_500) }) },
+    { id: 'sound/exact-s16', schemaVersion, bytes: writeSoundPayload({ sampleRate: 22_050, channels: 2, encoding: 's16le', loop: 'none', pcm: s16(exact.s16) }) },
+    { id: 'sound/exact-u8', schemaVersion, bytes: writeSoundPayload({ sampleRate: 8_000, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.from(exact.u8) }) },
+    { id: 'sound/loop', schemaVersion, bytes: writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'whole', pcm: square(2_000) }) },
   ]);
   const unlocks: string[] = [];
   window.osrAudioTest = { controller, unlocks, reported, listenersFrom };

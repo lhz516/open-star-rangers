@@ -8,6 +8,7 @@ import {
 function contextPort(context: AudioContext): AudioContextPort {
   return {
     get state() { return context.state; },
+    get currentTime() { return context.currentTime; },
     onStateChange(listener) {
       context.addEventListener('statechange', listener);
       return () => context.removeEventListener('statechange', listener);
@@ -21,8 +22,8 @@ function contextPort(context: AudioContext): AudioContextPort {
       node.loop = loop;
       node.connect(context.destination);
       return {
-        start: () => node.start(),
-        stop: () => node.stop(),
+        start: when => node.start(when),
+        stop: when => node.stop(when),
         disconnect: () => node.disconnect(),
         onEnded(listener) {
           node.addEventListener('ended', listener);

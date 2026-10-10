@@ -3,6 +3,7 @@ import type { GroupCompletenessResult, PackageCompletenessResult } from './compl
 import { SLICE_ID } from './content-identity.ts';
 import { sha256Fingerprint } from './sha256.ts';
 import { CLASSIC_P2_SLICE, type SliceDefinition, type SliceRole } from './slice-definition.ts';
+import { SOUND_PAYLOAD_SCHEMA_VERSION } from './sound-payload.ts';
 
 // Code-generated synthetic content for contract tests; it never holds original data. The package covers every
 // CLASSIC_P2_SLICE role, and builders return fresh mutable plain data that a test may corrupt.
@@ -57,6 +58,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'layout/synthetic-front', role: 'front-cockpit', dependencies: ['font/synthetic-hud', 'image/synthetic-panel'] },
     { id: 'layout/synthetic-map', role: 'strategic-map', dependencies: ['font/synthetic-hud'] },
   ],
+  // The sounds declare the sound payload schema; every other Asset declares 1.
   audio: [
     { id: 'sound/synthetic-engine', role: 'model-sound' },
     { id: 'sound/synthetic-explosion', role: 'explosion-sound' },
@@ -65,7 +67,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     ...EVENT_SOUNDS,
     ...HUD_SOUNDS,
     { id: 'sound/synthetic-warp', role: 'warp-sound' },
-  ],
+  ].map(spec => ({ ...spec, schemaVersion: SOUND_PAYLOAD_SCHEMA_VERSION })),
 };
 
 /** The pure program has no TextEncoder; synthetic labels are ASCII. */

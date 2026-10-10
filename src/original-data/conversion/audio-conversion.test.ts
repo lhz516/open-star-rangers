@@ -3,7 +3,7 @@ import { BUDGET_DIMENSIONS, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../
 import { validateGroup } from '../../content/completeness.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import { payloadTransferList } from '../../content/ownership.ts';
-import { readSoundPayload } from '../../content/sound-payload.ts';
+import { readSoundPayload, SOUND_PAYLOAD_SCHEMA_VERSION } from '../../content/sound-payload.ts';
 import { P2_ROLES_SLICE, syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { openDiscImage } from '../disc/disc-image.ts';
 import { syntheticFileDisc } from '../disc/disc.test-support.ts';
@@ -143,7 +143,8 @@ describe('audio group conversion', () => {
     });
     const formats = draft.payloads.map(({ bytes }) => readSoundPayload(bytes)).map(({ sampleRate, channels, encoding, loop, frames }) => [sampleRate, channels, encoding, loop, frames]);
     expect(formats).toEqual([[22_050, 1, 's16le', 'none', 2], [11_025, 1, 'u8', 'none', 5], [8_000, 2, 'u8', 'whole', 3], [11_025, 1, 'u8', 'none', 3], [44_100, 1, 'u8', 'none', 4]]);
-    expect(draft.payloads.every(({ schemaVersion }, index) => schemaVersion === 1 && draft.assets[index].payloadIdentity.schemaVersion === 1)).toBe(true);
+    expect(draft.payloads.every(({ schemaVersion }, index) => schemaVersion === SOUND_PAYLOAD_SCHEMA_VERSION
+      && draft.assets[index].payloadIdentity.schemaVersion === SOUND_PAYLOAD_SCHEMA_VERSION)).toBe(true);
     expect(payloadTransferList(draft.payloads.map(({ bytes }) => bytes))).toHaveLength(5);
     // Verification reads every alternative once, the aliased clip's both; conversion shares those reads.
     expect(blockReads).toEqual([10_002, 10_001, 10_003, 10_005, 10_006, 10_004]);

@@ -52,7 +52,8 @@ describe('production package profile', () => {
   });
 
   it('keeps the logic share and the audio limits, which the baseline P3-03 usage stays within', () => {
-    // The mission with its event triggers (P3-03/07), and the 29 sounds with the new SND 10181 measured as play-once.
+    // The mission with its event triggers (P3-03/07), and the 29 sounds; P3-03/27 remeasured them with SND 10181 as
+    // `repeat`, whose play count changes no size.
     const logic = { assets: 3, dependencyEdges: 8, payloadBytes: 7_593, missionObjects: 14, missionReferences: 41 };
     const audio = { assets: 29, payloadBytes: 470_861, audioSamples: 304_035 };
     for (const [limits, observed] of [[PRODUCTION_LOGIC_SHARE, logic], [AUDIO_BUDGET_LIMITS, audio]] as const) {

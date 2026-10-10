@@ -1,5 +1,5 @@
 import {
-  SOUND_ENCODING_BYTES, writeSoundPayload, type SoundChannelCount, type SoundEncoding, type SoundLoop,
+  SOUND_ENCODING_BYTES, writeSoundPayload, type SoundChannelCount, type SoundEncoding, type SoundPlayback,
 } from '../../content/sound-payload.ts';
 import { SourceError } from '../source-error.ts';
 
@@ -11,12 +11,11 @@ export const SND_HEADER_OFFSETS = Object.freeze({ sampleOffset: 0, sampleBytes: 
 /** Web Audio's lowest guaranteed rate up to the Sound Blaster 16's highest, inclusive. */
 export const SND_SAMPLE_RATE_RANGE = Object.freeze({ min: 8_000, max: 44_100 } as const);
 
-/** What one confirmed `flags` value means for the canonical payload. */
-export interface SndFlagRule {
+/** What one confirmed `flags` value means for the canonical payload: a channel count and a playback, with its play count for `repeat`. */
+export type SndFlagRule = SoundPlayback & {
   readonly value: number;
   readonly channels: SoundChannelCount;
-  readonly loop: SoundLoop;
-}
+};
 
 /** The sample interpretations a converter accepts; anything not listed is rejected rather than guessed. */
 export interface SndFormatRules {
@@ -41,7 +40,7 @@ export interface SndHeader {
 }
 
 export interface ConvertedSound {
-  /** A canonical schema 1 sound payload in a new exclusive buffer. */
+  /** A canonical schema 2 sound payload in a new exclusive buffer. */
   readonly payload: Uint8Array<ArrayBuffer>;
   /** Frames × channels, the `audioSamples` budget unit. */
   readonly samplePoints: number;
@@ -95,9 +94,10 @@ export function convertSnd(block: SndBlock, rules: SndFormatRules, location: str
   if (sampleBytes === 0 || sampleBytes % (sampleWidth * rule.channels) !== 0) {
     throw new SourceError('invalid-payload', `${location}.sampleBytes`, 'must hold one or more whole frames');
   }
+  const playback: SoundPlayback = rule.loop === 'repeat' ? { loop: rule.loop, plays: rule.plays } : { loop: rule.loop };
   const pcm = block.bytes.subarray(SND_HEADER_BYTES);
   return Object.freeze({
-    payload: writeSoundPayload({ sampleRate, channels: rule.channels, encoding, loop: rule.loop, pcm }, location),
+    payload: writeSoundPayload({ sampleRate, channels: rule.channels, encoding, ...playback, pcm }, location),
     samplePoints: sampleBytes / sampleWidth,
   });
 }

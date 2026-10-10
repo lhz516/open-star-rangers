@@ -12,8 +12,10 @@ export const AUDIO_VOICE_LIMIT = 8;
 export type AudioBufferHandle = object;
 
 export interface AudioVoicePort {
-  start(): void;
-  stop(): void;
+  /** Starts at once, or at context time `when`. */
+  start(when?: number): void;
+  /** Stops at once, or at context time `when`; a later call replaces a stop not yet reached. */
+  stop(when?: number): void;
   disconnect(): void;
   /** Listens for the voice's natural or stopped end; returns the removal. */
   onEnded(listener: () => void): () => void;
@@ -22,6 +24,8 @@ export interface AudioVoicePort {
 export interface AudioContextPort {
   /** The host context state, such as `suspended`, `running`, `interrupted` or `closed`. */
   readonly state: string;
+  /** The context time in seconds, which scheduled starts and stops use. */
+  readonly currentTime: number;
   /** Listens for context state changes; returns the removal. */
   onStateChange(listener: () => void): () => void;
   resume(): Promise<unknown>;
@@ -75,7 +79,7 @@ export interface AudioSnapshot {
   readonly voices: number;
 }
 
-/** One sound to register: the shape of a P2-01 `PayloadRecord` holding a schema 1 sound payload. */
+/** One sound to register: the shape of a P2-01 `PayloadRecord` holding a schema 2 sound payload. */
 export interface SoundRecord {
   readonly id: string;
   readonly schemaVersion: number;
@@ -113,6 +117,8 @@ export interface AudioController {
 interface Sound {
   readonly buffer: AudioBufferHandle;
   readonly loop: boolean;
+  /** For a `repeat` sound, the seconds its `plays` passes last: its looping voice stops that long after it starts. */
+  readonly repeatFor: number | null;
 }
 
 interface Voice {
@@ -210,7 +216,11 @@ class Controller implements AudioController {
     for (const [assetId, payload] of payloads) {
       try {
         // The float copies are the controller's own, so the caller's bytes are never kept, changed or transferred.
-        batch.set(assetId, { buffer: this.#audio.createBuffer(soundChannelData(payload), payload.sampleRate), loop: payload.loop === 'whole' });
+        batch.set(assetId, {
+          buffer: this.#audio.createBuffer(soundChannelData(payload), payload.sampleRate),
+          loop: payload.loop !== 'none',
+          repeatFor: payload.loop === 'repeat' ? (payload.plays * payload.frames) / payload.sampleRate : null,
+        });
       } catch {
         this.#fail();
         return loadFailure('audio-failed', assetId);
@@ -230,7 +240,15 @@ class Controller implements AudioController {
     const started = this.#host(context => {
       const port = context.createVoice(sound.buffer, sound.loop);
       this.#voices.set(voice, { port, removeEnded: port.onEnded(() => { this.#release(voice, false); this.#publish(); }) });
-      port.start();
+      if (sound.repeatFor === null) {
+        port.start();
+      } else {
+        // Start and stop from one context time, so the looping voice ends after exactly its passes when it starts on
+        // time; start()'s duration argument is not used, since engines disagree on it for a looping source.
+        const when = context.currentTime;
+        port.start(when);
+        port.stop(when + sound.repeatFor);
+      }
     });
     if (!started) return REJECTED_IN.failed;
     this.#publish();

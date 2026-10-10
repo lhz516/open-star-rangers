@@ -1,10 +1,12 @@
 import { fail } from './contract-validation.ts';
 import { isDetached } from './ownership.ts';
 
-// Canonical sound payload, schema 1 (P2-08 S-02): a 16-byte little-endian header followed by interleaved PCM in the
-// source's compact encoding. Any change to the fields, encodings, ranges or the float mapping is a new schema version.
+// Canonical sound payload, schema 2 (P2-08 S-02; P3-03 spec, sound payload schema 2): a 16-byte little-endian header
+// followed by interleaved PCM in the source's compact encoding. Schema 2 added loop mode 2 (`repeat`) and turned the
+// reserved byte 15 into its play count, so a `none` or `whole` payload has the same bytes as in schema 1. Any change to
+// the fields, encodings, ranges or the float mapping is a new schema version.
 
-export const SOUND_PAYLOAD_SCHEMA_VERSION = 1;
+export const SOUND_PAYLOAD_SCHEMA_VERSION = 2;
 export const SOUND_PAYLOAD_TAG = 'OSRS';
 export const SOUND_PAYLOAD_HEADER_BYTES = 16;
 export const SOUND_PAYLOAD_OFFSETS = Object.freeze({
@@ -14,7 +16,7 @@ export const SOUND_PAYLOAD_OFFSETS = Object.freeze({
   channels: 12,
   encoding: 13,
   loop: 14,
-  reserved: 15,
+  plays: 15,
   pcm: SOUND_PAYLOAD_HEADER_BYTES,
 } as const);
 
@@ -26,30 +28,31 @@ export type SoundChannelCount = typeof SOUND_CHANNEL_COUNTS[number];
 export const SOUND_ENCODINGS = Object.freeze({ u8: 1, s16le: 2 } as const);
 export type SoundEncoding = keyof typeof SOUND_ENCODINGS;
 export const SOUND_ENCODING_BYTES: Readonly<Record<SoundEncoding, 1 | 2>> = Object.freeze({ u8: 1, s16le: 2 });
-/** Header codes of the loop modes: play once, or loop the whole clip until stopped. */
-export const SOUND_LOOP_MODES = Object.freeze({ none: 0, whole: 1 } as const);
+/** Header codes of the loop modes: play once, loop the whole clip until stopped, or play it `plays` times back to back. */
+export const SOUND_LOOP_MODES = Object.freeze({ none: 0, whole: 1, repeat: 2 } as const);
 export type SoundLoop = keyof typeof SOUND_LOOP_MODES;
+/** The play counts of a `repeat` sound, inclusive; the count byte of every other loop mode is 0. */
+export const SOUND_REPEAT_PLAYS = Object.freeze({ min: 2, max: 255 } as const);
 
 const MAX_FRAMES = 0xffff_ffff;
 
-export interface SoundFormat {
+/** How a sound plays: its loop mode, with a play count for `repeat` only. */
+export type SoundPlayback =
+  | { readonly loop: 'none' | 'whole'; readonly plays?: never }
+  | { readonly loop: 'repeat'; readonly plays: number };
+
+export type SoundFormat = SoundPlayback & {
   /** Frames per second, kept from the source without resampling. */
   readonly sampleRate: number;
   readonly channels: SoundChannelCount;
   readonly encoding: SoundEncoding;
-  readonly loop: SoundLoop;
-}
+};
 
 /** The input of `writeSoundPayload`: PCM already in the canonical encoding, frames interleaved. */
-export interface SoundPayloadInput extends SoundFormat {
-  readonly pcm: Uint8Array;
-}
+export type SoundPayloadInput = SoundFormat & { readonly pcm: Uint8Array };
 
 /** A read payload: frozen header fields and a read-only subview of the payload's PCM. */
-export interface SoundPayload extends SoundFormat {
-  readonly frames: number;
-  readonly pcm: Uint8Array;
-}
+export type SoundPayload = SoundFormat & { readonly frames: number; readonly pcm: Uint8Array };
 
 const invalid = (path: string, reason: string): never => fail('invalid-sound-payload', path, reason);
 
@@ -67,19 +70,27 @@ function checkChannels(channels: unknown, path: string): asserts channels is Sou
   if (!SOUND_CHANNEL_COUNTS.some(count => count === channels)) invalid(path, 'must be 1 or 2');
 }
 
+function checkPlays(plays: unknown, path: string): asserts plays is number {
+  if (typeof plays !== 'number' || !Number.isInteger(plays) || plays < SOUND_REPEAT_PLAYS.min || plays > SOUND_REPEAT_PLAYS.max) {
+    invalid(path, 'must be an integer from 2 to 255');
+  }
+}
+
 const pcmBytes = (frames: number, channels: SoundChannelCount, encoding: SoundEncoding): number =>
   frames * channels * SOUND_ENCODING_BYTES[encoding];
 
 /**
- * Writes a schema 1 payload into a new exclusive buffer of exactly its length, after checking the input by the reader's
- * rules. The PCM is copied unchanged; the input view is never modified or retained.
+ * Writes a schema 2 payload into a new exclusive buffer of exactly its length, after checking the input by the reader's
+ * rules: `plays` is present for `repeat` only. The PCM is copied unchanged; the input view is never modified or retained.
  */
 export function writeSoundPayload(input: SoundPayloadInput, path = 'sound'): Uint8Array<ArrayBuffer> {
-  const { sampleRate, channels, encoding, loop, pcm } = input;
+  const { sampleRate, channels, encoding, loop, plays, pcm } = input;
   checkSampleRate(sampleRate, `${path}.sampleRate`);
   checkChannels(channels, `${path}.channels`);
   if (typeof encoding !== 'string' || !Object.hasOwn(SOUND_ENCODINGS, encoding)) invalid(`${path}.encoding`, 'must be u8 or s16le');
-  if (typeof loop !== 'string' || !Object.hasOwn(SOUND_LOOP_MODES, loop)) invalid(`${path}.loop`, 'must be none or whole');
+  if (typeof loop !== 'string' || !Object.hasOwn(SOUND_LOOP_MODES, loop)) invalid(`${path}.loop`, 'must be none, whole or repeat');
+  if (loop === 'repeat') checkPlays(plays, `${path}.plays`);
+  else if (Object.hasOwn(input, 'plays')) invalid(`${path}.plays`, 'must be absent unless the loop mode is repeat');
   if (!(pcm instanceof Uint8Array)) invalid(`${path}.pcm`, 'must be a Uint8Array');
   if (isDetached(pcm.buffer)) fail('payload-detached', `${path}.pcm`, 'was transferred away and can no longer be used');
   const frameBytes = pcmBytes(1, channels, encoding);
@@ -95,13 +106,15 @@ export function writeSoundPayload(input: SoundPayloadInput, path = 'sound'): Uin
   bytes[SOUND_PAYLOAD_OFFSETS.channels] = channels;
   bytes[SOUND_PAYLOAD_OFFSETS.encoding] = SOUND_ENCODINGS[encoding];
   bytes[SOUND_PAYLOAD_OFFSETS.loop] = SOUND_LOOP_MODES[loop];
+  bytes[SOUND_PAYLOAD_OFFSETS.plays] = plays ?? 0;
   bytes.set(pcm, SOUND_PAYLOAD_OFFSETS.pcm);
   return bytes;
 }
 
 /**
- * Reads a schema 1 payload: length, tag, field values, reserved byte, frame count, then the exact PCM length with no
- * trailing bytes. Nothing is allocated from the declared frame count, and diagnostics never echo a value.
+ * Reads a schema 2 payload: length, tag, field values, play count, frame count, then the exact PCM length with no
+ * trailing bytes. Nothing is allocated from the declared frame count, and diagnostics never echo a value. The bytes do
+ * not name their schema: a caller holding a payload record checks its schema version first.
  */
 export function readSoundPayload(bytes: Uint8Array, path = 'payload'): SoundPayload {
   if (!(bytes instanceof Uint8Array)) invalid(path, 'must be a Uint8Array');
@@ -116,14 +129,17 @@ export function readSoundPayload(bytes: Uint8Array, path = 'payload'): SoundPayl
   const channels = bytes[SOUND_PAYLOAD_OFFSETS.channels];
   checkChannels(channels, `${path}.channels`);
   const encoding = nameOf(SOUND_ENCODINGS, bytes[SOUND_PAYLOAD_OFFSETS.encoding]) ?? invalid(`${path}.encoding`, 'must be 1 (u8) or 2 (s16le)');
-  const loop = nameOf(SOUND_LOOP_MODES, bytes[SOUND_PAYLOAD_OFFSETS.loop]) ?? invalid(`${path}.loop`, 'must be 0 (none) or 1 (whole)');
-  if (bytes[SOUND_PAYLOAD_OFFSETS.reserved] !== 0) invalid(`${path}.reserved`, 'must be 0');
+  const loop = nameOf(SOUND_LOOP_MODES, bytes[SOUND_PAYLOAD_OFFSETS.loop]) ?? invalid(`${path}.loop`, 'must be 0 (none), 1 (whole) or 2 (repeat)');
+  const plays = bytes[SOUND_PAYLOAD_OFFSETS.plays];
+  if (loop === 'repeat' && plays < SOUND_REPEAT_PLAYS.min) invalid(`${path}.plays`, 'must be from 2 to 255 for repeat');
+  if (loop !== 'repeat' && plays !== 0) invalid(`${path}.plays`, 'must be 0 unless the loop mode is repeat');
   const frames = view.getUint32(SOUND_PAYLOAD_OFFSETS.frames, true);
   if (frames < 1) invalid(`${path}.frames`, 'must be at least 1');
   if (bytes.byteLength - SOUND_PAYLOAD_HEADER_BYTES !== pcmBytes(frames, channels, encoding)) {
     invalid(`${path}.pcm`, 'must be exactly frames × channels × bytes per sample long');
   }
-  return Object.freeze({ sampleRate, frames, channels, encoding, loop, pcm: bytes.subarray(SOUND_PAYLOAD_OFFSETS.pcm) });
+  const playback = loop === 'repeat' ? { loop, plays } : { loop };
+  return Object.freeze({ sampleRate, frames, channels, encoding, ...playback, pcm: bytes.subarray(SOUND_PAYLOAD_OFFSETS.pcm) });
 }
 
 /**

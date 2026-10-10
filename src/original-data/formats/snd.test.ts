@@ -13,6 +13,8 @@ const RULES: SndFormatRules = Object.freeze({
     Object.freeze({ value: 101, channels: 1, loop: 'whole' }),
     Object.freeze({ value: 102, channels: 2, loop: 'none' }),
     Object.freeze({ value: 103, channels: 2, loop: 'whole' }),
+    Object.freeze({ value: 104, channels: 1, loop: 'repeat', plays: 5 }),
+    Object.freeze({ value: 105, channels: 2, loop: 'repeat', plays: 255 }),
   ]),
   s16le: true,
 });
@@ -40,6 +42,8 @@ describe('SND conversion', () => {
     ['8-bit stereo', { flags: 102 }, { channels: 2, encoding: 'u8', loop: 'none', frames: 2 }, 4],
     ['16-bit mono', { bitsPerSample: 16 }, { channels: 1, encoding: 's16le', loop: 'none', frames: 2 }, 2],
     ['16-bit stereo looping', { bitsPerSample: 16, flags: 103, samples: [1, 2, 3, 4, 5, 6, 7, 8] }, { channels: 2, encoding: 's16le', loop: 'whole', frames: 2 }, 4],
+    ['8-bit mono repeated', { flags: 104 }, { channels: 1, encoding: 'u8', loop: 'repeat', plays: 5, frames: 4 }, 4],
+    ['16-bit stereo repeated', { bitsPerSample: 16, flags: 105, samples: [1, 2, 3, 4] }, { channels: 2, encoding: 's16le', loop: 'repeat', plays: 255, frames: 1 }, 2],
   ] as const satisfies readonly (readonly [string, Partial<SyntheticSndFields>, object, number])[])('converts %s into the canonical payload', (_name, fields: Partial<SyntheticSndFields>, expected, samplePoints) => {
     const block = snd(fields);
     const converted = convertSnd(block, RULES, AT);
@@ -89,7 +93,7 @@ describe('SND rejection', () => {
     ['12-bit samples', snd({ bitsPerSample: 12 }), 'unsupported-payload', `${AT}.bitsPerSample`],
     ['7999 Hz', snd({ sampleRate: 7_999 }), 'unsupported-payload', `${AT}.sampleRate`],
     ['44101 Hz', snd({ sampleRate: 44_101 }), 'unsupported-payload', `${AT}.sampleRate`],
-    ['an unlisted flags value', snd({ flags: 104 }), 'unsupported-payload', `${AT}.flags`],
+    ['an unlisted flags value', snd({ flags: 106 }), 'unsupported-payload', `${AT}.flags`],
     ['a flags value differing in a high byte', corrupt(view => view.setUint32(SND_HEADER_OFFSETS.flags, 0x0100_0064, true)), 'unsupported-payload', `${AT}.flags`],
   ] as const)('rejects %s', (_name, block, code, location) => {
     const error = rejection(block);

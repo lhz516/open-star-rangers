@@ -184,7 +184,8 @@ describe('stored package record reading', () => {
     const groups = read.groups.map(({ manifest, sources }) => ({
       manifest,
       sources,
-      payloads: manifest.assets.map(({ id }) => readStoredPayload({ schemaVersion: 1, bytes: Uint8Array.from(`payload:${id}`, c => c.charCodeAt(0)).buffer }, id)),
+      payloads: manifest.assets.map(({ id, payloadIdentity: { schemaVersion } }) =>
+        readStoredPayload({ schemaVersion, bytes: Uint8Array.from(`payload:${id}`, c => c.charCodeAt(0)).buffer }, id)),
     }));
     expect(validatePackage(CLASSIC_P2_SLICE, groups)).toMatchObject({ status: 'complete' });
   });

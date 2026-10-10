@@ -68,12 +68,15 @@ export const PRODUCTION_SOUND_TABLE: readonly SoundTableRow[] = readSoundTable(
 
 /**
  * The SND interpretations research confirmed for the slice: mono samples, 8-bit unsigned or 16-bit signed little-endian,
- * and the two `flags` values the slice uses as Miles loop counts. Any other value, such as 8, is rejected.
+ * and the three `flags` values the slice reads, as Miles loop counts (docs/original/formats/audio.md, playback
+ * interpretation): 0 loops until stopped, 1 plays once, and 8 (SND 10181, P3-03 spec field rule 10) plays eight times.
+ * Any other value is rejected.
  */
 export const PRODUCTION_SND_RULES: SndFormatRules = Object.freeze({
   flags: Object.freeze([
     Object.freeze({ value: 0, channels: 1, loop: 'whole' }),
     Object.freeze({ value: 1, channels: 1, loop: 'none' }),
+    Object.freeze({ value: 8, channels: 1, loop: 'repeat', plays: 8 }),
   ]),
   s16le: true,
 });

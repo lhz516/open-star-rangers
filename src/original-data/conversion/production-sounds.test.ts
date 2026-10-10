@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readSoundPayload } from '../../content/sound-payload.ts';
+import { readSoundPayload, SOUND_PAYLOAD_TAG } from '../../content/sound-payload.ts';
 import { convertSnd } from '../formats/snd.ts';
 import { archiveLocator, readSourceMappingTable } from '../source-mapping.ts';
 import { syntheticSnd } from '../synthetic.test-support.ts';
@@ -69,9 +69,11 @@ describe('production sound table', () => {
     expect(draft.usage).toEqual(PRODUCTION_SOUND_USAGE);
     expect(PRODUCTION_SOUND_USAGE.assets).toBeLessThanOrEqual(AUDIO_BUDGET_LIMITS.assets);
     // Of the P2-08 sounds only the three slot-0 engine clips loop; every other one, slot-3 clips included, plays once.
-    // The two P3-03 loop sounds loop by their made-up flags.
-    expect(draft.payloads.filter(({ bytes }) => readSoundPayload(bytes).loop === 'whole').map(({ id }) => id))
-      .toEqual(['sound/hud/instrument-9-loop', 'sound/hud/overlay-loop', 'sound/model-clip/01', 'sound/model-clip/02', 'sound/model-clip/03']);
+    // Of the P3-03 sounds the two loop sounds loop and the Warp arrival plays eight times, by their entries' flags.
+    const sounds = draft.payloads.map(({ id, bytes }) => ({ id, ...readSoundPayload(bytes) }));
+    const playing = (loop: string) => sounds.filter(sound => sound.loop === loop).map(({ id, plays }) => (plays === undefined ? id : [id, plays]));
+    expect(playing('whole')).toEqual(['sound/hud/instrument-9-loop', 'sound/hud/overlay-loop', 'sound/model-clip/01', 'sound/model-clip/02', 'sound/model-clip/03']);
+    expect(playing('repeat')).toEqual([['sound/event/warp-arrival', 8]]);
     // Mapping verification and conversion share one read of each entry.
     expect([...reads.values()].every(count => count === 1)).toBe(true);
     expect(reads.size).toBe(PRODUCTION_SOUND_TABLE.length);
@@ -79,18 +81,49 @@ describe('production sound table', () => {
 });
 
 describe('production SND rules', () => {
-  it('accept the slice flags 0 and 1 as mono loop counts, and 16-bit samples as signed little-endian', () => {
+  it('accept the slice flags 0, 1 and 8 as mono loop counts, and 16-bit samples as signed little-endian', () => {
     expect(PRODUCTION_SND_RULES).toEqual({
-      flags: [{ value: 0, channels: 1, loop: 'whole' }, { value: 1, channels: 1, loop: 'none' }],
+      flags: [{ value: 0, channels: 1, loop: 'whole' }, { value: 1, channels: 1, loop: 'none' }, { value: 8, channels: 1, loop: 'repeat', plays: 8 }],
       s16le: true,
     });
     expect(Object.isFrozen(PRODUCTION_SND_RULES) && Object.isFrozen(PRODUCTION_SND_RULES.flags)).toBe(true);
+    expect(PRODUCTION_SND_RULES.flags.every(rule => Object.isFrozen(rule))).toBe(true);
     expect(readSoundPayload(convertSnd(block(16, 0), PRODUCTION_SND_RULES, AT).payload)).toMatchObject({ encoding: 's16le', channels: 1, loop: 'whole' });
     expect(readSoundPayload(convertSnd(block(8, 1), PRODUCTION_SND_RULES, AT).payload)).toMatchObject({ encoding: 'u8', channels: 1, loop: 'none' });
+    expect(readSoundPayload(convertSnd(block(16, 8), PRODUCTION_SND_RULES, AT).payload)).toMatchObject({ encoding: 's16le', channels: 1, loop: 'repeat', plays: 8 });
   });
 
-  it.each([2, 8])('reject the unstudied flags value %i rather than guessing its meaning', flags => {
+  // 0x108 has the loop count 8 in its low byte, but the rules match the whole stored value.
+  it.each([2, 7, 9, 16, 255, 0x108])('reject the unstudied flags value %i rather than guessing its meaning', flags => {
     expectSourceError(() => convertSnd(block(8, flags), PRODUCTION_SND_RULES, AT), 'unsupported-payload', `${AT}.flags`);
+  });
+
+  // Schema 2 kept the bytes of every play-once and looping sound: the payload is the schema 1 layout, built here from
+  // the SND header without the converter, with loop code 1 for flags 0, 0 for flags 1 and a zero byte 15.
+  it('convert flags 0 and 1 into the bytes schema 1 gave them, and flags 8 into a count of 8', async () => {
+    const entries = productionSoundEntries();
+    const { source } = await countedVerifiedSource(productionGraphicsFiles({}, entries));
+    const { payloads } = await convertAudioGroup(source, PRODUCTION_SOUND_TABLE, PRODUCTION_SND_RULES);
+    const layouts = new Map(entries.map(({ id, data }) => {
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const [sampleBytes, sampleRate, bitsPerSample, flags] = [4, 8, 12, 16].map(offset => view.getUint32(offset, true));
+      const layout = new Uint8Array(16 + sampleBytes);
+      const header = new DataView(layout.buffer);
+      layout.set([...SOUND_PAYLOAD_TAG].map(character => character.charCodeAt(0)));
+      header.setUint32(4, sampleRate, true);
+      header.setUint32(8, sampleBytes / (bitsPerSample / 8), true);
+      layout.set([1, bitsPerSample / 8, ...({ 0: [1, 0], 1: [0, 0], 8: [2, 8] } as Record<number, number[]>)[flags]], 12);
+      layout.set(data.subarray(20), 16);
+      return [id, { flags, layout }] as const;
+    }));
+    const byFlags = new Map<number, string[]>();
+    for (const row of PRODUCTION_SOUND_TABLE) {
+      const { flags, layout } = layouts.get(archiveLocator(row.mapping.parts[0].alternatives[0]).entry.id)!;
+      expect([...payloads.find(({ id }) => id === row.mapping.asset.id)!.bytes], row.mapping.asset.id).toEqual([...layout]);
+      byFlags.set(flags, [...byFlags.get(flags) ?? [], row.mapping.asset.id]);
+    }
+    expect(P2_08_ROWS.every(({ mapping }) => !byFlags.get(8)!.includes(mapping.asset.id))).toBe(true);
+    expect([byFlags.get(0)!.length, byFlags.get(1)!.length, byFlags.get(8)]).toEqual([5, 23, ['sound/event/warp-arrival']]);
   });
 });
 

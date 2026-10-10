@@ -3,7 +3,9 @@ import { validateGroup, validatePackage, type GroupInput } from '../content/comp
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/budget.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { deriveManifestIdentity, type GroupDraft } from '../content/manifest-identity.ts';
+import { readPayloadRecords } from '../content/payload.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
+import { readSoundPayload } from '../content/sound-payload.ts';
 import { syntheticSourceGroup, VERSION_4_ROLES } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_LOGIC_SHARE } from '../original-data/conversion/convert-logic.ts';
 import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
@@ -43,7 +45,7 @@ import { IMPORT_PROTOCOL_VERSION, IMPORT_STAGES, type ImportWorkerMessage } from
 import {
   AUDIO_CONVERSION_USAGE, audioCoveredFiles, boundGroups, cockpitCoveredFiles, cockpitGraphics, GRAPHICS_CONVERSION_USAGE, GRAPHICS_PAYLOAD_BYTES, MARKER,
   NO_AUDIO, NO_GRAPHICS, NO_LOGIC, NO_MODELS, PRODUCTION_CONVERSION_USAGE, SYNTHETIC_FIRE_SOUND, productionCoveredFiles, RULE_DATA_USAGE, SCENARIO_SOURCES, scenarioOpen,
-  scenarioProfile, sliceCoveredFiles, SYNTHETIC_AUDIO, syntheticImport, syntheticSource, type IdentifyingScenario,
+  scenarioProfile, sliceCoveredFiles, SYNTHETIC_AUDIO, SYNTHETIC_REPEATED_SOUND, syntheticImport, syntheticSource, type IdentifyingScenario,
 } from './synthetic-import.test-support.ts';
 
 const ascii = (text: string): Uint8Array => Uint8Array.from(text, character => character.charCodeAt(0));
@@ -502,6 +504,13 @@ describe('audio conversion', () => {
       ...named('event', 'event-sound', 8), ['sound/explosion', 'explosion-sound'], ['sound/fire', 'fire-sound'], ...named('hud', 'hud-sound', 3),
       ['sound/missile', 'missile-sound'], ['sound/warp', 'warp-sound'],
     ]);
+    // The synthetic rules repeat one sound three times and play every other one once.
+    const playbacks = readPayloadRecords(audioGroup.input.payloads).map(({ id, bytes }) => {
+      const { loop, plays } = readSoundPayload(bytes);
+      return [id, loop, plays];
+    });
+    expect(playbacks.filter(([, loop]) => loop !== 'none')).toEqual([[SYNTHETIC_REPEATED_SOUND.id, 'repeat', SYNTHETIC_REPEATED_SOUND.plays]]);
+    expect(playbacks).toHaveLength(15);
     const readUsage = source.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
     expect(AUDIO_CONVERSION_USAGE).toMatchObject({ assets: 15, payloadBytes: 15 * 16 + 4 + 5 + 3 + 6 + 11, audioSamples: 2 + 5 + 3 + 6 + 11 });

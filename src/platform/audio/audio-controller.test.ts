@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { SOUND_PAYLOAD_SCHEMA_VERSION as SCHEMA } from '../../content/sound-payload.ts';
 import { AUDIO_VOICE_LIMIT, createAudioController, type AudioController } from './audio-controller.ts';
 import { FakeAudio, FakeLifecycle, sound } from './audio-controller.test-support.ts';
 
 // The controller never changes these bytes, which the ownership test checks with a record of its own.
 const SOUND_RECORDS = Object.freeze([
-  Object.freeze({ id: 'sound/fire', schemaVersion: 1, bytes: sound() }),
-  Object.freeze({ id: 'sound/warp', schemaVersion: 1, bytes: sound({ channels: 2, encoding: 's16le', loop: 'whole', sampleRate: 22_050, pcm: Uint8Array.of(0, 0x80, 0xff, 0x7f) }) }),
+  Object.freeze({ id: 'sound/fire', schemaVersion: SCHEMA, bytes: sound() }),
+  Object.freeze({ id: 'sound/warp', schemaVersion: SCHEMA, bytes: sound({ channels: 2, encoding: 's16le', loop: 'whole', sampleRate: 22_050, pcm: Uint8Array.of(0, 0x80, 0xff, 0x7f) }) }),
 ]);
+/** A sound of 1000 frames at 8000 Hz, 0.125 s, that plays three times through. */
+const REPEAT_RECORD = Object.freeze({
+  id: 'sound/arrival', schemaVersion: SCHEMA, bytes: sound({ sampleRate: 8_000, loop: 'repeat', plays: 3, pcm: new Uint8Array(1_000).fill(192) }),
+});
 
 function setup(options: { visible?: boolean; initialState?: string } = {}) {
   const audio = new FakeAudio();
@@ -58,10 +63,12 @@ describe('audio controller creation and loading', () => {
   });
 
   it.each([
-    ['an invalid payload', [SOUND_RECORDS[0], { id: 'sound/bad', schemaVersion: 1, bytes: Uint8Array.of(1, 2, 3) }], 'invalid-sound-payload', 'sound/bad'],
-    ['another payload schema', [{ ...SOUND_RECORDS[0], schemaVersion: 2 }], 'invalid-sound-payload', 'sound/fire'],
-    ['a non-sound Asset', [{ id: 'image/fire', schemaVersion: 1, bytes: sound() }], 'invalid-sound-payload', 'image/fire'],
-    ['an invalid Asset ID', [{ id: 'Sound Fire', schemaVersion: 1, bytes: sound() }], 'invalid-sound-payload', null],
+    ['an invalid payload', [SOUND_RECORDS[0], { id: 'sound/bad', schemaVersion: SCHEMA, bytes: Uint8Array.of(1, 2, 3) }], 'invalid-sound-payload', 'sound/bad'],
+    // Schema 1 `none` and `whole` payloads have the same bytes; only the record's version tells them apart.
+    ['a schema 1 sound', [{ ...SOUND_RECORDS[0], schemaVersion: 1 }], 'invalid-sound-payload', 'sound/fire'],
+    ['a later payload schema', [{ ...SOUND_RECORDS[0], schemaVersion: 3 }], 'invalid-sound-payload', 'sound/fire'],
+    ['a non-sound Asset', [{ id: 'image/fire', schemaVersion: SCHEMA, bytes: sound() }], 'invalid-sound-payload', 'image/fire'],
+    ['an invalid Asset ID', [{ id: 'Sound Fire', schemaVersion: SCHEMA, bytes: sound() }], 'invalid-sound-payload', null],
     ['a repeated sound', [SOUND_RECORDS[0], SOUND_RECORDS[0]], 'duplicate-sound', 'sound/fire'],
   ])('registers nothing for %s', (_name, sounds, code, assetId) => {
     const { controller } = setup();
@@ -89,7 +96,7 @@ describe('audio controller creation and loading', () => {
 
   it('never keeps, changes or transfers the caller payload', () => {
     const { audio, controller } = running();
-    const record = { id: 'sound/explosion', schemaVersion: 1, bytes: sound({ pcm: Uint8Array.of(255, 255) }) };
+    const record = { id: 'sound/explosion', schemaVersion: SCHEMA, bytes: sound({ pcm: Uint8Array.of(255, 255) }) };
     const before = [...record.bytes];
     controller.load([record]);
     expect([...record.bytes]).toEqual(before);
@@ -157,6 +164,37 @@ describe('audio controller unlocking and playing', () => {
     expect([fireVoice.calls, fireVoice.ended.size, controller.getSnapshot().voices]).toEqual([['start', 'disconnect'], 0, 1]);
     fireVoice.end();
     expect(controller.getSnapshot().voices).toBe(1);
+  });
+
+  it('loops a repeat sound from a context time and stops it after its passes, released when it ends or stops early', () => {
+    const { audio, controller } = running();
+    expect(controller.load([REPEAT_RECORD])).toEqual({ status: 'loaded', count: 1 });
+    // One pass of the clip: the voice repeats it, so the buffer holds no copies.
+    expect(audio.buffers.slice(2).map(({ channels, sampleRate }) => [sampleRate, channels.map(channel => channel.length)])).toEqual([[8_000, [1_000]]]);
+    audio.context.currentTime = 1.5;
+    const ended = controller.play('sound/arrival');
+    audio.context.currentTime = 2;
+    const stopped = controller.play('sound/arrival');
+    if (ended.status !== 'started' || stopped.status !== 'started') throw new Error('expected two voices');
+    const [endedVoice, stoppedVoice] = audio.context.voices;
+    // Three passes of 0.125 s from the start time.
+    expect([endedVoice.loop, endedVoice.buffer, endedVoice.calls]).toEqual([true, audio.buffers[2], ['start 1.5', 'stop 1.875']]);
+    expect(stoppedVoice.calls).toEqual(['start 2', 'stop 2.375']);
+    // The host ends the voice at its scheduled stop; the controller only releases it.
+    endedVoice.end();
+    expect([endedVoice.calls, endedVoice.ended.size, controller.getSnapshot().voices]).toEqual([['start 1.5', 'stop 1.875', 'disconnect'], 0, 1]);
+    // Stopped before its passes are done: an immediate stop replaces the scheduled one.
+    expect(controller.stop(stopped.voice)).toBe(true);
+    expect([stoppedVoice.calls, stoppedVoice.ended.size, controller.getSnapshot().voices]).toEqual([['start 2', 'stop 2.375', 'stop', 'disconnect'], 0, 0]);
+  });
+
+  it('fails when the host cannot schedule a repeat sound', () => {
+    const { audio, controller } = running();
+    controller.load([REPEAT_RECORD]);
+    Object.defineProperty(audio.context, 'currentTime', { get: () => { throw new Error('InvalidStateError'); } });
+    expect(controller.play('sound/arrival')).toEqual({ status: 'rejected', code: 'audio-failed' });
+    expect(controller.getSnapshot()).toEqual({ status: 'failed', loaded: 3, voices: 0 });
+    expect(audio.context.voices[0].calls).toEqual(['stop', 'disconnect']);
   });
 
   it('stops one voice or all of them, repeatably', () => {

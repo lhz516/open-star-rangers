@@ -6,6 +6,7 @@ import type {
 // Fakes of the audio controller's host capabilities, shared by the controller's tests and its app consumers' tests.
 
 export class FakeVoice implements AudioVoicePort {
+  /** `start` and `stop`, followed by the context time when one was given. */
   readonly calls: string[] = [];
   readonly ended = new Set<() => void>();
   readonly buffer: AudioBufferHandle;
@@ -15,9 +16,9 @@ export class FakeVoice implements AudioVoicePort {
     this.buffer = buffer;
     this.loop = loop;
   }
-  start(): void { this.calls.push('start'); }
-  stop(): void {
-    this.calls.push('stop');
+  start(when?: number): void { this.calls.push(when === undefined ? 'start' : `start ${when}`); }
+  stop(when?: number): void {
+    this.calls.push(when === undefined ? 'stop' : `stop ${when}`);
     if (this.failStop) throw new Error('stop failed');
   }
   disconnect(): void { this.calls.push('disconnect'); }
@@ -36,6 +37,7 @@ export class FakeContext implements AudioContextPort {
   failVoice = false;
   failListen = false;
   state: string;
+  currentTime = 0;
   constructor(state: string) { this.state = state; }
   /** The host changes the context state and dispatches `statechange`. */
   setState(state: string): void {
@@ -109,6 +111,6 @@ export class FakeLifecycle implements PageLifecycleHost {
   get count(): number { return [...this.listeners.values()].reduce((sum, set) => sum + set.size, 0); }
 }
 
-/** A schema 1 sound payload; the bytes depend on `overrides`. */
+/** A schema 2 sound payload; the bytes depend on `overrides`. */
 export const sound = (overrides: Partial<SoundPayloadInput> = {}) =>
-  writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.of(0, 128, 255), ...overrides });
+  writeSoundPayload({ sampleRate: 11_025, channels: 1, encoding: 'u8', loop: 'none', pcm: Uint8Array.of(0, 128, 255), ...overrides } as SoundPayloadInput);

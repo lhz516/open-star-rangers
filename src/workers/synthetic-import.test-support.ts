@@ -162,24 +162,41 @@ export const RULE_DATA_USAGE: BudgetRecord = productionRuleData().usage;
 /** An audio stage with nothing to convert; its group has no Assets. */
 export const NO_AUDIO: AudioStageInput = Object.freeze({ table: [], rules: Object.freeze({ flags: Object.freeze([]), s16le: false }) });
 
-/** A `flags` value with a test meaning only; production meanings come from research. */
+/** `flags` values with test meanings only, play once and play three times; production meanings come from research. */
 const SYNTHETIC_FLAGS = 7;
+const SYNTHETIC_REPEAT_FLAGS = 9;
+
+/**
+ * The sound of the synthetic audio disc that plays more than once, and its play count: unlike the production count, so
+ * a converted count comes from the rules.
+ */
+export const SYNTHETIC_REPEATED_SOUND = Object.freeze({ id: 'sound/event/synthetic-2', plays: 3 });
 
 /** A one-sample 8-bit sound of a version 4 event or HUD role at `entry`. */
-const namedSound = (role: 'event-sound' | 'hud-sound', index: number, entry: number) =>
-  ({ role, id: `sound/${role === 'event-sound' ? 'event' : 'hud'}/synthetic-${index + 1}`, entry, bitsPerSample: 8, samples: [entry & 0xff] });
+const namedSound = (role: 'event-sound' | 'hud-sound', index: number, entry: number, flags = SYNTHETIC_FLAGS) =>
+  ({ role, id: `sound/${role === 'event-sound' ? 'event' : 'hud'}/synthetic-${index + 1}`, entry, bitsPerSample: 8, samples: [entry & 0xff], flags });
+
+interface SyntheticSound {
+  readonly role: string;
+  readonly id: string;
+  readonly entry: number;
+  readonly bitsPerSample: number;
+  readonly samples: readonly number[];
+  readonly flags: number;
+}
 
 /**
  * The sounds of the synthetic audio disc, in ascending Asset ID order, at entry IDs no graphics entry uses: the four
  * core sounds and the eight event and three HUD sounds slice definition version 4 requires.
  */
-const SOUNDS: readonly { readonly role: string; readonly id: string; readonly entry: number; readonly bitsPerSample: number; readonly samples: readonly number[] }[] = Object.freeze([
-  ...Array.from({ length: 8 }, (_, index) => namedSound('event-sound', index, 12_005 + index)),
-  { role: 'explosion-sound', id: 'sound/explosion', entry: 12_001, bitsPerSample: 16, samples: [0x00, 0x80, 0xff, 0x7f] },
-  { role: 'fire-sound', id: 'sound/fire', entry: 12_002, bitsPerSample: 8, samples: [0, 64, 128, 192, 255] },
+const SOUNDS: readonly SyntheticSound[] = Object.freeze([
+  // The second event sound is `SYNTHETIC_REPEATED_SOUND`.
+  ...Array.from({ length: 8 }, (_, index) => namedSound('event-sound', index, 12_005 + index, index === 1 ? SYNTHETIC_REPEAT_FLAGS : SYNTHETIC_FLAGS)),
+  { role: 'explosion-sound', id: 'sound/explosion', entry: 12_001, bitsPerSample: 16, samples: [0x00, 0x80, 0xff, 0x7f], flags: SYNTHETIC_FLAGS },
+  { role: 'fire-sound', id: 'sound/fire', entry: 12_002, bitsPerSample: 8, samples: [0, 64, 128, 192, 255], flags: SYNTHETIC_FLAGS },
   ...Array.from({ length: 3 }, (_, index) => namedSound('hud-sound', index, 12_013 + index)),
-  { role: 'missile-sound', id: 'sound/missile', entry: 12_003, bitsPerSample: 8, samples: [10, 20, 30] },
-  { role: 'warp-sound', id: 'sound/warp', entry: 12_004, bitsPerSample: 8, samples: [200, 100, 50, 25, 12, 6] },
+  { role: 'missile-sound', id: 'sound/missile', entry: 12_003, bitsPerSample: 8, samples: [10, 20, 30], flags: SYNTHETIC_FLAGS },
+  { role: 'warp-sound', id: 'sound/warp', entry: 12_004, bitsPerSample: 8, samples: [200, 100, 50, 25, 12, 6], flags: SYNTHETIC_FLAGS },
 ]);
 
 /** The synthetic sound table and rules that convert the sounds of `audioCoveredFiles()` into a complete audio group. */
@@ -195,7 +212,13 @@ export const SYNTHETIC_AUDIO: AudioStageInput = Object.freeze({
       resolution: 'declared',
     },
   })),
-  rules: Object.freeze({ flags: Object.freeze([Object.freeze({ value: SYNTHETIC_FLAGS, channels: 1, loop: 'none' })]), s16le: true }),
+  rules: Object.freeze({
+    flags: Object.freeze([
+      Object.freeze({ value: SYNTHETIC_FLAGS, channels: 1, loop: 'none' }),
+      Object.freeze({ value: SYNTHETIC_REPEAT_FLAGS, channels: 1, loop: 'repeat', plays: SYNTHETIC_REPEATED_SOUND.plays }),
+    ]),
+    s16le: true,
+  }),
 });
 
 /** The audio conversion usage of `SYNTHETIC_AUDIO` on `audioCoveredFiles()`: 15 mono clips, one of them 16-bit. */
@@ -214,8 +237,8 @@ export const SYNTHETIC_FIRE_SOUND = SOUNDS.findIndex(({ id }) => id === 'sound/f
  * entries of `SYNTHETIC_AUDIO`; `corrupt` gives the fire sound a `flags` value the rules do not accept.
  */
 export function audioCoveredFiles(corrupt = false): Record<string, Uint8Array> {
-  return productionGraphicsFiles({}, SOUNDS.map(({ entry, bitsPerSample, samples }, index) => ({
-    id: entry, type: 'SND', ...syntheticSnd({ samples: [...samples], bitsPerSample, flags: corrupt && index === SYNTHETIC_FIRE_SOUND ? SYNTHETIC_FLAGS + 1 : SYNTHETIC_FLAGS }),
+  return productionGraphicsFiles({}, SOUNDS.map(({ entry, bitsPerSample, samples, flags }, index) => ({
+    id: entry, type: 'SND', ...syntheticSnd({ samples: [...samples], bitsPerSample, flags: corrupt && index === SYNTHETIC_FIRE_SOUND ? SYNTHETIC_FLAGS + 1 : flags }),
   })));
 }
 
