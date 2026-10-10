@@ -100,7 +100,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | in-progress |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
-| [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | in-progress |
+| [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
 | [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -127,6 +127,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 14 完成（交 15、18、19、P3-07–P3-10）：** 区域检查、停放切换（`setActivity` 释放或重建移动块，只清恰为该实体的玩家目标）、过境门禁（玩家种类除外）、停放更新与行进、停放中的 Warp 跳跃、编队跟随、唯一退场与 `object-left-world`；停放时写位置使放置序号加 1。项目规则：负的 +0xA8 或 +0xA8 + +0xA4 按精确整数（不回绕）计算，过境首次检查即结束、不推迟 Warp。没有玩家实体时区域检查把所有非玩家实体判为区外并停放（与原版一致），之后的测试若以无玩家的世界推进替身实体，须注意这一点。插入点注释：P3-07/P3-08 的停放战斗、P3-10 的基地报告、P3-09 玩家 Warp 期间的区域中心。交 19：core 分册阶段表、`leave`、过境门禁、新模块与上述项目规则；executable 可补数值细节（见 14 的完成证据）。
 - **2026-10-10 — 15 完成（交 18、19、P3-07、P3-13）：** `flight.motion` 就绪（无玩家实体时为 null；`speedLimitStatus` 恒为 `'initial-only'`，P3-07 接入实时最高速度重算时改为 `'live'`；玩家实体缺移动块或控制状态、或 ID 不能解析时为 `projection.motion` 故障），`combat` 仍未就绪。`replay.ts` 新增内部入口 `startReplay`；运动 replay 测试以替身代替尚未实现的目标与 AI 写入者（录制与 replay 相同），160 tick 的录制经 JSON 往返后事件与检查点全部相等。`budget.test.ts` 在实体上限下以真实流水线核对 P3-06 的事件与请求项及快照文本长度；P3-07 增加预算项时须同步其中的上界。交 19：core 分册的 `flight` 就绪说明与内部函数列表。
 - **2026-10-10 — 新增 23（依预先授权，不需审阅）：** 10、12、14 在实现中对照原生指令确认了若干结构细节，16 发现 executable 最高速度一节的计数有误（应为 6/16）。19 只写工程文档、17 只写运行结论，这些原版事实没有归属，由 23 写入 executable 的 P3-06 一节。最终对齐加入对 23 的依赖。
+- **2026-10-10 — 23 完成：** 10、12、14 实现中确认的结构、运算次序与舍入点经原生指令复核后写入 executable 的 P3-06 一节；16 的计数更正为 6/16。U 项不变。未记录、留待需要时补入：`0x568b0` 在启动时还循环调用 `0x56b8c` 生成另一张随机表（启动时消耗随机数）。Core 的随机目标距离平方阈值与原版的舍入写法不同，但在比例由代码固定时结果相同，比例变为输入时须复核。
+- **2026-10-10 — 合并 main（P3-04），在最终对齐之前（协调者决定，依预先授权）：** P3-04 已快进进入 main，其正式 Runtime/Session 与 e2e 调用 `createWorld` 与 `ReplayContent`。不合并则本分支与 P3-04 的调用者在合入时冲突，最终对齐无法证明可合并。合并提交 `854cfdb2`：文字冲突只有阶段索引的导航句（合并两侧）；main 删除了 P1 合成演示并重组了工程文档。已知的语义冲突（合并后 `pnpm check` 的类型检查失败）：任务所有者未传 `craftInfo`、事件总线与事件日志未列出 P3-06 的四个事件、会话桥读取旧的 `flight.readiness`。由新增的修复子任务 24 处理并做浏览器回归；在 24 集成前，本分支的类型检查为红。另：P3-07 指出 `judgeCommands` 在 tick 开头读取一次指令速度，P3-07 的能量键在同 tick 内改写上限后读回会过期；P3-06 自身不改变 tick 内的上限，P3-07 在其分支修正并在合并时处理，本分支不改。
 
 ## 审批
 
