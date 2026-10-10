@@ -1,0 +1,521 @@
+import { describe, expect, it } from 'vitest';
+import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
+import type { DomainEvent, ObjectInstantiatedEvent } from '../contracts/domain-events.ts';
+import { nextRandom, type RngState } from '../determinism/rng.ts';
+import { expectedRectangle, expectedWorld, float32OfDouble } from '../rules/derivation.test-support.ts';
+import { RandStream } from '../rules/original-random.ts';
+import { initialWorldState } from '../world/create-world.ts';
+import {
+  asCreateInput, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, ruleInputs, worldInput,
+  type MissionDraft, type WorldInputParts,
+} from '../world/create-world.test-support.ts';
+import { readTickInput } from '../contracts/tick-input.ts';
+import { isActiveState, type Entity } from '../world/entity-table.ts';
+import { constructWorld, type World } from '../world/world.ts';
+import { recordOf, tickInput } from '../world/world.test-support.ts';
+import type { WorldState } from '../world/world-state.ts';
+import { PIPELINE, registerTick } from './pipeline.ts';
+import { disableSpawning, isSpawningEnabled, pendingSpawns, placeWorldRecord } from './spawn.ts';
+
+// Expectations are written out from Q-01–Q-07 (docs/original/formats/executable.md, P3-02/02–03, and the selected
+// mission's instantiation list in scenario.md) and the revised Q-11 decision (goal 执行记录: f32 stores round to
+// nearest). Random values come from the world's Mulberry32 state directly: the original's rand() is the top 15 bits of
+// each 32-bit draw.
+
+const Q = 1.875;
+/** f32(0.70710677), bits 0x3F3504F3, read independently of the code under test. */
+const C = (() => {
+  const view = new DataView(new ArrayBuffer(4));
+  view.setUint32(0, 0x3f3504f3);
+  return view.getFloat32(0);
+})();
+
+function setUp(parts: WorldInputParts = {}): { readonly state: WorldState; readonly world: World } {
+  const state = initialWorldState(asCreateInput(worldInput(parts)));
+  return { state, world: constructWorld(state) };
+}
+
+/** The next `count` rand values (0–32767) a world would draw from `state`. */
+function randValues(state: RngState, count: number): number[] {
+  const values: number[] = [];
+  let current = state;
+  for (let index = 0; index < count; index++) {
+    const draw = nextRandom(current);
+    current = draw.state;
+    values.push(Math.floor((draw.value * 2 ** 32) / 2 ** 17));
+  }
+  return values;
+}
+
+const instantiated = (events: readonly DomainEvent[]): ObjectInstantiatedEvent[] =>
+  events.filter((event): event is ObjectInstantiatedEvent => event.type === 'object-instantiated');
+
+function stepTo(world: World, state: WorldState, tick: number): ObjectInstantiatedEvent[] {
+  const events: ObjectInstantiatedEvent[] = [];
+  while (state.tick < tick) events.push(...instantiated(world.step(tickInput())));
+  return events;
+}
+
+const entities = (state: WorldState): Entity[] => [...state.entities.byId()];
+const mission = (index: number, group: { index: number; request: number; member: number } | null = null) => ({ collection: 'mission', index, group });
+
+/** A record of kind bit `craftType` at a stored reference position. */
+const stored = (index: number, craftType: number, x: number, y: number, overrides: Record<string, unknown> = {}) =>
+  declaration(index, { craftType, position: { x, y, z: 0 }, ...overrides });
+
+describe('spawn timing (P3-02 AC-03, R-01 units)', () => {
+  /** The player at 0 s, record 1 at 1 s and record 2 at 3 s, all at stored positions. */
+  function timedMission(): MissionDraft {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { spawnTime: 1 }), stored(2, 8, 0, 400, { spawnTime: 3 }));
+    return m;
+  }
+
+  it.each([2, 4])('instantiates an item due at T seconds on the first tick whose clock exceeds 64T, at %i units per tick', (units) => {
+    const { state, world } = setUp({ mission: timedMission(), run: { clockUnitsPerTick: units } });
+    const seen = new Map<number, number>();
+    while (state.tick < 100) {
+      for (const event of instantiated(world.step(tickInput()))) seen.set(event.source.index, event.tick);
+    }
+    // T = 0 at tick 1; tick n has clock n × units, so the first n with n × units > 64T is ⌊64T ÷ units⌋ + 1.
+    expect(seen).toEqual(new Map([[0, 1], [1, units === 2 ? 33 : 17], [2, units === 2 ? 97 : 49]]));
+  });
+});
+
+describe('instantiation of the slice-shaped mission (P3-02 AC-05, R-02 scheduling)', () => {
+  /** [source declaration, kind bit, group membership] in instantiation order at tick 1, without a wingman. */
+  function openingOrder(): [number, number, { index: number; request: number; member: number } | null][] {
+    const rows: [number, number, { index: number; request: number; member: number } | null][] = [[0, 0, null]];
+    for (let count = 0; count < 2; count++) rows.push([3, 7, null]);
+    for (let count = 0; count < 4; count++) rows.push([7, 17, null]);
+    for (let count = 0; count < 35; count++) rows.push([8, 14, null]);
+    for (const [group, member, kindBit] of [[0, 4, 7], [1, 6, 8]]) {
+      for (let request = 0; request < 2; request++) {
+        for (let position = 0; position < 2; position++) rows.push([member, kindBit, { index: group, request, member: position }]);
+      }
+    }
+    return rows;
+  }
+
+  it('instantiates rows 1–7 at tick 1 and group 2 at the first tick past 19,200 units, in queue order with IDs from 1', () => {
+    // 64 units per tick: group 2 is due at tick 301, the first whose clock (19,264) exceeds 19,200.
+    const { state, world } = setUp({ run: { clockUnitsPerTick: 64 } });
+    const first = instantiated(world.step(tickInput()));
+    expect(first.map(({ tick, entityId, kindBit, source }) => [tick, entityId, kindBit, source])).toEqual(
+      openingOrder().map(([index, kindBit, group], at) => [1, at + 1, kindBit, mission(index, group)]),
+    );
+    // An entity removed meanwhile keeps its ID unused, and counts do not fall.
+    state.entities.get(5)!.state = 'pending-removal';
+    expect(stepTo(world, state, 300)).toEqual([]);
+    expect(state.entities.get(5)).toBeUndefined();
+    const late = stepTo(world, state, 301);
+    expect(late.map(({ tick, entityId, kindBit, source }) => [tick, entityId, kindBit, source])).toEqual(
+      [0, 1, 2].flatMap((request) => [0, 1].map((member, at) => [301, 51 + request * 2 + at, 7, mission(5, { index: 2, request, member })])),
+    );
+    expect(state.spawn.queue).toEqual([]);
+    const kinds = new Map<number, number>();
+    for (const { kindBit } of [...first, ...late]) kinds.set(kindBit, (kinds.get(kindBit) ?? 0) + 1);
+    expect(kinds).toEqual(new Map([[0, 1], [7, 12], [17, 4], [14, 35], [8, 4]]));
+    expect(state.spawn.records.map(({ spawnCount }) => spawnCount)).toEqual([1, 0, 0, 2, 0, 0, 0, 4, 35]);
+    expect(state.spawn.groups.map(({ spawnCount, leader }) => [spawnCount, leader])).toEqual([[2, 45], [2, 49], [3, 55]]);
+  });
+
+  it('describes every object in its event: ID, kind, namespaced source and a detached position, in instantiation order', () => {
+    const { state, world } = setUp();
+    const events = world.step(tickInput());
+    expect(deepFrozen(events)).toBe(true);
+    for (const event of instantiated(events)) {
+      const entity = state.entities.get(event.entityId)!;
+      expect(event).toEqual({ type: 'object-instantiated', tick: 1, entityId: entity.id, kindBit: entity.kindBit, source: entity.source, position: entity.position });
+      expect(event.position).not.toBe(entity.position);
+    }
+  });
+
+  it('names the player, kinds 0x80 and 0x4000 by craft type and the four 0x20000 craft by candidates 0–3', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    const names = entities(state).map(({ name }) => name);
+    expect(names[0]).toEqual({ type: 'craft-type', kindBit: 0 });
+    expect(names.slice(1, 3)).toEqual([{ type: 'craft-type', kindBit: 7 }, { type: 'craft-type', kindBit: 7 }]);
+    expect(names.slice(3, 7)).toEqual([0, 1, 2, 3].map((candidate) => ({ type: 'candidate', declaration: { collection: 'mission', index: 7 }, candidate })));
+    expect(new Set(names.slice(7, 42).map((name) => JSON.stringify(name)))).toEqual(new Set([JSON.stringify({ type: 'craft-type', kindBit: 14 })]));
+    expect(names.slice(42)).toEqual([...Array(4).fill({ type: 'craft-type', kindBit: 7 }), ...Array(4).fill({ type: 'craft-type', kindBit: 8 })]);
+  });
+
+  it('places each group cycle at its anchor plus the layout offset, with the anchor\'s attitude, parked far from the player', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    for (const [leader, follower] of [[43, 44], [45, 46], [47, 48], [49, 50]]) {
+      const anchor = state.entities.get(leader)!;
+      const member = state.entities.get(follower)!;
+      expect(member.position).toEqual({ x: float32OfDouble(anchor.position.x + 250, 'nearest'), y: anchor.position.y, z: anchor.position.z });
+      expect(member.orientation).toEqual(anchor.orientation);
+      expect([anchor.activity, member.activity]).toEqual(['parked', 'parked']);
+      // Rectangle 1, 30000–37500 on both axes: the attitude faces away from the centre along (+, +).
+      expect(anchor.orientation).toEqual([-C, C, 0, 0, 0, 1, C, C, 0]);
+    }
+    expect(state.entities.get(1)!.activity).toBe('active');
+    expect([2, 3].map((id) => state.entities.get(id)!.activity)).toEqual(['active', 'active']);
+  });
+
+  it('gives each object its record\'s rule inputs after the build\'s defaults, its side and its interaction category', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    // The build draws +0x78 for records 0, 1, 2, 4, 5, 6, 7 and 8 in that order; record 3's is 30. +0x70 and +0x74
+    // default to (0 + 3) × 1, except the player's +0x70 of 6; +0x60–+0x68 to 100.
+    const draws = randValues(0x1234_5678, 8).map((value) => (value % 60) + 20);
+    const aiValueC = new Map([[0, draws[0]], [3, 30], [4, draws[3]], [6, draws[5]], [7, draws[6]], [8, draws[7]]]);
+    const binding = new Map([[0, ['player', false]], [7, ['enemy', false]], [8, ['enemy', false]], [14, ['friendly', false]], [17, ['friendly', true]]]);
+    for (const entity of entities(state)) {
+      const index = entity.source!.index;
+      expect(entity.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: index === 0 ? 6 : 3, aiValueB: 3, aiValueC: aiValueC.get(index) });
+      expect([entity.side, entity.baseInteraction]).toEqual(binding.get(entity.kindBit));
+    }
+  });
+
+  it('instantiates in request handling: no object takes part in the stages after it, nor gets an update, in that tick', () => {
+    const { state, world } = setUp();
+    const context = registerTick(state, readTickInput(tickInput()));
+    const seen: Record<string, number> = {};
+    for (const stage of PIPELINE) {
+      if (stage.id === 'request-handling') seen.before = state.entities.size;
+      stage.run?.(context);
+      if (stage.id === 'request-handling') seen.after = state.entities.size;
+      if (stage.id === 'movement') seen.activeAtMovement = entities(state).filter(({ state: objectState }) => isActiveState(objectState)).length;
+    }
+    expect(seen).toEqual({ before: 0, after: 50, activeAtMovement: 0 });
+    expect(instantiated(context.events)).toHaveLength(50);
+    expect(new Set(entities(state).map(({ activity, state: objectState }) => `${activity}/${objectState}`))).toEqual(new Set(['active/presentation-ready', 'parked/new']));
+    world.step(tickInput());
+    expect(new Set(entities(state).map(({ state: objectState }) => objectState))).toEqual(new Set(['active']));
+  });
+});
+
+describe('spawn enable flag and queue queries (P3-02 AC-05; P3-11 interfaces)', () => {
+  it('instantiates nothing once spawning is disabled, keeping the queue for the pending query', () => {
+    const { state, world } = setUp({ run: { clockUnitsPerTick: 64 } });
+    expect(isSpawningEnabled(state)).toBe(true);
+    world.step(tickInput());
+    disableSpawning(state);
+    expect(isSpawningEnabled(state)).toBe(false);
+    stepTo(world, state, 400);
+    expect(state.entities.size).toBe(50);
+    const pending = pendingSpawns(state);
+    expect(pending).toEqual([{ due: 19200, source: 'group', index: 2, requests: 3 }]);
+    expect(deepFrozen(pending)).toBe(true);
+    expect(pending[0]).not.toBe(state.spawn.queue[0]);
+  });
+
+  it('posts nothing for a non-positive request count, and a group template the build leaves at probability 0 never fires', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(
+      stored(1, 7, 0, 400, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) }),
+      declaration(2, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 } }),
+      declaration(3, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(4, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+      declaration(6, { origins: ['group-member'], craftType: 8, memberOf: 2 }),
+    );
+    m.groups = [
+      { template: 2, members: [3], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 4, members: [5], spawnCount: 0xffffffff, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 4, members: [6], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+    ];
+    const { state, world } = setUp({ mission: m });
+    expect(instantiated(world.step(tickInput())).map(({ source }) => source.index)).toEqual([0]);
+    expect(state.spawn.queue).toEqual([]);
+    expect(state.spawn.groups.map(({ spawnCount }) => spawnCount)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => {
+  const p = { x: Math.fround(1234.5678), y: Math.fround(-987.6543), z: Math.fround(0.3) };
+  const runtime = (value: number) => float32OfDouble(value * Q, 'nearest');
+
+  /**
+   * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 a member
+   * reachable only through group 0. Record 3, reachable only through group 1, is its template at p, unconverted.
+   */
+  function aliasMission(): MissionDraft {
+    const m = playerOnlyMission();
+    m.declarations.push(
+      declaration(1, { origins: ['object', 'group-template'], craftType: 7, position: { ...p } }),
+      declaration(2, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(3, { origins: ['group-template'], position: { ...p }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(4, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+    );
+    m.groups = [
+      { template: 1, members: [2, 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }] },
+      { template: 3, members: [4], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
+    ];
+    return m;
+  }
+
+  it('converts a section-1 record once, whether it spawns directly or anchors its group; a group-only record not at all', () => {
+    const { state, world } = setUp({ mission: aliasMission() });
+    const events = instantiated(world.step(tickInput()));
+    const at = (index: number, member: number | null = null) => events.find(({ source }) => source.index === index && (member === null || source.group?.member === member))!.position;
+    const once = { x: runtime(p.x), y: runtime(p.y), z: runtime(p.z) };
+    expect(at(1)).toEqual(once);
+    expect(once.x).not.toBe(runtime(runtime(p.x)));
+    expect(at(2, 0)).toEqual(once);
+    expect(at(2, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
+    expect(at(4)).toEqual(p);
+    // The build fills section-1 records only: the group-only member keeps its source values.
+    expect(state.entities.get(events.find(({ source }) => source.index === 2)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+    expect(state.entities.get(events.find(({ source }) => source.index === 1)!.entityId)!.ruleInputs).toMatchObject({ percentB: 100, aiValueA: 3, aiValueB: 3 });
+  });
+});
+
+describe('group dispatch (P3-02 AC-05, Q-02 section-5 dispatch)', () => {
+  /**
+   * Group 0: template 1 (rectangle 0, AI target the player, target kinds [0]) with members 2, 3, 2 and two layout
+   * offsets. Group 1: template 4 without AI target fields, member 5 (AI target kinds [17]).
+   */
+  function cycleMission(): MissionDraft {
+    const m = playerOnlyMission();
+    m.spawnRegions = [{ x0: -800, y0: 400, x1: 800, y1: 1600 }];
+    m.declarations.push(
+      declaration(1, { origins: ['object', 'group-template'], placement: { region: 0, anchor: null }, aiTarget: 0, aiTargetCraftTypes: [0] }),
+      declaration(2, { origins: ['object', 'group-member'], craftType: 7, memberOf: 0, aiTargetCraftTypes: [17] }),
+      declaration(3, { origins: ['object', 'group-member'], craftType: 8, memberOf: 0 }),
+      declaration(4, { origins: ['object', 'group-template'], position: { x: 64, y: 64, z: 0 } }),
+      declaration(5, { origins: ['object', 'group-member'], craftType: 8, memberOf: 1, aiTargetCraftTypes: [17] }),
+    );
+    m.groups = [
+      { template: 1, members: [2, 3, 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: -300, y: 20, z: 5 }] },
+      { template: 4, members: [5], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
+    ];
+    return m;
+  }
+
+  it('takes offset i mod L and places a new anchor from the template at each cycle\'s start, drawing x then y', () => {
+    const { state, world } = setUp({ mission: cycleMission() });
+    const [r0, r1, r2, r3] = randValues(state.rngState, 4);
+    const events = instantiated(world.step(tickInput()));
+    const members = events.filter(({ source }) => source.group?.index === 0);
+    // Rectangle 0 in runtime units: x −1500 to 1500, y 750 to 3000.
+    const first = { x: expectedRectangle(-1500, 1500, r0), y: expectedRectangle(750, 3000, r1), z: 0 };
+    const second = { x: expectedRectangle(-1500, 1500, r2), y: expectedRectangle(750, 3000, r3), z: 0 };
+    expect(members.map(({ source, position }) => [source, position])).toEqual([
+      [mission(2, { index: 0, request: 0, member: 0 }), first],
+      [mission(3, { index: 0, request: 0, member: 1 }), { x: float32OfDouble(first.x - 300, 'nearest'), y: float32OfDouble(first.y + 20, 'nearest'), z: 5 }],
+      [mission(2, { index: 0, request: 0, member: 2 }), second],
+    ]);
+    const facing = (x: number): number[] => (x >= 0 ? [-C, C, 0, 0, 0, 1, C, C, 0] : [-C, -C, 0, 0, 0, 1, -C, C, 0]);
+    expect(members.map(({ entityId }) => state.entities.get(entityId)!.orientation)).toEqual([facing(first.x), facing(first.x), facing(second.x)]);
+    expect(state.spawn.groups[0]).toMatchObject({ spawnCount: 1, leader: members[2].entityId });
+  });
+
+  it('copies the template\'s AI target fields into each member record when they are set, and keeps them there', () => {
+    const { state, world } = setUp({ mission: cycleMission() });
+    world.step(tickInput());
+    expect(recordOf(state, 'mission', 2)).toMatchObject({ aiTarget: 0, aiTargetCraftTypes: [0], spawnCount: 0 });
+    expect(recordOf(state, 'mission', 3)).toMatchObject({ aiTarget: 0, aiTargetCraftTypes: [0] });
+    expect(recordOf(state, 'mission', 5)).toMatchObject({ aiTarget: null, aiTargetCraftTypes: [17] });
+    // The input setup is untouched.
+    expect(state.setup.declarations[2].aiTarget).toBeNull();
+  });
+});
+
+describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
+  /** Anchor offset of one axis from a sign draw and a size draw. */
+  const offset = (sign: number, size: number) => (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200));
+
+  it('anchors on the oldest entity of the anchor record, whatever its state, and on the world default when it has none', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(
+      declaration(1, { craftType: 7, placement: { region: null, anchor: 0 }, ruleInputs: ruleInputs({ craftCount: 2 }) }),
+      declaration(2, { craftType: 8, placement: { region: null, anchor: 1 }, spawnTime: 1 }),
+      declaration(3, { craftType: 8, placement: { region: null, anchor: 4 } }),
+      declaration(4, { craftType: 17, spawnTime: 2, position: { x: 100, y: 100, z: 0 } }),
+      declaration(5, { origins: ['object', 'group-template'] }),
+      declaration(6, { craftType: 8, placement: { region: null, anchor: 5 } }),
+      declaration(7, { origins: ['object', 'group-member'], craftType: 8, memberOf: 0 }),
+    );
+    m.groups = [{ template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] }];
+    const { state, world } = setUp({ mission: m });
+    const r = randValues(state.rngState, 16);
+    const events = instantiated(world.step(tickInput()));
+    const player = { x: 100 * Q, y: 200 * Q, z: 0 };
+    const near = (base: { x: number; y: number; z: number }, values: number[]) => ({
+      x: base.x + offset(values[0], values[1]), y: base.y + offset(values[2], values[3]), z: base.z + offset(values[4], values[5]),
+    });
+    const byIndex = (index: number) => events.filter(({ source }) => source.index === index).map(({ position }) => position);
+    expect(byIndex(1)).toEqual([near(player, r.slice(0, 6)), near(player, r.slice(6, 12))]);
+    // Record 4 has not spawned yet and record 5 has kind 0: the whole-world default, x then y.
+    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }]);
+    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[14]), y: expectedWorld(6, r[15]), z: 0 }]);
+    const [oldest] = entities(state).filter(({ source }) => source?.index === 1);
+    oldest.destroyed = true;
+    oldest.state = 'destroyed-source';
+    const later = randValues(state.rngState, 6);
+    const due = stepTo(world, state, 33).find(({ source }) => source.index === 2)!;
+    expect(due.position).toEqual(near(oldest.position, later));
+  });
+
+  it('serves the rescue: places a world record now, a stored position without drawing', () => {
+    const { state, world } = setUp({ mission: playerOnlyMission() });
+    world.step(tickInput());
+    const rand = new RandStream(state.rngState);
+    const placement = placeWorldRecord(state, recordOf(state, 'mission', 0), rand);
+    expect(placement).toMatchObject({ route: 'stored', position: { x: 100 * Q, y: 200 * Q, z: 0 } });
+    expect(rand.state).toBe(state.rngState);
+  });
+});
+
+describe('activity and the player at instantiation (P3-02 AC-05, Q-07)', () => {
+  /**
+   * The player stored above the origin; group-only templates at exact runtime points, each with one member of kind
+   * bit 8. The player's height does not count: the radius reads x and y only.
+   */
+  function activityMission(points: readonly [number, number][], playerSpawnTime = 0): MissionDraft {
+    const m = missionFrame();
+    m.declarations.push(declaration(0, { craftType: 0, spawnTime: playerSpawnTime, position: { x: 0, y: 0, z: 1 } }));
+    points.forEach(([x, y], group) => {
+      m.declarations.push(
+        declaration(1 + group * 2, { origins: ['group-template'], position: { x, y, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+        declaration(2 + group * 2, { origins: ['group-member'], craftType: 8, memberOf: group }),
+      );
+      m.groups.push({ template: 1 + group * 2, members: [2 + group * 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] });
+    });
+    return m;
+  }
+
+  it('starts an object active strictly within x/y radius 7500 of the player, parked on and beyond it', () => {
+    const points: [number, number][] = [[7500, 0], [7499.5, 0], [0, -7500], [4500, 6000], [4500, 5999.5], [-1, 1]];
+    const { state, world } = setUp({ mission: activityMission(points) });
+    world.step(tickInput());
+    expect(entities(state).map(({ kindBit, activity }) => [kindBit, activity])).toEqual([
+      [0, 'active'],
+      [8, 'parked'],
+      [8, 'active'],
+      [8, 'parked'],
+      [8, 'parked'],
+      [8, 'active'],
+      [8, 'active'],
+    ]);
+    expect(world.renderState().entities.map(({ id }) => id)).toEqual([1, 3, 6, 7]);
+  });
+
+  it('parks every object while there is no player entity', () => {
+    const { state, world } = setUp({ mission: activityMission([[-1, 1]], 1) });
+    world.step(tickInput());
+    expect(entities(state).map(({ activity }) => activity)).toEqual(['parked']);
+    stepTo(world, state, 40);
+    expect(entities(state).map(({ kindBit, activity }) => [kindBit, activity])).toEqual([[8, 'parked'], [0, 'active']]);
+  });
+
+  it('gives the player the identity attitude and view mode 0xC, every other object its placement attitude', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, -100, 50));
+    const { state, world } = setUp({ mission: m });
+    state.player.viewMode = 3;
+    state.player.previousViewMode = 5;
+    world.step(tickInput());
+    const [player, other] = entities(state);
+    expect(player.orientation).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    // x < 0 and y ≥ 0: forward (−c, +c, 0), up (0, 0, 1), first row (−c, −c, 0).
+    expect(other.orientation).toEqual([-C, -C, 0, 0, 0, 1, -C, C, 0]);
+    expect(state.player).toMatchObject({ entityId: player.id, viewMode: 0xc, previousViewMode: 0xc });
+    expect(world.projection().player).toMatchObject({ entityId: player.id, viewMode: 0xc, previousViewMode: 0xc });
+  });
+});
+
+describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
+  /** The player at a stored position and one record at 1 s; the queue is empty after tick 33. */
+  function shortMission(): MissionDraft {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { spawnTime: 1 }));
+    return m;
+  }
+
+  it('spawns no object of kind bit 1 in a run without a wingman', () => {
+    const { state, world } = setUp({ mission: shortMission() });
+    const events = stepTo(world, state, 40);
+    expect(state.spawn.queue).toEqual([]);
+    expect(events.map(({ kindBit }) => kindBit)).toEqual([0, 7]);
+    expect(world.projection().mission.wingman).toBeNull();
+  });
+
+  it.each([0, 1, 2, 3, 4])('spawns exactly wingman option %i, right after the player, anchored on it, named by its candidate', (index) => {
+    const { state, world } = setUp({ mission: shortMission(), run: { wingman: index } });
+    // Creation draws +0x78 for the player, the wingman and record 1, in that order.
+    const [, wingmanDraw] = randValues(0x1234_5678, 3);
+    const r = randValues(state.rngState, 6);
+    const events = stepTo(world, state, 40);
+    expect(events.map(({ entityId, kindBit, source }) => [entityId, kindBit, source])).toEqual([
+      [1, 0, mission(0)],
+      [2, 1, { collection: 'wingman', index, group: null }],
+      [3, 7, mission(1)],
+    ]);
+    const offset = (sign: number, size: number) => (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200));
+    const wingman = state.entities.get(2)!;
+    expect(wingman.position).toEqual({ x: 100 * Q + offset(r[0], r[1]), y: 200 * Q + offset(r[2], r[3]), z: offset(r[4], r[5]) });
+    expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });
+    expect([wingman.side, wingman.baseInteraction]).toEqual(['friendly', false]);
+    expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });
+    expect(recordOf(state, 'wingman', index).spawnCount).toBe(1);
+    expect(world.projection().mission.wingman).toBe(index);
+    expect(world.renderState().entities[1]).toEqual({ id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0 });
+  });
+});
+
+describe('names in a running world (P3-02 AC-07, Q-05)', () => {
+  it('frees a candidate when its holder is removed; while it is held and the pool is empty, the next gets no name', () => {
+    const named = (removeFirst: boolean) => {
+      const m = playerOnlyMission();
+      m.declarations.push(
+        stored(1, 17, 400, 0, { nameCandidates: [`${MARKER}-x`] }),
+        stored(2, 18, 0, 400, { nameCandidates: [`${MARKER}-x`], spawnTime: 1 }),
+      );
+      const { state, world } = setUp({ mission: m });
+      world.step(tickInput());
+      if (removeFirst) state.entities.get(2)!.state = 'pending-removal';
+      stepTo(world, state, 33);
+      return entities(state).find(({ kindBit }) => kindBit === 18)!.name;
+    };
+    expect(named(true)).toEqual({ type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 0 });
+    expect(named(false)).toEqual({ type: 'none' });
+  });
+
+  it('keeps the pool counters in world state: one draw per pooled name, the first unused from rand % count', () => {
+    const m = playerOnlyMission();
+    m.namePool = [`${MARKER}-p0`, `${MARKER}-p1`];
+    m.declarations.push(stored(1, 25, 400, 0, { ruleInputs: ruleInputs({ craftCount: 3 }) }));
+    const { state, world } = setUp({ mission: m });
+    const r = randValues(state.rngState, 3);
+    world.step(tickInput());
+    // Written out: counters [0, 0]; each name starts at rand % 2 and cycles to the first unused; all used resets.
+    const uses = [0, 0];
+    const expected = r.map((value) => {
+      const start = value % 2;
+      const free = [start, (start + 1) % 2].find((index) => uses[index] === 0);
+      if (free === undefined) {
+        uses.fill(0);
+        uses[start] = 1;
+        return start;
+      }
+      uses[free] = 1;
+      return free;
+    });
+    expect(entities(state).slice(1).map(({ name }) => name)).toEqual(expected.map((index) => ({ type: 'pool', index })));
+    expect(state.spawn.namePoolUses).toEqual(uses);
+  });
+});
+
+describe('outputs of instantiation (P3-02 AC-10)', () => {
+  it('keeps the source namespace, the kind and the model apart, at placement serial 0, and leaves parked objects out of Render State', () => {
+    const { state, world } = setUp({ run: { wingman: 0 } });
+    world.step(tickInput());
+    const render = world.renderState();
+    const active = entities(state).filter(({ activity }) => activity === 'active');
+    expect(render.entities.map(({ id }) => id)).toEqual(active.map(({ id }) => id));
+    for (const entity of render.entities) {
+      expect(entity).toMatchObject({ presentation: { type: 'model', model: modelOf(entity.kindBit) }, placementSerial: 0 });
+    }
+    expect(state.entities.get(2)!.source).toEqual({ collection: 'wingman', index: 0, group: null });
+    expect(render.observedEntityId).toBe(1);
+    expect(deepFrozen(render)).toBe(true);
+  });
+});

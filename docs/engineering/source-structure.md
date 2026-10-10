@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -56,15 +56,52 @@ src/
       viewer-owner.ts
   core/
     errors.ts
+    contracts/
+      canonical-text.ts
+      domain-events.ts
+      limits.ts
+      tick-input.ts
+      time.ts
+      validation.ts
     determinism/
       rng.ts
       fnv1a64.ts
     mission/
       load-mission.ts
+    projections/
+      projection.ts
+      render-state.ts
+    replay/
+      compare.ts
+      recording.ts
+      replay.ts
+      rules-version.ts
+      snapshot.ts
+    rules/
+      coordinates.ts
+      float32.ts
+      name-assignment.ts
+      original-random.ts
+      placement.ts
+      record-defaults.ts
+      spawn-schedule.ts
     synthetic/
       synthetic-scene.ts
       synthetic-snapshot.ts
       synthetic-replay.ts
+    systems/
+      pipeline.ts
+      spawn.ts
+    world/
+      create-world.ts
+      entity-table.ts
+      player-state.ts
+      run-config.ts
+      setup-check.ts
+      setup-hash.ts
+      spawn-state.ts
+      world-state.ts
+      world.ts
   content/
     asset-id.ts
     asset-contract.ts
@@ -247,7 +284,7 @@ src/
 
 | 分册 | 内容 |
 |---|---|
-| [core](./modules/core.md) | Core 任务载入；确定性设施与合成场景的位置 |
+| [core](./modules/core.md) | 正式、合成与中性模块的边界；Core 任务载入；正式 Core 的创建、世界、契约、流水线、原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务数据解析，图形、逻辑、音频、模型与效果转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
@@ -297,11 +334,27 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 
 存档内容、校验和纯迁移属于 Core；IndexedDB 事务、配额与读写错误属于平台；保存时机和恢复编排属于应用；槽位和错误提示属于 UI。合成完整快照不是正式玩家存档格式。
 
+### Core 内部目录
+
+`src/core/` 的模块分为正式、合成与中性三类；正式与合成互不导入，中性模块两侧都不导入，由 lint 与依赖图回归检查（[工程约定](./README.md#lint-规则eslintconfigjs)）。API 与契约见 [Core 模块说明](./modules/core.md)。
+
+| 目录 | 类别 | 职责 |
+|---|---|---|
+| `errors.ts`、`determinism/` | 中性 | 输入错误与内部故障错误；带种子的 RNG 与 FNV-1a 哈希 |
+| `mission/` | 正式 | 由三份逻辑 Asset 载入冻结的 `MissionSetup`（P2-09） |
+| `contracts/` | 正式 | 跨目录共用的契约：上限、时钟、动作输入、领域事件、规范文本与校验读取器 |
+| `world/` | 正式 | 世界创建与运行配置、语义校验、setupHash；世界与故障锁存；世界状态、实体表、玩家状态与生成状态 |
+| `systems/` | 正式 | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统（目前是生成阶段），规则任务在自己的阶段接入 |
+| `rules/` | 正式 | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取并修改显式传入的世界计数）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；只在真实复用时提取 |
+| `projections/` | 正式 | 按分区的 projection 与 Render State，深度冻结、与世界脱离 |
+| `replay/` | 正式 | 正式快照与状态哈希、规则版本、录制、replay 与结果比较 |
+| `synthetic/` | 合成 | P1 合成场景、快照与 replay；格式与正式格式互不兼容 |
+
 ## 文件与 helper 归属
 
 - 一个调用者使用的 helper 默认留在同文件；同模块复用时按能力命名并提取到该模块。跨模块先寻找已有 owner 或公共契约，不用全局 utils/shared/types/services 兜底。
 - 时钟与总线属于 Runtime，RNG 与状态一致性哈希属于 Core；FNV-1a 不是内容来源指纹、安全哈希或防篡改机制。
-- 数字/结构校验可在真实复用需求下形成 Core 内部校验模块；合成 marker 坐标、ID 和输入规则仍归合成场景。本轮不提取校验。
+- 正式 Core 的结构与数值读取器在 [core/contracts/validation.ts](../../src/core/contracts/validation.ts)（P3-02）；合成场景保留自己的读取器与 marker 坐标、ID 和输入规则，因为正式与合成模块互不导入（见下文 [Core 内部目录](#core-内部目录)）。
 - 公共类型跟随 owner；`AssetId` 归内容，`Command` 归 Core，`SessionHost` 归 Session。不建立统一大 schema 或全局 barrel，也不要求一函数一文件。
 - `core/synthetic/` 是明确标记的合成规则，不是测试支持目录。合成 Command/Event、snapshot/replay 的形状和版本不得通过重命名变成正式玩法契约。Runtime 与 Session 同样保留 synthetic 命名，正式复用在第二个真实场景出现后设计。
 - 新单元测试继续邻接源码；测试支持在所属模块内维护，不进入生产导入链。TSX 单元测试尚未配置；P1-10 的 E2E 已用独立 `.spec.ts` runner/type/lint 接入，不扩大既有 `.test.ts` 的 Vitest 发现。
@@ -323,7 +376,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 |---|---|---|
 | P1-06/07/08/09/10 | `ui/game/`、`ui/pages/`、`ui/dev/`；`render/scene/`、`render/viewport/`、`render/synthetic/`；`platform/input/`；必要时 `app/composition/`；仓库根 `e2e/` | 消费者各自实现订阅与释放，应用装配，不增游戏循环 |
 | P2（已交付） | `original-data/io/`、`disc/`、`archive/`、`formats/`、`source/`、`conversion/`；`content/` 按数据类别组织；`platform/files/`、`storage/`、`audio/`；`workers/` | 纯字节读取端口由解析层定义，File/fs 实现分别在平台/工具；转换数据不写入仓库 |
-| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`；`render/cockpit/` | 真实系统显式按固定顺序执行；不得把合成 marker 契约改名使用 |
+| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`render/cockpit/` | 真实系统显式按固定顺序执行；不得把合成 marker 契约改名使用 |
 | P4 | `core/save/`；内容模块的战役/任务数据；UI 简报、结果等页面；`platform/video/`、`music/`（音效播放端口 `platform/audio/` 已由 P2-08 交付） | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
 | P5 | 扩展原版导入、平台存储/PWA、UI 错误反馈、`e2e/`、`tools/` 与 CI/发布配置 | 不建立装满所有业务的 release 模块；缓存管理不静默覆盖玩家存档 |
 | P6 | `render/styles/`、`effects/`、内容模块的外观覆盖契约、画质设置 | 同一 Core/逻辑定义/存档；碰撞等逻辑不从 Enhanced 模型重新推导 |
