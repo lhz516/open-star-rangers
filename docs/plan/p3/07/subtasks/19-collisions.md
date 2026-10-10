@@ -47,6 +47,9 @@ updated: 2026-10-10
 - `src/core/systems/collision.test.ts`：碰撞系统测试（新建）。
 - `src/core/rules/collision.ts`：碰撞判定、响应与伤害公式（新建）。
 - `src/core/rules/collision.test.ts`：碰撞规则测试（新建）。
+- `src/core/world/world.test-support.ts`：导出 `withEveryKindBound`（为测试世界中没有静态规则数据的种类补上不含任何点的形状），`testState()` 使用它。
+- `src/core/systems/energy.test.ts`、`src/core/systems/area.test.ts`、`src/core/replay/snapshot.test.ts`：测试世界经 `withEveryKindBound`。
+- `src/core/systems/pipeline.test.ts`：阶段表加入 `collision` 的 `run`。
 
 ## 验收标准
 
