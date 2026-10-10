@@ -10,8 +10,8 @@ related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Structure only; no original content.
 
-- Parser: [`src/original-data/conversion/source-graphics.ts`](../../../src/original-data/conversion/source-graphics.ts) (`readDataPalette`, `readImageRecordHeader`, `decodeImageRecord`, `readEmbeddedPalette`)
-- Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all TEX (59), BITM (28), and MFDD (3) entries.
+- Parser: [`src/original-data/conversion/source-graphics.ts`](../../../src/original-data/conversion/source-graphics.ts) (`readDataPalette`, `readImageRecordHeader`, `decodeImageRecord`, `readEmbeddedPalette`; encoding 1 only for ANIM frames); [`src/original-data/formats/anim.ts`](../../../src/original-data/formats/anim.ts) (`readAnimationFrames`, `decodeAnimationFrame`) and [`src/original-data/formats/explosion.ts`](../../../src/original-data/formats/explosion.ts) (`parseExplosionLists`, `parseExplosionRecord`) for §6–§7 (P3-03/14)
+- Validation: `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` parses all TEX (59), BITM (28), and MFDD (3) entries, and since P3-03/21 decodes all 186 ANIM frames and checks the EXIC → EXPL → ANIM and SND references ([tools](../../guides/tools.md#封包结构核对)).
 
 ## 1. DATA: global palette (Confirmed)
 
@@ -244,6 +244,21 @@ A **frame record** is a 36-byte [image record](#2-image-record-36-bytes-confirme
 | Decoded pixels; of them opaque | 1,611,264; 299,061 |
 
 Evidence: ignored `local/research/p3-03/images/` (`survey.ts`, `anim-check.ts` with `out/anim-check.txt`, Ghidra probes `out/p1`–`out/p7`, `out/p17`–`out/p23`, `out/p27`–`out/p28`; decoded frames stay in `out/frames/`).
+
+**Appearance check against captures (P3-03/21):**
+
+- **Method:** the 186 frames, decoded by the production decoder, were rendered under DATA (the palette they are bound to). In all 132 local captures (`local/StarRang/captures/`), a search looked for exact-colour placements at integer scales 1–4, each source pixel an s × s block ([§2](#encoding-1-byte-run-sprite-rle-confirmed)), aligned to whole blocks. For captures taken during a screen flash, every colour was taken as DATA with one constant added to each 6-bit component ([executable, RENS header](./executable.md#flight-message-strings-and-the-rens-header-p3-0304)).
+- **Results:**
+
+  | Capture | Frame | Scale | Matching opaque blocks; pixels | Controls (best pixels) |
+  |---|---|---|---|---|
+  | `srangers_110.png` | `image/explosion/03/06` | 3, no flash | 4,181 of 4,560; 38,646 of 41,040 (94.2%) | vertical flip 3,323; mirror 2,762; best other frame 7,009 |
+  | `srangers_111.png` | `image/explosion/03/07` (the next frame) | 3 | 5,013 of 5,356; 46,178 of 48,141 (95.9%) | flip 3,834; mirror 3,356; best other frame 15,044 |
+  | `srangers_120.png` | `image/explosion/03/04` | during a strong flash | 22,005 of 24,255 pixels | flip 15,804; weak support only, as the flash pushes most colours near white |
+
+  In the first two captures every mismatching pixel lies on the ship silhouette, crosshair or speed text in front of the explosion (difference images checked by eye). Animation 03 is list 1, position 3 (128×128 frames), drawn at scale 3 in HI.
+- **Confidence:** the appearance match is Likely: the P3-03 spec caps a comparison with captures or video at Likely. It agrees, with exact colour equality on emulator captures (not video), with the decoding, top-down row order, transparency and direct display under DATA that the code already confirms (above); the other 183 frames go through the same decoding path. A yellow effect in `srangers_044.png` (taken during a flash) matches no ANIM frame; its source was not identified, and it does not affect this result.
+- **Evidence:** ignored `local/research/p3-03/local-check/` (`out/summary.json`; comparison images, frame exports and difference images in `out/appearance/`).
 
 ## 7. EXPL: explosion records (Confirmed)
 

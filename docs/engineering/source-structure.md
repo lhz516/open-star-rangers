@@ -118,6 +118,7 @@ src/
     budget.ts
     ownership.ts
     sound-payload.ts
+    canonical-json.ts
     graphics/
       graphics-format.ts
       palette-payload.ts
@@ -140,6 +141,21 @@ src/
       expand-effects.ts
     hud/
       status-messages-payload.ts
+      view-labels-payload.ts
+      hud-text-payload.ts
+    rule-data/
+      rule-data-fields.ts
+      craft-info.ts
+      debris-parameters.ts
+      ai-programs.ts
+      comm-menus.ts
+      base-repair-items.ts
+      flight-messages.ts
+      rule-data-payload.ts
+    flight/
+      flight-data-content.ts
+      flight-data-readers.ts
+      flight-data-payload.ts
   original-data/
     imfat.ts
     payloads.ts
@@ -171,6 +187,16 @@ src/
       mesh.ts
       modl.ts
       le-executable.ts
+      craft.ts
+      debris.ts
+      ai.ts
+      comm.ts
+      base-repair.ts
+      executable-text.ts
+      rens-header.ts
+      view-labels.ts
+      anim.ts
+      explosion.ts
     source/
       source-catalog.ts
       identify-source.ts
@@ -200,6 +226,13 @@ src/
       effect-step.ts
       production-effects.ts
       production-executable.ts
+      convert-rule-data.ts
+      production-rule-data.ts
+      production-flight-graphics.ts
+      production-hud-text.ts
+      flight-data-step.ts
+      production-flight-data.ts
+      production-flight-sounds.ts
   platform/
     audio/
       audio-controller.ts
@@ -285,8 +318,8 @@ src/
 | 分册 | 内容 |
 |---|---|
 | [core](./modules/core.md) | 正式、合成与中性模块的边界；Core 任务载入；正式 Core 的创建、世界、契约、流水线、原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
-| [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload |
-| [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务数据解析，图形、逻辑、音频、模型与效果转换 |
+| [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签与 HUD 文字 payload |
+| [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
 | [app](./modules/app.md) | 页面流转与演示生命周期，资源持有者，查看器音频与所有者 |
 | [ui](./modules/ui.md) | 投影 store、会话桥接与命令反馈，页面组件，失败文案 |

@@ -36,7 +36,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
   - 声明或僚机选项引用了表中没有的机型；
   - 任务中没有或有两个玩家声明，或有僚机选项是玩家机型；
   - 表中有任务与名单都没引用的机型。这一项最后检查，以免缺少玩家时被误报为多余机型。
-- **输出：** 冻结的 `MissionSetup`，字段依次为 `mission`、`campaign`、`coordinates`、`mapFrame`、`namePool`、`spawnRegions`、`declarations`、`player`、`groups`、`wingmanOptions`。声明与僚机选项附加解析出的 `side`、`model`（model 的 Asset ID）与 `baseInteraction`；`craftType` 为 null 时三者为 null、null、false。结果由读取器的新副本组成，与输入隔离；相同输入得到深度相等的结果。
+- **输出：** 冻结的 `MissionSetup`，字段依次为 `mission`、`campaign`、`coordinates`、`mapFrame`、`namePool`、`spawnRegions`、`declarations`、`player`、`groups`、`eventTriggers`、`wingmanOptions`。声明与僚机选项附加解析出的 `side`、`model`（model 的 Asset ID）与 `baseInteraction`，并经展开带上任务内容的 `eventTrigger`（触发序号或 null；僚机选项恒为 null）；`craftType` 为 null 时三者为 null、null、false。结果由读取器的新副本组成，与输入隔离；相同输入得到深度相等的结果。
+- **事件触发（[P3-03/07](../../plan/p3/03/subtasks/07-mission-events.md)）：** `eventTriggers` 是任务 payload 中段 2 事件触发的原样副本（`EventTrigger`/`EventRange`，见[内容模块](./content.md#内容基础契约与切片定义)的 logic 一条），声明的 `eventTrigger` 是它的下标。`loadMission` 不解释、不调度它们，也不另行校验：引用与形状由内容读取器保证（[P3-03 spec 技术决定 10](../../plan/p3/03/spec.md#技术决定)）。
 - **纯净：** 不应用默认值，不推导生成时刻、顺序或位置，不使用 RNG 或宿主时间，只导入 `content/` 与 Core 自己的错误类型。
 
 针对性检查为 `pnpm exec vitest run src/core/mission tools/engineering-boundaries.test.ts`。
@@ -76,7 +77,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
    - 位置、矩形、布局偏移或僚机位置超出[支持的数值域](#原版规则辅助)；
    - 生成展开 Σ max(0, 请求数) × max(1, 成员数)（所选僚机另计 1）超过 `CORE_LIMITS.spawnExpansion`。
 4. 坐标换算、按原版次序填写缺省值（只有 +0x78 的缺省抽取随机数）并排好生成队列（[原版规则辅助](#原版规则辅助)）。
-5. `setupHash`（[setup-hash.ts](../../../src/core/world/setup-hash.ts)）：校验后完整 `MissionSetup` 的规范文本（名称、坐标、成员、全部规则输入、阵营、模型与交互标志）的 fnv1a64，16 位小写十六进制。它不随种子、僚机、身份或输入键序变化，把世界、快照与 replay 绑定到实际读取的初始数据；不证明来源。
+5. `setupHash`（[setup-hash.ts](../../../src/core/world/setup-hash.ts)）：校验后完整 `MissionSetup` 的规范文本（名称、坐标、成员、全部规则输入、阵营、模型与交互标志）的 fnv1a64，16 位小写十六进制。P3-03 加入的 `eventTriggers` 与声明的 `eventTrigger` 目前不在规范文本中，创建与语义校验也不读取它们。它不随种子、僚机、身份或输入键序变化，把世界、快照与 replay 绑定到实际读取的初始数据；不证明来源。
 
 创建结果为 tick 0、时钟 0、没有实体、视角模式与上一视角模式 0xC、任务状态 `built`（原版状态字节 1）、生成开关已置。创建不返回事件：时刻为 0 的项在第一个 tick 实例化。相同输入得到相同的初始快照；世界不与输入或其他世界共享可变状态。重试就是以同一内容与配置新建世界。`initialWorldState(input)`（内部）返回同样校验后的初始状态，供录制、replay 与测试。
 
@@ -289,6 +290,7 @@ P3-02 只交付共同契约与接入位置，不声明下游玩法已经完成�
   - 种类名：CINF 机型记录 +4 的文字不在三份逻辑 Asset 中，Core 只给出 `{ type: 'craft-type', kindBit }`。需要导入切片用到的种类位 0、7、8、14，以及僚机名单的种类位 1。
   - 实例化与 Warp 计时读取的机型记录字段：`0x2d400`、`0x3060c`、`0x30e0c` 与 +0xD0；+0xA4、+0xA8。
   - projection 占位需要的武器记录（`WeaponRecordReference`）、通讯菜单（`MenuContentReference`）与结果消息（`ResultMessageReference`）的内容来源。
+  - **P3-03 已交付的内容：** `logic` 组的 `data/craft-info`（TABL 4003 所选倍率与 CINF 4037 的全部记录，含机型记录 +0x04 的名称与 +0xA4 等字段）、`data/debris-parameters`、`data/ai-programs`、`data/comm-menus`、`data/base-repair-items` 与 `data/flight-messages`，`models` 组的场景设置、爆炸表与星云列表，`cockpit-hud-map` 组的视角标签与 HUD 文字，以及任务 payload 的段 2 事件触发（`MissionSetup.eventTriggers`）。读取器与形状见[内容模块](./content.md#规范-json-与规则数据-payload)。`createWorld` 仍只接收三份逻辑 Asset；把这些数据接入 Core 的输入与规则归使用它们的规则任务。
 - **P3-04：**
   - 创建：从同一个经 `validatePackage` 验证的资源包解码三份逻辑 Asset，连同该包的 `ContentIdentity` 传给 `createWorld` 或 `createRecordingSession`；Core 不认证来源。`original-import` 的生产入口只用难度 19 与默认步长；僚机来自开始配置；种子由 P3-04 选择 uint32。创建失败（`ContentContractError` 或 `CoreInputError`）对应“任务不能载入”。
   - 调度：按宿主单调时钟以每秒 32 个 tick 调度，每个 tick 调用 `step` 一次。暂停、页面隐藏、暂停式选项页与 G-02 占位期间不调用，之后不补跑。战略地图、通讯菜单、基地内部、停靠倒计时、救援前的引擎内过程与结果延时照常模拟。
@@ -309,7 +311,7 @@ P3-02 只交付共同契约与接入位置，不声明下游玩法已经完成�
 - **P3-08：** 扩展点：`0x68050`（初始目标，抽取次数取决于当时的对象）与 `0x20990`（AI 程序）。使用实体的 `aiValueA`–`aiValueC`、记录的 `aiTarget`/`aiTargetCraftTypes` 与编组的 `leader`；成员相对布局首项的偏移（原版对象 +0x80）尚未存储，由 P3-08 按需加入。AI 在对象更新中分配对象时受实时遍历影响：更高种类位的新对象在同一遍更新。
 - **P3-09：** `warp-completion` 与 `frame-end` 阶段；`toggle-map`、`map-point`、`request-warp` 的效果与 `map` 分区；地图开启时屏蔽飞行操纵与飞行命令的门禁。扩展点：Warp 计时 +0xC8（含 1 次抽取）；Warp 中活动区域的中心另有规则。世界框架已由 `runtimeFrame` 校验。
 - **P3-10：** `communications-reply` 与 `base-interior` 阶段，以及 `mission-flow` 中的停靠子状态；`communications`、`launch`、`select-number`、`navigate-selection`、`confirm-selection` 在通讯与基地上下文中的解释，僚机命令经菜单转给 P3-08；`communications` 分区。扩展点：`0x38cd4`（敌方类对象实例化时的僚机报告）。
-- **P3-11：** `mission-flow` 与 `mission-teardown` 阶段、`MissionStatus` 的后续状态、`result` 分区。使用 `disableSpawning`（成功时清除生成开关）、`pendingSpawns`（全清判定）、`placeWorldRecord`（救援放置，存储位置路线）与事件列表中的 `object-instantiated`（段 2 触发计数）；对象事件的按种类计数与触发标志在扩展点接入。主流程状态 1 的实例化门禁（`0x339cc`）随状态加入。被毁不等于移除，救援复用玩家实体。
+- **P3-11：** `mission-flow` 与 `mission-teardown` 阶段、`MissionStatus` 的后续状态、`result` 分区。使用 `disableSpawning`（成功时清除生成开关）、`pendingSpawns`（全清判定）、`placeWorldRecord`（救援放置，存储位置路线）与事件列表中的 `object-instantiated`（段 2 触发计数，触发与区间来自 `MissionSetup.eventTriggers`）；对象事件的按种类计数与触发标志在扩展点接入。主流程状态 1 的实例化门禁（`0x339cc`）随状态加入。被毁不等于移除，救援复用玩家实体。
 - **P3-12、P3-13：** 消费 Render State（停放不呈现、放置序号、新 ID 只用当前位姿、被毁在移除前仍列出）与 projection；相机由 Render State 与视角模式推出；`cockpit-front` 的效果与被毁视角的门禁按原版（B-005）。名称文字：候选与池从 setup 解析，种类名待 P3-03。
 - **P3-14：** 音效由领域事件与 projection 触发；原版派发器每遍清空的表现项不是 Core 阶段。
 - **Q-11 的数值交接（P3-06、P3-07）：** x87 以双精度运算，位置与姿态以 f32 存储；f32 写回按用户批准的决定就近舍入（取代 P3-02/02 完成证据中“继承向零舍入”的说法），浮点转整数向零截断，长度用 FSQRT。运动中的姿态旋转用 FSIN/FCOS（已确认），映像中没有找到正弦或余弦表（高概率），见 executable 的 [x87 一节](../../original/formats/executable.md#x87-precision-rounding-and-trigonometry-p3-0202)。舍入方向与代码推论的矛盾仍是 U-009 的开放问题。

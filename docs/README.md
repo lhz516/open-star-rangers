@@ -18,7 +18,7 @@ updated: 2026-10-09
 | [original/](./original/) | 关于原版游戏的一切知识：待确认登记表、文件清单、格式、行为规范、键位 | 参考类，核实后更新 | 见下 |
 | [original/unknowns.md](./original/unknowns.md) | 待确认事项登记表 `U-###` | 活文档 | 中文 |
 | [original/manifest.md](./original/manifest.md) | 原版文件清单与哈希（同时是 CI 黑名单来源） | 参考类 | 中文 |
-| [original/formats/](./original/formats/) | 文件格式规范 | 参考类 | **英文** |
+| [original/formats/](./original/formats/) | 文件格式规范，每种格式或数据族一篇：[光盘镜像](./original/formats/disc-image.md)、[IMFAT 封包](./original/formats/imfat.md)、[可执行文件](./original/formats/executable.md)、[任务与战役表](./original/formats/scenario.md)、[网格与模型](./original/formats/mesh.md)、[调色板与图像](./original/formats/textures.md)、[座舱](./original/formats/cockpit.md)、[HUD 与 ID 列表](./original/formats/hud.md)、[音频](./original/formats/audio.md)，以及 P3-03 新增的[机型与碎片参数](./original/formats/craft.md)（`CRAFT.NOB`、`DEBRIS.NOB`）、[AI 数据](./original/formats/ai.md)（`AISTUFF.NOB` 与 EXE 内置程序表）与[通讯菜单](./original/formats/comm.md)（`COMM.NOB`） | 参考类 | **英文** |
 | [original/behavior/](./original/behavior/) | 行为规范 `B-###`，带测量方法与容差 | 参考类 | 中文 |
 | [original/input/key-map.md](./original/input/key-map.md) | 原版键位与浏览器冲突表 | 参考类 | 中文 |
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |

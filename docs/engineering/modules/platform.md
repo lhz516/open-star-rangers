@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 related: [ADR-0015]
 ---
 
@@ -25,7 +25,7 @@ related: [ADR-0015]
 
 - **DOM-free 控制器：** [audio-controller.ts](../../../src/platform/audio/audio-controller.ts) 的 `createAudioController({ audio, lifecycle, reportError })`。
   - **注入：**
-    - `audio` 能力：`createContext()` 返回上下文端口，含 `state`、`onStateChange`、`resume`/`suspend`/`close`，以及接到输出的 `createVoice(buffer, loop)`；`createBuffer(channels, sampleRate)` 不需要上下文。
+    - `audio` 能力：`createContext()` 返回上下文端口，含 `state`、`currentTime`（上下文时间，秒；P3-03/27）、`onStateChange`、`resume`/`suspend`/`close`，以及接到输出的 `createVoice(buffer, loop)`；发声端口的 `start(when?)` 与 `stop(when?)` 立即执行，或在上下文时间 `when` 执行，较晚的 `stop` 取代尚未到达的预定停止。`createBuffer(channels, sampleRate)` 不需要上下文。
     - `lifecycle` 宿主：`visible()`，以及可撤销的 `visibilitychange`、`pagehide`、`pageshow` 监听。
     - 必填的 `reportError`。
   - **状态：** `idle`、`locked`、`running`、`suspended`、`unavailable`、`failed`、`disposed`。
@@ -37,19 +37,20 @@ related: [ADR-0015]
     - **隐藏期间：** `unlock()` 不创建也不恢复上下文；迟到的 `running` 立即再次挂起。
     - **不补播：** 恢复后不补播任何发声。
   - **命令：**
-    - **`load(sounds)`：** 用 `readSoundPayload` 与 `soundChannelData` 把 `{ id, schemaVersion: 1, bytes }` 转为控制器自有的浮点缓冲，整批成功才登记；`idle` 时也可调用。
-    - **`play(id)`：** 只在 `running` 时开始新的发声，按 payload 的循环方式整段循环；同时发声上限为 `AUDIO_VOICE_LIMIT`（8），只是资源保护。
-    - **`stop`、`stopAll`：** 立即停止并断开节点，可重复调用。
+    - **`load(sounds)`：** 用 `readSoundPayload` 与 `soundChannelData` 把 `{ id, schemaVersion, bytes }` 转为控制器自有的浮点缓冲，整批成功才登记；`idle` 时也可调用。`schemaVersion` 须为 `SOUND_PAYLOAD_SCHEMA_VERSION`（P3-03/27 起为 2），schema 1（字节与 schema 2 相同）与其他版本的记录为 `invalid-sound-payload`。`repeat` 声音只建一份一遍的缓冲，不按次数复制（否则解码内存最多放大 255 倍），并记下 `plays × 帧数 / 采样率` 秒。
+    - **`play(id)`：** 只在 `running` 时开始新的发声：`none` 播放一次，`whole` 整段循环到被停止，两者只调用 `start()`，与 P3-03 之前相同。`repeat`（[P3-03/27](../../plan/p3/03/subtasks/27-sound-repeat.md)）整段循环一份缓冲，读取一次 `currentTime`，以同一时间调用 `start(when)` 与 `stop(when + 时长)`，由宿主的结束事件自然结束，并像 `none` 一样释放；不用 `start()` 的 `duration` 参数，因为各引擎对循环源的处理不一致。读取 `currentTime` 失败时控制器为 `failed` 并释放发声。同时发声上限为 `AUDIO_VOICE_LIMIT`（8），只是资源保护。
+    - **`stop`、`stopAll`：** 立即停止并断开节点，可重复调用；对 `repeat` 声音不带参数的 `stop()` 取代尚未到达的预定停止，可提前结束。
     - **`dispose()`：** 同步停止全部发声、移除全部监听并释放缓冲；从不为释放而创建上下文；只在上下文存在且未关闭时 `close()` 一次。
   - **结果与快照：**
     - **结果：** 判别联合的纯数据，错误码封闭：`audio-unavailable`、`audio-locked`、`audio-suspended`、`audio-failed`、`unknown-sound`、`duplicate-sound`、`invalid-sound-payload`、`voice-limit`、`disposed`。宿主错误文本不进入结果。
     - **快照：** `{ status, loaded, voices }`，冻结，两次变化之间保持同一对象；`subscribe` 可配合 `useSyncExternalStore`。
     - **错误转交：** 订阅者错误与发声清理错误交给 `reportError`。
     - **所有权：** 不保留、不修改、也不转移调用方的 payload。
-  - **测试：** 用假能力与假生命周期宿主在 Node 中测试。
+  - **测试：** 用假能力与假生命周期宿主在 Node 中测试；假能力记录 `start`/`stop` 的排程时间（[audio-controller.test-support.ts](../../../src/platform/audio/audio-controller.test-support.ts)）。
+  - **重复播放的精度（残余风险）：** 排程用主线程读到的 `currentTime`，开始准时时恰为各遍；若宿主晚于该时间才开始，最后一遍可能被截短。Chrome 中 `currentTime` 是下一个未渲染量子的起点，P3-03/27 逐帧计数 24 次 8 遍播放都恰为 8 遍；Firefox 与 WebKit 未实测。
 - **浏览器工厂：** [browser-audio-controller.ts](../../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })` 提供真实能力：
   - **上下文：** `new AudioContext()`；构造器缺失或抛错时，控制器为 `unavailable`。
-  - **发声：** 每次发声一个接到 `destination` 的 `AudioBufferSourceNode`。
+  - **发声：** 每次发声一个接到 `destination` 的 `AudioBufferSourceNode`；`currentTime` 与 `start`/`stop` 的 `when` 原样透传。
   - **缓冲：** `new AudioBuffer(...)` 加 `getChannelData().set()`，不需要上下文。
   - **生命周期：** `document.visibilityState` 与 `document` 的 `visibilitychange`、`window` 的 `pagehide`/`pageshow`。
   - **范围：** 无导入副作用，没有测试注入口；只由应用程序检查，不进入 Node 程序。Chrome 中的验证见[工程约定](../README.md#本地浏览器-runner)。

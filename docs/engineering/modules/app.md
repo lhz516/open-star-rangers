@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-08
+updated: 2026-10-09
 related: [ADR-0015]
 ---
 
@@ -25,7 +25,7 @@ P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的�
   - `restore` 为 `idle`、`restoring` 或 `failed`（附失败与耗时）。
   - `current()` 为应用内的消费者返回带 payload 的资源包。
 - **缓存端口：** `ResourceCachePort` 是 P2-10 `ResourceCache` 的结构子集（`checkCapacity`、`commit`、`list`、`restore`），只用 `resource-cache-contract.ts` 的 DOM-free 类型，所以持有者不把浏览器适配带进 Node 程序；真实适配满足它。`profile` 是 01 的预期包配置，`now` 是只用于显示耗时的页面时钟。
-- **列出：** 创建时列出一次，`relist()` 供每次回到菜单时调用；列出期间为 `checking`，只采用最近一次发起的结果。`restorableEntry(entries, profile)` 只选元数据兼容、来源为 `original-import`、指纹与转换器版本都等于预期配置的条目；其他条目不提供恢复，也不清理。结果失败（含意外拒绝，报 `read-failed@list`）时为 `unavailable`。
+- **列出：** 创建时列出一次，`relist()` 供每次回到菜单时调用；列出期间为 `checking`，只采用最近一次发起的结果。`restorableEntry(entries, profile)` 只选元数据兼容、来源为 `original-import`、指纹与转换器版本都等于预期配置的条目；其他条目不提供恢复，也不清理；例如 P3-03 递增转换器版本后，前一生产版本 `osr-import.graphics-3.logic-1.audio-1.models-3` 的条目不再提供恢复（[resource-holder-cache.test.ts](../../../src/app/resources/resource-holder-cache.test.ts)）。结果失败（含意外拒绝，报 `read-failed@list`）时为 `unavailable`。
   - 列出发起后资源包被替换时，丢弃该结果并重新列出。
   - 已保存的资源包只在之后的列出中仍有同键且元数据兼容的条目时保持 `saved`。没有同键条目、同键条目为损坏或不兼容，或列出失败时，缓存状态改为 `not-saved`，原因分别为 `not-found@key`、`cache-corrupt@key`、`cache-incompatible@key` 或列出的失败本身；资源仍可使用。只在列出发起后缓存状态没有变化时这样判定，所以与提交交错的旧列出不会误判。
 - **提交：** 来自导入且全包 `complete` 的资源包立即以 `profile.limits` 与 `AbortSignal` 提交，状态为 `saving`，成功为 `saved`，失败为 `not-saved` 并附 P2-10 失败；部分结果与来自缓存的资源包不自动提交。`save()` 在完整资源包为 `not-saved` 时再次提交，不论来源（spec 行为表：列表中已没有该键时提供重新保存），保存中返回 false。意外拒绝报 `write-failed@commit`。替换与释放中止进行中的提交，其结果被丢弃。
@@ -55,6 +55,7 @@ P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的�
   - 控制器进入 `unavailable`、`failed` 或 `disposed`，或调用 `stop`、`stopAll`、`cancelPending`（离开或替换资源包时由所有者调用）、页面隐藏（`visibilitychange` 为隐藏、`pagehide`）与释放，都丢弃该意图。控制器本身不排队。
   - 未知的声音、不可用或失败的控制器如实拒绝。
 - **停止：** `stop(id)` 停止本查看器为该声音启动的发声，`stopAll()` 停止全部。控制器只报告发声数，所以查看器经包装的能力取得每个新发声的端口，并监听它的结束；结束、停止或控制器释放全部发声（如隐藏或失败）时，记录随即删除。播放期间控制器自己的通知不发布，所以订阅者看到新发声时它已有记录，可以立即停止。
+- **重复播放：** 查看器不做专用改动；`repeat` 声音（[P3-03/27](../../plan/p3/03/subtasks/27-sound-repeat.md)）按次数播放由控制器完成（[音频播放](./platform.md#音频播放)），查看器的能力包装只透传上下文的 `currentTime`。
 - **关闭观察：** 查看器包装传入的音频能力，记录上下文 `close()` 的结果。`dispose()` 释放控制器与页面生命周期监听，并返回同一个 promise，结果为：
   - `no-context`：从未创建上下文；
   - `closed`：`close()` 完成，或宿主已先关闭了上下文；
@@ -71,6 +72,7 @@ P1-06 交付 [app/composition/](../../../src/app/composition/) 中 DOM-free 的�
   - **解析：** `resolveEntry(entry, payloads)` 一次读取并展开一个条目，给出它的全部变体与 `item(variant)`；所有者缓存所选条目的结果，所以切换同一条目的变体不再读取。只经 `content/` 的读取器与消费函数得到渲染器的条目：二维项用 `expandImage`、`composeLayout`；模型用 `readModelPayload`、`modelPartItems`、`expandModelTextures`；效果用 `readEffectPayload` 与 09 的 `effectViews`，并读取所引用的图像与调色板，用 `expandImage` 展开贴图。所需的调色板与图像在资源包中按 Asset ID 查找，缺失时为 `binding-mismatch`；效果贴图读取失败也使整个条目失败，不回退为无贴图显示。
   - **变体：** 模型的变体是部件列表 0–2，附部件数与 `MODEL_PART_LISTS` 的内容与置信度：列表 0 为完整模型（高概率：本地渲染可辨认，见 [mesh](../../original/formats/mesh.md)），列表 1 为碎片部件（已确认），列表 2 未确认（U-027）。效果的变体是它的各个视图，附每个形状的外观（显示字节、原值、`textured` 与 `seamUnconfirmed` 标记，无贴图且原值为 null 时显示诊断灰色）。二维项只有变体 0；不存在的变体，`item` 返回 null。
   - 内容错误成为该条目的失败（code、路径与原因），其他异常视为缺陷。
+  - **切片定义版本 4（P3-03）：** 不改代码。新增的图像角色（`explosion-frame` 186 个、`nebula-background` 15 个、`hit-shimmer`、`target-display`）与目标显示屏的调色板随通用列表出现，带掩码的爆炸帧在透明处显示棋盘格；`hit-shimmer` 的存储值是受击条带的阈值，查看器的颜色不是游戏颜色。版本 4 新增的 `data` 角色不是效果角色，不在列表中（spec 技术决定 9）；它们的数量、字节与哈希由[包核对](../../guides/tools.md#包核对)报告。浏览器核对见 [P3-03/20](../../plan/p3/03/subtasks/20-browser-verification.md)。
 - **所有者：** 槽位以 `{ holder, render, audio, reportError }` 创建所有者。
   - `render` 是表面或不可用的原因，交给 `createViewerRenderer`；
   - `select(id, variant = 0)` 显示所列条目的变体，或以 null 不显示；读取或展开失败时不显示，只记下该条目的失败；未知的条目或变体什么也不改变；
