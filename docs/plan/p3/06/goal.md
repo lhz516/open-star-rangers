@@ -96,13 +96,13 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | completed |
 | [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | completed |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
-| [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
+| [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | in-progress |
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
 | [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
-| [25-docs-wrap-up.md](./subtasks/25-docs-wrap-up.md) | 19, 24 | pending |
+| [25-docs-wrap-up.md](./subtasks/25-docs-wrap-up.md) | 19, 24 | in-progress |
 | [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
