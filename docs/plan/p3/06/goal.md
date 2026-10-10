@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "06"
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-009, U-011, U-021]
 ---
 
@@ -79,9 +79,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-motion-integration-research.md](./subtasks/01-motion-integration-research.md) | — | pending |
-| [02-controls-keys-research.md](./subtasks/02-controls-keys-research.md) | — | pending |
-| [03-speed-assist-research.md](./subtasks/03-speed-assist-research.md) | — | pending |
+| [01-motion-integration-research.md](./subtasks/01-motion-integration-research.md) | — | in-progress |
+| [02-controls-keys-research.md](./subtasks/02-controls-keys-research.md) | — | in-progress |
+| [03-speed-assist-research.md](./subtasks/03-speed-assist-research.md) | — | in-progress |
 | [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | pending |
 | [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | pending |
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | pending |
@@ -104,6 +104,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-10 — 并行执行安排：** 协调者在 `p3-06-flight-motion-spec` 分支（本 worktree）上执行，同时运行的 worker 不超过 3 个（默认）。沿用 P3-01、P3-03 的宿主做法：宿主不能在指定文件夹启动会话，worker 在应用管理的 worktree 中运行（以认领提交为基），分支改名为 `exec-p3-06-NN` 作为认领标记，`local` 以符号链接接入主仓库。原版运行（07、17）与 Computer Use 只由协调者进行。用户在接下来数小时内不能回答问题，并授权：问题按推荐答案处理；需要时修改 spec 与 goal；为解除阻塞新增子任务（2026-10-10，`/orchestrate` 调用）。授权不涵盖总计划与 ADR 中的冻结决定。
 
 ## 审批
 
