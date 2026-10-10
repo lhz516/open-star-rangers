@@ -53,10 +53,10 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-01：合法 craft-info 被严格读取、冻结并保存；缺字段、内容错误、kind/生产 ID/绑定/定稿的数值域不符各在创建前按约定的错误类型拒绝，定稿列为合法的零值不被拒绝；setupHash 随内容变化，与键序、种子、僚机无关；同身份下换 craft-info 的 replay 被拒绝。
-- [ ] 三个原因码与四个事件类型（`speed-matched` 含两个变体）在类型与比较校验中就位；`flight` 分区拆为两组且都未就绪。
-- [ ] 快照格式版本与规则版本各递增一次、replay 格式版本不变；旧版本的 replay 记录被拒绝；`CORE_LIMITS` 的依据注释与定稿核算一致。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 与 `pnpm check` 通过；P3-04 已接入时其浏览器回归通过。
+- [x] AC-01：合法 craft-info 被严格读取、冻结并保存；缺字段、内容错误、kind/生产 ID/绑定/定稿的数值域不符各在创建前按约定的错误类型拒绝，定稿列为合法的零值不被拒绝；setupHash 随内容变化，与键序、种子、僚机无关；同身份下换 craft-info 的 replay 被拒绝。
+- [x] 三个原因码与四个事件类型（`speed-matched` 含两个变体）在类型与比较校验中就位；`flight` 分区拆为两组且都未就绪。
+- [x] 快照格式版本与规则版本各递增一次、replay 格式版本不变；旧版本的 replay 记录被拒绝；`CORE_LIMITS` 的依据注释与定稿核算一致。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 与 `pnpm check` 通过；P3-04 已接入时其浏览器回归通过。
 
 ## 验证方法
 
@@ -65,3 +65,15 @@ updated: 2026-10-10
 - 浏览器验证仅在 P3-04 已接入时适用。
 
 ## 完成证据
+
+- **2026-10-10（worker，基于认领提交 9150e61）：**
+  - **D-01 世界创建输入：** 新模块 [craft-info-input.ts](../../../../../src/core/world/craft-info-input.ts)：`readCraftInfoInput` 以 `readExactRecord` 读外层 `{ id, content }`（`CoreInputError`），Asset ID 语法错误保留 `readAssetId` 的 `ContentContractError`，非 `data/` 为 `CoreInputError`，`original-import` 只接受 `data/craft-info`；内容经 `readCraftInfo` 读入冻结、与输入脱离的副本（非有限 f32 由读取器拒绝）。`checkCraftInfo` 在生成状态建成后核对：可实例化的种类取自会投递请求的队列项（请求数 > 0 且触发记录的概率为 100，与 `checkSpawnQueue` 的判定一致：记录项的种类、编组项的全部成员、僚机项的种类位 1），每个都要有机型记录；这些记录的 +0x0C 截断后为正，`+0xA8 × 64` 与 `(+0xA8 + +0xA4) × 64` 在 i32 内；玩家记录 +0x88 不为 0，阈值 chop(+0xB8) × +0x88 与 16 种分配等级组合下的分配和、能量与代码常数之积都在 i32 内（该常数按技术决定 11 作为代码规则在 Core 中实现）。其余零值不拒绝。`CreateWorldInput`（因而 `createRecordingSession` 的输入）与 `ReplayContent` 增加必需的 `craftInfo`；`WorldState.craftInfo` 保存冻结的 `{ id, content }`，不进入快照（由 setupHash 绑定，与 `setup` 相同）。[setup-hash.ts](../../../../../src/core/world/setup-hash.ts) 的规范文本为 `{ setup, craftInfo: { id, content } }`，机型内容的写出器按 `CraftInfo` 的成员类型逐项列出（成员变化即编译失败）；为此把快照的类型化写出器移到 [canonical-text.ts](../../../../../src/core/contracts/canonical-text.ts) 共用。
+  - **D-04、D-06：** `COMMAND_RESULT_REASONS` 增加 `player-unavailable`、`wrong-context`、`no-target`；[domain-events.ts](../../../../../src/core/contracts/domain-events.ts) 按定稿形状加入 `speed-assist-toggled`、`speed-matched`（`command`/`assist`）、`speed-assist-released`、`object-left-world`（只定义类型）。[compare.ts](../../../../../src/core/replay/compare.ts) 的字段表按类型与 `speed-matched` 的 `origin` 逐项校验，并校验一个 tick 内的次序：辅助事件 → 命令结果（`speed-assist-toggled` 紧随其结果）→ 手动匹配 → 离开世界的阶段不倒退，辅助事件每 tick 至多一个，手动匹配须在其命令结果之后，每条命令至多一个附加事件；`object-instantiated` 不与它们排序（保持 P3-02 的既有比较行为）。
+  - **D-05：** [projection.ts](../../../../../src/core/projections/projection.ts) 的 `flight` 改为 `{ motion, combat }`，两组都为 `not-implemented`；`MotionReady`（`player` 为 null 或定稿的玩家运动读数，含 `SpeedLimitStatus` 与 `speedAssist: { enabled, engaged }`）与 `CombatReady`（保留目标、资源与武器，形状由 P3-07 定稿）只是类型。原 `FlightReady` 删除。
+  - **D-07、D-08：** `RULES_VERSION` 与 `GAME_SNAPSHOT_VERSION` 由 1 递增为 2，`GAME_REPLAY_VERSION` 仍为 1。`CORE_LIMITS` 不变，[limits.ts](../../../../../src/core/contracts/limits.ts) 的 `eventsPerTick` 依据注释改为定稿核算（事件 3,201、请求 3,138），`limits.test.ts` 断言两个合计。
+  - **测试（合成数据，不读原版文件）：** `create-world.test.ts`（读入、冻结与脱离；外层字段、ID 语法、kind、生产 ID、内容错误与非有限 f32；无机型记录的种类（记录与编组成员）；不投递请求的记录、0 次编组与不触发的模板不被检查；+0x0C 为 0、0.5、−1、−0.5 拒绝，1 与 1.5 接受，未实例化种类与未选僚机的不检查；Warp 计时在 i32 上下界的接受与越界拒绝；能量：+0x88 为 0、阈值越界、非初始等级 3 与 0 上的越界拒绝，积恰在 i32 上界内的能量接受、多 1 拒绝；其余零值接受；setupHash 随 13 种内容改动与 ID 变化而变、与键序、种子、僚机无关）；`replay.test.ts`（同身份下换 craft-info 内容或 ID 被 `record.setupHash` 拒绝；`content.craftInfo` 缺失、语义与内容错误的路径；rulesVersion 1 的旧记录被拒绝）；`compare.test.ts`（新原因码、新事件的往返匹配、差异报告、24 种字段/次序违规）；`domain-events.test.ts`、`limits.test.ts`、`projection.test.ts`、`snapshot.test.ts`（版本 2/2，快照不含机型内容）。
+  - **既有测试的调整：** `spawn.test.ts` 的名称池计数测试原用种类位 25 的记录；种类位 25 没有机型记录（D-01 的定稿检查），名称池分支在世界中只剩无候选名的僚机选项能到达，测试改为经僚机到达，循环与重置的覆盖仍在 `name-assignment.test.ts`。
+  - **检查：** `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`：37 个文件 1,112 项通过；`pnpm check`（类型、ESLint、208 个文件 6,495 项测试、生产构建）通过。`pnpm check:compliance` 通过。P3-04 尚未接入正式 Core（`src/app`、`src/ui`、`src/platform`、`e2e` 中没有 `createWorld`、录制或 replay 的调用者），浏览器回归不适用。
+  - **rubber-duck：** 两条意见均已采纳：可实例化种类原先包括不投递请求的记录与编组，改为取自会投递请求的队列项并补测试；比较原先接受手动匹配之后的命令结果与先于命令结果的离开世界，改为按阶段校验并补测试。
+  - **simplify：** 采纳：i32 判定复用 `toInt32`，删去被能量之积涵盖的多余检查；`TickOrder` 每个结果只建一个、逐 tick 复位，阶段用命名常量并并入同一分派；测试共用 `reversedKeys`、`craftInfoWith` 复用 `craftInfoWithContent`、比较的两张非法表共用断言函数。未采纳：与 `spawn.ts` 的 `firingRecord` 共用触发判定（`src/core/systems/spawn.ts` 不在写入范围，现以注释指向 `checkSpawnQueue`）；把比较的字段表改成通用的变体注册表（目前只有一个多变体事件）；去掉 `speedLimitStatus`（定稿形状要求）。
+  - **文档影响：** [Core 模块说明](../../../../engineering/modules/core.md)中世界创建输入、setupHash 覆盖、`WorldState`、原因码、领域事件、`flight` 分区（`FlightReady`）、`RULES_VERSION`（“当前为 1”）与快照版本 1、`ReplayContent` 及“`createWorld` 仍只接收三份逻辑 Asset”等处已过时，[源码结构指南](../../../../engineering/source-structure.md)需加入 `world/craft-info-input.ts`；按 goal 的分工由 19 更新（不在本项写入范围）。原版事实、ADR 与工程约定不受影响。

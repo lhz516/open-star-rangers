@@ -88,7 +88,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | completed |
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
-| [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | in-progress |
+| [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | pending |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | pending |
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
@@ -117,6 +117,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 22 完成，07、17 改为自动：** 工具新增经配方声明、逐次回读并记入报告的模拟器内输入：在调试器暂停点把按键写入 BIOS 键盘缓冲（缓冲须为空，每键只被读一次）、改写换档标志位，或写入声明的输入设备字段；`AUTOTYPE` 因在宿主线程中计时、调试器暂停时仍运行且不能驱动摇杆而不用。可选的 `--evidence` 证据范围按上一条的决定实现。私有烟测（无宿主输入）进入了所选任务，`-` 一次后的指令速度与 Backspace 恢复都符合 03 的预测，摇杆偏航刺激的速率、标志与“只在变化时应用”都符合 02 的预测（运行 smoke-03、smoke-04 均为 complete）。交 07、17：私有副本中没有摇杆页，进入路线为标题 Enter → 战役选项 Enter → 简报 Esc；group 0 开局速度辅助为开并自动选取目标，油门样本前须用 Ctrl+Enter 关闭或计入；持续偏转须在每次设备读取时写入，或写入上次读数的副本；过场不可跳过（40000 cycles 下约 1.5 分钟）。按 07、17 的“执行时若该限制已解除…改为自动”，协调者把两者改为自动。
 - **2026-10-10 — 21 完成（交 06、07、P3-03）：** 01–05 的结论已写入 `docs/original/`：executable 新节“Flight motion, controls, speed, parking and take-off (P3-06)”及旧文更正、craft、scenario、键位表（原版无键盘操纵、速度档位在 Shift+数字）与 U-001、U-008、U-009、U-011、U-021、U-022、U-024–U-026（状态与负责阶段未改）。craft +0xA4 按有符号比较改为 i32，`src/content/rule-data/craft-info.ts` 仍按 int32 读取并拒绝第 31 位，交 P3-03 对齐（基准数据不受影响）。B-008 所需的支持域、误差项、试键与暂停点仍在 local findings，交 07、08。
 - **2026-10-10 — 06 完成，检查点 A、C 定稿（交 07、09–15、P3-05、P3-07、P3-08、P3-09）：** 本 spec、P3-02 spec（新节“P3-06 的契约修订（检查点 A）”，D-01 至 D-08）与 P3-01 缺省清单（G-09、G-10）按协调者的十条裁定与推荐答案修订并记录，09–15 的工作范围与验收标准已同步。要点：项目轴为原版整数路径上的数字摇杆（±1 满偏，非整数向零截断，Medium 固定，只在变化时应用）；`select-number` 对应 Shift+n 档位；油门不持久；新增 `speed-assist-released`；`0x68050` 初态与停放中的 Warp 跳跃归 P3-06；活动对象无边界处理；编队领队与偏移补入 P3-02；`CORE_LIMITS` 不变。总计划“原版的键盘或鼠标”一语是否以 ADR 更正留待用户，不阻塞。阶段索引的 P3-05、P3-06、P3-08、P3-09 段与 U-011 行已按 06 的提议更新。
+- **2026-10-10 — 09 完成（交 10、14、16、19）：** 世界创建输入、录制与 `ReplayContent` 增加 `craftInfo`，语义检查只针对实际发帖的生成项；setupHash 覆盖严格读取后的 craft-info；新增原因码与四个事件，比较按 tick 内的阶段顺序校验；`flight` 拆为 `{ motion, combat }`；`RULES_VERSION` 与快照格式版本各递增到 2。交 14：停放中 Warp 计时只校验 i32 范围，负的持续时间在原版无符号比较下的行为由 14 定（本地 480 条记录都非负）。交 16：种类位 25 没有机型记录，D-01 拒绝任何发帖的种类 25 实例，真实内容核对须确认所选任务不受影响。交 19：core 分册与源码结构指南需同步（输入、事件、分区、版本与新模块 `world/craft-info-input.ts`）。可选整理：`spawn.ts` 与 `craft-info-input.ts` 的发帖记录判定可合并（拥有 `spawn.ts` 的行处理）。
 
 ## 审批
 

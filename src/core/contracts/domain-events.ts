@@ -2,7 +2,10 @@
  * Domain event envelopes of formal Core (docs/plan/p3/02/spec.md, 输入与命令, 任务实例化; ADR-0006). step() returns
  * the events of one tick as deeply frozen plain data in emission order, without object references. This module owns
  * the shapes; the pipeline (subtask 05) emits command results and instantiation (subtask 07) emits
- * object-instantiated. New event types or reasons are added by revising the spec, not by consumers.
+ * object-instantiated. The speed and world-exit events are P3-06's (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约):
+ * the player update emits the speed assist's events before the tick's command results and `speed-assist-toggled` right
+ * after its command's result, request handling a manual match's `speed-matched`, and the parked update
+ * `object-left-world`. New event types or reasons are added by revising the spec, not by consumers.
  */
 import type { CommandType } from './tick-input.ts';
 
@@ -24,10 +27,13 @@ export const COMMAND_OUTCOMES = Object.freeze(['accepted', 'rejected', 'ignored'
 export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];
 
 /**
- * Closed reason codes of rejected and ignored commands. `not-implemented`: no rule handles this command yet; it is
- * a development-stage result, not the original's no-op.
+ * Closed reason codes of rejected and ignored commands; any rule task may use them.
+ * - `not-implemented`: no rule handles this command yet; a development-stage result, not the original's no-op.
+ * - `player-unavailable`: no player entity can take it: none, destroyed, not yet active or being removed.
+ * - `wrong-context`: the original does not handle it in the current interaction context.
+ * - `no-target`: it needs a valid target, and there is none.
  */
-export const COMMAND_RESULT_REASONS = Object.freeze(['not-implemented'] as const);
+export const COMMAND_RESULT_REASONS = Object.freeze(['not-implemented', 'player-unavailable', 'wrong-context', 'no-target'] as const);
 export type CommandResultReason = (typeof COMMAND_RESULT_REASONS)[number];
 
 interface CommandResultFields extends DomainEventBase<'command-result'> {
@@ -78,4 +84,50 @@ export interface ObjectInstantiatedEvent extends DomainEventBase<'object-instant
   readonly position: Vec3;
 }
 
-export type DomainEvent = CommandResultEvent | ObjectInstantiatedEvent;
+/** The speed assist switched by a command (Ctrl+Enter), right after that command's result. */
+export interface SpeedAssistToggledEvent extends DomainEventBase<'speed-assist-toggled'> {
+  readonly commandIndex: number;
+  /** The switch after the toggle. */
+  readonly enabled: boolean;
+}
+
+interface SpeedMatchedFields extends DomainEventBase<'speed-matched'> {
+  /** The entity whose speed the player's was matched to. */
+  readonly targetEntityId: number;
+}
+
+/** A manual match (Enter, or its alias) that request handling applied. */
+export interface CommandSpeedMatchedEvent extends SpeedMatchedFields {
+  readonly origin: 'command';
+  readonly commandIndex: number;
+}
+
+/** A match by the speed assist. */
+export interface AssistSpeedMatchedEvent extends SpeedMatchedFields {
+  readonly origin: 'assist';
+  /** Whether the two speeds differed by more than the original's flash constant before the match. */
+  readonly speedDifferenceExceeded: boolean;
+}
+
+/** Emitted only when the match was written. */
+export type SpeedMatchedEvent = CommandSpeedMatchedEvent | AssistSpeedMatchedEvent;
+
+/** The speed assist lost its target after a match and restored full throttle. */
+export type SpeedAssistReleasedEvent = DomainEventBase<'speed-assist-released'>;
+
+/** A parked object's true exit from the world, once in its life: `{ type, tick, entityId, kindBit, source }`. */
+export interface ObjectLeftWorldEvent extends DomainEventBase<'object-left-world'> {
+  readonly entityId: number;
+  /** Bit position 0–31 of the original runtime kind. */
+  readonly kindBit: number;
+  /** A snapshot of the entity's source as it left; null for an entity created at run time. */
+  readonly source: EntitySource | null;
+}
+
+export type DomainEvent =
+  | CommandResultEvent
+  | ObjectInstantiatedEvent
+  | SpeedAssistToggledEvent
+  | SpeedMatchedEvent
+  | SpeedAssistReleasedEvent
+  | ObjectLeftWorldEvent;

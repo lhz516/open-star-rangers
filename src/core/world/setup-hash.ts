@@ -1,12 +1,25 @@
 /**
- * setupHash (docs/plan/p3/02/spec.md, 快照、哈希与 replay): fnv1a64 of the canonical text of the validated mission setup,
- * names, coordinates, members, every rule input and the event triggers (P3-03 S-02) included, in an explicit field
- * order. It binds a world, a snapshot or a replay to the initial data actually read, which `ContentIdentity` only
- * declares. A consistency check, not a proof of origin. Core writes the event triggers here but does not interpret them.
+ * setupHash (docs/plan/p3/02/spec.md, 快照、哈希与 replay; docs/plan/p3/06/spec.md, D-01): fnv1a64 of the canonical
+ * text of the validated mission setup, names, coordinates, members, every rule input and the event triggers (P3-03 S-02)
+ * included, followed by the complete craft info as read and its Asset ID, in an explicit field order. It binds a world,
+ * a snapshot or a replay to the initial data actually read, which `ContentIdentity` only declares. A consistency check,
+ * not a proof of origin. Core writes the event triggers here but does not interpret them.
  */
 import type { EventRange, EventTrigger, MissionGroup, RuleInputs, Vector3 } from '../../content/logic/logic-content.ts';
-import { canonicalHash, canonicalObject, type CanonicalValue } from '../contracts/canonical-text.ts';
+import type {
+  BodyCollisionShape, Box, CraftCollisionShape, CraftInfo, CraftRecord, GunRecord, MissileBodyRecord, MissileRecord, Mount, Pair,
+} from '../../content/rule-data/craft-info.ts';
+import {
+  canonicalHash,
+  canonicalList as list,
+  canonicalMembers as object,
+  canonicalNullable as nullable,
+  canonicalObject,
+  canonicalScalar as scalar,
+  type CanonicalValue,
+} from '../contracts/canonical-text.ts';
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
+import type { WorldCraftInfo } from './craft-info-input.ts';
 
 const vector = ({ x, y, z }: Vector3): CanonicalValue => canonicalObject([['x', x], ['y', y], ['z', z]]);
 
@@ -80,7 +93,62 @@ function setupValue(setup: MissionSetup): CanonicalValue {
   ]);
 }
 
-/** 16 lowercase hex digits. */
-export function setupHash(setup: MissionSetup): string {
-  return canonicalHash(setupValue(setup), 'setup');
+// The craft info's content type belongs to P3-03; writers typed by its members stop compiling when a member changes.
+const numbers = list(scalar);
+const box = object<Box>({ lower: numbers, upper: numbers });
+
+const gun = object<GunRecord>({
+  name: scalar, at08: scalar, at14: scalar, at18: scalar, at1C: scalar, at20: scalar, at24: scalar, at28: scalar, at2C: scalar,
+});
+
+const missile = object<MissileRecord>({
+  name: scalar, body: scalar, at18: scalar, at1C: scalar, at20: scalar, at24: scalar, at28: scalar, at30: scalar, at34: scalar,
+  at38: scalar, at3C: scalar, at40: scalar, at44: scalar, at48: scalar, at4C: scalar, at54: scalar, at58: scalar, at5C: scalar,
+  at60: scalar, at64: scalar,
+});
+
+const mount = object<Mount>({
+  at00: numbers, at0C: scalar, at10: scalar, weapon: scalar, at18: scalar, at1C: scalar, at20: scalar, at24: numbers, at30: scalar,
+  at34: scalar,
+});
+
+/** The members craft and missile body records share, after their collision shapes (craft.md §3.5). */
+const recordValues = {
+  at54: scalar, at58: scalar, at5C: scalar, at60: scalar, at64: numbers, at74: scalar, at78: numbers, at88: scalar, at8C: scalar,
+  at90: scalar,
+} as const;
+const recordTail = {
+  at9C: scalar, atA0: scalar, atA4: scalar, atA8: scalar, atAC: scalar, atB0: scalar, atB4: scalar, atB8: scalar, atBC: scalar,
+  atC0: scalar, atC4: scalar, atC8: scalar,
+} as const;
+
+const craft = object<CraftRecord>({
+  at00: scalar,
+  name: scalar,
+  at08: scalar,
+  at0C: scalar,
+  collision: object<CraftCollisionShape>({ at00: scalar, at08: nullable(numbers), boxes: list(box), at28: scalar, at2C: numbers }),
+  ...recordValues,
+  pairs: list(object<Pair>({ at00: scalar, at04: scalar })),
+  ...recordTail,
+  mountLists: list(numbers),
+  mounts: list(mount),
+});
+
+const missileBody = object<MissileBodyRecord>({
+  at08: scalar,
+  at0C: scalar,
+  collision: object<BodyCollisionShape>({ at00: scalar, at04: scalar, at08: numbers, at28: scalar, at2C: numbers }),
+  ...recordValues,
+  ...recordTail,
+});
+
+const craftInfo = object<WorldCraftInfo>({
+  id: scalar,
+  content: object<CraftInfo>({ hitDamageScale: scalar, guns: list(gun), missiles: list(missile), craft: list(craft), missileBodies: list(missileBody) }),
+});
+
+/** 16 lowercase hex digits: the setup first, then the craft info. */
+export function setupHash(setup: MissionSetup, info: WorldCraftInfo): string {
+  return canonicalHash(canonicalObject([['setup', setupValue(setup)], ['craftInfo', craftInfo(info)]]), 'setup');
 }

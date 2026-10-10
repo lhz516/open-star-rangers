@@ -7,6 +7,7 @@ import type { AssetId } from '../../content/asset-id.ts';
 import type { ContentIdentity } from '../../content/content-identity.ts';
 import type { RngState } from '../determinism/rng.ts';
 import type { MissionSetup } from '../mission/load-mission.ts';
+import type { WorldCraftInfo } from './craft-info-input.ts';
 import { EntityTable } from './entity-table.ts';
 import { createPlayerState, type PlayerState } from './player-state.ts';
 import type { SpawnState } from './spawn-state.ts';
@@ -16,7 +17,7 @@ export interface WorldConfig {
   /** The identity of the package the logic Assets came from. */
   readonly content: ContentIdentity;
   readonly mission: AssetId;
-  /** fnv1a64 of the validated setup's canonical text (setup-hash.ts). */
+  /** fnv1a64 of the canonical text of the validated setup and the craft info (setup-hash.ts). */
   readonly setupHash: string;
   readonly group: number;
   /** The campaign slot, the mission number the defaults use. */
@@ -36,6 +37,8 @@ export interface WorldState {
   readonly config: WorldConfig;
   /** The validated mission setup: read-only input, never part of a snapshot. */
   readonly setup: MissionSetup;
+  /** The craft info as read, the rules' frozen content: read-only input, never part of a snapshot; setupHash binds it. */
+  readonly craftInfo: WorldCraftInfo;
   /** The number of the last completed step; 0 at creation. */
   tick: number;
   /** Mission clock units (1/64 s) since creation. */
@@ -52,11 +55,12 @@ export interface WorldState {
  * The state of a world just created: tick 0, clock 0, no entities, view mode 0xC, with the spawn state and the RNG
  * state the build's defaults left (spawn-schedule.ts).
  */
-export function createWorldState(config: WorldConfig, setup: MissionSetup, spawn: SpawnState, rngState: RngState): WorldState {
+export function createWorldState(config: WorldConfig, setup: MissionSetup, craftInfo: WorldCraftInfo, spawn: SpawnState, rngState: RngState): WorldState {
   const { content, mission, setupHash, group, slot, rawDifficulty, wingman, seed, clockUnitsPerTick } = config;
   return {
     config: Object.freeze({ content, mission, setupHash, group, slot, rawDifficulty, wingman, seed, clockUnitsPerTick }),
     setup,
+    craftInfo,
     tick: 0,
     clock: 0,
     rngState,

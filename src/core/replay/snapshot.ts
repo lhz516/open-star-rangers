@@ -1,6 +1,6 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 1, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 2, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists, the spawn state (queue, enable flag, the records after the build's defaults with their aliasing by
@@ -14,7 +14,16 @@
  */
 import type { ContentIdentity, ContentOrigin } from '../../content/content-identity.ts';
 import type { SpawnRegion } from '../../content/logic/logic-content.ts';
-import { canonicalHash, canonicalObject, canonicalText, type CanonicalValue } from '../contracts/canonical-text.ts';
+import {
+  canonicalHash,
+  canonicalList as list,
+  canonicalMembers as object,
+  canonicalNullable as nullable,
+  canonicalObject,
+  canonicalScalar as scalar,
+  canonicalText,
+  type CanonicalWriter as Writer,
+} from '../contracts/canonical-text.ts';
 import type { EntitySource, GroupMembership, Vec3 } from '../contracts/domain-events.ts';
 import type { RuntimeFrame } from '../rules/coordinates.ts';
 import {
@@ -32,7 +41,7 @@ import type { MissionStatus, WorldConfig, WorldState } from '../world/world-stat
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 1;
+export const GAME_SNAPSHOT_VERSION = 2;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -102,20 +111,6 @@ export function takeSnapshot(world: WorldState): GameSnapshot {
     },
   });
 }
-
-type Writer<Value> = (value: Value) => CanonicalValue;
-/** A writer for every member of `Value`; an object literal of this type lists each exactly once, in canonical order. */
-type Members<Value> = { readonly [Key in keyof Value]-?: Writer<Value[Key]> };
-
-/** Writes an object's members in the order `members` lists them. */
-function object<Value>(members: Members<Value>): Writer<Value> {
-  const entries = Object.entries(members) as [keyof Value & string, Writer<unknown>][];
-  return (value) => canonicalObject(entries.map(([name, write]) => [name, write(value[name])]));
-}
-
-const scalar = (value: null | boolean | number | string): CanonicalValue => value;
-const list = <Item>(write: Writer<Item>): Writer<readonly Item[]> => (values) => values.map(write);
-const nullable = <Value>(write: Writer<Value>): Writer<Value | null> => (value) => (value === null ? null : write(value));
 
 const origin: Writer<ContentOrigin> = (value) => canonicalObject(value.type === 'synthetic'
   ? [['type', value.type], ['fixtureId', value.fixtureId]]

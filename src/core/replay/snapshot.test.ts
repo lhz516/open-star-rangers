@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen, MARKER } from '../../content/logic/logic-content.test-support.ts';
+import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { fnv1a64 } from '../determinism/fnv1a64.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
-import { asCreateInput, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
+import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, stateText, thrownBy, tickInput } from '../world/world.test-support.ts';
@@ -59,22 +60,16 @@ function withChangedLeaf(value: unknown, path: Path): unknown {
   return copy;
 }
 
-/** Plain data with every object's keys in reverse order. */
-function reversedKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(reversedKeys);
-  if (typeof value !== 'object' || value === null) return value;
-  return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reversedKeys(item)]));
-}
-
 const copyOf = (snapshot: GameSnapshot) => roundTrip(snapshot) as { state: { spawn: Mutable; entities: Mutable[]; kindOrder: number[] } & Mutable } & Mutable;
 
 describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
-  it('has the versioned shape and the configuration, without the setup', () => {
+  it('has the versioned shape and the configuration, without the setup or the craft info', () => {
     const input = worldInput({ run: { wingman: 3 } });
     const snapshot = createWorld(asCreateInput(input)).snapshot();
     expect(Object.keys(snapshot)).toEqual(['format', 'version', 'rulesVersion', 'state']);
     expect(snapshot).toMatchObject({ format: GAME_SNAPSHOT_FORMAT, version: GAME_SNAPSHOT_VERSION, rulesVersion: RULES_VERSION });
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 1, 1]);
+    // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07).
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 2, 2]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual(['config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'player']);
     expect(state.config).toEqual({
@@ -95,6 +90,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // Seven declared entries and the wingman's.
     expect(state.spawn.queue).toHaveLength(8);
     expect(snapshotText(snapshot)).not.toContain(MARKER);
+    expect(snapshotText(snapshot)).not.toContain(CRAFT_INFO_MARKER);
     expect(deepFrozen(snapshot)).toBe(true);
   });
 
@@ -115,10 +111,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(snapshotText(world.snapshot())).not.toBe(text);
   });
 
-  it('changes the canonical text when any value of the world state but its static setup changes', () => {
+  it('changes the canonical text when any value of the world state but its static setup and craft info changes', () => {
     const state = richState();
-    // A new top-level field fails here until the snapshot covers it.
-    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'entities', 'missionStatus', 'player', 'rngState', 'setup', 'spawn', 'tick']);
+    // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
+    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'setup', 'spawn', 'tick']);
     // Every entity is written by the same writer, so one entity of each shape stands for the rest: by collection,
     // group membership and name variant: the player, the wingman, a candidate-named record, a group member, a pool
     // name and an unnamed runtime entity.
@@ -227,7 +223,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":1,"rulesVersion":1,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":2,"rulesVersion":2,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

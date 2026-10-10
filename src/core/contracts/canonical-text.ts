@@ -24,6 +24,21 @@ export function canonicalObject(members: readonly CanonicalMember[]): CanonicalO
   return Object.freeze({ [MEMBERS]: Object.freeze(members.map(([name, value]) => Object.freeze([name, value] as const))) });
 }
 
+/** Writes a value of a known type as a canonical value. */
+export type CanonicalWriter<Value> = (value: Value) => CanonicalValue;
+/** A writer for every member of `Value`; an object literal of this type lists each exactly once, in canonical order. */
+export type CanonicalMembers<Value> = { readonly [Key in keyof Value]-?: CanonicalWriter<Value[Key]> };
+
+/** Writes an object's members in the order `members` lists them, so a type change fails to compile until it is written. */
+export function canonicalMembers<Value>(members: CanonicalMembers<Value>): CanonicalWriter<Value> {
+  const entries = Object.entries(members) as [keyof Value & string, CanonicalWriter<unknown>][];
+  return (value) => canonicalObject(entries.map(([name, write]) => [name, write(value[name])]));
+}
+
+export const canonicalScalar = (value: null | boolean | number | string): CanonicalValue => value;
+export const canonicalList = <Item>(write: CanonicalWriter<Item>): CanonicalWriter<readonly Item[]> => (values) => values.map(write);
+export const canonicalNullable = <Value>(write: CanonicalWriter<Value>): CanonicalWriter<Value | null> => (value) => (value === null ? null : write(value));
+
 function isCanonicalObject(value: object): value is CanonicalObject {
   return Object.hasOwn(value, MEMBERS);
 }

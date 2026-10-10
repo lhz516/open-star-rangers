@@ -1,10 +1,11 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
- * from the world, in partitions. clock, mission and player are ready. flight, map, communications and result fix the
- * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero
- * value, a fully visible map or a victory. The projection gives only what the original shows or a rule needs, never
- * the list of all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by
- * revising the spec (扩展规则) before its partition can become ready.
+ * from the world, in partitions. clock, mission and player are ready. flight (in two groups, motion and combat:
+ * docs/plan/p3/06/spec.md, D-05), map, communications and result fix the boundary their owners fill; until a rule makes
+ * one ready it is `not-implemented`, never an empty list, a zero value, a fully visible map or a victory. The
+ * projection gives only what the original shows or a rule needs, never the list of all entities. Fields the spec leaves
+ * to an owner's research are `never` here: the owner defines them by revising the spec (扩展规则) before its partition
+ * can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
@@ -68,19 +69,47 @@ export interface FlightTarget {
   readonly distance: number;
 }
 
-/** Flight HUD data (P3-06, P3-07). */
-export interface FlightReady {
-  readonly readiness: 'ready';
-  readonly playerEntityId: EntityId;
+/**
+ * Whether a maximum speed is the instantiation value only (`initial-only`, until P3-07 recomputes it from the live
+ * energy state) or the live rule's (`live`).
+ */
+export type SpeedLimitStatus = 'initial-only' | 'live';
+
+/** The player's motion. */
+export interface MotionPlayer {
+  readonly entityId: EntityId;
   readonly position: Vec3;
   readonly orientation: Matrix3;
   /** Runtime units per second. */
   readonly speed: number;
   /** Runtime units per second. */
   readonly commandedSpeed: number;
+  /** Runtime units per second. */
+  readonly maximumSpeed: number;
+  readonly speedLimitStatus: SpeedLimitStatus;
+  /** The speed assist's switch and whether it has matched, readable without the event history. */
+  readonly speedAssist: { readonly enabled: boolean; readonly engaged: boolean };
+}
+
+/** The flight partition's motion group (P3-06). */
+export interface MotionReady {
+  readonly readiness: 'ready';
+  /** Null without a player entity, never a made-up zero speed. */
+  readonly player: MotionPlayer | null;
+}
+
+/** The flight partition's combat group (P3-07, which fixes its ready shape). */
+export interface CombatReady {
+  readonly readiness: 'ready';
   readonly target: FlightTarget | null;
   readonly resources: Readonly<Record<FlightResourceName, ResourceReading>>;
   readonly weapons: readonly WeaponReading[];
+}
+
+/** Flight HUD data in two groups, each ready on its own; neither overwrites the other. */
+export interface FlightProjection {
+  readonly motion: NotImplementedPartition | MotionReady;
+  readonly combat: NotImplementedPartition | CombatReady;
 }
 
 /** The strategic map frame converted to runtime units. */
@@ -154,13 +183,14 @@ export interface Projection {
   readonly clock: ClockProjection;
   readonly mission: MissionProjection;
   readonly player: PlayerProjection;
-  readonly flight: NotImplementedPartition | FlightReady;
+  readonly flight: FlightProjection;
   readonly map: NotImplementedPartition | MapReady;
   readonly communications: NotImplementedPartition | CommunicationsReady;
   readonly result: NotImplementedPartition | ResultReady;
 }
 
 const NOT_IMPLEMENTED: NotImplementedPartition = Object.freeze({ readiness: 'not-implemented' });
+const FLIGHT_NOT_IMPLEMENTED: FlightProjection = Object.freeze({ motion: NOT_IMPLEMENTED, combat: NOT_IMPLEMENTED });
 
 export function projectWorld(world: WorldState): Projection {
   const { config, player } = world;
@@ -181,7 +211,7 @@ export function projectWorld(world: WorldState): Projection {
       subMode: player.subMode,
       interactionContext: interactionContext(player.viewMode),
     }),
-    flight: NOT_IMPLEMENTED,
+    flight: FLIGHT_NOT_IMPLEMENTED,
     map: NOT_IMPLEMENTED,
     communications: NOT_IMPLEMENTED,
     result: NOT_IMPLEMENTED,

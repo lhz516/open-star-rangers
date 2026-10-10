@@ -6,7 +6,7 @@ import { expectedRectangle, expectedWorld, float32OfDouble } from '../rules/deri
 import { RandStream } from '../rules/original-random.ts';
 import { initialWorldState } from '../world/create-world.ts';
 import {
-  asCreateInput, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, ruleInputs, worldInput,
+  asCreateInput, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, worldInput,
   type MissionDraft, type WorldInputParts,
 } from '../world/create-world.test-support.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
@@ -479,28 +479,19 @@ describe('names in a running world (P3-02 AC-07, Q-05)', () => {
     expect(named(false)).toEqual({ type: 'none' });
   });
 
-  it('keeps the pool counters in world state: one draw per pooled name, the first unused from rand % count', () => {
+  // Only kind 25 and the wingman kind reach the pool branch, and kind 25 has no craft record (P3-06 D-01), so a running
+  // world reaches it through a wingman option without candidates; name-assignment.test.ts covers the cycling.
+  it('keeps the pool counters in world state: one draw for a pooled name, from rand % count', () => {
     const m = playerOnlyMission();
     m.namePool = [`${MARKER}-p0`, `${MARKER}-p1`];
-    m.declarations.push(stored(1, 25, 400, 0, { ruleInputs: ruleInputs({ craftCount: 3 }) }));
-    const { state, world } = setUp({ mission: m });
-    const r = randValues(state.rngState, 3);
+    const roster = rosterContent();
+    roster.options[0].nameCandidates = [];
+    const { state, world } = setUp({ mission: m, roster, run: { wingman: 0 } });
+    // The player at its stored position draws nothing; the wingman anchored on it draws six, then its name.
+    const start = randValues(state.rngState, 7)[6] % 2;
     world.step(tickInput());
-    // Written out: counters [0, 0]; each name starts at rand % 2 and cycles to the first unused; all used resets.
-    const uses = [0, 0];
-    const expected = r.map((value) => {
-      const start = value % 2;
-      const free = [start, (start + 1) % 2].find((index) => uses[index] === 0);
-      if (free === undefined) {
-        uses.fill(0);
-        uses[start] = 1;
-        return start;
-      }
-      uses[free] = 1;
-      return free;
-    });
-    expect(entities(state).slice(1).map(({ name }) => name)).toEqual(expected.map((index) => ({ type: 'pool', index })));
-    expect(state.spawn.namePoolUses).toEqual(uses);
+    expect(entities(state)[1].name).toEqual({ type: 'pool', index: start });
+    expect(state.spawn.namePoolUses).toEqual(start === 0 ? [1, 0] : [0, 1]);
   });
 });
 

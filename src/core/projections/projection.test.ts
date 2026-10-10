@@ -4,17 +4,20 @@ import { constructWorld } from '../world/world.ts';
 import { entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import {
   projectWorld,
+  type CombatReady,
   type CommunicationsReady,
-  type FlightReady,
   type FlightResourceName,
   type MapReady,
+  type MotionPlayer,
+  type MotionReady,
   type NotImplementedPartition,
   type Projection,
   type ResultReady,
+  type SpeedLimitStatus,
 } from './projection.ts';
 
 describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
-  it('has the clock, mission and player partitions ready and the four rule partitions not implemented', () => {
+  it('has the clock, mission and player partitions ready and the rule partitions, both flight groups included, not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -24,7 +27,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
       clock: { tick: 1, clock: 4, clockUnitsPerTick: 4 },
       mission: { mission: 'mission/first-campaign', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built' },
       player: { entityId: player.id, viewMode: 0x0c, previousViewMode: 0x0c, subMode: 0, interactionContext: 'flight' },
-      flight: { readiness: 'not-implemented' },
+      flight: { motion: { readiness: 'not-implemented' }, combat: { readiness: 'not-implemented' } },
       map: { readiness: 'not-implemented' },
       communications: { readiness: 'not-implemented' },
       result: { readiness: 'not-implemented' },
@@ -49,12 +52,23 @@ describe('projection (P3-02 AC-10, Projection 与 Render State)', () => {
   });
 
   it('types each rule partition as not-implemented or its ready shape', () => {
-    expectTypeOf<Projection['flight']>().toEqualTypeOf<NotImplementedPartition | FlightReady>();
+    // P3-06 D-05: the flight partition is two groups, each not-implemented or its own ready shape.
+    expectTypeOf<Projection['flight']>().toEqualTypeOf<{
+      readonly motion: NotImplementedPartition | MotionReady;
+      readonly combat: NotImplementedPartition | CombatReady;
+    }>();
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
     expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
     // Owners define the resources (and the other `never` fields) by revising the spec before a partition can be ready.
     expectTypeOf<FlightResourceName>().toBeNever();
-    expectTypeOf<FlightReady['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<CombatReady['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<MotionReady['player']>().toEqualTypeOf<MotionPlayer | null>();
+    expectTypeOf<keyof MotionPlayer>().toEqualTypeOf<
+      'entityId' | 'position' | 'orientation' | 'speed' | 'commandedSpeed' | 'maximumSpeed' | 'speedLimitStatus' | 'speedAssist'
+    >();
+    expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
+    expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
   });
 });
