@@ -1,0 +1,476 @@
+import { openAsBlob } from 'node:fs';
+import { basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { AssetDescriptor, ResourceGroup } from '../src/content/asset-contract.ts';
+import { BUDGET_DIMENSIONS, type BudgetRecord } from '../src/content/budget.ts';
+import { validatePackage, type GroupInput } from '../src/content/completeness.ts';
+import { ContentContractError } from '../src/content/contract-validation.ts';
+import { FLIGHT_DATA_LIMITS, type FlightDataPayload } from '../src/content/flight/flight-data-content.ts';
+import { decodeFlightDataPayload } from '../src/content/flight/flight-data-payload.ts';
+import { checkGraphicsBinding } from '../src/content/graphics/graphics-binding.ts';
+import { isOpaque, readImagePayload } from '../src/content/graphics/image-payload.ts';
+import { readPalettePayload } from '../src/content/graphics/palette-payload.ts';
+import { decodeHudTextPayload, HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS } from '../src/content/hud/hud-text-payload.ts';
+import { decodeViewLabelsPayload, VIEW_LABELS_LIMITS } from '../src/content/hud/view-labels-payload.ts';
+import { LOGIC_LIMITS, type LogicPayload } from '../src/content/logic/logic-content.ts';
+import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
+import { readGroupManifest, type GroupManifest } from '../src/content/manifest.ts';
+import { readPayloadRecords, type PayloadRecord } from '../src/content/payload.ts';
+import { AI_PROGRAMS_LIMITS } from '../src/content/rule-data/ai-programs.ts';
+import { COMM_MENUS_LIMITS } from '../src/content/rule-data/comm-menus.ts';
+import { CRAFT_INFO_LIMITS } from '../src/content/rule-data/craft-info.ts';
+import { DEBRIS_PARAMETERS_LIMITS } from '../src/content/rule-data/debris-parameters.ts';
+import { FLIGHT_MESSAGES_LIMITS } from '../src/content/rule-data/flight-messages.ts';
+import { decodeRuleDataPayload, type RuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
+import { sha256Fingerprint } from '../src/content/sha256.ts';
+import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
+import { readSoundPayload, SOUND_PAYLOAD_SCHEMA_VERSION } from '../src/content/sound-payload.ts';
+import { CoreInputError } from '../src/core/errors.ts';
+import { loadMission } from '../src/core/mission/load-mission.ts';
+import { DiscReadError } from '../src/original-data/disc/disc-error.ts';
+import { openDiscImage } from '../src/original-data/disc/disc-image.ts';
+import { SourceError } from '../src/original-data/source-error.ts';
+import { identifySource } from '../src/original-data/source/identify-source.ts';
+import type { ImportJob, ImportReporter } from '../src/workers/import-host.ts';
+import { createImportJob, type OpenSource } from '../src/workers/import-job.ts';
+import { IMPORT_STAGES, type ImportFile, type ImportStage } from '../src/workers/import-protocol.ts';
+import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
+
+// Local package check (P3-03 S-16, AC-19): runs the production import job the Worker runs on a CloneCD file set,
+// validates the whole package against the slice definition, decodes every Asset of the roles P3-03 added or extended with
+// its role's reader and loads the mission in Core. Output holds only verdicts, Asset IDs, counts, limits, read amounts and
+// hashes: never names, texts, field values, pixels, samples, host paths or host error text.
+
+export interface PackageCheckOptions {
+  /** A synthetic whitelist for tests; otherwise the product entry identifies the source. */
+  readonly catalog?: unknown;
+  /** Replaces the production job, which `catalog` would otherwise configure; only tests pass it. */
+  readonly job?: ImportJob;
+}
+
+export interface PackageCheckFailure {
+  readonly code: string;
+  readonly location: string;
+}
+
+/** A structural observation of the canonical data, or a package budget usage, and the limit it must stay within. */
+export interface LimitCheck {
+  readonly name: string;
+  readonly observed: number;
+  readonly limit: number;
+}
+
+/** The Assets of one role, decoded with the role's reader. */
+export interface RoleReport {
+  readonly role: string;
+  readonly group: ResourceGroup;
+  readonly assets: number;
+  readonly payloadBytes: number;
+  /** `sha256:` of the role's `<Asset ID> <payload fingerprint>` lines in Asset ID order. */
+  readonly digest: string;
+  /** Records, frames, texts, sounds and pixels; never a value. */
+  readonly counts: Readonly<Record<string, number>>;
+}
+
+export interface GroupReport {
+  readonly group: ResourceGroup;
+  readonly assets: number;
+  readonly dependencyEdges: number;
+  readonly payloadBytes: number;
+  /** As `RoleReport.digest`, over every Asset of the group. */
+  readonly digest: string;
+}
+
+export interface PackageCheckReport {
+  readonly format: 'osr-package-check';
+  readonly version: 1;
+  readonly passed: boolean;
+  /** The first failure that ended the check, if any. */
+  readonly error: PackageCheckFailure | null;
+  readonly identity: { readonly versionId: string; readonly fingerprint: string } | null;
+  readonly package: {
+    readonly status: 'complete';
+    readonly sliceDefinitionVersion: number;
+    readonly converterVersion: string;
+    readonly manifestIdentity: string;
+    readonly groups: readonly GroupReport[];
+  } | null;
+  readonly roles: readonly RoleReport[];
+  readonly limits: readonly LimitCheck[];
+  /** Bytes read by each stage (its last progress less the bytes read when it started) and in total. */
+  readonly reads: Readonly<Record<ImportStage | 'total', number>>;
+}
+
+class CheckStop extends Error {
+  readonly failure: PackageCheckFailure;
+
+  constructor(code: string, location: string) {
+    super(`${location}: ${code}`);
+    this.failure = { code, location };
+  }
+}
+
+/** The failure an error stands for, by code and structural position only. */
+function failureOf(cause: unknown): PackageCheckFailure {
+  if (cause instanceof CheckStop) return cause.failure;
+  if (cause instanceof DiscReadError || cause instanceof SourceError) return { code: cause.code, location: cause.location };
+  if (cause instanceof ContentContractError) return { code: cause.code, location: cause.path };
+  if (cause instanceof CoreInputError) return { code: 'core-input', location: cause.path };
+  // Anything else may carry host paths in its text.
+  return { code: 'internal-error', location: 'check' };
+}
+
+/** One Asset of the package with its payload bytes. */
+interface PackageAsset {
+  readonly descriptor: AssetDescriptor;
+  readonly bytes: Uint8Array;
+}
+
+/** What one Asset's payload contributes: counts are summed over a role, limit observations take the largest. */
+interface Measured {
+  readonly counts: Readonly<Record<string, number>>;
+  readonly limits: readonly LimitCheck[];
+}
+
+type Measure = (asset: PackageAsset, find: (id: string) => PackageAsset) => Measured;
+
+const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
+const largest = (values: readonly number[]): number => values.reduce((most, value) => Math.max(most, value), 0);
+const limit = (name: string, observed: number, bound: number): LimitCheck => ({ name, observed, limit: bound });
+/** Opaque pixels of an image payload's mask, as the image payload defines them. */
+function opaquePixels({ width, height, mask }: { readonly width: number; readonly height: number; readonly mask: Uint8Array | null }): number {
+  let count = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) count += Number(isOpaque(mask, width, x, y));
+  return count;
+}
+
+const digestOf = (assets: readonly AssetDescriptor[]): string =>
+  sha256Fingerprint(new TextEncoder().encode(assets.map(({ id, payloadIdentity }) => `${id} ${payloadIdentity.fingerprint}\n`).join('')));
+
+/** The content of a payload of `role` R. */
+type ContentOf<P extends { readonly role: string; readonly content: unknown }, R extends P['role']> = Extract<P, { readonly role: R }>['content'];
+
+/** A canonical JSON payload decoded by its family's reader; its byte length is checked against the family's limit. */
+function decoded<P extends { readonly role: string; readonly content: unknown }>(
+  decode: (bytes: Uint8Array, descriptor: AssetDescriptor) => P, payloadBytes: number,
+) {
+  return <R extends P['role']>(role: R, measure: (content: ContentOf<P, R>) => Measured): Measure => ({ descriptor, bytes }) => {
+    const payload = decode(bytes, descriptor);
+    if (payload.role !== role) throw new CheckStop('role-mismatch', `roles.${role}`);
+    const { counts, limits } = measure(payload.content as ContentOf<P, R>);
+    return { counts, limits: [...limits, limit(`${role}.payloadBytes`, bytes.length, payloadBytes)] };
+  };
+}
+
+const ruleData = decoded<RuleDataPayload>(decodeRuleDataPayload, LOGIC_LIMITS.payloadBytes);
+const flightData = decoded<FlightDataPayload>(decodeFlightDataPayload, FLIGHT_DATA_LIMITS.payloadBytes);
+
+/**
+ * Pixel counts of an image, and the palette entries of its own palette when `withPalette` is set. Each graphics payload's
+ * descriptor dependencies must be exactly the palettes it references, which package validation does not check.
+ */
+function image(withPalette = false): Measure {
+  return ({ descriptor, bytes }, find) => {
+    const payload = readImagePayload(bytes, descriptor.payloadIdentity.schemaVersion);
+    checkGraphicsBinding(descriptor, payload, `assets.${descriptor.id}`);
+    const counts: Record<string, number> = { pixels: payload.width * payload.height, opaquePixels: opaquePixels(payload) };
+    if (withPalette) {
+      const { descriptor: paletteDescriptor, bytes: paletteBytes } = find(payload.palette);
+      const palettePayload = readPalettePayload(paletteBytes, paletteDescriptor.payloadIdentity.schemaVersion);
+      checkGraphicsBinding(paletteDescriptor, palettePayload, `assets.${paletteDescriptor.id}`);
+      counts.paletteEntries = palettePayload.entries.length / 3;
+    }
+    return { counts, limits: [] };
+  };
+}
+
+/** A sound payload references no Asset, so its descriptor has no dependencies. */
+const sound: Measure = ({ descriptor, bytes }) => {
+  if (descriptor.payloadIdentity.schemaVersion !== SOUND_PAYLOAD_SCHEMA_VERSION) throw new CheckStop('unsupported-payload-schema', `assets.${descriptor.id}`);
+  if (descriptor.dependencies.length !== 0) throw new CheckStop('binding-mismatch', `assets.${descriptor.id}.dependencies`);
+  const { frames, loop } = readSoundPayload(bytes);
+  return { counts: { frames, none: Number(loop === 'none'), whole: Number(loop === 'whole'), repeat: Number(loop === 'repeat') }, limits: [] };
+};
+
+/**
+ * The roles P3-03 added, with the mission it extended, in group order: required roles and the roles their dependencies
+ * close over. The target display's palette is an Asset of a P2 role, read through its image.
+ */
+const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; readonly measure: Measure }[] = [
+  { role: 'craft-info', group: 'logic', measure: ruleData('craft-info', info => {
+    const names = [...info.guns, ...info.missiles].map(({ name }) => name).concat(info.craft.flatMap(({ at00, name }) => [at00, name]));
+    const mountLists = info.craft.flatMap(({ mountLists: lists }) => lists.map(list => list.length));
+    const mounts = info.craft.map(craft => craft.mounts.length);
+    const boxes = info.craft.map(craft => craft.collision.boxes.length);
+    const pairs = info.craft.map(craft => craft.pairs.length);
+    return {
+      counts: {
+        guns: info.guns.length, missiles: info.missiles.length, craft: info.craft.length, missileBodies: info.missileBodies.length,
+        mounts: sum(mounts), boxes: sum(boxes), pairs: sum(pairs), mountListEntries: sum(mountLists), texts: names.length, textBytes: sum(names.map(text => text.length)),
+      },
+      limits: [
+        limit('craft-info.guns', info.guns.length, CRAFT_INFO_LIMITS.guns),
+        limit('craft-info.missiles', info.missiles.length, CRAFT_INFO_LIMITS.missiles),
+        limit('craft-info.missileBodies', info.missileBodies.length, CRAFT_INFO_LIMITS.missileBodies),
+        limit('craft-info.mounts', largest(mounts), CRAFT_INFO_LIMITS.mounts),
+        limit('craft-info.boxes', largest(boxes), CRAFT_INFO_LIMITS.boxes),
+        limit('craft-info.mountListEntries', largest(mountLists), CRAFT_INFO_LIMITS.mountListEntries),
+        limit('craft-info.pairs', largest(pairs), CRAFT_INFO_LIMITS.pairs),
+        limit('craft-info.nameBytes', largest(names.map(text => text.length)), CRAFT_INFO_LIMITS.nameBytes),
+      ],
+    };
+  }) },
+  { role: 'debris-parameters', group: 'logic', measure: ruleData('debris-parameters', ({ byCraftType }) => {
+    const records = byCraftType.flat();
+    const boxes = records.map(({ collision }) => collision.boxes.length);
+    return {
+      counts: { craftTypes: byCraftType.length, records: records.length, boxes: sum(boxes) },
+      limits: [
+        limit('debris-parameters.records', largest(byCraftType.map(list => list.length)), DEBRIS_PARAMETERS_LIMITS.records),
+        limit('debris-parameters.boxes', largest(boxes), DEBRIS_PARAMETERS_LIMITS.boxes),
+      ],
+    };
+  }) },
+  { role: 'ai-programs', group: 'logic', measure: ruleData('ai-programs', ai => {
+    const scripts = ai.entries.flatMap(entry => (entry.kind === 'script' ? [entry.items] : []));
+    const stateLists = ai.entries.flatMap(entry => (entry.kind === 'parameters' ? Object.values(entry.stateScripts) : []));
+    const names = [...ai.programs, ...ai.builtInPrograms].map(({ name }) => name.length);
+    const argumentBytes = scripts.flat().flatMap(({ argument }) => (argument === null ? [] : [argument.length]));
+    return {
+      counts: {
+        programs: ai.programs.length, builtInPrograms: ai.builtInPrograms.length, entries: ai.entries.length,
+        parameterEntries: ai.entries.length - scripts.length, scriptEntries: scripts.length, scriptItems: sum(scripts.map(items => items.length)),
+        globalElements: ai.globals.elements.length, texts: names.length + argumentBytes.length, textBytes: sum([...names, ...argumentBytes]),
+      },
+      limits: [
+        limit('ai-programs.programRecords', largest([ai.programs.length, ai.builtInPrograms.length]), AI_PROGRAMS_LIMITS.programRecords),
+        limit('ai-programs.programNameBytes', largest(names), AI_PROGRAMS_LIMITS.programNameBytes),
+        limit('ai-programs.globalElements', ai.globals.elements.length, AI_PROGRAMS_LIMITS.globalElements),
+        limit('ai-programs.entries', ai.entries.length, AI_PROGRAMS_LIMITS.entries),
+        limit('ai-programs.stateScriptItems', largest(stateLists.map(list => list.length)), AI_PROGRAMS_LIMITS.stateScriptItems),
+        limit('ai-programs.scriptItems', largest(scripts.map(items => items.length)), AI_PROGRAMS_LIMITS.scriptItems),
+        limit('ai-programs.scriptTextBytes', largest(argumentBytes), AI_PROGRAMS_LIMITS.scriptTextBytes),
+      ],
+    };
+  }) },
+  { role: 'comm-menus', group: 'logic', measure: ruleData('comm-menus', menus => {
+    const lists = [menus.gatedTargetCommands, menus.otherTargetCommands, menus.categories, menus.kind2TargetCommands];
+    const texts = [...lists.flat().map(({ text }) => text), menus.objectListLastEntry].map(text => text.length);
+    return {
+      counts: { menus: lists.length + 1, items: sum(lists.map(list => list.length)) + 1, texts: texts.length, textBytes: sum(texts) },
+      limits: [
+        limit('comm-menus.items', largest(lists.map(list => list.length)), COMM_MENUS_LIMITS.items),
+        limit('comm-menus.textBytes', largest(texts), COMM_MENUS_LIMITS.textBytes),
+      ],
+    };
+  }) },
+  { role: 'base-repair-items', group: 'logic', measure: ruleData('base-repair-items', ({ subsystemSelectors }) => ({ counts: { selectors: subsystemSelectors.length }, limits: [] })) },
+  { role: 'flight-messages', group: 'logic', measure: ruleData('flight-messages', messages => {
+    const texts = Object.values(messages).map(text => text.length);
+    return { counts: { texts: texts.length, textBytes: sum(texts) }, limits: [limit('flight-messages.textBytes', largest(texts), FLIGHT_MESSAGES_LIMITS.textBytes)] };
+  }) },
+  { role: 'scene-settings', group: 'models', measure: flightData('scene-settings', ({ screenFlashes }) => ({ counts: { screenFlashes: screenFlashes.length }, limits: [] })) },
+  { role: 'explosion-table', group: 'models', measure: flightData('explosion-table', ({ lists }) => ({
+    counts: { lists: lists.length, entries: sum(lists.map(list => list.length)) },
+    limits: [limit('explosion-table.listItems', largest(lists.map(list => list.length)), FLIGHT_DATA_LIMITS.explosionListItems)],
+  })) },
+  { role: 'explosion-animation', group: 'models', measure: flightData('explosion-animation', ({ frames }) => ({
+    counts: { frames: frames.length }, limits: [limit('explosion-animation.frames', frames.length, FLIGHT_DATA_LIMITS.animationFrames)],
+  })) },
+  { role: 'explosion-frame', group: 'models', measure: image() },
+  { role: 'nebula-backgrounds', group: 'models', measure: flightData('nebula-backgrounds', ({ images }) => ({
+    counts: { images: images.length }, limits: [limit('nebula-backgrounds.images', images.length, FLIGHT_DATA_LIMITS.nebulaImages)],
+  })) },
+  { role: 'nebula-background', group: 'models', measure: image() },
+  { role: 'hit-shimmer', group: 'models', measure: image() },
+  { role: 'target-display', group: 'cockpit-hud-map', measure: image(true) },
+  { role: 'view-labels', group: 'cockpit-hud-map', measure: ({ descriptor, bytes }) => {
+    const texts = decodeViewLabelsPayload(bytes, descriptor).labels.map(({ text }) => text.length);
+    return {
+      counts: { labels: texts.length, textBytes: sum(texts) },
+      limits: [limit('view-labels.textBytes', largest(texts), VIEW_LABELS_LIMITS.textBytes), limit('view-labels.payloadBytes', bytes.length, VIEW_LABELS_LIMITS.payloadBytes)],
+    };
+  } },
+  { role: 'hud-text', group: 'cockpit-hud-map', measure: ({ descriptor, bytes }) => {
+    const { entries } = decodeHudTextPayload(bytes, descriptor);
+    const texts = HUD_TEXT_KEYS.map(key => entries[key].length);
+    return {
+      counts: { texts: texts.length, formatted: HUD_TEXT_KEYS.filter(key => HUD_TEXT_FORMATS[key] !== null).length, textBytes: sum(texts) },
+      limits: [limit('hud-text.textBytes', largest(texts), HUD_TEXT_LIMITS.textBytes), limit('hud-text.payloadBytes', bytes.length, HUD_TEXT_LIMITS.payloadBytes)],
+    };
+  } },
+  { role: 'event-sound', group: 'audio', measure: sound },
+  { role: 'hud-sound', group: 'audio', measure: sound },
+];
+
+/** Adds the counts of each Asset and keeps the largest observation of each limit, in first-seen order. */
+function combine(measured: readonly Measured[]): Measured {
+  const counts: Record<string, number> = {};
+  const limits = new Map<string, LimitCheck>();
+  for (const item of measured) {
+    for (const [name, value] of Object.entries(item.counts)) counts[name] = (counts[name] ?? 0) + value;
+    for (const check of item.limits) {
+      const seen = limits.get(check.name);
+      if (!seen || check.observed > seen.observed) limits.set(check.name, check);
+    }
+  }
+  return { counts, limits: [...limits.values()] };
+}
+
+/** A role's report from its Assets and their summed counts. */
+function roleReport(role: string, group: ResourceGroup, members: readonly PackageAsset[], counts: Readonly<Record<string, number>>): RoleReport {
+  const descriptors = members.map(({ descriptor }) => descriptor);
+  return { role, group, assets: members.length, payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)), digest: digestOf(descriptors), counts };
+}
+
+/** The only Asset of logic role `role`, decoded with the logic payload reader. */
+function logicAsset<R extends LogicPayload['role']>(members: readonly PackageAsset[], role: R) {
+  if (members.length !== 1) throw new CheckStop('missing-asset', `roles.${role}`);
+  const [{ descriptor, bytes }] = members;
+  const payload = decodeLogicPayload(bytes, descriptor);
+  if (payload.role !== role) throw new CheckStop('role-mismatch', `roles.${role}`);
+  return { id: descriptor.id, content: payload.content as ContentOf<LogicPayload, R> };
+}
+
+/** Loads the mission in Core from the decoded logic Assets; reports the mission and the event trigger counts and limits P3-03 added. */
+function checkMission(roleAssets: (role: string) => readonly PackageAsset[]): { readonly report: RoleReport; readonly limits: readonly LimitCheck[] } {
+  const members = roleAssets('mission');
+  const mission = logicAsset(members, 'mission');
+  loadMission({ mission, craftTypes: logicAsset(roleAssets('craft-types'), 'craft-types'), wingmanRoster: logicAsset(roleAssets('wingman-roster'), 'wingman-roster') });
+  const { declarations, eventTriggers } = mission.content;
+  const ranges = eventTriggers.flatMap(trigger => trigger.ranges);
+  const messages = ranges.flatMap(range => range.messages);
+  return {
+    report: roleReport('mission', 'logic', members, {
+      declarations: declarations.length,
+      eventTriggerReferences: declarations.filter(({ eventTrigger }) => eventTrigger !== null).length,
+      eventTriggers: eventTriggers.length,
+      eventRanges: ranges.length,
+      eventMessages: messages.length,
+      eventMessageBytes: sum(messages.map(message => message.length)),
+    }),
+    limits: [
+      limit('mission.eventTriggers', eventTriggers.length, LOGIC_LIMITS.eventTriggers),
+      limit('mission.eventRanges', largest(eventTriggers.map(trigger => trigger.ranges.length)), LOGIC_LIMITS.eventRanges),
+      limit('mission.eventMessages', largest(ranges.map(range => range.messages.length)), LOGIC_LIMITS.eventMessages),
+      limit('mission.eventMessageBytes', largest(messages.map(message => message.length)), LOGIC_LIMITS.eventMessageBytes),
+    ],
+  };
+}
+
+/** The package usage of every budget dimension but the source reads, against the production package limits. */
+const budgetLimits = (usage: BudgetRecord): LimitCheck[] => BUDGET_DIMENSIONS
+  .filter(dimension => dimension !== 'sourceReadBytes')
+  .map(dimension => limit(`package.${dimension}`, usage[dimension], PRODUCTION_PACKAGE.limits[dimension]));
+
+/**
+ * Checks a CloneCD file set with the production import job. The first failure of the job, the package validation, a
+ * payload decoding or the Core load ends the check; its report keeps everything gathered before it. As in the logic
+ * check, the input Blobs from `fs.openAsBlob` have no close method, so the check is meant for one-shot processes.
+ */
+export async function runPackageCheck(paths: readonly string[], options: PackageCheckOptions = {}): Promise<PackageCheckReport> {
+  let identity: PackageCheckReport['identity'] = null;
+  let checkedPackage: PackageCheckReport['package'] = null;
+  const roles: RoleReport[] = [];
+  const limits: LimitCheck[] = [];
+  let error: PackageCheckFailure | null = null;
+  const reads = Object.fromEntries([...IMPORT_STAGES, 'total'].map(stage => [stage, 0])) as Record<ImportStage | 'total', number>;
+  /** The bytes read when each stage started: a stage reports its first progress with the bytes read so far. */
+  const starts: Partial<Record<ImportStage, number>> = {};
+  const sent: GroupInput[] = [];
+  try {
+    const files: ImportFile[] = [];
+    for (const [index, path] of paths.entries()) {
+      try {
+        files.push({ name: basename(path), blob: await openAsBlob(path) });
+      } catch {
+        throw new CheckStop('read-failed', `input[${index}]`);
+      }
+    }
+    const { catalog } = options;
+    const open: OpenSource | undefined = catalog === undefined ? undefined : async inputs => identifySource(await openDiscImage(inputs), catalog);
+    const report: ImportReporter = {
+      progress: (stage, bytes) => {
+        starts[stage] ??= bytes;
+        reads[stage] = bytes - starts[stage];
+        reads.total = bytes;
+      },
+      identified: ({ versionId, sourceFingerprint }) => { identity = { versionId, fingerprint: sourceFingerprint }; },
+      group: (_name, input) => { sent.push(input); },
+    };
+    const usage = await (options.job ?? createImportJob(open))(files, report);
+
+    const validation = validatePackage(CLASSIC_P2_SLICE, sent);
+    if (validation.status !== 'complete') {
+      const [first] = validation.diagnostics;
+      throw new CheckStop(first.code, first.path);
+    }
+    // Validation read every manifest and payload strictly, so their shapes hold from here on.
+    const groups = sent.map(({ manifest, payloads }) => ({
+      manifest: readGroupManifest(manifest),
+      payloads: new Map(readPayloadRecords(payloads).map((record: PayloadRecord) => [record.id as string, record.bytes])),
+    }));
+    const assets = new Map<string, PackageAsset>();
+    const byRole = new Map<string, PackageAsset[]>();
+    for (const { manifest, payloads } of groups) {
+      for (const descriptor of manifest.assets) {
+        const asset = { descriptor, bytes: payloads.get(descriptor.id)! };
+        assets.set(descriptor.id, asset);
+        byRole.set(descriptor.role, [...byRole.get(descriptor.role) ?? [], asset]);
+      }
+    }
+    const find = (id: string): PackageAsset => assets.get(id) ?? (() => { throw new CheckStop('missing-asset', `assets.${id}`); })();
+    const roleAssets = (role: string): readonly PackageAsset[] => byRole.get(role) ?? [];
+    const [{ manifest: first }] = groups;
+    const groupReport = ({ group, assets: descriptors }: GroupManifest): GroupReport => ({
+      group,
+      assets: descriptors.length,
+      dependencyEdges: sum(descriptors.map(({ dependencies }) => dependencies.length)),
+      payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)),
+      digest: digestOf(descriptors),
+    });
+    checkedPackage = {
+      status: validation.status,
+      sliceDefinitionVersion: first.identity.sliceDefinitionVersion,
+      converterVersion: first.identity.converterVersion,
+      manifestIdentity: first.identity.manifestIdentity,
+      groups: groups.map(({ manifest }) => groupReport(manifest)),
+    };
+
+    const mission = checkMission(roleAssets);
+    roles.push(mission.report);
+    limits.push(...mission.limits);
+    for (const { role, group, measure } of ROLES) {
+      const members = roleAssets(role);
+      if (members.length === 0) throw new CheckStop('missing-asset', `roles.${role}`);
+      if (members.some(({ descriptor }) => descriptor.group !== group)) throw new CheckStop('group-mismatch', `roles.${role}`);
+      const measured = combine(members.map(asset => measure(asset, find)));
+      roles.push(roleReport(role, group, members, measured.counts));
+      limits.push(...measured.limits);
+    }
+    limits.push(...budgetLimits(usage));
+    const over = limits.find(({ observed, limit: bound }) => observed > bound);
+    if (over) throw new CheckStop('limit-exceeded', `limits.${over.name}`);
+  } catch (cause) {
+    error = failureOf(cause);
+  }
+  return { format: 'osr-package-check', version: 1, passed: error === null, error, identity, package: checkedPackage, roles, limits, reads };
+}
+
+const USAGE = 'usage: node tools/package-check.ts <file.ccd> <file.img> [<file.sub>] [<file.cue>]';
+
+/** Runs the CLI: prints one JSON report and returns 0 when the check passed, 1 when it failed, 2 on bad usage. */
+export async function main(argv: readonly string[], options: PackageCheckOptions = {}): Promise<number> {
+  if (argv.length === 0 || argv.some(argument => argument.startsWith('-'))) {
+    console.error(USAGE);
+    console.log(JSON.stringify({ format: 'osr-package-check', version: 1, passed: false, error: { code: 'usage', location: 'argv' } }));
+    return 2;
+  }
+  const report = await runPackageCheck(argv.map(file => resolve(file)), options);
+  console.log(JSON.stringify(report, null, 2));
+  return report.passed ? 0 : 1;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await main(process.argv.slice(2));
+}

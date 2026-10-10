@@ -1,16 +1,22 @@
 // Checks every structure of an IMFAT archive that the import or the research reads, and its cross-references.
 // Usage: node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
 // Prints per-type pass and fail counts, failure codes with structural locations, the observed graphics, MESH and MODL
-// maxima and the observed container, SNIP and DIAG counts; never pixels, palette values, glyphs, coordinates, offsets,
-// text or other entry contents.
+// maxima and the observed container, SNIP, DIAG, ANIM, explosion and craft table counts; never pixels, palette values,
+// glyphs, coordinates, offsets, text or other entry contents.
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
+import { isOpaque } from '../src/content/graphics/image-payload.ts';
+import type { ArchiveEntryRead } from '../src/original-data/archive/archive-reader.ts';
 import {
   checkPaletteIndices, decodeImageRecord, decodeSnipFrame, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette,
   readImageRecordHeader, readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
 import { readStatusMessages } from '../src/original-data/conversion/source-messages.ts';
-import { entryData, entryRelocations, parseImfat } from '../src/original-data/imfat.ts';
+import { isDiscPath, type DiscPath } from '../src/original-data/disc/disc-path.ts';
+import { entryData, entryRelocations, parseImfat, type ImfatEntry } from '../src/original-data/imfat.ts';
+import { decodeAnimationFrame, readAnimationFrames } from '../src/original-data/formats/anim.ts';
+import { CRAFT_TABLE_FORMAT, parseCraftTable } from '../src/original-data/formats/craft.ts';
+import { parseExplosionLists, parseExplosionRecord } from '../src/original-data/formats/explosion.ts';
 import { readMesh } from '../src/original-data/formats/mesh.ts';
 import { readModel } from '../src/original-data/formats/modl.ts';
 import { parseIdList, PayloadError } from '../src/original-data/payloads.ts';
@@ -41,6 +47,13 @@ try {
  * holding any of them must hold all of them as TABL entries, whatever the file is called.
  */
 const IMAGE_LIST_TABLES: readonly number[] = [10461, 10479, 10481, 10483, 11401];
+/**
+ * The craft table of docs/original/formats/craft.md §2, whose ID belongs to CRAFT.NOB only: an archive holding the ID
+ * must hold it as a TABL entry, whatever the file is called.
+ */
+const CRAFT_TABLE = 4003;
+/** The archive path of diagnostics: the file name when it is an upper-case 8.3 name, never a host path. */
+const archivePath = ((name: string) => (isDiscPath(name) ? name : 'ARCHIVE.NOB') as DiscPath)(basename(file).toUpperCase());
 
 const typeById = new Map(archive.entries.map((e) => [e.id, e.type]));
 const holdsImageLists = IMAGE_LIST_TABLES.some(id => typeById.has(id));
@@ -59,6 +72,11 @@ const containers = {
 const flagsSet = [0, 0];
 /** Observed SNIP and DIAG counts, compared with the P2-07 limits (2026-10-08 revision) in docs/original. */
 const hudSets = { snipFrames: 0, snipFramesDecoded: 0, diagTexts: 0, diagStartupMessages: 0, diagTextBytes: 0 };
+/** Observed ANIM frame counts, compared with the P3-03 limits in docs/original/formats/textures.md §6. */
+const animations = { frames: 0, framesDecoded: 0, frameDataBytes: 0, pixels: 0, opaquePixels: 0 };
+/** Observed EXIC and EXPL references (textures.md §7) and TABL 4003 cells (craft.md §2), as counts of distinct IDs. */
+const explosions = { lists: 0, references: 0, records: new Set<number>(), animations: new Set<number>(), sounds: new Set<number>() };
+const craftTable = { pairs: 0, craftInfo: new Set<number>() };
 /** Stands in for the executable's colour table, which the archive does not hold, so that every frame is decoded. */
 const IDENTITY_COLOURS = Uint8Array.of(0, 1, 2, 3);
 /** Stands in for the executable's lower-line format; only the entry's own structure is checked. */
@@ -123,6 +141,58 @@ function checkImage(type: string, block: Uint8Array, offset = 0): void {
   indexedImages += 1;
 }
 
+/** The entry as the import's on-demand reads give it to the format parsers. */
+const entryRead = (entry: ImfatEntry): ArchiveEntryRead => ({ entry, bytes: entryData(bytes, entry), relocations: entryRelocations(bytes, entry) });
+
+/** Opaque pixels of a decoded image, whose mask has the image payload's layout. */
+function opaqueCount({ width, height, mask }: { readonly width: number; readonly height: number; readonly mask: Uint8Array | null }): number {
+  let count = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) count += Number(isOpaque(mask, width, x, y));
+  return count;
+}
+
+/**
+ * Checks the whole structure of an ANIM entry with the import's reader, then decodes every frame with the import's
+ * decoder, which requires each frame to use up exactly its data (textures.md §6). Only a passing entry is counted.
+ */
+function checkAnimation(entry: ImfatEntry): void {
+  const read = entryRead(entry);
+  const frames = readAnimationFrames(archivePath, read);
+  const observed = { width: 0, height: 0, frameDataBytes: 0, pixels: 0, opaquePixels: 0 };
+  frames.forEach(({ recordOffset }, index) => {
+    const frame = decodeAnimationFrame(archivePath, read, index);
+    const { width, height, indices } = frame;
+    observed.width = Math.max(observed.width, width);
+    observed.height = Math.max(observed.height, height);
+    observed.frameDataBytes = Math.max(observed.frameDataBytes, readImageRecordHeader(read.bytes, recordOffset, '', 'anim-frame').dataSize);
+    observed.pixels += indices.length;
+    observed.opaquePixels += opaqueCount(frame);
+  });
+  const entryStats = statsOf(entry.type);
+  entryStats.imageWidth = Math.max(entryStats.imageWidth, observed.width);
+  entryStats.imageHeight = Math.max(entryStats.imageHeight, observed.height);
+  animations.frames = Math.max(animations.frames, frames.length);
+  animations.framesDecoded += frames.length;
+  animations.frameDataBytes = Math.max(animations.frameDataBytes, observed.frameDataBytes);
+  animations.pixels += observed.pixels;
+  animations.opaquePixels += observed.opaquePixels;
+}
+
+/** Parses every cell of TABL 4003 with the import's parser; each must name a CINF entry of the archive. */
+function checkCraftTable(entry: ImfatEntry): void {
+  const read = entryRead(entry);
+  const named: number[] = [];
+  for (let campaignSlot = 0; campaignSlot < CRAFT_TABLE_FORMAT.rows; campaignSlot++) {
+    for (let campaignGroup = 0; campaignGroup < CRAFT_TABLE_FORMAT.pairs; campaignGroup++) {
+      const { craftInfoEntryId } = parseCraftTable(archivePath, read, { campaignSlot, campaignGroup });
+      if (typeById.get(craftInfoEntryId) !== 'CINF') throw new PayloadError(`table references non-CINF ${craftInfoEntryId}`);
+      named.push(craftInfoEntryId);
+    }
+  }
+  craftTable.pairs += named.length;
+  for (const id of named) craftTable.craftInfo.add(id);
+}
+
 for (const entry of archive.entries) {
   const block = entryData(bytes, entry);
   try {
@@ -156,6 +226,10 @@ for (const entry of archive.entries) {
         break;
       }
       case 'TABL': {
+        if (entry.id === CRAFT_TABLE) {
+          checkCraftTable(entry);
+          break;
+        }
         if (!holdsImageLists || !IMAGE_LIST_TABLES.includes(entry.id)) {
           // Other TABL entries are not image lists; count any that would parse as one, which the format doc must list.
           containers.otherTables += 1;
@@ -186,6 +260,28 @@ for (const entry of archive.entries) {
         hudSets.diagTexts += texts.length;
         hudSets.diagStartupMessages = Math.max(hudSets.diagStartupMessages, messages.startupMessages.length);
         hudSets.diagTextBytes = Math.max(hudSets.diagTextBytes, ...texts.map(text => text.length));
+        break;
+      }
+      case 'ANIM':
+        checkAnimation(entry);
+        break;
+      case 'EXIC': {
+        const lists = parseExplosionLists(archivePath, entryRead(entry));
+        const ids = lists.flat();
+        for (const id of ids) {
+          if (typeById.get(id) !== 'EXPL') throw new PayloadError(`list references non-EXPL ${id}`);
+        }
+        explosions.lists += lists.length;
+        explosions.references += ids.length;
+        for (const id of ids) explosions.records.add(id);
+        break;
+      }
+      case 'EXPL': {
+        const { sound, animation } = parseExplosionRecord(archivePath, entryRead(entry));
+        if (typeById.get(sound) !== 'SND') throw new PayloadError(`record references non-SND ${sound}`);
+        if (typeById.get(animation) !== 'ANIM') throw new PayloadError(`record references non-ANIM ${animation}`);
+        explosions.sounds.add(sound);
+        explosions.animations.add(animation);
         break;
       }
       case 'M2ID':
@@ -240,6 +336,7 @@ for (const entry of archive.entries) {
 for (const id of holdsImageLists ? IMAGE_LIST_TABLES : []) {
   if (typeById.get(id) !== 'TABL') failures.push(`${id} TABL: a documented image list entry is missing or has another type`);
 }
+if (typeById.has(CRAFT_TABLE) && typeById.get(CRAFT_TABLE) !== 'TABL') failures.push(`${CRAFT_TABLE} TABL: the craft table entry has another type`);
 
 console.log(`${basename(file)}:`);
 for (const [type, { passed, failed }] of counts) console.log(`  ${type.padEnd(4)} ${passed} passed, ${failed} failed`);
@@ -271,6 +368,15 @@ if (counts.has('SNIP')) console.log(`    SNIP frames per entry ${hudSets.snipFra
 if (counts.has('DIAG')) {
   console.log(`    DIAG startup messages ${hudSets.diagStartupMessages}, ${hudSets.diagTexts} texts read, longest ${hudSets.diagTextBytes} bytes`);
 }
+if (counts.has('ANIM')) {
+  const { frames, framesDecoded, frameDataBytes, pixels, opaquePixels } = animations;
+  console.log(`    ANIM frames per entry ${frames}, ${framesDecoded} frames decoded, largest frame data ${frameDataBytes} bytes, ${pixels} pixels of which ${opaquePixels} opaque`);
+}
+if (counts.has('EXIC')) console.log(`    EXIC lists ${explosions.lists}, ${explosions.references} EXPL references (${explosions.records.size} distinct)`);
+if (counts.has('EXPL')) {
+  console.log(`    EXPL records reference ${explosions.animations.size} distinct ANIM and ${explosions.sounds.size} distinct SND entries`);
+}
+if (typeById.get(CRAFT_TABLE) === 'TABL') console.log(`    TABL ${CRAFT_TABLE} pairs ${craftTable.pairs} checked, ${craftTable.craftInfo.size} distinct CINF referenced`);
 console.log(`  failures: ${failures.length}`);
 for (const f of failures) console.log(`    ${f}`);
 process.exit(failures.length ? 1 : 0);

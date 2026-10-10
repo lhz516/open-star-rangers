@@ -56,9 +56,13 @@ python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'
 node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB
 # Append --entries to include individual directory entries.
 
-# Check every DATA/TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL entry and cross-references
-# (counts, failure codes and observed graphics maxima only)
+# Check every DATA/TEX/BITM/MFDD/CCKD-font/M2ID/NEBC/MESH/MODL/ANIM/EXIC/EXPL entry, CRAFT.NOB's
+# TABL 4003 and cross-references (counts, failure codes and observed graphics maxima only)
 node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB
+
+# Convert a local CloneCD image with the Worker's import job and check the whole package
+# (one JSON report of verdicts, counts, limits, read amounts and hashes only)
+node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}
 
 # Next spec/review/goal/execute workflow node for a task, plus the parallel
 # dispatch schedule during execution (reads planning docs only)
