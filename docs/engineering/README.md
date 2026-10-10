@@ -80,6 +80,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 
 - **纯模块**（`src/core`、`src/original-data`、`src/content`）的非测试 `.ts`/`.tsx` 不得导入或 re-export React、React DOM、Zustand、Three.js、IndexedDB 封装库的包根/子路径，也不得导入 `app`、`render`、`ui`、`platform`、`workers` 的目录入口或子模块。
 - **`src/core`** 不得使用 `Math.random`、`Date`、`performance.now`、定时器、`requestAnimationFrame`、`await` 或任何 `async` 函数形式。随机数来自 Core 自己的带种子生成器，时间来自 tick 计数（总计划 §5）。其他消费层仍允许宿主调度和异步。
+- **正式 Core 与合成 Core 互不依赖**（P3-02 AC-01）：本地规则 `osr/core-synthetic-boundary`（定义在 `eslint.config.js`）只配置在 `src/core/` 的非测试、非 test-support 文件上。`core/synthetic/` 为合成模块，`core/errors.ts` 与 `core/determinism/` 为中性模块，其余 `core/` 模块（含 `mission/`）为正式模块；正式与合成互不导入，中性模块两侧都不导入。说明符按解析后的真实路径分类（带或不带扩展名、`.js` 与目录形式都识别），覆盖值与类型导入、副作用导入、再导出（含 `export type`、`export *`）、字面量动态 `import()` 与 `import('…')` 类型。lint 只看直接引用，同一回归文件还沿真实应用程序的依赖图检查传递可达性：经 `content/` 等中间模块、再导出或导入类型绕到另一侧，以及参数无法核实的动态导入都报错。它与 `osr/original-data-capabilities` 共用说明符解析与引用访问器。分类与原因见 [Core 模块说明](./modules/core.md#模块边界)。
 - 类型导入必须写成 `import type`。
 - 持久正/负回归在 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts)，进入现有 `pnpm test`/`pnpm check`。TypeScript 样本在自有临时项目中使用仓库原配置和真实 include/exclude，ESLint 使用虚拟源与真实逻辑路径，不在生产目录留违规文件。负向必须命中目标诊断，正向须通过；空项目、ignored/parser 错误及误配预期均会失败。
 - 覆盖限定为明确的静态导入、路径、宿主 API 和 async/await 语法；不承诺识别动态绕过、别名间接调用或不经 async/await 的 Promise 链。测试例外是 `.test.ts`，不扩展未来 `.test.tsx`/E2E 发现能力。
@@ -126,7 +127,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 ## 测试
 
 - Vitest 用两个项目运行全部 `src/**/*.test.ts` 与 `tools/**/*.test.ts`（[vite.config.ts](../../vite.config.ts)）。顶层调用 `vi.mock(` 替换模块的文件进入 isolated 项目，各自拥有模块图；其余文件在 shared 项目中关闭隔离（`isolate: false`），同一 worker 复用模块图，免去每个文件重新启动与导入，这原是全量测试的主要耗时。配置启动时扫描文件自动分组，新增 mock 文件无需登记。`restoreMocks` 在每个用例后还原 spy；shared 项目中的测试不得依赖其他文件留下或改动的模块级状态。
-- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。机器负载很高（load 约 12–30，多个会话并行检查）时，单独运行不足 1 s 的 CPU 密集用例在全量并行运行中曾超过 Vitest 默认的 5 s：规范文本的上限用例（每次扫描 16 M 码元）与首个构建真实 Node 程序的边界用例。因此前者所在的用例组声明 30 s deadline，Node 程序改由一个限时 30 s 的 `beforeAll` 构建，两处都在代码旁写明实测依据（[P3-02 子任务 13](../plan/p3/02/subtasks/13-heavy-test-timeouts.md)）；其余用例沿用默认值。
+- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。机器负载很高（load 约 12–30，多个会话并行检查）时，单独运行不足 1 s 的 CPU 密集用例在全量并行运行中曾超过 Vitest 默认的 5 s：规范文本的上限用例（每次扫描 16 M 码元）与首个构建真实 Node 程序的边界用例。因此前者所在的用例组声明 30 s deadline，Node 程序改由一个限时 30 s 的 `beforeAll` 构建，两处都在代码旁写明实测依据（[P3-02 子任务 13](../plan/p3/02/subtasks/13-heavy-test-timeouts.md)）。正式 Core 的录制与比较也各有一组按上限规模运行的用例（[recording.test.ts](../../src/core/replay/recording.test.ts) 的 `limit-sized recordings`：录满 tick 与命令容量；[compare.test.ts](../../src/core/replay/compare.test.ts) 的 `limit-sized results`：26 万余事件的结果），同样声明 30 s deadline 并旁注实测依据（[P3-02 子任务 08](../plan/p3/02/subtasks/08-snapshot-replay.md)）。其余用例沿用默认值。
 - 集成测试只为真实接线启动构建与子进程，其余在进程内覆盖：合规 CLI 回归只跑一次真实聚合构建，原版扫描各作用域与 inventory 校验分别由 [scan.test.ts](../../tools/compliance/scan.test.ts)、[distribution.test.ts](../../tools/compliance/distribution.test.ts) 覆盖；构建插件回归在首次真实审计后复用其结果做失败构建。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。
