@@ -48,6 +48,7 @@ updated: 2026-10-10
 - `src/core/systems/**`：移动与停放阶段的接线与集成测试。范围宽是因为 P3-06 的模块路径以合并后的实际路径为准；协调者可以拆分。
 - `src/core/rules/**`：接线需要的规则函数调整。
 - `src/core/world/world.test-support.ts`：集成测试的辅助。
+- `src/app/session/game-session-replay.test.ts`：导弹飞行接入后恢复 35 临时改掉的 `fire secondary`。
 
 ## 验收标准
 

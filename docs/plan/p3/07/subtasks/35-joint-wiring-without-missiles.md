@@ -74,6 +74,9 @@ updated: 2026-10-10
 - `src/core/systems/weapons.test.ts`
 - `src/core/systems/combat-wiring.test.ts`
 - `src/core/world/world.test-support.ts`
+- `src/app/runtime/game-runtime-input.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`、`tools/replay-check.test.ts`：自动选敌产生的 `target-changed` 对应的断言。
+- `src/core/projections/render-state.test.ts`：夹具中的玩家补上 CR-04 的 `targeting`。
+- `src/app/session/game-session-replay.test.ts`：追踪导弹在 22 接入飞行之前的执行命令改为 `select-missile`（22 恢复 `fire secondary`）。
 
 ## 验收标准
 
