@@ -61,10 +61,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | S-05 | 17、20、22 | 17、20：弹丸运动与导弹制导的规则测试；22：经正式流水线与共用积分的集成测试 |
 | S-06 | 17、19、22 | 17、19：命中与碰撞几何的规则测试；22：移动阶段中的命中集成测试 |
 | S-07 | 15 | 15：伤害门禁、护盾、船体、子系统与击杀计数的 Node 测试 |
-| S-08 | 16、22、23 | 16：能量、档位、页面与命令的 Node 测试；22：速度消耗接线；23：分区资源读数 |
+| S-08 | 16、23 | 16：能量、档位、页面、命令与速度消耗（读 P3-06 的指令速度）的 Node 测试；23：战斗组资源读数 |
 | S-09 | 21、22 | 21：`0x30150` 规则的 Node 测试；22：停放更新接线 |
-| S-10 | 18 | 18：爆炸、EXPL 选择、碎片与到期的 Node 测试 |
-| S-11 | 01–07、09、10、26、27 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；27：R-06 至 R-10 的结论 |
+| S-10 | 18、12 | 18：爆炸生命周期、判别值 3 碎片与到期的 Node 测试；12：EXPL 帧数一致性的载入检查（EXPL 选择、额外爆炸与判别值 1/2 碎片归表现层，CR-11） |
+| S-11 | 01–07、09、10、26、27、30、31 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；27：R-06 至 R-10 的结论 |
 | S-12 | 28 | 28：Core 模块说明、源码结构与交接；29：链接与元数据 |
 | AC-01 | 08、11 | 11：边界测试、合成测试不改、版本拒绝；29：`pnpm check` |
 | AC-02 | 12 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
@@ -75,12 +75,12 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | AC-07 | 17、20、22 | 17、20：规则分支；22：正式流水线与共用积分的集成 |
 | AC-08 | 17、19、22 | 17、19：几何与过滤的独立期望；22：高速弹丸在流水线中的命中与漏过 |
 | AC-09 | 15 | 15：门禁、支持集与原像计数、倍率路径、击杀归因 |
-| AC-10 | 16、22 | 16：初值、间隔、档位与耗尽；22：速度阈值经 P3-06 接线 |
+| AC-10 | 16 | 16：初值、间隔、档位、耗尽，以及速度阈值上下的消耗（读 P3-06 的指令速度） |
 | AC-11 | 21、22 | 21：规则与抽取次序；22：调度接线、停放/活动切换不重复结算 |
-| AC-12 | 18 | 18：创建与移除时刻、EXPL 选择、碎片与逃生舱 |
+| AC-12 | 18、12 | 18：创建与移除时刻、判别值 3 碎片与逃生舱；12：EXPL 帧数一致性的载入检查 |
 | AC-13 | 24 | 24：连锁、单次死亡、归因、待处理状态、快照完整、replay 与上限 |
 | AC-14 | 25 | 25：本地真实内容两种僚机配置的私有核对 |
-| AC-15 | 01–07、26 | 01–07：事实与 U 项；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
+| AC-15 | 01–07、26、30、31 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
 | AC-16 | 09、10、26、27 | 10：判据获批；26：≥2 次合格运行；27：单次转移与连续行为的结论 |
 | AC-17 | 28 | 28：模块说明与交接；29：`pnpm check`、链接与 `updated:` |
 
@@ -102,14 +102,14 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | pending |
-| [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12 | pending |
-| [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12 | pending |
+| [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | pending |
+| [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12, 30 | pending |
 | [15-damage-subsystems.md](./subtasks/15-damage-subsystems.md) | 04, 12, 14 | pending |
-| [16-energy-displays.md](./subtasks/16-energy-displays.md) | 04, 12 | pending |
+| [16-energy-displays.md](./subtasks/16-energy-displays.md) | 04, 12, 13, 30 | pending |
 | [17-projectile-hits.md](./subtasks/17-projectile-hits.md) | 03, 14, 15, 18 | pending |
 | [18-destruction-fragments.md](./subtasks/18-destruction-fragments.md) | 06, 07, 12, 15 | pending |
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | pending |
-| [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15 | pending |
+| [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31 | pending |
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | pending |
 | [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 16, 17, 18, 19, 20, 21 | pending |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | pending |
@@ -118,7 +118,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | pending |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27 | pending |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 | pending |
+| [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | pending |
+| [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -137,6 +139,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Affected acceptance: 08 全部验收项；其后的 11 至 29（经依赖）。
   Resume when: P3-06 的子任务 06 在其分支上为 completed，协调者把该分支合并到本分支后，把 08 改为 pending 并派发。
 - **2026-10-10 — Subtask 08 unblocked：** 恢复条件已满足。P3-06 的子任务 06 为 completed（提交 `d379d31`，P3-02 spec 新增“P3-06 的契约修订（检查点 A）”）；协调者以合并提交 `7e05c7b` 把 P3-06 分支合并到本分支，08 由 blocked 改为 pending。
+- **2026-10-10 — 按 08 的契约定稿调整计划：** 08 定稿 D-01、D-03（P3-02 spec 的 CR-01 至 CR-14；P3-07 spec 的方向修订）。依用户对修改 spec/goal 与新增子任务的预先授权，协调者调整计划，不需审阅：
+  - 11 至 29 的工作范围、验收标准与写入范围按 CR 更新。规则输入为顶层字段；`combat` 为 P3-06 `flight` 中的战斗组；EXPL 选择、额外爆炸与判别值 1/2 碎片归表现层（CR-11）；速度消耗由 16 实现。
+  - 新增 30（08 补取的两项事实写入 `docs/original/`）与 31（线性地址 0x2C 处 f32 的运行时读数写入 H5，使 20 不必等 26）。
+  - 依赖改为：13、14 增加 30；16 增加 13、30；20 增加 18、31；最终对齐增加 30、31。
+  - 阶段索引中 P3-12、P3-14 的职责改为承担表现层的 EXPL 选择与额外效果。
 
 ## 审批
 
