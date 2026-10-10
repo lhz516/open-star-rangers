@@ -92,7 +92,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | completed |
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | completed |
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | completed |
-| [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
+| [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | in-progress |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | completed |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
@@ -139,6 +139,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-10 — 22、26 按检查点 K（地图）对齐：** spec 的地图项经 05 定稿后，22 原写的“左键生效时机（按下或松开）作为显式参数”已不足以覆盖修订后的 AC-12（新按下即选、按住按间隔重复、每次进入地图重置起点）。协调者按 spec 已批准的检查点机制（定稿后 goal 只放行对应子任务），只对齐这两项尚未开始的子任务的工作范围与验收：22 实现起点重置与左键按住重复的机制（参数注入、不设默认值），26 接通生产值（起点公式、间隔 8）。依赖、写入范围与覆盖的 S/AC 不变；其余子任务不受影响。
 - **2026-10-10 — 14 的平台族取值：** 14 按 spec [数据模型与契约](./spec.md#数据模型与契约)的平台族行使用 `'mac'`、`'windows'`、`'linux'`、`'other'`（`other` 即无法判定）；子任务文档中的 `macos`/`unknown` 是起草时的措辞偏差，以 spec 为准。
 - **2026-10-10 — 04 完成，残余建议：** 04 把 01、02 的键盘研究写入键位表、executable 与 U-011（P3-07 的 T3/W3/D10/D15/CR-05 以分支 `p3-07-weapons-damage-spec` 提交 `589d780b` 交叉引用，由 32 改为正式链接）。本 goal 写入范围之外的残余更正，留给对应负责者或之后的文档整理：`docs/original/formats/comm.md` §4 称 `0x754d9` 转大写（实为转小写，效果相同）；P3-07 分支的 U-011 补充把大写归因于“Caps Lock 或 Shift”（Caps Lock 已被抵消，只有 Shift 起作用，交 P3-07）；B-001 的 Warp 衔接仍写“两个用途未追踪的键”（已追踪：i/I 仅作弊、`|` 截图）；B-004 的“Enter 执行所选项目”可收窄为把所选条目移到服务队列之首；`b` 路径与 U-004 的线索（未核实）；以及交 P3-10 的高概率边界：对象列表达到 33 项时第 33 项占用 `x` 键。
+- **2026-10-10 — 06 由协调者执行：** [原版证据指南](../../../guides/original-evidence.md)规定同一时间只有一个会话操作基准环境，并行执行时由协调者统一进行，因此 06 不派 worker，由协调者在本 worktree 中执行（含其子代理）。基准环境当时被 P3-07 的运行占用，P3-06 的 17 也有原版运行；协调者已向两方的协调者请求时段，在确认前只准备配方，不启动 DOSBox-X。
 
 ## 审批
 
