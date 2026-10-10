@@ -90,6 +90,9 @@ updated: 2026-10-10
 - `src/core/systems/collision.ts`：碰撞模块（新建，保持现有行为）。
 - `src/core/systems/destruction.ts`：毁伤模块（新建，保持现有行为）。
 - `src/core/systems/displays.ts`：帧尾显示步模块（新建，保持现有行为）。
+- `src/core/systems/spawn.ts`：`instantiate` 传入战斗状态的分配初值（`allocatorCraftCombat()`，12 再按 CR-07 写入实例化值）。
+- `src/core/systems/spawn.test.ts`：Render State 新成员对应的断言更新。
+- `src/core/world/create-world.test.ts`：Render State `clock` 对应的断言更新。
 
 ## 验收标准
 
