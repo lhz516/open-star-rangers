@@ -41,11 +41,19 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 三项改动完成，措辞与集成后的代码及 core 分册一致。
-- [ ] 改动文档的 `updated:`、链接与锚点有效；没有改变行为或契约。
+- [x] 三项改动完成，措辞与集成后的代码及 core 分册一致。
+- [x] 改动文档的 `updated:`、链接与锚点有效；没有改变行为或契约。
 
 ## 验证方法
 
 - 对照 `tools/replay-check.ts` 与 [core 分册](../../../../engineering/modules/core.md)；文档链接与 front matter 检查。不涉及浏览器。
 
 ## 完成证据
+
+- **录制重放核对（[工具用法](../../../../guides/tools.md#录制重放核对)）：** 对照集成后的 [replay-check.ts](../../../../../tools/replay-check.ts) 的 `replayContent`：任务是逻辑组中该角色唯一的 Asset，机型表与僚机名单按任务引用的 Asset ID 取，craft-info 是同组该角色唯一的 Asset、以 `decodeRuleDataPayload` 解码，失败为 `content-failed`（`content.craftInfo…`）。核对顺序据此写为“解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（P3-06 D-01）”：比提议措辞多改了开头，因为任务本身不是按引用 ID 取的。错误表 `content-failed` 的含义改为“逻辑 Asset 或 craft-info 不能解码”。上限、报告形状与其余错误码不变（24 的证据：`RECORDING_MAX_BYTES` 不变）。
+- **抽取次数：** 本 spec [实例化扩展](../spec.md#实例化扩展)第 3 步写明原版 0–3 次、3 次只出现在经记录 +0x4C 路径路线取目标点时（+0x50 为 2 的 1 次加 `0x688c4` 的 2 次，依 [executable 的初始飞行状态](../../../../original/formats/executable.md#initial-flight-state-p3-0605)），该路线在 Core 中不可达，Core 为 0–2 次（随机候选的 1 次与目标点的 2 次互斥）；[P3-02 spec](../../02/spec.md#p3-06-的契约修订检查点-a) D-08 的扩展点顺序改为“Core 中 0–2 次抽取，原版 0–3 次”并补同一原因。两处都链接 core 分册的[已知差异](../../../../engineering/modules/core.md#已知差异)，与其“AI 初态”与“未表达或未实现的分支”两条一致。行为不变。
+- **键盘操纵决定：** 本 spec [未决事项](../spec.md#未决事项)仍以“无”开头（路由器对 accepted spec 的要求），原“留待用户”一段改为“已有用户决定”：用户在 P3-05 中决定（2026-10-10）“先做键盘，不做游戏手柄或其他输入”，由 P3-05 的 ADR-0018 与总计划同步记录，待其集成，链接 goal 执行记录；本任务不另写 ADR。审批节末尾补“2026-10-10 说明（文档收尾，goal 子任务 25）”一条，同时记下两处抽取次数的澄清；检查点 A 修订记录中“留待用户”一条是历史记录，不改写。ADR-0018 不在本分支，没有链接它。
+- **检查：** 对四份文档（含本文档）按 GitHub 锚点规则做临时链接与锚点检查，0 个失效（检查脚本先用一个不存在的锚点验证能报错）；`node tools/task-state.ts p3/06` 仍为 `execute-goal`。三份文档的 `updated:` 已是 2026-10-10。没有代码改动，不需 `pnpm check`。
+- **rubber-duck：** 无阻塞意见。一条非阻塞意见已采纳：两处原先仍写未归属的“0–3 次”，与随后的“Core 至多 2 次”并列易误读，改为分别标明原版与 Core 的范围。
+- **simplify：** 只改文档，不适用。
+- **文档影响：** 即本项的三处改动。core 分册对 spec“0–3 次”的说明仍准确（spec 现明确把 0–3 归于原版），不需改；STATUS、阶段索引与 `docs/original/` 不需改动。交 20：P3-05 的 ADR-0018 集成后，可把本 spec 未决事项中的“待其集成”与 ADR 名称换成链接。
