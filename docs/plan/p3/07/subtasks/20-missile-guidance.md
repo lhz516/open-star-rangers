@@ -10,11 +10,13 @@ updated: 2026-10-10
 # 20 — 导弹制导
 
 **契约来源：** [spec](../spec.md) 的 S-05（导弹）、AC-07（规则部分）；[弹丸与导弹](../spec.md#弹丸与导弹)；P3-02 spec 的 [CR-02](../../02/spec.md#cr-02-实体的战斗状态d-01)（`MissileCombat`）、[CR-05](../../02/spec.md#cr-05-命令原因码与内部请求d-01)（`steer` 与导弹的 `expire`）、[CR-06](../../02/spec.md#cr-06-领域事件与次序d-01)（`missile-ended` 与起爆的事件次序）、[CR-09](../../02/spec.md#cr-09-与-p3-06-的接口d-03)（`0x21fd8`、共享的转向模块、导弹写入的移动块字段）、[CR-11](../../02/spec.md#cr-11-表现层的归属与已批准的差异d-01)（接触对象的差异与未定的原版常量）。
-**依赖：** 03, 14, 15, 18, 31。
+**依赖：** 03, 14, 15, 18, 31, 32。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
+
+- **规则在 32：** 协调者 2026-10-10 把纯规则拆到 32：共享转向模块 `steering.ts`，以及制导块、阶段、引信几何、起爆衰减与 `0x2b628` 的 `guidance.ts`。本项在 `missiles.ts` 中用这些规则实现导弹的对象更新、请求与事件，并按 31 的读数设定冲突 29 常量的生产取值；下列各项中属于规则计算的部分调用 32 的函数，不重新实现。
 
 - **回调与制导块（H5）：** `0x2aa40`（无制导）与 `0x2ab00`（追踪）在首次回调写制导块 `guidance`（相对值）并立即请求活动；`contact` 初始化为空（追踪导弹亦然，CR-11 的差异 6）；追踪导弹在首次回调建立 `homing`（`0x5dc0c`，处理程序的模式 0）。
 - **阶段（`0x2ac10`）：** 0：时钟化；无制导导弹直接调用 P3-06 的 `0x21fd8`（满油门、不转向）。1：解除保险的延迟。2：寿命到期时 `detonate` 为 false 并投递 `expire`（熄火）；否则按检查间隔调用引信。3：起爆。4：无。
@@ -45,16 +47,12 @@ updated: 2026-10-10
 
 - `src/core/systems/missiles.ts`（11 新建）：导弹的按种类更新，以及 `steer` 与导弹的 `expire` 请求。
 - 使用 12 的静态规则数据（引信半径平方等）、15 的 `0x2a40c`、11 新建的 `destruction.ts` 爆炸构造入口（18 实现），以及 P3-06 的 `0x21fd8` 与移动块字段。
-- 计划新增：`src/core/rules/guidance.ts`、`src/core/rules/steering.ts` 及相邻测试。
+- 32 的 `src/core/rules/guidance.ts` 与 `src/core/rules/steering.ts`。
 
 ## 写入范围
 
 - `src/core/systems/missiles.ts`：导弹更新、引信、起爆与熄火。
 - `src/core/systems/missiles.test.ts`：导弹系统测试（新建）。
-- `src/core/rules/guidance.ts`：制导块、阶段、引信与起爆的衰减（新建）。
-- `src/core/rules/guidance.test.ts`：制导测试（新建）。
-- `src/core/rules/steering.ts`：共享的转向模块（新建，P3-08 扩展）。
-- `src/core/rules/steering.test.ts`：转向模块测试（新建）。
 
 ## 验收标准
 
