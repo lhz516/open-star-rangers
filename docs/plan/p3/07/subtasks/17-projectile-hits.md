@@ -48,6 +48,7 @@ updated: 2026-10-10
 - `src/core/rules/projectile-motion.test.ts`：运动与计时测试（新建）。
 - `src/core/rules/hit-tests.ts`：线段几何、遍历与跳弹（新建）。
 - `src/core/rules/hit-tests.test.ts`：命中测试（新建）。
+- `src/core/systems/pipeline.test.ts`：弹丸 `expire` 已实现，访问点表中的占位故障行改为路由测试。
 
 ## 验收标准
 
