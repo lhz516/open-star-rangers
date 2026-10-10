@@ -1624,6 +1624,9 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
     runs past the buffer (above);
   - state 2: no real contact and no target box; 60 noise entries (count < 0x3C), shapes by
     rand & 3 through the jump table `0x40360` (single pixel `0x40a80`, plus, X).
+  - other values: the build tests the field only for 2 (`0x40399`, which skips the real contacts) and for 1 and 2
+    (`0x4078a`, `0x408d1`, noise). A value of 3, which no damage path writes, therefore builds like state 0
+    (Confirmed, code, P3-07/13).
   These rand calls run in the render path and draw from the same LCG as placement, spawning and
   other rule draws (P3-02/02), so in the original the radar's drawing shifts later rule draws.
 
