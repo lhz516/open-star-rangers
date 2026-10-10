@@ -87,7 +87,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | completed |
 | [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | completed |
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | completed |
-| [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | in-progress |
+| [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | completed |
 | [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | completed |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | completed |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | completed |
@@ -137,6 +137,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 总计划措辞一项已有用户决定（待文档集成）：** P3-05 会话转告，用户在 P3-05 中明确决定“先做键盘，不做游戏手柄或其他输入”。P3-05 据此在其工作树起草 ADR-0018（keyboard-flight-controls），并同步总计划 §1.2/§13；尚未提交或集成。范围只允许明确标注的项目键盘操纵，不批准具体绑定，也不放宽运动对照。本 spec 未决事项中“总计划措辞是否以 ADR 更正，留待用户”一项改为“已有用户决定，由 P3-05 的 ADR-0018 集成”；本 goal 不另写 ADR，也不合并该工作树，由 20 在最终对齐中按此记录核对。
 - **2026-10-10 — 07 完成（交 08、17）：** B-008 写定测量方案（数值判据留给 08）；预实验 6 次完整运行与 3 次有缺口的运行（登记在被忽略的 `local/research/p3-06/runtime/analysis/runs.md`），全部只用模拟器内输入。91 对同帧运动前后都由独立求值器按就近舍入逐位再现（37 个可区分对无一与向零一致，仅作诊断，U-009 留给 17）；1 秒窗口按固定 2 单位步长推进时，只含 0/2 单位帧的窗口逐位一致，含 4 单位帧时位置差与行方向差有界（数值见 B-008 预实验）；首次运动的步长很长，速度辅助须在首次可操纵更新的那一次轮询关闭；试键结论写入键位表与 U-011；工具新增寄存器寻址的字段（R-05b 读取停放行进与停放切换中被处理的对象）。交 08：误差预算输入在 `analysis/summary.md`。交 17：方案、操作程序与配方生成脚本在同一目录；只在预实验中观察到的原版事实留在 B-008 的预实验一节，待 17 的正式运行后再写入 executable 与 U-009。
 - **2026-10-10 — 新增 25（依预先授权，不需审阅）：** 收尾三项无归属的文档改动：24 提议的工具用法“录制重放核对”两处（07 集成前与其写入范围重叠）、19 提议的 `0x68050` 抽取次数澄清（spec 与 P3-02 D-08 写 0–3，Core 可达 0–2），以及把 spec 未决事项中的总计划措辞一项改为“已有用户决定，由 P3-05 的 ADR-0018 集成”。25 与 08 都写 spec，由路由器串行。最终对齐加入对 25 的依赖。
+- **2026-10-10 — 08 完成，检查点 B 定稿（交 17、18、25）：** spec 新增“检查点 B 定稿的判据”，依用户 2026-10-09 的预先授权定稿（审批节“2026-10-10 修订（检查点 B）”），B-008 的验收容差与判据批准同步。给定原版操作数时，不经正余弦的连续量误差界为 0 ulp，三行只在临界正余弦处放宽；R-04c 要求候选与固定 2 单位/tick 的独立求值逐位相等，并对该求值与原版之差设每个边界的步长超额上界，同一外部时刻的输入延迟差以延迟界报告；所需数量见 spec“样本、窗口与运行数”（约 11 次运行、7–9 小时），每个下限都必需，追加两次同配方运行后仍不足则 17 记为 blocked。交 17：第一次正式运行前把 `criteria/counts.md` 抄入 `runtime/plan.md` 的“Counts (08)”列，并报告最大的设备与键盘到期间隔（延迟界要用）。
 
 ## 审批
 
