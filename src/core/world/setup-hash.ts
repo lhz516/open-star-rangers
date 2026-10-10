@@ -1,10 +1,10 @@
 /**
  * setupHash (docs/plan/p3/02/spec.md, 快照、哈希与 replay): fnv1a64 of the canonical text of the validated mission setup,
- * names, coordinates, members and every rule input included, in an explicit field order. It binds a world, a snapshot or
- * a replay to the initial data actually read, which `ContentIdentity` only declares. A consistency check, not a proof of
- * origin.
+ * names, coordinates, members, every rule input and the event triggers (P3-03 S-02) included, in an explicit field
+ * order. It binds a world, a snapshot or a replay to the initial data actually read, which `ContentIdentity` only
+ * declares. A consistency check, not a proof of origin. Core writes the event triggers here but does not interpret them.
  */
-import type { MissionGroup, RuleInputs, Vector3 } from '../../content/logic/logic-content.ts';
+import type { EventRange, EventTrigger, MissionGroup, RuleInputs, Vector3 } from '../../content/logic/logic-content.ts';
 import { canonicalHash, canonicalObject, type CanonicalValue } from '../contracts/canonical-text.ts';
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
 
@@ -32,6 +32,7 @@ const declaration = (value: ResolvedDeclaration): CanonicalValue => canonicalObj
   ['placement', canonicalObject([['region', value.placement.region], ['anchor', value.placement.anchor]])],
   ['memberOf', value.memberOf],
   ['aiTarget', value.aiTarget],
+  ['eventTrigger', value.eventTrigger],
   ['ruleInputs', ruleInputs(value.ruleInputs)],
   ['aiTargetCraftTypes', [...value.aiTargetCraftTypes]],
   ['side', value.side],
@@ -45,6 +46,16 @@ const group = (value: MissionGroup): CanonicalValue => canonicalObject([
   ['spawnCount', value.spawnCount],
   ['layout', value.layout.map(vector)],
 ]);
+
+/** Messages are byte strings, written by the canonical text's string rule. */
+const eventRange = (value: EventRange): CanonicalValue => canonicalObject([
+  ['lower', value.lower],
+  ['upper', value.upper],
+  ['messages', [...value.messages]],
+  ['summarySelector', value.summarySelector],
+]);
+
+const eventTrigger = (value: EventTrigger): CanonicalValue => canonicalObject([['ranges', value.ranges.map(eventRange)]]);
 
 /** The canonical value of a whole setup. */
 function setupValue(setup: MissionSetup): CanonicalValue {
@@ -64,6 +75,7 @@ function setupValue(setup: MissionSetup): CanonicalValue {
     ['declarations', setup.declarations.map(declaration)],
     ['player', setup.player],
     ['groups', setup.groups.map(group)],
+    ['eventTriggers', setup.eventTriggers.map(eventTrigger)],
     ['wingmanOptions', setup.wingmanOptions.map(declaration)],
   ]);
 }

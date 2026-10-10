@@ -77,7 +77,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
    - 位置、矩形、布局偏移或僚机位置超出[支持的数值域](#原版规则辅助)；
    - 生成展开 Σ max(0, 请求数) × max(1, 成员数)（所选僚机另计 1）超过 `CORE_LIMITS.spawnExpansion`。
 4. 坐标换算、按原版次序填写缺省值（只有 +0x78 的缺省抽取随机数）并排好生成队列（[原版规则辅助](#原版规则辅助)）。
-5. `setupHash`（[setup-hash.ts](../../../src/core/world/setup-hash.ts)）：校验后完整 `MissionSetup` 的规范文本（名称、坐标、成员、全部规则输入、阵营、模型与交互标志）的 fnv1a64，16 位小写十六进制。P3-03 加入的 `eventTriggers` 与声明的 `eventTrigger` 目前不在规范文本中，创建与语义校验也不读取它们。它不随种子、僚机、身份或输入键序变化，把世界、快照与 replay 绑定到实际读取的初始数据；不证明来源。
+5. `setupHash`（[setup-hash.ts](../../../src/core/world/setup-hash.ts)）：校验后完整 `MissionSetup` 的规范文本（名称、坐标、成员、全部规则输入、阵营、模型与交互标志，以及事件触发）的 fnv1a64，16 位小写十六进制。事件触发按 `groups` 之后、`wingmanOptions` 之前写出，每个区间依次为 `lower`、`upper`、`messages`（字节串按规范文本的字符串规则）与 `summarySelector`；声明与僚机选项的 `eventTrigger` 写在 `aiTarget` 之后（[P3-03/28](../../plan/p3/03/subtasks/28-setup-hash-event-triggers.md)）。语义校验不读取事件触发，创建只在计算 setupHash 时写出它们；Core 不解释或调度它们。它不随种子、僚机、身份或输入键序变化，把世界、快照与 replay 绑定到实际读取的初始数据；不证明来源。
 
 创建结果为 tick 0、时钟 0、没有实体、视角模式与上一视角模式 0xC、任务状态 `built`（原版状态字节 1）、生成开关已置。创建不返回事件：时刻为 0 的项在第一个 tick 实例化。相同输入得到相同的初始快照；世界不与输入或其他世界共享可变状态。重试就是以同一内容与配置新建世界。`initialWorldState(input)`（内部）返回同样校验后的初始状态，供录制、replay 与测试。
 
@@ -119,7 +119,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
   - `walk(mask)`：按种类位升序、每张表按分配次序遍历，且是实时遍历：遍历中追加到当前或更高种类位的实体在同一遍被访问，追加到更低位的不被访问。依赖遍历次序的规则（目标选择、AI 等）只能用它。`ALL_KINDS` 是全部种类位的掩码。
   - `remove(entity)`：只在请求处理中调用；遍历进行中移除为故障。`get(id)` 对已移除的 ID 返回 undefined，引用随之失效，不遍历引用方。`byId()` 按 ID 升序，`size` 为现存实体数。
 - **实体**：`Entity` 的字段为 `id`、`kindBit`（原版运行时种类的位号 0–31，与内容的 `craftType` 一致，分配时固定；掩码另用 uint32 位集合表示）、`source`（`EntitySource`，运行中创建的实体为 null）、`name`（`NameReference`）、`side`、`baseInteraction`、`presentation`（`EntityPresentation`，目前只有 `{ type: 'model', model }`）、`position`（运行时单位）、`orientation`（`Matrix3`，按行存储的三行姿态）、`placementSerial`、`ruleInputs`（`EntityRuleInputs`）、`state`、`activity` 与 `destroyed`。`EntityInit` 是实例化提供的部分。
-  - `NameReference` 为封闭联合：`none`（原版明确的无名分支）、`candidate`（声明引用与候选索引）、`pool`（名称池索引）、`craft-type`（种类位）。候选与池的文字从 setup 解析；种类名文字由 P3-03 导入（[交接](#交接)）。
+  - `NameReference` 为封闭联合：`none`（原版明确的无名分支）、`candidate`（声明引用与候选索引）、`pool`（名称池索引）、`craft-type`（种类位）。候选与池的文字从 setup 解析；种类名文字在 P3-03 导入的 `data/craft-info` 中（CINF 机型记录 +0x04，见[交接](#交接)），不在 setup 中。
   - `EntityRuleInputs` 是实例化时从记录复制的缺省后 i32 值：`percentB`/`percentC`/`percentD`（+0x60–+0x68）与 `aiValueA`/`aiValueB`/`aiValueC`（+0x70–+0x78，即运行时 +0xDC/+0xE0/+0xE4）。
   - `ObjectState` 为原版对象状态的八个值：`new`、`presentation-ready`、`awaiting-presentation`、`destroyed-source`、`area-switch`、`pending-removal`、`active`、`projectile-hit`；`Activity` 为 `parked`、`active`、`docked`。`initialState(activity)` 给出分配或切换停放时的状态（停放为 `new`，否则 `presentation-ready`）；`isActiveState` 为原版状态 7 及以上（`active`、`projectile-hit`）；`isLive` 排除被毁与待移除，查询据此筛选，不能由“仍在种类表中”推断存活。
 - **生命周期（Core 的通用部分）：** Core 没有渲染器的完成回调，把表现视为在获得时就绪（项目选择）：以活动状态实例化的实体为 `presentation-ready`，停放的为 `new`。实体在自己的下一次更新中请求进入 `active`，由同一 tick 的请求处理写入；`area-switch` 与 `pending-removal` 的实体在自己的下一次更新中请求离开。离开请求对 `area-switch` 切换停放并重新开始状态，否则移除实体：从种类表摘除，玩家状态若引用它则清为 null；生成计数不减少，名称因不再有实体持有而释放。`destroyed-source` 不更新。被毁（`destroyed`）不等于移除，救援复用玩家实体。被毁、`destroyed-source`、`area-switch`、`pending-removal` 与 `projectile-hit` 由负责规则写入。`awaiting-presentation` 只为对应原版的状态空间而保留，按当前契约不可达；要使用它须先修订 spec。
@@ -312,7 +312,7 @@ P3-02 只交付共同契约与接入位置，不声明下游玩法已经完成�
 - **P3-09：** `warp-completion` 与 `frame-end` 阶段；`toggle-map`、`map-point`、`request-warp` 的效果与 `map` 分区；地图开启时屏蔽飞行操纵与飞行命令的门禁。扩展点：Warp 计时 +0xC8（含 1 次抽取）；Warp 中活动区域的中心另有规则。世界框架已由 `runtimeFrame` 校验。
 - **P3-10：** `communications-reply` 与 `base-interior` 阶段，以及 `mission-flow` 中的停靠子状态；`communications`、`launch`、`select-number`、`navigate-selection`、`confirm-selection` 在通讯与基地上下文中的解释，僚机命令经菜单转给 P3-08；`communications` 分区。扩展点：`0x38cd4`（敌方类对象实例化时的僚机报告）。
 - **P3-11：** `mission-flow` 与 `mission-teardown` 阶段、`MissionStatus` 的后续状态、`result` 分区。使用 `disableSpawning`（成功时清除生成开关）、`pendingSpawns`（全清判定）、`placeWorldRecord`（救援放置，存储位置路线）与事件列表中的 `object-instantiated`（段 2 触发计数，触发与区间来自 `MissionSetup.eventTriggers`）；对象事件的按种类计数与触发标志在扩展点接入。主流程状态 1 的实例化门禁（`0x339cc`）随状态加入。被毁不等于移除，救援复用玩家实体。
-- **P3-12、P3-13：** 消费 Render State（停放不呈现、放置序号、新 ID 只用当前位姿、被毁在移除前仍列出）与 projection；相机由 Render State 与视角模式推出；`cockpit-front` 的效果与被毁视角的门禁按原版（B-005）。名称文字：候选与池从 setup 解析，种类名待 P3-03。
+- **P3-12、P3-13：** 消费 Render State（停放不呈现、放置序号、新 ID 只用当前位姿、被毁在移除前仍列出）与 projection；相机由 Render State 与视角模式推出；`cockpit-front` 的效果与被毁视角的门禁按原版（B-005）。名称文字：候选与池从 setup 解析，种类名来自 P3-03 导入的 `data/craft-info`（CINF 机型记录 +0x04，见上文 P3-03 一条）。
 - **P3-14：** 音效由领域事件与 projection 触发；原版派发器每遍清空的表现项不是 Core 阶段。
 - **Q-11 的数值交接（P3-06、P3-07）：** x87 以双精度运算，位置与姿态以 f32 存储；f32 写回按用户批准的决定就近舍入（取代 P3-02/02 完成证据中“继承向零舍入”的说法），浮点转整数向零截断，长度用 FSQRT。运动中的姿态旋转用 FSIN/FCOS（已确认），映像中没有找到正弦或余弦表（高概率），见 executable 的 [x87 一节](../../original/formats/executable.md#x87-precision-rounding-and-trigonometry-p3-0202)。舍入方向与代码推论的矛盾仍是 U-009 的开放问题。
 

@@ -5,7 +5,7 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import type { Command, TickInput } from '../contracts/tick-input.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld } from '../world/create-world.ts';
-import { originalImportIdentity, worldInput, type MissionDraft } from '../world/create-world.test-support.ts';
+import { eventMission, MARKER, originalImportIdentity, worldInput, type MissionDraft } from '../world/create-world.test-support.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
 import type { Recording } from './recording.ts';
@@ -142,6 +142,24 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       position.x += 1;
       expect(forged.identity).toEqual(INPUT.identity);
       expectRejected(() => replayRecord(RECORDING.record, contentOf(forged)), 'record.setupHash', 'must be the setup hash of the replayed content');
+    });
+
+    it('rejects content whose event triggers changed under the same identity (P3-03 S-02)', () => {
+      const input = longInput({ mission: eventMission() });
+      const recording = recordScript(input, 1, 1);
+      expect(recording.record.setupHash).not.toBe(RECORDING.record.setupHash);
+      expect(replayRecord(recording.record, contentOf(input))).toEqual(recording.result);
+      // A message of a trigger, and which trigger a declaration counts for.
+      const forgeries: ((mission: MissionDraft) => void)[] = [
+        (m) => void (m.eventTriggers[0].ranges[0].messages[0] = `${MARKER}-lost`),
+        (m) => void (m.declarations[7].eventTrigger = 1),
+      ];
+      for (const forge of forgeries) {
+        const forged = longInput({ mission: eventMission() });
+        forge(forged.mission.content as MissionDraft);
+        expect(forged.identity).toEqual(input.identity);
+        expectRejected(() => replayRecord(recording.record, contentOf(forged)), 'record.setupHash', 'must be the setup hash of the replayed content');
+      }
     });
 
     it('rejects a run configuration the content does not admit, at the record', () => {

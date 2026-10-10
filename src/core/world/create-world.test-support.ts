@@ -1,5 +1,5 @@
 import { readAssetId } from '../../content/asset-id.ts';
-import { declaration, LOGIC_IDS, MARKER, ruleInputs } from '../../content/logic/logic-content.test-support.ts';
+import { declaration, LOGIC_IDS, MARKER, ruleInputs, syntheticMission } from '../../content/logic/logic-content.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { CreateWorldInput } from './create-world.ts';
 
@@ -67,7 +67,7 @@ export function missionFrame() {
     spawnRegions: [] as { x0: number; y0: number; x1: number; y1: number }[],
     declarations: [] as DeclarationDraft[],
     groups: [] as { template: number; members: number[]; spawnCount: number; layout: { x: number; y: number; z: number }[] }[],
-    eventTriggers: [] as unknown[],
+    eventTriggers: [] as { ranges: { lower: number; upper: number; messages: string[]; summarySelector: number }[] }[],
   };
 }
 
@@ -115,6 +115,21 @@ export function sliceMission() {
     { template: 1, members: [6, 6], spawnCount: 2, layout: [offset(0, 0, 0), offset(250, 0, 0)] },
     { template: 2, members: [5, 5], spawnCount: 3, layout: [offset(0, 0, 0), offset(0, 250, 0)] },
   ];
+  return mission;
+}
+
+/**
+ * The slice-shaped mission with the content readers' synthetic event triggers (syntheticMission): the first, counted by
+ * records 3 and 7, has a range with one message and a negative selector and a range with two messages, one holding a
+ * byte above 0x7E and a control byte; the second, counted by record 8, has one range without messages. Core carries
+ * them without interpreting them.
+ */
+export function eventMission() {
+  const mission = sliceMission();
+  mission.declarations[3].eventTrigger = 0;
+  mission.declarations[7].eventTrigger = 0;
+  mission.declarations[8].eventTrigger = 1;
+  mission.eventTriggers = syntheticMission().eventTriggers;
   return mission;
 }
 

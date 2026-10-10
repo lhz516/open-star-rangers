@@ -4,11 +4,13 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { nextRandom } from '../determinism/rng.ts';
 import { CoreInputError } from '../errors.ts';
+import { loadMission } from '../mission/load-mission.ts';
 import { createWorld, initialWorldState } from './create-world.ts';
 import {
-  asCreateInput, craftTypesContent, declaration, MARKER, missionFrame, originalImportIdentity, playerOnlyMission, ruleInputs, sliceMission, worldInput,
-  type MissionDraft, type RosterDraft, type WorldInputParts,
+  asCreateInput, craftTypesContent, declaration, eventMission, MARKER, missionFrame, originalImportIdentity, playerOnlyMission, ruleInputs, sliceMission,
+  worldInput, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
+import { setupHash } from './setup-hash.ts';
 import { constructWorld } from './world.ts';
 import { stateText, thrownBy, tickInput } from './world.test-support.ts';
 
@@ -373,5 +375,57 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     const mission = sliceMission();
     mission.declarations = mission.declarations.map((value) => Object.fromEntries(Object.entries(value).reverse()) as typeof value);
     expect(hashOf({ mission })).toBe(hashOf());
+  });
+
+  describe('event triggers (P3-03 S-02)', () => {
+    /** The event mission after `change`. */
+    const eventsWith = (change: (mission: MissionDraft) => void): WorldInputParts => {
+      const mission = eventMission();
+      change(mission);
+      return { mission };
+    };
+
+    it('changes with any range field, message byte or count, the triggers and any declaration\'s eventTrigger', () => {
+      const hash = hashOf({ mission: eventMission() });
+      expect(hash).not.toBe(hashOf());
+      const changes: WorldInputParts[] = [
+        eventsWith((m) => void (m.eventTriggers[0].ranges[0].lower = 62)),
+        eventsWith((m) => void (m.eventTriggers[0].ranges[0].upper = 99)),
+        eventsWith((m) => void (m.eventTriggers[0].ranges[0].summarySelector = 2)),
+        eventsWith((m) => void (m.eventTriggers[1].ranges[0].summarySelector = -9)),
+        // One byte of a message, a message fewer, and the same bytes split into one message instead of two.
+        eventsWith((m) => void (m.eventTriggers[0].ranges[1].messages[1] = `${MARKER}-part-2\u00ea\u0001`)),
+        eventsWith((m) => void m.eventTriggers[0].ranges[1].messages.pop()),
+        eventsWith((m) => void (m.eventTriggers[0].ranges[1].messages = [m.eventTriggers[0].ranges[1].messages.join('')])),
+        eventsWith((m) => void m.eventTriggers[1].ranges.push({ lower: 6, upper: 9, messages: [], summarySelector: 9 })),
+        eventsWith((m) => void m.eventTriggers[0].ranges.reverse()),
+        // A trigger fewer: the record counted by it no longer counts events.
+        eventsWith((m) => { m.eventTriggers.pop(); m.declarations[8].eventTrigger = null; }),
+        // Only a declaration's eventTrigger: another trigger, and an index instead of null.
+        eventsWith((m) => void (m.declarations[7].eventTrigger = 1)),
+        eventsWith((m) => void (m.declarations[4].eventTrigger = 0)),
+      ];
+      const hashes = changes.map((parts) => hashOf(parts));
+      for (const changed of hashes) expect(changed).not.toBe(hash);
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+
+    it('writes the wingman options\' eventTrigger too, though the content readers keep it null', () => {
+      const setup = loadMission(asCreateInput(worldInput()));
+      const hash = setupHash(setup);
+      const changed = { ...setup, wingmanOptions: setup.wingmanOptions.map((option, index) => (index === 1 ? { ...option, eventTrigger: 0 } : option)) };
+      expect(hash).toBe(hashOf());
+      expect(setupHash(changed)).not.toBe(hash);
+    });
+
+    it('is the same for equal triggers built again or with keys in another order', () => {
+      const hash = hashOf({ mission: eventMission() });
+      expect(hashOf({ mission: eventMission() })).toBe(hash);
+      const reversed = <T extends object>(value: T): T => Object.fromEntries(Object.entries(value).reverse()) as T;
+      const mission = eventMission();
+      mission.eventTriggers = mission.eventTriggers.map((trigger) => reversed({ ...trigger, ranges: trigger.ranges.map(reversed) }));
+      mission.declarations = mission.declarations.map(reversed);
+      expect(hashOf({ mission: reversed(mission) })).toBe(hash);
+    });
   });
 });
