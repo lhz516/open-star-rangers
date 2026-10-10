@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "09"
 subtask: "01"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 01 — 键盘事件、源端口与按住状态契约
@@ -30,7 +30,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - **计划新增：** `src/platform/input/keyboard-input.ts`、`src/platform/input/keyboard-input.test.ts`，当前均不存在。
-- 只读参考 [MoveInput/Command](../../../../../src/core/synthetic/synthetic-scene.ts)与[键位文档 §2](../../../../engineering/keyboard-input.md#2-当前绑定表)，通用模块不导入 UI/装配。
+- 只读参考 [MoveInput/Command](../../../../engineering/source-structure.md#r1-合成-core)与[键位文档 §2](../../../../engineering/keyboard-input.md#2-当前绑定表)，通用模块不导入 UI/装配。
 - 后续模块只消费明确的输入源端口与纯状态逻辑，不形成全局 types/schema 或预建 Gamepad 接口。
 
 ## 验收标准

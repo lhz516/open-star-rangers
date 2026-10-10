@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
 ---
 
@@ -10,19 +10,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, U-009, U-011, U-021]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/core/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。原版事实只在 `docs/original/` 记录，本文件链接到那里。
 
-[core/](../../../src/core/) 分三类模块（[模块边界](#模块边界)）：正式 Core（任务载入与 P3-02 起的[正式 Core](#正式-core)）、`synthetic/` 中的 P1 合成场景、快照与 replay（合成契约不是正式玩法契约，见 [ADR-0015](../../decisions/ADR-0015-source-module-structure.md)），以及两侧共用的中性模块（错误类型与 `determinism/` 的确定性设施）。纯度与确定性规则见[工程约定](../README.md)。
+[core/](../../../src/core/) 是正式 Core：任务载入与 P3-02 起的[正式 Core](#正式-core)，以及错误类型与 `determinism/` 的确定性设施（[模块边界](#模块边界)）。纯度与确定性规则见[工程约定](../README.md)。
 
 ## 模块边界
 
-| 类别 | 路径 | 可以导入的 Core 模块 |
-|---|---|---|
-| 中性 | [errors.ts](../../../src/core/errors.ts)、[determinism/](../../../src/core/determinism/) | 只有中性模块 |
-| 正式 | 其余全部：`mission/`、`contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/` | 正式与中性 |
-| 合成 | [synthetic/](../../../src/core/synthetic/) | 合成与中性 |
+`src/core/` 的模块都属于正式 Core：[errors.ts](../../../src/core/errors.ts) 与 [determinism/](../../../src/core/determinism/)（错误类型、带种子的 RNG 与 FNV-1a 哈希），以及 `mission/`、`contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`。纯度与确定性（不用 DOM、React、宿主时间与随机、异步）由 lint 与工程边界回归检查（[工程约定](../README.md#lint-规则eslintconfigjs)）。
 
-- 由 lint 规则 `osr/core-synthetic-boundary` 与依赖图回归检查（[工程约定](../README.md#lint-规则eslintconfigjs)）；测试与 test-support 文件不受此限。
-- 正式模块的结构与数值读取器在 [contracts/validation.ts](../../../src/core/contracts/validation.ts)。合成模块保留自己的读取器：读取器移入正式模块会让合成模块导入正式模块，因此没有从 [synthetic-scene.ts](../../../src/core/synthetic/synthetic-scene.ts) 移出，合成代码与测试未改。
-- 正式格式 `osr-game-snapshot`、`osr-game-replay` 与合成格式互不兼容，也不通过改名互相转换。
+- 结构与数值读取器在 [contracts/validation.ts](../../../src/core/contracts/validation.ts)；app 的 Runtime 与游戏会话复用它与公开的 `readTickInput`，不复制校验规则。
+- 正式格式 `osr-game-snapshot`、`osr-game-replay` 不接受 P1 的合成格式名 `osr-synthetic-snapshot`、`osr-synthetic-replay`（测试以它们作为被拒绝的输入），也不通过改名互相转换。
+- P1 的合成场景、快照与 replay（`core/synthetic/`），以及 P3-02 为隔离它而设的 lint 规则 `osr/core-synthetic-boundary`，已于 P3-04 删除，见[退役记录](../source-structure.md#r1-合成-core)。
 
 ## Core 任务载入
 
@@ -291,17 +287,18 @@ P3-02 只交付共同契约与接入位置，不声明下游玩法已经完成�
   - 实例化与 Warp 计时读取的机型记录字段：`0x2d400`、`0x3060c`、`0x30e0c` 与 +0xD0；+0xA4、+0xA8。
   - projection 占位需要的武器记录（`WeaponRecordReference`）、通讯菜单（`MenuContentReference`）与结果消息（`ResultMessageReference`）的内容来源。
   - **P3-03 已交付的内容：** `logic` 组的 `data/craft-info`（TABL 4003 所选倍率与 CINF 4037 的全部记录，含机型记录 +0x04 的名称与 +0xA4 等字段）、`data/debris-parameters`、`data/ai-programs`、`data/comm-menus`、`data/base-repair-items` 与 `data/flight-messages`，`models` 组的场景设置、爆炸表与星云列表，`cockpit-hud-map` 组的视角标签与 HUD 文字，以及任务 payload 的段 2 事件触发（`MissionSetup.eventTriggers`）。读取器与形状见[内容模块](./content.md#规范-json-与规则数据-payload)。`createWorld` 仍只接收三份逻辑 Asset；把这些数据接入 Core 的输入与规则归使用它们的规则任务。
-- **P3-04：**
-  - 创建：从同一个经 `validatePackage` 验证的资源包解码三份逻辑 Asset，连同该包的 `ContentIdentity` 传给 `createWorld` 或 `createRecordingSession`；Core 不认证来源。`original-import` 的生产入口只用难度 19 与默认步长；僚机来自开始配置；种子由 P3-04 选择 uint32。创建失败（`ContentContractError` 或 `CoreInputError`）对应“任务不能载入”。
-  - 调度：按宿主单调时钟以每秒 32 个 tick 调度，每个 tick 调用 `step` 一次。暂停、页面隐藏、暂停式选项页与 G-02 占位期间不调用，之后不补跑。战略地图、通讯菜单、基地内部、停靠倒计时、救援前的引擎内过程与结果延时照常模拟。
-  - 动作批次：待执行命令队列归 Runtime，在调用 `step` 前组成本 tick 的批次；订阅者在 tick 中提交的意图进入下一 tick；每 tick 至多 64 个命令，超出部分如何处理由 P3-04 决定。暂停、继续、退出、返回菜单与 G-08 拦截不是游戏命令。用 `command-result` 的 `commandIndex` 关联反馈。
-  - 错误：`step` 的 `CoreInputError` 表示输入或录制容量问题，世界不变；`CoreFaultError` 表示 Core 失败，锁存后停止该运行。
-  - 读模型：每个 tick 后提取 Render State 并保留同一运行的两帧；跨重试的折叠归 P3-04，ID 从 1 重用，不连接两次运行。飞行 HUD 每个渲染帧读取 projection，React 桥接按 10–20 Hz 采样；开发诊断经快照读取，不进入生产界面。`mission` 分区的僚机选择供出发与返航占位选择变体。
-  - 录制：录制文件的下载与保存归 P3-04，`producer` 用应用版本标识，检查点间隔由其选择；P3-15 在 Node 中用 `replayRecord` 与 `compareReplayResults` 重放。
+- **P3-04（已交付）：** 正式 Runtime、游戏会话与任务流程按下列约定接入 Core，接口见 app 模块说明的[正式 Runtime](./app.md#正式-runtime)、[游戏会话](./app.md#游戏会话)与[任务流程与所有者](./app.md#任务流程与所有者)，工程要点见[工程约定](../README.md#正式-runtime)。
+  - 创建：任务所有者从同一个经 `validatePackage` 验证的资源包解码三份逻辑 Asset（[mission-input.ts](../../../src/app/resources/mission-input.ts)），连同该包的 `ContentIdentity` 经会话的 start 交给 Runtime；Core 不认证来源。生产只用难度 19 与默认步长，僚机来自开始配置，种子为平台抽取的 uint32。开发构建用 `createRecordingSession`（检查点间隔 32），生产用 `createWorld`。创建失败（`ContentContractError` 或 `CoreInputError`）留在开始配置页显示类别、路径与原因。
+  - 调度：按宿主单调时钟以每秒 32 个 tick 调度，每帧至多 5 tick，超出不补跑。暂停、页面隐藏、任务菜单与 G-02 占位期间不调用 `step`，之后不补跑；会话不读取 Core 状态来暂停，战略地图、通讯菜单、基地内部、停靠倒计时、救援前的引擎内过程与结果延时照常模拟。
+  - 动作批次：待执行队列上限 256，每 tick 至多 64 个命令（按住主炮每 tick 占一个），余项按 FIFO 顺延；暂停、继续、退出与返回菜单不是游戏命令。反馈按每个 tick 自己批次的 `commandIndex` 关联 commandId。
+  - 错误：`step` 以路径 `recording` 的 `CoreInputError` 拒绝时是录制容量停止（运行 `stopped`，录制仍可导出）；其他 `CoreInputError` 与 `CoreFaultError` 使运行故障，之后不再向 Core 读取新的快照或导出。
+  - 读模型：每个成功 step 后同 tick 取得 projection 与 Render State，保留两帧，暂停、保持、停止与故障时折叠；重开是新运行（runId 递增、tick 0），不连接两次运行。React 桥接按 10 Hz 采样，任务状态、交互上下文、分区就绪与结果的变化立即发布；开发诊断经按需快照读取，不进入生产界面；`mission` 分区的僚机选择决定出发占位的变体。
+  - 录制：开发构建导出 Core `Recording` 的 JSON，`producer` 为应用名、版本与构建模式；[tools/replay-check.ts](../../../tools/replay-check.ts) 在 Node 中以同一 CloneCD 文件组用 `replayRecord` 与 `compareReplayResults` 核对（[工具指南](../../guides/tools.md#录制重放核对)），P3-15 使用同一路径。
+  - 运行中衔接（下游）：P3-04 只实现初始出发保持（G-02/2，会话 `transition`）。运行中的停靠、离港与结果衔接（G-02/3 起）所需的 Core 状态、输出、继续条件与 replay 语义，由 P3-10、P3-11 按[扩展规则](#扩展规则)确定，并共同修订 P3-04 spec 的运行中衔接；当前没有每 tick 的外部检测器或写回 Core 的入口。占位的显示、计时与生命周期可以复用（[P3-04 衔接占位](../../plan/p3/04/spec.md#衔接占位)）。
 - **P3-05：**
   - 动作采样：把设备输入映射为 `TickInput`，不传扫描码或物理键名；轴的正方向按[契约](#契约contracts)，到原版数学轴的映射由 P3-06 与 Q-11 核实。
   - 按住开火：按住期间每个采样的 tick 产生一个 `fire` 命令；两次采样之间的短按也保留一次；不用 OS 自动重复决定射速；Core 不保存永久的按住标志。
-  - 清键：暂停、隐藏、失焦、退出 Pointer Lock 与 G-02 衔接时清除外部按住状态与未执行队列，恢复后只采纳新按下。Core 没有按键缓冲，不会重放旧输入。
+  - 清键：暂停、隐藏、失焦、退出 Pointer Lock 与 G-02 衔接时清除外部按住状态与未执行队列，恢复后只采纳新按下。Core 没有按键缓冲，不会重放旧输入。会话已在暂停、隐藏与结束时自行清除意图与队列，失焦与退出 Pointer Lock 由输入适配器调用会话的 `clear-input`（P3-04 已交付）；按住开火的电平经 Runtime 的连续意图 `primaryFire` 设置。
   - Q-10（已确认，代码）的事实见 executable 的[输入轮询](../../original/formats/executable.md#input-polling-p3-0201)与 [B-005](../../original/behavior/B-005-campaign-rescue.md) 的被毁视角：轮询节奏与“每次一键、其余丢弃”、按视角模式选择上下文、Alt 作为电平与空格作为单次请求、缓冲只由过场清空、被毁期间不轮询游戏按键。逐 tick 命令是 spec 有意的差异（[已知差异](#已知差异)）。物理键位研究（U-011）与绑定归 P3-05。
 
 实例化写入的、依赖机型记录或其他规则的初值与抽取，原版事实见 executable 的[实例化](../../original/formats/executable.md#instantiation-p3-0203)，逐任务的清单见 [03 的交接](../../plan/p3/02/subtasks/03-spawn-defaults-names-research.md#完成证据)；输入与流水线方面的交接见 [01 的交接](../../plan/p3/02/subtasks/01-pipeline-entity-input-research.md#完成证据)。下面只列负责的阶段、分区与扩展点上的义务。

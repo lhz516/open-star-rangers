@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "07"
 subtask: "08"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 08 — 最终浏览器证据与契约对齐
@@ -51,7 +51,7 @@ updated: 2026-10-02
 | AC-08 | 暂停且有实体时，视口 1280×800、480×900、320×240（DPR 1）；以实测容器尺寸代入动态导入的布局函数 | 容器宽 1249/449/289 = 父内容宽，高 560/630/240 = `clamp(240px,70vh,720px)`，背景 `rgb(0,0,0)`；画布矩形与公式 frame 误差 0 px，缓冲 746×560/449×336/289×216 与公式完全相等，宽高比误差 0.67/1/1 px；黑边内距边缘 2 px 采样 #000000，帧内四角内缩 5% 采样 #102040；三种视口都有 mover/marker 像素。生产预览 Start+Add 后 mover 814、marker 212 px，1 个画布、状态 ready、无错误 | passed |
 | AC-09 | 暂停，CSS 1280×800 不变，DPR 1→2→1.5→3→1（每次交替 `setEmulatedMedia` 触发媒体查询重新求值，见 goal 执行记录） | 缓冲 746×560 → 1493×1120 → 1120×840 → 1493×1120（3 限为 2）→ 746×560，均等于公式；每次 draws 恰好 +1（333→337）；resolution 查询登记 6、撤销 5，仅余当前渲染器的 1 个；无控制台错误。修复后最终代码复测 DPR 2 缓冲 1493×1120 | passed |
 | AC-10 | WebGL 关闭的隔离 Chrome 打开开发服务器 | `getContext('webgl2'/'webgl')` 均为 null；容器内 0 个画布，`role=alert`、`data-state=unavailable`，显示 Three.js 原始错误；Start、Add、Remove 均得到 Core accepted，会话 running，诊断 state unavailable、GPU none、draws 0；无页面异常。控制台仅有 Three.js 的上下文创建错误（一组）与 `/favicon.ico` 404（项目无 favicon，与渲染无关） | passed |
-| AC-11（React 显示） | 代码审阅 | 浏览器无注入入口；[SyntheticRenderView](../../../../../src/ui/render/SyntheticRenderView.tsx) 对 failed 使用与 unavailable 相同的 `role=alert` 路径并附原错误；Node 由 03/05 覆盖 | passed（审阅） |
+| AC-11（React 显示） | 代码审阅 | 浏览器无注入入口；[SyntheticRenderView](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 对 failed 使用与 unavailable 相同的 `role=alert` 路径并附原错误；Node 由 03/05 覆盖 | passed（审阅） |
 | AC-12 | 页面画布的 `WEBGL_lose_context`（扩展可用） | loseContext 后状态 `context-lost`（`role=status`），draws 停在 379 而会话 tick 72→109 继续；暂停后 restoreContext → ready，draws +1（380），暂停截图仍有 mover/marker 像素；恢复并绘制后 GPU 统计 2 geometries/0 textures/1 program，与丢失前相同。最终代码复测同样 | passed |
 | AC-13 | 两种 kind 均已绘制后取基线；20 次 Restart、50 对 Add/Remove（每步以诊断实体数 2/1 确认被接受） | 基线、20 次 restart 后（run 1→21）、50 对之后的 GPU 均为 2/0/1，实体数 1 等于当前 Render State；50 对全部确认、无失败；`WEBGL_lose_context` 可用 | passed |
 | AC-14 | StrictMode 首挂载；执行回合在后台对 App 交替增删一个 `useState` 调用 22 次（hook 签名变化使 Fast Refresh 重跑 effect），同时页面任务每 500 ms 采样；结束后 `cmp` 确认还原 | 首挂载 1 个画布；22 次 effect 重建使画布累计 1→23，每次采样最多 1 个已连接画布且都在容器内；22 个旧画布全部断开且 `isContextLost()=true`；查询/观察/上下文监听登记 23/23/92、撤销 22/22/88，正好余当前一组；Chrome `Log`/控制台无 “Too many active WebGL contexts” 或 WebGL 日志。注：只改注释或 JSX 文本的编辑在本环境不重跑 effect，故改用签名变化 | passed |

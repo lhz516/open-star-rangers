@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { MISSION_SKELETON } from '../../src/ui/mission/mission-copy.ts';
 import type { ExpectedPackageProfile } from '../../src/workers/production-package.ts';
 import { sliceCoveredFiles, syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
 
@@ -30,6 +31,11 @@ export interface TestEntryOptions {
    * delivers them (P2-12 F-12).
    */
   readonly hold?: string;
+  /**
+   * Comma-separated uint32 values, at most 16, that the mission's seed source draws in order, one per world creation
+   * attempt; after them it draws from `crypto.getRandomValues` (P3-04 S-09).
+   */
+  readonly seeds?: string;
 }
 
 /** A cache operation whose results the `hold` option can delay. */
@@ -43,14 +49,31 @@ export const heldCacheResults = (page: Page, operation: HeldCacheOperation): Pro
 export const releaseCacheResults = (page: Page, operation: HeldCacheOperation): Promise<number> =>
   page.evaluate(name => window.osrTestEntry!.cache.release(name), operation);
 
+/**
+ * Opens the test entry and waits for its first render, which follows `window.osrTestEntry`. The entry's development-only
+ * top-level `await import()`s (P3-04 subtask 09) let its evaluation finish after the load event `page.goto` waits for.
+ * The locator polls in Playwright's utility world, so the page's own registrations stay unchanged.
+ */
 export async function openTestEntry(page: Page, options: TestEntryOptions = {}): Promise<void> {
   const query = new URLSearchParams(Object.entries(options).filter((entry): entry is [string, string] => entry[1] !== undefined));
   await page.goto(`/e2e/entries/app.html${query.size > 0 ? `?${query}` : ''}`);
+  await page.locator('#root > *').first().waitFor({ state: 'attached' });
 }
 
-/** P2-11 AC-01: no page text claims anything is playable or offers to play or start a mission. */
+/**
+ * P2-11 AC-01 as P3-04 revised it (docs/plan/p3/04/spec.md, 合成演示退役): no page text claims the original gameplay is
+ * playable or offers to play it. The build's own disclaimer, that it is the formal runtime skeleton and not yet a
+ * playable slice, is not such a claim; where the main menu's mission entry shows, it is enabled only when its start
+ * eligibility admits it, and its description carries that disclaimer.
+ */
 export async function expectNoPlayClaim(page: Page): Promise<void> {
-  expect(await page.locator('body').innerText()).not.toMatch(/playable|play mission|start mission/i);
+  // The disclaimer is left out of the search below, so it must itself stay one.
+  expect(MISSION_SKELETON).toContain('not yet a playable slice');
+  expect((await page.locator('body').innerText()).replaceAll(MISSION_SKELETON, '')).not.toMatch(/playable|play mission/i);
+  const entry = button(page, 'Start mission');
+  if (await entry.count() === 0) return;
+  expect(await entry.isEnabled(), 'the mission entry is enabled only when eligible').toBe(await entry.getAttribute('data-eligibility') === 'eligible');
+  await expect(page.locator('#mission-entry-description')).toContainText(MISSION_SKELETON);
 }
 
 /** A file for the import page's file chooser. */

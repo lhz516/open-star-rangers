@@ -12,8 +12,8 @@ import { button, discFiles, expectNoPlayClaim, openTestEntry, sliceFiles } from 
 import { audioSources, installAudioProbe } from './support/audio-playback.ts';
 import { test as audited } from './support/audited-test.ts';
 import { expect, test } from './support/browser-test.ts';
-import { frameWindow } from './support/demo-observations.ts';
 import { installedBrowser } from './support/environment.ts';
+import { frameWindow } from './support/mission-observations.ts';
 import { expectedPackage, ResourceBalance, settleTooling } from './support/resource-balance.ts';
 import { loadCacheModules, seedPackage } from './support/resource-cache.ts';
 import {

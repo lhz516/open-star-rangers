@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "04"
 subtask: "03"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 03 — 会话级类型化同步 Event Bus
@@ -31,7 +31,7 @@ updated: 2026-10-02
 
 - 计划新增 `src/app/synthetic-event-bus.ts`、`src/app/synthetic-event-bus.test.ts`；目前均不存在。
 - `src/app/runtime-errors.ts`（01 计划交付）：非法订阅及监听器错误。
-- [DomainEvent](../../../../../src/core/synthetic/synthetic-scene.ts)（已有）：`marker-added`、`marker-removed`、`command-rejected`；用真实场景的 step 返回值准备合成事件。
+- [DomainEvent](../../../../engineering/source-structure.md#r1-合成-core)（已有）：`marker-added`、`marker-removed`、`command-rejected`；用真实场景的 step 返回值准备合成事件。
 
 ## 验收标准
 
@@ -50,7 +50,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：[总线](../../../../../src/app/runtime/synthetic-event-bus.ts)与[测试](../../../../../src/app/runtime/synthetic-event-bus.test.ts) 7 项通过；最终 `pnpm check` 17 文件、454 项通过，typecheck/lint/build 成功。
+- 2026-10-02：[总线](../../../../engineering/source-structure.md#r3-合成-runtime)与[测试](../../../../engineering/source-structure.md#r3-合成-runtime) 7 项通过；最终 `pnpm check` 17 文件、454 项通过，typecheck/lint/build 成功。
 - rubber-duck 确认快照接收者集合、即时取消、重复订阅、同步类型与异常隔离正确；补充失败订阅在下一非空批次仍收到事件的断言。
 - 随后限定两文件做 simplify：复用现有 DomainEvent/GameRuntimeError，取消函数只绑定 Map 和独立 ID，不保留已取消监听器闭包；无额外通用层。未来事件类型穷尽表和任意 metadata 透传建议不属于当前固定契约，未提前扩展。
 - 文档检查：无新环境或浏览器操作；公开 Runtime 使用约定留待 04 接线后更新 engineering，guides 不新增未实现流程。

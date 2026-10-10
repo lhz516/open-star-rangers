@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "04"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-04：Runtime 调度、命令与事件分发 — Goal
@@ -18,11 +18,11 @@ updated: 2026-10-02
 
 ### 现有代码与复用
 
-- [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 已提供 `SyntheticSceneConfig`、`MoveInput`、`Command`、`TickInput`、`DomainEvent`、UI projection、Render State 及 `createSyntheticScene`。读取结果深冻结；`step` 同步返回事件，不调用消费者。
+- [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 已提供 `SyntheticSceneConfig`、`MoveInput`、`Command`、`TickInput`、`DomainEvent`、UI projection、Render State 及 `createSyntheticScene`。读取结果深冻结；`step` 同步返回事件，不调用消费者。
 - 同文件已有 `readTickInput`，校验后返回一次取值的 `{moveX, commandTypes}`；Runtime 可用中性轴或空命令补齐临时 `TickInput`，复用轴/命令校验并重定位错误路径。场景配置仍交给真实创建入口验证，生效频率从场景读取，不能重读调用者 getter 得到另一份值。
 - [errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError` 已有 `path`、`reason`。Runtime 包装时保留原错误为 `cause`，不改 Core 错误或业务拒绝语义。
-- [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts) 已提供 `SyntheticRecordingSession extends SyntheticScene`、`SyntheticRecording`、`createSyntheticRecordingSession`、`replaySyntheticRecord`、`compareSyntheticReplayResults`。录制内部独占新场景，导出已冻结；不得在 Runtime 另写录制器、哈希器或第二套世界。
-- [录制测试](../../../../src/core/synthetic/synthetic-replay-record.test.ts) 有 getter 单次读取、调用者隔离、异常不入记录和多次导出的先例；[场景输入测试](../../../../src/core/synthetic/synthetic-scene-input.test.ts) 与[恢复测试](../../../../src/core/synthetic/synthetic-scene-restore.test.ts)已有真实数值守卫证据。既有 Core 生产文件与测试均只读复用，不计划修改。
+- [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core) 已提供 `SyntheticRecordingSession extends SyntheticScene`、`SyntheticRecording`、`createSyntheticRecordingSession`、`replaySyntheticRecord`、`compareSyntheticReplayResults`。录制内部独占新场景，导出已冻结；不得在 Runtime 另写录制器、哈希器或第二套世界。
+- [录制测试](../../../engineering/source-structure.md#r1-合成-core) 有 getter 单次读取、调用者隔离、异常不入记录和多次导出的先例；[场景输入测试](../../../engineering/source-structure.md#r1-合成-core) 与[恢复测试](../../../engineering/source-structure.md#r1-合成-core)已有真实数值守卫证据。既有 Core 生产文件与测试均只读复用，不计划修改。
 - [App](../../../../src/app/App.tsx) 是 app 目录当前唯一文件；[main](../../../../src/main.tsx) 使用 StrictMode，但尚无 Runtime。两者本目标不接线。`src/content/`、`src/platform/`、`src/render/`、`src/ui/` 的未来职责不在这里提前建空模块。
 
 ### 计划新增文件

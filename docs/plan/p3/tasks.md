@@ -45,8 +45,8 @@ P3 要证明的是**用户本地导入的原版内容能在浏览器中驱动一
 
 - [P2 退出评审](../../reviews/P2-exit.md#4-对后续阶段的影响)给出 P3 可消费的内容与适配、必须另行设计的部分、外观复核项与规则研究项；[P1 退出评审](../../reviews/P1-exit.md#4-对后续阶段的影响)给出可复用设施与必须替换的合成项。二者是起点，不是玩法已实现的证据。
 - **内容与任务载入：** [content/](../../../src/content/) 的 Asset ID、`ContentIdentity`、唯一切片定义与 `validatePackage`，以及图形、模型、效果、逻辑、音效与状态显示屏文字 payload 和展开、合成辅助。[load-mission.ts](../../../src/core/mission/load-mission.ts) 的 `loadMission` 产出冻结的 `MissionSetup`，不推进 tick、不应用默认值，也不推导生成时刻、顺序或位置；规则输入按来源原样保留（[logic-content.ts](../../../src/content/logic/logic-content.ts) 的 `RuleInputs`），语义归 P3。
-- **运行骨架：** [core/determinism/](../../../src/core/determinism/) 的种子随机数与状态哈希，[core/synthetic/](../../../src/core/synthetic/) 的合成场景、快照与 replay；[app/runtime/](../../../src/app/runtime/) 与 [app/session/](../../../src/app/session/) 的固定步长、命令队列、帧后 Event Bus、两帧 Render State、控制通道与清理；[ui/game/](../../../src/ui/game/) 的投影 store、会话桥接与命令反馈。这些机制可复用，但 synthetic 契约不能改名冒充正式玩法（[ADR-0015](../../decisions/ADR-0015-source-module-structure.md)）。
-- **应用与资源：** [页面流转](../../../src/app/flow/app-flow.ts)目前只有菜单、导入、合成演示与查看器；[app/resources/](../../../src/app/resources/) 持有经验证的资源包并给出任务载入诊断。[workers/](../../../src/workers/) 的导入协议与[生产包配置](../../../src/workers/production-package.ts)、[platform/storage/](../../../src/platform/storage/) 的资源缓存，是 P3 扩充内容时沿用的导入与缓存链。
+- **运行骨架：** [core/determinism/](../../../src/core/determinism/) 的种子随机数与状态哈希，[core/synthetic/](../../engineering/source-structure.md#r1-合成-core) 的合成场景、快照与 replay（P3-04 已退役，见[退役记录](../../engineering/source-structure.md#p3-04-合成演示退役记录)）；[app/runtime/](../../../src/app/runtime/) 与 [app/session/](../../../src/app/session/) 的固定步长、命令队列、帧后 Event Bus、两帧 Render State、控制通道与清理；[ui/game/](../../../src/ui/game/) 的投影 store、会话桥接与命令反馈。这些机制可复用，但 synthetic 契约不能改名冒充正式玩法（[ADR-0015](../../decisions/ADR-0015-source-module-structure.md)）。
+- **应用与资源：** [页面流转](../../../src/app/flow/app-flow.ts)在 P3 开始时只有菜单、导入、合成演示与查看器（P3-04 起以任务流程取代合成演示，当前缺省见 [slice-gaps](../../engineering/slice-gaps.md)）；[app/resources/](../../../src/app/resources/) 持有经验证的资源包并给出任务载入诊断。[workers/](../../../src/workers/) 的导入协议与[生产包配置](../../../src/workers/production-package.ts)、[platform/storage/](../../../src/platform/storage/) 的资源缓存，是 P3 扩充内容时沿用的导入与缓存链。
 - **表现与平台：** [render/](../../../src/render/) 有绘制端口、WebGL 表面、4:3 视口布局、合成渲染器与资源查看渲染；查看器的[呈现约定](../../../src/render/viewer/viewer-presentation.ts)只用于检查资源，不是飞行渲染契约。[platform/input/](../../../src/platform/input/) 只有焦点限定的键盘源，尚无原版绑定、Pointer Lock 或 Keyboard Lock（[键位文档 §7](../../engineering/keyboard-input.md#7-尚未实现的键盘能力)）；[platform/audio/](../../../src/platform/audio/) 的 Web Audio 控制器以查看器为第一个消费者。
 - **原版研究：** [B-001](../../original/behavior/B-001-strategic-map.md) 至 [B-005](../../original/behavior/B-005-campaign-rescue.md) 记录地图、练习、战役流程、通讯与救援的观察；[键位表](../../original/input/key-map.md)记录已知键位；[executable](../../original/formats/executable.md#4-code-landmarks) 记录任务调度、地图投影、目标模式、武器记录与效果来源的代码地标，[hud](../../original/formats/hud.md#hud-and-map-drawing-paths-confirmed-exe) 记录 HUD 与地图的绘制路径。它们是规则研究的入口，不等于规则已经确认。[基准环境](../../guides/baseline-environment.md)、[Ghidra 脚本](../../../tools/ghidra/)与 P2-12 的调试器读数方法可以复用。
 - **测试与合规：** 独立 [E2E](../../../e2e/) runner（含网络审计与资源平衡）、[本地合规工具](../../../tools/compliance/)与[工程边界回归](../../../tools/engineering-boundaries.test.ts)可继续扩展；新增系统、依赖或资源消费链仍须重验构建来源、许可与原版隔离。
@@ -83,7 +83,7 @@ P0 收尾项与 P3 有交集：U-011 的负责阶段仍为 P0，其飞行键位�
 | P3-01 | [玩法闭环边界与原版对照基线](./01/spec.md)（[goal](./01/goal.md)） | 闭环步骤与判据、行为对照目录与容差格式、原版时基与运行时测量方法、补充数据闭包、缺省与标注规则、视角范围 | —（P2 退出评审已通过） |
 | P3-02 | [Core 正式契约与任务实例化](./02/spec.md)（[goal](./02/goal.md)） | 正式实体、输入、命令、事件、projection 与 Render State，tick、单位与数值表示，系统顺序与正式 replay；由 `MissionSetup` 实例化世界、生成调度与僚机门禁 | P3-01 |
 | P3-03 | [规则数据与补充内容导入](./03/spec.md)（[goal](./03/goal.md)） | 机型与武器记录、任务事件与消息、通讯菜单及闭环所需表现资源的定向解析与规范 payload；切片定义与转换器版本递增 | P3-01 |
-| P3-04 | [正式 Runtime、游戏会话与应用流程](#p3-04-正式-runtime游戏会话与应用流程) | 正式 Runtime/Session，菜单经任务开始到飞行与退出的流程，任务开始配置，暂停、隐藏与离页保护，会话资源释放，开发诊断与录制 | P3-02 |
+| P3-04 | [正式 Runtime、游戏会话与应用流程](./04/spec.md)（[goal](./04/goal.md)） | 正式 Runtime/Session，菜单经任务开始到飞行与退出的流程，任务开始配置，暂停、隐藏与离页保护，会话资源释放，开发诊断与录制 | P3-02 |
 | P3-05 | [原版键位与浏览器输入](#p3-05-原版键位与浏览器输入) | 飞行键位研究，按 code 的动作映射，Alt 开火与 AltGr，地图的 Pointer Lock 与自绘光标，全屏 Keyboard Lock，清键 | P3-04 |
 | P3-06 | [飞行运动与速度控制](./06/spec.md)（[goal](./06/goal.md)） | 原版运动模型、姿态与速度操作、世界边界、起飞初始状态及原版对照 | P3-02、P3-03 |
 | P3-07 | [目标、武器、伤害与毁伤](#p3-07-目标武器伤害与毁伤) | 目标模式与切换、主炮与导弹、命中判定、护盾/船体/子系统/能量、毁伤与碎片、领域事件 | P3-02、P3-03 |
@@ -97,7 +97,7 @@ P0 收尾项与 P3 有交集：U-011 的负责阶段仍为 P0，其飞行键位�
 | P3-15 | [玩法闭环联合验证与原版对照](#p3-15-玩法闭环联合验证与原版对照) | 合成任务包的浏览器全闭环与 replay、生命周期与资源平衡、本机实机输入核对、原版对照汇总、标注审计 | P3-05、P3-13、P3-14 |
 | P3-16 | [P3 退出评审与 P4 交接](#p3-16-p3-退出评审与-p4-交接) | 逐项核验阶段退出条件，形成新评审与 P4/P5 交接 | P3-01 至 P3-15 |
 
-P3-01、P3-02、P3-03 与 P3-06 的 spec 与 goal 见上表链接，审批状态见各文档，执行进度只在各自的 goal tracker（如 P3-01 的[子任务跟踪](./01/goal.md#子任务跟踪)）维护；其余任务尚未创建 spec/goal，索引内链只指向下方任务范围。后续按需在 `04/`、`05/` 等目录生成实际契约，再补 spec/goal 导航；不创建空文档或另一份任务状态表。
+P3-01 至 P3-04 与 P3-06 的 spec 与 goal 见上表链接，审批状态见各文档，执行进度只在各自的 goal tracker（如 P3-01 的[子任务跟踪](./01/goal.md#子任务跟踪)）维护；其余任务尚未创建 spec/goal，索引内链只指向下方任务范围。后续按需在 `05/`、`07/` 等目录生成实际契约，再补 spec/goal 导航；不创建空文档或另一份任务状态表。
 
 ## 4. 任务范围与责任
 

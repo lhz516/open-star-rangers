@@ -3,9 +3,8 @@ type: plan
 status: accepted
 phase: P2
 task: "04"
-updated: 2026-10-08
+updated: 2026-10-10
 related: [ADR-0002, ADR-0003, ADR-0008, ADR-0015]
-reviewed: sha256:d7e3bb5aad76
 ---
 
 # P2-04：Worker 导入协议与生命周期 — Spec
@@ -133,7 +132,7 @@ reviewed: sha256:d7e3bb5aad76
   - [synthetic-content.test-support.ts](../../../../src/content/synthetic-content.test-support.ts) 生成覆盖全部角色的合成内容包。
 - **来源身份：** `SourceIdentity` 为 `{ versionId, fingerprint, files }`。生产指纹为 `source:sha256:` 加 64 位十六进制，见[版本识别与已验证来源](../../../engineering/modules/original-data.md#版本识别与已验证来源)。
 - **合成光盘：** [disc.test-support.ts](../../../../src/original-data/disc/disc.test-support.ts) 的 `syntheticFileDisc` 按路径放置任意文件，生成完整的合成 CloneCD 镜像；[source.test-support.ts](../../../../src/original-data/source/source.test-support.ts) 的 `catalogFor` 为合成文件生成白名单。
-- **生命周期先例：** P1 的 owner 模式见 [use-synthetic-demo-owner.ts](../../../../src/app/composition/use-synthetic-demo-owner.ts)：effect 在卸载、StrictMode 重跑或 Fast Refresh 时先释放旧 owner，再创建新 owner。[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md) 第 4 条规定，端口由提出需求的模块拥有，平台提供实现，应用层装配。
+- **生命周期先例：** P1 的 owner 模式见 [use-synthetic-demo-owner.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位)：effect 在卸载、StrictMode 重跑或 Fast Refresh 时先释放旧 owner，再创建新 owner。[ADR-0015](../../../decisions/ADR-0015-source-module-structure.md) 第 4 条规定，端口由提出需求的模块拥有，平台提供实现，应用层装配。
 - **浏览器测试先例：**
   - [browser-replay.spec.ts](../../../../e2e/browser-replay.spec.ts) 在开发服务器中动态导入 `/src/…` 模块，因此只在开发项目运行；
   - [browser-probes.ts](../../../../e2e/support/browser-probes.ts) 在页面脚本之前安装，记录监听的注册与移除。

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "03"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-03：快照、状态哈希与输入 replay — Goal
@@ -21,11 +21,11 @@ updated: 2026-10-02
 ## 代码现状与前提
 
 - **现有 Core：**
-  - [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 导出 `createSyntheticScene(config)` 和 `SyntheticScene` 接口（`step`/`inspect`/`uiProjection`/`renderState`），以及 `SyntheticSceneState`、`TickInput`、`DomainEvent`、`SyntheticSceneConfig` 和常量（默认 60 Hz、mover ID 1、标记坐标 `[-5,5)`）。
+  - [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 导出 `createSyntheticScene(config)` 和 `SyntheticScene` 接口（`step`/`inspect`/`uiProjection`/`renderState`），以及 `SyntheticSceneState`、`TickInput`、`DomainEvent`、`SyntheticSceneConfig` 和常量（默认 60 Hz、mover ID 1、标记坐标 `[-5,5)`）。
   - 文件内的私有 helper 有：`requireRecord`（拒绝额外字段并给出 `path`）、`readTickInput`（严格校验，返回分离副本）、`planCommands`，以及 tick 频率校验逻辑；私有类 `Scene` 只能从创建配置构造。
   - `inspect()` 返回完整权威状态，深冻结且与内部状态分离。
 - **RNG 与错误类型：** [rng.ts](../../../../src/core/determinism/rng.ts) 的 Mulberry32 状态是单个 uint32。[errors.ts](../../../../src/core/errors.ts) 的 `CoreInputError` 带只读 `path`。
-- **现有测试：** [synthetic-scene.test.ts](../../../../src/core/synthetic/synthetic-scene.test.ts)、[synthetic-scene-step.test.ts](../../../../src/core/synthetic/synthetic-scene-step.test.ts)、[synthetic-scene-input.test.ts](../../../../src/core/synthetic/synthetic-scene-input.test.ts) 与 [rng.test.ts](../../../../src/core/determinism/rng.test.ts) 是 P1-02 的验收证据，不得放宽或删除断言。
+- **现有测试：** [synthetic-scene.test.ts](../../../engineering/source-structure.md#r1-合成-core)、[synthetic-scene-step.test.ts](../../../engineering/source-structure.md#r1-合成-core)、[synthetic-scene-input.test.ts](../../../engineering/source-structure.md#r1-合成-core) 与 [rng.test.ts](../../../../src/core/determinism/rng.test.ts) 是 P1-02 的验收证据，不得放宽或删除断言。
 - **约束：** Core 只有 ES2023 lib，没有 DOM/Node 声明（[core 类型配置](../../../../tsconfig.core.json)），不能用 `TextEncoder`、`crypto` 或 `Buffer`。[ESLint](../../../../eslint.config.js) 禁止 async/await、宿主时间与随机数。[Vitest](../../../../vite.config.ts) 已在 Node 环境中发现 `src/**/*.test.ts`，无需新依赖或新 runner。
 - **计划新增文件**（均尚不存在）：
   - `src/core/fnv1a64.ts`、`src/core/fnv1a64.test.ts`：纯 TS 的 FNV-1a 64。
@@ -33,7 +33,7 @@ updated: 2026-10-02
   - `src/core/synthetic-scene-restore.test.ts`：恢复、往返、逐字段哈希敏感性与数值上限边界。
   - `src/core/synthetic-replay.ts`：录制会话、输入记录与结果类型、replay、结果校验与比对。
   - `src/core/synthetic-replay-record.test.ts`、`src/core/synthetic-replay.test.ts`、`src/core/synthetic-replay-compare.test.ts`：按子任务划分的测试。
-- **已有文件的改动：** 恢复入口 `restoreSyntheticScene(snapshot: unknown): SyntheticScene` 加在 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 中，以复用其中的私有校验 helper 与 `Scene`。录制如需复用 `readTickInput`，可以在该文件增加一个内部导出。两者都不改变 `SyntheticScene` 接口和 P1-02 的现有行为。
+- **已有文件的改动：** 恢复入口 `restoreSyntheticScene(snapshot: unknown): SyntheticScene` 加在 [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 中，以复用其中的私有校验 helper 与 `Scene`。录制如需复用 `readTickInput`，可以在该文件增加一个内部导出。两者都不改变 `SyntheticScene` 接口和 P1-02 的现有行为。
 - **模块依赖方向：** `synthetic-snapshot.ts` 只从 `synthetic-scene.ts` 导入类型（`import type`）；`synthetic-scene.ts` 在运行时导入快照格式常量；`synthetic-replay.ts` 依赖前两者。这样避免运行时循环导入。
 - **spec 授权 goal 决定的实现选择：**
   - 快照与哈希使用自由函数，不在 `SyntheticScene` 接口上新增方法（spec 要求 P1-02 的公开类型不变）。

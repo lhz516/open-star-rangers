@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "03"
 subtask: "02"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 02 — 版本化快照、规范文本与状态哈希
@@ -17,7 +17,7 @@ updated: 2026-10-02
 
 - 新增 `src/core/synthetic-snapshot.ts`，内容如下。
   - **格式常量：** `'osr-synthetic-snapshot'` 与版本 `1`。
-  - **快照类型：** `{ format, version, state }`，其中 `state` 即 P1-02 的 `SyntheticSceneState`，从 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 以 `import type` 导入，不在运行时导入该文件。
+  - **快照类型：** `{ format, version, state }`，其中 `state` 即 P1-02 的 `SyntheticSceneState`，从 [synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 以 `import type` 导入，不在运行时导入该文件。
   - **取快照：** 自由函数，参数为 `SyntheticScene`，基于 `inspect()` 构造快照。结果深冻结、每次新建，与场景内部及其他读取结果隔离；读取不改变 tick、状态、RNG 或 ID 分配器。
   - **规范文本：** 自由函数，按 spec 数据模型固定的字段顺序输出无空白紧凑 JSON：顶层依次为 `format, version, state`；`state` 依次为 `scenario, tick, tickRateHz, seed, rngState, nextEntityId, mover{id, position{x,y,z}}, marker`，`marker` 为 `null` 或 `{id, position{x,y,z}}`。
     - 字段顺序与调用者对象的键顺序无关。
@@ -45,7 +45,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 计划新增 `src/core/synthetic-snapshot.ts`、`src/core/synthetic-snapshot.test.ts`（尚不存在）。
-- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `SyntheticScene`、`SyntheticSceneState` 类型，以及 01 的 `src/core/fnv1a64.ts`。
+- 复用 [synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 的 `SyntheticScene`、`SyntheticSceneState` 类型，以及 01 的 `src/core/fnv1a64.ts`。
 
 ## 验收标准
 
@@ -62,14 +62,14 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-snapshot.ts](../../../../../src/core/synthetic/synthetic-snapshot.ts) 导出：
+- **实现：** [synthetic-snapshot.ts](../../../../engineering/source-structure.md#r1-合成-core) 导出：
   - 常量 `SYNTHETIC_SNAPSHOT_FORMAT`、`SYNTHETIC_SNAPSHOT_VERSION` 与类型 `SyntheticSnapshot`；
   - `takeSyntheticSnapshot(scene)`：基于 `inspect()`，每次新建并深冻结；
   - `canonicalSnapshotText(snapshot)`：按 spec 字段顺序重建对象后用 `JSON.stringify`，`-0` 写作 `0`；
   - `hashSyntheticSnapshot(snapshot)` 与 `hashSyntheticScene(scene)`：规范文本的 `fnv1a64`。
   
   该文件只以 `import type` 引用 `synthetic-scene.ts`；`synthetic-scene.ts` 与 `SyntheticScene` 接口未改动。
-- **测试：** [synthetic-snapshot.test.ts](../../../../../src/core/synthetic/synthetic-snapshot.test.ts)，共 12 项。
+- **测试：** [synthetic-snapshot.test.ts](../../../../engineering/source-structure.md#r1-合成-core)，共 12 项。
   - **AC-01：**
     - seed 0 初始快照与完整字面量相等；有标记场景的快照与 `{format, version, state: inspect()}` 严格相等，并含标记、RNG 状态与分配器。
     - 两次读取的根对象与每个嵌套对象都不是同一对象，且全部冻结；写入嵌套字段或 `version` 抛 `TypeError`，场景与另一份读取不变；场景继续 step 后，已保留的快照不变。

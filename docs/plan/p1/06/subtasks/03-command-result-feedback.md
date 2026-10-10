@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "03"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 03 — 命令提交与 Core 结果反馈
@@ -35,8 +35,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-event-bus.ts](../../../../../src/app/runtime/synthetic-event-bus.ts) 的 `EventDelivery`、[synthetic-session.ts](../../../../../src/app/session/synthetic-session.ts) 的 `SessionRun.submitCommand/on/onAny`（已有，只读复用）。
-- [Runtime 事件测试](../../../../../src/app/runtime/synthetic-runtime-events.test.ts)（已有 FIFO 与帧末读取先例）。
+- [synthetic-event-bus.ts](../../../../engineering/source-structure.md#r3-合成-runtime) 的 `EventDelivery`、[synthetic-session.ts](../../../../engineering/source-structure.md#r4-合成会话) 的 `SessionRun.submitCommand/on/onAny`（已有，只读复用）。
+- [Runtime 事件测试](../../../../engineering/source-structure.md#r3-合成-runtime)（已有 FIFO 与帧末读取先例）。
 - 01/02 计划新增的 store 写入口与桥接（本项使用）。
 - 计划新增：`src/ui/game/synthetic-command-feedback.ts`、`src/ui/game/synthetic-command-feedback.test.ts`。
 
@@ -57,8 +57,8 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：实现 [synthetic-command-feedback.ts](../../../../../src/ui/game/synthetic-command-feedback.ts)：`createSyntheticCommandFeedback(store)` 是桥接的运行级 consumer。`attach` 订阅 `onAny`，按 `delivery.commandId` 把真实 marker-added/removed 记为 accepted、command-rejected 记为 rejected，并与帧末最新投影同次写入。`submit(type)` 经 binding 转发，成功后与清除 actionError 同次加入 pending，失败时写入 actionError。桥接新增 `SyntheticRunBinding.submitCommand`：binding 被回滚或 unbind 注销后不再转发。
-- 测试：[synthetic-command-feedback.test.ts](../../../../../src/ui/game/synthetic-command-feedback.test.ts) 8 项（UI 目录合计 33 项）通过：
+- 2026-10-02：实现 [synthetic-command-feedback.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)：`createSyntheticCommandFeedback(store)` 是桥接的运行级 consumer。`attach` 订阅 `onAny`，按 `delivery.commandId` 把真实 marker-added/removed 记为 accepted、command-rejected 记为 rejected，并与帧末最新投影同次写入。`submit(type)` 经 binding 转发，成功后与清除 actionError 同次加入 pending，失败时写入 actionError。桥接新增 `SyntheticRunBinding.submitCommand`：binding 被回滚或 unbind 注销后不再转发。
+- 测试：[synthetic-command-feedback.test.ts](../../../../engineering/source-structure.md#r6-合成-ui-层) 8 项（UI 目录合计 33 项）通过：
   - AC-04：提交后只有 pending `{runId:1,commandId:1}`，投影对象不变；0 tick 帧后仍 pending、无 marker。执行 tick 后 accepted 的事件 tick=1、commandIndex=0，投影 marker 的 id/position 与事件的 entityId/position 一致，pending 清空。
   - AC-05：重复 add 得到 marker-already-exists，再 remove 被接受，再 remove 得到 marker-not-found；marker 始终与投影一致，结果序列为 accepted/rejected/accepted/rejected。
   - AC-06：同 tick add→remove 的 ID 1、2 按 FIFO 各终结一次，帧内所有 store 快照的 marker 均为 null，投影只发布一次 `[1,0]`。外部直接提交的命令不产生结果但刷新了投影；用记录的旧监听重放已终结事件，store 完全不变。

@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "03"
 subtask: "05"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 05 — 从输入记录 replay
@@ -48,7 +48,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 修改 04 新增的 `src/core/synthetic-replay.ts`；计划新增 `src/core/synthetic-replay.test.ts`（尚不存在）。
-- 复用 [synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 的 `createSyntheticScene` 与输入校验、[errors.ts](../../../../../src/core/errors.ts)，以及 02 的状态哈希。
+- 复用 [synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 的 `createSyntheticScene` 与输入校验、[errors.ts](../../../../../src/core/errors.ts)，以及 02 的状态哈希。
 
 ## 验收标准
 
@@ -64,12 +64,12 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **实现：** [synthetic-replay.ts](../../../../../src/core/synthetic/synthetic-replay.ts) 新增 `replaySyntheticRecord(record: unknown): SyntheticReplayResult`。
+- **实现：** [synthetic-replay.ts](../../../../engineering/source-structure.md#r1-合成-core) 新增 `replaySyntheticRecord(record: unknown): SyntheticReplayResult`。
   - 依次校验顶层字段（`requireExactRecord`，要求自有属性、拒绝额外字段）、格式与版本、`config`（`tickRateHz` 必填）、`checkpointInterval`（经 `createSyntheticRecordingSession`）、`ticks` 数组和缺失项。
   - 然后把每个 tick 规范化为深冻结副本（`canonicalTickInput`，与录制会话的 step 共用），全部结构校验通过后，才在新建的录制会话上逐 tick step，导出其结果。检查点规则因此与录制完全相同。
   - 错误改写为 `record` 前缀：配置与间隔为 `record.config.*` 与 `record.checkpointInterval`；tick 内的错误和数值守卫错误由 `tickPath` 统一移到 `record.ticks[i]` 下（`ticks[0]` 即模拟 tick 1）。
-  - 为改写路径，[errors.ts](../../../../../src/core/errors.ts) 的 `CoreInputError` 新增只读字段 `reason`（`message` 不变）；[synthetic-scene.ts](../../../../../src/core/synthetic/synthetic-scene.ts) 把 `requireExactRecord` 改为 Core 内部导出。
-- **测试：** [synthetic-replay.test.ts](../../../../../src/core/synthetic/synthetic-replay.test.ts)，共 37 项。
+  - 为改写路径，[errors.ts](../../../../../src/core/errors.ts) 的 `CoreInputError` 新增只读字段 `reason`（`message` 不变）；[synthetic-scene.ts](../../../../engineering/source-structure.md#r1-合成-core) 把 `requireExactRecord` 改为 Core 内部导出。
+- **测试：** [synthetic-replay.test.ts](../../../../engineering/source-structure.md#r1-合成-core)，共 37 项。
   - **AC-08：**
     - 固定 11 tick 记录覆盖 `moveX` -1/0/0.5/1、成功的添加与移除、两种拒绝和同 tick add/remove/add。在 60/120 Hz × seed 0/4294967295 × 间隔 1/4 下，replay 结果与录制结果严格相等。
     - 间隔 1 的检查点为 0–11，不重复；间隔 4 的为 `[0, 4, 8, 11]`，跨两个完整间隔并补上最终 tick；同时断言事件类型序列。

@@ -3,7 +3,7 @@ import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetDescriptor, ResourceGroup } from '../src/content/asset-contract.ts';
 import { BUDGET_DIMENSIONS, type BudgetRecord } from '../src/content/budget.ts';
-import { validatePackage, type GroupInput } from '../src/content/completeness.ts';
+import { validatePackage, type GroupInput, type PackageCompletenessResult } from '../src/content/completeness.ts';
 import { ContentContractError } from '../src/content/contract-validation.ts';
 import { FLIGHT_DATA_LIMITS, type FlightDataPayload } from '../src/content/flight/flight-data-content.ts';
 import { decodeFlightDataPayload } from '../src/content/flight/flight-data-payload.ts';
@@ -110,9 +110,21 @@ class CheckStop extends Error {
   }
 }
 
+/** The input of a file set at `index` could not be opened. */
+export class InputReadError extends Error {
+  readonly index: number;
+
+  constructor(index: number) {
+    super(`input[${index}] could not be opened`);
+    this.name = 'InputReadError';
+    this.index = index;
+  }
+}
+
 /** The failure an error stands for, by code and structural position only. */
 function failureOf(cause: unknown): PackageCheckFailure {
   if (cause instanceof CheckStop) return cause.failure;
+  if (cause instanceof InputReadError) return { code: 'read-failed', location: `input[${cause.index}]` };
   if (cause instanceof DiscReadError || cause instanceof SourceError) return { code: cause.code, location: cause.location };
   if (cause instanceof ContentContractError) return { code: cause.code, location: cause.path };
   if (cause instanceof CoreInputError) return { code: 'core-input', location: cause.path };
@@ -363,6 +375,42 @@ const budgetLimits = (usage: BudgetRecord): LimitCheck[] => BUDGET_DIMENSIONS
   .filter(dimension => dimension !== 'sourceReadBytes')
   .map(dimension => limit(`package.${dimension}`, usage[dimension], PRODUCTION_PACKAGE.limits[dimension]));
 
+/** What a whole-package import gives: the job's usage, every group it sent in send order, and their package validation. */
+export interface ImportedPackage {
+  readonly usage: BudgetRecord;
+  readonly groups: readonly GroupInput[];
+  readonly validation: PackageCompletenessResult;
+}
+
+/**
+ * Runs the production import job the Worker runs, or the job `options` configure for tests, on the CloneCD file set
+ * at `paths`, keeps every group it sends and validates them as a whole package against the slice definition. An input
+ * that cannot be opened throws InputReadError; the job's own errors pass through unchanged. `report` sees the job's
+ * progress and identification. The input Blobs from `fs.openAsBlob` have no close method, so this is meant for
+ * one-shot processes.
+ */
+export async function importPackage(
+  paths: readonly string[], options: PackageCheckOptions, report: Omit<ImportReporter, 'group'>,
+): Promise<ImportedPackage> {
+  const files: ImportFile[] = [];
+  for (const [index, path] of paths.entries()) {
+    try {
+      files.push({ name: basename(path), blob: await openAsBlob(path) });
+    } catch {
+      throw new InputReadError(index);
+    }
+  }
+  const { catalog } = options;
+  const open: OpenSource | undefined = catalog === undefined ? undefined : async inputs => identifySource(await openDiscImage(inputs), catalog);
+  const groups: GroupInput[] = [];
+  const usage = await (options.job ?? createImportJob(open))(files, {
+    progress: (stage, bytes) => { report.progress(stage, bytes); },
+    identified: identity => { report.identified(identity); },
+    group: (_name, input) => { groups.push(input); },
+  });
+  return { usage, groups, validation: validatePackage(CLASSIC_P2_SLICE, groups) };
+}
+
 /**
  * Checks a CloneCD file set with the production import job. The first failure of the job, the package validation, a
  * payload decoding or the Core load ends the check; its report keeps everything gathered before it. As in the logic
@@ -377,30 +425,16 @@ export async function runPackageCheck(paths: readonly string[], options: Package
   const reads = Object.fromEntries([...IMPORT_STAGES, 'total'].map(stage => [stage, 0])) as Record<ImportStage | 'total', number>;
   /** The bytes read when each stage started: a stage reports its first progress with the bytes read so far. */
   const starts: Partial<Record<ImportStage, number>> = {};
-  const sent: GroupInput[] = [];
   try {
-    const files: ImportFile[] = [];
-    for (const [index, path] of paths.entries()) {
-      try {
-        files.push({ name: basename(path), blob: await openAsBlob(path) });
-      } catch {
-        throw new CheckStop('read-failed', `input[${index}]`);
-      }
-    }
-    const { catalog } = options;
-    const open: OpenSource | undefined = catalog === undefined ? undefined : async inputs => identifySource(await openDiscImage(inputs), catalog);
-    const report: ImportReporter = {
+    const { usage, groups: sent, validation } = await importPackage(paths, options, {
       progress: (stage, bytes) => {
         starts[stage] ??= bytes;
         reads[stage] = bytes - starts[stage];
         reads.total = bytes;
       },
       identified: ({ versionId, sourceFingerprint }) => { identity = { versionId, fingerprint: sourceFingerprint }; },
-      group: (_name, input) => { sent.push(input); },
-    };
-    const usage = await (options.job ?? createImportJob(open))(files, report);
+    });
 
-    const validation = validatePackage(CLASSIC_P2_SLICE, sent);
     if (validation.status !== 'complete') {
       const [first] = validation.diagnostics;
       throw new CheckStop(first.code, first.path);

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "08"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # P1-08：菜单与导入占位 — Goal
@@ -14,11 +14,11 @@ updated: 2026-10-02
 
 ## 代码现状与前提
 
-- [App](../../../../src/app/App.tsx) 目前一加载就调用 [useSyntheticDemoOwner](../../../../src/app/composition/use-synthetic-demo-owner.ts) 并显示 [SyntheticRenderView](../../../../src/ui/render/SyntheticRenderView.tsx) 与 [SyntheticDevPanel](../../../../src/ui/dev/SyntheticDevPanel.tsx)；没有页面状态、菜单或导入入口，不自动 start。
-- [createSyntheticDemoOwner](../../../../src/app/composition/synthetic-demo-owner.ts) 把渲染器创建异常（含回滚失败的 `AggregateError`）一律降级为 unavailable；`dispose()` 幂等、失败时写 `actionError{operation:'cleanup'}` 并抛出；没有可读取的清理失败记录。hook 释放失败只 `reportError`，随后照常重建。
-- [createSyntheticRenderer](../../../../src/render/synthetic/synthetic-renderer.ts) 与 [createBrowserWebGLSurface](../../../../src/render/webgl/browser-webgl-surface.ts) 在初始化回滚失败时只抛 `AggregateError`，与“业务异常本身就是 AggregateError”无法区分；渲染器 `attach()` 的回滚失败同样只以 `AggregateError` 抛给桥接。
-- [SyntheticSession](../../../../src/app/session/synthetic-session.ts) 的 `status().cleanupFailed` 已在资源清理、取消帧失败时置位并阻断 start/restart；Session 契约不变。
-- Node 测试设施：[ControlledHost](../../../../src/app/session/synthetic-session.test-support.ts)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts)、[TestClock](../../../../src/ui/game/synthetic-ui.test-support.ts)，以及 [synthetic-demo-owner.test.ts](../../../../src/app/composition/synthetic-demo-owner.test.ts) 中的 `vi.mock` 桥接注入与 `FailingCancelHost`。
+- [App](../../../../src/app/App.tsx) 目前一加载就调用 [useSyntheticDemoOwner](../../../engineering/source-structure.md#r5-演示所有者与槽位) 并显示 [SyntheticRenderView](../../../engineering/source-structure.md#r7-演示页面开发面板与画面) 与 [SyntheticDevPanel](../../../engineering/source-structure.md#r7-演示页面开发面板与画面)；没有页面状态、菜单或导入入口，不自动 start。
+- [createSyntheticDemoOwner](../../../engineering/source-structure.md#r5-演示所有者与槽位) 把渲染器创建异常（含回滚失败的 `AggregateError`）一律降级为 unavailable；`dispose()` 幂等、失败时写 `actionError{operation:'cleanup'}` 并抛出；没有可读取的清理失败记录。hook 释放失败只 `reportError`，随后照常重建。
+- [createSyntheticRenderer](../../../engineering/source-structure.md#r2-合成渲染) 与 [createBrowserWebGLSurface](../../../../src/render/webgl/browser-webgl-surface.ts) 在初始化回滚失败时只抛 `AggregateError`，与“业务异常本身就是 AggregateError”无法区分；渲染器 `attach()` 的回滚失败同样只以 `AggregateError` 抛给桥接。
+- [SyntheticSession](../../../engineering/source-structure.md#r4-合成会话) 的 `status().cleanupFailed` 已在资源清理、取消帧失败时置位并阻断 start/restart；Session 契约不变。
+- Node 测试设施：[ControlledHost](../../../engineering/source-structure.md#r4-合成会话)、[RecordingSurface](../../../../src/render/scene/render-surface.test-support.ts)、[TestClock](../../../engineering/source-structure.md#r6-合成-ui-层)，以及 [synthetic-demo-owner.test.ts](../../../engineering/source-structure.md#r5-演示所有者与槽位) 中的 `vi.mock` 桥接注入与 `FailingCancelHost`。
 - 计划新增：`src/app/flow/`（页面流转纯逻辑与测试）、`src/app/composition/` 内的 DOM-free 演示生命周期接线及测试、`src/ui/pages/` 下的三个画面组件。具体文件名在子任务中列出。
 - 前提：[P1-06](../06/goal.md#子任务跟踪) 与 [P1-07](../07/goal.md#子任务跟踪) 的 goal 均已全部 completed；不依赖 P1-09。不新增依赖；验证命令为现有 `pnpm exec vitest run …`、`pnpm check`，浏览器证据按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 与[工程约定](../../../engineering/README.md#已验证的-cdp-自动化路线)中已验证的 CDP 路线取得。
 - 不产生原版研究结论，不使用原版资源；菜单是 P1 原型，不代表原版界面。

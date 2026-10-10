@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "08"
 subtask: "02"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 02 — 清理失败信号与 owner 失败记录
@@ -29,9 +29,9 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts)：新增失败记录查询；渲染器创建失败分支区分“回滚成功的不可用”与“回滚失败”；订阅会话状态中的 `cleanupFailed`。
-- [synthetic-renderer.ts](../../../../../src/render/synthetic/synthetic-renderer.ts) 的 `createSyntheticRenderer` 与 `attach()`；[browser-webgl-surface.ts](../../../../../src/render/webgl/browser-webgl-surface.ts) 的创建回滚；必要时在 [cleanup.ts](../../../../../src/render/scene/cleanup.ts) 中放置共享的结构化失败类型（名称由实现决定，不建立全局 utils）。
-- 测试：[synthetic-demo-owner.test.ts](../../../../../src/app/composition/synthetic-demo-owner.test.ts)、[synthetic-renderer.test.ts](../../../../../src/render/synthetic/synthetic-renderer.test.ts)，复用 `ControlledHost`、`FailingCancelHost`、`RecordingSurface` 与现有桥接 `vi.mock`。
+- [synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)：新增失败记录查询；渲染器创建失败分支区分“回滚成功的不可用”与“回滚失败”；订阅会话状态中的 `cleanupFailed`。
+- [synthetic-renderer.ts](../../../../engineering/source-structure.md#r2-合成渲染) 的 `createSyntheticRenderer` 与 `attach()`；[browser-webgl-surface.ts](../../../../../src/render/webgl/browser-webgl-surface.ts) 的创建回滚；必要时在 [cleanup.ts](../../../../../src/render/scene/cleanup.ts) 中放置共享的结构化失败类型（名称由实现决定，不建立全局 utils）。
+- 测试：[synthetic-demo-owner.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)、[synthetic-renderer.test.ts](../../../../engineering/source-structure.md#r2-合成渲染)，复用 `ControlledHost`、`FailingCancelHost`、`RecordingSurface` 与现有桥接 `vi.mock`。
 
 ## 验收标准
 
@@ -50,13 +50,13 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- **结构化信号：** 新增 [rollback-error.ts](../../../../../src/app/session/rollback-error.ts) 的 `RollbackError`（继承 `AggregateError`，`cause` 为原始失败，`errors` 依次为原始失败与各回滚失败）。放在 `app/session/` 是因为资源所有权与清理归 Session（[源码结构指南](../../../../engineering/source-structure.md#职责与依赖)），且 `render/` 与 `ui/game/` 都已依赖 `app/session/`；放进 `render/scene/cleanup.ts` 会让桥接反向依赖渲染层。抛出点：[createSyntheticRenderer](../../../../../src/render/synthetic/synthetic-renderer.ts) 的 connect 失败后释放失败、渲染器 `attach()` 的本地回滚失败、[createBrowserWebGLSurface](../../../../../src/render/webgl/browser-webgl-surface.ts) 转交前回滚失败（代码审阅确认：catch 中 `attemptAll` 有失败时抛 `RollbackError`，无失败时原样抛出原因），以及[会话桥接](../../../../../src/ui/game/synthetic-session-bridge.ts)的 bind 回滚失败与运行消费者接线回滚失败。桥接此前会丢弃消费者接线回滚的错误；现在把它们与原因一起抛出，使会话错误包含清理原因。回滚成功时各处仍原样抛出原始原因，P1-07 行为不变。
-- **owner 记录：** [SyntheticDemoOwner](../../../../../src/app/composition/synthetic-demo-owner.ts) 新增 `cleanupFailure(): Readonly<{cause}> | null`（首因锁存、冻结外壳、dispose 后可读）。以下情况会设置记录：
+- **结构化信号：** 新增 [rollback-error.ts](../../../../../src/app/session/rollback-error.ts) 的 `RollbackError`（继承 `AggregateError`，`cause` 为原始失败，`errors` 依次为原始失败与各回滚失败）。放在 `app/session/` 是因为资源所有权与清理归 Session（[源码结构指南](../../../../engineering/source-structure.md#职责与依赖)），且 `render/` 与 `ui/game/` 都已依赖 `app/session/`；放进 `render/scene/cleanup.ts` 会让桥接反向依赖渲染层。抛出点：[createSyntheticRenderer](../../../../engineering/source-structure.md#r2-合成渲染) 的 connect 失败后释放失败、渲染器 `attach()` 的本地回滚失败、[createBrowserWebGLSurface](../../../../../src/render/webgl/browser-webgl-surface.ts) 转交前回滚失败（代码审阅确认：catch 中 `attemptAll` 有失败时抛 `RollbackError`，无失败时原样抛出原因），以及[会话桥接](../../../../engineering/source-structure.md#r6-合成-ui-层)的 bind 回滚失败与运行消费者接线回滚失败。桥接此前会丢弃消费者接线回滚的错误；现在把它们与原因一起抛出，使会话错误包含清理原因。回滚成功时各处仍原样抛出原始原因，P1-07 行为不变。
+- **owner 记录：** [SyntheticDemoOwner](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 新增 `cleanupFailure(): Readonly<{cause}> | null`（首因锁存、冻结外壳、dispose 后可读）。以下情况会设置记录：
   - 初始化回滚失败（`RollbackError`）。
   - 渲染器创建回滚失败，或表面工厂交来的 `unavailable` 为 `RollbackError`。此时初始化直接失败，不创建会话。
   - 会话状态首次报告 `cleanupFailed`，或会话错误的失败项中出现 `RollbackError`（覆盖消费者自身登记的非会话清理）。
   - `dispose()` 失败：先停止状态订阅，因此记录的就是 `dispose()` 抛出的错误；仍写 `actionError{cleanup}` 并抛出。
-- **Node 测试：** [synthetic-demo-owner.test.ts](../../../../../src/app/composition/synthetic-demo-owner.test.ts) 的 “cleanup failure record” 组：
+- **Node 测试：** [synthetic-demo-owner.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 的 “cleanup failure record” 组：
   - (a) Core/调度 faulted、渲染 failed、unavailable，以及业务 `AggregateError` 的 connect 失败在回滚成功时都为 null，演示照常运行。
   - (b) restart 时取消帧失败与运行资源清理失败都保留会话错误；之后的 restart actionError 与 dispose 不改变记录。
   - (c)(e) dispose 失败时记录等于抛出的错误，全部清理已尝试；早先已锁存的首因不被后续 dispose 失败覆盖。

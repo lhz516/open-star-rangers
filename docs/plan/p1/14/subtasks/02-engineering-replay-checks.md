@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "14"
 subtask: "02"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 02 — 当前工程、Python 与 Node replay 核验
@@ -28,7 +28,7 @@ updated: 2026-10-03
 ## 关键文件与契约
 
 - 只读[package.json](../../../../../package.json)、[Vite](../../../../../vite.config.ts)、[边界测试](../../../../../tools/engineering-boundaries.test.ts)和[工程约定](../../../../engineering/README.md)；本项只写完成证据及本任务 tracker。
-- [replay 契约](../../../../../src/core/synthetic/synthetic-replay.ts)的 `SyntheticReplayRecord`/`SyntheticReplayResult` 已存在，format/version不改；[replay 测试](../../../../../src/core/synthetic/synthetic-replay.test.ts)、[比较测试](../../../../../src/core/synthetic/synthetic-replay-compare.test.ts)、[Session replay](../../../../../src/app/session/synthetic-session-replay.test.ts)和[UI replay](../../../../../src/ui/game/synthetic-game-replay.test.ts)已进入 Vitest。
+- [replay 契约](../../../../engineering/source-structure.md#r1-合成-core)的 `SyntheticReplayRecord`/`SyntheticReplayResult` 已存在，format/version不改；[replay 测试](../../../../engineering/source-structure.md#r1-合成-core)、[比较测试](../../../../engineering/source-structure.md#r1-合成-core)、[Session replay](../../../../engineering/source-structure.md#r4-合成会话)和[UI replay](../../../../engineering/source-structure.md#r6-合成-ui-层)已进入 Vitest。
 - [Python 测试](../../../../../tools/ghidra/test_patch_watcom_cspec.py)已有结构变换、备份/幂等、失败不改写的标准库断言，不属于 pnpm runner。
 
 ## 验收标准
@@ -54,7 +54,7 @@ updated: 2026-10-03
 | `python3 -B -m unittest discover -s tools/ghidra -p 'test_*.py'` | exit0；3测试，结构保留/备份、幂等、unsupported失败不改写全通过；临时合成XML由TemporaryDirectory清理，不调用Ghidra |
 
 - 实际发现仍为src/tools `.test.ts`，E2E独立；[边界测试](../../../../../tools/engineering-boundaries.test.ts)包含真实纯程序无DOM/Node、目标诊断正负、空/ignored/parser失败、预期失败Vitest非零、render import/scheduling/program边界，全部进入上述56文件，未删skip/放宽。Runtime/Session/UI/输入/合规的原正负断言随同执行，不重造矩阵。
-- [Node replay](../../../../../src/core/synthetic/synthetic-replay.test.ts)实际覆盖60/120Hz、seed0/uint32上限、interval1/4的精确events/checkpoints、JSON/固定hash及非法format/version；[比较器](../../../../../src/core/synthetic/synthetic-replay-compare.test.ts)真实独立结果的`match:true`、events/hash偏差、checkpoint间隔/优先级及非法结果拒绝。[Session](../../../../../src/app/session/synthetic-session-replay.test.ts)证明pause/hidden/resume只记录成功输入，与裸Runtime一致；[UI](../../../../../src/ui/game/synthetic-game-replay.test.ts)证明采样/取消/错误不改录制。不是浏览器或正式存档证明，03另测Node/浏览器同记录。
+- [Node replay](../../../../engineering/source-structure.md#r1-合成-core)实际覆盖60/120Hz、seed0/uint32上限、interval1/4的精确events/checkpoints、JSON/固定hash及非法format/version；[比较器](../../../../engineering/source-structure.md#r1-合成-core)真实独立结果的`match:true`、events/hash偏差、checkpoint间隔/优先级及非法结果拒绝。[Session](../../../../engineering/source-structure.md#r4-合成会话)证明pause/hidden/resume只记录成功输入，与裸Runtime一致；[UI](../../../../engineering/source-structure.md#r6-合成-ui-层)证明采样/取消/错误不改录制。不是浏览器或正式存档证明，03另测Node/浏览器同记录。
 - 当前build：index-BF0vE3hr.js 811391bytes / gzip219.50kB，SHA256 `0d6401fe467b6990e6d49aac92cc6ec630425a35f3f191cc84ab6dec1b756fea`；map SHA256 `ebca9b64c3961bf4dba0a063acc59bcb4d3c0630f5ceb7ea1132ef1cbd15be40`；inventory240输入checksum `022946f1d92be7559226e45581cdb5fb57b56ca01934377d602a36b21c0ac1e0`，与P1-12输入/产物相同；checksum非签名/通过报告。完整生成文件/许可归04，不以dist存在代替。
 - 只保留既有Vite500kB chunk警告，不 suppress；首次命令均通过，无重跑/补丁/新增修复项，无缺依赖安装。文档影响：实际命令/测试约定未变，工程早期未接页面叙述仍由05纠正；本项无新原版事实/ADR或接口变化，无实现simplify。所有测试自有临时fixture自行收尾，无原版/用户存储/生产源码修改。
 - rubber-duck限定本项完整diff及契约/实际测试，独立核对计数、版本、hash，无阻塞问题；审查结束才将02改completed。证据按无代码例外先保存，最终文档提交。

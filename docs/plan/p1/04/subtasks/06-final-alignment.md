@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "04"
 subtask: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 06 — 完整 Runtime 契约最终对齐
@@ -39,7 +39,7 @@ updated: 2026-10-02
 
 - [spec](../spec.md)、[goal](../goal.md) 与同目录 01–05 文档（本目标规划文件）。
 - 01–05 计划交付的四个生产模块和七个同目录测试文件，只读核验。
-- [Core 场景](../../../../../src/core/synthetic/synthetic-scene.ts)、[replay](../../../../../src/core/synthetic/synthetic-replay.ts)、[App](../../../../../src/app/App.tsx)、[main](../../../../../src/main.tsx)、[package.json](../../../../../package.json)、[工程约定](../../../../engineering/README.md)（已有，只读核验）。
+- [Core 场景](../../../../engineering/source-structure.md#r1-合成-core)、[replay](../../../../engineering/source-structure.md#r1-合成-core)、[App](../../../../../src/app/App.tsx)、[main](../../../../../src/main.tsx)、[package.json](../../../../../package.json)、[工程约定](../../../../engineering/README.md)（已有，只读核验）。
 - [STATUS](../../../../STATUS.md)（已有，全部通过后只更新阶段级证据，不复制 tracker）。
 
 ## 验收标准

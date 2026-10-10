@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "09"
 subtask: "05"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 05 — 键盘闭环、输入隔离与生命周期浏览器证据
@@ -32,7 +32,7 @@ updated: 2026-10-03
 
 - [Spec 验收表](../spec.md#验收标准)、01–04 交付与证据；本文件“完成证据”承载全部浏览器结果。
 - [浏览器入口指南](../../../../engineering/README.md#已验证的-cdp-自动化路线)规定真实可见性路线；普通 connectOverCDP 页签切换不保证 hidden。
-- [开发面板](../../../../../src/ui/dev/SyntheticDevPanel.tsx)投影采样为 100 ms；x 文本保留三位小数，Node 精确一致性属于 03。
+- [开发面板](../../../../engineering/source-structure.md#r7-演示页面开发面板与画面)投影采样为 100 ms；x 文本保留三位小数，Node 精确一致性属于 03。
 
 ## 验收标准
 

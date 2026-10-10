@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "06"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 06 — 应用 owner 装配与清理
@@ -36,8 +36,8 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-session.ts](../../../../../src/app/session/synthetic-session.ts) 的 `createSyntheticSession`（已有）；[session-host.ts](../../../../../src/app/session/session-host.ts) 的 `SessionHost`（已有）。
-- [ControlledHost](../../../../../src/app/session/synthetic-session.test-support.ts) 的 pending/listeners/unsubscribed 计数与失败注入（已有，仅测试导入）。
+- [synthetic-session.ts](../../../../engineering/source-structure.md#r4-合成会话) 的 `createSyntheticSession`（已有）；[session-host.ts](../../../../../src/app/session/session-host.ts) 的 `SessionHost`（已有）。
+- [ControlledHost](../../../../engineering/source-structure.md#r4-合成会话) 的 pending/listeners/unsubscribed 计数与失败注入（已有，仅测试导入）。
 - 01–04 计划新增的 `src/ui/game/` 模块（本项装配）。
 - 计划新增：`src/app/composition/synthetic-demo-owner.ts`、`src/app/composition/synthetic-demo-owner.test.ts`。
 
@@ -56,8 +56,8 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：实现 [synthetic-demo-owner.ts](../../../../../src/app/composition/synthetic-demo-owner.ts)。`createSyntheticDemoOwner(host, clock)` 依次创建 store、命令反馈、桥接与会话（`SYNTHETIC_DEMO_OPTIONS`：种子 0、Core 默认 60 Hz，均为合成值），不自动 start、不登记全局单例，只暴露只读 `store`、`dispatch(action)` 与 `dispose()`。动作路由放在 UI 层的 `createSyntheticPanelDispatcher`（[synthetic-game-controls.ts](../../../../../src/ui/game/synthetic-game-controls.ts)）。
-- 测试：[synthetic-demo-owner.test.ts](../../../../../src/app/composition/synthetic-demo-owner.test.ts) 8 项通过；用 `vi.mock` 包装桥接工厂，以注入绑定前、绑定后与解绑失败：
+- 2026-10-02：实现 [synthetic-demo-owner.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位)。`createSyntheticDemoOwner(host, clock)` 依次创建 store、命令反馈、桥接与会话（`SYNTHETIC_DEMO_OPTIONS`：种子 0、Core 默认 60 Hz，均为合成值），不自动 start、不登记全局单例，只暴露只读 `store`、`dispatch(action)` 与 `dispose()`。动作路由放在 UI 层的 `createSyntheticPanelDispatcher`（[synthetic-game-controls.ts](../../../../engineering/source-structure.md#r6-合成-ui-层)）。
+- 测试：[synthetic-demo-owner.test.ts](../../../../engineering/source-structure.md#r5-演示所有者与槽位) 8 项通过；用 `vi.mock` 包装桥接工厂，以注入绑定前、绑定后与解绑失败：
   - AC-01（owner）：创建后为 idle，store 的其余字段为初始值，待交付请求 0、生命周期监听 1；dispatch start 后请求为 1，投影 tickRateHz=60。add-marker 先 pending，再经 Core 接受。
   - AC-09：
     - 会话创建时宿主订阅失败：status=null，actionError 为 initialize，cause 是带 scheduler 原因的 GameSessionError，无残留监听或请求；之后的 dispatch 不改 store，dispose 不抛错。

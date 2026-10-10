@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "05"
 subtask: "02"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 02 — Runtime 显式生命周期操作
@@ -27,7 +27,7 @@ updated: 2026-10-02
 
 ## 关键文件与契约
 
-- [synthetic-runtime.ts](../../../../../src/app/runtime/synthetic-runtime.ts)、[fixed-step-clock.ts](../../../../../src/app/runtime/fixed-step-clock.ts)、[synthetic-event-bus.ts](../../../../../src/app/runtime/synthetic-event-bus.ts)（已有，本项修改）。
+- [synthetic-runtime.ts](../../../../engineering/source-structure.md#r3-合成-runtime)、[fixed-step-clock.ts](../../../../../src/app/runtime/fixed-step-clock.ts)、[synthetic-event-bus.ts](../../../../engineering/source-structure.md#r3-合成-runtime)（已有，本项修改）。
 - 计划新增 `src/app/synthetic-runtime-lifecycle.test.ts`；已有 Runtime/clock/bus 测试只读回归。
 
 ## 验收标准
@@ -41,11 +41,11 @@ updated: 2026-10-02
 
 - `pnpm exec vitest run src/app/synthetic-runtime-lifecycle.test.ts src/app/fixed-step-clock.test.ts src/app/synthetic-event-bus.test.ts src/app/synthetic-runtime.test.ts src/app/synthetic-runtime-events.test.ts src/app/synthetic-runtime-fault.test.ts src/app/synthetic-runtime-recording.test.ts`。
 - 真实 Runtime/Core/录制对照，数值/ID/时间边界沿用 spec；错误注入只在测试创建边界，绝不新增公开编辑世界接口。
-- rubber-duck 后 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 仅覆盖上述三个修改文件和新测试。同步更新 [engineering](../../../../engineering/README.md#合成-runtime) 的新显式操作边界；无浏览器或原版验证。
+- rubber-duck 后 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 仅覆盖上述三个修改文件和新测试。同步更新 [engineering](../../../../engineering/source-structure.md#r10-菜单入口键位与工程文档) 的新显式操作边界；无浏览器或原版验证。
 
 ## 完成证据
 
-- 2026-10-02：[生命周期测试](../../../../../src/app/runtime/synthetic-runtime-lifecycle.test.ts) 7 项通过，完整 app 104 项通过；`pnpm check` typecheck/lint/23 文件 524 测试/build 成功。
+- 2026-10-02：[生命周期测试](../../../../engineering/source-structure.md#r3-合成-runtime) 7 项通过，完整 app 104 项通过；`pnpm check` typecheck/lint/23 文件 524 测试/build 成功。
 - AC-04 的原样时序及较早新锚精确通过；独立真实 Runtime 记录对照证明清意图不消耗世界/RNG/记录，下一命令 ID 连续。旧冻结输出不变，批次中四种操作均拒绝且不应用；故障后成功前缀可 replay。
 - rubber-duck 无实现缺陷。保留 P1-04 reentrant-call 的原消息/种类以免改既有错误契约；engineering 明确它也用于批次内生命周期调用。四角度 simplify 并行完成，无适用清理。
 - 文档影响：engineering 记录四种显式操作及权限/故障边界；guides 仍准确，无浏览器或原版流程变化。Core、冻结决定与阶段退出项未改。

@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "05"
 subtask: "08"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 08 — 完整会话契约最终对齐
@@ -32,7 +32,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - [spec](../spec.md)、[goal](../goal.md)与01–07文档。
-- 01–06 计划交付的 app/platform 文件及 [Core](../../../../../src/core/synthetic/synthetic-scene.ts)、[replay](../../../../../src/core/synthetic/synthetic-replay.ts)（只读核验）。
+- 01–06 计划交付的 app/platform 文件及 [Core](../../../../engineering/source-structure.md#r1-合成-core)、[replay](../../../../engineering/source-structure.md#r1-合成-core)（只读核验）。
 - [工程约定](../../../../engineering/README.md)、07 实际更新的操作说明、[阶段索引](../../tasks.md)与 [ADR-0014](../../../../decisions/ADR-0014-status-summary-only.md)。
 - 当前文件位置与独立目录迁移验证见[源码结构指南](../../../../engineering/source-structure.md#p1-06-前迁移记录)；历史计划路径按对应关系定位，不将目录检查计为本项完成。
 
@@ -56,7 +56,7 @@ updated: 2026-10-02
 - 2026-10-02：基线为 `8d02001`（相对 `b23683b` 仅新增 P1-06 规划文档与阶段索引链接，无代码、依赖或配置变化）。`pnpm check` 通过：三个 TypeScript 程序、ESLint、27 个测试文件 / 598 项 Vitest、Vite 生产构建。
 - **覆盖：** 01–07 的验收框全部已勾选并有证据。各 AC 的子任务来源与 goal 覆盖表一致：AC-01 {01,04}、AC-02 {04,05}、AC-03 {03,04,06}、AC-04 {02,04,06}、AC-05 {02,04,05,06}、AC-06 {05,06}、AC-07 {03,04,07}、AC-08 {02,04,05}、AC-09 {05,06,07}、AC-10 {01,05,06}、AC-11 {04,06}、AC-12 {06}、AC-13 {03,07}、AC-14 {01–07}。S-01 至 S-08 分别由上述实现与测试覆盖，没有以文档 accepted 代替证据。
 - **上游回归：** P1-04 最终提交 `7c576ff` 的 7 个 Runtime 测试文件迁到 `src/app/runtime/` 后，与原文件相比只有 import 与 `vi.mock` 路径行不同。Core 文件迁到 `determinism/`、`synthetic/` 后只改了导入路径；全仓测试无 `.skip`、`.only`、`.todo`。自 `7c576ff` 以来 package.json、锁文件、Vite/TS/ESLint 配置、App 与 main 均无变化。Core 中没有 React、Zustand、Three.js 或 DOM 引用。
-- **runId 上限：** [`#canAllocate`](../../../../../src/app/session/synthetic-session.ts) 在 `#nextId === Number.MAX_SAFE_INTEGER` 时抛出“runId exhausted”，因此最多签发 `MAX_SAFE_INTEGER − 1`。restart 先调用 `#canAllocate` 再 `#end`，耗尽时不会关闭旧运行；没有公开的身份修改入口或测试后门。
+- **runId 上限：** [`#canAllocate`](../../../../engineering/source-structure.md#r4-合成会话) 在 `#nextId === Number.MAX_SAFE_INTEGER` 时抛出“runId exhausted”，因此最多签发 `MAX_SAFE_INTEGER − 1`。restart 先调用 `#canAllocate` 再 `#end`，耗尽时不会关闭旧运行；没有公开的身份修改入口或测试后门。
 - **不变量：** 唯一请求与身份/代次隔离（04、06）、通知 FIFO 与唯一错误出口（05、06）、暂停折叠与重锚（02、04、06）、逆序且至多一次的清理和持续的 cleanupFailed（05、06）、故障成功前缀与 replay 一致（06），均有直接测试；Runtime.frame 失败时没有成功形状的帧报告或自动重试。
 - **浏览器：** 07 补测在外部 headed Chromium 154 中经 CDP 独立 context 取得真实 hidden。依次观测到：自动 paused/hidden，tick 稳定为 478、pending=0；隐藏期间 resume 被拒绝；回到 visible 后仍 paused；显式 resume 首帧 0 tick、状态对 478/478、alpha=0，随后推进且 maxPending=1；dispose 后三个监听各撤销一次。临时探针、context、浏览器与 Vite 均已清理。pagehide/pageshow 只证明绑定，不涉及 BFCache；StrictMode、HMR 与真实消费者没有被宣称通过。
 - **文档与隐私：** P1-05 文档与工程文档的本地链接只有 spec 中 `STATUS.md#运行骨架` 一处失效。它是[迁移记录](../../../../engineering/source-structure.md#验证)中保留的历史锚点，不修改已批准的 spec。仓库中没有 `local/` 文件、二进制或原版内容。

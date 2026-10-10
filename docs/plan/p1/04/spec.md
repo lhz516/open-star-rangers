@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P1
 task: "04"
-updated: 2026-10-02
+updated: 2026-10-10
 related: [ADR-0006, ADR-0012]
 ---
 
@@ -75,20 +75,20 @@ P1-02 已交付合成纯 Core，P1-03 已交付录制与 replay，但目前只�
 |---|---|
 | 计划新增 `src/app/` 下的 Runtime 模块 | 调度、命令队列、输入快照、Event Bus、Render State、录制接线和错误类型；文件划分由 goal 决定 |
 | 计划新增同目录 `*.test.ts` | 使用现有 Node 环境的 Vitest；由 [tsconfig.node.json](../../../../tsconfig.node.json) 做类型检查 |
-| [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts)、[synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts)（已有） | 只被消费。若需要复用命令或输入校验，可以增加 Core 内部导出，但不改变已批准的语义和既有测试 |
+| [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core)、[synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core)（已有） | 只被消费。若需要复用命令或输入校验，可以增加 Core 内部导出，但不改变已批准的语义和既有测试 |
 | [App.tsx](../../../../src/app/App.tsx)、[main.tsx](../../../../src/main.tsx)（已有） | 不接线，占位页面不变 |
 | [ESLint](../../../../eslint.config.js)、各 tsconfig、[工程边界回归](../../../../tools/engineering-boundaries.test.ts) | 复用，不放宽 |
 
 ## 当前实现与依据
 
-- **合成场景：** [createSyntheticScene](../../../../src/core/synthetic/synthetic-scene.ts) 返回 `SyntheticScene`，提供 `step`、`inspect`、`uiProjection`、`renderState`。
+- **合成场景：** [createSyntheticScene](../../../engineering/source-structure.md#r1-合成-core) 返回 `SyntheticScene`，提供 `step`、`inspect`、`uiProjection`、`renderState`。
   - 所有读取都是深冻结、与内部状态脱离的副本。
   - `TickInput`、`Command`、`MoveInput`、`DomainEvent`、`SyntheticRenderState`、`SyntheticUiProjection` 都定义在同一文件。
   - 非法输入抛 [CoreInputError](../../../../src/core/errors.ts)（带 `path`、`reason`），整个 tick 不执行。
   - 数值守卫也会在修改前抛错，例如位置积分会变为非有限数时。
   - 本场景的事件全部是命令结果，带 `tick` 与 `commandIndex`。
   - 配置：seed 为 uint32；`tickRateHz` 为有限正数且倒数有限，省略时为 60。
-- **录制与 replay：** [createSyntheticRecordingSession](../../../../src/core/synthetic/synthetic-replay.ts) 的行为与 `SyntheticScene` 相同，另可 `exportRecording()`。同文件还提供 `replaySyntheticRecord` 与 `compareSyntheticReplayResults`。
+- **录制与 replay：** [createSyntheticRecordingSession](../../../engineering/source-structure.md#r1-合成-core) 的行为与 `SyntheticScene` 相同，另可 `exportRecording()`。同文件还提供 `replaySyntheticRecord` 与 `compareSyntheticReplayResults`。
   - [P1-03 spec](../03/spec.md) 把“是否默认录制、如何把录制接入调度”留给 P1-04/05，并且不规定默认检查点间隔（其技术决定 5）。
   - 阶段索引原定本任务只依赖 P1-02；加入录制接线后，**本 spec 的实际前提增加了 P1-03**。两项前提都已完成，但不能因此称依赖未变。生成 goal 时须声明两项前提及其完成证据；阶段索引的依赖列需在允许修改导航的后续规划操作中同步，本轮 review 只改本 spec。
 - **应用壳：** [App](../../../../src/app/App.tsx) 仍是占位页面，[main](../../../../src/main.tsx) 启用 StrictMode，目前没有 Runtime。[package.json](../../../../package.json) 没有 Zustand、Three.js 或 Playwright，本任务也不需要它们。
@@ -237,7 +237,7 @@ P1-02 已交付合成纯 Core，P1-03 已交付录制与 replay，但目前只�
 
 ## 数据模型与契约
 
-Runtime 的类型与函数计划新增在 `src/app/`，具体文件由 goal 决定。以下标识符是供 P1-05 至 P1-10 使用的契约名称。Core 类型沿用 [synthetic-scene.ts](../../../../src/core/synthetic/synthetic-scene.ts) 与 [synthetic-replay.ts](../../../../src/core/synthetic/synthetic-replay.ts)，不重新定义。
+Runtime 的类型与函数计划新增在 `src/app/`，具体文件由 goal 决定。以下标识符是供 P1-05 至 P1-10 使用的契约名称。Core 类型沿用 [synthetic-scene.ts](../../../engineering/source-structure.md#r1-合成-core) 与 [synthetic-replay.ts](../../../engineering/source-structure.md#r1-合成-core)，不重新定义。
 
 | 数据/接口 | 形状、单位与约束 | 权威所有者 | 输入/输出边界 |
 |---|---|---|---|

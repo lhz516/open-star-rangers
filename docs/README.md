@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 文档索引与写作约定
@@ -24,10 +24,11 @@ updated: 2026-10-09
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
 | [engineering/source-structure.md](./engineering/source-structure.md) | 当前源码目录、职责边界、后续扩展落点与历史路径迁移；决定见 ADR-0015 | 参考类 | 中文 |
 | [engineering/modules/](./engineering/source-structure.md#模块说明) | 源码结构指南的模块分册：各模块已交付代码的当前 API 与契约要点 | 参考类 | 中文 |
-| [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 本项目当前构建的键位绑定、按键功能、焦点/拦截/清键规则与尚未实现的键盘能力；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
+| [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 本项目当前构建的按键（目前只有项目界面按键，原版键位由 P3-05 加入）、平台键盘源的通用规则、焦点/拦截/清键约定与尚未实现的键盘能力；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
+| [engineering/slice-gaps.md](./engineering/slice-gaps.md) | 当前构建中已在界面标注的切片缺省项（G ID）：呈现方式、页面位置与代码位置，以及 G-02 不计时与基准设置的差异；不是任务状态表，G 项的定义在 P3-01 spec | 参考类，随实现更新 | 中文 |
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |
-| [guides/local-import.md](./guides/local-import.md) | 本地生产预览、原版数据导入、缓存恢复与最小资源查看器操作；实机核对清单 | 参考类 | 中文 |
+| [guides/local-import.md](./guides/local-import.md) | 本地生产预览、原版数据导入、缓存恢复、开始任务的条件与流程、最小资源查看器操作；实机核对清单 | 参考类 | 中文 |
 | [guides/original-evidence.md](./guides/original-evidence.md) | agent 自行获取原版证据的途径与顺序、参考视频索引与取帧方法、证据限度，以及何时才请用户帮助 | 参考类 | 中文 |
 | [guides/runtime-measurement.md](./guides/runtime-measurement.md) | 用 `tools/baseline/` 在私有副本中运行原版并读取调试器暂停点的字段：测量方案、配方、操作者协议、读数的合格条件、计时与参考钟、原版文件保护、证据存放与本机限制 | 参考类 | 中文 |
 | [reviews/](./reviews/) | 阶段退出评审记录 | 只追加，写完冻结 | 中文 |

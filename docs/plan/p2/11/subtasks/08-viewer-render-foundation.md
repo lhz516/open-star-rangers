@@ -4,7 +4,7 @@ status: active
 phase: P2
 task: "11"
 subtask: "08"
-updated: 2026-10-08
+updated: 2026-10-10
 ---
 
 # 08 — 查看渲染基础与二维项
@@ -42,7 +42,7 @@ updated: 2026-10-08
 ## 关键文件与契约
 
 - 计划新增 `src/render/viewer/` 的模块与相邻测试；修改 [browser-webgl-surface.ts](../../../../../src/render/webgl/browser-webgl-surface.ts) 及其调用方。
-- 复用：[expand-image.ts](../../../../../src/content/graphics/expand-image.ts)、[compose-layout.ts](../../../../../src/content/graphics/compose-layout.ts)、[font-payload.ts](../../../../../src/content/graphics/font-payload.ts)、[glyph-lookup.ts](../../../../../src/content/graphics/glyph-lookup.ts)、[palette-payload.ts](../../../../../src/content/graphics/palette-payload.ts)；参照 [synthetic-renderer.ts](../../../../../src/render/synthetic/synthetic-renderer.ts) 的状态与释放模式。
+- 复用：[expand-image.ts](../../../../../src/content/graphics/expand-image.ts)、[compose-layout.ts](../../../../../src/content/graphics/compose-layout.ts)、[font-payload.ts](../../../../../src/content/graphics/font-payload.ts)、[glyph-lookup.ts](../../../../../src/content/graphics/glyph-lookup.ts)、[palette-payload.ts](../../../../../src/content/graphics/palette-payload.ts)；参照 [synthetic-renderer.ts](../../../../engineering/source-structure.md#r2-合成渲染) 的状态与释放模式。
 
 ## 验收标准
 
@@ -69,7 +69,7 @@ updated: 2026-10-08
   - 材质不做 tone mapping，以 alpha 测试处理二值透明；
   - 8 位字节原样进出，没有浮点量化，浮点颜色的量化归 09。
   - **与计划的差异：** 逐字节读回要求查看器画布的输出颜色空间为线性 sRGB；Three.js 默认为 sRGB，会对着色器输出再做编码。因此浏览器表面工厂除无障碍名称外，还接收输出颜色空间：[render-surface.ts](../../../../../src/render/scene/render-surface.ts) 的 `RenderSurfaceOptions`，与 `AppPorts.createSurface(container, options)`。
-  - 合成演示传 [SYNTHETIC_SURFACE](../../../../../src/render/synthetic/synthetic-appearance.ts)，即原名称与默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`。
+  - 合成演示传 [SYNTHETIC_SURFACE](../../../../engineering/source-structure.md#r2-合成渲染)，即原名称与默认的 sRGB 输出，行为不变；查看器传 `VIEWER_SURFACE`。
 - **Node 测试：** [viewer-pictures.test.ts](../../../../../src/render/viewer/viewer-pictures.test.ts)、[viewer-renderer.test.ts](../../../../../src/render/viewer/viewer-renderer.test.ts)，合成数据在 [viewer.test-support.ts](../../../../../src/render/viewer/viewer.test-support.ts)。
   - **AC-12：**
     - 上传的纹理数据与 `expandImage`、`composeLayout` 的结果逐字节相同，并共用其缓冲；颜色空间、过滤、mipmap、翻转与材质设置均已断言。

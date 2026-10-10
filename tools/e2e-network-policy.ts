@@ -290,8 +290,8 @@ export function findCanaries(canaries: readonly Canary[], haystack: string | Uin
 const HELD_OPERATION = '(?:commit|list|restore)';
 /**
  * Query parameters of the development test entry (e2e/entries/app.html, read by src/app/app-entry.test-support.tsx):
- * a Worker scenario or a P2-10 cache failure code as a name, the one value `capacity` and `audio` react to, and up to
- * three held cache operations.
+ * a Worker scenario or a P2-10 cache failure code as a name, the one value `capacity` and `audio` react to, up to
+ * three held cache operations, and up to 16 decimal mission seeds of at most 10 digits (P3-04).
  */
 export const TEST_ENTRY_QUERY: Readonly<Record<string, RegExp>> = Object.freeze({
   worker: /^[a-z0-9][a-z0-9-]{0,39}$/,
@@ -299,6 +299,7 @@ export const TEST_ENTRY_QUERY: Readonly<Record<string, RegExp>> = Object.freeze(
   capacity: /^insufficient$/,
   audio: /^unavailable$/,
   hold: new RegExp(`^${HELD_OPERATION}(?:,${HELD_OPERATION}){0,2}$`),
+  seeds: /^\d{1,10}(?:,\d{1,10}){0,15}$/,
 });
 
 /** Query parameters the Vite development server adds to project modules: HMR timestamps, asset imports, Worker entries. */

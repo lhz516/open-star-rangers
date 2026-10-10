@@ -5,7 +5,7 @@ import { licensePolicy } from './license-policy.ts';
 import { ComplianceError, compare, relativePath, sha256, type DependencyEvidence, type Fingerprint } from './report.ts';
 import { safeFile } from './scan.ts';
 
-export const ORIGINAL_RIGHTS_BOUNDARY = 'MIT covers only this project\'s own code, documentation and synthetic resources. It does not grant rights to original Star Rangers programs or game content. This independent synthetic engineering demo is not original gameplay or an officially authorized product. Original data must be obtained legally by its user. Local checks are not legal advice, a clean-room certification, or approval for public release.';
+export const ORIGINAL_RIGHTS_BOUNDARY = 'MIT covers only this project\'s own code, documentation and synthetic resources. It does not grant rights to original Star Rangers programs or game content. This independent project is not original gameplay or an officially authorized product. Original data must be obtained legally by its user. Local checks are not legal advice, a clean-room certification, or approval for public release.';
 
 interface LicenseText extends Fingerprint { readonly name: string; readonly text: string }
 const licensingName = (name: string): boolean => /(?:^|[-_.])(?:licen[cs]es?|copying|notices?|copyright)(?:[-_.]|$)/i.test(name);

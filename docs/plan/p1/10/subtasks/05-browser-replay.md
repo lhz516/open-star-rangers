@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "10"
 subtask: "05"
-updated: 2026-10-03
+updated: 2026-10-10
 ---
 
 # 05 — 同版本 Node 与浏览器 replay 回归
@@ -27,7 +27,7 @@ updated: 2026-10-03
 ## 关键文件与契约
 
 - 计划新增 e2e/browser-replay.spec.ts；记录与Node参考可留在该文件，不另存永远需要维护的参考JSON。
-- 只读[SyntheticReplayRecord/Result与函数](../../../../../src/core/synthetic/synthetic-replay.ts)、[Session既有4tick序列](../../../../../src/app/session/synthetic-session-replay.test.ts)、[快照hash](../../../../../src/core/synthetic/synthetic-snapshot.ts)。
+- 只读[SyntheticReplayRecord/Result与函数](../../../../engineering/source-structure.md#r1-合成-core)、[Session既有4tick序列](../../../../engineering/source-structure.md#r4-合成会话)、[快照hash](../../../../engineering/source-structure.md#r1-合成-core)。
 - 复用01的origin/浏览器准备；本项不依赖DOM/GPU资源探针。
 
 ## 验收标准

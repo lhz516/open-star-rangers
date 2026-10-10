@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "05"
 subtask: "04"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 04 — 会话控制与唯一调度
@@ -31,7 +31,7 @@ updated: 2026-10-02
 ## 关键文件与契约
 
 - 计划新增 `src/app/synthetic-session.ts`、`src/app/synthetic-session.test.ts`、`src/app/synthetic-session.test-support.ts`。
-- `src/app/session-host.ts`、`src/app/session-errors.ts`（01 计划交付）与 [Runtime](../../../../../src/app/runtime/synthetic-runtime.ts)（02 扩展后只读使用）。
+- `src/app/session-host.ts`、`src/app/session-errors.ts`（01 计划交付）与 [Runtime](../../../../engineering/source-structure.md#r3-合成-runtime)（02 扩展后只读使用）。
 - [engineering](../../../../engineering/README.md)（已有，本项记录 controller 与 run 的权限边界）。
 
 ## 验收标准
@@ -53,7 +53,7 @@ updated: 2026-10-02
 
 ## 完成证据
 
-- 2026-10-02：[控制/调度测试](../../../../../src/app/session/synthetic-session.test.ts) 26 项通过，加 Runtime 生命周期 7 项共 33；清理后重跑 `pnpm check`，typecheck/lint/24 文件 550 测试/build 全通过。
+- 2026-10-02：[控制/调度测试](../../../../engineering/source-structure.md#r4-合成会话) 26 项通过，加 Runtime 生命周期 7 项共 33；清理后重跑 `pnpm check`，typecheck/lint/24 文件 550 测试/build 全通过。
 - 精确 AC-04 时序与较早锚 -100 通过；暂停丢弃轴/排队命令，记录仅三 tick，paused 拒绝不耗 ID；0/复用/重复/迟到请求按对象身份隔离。独立实例与一次性六个配置 getter、旧 run 全部读写/注册失效均有断言；负向类型不暴露 frame/world/dispatch 或异步帧监听器。
 - rubber-duck 逐项追踪并通过；身份耗尽/cleanupFailed 守卫在 restart 的旧运行收尾之前，未设置生产测试后门。尚未交付的 05 FIFO/取消消费者/资源与 06 组合故障未计为完整 AC，通过后再补。
 - simplify 四角度并行：合并 Runtime 参数错误翻译，无帧订阅时不创建额外视图，flatten 生命周期分支；重验全通过。

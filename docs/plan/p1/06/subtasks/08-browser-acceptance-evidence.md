@@ -4,7 +4,7 @@ status: active
 phase: P1
 task: "06"
 subtask: "08"
-updated: 2026-10-02
+updated: 2026-10-10
 ---
 
 # 08 — 浏览器验收证据
@@ -84,7 +84,7 @@ updated: 2026-10-02
 | AC-12 面板 HMR | 临时修改面板标题后还原 | 热更新，owner 与计数不变 | Vite 日志为 hmr update SyntheticDevPanel.tsx，同一文档（标记保留），仍为 running、run 1，400 ms 内 tick 推进 26；三种监听各 1，pending 1，maxPending 1 | passed |
 | AC-12 桥接 HMR | 临时修改 synthetic-session-bridge.ts 注释后还原 | 热更新或重载后至多一组 | Vite 日志为“hmr update /src/app/App.tsx”（以 App 为边界热更新，不是整页重载）；同一文档，hook 代码未变，owner 保留 running、run 1；三种监听各 1，pending 1，maxPending 1 | passed |
 | AC-12 卸载/再挂载 | 临时让 App 不调用 owner hook，再还原 | 卸载后全部为 0；恢复后为 1 | 卸载后同一文档显示 Preparing，三种监听全部为 0，pending 0，cancel 计数 +1；恢复后新 owner 为 idle，监听各 1、pending 0；Start 后 run 1、pending 1、maxPending 1 | passed |
-| AC-12 旧回调不写入 | 探针 v2 保存被取消的 rAF 回调与被移除的生命周期监听；同一文档内依次经历 StrictMode 挂载、卸载与再挂载（再挂载也在 StrictMode 下）；新 owner 运行且 Add marker 被接受后，直接调用全部旧回调 | 当前 owner 的 DOM、计数与错误都不变 | 共重放 1 个被取消的帧回调，以及来自 3 个已销毁 owner 的 9 个旧监听（含 pagehide）。重放后当前 owner 仍为 running、run 1、pauseReason none、页面可见 yes（若旧 pagehide 进入活动会话会暂停），结果仍只有 accepted #1，tick 继续推进（21→45）；sessionError/actionError 为空，pending 1，三种监听各 1，无 pageerror。旧 owner 自身 store 在页面上不可见，其旧回调不写入由 [owner 测试](../../../../../src/app/composition/synthetic-demo-owner.test.ts)与[桥接测试](../../../../../src/ui/game/synthetic-session-bridge.test.ts)直接断言；桥接订阅组数量同样由 Node 测试计数 | passed |
+| AC-12 旧回调不写入 | 探针 v2 保存被取消的 rAF 回调与被移除的生命周期监听；同一文档内依次经历 StrictMode 挂载、卸载与再挂载（再挂载也在 StrictMode 下）；新 owner 运行且 Add marker 被接受后，直接调用全部旧回调 | 当前 owner 的 DOM、计数与错误都不变 | 共重放 1 个被取消的帧回调，以及来自 3 个已销毁 owner 的 9 个旧监听（含 pagehide）。重放后当前 owner 仍为 running、run 1、pauseReason none、页面可见 yes（若旧 pagehide 进入活动会话会暂停），结果仍只有 accepted #1，tick 继续推进（21→45）；sessionError/actionError 为空，pending 1，三种监听各 1，无 pageerror。旧 owner 自身 store 在页面上不可见，其旧回调不写入由 [owner 测试](../../../../engineering/source-structure.md#r5-演示所有者与槽位)与[桥接测试](../../../../engineering/source-structure.md#r6-合成-ui-层)直接断言；桥接订阅组数量同样由 Node 测试计数 | passed |
 | AC-13 键盘与内容 | 焦点移到 body 后 Tab 与 Enter；Tab 与 Space；再在 body 上按 p/a/r/Space/Enter/ArrowLeft/Alt；对禁用按钮调用 `click()`；读取页面全文 | 只有可用的原生按钮可聚焦并可操作；没有全局按键；禁用按钮不提交；有合成标记，无导入成功或 HUD | 第一次 Tab 落在 Start（idle 时唯一可用），Enter 后 running；Tab 落在 Pause，Space 后 paused；body 上的按键使 phase/tick/results 均不变；禁用的 Add marker 调用 `click()` 后 pending 仍为 None，也没有 actionError。页面全文含“P1 synthetic engineering demo — not original gameplay”与“No original game content is included.”，只有 Session/Projection/Pending/Recent results 区块，没有导入、成功导入、Canvas 或 HUD 内容 | passed |
 | AC-09 诊断 | 运行中让下一次 rAF 请求失败；Restart；再让 cancelAnimationFrame 失败后点 Pause；Exit；重载 | 显示 sessionError 与 faulted；清理失败时显示 actionError 与建议，start/restart 被阻断；重载恢复 | 请求失败：faulted，sessionError 为 scheduler 原因，可用 Restart/Exit。Restart：running，sessionError 清空。取消失败：faulted、cleanupFailed=yes，actionError 为 pause 失败（scheduler），显示重新加载建议，只有 Exit 可用。Exit：idle，仍显示建议，无可用按钮。重载：新 owner 为 idle，只有 Start 可用；全程无 pageerror | passed |
 
