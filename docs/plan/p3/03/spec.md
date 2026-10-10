@@ -5,17 +5,17 @@ phase: P3
 task: "03"
 updated: 2026-10-09
 related: [ADR-0007, ADR-0015, U-001, U-004, U-008, U-018, U-020, U-022, U-026, U-027, U-028, U-030]
-reviewed: sha256:c2eee1c95146
+reviewed: sha256:dc6bc0cbc39a
 ---
 
 # P3-03：规则数据与补充内容导入 — Spec
 
 ## 问题与目标
 
-[P2 退出评审](../../../reviews/P2-exit.md#4-对后续阶段的影响)交付的生产包有 165 个 Asset，覆盖切片的模型、驾驶舱与 HUD 图形、核心音效和任务的初始数据，内容身份见[候选与证据身份](../../../reviews/P2-exit.md#候选与证据身份)（切片定义版本 3，`ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`）。[P3-01 的数据闭包](../01/subtasks/10-data-closure.md#决定表)逐项列出了闭环在这个包之外实际载入的原版数据，其中处置为“导入”的有 18 项（#3、#15–#31）。缺少它们，规则与表现任务就没有原版数据可用：
+[P2 退出评审](../../../reviews/P2-exit.md#4-对后续阶段的影响)交付的生产包有 165 个 Asset，覆盖切片的模型、驾驶舱与 HUD 图形、核心音效和任务的初始数据，内容身份见[候选与证据身份](../../../reviews/P2-exit.md#候选与证据身份)（切片定义版本 3，`ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`）。[P3-01 的数据闭包](../01/subtasks/10-data-closure.md#决定表)逐项列出了闭环在这个包之外实际载入的原版数据，其中处置为“导入”的有 18 项（#3、#15–#31），P3-03/24 又追加了 1 项（#47）。缺少它们，规则与表现任务就没有原版数据可用：
 
 - 武器、机型、修理计时与 Warp 间隔的参数（P3-06、P3-07、P3-09、P3-10）；碎片参数（P3-07）；AI 程序数据（P3-08）；通讯菜单（P3-10）；任务事件与消息（P3-11）。
-- 场景灯光与屏幕闪光、受击闪烁、爆炸动画与飞行背景（P3-12）；右侧目标显示屏背景与被毁视角标签（P3-13）；按 ID 播放的音效与 HUD 音效（P3-14）。
+- 场景灯光与屏幕闪光、受击闪烁、爆炸动画与飞行背景（P3-12）；右侧目标显示屏背景、被毁视角标签，以及 HUD、地图与信息窗直接绘制的 EXE 文字（P3-13）；按 ID 播放的音效与 HUD 音效（P3-14）。
 - 其中 ANIM（图像编码 1）、CINF、COMM、AISTUFF 与 DEBRIS 的内容从未解析过（[U-001](../../../original/unknowns.md#数据与格式)）。
 
 本任务按数据闭包扩展 P2 的导入链与内容契约：
@@ -46,15 +46,15 @@ reviewed: sha256:c2eee1c95146
 - **S-02 任务事件：** 把 SCEN 3019 段 2 的事件触发（区间、消息文字、总结选择字节）与记录 +0x54 的引用并入 `mission/first-campaign`，取代 P2-09 对段 2 的“不转换”处理（[源字段处理](../../p2/09/spec.md#源字段处理)）。生成配对仍按失败关闭处理。`loadMission` 把事件触发原样透传到 `MissionSetup`，不解释、不调度。
 - **S-03 机型与武器数据：** 由 `CRAFT.NOB` TABL 4003 中切片所选的一对（槽 1、组 0）与 CINF 4037，生成 `data/craft-info`。
 - **S-04 碎片参数：** 由 `DEBRIS.NOB` TABL 4501 生成 `data/debris-parameters`。
-- **S-05 AI 数据：** 由 `AISTUFF.NOB` 中组 0 的闭包（AICO 6001 的组 0 三元组、TABL 6003 及其引用的 22 个 TABL 与 3 个 DFPG）与 EXE 内置表 `0x1762f8`，生成 `data/ai-programs`。
+- **S-05 AI 数据：** 由 `AISTUFF.NOB` 中组 0 的闭包（AICO 6001 中闭环读取的字段：组 0 三元组、头部字段及其所指数组；TABL 6003 及其引用的 22 个 TABL 与 3 个 DFPG）与 EXE 内置表 `0x1762f8`，生成 `data/ai-programs`。
 - **S-06 通讯菜单：** 由 `COMM.NOB` TABL 2003、2005、2007、2009、2013 生成 `data/comm-menus`。
 - **S-07 基地修理项目：** 由 TABL 10165 的 11 条记录生成 `data/base-repair-items`，只取 +0x6C 的子系统选择值。
-- **S-08 程序文字：** 由 7 条 EXE 字串生成 `data/flight-messages`，由 TABL 10399 第 8 项生成 `data/hud/view-labels`。
+- **S-08 程序文字：** 由 7 条 EXE 字串生成 `data/flight-messages`，由 TABL 10399 第 8 项生成 `data/hud/view-labels`，由闭包 #47 的 64 个 EXE 文字区域生成 `data/hud/text`。
 - **S-09 场景设置与受击闪烁：** RENS 10751 的头部 +0x00–+0x57 生成 `data/scene-settings`；TEX 11069 生成受击闪烁贴图。
 - **S-10 爆炸：** EXIC 10211 与 17 条 EXPL 生成爆炸表，17 条 ANIM 解码为逐帧图像与动画数据。
 - **S-11 星云背景：** NEBC 10661 与其 15 个 BITM。
 - **S-12 目标显示屏背景：** TEX 11089。
-- **S-13 音效：** 闭包 #27–#29 中尚未交付的 11 个 SND。
+- **S-13 音效：** 闭包 #27–#29 中尚未交付的 11 个 SND。sound payload 由 schema 1 递增为 2，增加按次数重复的循环方式，以表示 SND 10181 的 `flags` 8（播放 8 次）；音频控制器按该次数试听（见[声音 payload schema 2](#声音-payload-schema-2)）。
 - **S-14 切片定义与包装配：** 本节各项都按[数据模型与契约](#数据模型与契约)：
   - 切片定义版本 4，含新增必需角色与数量；
   - 各步骤的生产来源映射与 ID 链核验；新增 Asset 按所属组归入生成该组的既有步骤，具体分派由 goal 决定；
@@ -81,10 +81,10 @@ reviewed: sha256:c2eee1c95146
   - 基地内部的画面，含 TABL 10165 除 +0x6C 外的字段、图像与文字，以及 TEX 11091、CCKD 10097、MFDD 10475、BITM 10157–10163 等（G-05）；
   - TABL 11375 与 TABL 10399 第 0–7 项（G-08）。
 
-  处置为“不用”的 #42–#46 同样不导入。
+  处置为“不用”的 #42–#46 同样不导入；P3-03/24 追加的 #48–#54（LO 套件、F2 视角、打字作弊、波次、基地内部、菜单页与代码规则中的文字）也不导入。
 - 救援对象：[阶段索引](../tasks.md#p3-03-规则数据与补充内容导入)把它列为可能的补充资源，但数据闭包表明无需导入。逃生舱是已交付玩家模型第 1 列表的部件 0（闭包 #5，高概率）；引擎不生成救援船对象（#45，已确认），用户看到的救援船只在 `RESCUE.SMK` 中（G-02）。
 - 其他任务、其他难度组或槽位的数据：其他 CINF 条目、AISTUFF 组 1 与组 2 的表、波次模式。
-- 新的资源组、Asset kind 或内容 schema 变化。研究若证明确有必要，按[研究门槛](#研究门槛与阻塞)修订本 spec。
+- 新的资源组、Asset kind 或内容 schema 变化（sound payload 的 schema 递增属 S-13，不改变内容 schema）。研究若证明确有必要，按[研究门槛](#研究门槛与阻塞)修订本 spec。
 - 缓存迁移、清理与玩家缓存管理（P5）；其他导入格式（P5）。
 - 原版基准运行或需要用户操作的取证：本任务的事实来自静态分析与本地数据（见[技术决定](#技术决定) 11）。
 - 原版字节、数值、文字、图像、声音、反编译输出或截图进入仓库、文档或公开报告。
@@ -94,13 +94,15 @@ reviewed: sha256:c2eee1c95146
 | 模块 | 责任与影响 |
 |---|---|
 | [content/logic/](../../../../src/content/logic/) | 任务内容加入事件触发；新增 logic 组角色的类型、读取器与规范编码（计划新增文件）；logic payload schema 递增 |
-| `content/` 中按数据类别的模块（现有 [effects/](../../../../src/content/effects/)、[hud/](../../../../src/content/hud/) 或计划新增的子目录） | models 与 cockpit-hud-map 组新增 data 角色的类型与读取器；图像与声音沿用 [graphics/](../../../../src/content/graphics/) 与 [sound-payload.ts](../../../../src/content/sound-payload.ts) |
+| `content/` 中按数据类别的模块（现有 [effects/](../../../../src/content/effects/)、[hud/](../../../../src/content/hud/) 或计划新增的子目录） | models 与 cockpit-hud-map 组新增 data 角色（含 `hud-text`）的类型与读取器；图像沿用 [graphics/](../../../../src/content/graphics/) |
+| [sound-payload.ts](../../../../src/content/sound-payload.ts) | sound payload schema 1 → 2，增加按次数重复的循环方式 |
 | [slice-definition.ts](../../../../src/content/slice-definition.ts) | 定义版本 3 → 4，新增必需角色 |
 | [content-identity.ts](../../../../src/content/content-identity.ts)、[completeness.ts](../../../../src/content/completeness.ts) | 预计不改，只消费新定义 |
 | [original-data/formats/](../../../../src/original-data/formats/) | 新增 CINF、TABL 4003、DEBRIS、AISTUFF、COMM、ANIM、EXIC/EXPL 等解析器（计划新增）；[scen.ts](../../../../src/original-data/formats/scen.ts) 解析段 2；图像记录读取支持编码 1 |
 | [original-data/conversion/](../../../../src/original-data/conversion/) | 各步骤的转换、生产映射表、ID 链核验、份额与转换器组件 |
 | [workers/](../../../../src/workers/) | [import-job.ts](../../../../src/workers/import-job.ts) 的步骤输入、[production-package.ts](../../../../src/workers/production-package.ts)；阶段与协议预计不变 |
 | [platform/storage/](../../../../src/platform/storage/)、[app/resources/](../../../../src/app/resources/)、[app/viewer/](../../../../src/app/viewer/) | 预计不改代码；以回归测试确认旧缓存不恢复，以及查看器能列出新增的图像与声音 |
+| [platform/audio/](../../../../src/platform/audio/) | 音频控制器按 sound payload 的重复次数播放 |
 | [core/mission/](../../../../src/core/mission/) | `loadMission` 把事件触发原样透传到 `MissionSetup`；声明因继承 `MissionDeclaration` 而带上触发序号。不解释、不调度，既有测试与确定性保持 |
 | [tools/](../../../../tools/) | `nob-check.ts` 扩展；本地包核对 CLI（扩展 [logic-check.ts](../../../../tools/logic-check.ts) 或计划新增的 CLI） |
 | 合成测试支持 | [synthetic.test-support.ts](../../../../src/original-data/synthetic.test-support.ts)、[formats.test-support.ts](../../../../src/original-data/formats/formats.test-support.ts)、[synthetic-content.test-support.ts](../../../../src/content/synthetic-content.test-support.ts)、Worker 的合成导入与 [e2e/](../../../../e2e/) 夹具 |
@@ -117,13 +119,13 @@ reviewed: sha256:c2eee1c95146
   生产转换器版本由 [converter-version.ts](../../../../src/original-data/conversion/converter-version.ts) 按图形、逻辑、音频、模型四个组件拼成。[生产包配置](../../../../src/workers/production-package.ts)是主线程常量，由其测试从 `original-data` 推导核对。导入协议版本为 5，阶段依次为 `identify-source`、`convert-graphics`、`convert-logic`、`convert-audio`、`convert-models`（[import-protocol.ts](../../../../src/workers/import-protocol.ts)）。
 - **任务数据：** [scen.ts](../../../../src/original-data/formats/scen.ts) 对记录 +0x54 只核对两点：它指向段 2 的第一个元素，且该事件触发没有生成配对。段 2 不转换（[P2-09 源字段处理](../../p2/09/spec.md#源字段处理)，技术决定 11）。[logic-content.ts](../../../../src/content/logic/logic-content.ts) 的 logic payload schema 为 1，`RuleInputs` 按来源原样保留规则输入，是“语义未确认、源值保留”的先例；logic 组用规范 ASCII JSON 编码（[P2-09 技术决定 7](../../p2/09/spec.md#技术决定)）。[load-mission.ts](../../../../src/core/mission/load-mission.ts) 以展开方式复制声明，`ResolvedDeclaration` 继承 `MissionDeclaration` 的全部字段。
 - **来源：** 来源映射与白名单已覆盖本任务需要的来源：
-  - [source-mapping.ts](../../../../src/original-data/source-mapping.ts) 的 `SOURCE_ENTRY_TYPES` 中，data 已含 AICO、CINF、DFPG、EXIC、EXPL、NEBC、RENS 与 TABL，image 与 palette 已含 ANIM、BITM 与 TEX；
+  - [source-mapping.ts](../../../../src/original-data/source-mapping.ts) 的 `SOURCE_ENTRY_TYPES` 中，data 已含 AICO、CINF、DFPG、EXIC、EXPL、NEBC、RENS 与 TABL，image 与 palette 已含 ANIM、BITM 与 TEX。data 原先不含 ANIM，而 `data/explosion-animation/<nn>` 映射整个 ANIM 条目，所以 data 须加入 ANIM（执行中已由 17 加入，与 P2-07 加入 DIAG 相同）；
   - 区域 locator 只允许 `MAIN/SRANGERS.EXE`；
   - [生产白名单](../../../../src/original-data/source/source-catalog.ts)已含 `AISTUFF.NOB`、`COMM.NOB`、`CRAFT.NOB`、`DEBRIS.NOB`、`SR.NOB` 与 EXE。
 
   所以不需要新的 locator 形式或白名单文件。
 - **图形与效果：** image 与 palette payload（schema 1）、`nearestColourMap` 和图像上限 640×480 见[图形 payload](../../../engineering/modules/content.md#图形-payload)。图像记录读取只支持编码 0 与 2，编码 1 尚未解码（[textures §2](../../../original/formats/textures.md#encoding-1-animation-unconfirmed)）。`data/projectile-visuals` 只含 RENS 10751 的记录，不含头部（[效果 payload](../../../engineering/modules/content.md#效果-payload)）。
-- **音频：** sound payload 为 schema 1。音频阶段限值 `AUDIO_BUDGET_LIMITS` 的 Asset 数按 `SR.NOB` 全部 37 个 SND 设定。EXPL 引用的四个声音（10213–10219）已作为 `sound/explosion/blast-v1`–`v4` 交付（[audio](../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)）。
+- **音频：** sound payload 为 schema 1，循环方式只有 `none` 与 `whole`；生产 SND 规则只接受 `flags` 0（`whole`）与 1（`none`），其他值为 `unsupported-payload`。基准中 SND 10181 的 `flags` 为 8（P3-03/19 观测）；`flags` 的低字节原样传给 Miles 的循环次数，*n* 即播放 *n* 次（[audio](../../../original/formats/audio.md#playback-interpretation-p2-08)，代码已确认）。音频阶段限值 `AUDIO_BUDGET_LIMITS` 的 Asset 数按 `SR.NOB` 全部 37 个 SND 设定。EXPL 引用的四个声音（10213–10219）已作为 `sound/explosion/blast-v1`–`v4` 交付（[audio](../../../original/formats/audio.md#slice-sample-set-and-role-correspondences-p2-08)）。
 - **缓存：** 缓存键为来源类别、来源令牌与转换器版本。只有与生产配置一致的条目才提供恢复；读到的记录若内容 schema 或切片定义版本未知，为 `cache-incompatible`（[资源缓存](../../../engineering/modules/platform.md#资源缓存)）。
 - **查看器：** [viewer-items.ts](../../../../src/app/viewer/viewer-items.ts) 列出全部 image、palette、layout、font 与 model，data 只列出效果角色；声音面板列出 audio 组的全部 sound。新增的图像与声音无需改动即可查看与试听，新增的 data 不列出。
 - **本地工具：** [logic-check.ts](../../../../tools/logic-check.ts) 用生产作业核对 logic 组，[nob-check.ts](../../../../tools/nob-check.ts) 用导入共用的读取核对封包结构（[工具用法](../../../guides/tools.md)）。
@@ -132,7 +134,7 @@ reviewed: sha256:c2eee1c95146
   - [武器记录](../../../original/formats/executable.md#weapon-records-and-the-first-missions-shooters-p2-1230)：TABL 4003 为 18 行，每行 3 对 {条目 ID, 倍率}；CINF 含 10 条炮、9 条导弹、按种类位的 20 条机型记录以及弹体记录；载入后每条炮与导弹记录的首字被改写为数组序号；
   - [难度读取路径](../../../original/formats/scenario.md#difficulty-readers-p3-01) 1、3、5：倍率、组表与 AICO 三元组按难度组选择；
   - 段 2 的结构见 [scenario §2](../../../original/formats/scenario.md#2-scen-header-confirmed-on-all-52-entries)，区间 +0x10 的总结选择字节见 [executable](../../../original/formats/executable.md#mission-result-success-path-and-campaign-restart-p3-0104)；
-  - [hud §2–§3](../../../original/formats/hud.md#2-tabl-entries-in-srnob-contents-likely)：TABL 10165、10399、NEBC、EXIC；[audio](../../../original/formats/audio.md#sounds-played-by-id-and-hud-sounds-p3-0110)：按 ID 播放与 HUD 声音；[imfat §5](../../../original/formats/imfat.md#5-entry-types)：类型状态。
+  - [hud §2–§3](../../../original/formats/hud.md#2-tabl-entries-in-srnob-contents-likely)：TABL 10165、10399、NEBC、EXIC；[executable 的 HUD、地图与通讯文字](../../../original/formats/executable.md#hud-map-and-communications-text-from-the-exe-p3-0324)：闭包 #47 的区域、绘制处、条件与可达性；[audio](../../../original/formats/audio.md#sounds-played-by-id-and-hud-sounds-p3-0110)：按 ID 播放与 HUD 声音；[imfat §5](../../../original/formats/imfat.md#5-entry-types)：类型状态。
 
   字段含义多数未确认，ANIM 编码 1 未确认（U-001）。
 - **取证限制：** 本机 Computer Use 无法向 DOSBox-X 输入（[STATUS](../../../STATUS.md)、P3-01 goal 执行记录），需要游玩的原版运行只能由用户操作。闭包的覆盖限制写明没有基准运行核对实际请求的 ID。
@@ -149,9 +151,10 @@ reviewed: sha256:c2eee1c95146
 | 31 | `SR.NOB` TABL 10165 各记录 +0x6C | `data/base-repair-items` | logic | S-07 | P3-10 |
 | 30 | EXE 字串 `0x17106c`、`0x171094`、`0x170db8`、`0x170dc8`、`0x170ddc`、`0x170df8`、`0x170e14` | `data/flight-messages` | logic | S-08 | P3-11、P3-06、P3-05、P3-13 |
 | 25 | TABL 10399 第 8 项 | `data/hud/view-labels` | cockpit-hud-map | S-08 | P3-12、P3-13 |
+| 47 | EXE 对象 4 中 HUD、地图与信息窗直接绘制的 64 个文字区域 | `data/hud/text` | cockpit-hud-map | S-08 | P3-13（P3-09、P3-10 提供 Warp、地图与通讯状态） |
 | 17 | RENS 10751 头部 | `data/scene-settings` | models | S-09 | P3-12 |
-| 19 | TEX 11069 | `image/hit-shimmer`、`palette/hit-shimmer` | models | S-09 | P3-12 |
-| 20 | EXIC 10211、17 条 EXPL、17 条 ANIM | `data/explosions`、`data/explosion-animation/<nn>`、`image/explosion/<nn>/<mm>`，以及研究确定的帧调色板 | models | S-10 | P3-07、P3-12、P3-14 |
+| 19 | TEX 11069 | `image/hit-shimmer` | models | S-09 | P3-12 |
+| 20 | EXIC 10211、17 条 EXPL、17 条 ANIM | `data/explosions`、`data/explosion-animation/<nn>`、`image/explosion/<nn>/<mm>` | models | S-10 | P3-07、P3-12、P3-14 |
 | 21 | NEBC 10661 与 15 个 BITM | `data/nebula-backgrounds`、`image/nebula/<nn>` | models | S-11 | P3-12 |
 | 26 | TEX 11089 | `image/hud/target-display/background`、`palette/hud/target-display/background` | cockpit-hud-map | S-12 | P3-13 |
 | 27–29 | SND 11087、11381、10485、10463、10181、10055、10167、10169、10455、10457、10409 | `sound/event/*`（8）、`sound/hud/*`（3） | audio | S-13 | P3-14、P3-13 |
@@ -202,12 +205,13 @@ reviewed: sha256:c2eee1c95146
    - 以字节串保存，每个码位等于一个存储字节（1–255），不含结尾 NUL；
    - 换行与格式说明原样保留，不解释也不翻译；
    - 来源中必须在数据块或区域内以 NUL 结束；
+   - 交给格式化的文字（格式串）同样只按字节保存，导入时不展开；消费者只按 C `printf` 的语义处理 schema 列出的转换（`%d`、`%.0f`、`%s`、`%%`），实现与对照归 P3-13；
    - 诊断不回显文字。
 9. **图像：**
    - 沿用 P2-05 的 image 与 palette payload；
    - 每个 ANIM 帧都解码为完整、独立的图像：若原版是帧间增量编码，由转换器按已确认的规则重建完整帧；
    - 透明、行序、调色板绑定与显示方式（直接或最近色）都依绘制路径的证据确定，至少高概率，并链接 U 项。
-10. **声音：** 沿用 P2-08 的 SND 转换与 sound payload，循环方式按 P2-08 的既有规则。是否循环播放属于触发规则，归 P3-14。
+10. **声音：** 沿用 P2-08 的 SND 转换，sound payload 递增为 [schema 2](#声音-payload-schema-2)。生产 SND 规则在 P2-08 的 `flags` 0（`whole`）与 1（`none`）之外只增加 8（`repeat`，播放 8 次），这是切片读取的来源中出现的全部取值；其他值仍为 `unsupported-payload`。何时播放、是否停止属于触发规则，归 P3-14。
 
 ### 研究门槛与阻塞
 
@@ -245,21 +249,20 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | `data/flight-messages` | data / `flight-messages` | 7 条消息文字 | 无 | 7 个 EXE 区域 | `confirmed` |
 | `data/hud/view-labels` | data / `view-labels` | 子模式 8 的标签 | 无 | TABL 10399（子资源为第 8 项） | `confirmed` |
 | `data/scene-settings` | data / `scene-settings` | RENS 头部字段 | 无 | RENS 10751（子资源为头部） | `likely`，U-027、U-028 |
-| `image/hit-shimmer` | image / `hit-shimmer` | 受击闪烁贴图 | 自带调色板与最近色目标 `palette/flight/models` | TEX 11069 | `likely`，U-027 |
-| `palette/hit-shimmer` | palette / `texture-palette` | TEX 11069 的调色板 | 无 | TEX 11069 | 同上 |
+| `image/hit-shimmer` | image / `hit-shimmer` | 受击闪烁贴图：TEX 11069 不带调色板，存储值是扫带的阈值，按存储值原样保留 | `palette/flight/models`（直接绑定，只供查看） | TEX 11069 | `likely`，U-027 |
 | `data/explosions` | data / `explosion-table` | EXIC 的三张列表，每项为 {声音, 动画} | 全部动画 Asset；`sound/explosion/blast-v1`–`v4`（跨组外部要求） | EXIC 10211、17 条 EXPL | `confirmed` |
 | `data/explosion-animation/<nn>` | data / `explosion-animation` | 帧序与研究确定的逐帧或动画参数 | 各帧图像 | 对应的 ANIM | 由 S-01 确定，至少 `likely`，U-001 |
-| `image/explosion/<nn>/<mm>` | image / `explosion-frame` | 解码后的完整帧 | 帧调色板 | 对应的 ANIM（子资源为帧序号） | 同上 |
-| 帧调色板 | palette | 若帧自带调色板，为 `palette/explosion/<nn>`；若使用 DATA，复用 `palette/flight/models` | 无 | 由 S-01 确定 | 同上 |
+| `image/explosion/<nn>/<mm>` | image / `explosion-frame` | 解码后的完整帧，按 DATA 直接显示 | `palette/flight/models` | 对应的 ANIM（子资源为帧序号） | 同上 |
 | `data/nebula-backgrounds` | data / `nebula-backgrounds` | 15 个图像引用，按 NEBC 顺序 | 15 个星云图像 | NEBC 10661 | `confirmed` |
 | `image/nebula/<nn>` | image / `nebula-background` | 128×128 BITM，调色板为 DATA（高概率） | `palette/flight/models` | 对应的 BITM | `likely`，U-018 |
 | `image/hud/target-display/background` | image / `target-display` | 右侧目标显示屏的 3D 场景背景 | 自带调色板与最近色目标 `palette/flight/cockpit-hud-map` | TEX 11089 | `likely`，U-030 |
 | `palette/hud/target-display/background` | palette / `texture-palette` | TEX 11089 的调色板 | 无 | TEX 11089 | 同上 |
-| `sound/event/target-select`、`weapon-select`、`key-command`、`map-destination`、`warp-arrival`、`transponder-created`、`base-select-key`、`base-execute-key` | sound / `event-sound` | 依次为 SND 11087、11381、10485、10463、10181、10055、10167、10169 | 无 | 对应的 SND | `confirmed`；10055 在切片中是否可达为 U-004 |
+| `data/hud/text` | data / `hud-text` | 闭包 #47 的 64 条文字，键为固定集合 | 无 | 64 个 EXE 区域 | `confirmed`（来源与用途由代码确认；逐条的可达性与个别条件链接 U-030、U-026） |
+| `sound/event/target-select`、`weapon-select`、`key-command`、`map-destination`、`warp-arrival`、`transponder-created`、`base-select-key`、`base-execute-key` | sound / `event-sound` | 依次为 SND 11087、11381、10485、10463、10181、10055、10167、10169；`warp-arrival` 的循环方式为 `repeat`，播放 8 次 | 无 | 对应的 SND | `confirmed`；10055 在切片中是否可达为 U-004 |
 | `sound/hud/overlay-loop`、`overlay-pulse`、`instrument-9-loop` | sound / `hud-sound` | 依次为 SND 10455、10457、10409 | 无 | 对应的 SND | `likely`，U-004 |
 
 - 映射置信度表示来源与用途的结论，不表示字段语义；只有 `unconfirmed` 阻止完整性（[P2-01](../../p2/01/spec.md#清单来源与版本)）。研究若得出 `unconfirmed`，按研究门槛处理。
-- 研究若确认 TEX 11069、TEX 11089 或星云图像的显示方式与上表不同，以研究结论为准，并在证据中记录；只有改变 Asset 或角色时才触发研究门槛。
+- 研究若确认 TEX 11069、TEX 11089 或星云图像的显示方式与上表不同，以研究结论为准，并在证据中记录；只有改变 Asset 或角色时才触发研究门槛。受击闪烁贴图与爆炸帧的调色板已按 S-01 的结论写入上表：两者都不带调色板，像素按存储值保留并直接绑定 `palette/flight/models`（[TEX 11069](../../../original/formats/textures.md#tex-11069-hit-shimmer-band-map-confirmed)、[ANIM](../../../original/formats/textures.md#6-anim-explosion-animations-confirmed)），因此不产生 `palette/hit-shimmer` 与 `palette/explosion/<nn>`。
 
 ### 切片定义版本 4
 
@@ -272,10 +275,11 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | `hit-shimmer` | models | image | 恰为 1 |
 | `target-display` | cockpit-hud-map | image | 恰为 1 |
 | `view-labels` | cockpit-hud-map | data | 恰为 1 |
+| `hud-text` | cockpit-hud-map | data | 恰为 1 |
 | `event-sound` | audio | sound | 恰为 8 |
 | `hud-sound` | audio | sound | 恰为 3 |
 
-`explosion-animation`、`explosion-frame`、`nebula-background` 与帧调色板不是必需角色：它们是上表必需 Asset 的依赖，完整性验证通过依赖闭包要求它们存在。这次修订由本 spec 承担，P2 已批准的 spec 与评审作为历史记录不改写（[P3 阶段索引](../tasks.md#p3-03-规则数据与补充内容导入)）。
+`explosion-animation`、`explosion-frame` 与 `nebula-background` 不是必需角色：它们是上表必需 Asset 的依赖，完整性验证通过依赖闭包要求它们存在。这次修订由本 spec 承担，P2 已批准的 spec 与评审作为历史记录不改写（[P3 阶段索引](../tasks.md#p3-03-规则数据与补充内容导入)）。
 
 ### 规范 payload
 
@@ -287,18 +291,19 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 - **结构限值：** 在读取元素之前检查。
 - **版本：** 每个角色族有自己的 payload schema 版本，初始为 1。只有 logic 组共用 `LOGIC_PAYLOAD_SCHEMA_VERSION`，因任务内容形状变化而由 1 递增为 2。
 
-图像、调色板与声音沿用既有的二进制 payload，不新增 schema。下表的字段名只是契约示意，实际字段名由 goal 按字段处理规则确定，写入类型注释与模块分册。
+图像与调色板沿用既有的二进制 payload，不新增 schema；声音沿用二进制 payload，schema 由 1 递增为 2，见[声音 payload schema 2](#声音-payload-schema-2)。下表的字段名只是契约示意，实际字段名由 goal 按字段处理规则确定，写入类型注释与模块分册。
 
 | 角色 | 规范形状 | 约束与边界 |
 |---|---|---|
 | `mission`（扩展） | `eventTriggers`：段 2 事件触发的数组，按段内顺序；每个触发含 `ranges`，每个区间含研究确定的类型化字段、该区间引用的消息（字节串，数量与形状由 S-01 按区间 +8 引用的消息单元确定，可为空）与总结选择值。声明新增 `eventTrigger`（触发序号或 null） | 段 2 的每个元素都必须是被至少一条记录引用的事件触发，否则为 `unsupported-payload`。生成配对的指针与数量必须为零，否则为 `unsupported-payload`。三个运行时计数不转换：研究确认载入或任务开始时会重置它们，则不检查存储值；否则存储值必须为零，非零为 `unsupported-payload`。僚机选项的 `eventTrigger` 必须为 null。`RuleInputs` 与其他既有字段不变 |
 | `craft-info` | `hitDamageScale`：TABL 4003 所选一对的倍率，用途已确认，见难度读取路径 1；`guns`、`missiles`：按源序号排列的记录，载入时改写的首字由位置表示；`craft`：恰 20 项，下标为种类位；`missileBodies` | 记录内的字段按字段处理规则类型化；记录之间的引用转为序号。所选 CINF 的 ID 只用于核验映射 |
 | `debris-parameters` | `byCraftType`：恰 20 项，每项是该种类位的 96 字节记录数组；嵌套的浮点数组（指针 +0x38、数量 +0x3C）转为数组 | 载入时写入 +0x0C 的归一化取反副本属算术派生，+0x0C 的存储值不转换，由 P3-07 按格式文档实现。载入时对嵌套数组的调整，按 S-01 确定的性质适用字段处理规则 5 |
-| `ai-programs` | `groupTriple`：AICO 6001 组 0 的三个值；`programs`：TABL 6003 的 0x54 字节记录，到首字为零为止；`entries`：组 0 闭包的 25 个条目的规范结构；`builtInPrograms`：EXE 中 10 条 0x54 字节的记录。ID 链按 [executable 的 AISTUFF 闭包](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)转为 `entries` 的序号：记录 +0x1C 所指的条目，该条目 +0x38 所指的条目，以及载入器读取的 6 个 ID 列表（+0x3C/+0x40 至 +0x64/+0x68）；各字段所在结构以 S-01 为准 | `entries` 的集合恰为组 0 闭包的 25 条。代码指针（例如内置记录 +0x18 的处理程序）按字段处理规则 4 保留为不透明标识。程序如何解释归 P3-08 |
+| `ai-programs` | `groupTriple`：AICO 6001 组 0 的三个值；AICO 6001 中闭环读取的其余字段：头部 +0x08–+0x48 与 +0x18 所指的 5 × 16 字节 `f32` 数组（[ai §2](../../../original/formats/ai.md)）；`programs`：TABL 6003 的 0x54 字节记录，到首字为零为止；`entries`：组 0 闭包的 25 个条目的规范结构；`builtInPrograms`：EXE 中 10 条 0x54 字节的记录。ID 链按 [executable 的 AISTUFF 闭包](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)转为 `entries` 的序号：记录 +0x1C 所指的条目，该条目 +0x38 所指的条目，以及载入器读取的 6 个 ID 列表（+0x3C/+0x40 至 +0x64/+0x68）；各字段所在结构以 S-01 为准 | `entries` 的集合恰为组 0 闭包的 25 条。代码指针（例如内置记录 +0x18 的处理程序）按字段处理规则 4 保留为不透明标识。程序如何解释归 P3-08 |
 | `comm-menus` | 5 张菜单，键名按已确认的选择条件命名（目标种类 2、`0x68000` 种类并通过门禁、其余、命令处理程序的两张）；每张菜单的项目含文字与研究确定的类型化字段 | 菜单的选择与状态机归 P3-10；头像相关的 TABL 2001、2011 不导入（G-03） |
 | `base-repair-items` | `subsystemSelectors`：11 个值，按记录顺序 | 只取 +0x6C；值域按[闭包 #31](../01/subtasks/10-data-closure.md#决定表) 与格式文档记录的值域核对，超出为 `unsupported-payload` |
 | `flight-messages` | 7 条字节串，键名按已确认的发送者与触发命名（完成、信标、速度辅助开关两条、摇杆灵敏度三条） | 显示时机与位置归 P3-11 与 P3-13；摇杆键是否接入由 P3-05 决定 |
 | `view-labels` | `labels`：`{ subMode: 8, text }` 一项 | 第 0–7 项属 G-08，第 9–12 项的用途未确认，都不导入 |
+| `hud-text` | `entries`：固定键集，每键一条字节串。键按仪表与用途用中性名，例如目标显示屏的“无目标”、地图中种类 0x01 的种类词与种类 0x80 的计数行；键集恰为闭包 #47 的 64 个区域 | 键集、每个键是否交给格式化以及预期的转换序列都是 schema 中的固定常量，由转换器与读取器共用。转换器核对来源与常量不符时为 `source` 层的 `unsupported-payload`；读取器核对 payload 不符时报内容层错误。哪些条目在本任务中可达、何时绘制归 P3-13 |
 | `scene-settings` | 两组灯光颜色（各 3 个 `f32`）、+0x18 字节、+0x1C–+0x24 的三个 `f32`、三组屏幕闪光参数，以及研究确定的其余头部字段 | 灯光类型与距离阈值等含义只按 executable 的置信度命名 |
 | `explosion-table` | `lists`：恰 3 张，按 EXIC 顺序；每项为 `{ sound, animation }` 两个 Asset 引用，以及 EXPL 中研究确定的其他字段 | 由 P3-07 决定的选择不在导入时做 |
 | `explosion-animation` | `frames`：图像引用，按帧序；另含研究确定的逐帧或动画参数（例如位置偏移、时长） | 帧数 ≥ 1 |
@@ -306,11 +311,27 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 
 `MissionSetup` 新增 `eventTriggers`，内容与任务 payload 中的相同，原样透传、冻结并与输入隔离；Core 不解释也不调度它们。
 
+### 声音 payload schema 2
+
+`SOUND_PAYLOAD_SCHEMA_VERSION` 由 1 递增为 2。头部仍为 16 字节，其余字段、编码、取值范围与浮点映射都不变，只改两个字节的含义：
+
+| 头部偏移 | schema 1 | schema 2 |
+|---|---|---|
+| 14：循环方式 | 0 为 `none`（播放一次），1 为 `whole`（循环到被停止） | 另加 2 为 `repeat`（共播放 *n* 次） |
+| 15 | 保留，须为 0 | 播放次数 *n*：`repeat` 时为 2–255；`none` 与 `whole` 时须为 0 |
+
+- **既有声音：** 18 个既有声音 Asset 的 payload 字节不变（循环码 0 或 1，偏移 15 为 0），描述符中的 schema 版本随之为 2。
+- **读取：** 读取器只接受 schema 2。循环码未知、`repeat` 的次数小于 2、`none` 或 `whole` 的偏移 15 非零，都为 `invalid-sound-payload`。
+- **转换：** 按字段处理规则 10，`flags` 8 转为 `repeat`、次数 8；声道数与采样编码沿用 P2-08 的既有规则。
+- **播放：** 音频控制器对 `repeat` 共播放 *n* 次后自然结束，可像 `none` 一样被提前停止；`none` 与 `whole` 的行为不变。查看器的声音面板不做专用改动。
+- **边界：** 播放次数是来源值，不是触发规则；何时触发、是否提前停止归 P3-14。
+
 ### 来源映射与核验
 
 - 每个新增 Asset 在所属步骤的生产映射表中有一条映射，沿用 P2-01 的 locator：
   - 部件为封包条目，按切片配置选择时带子资源；
   - EXE 区域只用于 data，排在条目部件之后，每个区域恰好覆盖字串及其 NUL，或覆盖完整的表。
+  - `data/hud/text` 的 64 个区域都是字串区域，归生成 cockpit-hud-map 组的图形步骤；该步骤已读取 EXE 区域 `0x171e58` 与 `0x175ed8`。
 - 映射核验与转换共用步骤内读取（P2-05）：每个条目在其步骤内只物理读取一次；读取字节之前按目录项检查条目大小。
 - 不带子资源的部件由 `verifySourceMappings` 核验。带子资源的部件（所选的槽与组、AICO 的组、RENS 头部、TABL 10165 的选择字段、TABL 10399 第 8 项、ANIM 帧等）只有在转换器从同一次读取中解析出该子资源后，才升为 `verified`，与 P2-09 的 SCCT 子资源相同；子资源的写法沿用现有转换器的约定。
 - 由数据给出的 ID 链在同一次读取中核对，不一致为 `subresource-mismatch`，结果绑定已识别指纹的来源状态：
@@ -328,7 +349,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 
   读取器与转换器共用同一组常量。
 - **限值的取值：**
-  - 格式规定的固定数目是格式规则，不是可调上限：20 个种类位、TABL 4003 的 18 × 3、EXIC 的 3 张列表；
+  - 格式规定的固定数目是格式规则，不是可调上限：20 个种类位、TABL 4003 的 18 × 3、EXIC 的 3 张列表、`hud-text` 的固定键集；
   - 其余可调上限取基准观测值的 2 倍，再向上取整到 2 的幂；不得超过既有读取器的绝对上限（见研究门槛 5），也不低于既有限值。观测值来自本切片实际读取的来源；对 ANIM，观测范围是全部 186 帧。
 - **预算份额：** 各转换步骤因新增 Asset 增加的份额，按同一规则由新增 Asset 的实际用量推导，维度为 P2-01 的十二个预算维度。`PRODUCTION_PACKAGE.limits` 等于各份额与音频限值之和。新增声音先计入既有的 `AUDIO_BUDGET_LIMITS`，观测值超出时按同一规则提高。
 - **计量时机与反馈：** 先计量后分配：用量恰等于上限时通过，超出 1 时为 `budget-exceeded`；被拒绝的扣除不改变用量（沿用 P2-05）。
@@ -337,7 +358,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 ### 错误
 
 - **`source` 层：** 复用 `invalid-payload`、`unsupported-payload`、`subresource-mismatch`、`limit-exceeded` 与 `budget-exceeded`，为新结构追加限值名。图像编码 1 只在 ANIM 帧中受支持，其他条目中出现时仍为 `unsupported-encoding`。位置为 `archive:/路径#ID` 或区域 locator，后接只含结构名与下标的路径；不回显字节、数值、名称或文字。
-- **内容层：** 新增 data payload 复用 logic payload 的 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`，或按数据类别追加同构的错误码，由 goal 决定。错误码集合封闭，诊断只含稳定 code 与结构路径。
+- **内容层：** 新增 data payload（含 `hud-text`）复用 logic payload 的 `invalid-logic-payload`、`non-canonical-payload` 与 `logic-reference-mismatch`，或按数据类别追加同构的错误码，由 goal 决定。sound payload schema 2 沿用 `invalid-sound-payload`。错误码集合封闭，诊断只含稳定 code 与结构路径。
 - **Core：** 前提失败仍为 `CoreInputError`，内容层错误原样传递。
 - **错误层与宿主映射：** 不变。
 
@@ -350,6 +371,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 ### 持久化与兼容
 
 - IndexedDB 的数据库版本、记录格式与缓存键结构都不变。
+- 旧包中的声音为 sound payload schema 1，随旧转换器版本不再恢复；读取器与音频控制器只接受 schema 2。
 - 旧转换器版本的条目与当前生产配置不一致，因此不提供恢复，用户须重新导入。即使读到这样的记录，切片定义版本 3 也会报 `cache-incompatible`；恢复时仍由 `validatePackage` 与读取器重新校验。
 - 旧记录保留在浏览器中，不迁移也不清理（P5）。包变大后存储需求增加，建议性的空间预检照常工作；[本地导入指南](../../../guides/local-import.md#缓存与重新导入)补充重新导入的说明。
 - 不涉及玩家存档；规范数据与 `MissionSetup` 都不是存档格式。
@@ -366,7 +388,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 6. **结构化数据用规范 ASCII JSON：** 与 logic 组相同，可审阅、确定，现有的严格读取设施可以复用；像素与采样仍用二进制。
 7. **以必需角色执行数据闭包：** 版本 4 为每个闭包根 Asset 规定确切数量，缺失时完整性验证即判为不完整，而不是推迟到规则任务运行时才发现。
 8. **限值由观测值推导：** 可调上限须包容基准观测值，而观测值要到 S-01 研究时才能取得，因此在 spec 中不猜数值，而是批准推导规则：基准观测值的 2 倍，向上取整到 2 的幂，并受既有绝对上限约束。超出绝对上限时触发研究门槛。
-9. **查看器与任务诊断不做专用改动：** 新增的图像与声音已经出现在通用列表中；data 的数量、字节与哈希由本地 CLI 报告。专用显示归 P4。
+9. **查看器与任务诊断不做专用改动：** 新增的图像与声音已经出现在通用列表中；data 的数量、字节与哈希由本地 CLI 报告。专用显示归 P4。重复播放只改音频控制器（技术决定 15），查看器不改。
 10. **Core 只透传事件触发：** `MissionSetup` 加入原样透传的 `eventTriggers`，使声明中的触发序号在载入结果内可以解析；Core 不解释也不调度它们，其他新数据经内容读取器提供给 P3-02 与规则任务。这样不与并行的 P3-02 同时设计 Core 契约。
 11. **取证方式：** 结构由只读 Ghidra 与本地数据确定。ANIM 的解码规则以代码为准（已确认），再辅以两项证据：
     - 全部 186 帧都按该规则恰好用尽数据；
@@ -375,6 +397,12 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
     本任务不需要基准运行或用户操作；确需运行时按研究门槛处理。
 12. **EXPL 声音复用已交付的 Asset：** 四个爆炸音效已作为 `sound/explosion/blast-v1`–`v4` 交付，同一来源采样只形成一个 Asset（P2-08），因此爆炸表跨组引用它们。
 13. **本地核对分两层：** 本地 CLI 用同一作业模块，证明 Worker 的产出可用；独立读取不共用项目的格式解析与转换，证明产出与格式文档一致。
+14. **HUD 直接绘制的 EXE 文字作为 cockpit-hud-map 组的 data 角色导入（2026-10-09 修订，用户选择）：** P3-03/24 发现 HUD、地图与信息窗的代码直接绘制对象 4 的 64 条文字（闭包 #47），而 P3-13 要求文字来自 Core 与导入内容。用户在三个方案中选择新增角色 `hud-text`，导入全部 64 条，而不是只取本任务可达的 51 条：哪些种类与条件会出现属于规则研究，与字段处理规则 7 的理由相同。另两个方案是并入 logic 组的 `flight-messages`（会改变已计划的 payload 形状），或另立 G 缺省（与 P3-13 及 G 清单的限制冲突）。payload 只存字节串，转换序列作为 schema 常量，不在导入时解释格式。
+15. **sound payload 增加按次数重复（2026-10-09 修订，用户选择）：** P3-03/19 在基准上发现 SND 10181（`warp-arrival`）的 `flags` 为 8；按已确认的代码，原版播放 8 次。用户选择递增 sound payload 的 schema 来保真表示，而不是从切片中去掉该声音（推迟到 P3-14），也不是近似为播放一次。次数放在原保留字节中，所以既有声音的 payload 字节不变；音频控制器按次数播放，试听与原版一致。
+16. **执行中确认的表示（2026-10-09 修订）：** 下列判断原由协调者在执行中作出，随本次修订写入契约：
+    - `ai-programs` 导入 AICO 6001 中闭环读取的全部字段（组 0 三元组、头部 +0x08–+0x48 与其数组），依据是闭包 #22 整条目导入与字段处理规则 7；
+    - 受击闪烁贴图与爆炸帧都不带调色板，像素按存储值保留并直接绑定 `palette/flight/models`，不产生 `palette/hit-shimmer` 与 `palette/explosion/<nn>`；
+    - `SOURCE_ENTRY_TYPES.data` 加入 ANIM，使 `data/explosion-animation/<nn>` 能映射整个 ANIM 条目。
 
 ## 验收标准
 
@@ -384,22 +412,22 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | AC-02 | 任务事件（S-02）：<br>- **正向：** 合成 SCEN 的段 2 转换正确。样本覆盖多个区间、有无消息、非零与零的总结选择值、非对齐指针、无序重定位，以及多条记录引用同一触发；<br>- **拒绝：** 每种情况都返回预期的 code 与位置。包括生成配对非空、须为零的运行时计数非零、段 2 元素未被引用、+0x54 不指向元素起点、文字缺少 NUL 或超长、区间数超限；<br>- **Core：** `loadMission` 透传事件触发与声明的触发序号，结果冻结、与输入隔离、两次载入深度相等；既有 Core 测试通过 | Node 表驱动测试 |
 | AC-03 | 机型与武器（S-03）：<br>- **选择：** 合成 TABL 4003 的多行多列按候选选出一对；所选 CINF ID 与映射不符时为 `subresource-mismatch`，槽或组越界时同样拒绝；<br>- **转换：** CINF 的各记录数组按研究结构转换；序号回写由位置表示；种类位数组恰为 20 项；<br>- **字段：** 有符号负值、无符号最高位与 `f32` 都按来源保留；只在基准中为零的位置出现非零时为 `unsupported-payload` | Node 测试 |
 | AC-04 | 碎片参数（S-04）：20 个 {指针, 数量} 与 96 字节记录，以及嵌套浮点数组转换正确；+0x0C 的存储值不转换；越界与超限按 code 拒绝 | Node 测试 |
-| AC-05 | AI 数据（S-05）：<br>- **正向：** 程序表到首字为零为止；+0x1C 所指条目、该条目 +0x38 所指条目与 6 个 ID 列表按研究确定的结构转为 `entries` 序号；代码指针为不透明标识；只取 AICO 组 0 的三元组；<br>- **ID 链：** `entries` 的集合恰为映射部件，多出或缺少都为 `subresource-mismatch`；<br>- **拒绝：** 各结构的越界与超限按 code 拒绝 | Node 测试 |
-| AC-06 | 通讯菜单、基地修理项目、程序文字与视角标签（S-06 至 S-08）：<br>- **正向：** 5 张菜单、11 个选择值、7 条消息与 1 个标签转换正确，文字为字节串，保留 128–255 的字节；<br>- **拒绝：** 文字缺少 NUL、超长、区域越界，以及选择值超出记录的值域，都按 code 拒绝；<br>- **范围：** TABL 10165 与 10399 中不属于本任务的部分不出现在 payload 中 | Node 测试 |
-| AC-07 | 场景设置、受击闪烁与目标显示屏背景（S-09、S-12）：RENS 头部各字段按类型转换，`data/projectile-visuals` 不变；两个 TEX 生成 image 与 palette，显示方式与依赖符合 Asset 表或研究结论 | Node 测试 |
+| AC-05 | AI 数据（S-05）：<br>- **正向：** 程序表到首字为零为止；+0x1C 所指条目、该条目 +0x38 所指条目与 6 个 ID 列表按研究确定的结构转为 `entries` 序号；代码指针为不透明标识；AICO 只取组 0 的三元组，以及闭环读取的头部字段与其数组；<br>- **ID 链：** `entries` 的集合恰为映射部件，多出或缺少都为 `subresource-mismatch`；<br>- **拒绝：** 各结构的越界与超限按 code 拒绝 | Node 测试 |
+| AC-06 | 通讯菜单、基地修理项目、程序文字、视角标签与 HUD 文字（S-06 至 S-08）：<br>- **正向：** 5 张菜单、11 个选择值、7 条消息、1 个标签与 64 条 HUD 文字转换正确，文字为字节串，保留 128–255 的字节；HUD 文字的键集恰为 schema 的固定集合；<br>- **拒绝：** 文字缺少 NUL、超长、区域越界，以及选择值超出记录的值域，都按 code 拒绝；HUD 文字的转换序列或是否交给格式化与 schema 常量不符时为 `unsupported-payload`；<br>- **范围：** TABL 10165 与 10399 中不属于本任务的部分不出现在 payload 中 | Node 测试 |
+| AC-07 | 场景设置、受击闪烁与目标显示屏背景（S-09、S-12）：RENS 头部各字段按类型转换，`data/projectile-visuals` 不变；TEX 11069 只生成 image，存储值原样保留并绑定 `palette/flight/models`；TEX 11089 生成 image 与 palette；显示方式与依赖符合 Asset 表 | Node 测试 |
 | AC-08 | 爆炸（S-10）：<br>- **解码：** 代码生成的合成 ANIM 按文档化的编码 1 规则编码，经转换器解码为逐帧完整图像，与生成时的帧逐像素相等；<br>- **样本覆盖：** 编码规则中的每个分支、多帧，以及帧间依赖（若规则有）；<br>- **拒绝：** 截断、越界与剩余字节为 `invalid-payload`，未覆盖的分支为 `unsupported-payload`；<br>- **引用：** 爆炸表的引用与依赖正确，ID 链不一致时为 `subresource-mismatch` | Node 测试 |
 | AC-09 | 星云背景（S-11）：NEBC 的 15 个引用按顺序指向转换后的 BITM 图像，绑定 `palette/flight/models`；列表与映射不一致时为 `subresource-mismatch` | Node 测试 |
-| AC-10 | 音效（S-13）：11 个 SND 经 P2-08 的转换生成 sound Asset，ID 与角色符合 Asset 表；同一 SND 不属于两个 Asset；既有 18 个声音 Asset 的 ID、角色与 payload 字节不变 | Node 测试 |
-| AC-11 | 每个新增 payload 族的读取器都满足以下要求：<br>- **正向：** 往返后逐字节相同；<br>- **拒绝：** 缺少字段、未知字段、类型错误、非规范编码（含空白、字段顺序与 -0）、非有限数、超限，以及引用与依赖不一致，都按 code 拒绝；<br>- **隔离：** 结果冻结，调用者修改输入或先前结果不影响后续读取 | Node 单元测试 |
+| AC-10 | 音效（S-13）：<br>- **转换：** 11 个 SND 经 P2-08 的转换生成 sound Asset，ID 与角色符合 Asset 表；同一 SND 不属于两个 Asset；<br>- **重复：** `flags` 8 转为 `repeat`、次数 8；`flags` 为 0、1、8 以外的值仍为 `unsupported-payload`；<br>- **既有声音：** 18 个既有声音 Asset 的 ID、角色与 payload 字节不变；<br>- **播放：** 音频控制器对 `repeat` 共播放 *n* 次后结束，可被提前停止；`none` 与 `whole` 不变 | Node 测试（转换、payload 与音频控制器） |
+| AC-11 | 每个新增 payload 族的读取器都满足以下要求：<br>- **正向：** 往返后逐字节相同；<br>- **拒绝：** 缺少字段、未知字段、类型错误、非规范编码（含空白、字段顺序与 -0）、非有限数、超限，以及引用与依赖不一致，都按 code 拒绝；<br>- **隔离：** 结果冻结，调用者修改输入或先前结果不影响后续读取。<br>sound payload schema 2 的读取器：三种循环方式与 2–255 的次数可往返；循环码未知、`repeat` 的次数小于 2、`none` 或 `whole` 的偏移 15 非零都为 `invalid-sound-payload`；schema 不是 2 时拒绝 | Node 单元测试 |
 | AC-12 | 切片定义版本 4：<br>- **正向：** 版本 4 的合成完整包经 `validatePackage` 为 `complete`；<br>- **缺失：** 逐一去掉每个新增必需角色的 Asset，或改变 `event-sound`、`hud-sound` 的数量，结果为 `incomplete` 并报 `role-cardinality` 或依赖缺失；<br>- **旧包：** 定义版本 3 的包为 `incomplete`，报 `definition-version-mismatch`；<br>- **唯一定义：** 生产定义仍只有一份，由工程边界回归保证 | Node 测试；工程边界回归 |
 | AC-13 | 来源映射与核验：新增映射能通过 `readSourceMappingTable` 读取；不带子资源的部件经核验为 `verified`，带子资源的部件只在转换器解析出该子资源后才为 `verified`，来源状态绑定指纹；四条 ID 链中的任何一处不一致都报 `subresource-mismatch`；置信度与 U 项符合 Asset 表 | Node 测试，使用合成映射与合成光盘 |
 | AC-14 | 限值与预算：<br>- **结构限值：** 每个新增结构限值恰等于上限时通过，超出 1 时为 `limit-exceeded`；<br>- **预算：** 每个新增的份额维度恰等于份额时通过，超出 1 时为 `budget-exceeded`，观测值包含先前步骤的用量；转换器计入的用量等于独立计算的值；<br>- **生产配置：** `PRODUCTION_PACKAGE.limits` 由测试从各份额推导；<br>- **记录：** 限值与份额的取值和推导所用的观测值已记录 | Node 测试；文档核对 |
 | AC-15 | 身份与缓存：<br>- **版本：** 输出变化的转换器组件已递增，`ConverterVersion` 只有一个生产定义，`PRODUCTION_PACKAGE` 与推导一致；<br>- **旧缓存：** 旧转换器版本的包记录不提供恢复，定义版本 3 的记录读取时为 `cache-incompatible`；<br>- **新缓存：** 版本 4 的合成包可提交与恢复，恢复时重新校验 | Node 测试（缓存记录与资源持有者）；浏览器回归中的 `resource-cache`、`cache-recovery` |
 | AC-16 | 导入作业：合成白名单与合成光盘上的生产作业满足以下要求：<br>- **结果：** 发送四组，都为 `group-complete`，全包按定义版本 4 为 `complete`；<br>- **读取日志：** 只读取映射表引用的条目与区域，以及相关封包的文件头与目录；每个条目在其步骤内只物理读取一次；不读取闭包之外的条目（例如 MUSC、其他 CINF、AISTUFF 组 1 与组 2 独有的条目、COMM TABL 2001 与 2011）；<br>- **失败：** 转换失败时不发送任何组，`source` 层的错误带完整的 `limit`；<br>- **协议与回归：** 协议版本与阶段符合[包身份](#包身份与转换器版本)；P2-04 的 Node 测试与失败矩阵继续通过 | Node 集成测试，使用宿主、真实结构化克隆端口与持有者 |
-| AC-17 | 浏览器：版本 4 的合成包在生产预览中完成以下流程，无未预期的网络请求或资源遗留：<br>- 导入后为 `Complete resources, viewable`，并保存、刷新后恢复；<br>- 查看器能打开至少一个爆炸帧、一个星云图像、受击闪烁贴图与目标显示屏背景；<br>- `Sounds` 列出新增的声音，并能播放其中一个合成波形。<br>既有的 E2E 用例（含网络审计与资源平衡）全部通过 | `pnpm test:e2e`；按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 核对实际画面，不只看 Canvas 或 HTTP 200 |
+| AC-17 | 浏览器：版本 4 的合成包在生产预览中完成以下流程，无未预期的网络请求或资源遗留：<br>- 导入后为 `Complete resources, viewable`，并保存、刷新后恢复；<br>- 查看器能打开至少一个爆炸帧、一个星云图像、受击闪烁贴图与目标显示屏背景；<br>- `Sounds` 列出新增的声音，并能播放其中一个合成波形；`repeat` 方式的合成声音按次数播放后结束。<br>既有的 E2E 用例（含网络审计与资源平衡）全部通过 | `pnpm test:e2e`；按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 核对实际画面，不只看 Canvas 或 HTTP 200 |
 | AC-18 | 边界与隐私：<br>- **依赖方向：** `core/` 与 `content/` 不导入 `original-data`；转换器只经 `VerifiedSource` 读取；Worker 仍禁用网络 API；<br>- **合成数据：** 合成样本只由代码生成，源码与测试中没有原版的数值、文字或字节（以不同的合成值证明数据来自输入）；<br>- **诊断：** 诊断与 CLI 输出不含名称、文字、数值、原版字节或私人路径；<br>- **合规：** `pnpm check:original` 通过 | 工程边界回归、ESLint、Node 测试、代码审阅、本地合规 |
 | AC-19 | 本地核对（S-16）满足以下要求：<br>- **CLI：** 在开发者本机的基准镜像上，用与 Worker 相同的作业模块得到 `complete` 的版本 4 包，`loadMission` 成功。输出每个新增角色的 Asset 数、记录、帧、文字与声音的计数，payload 字节，各阶段读取增量、manifest 身份与哈希，以及限值与观测值的对照；<br>- **nob-check：** 扩展后能解码全部 186 个 ANIM 帧，每帧恰好用尽其数据，并核对 EXIC/EXPL/ANIM/SND 与 TABL 4003→CINF 的引用；既有的 NEBC/BITM 引用核对继续通过；<br>- **独立读取：** 只共用光盘与 IMFAT 读取，与规范数据逐项一致，只记录结论、计数与哈希；<br>- **外观：** ANIM 帧与至少一处本地截图或参考视频中的爆炸外观一致，记录方法、来源与置信度；比较用的图像只临时存放在 `local/`，不进入仓库或文档；<br>- **存放：** 全部输出只在 `local/` | 本地运行记录（只含结论、计数与哈希）；subtask 证据 |
-| AC-20 | 文档：<br>- S-17 列出的分册、目录树与指南已同步，指南写明须重新导入；<br>- 新增 CLI 写入工具用法与 `AGENTS.md`；<br>- 新增格式文档已加入文档地图；<br>- 修改过的文档都更新了 `updated:`，链接与锚点有效 | 文档核对与链接检查 |
+| AC-20 | 文档：<br>- S-17 列出的分册、目录树与指南已同步，指南写明须重新导入；<br>- 新增 CLI 写入工具用法与 `AGENTS.md`；<br>- 新增格式文档已加入文档地图；<br>- [audio](../../../original/formats/audio.md) 记录 `flags` 8 出现在切片中及其表示；<br>- 修改过的文档都更新了 `updated:`，链接与锚点有效 | 文档核对与链接检查 |
 | AC-21 | 工程检查：`pnpm check` 通过；`pnpm test:e2e` 通过 | 命令输出 |
 
 ## 验证策略
@@ -421,7 +449,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 
   这些都由 agent 完成，不需要用户试玩或基准运行；只有触发研究门槛时，才按运行时测量指南请用户操作，并说明原因。
 - **工程检查：**
-  - 针对性检查：`pnpm exec vitest run src/original-data src/content src/core/mission src/workers src/platform/storage src/app tools`，按改动范围收窄；
+  - 针对性检查：`pnpm exec vitest run src/original-data src/content src/core/mission src/workers src/platform/storage src/platform/audio src/app tools`，按改动范围收窄；
   - 完成前：`pnpm check`、`pnpm test:e2e` 与 `pnpm check:original`；
   - 文档：链接与元数据检查。
 
@@ -445,3 +473,15 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 用户于 2026-10-09 明确批准经 review-spec 修订后的完整契约（“approve the spec and generate goal”），并要求生成 goal。批准范围为 S-01 至 S-17、AC-01 至 AC-21、导入项表、行为与边界、字段处理规则 1 至 10、研究门槛与阻塞、数据模型与契约（Asset 与角色、切片定义版本 4、规范 payload、来源映射与核验、限值与预算、错误、包身份与转换器版本、持久化与兼容），以及技术决定 1 至 13（其中按用户指示由 agent 采用的推荐方案随本次批准一并生效）。
 
 本次只记录批准，不改变范围、行为或验收要求。批准不代表实现完成，不授权以合成值、临时资源或近似规则补齐研究缺口；触发研究门槛时仍须修订本 spec 并重新批准。
+
+### 修订 1（2026-10-09，已批准）
+
+执行中出现两项须由用户决定的契约变化。用户于 2026-10-09 在执行协调中分别选择了推荐方案：
+
+- **HUD 直接绘制的 EXE 文字（P3-03/24，研究门槛 3 与 4）：** 新增 cockpit-hud-map 组的 data 角色 `hud-text`，导入闭包 #47 的全部 64 条（技术决定 14）；
+- **SND 10181 的 `flags` 8（P3-03/19）：** sound payload 递增为 schema 2，增加 `repeat` 循环方式（技术决定 15）。
+
+本次修订同时把执行中由协调者作出的表示判断写入契约（技术决定 16），并更正“当前实现与依据”中关于 `SOURCE_ENTRY_TYPES` 的不完整说法。
+
+- **改动的部分：** 问题与目标、S-05、S-08、S-13、不包含、涉及模块、当前实现与依据、导入项表、字段处理规则 8 与 10、Asset 与角色、切片定义版本 4、规范 payload（含新增的“声音 payload schema 2”一节）、来源映射与核验、限值的取值、错误、持久化与兼容、技术决定 9 与 14–16、验证策略的针对性检查，以及 AC-05、AC-06、AC-07、AC-10、AC-11、AC-17、AC-20。其余契约与原批准范围相同。
+- **批准：** 修订后的契约经审阅后，用户于 2026-10-09 明确批准（“Approve the revised spec (revision 1); then add the remediation subtasks to the goal”）。批准范围为修订后的完整契约，含技术决定 14 至 16 与改动后的 AC。已完成子任务的证据保留，受影响的验收由 goal 新增的修复子任务承担。
