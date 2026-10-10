@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [02-other-context-keys-research.md](./subtasks/02-other-context-keys-research.md) | — | completed |
 | [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | completed |
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | pending |
-| [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | in-progress |
+| [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | completed |
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | completed |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
@@ -135,6 +135,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-10 — B-001 的地图 Esc 更正（用户）：** 用户说明此前的手动测试有误：原版中按 Esc 可以退出战略地图。这与 02 的代码结论一致：地图按键处理 `0x27118` 对 Esc 与 `m` 发出同一个无条件的关闭地图命令。B-001 中“Esc 不能关闭地图”的观察作废，由 05（写入范围含 B-001）更正，由 04 记录地图上下文的 Esc 事实。P3-05 spec 目前引用该观察，并规定地图中 Esc 无游戏动作；08 须按检查点 K 规则 2 重新决定未锁指针时地图中的 Esc。锁指针时 Esc 只解除锁定，这一点不变（总计划 §1.2）。06 仍按 Q-05 取地图 Esc 的运行样本，但它不再是消解此冲突的唯一依据。
 - **2026-10-10 — 并行 worker 上限改回 3：** 为避免 Copilot 速率限制，用户指示把同时运行的 worker 上限改为 3。当时 01、07（变基中）与 13 正在运行；刚认领、尚未派出 worker 的 14 与 15 改回 pending，等有空位时再认领。
 - **2026-10-10 — 07 完成，真实按住样本未取得：** 07 记录了基准 DOSBox-X 的键盘重复（配置与模拟器源码，已确认）与据此推导的游戏内节奏（高概率）；真实按住样本因 agent 无法向 DOSBox-X 产生持续按键而未取得，已逐条写明考虑过的途径。Q-06 的门槛只要求区分两类证据，32 的差异清单也不依赖真实样本，因此协调者不新增需用户的物理样本子任务；该项在键位表与 U-011 中保持未确认，供日后需要时补测。07 另建议在基准环境指南中注明在 DOSBox-X 中打字须用 ASCII 输入源，这超出本 goal 的写入范围，列为残余建议。
+- **2026-10-10 — 05 完成，检查点 K（地图）定稿：** 05 依 Q-03 的代码证据定稿地图项（记录在 spec 审批节）：每次进入地图都重置为原版起点（按主地图逻辑像素的公式，进入时几何未就绪则首次有效时取一次）；左键新按下即先 hover 后 select，按住时按原版读取间隔重复（以 `clock.clock` 计 c+8、此后观察值 +8，只在 running 帧中，不追赶），松开无动作；读取取样延迟、短按丢失与逐读取移动列为已知差异；右键编号开关与打开地图时 Core 的初值交 P3-09/P3-13。B-001 与键位表的“战略地图开关”行已按用户更正改为 Esc 也关闭地图。22 与 26 的计划按此对齐（见下一条）。05 另建议把 `docs/original/formats/hud.md` 地图光标行升为已确认、在 cockpit 记录中链接 U-029 的仪表记录发现；这些不在本 goal 的写入范围，列为残余建议。
 
 ## 审批
 
