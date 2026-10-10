@@ -5,7 +5,7 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
-import { entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import { initialPlayerTargeting } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { collisionStage } from './collision.ts';
@@ -62,7 +62,7 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
 
   it('implements only the stages P3-02 and P3-06 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'commit',
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'parked-update', 'area-check', 'commit',
     ]);
   });
 
@@ -159,6 +159,7 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
 
   it('handles requests in posting order: mission flow, object updates, then the spawn queue check', () => {
     const [state, [early, updated]] = withEntities([3], [1]);
+    addPlayerEntity(state);
     early.state = 'active';
     runTickWith(state, {
       'mission-flow': ({ requests }) => {
@@ -174,6 +175,7 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
 
   it('drops requests posted after request handling', () => {
     const [state, [entity]] = withEntities([2]);
+    addPlayerEntity(state);
     entity.state = 'active';
     runTickWith(state, { movement: ({ requests }) => requests.post(setState(entity, 'pending-removal')) });
     expect(entity.state).toBe('active');
@@ -264,11 +266,14 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     ['docked', 'parked', 'new'],
     ['parked', 'active', 'presentation-ready'],
   ] as const)('switches a %s entity in area-switch to %s, state %s, in request handling', (from, to, startState) => {
-    const [state, [entity]] = withEntities([7]);
+    const [state, [entity]] = withEntities([7, { activity: from === 'parked' ? 'parked' : 'active' }]);
+    // A resumed entity stays active near a player; a parked one stays parked without a player entity.
+    if (to === 'active') addPlayerEntity(state);
     entity.activity = from;
     entity.state = 'area-switch';
     runTickWith(state);
     expect([entity.activity, entity.state]).toEqual([to, startState]);
+    expect(entity.movement === null).toBe(to === 'parked');
     expect(state.entities.get(entity.id)).toBe(entity);
     runTickWith(state);
     expect([entity.activity, entity.state]).toEqual([to, 'active']);

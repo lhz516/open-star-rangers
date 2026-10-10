@@ -12,7 +12,7 @@
  */
 import type { SpawnRegion, Vector3 } from '../../content/logic/logic-content.ts';
 import { CoreFaultError } from '../errors.ts';
-import { RUNTIME_SCALE, type WorldFrame } from './coordinates.ts';
+import { RUNTIME_SCALE, worldHalfExtent, type WorldFrame } from './coordinates.ts';
 import { anchorOffset, rectangleCoordinate, worldCoordinate, type RandSource } from './original-random.ts';
 
 /** Distance from the world edge of the band in which a placed point is pulled toward the origin. */
@@ -87,8 +87,13 @@ function routePoint(record: PlacementRecord, world: WorldFrame, rand: RandSource
   const { x, y, z } = record.position;
   // `-0 !== 0` is false, so the test ignores the sign as the original's masked comparison does; the copy keeps it.
   if (x !== 0 || y !== 0 || z !== 0) return { route: 'stored', point: vector(x, y, z) };
-  if (record.region) {
-    const { x0, y0, x1, y1 } = record.region;
+  return areaRoute(record.region, world, rand);
+}
+
+/** `0x68598`, the last routes of `0x68398`: the rectangle when there is one, otherwise the whole-world default. */
+function areaRoute(region: SpawnRegion | null, world: WorldFrame, rand: RandSource): RoutedPoint {
+  if (region) {
+    const { x0, y0, x1, y1 } = region;
     const regionX = rectangleCoordinate(x0, x1, rand.next());
     return { route: 'region', point: vector(regionX, rectangleCoordinate(y0, y1, rand.next()), 0) };
   }
@@ -96,12 +101,20 @@ function routePoint(record: PlacementRecord, world: WorldFrame, rand: RandSource
 }
 
 /**
+ * `0x68598` on its own, as the parked travel calls it for a new goal: the rectangle `region` (x then y draws, z = +0)
+ * or, without one, the whole-world default (two draws), with no world check. The path route +0x4C is not expressible.
+ */
+export function areaPoint(region: SpawnRegion | null, world: WorldFrame, rand: RandSource): Vector3 {
+  return areaRoute(region, world, rand).point;
+}
+
+/**
  * The world check: a point inside the world rectangle ±7500 × n inset by WORLD_EDGE_BAND (bounds included) is
  * unchanged; otherwise x and y move once WORLD_EDGE_PULL toward the origin, without clamping or a second check, and z
  * is kept.
  */
-function worldChecked(point: Vector3, { sectors }: WorldFrame): Vector3 {
-  const limit = (RUNTIME_SCALE / 2) * sectors - WORLD_EDGE_BAND;
+function worldChecked(point: Vector3, world: WorldFrame): Vector3 {
+  const limit = worldHalfExtent(world) - WORLD_EDGE_BAND;
   const inside = (value: number): boolean => -limit <= value && value <= limit;
   if (inside(point.x) && inside(point.y)) return point;
   const inverseLength = 1 / Math.sqrt(point.x * point.x + point.y * point.y);

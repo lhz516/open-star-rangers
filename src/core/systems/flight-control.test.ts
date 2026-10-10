@@ -184,7 +184,8 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
-    expect(player.movement).toEqual(block);
+    // A player in area-switch parks in request handling, which releases its block (area.ts).
+    expect(player.movement).toEqual(player.activity === 'parked' ? null : block);
     // Removing a pending-removal player clears its control state with it.
     expect(state.player.control).toEqual(state.entities.get(player.id) === undefined ? null : control);
     expect(state.rngState).toBe(rng);

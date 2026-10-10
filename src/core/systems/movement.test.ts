@@ -151,10 +151,11 @@ describe('movement in a running world (P3-06 AC-02, AC-07)', () => {
 
   it('never reads the maximum speed: a speed above a lowered maximum falls at +0xC0 per second', () => {
     const info = craftInfoContent();
-    info.craft[3].atC0 = 16;
+    info.craft[0].atC0 = 16;
     const state = stateWith(info);
     const world = constructWorld(state);
-    const entity = state.entities.allocate(entityInit(3));
+    // Kind bit 0, which the area check (P3-06/14) never walks: without a player entity it would park any other kind.
+    const entity = state.entities.allocate(entityInit(0));
     entity.maximumSpeed = 10;
     applyRecomputedMaximum(entity.movement as SteeredMovementBlock, 10);
     for (let tick = 0; tick < 3; tick++) world.step(tickInput());

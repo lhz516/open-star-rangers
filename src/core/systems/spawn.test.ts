@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { DomainEvent, ObjectInstantiatedEvent } from '../contracts/domain-events.ts';
-import { nextRandom, type RngState } from '../determinism/rng.ts';
 import { expectedRectangle, expectedWorld, float32OfDouble } from '../rules/derivation.test-support.ts';
 import { RandStream } from '../rules/original-random.ts';
+import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
 import {
   asCreateInput, craftInfoContent, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, sliceMission,
@@ -33,25 +33,6 @@ const C = (() => {
 function setUp(parts: WorldInputParts = {}): { readonly state: WorldState; readonly world: World } {
   const state = initialWorldState(asCreateInput(worldInput(parts)));
   return { state, world: constructWorld(state) };
-}
-
-/** The RNG state after `count` draws from `state`. */
-function stateAfter(state: RngState, count: number): RngState {
-  let current = state;
-  for (let index = 0; index < count; index++) current = nextRandom(current).state;
-  return current;
-}
-
-/** The next `count` rand values (0–32767) a world would draw from `state`. */
-function randValues(state: RngState, count: number): number[] {
-  const values: number[] = [];
-  let current = state;
-  for (let index = 0; index < count; index++) {
-    const draw = nextRandom(current);
-    current = draw.state;
-    values.push(Math.floor((draw.value * 2 ** 32) / 2 ** 17));
-  }
-  return values;
 }
 
 const instantiated = (events: readonly DomainEvent[]): ObjectInstantiatedEvent[] =>
@@ -416,12 +397,19 @@ describe('activity and the player at instantiation (P3-02 AC-05, Q-07)', () => {
     expect(world.renderState().entities.map(({ id }) => id)).toEqual([1, 3, 6, 7]);
   });
 
-  it('parks every object while there is no player entity', () => {
+  it('parks every object while there is no player entity; the area check resumes it once the player is near', () => {
     const { state, world } = setUp({ mission: activityMission([[-1, 1]], 1) });
     world.step(tickInput());
     expect(entities(state).map(({ activity }) => activity)).toEqual(['parked']);
-    stepTo(world, state, 40);
-    expect(entities(state).map(({ kindBit, activity }) => [kindBit, activity])).toEqual([[8, 'parked'], [0, 'active']]);
+    // The player is due at 1 s, the first tick past clock 64: instantiated in tick 33, whose area check (P3-06/14)
+    // finds the parked object inside; tick 34 switches it.
+    stepTo(world, state, 33);
+    expect(entities(state).map(({ kindBit, activity, state: objectState }) => [kindBit, activity, objectState])).toEqual([
+      [8, 'parked', 'area-switch'],
+      [0, 'active', 'presentation-ready'],
+    ]);
+    stepTo(world, state, 34);
+    expect(entities(state).map(({ kindBit, activity }) => [kindBit, activity])).toEqual([[8, 'active'], [0, 'active']]);
   });
 
   it('gives the player the identity attitude and view mode 0xC, every other object its placement attitude', () => {
@@ -624,7 +612,7 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
     expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
     expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[6] % 0x2d00), 2 + (r[8] % 0x2d00), 2 + (r[10] % 0x2d00)]);
-    expect(state.rngState).toBe(stateAfter(before, 11));
+    expect(state.rngState).toBe(rngStateAfter(before, 11));
   });
 
   it('gives a wingman whose option names the player\'s kind the player as its target, in mode 2, with no AI or Warp draw', () => {
@@ -637,7 +625,7 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     expect(wingman).toMatchObject({ kindBit: 1, warpClock: 0, ai: { mode: 2, target: 1, goal: ZERO } });
     // The player's first energy update (1) and goal (2), the wingman's anchor (6) and first energy update (1) are all
     // the draws.
-    expect(state.rngState).toBe(stateAfter(before, 10));
+    expect(state.rngState).toBe(rngStateAfter(before, 10));
   });
 
   it('faults rather than store a Warp timer past the safe integers', () => {

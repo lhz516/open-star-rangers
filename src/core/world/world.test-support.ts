@@ -7,9 +7,10 @@ import { initialWorldState } from './create-world.ts';
 import { asCreateInput, playerOnlyMission, worldInput } from './create-world.test-support.ts';
 import { craftMovementBlock, initialMovementBlock } from '../rules/flight-state.ts';
 import {
-  allocatorFlightState, blankCraftCombat, combatTypeOf, SUBSYSTEM_COUNT, type EntityCombat, type EntityInit, type EntityRuleInputs, type Matrix3,
-  type SubsystemState,
+  allocatorFlightState, blankCraftCombat, combatTypeOf, SUBSYSTEM_COUNT, type Entity, type EntityCombat, type EntityInit, type EntityRuleInputs,
+  type Matrix3, type SubsystemState,
 } from './entity-table.ts';
+import { initialPlayerControl, initialPlayerTargeting } from './player-state.ts';
 import type { RuntimeRecord } from './spawn-state.ts';
 import type { WorldConfig, WorldState } from './world-state.ts';
 
@@ -158,6 +159,19 @@ export function busyCombat(kindBit: number): EntityCombat {
         hitFeedbackClock: 6, proximity: { entity: 2, distanceSquared: 0.5 }, lastVictim: { entity: 3, clock: 8 }, lastAttacker: { entity: 4, clock: 10 },
       };
   }
+}
+
+/**
+ * A standing player entity (stillEntityInit of kind bit 0) registered as the player with its control and targeting
+ * state, which exist exactly while a player entity does (CR-04): the area check keeps other entities near it active,
+ * as without a player entity it parks them.
+ */
+export function addPlayerEntity(state: WorldState, overrides: Partial<EntityInit> = {}): Entity {
+  const player = state.entities.allocate(stillEntityInit(0, overrides));
+  state.player.entityId = player.id;
+  state.player.control = initialPlayerControl(state.config.group);
+  state.player.targeting = initialPlayerTargeting();
+  return player;
 }
 
 export const tickInput = (commands: readonly Command[] = []): TickInput => ({ axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commands] });

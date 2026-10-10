@@ -39,6 +39,11 @@ export interface RuntimeFrame extends WorldFrame {
   readonly scaleFactor: number;
 }
 
+/** Half the side of the world rectangle `0x3a41c`, ±7500 × n on x and y: an exact integer. */
+export function worldHalfExtent({ sectors }: WorldFrame): number {
+  return (RUNTIME_SCALE / 2) * sectors;
+}
+
 const OUTSIDE = 'is outside the supported coordinate range in runtime units';
 
 function requireCoordinate(value: number, path: string): number {

@@ -23,6 +23,7 @@ import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
 import { assignName } from '../rules/name-assignment.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { memberPosition, placeRecord, type AttitudeRows, type Placement, type PlacementRecord } from '../rules/placement.ts';
+import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
 import { firingRecord, PLAYER_KIND_BIT, postsRequests } from '../rules/spawn-schedule.ts';
 import { allocatorFlightState, blankCraftCombat, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
 import { COCKPIT_VIEW_MODE, initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
@@ -39,11 +40,6 @@ export interface SpawnRequest {
   readonly request: number;
 }
 
-/**
- * x/y radius² of the active area around the player (`0x186b44`): the f32 runtime scale² × 0.25, 7500² exactly. A new
- * object other than the player is active when strictly inside it.
- */
-const ACTIVE_RADIUS_SQUARED = 56_250_000;
 const IDENTITY: Matrix3 = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]) as unknown as Matrix3;
 
 /**
@@ -104,19 +100,6 @@ export function placeWorldRecord(world: WorldState, record: RuntimeRecord, rand:
   return placeRecord(placementRecord, world.spawn.frame, rand);
 }
 
-/**
- * Whether an object other than the player starts active (`0x3a540`): only with a player entity, strictly within the
- * x/y radius 7500 of it. While the player Warps the original takes the player state's point instead (P3-09).
- */
-function startsActive(world: WorldState, { x, y }: Vector3): boolean {
-  const playerId = world.player.entityId;
-  const player = playerId === null ? undefined : world.entities.get(playerId);
-  if (player === undefined) return false;
-  const dx = player.position.x - x;
-  const dy = player.position.y - y;
-  return dx * dx + dy * dy < ACTIVE_RADIUS_SQUARED;
-}
-
 const matrixOf = ([first, second, third]: AttitudeRows): Matrix3 =>
   Object.freeze([first.x, first.y, first.z, second.x, second.y, second.z, third.x, third.y, third.z]) as unknown as Matrix3;
 
@@ -166,7 +149,8 @@ function instantiate(
   entity.warpClock = initialWarpClock(kindBit, world.clock, rand);
   // `0x20990` (P3-08) goes here.
   const player = kindBit === PLAYER_KIND_BIT;
-  if (player || startsActive(world, position)) {
+  // An object other than the player starts active only inside the active area (`0x3a540`), the area check's test.
+  if (player || isWithinActiveArea(activeAreaCentre(world), position)) {
     // An active object gets its block at full throttle (0x2c3b0); the player's takes the identity instead of the
     // placement attitude, which 0x21794 writes back.
     setActivity(entity, 'active', initialMovementBlock(entity.maximumSpeed, craft.atB8));
