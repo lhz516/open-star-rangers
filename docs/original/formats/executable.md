@@ -1655,8 +1655,10 @@ when the sample minus the instrument entry's last-draw time +0x1C exceeds its pe
     distance comes from the per-kind table `0x175424` indexed by kind bit, +16 entries when the
     target's +0x06 word is non-zero; a |dot product| ≤ 0.01 test on the player's orientation
     (`0x43673`) selects one of two view set-ups);
-  - Euclidean distance from the player (double `FSQRT` of f32 differences); shown as is or × 0.001
-    when ≥ 99999.0;
+  - Euclidean distance from the player: the differences (player − target) are formed in double, and each squared
+    term is the unrounded difference times its own f32 store (`FST float` before `FMUL float`), summed as
+    (dy² + dz²) + dx², then `FSQRT` and an f32 store (Confirmed, code, P3-07/23); shown as is or × 0.001 when
+    ≥ 99999.0;
   - aux +0x08 f32 when aux exists (Likely the speed; P3-06);
   - +0x2C ÷ craft record +0x5C × 100 (`FILD`/`FILD`/`FDIVP`/× 100.0), 0 when +0x5C ≤ 0 (+0x2C is the shield,
     [D1](#d1-object-fields-of-this-section--confirmed-code));
@@ -1990,8 +1992,12 @@ The launch does **not** require any lock level; the lock level only selects the 
 
 Helpers: `0x2dd04(state)` = sum of ammunition over the +0x18 chain of a missile entry (−1 for a gun or null);
 `0x2dd94(state)` = missile +0x24 byte, or 2 for a gun; `0x2dd54(handle, channel, out)` = current entry's weapon +0x0C
-(range) unless it is a missile entry without ammunition; `0x2e080(handle)` = HUD lock progress (−1 none/losing/level
-0–1, 0 at level 4, otherwise 100 × remaining ÷ missile +0x34, +50 at level 2; signed). Consumers: AI (`0x5dfa4`,
+(range) unless it is a missile entry without ammunition; `0x2e080(handle)` = HUD lock progress (signed): −1 when the handle is invalid, the current list-1 state (+0x110) is
+null, the losing flag (+0x120) is 1 or the level is 0 or 1; 0 at level 4; otherwise r = stage deadline (+0x11C) − clock
+(`SUB`, signed test), and at level 2 it is 50 when r < 0, else (100 × r) ÷ c34 + 50, at level 3 0 when r < 0, else
+(100 × r) ÷ c34. Here 100 × r is formed with shifts and adds (wrapping as i32), the divide is a signed `IDIV`, and c34 is
++0x34 of the current list-1 state's own weapon record (state +0x10 → mount +0x14), read only when r ≥ 0; for a gun
+mount that read falls past the 48-byte gun record (Confirmed, code, P3-07/23). Consumers: AI (`0x5dfa4`,
 `0x5e070`, `0x63d3c`, `0x64132`), HUD `0x45de0`, `0x47d5c` (P3-08, P3-13).
 
 ##### W9. Automatic mounts — Confirmed (code)
