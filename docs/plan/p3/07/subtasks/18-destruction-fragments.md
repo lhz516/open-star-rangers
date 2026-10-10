@@ -72,6 +72,7 @@ updated: 2026-10-10
 - `src/core/world/entity-table.ts`：逃生舱判定按种类位 0、1（玩家、僚机），修正 11 的种类位误用。
 - `src/core/world/entity-table.test.ts`：逃生舱测试的种类位。
 - `src/core/systems/pipeline.test.ts`：`delayed-player-explosion` 的 `run`、碎片请求的路由与爆炸生命周期对既有断言的影响。
+- `src/core/systems/damage.test.ts`：毁伤入口实现后的测试夹具（其他种类的规则数据）与被毁结果的断言。
 - `docs/original/formats/executable.md`：X6 的指令级舍入次序与 `0x218e8` 模式 2 的事实（已确认，代码）。
 
 ## 验收标准
