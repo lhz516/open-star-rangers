@@ -1,0 +1,112 @@
+---
+type: plan
+status: accepted
+phase: P3
+task: "06"
+updated: 2026-10-09
+related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-009, U-011, U-021]
+---
+
+# P3-06：飞行运动与速度控制 — Goal
+
+## 目标与来源
+
+实现用户于 2026-10-09 批准的 [spec](./spec.md) 中的 S-01 至 S-10 与 AC-01 至 AC-12：
+
+- 原版研究 M-01 至 M-10，事实写入 `docs/original/`；
+- [执行检查点](./spec.md#执行检查点) A、B、C：研究完成后以 spec 修订定稿状态形状与共享契约、数值判据与缺省项，按用户的预先授权直接定稿并记录；
+- Core 中的世界创建机型输入、实体飞行状态与起飞初态、运动阶段与积分、操纵与速度命令、匹配速度与速度辅助、活动区域与停放、运动 projection、快照与 replay；
+- 本地真实内容核对、原版正式采集与 R-04、R-05 的对照判定；
+- Core 文档与对下游任务的交接。
+
+本文件不重新定义行为契约。目标选择、能量、AI、地图与 Warp、浏览器输入与画面不在本 goal 中实现。
+
+## 代码现状与前提
+
+- **已有代码（本 goal 扩展）：**
+  - 世界创建 [create-world.ts](../../../../src/core/world/create-world.ts) 的 `CreateWorldInput` 只有三份逻辑 Asset、`identity` 与 `run`；[setup-hash.ts](../../../../src/core/world/setup-hash.ts) 只覆盖 `MissionSetup`；[replay.ts](../../../../src/core/replay/replay.ts) 的 `ReplayContent` 是 `CreateWorldInput` 去掉 `run`。调用者目前只有 Core 自己的测试与 test-support（[create-world.test-support.ts](../../../../src/core/world/create-world.test-support.ts)、[world.test-support.ts](../../../../src/core/world/world.test-support.ts)、[replay.test-support.ts](../../../../src/core/replay/replay.test-support.ts)），`src/app/`、`tools/` 尚未调用。
+  - [pipeline.ts](../../../../src/core/systems/pipeline.ts)：`movement`、`parked-update`、`area-check` 三个阶段的 `run` 为 null；`judgeCommands` 对每个命令发 `rejected`/`not-implemented`；`leave` 切换停放但不涉及目标。
+  - [spawn.ts](../../../../src/core/systems/spawn.ts)：实例化写入位置、姿态（玩家为单位矩阵）与活动；`startsActive` 只在实例化时判定；初始化扩展点尚无飞行字段。
+  - [entity-table.ts](../../../../src/core/world/entity-table.ts) 的 `Entity`/`EntityInit` 没有速度、移动块或计时字段；[player-state.ts](../../../../src/core/world/player-state.ts) 的 `PlayerState` 没有控制状态或目标引用。
+  - [domain-events.ts](../../../../src/core/contracts/domain-events.ts) 只有 `command-result` 与 `object-instantiated`，原因码只有 `not-implemented`；[compare.ts](../../../../src/core/replay/compare.ts) 按事件联合逐字段校验。
+  - [projection.ts](../../../../src/core/projections/projection.ts) 的 `flight` 为 `NotImplementedPartition | FlightReady`，尚未拆分。
+  - [snapshot.ts](../../../../src/core/replay/snapshot.ts) 的写入器映射类型要求每个状态字段恰好写一次；`GAME_SNAPSHOT_VERSION` 与 [rules-version.ts](../../../../src/core/replay/rules-version.ts) 的 `RULES_VERSION` 都是 1。
+  - [limits.ts](../../../../src/core/contracts/limits.ts) 的 `CORE_LIMITS`；[float32.ts](../../../../src/core/rules/float32.ts) 的就近 f32 写回。
+  - 机型数据：[craft-info.ts](../../../../src/content/rule-data/craft-info.ts) 的 `readCraftInfo`/`CraftInfo`，合成数据 [rule-data.test-support.ts](../../../../src/content/rule-data/rule-data.test-support.ts) 的 `syntheticCraftInfo`/`syntheticRuleDataAsset`；[rule-data-payload.ts](../../../../src/content/rule-data/rule-data-payload.ts) 的 `decodeRuleDataPayload`。
+  - 测量工具 [tools/baseline/](../../../../tools/baseline/)；真实内容核对的先例为 [P3-02/09](../02/subtasks/09-real-content-check.md)。
+- **计划新增：** `src/core/rules/` 与 `src/core/systems/` 下的飞行状态、运动、操纵、区域模块及相邻测试（文件名见各子任务，可在实现时调整，职责不变）；`docs/original/behavior/B-008-flight-motion.md`；被忽略的 `local/research/p3-06/<主题>/`。
+- **跨任务前提：**
+  - P3-02、P3-03 已完成（各自 goal 全部 completed），正式 Core 与 `data/craft-info` 可用。
+  - **P3-07（18 的前提）：** AC-11 要求带目标选择与实时能量/子系统状态的集成对照（动态最高速度、匹配目标）。18 开始时若 P3-07 尚未交付这些规则，18 记为 blocked，恢复条件为 P3-07 交付并合入。其余子任务不依赖 P3-07。
+  - **P3-08：** 若检查点 A 确认起飞目标初值或停放更新依赖 P3-08 的规则，A 必须在修订中解决任务边界（P3-08 依赖本任务，不能互相等待）；不在本 goal 中实现 AI。
+  - **P3-04：** 尚未接入正式 Core。09 执行时若已接入，09 同时更新其调用者，并按 [browser-testing](../../../../.agents/skills/browser-testing/SKILL.md) 运行既有合成会话回归。
+- **环境（起草时核对）：**
+  - 本 worktree 没有 `node_modules`：执行前运行 `pnpm install --frozen-lockfile`。
+  - `local` 已链接到主仓库的 `local/`（git 忽略）。Ghidra 项目 `local/ghidra/srangers`：一律 `-noanalysis -readOnly`，在 `local/research/p3-06/<主题>/` 中使用私有只读副本，不 `-overwrite`。
+  - DOSBox-X 基准环境：同一时间只有一个会话操作（工具在 `local/research/` 上加锁）。
+- **原版证据：** 01–05 由 agent 用只读 Ghidra 与本地数据取得，结论先写入被忽略的 findings 以便并行，再由 21 统一写入 `docs/original/`；16 用本地导入的真实内容；07 与 17 需要在所选任务中飞行的原版运行。本机 Computer Use 无法向 DOSBox-X 送达按键（[运行时测量指南](../../../guides/runtime-measurement.md#角色单一会话与本机限制)），因此 07、17 标为需用户：用户只做键盘操作，agent 负责方案、配方、运行、读数、判定与记录；执行时若该限制已解除，协调者改为自动。达不到 spec 门槛的研究项按 spec 阻塞，不按猜测实现。
+
+## 验收覆盖
+
+| Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
+| --- | --- | --- |
+| S-01 | 01、02、03、04、05、21；07、17（运行部分） | 01–05：M-01 至 M-10 的结论（local findings）；21：写入 `docs/original/` 与 U 项；17：舍入方向的运行结论；20：门槛与 U 项核对 |
+| S-02 | 09 | 09：craft-info 输入、拒绝与 setupHash 的 Node 测试；16：真实内容创建 |
+| S-03 | 11 | 11：movement 阶段与积分各分支的独立期望测试 |
+| S-04 | 12 | 12：逐 tick 轴、中立输入、地图门禁与映射的 Node 测试 |
+| S-05 | 10、12、13 | 10：最高速度与初始移动块测试；12：速度命令测试；13：匹配与辅助的条件矩阵 |
+| S-06 | 14 | 14：活动区域、停放、离开世界与世界边界测试 |
+| S-07 | 10 | 10：合成起飞初态测试；16：真实内容核对；18：R-05a |
+| S-08 | 09、10、15 | 09：契约类型、事件、版本；10：实体与玩家状态的快照；15：运动 projection 与 replay |
+| S-09 | 07、08、17、18 | 07：B-008 方案与预实验；08：检查点 B；17：正式采集；18：R-04、R-05 判定 |
+| S-10 | 06、19 | 06：P3-02 与 P3-01 的修订及批准；19：Core 模块说明与源码结构指南；20：链接与元数据 |
+| AC-01 | 09 | 09：创建、拒绝、setupHash 与 replay 拒绝的 Node 测试 |
+| AC-02 | 11 | 11：阶段筛选、模式、公式、步长 0/2/4/6 与故障锁存测试 |
+| AC-03 | 12 | 12：轴消费、非零→零、地图中非零、退出后中立输入、扰动抽取测试 |
+| AC-04 | 10、12、13 | 10：最高速度各分支与初速；12：四种速度操作与数字 1–9、同 tick 多命令、各原因码；13：`match-target`、`toggle-auto-match` 与确认键别名的结果 |
+| AC-05 | 13 | 13：初值、目标各状态、距离与计时边界、事件次序 |
+| AC-06 | 10、14 | 10：停放时刻与 Warp 计时的保存与抽取；14：区域边界、停放切换、退场事件、放置序号 |
+| AC-07 | 10、11、16 | 10：实例化与首次活动的合成初态；11：首次运动后的初态；16：本地真实内容核对 |
+| AC-08 | 09、10、15 | 09：分区类型、事件校验、版本；10：快照覆盖新状态；15：projection 就绪、JSON 往返 replay、预算 |
+| AC-09 | 01、02、03、04、05、21、06 | 01–05：研究门槛；21：入档与 U 项；06：G-09/G-10 的依据；20：原版隔离审阅、`pnpm check:compliance` |
+| AC-10 | 07、08、17 | 07：方案与预实验；08：批准的判据；17：合格运行报告 |
+| AC-11 | 18 | 18：全部 R 项按批准判据的判定（含 P3-07 集成） |
+| AC-12 | 06、19 | 06：检查点 A、C 的批准记录早于依赖代码；19：文档与交接；20：`pnpm check` |
+
+## 子任务跟踪
+
+状态只在此维护：`pending` / `in-progress` / `blocked` / `completed`。依赖项全部 completed 后才能开始；验收结果和证据写在相应 subtask 文档，不在阶段索引重复状态。并行执行时，本表与执行记录只由协调者修改。
+
+| 子任务 | 依赖 | 状态 |
+| --- | --- | --- |
+| [01-motion-integration-research.md](./subtasks/01-motion-integration-research.md) | — | pending |
+| [02-controls-keys-research.md](./subtasks/02-controls-keys-research.md) | — | pending |
+| [03-speed-assist-research.md](./subtasks/03-speed-assist-research.md) | — | pending |
+| [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | pending |
+| [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | pending |
+| [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | pending |
+| [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | pending |
+| [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21 | pending |
+| [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
+| [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | pending |
+| [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | pending |
+| [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | pending |
+| [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
+| [13-speed-match-assist.md](./subtasks/13-speed-match-assist.md) | 12 | pending |
+| [14-area-parking-world-exit.md](./subtasks/14-area-parking-world-exit.md) | 11 | pending |
+| [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | pending |
+| [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | pending |
+| [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
+| [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
+| [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | pending |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21 | pending |
+
+最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
+
+## 执行记录
+
+## 审批
+
+用户于 2026-10-09 修改并明确批准本 goal（“i made some change. approve and commit”）。批准范围为当前的 21 个子任务、依赖、执行方式、写入范围与验收覆盖，以及下述用户指示。这不代表实现完成，也不授权 push、部署或阶段切换。
+
+**用户指示（2026-10-09）：** 执行中按需新增的子任务不需要用户审阅，协调者新增后直接设为可执行。检查点 A、B、C 的 spec 修订，以及改变已定方向的 spec 修订，也不需要用户审阅，直接按照推荐答案来。为与此一致，spec 的执行检查点与相关表述已同步修订（见 spec 审批节的“2026-10-09 修订”），06、08 的执行方式改为自动。授权不涵盖总计划与 ADR 中的冻结决定：需要改变它们时，相应子任务记为 blocked，先写 ADR 交用户决定。07、17 仍需用户在 DOSBox-X 中按键，原因见上文“原版证据”。
