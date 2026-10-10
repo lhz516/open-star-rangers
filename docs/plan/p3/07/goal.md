@@ -113,7 +113,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | completed |
 | [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 20, 35 | completed |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
-| [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | pending |
+| [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | in-progress |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | pending |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |

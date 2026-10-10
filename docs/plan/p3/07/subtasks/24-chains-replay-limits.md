@@ -31,7 +31,8 @@ updated: 2026-10-10
   - 依据注释与 CR-14 不一致时修正注释并报告协调者；数值的改变须回到 08 的关卡。
 - **修复：** 发现缺陷时，修复只针对连锁或 replay 暴露的问题；超出本项的行为缺陷，由协调者新增修复子任务。
 
-- **导弹计时字段的语义检查（20 的建议）：** 在 CR-01 的世界创建检查中拒绝可实例化导弹记录中负的 +0x44、+0x48、+0x54（寿命与计时）。否则 32 的 `initialGuidance` 只会在首次回调时故障；原版按 u32 回绕，负寿命立即熄火，项目不复现。在 P3-02 spec 的 CR-01 中补一句并加拒绝测试。
+- **导弹计时字段的语义检查（20、22 的建议）：** 在 CR-01 的世界创建检查中，拒绝 32 的 `initialGuidance` 会在首次回调时故障的可实例化导弹记录：+0x44、+0x48、+0x54（寿命与计时）不是非负整数，或 +0x58 不在 i32 内。检查与 `initialGuidance` 的记录守卫共用一个判定，使可到达的导弹不在首次回调时故障。内容层把 +0x54 读作 u32，+0x44、+0x48 读作 i32，实际可能为负的是后两者。原版按 u32 回绕（负寿命立即熄火），项目不复现。在 P3-02 spec 的 CR-01 中补一句并加拒绝测试。
+  - 合成夹具：`rule-data.test-support.ts` 的 `missile()` 默认 +0x44 为 −11，约 30 个测试文件经它创建世界。把默认值改为有效值（内容解码测试需要的负值或边界值改为显式覆盖），或在世界层夹具中覆盖，二者由执行者选；改动只针对因此失败的测试。拒绝生效后去掉 22 在 `game-session-replay.test.ts` 中把寿命设为 320 的局部覆盖。
 
 ## 不包含
 
@@ -55,6 +56,8 @@ updated: 2026-10-10
 - `src/core/rules/**`：连锁缺陷的修复。
 - `src/core/world/rule-data.ts`、`src/core/world/rule-data.test.ts`：导弹计时字段的拒绝。
 - `docs/plan/p3/02/spec.md`：CR-01 中的对应一句。
+- `src/content/rule-data/rule-data.test-support.ts`、`src/content/rule-data/*.test.ts`：合成导弹记录的默认计时字段，与依赖旧默认值的内容解码测试。
+- `src/core/world/*.test-support.ts`、`src/core/**/*.test.ts`、`src/app/**/*.test.ts`、`src/app/**/*.test-support.ts`：只用于适配导弹计时字段拒绝后失败的测试与夹具（含去掉 `game-session-replay.test.ts` 的局部覆盖）。
 
 ## 验收标准
 
