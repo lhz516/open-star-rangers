@@ -5,11 +5,13 @@
  * heading, so a key held on the previous page reaches no button here. Start confirms through the owner directly from
  * the click; a confirmation that created no run shows why in an alert and leaves the page for a retry or the way back.
  * Once no retry can succeed (a latched cleanup failure, a changed package), only the way back stays enabled and takes
- * focus.
+ * focus. The injected full screen request runs first within the same click (docs/plan/p3/05/spec.md, 全屏与 Keyboard
+ * Lock), so the click's user activation still applies to it.
  */
 import { useEffect, useId, useRef } from 'react';
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import { useFocusOnMount } from '../pages/use-focus-on-mount.ts';
+import { startWithGesture } from './input-notices.ts';
 import { startFailureText, startRetryable, wingmanLabel } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { MISSION_OBJECTIVES } from './slice-gaps-copy.ts';
@@ -18,9 +20,11 @@ export interface StartConfigPageProps {
   readonly snapshot: MissionOwnerSnapshot;
   readonly owner: Pick<MissionOwner, 'select' | 'start'>;
   readonly onReturn: () => void;
+  /** Requests document fullscreen for this start; called synchronously within the Start click, before the start. */
+  readonly requestFullscreen?: () => void;
 }
 
-export function StartConfigPage({ snapshot, owner, onReturn }: StartConfigPageProps) {
+export function StartConfigPage({ snapshot, owner, onReturn, requestFullscreen }: StartConfigPageProps) {
   const heading = useFocusOnMount<HTMLHeadingElement>();
   const objectivesId = useId();
   const radioName = useId();
@@ -78,7 +82,9 @@ export function StartConfigPage({ snapshot, owner, onReturn }: StartConfigPagePr
       )}
       <ActionErrorAlert error={actionError} />
       <p className="mission-actions">
-        <button type="button" disabled={blocked} onClick={() => { owner.start(); }}>Start</button>
+        <button type="button" disabled={blocked} onClick={() => { startWithGesture(requestFullscreen, () => { owner.start(); }); }}>
+          Start
+        </button>
         <button ref={returnButton} type="button" onClick={onReturn}>Return to main menu</button>
       </p>
       <GapNotes ids={['G-01', 'G-02/1', 'G-02/2']} />

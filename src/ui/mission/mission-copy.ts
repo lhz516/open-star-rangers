@@ -1,6 +1,7 @@
 /**
  * Page copy of the mission flow that is not a slice gap (docs/plan/p3/04/spec.md: 开始资格, 任务开始配置, 任务菜单、暂停与
- * 退出): the build's honest status, why the mission cannot start, start failures, and structural error descriptions that
+ * 退出; docs/plan/p3/05/spec.md: 输入区与焦点, 全屏与 Keyboard Lock, Alt+F4 风险提示): the build's honest status, why the
+ * mission cannot start, start failures, the game input zone and its notices, and structural error descriptions that
  * carry no imported content. DOM-free, so Node tests read it.
  */
 import type { MissionEligibility } from '../../app/mission/mission-eligibility.ts';
@@ -103,6 +104,23 @@ export function resumeBlockedText({ phase, environmentVisible }: GameSessionStat
   if (phase !== 'paused' || environmentVisible) return null;
   return 'Resume is unavailable while the page is hidden or being left.';
 }
+
+/** The game input zone's accessible name. */
+export const INPUT_ZONE_LABEL = 'Game controls';
+
+/** Shown while the run is running or paused and the input zone does not have focus; Tab may still leave the zone. */
+export const INPUT_FOCUS_HINT = 'Click the game view to control the craft: game keys work only while it has focus.';
+
+/** The shell's explicit full screen button; the whole page goes full screen, not only the game view. */
+export const FULLSCREEN_BUTTON = 'Full screen';
+
+/** The Alt+F4 tip: a project warning, not a promise that any key is intercepted. */
+export const ALT_F4_TIP = Object.freeze({
+  title: 'Alt+F4 may close this window.',
+  text: 'Pressing Alt+F4 can close the browser window and end the mission. Full screen and the key lock do not stop the '
+    + 'system from handling such keys, and the browser may close the page without showing the leave-page confirmation.',
+  dismiss: 'Dismiss',
+});
 
 /** Structural error fields that name a category or a fixed detection site; messages are left out. */
 const FIELDS = ['kind', 'code', 'site', 'stage', 'operation', 'phase', 'path', 'reason'] as const;
