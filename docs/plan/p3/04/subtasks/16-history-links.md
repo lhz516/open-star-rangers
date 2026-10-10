@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "04"
 subtask: "16"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 16 — 历史文档的失效源码链接
@@ -20,6 +20,8 @@ updated: 2026-10-09
 - 已批准 spec 的源码链接修订使旧的 `reviewed:` 摘要失效：按 [ADR-0015](../../../../decisions/ADR-0015-source-module-structure.md) 的先例删除过期标记，保留批准与契约，不伪造重新审阅。本任务 spec 同样只改链接目标。
 - `docs/plan/p3/tasks.md` 中的同类链接归协调者：在完成证据中列出需改的行与建议目标，由协调者修改。
 - 核对 `docs/reviews/` 与 `docs/decisions/` 中没有指向被删路径的链接；如发现，同样只改链接目标并列出。
+- 本任务已完成子任务文档（`docs/plan/p3/04/subtasks/`）中指向被删源码的链接，同样只改链接目标（协调者于 2026-10-10 加入）。
+- 15 改名的工程 README 小节使 6 个历史锚点失效（`#合成-runtime`、`#合成渲染`、`#页面流转与演示生命周期`，位置见 goal 执行记录“15 完成”）：同样只改链接目标，指向[退役记录 R10](../../../../engineering/source-structure.md#r10-菜单入口键位与工程文档)（协调者于 2026-10-10 加入）。
 
 ## 不包含
 
@@ -35,6 +37,7 @@ updated: 2026-10-09
 - `docs/plan/p2/**`：同上。
 - `docs/plan/p3/02/**`：同上。
 - `docs/plan/p3/04/spec.md`：只改指向被删源码的链接目标。
+- `docs/plan/p3/04/subtasks/**`：只改指向被删源码的链接目标，不改验收或证据文字。
 - `docs/reviews/**`：如有同类链接，只改目标。
 - `docs/decisions/**`：如有同类链接，只改目标。
 
