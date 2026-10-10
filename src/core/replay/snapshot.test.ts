@@ -112,6 +112,22 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(deepFrozen(snapshot)).toBe(true);
   });
 
+  it('writes the combat state instantiation gives, and leaves the static rule data out (P3-07 AC-05, CR-01, CR-14)', () => {
+    const state = initialWorldState(asCreateInput(worldInput()));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    const snapshot = world.snapshot();
+    const player = state.entities.get(1)!;
+    expect(snapshot.state.entities[0].combat).toEqual(player.combat);
+    expect(snapshot.state.entities[0].maximumSpeed).toBe(player.maximumSpeed);
+    expect(snapshot.state.player).toMatchObject({ targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: true } });
+    // Nothing of the static data is written: replacing it leaves the text as it is.
+    const text = snapshotText(snapshot);
+    expect(text).not.toContain('explosion-animation');
+    expect(text).not.toContain('mountOffsets');
+    expect(textOf({ ...state, ruleData: { ...state.ruleData, craft: [], guns: [], missiles: [] } })).toBe(text);
+  });
+
   it('copies the world: reading changes nothing, every call is a new copy, and later ticks never change it', () => {
     const state = richState();
     const world = constructWorld(state);
@@ -131,10 +147,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(snapshotText(world.snapshot())).not.toBe(text);
   });
 
-  it('changes the canonical text when any value of the world state but its static setup and craft info changes', () => {
+  it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', () => {
     const state = richState();
     // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
-    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'setup', 'spawn', 'tick']);
+    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'ruleData', 'setup', 'spawn', 'tick']);
     // Every entity is written by the same writer, so one entity of each shape stands for the rest: by collection,
     // group membership, name variant and combat type: the player, the wingman, a candidate-named record, a group
     // member, a pool name, an unnamed craft and the four runtime kinds, whose movement blocks are the other variants.

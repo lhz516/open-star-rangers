@@ -19,8 +19,8 @@ export function longInput(parts: WorldInputParts = {}): CreateWorldInput {
 
 /** What replay takes: the creation input without its run configuration. */
 export function contentOf(input: CreateWorldInput): ReplayContent {
-  const { mission, craftTypes, wingmanRoster, craftInfo, identity } = input;
-  return { mission, craftTypes, wingmanRoster, craftInfo, identity };
+  const { mission, craftTypes, wingmanRoster, craftInfo, debrisParameters, projectileVisuals, explosions, explosionAnimations, models, identity } = input;
+  return { mission, craftTypes, wingmanRoster, craftInfo, debrisParameters, projectileVisuals, explosions, explosionAnimations, models, identity };
 }
 
 /** A fixed input script: commands on some ticks, steering on others, -0 included. */

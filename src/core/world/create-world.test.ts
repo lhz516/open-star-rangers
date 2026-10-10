@@ -528,11 +528,16 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
 describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
   const hashOf = (parts: WorldInputParts = {}) => create(parts).config.setupHash;
 
-  it('is 16 lowercase hex digits of the setup alone: not of the run or the identity', () => {
+  it('is 16 lowercase hex digits of the setup and the content read: not of the run or the identity', () => {
     const hash = hashOf();
     expect(hash).toMatch(/^[0-9a-f]{16}$/);
-    expect(hashOf({ run: { seed: 1, wingman: 2, rawDifficulty: 0 } })).toBe(hash);
+    expect(hashOf({ run: { seed: 1, rawDifficulty: 0 } })).toBe(hash);
     expect(hashOf({ identity: originalImportIdentity() })).toBe(hash);
+    // A wingman adds its model to the models the run reads, and only that changes the hash.
+    const withWingman = create({ run: { wingman: 2 } });
+    expect(withWingman.config.setupHash).not.toBe(hash);
+    const { ruleData } = create();
+    expect(setupHash(withWingman.setup, withWingman.craftInfo, ruleData.inputs)).toBe(hash);
   });
 
   it('changes with names, coordinates, members, rule inputs and bindings', () => {
@@ -592,7 +597,74 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     it('does not depend on the key order of the craft info, the seed or the wingman', () => {
       const hash = hashOf();
       expect(hashOf({ craftInfo: reversedKeys(craftInfoContent()) })).toBe(hash);
-      expect(hashOf({ run: { seed: 99, wingman: 4 } })).toBe(hash);
+      expect(hashOf({ run: { seed: 99 } })).toBe(hash);
+      expect(hashOf({ run: { wingman: 4 } })).toBe(hashOf({ run: { wingman: 0 } }));
+    });
+  });
+
+  describe('rule-data inputs (P3-07 AC-02, CR-01)', () => {
+    type Content = Record<string, unknown>;
+    type Item = { id: string; content: Content };
+    /** The hash of the default input after `change`, which must keep it valid. */
+    const changedHash = (change: (input: Record<string, Item & Item[]>) => void, parts: WorldInputParts = {}) => {
+      const input = worldInput(parts);
+      change(input as never);
+      return initialWorldState(asCreateInput(input)).config.setupHash;
+    };
+    const lists = (input: Record<string, Item>) => input.explosions.content.lists as { sound: { id: string }; animation: { id: string } }[][];
+    const records = (input: Record<string, Item>) => input.projectileVisuals.content.records as { selector: number; width: number; length: number; colour: number[] }[];
+    const partsOf = (model: Item) => (model.content.partLists as unknown[][])[1];
+
+    it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts and part counts', () => {
+      const hash = hashOf();
+      expect(changedHash(() => undefined)).toBe(hash);
+      const changes: ((input: Record<string, Item & Item[]>) => void)[] = [
+        (input) => void (input.debrisParameters.id = 'data/other-debris'),
+        (input) => void ((input.debrisParameters.content.byCraftType as { at00: number[] }[][])[19][0].at00[1] = 0.5),
+        (input) => void ((input.debrisParameters.content.byCraftType as { collision: { at28: number } }[][])[19][0].collision.at28 = 1),
+        (input) => void (input.projectileVisuals.id = 'data/other-visuals'),
+        (input) => void (records(input)[0].length = 2),
+        (input) => void records(input).push({ ...records(input)[0] }),
+        (input) => void (input.explosions.id = 'data/other-explosions'),
+        (input) => void lists(input)[0].reverse(),
+        (input) => void lists(input)[1].push({ ...lists(input)[1][0] }),
+        (input) => {
+          for (const animation of input.explosionAnimations.slice(0, 3)) animation.content.frames = (animation.content.frames as unknown[]).slice(0, 10);
+        },
+        (input) => {
+          input.explosionAnimations[3].id = 'data/explosion-animation/09';
+          lists(input)[2][0].animation.id = 'data/explosion-animation/09';
+        },
+        (input) => {
+          // Kind bit 14's model gains a part and its DEBRIS table the matching record.
+          partsOf(input.models[1]).push({ ...(partsOf(input.models[0])[0] as object) });
+          (input.debrisParameters.content.byCraftType as unknown[][])[14].push(structuredClone((input.debrisParameters.content.byCraftType as unknown[][])[0][0]));
+        },
+      ];
+      const hashes = changes.map((change) => changedHash(change));
+      for (const changed of hashes) expect(changed).not.toBe(hash);
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+
+    it('does not change with appearance: selectors, widths, colours, templates, sounds, frame images, geometry and parts', () => {
+      const hash = hashOf();
+      const changes: ((input: Record<string, Item & Item[]>) => void)[] = [
+        (input) => Object.assign(records(input)[1], { selector: 7, width: 9, colour: [0, 0, 1] }),
+        (input) => void (input.projectileVisuals.content.templates = [{ faces: [1] }]),
+        (input) => void (lists(input)[0][1].sound = { id: 'sound/synthetic/other', kind: 'sound' } as never),
+        (input) => void ((input.explosionAnimations[0].content.frames as { id: string }[])[0].id = 'image/synthetic-frame/other'),
+        (input) => Object.assign(input.models[0].content, { geometries: [{ positions: [1, 2, 3] }], soundSlots: ['sound/x', null, null, null, null] }),
+        (input) => Object.assign(partsOf(input.models[0])[0] as object, { sourceFlags: 0xffff, colour: [1, 2, 3], texture: 'image/t' }),
+        (input) => void ((input.models[0].content.partLists as unknown[][])[2] = [{}]),
+      ];
+      for (const change of changes) expect(changedHash(change)).toBe(hash);
+    });
+
+    it('does not depend on the key order of the rule-data inputs', () => {
+      expect(changedHash((input) => {
+        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions'] as const) input[field].content = reversedKeys(input[field].content);
+        input.models = input.models.map(reversedKeys) as never;
+      })).toBe(hashOf());
     });
   });
 
@@ -631,11 +703,11 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('writes the wingman options\' eventTrigger too, though the content readers keep it null', () => {
       const setup = loadMission(asCreateInput(worldInput()));
-      const { craftInfo } = create();
-      const hash = setupHash(setup, craftInfo);
+      const { craftInfo, ruleData } = create();
+      const hash = setupHash(setup, craftInfo, ruleData.inputs);
       const changed = { ...setup, wingmanOptions: setup.wingmanOptions.map((option, index) => (index === 1 ? { ...option, eventTrigger: 0 } : option)) };
       expect(hash).toBe(hashOf());
-      expect(setupHash(changed, craftInfo)).not.toBe(hash);
+      expect(setupHash(changed, craftInfo, ruleData.inputs)).not.toBe(hash);
     });
 
     it('is the same for equal triggers built again or with keys in another order', () => {

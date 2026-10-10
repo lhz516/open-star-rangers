@@ -97,11 +97,11 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-02：合格输入创建世界；每类拒绝的错误类型、路径与原因稳定，不建半个世界，不回显导入值；原版允许的无参数部件可以表示。
-- [ ] AC-02：先查上限再复制；调用者事后修改输入不影响世界；载入变换与点测试符合独立推导；setupHash 的规范文本随 CR-01 表中的覆盖字段变化、不随外观字段变化，不宣称无碰撞；爆炸列表帧数不一致时拒绝，Core 不做 EXIC 抽取。
-- [ ] AC-05（初始化部分）：实例化按 CR-07 的次序写入挂点状态、初始当前挂点、船体、资源、档位与计时；`lastShotClock` 为 null；救援复用的初始化只重置 `0x2d400` 与 `0x3060c` 写的字段。
-- [ ] 实例化的抽取次数与次序符合 CR-07（`0x3060c` 的位置 1 次）；机体与非机体分支分开；导出的非机体分支与运行时种类缺省符合 CR-02。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
+- [x] AC-02：合格输入创建世界；每类拒绝的错误类型、路径与原因稳定，不建半个世界，不回显导入值；原版允许的无参数部件可以表示。
+- [x] AC-02：先查上限再复制；调用者事后修改输入不影响世界；载入变换与点测试符合独立推导；setupHash 的规范文本随 CR-01 表中的覆盖字段变化、不随外观字段变化，不宣称无碰撞；爆炸列表帧数不一致时拒绝，Core 不做 EXIC 抽取。
+- [x] AC-05（初始化部分）：实例化按 CR-07 的次序写入挂点状态、初始当前挂点、船体、资源、档位与计时；`lastShotClock` 为 null；救援复用的初始化只重置 `0x2d400` 与 `0x3060c` 写的字段。
+- [x] 实例化的抽取次数与次序符合 CR-07（`0x3060c` 的位置 1 次）；机体与非机体分支分开；导出的非机体分支与运行时种类缺省符合 CR-02。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm typecheck`、`pnpm lint` 通过。
 
 ## 验证方法
 
@@ -109,3 +109,24 @@ updated: 2026-10-10
 - 不读取原版文件；不涉及浏览器。
 
 ## 完成证据
+
+- **实现（基于 `2b27028`，其中含 P3-06 子任务 12 的合并 `510a230`）：**
+  - CR-01 输入与提取：[rule-data.ts](../../../../../src/core/world/rule-data.ts) 的 `readRuleDataInputs` 读取五项顶层输入（`RULE_DATA_FIELDS`），`debrisParameters`、`explosions`、`explosionAnimations` 用内容读取器（保留其 `ContentContractError`），`projectileVisuals` 只读 `kind` 与各记录 `length`（有限 f32），`models` 只读 `kind` 与第 1 列表长度；两张列表 ID 严格升序；`original-import` 只接受 `data/debris-parameters`、`data/projectile-visuals`、`data/explosions` 与两位编号的 `data/explosion-animation/<nn>`。上限 `RULE_DATA_LIMITS`（动画 48、模型 20、弹丸记录 64、部件 256，取自内容的结构上限）先于复制检查。[create-world.ts](../../../../../src/core/world/create-world.ts) 的输入字段与 `CONTENT_INPUT_FIELDS`（replay 共用）；[replay.ts](../../../../../src/core/replay/replay.ts) 的 `ReplayContent` 随之包含五项，记录形状不变。`recording.ts` 无需改动（经 `CreateWorldInput` 接收）。
+  - CR-01 集合与语义检查：可实例化记录由 [setup-check.ts](../../../../../src/core/world/setup-check.ts) 的 `instantiableRecords` 给出（发出请求的队列项：记录项、编组成员、已选僚机，与 P3-06 的 `checkCraftInfo` 同一判定）；`buildRuleData` 依次检查模型集合、爆炸动画集合与帧数（n₁₂、n₃，有导弹挂点而列表 3 为空时拒绝）、DEBRIS 映射（种类位 0、1 为 max(c − 3, 0) 且 c ≥ 1）、非自动炮挂点的弹丸长度、挂点链（两种链接无环；列表项不得同时带两种链接，同时开火链上后续组不得交替）、除数与定义域（玩家 c9C、c5C > 0；有护盾者 c60 ≠ 0 且 c60 × c5C 为 i32；瞄准炮 +0x08 ≠ 0；可达炮 +0x14 在 0–32；可达导弹 +0x60 ≠ +0x64）、每个可实例化记录在其百分比下的船体与 `0x3060c` 各 i32 步，以及派生值不出 f32 范围。
+  - CR-01 静态规则数据：`WorldState.ruleData`（[world-state.ts](../../../../../src/core/world/world-state.ts)）为冻结的 `WorldRuleData`：读取结果 `inputs`、`explosionFrames`、按记录的 `guns`/`missiles`（未被可实例化机体挂载的为 null）与按种类位的 `craft`（形状、挂点偏移、第 1 列表部件数、DEBRIS 变换，不可实例化的为 null）。变换在 [load-transforms.ts](../../../../../src/core/rules/load-transforms.ts)，点测试 `0x29bf4`、`0x29d58` 与 `0x56dc0` 在 [collision-shapes.ts](../../../../../src/core/rules/collision-shapes.ts)，`0x56aa8` 为 `normalise`（供 18 复用）。快照写入器按字段选取，不含 `ruleData`。
+  - setupHash：[setup-hash.ts](../../../../../src/core/world/setup-hash.ts) 在 craft-info 之后按 CR-01 表写 `ruleData`，模块注释列出覆盖与不覆盖的字段。
+  - CR-07 实例化：[spawn.ts](../../../../../src/core/systems/spawn.ts) 以最高速度 0 与空白战斗状态分配后，调用 [combat-init.ts](../../../../../src/core/rules/combat-init.ts) 的 `initialiseCraftCombat`：`0x2d400`（`buildWeaponBlock`：各列表序号 0、首挂点或 null，挂点弹药取 +0x0C，`lastShotClock` 为 null）与船体（chop((+0x60 × f64 0.01) × c9C)）→ `0x3060c`（`initialiseResources`：资源、玩家档位 1、2、E、T，再以实时 E、T 与字段 2 调用 P3-06 的 `playerMaximumSpeed`，然后写两个能量时钟，1 次抽取）→ 字段 0–18 清零；玩家状态一步写 `targeting`（`initialPlayerTargeting()`）与 `statusDisplay.redraw = true`。抽取次序：名称 → `0x3060c` → `0x68050` → Warp 计时。
+  - 导出：`missileMaximumSpeed`（非机体分支：弹体 +0xB8）、`runtimeKindDefaults()`（CR-02 的运行时种类缺省，实体表的校验接受种类位 20、21、22、24）、救援复用的 `rebuildWeaponBlock` 与 `initialiseResources`（只写各自字段）、`craftMaximumSpeed`（供 16 的档位重算）。
+  - 代码常量（craft §5）在 load-transforms.ts 中实现：`0x170fa2`、`0x170fa6`、`0x170c27`/`0x170c2f`、`0x170c37`；船体常量 `0x1725c4`（f64 0.01）在 combat-init.ts。数值读自本地可执行文件，只用于实现，不写入文档。
+- **原版事实（已确认，代码，P3-07/12）：** 实现所需的指令级算术不在既有记录中，以只读 Ghidra（私有副本，`-noanalysis -readOnly`，被忽略的 `local/research/p3-07/rule-data/`，输出 `out/p1`–`out/p5`）按原生指令读取并写入 [craft §3.8、§4.4](../../../../original/formats/craft.md#38-load-transforms-in-0x2cf38-confirmed-code)（射程、挂点加长、角点长度与最大值、`0x56aa8`、类别比较）与 [executable](../../../../original/formats/executable.md) 的实例化第 6 步（船体常量类型与截断）、T10（`0x56dc0` 的求和次序）、H7（点测试的 d² 形式）。没有新的未决项，U 项不变。
+- **测试：** `pnpm check` 通过（220 个文件，7,097 项，生产构建成功）；`pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 通过（49 个文件，1,714 项）；`pnpm typecheck`、`pnpm lint`、`pnpm check:compliance` 通过。新增或更新的断言：
+  - [rule-data.test.ts](../../../../../src/core/world/rule-data.test.ts)：提取结果与冻结；调用者事后修改对象与 typed array 不影响世界；五项字段缺失或多余、ID 格式与 kind、`original-import` 的生产 ID（含动画编号）；内容读取器错误保留；弹丸记录与模型只读所需字段；弹丸记录 64/65、部件 256/257、动画 48/49、模型 20/21 的上限；升序与重复；集合多一份或少一份（含僚机选择与不发请求的记录）；帧数不一致、列表空、有导弹挂点而列表 3 空；DEBRIS 映射与种类 1 的 c = 0、c = 1、c = 3；炮挂点无长度；挂点链两种环与两种排列；各除数与定义域；船体与资源的 i32 溢出（含所选僚机的记录）；派生值越出 f32；静态规则数据的值。
+  - [load-transforms.test.ts](../../../../../src/core/rules/load-transforms.test.ts)、[collision-shapes.test.ts](../../../../../src/core/rules/collision-shapes.test.ts)：期望由文档算术与有理数一次舍入或手算值独立给出，例如 f32 存储导致的 √2、两次加宽使 10⁸ 保持不变、r − 3.5 = 20 的类别边界、`0x56dc0` 第 1 行用双精度差而第 2 行用 f32 差的不同结果、`0x29bf4` 先舍入 d² 使单位球外的点命中而 `0x29d58` 不命中、严格盒与内框。
+  - [combat-init.test.ts](../../../../../src/core/rules/combat-init.test.ts)：武器块、船体的双精度乘积（29 % × 100 得 28）、`0x3060c` 的除乘次序与各步、玩家与其他种类的档位与最高速度、1 次抽取与时钟、只写本函数字段（救援复用）、清零前读字段 2、预算与 i32 故障、运行时种类缺省。
+  - [spawn.test.ts](../../../../../src/core/systems/spawn.test.ts)：玩家与其他机体的完整战斗初值与玩家状态一步；记录百分比；停放机体与较晚生成的时钟；能量时钟预算故障；既有抽取序号测试按每个机体多 1 次抽取更新。
+  - [create-world.test.ts](../../../../../src/core/world/create-world.test.ts)：setupHash 随 CR-01 表每项覆盖字段的代表变化而变，不随选择值、宽度、颜色、模板、声音、帧图像、几何、部件标志与第 0、2 列表变化，不依赖键序；只经所选僚机的模型随运行改变。[replay.test.ts](../../../../../src/core/replay/replay.test.ts)、[recording.test.ts](../../../../../src/core/replay/recording.test.ts)、[snapshot.test.ts](../../../../../src/core/replay/snapshot.test.ts)：缺少规则输入、规则输入改动经 setupHash 拒绝、记录不嵌入规则输入、新初值进入快照而静态规则数据不进。
+- **rubber-duck：** 采纳 1 项：`original-import` 的动画 ID 由前缀改为两位编号。未采纳 3 项：(1) 事件触发的延迟声明——内容不支持生成对（`EventTrigger` 不携带 +0x30 的生成对），所有可调度记录都按时间进入队列，“延迟声明”即较晚的生成时间，已覆盖；(2) 救援不应清 `depleted`——CR-02 字段表把 `depleted` 与 `0x3060c` 的字段同列，初始化为 false、由救援重置，救援后能量恢复为正，与锁存的语义一致；(3) 在创建时检查依赖经过时间的能量更新乘积——经过时间在停靠期间没有上界（D14 停靠跳过更新），无法静态界定，原版按 i32 回绕（D17），由 16 实现；CR-01 的“按记录百分比”只涉及实例化的运算，另加的 c60 × c5C 是不依赖经过时间的护盾补充上界。
+- **simplify：** 采纳：测试复用 `TEST_ORIENTATION`、`TEST_RULE_INPUTS`；`contentOf` 改为显式字段（类型检查）；内容字段表 `CONTENT_INPUT_FIELDS` 由 create-world 与 replay 共用。未采纳：点测试与实例化的微小分配（非热点或归 19 优化）；保留实例化时的 i32 与预算故障检查（不变量）；`missileMaximumSpeed`、`runtimeKindDefaults` 与点测试暂无生产调用者（本项按工作范围导出，供 14、18、19）；`WorldRuleData.inputs` 保留（弹丸表现选择器需要其 Asset ID）；`instantiableRecords` 与 craft-info-input.ts 私有 `instantiableKinds` 的重复遍历（后者属 P3-06，范围外，见交接）。
+- **文档影响：** 原版事实如上写入 `docs/original/`。[core.md](../../../../engineering/modules/core.md) 与 [source-structure.md](../../../../engineering/source-structure.md) 中关于 `createWorld` 输入与新模块的说明按 goal 归 28 更新，本项不改。
+- **交接：** P3-06 的 `initialMaximumSpeed`（flight-state.ts）已无生产调用者，实例化改用实时 E、T；craft-info-input.ts 的 `instantiableKinds` 可改为由 `instantiableRecords` 派生（P3-06 所有，未改）。调用者（P3-04）须按运行的可实例化机体传入恰好的模型集合。
+

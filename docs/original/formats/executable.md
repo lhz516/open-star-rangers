@@ -738,7 +738,7 @@ The success path clears `0x17670c` ([mission result](#mission-result-success-pat
 3. Sets +0x1C to the `CINF` craft record of the kind (`0x2d2d8`); `0x2d400` builds the weapon mounts from it.
 4. Names the object (`0x67d44`, above) and sets +0x190 to the record (its source).
 5. Copies position +0x6C–+0x74 and pose +0x48–+0x68 from placement ([placement mappings](#placement-mappings-p3-0202)).
-6. Sets +0xD0 from record +0x60 and craft +0x9C ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)).
+6. Sets +0xD0 from record +0x60 and craft +0x9C ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)): `FILD` of the record value times the `f64` constant `0x1725c4`, times `FILD` of craft +0x9C, then `FISTP` after the truncation call `0x74518` (Confirmed, code, P3-07/12; ignored `local/research/p3-07/rule-data/out/p5`).
 7. Calls `0x3060c` with record +0x68, record +0x64 and 100. For kinds in `0xfffff` it sets +0x28 = (craft +0x54 ÷ 100) × the first, +0x2C = craft +0x5C × the second ÷ 100, +0x30 = craft +0x74 × 100 ÷ 100 (integer divisions truncate), +0x34 = 1 and +0x38 = 2 for kind 1, +0x3C and +0x40 from other craft fields, the maximum speed +0x78, +0x20 = sample, +0x44 = 1 and +0x24 = sample + 128 + rand % 64 (one draw). Other kinds get only +0x78. The maximum speed (`0x30e0c`) is craft +0xB8; for kind 1 it also depends on +0x3C, +0x40 and the two-bit field 2 below.
 8. Copies record +0x70, +0x74 and +0x78 to +0xDC, +0xE0 and +0xE4 (no `CINF` dependence).
 9. Clears 19 two-bit fields in the words at +0xE8 and +0xEC (`0x52a84`, shift and mask tables at `0x1760b4`–`0x176113`).
@@ -1707,7 +1707,8 @@ direction observed at runtime (round to nearest, U-009).
   minimum search; `0x63954` compares f32 values throughout. No square root on the player paths
   (`out` is 0 in all four helpers).
 - **`0x56dc0` (forward):** row-1 component from double differences, rows 2–3 from the f32-rounded
-  differences; each component stored as f32. z > 5.0 is an f32 compare; x² + y² is formed in double
+  differences; each component stored as f32. Each dot product adds the y term to the x term, then
+  the z term (P3-07/12, ignored `local/research/p3-07/rule-data/out/p4`). z > 5.0 is an f32 compare; x² + y² is formed in double
   from the f32 components and compared unrounded with the f32 r².
 - **Radar:** Manhattan sum in double from f32 positions, truncated to i32 (|sum| < 2^31 for any
   world ≤ 105,000 units, so no overflow); screen coordinates truncated to i32; projections stored
@@ -2255,7 +2256,7 @@ Runs inside the movement walk, immediately after the projectile's own mode-1 mov
 
 ##### H7. Point tests — Confirmed (code)
 
-- `0x29bf4` (craft shape at record +0x10) and `0x29d58` (DEBRIS shape at record +0x18): sphere first, **d² ≤ r² (non-strict)**; box count 0 → hit on the sphere alone; otherwise the point in the target frame (`0x56dc0`), strict inner-box exclusion when the flag is set, then hit at the first box that contains it strictly; count ≤ 0 → miss. `0x29bf4` rounds d² to f32 before comparing and outputs it; `0x29d58` compares at x87 precision. Neither reads the bounds or the radius itself.
+- `0x29bf4` (craft shape at record +0x10) and `0x29d58` (DEBRIS shape at record +0x18): sphere first, **d² ≤ r² (non-strict)**; box count 0 → hit on the sphere alone; otherwise the point in the target frame (`0x56dc0`), strict inner-box exclusion when the flag is set, then hit at the first box that contains it strictly; count ≤ 0 → miss. `0x29bf4` rounds d² to f32 before comparing and outputs it; `0x29d58` compares at x87 precision. Neither reads the bounds or the radius itself. d² = (dy·f32(dy) + dx·f32(dx)) + dz·f32(dz): each difference in double times its `f32` copy, the x term included, unlike `0x637e4` ([T10](#t10-numbers-on-these-paths-confirmed-code)) (P3-07/12; evidence ignored `local/research/p3-07/rule-data/`, `out/p4`, native).
 - `0x2adac` (missile fuse): strict d² < r², only for records with boxes (H5).
 - `0x2874c`/`0x28b48` (projectiles): segment tests (H3).
 

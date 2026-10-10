@@ -229,6 +229,12 @@ Applied each time a CINF is loaded, to the freshly loaded block. Arithmetic runs
 
 Classification for the import: the index rewrite only places the index, so it is structural and carried by position. Every other step is arithmetic: the positions it writes are not converted (their stored values are zero in all 24, except the conditional craft bounds, which are zero exactly in the records where they are written), and the mount +0x08 increase is a consumer transform. The mount step reads RENS 10751, which is delivered as `data/projectile-visuals`. Two empty loops follow the mount links +0x18 and +0x1C, and three empty loops count the mount lists; they change nothing.
 
+**Arithmetic (Confirmed, code, P3-07/12):** under the start-up control word (53-bit precision, [H8](./executable.md#h8-numbers-on-these-paths--confirmed-code-unless-marked)), each f32 store rounding once:
+
+- A range is `FILD` of the i32 lifetime, times the `f32` constant `0x170fa2`, times the `f32` speed (gun +0x08, or the missile's +0x08 copied from its body); a square multiplies the stored `f32` value by itself.
+- A mount's +0x08 increase loads the `f32` length, multiplies it by `0x170fa6` for records 0 and 1, and adds the mount's `f32` +0x08 (`FADD`) before the store.
+- A box corner's length is `FSQRT` of (y² + x²) + z² for the lower corner and (x² + y²) + z² for the upper one. Each root is stored as `f32` and compared, unrounded, with the `f32` maximum, which starts at +0 and is replaced only by a strictly larger root; r is therefore the largest of the `f32` corner lengths.
+
 ### 3.9 Zero-only positions and observed values
 
 - The zero byte map of CINF 4037 equals that of all 24 CINF for every structure. Whole 4-byte positions that are zero everywhere: gun +0x00, +0x0C, +0x10; missile +0x00, +0x08–+0x10, +0x2C, +0x50; craft +0x14 and +0x90; and in body records everything except the six positions of §3.5. All of them have a type and handling above. The partial-slot zero ranges that have no type are gun +0x29–+0x2B, missile +0x19–+0x1B and +0x25–+0x27, and mount +0x11–+0x13 (zero only).
@@ -325,7 +331,13 @@ For every record of every pair, in this order:
 3. For each box, every component of the lower corner is increased by the `f64` constant `0x170c27` and every component of the upper corner by the `f64` constant `0x170c2f`, each addition done twice with an `f32` store in between.
 4. r ← the largest length of any adjusted box corner; +0x20–+0x28 ← −r, +0x2C–+0x34 ← r, +0x18 ← r, +0x1C ← r², and +0x5C ← 1 if r + `0x170c27` < the `f64` constant `0x170c37`, otherwise 0.
 
-The record's stored first vector is therefore negated, and the copy at +0x0C is normalised but not negated. Classification for the import: steps 1 and 4 write positions that are not converted; steps 2 and 3 are arithmetic on converted positions, so they are consumer transforms. None of them is structural. The +0x5C that [difficulty path 6](./scenario.md#difficulty-readers-p3-01) tests is this computed value.
+The record's stored first vector is therefore negated, and the copy at +0x0C is normalised but not negated.
+
+**Arithmetic (Confirmed, code, P3-07/12):** under the start-up control word (53-bit precision, [H8](./executable.md#h8-numbers-on-these-paths--confirmed-code-unless-marked)):
+
+- `0x56aa8` stores the length √((y² + x²) + z²) as `f32`; when its bits other than the sign are zero the vector is left as it is; otherwise each component becomes the `f32` of the component times (1 ÷ the stored length), the quotient kept in double.
+- Step 3 adds the constant to the `f32` component in double and stores `f32`, twice per component.
+- Step 4 takes the corner lengths and their maximum as in §3.8, and compares r + `0x170c27` with `0x170c37` in double. Classification for the import: steps 1 and 4 write positions that are not converted; steps 2 and 3 are arithmetic on converted positions, so they are consumer transforms. None of them is structural. The +0x5C that [difficulty path 6](./scenario.md#difficulty-readers-p3-01) tests is this computed value.
 
 ## 5. Executable constants used by the transforms
 
@@ -337,5 +349,7 @@ Code-side constants of the data object, by address and type (values not recorded
 - The unit of +0xAC–+0xB4 rests on the arithmetic, the data and the printed manual. The roles of +0x58 and +0x64–+0x84 in the energy rules are in §3.10 (P3-07/04, Confirmed, code); their names (power budget, recharge rates) remain Likely.
 - +0xA4 is now typed i32 (above); the project reader `craft-info.ts` still reads it as int32, which rejects a value with bit 31 set. No baseline value is affected; aligning the reader is P3-03's.
 - Body record positions other than the six non-zero ones are typed only through the shared layout.
+
+Evidence for the arithmetic paragraphs of §3.8 and §4.4 (P3-07/12): ignored `local/research/p3-07/rule-data/` (`ghidra_scripts/RuleDataProbe.java`, `probe.sh`, outputs `out/p1`–`out/p5`), native instructions of `0x2cf38`, `0x246a0` and `0x56aa8` read `-noanalysis -readOnly` on a private copy of the Ghidra project; the constants' types were read from the local executable.
 
 Evidence: ignored `local/research/p3-03/craft/`: `nob.ts`, `walk-cinf.ts`, `walk-debris.ts`, `tabl4003.ts`, `survey.ts`, `survey2.ts`, `zeros.ts`, `checks.ts`, `maxima.ts`, `floats.ts`, `order.ts` with `out/*.json` and `out/survey.txt` (structure, classes and counts only); the Ghidra scripts `ghidra_scripts/CraftProbe.java` and `CraftFlow.java` run through `probe.sh` with outputs `out/p1`–`out/p18` and `out/flow12b`, queried by `flowq.ts`, `q-roots.ts`, `q-aux.ts` and `q-mount.ts`. Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and calling conventions set in memory were discarded. Widths and operations were read from native instructions or from the decompiler's p-code operations on them.
