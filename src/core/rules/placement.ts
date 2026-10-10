@@ -57,10 +57,18 @@ interface RoutedPoint {
   readonly point: Vector3;
 }
 
-function worldDefault({ sectors }: WorldFrame, rand: RandSource): RoutedPoint {
+/**
+ * The whole-world default point `0x68c98`: x then y from one draw each, z = +0. Placement takes it for a record without
+ * another route; instantiation's `0x68050` takes it as an AI goal point, without the world check.
+ */
+export function worldDefaultPoint({ sectors }: WorldFrame, rand: RandSource): Vector3 {
   const extent = RUNTIME_SCALE * sectors;
   const x = worldCoordinate(extent, rand.next());
-  return { route: 'world', point: vector(x, worldCoordinate(extent, rand.next()), 0) };
+  return vector(x, worldCoordinate(extent, rand.next()), 0);
+}
+
+function worldDefault(world: WorldFrame, rand: RandSource): RoutedPoint {
+  return { route: 'world', point: worldDefaultPoint(world, rand) };
 }
 
 function routePoint(record: PlacementRecord, world: WorldFrame, rand: RandSource): RoutedPoint {

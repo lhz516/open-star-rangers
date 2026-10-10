@@ -36,7 +36,7 @@ const RECORD_FIELDS = ['format', 'version', 'rulesVersion', 'producer', 'content
 /** Enough to read the format and version of a record with other fields before rejecting its fields. */
 const MAX_RECORD_FIELDS = 32;
 const RUN_FIELDS = ['rawDifficulty', 'wingman', 'seed', 'clockUnitsPerTick'] as const;
-const CONTENT_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'identity'] as const;
+const CONTENT_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'identity'] as const;
 
 /** `error` again at `path`, if it is one of the input contract errors; anything else unchanged. */
 function movedTo(error: unknown, path: string): unknown {
