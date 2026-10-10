@@ -87,16 +87,16 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-flight-context-keys-research.md](./subtasks/01-flight-context-keys-research.md) | — | pending |
-| [02-other-context-keys-research.md](./subtasks/02-other-context-keys-research.md) | — | pending |
-| [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | pending |
+| [01-flight-context-keys-research.md](./subtasks/01-flight-context-keys-research.md) | — | in-progress |
+| [02-other-context-keys-research.md](./subtasks/02-other-context-keys-research.md) | — | in-progress |
+| [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | in-progress |
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | pending |
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | pending |
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | pending |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
-| [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | pending |
-| [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | pending |
+| [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | in-progress |
+| [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | blocked |
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | pending |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | pending |
@@ -124,6 +124,12 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-10 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal。协调者在 `p3-05-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-01、P3-03、P3-06、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-05-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则（协调者认领，逐个以 `Worker-Commit:` 拖车集成并清理）。Ghidra 由各 worker 在 `local/research/p3-05/` 下的私有副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
+- **2026-10-10 — Subtask 10 blocked:** P3-06 尚未在本工作树集成，10 要修订的 P3-06 spec 与依据的档位规则都不在本分支。
+  Evidence: `git merge-base --is-ancestor p3-06-flight-motion-spec HEAD` 与对 `main` 的同一检查均为假；P3-06 分支为 `42db4ec2`，其 goal 的 08 仍为 in-progress，17、18、25 为 pending。
+  Affected acceptance: 10 的全部验收；经依赖影响 16（AC-07）及其下游 19、25。
+  Resume when: P3-06 合入 `main`，协调者把 `main` 合并进本分支并完成 goal [跨任务前提](#代码现状与前提)中的核对（或用户指示提前合并 P3-06 分支的某个提交并完成同样核对）。
 
 ## 审批
 
