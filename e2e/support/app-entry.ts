@@ -30,6 +30,11 @@ export interface TestEntryOptions {
    * delivers them (P2-12 F-12).
    */
   readonly hold?: string;
+  /**
+   * Comma-separated uint32 values, at most 16, that the mission's seed source draws in order, one per world creation
+   * attempt; after them it draws from `crypto.getRandomValues` (P3-04 S-09).
+   */
+  readonly seeds?: string;
 }
 
 /** A cache operation whose results the `hold` option can delay. */
