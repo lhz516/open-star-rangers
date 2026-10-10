@@ -113,7 +113,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [24-slice-gap-copy.md](./subtasks/24-slice-gap-copy.md) | 11 | pending |
 | [25-composition-wiring.md](./subtasks/25-composition-wiring.md) | 19, 22, 23, 24 | pending |
 | [26-map-policy-wiring.md](./subtasks/26-map-policy-wiring.md) | 05, 25 | pending |
-| [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | pending |
+| [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | in-progress |
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | pending |
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | pending |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | pending |
