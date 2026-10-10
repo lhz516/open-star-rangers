@@ -14,7 +14,22 @@ function batch(): PendingDelivery[] {
   return events.map((event) => ({ event, commandId: event.type === 'command-result' ? event.commandIndex + 1 : null }));
 }
 
-const label = (event: DomainEvent) => (event.type === 'command-result' ? `result:${event.commandIndex}` : `object:${event.entityId}`);
+const label = (event: DomainEvent) => {
+  switch (event.type) {
+    case 'command-result': return `result:${event.commandIndex}`;
+    case 'object-instantiated': return `object:${event.entityId}`;
+    default: return event.type;
+  }
+};
+
+/** One event of each P3-06 type, as Core emits them (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约). */
+const FLIGHT_EVENTS: readonly DomainEvent[] = Object.freeze([
+  Object.freeze({ type: 'speed-assist-released', tick: 5 }),
+  Object.freeze({ type: 'speed-matched', tick: 5, targetEntityId: 3, origin: 'assist', speedDifferenceExceeded: true }),
+  Object.freeze({ type: 'speed-assist-toggled', tick: 5, commandIndex: 0, enabled: true }),
+  Object.freeze({ type: 'speed-matched', tick: 5, targetEntityId: 3, origin: 'command', commandIndex: 1 }),
+  Object.freeze({ type: 'object-left-world', tick: 5, entityId: 4, kindBit: 7, source: null }),
+] satisfies DomainEvent[]);
 
 describe('GameEventBus', () => {
   it('delivers each event to every receiver in registration order, filtered by type, with the given metadata', () => {
@@ -107,6 +122,17 @@ describe('GameEventBus', () => {
     expect((error as GameRuntimeError).errors).toEqual([expect.any(TypeError), expect.any(TypeError)]);
     // Vitest fails the run on an unhandled rejection; let the async receiver's rejection settle first.
     await new Promise((resolve) => { setTimeout(resolve, 0); });
+  });
+
+  it('accepts every Core event type, P3-06\'s speed and world-exit events included, and filters by it', () => {
+    const bus = new GameEventBus(), calls: string[] = [];
+    for (const type of ['speed-assist-toggled', 'speed-matched', 'speed-assist-released', 'object-left-world'] as const) {
+      bus.on(type, (event, delivery) => { calls.push(`${type}:${event.tick}:${delivery.commandId}`); });
+    }
+    bus.dispatch(FLIGHT_EVENTS.map((event) => ({ event, commandId: null })));
+    expect(calls).toEqual([
+      'speed-assist-released:5:null', 'speed-matched:5:null', 'speed-assist-toggled:5:null', 'speed-matched:5:null', 'object-left-world:5:null',
+    ]);
   });
 
   it('clears every subscription, and rejects unknown types and non-function receivers', () => {

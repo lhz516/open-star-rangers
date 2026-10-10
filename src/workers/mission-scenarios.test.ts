@@ -8,6 +8,7 @@ import type { MissionContent, WingmanRoster } from '../content/logic/logic-conte
 import { decodeLogicPayload } from '../content/logic/logic-payload.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { readPayloadRecords } from '../content/payload.ts';
+import { decodeRuleDataPayload } from '../content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
 import { DEFAULT_CLOCK_UNITS_PER_TICK } from '../core/contracts/time.ts';
 import { CoreInputError } from '../core/errors.ts';
@@ -23,8 +24,8 @@ import { PRODUCTION_PACKAGE } from './production-package.ts';
 
 // P3-04 subtask 01 (S-09): each mission scenario runs its production import job in Node; the groups it sends are kept
 // as the import job owner and resource holder keep them (complete groups only, in slice definition order), judged as a
-// whole package and diagnosed, and the startable and create-rejected missions go to `createWorld` with the production run
-// configuration.
+// whole package and diagnosed, and the startable and create-rejected missions go to `createWorld` with the package's
+// craft info (P3-06 D-01) and the production run configuration.
 
 /** Every run configuration the start page offers: no wingman and each of the five roster options. */
 const WINGMEN = [null, 0, 1, 2, 3, 4] as const;
@@ -46,23 +47,27 @@ async function imported(name: MissionScenario): Promise<Imported> {
   return { groups, held, completeness: validatePackage(CLASSIC_P2_SLICE, held), mission: diagnoseMission(held) };
 }
 
-type LogicAssets = Pick<CreateWorldInput, 'mission' | 'craftTypes' | 'wingmanRoster'>;
+type LogicAssets = Pick<CreateWorldInput, 'mission' | 'craftTypes' | 'wingmanRoster' | 'craftInfo'>;
 
-/** The held logic group's mission and the craft type table and roster it references, decoded as mission diagnostics does. */
+/**
+ * The held logic group's mission and the craft type table and roster it references, decoded as mission diagnostics
+ * does, and its craft info (P3-06 D-01), decoded with the rule-data payload reader.
+ */
 function logicAssets(held: readonly ScenarioGroup[]): LogicAssets {
   const logic = held.find(({ group }) => group === 'logic')!;
   const { assets } = readGroupManifest(logic.manifest);
   const payloads = readPayloadRecords(logic.payloads);
-  const asset = (found: (typeof assets)[number] | undefined) => {
+  const asset = (found: (typeof assets)[number] | undefined, decode: typeof decodeLogicPayload | typeof decodeRuleDataPayload) => {
     if (!found) throw new Error('The logic group lacks a referenced Asset');
-    return { id: found.id, content: decodeLogicPayload(payloads.find(({ id }) => id === found.id)!.bytes, found).content };
+    return { id: found.id, content: decode(payloads.find(({ id }) => id === found.id)!.bytes, found).content };
   };
-  const mission = asset(assets.find(({ role }) => role === 'mission'));
+  const mission = asset(assets.find(({ role }) => role === 'mission'), decodeLogicPayload);
   const { references } = mission.content as MissionContent;
   return {
     mission,
-    craftTypes: asset(assets.find(({ id }) => id === references.craftTypes)),
-    wingmanRoster: asset(assets.find(({ id }) => id === references.wingmanRoster)),
+    craftTypes: asset(assets.find(({ id }) => id === references.craftTypes), decodeLogicPayload),
+    wingmanRoster: asset(assets.find(({ id }) => id === references.wingmanRoster), decodeLogicPayload),
+    craftInfo: asset(assets.find(({ role }) => role === 'craft-info'), decodeRuleDataPayload),
   };
 }
 

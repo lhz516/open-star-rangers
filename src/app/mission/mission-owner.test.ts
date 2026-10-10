@@ -8,7 +8,7 @@ import { GameSessionError } from '../session/session-errors.ts';
 import { FLOW_SESSION_PHASES } from './mission-flow.ts';
 import { developmentRecording, MissionUnavailableError, type MissionOwner } from './mission-owner.ts';
 import {
-  elapsePlaceholder, MISSION_SCENARIOS, missionHolder, missionJob, openMission, ownerSetup, sessionProbe, skip, testPorts, testSlot, toConfig,
+  craftInfoJob, elapsePlaceholder, MISSION_SCENARIOS, missionHolder, missionJob, openMission, ownerSetup, sessionProbe, skip, testPorts, testSlot, toConfig,
   toDeparture, toFlight, type OpenMission,
 } from './mission.test-support.ts';
 
@@ -221,6 +221,56 @@ describe('mission owner start', () => {
       expect(owner.getSnapshot().session).toMatchObject({ phase: 'idle', runId: null, error: null, cleanupFailed: false });
     }
     expect(setup.onCleanupFailure).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'a craft info world creation rejects',
+      () => craftInfoJob({ at0C: 0.5 }),
+      {
+        kind: 'core-input', path: 'input.craftInfo.content.craft[0].at0C',
+        reason: 'must be at least 1 once truncated, as the parked travel takes it as a modulus',
+      },
+    ],
+    [
+      'a craft info that does not decode',
+      () => craftInfoJob('next-schema'),
+      { kind: 'content', path: 'logic[data/craft-info].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
+    ],
+  ])('keeps %s of the same package on the start page as a world creation refusal', async (_, job, failure) => {
+    const setup = await openMission(await job());
+    const { owner, seeds, guard, host } = setup;
+    // Eligibility reads only the mission diagnostics, which do not read the craft info.
+    toConfig(owner);
+    for (const [attempt, wingman] of [null, 0].entries()) {
+      owner.select(wingman);
+      owner.start();
+      expect(owner.getSnapshot().flow).toMatchObject({ position: 'config', selection: wingman, startFailure: { kind: 'rejected', failure } });
+      expect({ draws: seeds.draws, guards: guard.active, frames: host.pending.size }).toEqual({ draws: attempt + 1, guards: 0, frames: 0 });
+      expect(owner.getSnapshot().session).toMatchObject({ phase: 'idle', runId: null, error: null, cleanupFailed: false });
+    }
+    expect(setup.onCleanupFailure).not.toHaveBeenCalled();
+  });
+
+  it('offers no start for a package without a craft info, as the slice requires one in its logic group', async () => {
+    const error = await openMission(await craftInfoJob('missing')).then(() => null, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MissionUnavailableError);
+    const { eligibility } = error as MissionUnavailableError;
+    expect(eligibility.status).toBe('package-incomplete');
+    if (eligibility.status !== 'package-incomplete') return;
+    expect(eligibility.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'role-cardinality', path: expect.stringMatching(/\.roles\.craft-info$/) }]);
+  });
+
+  it('starts with the craft info of the package it bound, which the run\'s setup hash binds', async () => {
+    const changed = await openMission(await craftInfoJob({ at0C: 500 }));
+    const plain = await openMission();
+    const hashes = [changed, plain].map((setup) => {
+      setup.seeds.values = [7];
+      toConfig(setup.owner);
+      setup.owner.start();
+      return runOf(setup).snapshot().state.config.setupHash;
+    });
+    expect(hashes[0]).not.toBe(hashes[1]);
   });
 
   it('refuses to start once the bound package is gone, without drawing a seed', async () => {

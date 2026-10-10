@@ -18,8 +18,8 @@ export interface RuntimeSpecParts extends Pick<WorldInputParts, 'mission' | 'ros
 
 /** A fresh mutable spec, by default the slice-shaped mission without a wingman or recording. */
 export function runtimeSpec(parts: RuntimeSpecParts = {}): GameRuntimeSpec {
-  const { mission, craftTypes, wingmanRoster, identity, run } = worldInput({ mission: parts.mission, roster: parts.roster, run: parts.run });
-  return { mission, craftTypes, wingmanRoster, identity, run, recording: parts.recording ?? null } as GameRuntimeSpec;
+  const { mission, craftTypes, wingmanRoster, craftInfo, identity, run } = worldInput({ mission: parts.mission, roster: parts.roster, run: parts.run });
+  return { mission, craftTypes, wingmanRoster, craftInfo, identity, run, recording: parts.recording ?? null } as GameRuntimeSpec;
 }
 
 export const recordingOptions = (checkpointInterval: number): RecordingOptions => ({ producer: 'osr-test', checkpointInterval });

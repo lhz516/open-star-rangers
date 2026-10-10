@@ -4,7 +4,9 @@
  * releases it before the next exists. It is DOM-free: host capabilities arrive as ports, and React reads its snapshot.
  *
  * - **Binding:** the owner binds the holder's package of one generation and content identity when it opens and checks it
- *   again when the start is confirmed; the run is created only from that package's three logic Assets.
+ *   again when the start is confirmed; the run is created only from that package's three logic Assets and its craft
+ *   info (P3-06 D-01). A craft info the package lacks or that does not decode fails each start as world creation's
+ *   refusal does.
  * - **Flow:** G-02/1, the start page, G-02/2 over a run held at tick 0, flight, the pausing mission menu, and the end of a
  *   run that faulted or stopped (`mission-flow.ts`). Restart exits the run and begins again at G-02/1.
  * - **Placeholders:** one one-shot timer at a time, checked against the monotonic clock, counts 3,000 ms of time the
@@ -21,7 +23,7 @@ import { loadMission } from '../../core/mission/load-mission.ts';
 import type { RecordingOptions } from '../../core/replay/recording.ts';
 import { PRODUCTION_RAW_DIFFICULTY } from '../../core/world/run-config.ts';
 import { missionFailureOf, type MissionFailure } from '../resources/mission-diagnostics.ts';
-import { missionInput } from '../resources/mission-input.ts';
+import { craftInfoInput, missionInput, type PackageGroup } from '../resources/mission-input.ts';
 import type { HeldPackage, ResourceHolder } from '../resources/resource-holder.ts';
 import {
   createGameSession, type DepartureTransition, type GameRunSpec, type GameSession, type GameSessionControl, type GameSessionRun,
@@ -215,6 +217,20 @@ export class MissionUnavailableError extends Error {
 const creationRefusal = (error: unknown): MissionFailure | null =>
   (error instanceof GameSessionError && error.kind === 'invalid-argument' ? missionFailureOf(error.cause) : null);
 
+/**
+ * The craft info of the bound logic group. Diagnostics do not read it, so a decoding error becomes the failure each
+ * start reports; a missing one stays undefined, which world creation rejects at `input.craftInfo`.
+ */
+function decodedCraftInfo(logic: PackageGroup): { readonly input: GameRunSpec['craftInfo'] } | { readonly failure: MissionFailure } {
+  try {
+    return Object.freeze({ input: craftInfoInput(logic) as GameRunSpec['craftInfo'] });
+  } catch (error) {
+    const failure = missionFailureOf(error);
+    if (failure) return Object.freeze({ failure });
+    throw error;
+  }
+}
+
 /** One failure as it is, several as an AggregateError led by the first. */
 const combined = (failures: readonly unknown[], message: string): unknown =>
   (failures.length === 1 ? failures[0] : new AggregateError(failures, message, { cause: failures[0] }));
@@ -250,6 +266,8 @@ class Owner implements MissionOwner {
   readonly #identity: ContentIdentity;
   readonly #identityKey: string;
   readonly #assets: Pick<GameRunSpec, 'mission' | 'craftTypes' | 'wingmanRoster'>;
+  /** The run's craft info as decoded from the bound package, or the failure every start reports instead. */
+  readonly #craftInfo: { readonly input: GameRunSpec['craftInfo'] } | { readonly failure: MissionFailure };
   readonly #config: MissionConfigView;
   readonly #session: GameSession;
   readonly #connections: Connection[] = [];
@@ -279,8 +297,10 @@ class Owner implements MissionOwner {
       throw new Error('The held package differs from the holder snapshot');
     }
     // Decoded once from this generation's package; diagnostics loaded the same Assets, so a failure here is a defect.
-    const input = missionInput(held.groups.find(({ group }) => group === 'logic')!);
+    const logic = held.groups.find(({ group }) => group === 'logic')!;
+    const input = missionInput(logic);
     const mission = loadMission(input);
+    this.#craftInfo = decodedCraftInfo(logic);
     this.#generation = held.generation;
     this.#identity = held.completeness.identity;
     this.#identityKey = contentIdentityKey(this.#identity);
@@ -479,9 +499,12 @@ class Owner implements MissionOwner {
       return this.#failStart({ kind: 'seed', cause });
     }
     if (!isUint32(seed)) return this.#failStart({ kind: 'seed', cause: new RangeError('The seed source returned a value that is not a uint32') });
+    const craftInfo = this.#craftInfo;
+    if ('failure' in craftInfo) return this.#failStart({ kind: 'rejected', failure: craftInfo.failure });
     const variant = wingman === null ? 'solo' : 'wingman';
     const spec: GameRunSpec = {
       ...this.#assets,
+      craftInfo: craftInfo.input,
       identity: this.#identity,
       run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed },
       recording: this.#setup.recording,

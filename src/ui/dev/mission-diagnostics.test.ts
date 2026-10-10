@@ -8,6 +8,16 @@ import { commandDraft, editDraft, readDraft } from './command-draft.ts';
 import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-support.ts';
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
+/**
+ * Results of the drafted commands that P3-06's rules handle in flight with an active player and no target: a throttle
+ * step, a preset, and a manual match that needs a target. Every other one is not implemented yet.
+ */
+const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
+  speed: ['accepted', null],
+  'select-number': ['accepted', null],
+  'confirm-selection': ['ignored', 'no-target'],
+};
+
 // P3-04 S-07 and AC-22 (Node): the development diagnostics of a real mission owner and session — the event log, frame
 // statistics, entity and mission state, command submission through the command feedback, and the recording export
 // with its file save (docs/plan/p3/04/spec.md: 开发诊断).
@@ -146,11 +156,13 @@ describe('mission diagnostics', () => {
     expect(setup.state().inspection.view?.tick).toBe(6);
   });
 
-  it('submits every drafted command variant through the command feedback, which shows its not-implemented result', async () => {
+  it('submits every drafted command variant through the command feedback, which shows its result', async () => {
     const setup = await openDiagnostics();
     toFlight(setup.owner);
     const next = frames(setup);
     next();
+    // The first tick instantiates the player and the second activates it; P3-06's speed commands need it active.
+    next(2, 200);
     expect(readDraft(editDraft(commandDraft('select-number'), 'value', '10')).valid).toBe(false);
     const ids = COMMAND_TYPES.map((type) => {
       const reading = readDraft(commandDraft(type));
@@ -160,8 +172,8 @@ describe('mission diagnostics', () => {
     expect(ids).toEqual(Array.from({ length: 16 }, (_, index) => index + 1));
     next(1, 200);
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
-    expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[3][1]]))
-      .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, 'not-implemented']));
+    expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
+      .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...(OUTCOMES[type] ?? ['rejected', 'not-implemented'])]));
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
     expect(pendingCommands).toEqual([]);
     expect(recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason]))

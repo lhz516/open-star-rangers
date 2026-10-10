@@ -58,6 +58,7 @@ describe('createGameRuntime', () => {
     ['a symbol field', { ...runtimeSpec(), [Symbol('handler')]: () => undefined }, 'spec', 'contains unknown fields'],
     ['an accessor', Object.defineProperty(runtimeSpec(), 'run', { get: () => { throw new Error('ran'); }, enumerable: true }), 'spec', 'must contain only enumerable data fields'],
     ['no recording field', (({ recording: _, ...rest }) => rest)(runtimeSpec()), 'spec.recording', 'is required'],
+    ['no craft info field', (({ craftInfo: _, ...rest }) => rest)(runtimeSpec()), 'spec.craftInfo', 'is required'],
     ['a step, even the default', runtimeSpec({ run: { clockUnitsPerTick: 2 } as never }), 'spec.run.clockUnitsPerTick', 'is not accepted: the Runtime runs only the default step'],
   ])('rejects %s as an invalid argument', (_name, spec, path, reason) => {
     const error = thrownBy(() => createGameRuntime(spec as GameRuntimeSpec));
@@ -81,6 +82,13 @@ describe('createGameRuntime', () => {
     const spec = runtimeSpec();
     (spec.identity as { schemaVersion: unknown }).schemaVersion = 'one';
     expect(thrownBy(() => createGameRuntime(spec))).toBeInstanceOf(ContentContractError);
+    // The craft info is passed to world creation as it is, so a missing or malformed one is Core's refusal.
+    const missing = thrownBy(() => createGameRuntime({ ...runtimeSpec(), craftInfo: undefined as never }));
+    expect(missing).toBeInstanceOf(CoreInputError);
+    expect(missing).toMatchObject({ path: 'input.craftInfo', reason: 'must be a plain object' });
+    const zeroModulus = runtimeSpec();
+    (zeroModulus.craftInfo.content as { craft: { at0C: number }[] }).craft[0].at0C = 0.5;
+    expect(thrownBy(() => createGameRuntime(zeroModulus))).toMatchObject({ path: 'input.craftInfo.content.craft[0].at0C' });
   });
 });
 

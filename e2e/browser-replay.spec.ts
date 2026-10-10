@@ -21,10 +21,11 @@ import { test, expect } from './support/browser-test.ts';
 const TICKS = 320;
 const CHECKPOINT_INTERVAL = 16;
 
-/** A fixed input script: commands on some ticks, steering on others. */
+/** A fixed input script: commands on some ticks, P3-06's throttle presets and speed assist switch among them, steering on others. */
 function scripted(tick: number): TickInput {
   if (tick % 5 === 0) return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [{ type: 'fire', channel: 'primary' }, { type: 'select-number', value: (tick % 9) + 1 }] };
   if (tick % 7 === 0) return { axes: { pitch: -0, yaw: 0.5, roll: -1 }, commands: [{ type: 'map-point', operation: 'hover', right: 0.25, down: 1 }] };
+  if (tick % 11 === 0) return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [{ type: 'speed', operation: 'toggle-auto-match' }] };
   return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [] };
 }
 
@@ -51,12 +52,12 @@ test('the browser replays a formal Core record like Node and rejects records of 
   for (let tick = 1; tick <= TICKS; tick++) session.step(scripted(tick));
   const recording = session.exportRecording();
   const record = plain(recording.record);
-  const { mission, craftTypes, wingmanRoster, identity } = input;
-  const content: ReplayContent = plain({ mission, craftTypes, wingmanRoster, identity });
+  const { mission, craftTypes, wingmanRoster, craftInfo, identity } = input;
+  const content: ReplayContent = plain({ mission, craftTypes, wingmanRoster, craftInfo, identity });
   const reference = replayRecord(record, content);
   expect(compareReplayResults(recording.result, reference)).toEqual({ match: true });
   expect(reference.finalTick).toBe(TICKS);
-  expect(reference.events.length).toBeGreaterThan(0);
+  expect(new Set(reference.events.map(({ type }) => type))).toEqual(new Set(['command-result', 'object-instantiated', 'speed-assist-toggled']));
   const flipped = (hash: string): string => `${hash[0] === '0' ? '1' : '0'}${hash.slice(1)}`;
   const changed = {
     ...reference,

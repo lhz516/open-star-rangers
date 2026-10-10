@@ -101,7 +101,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
-| [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | in-progress |
+| [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
 | [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -132,6 +132,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 合并 main（P3-04），在最终对齐之前（协调者决定，依预先授权）：** P3-04 已快进进入 main，其正式 Runtime/Session 与 e2e 调用 `createWorld` 与 `ReplayContent`。不合并则本分支与 P3-04 的调用者在合入时冲突，最终对齐无法证明可合并。合并提交 `854cfdb2`：文字冲突只有阶段索引的导航句（合并两侧）；main 删除了 P1 合成演示并重组了工程文档。已知的语义冲突（合并后 `pnpm check` 的类型检查失败）：任务所有者未传 `craftInfo`、事件总线与事件日志未列出 P3-06 的四个事件、会话桥读取旧的 `flight.readiness`。由新增的修复子任务 24 处理并做浏览器回归；在 24 集成前，本分支的类型检查为红。另：P3-07 指出 `judgeCommands` 在 tick 开头读取一次指令速度，P3-07 的能量键在同 tick 内改写上限后读回会过期；P3-06 自身不改变 tick 内的上限，P3-07 在其分支修正并在合并时处理，本分支不改。
 - **2026-10-10 — 新增 24 并认领（依预先授权，不需审阅）：** 合并 main 后 P3-04 的调用者与 P3-06 契约不符（见上一条），由 24 修复：任务开始从同一资源包读取 `craftInfo`，事件总线与开发事件日志列出四个新事件，会话桥改用拆分后的 `flight` 分区，更新受影响的测试与 e2e 夹具，并按 browser-testing 做浏览器回归。这是 goal 前提中“09 执行时若 P3-04 已接入，同时更新其调用者”的延后执行。最终对齐加入对 24 的依赖。
 - **2026-10-10 — 19 完成：** core 分册与源码结构按 09–16 的集成代码同步（输入、阶段、请求、事件、版本、新模块、项目规则、已知差异），并写明对 P3-03、P3-04、P3-05、P3-07–P3-14 的交接；在合并 main 后的文档上写入，P3-04 的条目保留，24 将改变的 app/ui 行为未写入。交 20（可选）：spec 实例化扩展第 3 步与 P3-02 修订 D-08 写 `0x68050` 抽取“0–3 次”，Core 只能抽 0–2 次（原版 +0x4C 路径在 Core 中不可达），core 分册已说明，spec 可补一句澄清，行为不变。
+- **2026-10-10 — 24 完成，合并后的分支恢复为绿：** 任务开始从同一资源包解码唯一的 craft-info 作为 `craftInfo`（解码失败按 `rejected` 报告，缺 craft-info 的包为 `package-incomplete`，任务资格与诊断不读 craft-info）；事件总线与开发事件日志列出四个新事件；会话桥改用拆分后的 `flight` 分区；`replay-check` 从同包读取 craft-info。共用的生产结构合成 craft-info 的 +0x0C 改为满足 Core 语义检查的值（原值被所有任务场景拒绝）；replay-check 的“其他规则版本”用例改用 `RULES_VERSION + 1`。`pnpm check` 与完整 `pnpm test:e2e`（196 项）通过。待办：`docs/guides/tools.md` 录制重放核对一节的两处说明（解码顺序加入 craft-info；`content-failed` 含 craft-info）与 07 的写入范围重叠，07 集成后由协调者补入（见 24 的完成证据）。
 
 ## 审批
 

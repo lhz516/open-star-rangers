@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CommandResultEvent, ObjectInstantiatedEvent } from '../../core/contracts/domain-events.ts';
+import type { CommandResultEvent, DomainEvent, ObjectInstantiatedEvent } from '../../core/contracts/domain-events.ts';
 import { EVENT_LOG_LIMIT, EventLog, summarizeEvent } from './event-log.ts';
 
 // P3-04 AC-22, the event log window (docs/plan/p3/04/spec.md: 开发诊断, 事件日志): the latest 500 structured summaries,
@@ -29,6 +29,22 @@ describe('event log', () => {
       fields: [['entityId', 12], ['kindBit', 4], ['source', 'mission#2 group 1 request 0 member 3'], ['x', 1.5], ['y', -2], ['z', 0]],
     });
     expect(Object.isFrozen(entry) && Object.isFrozen(entry.fields) && Object.isFrozen(entry.fields[0])).toBe(true);
+  });
+
+  it('summarizes P3-06\'s speed and world-exit events by their own fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    expect(summary({ type: 'speed-assist-toggled', tick: 5, commandIndex: 2, enabled: false })).toEqual([['commandIndex', 2], ['enabled', false]]);
+    expect(summary({ type: 'speed-matched', tick: 5, targetEntityId: 7, origin: 'command', commandIndex: 1 }))
+      .toEqual([['targetEntityId', 7], ['origin', 'command'], ['commandIndex', 1]]);
+    expect(summary({ type: 'speed-matched', tick: 5, targetEntityId: 7, origin: 'assist', speedDifferenceExceeded: true }))
+      .toEqual([['targetEntityId', 7], ['origin', 'assist'], ['speedDifferenceExceeded', true]]);
+    expect(summary({ type: 'speed-assist-released', tick: 5 })).toEqual([]);
+    expect(summary({ type: 'object-left-world', tick: 5, entityId: 12, kindBit: 4, source: instantiated.source }))
+      .toEqual([['entityId', 12], ['kindBit', 4], ['source', 'mission#2 group 1 request 0 member 3']]);
+    expect(summary({ type: 'object-left-world', tick: 5, entityId: 13, kindBit: 9, source: null })).toEqual([['entityId', 13], ['kindBit', 9], ['source', 'rules']]);
+    const entry = summarizeEvent({ type: 'speed-assist-released', tick: 6 }, NO_COMMAND, 3);
+    expect(entry).toEqual({ sequence: 3, tick: 6, type: 'speed-assist-released', commandId: null, fields: [] });
+    expect(Object.isFrozen(entry.fields)).toBe(true);
   });
 
   it('keeps 500 events untruncated and drops the oldest of 501', () => {

@@ -1,6 +1,7 @@
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { readAiPrograms, type AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readBaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
+import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { readFlightMessages, type FlightMessages } from '../../content/rule-data/flight-messages.ts';
 import { encodeRuleDataPayload, type RuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import {
@@ -58,13 +59,22 @@ function productionFlightMessages(): FlightMessages {
   return readFlightMessages(Object.fromEntries(keys.map((key, index) => [key, `${text(PLAN.flightMessages[key].length - 1).slice(0, -1)}${String.fromCharCode(0x41 + index)}`])));
 }
 
+/**
+ * The format support's craft info, changed only so that world creation accepts it (P3-06 D-01): every record's +0x0C
+ * is 250, a positive modulus of the parked travel, as in Core's own synthetic craft info.
+ */
+function productionCraftInfo() {
+  const info = defaultCraftInfo();
+  return readCraftInfo({ ...info, craft: info.craft.map(record => ({ ...record, at0C: 250 })) });
+}
+
 /** The canonical content of each rule-data role on the production structure. */
 export function productionRuleDataContents(): RuleDataContents {
   return {
     'ai-programs': productionAiPrograms(),
     'base-repair-items': readBaseRepairItems(syntheticBaseRepairItems()),
     'comm-menus': defaultCommMenus(),
-    'craft-info': defaultCraftInfo(),
+    'craft-info': productionCraftInfo(),
     'debris-parameters': defaultDebrisParameters(),
     'flight-messages': productionFlightMessages(),
   };

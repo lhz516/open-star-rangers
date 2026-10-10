@@ -11,14 +11,16 @@ import { contentIdentityKey } from '../src/content/content-identity.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { readPayloadRecords } from '../src/content/payload.ts';
+import { decodeRuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
-import { COMMAND_TYPES, readTickInput, type TickInput } from '../src/core/contracts/tick-input.ts';
+import { COMMAND_TYPES, readTickInput, type Command, type TickInput } from '../src/core/contracts/tick-input.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { compareReplayResults } from '../src/core/replay/compare.ts';
 import { createRecordingSession, type Recording } from '../src/core/replay/recording.ts';
 import { roundTrip } from '../src/core/replay/replay.test-support.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
+import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
 import type { CreateWorldInput } from '../src/core/world/create-world.ts';
 import { PRODUCTION_MISSION, PRODUCTION_RAW_DIFFICULTY } from '../src/core/world/run-config.ts';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
@@ -73,15 +75,21 @@ async function writeDisc(into: string): Promise<string[]> {
   }));
 }
 
-/** A fixed script of steering and commands, with commands Core answers `not-implemented`. */
-const script = (tick: number): TickInput => ({
-  axes: { pitch: tick % 3 === 0 ? -0.5 : 0, yaw: 0.25, roll: tick % 5 === 0 ? 1 : 0 },
-  commands: tick % 4 === 0 ? [{ type: 'fire', channel: 'primary' }, { type: 'speed', operation: 'increase' }] : [],
-});
+/**
+ * A fixed script of steering and commands: one Core answers `not-implemented`, and P3-06's throttle step and speed
+ * assist switch, which add their own events.
+ */
+function script(tick: number): TickInput {
+  const commands: Command[] = [];
+  if (tick % 4 === 0) commands.push({ type: 'fire', channel: 'primary' }, { type: 'speed', operation: 'increase' });
+  if (tick % 8 === 0) commands.push({ type: 'speed', operation: 'toggle-auto-match' });
+  return { axes: { pitch: tick % 3 === 0 ? -0.5 : 0, yaw: 0.25, roll: tick % 5 === 0 ? 1 : 0 }, commands };
+}
 
 /**
  * A recording of the scenario's world with the first wingman, made as the development build makes it: the three logic
- * Assets of its package (found by role here, independently of the tool), its identity and the production run.
+ * Assets and the craft info of its package (found by role here, independently of the tool), its identity and the
+ * production run.
  */
 async function record(): Promise<{ readonly recording: Recording; readonly identity: string }> {
   const groups = await scenarioGroups(SCENARIO);
@@ -90,12 +98,13 @@ async function record(): Promise<{ readonly recording: Recording; readonly ident
   const logic = groups.find(({ group }) => group === 'logic')!;
   const { assets } = readGroupManifest(logic.manifest);
   const payloads = readPayloadRecords(logic.payloads);
-  const asset = (role: string) => {
+  const asset = (role: string, decode: typeof decodeLogicPayload | typeof decodeRuleDataPayload = decodeLogicPayload) => {
     const descriptor = assets.find(item => item.role === role)!;
-    return { id: descriptor.id, content: decodeLogicPayload(payloads.find(({ id }) => id === descriptor.id)!.bytes, descriptor).content };
+    return { id: descriptor.id, content: decode(payloads.find(({ id }) => id === descriptor.id)!.bytes, descriptor).content };
   };
   const input: CreateWorldInput = {
-    mission: asset('mission'), craftTypes: asset('craft-types'), wingmanRoster: asset('wingman-roster'), identity: validation.identity,
+    mission: asset('mission'), craftTypes: asset('craft-types'), wingmanRoster: asset('wingman-roster'),
+    craftInfo: asset('craft-info', decodeRuleDataPayload), identity: validation.identity,
     run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman: 0, seed: 0x5eed_1234 },
   };
   const session = createRecordingSession(input, { producer: 'open-star-rangers replay-check test', checkpointInterval: INTERVAL });
@@ -145,8 +154,8 @@ const validated = () => ({
 describe('replay check', () => {
   it('replays a synthetic recording on the same synthetic disc and passes, leaving the file as it was', async () => {
     expect(MISSION_SCENARIOS[SCENARIO].stage).toBe('world');
-    // The run spawned craft and answered commands, so events and checkpoints are both compared.
-    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result']));
+    // The run spawned craft, answered commands and switched the speed assist, so events and checkpoints are both compared.
+    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled']));
     const text = JSON.stringify(recording);
     const path = file(text);
     const report = await runReplayCheck(path, disc, { catalog });
@@ -246,7 +255,7 @@ describe('replay check', () => {
 
     it.each([
       ['another format version', (value: { record: Record<string, unknown> }) => { value.record.version = 2; }, 'record.version'],
-      ['another rules version', (value: { record: Record<string, unknown> }) => { value.record.rulesVersion = 2; }, 'record.rulesVersion'],
+      ['another rules version', (value: { record: Record<string, unknown> }) => { value.record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['a malformed setup hash', (value: { record: Record<string, unknown> }) => { value.record.setupHash = 'not-a-hash'; }, 'record.setupHash'],
       ['an axis out of range', (value: { record: Record<string, unknown> }) => { (value.record.ticks as TickInput[])[3] = { axes: { pitch: 2, yaw: 0, roll: 0 }, commands: [] }; }, 'record.ticks[3].axes.pitch'],
       ['an extra field', (value: { record: Record<string, unknown> }) => { value.record.extra = true; }, 'record'],
@@ -372,8 +381,16 @@ describe('recording size limit', () => {
     expect(() => replayRecord({ ...header, ticks: [longestTick] }, null as unknown as ReplayContent)).toThrow(new CoreInputError('content', 'must be a plain object'));
     // The longest command result is the last of a tick's full command list.
     const earlier = Array.from({ length: CORE_LIMITS.commandsPerTick - 1 }, (_, commandIndex) => ({ ...events['command-result'], commandIndex }));
+    expect(Object.keys(events).sort()).toEqual([
+      'command-result', 'object-instantiated', 'object-left-world', 'speed-assist-released', 'speed-assist-toggled', 'speed-matched',
+    ]);
+    // In a tick's order (compare.ts): one speed assist event first, the command results with the switch right after its
+    // command's, then the rest; the other speed assist event goes in the tick before.
     const result = {
-      events: [...earlier, events['command-result'], events['object-instantiated']],
+      events: [
+        { ...events['speed-assist-released'], tick: checkpoint.tick - 1 }, events['speed-matched'],
+        ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'], events['object-left-world'],
+      ],
       checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
       finalTick: checkpoint.tick,
     };
