@@ -125,7 +125,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
-| [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | in-progress |
+| [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -181,6 +181,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   `source-structure.md` 列出 34 个新模块，`content.md` 新增 Core 消费的规则输入。25、27 的结论留给 36。28 依预先授权的决定记在其完成证据中：左页面 2–5 交 P3-10、6 交 P3-09；碰撞可视化的交接不新增 API；`target-changed` 以高概率列入 P3-14 的音效。
 
 - **2026-10-10 — 29 的预先核对：** 协调者在 26、37 运行期间请 agent 只读核对 29 的契约不变量：七项中六项通过。另一项是 `src/core/contracts/validation.ts` 文件头仍提到已退役的合成场景（P3-02/04 遗留），协调者以只改注释的提交 `43b995b` 删去。前提中“具名待处理状态”的措辞与 CR-13（没有待处理标志）不符，改为“固定调用点的位置说明”，含义不变。
+
+- **2026-10-10 — 37 已集成：** `local/research/p3-07/comparison/` 中有以下工具：独立的 Φ（Python，只依据 `docs/original/` 与 B-009）、原版与新版两侧的读取、配对、单次转移核对（私有诊断调用 Core 的规则函数，随机转移按全域与分布核对）。另有 12 次新版连续运行：候选 `51a6d60`，`src/` 的树与 25 相同。在 09 与 26 已完成的运行上试运行，不作结论，没有发现不一致。37 列出的读数缺口（D 配方不读碎片转动、没有被毁时刻的暂停，Q1 的普查只读部分种类，L 的逐帧读数不含导弹目标的有效性）已转给 26，在相应配方首次运行前补上。27 的剩余步骤见 37 的完成证据。
 
 ## 审批
 
