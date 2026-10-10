@@ -93,12 +93,12 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | pending |
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | pending |
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | pending |
-| [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | pending |
+| [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | in-progress |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | in-progress |
 | [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | blocked |
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
-| [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | pending |
+| [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | in-progress |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | pending |
 | [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | pending |
 | [15-owner-input-control.md](./subtasks/15-owner-input-control.md) | 09 | pending |
@@ -130,6 +130,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   Evidence: `git merge-base --is-ancestor p3-06-flight-motion-spec HEAD` 与对 `main` 的同一检查均为假；P3-06 分支为 `42db4ec2`，其 goal 的 08 仍为 in-progress，17、18、25 为 pending。
   Affected acceptance: 10 的全部验收；经依赖影响 16（AC-07）及其下游 19、25。
   Resume when: P3-06 合入 `main`，协调者把 `main` 合并进本分支并完成 goal [跨任务前提](#代码现状与前提)中的核对（或用户指示提前合并 P3-06 分支的某个提交并完成同样核对）。
+- **2026-10-10 — 临时把并行 worker 上限改为 5：** 用户指示临时把同时运行的 worker 上限改为 5，为可开始的子任务另开会话。协调者据此在 01、02、03 之外认领 07 与 12。
 
 ## 审批
 
