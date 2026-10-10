@@ -83,7 +83,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [02-controls-keys-research.md](./subtasks/02-controls-keys-research.md) | — | completed |
 | [03-speed-assist-research.md](./subtasks/03-speed-assist-research.md) | — | completed |
 | [04-area-boundary-autopilot-research.md](./subtasks/04-area-boundary-autopilot-research.md) | — | in-progress |
-| [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | pending |
+| [05-takeoff-state-research.md](./subtasks/05-takeoff-state-research.md) | 03 | in-progress |
 | [21-research-records.md](./subtasks/21-research-records.md) | 01, 02, 03, 04, 05 | pending |
 | [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | pending |
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21 | pending |
