@@ -22,6 +22,7 @@ updated: 2026-10-09
   - [本地导入指南](../../../../guides/local-import.md)：转换器版本递增后须重新导入；查看器中新增的图像与声音。
   - [文档地图](../../../../README.md)：新增的 `craft.md`、`ai.md`、`comm.md`。
   - [imfat](../../../../original/formats/imfat.md) §5 的类型状态（ANIM、CINF、DFPG/AICO 等），以及 [executable](../../../../original/formats/executable.md) 到新格式文档的链接与执行记录中列出的更正。
+  - [textures](../../../../original/formats/textures.md) §6：21 的外观核对（方法、截图与置信度）；[工程约定](../../../../engineering/README.md)：20 交接的音频探针一节与页面回归路线。
   - [audio](../../../../original/formats/audio.md)：11 个新 SND 的 `flags`（10181 为 8，并写明其表示）与 SND 10409 循环条件的更正；[ai](../../../../original/formats/ai.md)：组 0 闭包的条目 ID 与名称区域，以及过时的 fixup 说明。
   - [未知项登记表](../../../../original/unknowns.md)：按 01–05 与 21 的线索更新 U-001、U-004、U-018、U-022、U-027、U-028、U-030 等的状态与线索，负责阶段不改。
 - 每个修改的文档都更新 `updated:`；检查链接、锚点与 front matter。只写结构、计数、置信度与证据路径，不含原版内容。
@@ -52,6 +53,8 @@ updated: 2026-10-09
 - `docs/engineering/modules/platform.md`：音频控制器的重复播放。
 - `docs/original/formats/audio.md`：新 SND 的 `flags` 与循环条件的更正。
 - `docs/original/formats/ai.md`：闭包条目与名称区域、过时说明。
+- `docs/original/formats/textures.md`：ANIM 帧的外观核对结果（21 的交接，2026-10-09 由协调者扩展）。
+- `docs/engineering/README.md`：音频探针与页面回归路线（20 的交接，2026-10-09 由协调者扩展）。
 
 ## 验收标准
 
