@@ -14,8 +14,8 @@ import type { GameSessionRun } from '../session/game-session.ts';
 import type { GameSessionError } from '../session/session-errors.ts';
 import { ControlledHost } from '../session/session-host.test-support.ts';
 import type {
-  MissionConsumerConnection, MissionOwner, MissionOwnerConsumer, MissionOwnerContext, MissionOwnerSetup, MissionOwnerStage, MissionRunContext,
-  MissionSessionView,
+  MissionConsumerConnection, MissionInputControl, MissionOwner, MissionOwnerConsumer, MissionOwnerContext, MissionOwnerSetup,
+  MissionOwnerStage, MissionRunContext, MissionRunInputControl, MissionSessionView,
 } from './mission-owner.ts';
 import { PLACEHOLDER_MS } from './mission-owner.ts';
 import type { LeaveGuard, MonotonicClock, OneShotTimer, SeedSource } from './mission-ports.ts';
@@ -264,6 +264,32 @@ export function sessionProbe(stage: MissionOwnerStage = 'ui') {
   return { consumer, session };
 }
 
+/** An `input` consumer that keeps the input control port and takes each run's port as the run is wired. */
+export function inputProbe() {
+  let control: MissionInputControl | null = null;
+  let latest: MissionRunInputControl | null = null;
+  const consumer: MissionOwnerConsumer<'input'> = {
+    stage: 'input',
+    connect: (context) => {
+      control = context.control;
+      return {
+        release: () => undefined,
+        attachRun: (_, { runId }) => { latest = context.control.forRun(runId); },
+      };
+    },
+  };
+  const connected = (): MissionInputControl => {
+    if (!control) throw new Error('The probe is not connected');
+    return control;
+  };
+  /** The port of the run wired last. */
+  const port = (): MissionRunInputControl => {
+    if (!latest) throw new Error('No run is wired');
+    return latest;
+  };
+  return { consumer, control: connected, port };
+}
+
 /**
  * Opens an owner through a fresh slot on a holder of scenario `name` (default `mission-startable`), with fresh ports;
  * `overrides` change the owner setup. A session probe is connected after the given consumers: `session()` is its view
@@ -324,7 +350,8 @@ export function toFlight(owner: MissionOwner, wingman?: number | null): void {
 
 /**
  * An owner-level consumer that logs `<name>:<event>` to `log`: its connection, release, each run attachment and that
- * run's cleanup. Each step can be made to fail, and the release can return `close` as an asynchronous close.
+ * run's cleanup. Each step can be made to fail, and the release can return `close` as an asynchronous close. At the
+ * `input` stage its contexts are `MissionInputContext`s.
  */
 export class TestConsumer implements MissionOwnerConsumer {
   readonly stage: MissionOwnerStage;
