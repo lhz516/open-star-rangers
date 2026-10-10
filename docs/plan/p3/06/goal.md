@@ -88,7 +88,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [06-checkpoint-a-c-contract.md](./subtasks/06-checkpoint-a-c-contract.md) | 21 | completed |
 | [07-measurement-prep-pilot.md](./subtasks/07-measurement-prep-pilot.md) | 21, 22 | in-progress |
 | [08-checkpoint-b-criteria.md](./subtasks/08-checkpoint-b-criteria.md) | 07 | pending |
-| [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | pending |
+| [09-world-input-contract.md](./subtasks/09-world-input-contract.md) | 06 | in-progress |
 | [10-flight-state-instantiation.md](./subtasks/10-flight-state-instantiation.md) | 09 | pending |
 | [11-movement-stage.md](./subtasks/11-movement-stage.md) | 10 | pending |
 | [12-controls-speed-commands.md](./subtasks/12-controls-speed-commands.md) | 11 | pending |
