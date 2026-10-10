@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { COMMAND_TYPES, readTickInput, type Command, type CommandType } from '../contracts/tick-input.ts';
 import type { Entity } from '../world/entity-table.ts';
-import { initialPlayerControl } from '../world/player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { combatCommandPlayer } from './commands.ts';
 import { registerTick, type Request } from './pipeline.ts';
-import { referenceTarget, selectAutomaticTarget } from './targeting.ts';
+import { referenceTarget } from './targeting.ts';
 import { updateMissileLock } from './weapons.ts';
 
 // docs/plan/p3/02/spec.md, CR-05 and CR-07: command judgement routes P3-07's commands to their rule modules, which
-// keep the not-implemented result until subtasks 13, 14 and 16 implement them. The player's update (flight-control.ts)
+// keep the not-implemented result until subtasks 13 (targeting.test.ts), 14 and 16 implement them. The player's update (flight-control.ts)
 // is the one command loop: it judges P3-06's throttle, speed match and speed assist commands itself and hands every
 // other command to judgeCommand.
 
@@ -27,6 +27,8 @@ const COMBAT_COMMANDS: readonly Command[] = [
   ...(['open', 'shield-increase', 'shield-decrease', 'gun-increase', 'gun-decrease'] as const).map((operation): Command => ({ type: 'energy', operation })),
   { type: 'damage-report' },
 ];
+/** P3-07's commands whose rules are not implemented yet. */
+const UNIMPLEMENTED_COMBAT_COMMANDS = COMBAT_COMMANDS.filter(({ type }) => type !== 'target');
 
 /** P3-06's commands, which the player's update judges itself in flight: throttle, and Enter's speed match. */
 const P3_06_COMMANDS: readonly Command[] = [
@@ -53,6 +55,7 @@ function flightState(): [WorldState, Entity] {
   player.state = 'active';
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(state.config.group);
+  state.player.targeting = initialPlayerTargeting();
   return [state, player];
 }
 
@@ -65,7 +68,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
     expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
-  it.each([['P3-07\'s commands', COMBAT_COMMANDS], ['every other command', OTHER_COMMANDS]])(
+  it.each([['P3-07\'s unimplemented commands', UNIMPLEMENTED_COMBAT_COMMANDS], ['every other command', OTHER_COMMANDS]])(
     'gives %s exactly one rejected/not-implemented result each, in order, and changes nothing else',
     (_, commands) => {
       const [judged] = flightState();
@@ -85,7 +88,9 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
       tick: 1,
       commandIndex,
       commandType: type,
-      ...(commandIndex === 1 ? { outcome: 'accepted', reason: null } : { outcome: 'rejected', reason: 'not-implemented' }),
+      ...(commandIndex === 1 ? { outcome: 'accepted', reason: null }
+        : type === 'target' ? { outcome: 'ignored', reason: 'no-candidate' }
+        : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
   });
 });
@@ -154,12 +159,11 @@ describe('the reference target (CR-05)', () => {
 });
 
 describe('the player update\'s P3-07 entry points (CR-07)', () => {
-  it('change nothing until subtasks 13 and 14 implement them', () => {
+  it('change nothing until subtask 14 implements the missile lock', () => {
     const [state, player] = flightState();
     const context = registerTick(state, readTickInput(tickInput()));
     const before = stateText(state);
     updateMissileLock(context, player);
-    selectAutomaticTarget(context, player);
     expect(stateText(state)).toBe(before);
     expect(context.events).toEqual([]);
     expect(context.requests.findLastPending((_request): _request is Request => true)).toBeUndefined();

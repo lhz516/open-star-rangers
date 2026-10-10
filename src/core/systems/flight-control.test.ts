@@ -161,7 +161,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const THROTTLE_COMMANDS = [speed('increase'), speed('decrease'), speed('zero'), speed('maximum'), preset(5)];
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
   const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS];
-  const OTHERS = [{ type: 'launch' }, { type: 'target', operation: 'forward' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
+  const OTHERS = [{ type: 'launch' }, { type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
 
   type Unavailable = (state: WorldState, player: Entity) => void;
   const inState = (objectState: ObjectState): [string, Unavailable] => [`in state ${objectState}`, (_, player) => void (player.state = objectState)];
