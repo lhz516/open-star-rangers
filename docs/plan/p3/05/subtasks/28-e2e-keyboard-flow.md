@@ -1,0 +1,57 @@
+---
+type: plan
+status: active
+phase: P3
+task: "05"
+subtask: "28"
+updated: 2026-10-10
+---
+
+# 28 — 键盘输入的浏览器验证
+
+**契约来源：** [spec](../spec.md) 的[验证策略](../spec.md#验证策略)“浏览器验证”；S-02 至 S-05、S-07 至 S-10、S-12 至 S-14 的浏览器部分；AC-03、AC-04、AC-05、AC-08、AC-09、AC-10、AC-11、AC-13、AC-14、AC-15、AC-16 的浏览器部分。
+**依赖：** 25。
+**执行方式：** 自动。
+**执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
+
+## 工作范围
+
+按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)，以合成任务包（[P3-04 合成任务包](../../04/spec.md#合成任务包)）在本机 Chrome 的 development 与 production 项目中验证（只在一个项目中可行的用例按文件名后缀归属）：
+
+- **输入区与焦点（AC-10）：** 只有一个有效输入区；进入飞行与 Continue 后在可见、有焦点且未被另行聚焦时聚焦；隐藏期间衔接不抢焦点；菜单往返与 StrictMode 后不残留旧 DOM 监听；Tab 可离开；未聚焦提示。
+- **动作族（AC-03、AC-04、AC-05）：** 读取逐 tick 输入（开发诊断或录制）：操纵键的正负轴、相反键归零、Ctrl 横滚、Shift/Alt 并用；已集成 P3-06 后的有效轴回归；Alt 短按/按住、双 Alt；Space；每个动作族至少一例，区分 `not-implemented` 结果与真实已接入的效果；满队列错误可见。
+- **标注与拦截（AC-08、AC-11）：** G-08/G-09/G-10 标注出现、不提交命令、不抢焦点、不暂停；`ArrowUp`/F1 为前视；`defaultPrevented`、滚动与导航断言覆盖有效绑定、G 项、Alt 组合、未绑定 Ctrl 组合、Tab、F12、Meta、Escape（只证明页面层）。
+- **会话控制（AC-09）：** `p` 在 running/paused 切换、hidden 未解除时继续失败仍暂停、菜单/占位/停止不旁路；未锁指针的 Esc 打开菜单。
+- **清键（AC-13）：** 真实 blur/focusout、hidden 与运行切换后不复活旧意图或重复，需新按下；合成 pagehide 单独标注。
+- **全屏与提示（AC-14、AC-15）：** 开始手势发起全屏；锁键只在全屏+running+合格输入区启用，菜单/暂停/失焦解锁；测试入口模拟的权限缺失、pending、全屏失败、仅锁键失败均显示真实状态并可继续；不误退他人的全屏；平台覆盖下 Windows/Linux/未知首次非全屏飞行显示一次提示（含先全屏后退出），macOS 不显示。
+- **资源（AC-16）：** 重开、返回主菜单、StrictMode 与 Fast Refresh 后 `keyboard` 与新增的全屏/Pointer Lock 监听分组回到基线，含请求未结时离页；扩展 [joint-resources.spec.ts](../../../../../e2e/joint-resources.spec.ts) 与 [fast-refresh.spec.ts](../../../../../e2e/fast-refresh.spec.ts)。
+
+合成按键只证明页面逻辑，不证明浏览器或系统快捷键被拦截。
+
+## 不包含
+
+- 键盘驱动录制与 replay（29）；地图入口（27）；本机实机（30、31）。
+
+## 关键文件与契约
+
+- [mission-observations.ts](../../../../../e2e/support/mission-observations.ts)、[browser-probes.ts](../../../../../e2e/support/browser-probes.ts)、[resource-balance.ts](../../../../../e2e/support/resource-balance.ts)、[joint-resources.spec.ts](../../../../../e2e/joint-resources.spec.ts)、[fast-refresh.spec.ts](../../../../../e2e/fast-refresh.spec.ts)、[mission-flow.production.spec.ts](../../../../../e2e/mission-flow.production.spec.ts)、[playwright.config.ts](../../../../../playwright.config.ts)。
+- 计划新增：`e2e/keyboard-input.spec.ts`（及必要的 `.development`/`.production` 变体）、`e2e/support/keyboard-input.ts`。
+
+## 写入范围
+
+- `e2e/keyboard-input.spec.ts`、`e2e/keyboard-input.development.spec.ts`、`e2e/keyboard-input.production.spec.ts`、`e2e/support/keyboard-input.ts`
+- `e2e/support/mission-observations.ts`、`e2e/support/browser-probes.ts`
+- `e2e/joint-resources.spec.ts`、`e2e/fast-refresh.spec.ts`、`e2e/mission-flow.production.spec.ts`
+- `playwright.config.ts`、`tools/e2e-configuration.test.ts`
+
+## 验收标准
+
+- [ ] 上列 AC 的浏览器部分均有通过的断言，命令与项目已记录。
+- [ ] 资源平衡与 Fast Refresh 回到基线，新监听分组有归属。
+- [ ] `pnpm test:e2e e2e/keyboard-input.spec.ts --project=development --project=production` 与受影响的既有用例通过；`pnpm check` 通过。
+
+## 验证方法
+
+- 列出每个 AC 对应的用例名与结果；失败时按 browser-testing 的排查方法记录并修复本任务范围内的问题。
+
+## 完成证据
