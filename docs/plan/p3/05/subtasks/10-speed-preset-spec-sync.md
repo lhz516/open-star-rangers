@@ -37,12 +37,20 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 两份 spec 的修订与 P3-05 spec 的速度档位命令一致，修订记录含真实批准来源与日期。
-- [ ] 没有新增 S/AC 编号；`node tools/task-state.ts p3/02` 与 `node tools/task-state.ts p3/06` 没有因本修订报告覆盖失效或结构问题。
-- [ ] 改动段落的链接与锚点可解析，`updated:` 已更新。
+- [x] 两份 spec 的修订与 P3-05 spec 的速度档位命令一致，修订记录含真实批准来源与日期。
+- [x] 没有新增 S/AC 编号；`node tools/task-state.ts p3/02` 与 `node tools/task-state.ts p3/06` 没有因本修订报告覆盖失效或结构问题。
+- [x] 改动段落的链接与锚点可解析，`updated:` 已更新。
 
 ## 验证方法
 
 - 逐条对照 P3-05 spec；运行两个 router 命令并记录输出。
 
 ## 完成证据
+
+- **前提：** P3-06 已按用户指示提前集成（合并提交 `a98f89de`，见 goal 执行记录），本工作树具备 P3-06 的 spec、档位规则（`presetThrottle`）与测试；集成基线 `RULES_VERSION` 2、`GAME_REPLAY_VERSION` 1。动 P3-06 spec 之前已向 P3-06 协调者发送跨会话消息；对方答复其剩余的 spec 改动（子任务 25 的实例化步骤 3、未决事项与审批，08 的对照方法与判据和审批）不涉及档位措辞、AC-04 与技术决定 3，17 的原版配方用按键而非 Core 命令，18 将按运行时的现行命令核对 R-04b。
+- **修订内容：** [P3-02 spec](../../02/spec.md#p3-05-的契约修订速度档位命令) 新增“P3-05 的契约修订（速度档位命令）”：`speed-preset` 变体与校验、门禁与结果同速度命令、取代 D-04 中普通飞行 `select-number` 的档位含义（默认飞行处理 `ignored`/`wrong-context`，未实现上下文 `rejected`/`not-implemented`，菜单优先级归 P3-10）、`rulesVersion` 与 replay 格式版本相对 2/1 各加一、快照格式不变。[P3-06 spec](../../06/spec.md#p3-05-的速度档位修订) 新增“P3-05 的速度档位修订”：档位入口改为 `speed-preset` 且与原路径等价，AC-04/R-04b 的档位核对改由 `speed-preset` 承担、判据不变，通讯菜单打开时按 Q-04，物理绑定，版本说明。两份 spec 的审批节各加一条修订记录。
+- **批准：** 用户于 2026-10-10 对“是否批准这两份 spec 修订？”选择“批准修订”，记录写在两份 spec 的审批节。
+- **检查：** 两份 spec 的 S/AC 编号不变；相对链接与锚点检查 0 个问题；`node tools/task-state.ts p3/02` 为 `done`，`node tools/task-state.ts p3/06` 为 `execute-goal`（P3-06 自身的执行状态，没有结构问题）；`updated:` 为 2026-10-10。
+- **rubber-duck：** 采纳三项：P3-06 的 D-07 与持久化一节描述的是 P3-06 自己的版本变化，新节明确本修订只再加 `rulesVersion` 与 replay 格式版本、不加快照格式版本（P3-02 一节同样说明 D-07 的“replay 格式不变”只属 P3-06）；审批记录原先引用尚不存在的 goal 记录，改为写明批准问题与回答；P3-06 新节的优先规则同时覆盖“命令形状不变”的表述。审阅另确认：replay 记录序列化 `TickInput[]` 并逐 tick 以命令联合校验，新增变体确实改变 replay 格式；快照不含命令且已带 `rulesVersion`，格式不变；结果与 P3-06 现有门禁（先 `player-unavailable`，再 Warp/基地/地图 `wrong-context`）一致。
+- **文档影响：** 只需两份 spec 的修订；core 模块说明与已知差异随 16、32 的实现更新，本项无其他文档改动。
+
