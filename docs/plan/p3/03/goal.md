@@ -123,8 +123,8 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | [17-flight-data-step.md](./subtasks/17-flight-data-step.md) | 16 | completed |
 | [18-event-hud-sounds.md](./subtasks/18-event-hud-sounds.md) | — | completed |
 | [19-package-integration.md](./subtasks/19-package-integration.md) | 07, 15, 17, 18 | completed |
-| [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19, 26, 27 | pending |
-| [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19, 26, 27 | pending |
+| [20-browser-verification.md](./subtasks/20-browser-verification.md) | 19, 26, 27 | in-progress |
+| [21-local-check-tools.md](./subtasks/21-local-check-tools.md) | 19, 26, 27 | in-progress |
 | [22-docs-sync.md](./subtasks/22-docs-sync.md) | 20, 21, 25, 26, 27 | pending |
 | [24-hud-exe-text-research.md](./subtasks/24-hud-exe-text-research.md) | — | completed |
 | [25-hud-text-payload.md](./subtasks/25-hud-text-payload.md) | 06, 09, 24 | completed |
