@@ -98,7 +98,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | pending |
 | [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
-| [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | in-progress |
+| [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
 | [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | in-progress |
@@ -131,6 +131,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 23 完成：** 10、12、14 实现中确认的结构、运算次序与舍入点经原生指令复核后写入 executable 的 P3-06 一节；16 的计数更正为 6/16。U 项不变。未记录、留待需要时补入：`0x568b0` 在启动时还循环调用 `0x56b8c` 生成另一张随机表（启动时消耗随机数）。Core 的随机目标距离平方阈值与原版的舍入写法不同，但在比例由代码固定时结果相同，比例变为输入时须复核。
 - **2026-10-10 — 合并 main（P3-04），在最终对齐之前（协调者决定，依预先授权）：** P3-04 已快进进入 main，其正式 Runtime/Session 与 e2e 调用 `createWorld` 与 `ReplayContent`。不合并则本分支与 P3-04 的调用者在合入时冲突，最终对齐无法证明可合并。合并提交 `854cfdb2`：文字冲突只有阶段索引的导航句（合并两侧）；main 删除了 P1 合成演示并重组了工程文档。已知的语义冲突（合并后 `pnpm check` 的类型检查失败）：任务所有者未传 `craftInfo`、事件总线与事件日志未列出 P3-06 的四个事件、会话桥读取旧的 `flight.readiness`。由新增的修复子任务 24 处理并做浏览器回归；在 24 集成前，本分支的类型检查为红。另：P3-07 指出 `judgeCommands` 在 tick 开头读取一次指令速度，P3-07 的能量键在同 tick 内改写上限后读回会过期；P3-06 自身不改变 tick 内的上限，P3-07 在其分支修正并在合并时处理，本分支不改。
 - **2026-10-10 — 新增 24 并认领（依预先授权，不需审阅）：** 合并 main 后 P3-04 的调用者与 P3-06 契约不符（见上一条），由 24 修复：任务开始从同一资源包读取 `craftInfo`，事件总线与开发事件日志列出四个新事件，会话桥改用拆分后的 `flight` 分区，更新受影响的测试与 e2e 夹具，并按 browser-testing 做浏览器回归。这是 goal 前提中“09 执行时若 P3-04 已接入，同时更新其调用者”的延后执行。最终对齐加入对 24 的依赖。
+- **2026-10-10 — 19 完成：** core 分册与源码结构按 09–16 的集成代码同步（输入、阶段、请求、事件、版本、新模块、项目规则、已知差异），并写明对 P3-03、P3-04、P3-05、P3-07–P3-14 的交接；在合并 main 后的文档上写入，P3-04 的条目保留，24 将改变的 app/ui 行为未写入。交 20（可选）：spec 实例化扩展第 3 步与 P3-02 修订 D-08 写 `0x68050` 抽取“0–3 次”，Core 只能抽 0–2 次（原版 +0x4C 路径在 Core 中不可达），core 分册已说明，spec 可补一句澄清，行为不变。
 
 ## 审批
 
