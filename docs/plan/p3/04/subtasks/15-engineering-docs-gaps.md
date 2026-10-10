@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "04"
 subtask: "15"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 15 — 工程文档、缺省清单与退役记录
@@ -38,6 +38,7 @@ updated: 2026-10-09
 - `docs/guides/local-import.md`：开始任务的说明。
 - `docs/guides/tools.md`：replay 核对工具。
 - `docs/README.md`：文档地图。
+- `README.md`：项目简介不再介绍 P1 合成工程演示，改述正式运行骨架与开始任务。
 
 ## 验收标准
 

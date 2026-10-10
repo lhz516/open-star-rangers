@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "04"
 subtask: "12"
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 12 — E2E：外壳、合规、生产预览与其余迁移
@@ -50,6 +50,8 @@ updated: 2026-10-09
 - `e2e/support/image-observations.ts`：取证对象。
 - `playwright.config.ts`：用例增删时的项目归属。
 - `tools/e2e-configuration.test.ts`：对应回归。
+- `tools/compliance/notices.ts`：`ORIGINAL_RIGHTS_BOUNDARY` 不再提合成演示，其余声明不变。
+- `tools/compliance/notices.test.ts`：对应断言。
 
 ## 验收标准
 
