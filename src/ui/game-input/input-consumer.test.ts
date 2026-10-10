@@ -10,14 +10,20 @@ import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import type { Command, TickAxes, TickInput } from '../../core/contracts/tick-input.ts';
 import type { Projection } from '../../core/projections/projection.ts';
 import type { KeyboardInput, KeyboardSignal, KeyboardSink, KeyboardSource, KeyboardZoneBinding } from '../../platform/input/keyboard-input.ts';
-import type { PointerLockPort } from '../../platform/input/pointer-lock.ts';
+import {
+  createPointerLock, type PointerEventType, type PointerHostEvent, type PointerLockHost, type PointerLockPort, type PointerLockSignalType,
+  type PointerLockState,
+} from '../../platform/input/pointer-lock.ts';
 import { createKeyboardSource, type KeyboardHost, type KeyboardPageEventType, type KeyboardZoneEventType } from '../../platform/input/keyboard-source.ts';
+import { createMapCursorDrawer, type MapCursorDrawer } from '../../render/map/map-cursor.ts';
+import type { MapInputGeometry } from '../../render/map/map-input-geometry.ts';
 import { createGameCommandFeedback, type GameCommandFeedback } from '../game/game-command-feedback.ts';
 import { createGameSessionBridge } from '../game/game-session-bridge.ts';
 import { createGameStore, type GameStoreWriter } from '../game/game-store.ts';
 import { down, TEST_BINDINGS, up, type KeyPatch } from './game-input.test-support.ts';
 import type { InputContext } from './input-action.ts';
 import { createInputConsumer, type GameInputConsumer } from './input-consumer.ts';
+import type { MapInputOptions } from './map-input.ts';
 
 // P3-05 subtask 20 (Node): the input consumer on a real mission owner, Session and Runtime driven by a ControlledHost, a
 // fake keyboard source, the test binding table and the real command feedback (docs/plan/p3/05/spec.md: 输入上下文,
@@ -172,8 +178,9 @@ interface Submission {
  * An owner with a recording, the input consumer on a fake keyboard and the test bindings, and a `ui` consumer that
  * creates the store, bridge and command feedback as the app's assembly does.
  */
-async function setup({ pointerLock, consumers = [] }: {
+async function setup({ pointerLock, map, consumers = [] }: {
   readonly pointerLock?: () => PointerLockPort;
+  readonly map?: MapInputOptions;
   /** Connected after the input and `ui` consumers. */
   readonly consumers?: readonly MissionOwnerConsumer[];
 } = {}) {
@@ -208,6 +215,7 @@ async function setup({ pointerLock, consumers = [] }: {
       };
     },
     pointerLock,
+    map,
   });
   const mission = await openMission('mission-startable', {
     recording: developmentRecording('osr-test'), consumers: [instrumented(consumer, tools), uiConsumer, ...consumers],
@@ -792,6 +800,192 @@ describe('clearing and recovery', () => {
     s.owner.restart();
     seen.push(hint());
     expect(seen).toEqual([false, false, true, false, true, false]);
+  });
+});
+
+/** A promise-less Pointer Lock host on one target: change and error events answer each request. */
+class PointerHost implements PointerLockHost {
+  isSupported = true;
+  state: PointerLockState = 'none';
+  requests = 0;
+  exits = 0;
+  readonly locks = new Map<PointerLockSignalType, () => void>();
+  readonly pointers = new Map<PointerEventType, (event: PointerHostEvent) => void>();
+  supported = (): boolean => this.isSupported;
+  readLock = (): PointerLockState => this.state;
+  readRect = () => ({ left: 0, top: 0, width: 640, height: 480 });
+
+  request(): undefined {
+    this.requests += 1;
+    return undefined;
+  }
+
+  exit(): void {
+    this.exits += 1;
+  }
+
+  listenLock(type: PointerLockSignalType, listener: () => void): () => void {
+    this.locks.set(type, listener);
+    return () => { this.locks.delete(type); };
+  }
+
+  listenPointer(type: PointerEventType, listener: (event: PointerHostEvent) => void): () => void {
+    this.pointers.set(type, listener);
+    return () => { this.pointers.delete(type); };
+  }
+
+  /** The document's pointer-lock element changes to `state`. */
+  change(state: PointerLockState): void {
+    this.state = state;
+    this.locks.get('pointerlockchange')?.();
+  }
+
+  error(): void {
+    this.locks.get('pointerlockerror')?.();
+  }
+
+  send(type: PointerEventType, event: Partial<PointerHostEvent> = {}): void {
+    this.pointers.get(type)!({ button: 0, movementX: 0, movementY: 0, clientX: 0, clientY: 0, ...event });
+  }
+}
+
+/** Synthetic: a 640×480 screen shown 1:1 over the whole target, with a 320×320 main map at (20, 40). */
+const MAP_GEOMETRY: MapInputGeometry = Object.freeze({
+  screen: { width: 640, height: 480 }, mainMap: { left: 20, top: 40, right: 340, bottom: 360 }, frame: { left: 0, top: 0, width: 640, height: 480 },
+});
+
+/**
+ * `flying` with the map input on a real Pointer Lock port over a host the test drives, the real cursor drawer on a
+ * canvas that paints nothing, and an explicit synthetic policy: start at the map's centre, repeat every 8 clock units.
+ */
+async function mapping({ activation = true, supported = true } = {}) {
+  const pointer = new PointerHost();
+  pointer.isSupported = supported;
+  const geometry = { read: (): MapInputGeometry | null => MAP_GEOMETRY };
+  let drawer: MapCursorDrawer | null = null;
+  const map: MapInputOptions = {
+    policy: { start: () => ({ right: 0.5, down: 0.5 }), repeatInterval: 8 },
+    geometry, cursor: () => drawer, movementScale: () => 1, userActivation: () => activation,
+  };
+  const f = await flying({ pointerLock: () => createPointerLock(pointer), map });
+  const none = (): undefined => undefined;
+  const canvas = { show: none, hide: none, resize: none, clear: none, fill: none, readDevicePixelRatio: () => 1, remove: none };
+  drawer = createMapCursorDrawer(canvas, geometry, f.consumer.mapCursor);
+  return {
+    ...f, pointer,
+    mapState: () => f.consumer.status.getState().map.state,
+    /** The submission clock of each map-point. */
+    mapClocks: () => f.submitted.filter(({ type }) => type === 'map-point').map(({ clock }) => clock),
+    /** Each map-point the recorded ticks consumed, with the clock that tick ended at. */
+    consumed: () => f.ticks().flatMap(({ commands }, index) => commands.flatMap((command) =>
+      (command.type === 'map-point' ? [[2 * (index + 1), command.operation, command.right, command.down] as const] : []))),
+    /** Opens the map on the next frame and confirms the Pointer Lock its qualification asked for. */
+    open() {
+      f.tools.context = 'map';
+      f.frame();
+      pointer.change('target');
+    },
+  };
+}
+
+describe('strategic map input', () => {
+  it('locks on opening the map, merges hovers, selects at once and repeats at c + 8 by the projection clock', async () => {
+    const f = await mapping();
+    f.tools.context = 'map';
+    f.frame();
+    expect({ requests: f.pointer.requests, state: f.mapState(), position: f.consumer.mapCursor.read() })
+      .toEqual({ requests: 1, state: 'locking', position: { right: 0.5, down: 0.5 } });
+    f.pointer.change('target');
+    expect(f.mapState()).toBe('locked');
+    f.pointer.send('mousemove', { movementX: 40 });
+    f.pointer.send('mousemove', { movementX: 40, movementY: -40 });
+    f.frame();
+    expect(f.clock()).toBe(4);
+    f.pointer.send('mousedown');
+    for (let frame = 0; frame < 3; frame += 1) f.frame();
+    expect(f.mapClocks()).toEqual([4, 4]);
+    f.frame();
+    f.frame(0);
+    f.frame(5);
+    f.frame(0);
+    f.pointer.send('mouseup');
+    f.frame(5);
+    expect(f.clock()).toBe(32);
+    expect(f.mapClocks()).toEqual([4, 4, 12, 22]);
+    // Each is consumed by the tick after its frame.
+    expect(f.consumed()).toEqual([
+      [6, 'hover', 0.75, 0.375], [6, 'select', 0.75, 0.375], [14, 'select', 0.75, 0.375], [24, 'select', 0.75, 0.375],
+    ]);
+    expect(f.tools.calls).toEqual([]);
+  });
+
+  it('after an Esc unlock clears once, waits with the map open, and relocks on the next click without selecting', async () => {
+    const f = await mapping();
+    f.open();
+    f.pointer.send('mousedown');
+    f.pointer.change('none');
+    expect({ calls: f.tools.calls, state: f.mapState() }).toEqual({ calls: ['clear-input pointer-lock-exit'], state: 'click-to-lock' });
+    // Neither frames nor moves relock, and the hold no longer repeats.
+    f.frame(10);
+    f.pointer.send('mousemove', { clientX: 200, clientY: 200 });
+    expect({ requests: f.pointer.requests, clocks: f.mapClocks() }).toEqual({ requests: 1, clocks: [2, 2] });
+    f.pointer.send('mouseup');
+    f.pointer.send('mousedown', { clientX: 200, clientY: 200 });
+    f.pointer.send('mouseup', { clientX: 200, clientY: 200 });
+    f.pointer.change('target');
+    f.frame(10);
+    expect({ requests: f.pointer.requests, clocks: f.mapClocks(), state: f.mapState() }).toEqual({ requests: 2, clocks: [2, 2], state: 'locked' });
+    expect(f.tools.calls).toEqual(['clear-input pointer-lock-exit']);
+  });
+
+  it('exits its lock on leaving the map, pausing or losing focus, clearing once more only while running', async () => {
+    const f = await mapping();
+    f.open();
+    f.tools.context = 'flight';
+    f.frame();
+    expect(f.pointer.exits).toBe(1);
+    f.pointer.change('none');
+    expect({ calls: f.tools.calls, state: f.mapState(), position: f.consumer.mapCursor.read() })
+      .toEqual({ calls: ['clear-input pointer-lock-exit'], state: 'off', position: null });
+
+    f.open();
+    f.owner.pause();
+    expect(f.pointer.exits).toBe(2);
+    f.pointer.change('none');
+    expect({ calls: f.tools.calls.length, state: f.mapState() }).toEqual({ calls: 1, state: 'suspended' });
+    f.owner.resume();
+    f.frame(0);
+    f.pointer.change('target');
+    expect({ requests: f.pointer.requests, state: f.mapState(), clocks: f.mapClocks() }).toEqual({ requests: 3, state: 'locked', clocks: [] });
+
+    f.keyboard.signal('blur', false);
+    expect(f.pointer.exits).toBe(3);
+    f.pointer.change('none');
+    expect(f.tools.calls).toEqual(['clear-input pointer-lock-exit', 'clear-input focus-loss', 'clear-input pointer-lock-exit']);
+  });
+
+  it('falls back to absolute input inside the main map where Pointer Lock is unsupported or refused, asking nothing again', async () => {
+    const unsupported = await mapping({ supported: false });
+    unsupported.tools.context = 'map';
+    unsupported.frame();
+    unsupported.pointer.send('mousedown', { clientX: 10, clientY: 200 });
+    unsupported.pointer.send('mousedown', { clientX: 100, clientY: 120 });
+    unsupported.pointer.send('mousedown', { clientX: 100, clientY: 120, button: 2 });
+    unsupported.frame();
+    expect({ state: unsupported.mapState(), requests: unsupported.pointer.requests, consumed: unsupported.consumed() })
+      .toEqual({ state: 'unlocked', requests: 0, consumed: [[4, 'hover', 0.25, 0.25], [4, 'select', 0.25, 0.25]] });
+
+    const refused = await mapping();
+    refused.tools.context = 'map';
+    refused.frame();
+    refused.pointer.error();
+    await Promise.resolve();
+    refused.keyboard.signal('blur', false);
+    refused.keyboard.signal('focus', true);
+    refused.frame();
+    expect({
+      state: refused.mapState(), failure: refused.consumer.status.getState().capabilities.pointerLock.failure, requests: refused.pointer.requests,
+    }).toEqual({ state: 'unlocked', failure: { operation: 'request', reason: 'rejected' }, requests: 1 });
   });
 });
 

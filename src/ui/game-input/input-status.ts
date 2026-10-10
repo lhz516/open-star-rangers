@@ -1,8 +1,8 @@
 /**
  * The game input's status for the mission UI (docs/plan/p3/05/spec.md: 输入区与焦点, 暂缺标注, 离散命令与重复, 全屏与
  * Keyboard Lock; 数据模型与契约 “能力申请状态与错误”): read-only facts the input consumer writes and React reads. Each
- * write is one frozen state, and an unchanged fact notifies no one. Map input (subtask 22) adds its state here. A
- * command the command feedback refused, a full queue included, is shown by that feedback's action error, not here.
+ * write is one frozen state, and an unchanged fact notifies no one. A command the command feedback refused, a full queue
+ * included, is shown by that feedback's action error, not here.
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type {
@@ -12,7 +12,7 @@ import type { PointerLockFailure } from '../../platform/input/pointer-lock.ts';
 import type { InputGapId } from './input-action.ts';
 
 /** What the consumer was doing when an input operation failed. */
-export type InputOperation = 'set-intent' | 'clear-input' | 'toggle-pause' | 'open-menu' | 'submit';
+export type InputOperation = 'set-intent' | 'clear-input' | 'toggle-pause' | 'open-menu' | 'submit' | 'map-input';
 
 export interface InputGapPress {
   readonly gap: InputGapId;
@@ -70,6 +70,32 @@ export interface CapabilityStatus {
 
 export type CapabilityStatuses = Readonly<Record<CapabilityName, CapabilityStatus>>;
 
+/**
+ * The strategic map input (subtask 22; spec 战略地图输入):
+ * - `off`: the current run's projection does not show the map.
+ * - `invalid`: the map's presentation owner supplied a geometry that violates the contract, or the start position rule
+ *   failed: an input presentation contract error, shown with `error`.
+ * - `not-ready`: no geometry, a zero-size frame, no map policy or no drawn cursor yet ("地图输入未就绪"): nothing is
+ *   locked, the system pointer stays and nothing is submitted.
+ * - `suspended`: ready, but the run is not running or the input zone does not qualify; the position stays for a still
+ *   cursor.
+ * - `click-to-lock`: qualified without Pointer Lock, which a click on the map requests ("点击地图以锁定"), also after an
+ *   Esc released it; that click selects nothing.
+ * - `locking`: a Pointer Lock request is open; clicks and moves do nothing meanwhile.
+ * - `locked`: relative movement moves the cursor and the left button selects.
+ * - `unlocked`: Pointer Lock is unsupported or its latest request failed (the Pointer Lock status gives the category):
+ *   absolute input inside the main map moves the cursor and selects; only a separate explicit request asks again.
+ */
+export type MapInputState = 'off' | 'invalid' | 'not-ready' | 'suspended' | 'click-to-lock' | 'locking' | 'locked' | 'unlocked';
+
+export interface MapInputStatus {
+  readonly state: MapInputState;
+  /** The mission UI hides the system pointer over the input zone only while this is true; never while not ready. */
+  readonly systemPointerHidden: boolean;
+  /** For `invalid`, as thrown (a MapInputGeometryError for a geometry); null otherwise. */
+  readonly error: unknown;
+}
+
 export interface InputStatus {
   /** The run is running or paused while the input zone does not qualify: the "click the game view" hint shows. */
   readonly focusHint: boolean;
@@ -82,6 +108,7 @@ export interface InputStatus {
   readonly error: InputError | null;
   /** Fullscreen, Keyboard Lock and Pointer Lock (subtask 21); browser state, never Core's or a recording's. */
   readonly capabilities: CapabilityStatuses;
+  readonly map: MapInputStatus;
 }
 
 export type InputStatusReader = Pick<StoreApi<InputStatus>, 'getState' | 'getInitialState' | 'subscribe'>;
@@ -94,11 +121,15 @@ export interface InputStatusWriter {
   clearError(): void;
   /** One write for all three, notifying only when one of them changed; an unchanged one keeps its object. */
   setCapabilities(statuses: CapabilityStatuses): void;
+  /** Notifies only when a field changed. */
+  setMap(status: MapInputStatus): void;
 }
 
 const CAPABILITY_NAMES: readonly CapabilityName[] = ['fullscreen', 'keyboardLock', 'pointerLock'];
 
 const UNSUPPORTED: CapabilityStatus = Object.freeze({ state: 'unsupported', ownerId: null, runId: null, generation: 0, failure: null });
+
+const MAP_OFF: MapInputStatus = Object.freeze({ state: 'off', systemPointerHidden: false, error: null });
 
 const sameCapability = (a: CapabilityStatus, b: CapabilityStatus): boolean =>
   a.state === b.state && a.ownerId === b.ownerId && a.runId === b.runId && a.generation === b.generation
@@ -108,6 +139,7 @@ export function createInputStatus(): InputStatusWriter {
   const initial: InputStatus = Object.freeze({
     focusHint: false, gap: null, error: null,
     capabilities: Object.freeze({ fullscreen: UNSUPPORTED, keyboardLock: UNSUPPORTED, pointerLock: UNSUPPORTED }),
+    map: MAP_OFF,
   });
   const store = createStore<InputStatus>()(() => initial);
   let gaps = 0;
@@ -140,6 +172,11 @@ export function createInputStatus(): InputStatusWriter {
         next[name] = Object.freeze({ state, ownerId, runId, generation, failure: copied });
       }
       write({ capabilities: Object.freeze(next) });
+    },
+    setMap({ state, systemPointerHidden, error }: MapInputStatus) {
+      const { map } = store.getState();
+      if (map.state === state && map.systemPointerHidden === systemPointerHidden && Object.is(map.error, error)) return;
+      write({ map: Object.freeze({ state, systemPointerHidden, error }) });
     },
   });
 }

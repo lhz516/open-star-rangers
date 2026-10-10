@@ -21,6 +21,8 @@
  * - **Capabilities** (`capabilities.ts`): fullscreen, Keyboard Lock and Pointer Lock connect with the keyboard source
  *   and are released after it. Leaving fullscreen clears through `clear('focus-loss')` and the end of this owner's
  *   Pointer Lock through `clear('pointer-lock-exit')`; while the pointer is locked, Esc only releases it.
+ * - **Map** (`map-input.ts`, with the `map` option): fed every frame, status change, qualification change and the
+ *   Pointer Lock port's pointer input; it submits through the same command feedback and is cleared with the keys.
  */
 import type {
   MissionConsumerConnection, MissionInputContext, MissionOwnerConsumer, MissionRunInputControl, MissionSessionView,
@@ -30,6 +32,8 @@ import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import type { KeyboardInput, KeyboardSignal, KeyboardSink, KeyboardSource, KeyboardZoneBinding } from '../../platform/input/keyboard-input.ts';
+import type { PointerInput } from '../../platform/input/pointer-lock.ts';
+import type { MapCursorPositionPort } from '../../render/map/map-cursor.ts';
 import type { GameCommandFeedback } from '../game/game-command-feedback.ts';
 import {
   createInputCapabilities, type CapabilityFacts, type CapabilityPorts, type InputCapabilities, type InputCapabilityController,
@@ -37,6 +41,7 @@ import {
 import type { BindingTable, DiscreteAction } from './input-action.ts';
 import { InputState, type InputMoment } from './input-state.ts';
 import { createInputStatus, type InputOperation, type InputStatusReader } from './input-status.ts';
+import { MapInput, type MapInputOptions } from './map-input.ts';
 
 /** The part of the command feedback the consumer submits through. */
 export type CommandSubmitter = Pick<GameCommandFeedback, 'submit'>;
@@ -51,6 +56,8 @@ export interface InputConsumerOptions<Zone> extends CapabilityPorts {
    * `submit` shows a refusal, a full queue included, as the game store's action error.
    */
   readonly feedback: () => CommandSubmitter | null;
+  /** The strategic map input's ports and policy; without it the map input stays `off`. */
+  readonly map?: MapInputOptions;
 }
 
 export interface GameInputConsumer<Zone> extends MissionOwnerConsumer<'input'> {
@@ -59,6 +66,8 @@ export interface GameInputConsumer<Zone> extends MissionOwnerConsumer<'input'> {
   readonly capabilities: InputCapabilities;
   /** Binds, replaces or (with null) removes the keyboard source's input zone; stable, as a React callback ref. */
   readonly bindZone: (zone: Zone | null) => void;
+  /** The map cursor's position, for the cursor drawer the `map` option's `cursor` returns; null hides the cursor. */
+  readonly mapCursor: MapCursorPositionPort;
   /**
    * Clears the local input and, while the run is running, sends it one `clear-input` for `reason`: for host events that
    * end the input's qualification, such as leaving fullscreen or Pointer Lock. Not for session notifications. Every
@@ -107,6 +116,8 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   readonly #state: InputState;
   readonly #status = createInputStatus();
   readonly #capabilities: InputCapabilityController;
+  readonly #map: MapInput | null;
+  readonly mapCursor: MapCursorPositionPort;
   #source: (KeyboardSource & KeyboardZoneBinding<Zone>) | null = null;
   #zone: Zone | null = null;
   #session: MissionSessionView | null = null;
@@ -119,6 +130,14 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     this.#options = options;
     this.#state = new InputState(options.bindings);
     this.#capabilities = createInputCapabilities(options);
+    this.#map = options.map ? new MapInput(options.map, {
+      submit: (command) => this.#send(command),
+      lock: this.#capabilities,
+      lockState: () => this.#status.reader.getState().capabilities.pointerLock.state,
+      setStatus: (status) => { this.#status.setMap(status); },
+      reportError: (cause) => { this.#status.reportError('map-input', cause); },
+    }) : null;
+    this.mapCursor = this.#map?.position ?? Object.freeze({ read: () => null });
   }
 
   get status(): InputStatusReader {
@@ -147,11 +166,16 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     this.#source = source;
     source.bind(this.#zone);
     const disconnect = source.connect(this.#sink);
+    const stopMap = this.#status.reader.subscribe((now, before) => {
+      if (now.capabilities.pointerLock !== before.capabilities.pointerLock) this.#map?.refresh();
+    });
     try {
       this.#capabilities.connect({
         ownerId, session, previousClosed, status: this.#status, facts: this.#facts, clear: (reason) => { this.clear(reason); },
+        pointer: (input) => { this.#pointer(input); },
       });
     } catch (cause) {
+      stopMap();
       try {
         disconnect();
       } catch (failure) {
@@ -165,6 +189,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
         this.#released = true;
         this.#run = null;
         this.#state.clear();
+        stopMap();
         const failures: unknown[] = [];
         try {
           disconnect();
@@ -185,8 +210,13 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   clear(reason: ClearInputReason): void {
     if (this.#released) return;
     const moment = this.#moment(this.#eligible);
-    this.#state.clear();
+    this.#clearLocal();
     this.#clearRun(reason, moment);
+  }
+
+  #clearLocal(): void {
+    this.#state.clear();
+    this.#map?.clear();
   }
 
   #attach(run: GameSessionRun, port: MissionRunInputControl): void {
@@ -207,7 +237,9 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     }));
     own(run, this.#session!.onStatus((status) => {
       if (this.#current(wired)) {
-        this.#state.sync(this.#moment(this.#eligible, status));
+        const moment = this.#moment(this.#eligible, status);
+        this.#state.sync(moment);
+        this.#map?.sync(moment);
         this.#refresh(status);
       }
       return undefined;
@@ -223,7 +255,8 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   #detach(wired: WiredRun): void {
     if (!this.#current(wired)) return;
     this.#run = null;
-    this.#state.clear();
+    this.#clearLocal();
+    this.#map?.sync(this.#moment(this.#eligible));
     this.#refresh();
     this.#capabilities.detached(wired.handle.runId);
   }
@@ -237,6 +270,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     let performed = false;
     if (lost) this.#clearRun('focus-loss', moment);
     else if (intentChanged) performed = this.#setIntent(moment);
+    this.#map?.sync(moment);
     if (action) performed = this.#carryOut(action, event.code) || performed;
     // A new press that went through without a new failure ends the shown error.
     const pressed = event.type === 'keydown' && !event.repeat;
@@ -254,6 +288,11 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     } else if (intentChanged) {
       this.#setIntent(moment);
     }
+    this.#map?.sync(moment);
+  }
+
+  #pointer(input: PointerInput): void {
+    if (!this.#released) this.#map?.pointer(input, this.#moment(this.#eligible));
   }
 
   #frame(wired: WiredRun, { runId, phase, projection }: GameSessionFrame): void {
@@ -264,6 +303,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     const { intentChanged, repeats } = this.#state.frame(moment);
     if (intentChanged) this.#setIntent(moment);
     for (const { code, command } of repeats) this.#submit(code, command);
+    this.#map?.frame(moment);
   }
 
   /**
@@ -274,7 +314,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     const last = commandIds.at(-1);
     if (!this.#current(wired) || last === undefined || last <= wired.cancelled) return;
     wired.cancelled = last;
-    this.#state.clear();
+    this.#clearLocal();
   }
 
   /** Takes the source's qualification, refreshing the focus hint on a change; returns whether it was just lost. */
@@ -329,15 +369,20 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
 
   /** Submits once and returns whether the run took it; otherwise the key's repeat ends, and only a new press submits again. */
   #submit(code: string, command: Command): boolean {
+    if (this.#send(command)) return true;
+    this.#state.cancelRepeat(code);
+    return false;
+  }
+
+  /** Submits once through the command feedback; returns whether the run took it. */
+  #send(command: Command): boolean {
     let commandId: number | null = null;
     this.#attempt('submit', () => {
       const feedback = this.#options.feedback();
       if (!feedback) throw new Error('The command feedback is not connected');
       commandId = feedback.submit(command);
     });
-    if (commandId !== null) return true;
-    this.#state.cancelRepeat(code);
-    return false;
+    return commandId !== null;
   }
 
   /** Returns whether `action` succeeded; a failure becomes the input status' error. */

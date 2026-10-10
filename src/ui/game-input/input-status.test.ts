@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInputStatus, type CapabilityStatus } from './input-status.ts';
 
-// P3-05 subtasks 20 and 21: the input status the mission UI reads (docs/plan/p3/05/spec.md: 输入区与焦点, 暂缺标注,
-// 全屏与 Keyboard Lock; 数据模型与契约 “能力申请状态与错误”).
+// P3-05 subtasks 20, 21 and 22: the input status the mission UI reads (docs/plan/p3/05/spec.md: 输入区与焦点, 暂缺标注,
+// 全屏与 Keyboard Lock, 战略地图输入; 数据模型与契约 “能力申请状态与错误”).
 
 const UNSUPPORTED: CapabilityStatus = { state: 'unsupported', ownerId: null, runId: null, generation: 0, failure: null };
 const capabilities = { fullscreen: UNSUPPORTED, keyboardLock: UNSUPPORTED, pointerLock: UNSUPPORTED };
+const map = { state: 'off', systemPointerHidden: false, error: null };
 
 describe('input status', () => {
   it('starts without a hint, notice or error, frozen', () => {
     const { reader } = createInputStatus();
-    expect(reader.getState()).toEqual({ focusHint: false, gap: null, error: null, capabilities });
+    expect(reader.getState()).toEqual({ focusHint: false, gap: null, error: null, capabilities, map });
     expect(reader.getState()).toBe(reader.getInitialState());
     expect(Object.isFrozen(reader.getState())).toBe(true);
   });
@@ -26,7 +27,7 @@ describe('input status', () => {
     const shown = status.reader.getState();
     status.setFocusHint(true);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(shown).toEqual({ focusHint: true, gap: null, error: null, capabilities });
+    expect(shown).toEqual({ focusHint: true, gap: null, error: null, capabilities, map });
     expect(Object.isFrozen(shown)).toBe(true);
     expect(status.reader.getState()).toBe(shown);
   });
@@ -53,7 +54,7 @@ describe('input status', () => {
     status.markGap('G-09');
     expect(status.reader.getState().error).toBe(error);
     status.clearError();
-    expect(status.reader.getState()).toEqual({ focusHint: false, gap: { gap: 'G-09', serial: 1 }, error: null, capabilities });
+    expect(status.reader.getState()).toEqual({ focusHint: false, gap: { gap: 'G-09', serial: 1 }, error: null, capabilities, map });
   });
 
   it('starts every capability unsupported, and writes them as frozen copies, notifying only when one changed', () => {
@@ -85,5 +86,24 @@ describe('input status', () => {
     // Several changes are one write.
     status.setCapabilities({ fullscreen: written, keyboardLock: written, pointerLock: written });
     expect(listener).toHaveBeenCalledTimes(14);
+  });
+
+  it('starts the map input off, and writes its status frozen, notifying only when a field changed', () => {
+    const status = createInputStatus();
+    const listener = vi.fn();
+    status.reader.subscribe(listener);
+    status.setMap({ state: 'off', systemPointerHidden: false, error: null });
+    expect(listener).not.toHaveBeenCalled();
+    const error = new Error('invalid geometry');
+    status.setMap({ state: 'invalid', systemPointerHidden: false, error });
+    const shown = status.reader.getState().map;
+    expect(shown).toEqual({ state: 'invalid', systemPointerHidden: false, error });
+    expect(shown.error).toBe(error);
+    expect(Object.isFrozen(shown)).toBe(true);
+    status.setMap({ state: 'invalid', systemPointerHidden: false, error });
+    status.setMap({ state: 'invalid', systemPointerHidden: false, error: new Error('invalid geometry') });
+    status.setMap({ state: 'locked', systemPointerHidden: false, error: null });
+    status.setMap({ state: 'locked', systemPointerHidden: true, error: null });
+    expect(listener).toHaveBeenCalledTimes(4);
   });
 });
