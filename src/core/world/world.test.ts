@@ -4,6 +4,7 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { COMMAND_TYPES, type Command } from '../contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { EntityTable } from './entity-table.ts';
+import { initialPlayerControl } from './player-state.ts';
 import { constructWorld } from './world.ts';
 import { entityInit, expectFault, stateText, testConfig, testState, thrownBy, tickInput } from './world.test-support.ts';
 import type { WorldState } from './world-state.ts';
@@ -35,6 +36,7 @@ function populatedState(overrides: Parameters<typeof testState>[0] = {}): WorldS
   const state = testState(overrides);
   const player = state.entities.allocate(entityInit(0));
   state.player.entityId = player.id;
+  state.player.control = initialPlayerControl(state.config.group);
   state.entities.allocate(entityInit(7, { activity: 'parked' }));
   state.entities.allocate(entityInit(7)).state = 'active';
   return state;
@@ -70,20 +72,20 @@ describe('world step (P3-02 AC-03, AC-04)', () => {
     expect(Object.getOwnPropertyNames(Object.getPrototypeOf(world)).sort()).toEqual(['constructor', 'projection', 'renderState', 'snapshot', 'step']);
   });
 
-  it('gives every valid command exactly one rejected/not-implemented result in order and changes nothing else', () => {
+  it('gives every valid command exactly one result in order, rejected/not-implemented without a rule, and changes nothing else', () => {
     expect(new Set(EVERY_COMMAND.map(({ type }) => type))).toEqual(new Set(COMMAND_TYPES));
     const commands: Command[] = [...EVERY_COMMAND, { type: 'launch' }, { type: 'fire', channel: 'primary' }];
     const commanded = populatedState();
     const idle = populatedState();
     const events = constructWorld(commanded).step(tickInput(commands));
     constructWorld(idle).step(tickInput());
+    // P3-06 handles select-number in flight, and the player becomes active only in this step's request handling.
     expect(events).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
       tick: 1,
       commandIndex,
       commandType: type,
-      outcome: 'rejected',
-      reason: 'not-implemented',
+      ...(type === 'select-number' ? { outcome: 'ignored', reason: 'player-unavailable' } : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
     expect(deepFrozen(events)).toBe(true);
     expect(stateText(commanded)).toBe(stateText(idle));

@@ -16,6 +16,7 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, initialState, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { applyControlRequest, updatePlayer, type ControlRequest } from './flight-control.ts';
 import { moveEntities } from './movement.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 
@@ -26,7 +27,9 @@ export type Request =
   /** Message 0x20: an entity in state area-switch or pending-removal leaves, or switches its parking. */
   | { readonly type: 'leave'; readonly entityId: EntityId }
   /** Message 0x4000: one spawn request of a due queue entry (spawn.ts). */
-  | SpawnRequest;
+  | SpawnRequest
+  /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
+  | ControlRequest;
 
 /**
  * The requests of one tick. Request handling takes them in posting order (mission flow, then object updates in walk
@@ -35,8 +38,10 @@ export type Request =
  *
  * The count of posts is bounded by CORE_LIMITS.eventsPerTick, a runaway guard rather than an original limit: the
  * stages so far post at most one request per entity update and one per spawn request, of which a world schedules at
- * most CORE_LIMITS.spawnExpansion in its lifetime, a sum (entities + spawn expansion + commands) that limit covers. A
- * rule whose requests fan out further derives its own bound and revises CoreLimits.
+ * most CORE_LIMITS.spawnExpansion in its lifetime. The player's update posts at most one request per speed command and
+ * two more (the speed assist's restoring request and one carrying only the axes), and an available player posts no
+ * lifecycle request (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the
+ * limits, which that limit covers. A rule whose requests fan out further derives its own bound and revises CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -110,15 +115,14 @@ function advanceClock(context: TickContext): void {
 }
 
 /**
- * Judges the commands in array order where the original polls game input, in the player's update; the player (kind
- * bit 0) comes first in the walk, so that is the start of the stage. No rule handles a command yet: each gets one
- * rejected/not-implemented result and changes nothing. The rule tasks replace this per command type.
+ * The player's update (flight-control.ts), where the original polls game input: the player (kind bit 0) comes first in
+ * the walk, so that is the start of the stage. It judges every command, those of rules not implemented yet with one
+ * rejected/not-implemented result each, and with an available player consumes the axes. The rule tasks add their
+ * commands and steps there.
  */
-function judgeCommands(context: TickContext): void {
-  const { input, time } = context;
-  input.commands.forEach(({ type }, commandIndex) => {
-    emit(context, { type: 'command-result', tick: time.tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' });
-  });
+function updatePlayerControls(context: TickContext): void {
+  const { world, input, time, requests } = context;
+  updatePlayer(world, input, time.tick, { emit: (event) => emit(context, event), post: (request) => requests.post(request) });
 }
 
 /**
@@ -150,7 +154,7 @@ function updateLifecycle(context: TickContext, entity: Entity): void {
  * kind bit is updated in the same walk. A destroyed source (state 4) gets no update.
  */
 function updateObjects(context: TickContext): void {
-  judgeCommands(context);
+  updatePlayerControls(context);
   for (const entity of context.world.entities.walk(ALL_KINDS)) {
     if (entity.state !== 'destroyed-source') updateLifecycle(context, entity);
   }
@@ -187,6 +191,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'leave':
       leave(world, entity);
+      return;
+    case 'control':
+      applyControlRequest(world, entity, request);
       return;
   }
 }

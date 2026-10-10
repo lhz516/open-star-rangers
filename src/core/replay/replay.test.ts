@@ -72,7 +72,8 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
     });
 
     it('finds no difference for an input change without an observable effect', () => {
-      const steered = recordWith(({ ticks }) => { ticks[10] = { axes: { pitch: 1, yaw: -1, roll: 0.5 }, commands: [] }; });
+      // Below one deflection step (1/128), every axis truncates to 0 and applies nothing (P3-06 checkpoint A).
+      const steered = recordWith(({ ticks }) => { ticks[10] = { axes: { pitch: 0.005, yaw: -0.0075, roll: 0.0039 }, commands: [] }; });
       expect(compareReplayResults(RECORDING.result, replayRecord(steered, CONTENT))).toEqual({ match: true });
     });
 
