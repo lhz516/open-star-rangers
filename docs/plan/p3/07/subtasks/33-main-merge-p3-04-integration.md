@@ -47,6 +47,9 @@ updated: 2026-10-10
 - `src/core/projections/projection.ts`：P3-06 的 `motionPlayer` 经移动块联合收窄为受操纵的块（与 `craftMovement` 的处理相同）。
 - `src/core/replay/budget.test.ts`：P3-06 的容量测试适配 CR-03 的联合与 CR-02 的战斗状态（P3-06 的断言只针对其自身的项）。
 - `src/core/world/create-world.ts`、`src/core/world/create-world.test.ts`：导出 `instantiableModelIds`，由 Core 给出 CR-01 所需的可实例化模型集合，不改变 `initialWorldState`。
+- `src/original-data/conversion/production-rule-data.test-support.ts`：生产结构的合成光盘夹具满足 CR-01 的检查（DEBRIS 记录数、挂点链、炮 +0x14），与 P3-06 子任务 24 的同类修改一致。
+- `src/core/projections/combat.test.ts`：合并 P3-06 的运动组后 `flight.motion` 的断言。
+- `docs/engineering/README.md`、`docs/engineering/modules/app.md`、`docs/engineering/modules/ui.md`、`docs/guides/tools.md`：P3-04 的接入点、事件与 replay 核对的文档同步（与 P3-06 子任务 24 更新的同一组文档）。
 
 合并本身带入的 P3-06 与 `main` 的改动不计入写入范围；协调者拥有的 `docs/plan/p3/tasks.md` 若有合并冲突，按协调者给出的文本解决；在上列之外需要为解决冲突而修改的路径，先发 scope-request。
 

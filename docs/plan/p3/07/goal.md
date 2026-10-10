@@ -55,7 +55,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 | --- | --- | --- |
 | S-01 | 08、11、33 | 08：P3-02 修订获批；11：类型、序列化、比较器与版本的 Node 测试；29：契约与 spec、P3-02 一致 |
-| S-02 | 12 | 12：规则数据输入、语义校验、载入变换与战斗初值的 Node 测试；25：真实内容 |
+| S-02 | 12、34 | 12：规则数据输入、语义校验、载入变换与战斗初值的 Node 测试；25：真实内容 |
 | S-03 | 13、23 | 13：目标与雷达的 Node 测试；23：`combat` 分区的消费者契约测试 |
 | S-04 | 14 | 14：挂点、选择、开火与发射的 Node 测试 |
 | S-05 | 17、20、22、32 | 17、20、32：弹丸运动、导弹系统与制导规则的测试；22：经正式流水线与共用积分的集成测试 |
@@ -67,7 +67,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | S-11 | 01–07、09、10、26、27、30、31 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；27：R-06 至 R-10 的结论 |
 | S-12 | 28 | 28：Core 模块说明、源码结构与交接；29：链接与元数据 |
 | AC-01 | 08、11 | 11：边界测试、合成测试不改、版本拒绝；29：`pnpm check` |
-| AC-02 | 12 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
+| AC-02 | 12、34 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
 | AC-03 | 13 | 13：每个候选筛选、并列、模式切换、前方判定与失效的独立期望测试 |
 | AC-04 | 13、23 | 23：分区各判别、雷达、资源与武器读数、冻结与纯度 |
 | AC-05 | 12、14 | 12：实例化与供救援复用的初始化；14：列表循环、单项与不可用挂点 |
@@ -109,7 +109,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [17-projectile-hits.md](./subtasks/17-projectile-hits.md) | 03, 14, 15, 18 | in-progress |
 | [18-destruction-fragments.md](./subtasks/18-destruction-fragments.md) | 06, 07, 12, 15 | completed |
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | in-progress |
-| [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31, 32 | pending |
+| [20-missile-guidance.md](./subtasks/20-missile-guidance.md) | 03, 14, 15, 18, 31, 32, 34 | pending |
 | [21-parked-engagement-rule.md](./subtasks/21-parked-engagement-rule.md) | 05, 14, 15 | completed |
 | [22-p3-06-joint-integration.md](./subtasks/22-p3-06-joint-integration.md) | 08, 16, 17, 18, 19, 20, 21 | pending |
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
@@ -122,7 +122,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | completed |
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | in-progress |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | pending |
+| [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -157,6 +158,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 临时把并行 worker 上限改为 5，并从 20 拆出 32：** 用户指示临时把并行 worker 的上限改为 5，为尚可开始的子任务另开会话。依赖已满足的只有 23。依用户对新增解除阻塞子任务的预先授权，协调者把 20 中不依赖 18 与 31 的纯规则（共享转向模块与制导规则）拆为 32（依赖 03、12、14），20 改为依赖 32，写入范围只留 `missiles.ts` 及其测试。
 - **2026-10-10 — 新增 33（合并 main 后接入 P3-04）：** P3-04 已快进合入 `main`，P3-06 已把 `main` 合入其分支并接入 P3-04 的调用者（其子任务 24）。再合并 P3-06 分支时，P3-04 的世界创建、录制与 replay 调用者需要 P3-07 的规则输入。依用户对新增解除阻塞子任务的预先授权，新增 33：由 worker 在其分支上完成合并与接入，作为一个合并提交，协调者以 `git merge` 集成（不用 cherry-pick）。28 改为依赖 33。
 - **2026-10-10 — 33 的范围与合并冲突：** 协调者批准 33 为解决合并而修改 `projection.ts`（P3-06 的 `motionPlayer` 收窄为受操纵的块）、P3-06 的 `budget.test.ts`（适配 CR-02/CR-03，只断言 P3-06 自身的项），并由 Core 导出 `instantiableModelIds`（`create-world.ts`，CR-01 的可实例化模型集合）。`tasks.md` 为协调者所有，其合并冲突按协调者给出的文本解决：任务表下的导航句同时提及 P3-01 至 P3-04、P3-06 与 P3-07 的 spec 与 goal。
+- **2026-10-10 — 新增 34（追踪导弹的 AI 程序输入）：** 32 发现追踪导弹的程序读取内置 AI 程序记录 1、2 的三个字段，而 CR-01 的世界创建输入没有 AI 程序。依用户对新增解除阻塞子任务与修改契约的预先授权，新增 34：修订 CR-01 并接入 `aiPrograms` 输入（推荐方案见 34），20 改为依赖 34。34 依赖 33（与其写入范围重叠的 `create-world.ts` 及 App 的输入路径）。
 
 ## 审批
 
