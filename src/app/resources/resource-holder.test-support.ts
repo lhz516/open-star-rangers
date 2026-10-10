@@ -53,6 +53,8 @@ export interface LogicContents {
   readonly craftTypes?: ReturnType<typeof packageCraftTypes>;
   /** Replaces the mission payload bytes, which the manifest then describes. */
   readonly missionBytes?: Uint8Array;
+  /** Replaces the craft info payload bytes likewise. */
+  readonly craftInfoBytes?: Uint8Array;
   /** Roles that get a second Asset with the same content under the ID suffixed `-copy`, which nothing references. */
   readonly duplicates?: readonly ('craft-types' | 'wingman-roster')[];
 }
@@ -63,7 +65,7 @@ export interface LogicContents {
  * models; the mission and the table default to the synthetic logic content.
  */
 export function logicGroupInput(
-  { mission = syntheticMission(), craftTypes = packageCraftTypes(), missionBytes, duplicates = [] }: LogicContents = {},
+  { mission = syntheticMission(), craftTypes = packageCraftTypes(), missionBytes, craftInfoBytes, duplicates = [] }: LogicContents = {},
 ): GroupInput {
   const asset = (role: LogicRole, id: string, content: unknown, dependencies: readonly string[]) =>
     ({ id, role, dependencies, schemaVersion: LOGIC_PAYLOAD_SCHEMA_VERSION, bytes: encodeLogicPayload({ role, content } as Parameters<typeof encodeLogicPayload>[0]) });
@@ -72,7 +74,7 @@ export function logicGroupInput(
   const rosters = (id: string) => asset('wingman-roster', id, syntheticRoster(), [LOGIC_IDS.craftTypes]);
   const ruleData = (Object.keys(SYNTHETIC_RULE_DATA) as RuleDataPayload['role'][]).map(role => ({
     id: `data/${role}`, role, dependencies: [], schemaVersion: RULE_DATA_SCHEMA_VERSIONS[role],
-    bytes: encodeRuleDataPayload({ role, content: SYNTHETIC_RULE_DATA[role]() } as RuleDataPayload),
+    bytes: (role === 'craft-info' ? craftInfoBytes : undefined) ?? encodeRuleDataPayload({ role, content: SYNTHETIC_RULE_DATA[role]() } as RuleDataPayload),
   }));
   const specs = [
     ...ruleData,

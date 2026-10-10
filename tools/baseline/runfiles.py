@@ -41,24 +41,43 @@ def _inside(path, root):
     return path != root and path.is_relative_to(root)
 
 
+def _below_root(path, research_root, code, where, allow_root=False):
+    """A directory below the resolved research root, named without traversal and with restricted components after
+    symbolic links are resolved. Returns (resolved directory, its parts relative to the root)."""
+    root = Path(os.path.realpath(research_root))
+    text = os.fspath(path)
+    if not text or "\0" in text or ".." in Path(text).parts:
+        raise BaselineError(code, where)
+    resolved = Path(os.path.realpath(text))
+    if not (_inside(resolved, root) or (allow_root and resolved == root)):
+        raise BaselineError(code, where)
+    relative = resolved.relative_to(root).parts
+    if not all(RUN_ID.fullmatch(part) for part in relative):
+        raise BaselineError(code, where)
+    return resolved, relative
+
+
 def resolve_output(out, run_id, research_root):
     """Validates the output parent and run ID before any side effect; returns the run paths."""
     if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("output-path-invalid", "run-id")
-    root = Path(os.path.realpath(research_root))
-    text = os.fspath(out)
-    if not text or "\0" in text or ".." in Path(text).parts:
-        raise BaselineError("output-path-invalid", "out")
-    parent = Path(os.path.realpath(text))
-    if not _inside(parent, root):
-        raise BaselineError("output-path-invalid", "out")
-    relative = parent.relative_to(root)
-    if not all(RUN_ID.fullmatch(part) for part in relative.parts):
-        raise BaselineError("output-path-invalid", "out")
+    parent, relative = _below_root(out, research_root, "output-path-invalid", "out")
     run_dir = parent / run_id
     if os.path.lexists(run_dir):
         raise BaselineError("output-exists", "run")
-    return RunPaths(run_dir, "/".join(("local", "research", *relative.parts, run_id)))
+    return RunPaths(run_dir, "/".join(("local", "research", *relative, run_id)))
+
+
+def resolve_evidence(evidence, paths, research_root):
+    """The evidence root whose pre-existing files a run protects: the research root by default, or an opt-in
+    narrower directory inside it that contains the run directory (other sessions may then write elsewhere under
+    the research root). Returns (resolved directory, "local/research/..." display path)."""
+    if evidence is None:
+        return Path(os.path.realpath(research_root)), "local/research"
+    scope, relative = _below_root(evidence, research_root, "evidence-scope-invalid", "evidence", allow_root=True)
+    if not _inside(paths.run_dir, scope):
+        raise BaselineError("evidence-scope-invalid", "evidence")
+    return scope, "/".join(("local", "research", *relative))
 
 
 def create_run_dir(paths, research_root):

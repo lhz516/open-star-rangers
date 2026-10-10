@@ -6,9 +6,10 @@ import { nextRandom } from '../determinism/rng.ts';
 import { CoreInputError } from '../errors.ts';
 import { loadMission } from '../mission/load-mission.ts';
 import { createWorld, initialWorldState } from './create-world.ts';
+import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftTypesContent, declaration, eventMission, MARKER, missionFrame, originalImportIdentity, playerOnlyMission, ruleInputs, sliceMission,
-  worldInput, type MissionDraft, type RosterDraft, type WorldInputParts,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, originalImportIdentity, playerOnlyMission,
+  reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
 import { constructWorld } from './world.ts';
@@ -16,9 +17,21 @@ import { stateText, thrownBy, tickInput } from './world.test-support.ts';
 
 const MISSION = 'input.mission.content';
 const ROSTER = 'input.wingmanRoster.content';
+const CRAFT_INFO = 'input.craftInfo.content';
 const SEED = 0x1234_5678;
 
 const create = (parts: WorldInputParts = {}) => initialWorldState(asCreateInput(worldInput(parts)));
+
+/** The craft info content after `change`. */
+function craftInfoWithContent(change: (info: CraftInfoDraft) => void): CraftInfoDraft {
+  const info = craftInfoContent();
+  change(info);
+  return info;
+}
+
+/** Creation input whose craft info content `change` changed, with other `parts`. */
+const craftInfoWith = (change: (info: CraftInfoDraft) => void, parts: WorldInputParts = {}) =>
+  worldInput({ ...parts, craftInfo: craftInfoWithContent(change) });
 
 /** Asserts that creation throws a CoreInputError at `path` whose message names no imported value. */
 function expectRejected(input: unknown, path: string, reason?: string, values: readonly string[] = []): CoreInputError {
@@ -28,6 +41,7 @@ function expectRejected(input: unknown, path: string, reason?: string, values: r
   expect(error).toMatchObject({ path });
   if (reason !== undefined) expect((error as CoreInputError).reason).toContain(reason);
   expect(message).not.toContain(MARKER);
+  expect(message).not.toContain(CRAFT_INFO_MARKER);
   for (const value of values) expect(message).not.toContain(value);
   return error as CoreInputError;
 }
@@ -83,7 +97,12 @@ describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
     mission.declarations[7].nameCandidates[0] = 'changed';
     mission.groups[0].layout[1].x = 9;
     (input.wingmanRoster.content as RosterDraft).options[1].ruleInputs.aiValueA = 77;
+    (input.craftInfo.content as CraftInfoDraft).craft[7].atB8 = 1;
     expect(stateText(first)).toBe(before);
+    // So is the craft info.
+    expect(first.craftInfo.content.craft[7].atB8).toBe(64);
+    expect(deepFrozen(first.craftInfo)).toBe(true);
+    expect(first.craftInfo).not.toBe(second.craftInfo);
     // The static setup is the world's own frozen copy: names and coordinates stay as read.
     expect(first.setup.declarations[7].nameCandidates[0]).toBe(`${MARKER}-base-0`);
     expect(first.setup.declarations[0].position.x).toBe(0);
@@ -295,6 +314,170 @@ describe('semantic checks before any world exists (P3-02 AC-02)', () => {
   });
 });
 
+describe('craft info input (P3-06 AC-01, D-01)', () => {
+  it('reads the craft info strictly into the world\'s frozen copy, detached from the input', () => {
+    const input = worldInput();
+    const state = initialWorldState(asCreateInput(input));
+    expect(state.craftInfo.id).toBe('data/craft-info');
+    expect(state.craftInfo.content).toEqual(craftInfoContent());
+    expect(deepFrozen(state.craftInfo)).toBe(true);
+    const content = input.craftInfo.content as CraftInfoDraft;
+    content.craft[0].name = 'changed';
+    content.guns.pop();
+    expect(state.craftInfo.content).toEqual(craftInfoContent());
+  });
+
+  it.each([
+    ['missing', () => ({ ...worldInput(), craftInfo: undefined }), 'input.craftInfo'],
+    ['not an object', () => ({ ...worldInput(), craftInfo: 'data/craft-info' }), 'input.craftInfo'],
+    ['an Asset with an extra field', () => { const input = worldInput(); Object.assign(input.craftInfo, { role: 'craft-info' }); return input; }, 'input.craftInfo'],
+    ['an Asset without an ID', () => { const input = worldInput(); delete (input.craftInfo as Record<string, unknown>).id; return input; }, 'input.craftInfo.id'],
+    ['an Asset without content', () => { const input = worldInput(); delete (input.craftInfo as Record<string, unknown>).content; return input; }, 'input.craftInfo.content'],
+  ])('rejects craft info %s with a CoreInputError', (_, input, path) => {
+    const error = thrownBy(() => createWorld(asCreateInput(input())));
+    expect(error).toBeInstanceOf(CoreInputError);
+    expect(error).toMatchObject({ path });
+  });
+
+  it('keeps the content readers\' ContentContractError for a malformed Asset ID or content, a non-finite f32 included', () => {
+    const malformedId = worldInput();
+    (malformedId.craftInfo as Record<string, unknown>).id = 'data/Craft-Info';
+    expect(thrownBy(() => createWorld(asCreateInput(malformedId)))).toMatchObject({ name: 'ContentContractError', path: 'input.craftInfo.id' });
+    const cases: [(info: CraftInfoDraft) => void, string][] = [
+      [(info) => void info.craft.pop(), `${CRAFT_INFO}.craft`],
+      [(info) => void (info.craft[7].atB8 = Number.POSITIVE_INFINITY), `${CRAFT_INFO}.craft[7].atB8`],
+      [(info) => void (info.craft[0].at0C = Number.NaN), `${CRAFT_INFO}.craft[0].at0C`],
+      [(info) => void (info.craft[0].at88 = 2 ** 31), `${CRAFT_INFO}.craft[0].at88`],
+      [(info) => void (info.missiles[0].body = 9), `${CRAFT_INFO}.missiles[0].body`],
+    ];
+    for (const [change, path] of cases) {
+      const error = thrownBy(() => createWorld(asCreateInput(craftInfoWith(change))));
+      expect(error).toBeInstanceOf(ContentContractError);
+      expect(error).toMatchObject({ path });
+      expect((error as Error).message).not.toContain(CRAFT_INFO_MARKER);
+    }
+  });
+
+  it('takes a data Asset ID, any for synthetic content and only data/craft-info for original-import content', () => {
+    const model = worldInput();
+    (model.craftInfo as Record<string, unknown>).id = 'model/craft-info';
+    expectRejected(model, 'input.craftInfo.id', 'data Asset ID');
+    const other = worldInput();
+    (other.craftInfo as Record<string, unknown>).id = 'data/other-craft-info';
+    expect(initialWorldState(asCreateInput(other)).craftInfo.id).toBe('data/other-craft-info');
+    const imported = worldInput({ identity: originalImportIdentity() });
+    expect(initialWorldState(asCreateInput(imported)).craftInfo.id).toBe('data/craft-info');
+    (imported.craftInfo as Record<string, unknown>).id = 'data/other-craft-info';
+    expectRejected(imported, 'input.craftInfo.id', 'production craft info');
+  });
+});
+
+describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
+  /** The player and one stored record of kind bit `craftType`, of `origins`. */
+  const withKind = (craftType: number, overrides: Record<string, unknown> = {}) => {
+    const m = playerOnlyMission();
+    m.declarations.push(declaration(1, { craftType, position: { x: 400, y: 0, z: 0 }, ...overrides }));
+    return m;
+  };
+
+  it('requires a craft record for every kind the run can instantiate: records, group members and the player', () => {
+    expectRejected(worldInput({ mission: withKind(25) }), `${MISSION}.declarations[1].craftType`, 'without a craft record');
+    const member = playerOnlyMission();
+    member.declarations.push(declaration(1, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    member.declarations.push(declaration(2, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
+    member.groups = [{ template: 1, members: [2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] }];
+    expectRejected(worldInput({ mission: member }), `${MISSION}.declarations[2].craftType`, 'without a craft record');
+  });
+
+  it('does not check kinds whose queue entries post no request: no requests, or a template that never fires', () => {
+    // A record of -1 requests, a group of 0, and a group whose template the build does not fill (probability source 0).
+    const never = withKind(25, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) });
+    never.declarations.push(declaration(2, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    never.declarations.push(declaration(3, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
+    never.declarations.push(declaration(4, { origins: ['group-template'] }));
+    never.declarations.push(declaration(5, { origins: ['group-member'], craftType: 13, memberOf: 1 }));
+    never.groups = [
+      { template: 2, members: [3], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 4, members: [5], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }] },
+    ];
+    const craftInfo = craftInfoWithContent((info) => void (info.craft[13].at0C = 0));
+    expect(create({ mission: never, craftInfo }).spawn.queue.map(({ requests }) => requests)).toEqual([1, -1, 0, 3]);
+    const fired = structuredClone(never);
+    fired.declarations[4].ruleInputs.percentA = 100;
+    expectRejected(worldInput({ mission: fired, craftInfo }), `${CRAFT_INFO}.craft[13].at0C`, 'at least 1');
+  });
+
+  describe('+0x0C, the parked travel\'s modulus, of every instantiable kind', () => {
+    it.each([[0], [0.5], [-1], [-0.5]])('rejects %s', (value) => {
+      expectRejected(craftInfoWith((info) => void (info.craft[7].at0C = value)), `${CRAFT_INFO}.craft[7].at0C`, 'at least 1');
+      expectRejected(craftInfoWith((info) => void (info.craft[0].at0C = value)), `${CRAFT_INFO}.craft[0].at0C`, 'at least 1');
+    });
+
+    it('accepts 1 and more, and any value of kinds not instantiated: the wingman\'s only when one is selected', () => {
+      expect(create({ craftInfo: craftInfoWithContent((info) => { info.craft[7].at0C = 1; info.craft[14].at0C = 1.5; }) }).craftInfo.content.craft[7].at0C).toBe(1);
+      expect(create({ craftInfo: craftInfoWithContent((info) => { info.craft[9].at0C = 0; info.craft[1].at0C = 0; }) }).config.wingman).toBeNull();
+      expectRejected(craftInfoWith((info) => void (info.craft[1].at0C = 0), { run: { wingman: 2 } }), `${CRAFT_INFO}.craft[1].at0C`);
+    });
+  });
+
+  it('accepts zero rule values elsewhere, as the original\'s branches take them', () => {
+    const zeroed = craftInfoWithContent((info) => {
+      for (const kind of [0, 7, 8, 14, 17]) {
+        Object.assign(info.craft[kind], { atA0: 0, atA4: 0, atA8: 0, atAC: 0, atB0: 0, atB4: 0, atB8: 0, atBC: 0, atC0: 0 });
+      }
+      Object.assign(info.craft[0], { at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
+    });
+    expect(create({ craftInfo: zeroed }).craftInfo.content.craft[0].atB8).toBe(0);
+  });
+
+  describe('the parked Warp timing of every instantiable kind, in i32 clock units', () => {
+    it('accepts +0xA8 × 64 and (+0xA8 + +0xA4) × 64 at the i32 bounds', () => {
+      expect(create({ craftInfo: craftInfoWithContent((info) => Object.assign(info.craft[7], { atA8: 2 ** 25 - 1, atA4: 0 })) }).config).toBeDefined();
+      expect(create({ craftInfo: craftInfoWithContent((info) => Object.assign(info.craft[8], { atA8: -(2 ** 25), atA4: 2 ** 25 - 1 })) }).config).toBeDefined();
+      expect(create({ craftInfo: craftInfoWithContent((info) => Object.assign(info.craft[9], { atA8: 2 ** 30, atA4: 2 ** 30 })) }).config).toBeDefined();
+    });
+
+    it('rejects one more at the field that passes the bound', () => {
+      expectRejected(craftInfoWith((info) => void Object.assign(info.craft[7], { atA8: 2 ** 25, atA4: 0 })), `${CRAFT_INFO}.craft[7].atA8`, 'i32');
+      expectRejected(craftInfoWith((info) => void Object.assign(info.craft[7], { atA8: -(2 ** 25) - 1, atA4: 0 })), `${CRAFT_INFO}.craft[7].atA8`, 'i32');
+      expectRejected(craftInfoWith((info) => void Object.assign(info.craft[17], { atA8: 2 ** 25 - 1, atA4: 1 })), `${CRAFT_INFO}.craft[17].atA4`, 'i32');
+      expectRejected(craftInfoWith((info) => void Object.assign(info.craft[1], { atA8: 0, atA4: 2 ** 30 }), { run: { wingman: 0 } }), `${CRAFT_INFO}.craft[1].atA4`, 'i32');
+    });
+  });
+
+  describe('the player\'s energy branch at every allocation level', () => {
+    /** The player's record with energy +0x58, allocations +0x64 and +0x78, divisor +0x88 and base maximum +0xB8. */
+    const energy = (fields: Record<string, unknown>) => craftInfoWith((info) => void Object.assign(info.craft[0], fields));
+    const PLAYER = `${CRAFT_INFO}.craft[0]`;
+
+    it('rejects a divisor +0x88 of 0', () => {
+      expectRejected(energy({ at88: 0 }), `${PLAYER}.at88`, 'must not be 0');
+      expect(create({ craftInfo: craftInfoWithContent((info) => void (info.craft[7].at88 = 0)) }).config).toBeDefined();
+    });
+
+    it('bounds the threshold chop(+0xB8) × +0x88 to i32', () => {
+      // 65536 × 32767 = 2147418112; the energy 187 is then below the threshold, and 187000 / 32767 is in range.
+      expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[0], { atB8: 65536, at88: 32767 })) }).config).toBeDefined();
+      expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[0], { atB8: 65536, at88: -32768 })) }).config).toBeDefined();
+      expectRejected(energy({ atB8: 65536, at88: 32768 }), PLAYER, 'threshold');
+      expectRejected(energy({ atB8: 2 ** 31 }), PLAYER, 'threshold');
+      expectRejected(energy({ atB8: -(2 ** 32) }), PLAYER, 'threshold');
+    });
+
+    it('bounds the allocations, the energy and the energy × 1000 to i32, also at levels other than the initial 1 and 2', () => {
+      // +0x58 − (+0x64[l1] + +0x78[l2]): 2147483 × 1000 fits, 2147484 × 1000 does not.
+      const flat = (at58: number) => ({ at58, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
+      expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[0], flat(2147483))) }).config).toBeDefined();
+      expectRejected(energy(flat(2147484)), PLAYER, 'allocation levels');
+      expectRejected(energy({ at58: 0, at64: [0, 0, 0, 2147484], at78: [0, 0, 0, 0] }), PLAYER, 'allocation levels');
+      expectRejected(energy({ at58: 0, at64: [0, 0, 0, 0], at78: [2147484, 0, 0, 0] }), PLAYER, 'allocation levels');
+      expectRejected(energy({ at58: 2 ** 31 - 1, at64: [2 ** 31 - 1, 0, 0, 0], at78: [1, 0, 0, 0] }), PLAYER, 'allocation levels');
+      // Only the player's record is read this way.
+      expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[7], flat(2 ** 31 - 1))) }).config).toBeDefined();
+    });
+  });
+});
+
 describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
   /** The player and one record of kind bit 7 with `craftCount` requests. */
   const withRecord = (craftCount: number) => {
@@ -377,6 +560,42 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     expect(hashOf({ mission })).toBe(hashOf());
   });
 
+  describe('craft info (P3-06 AC-01, D-01)', () => {
+    const craftHash = (change: (info: CraftInfoDraft) => void, parts: WorldInputParts = {}) => hashOf({ ...parts, craftInfo: craftInfoWithContent(change) });
+
+    it('changes with any part of the craft info, records of kinds the run does not instantiate included', () => {
+      const hash = hashOf();
+      expect(craftHash(() => undefined)).toBe(hash);
+      const changes: ((info: CraftInfoDraft) => void)[] = [
+        (info) => void (info.hitDamageScale = 1.5),
+        (info) => void (info.guns[1].at24 = 41),
+        (info) => void (info.missiles[0].at40 = 0),
+        (info) => void (info.craft[0].atB8 = 65),
+        (info) => void (info.craft[19].at08 = 2),
+        (info) => void (info.craft[3].name = `${info.craft[3].name.slice(0, -1)}u`),
+        (info) => void (info.craft[0].collision.boxes[1].upper[2] = 1),
+        (info) => void (info.craft[0].mounts[1].at18 = null),
+        (info) => void (info.craft[0].mountLists[0].reverse()),
+        (info) => void (info.craft[0].pairs[0].at04 = 4),
+        (info) => void (info.craft[1].collision.at2C[0] = -3),
+        (info) => void (info.missileBodies[1].atC8 = 1),
+        (info) => void info.craft[5].pairs.push({ at00: 1, at04: 2 }),
+      ];
+      const hashes = changes.map((change) => craftHash(change));
+      for (const changed of hashes) expect(changed).not.toBe(hash);
+      expect(new Set(hashes).size).toBe(hashes.length);
+      const renamed = worldInput();
+      (renamed.craftInfo as Record<string, unknown>).id = 'data/other-craft-info';
+      expect(initialWorldState(asCreateInput(renamed)).config.setupHash).not.toBe(hash);
+    });
+
+    it('does not depend on the key order of the craft info, the seed or the wingman', () => {
+      const hash = hashOf();
+      expect(hashOf({ craftInfo: reversedKeys(craftInfoContent()) })).toBe(hash);
+      expect(hashOf({ run: { seed: 99, wingman: 4 } })).toBe(hash);
+    });
+  });
+
   describe('event triggers (P3-03 S-02)', () => {
     /** The event mission after `change`. */
     const eventsWith = (change: (mission: MissionDraft) => void): WorldInputParts => {
@@ -412,10 +631,11 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('writes the wingman options\' eventTrigger too, though the content readers keep it null', () => {
       const setup = loadMission(asCreateInput(worldInput()));
-      const hash = setupHash(setup);
+      const { craftInfo } = create();
+      const hash = setupHash(setup, craftInfo);
       const changed = { ...setup, wingmanOptions: setup.wingmanOptions.map((option, index) => (index === 1 ? { ...option, eventTrigger: 0 } : option)) };
       expect(hash).toBe(hashOf());
-      expect(setupHash(changed)).not.toBe(hash);
+      expect(setupHash(changed, craftInfo)).not.toBe(hash);
     });
 
     it('is the same for equal triggers built again or with keys in another order', () => {

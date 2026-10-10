@@ -37,6 +37,17 @@ function run(finalTick: number, interval: number): Result {
   return { events, checkpoints: ticks.map((tick) => ({ tick, hash: hashOf(tick) })), finalTick };
 }
 
+/** Asserts that a result `make` builds and `change` breaks is rejected at `path`, as either side of a comparison. */
+function expectInvalidOnEitherSide<R extends Result>(make: () => R, change: (result: R) => void, path: string): void {
+  for (const side of ['expected', 'actual'] as const) {
+    const broken = make();
+    change(broken);
+    const error = thrownBy(() => (side === 'expected' ? compareReplayResults(broken, make()) : compareReplayResults(make(), broken)));
+    expect(error).toBeInstanceOf(CoreInputError);
+    expect(error).toMatchObject({ path: `${side}${path}` });
+  }
+}
+
 const eventAt = (result: Result, tick: number, type = 'command-result'): Mutable => result.events.find((event) => event.tick === tick && event.type === type)!;
 const checkpointAt = (result: Result, tick: number) => result.checkpoints.find((checkpoint) => checkpoint.tick === tick)!;
 
@@ -158,13 +169,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
     ];
 
     it.each(invalid)('rejects %s on either side', (_, change, path) => {
-      for (const side of ['expected', 'actual'] as const) {
-        const broken = run(12, 4) as Result & Mutable;
-        change(broken);
-        const error = thrownBy(() => (side === 'expected' ? compareReplayResults(broken, run(12, 4)) : compareReplayResults(run(12, 4), broken)));
-        expect(error).toBeInstanceOf(CoreInputError);
-        expect(error).toMatchObject({ path: `${side}${path}` });
-      }
+      expectInvalidOnEitherSide(() => run(12, 4) as Result & Mutable, change, path);
     });
 
     it(`accepts ${CORE_LIMITS.eventsPerTick} events in a tick and rejects one more`, () => {
@@ -205,12 +210,108 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       }
     });
 
+    it('accepts every command result reason', () => {
+      const result = run(4, 1);
+      ['player-unavailable', 'wrong-context', 'no-target'].forEach((reason, index) => Object.assign(eventAt(result, index + 1), { outcome: 'ignored', reason }));
+      expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
+    });
+
     it('accepts accepted and ignored results, wingman sources and events without a group', () => {
       const result = run(3, 1);
       Object.assign(result.events[0], { outcome: 'accepted', reason: null });
       Object.assign(result.events[1], { outcome: 'ignored' });
       Object.assign(eventAt(result, 3, 'object-instantiated'), { source: { collection: 'wingman', index: 0, group: null } });
       expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
+    });
+  });
+
+  describe('P3-06 speed and world-exit events (D-06)', () => {
+    const accepted = (tick: number, commandIndex: number, commandType: string): Mutable =>
+      commandResult(tick, commandIndex, { commandType, outcome: 'accepted', reason: null });
+    const assisted = (tick: number, overrides: Mutable = {}): Mutable =>
+      ({ type: 'speed-matched', tick, targetEntityId: 5, origin: 'assist', speedDifferenceExceeded: true, ...overrides });
+    const toggled = (tick: number, commandIndex: number, overrides: Mutable = {}): Mutable =>
+      ({ type: 'speed-assist-toggled', tick, commandIndex, enabled: true, ...overrides });
+    const matched = (tick: number, commandIndex: number, overrides: Mutable = {}): Mutable =>
+      ({ type: 'speed-matched', tick, targetEntityId: 5, origin: 'command', commandIndex, ...overrides });
+    const released = (tick: number): Mutable => ({ type: 'speed-assist-released', tick });
+    const left = (tick: number, overrides: Mutable = {}): Mutable =>
+      ({ type: 'object-left-world', tick, entityId: 4, kindBit: 8, source: null, ...overrides });
+
+    /**
+     * Two ticks in the contract's order: the assist's event, the command results with a toggle right after its own,
+     * then from request handling an instantiation and a manual match, and from the parked update a world exit.
+     */
+    function speedRun(): Result {
+      const events = [
+        assisted(1),
+        accepted(1, 0, 'speed'),
+        toggled(1, 0),
+        accepted(1, 1, 'confirm-selection'),
+        commandResult(1, 2, { commandType: 'speed', outcome: 'ignored', reason: 'no-target' }),
+        instantiated(1, 9),
+        matched(1, 1),
+        left(1),
+        released(2),
+        accepted(2, 0, 'speed'),
+        left(2, { entityId: 6, kindBit: 7, source: { collection: 'mission', index: 3, group: { index: 0, request: 1, member: 2 } } }),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches them in the contract\'s order, after a JSON round trip', () => {
+      expect(compareReplayResults(speedRun(), JSON.parse(JSON.stringify(speedRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['a speed difference flag', 1, (result: Result) => { result.events[0].speedDifferenceExceeded = false; }],
+      ['a toggle\'s switch', 1, (result: Result) => { result.events[2].enabled = false; }],
+      ['a matched target', 1, (result: Result) => { result.events[6].targetEntityId = 6; }],
+      ['a source that left', 2, (result: Result) => { result.events[10].source = null; }],
+      ['a missing release', 2, (result: Result) => void result.events.splice(8, 1)],
+    ])('reports a different %s at its tick', (_, tick, change) => {
+      const actual = speedRun();
+      change(actual);
+      expect(compareReplayResults(speedRun(), actual)).toEqual({ match: false, tick, kind: 'events' });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['an assisted match with a command index', (result) => { result.events[0].commandIndex = 0; }, '.events[0]'],
+      ['a manual match without its command index', (result) => { delete result.events[6].commandIndex; }, '.events[6].commandIndex'],
+      ['a match of an unknown origin', (result) => { result.events[0].origin = 'autopilot'; }, '.events[0].origin'],
+      ['a match without an origin', (result) => { delete result.events[0].origin; }, '.events[0].origin'],
+      ['a match of entity 0', (result) => { result.events[6].targetEntityId = 0; }, '.events[6].targetEntityId'],
+      ['a speed difference flag that is not a boolean', (result) => { result.events[0].speedDifferenceExceeded = 1; }, '.events[0].speedDifferenceExceeded'],
+      ['a toggle whose switch is not a boolean', (result) => { result.events[2].enabled = 'on'; }, '.events[2].enabled'],
+      ['a toggle of a command index beyond a tick\'s commands', (result) => { result.events[2].commandIndex = CORE_LIMITS.commandsPerTick; }, '.events[2].commandIndex'],
+      ['a release with an extra field', (result) => { result.events[8].entityId = 1; }, '.events[8]'],
+      ['a world exit of kind bit 32', (result) => { result.events[7].kindBit = 32; }, '.events[7].kindBit'],
+      ['a world exit without a source', (result) => { delete result.events[7].source; }, '.events[7].source'],
+      ['a world exit of an unknown source collection', (result) => { (result.events[10].source as Mutable).collection = 'runtime'; }, '.events[10].source.collection'],
+      ['an assist event after a command result', (result) => void result.events.splice(1, 0, result.events.splice(0, 1)[0]), '.events[1]'],
+      ['a second assist event in a tick', (result) => void result.events.splice(1, 0, released(1)), '.events[1]'],
+      ['a toggle of another command than the result before it', (result) => { result.events[2].commandIndex = 1; }, '.events[2].commandIndex'],
+      ['a toggle that does not follow its result', (result) => void result.events.splice(5, 0, toggled(1, 1)), '.events[5].commandIndex'],
+      ['a toggle at the start of a tick', (result) => void result.events.splice(8, 0, toggled(2, 0)), '.events[8].commandIndex'],
+      ['a manual match before its command\'s result', (result) => { result.events[6].commandIndex = 3; }, '.events[6].commandIndex'],
+      ['a manual match of a toggled command', (result) => { result.events[6].commandIndex = 0; }, '.events[6].commandIndex'],
+      ['a second manual match of a command', (result) => void result.events.splice(7, 0, matched(1, 1)), '.events[7].commandIndex'],
+      ['a command result after a manual match', (result) => void result.events.splice(7, 0, commandResult(1, 3)), '.events[7]'],
+      ['a toggle after a manual match', (result) => void result.events.splice(7, 0, toggled(1, 2)), '.events[7]'],
+      ['a manual match after a world exit', (result) => void result.events.splice(6, 2, left(1), matched(1, 1)), '.events[7]'],
+      ['a world exit before a command result', (result) => void result.events.splice(9, 2, result.events[10], result.events[9]), '.events[10]'],
+    ];
+
+    it('leaves instantiations unordered against them', () => {
+      const result = speedRun();
+      result.events.splice(5, 1);
+      result.events.splice(7, 0, instantiated(1, 9));
+      result.events.unshift(instantiated(1, 8));
+      expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
+    });
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(speedRun, change, path);
     });
   });
 });

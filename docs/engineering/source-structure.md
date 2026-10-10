@@ -86,17 +86,29 @@ src/
       rules-version.ts
       snapshot.ts
     rules/
+      active-area.ts
       coordinates.ts
+      flight-control.ts
+      flight-motion.ts
+      flight-state.ts
       float32.ts
+      initial-ai.ts
       name-assignment.ts
       original-random.ts
+      parked-travel.ts
       placement.ts
+      random-direction.ts
       record-defaults.ts
       spawn-schedule.ts
+      speed-match.ts
     systems/
+      area.ts
+      flight-control.ts
+      movement.ts
       pipeline.ts
       spawn.ts
     world/
+      craft-info-input.ts
       create-world.ts
       entity-table.ts
       player-state.ts
@@ -334,7 +346,7 @@ src/
 
 | 分册 | 内容 |
 |---|---|
-| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、世界、契约、流水线、原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
+| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、世界、契约、流水线，飞行控制、运动与停放，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签与 HUD 文字 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
@@ -394,10 +406,10 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 | `errors.ts`、`determinism/` | 输入错误与内部故障错误；带种子的 RNG 与 FNV-1a 哈希 |
 | `mission/` | 由三份逻辑 Asset 载入冻结的 `MissionSetup`（P2-09） |
 | `contracts/` | 跨目录共用的契约：上限、时钟、动作输入、领域事件、规范文本与校验读取器 |
-| `world/` | 世界创建与运行配置、语义校验、setupHash；世界与故障锁存；世界状态、实体表、玩家状态与生成状态 |
-| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统（目前是生成阶段），规则任务在自己的阶段接入 |
-| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取并修改显式传入的世界计数）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；只在真实复用时提取 |
-| `projections/` | 按分区的 projection 与 Render State，深度冻结、与世界脱离 |
+| `world/` | 世界创建与运行配置、机型输入、语义校验、setupHash；世界与故障锁存；世界状态、实体表（含飞行状态）、玩家状态（含目标与控制状态）与生成状态 |
+| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统：生成、玩家更新与操纵（`flight-control.ts`）、运动、活动区域与停放（`area.ts`），规则任务在自己的阶段接入 |
+| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取，并修改显式传入的世界计数或移动块）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；飞行状态、运动积分、操纵、速度匹配、AI 初态、随机方向、活动区域与停放行进（P3-06）；只在真实复用时提取 |
+| `projections/` | 按分区的 projection（含 `flight` 的运动组）与 Render State，深度冻结、与世界脱离 |
 | `replay/` | 正式快照与状态哈希、规则版本、录制、replay 与结果比较 |
 
 ## 文件与 helper 归属

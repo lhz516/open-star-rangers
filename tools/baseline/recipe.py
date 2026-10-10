@@ -3,8 +3,10 @@ contract).
 
 A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, LE object
 locations, scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy (fixed
-emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). Every key is known, every value has a fixed JSON
-type and every string is a restricted token, so a recipe cannot carry expressions, debugger commands or shell strings.
+emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06 subtask 22):
+at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field (`inputs.py`).
+Every key is known, every value has a fixed JSON type and every string is a restricted token, so a recipe cannot carry
+expressions, debugger commands or shell strings.
 """
 import hashlib
 import json
@@ -13,6 +15,7 @@ import re
 import struct
 from dataclasses import dataclass
 
+from inputs import REGISTERS, SHIFT_BITS
 from reasons import BaselineError
 
 SCHEMA_VERSION = 1
@@ -24,6 +27,12 @@ SCALAR_RANGES = {"u8": (0, 0xFF), "u16": (0, 0xFFFF), "u32": (0, 0xFFFFFFFF), "i
                  "i32": (-0x80000000, 0x7FFFFFFF)}
 POINTER_SIZE = 4
 STOP_KINDS = ("breakpoint", "vrt")
+STIMULUS_KINDS = ("key", "shift", "device")
+REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register at a breakpoint
+# Bytes one stimulus reads and writes, for the static budget check: key: buffer pointers and bounds, then the slot
+# and the tail each read before, written and read back; shift: the flags, then the same three; device: three times.
+KEY_STIMULUS_BYTES = 4 + 4 + 3 * (2 + 2)
+SHIFT_STIMULUS_BYTES = 1 + 3
 
 # Tool ceilings: research-tool protection, not original values or fidelity tolerances.
 CEILINGS = {
@@ -34,6 +43,8 @@ CEILINGS = {
     "repeatReads": 16,
     "maxReadBytes": 16 * 1024 * 1024,
     "maxLogBytes": 256 * 1024 * 1024,
+    "devices": 64,
+    "stimuli": 256,
 }
 CODE_WINDOW_SIZES = (64, 512)  # inclusive, multiple of 16 (anchor chunks)
 DATA_WINDOW_SIZES = (16, 512)
@@ -56,9 +67,10 @@ class Location:
 
 @dataclass(frozen=True)
 class Address:
-    object: int
-    offset: int
+    object: object  # LE object number, or None for a register address
+    offset: int  # object offset, or the signed offset from the register value
     pointers: tuple  # non-negative offsets added to each dereferenced 32-bit pointer
+    register: object = None  # register name at a breakpoint stop (EAX ... ESP), or None
 
 
 @dataclass(frozen=True)
@@ -85,6 +97,38 @@ class Pause:
     id: str
     stop: Stop
     fields: tuple
+
+
+@dataclass(frozen=True)
+class Device:
+    """A declared input-device state field: an LE object location, or an offset from a register at a breakpoint."""
+    id: str
+    object: object  # LE object number, or None
+    register: object  # register name, or None
+    offset: int
+    type: str
+
+    @property
+    def size(self):
+        return SCALAR_SIZES[self.type]
+
+
+@dataclass(frozen=True)
+class Stimulus:
+    id: str
+    pause: str
+    kind: str  # key, shift or device
+    key: object = None  # (ASCII code, scan code)
+    flags: tuple = ()  # (shift-flag name, set) pairs
+    device: object = None  # Device ID
+    value: object = None  # device value
+
+    def budget(self, devices):
+        if self.kind == "key":
+            return KEY_STIMULUS_BYTES
+        if self.kind == "shift":
+            return SHIFT_STIMULUS_BYTES
+        return 3 * devices[self.device].size
 
 
 @dataclass(frozen=True)
@@ -133,6 +177,8 @@ class Recipe:
     fingerprint: str
     emulator: dict  # recipe-allowed emulator settings of the private configuration, e.g. {"cycles": 40000}
     game_settings: dict  # recipe-preset game settings of the private copy, e.g. {"CURR_LEVEL": (100, 19)}
+    devices: dict  # device ID -> Device, in declaration order
+    stimuli: tuple  # in declaration order; applied in this order at their pauses
 
     def pause(self, pause_id):
         for pause in self.pauses:
@@ -144,9 +190,13 @@ class Recipe:
         """(pause ID, field ID) of every planned sample, in pause order then field order."""
         return tuple((pause.id, field) for pause in self.pauses for field in pause.fields)
 
+    def pause_stimuli(self, pause_id):
+        return tuple(stimulus for stimulus in self.stimuli if stimulus.pause == pause_id)
+
     def objects(self):
-        """LE objects whose runtime base the readings need."""
-        return frozenset(field.address.object for field in self.fields.values())
+        """LE objects whose runtime base the readings and device writes need."""
+        return frozenset([field.address.object for field in self.fields.values() if field.address.object is not None]
+                         + [device.object for device in self.devices.values() if device.object is not None])
 
 
 def verify_source(recipe, baseline_version, exe_sha256):
@@ -252,7 +302,7 @@ def _token(value, path):
 
 def _recipe(document):
     _object(document, "$", ("schemaVersion", "recipeId", "source", "identity", "correlation", "pauses", "fields",
-                            "limits"), ("emulator", "gameSettings"))
+                            "limits"), ("emulator", "gameSettings", "devices", "stimuli"))
     version = document["schemaVersion"]
     if type(version) is not int or version != SCHEMA_VERSION:
         raise BaselineError("recipe-version-unsupported", "schemaVersion")
@@ -267,6 +317,10 @@ def _recipe(document):
     game_settings = _game_settings(document.get("gameSettings", {}))
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
+    devices = _devices(document["devices"]) if "devices" in document else {}
+    stimuli = _stimuli(document["stimuli"], pauses, devices) if "stimuli" in document else ()
+    if devices.keys() - {stimulus.device for stimulus in stimuli}:
+        raise BaselineError("recipe-reference-invalid", "devices")
     identity = _identity(document["identity"], fields, pauses)
 
     correlation = _object(document["correlation"], "correlation", ("code", "data"))
@@ -288,13 +342,14 @@ def _recipe(document):
 
     worst = code_size + data_size + limits.repeat_reads * sum(
         POINTER_SIZE * len(fields[field].address.pointers) + fields[field].size
-        for pause in pauses for field in pause.fields)
+        for pause in pauses for field in pause.fields) + sum(stimulus.budget(devices) for stimulus in stimuli)
     if worst > limits.max_read_bytes:
         raise BaselineError("recipe-budget-exceeded", "limits.maxReadBytes")
 
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
     return Recipe(recipe_id, baseline_version, exe_sha256, identity, code_window, data_window, pauses, fields, limits,
-                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator, game_settings)
+                  "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator, game_settings,
+                  devices, stimuli)
 
 
 def _emulator(value):
@@ -358,18 +413,17 @@ def _fields(value, limits):
         required = item.get("required", True)
         if type(required) is not bool:
             raise BaselineError("recipe-type-invalid", path + ".required")
-        address = _object(item["address"], path + ".address", ("object", "offset"), ("pointers",))
+        where = path + ".address"
+        address = _object(item["address"], where, ("offset",), ("object", "register", "pointers"))
         pointers = address.get("pointers", [])
         if type(pointers) is not list:
-            raise BaselineError("recipe-type-invalid", path + ".address.pointers")
+            raise BaselineError("recipe-type-invalid", where + ".pointers")
         if len(pointers) > limits.max_chain_depth:
-            raise BaselineError("recipe-budget-exceeded", path + ".address.pointers")
-        first = POINTER_SIZE if pointers else SCALAR_SIZES[kind]
-        location = Address(
-            _int(address["object"], path + ".address.object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid"),
-            _int(address["offset"], path + ".address.offset", 0, UINT32_END - first, "recipe-address-invalid"),
-            tuple(_int(pointer, f"{path}.address.pointers[{hop}]", 0, UINT32_END - 1, "recipe-address-invalid")
-                  for hop, pointer in enumerate(pointers)))
+            raise BaselineError("recipe-budget-exceeded", where + ".pointers")
+        hops = tuple(_int(pointer, f"{where}.pointers[{hop}]", 0, UINT32_END - 1, "recipe-address-invalid")
+                     for hop, pointer in enumerate(pointers))
+        number, register, offset = _base(address, where, POINTER_SIZE if pointers else SCALAR_SIZES[kind])
+        location = Address(number, offset, hops, register)
         fields[field_id] = Field(field_id, location, kind, unit, required)
     return fields
 
@@ -383,7 +437,7 @@ def _pauses(value, fields, limits):
     used = set()
     for index, item in enumerate(items):
         path = f"pauses[{index}]"
-        _object(item, path, ("id", "stop", "fields"))
+        _object(item, path, ("id", "stop"), ("fields",))
         pause_id = _identifier(item["id"], path + ".id")
         if pause_id in seen:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -403,12 +457,17 @@ def _pauses(value, fields, limits):
             _object(stop, path + ".stop", ("kind",))
             site = None
         names = []
-        for slot, name in enumerate(_list(item["fields"], path + ".fields")):
+        listed = item.get("fields", [])  # a pause without fields is a stop without readings, e.g. for stimuli
+        if type(listed) is not list:
+            raise BaselineError("recipe-type-invalid", path + ".fields")
+        for slot, name in enumerate(listed):
             name = _identifier(name, f"{path}.fields[{slot}]")
             if name not in fields:
                 raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
             if name in names:
                 raise BaselineError("recipe-id-duplicate", f"{path}.fields[{slot}]")
+            if fields[name].address.register is not None and kind != "breakpoint":  # VRT stops have no register
+                raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
             names.append(name)
         used.update(names)
         pauses.append(Pause(pause_id, Stop(kind, site), tuple(names)))
@@ -416,6 +475,102 @@ def _pauses(value, fields, limits):
         if field_id not in used:
             raise BaselineError("recipe-reference-invalid", field_id)
     return tuple(pauses)
+
+
+def _base(address, where, size):
+    """(LE object, None, offset) or (None, register, signed offset) of a field or device address: exactly one of an
+    LE object location or a register at a breakpoint stop; `size` bytes are read or written first."""
+    if ("object" in address) == ("register" in address):
+        raise BaselineError("recipe-address-invalid", where)
+    if "object" in address:
+        return (_int(address["object"], where + ".object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid"), None,
+                _int(address["offset"], where + ".offset", 0, UINT32_END - size, "recipe-address-invalid"))
+    register = address["register"]
+    if type(register) is not str:
+        raise BaselineError("recipe-type-invalid", where + ".register")
+    if register not in REGISTERS:
+        raise BaselineError("recipe-value-invalid", where + ".register")
+    return None, register, _int(address["offset"], where + ".offset", *REGISTER_OFFSETS, "recipe-address-invalid")
+
+
+def _devices(value):
+    items = _list(value, "devices")
+    if len(items) > CEILINGS["devices"]:
+        raise BaselineError("recipe-budget-exceeded", "devices")
+    devices = {}
+    for index, item in enumerate(items):
+        path = f"devices[{index}]"
+        _object(item, path, ("id", "address", "type"))
+        device_id = _identifier(item["id"], path + ".id")
+        if device_id in devices:
+            raise BaselineError("recipe-id-duplicate", path + ".id")
+        kind = item["type"]
+        if type(kind) is not str:
+            raise BaselineError("recipe-type-invalid", path + ".type")
+        if kind not in SCALAR_RANGES:  # the integer scalar types
+            raise BaselineError("recipe-value-invalid", path + ".type")
+        where = path + ".address"
+        number, register, offset = _base(_object(item["address"], where, ("offset",), ("object", "register")), where,
+                                         SCALAR_SIZES[kind])
+        devices[device_id] = Device(device_id, number, register, offset, kind)
+    return devices
+
+
+def _stimuli(value, pauses, devices):
+    items = _list(value, "stimuli")
+    if len(items) > CEILINGS["stimuli"]:
+        raise BaselineError("recipe-budget-exceeded", "stimuli")
+    stops = {pause.id: pause.stop.kind for pause in pauses}
+    order = {pause.id: index for index, pause in enumerate(pauses)}
+    stimuli = []
+    seen = set()
+    keyed = set()
+    for index, item in enumerate(items):
+        path = f"stimuli[{index}]"
+        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value"))
+        stimulus_id = _identifier(item["id"], path + ".id")
+        if stimulus_id in seen:
+            raise BaselineError("recipe-id-duplicate", path + ".id")
+        seen.add(stimulus_id)
+        pause = _identifier(item["pause"], path + ".pause")
+        if pause not in stops:
+            raise BaselineError("recipe-reference-invalid", path + ".pause")
+        if stimuli and order[pause] < order[stimuli[-1].pause]:  # declaration order is application order
+            raise BaselineError("recipe-value-invalid", path + ".pause")
+        kind = item["kind"]
+        if type(kind) is not str:
+            raise BaselineError("recipe-type-invalid", path + ".kind")
+        if kind not in STIMULUS_KINDS:
+            raise BaselineError("recipe-value-invalid", path + ".kind")
+        if kind == "key":
+            _object(item, path, ("id", "pause", "kind", "ascii", "scan"))
+            if pause in keyed:  # the game takes one key per poll and discards the rest
+                raise BaselineError("recipe-value-invalid", path + ".pause")
+            keyed.add(pause)
+            key = tuple(_int(item[name], f"{path}.{name}", 0, 0xFF, "recipe-value-invalid")
+                        for name in ("ascii", "scan"))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key))
+        elif kind == "shift":
+            _object(item, path, ("id", "pause", "kind", "flags"))
+            flags = item["flags"]
+            if type(flags) is not dict:
+                raise BaselineError("recipe-type-invalid", path + ".flags")
+            if not flags:
+                raise BaselineError("recipe-empty", path + ".flags")
+            if flags.keys() - SHIFT_BITS.keys():
+                raise BaselineError("recipe-key-unknown", path + ".flags")
+            if any(type(on) is not bool for on in flags.values()):
+                raise BaselineError("recipe-type-invalid", path + ".flags")
+            stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items())))
+        else:
+            _object(item, path, ("id", "pause", "kind", "device", "value"))
+            name = _identifier(item["device"], path + ".device")
+            device = devices.get(name)
+            if device is None or (device.register is not None and stops[pause] != "breakpoint"):
+                raise BaselineError("recipe-reference-invalid", path + ".device")
+            value = _int(item["value"], path + ".value", *SCALAR_RANGES[device.type], "recipe-value-invalid")
+            stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value))
+    return tuple(stimuli)
 
 
 def _identity(value, fields, pauses):
@@ -430,7 +585,7 @@ def _identity(value, fields, pauses):
         path = f"identity.checks[{index}]"
         _object(item, path, ("field", "equals"))
         name = _identifier(item["field"], path + ".field")
-        if name not in fields or any(name not in pause.fields for pause in pauses):
+        if name not in fields or any(pause.fields and name not in pause.fields for pause in pauses):
             raise BaselineError("recipe-reference-invalid", path + ".field")
         checks.append(IdentityCheck(name, _expected(item["equals"], fields[name].type, path + ".equals")))
     return Identity(mission, config, tuple(checks))

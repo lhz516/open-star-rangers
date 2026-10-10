@@ -40,6 +40,16 @@ function fieldsOf(event: DomainEvent): (readonly [string, EventFieldValue])[] {
       const { x, y, z } = event.position;
       return [['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)], ['x', x], ['y', y], ['z', z]];
     }
+    case 'speed-assist-toggled':
+      return [['commandIndex', event.commandIndex], ['enabled', event.enabled]];
+    case 'speed-matched':
+      return event.origin === 'command'
+        ? [['targetEntityId', event.targetEntityId], ['origin', event.origin], ['commandIndex', event.commandIndex]]
+        : [['targetEntityId', event.targetEntityId], ['origin', event.origin], ['speedDifferenceExceeded', event.speedDifferenceExceeded]];
+    case 'speed-assist-released':
+      return [];
+    case 'object-left-world':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)]];
   }
 }
 

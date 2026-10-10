@@ -15,7 +15,11 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
 
   it('keeps the relations its documented basis relies on', () => {
     const { commandsPerTick, entities, spawnExpansion, eventsPerTick, recordedTicks, recordedCommands, recordedEvents, recordedCheckpoints } = CORE_LIMITS;
-    expect(eventsPerTick).toBeGreaterThanOrEqual(commandsPerTick + spawnExpansion + entities);
+    // P3-02 and P3-06's derived bounds of one tick (docs/plan/p3/06/spec.md, 容量核算).
+    const events = commandsPerTick + commandsPerTick + 1 + spawnExpansion + entities;
+    const requests = entities + spawnExpansion + commandsPerTick + 2;
+    expect([events, requests]).toEqual([3201, 3138]);
+    expect(eventsPerTick).toBeGreaterThanOrEqual(Math.max(events, requests));
     expect(spawnExpansion).toBeLessThanOrEqual(entities);
     expect(recordedCheckpoints).toBe(recordedTicks + 1);
     expect(recordedCommands).toBeGreaterThanOrEqual(recordedTicks);

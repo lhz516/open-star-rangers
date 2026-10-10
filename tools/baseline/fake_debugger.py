@@ -1,11 +1,11 @@
 """A synthetic DOSBox-X debugger for the baseline tool's tests (no emulator, no original data).
 
-`FakeDebugger` answers the commands the session sends (VRT, RUN, DV, CPU, SELINFO, BP, BPDEL, BPLIST) with full-screen
-redraws in the installed debugger's layout: register pane, data view with pf fault markers and a PHY footer, code
-view, output area and input line. Its memory is a `synthetic.FakeProcess` holding a code-generated LE image at
-per-object bases. `FakeTransport` serves it in-process on a virtual clock; running this module as a script serves it
-on its own terminal (a real PTY) in real time, so process launch, ownership and reclaim can be tested end to end.
-Scenario knobs inject the failures the tests need.
+`FakeDebugger` answers the commands the session sends (VRT, RUN, DV, SMV, CPU, SELINFO, BP, BPDEL, BPLIST) with
+full-screen redraws in the installed debugger's layout: register pane, data view with pf fault markers and a PHY
+footer, code view, output area and input line. Its memory is a `synthetic.FakeProcess` holding a code-generated LE
+image at per-object bases. `FakeTransport` serves it in-process on a virtual clock; running this module as a script
+serves it on its own terminal (a real PTY) in real time, so process launch, ownership and reclaim can be tested end to
+end. Scenario knobs inject the failures the tests need.
 """
 import json
 import os
@@ -59,6 +59,7 @@ class FakeDebugger:
         self.exited = False
         self.registers = {"EAX": 0, "EBX": 0x63, "ECX": 2, "EDX": 0x3DA, "ESI": 0xB0, "EDI": 0, "EBP": 0x2000,
                           "ESP": 0x1FF0}
+        self.hide_registers = set()  # general registers the register pane leaves unreadable
         self.pfi = 100.0
         self.render()
 
@@ -93,6 +94,14 @@ class FakeDebugger:
         if name == "DV":
             self.data_view = int(words[1], 16)
             self.log.append(f"DEBUG: Set data overview to 0000:{self.data_view:04X}")
+        elif name == "SMV":
+            address, values = int(words[1], 16), [int(word, 16) for word in words[2:]]
+            for at, value in enumerate(values):
+                linear = address + at
+                if linear // PAGE_SIZE not in self.process.faults and not self.scenario.get("smv_drop"):
+                    self.process.poke(linear, bytes((value,)))  # a faulting write is lost but still counted
+            if self.scenario.get("smv_ack", True):
+                self.log.append(f"DEBUG: Memory changed ({len(values)} bytes)")
         elif name == "CPU":
             protected = self.mode != "Real"
             cr0 = 0x80000011 if protected else 0x00000010
@@ -173,6 +182,8 @@ class FakeDebugger:
         rows[3] = f"ECX={r['ECX']:08X}  EBP={r['EBP']:08X}  ss: b:00000000 type:12 parbg    PAGE  IOPL0  CPL0"
         rows[4] = f"EDX={r['EDX']:08X}  ESP={r['ESP']:08X}      l:FFFFFFFF dpl : 0 10011    cc={self.commands:<8d} RUN"
         rows[5] = f"ST0=00000.00  ST1=00000.00  ST2=00000.00  ST3=00000.00      pfi={self.pfi:.9f}"
+        for name in self.hide_registers:
+            rows[1:5] = [row.replace(f"{name}={r[name]:08X}", f"{name}=--------") for row in rows[1:5]]
         rows[7] = "---(Data view (virtual)                 )---"
         shown = self.scenario.get("dv_rows", {}).get(self.data_view, DV_ROWS)
         for row in range(shown):

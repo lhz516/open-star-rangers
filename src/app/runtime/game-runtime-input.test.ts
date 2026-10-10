@@ -195,6 +195,19 @@ describe('GameRuntime command queue and batches', () => {
     expect(run.commands()).toEqual([['launch', 'toggle-map']]);
   });
 
+  it('gives only a command\'s own result its ID: P3-06\'s events that name the command by commandIndex carry null', () => {
+    const run = recorded();
+    // The first tick instantiates the player and the second activates it, so the third takes speed commands.
+    run.advance(2);
+    run.runtime.setIntent(hold(true));
+    const toggle = run.runtime.submitCommand({ type: 'speed', operation: 'toggle-auto-match' });
+    run.advance(1);
+    expect(run.commands(3)).toEqual([['fire:primary', 'speed']]);
+    expect(run.delivered.filter((entry) => entry.tick === 3).map(({ type, commandIndex, commandId }) => [type, commandIndex, commandId])).toEqual([
+      ['command-result', 0, null], ['command-result', 1, toggle], ['speed-assist-toggled', null, null],
+    ]);
+  });
+
   it('queues a copy that later changes to the submitted object do not reach', () => {
     const run = recorded();
     const command = { type: 'speed', operation: 'increase' };

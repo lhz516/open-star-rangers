@@ -226,7 +226,8 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
 
     it('turn a state that cannot be written at a checkpoint into a latched fault', () => {
       const state = testState();
-      const entity = state.entities.allocate(entityInit(9));
+      // Parked, so that movement does not fault on the position first.
+      const entity = state.entities.allocate(entityInit(9, { activity: 'parked' }));
       const session = recordState(state, options(2));
       session.step(tickInput());
       entity.position = { x: Number.NaN, y: 0, z: 0 };

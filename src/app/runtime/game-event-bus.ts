@@ -26,7 +26,14 @@ const NO_COMMAND: EventDelivery = Object.freeze({ commandId: null });
 export type DomainEventType = DomainEvent['type'];
 
 /** Exactly the Core event types: a new DomainEvent variant fails to compile here until it is listed. */
-const EVENT_TYPES = { 'command-result': true, 'object-instantiated': true } as const satisfies Record<DomainEventType, true>;
+const EVENT_TYPES = {
+  'command-result': true,
+  'object-instantiated': true,
+  'speed-assist-toggled': true,
+  'speed-matched': true,
+  'speed-assist-released': true,
+  'object-left-world': true,
+} as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {
   return event.type === type;

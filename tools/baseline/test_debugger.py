@@ -121,8 +121,8 @@ class PortTests(unittest.TestCase):
     def setUp(self):
         self.clock = FakeClock()
         self.fake = FakeDebugger({"vrt": ["site"]})
-        self.debugger = Debugger(FakeTransport(self.fake, self.clock), Screen(), self.clock, 30,
-                                 self.clock() + 600, NullLog())
+        self.transport = FakeTransport(self.fake, self.clock)
+        self.debugger = Debugger(self.transport, Screen(), self.clock, 30, self.clock() + 600, NullLog())
         self.debugger.wait_registers()
         self.budget = ReadBudget(1 << 20)
         self.port = DebuggerPort(self.debugger, 4242, self.budget)
@@ -146,6 +146,21 @@ class PortTests(unittest.TestCase):
         self.assertEqual(result.pages, {})
         self.fake.scenario["dv_rows"] = {linear + 0x100: 0}
         self.assertEqual(self.port.read(linear + 0x100, 4).data, ())
+
+    def test_memory_writes_are_acknowledged(self):
+        linear = BASES[4] + 0x900
+        self.debugger.write_memory(linear, b"\xaf\xcf\xdf")  # bytes that read like flag names unprefixed
+        self.assertEqual(self.fake.process.peek(linear, 3), b"\xaf\xcf\xdf")
+        self.assertIn(f"SMV 0{linear:08X} 0AF 0CF 0DF\n".encode(), self.transport.writes)
+        self.fake.scenario["smv_ack"] = False
+        with self.assertRaises(BaselineError) as caught:
+            self.debugger.write_memory(linear, b"\x01")
+        self.assertEqual((caught.exception.code, caught.exception.where),
+                         ("stimulus-unverified", "write-unacknowledged"))
+        for linear, data in ((linear, b""), (linear, bytes(17)), (0xFFFFFFFF, b"\x01\x02")):
+            with self.assertRaises(BaselineError) as caught:
+                self.debugger.write_memory(linear, data)
+            self.assertEqual(caught.exception.code, "stimulus-rejected")
 
     def test_breakpoint_registration_and_stop(self):
         self.debugger.run_until_stop("VRT", 5)

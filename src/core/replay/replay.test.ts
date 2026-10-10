@@ -5,7 +5,9 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import type { Command, TickInput } from '../contracts/tick-input.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld } from '../world/create-world.ts';
-import { eventMission, MARKER, originalImportIdentity, worldInput, type MissionDraft } from '../world/create-world.test-support.ts';
+import {
+  craftInfoContent, eventMission, MARKER, originalImportIdentity, worldInput, type CraftInfoDraft, type MissionDraft,
+} from '../world/create-world.test-support.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
 import type { Recording } from './recording.ts';
@@ -70,7 +72,8 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
     });
 
     it('finds no difference for an input change without an observable effect', () => {
-      const steered = recordWith(({ ticks }) => { ticks[10] = { axes: { pitch: 1, yaw: -1, roll: 0.5 }, commands: [] }; });
+      // Below one deflection step (1/128), every axis truncates to 0 and applies nothing (P3-06 checkpoint A).
+      const steered = recordWith(({ ticks }) => { ticks[10] = { axes: { pitch: 0.005, yaw: -0.0075, roll: 0.0039 }, commands: [] }; });
       expect(compareReplayResults(RECORDING.result, replayRecord(steered, CONTENT))).toEqual({ match: true });
     });
 
@@ -110,6 +113,7 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       ['an unknown version', (record: Mutable) => { record.version = 2; }, 'record.version'],
       ['another version with other fields', (record: Mutable) => { record.version = 2; record.frames = []; }, 'record.version'],
       ['another rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
+      ['the rules version before P3-06', (record: Mutable) => { record.rulesVersion = 1; }, 'record.rulesVersion'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],
       ['an empty producer', (record: Mutable) => { record.producer = ''; }, 'record.producer'],
@@ -162,6 +166,20 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       }
     });
 
+    it('rejects content whose craft info changed under the same identity (P3-06 AC-01)', () => {
+      const forgeries: ((craftInfo: { id: unknown; content: CraftInfoDraft }) => void)[] = [
+        ({ content }) => void (content.craft[7].atB8 = 65),
+        ({ content }) => void (content.craft[19].name = `${MARKER}-renamed`),
+        (craftInfo) => void (craftInfo.id = 'data/other-craft-info'),
+      ];
+      for (const forge of forgeries) {
+        const forged = longInput();
+        forge(forged.craftInfo as unknown as { id: unknown; content: CraftInfoDraft });
+        expect(forged.identity).toEqual(INPUT.identity);
+        expectRejected(() => replayRecord(RECORDING.record, contentOf(forged)), 'record.setupHash', 'must be the setup hash of the replayed content');
+      }
+    });
+
     it('rejects a run configuration the content does not admit, at the record', () => {
       expectRejected(() => replayRecord(recordWith(({ run }) => { run.rawDifficulty = 50; }), CONTENT), 'record.run.rawDifficulty');
       expectRejected(() => replayRecord(recordWith(({ run }) => { run.wingman = 5; }), CONTENT), 'record.run.wingman');
@@ -173,6 +191,13 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
 
     it('rejects malformed content at the content, keeping a content contract error', () => {
       expectRejected(() => replayRecord(RECORDING.record, { ...CONTENT, extra: 1 } as never), 'content');
+      expectRejected(() => replayRecord(RECORDING.record, { ...CONTENT, craftInfo: undefined } as never), 'content.craftInfo');
+      const unchecked = longInput({ craftInfo: { ...craftInfoContent(), craft: craftInfoContent().craft.map((record, kind) => (kind === 0 ? { ...record, at88: 0 } : record)) } });
+      expectRejected(() => replayRecord(RECORDING.record, contentOf(unchecked)), 'content.craftInfo.content.craft[0].at88');
+      const malformed = longInput({ craftInfo: { ...craftInfoContent(), hitDamageScale: Number.NaN } });
+      const malformedError = thrownBy(() => replayRecord(RECORDING.record, contentOf(malformed)));
+      expect(malformedError).toBeInstanceOf(ContentContractError);
+      expect(malformedError).toMatchObject({ path: 'content.craftInfo.content.hitDamageScale' });
       expectRejected(() => replayRecord(RECORDING.record, { ...CONTENT, mission: { ...CONTENT.mission, id: 'data/craft-types' } } as never), 'content.mission.id');
       const error = thrownBy(() => replayRecord(RECORDING.record, { ...CONTENT, identity: { ...CONTENT.identity, sliceId: 'other' } } as never));
       expect(error).toBeInstanceOf(ContentContractError);

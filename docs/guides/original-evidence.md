@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # 原版证据的自助获取
@@ -113,7 +113,10 @@ ffmpeg -loglevel error -y -framerate 1 -pattern_type glob -i 'local/research/vid
 - 需要运行中的内存数值、计数或时间关系，或按容差测量时，用 `tools/baseline/measure.py` 在私有副本中运行，见[运行时测量](./runtime-measurement.md)。
 - 遵守 Computer Use 自身的确认与交接规则；用户正在使用该应用时让出操作。
 - 同一时间只能有一个会话操作基准环境。并行执行 goal 时，由协调者统一进行。
-- **本机限制（2026-10-08/09 实测）：** 本机的 Computer Use 无法向 DOSBox-X 送达按键，也无法移动游戏内光标。需要游戏操作的运行因此由用户在键盘上操作，agent 负责启动、观察（截图或用户报告）、应答与记录，分工见[运行时测量的角色与本机限制](./runtime-measurement.md#角色单一会话与本机限制)。不得用 shell 或 AppleScript 注入按键来绕过这一限制。
+- **本机限制（2026-10-08/09 实测）：** 本机的 Computer Use 无法向 DOSBox-X 送达按键，也无法移动游戏内光标。
+  - 所需的游戏操作能写成测量配方的刺激时，agent 用 `measure.py` 独自完成运行：工具在调试器暂停点把按键写入 BIOS 键盘缓冲、改写 BIOS 换档标志位或声明的输入设备字段，逐次回读并记入报告（[模拟器内输入](./runtime-measurement.md#模拟器内输入)）。这种经配方声明、由工具施加并记录的模拟器内刺激是允许的方法；它只写输入通道，不得改写被测的游戏状态。
+  - 其余需要游戏操作的运行由用户在键盘上操作，agent 负责启动、观察（截图或用户报告）、应答与记录，分工见[运行时测量的角色与本机限制](./runtime-measurement.md#角色单一会话与本机限制)。
+  - 宿主层注入仍然禁止：不得用 shell、AppleScript、Computer Use 后台按键或其他自动化向 DOSBox-X 送键来绕过这一限制。
 - Computer Use 无法可靠地完成所需操作时，在记录中说明原因，再按[先自助，再问用户](#先自助再问用户)请用户帮助。
 
 ## 记录

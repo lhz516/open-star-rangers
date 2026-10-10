@@ -9,10 +9,12 @@ written beside the report. Whatever happens (completion, failure, timeout, cance
 reclaimed, the original files are re-hashed and the final report is written; only a run whose every check passed is
 `complete`.
 
-The tool never sends game input. Between pauses the operator (an agent using Computer Use on the game window) plays
-to the requested state; the tool asks for each confirmation through `status.json` and reads the operator's answer
-from a signal file in the run directory. A smoke run (`smoke=True`) takes its pauses at startup without an operator
-and is never measurement evidence.
+The tool never sends host input. Between pauses the operator plays to the requested state, or the recipe's stimuli
+supply the game input from inside the emulator: at their pauses the tool writes a keystroke into the BIOS keyboard
+buffer, BIOS shift-flag bits or a declared input-device field, reads each write back and records it (`inputs.py`).
+The tool asks for each confirmation of a pause with readings through `status.json` and reads the operator's answer
+from a signal file in the run directory; a pause without readings needs no confirmation. A smoke run (`smoke=True`)
+confirms its pauses without an operator and is never measurement evidence.
 """
 import functools
 import hashlib
@@ -20,6 +22,7 @@ import json
 import os
 import platform
 import signal
+import struct
 import sys
 import time
 from dataclasses import dataclass
@@ -27,18 +30,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from debugger import Debugger, DebuggerPort
+from inputs import KEY_BOUNDS, KEY_POINTERS, SHIFT_FLAGS, Write, key_writes, shift_writes
 from le_image import LeImage
 from locate import AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address, prove_mapping
 from processes import TERM_GRACE, PtyTransport, emulators, process_names
 from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, TEXT_LIMIT, Protection, copy_writes, game_config,
                      override_game_config, override_settings, parse_manifest, private_config, private_copy,
                      verify_images, verify_install, verify_media)
-from qualify import PauseEvidence, ReadBudget, Sample, StopProof, collect_pause, judge_pause
+from qualify import (FORMATS, PauseEvidence, ReadBudget, Sample, StopProof, collect_pause, judge_pause, page_range,
+                     read_error)
 from reasons import BaselineError, ordered
 from recipe import MAX_RECIPE_BYTES, Window, exe_fingerprint, parse_recipe, verify_source
 from report import build_report, serialize, summary
-from runfiles import (Log, ReportWriter, SessionLock, create_run_dir, read_signal, replace_file, resolve_output,
-                      write_json, write_new)
+from runfiles import (Log, ReportWriter, SessionLock, create_run_dir, read_signal, replace_file, resolve_evidence,
+                      resolve_output, write_json, write_new)
 from screen import Screen
 
 TOOL_VERSION = "1"
@@ -51,10 +56,12 @@ EXIT_COMPLETE, EXIT_FAILED, EXIT_REJECTED, EXIT_CANCELLED = 0, 1, 2, 3
 # Rejections of one mapping attempt that a later startup pause may not have.
 MAPPING_RETRY = frozenset({"window-weak", "code-unmatched", "code-ambiguous", "object-unmapped", "read-fault",
                            "read-short", "data-mismatch", "mapping-contradiction", "base-invalid"})
+# Sample reasons that disqualify a whole pause as the moment for its stimuli (wrong state, stop or address space).
+PAUSE_EVIDENCE = frozenset({"identity-mismatch", "stop-unverified", "owner-changed"})
 # Rejections that end the run; any other rejection at a pause leaves that pause's samples unqualified.
 FATAL = frozenset({"run-timeout", "wait-timeout", "child-exited", "debugger-unparsed", "log-budget-exceeded",
                    "budget-exceeded", "report-write-failed", "operator-invalid", "breakpoint-unconfirmed",
-                   "breakpoint-wrong-hit", "tool-error"})
+                   "breakpoint-wrong-hit", "stimulus-rejected", "stimulus-unverified", "tool-error"})
 TEST_SUPPORT = frozenset({"access_guard.py", "fake_debugger.py", "sandbox.py", "synthetic.py"})
 UNVERIFIED_SOURCE = {"baselineVersion": "unverified", "exeSha256": "unverified"}
 SMOKE_MISSION = {"context": "startup"}
@@ -108,6 +115,7 @@ class Options:
     out: str
     run_id: str
     smoke: bool = False
+    evidence: object = None  # opt-in narrower evidence root inside the research root; None: the whole root
 
 
 @dataclass
@@ -117,6 +125,7 @@ class Plan:
     manifest: object
     image: object
     exe_sha256: str
+    evidence: tuple  # (resolved evidence root, display path)
 
 
 @dataclass
@@ -157,6 +166,7 @@ def preflight(options, env):
     applicability of the recipe's game settings to the baseline settings file (read only)."""
     recipe = parse_recipe(_read_bounded(options.recipe, MAX_RECIPE_BYTES, "recipe-json-invalid"))
     paths = resolve_output(options.out, options.run_id, env.research_root)
+    evidence = resolve_evidence(options.evidence, paths, env.research_root)
     if emulators(env.processes(), env.emulator_name):
         raise BaselineError("emulator-already-running", "preflight")
     manifest = parse_manifest(_read_bounded(env.manifest, 1 << 20, "source-mismatch").decode("utf-8", "replace"),
@@ -171,7 +181,7 @@ def preflight(options, env):
     if recipe.game_settings:
         override_settings(_read_bounded(Path(env.install, env.game_config_path), TEXT_LIMIT, "game-config-invalid"),
                           recipe.game_settings)
-    return Plan(recipe, paths, manifest, image, exe_sha256)
+    return Plan(recipe, paths, manifest, image, exe_sha256, evidence)
 
 
 @functools.lru_cache(maxsize=1)
@@ -215,6 +225,7 @@ class Run:
         self.failures = set()
         self.cancelled = False
         self.samples = []
+        self.stimuli = []  # records of the stimuli applied or attempted, in order
         self.source = dict(UNVERIFIED_SOURCE)
         self.environment = {"mode": "smoke" if options.smoke else "measure",
                             "measurementEvidence": not options.smoke}
@@ -238,7 +249,8 @@ class Run:
         return build_report(recipe=self.recipe, run_id=self.options.run_id, tool=tool_identity(), source=self.source,
                             environment=self.environment, game_config=self.game_config, run_start=self.run_start,
                             run_end=run_end, samples=self.samples, integrity=integrity, cleanup=cleanup,
-                            cancelled=self.cancelled, failures=ordered(self.failures))
+                            cancelled=self.cancelled, failures=ordered(self.failures),
+                            stimuli=self.stimuli if self.recipe.stimuli else None)
 
     def write_report(self, integrity, cleanup, finished):
         report = self.report(integrity, cleanup, finished)
@@ -359,9 +371,12 @@ class Run:
         verified = verify_install(manifest, env.install, self.check_deadline)
         self.environment["manifest"] = {"version": manifest.version, "baselineFilesChecked": len(verified),
                                         "imagesChecked": verify_images(manifest, env.cd_dir, self.check_deadline)}
-        self.protection = Protection(env.local_root, env.protected, [env.research_root], env.snapshots, run_dir,
+        evidence, shown = self.plan.evidence
+        self.protection = Protection(env.local_root, env.protected, [evidence], env.snapshots, run_dir,
                                      self.check_deadline)
         protection = self.protection.record({Path(env.install, relative) for relative in verified})
+        protection.update(evidenceScope="research-root" if self.options.evidence is None else "declared",
+                          evidenceRoots=[shown])
         write_json(self.paths, "protection/before.json", self.protection.inventories()[0])
         self.copied = private_copy(env.install, run_dir / "install", self.check_deadline)
         self.environment["manifest"]["installFilesChecked"] = len(
@@ -558,10 +573,30 @@ class Run:
                 del config[key]
         return mission, config
 
+    def stop_with_registers(self, debugger, startup, pause, stimuli):
+        """Stops at the pause; the register pane must show every register its fields and device stimuli address."""
+        registers, stop = self.stop_at(debugger, startup, pause)
+        needed = {self.recipe.fields[name].address.register for name in pause.fields}
+        needed.update(self.recipe.devices[item.device].register for item in stimuli if item.kind == "device")
+        if not needed - {None} <= registers.values.keys():
+            raise BaselineError("debugger-unparsed", "registers")
+        return registers, stop
+
     def take_pause(self, debugger, startup, pause, budget):
+        stimuli = self.recipe.pause_stimuli(pause.id)
+        if not pause.fields:  # a stop without readings: nothing to confirm, only its stimuli to apply
+            registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli)
+            base = f"pauses/{pause.id}"
+            (self.paths.run_dir / base).mkdir(mode=0o700)
+            try:
+                if stimuli:
+                    self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget)
+            finally:
+                write_json(self.paths, f"{base}/stop.json", stop)
+            return
         attempt = 0
         while True:
-            registers, stop = self.stop_at(debugger, startup, pause)
+            registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli)
             answer = self.confirm(pause, attempt)
             if answer[0] == "confirm":
                 break
@@ -576,12 +611,14 @@ class Run:
                                                   "source": "smoke" if self.options.smoke else "operator",
                                                   "emulatorSettings": self.settings})
         port = DebuggerPort(debugger, self.transport.pid, budget)
+        context = mapping = None
+        unqualified = None  # why this pause cannot carry input: its identity or stop evidence failed
         try:
             context = self.context(debugger)
             if context is None:
                 raise BaselineError("stop-unverified", pause.id)
             mapping = self.reverify(port, context, startup, budget)
-            reads = collect_pause(self.recipe, pause.id, mapping, port, budget)
+            reads = collect_pause(self.recipe, pause.id, mapping, port, budget, registers.values)
             after = debugger.fresh_registers()
             stop["registersUnchangedAfterReads"] = after.values == registers.values
             stop["context"] = context.to_json()
@@ -590,16 +627,123 @@ class Run:
             write_json(self.paths, refs["reads"], _reads_json(reads))
             samples = judge_pause(self.recipe, mapping, PauseEvidence(
                 reads, StopProof(verified, proof["stop"]), mission, config, refs))
+            unqualified = next((code for sample in samples for code in sample.reasons if code in PAUSE_EVIDENCE),
+                               None)
         except BaselineError as error:
             if error.code in FATAL:
                 raise
+            unqualified = error.code
             stop["rejected"] = error.code
             for key in ("mapping", "reads"):
                 if not self.paths.file(refs[key]).exists():
                     write_json(self.paths, refs[key], {"unavailable": error.code})
             samples = self.unqualified(pause, error.code, refs, proof["stop"])
-        write_json(self.paths, proof["stop"], stop)
         self.samples.extend(samples)
+        try:
+            if stimuli:
+                self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget, context, mapping,
+                                   unqualified)
+        finally:
+            write_json(self.paths, proof["stop"], stop)
+
+    # -- input stimuli -----------------------------------------------------------------------------------------------
+    def apply_stimuli(self, debugger, startup, pause, stimuli, registers, stop, budget, context=None, mapping=None,
+                      unqualified=None):
+        """Applies the pause's stimuli in recipe order, after its readings, and only when the pause's identity and stop
+        evidence qualified. Every write is read before, written with an acknowledged debugger command, read back and
+        recorded; a stimulus is `applied` once the registers are confirmed unchanged after the pause's last write.
+        Any failure ends the run: later pauses rely on the input."""
+        self.status("input", pause=pause.id)
+        port = DebuggerPort(debugger, self.transport.pid, budget)
+        ref = f"pauses/{pause.id}/stimuli.json"
+        stop["stimuli"] = ref
+        records = []
+        try:
+            if context is None and unqualified is None:
+                context = self.context(debugger)
+            for stimulus in stimuli:
+                record = {"id": stimulus.id, "pause": pause.id, "kind": stimulus.kind, "status": "pending",
+                          "utc": _utc(), "emulatedMs": registers.emulated_ms, "cycleCount": registers.cycle_count}
+                records.append(record)
+                self.stimuli.append(record)
+                if unqualified is not None:
+                    raise BaselineError("stimulus-rejected", f"pause-{unqualified}")
+                if context is None:
+                    raise BaselineError("stimulus-rejected", "context-unqualified")
+                device = self.recipe.devices.get(stimulus.device)
+                if device is not None and device.object is not None and mapping is None:
+                    mapping = self.reverify(port, context, startup, budget)
+                record["writes"] = []
+                for write in self.plan_stimulus(port, stimulus, device, registers, context, mapping, budget, record):
+                    entry = {"channel": write.channel, "linear": f"{write.linear:08x}", "written": write.data.hex()}
+                    record["writes"].append(entry)
+                    before, pages = self.input_bytes(port, write.linear, len(write.data), budget, write.bios)
+                    entry["before"] = before.hex()
+                    budget.consume(len(write.data))
+                    debugger.write_memory(write.linear, write.data)
+                    after, pages_after = self.input_bytes(port, write.linear, len(write.data), budget, write.bios,
+                                                          "stimulus-unverified")
+                    entry["readback"] = after.hex()
+                    entry["pages"] = {f"{page:x}": f"{physical:x}" for page, physical in sorted(pages.items())}
+                    if pages_after != pages:
+                        raise BaselineError("stimulus-unverified", "mapping-changed")
+                    if after != write.data:
+                        raise BaselineError("stimulus-unverified", "readback-mismatch")
+                record["status"] = "written"
+            unchanged = debugger.fresh_registers().values == registers.values
+            stop["registersUnchangedAfterStimuli"] = unchanged
+            if not unchanged:
+                raise BaselineError("stimulus-unverified", "registers-changed")
+            for record in records:
+                record["status"] = "applied"
+        except BaselineError as error:
+            for record in records:
+                if record["status"] == "pending" or error.where == "registers-changed":
+                    record.update(status=error.code, detail=error.where)
+            raise
+        finally:
+            write_json(self.paths, ref, {"pause": pause.id, "context": None if context is None else context.to_json(),
+                                         "stimuli": records})
+
+    def plan_stimulus(self, port, stimulus, device, registers, context, mapping, budget, record):
+        """The writes of one stimulus, from the input state read at this pause (`inputs.py` computes the bytes)."""
+        if stimulus.kind == "key":
+            record["key"] = {"ascii": stimulus.key[0], "scan": stimulus.key[1]}
+            pointers, _ = self.input_bytes(port, KEY_POINTERS, 4, budget, True)
+            bounds, _ = self.input_bytes(port, KEY_BOUNDS, 4, budget, True)
+            record["buffer"] = {"pointers": pointers.hex(), "bounds": bounds.hex()}
+            return key_writes(pointers, bounds, *stimulus.key)
+        if stimulus.kind == "shift":
+            record["flags"] = dict(stimulus.flags)
+            current, _ = self.input_bytes(port, SHIFT_FLAGS, 1, budget, True)
+            return shift_writes(current, stimulus.flags)
+        record.update(device=device.id, value=stimulus.value)
+        if device.object is not None:
+            linear = mapping.linear(device.object, device.offset, device.size)
+        else:
+            linear = context.space.linear(registers.values[device.register] + device.offset, device.size)
+            if linear is None:
+                raise BaselineError("stimulus-rejected", "device-out-of-range")
+        return (Write("device", linear, struct.pack(FORMATS[device.type], stimulus.value)),)
+
+    def input_bytes(self, port, linear, size, budget, bios, code="stimulus-rejected"):
+        """Bytes of an input channel and the physical page of each page they lie in. Every page must have a lookup;
+        a BIOS-area page must be identity-mapped, since the BIOS and DOS readers of the keyboard use physical
+        addresses."""
+        budget.consume(size)
+        result = port.read(linear, size)
+        error = read_error(result, size)
+        if error:
+            raise BaselineError(code, error)
+        pages = {}
+        for page in page_range(linear, size):
+            physical = result.pages.get(page)
+            if physical is None:
+                raise BaselineError(code, "mapping-unverified")
+            if bios and physical != page:
+                raise BaselineError(code, "mapping-not-identity")
+            pages[page] = physical
+        return bytes(result.data), pages
 
     def unqualified(self, pause, code, refs, stop_ref):
         proof = {"mapping": refs["mapping"], "stop": stop_ref, "identity": refs["identity"],

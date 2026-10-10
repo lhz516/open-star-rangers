@@ -5,7 +5,7 @@
       Prints the manifest-derived baseline version token and executable fingerprint a recipe's `source` must name.
 
   python3 tools/baseline/measure.py run --recipe <recipe.json> --out local/research/<task>/<topic> --run-id <id>
-                                        [--smoke]
+                                        [--smoke] [--evidence local/research/<task>/<topic>]
       Runs the recipe in a new private run directory <out>/<id>: verified private copy and configuration, owned
       emulator, CODE/DATA correlation, the recipe's pauses, qualified readings, reclaim and original-file check.
       Between pauses, follow `status.json` in the run directory and answer with the signal file it names:
@@ -16,6 +16,17 @@
       "gameSettings": {"STARTUP_PRACTICE": false, "CURR_LEVEL": [100, 19]} (CURR_LEVEL: practice and campaign raw
       difficulty, 0-100); only these keys are accepted, and the report's `gameConfig` records the requested settings
       and the file before and after the rewrite.
+      A recipe may also declare stimuli, the game input written inside the emulator at its pauses (never host input):
+      "stimuli": [{"id": "enter", "pause": "<pause>", "kind": "key", "ascii": 13, "scan": 28}, ...]; kinds are
+      "key" (one keystroke into the empty BIOS keyboard buffer), "shift" ({"flags": {"ctrl": true}}) and "device"
+      ({"device": "<id>", "value": n}, a field declared in "devices" by LE object or breakpoint register and offset).
+      Each write is read back and recorded in the report's `stimuli`; a pause without "fields" only stops (and applies
+      its stimuli) and needs no confirmation. A field's address is an LE object location, or at a breakpoint pause a
+      register and offset ({"register": "ESI", "offset": 0, "pointers": [...]}), e.g. the object a routine is
+      handling at that stop.
+      Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
+      to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
+      the baseline installation and the private copy stay fully protected.
 
 The terminal shows only stable reason codes, counts and relative paths. Exit status: 0 complete, 1 failed,
 2 rejected before the run (nothing written), 3 cancelled.
@@ -37,7 +48,9 @@ def main(argv=None, env=None):
     run.add_argument("--recipe", required=True)
     run.add_argument("--out", required=True, help="parent directory below local/research/")
     run.add_argument("--run-id", required=True)
-    run.add_argument("--smoke", action="store_true", help="startup-only smoke run without operator or game input")
+    run.add_argument("--smoke", action="store_true", help="smoke run without operator; never measurement evidence")
+    run.add_argument("--evidence", help="narrower evidence root below local/research/ that contains --out (default: "
+                                        "the whole research root)")
     arguments = parser.parse_args(argv)
     env = env or Environment.default()
     if arguments.command == "baseline-version":
@@ -51,7 +64,8 @@ def main(argv=None, env=None):
             return EXIT_REJECTED
         env.output(f"baselineVersion={manifest.version} exeSha256={manifest.exe_sha256}")
         return 0
-    return execute(Options(arguments.recipe, arguments.out, arguments.run_id, arguments.smoke), env)
+    return execute(Options(arguments.recipe, arguments.out, arguments.run_id, arguments.smoke, arguments.evidence),
+                   env)
 
 
 if __name__ == "__main__":

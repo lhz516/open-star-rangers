@@ -15,7 +15,14 @@ export const CORE_LIMITS = Object.freeze({
   entities: 2048,
   /** Instances one world may schedule from its declarations (requests × members, summed): over 25 times the selected mission, and half of `entities`. */
   spawnExpansion: 1024,
-  /** Events of one tick: at least commandsPerTick + spawnExpansion + entities (3,136), so every command result, every spawn due at once and one rule event per entity fit. */
+  /**
+   * Events of one tick, and separately the requests of one tick (pipeline.ts), above the bounds the rules derive
+   * (docs/plan/p3/06/spec.md, 容量核算). Events: commandsPerTick results + commandsPerTick additional speed events (at most
+   * one per command) + 1 speed assist event + spawnExpansion instantiations + entities world exits (P3-06's
+   * `object-left-world` takes the one rule event per entity P3-02 reserved) = 3,201. Requests: entities lifecycle
+   * requests + spawnExpansion spawn requests + commandsPerTick speed command requests + 2 (the assist's and the axes'
+   * control requests) = 3,138. A rule task that adds terms derives the sum again (P3-07).
+   */
   eventsPerTick: 4096,
   /** Ticks of one recording or replay: 68 minutes at the default rate, several times a slice mission. */
   recordedTicks: 131_072,

@@ -5,7 +5,8 @@
  * - the projection on the session's existing frame notifications, sampled every 100 ms and never twice for the same
  *   owner, run and tick; it creates no session, host, animation frame or timer;
  * - at the end of the frame, without waiting for the sample, a change of `mission.status`, `player.interactionContext`,
- *   a partition's readiness or the result's content, compared by those fields rather than by object identity;
+ *   a partition's readiness (each of the flight partition's motion and combat groups on its own) or the result's
+ *   content, compared by those fields rather than by object identity;
  * - what run consumers settle at the end of a frame (command results), together with the frame-end projection.
  * The sampling clock must give finite, non-decreasing milliseconds. As in P1-06, attaching a running run reads it to
  * start the sample (other phases start it on the first frame, which only anchors); a failed or invalid read throws
@@ -101,7 +102,8 @@ export interface GameSessionBridge {
 interface KeyFacts {
   readonly missionStatus: Projection['mission']['status'];
   readonly interactionContext: Projection['player']['interactionContext'];
-  readonly flight: Projection['flight']['readiness'];
+  readonly motion: Projection['flight']['motion']['readiness'];
+  readonly combat: Projection['flight']['combat']['readiness'];
   readonly map: Projection['map']['readiness'];
   readonly communications: Projection['communications']['readiness'];
   readonly result: Projection['result']['readiness'];
@@ -114,7 +116,8 @@ function keyFacts({ mission, player, flight, map, communications, result }: Proj
   const ready = result.readiness === 'ready';
   return {
     missionStatus: mission.status, interactionContext: player.interactionContext,
-    flight: flight.readiness, map: map.readiness, communications: communications.readiness, result: result.readiness,
+    motion: flight.motion.readiness, combat: flight.combat.readiness, map: map.readiness, communications: communications.readiness,
+    result: result.readiness,
     outcome: ready ? result.outcome : null,
     reason: ready && 'reason' in result ? result.reason : null,
     message: ready && 'message' in result ? result.message : null,

@@ -4,7 +4,8 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
-import { entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
+import { addPlayerEntity, entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { emit, PIPELINE, registerTick, RequestQueue, runTick, type Request, type TickContext } from './pipeline.ts';
 
@@ -54,8 +55,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02 owns and fakes no rule system', () => {
-    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual(['input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'commit']);
+  it('implements only the stages P3-02 and P3-06 own and fakes no rule system', () => {
+    expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'parked-update', 'area-check', 'commit',
+    ]);
   });
 
   it('is what runTick runs', () => {
@@ -151,6 +154,7 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
 
   it('handles requests in posting order: mission flow, object updates, then the spawn queue check', () => {
     const [state, [early, updated]] = withEntities([3], [1]);
+    addPlayerEntity(state);
     early.state = 'active';
     runTickWith(state, {
       'mission-flow': ({ requests }) => {
@@ -166,6 +170,7 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
 
   it('drops requests posted after request handling', () => {
     const [state, [entity]] = withEntities([2]);
+    addPlayerEntity(state);
     entity.state = 'active';
     runTickWith(state, { movement: ({ requests }) => requests.post(setState(entity, 'pending-removal')) });
     expect(entity.state).toBe('active');
@@ -233,18 +238,22 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     expect([...state.entities.walk(1 << 3)]).toEqual([]);
   });
 
-  it('clears the player reference when it removes the player, and only then', () => {
+  it('clears the player reference, target and control state when it removes the player, and only then', () => {
     const [state, [player, other, sameKind]] = withEntities([0], [6], [0]);
+    const target = state.entities.allocate(entityInit(7, { activity: 'parked' }));
     state.player.entityId = player.id;
+    state.player.target = target.id;
+    state.player.control = initialPlayerControl(0);
     other.state = 'pending-removal';
     sameKind.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBe(player.id);
+    expect(state.player).toMatchObject({ entityId: player.id, target: target.id, control: initialPlayerControl(0) });
     player.state = 'pending-removal';
+    target.state = 'pending-removal';
     runTickWith(state);
-    expect(state.player.entityId).toBeNull();
+    expect(state.player).toMatchObject({ entityId: null, target: null, control: null });
     expect(state.entities.size).toBe(0);
-    expect(state.entities.nextId).toBe(4);
+    expect(state.entities.nextId).toBe(5);
   });
 
   it.each([
@@ -252,11 +261,14 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     ['docked', 'parked', 'new'],
     ['parked', 'active', 'presentation-ready'],
   ] as const)('switches a %s entity in area-switch to %s, state %s, in request handling', (from, to, startState) => {
-    const [state, [entity]] = withEntities([7]);
+    const [state, [entity]] = withEntities([7, { activity: from === 'parked' ? 'parked' : 'active' }]);
+    // A resumed entity stays active near a player; a parked one stays parked without a player entity.
+    if (to === 'active') addPlayerEntity(state);
     entity.activity = from;
     entity.state = 'area-switch';
     runTickWith(state);
     expect([entity.activity, entity.state]).toEqual([to, startState]);
+    expect(entity.movement === null).toBe(to === 'parked');
     expect(state.entities.get(entity.id)).toBe(entity);
     runTickWith(state);
     expect([entity.activity, entity.state]).toEqual([to, 'active']);

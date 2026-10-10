@@ -12,13 +12,10 @@ import { CoreInputError } from '../errors.ts';
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
 import { runtimeFrame, runtimePosition, runtimeRegion, runtimeVector } from '../rules/coordinates.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
-import { isScheduledRecord, PLAYER_KIND_BIT, type RuntimeGeometry } from '../rules/spawn-schedule.ts';
+import { isScheduledRecord, PLAYER_KIND_BIT, WINGMAN_KIND_BIT, type RuntimeGeometry } from '../rules/spawn-schedule.ts';
 
 export const MISSION_PATH = 'input.mission.content';
 export const ROSTER_PATH = 'input.wingmanRoster.content';
-
-/** The wingman's kind 2 is kind bit 1. */
-export const WINGMAN_KIND_BIT = 1;
 
 /**
  * Player-relative sides by kind (docs/original/formats/executable.md, player target modes): the player's own kind,

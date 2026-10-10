@@ -131,7 +131,7 @@ const CONTROL_FIELDS: Readonly<Record<Control['type'], readonly string[]>> = {
 };
 const CONTROL_TYPES = Object.keys(CONTROL_FIELDS) as Control['type'][];
 const CLEAR_INPUT_REASONS: readonly ClearInputReason[] = ['focus-loss', 'pointer-lock-exit'];
-const SPEC_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'identity', 'run', 'recording', 'initialTransition'] as const;
+const SPEC_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'identity', 'run', 'recording', 'initialTransition'] as const;
 const TRANSITION_PATH = 'control.spec.initialTransition';
 type LivePhase = GameSessionFrame['phase'];
 /** The phases of a live run: consumers may wire to it and its frames report them. */

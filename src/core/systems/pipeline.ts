@@ -14,8 +14,11 @@ import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import type { TickInput } from '../contracts/tick-input.ts';
 import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
-import { ALL_KINDS, initialState, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
+import { ALL_KINDS, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
+import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { moveEntities } from './movement.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 
 /** An internal request of one tick, the counterpart of an original dispatcher message. */
@@ -25,7 +28,11 @@ export type Request =
   /** Message 0x20: an entity in state area-switch or pending-removal leaves, or switches its parking. */
   | { readonly type: 'leave'; readonly entityId: EntityId }
   /** Message 0x4000: one spawn request of a due queue entry (spawn.ts). */
-  | SpawnRequest;
+  | SpawnRequest
+  /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
+  | ControlRequest
+  /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
+  | MatchSpeedRequest;
 
 /**
  * The requests of one tick. Request handling takes them in posting order (mission flow, then object updates in walk
@@ -34,8 +41,10 @@ export type Request =
  *
  * The count of posts is bounded by CORE_LIMITS.eventsPerTick, a runaway guard rather than an original limit: the
  * stages so far post at most one request per entity update and one per spawn request, of which a world schedules at
- * most CORE_LIMITS.spawnExpansion in its lifetime, a sum (entities + spawn expansion + commands) that limit covers. A
- * rule whose requests fan out further derives its own bound and revises CoreLimits.
+ * most CORE_LIMITS.spawnExpansion in its lifetime. The player's update posts at most one request per speed command and
+ * two more (the speed assist's restoring request and one carrying only the axes), and an available player posts no
+ * lifecycle request (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the
+ * limits, which that limit covers. A rule whose requests fan out further derives its own bound and revises CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -109,23 +118,24 @@ function advanceClock(context: TickContext): void {
 }
 
 /**
- * Judges the commands in array order where the original polls game input, in the player's update; the player (kind
- * bit 0) comes first in the walk, so that is the start of the stage. No rule handles a command yet: each gets one
- * rejected/not-implemented result and changes nothing. The rule tasks replace this per command type.
+ * The player's update (flight-control.ts), where the original polls game input: the player (kind bit 0) comes first in
+ * the walk, so that is the start of the stage. It judges every command, those of rules not implemented yet with one
+ * rejected/not-implemented result each, and with an available player consumes the axes. The rule tasks add their
+ * commands and steps there.
  */
-function judgeCommands(context: TickContext): void {
-  const { input, time } = context;
-  input.commands.forEach(({ type }, commandIndex) => {
-    emit(context, { type: 'command-result', tick: time.tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' });
-  });
+function updatePlayerControls(context: TickContext): void {
+  const { world, input, time, requests } = context;
+  updatePlayer(world, input, time.tick, { emit: (event) => emit(context, event), post: (request) => requests.post(request) });
 }
 
 /**
  * The generic part of an entity's own update (`0x20ae4`, the player's `0x25f90`): a new parked entity or one whose
- * presentation is ready asks to become active, and one in area-switch or pending-removal asks to leave. Active
- * behaviour belongs to the rule tasks (P3-06 to P3-10).
+ * presentation is ready asks to become active, unless it is in Warp transit (`0x20c18`; the player's own callback has
+ * no such check), and one in area-switch or pending-removal asks to leave. Active behaviour belongs to the rule tasks
+ * (P3-06 to P3-10).
  */
 function updateLifecycle(context: TickContext, entity: Entity): void {
+  if (isHeldInWarpTransit(context.world, entity)) return;
   switch (entity.state) {
     case 'new':
       // Only a parked entity has no presentation; an active one counted its presentation ready when it got it.
@@ -149,25 +159,27 @@ function updateLifecycle(context: TickContext, entity: Entity): void {
  * kind bit is updated in the same walk. A destroyed source (state 4) gets no update.
  */
 function updateObjects(context: TickContext): void {
-  judgeCommands(context);
+  updatePlayerControls(context);
   for (const entity of context.world.entities.walk(ALL_KINDS)) {
     if (entity.state !== 'destroyed-source') updateLifecycle(context, entity);
   }
 }
 
 /**
- * Message 0x20 (`0x20d10`): an entity in area-switch toggles its parking and starts its state again; any other entity
- * is removed. Removal clears the player-state reference to it (the original clears it for kind 1, the player's) and
- * makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name becomes free because no
- * entity holds it any more (Q-08). The player's target, cleared when that entity parks, belongs to P3-07.
+ * Message 0x20 (`0x20d10`): an entity in area-switch whose kind parks switches its parking and starts its state again
+ * (area.ts); any other entity, those of the kinds removed on leaving included, is removed. Removal of the player's
+ * entity clears the player-state reference to it (the original clears it for kind 1, the player's) together with the
+ * player's target and control state, which exist only with a player entity (P3-06 D-03). Removal makes the ID
+ * unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name
+ * becomes free because no entity holds it any more (Q-08).
  */
 function leave(world: WorldState, entity: Entity): void {
-  if (entity.state === 'area-switch') {
-    entity.activity = entity.activity === 'parked' ? 'active' : 'parked';
-    entity.state = initialState(entity.activity);
-    return;
+  if (switchParking(world, entity)) return;
+  if (world.player.entityId === entity.id) {
+    world.player.entityId = null;
+    world.player.target = null;
+    world.player.control = null;
   }
-  if (world.player.entityId === entity.id) world.player.entityId = null;
   world.entities.remove(entity);
 }
 
@@ -187,6 +199,12 @@ function handleRequest(context: TickContext, request: Request): void {
     case 'leave':
       leave(world, entity);
       return;
+    case 'control':
+      applyControlRequest(world, entity, request);
+      return;
+    case 'match-speed':
+      applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
+      return;
   }
 }
 
@@ -198,6 +216,21 @@ function handleRequests(context: TickContext): void {
 /** Stage `spawn-queue-check` (`0x67018`): posts the spawn requests of every due queue entry; instantiates nothing. */
 function checkSpawns(context: TickContext): void {
   checkSpawnQueue(context.world, context.requests);
+}
+
+/** Stage `movement` (`0x221fc`, movement.ts). */
+function move(context: TickContext): void {
+  moveEntities(context.world);
+}
+
+/** Stage `parked-update` (`0x2f1b0`, area.ts), where a parked object's true exit emits `object-left-world`. */
+function updateParkedObjects(context: TickContext): void {
+  updateParked(context.world, (event) => emit(context, event));
+}
+
+/** Stage `area-check` (`0x3a468`, area.ts). */
+function checkArea(context: TickContext): void {
+  checkActiveArea(context.world);
 }
 
 /** Stage 7 (project boundary): seals the tick's events; requests posted since request handling were dropped. */
@@ -228,25 +261,24 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('communications-reply', null),
   stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
-  // After the message loop, each once: 0x221fc movement (P3-06), then its collision passes 0x29670 and 0x29934 (P3-07).
-  stage('movement', null),
+  // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
+  stage('movement', move),
   stage('collision', null),
   // 0x23808 (P3-07).
   stage('delayed-player-explosion', null),
   // 0x30590 (P3-07).
   stage('energy', null),
-  // 0x2ede0 rebuilds two object sets through 0x2f028; not analysed, so no owner yet: whoever needs it analyses it.
+  // 0x2ede0 rebuilds the friendly and hostile craft sets through 0x2f028 and the map visibility flag, for the map
+  // (P3-09, P3-13) and the parked AI handler (P3-08, the suggested owner); no P3-06 rule reads them.
   stage('object-sets', null),
-  // 0x2f1b0, including the world-exit test (P3-06).
-  stage('parked-update', null),
+  stage('parked-update', updateParkedObjects),
   // 0x2bf08 (P3-09).
   stage('warp-completion', null),
   // 0x398ec, view mode 6 (P3-10).
   stage('base-interior', null),
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
-  // 0x3a468 (P3-06).
-  stage('area-check', null),
+  stage('area-check', checkArea),
   // Rule progress the original makes in its frame render, such as 0x50508 (P3-09); never waits for a rendered frame.
   stage('frame-end', null),
   stage('commit', commit),

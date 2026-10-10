@@ -49,7 +49,7 @@ export interface GroupState {
   readonly layout: readonly Vector3[];
   /** Entry +20: requests completed; never decreases. Only the template's limit +0x14 reads it, which supported content never sets. */
   spawnCount: number;
-  /** Entry +24: the entity of the latest layout cycle's first member (Likely the formation leader), or null before one. */
+  /** Entry +24: the entity of the latest layout cycle's first member, the formation leader of the cycle's later members, or null before one. */
   leader: EntityId | null;
 }
 
@@ -81,3 +81,4 @@ export interface SpawnState {
   /** Use counters of the section-0 name pool (`0x176718`), zero at creation. */
   readonly namePoolUses: number[];
 }
+

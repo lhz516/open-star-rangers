@@ -11,6 +11,7 @@ import type { MissionContent } from '../src/content/logic/logic-content.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { readPayloadRecords } from '../src/content/payload.ts';
+import { decodeRuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
 import { COMMAND_OUTCOMES, COMMAND_RESULT_REASONS, type CommandOutcome, type DomainEvent } from '../src/core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
 import { COMMAND_TYPES, type Command, type CommandType, type TickInput } from '../src/core/contracts/tick-input.ts';
@@ -97,6 +98,9 @@ const LAST_TICK = CORE_LIMITS.recordedTicks;
 const HASH = 'f'.repeat(16);
 const longestOf = <const Value extends string>(values: readonly Value[]): Value => values.reduce((longest, value) => (value.length > longest.length ? value : longest));
 
+/** The longest entity source: a wingman group member with safe-integer indexes. */
+const LONGEST_SOURCE = { collection: 'wingman', index: SAFE, group: { index: SAFE, request: SAFE, member: SAFE } } as const;
+
 /** The longest form of every command variant, so a new variant does not compile until it is added here. */
 const LONGEST_COMMANDS: { readonly [Type in CommandType]: Extract<Command, { readonly type: Type }> } = {
   fire: { type: 'fire', channel: 'secondary' },
@@ -132,9 +136,14 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     tick: LAST_TICK,
     entityId: SAFE,
     kindBit: 31,
-    source: { collection: 'wingman', index: SAFE, group: { index: SAFE, request: SAFE, member: SAFE } },
+    source: LONGEST_SOURCE,
     position: { x: LONGEST_NUMBER, y: LONGEST_NUMBER, z: LONGEST_NUMBER },
   },
+  'speed-assist-toggled': { type: 'speed-assist-toggled', tick: LAST_TICK, commandIndex: CORE_LIMITS.commandsPerTick - 1, enabled: false },
+  // The assist variant is the longer of the two.
+  'speed-matched': { type: 'speed-matched', tick: LAST_TICK, targetEntityId: SAFE, origin: 'assist', speedDifferenceExceeded: false },
+  'speed-assist-released': { type: 'speed-assist-released', tick: LAST_TICK },
+  'object-left-world': { type: 'object-left-world', tick: LAST_TICK, entityId: SAFE, kindBit: 31, source: LONGEST_SOURCE },
 };
 
 /** The content identity of every package the production import job converts. */
@@ -285,32 +294,40 @@ function validateResult(result: unknown): Pick<ReplayCheckReport, 'finalTick' | 
 
 /**
  * The replay content of a validated package: the mission, the only Asset of its role in the logic group, and the
- * craft type table and wingman roster it references by Asset ID, decoded with the logic payload reader, with the
- * package's identity.
+ * craft type table and wingman roster it references by Asset ID, decoded with the logic payload reader; the craft info
+ * (P3-06 D-01), the only Asset of its role, decoded with the rule-data payload reader; and the package's identity.
  */
 function replayContent(groups: readonly GroupInput[], identity: ContentIdentity): ReplayContent {
   // Validation read every manifest and payload strictly, so reading them again cannot fail.
   const logic = groups.map(({ manifest, payloads }) => ({ manifest: readGroupManifest(manifest), payloads })).find(({ manifest }) => manifest.group === 'logic');
   if (!logic) throw new CheckStop('content-failed', 'content');
   const payloads = new Map(readPayloadRecords(logic.payloads).map(({ id, bytes }) => [id as string, bytes]));
-  const decode = (field: 'mission' | 'craftTypes' | 'wingmanRoster', descriptor: AssetDescriptor | undefined) => {
+  const decode = (
+    field: 'mission' | 'craftTypes' | 'wingmanRoster' | 'craftInfo',
+    descriptor: AssetDescriptor | undefined,
+    decoder: typeof decodeLogicPayload | typeof decodeRuleDataPayload = decodeLogicPayload,
+  ) => {
     const bytes = descriptor && payloads.get(descriptor.id);
     if (!descriptor || !bytes) throw new CheckStop('content-failed', `content.${field}`);
     try {
-      return { id: descriptor.id, content: decodeLogicPayload(bytes, descriptor).content };
+      return { id: descriptor.id, content: decoder(bytes, descriptor).content };
     } catch (error) {
       if (error instanceof ContentContractError) throw new CheckStop('content-failed', `content.${field}.${error.path}`);
       throw error;
     }
   };
-  const missions = logic.manifest.assets.filter(({ role }) => role === 'mission');
-  const mission = decode('mission', missions.length === 1 ? missions[0] : undefined);
+  const only = (role: string) => {
+    const found = logic.manifest.assets.filter(descriptor => descriptor.role === role);
+    return found.length === 1 ? found[0] : undefined;
+  };
+  const mission = decode('mission', only('mission'));
   const { references } = mission.content as MissionContent;
   const referenced = (id: AssetId) => logic.manifest.assets.find(descriptor => descriptor.id === id);
   return {
     mission,
     craftTypes: decode('craftTypes', referenced(references.craftTypes)),
     wingmanRoster: decode('wingmanRoster', referenced(references.wingmanRoster)),
+    craftInfo: decode('craftInfo', only('craft-info'), decodeRuleDataPayload),
     identity,
   };
 }

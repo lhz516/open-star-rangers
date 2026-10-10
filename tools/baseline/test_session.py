@@ -10,17 +10,20 @@ from unittest import mock
 
 import measure
 import runfiles
+import session
 from fake_debugger import CODE_SITE
 from reasons import REASON_SET
 from recipe import exe_fingerprint, parse_recipe
 from sandbox import SETTINGS, Sandbox
-from synthetic import BASES, HEAP
+from synthetic import BASES, HEAP, bios_keyboard
 
 DATA = BASES[4]
 TICKS = DATA + 0x800
 SPEED = DATA + 0x808
 CHAIN = DATA + 0x820
 SCENARIO = DATA + 0x830
+STICK = HEAP + 0x2000  # a register-addressed device field (ESI + 12 at the "start" breakpoint)
+LATCH = DATA + 0x840  # an object-addressed device field
 GAME_SETTINGS = b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 53\r\nSTARTUP_PRACTICE=TRUE\r\nDETAIL=TRUE\r\n"
 OVERRIDDEN = b"SOUND_LEVEL=100\r\nCURR_LEVEL=100 19\r\nSTARTUP_PRACTICE=FALSE\r\nDETAIL=TRUE\r\n"
 
@@ -265,6 +268,214 @@ class SessionTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as caught:
             measure.main(["run", "--recipe", str(box.recipe_path)], env=box.env)
         self.assertEqual(caught.exception.code, 2)
+
+    # -- input stimuli -----------------------------------------------------------------------------------------------
+    def stimulus_box(self, scenario=None, change=None, **process):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario=scenario)
+        document = box.document
+        document["pauses"].insert(0, {"id": "gate", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1FA0}})
+        document["devices"] = [{"id": "stick", "address": {"register": "ESI", "offset": 12}, "type": "i32"},
+                               {"id": "latch", "address": {"object": 4, "offset": 0x840}, "type": "u16"}]
+        document["stimuli"] = [
+            {"id": "enter", "pause": "gate", "kind": "key", "ascii": 13, "scan": 28},
+            {"id": "ctrl", "pause": "start", "kind": "shift", "flags": {"ctrl": True, "caps": False}},
+            {"id": "deflect", "pause": "start", "kind": "device", "device": "stick", "value": -128},
+            {"id": "latch", "pause": "end", "kind": "device", "device": "latch", "value": 513}]
+        if change:
+            change(document)
+        box.write_recipe(document)
+        bios_keyboard(box.debugger.process, **process)
+        box.debugger.registers["ESI"] = STICK - 12
+        return box
+
+    def assertStimulusFailed(self, box, code, detail, failed="enter", applied=(), written=()):
+        report = self.assertFailed(box, code)
+        self.assertIn("stimuli-missing", report["reasons"])
+        records = {record["id"]: record for record in report["stimuli"]}
+        self.assertEqual((records[failed]["status"], records[failed]["detail"]), (code, detail))
+        for status, expected in (("applied", applied), ("written", written)):
+            self.assertEqual([record["id"] for record in report["stimuli"] if record["status"] == status],
+                             list(expected))
+        self.assertEqual(report["counts"]["stimuliApplied"], len(applied))
+        self.assertTrue((box.run_dir / f"pauses/{records[failed]['pause']}/stimuli.json").is_file())
+        return report
+
+    def test_stimuli_are_written_read_back_and_recorded(self):
+        box = self.stimulus_box()
+        process = box.debugger.process
+        latch_before = process.peek(LATCH, 2)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual((report["counts"]["planned"], report["counts"]["stimuliPlanned"],
+                          report["counts"]["stimuliApplied"]), (10, 4, 4))
+        self.assertEqual(process.peek(0x41E, 2), bytes((13, 28)))
+        self.assertEqual(process.peek(0x41C, 2), struct.pack("<H", 0x20))
+        self.assertEqual(process.peek(0x417, 1), b"\x24")  # ctrl set, caps cleared, num lock kept
+        self.assertEqual(process.peek(STICK, 4), struct.pack("<i", -128))
+        self.assertEqual(process.peek(LATCH, 2), struct.pack("<H", 513))
+        enter, ctrl, deflect, latch = report["stimuli"]
+        self.assertEqual([record["status"] for record in report["stimuli"]], ["applied"] * 4)
+        self.assertEqual((enter["pause"], enter["key"], enter["buffer"]),
+                         ("gate", {"ascii": 13, "scan": 28}, {"pointers": "1e001e00", "bounds": "1e003e00"}))
+        self.assertEqual(enter["writes"], [
+            {"channel": "key-slot", "linear": "0000041e", "written": "0d1c", "before": "0000", "readback": "0d1c",
+             "pages": {"0": "0"}},
+            {"channel": "key-tail", "linear": "0000041c", "written": "2000", "before": "1e00", "readback": "2000",
+             "pages": {"0": "0"}}])
+        self.assertEqual((ctrl["flags"], ctrl["writes"][0]["before"], ctrl["writes"][0]["written"]),
+                         ({"ctrl": True, "caps": False}, "20", "24"))
+        self.assertEqual((deflect["device"], deflect["value"], deflect["writes"][0]["linear"]),
+                         ("stick", -128, f"{STICK:08x}"))
+        self.assertEqual((latch["pause"], latch["writes"][0]["before"]), ("end", latch_before.hex()))
+        self.assertIsInstance(enter["emulatedMs"], float)
+        for pause in ("gate", "start", "end"):
+            stop = json.loads((box.run_dir / f"pauses/{pause}/stop.json").read_text())
+            self.assertTrue(stop["registersUnchangedAfterStimuli"])
+            self.assertEqual(stop["stimuli"], f"pauses/{pause}/stimuli.json")
+            recorded = json.loads((box.run_dir / stop["stimuli"]).read_text())
+            self.assertEqual([item["id"] for item in recorded["stimuli"]],
+                             [item["id"] for item in report["stimuli"] if item["pause"] == pause])
+        self.assertFalse((box.run_dir / "pauses/gate/reads.json").exists())  # a stop without readings
+        phases = [(status["phase"], status.get("pause")) for status in box.statuses]
+        self.assertNotIn(("awaiting-confirmation", "gate"), phases)
+        self.assertIn(("awaiting-confirmation", "start"), phases)
+        self.assertLess(phases.index(("reading", "start")), phases.index(("input", "start")))
+        self.assertIn(b"SMV 00000041E 00D 01C\n", box.transport.writes)
+        self.assertTerminalSafe(box)
+        self.assertTrue(box.unchanged_outside_run())
+
+    def test_register_relative_fields_are_read_at_the_stop(self):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        document = box.document
+        document["fields"].append({"id": "subject", "address": {"register": "ESI", "offset": 0x10, "pointers": [8]},
+                                   "type": "u32", "unit": "count"})
+        document["pauses"][0]["fields"].append("subject")
+        box.write_recipe(document)
+        box.debugger.registers["ESI"] = HEAP
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["planned"]), ("complete", 11))
+        values = {(item["pause"], item["field"]): item["value"] for item in report["samples"]}
+        self.assertEqual(values[("start", "subject")], 99)
+        stop = json.loads((box.run_dir / "pauses/start/stop.json").read_text())
+        self.assertTrue(stop["registersUnchangedAfterReads"])
+        self.assertTrue(box.unchanged_outside_run())
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        box.write_recipe(document)
+        box.debugger.hide_registers = {"ESI"}  # a register pane without the addressed register
+        self.assertIn("debugger-unparsed", self.assertFailed(box, "debugger-unparsed")["reasons"])
+        box = self.stimulus_box()  # the same for a register-addressed device written at that stop
+        box.debugger.hide_registers = {"ESI"}
+        self.assertIn("debugger-unparsed", self.assertFailed(box, "debugger-unparsed")["reasons"])
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario={"ds_limit": 0x3FFFFFFF})
+        box.write_recipe(document)
+        box.debugger.registers["ESI"] = 0x3FFFFFFD - 0x10  # the pointer read would cross the DS limit
+        report = self.assertFailed(box, "pointer-out-of-range", sample=True)
+        subject = next(item for item in report["samples"] if item["field"] == "subject")
+        self.assertEqual((subject["status"], subject["reasons"]), ("unqualified", ["pointer-out-of-range"]))
+
+    def test_stimulus_rejections_end_the_run(self):
+        box = self.stimulus_box(head=0x1E, tail=0x20)
+        self.assertStimulusFailed(box, "stimulus-rejected", "key-buffer-busy")
+        self.assertFalse(any(write.startswith(b"SMV") for write in box.transport.writes))
+        self.assertEqual(box.report()["samples"], [])
+        box = self.stimulus_box(start=0x1E, end=0x1E)
+        self.assertStimulusFailed(box, "stimulus-rejected", "key-buffer-invalid")
+        box = self.stimulus_box()
+        box.debugger.process.physical[0] = 5
+        self.assertStimulusFailed(box, "stimulus-rejected", "mapping-not-identity")
+        box = self.stimulus_box(scenario={"smv_ack": False})
+        self.assertStimulusFailed(box, "stimulus-unverified", "write-unacknowledged")
+        box = self.stimulus_box(scenario={"smv_drop": True})
+        report = self.assertStimulusFailed(box, "stimulus-unverified", "readback-mismatch")
+        self.assertEqual(report["stimuli"][0]["writes"][0]["readback"], "0000")
+        box = self.stimulus_box(scenario={"ds_limit": 0x3FFFFFFF})
+        box.debugger.registers["ESI"] = 0x3FFFFFFD - 12  # the field's last byte would lie beyond the DS limit
+        # the shift at the same pause was written and read back, but its pause did not complete: not applied
+        self.assertStimulusFailed(box, "stimulus-rejected", "device-out-of-range", "deflect", ("enter",), ("ctrl",))
+
+    def test_stimuli_need_a_qualified_pause_and_unchanged_registers(self):
+        box = self.stimulus_box(scenario={"on_command": after_bp(lambda fake: fake.process.poke(
+            SCENARIO, struct.pack("<i", 7)))})
+        flags = box.debugger.process.peek(0x417, 1)
+        report = self.assertStimulusFailed(box, "stimulus-rejected", "pause-identity-mismatch", "ctrl", ("enter",))
+        self.assertEqual(box.debugger.process.peek(0x417, 1), flags)  # nothing written at the unqualified pause
+        self.assertNotIn("writes", {record["id"]: record for record in report["stimuli"]}["ctrl"])
+
+        def move_registers(fake, text):
+            if text.startswith("SMV "):
+                fake.registers["EAX"] += 1
+        box = self.stimulus_box(scenario={"on_command": move_registers})
+        report = self.assertStimulusFailed(box, "stimulus-unverified", "registers-changed")
+        stop = json.loads((box.run_dir / "pauses/gate/stop.json").read_text())
+        self.assertFalse(stop["registersUnchangedAfterStimuli"])
+
+    def test_stimulus_writes_count_against_the_budget(self):
+        used = []
+
+        class Recording(session.ReadBudget):
+            def __init__(self, limit):
+                super().__init__(limit)
+                used.append(self)
+        box = self.stimulus_box()
+        with mock.patch.object(session, "ReadBudget", Recording):
+            self.assertEqual(box.run(), 0)
+        total = used[0].used
+        box = self.stimulus_box(change=lambda d: d["limits"].update(maxReadBytes=total - 1))
+        self.assertStimulusFailed(box, "budget-exceeded", "reads", "latch", ("enter", "ctrl", "deflect"))
+        box = self.stimulus_box(change=lambda d: d["stimuli"][2].update(device="missing"))  # an undeclared write
+        self.assertRejected(box, "recipe-reference-invalid")
+
+    # -- evidence scope ----------------------------------------------------------------------------------------------
+    def test_declared_evidence_scope_protects_only_its_directory(self):
+        for target, passed in (("research/p3-02/notes/notes.txt", True),
+                               ("research/p3-01/tool-smoke/earlier/report.json", False),
+                               ("StarRang/baseline/GAME.CFG", False)):
+            with self.subTest(target=target):
+                box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+                path = box.local / target
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if not path.exists():
+                    path.write_text("another topic's evidence")
+
+                def change(fake, path=path):
+                    path.write_bytes(b"changed by another session")
+                box.debugger.scenario["on_command"] = after_bp(change)
+                self.assertEqual(box.run(evidence=box.out), 0 if passed else 1)
+                report = box.report()
+                protection = report["environment"]["protection"]
+                self.assertEqual((protection["evidenceScope"], protection["evidenceRoots"]),
+                                 ("declared", ["local/research/p3-01/tool-smoke"]))
+                self.assertEqual(report["integrity"]["passed"], passed)
+                self.assertEqual("original-changed" in report["reasons"], not passed)
+                inventory = json.loads((box.run_dir / "protection/before.json").read_text())["evidence"]
+                self.assertTrue(inventory and all(key.startswith("research/p3-01/tool-smoke/") for key in inventory))
+        box = self.box()
+        self.assertEqual(box.run(), 0)  # the default scope is the whole research root
+        protection = box.report()["environment"]["protection"]
+        self.assertEqual((protection["evidenceScope"], protection["evidenceRoots"]),
+                         ("research-root", ["local/research"]))
+
+    def test_evidence_scope_rejections(self):
+        box = self.box()
+        outside = Path(self.tmp.name) / "elsewhere"
+        outside.mkdir()
+        (box.research / "escape").symlink_to(outside)
+        (box.research / "p3-02").mkdir()
+        for evidence in (outside, box.research / "escape", box.research / "p3-02", box.out / "run-01",
+                         box.out / ".." / "tool-smoke", box.local, "", box.research / "bad name"):
+            with self.subTest(evidence=evidence):
+                box.lines.clear()
+                self.assertRejected(box, "evidence-scope-invalid", evidence=evidence)
+        self.assertEqual(box.run(evidence=box.research), 0)  # the research root itself is the default, made explicit
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        box.before = box.snapshot()
+        box.run_id = "cli"
+        self.assertEqual(measure.main(["run", "--recipe", str(box.recipe_path), "--out", str(box.out), "--run-id",
+                                       "cli", "--evidence", str(box.out)], env=box.env), 0)
+        self.assertEqual(box.report()["environment"]["protection"]["evidenceScope"], "declared")
+        self.assertTrue(box.unchanged_outside_run())
 
     # -- rejections before any side effect --------------------------------------------------------------------------
     def test_recipe_rejections_at_the_command_line(self):

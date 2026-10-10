@@ -10,15 +10,19 @@
  */
 import type { SpawnRegion, Vector3 } from '../../content/logic/logic-content.ts';
 import { secondsToClockUnits } from '../contracts/time.ts';
+import { CoreFaultError } from '../errors.ts';
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
 import type { DeclarationReference } from '../world/entity-table.ts';
-import type { RecordRuleInputs, RuntimeRecord, SpawnEntry, SpawnState } from '../world/spawn-state.ts';
+import type { RecordRuleInputs, RuntimeRecord, SpawnEntry, SpawnSourceType, SpawnState } from '../world/spawn-state.ts';
 import type { RuntimeFrame } from './coordinates.ts';
 import type { RandSource } from './original-random.ts';
 import { fillRecordDefaults, missionDefault, toInt32, unfilledRuleInputs } from './record-defaults.ts';
 
 /** The player's kind 1 is kind bit 0. */
 export const PLAYER_KIND_BIT = 0;
+
+/** The wingman's kind 2 is kind bit 1. */
+export const WINGMAN_KIND_BIT = 1;
 
 /** The setup's coordinates in runtime units, as world creation validated and converted them. */
 export interface RuntimeGeometry {
@@ -108,4 +112,26 @@ export function buildSpawnState(setup: MissionSetup, geometry: RuntimeGeometry, 
     enabled: true,
     namePoolUses: setup.namePool.map(() => 0),
   };
+}
+
+/** The record whose probability a firing reads: the record itself, a group's template or the wingman option. */
+export function firingRecord(spawn: SpawnState, setup: MissionSetup, source: SpawnSourceType, index: number): RuntimeRecord {
+  switch (source) {
+    case 'record':
+      return spawn.records[index];
+    case 'group':
+      return spawn.records[setup.groups[index].template];
+    case 'wingman':
+      if (spawn.wingman === null) throw new CoreFaultError('invariant-violated', 'spawn.wingman');
+      return spawn.wingman;
+  }
+}
+
+/**
+ * Whether a queue entry posts requests when it fires (`0x67018`): at least one, and a firing record whose probability is
+ * 100. World creation admits no other probability but, on a group template the build does not fill, a source 0, which
+ * never posts; the original draws one rand for the roll even then, Core draws none.
+ */
+export function postsRequests(spawn: SpawnState, setup: MissionSetup, { source, index, requests }: SpawnEntry): boolean {
+  return requests > 0 && firingRecord(spawn, setup, source, index).ruleInputs.percentA >= 100;
 }

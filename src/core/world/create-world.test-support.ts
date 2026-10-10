@@ -1,7 +1,9 @@
 import { readAssetId } from '../../content/asset-id.ts';
 import { declaration, LOGIC_IDS, MARKER, ruleInputs, syntheticMission } from '../../content/logic/logic-content.test-support.ts';
+import { syntheticCraftInfo } from '../../content/rule-data/rule-data.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import type { CreateWorldInput } from './create-world.ts';
+import { PRODUCTION_CRAFT_INFO } from './craft-info-input.ts';
 
 // Synthetic world creation input for Core tests: code-generated, never original data. Builders return fresh mutable
 // plain data that a test may change. Names carry MARKER so privacy assertions can prove they never reach diagnostics.
@@ -133,14 +135,27 @@ export function eventMission() {
   return mission;
 }
 
+/**
+ * The content readers' synthetic craft info (syntheticCraftInfo), changed only so that Core's semantic checks pass: every
+ * record's +0x0C is 250. In it the player's record (kind bit 0) takes the base maximum at every allocation level.
+ */
+export function craftInfoContent() {
+  const info = syntheticCraftInfo();
+  for (const record of info.craft) record.at0C = 250;
+  return info;
+}
+
 export type MissionDraft = ReturnType<typeof missionFrame>;
 export type RosterDraft = ReturnType<typeof rosterContent>;
+export type CraftInfoDraft = ReturnType<typeof craftInfoContent>;
 
 export interface WorldInputParts {
   readonly mission?: MissionDraft;
   readonly roster?: RosterDraft;
   /** Defaults to the table binding exactly the craft types the mission and roster use. */
   readonly craftTypes?: unknown;
+  /** The craft info's content; defaults to craftInfoContent(). */
+  readonly craftInfo?: unknown;
   readonly identity?: Record<string, unknown>;
   readonly run?: Record<string, unknown>;
 }
@@ -159,9 +174,17 @@ export function worldInput(parts: WorldInputParts = {}) {
     mission: { id: readAssetId(LOGIC_IDS.mission), content: mission as unknown },
     craftTypes: { id: readAssetId(LOGIC_IDS.craftTypes), content: parts.craftTypes ?? craftTypesContent(used) },
     wingmanRoster: { id: readAssetId(LOGIC_IDS.wingmanRoster), content: roster as unknown },
+    craftInfo: { id: readAssetId(PRODUCTION_CRAFT_INFO), content: parts.craftInfo ?? (craftInfoContent() as unknown) },
     identity: parts.identity ?? syntheticIdentity(),
     run: { ...SYNTHETIC_RUN, ...parts.run },
   };
+}
+
+/** Plain data with every object's keys in reverse order. */
+export function reversedKeys<Value>(value: Value): Value {
+  if (Array.isArray(value)) return value.map(reversedKeys) as Value;
+  if (typeof value !== 'object' || value === null) return value;
+  return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reversedKeys(item)])) as Value;
 }
 
 /** The input as the creation entry types it; tests build it as plain mutable data. */

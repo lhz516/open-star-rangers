@@ -1,6 +1,10 @@
 import { vi } from 'vitest';
+import type { AssetDescriptor } from '../../content/asset-contract.ts';
 import { validateGroup } from '../../content/completeness.ts';
+import type { CraftInfo } from '../../content/rule-data/craft-info.ts';
+import { decodeRuleDataPayload, encodeRuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
+import { payloadIdentityOf } from '../../content/synthetic-content.test-support.ts';
 import { MISSION_SCENARIOS, scenarioGroups, type MissionScenario, type ScenarioGroup } from '../../workers/import-scenarios.test-support.ts';
 import { createMissionSlot, type MissionSlot } from '../composition/mission-slot.ts';
 import type { ImportGroupSummary } from '../import/import-job-owner.ts';
@@ -68,10 +72,48 @@ export async function missionJob(name: MissionScenario): Promise<FakeJob> {
   return finishedJob(complete, incomplete);
 }
 
-/** A test holder (fake cache, synthetic profile) holding a mission scenario's package; its listing and commit stay pending. */
-export async function missionHolder(name: MissionScenario = 'mission-startable', options: Partial<ResourceHolderOptions> = {}) {
+/**
+ * How `craftInfoJob` changes the craft-info Asset of the `mission-startable` package: `missing` removes it, which
+ * leaves the logic group incomplete; `next-schema` declares its payload at the next payload schema version, which
+ * `decodeRuleDataPayload` refuses; `{ at0C }` encodes its content again with every craft record's +0x0C set to it. The
+ * last two keep the logic group complete.
+ */
+export type CraftInfoChange = 'missing' | 'next-schema' | { readonly at0C: number };
+
+function withCraftInfo(logic: ScenarioGroup, change: CraftInfoChange): ScenarioGroup {
+  const manifest = structuredClone(logic.manifest) as { assets: AssetDescriptor[] };
+  const payloads = structuredClone(logic.payloads) as { id: string; schemaVersion: number; bytes: Uint8Array }[];
+  const descriptor = manifest.assets.find(({ role }) => role === 'craft-info')!;
+  const payload = payloads.find(({ id }) => id === descriptor.id)!;
+  if (change === 'missing') {
+    const sources = structuredClone(logic.sources) as { states: { id: string }[] };
+    const others = <T extends { readonly id: string }>(items: readonly T[]) => items.filter(({ id }) => id !== descriptor.id);
+    return { ...logic, manifest: { ...manifest, assets: others(manifest.assets) }, payloads: others(payloads), sources: { ...sources, states: others(sources.states) } };
+  }
+  if (change === 'next-schema') {
+    payload.schemaVersion += 1;
+  } else {
+    const info = decodeRuleDataPayload(payload.bytes, descriptor).content as CraftInfo;
+    payload.bytes = encodeRuleDataPayload({ role: 'craft-info', content: { ...info, craft: info.craft.map(record => ({ ...record, at0C: change.at0C })) } });
+  }
+  (descriptor as { payloadIdentity: unknown }).payloadIdentity = { ...payloadIdentityOf(payload.bytes), schemaVersion: payload.schemaVersion };
+  return { ...logic, manifest, payloads };
+}
+
+/** A fresh finished import job of the `mission-startable` package whose craft-info Asset `change` replaced. */
+export async function craftInfoJob(change: CraftInfoChange): Promise<FakeJob> {
+  const { complete, incomplete } = await sortedGroups('mission-startable');
+  return finishedJob(complete.map(group => (group.group === 'logic' ? withCraftInfo(group, change) : group)), incomplete);
+}
+
+/**
+ * A test holder (fake cache, synthetic profile) holding the package of a mission scenario, or of a finished job such as
+ * `craftInfoJob`'s; its listing and commit stay pending.
+ */
+export async function missionHolder(source: MissionScenario | FakeJob = 'mission-startable', options: Partial<ResourceHolderOptions> = {}) {
   const setup = testHolder(options);
-  if (!setup.holder.acceptImport(await missionJob(name))) throw new Error(`The holder did not take the ${name} package`);
+  const job = typeof source === 'string' ? await missionJob(source) : source;
+  if (!setup.holder.acceptImport(job)) throw new Error('The holder did not take the mission package');
   return setup;
 }
 
@@ -228,8 +270,8 @@ export function sessionProbe(stage: MissionOwnerStage = 'ui') {
  * and `run()` the current run. `reportError` is the owner's outlet; the holder's and the slot's are `holderErrors` and
  * `slotErrors`.
  */
-export async function openMission(name: MissionScenario = 'mission-startable', overrides: Partial<MissionOwnerSetup> = {}) {
-  const holder = await missionHolder(name);
+export async function openMission(source: MissionScenario | FakeJob = 'mission-startable', overrides: Partial<MissionOwnerSetup> = {}) {
+  const holder = await missionHolder(source);
   const ports = testPorts();
   const slot = testSlot();
   const probe = sessionProbe();

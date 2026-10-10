@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-001, U-008, U-026, U-027]
 ---
 
@@ -129,37 +129,37 @@ Counts in all 24: 10 guns, 9 missiles, 20 craft, 9 bodies.
 
 ### 3.5 Craft record and missile body record, 236 bytes
 
-Craft records are indexed by kind bit (§1). Missile body records use the same layout (Confirmed, code): `0x2b00c` puts a body record in the object slot that holds a craft record; physics (`0x21dd0`, `0x21fd8`) and `0x30e0c` read it with the offsets below, and `0x2cf38` copies its +0xB8 as an `f32`.
+Craft records are indexed by kind bit (§1). Missile body records use the same layout (Confirmed, code): `0x2b00c` puts a body record in the object slot that holds a craft record; physics (`0x21dd0`, `0x21fd8`, the integrators `0x222f0` and `0x22600`) and `0x30e0c` read it with the offsets below, and `0x2cf38` copies its +0xB8 as an `f32`. The roles stated below for P3-06 come from its research ([flight motion](./executable.md#flight-motion-controls-speed-parking-and-take-off-p3-06)); they are uses in code, not names from the data.
 
 | Offset | Type | Evidence | Handling |
 |---|---|---|---|
 | +0x00 | pointer to text | Pointer Confirmed (relocation in all 480 craft records); text Likely (data: §3.7); no reader found | text |
 | +0x04 | pointer to text | Confirmed (code): `0x67d44` copies it byte by byte into the object's +0x15C, the name the communications code matches ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)) | text |
 | +0x08 | f32 | Likely (data) | convert |
-| +0x0C | f32 | Confirmed (code): float reads in `0x62aa0`, `0x62760`, `0x2ee60`, `0x2f314`, `0x2ffec`, `0x3c040`, `0x3c3b0` | convert |
+| +0x0C | f32 | Confirmed (code): float reads in `0x62aa0`, `0x62760`, `0x2ee60`, `0x2f314`, `0x2ffec`, `0x3c040`, `0x3c3b0`. Uses (P3-06/04): the parked Warp jump needs a squared goal distance above its square times the f32 constant `0x170fd4` (`0x2f314`); the random offset length of parked travel toward a target, in AI mode 2 without a valid +0x8C, is drawn from the target's value; the range of parked combat (`0x2ffec`) and of map visibility (`0x2ee60`, 2-D) ([parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
 | +0x10–+0x53 | collision shape (§3.5.1) | Confirmed (code) | see §3.5.1 |
 | +0x54 | i32 | Confirmed (code): signed divide in `0x3060c`, unsigned divide in `0x39664`; signed compare in `0x398ec`; `FILD` in `0x2b814` | convert |
-| +0x58 | int32 | Confirmed (code, width): integer subtract in `0x3060c`, `0x30b20`, `0x30bc0` | convert |
+| +0x58 | int32 | Confirmed (code, width): integer subtract in `0x3060c`, `0x30b20`, `0x30bc0`. Use (P3-06/03): the energy operand E = +0x58 − (+0x64[level 1] + +0x78[level 2]) of the player's maximum speed ([maximum speed](./executable.md#throttle-maximum-speed-and-speed-matching-p3-0603)); Likely the generator energy | convert |
 | +0x5C | i32 | Confirmed (code): integer multiply and divide in `0x3060c`; signed compares in `0x3071c`, `0x30994`; `FILD` in `0x434ce`, `0x44070` | convert |
 | +0x60 | i32 | Confirmed (code): signed divide in `0x3071c`, `0x30994` | convert |
-| +0x64–+0x70 | int32 × 4 | Confirmed (code, width): `0x3060c`, `0x30b20`, `0x30bc0` index it with an object level 0–3 and subtract the element | convert |
+| +0x64–+0x70 | int32 × 4 | Confirmed (code, width): `0x3060c`, `0x30b20`, `0x30bc0` index it with an object level 0–3 (object +0x34) and subtract the element. Likely (P3-06/03): the shield allocation per recharge level | convert |
 | +0x74 | i32 | Confirmed (code): `0x3060c`; signed compare in `0x3071c` | convert |
-| +0x78–+0x84 | int32 × 4 | Confirmed (code, width): as +0x64, with a second object level | convert |
-| +0x88 | i32 | Confirmed (code): integer multiply in `0x3060c`; signed divide in `0x30e0c` | convert |
+| +0x78–+0x84 | int32 × 4 | Confirmed (code, width): as +0x64, with a second object level (object +0x38). Likely (P3-06/03): the gun allocation per recharge level | convert |
+| +0x88 | i32 | Confirmed (code): integer multiply in `0x3060c`; signed divide in `0x30e0c`. Use (P3-06/03): the divisor that turns the energy E into the player's energy-limited maximum speed, and a factor of the threshold T below which that branch applies ([maximum speed](./executable.md#throttle-maximum-speed-and-speed-matching-p3-0603)) | convert |
 | +0x8C | i32 | Confirmed (code): signed compare in `0x3071c` | convert |
 | +0x90 | i32 | Confirmed (code): signed compare in `0x3071c`; zero in all 480 | convert |
 | +0x94 | pointer to pairs (§3.6) | Confirmed (code): `0x30d2c` | array; null when +0x98 is 0 |
 | +0x98 | i32 pair count | Confirmed (code): signed compare in `0x30d2c` | array length |
 | +0x9C | i32 | Confirmed (code): `FILD` in `0x67938`, `0x4f550`; signed compare in `0x398ec`; integer arithmetic in `0x38f20`, `0x39664`, `0x4d50c`, `0x614a8`, `0x61f20` | convert |
-| +0xA0 | f32 | Confirmed (code): float compare and multiply in `0x2f314` | convert |
-| +0xA4 | int32 | Confirmed (code, width): integer multiply in `0x2be00`; `!= 0` test and shift left in `0x2bf08`; written only by `0x28110` (§1) | convert |
-| +0xA8 | i32 | Confirmed (code): `FILD` in `0x50068` | convert |
-| +0xAC, +0xB0, +0xB4 | f32 each | Confirmed (code): `0x21dd0` multiplies control inputs by them; `0x21fd8` | convert |
-| +0xB8 | f32 | Confirmed (code): `FLD` in `0x3060c`, `0x30e0c`, `0x2f314`, `0x50508`; copied into missile +0x08 by `0x2cf38` | convert |
-| +0xBC | f32 | Likely (data) | convert |
-| +0xC0 | f32 | Likely (data) | convert |
-| +0xC4 | int32 | Confirmed (code, width): dword `!= 0` test in `0x21cf8`, whose result has no effect | convert |
-| +0xC8 | int32 | Likely (data): the same small value in all 480 craft records | convert |
+| +0xA0 | f32 | Confirmed (code): float compare and multiply in `0x2f314`. Use (P3-06/04): the length cap of the parked Warp jump, applied when it is above a fixed lower bound and below the goal distance ([parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
+| +0xA4 | i32 | Confirmed (code): integer multiply in `0x2be00`; `!= 0` test and shift left in `0x2bf08`; signed `> 0` test (`TEST`, `JLE`) and integer add with +0xA8 in `0x2ff98`, the parked path's Warp eligibility (P3-06/04, [parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)); written only by `0x28110` (§1). Typed int32 until the signed test was found; every baseline value is non-negative, so the converted values do not change | convert |
+| +0xA8 | i32 | Confirmed (code): `FILD` in `0x50068`; integer add and shift in `0x2ff98` and shift in `0x2f298`: +0xA8 + +0xA4 seconds after +0xC8 a parked craft may Warp again, and +0xA8 seconds is the length of its Warp transit (P3-06/04, [parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
+| +0xAC, +0xB0, +0xB4 | f32 each | Confirmed (code): `0x21dd0` multiplies control inputs by them; `0x21fd8`. Uses (P3-06/02): the full-deflection rotation rates about row 1 (+0xAC, pitch), row 3 (+0xB0, roll) and row 2 (+0xB4, yaw), stored in block +0x60, +0x68 and +0x64 ([flight controls](./executable.md#flight-controls-and-rotation-p3-0602)). Unit Likely radians per second: every record converts to whole degrees per second, and their order matches the printed manual's per-craft pitch, roll and yaw figures except one roll value (data and manual) | convert |
+| +0xB8 | f32 | Confirmed (code): `FLD` in `0x3060c`, `0x30e0c`, `0x2f314`, `0x50508`; copied into missile +0x08 by `0x2cf38`. Uses (P3-06/01, 03, 04): the content base of the maximum speed, which `0x30e0c` returns except in the player's energy-limited branch, and a factor of that branch's threshold; the reference maximum that the block builders `0x21794`, `0x218e8` and `0x21a3c` copy to block +0x70 for the speed ratio; the speed of parked travel in `0x2f314` ([maximum speed](./executable.md#throttle-maximum-speed-and-speed-matching-p3-0603), [movement stage](./executable.md#movement-stage-and-integration-p3-0601), [parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
+| +0xBC | f32 | Confirmed (code): `FLD`/`FMUL` in `0x222f0` and `0x22600`: the acceleration toward a higher commanded speed, units/s² (P3-06/01, [movement stage](./executable.md#movement-stage-and-integration-p3-0601)); formerly Likely (data) | convert |
+| +0xC0 | f32 | Confirmed (code): `FLD`/`FMUL` in `0x222f0`: the deceleration toward a lower commanded speed, units/s² (P3-06/01, [movement stage](./executable.md#movement-stage-and-integration-p3-0601)); formerly Likely (data) | convert |
+| +0xC4 | int32 | Confirmed (code, width): dword `!= 0` tests in `0x222f0`, `0x22600` and `0x21cf8`. Use (P3-06/01): when non-zero, the steady row-2 (yaw) rate, scaled by the speed ratio, is coupled into the row-3 rotation while no timed row-3 rotation runs ([movement stage](./executable.md#movement-stage-and-integration-p3-0601)). Corrected: `0x21cf8` returns that rate in ST0 and the cockpit presentation `0x46fe0` uses it; the earlier "whose result has no effect" was wrong | convert |
+| +0xC8 | int32 | Confirmed (code, width): dword `!= 0` tests in `0x222f0` and `0x22600`. Use (P3-06/01): when non-zero, the rotation angle per frame is rate × step; when zero, rate × speed ratio × step ([movement stage](./executable.md#movement-stage-and-integration-p3-0601)). Formerly Likely (data); non-zero in all 480 craft records | convert |
 | +0xCC | pointer to mount list 0 (§3.6) | Confirmed (code): `0x2d400`, `0x2e310`, `0x2e3c8`, `0x2e438`, `0x2e4ec` | list of mount indices; null when +0xD0 is 0 |
 | +0xD0 | i32 list-0 count | Confirmed (code): signed compares | list length |
 | +0xD4 | pointer to mount list 1 | Confirmed (code): `0x2d400`, `0x2e150`, `0x2e1fc`, `0x2e264`, `0x2e4ec` | as +0xCC |
@@ -171,7 +171,9 @@ Craft records are indexed by kind bit (§1). Missile body records use the same l
 
 `0x2d400` builds one runtime state (0x50 bytes) per mount and selects the current mount of each list through `0x2e990` when that list's count is non-zero ([weapon records](./executable.md#weapon-records-and-the-first-missions-shooters-p2-1230)). A zero pointer occurs exactly when its count is zero (all 480 records); the code tests the count before the pointer.
 
-**Body records (Confirmed, data):** the 216 body records contain no relocations. Only +0xAC, +0xB0, +0xB4, +0xB8, +0xBC and +0xC8 are non-zero in any of them; every pointer position is zero and every count is zero. **Handling:** converted with the craft-record types above; the pointer and count positions must be zero (no target structure exists for a body), otherwise `unsupported-payload`.
+**Body records (Confirmed, data):** the 216 body records contain no relocations. Only +0xAC, +0xB0, +0xB4, +0xB8, +0xBC and +0xC8 are non-zero in any of them; every pointer position is zero and every count is zero. +0xC8 is zero in 192 of them, so most missiles turn at the speed ratio × step, and +0xC4 is zero in all (P3-06/01, local count).
+
+**Craft records in motion (Confirmed, data; P3-06/01):** in CINF 4037, +0xC4 is non-zero in 10 of the 20 craft records, including kind bits 0 (the player) and 1 (the wingman), so a yaw input also rolls those craft. In all 24 CINF, the records of kind bits 15–18 have +0xB8, +0xBC and +0xC0 all zero, so they are built with speed 0 and never accelerate; kind bit 14 has +0xBC zero. **Handling:** converted with the craft-record types above; the pointer and count positions must be zero (no target structure exists for a body), otherwise `unsupported-payload`.
 
 #### 3.5.1 Collision shape, 68 bytes
 
@@ -290,7 +292,9 @@ Code-side constants of the data object, by address and type (values not recorded
 
 ## 6. Open questions
 
-- Field meanings are Unconfirmed beyond the uses stated above (U-001). Craft +0x08, +0xBC, +0xC0, +0xC8 and gun +0x18, +0x20 have no traced reader; their types rest on the data.
+- Field meanings are Unconfirmed beyond the uses stated above (U-001). Craft +0x08 and gun +0x18, +0x20 have no traced reader; their types rest on the data. P3-06/01 found the readers of craft +0xBC, +0xC0 and +0xC8.
+- The meanings given as Likely for +0x58, +0x64–+0x84 (the energy allocation) and the unit of +0xAC–+0xB4 rest on the arithmetic, the data and the printed manual; the energy rules belong to P3-07.
+- +0xA4 is now typed i32 (above); the project reader `craft-info.ts` still reads it as int32, which rejects a value with bit 31 set. No baseline value is affected; aligning the reader is P3-03's.
 - Body record positions other than the six non-zero ones are typed only through the shared layout.
 
 Evidence: ignored `local/research/p3-03/craft/`: `nob.ts`, `walk-cinf.ts`, `walk-debris.ts`, `tabl4003.ts`, `survey.ts`, `survey2.ts`, `zeros.ts`, `checks.ts`, `maxima.ts`, `floats.ts`, `order.ts` with `out/*.json` and `out/survey.txt` (structure, classes and counts only); the Ghidra scripts `ghidra_scripts/CraftProbe.java` and `CraftFlow.java` run through `probe.sh` with outputs `out/p1`–`out/p18` and `out/flow12b`, queried by `flowq.ts`, `q-roots.ts`, `q-aux.ts` and `q-mount.ts`. Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and calling conventions set in memory were discarded. Widths and operations were read from native instructions or from the decompiler's p-code operations on them.
