@@ -105,7 +105,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [13-targeting-sensing.md](./subtasks/13-targeting-sensing.md) | 01, 12, 30 | completed |
 | [14-weapons-firing.md](./subtasks/14-weapons-firing.md) | 02, 12, 30 | in-progress |
 | [15-damage-subsystems.md](./subtasks/15-damage-subsystems.md) | 04, 12, 14 | pending |
-| [16-energy-displays.md](./subtasks/16-energy-displays.md) | 04, 12, 13, 30 | pending |
+| [16-energy-displays.md](./subtasks/16-energy-displays.md) | 04, 12, 13, 30 | in-progress |
 | [17-projectile-hits.md](./subtasks/17-projectile-hits.md) | 03, 14, 15, 18 | pending |
 | [18-destruction-fragments.md](./subtasks/18-destruction-fragments.md) | 06, 07, 12, 15 | pending |
 | [19-collisions.md](./subtasks/19-collisions.md) | 03, 15, 18 | pending |
