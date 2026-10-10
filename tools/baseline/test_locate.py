@@ -163,6 +163,7 @@ class LocateTests(unittest.TestCase):
             check_recipe_image(parse_recipe(json.dumps(document)), self.image)
 
         check()
+        check({"fields/0/address": {"low": 0x2C}})  # a linear page-0 field names no LE object
         cases = (
             ("object-missing", {"fields/0/address/object": 5}),
             ("location-outside-object", {"fields/0/address/offset": 4 * 4096 - 2}),

@@ -2,7 +2,8 @@
 contract).
 
 A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, LE object
-locations, scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy (fixed
+locations (or `low` linear addresses in page 0, the real-mode vectors and BIOS data area), scalar types, unit labels
+and run limits, plus the few allowlisted settings of its private copy (fixed
 emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06 subtask 22):
 at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field (`inputs.py`).
 Every key is known, every value has a fixed JSON type and every string is a restricted token, so a recipe cannot carry
@@ -16,6 +17,7 @@ import struct
 from dataclasses import dataclass
 
 from inputs import REGISTERS, SHIFT_BITS
+from le_image import PAGE_SIZE
 from reasons import BaselineError
 
 SCHEMA_VERSION = 1
@@ -67,7 +69,7 @@ class Location:
 
 @dataclass(frozen=True)
 class Address:
-    object: int
+    object: object  # LE object number, or None for a linear address in page 0 (`low`)
     offset: int
     pointers: tuple  # non-negative offsets added to each dereferenced 32-bit pointer
 
@@ -194,7 +196,7 @@ class Recipe:
 
     def objects(self):
         """LE objects whose runtime base the readings and device writes need."""
-        return frozenset([field.address.object for field in self.fields.values()]
+        return frozenset([field.address.object for field in self.fields.values() if field.address.object is not None]
                          + [device.object for device in self.devices.values() if device.object is not None])
 
 
@@ -412,6 +414,12 @@ def _fields(value, limits):
         required = item.get("required", True)
         if type(required) is not bool:
             raise BaselineError("recipe-type-invalid", path + ".required")
+        if type(item["address"]) is dict and "low" in item["address"]:  # linear page 0: vectors, BIOS data area
+            address = _object(item["address"], path + ".address", ("low",))
+            location = Address(None, _int(address["low"], path + ".address.low", 0, PAGE_SIZE - SCALAR_SIZES[kind],
+                                          "recipe-address-invalid"), ())
+            fields[field_id] = Field(field_id, location, kind, unit, required)
+            continue
         address = _object(item["address"], path + ".address", ("object", "offset"), ("pointers",))
         pointers = address.get("pointers", [])
         if type(pointers) is not list:

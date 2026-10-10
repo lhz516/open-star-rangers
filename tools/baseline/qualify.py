@@ -118,11 +118,19 @@ def read_error(result, size):
     return data_error(getattr(result, "data", None), size)
 
 
+def field_linear(field, mapping, size):
+    """Linear address of a field's first read: its LE object location, or for a `low` field its linear address in
+    page 0 as given."""
+    if field.address.object is None:
+        return field.address.offset
+    return mapping.linear(field.address.object, field.address.offset, size)
+
+
 def walk_field(field, mapping, port, budget):
     """One read of a field: each pointer hop, then the scalar. Stops at the first unusable hop."""
     pointers = field.address.pointers
     try:
-        linear = mapping.linear(field.address.object, field.address.offset, POINTER_SIZE if pointers else field.size)
+        linear = field_linear(field, mapping, POINTER_SIZE if pointers else field.size)
     except BaselineError as error:
         return FieldPass((), error.code)
     hops = []
@@ -166,7 +174,7 @@ def collect_pause(recipe, pause_id, mapping, port, budget):
     for item in fields:
         size = POINTER_SIZE if item.address.pointers else item.size
         try:
-            static.update(page_range(mapping.linear(item.address.object, item.address.offset, size), size))
+            static.update(page_range(field_linear(item, mapping, size), size))
         except BaselineError:
             pass  # walk_field records the reason
     before = port.state(frozenset(static))

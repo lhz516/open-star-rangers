@@ -98,7 +98,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [06-destruction-fragments-research.md](./subtasks/06-destruction-fragments-research.md) | — | completed |
 | [07-interfaces-camera-numerics-research.md](./subtasks/07-interfaces-camera-numerics-research.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | in-progress |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 03, 04, 06 | completed |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | completed |
 | [12-rule-data-combat-init.md](./subtasks/12-rule-data-combat-init.md) | 02, 04, 06, 11 | completed |
@@ -162,6 +162,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 新增 34（追踪导弹的 AI 程序输入）：** 32 发现追踪导弹的程序读取内置 AI 程序记录 1、2 的三个字段，而 CR-01 的世界创建输入没有 AI 程序。依用户对新增解除阻塞子任务与修改契约的预先授权，新增 34：修订 CR-01 并接入 `aiPrograms` 输入（推荐方案见 34），20 改为依赖 34。34 依赖 33（与其写入范围重叠的 `create-world.ts` 及 App 的输入路径）。
 - **2026-10-10 — 33 已集成（合并提交 `efbc762`，快进）：** 33 在其分支上把 P3-06 的 `fb6ea0b`（含 `main` 的 P3-04）合并到本分支，并让 P3-04 的任务输入、任务所有者、Runtime、Session、事件总线、开发工具、replay 核对与 e2e 接入 P3-07 的世界创建输入与事件；协调者快进集成，`pnpm check` 通过（7,782 项）。`RECORDING_MAX_BYTES` 随最长事件 `hit`（720 字节）变为 427,820,671。P3-06 此后的提交（`42db4ec`：B-008、键位与 `tools/baseline/`）未合并：09 正在使用 `tools/baseline/`，待 09 集成后再合并。
 - **2026-10-10 — 从 22 拆出 35：** 22 原本等 20，而其中大部分接线只依赖已完成的 13 至 19 与 21。依用户对新增解除阻塞子任务的预先授权与临时提高的并行上限，协调者把非导弹的接线拆到 35：玩家更新的两处调用、`linear`/`spinning` 的分派与弹丸命中检测、停放交战、把跳过移动阶段的测试改为正式 `step`。22 只保留导弹的接线，依赖改为 08、20、35。
+- **2026-10-10 — 09 的执行：** 09 以变体配方 C、M、X、Y、V 代替单纯的重复运行：锁定需要导弹 3（导弹 1 只能尾追），爆炸需要炮火。排除三次运行：两次因宿主显示器唤醒使 DOSBox-X 崩溃，一次因等待超时。基准锁与 P3-06 协商共用。协调者批准 `tools/baseline/` 增加 `low` 字段地址（线性第 0 页），用于读取线性地址 0x2C（31 的读数）。
 
 ## 审批
 

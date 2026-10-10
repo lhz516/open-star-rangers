@@ -65,6 +65,17 @@ class QualifyTests(unittest.TestCase):
         self.assertEqual(len(reads), 2)  # repeated within the pause
         self.assertEqual(len(self.judge("end")), 2)
 
+    def test_low_page_field_reads_its_linear_address(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"].append({"id": "vector", "address": {"low": 0x2C}, "type": "f32", "unit": "raw"})
+        document["pauses"][0]["fields"].append("vector")
+        self.recipe = parse_recipe(json.dumps(document))
+        self.process.poke(0x2C, struct.pack("<f", 12.5))
+        samples = self.judge()
+        self.assertTrue(samples["vector"].qualified)
+        self.assertEqual(samples["vector"].value, 12.5)
+        self.assertEqual([read for read in self.process.reads if read == (0x2C, 4)], [(0x2C, 4), (0x2C, 4)])
+
     def test_zero_ticks_is_qualified(self):
         self.process.poke_u32(DATA + 0x800, 0)
         samples = self.judge()

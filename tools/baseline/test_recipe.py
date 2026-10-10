@@ -181,6 +181,24 @@ class RecipeTests(unittest.TestCase):
         self.assertRejected("recipe-value-invalid",
                             self.mutated(lambda d: d["pauses"][0]["stop"].update(kind="watch")))
 
+    def test_low_page_fields(self):
+        def add_low(document, address, kind="f32"):
+            document["fields"].append({"id": "vector", "address": address, "type": kind, "unit": "raw"})
+            document["pauses"][0]["fields"].append("vector")
+
+        recipe = parse_recipe(text(self.mutated(lambda d: add_low(d, {"low": 0x2C}))))
+        self.assertIsNone(recipe.fields["vector"].address.object)
+        self.assertEqual(recipe.fields["vector"].address.offset, 0x2C)
+        self.assertEqual(recipe.fields["vector"].address.pointers, ())
+        self.assertEqual(recipe.objects(), frozenset({4}))
+        parse_recipe(text(self.mutated(lambda d: add_low(d, {"low": 0xFFC}))))
+        parse_recipe(text(self.mutated(lambda d: add_low(d, {"low": 0xFFF}, "u8"))))
+        for address in ({"low": 0xFFD}, {"low": -1}, {"low": 1 << 32}):
+            self.assertRejected("recipe-address-invalid", self.mutated(lambda d: add_low(d, address)))
+        self.assertRejected("recipe-type-invalid", self.mutated(lambda d: add_low(d, {"low": "0x2C"})))
+        for address in ({"low": 0x2C, "pointers": [0]}, {"low": 0x2C, "object": 4}):
+            self.assertRejected("recipe-key-unknown", self.mutated(lambda d: add_low(d, address)))
+
     def test_empty_recipe_parts(self):
         self.assertRejected("recipe-empty", self.mutated(lambda d: d.update(pauses=[])))
         self.assertRejected("recipe-empty", self.mutated(lambda d: d.update(fields=[])))
