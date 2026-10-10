@@ -60,6 +60,12 @@ updated: 2026-10-10
 - `src/core/systems/displays.test.ts`：显示步测试（新建）。
 - `src/core/projections/projection.ts`：运动组的 `speedLimitStatus` 改为 `'live'`（P3-06 的运动组若在别的文件，只改该处）。
 - `src/core/projections/projection.test.ts`：`speedLimitStatus` 的断言。
+- `src/core/world/world.test-support.ts`：机体测试夹具的挂点块按其种类的合成记录构建（帧尾状态显示读取挂点状态）。
+- `src/core/systems/commands.test.ts`、`src/core/world/world.test.ts`：`energy`、`damage-report` 不再是未实现命令。
+- `src/core/systems/pipeline.test.ts`：阶段表加入 `energy`、`frame-end` 的 `run`，以及帧尾右显示屏清除对既有测试的影响。
+- `src/core/systems/targeting.test.ts`：被移除目标的静默丢弃改在无显示屏的视角下测试。
+- `src/core/systems/spawn.test.ts`、`src/core/replay/snapshot.test.ts`：实例化当帧的 `statusDisplay.redraw` 被帧尾状态步消费（CR-10）。
+- `src/core/systems/flight-control.ts`：等级键改变最高速度后，同一 tick 中其后的 `+`/`−` 按已投递的请求重新读回指令速度（P3-06 的读回规则）。
 
 ## 验收标准
 

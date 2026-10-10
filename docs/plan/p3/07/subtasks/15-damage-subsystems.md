@@ -50,6 +50,8 @@ updated: 2026-10-10
 - `src/core/rules/damage.test.ts`：护盾与船体测试（新建）。
 - `src/core/rules/subsystems.ts`：子系统选择与特例（新建）。
 - `src/core/rules/subsystems.test.ts`：子系统测试（新建）。
+- `src/core/systems/destruction.ts`：只新增 15 调用的毁伤入口 `destroyEntity`（18 实现前不改变状态）。
+- `docs/original/formats/executable.md`：`0x21bd4` 的扰动偏置算术与 D2/D4 的 `noAttacker` 记法（已确认，代码）。
 
 ## 验收标准
 
