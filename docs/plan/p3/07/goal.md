@@ -54,7 +54,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 | --- | --- | --- |
-| S-01 | 08、11 | 08：P3-02 修订获批；11：类型、序列化、比较器与版本的 Node 测试；29：契约与 spec、P3-02 一致 |
+| S-01 | 08、11、33 | 08：P3-02 修订获批；11：类型、序列化、比较器与版本的 Node 测试；29：契约与 spec、P3-02 一致 |
 | S-02 | 12 | 12：规则数据输入、语义校验、载入变换与战斗初值的 Node 测试；25：真实内容 |
 | S-03 | 13、23 | 13：目标与雷达的 Node 测试；23：`combat` 分区的消费者契约测试 |
 | S-04 | 14 | 14：挂点、选择、开火与发射的 Node 测试 |
@@ -82,7 +82,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | AC-14 | 25 | 25：本地真实内容两种僚机配置的私有核对 |
 | AC-15 | 01–07、26、30、31 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
 | AC-16 | 09、10、26、27 | 10：判据获批；26：≥2 次合格运行；27：单次转移与连续行为的结论 |
-| AC-17 | 28 | 28：模块说明与交接；29：`pnpm check`、链接与 `updated:` |
+| AC-17 | 28、33 | 28：模块说明与交接；29：`pnpm check`、链接与 `updated:` |
 
 ## 子任务跟踪
 
@@ -117,11 +117,12 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | pending |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | pending |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26 | pending |
-| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27 | pending |
+| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 25, 27, 33 | pending |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | pending |
 | [32-missile-steering-guidance-rules.md](./subtasks/32-missile-steering-guidance-rules.md) | 03, 12, 14 | in-progress |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
+| [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -154,6 +155,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 玩家更新中的请求次序（14 的决定）：** 原版一次玩家更新中依次投递按键消息（消息 2、0x80000）、0x20000、扳机的消息 8，最后是自动选敌（T3；CR-07 已写明扳机在 0x20000 之后）。P3-06 的玩家更新把 control/match 请求缓存到命令循环之后再投递，因此 14 让玩家命令的发射请求经 `RequestQueue.defer` 缓存、在玩家更新返回后 `release`，排在 P3-06 的请求之后；AI 与自动挂点的发射仍立即投递。只影响一个 tick 内的请求与事件次序，不改变状态结果。22 接入自动选敌时须放在 `release` 之后。协调者批准 14 为此扩大写入范围（`pipeline.ts`）。
 - **2026-10-10 — 16 修正速度读回：** P3-06 的命令循环在判定前只读一次指令速度；同一 tick 中等级键（`s`/`S`/`g`/`G`）重算最高速度并经 `0x21d88` 改写指令速度后，其后的 `+`/`−` 读到旧值，与原版（每帧一个键）及 P3-06 自己的读回规则不符。协调者批准 16 扩大写入范围，在 `flight-control.ts` 中每判定一个命令后按已投递的请求重新读回。接受的残余差异：先投递的油门请求在请求处理时按新的最高速度应用（[−, S] 同 tick），与 CR-05 冲突 35 的“已投递的请求不被后来的命令改写”一致。已通知 P3-06。
 - **2026-10-10 — 临时把并行 worker 上限改为 5，并从 20 拆出 32：** 用户指示临时把并行 worker 的上限改为 5，为尚可开始的子任务另开会话。依赖已满足的只有 23。依用户对新增解除阻塞子任务的预先授权，协调者把 20 中不依赖 18 与 31 的纯规则（共享转向模块与制导规则）拆为 32（依赖 03、12、14），20 改为依赖 32，写入范围只留 `missiles.ts` 及其测试。
+- **2026-10-10 — 新增 33（合并 main 后接入 P3-04）：** P3-04 已快进合入 `main`，P3-06 已把 `main` 合入其分支并接入 P3-04 的调用者（其子任务 24）。再合并 P3-06 分支时，P3-04 的世界创建、录制与 replay 调用者需要 P3-07 的规则输入。依用户对新增解除阻塞子任务的预先授权，新增 33：由 worker 在其分支上完成合并与接入，作为一个合并提交，协调者以 `git merge` 集成（不用 cherry-pick）。28 改为依赖 33。
 
 ## 审批
 
