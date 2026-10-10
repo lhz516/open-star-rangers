@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-001, B-003, B-005, U-010, U-
 |---|---|---|
 | [01-synthetic-mission-package.md](./subtasks/01-synthetic-mission-package.md) | — | completed |
 | [02-formal-runtime.md](./subtasks/02-formal-runtime.md) | — | completed |
-| [03-formal-session.md](./subtasks/03-formal-session.md) | 02 | pending |
+| [03-formal-session.md](./subtasks/03-formal-session.md) | 02 | in-progress |
 | [04-ports-platform-adapters.md](./subtasks/04-ports-platform-adapters.md) | — | completed |
 | [05-mission-flow-owner.md](./subtasks/05-mission-flow-owner.md) | 01, 03, 04 | pending |
 | [06-ui-bridge-feedback.md](./subtasks/06-ui-bridge-feedback.md) | 03 | pending |
