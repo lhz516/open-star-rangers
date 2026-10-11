@@ -7,11 +7,12 @@ import { moment } from './game-input.test-support.ts';
 import type { InputMoment } from './input-state.ts';
 import type { CapabilityState, MapInputStatus } from './input-status.ts';
 import { MapInput, type MapInputOptions, type MapInputPolicy } from './map-input.ts';
+import { MAP_INPUT_POLICY } from './map-input-policy.ts';
 
 // P3-05 subtask 22 (Node): the map input's opening, qualification, commands, held-button repeat and Pointer Lock
 // handling against a host the test drives (docs/plan/p3/05/spec.md 战略地图输入 and checkpoint K (地图) in 审批; S-11;
-// AC-12 and AC-13, the Node part). Synthetic geometry and explicit synthetic policies only: the production start rule
-// and interval are subtask 26's.
+// AC-12 and AC-13, the Node part). Synthetic geometry and policies exercise the injected rules; the production policy
+// is covered below to ensure its approved start and repeat values take effect.
 
 /** A 640×480 logical screen with a 320×320 main map at (20, 40), shown in an 800×600 frame 100 px from the left. */
 const GEOMETRY: MapInputGeometry = Object.freeze({
@@ -479,6 +480,16 @@ describe('held left button', () => {
     s.frame(19);
     s.frame(20);
     expect(s.take()).toEqual(['hover 0.25,0.75 @10', 'select 0.25,0.75 @10', 'select 0.25,0.75 @15', 'select 0.25,0.75 @20']);
+  });
+
+  it('uses the production policy start and eight-clock-unit repeat interval', () => {
+    const s = locked({ policy: MAP_INPUT_POLICY });
+    expect(s.position()).toEqual(at((159.5 - 20) / 320, (159.5 - 40) / 320));
+    s.press();
+    s.frame(17);
+    expect(s.take()).toEqual(['hover 0.4359375,0.3734375 @10', 'select 0.4359375,0.3734375 @10']);
+    s.frame(18);
+    expect(s.take()).toEqual(['select 0.4359375,0.3734375 @18']);
   });
 
   it('submits nothing on release, and ends the repeat on every listed condition until a new press', () => {

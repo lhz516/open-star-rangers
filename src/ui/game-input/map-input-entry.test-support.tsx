@@ -5,7 +5,7 @@
  *
  * Production components, unchanged: the input consumer (`createInputConsumer`) with its map input and capabilities, the
  * browser keyboard source, the browser Pointer Lock port, the map cursor drawer on its browser canvas, the map
- * geometry's checks and conversions and `mapStartPosition`, `GameInputZone`, the formal Session on the browser session
+ * geometry's checks and conversions and the production map policy, `GameInputZone`, the formal Session on the browser session
  * host, and the game store, bridge and command feedback.
  *
  * Synthetic, test support only:
@@ -17,7 +17,7 @@
  * - **Bindings:** the TEST binding table of `game-input.test-support.ts`, not the production table (subtask 19).
  * - **Geometry:** a 320×240 logical screen whose main map spans (16, 8)–(256, 200), shown in the 4:3 frame
  *   `computeViewportLayout` fits into the input zone; the test may replace it with none or an inverted one.
- * - **Policy:** checkpoint K's start formula through `mapStartPosition`, and a repeat interval of 8 clock units.
+ * - **Policy:** the production policy finalised at checkpoint K.
  * - **Pointer Lock host:** the browser host, whose request the test may hold open (`pending`) until it grants or refuses
  *   it, refuse at once (`refuse`) or report unsupported (`unsupported`); `native` leaves it as it is.
  * - **Submission:** each command passes through to the real command feedback, unless the test asked that the next
@@ -41,7 +41,7 @@ import { createBrowserKeyboardSource } from '../../platform/input/browser-keyboa
 import { createPointerLock, type PointerLockHost } from '../../platform/input/pointer-lock.ts';
 import { createBrowserMapCursor } from '../../render/map/browser-map-cursor.ts';
 import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
-import { mapStartPosition, type MapInputGeometry, type MapPosition } from '../../render/map/map-input-geometry.ts';
+import type { MapInputGeometry, MapPosition } from '../../render/map/map-input-geometry.ts';
 import { computeViewportLayout } from '../../render/viewport/viewport-layout.ts';
 import { GameInputZone } from '../mission/GameInputZone.tsx';
 import { createGameCommandFeedback } from '../game/game-command-feedback.ts';
@@ -50,7 +50,7 @@ import { createGameStore } from '../game/game-store.ts';
 import { TEST_BINDINGS } from './game-input.test-support.ts';
 import type { InputContext } from './input-action.ts';
 import { createInputConsumer, type GameInputConsumer } from './input-consumer.ts';
-import type { MapInputPolicy } from './map-input.ts';
+import { MAP_INPUT_POLICY } from './map-input-policy.ts';
 
 export type LockMode = 'native' | 'pending' | 'refuse' | 'unsupported';
 export type GeometryMode = 'live' | 'null' | 'inverted';
@@ -113,7 +113,6 @@ const SCREEN = Object.freeze({ width: 320, height: 240 });
 const MAIN_MAP = Object.freeze({ left: 16, top: 8, right: 256, bottom: 200 });
 const INVERTED_MAP = Object.freeze({ left: 256, top: 8, right: 16, bottom: 200 });
 const NO_FRAME = Object.freeze({ left: 0, top: 0, width: 0, height: 0 });
-const POLICY: MapInputPolicy = Object.freeze({ start: ({ mainMap }: MapInputGeometry) => mapStartPosition(mainMap), repeatInterval: 8 });
 const OWNER_ID = 1;
 
 const text = (cause: unknown): string => (cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause));
@@ -250,7 +249,7 @@ function createEntry(zone: () => HTMLElement): MapInputEntry {
           },
         }),
         map: {
-          policy: POLICY,
+          policy: MAP_INPUT_POLICY,
           geometry,
           cursor: () => drawer,
           movementScale: () => movementScale,

@@ -19,6 +19,7 @@ import { createGameSessionBridge } from '../../ui/game/game-session-bridge.ts';
 import { createGameStore, type GameStoreWriter } from '../../ui/game/game-store.ts';
 import { GAME_INPUT_BINDINGS, KEYBOARD_LOCK_CODES } from '../../ui/game-input/bindings.ts';
 import { createInputConsumer, type GameInputConsumer } from '../../ui/game-input/input-consumer.ts';
+import { MAP_INPUT_POLICY } from '../../ui/game-input/map-input-policy.ts';
 import { createBrowserMapCursor } from '../../render/map/browser-map-cursor.ts';
 import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
 import type { MapInputGeometryPort } from '../../render/map/map-input-geometry.ts';
@@ -78,7 +79,7 @@ function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHol
     pointerLock: () => ports.createPointerLock(() => inputZone.current),
     keyLockCodes: KEYBOARD_LOCK_CODES,
     map: {
-      policy: null,
+      policy: MAP_INPUT_POLICY,
       geometry: mapGeometry,
       cursor: () => mapCursor,
       movementScale: () => 1,
