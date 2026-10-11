@@ -123,5 +123,6 @@ describe('slice gap copy (G IDs)', () => {
     expect(MISSION_OBJECTIVES.status).toMatch(/does not implement these rules yet/);
     expect(MISSION_OBJECTIVES.sources.join('\n')).toMatch(/Confirmed: docs\/original\/formats\/executable\.md[\s\S]*Likely: docs\/original\/behavior\/B-003/);
     expect(MISSION_SKELETON).toMatch(/formal runtime skeleton, not yet a playable slice/);
+    expect(MISSION_SKELETON).not.toMatch(/game controls/);
   });
 });

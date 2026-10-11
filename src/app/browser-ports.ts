@@ -1,8 +1,12 @@
 import { BROWSER_AUDIO, BROWSER_PAGE_LIFECYCLE } from '../platform/audio/browser-audio-controller.ts';
+import { createBrowserFullscreen } from '../platform/browser/browser-fullscreen.ts';
+import { readBrowserPlatformFamily } from '../platform/browser/browser-platform-family.ts';
 import { createBrowserSeedSource } from '../platform/browser/browser-seed.ts';
 import { createBrowserSessionHost } from '../platform/browser/browser-session-host.ts';
 import { createBrowserClock, createBrowserTimer } from '../platform/browser/browser-timer.ts';
 import { createLeaveGuard } from '../platform/browser/leave-guard.ts';
+import { createBrowserKeyboardSource } from '../platform/input/browser-keyboard-source.ts';
+import { createBrowserPointerLock } from '../platform/input/browser-pointer-lock.ts';
 import { createResourceCache } from '../platform/storage/browser-resource-cache.ts';
 import { browserImportWorkerFactory } from '../platform/workers/browser-import-worker.ts';
 import { createBrowserWebGLSurface } from '../render/webgl/browser-webgl-surface.ts';
@@ -34,6 +38,10 @@ export function createBrowserPorts(): AppPorts {
       leaveGuard: createLeaveGuard(window),
       createSessionHost: createBrowserSessionHost,
       createFileSave,
+      createKeyboardSource: createBrowserKeyboardSource,
+      createFullscreen: createBrowserFullscreen,
+      createPointerLock: createBrowserPointerLock,
+      platformFamily: readBrowserPlatformFamily,
     }),
     reportError: (error: unknown) => { reportError(error); },
   });

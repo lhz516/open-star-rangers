@@ -26,6 +26,14 @@ export interface TestEntryOptions {
   readonly capacity?: 'insufficient';
   /** `unavailable` for audio without Web Audio. */
   readonly audio?: 'unavailable';
+  /** Test-only fullscreen request behavior. */
+  readonly fullscreen?: 'unsupported' | 'pending' | 'rejected' | 'failed';
+  /** Test-only Keyboard Lock behavior. */
+  readonly keyboardLock?: 'unsupported' | 'pending' | 'rejected' | 'failed';
+  /** Test-only Pointer Lock behavior. */
+  readonly pointerLock?: 'unsupported' | 'pending' | 'rejected' | 'failed' | 'target-mismatch';
+  /** Test-only platform family for the Alt+F4 notice. */
+  readonly platform?: 'mac' | 'windows' | 'linux' | 'other';
   /**
    * Comma-separated cache operations, such as `commit,restore`, whose settled results wait until `releaseCacheResults`
    * delivers them (P2-12 F-12).

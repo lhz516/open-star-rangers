@@ -9,10 +9,9 @@
  * input zone and the shell adds the input's notices and a full screen button for the whole page. Right after the
  * departure ended or Continue resumed the run, focus starts on the zone instead when `useShellFocus` allows.
  */
-import { useState } from 'react';
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import { GameInputZone } from './GameInputZone.tsx';
-import { focusHintShown, fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
+import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
 import { InputNotices, type MissionInputView } from './InputNotices.tsx';
 import { describeStructure, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
@@ -60,7 +59,6 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
   const { session, flow, actionError } = snapshot;
   const running = session.phase === 'running';
   const focus = useShellFocus(entry, running, input?.bindZone);
-  const [zoneFocused, setZoneFocused] = useState(false);
   const paused = pauseText(session);
   const blocked = resumeBlockedText(session);
   const inFlight = flow.position === 'flight';
@@ -71,9 +69,9 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
       <h2 id="mission-shell-heading" ref={focus.heading} tabIndex={-1}>Mission</h2>
       <SkeletonNote />
       <div className="mission-view" data-testid="mission-view">
-        {input ? <GameInputZone zoneRef={focus.zone} onFocusChange={setZoneFocused}>{view}</GameInputZone> : view}
+        {input ? <GameInputZone zoneRef={focus.zone}>{view}</GameInputZone> : view}
       </div>
-      {input && <InputNotices input={input} gap={gap} focusHint={focusHintShown(session.phase, zoneFocused)} running={inFlight && running} />}
+      {input && <InputNotices input={input} gap={gap} running={inFlight && running} />}
       <div className="mission-status-bar" data-testid="mission-status" data-phase={session.phase} data-pause={session.pauseReason ?? ''}>
         <span>Phase: {phaseText(session.phase)}</span>
         {paused && <span>{paused}</span>}

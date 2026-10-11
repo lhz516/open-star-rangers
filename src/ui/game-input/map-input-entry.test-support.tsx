@@ -342,7 +342,6 @@ function createEntry(zone: () => HTMLElement): MapInputEntry {
 
 let zoneElement: HTMLElement | null = null;
 const zoneRef = (element: HTMLElement | null): void => { zoneElement = element; };
-const ignoreFocus = (): void => undefined;
 
 window.osrMapInput = createEntry(() => {
   if (!zoneElement) throw new Error('The input zone is not mounted');
@@ -351,6 +350,6 @@ window.osrMapInput = createEntry(() => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <GameInputZone zoneRef={zoneRef} onFocusChange={ignoreFocus}>{null}</GameInputZone>
+    <GameInputZone zoneRef={zoneRef}>{null}</GameInputZone>
   </StrictMode>,
 );

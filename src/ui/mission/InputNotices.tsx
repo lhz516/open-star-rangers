@@ -22,6 +22,8 @@ export interface InputNoticeLine {
 export interface MissionInputView {
   /** Receives the input zone element as it mounts and null as it unmounts, e.g. the keyboard source's bound `bind`. */
   readonly bindZone: (zone: HTMLElement | null) => void;
+  /** The input consumer's authoritative focus qualification. */
+  readonly focusHint: boolean;
   /** The latest G-item press, its serial rising with every press for the input's lifetime; null when none. */
   readonly gap: GapNotice | null;
   /** Capability degradations and input states, such as a refused key lock or map input that is not ready. */
@@ -36,8 +38,8 @@ export interface MissionInputView {
     readonly status: CapabilityStatus;
     /** The shell's full screen button: requests fullscreen of the whole document, never of the game view alone. */
     readonly request: () => void;
-    /** Called synchronously within the start page's Start click, before the start; requests document fullscreen if due. */
-    readonly requestOnStart: () => void;
+    /** Called synchronously within the start page's Start click and owns the request/start association. */
+    readonly requestOnStart: (start: () => void) => void;
   };
 }
 
@@ -72,17 +74,16 @@ export interface InputNoticesProps {
   readonly input: MissionInputView;
   /** The G-item notice to show now, from `useGapNotice`. */
   readonly gap: GapNotice | null;
-  readonly focusHint: boolean;
   /** The run is running in flight. */
   readonly running: boolean;
 }
 
-export function InputNotices({ input, gap, focusHint, running }: InputNoticesProps) {
+export function InputNotices({ input, gap, running }: InputNoticesProps) {
   const tip = useAltF4Tip(input, running);
   const tipTitleId = useId();
   return (
     <div className="input-notices" data-testid="input-notices">
-      {focusHint && <p data-testid="input-focus-hint">{INPUT_FOCUS_HINT}</p>}
+      {input.focusHint && <p data-testid="input-focus-hint">{INPUT_FOCUS_HINT}</p>}
       {/* Live regions stay mounted, so a newly shown text is announced. */}
       <p className="input-gap-notice" role="status" aria-live="polite" data-testid="input-gap-notice" data-gap={gap?.id ?? ''}>
         {gap && <GapText {...gap} />}

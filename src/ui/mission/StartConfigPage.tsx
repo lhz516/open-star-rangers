@@ -11,7 +11,6 @@
 import { useEffect, useId, useRef } from 'react';
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import { useFocusOnMount } from '../pages/use-focus-on-mount.ts';
-import { startWithGesture } from './input-notices.ts';
 import { startFailureText, startRetryable, wingmanLabel } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { MISSION_OBJECTIVES } from './slice-gaps-copy.ts';
@@ -20,11 +19,11 @@ export interface StartConfigPageProps {
   readonly snapshot: MissionOwnerSnapshot;
   readonly owner: Pick<MissionOwner, 'select' | 'start'>;
   readonly onReturn: () => void;
-  /** Requests document fullscreen for this start; called synchronously within the Start click, before the start. */
-  readonly requestFullscreen?: () => void;
+  /** Associates a document fullscreen request with the run this start begins. */
+  readonly startWithFullscreen?: (start: () => void) => void;
 }
 
-export function StartConfigPage({ snapshot, owner, onReturn, requestFullscreen }: StartConfigPageProps) {
+export function StartConfigPage({ snapshot, owner, onReturn, startWithFullscreen }: StartConfigPageProps) {
   const heading = useFocusOnMount<HTMLHeadingElement>();
   const objectivesId = useId();
   const radioName = useId();
@@ -82,7 +81,15 @@ export function StartConfigPage({ snapshot, owner, onReturn, requestFullscreen }
       )}
       <ActionErrorAlert error={actionError} />
       <p className="mission-actions">
-        <button type="button" disabled={blocked} onClick={() => { startWithGesture(requestFullscreen, () => { owner.start(); }); }}>
+        <button
+          type="button"
+          disabled={blocked}
+          onClick={() => {
+            const start = (): void => { owner.start(); };
+            if (startWithFullscreen) startWithFullscreen(start);
+            else start();
+          }}
+        >
           Start
         </button>
         <button ref={returnButton} type="button" onClick={onReturn}>Return to main menu</button>

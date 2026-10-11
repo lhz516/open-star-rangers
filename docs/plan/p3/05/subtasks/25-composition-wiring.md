@@ -43,13 +43,20 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 生产与开发入口都装配同一输入消费者；测试入口的覆盖只在测试入口生效。
-- [ ] 输入消费者经反馈入口提交、经控制端口执行会话控制；生产地图输入在几何为 null 时显示未就绪且不锁定。
-- [ ] 开始按钮与全屏按钮经平台端口发起全屏；输入状态在任务画面可见。
-- [ ] `pnpm check` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 做一次开发服务器上的冒烟（进入飞行、按键产生意图、返回菜单无残留监听），完整用例归 28、29。
+- [x] 生产与开发入口都装配同一输入消费者；测试入口的覆盖只在测试入口生效。
+- [x] 输入消费者经反馈入口提交、经控制端口执行会话控制；生产地图输入在几何为 null 时显示未就绪且不锁定。
+- [x] 开始按钮与全屏按钮经平台端口发起全屏；输入状态在任务画面可见。
+- [x] `pnpm check` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md) 做一次开发服务器上的冒烟（进入飞行、按键产生意图、返回菜单无残留监听），完整用例归 28、29。
 
 ## 验证方法
 
 - `pnpm check`；开发服务器冒烟记录在完成证据中。
 
 ## 完成证据
+
+- `pnpm check` 通过：typecheck、lint、242 个测试文件 / 7,301 项测试、生产构建；`git diff --check` 通过。
+- 在分配的 Chromium 开发项目运行 `OSR_E2E_DEV_PORT=5221 OSR_E2E_PREVIEW_PORT=5222 pnpm exec playwright test e2e/interaction-render.spec.ts --project=development`：2 项通过，覆盖仅键盘任务流程、飞行输入区焦点、返回菜单后监听恢复，以及查看器 resize。
+- 开发服务器合成数据冒烟通过：导入合成任务、进入飞行、输入区获得焦点、按键反馈到 Core、返回主菜单后无残留监听；测试用临时合成文件已清理。
+- Rubber-duck：对照本项 diff 与验收标准检查生命周期、焦点及锁定逻辑，无需再改的有效缺陷；关于 Pointer Lock Promise 泛型的疑虑由 TypeScript 检查证明不成立。Simplify：复用既有平台族和 Pointer Lock 适配器、合并重复状态订阅；保留不可变空状态 fallback，未采纳需扩大结构调整的建议。
+- 文档影响：未发现需调整的工程说明、用户指南或原版事实；仅补充本项验收证据。
+- Coordinator-approved scope expansion (commit `364ec74c`) includes the late-bound Pointer Lock adapter, its test-support call site, and the input-zone focus-callback removal.

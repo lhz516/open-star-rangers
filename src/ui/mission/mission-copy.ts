@@ -13,7 +13,7 @@ import type { GameSessionStatus } from '../../app/session/game-session.ts';
 /** What this build is, wherever the mission is offered or shown. */
 export const MISSION_SKELETON =
   'This is the formal runtime skeleton, not yet a playable slice: Core runs the mission\'s world, but there is no flight '
-  + 'view, cockpit, HUD, game controls, rules or audio yet.';
+  + 'view, cockpit, HUD, implemented mission rules or audio yet.';
 
 const CATEGORY: Readonly<Record<MissionFailure['kind'], string>> = Object.freeze({ 'core-input': 'Core input', content: 'content contract' });
 

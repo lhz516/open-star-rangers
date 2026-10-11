@@ -65,7 +65,7 @@ function OwnerPages({ owner, game, devPanel, onReturn, input = null }: Omit<Miss
     // Keyed by placeholder, so each one mounts afresh and takes focus.
     page = <PlaceholderPage key={placeholder.id} placeholder={placeholder} onSkip={id => { owner.skip(id); }} onReturn={onReturn} />;
   } else if (position === 'config') {
-    page = <StartConfigPage snapshot={snapshot} owner={owner} onReturn={onReturn} requestFullscreen={input?.fullscreen.requestOnStart} />;
+    page = <StartConfigPage snapshot={snapshot} owner={owner} onReturn={onReturn} startWithFullscreen={input?.fullscreen.requestOnStart} />;
   } else if (position === 'menu') {
     page = <MissionMenuPage snapshot={snapshot} owner={owner} onReturn={onReturn} />;
   } else if (position === 'flight' || position === 'ended') {
