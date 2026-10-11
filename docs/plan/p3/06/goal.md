@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | completed |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | completed |
-| [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | pending |
+| [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | in-progress |
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
@@ -146,6 +146,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-10 — 18 的外部前提已有交付（尚未合入）：** P3-07 协调者报告目标选择与实时能量／最高速度已在其分支提交；协调者核对其已提交 tracker，13、16、12、35、22 均为 completed（对应 `68e099ea`、`43db89b0`、`f6694b47`、`5fb0f75e`、`99f57d32`）。本分支与 P3-07 的 `67243a58` 用 `git merge-tree --write-tree` 预检无文本冲突，未改工作树。为避免与 17 的原版文档写入范围重叠，实际合入、语义检查与候选身份绑定留到 17 集成后；18 尚不可开始。上一条暂停记录中的“等待 P3-07 合并”不再表示规则尚未交付。
 
 - **2026-10-11 — 17 完成（交 18、20）：** 15 次合格正式运行满足检查点 B 的数量（F1×2、F2×2、F3×2、F4×3、F4b×2、F5-v3×2、F5b×2，均为 fixed 40000，完整性与清理通过），排除 4 次（f-1-01 v1 字段缺陷、f-2-01 与 f-3-01 中止、f-5-01 玩家被救援）。飞行中的运动写回为就近舍入（U-009），不需要改数值策略。配方偏差（v2 字段改名、F4b、F5b、F5-v3）记在被忽略的运行笔记中，判据不变。F2/F3 运行可逐位重放；停放中的 Warp 跳跃、到达与真正退场未在运行中观察到（由 Node 覆盖）；R-05a 的支持集与停放切换的完整帧序留给 18。
+
+- **2026-10-11 — 17 集成并合入 P3-07（协调者决定，依预先授权）：** 17 以 `a3edbe1b` 集成，worker 分支与工作树已清理。18 的前提（目标选择与实时能量／最高速度）已由 P3-07 交付，协调者把 `p3-07-weapons-damage-spec`（`67243a58`）合入本分支（`35224fa7`）：文字冲突只有 `executable.md` 的 front matter 与 `unknowns.md` 的 U-008、U-009 两行（合并两侧：保留 17 的运行时结论与 P3-07 的补充）；合并后 `pnpm check` 通过（264 个文件、7,878 项测试，构建成功）。P3-07 的后续提交由其自己合并，本分支不推送。认领 18，在合并后的树上由 worker 执行。
 
 ## 审批
 
