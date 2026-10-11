@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from debugger import Debugger, DebuggerPort
-from inputs import KEY_BOUNDS, KEY_POINTERS, SHIFT_FLAGS, Write, key_writes, shift_writes
+from inputs import KEY_BOUNDS, KEY_POINTERS, REGISTERS, SHIFT_FLAGS, Write, key_writes, shift_writes
 from le_image import LeImage
 from locate import AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address, prove_mapping
 from processes import TERM_GRACE, PtyTransport, emulators, process_names
@@ -40,7 +40,7 @@ from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, TEXT_LIMIT, Protectio
 from qualify import (FORMATS, PauseEvidence, ReadBudget, Sample, StopProof, collect_pause, judge_pause, page_range,
                      read_error)
 from reasons import BaselineError, ordered
-from recipe import MAX_RECIPE_BYTES, Window, exe_fingerprint, parse_recipe, verify_source
+from recipe import MAX_RECIPE_BYTES, SCALAR_RANGES, Binding, Window, exe_fingerprint, parse_recipe, verify_source
 from report import build_report, serialize, summary
 from runfiles import (Log, ReportWriter, SessionLock, create_run_dir, read_signal, replace_file, resolve_evidence,
                       resolve_output, write_json, write_new)
@@ -59,9 +59,12 @@ MAPPING_RETRY = frozenset({"window-weak", "code-unmatched", "code-ambiguous", "o
 # Sample reasons that disqualify a whole pause as the moment for its stimuli (wrong state, stop or address space).
 PAUSE_EVIDENCE = frozenset({"identity-mismatch", "stop-unverified", "owner-changed"})
 # Rejections that end the run; any other rejection at a pause leaves that pause's samples unqualified.
+# `binding-unavailable` is both: a stop condition's missing reading ends the run (raised while stopping, before any
+# reading), a bound field's missing reading leaves only that sample unqualified (recorded by the field's walk).
 FATAL = frozenset({"run-timeout", "wait-timeout", "child-exited", "debugger-unparsed", "log-budget-exceeded",
                    "budget-exceeded", "report-write-failed", "operator-invalid", "breakpoint-unconfirmed",
-                   "breakpoint-wrong-hit", "stimulus-rejected", "stimulus-unverified", "tool-error"})
+                   "breakpoint-wrong-hit", "skip-budget-exceeded", "stimulus-rejected", "stimulus-unverified",
+                   "tool-error"})
 TEST_SUPPORT = frozenset({"access_guard.py", "fake_debugger.py", "sandbox.py", "synthetic.py"})
 UNVERIFIED_SOURCE = {"baselineVersion": "unverified", "exeSha256": "unverified"}
 SMOKE_MISSION = {"context": "startup"}
@@ -226,6 +229,9 @@ class Run:
         self.cancelled = False
         self.samples = []
         self.stimuli = []  # records of the stimuli applied or attempted, in order
+        self.bindings = {}  # Binding -> agreed unsigned 32-bit reading of a qualified integer sample, or the
+        # general register value at a breakpoint pause's accepted stop
+        self.skipped_hits = 0  # breakpoint hits a stop condition rejected, in the whole run
         self.source = dict(UNVERIFIED_SOURCE)
         self.environment = {"mode": "smoke" if options.smoke else "measure",
                             "measurementEvidence": not options.smoke}
@@ -250,7 +256,7 @@ class Run:
                             environment=self.environment, game_config=self.game_config, run_start=self.run_start,
                             run_end=run_end, samples=self.samples, integrity=integrity, cleanup=cleanup,
                             cancelled=self.cancelled, failures=ordered(self.failures),
-                            stimuli=self.stimuli if self.recipe.stimuli else None)
+                            stimuli=self.stimuli if self.recipe.stimuli else None, skipped_hits=self.skipped_hits)
 
     def write_report(self, integrity, cleanup, finished):
         report = self.report(integrity, cleanup, finished)
@@ -549,18 +555,61 @@ class Run:
             registers = debugger.fresh_registers()
             return registers, {"kind": "vrt", "credential": "vrt-command-running-to-prompt",
                                "waitedSeconds": round(waited, 3), "registers": registers.to_json()}
-        site = pause.stop.site
-        linear = startup.mapping.linear(site.object, site.offset, 1)
+        stop = pause.stop
         cs = startup.context.cs
-        offset = linear - cs.base
-        if not 0 <= offset <= cs.limit:
-            raise BaselineError("location-outside-object", pause.id)
+        sites = {}  # CS offset -> recipe site
+        for site in stop.sites:
+            offset = startup.mapping.linear(site.object, site.offset, 1) - cs.base
+            if not 0 <= offset <= cs.limit:
+                raise BaselineError("location-outside-object", pause.id)
+            sites[offset] = site
+        target = tuple(sites) if stop.alternatives else next(iter(sites))
+        accepted = None if stop.when is None else self.condition_values(pause)
         announce = None if self.options.smoke else lambda: self.status(
             "running", pause=pause.id, signal=self.paths.show("operator/abort.json"))
-        registers, proof = debugger.run_to_breakpoint(startup.selector, offset, limit, self.poll_abort, announce)
-        return registers, {"kind": "breakpoint", "credential": "registered-listed-and-hit",
-                           "site": {"object": site.object, "offset": f"{site.offset:x}"}, **proof,
-                           "registers": registers.to_json()}
+        end = self.env.clock() + limit  # the single-wait limit bounds the hits a condition skips, not each hit
+        skipped = 0
+        while True:
+            remaining = end - self.env.clock()
+            if remaining <= 0:
+                raise BaselineError("wait-timeout", pause.id)
+            registers, proof = debugger.run_to_breakpoint(startup.selector, target, remaining, self.poll_abort,
+                                                          announce if skipped == 0 else None)
+            if accepted is None:
+                break
+            value = registers.values.get(stop.when.register)
+            if value is None:
+                raise BaselineError("debugger-unparsed", "registers")
+            if (value in accepted) == stop.when.include:
+                break
+            skipped += 1  # not this pause: no confirmation, readings or stimuli; resume to the next hit
+            self.skipped_hits += 1
+            if self.skipped_hits > self.recipe.limits.max_skipped_hits:
+                raise BaselineError("skip-budget-exceeded", pause.id)
+        record = {"kind": "breakpoint", "credential": "registered-listed-and-hit"}
+        if stop.alternatives:
+            record["sites"] = [{"object": site.object, "offset": f"{site.offset:x}"} for site in stop.alternatives]
+            record["hitOffset"] = f"{sites[registers.eip].offset:x}"
+        else:
+            record["site"] = {"object": stop.site.object, "offset": f"{stop.site.offset:x}"}
+        record.update(proof)
+        if stop.when is not None:
+            record["when"] = stop.when.to_json(sorted(accepted))
+            record["skippedHits"] = skipped
+        record["registers"] = registers.to_json()
+        return registers, record
+
+    def condition_values(self, pause):
+        """The values of the pause's stop condition, with each earlier pause's reading it names (fatal without one:
+        the stop could not be selected)."""
+        values = set()
+        for item in pause.stop.when.values:
+            if isinstance(item, Binding):
+                item = self.bindings.get(item)
+                if item is None:
+                    raise BaselineError("binding-unavailable", pause.id)
+            values.add(item)
+        return values
 
     def identity(self, mission, config):
         """Observed identity: the operator's declaration, with emulator settings taken from the private config."""
@@ -577,10 +626,25 @@ class Run:
         """Stops at the pause; the register pane must show every register its fields and device stimuli address."""
         registers, stop = self.stop_at(debugger, startup, pause)
         needed = {self.recipe.fields[name].address.register for name in pause.fields}
+        if pause.stop.when is not None:
+            needed.add(pause.stop.when.register)
         needed.update(self.recipe.devices[item.device].register for item in stimuli if item.kind == "device")
+        needed.update(self.referenced_registers(pause.id))
         if not needed - {None} <= registers.values.keys():
             raise BaselineError("debugger-unparsed", "registers")
+        if pause.stop.kind == "breakpoint":  # the last stop is the accepted one: an operator skip stops again
+            for name in REGISTERS:
+                if name in registers.values:
+                    self.bindings[Binding(pause.id, register=name)] = registers.values[name] & 0xFFFFFFFF
         return registers, stop
+
+    def referenced_registers(self, pause_id):
+        """The registers of this pause's stop that later stop conditions or bound fields name."""
+        references = [address.bound for address in (field.address for field in self.recipe.fields.values())
+                      if address.bound is not None]
+        references += [item for pause in self.recipe.pauses if pause.stop.when is not None
+                       for item in pause.stop.when.values if isinstance(item, Binding)]
+        return {item.register for item in references if item.pause == pause_id and item.register is not None}
 
     def take_pause(self, debugger, startup, pause, budget):
         stimuli = self.recipe.pause_stimuli(pause.id)
@@ -618,7 +682,7 @@ class Run:
             if context is None:
                 raise BaselineError("stop-unverified", pause.id)
             mapping = self.reverify(port, context, startup, budget)
-            reads = collect_pause(self.recipe, pause.id, mapping, port, budget, registers.values)
+            reads = collect_pause(self.recipe, pause.id, mapping, port, budget, registers.values, self.bindings)
             after = debugger.fresh_registers()
             stop["registersUnchangedAfterReads"] = after.values == registers.values
             stop["context"] = context.to_json()
@@ -639,6 +703,9 @@ class Run:
                     write_json(self.paths, refs[key], {"unavailable": error.code})
             samples = self.unqualified(pause, error.code, refs, proof["stop"])
         self.samples.extend(samples)
+        for sample in samples:
+            if sample.qualified and sample.type in SCALAR_RANGES:  # agreed readings later pauses may be bound to
+                self.bindings[Binding(sample.pause, field=sample.field)] = sample.value & 0xFFFFFFFF
         try:
             if stimuli:
                 self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget, context, mapping,

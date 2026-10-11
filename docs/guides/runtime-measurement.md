@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-10
+updated: 2026-10-11
 related: [U-021, B-006]
 ---
 
@@ -65,9 +65,9 @@ related: [U-021, B-006]
 | `source` | `baselineVersion` 与 `exeSha256`，照抄 `measure.py baseline-version` 的输出 |
 | `identity` | `mission` 与 `config`：所选任务与配置的身份，各 1–16 个键，值为布尔、整数或受限记号。`checks`：每个暂停点都必须读到且等于给定值的字段列表，用读数证实身份 |
 | `correlation` | `code`：`object`、`size`（64–512，16 的倍数），可选 `offset`；`data`：`object`、`offset`、`size`（16–512）。用于在每个进程中建立 LE 对象与线性地址的对应 |
-| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
-| `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；或 `{"low": n}`：线性页 0 中的地址（实模式中断向量表与 BIOS 数据区，0 ≤ n 且 n + 字段大小 ≤ 0x1000），按线性地址直接读取，不能带指针；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
-| `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes` |
+| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
+| `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），或 `bound`、`offset`（较早暂停点的一个整数读数加偏移，见[绑定读数](#备选位置停止条件与绑定读数)），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；或 `{"low": n}`：线性页 0 中的地址（实模式中断向量表与 BIOS 数据区，0 ≤ n 且 n + 字段大小 ≤ 0x1000），按线性地址直接读取，不能带指针；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
+| `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes`；可选 `maxSkippedHits`（0–1000000，默认 100000） |
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
 | `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
@@ -104,11 +104,29 @@ related: [U-021, B-006]
 - 地址写 LE 对象号与偏移，或断点处的寄存器与偏移，不写上一次运行得到的绝对线性地址。唯一例外是 `low` 字段：线性页 0 的位置由机器决定，不随映像装载变化（P3-07/09 用它读取 0x2C 处的 4 字节，即非制导导弹引信检查读取的 f32）。字段或设备所寻址的寄存器在停止时的寄存器栏中读不到时，运行以 `debugger-unparsed` 失败。
 - 报告的 `recipe.fingerprint` 是规范化 JSON 的 SHA-256，`emulator` 与 `gameSettings` 都计入。采集开始后不要修改配方：改动后指纹变化，新旧运行不能合并统计。
 
+### 备选位置、停止条件与绑定读数
+
+暂停点本来严格按顺序、无条件地到达：断点暂停点停在其位置的下一次命中。以下三个可选键让配方把后面的暂停点绑定到前面读到的对象，或在一个例程的几个分支中取先命中的一个。不使用它们的配方解析、运行与指纹都和以前完全相同。
+
+- **备选位置：** 断点停止以 `"offsets": [n, …]`（同一 LE 对象中 2–4 个互不相同的偏移）代替 `"offset"`，二者恰好写一个。工具同时布下全部断点，登记确认与原生列表都必须恰好是这一组；停止须落在其中之一，然后删除全部断点。寄存器寻址的字段照常允许：由配方作者保证各备选位置的寄存器布局相同（例如同一碰撞例程的两个分支）。
+- **停止条件：** 断点停止可带 `"when": {"register": "EBX", "in": [值, …]}` 或 `{"register": "EBX", "notIn": [值, …]}`（`in` 与 `notIn` 恰好写一个，1–16 个值；寄存器为 EAX…ESP，停止时的寄存器栏必须显示它，否则为 `debugger-unparsed`）。值是 0…0xFFFFFFFF 的整数，或引用 `{"pause": "<较早暂停点>", "field": "<字段>"}`（本次运行中该暂停点该字段的一致读数）或 `{"pause": "<较早断点暂停点>", "register": "ESI"}`（该暂停点停止时记录的 32 位寄存器值）。VRT 停止不能带条件。
+- **绑定读数：** 字段地址可写 `{"bound": {"pause": "<较早暂停点>", "field": "<字段>"}, "offset": n, "pointers": […]}`，或以 `{"pause": "<较早断点暂停点>", "register": "ESI"}` 作为 `bound`：第一跳地址为该读数或寄存器值（按无符号 32 位）加有符号偏移（−65536…65535，在 DS 段内），之后照常逐跳解引用。它可以在 VRT 与断点暂停点读取，用于例如在帧开始处读取一个此时没有寄存器指向的节点。
+
+引用（条件值与绑定）的规则：被引用的暂停点必须排在使用它的暂停点之前，并列出被引用的字段；该字段须为整数类型（`u8`、`u16`、`u32`、`i16`、`i32`），比较与寻址都用其无符号 32 位值（值 & 0xFFFFFFFF）。绑定字段可以引用另一个绑定字段在更早暂停点的读数（链）；被引用的暂停点总在前面，所以不会成环。“一致读数”就是报告中该样本的值：只取合格的样本（各遍读数一致），暂停点完成后保存在本次运行中。寄存器引用写 `"register"` 代替 `"field"`（二者恰好写一个；寄存器为 EAX、EBX、ECX、EDX、ESI、EDI、EBP、ESP），被引用的暂停点必须是更早的断点暂停点（可以不读字段）；值为该暂停点被接受的那次停止时寄存器栏中的 32 位值（操作者 `skip` 后以最后一次停止为准），因此该暂停点停止时寄存器栏必须显示被引用的寄存器，否则为 `debugger-unparsed`。
+
+运行时：
+
+- 寄存器值不满足条件的命中**不是暂停点**：工具不等确认、不读字段、不施加刺激，直接继续运行到这些位置的下一次命中，并计数。被跳过的命中没有 `awaiting-confirmation` 阶段，也不期待应答文件；应答文件的编号只随真正的停止增加。
+- 条件是配方声明的选择，与操作者的 `skip` 不同：`skip` 是操作者对一次已确认停止的判断（工具会等待下一份应答），条件则由工具按寄存器值自动筛选。
+- 条件引用的读数或寄存器值不可用（该暂停点没有字段读数、样本不合格、各遍读数不一致或值缺失）时，运行以 `binding-unavailable` 失败；绑定字段在读取时找不到读数，则只有该样本不合格，原因码同为 `binding-unavailable`，运行照常继续。
+- `stop.json` 的记录：单一位置照旧写 `site`；备选位置写全部 `sites`（对象与十六进制偏移）与命中的 `hitOffset`（十六进制对象偏移），登记证明中为 `offsets`。带条件时另写 `when`（寄存器与解析后的十六进制值）与 `skippedHits`（本次停止前跳过的命中数，没有则为 0）。配方带条件时，报告 `counts` 另有整次运行的 `skippedHits`。
+
 ### 限值与预算
 
 限值是研究工具自身的保护，不是原版数值或保真容差。
 
-- **`waitSeconds`** 限制每一次单独的等待：调试器响应、启动对应中的每次停止、运行到每个暂停点（包括操作者在此之前的游玩时间，例如从启动、跳过片头到第一个标记），以及每次等待应答。
+- **`waitSeconds`** 限制每一次单独的等待：调试器响应、启动对应中的每次停止、运行到每个暂停点（包括操作者在此之前的游玩时间，例如从启动、跳过片头到第一个标记；带条件的暂停点按全部被跳过的命中合计，不是每次命中各计一次），以及每次等待应答。
+- **`maxSkippedHits`** 限制整次运行中被停止条件跳过的命中总数，超出即 `skip-budget-exceeded`，运行失败。
 - **`runSeconds`** 限制从建立运行目录到测量结束的准备与调试器会话，包括运行前的哈希核对。收尾不在其内：回收自有进程另有上限（3 秒宽限期加 SIGKILL 后至多 30 秒，见[回收](#报告退出码与原因码)），运行后的哈希核对与最终报告在回收之后进行。
 - 07 的每次运行实际用时约 6–15 分钟，其中进入飞行约 1–3 分钟；配方取 `waitSeconds` 1500、`runSeconds` 3600。
 - **`maxReadBytes`** 是整次运行的累计读取上限。配方解析时只核对一对 CODE/DATA 窗口加上 `repeatReads` 遍字段读取，运行时还要计入以下各项：
@@ -311,12 +329,13 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
   - 在本暂停点重新核对，基址不变；否则为 `mapping-changed`。
 - **停止：**
   - 暂停时处于 32 位保护分页模式，CS/DS 为平坦段。
-  - 断点有登记确认、原生列表中只有它，且命中位置等于登记位置。否则为 `breakpoint-unconfirmed` 或 `breakpoint-wrong-hit`，二者都使整次运行失败。
+  - 断点有登记确认、原生列表中只有它（备选位置时恰好是这一组），且命中位置等于登记位置（之一）。否则为 `breakpoint-unconfirmed` 或 `breakpoint-wrong-hit`，二者都使整次运行失败。
   - VRT 停止要有 `VRT` 命令从运行到停止的转换。
   - 读数前后寄存器不变；否则为 `stop-unverified`。
 - **可读性：**
   - 每一跳都读满，没有缺页标记（`read-fault`）或短读（`read-short`）。
   - 指针非空、在范围内，没有溢出或循环；链深不超过 `maxChainDepth`。
+  - 绑定字段所引用的较早读数可用（`binding-unavailable`）。
 - **重复：** 至少两遍读数，且完全一致（`repeat-insufficient`、`repeat-mismatch`）。
 - **映射与所有者：** 涉及的每一页在读前、读中、读后的页查找都相同，地址空间所有者（PID 与 CR3）不变（`mapping-unverified`、`mapping-changed`、`owner-changed`）。可读性的边界见 [executable](../original/formats/executable.md#watch-registration-and-address-space-availability-boundary)。
 - **身份：** 操作者的声明等于配方身份，而且每个身份检查字段都合格并等于给定值；否则该暂停点的全部样本记为 `identity-mismatch`。
@@ -399,7 +418,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | `run` | `start` 与 `end`（UTC、`elapsedSeconds`、`endedBy`） |
 | `samples` | 每个样本：暂停点、字段、`status`、类型、单位、`required`、值、原因码与证明引用 |
 | `stimuli` | 只在配方声明了刺激时出现：施加或尝试过的每个刺激，见[刺激记录](#刺激记录) |
-| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied` |
+| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`；带停止条件时另有 `skippedHits` |
 | `integrity` | 保护核对结果与 `privateCopyWrites` |
 | `cleanup` | 回收结果，见下 |
 
@@ -419,8 +438,8 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | 配方 | `recipe-*` | 修正配方；退出码 2 |
 | 来源与预检 | `source-mismatch`、`output-path-invalid`、`output-exists`、`evidence-scope-invalid`、`emulator-already-running`、`session-busy`、`game-config-invalid` | 来源不符时不运行，先查明原因；其余按原因码处理后重试 |
 | 定位与对应 | `le-invalid`、`object-missing`、`object-not-executable`、`location-outside-object`、`window-outside-image`、`window-weak`、`code-unmatched`、`code-ambiguous`、`data-mismatch`、`mapping-contradiction`、`base-invalid`、`object-unmapped` | 检查配方的位置与窗口。预检阶段发现的退出码为 2；启动时始终无法建立对应则运行失败 |
-| 读数 | `read-*`、`pointer-*`、`repeat-*`、`mapping-unverified`、`mapping-changed`、`owner-changed`、`stop-unverified`、`identity-mismatch`、`value-nonfinite` | 样本不合格；按[读数的合格条件](#读数的合格条件)查原因 |
-| 运行 | `wait-timeout`、`run-timeout`、`child-exited`、`debugger-unparsed`、`breakpoint-unconfirmed`、`breakpoint-wrong-hit`、`operator-invalid`、`stimulus-rejected`、`stimulus-unverified`、`budget-exceeded`、`log-budget-exceeded`、`report-write-failed`、`emulator-unverified`、`private-copy-invalid`、`tool-error` | 结束运行；排除原因后用新的运行 ID 重做。刺激失败的细节见报告 `stimuli` 中该刺激的 `detail` |
+| 读数 | `read-*`、`pointer-*`、`repeat-*`、`mapping-unverified`、`mapping-changed`、`owner-changed`、`stop-unverified`、`identity-mismatch`、`value-nonfinite`、`binding-unavailable`（绑定字段） | 样本不合格；按[读数的合格条件](#读数的合格条件)查原因 |
+| 运行 | `wait-timeout`、`run-timeout`、`child-exited`、`debugger-unparsed`、`breakpoint-unconfirmed`、`breakpoint-wrong-hit`、`skip-budget-exceeded`、`binding-unavailable`（停止条件）、`operator-invalid`、`stimulus-rejected`、`stimulus-unverified`、`budget-exceeded`、`log-budget-exceeded`、`report-write-failed`、`emulator-unverified`、`private-copy-invalid`、`tool-error` | 结束运行；排除原因后用新的运行 ID 重做。刺激失败的细节见报告 `stimuli` 中该刺激的 `detail` |
 | 结论 | `samples-*`、`stimuli-missing`、`integrity-failed`、`original-changed`、`cleanup-failed`、`run-unfinished`、`run-cancelled` | 不是合格运行；`original-changed` 与 `cleanup-failed` 须先停下报告 |
 
 **回收（`cleanup`）：**

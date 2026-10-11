@@ -375,6 +375,120 @@ class SessionTests(unittest.TestCase):
         subject = next(item for item in report["samples"] if item["field"] == "subject")
         self.assertEqual((subject["status"], subject["reasons"]), ("unqualified", ["pointer-out-of-range"]))
 
+    def selection_box(self, hits, when=None, scenario=None, limits=None, change=None):
+        """The scenario plus a pause "pick" at alternative sites selected by EBX (default: the `start` reading of
+        `count`) and a field "node" bound to the `start` reading of "anchor" (HEAP), read at the VRT pause `end`."""
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario={"hits": hits, **(scenario or {})})
+        document = box.document
+        document["fields"] += [
+            {"id": "anchor", "address": {"object": 4, "offset": 0x820}, "type": "u32", "unit": "raw"},
+            {"id": "node", "address": {"bound": {"pause": "start", "field": "anchor"}, "offset": 0x10,
+                                       "pointers": [8]}, "type": "u32", "unit": "count"},
+        ]
+        document["pauses"][0]["fields"].append("anchor")
+        document["pauses"][1]["fields"].append("node")
+        document["pauses"].insert(1, {"id": "pick", "stop": {
+            "kind": "breakpoint", "object": 2, "offsets": [0x1F90, 0x1FA0],
+            "when": when or {"register": "EBX", "in": [{"pause": "start", "field": "count"}]}},
+            "fields": ["scenario"]})
+        document["limits"].update(limits or {})
+        if change is not None:
+            change(document)
+        box.write_recipe(document)
+        return box
+
+    def test_alternative_sites_condition_and_bound_field(self):
+        hits = [{"site": 0}, {"site": 1, "registers": {"EBX": 1}}, {"site": 0, "registers": {"EBX": 2}},
+                {"site": 1, "registers": {"EBX": 0xFFFF}}]
+        box = self.selection_box(hits)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual(report["counts"]["skippedHits"], 2)
+        values = {(item["pause"], item["field"]): item["value"] for item in report["samples"]}
+        self.assertEqual((values[("start", "anchor")], values[("end", "node")]), (HEAP, 99))
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual(stop["sites"], [{"object": 2, "offset": "1f90"}, {"object": 2, "offset": "1fa0"}])
+        self.assertEqual((stop["hitOffset"], stop["skippedHits"]), ("1fa0", 2))
+        self.assertEqual(stop["when"], {"register": "EBX", "in": ["ffff"]})
+        self.assertEqual(stop["registration"]["offsets"], [f"{BASES[2] + 0x1F90:08x}", f"{BASES[2] + 0x1FA0:08x}"])
+        self.assertNotIn("site", stop)
+        start = json.loads((box.run_dir / "pauses/start/stop.json").read_text())
+        self.assertEqual(start["site"], {"object": 2, "offset": "1f90"})  # a single site is recorded as before
+        self.assertFalse({"sites", "hitOffset", "when", "skippedHits"} & set(start))
+        self.assertTrue((box.run_dir / "operator/pick-0.json").is_file())  # skipped hits are no pauses
+        self.assertFalse((box.run_dir / "operator/pick-1.json").exists())
+        self.assertEqual(sum(write == b"RUN\n" for write in box.transport.writes), 4)
+        self.assertEqual([status.get("pause") for status in box.statuses
+                          if status["phase"] == "awaiting-confirmation"], ["start", "pick", "end"])
+        self.assertTrue(box.unchanged_outside_run())
+        self.assertTerminalSafe(box)
+        plain = self.box()  # a recipe without a condition reports no skipped hits
+        self.assertEqual(plain.run(), 0)
+        self.assertNotIn("skippedHits", plain.report()["counts"])
+
+    def test_condition_excluding_constants_at_the_first_hit(self):
+        box = self.selection_box([{"site": 0}, {"site": 0, "registers": {"EBX": 0x63}}],
+                                 when={"register": "EBX", "notIn": [0, 0xFFFFFFFF]})
+        self.assertEqual(box.run(), 0)
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual((stop["hitOffset"], stop["skippedHits"], stop["when"]),
+                         ("1f90", 0, {"register": "EBX", "notIn": ["0", "ffffffff"]}))
+        self.assertEqual(box.report()["counts"]["skippedHits"], 0)
+
+    def test_condition_failures(self):
+        def bump_count(fake):
+            fake.process.poke(DATA + 0x810, struct.pack("<H", fake.process.peek(DATA + 0x810, 2)[0] + 1))
+
+        never = [{"site": 0}, {"site": 1, "registers": {"EBX": 1}}]  # later hits repeat the last registers
+        box = self.selection_box(never, scenario={"on_command": on_dv(DATA + 0x810, bump_count)})
+        report = self.assertFailed(box, "binding-unavailable")  # the `count` reads disagree: no agreed reading
+        self.assertIn("samples-unqualified", report["reasons"])
+        self.assertNotIn(b"BP 0258:%08X\n" % (BASES[2] + 0x1FA0), box.transport.writes)
+        box = self.selection_box(never, limits={"maxSkippedHits": 3})
+        report = self.assertFailed(box, "skip-budget-exceeded")
+        self.assertEqual(report["counts"]["skippedHits"], 4)
+        self.assertEqual(sum(write == b"RUN\n" for write in box.transport.writes), 5)
+        self.assertFalse((box.run_dir / "pauses/pick").exists())
+        box = self.selection_box(never)  # the single-wait limit bounds the whole search, not each hit
+        self.assertFailed(box, "wait-timeout")
+        box = self.selection_box(never)
+        box.debugger.hide_registers = {"EBX"}  # the register pane must show the condition's register
+        self.assertFailed(box, "debugger-unparsed")
+
+    def test_bound_field_without_a_reading(self):
+        def bump_anchor(fake):
+            fake.process.poke_u32(CHAIN, struct.unpack("<I", fake.process.peek(CHAIN, 4))[0] + 0x100)
+
+        hits = [{"site": 0}, {"site": 0, "registers": {"EBX": 0xFFFF}}]
+        box = self.selection_box(hits, scenario={"on_command": on_dv(CHAIN, bump_anchor)})
+        report = self.assertFailed(box, "binding-unavailable", sample=True)  # a read failure, not a run failure
+        node = next(item for item in report["samples"] if item["field"] == "node")
+        self.assertEqual((node["status"], node["reasons"]), ("unqualified", ["binding-unavailable"]))
+        self.assertNotIn("binding-unavailable", report["reasons"])
+        self.assertEqual(report["run"]["end"]["endedBy"], "completed")
+
+    def test_register_references(self):
+        def by_registers(document):
+            document["pauses"][1]["stop"]["when"] = {"register": "EBX", "in": [{"pause": "start", "register": "ESI"}]}
+            next(field for field in document["fields"] if field["id"] == "node")["address"]["bound"] = {
+                "pause": "start", "register": "EDI"}
+
+        hits = [{"site": 0, "registers": {"ESI": 0x1234, "EDI": HEAP}}, {"site": 1, "registers": {"EBX": 0xFFFF}},
+                {"site": 0, "registers": {"EBX": 0x1234, "ESI": 0, "EDI": 0}}]
+        box = self.selection_box(hits, change=by_registers)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["skippedHits"]), ("complete", 1))
+        node = next(item for item in report["samples"] if item["field"] == "node")
+        self.assertEqual((node["status"], node["value"]), ("qualified", 99))  # EDI at `start`, not at `pick`
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual((stop["hitOffset"], stop["when"]), ("1f90", {"register": "EBX", "in": ["1234"]}))
+        box = self.selection_box(hits, change=by_registers)
+        box.debugger.hide_registers = {"EDI"}  # a referenced register must be shown at the referenced pause
+        self.assertFailed(box, "debugger-unparsed")
+        self.assertFalse((box.run_dir / "pauses/pick").exists())
+
     def test_stimulus_rejections_end_the_run(self):
         box = self.stimulus_box(head=0x1E, tail=0x20)
         self.assertStimulusFailed(box, "stimulus-rejected", "key-buffer-busy")

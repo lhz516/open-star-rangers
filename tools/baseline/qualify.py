@@ -118,26 +118,33 @@ def read_error(result, size):
     return data_error(getattr(result, "data", None), size)
 
 
-def base_linear(field, mapping, registers):
+def base_linear(field, mapping, registers, bindings=None):
     """Linear address of a field's first read: an LE object location; for a `low` field its linear address in page 0
-    as given (bounded when parsed); or the register value at the stop plus the field's offset, which must lie inside
-    the flat data segment (`pointer-out-of-range` otherwise)."""
+    as given (bounded when parsed); or the register value at the stop (for a bound field the agreed reading or
+    register value of the earlier pause, unsigned 32-bit, from `bindings`; `binding-unavailable` without one) plus
+    the field's offset, which must lie inside the flat data segment (`pointer-out-of-range` otherwise)."""
     size = POINTER_SIZE if field.address.pointers else field.size
     if field.address.low:
         return field.address.offset
-    if field.address.register is None:
+    if field.address.bound is not None:
+        base = (bindings or {}).get(field.address.bound)
+        if base is None:
+            raise BaselineError("binding-unavailable", field.id)
+    elif field.address.register is None:
         return mapping.linear(field.address.object, field.address.offset, size)
-    linear = mapping.space.linear(registers[field.address.register] + field.address.offset, size)
+    else:
+        base = registers[field.address.register]
+    linear = mapping.space.linear(base + field.address.offset, size)
     if linear is None:
         raise BaselineError("pointer-out-of-range", field.id)
     return linear
 
 
-def walk_field(field, mapping, port, budget, registers=None):
+def walk_field(field, mapping, port, budget, registers=None, bindings=None):
     """One read of a field: each pointer hop, then the scalar. Stops at the first unusable hop."""
     pointers = field.address.pointers
     try:
-        linear = base_linear(field, mapping, registers)
+        linear = base_linear(field, mapping, registers, bindings)
     except BaselineError as error:
         return FieldPass((), error.code)
     hops = []
@@ -168,13 +175,14 @@ def walk_field(field, mapping, port, budget, registers=None):
     return FieldPass(tuple(hops), read_error(result, field.size))
 
 
-def collect_pause(recipe, pause_id, mapping, port, budget, registers=None):
+def collect_pause(recipe, pause_id, mapping, port, budget, registers=None, bindings=None):
     """Reads every field of a pause `repeat_reads` times, with page states before and after the passes.
 
     The session layer's `port` implements the paused-debugger reads: `read(linear, size)` returns a ReadResult that
     should carry the physical lookup of every page it reads; `state(pages)` returns the current PageState, the
     address-space owner and the lookups of the given pages. `registers` (name -> value at the stop) resolves
-    register-relative fields, which the recipe allows only at breakpoint stops.
+    register-relative fields, which the recipe allows only at breakpoint stops; `bindings` (recipe Binding -> agreed
+    unsigned 32-bit reading or register value of an earlier pause) resolves bound fields.
     """
     pause = recipe.pause(pause_id)
     fields = [recipe.fields[name] for name in pause.fields]
@@ -182,11 +190,11 @@ def collect_pause(recipe, pause_id, mapping, port, budget, registers=None):
     for item in fields:
         size = POINTER_SIZE if item.address.pointers else item.size
         try:
-            static.update(page_range(base_linear(item, mapping, registers), size))
+            static.update(page_range(base_linear(item, mapping, registers, bindings), size))
         except BaselineError:
             pass  # walk_field records the reason
     before = port.state(frozenset(static))
-    passes = tuple({item.id: walk_field(item, mapping, port, budget, registers) for item in fields}
+    passes = tuple({item.id: walk_field(item, mapping, port, budget, registers, bindings) for item in fields}
                    for _ in range(recipe.limits.repeat_reads))
     touched = frozenset(page for reads in passes for walk in reads.values() for hop in walk.hops
                         for page in page_range(hop.linear, hop.size))

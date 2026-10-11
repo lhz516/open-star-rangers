@@ -10,7 +10,7 @@ from le_image import LeImage
 from locate import AddressSpace, check_recipe_image
 from qualify import (PauseEvidence, ReadBudget, ReadResult, StopProof, collect_pause, judge_pause, read_error)
 from reasons import REASON_SET, BaselineError
-from recipe import exe_fingerprint, parse_recipe
+from recipe import Binding, exe_fingerprint, parse_recipe
 from synthetic import BASES, FIELD_VALUES, HEAP, establish, scenario_image, scenario_process, scenario_recipe
 
 REFS = {"mapping": "mapping.json", "identity": "pauses/start/identity.json", "reads": "pauses/start/reads.json"}
@@ -120,6 +120,28 @@ class QualifyTests(unittest.TestCase):
             with self.subTest(field=field):
                 reads = collect_pause(self.recipe, "start", narrow, self.process, ReadBudget(4096), values)
                 self.assertOnly(self.judge(mapping=narrow, reads=reads), field, "pointer-out-of-range")
+
+    def test_bound_fields(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"] += [
+            {"id": "anchor", "address": {"object": 4, "offset": 0x820}, "type": "u32", "unit": "raw"},
+            {"id": "node", "address": {"bound": {"pause": "start", "field": "anchor"}, "offset": 0x10,
+                                       "pointers": [8]}, "type": "u32", "unit": "count"}]
+        document["pauses"][0]["fields"].append("anchor")
+        document["pauses"][1]["fields"].append("node")
+        self.recipe = parse_recipe(json.dumps(document))
+        check_recipe_image(self.recipe, self.image)  # bound fields have no LE location to check
+        bindings = {Binding("start", field="anchor"): HEAP}
+        reads = collect_pause(self.recipe, "end", self.mapping, self.process, ReadBudget(4096), None, bindings)
+        samples = self.judge(pause="end", reads=reads)
+        self.assertEqual(samples["node"].value, 99)
+        self.assertTrue(all(sample.qualified for sample in samples.values()))
+        reads = collect_pause(self.recipe, "end", self.mapping, self.process, ReadBudget(4096), None, {})
+        self.assertOnly(self.judge(pause="end", reads=reads), "node", "binding-unavailable")
+        narrow = dataclasses.replace(self.mapping, space=AddressSpace(0, 0x3FFFFFFF))
+        reads = collect_pause(self.recipe, "end", narrow, self.process, ReadBudget(4096), None,
+                              {Binding("start", field="anchor"): 0xFFFFFFF8})  # unsigned, past the segment limit
+        self.assertOnly(self.judge(pause="end", mapping=narrow, reads=reads), "node", "pointer-out-of-range")
 
     def test_low_and_register_fields_together(self):
         document = scenario_recipe(exe_fingerprint(scenario_image()))

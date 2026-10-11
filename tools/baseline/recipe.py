@@ -6,7 +6,9 @@ locations (LE objects, registers at a breakpoint stop, or `low` linear addresses
 BIOS data area), scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy
 (fixed emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06
 subtask 22): at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field
-(`inputs.py`). Every key is known, every value has a fixed JSON type and every string is a restricted token, so a
+(`inputs.py`). A breakpoint stop may name alternative sites in one LE object and a condition on a register at the
+hit (literal values or readings of earlier pauses); a field may be addressed from an integer reading of an earlier
+pause (`bound`). Every key is known, every value has a fixed JSON type and every string is a restricted token, so a
 recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
@@ -30,7 +32,10 @@ SCALAR_RANGES = {"u8": (0, 0xFF), "u16": (0, 0xFFFF), "u32": (0, 0xFFFFFFFF), "i
 POINTER_SIZE = 4
 STOP_KINDS = ("breakpoint", "vrt")
 STIMULUS_KINDS = ("key", "shift", "device")
-REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register at a breakpoint
+REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register (or a bound reading)
+ALTERNATIVE_SITES = (2, 4)  # offsets of a breakpoint stop with alternative sites
+CONDITION_VALUES = (1, 16)  # values of a stop condition
+DEFAULT_SKIPPED_HITS = 100_000
 # Bytes one stimulus reads and writes, for the static budget check: key: buffer pointers and bounds, then the slot
 # and the tail each read before, written and read back; shift: the flags, then the same three; device: three times.
 KEY_STIMULUS_BYTES = 4 + 4 + 3 * (2 + 2)
@@ -47,6 +52,7 @@ CEILINGS = {
     "maxLogBytes": 256 * 1024 * 1024,
     "devices": 64,
     "stimuli": 256,
+    "maxSkippedHits": 1_000_000,
 }
 CODE_WINDOW_SIZES = (64, 512)  # inclusive, multiple of 16 (anchor chunks)
 DATA_WINDOW_SIZES = (16, 512)
@@ -68,16 +74,26 @@ class Location:
 
 
 @dataclass(frozen=True)
+class Binding:
+    """The agreed reading of an integer field at an earlier pause of the same run, or (`register`) the 32-bit register
+    value recorded at an earlier breakpoint pause; exactly one of `field` and `register` is set."""
+    pause: str
+    field: object = None
+    register: object = None
+
+
+@dataclass(frozen=True)
 class Address:
-    object: object  # LE object number, or None for a register address or a linear address in page 0 (`low`)
-    offset: int  # object offset, the signed offset from the register value, or the linear address in page 0
+    object: object  # LE object number, or None for a register, bound or page-0 linear (`low`) address
+    offset: int  # object offset, the signed offset from the register value or bound reading, or the linear address
     pointers: tuple  # non-negative offsets added to each dereferenced 32-bit pointer
     register: object = None  # register name at a breakpoint stop (EAX ... ESP), or None
+    bound: object = None  # Binding whose reading is the base (as a register value would be), or None
 
     @property
     def low(self):
-        """A `{"low": n}` field address: a linear address in page 0, neither an LE object nor a register."""
-        return self.object is None and self.register is None
+        """A `{"low": n}` field address: a linear address in page 0, neither an LE object, a register nor bound."""
+        return self.object is None and self.register is None and self.bound is None
 
 
 @dataclass(frozen=True)
@@ -94,9 +110,27 @@ class Field:
 
 
 @dataclass(frozen=True)
+class Condition:
+    """A breakpoint hit is the pause only when the register's value is (`include`) or is not in `values`."""
+    register: str
+    include: bool
+    values: tuple  # ints 0..0xFFFFFFFF and Bindings, resolved at the stop
+
+    def to_json(self, resolved):
+        return {"register": self.register, "in" if self.include else "notIn": [f"{value:x}" for value in resolved]}
+
+
+@dataclass(frozen=True)
 class Stop:
     kind: str
-    site: object  # Location for a breakpoint, None for a VRT stop
+    site: object  # Location for a breakpoint (the first alternative of `offsets`), None for a VRT stop
+    alternatives: tuple = ()  # every Location of a breakpoint stop declared with `offsets`; empty for `offset`
+    when: object = None  # Condition of a breakpoint stop, or None
+
+    @property
+    def sites(self):
+        """Every breakpoint site of the stop (empty for a VRT stop)."""
+        return self.alternatives or (() if self.site is None else (self.site,))
 
 
 @dataclass(frozen=True)
@@ -168,6 +202,7 @@ class Limits:
     repeat_reads: int
     max_read_bytes: int
     max_log_bytes: int
+    max_skipped_hits: int = DEFAULT_SKIPPED_HITS  # condition-rejected breakpoint hits in the whole run
 
 
 @dataclass(frozen=True)
@@ -389,7 +424,7 @@ def _game_settings(value):
 def _limits(value):
     keys = ("runSeconds", "waitSeconds", "maxPauses", "maxFields", "maxChainDepth", "repeatReads", "maxReadBytes",
             "maxLogBytes")
-    _object(value, "limits", keys)
+    _object(value, "limits", keys, ("maxSkippedHits",))
     run = _positive_number(value["runSeconds"], "limits.runSeconds", CEILINGS["runSeconds"])
     wait = _positive_number(value["waitSeconds"], "limits.waitSeconds", run)
 
@@ -397,7 +432,8 @@ def _limits(value):
         return _int(value[key], "limits." + key, low, CEILINGS[key], "recipe-limit-invalid")
 
     return Limits(run, wait, count("maxPauses"), count("maxFields"), count("maxChainDepth"), count("repeatReads", 2),
-                  count("maxReadBytes"), count("maxLogBytes"))
+                  count("maxReadBytes"), count("maxLogBytes"),
+                  count("maxSkippedHits", 0) if "maxSkippedHits" in value else DEFAULT_SKIPPED_HITS)
 
 
 def _fields(value, limits):
@@ -427,7 +463,10 @@ def _fields(value, limits):
                                           "recipe-address-invalid"), ())
             fields[field_id] = Field(field_id, location, kind, unit, required)
             continue
-        address = _object(item["address"], where, ("offset",), ("object", "register", "pointers"))
+        if type(item["address"]) is dict and "bound" in item["address"]:  # an earlier pause's reading
+            address = _object(item["address"], where, ("bound", "offset"), ("pointers",))
+        else:
+            address = _object(item["address"], where, ("offset",), ("object", "register", "pointers"))
         pointers = address.get("pointers", [])
         if type(pointers) is not list:
             raise BaselineError("recipe-type-invalid", where + ".pointers")
@@ -435,6 +474,12 @@ def _fields(value, limits):
             raise BaselineError("recipe-budget-exceeded", where + ".pointers")
         hops = tuple(_int(pointer, f"{where}.pointers[{hop}]", 0, UINT32_END - 1, "recipe-address-invalid")
                      for hop, pointer in enumerate(pointers))
+        if "bound" in address:
+            location = Address(None, _int(address["offset"], where + ".offset", *REGISTER_OFFSETS,
+                                          "recipe-address-invalid"), hops,
+                               bound=_binding(address["bound"], where + ".bound"))
+            fields[field_id] = Field(field_id, location, kind, unit, required)
+            continue
         number, register, offset = _base(address, where, POINTER_SIZE if pointers else SCALAR_SIZES[kind])
         location = Address(number, offset, hops, register)
         fields[field_id] = Field(field_id, location, kind, unit, required)
@@ -446,29 +491,15 @@ def _pauses(value, fields, limits):
     if len(items) > limits.max_pauses:
         raise BaselineError("recipe-budget-exceeded", "pauses")
     pauses = []
-    seen = set()
+    listed_at = {}  # pause ID -> (stop kind, field IDs) of the pauses before the current one
     used = set()
     for index, item in enumerate(items):
         path = f"pauses[{index}]"
         _object(item, path, ("id", "stop"), ("fields",))
         pause_id = _identifier(item["id"], path + ".id")
-        if pause_id in seen:
+        if pause_id in listed_at:
             raise BaselineError("recipe-id-duplicate", path + ".id")
-        seen.add(pause_id)
-        stop = _object(item["stop"], path + ".stop", ("kind",), ("object", "offset"))
-        kind = stop["kind"]
-        if type(kind) is not str:
-            raise BaselineError("recipe-type-invalid", path + ".stop.kind")
-        if kind not in STOP_KINDS:
-            raise BaselineError("recipe-value-invalid", path + ".stop.kind")
-        if kind == "breakpoint":
-            _object(stop, path + ".stop", ("kind", "object", "offset"))
-            site = Location(
-                _int(stop["object"], path + ".stop.object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid"),
-                _int(stop["offset"], path + ".stop.offset", 0, UINT32_END - 1, "recipe-address-invalid"))
-        else:
-            _object(stop, path + ".stop", ("kind",))
-            site = None
+        stop = _stop(item["stop"], path + ".stop", fields, listed_at)
         names = []
         listed = item.get("fields", [])  # a pause without fields is a stop without readings, e.g. for stimuli
         if type(listed) is not list:
@@ -479,15 +510,112 @@ def _pauses(value, fields, limits):
                 raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
             if name in names:
                 raise BaselineError("recipe-id-duplicate", f"{path}.fields[{slot}]")
-            if fields[name].address.register is not None and kind != "breakpoint":  # VRT stops have no register
+            address = fields[name].address
+            if address.register is not None and stop.kind != "breakpoint":  # VRT stops have no register
                 raise BaselineError("recipe-reference-invalid", f"{path}.fields[{slot}]")
+            if address.bound is not None:
+                _reference(address.bound, fields, listed_at, f"{path}.fields[{slot}]")
             names.append(name)
         used.update(names)
-        pauses.append(Pause(pause_id, Stop(kind, site), tuple(names)))
+        listed_at[pause_id] = (stop.kind, tuple(names))
+        pauses.append(Pause(pause_id, stop, tuple(names)))
     for field_id in fields:
         if field_id not in used:
             raise BaselineError("recipe-reference-invalid", field_id)
     return tuple(pauses)
+
+
+def _stop(stop, path, fields, listed_at):
+    """A VRT stop, or a breakpoint stop at one `offset` or at alternative `offsets` in one LE object, optionally with
+    a register condition `when`."""
+    _object(stop, path, ("kind",), ("object", "offset", "offsets", "when"))
+    kind = stop["kind"]
+    if type(kind) is not str:
+        raise BaselineError("recipe-type-invalid", path + ".kind")
+    if kind not in STOP_KINDS:
+        raise BaselineError("recipe-value-invalid", path + ".kind")
+    if kind == "vrt":
+        _object(stop, path, ("kind",))
+        return Stop(kind, None)
+    _object(stop, path, ("kind", "object"), ("offset", "offsets", "when"))
+    number = _int(stop["object"], path + ".object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid")
+    if "offset" in stop and "offsets" in stop:
+        raise BaselineError("recipe-address-invalid", path)
+    if "offset" in stop:
+        site = Location(number, _int(stop["offset"], path + ".offset", 0, UINT32_END - 1, "recipe-address-invalid"))
+        alternatives = ()
+    elif "offsets" in stop:
+        offsets = _list(stop["offsets"], path + ".offsets", "recipe-value-invalid")
+        if not ALTERNATIVE_SITES[0] <= len(offsets) <= ALTERNATIVE_SITES[1]:
+            raise BaselineError("recipe-value-invalid", path + ".offsets")
+        offsets = [_int(offset, f"{path}.offsets[{slot}]", 0, UINT32_END - 1, "recipe-address-invalid")
+                   for slot, offset in enumerate(offsets)]
+        if len(set(offsets)) != len(offsets):
+            raise BaselineError("recipe-value-invalid", path + ".offsets")
+        alternatives = tuple(Location(number, offset) for offset in offsets)
+        site = alternatives[0]
+    else:
+        raise BaselineError("recipe-key-missing", path + ".offset")
+    when = _condition(stop["when"], path + ".when", fields, listed_at) if "when" in stop else None
+    return Stop(kind, site, alternatives, when)
+
+
+def _condition(value, path, fields, listed_at):
+    """{"register": R, "in": [...]} or {"register": R, "notIn": [...]}: integers or earlier pauses' readings."""
+    _object(value, path, ("register",), ("in", "notIn"))
+    register = value["register"]
+    if type(register) is not str:
+        raise BaselineError("recipe-type-invalid", path + ".register")
+    if register not in REGISTERS:
+        raise BaselineError("recipe-value-invalid", path + ".register")
+    if ("in" in value) == ("notIn" in value):
+        raise BaselineError("recipe-key-missing" if "in" not in value else "recipe-value-invalid", path)
+    key = "in" if "in" in value else "notIn"
+    items = _list(value[key], f"{path}.{key}")
+    if len(items) > CONDITION_VALUES[1]:
+        raise BaselineError("recipe-budget-exceeded", f"{path}.{key}")
+    values = []
+    for slot, item in enumerate(items):
+        where = f"{path}.{key}[{slot}]"
+        if type(item) is dict:
+            values.append(_reference(_binding(item, where), fields, listed_at, where))
+        else:
+            values.append(_int(item, where, 0, UINT32_END - 1, "recipe-value-invalid"))
+    return Condition(register, key == "in", tuple(values))
+
+
+def _binding(value, path):
+    """{"pause": P, "field": F} or {"pause": P, "register": R}."""
+    _object(value, path, ("pause",), ("field", "register"))
+    pause = _identifier(value["pause"], path + ".pause")
+    if ("field" in value) == ("register" in value):
+        raise BaselineError("recipe-key-missing" if "field" not in value else "recipe-value-invalid", path)
+    if "field" in value:
+        return Binding(pause, field=_identifier(value["field"], path + ".field"))
+    register = value["register"]
+    if type(register) is not str:
+        raise BaselineError("recipe-type-invalid", path + ".register")
+    if register not in REGISTERS:
+        raise BaselineError("recipe-value-invalid", path + ".register")
+    return Binding(pause, register=register)
+
+
+def _reference(binding, fields, listed_at, path):
+    """A binding to an integer field that an earlier pause lists, or to a register at an earlier breakpoint pause. A
+    bound field may itself be bound (a chain): the earlier pause's reading is a value however it was addressed, and
+    the order of pauses rules out cycles."""
+    if binding.pause not in listed_at:
+        raise BaselineError("recipe-reference-invalid", path)
+    kind, names = listed_at[binding.pause]
+    if binding.register is not None:
+        if kind != "breakpoint":  # a VRT stop records no register the recipe could name
+            raise BaselineError("recipe-reference-invalid", path)
+        return binding
+    if binding.field not in names:
+        raise BaselineError("recipe-reference-invalid", path)
+    if fields[binding.field].type not in SCALAR_RANGES:  # f32 is no address or register value
+        raise BaselineError("recipe-reference-invalid", path)
+    return binding
 
 
 def _base(address, where, size):

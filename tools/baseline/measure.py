@@ -23,7 +23,12 @@
       Each write is read back and recorded in the report's `stimuli`; a pause without "fields" only stops (and applies
       its stimuli) and needs no confirmation. A field's address is an LE object location, a linear address in page 0
       ({"low": n}, no pointers), or at a breakpoint pause a register and offset ({"register": "ESI", "offset": 0,
-      "pointers": [...]}), e.g. the object a routine is handling at that stop.
+      "pointers": [...]}), e.g. the object a routine is handling at that stop, or from an earlier pause's agreed
+      integer reading ({"bound": {"pause": "<earlier>", "field": "<id>"}, "offset": 0, "pointers": [...]}) or an
+      earlier breakpoint pause's register value ({"bound": {"pause": "<earlier>", "register": "ESI"}, ...}).
+      A breakpoint stop may name alternative sites ("offsets": [n, ...], 2-4, the hit one is stop.json's `hitOffset`)
+      and a condition ("when": {"register": "EBX", "in"|"notIn": [n | {"pause": ..., "field"|"register": ...}, ...]});
+      hits that fail it are resumed without confirmation and counted as `skippedHits` (stop.json, report counts).
       Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
       to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
       the baseline installation and the private copy stay fully protected.

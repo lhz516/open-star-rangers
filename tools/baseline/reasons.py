@@ -53,6 +53,7 @@ REASONS = (
     "identity-mismatch",
     "value-nonfinite",
     "proof-ref-invalid",
+    "binding-unavailable",
     # Input stimuli (P3-06 subtask 22)
     "stimulus-rejected",
     "stimulus-unverified",
@@ -77,6 +78,7 @@ REASONS = (
     "debugger-unparsed",
     "breakpoint-unconfirmed",
     "breakpoint-wrong-hit",
+    "skip-budget-exceeded",
     "wait-timeout",
     "run-timeout",
     "child-exited",
