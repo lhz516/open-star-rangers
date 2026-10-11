@@ -1,4 +1,4 @@
-export type ListenerGroup = 'keyboard' | 'pointer-lock' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
+export type ListenerGroup = 'keyboard' | 'fullscreen' | 'pointer-lock' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
 /**
  * One message a Worker sent to the page: its `type` and `stage` when they are protocol tokens, its `jobId` when a safe
  * integer, otherwise null; `at` is the probe sequence when it arrived. Nothing else of the message is kept.
@@ -102,6 +102,7 @@ export function installBrowserProbes(): void {
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
     if (/\/@(?:vite\/client|react-refresh)/.test(new Error().stack ?? '')) return 'vite';
     if (!application()) return 'test';
+    if (['fullscreenchange', 'fullscreenerror'].includes(type)) return 'fullscreen';
     // The Pointer Lock port (P3-05): its lock events on the document and pointer events on its target.
     if (['pointerlockchange', 'pointerlockerror', 'mousemove', 'mousedown', 'mouseup'].includes(type)) return 'pointer-lock';
     // The mission screen's input area (P3-05), or the input zone of a test entry without one, is the keyboard's; React

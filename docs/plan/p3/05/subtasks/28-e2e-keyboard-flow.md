@@ -46,12 +46,21 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 上列 AC 的浏览器部分均有通过的断言，命令与项目已记录。
-- [ ] 资源平衡与 Fast Refresh 回到基线，新监听分组有归属。
-- [ ] `pnpm test:e2e e2e/keyboard-input.spec.ts --project=development --project=production` 与受影响的既有用例通过；`pnpm check` 通过。
+- [x] 上列 AC 的浏览器部分均有通过的断言，命令与项目已记录。
+- [x] 资源平衡与 Fast Refresh 回到基线，新监听分组有归属。
+- [x] `pnpm test:e2e e2e/keyboard-input.spec.ts --project=development --project=production` 与受影响的既有用例通过；`pnpm check` 通过。
 
 ## 验证方法
 
 - 列出每个 AC 对应的用例名与结果；失败时按 browser-testing 的排查方法记录并修复本任务范围内的问题。
 
 ## 完成证据
+
+- **AC-03/04/05：** development 用例 `records opposing axes, Ctrl roll, simultaneous Shift and Alt fire, Space fire and the front-view command per tick` 通过；逐 tick 录制断言覆盖俯仰正负/抵消、Ctrl 横滚、Shift+Alt、副炮、短按与双 Alt 主炮、ArrowUp/F1 前视命令及 `not-implemented` 结果。队列满错误由 `the queue-full error is visible, leaves focus in the game zone and does not pause the run` 覆盖。
+- **AC-08/11/10：** `the focused input zone owns page-level bindings, slice-gap notices, pause and menu controls` 在 development 与 production 通过；覆盖唯一且聚焦的输入区、Tab 离开与未聚焦提示、Continue/返回后的焦点、G-08/G-09/G-10、Alt/未绑定 Ctrl、Tab/F12/Meta/Escape 的页面层拦截及焦点保持。
+- **AC-09/13：** development 用例 `a real focusout clears held input and resume does not revive it without a new press` 与 `a real hidden then visible transition clears held input and stays paused until explicit resume` 通过；native headed Chrome/CDP 确认真实 hidden/visible 事件、自动暂停、恢复后不自动续跑，显式 `p` 才恢复。production `the whole production flow from a restored cache, with and without a wingman: placeholders, departure at tick 0, pause, menu, restart and return` 通过。
+- **AC-14/15：** development 的 fullscreen pending/failure、Keyboard Lock failure/pending、`starting while another fullscreen is active does not claim or exit it` 及 Windows/Linux/other/mac Alt+F4 提示用例均通过。
+- **AC-16：** `three menu → mission → menu round trips with a restart each release the owner's listeners, timers, leave guard and frames` 在两个项目通过；development 的五个 Fast Refresh 用例通过。新 `keyboard`、`fullscreen`、`pointer-lock` 监听分组在 round-trip、重开、刷新与离页后归属正确并回到基线。
+- **验证命令：** `pnpm test:e2e e2e/keyboard-input.spec.ts --project=development --project=production`（2 passed）；`OSR_E2E_DEV_PORT=5241 OSR_E2E_PREVIEW_PORT=5242 pnpm test:e2e e2e/keyboard-input.spec.ts e2e/keyboard-input.development.spec.ts e2e/joint-resources.spec.ts e2e/fast-refresh.spec.ts e2e/mission-flow.production.spec.ts --project=development --project=production`（23 passed）；`pnpm check`（typecheck、lint、242 test files / 7301 tests、build 均通过）。
+- **Review 与清理：** rubber-duck 提出的“缺少 production 专用文件”不适用：共享 spec 在 development 与 production 均执行；AltGraph 覆盖疑虑由事件记录的 `getModifierState('AltGraph')` 断言验证并通过。simplify 的 recording parser、能力断言、目标焦点导航与合成输入缓存重复已提取/复用；`interaction-render.spec.ts` 原有局部 `tabTo` 因不在本子任务写入范围内未改。
+- **文档影响：** 仅更新本子任务证据；工程约定、运行手册、架构决策、原版事实及项目状态均未改变，无需更新其他文档。

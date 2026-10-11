@@ -4,6 +4,7 @@ import { test, expect } from './support/browser-test.ts';
 import {
   chooseWingman, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, missionEntry, waitForFrame,
 } from './support/mission-observations.ts';
+import { tabTo } from './support/keyboard-input.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 
@@ -28,7 +29,10 @@ async function ownerResources(page: Page) {
     snapshot,
     session: active('session').map(({ type }) => type).sort(),
     sessionIdentity: active('session').map(({ target, type, id, capture }) => `${target}:${type}:${id}:${capture}`).sort(),
-    input: [...active('keyboard'), ...active('render')].map(({ group, type }) => `${group}:${type}`),
+    keyboard: active('keyboard').map(({ type }) => type).sort(),
+    fullscreen: active('fullscreen').map(({ type }) => type).sort(),
+    pointerLock: active('pointer-lock').map(({ type }) => type).sort(),
+    render: active('render').map(({ type }) => type).sort(),
     leaveGuards: active('other').filter(({ type }) => type === 'beforeunload').length,
     timers: snapshot.timers.pending.length,
     frames: snapshot.frames,
@@ -40,9 +44,12 @@ const SESSION = ['pagehide', 'pageshow', 'visibilitychange'];
 const IDLE = { pending: 0, maximum: 0, requested: 0 };
 
 /** Without a running run: the session's listeners, no game frame, `timers` pending and `leaveGuards` guards. */
-function expectHeld(resources: OwnerResources, timers: number, leaveGuards: number, what: string): void {
+function expectHeld(resources: OwnerResources, timers: number, leaveGuards: number, what: string, zoneBound = false): void {
   expect(resources.session, `${what}: session listeners`).toEqual(SESSION);
-  expect(resources.input, `${what}: input and render listeners`).toEqual([]);
+  expect(resources.keyboard, `${what}: keyboard listener count`).toHaveLength(zoneBound ? 9 : 5);
+  expect(resources.fullscreen, `${what}: full-screen listeners`).toEqual(['fullscreenchange', 'fullscreenerror']);
+  expect(resources.pointerLock, `${what}: Pointer Lock listeners`).toHaveLength(5);
+  expect(resources.render, `${what}: render listeners`).toEqual([]);
   expect(resources.frames, `${what}: game frames`).toMatchObject(IDLE);
   expect(resources.timers, `${what}: pending timers`).toBe(timers);
   expect(resources.leaveGuards, `${what}: leave guards`).toBe(leaveGuards);
@@ -51,7 +58,10 @@ function expectHeld(resources: OwnerResources, timers: number, leaveGuards: numb
 /** A running run: at most one game frame in flight and delivered frames, no timer, one leave guard. */
 function expectRunning(resources: OwnerResources, what: string): void {
   expect(resources.session, `${what}: session listeners`).toEqual(SESSION);
-  expect(resources.input, `${what}: input and render listeners`).toEqual([]);
+  expect(resources.keyboard, `${what}: keyboard listeners`).toHaveLength(9);
+  expect(resources.fullscreen, `${what}: full-screen listeners`).toEqual(['fullscreenchange', 'fullscreenerror']);
+  expect(resources.pointerLock, `${what}: Pointer Lock listeners`).toHaveLength(5);
+  expect(resources.render, `${what}: render listeners`).toEqual([]);
   expect(resources.frames.maximum, `${what}: game frames in flight`).toBeLessThanOrEqual(1);
   expect(resources.frames.delivered, `${what}: delivered game frames`).toBeGreaterThan(0);
   expect(resources.timers, `${what}: pending timers`).toBe(0);
@@ -106,21 +116,26 @@ test('three menu → mission → menu round trips with a restart each release th
     const first = await fly(page, 1);
 
     // Paused and in the mission menu the run keeps its leave guard but requests no frame.
-    await button(page, 'Pause').click();
+    await tabTo(page, button(page, 'Pause'));
+    await page.keyboard.press('Space');
     await expect(status(page)).toHaveAttribute('data-phase', 'paused');
     const paused = await ownerResources(page);
-    expectHeld(paused, 0, 1, `visit ${visit} paused`);
+    expectHeld(paused, 0, 1, `visit ${visit} paused`, true);
     await expectStableTick(page);
-    await button(page, 'Resume').click();
+    await expect(button(page, 'Resume')).toBeFocused();
+    await page.keyboard.press('Space');
     await expect(status(page)).toHaveAttribute('data-phase', 'running');
-    await button(page, 'Mission menu').click();
+    await tabTo(page, button(page, 'Mission menu'));
+    await page.keyboard.press('Enter');
     await expect(page.getByTestId('mission-menu')).toBeVisible();
     const menu = await ownerResources(page);
     expectHeld(menu, 0, 1, `visit ${visit} mission menu`);
     await expectStableTick(page);
 
     // A restart ends the run and its guard; the owner keeps its session listeners for the next run.
-    await button(page, 'Restart mission').click();
+    await expect(page.getByRole('heading', { name: 'Mission menu', exact: true })).toBeFocused();
+    await tabTo(page, button(page, 'Restart mission'));
+    await page.keyboard.press('Enter');
     await waitForFrame(page, frame => frame.owner === owner && frame.position === 'intro' && frame.run === null);
     const restarted = await ownerResources(page);
     expectHeld(restarted, 1, 0, `visit ${visit} restarted introduction`);
@@ -129,8 +144,10 @@ test('three menu → mission → menu round trips with a restart each release th
     const second = await fly(page, 2);
     expect(second.flight.sessionIdentity).toEqual(intro.sessionIdentity);
 
-    await button(page, 'Mission menu').click();
-    await button(page, 'Return to main menu').click();
+    await tabTo(page, button(page, 'Mission menu'));
+    await page.keyboard.press('Enter');
+    await tabTo(page, button(page, 'Return to main menu'));
+    await page.keyboard.press('Space');
     await expect(missionEntry(page)).toBeFocused();
     const released = await balance.check(`visit ${visit}`);
     const ended = released.snapshot.probe.listeners.filter(entry => added.includes(entry.addedAt));
@@ -138,7 +155,8 @@ test('three menu → mission → menu round trips with a restart each release th
     previousRelease = Math.max(...ended.map(entry => entry.removedAt!));
     console.info(`${testInfo.project.name} visit ${visit}: owner ${owner}, session 3, flight frames max ${first.flight.frames.maximum}/${second.flight.frames.maximum}, `
       + `timers intro 1 / flight 0, leave guards 1 per run, menu balanced`);
-    const summary = ({ session, input, leaveGuards, timers, frames }: OwnerResources) => ({ session, input, leaveGuards, timers, frames });
+    const summary = ({ session, keyboard, fullscreen, pointerLock, render, leaveGuards, timers, frames }: OwnerResources) =>
+      ({ session, keyboard, fullscreen, pointerLock, render, leaveGuards, timers, frames });
     visits.push({
       visit, wingman, owner,
       positions: Object.fromEntries(Object.entries({
