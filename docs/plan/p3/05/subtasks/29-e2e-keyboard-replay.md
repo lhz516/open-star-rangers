@@ -34,6 +34,7 @@ updated: 2026-10-10
 
 - `e2e/mission-flow.development.spec.ts`、`e2e/browser-replay.spec.ts`
 - `e2e/support/mission-observations.ts`
+- 协调者扩展（2026-10-10）：`src/ui/mission/InputNotices.tsx`、`src/ui/mission/input-notices.test.ts`、`src/app/app.css`、`e2e/keyboard-input.spec.ts`、`e2e/mission-flow.production.spec.ts`、`e2e/joint-resources.spec.ts`。原因：开发流程的鼠标点击 Pause/Mission menu 失效，诊断为按下按钮时输入区失焦、焦点提示插入按钮上方使布局下移、松开落在别处；须修复提示的布局占位（不改变 spec 的提示文案与条件），并把 28 为绕开此问题改用键盘的生产与资源用例恢复鼠标点击覆盖（保留键盘覆盖处可并存）。与运行中的 34 不重叠。
 
 ## 验收标准
 
