@@ -103,7 +103,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
 | [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
 | [25-docs-wrap-up.md](./subtasks/25-docs-wrap-up.md) | 19, 24 | completed |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25 | in-progress |
+| [26-e2e-replay-expectation.md](./subtasks/26-e2e-replay-expectation.md) | 18 | in-progress |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -150,6 +151,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-11 — 17 集成并合入 P3-07（协调者决定，依预先授权）：** 17 以 `a3edbe1b` 集成，worker 分支与工作树已清理。18 的前提（目标选择与实时能量／最高速度）已由 P3-07 交付，协调者把 `p3-07-weapons-damage-spec`（`67243a58`）合入本分支（`35224fa7`）：文字冲突只有 `executable.md` 的 front matter 与 `unknowns.md` 的 U-008、U-009 两行（合并两侧：保留 17 的运行时结论与 P3-07 的补充）；合并后 `pnpm check` 通过（264 个文件、7,878 项测试，构建成功）。P3-07 的后续提交由其自己合并，本分支不推送。认领 18，在合并后的树上由 worker 执行。
 
 - **2026-10-11 — 18 完成（交 20）：** 在合并 P3-07 后的候选（认领提交 `c467ebf5`，Core 代码未改）上，R-04a、R-04b、R-04c、R-04d、R-05a、R-05b 全部判为“一致”，判据沿用检查点 B 且未改动。覆盖：150 对同帧、41 个速度键、48 个摇杆暂停、80 个窗口与 26 条链（共 206 个边界，实际 `World.step` 与独立求值一致，步长预算全部通过）、118 个辅助帧与 6 个间隔、两次起飞、30 个真实内容配置、48 次实时能量／子系统最高速度变化，以及区域、停放、编队与世界边界样本。限制已在证据中写明：F2/F3 重复运行的分布只限已列的样本；完整的停放 N/N+1/N+2 帧序与未观察到的停放 Warp 跳跃、到达与真正退场由 Node 覆盖，不宣称为原版观察。无实现差异或新的阻塞。
+
+- **2026-10-11 — 20 发现一项缺口，新增 26（依预先授权，不需审阅）：** 最终对齐在合并 P3-07 后的树上：`pnpm check`（264 个文件、7,878 项测试）、`src/core` 与边界回归（80 个文件、2,305 项）、`pnpm check:compliance`、baseline（170 项）与 ghidra 的 Python 测试通过；完整 `pnpm test:e2e` 为 195 通过、1 失败：`e2e/browser-replay.spec.ts` 的事件类型集合期望缺少 P3-07 自动选择目标产生的 `target-changed`（比较本身 `match: true`）。这是用例期望过时。20 回到 `pending`，新增 26 修正该期望，最终对齐加入对 26 的依赖；其余核对项（覆盖、检查点、不变量、文档与隔离）在 26 之后的 20 中一并完成。
 
 ## 审批
 
