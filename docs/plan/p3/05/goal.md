@@ -117,7 +117,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | in-progress |
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | pending |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
-| [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | pending |
+| [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | in-progress |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34 | pending |
@@ -151,6 +151,10 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   - **待最终对齐判断：** 27 发现的快速两次 `m` 时 Pointer Lock 申请不记 `closing` 的差异（见上方记录）。
 - **2026-10-10 — 恢复执行；06 完成，基地样本拆为 34：** 用户重新调用 `/execute-goal`；恢复时没有遗留的 worker、`exec-p3-05-*` 分支或基准环境进程。B 的失败项是检查器把侦察当成检查：本任务中 `f` 没有找到友方候选，原目标保持不变，与代码一致；它不是 Q-05 样本，现行检查器把它列为侦察，B 重新核对为 46/46。基地探索运行 `q05-c1-02`（排在 P3-06 的 17 之后，按约定交替）经 Warp 到达离基地约 9300 处，停靠闸门超时；运行 D 的读数显示所选任务中三个基地类对象的状态字节 +2 都为 0，而近基地检查 `0x394c4` 要求为 1，停靠在测得的状态下不可能。按用户“有需要回答的问题直接用最推荐的答案”的授权，协调者决定：06 以飞行、地图、Warp 与页面的样本完成，基地缺口如实记为 Q-05 对基地的门槛未达到；新增 34（基地补样，依赖 06，加入 33 的依赖与 S-01、S-15、AC-01 的覆盖），不加入 08 的依赖——按[执行检查点](./spec.md#执行检查点)“运行样本与重开”，基地按键的唯一合格依据是 Q-04 的代码证据，缺样本既不是唯一依据也不推翻它。34 有界：静态找出可停靠的条件后至多两次探索运行，仍取不得时记为 blocked 交用户决定。
 - **2026-10-10 — 08 集成；11 的批准方式（待用户复核）：** 08（`d2a9441a`）定稿检查点 K 的键盘项。11 起草了 P3-01 的 G-08 修订后，协调者以 ask_user 请用户批准；用户回复“The user is not available to respond and will review your work later. Work autonomously and make good decisions.”。结合用户在规划时“如果有需要我回答的问题，直接用你最推荐的答案”的指示，协调者按推荐答案（批准）采用，以免 19、24 及其下游全部停住；这一判断在完成报告中提请用户复核，用户不同意时撤回该修订并重开 19、24 中受影响的部分。
+- **2026-10-10 — Subtask 31 blocked:** 30（`5cb93d7c`）以 Computer Use 核实了正对照、F1–F11（F10 不明确）、Space、Backspace、Slash/Shift+Slash、Ctrl+Enter、锁指针时的 Esc 与暂停后的 Cmd+L/Cmd+T，其余项列为残余交 31；协调者以 ask_user 请用户执行物理按键，用户回复“The user is not available to respond and will review your work later. Work autonomously and make good decisions.”。
+  Evidence: `local/research/p3-05/real-device/worker-30-input-check.md` 的“Actionable residuals for subtask 31”逐项写明按什么、看什么（物理 Fn+F1–F11、无旧提示时的 F10、四个操纵键及 Shift/Ctrl/Ctrl+Shift 与按住、Option+方向键并开火、未锁指针时地图中的 Esc、全屏提示“Press and hold Esc to exit”判定 Keyboard Lock 已取得及暂停后的原生快捷键）。
+  Affected acceptance: AC-18 的残余部分；31 的两条验收；33 依赖 31。
+  Resume when: 用户可在本机 Chrome 的物理键盘上按清单执行，协调者准备开发服务器并读取诊断。
 
 ## 审批
 
