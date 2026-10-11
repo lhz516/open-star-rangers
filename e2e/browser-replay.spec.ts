@@ -52,6 +52,10 @@ test('the browser replays a formal Core record like Node and rejects records of 
   for (let tick = 1; tick <= TICKS; tick++) session.step(scripted(tick));
   const recording = session.exportRecording();
   const record = plain(recording.record);
+  expect(record.version).toBe(GAME_REPLAY_VERSION);
+  expect(record.rulesVersion).toBe(RULES_VERSION);
+  expect(record.ticks.some(({ commands }) => commands.some(command => command.type === 'speed-preset')))
+    .toBe(true);
   const { mission, craftTypes, wingmanRoster, craftInfo, identity } = input;
   const content: ReplayContent = plain({ mission, craftTypes, wingmanRoster, craftInfo, identity });
   const reference = replayRecord(record, content);

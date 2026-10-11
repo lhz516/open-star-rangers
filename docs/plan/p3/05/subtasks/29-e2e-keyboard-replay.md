@@ -38,12 +38,18 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] AC-17：键盘驱动的开发运行真实导出 JSON，Node 重放的事件流与全部检查点一致；浏览器重放核对通过。
-- [ ] AC-06 的录制序列与 AC-07 的导出（含 `speed-preset` 与新版本、旧版本拒绝）有断言。
-- [ ] `pnpm test:e2e e2e/mission-flow.development.spec.ts --project=development` 与 `pnpm test:e2e e2e/browser-replay.spec.ts --project=development --project=production` 通过；`pnpm check` 通过。
+- [x] AC-17：键盘驱动的开发运行真实导出 JSON，Node 重放的事件流与全部检查点一致；浏览器重放核对通过。
+- [x] AC-06 的录制序列与 AC-07 的导出（含 `speed-preset` 与新版本、旧版本拒绝）有断言。
+- [x] `pnpm test:e2e e2e/mission-flow.development.spec.ts --project=development` 与 `pnpm test:e2e e2e/browser-replay.spec.ts --project=development --project=production` 通过；`pnpm check` 通过。
 
 ## 验证方法
 
 - 记录导出文件的路径（测试临时目录）、tick 数、命令数与比较结果。
 
 ## 完成证据
+
+- **AC-17：** `OSR_E2E_DEV_PORT=5271 OSR_E2E_PREVIEW_PORT=5272 pnpm test:e2e e2e/mission-flow.development.spec.ts --project=development --grep 'exports a keyboard-driven recording'` 通过；固定 seed `0x0eed0020` 的真实下载以 Node 重放，完整事件与检查点比较通过。测试附件记录导出文件、tick/命令数量、比较结果及版本拒绝结果。`OSR_E2E_DEV_PORT=5271 OSR_E2E_PREVIEW_PORT=5272 pnpm test:e2e e2e/browser-replay.spec.ts --project=development --project=production` 通过 development 浏览器重放核对；该项目配置未选择 production 用例。
+- **AC-06/AC-07：** 导出录制断言新 replay/rules 版本、`speed-preset`、`=` 首次命令在按键后消费、首个重复不早于 32 个时钟单位，以及后续重复不早于 16 个时钟单位；`input-consumer.test.ts` 精确验证观察时钟 +16 与帧后入队只在后续 tick 消费。另验证多个增速命令及旧 replay/rules 版本在载入内容前被拒绝。
+- **真实鼠标回归：** 修复前开发流程复现点击 Pause 与第二次 Mission menu 失效；保持提示行布局槽位后，development mission flow 全部 7 项通过；production mission flow 与 `keyboard-input.spec.ts` 通过，`joint-resources.spec.ts` 在 development/production 的三轮释放检查通过。按钮交互恢复鼠标点击，键盘控制另由 `keyboard-input.spec.ts` 覆盖。
+- **通用检查：** `pnpm check` 通过（typecheck、lint、243 个测试文件 / 7305 个测试、production build）；`git diff --check` 通过。Build 仍报告既存的大 chunk 警告。
+- **审查与文档影响：** rubber-duck 对最终差异未发现行为问题；此前指出的未释放 Backquote 已补 keyup。simplify 将最后 yaw 样本扫描改为 `findLastIndex`，并在最终审查中统一改用 `waitForFrame`、复用已核对的导出 ticks、并行运行互相独立的版本拒绝检查。避免二次读取导出文件的建议未采用，因为所需共享 helper 变更超出本子任务写入范围。焦点提示使用固定布局槽、仅视觉隐藏且在隐藏时 `aria-hidden`。本任务不改变接口或操作流程，除本子任务验收证据外无须更新维护文档。

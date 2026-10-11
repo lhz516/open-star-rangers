@@ -89,6 +89,10 @@ button:focus-visible {
   margin: 0.5rem 0;
 }
 
+.input-focus-hint[aria-hidden="true"] {
+  visibility: hidden;
+}
+
 .input-gap-notice:not(:empty),
 .input-tip {
   border-left: 4px solid #1a5fb4;

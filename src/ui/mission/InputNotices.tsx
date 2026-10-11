@@ -83,7 +83,9 @@ export function InputNotices({ input, gap, running }: InputNoticesProps) {
   const tipTitleId = useId();
   return (
     <div className="input-notices" data-testid="input-notices">
-      {input.focusHint && <p data-testid="input-focus-hint">{INPUT_FOCUS_HINT}</p>}
+      <p className="input-focus-hint" data-testid="input-focus-hint" aria-hidden={!input.focusHint}>
+        {INPUT_FOCUS_HINT}
+      </p>
       {/* Live regions stay mounted, so a newly shown text is announced. */}
       <p className="input-gap-notice" role="status" aria-live="polite" data-testid="input-gap-notice" data-gap={gap?.id ?? ''}>
         {gap && <GapText {...gap} />}

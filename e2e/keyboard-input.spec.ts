@@ -13,7 +13,7 @@ test('the focused input zone owns page-level bindings, slice-gap notices, pause 
   const zone = page.getByTestId('game-input-zone');
   await expect(zone).toBeVisible();
   expect(await page.locator('[data-testid="game-input-zone"]').count()).toBe(1);
-  expect(await page.getByTestId('input-focus-hint').count()).toBe(0);
+  await expect(page.getByTestId('input-focus-hint')).not.toBeVisible();
 
   await page.keyboard.press('Tab');
   await expect(button(page, 'Pause')).toBeFocused();
@@ -23,7 +23,7 @@ test('the focused input zone owns page-level bindings, slice-gap notices, pause 
   await expect(page.getByTestId('input-gap-notice')).toHaveAttribute('data-gap', '');
   await expect(page.getByTestId('mission-status')).toHaveAttribute('data-phase', 'running');
   await zone.click();
-  await expect(page.getByTestId('input-focus-hint')).toHaveCount(0);
+  await expect(page.getByTestId('input-focus-hint')).not.toBeVisible();
 
   const commandStart = await missionFrame(page);
   expect(await dispatchKeyboardEvent(page, { type: 'keydown', code: 'ArrowUp', key: 'ArrowUp' })).toBe(true);

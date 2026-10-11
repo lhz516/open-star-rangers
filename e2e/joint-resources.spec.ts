@@ -116,8 +116,7 @@ test('three menu → mission → menu round trips with a restart each release th
     const first = await fly(page, 1);
 
     // Paused and in the mission menu the run keeps its leave guard but requests no frame.
-    await tabTo(page, button(page, 'Pause'));
-    await page.keyboard.press('Space');
+    await button(page, 'Pause').click();
     await expect(status(page)).toHaveAttribute('data-phase', 'paused');
     const paused = await ownerResources(page);
     expectHeld(paused, 0, 1, `visit ${visit} paused`, true);
@@ -125,8 +124,7 @@ test('three menu → mission → menu round trips with a restart each release th
     await expect(button(page, 'Resume')).toBeFocused();
     await page.keyboard.press('Space');
     await expect(status(page)).toHaveAttribute('data-phase', 'running');
-    await tabTo(page, button(page, 'Mission menu'));
-    await page.keyboard.press('Enter');
+    await button(page, 'Mission menu').click();
     await expect(page.getByTestId('mission-menu')).toBeVisible();
     const menu = await ownerResources(page);
     expectHeld(menu, 0, 1, `visit ${visit} mission menu`);
@@ -144,8 +142,7 @@ test('three menu → mission → menu round trips with a restart each release th
     const second = await fly(page, 2);
     expect(second.flight.sessionIdentity).toEqual(intro.sessionIdentity);
 
-    await tabTo(page, button(page, 'Mission menu'));
-    await page.keyboard.press('Enter');
+    await button(page, 'Mission menu').click();
     await tabTo(page, button(page, 'Return to main menu'));
     await page.keyboard.press('Space');
     await expect(missionEntry(page)).toBeFocused();

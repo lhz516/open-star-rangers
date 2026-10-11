@@ -89,8 +89,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expectNoDiagnostics(page);
 
   // Pause holds the tick; resume continues it.
-  await tabTo(page, button(page, 'Pause'));
-  await page.keyboard.press('Space');
+  await button(page, 'Pause').click();
   await expect(status(page)).toHaveAttribute('data-phase', 'paused');
   await expect(status(page)).toHaveAttribute('data-pause', 'user');
   const paused = await expectStableTick(page, 800);
@@ -100,8 +99,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(paused);
 
   // The mission menu: no key resumes the run while it shows; Continue does.
-  await tabTo(page, button(page, 'Mission menu'));
-  await page.keyboard.press('Enter');
+  await button(page, 'Mission menu').click();
   await expect(page.getByRole('heading', { name: 'Mission menu', exact: true })).toBeFocused();
   await expectGaps(page, ['G-07', 'G-06']);
   await waitForFrame(page, candidate => candidate.position === 'menu');
@@ -118,8 +116,7 @@ test('the whole production flow from a restored cache, with and without a wingma
 
   // Restart: a new introduction ended by a held Enter whose repeats and keyup start nothing, the remembered choice
   // preselected, then a new run without a wingman whose departure a held Space ends without pausing the flight.
-  await tabTo(page, button(page, 'Mission menu'));
-  await page.keyboard.press('Enter');
+  await button(page, 'Mission menu').click();
   await tabTo(page, button(page, 'Restart mission'));
   await page.keyboard.press('Enter');
   frame = await waitForFrame(page, candidate => candidate.position === 'intro');
@@ -147,8 +144,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   expect(await missionFrame(page)).toMatchObject({ owner, run: 2, position: 'flight' });
 
   // Return: focus on the mission entry, no run or leave guard left.
-  await tabTo(page, button(page, 'Mission menu'));
-  await page.keyboard.press('Enter');
+  await button(page, 'Mission menu').click();
   await tabTo(page, button(page, 'Return to main menu'));
   await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();
@@ -173,8 +169,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   await expectAdvancingTick(page);
   await expectNoDiagnostics(page);
-  await tabTo(page, button(page, 'Mission menu'));
-  await page.keyboard.press('Enter');
+  await button(page, 'Mission menu').click();
   await tabTo(page, button(page, 'Return to main menu'));
   await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();

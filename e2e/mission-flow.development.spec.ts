@@ -3,14 +3,18 @@ import { extname } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
 import { MISSION_OBJECTIVES, SLICE_GAPS } from '../src/ui/mission/slice-gaps-copy.ts';
+import type { Recording } from '../src/core/replay/recording.ts';
+import { GAME_REPLAY_VERSION } from '../src/core/replay/recording.ts';
+import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
 import { MISSION_SCENARIOS, scenarioFiles, scenarioSource, type MissionScenario } from '../src/workers/import-scenarios.test-support.ts';
 import { exitCode, runReplayCheck } from '../tools/replay-check.ts';
 import { button, filePayloads, importFiles, openTestEntry } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
+import { exportedTickInputs, openKeyboardMenu, startKeyboardFlight, tabTo, waitForTickAfter } from './support/keyboard-input.ts';
 import {
   checkedWingman, chooseWingman, devState, endPlaceholder, enterMission, expectAdvancingTick, expectGaps, expectStableTick, holdKey,
-  leaveGuards, missionEntry, missionFrame, reloadWithoutConfirmation, requestLeave, stopWatchingPositions, submitDevCommand, waitForFrame,
-  watchPositions, type DevState,
+  leaveGuards, missionEntry, missionFrame, reloadWithoutConfirmation, requestLeave, stopWatchingPositions, submitDevCommand,
+  waitForFrame, watchPositions, type DevState,
 } from './support/mission-observations.ts';
 
 // P3-04 subtask 10 (docs/plan/p3/04/spec.md, 验证策略; AC-08, AC-10, AC-12, AC-16, AC-19 and AC-22 in development
@@ -24,6 +28,7 @@ test.describe.configure({ timeout: 240_000 });
 /** The uint32 seeds the test entry draws, one per world creation, so the panel and the recording name them. */
 const SEEDS = Object.freeze([0x0eed_0001, 0x0eed_0002, 0x0eed_0003]);
 const LEAVE_SEED = 0x0eed_0010;
+const KEYBOARD_REPLAY_SEED = 0x0eed_0020;
 const MISSION_LOADS = /Mission (?:loads|does not load) into Core/;
 const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
 
@@ -188,7 +193,7 @@ test('the whole development flow with and without a wingman: placeholders, depar
   expect(await leaveGuards(page)).toBe(1);
   frame = await endPlaceholder(page, 'G-02/2', 'Enter');
   expect(frame.run).toBe(1);
-  await expect(page.getByRole('heading', { name: 'Mission', exact: true })).toBeFocused();
+  await expect(page.getByTestId('game-input-zone')).toBeFocused();
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   await expectAdvancingTick(page);
   expect(await leaveGuards(page)).toBe(1);
@@ -431,4 +436,126 @@ test('the native leave confirmation shows only while a run exists; dismissing it
   await expect(page.getByTestId('original-data-status')).toContainText('not yet verified');
   expect(await missionFrame(page)).toBeNull();
   expect(await leaveGuards(page)).toBe(0);
+});
+
+test('exports a keyboard-driven recording that Node replays with identical events and checkpoints', async ({ page, browser }, testInfo) => {
+  await openKeyboardMenu(page, 'development', { seeds: String(KEYBOARD_REPLAY_SEED) });
+  await startKeyboardFlight(page);
+  let tick = (await waitForFrame(page, frame => frame.position === 'flight' && (frame.tick ?? 0) >= 8)).tick!;
+
+  await page.keyboard.down('BracketRight');
+  tick = await waitForTickAfter(page, tick);
+  await page.keyboard.up('BracketRight');
+  tick = await waitForTickAfter(page, tick);
+
+  await page.keyboard.down('Alt');
+  await page.keyboard.up('Alt');
+  tick = await waitForTickAfter(page, tick);
+  await page.keyboard.down('Alt');
+  tick = (await waitForFrame(page, frame => (frame.tick ?? 0) > tick + 4, 5_000)).tick!;
+  await page.keyboard.up('Alt');
+
+  await page.keyboard.press(' ');
+  tick = await waitForTickAfter(page, tick);
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('5');
+  await page.keyboard.up('Shift');
+  tick = await waitForTickAfter(page, tick);
+
+  const repeatStart = tick;
+  await page.keyboard.down('=');
+  tick = (await waitForFrame(page, frame => (frame.tick ?? 0) >= repeatStart + 64, 5_000)).tick!;
+  await page.keyboard.up('=');
+
+  await page.keyboard.down('Backquote');
+  await waitForTickAfter(page, tick);
+  await tabTo(page, button(page, 'Pause'));
+  await page.keyboard.up('Backquote');
+  await page.keyboard.press(' ');
+  await expect(status(page)).toHaveAttribute('data-phase', 'paused');
+  const pausedTick = await expectStableTick(page);
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toHaveAttribute('data-phase', 'running');
+  await page.getByTestId('game-input-zone').click();
+  await expect(page.getByTestId('game-input-zone')).toBeFocused();
+  tick = await waitForTickAfter(page, pausedTick);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Mission menu', exact: true })).toBeFocused();
+  await tabTo(page, button(page, 'Continue'));
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toHaveAttribute('data-phase', 'running');
+  await expect(page.getByTestId('game-input-zone')).toBeFocused();
+  tick = await waitForTickAfter(page, tick);
+  await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 4, 5_000);
+
+  const recordingPath = testInfo.outputPath('keyboard-recording.json');
+  const ticks = await exportedTickInputs(page, recordingPath);
+  const recording = JSON.parse(await readFile(recordingPath, 'utf8')) as Recording;
+  expect(recording.record.version).toBe(GAME_REPLAY_VERSION);
+  expect(recording.record.rulesVersion).toBe(RULES_VERSION);
+  expect(recording.record.run.seed).toBe(KEYBOARD_REPLAY_SEED);
+  expect(recording.record.ticks).toEqual(ticks);
+  expect(recording.result.finalTick).toBe(ticks.length);
+
+  expect(ticks.some(input => input.axes.pitch === -1), 'keyboard pitch reached the recording').toBe(true);
+  expect(ticks.some(input => input.axes.pitch === 0), 'pitch returned to neutral').toBe(true);
+  const lastYawTick = ticks.findLastIndex(input => input.axes.yaw === -1);
+  expect(lastYawTick, 'the held yaw reached the recording').toBeGreaterThanOrEqual(0);
+  expect(lastYawTick, 'focus loss cleared the held yaw').toBeLessThan(ticks.length - 1);
+  expect(ticks.slice(lastYawTick + 1).every(input => input.axes.yaw === 0), 'the yaw stayed neutral after focus loss').toBe(true);
+  const commands = ticks.flatMap(input => input.commands);
+  expect(commands).toContainEqual({ type: 'fire', channel: 'primary' });
+  expect(commands).toContainEqual({ type: 'fire', channel: 'secondary' });
+  expect(commands).toContainEqual({ type: 'speed-preset', level: 5 });
+  const speedIncreaseTicks = ticks.flatMap((input, index) =>
+    input.commands.some(command => command.type === 'speed' && command.operation === 'increase') ? [index + 1] : []);
+  expect(speedIncreaseTicks.length, 'the held speed key produced repeats').toBeGreaterThan(1);
+  expect(speedIncreaseTicks[0], 'the speed command was consumed after keydown').toBeGreaterThan(repeatStart);
+  expect(speedIncreaseTicks[1], 'the first repeat waited for the 32-clock-unit delay')
+    .toBeGreaterThanOrEqual(repeatStart + 16);
+  for (let index = 2; index < speedIncreaseTicks.length; index += 1) {
+    expect(speedIncreaseTicks[index]! - speedIncreaseTicks[index - 1]!, 'repeats respect the 16-clock-unit interval')
+      .toBeGreaterThanOrEqual(8);
+  }
+
+  const source = scenarioSource('mission-startable')!;
+  const disc = await writeDisc(testInfo);
+  const report = await runReplayCheck(recordingPath, disc, { catalog: catalogFor(source.covered, source.versionId) });
+  expect(report).toMatchObject({
+    passed: true, error: null, finalTick: recording.result.finalTick, comparison: { match: true },
+  });
+  expect(report.events).toBeGreaterThan(0);
+  expect(report.checkpoints).toBeGreaterThan(1);
+
+  const oldVersionPath = testInfo.outputPath('keyboard-recording-old-version.json');
+  const oldRulesPath = testInfo.outputPath('keyboard-recording-old-rules.json');
+  await Promise.all([
+    writeFile(oldVersionPath, JSON.stringify({
+      ...recording, record: { ...recording.record, version: GAME_REPLAY_VERSION - 1 },
+    })),
+    writeFile(oldRulesPath, JSON.stringify({
+      ...recording, record: { ...recording.record, rulesVersion: RULES_VERSION - 1 },
+    })),
+  ]);
+  const [oldVersion, oldRules] = await Promise.all([
+    runReplayCheck(oldVersionPath, []),
+    runReplayCheck(oldRulesPath, []),
+  ]);
+  expect(oldVersion).toMatchObject({
+    passed: false, error: { code: 'invalid-recording', location: 'record.version' }, identity: null, comparison: null,
+  });
+  expect(oldRules).toMatchObject({
+    passed: false, error: { code: 'invalid-recording', location: 'record.rulesVersion' }, identity: null, comparison: null,
+  });
+
+  await testInfo.attach('keyboard-recording-replay', {
+    contentType: 'application/json',
+    body: JSON.stringify({
+      chrome: browser.version(), node: process.version, v8: process.versions.v8,
+      file: 'keyboard-recording.json', seed: KEYBOARD_REPLAY_SEED, finalTick: recording.result.finalTick,
+      commands: commands.length, events: report.events, checkpoints: report.checkpoints,
+      comparison: report.comparison, rejected: [oldVersion.error, oldRules.error],
+    }),
+  });
 });
