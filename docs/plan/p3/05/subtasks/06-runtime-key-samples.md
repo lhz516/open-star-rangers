@@ -42,12 +42,19 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] Q-05 达到门槛：每个上下文至少一个样本，含 spec 列出的五类，均给出注入码、处理函数收到的值与可观察结果，并与 Q-01–Q-04 一致或已单列冲突。
-- [ ] 每个样本标明证明的是“码到动作”还是“物理键到码”；未取得物理路径证据的结论保持未确认。
-- [ ] 仓库中没有读数原文或原版内容；`pnpm check:compliance` 通过；改动 `tools/baseline/` 时 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` 通过。
+- [x] Q-05 达到门槛：每个上下文至少一个样本，含 spec 列出的五类，均给出注入码、处理函数收到的值与可观察结果，并与 Q-01–Q-04 一致或已单列冲突。（**基地除外**：基地上下文的样本移交 [34](./34-base-runtime-sample.md)，见完成证据。）
+- [x] 每个样本标明证明的是“码到动作”还是“物理键到码”；未取得物理路径证据的结论保持未确认。
+- [x] 仓库中没有读数原文或原版内容；`pnpm check:compliance` 通过；改动 `tools/baseline/` 时 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` 通过。
 
 ## 验证方法
 
 - 样本记录与入库事实逐项对照；`git status --short` 确认 `local/` 输出未被跟踪。
 
 ## 完成证据
+
+- **运行（基准私有副本，agent 独自，模拟器内输入，`--evidence local/research/p3-05/runtime`）：** A `q05-a-01`（飞行、能量页、地图：85/85 检查通过）、B `q05-b-01`（地图左键 → Warp、Warp 中的 Esc/`p`/`m`：46/46）、D `q05-d-01`（Esc → 选项页 → Esc 回飞行：12/12）；三次运行均 `complete`，完整性与回收检查通过。B 原先的 46/47 中失败的一项是检查器把侦察当作检查（`f` 在本任务没有友方候选，目标不变，与代码一致），改为侦察后重核为 46/46。
+- **spec 列出的五类：** 上方向键切回前视而不转向；Shift+`5`、Shift+`0` 的档位（指令速度精确等于预测值）；按住 Alt 时 Alt+`E` 的码为 0、主炮电平为 1；地图中 `p`（暂停循环中 Esc 不结束、`p` 结束）与 Esc 关闭地图；能量页 `s`、Shift+`s`、`g`、Shift+`g` 的档位变化与规则推算一致。全部与 Q-01–Q-04 一致，没有冲突；选项页以 Esc 继续由高概率改为已确认。
+- **证明类型：** 全部为“码到动作”。物理键到码没有取得（Computer Use 不能向 DOSBox-X 送键，`AUTOTYPE` 已排除，用户操作的探针未做），宿主物理键一步在键位表、executable 与 U-011 中保持未确认。
+- **基地缺口：** 探索运行 `q05-c1-02`（与 P3-06 的 17 交替）经 Warp 到达离基地约 9300 处，停靠闸门超时，不计为完整运行；D 读到所选任务的三个基地类对象状态字节 +2 都为 0，而 `0x394c4` 要求为 1。按 goal 执行记录的决定，基地样本移交 34；K 的基地按键以 Q-04 代码证据为依据，不受影响。中断的 `q05-c1-01`（电脑重启）不计。
+- **记录：** [键位表的运行样本](../../../../original/input/key-map.md#运行样本q-05p3-0506)、[executable 的 Runtime samples](../../../../original/formats/executable.md#runtime-samples-p3-0506)、[unknowns U-011](../../../../original/unknowns.md)。
+- **检查：** `pnpm check:compliance` 通过；`git diff --check` 无问题；`git status --short` 确认 `local/` 输出未被跟踪；未改 `tools/baseline/`。rubber-duck 审阅三项发现均已修正（Q-05 对基地标为未达到；executable 中宿主映射的置信度改为未确认；Warp 路径与基地不可停靠的结论限定在测得的状态）。

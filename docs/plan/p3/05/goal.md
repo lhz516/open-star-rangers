@@ -46,7 +46,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 |---|---|---|
-| S-01 | 01、02、03、04、05、06、07 | 04、05、06、07：事实记录逐项对照证据与置信度；32：文档审阅与 `pnpm check:compliance` |
+| S-01 | 01、02、03、04、05、06、07、34 | 04、05、06、07、34：事实记录逐项对照证据与置信度；32：文档审阅与 `pnpm check:compliance` |
 | S-02 | 18、19 | 19：Node 绑定矩阵（同一有效组合至多一个离散动作）；28：浏览器每动作族抽样 |
 | S-03 | 08、18、19 | 18、19：Node 轴、相反键归零、Ctrl 路由；28：浏览器读取的逐 tick 输入 |
 | S-04 | 18、19、20 | 18、20：Alt 电平、AltGr 与 Space 的 Node 时序；28：浏览器 tick 输入 |
@@ -60,8 +60,8 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | S-12 | 14、21、23、25 | 14、21：假宿主失败与部分成功；28：浏览器全屏与锁键状态；30：真实 Chrome 锁键 |
 | S-13 | 14、23、25 | 23：注入平台与状态的 Node 测试；28：浏览器先全屏后退出路径 |
 | S-14 | 15、20、21、22、25 | 21：受控 Promise 与事件排列；28：资源平衡、StrictMode 与 Fast Refresh |
-| S-15 | 06、07、32 | 32：R-23 离散对照与文档审阅；33：覆盖与一致性复核 |
-| AC-01 | 01–07 | 04、05、06、07：记录核对；33：`pnpm check:compliance` 与 git 审阅 |
+| S-15 | 06、07、32、34 | 32：R-23 离散对照与文档审阅；33：覆盖与一致性复核 |
+| AC-01 | 01–07、34 | 04、05、06、07、34：记录核对；33：`pnpm check:compliance` 与 git 审阅 |
 | AC-02 | 05、08、19 | 19：Node 绑定矩阵含 NumLock 两态与 Shift；33：定稿记录、提交先后与覆盖审阅 |
 | AC-03 | 08、18、19、20 | 18、20：Node 组合事件与上下文切换；28：浏览器 tick 输入及已集成 P3-06 有效轴的回归 |
 | AC-04 | 18、20 | 18、20：Node；28：浏览器开火与操纵、Shift 档位、Ctrl 组合并用 |
@@ -92,7 +92,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [03-map-mouse-research.md](./subtasks/03-map-mouse-research.md) | — | completed |
 | [04-keyboard-research-records.md](./subtasks/04-keyboard-research-records.md) | 01, 02 | completed |
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | completed |
-| [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | in-progress |
+| [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | completed |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | completed |
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
@@ -119,7 +119,8 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | pending |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | pending |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
-| [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32 | pending |
+| [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | pending |
+| [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -148,6 +149,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   - **06（协调者执行，in-progress）：** 运行 A（`q05-a-01`，85/85 检查通过）、B（`q05-b-01`，46/47，失败的一项是 `f` 选择友方目标的检查，尚待判断是检查器预期有误还是与静态结论冲突）与 D（`q05-d-01`，12/12）已完成，完整且完整性与回收检查通过；基地的探索运行 C（至多两次）已准备配方，未运行。报告、配方、脚本与计划在 `local/research/p3-05/runtime/`（`plan.md`、`recipes/`、`scripts/check_runs.py` 等）。本 worktree 中有 06 未提交的部分文档改动（`docs/original/input/key-map.md`、`docs/original/formats/executable.md`、`docs/original/unknowns.md`），属于 06 的写入范围，尚未审阅；06 的子任务文档还没有完成证据。恢复时：先核对这些改动与运行报告，判断 B 的失败项，决定是否进行基地运行 C（与 P3-06 的 17 交替使用基准环境，每次运行前确认锁空闲且没有自己遗留的 DOSBox-X），再补完成证据、做 rubber-duck 审阅并提交。
   - **之后的关键路径：** 06 → 08（检查点 K 键盘项）→ 11（需用户批准 P3-01 修订）→ 19、24 → 25 → 26、28、29、30 → 31（需用户）→ 32 → 33。
   - **待最终对齐判断：** 27 发现的快速两次 `m` 时 Pointer Lock 申请不记 `closing` 的差异（见上方记录）。
+- **2026-10-10 — 恢复执行；06 完成，基地样本拆为 34：** 用户重新调用 `/execute-goal`；恢复时没有遗留的 worker、`exec-p3-05-*` 分支或基准环境进程。B 的失败项是检查器把侦察当成检查：本任务中 `f` 没有找到友方候选，原目标保持不变，与代码一致；它不是 Q-05 样本，现行检查器把它列为侦察，B 重新核对为 46/46。基地探索运行 `q05-c1-02`（排在 P3-06 的 17 之后，按约定交替）经 Warp 到达离基地约 9300 处，停靠闸门超时；运行 D 的读数显示所选任务中三个基地类对象的状态字节 +2 都为 0，而近基地检查 `0x394c4` 要求为 1，停靠在测得的状态下不可能。按用户“有需要回答的问题直接用最推荐的答案”的授权，协调者决定：06 以飞行、地图、Warp 与页面的样本完成，基地缺口如实记为 Q-05 对基地的门槛未达到；新增 34（基地补样，依赖 06，加入 33 的依赖与 S-01、S-15、AC-01 的覆盖），不加入 08 的依赖——按[执行检查点](./spec.md#执行检查点)“运行样本与重开”，基地按键的唯一合格依据是 Q-04 的代码证据，缺样本既不是唯一依据也不推翻它。34 有界：静态找出可停靠的条件后至多两次探索运行，仍取不得时记为 blocked 交用户决定。
 
 ## 审批
 
