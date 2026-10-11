@@ -35,6 +35,7 @@ updated: 2026-10-10
 - `src/ui/game-input/map-input-policy.ts`、`src/ui/game-input/map-input-policy.test.ts`
 - `src/ui/game-input/map-input.ts`、`src/ui/game-input/map-input.test.ts`
 - `src/app/composition/**`
+- `src/ui/game-input/map-input-entry.test-support.tsx`：隔离入口改用生产策略，避免与生产值漂移（2026-10-10 协调者依 26 的 scope-request 加入，与进行中的 28、34 不重叠）。
 
 ## 验收标准
 
