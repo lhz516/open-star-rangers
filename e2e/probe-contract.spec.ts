@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { button } from './support/app-entry.ts';
 import { test, expect, collectBrowserErrors, settleDiagnostics } from './support/browser-test.ts';
 import {
-  devState, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, missionEntry, missionFrame, waitForFrame,
+  devState, endPlaceholder, enterMission, expectAdvancingTick, expectFlightCursorWithoutWebGL, expectStableTick, frameWindow, missionEntry, missionFrame, waitForFrame,
 } from './support/mission-observations.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 
@@ -179,24 +179,33 @@ test('reads the mission screen\'s run attributes, development diagnostics and ow
   const diagnostics = development ? await devState(page) : null;
   if (diagnostics) expect(diagnostics).toMatchObject({ run: 1, tick: stable, wingman: 0 });
   else expect(await page.locator('[data-testid="mission-dev-panel"], [data-testid^="dev-"]').count()).toBe(0);
-  // While running: one frame loop, the session's lifecycle listeners, one leave guard, no timer, canvas or observer.
+  // While running: one frame loop, session and input listeners, one leave guard, a 2D cursor, no timer or observer.
   expect(resources.frames.maximum).toBeLessThanOrEqual(1);
   expect(resources.frames.delivered).toBeGreaterThan(0);
   const active = resources.listeners.filter(entry => entry.active);
   expect(active.filter(entry => entry.group === 'session').map(entry => entry.type).sort()).toEqual(['pagehide', 'pageshow', 'visibilitychange']);
-  expect(active.filter(entry => ['keyboard', 'render'].includes(entry.group))).toEqual([]);
+  expect(active.filter(entry => entry.group === 'keyboard').map(entry => entry.type).sort())
+    .toEqual(['blur', 'focus', 'focusin', 'focusout', 'keydown', 'keyup', 'pagehide', 'pageshow', 'visibilitychange']);
+  expect(new Set(active.filter(entry => entry.group === 'keyboard' && ['keydown', 'keyup', 'focusin', 'focusout'].includes(entry.type))
+    .map(entry => entry.target)).size).toBe(1);
+  expect(active.filter(entry => entry.group === 'fullscreen').map(entry => entry.type).sort()).toEqual(['fullscreenchange', 'fullscreenerror']);
+  expect(active.filter(entry => entry.group === 'pointer-lock').map(entry => entry.type).sort())
+    .toEqual(['mousedown', 'mousemove', 'mouseup', 'pointerlockchange', 'pointerlockerror']);
+  expect(active.filter(entry => entry.group === 'render')).toEqual([]);
   expect(active.filter(entry => entry.type === 'beforeunload' && entry.group !== 'vite').map(entry => entry.group)).toEqual(['other']);
   expect(active.some(entry => entry.group === 'react')).toBe(true);
   expect(resources.timers.pending).toEqual([]);
   expect(resources.canvases).toEqual([]);
+  await expectFlightCursorWithoutWebGL(page);
   expect(resources.observers.every(entry => entry.targets.length === 0)).toBe(true);
   await button(page, 'Mission menu').click();
   await button(page, 'Return to main menu').click();
   await expect(missionEntry(page)).toBeFocused();
   const after = await frameWindow(page);
   expect(after.frames).toMatchObject({ pending: 0, maximum: 0, requested: 0 });
-  expect(after.listeners.filter(entry => entry.active && (['keyboard', 'session', 'render'].includes(entry.group) || (entry.type === 'beforeunload' && entry.group !== 'vite')))).toEqual([]);
+  expect(after.listeners.filter(entry => entry.active && (['keyboard', 'fullscreen', 'pointer-lock', 'session', 'render'].includes(entry.group) || (entry.type === 'beforeunload' && entry.group !== 'vite')))).toEqual([]);
   expect(after.timers.pending).toEqual([]);
+  await expect(page.locator('canvas')).toHaveCount(0);
   await testInfo.attach('readonly-observations', {
     body: JSON.stringify({ departure, advancing, stable, diagnostics, resources, after }), contentType: 'application/json',
   });
@@ -240,4 +249,3 @@ test('error collector retains Worker console errors and settles declared diagnos
   await page.evaluate(() => { console.error('controlled-declared-diagnostic'); });
   expectDiagnostic(`console: ${(await logged).location().url}: controlled-declared-diagnostic`);
 });
-

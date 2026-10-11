@@ -93,6 +93,18 @@ export async function expectAdvancingTick(page: Page, duration = 600): Promise<{
 /** The main menu's mission entry. */
 export const missionEntry = (page: Page) => button(page, 'Start mission');
 
+/** In flight, the only canvas is the hidden 2D map cursor, not a WebGL scene. */
+export async function expectFlightCursorWithoutWebGL(page: Page): Promise<void> {
+  await expect(page.locator('canvas')).toHaveCount(1);
+  const cursor = page.getByTestId('game-input-zone').locator('canvas');
+  await expect(cursor).toHaveCount(1);
+  await expect(cursor).toHaveAttribute('aria-hidden', 'true');
+  await expect(cursor).toBeHidden();
+  await expect(cursor).toHaveCSS('pointer-events', 'none');
+  expect(await cursor.evaluate(canvas => canvas instanceof HTMLCanvasElement && canvas.getContext('2d') !== null)).toBe(true);
+  expect(await page.evaluate(() => window.osrProbe.snapshot().canvases)).toEqual([]);
+}
+
 /** Opens the mission from the main menu's entry and waits for its introduction placeholder; resolves to its frame. */
 export async function enterMission(page: Page): Promise<MissionFrame> {
   await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'eligible');

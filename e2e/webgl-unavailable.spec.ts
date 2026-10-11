@@ -4,7 +4,7 @@ import type { ProbeSnapshot } from './support/browser-probes.ts';
 import { test as observed, expect } from './support/browser-test.ts';
 import { installedBrowser } from './support/environment.ts';
 import {
-  endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, leaveGuards, missionEntry, missionFrame,
+  endPlaceholder, enterMission, expectAdvancingTick, expectFlightCursorWithoutWebGL, expectStableTick, frameWindow, leaveGuards, missionEntry, missionFrame,
 } from './support/mission-observations.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 import { settleTooling } from './support/resource-balance.ts';
@@ -83,7 +83,7 @@ test('without WebGL the viewer explains it and releases on each visit, and the m
     visits.push({ visit, viewer, released: (await expectReleased(page, baseline)).frames });
   }
 
-  // The mission flow runs, pauses and resumes without any canvas, then releases on return.
+  // The mission flow runs, pauses and resumes with only its 2D cursor, then releases on return.
   const { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await button(page, 'Start').click();
@@ -94,11 +94,12 @@ test('without WebGL the viewer explains it and releases on each visit, and the m
   await button(page, 'Resume').click();
   const resumed = await expectAdvancingTick(page);
   expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
-  expect(await page.evaluate(() => document.querySelectorAll('canvas').length)).toBe(0);
+  await expectFlightCursorWithoutWebGL(page);
   await button(page, 'Mission menu').click();
   await button(page, 'Return to main menu').click();
   await expect(missionEntry(page)).toBeFocused();
   expect(await leaveGuards(page)).toBe(0);
+  await expect(page.locator('canvas')).toHaveCount(0);
   const afterMission = await expectReleased(page, baseline);
   // Neither screen ever got a WebGL context.
   expect(afterMission.canvases).toEqual([]);
