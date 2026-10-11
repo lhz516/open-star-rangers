@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-11
 related: [U-001, U-008, U-009, U-010, U-011, U-012, U-017, U-021, U-022, U-024, U-026, U-027, U-029, U-031, U-032]
 ---
 
@@ -3047,6 +3047,93 @@ Q-12: a summary of the numeric semantics that T10, W13, H8, D17, E5 and X11 reco
 - **Random numbers:** one C-library generator serves rules and presentation. Rule draws use `rand % n` with a non-negative operand (support 0…n−1; with 32768 = q·n + r, the values below r have q + 1 preimages and the others q) and low-bit masks (`AND 1`, `AND 3`, `AND 7`, `AND 0xFF`, exact), or real values rand × (1/32767) × K + C stored once to f32. Presentation code draws from the same generator in every rendered frame (radar noise, left-display flicker, corner gauges, the right display's interference, the HUD overlay `0x44f74`, the Warp effect `0x505cc`, the discriminator-1 fragment visual), and the communications reactions draw in the damage handler (C2), so the original sequence of rule draws depends on rendering and on installation state. The draw counts per path are in W12, D12, E4, X11 and H8.
 
 Evidence: the path sections above and ignored `local/research/p3-07/interfaces/` (`out/p4`–`out/p6`, `out/p13`, `out/p14`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project.
+
+#### Runtime check (P3-07/26)
+
+The formal runs of P3-07/26 read these paths in the running original (selected mission, raw difficulty 19,
+wingman selector 1, DOSBox-X fixed 40000 cycles; inputs only through recipe stimuli; method, runs and statistics in
+[B-009](../behavior/B-009-combat-rules.md#测量结果)). Every item below is **Confirmed (runtime)** for that
+configuration only (U-021) and agrees with the code reading above unless it says otherwise. Pause sites were pinned
+read-only in Ghidra: the gun shot `0x2e6b6` (after cooldown, misfire and aim, before +0x04 := clock), the missile
+launch `0x2e8bd`, the lock update `0x2de2b` (after the due test), the damage entry `0x2a694`, the point after its
+gates `0x2a6e5`, the after-shield point `0x2a6ee` and the epilogue `0x2a829` (reached by every path after the gates,
+including the fully absorbed one), the destruction branch `0x2a742`, the player's death branch `0x2a806`, the
+delayed player explosion call `0x2382e`, the fragment expiry `0x24cfa`, the pod branch `0x25729`, the other-object
+energy update `0x309ba`, the forward-search walk `0x63b12`, the camera pass walk `0x215c3` and the parked
+engagement call `0x2f279`/`0x2f27e`; per-frame chains used the dispatcher pause `0x2151d` (before the movement
+stage).
+
+Counts, windows and the excluded samples are in B-009; the items below state what the runs confirmed.
+
+- **Gun cadence (W5, W6):** with the trigger held, each list gun shot came at the first frame whose sample reached
+  the mount's previous shot + cooldown (non-strict, rescheduled from the shot's own sample), for both player gun
+  records; gun-1 mounts alternated as W5 chooses; every attempt passed the charge gate. Charge-limited firing matched
+  W6 and D14 exactly: the charge balance at each energy update and the shots between two updates,
+  ⌊(remainder + refill) ÷ cost⌋, including updates with dt > 64.
+- **Projectiles (H1, H2, H4):** the first-callback sample (due − lifetime) followed the creating shot by one frame
+  step (0–6 units; the frame count itself was not read). The expiry request came at the first frame with
+  sample ≥ first callback + lifetime and the projectile was gone the next frame; mode-1 moves were reproduced bitwise
+  from the recorded position, velocity and step, but every one of those sums was exact in f32, so they do not decide
+  the rounding direction (U-009). A ricochet requested removal at the first frame with sample ≥ first state-8
+  sample + 0x80 and was gone the next frame. The impact removal (`0x25f48`, state 6, then leave) occurred but was not
+  followed per frame.
+- **Lock (W8):** lock updates at the first frame with sample ≥ previous update + 0x15 and stage transitions
+  0→1→2→3→4 at W8's deadlines, in three independent sequences. With no valid target `0x2ddbc` sets the lock to 0 and
+  returns before its due test (step 1), so the first update after a target change is not anchored to the previous
+  one. A guided launch at lock 4 carried byte 4; a launch after a target change carried byte 1 (unguided path).
+- **Missiles (H5):** phase 0 at the second frame after creation; arming strict from that sample. The unguided path
+  re-armed its fuse at sample + (G+0x10 SAR 1) at every check; the u32 at linear 0x2C matched the value recorded
+  above (31) at every read in the formal runs, so the half-interval branch holds in this configuration. Homing
+  missiles chose the full or half interval by the controller distance (≥ 150 full), and their guidance deadline
+  followed sample + period at ≥ 250 units and the shifted sum below 250. Two homing missiles (independent start
+  states) detonated by proximity at the first callback whose sample exceeded G+0x0C (strict); missile-0 flights
+  fizzled at the first sample past their lifetime (strict) and were gone the next frame. A lifetime fizzle of a
+  player missile calls the camera hook `0x3119c`(missile, 0) and clears `0x174c0c` (observed: the camera stopped
+  naming the newer missile one frame before its own fizzle).
+- **Missile blast (H5):** a missile-3 contact hit gave the target the full D (no falloff); the player, trailing
+  under the autopilot, stayed beyond r1 and took no blast damage.
+- **Targets (T2, T4):** `t`, `r`, `y` and `f` chose as T2 on the census of active candidates, with T4's no-change
+  cases (nearest = current for `t`; only the current target qualifying for `r`/`y` in friendly mode; the wingman as
+  the only active friendly for `f`). `u` walked all 51 craft objects of the mission, found nothing in front within
+  a candidate's radius and wrote nothing (T4).
+- **Radar (T6):** the buffer count equals the eligible contacts (activity ≠ 0, state 4 or ≥ 7, not the player) plus
+  one target box, which directly follows the target's contact; the target box's shape word is the runtime address
+  of `0x409f4` (code base 0x10039000 in these runs).
+- **Energy keys (D10):** `e` page 0→1; `s`/`S` and `g`/`G` moved L1 and L2 with the total energy rates of D10; `d`
+  on page 1 returned the left display to page 0.
+- **Player energy (D14):** each update at the first frame with sample ≥ last + 64; every energy, shield and charge
+  change exact from the recorded dt and operands, at commanded speeds below and above c8C (the doubled speed cost),
+  including a dt-66 update.
+- **Other objects' energy (D14, E3.6):** at the update event `0x309ba`, updates at a due of last + 0x80 (active) or
+  + 0x100 (parked) came at the first frame with clock ≥ due; a due that the parked engagement had set to the clock
+  was taken in the next frame's energy pass (`0x30590` runs before `0x2f1b0`), as E3.6 step 4.
+- **Parked engagement (E3):** transponders (self +0x7C = 0, +0xC4 = 5) returned at E3.2 with no draw and no change;
+  a led kind-0x80 craft and a leaderless kind-0x100 craft (target its own +0x90, a base) passed the gates and set
+  their own +0x24 to the clock with no draw; the latter, with +0xE0 ≥ 0, found no qualifying missile mount and dealt
+  no damage. Neither leader branch occurred. Damage between parked objects followed the shield step below.
+- **Damage (D1–D5, `0x30c60`, `0x2a830`):** read at the entry (`0x2a694`) or as transactions after the gates
+  (`0x2a6e5`), after the shield (`0x2a6ee`) and at the epilogue (`0x2a829`, reached by every path after the gates).
+  The shield step (shield − damage when damage < shield, else shield 0 and the residual to the hull) and the hull
+  step (hull − residual) held wherever they apply (hits with subsystem 4 damaged, whose bypass roll was not judged,
+  excepted). Victims: craft hit by the player's guns and missiles (a contact missile gave the full damage; a kill
+  set the dead flag), parked objects, and the player hit by enemy projectiles (the record damage, absorbed) and by
+  collisions (`0x2a5fc`: attacker and source 0). Once a craft's shield was empty, every gun hit drew the subsystem
+  roll; a collision changed a subsystem word even with no residual damage (the collision roll).
+- **Enemy gun fire (W5, W6):** a start enemy (kind 0x80) firing at the passive player shot from its two mounts
+  together, each shot at exactly the previous shot + cooldown, every gate passed. When the AI fires is P3-08's.
+- **Destruction (X4, X7, X9; R-10 Core part):** each main explosion activated one frame after the destruction
+  branch `0x2a742`; displayed frame (14Δ) >> 6 at every followed frame; removal requested at the first sample with
+  Δ > 0x60 (strict) and the explosion gone the next frame; part-0 hand-offs. Fragment rows turned once per frame
+  regardless of the step, for discriminators 1, 2 and 3; a fragment does not move in the frame it is created (X9).
+  Fragment expiries came at the first frame with sample ≥ due; a discriminator-3 fragment shot down (durability 0)
+  expired with the explode flag at its next callback (X7). The player's destruction: at the death branch `0x2a806`
+  the delay timer `0x174ae4` held death sample + 0xC0; the delayed explosion call `0x2382e` came at the first sample
+  above it (strict); the player's explosion activated the next frame and, with its extras, was removed at Δ > 0x60;
+  the pod (the followed object, discriminator 3, part 0) got its expiry exactly 0x140 after its first update,
+  turned once per frame and expired at the first frame with sample ≥ due (`0x25729`). A random-due
+  discriminator-3 expiry of an enemy fragment fell outside the followed windows.
+- **Untested here:** base automatic mounts (W9; all four bases parked at the mission start) and the destruction of a
+  kind-0x100 craft (only the parked section-5 group has that kind, far away).
 
 ### Two allocator paths: native inputs and profile comparison
 

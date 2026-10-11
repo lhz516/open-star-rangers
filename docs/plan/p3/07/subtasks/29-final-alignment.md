@@ -4,13 +4,13 @@ status: active
 phase: P3
 task: "07"
 subtask: "29"
-updated: 2026-10-10
+updated: 2026-10-11
 ---
 
 # 29 — 最终对齐
 
 **契约来源：** [spec](../spec.md) 的 S-01 至 S-12、AC-01 至 AC-17；P3-02 spec 的 [P3-07 的契约修订](../../02/spec.md#p3-07-的契约修订d-01d-03)（CR-01 至 CR-14）。
-**依赖：** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37。
+**依赖：** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -39,7 +39,7 @@ updated: 2026-10-10
   - `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`；
   - `pnpm check`；
   - `pnpm check:compliance`；
-  - 若 09 或 26 改动了 `tools/baseline/`，运行 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`。
+  - 若 09、26 或 38 改动了 `tools/baseline/`，运行 `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`。
 - **文档与原版隔离：**
   - 改动的文档 `updated:`、链接与锚点有效；
   - 仓库中没有原版内容、反编译输出、读数或截图，研究输出只在 `local/research/p3-07/`；
@@ -52,7 +52,7 @@ updated: 2026-10-10
 
 ## 关键文件与契约
 
-- [spec](../spec.md)、[goal](../goal.md)、[P3-02 spec](../../02/spec.md) 与 01 至 28、30 至 37 的完成证据。
+- [spec](../spec.md)、[goal](../goal.md)、[P3-02 spec](../../02/spec.md) 与 01 至 28、30 至 38 的完成证据。
 
 ## 写入范围
 
