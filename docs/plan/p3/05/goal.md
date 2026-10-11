@@ -111,7 +111,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [22-map-input.md](./subtasks/22-map-input.md) | 17, 21 | completed |
 | [23-mission-shell-input-ui.md](./subtasks/23-mission-shell-input-ui.md) | — | completed |
 | [24-slice-gap-copy.md](./subtasks/24-slice-gap-copy.md) | 11 | completed |
-| [25-composition-wiring.md](./subtasks/25-composition-wiring.md) | 19, 22, 23, 24 | pending |
+| [25-composition-wiring.md](./subtasks/25-composition-wiring.md) | 19, 22, 23, 24 | in-progress |
 | [26-map-policy-wiring.md](./subtasks/26-map-policy-wiring.md) | 05, 25 | pending |
 | [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | completed |
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | pending |
