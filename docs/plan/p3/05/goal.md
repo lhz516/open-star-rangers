@@ -115,7 +115,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [26-map-policy-wiring.md](./subtasks/26-map-policy-wiring.md) | 05, 25 | completed |
 | [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | completed |
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | completed |
-| [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | pending |
+| [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | in-progress |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
