@@ -115,7 +115,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
-| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
+| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | pending |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
@@ -183,6 +183,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 29 的预先核对：** 协调者在 26、37 运行期间请 agent 只读核对 29 的契约不变量：七项中六项通过。另一项是 `src/core/contracts/validation.ts` 文件头仍提到已退役的合成场景（P3-02/04 遗留），协调者以只改注释的提交 `43b995b` 删去。前提中“具名待处理状态”的措辞与 CR-13（没有待处理标志）不符，改为“固定调用点的位置说明”，含义不变。
 
 - **2026-10-10 — 37 已集成：** `local/research/p3-07/comparison/` 中有以下工具：独立的 Φ（Python，只依据 `docs/original/` 与 B-009）、原版与新版两侧的读取、配对、单次转移核对（私有诊断调用 Core 的规则函数，随机转移按全域与分布核对）。另有 12 次新版连续运行：候选 `51a6d60`，`src/` 的树与 25 相同。在 09 与 26 已完成的运行上试运行，不作结论，没有发现不一致。37 列出的读数缺口（D 配方不读碎片转动、没有被毁时刻的暂停，Q1 的普查只读部分种类，L 的逐帧读数不含导弹目标的有效性）已转给 26，在相应配方首次运行前补上。27 的剩余步骤见 37 的完成证据。
+
+- **2026-10-10 — 暂停（用户重启电脑）：** 用户于 18:1x 要求保存进度并停止，之后以 execute-goal 继续。26 已完成 3 次正式运行（`q2-a-01`、`l-a-01`、`q1-a-01`），进行中的 `d-a-01` 被中断并排除；其余配方（da、lb、oa、pa、lc、db、q2b、q1b）已含 37 的读数补充。26 的状态改为 `pending`，恢复时重新派发，沿用已完成的运行，不重做。worker 会话 “P3-07 · 26 worker”（分支 `p3-07-26-worker`，没有提交）在恢复时归档。给 26、27、36、29 的交接说明在被忽略的 `local/research/p3-07/coordinator-handoff.md`。
 
 ## 审批
 
