@@ -104,7 +104,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
 | [25-docs-wrap-up.md](./subtasks/25-docs-wrap-up.md) | 19, 24 | completed |
 | [26-e2e-replay-expectation.md](./subtasks/26-e2e-replay-expectation.md) | 18 | completed |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26 | in-progress |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -155,6 +155,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-11 — 20 发现一项缺口，新增 26（依预先授权，不需审阅）：** 最终对齐在合并 P3-07 后的树上：`pnpm check`（264 个文件、7,878 项测试）、`src/core` 与边界回归（80 个文件、2,305 项）、`pnpm check:compliance`、baseline（170 项）与 ghidra 的 Python 测试通过；完整 `pnpm test:e2e` 为 195 通过、1 失败：`e2e/browser-replay.spec.ts` 的事件类型集合期望缺少 P3-07 自动选择目标产生的 `target-changed`（比较本身 `match: true`）。这是用例期望过时。20 回到 `pending`，新增 26 修正该期望，最终对齐加入对 26 的依赖；其余核对项（覆盖、检查点、不变量、文档与隔离）在 26 之后的 20 中一并完成。
 
 - **2026-10-11 — 26 完成（交 20）：** `e2e/browser-replay.spec.ts` 的事件类型集合期望精确加入 `target-changed`（来自 P3-07 的自动选择目标，已核对源码与脚本无目标命令）；单独运行通过，`pnpm check` 通过。完整 e2e 在 20 中重跑。
+
+- **2026-10-11 — 20 完成，goal 完成：** 最终对齐通过（证据见 20）。合并 P3-07 后的树上 `pnpm check`、核心与边界回归、合规、Python 测试与完整 e2e（196 项）全部通过；18 的全部 R 项“一致”。本分支的本地提交未推送，也未合入其他分支；P3-07 的后续提交由其自己合并。
 
 ## 审批
 

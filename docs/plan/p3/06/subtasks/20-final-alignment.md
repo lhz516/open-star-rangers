@@ -45,10 +45,10 @@ updated: 2026-10-11
 
 ## 验收标准
 
-- [ ] S-01 至 S-10、AC-01 至 AC-12 逐项有证据，没有未披露的缺口。
-- [ ] 检查点批准的时序与上列契约不变量逐项核对通过。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm check`、`pnpm check:compliance` 通过；适用时 baseline 工具测试与浏览器回归通过。
-- [ ] 文档链接、元数据与原版隔离核对通过；`node tools/task-state.ts p3/06` 没有计划问题。
+- [x] S-01 至 S-10、AC-01 至 AC-12 逐项有证据，没有未披露的缺口。
+- [x] 检查点批准的时序与上列契约不变量逐项核对通过。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm check`、`pnpm check:compliance` 通过；适用时 baseline 工具测试与浏览器回归通过。
+- [x] 文档链接、元数据与原版隔离核对通过；`node tools/task-state.ts p3/06` 没有计划问题。
 
 ## 验证方法
 
@@ -56,3 +56,9 @@ updated: 2026-10-11
 - 对照 spec 与各 subtask 的完成证据逐项核对。
 
 ## 完成证据
+
+- **覆盖：** 按 [goal 验收覆盖](../goal.md#验收覆盖)逐项核对：S-01 至 S-10 与 AC-01 至 AC-12 在各行的完成证据中都有对应（01–05、21、23 的研究与入档；06 的检查点 A、C；07、08 的预实验与检查点 B；09–16、24 的 Core 实现与调用者；17 的 15 次合格正式运行；18 的 R-04a–d、R-05a–b 全部“一致”；19、25 的文档；22 的模拟器内输入；26 的 e2e 期望）。所有子任务文档的验收项均已勾选，没有未披露的缺口。未观察到的原版分支（停放 Warp 跳跃、到达与真正退场）与 R-05a 的支持集、完整停放帧序已在 17、18 的证据中披露，由 Node 覆盖，不宣称为原版观察。
+- **检查点：** 检查点 A、C（`d379d31`）早于依赖其状态的代码提交 09（`10abf2bd`），检查点 B（`6c265101`）早于正式采集 17 的提交（祖先关系已核对）；各修订记入 spec 与 P3-02、P3-01 的审批节，均依用户 2026-10-09 的预先授权，未越过冻结决定的边界（总计划措辞一项已有用户决定，由 P3-05 的 ADR-0018 集成，本 goal 不另写 ADR）。
+- **契约不变量：** 由 09–15、24、26 的测试与 24 之后的独立代码评审覆盖：命令逐 tick 有序且每个合法命令恰好一个结果，Core 无跨 tick 的按键或命令队列；手动轴归零、地图与基地中的有效轴为零、中立输入不恢复旧轴；`step()` 之外没有推进时钟或接受任意步长的生产入口，也没有可注入处理器的生产入口；`flight` 分区拆分后未就绪部分明确标识；`RULES_VERSION` 与快照版本相对主线（1）现为 3，即 P3-06 与 P3-07 各递增一次；预算在实体上限下经测试核对。M-01 至 M-10 全部达到门槛（见 21、23 与 17）。
+- **检查（合并 P3-07 后的树，HEAD 含 26 的集成）：** `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts` 80 个文件 / 2,305 项通过；`pnpm check` 264 个文件 / 7,878 项测试、类型检查、lint 与构建通过；`pnpm check:compliance` `passed: true`；`python3 -B -m unittest discover -s tools/baseline` 170 项与 `tools/ghidra` 通过；完整 `pnpm test:e2e` 196 项通过（首次运行为 195 通过、1 失败：`browser-replay` 的事件类型期望过时，由 26 修正后重跑全绿）。
+- **文档与原版隔离：** 本 goal 的文档与改动的原版文档经链接、锚点与 front matter 检查通过；U 项的负责阶段未改；已跟踪文件中没有 `local/`、镜像、可执行文件或其他原版载荷，读数与研究输出只在被忽略的 `local/research/p3-06/`；`node tools/task-state.ts p3/06` 无计划问题。全文档扫描中旧的 STATUS 锚点与模板元数据问题在本 goal 前后相同，不属本 goal。
