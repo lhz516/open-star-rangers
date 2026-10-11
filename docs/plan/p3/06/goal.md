@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [15-motion-projection-replay.md](./subtasks/15-motion-projection-replay.md) | 13, 14 | completed |
 | [16-real-content-check.md](./subtasks/16-real-content-check.md) | 11 | completed |
 | [17-original-runs.md](./subtasks/17-original-runs.md) | 08 | completed |
-| [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | in-progress |
+| [18-comparison-verdicts.md](./subtasks/18-comparison-verdicts.md) | 15, 16, 17 | completed |
 | [19-docs-handoff.md](./subtasks/19-docs-handoff.md) | 14, 15, 16 | completed |
 | [22-agent-driven-input.md](./subtasks/22-agent-driven-input.md) | 02, 03 | completed |
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
@@ -148,6 +148,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 - **2026-10-11 — 17 完成（交 18、20）：** 15 次合格正式运行满足检查点 B 的数量（F1×2、F2×2、F3×2、F4×3、F4b×2、F5-v3×2、F5b×2，均为 fixed 40000，完整性与清理通过），排除 4 次（f-1-01 v1 字段缺陷、f-2-01 与 f-3-01 中止、f-5-01 玩家被救援）。飞行中的运动写回为就近舍入（U-009），不需要改数值策略。配方偏差（v2 字段改名、F4b、F5b、F5-v3）记在被忽略的运行笔记中，判据不变。F2/F3 运行可逐位重放；停放中的 Warp 跳跃、到达与真正退场未在运行中观察到（由 Node 覆盖）；R-05a 的支持集与停放切换的完整帧序留给 18。
 
 - **2026-10-11 — 17 集成并合入 P3-07（协调者决定，依预先授权）：** 17 以 `a3edbe1b` 集成，worker 分支与工作树已清理。18 的前提（目标选择与实时能量／最高速度）已由 P3-07 交付，协调者把 `p3-07-weapons-damage-spec`（`67243a58`）合入本分支（`35224fa7`）：文字冲突只有 `executable.md` 的 front matter 与 `unknowns.md` 的 U-008、U-009 两行（合并两侧：保留 17 的运行时结论与 P3-07 的补充）；合并后 `pnpm check` 通过（264 个文件、7,878 项测试，构建成功）。P3-07 的后续提交由其自己合并，本分支不推送。认领 18，在合并后的树上由 worker 执行。
+
+- **2026-10-11 — 18 完成（交 20）：** 在合并 P3-07 后的候选（认领提交 `c467ebf5`，Core 代码未改）上，R-04a、R-04b、R-04c、R-04d、R-05a、R-05b 全部判为“一致”，判据沿用检查点 B 且未改动。覆盖：150 对同帧、41 个速度键、48 个摇杆暂停、80 个窗口与 26 条链（共 206 个边界，实际 `World.step` 与独立求值一致，步长预算全部通过）、118 个辅助帧与 6 个间隔、两次起飞、30 个真实内容配置、48 次实时能量／子系统最高速度变化，以及区域、停放、编队与世界边界样本。限制已在证据中写明：F2/F3 重复运行的分布只限已列的样本；完整的停放 N/N+1/N+2 帧序与未观察到的停放 Warp 跳跃、到达与真正退场由 Node 覆盖，不宣称为原版观察。无实现差异或新的阻塞。
 
 ## 审批
 
