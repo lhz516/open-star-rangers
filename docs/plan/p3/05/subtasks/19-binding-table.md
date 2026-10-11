@@ -36,13 +36,18 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 绑定数据与定稿 spec 逐行一致，来源准确，候选行未入表（AC-02 的代码部分）。
-- [ ] 绑定矩阵覆盖全部条目、无竞争组合、NumLock/Shift 区分、G-08–G-10 与前视/导航的区分（AC-05、AC-08 的 Node 部分）。
-- [ ] 锁键清单排除 Escape、Tab、Meta、F12。
-- [ ] `pnpm exec vitest run src/ui/game-input` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；`pnpm typecheck` 与 `pnpm lint` 通过。
+- [x] 绑定数据与定稿 spec 逐行一致，来源准确，候选行未入表（AC-02 的代码部分）。
+- [x] 绑定矩阵覆盖全部条目、无竞争组合、NumLock/Shift 区分、G-08–G-10 与前视/导航的区分（AC-05、AC-08 的 Node 部分）。
+- [x] 锁键清单排除 Escape、Tab、Meta、F12。
+- [x] `pnpm exec vitest run src/ui/game-input` 通过；按 [simplify](../../../../../.agents/skills/simplify/SKILL.md) 检查本项改动；`pnpm typecheck` 与 `pnpm lint` 通过。
 
 ## 验证方法
 
 - Node 绑定矩阵；浏览器抽样由 28 完成，文档逐项一致由 32 与 33 核对。
 
 ## 完成证据
+
+- **绑定表：** [bindings.ts](../../../../../src/ui/game-input/bindings.ts) 按检查点 K 定稿表建立冻结生产表：包括标点操纵键与 Ctrl 横滚、Alt/Space 开火、速度及 `speed-preset`、通讯数字、Enter/Ctrl+Enter、P3-07 的目标/武器/能量动作、基地导航、G-08–G-10、会话控制和地图 Escape/Warp。小键盘数字用 NumLock 与 Shift 状态相异判定，视角别名和基地导航用状态相同判定；NumpadDecimal 与 Shift 状态相异时选导弹。Shift+Slash、作弊键及其他未列组合不绑定。
+- **无竞争与锁键：** `createBindingTable` 接收唯一生产表并验证无冲突；矩阵测试另断言 `findBindingConflicts` 为空，并逐项核对动作/上下文/修饰与重复性。`KEYBOARD_LOCK_CODES` 从实际绑定码和 CtrlLeft/CtrlRight 修饰码推导，并复用平台的 `UNLOCKABLE_KEY_CODES` 排除 Escape、Tab、Meta（含旧 OS 别名）与 F12。
+- **测试与检查：** `pnpm exec vitest run src/ui/game-input` 通过（9 个文件、213 项）；`pnpm typecheck`、`pnpm lint` 与 `git diff --check` 通过。键盘映射 rubber-duck review 指出 Shift+Slash 不应切武器，已收窄为未修饰 Slash 并增加回归断言；simplify 审阅后改用平台已有锁键排除集、合并 NumLock/Shift 相异与相同的成对生成逻辑，并用既有冲突检测器代替手写匹配循环，全部检查重跑通过。
+- **文档影响：** 无需修改共享说明；已批准 spec 是本绑定表权威，键位/模块说明的汇总同步属于 32 的写入范围，本项没有增加原版研究事实。
