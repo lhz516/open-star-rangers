@@ -39,6 +39,7 @@ updated: 2026-10-10
 - `src/ui/mission/InputNotices.tsx`、`src/ui/mission/mission-copy.ts`、`src/ui/mission/mission-copy.test.ts`：接通后“没有游戏控件”的骨架说明不再成立，能力与地图状态的文字也放在这里（2026-10-10 协调者依 23 的报告加入）。
 - `e2e/support/app-entry.ts`
 - `e2e/interaction-render.spec.ts`：接通输入后进入飞行的焦点改落输入区，原用例断言标题焦点（同上）。
+- `src/platform/input/browser-pointer-lock.ts`：所有者先于 React 挂载输入区创建消费者，Pointer Lock 适配需要延后绑定目标元素；`src/ui/game-input/map-input-entry.test-support.tsx`：生产组件去掉 `onFocusChange` 后同步删除；`src/ui/mission/GameInputZone.tsx`：接线所需的输入区调整（2026-10-10 协调者依 25 的 scope-request 加入，与进行中的 34 不重叠）。
 
 ## 验收标准
 
