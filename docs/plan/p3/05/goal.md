@@ -118,9 +118,10 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | completed |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
-| [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
+| [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | in-progress |
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | blocked |
-| [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34 | pending |
+| [35-e2e-regressions.md](./subtasks/35-e2e-regressions.md) | 25, 26, 27, 28, 29 | in-progress |
+| [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -159,6 +160,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   Evidence: 34 的子任务证据、`docs/original/input/key-map.md`、`executable.md`、`unknowns.md` 的更正；私有运行记录在 `local/research/p3-05/`。
   Affected acceptance: 34 的验收；S-01、S-15、AC-01 中的基地运行样本部分；33 依赖 34。
   Resume when: 用户批准新的运行内导航计划，含明确的停靠/降落/view 6 门槛，并在基地键之前让停靠流程完成。
+- **2026-10-10 — 新增修复项 35：** 协调者在 33 之前于 `ac86ed5c` 运行完整 e2e（单 worker）：214 通过、7 失败，在 29 集成前即可复现（25–27 接线后过时的断言与两项待诊断失败）。按 execute-goal §5 新增 35 并加入 33 的依赖。另：此前完整运行中开发服务器崩溃，原因为主检出 `local/local` 自指符号链接（worker 启动步骤重复执行 `ln -s` 所致）使 Vite 监视器 ELOOP；已删除该链接（仅链接、无数据），后续 kickoff 改为仅在不存在时创建。
 
 ## 审批
 
