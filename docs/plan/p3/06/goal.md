@@ -103,7 +103,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-006, B-007, U-001, U-008, U-
 | [23-implementation-facts.md](./subtasks/23-implementation-facts.md) | 10, 12, 14, 16 | completed |
 | [24-p3-04-integration.md](./subtasks/24-p3-04-integration.md) | 09, 12, 13, 14, 15 | completed |
 | [25-docs-wrap-up.md](./subtasks/25-docs-wrap-up.md) | 19, 24 | completed |
-| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25 | pending |
+| [20-final-alignment.md](./subtasks/20-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25 | in-progress |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
