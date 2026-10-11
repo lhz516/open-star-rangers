@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [05-map-records-checkpoint.md](./subtasks/05-map-records-checkpoint.md) | 03 | completed |
 | [06-runtime-key-samples.md](./subtasks/06-runtime-key-samples.md) | 04 | completed |
 | [07-bios-repeat-research.md](./subtasks/07-bios-repeat-research.md) | — | completed |
-| [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | pending |
+| [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | in-progress |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
 | [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | completed |
 | [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
@@ -119,7 +119,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | pending |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | pending |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
-| [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | pending |
+| [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | in-progress |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
