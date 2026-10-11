@@ -118,7 +118,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | completed |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
-| [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | in-progress |
+| [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | completed |
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | blocked |
 | [35-e2e-regressions.md](./subtasks/35-e2e-regressions.md) | 25, 26, 27, 28, 29 | in-progress |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35 | pending |

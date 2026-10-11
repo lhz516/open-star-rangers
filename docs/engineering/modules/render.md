@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/render/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-`render/` 目前有 P1-07 的共用设施（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：DOM-free 的 4:3 视口布局、绘制端口与释放 helper，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂），工程要点见[渲染表面与视口](../README.md#渲染表面与视口)；以及 P2-11 的 `render/viewer/` 资源查看渲染（见[资源查看渲染](#资源查看渲染)）。P1-07 的合成帧、相机、外观与合成渲染器已于 P3-04 随合成演示退役（[R2](../source-structure.md#r2-合成渲染)）；任务画面尚无画布，飞行画面归 P3-12、P3-13。
+`render/` 目前有 P1-07 的共用设施（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：DOM-free 的 4:3 视口布局、绘制端口与释放 helper，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂），工程要点见[渲染表面与视口](../README.md#渲染表面与视口)；P2-11 的 `render/viewer/` 资源查看渲染（见[资源查看渲染](#资源查看渲染)）；以及 P3-05 地图输入所需的纯 CSS 像素几何（[map-input-geometry.ts](../../../src/render/map/map-input-geometry.ts)）与自绘地图十字光标（[map-cursor.ts](../../../src/render/map/map-cursor.ts)）。当前任务画面仍无完整飞行画布；地图几何与光标供输入层使用，不实现玩法。生产几何、光标及原版指针外观交给 P3-13，完整飞行画面归 P3-12、P3-13。
 
 ## 资源查看渲染
 

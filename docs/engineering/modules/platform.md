@@ -68,4 +68,4 @@ related: [ADR-0015]
 
 ## 键盘源
 
-[platform/input/](../../../src/platform/input/)（P1-09）提供冻结的键盘事件与信号、纯按住轴、`KeyboardSource` 端口、DOM-free 的资格与监听管理（[keyboard-source.ts](../../../src/platform/input/keyboard-source.ts)）与浏览器连接 [browser-keyboard-source.ts](../../../src/platform/input/browser-keyboard-source.ts)。它的合成五键消费者已于 P3-04 退役，当前构建没有消费者，浏览器连接暂无导入者，留给 P3-05 的原版键位。通用规则见[键位文档](../keyboard-input.md#3-平台键盘源的通用规则)与[工程约定](../README.md#键盘源与输入区)。
+[platform/input/](../../../src/platform/input/)（P1-09）提供冻结的键盘事件与信号、纯按住轴、`KeyboardSource` 端口、DOM-free 的资格与监听管理（[keyboard-source.ts](../../../src/platform/input/keyboard-source.ts)）与浏览器连接 [browser-keyboard-source.ts](../../../src/platform/input/browser-keyboard-source.ts)。P3-05 的 `ui/game-input/` 消费者在任务所有者 `input` 阶段持有此源：平台层只报告事件与资格，不解释游戏动作、不调度 tick。焦点/页面资格变化清本地按住状态；仍 running 时消费者经 `GameInputConsumer.clear(reason)` 清理会话输入。绑定、上下文、拦截与清键约定见[键位文档](../keyboard-input.md)与[工程约定](../README.md#键盘源与输入区)。

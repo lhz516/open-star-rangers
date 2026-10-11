@@ -159,6 +159,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 - 开发服务器启动时预先转换页面与导入 Worker 的模块图（`server.warmup`）。Worker 经 URL 载入，不在页面的静态导入图中，否则首个导入任务要等按需转换。
 - 自建开发/生产服务器默认为 `http://127.0.0.1:4173`、`http://127.0.0.1:4174`，strictPort 且不复用已有服务器。用 `OSR_E2E_DEV_PORT`/`OSR_E2E_PREVIEW_PORT` 指定不同的空闲端口；不关闭其他进程。
 - 每个用例使用隔离 context，runner 收尾自有服务器与浏览器；报告、失败 trace/截图在 ignored 的 `playwright-report/`、`test-results/`，不进入网站或提交。
+- **地图 Pointer Lock 隔离入口（P3-05/27）：** `/e2e/entries/map-input.html` 只由开发服务器提供，使用合成内容，不代表真实任务地图路径。headless Chrome 在 HTTP origin 上支持真实 Pointer Lock；`about:blank`/`setContent` 可能因 `WrongDocumentError` 失败。测试钩子经 CDP `Runtime.evaluate` 且 `userGesture: false` 驱动，避免 Playwright evaluate、locator、DOM trace 或截图造成瞬时用户激活、改变自动申请路径。该入口使用独立 `pointer-lock` 资源平衡组，且开发服务器预热按 `./e2e/entries/*.html` 匹配，无需每添入口修改配置。Chrome 155/macOS 26.6 的 CDP 注入鼠标移动在 DPR 1 与 2 下报告 CSS 像素位移；这是注入输入，不是物理鼠标单位实测。完整限制见[地图入口证据](../plan/p3/05/subtasks/27-map-input-entry.md#完成证据)。
 - **生产预览的 CSP（P2-11 S-11、技术决定 11）：** [vite.config.ts](../../vite.config.ts) 只让 `vite preview` 发送 [preview-csp.ts](../../tools/preview-csp.ts) 中的严格策略：
   - 策略文本为 `default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`；
   - 不含 `unsafe-inline`、`unsafe-eval`、`blob:`、`data:`、通配符或其他来源；开发服务器的客户端依赖内联脚本，不发送策略；
@@ -308,7 +309,7 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
   - `listeners[]` 另有 `element`（`'react'` 表示 React DOM 在该元素上登记的非委托监听，否则为 null）与 `detached`（目标已离开文档）；
   - [audio-playback.ts](../../e2e/support/audio-playback.ts) 的 `records()` 给出每个 AudioContext 的状态与每次 `close()` 的结局（`pending`、`resolved`、`rejected`）。Chrome 在调用 `close()` 时就同步把 `state` 设为 `closed`，所以只有已 resolve 的 `close()` 才算已关闭。
   - **单次计时器（P3-04）：** 探针包装 `setTimeout`/`clearTimeout`，`this`、延迟、参数与返回的原生句柄都不变，只记录调用栈属于应用（`/src/` 或 `/assets/`）且处理器为函数的计时器（测试自己的计时器不记录）。快照的 `timers` 给出未触发也未清除的 `pending`（ID 与延迟）、`scheduled`，以及已触发与已清除的 ID；`restore()` 还原原函数。`clearInterval` 不包装，应用不用它清除 timeout。
-  - **监听分组：** `keyboard` 组为 window 的 focus/blur、第二个生命周期登记者，以及任务画面（`[data-testid="mission-screen"]`）内元素上的应用监听，留给 P3-05 的输入源（React DOM 的元素监听在元素进入文档前登记，不会落入）；会话宿主的 visibilitychange/pagehide/pageshow 为 `session` 组；任务所有者的离页保护（`beforeunload`）属 `other` 组，而 Vite 客户端自己登记的 `beforeunload` 属 `vite` 组，计数离页保护时排除它。P1 的 `synthetic-view` 分组随合成画面删除。
+  - **监听分组：** `keyboard` 组为 window 的 focus/blur、第二个生命周期登记者，以及任务画面（`[data-testid="mission-screen"]`）内元素上的应用监听（输入区 keydown/keyup/focusin/focusout，React DOM 的元素监听在元素进入文档前登记，不会落入）；`pointer-lock` 组为 P3-05 输入消费者的 `pointerlockchange`、`pointerlockerror`、`mousemove`、`mousedown`、`mouseup`；会话宿主的 visibilitychange/pagehide/pageshow 为 `session` 组；任务所有者的离页保护（`beforeunload`）属 `other` 组，而 Vite 客户端自己登记的 `beforeunload` 属 `vite` 组，计数离页保护时排除它。P1 的 `synthetic-view` 分组随合成画面删除。
 - **用法：**
   - `ResourceBalance.start(page, testInfo, { packages })` 在已稳定的菜单上取基线；`check(label)` 断言没有差异，`measure` 只报告；
   - 提交后用 `expectPackages([expectedPackage(key, groups)])` 更新期望的缓存包；
@@ -412,9 +413,9 @@ P3-04 S-07（[spec：开发诊断](../plan/p3/04/spec.md#开发诊断)），API 
 
 ## 键盘源与输入区
 
-[keyboard-input.ts](../../src/platform/input/keyboard-input.ts) 定义冻结事件/信号/端口和纯按住轴；[keyboard-source.ts](../../src/platform/input/keyboard-source.ts) 实现实际生产资格与监听管理，最小 DOM-free Host 驱动故障测试；[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts) 只连接 DOM，不被 Node 测试导入。容器拥有 keydown/keyup/focusin/focusout，window 只有 focus/blur/pagehide/pageshow，document 只有 visibilitychange。释放先逻辑失效，再逐项撤销，撤销失败保留原因，不能声称物理清理成功。
+[keyboard-input.ts](../../src/platform/input/keyboard-input.ts) 定义冻结事件/信号/端口和纯按住轴；[keyboard-source.ts](../../src/platform/input/keyboard-source.ts) 实现实际生产资格与监听管理，最小 DOM-free Host 驱动故障测试；[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts) 只连接 DOM，不被 Node 测试导入。容器拥有 keydown/keyup/focusin/focusout，window 只有 focus/blur/pagehide/pageshow，document 只有 visibilitychange。P3-05 的 [game-input](../../src/ui/game-input/) 在任务所有者的 `input` 阶段连接平台源，绑定与游戏动作映射不进入平台层。释放先逻辑失效，再逐项撤销，撤销失败保留原因，不能声称物理清理成功。
 
-P1-09 的合成五键消费者与其输入区已随合成演示退役（[R6](./source-structure.md#r6-合成-ui-层)、[R7](./source-structure.md#r7-演示页面开发面板与画面)）。当前构建没有游戏输入区或键盘消费者，`browser-keyboard-source.ts` 暂无导入者；P3-05 加入原版键位时在任务画面中建立输入区，并经任务所有者的 `input` 阶段登记。任务流程的项目页面按键（占位的 Enter/Space/Esc、入口的 repeat 抑制）在 [page-keys.ts](../../src/ui/mission/page-keys.ts)。规则与支持范围只在独立[键位文档](./keyboard-input.md)维护；目标检查为 `pnpm exec vitest run src/platform/input src/ui/mission`，完整工程检查仍为 `pnpm check`。
+P1-09 的合成五键消费者与其输入区已随合成演示退役（[R6](./source-structure.md#r6-合成-ui-层)、[R7](./source-structure.md#r7-演示页面开发面板与画面)）；P3-05 已建立正式任务输入区与游戏键位消费者。任务流程的项目页面按键（占位的 Enter/Space/Esc、入口的 repeat 抑制）仍在 [page-keys.ts](../../src/ui/mission/page-keys.ts)。绑定表、地图策略、清键入口与证据只在独立[键位文档](./keyboard-input.md)维护；针对性测试为 `pnpm exec vitest run src/platform/input src/ui/game-input src/ui/mission src/render/map`，E2E 键盘、地图与录制/replay 用例见本节 runner 及 `e2e/keyboard-input*.spec.ts`、`e2e/map-input.development.spec.ts`；完整工程检查仍为 `pnpm check`。
 
 ## 渲染表面与视口
 
@@ -461,7 +462,7 @@ P1-08 的 React 菜单原型由 P2-11 接入导入、缓存与查看器，P3-04 
 - **查看器页面（P2-11 S-07 至 S-09）：** [ViewerPage](../../src/ui/viewer/ViewerPage.tsx) 由 `ViewerScreen` 渲染，后者调用 [use-viewer-owner.ts](../../src/app/composition/use-viewer-owner.ts)。
   - **所有者：** hook 在画面区域挂载后经外壳的查看器槽位（`createViewerLifecycle`）打开所有者。表面由端口的 `createSurface(container, VIEWER_SURFACE)` 在槽位决定创建所有者之后才创建，所以锁存后不会再有画布；创建失败时改为不可用的渲染器，回滚也失败（`RollbackError`）时槽位锁存；卸载、StrictMode 重跑、Fast Refresh 与更换容器时关闭槽位。“Return to menu”先同步关闭槽位再切换画面，所以同步的释放失败在菜单出现前锁存；音频 `close()` 被拒绝则在观察到时锁存。
   - **页面：** 完整资源包显示其内容身份（manifest 身份与转换器版本），供核对恢复前后是否相同；按种类（模型、效果、图像、调色板、布局、字库）列出条目，默认不选中；所选条目显示失败（code、位置、原因）或变体：模型的部件列表单选（附内容与置信度）、效果的视图单选（附各形状的原值、绘制字节与贴图状态；仅含跨接缝面的项显示“Seam interpolation unconfirmed”标记）、模型的中性光开关。导弹贴图只应用旋转 0，不提供旋转选择。资源包不完整时始终显示说明与各组状态。
-  - **画面：** 4:3 区域（`viewer-view`）可用 Tab 到达，有焦点轮廓与含当前 Asset ID 的无障碍名称；键盘操作见[键位文档](./keyboard-input.md#资源查看器的诊断键p2-11)，同样的操作有按钮。渲染状态以 `status` 或 `alert` 显示；“Refresh diagnostics”按需读出渲染诊断（状态、条目、绘制次数、GPU 计数、布局、位置与视图）。
+  - **画面：** 4:3 区域（`viewer-view`）可用 Tab 到达，有焦点轮廓与含当前 Asset ID 的无障碍名称；键盘操作见[键位文档](./keyboard-input.md#8-项目界面按键)，同样的操作有按钮。渲染状态以 `status` 或 `alert` 显示；“Refresh diagnostics”按需读出渲染诊断（状态、条目、绘制次数、GPU 计数、布局、位置与视图）。
   - **试听与任务：** [ViewerAudioPanel](../../src/ui/viewer/ViewerAudioPanel.tsx) 列出声音及播放、停止与全部停止按钮，显示音频状态、发声数与失败原因；任务一节以 [viewer-copy.ts](../../src/ui/viewer/viewer-copy.ts) 的文字显示 04 的结构摘要与引用校验（逐个列出解析到的模型及其是否在模型组中），失败时以 `FailureNotice` 显示类别与技术细节。只显示结构与计数，不显示原版文字。
   - React 只提交意图，按所有者、渲染器与音频的快照变化渲染，不随绘制重渲染。所有者与音频的 `getSnapshot`、`subscribe` 是绑定的函数，可直接交给 `useSyncExternalStore`。
 - **导入页面（P2-11 S-02）：** [ImportPage](../../src/ui/import/ImportPage.tsx) 由 `ImportScreen` 渲染，后者调用 [use-import-job.ts](../../src/app/import/use-import-job.ts)。

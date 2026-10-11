@@ -1,111 +1,143 @@
 ---
 type: guide
 status: active
-phase: P1
+phase: P3
 updated: 2026-10-10
-related: [ADR-0004, U-011, U-012]
+related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
 # 键盘输入与键位绑定
 
-本文是本项目键盘输入的权威说明。内容包括当前构建的按键及其功能、触发语义、活动界面与焦点、页面层拦截、清键与恢复，以及尚未实现的键盘能力。
+本文是当前构建的游戏输入与键位绑定权威说明。原版事实只在[原版键位冲突表](../original/input/key-map.md)维护；这里记录项目绑定、实现边界、浏览器能力、已知差异与验证状态。绑定契约见 [P3-05 spec](../plan/p3/05/spec.md)，源码落点见[源码结构指南](./source-structure.md)。
 
-- 原版键位事实只在[原版键位冲突表](../original/input/key-map.md)维护。
-- 默认键位政策见[总计划 §1.2](../plan/master-plan.md#12-首版交付范围)与 [ADR-0004](../decisions/ADR-0004-keyboard-mouse-original-keys.md)。
-- 模块落点见[源码结构指南](./source-structure.md)，测试约定见[工程约定](./README.md)。
-
-> **状态：当前实现说明。** 当前构建**没有游戏键绑定**。P1-09 的合成五键（方向键、`N`、`X`、`P`）及其输入区已随合成演示于 P3-04 退役（[退役记录](./source-structure.md#r6-合成-ui-层)），P1-09 的规则与证据只作为历史记录保留在 [P1-09 spec](../plan/p1/09/spec.md) 与其子任务中。原版键位由 P3-05 按原版逐项加入本文。本文现记录项目界面的按键（§2）、保留的平台键盘源通用规则（§3）、P3-05 接入时的焦点、拦截与清键约定（§4–§6）和尚未实现的能力（§7）。修改按键或行为须修订相应任务的契约并重新批准。
+> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量实现尚未合入当前分支，相关原版事实保留对 `p3-07-weapons-damage-spec` 分支的交叉引用。
 
 ## 1. 适用范围
 
-- **没有游戏输入区：** P3-04 的任务画面是正式运行骨架，飞行中没有任何游戏键。开发构建诊断面板的命令编辑器只能提交单个 Core 命令（[工程约定](./README.md#开发诊断与录制导出)）；Runtime 的连续意图（轴与按住开火）目前没有任何界面或输入来源，保持中性，由 P3-05 接入。P3-05 在任务画面中建立唯一的游戏输入区，经任务所有者的 `input` 阶段登记输入源，按原版键位逐项加入绑定。
-- **React 画面：** 菜单、导入页面、任务页面与查看器的控件只使用浏览器原生的键盘操作（Tab、Shift+Tab、Enter、Space，单选组内的方向键），不属于游戏键绑定，见 [P1-08 spec](../plan/p1/08/spec.md)。
-- **项目界面按键：** 任务流程有一组页面按键（§2），P2-11 的资源查看器有一组诊断键（[§2 之后的小节](#资源查看器的诊断键p2-11)）。两者都是本项目的界面按键，不是原版键位。
+任务画面只有一个游戏输入区 `GameInputZone`（`data-testid="game-input-zone"`，在 `mission-screen` 内）。菜单、开始配置、任务菜单、诊断面板、导入页与资源查看器不接收游戏绑定；普通控件仍使用浏览器原生键盘操作。输入区失去焦点时显示非模态提示；F2–F10、`A`、F11 等 G-08/G-09/G-10 暂缺项显示约 3 秒的标注，不改变焦点或暂停。
+
+```text
+任务输入区的键盘源 → game-input 的绑定解析/按住状态 → 连续意图或命令反馈
+                                            ↘ 能力与地图输入
+任务所有者 input 阶段持有输入消费者 → 游戏会话/Runtime → Core
+```
+
+- 平台源只采集 `KeyboardEvent.code`、repeat、Shift/Ctrl/Alt/Meta、AltGraph、NumLock 与输入法状态；不以 `key` 或 `keyCode` 推断字符。游戏消费者按最新完整 projection 的会话状态与 `player.interactionContext` 解析输入，不读降频 UI store。
+- 只有 running 接收游戏意图与命令；paused 时仅处理 `p` 等宿主控制。意图只在轴或主炮电平变化时写入；离散命令通过现有 `GameCommandFeedback.submit` 进入命令队列并显示拒绝/队列满反馈。
+- 消费者是所有者级资源：同一任务所有者内跨重开复用一个键盘源，运行帧、状态与取消订阅按 run 注册并随运行结束清理。所有者释放先使回调失效，再撤销监听和能力。
 
 ## 2. 当前绑定表
 
-当前构建没有游戏键绑定。下表是 P3-04 任务流程的项目页面按键，判定在 [page-keys.ts](../../src/ui/mission/page-keys.ts)，按 `KeyboardEvent.key` 匹配：
+生产数据在 [bindings.ts](../../src/ui/game-input/bindings.ts)，逐组合矩阵测试在 [bindings.test.ts](../../src/ui/game-input/bindings.test.ts)。表内 `code` 是物理位置，不是字符；未列组合不匹配、不拦截。原版证据和仍未确认的物理路径见[键位冲突表](../original/input/key-map.md)。
 
-| 位置 | 按键（`key`） | 效果 | 说明 |
+| 位置与组合 | 交互上下文 | 项目动作 | 来源 |
 |---|---|---|---|
-| G-02 占位页（介绍 G-02/1、出发 G-02/2） | `Enter`、` `（Space）、`Escape` 的新按下 | 提前结束本占位一次，与 Skip 按钮相同，并阻止默认行为 | 监听只在占位页的区域上，离开即失效；同时按住 Control、Alt 或 Meta，或输入法组合中的按下，留给浏览器。占位计时失败后不能跳过，新的 Enter、Space 保留原生激活（`Return to main menu`） |
-| G-02 占位页 | 上述三键的 repeat | 只阻止默认行为，不结束占位 | 上一页按住的 Enter 或 Space 不会结束本页，也不会反复激活获焦的 Skip 按钮 |
-| 主菜单的 `Start mission` 入口 | `Enter`、Space 的 repeat | 只阻止默认行为 | 从任务画面按住返回键回到菜单时，repeat 不会再次进入任务 |
+| `BracketRight` / `Semicolon`；Shift 与 Ctrl 可并用 | flight、warp | 俯仰 −1/+1 | 项目操纵键；ADR-0018 |
+| `Backquote` / `Quote`；Shift 可并用 | flight、warp | 偏航 −1/+1 | 项目操纵键；ADR-0018 |
+| Ctrl+`Backquote` / Ctrl+`Quote`；Ctrl+Shift 亦可 | flight、warp | 横滚 −1/+1 | 项目操纵键；ADR-0018 |
+| `AltLeft` / `AltRight` | flight | 按住主炮电平；任一有效 Alt 仍按下即为真 | 原版绑定，AltGr 有专门归一化 |
+| `Space` | flight | 发射副武器；重复按下可重复提交 | 原版绑定 |
+| `Equal`、`NumpadAdd`（Shift 可并用）；`Minus`、`NumpadSubtract`（后者 Shift 可并用）；`Backslash`；`Backspace`；Shift+`Digit0` | flight | 速度增、减、归零、最大值 | 原版绑定 |
+| Shift+`Digit1`–`Digit9`；Shift 可有可无的 `NumpadMultiply` | flight | `speed-preset` 1–9；小键盘乘号为档位 8 | 原版绑定 |
+| 未修饰 `Digit1`–`Digit9`、数值态小键盘 `Numpad1`–`Numpad9` | flight | `select-number`，仅由通讯菜单按其实际菜单项捕获；普通飞行中不改速度 | 原版绑定 |
+| `Enter` / `NumpadEnter`（无 Ctrl，可带 Shift）；Ctrl 或 Ctrl+Shift+Enter | flight；前一组亦可在 base | 确认/匹配选择；Ctrl+Enter 切换速度辅助 | 原版绑定 |
+| `KeyT`、`KeyF`、`KeyR`、`KeyY`、`KeyU` | flight | 敌/友目标模式、下一个/上一个目标、前向目标 | 原版绑定；目标效果待 P3-07 合入 |
+| 未修饰 `/`；`,` / `.`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 主武器循环、选择上一/下一导弹 | 原版绑定；武器效果待 P3-07 合入 |
+| `KeyE`、`KeyS`、`KeyG`、`KeyD` | flight | 能量页、护盾/炮能量增减、损伤报告 | 原版绑定；规则效果待 P3-07 合入 |
+| `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定 |
+| `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；执行门禁归 P3-09 |
+| `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单 | 原版绑定；菜单行为归 P3-10 |
+| `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复） | 原版绑定；服务规则归 P3-10 |
+| `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
+| `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
+| `KeyA`、`F11` | flight | G-09、G-10 标注，不提交命令 | 原版功能暂缺 |
+| `KeyP`（可带 Shift；不带 Ctrl/Alt/Meta） | 所有游戏输入上下文，包括 paused | 任务所有者暂停/继续控制 | 项目宿主控制 |
+| `Escape` | flight、warp、base；map 中未锁指针 | 打开任务菜单；地图中关闭地图 | 前者为项目适配，后者与原版 Q-02 一致 |
+| 数值态小键盘 `Numpad1`–`Numpad9` / 状态相同态小键盘键 | flight/base | NumLock 与 Shift 状态不同表示数字；相同态下的 `Numpad8` 前视/基地上导航、`Numpad2` 地图 G-08/基地下导航，其余已列视角键为 G-08 | 原版扫描码语义 |
+| 鼠标输入 | map | 地图 hover、select 与按住左键重复；见 §6 | 原版地图行为，项目换算与输入策略 |
 
-- **焦点：** 占位页打开时焦点在 Skip；开始配置、任务壳与任务菜单进入时聚焦标题，所以上一页按住的键不会落到这些页的按钮上。
-- **没有其他页面按键：** 任务菜单没有页面级的快捷键：焦点在标题或其他非控件内容上时，`Escape`、`p`、`P`、Enter 与 Space 都不会继续运行；Tab 到 `Continue` 按钮后，Enter 与 Space 照常以原生方式激活它，经任务所有者先 resume 成功才关闭菜单。飞行中 `n`、`x`、`p` 与方向键没有效果，也不被拦截（浏览器验证见 [P3-04/10](../plan/p3/04/subtasks/10-e2e-mission-flow.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）。
-- **原版的 `p` 与 Esc：** 原版的 `p` 暂停与 Esc 选项页（[键位表](../original/input/key-map.md)）由 P3-05 映射到任务所有者的同一组意图（暂停、继续、打开任务菜单），不旁路菜单状态；`p` 在原版不轮询按键的阶段是否同样受限，也由 P3-05 决定。
+表格是生产绑定的高层索引；精确 modifier 状态、重复标志、动作对象与上下文按 [bindings.ts](../../src/ui/game-input/bindings.ts) 及其矩阵测试为准。`KEYBOARD_LOCK_CODES` 从实际绑定 code 与 Ctrl 修饰码推导，去除浏览器不能锁定的 Escape、Tab、Meta 与 F12。
 
-### 资源查看器的诊断键（P2-11）
+**小键盘与未绑定组合：** `Numpad1/3/0` 与小键盘导航/编辑扩展码按表处理，不根据键帽文字猜测。NumLock 与 Shift 不同才匹配通讯数字或 `NumpadDecimal` 导弹；状态相同匹配 `Numpad8` 前视/基地向上导航，以及 G-08 的 `Numpad7/9/4/5/6/2` 或基地向下导航。Ctrl+未绑定键、Shift+Slash（`?`）、作弊键和未列的小键盘组合没有游戏动作，保持浏览器行为。
 
-[P2-11 查看器操作](../plan/p2/11/spec.md#查看器操作)是本项目的诊断界面，不是原版键位。映射在 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)，按 `KeyboardEvent.key` 匹配：
-
-| 按键（`key`） | 效果 |
-|---|---|
-| `ArrowLeft` / `ArrowRight` | 模型或效果绕竖直轴转 −15° / +15° |
-| `ArrowUp` / `ArrowDown` | 绕水平轴转 −15° / +15° |
-| `+` 或 `=` / `-` | 放大或缩小 1.25 倍，限制在初始取景的 1/8 至 8 倍 |
-| `0` | 复位旋转与缩放 |
-
-- **只在画面区域获得焦点时生效：** 监听只注册在 `viewer-view` 元素上，离开查看器时撤销；焦点在列表、按钮或其他控件上时，按键保持浏览器原生行为。
-- **修饰键：** 同时按住 Control、Meta 或 Alt 时不处理，留给浏览器；处理的按键调用 `preventDefault()`。
-- 改变画面的按键恰好绘制一次；不改变画面的（例如已在初始视角时按 `0`，或二维项上的旋转）不绘制。同样的操作也有按钮。
+**原版事实与项目选择：** 俯仰/偏航标点、Ctrl 横滚以及 Alt 可与其他项目动作并用，是项目方案，不是原版键位。检查点 K 排除 I/J/K/L，因为它们在原版处理或通讯菜单中有用途。Shift+Slash 不绑定；Slash 仅无修饰时循环主武器。键位冲突表保留 P3-07 交叉引用：目标 T3、武器 W3、能量 D10/D15 与 P3-02 CR-05 仍指向分支 `p3-07-weapons-damage-spec` 的提交 `589d780b`，未复制其事实，也未改成已合入链接。
 
 ## 3. 平台键盘源的通用规则
 
-P1-09 的 [platform/input/](../../src/platform/input/) 保留下列通用规则（[keyboard-input.ts](../../src/platform/input/keyboard-input.ts)、[keyboard-source.ts](../../src/platform/input/keyboard-source.ts)、[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts)）。当前没有消费者；P3-05 接入原版键位时沿用，需要改变的（例如 Alt 作为开火，见 §7）经其契约修订。合成五键的动作、可用性与反馈规则已随其消费者退役。
+实现由 [keyboard-input.ts](../../src/platform/input/keyboard-input.ts)、[keyboard-source.ts](../../src/platform/input/keyboard-source.ts) 与 [browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts) 分工；通用约定与监听归属见[工程约定](./README.md#键盘源与输入区)。
 
-- **识别：** 事件只携带 `code`、`repeat`、Ctrl/Alt/Meta 与 `isComposing`，不读取 `key` 或 `keyCode`；键盘布局、大小写与 Shift 产生的字符不影响匹配，Shift 不参与匹配。
-- **修饰键与输入法：** 按下时 Ctrl、Alt 或 Meta 任一处于按下状态，或 `isComposing` 为 true，就不启动动作，也不阻止默认行为，以保留浏览器快捷键（例如 Ctrl/Cmd+R）。Windows 的 AltGr 同时报告 Ctrl 与 Alt，因此同样不匹配。
-- **按下与重复：** 只有非重复的 keydown 启动动作；绑定键在资格成立且通过上一条检查时，keydown（含 repeat）与 keyup 都阻止默认行为，例如避免方向键滚动页面。
-- **抬起：** keyup 按 `code` 解除按住，即使带 Ctrl/Alt/Meta 或 `isComposing` 为 true；这不意味着拦截该事件。没有按住记录的 keyup 不改变轴。
-- **按住轴：** `HeldKeyboardAxis` 按 `code` 维护本地按住表，只取 −1、0、+1，两个方向同时按住为 0，与按下顺序无关；只在运行中登记新的按下，清表后不能靠 repeat 重建。它是本地意图，不是权威世界状态。
-- **资格：** 源有效、页面 visible 且没有 pagehide 阻断、窗口有焦点、`document.activeElement` 恰为输入区容器。初始化及元素 focusin/focusout、window focus/blur、visibilitychange、pagehide/pageshow 时重新读取真实事实；窗口返回或 pageshow 不要求新的 focusin。
-- **监听位置：** 容器拥有 keydown/keyup/focusin/focusout，window 只有 focus/blur/pagehide/pageshow，document 只有 visibilitychange；不在 window 或 document 上注册 keydown/keyup，输入区不设焦点陷阱。
-- **登记与释放：** 一个源只连接一次，连接时的同步初始信号只更新资格。登记失败先撤销已取得的监听，撤销也失败时为 `RollbackError`。释放先逻辑失效（旧回调不能再触发动作或阻止默认行为），再逐项撤销；撤销失败保留全部原因，不能声称物理清理成功。
+- 只在源有效、页面可见且未被 pagehide 阻断、窗口有焦点、`document.activeElement` 正是输入区时合格。容器拥有 keydown/keyup/focusin/focusout；window 处理 focus/blur/pagehide/pageshow，document 只处理 visibilitychange；不设焦点陷阱，也不在 window/document 上监听按键。
+- 新的非 repeat keydown 才启动动作。符合绑定资格的按键事件会按拦截规则阻止默认行为；repeat 不创建动作，但可被拦截。keyup 按 code 释放本地状态，即使当时带修饰键或处于输入法组合。
+- 未修饰键以 `code` 匹配；Shift、有效 Ctrl 与 NumLock 按绑定表匹配。Ctrl、Alt、Meta 或输入法组合通常不产生绑定，保留原生快捷键；本项目明确绑定的 Ctrl 组合和 Ctrl 横滚除外。AltGraph 会抑制可能由它合成的 CtrlLeft；不确定左 Ctrl 来源时不执行横滚/快捷键。
+- 同一轴的正反键同时按下为 0。失去资格、上下文切换与清键后，repeat 不能重建已释放状态；恢复必须有新的非重复按下。
+
+只有绑定表中标为 repeatable 的离散命令重复：副武器、速度增减、目标下一个/上一个、导弹上一项/下一项、能量调整，以及基地列表导航。首次新按下立即提交；运行时钟到首次按下后 32 单位才重复，之后按观察到的重复时钟每 16 单位一次。只在 running 的帧观察、每个按键每帧最多一次，迟帧不补发；没有 timer、逐 tick 回调或第二条 rAF。速度档位、其他单次命令、G-08 标注与暂停控制不属于此重复器。该节奏是项目选择，不是 BIOS 延迟或 DOS 轮询周期。
 
 ## 4. 活动界面与焦点
 
-当前构建没有游戏输入区。P3-05 建立它时，以下 P3-04 已确定的约定适用：
+输入区仅位于任务画面的游戏区域，浏览器控件和系统页面快捷键不属于游戏动作。焦点不合格时，running/paused 状态显示“点击游戏区域”提示；提示 DOM 常驻且仅视觉隐藏，避免出现/消失造成页面布局移动。G 项与能力、地图提示由 `InputNotices` 展示；Alt+F4 风险提示按平台显示，不声称能够拦截系统关闭快捷键。
 
-- 唯一的游戏输入区在任务画面中（`data-testid="mission-screen"` 内），焦点在菜单、开始配置、任务菜单、诊断面板或页面其他控件上时，所有按键都保持浏览器原生行为。资源平衡探针已把任务画面内元素上的应用监听计为 `keyboard` 组（[工程约定](./README.md#资源平衡)）。
-- 进入任务页面时焦点按 §2 落在标题或 Skip，不自动移入输入区。
-- 输入源是任务所有者的所有者级资源（`input` 阶段），跨运行保留，在所有者释放时最先失效并撤销；同一所有者换运行不重新登记监听。
+`preventDefault()` 只说明网页默认行为被阻止，不等于浏览器进程或操作系统快捷键被拦截。合成按键、Playwright/CDP 事件与页面收到事件都不能证明原生快捷键行为；浏览器层验证与实机边界见 §7 和[本地浏览器 runner](./README.md#本地浏览器-runner)。
 
-## 5. 页面层拦截
+## 5. 输入清除与恢复
 
-- 当前构建只在 §2 所列的占位页与入口阻止默认行为，不拦截任何游戏键。
-- 自动化测试中的合成按键不经过浏览器和系统自身的快捷键处理，`preventDefault` 生效也不能证明系统快捷键已被拦截（[总计划 §1.2](../plan/master-plan.md#12-首版交付范围)）。当前构建不宣称拦截了任何浏览器或系统快捷键。
+**运行的每次输入清除都必须通过 `GameInputConsumer.clear(reason)`。** 包括能力控制器退出全屏时的 `focus-loss`、Pointer Lock 结束时的 `pointer-lock-exit`，以及地图输入的退出清键；不得让 P3-05 消费者外的调用绕过该入口直接调用会话清键。这样既清本地按住/重复/地图手势，也在 running 时清 Runtime 意图、短按标记与未执行命令。
 
-## 6. 清键与恢复
+- 用户暂停、任务菜单、页面 hidden/pagehide、运行结束或替换时由会话自行清 Runtime；输入消费者收到这些状态/取消通知时只清本地状态，不递归调用会话控制。hidden 与 pagehide 仅本地清理。
+- blur、focusout 或其他使输入资格变假的窗口事件会清本地状态；若仍 running，则经 `clear('focus-loss')` 一次清会话。Pointer Lock 从本任务锁定态退出时经 `clear('pointer-lock-exit')`。
+- 清除后不恢复手动轴、Alt 开火、按住左键或重复命令。继续、重新聚焦、visible/pageshow、Pointer Lock 重锁和新运行仅重新开放通道；须新的非重复 keydown/鼠标按下才能产生输入。Core 已接受的速度或速度辅助状态不会由清键回滚。
 
-游戏会话（[工程约定](./README.md#会话端口与错误)）已提供 P3-05 所需的清键接口：
+## 6. 能力与战略地图输入
 
-- **会话自行清除：** 任何暂停（用户、任务菜单、hidden）、运行结束或替换时，会话清除 Runtime 的连续意图、短按标记与未执行命令，并逐个通知取消；输入适配器在状态通知中只清本地按住表，不递归调用控制。
-- **失焦与退出 Pointer Lock：** 运行中的输入适配器调用会话的 `clear-input`（原因 `focus-loss` 或 `pointer-lock-exit`），清除意图与未执行命令，但不暂停、不重新锚定时钟，也不改变 Core 已接受的持续动作。
-- **恢复：** 继续、重新聚焦、visible/pageshow 与新运行只恢复可用的通道，不恢复按住状态或自动继续；必须有新的非重复 keydown 才重新产生意图，旧的 repeat 无效。
+### 全屏、Keyboard Lock 与 Pointer Lock
 
-## 7. 尚未实现的键盘能力
+`GameInputConsumer.capabilities` 由 [capabilities.ts](../../src/ui/game-input/capabilities.ts) 实现，三种能力状态是 `unsupported`、`idle`、`pending`、`active`、`failed`，并带 ownerId、runId、请求代次与稳定失败类别。状态基于真实文档/平台端口事实，不以 API 存在或 Promise 成功冒充活动状态。
 
-下列能力的政策已由总计划确定，但当前构建没有实现，也不得写成已实现。
+- 开始按钮的用户手势可同步请求全屏；只有该次 start 成功后才将申请关联到新 run。能力控制器只退出本任务自己进入且仍拥有的全屏。Keyboard Lock 只在 API 全屏、running、输入区合格且无未结全屏变更时锁绑定表中的 code；暂停、失焦、菜单、停止、离页或离开全屏时立即解锁。失败不自动重试，须新的明确手势。
+- 全屏或 Pointer Lock 退出造成的运行清键必须走 §5 的 `GameInputConsumer.clear(reason)`。Pointer Lock 的目标是被测量地图 frame 的同一无边框、无内边距输入容器；所有权、申请代次、迟到结果与异步释放屏障由能力控制器管理。
+- `Escape` 不在 Keyboard Lock 清单中。锁指针时 Escape 仅交浏览器解锁；接收到 Pointer Lock 结束通知后，地图仍开，须再点击显式重锁，不选目标。
 
-**已实现（P3-04）：** `beforeunload` 离页确认。任务所有者在有运行时（出发、飞行、暂停，以及停止或故障后仍保有诊断与录制时）登记一份，只请求浏览器原生的确认，不定制文字，也不在处理器中退出、清理或导出；返回主菜单、重开或释放时撤销，介绍、开始配置与主菜单不登记。本机 Chrome 的刷新与关闭路径有浏览器证据（[工程约定](./README.md#本地浏览器-runner)），这不是系统级防关闭保证，也不覆盖所有浏览器或 BFCache。
+### 地图鼠标与光标
 
-| 能力 | 政策来源 | 计划接入时机 |
-|---|---|---|
-| Alt/Option 开火；`AltRight`/`AltGraph` 视为开火并过滤合成的 `ControlLeft`；飞行中拦截 Alt 组合 | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围) | 首个原版开火绑定（P3-05；Runtime 的按住开火电平 `primaryFire` 已由 P3-04 提供） |
-| F1 驾驶舱前视；飞行中拦截 F1–F10，F2–F10 只显示 G-08 标注、不切换视角 | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围)、[P3-01 视角范围](../plan/p3/01/spec.md#视角范围) | P3（绑定与拦截 P3-05，F1 画面 P3-12、P3-13） |
-| F2–F10 视角（其他驾驶舱布局与视角选择，U-029） | [P3-01 视角范围](../plan/p3/01/spec.md#视角范围) | P4 |
-| 闭环的自动相机：玩家被毁时的被毁视角，只为这一自动流程实现，不开放为可选视角 | [P3-01 视角范围](../plan/p3/01/spec.md#视角范围)；原版事实见 [B-005](../original/behavior/B-005-campaign-rescue.md#被毁与救援时的视角p3-0109) | P3-12（进入与结束的时机 P3-11） |
-| 全屏 + Keyboard Lock | [总计划 §1.2](../plan/master-plan.md#12-首版交付范围) | 飞行画面接入时；跨系统实机验证在 P5 |
-| Windows/Linux 的 Alt+F4 风险提示 | 同上 | P3-05（实机核对 P3-15） |
-| 单独重映射开火键或视角键（默认值不变） | 同上 | 设置界面落地后 |
-| Pointer Lock，以及退出锁定时清键（会话的 `clear-input` 接口已由 P3-04 提供） | 同上 | 战略地图等实际需要时 |
-| 原版方向/横滚键与其余快捷键 | [U-011](../original/unknowns.md) | P0 试玩确认后，在 P3 加入 |
-| 系统快捷键冲突的实机验证 | [键位表](../original/input/key-map.md) | P0/P5 |
+[map-input.ts](../../src/ui/game-input/map-input.ts) 将地图上下文的指针输入转成 `map-point`，不把地图规则放进 React 或 Core 外部。地图状态在 `InputStatus.map`：`off`、`invalid`、`not-ready`、`suspended`、`click-to-lock`、`locking`、`locked`、`unlocked`；同时提供 `systemPointerHidden` 与几何错误。策略是注入项，生产选择见 [map-input-policy.ts](../../src/ui/game-input/map-input-policy.ts)：每次打开按原版起点公式初始化，左键按住重复间隔为 8 个 projection clock 单位；策略无默认回退值。
 
-- **G-08 的边界：** G-08 的处理只在正式飞行输入区有效，不占用 React 菜单或文本控件。页面层的 `preventDefault` 不能保证拦截系统组合键，G-08 不解决 Alt+F4 风险；该风险由已实现的离页确认与上表的风险提示处理。
-- **自动相机的范围：** P3-01/09 从原版代码确认，闭环中只有被毁视角是非 F1 的自动相机；出发、停靠等待、基地内部、离港、Warp、能量耗尽、救援与任务结束都不需要另外的相机（[executable](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)）。这只说明闭环的这些衔接，不推及原版的其他流程。
-- **原版的其他视角键：** 原版飞行按键处理中 F10 也切换视角，已按 2026-10-09 的 spec 修订纳入 G-08（上表）。若干光标与小键盘键码也对应视角切换（这些键在飞行中是否送达、是否兼作操纵未追踪，U-011），不在 G-08 中，P3 中如何处理由 P3-05 核实后决定；Warp、地图与基地内部不处理视角键（[executable](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)）。
+- 输入位置为主地图内归一化的 `{ right, down }`，几何由呈现所有者经 [map-input-geometry.ts](../../src/render/map/map-input-geometry.ts) 提供；屏幕像素、主地图边界与逻辑画面在容器 content-box 中的 CSS 像素 frame 共用同一只读几何。零尺寸/缺几何为未就绪，非法几何显式报错。
+- 锁定态用平台相对移动，乘注入的 `movementScale` 转成 CSS 像素后钳制到主地图；非锁定态在支持或申请失败时用地图内的绝对位置回退，区域外/黑边不选取并显示系统指针。`movementScale` 依据引擎报告单位选择（CSS px 时为 1，device px 时为 1/devicePixelRatio）。
+- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作。
+- [map-cursor.ts](../../src/render/map/map-cursor.ts) 绘制本项目的十字光标，只绘制、不持有规则或调度；这不是原版选取框外观。几何测量容器必须与 Pointer Lock 目标一致。
 
-不实现 Gamepad、鼠标飞行（原版不支持，见 [U-012](../original/input/key-map.md#鼠标飞行已确认u-012)）或触控输入。
+### 对照差异与下游责任
+
+项目明确不仿真 DOS 单键轮询/丢键与 BIOS 按键重复：采用逐 tick FIFO 命令队列和帧后有界 32/16 时钟单位重复。上下文切换不保留手动输入；Alt 是可与其他绑定并行的主炮电平；`p`/Shift+`P` 是项目暂停控制，不复现原版屏幕闪光差异；被毁序列仍可用宿主暂停；Esc 遵从 Pointer Lock 浏览器解锁语义；地图 select 在新按下时立即入队、不丢轮询间短按，hover 按帧刷新，地图关闭/暂停/解锁时的指针移动不累计，重锁不延续左键按住。项目操纵轴在地图与基地为 0。Q-06 的重复数值只属于配置/模拟器源码推导，不是真实持续按住样本。完整逐项证据与置信度见[原版键位表](../original/input/key-map.md)及 [P3-05 R-23](../plan/p3/05/spec.md#对照r-23)。
+
+下游交接：
+
+- **P3-09：** 同 tick 打开地图时飞行命令门禁；地图状态与 `map-point` 的效果；飞行命令地图门禁、地图初始 Core 光标点、位置像素量化、按住 select 效果与音效。
+- **P3-10：** 通讯菜单对数字/命令的捕获优先级、菜单行为与基地服务队列/离港规则，并处理规则 5 的阻塞项；目前绑定只负责按码提交，不宣称该规则已实现。
+- **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
+- **P3-15：** 真实任务完整地图路径及输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成和清键。
+
+<a id="7-尚未实现的键盘能力"></a>
+
+## 7. 验证范围与未完成项
+
+**页面与自动化：** P3-05/28 在 macOS Chrome 的 development 与 production 使用合成内容验证焦点、动作、页面拦截、资源平衡、全屏/Keyboard Lock 提示与录制；P3-05/29 验证键盘驱动录制与 replay。合成输入只证明网页逻辑，不代表系统级快捷键通过。
+
+**隔离地图入口：** P3-05/27 的 `/e2e/entries/map-input.html` 只在开发服务器提供，不是正式任务地图路径。Chrome headless 下，HTTP origin 上隔离 context 支持真实 Pointer Lock；`about:blank`/`setContent` 会遇到 `WrongDocumentError`。入口用 CDP `Runtime.evaluate` 并显式 `userGesture: false` 驱动观察钩子，避免 Playwright 的 evaluate、locator 或截图留下用户激活，误改变自动锁定路径。`pointer-lock` 监听独立计组；预热使用 `./e2e/entries/*.html`。具体像素、锁定、回退和资源平衡证据见 [27 完成证据](../plan/p3/05/subtasks/27-map-input-entry.md#完成证据)。
+
+**本机实机核对状态（P3-05/30、31）：**
+
+| 项目 | 证据与当前结论 |
+|---|---|
+| 30：macOS Chrome Computer Use | 原生 Cmd+L 正对照进入地址栏；暂停后 Cmd+L/Cmd+T 分别执行浏览器原生行为。Escape 实际退出 Pointer Lock，地图保持打开且只触发一次 `clear-input(pointer-lock-exit)`。本次未能观察活动 Keyboard Lock 状态，不宣称已验证其解除。 |
+| 地图移动单位 | 27 的 CDP 注入鼠标输入在 Chrome 155、DPR 1/2 报告 CSS 像素位移；这不是物理鼠标单位证据。 |
+| 31：物理设备结果 | **待用户执行，subtask 31 blocked。** 物理 Fn、持续按住、操纵标点/Option 组合、活动 Keyboard Lock 获得与解除、未锁定地图 Escape 等残余项尚无用户实机结果；AC-18 不得据此标为完成。 |
+| Q-05 原版运行样本 | 06 样本全部只证明给定 BIOS 码到游戏动作；没有证明宿主物理键到扫描码。基地样本另由 34 阻塞，尚未达到门槛；Q-05 未整体完成。 |
+
+残余项不得以合成按键、CDP 注入、页面 `isTrusted`、DOS 输入码注入或配置推导替代。跨操作系统与浏览器矩阵归 P5。
+
+## 8. 项目界面按键
+
+游戏输入区外的页面控件继续遵循原生键盘操作。G-02 占位的 Enter、Space、Escape 新按下跳过当前占位，repeat 只抑制重复激活；主菜单 Start mission 入口抑制 Enter/Space repeat。实现见 [page-keys.ts](../../src/ui/mission/page-keys.ts)。资源查看器的方向键旋转、`+`/`=`/`-` 缩放和 `0` 复位是独立诊断按键，见 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)；均不属于游戏绑定表。
+
+<a id="资源查看器的诊断键p2-11"></a>

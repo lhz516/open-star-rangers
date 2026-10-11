@@ -51,3 +51,8 @@ updated: 2026-10-10
 - 以脚本把键位文档的绑定条目与 `bindings.ts` 对照；链接检查；`pnpm check`、`pnpm check:compliance`。
 
 ## 完成证据
+
+- **文档同步：** 重写键位指南，加入 P3-05 正式生产绑定、上下文/修饰与小键盘状态、输入区、focus 与默认行为拦截、能力生命周期、地图输入/光标、`GameInputConsumer.clear(reason)` 唯一清键通道及 FIFO/重复等明确差异；补入 27 headless Pointer Lock/CDP 与 movementX 限制、29 常驻焦点提示槽、30 Computer Use 实测边界、31 物理设备待办占位与 34 阻塞的 Q-05 基地样本。Core 与 app/platform/ui/render 模块说明、源码结构及工程约定已同步到现行消费者与责任边界。
+- **下游与交叉引用：** 键位指南具体列出 P3-09（同 tick 地图门禁）、P3-10（通讯捕获/优先级、规则 5 阻塞、基地规则）、P3-13（生产几何/光标/原版外观）、P3-15（完整地图路径联合复验）。`p3-07-weapons-damage-spec` 不在本分支祖先中；键位表、原版键位表与 executable 事实链接保留原分支及 `589d780b` 提交交叉引用，没有复制事实或暗示已合入。
+- **证据限制：** 30 的结果只标明本机 macOS Chrome Computer Use 实际观察到的系统快捷键与 Escape Pointer Lock 退出；27 的 CSS 像素结论明确限于 CDP 注入鼠标，不代替物理设备。31 仍等待用户完成实机项；Q-05 基地运行样本在 34 仍 blocked，未勾销或声称 AC-18/Q-05 完成。
+- **检查：** `pnpm check` 通过：4 个 TypeScript 项目 typecheck、ESLint、243 个 Vitest 文件/7,305 项测试与 production build 均成功；构建只报告现有的大 chunk 提示。`pnpm check:compliance` 通过（compliance 报告 `passed: true`）。对 9 份变更文档逐一核对相对 Markdown 目标与标题锚点，均存在；`git diff --check` 通过。所有改动文档的 front matter `updated` 为 `2026-10-10`。
