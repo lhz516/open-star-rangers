@@ -12,7 +12,7 @@ related: [B-003, B-005, B-006]
 
 ## 代码与标注方式
 
-- **文字集中在一处：** 每项的界面文字只在 [slice-gaps-copy.ts](../../src/ui/mission/slice-gaps-copy.ts) 中，`SLICE_GAPS` 以 G ID 为键（`SliceGapId`：`G-01`、`G-02/1`、`G-02/2`、`G-04`、`G-06`、`G-07`），每项为 `{ title, text }`；G-04 开始配置页保留的目标与限制另在同一文件的 `MISSION_OBJECTIVES` 中。页面只放置文字，不改写。
+- **文字集中在一处：** 每项的界面文字只在 [slice-gaps-copy.ts](../../src/ui/mission/slice-gaps-copy.ts) 中，`SLICE_GAPS` 以 G ID 为键（`SliceGapId`：`G-01`、`G-02/1`、`G-02/2`、`G-04`、`G-06`、`G-07`、`G-08`、`G-09`、`G-10`），每项为 `{ title, text }`；G-04 开始配置页保留的目标与限制另在同一文件的 `MISSION_OBJECTIVES` 中。页面只放置文字，不改写。
 - **页面中的标注：** [MissionParts.tsx](../../src/ui/mission/MissionParts.tsx) 的 `GapNote` 渲染一项，元素为 `class="slice-gap"`、`data-gap="<G ID>"`，以 “标题（G ID）. 说明” 显示；`GapNotes` 在一个 “Missing from this build” 区块中列出多项，使占位结束后这些说明仍可阅读。所有标注都是项目的英文界面文字，不是原版文字。
 - **核对：** [mission-copy.test.ts](../../src/ui/mission/mission-copy.test.ts) 核对 G ID 键与目标、限制的说明；开发与生产的任务流程 E2E 在每个页面读取可见的标注，每项恰好出现一次且文字与 `SLICE_GAPS` 一致（[P3-04/10](../plan/p3/04/subtasks/10-e2e-mission-flow.md#完成证据) 的 AC-19 行）。
 
@@ -26,10 +26,13 @@ related: [B-003, B-005, B-006]
 | G-04 | 原版简报、僚机档案与僚机选择页 | 项目的任务开始配置页：任务的战役组与槽位、固定难度、目标与限制（项目文字，注明代码证据已确认、正常玩法可达性为高概率、本构建尚未实现这些规则，并给出来源）、按名单次序的 5 个僚机选项与 “No wingman”。不显示原版简报文字与头像；僚机名字只按纯文本显示，没有候选名时用项目编号 | 开始配置页 [StartConfigPage.tsx](../../src/ui/mission/StartConfigPage.tsx)（`mission-config`）的标注与目标、限制区块（`mission-objectives`，`data-gap="G-04"`，文字为 `MISSION_OBJECTIVES`） |
 | G-06（重开与返回） | 原版战役中的重开任务入口及其保留的战役状态；统计、高分榜、晋升与任务总结页 | `Restart mission` 开始同一任务的新实例：回到介绍，以同一内容、难度 19 与重新抽取的种子从 tick 0 创建新世界，只沿用僚机选择；不复刻原版重开时保留的关卡编号、战役统计、晋升与高分榜，也没有结果页。`Return to main menu` 释放任务 | 任务菜单 [MissionMenuPage.tsx](../../src/ui/mission/MissionMenuPage.tsx)（`mission-menu`）；运行故障或停止后的提示（`mission-ended`，可以重开时） |
 | G-07 | 原版主菜单、选项与战役设置（含难度滑块） | 项目页面：主菜单的 `Start mission` 入口、开始配置页的固定难度（原始值 19，“fixed, G-07”）与暂停式的任务菜单（Continue、Restart mission、Return to main menu）；不提供难度设置 | 主菜单 [MainMenuPage.tsx](../../src/ui/pages/MainMenuPage.tsx) 入口的说明；开始配置页的标注与难度；任务菜单的标注 |
+| G-08 | F2–F10 及原版光标、小键盘视角键（P3-05 绑定表中的视角键） | 本构建只提供前视驾驶舱；原版其他视角（含光标与小键盘别名）未实现，由 P4 补齐 | 任务壳的飞行输入区暂缺提示：F2–F10、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；NumLock 与 Shift 状态相同时的 `Numpad7`、`Numpad9`、`Numpad4`、`Numpad5`、`Numpad6`、`Numpad2` |
+| G-09 | 自动驾驶（`a`） | 本构建不实现原版自动驾驶，也不提供自动驾驶命令；由 P4 补齐 | 任务壳的飞行输入区暂缺提示：`KeyA` |
+| G-10 | 飞行中切换操纵灵敏度（F11） | 灵敏度固定为 Medium；本构建未实现飞行中切换，由 P4 补齐 | 任务壳的飞行输入区暂缺提示：`F11` |
 
-各页面显示的 G 项：主菜单 G-07；介绍占位 G-02/1；开始配置 G-04、G-07，以及缺省说明中的 G-01、G-02/1、G-02/2；出发占位 G-02/2；任务壳（飞行）状态栏的 G-01 与缺省说明中的 G-01、G-02/1、G-02/2，运行结束且可以重开时另有 G-06；任务菜单 G-07、G-06。
+各页面显示的 G 项：主菜单 G-07；介绍占位 G-02/1；开始配置 G-04、G-07，以及缺省说明中的 G-01、G-02/1、G-02/2；出发占位 G-02/2；任务壳（飞行）状态栏的 G-01、飞行输入区的 G-08–G-10 暂缺提示与缺省说明中的 G-01、G-02/1、G-02/2，运行结束且可以重开时另有 G-06；任务菜单 G-07、G-06。
 
-本构建尚无界面的其他 G 项（G-02 的其余实例、G-03、G-05、G-08）见 P3-01 的[缺省清单](../plan/p3/01/spec.md#缺省清单)，由负责实现的任务加入本文。
+本构建尚无界面的其他 G 项（G-02 的其余实例、G-03、G-05）见 P3-01 的[缺省清单](../plan/p3/01/spec.md#缺省清单)，由负责实现的任务加入本文。
 
 ## G-02 不计时与基准设置的差异
 

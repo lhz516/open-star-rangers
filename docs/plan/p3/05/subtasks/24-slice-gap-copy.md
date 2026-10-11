@@ -36,12 +36,17 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 三个 G 项的文字符合 P3-01 标注规则，且与修订后的 P3-01、P3-05 spec 一致。
-- [ ] slice-gaps 文档写明呈现位置与触发键，链接可解析，`updated:` 已更新。
-- [ ] `pnpm exec vitest run src/ui/mission` 通过；`pnpm typecheck` 与 `pnpm lint` 通过。
+- [x] 三个 G 项的文字符合 P3-01 标注规则，且与修订后的 P3-01、P3-05 spec 一致。
+- [x] slice-gaps 文档写明呈现位置与触发键，链接可解析，`updated:` 已更新。
+- [x] `pnpm exec vitest run src/ui/mission` 通过；`pnpm typecheck` 与 `pnpm lint` 通过。
 
 ## 验证方法
 
 - 文字与 P3-01 逐项审阅；浏览器显示由 28 验证。
 
 ## 完成证据
+
+- 对照 P3-01 的标注规则、G-08–G-10 缺省清单与 P3-05 AC-08：G-08 只说明前视以外视角暂缺；G-09 明确没有自动驾驶命令；G-10 明确固定为 Medium；三项均标明由 P4 补齐。
+- `pnpm exec vitest run src/ui/mission`：3 个文件、24 项测试通过；`pnpm typecheck` 与 `pnpm lint` 通过。`git diff --check` 通过；相对链接检查解析 `slice-gaps.md` 的 14 个链接。
+- Rubber-duck 审查无适用发现；simplify 的复用、简化、效率与抽象层级审查均无发现。
+- 文档影响：已在 `docs/engineering/slice-gaps.md` 同步文字集中位置、飞行输入区呈现位置与每项触发键；原版事实未变，无需改 `docs/original/`、STATUS 或阶段任务索引。

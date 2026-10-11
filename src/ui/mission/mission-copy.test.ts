@@ -101,13 +101,16 @@ describe('mission page copy', () => {
 
 describe('slice gap copy (G IDs)', () => {
   it('keys each marked gap by its G ID, with a title and a text', () => {
-    expect(Object.keys(SLICE_GAPS)).toEqual(['G-01', 'G-02/1', 'G-02/2', 'G-04', 'G-06', 'G-07']);
+    expect(Object.keys(SLICE_GAPS)).toEqual(['G-01', 'G-02/1', 'G-02/2', 'G-04', 'G-06', 'G-07', 'G-08', 'G-09', 'G-10']);
     for (const [id, copy] of Object.entries(SLICE_GAPS)) {
       expect(copy.title.length, id).toBeGreaterThan(0);
       expect(copy.text.length, id).toBeGreaterThan(0);
     }
     expect(SLICE_GAPS['G-07'].text).toMatch(/fixed at raw value 19/);
     expect(SLICE_GAPS['G-06'].text).toMatch(/does not reproduce the campaign state/);
+    expect(SLICE_GAPS['G-08'].text).toMatch(/only the forward cockpit view.*cursor and keypad.*P4/);
+    expect(SLICE_GAPS['G-09'].text).toMatch(/does not implement.*autopilot.*no autopilot command.*P4/);
+    expect(SLICE_GAPS['G-10'].text).toMatch(/fixed at Medium.*switching.*P4/);
   });
 
   it('keeps the objectives and limits as project text with the result wait, the third loss per attempt, sources and confidence', () => {

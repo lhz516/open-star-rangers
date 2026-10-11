@@ -5,7 +5,7 @@
  */
 
 /** The G items this build marks in its pages; G-06 only for restart and return, whose results page belongs to P3-11. */
-export type SliceGapId = 'G-01' | 'G-02/1' | 'G-02/2' | 'G-04' | 'G-06' | 'G-07';
+export type SliceGapId = 'G-01' | 'G-02/1' | 'G-02/2' | 'G-04' | 'G-06' | 'G-07' | 'G-08' | 'G-09' | 'G-10';
 
 export interface SliceGapCopy {
   /** What is missing or replaced, short enough for a status bar. */
@@ -45,6 +45,19 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
     'Original menus and campaign settings missing',
     'Project pages replace the original main menu, options and campaign settings: the main menu\'s mission entry, the mission '
       + 'start page and the pausing mission menu. Difficulty is fixed at raw value 19; there is no difficulty setting.',
+  ),
+  'G-08': gap(
+    'Additional cockpit views missing',
+    'This build provides only the forward cockpit view. The original\'s other views, including cursor and keypad view aliases, '
+      + 'are not implemented; P4 is responsible for them.',
+  ),
+  'G-09': gap(
+    'Autopilot missing',
+    'This build does not implement the original autopilot and provides no autopilot command; P4 is responsible for implementing it.',
+  ),
+  'G-10': gap(
+    'In-flight sensitivity switching missing',
+    'Control sensitivity is fixed at Medium in this build; in-flight sensitivity switching is not implemented and is assigned to P4.',
   ),
 });
 
