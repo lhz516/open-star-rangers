@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "05"
 subtask: "30"
-updated: 2026-10-10
+updated: 2026-10-11
 ---
 
 # 30 — 本机 macOS Chrome 实机核对（Computer Use）
@@ -35,12 +35,20 @@ updated: 2026-10-10
 
 ## 验收标准
 
-- [ ] 输入路径已以正对照核实；每个 AC-18 条目都有记录，或明确列为交 31 的残余项及原因。
-- [ ] 原生 Esc 解锁与 Keyboard Lock 解除后的快捷键行为有实机结果。
-- [ ] 权限操作遵守 Computer Use 的批准规则，记录用户确认。
+- [x] 输入路径已以正对照核实；每个 AC-18 条目均有实测结果，或明确列为交 31 的残余项及原因。
+- [x] 原生 Esc 解锁与 Keyboard Lock 解除后的快捷键行为有实机结果。
+- [x] 权限操作遵守 Computer Use 的批准规则，记录用户确认；本次未出现权限提示，未执行权限操作。
 
 ## 验证方法
 
 - 逐项表格：条目、输入路径、快捷键结果、全屏/锁定状态、应用动作、结论。
 
 ## 完成证据
+
+- `local/research/p3-05/real-device/worker-30-input-check.md` 记录 macOS Chrome 155 的合成任务输入表、浏览器正对照、锁状态事实与残余项。Computer Use 的 `Cmd+L` 正对照选中地址栏；暂停后 `Cmd+L` 与 `Cmd+T` 分别触发原生地址栏与新标签页行为。
+- 合成任务在开始手势后进入全屏；Keyboard Lock API 可用，但活动锁状态不可读，因此不声称已实际锁定或已从活动锁解除。原生 Escape 解除了地图 Pointer Lock 且地图保持打开；暂停后的 Cmd+L/Cmd+T 实测为浏览器原生动作。活动 Keyboard Lock 的获得及其解除路径证明留给 31，按其可观察退出提示核对（全屏锁定活跃时应出现 “Press and hold Esc to exit”，未锁时为 “Press Esc”），不得把本次暂停快捷键结果当作活动锁已确认。
+- 已用 Computer Use 实际获得 Pointer Lock 并按 Escape 解锁：地图保持打开、指针返回、仅记录一次 `clear-input pointer-lock-exit`；下一次点击才重新锁定且未选择目标。未锁定时地图 Escape 关闭路径尚未检查。
+- Space、Backspace、Slash、Shift+Slash、Ctrl+Enter 与 F1–F11 的可观察结果及未确认项均列入本机记录。物理 Fn、持续按住、未完成的操纵/Option 组合、F10 独立结果、未锁地图 Escape 与 Keyboard Lock 实际获得/解除的证明交 31 继续核对；其中 F10 旧 G-08 提示未能区分新结果。逐项按键和观察步骤见本机记录中的“交 31 的可执行残余清单”。
+- Chrome Computer Use 在聚焦游戏区后连续两次因检测到用户输入而中断 ArrowUp 操作；重新读取窗口状态后停止对 Chrome 输入，避免干扰正在进行的用户操作。该操作及所有未测项均未以 Playwright/CDP 输入替代实机证据。
+- Rubber-duck：审查未发现需修改的实质问题；未测试项与活动 Keyboard Lock 状态的不确定性均明确保留为残余。
+- 文档影响：仅补充本项实机证据；无代码、接口或操作规程变化，未发现需要同步其它维护文档。

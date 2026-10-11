@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [27-map-input-entry.md](./subtasks/27-map-input-entry.md) | 22 | completed |
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | in-progress |
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | pending |
-| [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | in-progress |
+| [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | pending |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | in-progress |
