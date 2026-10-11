@@ -3,10 +3,16 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
+import { rotateRows } from '../rules/flight-motion.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
-import { addPlayerEntity, entityInit, expectFault, stateText, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, expectFault, stateText, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
+import { initialPlayerTargeting } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { collisionStage } from './collision.ts';
+import { delayedPlayerExplosionStage } from './destruction.ts';
+import { frameEndStage } from './displays.ts';
+import { energyStage } from './energy.ts';
 import { emit, PIPELINE, registerTick, RequestQueue, runTick, type Request, type TickContext } from './pipeline.ts';
 
 /** Stand-ins for rules that do not exist yet: each runs just before the stage with its ID. */
@@ -28,6 +34,13 @@ function withEntities(...inits: Parameters<typeof entityInit>[]): [WorldState, E
 }
 
 const setState = (entity: Entity, state: Entity['state']): Request => ({ type: 'set-state', entityId: entity.id, state });
+
+/** Gives a missile the G of one that has detonated (phase 4), so that its state-7 callback does nothing more (P3-07/20). */
+function spendGuidance(missile: Entity): void {
+  Object.assign(missile.combat, {
+    guidance: { phase: 4, lifetimeClock: 0, armClock: 0, fuseRadiusSquared: 0, detonationClock: 0, checkInterval: 0, nextCheckClock: 0 },
+  });
+}
 
 describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
   it('is the one fixed order of the spec and Q-09', () => {
@@ -55,9 +68,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02 and P3-06 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'parked-update', 'area-check', 'commit',
+      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
+      'parked-update', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
@@ -99,9 +113,9 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
     expect(handled).toEqual([1]);
   });
 
-  it('takes at most CORE_LIMITS.eventsPerTick posts in a tick, late ones included, a budget fault beyond', () => {
+  it('takes at most CORE_LIMITS.requestsPerTick posts in a tick, late ones included, a budget fault beyond', () => {
     const queue = new RequestQueue();
-    for (let count = 0; count < CORE_LIMITS.eventsPerTick - 1; count++) queue.post(request(count + 1));
+    for (let count = 0; count < CORE_LIMITS.requestsPerTick - 1; count++) queue.post(request(count + 1));
     queue.handle(() => {});
     queue.post(request(0));
     expectFault(() => queue.post(request(0)), 'budget-exhausted', 'pipeline.requests');
@@ -297,5 +311,170 @@ describe('entity lifecycle in the pipeline (P3-02 AC-09, 实体与生命周期, 
     const [state, [entity]] = withEntities([2]);
     entity.state = 'new';
     expectFault(() => runTickWith(state), 'invariant-violated', 'object-update.new');
+  });
+});
+
+describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
+  const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
+
+  it('reads the runs of its stages from their rule modules', () => {
+    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
+      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
+    expect([typeof collisionStage, typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function', 'function']);
+  });
+
+  /** A craft (1), a missile (2) that has detonated, a projectile (3), a fragment (4) and an explosion (5), all active. */
+  function runtimeKinds(): [WorldState, Entity[]] {
+    const [state, entities] = withEntities([7], [20], [21], [24], [22]);
+    for (const entity of entities) entity.state = 'active';
+    spendGuidance(entities[1]);
+    return [state, entities];
+  }
+
+  const control = { scale: 1, axes: [{ clear: false, set: true, value: 0.5 }, { clear: true, set: false, value: 0 }, { clear: false, set: false, value: 0 }], speedFactor: null } as const;
+  it.each([
+    ['select-target', { type: 'select-target', entityId: 1, target: 2, targetKindBit: 20, origin: 'command', commandIndex: 0 }, 'targeting.select-target'],
+    ['a craft\'s expiry', { type: 'expire', entityId: 1 }, 'requests.expire'],
+    ['an explosion\'s expiry', { type: 'expire', entityId: 5 }, 'requests.expire'],
+  ] as [string, Request, string][])('routes %s to its module in request handling, which no rule posts yet', (_, request, site) => {
+    const [state] = runtimeKinds();
+    expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', site);
+  });
+
+  it('routes steer to missiles.ts (P3-07/20): 0x21fd8 on the missile\'s block with its body record, before the movement (P3-07/22)', () => {
+    const [state, [missile]] = withEntities([20]);
+    missile.state = 'active';
+    spendGuidance(missile);
+    let block: unknown = null;
+    runTickWith(state, {
+      'mission-flow': ({ requests }) => requests.post({ type: 'steer', entityId: missile.id, control }),
+      movement: () => void (block = structuredClone(missile.movement)),
+    });
+    // Row 1 set to 0.5 at scale 1: F(body +0xAC (1) × −1 × 0.5); row 2 cleared: yaw's rate 0 and its flag kept; row 3 untouched.
+    expect(block).toMatchObject({ steering: { pitch: { rate: -0.5, enabled: true }, yaw: { rate: 0, enabled: false }, roll: { rate: 0, enabled: false } } });
+    // The same tick's movement integrates the block with the body record: body +0xC8 ≠ 0 makes the turn factor the step,
+    // so pitch turns rows 2 and 3 by F(−0.5 × 1/32) (CR-09, executable.md 0x222f0).
+    const turned = rotateRows(TEST_ORIENTATION, 'pitch', Math.fround(-0.5 / 32));
+    expect(missile.orientation).toEqual(turned);
+  });
+
+  it('routes a missile\'s expiry to missiles.ts (P3-07/20): it fizzles, emits missile-ended and leaves at its next update', () => {
+    const [state, [missile]] = withEntities([20]);
+    missile.state = 'active';
+    spendGuidance(missile);
+    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post({ type: 'expire', entityId: missile.id }) })).toMatchObject([
+      { type: 'missile-ended', entityId: missile.id, shooterEntityId: null, outcome: 'fizzled' },
+    ]);
+    expect(missile.state).toBe('pending-removal');
+    runTickWith(state);
+    expect(state.entities.size).toBe(0);
+  });
+
+  it('routes a projectile\'s expiry to projectiles.ts (P3-07/17): pending removal, its shooter let go', () => {
+    const [state, [projectile]] = withEntities([21, { combat: { type: 'projectile', gun: 0, shooter: 7, expiry: null } }]);
+    projectile.state = 'active';
+    runTickWith(state, { 'mission-flow': ({ requests }) => requests.post({ type: 'expire', entityId: projectile.id }) });
+    expect(projectile.state).toBe('pending-removal');
+    expect(projectile.combat).toMatchObject({ shooter: null });
+  });
+
+  it('drops a new request whose subject is gone, as every request', () => {
+    const [state] = withEntities([7]);
+    const [reference] = withEntities([7]);
+    runTickWith(state, { 'mission-flow': ({ requests }) => ['expire', 'release-held'].forEach((type) => requests.post({ type, entityId: 99 } as Request)) });
+    runTickWith(reference);
+    expect(stateText(state)).toBe(stateText(reference));
+  });
+
+  it('routes the own updates of missiles and projectiles to their modules: state 7 at once, removal from pending removal (explosions and fragments: destruction.test.ts)', () => {
+    const [state, entities] = withEntities([20], [21]);
+    // The synthetic missile records have a negative lifetime, which a new G rejects; G is made once, so this missile's
+    // first callback only asks for state 7.
+    spendGuidance(entities[0]);
+    const atMovement: string[] = [];
+    const before = entities.map(({ position }) => position);
+    runTickWith(state, { movement: () => void atMovement.push(...entities.map(({ state: objectState }) => objectState)) });
+    expect(atMovement).toEqual(['active', 'active']);
+    // Both move in the tick that activates them: the missile by mode 0 with its body record (P3-07/22), at its block's
+    // speed 48 along row 3 (0, 0, 1) of TEST_ORIENTATION for 1/32 s; the projectile's block is at rest.
+    expect(entities.map(({ position }) => position)).toEqual([{ ...before[0], z: before[0].z + 1.5 }, before[1]]);
+    for (const entity of entities) entity.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.entities.size).toBe(0);
+  });
+
+  it('moves kind 21\'s and 22\'s linear blocks and kind 24\'s spinning block in the movement stage (P3-07/35)', () => {
+    const [state, entities] = withEntities([21], [22], [24]);
+    for (const entity of entities) {
+      entity.state = 'active';
+      Object.assign(entity.movement!, { velocity: { x: 0, y: 0, z: 64 } });
+    }
+    // An active explosion has been activated, or its update faults in request handling first.
+    Object.assign(entities[1].combat, { activationClock: 0, removalAfterClock: 0x60 });
+    const before = entities.map(({ position }) => position);
+    runTickWith(state);
+    // 64 units per second for 2/64 s; the linear blocks keep the position before the move.
+    expect(entities.map(({ position }) => position)).toEqual(before.map(({ x, y, z }) => ({ x, y, z: z + 2 })));
+    expect(entities.slice(0, 2).map(({ movement }) => movement)).toMatchObject(before.slice(0, 2).map((previousPosition) => ({ mode: 'linear', previousPosition })));
+  });
+
+  it('clears the player\'s targeting state with its entity, together with P3-06\'s target', () => {
+    const [state, [player, target]] = withEntities([0], [7]);
+    // In an external view (0x13), whose layout has no right display to clear the target that is gone (CR-10).
+    Object.assign(state.player, { entityId: player.id, target: target.id, targeting: initialPlayerTargeting(), viewMode: 0x13 });
+    target.state = 'pending-removal';
+    expect(runTickWith(state)).toEqual([]);
+    expect(state.player).toMatchObject({ entityId: player.id, target: target.id, targeting: { mode: 'enemy', autoTargetDueClock: 0 } });
+    player.state = 'pending-removal';
+    expect(runTickWith(state)).toEqual([]);
+    expect(state.player).toMatchObject({ entityId: null, target: null, targeting: null });
+  });
+});
+
+describe('pending requests (P3-07 CR-05)', () => {
+  const request = (entityId: number): Request => ({ type: 'leave', entityId });
+  const isLeave = (posted: Request): posted is Extract<Request, { type: 'leave' }> => posted.type === 'leave';
+  const lastPending = (queue: RequestQueue): number | undefined => queue.findLastPending(isLeave)?.entityId;
+
+  it('finds the last matching request not taken yet, and none once handling is over', () => {
+    const queue = new RequestQueue();
+    expect(lastPending(queue)).toBeUndefined();
+    queue.post(request(1));
+    queue.post(request(2));
+    queue.post({ type: 'set-state', entityId: 3, state: 'active' });
+    expect(lastPending(queue)).toBe(2);
+    const seen: (number | undefined)[] = [];
+    queue.handle((posted) => {
+      seen.push(lastPending(queue));
+      if (posted.type === 'leave' && posted.entityId === 1) queue.post(request(4));
+    });
+    expect(seen).toEqual([2, 4, 4, undefined]);
+    expect(lastPending(queue)).toBeUndefined();
+    queue.post(request(5));
+    expect(lastPending(queue)).toBeUndefined();
+  });
+
+  it('holds a deferred request, counted at once, until release appends the held ones in order (CR-07)', () => {
+    const queue = new RequestQueue();
+    queue.post(request(1));
+    queue.defer(request(2));
+    queue.defer(request(3));
+    queue.post(request(4));
+    expect(lastPending(queue)).toBe(4);
+    queue.release();
+    expect(lastPending(queue)).toBe(3);
+    const handled: number[] = [];
+    queue.handle((posted) => void (isLeave(posted) && handled.push(posted.entityId)));
+    expect(handled).toEqual([1, 4, 2, 3]);
+    const full = new RequestQueue();
+    for (let count = 0; count < CORE_LIMITS.requestsPerTick - 1; count++) full.post(request(count + 1));
+    full.defer(request(0));
+    expectFault(() => full.post(request(0)), 'budget-exhausted', 'pipeline.requests');
+  });
+
+  it('faults when handling finds a request still held', () => {
+    const queue = new RequestQueue();
+    queue.defer(request(1));
+    expectFault(() => queue.handle(() => {}), 'invariant-violated', 'pipeline.requests-deferred');
   });
 });

@@ -196,6 +196,7 @@ describe('GameRuntime command queue and batches', () => {
   });
 
   it('gives only a command\'s own result its ID: P3-06\'s events that name the command by commandIndex carry null', () => {
+    // The automatic target selection (P3-07 CR-07) names no command either.
     const run = recorded();
     // The first tick instantiates the player and the second activates it, so the third takes speed commands.
     run.advance(2);
@@ -204,7 +205,7 @@ describe('GameRuntime command queue and batches', () => {
     run.advance(1);
     expect(run.commands(3)).toEqual([['fire:primary', 'speed']]);
     expect(run.delivered.filter((entry) => entry.tick === 3).map(({ type, commandIndex, commandId }) => [type, commandIndex, commandId])).toEqual([
-      ['command-result', 0, null], ['command-result', 1, toggle], ['speed-assist-toggled', null, null],
+      ['command-result', 0, null], ['command-result', 1, toggle], ['speed-assist-toggled', null, null], ['target-changed', null, null],
     ]);
   });
 

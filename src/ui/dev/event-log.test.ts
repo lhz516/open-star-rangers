@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResultEvent, DomainEvent, ObjectInstantiatedEvent } from '../../core/contracts/domain-events.ts';
+import { COMBAT_EVENTS } from '../../app/runtime/combat-events.test-support.ts';
 import { EVENT_LOG_LIMIT, EventLog, summarizeEvent } from './event-log.ts';
 
 // P3-04 AC-22, the event log window (docs/plan/p3/04/spec.md: 开发诊断, 事件日志): the latest 500 structured summaries,
@@ -45,6 +46,42 @@ describe('event log', () => {
     const entry = summarizeEvent({ type: 'speed-assist-released', tick: 6 }, NO_COMMAND, 3);
     expect(entry).toEqual({ sequence: 3, tick: 6, type: 'speed-assist-released', commandId: null, fields: [] });
     expect(Object.isFrozen(entry.fields)).toBe(true);
+  });
+
+  it('summarizes P3-07\'s combat events by their own scalar fields, in a fixed order', () => {
+    const summaries = Object.fromEntries(COMBAT_EVENTS.map((event) => [event.type, summarizeEvent(event, NO_COMMAND, 1).fields]));
+    expect(summaries).toEqual({
+      'target-changed': [['target', 14], ['targetKindBit', 7], ['previousTarget', null], ['mode', 'enemy'], ['origin', 'command'], ['commandIndex', 2]],
+      'target-cleared': [['previousTarget', 14], ['cause', 'invalid']],
+      'weapon-selected': [['entityId', 1], ['list', 1], ['index', 0], ['mount', 2], ['changed', false], ['commandIndex', null]],
+      'shot-fired': [
+        ['shooterEntityId', 1], ['shooterKindBit', 0], ['entityId', 20], ['family', 'gun'], ['weapon', 1], ['mount', 0], ['trigger', 'command primary #0'],
+        ['x', 1.5], ['y', 2], ['z', 3],
+      ],
+      hit: [
+        ['victimEntityId', 14], ['victimKindBit', 7], ['cause', 'projectile'], ['sourceEntityId', 20], ['attacker', 'shooter 1 kind 0'], ['damage', 12],
+        ['gated', false], ['shieldBefore', 30], ['shieldAfter', 18], ['hullBefore', 50], ['hullAfter', 50], ['projectile', 'removed'],
+      ],
+      'object-destroyed': [
+        ['entityId', 14], ['kindBit', 7], ['source', 'mission#2'], ['activity', 'active'], ['attacker', 'shooter 1 kind 0'], ['outcome', 'explodes'],
+        ['x', 4], ['y', 5], ['z', 6],
+      ],
+      'explosion-started': [['entityId', 21], ['sourceEntityId', 14], ['sourceKindBit', 7], ['variant', 'large'], ['x', 4], ['y', 5], ['z', 6]],
+      'missile-ended': [['entityId', 22], ['shooterEntityId', null], ['outcome', 'fizzled'], ['x', 7], ['y', 8], ['z', 9]],
+      'fragment-expired': [['entityId', 23], ['sourceKindBit', 0], ['part', 0], ['outcome', 'escape-pod'], ['x', 1], ['y', 1], ['z', 1]],
+      'source-released': [['entityId', 1], ['kindBit', 0], ['fragmentEntityId', 23], ['removed', false]],
+      'energy-depleted': [['entityId', 1], ['kindBit', 0], ['x', 1], ['y', 2], ['z', 3]],
+      'energy-allocation-changed': [['entityId', 1], ['shieldLevel', 2], ['chargeLevel', 1], ['commandIndex', 3]],
+      'left-page-changed': [['page', 1], ['previousPage', 0], ['commandIndex', null]],
+    });
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    expect(summary({ type: 'hit', tick: 5, victimEntityId: 3, victimKindBit: 1, victimPosition: { x: 0, y: 0, z: 0 }, cause: 'collision', sourceEntityId: null,
+      attacker: { type: 'lost-shooter' }, damage: 1, gated: true, shield: { before: 0, after: 0 }, hull: { before: 2, after: 1 }, shieldWasEmpty: true,
+      impact: null, projectile: null }).find(([name]) => name === 'attacker')).toEqual(['attacker', 'lost-shooter']);
+    expect(summary({ ...(COMBAT_EVENTS[3] as Extract<DomainEvent, { type: 'shot-fired' }>), trigger: { type: 'ai', channel: 2 } })
+      .find(([name]) => name === 'trigger')).toEqual(['trigger', 'ai 2']);
+    expect(summary({ ...(COMBAT_EVENTS[3] as Extract<DomainEvent, { type: 'shot-fired' }>), trigger: { type: 'automatic' } })
+      .find(([name]) => name === 'trigger')).toEqual(['trigger', 'automatic']);
   });
 
   it('keeps 500 events untruncated and drops the oldest of 501', () => {

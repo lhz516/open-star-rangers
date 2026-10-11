@@ -65,6 +65,17 @@ class QualifyTests(unittest.TestCase):
         self.assertEqual(len(reads), 2)  # repeated within the pause
         self.assertEqual(len(self.judge("end")), 2)
 
+    def test_low_page_field_reads_its_linear_address(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"].append({"id": "vector", "address": {"low": 0x2C}, "type": "f32", "unit": "raw"})
+        document["pauses"][0]["fields"].append("vector")
+        self.recipe = parse_recipe(json.dumps(document))
+        self.process.poke(0x2C, struct.pack("<f", 12.5))
+        samples = self.judge()
+        self.assertTrue(samples["vector"].qualified)
+        self.assertEqual(samples["vector"].value, 12.5)
+        self.assertEqual([read for read in self.process.reads if read == (0x2C, 4)], [(0x2C, 4), (0x2C, 4)])
+
     def test_zero_ticks_is_qualified(self):
         self.process.poke_u32(DATA + 0x800, 0)
         samples = self.judge()
@@ -109,6 +120,22 @@ class QualifyTests(unittest.TestCase):
             with self.subTest(field=field):
                 reads = collect_pause(self.recipe, "start", narrow, self.process, ReadBudget(4096), values)
                 self.assertOnly(self.judge(mapping=narrow, reads=reads), field, "pointer-out-of-range")
+
+    def test_low_and_register_fields_together(self):
+        document = scenario_recipe(exe_fingerprint(scenario_image()))
+        document["fields"] += [
+            {"id": "vector", "address": {"low": 0x2C}, "type": "f32", "unit": "raw"},
+            {"id": "direct", "address": {"register": "EBX", "offset": -8}, "type": "u32", "unit": "count"}]
+        document["pauses"][0]["fields"] += ["vector", "direct"]
+        self.recipe = parse_recipe(json.dumps(document))
+        check_recipe_image(self.recipe, self.image)  # neither kind has an LE location to check
+        self.process.poke(0x2C, struct.pack("<f", 12.5))
+        registers = {"EBX": HEAP + 0x1010}
+        reads = collect_pause(self.recipe, "start", self.mapping, self.process, ReadBudget(4096), registers)
+        samples = self.judge(reads=reads)
+        self.assertEqual((samples["vector"].value, samples["direct"].value), (12.5, 99))
+        self.assertTrue(all(sample.qualified for sample in samples.values()))
+        self.assertEqual([read for read in self.process.reads if read == (0x2C, 4)], [(0x2C, 4), (0x2C, 4)])
 
     def test_fault_markers_and_short_reads(self):
         self.process.faults.add((HEAP + 0x1008) // 4096)

@@ -5,10 +5,10 @@ import { syntheticIdentity } from '../../content/synthetic-content.test-support.
 import { nextRandom } from '../determinism/rng.ts';
 import { CoreInputError } from '../errors.ts';
 import { loadMission } from '../mission/load-mission.ts';
-import { createWorld, initialWorldState } from './create-world.ts';
+import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, originalImportIdentity, playerOnlyMission,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
   reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
@@ -74,7 +74,7 @@ describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
     });
     const world = constructWorld(state);
     expect(world.projection()).toMatchObject({ clock: { tick: 0, clock: 0, clockUnitsPerTick: 2 }, player: { entityId: null, viewMode: 0xc } });
-    expect(world.renderState()).toEqual({ tick: 0, viewMode: 0xc, observedEntityId: null, entities: [] });
+    expect(world.renderState()).toEqual({ tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [] });
   });
 
   it('draws only the +0x78 defaults: 8 of the 9 section-1 records, 9 with a wingman', () => {
@@ -147,6 +147,30 @@ describe('world creation input structure (P3-02 AC-02)', () => {
     const error = thrownBy(() => createWorld(asCreateInput(worldInput({ identity: syntheticIdentity({ origin: { type: 'other' } }) }))));
     expect(error).toBeInstanceOf(ContentContractError);
     expect(error).toMatchObject({ path: 'input.identity.origin.type' });
+  });
+});
+
+describe('instantiable model IDs (P3-07 CR-01)', () => {
+  const modelSet = ({ mission, craftTypes, wingmanRoster, identity, run }: ReturnType<typeof worldInput>) =>
+    instantiableModelIds(asCreateInput({ mission, craftTypes, wingmanRoster, identity, run }));
+
+  it('are the models world creation takes, once each in ascending order, and depend on the wingman', () => {
+    for (const wingman of [null, 0]) {
+      const input = worldInput({ run: { wingman } });
+      const ids = modelSet(input);
+      expect(ids).toEqual((input.models as { readonly id: string }[]).map(({ id }) => id));
+      expect(Object.isFrozen(ids)).toBe(true);
+      expect((ids as readonly string[]).includes(modelOf(1)), String(wingman)).toBe(wingman !== null);
+      expect(() => createWorld(asCreateInput(input))).not.toThrow();
+    }
+    expect(modelSet(worldInput())).toEqual([0, 7, 8, 14, 17].map(modelOf).sort());
+  });
+
+  it('throw what creation throws for the fields they read, and reject any other field', () => {
+    const input = worldInput({ run: { wingman: 5 } });
+    expect(thrownBy(() => modelSet(input))).toMatchObject({ name: 'CoreInputError', path: 'input.run.wingman' });
+    expectRejected(input, 'input.run.wingman');
+    expect(thrownBy(() => instantiableModelIds(asCreateInput(worldInput())))).toMatchObject({ name: 'CoreInputError', path: 'input' });
   });
 });
 
@@ -528,11 +552,16 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
 describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
   const hashOf = (parts: WorldInputParts = {}) => create(parts).config.setupHash;
 
-  it('is 16 lowercase hex digits of the setup alone: not of the run or the identity', () => {
+  it('is 16 lowercase hex digits of the setup and the content read: not of the run or the identity', () => {
     const hash = hashOf();
     expect(hash).toMatch(/^[0-9a-f]{16}$/);
-    expect(hashOf({ run: { seed: 1, wingman: 2, rawDifficulty: 0 } })).toBe(hash);
+    expect(hashOf({ run: { seed: 1, rawDifficulty: 0 } })).toBe(hash);
     expect(hashOf({ identity: originalImportIdentity() })).toBe(hash);
+    // A wingman adds its model to the models the run reads, and only that changes the hash.
+    const withWingman = create({ run: { wingman: 2 } });
+    expect(withWingman.config.setupHash).not.toBe(hash);
+    const { ruleData } = create();
+    expect(setupHash(withWingman.setup, withWingman.craftInfo, ruleData.inputs)).toBe(hash);
   });
 
   it('changes with names, coordinates, members, rule inputs and bindings', () => {
@@ -592,7 +621,86 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     it('does not depend on the key order of the craft info, the seed or the wingman', () => {
       const hash = hashOf();
       expect(hashOf({ craftInfo: reversedKeys(craftInfoContent()) })).toBe(hash);
-      expect(hashOf({ run: { seed: 99, wingman: 4 } })).toBe(hash);
+      expect(hashOf({ run: { seed: 99 } })).toBe(hash);
+      expect(hashOf({ run: { wingman: 4 } })).toBe(hashOf({ run: { wingman: 0 } }));
+    });
+  });
+
+  describe('rule-data inputs (P3-07 AC-02, CR-01)', () => {
+    type Content = Record<string, unknown>;
+    type Item = { id: string; content: Content };
+    /** The hash of the default input after `change`, which must keep it valid. */
+    const changedHash = (change: (input: Record<string, Item & Item[]>) => void, parts: WorldInputParts = {}) => {
+      const input = worldInput(parts);
+      change(input as never);
+      return initialWorldState(asCreateInput(input)).config.setupHash;
+    };
+    const lists = (input: Record<string, Item>) => input.explosions.content.lists as { sound: { id: string }; animation: { id: string } }[][];
+    const records = (input: Record<string, Item>) => input.projectileVisuals.content.records as { selector: number; width: number; length: number; colour: number[] }[];
+    const partsOf = (model: Item) => (model.content.partLists as unknown[][])[1];
+    const builtIn = (input: Record<string, Item>) => input.aiPrograms.content.builtInPrograms as { at14: number; at24: number; at28: number; at2C: number; handler: { offset: number } }[];
+
+    it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts, part counts and AI programs', () => {
+      const hash = hashOf();
+      expect(changedHash(() => undefined)).toBe(hash);
+      const changes: ((input: Record<string, Item & Item[]>) => void)[] = [
+        (input) => void (input.debrisParameters.id = 'data/other-debris'),
+        (input) => void ((input.debrisParameters.content.byCraftType as { at00: number[] }[][])[19][0].at00[1] = 0.5),
+        (input) => void ((input.debrisParameters.content.byCraftType as { collision: { at28: number } }[][])[19][0].collision.at28 = 1),
+        (input) => void (input.projectileVisuals.id = 'data/other-visuals'),
+        (input) => void (records(input)[0].length = 2),
+        (input) => void records(input).push({ ...records(input)[0] }),
+        (input) => void (input.explosions.id = 'data/other-explosions'),
+        (input) => void lists(input)[0].reverse(),
+        (input) => void lists(input)[1].push({ ...lists(input)[1][0] }),
+        (input) => {
+          for (const animation of input.explosionAnimations.slice(0, 3)) animation.content.frames = (animation.content.frames as unknown[]).slice(0, 10);
+        },
+        (input) => {
+          input.explosionAnimations[3].id = 'data/explosion-animation/09';
+          lists(input)[2][0].animation.id = 'data/explosion-animation/09';
+        },
+        (input) => {
+          // Kind bit 14's model gains a part and its DEBRIS table the matching record.
+          partsOf(input.models[1]).push({ ...(partsOf(input.models[0])[0] as object) });
+          (input.debrisParameters.content.byCraftType as unknown[][])[14].push(structuredClone((input.debrisParameters.content.byCraftType as unknown[][])[0][0]));
+        },
+        // The AI programs: the ID and the complete content, the homing records' fields and those the rules do not read yet.
+        (input) => void (input.aiPrograms.id = 'data/other-ai-programs'),
+        (input) => void (builtIn(input)[1].at14 = 17),
+        (input) => void (builtIn(input)[2].at24 = 3),
+        (input) => void (builtIn(input)[1].at2C = 0.5),
+        (input) => void (builtIn(input)[0].at28 = 9),
+        (input) => void (builtIn(input)[2].handler.offset = 0x200),
+        (input) => void builtIn(input).push(structuredClone(builtIn(input)[0])),
+        (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
+        (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
+        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
+      ];
+      const hashes = changes.map((change) => changedHash(change));
+      for (const changed of hashes) expect(changed).not.toBe(hash);
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+
+    it('does not change with appearance: selectors, widths, colours, templates, sounds, frame images, geometry and parts', () => {
+      const hash = hashOf();
+      const changes: ((input: Record<string, Item & Item[]>) => void)[] = [
+        (input) => Object.assign(records(input)[1], { selector: 7, width: 9, colour: [0, 0, 1] }),
+        (input) => void (input.projectileVisuals.content.templates = [{ faces: [1] }]),
+        (input) => void (lists(input)[0][1].sound = { id: 'sound/synthetic/other', kind: 'sound' } as never),
+        (input) => void ((input.explosionAnimations[0].content.frames as { id: string }[])[0].id = 'image/synthetic-frame/other'),
+        (input) => Object.assign(input.models[0].content, { geometries: [{ positions: [1, 2, 3] }], soundSlots: ['sound/x', null, null, null, null] }),
+        (input) => Object.assign(partsOf(input.models[0])[0] as object, { sourceFlags: 0xffff, colour: [1, 2, 3], texture: 'image/t' }),
+        (input) => void ((input.models[0].content.partLists as unknown[][])[2] = [{}]),
+      ];
+      for (const change of changes) expect(changedHash(change)).toBe(hash);
+    });
+
+    it('does not depend on the key order of the rule-data inputs', () => {
+      expect(changedHash((input) => {
+        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms'] as const) input[field].content = reversedKeys(input[field].content);
+        input.models = input.models.map(reversedKeys) as never;
+      })).toBe(hashOf());
     });
   });
 
@@ -631,11 +739,11 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('writes the wingman options\' eventTrigger too, though the content readers keep it null', () => {
       const setup = loadMission(asCreateInput(worldInput()));
-      const { craftInfo } = create();
-      const hash = setupHash(setup, craftInfo);
+      const { craftInfo, ruleData } = create();
+      const hash = setupHash(setup, craftInfo, ruleData.inputs);
       const changed = { ...setup, wingmanOptions: setup.wingmanOptions.map((option, index) => (index === 1 ? { ...option, eventTrigger: 0 } : option)) };
       expect(hash).toBe(hashOf());
-      expect(setupHash(changed, craftInfo)).not.toBe(hash);
+      expect(setupHash(changed, craftInfo, ruleData.inputs)).not.toBe(hash);
     });
 
     it('is the same for equal triggers built again or with keys in another order', () => {

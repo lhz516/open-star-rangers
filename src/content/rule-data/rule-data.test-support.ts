@@ -22,9 +22,13 @@ export const gun = (overrides: Record<string, unknown> = {}) => ({
   name: text(18), at08: 2.5, at14: -7, at18: 0x7fffffff, at1C: 3, at20: 0.25, at24: 40, at28: 2, at2C: -1, ...overrides,
 });
 
+/**
+ * A missile record. Its lifetime +0x44 (an i32) is 320, 5 s, as Core rejects a negative guidance time (P3-07/24); a
+ * content test of the i32's negative range sets one itself.
+ */
 export const missile = (overrides: Record<string, unknown> = {}) => ({
   name: text(15), body: 0, at18: 1, at1C: 5, at20: 6, at24: 255, at28: 0.5, at30: 7, at34: -8, at38: 9, at3C: 10,
-  at40: F32_DENORMAL, at44: -11, at48: 12, at4C: 1.75, at54: 0xffffffff, at58: -13, at5C: 14, at60: -0.125, at64: 3.5,
+  at40: F32_DENORMAL, at44: 320, at48: 12, at4C: 1.75, at54: 0xffffffff, at58: -13, at5C: 14, at60: -0.125, at64: 3.5,
   ...overrides,
 });
 

@@ -14,7 +14,7 @@ import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import { readTickInput, type TickInput } from '../contracts/tick-input.ts';
 import { readDataRecord, readExactRecord, readList, requireExactFields } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
-import { initialWorldState, type CreateWorldInput } from '../world/create-world.ts';
+import { CONTENT_INPUT_FIELDS, initialWorldState, type CreateWorldInput } from '../world/create-world.ts';
 import type { EffectiveRunConfig } from '../world/run-config.ts';
 import type { WorldState } from '../world/world-state.ts';
 import {
@@ -29,14 +29,16 @@ import {
 } from './recording.ts';
 import { RULES_VERSION } from './rules-version.ts';
 
-/** The content a record is replayed on: what createWorld takes besides the run configuration. */
+/**
+ * The content a record is replayed on: what createWorld takes besides the run configuration, the rule-data inputs
+ * included. The record embeds none of it; setupHash binds what the world reads.
+ */
 export type ReplayContent = Omit<CreateWorldInput, 'run'>;
 
 const RECORD_FIELDS = ['format', 'version', 'rulesVersion', 'producer', 'content', 'mission', 'setupHash', 'run', 'checkpointInterval', 'ticks'] as const;
 /** Enough to read the format and version of a record with other fields before rejecting its fields. */
 const MAX_RECORD_FIELDS = 32;
 const RUN_FIELDS = ['rawDifficulty', 'wingman', 'seed', 'clockUnitsPerTick'] as const;
-const CONTENT_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'identity'] as const;
 
 /** `error` again at `path`, if it is one of the input contract errors; anything else unchanged. */
 function movedTo(error: unknown, path: string): unknown {
@@ -102,7 +104,7 @@ function readRecord(value: unknown): ReplayRecord {
 
 /** The initial state of the record's world on `content`, bound to the record's identity, mission and setup. */
 function replayState(record: ReplayRecord, value: unknown): WorldState {
-  const content = readExactRecord(value, 'content', CONTENT_FIELDS);
+  const content = readExactRecord(value, 'content', CONTENT_INPUT_FIELDS);
   const identity = readContentIdentity(content.identity, 'content.identity');
   if (contentIdentityKey(identity) !== contentIdentityKey(record.content)) {
     throw new CoreInputError('record.content', 'must be the identity of the replayed content');

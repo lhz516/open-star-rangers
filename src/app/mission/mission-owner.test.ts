@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { contentIdentityKey } from '../../content/content-identity.ts';
+import { initialWorldState, instantiableModelIds, type CreateWorldInput } from '../../core/world/create-world.ts';
 import { PRODUCTION_MISSION, PRODUCTION_RAW_DIFFICULTY } from '../../core/world/run-config.ts';
 import { FIVE_WINGMAN_NAMES } from '../../original-data/formats/formats.test-support.ts';
+import { craftInfoInput, missionInput, modelInputs, ruleDataInputs } from '../resources/mission-input.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
 import { TICK_MS } from '../runtime/game-runtime.test-support.ts';
 import { GameSessionError } from '../session/session-errors.ts';
 import { FLOW_SESSION_PHASES } from './mission-flow.ts';
 import { developmentRecording, MissionUnavailableError, type MissionOwner } from './mission-owner.ts';
 import {
-  craftInfoJob, elapsePlaceholder, MISSION_SCENARIOS, missionHolder, missionJob, openMission, ownerSetup, sessionProbe, skip, testPorts, testSlot, toConfig,
-  toDeparture, toFlight, type OpenMission,
+  craftInfoJob, elapsePlaceholder, MISSION_SCENARIOS, missionHolder, missionJob, nextSchemaJob, openMission, ownerSetup, sessionProbe, skip, testPorts,
+  testSlot, toConfig, toDeparture, toFlight, type OpenMission,
 } from './mission.test-support.ts';
 
 // P3-04 AC-07 and AC-08 (Node), the owner part: the flow from G-02/1 to flight, restart and return, the start page's
@@ -237,6 +239,30 @@ describe('mission owner start', () => {
       () => craftInfoJob('next-schema'),
       { kind: 'content', path: 'logic[data/craft-info].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
     ],
+    // P3-07 CR-01: the rule-data inputs, and the models of the craft the run instantiates.
+    [
+      'a DEBRIS table that does not decode',
+      () => nextSchemaJob('logic', 'data/debris-parameters'),
+      { kind: 'content', path: 'logic[data/debris-parameters].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
+    ],
+    [
+      'AI programs that do not decode',
+      () => nextSchemaJob('logic', 'data/ai-programs'),
+      { kind: 'content', path: 'logic[data/ai-programs].descriptor.payloadIdentity.schemaVersion', reason: 'must be the supported payload schema of the role' },
+    ],
+    [
+      'an explosion table that does not decode',
+      () => nextSchemaJob('models', 'data/explosions'),
+      {
+        kind: 'content', path: 'models[data/explosions].descriptor.payloadIdentity.schemaVersion',
+        reason: 'must be the supported flight data payload schema of the role',
+      },
+    ],
+    [
+      'a model of the run that does not decode',
+      () => nextSchemaJob('models', 'model/player-ship'),
+      { kind: 'content', path: 'models[model/player-ship].payload.schemaVersion', reason: 'must be model payload schema 1' },
+    ],
   ])('keeps %s of the same package on the start page as a world creation refusal', async (_, job, failure) => {
     const setup = await openMission(await job());
     const { owner, seeds, guard, host } = setup;
@@ -271,6 +297,28 @@ describe('mission owner start', () => {
       return runOf(setup).snapshot().state.config.setupHash;
     });
     expect(hashes[0]).not.toBe(hashes[1]);
+  });
+
+  it('starts with the package\'s rule-data inputs and the models of the craft each run instantiates (P3-07 CR-01)', async () => {
+    for (const wingman of [null, 0]) {
+      const setup = await openMission();
+      setup.seeds.values = [7];
+      toConfig(setup.owner);
+      setup.owner.select(wingman);
+      setup.owner.start();
+      // Created independently from the same held package: Core's set of models, decoded as the mission input decodes them.
+      const held = setup.holder.current()!;
+      if (held.completeness.status !== 'complete') throw new Error('Expected a complete package');
+      const assets = missionInput(held.groups.find(({ group }) => group === 'logic')!);
+      const base = { ...assets, identity: held.completeness.identity, run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed: 7 } };
+      const ids = instantiableModelIds(base as Parameters<typeof instantiableModelIds>[0]);
+      expect(ids.length).toBeGreaterThan(0);
+      const expected = initialWorldState({
+        ...base, craftInfo: craftInfoInput(held.groups.find(({ group }) => group === 'logic')!), ...ruleDataInputs(held.groups),
+        models: modelInputs(held.groups, ids),
+      } as CreateWorldInput);
+      expect(runOf(setup).snapshot().state.config.setupHash, String(wingman)).toBe(expected.config.setupHash);
+    }
   });
 
   it('refuses to start once the bound package is gone, without drawing a seed', async () => {

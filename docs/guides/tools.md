@@ -135,19 +135,19 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 - **用法：** `node tools/replay-check.ts <录制.json> <file.ccd> <file.img> [<file.sub>] [<file.cue>]`。参数少于两个或以 `-` 开头（如 `--help`）时为用法错误，在 stderr 打印用法与上限推导。CLI 始终使用生产导入作业与生产来源白名单，不接受合成光盘，也没有切换白名单的参数；Node 测试与 E2E 调用可导出的 `runReplayCheck(录制路径, 光盘路径, { catalog } 或 { job })` 注入合成白名单或导入作业，从不按录制选择白名单。`exitCode(report)` 给出与 CLI 相同的退出码。
 - **读取录制：** 先以同一个只读句柄 fstat，非普通文件不读（FIFO 以非阻塞方式打开，不等待写入者），大小超过上限为 `file-too-large`，不读取任何字节；之后至多读入“大小 + 1”字节，读取前后的大小、修改时间或状态变更时间（纳秒）任一不同即拒绝（`recording.changed`）。不会先无界读取或解析，也从不改写录制文件。
-- **文件上限：** `RECORDING_MAX_BYTES` 为 225,969,791 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
+- **文件上限：** `RECORDING_MAX_BYTES` 为 427,820,671 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
 
   | 部分 | 计数 | 每项字节 | 小计 |
   |---|---|---|---|
   | 信封：记录头、空列表与结果的 finalTick | 1 | 1,621 | 1,621 |
   | tick 输入 | 131,072（`recordedTicks`） | 124 | 16,252,928 |
   | 命令 | 262,144（`recordedCommands`） | 107 | 28,049,408 |
-  | 事件 | 524,288（`recordedEvents`） | 336 | 176,160,768 |
+  | 事件 | 524,288（`recordedEvents`） | 721 | 378,011,648 |
   | 检查点 | 131,073（`recordedCheckpoints`） | 42 | 5,505,066 |
-  | 合计 | | | 225,969,791 |
+  | 合计 | | | 427,820,671 |
 
-  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
-- **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01）→ `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
+  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-07 的 `hit`（[CR-06](../plan/p3/02/spec.md#cr-06-领域事件与次序d-01)），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
+- **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01），再以任务所有者的 [mission-input.ts](../../src/app/resources/mission-input.ts)（`ruleDataInputs`、`runModelInputs`）解码规则数据输入，并按 Core 的 `instantiableModelIds` 为记录中的运行配置解码可实例化机体的模型（[P3-07 CR-01](../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）；Core 拒绝该运行配置时不解码模型，由重放在记录或内容路径上报告 → `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
 - **输出：** stdout 为一份报告 `{ format: 'osr-replay-check', version: 1, passed, error, identity, mission, setupHash, finalTick, events, checkpoints, comparison }`，每次都有全部字段：
   - `error` 为 `{ code, location }` 或 null；`passed` 只在 `comparison.match` 为 true 时为 true；
   - `mission` 与 `setupHash` 在记录通过验证后填入，`finalTick`、`events`、`checkpoints` 在期望结果通过验证后填入，`identity`（`contentIdentityKey`）在整包验证后填入，`comparison` 为 Core 的 `ReplayComparison`（不一致时含首个差异的 tick 与类别）；提前失败而尚未取得的字段为 null，不以 0 或虚构身份代替。
@@ -161,7 +161,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   | `read-failed` | `recording`、`recording.changed`、`disc[i]`、`disc` | 录制无法读取、不是普通文件或读取中变化；第 i 个光盘文件无法打开；光盘读取失败 |
   | `file-too-large` | `recording` | 录制超过上限 |
   | `invalid-recording` | `recording.json`、`recording`、`record…`、`result…` | 不是 UTF-8 JSON、顶层形状不对，记录或期望结果不合 Core 的格式与上限；也包括世界创建结合内容才拒绝的 `record.run…` |
-  | `content-failed` | 导入阶段名（如 `identify-source`）、首个整包诊断路径（如 `groups[3].roles.warp-sound`）、`content…` | 文件组无法识别或转换（包括合成光盘遇到生产白名单）、包不完整、逻辑 Asset 或 craft-info 不能解码 |
+  | `content-failed` | 导入阶段名（如 `identify-source`）、首个整包诊断路径（如 `groups[3].roles.warp-sound`）、`content…` | 文件组无法识别或转换（包括合成光盘遇到生产白名单）、包不完整、逻辑 Asset 或 craft-info 不能解码（规则数据输入与模型的解码错误位于 `content.<组>[<Asset ID>]…`） |
   | `replay-failed` | `record.content`、`record.mission`、`record.setupHash`、`record.ticks[k]` 等记录路径，或 `replay` | 记录与内容不符（身份、任务或 setupHash），或重放中 Core 故障 |
   | `replay-mismatch` | `comparison` | 重放结果与录制中的结果不一致 |
   | `internal-error` | 所在阶段（`recording`、`record`、`result`、`import`、`content`、`replay`、`comparison`） | 意外异常；不输出其原文 |
@@ -172,7 +172,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 `tools/baseline/measure.py` 在开发者本地的基准环境中运行原版并读取运行时字段（[P3-01](../plan/p3/01/spec.md#运行时测量) 的 S-05）。配方、操作者协议、读数的合格条件、计时、原版文件保护与证据存放见[运行时测量指南](./runtime-measurement.md)，这里只列要点。
 
-- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
+- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
 - **输出：** 报告、调试器日志与证明文件都写在 `local/research/` 下的新运行目录中，不覆盖已有文件。运行期间 `local/research/` 的既有文件不得改变；其他会话同时在别处写入时，`--evidence` 把这一检查缩小到包含运行目录的主题目录（保证随之变窄，`local/StarRang/` 的保护不变）。终端只有阶段、原因码、计数与相对路径，不输出读数、原版内容或私人绝对路径。
 - **退出码：** `complete` 为 0；失败为 1；运行前拒绝为 2（什么也不写）；取消为 3。
 - **测试：** `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`，不属于 `pnpm check`；测试只用合成数据与临时目录，不读取 `local/` 或原版文件。

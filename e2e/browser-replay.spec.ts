@@ -8,6 +8,7 @@ import { createRecordingSession } from '../src/core/replay/recording.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import type * as ReplayModule from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
+import { CONTENT_INPUT_FIELDS } from '../src/core/world/create-world.ts';
 import { asCreateInput, worldInput } from '../src/core/world/create-world.test-support.ts';
 import { ordinaryFiles } from '../tools/compliance/distribution.ts';
 import { test, expect } from './support/browser-test.ts';
@@ -52,8 +53,8 @@ test('the browser replays a formal Core record like Node and rejects records of 
   for (let tick = 1; tick <= TICKS; tick++) session.step(scripted(tick));
   const recording = session.exportRecording();
   const record = plain(recording.record);
-  const { mission, craftTypes, wingmanRoster, craftInfo, identity } = input;
-  const content: ReplayContent = plain({ mission, craftTypes, wingmanRoster, craftInfo, identity });
+  // Every content input of world creation (P3-07's rule-data inputs too); replay takes the run from the record.
+  const content: ReplayContent = plain(Object.fromEntries(CONTENT_INPUT_FIELDS.map(field => [field, input[field]])) as ReplayContent);
   const reference = replayRecord(record, content);
   expect(compareReplayResults(recording.result, reference)).toEqual({ match: true });
   expect(reference.finalTick).toBe(TICKS);

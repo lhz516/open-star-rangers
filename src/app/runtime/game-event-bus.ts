@@ -33,6 +33,19 @@ const EVENT_TYPES = {
   'speed-matched': true,
   'speed-assist-released': true,
   'object-left-world': true,
+  'target-changed': true,
+  'target-cleared': true,
+  'weapon-selected': true,
+  'shot-fired': true,
+  hit: true,
+  'object-destroyed': true,
+  'explosion-started': true,
+  'missile-ended': true,
+  'fragment-expired': true,
+  'source-released': true,
+  'energy-depleted': true,
+  'energy-allocation-changed': true,
+  'left-page-changed': true,
 } as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {

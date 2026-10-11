@@ -4,9 +4,10 @@
  * releases it before the next exists. It is DOM-free: host capabilities arrive as ports, and React reads its snapshot.
  *
  * - **Binding:** the owner binds the holder's package of one generation and content identity when it opens and checks it
- *   again when the start is confirmed; the run is created only from that package's three logic Assets and its craft
- *   info (P3-06 D-01). A craft info the package lacks or that does not decode fails each start as world creation's
- *   refusal does.
+ *   again when the start is confirmed; the run is created only from that package's three logic Assets, its craft info
+ *   (P3-06 D-01) and its rule-data inputs (docs/plan/p3/02/spec.md, CR-01), with the models of the craft the run can
+ *   instantiate. One of these the package lacks or that does not decode fails each start as world creation's refusal
+ *   does.
  * - **Flow:** G-02/1, the start page, G-02/2 over a run held at tick 0, flight, the pausing mission menu, and the end of a
  *   run that faulted or stopped (`mission-flow.ts`). Restart exits the run and begins again at G-02/1.
  * - **Placeholders:** one one-shot timer at a time, checked against the monotonic clock, counts 3,000 ms of time the
@@ -23,7 +24,7 @@ import { loadMission } from '../../core/mission/load-mission.ts';
 import type { RecordingOptions } from '../../core/replay/recording.ts';
 import { PRODUCTION_RAW_DIFFICULTY } from '../../core/world/run-config.ts';
 import { missionFailureOf, type MissionFailure } from '../resources/mission-diagnostics.ts';
-import { craftInfoInput, missionInput, type PackageGroup } from '../resources/mission-input.ts';
+import { craftInfoInput, missionInput, ruleDataInputs, runModelInputs, type RuleDataInputs } from '../resources/mission-input.ts';
 import type { HeldPackage, ResourceHolder } from '../resources/resource-holder.ts';
 import {
   createGameSession, type DepartureTransition, type GameRunSpec, type GameSession, type GameSessionControl, type GameSessionRun,
@@ -217,13 +218,18 @@ export class MissionUnavailableError extends Error {
 const creationRefusal = (error: unknown): MissionFailure | null =>
   (error instanceof GameSessionError && error.kind === 'invalid-argument' ? missionFailureOf(error.cause) : null);
 
+/** The content world creation takes from the bound package beside the logic Assets, whatever the run. */
+type PackageContent = Pick<GameRunSpec, 'craftInfo' | keyof RuleDataInputs>;
+
+type Decoded<Value> = { readonly input: Value } | { readonly failure: MissionFailure };
+
 /**
- * The craft info of the bound logic group. Diagnostics do not read it, so a decoding error becomes the failure each
- * start reports; a missing one stays undefined, which world creation rejects at `input.craftInfo`.
+ * What `decode` returns, or the failure each start reports for a content or Core input error it throws. Diagnostics
+ * do not read these Assets; one the package lacks stays undefined, which world creation rejects at its input position.
  */
-function decodedCraftInfo(logic: PackageGroup): { readonly input: GameRunSpec['craftInfo'] } | { readonly failure: MissionFailure } {
+function decoded<Value>(decode: () => Value): Decoded<Value> {
   try {
-    return Object.freeze({ input: craftInfoInput(logic) as GameRunSpec['craftInfo'] });
+    return Object.freeze({ input: decode() });
   } catch (error) {
     const failure = missionFailureOf(error);
     if (failure) return Object.freeze({ failure });
@@ -266,8 +272,8 @@ class Owner implements MissionOwner {
   readonly #identity: ContentIdentity;
   readonly #identityKey: string;
   readonly #assets: Pick<GameRunSpec, 'mission' | 'craftTypes' | 'wingmanRoster'>;
-  /** The run's craft info as decoded from the bound package, or the failure every start reports instead. */
-  readonly #craftInfo: { readonly input: GameRunSpec['craftInfo'] } | { readonly failure: MissionFailure };
+  /** The craft info and rule-data inputs as decoded from the bound package, or the failure every start reports instead. */
+  readonly #content: Decoded<PackageContent>;
   readonly #config: MissionConfigView;
   readonly #session: GameSession;
   readonly #connections: Connection[] = [];
@@ -300,7 +306,7 @@ class Owner implements MissionOwner {
     const logic = held.groups.find(({ group }) => group === 'logic')!;
     const input = missionInput(logic);
     const mission = loadMission(input);
-    this.#craftInfo = decodedCraftInfo(logic);
+    this.#content = decoded(() => ({ craftInfo: craftInfoInput(logic), ...ruleDataInputs(held.groups) }) as PackageContent);
     this.#generation = held.generation;
     this.#identity = held.completeness.identity;
     this.#identityKey = contentIdentityKey(this.#identity);
@@ -499,14 +505,19 @@ class Owner implements MissionOwner {
       return this.#failStart({ kind: 'seed', cause });
     }
     if (!isUint32(seed)) return this.#failStart({ kind: 'seed', cause: new RangeError('The seed source returned a value that is not a uint32') });
-    const craftInfo = this.#craftInfo;
-    if ('failure' in craftInfo) return this.#failStart({ kind: 'rejected', failure: craftInfo.failure });
+    const content = this.#content;
+    if ('failure' in content) return this.#failStart({ kind: 'rejected', failure: content.failure });
+    const config = { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed };
+    // The bound package, checked above: the models of the craft this run instantiates.
+    const models = decoded(() => runModelInputs(held.groups, { ...this.#assets, identity: this.#identity, run: config }));
+    if ('failure' in models) return this.#failStart({ kind: 'rejected', failure: models.failure });
     const variant = wingman === null ? 'solo' : 'wingman';
     const spec: GameRunSpec = {
       ...this.#assets,
-      craftInfo: craftInfo.input,
+      ...content.input,
+      models: models.input,
       identity: this.#identity,
-      run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed },
+      run: config,
       recording: this.#setup.recording,
       initialTransition: { gap: 'G-02/2', variant },
     };

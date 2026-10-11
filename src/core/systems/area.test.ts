@@ -7,7 +7,7 @@ import { initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput, type CraftInfoDraft, type WorldInputParts } from '../world/create-world.test-support.ts';
 import type { Entity, EntityInit } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, entityInit, stillEntityInit, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, stillEntityInit, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 
@@ -21,7 +21,7 @@ import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, 
 function worldWith(change: (info: CraftInfoDraft) => void = () => {}, parts: WorldInputParts = { mission: playerOnlyMission() }): WorldState {
   const info = craftInfoContent();
   change(info);
-  const state = initialWorldState(asCreateInput(worldInput({ ...parts, craftInfo: info })));
+  const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ ...parts, craftInfo: info }))));
   state.spawn.queue.length = 0;
   return state;
 }
@@ -48,12 +48,12 @@ const predicted = (state: WorldState, count: number): number[] => randValues(sta
 /** The world RNG state after `count` more draws. */
 const stateAfter = (state: WorldState, count: number) => rngStateAfter(state.rngState, count);
 
-/** Runs the parked update stage at `clock` and returns its events. */
+/** Runs the parked update stage at `clock`, without P3-07's engagement, and returns its events. */
 function parkedUpdate(state: WorldState, clock: number): ObjectLeftWorldEvent[] {
   const events: ObjectLeftWorldEvent[] = [];
   state.clock = clock;
   state.tick = Math.floor(clock / 2);
-  updateParked(state, (event) => events.push(event));
+  updateParked(state, (event) => events.push(event), () => {});
   return events;
 }
 
@@ -290,7 +290,8 @@ describe('parked update 0x2f1b0: selection and cadence (P3-06 AC-06)', () => {
     destroyed.destroyed = true;
     const leaving = parked(state, 7);
     leaving.state = 'pending-removal';
-    parked(state, 20);
+    // No kind outside the craft kinds can be parked: allocation keeps P3-07's runtime kinds active (CR-02).
+    state.entities.allocate(entityInit(20)).state = 'active';
     state.entities.allocate(entityInit(7)).state = 'active';
     const expected = stateAfter(state, selected.length);
     expect(parkedUpdate(state, 10)).toEqual([]);
@@ -313,6 +314,26 @@ describe('parked update 0x2f1b0: selection and cadence (P3-06 AC-06)', () => {
     const shake = jitter(draws.slice(1), 20);
     expect(entity.position).toEqual({ x: clock - 1000 + shake.x, y: shake.y, z: shake.z });
     expect(entity.placementSerial).toBe(1);
+  });
+
+  it('engages each object it updates after its travel, with its elapsed time, between its draws and the next object\'s (P3-07 CR-09, E1, E4)', () => {
+    const state = worldWith((info) => void (info.craft[7].atA8 = 100));
+    const [first, second] = [parked(state, 7), parked(state, 8, { lastParkedUpdateClock: 40 })];
+    for (const entity of [first, second]) entity.ai = { ...entity.ai, mode: 5 };
+    // Due as well, but in Warp transit: no travel and no engagement.
+    parked(state, 7, { warpClock: 50, inWarp: true });
+    const start = state.rngState;
+    const calls: [number, number, typeof start][] = [];
+    state.clock = 200;
+    updateParked(state, () => {}, (entity, elapsed) => {
+      calls.push([entity.id, elapsed, state.rngState]);
+      // A stand-in engagement that draws once from the world RNG.
+      state.rngState = rngStateAfter(state.rngState, 1);
+    });
+    // The walk takes kind 7 before kind 8: the first's due check and its engagement's draw, the transit's due check,
+    // then the second's due check and its engagement's draw.
+    expect(calls).toEqual([[first.id, 200, rngStateAfter(start, 1)], [second.id, 160, rngStateAfter(start, 4)]]);
+    expect(state.rngState).toEqual(rngStateAfter(start, 5));
   });
 
   it('skips the rest of a due entity in Warp transit', () => {
@@ -567,6 +588,8 @@ describe('active objects and the world rectangle (P3-06 AC-06, M-07)', () => {
     const state = worldWith();
     const world = constructWorld(state);
     addPlayer(state, { x: 60000, y: 0, z: 0 });
+    // P3-07's automatic target selection would select the craft; it is not due here.
+    state.player.targeting = { ...state.player.targeting!, autoTargetDueClock: 1e9 };
     const craft = state.entities.allocate(entityInit(7, { position: { x: 60010, y: 0, z: 0 } }));
     craft.state = 'active';
     const before = craft.position;

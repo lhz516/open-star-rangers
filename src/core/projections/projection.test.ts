@@ -7,9 +7,12 @@ import {
 } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import {
+  PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
+  type CombatPlayer,
   type CombatReady,
   type CommunicationsReady,
+  type FlightCombat,
   type FlightResourceName,
   type MapReady,
   type MotionPlayer,
@@ -18,6 +21,8 @@ import {
   type Projection,
   type ResultReady,
   type SpeedLimitStatus,
+  type WeaponListReading,
+  type WeaponRecordReference,
 } from './projection.ts';
 
 const NOT_IMPLEMENTED = { readiness: 'not-implemented' };
@@ -42,7 +47,7 @@ function assistedState(): WorldState {
 }
 
 describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-05)', () => {
-  it('has the clock, mission and player partitions and the flight motion group ready, apart from the combat group and the other rule partitions, not implemented', () => {
+  it('has the clock, mission and player partitions and both flight groups ready, the other rule partitions not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -62,18 +67,35 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
             speed: 30.5,
             commandedSpeed: 41.25,
             maximumSpeed: 52,
-            // Until P3-07 recomputes it from the live energy state.
-            speedLimitStatus: 'initial-only',
+            // P3-07 recomputes it from the live energy state (CR-09).
+            speedLimitStatus: 'live',
             // Group 1: off.
             speedAssist: { enabled: false, engaged: false },
           },
         },
-        combat: NOT_IMPLEMENTED,
+        combat: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id }) },
       },
       map: NOT_IMPLEMENTED,
       communications: NOT_IMPLEMENTED,
       result: NOT_IMPLEMENTED,
     });
+  });
+
+  it('keeps the combat group\'s four states apart: not implemented, no player, a live player and a destroyed one (P3-07 AC-04)', () => {
+    const stateOf = (combat: FlightCombat): string => {
+      if (combat.readiness === 'not-implemented') return 'not-implemented';
+      if (combat.player === null) return 'no-player';
+      return combat.player.destroyed ? 'destroyed' : 'live';
+    };
+    const state = testState();
+    const combat = () => stateOf(projectWorld(state).flight.combat);
+    expect(stateOf({ readiness: 'not-implemented' })).toBe('not-implemented');
+    expect(combat()).toBe('no-player');
+    const player = addPlayerEntity(state);
+    expect(combat()).toBe('live');
+    player.destroyed = true;
+    expect(combat()).toBe('destroyed');
+    expect(projectWorld(state).flight.motion).toMatchObject({ readiness: 'ready', player: { entityId: player.id } });
   });
 
   it('derives the interaction context from the view mode', () => {
@@ -96,14 +118,14 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
   describe('flight motion group (P3-06)', () => {
     it('gives a null player, never a made-up zero speed, before the player entity exists and after it is removed', () => {
       const state = testState();
-      expect(projectWorld(state).flight).toEqual({ motion: { readiness: 'ready', player: null }, combat: NOT_IMPLEMENTED });
+      expect(projectWorld(state).flight).toEqual({ motion: { readiness: 'ready', player: null }, combat: { readiness: 'ready', player: null } });
       const world = constructWorld(state);
       const player = addPlayerEntity(state);
       expect(motionPlayer(world.projection())?.entityId).toBe(player.id);
       player.state = 'pending-removal';
       world.step(tickInput());
       expect(state.entities.get(player.id)).toBeUndefined();
-      expect(world.projection().flight).toEqual({ motion: { readiness: 'ready', player: null }, combat: NOT_IMPLEMENTED });
+      expect(world.projection().flight).toEqual({ motion: { readiness: 'ready', player: null }, combat: { readiness: 'ready', player: null } });
     });
 
     it('reads what the rules leave: the speeds after a speed command and movement, and the pose after movement', () => {
@@ -180,6 +202,10 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
         addPlayerEntity(state);
         state.player.control = null;
       }],
+      ['has a block that is not steered', (state) => {
+        const player = addPlayerEntity(state);
+        player.movement = { mode: 'linear', speed: 0, velocity: { x: 0, y: 0, z: 0 }, previousPosition: { x: 0, y: 0, z: 0 }, hitTest: false };
+      }],
       ['does not resolve', (state) => {
         addPlayerEntity(state);
         state.player.entityId = 99;
@@ -202,15 +228,26 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
     expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
-    // Owners define the resources (and the other `never` fields) by revising the spec before a partition can be ready.
-    expectTypeOf<FlightResourceName>().toBeNever();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
+    // P3-07 CR-12: the combat group is the flight partition's, ready with the player's readings or null without one.
+    expectTypeOf<FlightCombat>().toEqualTypeOf<NotImplementedPartition | CombatReady>();
     expectTypeOf<CombatReady['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<CombatReady['player']>().toEqualTypeOf<CombatPlayer | null>();
+    expectTypeOf<keyof CombatPlayer>().toEqualTypeOf<
+      'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage'
+    >();
+    expectTypeOf<FlightResourceName>().toEqualTypeOf<'energy' | 'shield' | 'charge' | 'hull' | 'spare-power'>();
+    expectTypeOf<WeaponRecordReference['family']>().toEqualTypeOf<'gun' | 'missile'>();
+    expectTypeOf<CombatPlayer['weapons']>().toEqualTypeOf<readonly [WeaponListReading, WeaponListReading]>();
     expectTypeOf<MotionReady['player']>().toEqualTypeOf<MotionPlayer | null>();
     expectTypeOf<keyof MotionPlayer>().toEqualTypeOf<
       'entityId' | 'position' | 'orientation' | 'speed' | 'commandedSpeed' | 'maximumSpeed' | 'speedLimitStatus' | 'speedAssist'
     >();
     expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
     expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
+  });
+
+  it('reports the player\'s maximum speed as live, which P3-07 recomputes from the live energy state (CR-09)', () => {
+    expect(PLAYER_SPEED_LIMIT_STATUS).toBe('live');
   });
 });

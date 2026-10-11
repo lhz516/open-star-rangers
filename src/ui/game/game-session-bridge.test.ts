@@ -3,7 +3,7 @@ import { TICK_MS } from '../../app/runtime/game-runtime.test-support.ts';
 import { departure, runSpec } from '../../app/session/game-session.test-support.ts';
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import { GameSessionError } from '../../app/session/session-errors.ts';
-import type { CombatReady, Projection } from '../../core/projections/projection.ts';
+import type { Projection } from '../../core/projections/projection.ts';
 import type { MissionStatus } from '../../core/world/world-state.ts';
 import { PROJECTION_SAMPLE_INTERVAL_MS, createGameSessionBridge, type GameRunBinding, type GameRunConsumer } from './game-session-bridge.ts';
 import { createGameStore } from './game-store.ts';
@@ -424,12 +424,12 @@ describe('game session bridge: key facts published at the end of their frame', (
 
   it('does not publish a new projection object early when its key facts are unchanged', () => {
     const { log, deliver, base } = doubles();
-    expect(base.flight).toMatchObject({ motion: { readiness: 'ready' }, combat: { readiness: 'not-implemented' } });
+    expect(base.flight).toMatchObject({ motion: { readiness: 'ready' }, combat: { readiness: 'ready' } });
     deliver(1010);
     deliver(1020, {
       player: Object.freeze({ ...base.player }),
-      // New motion readings within a ready motion group are sampled, not published at once.
-      flight: Object.freeze({ motion: Object.freeze({ readiness: 'ready' as const, player: null }), combat: Object.freeze({ readiness: 'not-implemented' as const }) }),
+      // New motion and combat readings within their ready groups are sampled, not published at once.
+      flight: Object.freeze({ motion: Object.freeze({ readiness: 'ready' as const, player: null }), combat: Object.freeze({ readiness: 'ready' as const, player: null }) }),
       result: Object.freeze({ readiness: 'not-implemented' as const }),
     });
     expect(log).toEqual([]);
@@ -442,14 +442,14 @@ describe('game session bridge: key facts published at the end of their frame', (
     // P3-11 adds mission statuses; the double stands for one.
     ['the mission status', (base) => ({ mission: Object.freeze({ ...base.mission, status: 'running' as unknown as MissionStatus }) })],
     ['the result readiness', () => ({ result: Object.freeze({ readiness: 'ready' as const, outcome: 'in-progress' as const }) })],
-    // A partition readiness: P3-06 splits the flight partition into groups, each ready on its own (P3-07 readies combat).
+    // A partition readiness: P3-06 splits the flight partition into groups, each ready on its own (P3-06 motion, P3-07 combat).
     ['the flight motion group readiness', (base) => ({
       flight: Object.freeze({ motion: Object.freeze({ readiness: 'not-implemented' as const }), combat: base.flight.combat }),
     })],
     ['the flight combat group readiness', (base) => ({
       flight: Object.freeze({
         motion: base.flight.motion,
-        combat: Object.freeze({ readiness: 'ready', target: null, resources: {}, weapons: [] } satisfies CombatReady),
+        combat: Object.freeze({ readiness: 'not-implemented' as const }),
       }),
     })],
   ])('publishes a change of %s at once, then samples again from it', (_, change) => {

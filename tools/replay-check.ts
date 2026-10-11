@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { open, type FileHandle } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ruleDataInputs, runModelInputs, type PackageGroup } from '../src/app/resources/mission-input.ts';
 import type { AssetDescriptor } from '../src/content/asset-contract.ts';
 import type { AssetId } from '../src/content/asset-id.ts';
 import { contentIdentityKey, readContentIdentity, readSourceFingerprint, type ContentIdentity } from '../src/content/content-identity.ts';
@@ -22,6 +23,7 @@ import {
 } from '../src/core/replay/recording.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
+import type { Matrix3 } from '../src/core/world/entity-table.ts';
 import { productionIdentityBasis } from '../src/original-data/conversion/converter-version.ts';
 import { DiscReadError } from '../src/original-data/disc/disc-error.ts';
 import { SourceError } from '../src/original-data/source-error.ts';
@@ -87,7 +89,7 @@ export type ReplayCheckOptions = PackageCheckOptions;
  * version with SHA-256 manifest and source fingerprints. The test pins this value to the derivation, so a change to a
  * Core capacity or format changes it on purpose, together with the tool guide.
  */
-export const RECORDING_MAX_BYTES = 225_969_791;
+export const RECORDING_MAX_BYTES = 427_820_671;
 
 /** The longest JSON text of a finite number in [-1, 1]: the longest of any finite number. */
 const LONGEST_NUMBER = -0.0000012345678901234567;
@@ -97,6 +99,12 @@ const SAFE = Number.MAX_SAFE_INTEGER;
 const LAST_TICK = CORE_LIMITS.recordedTicks;
 const HASH = 'f'.repeat(16);
 const longestOf = <const Value extends string>(values: readonly Value[]): Value => values.reduce((longest, value) => (value.length > longest.length ? value : longest));
+
+/** The longest i32 text, and the longest list index (−1 to the largest i32). */
+const LONGEST_I32 = -(2 ** 31);
+const LONGEST_LIST_INDEX = 2 ** 31 - 1;
+const LONGEST_VECTOR = { x: LONGEST_NUMBER, y: LONGEST_NUMBER, z: LONGEST_NUMBER } as const;
+const LONGEST_ATTACKER = { type: 'shooter', entityId: SAFE, kindBit: 31 } as const;
 
 /** The longest entity source: a wingman group member with safe-integer indexes. */
 const LONGEST_SOURCE = { collection: 'wingman', index: SAFE, group: { index: SAFE, request: SAFE, member: SAFE } } as const;
@@ -144,6 +152,43 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
   'speed-matched': { type: 'speed-matched', tick: LAST_TICK, targetEntityId: SAFE, origin: 'assist', speedDifferenceExceeded: false },
   'speed-assist-released': { type: 'speed-assist-released', tick: LAST_TICK },
   'object-left-world': { type: 'object-left-world', tick: LAST_TICK, entityId: SAFE, kindBit: 31, source: LONGEST_SOURCE },
+  // P3-07's events: an automatic target change, a list index of i32, a mount of a safe integer and a null command index
+  // are each the longer of their forms.
+  'target-changed': {
+    type: 'target-changed', tick: LAST_TICK, playerEntityId: SAFE, previousTarget: SAFE, target: SAFE, targetKindBit: 31, mode: 'friendly',
+    origin: 'automatic', commandIndex: null,
+  },
+  'target-cleared': { type: 'target-cleared', tick: LAST_TICK, playerEntityId: SAFE, previousTarget: SAFE, cause: 'base-view' },
+  'weapon-selected': { type: 'weapon-selected', tick: LAST_TICK, entityId: SAFE, list: 1, index: LONGEST_LIST_INDEX, mount: SAFE, changed: false, commandIndex: null },
+  'shot-fired': {
+    type: 'shot-fired', tick: LAST_TICK, shooterEntityId: SAFE, shooterKindBit: 31, shooterPosition: LONGEST_VECTOR, entityId: SAFE, family: 'missile',
+    weapon: SAFE, mount: SAFE, position: LONGEST_VECTOR, trigger: { type: 'command', channel: 'secondary', commandIndex: CORE_LIMITS.commandsPerTick - 1 },
+  },
+  hit: {
+    type: 'hit', tick: LAST_TICK, victimEntityId: SAFE, victimKindBit: 31, victimPosition: LONGEST_VECTOR, cause: 'projectile', sourceEntityId: SAFE,
+    attacker: LONGEST_ATTACKER, damage: LONGEST_I32, gated: false, shield: { before: LONGEST_I32, after: LONGEST_I32 },
+    hull: { before: LONGEST_I32, after: LONGEST_I32 }, shieldWasEmpty: false, impact: { point: LONGEST_VECTOR, local: LONGEST_VECTOR, face: 5 },
+    projectile: 'ricochet',
+  },
+  'object-destroyed': {
+    type: 'object-destroyed', tick: LAST_TICK, entityId: SAFE, kindBit: 31, source: LONGEST_SOURCE, position: LONGEST_VECTOR, activity: 'parked',
+    attacker: LONGEST_ATTACKER, eventClass: 1, outcome: 'explodes',
+  },
+  'explosion-started': {
+    type: 'explosion-started', tick: LAST_TICK, entityId: SAFE, sourceEntityId: SAFE, sourceKindBit: 31, variant: 'missile', position: LONGEST_VECTOR,
+    activationClock: SAFE,
+  },
+  'missile-ended': {
+    type: 'missile-ended', tick: LAST_TICK, entityId: SAFE, shooterEntityId: SAFE, outcome: 'detonated', position: LONGEST_VECTOR,
+    orientation: Array.from({ length: 9 }, () => LONGEST_NUMBER) as unknown as Matrix3,
+  },
+  'fragment-expired': { type: 'fragment-expired', tick: LAST_TICK, entityId: SAFE, sourceKindBit: 31, part: SAFE, position: LONGEST_VECTOR, outcome: 'wingman-pod' },
+  'source-released': { type: 'source-released', tick: LAST_TICK, entityId: SAFE, kindBit: 31, fragmentEntityId: SAFE, removed: false },
+  'energy-depleted': { type: 'energy-depleted', tick: LAST_TICK, entityId: SAFE, kindBit: 31, position: LONGEST_VECTOR },
+  'energy-allocation-changed': {
+    type: 'energy-allocation-changed', tick: LAST_TICK, entityId: SAFE, shieldLevel: 3, chargeLevel: 3, commandIndex: CORE_LIMITS.commandsPerTick - 1,
+  },
+  'left-page-changed': { type: 'left-page-changed', tick: LAST_TICK, page: 6, previousPage: 6, commandIndex: null },
 };
 
 /** The content identity of every package the production import job converts. */
@@ -293,11 +338,15 @@ function validateResult(result: unknown): Pick<ReplayCheckReport, 'finalTick' | 
 }
 
 /**
- * The replay content of a validated package: the mission, the only Asset of its role in the logic group, and the
- * craft type table and wingman roster it references by Asset ID, decoded with the logic payload reader; the craft info
- * (P3-06 D-01), the only Asset of its role, decoded with the rule-data payload reader; and the package's identity.
+ * The replay content of a validated package for the record's run: the mission, the only Asset of its role in the logic
+ * group, and the craft type table and wingman roster it references by Asset ID, decoded with the logic payload reader;
+ * the craft info (P3-06 D-01), the only Asset of its role, decoded with the rule-data payload reader; the rule-data
+ * inputs, and the models of the craft the run instantiates as Core names them, decoded as the mission owner decodes
+ * them (src/app/resources/mission-input.ts; P3-07 CR-01), a decoding error at `content.<group>[<Asset ID>].<path>`; and
+ * the package's identity. When Core refuses the run with this content it names no models, and the replay reports the
+ * refusal at its record or content path.
  */
-function replayContent(groups: readonly GroupInput[], identity: ContentIdentity): ReplayContent {
+function replayContent(groups: readonly GroupInput[], identity: ContentIdentity, run: unknown): ReplayContent {
   // Validation read every manifest and payload strictly, so reading them again cannot fail.
   const logic = groups.map(({ manifest, payloads }) => ({ manifest: readGroupManifest(manifest), payloads })).find(({ manifest }) => manifest.group === 'logic');
   if (!logic) throw new CheckStop('content-failed', 'content');
@@ -323,13 +372,26 @@ function replayContent(groups: readonly GroupInput[], identity: ContentIdentity)
   const mission = decode('mission', only('mission'));
   const { references } = mission.content as MissionContent;
   const referenced = (id: AssetId) => logic.manifest.assets.find(descriptor => descriptor.id === id);
+  const craftTypes = decode('craftTypes', referenced(references.craftTypes));
+  const wingmanRoster = decode('wingmanRoster', referenced(references.wingmanRoster));
+  const packageGroups: PackageGroup[] = groups.map(({ manifest, payloads }) => ({ group: readGroupManifest(manifest).group, manifest, payloads }));
+  const fromPackage = <Value>(read: () => Value): Value => {
+    try {
+      return read();
+    } catch (error) {
+      if (error instanceof ContentContractError) throw new CheckStop('content-failed', `content.${error.path}`);
+      throw error;
+    }
+  };
   return {
     mission,
-    craftTypes: decode('craftTypes', referenced(references.craftTypes)),
-    wingmanRoster: decode('wingmanRoster', referenced(references.wingmanRoster)),
+    craftTypes,
+    wingmanRoster,
     craftInfo: decode('craftInfo', only('craft-info'), decodeRuleDataPayload),
+    ...fromPackage(() => ruleDataInputs(packageGroups)),
+    models: fromPackage(() => runModelInputs(packageGroups, { mission, craftTypes, wingmanRoster, identity, run } as Parameters<typeof runModelInputs>[1])),
     identity,
-  };
+  } as ReplayContent;
 }
 
 /**
@@ -406,7 +468,7 @@ export async function runReplayCheck(recordingPath: string, discPaths: readonly 
     const { groups, identity } = await importContent(discPaths, options);
     fields.identity = contentIdentityKey(identity);
     phase = 'content';
-    const content = replayContent(groups, identity);
+    const content = replayContent(groups, identity, (record as ReplayRecord).run);
     phase = 'replay';
     const actual = replay(record, content);
     phase = 'comparison';

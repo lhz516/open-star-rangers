@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
 import { RandStream } from '../rules/original-random.ts';
-import type { Entity, ObjectState } from '../world/entity-table.ts';
-import { initialPlayerControl } from '../world/player-state.ts';
+import type { Entity, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
+import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -21,6 +21,12 @@ const WARP = 1;
 const BASE = 6;
 const MAP = 8;
 
+/**
+ * The player's targeting state (CR-04) with P3-07's automatic target selection not due in these tests, so that it
+ * neither selects a target nor emits.
+ */
+const quietTargeting = (): PlayerTargeting => ({ ...initialPlayerTargeting(), autoTargetDueClock: 1e9 });
+
 /** A drained world with an available player at full throttle (commanded speed 48), its assist off. */
 function withPlayer(): [WorldState, Entity] {
   const state = testState({ group: 1 });
@@ -28,6 +34,7 @@ function withPlayer(): [WorldState, Entity] {
   player.state = 'active';
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(1);
+  state.player.targeting = quietTargeting();
   return [state, player];
 }
 
@@ -44,11 +51,17 @@ function stepControls(state: WorldState, commands: readonly Command[] = [], axes
   return context.events;
 }
 
-/** The player's update alone: its events and the requests it posts. */
+/** The player's update alone: its events and the requests it posts, every command it hands on rejected/not-implemented. */
 function update(state: WorldState, commands: readonly Command[] = [], axes: TickAxes = NEUTRAL): { events: DomainEvent[]; requests: PlayerRequest[] } {
   const events: DomainEvent[] = [];
   const requests: PlayerRequest[] = [];
-  updatePlayer(state, input(commands, axes), state.tick + 1, { emit: (event) => events.push(event), post: (request) => requests.push(request) });
+  const tick = state.tick + 1;
+  updatePlayer(state, input(commands, axes), tick, {
+    emit: (event) => events.push(event),
+    post: (request) => requests.push(request),
+    judge: ({ type }, commandIndex) => events.push({ type: 'command-result', tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' }),
+    lockMissiles: () => {},
+  });
   return { events, requests };
 }
 
@@ -60,8 +73,10 @@ const requestAxes = ({ requests }: { requests: readonly PlayerRequest[] }) => re
 const speed = (operation: 'increase' | 'decrease' | 'zero' | 'maximum' | 'match-target' | 'toggle-auto-match'): Command => ({ type: 'speed', operation });
 const preset = (value: number): Command => ({ type: 'select-number', value });
 const results = (events: readonly DomainEvent[]) => events.flatMap((event) => (event.type === 'command-result' ? [[event.commandIndex, event.outcome, event.reason]] : []));
-const steering = ({ movement }: Entity) => {
-  const { pitch, yaw, roll } = movement!.steering;
+/** A craft's movement block, which is steered (P3-07 CR-03). */
+const craftBlock = ({ movement }: Entity) => movement as SteeredMovementBlock;
+const steering = (entity: Entity) => {
+  const { pitch, yaw, roll } = craftBlock(entity).steering;
   return { pitch: { ...pitch }, yaw: { ...yaw }, roll: { ...roll } };
 };
 const axesOf = (pitch: number | null, yaw: number | null, roll: number | null) => ({ pitch, yaw, roll });
@@ -82,9 +97,9 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((value): [string, Command, number] => [`select-number ${value} (Shift+${value})`, preset(value), 5.25 * (value - 1)]),
   ])('sets %s from full throttle as commanded speed %d and clears the arrival', (_, command, commanded) => {
     const [state, player] = withPlayer();
-    const before = player.movement!.speed;
+    const before = craftBlock(player).speed;
     stepControls(state, [command]);
-    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed, player.movement!.speed]).toEqual([commanded, false, before]);
+    expect([craftBlock(player).commandedSpeed, craftBlock(player).atCommandedSpeed, craftBlock(player).speed]).toEqual([commanded, false, before]);
   });
 
   it('keeps no throttle: each request carries its own, and nothing persists but the commanded speed', () => {
@@ -92,7 +107,7 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
     expect(throttles(update(state, [speed('decrease'), preset(3)]))).toEqual([116, 28]);
     expect(Object.keys(state.player.control!)).toEqual(['lastAxes', 'speedAssist']);
     stepControls(state, [speed('decrease')]);
-    expect(player.movement!.commandedSpeed).toBe(43.5);
+    expect(craftBlock(player).commandedSpeed).toBe(43.5);
     // The next tick reads the throttle back from the commanded speed: 116 − 12.
     expect(throttles(update(state, [speed('decrease')]))).toEqual([104]);
   });
@@ -100,10 +115,10 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
   it('reads back a matched commanded speed as its ratio', () => {
     for (const [operation, throttle, commanded] of [['increase', 92, 34.5], ['decrease', 68, 25.5]] as const) {
       const [state, player] = withPlayer();
-      player.movement!.commandedSpeed = 30;
+      craftBlock(player).commandedSpeed = 30;
       expect(throttles(update(state, [speed(operation)]))).toEqual([throttle]);
       stepControls(state, [speed(operation)]);
-      expect(player.movement!.commandedSpeed).toBe(commanded);
+      expect(craftBlock(player).commandedSpeed).toBe(commanded);
     }
   });
 
@@ -112,7 +127,7 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
     player.maximumSpeed = 24;
     expect(throttles(update(state, [speed('decrease'), speed('increase')]))).toEqual([244, 128]);
     stepControls(state, [speed('decrease')]);
-    expect(player.movement!.commandedSpeed).toBe(24);
+    expect(craftBlock(player).commandedSpeed).toBe(24);
   });
 
   it('judges same-tick commands in array order, each reading back what the requests before it leave', () => {
@@ -123,30 +138,30 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
     ] as const;
     for (const [start, commands, posted, commanded] of cases) {
       const [state, player] = withPlayer();
-      player.movement!.commandedSpeed = start;
+      craftBlock(player).commandedSpeed = start;
       expect(throttles(update(state, commands))).toEqual(posted);
       stepControls(state, commands);
-      expect(player.movement!.commandedSpeed).toBe(commanded);
+      expect(craftBlock(player).commandedSpeed).toBe(commanded);
     }
   });
 
   it('accepts commands on a locked block, which drops their requests, so later ones read back the unchanged speed', () => {
     const [state, player] = withPlayer();
-    Object.assign(player.movement!, { commandedSpeed: 24, atCommandedSpeed: true, locked: true });
+    Object.assign(craftBlock(player), { commandedSpeed: 24, atCommandedSpeed: true, locked: true });
     const commands = [speed('increase'), speed('increase')];
     expect(throttles(update(state, commands))).toEqual([76, 76]);
     const events = stepControls(state, commands);
     expect(results(events)).toEqual([[0, 'accepted', null], [1, 'accepted', null]]);
-    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed]).toEqual([24, true]);
+    expect([craftBlock(player).commandedSpeed, craftBlock(player).atCommandedSpeed]).toEqual([24, true]);
   });
 
   it('keeps no command across ticks: a later tick without commands posts and reports nothing', () => {
     const [state, player] = withPlayer();
     stepControls(state, [speed('zero')]);
-    player.movement!.commandedSpeed = 30;
+    craftBlock(player).commandedSpeed = 30;
     expect(update(state)).toEqual({ events: [], requests: [] });
     expect(stepControls(state)).toEqual([]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 });
 
@@ -154,7 +169,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const THROTTLE_COMMANDS = [speed('increase'), speed('decrease'), speed('zero'), speed('maximum'), preset(5)];
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
   const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS];
-  const OTHERS = [{ type: 'launch' }, { type: 'target', operation: 'forward' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
+  const OTHERS = [{ type: 'launch' }, { type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
 
   type Unavailable = (state: WorldState, player: Entity) => void;
   const inState = (objectState: ObjectState): [string, Unavailable] => [`in state ${objectState}`, (_, player) => void (player.state = objectState)];
@@ -207,7 +222,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(state.player.control).toEqual(control);
   });
 
@@ -221,7 +236,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
   it('leaves every command of other tasks not implemented in flight', () => {
     const [state, player] = withPlayer();
     expect(results(stepControls(state, OTHERS))).toEqual(OTHERS.map((_, index) => [index, 'rejected', 'not-implemented']));
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
   });
 
   it('counts only an active, undestroyed player as available', () => {
@@ -259,9 +274,9 @@ describe('axes (P3-06 AC-03, 操纵)', () => {
     expect(requestAxes(update(state, [], { ...held, yaw: -0.5 }))).toEqual([axesOf(null, -64, null)]);
     // Applied once: a later change of the rate by another rule is not overwritten while the axis is held.
     stepControls(state, [], { ...held, yaw: -0.5 });
-    player.movement!.steering.pitch.rate = 3;
+    craftBlock(player).steering.pitch.rate = 3;
     stepControls(state, [], { ...held, yaw: -0.5 });
-    expect(player.movement!.steering.pitch.rate).toBe(3);
+    expect(craftBlock(player).steering.pitch.rate).toBe(3);
   });
 
   it('switches a released axis off in the same tick, keeping its rate', () => {
@@ -274,18 +289,18 @@ describe('axes (P3-06 AC-03, 操纵)', () => {
 
   it('updates the last read while a lock drops the request, as the original does', () => {
     const [state, player] = withPlayer();
-    player.movement!.locked = true;
+    craftBlock(player).locked = true;
     stepControls(state, [], { pitch: 0, yaw: 1, roll: 0 });
     expect(state.player.control!.lastAxes.yaw).toBe(128);
     expect(steering(player).yaw).toEqual({ rate: 0, enabled: false });
-    player.movement!.locked = false;
+    craftBlock(player).locked = false;
     expect(update(state, [], { pitch: 0, yaw: 1, roll: 0 }).requests).toEqual([]);
   });
 
   it.each([['map', MAP], ['base', BASE]] as const)('takes the manual axes as 0 in the %s context and restores nothing after it', (_, viewMode) => {
     const [state, player] = withPlayer();
     stepControls(state, [], { pitch: 0, yaw: 1, roll: 0 });
-    const block = player.movement!;
+    const block = craftBlock(player);
     Object.assign(block, { commandedSpeed: 30, speed: 40, impulse: { direction: { x: 0, y: 0, z: 1 }, magnitude: 5 } });
     block.timedRotation.roll = { rate: 1, decay: 0.5, end: 9 };
     const independent = structuredClone({ commandedSpeed: block.commandedSpeed, speed: block.speed, impulse: block.impulse, timedRotation: block.timedRotation });
@@ -341,14 +356,14 @@ describe('control requests (P3-06 AC-03, AC-04; D-08)', () => {
     const late: ControlRequest = { type: 'control', entityId: player.id, throttle: 0, axes: axesOf(-128, null, null) };
     // Posted before the player's update (mission flow) and after it (spawn queue check).
     stepControls(state, [speed('maximum')], { pitch: 1, yaw: 0, roll: 0 }, { 'mission-flow': ({ requests }) => requests.post(late) });
-    expect([player.movement!.commandedSpeed, steering(player).pitch.rate]).toEqual([48, -0.75]);
+    expect([craftBlock(player).commandedSpeed, steering(player).pitch.rate]).toEqual([48, -0.75]);
     stepControls(state, [speed('maximum')], { pitch: -1, yaw: 0, roll: 0 }, { 'spawn-queue-check': ({ requests }) => requests.post(late) });
-    expect([player.movement!.commandedSpeed, steering(player).pitch.rate]).toEqual([0, 0.75]);
+    expect([craftBlock(player).commandedSpeed, steering(player).pitch.rate]).toEqual([0, 0.75]);
   });
 
   it('draws three times per applied request under a disturbance, only for accepted messages', () => {
     const [state, player] = withPlayer();
-    player.movement!.disturbance = { level: 1 };
+    craftBlock(player).disturbance = { level: 1 };
     const drawn = (count: number, from: number): number => {
       const rand = new RandStream(from);
       for (let draw = 0; draw < count; draw++) rand.next();
@@ -365,9 +380,9 @@ describe('control requests (P3-06 AC-03, AC-04; D-08)', () => {
     expect(state.rngState).toBe((rng = drawn(6, rng)));
     // Nothing changed, a lock, an unavailable player: no draw.
     stepControls(state, [], { pitch: 1, yaw: 0, roll: 0 });
-    player.movement!.locked = true;
+    craftBlock(player).locked = true;
     stepControls(state, [speed('zero')], { pitch: 0, yaw: 1, roll: 0 });
-    player.movement!.locked = false;
+    craftBlock(player).locked = false;
     player.destroyed = true;
     stepControls(state, [speed('zero')], { pitch: 0, yaw: 0, roll: 1 });
     expect(state.rngState).toBe(rng);
@@ -379,17 +394,17 @@ describe('control requests (P3-06 AC-03, AC-04; D-08)', () => {
     const before = state.rngState;
     stepControls(state, [], NEUTRAL, { 'mission-flow': ({ requests }) => requests.post({ type: 'control', entityId: other.id, throttle: 0, axes: axesOf(128, 128, 128) }) });
     expect(other.movement).toBeNull();
-    expect([state.rngState, player.movement!.commandedSpeed]).toEqual([before, 48]);
+    expect([state.rngState, craftBlock(player).commandedSpeed]).toEqual([before, 48]);
   });
 
   it('runs in the real world step: the commanded speed persists across ticks', () => {
     const [state, player] = withPlayer();
     const world = constructWorld(state);
     world.step(input([speed('zero')], { pitch: 0, yaw: -1, roll: 0 }));
-    expect(player.movement!.commandedSpeed).toBe(0);
+    expect(craftBlock(player).commandedSpeed).toBe(0);
     expect(steering(player).yaw).toEqual({ rate: 0.25, enabled: true });
     world.step(input([speed('increase')]));
-    expect(player.movement!.commandedSpeed).toBe(4.5);
+    expect(craftBlock(player).commandedSpeed).toBe(4.5);
     expect(steering(player).yaw).toEqual({ rate: 0.25, enabled: false });
   });
 });
@@ -437,6 +452,24 @@ describe('player target reference (P3-06 S-05, D-03)', () => {
     expect(state.player.target).toBeNull();
   });
 
+  it('runs P3-07\'s missile lock on the available player after the drop and before the speed assist (CR-07)', () => {
+    const [state, player] = withAssist();
+    const target = addTarget(state);
+    const seen: [number, number | null, number][] = [];
+    const run = () => updatePlayer(state, input(), state.tick + 1, {
+      emit: () => {}, post: () => {}, judge: () => {}, lockMissiles: (entity) => void seen.push([entity.id, state.player.target, craftBlock(player).commandedSpeed]),
+    });
+    // The assist, due and in range, matches the target's 30 after the lock has seen the block at 48.
+    expect(run()).toBe(player);
+    expect([seen, craftBlock(player).commandedSpeed]).toEqual([[[player.id, target.id, 48]], 30]);
+    state.entities.remove(target);
+    run();
+    expect(seen[1]).toEqual([player.id, null, 30]);
+    player.state = 'presentation-ready';
+    expect(run()).toBeNull();
+    expect(seen).toHaveLength(2);
+  });
+
   it('keeps a resolvable target, destroyed or pending removal included', () => {
     const [state] = withPlayer();
     const target = addTarget(state);
@@ -457,7 +490,7 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
     expect(update(state, [speed('zero'), command]).requests[1]).toEqual({ type: 'match-speed', entityId: player.id, targetEntityId: target.id, commandIndex: 1 });
     const events = stepControls(state, [speed('zero'), command]);
     expect(events).toEqual([accepted(1, 0, 'speed'), accepted(1, 1, command.type), commandMatched(1, target.id, 1)]);
-    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed, player.movement!.speed]).toEqual([30, false, 48]);
+    expect([craftBlock(player).commandedSpeed, craftBlock(player).atCommandedSpeed, craftBlock(player).speed]).toEqual([30, false, 48]);
   });
 
   it.each([
@@ -472,7 +505,7 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
       { type: 'command-result', tick: 1, commandIndex: 0, commandType: 'speed', outcome: 'ignored', reason: 'no-target' },
       { type: 'command-result', tick: 1, commandIndex: 1, commandType: 'confirm-selection', outcome: 'ignored', reason: 'no-target' },
     ]);
-    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed]).toEqual([48, true]);
+    expect([craftBlock(player).commandedSpeed, craftBlock(player).atCommandedSpeed]).toEqual([48, true]);
   });
 
   it('clamps the target speed into [0, the player maximum]', () => {
@@ -480,7 +513,7 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
       const [state, player] = withPlayer();
       addTarget(state, { speed: targetSpeed });
       stepControls(state, [speed('match-target')]);
-      expect(player.movement!.commandedSpeed).toBe(matched);
+      expect(craftBlock(player).commandedSpeed).toBe(matched);
     }
   });
 
@@ -490,17 +523,17 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
     target.destroyed = true;
     target.state = 'destroyed-source';
     expect(nonResults(stepControls(state, [speed('match-target')]))).toEqual([commandMatched(1, target.id, 0)]);
-    expect(player.movement!.commandedSpeed).toBe(20);
+    expect(craftBlock(player).commandedSpeed).toBe(20);
   });
 
   it('matches on a locked block, and later throttle commands read back the match', () => {
     const [state, player] = withPlayer();
-    player.movement!.locked = true;
+    craftBlock(player).locked = true;
     addTarget(state);
     // The match leaves 30, read back as 80; the increase to 92 is dropped by the lock.
     expect(throttles(update(state, [speed('match-target'), speed('increase')]))).toEqual(['match-speed', 92]);
     stepControls(state, [speed('match-target'), speed('increase')]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('counts the match in the readback of later same-tick commands, and the commands before it are overwritten', () => {
@@ -508,9 +541,9 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
     addTarget(state);
     // Readback of 30 is 80, + 12 = 92: commanded 46/64 × 48.
     stepControls(state, [speed('zero'), speed('match-target'), speed('increase')]);
-    expect(player.movement!.commandedSpeed).toBe(34.5);
+    expect(craftBlock(player).commandedSpeed).toBe(34.5);
     stepControls(state, [speed('increase'), speed('match-target')]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('merges the axes into a throttle request only, never into a match request', () => {
@@ -532,7 +565,7 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
       },
     });
     expect(nonResults(events)).toEqual([commandMatched(1, target.id, 0)]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('writes nothing and emits no match when the target is gone by the time request handling reaches it', () => {
@@ -542,7 +575,7 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
       'request-handling': ({ world }) => void world.entities.remove(world.entities.get(target.id)!),
     });
     expect(events).toEqual([accepted(1, 0, 'speed')]);
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
   });
 });
 
@@ -576,7 +609,7 @@ describe('speed assist switch (P3-06 AC-04, AC-05, 匹配速度与速度辅助)'
     const [state, player] = withAssist(false);
     const target = addTarget(state);
     expect(nonResults(stepControls(state, [speed('toggle-auto-match')]))).toEqual([{ type: 'speed-assist-toggled', tick: 1, commandIndex: 0, enabled: true }]);
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(stepControls(state)).toEqual([assistMatched(2, target.id, true)]);
   });
 
@@ -587,7 +620,7 @@ describe('speed assist switch (P3-06 AC-04, AC-05, 匹配速度与速度辅助)'
     expect(stepControls(state)).toEqual([]);
     state.player.target = null;
     expect(update(state)).toEqual({ events: [], requests: [] });
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(assistOf(state)).toEqual({ enabled: false, dueClock: 0, engaged: true });
   });
 
@@ -608,7 +641,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     const target = addTarget(state);
     const events = stepControls(state);
     expect(events).toEqual([assistMatched(1, target.id, true)]);
-    expect([player.movement!.commandedSpeed, player.movement!.atCommandedSpeed]).toEqual([30, false]);
+    expect([craftBlock(player).commandedSpeed, craftBlock(player).atCommandedSpeed]).toEqual([30, false]);
     expect(assistOf(state)).toEqual({ enabled: true, dueClock: 34, engaged: true });
   });
 
@@ -617,7 +650,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     state.player.viewMode = MAP;
     addTarget(state);
     stepControls(state);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('matches only the assist kinds 7, 8 and 9', () => {
@@ -640,7 +673,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     const [state, player] = withAssist();
     addTarget(state, { position });
     stepControls(state);
-    expect(player.movement!.commandedSpeed).toBe(matches ? 30 : 48);
+    expect(craftBlock(player).commandedSpeed).toBe(matches ? 30 : 48);
     expect(assistOf(state).dueClock).toBe(matches ? 34 : 0);
   });
 
@@ -649,7 +682,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     player.position = { x: 0, y: 0, z: 1000 };
     addTarget(state, { position: { x: 0, y: 0, z: 1200 } });
     stepControls(state);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('matches at the due clock, not before, and does not advance the timer while it waits', () => {
@@ -659,7 +692,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     expect(stepControls(state)).toEqual([]);
     expect(stepControls(state)).toEqual([]);
     expect(assistOf(state).dueClock).toBe(5);
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
     state.player.control!.speedAssist.dueClock = 6;
     expect(stepControls(state).map(({ type }) => type)).toEqual(['speed-matched']);
     expect(assistOf(state).dueClock).toBe(38);
@@ -687,7 +720,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     for (let tick = 2; tick < 17; tick++) expect(stepControls(state)).toEqual([]);
     expect(assistOf(state)).toEqual({ enabled: true, dueClock: 34, engaged: true });
     expect(stepControls(state)).toEqual([assistMatched(17, second.id, true)]);
-    expect(player.movement!.commandedSpeed).toBe(20);
+    expect(craftBlock(player).commandedSpeed).toBe(20);
     expect(first.id).not.toBe(second.id);
   });
 
@@ -697,14 +730,14 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     target.destroyed = true;
     target.state = 'destroyed-source';
     expect(stepControls(state)).toEqual([assistMatched(1, target.id, true)]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
   });
 
   it('engages and re-arms on a target without a block but writes nothing and emits nothing', () => {
     const [state, player] = withAssist();
     addTarget(state, { speed: null });
     expect(stepControls(state)).toEqual([]);
-    expect(player.movement!.commandedSpeed).toBe(48);
+    expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(assistOf(state)).toEqual({ enabled: true, dueClock: 34, engaged: true });
   });
 
@@ -723,7 +756,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     const [state, player] = withAssist();
     const target = addTarget(state);
     stepControls(state);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
     lose(state, target);
     // The release request comes first; the increase reads back 30 (80 + 12), not the release's full throttle.
     expect(update(state, [speed('increase')]).requests).toEqual([
@@ -733,7 +766,7 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     state.player.control!.speedAssist.engaged = true;
     const events = stepControls(state, [speed('increase')]);
     expect(events).toEqual([{ type: 'speed-assist-released', tick: 2 }, accepted(2, 0, 'speed')]);
-    expect(player.movement!.commandedSpeed).toBe(34.5);
+    expect(craftBlock(player).commandedSpeed).toBe(34.5);
     expect(state.player.target).toBeNull();
     expect(assistOf(state)).toEqual({ enabled: true, dueClock: 34, engaged: false });
     expect(update(state)).toEqual({ events: [], requests: [] });
@@ -760,21 +793,21 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
       accepted(1, 1, 'speed'),
       { type: 'speed-assist-toggled', tick: 1, commandIndex: 1, enabled: false },
     ]);
-    expect(player.movement!.commandedSpeed).toBe(34.5);
+    expect(craftBlock(player).commandedSpeed).toBe(34.5);
   });
 
   it('matches on a locked block, and the manual match and the assist share one tick in order', () => {
     const [state, player] = withAssist();
-    player.movement!.locked = true;
+    craftBlock(player).locked = true;
     const near = addTarget(state, { speed: 20, select: false });
     const far = addTarget(state, { position: { x: 0, y: 0, z: 5000 }, speed: 40 });
     state.player.target = near.id;
     stepControls(state);
-    expect(player.movement!.commandedSpeed).toBe(20);
+    expect(craftBlock(player).commandedSpeed).toBe(20);
     state.player.target = far.id;
     const events = stepControls(state, [speed('match-target')]);
     expect(events).toEqual([accepted(2, 0, 'speed'), commandMatched(2, far.id, 0)]);
-    expect(player.movement!.commandedSpeed).toBe(40);
+    expect(craftBlock(player).commandedSpeed).toBe(40);
   });
 
   it('does not run while the player is unavailable', () => {
@@ -791,10 +824,11 @@ describe('speed assist (P3-06 AC-05, 匹配速度与速度辅助)', () => {
     player.state = 'active';
     state.player.entityId = player.id;
     state.player.control = initialPlayerControl(state.config.group);
+    state.player.targeting = quietTargeting();
     const target = addTarget(state);
     const world = constructWorld(state);
     expect(world.step(input())).toEqual([assistMatched(1, target.id, true)]);
-    expect(player.movement!.commandedSpeed).toBe(30);
+    expect(craftBlock(player).commandedSpeed).toBe(30);
     expect(world.step(input([speed('match-target')]))).toEqual([accepted(2, 0, 'speed'), commandMatched(2, target.id, 0)]);
   });
 });

@@ -4,7 +4,7 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { COMMAND_TYPES, type Command } from '../contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { EntityTable } from './entity-table.ts';
-import { initialPlayerControl } from './player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting } from './player-state.ts';
 import { constructWorld } from './world.ts';
 import { entityInit, expectFault, stateText, testConfig, testState, thrownBy, tickInput } from './world.test-support.ts';
 import type { WorldState } from './world-state.ts';
@@ -37,6 +37,7 @@ function populatedState(overrides: Parameters<typeof testState>[0] = {}): WorldS
   const player = state.entities.allocate(entityInit(0));
   state.player.entityId = player.id;
   state.player.control = initialPlayerControl(state.config.group);
+  state.player.targeting = initialPlayerTargeting();
   state.entities.allocate(entityInit(7, { activity: 'parked' }));
   state.entities.allocate(entityInit(7)).state = 'active';
   return state;
@@ -79,15 +80,17 @@ describe('world step (P3-02 AC-03, AC-04)', () => {
     const idle = populatedState();
     const events = constructWorld(commanded).step(tickInput(commands));
     constructWorld(idle).step(tickInput());
-    // P3-06 handles the speed commands, select-number and confirm-selection in flight, and the player becomes active only
-    // in this step's request handling.
-    const p306 = new Set<Command['type']>(['speed', 'select-number', 'confirm-selection']);
+    // P3-06 handles the speed commands, select-number and confirm-selection in flight, P3-07 the target, weapon, energy and
+    // damage-report commands, and the player becomes active only in this step's request handling.
+    const unavailable = new Set<Command['type']>([
+      'speed', 'select-number', 'confirm-selection', 'target', 'fire', 'cycle-main-weapon', 'select-missile', 'energy', 'damage-report',
+    ]);
     expect(events).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
       tick: 1,
       commandIndex,
       commandType: type,
-      ...(p306.has(type) ? { outcome: 'ignored', reason: 'player-unavailable' } : { outcome: 'rejected', reason: 'not-implemented' }),
+      ...(unavailable.has(type) ? { outcome: 'ignored', reason: 'player-unavailable' } : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
     expect(deepFrozen(events)).toBe(true);
     expect(stateText(commanded)).toBe(stateText(idle));

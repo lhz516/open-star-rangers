@@ -197,9 +197,10 @@ test('the whole development flow with and without a wingman: placeholders, depar
   const first = await devState(page);
   expect(first).toMatchObject({ run: 1, seed: SEEDS[0] });
   expectEntities(first, 1);
-  // A command through the run's queue: Core answers it not-implemented, with the commandId the submit returned.
+  // A command through the run's queue, the panel's default primary fire: Core ignores it as the player's gun starts
+  // without charge (P3-07), with the commandId the submit returned.
   const command = await submitDevCommand(page);
-  expect(command).toMatchObject({ run: 1, outcome: 'rejected', reason: 'not-implemented' });
+  expect(command).toMatchObject({ run: 1, outcome: 'ignored', reason: 'insufficient-charge' });
   expect(Number.isSafeInteger(command.commandId)).toBe(true);
 
   // Pause holds the tick; resume continues it.

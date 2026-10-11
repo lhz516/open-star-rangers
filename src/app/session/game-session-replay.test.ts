@@ -11,7 +11,8 @@ import type { GameCommandsCancelled } from './game-session.ts';
 import { current, departure, runSpec, sessionSetup } from './game-session.test-support.ts';
 
 // AC-06: a run taken through the session's lifecycle records exactly the input its successful ticks executed. The
-// commands that end up cancelled are all `cockpit-front`, which no executed command uses.
+// commands that end up cancelled are all `cockpit-front`, which no executed command uses. The secondary fire launches
+// guided missiles at the automatically selected target, which then fly (P3-07/22).
 
 const EXECUTED: readonly Command[] = [{ type: 'launch' }, { type: 'fire', channel: 'secondary' }, { type: 'select-number', value: 3 }, { type: 'map-point', operation: 'hover', right: 0.25, down: 0.5 }];
 const DOOMED: Command = { type: 'cockpit-front' };
@@ -113,6 +114,8 @@ describe('session lifecycle recording', () => {
     expect(record.ticks.slice(9).map((input) => input.axes)).toEqual([{ pitch: -1, yaw: 0, roll: 0.5 }, NEUTRAL_AXES, NEUTRAL_AXES, NEUTRAL_AXES]);
     expect(result.checkpoints.map((checkpoint) => checkpoint.tick)).toEqual(interval === 1 ? Array.from({ length: 14 }, (_, tick) => tick) : [0, 4, 8, 12, 13]);
     expect(delivered).toEqual(result.events);
+    // The tick-10 missile flies through ticks 11 to 13 in both runs.
+    expect(result.events.flatMap((event) => (event.type === 'shot-fired' && event.family === 'missile' ? [event.tick] : []))).toEqual([10, 13]);
     const text = JSON.stringify(record);
     expect(text).not.toMatch(/commandId|runId|nowMs|cockpit-front|G-02|resumeRequired|pause/);
     const replayed = replayRecord(roundTrip(record), contentOf(spec as never));

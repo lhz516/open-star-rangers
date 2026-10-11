@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
 ---
 
@@ -227,7 +227,7 @@ A **frame record** is a 36-byte [image record](#2-image-record-36-bytes-confirme
 
 **Animation parameters (Confirmed, code; the rules belong to P3-07 and P3-12):** the data holds no per-frame duration, offset or anchor; timing and placement are code.
 
-- **Timing:** `0x2409c` shows frame (14 × (*t* − *t*₀)) >> 6, with *t* the mission clock in 1/64 s and *t*₀ the explosion's start. That is 14 frames per second; the rate 14 is written only there. After the last frame the sprite is hidden (frame −1); the object is removed at the first update after the clock passes the start + 0x60 units (1.5 s).
+- **Timing:** `0x2409c` shows frame (14 × (*t* − *t*₀)) >> 6, with *t* the mission clock in 1/64 s and *t*₀ the explosion's start. That is 14 frames per second; the rate 14 is written only there. *t*₀ is the explosion's activation, in the request handling of the tick after its creation. At the first update whose frame index reaches the frame count the sprite is hidden (frame −1) and the explosion releases the object it holds (a missile, a fragment, or a craft that shed no fragments), which then leaves: 28 ticks after *t*₀ for 12-frame ANIMs and 14 for 6-frame ones at 2 units per tick. The explosion requests its own removal at the first update whose clock is strictly past *t*₀ + 0x60 units (1.5 s) with the frame index at the count, and leaves one tick later ([lifecycle](./executable.md#destruction-explosions-and-fragments-p3-0706), P3-07/06). Because every ANIM of a list has the same frame count, the random entry never changes these times.
 - **Placement:** `0x49004` centres the frame on the projected position of the explosion. It chooses an integer scale from the distance and the explosion's variant (EXPL, [§7](#7-expl-explosion-records-confirmed)), halved in LO. `0x49330` sorts the queued sprites by depth and draws them after the world.
 
 **Observed values (Confirmed, local decode; counts only):**
@@ -282,10 +282,10 @@ Evidence: ignored `local/research/p3-03/images/` (`survey.ts`, `anim-check.ts` w
 
 **Which list an explosion uses (Confirmed, code; the rules belong to P3-07):** the mission build `0x23520` keeps 5, 5 and 3 consecutive entries of the three lists from random starts ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
 
-- **Creation:** `0x23ac8` creates an explosion for a destroyed object and sets its variant byte (+0xF0): 3 when the object's kind has bit `0x100000` (a missile), 0 for kinds in `0xf9c7c`, otherwise 2. For kind 1 the first call only stores a time 0xC0 units (3 s) ahead and creates nothing; a call at or after that time creates the explosion. For kinds in `0xfffff` it adds, through `0x23fdc`, 0–3 secondary explosions at random offsets (2–5 for kinds in `0xf9c7c`), with variant 0 for kinds in `0xf9c7c` and otherwise 2.
-- **Choice of entry:** on its first update `0x2409c` picks a random kept entry.
+- **Creation:** `0x23ac8` creates an explosion for a destroyed object and sets its variant byte (+0xF0): 3 when the object's kind has bit `0x100000` (a missile), 0 for kinds in `0xf9c7c`, otherwise 2. For kind 1 the first call only stores a time 0xC0 units (3 s) ahead and creates nothing; the first call strictly after that time creates the explosion. For kinds in `0xfffff` it adds, through `0x23fdc`, 0–3 secondary explosions (2–5 for kinds in `0xf9c7c`) at offsets built from the display camera's position and rows, with variant 0 for kinds in `0xf9c7c` and otherwise 2; each activates 0–20 units after its first update ([explosions](./executable.md#destruction-explosions-and-fragments-p3-0706)).
+- **Choice of entry:** at its activation `0x2409c` draws one rand and picks a kept entry; the kept entries of list k are consecutive from the build's random start, in request order. Animation and sound use this one choice.
   - Variants 0 and 1 take list 1, and variant 3 takes list 3.
-  - Variant 2 takes list 2 when `0x56b50` (Likely the squared distance from the view) is at least 160000.0. Otherwise the variant becomes 1 and the entry comes from list 1.
+  - Variant 2 takes list 2 when the squared distance from the 3D camera position (`0x1b075c`, [cameras](./executable.md#cameras-interfaces-and-cross-frame-order-p3-0707)) to the explosion is at least 160000.0. Otherwise the variant becomes 1 and the entry comes from list 1.
 - **Scale:** the variant also selects the draw scale in `0x49004`.
 
 Evidence: ignored `local/research/p3-03/images/expl-check.ts` and Ghidra probes `out/p1`, `out/p2`, `out/p5`, `out/p22`.

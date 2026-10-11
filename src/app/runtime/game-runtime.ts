@@ -22,7 +22,7 @@ import type { Projection } from '../../core/projections/projection.ts';
 import type { RenderState } from '../../core/projections/render-state.ts';
 import { createRecordingSession, type Recording, type RecordingOptions, type RecordingSession } from '../../core/replay/recording.ts';
 import type { GameSnapshot } from '../../core/replay/snapshot.ts';
-import { createWorld, type CreateWorldInput } from '../../core/world/create-world.ts';
+import { CONTENT_INPUT_FIELDS, createWorld, type CreateWorldInput } from '../../core/world/create-world.ts';
 import type { RunConfig } from '../../core/world/run-config.ts';
 import type { World } from '../../core/world/world.ts';
 import { FixedStepClock } from './fixed-step-clock.ts';
@@ -103,7 +103,7 @@ const LAST_COMMAND_ID = Number.MAX_SAFE_INTEGER - 1;
 const PRIMARY_FIRE: Command = Object.freeze({ type: 'fire', channel: 'primary' });
 const NEUTRAL_AXES: TickAxes = Object.freeze({ pitch: 0, yaw: 0, roll: 0 });
 const NO_INTENT: GameIntent = Object.freeze({ axes: NEUTRAL_AXES, primaryFire: false });
-const SPEC_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'identity', 'run', 'recording'] as const;
+const SPEC_FIELDS = [...CONTENT_INPUT_FIELDS, 'run', 'recording'] as const;
 
 function invalid(path: string, reason: string): never {
   throw new GameRuntimeError({ kind: 'invalid-argument', path, reason });
@@ -364,11 +364,11 @@ class Runtime implements GameRuntime {
  * error (ContentContractError, CoreInputError, CoreFaultError) passes through unchanged, and no Runtime exists.
  */
 export function createGameRuntime(spec: GameRuntimeSpec): GameRuntime {
-  const { mission, craftTypes, wingmanRoster, craftInfo, identity, run, recording } = readRecord(spec, 'spec', SPEC_FIELDS);
+  const { run, recording, ...content } = readRecord(spec, 'spec', SPEC_FIELDS);
   if (typeof run === 'object' && run !== null && Object.hasOwn(run, 'clockUnitsPerTick')) {
     invalid('spec.run.clockUnitsPerTick', 'is not accepted: the Runtime runs only the default step');
   }
-  const input = { mission, craftTypes, wingmanRoster, craftInfo, identity, run } as CreateWorldInput;
+  const input = { ...content, run } as CreateWorldInput;
   if (recording === null) return new Runtime(createWorld(input), null);
   const session = createRecordingSession(input, recording as RecordingOptions);
   return new Runtime(session, session);

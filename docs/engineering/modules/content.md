@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-09
+updated: 2026-10-10
 related: [ADR-0015]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/content/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-[content/](../../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证、`logic/` 中的任务与逻辑 payload 与 `sound-payload.ts` 的采样 payload（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）、`effects/` 中的效果 payload（见[效果 payload](#效果-payload)）、`hud/` 中的状态显示屏文字、视角标签与 HUD 文字 payload（见[状态显示屏文字 payload](#状态显示屏文字-payload)与[视角标签与 HUD 文字 payload](#视角标签与-hud-文字-payload)），以及 P3-03 的规范 JSON、`rule-data/` 中 `logic` 组的规则数据 payload（见[规范 JSON 与规则数据 payload](#规范-json-与规则数据-payload)）与 `flight/` 中 `models` 组的飞行数据 payload（见[飞行数据 payload](#飞行数据-payload)）；原版来源映射属于 `original-data`（见[原版来源映射](./original-data.md#原版来源映射)）。
+[content/](../../../src/content/) 目前实现候选无关的基础契约、唯一生产切片定义与资源组/全包完整性验证、`logic/` 中的任务与逻辑 payload 与 `sound-payload.ts` 的采样 payload（见下节），以及 `graphics/` 中的图形 payload（见[图形 payload](#图形-payload)）、`models/` 中的模型 payload（见[模型 payload](#模型-payload)）、`effects/` 中的效果 payload（见[效果 payload](#效果-payload)）、`hud/` 中的状态显示屏文字、视角标签与 HUD 文字 payload（见[状态显示屏文字 payload](#状态显示屏文字-payload)与[视角标签与 HUD 文字 payload](#视角标签与-hud-文字-payload)），以及 P3-03 的规范 JSON、`rule-data/` 中 `logic` 组的规则数据 payload（见[规范 JSON 与规则数据 payload](#规范-json-与规则数据-payload)）与 `flight/` 中 `models` 组的飞行数据 payload（见[飞行数据 payload](#飞行数据-payload)）；正式 Core 在世界创建时消费其中的规则输入（见[Core 消费的规则输入](#core-消费的规则输入)）；原版来源映射属于 `original-data`（见[原版来源映射](./original-data.md#原版来源映射)）。
 
 ## 内容基础契约与切片定义
 
@@ -217,7 +217,7 @@ related: [ADR-0015]
 - **常量与类型：** [flight-data-content.ts](../../../src/content/flight/flight-data-content.ts) 的 `FLIGHT_DATA_ROLES`（`scene-settings`、`explosion-table`、`explosion-animation`、`nebula-backgrounds`）、`FlightDataRole`、`FLIGHT_DATA_SCHEMA_VERSIONS`、`FLIGHT_DATA_LIMITS`（见下）、格式规则 `FLIGHT_DATA_FORMAT`（`explosionLists` 3、`colourComponents` 3、`screenFlashes` 3），以及类型 `SceneSettings`、`SceneColour`、`SceneDeviceValues`、`ScreenFlash`、`ExplosionTable`、`ExplosionEntry`、`ExplosionAnimation`、`NebulaBackgrounds` 与按角色区分的联合 `FlightDataPayload`。
 - **形状：**
   - `scene-settings`：RENS 10751 头部 +0x00–+0x57（[executable 的 RENS 头部](../../original/formats/executable.md#flight-message-strings-and-the-rens-header-p3-0304)）。`lightType3Colour`（+0x00–+0x08）与 `lightType0Colour`（+0x0C–+0x14）各为 3 个 `f32`；`deviceByte`（+0x18，u8）；`deviceValues { base, kinds1c7c, kindsF8000 }`（+0x1C、+0x20、+0x24，`f32`）；恰 3 项 `screenFlashes`，按 +0x28、+0x38、+0x48 的顺序，每项 `{ randomMask: u32, duration: f32, drawIntervalTicks: u32, level: i32 }`。名称只取已确认的用途，“方向光/环境光”与“距离阈值”只在类型注释中按高概率标注（U-027、U-028）。+0x19–+0x1B 无人读取，不转换；+0x58 起的记录表属 `data/projectile-visuals`。
-  - `explosion-table`：`lists` 恰 3 张，按 EXIC 顺序；每项为 `{ sound, animation }` 两个 `AssetReference`，kind 分别须为 `sound` 与 `data`。列表可以为空，也可以含重复项；选择规则归 P3-07。
+  - `explosion-table`：`lists` 恰 3 张，按 EXIC 顺序；每项为 `{ sound, animation }` 两个 `AssetReference`，kind 分别须为 `sound` 与 `data`。列表可以为空，也可以含重复项。EXPL 项的选择归表现层（P3-12、P3-14，见 P3-02 spec 的 [CR-11](../../plan/p3/02/spec.md#cr-11-表现层的归属与已批准的差异d-01)）；Core 只读取动画引用并核对帧数（[Core 消费的规则输入](#core-消费的规则输入)）。
   - `explosion-animation`：`frames` 为按帧序的 `image` 引用，1–32 项。数据中没有逐帧或动画参数（[textures §6](../../original/formats/textures.md#6-anim-explosion-animations-confirmed)），时序与位置是代码规则。
   - `nebula-backgrounds`：`images` 为按 NEBC 顺序的 `image` 引用，0–32 项，可含重复项；起点与方向归 P3-12。
 - **读取与编码：** [flight-data-readers.ts](../../../src/content/flight/flight-data-readers.ts) 的 `readSceneSettings`、`readExplosionTable`、`readExplosionAnimation`、`readNebulaBackgrounds` 与 `readFlightDataContent(role, value, path?)` 返回深度冻结、与输入隔离的结果；`f32` 须有限且能被 `f32` 精确表示，整数按 u8、u32、i32 的值域核对，−0 规范化为 0。[flight-data-payload.ts](../../../src/content/flight/flight-data-payload.ts) 的 `encodeFlightDataPayload(payload, reserve?)` 经规范 JSON 编码；`decodeFlightDataPayload(bytes, descriptor)` 依次检查字节（上限、转移）、描述符（角色须为上述 4 个之一、kind 为 `data`，否则 `invalid-flight-data-payload`；schema 不符为 `unsupported-payload-schema`）、规范 JSON 与严格读取，最后核对依赖；`flightDataDependencies(payload)` 给出描述符应有的依赖。
@@ -242,3 +242,23 @@ related: [ADR-0015]
   - 合成内容由 [hud-text.test-support.ts](../../../src/content/hud/hud-text.test-support.ts) 的 `syntheticHudText(prefix)` 与 `syntheticHudTextEntry(key, prefix)` 生成。
 
 针对性检查为 `pnpm exec vitest run src/content/hud`。
+
+## Core 消费的规则输入
+
+正式 Core 的世界创建（[Core 模块说明](./core.md#世界创建)）在三份逻辑 Asset 之外读取同一个经 `validatePackage` 验证的包中的规则输入：P3-06 的 `craftInfo` 与 P3-07 的六项规则数据输入（[P3-02 spec 的 CR-01](../../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)，Core 侧见[规则数据输入与静态规则数据](./core.md#规则数据输入与静态规则数据)）。调用者（app 的 [mission-input.ts](../../../src/app/resources/mission-input.ts)、[tools/replay-check.ts](../../../tools/replay-check.ts) 与浏览器 replay）用本模块的 payload 解码器取得对象，以 `{ id, content }` 传入；Core 不信任调用者的类型，再用下列对象读取器或字段校验严格读取，结果冻结、与输入脱离。
+
+| Core 输入 | Asset 与角色 | 调用者的解码 | Core 的读取 |
+|---|---|---|---|
+| `craftInfo` | `logic` 组的 `data/craft-info` | `decodeRuleDataPayload` | `readCraftInfo`，全部内容 |
+| `debrisParameters` | `logic` 组的 `data/debris-parameters` | `decodeRuleDataPayload` | `readDebrisParameters`，全部内容 |
+| `aiPrograms` | `logic` 组的 `data/ai-programs` | `decodeRuleDataPayload` | `readAiPrograms`，全部内容；规则目前只用内置程序记录 1、2 的 +0x14、+0x24、+0x2C |
+| `explosions` | `models` 组的 `data/explosions`（角色 `explosion-table`） | `decodeFlightDataPayload` | `readExplosionTable`，只保留各项的动画引用 |
+| `explosionAnimations` | 爆炸表三张列表引用的 `data/explosion-animation/<nn>`，按 ID 升序 | `decodeFlightDataPayload` | `readExplosionAnimation`，只保留帧数 |
+| `projectileVisuals` | `models` 组唯一的 `projectile` 类 `data` Asset（`data/projectile-visuals`） | `readEffectPayload` 与 `checkEffectBinding` | 没有对象读取器：只校验 `kind` 与每条记录的 `length`（有限 f32），记录数不超过 `EFFECT_LIMITS.effectRecords` |
+| `models` | 运行可实例化机体绑定的模型（Core 的 `instantiableModelIds`），按 ID 升序 | `readModelPayload` 与 `checkModelBinding` | 没有对象读取器：只校验 `kind`、`MODEL_LIMITS.partLists` 个部件列表与第 1 列表的长度（不超过 `MODEL_LIMITS.modelParts`），不读几何、贴图或声音 |
+
+- 读取器的错误在 Core 中保留为 `ContentContractError`（路径以 `input.<字段>.content` 开头）；跨输入的集合与语义检查是 Core 的 `CoreInputError`。Core 的上限取自本模块的结构上限（`CRAFT_INFO_COUNTS`、`EFFECT_LIMITS`、`MODEL_LIMITS`、`FLIGHT_DATA_FORMAT` 与 `FLIGHT_DATA_LIMITS`）。
+- Core 的 setupHash 按成员类型写出 `CraftInfo`、`DebrisParameters` 与 `AiPrograms` 的全部内容（[Core 的 setupHash](./core.md#世界创建)）；这些内容类型增删成员时 Core 的写出器类型检查失败，须同步。弹丸记录与模型只写出 Core 读取的长度与部件数，外观字段的变化不改变 setupHash。
+- 原版导入（`original-import`）的内容只接受生产 Asset ID；合成内容可用任意 `data/` 类 ID。读取器的形状、限值与原版字段的含义仍以本模块的各节与 `docs/original/` 为准，Core 只在[静态规则数据](./core.md#规则数据输入与静态规则数据)中按原版的存储类型计算载入变换，内容不预先变换。
+
+针对性检查为 `pnpm exec vitest run src/core/world/rule-data.test.ts src/core/world/create-world.test.ts src/app/resources/mission-input.test.ts`。

@@ -279,9 +279,10 @@ describe('group dispatch (P3-02 AC-05, Q-02 section-5 dispatch)', () => {
 
   it('takes offset i mod L and places a new anchor from the template at each cycle\'s start, drawing x then y', () => {
     const { state, world } = setUp({ mission: cycleMission() });
-    // The player at its stored position draws its AI goal (two); each member then draws only its Warp timer, since the
-    // AI target it copies is the player, near and of the other side (P3-06, 0x68050).
-    const [, , r2, r3, , , r6, r7] = randValues(state.rngState, 8);
+    // The player at its stored position draws its first energy update and its AI goal (two); each member then draws
+    // its first energy update and its Warp timer, but no AI goal, since the AI target it copies is the player, near and
+    // of the other side (P3-06, 0x68050).
+    const [, , , r2, r3, , , , , r6, r7] = randValues(state.rngState, 11);
     const events = instantiated(world.step(tickInput()));
     const members = events.filter(({ source }) => source.group?.index === 0);
     // Rectangle 0 in runtime units: x −1500 to 1500, y 750 to 3000.
@@ -325,18 +326,22 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
     );
     m.groups = [{ template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] }];
     const { state, world } = setUp({ mission: m });
-    const r = randValues(state.rngState, 27);
+    const r = randValues(state.rngState, 31);
     const events = instantiated(world.step(tickInput()));
     const player = { x: 100 * Q, y: 200 * Q, z: 0 };
+    // Each axis f32(base + offset), rounded to nearest (Q-11).
     const near = (base: { x: number; y: number; z: number }, values: number[]) => ({
-      x: base.x + offset(values[0], values[1]), y: base.y + offset(values[2], values[3]), z: base.z + offset(values[4], values[5]),
+      x: Math.fround(base.x + offset(values[0], values[1])),
+      y: Math.fround(base.y + offset(values[2], values[3])),
+      z: Math.fround(base.z + offset(values[4], values[5])),
     });
     const byIndex = (index: number) => events.filter(({ source }) => source.index === index).map(({ position }) => position);
-    // After its placement draws each object draws its AI goal (two) and, but the player, its Warp timer (one).
-    expect(byIndex(1)).toEqual([near(player, r.slice(2, 8)), near(player, r.slice(11, 17))]);
+    // After its placement draws each object draws its first energy update (one), its AI goal (two) and, but the
+    // player, its Warp timer (one).
+    expect(byIndex(1)).toEqual([near(player, r.slice(3, 9)), near(player, r.slice(13, 19))]);
     // Record 4 has not spawned yet and record 5 has kind 0: the whole-world default, x then y.
-    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[20]), y: expectedWorld(6, r[21]), z: 0 }]);
-    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[25]), y: expectedWorld(6, r[26]), z: 0 }]);
+    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[23]), y: expectedWorld(6, r[24]), z: 0 }]);
+    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[29]), y: expectedWorld(6, r[30]), z: 0 }]);
     const [oldest] = entities(state).filter(({ source }) => source?.index === 1);
     oldest.destroyed = true;
     oldest.state = 'destroyed-source';
@@ -443,8 +448,9 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     const { state, world } = setUp({ mission: shortMission(), run: { wingman: index } });
     // Creation draws +0x78 for the player, the wingman and record 1, in that order.
     const [, wingmanDraw] = randValues(0x1234_5678, 3);
-    // The player draws its AI goal first; the wingman then draws six for its anchor and two for its own AI goal.
-    const r = randValues(state.rngState, 10);
+    // The player draws its first energy update and its AI goal; the wingman then draws six for its anchor, one for its
+    // first energy update and two for its own AI goal.
+    const r = randValues(state.rngState, 12);
     const events = stepTo(world, state, 40);
     expect(events.map(({ entityId, kindBit, source }) => [entityId, kindBit, source])).toEqual([
       [1, 0, mission(0)],
@@ -454,15 +460,18 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     const offset = (sign: number, size: number) => (sign % 2 === 0 ? 1 : -1) * (400 + (size % 200));
     const wingman = state.entities.get(2)!;
     // Where it was instantiated; it has moved since.
-    expect(events[1].position).toEqual({ x: 100 * Q + offset(r[2], r[3]), y: 200 * Q + offset(r[4], r[5]), z: offset(r[6], r[7]) });
+    expect(events[1].position).toEqual({ x: 100 * Q + offset(r[3], r[4]), y: 200 * Q + offset(r[5], r[6]), z: offset(r[7], r[8]) });
     // Like the player, the wingman draws no Warp timer.
-    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[8]), y: expectedWorld(6, r[9]), z: 0 } } });
+    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 } } });
     expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });
     expect([wingman.side, wingman.baseInteraction]).toEqual(['friendly', false]);
     expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });
     expect(recordOf(state, 'wingman', index).spawnCount).toBe(1);
     expect(world.projection().mission.wingman).toBe(index);
-    expect(world.renderState().entities[1]).toEqual({ id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0 });
+    expect(world.renderState().entities[1]).toEqual({
+      id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0,
+      hitShimmerStart: null, explosionStart: null,
+    });
   });
 });
 
@@ -492,8 +501,9 @@ describe('names in a running world (P3-02 AC-07, Q-05)', () => {
     const roster = rosterContent();
     roster.options[0].nameCandidates = [];
     const { state, world } = setUp({ mission: m, roster, run: { wingman: 0 } });
-    // The player at its stored position draws its AI goal (two); the wingman anchored on it draws six, then its name.
-    const start = randValues(state.rngState, 9)[8] % 2;
+    // The player at its stored position draws its first energy update and its AI goal (two); the wingman anchored on it
+    // draws six, then its name.
+    const start = randValues(state.rngState, 10)[9] % 2;
     world.step(tickInput());
     expect(entities(state)[1].name).toEqual({ type: 'pool', index: start });
     expect(state.spawn.namePoolUses).toEqual(start === 0 ? [1, 0] : [0, 1]);
@@ -528,7 +538,7 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
 
   it('gives the player its take-off state, drawing its AI goal after its placement, and the next object its draws after those', () => {
     const { state, world } = setUp();
-    const r = randValues(state.rngState, 13);
+    const r = randValues(state.rngState, 15);
     world.step(tickInput());
     const player = state.entities.get(1)!;
     // Rectangle 0 in runtime units: −3750 to 3750 on both axes.
@@ -536,14 +546,16 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     // The synthetic player record keeps the base 64 at the initial levels: E = 200 − (2 + 8) is not below T = 0.
     expect(player).toMatchObject({ orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 0, inWarp: false, formation: null });
     expect(player.movement).toEqual({ mode: 'craft', speed: 64, commandedSpeed: 64, atCommandedSpeed: true, speedRatio: 1, ...quiet });
-    // 0x68050 never writes the player's target; the player record names no candidates, so a world goal in mode 4.
-    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[2]), y: expectedWorld(6, r[3]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    // 0x68050 never writes the player's target; the player record names no candidates, so a world goal in mode 4, after
+    // the first energy update's draw (r[2]).
+    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[3]), y: expectedWorld(6, r[4]), z: 0 }, targetOffset: ZERO, objectTarget: null });
     expect(state.player).toMatchObject({ entityId: 1, target: null, control: { lastAxes: { pitch: 0, yaw: 0, roll: 0 }, speedAssist: { enabled: true, dueClock: 0, engaged: false } } });
-    // Record 3's first craft (kind bit 7), anchored on the player: placement, its AI goal, then its Warp timer.
+    // Record 3's first craft (kind bit 7), anchored on the player: placement, its first energy update, its AI goal,
+    // then its Warp timer.
     const next = state.entities.get(2)!;
-    expect(next.position).toEqual(near(player.position, r.slice(4, 10)));
-    expect(next).toMatchObject({ activity: 'active', maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 2 + (r[12] % 0x2d00), inWarp: false });
-    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(next.position).toEqual(near(player.position, r.slice(5, 11)));
+    expect(next).toMatchObject({ activity: 'active', maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 2 + (r[14] % 0x2d00), inWarp: false });
+    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }, targetOffset: ZERO, objectTarget: null });
     expect(next.movement).toEqual(player.movement);
     expect(next.movement).not.toBe(player.movement);
   });
@@ -590,16 +602,17 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
       stored(4, 8, 0, -400, { aiTarget: 1, aiTargetCraftTypes: [0] }),
     );
     const { state, world } = setUp({ mission: m });
-    // The player's goal (2), record 1's goal (2) and Warp timer (1), then one Warp timer each for records 2 and 4.
+    // Each craft's first energy update (1), the player's goal (2), record 1's goal (2) and Warp timer (1), then one Warp
+    // timer each for records 2 and 4.
     const before = state.rngState;
-    const r = randValues(before, 7);
+    const r = randValues(before, 11);
     world.step(tickInput());
     const [, first, second, fourth] = entities(state);
     expect(first.ai).toMatchObject({ mode: 4, target: null });
     expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
     expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
-    expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[4] % 0x2d00), 2 + (r[5] % 0x2d00), 2 + (r[6] % 0x2d00)]);
-    expect(state.rngState).toBe(rngStateAfter(before, 7));
+    expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[6] % 0x2d00), 2 + (r[8] % 0x2d00), 2 + (r[10] % 0x2d00)]);
+    expect(state.rngState).toBe(rngStateAfter(before, 11));
   });
 
   it('gives a wingman whose option names the player\'s kind the player as its target, in mode 2, with no AI or Warp draw', () => {
@@ -610,17 +623,19 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     world.step(tickInput());
     const wingman = entities(state)[1];
     expect(wingman).toMatchObject({ kindBit: 1, warpClock: 0, ai: { mode: 2, target: 1, goal: ZERO } });
-    // The player's goal (2) and the wingman's anchor (6) are all the draws.
-    expect(state.rngState).toBe(rngStateAfter(before, 8));
+    // The player's first energy update (1) and goal (2), the wingman's anchor (6) and first energy update (1) are all
+    // the draws.
+    expect(state.rngState).toBe(rngStateAfter(before, 10));
   });
 
   it('faults rather than store a Warp timer past the safe integers', () => {
     const m = playerOnlyMission();
     m.declarations.push(stored(1, 7, 400, 0));
     const { state, world } = setUp({ mission: m });
-    state.clock = Number.MAX_SAFE_INTEGER - 2;
-    // The player's goal (2) and record 1's goal (2) come before its Warp delay.
-    expect(randValues(state.rngState, 5)[4] % 0x2d00).toBeGreaterThan(0);
+    // The first energy updates, due at most 0xBF later, still fit.
+    state.clock = Number.MAX_SAFE_INTEGER - 2 - 0xbf;
+    // The player's energy update (1) and goal (2) and record 1's energy update (1) and goal (2) come before its Warp delay.
+    expect(randValues(state.rngState, 7)[6] % 0x2d00).toBeGreaterThan(0xbf + 2);
     expect(thrownBy(() => world.step(tickInput()))).toMatchObject({ code: 'budget-exhausted', site: 'flight-state.warp-clock' });
   });
 
@@ -642,5 +657,78 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     expect(leader.formation).toBeNull();
     expect(follower.formation).toEqual({ leader: leader.id, offset: { x: float32OfDouble(1000 - first.x, 'nearest'), y: 22, z: 5 } });
     expect(follower.formation!.offset.x).not.toBe(1000 - first.x);
+  });
+});
+
+describe('combat state at instantiation (P3-07 AC-05, CR-07)', () => {
+  const zeroMount = { lastShotClock: null, damage: 0, burst: 0, aim: [0, 0, 0, 0, 0, 0, 0, 0, 0], autoTarget: null, retargetClock: 0 };
+  const references = { hitFeedbackClock: null, proximity: null, lastVictim: null, lastAttacker: null };
+
+  it('writes the weapon block, the hull, the resources with their one draw and cleared fields, then the player\'s targeting', () => {
+    const { state, world } = setUp();
+    // The player's placement (2), its first energy update, its goal (2); record 3's craft: placement (6), its first
+    // energy update, its goal (2), its Warp timer.
+    const r = randValues(state.rngState, 15);
+    world.step(tickInput());
+    const player = state.entities.get(1)!;
+    // The synthetic player: lists [0, 1], [2], []; mount 2 holds 4 missiles. Hull 100 % of 12; energy (1000 ÷ 100) ×
+    // 100; shield 300 × 100 ÷ 100; charge 5; E = 200 − (c64[1] + c78[2]) = 190; T = chop(64) × 10 ÷ 1000 = 0.
+    expect(player.combat).toEqual({
+      type: 'craft',
+      energy: 1000, shield: 300, charge: 5, shieldLevel: 1, chargeLevel: 2, sparePower: 190, fullSpeedPower: 0,
+      lastEnergyClock: 2, nextEnergyClock: 2 + 0x80 + (r[2] % 64), depleted: false,
+      hull: 12,
+      subsystems: Array(19).fill(0),
+      weapons: {
+        selections: [{ index: 0, mount: 0 }, { index: 0, mount: 2 }, { index: 0, mount: null }],
+        lock: { level: 0, stageDueClock: 0, losing: false, graceDueClock: 0, nextUpdateClock: 0 },
+        mounts: [{ ...zeroMount, ammunition: 0 }, { ...zeroMount, ammunition: 0 }, { ...zeroMount, ammunition: 4 }],
+      },
+      ...references,
+    });
+    expect(player.maximumSpeed).toBe(64);
+    expect(state.player.targeting).toEqual({ mode: 'enemy', autoTargetDueClock: 0 });
+    // Instantiation sets redraw, which the same tick's frame-end status display consumes (CR-10; displays.test.ts).
+    expect(state.player.statusDisplay.redraw).toBe(false);
+    // Another kind keeps levels 0 and 0: E = 200 − (c64[0] + c78[0]) = 193; it has no mounts.
+    const next = state.entities.get(2)!;
+    expect(next.combat).toMatchObject({
+      energy: 1000, shield: 300, charge: 5, shieldLevel: 0, chargeLevel: 0, sparePower: 193, fullSpeedPower: 0,
+      lastEnergyClock: 2, nextEnergyClock: 2 + 0x80 + (r[11] % 64), hull: 12,
+      weapons: { selections: [{ index: 0, mount: null }, { index: 0, mount: null }, { index: 0, mount: null }], mounts: [] },
+      ...references,
+    });
+  });
+
+  it('scales the hull and resources by the record\'s percentages, after the build\'s defaults', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { ruleInputs: ruleInputs({ percentB: 29, percentC: 50, percentD: 250 }) }));
+    const craftInfo = craftInfoContent();
+    craftInfo.craft[7].at9C = 100;
+    const { state, world } = setUp({ mission: m, craftInfo });
+    world.step(tickInput());
+    // 29 % of 100 in double is 28.999999999999996; energy (1000 ÷ 100) × 250; shield 300 × 50 ÷ 100.
+    expect(state.entities.get(2)!.combat).toMatchObject({ hull: 28, energy: 2500, shield: 150, charge: 5 });
+  });
+
+  it('gives a parked craft its combat state as well, and a later spawn the clock of its own tick', () => {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 8, 20000, 0), stored(2, 7, 0, 400, { spawnTime: 1 }));
+    const { state, world } = setUp({ mission: m, run: { clockUnitsPerTick: 4 } });
+    world.step(tickInput());
+    const parked = state.entities.get(2)!;
+    expect(parked.activity).toBe('parked');
+    expect(parked.combat).toMatchObject({ energy: 1000, lastEnergyClock: 4, hull: 12 });
+    stepTo(world, state, 17);
+    const late = entities(state)[2];
+    expect(late.combat).toMatchObject({ lastEnergyClock: 68 });
+    const { nextEnergyClock } = late.combat as { nextEnergyClock: number };
+    expect(nextEnergyClock >= 68 + 0x80 && nextEnergyClock < 68 + 0xc0).toBe(true);
+  });
+
+  it('faults rather than store a first energy update past the safe integers', () => {
+    const { state, world } = setUp({ mission: playerOnlyMission() });
+    state.clock = Number.MAX_SAFE_INTEGER - 2 - 0x7f;
+    expect(thrownBy(() => world.step(tickInput()))).toMatchObject({ code: 'budget-exhausted', site: 'combat-init.energy-clock' });
   });
 });

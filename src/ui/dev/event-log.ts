@@ -5,7 +5,7 @@
  * development display window, not a performance or gameplay threshold.
  */
 import type { EventDelivery } from '../../app/runtime/game-event-bus.ts';
-import type { DomainEvent } from '../../core/contracts/domain-events.ts';
+import type { Attacker, DomainEvent, ShotTrigger, Vec3 } from '../../core/contracts/domain-events.ts';
 import { describeSource } from './entity-inspection.ts';
 
 export const EVENT_LOG_LIMIT = 500;
@@ -32,14 +32,33 @@ export interface EventLogView {
   readonly truncated: boolean;
 }
 
-function fieldsOf(event: DomainEvent): (readonly [string, EventFieldValue])[] {
+type Fields = (readonly [string, EventFieldValue])[];
+
+const positionOf = ({ x, y, z }: Vec3): Fields => [['x', x], ['y', y], ['z', z]];
+
+/** `shooter 12 kind 7`, `lost-shooter` or `none`. */
+function describeAttacker(attacker: Attacker): string {
+  return attacker.type === 'shooter' ? `shooter ${attacker.entityId} kind ${attacker.kindBit}` : attacker.type;
+}
+
+/** `command primary #2`, `ai 1` or `automatic`. */
+function describeTrigger(trigger: ShotTrigger): string {
+  switch (trigger.type) {
+    case 'command':
+      return `command ${trigger.channel} #${trigger.commandIndex}`;
+    case 'ai':
+      return `ai ${trigger.channel}`;
+    case 'automatic':
+      return 'automatic';
+  }
+}
+
+function fieldsOf(event: DomainEvent): Fields {
   switch (event.type) {
     case 'command-result':
       return [['commandIndex', event.commandIndex], ['commandType', event.commandType], ['outcome', event.outcome], ['reason', event.reason]];
-    case 'object-instantiated': {
-      const { x, y, z } = event.position;
-      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)], ['x', x], ['y', y], ['z', z]];
-    }
+    case 'object-instantiated':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)], ...positionOf(event.position)];
     case 'speed-assist-toggled':
       return [['commandIndex', event.commandIndex], ['enabled', event.enabled]];
     case 'speed-matched':
@@ -50,6 +69,45 @@ function fieldsOf(event: DomainEvent): (readonly [string, EventFieldValue])[] {
       return [];
     case 'object-left-world':
       return [['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)]];
+    case 'target-changed':
+      return [
+        ['target', event.target], ['targetKindBit', event.targetKindBit], ['previousTarget', event.previousTarget], ['mode', event.mode],
+        ['origin', event.origin], ['commandIndex', event.commandIndex],
+      ];
+    case 'target-cleared':
+      return [['previousTarget', event.previousTarget], ['cause', event.cause]];
+    case 'weapon-selected':
+      return [['entityId', event.entityId], ['list', event.list], ['index', event.index], ['mount', event.mount], ['changed', event.changed], ['commandIndex', event.commandIndex]];
+    case 'shot-fired':
+      return [
+        ['shooterEntityId', event.shooterEntityId], ['shooterKindBit', event.shooterKindBit], ['entityId', event.entityId], ['family', event.family],
+        ['weapon', event.weapon], ['mount', event.mount], ['trigger', describeTrigger(event.trigger)], ...positionOf(event.position),
+      ];
+    case 'hit':
+      return [
+        ['victimEntityId', event.victimEntityId], ['victimKindBit', event.victimKindBit], ['cause', event.cause], ['sourceEntityId', event.sourceEntityId],
+        ['attacker', describeAttacker(event.attacker)], ['damage', event.damage], ['gated', event.gated], ['shieldBefore', event.shield.before],
+        ['shieldAfter', event.shield.after], ['hullBefore', event.hull.before], ['hullAfter', event.hull.after], ['projectile', event.projectile],
+      ];
+    case 'object-destroyed':
+      return [
+        ['entityId', event.entityId], ['kindBit', event.kindBit], ['source', describeSource(event.source)], ['activity', event.activity],
+        ['attacker', describeAttacker(event.attacker)], ['outcome', event.outcome], ...positionOf(event.position),
+      ];
+    case 'explosion-started':
+      return [['entityId', event.entityId], ['sourceEntityId', event.sourceEntityId], ['sourceKindBit', event.sourceKindBit], ['variant', event.variant], ...positionOf(event.position)];
+    case 'missile-ended':
+      return [['entityId', event.entityId], ['shooterEntityId', event.shooterEntityId], ['outcome', event.outcome], ...positionOf(event.position)];
+    case 'fragment-expired':
+      return [['entityId', event.entityId], ['sourceKindBit', event.sourceKindBit], ['part', event.part], ['outcome', event.outcome], ...positionOf(event.position)];
+    case 'source-released':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['fragmentEntityId', event.fragmentEntityId], ['removed', event.removed]];
+    case 'energy-depleted':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ...positionOf(event.position)];
+    case 'energy-allocation-changed':
+      return [['entityId', event.entityId], ['shieldLevel', event.shieldLevel], ['chargeLevel', event.chargeLevel], ['commandIndex', event.commandIndex]];
+    case 'left-page-changed':
+      return [['page', event.page], ['previousPage', event.previousPage], ['commandIndex', event.commandIndex]];
   }
 }
 

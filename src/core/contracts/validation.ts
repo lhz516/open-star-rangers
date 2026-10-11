@@ -2,7 +2,7 @@
  * Structure and number readers for formal Core inputs (docs/plan/p3/02/spec.md, 输入与命令). Each reader accepts
  * only plain data and reads every value exactly once, through its property descriptor, so accessors never run and
  * what is returned is what was checked. Errors are CoreInputError with the value's path and never echo unknown keys
- * or values. The synthetic scene keeps its own readers: formal and synthetic modules do not import each other.
+ * or values.
  */
 import { CoreInputError } from '../errors.ts';
 

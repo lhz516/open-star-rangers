@@ -3,7 +3,7 @@ type: format
 status: draft
 phase: P0
 updated: 2026-10-11
-related: [U-001, U-008, U-009, U-010, U-011, U-012, U-017, U-021, U-022, U-024, U-026, U-029, U-031, U-032]
+related: [U-001, U-008, U-009, U-010, U-011, U-012, U-017, U-021, U-022, U-024, U-026, U-027, U-029, U-031, U-032]
 ---
 
 # Main executable (`SRANGERS.EXE`)
@@ -178,15 +178,15 @@ Uses the globals and the endings table of [mission result](#mission-result-succe
 
 1. `0x32d74` (state 3, sub-state not already 2) sets in-mission sub-state 2 and, through `0x216d4` and `0x31094`, puts the player-state in view mode 0x11, sub-mode 8: an external camera initialised from the player object's orientation and position. This automatic view replaces the cockpit without a key press; its camera is described in [automatic views](#automatic-views-and-cameras-p3-0109).
 2. For kind 1, `0x23ac8` first only arms `0x174ae4` for 0xC0 clock units. After the message loop and the movement integration of each dispatcher pass ([frame pipeline](#frame-pipeline-p3-0201)), `0x23808` calls it again for the player object when that time has passed. It then creates the explosion and, through producer `0x24d78` in mode 3, one [fragment](#effect-presentation-sources) (kind `0x1000000`, discriminator 3) per list-1 part of the player's model, except parts 1 and 2, which `0x25124` skips for kinds 1 and 2.
-3. The part-0 fragment becomes the followed object (+0x90). Its update callback `0x24ac4` gives it an expiry 0x140 units ahead (other fragments get random or no expiry; a wingman's part 0 gets 0x780) and, when it expires, posts message 0x10000. The dispatcher passes that message to `0x256e4`, which, for a fragment of source kind 1, discriminator 3 and part 0, clears +0x90 and calls `0x32e14(1)`.
+3. The part-0 fragment becomes the followed object (+0x90). Its update callback `0x24ac4` gives it an expiry 0x140 units ahead (other fragments get random or no expiry; a wingman's part 0 gets 0x780) and, when it expires, posts message 0x10000. The dispatcher passes that message to `0x256e4`, which, for a fragment of source kind 1, discriminator 3 and part 0, clears +0x90 and calls `0x32e14(1)`. The expiry counts from the fragment's first update. Its first state-7 update also hands the source over (message 0x2000000), which for kind 1 only posts a presentation item: the destroyed player stays in object state 4 until the rescue ([fragment lifecycle](#destruction-explosions-and-fragments-p3-0706)).
 
 While sub-state is 1 or 2, state 3 does not poll the status: an all-clear reached during the sequence is evaluated after a rescue, and a third loss fails the mission even then.
 
-**Confirmed (energy loss):** the energy updates `0x3071c` and `0x30994` clamp an object's energy at 0 and, for kind 1, call `0x33464`. In state 3, sub-state 0, that posts a fixed EXE message (Likely the beacon notice in the communications text area), sets sub-state 1 and a due time 0x3C0 units later, when `0x3266c` calls `0x32e14(0)`. Energy drains with weapon and shield recharge, with speed (doubled and tripled above two craft-record thresholds) and by ×10 or ×100 under a two-bit object system state read through `0x52ac4`. How quickly normal flight empties it was not established.
+**Confirmed (energy loss):** the energy updates `0x3071c` and `0x30994` clamp an object's energy at 0 and, for kind 1, call `0x33464`. In state 3, sub-state 0, that shows a left-display notice for 0x3C0 units (`0x4e9e8`), sets sub-state 1 and a due time 0x3C0 units later, when `0x3266c` calls `0x32e14(0)` (its test uses the previous iteration's sample; later depleted updates do not re-arm it, [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code)). Energy drains with weapon and shield recharge, with the commanded speed (doubled and tripled above two craft-record thresholds; the tripled cost is unreachable with shipped data) and by ×10 or ×100 under subsystem field 0 ([energy updates](#damage-subsystems-and-energy-p3-0704)). How quickly normal flight empties it was not established.
 
 **Likely (escape pod):** the part-0 fragment is the escape pod the user identified ([B-005](../behavior/B-005-campaign-rescue.md), [mesh](./mesh.md#p2-12-viewer-comparison-v-1)). The player's model (MODL 10743, M2ID slots 0 and 1) has 7 list-1 parts. Only parts 0 and 1 name TEX 11009 (`image/model-texture/14`), the pod's texture; part 1 is never shed by kind 1, and part 0 is a small mesh (12 vertices, 8 triangles; part 1 has 108 and 132). The pod needs nothing beyond the player model's own list 1.
 
-**Not failure routes (Confirmed):** losses of base-kind objects only set the flags `0x176744`/`0x176748` in `0x6977c`, which `0x69e1c` reads to select success summary text; the rescue has no ship or destination that can be lost; sub-state 0 polls only the status and the wingman-loss timer, so there is no time limit; a wingman's loss is not an ending; end campaign, restart and exit do not reach `0x3351c`. The debug fail request does reach it, but is not normal play.
+**Not failure routes (Confirmed):** losses of base-kind objects only set the flags `0x176744`/`0x176748` in `0x6977c`, which `0x69e1c` reads to select success summary text; the rescue has no ship or destination that can be lost; sub-state 0 polls only the status and the wingman-loss timer, which only queues a radio message ([C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code)), so there is no time limit; a wingman's loss is not an ending; end campaign, restart and exit do not reach `0x3351c`. The debug fail request does reach it, but is not normal play.
 
 **Selected mission:** in SCEN 3019, one section-1 record of the first enemy type (kind `0x80`) is queued at the start with two requests and names the player's record as its AI target (+0x58); that type carries gun record 2 ([weapon records](#weapon-records-and-the-first-missions-shooters-p2-1230)). The other 14 enemy-class objects keep the default target mask `0x68000` (Confirmed, data and `0x68018`). **Likely (normal-play failure path):** new campaign → mission 1 (group 0 by the difficulty, slot 1) → while the mission is in progress, the player craft is lost three times in the same attempt, most directly shot down by those two interceptors → two rescues → status 4 and `0x3351c(1)`. Support: the handler and its third-loss entry above (code); the two armed interceptors that target the player, with no damage gate outside cheats (data and code); the user's observations that a campaign destruction happens in normal play and leads to the rescue ([B-005](../behavior/B-005-campaign-rescue.md)) and that a practice destruction shows the automatic external view and then the practice failure page ([B-002](../behavior/B-002-practice-mode.md)), as `0x32d74` and the practice branch of `0x32e14` predict. Limits: those observations are not bound to SCEN 3019, and no run has shown the number of rescues before a failure. An identity-bound baseline reproduction was not obtained: on this host Computer Use cannot operate DOSBox-X's mouse-driven menus (synthetic clicks do not move the guest cursor, and keys reach it only while it is the active app). A Confirmed rule and a real-content run remain P3-11's work before P3-15.
 
@@ -211,7 +211,7 @@ Globals, with their LE object 4 offsets for runtime reads: raw counter `0x174b10
 
 - The main loop `0x22d00` repeats `0x3266c` (mission flow), `0x25894` (sample), `0x20938` (every object's update callback), `0x20d10` (the spawn-queue check `0x67018`, then the message loop, then once the movement integration `0x221fc` and the periodic systems; the full order is in [frame pipeline](#frame-pipeline-p3-0201)) and `0x3ee58` (frame render). Apart from one extra sample at mission start (below), each of these has only that one caller, so they run once per iteration.
 - `0x25894` copies the raw counter into the sample and stores the difference from the previous sample in `0x186420`, which nothing reads. It stores counter × 1/64 as f32 seconds in `0x18641c` (constant `0x170d04`; `0x170cfc` at initialisation) and the difference of the seconds in `0x186424`, and increments the frame counter, which nothing else reads. Mission state 2 calls it once more after building the mission (`0x328da`), so the build and the clips before it do not enter the first step in flight.
-- The step is the whole elapsed time. No code clamps `0x186424`, and its seven readers integrate with it directly: position from velocity, speed towards its target at the craft's rates, and turns as rate × step (`0x222f0` and `0x22600` for craft, `0x22818` and `0x2285c` for projectiles, `0x25b0c` and `0x2b00c` for a new projectile's spawn offset, `0x50508` for Warp progress). There is no sub-stepping and no upper limit on the advance in one frame.
+- The step is the whole elapsed time. No code clamps `0x186424`, and its seven readers integrate with it directly: position from velocity, speed towards its target at the craft's rates, and turns as rate × step (`0x222f0` and `0x22600` for craft, `0x22818` for gun projectiles and explosions, `0x2285c` for fragments, `0x25b0c` and `0x2b00c` for a new projectile's spawn offset, `0x50508` for Warp progress). `0x2285c` uses the step only for the translation: a fragment turns by a fixed angle per frame, so its spin rate follows the frame rate ([H1](#h1-movement-modes-and-their-users--confirmed-code)). There is no sub-stepping and no upper limit on the advance in one frame.
 - Every step is a multiple of 1/32 s. When frames run faster than 32 per second, some frames have a step of 0: nothing moves, but behaviours, due-time checks and rendering still run.
 - Other timing compares the sample with a stored due time, so a delay ends at the first frame whose sample has passed it. The flow, HUD, effect and speed-assist delays in the table below are re-armed from the sample at which they fire, with no catch-up. A spawn-queue repeat (+0x20) is instead added to the entry's previous due time, so overdue repeats are all processed in the same frame (`0x67018`).
 - A runtime reader that stops at `0x22e48`, the instruction after the main loop's call to `0x25894`, sees the sample, both step fields and the frame counter of the same frame. The extra call at mission start is the only other sample.
@@ -334,7 +334,7 @@ The base interior is view mode 6 of the running main loop, not a clip and not a 
 **Confirmed (clip time against simulation time),** with the [time base](#simulation-time-base-p3-0106): a list's playing time is not removed from the mission clock.
 
 - Rows 2 and 10/12 play in state 2 before the mission is built. Their time counts as elapsed spawn-queue time but is not part of the first step in flight. In SCEN 3019 every queued source except one section-5 group is due at time 0. That group's time is far longer than the nominal lengths of rows 2 and 10 together (below). The clips therefore do not change which objects exist in the first frame of flight; the time spent in them, whether watched or skipped, shortens the wait in flight for that group.
-- Rows 3 and 4 play inside the dispatcher, and the rescue lists play inside `0x32e14`. The following frame's step and the spawn clock include the whole list's time in one piece, with no clamp, so every moving object advances by that step and due spawn entries are released.
+- Rows 3 and 4 play inside the dispatcher, and the rescue lists play inside `0x32e14`. The following frame's step and the spawn clock include the whole list's time in one piece, with no clamp, so every moving object advances by that step and due spawn entries are released. For the energy-loss rescue, which `0x3266c` runs before the frame's sample, that is the same main-loop iteration; for the escape-pod rescue in the message loop it is the next one ([C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code)).
 - The success and failure lists play after the status is 4, when spawning has stopped. Frames then pass through states 0 and 1, which retire every object.
 - Skipping, setting 0 and an unreadable file all shorten that time and nothing else. Zero clip time is therefore a state of the original itself.
 
@@ -380,7 +380,7 @@ The energy-loss handler `0x33464`, the beacon wait, the all-clear wait and resul
 
 Several Ctrl combinations produce the same extended codes. P3-06/02 settled the open question of U-011: the cursor keys reach this handler in flight as view keys, no key context writes a steering field, and the original has no keyboard steering ([flight controls](#flight-controls-and-rotation-p3-0602)). The map handler `0x27118`, the Warp handler `0x27360` and the base handler `0x271e0` handle no view key, so the view keys do nothing in the map, during a Warp and in the base; the base handler's two selection keys are the Up and Down cursor keys. No key selects sub-mode 8. The other layouts are: Warp (mode 1) 0, base (mode 6) 0, map (mode 8) 6, teardown (0x13) none. `0x49848` selects the CCKD slot whose directory +0x00 equals the layout number ([cockpit](./cockpit.md#group-directory-confirmed-structure-on-all-three-entries)).
 
-**Confirmed (cameras and what each view draws):** the dispatcher calls `0x21584` once per pass, after its message loop; while the player state holds a player object (+0x8C), it calls `0x30ef0`. For mode 0x11 that takes a camera function from `0x174bdc` by sub-mode (nine entries; sub-mode 8 is `0x31bdc`); for mode 8 it runs `0x2b8ec` (Likely the map's visibility messages) and has no camera function; for every other mode it takes one from `0x174b88` by mode. Modes 0xC and 0xD use `0x31400`, which keeps the camera at the player craft's own position and orientation; modes 0xE, 0xF, 0x10 and 0x12 have their own functions (`0x31424`, `0x314ac`, `0x31524`, `0x315bc`, not analysed); modes 0–0xB and 0x13 have none. Without a function the camera takes the craft's position and orientation as well, so the Warp mode 1 places the camera exactly as F1 does. `0x31400` also derives a 0–100 value from the craft's model (stored at `0x1b0758`, consumer not traced), which is 0 without a function. The frame render `0x3ee58` then draws by mode:
+**Confirmed (cameras and what each view draws):** the dispatcher calls `0x21584` once per pass, after its message loop; while the player state holds a player object (+0x8C), it calls `0x30ef0`. For mode 0x11 that takes a camera function from `0x174bdc` by sub-mode (nine entries; sub-mode 8 is `0x31bdc`); for mode 8 it runs `0x2b8ec` (Likely the map's visibility messages) and has no camera function; for every other mode it takes one from `0x174b88` by mode. Modes 0xC and 0xD use `0x31400`, which keeps the camera at the player craft's own position and orientation; modes 0xE, 0xF, 0x10 and 0x12 have their own functions (`0x31424`, `0x314ac`, `0x31524`, `0x315bc`; the first three reorder the craft's rows, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)); modes 0–0xB and 0x13 have none. Without a function the camera takes the craft's position and orientation as well, so at this step the Warp mode 1 places the camera exactly as F1 does; the render's Warp view then overwrites the camera and the player's pose ([C1](#c1-the-3d-camera-and-its-readers--confirmed-code)). The camera functions also store a 0–100 value at `0x1b0758`, the viewed object's speed as a share of the player craft's +0xB8, read only by a HUD overlay; it is 0 without a function. The frame render `0x3ee58` then draws by mode:
 
 | View mode | Drawn |
 |---|---|
@@ -526,7 +526,7 @@ Activity +2: 0 = parked outside the active area (`0x3a540`; `0x67938` parks a ne
 2. `0x2cd60` turns a due communications reply into a presentation item (Likely the reply text).
 3. `0x67018` checks the spawn queue and, for each spawn request of a due entry, posts message 0x4000; it instantiates nothing itself (order of entries and requests: Q-01).
 4. The message loop starts at the list head and follows the next links as they are when it advances, so a message posted while one is handled is handled in the same loop after all earlier ones. The loop therefore handles the messages of `0x3266c`, then those of the update callbacks in walk order, then the spawn requests of step 3, then those posted during the loop. A 0x4000 message instantiates through `0x67678` → `0x67938` while the main-flow state is not 1 (`0x339cc`). An unknown type makes `0x20d10` return 0 (the fatal exit above).
-5. After the loop, once each: `0x221fc` (movement integration of the objects with +2 non-zero in states 4 or 7 and above, then the collision passes `0x29670`, player against the others, and `0x29934`, among the others, both for states 7 and above), `0x23808` (the delayed player explosion), `0x30590` (energy), `0x2ede0` (rebuilds the friendly and hostile craft sets through `0x2f028` and the map-visibility flag +0xD4; analysed by P3-06/04, [object sets](#world-boundary-active-area-parking-and-autopilot-p3-0604)), `0x2f1b0` (updates each parked object in state 7 and above once its last update is 64–127 units old, with a new random threshold at each check: the parked travel `0x2f314`, which contains the world-exit test, and parked combat; [parked update](#world-boundary-active-area-parking-and-autopilot-p3-0604)), `0x2bf08` (Warp completion), `0x398ec` (base interior, view mode 6), `0x334bc` (main-flow state 0: view mode 0x13 and state 1; when it returns 1, `0x21694` retires every object), `0x3a468` (area check `0x3a4b0` of the objects of kinds `0x1fffffe` in states 7 and above) and `0x21584` (camera; a failure also ends the program).
+5. After the loop, once each: `0x221fc` (movement integration of the objects with +2 non-zero in states 4 or 7 and above, then the collision passes `0x29670`, player against the others, and `0x29934`, among the others, both for states 7 and above), `0x23808` (the delayed player explosion), `0x30590` (energy), `0x2ede0` (rebuilds the friendly and hostile craft sets through `0x2f028` and the map-visibility flag +0xD4; analysed by P3-06/04, [object sets](#world-boundary-active-area-parking-and-autopilot-p3-0604)), `0x2f1b0` (updates each parked object in state 7 and above once its last update is 64–127 units old, with a new random threshold at each check: the parked travel `0x2f314`, which contains the world-exit test, and parked combat ([parked engagement](#parked-object-engagement-p3-0705)); [parked update](#world-boundary-active-area-parking-and-autopilot-p3-0604)), `0x2bf08` (Warp completion), `0x398ec` (base interior, view mode 6), `0x334bc` (main-flow state 0: view mode 0x13 and state 1; when it returns 1, `0x21694` retires every object), `0x3a468` (area check `0x3a4b0` of the objects of kinds `0x1fffffe` in states 7 and above) and `0x21584` (camera; it always returns 1, so the fatal exit after it is unreachable, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)).
 
 Messages posted after the loop are cleared at the next frame without being handled. A search of direct calls from the step-5 roots and `0x3ee58` finds only two paths to `0x53030`, both ending in `0x2e4ec`, which posts message type 4, a sound request: `0x2f1b0` → `0x2f314` → `0x39820` → `0x2d6dc`, and `0x398ec` → `0x2d6dc`. Callbacks called through pointers are outside that search.
 
@@ -556,7 +556,7 @@ Messages posted after the loop are cleared at the next frame without being handl
 
 - Primary: controller +0x10 becomes 1 while joystick button bit 0x10 is down (the bits are active low) or the BIOS keyboard flag Alt (`0x417` bit 3) is set, otherwise 0. Only `0x2760c` writes it, that is, only at a device read in a flight mode. It is a level that holds between reads.
 - Secondary: controller +0x14 becomes 1 when Space reaches the flight context (`0x26778` → `0x26a81`), at most once per keyboard poll, or when joystick button bit 0x40 is down at a device read whose sample is strictly greater than the button's due time, which is then set to the sample + 0x80. No other context sets it.
-- In every frame of state 7 with the player alive, after the polls, `0x25f90` calls `0x2d578` with channel 0 and +0x10, then channel 1 and +0x14. `0x2d578` stores the value at object +0xF4 + 4 × channel and, when it is non-zero, tries that channel's weapons; a shot posts launch message 8, whose projectile the loop creates. Then +0x14 is cleared, and so is +0x10 while +0x18 is set (+0x18 is zeroed when the controller is created; no other writer was found in `0x25f90`–`0x28100`). The firing rate comes from the weapons, not from the polls (P3-07).
+- In every frame of state 7 with the player alive, after the polls, `0x25f90` calls `0x2d578` with channel 0 and +0x10, then channel 1 and +0x14; channel 0 fires mount list 0 and channel 1 list 1 ([weapons](#weapons-mounts-selection-and-firing-p3-0702)). `0x2d578` stores the value at object +0xF4 + 4 × channel and, when it is non-zero, tries that channel's weapons; a shot posts launch message 8, whose projectile the loop creates. Then +0x14 is cleared, and so is +0x10 while +0x18 is set (+0x18 is zeroed when the controller is created; no other writer was found in `0x25f90`–`0x28100`). The firing rate comes from the weapons, not from the polls (P3-07).
 - Joystick button bit 0x80 selects the target in front or cycles targets, with its own due time re-armed at the sample + 0x40 by the same rule.
 
 **Confirmed (mode changes and earlier input):**
@@ -633,7 +633,7 @@ Static answers to Q-02, Q-03 and Q-11 of the [P3-02 spec](../../plan/p3/02/spec.
 - **Rounding direction:** ten routines of the renderer object store the control word, set the rounding control to chop (OR 0x0C00), load it and never restore it; their FLDCW instructions are at `0x14392c`, `0x144358`, `0x1458cb`, `0x147ddb`, `0x14a8b5`, `0x14f9b1`, `0x1548aa`, `0x156bc2`, `0x1593e6` and `0x15d482`. A raw byte scan of the code objects for every x87 control-word, environment and state load (FLDCW, FLDENV, FRSTOR, FNINIT) finds besides them only the start-up initialisation (`0x8f45e` and `0x9cfaa`), the exception-mask pair `0xa5000`/`0xa505c` (low byte only), `0x74518`, the FPU exception handler at `0xa5173`, which keeps bits 8–11, and the run-time's save/restore pair `0x8f41a`/`0x8f41f`; the other byte matches are ModRM bytes inside other instructions or data. The start-up code stores the save/restore pair as hook pointers at `0x17c978`/`0x17c97c`, and no instruction or data word anywhere in the image reads those addresses, so `FRSTOR` never runs on the game's behalf. From these code facts P3-02/02 inferred that after the first call of one of the ten the program runs with double precision and chop until it exits, so that every rounded arithmetic result and every f32 store rounds toward zero. **That inference is contradicted at runtime** for every placement observed by P3-02/10 (runtime observation below); the code facts themselves stand.
 - **Storage on the placement path:** positions are f32 (records +0x24–+0x2C, object +0x6C/+0x70/+0x74 for x, y, z); the pose is nine f32 values in three rows; rectangles, grid spacing and section-4 values are i32; the constants 200 and 400–599 are integers and 300 is a double. `0x67938` sets object +0xD0 to trunc((record +0x60 × 0.01) × the +0x9C value of the per-kind record that `0x2d2d8` returns), each product rounded to double (the meaning belongs to Q-07).
 - **Axes:** x and y span the sector plane (world rectangle, sector mapping `0x3a61c`) and z is the axis out of that plane, called height here: rectangle and world placements set z = 0 and the fixed-height kinds 1000. No rule has gravity or a preferred up (Likely, P3-06/05). The player's pose is the identity whatever placement computes, so it starts with forward along +z, perpendicular to the sector plane, and up along +y ([initial flight state](#initial-flight-state-p3-0605)).
-- **Square roots and trigonometry:** lengths use FSQRT (the world check and the normalisation `0x56aa8`). No routine containing FSIN, FCOS or FPATAN is reachable by direct calls from `0x67678`, `0x68398` or `0x67938`. The orientation rotations `0x228cc` (rows 2 and 3), `0x22a50` (rows 1 and 3) and `0x22990` (rows 1 and 2) take an f32 angle, compute FCOS and FSIN, store both as f32 and rotate the two rows; movement integrators `0x222f0` (mode 0), `0x22600` (mode 3) and `0x2285c` (mode 2) and the routines `0x25dc4`, `0x2b00c` and `0x31094` call them. Other FSIN/FCOS users are `0x45420`, `0x46fe0` (the cockpit presentation that follows the effective row-3 rate, [movement stage](#movement-stage-and-integration-p3-0601)), `0x5b54c`, `0x5eb64`, `0x92b74` and the start-up initialiser `0x568b0` ([numbers](#numbers-on-the-movement-path-p3-0601)), and FPATAN is in `0x85a8b`, called from `0x489d0`, `0x5cd1c`, `0x7558a` and `0x82c48`; their roles were not analysed.
+- **Square roots and trigonometry:** lengths use FSQRT (the world check and the normalisation `0x56aa8`). No routine containing FSIN, FCOS or FPATAN is reachable by direct calls from `0x67678`, `0x68398` or `0x67938`. The orientation rotations `0x228cc` (rows 2 and 3), `0x22a50` (rows 1 and 3) and `0x22990` (rows 1 and 2) take an f32 angle, compute FCOS and FSIN, store both as f32 and rotate the two rows; movement integrators `0x222f0` (mode 0), `0x22600` (mode 3) and `0x2285c` (mode 2) and the routines `0x25dc4`, `0x2b00c` and `0x31094` call them. Other FSIN/FCOS users are `0x45420`, `0x46fe0` (the cockpit presentation that follows the effective row-3 rate, [movement stage](#movement-stage-and-integration-p3-0601)), `0x5b54c`, `0x5eb64`, `0x92b74` and the start-up initialiser `0x568b0` ([numbers](#numbers-on-the-movement-path-p3-0601)), and FPATAN is in `0x85a8b`, called from `0x489d0`, `0x5cd1c`, `0x7558a` and `0x82c48`; the roles of these and of the other FSIN/FCOS users are in [combat numbers](#numbers-on-the-combat-paths-p3-0707) (P3-07/07).
 
 **Likely (no trigonometric tables):** a scan of all four objects for sine or cosine tables found none: f32 and f64 of amplitude 1, i16 of amplitudes 2^8–2^15, i32 of amplitudes 2^12–2^30 (including 16.16), 32 to 65,536 steps per turn, starting at angle 0. The same scanner finds synthetic tables in those encodings. With the FSIN/FCOS rotations above, angles are therefore computed with x87 instructions, not looked up. The direction table that `0x568b0` builds at start-up with FSIN/FCOS is not stored in the image and serves random directions, not rotations ([numbers](#numbers-on-the-movement-path-p3-0601)). Fixed point remains confined to the renderer ([§2](#2-linked-libraries-confirmed-unless-noted)).
 
@@ -740,7 +740,7 @@ The success path clears `0x17670c` ([mission result](#mission-result-success-pat
 3. Sets +0x1C to the `CINF` craft record of the kind (`0x2d2d8`); `0x2d400` builds the weapon mounts from it.
 4. Names the object (`0x67d44`, above) and sets +0x190 to the record (its source).
 5. Copies position +0x6C–+0x74 and pose +0x48–+0x68 from placement ([placement mappings](#placement-mappings-p3-0202)).
-6. Sets +0xD0 from record +0x60 and craft +0x9C ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)).
+6. Sets +0xD0 from record +0x60 and craft +0x9C ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)): `FILD` of the record value times the `f64` constant `0x1725c4`, times `FILD` of craft +0x9C, then `FISTP` after the truncation call `0x74518` (Confirmed, code, P3-07/12; ignored `local/research/p3-07/rule-data/out/p5`).
 7. Calls `0x3060c` with record +0x68, record +0x64 and 100. For kinds in `0xfffff` it sets +0x28 = (craft +0x54 ÷ 100) × the first, +0x2C = craft +0x5C × the second ÷ 100, +0x30 = craft +0x74 × 100 ÷ 100 (integer divisions truncate), +0x34 = 1 and +0x38 = 2 for kind 1, +0x3C and +0x40 from other craft fields, the maximum speed +0x78, +0x20 = sample, +0x44 = 1 and +0x24 = sample + 128 + rand % 64 (one draw). Other kinds get only +0x78. The maximum speed (`0x30e0c`) is craft +0xB8; for kind 1 it also depends on +0x3C, +0x40 and the two-bit field 2 below.
 8. Copies record +0x70, +0x74 and +0x78 to +0xDC, +0xE0 and +0xE4 (no `CINF` dependence).
 9. Clears 19 two-bit fields in the words at +0xE8 and +0xEC (`0x52a84`, shift and mask tables at `0x1760b4`–`0x176113`).
@@ -833,8 +833,8 @@ Craft use modes 0 and 3 only. Mode 3 is written only by the Warp start, and that
 | +0x5C | i32 | Control lock ([controls](#flight-controls-and-rotation-p3-0602)) | 0 | `0x21ba0` |
 | +0x60, +0x64, +0x68 | f32 | Steady rotation rate about row 1, 2, 3 (rad/s, Likely, following the craft rates) | 0 | `0x21dd0`, `0x21fd8` |
 | +0x6C | f32 | Commanded speed, units/s | The initial speed | `0x21dd0`, `0x21adc`, `0x21ba0`, `0x21d88`, `0x2bf08`, `0x50188`, `0x21a3c` |
-| +0x70 | f32 | Reference maximum speed: a copy of C +0xB8 | C +0xB8 | `0x21794`, `0x218e8`, `0x21a3c` |
-| +0x74 | f32 | Speed ratio | F(D(speed ÷ +0x70)) when +0x70 > 0, else 0 | Builders; integrators; `0x21a3c` |
+| +0x70 | f32 | Reference maximum speed: a copy of C +0xB8 | C +0xB8 | `0x21794`, `0x218e8`, `0x21a3c` (mode 0, only when it holds ±0; [W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code)) |
+| +0x74 | f32 | Speed ratio | F(D(speed ÷ +0x70)) when +0x70 > 0 or the compare is unordered, else 0 | Builders; integrators; `0x21a3c` |
 | +0x78 | i32 | Commanded speed reached | 1 | Set by the integrators, `0x2bf08` and `0x21a3c`; cleared by every other writer of +0x6C |
 | +0x7C, +0x80, +0x84 | i32 | Steady rotation enabled about row 1, 2, 3 | 0 | `0x21dd0`, `0x21fd8` |
 | +0x88–+0xA0 | mixed | Disturbance level and biases ([controls](#flight-controls-and-rotation-p3-0602)) | 0 | `0x21bd4` |
@@ -883,7 +883,7 @@ Other callers: `0x2285c` (fragments), `0x25dc4`, `0x2b00c` (P3-07) and the destr
 **Writers of impulse and timed rotation (Confirmed, code; reachability Likely, not observed):**
 
 - `0x2b628`, from the missile-blast handler `0x2b408` (message 0x10000): every object of kinds `0xfffff` within the blast whose fall-off damage is positive and whose kind is not in mask `0xf9c7c` gets an impulse along the missile's row 3, scaled from the missile's speed, and timed rates on all three axes with a fixed decay; 6 draws (three magnitudes, three sign flips). Reachable in the slice: the player carries missiles ([weapon records](#weapon-records-and-the-first-missions-shooters-p2-1230)), and the player and the enemy kinds are outside the mask.
-- `0x29eb8` and `0x2a12c`, the collision responses of `0x29670` and `0x29934`: impulse and timed rotations on both objects (Likely, the second object gets the negated rates), with their own decay, 6 draws per call and the same end and activation rule; they also return a damage value. Reachable whenever objects collide.
+- `0x29eb8` and `0x2a12c`, the collision responses of `0x29670` and `0x29934`: impulse and timed rotations, with their own decay, 6 draws per call and the same end and activation rule; they also return a damage value. `0x29eb8` writes both objects (the second gets the negated rates), `0x2a12c` only the first (Confirmed, code, P3-07/03, [collisions](#h6-collision-passes--confirmed-code-collision-helper-spot-checked)). Reachable whenever objects collide.
 - Gun hits (`0x25dc4`, `0x2a40c`) write none of these fields.
 - Steering, matching and blast writers run in the message loop, before that frame's `0x221fc`; the collision writers run after it, so their effect starts in the next frame. All three writers and their constants belong to P3-07.
 
@@ -949,7 +949,7 @@ Evidence: ignored `local/research/p3-06/motion/` (`ghidra_scripts/MotionProbe.ja
 
 - `0x21794` clears the lock, the rates and flags, the disturbance and its biases at every build.
 - **Lock** `0x21ba0(object, value)` is the only other writer of block +0x5C and acts only in mode 0; value 1 also clears +0x78 and sets the commanded speed to 0, so the craft slows to a stop. Callers: the energy updates `0x3071c` (the player-state's craft) and `0x30994` (kinds `0xffffe`) set 1 when the object's energy +0x28 reaches zero or below and `0x30590` passed them the block (the player unless docked; other objects when active in state 7 or above; parked objects get none). The base repair `0x398ec` (selector 7) and `0x280ec` set 0; `0x280ec` (full repair and unlock of the player) is referenced only by a pointer at `0x1750a0` (Likely a debug or cheat table). While locked, both paths do nothing: throttle keys and steering are dropped and nothing is drawn. The enable flags are not cleared and the integrators do not test the lock, so a rotation in progress continues.
-- **Disturbance** `0x21bd4(object, level)` is the only other writer of block +0x88 and acts only in mode 0; level 2 also draws three integer biases (three draws) and stores them with float copies at +0x8C/+0x90/+0x94 (scaled by the f64 constant `0x170054`). The damage routine `0x2a830` (from `0x2a694`, P3-07) raises it to 1 or 2 when the randomly chosen subsystem slot is 7 and its state was below 2 (the player has 19 slots and other craft 9; both include slot 7). The full repair `0x39820` (called by `0x280ec`, the parked update `0x2f314`, docking and launch `0x38ff4`, AI code at `0x61bd0`, the rescue `0x67b98` and `0x68f4c`) and the base repair `0x398ec` reset it to 0.
+- **Disturbance** `0x21bd4(object, level)` is the only other writer of block +0x88 and acts only in mode 0: without a movement block or with a mode byte other than 0 it writes and draws nothing. It stores the level as given; level 2 also draws three integer biases, each rand % 193 − 96 (signed `IDIV` by 0xC1, then −0x60, so −96…96), stores them in draw order at +0x98/+0x9C/+0xA0 and their float copies at +0x8C/+0x90/+0x94 (scaled by the f64 constant `0x170054`) (Confirmed, code, P3-07/15). The damage routine `0x2a830` (from `0x2a694`, P3-07) raises it to 1 or 2 when the randomly chosen subsystem slot is 7 and its state was below 2 (the player has 19 slots and other craft 9; both include slot 7). The full repair `0x39820` (called by `0x280ec`, the parked update `0x2f314`, docking and launch `0x38ff4`, AI code at `0x61bd0`, the rescue `0x67b98` and `0x68f4c`) and the base repair `0x398ec` reset it to 0.
 - The lock and disturbance writers belong to P3-07 (energy, damage), the resets to the base (P3-10) and the rescue (P3-01); P3-06 owns their consumers above.
 
 **Sign chain (Confirmed, code), frame meaning (Likely), handedness (Unconfirmed):**
@@ -1001,7 +1001,7 @@ Evidence: ignored `local/research/p3-06/controls/` (`ghidra_scripts/CtlProbe.jav
 - The ASCII codes are Confirmed. That they come from Shift with the digit row, and that the keypad `+` and `-` produce the same codes, is Likely (US layout of the baseline DOS). Caps Lock swaps letter case only.
 - The compare with the pending value can succeed only if the throttle was already written in the same callback. The keyboard poll is the first writer in the state-7 callback, so in practice it never succeeds (Likely, writer enumeration within decoded code).
 - **Domain edge:** after `0x21d88` leaves the commanded speed above a lowered maximum, the readback exceeds full throttle, and `−`, which clamps only below, can pass a throttle above full to `0x21dd0`. That reads past the table's last entry, into undefined memory (Confirmed by the composition of the code; not observed). `+`, the presets, `\`, Backspace and the assist stay inside the table; device throttle values are bounded only by the driver.
-- **Prefilters:** `0x27b44` (the communications menu, states 2–4 of `0x1a9dc8`) consumes a key only when `0x27e10` finds it in the open menu, so the speed keys keep working with the menu open unless the menu claims the code (which codes it claims belongs to P3-10). `0x27ab4` (state 1, Likely the energy menu `e`) consumes `s`, `S`, `g` and `G` only when the level change succeeds.
+- **Prefilters:** `0x27b44` (the communications menu, states 2–4 of `0x1a9dc8`) consumes a key only when `0x27e10` finds it in the open menu, so the speed keys keep working with the menu open unless the menu claims the code (which codes it claims belongs to P3-10). `0x27ab4` (state 1, the energy page that `e` opens, [D15](#d15-left-display-pages--confirmed-code)) consumes `s`, `S`, `g` and `G` only when the level change succeeds.
 - At most one key per keyboard poll ([input polling](#input-polling-p3-0201)).
 
 **Confirmed (maximum speed `0x30e0c`):** its arguments are the object, its energy block (object +0x20) and its craft record; it writes object +0x78 (f32).
@@ -1010,7 +1010,7 @@ Evidence: ignored `local/research/p3-06/controls/` (`ghidra_scripts/CtlProbe.jav
 - Kind 1: with E = object +0x3C and T = object +0x40, when E < T (signed) the maximum is F(the integer trunc(E × a code constant ÷ C +0x88)), from a 32-bit integer multiply and a signed division; otherwise C +0xB8. The two-bit subsystem field 2 (`0x52ac4(object, 2)`) then scales it by the f64 constant `0x171018` when it is 1 and `0x171010` when it is 2; values 0 and 3 leave it.
 - `0x3060c` computes the operands for kinds in `0xfffff`: the levels +0x34 and +0x38 (their initial values for kind 1 are fixed by code), E = C +0x58 − (C +0x64[+0x34] + C +0x78[+0x38]) and T = trunc(chop(C +0xB8) × C +0x88 ÷ the same constant). Meanings (Likely; owned by P3-07): E is the generator energy left after the shield and gun allocations, and the levels are the `s`/`S` and `g`/`G` recharge levels 0–3.
 - The content base (C +0xB8, which a build also copies to block +0x70) and the rule-computed current maximum (object +0x78) are separate values.
-- **Recomputation times:** `0x30e0c` has four direct call sites and no pointer reference. Two are in `0x3060c`, which instantiation (step 7), the rescue `0x67b98`, the missile constructor `0x2b00c` and the kind-`0x4000` constructor `0x38780` call; the other two are `0x30b20` and `0x30bc0`, called only by the energy-menu keys `0x27ab4`. Each of these two changes one level within 0–3, recomputes E, lowers the other level while E < 0 (and restores both if that fails), calls `0x30e0c` and `0x21d88`, and sets energy block +0x24 to 1. The only writers of object +0x78 are the allocator (0) and `0x30e0c`. **Damage that raises field 2 (`0x2a830`) and the base repair do not recompute the maximum**: the new factor takes effect at the next energy-allocation change, rescue or new player object. At instantiation the allocator has cleared the two-bit fields, so the initial maximum has no damage factor.
+- **Recomputation times:** `0x30e0c` has four direct call sites and no pointer reference. Two are in `0x3060c`, which instantiation (step 7), the rescue `0x67b98`, the missile constructor `0x2b00c` and the kind-`0x4000` constructor `0x38780` call; the other two are `0x30b20` and `0x30bc0`, called only by the energy-menu keys `0x27ab4`. Each of these two changes one level within 0–3, recomputes E, lowers the other level while E < 0 (when that fails, it restores the changed level and leaves the other at 0, [D10](#d10-energy-levels-keys-ssgg--confirmed-code)), calls `0x30e0c` and `0x21d88`, and sets energy block +0x24 to 1. The only writers of object +0x78 are the allocator (0) and `0x30e0c`. **Damage that raises field 2 (`0x2a830`) and the base repair do not recompute the maximum**: the new factor takes effect at the next energy-allocation change, rescue or new player object. At instantiation the allocator has cleared the two-bit fields, so the initial maximum has no damage factor.
 - **After a recompute, `0x21d88`:** when the block exists and the double-precision quotient current speed ÷ new maximum exceeds the unit threshold (strict), the commanded speed becomes the new maximum and +0x78 is cleared; otherwise nothing happens. For a positive maximum, as in all shipped data, this is the same as the current speed being above the new maximum. The current speed is not clamped and may stay above the new maximum while the integrator decelerates. A commanded speed above the new maximum is kept while the current speed is at or below it (for example while accelerating), and raising the maximum changes nothing. A zero maximum would raise the unmasked divide exception; the shipped data always give a positive maximum.
 - **Local data (counts only):** over the 24 CINF, the initial player maximum is energy-limited in 16 and the base value in 8, CINF 4037 among the 8; 256 of the 384 level pairs are energy-limited, 6 of the 16 in CINF 4037 (Confirmed, local data; corrected by P3-06/23 from 7: 03's own output and P3-06/16's independent computation both give 6), reachable through the energy menu. No combination gives a non-positive energy, divisor or maximum, or overflows. The energy branch is therefore an ordinary case, decided by P3-07's live state.
 
@@ -1398,14 +1398,14 @@ Evidence: ignored `local/research/p2-01/hostility-consumer.c`, `hostility-consum
 
 ### Player target modes and enemy classification
 
-**Confirmed (player-relative classification):** the flight key handler `0x264a0` compares the key against ASCII `t` (`0x74` at `0x265fe`) and branches to `0x2703d`, which calls `0x2799c` with EDX = 0 and on success stores mode 0 at player-controller offset +0x198. The adjacent case calls the same helper with EDX = 1 and stores mode 1; the decompiled compare tree assigns it to `f`. The `r` and `y` cases pass the stored mode to `0x27910` and `0x27884`, which cycle to the next nearer or farther candidate through `0x63954`/`0x63858`. In all three helpers mode 0 selects candidates through kind mask `0x93780` and mode 1 through `0x206c87e`. These keys match the README labels for enemy/friendly target mode and target cycling in the [key map](../input/key-map.md). `0x2799c` takes the nearest candidate through `0x63858`, not the one in front, and the player's callback also calls it at a fixed interval while the player has no target, in flight views (P3-06/05, [automatic target selection](#initial-flight-state-p3-0605)).
+**Confirmed (player-relative classification):** the flight key handler `0x264a0` compares the key against ASCII `t` (`0x74` at `0x265fe`) and branches to `0x2703d`, which calls `0x2799c` with EDX = 0 and on success stores mode 0 at player-controller offset +0x198. The adjacent case calls the same helper with EDX = 1 and stores mode 1; it is `f` (`0x66`, native compare at `0x2661c`, P3-07/01). The `r` and `y` cases pass the stored mode to `0x27910` and `0x27884`, which cycle to the next nearer or farther candidate through `0x63954`/`0x63858`. In all three helpers mode 0 selects candidates through kind mask `0x93780` and mode 1 through `0x206c87e`. These keys match the README labels for enemy/friendly target mode and target cycling in the [key map](../input/key-map.md). `0x2799c` takes the nearest candidate through `0x63858`, not the one in front, and the player's callback also calls it at a fixed interval while the player has no target, in flight views (P3-06/05, [automatic target selection](#initial-flight-state-p3-0605)).
 
 | Player target mode | Kind mask | M2ID slots |
 |---|---|---|
 | Enemy (mode 0) | `0x93780` | 7, 8, 9, 10, 12, 13, 16, 19 |
 | Friendly (mode 1) | `0x206c87e` | 1–6, 11, 14, 15, 17, 18, plus runtime kind 25 (the map/Warp marker) |
 
-Every M2ID slot with a model, except the player's own slot 0, belongs to exactly one mode; slots 20 and 21 are empty. Helper `0x27a04` targets an object in front from all twenty model kinds and selects mode 1 exactly when its runtime kind is in `0x6c87f` (the friendly set plus slot 0), otherwise mode 0. Its `0x75` (`u`) key case is Likely from the decompiled compare tree; the helper logic is Confirmed.
+Every M2ID slot with a model, except the player's own slot 0, belongs to exactly one mode; slots 20 and 21 are empty. Helper `0x27a04` targets an object in front from all twenty model kinds and selects mode 1 exactly when its runtime kind is in `0x6c87f` (the friendly set plus slot 0), otherwise mode 0. Its `0x75` (`u`) key case is Confirmed by the native compare at `0x26589` (P3-07/01). The selection rules, timing and target lifetime are in [player targeting](#player-targeting-and-radar-p3-0701).
 
 **Confirmed (input invariant):** iterator `0x5261c` walks per-kind object lists rooted at `0x1b06e4`, indexed by the set bits of the supplied mask. Allocator `0x520d4` writes the requested kind to runtime +4 and links the new object into the list for that kind's bit. These two functions are the only code references to the list table. SCEN objects receive their record kind through `0x67938`. An object's player target-mode class is therefore fixed by its allocation kind; no separate per-record faction field participates.
 
@@ -1418,6 +1418,1650 @@ Mode 0 is the player's hostile set, by three independent sources: the README key
 Across all 51 non-zero campaign slots, slots 1 and 2 of each group have two distinct enemy-mode models. The other 45 have three to six (2: 6 slots, 3: 9, 4: 16, 5: 14, 6: 6).
 
 Evidence: ignored `local/research/p2-01/side-mask-sites.log/.c`, `target-mode-consumers.c`, `kind-list-owners.c`, `target-key-sites.log`, `flight-key-handler.log`, `spawn-queue-and-stats.c`, `SideMaskSites.java`, `ReferenceTypes.java` and `candidate-selection.ts/.json`. A raw byte search for the side masks found 31 immediates of `0x93780` and 23 of `0x6c87f`. Read-only, no-analysis Ghidra mapped them to their functions and callers, and typed references bound the allocator, spawn dispatch and queue insertion sites; in-memory `__watcall` conventions were discarded. The flight handler export reached its 600-instruction cap, so the `t` binding was traced natively and the other key cases through the decompiled compare tree plus native case-block registers. `candidate-selection.ts` asserts the mode partition, the slot-1 cardinality and the counts above.
+
+### Combat rules (P3-07)
+
+Static answers to Q-01–Q-12 of the [P3-07 spec](../../plan/p3/07/spec.md#原版研究), read from native instructions by P3-07/01–07 (2026-10-10). Nothing here was observed at runtime. Notation: *clock* or *sample* is the per-frame mission-clock sample `0x186414` (u32, 1/64 s units); *step* is `0x186424` (f32 seconds); *rand* is one call of the C library `rand()` `0x7453b` (0–32767), the one generator that rules and presentation share; a *handle* is a list node, *obj* the object it names; *ps* is the player-state block `0x1b0638`; *mb* is an object's movement block (object +8); the pose rows at object +0x48, +0x54 and +0x60 are called rows 1–3 or R0–R2, row 3 (R2) being the forward axis; P is the position +0x6C–+0x74; *craft kinds* are mask `0xfffff` and *large kinds* mask `0xf9c7c` (4, 8, 0x10, 0x20, 0x40, 0x400, 0x800, 0x1000, 0x8000–0x80000). Labels such as W6 name the numbered parts below. P3-06 records the movement stage and its modes 0 and 3, the control setters, the maximum speed, the parked-object update's scheduling and world exit, and the area check; the parts below refer to them where they meet.
+
+#### Player targeting and radar (P3-07/01)
+
+Q-01, Q-02 and the targeting part of Q-11. Extends [player target modes](#player-target-modes-and-enemy-classification). Below, *controller* is the player object's +0x14 block (0x1C0 bytes) and *aux* is the movement block.
+
+##### T1. Target state (Confirmed, code)
+
+| State | Where | Writers |
+|---|---|---|
+| Player's target | Player object +0x8C: a counted node handle (`0x528bc` swaps it, releasing the old reference). Allocation `0x520d4` zeroes it (`0x52181`, slot+0x8C) and the release callback `0x523f4` drops it | T5 |
+| Target mode | Controller +0x198: 0 enemy, 1 friendly. Zeroed when the controller is created (`0x26026`) | `t`/`f` (`0x2704e`/`0x27073`), `u` and the joystick target button through the pointer passed to `0x27a04` (`0x27a46`), automatic targeting (`0x26243`). Read only by the cycle helpers (`0x27086`, `0x2709a`, `0x2768c`); a whole-image scan for `+ 0x198]` in game code finds no other reader |
+| Automatic-target due time | Controller +0x1A8 (zeroed at creation) | `0x26251` |
+| Joystick target-button due time | Controller +0x1B0 (zeroed at creation) | `0x2767b` |
+| Dispatcher message type 2 | Subject +0x08 = the player node (`0x5310c`), payload +0x1C = the chosen node (`0x53130`, counted) | Posted only by the four helpers below: a whole-image scan for an immediate store of type 2 into a message finds exactly `0x278f1`, `0x2797d`, `0x279e7`, `0x27a58` |
+
+**Message 2 handler (`0x213fc`):** `0x528bc(subject, payload)` — the subject's +0x8C becomes the
+payload without revalidation — then a presentation item of type 2 (`0x52cb4(2)`) with +0x08 =
+0x2B4F, +0x0C = 0, +0x0E = 0 (Likely a sound request, P3-14). No other state changes.
+
+##### T2. Selection helpers (Confirmed, code)
+
+All four share the candidate filter of the walkers they call: an object of the mask (walk
+`0x5261c`: kind bit ascending, then allocation order) with activity +2 = 1, state +3 ≥ 7
+(unsigned byte, so 8 "projectile that has hit" also passes) and +0xCC ≠ 1. Neither the dead flag
++0xD8 nor the parked/destroyed history is tested; a destroyed object leaves candidacy only when
+its state leaves 7/8 (explosion constructor: 4; destroyed parked object: 6). `0x52680` is the
+validity test: non-null node whose object pointer is non-null.
+
+- **Distance `0x637e4(a, b)`:** squared Euclidean distance between the objects' positions
+  +0x6C/+0x70/+0x74, returned on the x87 stack (no square root). Numerics in T10.
+- **Farther `0x63858(self, ref, mask, out)`:** reference distance d_ref = `0x637e4(self, ref)`
+  stored as f32 when ref is valid, otherwise 0 and no reference handle. Eligible: candidate ≠ ref
+  handle and d ≥ d_ref (the test `JC` skips only d < d_ref). Picks the smallest d (first candidate
+  unconditionally, later ones only when strictly smaller), so ties keep the earliest in walk order.
+  When `out` is non-null it receives √(best) (x87 `FSQRT`, stored through a double to f32) or 0.
+- **Nearer `0x63954(self, ref, mask, out)`:** with a valid ref, eligible only when d < d_ref
+  (strict); in every case d must be strictly greater than the running best, which starts at +0.0,
+  so a candidate at distance 0 is never chosen. Picks the largest d, ties keep the earliest. Same
+  `out` handling.
+- **Forward `0x63a4c(self, mask, out)`:** copies self's rows +0x48/+0x54/+0x60 and position.
+  For each candidate other than self (node compare), with the same activity/state/+0xCC filter,
+  `0x56dc0` transforms the candidate position into self's frame: x = d·row1(+0x48),
+  y = d·row2(+0x54), z = d·row3(+0x60), d = candidate − self. Eligible when z > 5.0 (f32
+  `0x1724cc`) and x² + y² ≤ the candidate's craft record +0x14 (r², written at load, craft §4.4;
+  object +0x1C is the record). Picks the smallest z (strict `<`, ties earliest). There is **no
+  range limit**: the player's forward axis, from 5 units ahead, must pass within the candidate's
+  bounding radius. The current target is not excluded.
+
+| Entry | Mask | Helper calls | Success needs | On success |
+|---|---|---|---|---|
+| `0x2799c(player, m)` (`t` m=0, `f` m=1, automatic) | m=0 `0x93780`, m=1 `0x206c87e` | `0x63858(player, 0, mask, 0)`: nearest candidate, current target not excluded | Result valid and ≠ player +0x8C | Posts message 2; returns 1 |
+| `0x27910(player, mode)` (`r`) | by controller mode | `0x63954(player, cur, mask, 0)` with cur = +0x8C if valid else 0; when that finds nothing, `0x63954(player, 0, mask, 0)`: wrap to the farthest | Result valid and ≠ cur | Posts message 2 |
+| `0x27884(player, mode)` (`y`, joystick fallback) | by controller mode | `0x63858(player, cur, …)`; wrap: `0x63858(player, 0, …)`, the nearest | Result valid and ≠ cur | Posts message 2 |
+| `0x27a04(player, &mode)` (`u`, joystick) | `0xfffff` (all 20 model kinds) | `0x63a4c(player, 0xfffff, 0)` | Result valid and ≠ +0x8C | Writes mode = 1 when the result's kind & `0x6c87f`, else 0, **then** posts message 2 |
+
+- **Direction (`r`/`y`):** `r` = nearer (cycles inward, wraps from the nearest to the farthest),
+  `y` = farther (cycles outward, wraps from the farthest to the nearest). With no valid current
+  target, `r` selects the farthest and `y` the nearest candidate. Mapping to the spec's commands:
+  `r` → `next` → nearer, `y` → `previous` → farther.
+- **Comparison types and ties (Confirmed, code):** let d be the double-precision value
+  `0x637e4` returns and d32 its f32 rounding. The reference is always stored as d32_ref
+  (`0x6389b`, `0x63997`).
+  - `0x63858` (farther): the lower bound compares the candidate's unrounded d with d32_ref
+    (`0x638ed` `FST` keeps d on the stack, `0x638f1` `FCOMP`): eligible when d ≥ d32_ref. The
+    minimum search compares d32 values (`0x63905`), strict `<`, so among equal d32 values the
+    earliest in walk order wins.
+  - `0x63954` (nearer): both bounds compare f32 values (`0x639ea` stores d32 before `0x639f2`):
+    eligible when d32 < d32_ref and d32 > best (best starts at +0.0), strict both ways; equal d32
+    values keep the earliest.
+  - Consequences: `r` skips every candidate whose d32 equals d32_ref, including geometrically
+    nearer ones that round to the same f32. `y` admits a candidate whose d32 equals d32_ref only
+    when its unrounded d is not below d32_ref; a candidate at the same geometric distance as the
+    reference is excluded when d32_ref rounded upward. Two candidates A and B with d32_A = d32_B and
+    both d_A ≥ d32_B and d_B ≥ d32_A make `y` alternate between them without advancing; otherwise
+    `y` moves past them. Ties need only equal f32 roundings, not symmetric placements;
+    reachability in play was not measured.
+
+##### T3. Entry points, contexts and timing (Confirmed, code)
+
+- **Keys (`0x264a0`, the flight key context):** native compares on the translated key byte:
+  `t` (0x74, `0x265fe`) → `0x2703d`; `f` (0x66, `0x2661c` `JBE`) → `0x2705f`; `r` (0x72,
+  `0x265f4` `JBE`) → `0x27098`; `y` (0x79, `0x265c2` `JBE`) → `0x27084`; `u` (0x75, `0x26589`
+  `JBE`) → `0x270ac`. Upper-case letters reach other cases (for example `T`, 0x54, posts dispatcher
+  message 0x800 through `0x26843`; role not traced, P3-05). `t`/`f` store the mode only when
+  `0x2799c` returns 1; `r`/`y` never write the mode.
+- **Before the compare chain** `0x264a0` offers the key to `0x27b44` (communications) and `0x27ab4`
+  (left-display page 1 keys `S`/`s`/`G`/`g`, [D10](#d10-energy-levels-keys-ssgg--confirmed-code)); either consuming it ends the handling.
+  `0x27b44` on left-display pages 2–4 matches the key case-insensitively (`0x754d9`) against the
+  shown menu entries' key byte (`0x27e10`, [comm §4](./comm.md#4-text-rules-confirmed)).
+  Object-list menus (`0x2c9d0`) give their k-th entry the k+1-th character of the 36-entry table
+  `0x174b40`: the target letters first occur at positions 15 (`f`), 27 (`r`), 29 (`t`), 30 (`u`)
+  and 34 (`y`), so an object list of at least 15 entries captures `f` (and so on). Data-keyed
+  menus may also capture them (not checked against the shipped tables here).
+- **Contexts that never reach `0x264a0`:** view modes 0–3 (Warp context `0x27360`), 6 (base
+  `0x271e0`) and 8 (map `0x27118`); no game key at all while the player's dead flag is set or the
+  player is not in state 7 (P3-02/01). One key per keyboard poll (P3-02/01).
+- **Joystick target button (`0x2760c`, called by `0x274a4`):** when the sample is strictly greater
+  than controller +0x1B0 and button bit 0x80 reads 0 (active low): +0x1B0 := sample + 0x40, then
+  `0x27a04` (forward, mode through the pointer); only when that returns 0, `0x27884` (farther, by
+  the current mode).
+- **Automatic targeting** is recorded in [initial flight state](#initial-flight-state-p3-0605) (P3-06/05); P3-07/01 adds that the interval is 0x40 units (+0x1A8 := sample + 0x40 at every check, so successive checks are more than 0x40 apart), that the view-mode gate lets it run with the map open (mode 8), and that the invalid-target drop earlier in the same callback (`0x2611f`) lets the zero test see only a valid target as set.
+- **Order inside one player update (`0x25f90`):** invalid-target drop → `0x2ddbc` → speed assist →
+  keyboard poll (target keys) → device poll (joystick target button) → map cursor → message
+  0x20000 → `0x2d578` channel 0 and 1 (fire) → automatic targeting.
+- **Write timing:** candidates are evaluated immediately, in the update callback, on positions and
+  poses as left by the previous pass's movement (`0x221fc` runs after the message loop). The mode
+  (`t`, `f`, `u`, joystick, automatic) is written immediately; the target is written when this
+  frame's dispatcher loop handles message 2. The player's callback runs first in the update walk,
+  so its message-2 posts precede every other object's messages of that frame (they follow only
+  messages posted earlier in the frame, by `0x3266c` or `0x25894`). Several message-2 posts in one frame are applied in posting order; the last wins
+  (for example `r` with no target, then automatic targeting in the same callback: the automatic
+  nearest-enemy choice is applied last and the mode becomes 0).
+- **Interaction with firing:** `0x2d578` runs before the message loop, so it sees the old target;
+  launch message 8 is posted after the target key's message 2, and the dispatcher's missile
+  constructor `0x2b00c` (message 8, `0x213b9`) copies the shooter's +0x8C into the missile's +0x8C
+  (`0x2b0c0`, when valid) — the *new* target ([W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code), [H5](#h5-missiles--confirmed-code-unless-marked)).
+
+##### T4. No-change conditions (Confirmed, code)
+
+| Command | No candidate | Same as current | Not delivered |
+|---|---|---|---|
+| `t`/`f` | No object of the mode passes the filter | The nearest equals +0x8C | Context, comms capture, dead/not state 7 |
+| `r`/`y` | No candidate at all (even after the wrap) | Only the current target qualifies (first search excludes it; the wrap does not) | Same |
+| `u` | Nothing in front within its radius | The object in front is +0x8C | Same |
+
+In every no-change case nothing is written, the mode included. `r`/`y` change nothing when the
+mode's mask has no candidate even if other-mode objects exist. "Not delivered" cases produce no
+call at all (input routing, P3-05/Runtime), not a rejection inside the helpers.
+
+##### T5. Target lifetime: writers of the player's +0x8C
+
+**Coverage (Confirmed, code):** a raw scan finds 28 direct calls of the setter `0x528bc`; with the
+scan of stores to `+0x8C` in game code, every site is attributed below. For the non-AI sites the
+subject is fixed by the code (Confirmed). The AI sites act on the subject of an AI block; the
+player is such a subject only under the autopilot (T11), and their reachability from the
+autopilot was checked for direct calls only, so the AI part of the list is not proven exhaustive
+(Unconfirmed; P3-08). The non-player sites set the +0x8C of the object they construct or update
+(explosion `0x23bf7`, missile `0x2b0c0`, fragment `0x251d6`, kind `0x400000` handler `0x242d1`,
+callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); the AI sites are
+`0x5c598`, `0x5c5ca`, `0x5c674`, `0x5c8fc`, `0x5d409`, `0x618ec`, `0x619b5`, `0x61bb5`, `0x61c0e`,
+`0x626df`, `0x62725`, `0x63623`, `0x636f4`.
+
+| Event | Where | Effect on the player's target |
+|---|---|---|
+| Message 2 | `0x213fc` | Set to the payload |
+| Player update finds +0x8C non-zero and invalid | `0x26136`, state 7, dead flag clear | Cleared (0). Not done while dead or in other states |
+| Target object parks (message 0x20, state 5, flags clear) | `0x210e2` | Cleared when player +0x8C equals the parked node; only the player's target is checked |
+| Target object removed (message 0x20, state 6 or flags) | — | The removal itself does not touch it: the node becomes invalid. The right display clears it in the same frame's render when that instrument is drawn (T7); otherwise the player's next update in state 7 drops it |
+| Player starts a Warp (dispatcher 0x400 sub-command 0 accepted by `0x2be00`) | `0x2beba` | Subject's own target cleared (with +0xCC := 1) |
+| View mode becomes 6 (base) | `0x3104c` (`0x3108a`) | Cleared |
+| Destruction view entered (0x11 sub-mode 8, `0x31094`) | `0x31160` | Cleared |
+| Right display drawn with an invalid target, in view mode 6, or with a target whose +0xCC = 1 | `0x42e21` (render path, T7) | Cleared |
+| Autopilot (flag `0x174b24`): AI step `0x5dcd4` → `0x62250` → `0x62578`/`0x62714` | `0x626df`, `0x62725` | Set or cleared directly, without message 2, when the AI mode byte is 2 or 4 (P3-08) |
+
+- **Destroyed target:** nothing clears the player's target when the target is destroyed. It stays
+  the target in state 4 (exploding, still moved, still a radar contact with the target box, still
+  shown on the right display) until it is removed and the player's next update drops the invalid
+  node, or until the player retargets (a state-4 target still serves as the cycle reference).
+- **Target enters Warp/leaves:** +0xCC = 1 is set for non-player objects by the dispatcher's
+  message 0x800000 handler (`0x214e7`, for an active subject accepted by `0x2fef8`, together with
+  state 5; role not traced in P3-02) and by the world-exit test `0x2f314` (parked objects only);
+  AI code `0x5c768` also stores a value there (not traced). Allocation zeroes it. For an active target, state 5 makes its next
+  callback post message 0x20, so it parks (target cleared) or is removed (dropped) one frame
+  later; the right display clears it earlier, in the same frame's render, when drawn.
+
+##### T6. Radar (Confirmed, code unless noted)
+
+- **Build cadence:** the type-5 instrument draw handler `0x401e8` (called by `0x49b2c` from the
+  frame render `0x3ee58`) calls the registered handler `[0x193930]` = `0x402a0` (registered by
+  `0x3ff90`, called from the display switch `0x3f158` and `0x3f500`). `0x402a0` needs a player
+  node; in view mode 1 it builds nothing; otherwise, when `0x1752c4` < sample, it rebuilds the
+  contact buffer with `0x40370` and sets `0x1752c4` := sample + 5; then it draws the buffer
+  (`0x4017c`). The radar therefore exists only while the active cockpit layout has a type-5
+  instrument, and is rebuilt at most every 6 clock units, in the render path.
+- **Contact source:** `0x40370` iterates the presentation items of type 4 (`0x52d60`) and keeps
+  those with sub-type byte +0x08 = 1. The only producer of type-4 sub-type-1 items is the camera
+  pass `0x21584` (`0x215e8`, end of the dispatcher pass, after `0x30ef0`): it walks kinds
+  `0x21fffff` (bits 0–20 and 25: every craft kind, missiles `0x100000` and the map/Warp marker
+  `0x2000000`) and posts one item per object with activity +2 ≠ 0 (active, docked or 2) and state
+  4 or ≥ 7, in walk order. (`0x21584` posts type-8 items for kinds `0x1600000` with the same
+  filter.) A scan of all `0x52cb4` call sites shows the other type-4 producers write sub-types 0,
+  2 or 3.
+- **Contact filter:** item object valid, aux +0x08 non-null, not the player (handle compare). No
+  range, sector or visibility test: every such object is a contact. Gun projectiles (`0x200000`),
+  explosions (`0x400000`) and fragments (`0x1000000`) are never contacts.
+- **Capacity and order:** entries (count at `0x192f84`, then 0x14-byte entries {x, y, colour, blink,
+  shape routine}) are appended in item order. After each real contact the count is tested: at
+  ≥ 120 (0x78) the build stops. When the contact is the player's +0x8C and the count is still
+  below 120, a target box entry follows at the same position (colour 0xF, blink 0, shape `0x409f4`)
+  — without its own test. The 120 therefore counts the target box: with the target among the
+  first contacts at most 119 real contacts show; when the target box takes index 119, one more
+  real contact is written at index 120 (count 121).
+- **Buffer bound:** the buffer holds the count and exactly 120 entries (`0x192f84`–`0x1938e7`); the
+  next words are radar layout globals (`0x1938ec`, `0x1938f4` read by `0x401e8`/`0x402a0`;
+  `0x193900`–`0x193918` written by the radar set-up at `0x40000`–`0x40084` and read by `0x40370`,
+  `0x40b7c`). Index 120 (above) and the damaged-radar noise (below, no count test) write past it.
+  Reachability needs ≥ 114 entries; Unconfirmed in shipped missions (not observed).
+- **Classification:** friendly = kind & `0x6c87f` ≠ 0, except a missile (kind `0x100000`), which
+  takes its launcher's (aux +0xFC, when valid) kind & `0x6c87f` and is hostile without one.
+  Distance class: Manhattan |dx| + |dy| + |dz| from the player's position, truncated to i32
+  (`0x74518`), "near" when < 600 (signed). Colour: friendly missile 0x10; friendly near 0x10, far
+  0xF; hostile missile 0xC; map/Warp marker 8; hostile near 0xA, far 9. Blink flag = kind &
+  `0x100000` (missiles). Shape: missile 5×5 X `0x40b24`; the marker, and contacts on the
+  non-negative side of the camera row-3 plane (Likely in front of the camera; the plane offset's
+  writer was not traced), plus `0x40a98`; the others X `0x40ad4`. (Palette indices and shapes:
+  hud.md, P3-13.)
+- **Blink:** `0x4017c` toggles `0x1752c8` when `0x1752cc` < sample, then `0x1752cc` := sample + 0x10;
+  an entry with a non-zero blink flag is drawn in colour 0xA while the phase is 0.
+- **Display geometry (camera-relative):** `0x40d44` reads the camera position `0x1b075c`–`0x1b0764`
+  (`0x52e14`) and orientation `0x1b0768`–`0x1b0788` (`0x52e90`), which `0x52df4`/`0x52e34` set from
+  `0x30ef0` and the per-view camera functions. The contact's position is projected onto the plane
+  through the camera perpendicular to camera row 3 (offset from player-state +0xA8; +0xA0/+0xA4 for
+  rows 1/2; writer not traced), normalised, and split into row components; a second projection on
+  the row-1 or row-2 plane (chosen by |row-1 component| < 0.707) gives the forward component c;
+  the screen point is the direction scaled by (1 − c) × 0.5 × scale + centre (`0x19390c`,
+  `0x193900`, `0x193904`), truncated by `0x74518`. Distance does not move a contact. Each
+  object's last three projections are cached in its aux block (+0xAC–+0xC8, +0xE4–+0xEC, with the
+  sample) and reused when the projected length is within ±1e−6. So the radar turns with the
+  camera: in F1/F2 the camera is the craft's pose (P3-01/09), in external views it is not. The
+  contact set and classification do not depend on the camera.
+- **Damage (player subsystem 12 through `0x52ac4`):**
+  - state 0: as above;
+  - state 1: after the real entries, N = rand & 7 more entries; each takes a direction from
+    `0x56b8c` (rand mod 361 indexes the 361-entry f32 vector table `0x1b1310`, rand mod 8 picks one
+    of eight sign patterns), colour 9 + (rand & 1 = 1), blink rand & 1, shape plus or X by rand & 1;
+    after each, while entries remain, rand & 7 = 2 adds a fake target box at the same spot (counted
+    in N). Real contacts are not replaced, but there is no count test, so at high counts the noise
+    runs past the buffer (above);
+  - state 2: no real contact and no target box; 60 noise entries (count < 0x3C), shapes by
+    rand & 3 through the jump table `0x40360` (single pixel `0x40a80`, plus, X).
+  - other values: the build tests the field only for 2 (`0x40399`, which skips the real contacts) and for 1 and 2
+    (`0x4078a`, `0x408d1`, noise). A value of 3, which no damage path writes, therefore builds like state 0
+    (Confirmed, code, P3-07/13).
+  These rand calls run in the render path and draw from the same LCG as placement, spawning and
+  other rule draws (P3-02/02), so in the original the radar's drawing shifts later rule draws.
+
+##### T7. Right (target) display (Confirmed, code)
+
+`0x42d80` is the type-7 instrument draw handler (`0x49b2c` passes EAX = player-state, EDX = view
+mode, EBX = full-redraw flag, ECX = instrument rectangle, and calls a handler only when forced or
+when the sample minus the instrument entry's last-draw time +0x1C exceeds its period +0x18, in
+0x30-byte entries).
+
+- **State writes in the render path:** at every call, when player +0x8C is invalid, or the view mode
+  is 6, the handler clears the player's target (`0x528bc(player, 0)`, `0x42e21`). When the target
+  is valid and its +0xCC = 1 it copies a 7-byte EXE notice (`0x171a34`) into the display's message
+  buffer `0x19b1e4`, sets its countdown `0x19b1e0` = 20 (decremented per draw while shown) and
+  clears the player's target. No message, event or sound is posted for these clears.
+- **Cached display target:** `0x19b1c0` holds a counted reference to the shown target
+  (`0x52780`/`0x52774`); a change resets the display's 3D view state.
+- **Subsystem 14:** state 1 alternates content and the SNIP noise at rand-drawn intervals of
+  0x40 + (rand & 0x3F); state 2 shows only the noise (hud.md).
+- **Fields read from the target (refresh when `0x17547c` < sample, then `0x17547c` := sample + 9,
+  or on a change; without a target the empty-display text is refreshed every 0x80):**
+  - kind +0x04 (`0x2000000`, the map/Warp marker, gets a crosshair and its distance instead of a
+    model and the other numbers; its name is still drawn);
+  - name +0x15C (text drawn);
+  - position +0x6C–+0x74 and rows +0x54–+0x68 (its model is drawn through the 3D library; the view
+    distance comes from the per-kind table `0x175424` indexed by kind bit, +16 entries when the
+    target's +0x06 word is non-zero; a |dot product| ≤ 0.01 test on the player's orientation
+    (`0x43673`) selects one of two view set-ups);
+  - Euclidean distance from the player: the differences (player − target) are formed in double, and each squared
+    term is the unrounded difference times its own f32 store (`FST float` before `FMUL float`), summed as
+    (dy² + dz²) + dx², then `FSQRT` and an f32 store (Confirmed, code, P3-07/23); shown as is or × 0.001 when
+    ≥ 99999.0;
+  - aux +0x08 f32 when aux exists (Likely the speed; P3-06);
+  - +0x2C ÷ craft record +0x5C × 100 (`FILD`/`FILD`/`FDIVP`/× 100.0), 0 when +0x5C ≤ 0 (+0x2C is the shield,
+    [D1](#d1-object-fields-of-this-section--confirmed-code));
+  - craft record +0x08 f32 × 0.001 (× 0.001 again when > 1000.0) — the first code reader of that
+    field ([craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes)).
+  Text formats and layout belong to P3-13.
+
+##### T8. Left display: no target reads (Confirmed, code)
+
+The type-6 handler `0x4ce30` draws page `0x1a9dc8` from the 7-entry page table `0x175c7c` (0x20
+bytes each: handler, —, period, next due, subsystem index, flicker state, next flicker, time; the
+periods are already recorded in the [time base](#simulation-time-base-p3-0106)):
+
+| Page | Handler | Period | Subsystem |
+|---|---|---|---|
+| 0 | `0x4d0e0` | 0 | 10 |
+| 1 | `0x4d800` | 0 | 11 |
+| 2, 3, 4 | `0x4da28` | 0x40, 0x10, 0x40 | 13 |
+| 5 | `0x4dc50` | 0 | 13 |
+| 6 (Warp) | `0x4dcec` | 0x10 | none (−1) |
+
+Page handlers receive EAX = rectangle, EDX = player-state, EBX = view mode, ECX = redraw flag; their
+only +0x8C reads (`0x4d0f4`, `0x4d818`, and `0x27e6d` via `0x4da6e`) are of the player-state block,
+i.e. the player node. No page handler or helper it calls directly (`0x4d50c`, `0x4d308`,
+`0x4d44c`, `0x4e018`, `0x4d6f0`, `0x4d010`, `0x27e68`, `0x4e490`) reads the player's +0x8C. The
+subsystem state is the player's (`0x52ac4` on the player node); flicker uses rand (`0x4ce30`,
+`0x4d44c`).
+
+##### T9. Object sets `0x2ede0`/`0x2f028` (Confirmed, code)
+
+- **Sets:** `0x2ede0` (after `0x30590` in the dispatcher pass) rebuilds two object sets, `0x174b78` and
+  `0x174b74`, through `0x2f028`; P3-06 records when and with which members ([object sets](#world-boundary-active-area-parking-and-autopilot-p3-0604)).
+- **Readers:** `0x2ede0`, `0x2ee60`, `0x2eff8`, `0x2f028` and the AI step `0x62250` (five reads).
+  The targeting helpers (`0x2799c`, `0x27910`, `0x27884`, `0x27a04`, `0x63858`, `0x63954`,
+  `0x63a4c`, `0x637e4`), the radar (`0x402a0`, `0x40370`, `0x4017c`) and the camera pass `0x21584`
+  do not reference them, nor does any other combat rule ([C4](#c4-object-sets--confirmed-code)). **Dependency:** the player's command and automatic targeting,
+  the joystick target button and the radar do not depend on the two sets; the autopilot's target
+  writes (T11) run through `0x62250`, which reads them, so that path depends on them and belongs
+  to the P3-08 interface together with the AI's own use.
+
+##### T10. Numbers on these paths (Confirmed, code)
+
+Inherits P3-02/02: 53-bit x87 precision, conversions through `0x74518` (truncation), the rounding
+direction observed at runtime (round to nearest, U-009).
+
+- **`0x637e4`:** per-axis differences of f32 positions in double; dx² = f32(dx)·f32(dx);
+  dy² = dy·f32(dy); dz² = dz·f32(dz) (each difference stored once to f32 with `FST`, the other
+  factor kept in double); sum (dx² + dy²) + dz²; every product and sum rounded to double; returned
+  unrounded. Callers store d as f32 (`FSTP`/`FST float`), except that `0x63858` compares the
+  candidate's **unrounded** d with the f32 reference (`0x638f1`) and compares f32 values in its
+  minimum search; `0x63954` compares f32 values throughout. No square root on the player paths
+  (`out` is 0 in all four helpers).
+- **`0x56dc0` (forward):** row-1 component from double differences, rows 2–3 from the f32-rounded
+  differences; each component stored as f32. Each dot product adds the y term to the x term, then
+  the z term (P3-07/12, ignored `local/research/p3-07/rule-data/out/p4`). z > 5.0 is an f32 compare; x² + y² is formed in double
+  from the f32 components and compared unrounded with the f32 r².
+- **Radar:** Manhattan sum in double from f32 positions, truncated to i32 (|sum| < 2^31 for any
+  world ≤ 105,000 units, so no overflow); screen coordinates truncated to i32; projections stored
+  as f32; the ±1e−6 degenerate-length test uses doubles.
+- **Right display:** Euclidean distance with `FSQRT` in double, stored f32; ratios with `FILD`.
+- **Timers:** all due-time tests (`0x1a8`, `0x1b0`, `0x1752c4`, `0x1752cc`, `0x17547c`) compare the
+  sample unsigned (`JNC`/`JBE`/`JA`) with a due time formed by a wrapping 32-bit `ADD` (`0x2624e`,
+  `0x27670`, `0x40330`, `0x401aa`, `0x43c52`). The raw counter starts below 30000 and advances by 2
+  per 1/32 s while not paused ([time base](#simulation-time-base-p3-0106)),
+  so the sample or a due time can wrap only after about 2^31 ÷ 32 s ≈ 777 days of unpaused
+  running: unreachable in play (Confirmed, code and arithmetic). The automatic-target test fires on
+  the first update whose sample is strictly greater than the due time, so its spacing is more than
+  0x40 units (at least 66 with even samples).
+- **rand:** none on the selection paths (no call to `0x7453b` in `0x2799c`, `0x27910`, `0x27884`,
+  `0x27a04`, `0x63858`, `0x63954`, `0x63a4c`, `0x637e4`, `0x56dc0`, `0x5261c`). Render-path users:
+  radar `0x40370` (`AND 7`, `AND 1`, `AND 3`) and `0x56b8c` (signed `IDIV` by 361 and by 8 of a value
+  0–32767), right display (`AND 0x3F`), left display `0x4ce30` (`AND 0x3F`) and `0x4d44c`.
+
+##### T11. Autopilot target writes (Confirmed reachability; P3-08)
+
+With `0x174b24` set, the device poll runs `0x5dcd4` for the player; `0x5dcd4` → `0x62250` →
+`0x62578` → `0x528bc` and → `0x62714` → `0x528bc` write the subject's +0x8C directly in AI modes 2
+and 4 (and +0x90 through `0x528e8` otherwise), bypassing message 2 and the mode field; `0x62250`
+also reads the two object sets. Of the other AI writers of +0x8C (`0x5c584`, `0x5c658`, `0x5c8b0`,
+`0x5d3b2`, `0x61740`, `0x61b99`, `0x61be8`, `0x63623`, `0x636f4`), none is reachable from `0x5dcd4`
+by direct calls (indirect calls not covered). Which AI mode the player's controller uses under the
+autopilot was not traced.
+
+Evidence: ignored `local/research/p3-07/targeting/` (`ghidra_scripts/TargetProbe.java`, `probe.sh`, outputs `out/t1`–`out/t36`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Weapons: mounts, selection and firing (P3-07/02)
+
+Q-03 and Q-04. Extends [weapon records](#weapon-records-and-the-first-missions-shooters-p2-1230) and the fire triggers of [input polling](#input-polling-p3-0201). A *state* is a 0x50-byte mount state.
+
+##### W1. Per-object weapon block and mount states — Confirmed (code)
+
+`0x2d400(handle)` zeroes the 0x60 bytes at object +0xF4 and (re)builds the mount-state array. Fields
+(object offsets):
+
+| Offset | Type | Meaning | Writers / readers |
+|---|---|---|---|
+| +0xF4, +0xF8, +0xFC | i32 ×3 | Last trigger value of channels 0, 1, 2 | `0x2d578` stores it each call; channel 1's is cleared at the end of the call |
+| +0x100, +0x104, +0x108 | i32 ×3 | Selected index in mount lists 0, 1, 2 | `0x2e4ec` |
+| +0x10C, +0x110, +0x114 | pointer ×3 | Current mount state of lists 0, 1, 2 (null for an empty list) | `0x2d400`, `0x2e4ec`; read by `0x2d704` |
+| +0x118 | u8 | Missile lock level 0–4 | `0x2ddbc` (lock machine), `0x2e4ec` (list-1 change → 0), `0x2e86c` (after a launch) |
+| +0x11C | u32 | Lock stage deadline (clock) | `0x2ddbc` |
+| +0x120 | i32 | Lock "losing" flag | `0x2ddbc` |
+| +0x124 | u32 | Lock grace deadline (clock) | `0x2ddbc` |
+| +0x128 | u32 | Next lock update (clock) | `0x2ddbc` |
+| +0x12C | i32 | Aim-solution cache flag for the current trigger call | `0x2d578` clears it, `0x2e9d4` sets it |
+| +0x130–+0x153 | f32 ×9 | Cached aim orientation (rows 1–3) | `0x2e9d4` via `0x2e5e8` |
+| +0x154 | i32 | Mount-state count (= craft +0xE8) | `0x52750` → `0x5269c` |
+| +0x158 | pointer | Array of 0x50-byte mount states, one per craft mount, in mount order | as above |
+
+`0x5269c` keeps the existing array when the count is unchanged and reallocates (new tail zeroed) otherwise;
+`0x2d400` then zeroes every state with a 0x50-byte memset (Confirmed, code).
+
+Mount state, 0x50 bytes (offsets in the state):
+
+| Offset | Type | Meaning | Source / writers |
+|---|---|---|---|
+| +0x00 | i32 | Mount index | `0x2d400` |
+| +0x04 | i32 | Clock of the last shot or misfire (0 initially) | `0x2e5e8`, `0x2e86c`, `0x2dad0` |
+| +0x08 | i32 | Ammunition | `0x2d400` copies mount +0x0C; `0x2e86c` decrements; mount damage (W4) reduces it |
+| +0x0C | i32 | Damage level 0 intact, 1 damaged, 2 destroyed | `0x2d400` = 0; `0x2e310`/`0x2e150` increment; `0x2e3c8`/`0x2e1fc` reset |
+| +0x10 | pointer | The craft mount (56-byte record) | `0x2d400` |
+| +0x14 | pointer | State of the mount named by mount +0x18 ("fire-together" link), or null | `0x2d400` |
+| +0x18 | pointer | State of the mount named by mount +0x1C ("alternate" link), or null | `0x2d400` |
+| +0x1C | i32 | Tried-in-this-call flag | `0x2d578` |
+| +0x20 | i32 | Automatic-mount burst counter | `0x2da58` loads gun +0x2C; `0x2dad0` decrements |
+| +0x24–+0x47 | f32 ×9 | Automatic-mount aim orientation (rows 1–3) | `0x2e9d4` via `0x2da58` |
+| +0x48 | handle | Automatic-mount target (counted reference) | `0x2daa0` → `0x52788`; `0x527d8` drops it when invalid; released by `0x523f4` |
+| +0x4C | u32 | Automatic-mount retarget time | `0x2daa0` stores its argument unchanged; `0x2dabc` tests clock > it |
+
+**Lists (Confirmed, code):** `0x2d400` sets, for each list c with a non-zero count (craft +0xD0, +0xD8, +0xE0), the
+current state to entry 0 (`0x2e990(craft, c, 0)`), and null for an empty list. `0x2e990(craft, c, i)` returns the
+mount index of entry i of list c (craft +0xCC, +0xD4, +0xDC), computed as the pointer difference ÷ 0x38.
+
+**Callers (Confirmed, code):** instantiation `0x67938` (at `0x6799b`) and the rescue `0x67b98` (at `0x67bd1`); no
+other caller (raw call scan). A rescue therefore restores every mount's ammunition from the craft record, clears
+damage levels, burst counters, aim data and per-mount targets, resets each list's selection to entry 0, clears the
+lock state and both trigger values. (Per-mount target references are overwritten without release; this leaks a
+counted reference but has no rule effect.)
+
+##### W2. The three mount lists — Confirmed (code); slice contents Confirmed (data)
+
+- **List 0 = main weapons, channel 0 (primary trigger).** `0x2d704(handle, c)` returns object +0x10C + 4c, so
+  `0x2d578(handle, 0, …)` fires list 0's current mount. The player's primary trigger (Alt / joystick button, a
+  level) calls channel 0 every frame.
+- **List 1 = missiles, channel 1 (secondary trigger).** The player's secondary trigger (Space / button, one-shot)
+  calls channel 1; `0x2d578` clears the stored channel-1 value at the end of every call. Only list 1 drives the
+  missile lock (`0x2ddbc` reads +0x110).
+- **List 2 = channel 2, fired only by the AI step** (`0x5dcd4` loops over channels 0–2; the player update calls only
+  channels 0 and 1). No key selects in list 2.
+- **Automatic mounts are in no list** and are fired by `0x2dad0` only (W8).
+- A list entry may hold guns or missiles: `0x2d578` dispatches on the mount's +0x10 type, so channel 0 also launches
+  missiles (the player's missile type 0 is the third list-0 entry).
+- **Slice (CINF 4037, local count):** player list 0 has three entries (gun 0 as a fire-together pair, gun 1 as an
+  alternate pair, missile 0 as an alternate pair), list 1 two entries (missile 1 and missile 3, each an alternate
+  pair), list 2 none. Wingman: list 0 two entries (guns 0, 1), list 1 two (missiles 1, 2); its missile-0 mounts are
+  in no list. Enemy kinds 7 and 8: list 0 one entry of gun 2 (kind 7: a fire-together pair; kind 8: a fire-together
+  chain of four).
+  Transponder: no mounts. Base: four automatic gun-6 mounts in no list. No slice shooter has a list-2 entry.
+
+##### W3. Selection — Confirmed (code)
+
+- `0x2e4ec(handle, list, delta)`: adds delta to the list's index (+0x100 + 4·list). If the result is negative it
+  becomes count − 1; otherwise, if it is ≥ count, it becomes 0 (wrap both ways). The current state becomes entry
+  `index` of the list, or null when the count is 0. When the list is 1 it clears the lock level (+0x118 = 0). Then,
+  **only when the object is the player** (player-state `0x1b0638` +0x8C equals the handle), it posts dispatcher
+  message type 4 with the player as subject (the sound request of [audio](./audio.md),
+  entry 11381). It returns 1.
+- The index is changed and the message posted **whether or not the selection changes**: a single-entry list keeps
+  entry 0 and still posts the request; an empty list keeps a null current state (its index may become −1) and still
+  posts it. Precondition: `0x2e4ec` first returns 0 without any change or message when the object has no craft record
+  or no mount-state array (+0x158 null, i.e. a craft with no mounts at all); the empty-list behaviour above applies to
+  a craft that has mounts but none in that list. Unusable mounts (damage level 2, no ammunition) are **not skipped**;
+  they stay selected and then fail to fire (W5).
+- Wrappers: `0x2d6dc(handle, list)` = delta +1, `0x2d6f0(handle, list)` = delta −1.
+- **Keys (flight key context `0x264a0`, compare chain on the translated key code):** 0x2F `/` → `0x2d6dc(·, 0)`
+  (next main weapon); 0x2E `.` and 0x3E `>` → `0x2d6dc(·, 1)` (next missile); 0x2C `,` and 0x3C `<` →
+  `0x2d6f0(·, 1)` (previous missile). There is no case for 0x3F `?`; the key read `0x3c970` swaps case only for
+  letters (Caps Lock, BIOS flag bit 0x40), so a shifted `/` does not select. The manual's `?` is Likely the key's
+  shifted legend; which key code a DOS read returns for that key is a P3-05 (U-011) question. The context serves
+  every view mode except Warp (0–3), base (6) and map (8)
+  ([view keys](#automatic-views-and-cameras-p3-0109)), so selection
+  works only in flight modes.
+- Other callers of the wrappers: base interior `0x39820`/`0x398ec` (P3-10) and AI code at `0x61355`, `0x6137b`,
+  `0x63d4c`, `0x63caf` (P3-08; list argument not traced).
+- **Weapon name `0x2dcf0(state)`:** the selected mount's weapon record +0x04 (gun or missile name), or a fixed
+  default string of the data object at `0x170fc4` when the state is null. Callers `0x47d5c` (HUD weapon line) and
+  `0x4f550` (P3-13).
+
+##### W4. Mount damage, repair and status (subsystems 5 and 8) — Confirmed (code)
+
+- `0x2a830` (subsystem damage, [D4](#d4-hull-and-subsystem-damage-0x2a830eax-victim-edx-source-ebx-hulldamage-ecx-noattacker--confirmed-code)) picks a subsystem index s and reads its 2-bit state; when that state is below 2:
+  s = 5 calls `0x2e150` (list-1 mount damage), s = 8 calls `0x2e310` (list-0 mount damage), and in both cases it
+  **skips the 2-bit increment** that every other index gets (`0x52a84`). Index 7 and 10/13 have their own rules
+  (D4). It then sets object +0xF0 = 1 for every index.
+- `0x2e310(handle)` (list 0): if the handle is valid, list 0 is non-empty and the state array exists, it draws
+  rand % count0 (signed) to pick a list entry, then walks from that entry's state, following +0x14 when non-null and
+  otherwise +0x18, to the first state whose level is not 2. If none, nothing happens (no other entry is tried).
+  The level is incremented; if it became 1 and ammunition > 0, ammunition becomes rand % ammunition; otherwise
+  ammunition becomes 0.
+- `0x2e150(handle)` (list 1): the same, but the walk follows only +0x18.
+- Repair (`0x2e3c8` list 0 following +0x14 else +0x18; `0x2e1fc` list 1 following +0x18): with flag 0 it resets the
+  first damaged state found (list order, then chain order) to level 0 and returns 0; with a non-zero flag it resets
+  all and returns 1; it returns 1 when nothing was damaged. Ammunition is not restored. Callers: base interior
+  `0x39820`, `0x398ec` (P3-10).
+- Status (`0x2e438` list 0, `0x2e264` list 1, same walks): counts states at levels 0, 1, 2 over every entry; returns
+  0 when none is at level 1 or 2, 2 when every state is at level 2, otherwise 1. Callers `0x398ec` and `0x4d65a`/
+  `0x4d673` (status display, P3-13). So the displayed state of subsystems 5 and 8 is derived from the mount lists
+  (Likely; the display code was not read), while their own 2-bit fields are never incremented by `0x2a830`.
+- Mounts in list 2 and automatic mounts are never damaged by this path.
+
+##### W5. Trigger routine `0x2d578(handle, channel, value)` — Confirmed (code)
+
+1. Stores value at object +0xF4 + 4·channel. Value 0 → returns 1 (nothing tried).
+2. head = `0x2d704(handle, channel)` (current state of list `channel`). Null → returns 0.
+3. Clears +0x1C of every state on **head's** +0x18 chain only, clears the aim cache flag (+0x12C), reads clock
+   once.
+4. For each *group* g on the +0x14 chain starting at head:
+   - If g has no +0x18 link, the candidate is g, attempted without using the tried flag. Otherwise the candidate is,
+     among the untried states of g's +0x18 chain (g included), the one with the smallest +0x04 strictly below clock
+     (signed; the first wins ties); if none, g itself. A candidate already tried ends this group.
+   - Because only head's chain is cleared, a later group with alternates would keep its tried flags from earlier
+     calls. No list entry of the 24 CINF has that arrangement, nor a head with both links (local count over 398
+     entries, `out/chain.txt`), so the case is unreachable with the shipped data.
+   - The candidate is marked tried and attempted by its mount's +0x10 type:
+     - gun (0): requires `0x30cc8` (charge gate, W6) and level ≠ 2, then `0x2e5e8`;
+     - missile (1): requires ammunition > 0 (signed) and level ≠ 2, then `0x2e86c`;
+     - any other type: not attempted (the previous result is kept).
+   - On failure, when g has a +0x18 link, the next untried alternate is chosen by the same rule; otherwise the
+     next group follows.
+5. If channel is 1, the stored channel-1 value is cleared. Returns the result of the **last** attempt (not "any
+   shot"). Neither the player update nor the AI step reads the return value.
+
+Effects: groups on +0x14 fire together (one shot per group per call); members of a +0x18 chain alternate, the one
+that fired least recently going first. The routine itself has no Warp, view-mode, state or dead-flag test; the player
+update calls it only in state 7 with the dead flag clear, every frame (also in map and Warp modes,
+[input polling](#input-polling-p3-0201)).
+
+**Order of checks per attempt (for reason codes):**
+
+| Weapon | Order |
+|---|---|
+| Gun | charge (player only) → destroyed mount → cooldown → damaged-mount misfire → aimed-gun target/arc (with fallback) → shot |
+| Missile | ammunition → destroyed mount → target required (guided only) → cooldown → launch |
+
+##### W6. Gun shot `0x2e5e8(handle, clock, state)` — Confirmed (code)
+
+1. **Cooldown:** fails when clock < state +0x04 + gun +0x14 (signed). Equality fires.
+2. **Misfire:** when the level is 1, one rand; if rand & 1 = 1 the attempt fails, but +0x04 = clock (the cooldown
+   restarts) and no charge is spent. Exactly ½.
+3. **Aim (gun +0x28 = 1 only):** if the shooter's target (object +0x8C) is valid, `0x2e9d4` computes or reuses the
+   aim solution (W7) and tests the mount's arc; otherwise the result is 0. When the result is 0 **and** mount +0x30 =
+   0 **and** the state has a +0x18 alternate, the attempt fails (no cooldown or charge change). Otherwise it fires
+   unaimed.
+4. **Shot:** +0x04 = clock; `0x30cec` spends charge (player only); posts message 8 (W9). For gun +0x28 = 1 the
+   message carries an orientation: the aim orientation when aimed, otherwise the shooter's pose rows with rows 1 and
+   3 negated when mount +0x20 has bit 0x08. For other guns the message carries no orientation. Returns non-zero.
+
+**Charge (Confirmed, code):** `0x30cc8(handle, gun)` returns 0 when object kind has bit 0 (the player) and gun +0x18
+> object +0x30 (signed), else 1; non-players are never gated. `0x30cec` (player only): object +0x30 −= gun +0x18 (0
+when it would go negative; unreachable after the gate), and object +0x44 = 1 when the kind is exactly 1 (the energy-page redraw flag,
+[D1](#d1-object-fields-of-this-section--confirmed-code)).
+
+**Gun +0x28 values (Confirmed, code):** 0 fixed (no arc, no orientation in the message), 1 aimed (arc and target as
+above), 2 automatic (only `0x2dad0`, `0x2d72c`, `0x2d7cc` use it; never fired by `0x2d578` as an automatic mount
+because such mounts are in no list in the slice — Confirmed for the slice by data, the code itself would fire a
+type-2 gun placed in a list like a fixed gun).
+
+##### W7. Aim solution `0x2e9d4` and hemisphere test `0x2d894` — Confirmed (code)
+
+`0x2e9d4(shooter, cacheFlag*, out[9], target, mount)` (stack argument popped by `RET 4`):
+
+- If cacheFlag is non-null and set, the cached orientation is reused (only the arc test runs). `0x2e5e8` passes
+  object +0x12C/+0x130, so within one `0x2d578` call the first aimed mount's solution is reused by later aimed
+  mounts, even with different mount offsets. `0x2da58` passes no flag and always computes.
+- Origin = shooter position, plus the mount offset transformed by the shooter's rows when mount +0x34 ≠ 0.
+- Time of flight t = √|target − origin|² ÷ gun +0x08. Aim point = target position + (target speed × t) × target
+  row 3, where target speed is the f32 at the target's movement block +0x08 (`0x21c78`; 0 without a block). Row 3
+  of out = aim point − origin; `0x56d18` completes rows 1–2 (orthonormal frame; P3-06 helper). Sets the flag.
+- Arc (mount +0x20 bits, d = row 3 of out, compared with the shooter's rows): 0x01 requires d·row3 ≥ +0x24; 0x08
+  requires d·row3 ≤ −(+0x24); 0x02 requires d·row1 ≥ +0x28; 0x10 requires d·row1 ≤ −(+0x28); 0x04 requires d·row2 ≥
+  +0x2C; 0x20 requires d·row2 ≤ −(+0x2C). Returns 1 when all present bits pass.
+- **Numerics (Confirmed, native instructions, P3-07/14):** the origin is built like a spawn position of W11 with
+  k = mount +0x08. t is stored to f32. With L = target speed × t, the aim point's x and y are F(F(L × row 3) +
+  target) and row 3's x and y are F(aim − origin); z skips both stores: F((L × row3_z + target_z) − origin_z). Each
+  arc product (the y, then z, then x terms) is stored to f32 before its comparison, unlike the general rule of W13.
+  With the arguments of its two P3-07 callers (`0x2e9d4`, and `0x218e8` for a mode-2 source), `0x56d18` normalises
+  row 3 (`0x56aa8`), sets row 1 = row 2 × row 3 (each component F(a·b − c·d)) and normalises it, then sets row 2 =
+  row 3 × row 1 without normalising; the old row 1 is not read.
+
+`0x2d894(shooter, target, state)`: returns 0 when |target − shooter|² > weapon +0x10 (range², non-strict in range);
+then, with v = target − shooter (positions only, no mount offset), bit 0x01 requires v·row3 ≥ 0, 0x08 requires
+v·row3 < 0, 0x02 requires v·row1 ≥ 0, 0x10 v·row1 < 0, 0x04 v·row2 ≥ 0, 0x20 v·row2 < 0. Callers: AI target choice
+`0x5e444` only. The products v·row (y, z, then x terms) stay in double and are compared with 0 (P3-07/14).
+
+##### W8. Missile launch `0x2e86c` and the missile lock `0x2ddbc` — Confirmed (code)
+
+`0x2e86c(handle, clock, state)`:
+
+1. When missile +0x18 ≠ 0 (guided), the shooter's target (+0x8C) must be non-null and valid; otherwise fails.
+2. Cooldown: fails when clock < state +0x04 + missile +0x1C (signed).
+3. +0x04 = clock; ammunition −1, except when the typed-cheat flag `0x174ed8` is set and the shooter is the player
+   (the flag is entry 17 of the typed-cheat table, pointer at `0x175090`, toggled only by cheat matching in
+   `0x3c970`; it is also read by `0x2a694`). The project implements no cheats, so ammunition always decreases.
+4. Posts message 8 (W9) with the lock byte: object +0x118, minus 1 (floor 0) when the mount's level is 1.
+5. For a guided missile, the lock level is cleared unless the shooter is the player and `0x2dd04(fired state)` > 0
+   (ammunition left on the +0x18 chain from the fired state on: for an alternate pair, firing the first member
+   counts both, firing the second counts only itself); for any non-player shooter it is always cleared.
+
+The launch does **not** require any lock level; the lock level only selects the missile's behaviour at construction
+(W9).
+
+`0x2ddbc(handle)` runs once per frame in the player update (state 7, alive), before the polls; its only caller is
+`0x2613d` (raw call and value scans). Using the current list-1 state s and the target (+0x8C):
+
+1. Lock = 0 and return when there is no target, no s, subsystem 3's state (`0x52ac4(·,3)`) is 2, or the target's
+   kind is in `0x206c87f` (friendly kinds and the player).
+2. Return when clock < next update (+0x128, unsigned).
+3. Walk s's +0x18 chain to the first state with ammunition ≠ 0; none, or its missile has +0x18 = 0 → return
+   (next update unchanged).
+4. ok = |target − shooter|² < missile +0x10 (strict) and (normalised direction · shooter row 3) > missile +0x28
+   (strict); when missile +0x3C ≠ 0 also target row 3 · shooter row 3 > missile +0x40 (strict). **When subsystem 3's
+   state is 1, ok is replaced by (rand & 0xFF) > 0x80** (signed compare; 127/256), discarding the geometric result.
+5. Not ok: if the losing flag is set and clock ≥ grace deadline (unsigned) → lock = 0; otherwise losing = 1 and
+   grace deadline = clock + missile +0x38 (so the lock is lost only when two consecutive failed updates are at least
+   +0x38 apart).
+6. ok: if losing was set, lock 2 → stage deadline = clock + (missile +0x34 >> 1); lock 3 or 4 → lock = 3 and
+   deadline = clock + (missile +0x34 / 2, truncating); then losing = 0. Then the stage machine (jump table
+   `0x2dda8`): 0 → 1 with deadline = clock + missile +0x30; 1 → 2 and 2 → 3 when clock ≥ deadline (unsigned), each
+   with deadline = clock + (missile +0x34 >> 1); 3 → 4 when clock ≥ deadline; 4 stays.
+7. Next update = clock + 0x15.
+
+Helpers: `0x2dd04(state)` = sum of ammunition over the +0x18 chain of a missile entry (−1 for a gun or null);
+`0x2dd94(state)` = missile +0x24 byte, or 2 for a gun; `0x2dd54(handle, channel, out)` = current entry's weapon +0x0C
+(range) unless it is a missile entry without ammunition; `0x2e080(handle)` = HUD lock progress (signed): −1 when the handle is invalid, the current list-1 state (+0x110) is
+null, the losing flag (+0x120) is 1 or the level is 0 or 1; 0 at level 4; otherwise r = stage deadline (+0x11C) − clock
+(`SUB`, signed test), and at level 2 it is 50 when r < 0, else (100 × r) ÷ c34 + 50, at level 3 0 when r < 0, else
+(100 × r) ÷ c34. Here 100 × r is formed with shifts and adds (wrapping as i32), the divide is a signed `IDIV`, and c34 is
++0x34 of the current list-1 state's own weapon record (state +0x10 → mount +0x14), read only when r ≥ 0; for a gun
+mount that read falls past the 48-byte gun record (Confirmed, code, P3-07/23). Consumers: AI (`0x5dfa4`,
+`0x5e070`, `0x63d3c`, `0x64132`), HUD `0x45de0`, `0x47d5c` (P3-08, P3-13).
+
+##### W9. Automatic mounts — Confirmed (code)
+
+- **Firing `0x2dad0(handle)`:** called only by the AI step `0x5dcd4` when AI block +0x140 ≠ 0. For every mount state
+  in mount order: skip unless weapon +0x28 = 2, level ≠ 2, burst counter +0x20 > 0 and state +0x04 + weapon +0x14 ≤
+  clock (signed). At level 1 one rand: fire only when (rand & 0xFF) < 0x80 (½). On fire it posts message 8 with the
+  stored aim orientation (+0x24–+0x44) and the mount offset plus a jitter: a random direction from `0x56b8c` (two draws,
+  [direction table](#numbers-on-the-movement-path-p3-0601)), each component multiplied by its own (rand × 1/32767 × 3 + 2); each
+  jitter component F(that × u) is stored before F(offset + jitter) (P3-07/14). Fired or not, the
+  burst counter decrements and +0x04 = clock. The routine does not test the mount type; no missile record in any of
+  the 24 CINF has 2 in the byte at +0x28 (local count), so only guns fire this way.
+- **Acquisition `0x2da58(handle, state)`:** target = `0x527d8` (state +0x48, dropped when invalid); when valid and
+  `0x2e9d4` (no cache) passes the mount's arc, burst counter = weapon +0x2C. The burst is then fired along the
+  orientation computed here; mid-burst mounts are not re-aimed (`0x2d72c` skips them). `0x2e9d4` writes the solution
+  into the state's aim before its arc test, so a failed test still changes the aim; only the burst waits for a pass
+  (P3-07/14).
+- **A separate policy, not the list path:** automatic mounts never go through `0x2d578`/`0x2e5e8`. Compared with a
+  list gun they have no charge gate or cost (also for the player), their own damage roll ((rand & 0xFF) < 0x80
+  instead of rand & 1), a burst counter that is consumed and a cooldown that restarts on a failed roll as well, no
+  aim or arc test at fire time (the orientation comes from acquisition), and a random spawn jitter. They share only
+  the mount state, message 8 and the projectile constructor.
+- **Target choice (AI, P3-08):** three AI behaviours (`0x62c28`, `0x6307c`, `0x64914`) walk idle automatic mounts
+  with `0x2d72c` (next automatic mount after an index with burst 0 and level ≠ 2); for each, when `0x2dabc` (clock >
+  state +0x4C, unsigned) holds they call `0x5e444(handle, state, kindMask, hold)`, then always `0x2da58`.
+  `0x5e444` walks objects of `kindMask` (object-table walk order), skips the target held by the previous automatic
+  mount (`0x2d7cc`, wrapping, which can return the mount itself; that target is kept as a fallback), accepts the
+  first that passes `0x2d894`, and stores the result with `0x2daa0` (state +0x48, and +0x4C = hold, stored as given).
+  Masks/holds seen: AI block +0x168 with 0x140 (two behaviours) and fixed 0x6c87f with 0xC0. A fourth behaviour
+  (`0x62bce`) assigns targets with hold (rand & 7) << 6 and AI +0x168 but does not acquire. Candidate filtering
+  beyond range and hemisphere, and whether the hold is meant as a duration, belong to P3-08.
+
+##### W10. AI fire entry points (record only; P3-08) — Confirmed (code)
+
+- `0x5df20(ai, channel, hold)` presses: if AI +0x120 + 4·channel is 0 it becomes 1 and the hold deadline AI +0x12C +
+  4·channel becomes 0 (hold 0), clock + hold (hold > 0) or clock + 0x7D00 (hold < 0). 14 call sites in AI behaviours.
+- `0x5df84(ai, channel)` releases: value 0 and `0x2d578(·, channel, 0)`.
+- `0x5dcd4(ai)` (AI step; callers: generic update `0x20caa`, player autopilot in the device poll `0x2741a`/
+  `0x27448`, and `0x2abce` inside the missile callback `0x2ab00`): for an active object, for channels 0–2 in order:
+  when the held value is non-zero, `0x2d578(·, channel, value)`; then channel 1 is always released, channels 0 and 2
+  when clock > hold deadline (unsigned). Then `0x2dad0` when AI +0x140 ≠ 0. Then the behaviour callback AI +0xFC
+  when clock > AI +0xF0.
+- `0x5dfa4(ai, channel)` = current weapon range (`0x2dd54`) > AI +0x2C (strict).
+- Aimed guns and guided missiles of AI shooters use the shooter's object +0x8C as target, like the player.
+- **The lock machine runs only for the player**, and no other writer of +0x118 was found among disassembled
+  instructions, so AI-launched guided missiles carry lock 0 (Likely; undisassembled code not scanned).
+
+##### W11. Launch message 8 and the two constructors — Confirmed (code)
+
+**Message 8** (`0x53030` allocates a 0x80-byte slot and clears only +0x08 and +0x1C; the pool `0x566dc` does not
+zero slots, so unwritten fields hold an earlier message's bytes):
+
+| Offset | Content | Written by |
+|---|---|---|
+| +0x08 | Shooter handle (counted reference) | all three posters |
+| +0x0C | Type 8 | all |
+| +0x20–+0x40 | Orientation rows 1–3 (f32 ×9) | `0x2e5e8` for gun +0x28 = 1; `0x2dad0` |
+| +0x44–+0x4C | Spawn offset (mount +0x00–+0x08; plus jitter for automatic mounts) | all |
+| +0x50 | Kind: 0x200000 projectile, 0x100000 missile | all |
+| +0x54 | 1 | `0x2e86c` only (stale for gun shots) |
+| +0x58 | Weapon record | all |
+| +0x5C | Lock byte (u8) | `0x2e86c` only |
+
+The dispatcher (`0x20d10`, case type 8 at `0x21393`) handles it only when `0x339cc` passes (the gate also used for
+spawns and fragment events), calling `0x25b0c` for kind 0x200000 and `0x2b00c` otherwise. Posters are only
+`0x2e5e8`, `0x2e86c`, `0x2dad0` (P2-12/30 scan). The message carries **no mount index, list, channel or command
+identity**; the constructors know only the shooter, the weapon record, the offset, the orientation and (missiles)
+the lock byte.
+
+**Spawn offset = load-transformed mount +0x00–+0x08:** the posters copy the mount's three floats as they are in
+memory, i.e. after `0x2cf38` ([craft §3.8](./craft.md#38-load-transforms-in-0x2cf38-confirmed-code))
+increased +0x08 by the RENS length of the gun's record (scaled by the f64 constant for craft records 0 and 1) for
+gun mounts whose gun record +0x28 ≠ 2. Automatic (type 2) gun mounts and missile mounts keep their stored +0x08.
+Automatic shots then add the jitter (W9). No constructor adds a further length.
+
+**Projectile `0x25b0c(message)`:** allocates kind 0x200000 (state 0), activity 1, update callback `0x259b0`;
+movement block +0xFC = shooter (counted reference, attribution), +0xF0 = message +0x54 (stale for guns; no reader
+on projectile paths was found among disassembled instructions, [H2](#h2-gun-projectiles--confirmed-code)), +0xF4 = weapon record. Pose from the
+shooter (`0x218e8`): rows = shooter rows, position p:
+
+- p1 = f32(pos + f32(row1 · ox)), p2 = f32(p1 + f32(row2 · oy)) per component;
+- k = oz + shooterSpeed × step when the shooter handle is valid (shooterSpeed = shooter movement block +0x08), else
+  oz; p = f32(p2 + f32(row3 · k)). k is not stored: the speed from `0x21c78` times the f32 frame step `0x186424` (an
+  exact product), plus oz, rounded once in double (Confirmed, native instructions, P3-07/14).
+
+When weapon +0x28 ≠ 0 the rows are replaced by the message orientation, after the position above is computed with the
+shooter's rows. `0x21794` then writes position and rows,
+clears movement block +0x04–+0xA3, and sets (movement-block offsets) mode byte +0x04 = 1, start position +0x0C–+0x14,
+speed +0x08 = gun +0x08, velocity +0x5C–+0x64 = f32(row3 × speed) and +0x68 = 1. The shooter's velocity is **not**
+added. Posts presentation item 8 for the new object
+(renderer/sound, P3-12/P3-14). Player shooter: player-state +0x38 += 1 (projectiles fired).
+
+The projectile's update callback `0x259b0`, its lifetime and its hits are in [H2](#h2-gun-projectiles--confirmed-code).
+
+**Missile `0x2b00c(message)`:** allocates kind 0x100000, activity 1; object +0x1C = missile +0x14 (body record);
+calls `0x3060c(missile, body, 100, 0, 0)` (resource initialisation, [D13](#d13-resource-initialisation-0x3060ceax-h-edx-craft-ebx-a-ecx-b-stack-c--confirmed-code)); target = shooter's +0x8C when
+valid (`0x528bc`), read **at construction**; callback `0x2ab00` when guided and lock byte ≥ 2, otherwise `0x2aa40`
+([H5](#h5-missiles--confirmed-code-unless-marked)); movement block +0xFC = shooter, +0xF0 = 1, +0xF4 = missile record, +0x100 = lock byte. Position
+as for projectiles, rows = shooter rows (no aim). Mode byte 0 with throttle value 0 (guided, missile +0x18 ≠ 0) or 0x80 (unguided); the mode-0
+initial speed it gives belongs to P3-06. Guided: `0x21a3c` then sets the speed, the commanded speed and the ratio
+from the smaller of object +0x78 and the shooter's speed (movement +0x08) (below). When missile +0x20 ≠ 0, three rand: roll by u·π/2 − π/4 (`0x22990`), then a coin
+(rand & 1) chooses `0x22a50` (rows 1 and 3) or `0x228cc` (rows 2 and 3) for an angle u·2° − 1° (u = rand × 1/32767;
+angles rounded to f32). Posts presentation item 4. Player shooter: player-state +0x40 += 1 (missiles fired), and
+`0x3118c` stores the missile handle in `0x174c0c` (camera code, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)).
+`0x2b00c` reads no clock and sets no lifetime: the missile's first callback (`0x2aa40` or `0x2ab00`, state 0)
+allocates its guidance block at object +0x14 and posts state 7, and the timers live in that block and `0x2ac10`
+([H5](#h5-missiles--confirmed-code-unless-marked)).
+
+**Guided launch speed `0x21a3c(EAX = missile, EDX = its movement block, EBX = shooter)`** (Confirmed, native
+instructions, P3-07/30). Its only caller is `0x2b00c` at `0x2b304` (raw call scan; no stored pointer to it), right after `0x21794`
+has built the block, and only when the missile record's byte +0x18 is non-zero (guided):
+
+1. It returns without writing anything when the missile's record pointer (object +0x1C) or the shooter's block
+   pointer (shooter object +0x08) is null. It makes no validity test of the shooter handle.
+2. **Block mode 0** (+0x04 = 0), in this order:
+   - +0x78 ← 1 (commanded speed reached);
+   - v ← object +0x78 (the missile's maximum speed, which `0x3060c` set to record +0xB8,
+     [D13](#d13-resource-initialisation-0x3060ceax-h-edx-craft-ebx-a-ecx-b-stack-c--confirmed-code)) when it
+     compares below the shooter's block +0x08, otherwise the shooter's speed. Equal values give the shooter's;
+     an unordered compare gives object +0x78. The value is copied as bits, not rounded;
+   - speed +0x08 ← v, then commanded speed +0x6C ← v;
+   - when +0x70 is ±0 (every bit but the sign clear), +0x70 ← record +0xB8 (object +0x1C);
+   - ratio +0x74 ← F(D(speed ÷ +0x70)) when 0 < +0x70 (an unordered compare also divides), otherwise 0.
+3. **Any other mode:** only speed +0x08 ← the shooter's block +0x08, as bits. There is no minimum, and +0x6C,
+   +0x70, +0x74 and +0x78 are not written.
+
+On its only path the block is in mode 0: `0x2b00c` passes mode 0 to `0x21794`, which copies record +0xB8 of the
+same object to +0x70 and sets +0x78 = 1 ([movement stage](#movement-stage-and-integration-p3-0601)). The effective
+writes are therefore the speed, the commanded speed and the ratio; the ±0 test rewrites the value already there,
+and step 3 is not reached.
+
+**Timing:** the player's and the AI's triggers run in update callbacks (`0x20938` walk), so message 8 is handled in
+the same frame's message loop, after earlier messages; the new object is neither moved nor collision-tested in that
+frame and its first callback runs in the next frame
+([frame pipeline](#frame-pipeline-p3-0201)).
+
+##### W12. Random draws on these paths — Confirmed (code)
+
+| Where | Condition | Draws, in order |
+|---|---|---|
+| `0x2e5e8` | gun, level 1, after cooldown passes | rand & 1 (misfire on 1) |
+| `0x2dad0` | automatic mount ready, level 1 | rand & 0xFF (< 0x80 fires) |
+| `0x2dad0` | shot | rand % 361, rand % 8 (`0x56b8c`), then rand for x, y, z |
+| `0x2b00c` | missile +0x20 ≠ 0 | roll angle, coin, second angle |
+| `0x2ddbc` | subsystem 3 at level 1, update due, guided entry with ammunition | rand & 0xFF (> 0x80 ok) |
+| `0x2e310`/`0x2e150` | subsystem 8/5 chosen with state < 2 | rand % list count; then, when the chosen state becomes level 1 with ammunition > 0, rand % ammunition |
+
+No draw in `0x2d400`, `0x2e4ec`, `0x2d578`, `0x2e86c` or `0x25b0c`.
+
+##### W13. Numeric semantics — Confirmed (code)
+
+- **Clock comparisons:** cooldowns (`0x2e5e8`, `0x2e86c`, `0x2dad0`) and the alternate choice in `0x2d578` use signed
+  i32 compares; the lock deadlines, next-update time, projectile expiry, AI hold and retarget time use unsigned
+  compares. Cooldowns are non-strict (fire at equality), the alternate choice strict, lock/expiry deadlines
+  non-strict (≥), retarget and AI hold strict (>). All additions to the clock (`clock + n`, `last + cooldown`) are
+  32-bit wrapping `ADD`s. Signed and unsigned agree while the clock and every sum stay below 2³¹. The sample counts
+  1/64 s since program start (pauses excluded,
+  [time base](#simulation-time-base-p3-0106)), so the sign boundary is
+  reached only after about 388 days of uninterrupted running (2³² wrap after about 776 days); past it, a signed
+  cooldown test compares a negative clock with a positive `last + cooldown` recorded before the boundary and refuses
+  the shot, while the unsigned deadlines keep comparing normally until a sum wraps past 2³². Not reproduced: the Core
+  clock follows the P3-02 safe-integer rule and faults instead of wrapping.
+- **Integers:** ammunition, charge, costs, burst counts are i32 (`DEC`, `SUB`, signed `JLE`/`JG`). `rand % n` uses
+  signed `IDIV` with rand ≥ 0, so the support is 0…n−1 with 32768 = q·n + r preimages split q+1 for values < r.
+  `rand & 1` and `rand & 0xFF` are exact (½, ½, 127/256). The lock stage durations halve with an arithmetic shift
+  (`SAR`) except the resume branch for levels 3–4, which divides by 2 truncating; both agree for non-negative data.
+  HUD progress uses signed `IDIV`.
+- **Floats:** all arithmetic on the x87 in double precision (control word of
+  [x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)).
+  Differences of positions are stored to f32 before being squared in `0x2ddbc`, `0x2d894`, `0x2e9d4` (the first
+  difference is squared as extended × f32); dot products stay on the x87 stack and are compared with f32 operands.
+  Spawn positions and velocities are rounded to f32 at each stored partial result (W11). The missile launch angles are
+  rounded to f32 before the FSIN/FCOS rotation helpers. `0x2e9d4` uses FSQRT and one division by gun +0x08 (non-zero
+  in the slice). No float-to-integer conversion occurs on these paths: `0x25b0c` asks `0x218e8` for mode 1, whose
+  branch copies the shooter's speed (then overwritten by gun +0x08); the conversion in `0x218e8`'s mode-0 branch
+  (`0x74518` + `FISTP` into frame +0x34) is not reached from them, and `0x2b00c` builds its frame without `0x218e8`.
+  The direction table of `0x56b8c` is built once at start-up ([numbers on the movement path](#numbers-on-the-movement-path-p3-0601)). Rounding direction: the P3-02/10
+  runtime observation (round to nearest) applies.
+- **Comparisons with NaN** (not expected with valid data) fall to the "less" branch of each `FCOMP`.
+- **No fixed point or trigonometric tables** on these paths (supports U-009).
+
+Evidence: ignored `local/research/p3-07/weapons/` (`ghidra_scripts/WeapProbe.java`, `probe.sh`, outputs `out/p0`–`out/p32`; `data-check.ts`, `byte28-check.ts` and `chain-check.ts`, whose outputs hold structure and counts only). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Projectiles, missiles, hits and collisions (P3-07/03)
+
+Q-05 and Q-06. *G* is a missile's guidance block (missile object +0x14), *g* the difficulty group `0x176708` (0–2, through `0x694f0`).
+
+##### H1. Movement modes and their users — Confirmed (code)
+
+- The movement stage `0x221fc` ([movement stage](#movement-stage-and-integration-p3-0601), P3-06) dispatches mode 1 to `0x22818` and mode 2 to `0x2285c`, and after a mode-1 move calls the hit test `0x28450` when the dword mb +0x68 is non-zero (H3). After the walk it calls `0x29670` then `0x29934` (H6).
+- `0x21794`(obj, mb, item) writes the mode byte and, per mode: **mode 1** mb +8 := item +0x34 (speed), mb +0x68 := item +0x38 (hit-test flag), velocity mb +0x5C..+0x64 := item R2 × speed; **mode 2** mb +8 := item +0x34, velocity := item +0x38..+0x40, mb +0x68 := item +0x44 (spin angle), byte mb +0x6C := item +0x48 (spin axis). `0x218e8`(src, src mb, mode, item) builds the item from a source pose, adding the source's speed for modes 1 and 2.
+- **Users of modes 1 and 2** (the table of [movement stage](#movement-stage-and-integration-p3-0601)): only P3-07's object kinds. Gun projectiles `0x25b0c` take mode 1 with hit-test flag 1; the explosions `0x23ac8` and `0x23fdc` take mode 1 with the hit-test flag explicitly 0, so they drift with the source's speed along its R2 and never hit-test; fragments `0x24ec4` (discriminators 1, 2) and `0x25124` (discriminator 3) take mode 2. Missiles `0x2b00c` fly in mode 0.
+- **Mode 1 `0x22818`:** first copies P to mb +0x0C..+0x14 (the pre-move position), then P := P + v × step per axis (v f32, the product and sum in x87, one f32 store per axis). Velocity is constant; no drag, no gravity, no speed field use.
+- **Mode 2 `0x2285c`:** P := P + v × step as above, then rotates the rows by the angle mb +0x68 about the axis chosen by byte mb +0x6C: 2 → `0x228cc` (rotates R1 and R2), 1 → `0x22a50` (R0 and R2), any other value → `0x22990` (R0 and R1). **The angle is not multiplied by the step** (the rotation helpers read only their angle argument; p1, p18): fragments spin by a fixed angle **per frame**, so their spin rate depends on the frame rate while their translation does not. This corrects the time-base paragraph that lists `0x2285c` among readers that turn "as rate × step" and calls it a projectile integrator (it is the fragment integrator).
+
+##### H2. Gun projectiles — Confirmed (code)
+
+- **Creation:** `0x25b0c`, in the message loop ([W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code)). In CINF 4037 gun 0 has +0x28 = 0 and guns 1–9 non-zero (local data count), so only gun 0 keeps the shooter's rows. The stale mb +0xF0 of gun shots has no reader on these paths.
+- **Update callback `0x259b0` (p2, p22):**
+  - State 0 or 1: allocates a 3-word timer {due, first-state-8 flag, …} from pool `0x18642c`, due := sample + gun +0x24, flag := 1, stored at obj +0x14; posts message 0x200 with state 7 (**no wait for the presentation**). So a projectile created in frame N gets state 7 in frame N+1's loop and is moved and hit-tested in frame N+1; its lifetime counts from frame N+1's sample.
+  - State 7: when sample ≥ due (unsigned), posts message 0x10000 → dispatcher → `0x25f48` (below); nothing when the pool gave the projectile no timer (Confirmed, code, P3-07/17).
+  - State 8 (has hit): at the first state-8 callback (flag ≠ 0) clears the flag and sets due := sample + 0x80; afterwards, when sample ≥ due, posts 0x10000 (nothing when the pool gave the projectile no timer; Confirmed, code, P3-07/17). A hit projectile therefore lingers 0x80 units (2 s) before removal.
+  - State 6: frees the timer and posts 0x20 (removal in that frame's loop).
+- **`0x25f48` (removal request):** `0x21650` posts a presentation removal item and sets state 6, then releases the shooter reference (mb +0xFC := 0). Removal follows at the next callback (P3-02 timing).
+- **Range:** gun +0x0C (= +0x24 × const × +0x08) and +0x10 (its square) are read only by firing/AI decisions (`0x2d894`, `0x2ddbc`, `0x30150`, `0x5dfec`); no in-flight routine reads them. Expiry is by time only.
+
+##### H3. Projectile hit test `0x28450` — Confirmed (code)
+
+Runs inside the movement walk, immediately after the projectile's own mode-1 move (p1, p6, p8).
+
+- **Gate:** projectile state ≥ 7, and for kind `0x200000` exactly 7 (`0x25f30`): projectiles in state 8 are never hit-tested again.
+- **Segment:** p0 = mb +0x0C..+0x14 (pre-move), p1 = P (post-move). Excluded object: the shooter handle mb +0xFC (compared as a node pointer; no other identity, side or team test — **friendly fire is possible**).
+- **Pass 1 — craft:** walk kinds `0xfffff` (ascending kind bit, allocation order). Filter: +2 = 1 (parked and docked objects excluded), state ≥ 7 (states 4–6 excluded; state 8 objects would pass), not the shooter. The dead flag is not tested here.
+  - Coarse test `0x2874c`(p1, p0, target P, bounds = craft record +0x18..+0x2C, i.e. shape +0x08..+0x1C): a **world-axis-aligned box** [P + min, P + max] (not rotated, each corner rounded to f32). Reject when both endpoints are strictly below the min, or both strictly above the max, on any axis. Hit when either endpoint lies strictly inside on all three axes. Otherwise, for each axis with a non-zero component of d = p1 − p0 (f32; the test is on the bit pattern, so ±0 counts as zero), t = (face − p0)/d is computed for the min face then the max face (x, y, z in that order) and stored as f32; a face hits when 0 ≤ t ≤ 1 (inclusive) and the other two coordinates p0 + d × t (f32) lie within [min, max] inclusive (`0x294c0`, `0x29550`, `0x295dc`). This is a proper segment–box test: **a projectile that crosses the box with both endpoints outside is detected**; there is no sphere test and the radius is not read.
+  - Refined test, only when the craft record's box count (+0x34) ≠ 0: `0x28efc` transforms p0 and p1 into the target frame (`0x56dc0`: local_k = R_k · (point − P), differences stored as f32, dot products in x87, results f32). If the inner-box flag (shape +0x28) ≠ 0 and **both** endpoints lie strictly inside the inner box (+0x2C..+0x34 min, +0x38..+0x40 max), it misses. Otherwise each box (count > 0, signed) is tested by `0x28b48`: the same both-endpoints-outside reject (strict) and face crossings with t ∈ [0, 1] and inclusive face extents, **without** an endpoint-inside test (a segment wholly inside a box does not hit that box). The smallest t over all faces and boxes is kept (initial 2.0; replaced only when strictly smaller, so ties keep the earlier face/box; face order x-min, x-max, y-min, y-max, z-min, z-max = codes 0, 3, 1, 4, 2, 5).
+  - On a hit (and only when the hit made it through the refined test where one applies) with a gun record present, `0x2a40c`(projectile, target, damage = gun +0x1C, impact record or null) is called. The impact record (0x60 bytes) holds the world point F((p1 − p0) × t + p0) and the local point F((l1 − l0) × t + l0) of the two endpoints in the target's frame (the difference and the product stay in x87, unlike d of the face tests, which is stored as f32; one f32 store per component; Confirmed, code, P3-07/17), the target's rows permuted and negated by the face code, and a face basis.
+  - **Order and multiple targets:** the walk stops at the first object whose test (coarse, then refined) passes: the first in kind-bit and allocation order, **not the nearest**. Within one target the refined test does take the nearest entry point. Exactly one target is affected per projectile per frame. A coarse hit with no gun record still stops the walk without damage.
+- **Pass 2 — fragments** (only when pass 1 found nothing): walk kind `0x1000000` with +2 = 1, state ≥ 7, DEBRIS record (obj +0x1C) ≠ 0 and durability obj +0xD0 > 0 (signed). Same coarse test with the DEBRIS bounds (record +0x20) and refined test with the DEBRIS shape (record +0x18) when its box count (+0x3C) ≠ 0. On a hit with a gun record:
+  - if DEBRIS +0x5C = 0, one rand; when (rand AND 3) = 0 the projectile ricochets (`0x25dc4`, H4); otherwise, and always when +0x5C ≠ 0 (no draw), the projectile is removed (`0x25f48`);
+  - obj +0xD0 −= gun +0x1C (i32); when the result ≤ 0, `0x24a6c` marks the fragment shot down (H4). No damage handler, no hit item, no attacker record for fragments.
+- **Timing consequences:** craft (bits 0–19) and missiles (bit 20) have already moved in this walk, so targets are tested at their post-move positions and treated as static during the projectile's segment; projectiles created earlier (allocation order) have already moved and tested; fragments (bit 24) are tested at their previous-frame positions. Missiles, explosions and other projectiles are never targets.
+- **Callers:** `0x28450` ← only `0x221fc` (`0x2225d`); `0x2874c` and `0x28efc` ← only `0x28450` (p7).
+
+##### H4. Impact, ricochet, attribution and fragment kills — Confirmed (code)
+
+- **`0x2a40c`(source, victim, damage, impact)** (p5, p9). Source = a gun projectile (from `0x28450`) or a missile (from `0x2b408`). It does **nothing at all** when the victim handle is invalid or the victim's dead flag +0xD8 is set: in particular a gun projectile that strikes a dead object is neither removed nor turned into a ricochet and keeps flying; because `0x28450` has already counted that object as its hit, the walk ends there, so no object behind the dead one is tested in that frame, and the same dead object can be selected again in later frames while the segment overlaps it. Otherwise, in order:
+  1. Attacker kind := the kind of the owner mb +0xFC when that handle is valid, else **`0x93780`** (the enemy mask, used as a kind value). If the owner is valid and has kind 1: player-state +0x44 += 1 when the source is a missile, else +0x3C += 1 (Likely hit statistics).
+  2. If the owner is valid: `0x52a1c`(owner, victim, sample) sets owner +0x9C := counted reference to the victim and +0xA0 := sample; `0x52a50`(victim, owner, sample) sets victim +0xA4 := counted reference to the owner and +0xA8 := sample (last victim / last attacker records; consumers are AI, P3-08).
+  3. Posts a type-4 item on the victim (byte +8 = 2, +9 = 4; +0x0C = 1 when the victim's +0x2C ≤ 0 **before** this damage, else 0 and +0x10 := a pooled copy of the impact record or 0) — the hit event of audio and the hit effect. (+0x2C is the shield, [D1](#d1-object-fields-of-this-section--confirmed-code); the dead flag is +0xD8.)
+  4. r := `0x2a694`(attacker kind, source, victim, damage). `0x2a694` returns 1 only on its path where `0x30c60` leaves no residual damage ([D2](#d2-damage-entry-0x2a694eax-attackerkind-edx-source-ebx-victim-ecx-damage--confirmed-code)); 0 otherwise (including destruction).
+  5. If r = 0 and victim +0xD0 ≥ 0 and victim kind ≠ 1: `0x254fc` (a no-op returning 0).
+  6. If r ≠ 0, the source is a gun projectile, and (victim kind ≠ 1 or player-state view mode +0x28 = 0x11): ricochet `0x25dc4`(victim, projectile, impact). Otherwise a gun projectile is removed (`0x25f48`). Missiles are not changed here.
+  - Damage reaches `0x2a694` unscaled: no TABL 4003 scale and no difficulty factor on this path.
+  - **Attribution after the shooter is gone:** not retained. The owner handle is a counted reference, but once the owner has been removed the node is invalid and the attacker kind becomes `0x93780`, so `0x2a694` reports "destroyed otherwise" and no kill credit. The player object is never removed by the loss sequence (it is re-initialised), so the player's own shots keep their attribution.
+- **Ricochet `0x25dc4`(struck, projectile, impact)** (p9): projectile state := 8; projectile P := the impact world point, or the struck object's P when there is none; one rand: odd → `0x22a50`, even → `0x228cc`, each rotating by angle = rand × (1/32767) × 1.2217305 + 2.5307275 rad (a second draw; 145°–215°); then velocity mb +0x5C, +0x60, +0x64 := (rand × (1/32767) × 82.5 + 55) × R2 component, one draw per axis. **5 rand calls** per ricochet. The projectile keeps moving in mode 1 but is never hit-tested again (state 8) and is removed 0x80 units after its next callback.
+- **Fragment shot down:** `0x24a6c` (valid handle, block and timer required, else −1 and no effect) sets byte mb +0xF6 := 1 and timer +8 := 1. The fragment callback `0x24ac4` (state 7) then finds the expiry (1 ≤ sample) and posts message 0x10000; the dispatcher passes it to `0x256e4`, which, because mb +0xF6 = 1, calls the explosion constructor `0x23ac8` on the fragment (before and instead of the escape-pod rescue branch). So **a shot-down fragment is not removed directly: it explodes one frame later**. The escape pod (player part 0) has no DEBRIS record (craft §4.1) and is never a projectile target.
+
+##### H5. Missiles — Confirmed (code) unless marked
+
+- **Launch:** `0x2b00c`, in the message loop ([W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code)), which takes the shooter's target when message 8 is handled, after any same-frame target change ([T3](#t3-entry-points-contexts-and-timing-confirmed-code)), and installs `0x2aa40` (unguided, or launch byte below 2) or `0x2ab00` (homing). In CINF 4037 only missile type 0 has the launch dispersion (+0x20 ≠ 0).
+- **Callbacks:** both, in state 0 or 1, allocate a guidance block G once (0x1C bytes for `0x2aa40`; 0x188 for `0x2ab00`, whose +0x1C is an AI controller) with G+0 := missile +0x44, G+4 := +0x48, G+8 := +0x50, G+0x0C := +0x54, G+0x10 := +0x58, byte G+0x14 := 0 (phase), G+0x18 := 0, and post state 7 at once (no presentation wait). `0x2aa40` also sets mb +0x104 := 0; **`0x2ab00` does not**, and `0x52324`/`0x21794` do not clear +0x104, so a homing missile's +0x104 holds whatever the reused auxiliary slot last contained until a contact writes it (an explosion's constructor also writes that offset). In state 7, `0x2aa40` calls `0x2ac10`(missile, G, EBX = 0); `0x2ab00` first runs the AI controller update `0x5dcd4`(G+0x1C) and then `0x2ac10`(missile, G, EBX = G+0x1C). Other states go to the generic callback `0x20ae4` (`0x2ab00` releases the controller with `0x5ddd4` in state 6). In states 0 and 1, `0x2ab00` posts state 7 also when G already exists (G is made once); in state 6 it calls `0x5ddd4` (when G exists) before the generic callback `0x20ae4`, so the handler's mode-2 block is posted before the leave (Confirmed, code, P3-07/20).
+- **Guidance phases `0x2ac10`** (jump table `0x2abfc`: phases 0–4, p10, p11):
+  - 0 (first state-7 callback): G+0 += sample, G+4 += sample (relative → absolute). Unguided (EBX = 0): `0x21fd8` with a control block of full throttle and no turn — the missile flies straight at its maximum speed. The block, passed straight to `0x21fd8`, is scale 1.0, the three rows with clear, set and value 0, speed flag 1 and factor 1.0, in the word layout given under *Steering* below (Confirmed, code, P3-07/32). Homing: no control here. → phase 1.
+  - 1: when sample > G+4 (unsigned, strict) → phase 2 (arming delay).
+  - 2: when sample > G+0 (lifetime over): mb +0xF8 := 0, post 0x10000 (fizzle), and if player-state +0x8C is the missile's owner, `0x3119c`(missile, 0); the phase stays 2. Else when sample > G+0x18: fuse check `0x2adac`, then G+0x18 := sample + G+0x10 when the f32 at [EBX + 0x2C] ≥ 150.0, else sample + (G+0x10 SAR 1). For homing missiles [EBX+0x2C] is the AI controller's +0x2C, the distance from the missile to its target's position (Confirmed, `0x5c8b0`). **For unguided missiles EBX = 0, so the f32 read is at linear address 0x2C** — under DOS/4GW (flat DS, base 0) the real-mode interrupt vector of INT 0Bh; its value, and so the check interval of every missile on the `0x2aa40` path, depends on the machine's vector table. Read as an f32 (`FCOMP` with 150.0, then `SAHF`/`JNC`), vectors 0x4316:0000 (exactly 150.0) to 0x7F80:0000 (+∞) select the full interval. The NaN patterns 0x7F80:0001–0x7FFF:FFFF and 0xFF80:0001–0xFFFF:FFFF make the compare signal the invalid-operation exception, which the start-up code unmasks ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)); what follows was not traced (Unconfirmed). Every other vector is below 150.0 (−0 and −∞ included) and selects the half interval.
+    - *Runtime reading* (Confirmed, runtime, for the configuration below only; runs v-01 and v-02 of [P3-07/09](../../plan/p3/07/subtasks/09-original-pilot-runs.md#完成证据), recorded by P3-07/31): the u32 at linear 0x2C was 0xF000CE80, the vector F000:CE80 in the BIOS segment (Likely the emulator BIOS's own handler), as an f32 about −1.5945 × 10²⁹: finite and below 150.0, so **in this configuration the `0x2aa40` path re-arms the fuse check at sample + (G+0x10 SAR 1)**. Each run read it at three in-flight pauses (two flight keyboard polls `0x262c3` and one player energy update `0x30742`; DS base 0 at every stop) and all six reads were equal; the two runs started from different clock states. The re-armed fuse deadlines of unguided missiles in the other pilot runs agree: 7 per-frame re-arms in f-01, all at the half interval, and in c-01 and m-01 24 per-second readings whose next check was never more than half an interval ahead.
+    - *Run identity:* baseline `manifest-b9bfecb3bf772fbf`, EXE SHA-256 `c1e0f456…`; DOSBox-X fixed 40000 cycles, core normal, cputype pentium, machine svga_s3, memsize 16; game settings `STARTUP_PRACTICE=FALSE` and `CURR_LEVEL=100 19`; campaign mission 0 (SCEN 3019, group 0 / slot 1), raw difficulty 19, wingman selector 1; recipe `p3-07-pilot-v` (`sha256:6f4e85a9…`), tool sources `sha256:043f2a98…` (v-01) and `sha256:62041c67…` (v-02). Both runs `complete`, all 42 required samples qualified, with file protection and process reaping passed; the only inputs were the recipe's BIOS keyboard-buffer keys of the entry route (title Enter, options Enter, briefing Esc), none from the host.
+    - *Applicability:* one entry route and one emulator, BIOS and configuration were measured. Another BIOS or emulator, or a resident driver that hooks INT 0Bh, can install a different vector and so change the branch (ranges above). U-021 (cycles) is not frozen; the reading is recorded for the measured configuration only.
+  - 3: when sample > G+0x0C: mb +0xF8 := 1, post 0x10000 (detonate) → phase 4.
+  - 4: nothing.
+- **Fuse `0x2adac`(missile, G)** (p10; collision helper §4.3): walks kinds `0xfffff` with **no activity, state, dead-flag or Warp filter** (parked, docked, destroyed and Warping craft can trigger it), and stops at the first trigger. Both tests use d² := `0x56b50`(missile P, craft P) stored as f32, the value `0x29bf4` also computes, see [H7](#h7-point-tests--confirmed-code) (Confirmed, code, P3-07/32):
+  - *Contact:* only for craft whose record has boxes (+0x34 ≠ 0): d² < radius² (+0x14), strict; transform the missile position into the craft frame; if the inner flag is set and the point is strictly inside the inner box → no contact; else the point strictly inside any box → phase += 1 (to 3), G+0x0C := 0 (detonation at the next callback), mb +0x104 := craft (uncounted). This is a **point** test at check times only, so a fast missile can pass a box between checks. The launcher is not excluded.
+  - *Proximity* (craft without contact): owner L = mb +0xFC and target t = missile +0x8C (0 when invalid). When L ≠ 0 and the craft is on L's side (L kind in `0x6c87f` ? craft kind in `0x6c07f` : craft kind in `0x93f80`) and the craft is not t, it is skipped. Otherwise when d² < G+8 (= (missile +0x4C)², strict): G+0x0C += sample, phase += 1 (to 3); detonation at the first callback whose sample is **strictly greater** than the trigger sample + missile +0x54. The side test is by kind masks, not by identity: the launcher is skipped only because its own kind is normally in the side mask, and the masks differ (`0x6c87f` contains bit 11, `0x800`, which `0x6c07f` lacks), so a launcher of kind `0x800` would not skip itself or other `0x800` craft.
+- **Detonation `0x2b408`** (message 0x10000 on a missile, in the message loop, p10): when mb +0xF8 = 1: camera hook `0x3119c`(missile, 1) if the owner is the player-state's +0x8C object; explosion `0x23ac8`(missile) (the missile becomes a destroyed source); then for every object returned by `0x5c490`(mask `0xfffff`: +2 ≠ 0 — **docked included**, parked excluded — state ≥ 7, dead flag clear, Warp +0xCC = 0), with Euclidean distance d (FSQRT, f32):
+  - d is taken as 0 for the object equal to mb +0x104 (the contact object; on homing missiles possibly a stale value, see above);
+  - damage = 0 when d > r1 (+0x64); D = +0x5C when d < r0 (+0x60); otherwise trunc(D × (1 − (d − r0)/(r1 − r0))) (x87, `FILD` D, chop through `0x74518`);
+  - when damage > 0 (signed): `0x2b628` (hit shake on the victim's movement block for kinds outside `0xf9c7c`, **6 rand calls**, fields consumed by mode 0/3 — P3-06; arithmetic below) and `0x2a40c`(missile, victim, damage, no impact).
+    - *Shake* `0x2b628`(missile, missile mb, victim, damage) (Confirmed, code, P3-07/32; F and D are the rounding points of the [P3-06 notation](#flight-motion-controls-speed-parking-and-take-off-p3-06)): nothing, and no draw, when the victim's kind is in `0xf9c7c`. Otherwise u := D(damage × f64 `0x170f20` (0.0014285714285714286, 1/700)), A := F(u) and B := F(D(u × f64 `0x170f28` (0.7142857142857143, 5/7))); when D(u × 5/7), before that store, is below f64 `0x170f30` (0.0872664638888889, about 5°), or the compare is unordered, B := the f32 immediate `0x3db2b8c3` instead, which is F of that f64. Impulse: the victim's mb +0x1C–+0x24 := the missile's row 3 (bit copies), +0x18 := 1 and +0x28 := F(D(the missile's speed mb +8 × f64 `0x170f18` (0.0125))). Per row k = 1, 2, 3, two draws: rate_k := F(D(D(D(rand × f32 `0x170f38` (1/32767)) × D(A − B)) + B)) at +0x38/+0x3C/+0x40 and decay_k := the f32 immediate `0x3ec90fdb` (π/8) at +0x44/+0x48/+0x4C; when the second draw has bit 1 set, the sign bits of both flip. Then end_k := F(D(D(D(rate_k ÷ decay_k) + t) + f64 `0x170f3c` (−0.5))) at +0x50/+0x54/+0x58, and the active flag +0x2C/+0x30/+0x34 := 1 when end_k > t (ordered compare), else 0, with t the f32 mission time `0x18641c`. Derived: a row turns only when |rate_k| exceeds about π/16 (decay ÷ 2), so only for damage above about 137 (A > π/16); a weaker blast sets only the impulse, clears the three active flags and still draws 6 times.
+  - **No exclusion of the launcher, the launcher's side or the player**: the blast damages every eligible craft in range, in walk order. In all 24 CINF r0 > 0 and r0 < r1 (local data count), so the contact object always takes the full D and no division by zero is reachable.
+  - When mb +0xF8 ≠ 1 (lifetime fizzle): `0x2b590` releases the owner reference, `0x21650` (presentation removal, state 6) and clears missile +0x8C; no explosion, no damage.
+- **Homing steering — Confirmed (code), native `out/p28.txt`–`out/p33.txt`.** `0x2ab00` installs built-in AI program record 1 (`0x17634c`, missile +0x18 = 1) or record 2 (`0x1763a0`, otherwise) with `0x5dc0c` (ai.md §3.3 lists `0x2ab94` as this installer); their handlers (record +0x18) are `0x60aa0` and `0x60b84`. The missile path uses only the following part of the shared AI library; the interpreter and scripts are not involved.
+  - *Install* (`0x5dc0c`, in the missile's first callback, handler mode 0): the 0x16C-byte controller C (= G+0x1C) is zeroed; C+0xF4 := record +0x14 (update period), C+0xF8 := record, C+0xFC := handler; limits C+0x104 := F(D(D(record +0x24 × f64 `0x17232c`) × f64 `0x172334`)) and C+0x100 := its negation, where the constants are 3.1415927 and 0.005555555555555555, not the nearest doubles of π and 1/180, so for some whole-degree values (the first is 5°) C+0x104 differs from F(+0x24 × π ÷ 180); C+0x10C and C+0x108 likewise from record +0x28; C+0x114 := a bit copy of record +0x2C and C+0x110 := its negation (Confirmed, code, P3-07/32); C+0x118 := record +0x30; the steering block S = C+4 is set by `0x5c530` (0xEC bytes zeroed; S+0 missile, S+4 → C+0x100, S+8 body record, byte S+0x44 := 2, byte S+0x60 := 0, then `0x5c768`(1.0, 1.0, 0)); C+0x138 := 0 (no AI firing).
+  - *Handler `0x60b84`*: returns 0 with no library call when missile +0x8C is 0 or invalid (`0x60b94`–`0x60bab`); a missile whose target is already gone at install therefore gets no control at all (not even full throttle) and keeps its launch speed. In mode 0 it then: `0x5c584`(target, S, −1.0) — S+0x0C := valid, S+0x10 := target, missile +0x8C := target (counted), S+0x1C.. := target P, S+0x30 := 0, S+0x28 := |target P − missile P| (FSQRT, f32; the same value the update below stores there again), `0x5dab0` (S+0x48 := target radius + 80.0; unused on this path), missile byte +0x118 := 0; by launch byte (mb +0x100): 4 → `0x5c768`(1.0, 1.0, 0); 3 → (1.0, F(0.65), 0) and C+0xF4 ×= 2; other → (1.0, F(0.2), 0) and C+0xF4 ×= 5 (f32 arguments; `0x5c768` stores the speed fraction at S+0xC8, the **turn fraction at S+0xCC**, and S+0xD0 := 1, which disables the roll-matching branch below); `0x5d41c`(S, 1.0) posts message 0x40000 with the throttle-only control block {scale 0, the three rows with clear, set and value 0, speed flag 1, factor F(1.0 × S+0xC8)} for full throttle (Confirmed, code, P3-07/32); `0x5c878`(S, 3, 0) selects lead mode 3 with lead constant S+0x64 := 0. Every mode (0, 1 update, 2 removal) then runs the update below and sets the deadline C+0xF0 (*Update scheduling*).
+  - *Update scheduling* (`0x5dcd4`, from `0x2ab00` each state-7 callback): calls the handler in mode 1 only when C+0xF0 < sample (unsigned, strict); its trigger loop passes 0 to `0x2d578` for the missile (no weapon state) and `0x2dad0`/`0x5dfec` are not reached (C+0x140 and C+0x138 are 0). When the handler returns early (target invalid) the deadline is not advanced, so it is retried every frame. After every update (all modes) the handler sets C+0xF0 from the controller distance C+0x2C = S+0x28: sample + period when the distance ≥ 250.0; (sample + period) SHR 1 when 150.0 ≤ distance < 250.0; (sample + period) SHR 2 when the distance is below 150.0 or the compare is unordered. The shift applies to the sum, not to the period (Confirmed, code, P3-07/32).
+  - *Target point* (`0x5c8b0`, at most once per sample, S+0x14): re-reads the target from missile +0x8C; if invalid it clears missile +0x8C and returns 0. Otherwise target point := target P; S+0x28 := distance to that point (f32); lead mode 3: v := the missile's speed (mb +8), w := S+0x2C := the target's speed, lead := F(D(D(D(d ÷ v) + S+0x64) × w)) with d = S+0x28 (v, w and d all f32) when v ≠ ±0, else 0; each offset_i := F(D(R2_i × lead)) (target R2) is stored before the sum, and target point_i := F(D(P_i + offset_i)) (Confirmed, code, P3-07/32). Local vector L := missile rows · (target point − missile P) (`0x56dc0`); flags S+0x68: bit 0 L.x > 0, bit 1 L.y > 0, bit 2 L.z > 0 (target ahead).
+  - *Steering* (`0x5cd1c`, only when S+0x0C ≠ 0): control block CB (12 words at S+0x90: the scale, then clear, set and value for rows 1, 2 and 3, then the speed flag and the speed factor) := {scale S+0xCC, 1, 1, fA, 1, 1, fB, 1, 0, 0, 0, 0}: rows 1 and 2 cleared and set, row 3 cleared only, speed flag 0; the two words this routine does not write (row 3's value and the speed factor) are 0 on the missile path. If L.z is ±0: fA := +sat, fB := −sat (angles π/2). Otherwise angle A := atan2(L.y, L.z) and angle B := atan2(L.x, L.z) (x87 FPATAN through `0x85a8b`, which swaps the operands first), stored as f32 at S+0x88 and S+0x8C; each fraction := −sat when the unrounded angle < −a (an unordered compare too), else +sat when its f32 store > +a, else F(D(F(angle) ÷ D(a − (−a)))), with a = C+0x104, −a = C+0x100, sat = C+0x114 and −sat = C+0x110 from *Install* (Confirmed, code, P3-07/32); angles within ±(record +0x28) set bits of S+0xC0, which the missile path does not read. The roll-matching tail is skipped (S+0xD0 = 1).
+  - *Output* (`0x5d014`): the noise routines `0x5d490` (enabled by S+0xE0) and `0x5d6a8` (by S+0xD4 and CB[10]) do nothing for missiles — those words are only zeroed for a missile controller and no writer was found in the code missiles reach (offset scans, `out/p30.txt`, `out/p31.txt`; Likely, since computed stores are not excluded) — then CB is posted as message 0x40000. The dispatcher applies it in the same frame's loop, before `0x221fc`, through the mode-0 control setter `0x21fd8`; how that setter turns the two fractions and the scale into turn rates, and the mode-0 integration, are P3-06's.
+  - *Heat seeker extra* (`0x60aa0`, record 1): after a successful `0x60b84` in modes 0 and 1, when the controller distance > 120.0 (an f32 constant; ordered compare, so an unordered distance fails) and (missile R2 · target R2 < 0, or S+0x68 bit 2 is clear), one rand; the dot product is summed in double as (y·y′ + z·z′) + x·x′, and an unordered result goes on to the flag test (Confirmed, code, P3-07/32). When rand mod 2 = 0 (signed `IDIV`), `0x5d0ec` posts CB {S+0xCC, 0, 1, 0.5, 0, 1, 0, 0, 1, 0.5, 1, 1.0 × S+0xC8} (channel A half, channel B zero rate, roll half, full throttle) and C+0xF0 := sample + 4 × period. This is the only random draw on the homing path.
+  - The update runs inside the missile's own update callback (`0x20938` walk); its controls take effect in that frame's loop, so a homing missile reacts to positions from the end of the previous frame.
+- **Missile record +0x28/+0x2C** (lock cosine and angle) are not read by any in-flight routine examined (`0x2aa40`, `0x2ab00`, `0x2ac10`, `0x2adac`, `0x2b408`, `0x60aa0`, `0x60b84`); their readers are the firing decisions (craft §3.4). The in-flight "lock" is the inherited target plus the launch byte.
+
+##### H6. Collision passes — Confirmed (code) (collision helper, spot-checked)
+
+- **Callers and timing:** `0x221fc` is the only caller of both, back to back after the movement walk, so both use this frame's post-move positions; neither reads the pre-move position. Neither writes positions or rows: responses go into movement-block fields that the integrators consume from the next frame on (overlaps usually persist for several frames and repeat damage).
+- **`0x29670` — player against others.** Gate: dword `0x174b30` ≠ 0 (initialised 1; only otherwise referenced from a pointer table at `0x175138`). The player (player-state +0x8C) must not be docked (+2 ≠ 3) and must be in state ≥ 7; **its dead flag, Warp flag and the destruction view are not tested** (a destroyed player in its 0xC0-unit delay still collides and pushes, but takes no damage because `0x2a5fc` ignores dead victims).
+  - *Craft:* kinds `0xffffe` with +2 = 1 and state ≥ 7. Detection `0x29bf4`: the **player's centre** in the craft's shape (H7); the craft's centre is never tested against the player's shape. On contact: large := craft kind in `0xf9c7c`; raw := `0x2a12c`(player, craft) if large, else `0x29eb8`(player, craft); dmg := raw ÷ (3 − g) (signed `IDIV`, after the helper's truncation); `0x2a5fc`(player, dmg); if large, dmg SAR 1; `0x2a5fc`(craft, dmg); `0x27edc`(0) (Likely cancels the player's autopilot at its next update). Every overlapping craft is processed (no early exit), each with its own response, damages and 6 rand calls. For every eligible craft, hit or not, `0x529e4` sets craft +0x94 := the player (counted) and +0x98 := d² (f32).
+  - *Fragments:* kind `0x1000000` with +2 = 1, state ≥ 7, DEBRIS record ≠ 0, +0xD0 > 0. Detection `0x29d58` (player's centre in the fragment's DEBRIS shape). With f = DEBRIS +0x5C: f = 0 → raw := `0x2a12c`(player, fragment); f ≠ 0 → raw := `0x29eb8`(player, fragment) SAR 1. dmg := raw ÷ (3 − g). The player takes dmg when f = 0, or when f ≠ 0 and a counter c < g × 2 + 2 (strict); c (a local, **reset every frame**, shared across all fragments) increments on every f ≠ 0 contact, including those over the limit. The fragment's +0xD0 −= dmg on every contact; ≤ 0 → `0x24a6c` (H4).
+- **`0x29934` — others against others.** Gate `0x174b30`. A persistent array (`0x174b34`, cleared at the end) holds group A = kinds `0x382` (2, 0x80, 0x100, 0x200), then group B = kinds `0xffc7c`, both with +2 = 1 and state ≥ 7 (no dead or Warp test; player, projectiles, missiles, explosions and fragments are in neither). Pairs: A×A with i < j, and every A×B; **B×B pairs are never tested**. In each pair the A member's centre is tested against the other's shape (`0x29bf4`) only, so A×A detection depends on array order. Damage as for player–craft: dmg = raw ÷ (3 − g) to the A member, halved (SAR 1) to the other when it is large; no autopilot call. The A member's +0x94/+0x98 are replaced when +0x94 is 0 or the new d² is strictly smaller.
+- **Responses:** `0x29eb8` (object 2 not large, or an f ≠ 0 fragment): both objects get a knock (the other's R2 as direction, the other's speed, and speed₁ × 2.0 for object 2) and an opposite random tumble; raw = 2 × trunc(X) + 150 with X = |R2₁·R2₂ − 1| × (speed₁ + speed₂). `0x2a12c` (large or f = 0 fragment): only object 1 bounces (direction R2₂ + a reflection term computed in place with an aliasing quirk; speed speed₁ × 1.2); raw = 2 × trunc((speed₁ + speed₂) × 2.0) + 150. Each response makes **6 rand calls** (per axis: magnitude then sign bit 1). Constants: 0.01 / 0.0125, ≈1/140, ≈5° floor, π/4 decay, −0.5 s, 1.2, 2.0, 30/s² knock decay in mode 0. Mode 0 consumes knock and tumble, mode 3 the tumble, mode 2 (fragments) neither. Arithmetic (Confirmed, code; the native listing of P3-07/03, read for P3-07/19): X and Y stay unrounded in the x87 register for hi and lo; only the raw damage reads their f32 store. hi = F(X × 0.01) (`0x2a12c`: F(Y × 0.0125)); lo = F(X × c) with c the f64 `0x3F7D41D41D41D41E` (one ulp above 1/140), replaced by the f32 `0x3DB2B8C3` when the unrounded X × c is below the f64 0.0872664638888889 or unordered. For the axes about rows 1, 2 and 3 in turn (block +0x38/+0x44, +0x3C/+0x48, +0x40/+0x4C): rate = F(rand × C × (hi − lo) + lo) with C the f32 1/32767, decay = the f32 `0x3F490FDB` (π/4); the next rand with bit 1 set flips both signs. Then each end = F((rate ÷ decay + t) + (−0.5)) (+0x50/+0x54/+0x58) and each flag = end > t (`SETA`: strict, false when unordered); `0x29eb8` copies the negated rates and decays, the ends and the flags to object 2. While lo is at its floor, hi < 0.123, so rate ÷ decay < 0.5 and no axis turns. In `0x2a12c` the offset P₁ − P₂ is stored f32 per component before `0x56aa8`; with v = −R2₁, w_x = F((d × 2.0) × n_x) is stored over v_x, then w_y and w_z likewise, each d = (n_y v_y + n_z v_z) + n_x v_x over v as already overwritten; the knock direction is F(R2₂ + w) per component and its speed F(speed₁ × 1.2). raw = 2 × trunc(F(X)) + 150 through `0x74518` and `FISTP` (a truncation beyond i32 raises the unmasked invalid-operation exception), then two wrapping integer additions.
+- **`0x2a5fc`(victim, dmg)** applies collision damage without an attacker and without kill credit ([D5](#d5-other-entries-into-the-damage-rule--confirmed-code)).
+
+##### H7. Point tests — Confirmed (code)
+
+- `0x29bf4` (craft shape at record +0x10) and `0x29d58` (DEBRIS shape at record +0x18): sphere first, **d² ≤ r² (non-strict)**; box count 0 → hit on the sphere alone; otherwise the point in the target frame (`0x56dc0`), strict inner-box exclusion when the flag is set, then hit at the first box that contains it strictly; count ≤ 0 → miss. `0x29bf4` rounds d² to f32 before comparing and outputs it; `0x29d58` compares at x87 precision. Neither reads the bounds or the radius itself. d² = (dy·f32(dy) + dx·f32(dx)) + dz·f32(dz): each difference in double times its `f32` copy, the x term included, unlike `0x637e4` ([T10](#t10-numbers-on-these-paths-confirmed-code)) (P3-07/12; evidence ignored `local/research/p3-07/rule-data/`, `out/p4`, native).
+- `0x2adac` (missile fuse): strict d² < r², only for records with boxes (H5).
+- `0x2874c`/`0x28b48` (projectiles): segment tests (H3).
+
+##### H8. Numbers on these paths — Confirmed (code) unless marked
+
+- **Storage:** positions, rows, velocities, speeds, shape radii/boxes, impact records, distances, response fields: f32. Damage, durability +0xD0, box counts, flags, DEBRIS +0x5C, group, counters, missile damage +0x5C: i32 (signed compares). Clock values and guidance times: u32 (unsigned compares: projectile expiry `≥`, guidance `>`), with G+0x10 halved by `SAR` (signed) and the AI deadline halved/quartered by `SHR` (unsigned).
+- **Arithmetic:** x87 at the start-up control word (53-bit); each f32 store rounds under the control word in effect. For the rounding direction these paths inherit the P3-02/10 runtime observation (round to nearest at every observed placement; the chop inference from the renderer's `FLDCW` sites is contradicted at runtime and its cause is open, U-009). Products of two f32 values are exact in double; sums then round to double and again to f32 at the store.
+- **Integer conversion:** only through `0x74518` (chop) before `FISTP`: missile falloff damage, collision raw damage. Divisions: `IDIV` by (3 − g) ∈ {3, 2, 1}; halving by `SAR 1` (floor; equal to truncation for non-negative values). Overflow: collision raw damage overflows i32 only for X ≥ 2^30 (Unconfirmed reachability); `0x2a12c`'s raw is below 150 or negative if speed₁ + speed₂ < 0 (whether speeds can be negative is P3-06's).
+- **Square roots and trigonometry:** FSQRT in `0x56b14` (missile blast distance, AI library) and `0x56aa8` (bounce normal); squared distances elsewhere. FSIN/FCOS only through the rotation helpers `0x228cc`, `0x22a50`, `0x22990` (fragment spin, ricochet, missile dispersion, tumble consumers). On these paths FPATAN occurs only in the AI steering library (`0x5cd1c` → `0x85a8b`, operands swapped, so atan2(L.y, L.z) and atan2(L.x, L.z); the image's other FPATAN users are in [N1](#n1-summary--confirmed-code)), reached by homing missiles; FSQRT also for the homing distance. No tables.
+- **Random draws on these paths (all from the one C-library generator):** ricochet 5; fragment hit with DEBRIS +0x5C = 0: 1 (before the ricochet's 5 when it ricochets); missile launch with dispersion 3; missile blast 6 per damaged victim of a kind outside `0xf9c7c` (none for kinds inside it); collision response 6 per contact; heat-seeker lock-break 1 per eligible update; the homing path's only draw is the heat-seeker lock-break (the AI library's noise routines are disabled for missiles, Likely).
+- **Frame-step dependence:** translation in modes 1 and 2 scales with the step; mode-2 spin and the ricochet angles do not. Mode 1 spawn offsets use the shooter's speed × step of the creation frame.
+
+Evidence: ignored `local/research/p3-07/motion-hit/` (`ghidra_scripts/MotionHitProbe.java`, `probe.sh`, outputs `out/p1.txt`–`out/p33.txt`; the collision probes and notes in `collision/`, spot-checked natively at `0x2979d`–`0x297e0` and `0x298af`–`0x29917`; `data-checks.ts` with `out/data-checks.json`, booleans and counts only). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Damage, subsystems and energy (P3-07/04)
+
+Q-07 and Q-08. *E block* is object +0x20–+0x47; `c54` and the like are fields of the object's craft record (object +0x1C).
+
+##### D1. Object fields of this section — Confirmed (code)
+
+| Offset | Type | Meaning | Writers (readers) |
+|---|---|---|---|
+| +0x20 | u32 | Clock of the last energy update | `0x3060c`, `0x3071c`, `0x30994` |
+| +0x24 | u32 | Clock of the next energy update (due when clock ≥ it, unsigned) | `0x3060c`, `0x3071c`, `0x30994`; also `0x30150` (parked engagement, sets it to the clock for both objects, [E3](#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code)) |
+| +0x28 | i32 | Energy | `0x3060c`, energy updates, `0x39820` (full repair) |
+| +0x2C | i32 | Shield | `0x3060c`, `0x30c60`, energy updates |
+| +0x30 | i32 | Gun charge (spent by `0x30cec`, [W6](#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code)) | `0x3060c`, `0x3071c` |
+| +0x34 | i32 | Shield recharge level L1, 0–3 (index into craft +0x64[]) | `0x3060c` (player 1), `0x30b20` |
+| +0x38 | i32 | Charge recharge level L2, 0–3 (index into craft +0x78[]) | `0x3060c` (player 2), `0x30bc0` |
+| +0x3C | i32 | Spare power E = c58 − (c64[L1] + c78[L2]) | `0x3060c`, `0x30b20`, `0x30bc0` (read by `0x30e0c`, HUD) |
+| +0x40 | i32 | Power needed for full speed T = trunc(c B8) × c88 ÷ 1000 | `0x3060c` (read by `0x30e0c`, HUD) |
+| +0x44 | i32 | Energy-page redraw flag (set to 1) | `0x3060c`, energy updates, `0x30b20`/`0x30bc0`, `0x30c60` and `0x30cec` (player only); cleared by `0x4d800` after drawing. No rule reader found (Likely display only) |
+| +0x78 | f32 | Maximum speed | `0x30e0c` (P3-06) |
+| +0xD0 | i32 | Hull | instantiation, `0x2a830`, `0x39820` (= c9C), cheat key (C3) |
+| +0xD8 | i32 | Dead flag | `0x2a694`, dispatcher kill paths; cleared by the rescue |
+| +0xE8, +0xEC | u32 ×2 | 19 two-bit subsystem fields (D6) | `0x52a84` |
+| +0xF0 | i32 | Status-display redraw flag | allocator (1), `0x2a830` (1), `0x4cd68` (1); `0x4d0e0` reads and clears it (D9) |
+
+The allocator `0x520d4` zeroes +0x20…+0x47 (memset 0x28 bytes), +0xD0, +0xE8, +0xEC, +0xD8 and sets +0xF0 = 1.
+So objects other than the player keep L1 = L2 = 0; only the player's keys change the levels.
+
+##### D2. Damage entry `0x2a694(EAX attackerKind, EDX source, EBX victim, ECX damage)` — Confirmed (code)
+
+1. **Gates, in order** (each returns 0 with no change at all): victim dead flag +0xD8 ≠ 0; ps non-null **and**
+   ps +0x90 (destruction view follows an object) ≠ 0 **and** victim = ps +0x8C (the player); typed-cheat flag
+   `0x174ed8` ≠ 0 and victim kind = 1. Only the player is protected by the view gate.
+2. rem = `0x30c60`(victim, damage) (D3).
+3. When attackerKind ≠ 0: `0x3c208`(attackerKind, source, victim, damage) — communications reaction
+   ([C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code)). It can draw rand (D12).
+4. rem = 0 → `0x2a830`(victim, source, 0, noAttacker) and **return 1**. Otherwise hull = `0x2a830`(victim,
+   source, rem, noAttacker); hull > 0 → return 0. noAttacker is the comparison attackerKind = 0 (1 when it is 0,
+   else 0; `SETZ` before each call), so only collisions and AI area damage pass a non-zero noAttacker (Confirmed, code,
+   P3-07/15).
+5. **Destruction (hull ≤ 0):** +0xD8 = 1; `0x3c0f4`(attackerKind, source, victim) (communications, [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code); can draw
+   rand); `0x6977c`(victim, event) with event 0 when attackerKind = 1 (destroyed by the player) and 1 otherwise.
+   Then by victim kind:
+   - kind & 3 = 0 (not player or wingman): when attackerKind = 1, one kill counter in ps by the victim's kind (D8);
+     then a parked victim (+2 = 0) gets state 6 (removed, no explosion); otherwise `0x23ac8`(victim).
+   - kind 1: `0x32d74` (player destruction sequence, P3-11), then `0x23ac8`(victim).
+   - otherwise (kind 2): `0x32dec` (wingman-loss timer, [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code)), then parked → state 6, else `0x23ac8`.
+   Returns 0.
+
+**Return value (read by the ricochet test, [H4](#h4-impact-ricochet-attribution-and-fragment-kills--confirmed-code)):** 1 exactly when a non-gated hit left no residual damage after
+the shield (damage ≤ shield, or damage 0, or a zero bypass), 0 otherwise — including gated hits, hull damage and
+destruction.
+
+**Attacker kind by caller:** `0x2a40c` passes the shooter's kind, or the fallback mask `0x93780`
+when the shooter handle is invalid (never 0); `0x2a5fc` passes 0 and source 0 (collisions, AI area damage);
+`0x30150` passes the attacker's kind and source 0 ([E3](#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code)). The kill counters and event 0 therefore only follow
+live player shots and parked engagements by the player; collisions never credit a kill.
+
+**No multiplier on this path:** `0x2a694`, `0x30c60` and `0x2a830` scale nothing. Scaled damage reaches them only
+from `0x30150` (the TABL 4003 scale and f64 factors by the victim's kind, [E3](#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code))
+and from the collision division by (3 − group) ([H6](#h6-collision-passes--confirmed-code-collision-helper-spot-checked)).
+
+##### D3. Shield `0x30c60(EAX victim, EDX damage)` — Confirmed (code)
+
+1. When subsystem 4's state is 1: one rand; (rand & 0xFF) < 0x54 (signed) → return damage unchanged (the shield
+   is bypassed and keeps its value; probability 84/256 = 21/64). State 2 does **not** bypass: the remaining shield
+   still absorbs (it is just no longer recharged, D13). No draw at states 0 and 2.
+2. damage < shield (signed): shield −= damage, return 0. Otherwise shield = 0, return damage − old shield (0 when
+   equal).
+3. For the player (kind = 1), +0x44 = 1 in both branches.
+
+##### D4. Hull and subsystem damage `0x2a830(EAX victim, EDX source, EBX hullDamage, ECX noAttacker)` — Confirmed (code)
+
+1. hullDamage > 0: hull = +0xD0 − hullDamage (stored). Otherwise hull = +0xD0 (unchanged).
+2. **Forced roll** f: drawn only when noAttacker ≠ 0, or the source is non-null with kind exactly 0x100000 (a
+   missile); then f = (rand & 0xFF) < 0x32 (50/256). Otherwise f = 0 without a draw.
+3. hullDamage = 0 and f = 0 → return hull (no subsystem roll).
+4. **Damage roll** p: hull ≤ 0 → p = 1 without a draw. Otherwise t = trunc(768 × hullDamage ÷ hull) (32-bit
+   `LEA`/`SUB`/`SHL 8`, signed `IDIV` by the *post-damage* hull) and one rand: p = t > (rand & 0xFF) (signed), i.e.
+   probability min(max(t, 0), 256)/256. With hullDamage = 0 and hull > 0, t = 0 and p = 0 (the draw still happens).
+5. f = 0 and p = 0 → return hull.
+6. n = 19 when the victim's kind is 1 (the player), else 9 (wingman included). s = rand % n (signed `IDIV`).
+   st = state(s).
+7. **Forced-only search** (p = 0, hence f = 1): the first index ≥ s whose state is 0; if none, the first index in
+   0…s−1 whose state is 0; if every field 0…n−1 is non-zero, one more rand: s = rand % n, st = state(s). (A
+   damage roll, p = 1, takes s as drawn.)
+8. **Apply** when st < 2 (st = 2: nothing, +0xF0 unchanged):
+   - s = 5: `0x2e150` (list-1 mount damage), s = 8: `0x2e310` (list-0 mount damage), both **without** changing
+     field s ([W4](#w4-mount-damage-repair-and-status-subsystems-5-and-8--confirmed-code));
+   - otherwise field s := st + 1, except s = 10 or 13 with st = 1, which are written 1 again (they never reach 2
+     through damage); for s = 7 additionally `0x21bd4`(victim, st + 1) (steering disturbance, [P3-06](#flight-controls-and-rotation-p3-0602); three rand at
+     level 2);
+   - +0xF0 = 1 (for 5 and 8 too).
+9. **Threshold (player only):** whenever step 6 ran (also when st was 2), count the non-zero fields among 0–18:
+   ≥ 14 → `0x69e5c`(1); 9–13 → `0x69e5c`(0); otherwise no call (D11).
+10. Return hull.
+
+Not edge-triggered: `0x69e5c` is called on every subsystem roll while the count is at least 9.
+
+##### D5. Other entries into the damage rule — Confirmed (code)
+
+- `0x2a5fc(EAX victim, EDX damage)` (collisions `0x29670`/`0x29934`, the AI area damage below): nothing when the victim
+  is dead; posts a presentation item 4 on the victim (bytes +8 = 2, +9 = 4, +0x10 = 0, +0x0C = 1 when the victim's
+  **shield** +0x2C ≤ 0 before the hit, else 0); `0x2a694`(0, 0, victim, damage); then `0x3c208`(0, 0, victim,
+  damage) when hull ≥ 0, otherwise `0x3c0f4`(0, 0, victim). Because `0x2a694` with attackerKind 0 calls `0x3c0f4`
+  itself on destruction, a collision kill with hull < 0 calls `0x3c0f4` twice; with hull exactly 0, once plus one
+  `0x3c208`. A gated victim (player in the destruction view) still gets the item and the communications call.
+- **AI area damage `0x6313c`** (AI behaviour, only reference a pointer at `0x176604`; P3-08): when its trigger
+  distance is reached it calls the explosion constructor `0x23ac8` on its own object (without setting the dead
+  flag) and damages every object of kinds `0xfffff` within range with a linear fall-off (parameter block at
+  `0x1b41a0`: damage +8, full-damage radius +0x0C, zero radius +0x10; chop through `0x74518`) through `0x2a5fc`.
+  Reachability in the slice is P3-08's question. *(Decompiler for the fall-off; call and arguments native.)*
+- Hit items and the hit sound: the +0x0C flag of the items posted by `0x2a40c` and `0x2a5fc` is "victim shield ≤ 0
+  before this hit", not "destroyed" ([audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08)).
+
+##### D6. Two-bit subsystem fields — Confirmed (code); meanings Likely (consumers)
+
+`0x52ac4(h, i)` returns (word[+0xE8 + 4·w(i)] >> s(i)) & 3 and `0x52a84(h, i, v)` clears those two bits and ORs
+in v << s(i) (v is not masked). The tables at `0x1760b4` (shift) and `0x1760d4` (word index) put fields 0–15 in
++0xE8 at bits 2i and fields 16–31 in +0xEC; 19 are used. Instantiation clears 0–18; `0x39820` clears 0–18.
+
+| Field | Damaged by `0x2a830` | Rule consumers | Display consumers | Likely subsystem |
+|---|---|---|---|---|
+| 0 | all | energy drain ×10/×100 per dt (D13) | status overlays | power/generator |
+| 1 | all (player value overwritten by D9) | none | status (hull overlay) | hull |
+| 2 | all | player maximum speed ×0.5/×0.25 (`0x30e0c`, P3-06) | status | engines |
+| 3 | all | missile lock: 1 random, 2 none ([W8](#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code)) | status | targeting computer |
+| 4 | all | shield bypass at 1 (D3), no recharge at 2 (D13) | status | shield generator |
+| 5 | all (mount damage instead of the field) | — (player field written by D9) | status | missile mounts (list 1) |
+| 6 | all | none found | status | unknown |
+| 7 | all | steering disturbance level `0x21bd4` (P3-06) | status | steering/handling |
+| 8 | all (mount damage instead of the field) | — (player field written by D9) | status | guns (list 0) |
+| 9 | player | — | lock indicator `0x45de0` | — |
+| 10 | player, max 1 | — | left display page 0 interference | — |
+| 11 | player | — | left display page 1 interference | — |
+| 12 | player | — | radar `0x40370`, `0x4eb3c` area | radar |
+| 13 | player, max 1 | comms key `c` refused at 2 (`0x27b44`; unreachable by damage) | left display pages 2–5 | communications |
+| 14 | player | — | right display `0x42d80` | — |
+| 15–18 | player | — | corner gauges: shield (15), energy (16), speed (17), commanded speed (18) | — |
+
+Base interior code (`0x39cb4`, `0x398ec`, P3-10) also reads/writes fields.
+
+##### D7. Rescue and repair resets — Confirmed (code)
+
+`0x67b98` (rescue, P3-01/05) runs, in order: dead flag 0; craft record; **`0x39820`** (full repair: fields 0–18 = 0;
+`0x2e1fc`/`0x2e3c8` with flag 1 repair every list-1/list-0 mount; hull = c9C; energy = c54; refills missile mounts
+of lists 0 and 1 up to their craft ammunition while cycling each list's selection with `0x2d6dc`, which posts the
+selection sound request for the player; `0x21bd4`(·, 0)); `0x2d400` (mount states rebuilt, [W1](#w1-per-object-weapon-block-and-mount-states--confirmed-code));
+`0x3060c`(record +0x68, record +0x64, 100) (D13). Net effect for the player: hull **full (c9C, not the record +0x60
+percentage of instantiation)**, energy and shield from the record percentages, charge full, L1 = 1, L2 = 2, all
+fields 0, disturbance 0, steering lock untouched by this path (`0x21ba0` is reset only by `0x280ec`/`0x398ec`,
+P3-06). Kept: ps kill and shot counters, `0x176710` (D11), the player's target and every other object.
+`0x39820` is also called by `0x280ec` (cheat/debug pointer table), the world-exit test `0x2f314`, docking/launch
+`0x38ff4`, AI code `0x61bd0` and `0x68f4c` (P3-10, P3-06).
+
+##### D8. Player kill and shot counters (ps) — Confirmed (code)
+
+`0x2a694` increments, only for attackerKind = 1 and a destroyed victim of kind & 3 = 0, one i32 by the victim's kind:
+0x80 → ps +0x30, 0x100 → +0x34, 0x200 → +0x48, 0x400 → +0x4C, 0x80000 → +0x50, 0x1000 → +0x54, 0x800 → +0x58,
+0x10000 → +0x5C; other kinds are not counted. The interleaved +0x38/+0x3C/+0x40/+0x44 are the shot statistics
+(projectiles fired `0x25b0c`, projectile hits and missile hits `0x2a40c`, missiles fired `0x2b00c`; [W11](#w11-launch-message-8-and-the-two-constructors--confirmed-code),
+[H4](#h4-impact-ricochet-attribution-and-fragment-kills--confirmed-code)). Counted before the parked/explosion branch, so a parked kill by the player counts. The rescue does not
+reset them; their reset points and readers belong to P3-11/P4 (not traced).
+
+##### D9. Status display writes subsystem fields 1, 5 and 8 — Confirmed (code)
+
+The left display's page-0 handler `0x4d0e0` (only through the page table, D15) calls `0x4d50c`(player, blink) when
+its 0x20-unit blink timer has toggled since the last call or the player's +0xF0 is set, then clears +0xF0. The
+blink phase toggles when clock > the timer, which is then set to clock + 0x20. `0x4d50c`:
+
+- chooses the shield overlay by q = (shield << 8) ÷ c5C (signed): ≥ 0xE6 → 0; ≥ 0xC0 → blink; ≥ 0x80 → 1; ≥ 0x40 →
+  1 + blink; else 2;
+- **writes field 1** := 0 when (hull << 8) ÷ c9C ≥ 0xC0, := blink (0/1) when ≥ 0x4C, := 2 otherwise;
+- **writes field 5** := `0x2e264` (list-1 mount status 0/1/2) and **field 8** := `0x2e438` (list-0 status);
+- draws an overlay for each field 0, 2–8 at state 2, or at state 1 when (index & 1) = blink.
+
+So for the player, fields 1, 5 and 8 are rule state written by a display routine, at display times: only while
+the left display shows page 0, the page is not replaced by its interference animation (field 10, D15), and the
+cockpit instruments are drawn. They feed `0x2a830`'s forced search, its st < 2 test and the threshold count.
+Other objects' fields 1, 5, 8 change only through `0x2a830` (1) or never (5, 8).
+
+##### D10. Energy levels: keys `s`/`S`/`g`/`G` — Confirmed (code)
+
+`0x264a0` (flight key context) first offers each key to the communications handler `0x27b44`, then to
+`0x27ab4`, then to its own compare chain. `0x27ab4` acts only when the left-display page (`0x4ce10` → `0x1a9dc8`)
+is 1 (the energy page): `G` (0x47) → `0x30bc0`(+1), `g` (0x67) → `0x30bc0`(−1), `S` (0x53) → `0x30b20`(+1), `s`
+(0x73) → `0x30b20`(−1). The calls run at once inside the player's update callback. A non-zero result posts
+dispatcher message 0x100000 with +0x10 = −1 (no page change; the handler plays SND 10485, D15). Otherwise the key
+falls through to the compare chain, which has no case for these four codes, so nothing happens.
+
+`0x30b20(h, d)` (shield level L1; `0x30bc0` is the same with L1 and L2 exchanged):
+
+1. new = L1 + d; new < 0 or new ≥ 4 → return 0, nothing changed.
+2. L1 = new; repeat: E = c58 − (c78[L2] + c64[L1]) (stored); E < 0 → L2 −= 1; while E < 0 and L2 ≥ 0.
+3. L2 < 0 → L2 = **0**, L1 = old L1, E recomputed (the changed level is restored, the other level stays at 0).
+4. `0x30e0c` (maximum speed, P3-06), `0x21d88` (commanded-speed cap, P3-06), +0x44 = 1, return 1.
+
+**Data (24 CINF, player record):** E ≥ 0 for all 16 level pairs, so step 2 never lowers the other level and step 3
+is unreachable with shipped data. Step 3 sets the other level to 0, not back to its previous value (native
+`0x30b7a`–`0x30b81`); the recomputed E can then still be negative.
+
+##### D11. Calls handed to other tasks — Confirmed (code)
+
+- `0x69e5c(v)` stores v in `0x176710`; the mission build `0x66c00` sets it to −1 and the success-summary
+  routine `0x69e1c` reads it (0 → one summary flag, 1 → another). It is a "player heavily damaged" note for the
+  summary (P3-11): last write wins, never reset by the rescue.
+- `0x33464` (player energy loss): only in main-flow state 3 with sub-state 0 (`0x339c4`): posts a fixed EXE message,
+  sub-state 1, due time clock + 0x3C0 (P3-01/05; P3-11). Repeated calls in later updates do nothing.
+- `0x32dec` (wingman-loss timer) and `0x3c208`, `0x3c0f4` (communications reactions, call times in D2/D5): [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code), [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code).
+
+##### D12. Random draws on these paths — Confirmed (code)
+
+| Where | Condition | Draws, in order |
+|---|---|---|
+| `0x30c60` | field 4 = 1 | rand & 0xFF (< 0x54 bypass) |
+| `0x3c208`, `0x3c0f4` | attackerKind ≠ 0 / destruction (and `0x2a5fc`) | see [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code) |
+| `0x2a830` step 2 | noAttacker or missile source | rand & 0xFF (< 0x32) |
+| `0x2a830` step 4 | (hullDamage ≠ 0 or f) and hull > 0 | rand & 0xFF |
+| `0x2a830` step 6 | f or p | rand % n |
+| `0x2a830` step 7 | forced only, all n fields non-zero | rand % n |
+| `0x2e150`/`0x2e310` | s = 5/8, st < 2 | rand % count, then rand % ammunition when it applies ([W4](#w4-mount-damage-repair-and-status-subsystems-5-and-8--confirmed-code)) |
+| `0x21bd4` | s = 7 at new level 2, mode-0 block | 3 × (rand % 193 − 96) (P3-06) |
+| `0x23ac8` | destruction | explosion draws ([X11](#x11-numbers-and-random-draws--confirmed-code)) |
+| `0x3060c` | kinds in `0xfffff` | rand % 64 |
+
+Order within one damage: `0x30c60` → `0x3c208` → `0x2a830` (2, 4, 6, 7, effect) → [`0x3c0f4` → `0x6977c` (no
+direct draw) → `0x32d74` (draws via the view switch, P3-11) → `0x23ac8`]. Supports: rand % 19 → values 0–11 have
+1725 preimages, 12–18 have 1724; rand % 9 → 0–7 have 3641, 8 has 3640; rand % 64 → 512 each; rand & 0xFF → 128
+each. The display routines `0x4ce30` (rand & 0x3F) and the corner gauges (D16) also call the same generator per
+drawn frame (presentation; the original rule sequence therefore depends on rendering).
+
+##### D13. Resource initialisation `0x3060c(EAX h, EDX craft, EBX a, ECX b, stack c)` — Confirmed (code)
+
+- Kind & 0xFFFFF = 0 (missiles 0x100000, effects): only `0x30e0c` (+0x78 = craft +0xB8). The missile constructor's
+  call `0x3060c(missile, body, 100, 0, 0)` therefore gives a missile no energy, shield, charge or levels (all 0
+  from the allocator) and no energy updates (it is outside kinds `0xffffe`).
+- Otherwise: energy = (c54 ÷ 100) × a; shield = c5C × b ÷ 100; charge = c74 × c ÷ 100 (signed `IDIV`, `IMUL`); kind
+  1: L1 = 1, L2 = 2; E and T as in [maximum speed](#throttle-maximum-speed-and-speed-matching-p3-0603) (D1; the constant is 1000);
+  `0x30e0c`; +0x20 = clock; +0x44 = 1; +0x24 = clock + 0x80 + rand % 64.
+- Callers: instantiation (a = record +0x68, b = record +0x64, c = 100), rescue (same), missile constructor, kind
+  0x4000 constructor `0x38780` (P3-10). Record percentages: +0x68 energy, +0x64 shield; charge always 100 %.
+- **Data:** every c54 is a multiple of 100 and ≥ 100 (480 records), so energy = c54 × a ÷ 100 exactly.
+
+##### D14. Energy updates — Confirmed (code)
+
+**Order `0x30590`** (after `0x23808` in each dispatcher pass,
+[frame pipeline](#frame-pipeline-p3-0201)):
+
+1. The player (ps +0x8C) unless docked (+2 = 3): `0x3071c`(player, mv). No state or dead-flag test: the player's
+   energy keeps updating while it is destroyed and during the destruction view.
+2. Kinds `0xffffe` in walk order: docked → skip; parked (+2 = 0) → `0x30994`(h, 0) in **any** state (new, to be
+   removed, dead); otherwise only state ≥ 7 → `0x30994`(h, mv). Active new objects (states 0–3) and exploded
+   sources (state 4) are skipped. Projectiles, missiles, explosions, fragments are not updated.
+
+**`0x3071c(h, mv)` (player), when clock ≥ +0x24 (unsigned):**
+
+1. dt = clock − +0x20 (u32); ×8 when the typed-cheat flag `0x174ee0` (row 21 of the cheat table, pointer at
+   `0x1750f0`; no other writer) is set and the object's +2 is 0 (parked). The test does not exclude the player; a
+   parked player is Likely unreachable (instantiation makes kind 1 active and the area check does not park kind 1, P3-06;
+   message 0x800000's writer was not traced). +0x20 = clock.
+2. **Shield recharge** when shield < c5C and field 4 ≠ 2: r = trunc(c64[L1] × dt ÷ 64); r = min(r, energy);
+   need = min(c60 × (c5C − shield), 1000 r); gain = need ÷ c60; when gain > 0: shield += gain, energy −= need ÷ 1000.
+3. **Charge recharge** when charge < c74: r = min(trunc(c78[L2] × dt ÷ 64), energy); d = min(c74 − charge, 1000 r);
+   charge += d; energy −= d ÷ 1000 (no positivity test).
+4. **Speed cost:** v = trunc(mv +0x6C) (the commanded speed, not the current speed; c B8 when mv is null; chop
+   `0x74518` + `FISTP`). When c8C ≠ 0 and v ≥ c8C: v ×= 2; otherwise when c90 ≠ 0 and v ≥ c90: v ×= 3 (the ×2 test
+   has precedence). energy −= trunc((v × c88 ÷ 1000) × dt ÷ 64).
+5. **Field 0:** state 1 → energy −= trunc(10 dt ÷ 64); state 2 or 3 → energy −= trunc(100 dt ÷ 64).
+6. **Depletion** when energy ≤ 0: mv non-null → `0x21ba0`(h, 1) (mode-0 block: steering lock, commanded speed 0,
+   [P3-06](#flight-controls-and-rotation-p3-0602)); energy = 0; kind 1 → `0x33464`. This branch runs at **every** update whose result is ≤ 0, not only at the
+   transition; its effects are idempotent except that `0x21ba0` re-zeroes a commanded speed raised in between.
+7. Next update: player clock + 0x40; others clock + 0x80 with mv, clock + 0x100 without; +0x44 = 1.
+
+**`0x30994(h, mv)` (others):** steps 1, 2, 5, 6 (with `0x33464` only for kind 1, never reached) and 7; no charge
+recharge and no speed cost. Units: rates are energy per 64 clock units (per nominal second); charge and shield
+points cost 1/1000 and c60/1000 energy each; ÷ 64 and ÷ 1000 truncate toward zero; remainders are dropped (the next
+update starts afresh).
+
+Energy never regenerates in these routines (only repair/rescue/base: P3-10, P3-11).
+
+**Data (24 CINF):** c90 = 0 in all 480 records, so ×3 is unreachable; c8C is 0 in 384 records, at or below the
+truncated base maximum speed in 48 and above it in 48. In CINF 4037 the doubling is reachable for the player and
+the wingman (c8C ≤ trunc(c B8)) and not for enemy kinds 7, 8, the base (14) or kind 17. No record has a shield
+with c60 = 0 (no division by zero). The player's shield level 0 has a zero recharge rate in CINF 4037.
+
+##### D15. Left display pages — Confirmed (code)
+
+State: page index `0x1a9dc8` (0–6) and the 7-entry table `0x175c7c` (0x20 bytes: handler, —, refresh period,
+next refresh, subsystem, interference on/off, next toggle, interference start; [T8](#t8-left-display-no-target-reads-confirmed-code)). The type-6
+instrument handler `0x4ce30` per drawn frame: field s of the page's subsystem; s = 2 → interference on (start time
+set once); s = 1 → toggle on/off when clock > next toggle, next toggle = clock + 0x40 + (rand & 0x3F); s = 0 → off.
+Off pages call their handler when forced or their next refresh is due (period 0 = every frame), on pages draw
+SNIP 10487.
+
+| Page | Handler | Subsystem | Entered by | Left by |
+|---|---|---|---|---|
+| 0 status | `0x4d0e0` | 10 | init `0x4ca80`; `d` on page 1; comms close/clear `0x2cd20` (main-flow transitions, destruction `0x32d74`); auto-returns below | `e` |
+| 1 energy | `0x4d800` | 11 | `e` on page 0 only | `d` (only here); comms `c`; incoming message; Warp |
+| 2–4 comms menu | `0x4da28` | 13 | `c` (not on 2–4, field 13 ≠ 2) saves the page and opens 2; menu keys 3, 4 | menu end restores the saved page; handler with no menu → page 0 |
+| 5 incoming message | `0x4dc50` | 13 | `0x4e418` (view mode ≠ 1): saves the page in `0x175efc` | message end `0x4e2a0`/`0x4e5a0` restore it; three failed draws → 0 |
+| 6 Warp | `0x4dcec` | none | view switch `0x3f158` saves the page in `0x187020` | leaving Warp restores it (0 if it was 5); handler outside view mode 1 → 0 |
+
+- `e` (0x65) posts message 0x100000 with page 1 only when the page is 0; `d` (0x64) posts page 0 only when the page
+  is 1 (native `0x26fd5`, `0x2700a`). Elsewhere both do nothing.
+- Message 0x100000 (dispatcher `0x21457`): page ≥ 0 → `0x4cdf0` (set page, force redraw); then always a
+  presentation item 2 with SND 10485. So the page changes in the message loop of the key's frame.
+- `0x4cd68` (cockpit/HUD rebuild on view switches) re-initialises the display at a given page and sets the
+  player's +0xF0 = 1.
+
+##### D16. HUD full scales — Confirmed (code) for operands; drawing P3-13
+
+| Resource | Value | Full scale | Where |
+|---|---|---|---|
+| Energy | +0x28 | c54 (float division) | corner gauge type 2 `0x4131c`, field 16 |
+| Shield | +0x2C | c5C | corner gauge type 3 `0x41484`, field 15; energy-page left bar `0x4d800`; status overlay (D9) |
+| Hull | +0xD0 (clamped at 0) | c9C | corner gauge type 4 `0x415d0`; status field 1 (D9) |
+| Charge | +0x30 | c74 | energy-page right bar `0x4d800` |
+| Spare power | E +0x3C | T +0x40 | energy-page middle bar `0x4d800` |
+| Speed | mv +8 | c B8 | corner gauge type 0 `0x4117c`, field 17 |
+| Commanded speed | mv +0x6C | +0x78 (or c B8 by argument) | corner gauge type 1 `0x41238`, field 18 |
+
+`0x4d6f0` draws a bar of length h × value ÷ max (signed `IDIV`) when value < max, else full. The two TABL 10479
+records on the energy page are chosen by L1 and L2. Corner gauges at field state 1 show the true value only when
+(rand & 3) = 3 and a random value otherwise; at state 2 they are not drawn. *(Decompiler for the gauge colour
+thresholds.)*
+
+##### D17. Numeric semantics — Confirmed (code)
+
+- Types: resources, hull, levels, counters and damage are i32; clocks and due times u32; speeds and B8 f32. All
+  resource, hull, level and counter arithmetic is i32 (`ADD`/`SUB`/`IMUL` wrapping, signed `IDIV` truncating,
+  signed compares). Division by 64 uses `SAR 31; SHL 6; SBB; SAR 6` = truncation toward zero. Clock values: the due
+  test is unsigned (`JC`), dt is a u32 difference used as i32.
+- Overflow margins (data): rate × dt stays below 2³¹ for dt < 9.7 M units; (v × c88 ÷ 1000) × dt for dt < 3.3 M;
+  c60 × c5C < 2³¹; shield and hull << 8 never overflow. 1000 × r is bounded by the rate term (r ≤ rate × dt ÷ 64), so
+  it cannot overflow at realistic dt even though some c54 × 1000 exceed 2³¹.
+- **768 × hullDamage in `0x2a830`** wraps only for a residual damage ≥ 2,796,203. Bounded here for projectile hits
+  (gun +0x1C) and missile blasts (≤ missile +0x5C): no CINF record comes near it. **Not bounded here:** collision
+  damage (`0x29eb8`/`0x2a12c` ÷ (3 − group); [H8](#h8-numbers-on-these-paths--confirmed-code-unless-marked) leaves its i32 overflow reachability Unconfirmed), parked
+  engagement sums with their f64 factors ([E5](#e5-numeric-semantics--confirmed-code-exactness-by-arithmetic)) and the AI area damage block `0x1b41a0` (P3-08).
+  If it wrapped, t would be garbage (possibly negative, p = 0). Reachability for those inputs stays open.
+- Float to integer: only the commanded speed and c B8 (chop `0x74518` + `FISTP`) in `0x3071c`/`0x3060c`; `0x30e0c`
+  converts back with `FILD` (P3-06). No fixed point or trigonometric tables (supports U-009).
+- Divisions by data: c60 (only when shield < c5C, hence c5C > 0; non-zero in data), c9C and c5C in the player's
+  status display (positive for the player), the post-damage hull (tested > 0 first).
+- Negative inputs: a negative commanded speed would make the speed cost negative and raise energy; whether it can
+  be negative is P3-06's question.
+
+Evidence: ignored `local/research/p3-07/damage-energy/` (`ghidra_scripts/DmgProbe.java`, `probe.sh`, outputs `out/d1`–`out/d3`, `out/n1`–`out/n23`, `out/c1`; `data-check.ts` with `out/data-check.json`, counts and booleans over the 480 craft records of the 24 CINF). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Parked-object engagement (P3-07/05)
+
+Q-09: the abstract engagement of parked objects outside the active area.
+
+##### E1. The call in the parked-object update `0x2f1b0` — Confirmed (code)
+
+The parked-object update `0x2f1b0` (one call per dispatcher pass, at `0x21531`) belongs to P3-06 ([parked update](#world-boundary-active-area-parking-and-autopilot-p3-0604)), which records its walk, eligibility, cadence, elapsed time, Warp gate `0x2f298` and the parked movement and world exit `0x2f314`. For each object it updates, right after `0x2f314`, it runs the engagement with that elapsed time:
+
+- object byte +0xC4 = 1 → `0x2ffec`(object, elapsed); any other value → `0x30150`(object, elapsed, divisor 1). Both return 0 on every path, so the "negative → −1" exits after them are unreachable;
+- `0x2f314` also always returns 0, and an object it has just put in state 6 (left the world) still engages in the same update;
+- objects are processed one after another, so the engagement's draws interleave per object with P3-06's draws: object i's update draws, its engagement draws, then object i+1. An object killed earlier in the same walk is skipped later (dead flag, state 6).
+
+##### E2. Multi-target engagement `0x2ffec`(object, elapsed) — Confirmed (code)
+
+Only for objects with +0xC4 = 1. Instantiation (`0x68050`) gives +0xC4 = 1 to kinds `0x8000`, `0x10000`, `0x20000`,
+`0x40000`; AI code writes 0–5 later (`0x62250` writes 1; P3-08).
+
+1. Copies its own position (+0x6C/+0x70/+0x74). Engagement radius² m := f32(R × R), R = craft record (+0x1C) +0x0C
+   (FMUL then FSTP f32).
+2. Walks kinds `0xfffff` and collects, in walk order, every object that passes the **side gate** (self kind in
+   `0x6c87f` ? candidate kind ∉ A : candidate kind ∉ B, where A = `0x6c07f` and B = `0x93f80` are disjoint with union `0xfffff`, and `0x6c87f` = A + `0x800`) and whose squared distance from `0x56b50` is < m (strict; a NaN
+   would pass). `0x56b50`(a, b) = (dy·f32(dy) + dx·f32(dx)) + dz·f32(dz) in double, with d = a − b per axis in double,
+   each factor's second copy stored as f32 first. **No activity, state, dead-flag, Warp or self test**: active, docked
+   and parked objects, new objects and destroyed ones are collected. Self is collected only for kind `0x800` (the only
+   kind in `0x6c87f` but not in A).
+3. The list is a growable array (`0x6a860`(4, 10, 5, 0), append with `0x6a8f0`(…, −1), count `0x6aa70`, free
+   `0x6a8c8`); it holds uncounted handles. An allocation failure leaves it empty (no engagement).
+4. n := count. For each collected handle in order: `0x528bc`(self, h) — **self +0x8C := counted reference to h**
+   (the previous one released) — then `0x30150`(self, elapsed, divisor n) (EBX survives `0x528bc`).
+5. Frees the list, returns 0. Afterwards self +0x8C holds the last candidate (unchanged when n = 0).
+
+Ownership: the collection, the per-target division and the +0x8C write are part of the engagement rule (P3-07). The
++0x8C write overwrites the AI target that P3-08's code maintains, and `0x30150` reads the target through the leader
+when +0x7C is set (E3.2), so with a leader the n calls engage the leader's target n times.
+
+##### E3. Engagement rule `0x30150`(self, elapsed, divisor) — Confirmed (code)
+
+Callers: only `0x2f1b0` (divisor 1) and `0x2ffec` (divisor n ≥ 1) (`xfer:` scan; no 32-bit pointer).
+
+**E3.1 Non-engagement roll (self kind, one rand, before anything else):**
+
+| Self kind (tested in this order) | Returns 0 when rand % 100 < | Engages with probability |
+|---|---|---|
+| bit `0x2` (wingman) | 80 | 20 × 327 / 32768 |
+| in `0x87c` (4, 8, 0x10, 0x20, 0x40, 0x800) | 90 | 10 × 327 / 32768 |
+| in `0x78000` (0x8000–0x40000) | 95 | 5 × 327 / 32768 |
+| in `0xf9c7c`, i.e. effectively 0x400, 0x1000, 0x80000 | 90 | 10 × 327 / 32768 |
+| any other (1, 0x80, 0x100, 0x200, 0x2000, 0x4000) | no draw | always |
+
+(rand % 100 with rand 0–32767: values 0–67 have 328 preimages, 68–99 have 327.) The slice's enemy kinds 0x80 and
+0x100 therefore engage at every parked update without a draw.
+
+**E3.2 Leader and target (no draws):**
+
+- Leader L := self when +0x7C = 0; otherwise the +0x7C object, and when that handle is invalid (`0x52680`) return 0.
+  In both callers `0x2f314` has already run in the same update and clears an invalid +0x7C (`0x52898`(self, 0)), so
+  the invalid-leader return is not reached from `0x2f1b0`. Among disassembled direct stores, object +0x7C is written
+  only by `0x52898` (callers `0x67678`, section-5 cycle members: Likely the formation leader; `0x2f314`) and zeroed by
+  the allocator.
+- By L's byte +0xC4 (unsigned): 0 → target T := L +0x90; 1–4 → L +0x8C; **5 → return 0**; ≥ 6 → L +0x90. +0x90 is set by
+  `0x528e8` (AI code: `0x5e710`, `0x61740`, `0x61dfc`, `0x61f20`, `0x62578`, `0x62714`, `0x68050`). Direct +0xC4
+  stores write 0–5; three stores write a register value (`0x623c6`, `0x624ff`, `0x626f5`; P3-08).
+- Gates, in order, each returning 0: T invalid; T +0xD0 ≤ 0 (signed; the hull, [D1](#d1-object-fields-of-this-section--confirmed-code)); T +0xCC ≠ 0 (Warp/leaving); side gate (self kind, not L's, against T's kind, as in E2). **Not tested:** T's
+  activity, state and kind range (an active target, the player included, a docked one or a new one in state 0 qualify)
+  and T's dead flag (tested only before damage, E3.6).
+
+**E3.3 Distance (no conversion to an integer):** with s = self, t = T positions (f32):
+d := f32((((|t.y − s.y| + |t.x − s.x|) + |t.z − s.z|) − r) × 3.0 × 0.25), r = T's craft/body record (+0x1C) +0x10
+(shape +0x00, the radius that `0x2cf38` computes for box records). L1 metric minus the target radius, times 0.75 (f32
+constants 3.0 at `0x170fe4` and 0.25 at `0x170fe8`, applied in that order); x87 double, one f32 store. d stays a
+float; every range test compares two f32 values: in range ⇔ weapon range > d (strict; NaN → out of range).
+
+**E3.4 Missile choice (only when self +0xE0 ≥ 0, signed; +0xE0 is SCEN record +0x74 copied at instantiation):**
+count the mount states (array +0x158, count +0x154, mount order) whose mount type byte (+0x10) is 1, ammunition
+(state +0x08) ≠ 0 and missile record +0x0C (range) > d. When the count c > 0: one rand, k := rand % c; the chosen mount
+is the k-th qualifying one (0-based, mount order). Otherwise (c = 0 or +0xE0 < 0) none.
+
+**E3.5 Damage sum** (i32 total from 0, mount states in mount order; **lists, firing type, damage level, ammunition of
+guns, arcs, cooldown state and charge are not consulted**, so mounts in no list and automatic mounts count too):
+
+- Gun mount (type byte 0) with gun +0x0C (range) > d: q := trunc(elapsed × (1/64) × gun +0x14) (FILD of elapsed as
+  an unsigned 64-bit value, f32 constant 1/64 at `0x171004`, FILD of +0x14; `0x74518` truncation, FISTP i32);
+  shots := q ÷ divisor (signed IDIV, toward zero); shots := 1 when shots ≤ 1; total += gun +0x1C, shots times (i32
+  wrapping adds).
+  Gun +0x14 is the list path's cooldown ([W6](#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code)), used here as a multiplier: q = floor(elapsed × cooldown ÷ 64).
+- The chosen missile mount (type byte 1): when T's kind is exactly 2, one rand and missile +0x5C is added only when
+  rand % 100 < 20 (20 × 328 / 32768); for any other T kind it is added without a draw. Its ammunition (state +0x08) is
+  decremented in both cases. No other missile mount contributes.
+- Other type values: nothing.
+
+**E3.6 Factors and application:**
+
+1. total := trunc(total × S) (FILD, FMULP, `0x74518`, FISTP), S = `0x2cf0c`: the f32 at `0x1864d4` (TABL 4003 scale of
+   the mission's pair) while a CINF is loaded (`0x174b70` ≠ 0), else 1.0.
+2. By **T's** kind: in `0x6c87f` → × 0.88 (`0x170ffc`) when in `0x78000`, else × 0.5 (`0x170ff4`) when in `0x87c`,
+   else × 0.9 (`0x170fec`) (kinds 1, 2, 0x4000); not in `0x6c87f` → × 0.9 when in `0x81400` (0x400, 0x1000, 0x80000),
+   else no factor (0x80, 0x100, 0x200, 0x2000, 0x10000). Each product is f64 × i32 then truncated (FISTP i32).
+3. When total > 0 (signed) and T's dead flag +0xD8 = 0: `0x2a694`(attacker kind = **self's kind**, source = 0,
+   victim = T, damage = total).
+4. Always after a passed gate (E3.2), whether or not damage was dealt or T died: **self +0x24 := clock and T +0x24 :=
+   clock**. +0x24 is the next energy-update time (`0x3060c` sets it at instantiation; the non-player update `0x30994`
+   runs when clock ≥ +0x24, unsigned, and then sets it to clock + 0x100 for a parked object and clock + 0x80 otherwise;
+   the player's `0x3071c` likewise reads it — intervals: [D14](#d14-energy-updates--confirmed-code)).
+   The write makes both objects' energy update run at the next energy pass `0x30590`, i.e. in the next frame (it runs
+   before `0x2f1b0`). The update itself and its elapsed time (+0x20) are D14's.
+5. Returns 0.
+
+##### E4. Draws per parked object and pass — Confirmed (code)
+
+In order, interleaved object by object in walk order, each object's engagement draws follow the draws of its parked update (P3-06, E1):
+
+- `0x30150` path: (a) the class roll when the self kind is in a rolling class (E3.1); stop on return.
+   (b) after the gates: rand % c for the missile choice when c > 0 and +0xE0 ≥ 0. (c) rand % 100 for the chosen missile
+   when T's kind is 2. (d) when damage is applied: the draws of `0x2a694`'s callees (`0x30c60`, `0x2a830`, `0x3c208`,
+   `0x3c0f4`, and `0x23ac8` or `0x32d74` when an active target dies; `reach:` confirms each can call rand; their counts
+   are in [D12](#d12-random-draws-on-these-paths--confirmed-code), [X11](#x11-numbers-and-random-draws--confirmed-code) and [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code)).
+- `0x2ffec` path: no draw while collecting, then (a)–(d) once per candidate.
+- No draw in `0x2cf0c`, `0x2f298`, `0x528bc`, `0x56b50` or the array helpers.
+
+##### E5. Numeric semantics — Confirmed (code); exactness by arithmetic
+
+- **Elapsed:** a u32 from the parked update (P3-06); FILD of the zero-extended value makes it an exact unsigned value.
+- **Distance:** float only (E3.3); f32 store; f32 against f32 compares. With round-to-nearest (the P3-02/10 runtime
+  observation, [x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202))
+  JS double arithmetic in the same order followed by `Math.fround` reproduces d exactly.
+- **Float to integer:** only through `0x74518` (64-bit precision, chop, FRNDINT, restore) + FISTP: the shot count, the
+  scaled total and the per-kind total. Truncation toward zero.
+  - q = floor(elapsed × cooldown ÷ 64) exactly (the product is exact below 2^53).
+  - trunc(total × S) is exact for 0 ≤ total < 2^29 (24-bit S); every TABL 4003 scale is ≤ 1 (local data), so it cannot
+    overflow.
+  - The f64 factors are 0.9 + 2.2·10⁻¹⁷, exactly 0.5, and 0.88 + 4.4·10⁻¹⁸ (both inexact ones slightly above), so for
+    0 < total < 2^31 the result equals floor(total × 9/10), floor(total/2) and floor(total × 22/25) under either
+    rounding mode: the fractional part of the exact product is a multiple of 1/10 or 1/25, far larger than the error.
+- **Integer division:** shots := q IDIV divisor (signed, toward zero), then max-with-1 by a signed compare (≤ 1 → 1).
+- **Overflow (local data, all 24 CINF):**
+  - *Shot count q:* elapsed is a u32 (also after the cheat's `SHL 3`), so q = floor(elapsed × cooldown ÷ 64) < 2^31
+    whenever cooldown ≤ 32; every gun +0x14 in the 24 CINF is ≤ 32, so the FISTP (which would raise the unmasked
+    invalid-operation exception) never overflows with shipped data. IDIV by a divisor ≥ 1 cannot overflow.
+  - *Gun sum:* the repeated `ADD`s are i32 and **wrap**. No code bound limits elapsed (P3-06's elapsed time
+    includes the time an object spent active), so a long active stretch followed by parking, or a long session, feeds it. For the worst craft
+    the sum passes 2^31 − 1 after about 45 hours of elapsed time (about 45 ÷ 8 hours with the cheat flag). Not met in
+    normal play, but reachable in principle: implementations reproduce i32 wrapping (or document a supported-domain
+    cap). A wrapped total ≤ 0 deals no damage (step 3 of E3.6), since S and the per-kind factors are positive and every
+    truncation is toward zero.
+  - *Scaled and per-kind totals:* |total × S| ≤ |total| (every TABL 4003 scale ≤ 1) and the factors are < 1, so those
+    two FISTPs cannot overflow.
+- **rand:** `rand % 64`, `rand % 100`, `rand % c` with signed IDIV of a non-negative value (support 0…n−1, 32768 =
+  q·n + r preimages split q+1 for values < r).
+- **No fixed point or trigonometry** on this path (supports U-009).
+
+##### E6. Comparison with active-area hits — Confirmed (code)
+
+| Effect | Projectile/missile hit (`0x2a40c`) | Parked engagement (`0x30150`) |
+|---|---|---|
+| Shot objects, launch message 8, projectile/missile creation | Yes | **No** |
+| Presentation item type 4 on the victim (hit sound/effect) | Yes | **No** |
+| Last-victim/last-attacker records (`0x52a1c`/`0x52a50`, +0x9C/+0xA0, +0xA4/+0xA8) | When the owner is valid | **No** |
+| Player hit statistics (player-state +0x3C/+0x44) | Player shooter | **No** |
+| Ricochet or removal of a projectile | Yes | No |
+| `0x2a694` arguments | owner kind (or `0x93780` when the owner is gone), projectile/missile handle | **self kind, source 0** |
+| Inside `0x2a694` ([D2](#d2-damage-entry-0x2a694eax-attackerkind-edx-source-ebx-victim-ecx-damage--confirmed-code)): shield, hull, subsystems, communications, dead flag, object event, kill counters, then removal of a parked victim or explosion of an active one | Same | Same calls, with source 0 |
+| TABL 4003 scale, per-kind factor | No | **Yes** |
+
+- Event type and kill credit follow the attacker kind = the shooter's kind: type 0 and the player's kill counters only
+  when that kind is 1, type 1 otherwise. A parked shooter of kind 1 was not found: instantiation always makes kind 1
+  active, the area check (P3-06) does not park kind 1, and the only other activity-0 stores are the message-0x20 toggle (needs state 5)
+  and the kind-`0x4000` allocator `0x38780`. Whether a state-5 writer not traced here (message 0x800000; the Warp-out
+  case, whose gate `0x2fef8` does not test the kind) can park the player is open, so "a parked engagement never credits
+  the player and always reports type 1" is Likely, not Confirmed. Implementations derive both from the shooter's kind.
+- `0x3c208`/`0x3c0f4` ([C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code)) are called with a non-zero attacker kind, so they also run for parked engagements.
+- A destroyed **parked** victim goes to state 6 without an explosion (`0x2a7fa`/`0x2a81a`); an **active** victim (the
+  gate does not exclude it) explodes as in an active hit.
+
+##### E7. Reachability notes (local data, all 24 CINF) — Confirmed (data) unless marked
+
+- 384 of 480 craft records have mounts and 96 have missile mounts; every gun mount's gun +0x14 is positive.
+- No TABL 4003 scale exceeds 1.
+- Target = the player: a parked shooter lies outside the active circle (xy distance ≥ 7,500 from the player at its
+  last area check), so L1 ≥ 7,500 and d ≥ (7,500 − player radius) × 0.75. In CINF 4037 no mounted gun or missile range
+  reaches that bound, and in all 24 no gun on any craft does; some side-B missile ranges in other CINF do. So in the
+  slice mission a parked engagement cannot damage the player, except possibly in the one pass where the player has just
+  moved next to a parked object before the area check re-activates it (Likely; window not measured).
+
+Evidence: ignored `local/research/p3-07/parked/` (`ghidra_scripts/ParkProbe.java`, `probe.sh`, outputs `out/p1`–`out/p11`; `data-check.ts` with `out/data-check.json`, booleans, counts and coarse bounds only). The factor selection by the target's kind was re-read natively by P3-07/07 (`out/p1`, `0x304f2`–`0x30534`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Destruction, explosions and fragments (P3-07/06)
+
+Q-10. Extends [effect presentation sources](#effect-presentation-sources) and the destruction sequence of [mission failure](#mission-failure-player-loss-and-rescue-p3-0105). Stage names are those of the Core pipeline: *object-update* `0x20938`, *request handling* the message loop of `0x20d10`, *movement* `0x221fc`, *collision* `0x29670`/`0x29934`, *delayed-player-explosion* `0x23808`; tick N+1 is the next dispatcher pass.
+
+##### X1. Who destroys, and the branches — Confirmed (code)
+
+- **Damage handler `0x2a694`** sets the dead flag, reports the object event and branches by the victim's kind ([D2](#d2-damage-entry-0x2a694eax-attackerkind-edx-source-ebx-victim-ecx-damage--confirmed-code)): the player arms its delayed explosion (X2) after `0x32d74`; a parked victim gets state 6 and never explodes; every other victim explodes through `0x23ac8`. **`0x32dec` is the wingman branch only** (a once-only wingman-loss timer, [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code)), not a general non-player branch.
+- **Dispatcher event 0x800** (debug/cheat kills, `0x211ed`–`0x2132b`): byte +0x10 = 0 (the subject) or 1 (the subject's +0x8C): if not dead → dead := 1, `0x3c0f4`(`0x93780`, 0), `0x6977c`(subject, 1), `0x23ac8`, then kind 1 → `0x32d74`, kind 2 → `0x32dec` (the explosion constructor runs **before** `0x32d74` here, after it in `0x2a694`); = 2: every active (+2 = 1) object of kinds `0x93780` → dead, `0x6977c`, `0x23ac8`; = 3: the object at +0x194 of the player's target → dead, `0x6977c`, `0x23ac8`. Not normal play.
+- **Built-in AI handler `0x6313c`** (record 9 of the built-in program table `0x1762f8`, handler pointer at `0x176604`; p8, p9): calls `0x23ac8` on its own subject **directly, without the dead flag or `0x6977c`**, then deals the area damage of [D5](#d5-other-entries-into-the-damage-rule--confirmed-code) (AICO 6001 +0x08 damage, +0x0C full radius, +0x10 outer radius). This runs in object-update. Which objects get program record 9 is P3-08's (Unconfirmed here).
+- Other callers of `0x23ac8` (raw `E8` scan, p2): `0x23808` (X2), `0x256e4` (X7), `0x2b408` (missile detonation, [H5](#h5-missiles--confirmed-code-unless-marked)). No pointer to it exists. **Parked objects never explode** (state 6 in `0x2a694`; the spec's rule).
+
+##### X2. Explosion constructor `0x23ac8`(h) — Confirmed (code)
+
+Native `0x23ac8`–`0x23fda` (p3).
+
+1. Returns −1 and does nothing when the handle is invalid or the object has no movement block.
+2. **Kind 1 (delay):** when `0x174ae4` is 0 it stores sample + 0xC0 there and returns 0 (nothing else). When it is non-zero and > sample (unsigned) it returns 0. Otherwise it clears it and continues. `0x23808` (after movement and collisions, every pass) calls `0x23ac8`(player-state +0x8C) only when `0x174ae4` ≠ 0 and `0x174ae4` < sample (strict) and the player handle is non-zero. The explosion therefore happens in the first pass whose sample **exceeds** destruction sample + 0xC0 (at 2 units per tick: 97 ticks later), in the delayed-player-explosion stage. `0x174ae4` is written only by `0x23ac8` (p25) and is not reset by the mission build; leaving a mission inside the delay is not possible (no game key is polled while the player is dead, P3-02/01; state 3 does not poll the status in sub-state 2, P3-01/05), so a stale timer is Likely unreachable. A Core world starts without it.
+3. Allocates kind `0x400000` (+2 := 1), its auxiliary block, callback `0x23838`; **then** source state := 4 (destroyed source: no callbacks, still moved). Explosion mb +0x104 := source kind. **Variant** byte mb +0xF0 := 3 when the source kind has bit `0x100000` (missile), else 0 for large kinds, else 2.
+4. **Fragments and the source reference:** for craft kinds it calls the producer `0x24d78`(source, 3) (X6). Only when the source is not a craft kind **or the producer returned non-zero** does it set explosion +0x8C := counted reference to the source (`0x528bc`). So a craft that sheds fragments is *not* held by its explosion; its part-0 fragment holds it (X7).
+5. Motion: `0x218e8`(source, source mb, mode 1, item), item hit-test flag := 0, `0x21794`(explosion) — mode 1 with velocity = the item's R2 × the source's current speed (for a mode-2 source, `0x218e8` first takes the source velocity as R2 and re-orthonormalises), no hit test (03 X1).
+6. **Extra explosions (craft kinds only):** reads the 3D camera position (`0x52e14` ← `0x1b075c`) and rows (`0x52e90` ← `0x1b0768`, R0 at +0, R1 at +0xC), u := normalise(camera − source P) (`0x56aa8`). Count n := rand AND 3 (0–3), or (rand AND 3) + 2 (2–5) for large kinds. For each extra: six rands t₁…t₆, each tᵢ = rand × (1/32767) × K + C with (K, C) = (30, −15) or, for large kinds, (120, −60), multiplied by camera R0.x, R0.y, R0.z, R1.x, R1.y, R1.z respectively (one f32 store each); position = source P + 2.0 × u + (t₁·R0.x + t₄·R1.x, t₂·R0.y + t₅·R1.y, t₃·R0.z + t₆·R1.z), summed in x87 and stored f32 once per component; then `0x23fdc`(source, source mb, &position). The jitter is component-wise, not t·R0 + t′·R1.
+7. Returns 0.
+
+##### X3. Extra explosion `0x23fdc` — Confirmed (code)
+
+Allocates kind `0x400000` (+2 := 1), auxiliary block, callback `0x23838`; mb +0x104 := 0 (no source kind); variant := 0 for large source kinds, else 2; motion as X2 step 5 but with the position replaced by the given point. It never sets +0x8C. **Its only inputs beyond the source pose are the display camera's position and rows** (X2 step 6).
+
+##### X4. Explosion object lifecycle — Confirmed (code)
+
+**Callback `0x23838`** (object-update; native p3):
+
+- **State 0, first time:** allocates a 0x14-byte timer from pool `0x174ae0`, zeroed: [0] source kind (mb +0x104), [1] mode-0 event time, [2] mode-2 event time, [3] mode-1 event time, [4] activation delay. Then:
+  - source kind is a craft kind: [1] := sample + 8, [3] := sample + 0xC, [2] := sample + 0x10, then the gate `0x2443c`(kind, copy of the explosion P, timer) (X5);
+  - otherwise: if the source kind is 0 (an extra) [4] := sample + rand % 21; then, for every non-craft source, one rand: when rand % 3 = 0, [1] := sample + 8 (a mode-0 event, which creates nothing).
+  - obj +0x14 := timer.
+- **State 0:** when sample > [4] (unsigned, strict) it posts message 0x200 with new state 7. Main explosions ([4] = 0) do this at their first callback; extras wait until their delay has passed (sample > first-callback sample + 0..20).
+- **State 7:** for [1] (mode 0), then [3] (mode 1), then [2] (mode 2): when non-zero and ≤ sample (unsigned) it posts message 0x10 with byte +0x10 = the mode and clears the field. Then it posts 0x200 with state 7 (every tick).
+- **State 6:** when +0x8C is valid it posts message 0x40 on it (dispatcher → `0x24424` → `0x21650`: that object gets state 6); clears +0x8C; frees the timer; posts 0x20 (removal in that tick's request handling).
+- **States 1–5:** nothing. Explosions do not wait for a presentation: nothing sets their state to 1, 2 or 3 on the paths examined (Likely: only model and fragment completions write those states).
+
+**Message 0x200 → `0x2409c`(h, new state)** (request handling; the dispatcher calls it only for kind `0x400000`, `0x211a6`; native p3):
+
+- **Activation** (current state ≠ 7 and new state = 7): state := 7; then the EXPL choice (X8): variant 0 or 1 → rand % count₁ in the list-1 subset; variant 2 → squared distance from the camera position to the explosion P (`0x56b50`: f32 differences, x87 sum) ≥ 160000.0 (f32, i.e. 400²) → rand % count₂ in the list-2 subset, otherwise variant := 1 and rand % count₁ in the list-1 subset; variant 3 → rand % count₃ in the list-3 subset (signed `IDIV`; a zero count would fault). mb +0xF4 := that EXPL record; posts presentation item type 8 byte 0 (start: animation and sound); mb +0xF8 (shown frame) := 0, +0x108 (flash pending) := 1, +0x10C := sample + 0x60, +0xFC (t₀) := sample, +0x100 := 14; posts item type 8 (2, 3) with frame 0. **One rand per activation.**
+- **Update** (otherwise; every later 0x200): when +0x108 ≠ 0, the flash check `0x24314` (X4 flash) and +0x108 := 0. Frame f := (14 × (sample − t₀)) mod 2³² SHR 6 (`IMUL`, logical shift), compared **signed** with the ANIM frame count n (EXPL +4 → ANIM +4).
+  - f ≥ n and +0x10C < sample (unsigned, strict): `0x21650`(explosion) (presentation removal item, state 6) and return. The object leaves at its next callback (state 6, above), one tick later.
+  - Otherwise state := 7; when f ≥ n: if +0x8C is valid, `0x21650`(+0x8C) (**the held source gets state 6**) and +0x8C := 0; f := −1 (sprite hidden). When f differs from +0xF8 it is stored and posted as item 8 (2, 3, f).
+- **Flash `0x24314`** (presentation): only for craft sources: large kinds always, others when the L1 distance from the camera is < 100.0, or < 150.0 and the camera's forward row (`0x52eec`(2)) · (P − camera) > 0.707 (unnormalised); it posts item type 4 (2, 6) on the player object. Its return value is unused.
+
+**Release and removal times** (2 units per tick, t₀ = activation sample): with the shipped ANIMs (12 frames in every EXIC list-1 and list-2 entry, 6 in every list-3 entry; data check), f ≥ n first holds 28 ticks after activation for variants 0–2 and 14 ticks for variant 3; the own removal is requested at the first update with sample > t₀ + 0x60, i.e. 49 ticks after activation (f ≥ n already), and the object leaves one tick later. The 1.5 s of [textures §6](./textures.md#6-anim-explosion-animations-confirmed) is therefore the explosion's own lifetime; a **held** source is released at the end of the animation, earlier.
+
+##### X5. Event 0x10 and the discriminator-1/2 fragments — Confirmed (code)
+
+- **Gate `0x2443c`(kind, P, timer)** (called once, at the explosion's first callback, before it has moved): camera position and rows (`0x52e14`, `0x52e90`), viewport rectangle (`0x3f420` → `0x3d488` copies `0x175200`: left, top, right, bottom). Local point = rows · (P − camera) (`0x56dc0`). On screen only when 10.0 ≤ z < 3800.0 (f32) and, with W = right and the centre (right SAR 1, bottom SAR 1), sx = chop(W × x × (1/z)) + cx and sy = chop(−W × y × (1/z)) + cy satisfy left ≤ sx ≤ right and top ≤ sy ≤ bottom (signed). Off screen → [1], [2], [3] := 0. On screen: class 1 for kinds 4, 8, 0x10, 0x20, 0x40, 0x400, 0x800, 0x1000; class 2 for 0x8000, 0x10000, 0x20000, 0x40000, 0x80000; class 0 otherwise. With d² = |P − camera|² (components stored f32 into the caller's copy, sum in x87) and the f32 tables A = `0x174ae8` {90000, 202500, −1} and B = `0x174af4` {202500, −1, −1}: d² < A and B ≥ 0 → keep all; else d² < B and A ≥ 0 → keep only [2] (mode 2); else drop all. Net: class 0 keeps both under distance 300 and only mode 2 from 300 to under 450; classes 1 and 2 keep nothing.
+- **Dispatcher 0x10** (`0x2136c`): only when `0x339cc` passes, i.e. main-flow state byte `0x1863ac` ≠ 1 (state 1 is the teardown state), **so it passes in flight**; then `0x24d78`(subject = the explosion, mode = byte +0x10).
+- **Producer `0x24d78`(h, mode)** (jump table `0x24d68`): for an explosion handle the kind is its mb +0x104 (−1 without a block); mode > 3 → −1.
+  - 0: nothing, returns 0.
+  - 1: n := (rand AND 3) + 10 (drawn for every source kind); when the kind is in `0x91780`, n × `0x24ec4`(h, kind, 1, 0).
+  - 2: n := rand % 5; when the kind is in `0x91780` and n > 0, `0x24ec4`(h, kind, 2, i) for i = 0…n−1.
+  - 3: X6.
+  - Of `0x91780` (0x80, 0x100, 0x200, 0x400, 0x1000, 0x10000, 0x80000) only class-0 kinds pass the gate, so **only kinds 0x80, 0x100 and 0x200 ever shed discriminator-1/2 fragments**; kinds 1, 2, 0x2000 and 0x4000 keep their events and spend the producer's rand without fragments.
+- **Constructor `0x24ec4`(h = the explosion, kind, disc, i)** (native p3): allocates kind `0x1000000` (+2 := 1), auxiliary block (on failure frees the object, −1), callback `0x24ac4`; mb +0xF0 := source kind, +0xF4 := disc; disc 2: one rand, +0xF5 := i, +0xF6 := (rand % 10 = 0); disc 1: +0xF6 := 0 (+0xF5 not written). Item from `0x218e8`(explosion, its mb, mode 2): position and rows of the explosion, base velocity = R2 × the explosion's speed. Random direction u (`0x56b8c`: 2 rands; disc 1 calls it twice and keeps the second), then disc 1: spin = rand/32767 × 0.34906585 + 0.08726646 rad (5°–25°) and speed = rand/32767 × 14 + 4; disc 2: spin = rand/32767 × 0.17453293 + 0.08726646 (5°–15°) and speed = rand/32767 × 12 + 4 (each f32). Velocity := base + u × speed; rows := one of the 64 start-up rotations (`0x56cd4`: rand % 64); spin axis := 0 (disc 1) or table `0x174b08`[rand % 3] = {0, 1, 2} (disc 2); `0x21794` (mode 2); presentation item type 8 byte 0. **Not written:** obj +0x1C (DEBRIS record) and +0xD0 (durability), which the allocator zeroes (`0x520d4`, p5) — so these fragments are never projectile targets (pass 2 needs a record and +0xD0 > 0) nor player-collision contacts (same filter). Rands: 7 per fragment (disc 1: 2 + 2 + 1 + 1 + 1; disc 2: 1 + 2 + 1 + 1 + 1 + 1).
+- Discriminator 0 is still never produced (P2-12/30 holds).
+
+##### X6. Discriminator-3 fragments (mode 3) — Confirmed (code)
+
+- **Count:** `0x24d78`(source, 3) reads the source's mb +0 (its visual record, created by `0x3d95c` and given the loaded MODL at +4 by the model completion `0x3d904`), that record's +4 (the MODL) and the MODL's list-1 count (+0x0C). It returns −1 (no fragments, the explosion then holds the source) when any of these is 0 or the count ≤ 0; otherwise it calls `0x25124`(source, kind, p) for p = 0…count−1 and returns 0. The MODL is the one `0x65ca4`(kind) names in M2ID 10649 for the kind's bit (the same lookup the visual uses). **Rules read only this count; no part flag, mesh or texture** (the visual completion `0x3e590` reads the part meshes and textures).
+- **Constructor `0x25124`(source, kind, p)** (native p3):
+  1. kinds 1 and 2 skip p = 1 and p = 2 (no object). (The visual draws parts 0, 1 and 2 together for their part-0 fragment, and prints a debug message for a stray part 1 or 2: `0x3e590`, presentation.)
+  2. Allocates kind `0x1000000` (+2 := 1), auxiliary block (failure frees it, −1), callback `0x24ac4`; mb +0xF4 := 3, +0xF0 := source kind, +0xF5 := p (byte).
+  3. p = 0: obj +0x8C := counted reference to the source.
+  4. Explode-on-expiry flag mb +0xF6: kind 1 or 2 with p = 0 → 0 (kind 1 also sets player-state +0x90 := this fragment, `0x529c0`, the followed object); large kinds → 0; otherwise one rand, flag := (rand AND 7) = 0 (1 in 8).
+  5. Item from `0x218e8`(source, source mb, mode 2): source P and rows; base velocity = R2 × source speed (mb +8), one f32 store per component; the item's speed, which becomes the fragment block's +8, is the source's speed. (`0x218e8` completes a mode-2 source's frame as in X2 step 5 before it branches on the new mode, so also for mode 2; no fragment source is in mode 2.)
+  6. Record r := `0x249dc`(kind, p) (craft §4.1). With r: offset d := R0 × r[0] + R1 × r[1] + R2 × r[2] (r = DEBRIS +0x00–+0x08, negated at load; each of the nine products stored f32, then per component d = (R1 × r[1] + R2 × r[2]) + R0 × r[0] summed in x87 and stored f32 once; P3-07/18), position := P + d (one f32 store per component), d := normalise(d) (`0x56aa8`; zero length leaves it), **durability +0xD0 := 4000 when DEBRIS +0x5C = 0, 1200 when it is non-zero**. Without r (the pods of kinds 1/2): d := R1, no offset, +0xD0 stays 0. obj +0x1C := r.
+  7. Speed s and per-frame spin (rand/32767 × K + C, f32): pods (kind 1/2, p = 0): one rand, s ∈ [2, 8] (×6 + 2), spin = −0.08726647 (−5°, a stored f32); other small kinds: two rands, s ∈ [2, 10] (×8 + 2), spin ∈ [1°, 15°] (×0.24434610 + 0.01745329); large kinds: two rands, s ∈ [2, 5] (×3 + 2), spin ∈ [0.1°, 0.7°] (×0.01047198 + 0.00174533).
+  8. Velocity := base + d × s, the product and sum in x87 and one f32 store per component (P3-07/18). Spin axis := 2 for pods, else table[rand % 3]. `0x21794` (mode 2); presentation item type 8 byte 0.
+- **Mapping in the shipped data** (data check, all 20 kind bits): for every kind the DEBRIS pair count equals the number of fragments that need a record (list-1 count, or list-1 count − 3 for kinds 1 and 2), so no index is out of range and no zero-count pair is indexed; kinds 13 and 14 have no list-1 parts and no records; the only null records are the part-0 pods of kinds 1 and 2 (player model 10743: 7 list-1 parts → 5 fragments: the pod and parts 3–6 on DEBRIS records 0–3). Out-of-range indices would read past the pair's array, and p > 0 on a zero-count pair a low linear address (`0x249dc` has no bound check) — not reachable with this data.
+- **+0x5C classes** (load transform recomputed locally per craft §4.4): 19 of the 67 records are "small" (+0x5C = 1 → durability 1200, always removes a hitting projectile, half contact damage with the per-frame limit), 48 "large" (4000; ¼ ricochet chance; full bounce damage). The smallest distance of r − 3.5 from the threshold 20 is 2.25, so the classes do not depend on rounding details. The content import does not carry +0x5C (`debris-parameters.ts`); Core must compute it (consumer transform).
+
+##### X7. Fragment lifecycle — Confirmed (code)
+
+**Callback `0x24ac4`** (object-update; jump table `0x24aa4`: states 0, 1 → setup; 3 → post 7; 6 → free and leave; 7 → update; 2, 4, 5 → nothing):
+
+- **States 0/1 (first callback):** allocates a timer from pool `0x186410`; expiry timer +8 (relative to this callback's sample s₁):
+  - disc 0: s₁ + 0x10 + rand % 0x40 (unreachable); disc 1: s₁ + 0x100 + rand % 0xC0 (4–7 s); disc 2: s₁ + 0x200 + rand % 0xC0 (8–11 s);
+  - disc 3, source kind 1, p = 0 (player pod): s₁ + 0x140; source kind 2, p = 0 (wingman pod): s₁ + 0x780;
+  - disc 3 with +0xF6 = 1: s₁ + 0x80 + rand % 0xC0;
+  - disc 3, large source kind: 0 (**never expires**);
+  - other disc 3: s₁ + 0x3C0 + rand % 0x200 (15–23 s).
+  obj +0x14 := timer. It posts 0x200 with state 7 when the state is 1 (presentation ready) and 2 when it is 0 (waits for the visual, which `0x3e590` completes; P3-02 lets Core treat new entities as ready). Rands: one, except the pods and large-kind fragments without the flag.
+- **State 3:** posts 0x200 with state 7.
+- **State 7:** first, when mb +0xF5 = 0 and +0x8C ≠ 0 (only part-0 disc-3 fragments hold one), it posts **message 0x2000000 on +0x8C** and releases the reference; then, when timer +8 ≠ 0 and ≤ sample (unsigned), it posts message 0x10000 and clears +8.
+- **State 6:** frees the timer, posts 0x20.
+- **Message 0x2000000 → `0x2574c`(source)** (request handling): for a kind-1 subject it only posts item type 4 (2, 5) on it (Likely hides the player model; P3-12) — **the player is not removed and stays in state 4**; any other valid subject gets `0x21650` (state 6) and leaves at its next callback. **This is how a destroyed craft that shed fragments is removed:** fragment created in tick N (state 0) → its first callback at N+1 (state 7 in that tick's request handling, moved in that tick) → hand-off at N+2's callback, source state 6 in N+2's request handling → source's callback at N+3 posts 0x20 → removed in N+3. If the area check (P3-06) removes the part-0 fragment at N+1, the hand-off never happens and the source stays in state 4 (moved, never updated, and not removed by the area check, which needs state 7 and above) until teardown (Confirmed code; Likely rare: the source must be destroyed at the edge of the active area).
+- **Message 0x10000 (non-missile, non-projectile subject) → `0x256e4`** (request handling): +0xF6 = 1 → `0x23ac8`(fragment) (the fragment becomes a state-4 source of a variant-2 explosion, held by it and released at the end of its animation) and nothing else; otherwise when the fragment is source kind 1, disc 3, part 0 (player pod): player-state +0x90 := 0, then `0x32e14`(1) (P3-11's rescue or failure); then `0x2574c`(fragment) → state 6, removed next tick. The wingman pod only leaves (no call).
+- **Shot down:** `0x24a6c` (projectile pass 2 and the player–fragment collision, [H4](#h4-impact-ricochet-attribution-and-fragment-kills--confirmed-code)) sets +0xF6 := 1 and the expiry to 1, so the next callback fires the expiry and `0x256e4` explodes the fragment.
+
+##### X8. EXPL subset at the mission build — Confirmed (code) unless noted
+
+- `0x23520` is called once per build by `0x66c00` (`0x66ed4`), **after** `0x6721c` (whose record defaults are the build's only other draws, P3-02/03) and `0x486e4` (no draw), and is the build's last draw site (`reach` over the builder's callees, p10). It frees the previous subsets (`0x236dc`), loads EXIC 10211 by ID, allocates three arrays (5, 5, 3 pointers at `0x1863ec`, `0x1863f4`, `0x1863fc`), zeroes their counts (`0x1863f0`, `0x1863f8`, `0x186400`), and for list k: start := rand % countₖ (signed `IDIV`), then requests list[(start + j) % countₖ] for j = 0…4 (0…2 for list 3) through `0x65d10` with completion `0x236c4` (appends the loaded EXPL block and increments the count). **Three rands per build**, in list order.
+- Completion order (native p29–p31): the EXPL loader `0x66ad8` loads the record synchronously (`0x6affc`), requests its SND and then its ANIM through `0x65d10` with the completion `0x6685c` (which stores the loaded block into the record field), and then queues a marker request (ID 1) whose callback `0x66b90` calls the caller's callback (here `0x236c4`) with the record and frees the marker. SND and ANIM have no typed loader, so all three go to the plain request queue: `0x6b828` calls `0x6a8f0` with index −1 (append at the end), and the service `0x6baf8` always takes element 0, calls its callback when it is loaded (or at once for a marker) and removes element 0 (`0x6a9f8`(queue, 0)). The queue is a FIFO, so the subset arrays are filled in request order (consecutive from the random start, wrapping; repeats would be kept). The queue is serviced by the scene step (`0x3d4e4` → `0x65dec` → `0x6b8ec`) without a time limit while the player object is absent or below state 7, with a budget of 2 otherwise; so the whole subset is loaded at the first scene step, before any explosion can activate (Likely: timing of the first scene step relative to the first explosion not traced).
+- With the shipped EXIC (7, 7, 3), lists 1 and 2 keep 5 distinct entries and list 3 all 3.
+
+##### X9. Timing of directly created objects — Confirmed (code)
+
+**Creation stages** (tick N): request handling (missile detonation `0x2b408`, fragment expiry `0x256e4`, event 0x10, debug kills); movement (projectile hit → `0x2a40c` → `0x2a694` → `0x23ac8`); collision (`0x2a5fc` → `0x2a694` → `0x23ac8`); delayed-player-explosion (`0x23808`); object-update (AI handler `0x6313c`, P3-08). The destroyed source is in state 4 from the call on: it is still moved, but no longer updated, collided or hit by later projectiles of the same walk (pass 1 needs state ≥ 7).
+
+| Object | Created in request handling, movement, collision or delayed-player-explosion of tick N | Created in object-update of tick N (AI handler) |
+|---|---|---|
+| Main explosion | first callback N+1 → state 7 and activation (EXPL, t₀) in N+1's request handling → first move N+1 | its kind bit is above the walker's, so its first callback is in the same walk (N) → activation in N's request handling → first move N |
+| Extra explosion | first callback N+1 at sample s₁; activation at the first callback with sample > s₁ + r, r = rand % 21: at 2 units per tick ⌊r/2⌋ + 1 ticks later → activation and first move N+2 … N+12 | first callback N → activation and first move N+1 … N+11 |
+| Fragment (any discriminator) | first callback N+1: state 1 when its visual completed in N's scene step (the visual is requested by the presentation item posted at construction) → expiry set, state 7 in N+1's request handling, first move N+1; otherwise state 0 → 2 and it waits for the completion (when the renderer completes is not traced, P3-02/01) | first callback in the same walk (N), before any scene step: state 0 → posts state 2; its visual completes in N's scene step (state 3); callback N+1 posts state 7 → first move N+1. Its expiry counts from N |
+| Source of a craft explosion with fragments | hand-off at the part-0 fragment's first state-7 callback (N+2) → state 6 in N+2's request handling → leaves in N+3 (kind 1: never released) | same: N+3 |
+| Held source (missile, fragment, craft without list-1 parts) | released at the explosion update whose frame index reaches the ANIM frame count: activation + 28 ticks (12 frames) or + 14 (6 frames); leaves one tick later | same, from the earlier activation |
+| Explosion itself | removal requested at activation + 49 ticks, leaves at + 50 | same |
+
+Under P3-02's convention (Core treats a new entity as presentation-ready), fragments created in request handling and the later stages activate in N+1 as in the original's normal case; a fragment created in object-update and visited in the same walk would activate in N in Core but in N+1 in the original (one-tick difference, AI path only). Removal of every explosion and fragment goes through state 6 and the object's own next callback (message 0x20), as P3-02 specifies; **creation**, however, is not confined to request handling.
+
+##### X10. What reads explosions and fragments (rule coupling) — Confirmed (code)
+
+A scan of every 32-bit immediate with bit 22 or 24 set (p15, p27; and every use of `0x400000`, p28: message types and presentation only) finds these walks: object updates (`0x20938`), movement (`0x221fc`), projectile pass 2 and player–fragment collisions (fragments; both require obj +0x1C ≠ 0 and +0xD0 > 0), the area check (`0x3a468`), teardown (`0x21694`), the end-of-mission wait in `0x3266c` (waits until no object remains), the camera step's presentation items (`0x21584`, mask `0x1600000`), visuals and sound (`0x3d4e4`, `0x3e96c`, `0x55534`, `0x55894`), and **Warp completion `0x2bf08`**, which places the player's Warp exit at the nearest object of **any** kind (all states) within 600 units of the computed exit point (f32 d² < 360000.0), 600.0 above it (P3-09). No other immediate mask covering bit 22 or 24 exists in the image; radar, targeting, missile fuse/blast and object sets use craft masks ([T6](#t6-radar-confirmed-code-unless-noted), [H5](#h5-missiles--confirmed-code-unless-marked)). Masks built at run time are not excluded (AI walks: P3-08). The search (native p32) keeps the object with the strictly smallest squared distance (f32 differences, x87 sum stored f32; ties keep the earlier object in walk order) over mask `0x3ffffff` with no state, activity or kind filter, and moves the exit only when that distance is < 360000.0 (f32). So explosions and fragments influence rules only through: their own lifecycle (source state 4 and its release), disc-3 durability/contacts/shot-down/pod expiry, the Warp-exit nearest-object search, and the shared C generator.
+
+Camera/viewport inputs (presentation state): the variant-2 list switch (`0x2409c`), the event gate (`0x2443c`, plus the viewport `0x175200`), the extra positions (`0x23ac8`) and the flash (`0x24314`) read the 3D camera written by `0x52df4`/`0x52e34`, whose callers are the view-mode camera functions (`0x30ef0`, `0x31xxx`, `0x31ee0`, `0x321d8`, `0x324d8`) and the Warp view (`0x50a28`). Their timing and the camera's values are in [C1](#c1-the-3d-camera-and-its-readers--confirmed-code).
+
+##### X11. Numbers and random draws — Confirmed (code)
+
+- **Storage:** positions, rows, velocities, speeds, spins, offsets f32; durability +0xD0 i32 (4000/1200, decremented by the gun record's i32 damage); DEBRIS +0x5C int (tested ≠ 0); list-1 count i32 (signed `JLE`); variant, discriminator, part, flag bytes; times u32.
+- **Clock arithmetic:** sample + constant (u32); event and expiry tests unsigned and non-strict (due ≤ sample); the activation delay and the player-explosion test strict (sample > due); the explosion removal strict (+0x10C < sample). Frame index: 32-bit `IMUL` of 14 by (sample − t₀), logical `SHR 6`, then a **signed** compare with the frame count.
+- **Random draws** (all from the single C generator): integer uses `rand % n` (signed `IDIV`, non-negative operand) for n = 3, 5, 10, 21, 0x40, 0xC0, 0x200, 361, 8, 64 and count₁₋₃; low bits `AND 3` and `AND 7`; real values rand × f32 (1/32767) × f64 K + f64 C in x87 at the start-up control word, one f32 store (extras: then × an f32 camera component, one more store). Per object: `0x23ac8` on a craft: fragments (pod 1; small kinds 4 = flag, speed, spin, axis; large kinds 3), then the extra count 1 + 6 per extra; explosion first callback: 0 (craft source), 1 (other source), 2 (extra); activation 1; mode-1 event 1 + 7 per disc-1 fragment; mode-2 event 1 + 7 per disc-2 fragment; fragment first callback 1 (0 for pods and flagless large-kind fragments); the fragment visual completion `0x3e590` draws 1 per disc-1 fragment (texture shape choice) and 3 per disc 0 (unreachable) in the scene step; build 3 (X8). Start-up `0x568b0` fills the 64-entry rotation table `0x1b0a10` with ≥ 128 draws (random forward rows from `0x56b8c`, R0/R1 completed in closed form), and the 361-entry direction table `0x1b1310` from FSIN/FCOS (P3-06).
+- **Square roots and trigonometry:** FSQRT in `0x56aa8` (fragment offset, extra direction); squared distances elsewhere; FSIN/FCOS only in the rotation helpers (per-frame spin, 03) and the start-up direction table. No tables in the image (U-009 unchanged).
+- **Overflow:** none reachable (small counts; u32 times wrap after 2³² units).
+
+Evidence: ignored `local/research/p3-07/destruction/` (`ghidra_scripts/DestructionProbe.java`, `probe.sh`, outputs `out/p1.txt`–`out/p33.txt`; `data-checks.ts` with `out/data-checks.json`, entry IDs, counts, booleans and one numeric margin). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions, with the decompiler used only to navigate, and callers were checked by raw scans of relative transfers and of 32-bit values.
+
+#### Cameras, interfaces and cross-frame order (P3-07/07)
+
+Q-11: what the camera is and which rules read it, the communications reactions called from the damage handler, and when the main flow consumes the facts that combat produces. Extends [automatic views](#automatic-views-and-cameras-p3-0109), [frame pipeline](#frame-pipeline-p3-0201) and [mission failure](#mission-failure-player-loss-and-rescue-p3-0105). *s(N)* is the sample `0x25894` takes in main-loop iteration N.
+
+##### C1. The 3D camera and its readers — Confirmed (code)
+
+- **Storage:** position f32 ×3 at `0x1b075c`–`0x1b0764` and rows f32 3×3 at `0x1b0768` + 12·r; setters `0x52df4` (position) and `0x52e34` (rows), getters `0x52e14` (position), `0x52e90` (rows) and `0x52eec`(r) (one row). Only the start-up initialiser `0x52b30` (an entry of the start-up table, origin and identity rows) sets it otherwise; the mission build does not reset it.
+- **Writers:** raw scans of the range and of the setters find only `0x52b30`, the camera step `0x30ef0` with the per-mode camera functions of `0x174b88` and `0x174bdc` and their helpers `0x31ee0`, `0x321d8`, `0x324d8`, and the Warp view `0x50a28`. `0x30ef0` runs in `0x21584`, the last call of every dispatcher pass (it always returns 1, so the fatal exit after it is unreachable), whenever ps and ps +0x8C are non-zero; `0x50a28` runs in the render, only in view mode 1.
+- **Value by view mode:** 0xC (F1) and 0xD (F2) give the player craft's own pose (they differ only in cockpit layout and viewport); 0xE, 0xF and 0x10 give the craft position with the rows reordered so that the view looks along R0, −R0 and −R2 (R1 kept); 0x12's function (`0x315bc`) was not disassembled. Mode 0x11 uses its sub-mode's function: 8 is the destruction camera of [automatic views](#automatic-views-and-cameras-p3-0109); 1, 4 and 7 are chase cameras over a 15-pose ring on the player, its target or the wingman; 2, 3 and 5 frame two objects; 6 is the missile camera (below); 0 a fixed offset. Modes without a function (Warp 1, base 6, map 8, 0x13) set the camera to the craft pose at the camera step; in mode 1 the render's `0x50a28` then computes the Warp path pose and writes it both to the camera and to the **player object's position and rows**, so in a Warp the render path writes rule state (P3-09).
+- **Timing:** no camera write occurs in `0x3266c`, `0x25894`, the object-update walk or the message loop. Every rule-path reader therefore sees the camera of the previous pass's camera step, built from the poses after the previous pass's movement: in F1 and F2, the player's pose at the start of the pass; in mode 1, the Warp pose the previous render wrote. Readers in the movement, collision and delayed-player-explosion stages are thus one movement step behind the player. After a rescue (C3) readers see the pre-rescue camera until that pass's camera step. No rule-path reader sees a camera written in its own pass.
+- **Readers** (12, 11 and 2 call sites of the three getters; no pointer to them; no other instruction reads the range):
+
+  | Reader | Stage | Use | Effect on rule state |
+  |---|---|---|---|
+  | `0x23ac8` | any stage that destroys (X2) | positions of the extra explosions (camera position, R0, R1) | positions of objects that the Warp-exit nearest-object search can select (X10); the number of draws does not depend on the camera |
+  | `0x2443c` | object update (an explosion's first callback) | screen gate and distance class (with the viewport) | decides whether the fragment events fire, hence whether discriminator-1/2 fragments and their draws exist (X5) |
+  | `0x2409c` | request handling (activation) | variant-2 list switch by distance (X4) | one draw either way; with shipped data the release time does not change |
+  | `0x24314` | request handling | flash | none (a presentation item) |
+  | `0x40c90`, `0x40d44` (radar plane offsets ps +0xA0–+0xA8 and projection), `0x3defc`, `0x3fd60`, `0x44d94`/`0x44f74`, `0x489d0`, `0x49004`, `0x505cc`, `0x55984` (sound volume and pan) | render | projection, HUD, sprites, Warp effect, audio | none; `0x44f74` and `0x505cc` draw rand themselves (count not analysed) |
+
+  No targeting, firing, AI, energy, area-check, spawn or main-flow routine reads the camera.
+- **Missile camera `0x174c0c`:** written only by `0x3118c` (at launch, when the shooter is the player: the missile handle, uncounted) and `0x3119c` (the player's missile expiring or detonating: impact position and orientation, a 0x100-unit impact view, handle cleared). Its only reader is the sub-mode 6 camera `0x318d0` (F10). Presentation only.
+- **Viewport `0x175200`** {left, top, right, bottom} (i32): written at display initialisation and by `0x3d324`(view mode) on every display switch; right is the screen width and bottom depends on the view mode and resolution (F1's cockpit window is shorter than F2's full screen). The fragment gate of X5 therefore depends on the view and the resolution.
+- **`0x1b0758`:** min(100, trunc(100 × the viewed object's speed) ÷ the player craft's truncated +0xB8, cached at the first call), set by every camera function and by `0x50a28`; read only by the HUD overlay `0x44f74`. Presentation.
+
+##### C2. Communications reactions `0x3c208` and `0x3c0f4` — Confirmed (code)
+
+The damage handler calls `0x3c208`(attackerKind, source, victim, damage) when the attacker kind is non-zero, before the hull damage, and `0x3c0f4`(attackerKind, source, victim) after it sets the dead flag and before `0x6977c` ([D2](#d2-damage-entry-0x2a694eax-attackerkind-edx-source-ebx-victim-ecx-damage--confirmed-code)); `0x2a5fc` calls one of them after the damage, and a friendly's own update `0x3bed0` calls `0x3c208` with `0x93780` to re-announce a threat. They queue radio messages:
+
+- **Queue:** `0x2c740` keeps an unbounded list (`0x174b3c`) of {message, due = sample + delay, callback}, sorted by due (equal dues first in, first out), every reaction using delay 0. The dispatcher's step `0x2cd60` takes at most one per pass, when sample ≥ due (u32), speech playback is idle and the main flow is in state 3 with sub-state ≠ 2, and posts it as a presentation item that the render plays. `0x2cd20` flushes the whole queue (destruction, beacon expiry, state changes, mission starts).
+- **`0x3c208`:** returns at once for an invalid victim or source. (1) When the victim is the wingman (the first kind-2 object): with attacker kind 1 it adds the raw damage to a friendly-fire accumulator `0x174dfc`, which restarts at 0 when sample > its window end `0x174e00` (window 0x780 units); with any other attacker, when its hull is below 30 % of its capacity, it queues a wingman line at most every 0x5A00 units. (2) Attacker kind 1 hitting a friendly (`0x6807C`): a message at most every 0xF00 units (ps +0x78). (3) A friendly (`0x6887C`, not `0x800`) hit by a hostile: at most every 0x2D00 units per victim (+0x17C), a message chosen by the victim's activity and its name's index in TABL 2001 or 2011; for a base or an inactive friendly whose first message resolves, **one rand** (rand % 4) picks a second message. That draw needs the speech archive (`0x174e80`) to be open, so the draw count depends on installation and media state.
+- **`0x3c0f4`:** (1) a kill by the wingman while it is active in state 7 and above queues a wingman line with **one rand** (rand % 3); (2) a friendly destroyed within 3500 units of the wingman by a hostile queues a wingman line; (3) when a player or wingman kill leaves no live enemy, every friendly that was under attack gets a thanks message and **ps +0x60** (thanks count) += 1; (4) the player destroying a friendly: a message at most every 0x3C0 units (ps +0x7C); (5) otherwise a friendly destroyed: a message.
+- **Draws:** besides the two above, a voice assignment (`0x3c91c`) would draw when an object's +0x180 is negative, which no code writes (Likely never). The view switch to the destruction view draws nothing.
+- **Effects on rules:** the friendly-fire accumulator is read by the wingman AI (`0x61f20` refuses commands and `0x61abd` sets AI mode 5 when it exceeds AICO 6001 +0x28; P3-08); ps +0x60 goes into the campaign statistics row (`0x3b8dc`, P3-11). The rescue clears ps +0x78 and +0x7C. Nothing else written here is read by a rule. **Owner:** P3-10 (reactions, timers and queue), with P3-08 and P3-11 consuming the accumulator and the statistic; the speech and left-display presentation is P3-13's.
+
+##### C3. Cross-frame consumption by the main flow — Confirmed (code)
+
+`0x3266c` runs before `0x25894`, so every time test in it compares the previous iteration's sample s(N−1) (u32, non-strict ≥), and its state changes take effect in the same iteration's updates and dispatcher. In state 3 it dispatches the in-mission sub-state `0x186881`: 0 polls the status and the wingman-loss timer, 1 the beacon wait, **2 does nothing**, 3–5 docking. Clip lists played inside `0x3266c` enter the same iteration's step; clip lists played in the dispatcher enter the next iteration's step.
+
+| Fact | Immediate, in frame N | Consumer | Comparison | State that persists |
+|---|---|---|---|---|
+| Player destroyed | in the damage stage: dead flag, `0x3c0f4`, `0x6977c` (trigger counters, which may schedule spawns through `0x67584` for records with triggers; per-kind destroyed counter; P3-11), `0x32d74` (only in state 3 with sub-state ≠ 2: sub-state 2, queue flush, view 0x11/8 unless already there, which clears the player's target), `0x174ae4` := s(N) + 0xC0 | `0x23808` of a later pass ([X2](#x2-explosion-constructor-0x23ac8h--confirmed-code)) | sample > due, u32 strict | sub-state 2, `0x174ae4`, then ps +0x90 |
+| Escape pod expires | request handling: `0x256e4` clears ps +0x90 and calls `0x32e14`(1), whose clip list **plays right there** (`0x39f34`, blocking), then re-initialises the player (`0x67b98`), sets view 0xC, object state 7 and sub-state 0, re-syncs its movement block and counts the rescue; then the pod leaves | the rest of pass N already sees the rescued player (movement with N's step, collisions at the rescue position, parked engagements); the clip time enters N+1's step | timer ≤ sample, u32 | rescue counter |
+| Player energy ≤ 0 | energy stage: `0x21ba0` lock, energy 0, `0x33464`, which acts only in state 3 **and** sub-state 0: a left-display notice for 0x3C0 units (`0x4e9e8`), sub-state 1, due `0x186854` := s(N) + 0x3C0. Later depleted updates call it again without effect (no re-arm) | `0x3266c` sub-state 1 of a later iteration M: sub-state 2, flush, `0x32e14`(0) with its clips inside `0x3266c` | s(M−1) ≥ due, u32 | sub-state 1, due |
+| Wingman destroyed | damage stage: `0x32dec`, only when flag `0x18682c` is 0: due `0x186818` := s(N) + 0x780, flag 1 (not re-armed while pending) | `0x3266c` **sub-state 0 only**, after the status test: flag 0 and `0x3c4bc`, which queues one radio message. Once the all-clear status is reached the test is never made again and the message is dropped | s(M−1) ≥ due, u32 | flag, due |
+| Radio message | any stage (C2) | `0x2cd60` in a later pass | sample ≥ due, u32 | queue until taken or flushed |
+| Camera | camera step (Warp: render) | rule readers of the next pass (C1) | — | camera globals |
+
+- **Guards:** a destruction during the beacon wait (sub-state 1, or 3–5) is accepted by `0x32d74`; the beacon due is then ignored and the pod path rescues once, with the destruction clips. A destruction outside state 3 (after the all-clear) changes neither view nor sub-state, and the pod's `0x32e14` does nothing: the player stays dead. Energy depletion in sub-states 1–5 or while dead changes nothing in the flow, but `0x3071c` keeps re-applying the lock to the dead player at each energy update. The damage gates prevent a second destruction while dead.
+- **Heavy-damage note:** `0x176710` is −1 at the mission build and written only by `0x69e5c` from `0x2a830` ([D4](#d4-hull-and-subsystem-damage-0x2a830eax-victim-edx-source-ebx-hulldamage-ecx-noattacker--confirmed-code)); its only reader `0x69e1c` sets one of two success-summary flags from it. The rescue does not reset it (P3-11).
+
+##### C4. Object sets — Confirmed (code)
+
+Every 32-bit occurrence of the two set addresses `0x174b78`/`0x174b74` lies in `0x2ede0`, `0x2ee60`, `0x2eff8`, `0x2f028` or the AI step `0x62250`. No combat rule (targeting, radar, firing, missile fuse and blast, collisions, damage, parked engagement) contains one or reaches those routines by direct calls; only the autopilot's and the AI's own target writes depend on them ([T9](#t9-object-sets-0x2ede00x2f028-confirmed-code), P3-08).
+
+Evidence: ignored `local/research/p3-07/interfaces/` (`ghidra_scripts/IfaceProbe.java`, `probe.sh`, outputs `out/p1`–`out/p26`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project; functions created and `__watcall` set in memory were discarded. Every Confirmed (code) step was read from native instructions; writers and readers were found by raw scans of relative calls, of 32-bit values (pointers included) and, for object fields, of raw displacements.
+
+#### Numbers on the combat paths (P3-07/07)
+
+Q-12: a summary of the numeric semantics that T10, W13, H8, D17, E5 and X11 record path by path. It inherits [x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202): 53-bit x87 precision and the runtime observation of round-to-nearest f32 stores, whose contradiction with the code inference stays open (U-009).
+
+##### N1. Summary — Confirmed (code)
+
+- **Storage:** positions, rows, velocities, speeds, collision shapes, distances, spins, offsets and impact records are f32; resources, hull, damage, durability, ammunition, charge costs, levels, counters and burst counts are i32 with signed compares; clocks and due times are u32. All rule arithmetic runs on the x87 at double precision with an f32 store at each written field; products of two f32 values are exact in double.
+- **Float to integer:** always through `0x74518` (64-bit precision, chop, restore) before `FISTP`: truncation toward zero. On these paths: collision raw damage, missile blast fall-off damage, the parked shot count and the parked scaled totals, the commanded speed and craft +0xB8 in the energy rules, the radar's Manhattan distance and screen coordinates. No fixed point is used anywhere on these paths.
+- **Integer division and shifts:** signed `IDIV` (toward zero) for `rand % n`, for the division by (3 − group), for the parked shots per target and for the energy and shield ratios; the division by 64 of the energy rules is the shift sequence `SAR 31; SHL 6; SBB; SAR 6`, also toward zero; halvings use `SAR 1` (floor, equal to truncation for the non-negative values that occur), and the AI deadline of homing missiles uses `SHR`. The explosion frame index is a 32-bit `IMUL` followed by a logical `SHR 6`, compared signed with the frame count.
+- **Clock comparisons:** additions to the clock wrap at 32 bits. Comparisons are path by path: signed and non-strict for weapon cooldowns (a shot fires at equality); signed and strict for the alternate-mount choice; unsigned and non-strict for the lock stages, projectile expiry, fragment and explosion events, energy updates and the main flow's beacon and wingman timers; unsigned and strict for the automatic target, the keyboard and device polls, missile guidance, the explosion activation delay, the delayed player explosion and the explosion's own removal. Signed and unsigned agree while the clock is below 2³¹ (about 388 days of unpaused running); the Core clock follows the P3-02 safe-integer rule instead of wrapping.
+- **Overflow:** none is reachable in normal play. In principle reachable: the parked engagement's gun-damage sum (i32 wrapping adds over an unbounded elapsed time, about 45 hours for the strongest craft; a wrapped total ≤ 0 deals no damage, E5). Not bounded by this research: collision raw damage for very large speed products, and the 768 × damage product in `0x2a830` for collision, parked and AI area damage inputs (D17).
+- **Square roots and trigonometry:** FSQRT for lengths (`0x56aa8`, `0x56b14`, the aim's time of flight, the right display's distance); target selection compares squared distances and takes no root. FSIN and FCOS occur on rule paths only in the rotation helpers `0x228cc`, `0x22990`, `0x22a50` (fragment spin, ricochet, missile dispersion, and the movement integrators of P3-06) and in the start-up direction tables. FPATAN occurs on rule paths only through `0x85a8b` (atan2, operands swapped first) in the AI steering `0x5cd1c` that homing missiles use (H5). `0x7558a` is the arc cosine (π/2 − atan2(x, √(1 − x²)), with a checked square root `0x90e58`); in the rules it only computes missile +0x2C at the CINF load, which AI firing reads (P3-08). The other users are presentation or AI: `0x45420` (HUD label set-up), `0x46fe0` (overlays `0x456e4`, `0x45de0`), `0x5b54c` and `0x489d0` (overlay), `0x82c48` (visuals and HUD), `0x5eb64` (AI interpreter, P3-08), `0x92b74` and other 3D-library sites. No sine, cosine or arc table exists in the image; the 361-entry direction table and the 64 random rotations are built at start-up.
+- **Random numbers:** one C-library generator serves rules and presentation. Rule draws use `rand % n` with a non-negative operand (support 0…n−1; with 32768 = q·n + r, the values below r have q + 1 preimages and the others q) and low-bit masks (`AND 1`, `AND 3`, `AND 7`, `AND 0xFF`, exact), or real values rand × (1/32767) × K + C stored once to f32. Presentation code draws from the same generator in every rendered frame (radar noise, left-display flicker, corner gauges, the right display's interference, the HUD overlay `0x44f74`, the Warp effect `0x505cc`, the discriminator-1 fragment visual), and the communications reactions draw in the damage handler (C2), so the original sequence of rule draws depends on rendering and on installation state. The draw counts per path are in W12, D12, E4, X11 and H8.
+
+Evidence: the path sections above and ignored `local/research/p3-07/interfaces/` (`out/p4`–`out/p6`, `out/p13`, `out/p14`). Ghidra ran `-noanalysis -readOnly` on a private copy of the project.
 
 ### Two allocator paths: native inputs and profile comparison
 
@@ -1513,13 +3157,13 @@ Bounded read-only analysis for P2-06/11 (2026-10-06): `-noanalysis -readOnly`, w
 | Missile | `0x444ac` builds, for each missile type in a table in the executable's data object (0x7C-byte records at `0x1754a0`, count at `0x1758fc`), body geometry with `0x44848` and `0x44674`, which only create geometry, and one element with `0x44a80`, textured with TEX 10377. `0x44cd8` precomputes 32 rotated texture mappings and loads TEX 10377 by constant ID; only rotation 0 is applied, to the element as it is built. `0x4457c` attaches the body and a copy of the textured element, which keeps rotation 0's texture coordinates (corrected by P2-11/15, see [effect texture mappings](#effect-texture-mappings-p2-1115-research)) | Confirmed (code): TEX 10377 plus procedural geometry from executable tables. `srangers_099.png` shows a missile in flight: Likely type 1, the player's selected missile, whose outline it matches; P2-12/21 had matched it to type 5, which the first mission cannot launch ([weapon records](#weapon-records-and-the-first-missions-shooters-p2-1230)). Its textured element is the flame trail behind the body (Likely) |
 | Debris (fragment objects) | `0x3e430` loads TEX 10151 into `0x187014` and MODL 10383 into `0x187010` by constant ID. It then builds three untextured geometries (`0x3e9db`, cells `0x1752a0`–`0x1752a8`) and two geometries that are textured with TEX 10151 when textures are enabled (`0x3eab4`, cells `0x1752ac` and `0x1752b0`), all from constant vertex tables in the executable. Callback `0x3e590` draws a fragment by its discriminator: 0, one of the three untextured geometries; 1, one of the two TEX 10151 geometries; 2, one list-1 part of MODL 10383 with its texture; 3, one or three list-1 parts of the source object's M2ID model | Confirmed (code) |
 
-**Confirmed (destruction fragments), Unconfirmed (other fragment events):** the explosion constructor `0x23ac8` calls producer `0x24d78` in mode 3 when the destroyed object is a craft kind (bits 0–19), so a destroyed craft sheds fragments from its own model's list 1 (discriminator 3). Dispatcher event `0x10` calls the producer with a mode from the event payload, giving discriminators 1 and 2 for kinds in mask `0x91780`. Which code posts that event was not found in this bounded search, so when discriminator 1 and 2 fragments appear is Unconfirmed. Discriminator 0 is not emitted by this producer. The external-view capture `local/StarRang/captures/srangers_044.png` shows small textured fragments next to an explosion animation (Likely fragments).
+**Confirmed (destruction fragments and fragment events):** the explosion constructor `0x23ac8` calls producer `0x24d78` in mode 3 when the destroyed object is a craft kind (bits 0–19), so a destroyed craft sheds fragments from its own model's list 1 (discriminator 3). Dispatcher event `0x10` calls the producer with a mode from the event payload, giving discriminators 1 and 2 for kinds in mask `0x91780`. P2-12/30 found its poster and P3-07/06 its gate and timing (below and [destruction](#destruction-explosions-and-fragments-p3-0706)). Discriminator 0 is not emitted by this producer. The external-view capture `local/StarRang/captures/srangers_044.png` shows small textured fragments next to an explosion animation (Likely fragments).
 
 **Fragment producers (P2-12/30, read-only; raw byte scans of the code object for direct transfers, 4-byte values with relocations and stores at the discriminator offset, cross-checked with a second scan):**
 
 - **Discriminator 0 never occurs (Confirmed, code):** objects of kind `0x1000000` are allocated only by three constructors. `0x24ec4` writes discriminator 1 or 2 and is called only by producer `0x24d78` in modes 1 and 2. `0x25124` writes 3 and is called only in mode 3. `0x25500` would store a caller's value, but no transfer, pointer or relocation reaches it. No code changes an existing object's kind to `0x1000000`, and the auxiliary setup's default 0 is overwritten by both reachable constructors before the visual is created. The callbacks keep unused branches for discriminator 0. Not ruled out: stores through computed pointers, and save/restore paths; neither appears in any fragment code.
 - **Event `0x10` (Confirmed, code):** it is posted only by `0x23838`, the update callback of explosion objects (kind `0x400000`), with modes 0, 1 and 2; mode 0 creates nothing. For an explosion whose source is a craft (kind bits 0–19), the three are due 8, 12 and 16 clock units (0.125–0.25 s, [time base](#simulation-time-base-p3-0106)) after it starts. The gate `0x2443c` first drops them unless the explosion is on screen. Kinds 4, 8, 0x10, 0x20, 0x40, 0x400, 0x800 and 0x1000 lose them all, and so do kinds 0x8000–0x80000. All other kinds keep both modes under distance 300, only mode 2 from 300 to under 450, and none beyond.
-- **Consequence for the first mission (Likely):** of mask `0x91780`, slots 7, 8 and 9 can shed discriminator-1 and -2 fragments; slots 10, 12, 16 and 19 never do. So the two enemy types shed them when destroyed near the camera, besides their own list-1 parts, while the player, wingman, transponder and base shed only list-1 parts. The handler runs only when the dispatcher gate `0x339cc` passes, which is inferred, not traced, to pass in single-player play (it also gates enemy spawning). In `srangers_098.png`, an enemy one's destruction, thin textured triangles like the two textured debris shapes appear beside a fragment of the craft's list 1.
+- **Consequence for the first mission (Confirmed, code, P3-07/06):** of mask `0x91780`, slots 7, 8 and 9 can shed discriminator-1 and -2 fragments; slots 10, 12, 16 and 19 never do. So the two enemy types shed them when destroyed near the camera, besides their own list-1 parts, while the player, wingman, transponder and base shed only list-1 parts. The handler runs only when the dispatcher gate `0x339cc` passes; it tests main-flow state ≠ 1, so it passes in flight (it also gates enemy spawning). In `srangers_098.png`, an enemy one's destruction, thin textured triangles like the two textured debris shapes appear beside a fragment of the craft's list 1.
 
 #### Weapon records and the first mission's shooters (P2-12/30)
 
@@ -1531,7 +3175,7 @@ Read-only analysis of the weapon code and of CRAFT.NOB data, 2026-10-08 (structu
 
   | Shooter (kind bit) | Guns (RENS records) | Missile types |
   |---|---|---|
-  | Player (0) | 0, 1 | 0 (a third main-weapon entry, selected with `/`), 1 (default) and 3 (selected with `<` and `>`) |
+  | Player (0) | 0, 1 | 0 (a third main-weapon entry, selected with `/`), 1 (default) and 3 (selected with `<`, `,`, `>` and `.`) |
   | Wingman (1) | 0, 1 | 1 and 2 in its missile group; whether its AI launches them was not traced (Likely) |
   | First and second enemy types (7, 8) | 2 | none |
   | Transponder (14) | none | none |
@@ -1539,7 +3183,7 @@ Read-only analysis of the weapon code and of CRAFT.NOB data, 2026-10-08 (structu
 
   RENS records 3, 4, 5, 7, 8 and 9 and missile types 4–8 are used only by kinds that SCEN 3019 does not contain, so the first mission cannot draw them. Records 0 and 6 have the same colour. The enemies' missiles in the other groups' CINF files are outside the slice.
 - **Captures (P2-12/30):** the player's two guns (`srangers_112.png`, `114.png`), the enemy guns (`113.png`, `109.png`) and the base guns (`128.png`) show records 0, 1, 2 and 6. In `srangers_017.png` the HUD weapon line names gun record 0 and missile record 1, the defaults (compared locally; names not recorded), and the first-mission captures `srangers_067`, `072`, `098`, `099`, `103`, `112` and `128` show the same missile name. A public gameplay video's match of record 5 to the second enemy type's shot comes from a later mission.
-- **Untraced:** which wingman behaviours launch missiles; which keys set the two fire triggers (the key map gives Alt and space, Likely); writers of a mount's weapon other than `0x2d400` were not scanned exhaustively, while event posting was.
+- **Untraced:** which wingman behaviours launch missiles (P3-08); writers of a mount's weapon other than `0x2d400` were not scanned exhaustively, while event posting was. The fire triggers are in [input polling](#input-polling-p3-0201); mounts, lists, selection and firing in [weapons](#weapons-mounts-selection-and-firing-p3-0702).
 
 **Confirmed (structure and constant references):** MODL 10383, the only MODL outside M2ID, has only list 1: 6 parts with flag 3, 6 distinct meshes, 260 vertices and 240 triangles, and no sounds. Every part names TEX 10151. TEX 10151 is a raw 256 × 256 record with a 16-entry palette and uses no ambiguous entry. TEX 10377 is a raw 64 × 64 record with a 16-entry palette whose pixels use an ambiguous entry ([textures §3](./textures.md#nearest-colour-metric-and-tie-rule-confirmed)). A scan of the executable for 32-bit constants finds MODL 10383 named three times, all in the fragment effect setup and teardown. MODL 10383 is also passed to the generic model request `0x6a024`, which many callers use, including the mission builder. The one MESH that no MODL names (8 vertices, 4 triangles) is not named by any 32-bit constant in the executable; whether anything uses it is Unconfirmed.
 

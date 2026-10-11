@@ -9,14 +9,23 @@ import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-su
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
 /**
- * Results of the drafted commands that P3-06's rules handle in flight with an active player and no target: a throttle
- * step, a preset, and a manual match that needs a target. Every other one is not implemented yet.
+ * Results of the drafted commands that P3-06's and P3-07's rules handle in flight with an active player and no target:
+ * a throttle step, a preset, a manual match that needs a target, and P3-07's below. Every other one is not implemented
+ * yet.
  */
 const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
+  // P3-07: the gun starts without charge; target selection, weapon selection, and the energy and damage report pages.
+  fire: ['ignored', 'insufficient-charge'],
   speed: ['accepted', null],
   'select-number': ['accepted', null],
   'confirm-selection': ['ignored', 'no-target'],
+  target: ['accepted', null],
+  'cycle-main-weapon': ['accepted', null],
+  'select-missile': ['accepted', null],
+  energy: ['accepted', null],
+  'damage-report': ['accepted', null],
 };
+const outcomeOf = (type: Command['type']) => OUTCOMES[type] ?? ['rejected', 'not-implemented'];
 
 // P3-04 S-07 and AC-22 (Node): the development diagnostics of a real mission owner and session — the event log, frame
 // statistics, entity and mission state, command submission through the command feedback, and the recording export
@@ -173,11 +182,19 @@ describe('mission diagnostics', () => {
     next(1, 200);
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
-      .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...(OUTCOMES[type] ?? ['rejected', 'not-implemented'])]));
+      .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...outcomeOf(type)]));
+    // P3-07's events of the accepted commands reach the log by their own fields; the automatic target selection, which
+    // sees no actual target yet, follows the command's (CR-07).
+    const combat = setup.state().log.entries.filter(({ type }) => ['target-changed', 'weapon-selected', 'left-page-changed'].includes(type));
+    expect(combat.map(({ type, fields }) => [type, fields.find(([name]) => name === 'commandIndex')?.[1]])).toEqual([
+      ['weapon-selected', COMMAND_TYPES.indexOf('cycle-main-weapon')], ['weapon-selected', COMMAND_TYPES.indexOf('select-missile')],
+      ['left-page-changed', COMMAND_TYPES.indexOf('energy')], ['left-page-changed', COMMAND_TYPES.indexOf('damage-report')],
+      ['target-changed', COMMAND_TYPES.indexOf('target')], ['target-changed', null],
+    ]);
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
     expect(pendingCommands).toEqual([]);
     expect(recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason]))
-      .toEqual(COMMAND_TYPES.slice(6).map((type, index) => [index + 7, type, 'rejected', 'not-implemented']));
+      .toEqual(COMMAND_TYPES.slice(6).map((type, index) => [index + 7, type, ...outcomeOf(type)]));
   });
 
   it('keeps the 10 most recent command results of 11', async () => {

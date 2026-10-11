@@ -4,7 +4,7 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command, type TickInput } from '../contracts/tick-input.ts';
 import { registerTick, runTick, type Request } from '../systems/pipeline.ts';
-import type { Entity, EntityInit } from '../world/entity-table.ts';
+import type { Entity, EntityInit, SteeredMovementBlock } from '../world/entity-table.ts';
 import { addPlayerEntity, entityInit, stillEntityInit, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
@@ -111,7 +111,7 @@ const LONG_MODEL = readAssetId(`model/${'a'.repeat(32)}/${'b'.repeat(32)}/${'c'.
 /** An entity whose every field writes its longest canonical text, every optional part of its flight state present. */
 function longestEntity(state: WorldState): Entity {
   const init: EntityInit = {
-    ...entityInit(31),
+    ...entityInit(19),
     source: { collection: 'mission', index: LONG_ID, group: { index: LONG_ID, request: LONG_ID, member: LONG_ID } },
     name: { type: 'candidate', declaration: { collection: 'mission', index: LONG_ID }, candidate: LONG_ID },
     presentation: { type: 'model', model: LONG_MODEL },
@@ -125,7 +125,7 @@ function longestEntity(state: WorldState): Entity {
     formation: { leader: LONG_ID, offset: longVector(LONG_F32) },
   };
   const entity = state.entities.allocate(init);
-  const block = entity.movement!;
+  const block = entity.movement as SteeredMovementBlock;
   const timed = () => ({ rate: LONG_F32, decay: LONG_F32, end: LONG_F32 });
   Object.assign(block, { speed: LONG_F32, commandedSpeed: LONG_F32, speedRatio: LONG_F32, atCommandedSpeed: false, locked: false });
   for (const axis of ['pitch', 'yaw', 'roll'] as const) {
@@ -154,7 +154,7 @@ function withLongIds(snapshot: GameSnapshot): GameSnapshot {
 }
 
 describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
-  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity of which the flight state takes at most 1.5 KiB', () => {
+  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity before its combat state, of which the flight state takes at most 1.5 KiB', () => {
     expect([LONG_DOUBLE, LONG_F32, LONG_ID, LONG_I32].map((value) => JSON.stringify(value).length)).toEqual([25, 25, 16, 11]);
     const state = testState();
     addPlayerEntity(state);
@@ -166,11 +166,14 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     const one = snapshotText(withLongIds(takeSnapshot(state)));
     // The entity's object in the entity list, its ID in the walk order and the two separating commas.
     const perEntity = one.length - empty;
-    expect(perEntity).toBeLessThanOrEqual(4096);
     const entityText = one.slice(one.lastIndexOf('{"id":'), one.indexOf('],"kindOrder"'));
-    const flightText = entityText.slice(entityText.indexOf('"maximumSpeed"'));
+    // P3-07's combat state closes the entity and rests on its own basis (docs/plan/p3/02/spec.md, CR-14: about 8.5 KiB
+    // a craft with 18 mounts), which P3-07 accounts for; P3-06's terms are the fields before it.
+    const combatStart = entityText.indexOf(',"combat":');
+    const flightText = entityText.slice(entityText.indexOf('"maximumSpeed"'), combatStart);
     expect(flightText.startsWith('"maximumSpeed"') && flightText.endsWith('}}')).toBe(true);
     expect(flightText.length).toBeLessThanOrEqual(1536);
+    expect(perEntity - (entityText.length - 1 - combatStart)).toBeLessThanOrEqual(4096);
 
     while (state.entities.size < ENTITIES) longestEntity(state);
     const full = snapshotText(withLongIds(takeSnapshot(state)));

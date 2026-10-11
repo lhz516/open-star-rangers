@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
+import { COMMAND_RESULT_REASONS } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { CoreInputError } from '../errors.ts';
 import { thrownBy } from '../world/world.test-support.ts';
@@ -155,7 +156,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       ['an unknown outcome', (result) => { result.events[0].outcome = 'deferred'; }, '.events[0].outcome'],
       ['an accepted command with a reason', (result) => { result.events[0].outcome = 'accepted'; }, '.events[0].reason'],
       ['a rejected command without a reason', (result) => { result.events[0].reason = null; }, '.events[0].reason'],
-      ['an unknown reason', (result) => { result.events[0].reason = 'cooldown'; }, '.events[0].reason'],
+      ['an unknown reason', (result) => { result.events[0].reason = 'no-player'; }, '.events[0].reason'],
       ['a command index out of sequence', (result) => { result.events[0].commandIndex = 1; }, '.events[0].commandIndex'],
       ['a command index beyond a tick\'s commands', (result) => { result.events[0].commandIndex = CORE_LIMITS.commandsPerTick; }, '.events[0].commandIndex'],
       ['an entity ID of 0', (result) => { eventAt(result, 3, 'object-instantiated').entityId = 0; }, '.events[3].entityId'],
@@ -211,8 +212,8 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
     });
 
     it('accepts every command result reason', () => {
-      const result = run(4, 1);
-      ['player-unavailable', 'wrong-context', 'no-target'].forEach((reason, index) => Object.assign(eventAt(result, index + 1), { outcome: 'ignored', reason }));
+      const result = run(COMMAND_RESULT_REASONS.length, 1);
+      COMMAND_RESULT_REASONS.forEach((reason, index) => Object.assign(eventAt(result, index + 1), { outcome: 'ignored', reason }));
       expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
     });
 
@@ -312,6 +313,167 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
 
     it.each(invalid)('rejects %s on either side', (_, change, path) => {
       expectInvalidOnEitherSide(speedRun, change, path);
+    });
+  });
+
+  describe('P3-07 combat events (docs/plan/p3/02/spec.md, CR-06)', () => {
+    const point = () => ({ x: 1, y: -2, z: 0.5 });
+    const accepted = (tick: number, commandIndex: number, commandType: string): Mutable =>
+      commandResult(tick, commandIndex, { commandType, outcome: 'accepted', reason: null });
+    const shooter = { type: 'shooter', entityId: 1, kindBit: 0 };
+    const targetChanged = (commandIndex: number | null): Mutable => ({
+      type: 'target-changed', tick: 1, playerEntityId: 1, previousTarget: null, target: 5, targetKindBit: 7, mode: 'enemy',
+      origin: commandIndex === null ? 'automatic' : 'command', commandIndex,
+    });
+    const shot = (tick: number, trigger: Mutable): Mutable => ({
+      type: 'shot-fired', tick, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: point(), entityId: 9, family: 'gun', weapon: 2, mount: 3, position: point(), trigger,
+    });
+    const hit = (tick: number): Mutable => ({
+      type: 'hit', tick, victimEntityId: 5, victimKindBit: 7, victimPosition: point(), cause: 'projectile', sourceEntityId: 9, attacker: shooter, damage: 40,
+      gated: false, shield: { before: 30, after: 0 }, hull: { before: 100, after: 90 }, shieldWasEmpty: false,
+      impact: { point: point(), local: { x: 0, y: 0, z: -1 }, face: 5 }, projectile: 'removed',
+    });
+    const destroyed = (tick: number): Mutable => ({
+      type: 'object-destroyed', tick, entityId: 5, kindBit: 7, source: null, position: point(), activity: 'active', attacker: shooter, eventClass: 0, outcome: 'explodes',
+    });
+    const weaponSelected = (tick: number, commandIndex: number | null): Mutable =>
+      ({ type: 'weapon-selected', tick, entityId: 1, list: 1, index: -1, mount: null, changed: false, commandIndex });
+    const pageChanged = (tick: number, commandIndex: number | null): Mutable => ({ type: 'left-page-changed', tick, page: 0, previousPage: 1, commandIndex });
+
+    /**
+     * Two ticks in the contract's order. Tick 1: in the player's update the command results, each command's additional
+     * event right after its result; in request handling the applied selections, a shot, an explosion's activation, a
+     * missile's and a fragment's ends with their hits and a destruction, a source's release; a depletion in the energy
+     * stage; a world exit in the parked update; the right display's clearing at the end. Tick 2: an AI shot, a hit
+     * and events of selections and pages without a command.
+     */
+    function combatRun(): Result {
+      const events = [
+        accepted(1, 0, 'target'),
+        accepted(1, 1, 'cycle-main-weapon'),
+        weaponSelected(1, 1),
+        accepted(1, 2, 'fire'),
+        accepted(1, 3, 'energy'),
+        { type: 'energy-allocation-changed', tick: 1, entityId: 1, shieldLevel: 2, chargeLevel: 1, commandIndex: 3 },
+        accepted(1, 4, 'damage-report'),
+        pageChanged(1, 4),
+        targetChanged(0),
+        shot(1, { type: 'command', channel: 'primary', commandIndex: 2 }),
+        { type: 'explosion-started', tick: 1, entityId: 10, sourceEntityId: 5, sourceKindBit: 7, variant: 'large', position: point(), activationClock: 2 },
+        { type: 'missile-ended', tick: 1, entityId: 11, shooterEntityId: 1, outcome: 'detonated', position: point(), orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+        hit(1),
+        destroyed(1),
+        { type: 'fragment-expired', tick: 1, entityId: 12, sourceKindBit: 7, part: 4, position: point(), outcome: 'explodes' },
+        { type: 'source-released', tick: 1, entityId: 5, kindBit: 7, fragmentEntityId: 13, removed: true },
+        targetChanged(null),
+        { type: 'energy-depleted', tick: 1, entityId: 1, kindBit: 0, position: point() },
+        { type: 'object-left-world', tick: 1, entityId: 4, kindBit: 8, source: null },
+        { type: 'target-cleared', tick: 1, playerEntityId: 1, previousTarget: 5, cause: 'invalid' },
+        weaponSelected(2, null),
+        shot(2, { type: 'ai', channel: 2 }),
+        { ...hit(2), cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, impact: null, projectile: null },
+        { ...shot(2, { type: 'automatic' }), family: 'missile' },
+        pageChanged(2, null),
+        { ...destroyed(2), attacker: { type: 'lost-shooter' }, eventClass: 1, outcome: 'removed', activity: 'parked' },
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches every type in the contract\'s order, after a JSON round trip', () => {
+      const types = new Set(combatRun().events.map(({ type }) => type));
+      expect(types.size).toBe(13 + 2);
+      expect(compareReplayResults(combatRun(), JSON.parse(JSON.stringify(combatRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['selected weapon', 2, (event: Mutable) => { event.changed = true; }],
+      ['allocation', 5, (event: Mutable) => { event.chargeLevel = 2; }],
+      ['page', 7, (event: Mutable) => { event.previousPage = 2; }],
+      ['target', 8, (event: Mutable) => { event.target = 6; }],
+      ['shot position', 9, (event: Mutable) => { (event.position as Mutable).y = 0; }],
+      ['activation clock', 10, (event: Mutable) => { event.activationClock = 4; }],
+      ['missile orientation', 11, (event: Mutable) => { (event.orientation as number[])[4] = -1; }],
+      ['hit impact face', 12, (event: Mutable) => { (event.impact as Mutable).face = 4; }],
+      ['hit shield', 12, (event: Mutable) => { (event.shield as Mutable).after = 1; }],
+      ['destruction attacker', 13, (event: Mutable) => { event.attacker = { type: 'none' }; }],
+      ['fragment outcome', 14, (event: Mutable) => { event.outcome = 'removed'; }],
+      ['release', 15, (event: Mutable) => { event.removed = false; }],
+      ['depletion position', 17, (event: Mutable) => { (event.position as Mutable).x = 2; }],
+      ['clearing cause', 19, (event: Mutable) => { event.cause = 'warp'; }],
+      ['AI shot channel', 21, (event: Mutable) => { (event.trigger as Mutable).channel = 1; }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = combatRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(combatRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['an automatic selection with a command', (result) => { result.events[16].commandIndex = 0; }, '.events[16].commandIndex'],
+      ['a command\'s selection without a command', (result) => { result.events[8].commandIndex = null; }, '.events[8].commandIndex'],
+      ['a selection of target 0', (result) => { result.events[8].target = 0; }, '.events[8].target'],
+      ['a selection of an unknown mode', (result) => { result.events[8].mode = 'neutral'; }, '.events[8].mode'],
+      ['a clearing for an unknown cause', (result) => { result.events[19].cause = 'map'; }, '.events[19].cause'],
+      ['a weapon list of 2', (result) => { result.events[2].list = 2; }, '.events[2].list'],
+      ['a weapon index below −1', (result) => { result.events[2].index = -2; }, '.events[2].index'],
+      ['a selected mount of −1', (result) => { result.events[2].mount = -1; }, '.events[2].mount'],
+      ['a shot of an unknown family', (result) => { result.events[9].family = 'laser'; }, '.events[9].family'],
+      ['a command shot without its channel', (result) => { delete (result.events[9].trigger as Mutable).channel; }, '.events[9].trigger.channel'],
+      ['an automatic shot with a channel', (result) => { (result.events[23].trigger as Mutable).channel = 0; }, '.events[23].trigger'],
+      ['an AI channel of 3', (result) => { (result.events[21].trigger as Mutable).channel = 3; }, '.events[21].trigger.channel'],
+      ['a hit of an unknown cause', (result) => { result.events[12].cause = 'ram'; }, '.events[12].cause'],
+      ['a fractional damage', (result) => { result.events[12].damage = 0.5; }, '.events[12].damage'],
+      ['a hull beyond i32', (result) => { (result.events[12].hull as Mutable).after = 2 ** 31; }, '.events[12].hull.after'],
+      ['an impact face of 6', (result) => { (result.events[12].impact as Mutable).face = 6; }, '.events[12].impact.face'],
+      ['an impact without a local point', (result) => { delete (result.events[12].impact as Mutable).local; }, '.events[12].impact.local'],
+      ['a lost shooter with an entity', (result) => { result.events[25].attacker = { type: 'lost-shooter', entityId: 1 }; }, '.events[25].attacker'],
+      ['a shooter without a kind', (result) => { result.events[12].attacker = { type: 'shooter', entityId: 1 }; }, '.events[12].attacker.kindBit'],
+      ['an unknown projectile outcome', (result) => { result.events[12].projectile = 'stuck'; }, '.events[12].projectile'],
+      ['a destruction of an unknown activity', (result) => { result.events[13].activity = 'warping'; }, '.events[13].activity'],
+      ['an event class of 2', (result) => { result.events[13].eventClass = 2; }, '.events[13].eventClass'],
+      ['an explosion of an unknown variant', (result) => { result.events[10].variant = 'small'; }, '.events[10].variant'],
+      ['a negative activation clock', (result) => { result.events[10].activationClock = -1; }, '.events[10].activationClock'],
+      ['a missile orientation of 8 items', (result) => { (result.events[11].orientation as number[]).pop(); }, '.events[11].orientation'],
+      ['a non-finite missile orientation', (result) => { (result.events[11].orientation as number[])[0] = Number.NaN; }, '.events[11].orientation[0]'],
+      ['a fragment of an unknown outcome', (result) => { result.events[14].outcome = 'lost'; }, '.events[14].outcome'],
+      ['a release that is not a boolean', (result) => { result.events[15].removed = 0; }, '.events[15].removed'],
+      ['a level of 4', (result) => { result.events[5].shieldLevel = 4; }, '.events[5].shieldLevel'],
+      ['a page of 7', (result) => { result.events[7].page = 7; }, '.events[7].page'],
+      ['a depletion with an extra field', (result) => { result.events[17].energy = 0; }, '.events[17]'],
+      ['an additional event of another command than the result before it', (result) => { result.events[2].commandIndex = 0; }, '.events[2].commandIndex'],
+      ['an additional event that does not follow its result', (result) => void result.events.splice(4, 0, weaponSelected(1, 1)), '.events[4].commandIndex'],
+      ['a second additional event of a command', (result) => void result.events.splice(8, 0, pageChanged(1, 4)), '.events[8].commandIndex'],
+      ['a command\'s selection before its command\'s result', (result) => { result.events[8].commandIndex = 5; }, '.events[8].commandIndex'],
+      ['a command\'s selection of a command with an additional event', (result) => { result.events[8].commandIndex = 1; }, '.events[8].commandIndex'],
+      ['a command\'s shot before its command\'s result', (result) => { (result.events[9].trigger as Mutable).commandIndex = 5; }, '.events[9].trigger.commandIndex'],
+      ['a command result after a shot', (result) => void result.events.splice(10, 0, commandResult(1, 5)), '.events[10]'],
+      ['an explosion\'s activation in the player\'s update', (result) => void result.events.splice(3, 0, result.events.splice(10, 1)[0]), '.events[4]'],
+      ['a source\'s release after a depletion', (result) => void result.events.splice(17, 0, result.events.splice(15, 1)[0]), '.events[17]'],
+      ['a depletion after a world exit', (result) => void result.events.splice(17, 2, result.events[18], result.events[17]), '.events[18]'],
+      ['a world exit after the clearing', (result) => void result.events.splice(18, 2, result.events[19], result.events[18]), '.events[19]'],
+      ['a second clearing', (result) => void result.events.splice(20, 0, { ...result.events[19] }), '.events[20]'],
+      ['a command result after a hit', (result) => void result.events.splice(1, 0, hit(1)), '.events[2]'],
+      ['a destruction before its hit', (result) => void result.events.splice(12, 2, result.events[13], result.events[12]), '.events[12].entityId'],
+      ['a destruction of another entity than the one hit', (result) => { result.events[13].entityId = 6; }, '.events[13].entityId'],
+      ['a second destruction of an entity', (result) => void result.events.splice(14, 0, destroyed(1)), '.events[14].entityId'],
+      ['a hit of an entity destroyed earlier in the tick', (result) => void result.events.splice(14, 0, { ...hit(1), cause: 'collision', sourceEntityId: null,
+        attacker: { type: 'none' }, impact: null, projectile: null }), '.events[14].victimEntityId'],
+      ['a missile\'s hit before its detonation', (result) => void result.events.splice(11, 0, { ...hit(1), cause: 'missile', sourceEntityId: 11, projectile: null }), '.events[11].sourceEntityId'],
+      ['a hit of a missile that fizzled', (result) => { Object.assign(result.events[11], { outcome: 'fizzled' }); Object.assign(result.events[12], { cause: 'missile', sourceEntityId: 11 }); }, '.events[12].sourceEntityId'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(combatRun, change, path);
+    });
+
+    it('leaves command-less selections and pages unordered, and hits and destructions in any stage from the object updates on', () => {
+      const result = combatRun();
+      result.events.unshift(weaponSelected(1, null), pageChanged(1, null));
+      // Damage in the parked update after the depletion and the world exit (a parked engagement), and a missile's hit
+      // after its detonation.
+      result.events.splice(result.events.indexOf(eventAt(result, 1, 'target-cleared')), 0, { ...hit(1), victimEntityId: 8, cause: 'parked', sourceEntityId: null,
+        impact: null, projectile: null }, { ...destroyed(1), entityId: 8, activity: 'parked', outcome: 'removed' });
+      result.events.splice(result.events.indexOf(eventAt(result, 1, 'missile-ended')) + 1, 0, { ...hit(1), cause: 'missile', sourceEntityId: 11, projectile: null });
+      expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
     });
   });
 });

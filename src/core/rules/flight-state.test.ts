@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import { craft } from '../../content/rule-data/rule-data.test-support.ts';
 import { CoreFaultError } from '../errors.ts';
-import type { MovementBlock } from '../world/entity-table.ts';
+import type { MovementBlock, SteeredMovementBlock } from '../world/entity-table.ts';
 import { expectFault } from '../world/world.test-support.ts';
 import { float32OfDouble, float32OfRational } from './derivation.test-support.ts';
 import {
@@ -96,7 +96,7 @@ describe('maximum speed 0x30e0c and its operands (P3-06 S-05, AC-04)', () => {
 });
 
 describe('after a recompute of the maximum, 0x21d88 (P3-06 S-05, AC-04)', () => {
-  const block = (speed: number, commandedSpeed: number): MovementBlock => ({ ...initialMovementBlock(100, 100), speed, commandedSpeed });
+  const block = (speed: number, commandedSpeed: number): SteeredMovementBlock => ({ ...initialMovementBlock(100, 100), speed, commandedSpeed });
 
   it('lowers the commanded speed only when speed ÷ new maximum exceeds 1, never the speed', () => {
     const above = block(100, 100);

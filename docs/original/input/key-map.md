@@ -83,7 +83,7 @@ related: [U-011, U-012, U-022, ADR-0004, B-008]
 ## 目标模式（代码确认）
 
 - `t` 选择敌方模式的首个目标，`f` 选择友方模式的首个目标；`r`/`y` 在当前模式内按距离切换。首个目标是最近的候选（`0x63858`），不是前方目标；玩家没有目标时，飞行视角中按固定间隔自动选择最近的敌方模式目标（已确认，代码，P3-06/05，见[初始飞行状态](../formats/executable.md#initial-flight-state-p3-0605)）。敌/友模式按目标的运行时种类区分，各槽位的归属与证据见 [executable](../formats/executable.md#player-target-modes-and-enemy-classification)。
-- `u` 选择前方目标并按其种类自动切换模式，为高概率（来自反编译比较树，未逐条核对原生比较）。
+- `u` 选择前方目标并按其种类自动切换模式（已确认，代码，P3-07：原生比较见 [T3](../formats/executable.md#t3-entry-points-contexts-and-timing-confirmed-code)，`0x27a04` 的行为见 [T2](../formats/executable.md#t2-selection-helpers-confirmed-code)）。
 
 ## 待试玩补充
 

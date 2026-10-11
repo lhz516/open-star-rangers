@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-10
 related: [U-001, U-009, U-027, U-028]
 ---
 
@@ -97,12 +97,12 @@ Block size is always `44 + 28 × (total parts)`. All MESH, TEX, and SND referenc
 Part lists (meaning Unconfirmed, U-027):
 
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
-- **List 1**: hull fragments that look like a wrecked version of the same model. When a craft is destroyed, its fragment effects draw parts of its own model's list 1 (Confirmed by code, see [executable](./executable.md#effect-presentation-sources)). One MODL, 10383, has an empty list 0 and only fragments in list 1; the flight effect setup loads it by ID and fragment effects draw its parts as generic debris (Confirmed by code, same section).
+- **List 1**: hull fragments that look like a wrecked version of the same model. When a craft is destroyed, its fragment effects draw parts of its own model's list 1 (Confirmed by code, see [executable](./executable.md#effect-presentation-sources)). The destruction rules read only the list-1 **count** of the M2ID model of the source's kind bit, one fragment per part, with kinds 1 and 2 skipping parts 1 and 2; no rule reads a part's flags, mesh or texture, and the part-0 fragment of kinds 1 and 2 draws parts 0–2 together (Confirmed, code, [fragments](./executable.md#destruction-explosions-and-fragments-p3-0706)). One MODL, 10383, has an empty list 0 and only fragments in list 1; the flight effect setup loads it by ID and fragment effects draw its parts as generic debris (Confirmed by code, same section).
 - **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). In the slice's 4 list-2 parts all texture coordinates are equal, so the part shows a single texel (Confirmed counts).
   - **Display (Likely, P2-12/21–22):** on both enemy types the original shows the hull only in frames where the craft is hit, dithered over the craft so that the craft shows through (`srangers_103.png`, `srangers_112.png`, `srangers_114.png`). Captures of the same types without a hit (`srangers_018.png`, `srangers_020.png`, `srangers_101.png`, `srangers_102.png`) show no hull. When it is shown and the dither pattern are runtime behaviour (P3, U-027); its static outline could not be compared, because it appears only dithered. The P2-12/30 recaptures add no undithered frame, and no capture or video frame shows the hull of the base or the player craft, so the static outline remains unjudged in P2-12 for lack of a baseline. The single texel the slice's list-2 parts show is in the same colour family as the dither in those captures.
   - **Hit effect (P3-01/10):** the code that shows it is found. On a hit, the effect for kinds `0x383` gives the struck craft's list-2 part a copy of TEX 11069 and sweeps a band of opaque and half-transparent pixels through it with the mission clock; the list-2 meshes only size the effect's texture wraps (Confirmed, EXE; [executable](./executable.md#data-loaded-by-the-loop-p3-0110)). That this is the dither in the captures is Likely. TEX 11069 is not a slice texture, and no MODL names it.
   - **No transparency field:** neither MODL nor the image record has a transparency field (Confirmed). Flag value 1 alone is not a translucency flag (Likely): the list-2 parts carry it, but so do list-0 parts that the original shows opaque (the first enemy type's glow part, the second enemy type's window part and the player craft's tail glow). Whether list-2 membership itself selects the dithered drawing is Unconfirmed.
-  - Whether it also serves as a collision volume is Unconfirmed.
+  - It is not a collision volume: the projectile hit tests and collision passes read only the shapes of the craft and DEBRIS records (Confirmed, code, [hits and collisions](./executable.md#projectiles-missiles-hits-and-collisions-p3-0703)).
 
 ### Part structure by list (Confirmed counts)
 

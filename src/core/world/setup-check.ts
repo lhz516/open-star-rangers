@@ -5,6 +5,7 @@
  * Every failure is a CoreInputError at the offending structure's path with a fixed reason that never repeats a name, a
  * coordinate or other imported value.
  */
+import type { AssetId } from '../../content/asset-id.ts';
 import type { CraftSide, RuleInputs, Vector3 } from '../../content/logic/logic-content.ts';
 import { fitsLimit, productFitsLimit } from '../contracts/limits.ts';
 import { CLOCK_UNITS_PER_SECOND } from '../contracts/time.ts';
@@ -12,7 +13,8 @@ import { CoreInputError } from '../errors.ts';
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
 import { runtimeFrame, runtimePosition, runtimeRegion, runtimeVector } from '../rules/coordinates.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
-import { isScheduledRecord, PLAYER_KIND_BIT, WINGMAN_KIND_BIT, type RuntimeGeometry } from '../rules/spawn-schedule.ts';
+import { isScheduledRecord, PLAYER_KIND_BIT, postsRequests, WINGMAN_KIND_BIT, type RuntimeGeometry } from '../rules/spawn-schedule.ts';
+import type { RecordRuleInputs, SpawnState } from './spawn-state.ts';
 
 export const MISSION_PATH = 'input.mission.content';
 export const ROSTER_PATH = 'input.wingmanRoster.content';
@@ -134,4 +136,39 @@ export function checkSetup(setup: MissionSetup, wingman: number | null): Runtime
   });
   checkExpansion(setup, wingman);
   return Object.freeze({ frame, positions: Object.freeze(positions), wingmanPosition, regions: Object.freeze(regions), layouts: Object.freeze(layouts) });
+}
+
+/** A record the run can instantiate, with what P3-07's creation checks read of it (docs/plan/p3/02/spec.md, CR-01). */
+export interface InstantiableRecord {
+  readonly kindBit: number;
+  /** The model its kind is bound to. */
+  readonly model: AssetId;
+  /** Its rule inputs after the build's defaults, whose percentages instantiation reads. */
+  readonly ruleInputs: RecordRuleInputs;
+  /** The structural path of its declaration or wingman option. */
+  readonly path: string;
+}
+
+/**
+ * Every record the run can instantiate, once each, in firing order: those of the queue entries that post requests
+ * (postsRequests), a record entry's own record (direct or delayed), a group entry's members and the selected wingman
+ * option. Its kinds are the instantiable kinds P3-06's craft info checks read.
+ */
+export function instantiableRecords(setup: MissionSetup, spawn: SpawnState): readonly InstantiableRecord[] {
+  const records = new Map<string, InstantiableRecord>();
+  const add = (declaration: ResolvedDeclaration, ruleInputs: RecordRuleInputs, path: string): void => {
+    const { craftType, model } = declaration;
+    // checkSetup admits no instantiable record without a kind, and loadMission binds every kind to a model.
+    if (craftType === null || model === null) throw new CoreInputError(`${path}.craftType`, 'must name a kind bound to a model');
+    if (!records.has(path)) records.set(path, Object.freeze({ kindBit: craftType, model, ruleInputs, path }));
+  };
+  const declarationRecord = (index: number): void => add(setup.declarations[index], spawn.records[index].ruleInputs, `${MISSION_PATH}.declarations[${index}]`);
+  for (const entry of spawn.queue) {
+    if (!postsRequests(spawn, setup, entry)) continue;
+    const { source, index } = entry;
+    if (source === 'record') declarationRecord(index);
+    else if (source === 'group') setup.groups[index].members.forEach(declarationRecord);
+    else if (spawn.wingman !== null) add(setup.wingmanOptions[index], spawn.wingman.ruleInputs, `${ROSTER_PATH}.options[${index}]`);
+  }
+  return Object.freeze([...records.values()]);
 }

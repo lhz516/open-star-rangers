@@ -2,6 +2,7 @@ import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content
 import { readAiPrograms, type AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readBaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
 import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
+import { readDebrisParameters } from '../../content/rule-data/debris-parameters.ts';
 import { readFlightMessages, type FlightMessages } from '../../content/rule-data/flight-messages.ts';
 import { encodeRuleDataPayload, type RuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import {
@@ -60,12 +61,40 @@ function productionFlightMessages(): FlightMessages {
 }
 
 /**
- * The format support's craft info, changed only so that world creation accepts it (P3-06 D-01): every record's +0x0C
- * is 250, a positive modulus of the parked travel, as in Core's own synthetic craft info.
+ * The format support's craft info, changed only so that world creation accepts it, as in Core's own synthetic craft
+ * info: every record's +0x0C is 250, a positive modulus of the parked travel (P3-06 D-01); and the player's mount 1
+ * fires together with mount 2 without also alternating, as a mount list entry has at most one of the two links, and
+ * every gun's cooldown +0x14 is 7, within the 0 to 32 the parked engagement multiplies by (docs/plan/p3/02/spec.md,
+ * CR-01 checks 4 and 5).
  */
 function productionCraftInfo() {
   const info = defaultCraftInfo();
-  return readCraftInfo({ ...info, craft: info.craft.map(record => ({ ...record, at0C: 250 })) });
+  const craft = info.craft.map(record => ({ ...record, at0C: 250 }));
+  craft[0] = { ...craft[0], mounts: craft[0].mounts.map((mount, index) => (index === 1 ? { ...mount, at1C: null } : mount)) };
+  return readCraftInfo({ ...info, craft, guns: info.guns.map(gun => ({ ...gun, at14: 7 })) });
+}
+
+/**
+ * Part list 1's part count of the model each kind bit the slice disc's missions instantiate is bound to
+ * (production-models.test-support.ts): the player and wingman share the player ship.
+ */
+const SLICE_MODEL_PARTS: Readonly<Record<number, number>> = Object.freeze({ 0: 1, 1: 1, 7: 1, 8: 0, 14: 0, 17: 0 });
+
+/**
+ * The format support's DEBRIS parameters, changed only so that world creation accepts them with the slice disc's models
+ * (docs/plan/p3/02/spec.md, CR-01 check 2; craft.md §4.1): each instantiable kind keeps one record per part of its
+ * model's part list 1, three fewer and at least none for kind bits 0 and 1, whose part 0 is the escape pod. Every
+ * other kind keeps its records.
+ */
+function productionDebrisParameters() {
+  const { byCraftType } = defaultDebrisParameters();
+  return readDebrisParameters({
+    byCraftType: byCraftType.map((records, kindBit) => {
+      const parts = SLICE_MODEL_PARTS[kindBit];
+      if (parts === undefined) return records;
+      return records.slice(0, kindBit <= 1 ? Math.max(parts - 3, 0) : parts);
+    }),
+  });
 }
 
 /** The canonical content of each rule-data role on the production structure. */
@@ -75,7 +104,7 @@ export function productionRuleDataContents(): RuleDataContents {
     'base-repair-items': readBaseRepairItems(syntheticBaseRepairItems()),
     'comm-menus': defaultCommMenus(),
     'craft-info': productionCraftInfo(),
-    'debris-parameters': defaultDebrisParameters(),
+    'debris-parameters': productionDebrisParameters(),
     'flight-messages': productionFlightMessages(),
   };
 }

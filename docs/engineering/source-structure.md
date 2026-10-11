@@ -77,6 +77,7 @@ src/
     mission/
       load-mission.ts
     projections/
+      combat.ts
       projection.ts
       render-state.ts
     replay/
@@ -87,31 +88,64 @@ src/
       snapshot.ts
     rules/
       active-area.ts
+      collision-shapes.ts
+      collision.ts
+      combat-init.ts
       coordinates.ts
+      damage.ts
+      displays.ts
+      energy.ts
+      explosions.ts
+      firing.ts
       flight-control.ts
       flight-motion.ts
       flight-state.ts
       float32.ts
+      fragments.ts
+      guidance.ts
+      hit-tests.ts
       initial-ai.ts
+      load-transforms.ts
+      mounts.ts
+      movement-builders.ts
       name-assignment.ts
       original-random.ts
+      parked-engagement.ts
       parked-travel.ts
       placement.ts
+      projectile-motion.ts
+      radar.ts
       random-direction.ts
       record-defaults.ts
       spawn-schedule.ts
       speed-match.ts
+      steering.ts
+      subsystems.ts
+      targeting.ts
     systems/
       area.ts
+      collision.ts
+      commands.ts
+      damage.ts
+      destruction.ts
+      displays.ts
+      energy.ts
       flight-control.ts
+      launch.ts
+      missiles.ts
       movement.ts
+      parked-engagement.ts
       pipeline.ts
+      projectiles.ts
       spawn.ts
+      targeting.ts
+      weapons.ts
     world/
       craft-info-input.ts
       create-world.ts
       entity-table.ts
       player-state.ts
+      rule-data.ts
       run-config.ts
       setup-check.ts
       setup-hash.ts
@@ -346,7 +380,7 @@ src/
 
 | 分册 | 内容 |
 |---|---|
-| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、世界、契约、流水线，飞行控制、运动与停放，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
+| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、规则数据输入与静态规则数据、世界、契约、流水线，飞行控制、运动与停放，战斗规则，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签与 HUD 文字 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
@@ -406,10 +440,10 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 | `errors.ts`、`determinism/` | 输入错误与内部故障错误；带种子的 RNG 与 FNV-1a 哈希 |
 | `mission/` | 由三份逻辑 Asset 载入冻结的 `MissionSetup`（P2-09） |
 | `contracts/` | 跨目录共用的契约：上限、时钟、动作输入、领域事件、规范文本与校验读取器 |
-| `world/` | 世界创建与运行配置、机型输入、语义校验、setupHash；世界与故障锁存；世界状态、实体表（含飞行状态）、玩家状态（含目标与控制状态）与生成状态 |
-| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统：生成、玩家更新与操纵（`flight-control.ts`）、运动、活动区域与停放（`area.ts`），规则任务在自己的阶段接入 |
-| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取，并修改显式传入的世界计数或移动块）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；飞行状态、运动积分、操纵、速度匹配、AI 初态、随机方向、活动区域与停放行进（P3-06）；只在真实复用时提取 |
-| `projections/` | 按分区的 projection（含 `flight` 的运动组）与 Render State，深度冻结、与世界脱离 |
+| `world/` | 世界创建与运行配置、机型输入、规则数据输入与静态规则数据（`rule-data.ts`，P3-07）、语义校验、setupHash；世界与故障锁存；世界状态、实体表（含飞行状态与战斗状态）、玩家状态（含目标、控制状态与 P3-07 的瞄准、战斗记录与驾驶舱显示状态）与生成状态 |
+| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统：生成、玩家更新与操纵（`flight-control.ts`）、运动、活动区域与停放（`area.ts`）；P3-07 的命令分派（`commands.ts`）、目标（`targeting.ts`）、武器与发射（`weapons.ts`、`launch.ts`）、弹丸（`projectiles.ts`）、导弹（`missiles.ts`）、伤害（`damage.ts`）、毁伤、爆炸与碎片（`destruction.ts`）、碰撞（`collision.ts`）、能量（`energy.ts`）、驾驶舱显示步（`displays.ts`）与停放交战（`parked-engagement.ts`）。规则任务在自己的阶段接入 |
+| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取，并修改显式传入的世界计数、移动块或战斗状态）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；飞行状态、运动积分、操纵、速度匹配、AI 初态、随机方向、活动区域与停放行进（P3-06）；载入变换与碰撞形状、战斗初值、目标与雷达、挂点与开火、移动块构造与模式 1/2 运动、弹丸命中、伤害与子系统、能量与显示、碰撞、共享转向模块与导弹制导、爆炸与碎片、停放交战（P3-07）；只在真实复用时提取 |
+| `projections/` | 按分区的 projection（含 `flight` 的运动组与战斗组 `combat.ts`）与 Render State，深度冻结、与世界脱离 |
 | `replay/` | 正式快照与状态哈希、规则版本、录制、replay 与结果比较 |
 
 ## 文件与 helper 归属

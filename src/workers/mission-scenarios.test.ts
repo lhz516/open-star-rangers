@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_ENTRY_QUERY } from '../../tools/e2e-network-policy.ts';
 import { diagnoseMission, type MissionLoadState } from '../app/resources/mission-diagnostics.ts';
+import { ruleDataInputs, runModelInputs, type RuleDataInputs } from '../app/resources/mission-input.ts';
 import { RESOURCE_GROUPS } from '../content/asset-contract.ts';
 import { validateGroup, validatePackage, type PackageCompletenessResult } from '../content/completeness.ts';
 import type { ContentIdentity } from '../content/content-identity.ts';
@@ -25,7 +26,8 @@ import { PRODUCTION_PACKAGE } from './production-package.ts';
 // P3-04 subtask 01 (S-09): each mission scenario runs its production import job in Node; the groups it sends are kept
 // as the import job owner and resource holder keep them (complete groups only, in slice definition order), judged as a
 // whole package and diagnosed, and the startable and create-rejected missions go to `createWorld` with the package's
-// craft info (P3-06 D-01) and the production run configuration.
+// craft info (P3-06 D-01), its rule-data inputs and the models of the craft each run instantiates (P3-07 CR-01), and
+// the production run configuration.
 
 /** Every run configuration the start page offers: no wingman and each of the five roster options. */
 const WINGMEN = [null, 0, 1, 2, 3, 4] as const;
@@ -47,11 +49,12 @@ async function imported(name: MissionScenario): Promise<Imported> {
   return { groups, held, completeness: validatePackage(CLASSIC_P2_SLICE, held), mission: diagnoseMission(held) };
 }
 
-type LogicAssets = Pick<CreateWorldInput, 'mission' | 'craftTypes' | 'wingmanRoster' | 'craftInfo'>;
+type LogicAssets = Pick<CreateWorldInput, 'mission' | 'craftTypes' | 'wingmanRoster' | 'craftInfo'> & RuleDataInputs;
 
 /**
  * The held logic group's mission and the craft type table and roster it references, decoded as mission diagnostics
- * does, and its craft info (P3-06 D-01), decoded with the rule-data payload reader.
+ * does, its craft info (P3-06 D-01), decoded with the rule-data payload reader, and the package's run-independent
+ * rule-data inputs as the mission owner decodes them (P3-07 CR-01).
  */
 function logicAssets(held: readonly ScenarioGroup[]): LogicAssets {
   const logic = held.find(({ group }) => group === 'logic')!;
@@ -68,11 +71,19 @@ function logicAssets(held: readonly ScenarioGroup[]): LogicAssets {
     craftTypes: asset(assets.find(({ id }) => id === references.craftTypes), decodeLogicPayload),
     wingmanRoster: asset(assets.find(({ id }) => id === references.wingmanRoster), decodeLogicPayload),
     craftInfo: asset(assets.find(({ role }) => role === 'craft-info'), decodeRuleDataPayload),
+    ...ruleDataInputs(held),
   };
 }
 
-const productionRun = (assets: LogicAssets, identity: ContentIdentity, wingman: number | null): CreateWorldInput =>
-  ({ ...assets, identity, run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed: SEED } });
+/**
+ * A production run of the package: its content, and the models of the craft the run instantiates as the mission owner
+ * decodes them. When Core refuses the run's setup it names no models, and world creation reports the same refusal.
+ */
+function productionRun(held: readonly ScenarioGroup[], assets: LogicAssets, identity: ContentIdentity, wingman: number | null): CreateWorldInput {
+  const { mission, craftTypes, wingmanRoster } = assets;
+  const run = { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman, seed: SEED };
+  return { ...assets, models: runModelInputs(held, { mission, craftTypes, wingmanRoster, identity, run }), identity, run } as CreateWorldInput;
+}
 
 const complete = (result: PackageCompletenessResult): ContentIdentity => {
   if (result.status !== 'complete') throw new Error(`The package is ${result.status}`);
@@ -111,7 +122,7 @@ describe('P3-04 mission scenarios (S-09)', () => {
     expect(FIVE_WINGMAN_NAMES.flat().some(name => name.includes(MARKER))).toBe(false);
 
     for (const wingman of WINGMEN) {
-      const world = createWorld(productionRun(assets, identity, wingman));
+      const world = createWorld(productionRun(held, assets, identity, wingman));
       expect(world.projection()).toMatchObject({
         clock: { tick: 0, clock: 0, clockUnitsPerTick: DEFAULT_CLOCK_UNITS_PER_TICK },
         mission: { mission: PRODUCTION_MISSION, group: 0, slot: 1, rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman },
@@ -150,7 +161,7 @@ describe('P3-04 mission scenarios (S-09)', () => {
     expect(mission.status).toBe('loaded');
     const assets = logicAssets(held);
     for (const wingman of WINGMEN) {
-      const error = thrownBy(() => createWorld(productionRun(assets, identity, wingman)));
+      const error = thrownBy(() => createWorld(productionRun(held, assets, identity, wingman)));
       expect(error, String(wingman)).toBeInstanceOf(CoreInputError);
       expect({ path: (error as CoreInputError).path, reason: (error as CoreInputError).reason }).toEqual(MISSION_SCENARIOS['mission-create-rejected'].failure);
     }

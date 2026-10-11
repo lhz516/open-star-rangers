@@ -6,9 +6,9 @@ import { fnv1a64 } from '../determinism/fnv1a64.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
-import type { Entity } from '../world/entity-table.ts';
+import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { entityInit, stateText, thrownBy, tickInput } from '../world/world.test-support.ts';
+import { busyCombat, entityInit, stateText, thrownBy, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
@@ -19,24 +19,30 @@ type Mutable = Record<string | number, unknown>;
 
 /**
  * The slice-shaped world with the first wingman after its first tick (51 entities from section-1 records, groups and
- * the wingman, with craft-type and candidate names, active and parked, with and without a formation), plus two entities
- * the rules would create at run time: one named from the pool, one unnamed whose flight state has every optional part
- * other tasks write (a formation, a timed rotation, an impulse, a disturbance, AI targets).
+ * the wingman, with craft-type and candidate names, active and parked, with and without a formation), plus entities
+ * the rules would create at run time: a craft named from the pool; an unnamed craft whose flight and combat state has
+ * every optional part other tasks write (a formation, a timed rotation, an impulse, a disturbance, AI targets, mounts,
+ * references); and one of each of P3-07's runtime kinds with every optional part of its combat state and its own
+ * movement block variant. The player state has P3-07's targeting and references set.
  */
 function richState(): WorldState {
-  const state = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
+  const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } }))));
   constructWorld(state).step(tickInput());
-  state.entities.allocate(entityInit(25, { name: { type: 'pool', index: 1 }, side: null, activity: 'parked' }));
-  // Active with a movement block, so of a kind with a craft record: movement reads it.
-  const runtime = state.entities.allocate(entityInit(19, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } } }));
-  const block = runtime.movement!;
+  state.entities.allocate(entityInit(12, { name: { type: 'pool', index: 1 }, side: null, activity: 'parked' }));
+  const runtime = state.entities.allocate(entityInit(19, { formation: { leader: 1, offset: { x: 1, y: 2, z: 3 } }, combat: busyCombat(19) }));
+  const block = runtime.movement as SteeredMovementBlock;
   Object.assign(block.timedRotation, { pitch: { rate: 0.5, decay: -0.25, end: 3 }, yaw: { rate: -1, decay: 0.5, end: 4 }, roll: { rate: 2, decay: -1, end: 5 } });
   block.impulse = { direction: { x: 0, y: 1, z: 0 }, magnitude: 5 };
   block.disturbance = { level: 2, biases: [1, -2, 3] };
   Object.assign(runtime.ai, { target: 1, objectTarget: 2 });
+  for (const kindBit of RUNTIME_KIND_BITS) state.entities.allocate(entityInit(kindBit, { combat: busyCombat(kindBit) }));
+  Object.assign(state.player, { targeting: { mode: 'friendly', autoTargetDueClock: 5 }, followedEntity: 3, delayedExplosionClock: 7 });
   state.spawn.namePoolUses[1] = 1;
   return state;
 }
+
+/** P3-07's runtime kinds: missile, projectile, explosion and fragment. */
+const RUNTIME_KIND_BITS = [20, 21, 22, 24];
 
 const textOf = (state: WorldState): string => snapshotText(takeSnapshot(state));
 
@@ -75,8 +81,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = createWorld(asCreateInput(input)).snapshot();
     expect(Object.keys(snapshot)).toEqual(['format', 'version', 'rulesVersion', 'state']);
     expect(snapshot).toMatchObject({ format: GAME_SNAPSHOT_FORMAT, version: GAME_SNAPSHOT_VERSION, rulesVersion: RULES_VERSION });
-    // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07).
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 2, 2]);
+    // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07), then P3-07 (docs/plan/p3/02/spec.md, CR-14).
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 3, 3]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual(['config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'player']);
     expect(state.config).toEqual({
@@ -91,7 +97,12 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       clockUnitsPerTick: 2,
     });
     expect(state).toMatchObject({ tick: 0, clock: 0, nextEntityId: 1, entities: [], kindOrder: [], missionStatus: 'built' });
-    expect(state.player).toEqual({ entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0, target: null, control: null });
+    expect(state.player).toEqual({
+      entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0, target: null, control: null, targeting: null, followedEntity: null,
+      delayedExplosionClock: null, kills: { 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 16: 0, 19: 0 },
+      shots: { projectilesFired: 0, projectileHits: 0, missilesFired: 0, missileHits: 0 }, heavyDamage: -1, leftDisplay: { page: 0 },
+      statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true },
+    });
     expect(state.spawn.records).toHaveLength(9);
     expect(state.spawn.wingman?.declaration).toEqual({ collection: 'wingman', index: 3 });
     // Seven declared entries and the wingman's.
@@ -99,6 +110,23 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(snapshotText(snapshot)).not.toContain(MARKER);
     expect(snapshotText(snapshot)).not.toContain(CRAFT_INFO_MARKER);
     expect(deepFrozen(snapshot)).toBe(true);
+  });
+
+  it('writes the combat state instantiation gives, and leaves the static rule data out (P3-07 AC-05, CR-01, CR-14)', () => {
+    const state = initialWorldState(asCreateInput(worldInput()));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    const snapshot = world.snapshot();
+    const player = state.entities.get(1)!;
+    expect(snapshot.state.entities[0].combat).toEqual(player.combat);
+    expect(snapshot.state.entities[0].maximumSpeed).toBe(player.maximumSpeed);
+    // The frame-end status display has consumed the redraw instantiation set (CR-10).
+    expect(snapshot.state.player).toMatchObject({ targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: false } });
+    // Nothing of the static data is written: replacing it leaves the text as it is.
+    const text = snapshotText(snapshot);
+    expect(text).not.toContain('explosion-animation');
+    expect(text).not.toContain('mountOffsets');
+    expect(textOf({ ...state, ruleData: { ...state.ruleData, craft: [], guns: [], missiles: [] } })).toBe(text);
   });
 
   it('copies the world: reading changes nothing, every call is a new copy, and later ticks never change it', () => {
@@ -111,6 +139,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(second.state.entities[0]).not.toBe(first.state.entities[0]);
     expect(second.state.spawn.records[0]).not.toBe(first.state.spawn.records[0]);
     const text = snapshotText(first);
+    // The runtime kinds leave in this tick rather than run their callbacks on busyCombat's made-up combat states.
+    for (const kindBit of RUNTIME_KIND_BITS) for (const entity of state.entities.walk(1 << kindBit)) entity.state = 'pending-removal';
     world.step(tickInput([{ type: 'launch' }]));
     state.entities.get(1)!.placementSerial++;
     state.spawn.records[0].spawnCount++;
@@ -118,19 +148,20 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(snapshotText(world.snapshot())).not.toBe(text);
   });
 
-  it('changes the canonical text when any value of the world state but its static setup and craft info changes', () => {
+  it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', () => {
     const state = richState();
     // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
-    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'setup', 'spawn', 'tick']);
+    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'ruleData', 'setup', 'spawn', 'tick']);
     // Every entity is written by the same writer, so one entity of each shape stands for the rest: by collection,
-    // group membership and name variant: the player, the wingman, a candidate-named record, a group member, a pool
-    // name and an unnamed runtime entity.
+    // group membership, name variant and combat type: the player, the wingman, a candidate-named record, a group
+    // member, a pool name, an unnamed craft and the four runtime kinds, whose movement blocks are the other variants.
     const shapes = new Map<string, Entity>();
     for (const entity of state.entities.byId()) {
-      const shape = `${entity.source?.collection}:${entity.source?.group === null}:${entity.name.type}`;
+      const shape = `${entity.source?.collection}:${entity.source?.group === null}:${entity.name.type}:${entity.combat.type}`;
       if (!shapes.has(shape)) shapes.set(shape, entity);
     }
-    expect(shapes.size).toBe(6);
+    expect(shapes.size).toBe(10);
+    expect(new Set([...shapes.values()].map(({ movement }) => movement?.mode))).toEqual(new Set(['craft', 'linear', 'spinning', undefined]));
     // The others only make each text longer to write.
     const representatives = new Set(shapes.values());
     for (const entity of [...state.entities.byId()]) if (!representatives.has(entity)) state.entities.remove(entity);
@@ -139,9 +170,13 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       ...[...shapes.values()].flatMap((entity) => Object.keys(entity).map((key) => [entity as unknown as Mutable, key] as const)),
     ];
     // A null in a nullable object field (a region, a source, a group membership, a movement block, a formation, a timed
-    // rotation about an axis, an impulse, a disturbance) cannot become 0; the same fields hold objects elsewhere in this
-    // state, whose members are leaves themselves.
-    const nullableObjects = new Set(['region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance']);
+    // rotation about an axis, an impulse, a disturbance, a craft's references, a missile's guidance and homing state, a
+    // projectile's expiry) cannot become 0; the same fields hold objects elsewhere in this state, whose members are
+    // leaves themselves.
+    const nullableObjects = new Set([
+      'region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance',
+      'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry',
+    ]);
     const baseline = textOf(state);
     let changes = 0;
     for (const [holder, key] of holders) {
@@ -157,7 +192,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
         }
         holder[key] = original;
         if (text instanceof CoreInputError) {
-          expect(nullableObjects.has(String([key, ...path].at(-1))), name).toBe(true);
+          // Another movement mode is no variant, like another `type`, which leafPaths skips.
+          expect(nullableObjects.has(String([key, ...path].at(-1))) || name === 'movement.mode', name).toBe(true);
           continue;
         }
         expect(text, name).not.toBe(baseline);
@@ -165,24 +201,24 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       }
     }
     expect(textOf(state)).toBe(baseline);
-    // Six entities of 30 and more values each, and every record, group, queue entry and counter.
-    expect(changes).toBeGreaterThan(6 * 30 + 9 * 20);
+    // Ten entities of 30 and more values each, and every record, group, queue entry and counter.
+    expect(changes).toBeGreaterThan(10 * 30 + 9 * 20);
   });
 
   it('includes the next entity ID, which an allocation advances even after the entity is gone', () => {
     const state = richState();
     const before = takeSnapshot(state);
-    state.entities.remove(state.entities.allocate(entityInit(25)));
+    state.entities.remove(state.entities.allocate(entityInit(21)));
     const after = takeSnapshot(state);
     expect(after.state.entities).toEqual(before.state.entities);
-    expect([before.state.nextEntityId, after.state.nextEntityId]).toEqual([54, 55]);
+    expect([before.state.nextEntityId, after.state.nextEntityId]).toEqual([58, 59]);
     expect(snapshotText(after)).not.toBe(snapshotText(before));
   });
 
   it('lists the entities by ID and the kind lists in walk order, without a removed entity', () => {
     const state = richState();
     const { entities, kindOrder } = takeSnapshot(state).state;
-    expect(entities.map(({ id }) => id)).toEqual(Array.from({ length: 53 }, (_, index) => index + 1));
+    expect(entities.map(({ id }) => id)).toEqual(Array.from({ length: 57 }, (_, index) => index + 1));
     // Kinds ascend and each kind's list keeps allocation order, which is ID order.
     const walk = [...entities].sort((left, right) => left.kindBit - right.kindBit || left.id - right.id).map(({ id }) => id);
     expect(kindOrder).toEqual(walk);
@@ -231,7 +267,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":2,"rulesVersion":2,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":3,"rulesVersion":3,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

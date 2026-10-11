@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readAssetId } from '../../content/asset-id.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import { initialPlayerControl } from '../world/player-state.ts';
+import { initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, busyCombat, entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
 
 const lerp = (from: Vec3, to: Vec3, alpha: number): Vec3 => ({
@@ -36,16 +36,33 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     state.player.entityId = player.id;
     state.player.viewMode = 0x11;
     first.placementSerial = 2;
+    state.clock = 6;
     const render = renderWorld(state);
+    const unlit = { hitShimmerStart: null, explosionStart: null };
     expect(render).toEqual({
       tick: 0,
+      clock: 6,
       viewMode: 0x11,
       observedEntityId: player.id,
       entities: [
-        { id: first.id, kindBit: 5, presentation: { type: 'model', model: other }, position: { x: -1, y: 0.5, z: 9 }, orientation: TEST_ORIENTATION, placementSerial: 2 },
-        { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0 },
+        { id: first.id, kindBit: 5, presentation: { type: 'model', model: other }, position: { x: -1, y: 0.5, z: 9 }, orientation: TEST_ORIENTATION, placementSerial: 2, ...unlit },
+        { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0, ...unlit },
       ],
     });
+    expect(deepFrozen(render)).toBe(true);
+  });
+
+  // P3-07 CR-12: the presentation selector of each kind, a craft's latest hit and an explosion's activation clock.
+  it('gives each kind its presentation and the hit shimmer and explosion clocks of craft and explosions only', () => {
+    const state = testState();
+    const entities = [7, 20, 21, 22, 24].map((kindBit) => state.entities.allocate(entityInit(kindBit, { combat: busyCombat(kindBit) })));
+    const shimmering = state.entities.allocate(entityInit(8));
+    const render = renderWorld(state);
+    expect(render.entities.map(({ presentation }) => presentation)).toEqual([...entities, shimmering].map(({ presentation }) => presentation));
+    expect(render.entities.map(({ presentation }) => presentation.type)).toEqual(['model', 'missile', 'projectile', 'explosion', 'fragment', 'model']);
+    expect(render.entities.map(({ hitShimmerStart, explosionStart }) => [hitShimmerStart, explosionStart])).toEqual([
+      [6, null], [null, null], [null, null], [null, 6], [null, null], [null, null],
+    ]);
     expect(deepFrozen(render)).toBe(true);
   });
 
@@ -85,6 +102,7 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     const player = state.entities.allocate(stillEntityInit(0));
     state.player.entityId = player.id;
     state.player.control = initialPlayerControl(0);
+    state.player.targeting = initialPlayerTargeting();
     const moving = state.entities.allocate(stillEntityInit(3, { position: { x: 0, y: 0, z: 0 } }));
     const leaving = state.entities.allocate(stillEntityInit(3));
     const warping = state.entities.allocate(stillEntityInit(5, { position: { x: 0, y: 0, z: 0 } }));

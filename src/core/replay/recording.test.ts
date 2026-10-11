@@ -153,6 +153,20 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
     expect(thrownBy(() => createRecordingSession(longInput({ run: { seed: -1 } }), options(1)))).toMatchObject({ path: 'input.run.seed' });
   });
 
+  it('takes the rule-data inputs as world creation does and embeds none of them in the record (P3-07 AC-02, CR-01)', () => {
+    for (const field of ['models', 'aiPrograms']) {
+      const without: Record<string, unknown> = { ...longInput() };
+      delete without[field];
+      expect(thrownBy(() => createRecordingSession(without as never, options(1)))).toMatchObject({ path: `input.${field}`, reason: 'is required' });
+    }
+    const input = longInput();
+    const { record } = createRecordingSession(input, options(1)).exportRecording();
+    const text = JSON.stringify(record);
+    for (const embedded of ['debris-parameters', 'projectile-visuals', 'explosion-animation', 'ai-programs', input.models[0].id]) expect(text).not.toContain(embedded);
+    // The record binds them through setupHash only.
+    expect(record.setupHash).toBe(initialWorldState(input).config.setupHash);
+  });
+
   describe('capacity (上限)', () => {
     it('refuses a tick that could pass any recording capacity, at the exact bounds', () => {
       const { recordedTicks, recordedCommands, recordedEvents, eventsPerTick, commandsPerTick } = CORE_LIMITS;
@@ -162,7 +176,8 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
       expect(fits({ ticks: 0, commands: recordedCommands - commandsPerTick, events: 0 }, commandsPerTick)).toBeUndefined();
       expect(fits({ ticks: 0, commands: recordedCommands - commandsPerTick + 1, events: 0 }, commandsPerTick))
         .toMatchObject({ path: 'recording', reason: `would exceed ${recordedCommands} recorded commands` });
-      // A tick's events are unknown before it runs: it must fit at the per-tick bound.
+      // A tick's events are unknown before it runs: it must fit at the per-tick bound, which P3-07 raised (CR-14).
+      expect(recordedEvents - eventsPerTick).toBe(491_520);
       expect(fits({ ticks: 0, commands: 0, events: recordedEvents - eventsPerTick }, 0)).toBeUndefined();
       expect(fits({ ticks: 0, commands: 0, events: recordedEvents - eventsPerTick + 1 }, 0))
         .toMatchObject({ path: 'recording', reason: `could exceed ${recordedEvents} recorded events` });

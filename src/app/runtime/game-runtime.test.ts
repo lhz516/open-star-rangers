@@ -59,6 +59,9 @@ describe('createGameRuntime', () => {
     ['an accessor', Object.defineProperty(runtimeSpec(), 'run', { get: () => { throw new Error('ran'); }, enumerable: true }), 'spec', 'must contain only enumerable data fields'],
     ['no recording field', (({ recording: _, ...rest }) => rest)(runtimeSpec()), 'spec.recording', 'is required'],
     ['no craft info field', (({ craftInfo: _, ...rest }) => rest)(runtimeSpec()), 'spec.craftInfo', 'is required'],
+    // P3-07 CR-01: every rule-data input is a field of its own.
+    ['no explosion table field', (({ explosions: _, ...rest }) => rest)(runtimeSpec()), 'spec.explosions', 'is required'],
+    ['no models field', (({ models: _, ...rest }) => rest)(runtimeSpec()), 'spec.models', 'is required'],
     ['a step, even the default', runtimeSpec({ run: { clockUnitsPerTick: 2 } as never }), 'spec.run.clockUnitsPerTick', 'is not accepted: the Runtime runs only the default step'],
   ])('rejects %s as an invalid argument', (_name, spec, path, reason) => {
     const error = thrownBy(() => createGameRuntime(spec as GameRuntimeSpec));
@@ -89,6 +92,10 @@ describe('createGameRuntime', () => {
     const zeroModulus = runtimeSpec();
     (zeroModulus.craftInfo.content as { craft: { at0C: number }[] }).craft[0].at0C = 0.5;
     expect(thrownBy(() => createGameRuntime(zeroModulus))).toMatchObject({ path: 'input.craftInfo.content.craft[0].at0C' });
+    // So are the rule-data inputs: the models must be exactly those of the craft the run instantiates.
+    const extraModel = runtimeSpec();
+    (extraModel.models as unknown[]).push({ ...(extraModel.models[0] as object), id: 'model/zz-unused' });
+    expect(thrownBy(() => createGameRuntime(extraModel))).toMatchObject({ name: 'CoreInputError', path: 'input.models[5].id' });
   });
 });
 

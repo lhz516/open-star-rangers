@@ -5,9 +5,10 @@
  * objects one after another, a group request member by member.
  *
  * Draws, in the original's order: a request's placement draws (each group member's layout cycle placing its anchor
- * first), then each instantiation's own: name fallbacks, then P3-06's at the extension point (docs/plan/p3/06/spec.md,
- * 实例化扩展): the initial AI state `0x68050` and the Warp timer +0xC8. The other rule tasks add theirs at the marked
- * places: `0x3060c`'s energy timer (P3-07), `0x20990` (P3-08), `0x38cd4` (P3-10).
+ * first), then each instantiation's own: name fallbacks, then those of the extension point (docs/plan/p3/06/spec.md,
+ * 实例化扩展; docs/plan/p3/02/spec.md, CR-07): P3-07's first energy update `0x3060c`, P3-06's initial AI state
+ * `0x68050` and Warp timer +0xC8. The other rule tasks add theirs at the marked places: `0x20990` (P3-08), `0x38cd4`
+ * (P3-10).
  *
  * The original's resource test `0x6a0b8` after allocation, whose failure conditions were not established, always
  * passes here (a disclosed difference).
@@ -16,15 +17,16 @@ import type { Vector3 } from '../../content/logic/logic-content.ts';
 import type { EntitySource, ObjectInstantiatedEvent } from '../contracts/domain-events.ts';
 import { isDue } from '../contracts/time.ts';
 import { CoreFaultError } from '../errors.ts';
-import { initialMaximumSpeed, initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
+import { initialiseCraftCombat, type CraftEntity } from '../rules/combat-init.ts';
+import { initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
 import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
 import { assignName } from '../rules/name-assignment.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { memberPosition, placeRecord, type AttitudeRows, type Placement, type PlacementRecord } from '../rules/placement.ts';
 import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
 import { firingRecord, PLAYER_KIND_BIT, postsRequests } from '../rules/spawn-schedule.ts';
-import { allocatorFlightState, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
-import { COCKPIT_VIEW_MODE, initialPlayerControl } from '../world/player-state.ts';
+import { allocatorFlightState, blankCraftCombat, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
+import { COCKPIT_VIEW_MODE, initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 
@@ -121,9 +123,8 @@ function instantiate(
   const craft = kindBit === null ? undefined : world.craftInfo.content.craft[kindBit];
   if (kindBit === null || declaration.model === null || craft === undefined) throw new CoreFaultError('invariant-violated', 'spawn.kind');
   const name = assignName(world.setup, world.entities, world.spawn.namePoolUses, { declaration: record.declaration, kindBit }, rand);
-  // Allocated as the allocator leaves an object, parked and without a block; the steps below write the rest in the
-  // original's order (docs/plan/p3/06/spec.md, 实例化扩展). The maximum speed is written where `0x3060c` runs, without
-  // a draw; P3-07 adds its energy fields and timer draw there, then the two-bit fields.
+  // Allocated as the allocator leaves an object, parked and without a block, its maximum speed 0 and its combat state
+  // blank; the steps below write the rest in the original's order (docs/plan/p3/06/spec.md, 实例化扩展; CR-07).
   const entity = world.entities.allocate({
     kindBit,
     source,
@@ -136,10 +137,13 @@ function instantiate(
     activity: 'parked',
     ruleInputs: entityRuleInputs(record.ruleInputs),
     ...allocatorFlightState(),
-    maximumSpeed: initialMaximumSpeed(kindBit, craft),
+    maximumSpeed: 0,
     lastParkedUpdateClock: 0,
     movement: null,
-  });
+    combat: blankCraftCombat(),
+  }) as CraftEntity;
+  // The weapon block and the hull, `0x3060c` with the maximum speed and its draw, the cleared two-bit fields.
+  initialiseCraftCombat(entity, craft, world.clock, rand);
   entity.ai = initialAiState(world.entities, entity, aiCandidates(record, world.spawn, world.setup), world.spawn.frame, rand);
   entity.lastParkedUpdateClock = world.clock;
   entity.warpClock = initialWarpClock(kindBit, world.clock, rand);
@@ -159,6 +163,8 @@ function instantiate(
     world.player.previousViewMode = COCKPIT_VIEW_MODE;
     world.player.target = null;
     world.player.control = initialPlayerControl(world.config.group);
+    world.player.targeting = initialPlayerTargeting();
+    world.player.statusDisplay.redraw = true;
   }
   emit({ type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
   return entity;

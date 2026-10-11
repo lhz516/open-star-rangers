@@ -8,8 +8,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ASSET_ID_LIMITS } from '../src/content/asset-id.ts';
 import { validatePackage } from '../src/content/completeness.ts';
 import { contentIdentityKey } from '../src/content/content-identity.ts';
+import { readEffectPayload } from '../src/content/effects/effect-payload.ts';
+import type { ExplosionTable } from '../src/content/flight/flight-data-content.ts';
+import { decodeFlightDataPayload } from '../src/content/flight/flight-data-payload.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
+import { readModelPayload } from '../src/content/models/model-payload.ts';
 import { readPayloadRecords } from '../src/content/payload.ts';
 import { decodeRuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
@@ -21,7 +25,7 @@ import { createRecordingSession, type Recording } from '../src/core/replay/recor
 import { roundTrip } from '../src/core/replay/replay.test-support.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
-import type { CreateWorldInput } from '../src/core/world/create-world.ts';
+import { instantiableModelIds, type CreateWorldInput } from '../src/core/world/create-world.ts';
 import { PRODUCTION_MISSION, PRODUCTION_RAW_DIFFICULTY } from '../src/core/world/run-config.ts';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
 import type { ImportJob } from '../src/workers/import-host.ts';
@@ -88,24 +92,47 @@ function script(tick: number): TickInput {
 
 /**
  * A recording of the scenario's world with the first wingman, made as the development build makes it: the three logic
- * Assets and the craft info of its package (found by role here, independently of the tool), its identity and the
- * production run.
+ * Assets, the craft info, the rule-data inputs and the run's models of its package (found by role and reference here,
+ * independently of the tool), its identity and the production run.
  */
 async function record(): Promise<{ readonly recording: Recording; readonly identity: string }> {
   const groups = await scenarioGroups(SCENARIO);
   const validation = validatePackage(CLASSIC_P2_SLICE, groups);
   if (validation.status !== 'complete') throw new Error('the scenario package is incomplete');
-  const logic = groups.find(({ group }) => group === 'logic')!;
-  const { assets } = readGroupManifest(logic.manifest);
-  const payloads = readPayloadRecords(logic.payloads);
-  const asset = (role: string, decode: typeof decodeLogicPayload | typeof decodeRuleDataPayload = decodeLogicPayload) => {
-    const descriptor = assets.find(item => item.role === role)!;
-    return { id: descriptor.id, content: decode(payloads.find(({ id }) => id === descriptor.id)!.bytes, descriptor).content };
+  const groupAssets = (name: string) => {
+    const group = groups.find(item => item.group === name)!;
+    const { assets } = readGroupManifest(group.manifest);
+    const payloads = readPayloadRecords(group.payloads);
+    type Descriptor = (typeof assets)[number];
+    const decoded = (found: (descriptor: Descriptor) => boolean, decode: (bytes: Uint8Array, descriptor: Descriptor) => unknown) => {
+      const descriptor = assets.find(found)!;
+      return { id: descriptor.id, content: decode(payloads.find(({ id }) => id === descriptor.id)!.bytes, descriptor) };
+    };
+    return decoded;
   };
-  const input: CreateWorldInput = {
-    mission: asset('mission'), craftTypes: asset('craft-types'), wingmanRoster: asset('wingman-roster'),
-    craftInfo: asset('craft-info', decodeRuleDataPayload), identity: validation.identity,
+  const logic = groupAssets('logic');
+  const models = groupAssets('models');
+  const asset = (role: string, decode: typeof decodeLogicPayload | typeof decodeRuleDataPayload = decodeLogicPayload) =>
+    logic(item => item.role === role, (bytes, descriptor) => decode(bytes, descriptor).content);
+  const flightData = (id: string) => models(item => item.id === id, (bytes, descriptor) => decodeFlightDataPayload(bytes, descriptor).content);
+  const base = {
+    mission: asset('mission'), craftTypes: asset('craft-types'), wingmanRoster: asset('wingman-roster'), identity: validation.identity,
     run: { rawDifficulty: PRODUCTION_RAW_DIFFICULTY, wingman: 0, seed: 0x5eed_1234 },
+  } as Pick<CreateWorldInput, 'mission' | 'craftTypes' | 'wingmanRoster' | 'identity' | 'run'>;
+  const explosions = models(item => item.role === 'explosion-table', (bytes, descriptor) => decodeFlightDataPayload(bytes, descriptor).content);
+  const animations = [...new Set((explosions.content as ExplosionTable).lists.flat().map(({ animation }) => animation.id as string))].sort();
+  const input: CreateWorldInput = {
+    ...base,
+    craftInfo: asset('craft-info', decodeRuleDataPayload),
+    debrisParameters: asset('debris-parameters', decodeRuleDataPayload),
+    projectileVisuals: models(
+      item => item.role === 'projectile' && item.kind === 'data',
+      (bytes, descriptor) => readEffectPayload(bytes, descriptor.payloadIdentity.schemaVersion, 'projectile'),
+    ),
+    explosions,
+    explosionAnimations: animations.map(flightData),
+    models: instantiableModelIds(base).map(id => models(item => item.id === id, (bytes, descriptor) => readModelPayload(bytes, descriptor.payloadIdentity.schemaVersion))),
+    aiPrograms: asset('ai-programs', decodeRuleDataPayload),
   };
   const session = createRecordingSession(input, { producer: 'open-star-rangers replay-check test', checkpointInterval: INTERVAL });
   for (let tick = 1; tick <= TICKS; tick++) session.step(script(tick));
@@ -154,8 +181,9 @@ const validated = () => ({
 describe('replay check', () => {
   it('replays a synthetic recording on the same synthetic disc and passes, leaving the file as it was', async () => {
     expect(MISSION_SCENARIOS[SCENARIO].stage).toBe('world');
-    // The run spawned craft, answered commands and switched the speed assist, so events and checkpoints are both compared.
-    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled']));
+    // The run spawned craft, answered commands, switched the speed assist and selected a target automatically, so events
+    // and checkpoints are both compared.
+    expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled', 'target-changed']));
     const text = JSON.stringify(recording);
     const path = file(text);
     const report = await runReplayCheck(path, disc, { catalog });
@@ -382,14 +410,22 @@ describe('recording size limit', () => {
     // The longest command result is the last of a tick's full command list.
     const earlier = Array.from({ length: CORE_LIMITS.commandsPerTick - 1 }, (_, commandIndex) => ({ ...events['command-result'], commandIndex }));
     expect(Object.keys(events).sort()).toEqual([
-      'command-result', 'object-instantiated', 'object-left-world', 'speed-assist-released', 'speed-assist-toggled', 'speed-matched',
+      'command-result', 'energy-allocation-changed', 'energy-depleted', 'explosion-started', 'fragment-expired', 'hit', 'left-page-changed',
+      'missile-ended', 'object-destroyed', 'object-instantiated', 'object-left-world', 'shot-fired', 'source-released', 'speed-assist-released',
+      'speed-assist-toggled', 'speed-matched', 'target-changed', 'target-cleared', 'weapon-selected',
     ]);
     // In a tick's order (compare.ts): one speed assist event first, the command results with the switch right after its
-    // command's, then the rest; the other speed assist event goes in the tick before.
+    // command's, then request handling, the hit and destruction, the energy, parked and frame-end stages; the selection and
+    // page changes without a command anywhere. The other speed assist event and the level change of the last command,
+    // which may follow its result alone, go in the tick before.
+    const before = (event: (typeof events)[keyof typeof events]) => ({ ...event, tick: checkpoint.tick - 1 });
     const result = {
       events: [
-        { ...events['speed-assist-released'], tick: checkpoint.tick - 1 }, events['speed-matched'],
-        ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'], events['object-left-world'],
+        before(events['speed-assist-released']), ...earlier.map(before), before(events['command-result']), before(events['energy-allocation-changed']),
+        events['speed-matched'], ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'],
+        events['weapon-selected'], events['left-page-changed'], events['target-changed'], events['shot-fired'], events['missile-ended'],
+        events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit, events['object-destroyed'],
+        events['energy-depleted'], events['object-left-world'], events['target-cleared'],
       ],
       checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
       finalTick: checkpoint.tick,

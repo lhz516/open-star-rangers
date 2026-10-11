@@ -1,19 +1,20 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
- * from the world, in partitions. clock, mission and player are ready, and so is the flight partition's motion group
- * (docs/plan/p3/06/spec.md, D-05; P3-06). The flight partition's combat group (P3-07), map, communications and result
- * fix the boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero
- * value, a fully visible map or a victory. The projection gives only what the original shows or a rule needs, never
- * the list of all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by
- * revising the spec (扩展规则) before its partition can become ready.
+ * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
+ * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts). map, communications and result fix the
+ * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a
+ * fully visible map or a victory. The projection gives only what the original shows or a rule needs, never the list of
+ * all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the
+ * spec (扩展规则) before its partition can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
-import type { EntityId, Matrix3, NameReference } from '../world/entity-table.ts';
-import { interactionContext, type InteractionContext } from '../world/player-state.ts';
+import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
+import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
+import { projectCombat } from './combat.ts';
 
 export interface ClockProjection {
   readonly tick: number;
@@ -52,22 +53,79 @@ export interface ResourceReading {
   readonly maximum: number;
 }
 
-/** The named flight resources and their units: P3-07, once their rules are confirmed. */
-export type FlightResourceName = never;
-/** A weapon's content record: P3-03 imports the records, P3-07 fixes the reference. */
-export type WeaponRecordReference = never;
-
-export interface WeaponReading {
-  readonly record: WeaponRecordReference;
-  readonly ammunition: number;
+/**
+ * The player's combat resources and their full scales (D16): energy / c54, shield / c5C, charge / c74, hull (raw, may
+ * be negative) / c9C, spare power E / T.
+ */
+export type FlightResourceName = 'energy' | 'shield' | 'charge' | 'hull' | 'spare-power';
+/** A gun or missile record of the world's craft info (`asset` is its Asset ID). */
+export interface WeaponRecordReference {
+  readonly asset: AssetId;
+  readonly family: 'gun' | 'missile';
+  readonly index: number;
 }
 
-export interface FlightTarget {
+/** The target information the right display reads (T7). */
+export interface CombatTarget {
   readonly entityId: EntityId;
   readonly kindBit: number;
   readonly name: NameReference;
-  /** Runtime units. */
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  /** f32: the Euclidean distance of the f32 coordinate differences, square root in double precision. */
   readonly distance: number;
+  /** The target's movement block speed; null without a block. */
+  readonly speed: number | null;
+  /** A craft's shield and its full scale c5C; null for every other kind. */
+  readonly shield: ResourceReading | null;
+}
+
+/** A radar contact (T6); P3-13 projects it on the screen with its own camera. */
+export interface RadarContact {
+  readonly entityId: EntityId;
+  /** f32: the contact's position minus the player's. */
+  readonly offset: Vec3;
+  /** A missile by its shooter when that resolves, otherwise hostile; a marker is P3-09's kind 0x2000000. */
+  readonly class: 'friendly' | 'hostile' | 'marker';
+  /** Blinks. */
+  readonly missile: boolean;
+  /** The Manhattan distance truncated to i32 is below 600. */
+  readonly near: boolean;
+  /** The player's target, drawn with the target box. */
+  readonly target: boolean;
+}
+
+/** One weapon list's reading. */
+export interface WeaponListReading {
+  readonly index: number;
+  readonly mount: number | null;
+  readonly weapon: WeaponRecordReference | null;
+  /** A missile list's ammunition summed over the alternation chain from the current mount (`0x2dd04`); null for guns. */
+  readonly ammunition: number | null;
+  /** The current mount's damage. */
+  readonly damage: 0 | 1 | 2 | null;
+  /** The list's mount status (`0x2e438`, `0x2e264`). */
+  readonly status: 0 | 1 | 2;
+}
+
+/** The player's combat readings (docs/plan/p3/02/spec.md, CR-12). */
+export interface CombatPlayer {
+  readonly entityId: EntityId;
+  /** The destroyed flag: the destruction view until the rescue. */
+  readonly destroyed: boolean;
+  readonly targetMode: TargetMode;
+  readonly target: CombatTarget | null;
+  /** `status` is subsystem 12; at 2 there are no real contacts. */
+  readonly radar: { readonly status: 0 | 1 | 2; readonly contacts: readonly RadarContact[] };
+  readonly resources: Readonly<Record<FlightResourceName, ResourceReading>>;
+  readonly allocation: { readonly shieldLevel: Level; readonly chargeLevel: Level };
+  /** Lists 0 (main weapons) and 1 (missiles). */
+  readonly weapons: readonly [WeaponListReading, WeaponListReading];
+  /** `progress` as `0x2e080` gives it (W8). */
+  readonly lock: { readonly level: 0 | 1 | 2 | 3 | 4; readonly losing: boolean; readonly progress: number };
+  /** The SUBSYSTEM_COUNT two-bit fields. */
+  readonly subsystems: readonly SubsystemState[];
+  readonly leftPage: LeftPage;
 }
 
 /**
@@ -75,6 +133,13 @@ export interface FlightTarget {
  * energy state) or the live rule's (`live`).
  */
 export type SpeedLimitStatus = 'initial-only' | 'live';
+
+/**
+ * The status of the player's maximum speed, which the motion group reports: `live`, as P3-07 recomputes it from the
+ * live E, T and field 2 at instantiation and at every allocation level change (docs/plan/p3/02/spec.md, CR-09;
+ * systems/energy.ts). It never falls back to `initial-only`.
+ */
+export const PLAYER_SPEED_LIMIT_STATUS: SpeedLimitStatus = 'live';
 
 /** The player's motion. */
 export interface MotionPlayer {
@@ -99,18 +164,19 @@ export interface MotionReady {
   readonly player: MotionPlayer | null;
 }
 
-/** The flight partition's combat group (P3-07, which fixes its ready shape). */
+/** The flight partition's combat group (P3-07): null without a player entity, never made-up zero resources. */
 export interface CombatReady {
   readonly readiness: 'ready';
-  readonly target: FlightTarget | null;
-  readonly resources: Readonly<Record<FlightResourceName, ResourceReading>>;
-  readonly weapons: readonly WeaponReading[];
+  readonly player: CombatPlayer | null;
 }
+
+/** The combat group: `not-implemented` until P3-07's readings were ready; combat.ts now always makes it ready (CR-12). */
+export type FlightCombat = NotImplementedPartition | CombatReady;
 
 /** Flight HUD data in two groups, each ready on its own; neither overwrites the other. */
 export interface FlightProjection {
   readonly motion: NotImplementedPartition | MotionReady;
-  readonly combat: NotImplementedPartition | CombatReady;
+  readonly combat: FlightCombat;
 }
 
 /** The strategic map frame converted to runtime units. */
@@ -192,19 +258,19 @@ export interface Projection {
 
 const NOT_IMPLEMENTED: NotImplementedPartition = Object.freeze({ readiness: 'not-implemented' });
 
-/** Every maximum speed is the instantiation value until P3-07 recomputes it from the live energy state. */
-const SPEED_LIMIT_STATUS: SpeedLimitStatus = 'initial-only';
-
 /**
- * The player's motion, or null without a player entity. A player entity always has its control state, and its movement
- * block, which only parking releases and the area check never parks the player's kind; missing either is Core's fault.
+ * The player's motion, or null without a player entity. A player entity always has its control state, and its steered
+ * movement block (CR-03), which only parking releases and the area check never parks the player's kind; missing either
+ * is Core's fault.
  */
 function motionPlayer(world: WorldState): MotionPlayer | null {
   const { entityId, control } = world.player;
   if (entityId === null) return null;
   const entity = world.entities.get(entityId);
   const movement = entity?.movement;
-  if (!entity || !movement || !control) throw new CoreFaultError('invariant-violated', 'projection.motion');
+  if (!entity || !movement || !control || (movement.mode !== 'craft' && movement.mode !== 'warp')) {
+    throw new CoreFaultError('invariant-violated', 'projection.motion');
+  }
   const { position: { x, y, z }, orientation } = entity;
   const { enabled, engaged } = control.speedAssist;
   return Object.freeze({
@@ -214,15 +280,15 @@ function motionPlayer(world: WorldState): MotionPlayer | null {
     speed: movement.speed,
     commandedSpeed: movement.commandedSpeed,
     maximumSpeed: entity.maximumSpeed,
-    speedLimitStatus: SPEED_LIMIT_STATUS,
+    speedLimitStatus: PLAYER_SPEED_LIMIT_STATUS,
     speedAssist: Object.freeze({ enabled, engaged }),
   });
 }
 
-/** The flight partition: the motion group is ready (P3-06), the combat group not yet (P3-07). */
+/** The flight partition: the motion group (P3-06) and the combat group (P3-07), each ready on its own. */
 function flightProjection(world: WorldState): FlightProjection {
   const motion: MotionReady = Object.freeze({ readiness: 'ready', player: motionPlayer(world) });
-  return Object.freeze({ motion, combat: NOT_IMPLEMENTED });
+  return Object.freeze({ motion, combat: projectCombat(world) });
 }
 
 export function projectWorld(world: WorldState): Projection {

@@ -107,6 +107,24 @@ export async function craftInfoJob(change: CraftInfoChange): Promise<FakeJob> {
 }
 
 /**
+ * A fresh finished import job of the `mission-startable` package whose Asset `id` in `group` declares its payload at the
+ * next payload schema version, which its decoder refuses; the group stays complete.
+ */
+export async function nextSchemaJob(group: ScenarioGroup['group'], id: string): Promise<FakeJob> {
+  const { complete, incomplete } = await sortedGroups('mission-startable');
+  return finishedJob(complete.map((input) => {
+    if (input.group !== group) return input;
+    const manifest = structuredClone(input.manifest) as { assets: AssetDescriptor[] };
+    const payloads = structuredClone(input.payloads) as { id: string; schemaVersion: number }[];
+    const descriptor = manifest.assets.find(asset => asset.id === id)!;
+    const payload = payloads.find(record => record.id === id)!;
+    payload.schemaVersion += 1;
+    (descriptor as { payloadIdentity: { schemaVersion: number } }).payloadIdentity = { ...descriptor.payloadIdentity, schemaVersion: payload.schemaVersion };
+    return { ...input, manifest, payloads };
+  }), incomplete);
+}
+
+/**
  * A test holder (fake cache, synthetic profile) holding the package of a mission scenario, or of a finished job such as
  * `craftInfoJob`'s; its listing and commit stay pending.
  */

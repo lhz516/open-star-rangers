@@ -1,12 +1,13 @@
 """Measurement recipe, schemaVersion 1: parsing and validation before any session side effect (P3-01 spec, tool data
 contract).
 
-A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, LE object
-locations, scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy (fixed
-emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06 subtask 22):
-at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field (`inputs.py`).
-Every key is known, every value has a fixed JSON type and every string is a restricted token, so a recipe cannot carry
-expressions, debugger commands or shell strings.
+A recipe is metadata only: the expected source fingerprint, the selected mission/configuration identity, field
+locations (LE objects, registers at a breakpoint stop, or `low` linear addresses in page 0, the real-mode vectors and
+BIOS data area), scalar types, unit labels and run limits, plus the few allowlisted settings of its private copy
+(fixed emulator cycles, the game's own STARTUP_PRACTICE and CURR_LEVEL). It may also declare input stimuli (P3-06
+subtask 22): at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field
+(`inputs.py`). Every key is known, every value has a fixed JSON type and every string is a restricted token, so a
+recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
 import json
@@ -16,6 +17,7 @@ import struct
 from dataclasses import dataclass
 
 from inputs import REGISTERS, SHIFT_BITS
+from le_image import PAGE_SIZE
 from reasons import BaselineError
 
 SCHEMA_VERSION = 1
@@ -67,10 +69,15 @@ class Location:
 
 @dataclass(frozen=True)
 class Address:
-    object: object  # LE object number, or None for a register address
-    offset: int  # object offset, or the signed offset from the register value
+    object: object  # LE object number, or None for a register address or a linear address in page 0 (`low`)
+    offset: int  # object offset, the signed offset from the register value, or the linear address in page 0
     pointers: tuple  # non-negative offsets added to each dereferenced 32-bit pointer
     register: object = None  # register name at a breakpoint stop (EAX ... ESP), or None
+
+    @property
+    def low(self):
+        """A `{"low": n}` field address: a linear address in page 0, neither an LE object nor a register."""
+        return self.object is None and self.register is None
 
 
 @dataclass(frozen=True)
@@ -414,6 +421,12 @@ def _fields(value, limits):
         if type(required) is not bool:
             raise BaselineError("recipe-type-invalid", path + ".required")
         where = path + ".address"
+        if type(item["address"]) is dict and "low" in item["address"]:  # linear page 0: vectors, BIOS data area
+            address = _object(item["address"], where, ("low",))
+            location = Address(None, _int(address["low"], where + ".low", 0, PAGE_SIZE - SCALAR_SIZES[kind],
+                                          "recipe-address-invalid"), ())
+            fields[field_id] = Field(field_id, location, kind, unit, required)
+            continue
         address = _object(item["address"], where, ("offset",), ("object", "register", "pointers"))
         pointers = address.get("pointers", [])
         if type(pointers) is not list:

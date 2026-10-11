@@ -119,9 +119,12 @@ def read_error(result, size):
 
 
 def base_linear(field, mapping, registers):
-    """Linear address of a field's first read: an LE object location, or the register value at the stop plus the
-    field's offset, which must lie inside the flat data segment (`pointer-out-of-range` otherwise)."""
+    """Linear address of a field's first read: an LE object location; for a `low` field its linear address in page 0
+    as given (bounded when parsed); or the register value at the stop plus the field's offset, which must lie inside
+    the flat data segment (`pointer-out-of-range` otherwise)."""
     size = POINTER_SIZE if field.address.pointers else field.size
+    if field.address.low:
+        return field.address.offset
     if field.address.register is None:
         return mapping.linear(field.address.object, field.address.offset, size)
     linear = mapping.space.linear(registers[field.address.register] + field.address.offset, size)

@@ -2,24 +2,54 @@
  * The fixed system pipeline of formal Core (docs/plan/p3/02/spec.md, 系统流水线; Q-09 in
  * docs/original/formats/executable.md#frame-pipeline-p3-0201). PIPELINE is the only ordered stage table: every step
  * runs each stage once, in order. A stage whose rules are not implemented yet has no `run` and names its owner below;
- * Core has no fake systems, registered callbacks or subscriptions, and no production entry injects handlers.
+ * Core has no fake systems, registered callbacks or subscriptions, and no production entry injects handlers. P3-07's
+ * rule families are static calls into their modules (docs/plan/p3/02/spec.md, CR-07): command judgement through
+ * commands.ts, the kind callbacks and request handlers of targeting.ts, weapons.ts, missiles.ts, projectiles.ts and
+ * destruction.ts, and the stage runs of collision.ts, destruction.ts, energy.ts and displays.ts.
  *
  * Within a tick, stages pass results explicitly through the tick context: domain events in emission order, which later
  * stages may read, and requests, the original's dispatcher messages (internal records, never DomainEvents; see
  * RequestQueue). Instantiation and removal happen only in request handling. Neither list nor the tick input outlives
  * its tick: Core keeps no queue across ticks.
  */
-import type { DomainEvent } from '../contracts/domain-events.ts';
+import type { DomainEvent, ShotTrigger, Vec3 } from '../contracts/domain-events.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import type { TickInput } from '../contracts/tick-input.ts';
 import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
-import { ALL_KINDS, type Entity, type EntityId, type ObjectState } from '../world/entity-table.ts';
+import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
+import { collisionStage } from './collision.ts';
+import { judgeCommand } from './commands.ts';
+import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
+import { frameEndStage } from './displays.ts';
+import { energyStage } from './energy.ts';
 import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
+import { engageParked } from './parked-engagement.ts';
+import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
+import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
+import { applyLaunch, updateMissileLock } from './weapons.ts';
+
+/** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
+export interface AxisControl {
+  readonly clear: boolean;
+  readonly set: boolean;
+  readonly value: number;
+}
+
+/** The 12 words of message 0x40000, which P3-06's `0x21fd8` interprets (docs/plan/p3/02/spec.md, CR-05). */
+export interface ControlBlock {
+  /** f32. */
+  readonly scale: number;
+  /** About rows 1, 2 and 3. */
+  readonly axes: readonly [AxisControl, AxisControl, AxisControl];
+  /** Null when the speed flag is clear, otherwise the speed factor (f32). */
+  readonly speedFactor: number | null;
+}
 
 /** An internal request of one tick, the counterpart of an original dispatcher message. */
 export type Request =
@@ -32,38 +62,106 @@ export type Request =
   /** Message 0x20000: the integer control path on an entity, posted by the player's update (flight-control.ts). */
   | ControlRequest
   /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
-  | MatchSpeedRequest;
+  | MatchSpeedRequest
+  // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
+  /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
+  | {
+    readonly type: 'select-target'; readonly entityId: EntityId; readonly target: EntityId; readonly targetKindBit: number;
+    readonly origin: 'command'; readonly commandIndex: number;
+  }
+  | {
+    readonly type: 'select-target'; readonly entityId: EntityId; readonly target: EntityId; readonly targetKindBit: number;
+    readonly origin: 'automatic'; readonly commandIndex: null;
+  }
+  /**
+   * Message 8 (W11), posted where the shot is judged with the identities the message lacks. `offset` is the
+   * load-transformed mount offset (plus an automatic mount's jitter); `orientation` is present for gun +0x28 ≠ 0.
+   */
+  | {
+    readonly type: 'launch'; readonly family: 'gun'; readonly shooter: EntityId; readonly gun: number; readonly mount: number;
+    readonly offset: Vec3; readonly orientation: Matrix3 | null; readonly trigger: ShotTrigger;
+  }
+  | {
+    readonly type: 'launch'; readonly family: 'missile'; readonly shooter: EntityId; readonly missile: number; readonly mount: number;
+    readonly offset: Vec3; readonly launchByte: 0 | 1 | 2 | 3 | 4; readonly target: EntityId | null; readonly trigger: ShotTrigger;
+  }
+  /** Message 0x40000: applied in request handling through P3-06's `0x21fd8`. */
+  | { readonly type: 'steer'; readonly entityId: EntityId; readonly control: ControlBlock }
+  /** Message 0x10000: a projectile's `0x25f48`, a missile's `0x2b408` or a fragment's `0x256e4`. */
+  | { readonly type: 'expire'; readonly entityId: EntityId }
+  /** Message 0x40 (`0x24424`): the held source becomes pending removal. */
+  | { readonly type: 'release-held'; readonly entityId: EntityId }
+  /** Message 0x2000000 (`0x2574c`): `entityId` is the source a part-0 fragment hands off. */
+  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId };
+
+/** The request variants of one type. */
+export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
 
 /**
  * The requests of one tick. Request handling takes them in posting order (mission flow, then object updates in walk
  * order, then the spawn queue check) and also handles those posted while it runs. A request posted after handling is
  * dropped unhandled, as the original clears late messages at the next frame.
  *
- * The count of posts is bounded by CORE_LIMITS.eventsPerTick, a runaway guard rather than an original limit: the
- * stages so far post at most one request per entity update and one per spawn request, of which a world schedules at
- * most CORE_LIMITS.spawnExpansion in its lifetime. The player's update posts at most one request per speed command and
- * two more (the speed assist's restoring request and one carrying only the axes), and an available player posts no
- * lifecycle request (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the
- * limits, which that limit covers. A rule whose requests fan out further derives its own bound and revises CoreLimits.
+ * The count of posts is bounded by CORE_LIMITS.requestsPerTick, a runaway guard rather than an original limit, above
+ * the bounds the rules derive (docs/plan/p3/02/spec.md, CR-14; limits.ts). P3-02's and P3-06's part: one lifecycle
+ * request per entity update and one per spawn request, of which a world schedules at most CORE_LIMITS.spawnExpansion
+ * in its lifetime; the player's update posts at most one request per speed command and two more (the speed assist's
+ * restoring request and one carrying only the axes), and an available player posts no lifecycle request
+ * (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the limits. CR-14's bound
+ * covers it together with P3-07's requests. A rule whose requests fan out further derives its own bound and revises
+ * CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
   #posted = 0;
+  /** The next request handling takes; it and those after it are pending. */
+  #next = 0;
   #handled = false;
+  /** Requests held by defer() until release(). */
+  readonly #deferred: Request[] = [];
 
   post(request: Request): void {
-    if (!fitsLimit('eventsPerTick', this.#posted, 1)) throw new CoreFaultError('budget-exhausted', 'pipeline.requests');
-    this.#posted++;
+    this.#count();
     if (!this.#handled) this.#requests.push(request);
+  }
+
+  /**
+   * Holds `request` until release(), counting it now: the launches of the player's fire commands, which the original
+   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07).
+   */
+  defer(request: Request): void {
+    this.#count();
+    this.#deferred.push(request);
+  }
+
+  /** Appends the held requests in the order they were deferred. */
+  release(): void {
+    for (const request of this.#deferred.splice(0)) if (!this.#handled) this.#requests.push(request);
+  }
+
+  #count(): void {
+    if (!fitsLimit('requestsPerTick', this.#posted, 1)) throw new CoreFaultError('budget-exhausted', 'pipeline.requests');
+    this.#posted++;
+  }
+
+  /** The last request of this tick that handling has not taken yet and `match` accepts; none once handling is over. */
+  findLastPending<Found extends Request>(match: (request: Request) => request is Found): Found | undefined {
+    for (let index = this.#requests.length - 1; index >= this.#next; index--) {
+      const request = this.#requests[index];
+      if (match(request)) return request;
+    }
+    return undefined;
   }
 
   /** Handles every request in posting order, including those `handle` posts itself; once per tick. */
   handle(handle: (request: Request) => void): void {
     if (this.#handled) throw new CoreFaultError('invariant-violated', 'pipeline.requests-handled');
+    if (this.#deferred.length > 0) throw new CoreFaultError('invariant-violated', 'pipeline.requests-deferred');
     // The length is read again after every request, so requests posted meanwhile are handled in the same pass.
-    for (let index = 0; index < this.#requests.length; index++) handle(this.#requests[index]);
+    while (this.#next < this.#requests.length) handle(this.#requests[this.#next++]);
     this.#handled = true;
     this.#requests.length = 0;
+    this.#next = 0;
   }
 }
 
@@ -119,22 +217,35 @@ function advanceClock(context: TickContext): void {
 
 /**
  * The player's update (flight-control.ts), where the original polls game input: the player (kind bit 0) comes first in
- * the walk, so that is the start of the stage. It judges every command, those of rules not implemented yet with one
- * rejected/not-implemented result each, and with an available player consumes the axes. The rule tasks add their
- * commands and steps there.
+ * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
+ * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
+ * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
+ * rejected/not-implemented. With an available player it runs P3-07's missile lock after the invalid-target drop and
+ * consumes the axes, and the automatic target selection ends it (CR-07). The rule tasks add their commands and steps
+ * there.
  */
 function updatePlayerControls(context: TickContext): void {
   const { world, input, time, requests } = context;
-  updatePlayer(world, input, time.tick, { emit: (event) => emit(context, event), post: (request) => requests.post(request) });
+  const player = updatePlayer(world, input, time.tick, {
+    emit: (event) => emit(context, event),
+    post: (request) => requests.post(request),
+    judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+    lockMissiles: (entity) => updateMissileLock(context, entity),
+  });
+  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
+  // the automatic selection follows them (T3).
+  requests.release();
+  if (player !== null) selectAutomaticTarget(context, player);
 }
 
 /**
  * The generic part of an entity's own update (`0x20ae4`, the player's `0x25f90`): a new parked entity or one whose
  * presentation is ready asks to become active, unless it is in Warp transit (`0x20c18`; the player's own callback has
  * no such check), and one in area-switch or pending-removal asks to leave. Active behaviour belongs to the rule tasks
- * (P3-06 to P3-10).
+ * (P3-06 to P3-10); P3-07's runtime kinds have their own callbacks, which keep to this part until their rules replace
+ * it.
  */
-function updateLifecycle(context: TickContext, entity: Entity): void {
+export function updateLifecycle(context: TickContext, entity: Entity): void {
   if (isHeldInWarpTransit(context.world, entity)) return;
   switch (entity.state) {
     case 'new':
@@ -155,23 +266,49 @@ function updateLifecycle(context: TickContext, entity: Entity): void {
 }
 
 /**
+ * An entity's own update: the kind callbacks of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-07: missiles
+ * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part.
+ */
+function updateObject(context: TickContext, entity: Entity): void {
+  const { combat } = entity;
+  switch (combat.type) {
+    case 'craft':
+      updateLifecycle(context, entity);
+      return;
+    case 'missile':
+      updateMissile(context, entity, combat);
+      return;
+    case 'projectile':
+      updateProjectile(context, entity, combat);
+      return;
+    case 'explosion':
+      updateExplosion(context, entity, combat);
+      return;
+    case 'fragment':
+      updateFragment(context, entity, combat);
+      return;
+  }
+}
+
+/**
  * Stage 4 (`0x20938`): a live walk over every kind, the player first. An entity allocated during the walk at a higher
  * kind bit is updated in the same walk. A destroyed source (state 4) gets no update.
  */
 function updateObjects(context: TickContext): void {
   updatePlayerControls(context);
   for (const entity of context.world.entities.walk(ALL_KINDS)) {
-    if (entity.state !== 'destroyed-source') updateLifecycle(context, entity);
+    if (entity.state !== 'destroyed-source') updateObject(context, entity);
   }
 }
 
 /**
  * Message 0x20 (`0x20d10`): an entity in area-switch whose kind parks switches its parking and starts its state again
- * (area.ts); any other entity, those of the kinds removed on leaving included, is removed. Removal of the player's
- * entity clears the player-state reference to it (the original clears it for kind 1, the player's) together with the
- * player's target and control state, which exist only with a player entity (P3-06 D-03). Removal makes the ID
- * unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting spawns, and a name
- * becomes free because no entity holds it any more (Q-08).
+ * (area.ts, where parking clears the player's target if it is that entity and emits nothing, CR-06); any other entity,
+ * those of the kinds removed on leaving included, is removed. Removal of the player's entity clears the player-state
+ * reference to it (the original clears it for kind 1, the player's) together with the player's target and control
+ * state, which exist only with a player entity (P3-06 D-03), and its targeting state, which goes with the player's
+ * entity (CR-04). Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts
+ * keep counting spawns, and a name becomes free because no entity holds it any more (Q-08).
  */
 function leave(world: WorldState, entity: Entity): void {
   if (switchParking(world, entity)) return;
@@ -179,8 +316,27 @@ function leave(world: WorldState, entity: Entity): void {
     world.player.entityId = null;
     world.player.target = null;
     world.player.control = null;
+    world.player.targeting = null;
   }
   world.entities.remove(entity);
+}
+
+/** Message 0x10000 by the subject's kind: a missile's, a projectile's or a fragment's expiry. */
+function expire(context: TickContext, entity: Entity, request: RequestOf<'expire'>): void {
+  const { combat } = entity;
+  switch (combat.type) {
+    case 'missile':
+      expireMissile(context, entity, combat, request);
+      return;
+    case 'projectile':
+      expireProjectile(context, entity, combat, request);
+      return;
+    case 'fragment':
+      expireFragment(context, entity, combat, request);
+      return;
+    default:
+      throw new CoreFaultError('invariant-violated', 'requests.expire');
+  }
 }
 
 function handleRequest(context: TickContext, request: Request): void {
@@ -189,12 +345,19 @@ function handleRequest(context: TickContext, request: Request): void {
     dispatchSpawn(world, request, (event) => emit(context, event));
     return;
   }
+  // The launch's constructors themselves handle a shooter that is no longer valid (W11).
+  if (request.type === 'launch') {
+    applyLaunch(context, request);
+    return;
+  }
   const entity = world.entities.get(request.entityId);
   // The subject was removed earlier in this pass: a reference to a removed entity is invalid.
   if (entity === undefined) return;
   switch (request.type) {
     case 'set-state':
-      entity.state = request.state;
+      // An explosion's states are its activation and update (`0x2409c`, X4).
+      if (entity.combat.type === 'explosion') setExplosionState(context, entity, entity.combat, request);
+      else entity.state = request.state;
       return;
     case 'leave':
       leave(world, entity);
@@ -204,6 +367,21 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'match-speed':
       applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
+      return;
+    case 'select-target':
+      applySelectTarget(context, entity, request);
+      return;
+    case 'steer':
+      applySteer(context, entity, request);
+      return;
+    case 'expire':
+      expire(context, entity, request);
+      return;
+    case 'release-held':
+      releaseHeld(context, entity, request);
+      return;
+    case 'hand-off':
+      handOff(context, entity, request);
       return;
   }
 }
@@ -218,14 +396,17 @@ function checkSpawns(context: TickContext): void {
   checkSpawnQueue(context.world, context.requests);
 }
 
-/** Stage `movement` (`0x221fc`, movement.ts). */
+/** Stage `movement` (`0x221fc`, movement.ts), with P3-07's projectile hit test right after each projectile's move (H3). */
 function move(context: TickContext): void {
-  moveEntities(context.world);
+  moveEntities(context.world, (entity) => hitTestProjectile(context, entity));
 }
 
-/** Stage `parked-update` (`0x2f1b0`, area.ts), where a parked object's true exit emits `object-left-world`. */
+/**
+ * Stage `parked-update` (`0x2f1b0`, area.ts), where a parked object's true exit emits `object-left-world`, with P3-07's
+ * parked engagement after each object's parked travel (CR-09).
+ */
 function updateParkedObjects(context: TickContext): void {
-  updateParked(context.world, (event) => emit(context, event));
+  updateParked(context.world, (event) => emit(context, event), (entity, elapsed) => engageParked(context, entity, elapsed));
 }
 
 /** Stage `area-check` (`0x3a468`, area.ts). */
@@ -247,6 +428,18 @@ export interface PipelineStage {
 const stage = (id: string, run: PipelineStage['run']): PipelineStage => Object.freeze({ id, run });
 
 /**
+ * A stage whose `run` a rule module exports, read when a tick runs rather than when this table is built: rule modules
+ * import this module, so in an import cycle that starts from one of them, its export is not initialised yet while this
+ * module is evaluated.
+ */
+const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage => Object.freeze({
+  id,
+  get run() {
+    return run();
+  },
+});
+
+/**
  * The stage table (spec 系统流水线, rows 1–7), with every dispatcher step Q-09 confirms in its place. Two are not
  * Core stages: the dispatcher `0x20d10` first clears the renderer's and sound's presentation items (`0x52c3c`) and
  * last places the camera for the view mode (`0x21584`), which renderers derive from Render State (P3-12, P3-13).
@@ -263,11 +456,11 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('request-handling', handleRequests),
   // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
   stage('movement', move),
-  stage('collision', null),
+  ruleStage('collision', () => collisionStage),
   // 0x23808 (P3-07).
-  stage('delayed-player-explosion', null),
+  ruleStage('delayed-player-explosion', () => delayedPlayerExplosionStage),
   // 0x30590 (P3-07).
-  stage('energy', null),
+  ruleStage('energy', () => energyStage),
   // 0x2ede0 rebuilds the friendly and hostile craft sets through 0x2f028 and the map visibility flag, for the map
   // (P3-09, P3-13) and the parked AI handler (P3-08, the suggested owner); no P3-06 rule reads them.
   stage('object-sets', null),
@@ -279,8 +472,9 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),
-  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09); never waits for a rendered frame.
-  stage('frame-end', null),
+  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09) and P3-07's cockpit display step
+  // (CR-10); never waits for a rendered frame.
+  ruleStage('frame-end', () => frameEndStage),
   stage('commit', commit),
 ]);
 

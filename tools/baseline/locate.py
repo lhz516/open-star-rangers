@@ -286,7 +286,7 @@ def prove_mapping(image, window, match, read, space, owner):
 def check_recipe_image(recipe, image):
     """Recipe locations against the verified LE image, before any session side effect."""
     for field in recipe.fields.values():
-        if field.address.object is None:  # register-relative: located at the stop
+        if field.address.object is None:  # register-relative: located at the stop; `low`: bounded when parsed
             continue
         obj = image.object(field.address.object)
         first = 4 if field.address.pointers else field.size

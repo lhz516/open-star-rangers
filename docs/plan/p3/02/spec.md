@@ -343,6 +343,577 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
   - **实体初始化扩展点的顺序**（在分配与命名之后）：最高速度（P3-06；P3-07 的 `0x3060c` 能量字段与 1 次抽取在同一位置）→ 两位字段（P3-07）→ AI 初态 `0x68050`（P3-06，Core 中 0–2 次抽取，原版 0–3 次；此前的交接归 P3-08）→ `lastParkedUpdateClock`（P3-06）→ `warpClock`（P3-06，玩家与僚机以外 1 次抽取；此前的交接归 P3-09）→ `0x20990`（P3-08）→ 活动判定（P3-02）→ 初始移动块（P3-06）→ `0x38cd4`（P3-10）→ 玩家状态（P3-02；P3-06 的目标与控制状态）。`0x68050` 原版的 3 次只出现在经记录 +0x4C 路径路线取目标点时；内容契约已拒绝 +0x4C 路径，这条路线在 Core 中不可达（见 core 分册的[已知差异](../../../engineering/modules/core.md#已知差异)）。
   - **容量：** P3-06 的项为事件 ≤ 命令数 + 1 + 本 tick 离开世界的机体数（不含每条命令本来就有的结果），请求 ≤ 命令数 + 2；与本 spec 原有的项合计，实体上限下事件至多 3,201、请求至多 3,138，都在 `eventsPerTick` 之内，快照长度在每实体预算之内，`CORE_LIMITS` 不变。P3-07 等加入每实体或二次的项时须重新推导合计（P3-06 spec 的容量核算）。
 
+### P3-07 的契约修订（D-01、D-03）
+
+本节由 P3-07 的子任务 08 加入（2026-10-10），定稿 [P3-07 spec](../07/spec.md#实施关卡) 的关卡 D-01（共享字段与时序）与 D-03（与 P3-06 的接口）。它建立在上一节 P3-06 的修订之上：P3-06 已定的项不变，包括 `craftInfo` 输入、玩家目标引用的字段与生命周期、最高速度纯函数及其重算时机、三个原因码、版本相对当前递增、`movement` 的模式分派、`flight` 的 `{ motion, combat }` 拆分与实例化扩展点的次序；本节只增补 P3-07 的部分。前文与本节不一致时以本节为准。
+
+原版事实只记在 [executable 的 Combat rules](../../../original/formats/executable.md#combat-rules-p3-07) 等 original 文档中，下文用其小节标签（T3、W11、H5 等）引用，不重复。定稿依据是 P3-07 子任务 01 至 07 的完成证据，尤其是 [07 的 D-01/D-03 输入汇总与冲突表](../07/subtasks/07-interfaces-camera-numerics-research.md#完成证据)（下文“冲突 n”指该表的第 n 行）。编号 CR-01 至 CR-14 只供引用本节。
+
+**记法与通则：**
+
+- f32 字段都是 `Math.fround` 的不动点且有限；i32 字段为 [−2³¹, 2³¹) 内的整数，运算按 W13、D17、E5 记录的原版 i32 语义（带符号除法向零截断等）。
+- 时钟字段是任务时钟单位（1/64 秒）的非负安全整数，比较的严格性按各小节；原版 u32 回绕不复现（P3-02 的时钟契约）。
+- 实体引用都是 `EntityId`；被移除后按 ID 查不到，即原版的无效句柄。原版的“计数引用”不阻止移除，Core 不另建引用计数。
+- 违反类型或约束的值为 Core 故障。新状态都由 Core 拥有，进入快照规范文本与状态哈希；标为“不持久”的只在一次调用或一个 tick 内存在，标为“静态”的由 setupHash 绑定的输入决定，不进快照。
+
+#### CR-01 世界创建输入与静态规则数据（D-01）
+
+- **输入：** `CreateWorldInput`、录制入口与 `ReplayContent` 在 `craftInfo` 旁增加六项必需输入（`aiPrograms` 由 P3-07 的子任务 34 增补，见本 spec 审批节的相应修订）。外层规则同 P3-06：缺字段或多字段为 `CoreInputError`；校验 Asset ID 的 kind 与角色；`original-import` 只接受唯一切片的对应 Asset；错误只带结构路径与稳定原因，不回显导入值。
+
+  ```ts
+  debrisParameters: { id: AssetId; content: unknown };               // data/debris-parameters，readDebrisParameters 严格读取
+  projectileVisuals: { id: AssetId; content: unknown };              // data/projectile-visuals（kind 'projectile'）；Core 只校验并提取 records[i].length
+  explosions: { id: AssetId; content: unknown };                     // data/explosions，readExplosionTable
+  explosionAnimations: readonly { id: AssetId; content: unknown }[];  // data/explosion-animation/<nn>，readExplosionAnimation；ID 升序、无重复
+  models: readonly { id: AssetId; content: unknown }[];              // 模型 Asset；Core 只校验并提取 partLists[1] 的长度（第 1 列表的部件数）；ID 升序、无重复
+  aiPrograms: { id: AssetId; content: unknown };                     // data/ai-programs，readAiPrograms 严格读取；Core 提取内置程序记录 1、2 的 +0x14、+0x24、+0x2C
+  ```
+
+  - 读取结果冻结并与输入脱离。`projectileVisuals` 与 `models` 没有对象读取器：Core 只校验被读取的字段（类型、不超过内容的结构上限、有限值），不展开几何，不引入 `original-data` 解析器。
+  - 七份规则输入（含 `craftInfo`）与三份逻辑 Asset 来自同一经 `validatePackage` 验证的包，由调用者保证。
+  - `aiPrograms` 是 `logic` 组中角色 `ai-programs` 的 Asset，与其他规则输入并列，不嵌套在别的输入中。本修订只读取追踪导弹需要的部分；P3-08 在同一输入上扩展 AI 所需的其余读取，不另建输入。
+- **集合完整（`CoreInputError`）：** `explosionAnimations` 恰为 `explosions` 三张列表引用的动画集合；`models` 恰为可实例化机体（直接与延迟声明、编组成员、僚机选项）在 `craftTypes` 中绑定的模型集合。多一份或少一份都拒绝。
+- **语义检查（`CoreInputError`）：** 只检查可实例化种类实际会读到的记录，未用的记录不读也不拒绝：
+  1. **爆炸帧数：** 列表 1、2 都非空，它们的全部项的帧数（`ExplosionAnimation.frames` 的长度）相同，记为 n₁₂。列表 3 非空时其全部项帧数相同，记为 n₃；可实例化机体有导弹挂点而列表 3 为空时拒绝。这项载入核对保证 EXPL 项的选择（归表现层，CR-11）不改变 Core 的来源释放时刻（X4）。
+  2. **碎片参数映射：** 每个种类位的第 1 列表部件数 c 与其 DEBRIS 参数表按 [craft §4.1](../../../original/formats/craft.md#41-loading-and-lookup-confirmed-code) 的映射一致：种类 1、2 恰需 max(c − 3, 0) 项，其他种类恰需 c 项，不越界。种类 1、2 要求 c ≥ 1，否则爆炸会持有并移除玩家或僚机对象（X2、X4），属切片外。种类 1、2 的第 0 部件是原版明确的无参数部件，不算缺失。
+  3. **炮挂点长度：** 每个非自动炮挂点（挂点类型 0、炮记录 +0x28 ≠ 2）的炮序号都有弹丸记录长度。
+  4. **挂点链：** +0x18、+0x1C 链接无环；列表项的同时开火链上只有首个组可以带交替链接，首项不得同时带两种链接。原版对后两种排列会保留跨调用的“已尝试”标志（W5），切片数据中没有，Core 拒绝而不保存该标志。
+  5. **除数与定义域：** 玩家机型的 c9C、c5C 为正（状态显示步的除数，CR-10）；有护盾（c5C > 0）的机型 c60 ≠ 0；瞄准炮（+0x28 = 1）的 +0x08 ≠ 0；导弹记录 +0x60 ≠ +0x64（爆炸衰减的分母）；可达炮记录的 +0x14 在 [0, 32] 内（E5：停放交战射击次数的 FISTP 不溢出）；可达炮记录的 +0x24（弹丸寿命，H2 的到期时刻 = 首次回调时钟 + +0x24）非负，原版对负值按 u32 回绕为遥远的到期，项目不复现；可达导弹记录的 +0x44、+0x48、+0x54（制导块的寿命、解除保险与起爆延迟，[H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)）非负、+0x58（检查间隔）在 i32 内，与导弹首次回调写制导块时的守卫共用一个判定，使可到达的导弹不会在首次回调时故障；内容层把 +0x44、+0x58 读作 i32，+0x48 读作非负 int32，+0x54 读作 u32，所以实际会被拒绝的只有负的 +0x44，原版按 u32 回绕（负寿命使导弹立即熄火），项目不复现；实例化与能量的 i32 运算按记录百分比不溢出。导弹 +0x2C 的反余弦只供 P3-08，本修订不计算也不校验。
+  6. **追踪导弹的程序：** `aiPrograms` 的内置程序表有记录 1 与 2（[executable 的 H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)：热寻的导弹装记录 1，其他追踪导弹装记录 2；记录号即 `builtInPrograms` 的下标），两者的 +0x14（更新周期）都非负。+0x14 为 i32、+0x24（角度）与 +0x2C（饱和值）为有限 f32 由内容读取器保证，其失败保留 `ContentContractError`。这是上述“只检查可实例化种类实际会读到的记录”的例外：导弹是否追踪取决于发射时的锁定，所以不论运行装备什么都检查这两条记录。
+- **静态规则数据（`WorldState`，冻结）：** 创建时按原版存储类型计算一次，之后不变：
+  - [craft §3.8](../../../original/formats/craft.md#38-load-transforms-in-0x2cf38-confirmed-code) 与 [§4.4](../../../original/formats/craft.md#44-load-transforms-in-0x246a0-confirmed-code) 的消费者变换：炮与导弹的射程及其平方、导弹引信半径平方、带 box 机型的半径与界、炮挂点 +0x08 加弹丸长度（机型记录 0、1 先乘代码常量）、DEBRIS 向量取反与归一化、box 外扩、半径、+0x5C 类别；
+  - n₁₂、n₃ 与按种类位的第 1 列表部件数；
+  - 内置程序记录 1、2 的 +0x14、+0x24、+0x2C，按记录号复制为有界的纯数据（`homingPrograms`，即 P3-07 共享转向模块的 `SteeringProgram`），原值不变换。
+
+  它们由 setupHash 绑定的输入决定，不进快照，也不与原内容形成两份可变事实。
+- **setupHash：** 在 `MissionSetup` 与 `craftInfo`（P3-06）之后，按以下次序与字段覆盖（外观字段不覆盖）：
+
+  | 输入 | 覆盖 | 不覆盖 |
+  |---|---|---|
+  | `debrisParameters` | ID 与完整内容 | — |
+  | `projectileVisuals` | ID 与按记录次序的长度 | 模板、选择值、宽度、颜色 |
+  | `explosions` | ID 与三张列表按次序的动画引用 | 声音引用 |
+  | `explosionAnimations` | 按 ID 次序的 ID 与帧数 | 帧图像引用 |
+  | `models` | 按 ID 次序的 ID 与第 1 列表部件数 | 几何、贴图、颜色、部件标志、声音 |
+  | `aiPrograms` | ID 与完整内容 | — |
+
+  `aiPrograms` 的内容全是规则数据，覆盖完整内容使 P3-08 扩展读取时不必改变绑定。按 CR-14，它是静态输入：不进快照，快照格式版本与 `RULES_VERSION` 沿用 P3-07 已递增的版本，replay 记录形状不变。
+
+- **建造期抽取：** 无。EXIC 子集的 3 次抽取（X8）归表现层（CR-11），不在 Core 中抽取，也不进快照。
+
+#### CR-02 实体的战斗状态（D-01）
+
+`Entity` 与 `EntityInit` 增加 `combat: EntityCombat`，是按运行时种类的封闭联合；`combat.type` 与 `kindBit` 不符为 Core 故障。
+
+| `combat.type` | 种类位 | 构造者 |
+|---|---|---|
+| `craft` | 0–19（`0xfffff`） | 实例化扩展点（CR-07）。P3-10 的种类 `0x4000` 由其修订另行接入 |
+| `missile` | 20 | 发射请求（CR-05） |
+| `projectile` | 21 | 发射请求 |
+| `explosion` | 22 | 爆炸构造（CR-08） |
+| `fragment` | 24，只有判别值 3 | 碎片构造（CR-08）；判别值 1、2 归表现层（CR-11） |
+
+```ts
+type EntityCombat = CraftCombat | MissileCombat | ProjectileCombat | ExplosionCombat | FragmentCombat;
+type SubsystemState = 0 | 1 | 2 | 3;     // 两位字段；伤害只产生 0–2，3 只来自其他写入者
+type Level = 0 | 1 | 2 | 3;
+
+interface CraftCombat {                   // 原版对象 +0x20–+0x47、+0xD0、+0xE8/+0xEC、+0xF4–+0x158、+0x94–+0xA8
+  type: 'craft';
+  energy: number;               // +0x28，i32。初值 trunc(c54 ÷ 100) × 记录 +0x68（D13）；能量更新扣减，耗尽时钳为 0；修理与救援由 P3-10、P3-11 写入
+  shield: number;               // +0x2C，i32。初值 c5C × 记录 +0x64 ÷ 100；0x30c60 吸收；能量更新恢复
+  charge: number;               // +0x30，i32。初值 c74 × 100 ÷ 100（百分比恒为 100）；玩家的炮开火扣减；玩家的能量更新恢复
+  shieldLevel: Level;           // +0x34（L1）。玩家初值 1，其他 0；只有 s/S 改变
+  chargeLevel: Level;           // +0x38（L2）。玩家初值 2，其他 0；只有 g/G 改变
+  sparePower: number;           // +0x3C（E），i32。初始化与档位改变时重算（D10、D13）
+  fullSpeedPower: number;       // +0x40（T），i32。初始化时计算
+  lastEnergyClock: number;      // +0x20。初始化 = 时钟；每次能量更新 = 时钟
+  nextEnergyClock: number;      // +0x24。初始化 = 时钟 + 0x80 + rand % 64（1 次抽取）；能量更新与停放交战改写（D14、E3）
+  depleted: boolean;            // 项目锁存，初值 false：上一次能量更新以耗尽分支结束。只用于 energy-depleted 每次转换只发一次（CR-06）
+  hull: number;                 // +0xD0，i32。初值 trunc((记录 +0x60 × 0.01) × c9C)（双精度乘积，P3-02/03）；0x2a830 扣减
+  subsystems: readonly SubsystemState[]; // +0xE8/+0xEC 的字段 0–18，恰 19 项。实例化清零；0x2a830 写；玩家的 1、5、8 另由状态显示步写（CR-10）
+  weapons: WeaponBlock;         // 0x2d400 建立（W1）
+  hitFeedbackClock: number | null; // 最近一次受击表现项（0x2a40c、0x2a5fc 投递）的时钟，初值 null；Render State 的 hitShimmerStart
+  proximity: { entity: EntityId; distanceSquared: number } | null; // +0x94/+0x98（f32）。碰撞两遍写入（H6），P3-08 读取；初值 null
+  lastVictim: { entity: EntityId; clock: number } | null;   // +0x9C/+0xA0。弹体命中且发射者有效时写在发射者上（H4）；P3-08 读取
+  lastAttacker: { entity: EntityId; clock: number } | null; // +0xA4/+0xA8。同上，写在受击者上
+}
+
+interface WeaponBlock {
+  selections: readonly [ListSelection, ListSelection, ListSelection]; // 列表 0、1、2（+0x100–+0x114）
+  lock: MissileLock;            // +0x118–+0x128。锁定机只为玩家运行（W8），其他对象保持初值
+  mounts: readonly MountState[]; // +0x154/+0x158：每个机型挂点一项，按挂点次序；没有挂点的机型为空数组（原版无数组）
+}
+interface ListSelection {
+  index: number;                // i32，可为 −1（空列表时的原版取值，W3）
+  mount: number | null;         // 当前挂点序号；列表为空时为 null
+}
+interface MissileLock {
+  level: 0 | 1 | 2 | 3 | 4;
+  stageDueClock: number;        // 0 为初值（原版清零，比较照常进行）
+  losing: boolean;
+  graceDueClock: number;
+  nextUpdateClock: number;
+}
+interface MountState {
+  lastShotClock: number | null; // +0x04。null = 从未写入（原版初值 0）：冷却判定视为已到期，交替选择中排在任何时钟之前（CR-11 的差异 9）
+  ammunition: number;           // +0x08，i32。初值挂点 +0x0C
+  damage: 0 | 1 | 2;            // +0x0C
+  burst: number;                // +0x20，i32。自动挂点的连发计数
+  aim: Matrix3;                 // +0x24–+0x44，f32 行。自动挂点的瞄准姿态，初值全零
+  autoTarget: EntityId | null;  // +0x48。自动挂点的目标（P3-08 选择）
+  retargetClock: number;        // +0x4C。P3-08 原样写入的保持值（W9），初值 0
+}
+```
+
+- **不持久的原版字段：** 三个通道的扳机值（+0xF4–+0xFC；Core 用有序的开火请求代替，主通道电平的采样归 P3-05，AI 的按住与松开归 P3-08）；单次开火调用内的瞄准缓存（+0x12C–+0x153）与挂点的“本次已尝试”标志（每次调用重置）；两个重绘标志 +0x44 与非玩家的 +0xF0（只有显示读取；玩家的 +0xF0 见 CR-04）。
+- **`MountState` 的静态部分**（挂点记录、同时开火与交替链接的目标挂点）取自静态规则数据，不进状态。
+
+```ts
+interface MissileCombat {       // 种类位 20，原版 0x2b00c、0x2aa40/0x2ab00、0x2ac10（W11、H5）
+  type: 'missile';
+  missile: number;              // 导弹记录序号（mb +0xF4）；弹体记录为该记录的 +0x14
+  shooter: EntityId | null;     // mb +0xFC。归因与近炸的阵营判断；熄火时清空
+  target: EntityId | null;      // 导弹 +0x8C。构造时取发射请求保存的目标（此时可解析才写入）；追踪程序改写；熄火时清空
+  launchByte: 0 | 1 | 2 | 3 | 4; // mb +0x100
+  program: 'unguided' | 'heat-seeker' | 'homing'; // 构造时确定：无制导或发射字节 < 2 → unguided；否则导弹 +0x18 = 1 → heat-seeker，其他 → homing
+  detonate: boolean;            // mb +0xF8：到期请求的类别（true 起爆，false 熄火），初值 false
+  contact: EntityId | null;     // mb +0x104：接触引信触发的对象，初值 null（冲突 41 的差异）
+  guidance: MissileGuidance | null; // 制导块 G；首次回调前为 null
+  homing: HomingState | null;   // 追踪导弹首次回调后非空；无制导导弹恒为 null
+}
+interface MissileGuidance {
+  phase: 0 | 1 | 2 | 3 | 4;     // G+0x14
+  lifetimeClock: number;        // G+0：首次回调写入导弹 +0x44（相对值），阶段 0 加上时钟
+  armClock: number;             // G+4：同上，+0x48
+  fuseRadiusSquared: number;    // G+8，f32（+0x50）
+  detonationClock: number;      // G+0x0C：初值 +0x54（相对值）；近炸时加上时钟；接触时置 0
+  checkInterval: number;        // G+0x10，i32（+0x58）
+  nextCheckClock: number;       // G+0x18，初值 0
+}
+interface HomingState {         // 追踪程序控制器中导弹路径实际使用的部分（H5）
+  period: number;               // C+0xF4：程序记录 +0x14；发射字节 3 时 ×2，其他非 4 的值 ×5
+  nextUpdateClock: number;      // C+0xF0
+  turnFraction: number;         // S+0xCC，f32：发射字节 4、3、其他分别为 1.0、0.65、0.2
+  speedFraction: number;        // S+0xC8，f32：1.0
+  targetValid: boolean;         // S+0x0C
+  targetDistance: number;       // S+0x28（= C+0x2C），f32：期限与引信间隔按它选择
+}
+
+interface ProjectileCombat {    // 种类位 21，原版 0x25b0c、0x259b0、0x25f48（W11、H2）
+  type: 'projectile';
+  gun: number;                  // 炮记录序号（mb +0xF4）
+  shooter: EntityId | null;     // mb +0xFC；移除请求时清空
+  expiry: { clock: number; firstHitPending: boolean } | null; // 计时块：首次回调前为 null；到期 = 首次回调时钟 + 炮 +0x24；
+                                // 跳弹后的首次状态 8 回调把 firstHitPending 清为 false 并改到期为时钟 + 0x80
+}
+
+interface ExplosionCombat {     // 种类位 22，原版 0x23ac8、0x23838、0x2409c（X2、X4）
+  type: 'explosion';
+  source: EntityId;             // 构造时被毁的来源（不持有，只作历史身份），之后不变；explosion-started 的 sourceEntityId
+  sourceKindBit: number;        // mb +0x104：来源的种类位
+  variant: 'large' | 'other' | 'missile'; // mb +0xF0 = 0、2、3；1 只由表现层按相机距离切换产生，不在 Core
+  heldSource: EntityId | null;  // +0x8C：来源不是机体，或产生碎片失败时持有来源
+  activationClock: number | null;   // +0xFC（t₀）；激活前为 null
+  removalAfterClock: number | null; // +0x10C = t₀ + 0x60；时钟严格大于它且帧序号已达帧数时请求移除
+}
+
+interface FragmentCombat {      // 种类位 24、判别值 3，原版 0x25124、0x24ac4、0x256e4（X6、X7）
+  type: 'fragment';
+  sourceKindBit: number;        // mb +0xF0
+  part: number;                 // mb +0xF5：源模型第 1 列表的原序号
+  debris: number | null;        // 源种类 DEBRIS 参数表中的序号（craft §4.1 映射）；种类 1、2 的第 0 部件为 null
+  durability: number;           // +0xD0，i32：有参数时按其 +0x5C 类别为 4000（= 0）或 1200（≠ 0），无参数为 0
+  explodeOnExpiry: boolean;     // mb +0xF6
+  expiry: { type: 'pending' } | { type: 'never' } | { type: 'at'; clock: number }; // 计时块 +8：首次回调前 pending；大型来源与已触发为 never；被击落时改为 at 1
+  handOff: EntityId | null;     // +0x8C：只第 0 部件持有来源，交接后清空
+}
+```
+
+- **字段的范围与生命周期：** 下表补足上面注释未写全的范围、初始化、更新与重置。运行时种类的战斗状态随实体移除而消失，没有重置。序号字段都是非负整数，越界为 Core 故障。
+
+  | 字段 | 范围 | 初始化 | 更新 | 重置 |
+  |---|---|---|---|---|
+  | 机体 `energy`、`shield`、`charge` | i32；能量更新结束时能量 ≥ 0 | `0x3060c`（D13） | 能量更新（D14）、护盾吸收（D3）、玩家开火扣充能（W6） | 救援（P3-11，经 `0x3060c`）、修理（P3-10） |
+  | `shieldLevel`、`chargeLevel` | 0–3 | 玩家 1、2，其他 0 | `0x30b20`、`0x30bc0`（D10） | 救援 |
+  | `sparePower`、`fullSpeedPower` | i32 | `0x3060c` | 档位改变时重算 E | 救援 |
+  | `lastEnergyClock`、`nextEnergyClock`、`depleted` | 时钟、时钟、布尔 | `0x3060c`；`depleted` 为 false | 能量更新；停放交战改写 `nextEnergyClock`（E3） | 救援 |
+  | `hull` | i32，可为负 | 实例化 | `0x2a830` | 修理与救援（c9C，D7） |
+  | `subsystems[i]` | 0–3，恰 19 项 | 0 | `0x2a830`；玩家的 1、5、8 由状态显示步 | 修理与救援清零（P3-10 的 `0x39820`） |
+  | `selections[c]` | `index`：i32，−1 ≤ index < max(列表长度, 1)；`mount`：null 或机型挂点序号 | 列表首项，空列表为 null | `0x2e4ec`（W3） | `0x2d400`（实例化、救援） |
+  | `lock` | `level` 0–4；三个时钟字段为时钟 | 全 0、false | `0x2ddbc`（只玩家）；列表 1 的选择与制导导弹发射清 `level` | `0x2d400` |
+  | `MountState.ammunition` | i32 | 挂点 +0x0C | 导弹发射、挂点损坏（W4）、停放交战选中的导弹（E3） | `0x2d400`；补弹（P3-10） |
+  | `MountState.damage` | 0–2 | 0 | 挂点损坏（W4） | `0x2d400`；修理（P3-10） |
+  | `MountState.burst`、`aim`、`autoTarget`、`retargetClock` | i32、f32 矩阵、ID、非负整数 | 0、全零、null、0 | 自动挂点规则（W9）与 P3-08 的获取 | `0x2d400` |
+  | `MountState.lastShotClock` | null 或时钟 | null | 列表开火与哑火、自动挂点（W6、W8、W9） | `0x2d400` |
+  | `proximity`、`lastVictim`、`lastAttacker`、`hitFeedbackClock` | 见注释；距离平方为 f32 | null | 碰撞两遍（H6）；弹体命中（H4）；受击表现项 | 无（原版不清；引用对象移除后按 ID 查不到） |
+  | 导弹 `missile`、`launchByte`、`program` | `missile` < 导弹记录数；0–4 | 构造 | 不变 | — |
+  | 导弹 `guidance` | `phase` 0–4；四个时刻字段在阶段 0 之前为相对值，之后为时钟；`checkInterval` 为 i32 | 首次回调（H5） | `0x2ac10`、引信 `0x2adac` | — |
+  | 导弹 `homing` | `period` 与 `nextUpdateClock` 为非负安全整数时钟单位；其余 f32 或布尔 | 首次回调（`0x5dc0c` 与处理程序的模式 0） | 每次处理程序调用 | — |
+  | 弹丸 `gun`、`expiry` | `gun` < 炮记录数；时钟 | 构造；首次回调 | 首次状态 8 回调 | — |
+  | 爆炸 `source`、`sourceKindBit`、`variant` | 来源种类位为 0–19、20 或 24 | 构造 | 不变 | — |
+  | 爆炸 `heldSource`、`activationClock`、`removalAfterClock` | ID 或 null；时钟或 null | 构造；激活时 | 释放来源时清 `heldSource` | — |
+  | 碎片 `sourceKindBit`、`part`、`debris` | 0–19；< 来源第 1 列表部件数；null 或 < 参数表项数 | 构造 | 不变 | — |
+  | 碎片 `durability`、`explodeOnExpiry`、`expiry`、`handOff` | i32；布尔；见注释；ID 或 null | 构造（`expiry` 为 pending） | 弹丸命中与碰撞扣耐久；击落置标志并改 `expiry`；首次回调设 `expiry`；交接后清 `handOff` | — |
+
+- **运行时种类的 P3-06 字段：** 种类位 20–24 的实体不经 `0x68050`，取分配器缺省：`ai` 为模式 5、两个目标为空、零向量；`formation` 为 null；`lastParkedUpdateClock`、`warpClock` 为 0，`inWarp` 为 false（停放更新只遍历 `0xfffff`，区域检查使这些种类直接待移除，不停放）；`maximumSpeed` 对导弹为弹体记录 +0xB8（`0x3060c` 的非机体分支只调用 `0x30e0c`，D13），对其他三种为 0（无读者）。其 `ruleInputs` 六项为 0，`name` 为 `none`，`source`、`side` 为 null，`baseInteraction` 为 false。
+- **`ai.objectTarget` 的含义收窄：** P3-06 把它定为“非玩家对象的 +0x8C”。运行时种类的 +0x8C 另有含义（导弹的目标、爆炸持有的来源、第 0 部件碎片的交接来源），分别存于上面的 `target`、`heldSource`、`handOff`，这些实体的 `ai.objectTarget` 恒为 null。机体的 `ai.objectTarget` 仍是其目标：瞄准炮、制导导弹、停放交战读取，P3-08 的 AI 与停放的多目标交战（E2）写入。
+- **表现选择器：** `EntityPresentation` 扩展为封闭联合，分配时确定，之后不变：
+
+  ```ts
+  type EntityPresentation =
+    | { type: 'model'; model: AssetId }                              // 既有：机体
+    | { type: 'missile'; missile: number }                           // 导弹记录序号；外观类型由 P3-12 从内容解析（导弹外观不是 Core 的输入）
+    | { type: 'projectile'; visuals: AssetId; record: number }        // projectileVisuals 的 Asset ID 与记录序号（= 炮记录序号）
+    | { type: 'explosion'; variant: 'large' | 'other' | 'missile' }  // EXPL 列表与项由表现层选择（CR-11）
+    | { type: 'fragment'; model: AssetId; part: number; display: 'part' | 'parts-0-2' }; // 源模型与第 1 列表原序号；种类 1、2 的第 0 部件绘制部件 0–2
+  ```
+
+#### CR-03 移动块的模式 1、2（D-03）
+
+P3-06 的 `MovementBlock` 改为封闭联合：P3-06 已定的形状（`mode: 'craft' | 'warp'`，下称机体移动块）不变，P3-07 加入两个变体。三种变体都有 `speed`（原版 mb +8），供瞄准提前量、速度匹配与 `0x218e8` 读取。
+
+```ts
+type MovementBlock = CraftMovementBlock | LinearMovementBlock | SpinningMovementBlock;
+interface LinearMovementBlock {   // 原版模式 1（0x22818）：弹丸与爆炸
+  mode: 'linear';
+  speed: number;                  // +8，f32：弹丸为炮 +0x08；爆炸为来源当时的速度
+  velocity: Vec3;                 // +0x5C–+0x64，f32：构造后不变，跳弹改写
+  previousPosition: Vec3;         // +0x0C–+0x14，f32：本次移动前的位置，构造时为出生位置
+  hitTest: boolean;               // +0x68：弹丸 true，爆炸 false
+}
+interface SpinningMovementBlock { // 原版模式 2（0x2285c）：碎片
+  mode: 'spinning';
+  speed: number;                  // +8，f32
+  velocity: Vec3;                 // +0x5C–+0x64，f32
+  spin: number;                   // +0x68，f32：每次移动转过的弧度，不乘步长（H1；固定步长下的差异交 D-02）
+  spinAxis: 0 | 1 | 2;            // +0x6C：2 → 0x228cc，1 → 0x22a50，0 → 0x22990
+}
+```
+
+- **运动（P3-07 的规则函数，在 P3-06 的移动遍历与筛选中按模式分派）：** `linear` 先把位置存入 `previousPosition`，再按本 tick 步长平移（每轴一次 f32 写回）；`spinning` 平移后按 `spinAxis` 旋转姿态。行旋转辅助（`0x228cc`、`0x22a50`、`0x22990`）与 P3-06 共用，不另建。
+- **构造：** `0x218e8` 的模式 1、2 分支由 P3-07 实现：由来源的位姿与速度得到项，来源为 `spinning` 块时先以其速度方向为第三行并重新正交化；模式 0 分支（救援、种类 `0x4000`）仍归 P3-06。
+- 冲量、定时旋转、锁定与扰动只存在于机体移动块。碰撞响应写到 `spinning` 块（碎片）时没有字段可写，原版也不消费（H6），但响应的 6 次抽取照常发生。
+
+#### CR-04 玩家状态（D-01）
+
+`PlayerState` 增加以下字段，都在创建世界时取初值：
+
+```ts
+targeting: { mode: 'enemy' | 'friendly'; autoTargetDueClock: number } | null;
+                                    // 控制器 +0x198、+0x1A8。生命周期与 P3-06 的 control 相同：有玩家实体时非空（实例化时 enemy、0），
+                                    // 玩家实体移除时清空，救援保留。t/f/u 与自动选敌写 mode；自动选敌写到期时刻
+followedEntity: EntityId | null;    // ps +0x90：玩家的第 0 部件碎片（逃生舱）构造时写入，舱到期时清除；伤害门禁读取（D2）
+delayedExplosionClock: number | null; // 0x174ae4：玩家被毁时为时钟 + 0xC0；延迟爆炸阶段消费后为 null（X2）
+kills: Readonly<Record<7 | 8 | 9 | 10 | 11 | 12 | 16 | 19, number>>;
+                                    // ps +0x30…+0x5C 的 8 个按种类击杀计数，键为种类位，初值 0（D8）。只计玩家击杀的非玩家、非僚机；救援不清
+shots: { projectilesFired: number; projectileHits: number; missilesFired: number; missileHits: number };
+                                    // ps +0x38、+0x3C、+0x40、+0x44，初值 0；救援不清。读者归 P3-11/P4
+heavyDamage: -1 | 0 | 1;            // 0x176710：初值 −1；0x2a830 的阈值写入（D4、D11）；救援不清；P3-11 的成功总结读取
+leftDisplay: { page: 0 | 1 | 2 | 3 | 4 | 5 | 6 }; // 0x1a9dc8，初值 0（D15）。P3-07 写 0、1 之间的切换；页 2–6 及保存的页由 P3-09、P3-10 的修订加入
+statusDisplay: { blink: 0 | 1; blinkDueClock: number; redraw: boolean };
+                                    // 0x4d0e0 的闪烁相位与计时，以及玩家对象的 +0xF0。初值 0、0、true；redraw 由玩家的子系统受损、
+                                    // 视角模式改变（显示切换 0x4cd68）置位，状态显示步清除（CR-10）
+```
+
+不保存：摇杆选敌键的到期（+0x1B0，命令联合中没有对应动作）、导弹相机 `0x174c0c`、通讯与感谢计数（P3-10、P3-11）。
+
+#### CR-05 命令、原因码与内部请求（D-01）
+
+- **原因码：** `COMMAND_RESULT_REASONS` 在 P3-06 的 `player-unavailable`、`wrong-context`、`no-target` 之外增加 `no-candidate`、`no-change`、`no-weapon`、`weapon-disabled`、`no-ammunition`、`insufficient-charge`、`cooldown`、`misfire`、`out-of-arc`。P3-07 的命令沿用 P3-06 的三个原因码，不另建 `no-player`、`player-destroyed` 或 `context-blocked`。未被接受的 P3-07 命令一律为 `ignored`，因为原版对这些键静默无作用。
+- **共同前置判定（依次）：** 玩家实体不存在、已被毁、不在活动状态（7）或待移除 → `player-unavailable`（原版此时不轮询按键）；交互上下文不是 `flight` → `wrong-context`（原版只有飞行键上下文 `0x264a0` 处理这些键）。通讯菜单占用按键的优先级由 P3-10 加入。
+- **`target`（T2–T4）：**
+  - `enemy`、`friendly`：取该模式掩码中最近的候选（`0x2799c`）；`forward`：取前方候选（`0x27a04`/`0x63a4c`），并按所选对象的种类写模式；`next`：更近一项，没有时回绕到最远（`r`）；`previous`：更远一项，没有时回绕到最近（`y`）。
+  - 没有候选 → `no-candidate`；结果等于参照目标 → `no-change`；两种情形都不写任何状态。否则 `accepted`：`enemy`、`friendly`、`forward` 在判定时立即写入模式（`next`、`previous` 不写模式），目标经内部请求 `select-target` 在本 tick 的请求处理中写入。
+  - **参照目标：** 本 tick 中由先前命令投递而尚未应用的最后一个 `select-target` 的目标，没有时为玩家当前目标（`next`、`previous` 只在它可解析时用作参照）。这样同一 tick 的连续命令与原版相继几帧的按键一致。
+- **`fire`（W5–W8）：** `primary` 作用于列表 0，`secondary` 作用于列表 1。当前挂点为空 → `no-weapon`；否则按 W5 的组与交替规则尝试。至少一个挂点投递了发射请求 → `accepted`；否则取**最后一次尝试**的原因。每次尝试的原因次序：
+  - 炮：`insufficient-charge`（只对玩家）→ `weapon-disabled`（挂点已毁）→ `cooldown`（相等时可射）→ `misfire`（受损抽取失败，冷却照常重置）→ 瞄准炮无可用解而又不能退回不瞄准时为 `no-target`（目标无效）或 `out-of-arc`。
+  - 导弹：`no-ammunition` → `weapon-disabled` → `no-target`（制导导弹） → `cooldown`。
+  - 扣费、冷却与弹药都在判定中按 W6、W8 的时机写入，之后的命令读到写入后的值；制导导弹发射后按 W8 清除锁定。
+- **`cycle-main-weapon`、`select-missile`（W3）：** 分别为列表 0 的下一项、列表 1 的下一项或上一项。机型没有挂点 → `no-weapon`；否则 `accepted`（原版此时总会更新序号、在列表 1 上清除锁定并请求选择音效，即使所选挂点不变），并发出 `weapon-selected`。
+- **`energy` 与 `damage-report`（D10、D15）：**
+  - `open`：页 0 → 页 1；已在页 1 → `no-change`；页 2–6 → `wrong-context`。`damage-report`：页 1 → 页 0；已在页 0 → `no-change`；页 2–6 → `wrong-context`。页面在判定时立即写入。原版经消息 0x100000 在同一帧的请求处理中写入，其间没有规则读取页面，所以结果相同。
+  - `shield-increase`/`shield-decrease`、`gun-increase`/`gun-decrease`：只在页 1 处理，否则 `wrong-context`；新档位越出 0–3 → `no-change`；否则按 D10 改变档位与 E（含原生的失败分支），调用 P3-06 的最高速度重算与 `0x21d88`（CR-09），`accepted`，发出 `energy-allocation-changed`。
+- **AI 的开火入口（P3-08 调用，不产生命令结果）：** 同一扳机规则 `0x2d578` 的通道 0、1、2，自动挂点 `0x2dad0`、瞄准获取 `0x2da58`、瞄准解 `0x2e9d4` 与半球判定 `0x2d894`。自动挂点是独立的开火规则（W9：不检查也不扣充能、受损抽取不同、失败也消耗连发并重置冷却、开火时不检查射界、出生偏移随机），与列表开火只共用挂点状态、发射请求与弹丸构造。
+- **内部请求：** P3-02 的 `Request` 联合增加以下封闭变体：
+
+  ```ts
+  | { type: 'select-target'; entityId: EntityId; target: EntityId; targetKindBit: number;   // 消息 2：主体为玩家；应用时不再校验
+      origin: 'command' | 'automatic'; commandIndex: number | null }
+  | { type: 'launch'; family: 'gun'; shooter: EntityId; gun: number; mount: number;        // 消息 8（W11）
+      offset: Vec3; orientation: Matrix3 | null; trigger: ShotTrigger }                    // offset：载入变换后的挂点偏移（自动挂点另加抖动）；orientation：炮 +0x28 ≠ 0 时非空
+  | { type: 'launch'; family: 'missile'; shooter: EntityId; missile: number; mount: number;
+      offset: Vec3; launchByte: 0 | 1 | 2 | 3 | 4; target: EntityId | null; trigger: ShotTrigger }
+  | { type: 'steer'; entityId: EntityId; control: ControlBlock }  // 消息 0x40000：在请求处理中经 P3-06 的 0x21fd8 应用
+  | { type: 'expire'; entityId: EntityId }                        // 消息 0x10000：弹丸 0x25f48、导弹 0x2b408、碎片 0x256e4
+  | { type: 'release-held'; entityId: EntityId }                  // 消息 0x40：0x24424，被持有的来源进入待移除
+  | { type: 'hand-off'; entityId: EntityId; fragment: EntityId }  // 消息 0x2000000：0x2574c，entityId 为来源
+
+  type ShotTrigger =
+    | { type: 'command'; channel: 'primary' | 'secondary'; commandIndex: number }
+    | { type: 'ai'; channel: 0 | 1 | 2 }
+    | { type: 'automatic' };
+  interface ControlBlock {          // 消息 0x40000 的 12 个字（P3-06 的 0x21fd8 解释）
+    scale: number;                  // f32
+    axes: readonly [AxisControl, AxisControl, AxisControl]; // 绕第 1、2、3 行
+    speedFactor: number | null;     // null = 速度标志清零；否则为速度系数（f32）
+  }
+  interface AxisControl { clear: boolean; set: boolean; value: number } // value 为 f32；set 为 false 时不读
+  ```
+
+  - 发射请求在开火判定处投递，保存当时的挂点、通道与命令身份，弥补消息 8 不带这些身份的缺口（冲突 31）。
+  - **开火读取的目标：** 瞄准炮的瞄准、制导导弹的目标要求与导弹请求保存的 `target`，都取该命令处的参照目标。对玩家，与 `target` 命令的参照目标相同（本 tick 先前命令投递而尚未应用的选择优先，否则为玩家目标）；对 AI 机体，为其 `ai.objectTarget`。导弹构造时取请求中的 `target`。原版的扳机读旧目标、构造读消息 2 应用后的新目标（T3、W11），两者只在同一帧既选目标又开火时不同；原版键盘每次轮询至多处理一个键，Core 按命令次序处理，已产生的请求不被后续命令改写（冲突 35 的推荐）。
+  - 发射请求与事件 `0x10` 一样受任务流程门禁 `0x339cc` 约束：该门禁的状态由 P3-11 加入，此前总是通过。
+
+#### CR-06 领域事件与次序（D-01）
+
+新事件都是脱离世界的事实快照，共用 P3-02 的 `{ type, tick }`。不另带 `clock`：时钟恒为 tick × `clockUnitsPerTick`，消费者从 `clock` 分区读取。字段不含名称原文、资源字节或宿主对象，消费者不能依赖按 ID 再查当前实体。比较器的事件字段表随之扩展。
+
+```ts
+type Attacker =
+  | { type: 'shooter'; entityId: EntityId; kindBit: number } // 命中时仍有效的发射者，或停放交战的射击者
+  | { type: 'lost-shooter' }                                 // 发射者已失效：原版以分类掩码 0x93780 代替种类，不计击杀（H4）
+  | { type: 'none' };                                        // 碰撞与 AI 范围伤害
+
+| { type: 'target-changed'; tick; playerEntityId: EntityId; previousTarget: EntityId | null; target: EntityId;
+    targetKindBit: number; mode: 'enemy' | 'friendly'; origin: 'command' | 'automatic'; commandIndex: number | null }
+| { type: 'target-cleared'; tick; playerEntityId: EntityId; previousTarget: EntityId; cause: 'invalid' | 'base-view' | 'warp' }
+| { type: 'weapon-selected'; tick; entityId: EntityId; list: 0 | 1; index: number; mount: number | null;
+    changed: boolean; commandIndex: number | null }
+| { type: 'shot-fired'; tick; shooterEntityId: EntityId; shooterKindBit: number; shooterPosition: Vec3;
+    entityId: EntityId; family: 'gun' | 'missile'; weapon: number; mount: number; position: Vec3; trigger: ShotTrigger }
+| { type: 'hit'; tick; victimEntityId: EntityId; victimKindBit: number; victimPosition: Vec3;
+    cause: 'projectile' | 'missile' | 'collision' | 'area' | 'parked'; sourceEntityId: EntityId | null;
+    attacker: Attacker; damage: number; gated: boolean;
+    shield: { before: number; after: number }; hull: { before: number; after: number }; shieldWasEmpty: boolean;
+    impact: { point: Vec3; local: Vec3; face: 0 | 1 | 2 | 3 | 4 | 5 } | null; projectile: 'ricochet' | 'removed' | null }
+| { type: 'object-destroyed'; tick; entityId: EntityId; kindBit: number; source: EntitySource | null; position: Vec3;
+    activity: Activity; attacker: Attacker; eventClass: 0 | 1; outcome: 'explodes' | 'delayed' | 'removed' }
+| { type: 'explosion-started'; tick; entityId: EntityId; sourceEntityId: EntityId; sourceKindBit: number;
+    variant: 'large' | 'other' | 'missile'; position: Vec3; activationClock: number }
+| { type: 'missile-ended'; tick; entityId: EntityId; shooterEntityId: EntityId | null; outcome: 'detonated' | 'fizzled';
+    position: Vec3; orientation: Matrix3 }
+| { type: 'fragment-expired'; tick; entityId: EntityId; sourceKindBit: number; part: number; position: Vec3;
+    outcome: 'explodes' | 'escape-pod' | 'wingman-pod' | 'removed' }
+| { type: 'source-released'; tick; entityId: EntityId; kindBit: number; fragmentEntityId: EntityId; removed: boolean }
+| { type: 'energy-depleted'; tick; entityId: EntityId; kindBit: number; position: Vec3 }
+| { type: 'energy-allocation-changed'; tick; entityId: EntityId; shieldLevel: Level; chargeLevel: Level; commandIndex: number }
+| { type: 'left-page-changed'; tick; page: 0 | 1 | 2 | 3 | 4 | 5 | 6; previousPage: 0 | 1 | 2 | 3 | 4 | 5 | 6; commandIndex: number | null }
+```
+
+| 事件 | 发出时机与语义 |
+|---|---|
+| `target-changed` | 请求处理中每应用一个 `select-target` 发出一次，对应原版消息 2 的音效项（T1）。目标的清除（失效、停放、Warp 开始、基地视角、被毁视角）原版不给反馈，不发此事件；持续的目标由 projection 给出 |
+| `target-cleared` | 只由帧尾的右显示屏清除发出（CR-10）。`warp` 对应原版右显示屏的离开提示 |
+| `weapon-selected` | 玩家的选择命令被接受时紧随其结果发出，`changed` 表示当前挂点是否改变（冲突 32，P3-14 的音效 11381）。P3-10 的基地补弹若循环选择，由其修订以 `commandIndex: null` 复用 |
+| `shot-fired` | 请求处理中构造弹丸或导弹之后发出；主通道也可发射导弹，消费者按 `family` 选择音效 |
+| `hit` | 每次原版投递受击表现项（`0x2a40c`、`0x2a5fc`），或停放交战实际施加伤害时，在护盾与船体结算之后、被毁处理之前发出一次。`gated` 为玩家被毁视角门禁挡下的命中（原版仍投递受击项）。受击者已被毁时原版不投递，也不发事件。碎片受击不发事件（原版没有受击项）。`projectile` 为弹丸的结局：跳弹或移除；导弹与其他原因为 null。`shieldWasEmpty` 是原版受击项 +0x0C（受击前护盾 ≤ 0，选择音效槽 3 或 4） |
+| `object-destroyed` | 每个对象从存活到被毁只发一次（被毁标志门禁），在 `hit` 之后。`eventClass` 是原版对象事件的类别：攻击者种类为 1 时为 0，否则为 1。`outcome`：停放对象为 `removed`，玩家为 `delayed`，其他为 `explodes`。AI 范围伤害的自爆（`0x6313c`）不置被毁标志，不发此事件 |
+| `explosion-started` | 爆炸在请求处理中激活时发出：通常在创建后的下一 tick；在对象更新中创建的（AI 路径）在创建的同一 tick（X9、CR-08）。它是表现层选择 EXPL 并只选一次的依据（CR-11）。位置是激活时、尚未移动的位置，等于构造位置 |
+| `missile-ended` | 导弹的到期请求被处理时发出：起爆在爆炸构造与范围伤害之前，熄火在进入待移除时。供 P3-12 的导弹相机（原版 `0x3119c` 只服务玩家的导弹） |
+| `fragment-expired` | 碎片的到期请求被处理时发出（X7）。被击落的碎片为 `explodes` |
+| `source-released` | 第 0 部件碎片的交接请求被处理时发出。`removed: false` 只出现于玩家：原版不移除玩家对象，只投递隐藏项（高概率，交 P3-12） |
+| `energy-depleted` | 能量更新进入耗尽分支且 `depleted` 锁存为 false 时发出并置锁存；之后以能量 > 0 结束的更新清除锁存。原版每次耗尽更新都重复施加锁定与钳 0（D14），事件只在转换时 |
+| `energy-allocation-changed`、`left-page-changed` | 紧随被接受的命令的结果发出，对应原版消息 0x100000 的音效 10485 |
+
+**一个 tick 内的次序：** 玩家更新中，命令结果按命令序号发出，`weapon-selected`、`energy-allocation-changed`、`left-page-changed` 紧随所属命令的结果。请求处理中，事件按请求的处理次序发出；一次导弹起爆依次为 `missile-ended`，再按遍历次序为每个受击者发出 `hit`（与可能的 `object-destroyed`）。移动阶段按弹丸的遍历次序发出命中事件。碰撞阶段按两遍的对次序发出，能量阶段按遍历次序。停放交战的事件位于 P3-06 对同一对象的 `object-left-world` 之后。`target-cleared` 在帧尾。同一次伤害中 `hit` 先于 `object-destroyed`。
+
+#### CR-07 实例化扩展与系统流水线（D-01、D-03）
+
+- **实例化扩展点**（P3-06 定稿的次序中，P3-07 的位置）：
+  1. 分配与命名之后、最高速度之前：武器块（`0x2d400`）与船体，都不抽取；
+  2. 在 `0x3060c` 的位置计算资源、档位与 E、T，再调用 P3-06 的最高速度纯函数（读实时的 E、T 与两位字段 2），然后写 `lastEnergyClock` 与 `nextEnergyClock`（1 次抽取，非机体种类不在此路径）；
+  3. 两位字段 0–18 清零；
+  4. 玩家状态这一步写 P3-07 的 `targeting`（`enemy`、到期 0）与 `statusDisplay.redraw = true`。
+- **对象更新（第 4 行）：**
+  - **玩家更新**（活动状态且未被毁）：失效目标清除（P3-06）→ 导弹锁定 `0x2ddbc`（P3-07）→ 速度辅助（P3-06）→ 命令批次（按数组次序，各任务的判定）→ 轴的变化检测（P3-06）→ 自动选敌（P3-07，T3）。原版的开火扳机在 0x20000 投递之后调用，Core 的开火命令在命令批次中按次序判定。玩家更新的请求次序：命令判定中投递的 `select-target` 立即入队；P3-06 的 `control`/`match-speed` 在命令循环之后按命令次序投递（轴并入最后的 `control`）；玩家开火命令的发射请求随后释放（`RequestQueue.defer`/`release`），对应原版扳机在 0x20000 之后（T3）；自动选敌最后；AI 与自动挂点的发射仍立即投递。发射构造只读取发射者的当前速度与位姿，`control` 请求只改指令速度，所以这一次序只影响同一 tick 内的请求与事件次序，不影响状态结果（P3-07/14 定稿，依用户的预先授权）。
+  - **自动选敌：** 在时钟严格大于到期时刻时，按原版（[自动选择](../../../original/formats/executable.md#initial-flight-state-p3-0605)、T3）重设到期为时钟 + 0x40；视角不在 0、1、6 与 0x11/8，且玩家目标为空时取最近的敌方并投递 `select-target`（`automatic`），成功时模式写为 `enemy`。这里的“为空”看实际目标，不看同 tick 尚未应用的请求，与原版一致。
+  - **按种类的回调：** 导弹（`0x2aa40`/`0x2ab00`）、弹丸（`0x259b0`）、爆炸（`0x23838`）与碎片（`0x24ac4`）由 P3-07 实现。它们取代 P3-02 的通用转换中各自列出的状态；状态 4（被毁源）的实体没有回调，但仍移动（P3-02）。
+- **请求处理（第 5 行）：** 处理 CR-05 的新请求；种类 22 的 `set-state` 请求转为爆炸的激活与更新（`0x2409c`，X4）。
+- **派发器阶段的接入：**
+
+  | 阶段 | 原版 | P3-07 的部分 |
+  |---|---|---|
+  | `movement` | `0x221fc` | P3-06 的遍历与筛选中加入 `linear`、`spinning` 两种模式；弹丸（种类 21、状态恰为 7、`hitTest`）在自身移动后立即做命中检测（H3）。导弹以机体移动块经 P3-06 的积分运动 |
+  | `collision` | `0x29670`、`0x29934` | 玩家对其他对象、其他对象之间两遍（H6），只对状态 ≥ 7 的对象；伤害除以 (3 − 组)；碎片接触计数是每 tick 的局部量，不持久 |
+  | `delayed-player-explosion` | `0x23808` | `delayedExplosionClock` 非空、时钟严格大于它且玩家实体存在时构造玩家的爆炸（X2） |
+  | `energy` | `0x30590` | 先玩家（停靠时跳过；不看状态与被毁），后种类 `0xffffe`（停靠跳过；停放者任何状态都更新且无移动块；其他只更新状态 ≥ 7 的），按 D14 |
+  | `parked-update` | `0x2f1b0` | P3-06 的停放遍历对每个本次更新的对象，在离开世界（`0x2f314`）之后调用 P3-07 的一个入口（CR-09） |
+  | `frame-end` | 帧渲染中的规则推进 | 驾驶舱显示步（CR-10），在 P3-09 以后加入的项之后、按原版仪表的绘制次序 |
+
+- **对象集合（`0x2ede0`）：** P3-07 的规则不读（C4），维持 P3-06 修订的说明。
+
+#### CR-08 直接创建与对象生命周期（D-01）
+
+- **创建位置：** 弹丸与导弹只在请求处理中由发射请求创建。爆炸与碎片还在以下位置**直接创建**，不经请求：请求处理中（导弹起爆、碎片到期爆炸）、移动阶段（弹丸命中致死）、碰撞阶段（碰撞致死）、延迟玩家爆炸阶段，以及对象更新中（P3-08 的 AI 范围伤害）。这修订了前文“所有创建只在请求处理中”的概括。
+- **首次更新、激活、首次移动与移除（X9）：** 新实体按 P3-02 的约定为“表现就绪”，在下一 tick 的自身更新中首次回调。
+  - 爆炸在该次请求处理中激活并于同 tick 首次移动；碎片在首次回调时设到期，并在该 tick 进入活动、首次移动；弹丸与导弹首次回调即请求活动，不等表现。
+  - 移动阶段的遍历遇到本 tick 新建的更高种类位实体时，因其状态为新建而不移动它。
+  - 对象更新中创建的实体（AI 路径）在同一遍历中首次回调。原版碎片在此路径晚一 tick 激活，记为差异（冲突 21）。
+- **来源的移除（X4、X7）：**
+  - 产生碎片的机体由第 0 部件碎片在其首个活动回调中交接：来源在下一次请求处理中进入待移除，被毁后第 3 tick 离开。玩家是例外，原版不移除玩家对象，玩家停在状态 4 直到救援。
+  - 被爆炸持有的来源在帧序号首次达到帧数时进入待移除，再过一 tick 离开：n₁₂ = 12 时为激活后第 28 tick，n₃ = 6 时为第 14 tick。
+  - 爆炸自身在激活后第 49 tick 请求移除，第 50 tick 离开。
+  - 区域检查若在交接前移除第 0 部件碎片，来源会停在状态 4 直到拆除。照原版实现，不另加处理（冲突 20，高概率罕见）。
+- **碎片：** 被击落的碎片不直接移除，在下一 tick 转为爆炸（冲突 13）；大型来源的碎片不到期（冲突 19）。
+- 所有移除仍经状态 6 与自身的下一次更新提出离开（P3-02）。
+
+#### CR-09 与 P3-06 的接口（D-03）
+
+| 接口 | P3-06 提供 | P3-07 的部分 |
+|---|---|---|
+| 移动阶段 | 遍历、筛选、`craft`/`warp` 的分派与积分 | `linear`、`spinning` 的变体、构造与运动函数（CR-03），以及移动后立即调用的弹丸命中检测；碰撞是其后的独立阶段 |
+| 浮点操纵 `0x21fd8` | 规则函数（含扰动的抽取） | 导弹：无制导导弹在阶段 0 直接调用（全油门、不转向）；追踪导弹经 `steer` 请求，在请求处理中应用（P3-07 是该请求类型的首个投递者，H5） |
+| 导弹的移动块 | `0x21794` 的模式 0 构造（按给定油门） | 构造时以油门 0（制导）或满油门（无制导）调用；制导导弹再按 `0x21a3c` 把速度与指令速度设为 min(导弹最高速度, 发射者速度)，置到达标志，并按参考最高速度重算速度比（P3-07 的写入者，P3-06 的移动块已列出） |
+| 共享的转向模块 | — | P3-07 建立 AI 转向库中导弹使用的子集，作为共享的 Core 规则模块：目标点与提前量模式 3、两个限幅 atan2 的比例、控制块输出、期限算术与热寻的放弃。P3-08 在其上扩展 AI 机体所需的部分，不另建 |
+| 最高速度 | 纯函数 `0x30e0c` 与 `0x21d88` | 在 `0x3060c`（实例化、导弹）与档位改变时用实时的 E、T 与两位字段 2 调用；档位改变后再调用 `0x21d88`；受损不重算（D6）。P3-07 的能量状态接入后，玩家的 `speedLimitStatus` 为 `'live'` |
+| 速度能耗 | 移动块的 `commandedSpeed` | 玩家能量更新读 trunc(指令速度)；没有移动块时读 trunc(机型 +0xB8)（D14） |
+| 写入移动块 | 积分与操纵对这些字段的消费 | 锁定 `0x21ba0`（能量耗尽，每次耗尽更新都重设并把指令速度清零）、扰动 `0x21bd4`（子系统 7，等级 2 时 3 次抽取）、碰撞的击退与翻滚 `0x29eb8`/`0x2a12c`（每次接触 6 次抽取，`0x2a12c` 只写第一方）、导弹爆炸的震动 `0x2b628`（6 次抽取，种类不在 `0xf9c7c` 时）。都只作用于机体移动块 |
+| 停放更新 | 遍历、资格、节奏抽取、经过时间（含活动期间，停放时不重置）、作弊 ×8（Core 中恒不成立）、Warp 门禁与离开世界 | 每个本次更新的对象在 `0x2f314` 之后调用一次 P3-07 的停放交战入口：`ai.mode` = 1 时为多目标 `0x2ffec`，否则为 `0x30150`（E1–E3）。入口读 `ai.mode`、`ai.target`、`ai.objectTarget`、`formation.leader` 与 `ruleInputs.aiValueB`（+0xE0），写 `ai.objectTarget`（多目标）与双方的 `nextEnergyClock`；经过时间 ≥ 2³² 为 Core 故障（约 777 天，不可达）；炮伤害合计按 i32 回绕 |
+| 区域检查 | 种类 `0x1f00000` 离区直接待移除 | 覆盖 P3-07 的四种运行时种类 |
+| 玩家目标 | 字段、失效清除、停放清除、移除时清除 | 选择命令、自动选敌与帧尾的右显示屏清除；Warp 开始的清除归 P3-09，进入基地视角的清除归 P3-10，进入被毁视角的清除归 P3-11 |
+| 自动驾驶取消 `0x27edc(0)` | 自动驾驶延至 P4（G-09），Core 没有其状态 | 原版在玩家对机体的每次接触处理末尾调用（H6）。P3 中此调用没有可写的状态，不执行；P4 接入自动驾驶时在这一位置加入，由自动驾驶的负责任务定其状态与应用阶段 |
+| 模式 3 | Warp 开始写入 | P3-07 不写（H1，P3-06 已确认） |
+
+#### CR-10 帧尾的驾驶舱显示步（D-01）
+
+原版有两处规则状态由驾驶舱仪表的绘制写入（T7、D9）。Core 在 `frame-end` 阶段以固定条件重现它们，不读渲染器、视口或像素。
+
+- **仪表所在的视角：** 只在视角模式为 0xC、0xD、1 或 6 时执行。它们的布局含左右显示屏（仪表类型 6、7）：布局 0、5，以及基地内部的 10097 槽 0。依据是帧渲染 `0x3ee58` 只在视角模式 1、6、8 与 0xC–0x12 时调用 `0x49b2c`，后者按类型升序执行所选槽的仪表记录，而类型 6、7 只出现在布局 0、5（已确认，代码与数据，[cockpit 的槽内仪表类型](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)，P3-07/30）。每个槽中类型 7（右显示屏清除）都在类型 6（状态显示）之前，与本节的步序一致。
+- **右显示屏的目标清除（T7）：** 玩家实体存在、玩家目标非空时，目标不可解析 → `invalid`；视角模式为 6 → `base-view`；目标的 `inWarp` 为真 → `warp`。三者都把目标清为 null 并发出 `target-cleared`。原版按仪表周期调用，Core 每 tick 判定（差异见 CR-11）。
+- **状态显示写字段 1、5、8（D9，冲突 5 的方案 A）：** 条件是玩家实体存在、左页为 0、玩家的子系统 10 ≠ 2。按下列次序执行：
+  1. 时钟严格大于 `blinkDueClock` 时翻转 `blink`，令 `blinkDueClock` = 时钟 + 0x20，并记本次已翻转；
+  2. 已翻转或 `redraw` 为真时，按 D9 写玩家的子系统字段：1 由船体比例与 `blink` 决定，5 为列表 1 的挂点状态，8 为列表 0 的挂点状态；然后清除 `redraw`。
+
+  子系统 10 为 1 时原版按表现随机闪烁地暂停刷新，Core 忽略这一闪烁，照常刷新（差异）。护盾叠加图只用于显示，不进 Core。
+
+#### CR-11 表现层的归属与已批准的差异（D-01）
+
+下列原版行为与 P3-07 spec 原先的推荐不同，依研究结论（冲突 14、15、5、6）按推荐方案定稿：
+
+- **归表现层（P3-12、P3-14）：**
+  - EXPL 选择：建造期 EXIC 子集、每次激活时的项，以及变体 2 按相机距离改用列表 1；
+  - 额外爆炸（`0x23fdc`）：数量、相机偏移与激活延迟；
+  - 事件 `0x10`：屏幕门禁，与判别值 1、2 的碎片及其到期再爆炸；
+  - 闪光（`0x24314`）。
+
+  表现层以 `explosion-started`（来源、来源种类、变体、位置、激活时钟）与 Render State 驱动，用自己的相机与随机源。Core 由此不需要逻辑相机或视口状态：研究证实目标、雷达、开火、AI、能量、区域检查、生成与主流程都不读相机（C1）。
+- **表现层的单次选择（交 P3-12、P3-14 的契约，不在 Core）：** P3-12 拥有一个会话级选择者，P3-14 只读它的结果：
+  - 世界创建后、首次爆炸激活之前，按 X8 为三张列表各选一次子集（原列表序号的序列，保留次序与重复）；
+  - 每个爆炸 ID 在其 `explosion-started` 上只选一次，结果为 `{ list: 1 | 2 | 3; item: number }`，`item` 是原始 `ExplosionTable.lists` 的序号，不是子集下标。变体 `large` 取列表 1，`missile` 取列表 3，`other` 按选择者自己的相机距离取列表 2 或 1（X4）；
+  - 动画与音效读同一个结果，缓存到该爆炸离开 Render State；结果随会话丢弃，重试时重新选择；
+  - 使用表现层自己的随机源，不取 Core RNG；同一 replay 的两次播放不要求得到相同的选择。
+- **已批准的差异（写入 Core 模块说明与对照结论）：**
+  1. 上述效果的抽取不在世界 RNG 中，产生的对象不在实体表中。Warp 出口的最近对象搜索（`0x2bf08`，P3-09）因此看不到它们，实体预算与原版不同。在原版，这些效果只经对象表、一次到期再爆炸、该搜索与共用 rand 影响规则（X10）。
+  2. 原版的规则与表现共用一个 C 随机数生成器，雷达、显示屏、仪表与 HUD 每个渲染帧都抽取（冲突 6）。Core 只复现规则抽取的支持集与条件概率（P3-02 的随机模型）；表现的随机放在 Core 之外（[总计划 §5](../../master-plan.md#5-状态管理与通信约定)）。
+  3. 结果对规则没有影响的抽取不在 Core 中执行，例如爆炸首次回调中非机体来源的模式 0 事件抽取（X4）。
+  4. 状态显示步忽略子系统 10 为 1 时的闪烁暂停，只在固定的视角集合中运行；右显示屏的清除每 tick 判定，而原版按仪表周期判定（CR-10）。
+  5. AI 路径上创建的碎片早一 tick 激活（冲突 21）。
+  6. 追踪导弹的接触对象初始为空，原版可能是旧值（冲突 41）。
+  7. 雷达接触点至多 120 项（含目标框），不复现越界写入（冲突 4）。
+  8. 开火、选目标、选武器与能量命令只在飞行上下文处理。原版在地图、Warp 与基地中仍按设备读到的最后一个主扳机电平开火（[输入轮询](../../../original/formats/executable.md#input-polling-p3-0201)），Core 与 P3-02、P3-06 的上下文屏蔽一致。
+  9. 挂点的 `lastShotClock` 初值为 null：原版为 0，但原版时钟从一个随机的较大取样值起算，首发实际上从不被冷却挡住；Core 的时钟从 0 起，若以 0 为初值，开局几 tick 会被冷却挡住。
+  10. 两种保留跨调用“已尝试”标志的挂点链排列在创建时拒绝（CR-01）。
+- **原版常量（冲突 29，已由运行时读数确定）：** 无制导导弹的引信检查间隔取决于线性地址 0x2C 处的 f32。P3-07/09 在基准配置的飞行中读得 0xF000CE80（INT 0Bh 向量），按 f32 小于 150.0，取减半的间隔（已确认，运行时，仅限所测配置；[executable 的 H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)，P3-07/31）。实现与测试仍按两种结果参数化，生产取值为减半；26 在正式运行中复核。
+
+#### CR-12 Projection 与 Render State（D-01）
+
+- **`flight.combat`**（P3-06 定的 `flight: { motion, combat }` 中的战斗组）：
+
+  ```ts
+  type FlightCombat = { readiness: 'not-implemented' } | { readiness: 'ready'; player: CombatPlayer | null }; // 无玩家实体时 player 为 null
+  type FlightResourceName = 'energy' | 'shield' | 'charge' | 'hull' | 'spare-power';
+  type WeaponRecordReference = { asset: AssetId; family: 'gun' | 'missile'; index: number }; // asset 为 craftInfo 的 Asset ID
+  interface CombatPlayer {
+    entityId: EntityId;
+    destroyed: boolean;                 // 被毁标志：被毁视角与救援前
+    targetMode: 'enemy' | 'friendly';
+    target: CombatTarget | null;        // 右显示屏读取的目标信息（T7）
+    radar: { status: 0 | 1 | 2; contacts: readonly RadarContact[] }; // status 为子系统 12；为 2 时没有真实接触点
+    resources: Readonly<Record<FlightResourceName, ResourceReading>>;
+                                        // {current, maximum}：能量 / c54、护盾 / c5C、充能 / c74、船体（原始值，可为负）/ c9C、剩余功率 E / T（D16）
+    allocation: { shieldLevel: Level; chargeLevel: Level };
+    weapons: readonly [WeaponListReading, WeaponListReading]; // 列表 0（主武器）、1（导弹）
+    lock: { level: 0 | 1 | 2 | 3 | 4; losing: boolean; progress: number }; // progress 按 0x2e080（W8）
+    subsystems: readonly SubsystemState[]; // 19 项
+    leftPage: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  }
+  interface CombatTarget {
+    entityId: EntityId; kindBit: number; name: NameReference;
+    position: Vec3; orientation: Matrix3;
+    distance: number;                   // f32：f32 坐标差的欧氏距离（双精度开方，T7）
+    speed: number | null;               // 目标移动块的速度；没有移动块时 null
+    shield: ResourceReading | null;     // 机体为 {护盾, c5C}，其他 null
+  }
+  interface RadarContact {
+    entityId: EntityId;
+    offset: Vec3;                       // f32：接触点位置减玩家位置。屏幕投影由 P3-13 按其相机完成（冲突 3）
+    class: 'friendly' | 'hostile' | 'marker'; // 导弹按发射者（可解析时）分类，否则为 hostile；marker 为 P3-09 的种类 0x2000000
+    missile: boolean;                   // 闪烁标志
+    near: boolean;                      // 曼哈顿距离截断为 i32 后 < 600
+    target: boolean;                    // 是玩家目标（其后有目标框）
+  }
+  interface WeaponListReading {
+    index: number; mount: number | null; weapon: WeaponRecordReference | null;
+    ammunition: number | null;          // 导弹项：从当前挂点起交替链上的弹药之和（0x2dd04）；炮为 null
+    damage: 0 | 1 | 2 | null;           // 当前挂点的损伤
+    status: 0 | 1 | 2;                  // 列表的挂点状态（0x2e438、0x2e264）
+  }
+  ```
+
+  - **雷达（T6）：** 接触点取种类 `0x21fffff` 中不处于停放、状态为 4 或 ≥ 7、有移动块、不是玩家的对象，按遍历次序。每加入一个真实接触点后计数；接触点是玩家目标且计数 < 120 时，再计入一个目标框。计数达到 120 时停止（项目上限）。子系统 12 为 1 时的随机噪点由 P3-13 绘制。
+  - 雷达的重建节奏（每 6 单位）与绘制只属于表现层。
+  - 读取不改变状态、不抽取随机数。
+- **Render State：** 增加 `clock`（任务时钟）；每个实体增加 `hitShimmerStart`（机体的 `hitFeedbackClock`，其他种类为 null）与 `explosionStart`（爆炸的 `activationClock`，其他种类为 null）；表现判别使用 CR-02 的新联合；被毁源在移除前照常列出。受击闪烁与屏幕闪光的条件（玩家、被毁视角、目标 Warp 中）由渲染器按原版判断。
+
+#### CR-13 其他任务在 P3-07 规则中的调用点（D-03 之外的接口）
+
+下列调用位于 P3-07 规则的固定位置，由负责任务在实现时插入静态调用，并递增 `rulesVersion`。P3-07 不建空函数或待处理标志代替它们。跨 tick 的状态由消费任务自己拥有（C3），例如任务内子状态、到期时刻与无线电队列。
+
+| 原版调用 | 位置（P3-07 规则） | 负责任务 |
+|---|---|---|
+| `0x3c208` | 伤害入口：护盾结算后，攻击者种类 ≠ 0 时；`0x2a5fc` 结算后船体 ≥ 0 时 | P3-10（含其抽取） |
+| `0x3c0f4` | 被毁：置被毁标志之后、对象事件之前；`0x2a5fc` 结算后船体 < 0 时 | P3-10 |
+| `0x6977c` | 被毁：`0x3c0f4` 之后，同一阶段立即处理（计数与触发可安排生成） | P3-11 |
+| `0x32d74` | 种类 1 被毁：爆炸构造之前（被毁视角会清除玩家目标） | P3-11 |
+| `0x32dec` | 种类 2 被毁：停放判定与爆炸构造之前 | P3-11 |
+| `0x33464` | 玩家能量更新的耗尽分支，钳 0 之后 | P3-11 |
+| `0x32e14(1)` | 玩家逃生舱到期：清除 `followedEntity` 之后，舱进入待移除之前；同一 tick 其余阶段看到救援后的玩家（C3） | P3-11 |
+| `0x339cc` | 发射请求的处理 | P3-11 |
+| 救援 `0x67b98` | 调用 P3-07 的 `0x2d400` 与 `0x3060c`（只重置它们写的字段），以及 P3-10 的 `0x39820` | P3-11 |
+| `0x39820`、`0x398ec` | 基地修理与补弹，使用 P3-07 的挂点修理与选择函数 | P3-10 |
+| AI | 开火入口（CR-05）、转向模块（CR-09）、`ai.objectTarget`、`proximity`、`lastVictim`、`lastAttacker`；范围伤害 `0x6313c` 调用爆炸构造与 `0x2a5fc` | P3-08 |
+
+#### CR-14 容量、快照与版本（D-01）
+
+- **事件与请求的上界：** 07 的完成证据按代码路径给出每 tick 的上界公式，其中 `hit` 有二次项：导弹起爆与范围伤害对范围内每个机体一次、碰撞的 A 组 × 活动机体、停放多目标的候选数。
+- **上限的处理（`CORE_LIMITS`）：**
+  - `eventsPerTick` 由 4,096 改为 32,768。
+  - 新增 `requestsPerTick` = 16,384，请求队列改用它，不再借用事件上限。
+  - 超出时仍按 P3-02 锁存故障、不发布部分输出。它们是项目的防失控预算，不是原版上限（原版没有上限）。
+  - **取值依据：** 按宽松的切片规模同时取最坏值，代入 07 的上界公式（记号同 07）。规模：机体 Ct = Ca = 32，A 组 24，挂点 M = 256，命令 K = 64，同时开火链 L = 4，存活弹丸 512、导弹 32、碎片 256、爆炸 64；同 tick 被毁、起爆与 AI 范围伤害各 ≤ 32，到期或击落的碎片 ≤ 256，交战的停放对象 32 个且各 ≤ 32 个候选。
+
+    | 项 | 上界 |
+    |---|---|
+    | `hit` | 512 + (32 + 32) × 32 + 2 × 32 + 256 + 2 × 24 × 32 + 32 × 32 + 32 = 5,472 |
+    | `shot-fired` | M + K × L = 512 |
+    | `explosion-started` | 32 + 32 + 32 + 256 + 1 = 353 |
+    | `fragment-expired`、`source-released` | 各 256 |
+    | `object-destroyed`、`energy-depleted`、`missile-ended` | 各 32 |
+    | `target-changed`、`target-cleared` | 65、1 |
+    | 每条命令至多一个的附加事件（`weapon-selected`、`energy-allocation-changed`、`left-page-changed`） | 64 |
+    | P3-07 合计 | 7,075 |
+    | P3-02、P3-06 的项（命令结果、P3-06 的附加与辅助事件、`object-instantiated` 按 `spawnExpansion` 计、`object-left-world`） | 64 + 64 + 1 + 1,024 + 32 = 1,185 |
+    | 总计 | 8,260，新上限约为其 4 倍 |
+
+    请求：`select-target` 65、发射 512、每个存活对象自身更新的请求至多 2 个（爆炸的状态 6 有释放与离开，第 0 部件碎片可有交接与到期）共 2 × 896 = 1,792、`steer` 64，加上 P3-02、P3-06 的生成请求 1,024 与速度请求 66，合计 3,523，新上限约为其 4.6 倍。
+  - 在实体上限下，二次项没有固定的上界，超出预算即故障。原版没有对应的规则上限，这不改变切片的行为。
+  - 其他上限不变。快照在实体上限下仍在 `canonicalTextLength` 之内：机体数受 `spawnExpansion` 限制（≤ 1,024），每个机体含 18 个挂点时约 8.5 KiB；其余实体约 2 KiB；合计约 10.5 MiB。
+  - 录制上限不变。录制在每个 tick 之前要求还能容纳一个 tick 的 `eventsPerTick` 个事件，所以可用的事件总量由 524,288 − 4,096 变为 524,288 − 32,768 = 491,520，约少 6%。所选任务一次运行远短于 `recordedTicks`（68 分钟），战斗中每 tick 的事件通常为个位数；超出时按 P3-02 在执行下一 tick 之前原子拒绝。
+  - 单 tick 的二次工作量（命中检测、起爆、碰撞、停放多目标）受实体上限约束，不另设上限。
+- **快照：** 覆盖 CR-02 至 CR-04 的全部新状态（实体的 `combat`、移动块的新变体、表现选择器、玩家状态的新字段）；静态规则数据不进快照。快照格式版本与 `RULES_VERSION` 相对实现时的当前值各递增一次，不硬编码数字；P3-07 的 goal 在其分支上由首个实现共享形状的子任务递增，此后该 goal 内的规则变化沿用这一版本。
+- **replay：** 新输入经 setupHash 绑定，`ReplayContent` 是调用输入而不是记录字段，所以 replay 记录形状不变，格式版本不变。旧规则版本的记录一律拒绝。
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -484,3 +1055,40 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
 **2026-10-09 修订（二）：** 用户于 2026-10-09 批准把 P3-02/01 已确认的两个派发器阶段补入系统流水线表第 5 行：对象更新之后、生成队列检查之前把到期通讯回复转为表现项（`0x2cd60`，P3-10），能量之后重建两个对象集合（`0x2ede0`，未分析，暂无负责阶段）。两者在 Core 中都是空阶段，P3-02 的范围、行为与验收要求不变。`reviewed:` 标记仍对应第一次修订前的文本。
 
 **2026-10-10 修订（P3-06 检查点 A，依用户 2026-10-09/10 的预先授权，协调者裁定）：** 由 P3-06 goal 的子任务 06 起草，按 P3-06 协调者的裁定与推荐答案定稿，不需用户审阅（P3-06 spec 的技术决定 13 与其 goal 执行记录中的授权；不涵盖总计划与 ADR 中的冻结决定）。修订只新增“P3-06 的契约修订（检查点 A）”一节与本条记录，并改了 front matter 的日期：D-01 至 D-08 的实际修订，包括补入原版已有、本任务生成未保存的编队领队与偏移，以及对象集合重建阶段的说明与建议负责阶段。依据、推荐理由与被排除的方案记在 [P3-06 spec 的审批](../06/spec.md#审批)。本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+
+**2026-10-10 修订（P3-07 的 D-01、D-03，依用户的预先授权，由 P3-07 的子任务 08 定稿）：**
+
+- **范围：** 只新增“P3-07 的契约修订（D-01、D-03）”一节与本条记录。P3-06 检查点 A 已定的项不变；本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **授权出处与用户原话：**
+  - [P3-07 goal 的审批节](../07/goal.md#审批)：用户于 2026-10-09 修改该节后批准（“i made some change. approve and commit”），把 08 改为自动，D-01 至 D-03 由 agent 直接批准最推荐的方案；同日的约定（“我们可能会在 execute goal 的过程中增加新的 subtasks，新增的 subtasks 不需要 review，直接 unblock”）也写在那里。
+  - 用户 2026-10-10 对 P3-07 协调者的指示，原话由协调者在派发 08 时转引：“从现在开始，我接下来几个小时都不能接手或回答你的问题。如果有任何问题，你都按你最推荐的回答来做。如果需要修改spec或goal，我都同意。如果要增加新的subtasks来unblock一个subtasks，我也同意。”
+  - 授权不涵盖总计划与 ADR 中的冻结决定，也不放宽阶段退出条件。本修订没有改变它们：表现层随机放在 Core 之外正是[总计划 §5](../../master-plan.md#5-状态管理与通信约定)的要求；CR-11 的差异都作为已批准差异记录与披露，不冒充美化，也不放宽 P3 的对照要求。
+- **所选方案与理由；被排除的方案：**
+  1. **爆炸效果归表现层（CR-11）。** 研究证实规则路径上读相机的只有爆炸与碎片效果（C1）。被排除的方案是把这些效果留在 Core，由 Core 按视角模式计算逻辑相机与视口并进入快照；它要把按分辨率变化的视口与尚未完全分析的外部视角相机（0x12 的函数未反汇编）带进 Core。选定方案的规则差异只有 Warp 出口搜索、实体预算与随机序列，都已记录。
+  2. **状态显示的字段 1、5、8 由 Core 的固定步骤写入（CR-10）。** 被排除的方案是在伤害读取时由船体比例与挂点状态临时计算；那样会丢掉原版的闪烁与重绘时机，差异更大。
+  3. **原因码沿用 P3-06 的三个，新增 `misfire`（CR-05）。** 被排除的方案：另建 `player-destroyed`、`context-blocked`（与 P3-06 的码重复）；把哑火并入 `weapon-disabled`（哑火会重置冷却，挂点并未损毁）。
+  4. **跨 tick 的事实用固定调用点，状态由消费任务拥有（CR-13）。** 原版把跨帧状态放在消费方（任务内子状态、到期时刻、无线电队列，C3）。被排除的方案是由 P3-07 另存“待处理”标志：P3-11 接入前它没有消费者，与消费方的状态重复。
+  5. **提高每 tick 的事件与请求预算（CR-14）。** 被排除的方案：维持 4,096，切片规模的极端组合下会故障；按规则截断扇出，会丢弃事实，契约禁止。
+  6. **目标的清除不发 `target-changed`（CR-06）。** 原版对这些清除没有反馈（T5、T7），持续的目标由 projection 给出。被排除的方案是每次清除都发事件。
+  7. **选择命令在所选挂点不变时也为 `accepted`（CR-05）。** 原版此时仍更新序号、清除锁定并请求音效（W3）。被排除的方案是返回 `no-change`，它会掩盖锁定被清除。
+  8. **发射者失效后不保留归因（CR-06）。** 原版以分类掩码代替种类，不计击杀（H4）；玩家对象从不被移除，玩家的击杀不受影响。被排除的是 P3-07 spec 原先的“保留归因”。
+- 本修订对 P3-07 spec 方向的改动记在 [P3-07 spec 的审批](../07/spec.md#审批)。
+
+**2026-10-10 修订（P3-07 的子任务 34：追踪导弹的 AI 程序输入，依用户 2026-10-09/10 的预先授权）：**
+
+- **范围：** 只改 CR-01：新增 `aiPrograms` 输入、语义检查 6、可达炮记录 +0x24 的非负检查（检查 5）、静态规则数据中的两条程序记录与 setupHash 表中的一行，以及本条记录。CR-14 不需修改：该输入是静态输入，按 CR-14 不进快照，沿用 P3-07 已递增的快照格式版本与 `RULES_VERSION`，replay 记录形状不变。其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **起因：** P3-07 的子任务 32 实现共享转向模块时发现，追踪导弹的程序读取内置 AI 程序记录 1、2 的 +0x14、+0x24、+0x2C（[H5](../../../original/formats/executable.md#h5-missiles--confirmed-code-unless-marked)），而 CR-01 的输入与静态规则数据都没有 AI 程序，Core 拿不到；原版数值不能写进代码。P3-07 的子任务 17 另建议在世界创建时拒绝负的炮 +0x24：否则 Core 只会在弹丸的首次回调时故障。
+- **授权出处与用户原话：**
+  - [P3-07 goal 的审批节](../07/goal.md#审批)：用户 2026-10-09 决定执行中新增的子任务不需审阅，需要改变 spec 契约时直接批准最推荐的方案。P3-07 的协调者据此新增子任务 34（见该 goal 的执行记录）。
+  - 用户 2026-10-10 对 P3-07 协调者的指示，原话由协调者在派发 34 时转引：“从现在开始，我接下来几个小时都不能接手或回答你的问题。如果有任何问题，你都按你最推荐的回答来做。如果需要修改spec或goal，我都同意。如果要增加新的subtasks来unblock一个subtasks，我也同意。”
+  - 授权不涵盖总计划与 ADR 中的冻结决定，也不放宽阶段退出条件；本修订不涉及它们。
+- **所选方案与理由：** 34 的推荐方案。`CreateWorldInput`、录制入口与 `ReplayContent` 增加顶层的 `aiPrograms`（同一包中 `data/ai-programs` 的规范内容，按内容读取器严格读取），与其他规则输入并列，Asset ID 按 CR-01 的规则校验。静态规则数据只复制记录 1、2 的三个字段，并在世界创建时校验。setupHash 覆盖该输入的 ID 与完整内容。这样 Core 读到的是导入内容本身，绑定与其他规则输入一致；P3-08 扩展 AI 读取时沿用同一输入与同一绑定。
+- **被排除的方案：**
+  1. **由调用者先提取三个字段，作为新输入传入。** 把规则所需的提取放到 App，setupHash 只绑定提取结果而不绑定导入内容，P3-08 还要再建输入。
+  2. **把字段并入 `craftInfo` 或其他已有输入。** 需要修改内容契约与导入链，超出范围，也会让一个 Asset 的绑定混入另一个 Asset 的内容。
+  3. **在代码中写入原版数值。** 违反项目的内容规则（不分发原版内容）。
+  4. **只在可实例化机体装有追踪导弹时才要求记录 1、2。** 导弹是否追踪取决于发射时的锁定（W11、H5 的发射字节），要按运行推断“不会追踪”既复杂又易错；生产内容的内置表总有这两条记录，P3-08 也会读整张表。
+  5. **setupHash 只覆盖三个提取的字段。** P3-08 扩展读取时要再改绑定；该内容没有只影响外观的字段，全部覆盖与 CR-01 对 `debrisParameters` 的做法一致。
+  6. **允许负的炮 +0x24 并在运行中按 u32 回绕。** 原版的回绕造成遥远的到期，项目的时钟契约不复现 u32 回绕；创建时拒绝比运行中故障更早、更清楚。
+
+**2026-10-10 修订（P3-07 的子任务 24：导弹制导时间的拒绝，依用户 2026-10-09/10 的预先授权）：** 只在 CR-01 的检查 5 中补入可达导弹记录 +0x44、+0x48、+0x54 非负与 +0x58 在 i32 内的检查，并记录本条。起因是 P3-07 的子任务 20、22 的建议：否则负寿命的导弹只会在首次回调时使 Core 故障。所选方案与被排除的方案同子任务 34 对炮 +0x24 的处理（不在运行中按 u32 回绕，创建时拒绝）。授权出处同上一条。其他范围、行为与验收要求不变，CR-14 不需修改（静态输入的检查，快照与 replay 记录形状不变），既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。

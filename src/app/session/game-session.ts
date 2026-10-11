@@ -22,6 +22,7 @@ import { CoreInputError } from '../../core/errors.ts';
 import type { Projection } from '../../core/projections/projection.ts';
 import type { Recording } from '../../core/replay/recording.ts';
 import type { GameSnapshot } from '../../core/replay/snapshot.ts';
+import { CONTENT_INPUT_FIELDS } from '../../core/world/create-world.ts';
 import type { DomainEventType, GameEventListener } from '../runtime/game-event-bus.ts';
 import { createGameRuntime, type FrameReport, type GameIntent, type GameRuntime, type GameRuntimeSpec, type RenderFrame } from '../runtime/game-runtime.ts';
 import { GameRuntimeError } from '../runtime/runtime-errors.ts';
@@ -131,7 +132,7 @@ const CONTROL_FIELDS: Readonly<Record<Control['type'], readonly string[]>> = {
 };
 const CONTROL_TYPES = Object.keys(CONTROL_FIELDS) as Control['type'][];
 const CLEAR_INPUT_REASONS: readonly ClearInputReason[] = ['focus-loss', 'pointer-lock-exit'];
-const SPEC_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'identity', 'run', 'recording', 'initialTransition'] as const;
+const SPEC_FIELDS = [...CONTENT_INPUT_FIELDS, 'run', 'recording', 'initialTransition'] as const;
 const TRANSITION_PATH = 'control.spec.initialTransition';
 type LivePhase = GameSessionFrame['phase'];
 /** The phases of a live run: consumers may wire to it and its frames report them. */
