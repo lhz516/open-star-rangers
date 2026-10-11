@@ -143,6 +143,11 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-10 — 20 的清键约束（交 21、22、25）：** 会话只通过取消已排队命令告知其他消费者发生了 clear-input，队列为空时没有通知；为避免本地按住状态残留，20 约定本运行的一切清键都经 `GameInputConsumer.clear(reason)`，21 与 22 的能力退出须照此调用。25 在输入状态的 `focusHint` 与 23 的 `focusHintShown` 中只保留一个。
 - **2026-10-10 — 21 的接口变化（交 22、25）：** `InputConsumerOptions` 去掉 20 的 `pointerLocked` 谓词，改为接收全屏与 Pointer Lock 的端口工厂和 `keyLockCodes`（创建时校验非空且不含 Escape/Tab/Meta/F12）；`consumer.capabilities` 提供 `startWithFullscreen(start)`、`requestFullscreen`、`exitFullscreen`、`retryKeyboardLock`、`requestPointerLock`、`exitPointerLock`、`pointerLocked`，输入状态增加 `capabilities.{fullscreen,keyboardLock,pointerLock}`。25 把开始按钮接为 `capabilities.startWithFullscreen(() => owner.start())`（对应 23 的“先全屏回调再开始”）；22 经 `CapabilityContext` 的可选 `pointer(input)` 接收指针输入。21 的判断：关闭屏障在 `previousClosed` 落定（真或假）时打开；锁键等待期间新的全屏或 Pointer Lock 申请以 `closing` 失败；重开与回滚的开始按运行离开时的阶段区分（`transition` 为回滚）；锁键失败后须新手势才再锁。
 - **2026-10-10 — 27 的发现（交 25、33）：** 本机 Chrome 在 Pointer Lock 下以 CSS 像素报告 `movementX/Y`（DPR 1 与 2 相同），25 的生产 `movementScale` 取 1；物理鼠标的单位与速度仍由 30/31 核对。headless Chrome 在 http 源上支持 Pointer Lock，因此不需要 headed 项目。27 另发现：同一帧内快速两次 `m` 使地图在本所有者的解锁尚未完成时重新取得资格，`capabilities.requestPointerLock` 因旧锁已撤销而提前返回，既不申请也不记为 `closing`；解锁完成后地图停在“点击以锁定”，点击即可重锁，不会卡住，但与 `capabilities.ts` 的注释不符。由 33 判断是否需要修复项。
+- **2026-10-10 — 用户暂停执行（重启电脑）：** 用户要求保存进度并停止，之后重新调用 `/execute-goal docs/plan/p3/05/goal.md` 继续。暂停时的状态：
+  - **已完成并集成：** 01–05、07、09、10、12–18、20–23、27。没有遗留的 worker 会话、`exec-p3-05-*` 分支或 worktree。
+  - **06（协调者执行，in-progress）：** 运行 A（`q05-a-01`，85/85 检查通过）、B（`q05-b-01`，46/47，失败的一项是 `f` 选择友方目标的检查，尚待判断是检查器预期有误还是与静态结论冲突）与 D（`q05-d-01`，12/12）已完成，完整且完整性与回收检查通过；基地的探索运行 C（至多两次）已准备配方，未运行。报告、配方、脚本与计划在 `local/research/p3-05/runtime/`（`plan.md`、`recipes/`、`scripts/check_runs.py` 等）。本 worktree 中有 06 未提交的部分文档改动（`docs/original/input/key-map.md`、`docs/original/formats/executable.md`、`docs/original/unknowns.md`），属于 06 的写入范围，尚未审阅；06 的子任务文档还没有完成证据。恢复时：先核对这些改动与运行报告，判断 B 的失败项，决定是否进行基地运行 C（与 P3-06 的 17 交替使用基准环境，每次运行前确认锁空闲且没有自己遗留的 DOSBox-X），再补完成证据、做 rubber-duck 审阅并提交。
+  - **之后的关键路径：** 06 → 08（检查点 K 键盘项）→ 11（需用户批准 P3-01 修订）→ 19、24 → 25 → 26、28、29、30 → 31（需用户）→ 32 → 33。
+  - **待最终对齐判断：** 27 发现的快速两次 `m` 时 Pointer Lock 申请不记 `closing` 的差异（见上方记录）。
 
 ## 审批
 
