@@ -119,7 +119,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
 | [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | pending |
-| [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | in-progress |
+| [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | blocked |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -155,6 +155,10 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   Evidence: `local/research/p3-05/real-device/worker-30-input-check.md` 的“Actionable residuals for subtask 31”逐项写明按什么、看什么（物理 Fn+F1–F11、无旧提示时的 F10、四个操纵键及 Shift/Ctrl/Ctrl+Shift 与按住、Option+方向键并开火、未锁指针时地图中的 Esc、全屏提示“Press and hold Esc to exit”判定 Keyboard Lock 已取得及暂停后的原生快捷键）。
   Affected acceptance: AC-18 的残余部分；31 的两条验收；33 依赖 31。
   Resume when: 用户可在本机 Chrome 的物理键盘上按清单执行，协调者准备开发服务器并读取诊断。
+- **2026-10-10 — Subtask 34 blocked:** 有界规则下的两次探索运行都没有取得基地样本；协调者按用户“直接用最推荐的答案”的授权采用 worker 的建议：Q-05 对基地的门槛保持未达到、不豁免，基地按键仍以 Q-04 的代码证据为唯一合格依据（未被推翻），新采样留待另行批准的运行内导航计划。worker 的事实更正与证据（基地位置每次运行不同；`q05-34-a-01` 停靠超时；`q05-34-b-01` 已激活附近真实基地、命令菜单出现停靠项、状态字节 3→4，但在 hk-21 时视图仍为飞行，基地键序列在观察到 view 6 前就开始）以 `c1d8256c` 集成，行保持 blocked。
+  Evidence: 34 的子任务证据、`docs/original/input/key-map.md`、`executable.md`、`unknowns.md` 的更正；私有运行记录在 `local/research/p3-05/`。
+  Affected acceptance: 34 的验收；S-01、S-15、AC-01 中的基地运行样本部分；33 依赖 34。
+  Resume when: 用户批准新的运行内导航计划，含明确的停靠/降落/view 6 门槛，并在基地键之前让停靠流程完成。
 
 ## 审批
 
