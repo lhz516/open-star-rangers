@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [08-keyboard-checkpoint.md](./subtasks/08-keyboard-checkpoint.md) | 04, 06 | completed |
 | [09-p3-04-spec-sync.md](./subtasks/09-p3-04-spec-sync.md) | — | completed |
 | [10-speed-preset-spec-sync.md](./subtasks/10-speed-preset-spec-sync.md) | — | completed |
-| [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | pending |
+| [11-p3-01-g08-sync.md](./subtasks/11-p3-01-g08-sync.md) | 08 | completed |
 | [12-platform-keyboard-modifiers.md](./subtasks/12-platform-keyboard-modifiers.md) | — | completed |
 | [13-platform-pointer-lock.md](./subtasks/13-platform-pointer-lock.md) | — | completed |
 | [14-platform-fullscreen-family.md](./subtasks/14-platform-fullscreen-family.md) | — | completed |
@@ -150,6 +150,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   - **之后的关键路径：** 06 → 08（检查点 K 键盘项）→ 11（需用户批准 P3-01 修订）→ 19、24 → 25 → 26、28、29、30 → 31（需用户）→ 32 → 33。
   - **待最终对齐判断：** 27 发现的快速两次 `m` 时 Pointer Lock 申请不记 `closing` 的差异（见上方记录）。
 - **2026-10-10 — 恢复执行；06 完成，基地样本拆为 34：** 用户重新调用 `/execute-goal`；恢复时没有遗留的 worker、`exec-p3-05-*` 分支或基准环境进程。B 的失败项是检查器把侦察当成检查：本任务中 `f` 没有找到友方候选，原目标保持不变，与代码一致；它不是 Q-05 样本，现行检查器把它列为侦察，B 重新核对为 46/46。基地探索运行 `q05-c1-02`（排在 P3-06 的 17 之后，按约定交替）经 Warp 到达离基地约 9300 处，停靠闸门超时；运行 D 的读数显示所选任务中三个基地类对象的状态字节 +2 都为 0，而近基地检查 `0x394c4` 要求为 1，停靠在测得的状态下不可能。按用户“有需要回答的问题直接用最推荐的答案”的授权，协调者决定：06 以飞行、地图、Warp 与页面的样本完成，基地缺口如实记为 Q-05 对基地的门槛未达到；新增 34（基地补样，依赖 06，加入 33 的依赖与 S-01、S-15、AC-01 的覆盖），不加入 08 的依赖——按[执行检查点](./spec.md#执行检查点)“运行样本与重开”，基地按键的唯一合格依据是 Q-04 的代码证据，缺样本既不是唯一依据也不推翻它。34 有界：静态找出可停靠的条件后至多两次探索运行，仍取不得时记为 blocked 交用户决定。
+- **2026-10-10 — 08 集成；11 的批准方式（待用户复核）：** 08（`d2a9441a`）定稿检查点 K 的键盘项。11 起草了 P3-01 的 G-08 修订后，协调者以 ask_user 请用户批准；用户回复“The user is not available to respond and will review your work later. Work autonomously and make good decisions.”。结合用户在规划时“如果有需要我回答的问题，直接用你最推荐的答案”的指示，协调者按推荐答案（批准）采用，以免 19、24 及其下游全部停住；这一判断在完成报告中提请用户复核，用户不同意时撤回该修订并重开 19、24 中受影响的部分。
 
 ## 审批
 
