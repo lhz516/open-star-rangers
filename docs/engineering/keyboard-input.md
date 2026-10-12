@@ -125,13 +125,14 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 **隔离地图入口：** P3-05/27 的 `/e2e/entries/map-input.html` 只在开发服务器提供，不是正式任务地图路径；现使用唯一生产绑定表，几何及地图上下文仍为合成。加 `?manual=1` 后可点击 **Open unlocked map**：输入区自动聚焦，等待光标后按 Escape，再点击 **Refresh observations** 读取快照；**Close test session** 回收本次会话。按钮和观察快照只存在于该开发入口，不改 Core 或正式地图。页面收到的 Escape 按生产绑定关闭地图；Playwright 合成键不证明浏览器原生解锁或系统快捷键行为，原生证据见 [37](../plan/p3/05/subtasks/37-native-input-residuals.md)。Chrome headless 下，HTTP origin 上隔离 context 支持真实 Pointer Lock；`about:blank`/`setContent` 会遇到 `WrongDocumentError`。入口用 CDP `Runtime.evaluate` 并显式 `userGesture: false` 驱动观察钩子，避免 Playwright 的 evaluate、locator 或截图留下用户激活，误改变自动锁定路径。`pointer-lock` 监听独立计组；预热使用 `./e2e/entries/*.html`。具体像素、锁定、回退和资源平衡证据见 [27 完成证据](../plan/p3/05/subtasks/27-map-input-entry.md#完成证据) 与 [36 完成证据](../plan/p3/05/subtasks/36-production-map-input-entry.md#完成证据)。
 
-**本机实机核对状态（P3-05/30、31）：**
+**本机实机核对状态（P3-05/30、31、37）：**
 
 | 项目 | 证据与当前结论 |
 |---|---|
 | 30：macOS Chrome Computer Use | 原生 Cmd+L 正对照进入地址栏；暂停后 Cmd+L/Cmd+T 分别执行浏览器原生行为。Escape 实际退出 Pointer Lock，地图保持打开且只触发一次 `clear-input(pointer-lock-exit)`。本次未能观察活动 Keyboard Lock 状态，不宣称已验证其解除。 |
 | 地图移动单位 | 27 的 CDP 注入鼠标输入在 Chrome 155、DPR 1/2 报告 CSS 像素位移；这不是物理鼠标单位证据。 |
 | 31：物理设备结果 | **待用户执行，subtask 31 blocked。** 物理 Fn、持续按住、操纵标点/Option 组合、活动 Keyboard Lock 获得与解除、未锁定地图 Escape 等残余项尚无用户实机结果；AC-18 不得据此标为完成。 |
+| 37：残余项补证 | [37 的原生/物理证据](../plan/p3/05/subtasks/37-native-input-residuals.md#完成证据)补齐 31 当时的三项缺口：生产绑定的未锁地图 Escape 关闭合成地图；全屏 Running 的原生 Cmd+L 被拦截，`p` 暂停后仍在全屏时同码恢复地址栏，再以 Cmd+T 打开原生标签；用户逐组 Option+↑/↓/←/→ 并轻点 Space，合格 replay 各有持续 primary 与一次重叠 secondary，轴为 0、释放后无开火。↑/← 的不合格初次尝试保留，原因未确认；单独复测通过。30/31/37 合并覆盖本机 AC-18，不外推其他平台或下游 Core 地图规则。 |
 | Q-05 原版运行样本 | 06 样本全部只证明给定 BIOS 码到游戏动作；没有证明宿主物理键到扫描码。基地样本另由 34 阻塞，尚未达到门槛；Q-05 未整体完成。 |
 
 残余项不得以合成按键、CDP 注入、页面 `isTrusted`、DOS 输入码注入或配置推导替代。跨操作系统与浏览器矩阵归 P5。

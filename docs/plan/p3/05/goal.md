@@ -122,7 +122,7 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | completed |
 | [35-e2e-regressions.md](./subtasks/35-e2e-regressions.md) | 25, 26, 27, 28, 29 | completed |
 | [36-production-map-input-entry.md](./subtasks/36-production-map-input-entry.md) | 27, 31 | completed |
-| [37-native-input-residuals.md](./subtasks/37-native-input-residuals.md) | 30, 31, 36 | pending |
+| [37-native-input-residuals.md](./subtasks/37-native-input-residuals.md) | 30, 31, 36 | completed |
 | [38-evidence-docs-reconciliation.md](./subtasks/38-evidence-docs-reconciliation.md) | 11, 31, 32, 34 | pending |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38 | pending |
 
