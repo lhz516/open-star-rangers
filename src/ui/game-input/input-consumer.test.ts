@@ -21,7 +21,8 @@ import { createGameCommandFeedback, type GameCommandFeedback } from '../game/gam
 import { createGameSessionBridge } from '../game/game-session-bridge.ts';
 import { createGameStore, type GameStoreWriter } from '../game/game-store.ts';
 import { down, TEST_BINDINGS, up, type KeyPatch } from './game-input.test-support.ts';
-import type { InputContext } from './input-action.ts';
+import { GAME_INPUT_BINDINGS } from './bindings.ts';
+import type { BindingTable, InputContext } from './input-action.ts';
 import { createInputConsumer, type GameInputConsumer } from './input-consumer.ts';
 import type { MapInputOptions } from './map-input.ts';
 
@@ -178,9 +179,10 @@ interface Submission {
  * An owner with a recording, the input consumer on a fake keyboard and the test bindings, and a `ui` consumer that
  * creates the store, bridge and command feedback as the app's assembly does.
  */
-async function setup({ pointerLock, map, consumers = [] }: {
+async function setup({ pointerLock, map, bindings = TEST_BINDINGS, consumers = [] }: {
   readonly pointerLock?: () => PointerLockPort;
   readonly map?: MapInputOptions;
+  readonly bindings?: BindingTable;
   /** Connected after the input and `ui` consumers. */
   readonly consumers?: readonly MissionOwnerConsumer[];
 } = {}) {
@@ -202,7 +204,7 @@ async function setup({ pointerLock, map, consumers = [] }: {
   const feedback = { connected: true, reads: 0 };
   const consumer = createInputConsumer<string>({
     keyboard: () => keyboard,
-    bindings: TEST_BINDINGS,
+    bindings,
     feedback: () => {
       feedback.reads += 1;
       const connected = feedback.connected ? ui : null;
@@ -533,6 +535,34 @@ describe('commands and their repeat', () => {
 });
 
 describe('session control keys', () => {
+  it('keeps a locked map open when production Escape reaches the page and closes it only on a new unlocked press', async () => {
+    let locked = true;
+    const f = await flying({ bindings: GAME_INPUT_BINDINGS, pointerLock: () => heldPointer(() => locked) });
+    f.tools.context = 'map';
+    f.frame();
+    expect(f.keyboard.press('Escape')).toBe(false);
+    expect(f.keyboard.press('Escape', { repeat: true })).toBe(false);
+    expect(f.submitted).toEqual([]);
+    expect(f.tools.calls).toEqual([]);
+    expect(f.owner.getSnapshot()).toMatchObject({ flow: { position: 'flight' }, session: { phase: 'running' } });
+
+    f.keyboard.press('KeyP');
+    expect(f.owner.getSnapshot().session).toMatchObject({ phase: 'paused', pauseReason: 'user' });
+    f.keyboard.lift('KeyP');
+    f.keyboard.press('KeyP');
+    f.keyboard.lift('KeyP');
+    expect(f.owner.getSnapshot().session.phase).toBe('running');
+
+    locked = false;
+    f.frame();
+    f.keyboard.press('Escape', { repeat: true });
+    expect(f.submitted).toEqual([]);
+    f.keyboard.lift('Escape');
+    f.keyboard.press('Escape');
+    expect(f.submitted.map(({ type }) => type)).toEqual(['toggle-map']);
+    expect(f.tools.calls).toEqual(['toggle-pause', 'toggle-pause']);
+  });
+
   it('toggles the pause with p, through the owner, in flight and in the map', async () => {
     const f = await flying();
     const { keyboard, owner, tools } = f;

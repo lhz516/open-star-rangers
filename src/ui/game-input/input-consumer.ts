@@ -353,6 +353,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
 
   /** Returns whether the action went through: an Esc under Pointer Lock does nothing. */
   #carryOut(action: DiscreteAction, code: string): boolean {
+    if (code === 'Escape' && this.#capabilities.pointerLocked()) return false;
     const port = this.#run?.port;
     switch (action.kind) {
       case 'command':

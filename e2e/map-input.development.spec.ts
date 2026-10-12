@@ -75,17 +75,32 @@ async function openMap(entry: MapEntry, lock: 'native' | 'pending' | 'refuse' | 
   return flight;
 }
 
-test('page-delivered Escape closes the locked map through production bindings and releases Pointer Lock', async ({ page }) => {
+test('page-delivered Escape leaves the locked map open until the browser unlocks, then a fresh Escape closes it', async ({ page }) => {
   const entry = await MapEntry.load(page);
   await openMap(entry);
   await page.mouse.click(400, 300);
   await entry.waitForMap('locked');
   // Synthesized Escape reaches the adapter, not Chrome's native Pointer Lock unlock path.
   await page.keyboard.press('Escape');
+  let state = await entry.state();
+  await entry.frames(3, state);
+  state = await entry.state();
+  expect(await entry.zoneLocked()).toBe(true);
+  expect(state).toMatchObject({ context: 'map', map: { state: 'locked' }, commands: [], portCalls: [], errors: [] });
+  await expect.poll(() => entry.lockChanges()).toEqual(['zone']);
+
+  await entry.call('document.exitPointerLock()');
+  await entry.waitForMap('click-to-lock');
+  expect(await entry.zoneLocked()).toBe(false);
+  state = await entry.state();
+  expect(state).toMatchObject({ context: 'map', commands: [], portCalls: ['clear-input pointer-lock-exit'], errors: [] });
+  await expect.poll(() => entry.lockChanges()).toEqual(['zone', 'none']);
+
+  await page.keyboard.press('Escape');
   await entry.waitForMap('off');
   await expect.poll(() => entry.zoneLocked()).toBe(false);
   await expect.poll(async () => (await entry.state()).pointerLock.state).toBe('idle');
-  const state = await entry.state();
+  state = await entry.state();
   expect(state.context).toBe('flight');
   expect(state.commands.filter(command => command.type === 'toggle-map')).toHaveLength(1);
   expect(state.portCalls).not.toContain('open-menu');
