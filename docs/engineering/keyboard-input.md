@@ -42,8 +42,8 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | 未修饰 `Digit1`–`Digit9`、数值态小键盘 `Numpad1`–`Numpad9` | flight | `select-number`，仅由通讯菜单按其实际菜单项捕获；普通飞行中不改速度 | 原版绑定 |
 | `Enter` / `NumpadEnter`（无 Ctrl，可带 Shift）；Ctrl 或 Ctrl+Shift+Enter | flight；前一组亦可在 base | 确认/匹配选择；Ctrl+Enter 切换速度辅助 | 原版绑定 |
 | `KeyT`、`KeyF`、`KeyR`、`KeyY`、`KeyU` | flight | 敌/友目标模式、下一个/上一个目标、前向目标 | 原版绑定；目标效果待 P3-07 合入 |
-| 未修饰 `/`；`,` / `.`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 主武器循环、选择上一/下一导弹 | 原版绑定；武器效果待 P3-07 合入 |
-| `KeyE`、`KeyS`、`KeyG`、`KeyD` | flight | 能量页、护盾/炮能量增减、损伤报告 | 原版绑定；规则效果待 P3-07 合入 |
+| 未修饰 `Slash`；`NumpadDivide`（Shift 可并用）；`Comma` / `Period`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 前两项循环主武器；其余选择上一/下一导弹 | 原版绑定；武器效果待 P3-07 合入 |
+| `KeyE`；`KeyS` / `KeyG`（无 Shift 减、Shift 增）；`KeyD` | flight | 能量页；护盾/炮能量增减；损伤报告 | 原版绑定；规则效果待 P3-07 合入 |
 | `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定 |
 | `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；执行门禁归 P3-09 |
 | `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单 | 原版绑定；菜单行为归 P3-10 |
@@ -51,9 +51,9 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
 | `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
 | `KeyA`、`F11` | flight | G-09、G-10 标注，不提交命令 | 原版功能暂缺 |
-| `KeyP`（可带 Shift；不带 Ctrl/Alt/Meta） | 所有游戏输入上下文，包括 paused | 任务所有者暂停/继续控制 | 项目宿主控制 |
+| `KeyP`（可带 Shift；不带有效 Ctrl/Meta；Alt 独立并行） | 所有游戏输入上下文，包括 paused | 任务所有者暂停/继续控制 | 项目宿主控制 |
 | `Escape` | flight、warp、base；map 中未锁指针 | 打开任务菜单；地图中关闭地图 | 前者为项目适配，后者与原版 Q-02 一致 |
-| 数值态小键盘 `Numpad1`–`Numpad9` / 状态相同态小键盘键 | flight/base | NumLock 与 Shift 状态不同表示数字；相同态下的 `Numpad8` 前视/基地上导航、`Numpad2` 地图 G-08/基地下导航，其余已列视角键为 G-08 | 原版扫描码语义 |
+| 数值态小键盘 `Numpad1`–`Numpad9` / 状态相同态小键盘键 | flight/base | NumLock 与 Shift 状态不同表示数字；相同态下的 `Numpad8` 前视/基地上导航、`Numpad2` 飞行 G-08/基地下导航，其余已列视角键为 G-08 | 原版扫描码语义 |
 | 鼠标输入 | map | 地图 hover、select 与按住左键重复；见 §6 | 原版地图行为，项目换算与输入策略 |
 
 表格是生产绑定的高层索引；精确 modifier 状态、重复标志、动作对象与上下文按 [bindings.ts](../../src/ui/game-input/bindings.ts) 及其矩阵测试为准。`KEYBOARD_LOCK_CODES` 从实际绑定 code 与 Ctrl 修饰码推导，去除浏览器不能锁定的 Escape、Tab、Meta 与 F12。
@@ -131,9 +131,9 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 |---|---|
 | 30：macOS Chrome Computer Use | 原生 Cmd+L 正对照进入地址栏；暂停后 Cmd+L/Cmd+T 分别执行浏览器原生行为。Escape 实际退出 Pointer Lock，地图保持打开且只触发一次 `clear-input(pointer-lock-exit)`。本次未能观察活动 Keyboard Lock 状态，不宣称已验证其解除。 |
 | 地图移动单位 | 27 的 CDP 注入鼠标输入在 Chrome 155、DPR 1/2 报告 CSS 像素位移；这不是物理鼠标单位证据。 |
-| 31：物理设备结果 | **待用户执行，subtask 31 blocked。** 物理 Fn、持续按住、操纵标点/Option 组合、活动 Keyboard Lock 获得与解除、未锁定地图 Escape 等残余项尚无用户实机结果；AC-18 不得据此标为完成。 |
+| 31：物理设备结果（历史） | macOS Chrome 无痕窗口中的物理 Fn 与操纵键、持续按住/释放、Option 与 Space 并行组合已由用户执行，并以六份连续 OSR replay 核验；Fn+F1 单独复测提交 `cockpit-front`，Fn+F11 单独复测无命令，F10 新提示已观察，操纵轴松开后归零。Option/箭头/Space 的重复操作限制了逐动作归因。用户报告全屏提示为 “Press and hold Esc to exit”，暂停后 Cmd+L/Cmd+T 执行原生行为，但暂停后的锁状态转换未直接读取。当时未锁定地图 Escape 未执行：旧隔离入口的 TEST_BINDINGS 没有 map-context Escape，不能验证生产契约；生产地图路径不属本任务。逐项记录见本地忽略的 `local/research/p3-05/real-device/worker-31-input-check.md`。**31 当时没有完成 AC-18 的地图 Escape、精确锁解除与逐动作归因；后续补证见 37，不追溯改写。** |
 | 37：残余项补证 | [37 的原生/物理证据](../plan/p3/05/subtasks/37-native-input-residuals.md#完成证据)补齐 31 当时的三项缺口：生产绑定的未锁地图 Escape 关闭合成地图；全屏 Running 的原生 Cmd+L 被拦截，`p` 暂停后仍在全屏时同码恢复地址栏，再以 Cmd+T 打开原生标签；用户逐组 Option+↑/↓/←/→ 并轻点 Space，合格 replay 各有持续 primary 与一次重叠 secondary，轴为 0、释放后无开火。↑/← 的不合格初次尝试保留，原因未确认；单独复测通过。30/31/37 合并覆盖本机 AC-18，不外推其他平台或下游 Core 地图规则。 |
-| Q-05 原版运行样本 | 06 样本全部只证明给定 BIOS 码到游戏动作；没有证明宿主物理键到扫描码。基地样本另由 34 阻塞，尚未达到门槛；Q-05 未整体完成。 |
+| Q-05 原版运行样本 | 06 与 [34 成功基地采样](../plan/p3/05/subtasks/34-base-runtime-sample.md#完成证据)已满足本任务的码到动作样本门槛；基地缺口不再阻塞。它们不证明宿主物理键到扫描码；该证据边界与 U-011 的部分确认状态仍见[原版键位表](../original/input/key-map.md#运行样本q-05p3-0506)。 |
 
 残余项不得以合成按键、CDP 注入、页面 `isTrusted`、DOS 输入码注入或配置推导替代。跨操作系统与浏览器矩阵归 P5。
 

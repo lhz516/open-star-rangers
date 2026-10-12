@@ -117,13 +117,13 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 | [28-e2e-keyboard-flow.md](./subtasks/28-e2e-keyboard-flow.md) | 25 | completed |
 | [29-e2e-keyboard-replay.md](./subtasks/29-e2e-keyboard-replay.md) | 25 | completed |
 | [30-real-device-check.md](./subtasks/30-real-device-check.md) | 25, 27 | completed |
-| [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | blocked |
+| [31-real-device-physical.md](./subtasks/31-real-device-physical.md) | 30 | completed |
 | [32-comparison-docs.md](./subtasks/32-comparison-docs.md) | 07, 26, 27, 28, 29, 30 | completed |
 | [34-base-runtime-sample.md](./subtasks/34-base-runtime-sample.md) | 06 | completed |
 | [35-e2e-regressions.md](./subtasks/35-e2e-regressions.md) | 25, 26, 27, 28, 29 | completed |
 | [36-production-map-input-entry.md](./subtasks/36-production-map-input-entry.md) | 27, 31 | completed |
 | [37-native-input-residuals.md](./subtasks/37-native-input-residuals.md) | 30, 31, 36 | completed |
-| [38-evidence-docs-reconciliation.md](./subtasks/38-evidence-docs-reconciliation.md) | 11, 31, 32, 34 | pending |
+| [38-evidence-docs-reconciliation.md](./subtasks/38-evidence-docs-reconciliation.md) | 11, 31, 32, 34 | completed |
 | [33-final-alignment.md](./subtasks/33-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -159,6 +159,9 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
   Evidence: `local/research/p3-05/real-device/worker-30-input-check.md` 的“Actionable residuals for subtask 31”逐项写明按什么、看什么（物理 Fn+F1–F11、无旧提示时的 F10、四个操纵键及 Shift/Ctrl/Ctrl+Shift 与按住、Option+方向键并开火、未锁指针时地图中的 Esc、全屏提示“Press and hold Esc to exit”判定 Keyboard Lock 已取得及暂停后的原生快捷键）。
   Affected acceptance: AC-18 的残余部分；31 的两条验收；33 依赖 31。
   Resume when: 用户可在本机 Chrome 的物理键盘上按清单执行，协调者准备开发服务器并读取诊断。
+- **2026-10-11 — Subtask 31 completed with explicit residuals:** 用户在 macOS Chrome 无痕窗口完成物理 Fn、F10、操纵矩阵、持续按住/释放与 Option/箭头/Space 并行操作；协调者核验六份合成 mission replay 的精确前缀连续性和新增 tick。Fn+F1 单独复测产生 `cockpit-front`，Fn+F11 单独复测无命令；fresh F10 提示和操纵轴释放归零已观察。用户报告全屏 Keyboard Lock 提示以及暂停后的 Cmd+L/Cmd+T 原生行为，但没有直接观察暂停后的锁状态转换。未锁定地图 Escape 未执行：隔离入口的 `TEST_BINDINGS` 缺少 map-context Escape，且本任务没有生产地图路径；不把此入口作为生产绑定证据。Option 并行操作的重复尝试和 Space 持续按住也限制逐动作归因。两条 31 验收已满足（对无法有效测试项明确记录原因），AC-18 的地图 Escape、精确锁释放与组合归因仍未完成。
+  Evidence: `docs/plan/p3/05/subtasks/31-real-device-physical.md`、`docs/engineering/keyboard-input.md` 与忽略的 `local/research/p3-05/real-device/worker-31-input-check.md`。
+  Next: 31 不再阻塞 33；AC-18 保持未完成。33 仍受 34 blocked 阻塞，须按其自身恢复条件处理。
 - **2026-10-10 — Subtask 34 blocked:** 有界规则下的两次探索运行都没有取得基地样本；协调者按用户“直接用最推荐的答案”的授权采用 worker 的建议：Q-05 对基地的门槛保持未达到、不豁免，基地按键仍以 Q-04 的代码证据为唯一合格依据（未被推翻），新采样留待另行批准的运行内导航计划。worker 的事实更正与证据（基地位置每次运行不同；`q05-34-a-01` 停靠超时；`q05-34-b-01` 已激活附近真实基地、命令菜单出现停靠项、状态字节 3→4，但在 hk-21 时视图仍为飞行，基地键序列在观察到 view 6 前就开始）以 `c1d8256c` 集成，行保持 blocked。
   Evidence: 34 的子任务证据、`docs/original/input/key-map.md`、`executable.md`、`unknowns.md` 的更正；私有运行记录在 `local/research/p3-05/`。
   Affected acceptance: 34 的验收；S-01、S-15、AC-01 中的基地运行样本部分；33 依赖 34。
@@ -168,12 +171,14 @@ related: [ADR-0004, ADR-0009, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029
 - **2026-10-12 — Subtask 34 blocked，新批准额度耗尽：** `q05-34-c-02` 在第三次地图选点校准处收到 `w` 而不是配方要求的上方向键，按协议在执行该地图处理前取消；最后选点也未满足本方案的基地距离闸门。两轮报告均为 `cancelled`，完整性和自有进程清理均通过，没有执行基地按键，也没有取得基地样本。未超过两次新增额度，不改变 Q-04，不豁免 Q-05/AC-01；34 保持 blocked、33 保持 pending。
   Evidence: [34 的完成证据](./subtasks/34-base-runtime-sample.md#完成证据)、[基地门禁的原版记录](../../../original/formats/executable.md#base-docking-gates-p3-0534)；私有报告、配方及协调者记录在 `local/research/p3-05/runtime/`。
   Resume when: 用户另行批准新的有界输入/导航方案与运行额度；须明确人工阶段交接，先确认本次基地选点/目标，再观察停靠完成和 view 6，方可采基地码到动作样本。没有自动重试授权。
-- **2026-10-10 — 新增修复项 35：** 协调者在 33 之前于 `ac86ed5c` 运行完整 e2e（单 worker）：214 通过、7 失败，在 29 集成前即可复现（25–27 接线后过时的断言与两项待诊断失败）。按 execute-goal §5 新增 35 并加入 33 的依赖。另：此前完整运行中开发服务器崩溃，原因为主检出 `local/local` 自指符号链接（worker 启动步骤重复执行 `ln -s` 所致）使 Vite 监视器 ELOOP；已删除该链接（仅链接、无数据），后续 kickoff 改为仅在不存在时创建。
-
-## 审批
 - **2026-10-12 — Subtask 34 completed（用户亲手停靠）：** 用户以“继续试，我来协助，打开dosbox”批准继续有界协助，34 重新进行。协调者把方案改为用户在原版中物理飞行与停靠，配方只在停靠设置断点等待，核对视角 6/子状态 5/活动 3 后才注入基地键。`q05-34-d-01` 读数全部合格，但因协调者把控制台日志写入证据根被工具判完整性失败，不计入；`q05-34-d-02` 完整通过（184/184、完整性与清理通过、离线检查通过）：基地下、上、`p`、暂停中 `p`、`l` 的码到动作与 Q-04 一致。Q-05 对基地的门槛达到；物理键到码仍未确认（U-011 部分确认）。33 不再受 34 阻塞。
   Evidence: [34 的完成证据](./subtasks/34-base-runtime-sample.md#完成证据)、[基地门禁的原版记录](../../../original/formats/executable.md#base-docking-gates-p3-0534)、[key-map 运行样本](../../../original/input/key-map.md#运行样本q-05p3-0506)；私有方案、配方、报告在 `local/research/p3-05/runtime/`。
   Affected acceptance: 34 的验收；S-01、S-15、AC-01 的基地样本部分。
+- **2026-10-10 — 新增修复项 35：** 协调者在 33 之前于 `ac86ed5c` 运行完整 e2e（单 worker）：214 通过、7 失败，在 29 集成前即可复现（25–27 接线后过时的断言与两项待诊断失败）。按 execute-goal §5 新增 35 并加入 33 的依赖。另：此前完整运行中开发服务器崩溃，原因为主检出 `local/local` 自指符号链接（worker 启动步骤重复执行 `ln -s` 所致）使 Vite 监视器 ELOOP；已删除该链接（仅链接、无数据），后续 kickoff 改为仅在不存在时创建。
+
+**2026-10-12 — 顺序恢复与最终对齐修复：** 用户选择“改用 --sequential，保留现有修改继续核对”。31 的未提交文档与证据作为现有基线保留，不混入其他项提交。33 首次核对确认 AC-18 仍缺实机证据，隔离地图入口缺生产 Escape 绑定，键位指南仍称 34 阻塞，32 的验收勾选未同步；故 33 保持 pending，新增 36（有效地图验证入口）、37（实机残余核对）、38（证据/文档与批准记录收尾），最终验证依赖三者。不改变 spec、验收门槛或下游地图分工。
+
+## 审批
 
 用户于 2026-10-10 明确批准本 goal（“approve goal and commit”）。批准范围为本文件的代码现状与前提、验收覆盖，以及子任务 01 至 33 的拆分、依赖、执行方式与写入范围。
 
