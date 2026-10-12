@@ -8,7 +8,7 @@ import type { MapInputGeometry, MapPosition } from '../src/render/map/map-input-
 // P3-05 subtask 27 (docs/plan/p3/05/subtasks/27-map-input-entry.md): the production map input, cursor drawer, geometry
 // and Pointer Lock port in the isolated development entry, in Chrome (spec 战略地图输入; S-11; AC-12, and the browser
 // parts of AC-09, AC-13 and AC-16). What the entry makes synthetic is listed in its script: the map context, the owner's
-// input context, the test bindings, the geometry and policy, and the Pointer Lock host's pending and refused answers.
+// input context, the geometry, and the Pointer Lock host's pending and refused answers. Bindings and policy are production.
 // It is not the real mission's map path. Pointer Lock is real Chrome Pointer Lock (it works headless on an http origin);
 // Playwright's Escape does not reach Chrome's native unlock, so the browser's own unlock is `document.exitPointerLock()`
 // from outside the input, observed through actual `pointerlockchange` events; subtask 30 checks the native Esc.
@@ -18,6 +18,30 @@ test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
 
 /** Three repeat intervals of clock units: long enough that a repeat still running would have selected again. */
 const QUIET = 24;
+
+test('the manual entry uses production Escape to close the unlocked map without opening a menu', async ({ page }) => {
+  const entry = await MapEntry.load(page, { manual: true });
+  await page.getByRole('button', { name: 'Open unlocked map', exact: true }).click();
+  const zone = page.locator(ZONE);
+  await expect(zone).toBeFocused();
+  await entry.waitForMap('unlocked');
+  expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  await zone.press('Escape');
+  await expect.poll(async () => (await entry.state()).context).toBe('flight');
+  await entry.waitForMap('off');
+  const state = await entry.state();
+  expect(state.commands).toHaveLength(1);
+  expect(state.commands[0]).toMatchObject({ type: 'toggle-map', id: expect.any(Number) });
+  expect(state.portCalls).not.toContain('open-menu');
+  expect(state.errors).toEqual([]);
+  await page.mouse.click(400, 300);
+  await entry.frames(3);
+  expect((await entry.state()).commands.filter(command => command.type === 'map-point')).toEqual([]);
+  await page.getByRole('button', { name: 'Refresh observations', exact: true }).click();
+  await expect(page.getByLabel('Observation snapshot')).toContainText('"context": "flight"');
+  await page.getByRole('button', { name: 'Close test session', exact: true }).click();
+  await expect.poll(async () => (await entry.state()).open).toBe(false);
+});
 
 const near = (actual: MapPosition | null, expected: MapPosition, digits = 9): void => {
   expect(actual).not.toBeNull();
@@ -50,6 +74,25 @@ async function openMap(entry: MapEntry, lock: 'native' | 'pending' | 'refuse' | 
   await entry.setContext('map');
   return flight;
 }
+
+test('page-delivered Escape closes the locked map through production bindings and releases Pointer Lock', async ({ page }) => {
+  const entry = await MapEntry.load(page);
+  await openMap(entry);
+  await page.mouse.click(400, 300);
+  await entry.waitForMap('locked');
+  // Synthesized Escape reaches the adapter, not Chrome's native Pointer Lock unlock path.
+  await page.keyboard.press('Escape');
+  await entry.waitForMap('off');
+  await expect.poll(() => entry.zoneLocked()).toBe(false);
+  await expect.poll(async () => (await entry.state()).pointerLock.state).toBe('idle');
+  const state = await entry.state();
+  expect(state.context).toBe('flight');
+  expect(state.commands.filter(command => command.type === 'toggle-map')).toHaveLength(1);
+  expect(state.portCalls).not.toContain('open-menu');
+  await expectNoCursor(entry);
+  expect(state.errors).toEqual([]);
+  expect(await entry.close()).toEqual([]);
+});
 
 test.describe('map input entry at pixel ratio 1', () => {
   test('starts at the K point, locks on the first click only, follows locked movement, clamps and clears', async ({ page }, testInfo) => {
@@ -329,16 +372,9 @@ test.describe('map input entry at pixel ratio 1', () => {
     const moved = { right: start.right + 50 / unit.x, down: start.down };
     await expect.poll(async () => (await entry.state()).cursor?.right).toBeCloseTo(moved.right, 9);
 
-    // Playwright's Escape reaches the page but not Chrome's native unlock; under the lock it opens no menu.
-    await page.keyboard.press('Escape');
-    await entry.frames(2);
-    let state = await entry.state();
-    expect(state.portCalls).not.toContain('open-menu');
-    expect(await entry.zoneLocked()).toBe(true);
-
     // The browser ends the lock itself: the map stays open, waiting, with the position kept and the input cleared.
     await entry.call('document.exitPointerLock()');
-    state = await entry.waitForMap('click-to-lock');
+    let state = await entry.waitForMap('click-to-lock');
     expect(await entry.zoneLocked()).toBe(false);
     expect(await entry.lockChanges()).toEqual(['zone', 'none']);
     expect(state).toMatchObject({ context: 'map', pointerLock: { state: 'idle' }, map: { systemPointerHidden: false }, zoneCursor: 'auto' });

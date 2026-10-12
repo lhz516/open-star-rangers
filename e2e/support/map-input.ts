@@ -58,8 +58,8 @@ export class MapEntry {
   }
 
   /** Loads the entry, which must show its input zone; nothing is open yet. */
-  static async load(page: Page): Promise<MapEntry> {
-    await page.goto(ENTRY);
+  static async load(page: Page, options: { manual?: boolean } = {}): Promise<MapEntry> {
+    await page.goto(options.manual ? `${ENTRY}?manual=1` : ENTRY);
     // Not a locator: its waits evaluate as user gestures too.
     const entry = new MapEntry(page, await page.context().newCDPSession(page));
     await expect.poll(() => entry.call<boolean>(`window.osrMapInput !== undefined && document.querySelector('${ZONE}') !== null`)).toBe(true);

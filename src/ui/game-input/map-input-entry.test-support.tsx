@@ -14,7 +14,6 @@
  *   each `toggle-map` the run took or set by the test. Core still receives every `map-point`; its results are P3-09's.
  * - **Owner:** a stand-in for the mission owner's input context (owner 1, previous owners closed); its run port sends
  *   the session `clear-input` while running and pauses or resumes for `p`, and records `openMenu` only.
- * - **Bindings:** the TEST binding table of `game-input.test-support.ts`, not the production table (subtask 19).
  * - **Geometry:** a 320×240 logical screen whose main map spans (16, 8)–(256, 200), shown in the 4:3 frame
  *   `computeViewportLayout` fits into the input zone; the test may replace it with none or an inverted one.
  * - **Policy:** the production policy finalised at checkpoint K.
@@ -27,7 +26,7 @@
  *
  * Observation hooks are on `window.osrMapInput`; the test drives input with real browser mouse and key events.
  */
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { MissionInputContext, MissionRunInputControl } from '../../app/mission/mission-owner.ts';
 import { createGameSession, type GameSession, type GameSessionRun } from '../../app/session/game-session.ts';
@@ -47,7 +46,7 @@ import { GameInputZone } from '../mission/GameInputZone.tsx';
 import { createGameCommandFeedback } from '../game/game-command-feedback.ts';
 import { createGameSessionBridge, type GameSessionBridge } from '../game/game-session-bridge.ts';
 import { createGameStore } from '../game/game-store.ts';
-import { TEST_BINDINGS } from './game-input.test-support.ts';
+import { GAME_INPUT_BINDINGS } from './bindings.ts';
 import type { InputContext } from './input-action.ts';
 import { createInputConsumer, type GameInputConsumer } from './input-consumer.ts';
 import { MAP_INPUT_POLICY } from './map-input-policy.ts';
@@ -231,7 +230,7 @@ function createEntry(zone: () => HTMLElement): MapInputEntry {
       let drawer: MapCursorDrawer | null = null;
       const consumer = createInputConsumer<HTMLElement>({
         keyboard: createBrowserKeyboardSource,
-        bindings: TEST_BINDINGS,
+        bindings: GAME_INPUT_BINDINGS,
         pointerLock: () => createPointerLock(lockHost(element, lock, counter)),
         feedback: () => ({
           submit(command: Command) {
@@ -347,8 +346,42 @@ window.osrMapInput = createEntry(() => {
   return zoneElement;
 });
 
+function ManualControls() {
+  const [observation, setObservation] = useState('No observation captured.');
+  const entry = window.osrMapInput!;
+  const refresh = () => {
+    const { phase, context, map, pointerLock, commands, portCalls, errors } = entry.state();
+    setObservation(JSON.stringify({ phase, context, map, pointerLock, commands, portCalls, errors }, null, 2));
+  };
+  return (
+    <aside style={{ position: 'absolute', top: '100%', width: '100%', color: '#fff' }} aria-label="Manual map input checks">
+      <p>Synthetic map context and geometry, production input bindings. This is not the real mission map.</p>
+      <button type="button" onClick={() => {
+        try {
+          entry.open({ lock: 'unsupported' });
+          entry.setContext('map');
+          zoneElement?.focus();
+          refresh();
+        } catch (cause) {
+          setObservation(text(cause));
+        }
+      }}>Open unlocked map</button>
+      <button type="button" onClick={refresh}>Refresh observations</button>
+      <button type="button" onClick={() => {
+        void entry.close().then(failures => {
+          if (failures.length) setObservation(failures.join('\n'));
+          else refresh();
+        }, cause => { setObservation(text(cause)); });
+      }}>Close test session</button>
+      <p>Wait for the cursor, then press Escape in the focused game area. Refresh observations afterward.</p>
+      <pre aria-label="Observation snapshot">{observation}</pre>
+    </aside>
+  );
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GameInputZone zoneRef={zoneRef}>{null}</GameInputZone>
+    {new URLSearchParams(window.location.search).get('manual') === '1' && <ManualControls />}
   </StrictMode>,
 );
