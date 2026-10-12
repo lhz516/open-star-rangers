@@ -115,7 +115,7 @@ test.describe('map input entry at pixel ratio 1', () => {
     await page.mouse.up();
     const locked = await entry.waitForMap('locked');
     expect(await entry.zoneLocked()).toBe(true);
-    expect(await entry.lockChanges()).toEqual(['zone']);
+    await expect.poll(() => entry.lockChanges()).toEqual(['zone']);
     expect(locked).toMatchObject({ requests: 1, pointerLock: { state: 'active' }, map: { systemPointerHidden: true }, zoneCursor: 'none' });
     await entry.frames(3, locked);
     expect(points(await entry.state())).toEqual([]);
@@ -376,7 +376,7 @@ test.describe('map input entry at pixel ratio 1', () => {
     await entry.call('document.exitPointerLock()');
     let state = await entry.waitForMap('click-to-lock');
     expect(await entry.zoneLocked()).toBe(false);
-    expect(await entry.lockChanges()).toEqual(['zone', 'none']);
+    await expect.poll(() => entry.lockChanges()).toEqual(['zone', 'none']);
     expect(state).toMatchObject({ context: 'map', pointerLock: { state: 'idle' }, map: { systemPointerHidden: false }, zoneCursor: 'auto' });
     expect(state.portCalls).toContain('clear-input pointer-lock-exit');
     near(state.cursor, moved);
@@ -390,7 +390,7 @@ test.describe('map input entry at pixel ratio 1', () => {
     state = await entry.state();
     expect(state.commands).toHaveLength(count);
     near(state.cursor, moved);
-    expect(await entry.lockChanges()).toEqual(['zone', 'none', 'zone']);
+    await expect.poll(() => entry.lockChanges()).toEqual(['zone', 'none', 'zone']);
 
     // Losing the input zone's focus exits the lock and suspends the map with the cursor still. A click focuses the zone
     // again: its press reaches the map before the focus, so it selects nothing, and its user activation remains as the

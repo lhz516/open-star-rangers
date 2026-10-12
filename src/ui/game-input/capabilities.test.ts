@@ -789,6 +789,32 @@ describe('pointer lock', () => {
     expect({ calls: s.calls.length, tick: s.lastTick() }).toEqual({ calls: 2, tick: NEUTRAL });
   });
 
+  it('waits for a revoked held lock to end and requires an explicit request to lock again', async () => {
+    const s = await setup();
+    s.start();
+    s.fly();
+    s.caps.requestPointerLock();
+    s.pointer.change('target');
+    await flush();
+    s.caps.exitPointerLock();
+    s.caps.requestPointerLock();
+    s.frame();
+    expect({ requests: s.pointer.requests, exits: s.pointer.exits, lock: s.capability('pointerLock').state })
+      .toEqual({ requests: 1, exits: 1, lock: 'active' });
+
+    s.pointer.change('none');
+    await flush();
+    s.frame();
+    expect({ requests: s.pointer.requests, lock: s.capability('pointerLock').state, calls: s.calls })
+      .toEqual({ requests: 1, lock: 'idle', calls: ['clear-input pointer-lock-exit'] });
+
+    s.caps.requestPointerLock();
+    s.pointer.change('target');
+    await flush();
+    expect({ requests: s.pointer.requests, lock: s.capability('pointerLock') })
+      .toEqual({ requests: 2, lock: status('active', { generation: 2, runId: 1 }) });
+  });
+
   it('undoes the late lock of a revoked request with no state, clear or new request, and ends a run\'s lock with its run', async () => {
     const s = await setup();
     s.start();

@@ -9,7 +9,8 @@
  *   its port. Revoking a request invalidates it at once: a late success is only undone, on a target this owner still
  *   holds, with no focus, mode or action. A late failure stays the request's own: shown while no newer request exists.
  * - **Barriers:** nothing is requested before `previousClosed` settles, nor while an earlier request or exit of the same
- *   capability is still open. A fullscreen or Pointer Lock request refused so fails as `closing`; a key lock waits.
+ *   capability is still open. A new fullscreen or Pointer Lock request refused so fails as `closing`; a key lock waits.
+ *   Calls while the current Pointer Lock request is pending or its confirmed lock is held are inert, including exit.
  * - **Fullscreen:** a start's request reaches the host synchronously in the start's gesture, only where Keyboard Lock is
  *   supported too. It belongs to that start, and to the start's run only once the start began one; otherwise it is
  *   revoked. When a run that began leaves the session (a restart), on an explicit exit and on release, open requests are
