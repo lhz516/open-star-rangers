@@ -128,7 +128,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
-| [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | in-progress |
+| [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | blocked |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -217,6 +217,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Affected acceptance: AC-16 单次转移与连续行为；27 的前两项。
   Resume when: 40 完成，且新版有不违反架构边界的 kind 0x100 正式 World.step 对照窗口。
 - **2026-10-13 — Subtask 40 started:** 补采原版 missile 1 的完整 D-02 终点窗口；判据与采样配置不变。
+- **2026-10-13 — Subtask 40 blocked:** 协调者批准的唯一 `a40-m1-04` run 在 `poll-select-m3` 前因运行器拒绝基准工具的仓库相对 confirmation path 而安全取消；0/20,078 samples、3/7 stimuli，无导弹选择、目标门禁或 Space。报告 `cancelled`，原版保护完整性与进程清理通过，事后无 DOSBox-X、`SessionLock` 空闲。Mocks 未覆盖规范化 run root 与共享 `local` symlink 显示路径的组合；不得绕过 guard，依预定单次尝试限制不再重跑。
+  Evidence: `local/research/p3-07/runtime/runs/a40-m1-04/report.json`；B-009 与 subtask 40 记录具体路径错配与验证。
+  Affected acceptance: 40 的完整 missile-1 终点窗口及 D-02 导弹飞行/制导结论；27、36、29 仍受依赖阻塞。
+  Resume when: 获得一项经真实规范化路径端到端覆盖的修正协议与测试，并在单独复核后明确授权新的采集尝试。
 
 ## 审批
 
