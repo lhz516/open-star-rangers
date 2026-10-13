@@ -43,9 +43,9 @@ updated: 2026-10-13
 
 ## 验收标准
 
-- [ ] 取得至少一个完整、合格的导弹 1 窗口，满足 D-02 对应的导弹飞行与制导节奏条件；或按证据记录本项阻塞，不得以发射或中途飞行窗口代替终点窗口。
-- [ ] 配方、运行配置、输入边界、保护与清理记录完整；不合格运行不计入。
-- [ ] 27 的读取器能消费该窗口，文档链接与元数据通过；若工具变化，相关合成测试通过。
+- [x] 取得至少一个完整、合格的导弹 1 窗口，满足 D-02 对应的导弹飞行与制导节奏条件；或按证据记录本项阻塞，不得以发射或中途飞行窗口代替终点窗口。
+- [x] 配方、运行配置、输入边界、保护与清理记录完整；不合格运行不计入。
+- [x] 27 的读取器能消费该窗口，文档链接与元数据通过；若工具变化，相关合成测试通过。
 
 ## 验证方法
 
@@ -53,7 +53,8 @@ updated: 2026-10-13
 
 ## 完成证据
 
-- **结果：阻塞；未取得窗口。** 单次预定运行 `a40-m1-01` 报告为 `cancelled`，不是 `complete`，不得计入。报告原因：`samples-missing`、`stimuli-missing`、`run-cancelled`；64/19,962 planned field samples 合格，5/6 stimuli applied。唯一失败发生在 `poll-target-gate`：自定义运行器在该 pause 等待确认时读取门禁 `reads.json`，得到 `FileNotFoundError`，遂在确认 pause 前写入 abort。报告没有门禁样本、没有 Space 刺激、没有玩家导弹发射；这不是目标有效或无效的运行时判定。`poll-select-target` 中的字段是在 `t` 刺激施加前读取，不能用来替代目标门禁。
+- **最终结果：完成。** `a40-m1-06` 取得合格的完整导弹 1 窗口（详见本节末尾）。`a40-m1-01` 至 `a40-m1-05` 均不计入，以下按时间顺序保留其记录。
+- **`a40-m1-01` 结果：阻塞；未取得窗口。** 单次预定运行 `a40-m1-01` 报告为 `cancelled`，不是 `complete`，不得计入。报告原因：`samples-missing`、`stimuli-missing`、`run-cancelled`；64/19,962 planned field samples 合格，5/6 stimuli applied。唯一失败发生在 `poll-target-gate`：自定义运行器在该 pause 等待确认时读取门禁 `reads.json`，得到 `FileNotFoundError`，遂在确认 pause 前写入 abort。报告没有门禁样本、没有 Space 刺激、没有玩家导弹发射；这不是目标有效或无效的运行时判定。`poll-select-target` 中的字段是在 `t` 刺激施加前读取，不能用来替代目标门禁。
 - **运行身份与限制：** 配方 `local/research/p3-07/runtime/recipes/a40-m1.json`，SHA-256 `912064b22de752c7457cfb6268e5e817ff0a172a3ac3c11c3e842a18348f120e`，指纹 `sha256:08e59f448c5e0073667622eda6f0c7c01ab71614e58ec28a361296456f35dd13`；baseline `manifest-b9bfecb3bf772fbf`，mission 3019/difficulty 19/wingman 1/cycles 40000。报告记载原版保护完整性通过（201 个文件无变化）与进程清理通过；事后确认无 DOSBox-X 残留且会话锁空闲。只有预定的 5 个进入/选武器/选目标刺激被施加，没有 Space，也没有任何后续输入。
 - **覆盖缺口：** phase 0 首个 state 7 回调、解保、每次 fuse 检查、目标 +0x8C 每存活帧、terminal 与 next-frame leave、d ≥ 2 后再次重排及 s ≠ 2 均未取得。既有 `a39-mc-01` 仍以 `end-not-read` 排除，不延伸、不拼接、不推断。依本项单次采集约束，不重跑；无完整窗口可供 `orig.py` reader 或 comparison 输出消费。B-009 已记录相同阻塞；未修改 27、29、goal、spec、executable、unknowns 或生产代码。
 - **获准修正尝试 `a40-m1-02`（仍阻塞）：** 首次 runner race 的根因是工具在 operator confirmation 之前尚未写出该 pause 的 `reads.json`。修正后 runner 先确认 `poll-target-gate`，再在后续 `poll-fire` 确认前以 3 秒 bounded wait 读取已完成的 gate 记录；synthetic self-test 初始 7/7 通过。门禁记录中的目标节点/对象有效性、活动/未毁状态及 M1 选择均满足有效目标预期，但门禁错误地硬编码了无证据支持的目标 kind，因而拒绝该活动目标并在确认 `poll-fire` 前安全 abort；Space 未施加、无导弹发射。报告 `cancelled`，128/19,989 field samples 合格（98/6,397 required），刺激 6/7；完整性与清理通过。之后按 H5 的目标有效性定义移除了无依据的 kind 限制，门禁改为检查节点与对象有效、目标活动且未毁、并选中 M1；synthetic self-test 9/9 通过。依用户对唯一修正尝试的约束，不再重跑。
@@ -69,3 +70,9 @@ updated: 2026-10-13
 - **保护、清理与验证：** 报告 `integrity.passed=true`，201 个受保护文件与 28,289 个 evidence 文件无变化/新增/移除；recipe snapshot 在核对后由 baseline 清理流程移除。cleanup 通过，DOSBox PID 19553 及进程组回收；事后无 DOSBox-X，`SessionLock` 可取得并释放。runner mocks 18/18、gate synthetic tests 52/52、comparison selftest 130/130、baseline unittest 184 项、preflight、链接检查与 `git diff --check` 均通过；但 mocks 未覆盖“canonical output root + repository-relative status signal”的真实组合，运行实证暴露协议缺口。
 - **阻塞与范围：** 40 按预定单次采集约束不重跑，维持 blocked；必须修正并端到端验证 canonical path 转换、并经单独复核后明确授权新尝试，方可恢复。没有窗口可供 `orig.py` 或 comparison 消费；不修改 D-02、27、spec、production code 或 baseline tools。
 - **本次验证：** 更新后的 B-009 与本页 front matter 均保留必需 metadata，`updated: 2026-10-13`；两份文档的相对链接和锚点检查通过，`git diff --check` 通过。baseline/comparison/生产代码均未修改；未运行 pnpm 全检。
+- **协调者恢复与 `a40-m1-05`（不计入）：** 用户授权协调者决定本目标其余事项。`valid_confirmation_path` 改为比较 signal 的规范化父目录与规范化 operator 目录；`test_m1_runner.py` 新增真实文件系统用例（共享 `local` symlink + 规范化 run root），runner 24/24、gate 52/52；`run_agent.py` SHA-256 `ed7771cf3271f1f8b7de6adc6426fda2ea70a63e255ea0f1f6850b0be9c6e3d3`。配方仍为 `a40-m1-corrected.json`。设置确认正常，两次目标门禁通过（`valid-active-enemy-target-and-viable-missile-1`），`poll-fire` 施加 Space，刺激 7/7。报告 `failed`（`samples-missing`、`run-timeout`），3614 秒后止于 m1-178：7,044/20,078 samples（required 2,306/6,422）。完整性通过（201 个受保护文件，无 evidence 变化/新增），清理通过（PID 21825 SIGTERM→SIGKILL 后回收）。原因是配方设计错误：`limits.runSeconds` 3600，而 534 个暂停约需 9,500 秒（每帧约 17.6 秒；a39-mc 用 86400）。此前对 a40-m1-04 的审阅漏掉了这一点。最后一行导弹仍在飞行，只作诊断，不作窗口。
+- **获准修正运行 `a40-m1-06`：** `make40.py` 先确认能逐字节重建 `a40-m1-corrected.json`，然后只把 `runSeconds` 改为 86400，生成 `recipes/a40-m1-long.json`（SHA-256 `e108ce4b7fb7fe883eb4202238dbba4eb47a608f46176ed96381fc17def37c29`，指纹 `sha256:0ccef663c2cca766c73155c251aa83961f53374fbf44c0bad64dc8f68629f297`）；JSON 只有 `limits.runSeconds` 不同，配置、门禁、单次 Space、520 帧与 1500 秒等待上限不变。单独的 rubber-duck 复核无阻塞问题（等待、读数、日志与跳过命中限制充足；释放后的绑定字段为可选，不影响 `complete`；无硬编码配方名或哈希）。确定性预算错误的唯一修正运行不属于盲目重跑；协调者据用户授权批准。启动前 preflight 通过（manifest `manifest-b9bfecb3bf772fbf`，534 pauses，evidence 即规范化 runs 根），`SessionLock` 空闲，无 DOSBox-X。
+- **`a40-m1-06` 结果（合格）：** 报告 `complete`，无 reasons；20,078/20,078 samples（12,291 合格，required 6,422/6,422），刺激 7/7，跳过命中 0，用时 8,502.7 秒（2026-10-13 19:50:39Z–22:12:21Z）。完整性通过（201 个受保护文件、29,379 个 evidence 文件均无变化/移除/新增），清理通过（DOSBox PID 26475 SIGTERM→SIGKILL，进程与进程组回收）；事后无 DOSBox-X。报告 SHA-256 `dc8149e6f45a3ec6aba32b931e40d20b4b04a0ea1f6bbaaf49e86cb99148d78e`。
+- **窗口：** 发射 tick 11196，阶段 0 首个 state 7 回调 11200（步长 2、2）；寿命记录 384（`+0x44`），读取器归类为无制导程序。存活帧逐帧连续，每帧读到目标 `+0x8C` 句柄及其对象有效。37 次引信检查；相邻检查之间的 36 条严格截止链中，33 条 d = 0，3 条 d = 2 后重排。寿命到期：tick 11584 的帧仍为 state 7，11586 的帧为 state 6（失效，fizzle），11590 的帧节点已释放（下一帧离开，步长 4）。`orig.py` 的 `a40-m1` 读取器（selftest 136/136，新增 6 例）产出该窗口；Φ 判为 `holds`，无值失败或无效链节，`d2ThenReschedule` 与 `frameStepNot2` 均为真。
+- **对 27 的影响（不在本项判定）：** 以 26/38/39 的 30 个运行加 `a40-m1-06` 重跑比较（31 个运行，`skippedRuns=[]`，新版输出 `out/new-c0d1b0c3` 不变，其后无 `src/` 变更）：导弹类原版持有窗口 4 个，覆盖导弹 0、1、3；`a40-m1-06` 的窗口键（寿命 384、无制导、fizzle）在现有新版场景中无配对，因为新版导弹 1 的窗口都以近炸结束。被忽略的 `compare.py` 已把过期的“导弹 1 无终点窗口”缺口改为这一新版配对缺口。报告 `out/a40-2026-10-13/report.json` SHA-256 `13e52f69ef9f8d1cebfcdbe1f845eac2de2861fe6f352c2d763a393a158a4b4d`；工具 SHA-256：`compare.py` `90eec0ca1a4f387d9bd6fe047676d96b1fbd5fedb8e4343344cd7119531ee9b5`，`orig.py` `7c8bf4d90a66e44655ebfb28130612828d3425d878f6e52de3fc7bb4c3cbcfd5`，`selftest.py` `efffd184ac08904520cfbf75881a9c1d741fb0ed955c670272f53c387ccff441`。新版场景补充与类别结论由 27 负责。
+- **验证：** runner 24/24、gate 52/52、comparison selftest 136/136；preflight 通过。未修改生产代码、baseline 工具、spec 或 D-02；未运行 pnpm 全检（无 TypeScript 变更）。文档链接与元数据、`git diff --check`、原版合规检查见本次提交。

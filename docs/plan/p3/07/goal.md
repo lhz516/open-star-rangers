@@ -128,7 +128,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
-| [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | blocked |
+| [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -221,6 +221,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: `local/research/p3-07/runtime/runs/a40-m1-04/report.json`；B-009 与 subtask 40 记录具体路径错配与验证。
   Affected acceptance: 40 的完整 missile-1 终点窗口及 D-02 导弹飞行/制导结论；27、36、29 仍受依赖阻塞。
   Resume when: 获得一项经真实规范化路径端到端覆盖的修正协议与测试，并在单独复核后明确授权新的采集尝试。
+- **2026-10-13 — Subtask 40 resumed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。runner 改为按规范化父目录比较 confirmation signal，新增真实文件系统 symlink 测试（runner 24/24、gate 52/52），经复核后运行 `a40-m1-05`。该次门禁两次通过并发射导弹 1，但配方 `runSeconds` 3600 远小于 534 个暂停所需（约 17.6 秒/帧），于 m1-178 以 `run-timeout` 结束（`failed`，不计入；完整性与清理通过）。这是确定性的配方预算错误，不是游戏结果；仅把 `runSeconds` 改为 86400 生成 `a40-m1-long.json`，经单独 rubber-duck 复核无阻塞问题后授权唯一一次修正运行 `a40-m1-06`。
+- **2026-10-13 — Subtask 40 completed:** `a40-m1-06` 为 `complete`（20,078/20,078 samples，required 6,422/6,422，刺激 7/7；完整性与清理通过）。导弹 1 从发射、阶段 0 首个 state 7 回调、解保、37 次引信检查到寿命到期失效（state 6）及下一帧离开，帧连续、逐帧读到目标有效性；Φ 判为 holds，含 d = 2 后重排与 s ≠ 2。27 的读取器已消费该窗口；比较中该窗口（寿命 384、无制导、fizzle）在现有新版场景中无配对（新版导弹 1 都以近炸结束），由 27 恢复时补新版场景。
+  Evidence: `local/research/p3-07/runtime/runs/a40-m1-06/report.json`；被忽略的 `comparison/out/a40-2026-10-13/report.json`；B-009 与 40 的完成证据。
 
 ## 审批
 
