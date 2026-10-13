@@ -39,11 +39,11 @@ updated: 2026-10-12
 
 ## 验收标准
 
-- [ ] 全部 S/AC 有已完成的实现与验证证据，覆盖表无缺口。
-- [ ] AC-02 的定稿记录与提交顺序核对通过；共享 spec 的批准记录真实。
-- [ ] 上列不变量逐项成立。
-- [ ] `pnpm check`、`pnpm check:compliance`、指定的 vitest 与 e2e 命令通过（列出命令与结果）。
-- [ ] 文档与实现一致，链接与元数据正确。
+- [x] 全部 S/AC 有已完成的实现与验证证据，覆盖表无缺口。
+- [x] AC-02 的定稿记录与提交顺序核对通过；共享 spec 的批准记录真实。
+- [x] 上列不变量逐项成立。
+- [x] `pnpm check`、`pnpm check:compliance`、指定的 vitest 与 e2e 命令通过（列出命令与结果）。
+- [x] 文档与实现一致，链接与元数据正确。
 
 ## 验证方法
 
@@ -56,3 +56,44 @@ updated: 2026-10-12
 - **2026-10-12 — 文档交接核对未通过：** 阶段索引 P3-09 的“Esc 不关闭”与 P3-07 的 `?` 主武器键仍与本任务定稿契约不一致。新增 39 处理唯一事实链接与交接措辞，不在最终验证内改行为。AC-18 已由 37 补证；其通过不能替代仍待修正的文档一致性。
 - **2026-10-12 — 浏览器复验未通过：** `pnpm check`（243 文件/7305 测试）、compliance、指定 Vitest（46 文件/830 测试）、baseline Python（166 测试）均通过。指定 e2e 为 41 passed、1 failed：`map-input.development.spec.ts:118` 已锁实际目标，但 change 观察历史尚为空。完整 e2e 因前置失败未启动。原失败 trace 已保存在私有会话附件；同例未修改前独立重复 5/5 通过，仅说明间歇性。新增 40 处理独立事件观察的同步假设，不删除或降低断言。
 - **2026-10-12 — 已锁地图 Escape 契约核对未通过：** 40 后的代码审阅确认地图 command 分支绕过 Pointer Lock 保护，36 的“页面收到已锁 Escape 就关闭地图”不是契约例外。新增 41 修复；进行中的最终浏览器链已中止，不能作为最终通过证据。36 的历史记录保留并另附当前更正，37 的原生解锁/未锁关闭证据不受此缺陷推翻。
+
+### 2026-10-12 最终逐项核对
+
+40 份非最终子任务均有已勾选验收与实际完成证据；goal 覆盖表包含全部 15 个 S 与 19 个 AC，没有缺行。本次逐项核对及工程复验通过；此前失败/中止结果保留为修复来源，不混入通过计数。
+
+| 范围 / AC | 核对结果与证据归属 |
+|---|---|
+| S-01 / AC-01 | Q-01–Q-06 按各自门槛核对 01–07；34 的合格基地运行补齐 Q-05。物理键到原版码与真实 BIOS 按住节奏仍未确认，Q-06 明确区分源码/配置与实样，未冒充已确认。U-011 的 34 补充与“部分确认”准确。 |
+| S-02、S-03 / AC-02、AC-03 | 05/08 的 K 来源、NumLock/Shift、冲突消歧、G 别名与提交顺序核对；18/19 的绑定/轴矩阵与 28 tick 录制。P3-09 同 tick Core 门禁不冒充完成。 |
+| S-04 / AC-04 | 18/20 的双 Alt、AltGr、短按与清键时序；28 tick 输入与 31/37 实机并用。 |
+| S-05 / AC-05、AC-06 | 19/20 的命令/反馈/错误与 32/16 时钟单位帧后重复；29 的真实导出/重放。无新增调度或 OS repeat 驱动。 |
+| S-06 / AC-07 | 10 的真实批准；16 校验、档位等价、select-number 门禁、编辑器、比较器和旧版本拒绝。规则 3/replay 2/快照 2 对应实际批准基线 2/1/2。 |
+| S-09 / AC-08 | 11 的本次明确 G-08 批准（不追溯授权）、19 的全部别名矩阵、24 文案及 28/31 标注。 |
+| S-07 / AC-09、AC-10 | 15/20 所有者控制与唯一输入区，23/25 焦点和装配；36/37 未锁 Escape 生产/原生证据，41 修复已锁 command 绕过保护。 |
+| S-08 / AC-11 | 18 拦截矩阵及 28 默认行为；页面输入与 OS 路径分开，Escape/Tab/Meta/F12 不进入锁键列表。 |
+| S-11 / AC-12 | 22/26 的起点/间隔/命令次序，27/40/41 的真实锁目标、精确事件、像素/DPR/边角/回退/资源回归；30/37 原生解锁。生产几何与完整地图仍交 P3-13/P3-15。 |
+| S-10 / AC-13 | 20–22 清键/恢复/时序矩阵、28 真实失焦/隐藏及 29 录制边界；41 旧 Escape repeat 不复活。 |
+| S-12 / AC-14 | 14/21 的 Promise/change/error、失败与部分成功；23/25 开始手势/运行资格；37 原生 Cmd+L 的实际拦截与暂停后恢复。 |
+| S-13 / AC-15 | 14/23/25 平台族与非全屏提示，28 先全屏后退出，不持久化。 |
+| S-14 / AC-16 | 15/21/25 先失效/关闭屏障/逐项失败聚合与所有权；27/28/35 资源与 HMR，40 旧锁退出期间的幂等申请、抑制输入及显式恢复。 |
+| AC-17 | 29 的键盘驱动真实 JSON 导出，经 Node 和浏览器重放，不只手写录制；不宣称跨引擎逐位一致。 |
+| AC-18 | 30/31/37 的本机 Chrome 原生、Fn/持续操纵及四组 Option/方向/Space 实样合并覆盖；首次不合格尝试保留，未将合成事件代替实机。 |
+| S-15 / AC-19 | 32/38 的 R-23 差异、事实链接、源码/模块/工程指南；39 的用户批准阶段索引同步；41 更正指南与 36 的历史错误解释。 |
+
+- **不变量：** typecheck 的 DOM-free Core 与 lint/边界测试通过；`use-mission-owner` 为每个 owner 只创建一个 input consumer，键盘源仅在 connect 创建一次，运行订阅由 ownCleanup 登记。绑定清单过滤 `UNLOCKABLE_KEY_CODES`，平台请求也拒绝这些码。输入目录没有 storage/host-time/rAF 调用；相对 `d73e5d27` 的 storage/settings 路径无修改。Core replay 只含 TickInput，快照无输入按住/能力状态；16 与当前完整单元测试覆盖旧版本在任何 tick 前拒绝。
+- **集成边界：** 用户明确选择固定 `42db4ec2` 基线完成本次 goal，最新 main（`96765ccc`）另作集成任务。新 main 已含额外 P3-07 实现和规则/快照 3/3，不能把本分支的版本、对照与通过结果直接套到该树；后续须解决版本碰撞并联合复验。
+
+| 检查 | 实际结果 |
+|---|---|
+| `pnpm check`（41 完成后的当前实现） | typecheck、lint、Vitest 243 文件 / 7307 测试及 production build 通过；其后没有实现改动。 |
+| `pnpm check:compliance` | 本次最终链 `passed: true`；没有新增原版内容、读数、反编译或无许可依赖。 |
+| `pnpm exec vitest run src/platform/input src/platform/browser src/ui src/app/mission src/core/contracts` | 本次最终链 46 文件 / 832 测试通过。 |
+| `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` | 本轮最终核对的前一检查链 166 测试通过；之后仅修复输入/浏览器断言与文档，baseline 工具未再改动。 |
+| `OSR_E2E_DEV_PORT=5301 OSR_E2E_PREVIEW_PORT=5302 pnpm exec playwright test e2e/map-input.development.spec.ts e2e/keyboard-input.spec.ts e2e/keyboard-input.development.spec.ts e2e/mission-flow.development.spec.ts e2e/browser-replay.spec.ts e2e/joint-resources.spec.ts e2e/fast-refresh.spec.ts e2e/mission-flow.production.spec.ts` | 本次最终链 42/42 通过（3.4 分钟）。涵盖 27/28/29、实际生产绑定与 41 修复。 |
+| `OSR_E2E_DEV_PORT=5301 OSR_E2E_PREVIEW_PORT=5302 pnpm exec playwright test` | 本次最终链 223/223 通过（13.5 分钟），单 worker、零 retries，无失败或跳过；development、production、development-headed 均完成。资源/原生生命周期/GPU/长任务门槛未降低。 |
+| 文档与仓库核对 | 56 份契约/证据/工程/事实/导航文档相对链接与锚点零问题；本次修改 `updated:` 均为 2026-10-12，`git diff --check` 通过。 |
+
+- **清理：** 最终浏览器链正常退出；重新成功绑定并关闭 `127.0.0.1:5301/5302`，确认测试服务器已释放。所有本 goal worker 会话/工作树及 `exec/p3-05-*`、`exec-p3-05-*` 分支已清理，不触碰其他任务工作树。私有原版录制与首个失败 trace 留在忽略区/会话附件，不入提交。
+- **文档影响：** 本项只补齐 goal 的用户基线决定与最终完成记录、当前验收证据及 STATUS 的阶段摘要/后续集成行动；39/41 已分别完成阶段交接与键盘指南修正，其他维护文档无需重复修改。未作新的事实、冻结决定或功能变更，因此不新增 ADR；验证/文档项无需代码 simplify。
+- **Rubber-duck：** 一次限定审阅仅覆盖本项 goal、33 证据与 STATUS 的完整未提交差异，并对照 spec、真实最终日志、版本常量与 Playwright 配置。未发现阻塞或非阻塞问题；未重复审阅已完成的 39–41 实现，也未扩大到整个分支历史。
+- **残余责任：** 没有本 goal 阻塞项。最新 main 集成、其他 OS/设备发布矩阵、未确认的原版物理键到码/BIOS 实样、下游命令与地图落地、P3-16 阶段退出仍按用户决定、unknowns 与任务索引分别承接，不以 goal 完成替代。
