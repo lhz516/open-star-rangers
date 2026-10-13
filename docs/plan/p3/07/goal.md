@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38 | pending |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39 | blocked |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -127,7 +127,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38 | pending |
+| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -198,6 +199,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Affected acceptance: AC-16（停放交战的分支覆盖）；38 的第一、三项验收。27、36、29 依赖 38，因此暂停。
   Resume when: 找到并在合格运行中取得 `+0x8C` 分支的合法路线，或用户决定对该分支的处理（例如以代码证据加 Node 独立期望核对、不作原版运行时对照），并按需修订 spec 与 38 的验收。
 - **2026-10-12 — 38 unblocked 并完成（用户决定）：** 用户选择对 `+0x8C` 分支“改为代码证据加 Node 独立期望核对，不做原版运行时对照；修订 spec 和 38 的验收，记为已知限制，然后继续 27→36→29”。spec 的审批节记录该修订，采样覆盖下限的停放交战一行加注；38 的第 7 项与 B-009 同步。38 的其余项都已取得，状态改为 completed。27 须把该分支列为已知限制，不标为已运行对照。
+
+- **2026-10-12 — Subtask 27 blocked:** 在 HEAD 候选上对 24 次合格运行运行 37 的工具，没有判为不一致的样本或窗口。主炮射击节奏、导弹锁定、能量护盾与充能三类判为一致；毁伤时间链、弹丸寿命与射程、导弹飞行与制导节奏三类没有结论，因为原版窗口缺少读数：碎片没有在同一窗口内读齐到期与逐帧转动，导弹没有逐帧读目标有效性，弹丸没有命中后的完整窗口。另外，新版一侧还没有 kind 0x100 被毁窗口与弹丸命中窗口。按推荐方案（用户已授权）新增 39 补采原版窗口。新版一侧的场景（经玩家输入飞近 kind 8 机体、命中弹丸）在 27 恢复时于其写入范围内补上，不改契约。
+  Evidence: 27 的完成证据，以及被忽略的 `local/research/p3-07/comparison/out/final/`（report.json、single-report.json）。
+  Affected acceptance: AC-16（单次转移与连续行为两项）；27 的前两项验收。
+  Resume when: 39 完成，或其阻塞项另有用户决定。
 
 ## 审批
 
