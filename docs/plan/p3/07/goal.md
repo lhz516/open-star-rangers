@@ -127,7 +127,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
-| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | pending |
+| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | blocked |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -204,6 +204,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: 27 的完成证据，以及被忽略的 `local/research/p3-07/comparison/out/final/`（report.json、single-report.json）。
   Affected acceptance: AC-16（单次转移与连续行为两项）；27 的前两项验收。
   Resume when: 39 完成，或其阻塞项另有用户决定。
+
+- **2026-10-13 — Subtask 39 blocked:** 第 1、2、4 项已在合格运行中取得（`a39-f2-01`、`a39-mb-01`、`a39-mc-01`、`a39-k-01`）；第 3 项只取得反弹分支（`a39-h2-01`）。移除分支在该次运行中出现 7 次，但配方只有一个命中暂停，这些弹丸没有绑定的命中读数，不计入。按预先设定的“修正后只再试一次”，没有再重跑。
+  Evidence: 39 的完成证据；B-009 的“39 的连续窗口补采”；被忽略的 run-notes 与 `analysis-a39-h2-01.txt`。
+  Affected acceptance: 39 的第一项验收；D-02 弹丸寿命与射程“两种分支都出现时各至少 1 枚”；27、36、29 因依赖 39 而等待。
+  Resume when: 用户批准一次带可多次触发、逐弹丸绑定命中暂停的新配方运行，或决定移除分支的处理方式。
 
 ## 审批
 
