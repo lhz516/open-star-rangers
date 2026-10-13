@@ -126,7 +126,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
-| [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | blocked |
+| [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -197,6 +197,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: 被忽略的 `run-notes.md` 中的 C3 结论（写入者覆盖、全部脚本的操作码扫描、`0x62250` 模式 5 的可达条件）；自动补采 B 的 27 次领队分支都是 +0xC4 = 0；B-009 的“38 的后续补采”。
   Affected acceptance: AC-16（停放交战的分支覆盖）；38 的第一、三项验收。27、36、29 依赖 38，因此暂停。
   Resume when: 找到并在合格运行中取得 `+0x8C` 分支的合法路线，或用户决定对该分支的处理（例如以代码证据加 Node 独立期望核对、不作原版运行时对照），并按需修订 spec 与 38 的验收。
+- **2026-10-12 — 38 unblocked 并完成（用户决定）：** 用户选择对 `+0x8C` 分支“改为代码证据加 Node 独立期望核对，不做原版运行时对照；修订 spec 和 38 的验收，记为已知限制，然后继续 27→36→29”。spec 的审批节记录该修订，采样覆盖下限的停放交战一行加注；38 的第 7 项与 B-009 同步。38 的其余项都已取得，状态改为 completed。27 须把该分支列为已知限制，不标为已运行对照。
 
 ## 审批
 
