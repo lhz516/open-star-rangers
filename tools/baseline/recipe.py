@@ -23,7 +23,7 @@ from le_image import PAGE_SIZE
 from reasons import BaselineError
 
 SCHEMA_VERSION = 1
-MAX_RECIPE_BYTES = 64 * 1024
+MAX_RECIPE_BYTES = 256 * 1024
 UINT32_END = 1 << 32
 
 SCALAR_SIZES = {"u8": 1, "u16": 2, "u32": 4, "i16": 2, "i32": 4, "f32": 4}
@@ -44,12 +44,12 @@ SHIFT_STIMULUS_BYTES = 1 + 3
 # Tool ceilings: research-tool protection, not original values or fidelity tolerances.
 CEILINGS = {
     "runSeconds": 24 * 3600,
-    "maxPauses": 256,
+    "maxPauses": 2048,
     "maxFields": 256,
     "maxChainDepth": 8,
     "repeatReads": 16,
     "maxReadBytes": 16 * 1024 * 1024,
-    "maxLogBytes": 256 * 1024 * 1024,
+    "maxLogBytes": 4 * 1024 * 1024 * 1024,
     "devices": 64,
     "stimuli": 256,
     "maxSkippedHits": 1_000_000,

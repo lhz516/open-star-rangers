@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-11
+updated: 2026-10-12
 related: [U-021, B-006]
 ---
 
@@ -56,7 +56,7 @@ related: [U-021, B-006]
 
 ## 配方
 
-配方是不超过 64 KiB 的 JSON（`schemaVersion: 1`），只含元数据，放在 `local/research/<任务>/<主题>/recipes/`。
+配方是不超过 256 KiB 的 JSON（`schemaVersion: 1`），只含元数据，放在 `local/research/<任务>/<主题>/recipes/`。
 
 | 键 | 内容与限制 |
 |---|---|
@@ -124,6 +124,8 @@ related: [U-021, B-006]
 ### 限值与预算
 
 限值是研究工具自身的保护，不是原版数值或保真容差。
+
+- **上限：** `runSeconds` 至多 24 小时，`maxPauses` 至多 2048，`maxFields` 至多 256，`maxChainDepth` 至多 8，`repeatReads` 至多 16，`maxReadBytes` 至多 16 MiB，`maxLogBytes` 至多 4 GiB，设备至多 64 个、刺激至多 256 个。P3-07/39 为逐帧连续窗口把暂停点上限从 256 提到 2048、配方上限从 64 KiB 提到 256 KiB、日志上限从 256 MiB 提到 4 GiB；逐帧暂停点每个约产生 0.7–1 MB 日志，取值时按暂停点数估算。
 
 - **`waitSeconds`** 限制每一次单独的等待：调试器响应、启动对应中的每次停止、运行到每个暂停点（包括操作者在此之前的游玩时间，例如从启动、跳过片头到第一个标记；带条件的暂停点按全部被跳过的命中合计，不是每次命中各计一次），以及每次等待应答。
 - **`maxSkippedHits`** 限制整次运行中被停止条件跳过的命中总数，超出即 `skip-budget-exceeded`，运行失败。

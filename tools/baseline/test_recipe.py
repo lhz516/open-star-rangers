@@ -6,7 +6,7 @@ import json
 import unittest
 
 from reasons import REASON_SET, BaselineError
-from recipe import CEILINGS, exe_fingerprint, parse_recipe, verify_source
+from recipe import CEILINGS, MAX_RECIPE_BYTES, exe_fingerprint, parse_recipe, verify_source
 from synthetic import FIELD_LAYOUT, scenario_recipe
 
 SHA = exe_fingerprint(b"synthetic image")
@@ -131,7 +131,11 @@ class RecipeTests(unittest.TestCase):
         self.assertRejected("recipe-json-invalid", text(scenario_recipe(SHA))[:-1] + ', "recipeId": "again"}')
         self.assertRejected("recipe-json-invalid", text(scenario_recipe(SHA)).replace('"runSeconds": 60',
                                                                                       '"runSeconds": NaN'))
-        self.assertRejected("recipe-too-large", " " * (64 * 1024 + 1))
+        self.assertRejected("recipe-too-large", " " * (MAX_RECIPE_BYTES + 1))
+        padded = text(scenario_recipe(SHA))
+        padded = padded[:-1] + " " * (MAX_RECIPE_BYTES - len(padded.encode("utf-8"))) + "}"
+        self.assertEqual(len(padded.encode("utf-8")), MAX_RECIPE_BYTES)
+        parse_recipe(padded)
 
     def test_unknown_keys_and_commands_rejected(self):
         self.assertRejected("recipe-key-unknown", self.mutated(lambda d: d.update(command="BPDEL *")))
@@ -258,6 +262,25 @@ class RecipeTests(unittest.TestCase):
                             self.mutated(lambda d: d["correlation"]["code"].update(size=100)))
         self.assertRejected("recipe-limit-invalid",
                             self.mutated(lambda d: d["correlation"]["data"].update(size=4096)))
+
+    def test_long_recipe_ceilings(self):
+        self.assertEqual((MAX_RECIPE_BYTES, CEILINGS["maxPauses"], CEILINGS["maxLogBytes"]),
+                         (256 * 1024, 2048, 4 << 30))
+
+        def many(count):
+            def change(d):
+                template = d["pauses"][-1]
+                for k in range(count - len(d["pauses"])):
+                    extra = copy.deepcopy(template)
+                    extra["id"] = f"extra-{k}"
+                    extra.pop("stimuli", None)
+                    d["pauses"].append(extra)
+                d["limits"].update(maxPauses=count, maxLogBytes=CEILINGS["maxLogBytes"], runSeconds=24 * 3600,
+                                   maxReadBytes=CEILINGS["maxReadBytes"])
+            return change
+        self.assertEqual(len(parse_recipe(text(self.mutated(many(CEILINGS["maxPauses"])))).pauses), CEILINGS["maxPauses"])
+        self.assertRejected("recipe-limit-invalid",
+                            self.mutated(lambda d: d["limits"].update(maxPauses=CEILINGS["maxPauses"] + 1)))
 
     def test_budgets(self):
         self.assertRejected("recipe-budget-exceeded", self.mutated(lambda d: d["limits"].update(maxPauses=1)))
