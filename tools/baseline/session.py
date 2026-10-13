@@ -577,6 +577,8 @@ class Run:
                                                           announce if skipped == 0 else None)
             if accepted is None:
                 break
+            if stop.alternatives and not stop.when.applies(sites.get(registers.eip)):
+                break  # a hit at a site the condition is not limited to is the pause unconditionally
             value = registers.values.get(stop.when.register)
             if value is None:
                 raise BaselineError("debugger-unparsed", "registers")

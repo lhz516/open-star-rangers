@@ -29,6 +29,8 @@
       A breakpoint stop may name alternative sites ("offsets": [n, ...], 2-4, the hit one is stop.json's `hitOffset`)
       and a condition ("when": {"register": "EBX", "in"|"notIn": [n | {"pause": ..., "field"|"register": ...}, ...]});
       hits that fail it are resumed without confirmation and counted as `skippedHits` (stop.json, report counts).
+      With alternative sites, "at": [offset, ...] (a strict subset of "offsets") limits the condition to hits at those
+      sites; a hit at another alternative is the pause unconditionally.
       Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
       to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
       the baseline installation and the private copy stay fully protected.

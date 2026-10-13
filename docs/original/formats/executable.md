@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-11
+updated: 2026-10-13
 related: [U-001, U-008, U-009, U-010, U-011, U-012, U-017, U-021, U-022, U-024, U-026, U-027, U-029, U-031, U-032]
 ---
 
@@ -2231,6 +2231,7 @@ Runs inside the movement walk, immediately after the projectile's own mode-1 mov
 - **Pass 2 — fragments** (only when pass 1 found nothing): walk kind `0x1000000` with +2 = 1, state ≥ 7, DEBRIS record (obj +0x1C) ≠ 0 and durability obj +0xD0 > 0 (signed). Same coarse test with the DEBRIS bounds (record +0x20) and refined test with the DEBRIS shape (record +0x18) when its box count (+0x3C) ≠ 0. On a hit with a gun record:
   - if DEBRIS +0x5C = 0, one rand; when (rand AND 3) = 0 the projectile ricochets (`0x25dc4`, H4); otherwise, and always when +0x5C ≠ 0 (no draw), the projectile is removed (`0x25f48`);
   - obj +0xD0 −= gun +0x1C (i32); when the result ≤ 0, `0x24a6c` marks the fragment shot down (H4). No damage handler, no hit item, no attacker record for fragments.
+  - The removal call is at `0x286fd` with EAX = the projectile (the stack slot that `0x285e5` passes to `0x2a40c`). *Runtime* (Confirmed, P3-07/39, run `a39-h4-01`, configuration as in [B-009](../behavior/B-009-combat-rules.md#39-的连续窗口补采2026-10-12)): a tracked player shot in state 7, before its due, stopped there with EAX = its node and had left by the next frame read; no stop at `0x2a40c` preceded it, and no state-6 frame read appears: in that frame the frame-site read came before the walk, and the node was already freed at the next read.
 - **Timing consequences:** craft (bits 0–19) and missiles (bit 20) have already moved in this walk, so targets are tested at their post-move positions and treated as static during the projectile's segment; projectiles created earlier (allocation order) have already moved and tested; fragments (bit 24) are tested at their previous-frame positions. Missiles, explosions and other projectiles are never targets.
 - **Callers:** `0x28450` ← only `0x221fc` (`0x2225d`); `0x2874c` and `0x28efc` ← only `0x28450` (p7).
 

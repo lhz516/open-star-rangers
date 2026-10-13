@@ -111,13 +111,22 @@ class Field:
 
 @dataclass(frozen=True)
 class Condition:
-    """A breakpoint hit is the pause only when the register's value is (`include`) or is not in `values`."""
+    """A breakpoint hit is the pause only when the register's value is (`include`) or is not in `values`. With
+    `sites` (a strict subset of the stop's alternatives, recipe key `at`), the test applies only to hits at those
+    sites; a hit at any other alternative is the pause unconditionally."""
     register: str
     include: bool
     values: tuple  # ints 0..0xFFFFFFFF and Bindings, resolved at the stop
+    sites: tuple = ()  # Locations the condition is limited to; empty: every site of the stop
+
+    def applies(self, site):
+        return not self.sites or site in self.sites
 
     def to_json(self, resolved):
-        return {"register": self.register, "in" if self.include else "notIn": [f"{value:x}" for value in resolved]}
+        out = {"register": self.register, "in" if self.include else "notIn": [f"{value:x}" for value in resolved]}
+        if self.sites:
+            out["at"] = [f"{site.offset:x}" for site in self.sites]
+        return out
 
 
 @dataclass(frozen=True)
@@ -556,13 +565,15 @@ def _stop(stop, path, fields, listed_at):
         site = alternatives[0]
     else:
         raise BaselineError("recipe-key-missing", path + ".offset")
-    when = _condition(stop["when"], path + ".when", fields, listed_at) if "when" in stop else None
+    when = _condition(stop["when"], path + ".when", fields, listed_at, alternatives) if "when" in stop else None
     return Stop(kind, site, alternatives, when)
 
 
-def _condition(value, path, fields, listed_at):
-    """{"register": R, "in": [...]} or {"register": R, "notIn": [...]}: integers or earlier pauses' readings."""
-    _object(value, path, ("register",), ("in", "notIn"))
+def _condition(value, path, fields, listed_at, alternatives=()):
+    """{"register": R, "in": [...]} or {"register": R, "notIn": [...]}: integers or earlier pauses' readings; at a
+    stop with alternative sites, optionally `"at": [offset, ...]`, a strict subset of the stop's offsets that the
+    condition is limited to."""
+    _object(value, path, ("register",), ("in", "notIn", "at"))
     register = value["register"]
     if type(register) is not str:
         raise BaselineError("recipe-type-invalid", path + ".register")
@@ -581,7 +592,19 @@ def _condition(value, path, fields, listed_at):
             values.append(_reference(_binding(item, where), fields, listed_at, where))
         else:
             values.append(_int(item, where, 0, UINT32_END - 1, "recipe-value-invalid"))
-    return Condition(register, key == "in", tuple(values))
+    sites = ()
+    if "at" in value:
+        if not alternatives:
+            raise BaselineError("recipe-key-unknown", path + ".at")
+        offsets = _list(value["at"], path + ".at", "recipe-value-invalid")
+        offsets = [_int(offset, f"{path}.at[{slot}]", 0, UINT32_END - 1, "recipe-address-invalid")
+                   for slot, offset in enumerate(offsets)]
+        known = {site.offset: site for site in alternatives}
+        if len(set(offsets)) != len(offsets) or len(offsets) >= len(alternatives) or \
+                any(offset not in known for offset in offsets):
+            raise BaselineError("recipe-value-invalid", path + ".at")
+        sites = tuple(known[offset] for offset in offsets)
+    return Condition(register, key == "in", tuple(values), sites)
 
 
 def _binding(value, path):

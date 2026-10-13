@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39 | blocked |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39 | in-progress |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -127,7 +127,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
-| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | in-progress |
+| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -204,12 +204,14 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
   Evidence: 27 的完成证据，以及被忽略的 `local/research/p3-07/comparison/out/final/`（report.json、single-report.json）。
   Affected acceptance: AC-16（单次转移与连续行为两项）；27 的前两项验收。
   Resume when: 39 完成，或其阻塞项另有用户决定。
+- **2026-10-13 — Subtask 27 resumed:** 39 已完成，取得碎片单窗口、导弹有效性逐帧读数、导弹/弹丸命中链补采；新版对应场景仍待在 27 中运行与核对。
 
 - **2026-10-13 — Subtask 39 blocked:** 第 1、2、4 项已在合格运行中取得（`a39-f2-01`、`a39-mb-01`、`a39-mc-01`、`a39-k-01`）；第 3 项只取得反弹分支（`a39-h2-01`）。移除分支在该次运行中出现 7 次，但配方只有一个命中暂停，这些弹丸没有绑定的命中读数，不计入。按预先设定的“修正后只再试一次”，没有再重跑。
   Evidence: 39 的完成证据；B-009 的“39 的连续窗口补采”；被忽略的 run-notes 与 `analysis-a39-h2-01.txt`。
   Affected acceptance: 39 的第一项验收；D-02 弹丸寿命与射程“两种分支都出现时各至少 1 枚”；27、36、29 因依赖 39 而等待。
   Resume when: 已满足——用户于 2026-10-13 批准一次带可多次触发、逐弹丸绑定命中暂停的新配方运行。
 - **2026-10-13 — Subtask 39 resumed (user authorization):** 按新授权运行一个修正配方以取得弹丸移除分支；不得降低 D-02 判据。协调者可在本目标剩余范围内自行处理后续阻塞决策。
+- **2026-10-13 — Subtask 39 completed:** `a39-h4-01` 在单窗口取得弹丸经 `0x25f48` 移除并离开的链；现有补采合计满足 39 的四项。baseline 合成测试 184 项、链接检查、comparison 自检均通过。
 
 ## 审批
 

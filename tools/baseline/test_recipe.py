@@ -491,6 +491,16 @@ class RecipeTests(unittest.TestCase):
         stop = parse_recipe(text(self.selection(single))).pause("pick").stop
         self.assertEqual((stop.alternatives, stop.when.include, stop.when.values), ((), False, (0, 0xFFFFFFFF)))
 
+        def limited(d):  # a condition limited to one of the alternative sites
+            d["pauses"][1]["stop"]["when"]["at"] = [0x1FA0]
+        recipe = parse_recipe(text(self.selection(limited)))
+        stop = recipe.pause("pick").stop
+        self.assertEqual(stop.when.sites, (stop.sites[1],))
+        self.assertEqual((stop.when.applies(stop.sites[0]), stop.when.applies(stop.sites[1])), (False, True))
+        self.assertEqual(stop.when.to_json([7]), {"register": "EBX", "in": ["7"], "at": ["1fa0"]})
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.selection())).fingerprint)
+        self.assertTrue(parse_recipe(text(self.selection())).pause("pick").stop.when.applies(stop.sites[0]))
+
     def test_alternative_sites_and_condition_rejections(self):
         def stop(**changes):
             def change(d):
@@ -528,6 +538,14 @@ class RecipeTests(unittest.TestCase):
             ("recipe-value-invalid", when({"register": "EBX", "in": [1 << 32]})),
             ("recipe-type-invalid", when({"register": "EBX", "in": ["1"]})),
             ("recipe-type-invalid", when({"register": "EBX", "in": [True]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": [0x1F90, 0x1FA0]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": [0x1F80]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": []})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": [1], "at": 0x1F90})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": [1], "at": ["1f90"]})),
+            ("recipe-key-unknown", lambda d: d["pauses"][1].update(stop={
+                "kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                "when": {"register": "EBX", "in": [1], "at": [0x1F90]}})),  # `at` needs alternative sites
             ("recipe-key-unknown", when({"register": "EBX", "in": [{**ref, "offset": 0}]})),
             ("recipe-key-missing", when({"register": "EBX", "in": [{"pause": "start"}]})),
             ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "end", "field": "ticks"}]})),

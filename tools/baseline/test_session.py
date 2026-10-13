@@ -436,6 +436,17 @@ class SessionTests(unittest.TestCase):
                          ("1f90", 0, {"register": "EBX", "notIn": ["0", "ffffffff"]}))
         self.assertEqual(box.report()["counts"]["skippedHits"], 0)
 
+    def test_condition_limited_to_one_site(self):
+        hits = [{"site": 0}, {"site": 1, "registers": {"EBX": 1}}, {"site": 0, "registers": {"EBX": 2}}]
+        box = self.selection_box(hits, when={"register": "EBX", "in": [{"pause": "start", "field": "count"}],
+                                             "at": [0x1FA0]})
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["skippedHits"]), ("complete", 1))
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual((stop["hitOffset"], stop["skippedHits"]), ("1f90", 1))  # unconditional at 0x1F90
+        self.assertEqual(stop["when"], {"register": "EBX", "in": ["ffff"], "at": ["1fa0"]})
+
     def test_condition_failures(self):
         def bump_count(fake):
             fake.process.poke(DATA + 0x810, struct.pack("<H", fake.process.peek(DATA + 0x810, 2)[0] + 1))
