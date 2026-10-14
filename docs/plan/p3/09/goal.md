@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | completed |
 | [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | in-progress |
 | [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | in-progress |
-| [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | pending |
+| [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | in-progress |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | pending |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
