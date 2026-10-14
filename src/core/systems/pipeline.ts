@@ -26,6 +26,7 @@ import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setE
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
 import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { applyMapToggle, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
 import { engageParked } from './parked-engagement.ts';
@@ -63,6 +64,8 @@ export type Request =
   | ControlRequest
   /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
   | MatchSpeedRequest
+  /** Message 0x400 sub-command 8 or 9: the map's opening or closing, posted by an accepted `toggle-map` (map.ts; MW-04). */
+  | MapToggleRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -165,6 +168,18 @@ export class RequestQueue {
   }
 }
 
+/**
+ * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04): the committed view mode and previous
+ * view mode at the start of the command batch, which each accepted view command (`toggle-map`) moves on at once while
+ * its request commits the change only in request handling. Every command's interaction context derives from it, and
+ * the player's axes from its value after the last command. Nothing else reads it: the automatic target selection and
+ * every later stage read the committed view.
+ */
+export interface CommandView {
+  viewMode: number;
+  previousViewMode: number;
+}
+
 /** Everything one step's stages share. */
 export interface TickContext {
   readonly world: WorldState;
@@ -174,7 +189,12 @@ export interface TickContext {
   /** Emitted with emit(); frozen by the commit stage. */
   readonly events: DomainEvent[];
   readonly requests: RequestQueue;
+  /** The committed view until the player's update starts the command batch from it again. */
+  readonly commandView: CommandView;
 }
+
+/** The view mode and previous view mode the player state holds now. */
+export const committedView = ({ player }: WorldState): CommandView => ({ viewMode: player.viewMode, previousViewMode: player.previousViewMode });
 
 /**
  * Stage 1, input registration, up to the first change: given the validated tick input, checks everything else that
@@ -187,7 +207,7 @@ export function registerTick(world: WorldState, input: TickInput): TickContext {
   if (!Number.isSafeInteger(world.entities.nextId + CORE_LIMITS.entities)) {
     throw new CoreInputError('tickInput', 'would allocate entity IDs past the safe integer range');
   }
-  return { world, time, input, events: [], requests: new RequestQueue() };
+  return { world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world) };
 }
 
 /** A deeply frozen copy of plain data, so that no later change to what an event was built from reaches it. */
@@ -220,18 +240,22 @@ function advanceClock(context: TickContext): void {
  * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
  * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
  * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
- * rejected/not-implemented. With an available player it runs P3-07's missile lock after the invalid-target drop and
- * consumes the axes, and the automatic target selection ends it (CR-07). The rule tasks add their commands and steps
- * there.
+ * rejected/not-implemented. Every command is judged in the command view, which starts from the committed view and
+ * which an accepted `toggle-map` moves on (map.ts; MW-04). With an available player it runs P3-07's missile lock after
+ * the invalid-target drop and consumes the axes, and the automatic target selection, which reads the committed view,
+ * ends it (CR-07). The rule tasks add their commands and steps there.
  */
 function updatePlayerControls(context: TickContext): void {
-  const { world, input, time, requests } = context;
+  const { world, input, time, requests, commandView } = context;
+  // The command batch starts from the committed view (MW-04).
+  commandView.viewMode = world.player.viewMode;
+  commandView.previousViewMode = world.player.previousViewMode;
   const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
     judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
     lockMissiles: (entity) => updateMissileLock(context, entity),
-  });
+  }, commandView);
   // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
   // the automatic selection follows them (T3).
   requests.release();
@@ -348,6 +372,11 @@ function handleRequest(context: TickContext, request: Request): void {
   // The launch's constructors themselves handle a shooter that is no longer valid (W11).
   if (request.type === 'launch') {
     applyLaunch(context, request);
+    return;
+  }
+  // The map's toggle has no subject: it switches the player state's view (MW-04).
+  if (request.type === 'map-toggle') {
+    applyMapToggle(context, request);
     return;
   }
   const entity = world.entities.get(request.entityId);

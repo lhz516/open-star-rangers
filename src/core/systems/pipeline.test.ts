@@ -166,6 +166,22 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
     expect(deepFrozen(events)).toBe(true);
   });
 
+  it('starts the command view from the view committed at the object update, and commits a toggle in request handling (MW-04)', () => {
+    const state = testState();
+    const player = addPlayerEntity(state);
+    player.state = 'active';
+    const seen: [string, number, number][] = [];
+    const record = (stage: string) => ({ world, commandView }: TickContext) => void seen.push([stage, world.player.viewMode, commandView.viewMode]);
+    runTickWith(state, {
+      // A view change before the object update, as P3-11's mission flow may make, is where the batch starts.
+      'mission-flow': ({ world }) => void (world.player.viewMode = 8),
+      'communications-reply': record('communications-reply'),
+      movement: record('movement'),
+    }, [{ type: 'toggle-map' }]);
+    expect(seen).toEqual([['communications-reply', 8, 0x0c], ['movement', 0x0c, 0x0c]]);
+    expect(state.player.previousViewMode).toBe(8);
+  });
+
   it('handles requests in posting order: mission flow, object updates, then the spawn queue check', () => {
     const [state, [early, updated]] = withEntities([3], [1]);
     addPlayerEntity(state);

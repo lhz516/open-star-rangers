@@ -8,7 +8,7 @@ import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
-import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
+import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 
 // Expectations are written out from docs/plan/p3/06/spec.md (操纵, 速度与油门, 行为与边界; checkpoint A) and the original
 // rules in docs/original/formats/executable.md (P3-06/02 and 03). The test player has maximum speed 48 and the synthetic
@@ -61,7 +61,7 @@ function update(state: WorldState, commands: readonly Command[] = [], axes: Tick
     post: (request) => requests.push(request),
     judge: ({ type }, commandIndex) => events.push({ type: 'command-result', tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' }),
     lockMissiles: () => {},
-  });
+  }, committedView(state));
   return { events, requests };
 }
 
@@ -180,7 +180,8 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
   // select-number passes P3-06's gates outside the base and map contexts, but has no effect (P3-05 S-06).
   const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS, selectNumber(5)];
-  const OTHERS = [{ type: 'launch' }, { type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
+  // Commands P3-10 owns; P3-09's map commands have their own tests (map.test.ts).
+  const OTHERS = [{ type: 'launch' }, { type: 'communications', operation: 'open' }] as const satisfies readonly Command[];
 
   type Unavailable = (state: WorldState, player: Entity) => void;
   const inState = (objectState: ObjectState): [string, Unavailable] => [`in state ${objectState}`, (_, player) => void (player.state = objectState)];
@@ -213,7 +214,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
   it.each([
     ['Warp', WARP, 'wrong-context'],
     ['base', BASE, 'not-implemented'],
-    ['map', MAP, 'not-implemented'],
+    ['map', MAP, 'wrong-context'],
   ] as const)('ignores speed commands and presets as wrong-context in the %s context; select-number and confirm-selection there: %s', (_, viewMode, selectionReason) => {
     const [state, player] = withPlayer();
     state.player.viewMode = viewMode;
@@ -245,7 +246,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(results(stepControls(state, [speed('zero'), preset(1), selectNumber(1)]))).toEqual([
       [0, 'ignored', 'player-unavailable'],
       [1, 'ignored', 'player-unavailable'],
-      [2, 'rejected', 'not-implemented'],
+      [2, 'ignored', 'player-unavailable'],
     ]);
   });
 
@@ -487,7 +488,7 @@ describe('player target reference (P3-06 S-05, D-03)', () => {
     const seen: [number, number | null, number][] = [];
     const run = () => updatePlayer(state, input(), state.tick + 1, {
       emit: () => {}, post: () => {}, judge: () => {}, lockMissiles: (entity) => void seen.push([entity.id, state.player.target, craftBlock(player).commandedSpeed]),
-    });
+    }, committedView(state));
     // The assist, due and in range, matches the target's 30 after the lock has seen the block at 48.
     expect(run()).toBe(player);
     expect([seen, craftBlock(player).commandedSpeed]).toEqual([[[player.id, target.id, 48]], 30]);

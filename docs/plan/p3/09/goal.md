@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
-| [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | in-progress |
+| [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | completed |
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29, 30 | pending |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | completed |
@@ -132,6 +132,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 28 发现既有方向表偏差，新增修复 30：** 现有 `src/core/rules/random-direction.ts` 用 `Math.PI` 与 `1/180` 构造方向表，而原版映像中的两个常数分别是略大于 π 的十进制 π 与 1/180 减一个 ulp，361 项中 256 项（348 个分量）与原版不同；executable 中“每个分量非负”对 38 个分量不成立。启动旋转表的前向行来自此表，P3-06/07 的既有读者也继承该偏差。按用户的预先授权取推荐方案 (a)：新增 30，把方向表改为映像常数并复核 P3-06/07 的测试与金样，事实更正随 29 写入；14 依赖 30；27 依赖 30。排除 (b) 在 14 中另建私有表（同一原版表两份实现，偏差保留）与 (c) 接受偏差（启动旋转表无法重现）。这会改变既有规则输出，规则版本随 12 的递增一并覆盖；合入其他也读取方向表的分支（如 P3-08）时须重跑其回归。
 - **2026-10-14 — 12 已集成：** `RULES_VERSION` 4→5、快照格式 3→4（replay 格式不变）；30 的方向表修复同属这一版。12 范围外须由 26 同步的文档：`docs/engineering/modules/core.md`（`mapGeometry` 输入与 MW-01 校验、新状态/事件/原因码、标记种类、版本）、`docs/engineering/modules/app.md`（`CONTENT_INPUT_FIELDS`）、`docs/engineering/modules/content.md`（应用侧规则数据输入表）、`docs/guides/tools.md`（`RECORDING_MAX_BYTES` 现为 534,251,135，事件行 924 字节/项）、`docs/engineering/source-structure.md`（新文件 `src/core/world/map-rule-data.ts`）。
 - **2026-10-14 — 30 已集成：** 方向表改为映像常数（`0x17210c`、`0x172114` 的位模式），整表散列与 28 的独立复算一致；既有读者与 replay 期望无需改动（只有 area 测试所用的第 205 项 z 变化，其期望由函数导出）；不另递增规则版本，随 12 的 5。另见 `steering.ts` 使用另一对常数 `0x17232c`、`0x172334`，交 29 在 executable 中一并核对记载。
+- **2026-10-14 — 13 已集成，交 26 的文档：** `docs/engineering/modules/core.md` 的对象更新与请求处理行、命令判定（`TickContext.commandView`、`combatCommandPlayer(context)`、地图中选择命令为 `wrong-context`、`toggle-map` 结果表）、轴按最终有效上下文、扩展规则（判定读 `commandView`，视角变化经 `switchView`）以及仍写着地图选择命令 `not-implemented` 的分阶段说明；`source-structure.md` 新增 `systems/map.ts`、`systems/view-switch.ts`、`rules/map-frame.ts`。
 
 ## 审批
 

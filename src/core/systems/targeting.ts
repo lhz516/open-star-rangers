@@ -77,7 +77,7 @@ function chooseTarget(world: WorldState, player: Entity, operation: CommandOf<'t
  */
 export function judgeTargetCommand(context: TickContext, command: CommandOf<'target'>, commandIndex: number): void {
   const { world } = context;
-  const player = combatCommandPlayer(world);
+  const player = combatCommandPlayer(context);
   if (typeof player === 'string') {
     emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: player });
     return;
