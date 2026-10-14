@@ -10,7 +10,7 @@ updated: 2026-10-14
 # 14 — 光标、选择与种类 25 标记
 
 **契约来源：** [spec](../spec.md) 的 S-04、AC-04；[光标、跃迁目标与标记](../spec.md#光标跃迁目标与标记)。
-**依赖：** 13。
+**依赖：** 13, 29。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -38,6 +38,9 @@ updated: 2026-10-14
 - `src/core/systems/movement.ts`、`src/core/systems/movement.test.ts`
 - `src/core/rules/targeting.test.ts`、`src/core/rules/radar.test.ts`：标记的回归。
 - `src/core/replay/snapshot.ts`、`src/core/replay/snapshot.test.ts`：新状态的写入器。
+- `src/core/rules/startup-rotations.ts`、`src/core/rules/startup-rotations.test.ts`：计划新增，MW-12 的启动旋转表（按 28/29 的 R-A 判定）。
+- `src/core/world/create-world.ts`、`src/core/world/rule-data.ts` 及其测试：`startupRotations` 的世界创建接入。
+- `src/core/rules/firing.ts`、`src/core/rules/firing.test.ts`：P3-07 锁定计数对标记不读机型记录（MW-03）。（以上为协调者 2026-10-14 扩大范围）
 
 ## 验收标准
 

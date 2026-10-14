@@ -10,7 +10,7 @@ updated: 2026-10-14
 # 18 — Warp 过程、完成与中断
 
 **契约来源：** [spec](../spec.md) 的 S-09、AC-09，AC-07 的进行与完成部分；[Warp 过程与到达](../spec.md#warp-过程与到达)。
-**依赖：** 17。
+**依赖：** 17, 29。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -40,6 +40,8 @@ updated: 2026-10-14
 - `src/core/systems/area.ts`、`src/core/systems/area.test.ts`
 - `src/core/rules/active-area.ts`、`src/core/rules/active-area.test.ts`
 - `src/core/systems/displays.ts`、`src/core/systems/displays.test.ts`：frame-end 中的次序。
+- `src/core/rules/warp-path.ts`、`src/core/rules/warp-path.test.ts`：计划新增，MW-02/MW-04/MW-07 的隧道路径（按 28/29 的 R-B）。
+- `src/core/systems/view-switch.ts`、`src/core/systems/view-switch.test.ts`：进入/离开视角 1 的部分。（以上为协调者 2026-10-14 扩大范围）
 
 ## 验收标准
 

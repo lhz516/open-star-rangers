@@ -57,7 +57,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | S-08 | 17 | 17：门禁结果表、状态写入与事件的 Node 测试 |
 | S-09 | 18 | 18：进度、完成、到达随机与中断的 Node 测试 |
 | S-10 | 19 | 19：页 6 读数、指示灯与 Render State 的消费者测试 |
-| S-11 | 01–07、09、10、24、25 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；24：正式原版运行；25：R-13 至 R-16 的结论 |
+| S-11 | 01–07、09、10、24、25、28、29 | 01–07、28、29：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；24：正式原版运行；25：R-13 至 R-16 的结论 |
 | S-12 | 21、22、26 | 21：桥接与诊断接线测试；22：实际应用浏览器验证；26：文档与交接；27：链接与元数据 |
 | AC-01 | 08、12 | 12：边界测试、版本拒绝、旧断言随批准更新；27：`pnpm check` |
 | AC-02 | 11、12 | 11：转换、校验、缓存、本机核对；12：Core 输入与 setupHash |
@@ -72,7 +72,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | AC-11 | 20 | 20：快照完整、JSON 往返 replay、坏输入拒绝、上限与重试 |
 | AC-12 | 21、22 | 22：`pnpm test:e2e` 实际应用用例（browser-testing） |
 | AC-13 | 23 | 23：真实内容两种僚机配置的私有核对 |
-| AC-14 | 01–07 | 07：事实与 U 项；27：`pnpm check:compliance` 与 git 审阅 |
+| AC-14 | 01–07、28、29 | 07、29：事实与 U 项；27：`pnpm check:compliance` 与 git 审阅 |
 | AC-15 | 09、10、24、25 | 10：判据获批；24：≥2 次合格运行；25：单次转移与连续行为的结论 |
 | AC-16 | 26 | 26：文档与交接；27：`pnpm check`、链接与 `updated:` |
 
@@ -95,11 +95,11 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | pending |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | pending |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | pending |
-| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13 | pending |
+| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29 | pending |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | pending |
-| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16 | pending |
-| [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17 | pending |
+| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 29 | pending |
+| [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 29 | pending |
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | pending |
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | pending |
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | pending |
@@ -108,7 +108,9 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | pending |
-| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 | pending |
+| [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | pending |
+| [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
+| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -124,6 +126,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 06 的结论中 D-01 须处理的点：** spec 中“目的地 `0x1864c8`”有误（那是开始位置）；隧道路径、转向偏移、30° 锥、居中与误差 s 都是规则状态（影响位姿、到达点与扣费），须作为 Core 的 frame-end 状态并使用世界随机数（开始 20 次、每段 2 次），不只是“进度”；原版的误差增量依赖帧率，须定 tick 映射；途中被毁或能量救援后 `inWarp` 保持 1 直到下一次完成的 Warp（复现或批准差异）；无误差到达吸附到目的地上方 600；完成后玩家状态 +0x29 为 1。
 - **2026-10-14 — 07 对账：** 玩家状态 +0 由玩家实例化 `0x67b53` 清零（02 成立，01 的未确认关闭）；`0x1864c8` 为 Warp 出发点（更正 04 与 spec 的“目的地”）；随机数普查：开始恰好 60 次（20 规则、40 表现），每段 2、完成 2、首次选点 1，效果例程另有表现抽取；模式 1 帧绘制中 `0x50508` 先于仪表 `0x49b2c`。另：`docs/engineering/modules/core.md` 要求视角切换置 `statusDisplay.redraw`，原版只在进出基地时置位，列入 08 的冲突表。交 08 的契约依据与冲突表见 07 的完成证据。
 - **2026-10-14 — 08 D-01 定稿（按预先授权由 agent 定稿，待用户事后审阅）：** P3-02 新增 MW-01 至 MW-16，P3-03 修订 2（地图几何）；P3-09 spec 按研究更正；MW-12 列出 8 项已批准差异（含 Warp 每 tick 一步、能量为 0 时读数百分比为 null）；P3-05 右键交接已同步，P3-04/06/07 只加交接注记。定稿指出两项前置静态研究：R-A（`0x568b0` 的 64 项启动旋转表 `0x1b0a10` 的构造、精度及与播种的先后，阻塞标记创建与到达旋转）与 R-B（隧道路径 `0x513e0`、样条 `0x517f4` 与 `0x51618` 参数及控制点存储，阻塞 Warp 开始位姿与 Warp 步进）。`docs/engineering/modules/core.md` 关于视角切换置重绘的表述交 26 更正。
+- **2026-10-14 — 计划更新（08 发现的前置研究与写入范围）：** 按 D-01（MW-12）新增 28（R-A 启动旋转表、R-B 隧道路径的静态研究，只写 `local/`）与 29（把 28 的事实写入 executable 与 unknowns；与 09 同写 executable，因此分开以便 28 先行）；14、17、18 增加对 29 的依赖，27 依赖 28、29。写入范围按 MW 的落点扩大：13 增加视角切换函数 `src/core/systems/view-switch.ts`（MW-09，13 实现地图部分与进入/离开 1 的页面规则，17、18 可修改）；14 增加 `startupRotations` 的规则与世界创建接入（`src/core/rules/startup-rotations.ts`、`src/core/world/create-world.ts`、`src/core/world/rule-data.ts` 及测试）与 P3-07 锁定计数不读标记机型记录的回归（`src/core/rules/firing.ts`、`firing.test.ts`）；17、18 增加隧道路径规则 `src/core/rules/warp-path.ts` 与测试及 `view-switch.ts`。验收标准与工作范围不变。依据用户 2026-10-14 的预先授权（见审批），由协调者做出，待用户事后审阅。
 
 ## 审批
 

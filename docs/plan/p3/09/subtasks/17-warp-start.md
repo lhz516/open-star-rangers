@@ -10,7 +10,7 @@ updated: 2026-10-14
 # 17 — Warp 开始
 
 **契约来源：** [spec](../spec.md) 的 S-08、AC-08，AC-07 的开始部分；[Warp 开始](../spec.md#warp-开始)。
-**依赖：** 14, 16。
+**依赖：** 14, 16, 29。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -35,6 +35,8 @@ updated: 2026-10-14
 - `src/core/systems/commands.ts`、`src/core/systems/commands.test.ts`
 - `src/core/systems/displays.ts`、`src/core/systems/displays.test.ts`：页 6 的保存与恢复。
 - `src/core/systems/flight-control.test.ts`：Warp 中的轴回归。
+- `src/core/rules/warp-path.ts`、`src/core/rules/warp-path.test.ts`：计划新增，MW-02/MW-04/MW-07 的隧道路径（按 28/29 的 R-B）。
+- `src/core/systems/view-switch.ts`、`src/core/systems/view-switch.test.ts`：进入/离开视角 1 的部分。（以上为协调者 2026-10-14 扩大范围）
 
 ## 验收标准
 
