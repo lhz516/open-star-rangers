@@ -28,8 +28,10 @@ describe('the sector corner 0x3a6e8 (0x3a61c, centre ± half a sector)', () => {
     expect(sectorCorner(destination)).toEqual(corner);
   });
 
-  it('maps with the f32 reciprocal F(1 ÷ 15000), so 15000 and 30000 fall one sector short', () => {
-    // 15000 × F(1/15000) = 0.99999999747… → sector 0 (centre 7500); 30000 → 1.9999999949… → sector 1 (centre 22500).
+  it('maps with the f32 reciprocal F(1 ÷ 15000), which still puts 15000 and 30000 in the sector starting there', () => {
+    // F(1/15000) is slightly above 1/15000: 15000 × it = 1.0000000111… → sector 1 (centre 22500), and 30000 → 2.0000000222…
+    // → sector 2 (centre 37500), as with exact division. A boundary point's corner is that boundary under either mapping
+    // (sector 1: x < 22500 → 22500 − 7500; sector 0 would give x ≥ 7500 → 7500 + 7500), so no corner can tell them apart.
     expect(sectorCorner(vec(15000, 30000, 0))).toEqual(vec(15000, 30000, 0));
     expect(sectorCorner(vec(15000.001953125, 0, 0)).x).toBe(15000);
   });

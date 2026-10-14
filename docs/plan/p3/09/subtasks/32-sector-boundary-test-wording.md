@@ -34,10 +34,16 @@ updated: 2026-10-14
 
 ## 验收标准
 
-- [ ] 测试名与注释与原生事实一致，没有行为改动；`pnpm check` 通过。
+- [x] 测试名与注释与原生事实一致，没有行为改动；`pnpm check` 通过。
 
 ## 验证方法
 
 - `pnpm exec vitest run src/core/rules/warp-arrival.test.ts`；`pnpm check`；git 审阅。
 
 ## 完成证据
+
+- [warp-arrival.test.ts](../../../../../src/core/rules/warp-arrival.test.ts) 的测试名改为“F(1 ÷ 15000) 仍把 15000、30000 放在从该点开始的扇区”，注释改为 15000 × F(1/15000) = 1.0000000111… → 扇区 1，30000 → 2.0000000222… → 扇区 2，与精确除法相同（Node 中复算 `Math.fround(1/15000) > 1/15000` 为真）。未补区分断言：边界点在两种映射下的角点都是该边界（x 用 ≥、y 用 >，扇区 1 的下角与扇区 0 的上角同为 15000，y = 30000 同理），`sectorCorner` 及只经它取角点的 `arrivalPoint` 都无法区分，注释写明了这一点。断言与行为未改。
+- [warp-arrival.ts](../../../../../src/core/rules/warp-arrival.ts) 的 `PER_SECTOR`、`sectorIndex` 注释只写 trunc(x × (1 ÷ S)) 与 f32 倒数，没有“前一扇区”的说法，未改。
+- `pnpm exec vitest run src/core/rules/warp-arrival.test.ts`：24 项通过；`pnpm check` 通过。
+- rubber-duck：无问题（核对了算术与两种映射的角点相同）。纯注释改动，不需要 simplify。
+- 文档影响：executable 中的扇区说明已由 29 更正，其他文档无需更新。
