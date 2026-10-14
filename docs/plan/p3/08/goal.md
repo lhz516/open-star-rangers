@@ -70,9 +70,9 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-selection-closure-research.md](./subtasks/01-selection-closure-research.md) | — | pending |
-| [02-interpreter-scripts-research.md](./subtasks/02-interpreter-scripts-research.md) | — | pending |
-| [03-piloting-targeting-firing-research.md](./subtasks/03-piloting-targeting-firing-research.md) | — | pending |
+| [01-selection-closure-research.md](./subtasks/01-selection-closure-research.md) | — | in-progress |
+| [02-interpreter-scripts-research.md](./subtasks/02-interpreter-scripts-research.md) | — | in-progress |
+| [03-piloting-targeting-firing-research.md](./subtasks/03-piloting-targeting-firing-research.md) | — | in-progress |
 | [04-wingman-commands-research.md](./subtasks/04-wingman-commands-research.md) | — | pending |
 | [05-parked-sets-departure-research.md](./subtasks/05-parked-sets-departure-research.md) | — | pending |
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | pending |
@@ -103,6 +103,8 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-14 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal；用户在执行期间不可用，协调者按本会话刚批准的唯一 goal 选定目标。协调者在 `p3-08-ai-wingman-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-05、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-08-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则。Ghidra 由各 worker 在各自写入范围内的私有项目副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
 
 ## 审批
 
