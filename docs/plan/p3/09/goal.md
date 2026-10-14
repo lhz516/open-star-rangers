@@ -95,11 +95,11 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | completed |
-| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29, 30 | pending |
+| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 28, 30 | pending |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | completed |
-| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 29 | pending |
-| [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 29 | pending |
+| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | pending |
+| [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 28 | pending |
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | pending |
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | pending |
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | pending |
@@ -133,6 +133,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 12 已集成：** `RULES_VERSION` 4→5、快照格式 3→4（replay 格式不变）；30 的方向表修复同属这一版。12 范围外须由 26 同步的文档：`docs/engineering/modules/core.md`（`mapGeometry` 输入与 MW-01 校验、新状态/事件/原因码、标记种类、版本）、`docs/engineering/modules/app.md`（`CONTENT_INPUT_FIELDS`）、`docs/engineering/modules/content.md`（应用侧规则数据输入表）、`docs/guides/tools.md`（`RECORDING_MAX_BYTES` 现为 534,251,135，事件行 924 字节/项）、`docs/engineering/source-structure.md`（新文件 `src/core/world/map-rule-data.ts`）。
 - **2026-10-14 — 30 已集成：** 方向表改为映像常数（`0x17210c`、`0x172114` 的位模式），整表散列与 28 的独立复算一致；既有读者与 replay 期望无需改动（只有 area 测试所用的第 205 项 z 变化，其期望由函数导出）；不另递增规则版本，随 12 的 5。另见 `steering.ts` 使用另一对常数 `0x17232c`、`0x172334`，交 29 在 executable 中一并核对记载。
 - **2026-10-14 — 13 已集成，交 26 的文档：** `docs/engineering/modules/core.md` 的对象更新与请求处理行、命令判定（`TickContext.commandView`、`combatCommandPlayer(context)`、地图中选择命令为 `wrong-context`、`toggle-map` 结果表）、轴按最终有效上下文、扩展规则（判定读 `commandView`，视角变化经 `switchView`）以及仍写着地图选择命令 `not-implemented` 的分阶段说明；`source-structure.md` 新增 `systems/map.ts`、`systems/view-switch.ts`、`rules/map-frame.ts`。
+- **2026-10-14 — 依赖调整：** 14、17、18 的前置改为 28（研究结论已在 `local/research/p3-09/warp-path/findings.md` 与 28 的完成证据中），不再等待只写跟踪文档的 29；29 仍在 09 之后执行，并是 27 的前置。原因：29 与 09 同写 executable，09 的基准运行耗时长，原依赖会无谓阻塞关键路径。
 
 ## 审批
 
