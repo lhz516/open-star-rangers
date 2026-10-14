@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | completed |
-| [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | in-progress |
+| [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | completed |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | completed |
@@ -147,6 +147,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 22 已集成：** 实际应用 E2E 覆盖开图、`p` 暂停、Esc 关图、开发命令编辑器 select、`w` 开始并完成、菜单与页面隐藏后无补跑无重复扣费、生产包无开发编辑器；完整 `pnpm test:e2e` 226 通过。合成包玩家机型改为可完成 Warp（`productionCraftInfo()`）。DOM 尚无地图事实（P3-13），桥接状态经 React fiber 只读读取 UI store 作为证据，协调者接受。
 - **2026-10-14 — 09 已集成：** 基准运行只用配方输入，没有用户操作；m-01、t2-01、w2-02 完整，w-01、w2-01 因配方规划错误由操作者取消（部分读数只作观察，排除理由在私有 `run-notes.md`）。与 P3-08、P3-10 共用基准环境，按协调者安排轮流。结论：历史探索不保留得到运行佐证（R-14）；地图读取间隔、键盘取样、光标世界点、读数、可见标志、Warp 时长、到达偏移、扣费与 +0xC8 均与代码结论一致；本任务中 f = 1 在世界内不可达；E = 0 的地图读数在基准 DOSBox-X 中显示 1 且游戏继续（模拟器是否送达未屏蔽 x87 异常未确认），MW-12 差异 4 维持。未取得（交 24）：Warp 中救援与 `inWarp`、其他 Q-10 分支、基地作揭示来源、揭示中来源被毁。
 - **2026-10-14 — D-02 与新版连续结果的先后：** 按计划依赖，23（真实内容本地核对，Core 对独立模型）在 10 之前完成；其报告只以判定与计数到达协调者（例如每次运行 331 个 Warp 步、0 个超出容差），没有与原版对照的数值。协调者在 10 的启动说明中要求只用 09 的预实验数据，不读取 `local/research/p3-09/real-content/out` 或任何新版连续输出；`local/research/p3-09/comparison/` 尚不存在。27 据此核对“D-02 早于看到新版的连续行为结果”。
+- **2026-10-14 — 10 已集成（D-02 按预先授权由 agent 定稿，待用户事后审阅）：** spec 审批节记录“D-02 定稿”，B-010 写定原版一侧方案。Φ 按原版逐帧步长与新版 2 单位精确合成，差异 3 的跨版本差值由双方步长解释并披露；新增区分情形：到达中至少 1 次吸附与 1 次 0 < s < 1；只有 Q-02 的另一种 z 门禁状态改为代码证据加 Node 期望；f = 1 与 s = 0 不是覆盖要求、也不豁免；24 须逐帧暂停取得 Warp 爬升段/完整窗口与可见跨越前后每次的读数，并读出吸附对象。交 29：executable 中“SCEN 3019 内 f = 1 与 f = 0.5 都可达”与 09 的运行观察矛盾（f = 1 需玩家在世界矩形外），一并更正。
 
 ## 审批
 
