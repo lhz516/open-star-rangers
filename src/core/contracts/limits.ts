@@ -52,8 +52,9 @@ export const CORE_LIMITS = Object.freeze({
   /**
    * Characters of one canonical text. A snapshot at the entity limit is about 10.5 MiB with P3-07's combat state
    * (CR-14): at most spawnExpansion craft at about 8.5 KiB each with 18 mounts, about 2 KiB for every other entity.
-   * P3-09's state (MW-14) adds at most `entities` map icons of about 170 characters (0.35 MiB), `entities` IDs in the
-   * object sets (12 KiB) and the Warp transit (1 KiB): about 10.9 MiB.
+   * P3-09's state (MW-14) adds at most `entities` map icons of about 170 characters (0.35 MiB; 200 at the longest
+   * numbers, 0.4 MiB), `entities` IDs in the object sets (12 KiB; 34 KiB at 16 digits) and the Warp transit (1 KiB; about
+   * 2 KiB at the longest numbers): about 10.9 MiB, 11 MiB at the longest (budget.test.ts).
    */
   canonicalTextLength: 16_777_216,
 });

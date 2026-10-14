@@ -31,10 +31,16 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     const liveObjects = craft + projectiles + missiles + fragments + explosions;
     const combatRequests = (commandsPerTick + 1) + (mounts + commandsPerTick * chain) + 2 * liveObjects + commandsPerTick + spawnExpansion + (commandsPerTick + 2);
     expect([liveObjects, combatRequests]).toEqual([896, 3523]);
+    // P3-09's (docs/plan/p3/02/spec.md, MW-14): map-toggled and warp-destination-set together at most one a command,
+    // warp-started, warp-completed and their two left-page-changed without a command; a request a command and the
+    // deferred warp-start.
+    const mapWarpEvents = commandsPerTick + 1 + 1 + 2;
+    const mapWarpRequests = commandsPerTick + 1;
+    expect([combatEvents + otherEvents + mapWarpEvents, combatRequests + mapWarpRequests]).toEqual([8328, 3588]);
     // About four times each sum, as runaway budgets (CR-14).
     expect([eventsPerTick, requestsPerTick]).toEqual([32_768, 16_384]);
-    expect(eventsPerTick).toBeGreaterThan(3.9 * (combatEvents + otherEvents));
-    expect(requestsPerTick).toBeGreaterThan(4.6 * combatRequests);
+    expect(eventsPerTick).toBeGreaterThan(3.9 * (combatEvents + otherEvents + mapWarpEvents));
+    expect(requestsPerTick).toBeGreaterThan(4.5 * (combatRequests + mapWarpRequests));
     expect(spawnExpansion).toBeLessThanOrEqual(entities);
     expect(recordedCheckpoints).toBe(recordedTicks + 1);
     expect(recordedCommands).toBeGreaterThanOrEqual(recordedTicks);

@@ -101,7 +101,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | completed |
 | [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 28 | completed |
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | completed |
-| [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | in-progress |
+| [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | completed |
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | in-progress |
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | pending |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | pending |
@@ -140,6 +140,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 依赖调整：** 15 不再等待 09：D-01（MW-06）已按 03 的代码证据（已确认）定稿“历史探索不保留”，09 的运行只作佐证；改为依赖 12、14（复用 14 的 `isMapContact`）。若 09 的运行与之矛盾，按 execute-goal 新增修复子任务，不在 15 中预设。原因：09 因三个任务共用基准环境而长时间等待，原依赖阻塞关键路径。
 - **2026-10-14 — 15 已集成：** `object-sets` 每 tick 重建，基础值 false，已提交视角为 8 时揭示；共享揭示 `revealMapVisibility`（`rules/map-visibility.ts`）供 P3-08 在任何视角调用；没有历史存储。19 用 `mapContactClass`、`mapCoverage` 构造接触点类别与覆盖。交 26：`core.md` 阶段表第 12 行与约 635、643 行“object-sets 建议归 P3-08”改为已由 P3-09/15 实现、P3-08 复用；`source-structure.md` 新增 `rules/map-visibility.ts`、`systems/object-sets.ts`。
 - **2026-10-14 — D-01 补定（19 发现）与 19 已集成：** 放大窗口像素为 `0x4c5ec` 的原值，`0x4b56c` 依赖 Core 没有的 HUD 图标尺寸且无规则读者，交 P3-13；玩家没有图标（P3-11 前不可达）时连线与读数取玩家当前位置、放大窗口距离为 null（P3-02 MW-11 与审批第 14 项）。交 26：`core.md` 的 projection 一节（`map` 分区就绪、关图边界、`warpRequest` 以已提交状态判定、无图标回退、放大像素、`CombatPlayer.warp`、Render State `warp`）；`source-structure.md` 新增 `projections/map.ts`。
+- **2026-10-14 — 20 已集成：** 只有测试，未发现规则缺陷。实测快照规模（每个图标约 200 字符、集合 34 KiB、过程约 2 KiB，合计约 0.43 MiB）略高于 MW-14 的估计（约 0.35 MiB），仍远在 `canonicalTextLength` 之内；`limits.ts` 的注释已按实测更正，spec 中的估计不影响任何上限，不另修订。
 
 ## 审批
 
