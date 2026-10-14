@@ -11,6 +11,7 @@ import { checkGraphicsBinding } from '../src/content/graphics/graphics-binding.t
 import { isOpaque, readImagePayload } from '../src/content/graphics/image-payload.ts';
 import { readPalettePayload } from '../src/content/graphics/palette-payload.ts';
 import { decodeHudTextPayload, HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS } from '../src/content/hud/hud-text-payload.ts';
+import { decodeMapGeometryPayload, MAP_GEOMETRY_LIMITS, type MapGeometry } from '../src/content/hud/map-geometry-payload.ts';
 import { decodeViewLabelsPayload, VIEW_LABELS_LIMITS } from '../src/content/hud/view-labels-payload.ts';
 import { LOGIC_LIMITS, type LogicPayload } from '../src/content/logic/logic-content.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
@@ -27,10 +28,12 @@ import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { readSoundPayload, SOUND_PAYLOAD_SCHEMA_VERSION } from '../src/content/sound-payload.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { loadMission } from '../src/core/mission/load-mission.ts';
+import { openImfatArchive } from '../src/original-data/archive/archive-reader.ts';
 import { DiscReadError } from '../src/original-data/disc/disc-error.ts';
 import { openDiscImage } from '../src/original-data/disc/disc-image.ts';
 import { SourceError } from '../src/original-data/source-error.ts';
 import { identifySource } from '../src/original-data/source/identify-source.ts';
+import { BlobByteSource } from '../src/platform/files/blob-byte-source.ts';
 import type { ImportJob, ImportReporter } from '../src/workers/import-host.ts';
 import { createImportJob, type OpenSource } from '../src/workers/import-job.ts';
 import { IMPORT_STAGES, type ImportFile, type ImportStage } from '../src/workers/import-protocol.ts';
@@ -38,7 +41,8 @@ import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 
 // Local package check (P3-03 S-16, AC-19): runs the production import job the Worker runs on a CloneCD file set,
 // validates the whole package against the slice definition, decodes every Asset of the roles P3-03 added or extended with
-// its role's reader and loads the mission in Core. Output holds only verdicts, Asset IDs, counts, limits, read amounts and
+// its role's reader and loads the mission in Core. The P3-09 map geometry is also compared with an independent read of
+// its source record (`mapGeometrySource`), which shares no code with the converter. Output holds only verdicts, Asset IDs, counts, limits, read amounts and
 // hashes: never names, texts, field values, pixels, samples, host paths or host error text.
 
 export interface PackageCheckOptions {
@@ -144,7 +148,13 @@ interface Measured {
   readonly limits: readonly LimitCheck[];
 }
 
-type Measure = (asset: PackageAsset, find: (id: string) => PackageAsset) => Measured;
+/** What a measure may consult besides its Asset: other Assets by ID, and the map geometry read independently from the disc. */
+interface MeasureContext {
+  readonly find: (id: string) => PackageAsset;
+  readonly mapGeometrySource: () => Promise<MapGeometry>;
+}
+
+type Measure = (asset: PackageAsset, context: MeasureContext) => Measured | Promise<Measured>;
 
 const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
 const largest = (values: readonly number[]): number => values.reduce((most, value) => Math.max(most, value), 0);
@@ -182,7 +192,7 @@ const flightData = decoded<FlightDataPayload>(decodeFlightDataPayload, FLIGHT_DA
  * descriptor dependencies must be exactly the palettes it references, which package validation does not check.
  */
 function image(withPalette = false): Measure {
-  return ({ descriptor, bytes }, find) => {
+  return ({ descriptor, bytes }, { find }) => {
     const payload = readImagePayload(bytes, descriptor.payloadIdentity.schemaVersion);
     checkGraphicsBinding(descriptor, payload, `assets.${descriptor.id}`);
     const counts: Record<string, number> = { pixels: payload.width * payload.height, opaquePixels: opaquePixels(payload) };
@@ -205,8 +215,9 @@ const sound: Measure = ({ descriptor, bytes }) => {
 };
 
 /**
- * The roles P3-03 added, with the mission it extended, in group order: required roles and the roles their dependencies
- * close over. The target display's palette is an Asset of a P2 role, read through its image.
+ * The roles P3-03 added, with the mission it extended, and the map geometry P3-09 added, in group order: required roles
+ * and the roles their dependencies close over. The target display's palette is an Asset of a P2 role, read through its
+ * image.
  */
 const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; readonly measure: Measure }[] = [
   { role: 'craft-info', group: 'logic', measure: ruleData('craft-info', info => {
@@ -311,9 +322,61 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
       limits: [limit('hud-text.textBytes', largest(texts), HUD_TEXT_LIMITS.textBytes), limit('hud-text.payloadBytes', bytes.length, HUD_TEXT_LIMITS.payloadBytes)],
     };
   } },
+  { role: 'map-geometry', group: 'cockpit-hud-map', measure: async ({ descriptor, bytes }, { mapGeometrySource }) => {
+    // Both are plain records built in the schema's field order.
+    const decoded = decodeMapGeometryPayload(bytes, descriptor);
+    if (JSON.stringify(decoded) !== JSON.stringify(await mapGeometrySource())) throw new CheckStop('source-mismatch', 'roles.map-geometry');
+    return { counts: { sourceMatches: 1 }, limits: [limit('map-geometry.payloadBytes', bytes.length, MAP_GEOMETRY_LIMITS.payloadBytes)] };
+  } },
   { role: 'event-sound', group: 'audio', measure: sound },
   { role: 'hud-sound', group: 'audio', measure: sound },
 ];
+
+/**
+ * The map geometry's source as recorded in docs/original/formats/cockpit.md (instrument types per slot) and hud.md §1,
+ * read here without the converter's readers: CCKD 10103 of `MAIN/SR.NOB`, the directory slot whose +0x00 is layout 6,
+ * its one 48-byte instrument record of type 10 (rectangle +0x04–+0x10, redraw interval +0x18), and the height byte (+3)
+ * of font table 1. Counts are checked against their caps and arrays against the entry before anything is iterated; any
+ * structure that does not hold is `source-unreadable`, without values.
+ */
+const MAP_SOURCE = Object.freeze({
+  archive: 'MAIN/SR.NOB', entry: 10_103, type: 'CCKD', layout: 6, instrumentType: 10, font: 1,
+  /** Counts beyond the approved caps are not read: 8 directory slots, 32 instrument records per slot. */
+  slots: 8, instruments: 32,
+});
+
+async function readMapGeometrySource(files: readonly ImportFile[]): Promise<MapGeometry> {
+  const disc = await openDiscImage(files.map(({ name, blob }) => ({ name, source: new BlobByteSource(blob) })));
+  const archive = await openImfatArchive(await disc.openFile(MAP_SOURCE.archive));
+  const { bytes } = await archive.read(MAP_SOURCE.entry, MAP_SOURCE.type);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const unreadable = (): never => { throw new CheckStop('source-unreadable', 'roles.map-geometry'); };
+  const word = (offset: number, signed = false): number => {
+    if (offset < 0 || offset + 4 > bytes.length) unreadable();
+    return signed ? view.getInt32(offset, true) : view.getUint32(offset, true);
+  };
+  const fontEntry = word(0) + MAP_SOURCE.font * 8;
+  if (MAP_SOURCE.font >= word(4)) unreadable();
+  const fontAt = word(fontEntry);
+  if (word(fontEntry + 4) < 4 || fontAt + 4 > bytes.length) unreadable();
+  /** The offsets of the `count` items of `size` bytes from `start` whose `matches`, after the array is checked to fit. */
+  const matching = (start: number, count: number, cap: number, size: number, matches: (at: number) => boolean): number[] => {
+    if (count > cap || start + count * size > bytes.length) unreadable();
+    const found: number[] = [];
+    for (let at = start; at < start + count * size; at += size) if (matches(at)) found.push(at);
+    return found;
+  };
+  const slots = matching(word(8), word(12), MAP_SOURCE.slots, 32, at => word(at, true) === MAP_SOURCE.layout);
+  if (slots.length !== 1) unreadable();
+  const records = matching(word(slots[0] + 0x18), word(slots[0] + 0x1c), MAP_SOURCE.instruments, 48, at => word(at) === MAP_SOURCE.instrumentType);
+  if (records.length !== 1) unreadable();
+  const [record] = records;
+  return {
+    rectangle: { x0: word(record + 4, true), y0: word(record + 8, true), x1: word(record + 12, true), y1: word(record + 16, true) },
+    redrawInterval: word(record + 0x18),
+    informationLineHeight: bytes[fontAt + 3],
+  };
+}
 
 /** Adds the counts of each Asset and keeps the largest observation of each limit, in first-seen order. */
 function combine(measured: readonly Measured[]): Measured {
@@ -375,8 +438,12 @@ const budgetLimits = (usage: BudgetRecord): LimitCheck[] => BUDGET_DIMENSIONS
   .filter(dimension => dimension !== 'sourceReadBytes')
   .map(dimension => limit(`package.${dimension}`, usage[dimension], PRODUCTION_PACKAGE.limits[dimension]));
 
-/** What a whole-package import gives: the job's usage, every group it sent in send order, and their package validation. */
+/**
+ * What a whole-package import gives: the job's usage, every group it sent in send order, their package validation, and
+ * the input files, which a check may read again on its own.
+ */
 export interface ImportedPackage {
+  readonly files: readonly ImportFile[];
   readonly usage: BudgetRecord;
   readonly groups: readonly GroupInput[];
   readonly validation: PackageCompletenessResult;
@@ -408,7 +475,7 @@ export async function importPackage(
     identified: identity => { report.identified(identity); },
     group: (_name, input) => { groups.push(input); },
   });
-  return { usage, groups, validation: validatePackage(CLASSIC_P2_SLICE, groups) };
+  return { files, usage, groups, validation: validatePackage(CLASSIC_P2_SLICE, groups) };
 }
 
 /**
@@ -426,7 +493,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
   /** The bytes read when each stage started: a stage reports its first progress with the bytes read so far. */
   const starts: Partial<Record<ImportStage, number>> = {};
   try {
-    const { usage, groups: sent, validation } = await importPackage(paths, options, {
+    const { files, usage, groups: sent, validation } = await importPackage(paths, options, {
       progress: (stage, bytes) => {
         starts[stage] ??= bytes;
         reads[stage] = bytes - starts[stage];
@@ -455,6 +522,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
     }
     const find = (id: string): PackageAsset => assets.get(id) ?? (() => { throw new CheckStop('missing-asset', `assets.${id}`); })();
     const roleAssets = (role: string): readonly PackageAsset[] => byRole.get(role) ?? [];
+    const context: MeasureContext = { find, mapGeometrySource: () => readMapGeometrySource(files) };
     const [{ manifest: first }] = groups;
     const groupReport = ({ group, assets: descriptors }: GroupManifest): GroupReport => ({
       group,
@@ -478,7 +546,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
       const members = roleAssets(role);
       if (members.length === 0) throw new CheckStop('missing-asset', `roles.${role}`);
       if (members.some(({ descriptor }) => descriptor.group !== group)) throw new CheckStop('group-mismatch', `roles.${role}`);
-      const measured = combine(members.map(asset => measure(asset, find)));
+      const measured = combine(await Promise.all(members.map(asset => measure(asset, context))));
       roles.push(roleReport(role, group, members, measured.counts));
       limits.push(...measured.limits);
     }

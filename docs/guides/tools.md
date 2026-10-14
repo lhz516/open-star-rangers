@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-13
+updated: 2026-10-14
 ---
 
 # 工具用法
@@ -16,7 +16,7 @@ updated: 2026-10-13
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
-| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
+| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色以及 P3-09 地图几何的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/replay-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组并验证整包，在 Node 中重放开发构建导出的录制并与其结果比较；只输出固定形状的报告（错误码与结构位置、内容身份键、任务 Asset ID、setupHash、计数与 Core 的比较）（见[录制重放核对](#录制重放核对)） | `node tools/replay-check.ts <录制.json> local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；在 `execute-goal` 节点同时给出按依赖与写入范围计算的并行调度 `schedule`（见[并行执行](../engineering/agent-workflow.md#并行执行)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
@@ -107,7 +107,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 ## 包核对
 
-`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`）。
+`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19），以及 P3-09 加入的地图几何（[P3-09/11](../plan/p3/09/subtasks/11-map-geometry-import.md)）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`、`local/research/p3-09/import-check/`）。
 
 - **输入：** 与[逻辑组核对](#逻辑组核对)相同，CloneCD 文件组的各个文件经 `fs.openAsBlob` 打开，核对按一次性进程运行。
 - **核对内容：**
@@ -115,6 +115,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - 对四组运行 `validatePackage`，不是 `complete` 时报告首个诊断；
   - 用 `decodeLogicPayload` 解码任务、机型表与僚机名册，并用 Core 的 `loadMission` 载入任务；
   - 用各角色的读取器解码 P3-03 新增角色的每个 Asset：规则数据（`decodeRuleDataPayload`）、飞行数据（`decodeFlightDataPayload`）、视角标签、HUD 文字、图像（受击闪烁、爆炸帧、星云、目标显示屏背景及其调色板）与 sound payload（只接受 schema 2）；
+  - 用 `decodeMapGeometryPayload` 解码地图几何，再与一次独立的来源读取比较：工具自己重新打开光盘镜像，读取 `MAIN/SR.NOB` 的 CCKD 10103，按 [cockpit](../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730) 与 [hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed) 的布局自行解析布局号 6 的目录槽中类型 10 的唯一仪表记录与字体表 1 的高度字节，不调用转换器的读取器；目录槽数与仪表记录数先按 8 与 32 的上限检查、数组先核对在条目内，再遍历。结构不成立为 `source-unreadable`，与 payload 不同为 `source-mismatch`，位置都是 `roles.map-geometry`，不输出数值；
   - 把结构观测值与各读取器的限值对照，并把包的用量（除来源读取外的十一个预算维度）与 `PRODUCTION_PACKAGE.limits` 对照。
 
   任何作业、验证、解码、载入或限值失败都结束核对。
@@ -122,7 +123,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
-  - `roles`：扩展的 `mission` 与 P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；
+  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；
   - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
 

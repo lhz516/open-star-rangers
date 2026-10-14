@@ -4,7 +4,7 @@ import { validateGroup, validatePackage, type GroupCompletenessResult, type Grou
 import { CLASSIC_P2_SLICE } from './slice-definition.ts';
 import {
   diagnosticCodes, kindOf, SYNTHETIC_ASSETS, syntheticBytes, syntheticGroup, syntheticIdentity, syntheticOriginalGroup, syntheticPackage,
-  VERSION_4_ROLES, type SyntheticAssetSpec,
+  VERSION_4_ROLES, VERSION_5_ROLES, type SyntheticAssetSpec,
 } from './synthetic-content.test-support.ts';
 
 describe('group completeness', () => {
@@ -155,18 +155,20 @@ describe('package completeness', () => {
     expect(diagnosticCodes(validatePackage(CLASSIC_P2_SLICE, groups))).toEqual([expected]);
   });
 
-  // P3-03 spec AC-12: the version 4 roles and their dependency closure.
+  // P3-03 spec AC-12: the version 4 roles and their dependency closure, and the version 5 map geometry role.
   const groupOf = (role: string): ResourceGroup => CLASSIC_P2_SLICE.roles.find(requirement => requirement.role === role)!.group;
   /** The package with `group`'s Assets replaced by `specs`. */
   const packageWith = (group: ResourceGroup, specs: readonly SyntheticAssetSpec[]) =>
     syntheticPackage().map(input => (input.manifest.group === group ? syntheticGroup(group, specs) : input));
 
-  it('covers every version 4 role in the complete synthetic package', () => {
-    expect(VERSION_4_ROLES).toEqual(CLASSIC_P2_SLICE.roles.slice(15).map(({ role }) => role));
-    for (const role of VERSION_4_ROLES) expect(SYNTHETIC_ASSETS[groupOf(role)].some(spec => spec.role === role), role).toBe(true);
+  const NEW_ROLES = [...VERSION_4_ROLES, ...VERSION_5_ROLES];
+
+  it('covers every version 4 and 5 role in the complete synthetic package', () => {
+    expect(NEW_ROLES).toEqual(CLASSIC_P2_SLICE.roles.slice(15).map(({ role }) => role));
+    for (const role of NEW_ROLES) expect(SYNTHETIC_ASSETS[groupOf(role)].some(spec => spec.role === role), role).toBe(true);
   });
 
-  it.each(VERSION_4_ROLES)('is incomplete without one %s Asset, by its role cardinality', role => {
+  it.each(NEW_ROLES)('is incomplete without one %s Asset, by its role cardinality', role => {
     const group = groupOf(role);
     const removed = SYNTHETIC_ASSETS[group].find(spec => spec.role === role)!.id;
     const specs = SYNTHETIC_ASSETS[group].filter(({ id }) => id !== removed)

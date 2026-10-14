@@ -3,11 +3,13 @@ import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { imagePayloadLength } from '../../content/graphics/image-payload.ts';
 import { layoutPayloadLength } from '../../content/graphics/layout-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
+import { encodeMapGeometryPayload, type MapGeometry } from '../../content/hud/map-geometry-payload.ts';
 import { statusMessagesPayloadLength, type StatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { archiveLocator, executableRegion, isRegionLocator, type ArchiveEntryLocator, type ExecutableRegionLocator } from '../source-mapping.ts';
 import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
 import {
-  cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
+  cockpitLayoutBlock, dataPaletteBlock, hudFontTables, instrumentRecord, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
+  type SyntheticInstruments,
 } from './conversion.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from './production-flight-graphics.ts';
 import { productionFlightGraphicsEntries } from './production-flight-graphics.test-support.ts';
@@ -214,16 +216,47 @@ export const PRODUCTION_LAYOUT_POSITIONS: Readonly<Record<string, readonly { rea
 });
 
 /**
- * A CCKD entry in the production cockpit structure: `fonts` in its font directory, the front cockpit in slot 0, an empty
- * slot 1, and the map frame with the group palette in slot 2. `firstFrontFlags` replaces the flags of the first front
- * element, such as a value the reader rejects.
+ * The synthetic map instrument: a 400-pixel main map with a 190-pixel strip, drawn every frame, and the 8-pixel line
+ * height of `hudFontTables()`'s font 1. The values are made up, not the original record's.
  */
-export const productionCockpitBlock = (fonts: readonly Uint8Array[] = hudFontTables(), firstFrontFlags?: readonly [number, number]): Uint8Array => {
+export const SYNTHETIC_MAP_GEOMETRY: MapGeometry = Object.freeze({
+  rectangle: Object.freeze({ x0: 21, y0: 45, x1: 611, y1: 444 }), redrawInterval: 0, informationLineHeight: 8,
+});
+
+const { x0, y0, x1, y1 } = SYNTHETIC_MAP_GEOMETRY.rectangle;
+
+/**
+ * The layout numbers and instrument records of the synthetic production cockpit's three slots (cockpit §1): the front
+ * cockpit (layout 0) and the empty full-screen slot (layout 5) with other instrument types, and the map (layout 6) with
+ * its type-10 record before the message line (type 8), whose rectangle is elsewhere.
+ */
+export const PRODUCTION_COCKPIT_INSTRUMENTS: readonly SyntheticInstruments[] = Object.freeze([
+  { layout: 0, records: [instrumentRecord(0, [5, 400, 60, 470], 2), instrumentRecord(8, [100, 300, 282, 316])] },
+  { layout: 5, records: [instrumentRecord(1, [5, 5, 60, 60], 4), instrumentRecord(10, [0, 0, 9, 9], 9)] },
+  { layout: 6, records: [instrumentRecord(10, [x0, y0, x1, y1], SYNTHETIC_MAP_GEOMETRY.redrawInterval), instrumentRecord(8, [30, 460, 212, 476])] },
+]);
+
+/** The synthetic map geometry's payload length. */
+export const MAP_GEOMETRY_USAGE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE, assets: 1, payloadBytes: encodeMapGeometryPayload(SYNTHETIC_MAP_GEOMETRY).length,
+});
+
+/**
+ * A CCKD entry in the production cockpit structure: `fonts` in its font directory, the front cockpit in slot 0, an empty
+ * slot 1, and the map frame with the group palette in slot 2, each with `instruments`. `firstFrontFlags` replaces the
+ * flags of the first front element, such as a value the reader rejects.
+ */
+export const productionCockpitBlock = (
+  fonts: readonly Uint8Array[] = hudFontTables(),
+  firstFrontFlags?: readonly [number, number],
+  instruments: readonly (SyntheticInstruments | null)[] = PRODUCTION_COCKPIT_INSTRUMENTS,
+): Uint8Array => {
   const front = FRONT.map((placed, index) => (index === 0 && firstFrontFlags ? { ...placed, flags: firstFrontFlags } : placed));
   return cockpitLayoutBlock(
     [front, [], MAP_FRAME].map(elements => elements.map(({ image, x, y, flags }) => ({ record: image.block, x, y, flags }))),
     fonts,
     [null, null, MAP_PALETTE_BLOCK],
+    instruments,
   );
 };
 

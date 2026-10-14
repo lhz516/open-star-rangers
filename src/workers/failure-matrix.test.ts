@@ -13,7 +13,7 @@ import { allGroups, finishedJob, flush, testHolder } from '../app/resources/reso
 import { FLIGHT_GRAPHICS_USAGE } from '../original-data/conversion/production-flight-graphics.test-support.ts';
 import { HUD_TEXT_USAGE } from '../original-data/conversion/production-hud-text.test-support.ts';
 import { PRODUCTION_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-graphics.ts';
-import { PRODUCTION_LAYOUT_POSITIONS, SYNTHETIC_STATUS_MESSAGES_PAYLOAD } from '../original-data/conversion/production-graphics.test-support.ts';
+import { MAP_GEOMETRY_USAGE, PRODUCTION_LAYOUT_POSITIONS, SYNTHETIC_STATUS_MESSAGES_PAYLOAD } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES } from '../original-data/conversion/production-model-textures.ts';
 import { archiveLocator, isRegionLocator } from '../original-data/source-mapping.ts';
 import { DiscReadError } from '../original-data/disc/disc-error.ts';
@@ -195,9 +195,9 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
   });
 
   it('fixes the budget step usage from the fixture\'s payload sizes', () => {
-    // The production graphics usage less the two 8×8 fonts, the two layouts, the messages, the HUD text and the P3-03
-    // flight graphics the budget step leaves out.
-    const omitted = FLIGHT_GRAPHICS_USAGE.payloadBytes + HUD_TEXT_USAGE.payloadBytes + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + Object.entries(PRODUCTION_LAYOUT_POSITIONS)
+    // The production graphics usage less the two 8×8 fonts, the two layouts, the messages, the HUD text, the P3-03
+    // flight graphics and the map geometry the budget step leaves out.
+    const omitted = FLIGHT_GRAPHICS_USAGE.payloadBytes + HUD_TEXT_USAGE.payloadBytes + MAP_GEOMETRY_USAGE.payloadBytes + fontPayloadLength(256, 8, 94) + fontPayloadLength(256, 8, 95) + Object.entries(PRODUCTION_LAYOUT_POSITIONS)
       .reduce((total, [id, positions]) => total + layoutPayloadLength({
         elements: positions.map((_, index) => ({ image: readAssetId(`image/${id.slice('layout/'.length)}/element-${index}`), x: 0, y: 0 })),
       }), 0) + statusMessagesPayloadLength(SYNTHETIC_STATUS_MESSAGES_PAYLOAD);
@@ -226,11 +226,11 @@ describe('F-04 limits are enforced before the reads and allocations they guard',
 });
 
 describe('F-08 fixture assumptions', () => {
-  it('removes the texture entry that production graphics mapping 287 names first', () => {
+  it('removes the texture entry that production graphics mapping 288 names first', () => {
     const entry = PRODUCTION_MODEL_TEXTURES[0].entry;
     const first = PRODUCTION_GRAPHICS_MAPPINGS.mappings.findIndex(({ parts: [{ alternatives: [locator] }] }) =>
       !isRegionLocator(locator) && archiveLocator(locator).entry.id === entry);
-    expect(first).toBe(287);
+    expect(first).toBe(288);
     const archive = scenarioSource('texture-missing')!.covered['MAIN/SR.NOB'] as Uint8Array;
     expect(archive.length).toBeLessThan((sliceCoveredFiles()['MAIN/SR.NOB']).length);
   });

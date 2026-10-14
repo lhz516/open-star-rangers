@@ -51,6 +51,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
   ],
   'cockpit-hud-map': [
     { id: 'data/synthetic-hud-text', role: 'hud-text' },
+    { id: 'data/synthetic-map-geometry', role: 'map-geometry' },
     { id: 'data/synthetic-view-labels', role: 'view-labels' },
     { id: 'font/synthetic-hud', role: 'font' },
     { id: 'image/synthetic-mfd', role: 'hud-mfd' },
@@ -134,10 +135,14 @@ export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
   'hud-sound',
 ]);
 
+/** The role slice definition version 5 added (P3-03 spec, P3-09 的修订：地图几何（修订 2）). */
+export const VERSION_5_ROLES: readonly SliceRole[] = Object.freeze(['map-geometry']);
+
 /**
  * `CLASSIC_P2_SLICE` with only the roles version 3 required, for tests of a step whose group lacks the Assets P3-03
- * steps add to it.
+ * and P3-09 steps add to it.
  */
 export const P2_ROLES_SLICE: SliceDefinition = Object.freeze({
-  ...CLASSIC_P2_SLICE, roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !VERSION_4_ROLES.includes(role))),
+  ...CLASSIC_P2_SLICE,
+  roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !VERSION_4_ROLES.includes(role) && !VERSION_5_ROLES.includes(role))),
 });

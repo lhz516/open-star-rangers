@@ -36,8 +36,8 @@ export type SourceErrorCode =
  * Names a `limit-exceeded` diagnostic reports: the P2-03 archive limits, the P2-05 graphics structural limits, the
  * P2-09 payload limits (entry bytes, item counts and text bytes), the P2-06 mesh, model, effect and executable limits
  * and the P2-07 container counts (CCKD directory slots, elements per slot, records per MFDD list and records per TABL
- * image list) and SNIP and DIAG bounds (frames, startup messages and text bytes). `budget-exceeded` reports a P2-01
- * budget dimension instead.
+ * image list) and SNIP and DIAG bounds (frames, startup messages and text bytes); P3-09 adds `cockpitInstruments`, the
+ * instrument records of the CCKD slot the map geometry reads. `budget-exceeded` reports a P2-01 budget dimension instead.
  *
  * P3-03 structures (docs/plan/p3/03/spec.md, limits and budgets; layouts in docs/original/formats/) reuse the generic
  * names wherever they describe the structure; the location's structure path then names it:
@@ -84,6 +84,7 @@ export type SourceLimitName =
   | 'executableRegion'
   | 'cockpitSlots'
   | 'cockpitElements'
+  | 'cockpitInstruments'
   | 'mfdRecords'
   | 'tableRecords'
   | 'snipFrames'
