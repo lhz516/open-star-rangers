@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | blocked |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | in-progress |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -129,7 +129,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
 | [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | completed |
-| [41-coverage-resampling.md](./subtasks/41-coverage-resampling.md) | 40 | blocked |
+| [41-coverage-resampling.md](./subtasks/41-coverage-resampling.md) | 40 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -234,6 +234,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 
 - **2026-10-14 — Subtask 27 仍阻塞（依赖 41）：** 以 40、41 的新运行重跑 `final4-2026-10-14`（新版 `42dbfc89`，32 个原版运行）：无窗口不一致，原版成立窗口全部配对，导弹类缺口已闭合，新版有 kind 0x100 被毁窗口；唯一 D-02 覆盖缺口为原版 kind 0x100 完整被毁链，接触单次样本仍缺操作数。见 27 完成证据“当前状态”。
   Resume when: 41 完成。
+- **2026-10-14 — Subtask 41 resumed and completed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。原定由用户驾驶的 `a41-ux1`/`a41-ux2` 改为预先声明刺激的全自动配方（ax1、ax2a、ax2b），加种子守卫与交接/帧守卫；运行中无未声明输入。`a41-ax1-07`、`a41-ax2a-01`、`a41-ax2b-01` 为 `complete`（ax1-06 被种子守卫拒绝，不计入）。分析中发现并修正读取器错误：链表尾可能是 `0x23fdc` 的额外爆炸（+0x104 = 0），主爆炸应取源种类匹配者；ax1-05 的“激活滞后”与碎片 `fails-original` 由此撤销。`final5` 中 kind bit 7、8 的被毁链都完整，contact 2 个一致，单次转移 `differing` 0。
+  Evidence: 41 的完成证据；被忽略的 `run-notes.md` a41-ax* 节与 `comparison/out/final5/`。
+- **2026-10-14 — Subtask 27 resumed:** 41 已完成，阻塞前提满足；以 `final5` 恢复 27 的结论。
 
 ## 审批
 
