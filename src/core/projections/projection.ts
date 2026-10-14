@@ -1,9 +1,9 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
  * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
- * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts). map, communications and result fix the
- * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a
- * fully visible map or a victory. The projection gives only what the original shows or a rule needs, never the list of
+ * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts), and so is map (P3-09, map.ts).
+ * communications and result fix the boundary their owners fill; until a rule makes one ready it is `not-implemented`,
+ * never an empty list, a zero value or a victory. The projection gives only what the original shows or a rule needs, never the list of
  * all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the
  * spec (扩展规则) before its partition can become ready.
  */
@@ -15,6 +15,7 @@ import type { MapPixel, MapPoint, PixelRect, WorldRectangle } from '../world/map
 import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
 import { projectCombat } from './combat.ts';
+import { projectMap } from './map.ts';
 
 export interface ClockProjection {
   readonly tick: number;
@@ -126,6 +127,18 @@ export interface CombatPlayer {
   /** The SUBSYSTEM_COUNT two-bit fields. */
   readonly subsystems: readonly SubsystemState[];
   readonly leftPage: LeftPage;
+  readonly warp: CombatWarpReading;
+}
+
+/**
+ * The cockpit's Warp readings (MW-11): the type-12 Warp indicator and, in view mode 1, the values of left page 6's three
+ * labelled readouts and trace (`0x4dcec`); the trace's history and refresh period are P3-13's.
+ */
+export interface CombatWarpReading {
+  /** `0x4f2a0`, `0x4f3e4`: +0xC8 = 0, or +0xC8 + 64 × +0xA4 < clock (strict); the campaign gate always holds. */
+  readonly indicator: boolean;
+  /** f32 a, s, p, c in [0, 1] in view mode 1; null in every other view. */
+  readonly page: { readonly angle: number; readonly error: number; readonly completion: number; readonly centring: number } | null;
 }
 
 /**
@@ -179,8 +192,7 @@ export interface FlightProjection {
   readonly combat: FlightCombat;
 }
 
-// The strategic map partition (docs/plan/p3/02/spec.md, MW-11). Its rules are P3-09's; until they are implemented it is
-// `not-implemented`.
+// The strategic map partition (docs/plan/p3/02/spec.md, MW-11), ready since P3-09 (map.ts).
 
 /** A Warp request's gate (MW-04) judged on the committed state: the reading never changes the state. */
 export type WarpRequestReading =
@@ -211,7 +223,7 @@ export interface MapContact {
 
 export interface MapZoomMember {
   readonly entityId: EntityId;
-  /** Relative to the zoom window's origin, moved by `0x4b56c`. */
+  /** Relative to the zoom window's origin: `0x4c5ec`'s pixel; the spacing `0x4b56c` is P3-13's drawing (MW-11). */
   readonly pixel: MapPoint;
   /** The selection box: a destination exists and |trunc(D(position − destination))| < 1000 on all three axes. */
   readonly boxed: boolean;
@@ -259,7 +271,10 @@ export interface MapOpen {
   /** Count rows at or past the capacity are drawn outside the window by the original. */
   readonly information: { readonly capacity: number; readonly rows: readonly MapInformationRow[] };
   readonly labels: readonly MapLabel[];
-  /** The player's projected pixel (possibly outside the main map; drawing clips it) to the cursor pixel (`0x4c674`). */
+  /**
+   * The player's projected pixel (possibly outside the main map; drawing clips it) to the cursor pixel (`0x4c674`); from
+   * the player's live position when it has no icon (MW-11, a project rule unreachable before P3-11).
+   */
   readonly line: { readonly from: MapPoint; readonly to: MapPixel };
   readonly destination: { readonly position: Vec3; readonly pixel: MapPoint; readonly inWorld: boolean; readonly cost: MapCostReading } | null;
   readonly cursorCost: MapCostReading;
@@ -377,7 +392,7 @@ export function projectWorld(world: WorldState): Projection {
       interactionContext: interactionContext(player.viewMode),
     }),
     flight: flightProjection(world),
-    map: NOT_IMPLEMENTED,
+    map: projectMap(world),
     communications: NOT_IMPLEMENTED,
     result: NOT_IMPLEMENTED,
   });

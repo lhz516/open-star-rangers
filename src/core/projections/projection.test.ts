@@ -12,6 +12,7 @@ import {
   projectWorld,
   type CombatPlayer,
   type CombatReady,
+  type CombatWarpReading,
   type CommunicationsReady,
   type FlightCombat,
   type FlightResourceName,
@@ -54,7 +55,7 @@ function assistedState(): WorldState {
 }
 
 describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-05)', () => {
-  it('has the clock, mission and player partitions and both flight groups ready, the other rule partitions not implemented', () => {
+  it('has the clock, mission, player and map partitions and both flight groups ready, the other rule partitions not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -82,7 +83,8 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
         },
         combat: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id }) },
       },
-      map: NOT_IMPLEMENTED,
+      // A closed map; the player entity is not active yet.
+      map: { readiness: 'ready', player: { state: 'closed', destination: null, markerEntityId: null, warpRequest: { accepted: false, reason: 'player-unavailable' } } },
       communications: NOT_IMPLEMENTED,
       result: NOT_IMPLEMENTED,
     });
@@ -233,7 +235,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       readonly combat: NotImplementedPartition | CombatReady;
     }>();
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
-    // P3-09 MW-11: the map partition's shapes replace the `never` placeholders; it stays not implemented until 19.
+    // P3-09 MW-11: the map partition's shapes replace the `never` placeholders (map.test.ts).
     expectTypeOf<MapPartition>().toEqualTypeOf<NotImplementedPartition | MapReady>();
     expectTypeOf<MapReady['player']>().toEqualTypeOf<MapPlayer | null>();
     expectTypeOf<MapPlayer['state']>().toEqualTypeOf<'closed' | 'open'>();
@@ -253,8 +255,9 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     expectTypeOf<CombatReady['readiness']>().toEqualTypeOf<'ready'>();
     expectTypeOf<CombatReady['player']>().toEqualTypeOf<CombatPlayer | null>();
     expectTypeOf<keyof CombatPlayer>().toEqualTypeOf<
-      'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage'
+      'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage' | 'warp'
     >();
+    expectTypeOf<keyof CombatWarpReading>().toEqualTypeOf<'indicator' | 'page'>();
     expectTypeOf<FlightResourceName>().toEqualTypeOf<'energy' | 'shield' | 'charge' | 'hull' | 'spare-power'>();
     expectTypeOf<WeaponRecordReference['family']>().toEqualTypeOf<'gun' | 'missile'>();
     expectTypeOf<CombatPlayer['weapons']>().toEqualTypeOf<readonly [WeaponListReading, WeaponListReading]>();

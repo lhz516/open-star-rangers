@@ -160,6 +160,8 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
         lock: { level: 3, losing: false, progress: 50 },
         subsystems: fields({ 4: 1, 12: 1, 18: 2 }),
         leftPage: 1,
+        // +0xC8 = 0: lit; not in view 1: no page.
+        warp: { indicator: true, page: null },
       },
     });
   });
