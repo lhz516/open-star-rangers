@@ -84,7 +84,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 |---|---|---|
 | [01-map-mode-command-research.md](./subtasks/01-map-mode-command-research.md) | — | completed |
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | completed |
-| [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | in-progress |
+| [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | completed |
 | [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | in-progress |
 | [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | in-progress |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | pending |
@@ -117,6 +117,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal。协调者在 `p3-09-strategic-map-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-05、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-09-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则（协调者认领，逐个以 `Worker-Commit:` 拖车集成并清理）。Ghidra 由各 worker 在 `local/research/p3-09/<主题>/` 下的私有副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
 - **2026-10-14 — 01 发现与 spec 的冲突（交 08/D-01）：** 原版 `0x32d74` 只在视角已是 0x11 且子模式 8 时不切换，地图（视角 8）会被被毁视角取代，与 spec [地图模式](./spec.md#地图模式)“若视角已是 8 则不切换”的读法相反；另外从飞行开关地图不置 `statusDisplay` 重绘，只有进出基地置位。08 在 D-01 中按 01 的完成证据更正，并决定地图中 `toggle-map` 与 `player-unavailable` 的优先次序（项目决定）。
 - **2026-10-14 — 02 的结论中 D-01 须处理的点：** 创建标记时消耗一次共享随机数（`rand()%64` 的转角），spec 未列；选择读取的是上一 tick 绘制时生成的图标命中列表，Core 必须拥有并序列化该列表；放大范围来自运行时比例而不是布局；首次选择之前的 `w` 静默无反应，Warp 读取存储的目的地而不是标记。玩家状态字节 +0 只由首次选择置 1，任务建造/重试时由玩家实例化清零。
+- **2026-10-14 — 03 的结论中 D-01 须处理的点：** 历史探索在静态上“不保留”（已确认，代码），运行佐证交 09；地图图标的可见性判定只作用于敌对种类（spec 对图标“可见”的表述须收窄）；+0xD4 的读者只有 `0x2b8ec`、`0x2ee60` 与僚机目标搜索 `0x62760`，僚机 AI `0x62250` 在任何视角都调用 `0x2ee60`，因此 `mapVisible` 与有序集合必须跨 tick 保留并进入快照（交 08、15 与 P3-08）。
 
 ## 审批
 
