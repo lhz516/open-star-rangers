@@ -37,7 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/flight-control.test.ts`：Warp 中的轴回归。
 - `src/core/rules/warp-path.ts`、`src/core/rules/warp-path.test.ts`：计划新增，MW-02/MW-04/MW-07 的隧道路径（按 28/29 的 R-B）。
 - `src/core/systems/view-switch.ts`、`src/core/systems/view-switch.test.ts`：进入/离开视角 1 的部分。（以上为协调者 2026-10-14 扩大范围）
-- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`、`src/core/world/world.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`：`warp-start` 内部请求的接入与“每种命令恰一个结果”的期望（协调者 2026-10-14 扩大范围）。
+- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`、`src/core/world/world.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`、`src/core/systems/map.test.ts`：`warp-start` 内部请求的接入与“每种命令恰一个结果”的期望（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 
