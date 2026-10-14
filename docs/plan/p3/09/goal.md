@@ -95,7 +95,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | completed |
-| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 28, 30 | in-progress |
+| [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 28, 30 | completed |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | completed |
 | [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | pending |
@@ -134,6 +134,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 30 已集成：** 方向表改为映像常数（`0x17210c`、`0x172114` 的位模式），整表散列与 28 的独立复算一致；既有读者与 replay 期望无需改动（只有 area 测试所用的第 205 项 z 变化，其期望由函数导出）；不另递增规则版本，随 12 的 5。另见 `steering.ts` 使用另一对常数 `0x17232c`、`0x172334`，交 29 在 executable 中一并核对记载。
 - **2026-10-14 — 13 已集成，交 26 的文档：** `docs/engineering/modules/core.md` 的对象更新与请求处理行、命令判定（`TickContext.commandView`、`combatCommandPlayer(context)`、地图中选择命令为 `wrong-context`、`toggle-map` 结果表）、轴按最终有效上下文、扩展规则（判定读 `commandView`，视角变化经 `switchView`）以及仍写着地图选择命令 `not-implemented` 的分阶段说明；`source-structure.md` 新增 `systems/map.ts`、`systems/view-switch.ts`、`rules/map-frame.ts`。
 - **2026-10-14 — 依赖调整：** 14、17、18 的前置改为 28（研究结论已在 `local/research/p3-09/warp-path/findings.md` 与 28 的完成证据中），不再等待只写跟踪文档的 29；29 仍在 09 之后执行，并是 27 的前置。原因：29 与 09 同写 executable，09 的基准运行耗时长，原依赖会无谓阻塞关键路径。
+- **2026-10-14 — 14 已集成，交 26 的文档：** `docs/engineering/modules/core.md` 的请求处理（`map-point` 请求、标记创建 1 次世界抽取/移动/缺失）、命令判定（`map-point` 门禁与量化、`CommandView.destination` 每批由已提交目的地重置）、对象更新（标记走通用生命周期）、帧尾（只在已提交视角为 8 时建 `mapIcons`，否则清空，先于显示步）、静态规则数据 `startupRotations`（代码规则，不进 setupHash 与快照）；`source-structure.md` 新增 `rules/map-icons.ts`、`rules/startup-rotations.ts`。15 复用 `isMapContact`。
 
 ## 审批
 

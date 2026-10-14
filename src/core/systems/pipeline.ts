@@ -26,7 +26,7 @@ import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setE
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
 import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
-import { applyMapToggle, type MapToggleRequest } from './map.ts';
+import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
 import { engageParked } from './parked-engagement.ts';
@@ -66,6 +66,8 @@ export type Request =
   | MatchSpeedRequest
   /** Message 0x400 sub-command 8 or 9: the map's opening or closing, posted by an accepted `toggle-map` (map.ts; MW-04). */
   | MapToggleRequest
+  /** Message 0x1000: a hover or select at a quantised cursor pixel, posted by an accepted `map-point` (map.ts; MW-04). */
+  | MapPointRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -172,12 +174,14 @@ export class RequestQueue {
  * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04): the committed view mode and previous
  * view mode at the start of the command batch, which each accepted view command (`toggle-map`) moves on at once while
  * its request commits the change only in request handling. Every command's interaction context derives from it, and
- * the player's axes from its value after the last command. Nothing else reads it: the automatic target selection and
- * every later stage read the committed view.
+ * the player's axes from its value after the last command. Its destination is the point of the batch's last accepted
+ * select, or the committed destination before one, which `request-warp` is judged on. Nothing else reads it: the
+ * automatic target selection and every later stage read the committed view.
  */
 export interface CommandView {
   viewMode: number;
   previousViewMode: number;
+  destination: Vec3 | null;
 }
 
 /** Everything one step's stages share. */
@@ -194,7 +198,8 @@ export interface TickContext {
 }
 
 /** The view mode and previous view mode the player state holds now. */
-export const committedView = ({ player }: WorldState): CommandView => ({ viewMode: player.viewMode, previousViewMode: player.previousViewMode });
+export const committedView = ({ player }: WorldState): CommandView =>
+  ({ viewMode: player.viewMode, previousViewMode: player.previousViewMode, destination: player.map.destination });
 
 /**
  * Stage 1, input registration, up to the first change: given the validated tick input, checks everything else that
@@ -248,8 +253,7 @@ function advanceClock(context: TickContext): void {
 function updatePlayerControls(context: TickContext): void {
   const { world, input, time, requests, commandView } = context;
   // The command batch starts from the committed view (MW-04).
-  commandView.viewMode = world.player.viewMode;
-  commandView.previousViewMode = world.player.previousViewMode;
+  Object.assign(commandView, committedView(world));
   const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
@@ -297,6 +301,7 @@ function updateObject(context: TickContext, entity: Entity): void {
   const { combat } = entity;
   switch (combat.type) {
     case 'craft':
+    case 'marker':
       updateLifecycle(context, entity);
       return;
     case 'missile':
@@ -379,6 +384,10 @@ function handleRequest(context: TickContext, request: Request): void {
     applyMapToggle(context, request);
     return;
   }
+  if (request.type === 'map-point') {
+    applyMapPoint(context, request);
+    return;
+  }
   const entity = world.entities.get(request.entityId);
   // The subject was removed earlier in this pass: a reference to a removed entity is invalid.
   if (entity === undefined) return;
@@ -443,6 +452,12 @@ function checkArea(context: TickContext): void {
   checkActiveArea(context.world);
 }
 
+/** The `frame-end` stage: P3-09's map step (MW-07), then the cockpit display step (CR-10). */
+function runFrameEnd(context: TickContext): void {
+  runMapStep(context);
+  frameEndStage?.(context);
+}
+
 /** Stage 7 (project boundary): seals the tick's events; requests posted since request handling were dropped. */
 function commit(context: TickContext): void {
   Object.freeze(context.events);
@@ -501,9 +516,9 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),
-  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09) and P3-07's cockpit display step
-  // (CR-10); never waits for a rendered frame.
-  ruleStage('frame-end', () => frameEndStage),
+  // Rule progress the original makes in its camera step and frame render: P3-09's map step (0x2b8ec, 0x49f8c) or
+  // Warp step (0x50508), then P3-07's cockpit display step (CR-10); never waits for a rendered frame.
+  stage('frame-end', runFrameEnd),
   stage('commit', commit),
 ]);
 

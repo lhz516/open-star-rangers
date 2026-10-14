@@ -24,8 +24,10 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   target: ['accepted', null],
   'cycle-main-weapon': ['accepted', null],
   'select-missile': ['accepted', null],
-  // P3-09: toggle-map opens the map, so the energy and damage report commands after it are judged in the map context.
+  // P3-09: toggle-map opens the map, so the energy and damage report commands after it are judged in the map context,
+  // where map-point is accepted.
   'toggle-map': ['accepted', null],
+  'map-point': ['accepted', null],
   energy: ['ignored', 'wrong-context'],
   'damage-report': ['ignored', 'wrong-context'],
 };

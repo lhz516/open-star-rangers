@@ -3,7 +3,7 @@ import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { craft, gun, missile, mount, syntheticCraftInfo } from '../../content/rule-data/rule-data.test-support.ts';
 import type { ShotTrigger, Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
-import { blankCraftCombat, EntityTable, type Entity, type Matrix3 } from '../world/entity-table.ts';
+import { blankCraftCombat, EntityTable, markerInit, type Entity, type Matrix3 } from '../world/entity-table.ts';
 import type { WorldRuleData } from '../world/rule-data.ts';
 import { entityInit, expectFault } from '../world/world.test-support.ts';
 import { buildWeaponBlock, type CraftEntity } from './combat-init.ts';
@@ -447,6 +447,16 @@ describe('the missile lock 0x2ddbc (W8)', () => {
     Object.assign(setup.lock, { level: 3, stageDueClock: 5, losing: true, graceDueClock: 6, nextUpdateClock: CLOCK + 50 });
     updateLock(setup.firing, setup.player, setup.enemy, CLOCK, scriptedRand([]));
     expect(setup.lock).toEqual({ level: 0, stageDueClock: 5, losing: true, graceDueClock: 6, nextUpdateClock: CLOCK + 50 });
+  });
+
+  it('drops to level 0 on the map marker, a friendly kind (0x206c87f has bit 25), reading no record for it (MW-03)', () => {
+    const setup = locking();
+    // Where a hostile would lock; the marker has no craft record.
+    const marker = new EntityTable().allocate(markerInit(vec(0, 0, 50), IDENTITY));
+    expect(setup.firing.info.craft[25]).toBeUndefined();
+    Object.assign(setup.lock, { level: 3, stageDueClock: 5, losing: true, graceDueClock: 6, nextUpdateClock: 0 });
+    updateLock(setup.firing, setup.player, marker, CLOCK, scriptedRand([]));
+    expect(setup.lock).toEqual({ level: 0, stageDueClock: 5, losing: true, graceDueClock: 6, nextUpdateClock: 0 });
   });
 
   it('waits for its update clock and needs a guided missile with ammunition on the chain', () => {

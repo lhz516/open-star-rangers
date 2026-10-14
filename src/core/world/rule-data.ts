@@ -55,8 +55,9 @@ import {
 } from '../rules/load-transforms.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
+import { STARTUP_ROTATIONS } from '../rules/startup-rotations.ts';
 import type { SteeringProgram } from '../rules/steering.ts';
-import type { Level } from './entity-table.ts';
+import type { Level, Matrix3 } from './entity-table.ts';
 import type { MapRuleData } from './map-rule-data.ts';
 import type { InstantiableRecord } from './setup-check.ts';
 
@@ -132,6 +133,11 @@ export interface WorldRuleData {
   readonly homingPrograms: HomingPrograms;
   /** The strategic map's geometry and scales (MW-01), from `inputs.mapGeometry` and the mission's world. */
   readonly map: MapRuleData;
+  /**
+   * The 64 start-up rotations `0x1b0a10` (MW-01, MW-12 R-A): a code rule, the same in every world, so it depends on no
+   * input and no setupHash binds it (startup-rotations.ts). The marker and the Warp arrival index it by a world draw.
+   */
+  readonly startupRotations: readonly Matrix3[];
 }
 
 const INPUT = 'input';
@@ -440,6 +446,7 @@ export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: 
     craft: Object.freeze(craft),
     homingPrograms: homingPrograms(inputs.aiPrograms.content),
     map,
+    startupRotations: STARTUP_ROTATIONS,
   });
 }
 

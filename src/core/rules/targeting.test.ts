@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import { EntityTable, type Entity, type EntityInit, type Matrix3 } from '../world/entity-table.ts';
+import { EntityTable, markerInit, type Entity, type EntityInit, type Matrix3 } from '../world/entity-table.ts';
 import { entityInit, expectFault } from '../world/world.test-support.ts';
 import {
   ENEMY_KINDS, fartherCandidate, FORWARD_KINDS, forwardCandidate, forwardMode, FRIENDLY_KINDS, isTargetCandidate, modeKinds, nearerCandidate,
@@ -42,6 +42,19 @@ describe('kind masks and the forward mode (T2, player target modes)', () => {
   it('gives a forward choice the friendly mode exactly for the friendly model kinds and the player\'s', () => {
     const friendly = [0, 1, 2, 3, 4, 5, 6, 11, 14, 15, 17, 18];
     for (let kindBit = 0; kindBit < 20; kindBit++) expect(forwardMode(kindBit)).toBe(friendly.includes(kindBit) ? 'friendly' : 'enemy');
+  });
+});
+
+describe('the map marker as a target (P3-09 MW-03)', () => {
+  it('is a friendly-mode candidate from its state 7, never an enemy-mode or forward one', () => {
+    const [table, self] = withSelf();
+    const marker = table.allocate(markerInit(at(0, 0, 100), IDENTITY));
+    expect(isTargetCandidate(marker)).toBe(false);
+    expect(nearerCandidate(table, self, null, FRIENDLY_KINDS)).toBeNull();
+    marker.state = 'active';
+    expect(isTargetCandidate(marker)).toBe(true);
+    expect(ids([nearerCandidate(table, self, null, FRIENDLY_KINDS), fartherCandidate(table, self, null, FRIENDLY_KINDS)])).toEqual([marker.id, marker.id]);
+    expect(ids([nearerCandidate(table, self, null, ENEMY_KINDS), forwardCandidate(table, self, FORWARD_KINDS, () => 1e9)])).toEqual([null, null]);
   });
 });
 

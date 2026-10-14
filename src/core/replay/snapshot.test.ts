@@ -8,7 +8,10 @@ import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
 import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { busyCombat, entityInit, stateText, TEST_ORIENTATION, thrownBy, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
+import {
+  addPlayerEntity, busyCombat, entityInit, stateText, stillEntityInit, TEST_ORIENTATION, testState, thrownBy, tickInput, withEveryKindBound,
+} from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
@@ -325,5 +328,36 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     };
     expect(run(7)).toBe(run(7));
     expect(run(7)).not.toBe(run(8));
+  });
+});
+
+describe('the map state a select leaves (P3-09/14; docs/plan/p3/02/spec.md, MW-14)', () => {
+  /** A world in the map with a standing friendly craft, after a map frame, a first select on it and another map frame. */
+  function selected(column: number): WorldState {
+    const state = testState();
+    addPlayerEntity(state).state = 'active';
+    state.player.control = initialPlayerControl(1);
+    state.player.targeting!.autoTargetDueClock = 1e9;
+    state.player.viewMode = 8;
+    const craft = state.entities.allocate(stillEntityInit(3, { position: { x: 100, y: 100, z: 50 } }));
+    craft.state = 'active';
+    const world = constructWorld(state);
+    world.step(tickInput());
+    world.step(tickInput([{ type: 'map-point', operation: 'select', right: (column + 0.5) / state.ruleData.map.side, down: 0.5 }]));
+    world.step(tickInput());
+    return state;
+  }
+
+  it('writes the destination, the marker and the icon list, the same for equal worlds and different for another point', () => {
+    const state = selected(10);
+    expect(state.player.map.destination).not.toBeNull();
+    expect([...state.entities.walk(1 << 25)]).toHaveLength(1);
+    expect(state.mapIcons.length).toBeGreaterThan(0);
+    const text = stateText(state);
+    expect(stateText(selected(10))).toBe(text);
+    expect(stateText(selected(11))).not.toBe(text);
+    const snapshot = JSON.parse(text) as { state: { mapIcons: unknown[]; player: { map: unknown } } };
+    expect(snapshot.state.mapIcons).toHaveLength(state.mapIcons.length);
+    expect(snapshot.state.player.map).toMatchObject({ destination: state.player.map.destination });
   });
 });

@@ -334,8 +334,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
 
   it('reads the runs of its stages from their rule modules', () => {
-    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
-      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
+    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy')])
+      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage]);
     expect([typeof collisionStage, typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function', 'function']);
   });
 

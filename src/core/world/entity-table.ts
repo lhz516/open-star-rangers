@@ -619,6 +619,34 @@ export interface EntityInit {
   readonly combat: EntityCombat;
 }
 
+const NO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+
+/**
+ * The map marker `0x3cb80` allocates (MW-03) at `position` with `orientation`: kind 25, its own name and presentation,
+ * active (allocated presentation-ready), the mode-4 block and otherwise the allocator's defaults: no source, side,
+ * interaction or rule inputs, a maximum speed of 0, no Warp or formation. It has no craft record (`0x2d2d8` gives null
+ * beyond the craft count), so nothing may read one for it.
+ */
+export function markerInit(position: Vec3, orientation: Matrix3): EntityInit {
+  return {
+    kindBit: MARKER_KIND_BIT,
+    source: null,
+    name: Object.freeze({ type: 'map-marker' }),
+    side: null,
+    baseInteraction: false,
+    presentation: Object.freeze({ type: 'map-marker' }),
+    position,
+    orientation,
+    activity: 'active',
+    ruleInputs: NO_RULE_INPUTS,
+    maximumSpeed: 0,
+    lastParkedUpdateClock: 0,
+    ...allocatorFlightState(),
+    movement: MARKER_MOVEMENT,
+    combat: MARKER_COMBAT,
+  };
+}
+
 /** The state an entity starts in on `activity`, at allocation and whenever its parking switches. */
 export function initialState(activity: Activity): ObjectState {
   return activity === 'parked' ? 'new' : 'presentation-ready';
@@ -672,7 +700,8 @@ function copyName(name: NameReference): NameReference {
   return Object.freeze({ type: 'candidate', declaration: Object.freeze({ collection, index }), candidate });
 }
 
-const frozenVec = ({ x, y, z }: Vec3): Vec3 => Object.freeze({ x, y, z });
+/** A frozen copy of a vector. */
+export const frozenVec = ({ x, y, z }: Vec3): Vec3 => Object.freeze({ x, y, z });
 const isFloat32Vec = ({ x, y, z }: Vec3): boolean => isFiniteFloat32(x) && isFiniteFloat32(y) && isFiniteFloat32(z);
 const isClock = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 const AI_MODES: readonly number[] = [0, 1, 2, 4, 5];

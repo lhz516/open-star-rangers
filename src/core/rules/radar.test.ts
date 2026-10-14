@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import type { Entity, EntityInit, SubsystemState } from '../world/entity-table.ts';
+import { markerInit, type Entity, type EntityInit, type Matrix3, type SubsystemState } from '../world/entity-table.ts';
 import { entityInit, expectFault, stateText, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { contactClass, isNear, NEAR_DISTANCE, RADAR_CAPACITY, RADAR_KINDS, readRadar } from './radar.ts';
@@ -9,6 +9,7 @@ import { contactClass, isNear, NEAR_DISTANCE, RADAR_CAPACITY, RADAR_KINDS, readR
 // Expectations derived by hand from T6, T10 and CR-12 (docs/plan/p3/02/spec.md), not by the module.
 
 const at = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
+const IDENTITY = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]) as unknown as Matrix3;
 
 /** A world with the player (kind bit 0) at `position`, active. */
 function withPlayer(position: Vec3 = at(0, 0, 0)): [WorldState, Entity] {
@@ -36,6 +37,16 @@ const contactIds = (state: WorldState, player: Entity, target: number | null = n
   readRadar(state.entities, player, target).contacts.map(({ entityId }) => entityId);
 
 describe('radar contacts (T6, CR-12)', () => {
+  it('lists the map marker of 0x3cb80 from its state 7, as a marker contact (P3-09 MW-03)', () => {
+    const [state, player] = withPlayer();
+    const marker = state.entities.allocate(markerInit(at(5, 6, 7), IDENTITY));
+    expect(contactIds(state, player)).toEqual([]);
+    marker.state = 'active';
+    expect(readRadar(state.entities, player, marker.id).contacts).toEqual([
+      { entityId: marker.id, offset: at(5, 6, 7), class: 'marker', missile: false, near: true, target: true },
+    ]);
+  });
+
   it('reads kinds 0x21fffff: every craft kind, missiles and the marker', () => {
     expect(Array.from({ length: 32 }, (_, bit) => bit).filter((bit) => ((RADAR_KINDS >>> bit) & 1) === 1))
       .toEqual([...Array.from({ length: 21 }, (_, bit) => bit), 25]);

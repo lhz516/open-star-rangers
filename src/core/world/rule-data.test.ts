@@ -5,6 +5,7 @@ import { MARKER as CRAFT_INFO_MARKER, debrisRecord, gun, mount } from '../../con
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from './create-world.ts';
 import { programRecord } from '../rules/steering.ts';
+import { STARTUP_ROTATIONS } from '../rules/startup-rotations.ts';
 import {
   aiProgramsContent, animationContent, animationId, asCreateInput, craftInfoContent, debrisContent, declaration, MARKER, modelContent, modelOf,
   originalImportIdentity, playerOnlyMission, projectileVisualsContent, rosterContent, ruleInputs, worldInput, type CraftInfoDraft, type WorldInputParts,
@@ -408,6 +409,15 @@ describe('static rule data (CR-01)', () => {
     expect(player.debris[0].weights).toEqual({ x: -0, y: -0, z: 1 });
     expect(ruleData.craft[14]).toMatchObject({ parts: 0, debris: [] });
     expect(ruleData.craft[7]!.shape).toMatchObject({ radius: 4, radiusSquared: 16 });
+  });
+
+  it('holds the 64 start-up rotations, the code rule\'s frozen table, the same in every world and outside snapshots (MW-01)', () => {
+    const { ruleData } = create(worldInput());
+    expect(ruleData.startupRotations).toBe(STARTUP_ROTATIONS);
+    expect(ruleData.startupRotations).toHaveLength(64);
+    expect(deepFrozen(ruleData.startupRotations)).toBe(true);
+    expect(create(worldInput({ run: { wingman: 3 } })).ruleData.startupRotations).toBe(STARTUP_ROTATIONS);
+    expect(Object.keys(createWorld(asCreateInput(worldInput())).snapshot().state)).not.toContain('ruleData');
   });
 });
 

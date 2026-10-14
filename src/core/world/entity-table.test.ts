@@ -3,7 +3,7 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { initialMovementBlock } from '../rules/flight-state.ts';
 import {
-  ALL_KINDS, allocatorAiState, allocatorFlightState, blankCraftCombat, combatTypeOf, EntityTable, isActiveState, isLive, setActivity, SUBSYSTEM_COUNT,
+  ALL_KINDS, allocatorAiState, allocatorFlightState, blankCraftCombat, combatTypeOf, EntityTable, isActiveState, isLive, markerInit, setActivity, SUBSYSTEM_COUNT,
   type CraftCombat, type Entity, type EntityCombat, type EntityInit, type LinearMovementBlock, type MissileCombat, type MovementBlock, type ObjectState,
   type SpinningMovementBlock, type SteeredMovementBlock,
 } from './entity-table.ts';
@@ -496,6 +496,19 @@ describe('the map marker and the map visibility flag (P3-09 AC-01; docs/plan/p3/
       mapVisible: false, formation: null, ai: allocatorAiState(),
     });
     for (const part of [entity.name, entity.presentation, entity.combat, entity.movement]) expect(Object.isFrozen(part)).toBe(true);
+  });
+
+  it('builds the marker 0x3cb80 allocates at a position and attitude, with the allocator\'s defaults (MW-03)', () => {
+    const position = { x: -4950, y: 10350, z: Math.fround(-2.5) };
+    const init = markerInit(position, TEST_ORIENTATION);
+    expect(init).toEqual({
+      kindBit: 25, source: null, name: { type: 'map-marker' }, side: null, baseInteraction: false, presentation: { type: 'map-marker' },
+      position, orientation: TEST_ORIENTATION, activity: 'active', ruleInputs: { percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 },
+      maximumSpeed: 0, lastParkedUpdateClock: 0, warpClock: 0, inWarp: false, ai: allocatorAiState(), formation: null,
+      movement: { mode: 'marker', speed: 0 }, combat: { type: 'marker' },
+    });
+    const entity = new EntityTable().allocate(init);
+    expect(entity).toMatchObject({ kindBit: 25, position, orientation: [...TEST_ORIENTATION], state: 'presentation-ready', placementSerial: 0, mapVisible: false });
   });
 
   it.each([

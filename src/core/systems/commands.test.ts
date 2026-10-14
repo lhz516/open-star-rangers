@@ -37,12 +37,11 @@ const P3_06_COMMANDS: readonly Command[] = [
 ];
 
 /** P3-09's commands with a rule so far, judged in map.test.ts. */
-const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }];
+const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }, { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 }];
 
 /** One command of every other type. */
 const OTHER_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
-  { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 },
   { type: 'request-warp' },
   { type: 'communications', operation: 'open' },
   { type: 'launch' },
