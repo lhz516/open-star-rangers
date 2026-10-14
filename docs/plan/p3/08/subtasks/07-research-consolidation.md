@@ -39,6 +39,9 @@ updated: 2026-10-14
 - `docs/original/formats/scenario.md`：记录字段读者的更正。
 - `docs/original/unknowns.md`：U 项状态。
 - `docs/original/input/key-map.md`：`b` 的结论。
+- `docs/original/behavior/B-009-combat-rules.md`：研究推翻或细化的 P3-07 结论的更正（如 W8/W10 的锁定字节、停放领队模式）。
+- `docs/original/formats/audio.md`：SND 10055 可达性的更正。
+- `docs/original/formats/craft.md`：涉及 AI 字段或 W 项的交叉引用更正。
 - `local/research/p3-08/consolidation/**`：汇总与核对输出（被忽略）。
 
 ## 验收标准
