@@ -33,6 +33,7 @@ import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
+import { applyWarpStart, type WarpStartRequest } from './warp.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
 
 /** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
@@ -68,6 +69,8 @@ export type Request =
   | MapToggleRequest
   /** Message 0x1000: a hover or select at a quantised cursor pixel, posted by an accepted `map-point` (map.ts; MW-04). */
   | MapPointRequest
+  /** Message 0x400 sub-command 0: the player's Warp start, posted by an accepted `request-warp` (warp.ts; MW-04). */
+  | WarpStartRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -132,7 +135,9 @@ export class RequestQueue {
 
   /**
    * Holds `request` until release(), counting it now: the launches of the player's fire commands, which the original
-   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07).
+   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07), and
+   * an accepted `request-warp`'s `warp-start`, which follows them and the launches judged before it (MW-04, MW-12
+   * difference 9). Commands after a `request-warp` are judged in the Warp context, so no launch follows it.
    */
   defer(request: Request): void {
     this.#count();
@@ -172,8 +177,8 @@ export class RequestQueue {
 
 /**
  * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04): the committed view mode and previous
- * view mode at the start of the command batch, which each accepted view command (`toggle-map`) moves on at once while
- * its request commits the change only in request handling. Every command's interaction context derives from it, and
+ * view mode at the start of the command batch, which each accepted view command (`toggle-map`, `request-warp`) moves on
+ * at once while its request commits the change only in request handling. Every command's interaction context derives from it, and
  * the player's axes from its value after the last command. Its destination is the point of the batch's last accepted
  * select, or the committed destination before one, which `request-warp` is judged on. Nothing else reads it: the
  * automatic target selection and every later stage read the committed view.
@@ -246,7 +251,7 @@ function advanceClock(context: TickContext): void {
  * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
  * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
  * rejected/not-implemented. Every command is judged in the command view, which starts from the committed view and
- * which an accepted `toggle-map` moves on (map.ts; MW-04). With an available player it runs P3-07's missile lock after
+ * which an accepted `toggle-map` or `request-warp` moves on (map.ts, warp.ts; MW-04). With an available player it runs P3-07's missile lock after
  * the invalid-target drop and consumes the axes, and the automatic target selection, which reads the committed view,
  * ends it (CR-07). The rule tasks add their commands and steps there.
  */
@@ -260,8 +265,8 @@ function updatePlayerControls(context: TickContext): void {
     judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
     lockMissiles: (entity) => updateMissileLock(context, entity),
   }, commandView);
-  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
-  // the automatic selection follows them (T3).
+  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000,
+  // and a Warp start follows both (MW-04); the automatic selection follows them (T3).
   requests.release();
   if (player !== null) selectAutomaticTarget(context, player);
 }
@@ -386,6 +391,10 @@ function handleRequest(context: TickContext, request: Request): void {
   }
   if (request.type === 'map-point') {
     applyMapPoint(context, request);
+    return;
+  }
+  if (request.type === 'warp-start') {
+    applyWarpStart(context, request);
     return;
   }
   const entity = world.entities.get(request.entityId);

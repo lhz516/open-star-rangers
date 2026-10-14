@@ -36,13 +36,12 @@ const P3_06_COMMANDS: readonly Command[] = [
   { type: 'confirm-selection' },
 ];
 
-/** P3-09's commands with a rule so far, judged in map.test.ts. */
-const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }, { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 }];
+/** P3-09's commands, judged in map.test.ts and warp.test.ts. */
+const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }, { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 }, { type: 'request-warp' }];
 
 /** One command of every other type. */
 const OTHER_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
-  { type: 'request-warp' },
   { type: 'communications', operation: 'open' },
   { type: 'launch' },
   { type: 'cockpit-front' },
@@ -78,7 +77,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   });
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[4]];
+    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[3]];
     const [state] = flightState();
     expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',

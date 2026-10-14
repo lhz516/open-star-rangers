@@ -25,9 +25,10 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   'cycle-main-weapon': ['accepted', null],
   'select-missile': ['accepted', null],
   // P3-09: toggle-map opens the map, so the energy and damage report commands after it are judged in the map context,
-  // where map-point is accepted.
+  // where map-point is accepted; the drafted hover selects no Warp destination.
   'toggle-map': ['accepted', null],
   'map-point': ['accepted', null],
+  'request-warp': ['ignored', 'no-destination'],
   energy: ['ignored', 'wrong-context'],
   'damage-report': ['ignored', 'wrong-context'],
 };

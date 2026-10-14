@@ -273,11 +273,11 @@ describe('ordered command gates in one tick (MW-04)', () => {
     let events = step(world, [confirm, { type: 'communications', operation: 'open' }, { type: 'launch' }, { type: 'map-point', operation: 'hover', right: 0.5, down: 0.5 }, { type: 'request-warp' }]);
     expect(results(events)).toEqual([
       [0, 'confirm-selection', 'ignored', 'wrong-context'],
-      // P3-10's commands and the Warp command of P3-09/17 are not implemented yet.
+      // P3-10's commands are not implemented yet; the Warp request has no destination (warp.test.ts).
       [1, 'communications', 'rejected', 'not-implemented'],
       [2, 'launch', 'rejected', 'not-implemented'],
       [3, 'map-point', 'accepted', null],
-      [4, 'request-warp', 'rejected', 'not-implemented'],
+      [4, 'request-warp', 'ignored', 'no-destination'],
     ]);
     expect(block(player).commandedSpeed).toBe(0);
     events = step(world, [toggle, confirm]);

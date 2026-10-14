@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
 import { RandStream } from '../rules/original-random.ts';
-import type { Entity, MarkerMovementBlock, MovementBlock, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
+import type { CraftCombat, Entity, MarkerMovementBlock, MovementBlock, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
 import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
@@ -351,6 +351,17 @@ describe('axes (P3-06 AC-03, 操纵)', () => {
     const [state, player] = withPlayer();
     state.player.viewMode = WARP;
     stepControls(state, [], { pitch: -1, yaw: 0, roll: 0 });
+    expect(steering(player).pitch).toEqual({ rate: 0.75, enabled: true });
+  });
+
+  it('applies the axes of the tick whose request-warp moves the command view into the Warp context (P3-09 MW-04)', () => {
+    const [state, player] = withPlayer();
+    // Within a unit of the player, the synthetic record's cost is 0, so the start passes at energy 0.
+    state.player.map.destination = { x: player.position.x, y: player.position.y, z: player.position.z + 0.5 };
+    (player.combat as CraftCombat).energy = 0;
+    const events = stepControls(state, [{ type: 'request-warp' }, speed('maximum')], { pitch: -1, yaw: 0, roll: 0 });
+    expect(results(events)).toEqual([[0, 'accepted', null], [1, 'ignored', 'wrong-context']]);
+    expect(state.player.viewMode).toBe(WARP);
     expect(steering(player).pitch).toEqual({ rate: 0.75, enabled: true });
   });
 

@@ -4,7 +4,7 @@
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
  * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-09's
- * `toggle-map` and `map-point` to map.ts; every other type is rejected/not-implemented until its rule task routes it. A module emits a
+ * `toggle-map` and `map-point` to map.ts and `request-warp` to warp.ts; every other type is rejected/not-implemented until its rule task routes it. A module emits a
  * command's additional events right after its result.
  *
  * Every command is judged in the interaction context of the tick's command view (pipeline.ts; MW-04), which the
@@ -18,6 +18,7 @@ import { judgeEnergyCommand } from './energy.ts';
 import { judgeMapPoint, judgeToggleMap } from './map.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
+import { judgeRequestWarp } from './warp.ts';
 import { judgeWeaponCommand } from './weapons.ts';
 
 /** The command variants of one or more types. */
@@ -76,6 +77,9 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
       return;
     case 'map-point':
       judgeMapPoint(context, command, commandIndex);
+      return;
+    case 'request-warp':
+      judgeRequestWarp(context, command, commandIndex);
       return;
     case 'select-number':
     case 'confirm-selection':
