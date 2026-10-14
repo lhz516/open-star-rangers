@@ -130,7 +130,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
 | [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | completed |
 | [41-coverage-resampling.md](./subtasks/41-coverage-resampling.md) | 40 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -241,6 +241,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-14 — Subtask 36 started.**
 - **2026-10-14 — Subtask 36 completed:** core.md 的已知差异写入 25、27 的结论与身份绑定。
 - **2026-10-14 — Subtask 29 started（final alignment）.**
+- **2026-10-14 — Subtask 29 completed; goal complete:** 最终对齐通过，没有发现缺口。全部子任务为 completed；`pnpm check`、合规检查与 baseline 工具测试通过。证据见 29。
 
 ## 审批
 

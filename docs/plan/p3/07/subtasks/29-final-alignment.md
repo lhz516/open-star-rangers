@@ -60,10 +60,10 @@ updated: 2026-10-14
 
 ## 验收标准
 
-- [ ] S-01 至 S-12、AC-01 至 AC-17 逐项有证据，没有未披露的缺口。
-- [ ] D-01 至 D-03 的批准记录齐全且时序正确；上列契约不变量逐项通过；25、27 与 37 的候选与当前一致，或差异已处理。
-- [ ] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm check`、`pnpm check:compliance` 通过；适用时 baseline 工具测试通过。
-- [ ] 文档链接、元数据与原版隔离核对通过；`node tools/task-state.ts p3/07` 没有计划问题。
+- [x] S-01 至 S-12、AC-01 至 AC-17 逐项有证据，没有未披露的缺口。
+- [x] D-01 至 D-03 的批准记录齐全且时序正确；上列契约不变量逐项通过；25、27 与 37 的候选与当前一致，或差异已处理。
+- [x] `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`、`pnpm check`、`pnpm check:compliance` 通过；适用时 baseline 工具测试通过。
+- [x] 文档链接、元数据与原版隔离核对通过；`node tools/task-state.ts p3/07` 没有计划问题。
 
 ## 验证方法
 
@@ -71,3 +71,29 @@ updated: 2026-10-14
 - 对照 spec 与各 subtask 的完成证据逐项核对。
 
 ## 完成证据
+
+2026-10-14，顺序执行，由协调者本会话完成。没有发现需要修复的缺口。
+
+- **覆盖：** 按 goal 的验收覆盖逐项核对。01 至 28、30 至 41 的验收项全部勾选并有完成证据。
+  - S-11 与 AC-16 的结论见 27 `final5`。
+  - S-12 与 AC-17 的结论见 28、36。
+  - 不可判定的单次转移样本与未测分支在 27 和 core.md 中逐项披露。
+- **关卡：**
+  - D-01、D-03 于 2026-10-10 由 08 在 P3-02 spec 定稿（CR-11 等）。
+  - D-02 于 2026-10-10 由 10 定稿，早于 26 的正式采样与 37 的新版连续运行。
+  - 三项批准均依 goal 审批节的预先授权。
+- **契约不变量：**
+  - `src/core` 纯净：lint 与边界测试通过。合成演示已由 P3-04 删除，两项合成相关检查不再适用。
+  - 战斗组为 `flight.combat`；规则输入为六项顶层输入；CR-11 的已批准差异与对照结论已写入 core.md。
+  - `src/core` 中的 `Record<string, unknown>` 只出现在输入读取与快照复制的内部辅助中，不是公开形状的开放字段。没有 TODO 或待处理标志。
+  - 其余不变量由 11、14、23、24、28 的完成证据覆盖，此后没有影响这些不变量的 `src/` 改动。
+- **候选一致：** 当前 `src/` 树为 `13a62b952b037889f6311cd43016b8a2e7c2b5de`，与 27 的候选相同。25 与 37 的候选 `35f23733…` 与当前只差 `43b995bd`，该提交只改了 `src/core/contracts/validation.ts` 的一行注释，不影响所测行为，所以不需要重跑。
+- **工程检查：**
+  - `pnpm exec vitest run src/core tools/engineering-boundaries.test.ts`：80 个文件，2305 项通过。
+  - `pnpm check`：Vitest 264 个文件，7878 项通过；TypeScript、ESLint 与构建通过，只有既有的 chunk 体积提示。
+  - `pnpm check:compliance`：`passed: true`。
+  - `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`：184 项通过（26、38 改过 `tools/baseline/`）。
+- **文档与隔离：**
+  - 链接与锚点检查通过；改动文档的 `updated:` 为 2026-10-14。
+  - `node tools/compliance/cli.ts original` 通过；`git ls-files local` 为空。研究输出只在被忽略的 `local/research/p3-07/`；`tools/baseline/__pycache__/` 未跟踪，也未提交。
+  - `node tools/task-state.ts p3/07` 没有计划问题。
