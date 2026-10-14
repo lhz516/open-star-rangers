@@ -10,7 +10,7 @@ updated: 2026-10-14
 # 15 — 可见性与 object-sets
 
 **契约来源：** [spec](../spec.md) 的 S-05、AC-05；[可见性与迷雾](../spec.md#可见性与迷雾)。
-**依赖：** 09, 12。
+**依赖：** 12, 14。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`
 - `src/core/world/world-state.ts`：只在 D-01 已定的字段内写入。
 - `src/core/replay/snapshot.ts`、`src/core/replay/snapshot.test.ts`：集合与历史的写入器。
+- `src/core/rules/map-icons.ts`、`src/core/rules/map-icons.test.ts`、`src/core/world/world.test.ts`：复用或迁移 14 的接触谓词 `isMapContact` 与整体期望（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 

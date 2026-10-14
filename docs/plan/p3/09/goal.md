@@ -96,7 +96,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | completed |
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 28, 30 | completed |
-| [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
+| [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 12, 14 | in-progress |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | completed |
 | [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | completed |
 | [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 28 | completed |
@@ -137,6 +137,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 14 已集成，交 26 的文档：** `docs/engineering/modules/core.md` 的请求处理（`map-point` 请求、标记创建 1 次世界抽取/移动/缺失）、命令判定（`map-point` 门禁与量化、`CommandView.destination` 每批由已提交目的地重置）、对象更新（标记走通用生命周期）、帧尾（只在已提交视角为 8 时建 `mapIcons`，否则清空，先于显示步）、静态规则数据 `startupRotations`（代码规则，不进 setupHash 与快照）；`source-structure.md` 新增 `rules/map-icons.ts`、`rules/startup-rotations.ts`。15 复用 `isMapContact`。
 - **2026-10-14 — D-01 补定（17 发现）：** 按投递次序时同批 `[速度归零, request-warp]` 使模式 3 积分 0 ÷ 0 而 Core 故障。协调者按预先授权修订 P3-02：`warp-start` 延后到玩家的 `control`/`match-speed` 与发射请求之后、自动选敌之前（MW-04；MW-12 差异 9；审批第 13 项），等于原版按键分帧的结果。17 按此实现。交 26：`core.md` 中 Warp 开始已实现、开始不写能量、命令视角改为 1、`warp-start` 的延后次序。
 - **2026-10-14 — 18 已集成：** Warp 步在帧尾显示步之前、完成在 `warp-completion`；`steerInTunnel` 与 `0x50a28` 原生指令的 x87 仿真在 4000 个合成用例上逐位一致（私有）。视角 1 而没有过程（`warp` 为 null）视为不可达，步与完成跳过。Q-10 以合成的 P3-11 前态覆盖。交 29 写入 executable 的事实：`0x186b3c` = F(S × 0.5)（“半个扇区”为已确认，代码）；`0x3a61c` 乘 F(1/S)，x = 15000 或 30000 落在前一扇区；K = F(cos(f64 `0x171f14`))，sin K 恰存 0.5；`0x50068` 先把 +0xA8 存为 f32，L = F(f × F(A8))（17）。交 26：`core.md` 的 Warp 步、完成阶段、差异 3 与 CR-11 差异 1 对到达最近对象搜索的适用。
+- **2026-10-14 — 依赖调整：** 15 不再等待 09：D-01（MW-06）已按 03 的代码证据（已确认）定稿“历史探索不保留”，09 的运行只作佐证；改为依赖 12、14（复用 14 的 `isMapContact`）。若 09 的运行与之矛盾，按 execute-goal 新增修复子任务，不在 15 中预设。原因：09 因三个任务共用基准环境而长时间等待，原依赖阻塞关键路径。
 
 ## 审批
 
