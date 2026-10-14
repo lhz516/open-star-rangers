@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | in-progress |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | completed |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -124,7 +124,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
-| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
+| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | in-progress |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
@@ -237,6 +237,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-14 — Subtask 41 resumed and completed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。原定由用户驾驶的 `a41-ux1`/`a41-ux2` 改为预先声明刺激的全自动配方（ax1、ax2a、ax2b），加种子守卫与交接/帧守卫；运行中无未声明输入。`a41-ax1-07`、`a41-ax2a-01`、`a41-ax2b-01` 为 `complete`（ax1-06 被种子守卫拒绝，不计入）。分析中发现并修正读取器错误：链表尾可能是 `0x23fdc` 的额外爆炸（+0x104 = 0），主爆炸应取源种类匹配者；ax1-05 的“激活滞后”与碎片 `fails-original` 由此撤销。`final5` 中 kind bit 7、8 的被毁链都完整，contact 2 个一致，单次转移 `differing` 0。
   Evidence: 41 的完成证据；被忽略的 `run-notes.md` a41-ax* 节与 `comparison/out/final5/`。
 - **2026-10-14 — Subtask 27 resumed:** 41 已完成，阻塞前提满足；以 `final5` 恢复 27 的结论。
+- **2026-10-14 — Subtask 27 completed:** `final5`（36 个 complete 原版运行，候选 `src/` 树 `13a62b95…`）中，D-02 六类均一致，所有原版成立窗口都有配对；单次转移 812 个样本，没有不一致，spec 的逐项最低覆盖均由可判定样本满足。操作数不全的样本按协调者决定列为不可判定，不豁免。不需要修复子任务。
+- **2026-10-14 — Subtask 36 started.**
 
 ## 审批
 
