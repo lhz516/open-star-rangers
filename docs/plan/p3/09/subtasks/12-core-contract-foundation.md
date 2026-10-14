@@ -38,6 +38,8 @@ updated: 2026-10-14
 - `src/core/projections/projection.ts`、`src/core/projections/projection.test.ts`：只把 `never` 占位改为 D-01 的类型，分区仍未就绪。
 - `src/app/resources/**`、`src/app/runtime/**`：把地图几何传入 `createWorld` 与 replay。
 - `tools/replay-check.ts`、`tools/replay-check.test.ts`：同步输入（如需）。
+- 闭合联合扩展所需的编译性改动（协调者 2026-10-14 扩大范围，不含规则行为）：`src/core/rules/name-assignment.ts`、`src/core/systems/movement.ts`（标记移动块的空分支）、`src/ui/dev/entity-inspection.ts`、`src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`、`src/core/projections/combat.test.ts`、`src/core/systems/flight-control.test.ts`。
+- `src/original-data/conversion/production-rule-data.test-support.ts`：合成机型信息满足 MW-01 的创建时校验（同上）。
 
 ## 验收标准
 
