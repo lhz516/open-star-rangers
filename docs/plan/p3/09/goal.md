@@ -105,11 +105,11 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | completed |
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | completed |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | completed |
-| [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
+| [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | in-progress |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | completed |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
-| [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
+| [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | in-progress |
 | [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | completed |
 | [31-docs-follow-up.md](./subtasks/31-docs-follow-up.md) | 22, 26 | completed |
 | [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31 | pending |
