@@ -90,10 +90,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | completed |
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
-| [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | pending |
+| [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | in-progress |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | pending |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11 | pending |
