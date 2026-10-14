@@ -33,6 +33,7 @@ updated: 2026-10-14
 ## 写入范围
 
 - `src/core/projections/**`：`map.ts`（新增）、`projection.ts`、`combat.ts`、`render-state.ts` 与相邻测试。
+- `src/core/world/create-world.test.ts`：Render State 新增 `warp` 字段的整体形状期望（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 
