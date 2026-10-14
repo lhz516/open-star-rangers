@@ -85,11 +85,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | in-progress |
+| [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | completed |
 | [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | in-progress |
 | [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | completed |
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | in-progress |
-| [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | pending |
+| [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | in-progress |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | pending |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
