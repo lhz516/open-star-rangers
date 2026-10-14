@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-14
 related: [U-001, U-028, U-029, U-030]
 ---
 
@@ -163,12 +163,12 @@ Research of P3-03 [subtask 04](../../plan/p3/03/subtasks/04-comm-hud-text-resear
 
 **+0x6C, subsystem selector (Confirmed, code):** u32. The sort `0x39664` (run when docking), the state function `0x39cb4`, the repair step `0x398ec`, the display helper `0x39c94` (called by `0x4f550`) and docking sub-command 3 all read it with 32-bit loads; `0x39d24` also reads it but has no caller. Every comparison of the value is unsigned (`JBE`/`JA` against 5, 7, 8, 0x21 and 0x22).
 
-- **Groups:** 0x21 (33) and 0x22 (34) select groups. `0x39cb4` aggregates the states of subsystem slots 15–18 and 10–14 respectively, and `0x398ec` repairs every slot of the group.
+- **Groups:** 0x21 (33) and 0x22 (34) select groups. `0x39cb4` aggregates the states of subsystem slots 15–18 and 10–14 respectively (a stepping count, not the maximum; [BS3](./executable.md#bs3-state-query-0x39cb4v--confirmed-code)), and `0x398ec` repairs every slot of the group.
 - **Single slots:** any other value v is one slot. It reaches the slot accessors `0x52ac4` and `0x52a84`, which index three 32-entry tables: `0x1760b4` (bit shift), `0x1760d4` (word index) and `0x1760f4` (mask). Together they address 32 two-bit states in the two words at object +0xE8 and +0xEC.
 - **Domain:** 0–31, 33 and 34. The value 32 and values above 34 index past the 32-entry tables.
 - **Special cases:** `0x398ec` also treats the slots 5, 7 and 8 specially (extra calls), all within 0–31.
 
-What the slots and repairs mean is P3-10's.
+What each value does in the base service is in [TABL 10165 in the base service](#tabl-10165-in-the-base-service-p3-1005).
 
 **+0x6C observed (Confirmed, data):** the 11 values are distinct. Nine are single slots and two are the group values; all lie in the set the P3-01 closure gives (0–9, 33 and 34), which is inside the domain above.
 
@@ -195,6 +195,28 @@ Item 8 is read when the sub-mode is 8, the destruction view ([automatic views](.
 - Any non-zero byte (1–255) can be stored and is drawn alike. In the baseline, all 13 labels are 10–18 bytes long without the NUL, and every byte is printable ASCII (0x20–0x7E), with no control bytes, no bytes of 0x80 or above and no `%`. These are observations, not constraints of the format.
 
 **Static coverage:** the image was scanned for every 32-bit occurrence of the block pointers `0x174e14` and `0x175984` and of the count word `0x174e18`. The readers above are the only ones; no pointer is stored elsewhere. The [P3-01/10 ID scan](./executable.md#data-loaded-by-the-loop-p3-0110) finds 10165 as an immediate only in `0x38ff4`, and 10399 only in `0x45420` and its teardown. Evidence (ignored): `local/research/p3-03/comm-hud-text/` (`ghidra_scripts/CommProbe.java` outputs `out/d1`, `out/d2`, `out/d8`, `out/w1`, `out/x1`, `out/x9`, `out/x11`, `out/x12`; `structure.ts` with `out/structure.json`).
+
+### TABL 10165 in the base service (P3-10/05)
+
+Research of P3-10 [subtask 05](../../plan/p3/10/subtasks/05-base-service-research.md), merged by subtask 06, 2026-10-14; read from native instructions on a private copy of the Ghidra project (`-noanalysis -readOnly`). The rules are in [executable](./executable.md#base-interior-service-p3-1005); this section records only what the record fields select. Resolves the +0x6C part of U-030.
+
+**Records and order (Confirmed, code):** the base interior keeps one ordered array of the 11 record indices, `0x186a70`, which is both the service queue and the screen order: row i of the base screen is record queue[i], the cursor is a row index, the head (row 0) is the record being serviced, a finished record moves to the last row and Enter moves the highlighted row to the top ([BS5](./executable.md#bs5-display-order--confirmed-code)). Docking sorts the records by their state, highest first, ties in record order.
+
+**+0x6C, what each selector services (Confirmed, code):** the state of a record is `0x39cb4(+0x6C)`: the stored 2-bit subsystem field v, or for 0x21 and 0x22 a stepping count over fields 15–18 and 10–14 ([BS3](./executable.md#bs3-state-query-0x39cb4v--confirmed-code)). One repair step on the head ([BS6](./executable.md#bs6-per-frame-service-0x398ec--confirmed-code)):
+
+| Selector | Repair step |
+|---|---|
+| 5 | Resets the first damaged mount of list 1 to level 0 and writes field 5 := the list's status, so the record stays at the head until every mount of that list is repaired |
+| 8 | The same for list 0 and field 8 |
+| 7 | Field 7 := 0 and also the disturbance and the control lock := 0 |
+| 0x21 / 0x22 | Fields 15–18 / 10–14 := 0 |
+| any other | Field v := 0 |
+
+The mount repairs restore no ammunition. Hull, energy and missile refills are separate timed steps that no selector chooses.
+
+**Images (Confirmed, code):** the drawing loop `0x4f550` takes the image at record +0x00, +0x24 or +0x48 for states 0, 1 and 2 of that row (`0x39d5c`).
+
+**+0x70, +0x74, +0x78 (readers Confirmed, code; roles Unconfirmed):** read only through the row helpers `0x39d40` (+0x70) and `0x39dd8` (+0x74, +0x78), which only `0x4f550` calls; what they draw remains U-030 (P3-13).
 
 ### HUD and map drawing paths (Confirmed, EXE)
 

@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | completed |
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
-| [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | in-progress |
+| [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | in-progress |
@@ -123,6 +123,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 计划修订：05 的运行读数移交 09。** 05 静态结论完整（Q-08 的 spec 门槛为“已确认（代码）”，速率由 R-19 运行时核对），但附加的受损后停靠服务链读数未取得。
   证据：6 次 `measure.py` 运行完整性均通过；起始布局逐次不同，Warp 出口与自动驾驶停点距基地 1,150 与 2,000 单位，固定配方不能按本次距离分支；被动航线的受损发生在约 14 分钟后，基地已被敌方清除（05 的 `run-notes.md`）。
   处理：05 的运行读数一条与验收改为“取得读数，或记录已尝试配方与准确障碍并移交 09”；09 新增该读数的工作与验收，先按其既有范围扩展 `tools/baseline/` 支持依本次读数分支的配方，仍不成时再按 spec 请用户做最小停靠。用户当时无法回应，此修订由协调者按推荐方案决定，用户可在审阅时撤回。spec 契约不变。
+
+- **2026-10-14 — 06 统一结论：02 正确。** 分配器 `0x520d4` 在 `0x52209` 把 +0x180 写为 −1（经 +0x20 的基址，03 的 0x180 位移扫描因此漏掉），`0x3c91c` 可达：每个 `0x87c` 机体或基地第一次说话时抽 1 次（该类头像用完时 2 次），在档案检查之前；所选任务至多 4 次（每座基地 1 次）。03 的抽取计数与 executable C2 已更正，07、08 以 executable RQ4/RX9 为准。
 
 ## 审批
 
