@@ -88,7 +88,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | completed |
 | [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | completed |
 | [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | completed |
-| [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | in-progress |
+| [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | in-progress |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | pending |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | pending |
