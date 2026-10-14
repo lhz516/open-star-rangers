@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [01-map-mode-command-research.md](./subtasks/01-map-mode-command-research.md) | — | completed |
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | in-progress |
 | [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | in-progress |
-| [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | pending |
+| [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | in-progress |
 | [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | pending |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | pending |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | pending |
