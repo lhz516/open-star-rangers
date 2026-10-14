@@ -39,6 +39,9 @@ updated: 2026-10-14
 - `docs/original/formats/hud.md`：地图与 Warp 页读数的规则来源。
 - `docs/original/behavior/B-001-strategic-map.md`：事实性更新。
 - `docs/original/unknowns.md`：受影响 U 项。
+- `docs/original/formats/scenario.md`：难度路径 7 的更正与记录 +0x7C 行（协调者 2026-10-14 批准的范围扩展）。
+- `docs/original/input/key-map.md`：通讯物件列表菜单对 `m`、`w` 的占用（同上）。
+- `docs/original/formats/audio.md`：Warp 到达音效与开始拒绝的说明（同上）。
 - `local/research/p3-09/numerics/**`：汇总脚本与输出（被忽略）。
 
 ## 验收标准
