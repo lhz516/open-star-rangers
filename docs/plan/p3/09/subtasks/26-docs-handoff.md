@@ -36,6 +36,7 @@ updated: 2026-10-14
 - `docs/engineering/keyboard-input.md`
 - `docs/engineering/source-structure.md`
 - `docs/engineering/modules/app.md`、`docs/engineering/modules/ui.md`
+- `docs/engineering/modules/content.md`、`docs/guides/tools.md`：12 引入的应用侧输入表与录制上限（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 
