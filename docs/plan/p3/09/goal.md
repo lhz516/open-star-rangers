@@ -82,7 +82,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-map-mode-command-research.md](./subtasks/01-map-mode-command-research.md) | — | in-progress |
+| [01-map-mode-command-research.md](./subtasks/01-map-mode-command-research.md) | — | completed |
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | in-progress |
 | [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | in-progress |
 | [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | pending |
@@ -115,6 +115,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 ## 执行记录
 
 - **2026-10-14 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal。协调者在 `p3-09-strategic-map-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-05、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-09-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则（协调者认领，逐个以 `Worker-Commit:` 拖车集成并清理）。Ghidra 由各 worker 在 `local/research/p3-09/<主题>/` 下的私有副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
+- **2026-10-14 — 01 发现与 spec 的冲突（交 08/D-01）：** 原版 `0x32d74` 只在视角已是 0x11 且子模式 8 时不切换，地图（视角 8）会被被毁视角取代，与 spec [地图模式](./spec.md#地图模式)“若视角已是 8 则不切换”的读法相反；另外从飞行开关地图不置 `statusDisplay` 重绘，只有进出基地置位。08 在 D-01 中按 01 的完成证据更正，并决定地图中 `toggle-map` 与 `player-unavailable` 的优先次序（项目决定）。
 
 ## 审批
 
