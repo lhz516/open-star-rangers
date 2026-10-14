@@ -205,6 +205,44 @@ describe('mission diagnostics', () => {
       .toEqual(COMMAND_TYPES.slice(recent).map((type, index) => [recent + index + 1, type, ...outcomeOf(type)]));
   });
 
+  it('submits the map\'s point and Warp request from the editor, and shows Core\'s Warp gate reasons', async () => {
+    const setup = await openDiagnostics();
+    toFlight(setup.owner);
+    const next = frames(setup);
+    next();
+    next(2, 200);
+    const drafted = (type: Command['type'], values: Readonly<Record<string, string>> = {}) => {
+      const reading = readDraft(Object.entries(values).reduce((draft, [field, text]) => editDraft(draft, field, text), commandDraft(type)));
+      if (!reading.valid) throw new Error(reading.reason);
+      return submit(setup, reading.command);
+    };
+    drafted('request-warp');
+    drafted('toggle-map');
+    next(1, 200);
+    const { map } = setup.run()!.projection();
+    const open = map.readiness === 'ready' && map.player?.state === 'open' ? map.player : null;
+    if (open === null) throw new Error('The map is not open');
+    // The player's own map pixel, whose centre selects it.
+    const { pixel } = open.contacts.find((contact) => contact.class === 'player')!;
+    const { width, height } = open.geometry.main;
+    drafted('map-point', { operation: 'select', right: String((pixel.column + 0.5) / width), down: String((pixel.row + 0.5) / height) });
+    next(1, 200);
+    drafted('request-warp');
+    next(1, 200);
+    // The synthetic craft's energy is −100, so the gate refuses every cost.
+    expect(setup.ui().store.reader.getState().recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason])).toEqual([
+      [1, 'request-warp', 'ignored', 'no-destination'], [2, 'toggle-map', 'accepted', null], [3, 'map-point', 'accepted', null],
+      [4, 'request-warp', 'ignored', 'insufficient-energy'],
+    ]);
+    const player = setup.run()!.projection().player.entityId;
+    // The log lists every field (event-log.test.ts checks their order).
+    const set = setup.state().log.entries.find((entry) => entry.type === 'warp-destination-set')!;
+    expect(set.fields).toHaveLength(11);
+    expect(set).toMatchObject({ commandId: null, fields: expect.arrayContaining([
+      ['playerEntityId', player], ['column', pixel.column], ['row', pixel.row], ['iconEntityId', expect.any(Number)], ['marker', 'created'], ['commandIndex', 0],
+    ]) });
+  });
+
   it('keeps the 10 most recent command results of 11', async () => {
     const setup = await openDiagnostics();
     toFlight(setup.owner);

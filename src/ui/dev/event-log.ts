@@ -35,6 +35,8 @@ export interface EventLogView {
 type Fields = (readonly [string, EventFieldValue])[];
 
 const positionOf = ({ x, y, z }: Vec3): Fields => [['x', x], ['y', y], ['z', z]];
+/** `originX`, `originY`, `originZ` for `origin`. */
+const namedPosition = (name: string, { x, y, z }: Vec3): Fields => [[`${name}X`, x], [`${name}Y`, y], [`${name}Z`, z]];
 
 /** `shooter 12 kind 7`, `lost-shooter` or `none`. */
 function describeAttacker(attacker: Attacker): string {
@@ -108,26 +110,33 @@ function fieldsOf(event: DomainEvent): Fields {
       return [['entityId', event.entityId], ['shieldLevel', event.shieldLevel], ['chargeLevel', event.chargeLevel], ['commandIndex', event.commandIndex]];
     case 'left-page-changed':
       return [['page', event.page], ['previousPage', event.previousPage], ['commandIndex', event.commandIndex]];
-    // P3-09's (docs/plan/p3/02/spec.md, MW-05): the destination's and the arrival's position as x, y, z.
+    // P3-09's (docs/plan/p3/02/spec.md, MW-05), every field: the main position as x, y, z, the others by their name.
     case 'map-toggled':
       return [['open', event.open], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode], ['commandIndex', event.commandIndex]];
-    case 'warp-destination-set':
+    case 'warp-destination-set': {
+      const { marker } = event;
       return [
-        ['column', event.pixel.column], ['row', event.pixel.row], ['iconEntityId', event.icon?.entityId ?? null], ['marker', event.marker.type],
+        ['playerEntityId', event.playerEntityId], ['column', event.pixel.column], ['row', event.pixel.row], ['iconEntityId', event.icon?.entityId ?? null],
+        ['iconKindBit', event.icon?.kindBit ?? null], ['marker', marker.type], ['markerEntityId', marker.type === 'missing' ? null : marker.entityId],
         ['commandIndex', event.commandIndex], ...positionOf(event.destination),
       ];
+    }
     case 'warp-started':
       return [
-        ['serial', event.serial], ['distance', event.distance], ['cost', event.check.cost], ['energy', event.check.energy],
-        ['transitLength', event.transitLength], ['fromViewMode', event.fromViewMode], ['commandIndex', event.commandIndex],
+        ['playerEntityId', event.playerEntityId], ['serial', event.serial], ['distance', event.distance], ['cost', event.check.cost],
+        ['energy', event.check.energy], ['transitLength', event.transitLength], ['fromViewMode', event.fromViewMode], ['commandIndex', event.commandIndex],
+        ...namedPosition('origin', event.origin), ...namedPosition('destination', event.destination),
       ];
     case 'warp-completed': {
       const { arrival } = event;
-      const fields: Fields = [['serial', event.serial], ['viewMode', event.viewMode], ['arrived', arrival !== null]];
+      const fields: Fields = [['serial', event.serial], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode], ['arrived', arrival !== null]];
       if (arrival === null) return fields;
+      const { charge } = arrival;
       return [
-        ...fields, ['error', arrival.error], ['snapped', arrival.snapped], ['charge', arrival.charge.cost], ['energyAfter', arrival.charge.energyAfter],
-        ['hostileNear', arrival.hostileNear], ...positionOf(arrival.position),
+        ...fields, ['playerEntityId', arrival.playerEntityId], ['error', arrival.error], ['snapped', arrival.snapped],
+        ['chargeDistance', charge.distance], ['chargeCost', charge.cost], ['energyBefore', charge.energyBefore], ['energyAfter', charge.energyAfter],
+        ['warpClock', arrival.warpClock], ['hostileNear', arrival.hostileNear], ...positionOf(arrival.position),
+        ['orientation', arrival.orientation.join(' ')], ...namedPosition('origin', arrival.origin), ...namedPosition('destination', arrival.destination),
       ];
     }
   }

@@ -3,7 +3,8 @@ import { TICK_MS } from '../../app/runtime/game-runtime.test-support.ts';
 import { departure, runSpec } from '../../app/session/game-session.test-support.ts';
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import { GameSessionError } from '../../app/session/session-errors.ts';
-import type { Projection } from '../../core/projections/projection.ts';
+import type { MapPlayer, Projection } from '../../core/projections/projection.ts';
+import type { RenderWarp } from '../../core/projections/render-state.ts';
 import type { MissionStatus } from '../../core/world/world-state.ts';
 import { PROJECTION_SAMPLE_INTERVAL_MS, createGameSessionBridge, type GameRunBinding, type GameRunConsumer } from './game-session-bridge.ts';
 import { createGameStore } from './game-store.ts';
@@ -55,9 +56,14 @@ describe('game session bridge: status and run attachment', () => {
     expect(reader.getState().status).toMatchObject({ phase: 'running', transition: null });
     clock.now = 500; host.deliver(1000);
     expect(clock.reads).toBe(1);
-    clock.now = 599; host.deliver(1000 + 3 * TICK_MS);
-    clock.now = 600; host.deliver(1000 + 4 * TICK_MS);
-    expect(log).toEqual([[0, 0], [4, 600]]);
+    clock.now = 599; host.deliver(1000 + TICK_MS);
+    // Tick 1 instantiates the player, whose map key facts are published at once.
+    expect(log).toEqual([[0, 0], [1, 599]]);
+    clock.now = 698; host.deliver(1000 + 2 * TICK_MS);
+    expect(log).toEqual([[0, 0], [1, 599], [2, 698]]);
+    clock.now = 797; host.deliver(1000 + 3 * TICK_MS);
+    clock.now = 798; host.deliver(1000 + 4 * TICK_MS);
+    expect(log).toEqual([[0, 0], [1, 599], [2, 698], [4, 798]]);
   });
 
   it('keeps a hold hidden during the departure paused (hidden) for an explicit resume', () => {
@@ -148,11 +154,13 @@ describe('game session bridge: status and run attachment', () => {
 
   it('writes status changes in their notification and publishes the latest tick on the pause still frame', () => {
     const { host, reader, session, frame } = running();
+    // Ticks 1 and 2 change the map's key facts, published at once; tick 3 waits for the sample.
+    frame(2, 40);
     frame(1, 50);
-    expect(reader.getState().projection?.clock.tick).toBe(0);
+    expect(reader.getState().projection?.clock.tick).toBe(2);
     const states = history(reader);
     host.emit({ type: 'visibility', visibility: 'hidden' });
-    expect(states.map((state) => [state.status?.phase, state.projection?.clock.tick])).toEqual([['running', 1], ['paused', 1]]);
+    expect(states.map((state) => [state.status?.phase, state.projection?.clock.tick])).toEqual([['running', 3], ['paused', 3]]);
     expect(reader.getState().status).toMatchObject({ phase: 'paused', pauseReason: 'hidden', environmentVisible: false });
     host.emit({ type: 'visibility', visibility: 'visible' });
     expect(reader.getState().status).toMatchObject({ phase: 'paused', pauseReason: 'hidden', environmentVisible: true });
@@ -339,17 +347,19 @@ describe('game session bridge: 10 Hz projection sampling', () => {
   it('samples on the 99/100 ms boundary, at most every 100 ms, and never repeats an owner, run and tick', () => {
     const { reader, clock, frame, recorded, currentRun } = running();
     expect(PROJECTION_SAMPLE_INTERVAL_MS).toBe(100);
+    // Ticks 1 and 2 change the map's key facts (the player appears, then its Warp gate reason), published at once.
+    expect(frame(2, 0)).toBe(2);
     const log = projectionLog(reader, clock);
-    expect([frame(1, 99), frame(1, 100), frame(0, 150), frame(1, 199), frame(1, 200)]).toEqual([1, 2, 2, 3, 4]);
-    expect([frame(5, 450), frame(1, 500), frame(0, 560), frame(0, 700)]).toEqual([9, 10, 10, 10]);
+    expect([frame(1, 99), frame(1, 100), frame(0, 150), frame(1, 199), frame(1, 200)]).toEqual([3, 4, 4, 5, 6]);
+    expect([frame(5, 450), frame(1, 500), frame(0, 560), frame(0, 700)]).toEqual([11, 12, 12, 12]);
     // A due frame publishes the latest unpublished tick even when it ran no tick itself.
-    expect(log).toEqual([[2, 100], [4, 200], [9, 450], [10, 560]]);
-    const sameTick = projectionDouble(currentRun().projection(), 10);
+    expect(log).toEqual([[4, 100], [6, 200], [11, 450], [12, 560]]);
+    const sameTick = projectionDouble(currentRun().projection(), 12);
     clock.now = 900;
     recorded.frames[0].listener(frameDouble(currentRun(), sameTick));
     expect(log).toHaveLength(4);
-    expect(frame(1, 900)).toBe(11);
-    expect(log).toEqual([[2, 100], [4, 200], [9, 450], [10, 560], [11, 900]]);
+    expect(frame(1, 900)).toBe(13);
+    expect(log).toEqual([[4, 100], [6, 200], [11, 450], [12, 560], [13, 900]]);
     expect(Object.isFrozen(reader.getState())).toBe(true);
     expect(reader.getState().projection).toBe(currentRun().projection());
   });
@@ -472,5 +482,120 @@ describe('game session bridge: key facts published at the end of their frame', (
     // P3-11 defines the reason and message references; the double stands for a final result.
     deliver(1030, { result: Object.freeze({ readiness: 'ready', outcome: 'failure', reason: 'r', message: 'm' }) as unknown as Projection['result'] });
     expect(log).toEqual([[2, 1010], [4, 1030]]);
+  });
+});
+
+describe('game session bridge: the map\'s and Warp\'s key facts (P3-09)', () => {
+  it('publishes the real map opening, selection and Warp start and completion at once, and samples a hover', () => {
+    const { reader, clock, frame, currentRun } = running();
+    frame(2, 0);
+    const log = projectionLog(reader, clock);
+    const run = currentRun();
+    const mapOf = () => {
+      const { map } = reader.getState().projection!;
+      return map.readiness === 'ready' ? map.player : null;
+    };
+    run.submitCommand({ type: 'toggle-map' });
+    expect(frame(1, 10)).toBe(3);
+    expect(log).toEqual([[3, 10]]);
+    expect(mapOf()).toMatchObject({ state: 'open', destination: null, warpRequest: { accepted: false, reason: 'no-destination' } });
+    // A hover moves only the cursor and its readings: sampled, not published at once.
+    run.submitCommand({ type: 'map-point', operation: 'hover', right: 0.3, down: 0.3 });
+    frame(1, 20);
+    expect(log).toEqual([[3, 10]]);
+    run.submitCommand({ type: 'map-point', operation: 'select', right: 0.52, down: 0.5 });
+    frame(1, 30);
+    expect(log).toEqual([[3, 10], [5, 30]]);
+    expect(mapOf()).toMatchObject({ state: 'open', destination: { position: { x: 1800, y: 0, z: 0 } }, warpRequest: { accepted: true } });
+    expect(mapOf()?.markerEntityId).not.toBeNull();
+    run.submitCommand({ type: 'request-warp' });
+    frame(1, 40);
+    expect(log).toEqual([[3, 10], [5, 30], [6, 40]]);
+    expect(reader.getState().projection?.player).toMatchObject({ viewMode: 1, interactionContext: 'warp' });
+    // The transit is sampled until the completion, which is published in its own frame.
+    let clockMs = 40;
+    let completed = false;
+    run.on('warp-completed', () => { completed = true; return undefined; });
+    while (!completed) frame(5, ++clockMs);
+    expect(reader.getState().projection?.clock.tick).toBe(run.projection().clock.tick);
+    expect(reader.getState().projection?.player.interactionContext).toBe('flight');
+    expect(log.at(-1)).toEqual([run.projection().clock.tick, clockMs]);
+  });
+
+  /** A running bridge past the player's appearance with the map open on a destination, and typed doubles of later frames. */
+  function mapDoubles() {
+    const context = running();
+    context.frame(2, 0);
+    const run = context.currentRun();
+    run.submitCommand({ type: 'toggle-map' });
+    run.submitCommand({ type: 'map-point', operation: 'select', right: 0.52, down: 0.5 });
+    context.frame(1, 1000);
+    const base = run.projection();
+    if (base.map.readiness !== 'ready' || base.map.player?.state !== 'open') throw new Error('The map is not open');
+    const open = base.map.player;
+    const log = projectionLog(context.reader, context.clock);
+    let tick = base.clock.tick;
+    const deliver = (clockMs: number, player: MapPlayer | null, warpSerial: number | null = null, view: Projection['player'] = base.player) => {
+      context.clock.now = clockMs;
+      const projection = projectionDouble(base, ++tick, { map: Object.freeze({ readiness: 'ready' as const, player }), player: Object.freeze({ ...view }) });
+      const render = run.renderFrame();
+      const current = Object.freeze({ ...render.current, warp: warpSerial === null ? null : { ...WARP, serial: warpSerial } });
+      context.recorded.frames[0].listener(Object.freeze({ ...frameDouble(run, projection), render: Object.freeze({ ...render, current }) }));
+    };
+    const closed = Object.freeze({ state: 'closed' as const, destination: open.destination!.position, markerEntityId: open.markerEntityId, warpRequest: open.warpRequest });
+    return { ...context, base, open, closed, log, deliver };
+  }
+
+  const WARP: RenderWarp = Object.freeze({ serial: 1, progress: 0, segments: 1, fraction: 0, length: 1, path: Object.freeze([]) });
+
+  it('samples an open map whose cursor, costs and contacts change, and the same destination in a new object', () => {
+    const { open, log, deliver } = mapDoubles();
+    const position = open.destination!.position;
+    deliver(1010, Object.freeze({
+      ...open,
+      cursor: Object.freeze({ ...open.cursor, pixel: Object.freeze({ column: 1, row: 1 }) }),
+      cursorCost: Object.freeze({ cost: 9, energy: 9, percent: 100 }),
+      contacts: Object.freeze([]),
+      destination: Object.freeze({ ...open.destination!, position: Object.freeze({ ...position }), cost: Object.freeze({ cost: 1, energy: 9, percent: 11 }) }),
+    }));
+    expect(log).toEqual([]);
+    deliver(1100, open);
+    expect(log).toHaveLength(1);
+  });
+
+  it.each<[string, (parts: ReturnType<typeof mapDoubles>) => readonly [MapPlayer | null, number | null]]>([
+    ['the map closing', ({ closed }) => [closed, null]],
+    ['the map losing its player', () => [null, null]],
+    ['a new destination', ({ open }) => [{ ...open, destination: { ...open.destination!, position: { ...open.destination!.position, z: 1 } } }, null]],
+    ['a cleared destination', ({ closed }) => [{ ...closed, destination: null }, null]],
+    ['the marker', ({ open }) => [{ ...open, markerEntityId: null }, null]],
+    ['the Warp gate\'s result', ({ open }) => [{ ...open, warpRequest: { accepted: false, reason: 'cooldown' } }, null]],
+    ['the Warp gate\'s reason', ({ open }) => [{ ...open, warpRequest: { accepted: false, reason: 'insufficient-energy' } }, null]],
+    ['the Warp view\'s transit', ({ open }) => [open, 1]],
+  ])('publishes %s at once, then samples again from it', (_, change) => {
+    const parts = mapDoubles();
+    const [player, serial] = change(parts);
+    parts.deliver(1010, player, serial);
+    expect(parts.log).toEqual([[4, 1010]]);
+    parts.deliver(1109, player, serial);
+    expect(parts.log).toEqual([[4, 1010]]);
+    parts.deliver(1110, player, serial);
+    expect(parts.log).toEqual([[4, 1010], [6, 1110]]);
+  });
+
+  it('publishes view mode 1 at once, though the interaction context and the serial stay', () => {
+    const { open, log, deliver, base } = mapDoubles();
+    deliver(1010, open, null, { ...base.player, viewMode: 0, interactionContext: 'warp' });
+    deliver(1020, open, null, { ...base.player, viewMode: 1, interactionContext: 'warp' });
+    deliver(1030, open, null, { ...base.player, viewMode: 1, interactionContext: 'warp' });
+    expect(log).toEqual([[4, 1010], [5, 1020]]);
+  });
+
+  it('publishes a new Warp transit\'s serial at once, though the view stays in the Warp', () => {
+    const { open, log, deliver } = mapDoubles();
+    deliver(1010, open, 1);
+    deliver(1020, open, 2);
+    deliver(1030, open, 2);
+    expect(log).toEqual([[4, 1010], [5, 1020]]);
   });
 });

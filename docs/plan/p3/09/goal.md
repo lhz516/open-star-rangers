@@ -102,7 +102,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 28 | completed |
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | completed |
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | completed |
-| [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | in-progress |
+| [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | completed |
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | pending |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | in-progress |
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
@@ -141,6 +141,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 15 已集成：** `object-sets` 每 tick 重建，基础值 false，已提交视角为 8 时揭示；共享揭示 `revealMapVisibility`（`rules/map-visibility.ts`）供 P3-08 在任何视角调用；没有历史存储。19 用 `mapContactClass`、`mapCoverage` 构造接触点类别与覆盖。交 26：`core.md` 阶段表第 12 行与约 635、643 行“object-sets 建议归 P3-08”改为已由 P3-09/15 实现、P3-08 复用；`source-structure.md` 新增 `rules/map-visibility.ts`、`systems/object-sets.ts`。
 - **2026-10-14 — D-01 补定（19 发现）与 19 已集成：** 放大窗口像素为 `0x4c5ec` 的原值，`0x4b56c` 依赖 Core 没有的 HUD 图标尺寸且无规则读者，交 P3-13；玩家没有图标（P3-11 前不可达）时连线与读数取玩家当前位置、放大窗口距离为 null（P3-02 MW-11 与审批第 14 项）。交 26：`core.md` 的 projection 一节（`map` 分区就绪、关图边界、`warpRequest` 以已提交状态判定、无图标回退、放大像素、`CombatPlayer.warp`、Render State `warp`）；`source-structure.md` 新增 `projections/map.ts`。
 - **2026-10-14 — 20 已集成：** 只有测试，未发现规则缺陷。实测快照规模（每个图标约 200 字符、集合 34 KiB、过程约 2 KiB，合计约 0.43 MiB）略高于 MW-14 的估计（约 0.35 MiB），仍远在 `canonicalTextLength` 之内；`limits.ts` 的注释已按实测更正，spec 中的估计不影响任何上限，不另修订。
+- **2026-10-14 — 21 已集成：** 桥接关键事实增加地图开/关/无玩家、已提交目的地与标记、`warpRequest` 结果与原因、视角 1 与 Warp 过程序号；悬停仍按采样；事件日志补全四个 P3-09 事件的全部字段。交 22：可开始任务的合成机型能量为 −100，`request-warp` 恒为 `insufficient-energy`，AC-12 的“按 w 开始并完成”需要 e2e 合成包给玩家正能量。交 26：`docs/engineering/modules/ui.md` 与 `docs/engineering/README.md`（约第 389 行）的桥接关键事实。完整 e2e 中 F-13（`failure-storage-lifecycle`）一次失败、单独重跑通过，判为负载敏感，与本变更无关。
 
 ## 审批
 
