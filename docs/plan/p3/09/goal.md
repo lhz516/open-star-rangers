@@ -107,7 +107,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | in-progress |
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
-| [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | in-progress |
+| [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | completed |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
 | [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | completed |
@@ -142,6 +142,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — D-01 补定（19 发现）与 19 已集成：** 放大窗口像素为 `0x4c5ec` 的原值，`0x4b56c` 依赖 Core 没有的 HUD 图标尺寸且无规则读者，交 P3-13；玩家没有图标（P3-11 前不可达）时连线与读数取玩家当前位置、放大窗口距离为 null（P3-02 MW-11 与审批第 14 项）。交 26：`core.md` 的 projection 一节（`map` 分区就绪、关图边界、`warpRequest` 以已提交状态判定、无图标回退、放大像素、`CombatPlayer.warp`、Render State `warp`）；`source-structure.md` 新增 `projections/map.ts`。
 - **2026-10-14 — 20 已集成：** 只有测试，未发现规则缺陷。实测快照规模（每个图标约 200 字符、集合 34 KiB、过程约 2 KiB，合计约 0.43 MiB）略高于 MW-14 的估计（约 0.35 MiB），仍远在 `canonicalTextLength` 之内；`limits.ts` 的注释已按实测更正，spec 中的估计不影响任何上限，不另修订。
 - **2026-10-14 — 21 已集成：** 桥接关键事实增加地图开/关/无玩家、已提交目的地与标记、`warpRequest` 结果与原因、视角 1 与 Warp 过程序号；悬停仍按采样；事件日志补全四个 P3-09 事件的全部字段。交 22：可开始任务的合成机型能量为 −100，`request-warp` 恒为 `insufficient-energy`，AC-12 的“按 w 开始并完成”需要 e2e 合成包给玩家正能量。交 26：`docs/engineering/modules/ui.md` 与 `docs/engineering/README.md`（约第 389 行）的桥接关键事实。完整 e2e 中 F-13（`failure-storage-lifecycle`）一次失败、单独重跑通过，判为负载敏感，与本变更无关。
+- **2026-10-14 — 26 已集成：** `core.md` 新增“地图与 Warp（P3-09）”一节并同步流水线、状态、事件、原因码、projection、版本、上限、已批准差异（MW-12 1–9，CR-11 差异 1、8）与交接（P3-04/05/08/10/11/12/13/14/15）；更正视角切换置重绘的旧表述（只涉及视角 6）与既有文档中过时的规则/replay 版本。遗留：`src/core/systems/area.ts` 第 13 行模块注释仍说玩家 Warp 期间的区域中心“在标记处接入”，实际已在 `rules/active-area.ts` 的 `activeAreaCentre` 实现，交 27 判定是否需要修复。
 
 ## 审批
 

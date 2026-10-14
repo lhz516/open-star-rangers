@@ -250,13 +250,13 @@ related: [ADR-0015]
 - [map-geometry-payload.ts](../../../src/content/hud/map-geometry-payload.ts) 的 `MAP_GEOMETRY_ROLE`（`map-geometry`）、`MAP_GEOMETRY_SCHEMA_VERSION`（1）、`MAP_GEOMETRY_LIMITS`（`payloadBytes` 256）、格式规则 `MAP_GEOMETRY_FORMAT`（画面 640×480、行高上限 8，与字体读取器的高度上限相同，测试核对二者一致）、类型 `MapGeometry`/`MapRectangle`，以及 `readMapGeometry`、`encodeMapGeometryPayload(content, reserve?)` 与 `decodeMapGeometryPayload(bytes, descriptor)`。
 - payload 恰为 `{ rectangle: { x0, y0, x1, y1 }, redrawInterval, informationLineHeight }`：地图仪表记录的含末像素矩形、重绘间隔（u32，时钟单位）与字体 1 的字形高度（像素）。读取器要求 0 ≤ x0 ≤ x1 ≤ 639、0 ≤ y0 ≤ y1 ≤ 479，主地图边长 s = y1 − y0 + 1 ≥ 2，右侧条带 x0 + s < x1，行高为 1–8 的整数；与其他字段相关的约束只用固定的原因文字，不回显数值。跨输入的检查（起点、比例、重绘间隔与步长）在 Core（[P3-02 MW-01](../../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)）。
 - 依赖须为空，否则为 `flight-data-reference-mismatch`；schema 不是 1 为 `unsupported-payload-schema`；其他问题为 `invalid-flight-data-payload`，非规范编码为 `non-canonical-payload`。来源不符合读取器时，转换器报 `source` 层的 `unsupported-payload`（[图形转换](./original-data.md#图形转换)）。
-- 应用从同一经验证的包中以 [mission-input.ts](../../../src/app/resources/mission-input.ts) 的 `mapGeometryInput(groups)` 解码它（`{ id, content }`，缺少时为 undefined，解码错误位于 `cockpit-hud-map[<Asset ID>].<路径>`），交给 P3-09/12 接入世界创建。
+- 应用从同一经验证的包中以 [mission-input.ts](../../../src/app/resources/mission-input.ts) 的 `mapGeometryInput(groups)` 解码它（`{ id, content }`，缺少时为 undefined，解码错误位于 `cockpit-hud-map[<Asset ID>].<路径>`），P3-09/12 已把它作为 Core 的 `mapGeometry` 输入接入世界创建（见[下节](#core-消费的规则输入)）。
 
 针对性检查为 `pnpm exec vitest run src/content/hud`。
 
 ## Core 消费的规则输入
 
-正式 Core 的世界创建（[Core 模块说明](./core.md#世界创建)）在三份逻辑 Asset 之外读取同一个经 `validatePackage` 验证的包中的规则输入：P3-06 的 `craftInfo` 与 P3-07 的六项规则数据输入（[P3-02 spec 的 CR-01](../../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)，Core 侧见[规则数据输入与静态规则数据](./core.md#规则数据输入与静态规则数据)）。调用者（app 的 [mission-input.ts](../../../src/app/resources/mission-input.ts)、[tools/replay-check.ts](../../../tools/replay-check.ts) 与浏览器 replay）用本模块的 payload 解码器取得对象，以 `{ id, content }` 传入；Core 不信任调用者的类型，再用下列对象读取器或字段校验严格读取，结果冻结、与输入脱离。
+正式 Core 的世界创建（[Core 模块说明](./core.md#世界创建)）在三份逻辑 Asset 之外读取同一个经 `validatePackage` 验证的包中的规则输入：P3-06 的 `craftInfo`、P3-07 的六项规则数据输入（[P3-02 spec 的 CR-01](../../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）与 P3-09 的地图几何（[MW-01](../../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)；Core 侧见[规则数据输入与静态规则数据](./core.md#规则数据输入与静态规则数据)）。调用者（app 的 [mission-input.ts](../../../src/app/resources/mission-input.ts)、[tools/replay-check.ts](../../../tools/replay-check.ts) 与浏览器 replay）用本模块的 payload 解码器取得对象，以 `{ id, content }` 传入；Core 不信任调用者的类型，再用下列对象读取器或字段校验严格读取，结果冻结、与输入脱离。
 
 | Core 输入 | Asset 与角色 | 调用者的解码 | Core 的读取 |
 |---|---|---|---|
@@ -267,9 +267,10 @@ related: [ADR-0015]
 | `explosionAnimations` | 爆炸表三张列表引用的 `data/explosion-animation/<nn>`，按 ID 升序 | `decodeFlightDataPayload` | `readExplosionAnimation`，只保留帧数 |
 | `projectileVisuals` | `models` 组唯一的 `projectile` 类 `data` Asset（`data/projectile-visuals`） | `readEffectPayload` 与 `checkEffectBinding` | 没有对象读取器：只校验 `kind` 与每条记录的 `length`（有限 f32），记录数不超过 `EFFECT_LIMITS.effectRecords` |
 | `models` | 运行可实例化机体绑定的模型（Core 的 `instantiableModelIds`），按 ID 升序 | `readModelPayload` 与 `checkModelBinding` | 没有对象读取器：只校验 `kind`、`MODEL_LIMITS.partLists` 个部件列表与第 1 列表的长度（不超过 `MODEL_LIMITS.modelParts`），不读几何、贴图或声音 |
+| `mapGeometry` | `cockpit-hud-map` 组的 `data/hud/map-geometry`（角色 `map-geometry`） | `decodeMapGeometryPayload`（`mapGeometryInput`） | `readMapGeometry`，全部内容；起点、比例与重绘间隔等跨输入的检查与地图静态规则数据在 Core（[MW-01](../../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)） |
 
-- 读取器的错误在 Core 中保留为 `ContentContractError`（路径以 `input.<字段>.content` 开头）；跨输入的集合与语义检查是 Core 的 `CoreInputError`。Core 的上限取自本模块的结构上限（`CRAFT_INFO_COUNTS`、`EFFECT_LIMITS`、`MODEL_LIMITS`、`FLIGHT_DATA_FORMAT` 与 `FLIGHT_DATA_LIMITS`）。
-- Core 的 setupHash 按成员类型写出 `CraftInfo`、`DebrisParameters` 与 `AiPrograms` 的全部内容（[Core 的 setupHash](./core.md#世界创建)）；这些内容类型增删成员时 Core 的写出器类型检查失败，须同步。弹丸记录与模型只写出 Core 读取的长度与部件数，外观字段的变化不改变 setupHash。
+- 读取器的错误在 Core 中保留为 `ContentContractError`（路径以 `input.<字段>.content` 开头）；跨输入的集合与语义检查是 Core 的 `CoreInputError`。Core 的上限取自本模块的结构上限（`CRAFT_INFO_COUNTS`、`EFFECT_LIMITS`、`MODEL_LIMITS`、`FLIGHT_DATA_FORMAT` 与 `FLIGHT_DATA_LIMITS`；地图光标像素的上界取 `MAP_GEOMETRY_FORMAT` 的画面高度）。
+- Core 的 setupHash 按成员类型写出 `CraftInfo`、`DebrisParameters`、`AiPrograms` 与 `MapGeometry` 的全部内容（[Core 的 setupHash](./core.md#世界创建)）；这些内容类型增删成员时 Core 的写出器类型检查失败，须同步。弹丸记录与模型只写出 Core 读取的长度与部件数，外观字段的变化不改变 setupHash。
 - 原版导入（`original-import`）的内容只接受生产 Asset ID；合成内容可用任意 `data/` 类 ID。读取器的形状、限值与原版字段的含义仍以本模块的各节与 `docs/original/` 为准，Core 只在[静态规则数据](./core.md#规则数据输入与静态规则数据)中按原版的存储类型计算载入变换，内容不预先变换。
 
-针对性检查为 `pnpm exec vitest run src/core/world/rule-data.test.ts src/core/world/create-world.test.ts src/app/resources/mission-input.test.ts`。
+针对性检查为 `pnpm exec vitest run src/core/world/rule-data.test.ts src/core/world/map-rule-data.test.ts src/core/world/create-world.test.ts src/app/resources/mission-input.test.ts`。

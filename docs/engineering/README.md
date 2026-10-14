@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -386,7 +386,7 @@ P3-04 的正式 UI 层位于 `src/ui/game/`，契约见 [spec：UI 桥接与命�
 
 - **store：** 每个任务所有者一个 Zustand vanilla store（[game-store.ts](../../src/ui/game/game-store.ts) 的 `createGameStore(ownerId)`），状态为会话状态、projection 采样、流程位置、待确认命令与最近结果、操作错误与会话错误。React 只拿到只读 `reader`，经 [use-game.ts](../../src/ui/game/use-game.ts) 的 `useGame(reader, selector)` 订阅单个标量或稳定切片；写入者只有桥接、命令反馈与所有者的装配，每次转换单次原子写入，状态冻结，无变化时不通知。
 - **桥接：** [game-session-bridge.ts](../../src/ui/game/game-session-bridge.ts) 的 `createGameSessionBridge({ store, clock, consumers })` 在开始前 `bind` 所有者的会话（只读 `status`、`currentRun`、`onStatus`），之后自动附着每个新运行；`bridge.onError` 作为创建会话时的错误出口，只写 sessionError。
-  - 会话状态、新运行，以及暂停、保持、停止的静止边界立即写入；常规 projection 在既有帧通知中按 100 ms 采样，按 ownerId、runId 与 tick 去重，不另开定时器。`mission.status`、`player.interactionContext`、各分区的就绪状态与结果内容在帧末立即发布，按这些字段比较而不是按每 tick 新建的对象引用。
+  - 会话状态、新运行，以及暂停、保持、停止的静止边界立即写入；常规 projection 在既有帧通知中按 100 ms 采样，按 ownerId、runId 与 tick 去重，不另开定时器。`mission.status`、`player.interactionContext`、各分区的就绪状态与结果内容，以及 P3-09 的地图关键状态（地图开/关/无玩家、已提交的目的地与标记、`warpRequest` 的结果或原因、Warp 视角 1 与其过程序号）在帧末立即发布，按这些字段比较而不是按每 tick 新建的对象引用；地图光标（hover）与读数按采样发布。
   - 采样时钟由装配层注入（浏览器为 `performance.now`），必须是有限且不倒退的毫秒值；读取失败或非法值在帧监听器中抛出，由会话记为 consumer 故障。附着发生在状态通知内时，失败延到该运行的下一帧报告，避免状态监听因抛错被移除。
   - 附着是事务性的：运行级消费者每完成一项注册就交出撤销函数，任一注册失败时逆序撤销并重新抛出，撤销也失败时为 `RollbackError`。一个桥接只服务一个会话，成功绑定后 `unbind` 即终止。
 - **命令反馈：** [game-command-feedback.ts](../../src/ui/game/game-command-feedback.ts) 的 `createGameCommandFeedback(store)` 是桥接的运行级消费者，`submit(command)` 经当前运行提交，拿到 commandId 后才记为 pending，同步失败写 actionError 并返回 null。结果按 ownerId、runId 与 commandId 匹配：本消费者命令的 `command-result` 给出 accepted、rejected 或 ignored 与原因，并与帧末最新 projection 同次写入，不先乐观更新；会话取消记为 cancelled 并保留原因；运行故障时仍未终结的记为 unconfirmed（`session-failed`），不自动重提。未知、重复、其他消费者或 null 的 ID 不产生结果；最近结果保留 10 个，运行结束时清空。
