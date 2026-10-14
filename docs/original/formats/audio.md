@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-14
 related: [U-004, U-016, U-027]
 ---
 
@@ -86,7 +86,7 @@ The 18 studied samples are the 13 slice samples, Warp entry 10401 and the four E
   - **Slot 1:** when a gun projectile object (kind `0x200000`, M2ID slot 21, no MODL) is created, from the firing ship's model. The gun message builder `0x2e5e8` posts that kind.
   - **Slot 2:** when a missile object (kind `0x100000`, M2ID slot 20, no MODL) is created, from the launching ship's model. The missile builder `0x2e86c` posts that kind and decrements an ammunition count, except while the typed-cheat flag `0x174ed8` is set for the player ([W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code)). Both builders are called from `0x2d578`.
   - **Slot 4:** the impact builders `0x2a40c` (projectile or missile hit) and `0x2a5fc` post a hit event on the struck object. When the object's shield (+0x2c) was below 1 before the hit, that is, the hit reaches the hull or no shield is up, slot 4 plays; otherwise slot 3 does (Confirmed, code, P3-07/04, [D5](./executable.md#d5-other-entries-into-the-damage-rule--confirmed-code); corrected from "the object is destroyed": destruction is the dead flag +0xD8).
-- **Warp start:** `0x2be00` runs for the Warp command (dispatcher `0x20d10`, message `0x400` sub-command 0). It takes the destination the map click stored (`0x2b9bc`), computes the distance and an energy cost (`0x30d2c`, see U-026), and refuses when energy is short. On success it posts a play-by-ID event for entry **10401**, and the dispatcher enters warp mode.
+- **Warp start:** `0x2be00` runs for the Warp command (dispatcher `0x20d10`, message `0x400` sub-command 0). It takes the destination the map click stored (`0x2b9bc`), computes the distance from the player's current position and an energy cost (`0x30d2c`), and refuses silently (no sound or text) when the interval has not passed or energy is short. It only checks the cost; the charge comes at the completion (P3-09/05, [Warp start](./executable.md#warp-cost-and-warp-start-p3-0905)). On success it posts a play-by-ID event for entry **10401**, and the dispatcher enters warp mode.
   - **Shared sample:** 10401 and the missile sample 10647 are the exact duplicate pair recorded above, so the missile launch and the Warp start use the same sound.
 - **Explosion effects:** every EXPL record is {SND entry ID at +0, ANIM entry ID at +4}. The 17 EXPL entries reference four distinct sounds: 10213, 10215, 10217 and 10219 (1.05–2.20 s, against 0.12–0.29 s for the slot-4 samples). Effect objects of kind `0x400000` play their record's sound through `0x55534`.
   - **Selection (Confirmed, code, P3-03/05; first observed by listening):** by listening, the longer blast after an enemy kill, a missile kill and the player's death varies between occurrences among all four sounds, which suggested a random choice among the EXPL entries. The static trace confirms it: the mission build keeps 5, 5 and 3 entries of the three EXIC lists from random starts, and `0x2409c` gives each explosion a random kept entry of the list its variant selects ([textures §7](./textures.md#7-expl-explosion-records-confirmed)). When each variant plays is a P3 behaviour question.
@@ -144,7 +144,7 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 | 10485 | Dispatcher, message type 0x100000, after an optional left-display page change (`0x4cdf0`) | Posted by the flight key handler `0x264a0` (two sites), `0x27ab4` and the communications command handler `0x27b44` (seven sites) |
 | 10463 | Map click `0x2b9bc` | A Warp destination is set |
 | 10401 | Warp start `0x2be00` | As above |
-| 10181 | Warp end `0x2bf08` | Arrival |
+| 10181 | Warp end `0x2bf08` | Arrival, only when an enemy (kinds `0x93780`, alive) lies strictly within the player's craft +0x0C of the arrival point (`0x3c040`); otherwise no sound (Confirmed, code, P3-09/06, [completion](./executable.md#warp-progress-completion-and-interruptions-p3-0906)) |
 | 10055 | `0x38780` | A transponder-kind object (`0x4000`) is created at run time ([allocator paths](./executable.md#two-allocator-paths-native-inputs-and-profile-comparison)); whether the slice reaches it is Unconfirmed |
 | 10167 | Docking `0x38ff4`, sub-commands 1 and 2 | The two selection keys of the base interior |
 | 10169 | Docking `0x38ff4`, sub-command 3 | Enter, the selected base action |
