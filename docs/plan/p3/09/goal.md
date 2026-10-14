@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | completed |
 | [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | completed |
 | [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | completed |
-| [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | in-progress |
+| [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | completed |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | in-progress |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
@@ -120,6 +120,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 03 的结论中 D-01 须处理的点：** 历史探索在静态上“不保留”（已确认，代码），运行佐证交 09；地图图标的可见性判定只作用于敌对种类（spec 对图标“可见”的表述须收窄）；+0xD4 的读者只有 `0x2b8ec`、`0x2ee60` 与僚机目标搜索 `0x62760`，僚机 AI `0x62250` 在任何视角都调用 `0x2ee60`，因此 `mapVisible` 与有序集合必须跨 tick 保留并进入快照（交 08、15 与 P3-08）。
 - **2026-10-14 — 04 的结论中 D-01 须处理的点：** 右键编号开关与去抖没有规则读者（已穷举），属于 P3-13 的呈现，08 按此同步 P3-05 的交接；地图上的连线是玩家→光标，所选目标周围没有范围圈（圆盘属于各友方单位），spec/B-001 中“目标不可见时连线与范围的处理”无可决定的对象，须在 D-01 更正；地图绘制 `0x4b3a8` 对重合图标的像素去重叠会改变下一帧的拾取结果与目的地 z（与 02、14 交叉）；地图几何的最小 payload 字段见 04 的完成证据。
 - **2026-10-14 — 基准运行的分派：** 09、24 只用配方声明的模拟器内输入（`tools/baseline/`），不用 Computer Use；协调者把这两行照常分派给 worker，由 worker 在基准锁下独占运行，同一时间本 goal 只有一个会话使用基准环境。Computer Use 若确有需要仍只由协调者进行。
+- **2026-10-14 — 05 的结论中 D-01 须处理的点：** Warp 开始时原版不置 `statusDisplay` 重绘；开始消息经 `0x3f158`→`0x50188` 还写玩家位姿、速度 0、指令速度为参考最大值，并在表现路径上至少抽取 60 次共享随机数；开始只检查消耗，完成时按起点→到达点距离扣 ⌈c×(1+s/2)⌉ 并钳 0（s 由渲染路径逐帧递增，取值归 06）；+0xC8 在完成时写为将来时刻；开始不锁定目的地（同帧 `w` 后的选择会改变到达点）；`0x1864c8` 是开始位置而不是目的地；能量为 0 时地图读数可能除零（后果未确认，交 09）；指示灯严格比较、开始检查非严格。
 
 ## 审批
 
