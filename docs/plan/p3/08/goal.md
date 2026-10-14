@@ -79,7 +79,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
-| [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | pending |
+| [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | in-progress |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | pending |
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | pending |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | pending |
@@ -106,6 +106,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 
 - **2026-10-14 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal；用户在执行期间不可用，协调者按本会话刚批准的唯一 goal 选定目标。协调者在 `p3-08-ai-wingman-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-05、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-08-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则。Ghidra 由各 worker 在各自写入范围内的私有项目副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
 - **2026-10-14 — 研究发现与 spec 的冲突（01）：** 原版在实例化扩展点 `0x20990` 只做程序选择，控制器安装与处理器模式 0 的工作（及其抽取）发生在对象首次回调的 object-update 阶段（Warp 中转测试之后）；spec 行为表第 1 行与“程序选择与安装·位置”把安装放在扩展点。按 spec 的研究推翻方向规则，由 07 汇总、08（D-01，连同 P3-02 CR-07）提出修订并取得用户批准后，15 才能开始。证据见子任务 01 的完成证据。
+- **2026-10-14 — 10 的基准运行：** 沿用 P3-07 子任务 26 的做法，由协调者授权 10 的 worker 自行用 `measure.py` 运行原版（Computer Use 仍只由协调者操作）。基准环境与 P3-09、P3-10 的执行共用，由工具在 `local/research/` 上的会话锁与 DOSBox 进程检查串行；遇到 `session-busy` 或 `emulator-already-running` 时等待重试，不结束他人的进程。
 
 ## 审批
 
