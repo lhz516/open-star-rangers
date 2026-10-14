@@ -68,10 +68,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06, P3-07 and P3-09 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
       'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
-      'parked-update', 'area-check', 'frame-end', 'commit',
+      'parked-update', 'warp-completion', 'area-check', 'frame-end', 'commit',
     ]);
   });
 

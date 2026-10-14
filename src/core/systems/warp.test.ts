@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { DomainEvent, Vec3 } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
+import { activeAreaCentre } from '../rules/active-area.ts';
 import { mapPixelToWorld } from '../rules/map-frame.ts';
 import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
+import { STARTUP_ROTATIONS } from '../rules/startup-rotations.ts';
 import type { CraftCombat, Entity, SteeredMovementBlock } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, expectFault, stateText, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
+import { switchView } from './view-switch.ts';
 import { judgeWarpRequest } from './warp.ts';
 
 // P3-09 S-08, AC-08 and AC-07's start part (docs/plan/p3/09/spec.md, Warp 开始) in the real pipeline, against the
@@ -41,13 +44,17 @@ interface Options {
   readonly energy?: number;
   readonly destination?: Vec3 | null;
   readonly warpClock?: number;
+  /** Craft +0xA8 of the player's record (14: L = 7 here; 1: L = 0.5, a Warp that completes in its start's tick). */
+  readonly transitSeconds?: number;
+  /** Craft +0x0C of the player's record, the radius of 0x3c040. */
+  readonly radius?: number;
 }
 
 /** A world with an available player at POSITION in `viewMode`, its record as above, the automatic selection not due. */
-function setUp({ viewMode = FLIGHT, previousViewMode = FLIGHT, energy = COST, destination = DESTINATION, warpClock = 0 }: Options = {}): { state: WorldState; player: Entity } {
+function setUp({ viewMode = FLIGHT, previousViewMode = FLIGHT, energy = COST, destination = DESTINATION, warpClock = 0, transitSeconds = 14, radius = 0 }: Options = {}): { state: WorldState; player: Entity } {
   const base = testState();
   const { content } = base.craftInfo;
-  const craft = content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, pairs: [{ at00: 10, at04: 100 }, { at00: 1000, at04: 200 }], atA4: 2, atA8: 14, atB8: 64 } : record));
+  const craft = content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, pairs: [{ at00: 10, at04: 100 }, { at00: 1000, at04: 200 }], atA4: 2, atA8: transitSeconds, atB8: 64, at0C: radius } : record));
   const state: WorldState = { ...base, craftInfo: { ...base.craftInfo, content: { ...content, craft } } };
   const player = addPlayerEntity(state, { position: POSITION, warpClock });
   player.state = 'active';
@@ -299,7 +306,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     Object.assign(player, { position: POSITION, inWarp: false });
     Object.assign(block(player), { mode: 'craft' });
     combat(player).energy = COST;
-    const events = step(state, [warp]);
+    const events = stepRequests(state, [warp]);
     expect(others(events)[0]).toMatchObject({ type: 'warp-started', serial: 2 });
     expect(state.player.warp).toMatchObject({ serial: 2, segments: 1, fraction: 0, error: 0, angle: 0, centring: 0, origin: POSITION });
   });
@@ -307,5 +314,258 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
   it('faults when the start no longer passes the check it was accepted on', () => {
     const { state, player } = setUp();
     expectFault(() => stepRequests(state, [warp], { 'request-handling': () => void (combat(player).energy = COST - 1) }), 'invariant-violated', 'warp.start-check');
+  });
+});
+
+// P3-09 S-09, AC-09 and AC-07's progress and completion parts (docs/plan/p3/09/spec.md, Warp 过程与到达) against
+// docs/plan/p3/02/spec.md, MW-05, MW-07 (the Warp step in frame-end), MW-08 (warp-completion), MW-09 and MW-10, and
+// docs/original/formats/executable.md (Warp progress, completion and interruptions). With +0xA8 = 14, L = 7; with
+// +0xA8 = 1, L = F(0.5 × 1) = 0.5 and the start's reset progress F(1 × F(1 ÷ 0.5)) = 2 is already 1.0.
+
+const MAXIMUM_SPEED = 100;
+const ARRIVAL_EVENTS = ['warp-completed', 'left-page-changed'];
+const types = (events: readonly DomainEvent[]) => others(events).map(({ type }) => type);
+const completions = (events: readonly DomainEvent[]) => events.filter(({ type }) => type === 'warp-completed');
+
+/** A started Warp: the start's tick has run whole (one Warp step at its frame-end). */
+function started(options: Options = {}): { state: WorldState; player: Entity } {
+  const world = setUp(options);
+  world.player.maximumSpeed = MAXIMUM_SPEED;
+  step(world.state, [warp]);
+  return world;
+}
+
+/** Puts the transit one Warp step from its end: n = L − 1 and u just short of 1, with a speed that crosses it. */
+function nearTheEnd({ state, player }: { state: WorldState; player: Entity }): void {
+  Object.assign(state.player.warp!, { segments: 6, fraction: Math.fround(0.999) });
+  Object.assign(block(player), { speed: 64, commandedSpeed: 64 });
+}
+
+describe('the Warp step in frame-end (MW-07)', () => {
+  it('advances the transit once per tick from the block speed after movement, writing the pose and G, not the placement', () => {
+    const { state, player } = started();
+    const before = { ...state.player.warp! };
+    const placement = player.placementSerial;
+    const rng = state.rngState;
+    step(state);
+    const transit = state.player.warp!;
+    // u := F(u + speed × step ÷ +0xB8); no segment completed, so no draws.
+    const seconds = state.config.clockUnitsPerTick / 64;
+    expect(transit.fraction).toBe(Math.fround(before.fraction + (block(player).speed * seconds) / 64));
+    expect(transit.fraction).toBeGreaterThan(before.fraction);
+    expect(state.rngState).toEqual(rng);
+    expect(transit.frame.position.z).toBeGreaterThan(10000);
+    expect(player.position).not.toEqual(before.frame.position);
+    expect(player.placementSerial).toBe(placement);
+    expect(transit.angle).toBeGreaterThan(0);
+    expect(transit.centring).toBeGreaterThan(0.9);
+  });
+
+  it('does not run outside view 1 or without a player entity', () => {
+    const { state } = started();
+    state.player.viewMode = FLIGHT;
+    const transit = JSON.stringify(state.player.warp);
+    step(state);
+    expect(JSON.stringify(state.player.warp)).toBe(transit);
+    const other = started();
+    const fraction = other.state.player.warp!.fraction;
+    other.state.entities.remove(other.player);
+    Object.assign(other.state.player, { entityId: null, control: null, targeting: null });
+    step(other.state);
+    expect(other.state.player.warp!.fraction).toBe(fraction);
+  });
+});
+
+describe('the Warp completion (MW-08) and its tick boundary (AC-09)', () => {
+  it('completes in the tick after the frame-end that reached the end, once, with exactly its draws', () => {
+    const world = started();
+    const { state } = world;
+    nearTheEnd(world);
+    const rng = state.rngState;
+    // Tick T: the frame-end's step completes the last segment (2 draws), n = 7 = L, so p = 1.0; nothing completes yet.
+    const reached = step(state);
+    expect(completions(reached)).toEqual([]);
+    expect(state.player.warp).toMatchObject({ segments: 7, fraction: 0 });
+    expect(state.player.viewMode).toBe(WARP);
+    expect(state.rngState).toEqual(rngStateAfter(rng, 2));
+    // Tick T + 1: the completion reads that progress before any step (2 draws, sign and rotation); no Warp step follows.
+    const completed = step(state);
+    expect(types(completed)).toEqual(ARRIVAL_EVENTS);
+    expect(state.rngState).toEqual(rngStateAfter(rng, 4));
+    expect(state.player.viewMode).toBe(FLIGHT);
+    // Never again.
+    for (let tick = 0; tick < 3; tick++) expect(completions(step(state))).toEqual([]);
+  });
+
+  it('completes in the start\'s own tick when L ≤ 1, before any Warp step, after the start\'s events', () => {
+    const { state, player } = setUp({ transitSeconds: 1 });
+    player.maximumSpeed = MAXIMUM_SPEED;
+    state.player.leftDisplay.page = 1;
+    const rng = state.rngState;
+    const events = step(state, [warp]);
+    expect(types(events)).toEqual(['warp-started', 'left-page-changed', 'warp-completed', 'left-page-changed']);
+    expect(others(events).filter(({ type }) => type === 'left-page-changed')).toEqual([
+      { type: 'left-page-changed', tick: 1, page: 6, previousPage: 1, commandIndex: null },
+      { type: 'left-page-changed', tick: 1, page: 1, previousPage: 6, commandIndex: null },
+    ]);
+    // 20 path draws and the 2 arrival draws; the frame-end, back in flight, does not step the Warp.
+    expect(state.rngState).toEqual(rngStateAfter(rng, 22));
+    expect(state.player.warp).toMatchObject({ segments: 1, fraction: 0, error: 0 });
+  });
+
+  it('places an error-free arrival 600 above the player itself at the destination, then charges and resets the block', () => {
+    const { state, player } = setUp({ transitSeconds: 1 });
+    player.maximumSpeed = MAXIMUM_SPEED;
+    const placement = player.placementSerial;
+    const draws = randValues(state.rngState, 22);
+    const clock = nextClock(state);
+    const events = step(state, [warp]);
+    // s = 0: the destination unchanged by the pull and the height; the snap's nearest is the player there (score 0).
+    const position = { x: DESTINATION.x, y: DESTINATION.y, z: DESTINATION.z + 600 };
+    // D = √(30000² + 40000² + 600²) = 50003.59…; trunc 50003, q = 50: the second pair, c = 200 × 50003 ÷ 1000 = 10000.
+    const distance = Math.fround(Math.sqrt(30000 ** 2 + 40000 ** 2 + 600 ** 2));
+    expect(Math.trunc(distance)).toBe(50003);
+    const orientation = STARTUP_ROTATIONS[draws[21] % 64];
+    // t = trunc(64 × 2 × min(1, D ÷ 30000)) = 128, raised to 0x280.
+    const warpClock = clock + 0x280;
+    const completed = others(events).find(({ type }) => type === 'warp-completed');
+    // The energy stage runs before the completion, so E is the energy at the completion; s = 0 charges c exactly.
+    const energyBefore = completed?.type === 'warp-completed' ? completed.arrival!.charge.energyBefore : NaN;
+    expect(completed).toEqual({
+      type: 'warp-completed', tick: 1, serial: 1, viewMode: FLIGHT, previousViewMode: WARP,
+      arrival: {
+        playerEntityId: player.id, origin: POSITION, destination: DESTINATION, position, orientation, error: 0, snapped: player.id,
+        charge: { distance: 50003, cost: 10000, energyBefore, energyAfter: energyBefore - 10000 }, warpClock, hostileNear: false,
+      },
+    });
+    expect([player.position, player.orientation, player.placementSerial, player.warpClock, player.inWarp]).toEqual([position, orientation, placement + 2, warpClock, false]);
+    expect(block(player)).toMatchObject({ mode: 'craft', atCommandedSpeed: true, speed: MAXIMUM_SPEED, commandedSpeed: MAXIMUM_SPEED });
+    expect(combat(player).energy).toBe(energyBefore - 10000);
+    // Not written: the destination, the target (cleared at the start) and the transit.
+    expect([state.player.map.destination, state.player.target, state.player.warp?.serial]).toEqual([DESTINATION, null, 1]);
+    // The area check after the completion already centres on the arrival.
+    expect(activeAreaCentre(state)).toBe(player.position);
+  });
+
+  it('pulls a Warp with error s toward the sector corner, offsets z by s × ±5000 and snaps to a nearer object', () => {
+    const { state, player } = setUp({ transitSeconds: 1 });
+    player.maximumSpeed = MAXIMUM_SPEED;
+    const sign = randValues(state.rngState, 21)[20] % 2 === 1 ? 1 : -1;
+    // With s = 0.5: corner (30000, 45000, 0), so (30500, 43500, 150 ± 2500); an object 100 below that is the nearest.
+    const arrival = { x: 30500, y: 43500, z: 150 + sign * 2500 };
+    const near = state.entities.allocate(entityInit(7, { position: { ...arrival, z: arrival.z - 100 } }));
+    near.destroyed = true;
+    stepRequests(state, [warp]);
+    state.player.warp!.error = 0.5;
+    const context = registerTick(state, input([]));
+    PIPELINE.find(({ id }) => id === 'warp-completion')!.run!(context);
+    const completed = context.events.find(({ type }) => type === 'warp-completed');
+    if (completed?.type !== 'warp-completed') throw new Error('expected a completion');
+    expect(completed.arrival).toMatchObject({ error: 0.5, snapped: near.id, position: { ...arrival, z: arrival.z - 100 + 600 } });
+  });
+
+  it('reports a live hostile strictly within the player craft\'s +0x0C of the arrival', () => {
+    const near = (destroyed: boolean) => {
+      const { state, player } = setUp({ transitSeconds: 1, radius: 1000 });
+      player.maximumSpeed = MAXIMUM_SPEED;
+      const hostile = state.entities.allocate(entityInit(7, { position: { x: DESTINATION.x + 999, y: DESTINATION.y, z: DESTINATION.z + 600 } }));
+      Object.assign(hostile, { state: 'active', destroyed });
+      const completed = step(state, [warp]).find(({ type }) => type === 'warp-completed');
+      return completed?.type === 'warp-completed' ? completed.arrival?.hostileNear : undefined;
+    };
+    expect([near(false), near(true)]).toEqual([true, false]);
+  });
+
+  it.each([
+    ['from the map, back to 0xC; saved page 5 restores as 0', MAP, 5, FLIGHT, 0],
+    ['from flight; page 6 kept emits no page change', FLIGHT, 6, FLIGHT, null],
+  ])('restores the view and page %s', (_, viewMode, page, restored, restoredPage) => {
+    const { state, player } = setUp({ viewMode, transitSeconds: 1 });
+    player.maximumSpeed = MAXIMUM_SPEED;
+    state.player.leftDisplay.page = page as 5 | 6;
+    const events = others(step(state, [warp]));
+    const completedAt = events.findIndex(({ type }) => type === 'warp-completed');
+    expect(events[completedAt]).toMatchObject({ viewMode: restored, previousViewMode: WARP });
+    expect([state.player.viewMode, state.player.previousViewMode]).toEqual([restored, WARP]);
+    expect(events.slice(completedAt + 1)).toEqual(restoredPage === null ? [] : [{ type: 'left-page-changed', tick: 1, page: restoredPage, previousPage: 6, commandIndex: null }]);
+  });
+
+  it('without a player entity only restores the view and page, with no arrival and no draws', () => {
+    const world = started();
+    const { state } = world;
+    nearTheEnd(world);
+    step(state);
+    state.entities.remove(world.player);
+    Object.assign(state.player, { entityId: null, control: null, targeting: null });
+    const rng = state.rngState;
+    const events = step(state);
+    expect(others(events)).toEqual([
+      { type: 'warp-completed', tick: state.tick, serial: 1, viewMode: FLIGHT, previousViewMode: WARP, arrival: null },
+      { type: 'left-page-changed', tick: state.tick, page: 0, previousPage: 6, commandIndex: null },
+    ]);
+    expect(state.rngState).toEqual(rng);
+  });
+
+  it('keeps going at zero energy (mode 3 has no energy lock) and clamps the charge at 0 without a depletion of its own', () => {
+    const world = started();
+    const { state, player } = world;
+    combat(player).energy = 0;
+    const fraction = state.player.warp!.fraction;
+    step(state);
+    expect(state.player.warp!.fraction).toBeGreaterThan(fraction);
+    nearTheEnd(world);
+    step(state);
+    const events = step(state);
+    const completed = events.find(({ type }) => type === 'warp-completed');
+    expect(completed?.type === 'warp-completed' && completed.arrival?.charge).toMatchObject({ energyBefore: 0, energyAfter: 0 });
+    expect(events.filter(({ type }) => type === 'energy-depleted')).toEqual([]);
+  });
+});
+
+// Q-10 and MW-09: P3-11's destruction and rescue are not integrated yet; their internal static call boundary is the view
+// switch, checked here from synthetic pre-states. Nothing here claims the joint P3-11 flow.
+describe('a Warp abandoned at P3-11\'s boundary (MW-09, synthetic pre-states)', () => {
+  const DESTROYED = 0x11;
+
+  /** P3-11's destruction from a Warp: view 0x11 with previous view 1, through switchView. */
+  function destroyedInWarp() {
+    const world = started();
+    const { state } = world;
+    state.player.leftDisplay.page = 6;
+    state.player.savedLeftPage = 2;
+    Object.assign(state.player, { viewMode: DESTROYED, previousViewMode: WARP });
+    expect(switchView(state, DESTROYED, WARP)).toEqual({ page: 2, previousPage: 6 });
+    // Even a transit at its end does not complete outside view 1.
+    nearTheEnd(world);
+    state.player.warp!.segments = 7;
+    return world;
+  }
+
+  it('neither steps nor completes: no arrival, no charge, warpClock and the transit unchanged, inWarp kept', () => {
+    const { state, player } = destroyedInWarp();
+    const transit = JSON.stringify(state.player.warp);
+    const warpClock = player.warpClock;
+    for (let tick = 0; tick < 3; tick++) expect(completions(step(state))).toEqual([]);
+    expect(JSON.stringify(state.player.warp)).toBe(transit);
+    expect([player.warpClock, player.inWarp, block(player).mode]).toEqual([warpClock, true, 'warp']);
+    // The stuck flag keeps the active area on the destination.
+    expect(activeAreaCentre(state)).toBe(state.player.map.destination);
+  });
+
+  it('after a synthetic rescue keeps inWarp until the next Warp completes, which the start does not check', () => {
+    const { state, player } = destroyedInWarp();
+    Object.assign(state.player, { viewMode: FLIGHT, previousViewMode: FLIGHT });
+    Object.assign(block(player), { mode: 'craft', speed: 0, commandedSpeed: 0, atCommandedSpeed: true });
+    Object.assign(player, { position: POSITION });
+    combat(player).energy = COST;
+    step(state);
+    expect([player.inWarp, activeAreaCentre(state)]).toEqual([true, DESTINATION]);
+    const events = step(state, [warp]);
+    expect(results(events)).toEqual([[0, 'request-warp', 'accepted', null]]);
+    expect(state.player.warp?.serial).toBe(2);
+    nearTheEnd({ state, player });
+    step(state);
+    expect(completions(step(state))).toHaveLength(1);
+    expect(player.inWarp).toBe(false);
   });
 });

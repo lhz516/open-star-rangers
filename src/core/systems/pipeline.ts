@@ -33,7 +33,7 @@ import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
-import { applyWarpStart, type WarpStartRequest } from './warp.ts';
+import { applyWarpStart, completeWarp, runWarpStep, type WarpStartRequest } from './warp.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
 
 /** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
@@ -461,9 +461,13 @@ function checkArea(context: TickContext): void {
   checkActiveArea(context.world);
 }
 
-/** The `frame-end` stage: P3-09's map step (MW-07), then the cockpit display step (CR-10). */
+/**
+ * The `frame-end` stage (MW-07): P3-09's map step (view 8) or Warp step (view 1, warp.ts), then the cockpit display
+ * step (CR-10).
+ */
 function runFrameEnd(context: TickContext): void {
   runMapStep(context);
+  runWarpStep(context);
   frameEndStage?.(context);
 }
 
@@ -518,8 +522,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   // (P3-09, P3-13) and the parked AI handler (P3-08, the suggested owner); no P3-06 rule reads them.
   stage('object-sets', null),
   stage('parked-update', updateParkedObjects),
-  // 0x2bf08 (P3-09).
-  stage('warp-completion', null),
+  // 0x2bf08 (warp.ts).
+  stage('warp-completion', completeWarp),
   // 0x398ec, view mode 6 (P3-10).
   stage('base-interior', null),
   // 0x334bc, main-flow state 0, which retires every object (P3-11).

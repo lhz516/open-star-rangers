@@ -1,24 +1,40 @@
 /**
- * The player's Warp start (docs/plan/p3/02/spec.md, MW-04, MW-05, MW-09 and MW-12; docs/original/formats/executable.md,
- * Warp cost and Warp start, and the Warp set-up): the judgement of `request-warp` in the command batch and its
- * `warp-start` request in request handling, which commits `0x2be00`, the dispatcher's view write, `0x3f158(1, old)` and
- * the set-up `0x50188`. The original refuses silently, with no sound, text or page: a refusal here is `ignored` and
- * changes nothing (MW-12 difference 7: the original's refusal for energy also overwrites the Warp origin, which has no
- * reader before the next accepted start). The start writes no energy, no `warpClock` and no status-display redraw; the
- * Warp's charge and interval are the completion's.
+ * The player's Warp (docs/plan/p3/02/spec.md, MW-04, MW-05, MW-07 to MW-10 and MW-12; docs/original/formats/executable.md,
+ * Warp cost and Warp start, Warp progress, completion and interruptions):
+ *
+ * - **Start:** the judgement of `request-warp` in the command batch and its `warp-start` request in request handling,
+ *   which commits `0x2be00`, the dispatcher's view write, `0x3f158(1, old)` and the set-up `0x50188`. The original
+ *   refuses silently, with no sound, text or page: a refusal here is `ignored` and changes nothing (MW-12 difference 7:
+ *   the original's refusal for energy also overwrites the Warp origin, which has no reader before the next accepted
+ *   start). The start writes no energy, no `warpClock` and no status-display redraw.
+ * - **Step** (`frame-end`, `0x50508` with `0x50a28`): once per tick in view 1 with a player entity, before the cockpit
+ *   display step; the original's per-frame increments run once per tick (MW-12 difference 3).
+ * - **Completion** (`warp-completion`, `0x2bf08`): in view 1, on the progress the previous `frame-end` left (or the
+ *   start's reset, so a transit length ≤ 1 completes in the start's tick); it restores the view and page and, with a
+ *   player entity, places the arrival, charges and emits `warp-completed` once.
+ *
+ * No rule cancels a Warp. P3-11's destruction and rescue leave view 1 through view-switch.ts: the step and the
+ * completion then no longer run, so the Warp is abandoned with no arrival, no charge and `warpClock` unchanged, and
+ * `inWarp` stays set until the next completed Warp (MW-09, reproduced), which keeps the active area on the destination
+ * (MW-10). The dispatcher's sub-command 2, which would end a Warp from view 2, has no sender and no entry here.
+ * View 1 without a transit is unreachable (only a start enters it); the step and the completion leave it alone.
  */
-import type { CommandResultReason } from '../contracts/domain-events.ts';
+import type { CommandResultReason, WarpArrival } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
+import { motionStep } from '../rules/flight-motion.ts';
 import { RandStream } from '../rules/original-random.ts';
-import { warpStartCheck, type WarpCheck } from '../rules/warp-energy.ts';
-import { evaluateWarpPath, setUpWarpPath, transitLength } from '../rules/warp-path.ts';
-import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
-import { interactionContext } from '../world/player-state.ts';
+import { drawStartupRotation } from '../rules/startup-rotations.ts';
+import { ENEMY_KINDS } from '../rules/targeting.ts';
+import { arrivalPoint, isHostileNear, snapToNearest, SNAP_KINDS, warpInterval } from '../rules/warp-arrival.ts';
+import { warpCharge, warpDistance, warpStartCheck, type WarpCheck } from '../rules/warp-energy.ts';
+import { evaluateWarpPath, setUpWarpPath, stepWarp, transitLength, warpProgress } from '../rules/warp-path.ts';
+import type { CraftCombat, Entity, SteeredMovementBlock } from '../world/entity-table.ts';
+import { COCKPIT_VIEW_MODE, interactionContext, type WarpTransit } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { emitCommandResult, type CommandOf } from './commands.ts';
 import { availablePlayer } from './flight-control.ts';
 import { emit, type CommandView, type TickContext } from './pipeline.ts';
-import { BASE_VIEW_MODE, switchView, WARP_VIEW_MODE } from './view-switch.ts';
+import { BASE_VIEW_MODE, MAP_VIEW_MODE, switchView, WARP_VIEW_MODE } from './view-switch.ts';
 
 /** Message 0x400 sub-command 0, posted by an accepted `request-warp` (MW-04). */
 export interface WarpStartRequest {
@@ -39,10 +55,10 @@ const playerRecord = (world: WorldState, player: Entity) => {
   return record;
 };
 
-/** The player's `combat.energy` (i32), E of the energy gate. */
-function playerEnergy(player: Entity): number {
-  if (player.combat.type !== 'craft') throw new CoreFaultError('invariant-violated', 'warp.combat');
-  return player.combat.energy;
+/** The player's craft combat, whose `energy` (i32) is E of the energy gate and of the charge. */
+function craftCombat({ combat }: Entity): CraftCombat {
+  if (combat.type !== 'craft') throw new CoreFaultError('invariant-violated', 'warp.combat');
+  return combat;
 }
 
 /** `0x2be00` step 1: refused while +0xC8 ≠ 0 and +0xC8 + 64 × +0xA4 > clock; equality passes. */
@@ -65,7 +81,7 @@ export function judgeWarpRequest(world: WorldState, view: Readonly<CommandView>,
   if (view.destination === null) return 'no-destination';
   const record = playerRecord(world, player);
   if (coolingDown(player.warpClock, record.atA4, clock)) return 'cooldown';
-  const check = warpStartCheck(record.pairs, player.position, view.destination, playerEnergy(player));
+  const check = warpStartCheck(record.pairs, player.position, view.destination, craftCombat(player).energy);
   return check.affordable ? check : 'insufficient-energy';
 }
 
@@ -119,7 +135,7 @@ export function applyWarpStart(context: TickContext, { commandIndex }: WarpStart
   // The player's own update posted the request, and nothing posted before it in the tick removes the player.
   if (player === undefined || destination === null) throw new CoreFaultError('invariant-violated', 'warp.start');
   const record = playerRecord(world, player);
-  const check = warpStartCheck(record.pairs, player.position, destination, playerEnergy(player));
+  const check = warpStartCheck(record.pairs, player.position, destination, craftCombat(player).energy);
   if (!check.affordable) throw new CoreFaultError('invariant-violated', 'warp.start-check');
   const block = steeredBlock(player);
 
@@ -161,5 +177,100 @@ export function applyWarpStart(context: TickContext, { commandIndex }: WarpStart
     fromViewMode,
     commandIndex,
   });
+  if (page !== null) emit(context, { type: 'left-page-changed', tick, ...page, commandIndex: null });
+}
+
+/** The player entity, when it exists. */
+const playerEntity = ({ player, entities }: WorldState): Entity | undefined => (player.entityId === null ? undefined : entities.get(player.entityId));
+
+/** The transit the step and the completion act on: view 1 committed and a Warp started. */
+function transitInView(world: WorldState): WarpTransit | null {
+  return world.player.viewMode === WARP_VIEW_MODE ? world.player.warp : null;
+}
+
+/**
+ * The Warp step of `frame-end` (MW-07): in view 1 with a player entity, one `0x50508`/`0x50a28` pass (warp-path.ts's
+ * stepWarp) at the block's speed after this tick's movement and this tick's step: the transit's u, n, path (2 world
+ * draws per completed segment), a, c, s and G, and the player's position and rows. The placement is unchanged: the
+ * pose is continuous.
+ */
+export function runWarpStep({ world }: TickContext): void {
+  const transit = transitInView(world);
+  const player = playerEntity(world);
+  if (transit === null || player === undefined) return;
+  const record = playerRecord(world, player);
+  const { seconds } = motionStep(world.config.clockUnitsPerTick, world.clock);
+  const rand = new RandStream(world.rngState);
+  const step = stepWarp(transit, player, steeredBlock(player).speed, seconds, record.atB8, rand);
+  world.rngState = rand.state;
+  player.position = step.pose.position;
+  player.orientation = step.pose.orientation;
+  Object.assign(transit, step.transit);
+}
+
+/**
+ * Completion steps 3–9 for an existing player entity (MW-08): the position at the destination (so the player is a snap
+ * candidate there); the arrival point with draw 1; the snap; the position with a new placement; draw 2, the start-up
+ * rotation; D from the arrival to the origin; the interval base; the block back in mode 0 at the maximum speed; the
+ * charge, without the depletion handler; `inWarp` cleared; `0x3c040`.
+ */
+function arrive(world: WorldState, player: Entity, transit: WarpTransit): WarpArrival {
+  const destination = world.player.map.destination;
+  // A start needs a destination, and only the player's instantiation clears it.
+  if (destination === null) throw new CoreFaultError('invariant-violated', 'warp.arrival-destination');
+  const record = playerRecord(world, player);
+  const { error, origin } = transit;
+  player.position = destination;
+  const rand = new RandStream(world.rngState);
+  const { position, snapped } = snapToNearest(arrivalPoint(destination, error, world.config.group, rand), world.entities.walk(SNAP_KINDS));
+  player.position = position;
+  player.placementSerial++;
+  player.orientation = drawStartupRotation(world.ruleData.startupRotations, rand);
+  world.rngState = rand.state;
+
+  const distance = Math.fround(warpDistance(position, origin));
+  player.warpClock = world.clock + warpInterval(distance, record.atA4);
+  const block = steeredBlock(player);
+  block.mode = 'craft';
+  block.atCommandedSpeed = true;
+  block.speed = player.maximumSpeed;
+  block.commandedSpeed = player.maximumSpeed;
+  const combat = craftCombat(player);
+  const charge = warpCharge(record.pairs, distance, combat.energy, error);
+  combat.energy = charge.energyAfter;
+  player.inWarp = false;
+  return {
+    playerEntityId: player.id,
+    origin,
+    destination,
+    position,
+    orientation: player.orientation,
+    error,
+    snapped: snapped?.id ?? null,
+    charge,
+    warpClock: player.warpClock,
+    hostileNear: isHostileNear(position, record.at0C, world.entities.walk(ENEMY_KINDS)),
+  };
+}
+
+/**
+ * The `warp-completion` stage (`0x2bf08`; MW-08): in view 1 when the progress is 1.0. The view returns to the previous
+ * one (the map as 0xC), the previous view becomes 1 and view-switch.ts restores the saved page; with a player entity
+ * the arrival follows. `warp-completed` comes once per Warp, before the page's `left-page-changed`. Nothing of the
+ * transit, the destination, the marker or the target is written: the next start resets the transit.
+ */
+export function completeWarp(context: TickContext): void {
+  const { world } = context;
+  const transit = transitInView(world);
+  if (transit === null || warpProgress(transit) !== 1) return;
+  const { player: state } = world;
+  const viewMode = state.previousViewMode === MAP_VIEW_MODE ? COCKPIT_VIEW_MODE : state.previousViewMode;
+  state.previousViewMode = WARP_VIEW_MODE;
+  state.viewMode = viewMode;
+  const page = switchView(world, viewMode, WARP_VIEW_MODE);
+  const player = playerEntity(world);
+  const arrival = player === undefined ? null : arrive(world, player, transit);
+  const { tick } = context.time;
+  emit(context, { type: 'warp-completed', tick, serial: transit.serial, viewMode, previousViewMode: WARP_VIEW_MODE, arrival });
   if (page !== null) emit(context, { type: 'left-page-changed', tick, ...page, commandIndex: null });
 }
