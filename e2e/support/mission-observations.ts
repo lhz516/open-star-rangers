@@ -312,6 +312,9 @@ export interface DevState {
   /** The run's wingman option, or null for none. */
   readonly wingman: number | null;
   readonly player: number | null;
+  /** The player's view mode and the previous one. */
+  readonly viewMode: number;
+  readonly previousViewMode: number;
   readonly entities: readonly { readonly id: number; readonly kindBit: number; readonly source: string }[];
 }
 
@@ -321,11 +324,12 @@ function readDevState(page: Page): Promise<DevState | null> {
     const run = text('dev-state-run');
     if (run === null) return null;
     const wingman = text('dev-state-wingman');
-    const player = /^entity (\d+|none),/.exec(text('dev-state-player') ?? '');
+    const player = /^entity (\d+|none), view mode 0x([0-9a-f]+) \(previous 0x([0-9a-f]+)\)/.exec(text('dev-state-player') ?? '');
     if (!player) throw new Error('Unreadable player state');
     return {
       run: Number(run), tick: Number(text('dev-state-tick')), seed: Number(text('dev-state-seed')),
       wingman: wingman === 'none' ? null : Number(wingman), player: player[1] === 'none' ? null : Number(player[1]),
+      viewMode: parseInt(player[2], 16), previousViewMode: parseInt(player[3], 16),
       entities: [...document.querySelectorAll<HTMLElement>('[data-testid="dev-entity"]')].map(row => ({
         id: Number(row.dataset.entityId), kindBit: Number(row.dataset.kindBit), source: row.dataset.source ?? '',
       })),

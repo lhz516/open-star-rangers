@@ -229,10 +229,10 @@ describe('mission diagnostics', () => {
     next(1, 200);
     drafted('request-warp');
     next(1, 200);
-    // The synthetic craft's energy is −100, so the gate refuses every cost.
+    // The synthetic player affords the short Warp to its own pixel's icon, so the gate that refused it now accepts it.
     expect(setup.ui().store.reader.getState().recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason])).toEqual([
       [1, 'request-warp', 'ignored', 'no-destination'], [2, 'toggle-map', 'accepted', null], [3, 'map-point', 'accepted', null],
-      [4, 'request-warp', 'ignored', 'insufficient-energy'],
+      [4, 'request-warp', 'accepted', null],
     ]);
     const player = setup.run()!.projection().player.entityId;
     // The log lists every field (event-log.test.ts checks their order).

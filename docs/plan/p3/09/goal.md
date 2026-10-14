@@ -103,7 +103,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | completed |
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | completed |
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | completed |
-| [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | in-progress |
+| [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | completed |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | completed |
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
@@ -143,6 +143,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 20 已集成：** 只有测试，未发现规则缺陷。实测快照规模（每个图标约 200 字符、集合 34 KiB、过程约 2 KiB，合计约 0.43 MiB）略高于 MW-14 的估计（约 0.35 MiB），仍远在 `canonicalTextLength` 之内；`limits.ts` 的注释已按实测更正，spec 中的估计不影响任何上限，不另修订。
 - **2026-10-14 — 21 已集成：** 桥接关键事实增加地图开/关/无玩家、已提交目的地与标记、`warpRequest` 结果与原因、视角 1 与 Warp 过程序号；悬停仍按采样；事件日志补全四个 P3-09 事件的全部字段。交 22：可开始任务的合成机型能量为 −100，`request-warp` 恒为 `insufficient-energy`，AC-12 的“按 w 开始并完成”需要 e2e 合成包给玩家正能量。交 26：`docs/engineering/modules/ui.md` 与 `docs/engineering/README.md`（约第 389 行）的桥接关键事实。完整 e2e 中 F-13（`failure-storage-lifecycle`）一次失败、单独重跑通过，判为负载敏感，与本变更无关。
 - **2026-10-14 — 26 已集成：** `core.md` 新增“地图与 Warp（P3-09）”一节并同步流水线、状态、事件、原因码、projection、版本、上限、已批准差异（MW-12 1–9，CR-11 差异 1、8）与交接（P3-04/05/08/10/11/12/13/14/15）；更正视角切换置重绘的旧表述（只涉及视角 6）与既有文档中过时的规则/replay 版本。遗留：`src/core/systems/area.ts` 第 13 行模块注释仍说玩家 Warp 期间的区域中心“在标记处接入”，实际已在 `rules/active-area.ts` 的 `activeAreaCentre` 实现，交 27 判定是否需要修复。
+- **2026-10-14 — 22 已集成：** 实际应用 E2E 覆盖开图、`p` 暂停、Esc 关图、开发命令编辑器 select、`w` 开始并完成、菜单与页面隐藏后无补跑无重复扣费、生产包无开发编辑器；完整 `pnpm test:e2e` 226 通过。合成包玩家机型改为可完成 Warp（`productionCraftInfo()`）。DOM 尚无地图事实（P3-13），桥接状态经 React fiber 只读读取 UI store 作为证据，协调者接受。
 
 ## 审批
 
