@@ -70,7 +70,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-selection-closure-research.md](./subtasks/01-selection-closure-research.md) | — | in-progress |
+| [01-selection-closure-research.md](./subtasks/01-selection-closure-research.md) | — | completed |
 | [02-interpreter-scripts-research.md](./subtasks/02-interpreter-scripts-research.md) | — | in-progress |
 | [03-piloting-targeting-firing-research.md](./subtasks/03-piloting-targeting-firing-research.md) | — | completed |
 | [04-wingman-commands-research.md](./subtasks/04-wingman-commands-research.md) | — | in-progress |
@@ -105,6 +105,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 ## 执行记录
 
 - **2026-10-14 — 并行执行安排：** 用户以 `/execute-goal`（无参数，默认并行，同时运行的 worker 不超过 3 个）执行本 goal；用户在执行期间不可用，协调者按本会话刚批准的唯一 goal 选定目标。协调者在 `p3-08-ai-wingman-spec` 分支（本 worktree）上执行。本宿主的 `create_session` 不能在协调者指定的文件夹中启动会话，因此沿用 P3-05、P3-07 的做法：worker 在应用为其会话创建的 worktree 中运行（以认领提交为基），由 worker 把分支改名为 `exec-p3-08-NN` 作为认领标记，`local` 由仓库的会话脚本链接；其余照 execute-goal 的并行规则。Ghidra 由各 worker 在各自写入范围内的私有项目副本中只读打开；基准环境（DOSBox-X）与 Computer Use 只由协调者操作。
+- **2026-10-14 — 研究发现与 spec 的冲突（01）：** 原版在实例化扩展点 `0x20990` 只做程序选择，控制器安装与处理器模式 0 的工作（及其抽取）发生在对象首次回调的 object-update 阶段（Warp 中转测试之后）；spec 行为表第 1 行与“程序选择与安装·位置”把安装放在扩展点。按 spec 的研究推翻方向规则，由 07 汇总、08（D-01，连同 P3-02 CR-07）提出修订并取得用户批准后，15 才能开始。证据见子任务 01 的完成证据。
 
 ## 审批
 
