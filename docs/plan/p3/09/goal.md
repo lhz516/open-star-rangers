@@ -98,7 +98,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 28, 30 | completed |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | completed |
-| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | pending |
+| [17-warp-start.md](./subtasks/17-warp-start.md) | 14, 16, 28 | in-progress |
 | [18-warp-progress-arrival.md](./subtasks/18-warp-progress-arrival.md) | 17, 28 | pending |
 | [19-map-partition-cockpit-readings.md](./subtasks/19-map-partition-cockpit-readings.md) | 14, 15, 18 | pending |
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | pending |
