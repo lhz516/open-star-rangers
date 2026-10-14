@@ -10,7 +10,8 @@
  *
  * None of them bounds an active object: it may fly anywhere, and only parking hands it to the parked update. Until
  * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel, and
- * the base reports of P3-10 and the area centre during the player's Warp (P3-09) join at the marked places.
+ * the base reports of P3-10 join at the marked places. The area centre, the Warp destination while the player is in
+ * Warp (P3-09), comes from rules/active-area.ts's activeAreaCentre.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
