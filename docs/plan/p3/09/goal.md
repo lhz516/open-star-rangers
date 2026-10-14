@@ -85,7 +85,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [01-map-mode-command-research.md](./subtasks/01-map-mode-command-research.md) | — | completed |
 | [02-cursor-selection-marker-research.md](./subtasks/02-cursor-selection-marker-research.md) | — | completed |
 | [03-visibility-fog-research.md](./subtasks/03-visibility-fog-research.md) | — | completed |
-| [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | in-progress |
+| [04-zoom-info-numbering-research.md](./subtasks/04-zoom-info-numbering-research.md) | — | completed |
 | [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | in-progress |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | pending |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | pending |
@@ -118,6 +118,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 01 发现与 spec 的冲突（交 08/D-01）：** 原版 `0x32d74` 只在视角已是 0x11 且子模式 8 时不切换，地图（视角 8）会被被毁视角取代，与 spec [地图模式](./spec.md#地图模式)“若视角已是 8 则不切换”的读法相反；另外从飞行开关地图不置 `statusDisplay` 重绘，只有进出基地置位。08 在 D-01 中按 01 的完成证据更正，并决定地图中 `toggle-map` 与 `player-unavailable` 的优先次序（项目决定）。
 - **2026-10-14 — 02 的结论中 D-01 须处理的点：** 创建标记时消耗一次共享随机数（`rand()%64` 的转角），spec 未列；选择读取的是上一 tick 绘制时生成的图标命中列表，Core 必须拥有并序列化该列表；放大范围来自运行时比例而不是布局；首次选择之前的 `w` 静默无反应，Warp 读取存储的目的地而不是标记。玩家状态字节 +0 只由首次选择置 1，任务建造/重试时由玩家实例化清零。
 - **2026-10-14 — 03 的结论中 D-01 须处理的点：** 历史探索在静态上“不保留”（已确认，代码），运行佐证交 09；地图图标的可见性判定只作用于敌对种类（spec 对图标“可见”的表述须收窄）；+0xD4 的读者只有 `0x2b8ec`、`0x2ee60` 与僚机目标搜索 `0x62760`，僚机 AI `0x62250` 在任何视角都调用 `0x2ee60`，因此 `mapVisible` 与有序集合必须跨 tick 保留并进入快照（交 08、15 与 P3-08）。
+- **2026-10-14 — 04 的结论中 D-01 须处理的点：** 右键编号开关与去抖没有规则读者（已穷举），属于 P3-13 的呈现，08 按此同步 P3-05 的交接；地图上的连线是玩家→光标，所选目标周围没有范围圈（圆盘属于各友方单位），spec/B-001 中“目标不可见时连线与范围的处理”无可决定的对象，须在 D-01 更正；地图绘制 `0x4b3a8` 对重合图标的像素去重叠会改变下一帧的拾取结果与目的地 z（与 02、14 交叉）；地图几何的最小 payload 字段见 04 的完成证据。
 
 ## 审批
 
