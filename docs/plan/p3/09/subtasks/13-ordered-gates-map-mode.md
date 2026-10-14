@@ -42,6 +42,7 @@ updated: 2026-10-14
 - `src/core/world/player-state.ts`：只在 D-01 已定的字段内写入。
 - `src/core/systems/view-switch.ts`、`src/core/systems/view-switch.test.ts`：计划新增，MW-09 的视角切换函数（协调者 2026-10-14 扩大范围）。
 - `src/core/systems/targeting.ts`、`src/core/systems/weapons.ts`、`src/core/systems/energy.ts`：`combatCommandPlayer` 改读 TickContext 的有效视角的调用点（协调者 2026-10-14 扩大范围）。
+- `src/core/world/world.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`：`toggle-map` 接入后“每种命令恰一个结果”的期望（同上）。
 
 ## 验收标准
 
