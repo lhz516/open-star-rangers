@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
-| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | in-progress |
+| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | blocked |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | in-progress |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
@@ -125,6 +125,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
   处理：05 的运行读数一条与验收改为“取得读数，或记录已尝试配方与准确障碍并移交 09”；09 新增该读数的工作与验收，先按其既有范围扩展 `tools/baseline/` 支持依本次读数分支的配方，仍不成时再按 spec 请用户做最小停靠。用户当时无法回应，此修订由协调者按推荐方案决定，用户可在审阅时撤回。spec 契约不变。
 
 - **2026-10-14 — 06 统一结论：02 正确。** 分配器 `0x520d4` 在 `0x52209` 把 +0x180 写为 −1（经 +0x20 的基址，03 的 0x180 位移扫描因此漏掉），`0x3c91c` 可达：每个 `0x87c` 机体或基地第一次说话时抽 1 次（该类头像用完时 2 次），在档案检查之前；所选任务至多 4 次（每座基地 1 次）。03 的抽取计数与 executable C2 已更正，07、08 以 executable RQ4/RX9 为准。
+
+- **2026-10-14 — Subtask 07 blocked:** D-03 已起草，但须由用户明确批准，且需要 P3-03 修订 2（导入 `COMMFACE.NOB` 时长元数据与 COMM TABL 2001/2011 名单）。用户在本次执行中无法回应，goal 审批没有预先授权关卡。
+  Evidence: spec 的 [D-03 定稿草案](./spec.md#d-03-定稿草案待用户批准)；06 入档的 RQ7（原版没有关闭媒体的设置，档案打不开时停靠必定超时）。
+  Affected acceptance: AC-05、AC-16、AC-17（07 的验收 1–3）；依赖链 08、10、11–28 等待。
+  Resume when: 用户明确批准 D-03 草案（或给出修改意见）以及 P3-03 修订 2；或者授权 agent 直接批准推荐方案（P3-07 先例），协调者把 07、08、10 改为“自动”并记录授权原话。
 
 ## 审批
 
