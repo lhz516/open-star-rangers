@@ -93,7 +93,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | in-progress |
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
-| [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | in-progress |
+| [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | pending |
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29, 30 | pending |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
@@ -130,6 +130,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 计划更新（08 发现的前置研究与写入范围）：** 按 D-01（MW-12）新增 28（R-A 启动旋转表、R-B 隧道路径的静态研究，只写 `local/`）与 29（把 28 的事实写入 executable 与 unknowns；与 09 同写 executable，因此分开以便 28 先行）；14、17、18 增加对 29 的依赖，27 依赖 28、29。写入范围按 MW 的落点扩大：13 增加视角切换函数 `src/core/systems/view-switch.ts`（MW-09，13 实现地图部分与进入/离开 1 的页面规则，17、18 可修改）；14 增加 `startupRotations` 的规则与世界创建接入（`src/core/rules/startup-rotations.ts`、`src/core/world/create-world.ts`、`src/core/world/rule-data.ts` 及测试）与 P3-07 锁定计数不读标记机型记录的回归（`src/core/rules/firing.ts`、`firing.test.ts`）；17、18 增加隧道路径规则 `src/core/rules/warp-path.ts` 与测试及 `view-switch.ts`。验收标准与工作范围不变。依据用户 2026-10-14 的预先授权（见审批），由协调者做出，待用户事后审阅。
 - **2026-10-14 — 28 完成：** R-A 取 MW-12 的代码规则分支：启动旋转表在播种之前、恰在缺省序列的 1000 次抽取之后构造（第 1001–1128 次），差异 6 不适用；R-B 读到逐位可实现的程度（开始位姿为常量，点 1 与点 0 重合，基数 Hermite 曲线 k=0.8）。事实草稿在 `local/research/p3-09/warp-path/findings.md`，由 29 写入 executable（含对 06“每点 z +2000”的更正）。
 - **2026-10-14 — 28 发现既有方向表偏差，新增修复 30：** 现有 `src/core/rules/random-direction.ts` 用 `Math.PI` 与 `1/180` 构造方向表，而原版映像中的两个常数分别是略大于 π 的十进制 π 与 1/180 减一个 ulp，361 项中 256 项（348 个分量）与原版不同；executable 中“每个分量非负”对 38 个分量不成立。启动旋转表的前向行来自此表，P3-06/07 的既有读者也继承该偏差。按用户的预先授权取推荐方案 (a)：新增 30，把方向表改为映像常数并复核 P3-06/07 的测试与金样，事实更正随 29 写入；14 依赖 30；27 依赖 30。排除 (b) 在 14 中另建私有表（同一原版表两份实现，偏差保留）与 (c) 接受偏差（启动旋转表无法重现）。这会改变既有规则输出，规则版本随 12 的递增一并覆盖；合入其他也读取方向表的分支（如 P3-08）时须重跑其回归。
+- **2026-10-14 — 12 已集成：** `RULES_VERSION` 4→5、快照格式 3→4（replay 格式不变）；30 的方向表修复同属这一版。12 范围外须由 26 同步的文档：`docs/engineering/modules/core.md`（`mapGeometry` 输入与 MW-01 校验、新状态/事件/原因码、标记种类、版本）、`docs/engineering/modules/app.md`（`CONTENT_INPUT_FIELDS`）、`docs/engineering/modules/content.md`（应用侧规则数据输入表）、`docs/guides/tools.md`（`RECORDING_MAX_BYTES` 现为 534,251,135，事件行 924 字节/项）、`docs/engineering/source-structure.md`（新文件 `src/core/world/map-rule-data.ts`）。
 
 ## 审批
 

@@ -4,7 +4,8 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { initialMovementBlock } from '../rules/flight-state.ts';
 import {
   ALL_KINDS, allocatorAiState, allocatorFlightState, blankCraftCombat, combatTypeOf, EntityTable, isActiveState, isLive, setActivity, SUBSYSTEM_COUNT,
-  type CraftCombat, type Entity, type EntityCombat, type EntityInit, type MissileCombat, type MovementBlock, type ObjectState, type SteeredMovementBlock,
+  type CraftCombat, type Entity, type EntityCombat, type EntityInit, type LinearMovementBlock, type MissileCombat, type MovementBlock, type ObjectState,
+  type SpinningMovementBlock, type SteeredMovementBlock,
 } from './entity-table.ts';
 import { busyCombat, entityInit, expectFault, kindDefaults, TEST_MODEL, TEST_ORIENTATION, TEST_VISUALS } from './world.test-support.ts';
 
@@ -288,9 +289,9 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   const busyCraft = (): CraftCombat => busyCombat(7) as CraftCombat;
   const missile = (overrides: Partial<MissileCombat> = {}): MissileCombat => ({ ...(kindDefaults(20).combat as MissileCombat), ...overrides });
 
-  it('gives each kind bit its combat type: craft 0–19, missile 20, projectile 21, explosion 22, fragment 24, none otherwise', () => {
+  it('gives each kind bit its combat type: craft 0–19, missile 20, projectile 21, explosion 22, fragment 24, marker 25, none otherwise', () => {
     const expected = Array.from({ length: 32 }, (_, kindBit) => (kindBit < 20 ? 'craft' : null));
-    Object.assign(expected, { 20: 'missile', 21: 'projectile', 22: 'explosion', 24: 'fragment' });
+    Object.assign(expected, { 20: 'missile', 21: 'projectile', 22: 'explosion', 24: 'fragment', 25: 'marker' });
     expect(Array.from({ length: 32 }, (_, kindBit) => combatTypeOf(kindBit))).toEqual(expected);
     for (const bad of [-1, 32, 1.5, Number.NaN]) expect(combatTypeOf(bad)).toBeNull();
   });
@@ -440,7 +441,7 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
       expect(Object.isFrozen((entity.movement as { velocity: object }).velocity)).toBe(true);
       Object.assign((movement as { velocity: object }).velocity, { x: 9 });
       expect(entity.movement).toMatchObject({ velocity: { x: 1 } });
-      entity.movement!.speed = 6;
+      (entity.movement as LinearMovementBlock | SpinningMovementBlock).speed = 6;
       for (const broken of [{ speed: 0.1 }, { velocity: { x: Number.NaN, y: 0, z: 0 } }, kindBit === 21 ? { previousPosition: { x: 0.1, y: 0, z: 0 } } : { spinAxis: 3 }]) {
         expectFault(() => table.allocate(entityInit(kindBit, { movement: { ...movement, ...broken } as MovementBlock })), 'invariant-violated', 'entities.flight');
       }
@@ -450,7 +451,7 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   it('keeps the runtime kinds\' object target null: their +0x8C is in their combat state', () => {
     const table = new EntityTable();
     expect(table.allocate(entityInit(7, { ai: { ...allocatorAiState(), objectTarget: 2 } })).ai.objectTarget).toBe(2);
-    for (const kindBit of [20, 21, 22, 24]) {
+    for (const kindBit of [20, 21, 22, 24, 25]) {
       expectFault(() => table.allocate(entityInit(kindBit, { ai: { ...allocatorAiState(), objectTarget: 2 } })), 'invariant-violated', 'entities.runtime-kind');
     }
   });
@@ -470,8 +471,8 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
     ['with a parked-update clock', { lastParkedUpdateClock: 2 }],
     ['with a Warp clock', { warpClock: 2 }],
     ['in Warp', { inWarp: true }],
-  ] as [string, Partial<EntityInit>][])('refuses a runtime kind %s: it keeps the allocator\'s fields (CR-02)', (_, overrides) => {
-    for (const kindBit of [20, 21, 22, 24]) {
+  ] as [string, Partial<EntityInit>][])('refuses a runtime kind %s: it keeps the allocator\'s fields (CR-02, MW-03)', (_, overrides) => {
+    for (const kindBit of [20, 21, 22, 24, 25]) {
       expectFault(() => new EntityTable().allocate(entityInit(kindBit, overrides)), 'invariant-violated', 'entities.runtime-kind');
     }
   });
@@ -479,9 +480,45 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   it('gives only a missile a maximum speed, its body record\'s', () => {
     const table = new EntityTable();
     expect(table.allocate(entityInit(20, { maximumSpeed: 64 })).maximumSpeed).toBe(64);
-    for (const kindBit of [21, 22, 24]) {
+    for (const kindBit of [21, 22, 24, 25]) {
       expect(table.allocate(entityInit(kindBit)).maximumSpeed).toBe(0);
       expectFault(() => table.allocate(entityInit(kindBit, { maximumSpeed: 64 })), 'invariant-violated', 'entities.runtime-kind');
     }
+  });
+});
+
+describe('the map marker and the map visibility flag (P3-09 AC-01; docs/plan/p3/02/spec.md MW-02, MW-03)', () => {
+  it('allocates a kind-25 marker with its own name, presentation, combat and mode-4 block, active and not map-visible', () => {
+    const entity = new EntityTable().allocate(entityInit(25));
+    expect(entity).toMatchObject({
+      kindBit: 25, name: { type: 'map-marker' }, presentation: { type: 'map-marker' }, combat: { type: 'marker' }, movement: { mode: 'marker', speed: 0 },
+      activity: 'active', state: 'presentation-ready', source: null, side: null, baseInteraction: false, maximumSpeed: 0, warpClock: 0, inWarp: false,
+      mapVisible: false, formation: null, ai: allocatorAiState(),
+    });
+    for (const part of [entity.name, entity.presentation, entity.combat, entity.movement]) expect(Object.isFrozen(part)).toBe(true);
+  });
+
+  it.each([
+    ['a marker without its name', 25, { name: { type: 'none' } }, 'entities.runtime-kind'],
+    ['a missile with the marker\'s name', 20, { name: { type: 'map-marker' } }, 'entities.runtime-kind'],
+    ['a craft with the marker\'s name', 7, { name: { type: 'map-marker' } }, 'entities.name'],
+    ['a marker drawn as a model', 25, { presentation: { type: 'model', model: TEST_MODEL } }, 'entities.presentation'],
+    ['a craft drawn as the marker', 7, { presentation: { type: 'map-marker' } }, 'entities.presentation'],
+    ['a marker with a steered block', 25, { movement: initialMovementBlock(1, 1) }, 'entities.movement'],
+    ['a craft with the marker\'s block', 7, { movement: { mode: 'marker', speed: 0 } }, 'entities.movement'],
+    ['a marker block with a speed', 25, { movement: { mode: 'marker', speed: 1 as 0 } }, 'entities.flight'],
+    ['a marker parked', 25, { activity: 'parked', movement: null }, 'entities.runtime-kind'],
+  ] as [string, number, Partial<EntityInit>, string][])('refuses %s', (_, kindBit, overrides, site) => {
+    const table = new EntityTable();
+    expectFault(() => table.allocate(entityInit(kindBit, overrides)), 'invariant-violated', site);
+    expect(table.size).toBe(0);
+  });
+
+  it('allocates every kind not map-visible; only the rules set the flag', () => {
+    const table = new EntityTable();
+    const entities = [0, 7, 19, 20, 21, 22, 24, 25].map((kindBit) => table.allocate(entityInit(kindBit)));
+    expect(entities.map(({ mapVisible }) => mapVisible)).toEqual(new Array(entities.length).fill(false));
+    entities[1].mapVisible = true;
+    expect(table.get(entities[1].id)!.mapVisible).toBe(true);
   });
 });

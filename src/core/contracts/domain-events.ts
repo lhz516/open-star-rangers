@@ -5,10 +5,12 @@
  * object-instantiated. The speed and world-exit events are P3-06's (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约):
  * the player update emits the speed assist's events before the tick's command results and `speed-assist-toggled` right
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
- * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06). New event
- * types or reasons are added by revising the spec, not by consumers.
+ * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
+ * map and Warp events and reasons (MW-04, MW-05). New event types or reasons are added by revising the spec, not by
+ * consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
+import type { MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage, TargetMode } from '../world/player-state.ts';
 import type { CommandType } from './tick-input.ts';
 
@@ -45,10 +47,14 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];
  * - `cooldown`: the mount's interval has not passed;
  * - `misfire`: the damaged mount's draw failed;
  * - `out-of-arc`: an aimed gun has no solution towards its target.
+ * P3-09's (docs/plan/p3/02/spec.md, MW-04), both `ignored`; a Warp's interval reuses `cooldown`:
+ * - `no-destination`: a Warp request without a selected destination;
+ * - `insufficient-energy`: the Warp's cost exceeds the player's energy.
  */
 export const COMMAND_RESULT_REASONS = Object.freeze([
   'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
   'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+  'no-destination', 'insufficient-energy',
 ] as const);
 export type CommandResultReason = (typeof COMMAND_RESULT_REASONS)[number];
 
@@ -301,6 +307,79 @@ export interface LeftPageChangedEvent extends DomainEventBase<'left-page-changed
   readonly commandIndex: number | null;
 }
 
+// P3-09's events (docs/plan/p3/02/spec.md, MW-05): detached fact snapshots like P3-07's, in finite runtime units.
+
+/** When request handling applies a `map-toggle`: the map opened or closed. The map itself has no original sound. */
+export interface MapToggledEvent extends DomainEventBase<'map-toggled'> {
+  readonly open: boolean;
+  /** The view mode and previous view mode after the toggle. */
+  readonly viewMode: number;
+  readonly previousViewMode: number;
+  readonly commandIndex: number;
+}
+
+/** What a select did to the map marker: created or moved it, or found none (MW-03). */
+export type WarpMarkerChange =
+  | { readonly type: 'created' | 'moved'; readonly entityId: EntityId }
+  | { readonly type: 'missing' };
+
+/** When request handling applies each select, even at an unchanged point (the click sound 10463); a hover never emits it. */
+export interface WarpDestinationSetEvent extends DomainEventBase<'warp-destination-set'> {
+  readonly playerEntityId: EntityId;
+  readonly destination: Vec3;
+  readonly pixel: MapPixel;
+  /** The icon the select hit, whose z the destination took; null for none. */
+  readonly icon: { readonly entityId: EntityId; readonly kindBit: number } | null;
+  readonly marker: WarpMarkerChange;
+  readonly commandIndex: number;
+}
+
+/** When request handling applies a `warp-start`, before its `left-page-changed`; the charge comes only at the completion. */
+export interface WarpStartedEvent extends DomainEventBase<'warp-started'> {
+  readonly playerEntityId: EntityId;
+  readonly serial: number;
+  readonly origin: Vec3;
+  readonly destination: Vec3;
+  /** R(d): the f32 start distance. */
+  readonly distance: number;
+  /** The gate's c and E (i32): the check, not a charge. */
+  readonly check: { readonly cost: number; readonly energy: number };
+  readonly transitLength: number;
+  readonly fromViewMode: number;
+  readonly commandIndex: number;
+}
+
+/** The arrival of a completed Warp whose player entity exists. */
+export interface WarpArrival {
+  readonly playerEntityId: EntityId;
+  readonly origin: Vec3;
+  readonly destination: Vec3;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  /** s at the completion. */
+  readonly error: number;
+  /** The object the nearest-object snap took (possibly the player itself or the marker); null without a snap. */
+  readonly snapped: EntityId | null;
+  /** trunc(D), c and the energy before and after the charge (i32). */
+  readonly charge: { readonly distance: number; readonly cost: number; readonly energyBefore: number; readonly energyAfter: number };
+  /** The new +0xC8. */
+  readonly warpClock: number;
+  /** `0x3c040`: a hostile object, not destroyed, in state ≥ 7 or 4, strictly nearer than the player craft's +0x0C (sound 10181). */
+  readonly hostileNear: boolean;
+}
+
+/**
+ * Once per Warp, in the `warp-completion` stage, before the `left-page-changed` that restores the page. A depletion by
+ * the charge is the next energy update's `energy-depleted`, not part of it.
+ */
+export interface WarpCompletedEvent extends DomainEventBase<'warp-completed'> {
+  readonly serial: number;
+  readonly viewMode: number;
+  readonly previousViewMode: 1;
+  /** Null when the player entity does not exist: only the view and page are restored. */
+  readonly arrival: WarpArrival | null;
+}
+
 export type DomainEvent =
   | CommandResultEvent
   | ObjectInstantiatedEvent
@@ -320,4 +399,8 @@ export type DomainEvent =
   | SourceReleasedEvent
   | EnergyDepletedEvent
   | EnergyAllocationChangedEvent
-  | LeftPageChangedEvent;
+  | LeftPageChangedEvent
+  | MapToggledEvent
+  | WarpDestinationSetEvent
+  | WarpStartedEvent
+  | WarpCompletedEvent;

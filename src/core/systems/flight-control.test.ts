@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
 import { RandStream } from '../rules/original-random.ts';
-import type { Entity, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
+import type { Entity, MarkerMovementBlock, MovementBlock, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
 import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
@@ -458,7 +458,7 @@ function addTarget(state: WorldState, { kindBit = 7, position = { x: 0, y: 0, z:
   const target = state.entities.allocate(entityInit(kindBit, { position }));
   target.state = 'active';
   if (targetSpeed === null) target.movement = null;
-  else target.movement!.speed = targetSpeed;
+  else (target.movement as Exclude<MovementBlock, MarkerMovementBlock>).speed = targetSpeed;
   if (select) state.player.target = target.id;
   return target;
 }

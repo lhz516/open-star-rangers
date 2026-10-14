@@ -12,11 +12,13 @@
  * | `explosionAnimations` | each ID and frame count, in ID order | frame images |
  * | `models` | each ID and part list 1's part count, in ID order | geometry, textures, colours, part flags, sounds |
  * | `aiPrograms` | the ID and the complete content | — |
+ * | `mapGeometry` | the ID and the complete content: the rectangle, the redraw interval and the line height (MW-01) | — |
  *
  * It binds a world, a snapshot or a replay to the initial data actually read, which `ContentIdentity` only declares. A
  * consistency check, not a proof of origin and not free of collisions. Core writes the event triggers here but does
  * not interpret them.
  */
+import type { MapGeometry, MapRectangle } from '../../content/hud/map-geometry-payload.ts';
 import type { EventRange, EventTrigger, MissionGroup, RuleInputs, Vector3 } from '../../content/logic/logic-content.ts';
 import type {
   BodyCollisionShape, Box, CraftCollisionShape, CraftInfo, CraftRecord, GunRecord, MissileBodyRecord, MissileRecord, Mount, Pair,
@@ -216,6 +218,14 @@ const ruleData = object<RuleDataInputs>({
   explosionAnimations: list(object<RuleDataInputs['explosionAnimations'][number]>({ id: scalar, frames: scalar })),
   models: list(object<RuleDataInputs['models'][number]>({ id: scalar, parts: scalar })),
   aiPrograms: object<RuleDataInputs['aiPrograms']>({ id: scalar, content: aiPrograms }),
+  mapGeometry: object<RuleDataInputs['mapGeometry']>({
+    id: scalar,
+    content: object<MapGeometry>({
+      rectangle: object<MapRectangle>({ x0: scalar, y0: scalar, x1: scalar, y1: scalar }),
+      redrawInterval: scalar,
+      informationLineHeight: scalar,
+    }),
+  }),
 });
 
 /** 16 lowercase hex digits: the setup first, then the craft info, then the rule-data inputs. */

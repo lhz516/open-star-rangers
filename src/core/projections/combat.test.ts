@@ -8,7 +8,7 @@ import { createRecordingSession } from '../replay/recording.ts';
 import { longInput, PRODUCER } from '../replay/replay.test-support.ts';
 import { snapshotText } from '../replay/snapshot.ts';
 import { buildWeaponBlock, type CraftEntity } from '../rules/combat-init.ts';
-import { blankCraftCombat, SUBSYSTEM_COUNT, type Entity, type EntityInit, type SubsystemState } from '../world/entity-table.ts';
+import { blankCraftCombat, SUBSYSTEM_COUNT, type Entity, type EntityInit, type SteeredMovementBlock, type SubsystemState } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, expectFault, stateText, testState, TEST_ORIENTATION, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -115,7 +115,7 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
     add(state, 8, at(0, 50, 0), { activity: 'parked' });
     const name = { type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 1 } as const;
     const target = add(state, 7, at(0, 0, 100), { name, combat: { ...blankCraftCombat(), shield: 120 } });
-    target.movement!.speed = 37.5;
+    (target.movement as SteeredMovementBlock).speed = 37.5;
     state.player.target = target.id;
     state.player.targeting!.mode = 'friendly';
     state.player.leftDisplay.page = 1;
@@ -206,7 +206,7 @@ describe('flight.combat target (T7)', () => {
     state.player.target = parked.id;
     expect(targetOf(state)).toMatchObject({ speed: null, shield: { current: -3, maximum: 450 } });
     const missile = add(state, 20, at(0, 0, 100));
-    missile.movement!.speed = 12.5;
+    (missile.movement as SteeredMovementBlock).speed = 12.5;
     state.player.target = missile.id;
     expect(targetOf(state)).toMatchObject({ kindBit: 20, speed: 12.5, shield: null });
   });

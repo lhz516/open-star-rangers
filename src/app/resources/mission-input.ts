@@ -75,13 +75,17 @@ export function craftInfoInput(logic: PackageGroup): LogicAssetInput | undefined
   return asset(assets.find(({ role }) => role === 'craft-info'), decodeRuleDataPayload);
 }
 
-/** The rule-data inputs of world creation that do not depend on the run (CR-01); an input the package lacks is undefined. */
+/**
+ * The rule-data inputs of world creation that do not depend on the run (CR-01), the map geometry (MW-01) included; an
+ * input the package lacks is undefined.
+ */
 export interface RuleDataInputs {
   readonly debrisParameters: LogicAssetInput | undefined;
   readonly projectileVisuals: LogicAssetInput | undefined;
   readonly explosions: LogicAssetInput | undefined;
   readonly explosionAnimations: readonly LogicAssetInput[];
   readonly aiPrograms: LogicAssetInput | undefined;
+  readonly mapGeometry: LogicAssetInput | undefined;
 }
 
 /** The projectile visuals' effect payload, read strictly and checked against its descriptor. */
@@ -105,9 +109,9 @@ const groupOf = (groups: readonly PackageGroup[], name: ResourceGroup): PackageG
  * the logic group's `debris-parameters` and `ai-programs` Assets (decodeRuleDataPayload); the models group's `explosion-table` Asset and
  * the explosion animations its lists name, once each in ascending ID order (decodeFlightDataPayload); and its only
  * `data` Asset of role `projectile`, the projectile visuals (readEffectPayload). A complete package has exactly one Asset
- * of each of the first three roles. An Asset the package lacks, or a projectile `data` Asset that is not the only one,
- * stays undefined or out of the list, which world creation rejects at its input position. A decoding error keeps its
- * code and reason at `<group>[<Asset ID>].<path>`.
+ * of each of the first three roles. The map geometry is mapGeometryInput's. An Asset the package lacks, or a projectile
+ * `data` Asset that is not the only one, stays undefined or out of the list, which world creation rejects at its input
+ * position. A decoding error keeps its code and reason at `<group>[<Asset ID>].<path>`.
  */
 export function ruleDataInputs(groups: readonly PackageGroup[]): RuleDataInputs {
   const logic = groupOf(groups, 'logic');
@@ -118,8 +122,9 @@ export function ruleDataInputs(groups: readonly PackageGroup[]): RuleDataInputs 
   };
   const debrisParameters = only(logic, 'debris-parameters', decodeRuleDataPayload);
   const aiPrograms = only(logic, 'ai-programs', decodeRuleDataPayload);
+  const unmodelled = { debrisParameters, aiPrograms, mapGeometry: mapGeometryInput(groups) };
   const models = groupOf(groups, 'models');
-  if (!models) return Object.freeze({ debrisParameters, projectileVisuals: undefined, explosions: undefined, explosionAnimations: Object.freeze([]), aiPrograms });
+  if (!models) return Object.freeze({ ...unmodelled, projectileVisuals: undefined, explosions: undefined, explosionAnimations: Object.freeze([]) });
   const { assets, asset } = groupAssets(models);
   const projectiles = assets.filter(({ role, kind }) => role === 'projectile' && kind === 'data');
   const projectileVisuals = projectiles.length === 1 ? asset(projectiles[0], decodeProjectileVisuals) : undefined;
@@ -127,7 +132,7 @@ export function ruleDataInputs(groups: readonly PackageGroup[]): RuleDataInputs 
   const named = new Set((explosions?.content as ExplosionTable | undefined)?.lists.flatMap((list) => list.map(({ animation }) => animation.id)));
   const explosionAnimations = assets.filter(({ id }) => named.has(id)).sort((left, right) => compareText(left.id, right.id))
     .map((descriptor) => asset(descriptor, decodeFlightDataPayload)!);
-  return Object.freeze({ debrisParameters, projectileVisuals, explosions, explosionAnimations: Object.freeze(explosionAnimations), aiPrograms });
+  return Object.freeze({ ...unmodelled, projectileVisuals, explosions, explosionAnimations: Object.freeze(explosionAnimations) });
 }
 
 /**

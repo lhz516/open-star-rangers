@@ -489,4 +489,124 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
     });
   });
+
+  describe('P3-09 map and Warp events (docs/plan/p3/02/spec.md, MW-05)', () => {
+    const point = (x = 1) => ({ x, y: -2, z: 0.5 });
+    const accepted = (tick: number, commandIndex: number, commandType: string): Mutable =>
+      commandResult(tick, commandIndex, { commandType, outcome: 'accepted', reason: null });
+    const toggled = (tick: number, commandIndex: number): Mutable =>
+      ({ type: 'map-toggled', tick, open: true, viewMode: 8, previousViewMode: 0xc, commandIndex });
+    const destinationSet = (tick: number, commandIndex: number, marker: Mutable = { type: 'created', entityId: 30 }): Mutable => ({
+      type: 'warp-destination-set', tick, playerEntityId: 1, destination: point(), pixel: { column: 0, row: 399 }, icon: { entityId: 5, kindBit: 7 },
+      marker, commandIndex,
+    });
+    const started = (tick: number, commandIndex: number): Mutable => ({
+      type: 'warp-started', tick, playerEntityId: 1, serial: 1, origin: point(0), destination: point(), distance: 1.5, check: { cost: 0, energy: 900 },
+      transitLength: 0.5, fromViewMode: 8, commandIndex,
+    });
+    const arrival = (): Mutable => ({
+      playerEntityId: 1, origin: point(0), destination: point(), position: point(2), orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], error: 0.25, snapped: null,
+      charge: { distance: 2, cost: 0, energyBefore: 900, energyAfter: 900 }, warpClock: 640, hostileNear: false,
+    });
+    const completed = (tick: number, withArrival = true): Mutable =>
+      ({ type: 'warp-completed', tick, serial: 1, viewMode: 0xc, previousViewMode: 1, arrival: withArrival ? arrival() : null });
+    const pageChanged = (tick: number): Mutable => ({ type: 'left-page-changed', tick, page: 6, previousPage: 0, commandIndex: null });
+
+    /**
+     * Tick 1: the results of a toggle, a hover (no event), a select and a Warp request; in request handling the toggle,
+     * the select and the start with its page change, in command order; the completion in its stage with the page
+     * restored, before the end of the frame. Tick 2: a completion without a player entity, and a select that found no
+     * marker.
+     */
+    function mapWarpRun(): Result {
+      const events = [
+        accepted(1, 0, 'toggle-map'),
+        accepted(1, 1, 'map-point'),
+        accepted(1, 2, 'map-point'),
+        accepted(1, 3, 'request-warp'),
+        toggled(1, 0),
+        destinationSet(1, 2),
+        started(1, 3),
+        pageChanged(1),
+        { type: 'energy-depleted', tick: 1, entityId: 1, kindBit: 0, position: point() },
+        completed(1),
+        { ...pageChanged(1), page: 0, previousPage: 6 },
+        { type: 'target-cleared', tick: 1, playerEntityId: 1, previousTarget: 5, cause: 'invalid' },
+        accepted(2, 0, 'map-point'),
+        destinationSet(2, 0, { type: 'missing' }),
+        completed(2, false),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches every type in the contract\'s order, after a JSON round trip', () => {
+      expect(new Set(mapWarpRun().events.map(({ type }) => type)).size).toBe(4 + 4);
+      expect(compareReplayResults(mapWarpRun(), JSON.parse(JSON.stringify(mapWarpRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['toggle', 4, (event: Mutable) => { event.open = false; }],
+      ['destination', 5, (event: Mutable) => { (event.destination as Mutable).z = 0; }],
+      ['cursor pixel', 5, (event: Mutable) => { (event.pixel as Mutable).row = 398; }],
+      ['icon', 5, (event: Mutable) => { event.icon = null; }],
+      ['marker change', 5, (event: Mutable) => { event.marker = { type: 'moved', entityId: 30 }; }],
+      ['start check', 6, (event: Mutable) => { (event.check as Mutable).energy = 899; }],
+      ['transit length', 6, (event: Mutable) => { event.transitLength = 0.75; }],
+      ['arrival orientation', 9, (event: Mutable) => { ((event.arrival as Mutable).orientation as number[])[8] = -1; }],
+      ['charge', 9, (event: Mutable) => { ((event.arrival as Mutable).charge as Mutable).energyAfter = 0; }],
+      ['hostile flag', 9, (event: Mutable) => { (event.arrival as Mutable).hostileNear = true; }],
+      ['arrival', 14, (event: Mutable) => { event.arrival = arrival(); }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = mapWarpRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(mapWarpRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    it('accepts the bounds of view modes, pixels, serials and i32 values, and rejects one past them', () => {
+      const bounded = mapWarpRun();
+      Object.assign(bounded.events[4], { viewMode: 0xff, previousViewMode: 0 });
+      Object.assign(bounded.events[5], { pixel: { column: 479, row: 0 } });
+      Object.assign(bounded.events[6], { serial: Number.MAX_SAFE_INTEGER, check: { cost: -(2 ** 31), energy: 2 ** 31 - 1 }, commandIndex: 3 });
+      expect(compareReplayResults(bounded, structuredClone(bounded))).toEqual({ match: true });
+      for (const [change, path] of [
+        [(result: Result) => { result.events[4].viewMode = 0x100; }, '.events[4].viewMode'],
+        [(result: Result) => { (result.events[5].pixel as Mutable).column = 480; }, '.events[5].pixel.column'],
+        [(result: Result) => { (result.events[5].pixel as Mutable).row = -1; }, '.events[5].pixel.row'],
+        [(result: Result) => { result.events[6].serial = 0; }, '.events[6].serial'],
+        [(result: Result) => { (result.events[6].check as Mutable).energy = 2 ** 31; }, '.events[6].check.energy'],
+        [(result: Result) => { ((result.events[9].arrival as Mutable).charge as Mutable).cost = -(2 ** 31) - 1; }, '.events[9].arrival.charge.cost'],
+      ] as [(result: Result) => void, string][]) {
+        expectInvalidOnEitherSide(mapWarpRun, change, path);
+      }
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a toggle that is not a boolean', (result) => { result.events[4].open = 1; }, '.events[4].open'],
+      ['a fractional view mode', (result) => { result.events[4].previousViewMode = 0.5; }, '.events[4].previousViewMode'],
+      ['a pixel with an extra field', (result) => { (result.events[5].pixel as Mutable).z = 0; }, '.events[5].pixel'],
+      ['an icon without a kind', (result) => { delete (result.events[5].icon as Mutable).kindBit; }, '.events[5].icon.kindBit'],
+      ['an unknown marker change', (result) => { result.events[5].marker = { type: 'removed', entityId: 30 }; }, '.events[5].marker.type'],
+      ['a missing marker with an entity', (result) => { result.events[13].marker = { type: 'missing', entityId: 30 }; }, '.events[13].marker'],
+      ['a created marker without an entity', (result) => { result.events[5].marker = { type: 'created' }; }, '.events[5].marker.entityId'],
+      ['a non-finite start distance', (result) => { result.events[6].distance = Number.POSITIVE_INFINITY; }, '.events[6].distance'],
+      ['a start check without its energy', (result) => { result.events[6].check = { cost: 0 }; }, '.events[6].check.energy'],
+      ['a completion from another view mode', (result) => { result.events[9].previousViewMode = 8; }, '.events[9].previousViewMode'],
+      ['an arrival with an extra field', (result) => { (result.events[9].arrival as Mutable).cost = 0; }, '.events[9].arrival'],
+      ['an arrival snapped to entity 0', (result) => { (result.events[9].arrival as Mutable).snapped = 0; }, '.events[9].arrival.snapped'],
+      ['a negative new Warp clock', (result) => { (result.events[9].arrival as Mutable).warpClock = -1; }, '.events[9].arrival.warpClock'],
+      ['an arrival orientation of 8 items', (result) => { ((result.events[9].arrival as Mutable).orientation as number[]).pop(); }, '.events[9].arrival.orientation'],
+      ['a toggle before its command\'s result', (result) => { result.events[4].commandIndex = 5; }, '.events[4].commandIndex'],
+      ['a select in the player\'s update', (result) => void result.events.splice(3, 0, destinationSet(1, 2)), '.events[4]'],
+      ['a second additional event of a command', (result) => void result.events.splice(6, 0, destinationSet(1, 0)), '.events[6].commandIndex'],
+      ['a start after the completion', (result) => void result.events.splice(10, 0, started(1, 1)), '.events[10]'],
+      ['a completion after the clearing', (result) => void result.events.splice(9, 3, result.events[10], result.events[11], result.events[9]), '.events[11]'],
+      ['a completion before a depletion', (result) => void result.events.splice(8, 2, result.events[9], result.events[8]), '.events[9]'],
+      ['a second completion', (result) => void result.events.splice(10, 0, completed(1, false)), '.events[10]'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(mapWarpRun, change, path);
+    });
+  });
 });
+

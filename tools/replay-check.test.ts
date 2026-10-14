@@ -11,6 +11,7 @@ import { contentIdentityKey } from '../src/content/content-identity.ts';
 import { readEffectPayload } from '../src/content/effects/effect-payload.ts';
 import type { ExplosionTable } from '../src/content/flight/flight-data-content.ts';
 import { decodeFlightDataPayload } from '../src/content/flight/flight-data-payload.ts';
+import { decodeMapGeometryPayload, MAP_GEOMETRY_ROLE } from '../src/content/hud/map-geometry-payload.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { readModelPayload } from '../src/content/models/model-payload.ts';
@@ -134,6 +135,7 @@ async function record(): Promise<{ readonly recording: Recording; readonly ident
     explosionAnimations: animations.map(flightData),
     models: instantiableModelIds(base).map(id => models(item => item.id === id, (bytes, descriptor) => readModelPayload(bytes, descriptor.payloadIdentity.schemaVersion))),
     aiPrograms: asset('ai-programs', decodeRuleDataPayload),
+    mapGeometry: groupAssets('cockpit-hud-map')(item => item.role === MAP_GEOMETRY_ROLE, (bytes, descriptor) => decodeMapGeometryPayload(bytes, descriptor)),
   };
   const session = createRecordingSession(input, { producer: 'open-star-rangers replay-check test', checkpointInterval: INTERVAL });
   for (let tick = 1; tick <= TICKS; tick++) session.step(script(tick));
@@ -415,21 +417,26 @@ describe('recording size limit', () => {
     const earlier = Array.from({ length: CORE_LIMITS.commandsPerTick - 1 }, (_, commandIndex) => ({ ...events['command-result'], commandIndex }));
     expect(Object.keys(events).sort()).toEqual([
       'command-result', 'energy-allocation-changed', 'energy-depleted', 'explosion-started', 'fragment-expired', 'hit', 'left-page-changed',
-      'missile-ended', 'object-destroyed', 'object-instantiated', 'object-left-world', 'shot-fired', 'source-released', 'speed-assist-released',
-      'speed-assist-toggled', 'speed-matched', 'target-changed', 'target-cleared', 'weapon-selected',
+      'map-toggled', 'missile-ended', 'object-destroyed', 'object-instantiated', 'object-left-world', 'shot-fired', 'source-released',
+      'speed-assist-released', 'speed-assist-toggled', 'speed-matched', 'target-changed', 'target-cleared', 'warp-completed', 'warp-destination-set',
+      'warp-started', 'weapon-selected',
     ]);
+    // P3-09's arrival is the longest event (docs/plan/p3/02/spec.md, MW-05).
+    expect(Math.max(...Object.values(events).map((event) => JSON.stringify(event).length))).toBe(JSON.stringify(events['warp-completed']).length);
     // In a tick's order (compare.ts): one speed assist event first, the command results with the switch right after its
     // command's, then request handling, the hit and destruction, the energy, parked and frame-end stages; the selection and
-    // page changes without a command anywhere. The other speed assist event and the level change of the last command,
-    // which may follow its result alone, go in the tick before.
+    // page changes without a command anywhere; P3-09's toggle, select and Warp start in request handling as the one
+    // additional event of three other commands, and the completion in its stage before the frame end. The other speed
+    // assist event and the level change of the last command, which may follow its result alone, go in the tick before.
     const before = (event: (typeof events)[keyof typeof events]) => ({ ...event, tick: checkpoint.tick - 1 });
     const result = {
       events: [
         before(events['speed-assist-released']), ...earlier.map(before), before(events['command-result']), before(events['energy-allocation-changed']),
         events['speed-matched'], ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'],
-        events['weapon-selected'], events['left-page-changed'], events['target-changed'], events['shot-fired'], events['missile-ended'],
-        events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit, events['object-destroyed'],
-        events['energy-depleted'], events['object-left-world'], events['target-cleared'],
+        events['weapon-selected'], events['left-page-changed'], events['target-changed'],
+        { ...events['map-toggled'], commandIndex: 60 }, { ...events['warp-destination-set'], commandIndex: 61 }, { ...events['warp-started'], commandIndex: 62 },
+        events['shot-fired'], events['missile-ended'], events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit,
+        events['object-destroyed'], events['energy-depleted'], events['object-left-world'], events['warp-completed'], events['target-cleared'],
       ],
       checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
       finalTick: checkpoint.tick,

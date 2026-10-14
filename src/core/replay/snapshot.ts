@@ -1,13 +1,15 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 3, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 4, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
  * state (P3-07, CR-02 to CR-04), the spawn state (queue, enable flag, the records after the build's defaults with their
  * aliasing by declaration, the record and group counts, the group leaders, the name pool counters), the mission status
- * and the player state with its target, control, targeting, combat records and cockpit display state. Names are held by
- * the entities that carry them. The static MissionSetup is not copied: setupHash binds it. A snapshot is a diagnostic
+ * and the player state with its target, control, targeting, combat records and cockpit display state, and P3-09's
+ * map cursor, destination, saved page and Warp transit, each entity's map visibility flag, the object sets and the map
+ * icon list (docs/plan/p3/02/spec.md, MW-14). Names are held by the entities that carry them. The static MissionSetup
+ * and rule data are not copied: setupHash binds them. A snapshot is a diagnostic
  * and a checkpoint source, not a save: Core restores no world from one.
  *
  * The canonical text writes every object's members in the order listed here, never in an object's own key order; the
@@ -47,6 +49,8 @@ import {
   type Impulse,
   type LinearMovementBlock,
   type ListSelection,
+  type MarkerCombat,
+  type MarkerMovementBlock,
   type MissileCombat,
   type MissileGuidance,
   type MissileLock,
@@ -60,13 +64,14 @@ import {
   type TimedRotation,
   type WeaponBlock,
 } from '../world/entity-table.ts';
-import type { KillCounts, PlayerControl, PlayerState, PlayerTargeting, ShotCounts, SpeedAssist } from '../world/player-state.ts';
+import type { MapPixel, MapPoint } from '../world/map-rule-data.ts';
+import type { KillCounts, PlayerControl, PlayerMap, PlayerState, PlayerTargeting, ShotCounts, SpeedAssist, WarpTransit } from '../world/player-state.ts';
 import type { GroupState, RecordRuleInputs, RuntimeRecord, SpawnEntry } from '../world/spawn-state.ts';
-import type { MissionStatus, WorldConfig, WorldState } from '../world/world-state.ts';
+import type { MapIcon, MissionStatus, ObjectSets, WorldConfig, WorldState } from '../world/world-state.ts';
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 3;
+export const GAME_SNAPSHOT_VERSION = 4;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -97,6 +102,8 @@ export interface SnapshotState {
   readonly spawn: SnapshotSpawn;
   readonly missionStatus: MissionStatus;
   readonly player: Readonly<PlayerState>;
+  readonly objectSets: ObjectSets;
+  readonly mapIcons: readonly MapIcon[];
 }
 
 export interface GameSnapshot {
@@ -117,7 +124,7 @@ function frozenCopy<Value>(value: Value): Value {
 
 /** For World.snapshot(): reads the state without changing it and returns a deeply frozen, detached snapshot. */
 export function takeSnapshot(world: WorldState): GameSnapshot {
-  const { config, tick, clock, rngState, entities, spawn, missionStatus, player } = world;
+  const { config, tick, clock, rngState, entities, spawn, missionStatus, player, objectSets, mapIcons } = world;
   return frozenCopy({
     format: GAME_SNAPSHOT_FORMAT,
     version: GAME_SNAPSHOT_VERSION,
@@ -133,6 +140,8 @@ export function takeSnapshot(world: WorldState): GameSnapshot {
       spawn,
       missionStatus,
       player,
+      objectSets,
+      mapIcons,
     },
   });
 }
@@ -181,6 +190,8 @@ const name: Writer<NameReference> = (value) => {
       return canonicalObject([['type', value.type], ['index', value.index]]);
     case 'craft-type':
       return canonicalObject([['type', value.type], ['kindBit', value.kindBit]]);
+    case 'map-marker':
+      return canonicalObject([['type', value.type]]);
   }
 };
 
@@ -196,6 +207,8 @@ const presentation: Writer<EntityPresentation> = (value) => {
       return canonicalObject([['type', value.type], ['variant', value.variant]]);
     case 'fragment':
       return canonicalObject([['type', value.type], ['model', value.model], ['part', value.part], ['display', value.display]]);
+    case 'map-marker':
+      return canonicalObject([['type', value.type]]);
   }
 };
 
@@ -214,7 +227,7 @@ const timedRotation = nullable(object<TimedRotation>({ rate: scalar, decay: scal
 const disturbance: Writer<Disturbance> = (value) =>
   canonicalObject(value.level === 1 ? [['level', value.level]] : [['level', value.level], ['biases', value.biases]]);
 
-// One writer per movement-block variant, dispatched on the mode; P3-09 adds its own the same way.
+// One writer per movement-block variant, dispatched on the mode.
 const steeredMovement = object<SteeredMovementBlock>({
   mode: scalar,
   speed: scalar,
@@ -229,6 +242,7 @@ const steeredMovement = object<SteeredMovementBlock>({
 });
 const linearMovement = object<LinearMovementBlock>({ mode: scalar, speed: scalar, velocity: vector, previousPosition: vector, hitTest: scalar });
 const spinningMovement = object<SpinningMovementBlock>({ mode: scalar, speed: scalar, velocity: vector, spin: scalar, spinAxis: scalar });
+const markerMovement = object<MarkerMovementBlock>({ mode: scalar, speed: scalar });
 
 const movement: Writer<MovementBlock> = (value) => {
   switch (value.mode) {
@@ -239,6 +253,8 @@ const movement: Writer<MovementBlock> = (value) => {
       return linearMovement(value);
     case 'spinning':
       return spinningMovement(value);
+    case 'marker':
+      return markerMovement(value);
   }
 };
 
@@ -352,6 +368,8 @@ const combat: Writer<EntityCombat> = (value) => {
       return explosionCombat(value);
     case 'fragment':
       return fragmentCombat(value);
+    case 'marker':
+      return object<MarkerCombat>({ type: scalar })(value);
   }
 };
 
@@ -374,6 +392,7 @@ const entity = object<SnapshotEntity>({
   lastParkedUpdateClock: scalar,
   warpClock: scalar,
   inWarp: scalar,
+  mapVisible: scalar,
   movement: nullable(movement),
   ai,
   formation: nullable(object<Formation>({ leader: scalar, offset: vector })),
@@ -411,6 +430,24 @@ const spawn = object<SnapshotSpawn>({
   namePoolUses: list(scalar),
 });
 
+// MapPixel and MapPoint have the same members.
+const mapPixel = object<MapPixel | MapPoint>({ column: scalar, row: scalar });
+
+const warpTransit = object<WarpTransit>({
+  serial: scalar,
+  origin: vector,
+  length: scalar,
+  segments: scalar,
+  fraction: scalar,
+  error: scalar,
+  angle: scalar,
+  centring: scalar,
+  frame: object<WarpTransit['frame']>({ position: vector, orientation: list(scalar) }),
+  path: list(vector),
+});
+
+const mapIcon = object<MapIcon>({ entityId: scalar, kindBit: scalar, position: vector, pixel: mapPixel, inWorld: scalar });
+
 const state = object<SnapshotState>({
   config,
   tick: scalar,
@@ -439,7 +476,12 @@ const state = object<SnapshotState>({
     heavyDamage: scalar,
     leftDisplay: object<PlayerState['leftDisplay']>({ page: scalar }),
     statusDisplay: object<PlayerState['statusDisplay']>({ blink: scalar, blinkDueClock: scalar, redraw: scalar }),
+    map: object<PlayerMap>({ cursor: mapPixel, destination: nullable(vector) }),
+    savedLeftPage: scalar,
+    warp: nullable(warpTransit),
   }),
+  objectSets: object<ObjectSets>({ friendly: list(scalar), hostile: list(scalar) }),
+  mapIcons: list(mapIcon),
 });
 
 const snapshotValue = object<GameSnapshot>({ format: scalar, version: scalar, rulesVersion: scalar, state });

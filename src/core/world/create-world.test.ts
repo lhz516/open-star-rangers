@@ -8,8 +8,8 @@ import { loadMission } from '../mission/load-mission.ts';
 import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
-  reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, mapGeometryContent, MARKER, missionFrame, modelOf, originalImportIdentity,
+  playerOnlyMission, reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
 import { constructWorld } from './world.ts';
@@ -449,9 +449,11 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       for (const kind of [0, 7, 8, 14, 17]) {
         Object.assign(info.craft[kind], { atA0: 0, atA4: 0, atA8: 0, atAC: 0, atB0: 0, atB4: 0, atB8: 0, atBC: 0, atC0: 0 });
       }
-      Object.assign(info.craft[0], { at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
+      // The player's Warp divides by its +0xA8 and +0xB8 (MW-01 check 4); only the player's are checked.
+      Object.assign(info.craft[0], { atA8: 1, atB8: Math.fround(1e-30), at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
     });
-    expect(create({ craftInfo: zeroed }).craftInfo.content.craft[0].atB8).toBe(0);
+    const { craft } = create({ craftInfo: zeroed }).craftInfo.content;
+    expect([craft[0].atA4, craft[7].atA8, craft[7].atB8]).toEqual([0, 0, 0]);
   });
 
   describe('the parked Warp timing of every instantiable kind, in i32 clock units', () => {
@@ -485,7 +487,8 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[0], { atB8: 65536, at88: -32768 })) }).config).toBeDefined();
       expectRejected(energy({ atB8: 65536, at88: 32768 }), PLAYER, 'threshold');
       expectRejected(energy({ atB8: 2 ** 31 }), PLAYER, 'threshold');
-      expectRejected(energy({ atB8: -(2 ** 32) }), PLAYER, 'threshold');
+      // A non-positive +0xB8 is rejected first by the player's Warp check (MW-01 check 4).
+      expectRejected(energy({ atB8: 2 ** 40 }), PLAYER, 'threshold');
     });
 
     it('bounds the allocations, the energy and the energy × 1000 to i32, also at levels other than the initial 1 and 2', () => {
@@ -499,6 +502,45 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       // Only the player's record is read this way.
       expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[7], flat(2 ** 31 - 1))) }).config).toBeDefined();
     });
+  });
+});
+
+describe('the player\'s Warp fields (P3-09 AC-02, docs/plan/p3/02/spec.md MW-01 check 4)', () => {
+  const PLAYER = `${CRAFT_INFO}.craft[0]`;
+
+  // The content reader already holds +0xA4 to 0–2^31 − 1, so only the upper bound reaches the check.
+  it.each([
+    ['no pair', (info: CraftInfoDraft) => void (info.craft[0].pairs = []), `${PLAYER}.pairs`],
+    ['+0xA8 of 0', (info: CraftInfoDraft) => void (info.craft[0].atA8 = 0), `${PLAYER}.atA8`],
+    ['a negative +0xA8', (info: CraftInfoDraft) => void (info.craft[0].atA8 = -1), `${PLAYER}.atA8`],
+    ['+0xB8 of 0', (info: CraftInfoDraft) => void (info.craft[0].atB8 = 0), `${PLAYER}.atB8`],
+    ['a negative +0xB8', (info: CraftInfoDraft) => void (info.craft[0].atB8 = -0.5), `${PLAYER}.atB8`],
+    // Before the parked Warp's (+0xA8 + +0xA4) × 64 check (P3-06), which would reject it too at +0xA8 ≥ 1.
+    ['+0xA4 of 2^25, whose × 64 leaves i32', (info: CraftInfoDraft) => Object.assign(info.craft[0], { atA4: 2 ** 25, atA8: 1 }), `${PLAYER}.atA4`],
+  ])('rejects %s', (_, change, path) => {
+    expectRejected(craftInfoWith(change), path, 'for the player');
+  });
+
+  it('accepts one pair, the smallest positive values, an +0xA4 of 0 and the largest +0xA8 = 1 allows, and does not check other kinds', () => {
+    const accepted = create({
+      craftInfo: craftInfoWithContent((info) => {
+        Object.assign(info.craft[0], { pairs: [{ at00: 0, at04: 0x7fffffff }], atA8: 1, atB8: 2 ** -149, atA4: 0 });
+        Object.assign(info.craft[7], { pairs: [], atA8: 0, atB8: 0 });
+      }),
+    });
+    expect(accepted.craftInfo.content.craft[0].pairs).toHaveLength(1);
+    expect(create({ craftInfo: craftInfoWithContent((info) => Object.assign(info.craft[0], { atA4: 2 ** 25 - 2, atA8: 1 })) }).config).toBeDefined();
+  });
+
+  it('comes after the map geometry\'s checks and before the other craft info checks', () => {
+    const both = worldInput({
+      craftInfo: craftInfoWithContent((info) => void (info.craft[0].atA8 = 0)),
+      mapGeometry: { ...mapGeometryContent(), redrawInterval: 2 },
+    });
+    expectRejected(both, 'input.mapGeometry.content.redrawInterval');
+    const overflow = craftInfoWithContent((info) => Object.assign(info.craft[0], { atA4: 2 ** 25, atA8: 1 }));
+    expectRejected(worldInput({ craftInfo: overflow, mapGeometry: { ...mapGeometryContent(), redrawInterval: 2 } }), 'input.mapGeometry.content.redrawInterval');
+    expectRejected(craftInfoWith((info) => Object.assign(info.craft[0], { atA8: 0, at0C: 0 })), `${PLAYER}.atA8`);
   });
 });
 

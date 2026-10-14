@@ -76,6 +76,9 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     expect(inputs.aiPrograms).toMatchObject({ id: 'data/ai-programs', content: { builtInPrograms: expect.any(Array) } });
     expect(inputs.projectileVisuals).toMatchObject({ id: 'data/projectile-visuals', content: { kind: 'projectile' } });
     expect(inputs.explosions?.id).toBe('data/explosions');
+    // P3-09 (MW-01): the map geometry, as mapGeometryInput decodes it.
+    expect(inputs.mapGeometry).toEqual(mapGeometryInput(groups));
+    expect(inputs.mapGeometry?.id).toBe('data/hud/map-geometry');
     const named = (inputs.explosions!.content as ExplosionTable).lists.flat().map(({ animation }) => animation.id as string);
     const ids = inputs.explosionAnimations.map(({ id }) => id as string);
     expect(ids).toEqual([...new Set(named)].sort());
@@ -86,8 +89,9 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     const groups = await groupsOf();
     expect(ruleDataInputs(groups.filter(({ group }) => group !== 'models'))).toEqual({
       debrisParameters: expect.objectContaining({ id: 'data/debris-parameters' }), projectileVisuals: undefined, explosions: undefined, explosionAnimations: [],
-      aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }),
+      aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }), mapGeometry: expect.objectContaining({ id: 'data/hud/map-geometry' }),
     });
+    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'cockpit-hud-map')).mapGeometry).toBeUndefined();
     const withoutAi = groups.map((group) => {
       if (group.group !== 'logic') return group;
       const manifest = group.manifest as { assets: AssetDescriptor[] };

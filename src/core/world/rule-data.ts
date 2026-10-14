@@ -1,6 +1,6 @@
 /**
  * The rule-data inputs of world creation and the world's static rule data (docs/plan/p3/02/spec.md, CR-01;
- * docs/plan/p3/07/spec.md, 规则数据输入). Beside the craft info, creation takes six top-level inputs of the package the
+ * docs/plan/p3/07/spec.md, 规则数据输入). Beside the craft info, creation takes seven top-level inputs of the package the
  * logic Assets came from, which the caller decoded with that package's payload readers:
  *
  * - `debrisParameters` `{ id, content }`: `data/debris-parameters`, read strictly with readDebrisParameters;
@@ -13,6 +13,8 @@
  * - `aiPrograms` `{ id, content }`: `data/ai-programs`, read strictly with readAiPrograms; the rules read only built-in
  *   program records 1 and 2's +0x14, +0x24 and +0x2C, the homing missiles' programs (steering.ts). P3-08 extends its
  *   reading of the same input.
+ * - `mapGeometry` `{ id, content }`: `data/hud/map-geometry`, read strictly with readMapGeometry (docs/plan/p3/02/spec.md,
+ *   MW-01); the map's static rule data (map-rule-data.ts) derives from it.
  *
  * Core checks the limits before it copies, freezes what it keeps and keeps nothing of the input. The two lists are in
  * strictly ascending Asset ID order, and each is exactly the set the rules read: the animations the explosion table
@@ -32,6 +34,7 @@ import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 import type { ContentIdentity } from '../../content/content-identity.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import { EFFECT_LIMITS } from '../../content/effects/effect-payload.ts';
+import { readMapGeometry, type MapGeometry } from '../../content/hud/map-geometry-payload.ts';
 import { FLIGHT_DATA_FORMAT, FLIGHT_DATA_LIMITS } from '../../content/flight/flight-data-content.ts';
 import { readExplosionAnimation, readExplosionTable } from '../../content/flight/flight-data-readers.ts';
 import { MODEL_LIMITS } from '../../content/models/model-payload.ts';
@@ -54,10 +57,11 @@ import { toInt32 } from '../rules/record-defaults.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
 import type { SteeringProgram } from '../rules/steering.ts';
 import type { Level } from './entity-table.ts';
+import type { MapRuleData } from './map-rule-data.ts';
 import type { InstantiableRecord } from './setup-check.ts';
 
 /** The top-level rule-data inputs of world creation, in their order. */
-export const RULE_DATA_FIELDS = ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms'] as const;
+export const RULE_DATA_FIELDS = ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms', 'mapGeometry'] as const;
 
 /** The Asset of each single rule-data input in the slice (P3-03, P2-11); `original-import` content uses no other. */
 export const PRODUCTION_RULE_DATA = Object.freeze({
@@ -65,6 +69,7 @@ export const PRODUCTION_RULE_DATA = Object.freeze({
   projectileVisuals: 'data/projectile-visuals',
   explosions: 'data/explosions',
   aiPrograms: 'data/ai-programs',
+  mapGeometry: 'data/hud/map-geometry',
 });
 /** The production explosion animations are `data/explosion-animation/<nn>`, numbered from 01. */
 const PRODUCTION_ANIMATION = /^data\/explosion-animation\/(?!00)\d{2}$/;
@@ -93,6 +98,8 @@ export interface RuleDataInputs {
   readonly models: readonly { readonly id: AssetId; readonly parts: number }[];
   /** The complete content as read. */
   readonly aiPrograms: { readonly id: AssetId; readonly content: AiPrograms };
+  /** The complete content as read (MW-01). */
+  readonly mapGeometry: { readonly id: AssetId; readonly content: MapGeometry };
 }
 
 /** The built-in program records homing missiles install, by record number (steering.ts, programRecord). */
@@ -123,6 +130,8 @@ export interface WorldRuleData {
   readonly craft: readonly (CraftRuleData | null)[];
   /** Built-in program records 1 and 2's +0x14, +0x24 and +0x2C, copied from `inputs.aiPrograms`. */
   readonly homingPrograms: HomingPrograms;
+  /** The strategic map's geometry and scales (MW-01), from `inputs.mapGeometry` and the mission's world. */
+  readonly map: MapRuleData;
 }
 
 const INPUT = 'input';
@@ -130,6 +139,7 @@ const CRAFT_INFO = 'input.craftInfo.content';
 const DEBRIS = 'input.debrisParameters.content';
 const EXPLOSIONS = 'input.explosions.content';
 const AI_PROGRAMS = 'input.aiPrograms.content';
+const MAP_GEOMETRY = 'input.mapGeometry.content';
 
 /** An Asset ID of a `data` input; for original-import content only the production Asset is accepted. */
 function readDataId(value: unknown, path: string, identity: ContentIdentity, production: (id: AssetId) => boolean): AssetId {
@@ -172,7 +182,7 @@ function readAscending<Item extends { readonly id: AssetId }>(value: unknown, pa
   return items;
 }
 
-/** Reads the six rule-data inputs of `input` (the creation input record) for content of `identity`. */
+/** Reads the seven rule-data inputs of `input` (the creation input record) for content of `identity`. */
 export function readRuleDataInputs(input: Record<string, unknown>, identity: ContentIdentity): RuleDataInputs {
   const asset = (field: (typeof RULE_DATA_FIELDS)[number]) => readExactRecord(input[field], `${INPUT}.${field}`, ['id', 'content']);
   const production = (field: keyof typeof PRODUCTION_RULE_DATA) => (id: AssetId): boolean => id === PRODUCTION_RULE_DATA[field];
@@ -205,7 +215,12 @@ export function readRuleDataInputs(input: Record<string, unknown>, identity: Con
     id: readDataId(programs.id, `${INPUT}.aiPrograms.id`, identity, production('aiPrograms')),
     content: readAiPrograms(programs.content, AI_PROGRAMS),
   });
-  return Object.freeze({ debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms });
+  const geometry = asset('mapGeometry');
+  const mapGeometry = Object.freeze({
+    id: readDataId(geometry.id, `${INPUT}.mapGeometry.id`, identity, production('mapGeometry')),
+    content: readMapGeometry(geometry.content, MAP_GEOMETRY),
+  });
+  return Object.freeze({ debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms, mapGeometry });
 }
 
 const isInt32 = (value: number): boolean => toInt32(value) === value;
@@ -351,9 +366,10 @@ function reachableWeapons(info: CraftInfo, kinds: Iterable<number>): { guns: Set
 
 /**
  * The checks of CR-01 that need the setup, and the static rule data: see the module comment. `records` are the run's
- * instantiable records (setup-check.ts); `info` is the craft info as read.
+ * instantiable records (setup-check.ts); `info` is the craft info as read; `map` the map's rule data, built from
+ * `inputs.mapGeometry` (map-rule-data.ts).
  */
-export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: readonly InstantiableRecord[]): WorldRuleData {
+export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: readonly InstantiableRecord[], map: MapRuleData): WorldRuleData {
   const models = modelParts(inputs, records);
   const kinds = new Map<number, { readonly parts: number; readonly modelIndex: number }>();
   for (const { kindBit, model } of records) {
@@ -423,6 +439,7 @@ export function buildRuleData(inputs: RuleDataInputs, info: CraftInfo, records: 
     missiles: Object.freeze(missiles),
     craft: Object.freeze(craft),
     homingPrograms: homingPrograms(inputs.aiPrograms.content),
+    map,
   });
 }
 

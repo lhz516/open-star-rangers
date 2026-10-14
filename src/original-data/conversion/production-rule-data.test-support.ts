@@ -65,12 +65,12 @@ function productionFlightMessages(): FlightMessages {
  * info: every record's +0x0C is 250, a positive modulus of the parked travel (P3-06 D-01); and the player's mount 1
  * fires together with mount 2 without also alternating, as a mount list entry has at most one of the two links, and
  * every gun's cooldown +0x14 is 7, within the 0 to 32 the parked engagement multiplies by (docs/plan/p3/02/spec.md,
- * CR-01 checks 4 and 5).
+ * CR-01 checks 4 and 5); and the player's +0xA8 is positive, which the Warp progress divides by (MW-01 check 4).
  */
 function productionCraftInfo() {
   const info = defaultCraftInfo();
   const craft = info.craft.map(record => ({ ...record, at0C: 250 }));
-  craft[0] = { ...craft[0], mounts: craft[0].mounts.map((mount, index) => (index === 1 ? { ...mount, at1C: null } : mount)) };
+  craft[0] = { ...craft[0], atA8: 140, mounts: craft[0].mounts.map((mount, index) => (index === 1 ? { ...mount, at1C: null } : mount)) };
   return readCraftInfo({ ...info, craft, guns: info.guns.map(gun => ({ ...gun, at14: 7 })) });
 }
 

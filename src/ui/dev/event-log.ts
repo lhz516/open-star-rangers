@@ -108,6 +108,28 @@ function fieldsOf(event: DomainEvent): Fields {
       return [['entityId', event.entityId], ['shieldLevel', event.shieldLevel], ['chargeLevel', event.chargeLevel], ['commandIndex', event.commandIndex]];
     case 'left-page-changed':
       return [['page', event.page], ['previousPage', event.previousPage], ['commandIndex', event.commandIndex]];
+    // P3-09's (docs/plan/p3/02/spec.md, MW-05): the destination's and the arrival's position as x, y, z.
+    case 'map-toggled':
+      return [['open', event.open], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode], ['commandIndex', event.commandIndex]];
+    case 'warp-destination-set':
+      return [
+        ['column', event.pixel.column], ['row', event.pixel.row], ['iconEntityId', event.icon?.entityId ?? null], ['marker', event.marker.type],
+        ['commandIndex', event.commandIndex], ...positionOf(event.destination),
+      ];
+    case 'warp-started':
+      return [
+        ['serial', event.serial], ['distance', event.distance], ['cost', event.check.cost], ['energy', event.check.energy],
+        ['transitLength', event.transitLength], ['fromViewMode', event.fromViewMode], ['commandIndex', event.commandIndex],
+      ];
+    case 'warp-completed': {
+      const { arrival } = event;
+      const fields: Fields = [['serial', event.serial], ['viewMode', event.viewMode], ['arrived', arrival !== null]];
+      if (arrival === null) return fields;
+      return [
+        ...fields, ['error', arrival.error], ['snapped', arrival.snapped], ['charge', arrival.charge.cost], ['energyAfter', arrival.charge.energyAfter],
+        ['hostileNear', arrival.hostileNear], ...positionOf(arrival.position),
+      ];
+    }
   }
 }
 

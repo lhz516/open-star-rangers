@@ -43,12 +43,24 @@ updated: 2026-10-14
 
 ## 验收标准
 
-- [ ] AC-01：类型、读取器、序列化、事件比较与快照字段表与 D-01 一致；版本已递增，旧规则 replay 拒绝；既有不变量保持。
-- [ ] AC-02 的 Core 部分：合格输入创建成功，缺失与跨输入不一致拒绝且不建半个世界；代表字段变化改变规范文本且样本 setupHash 改变；调用者后续修改不影响世界；新用途数值域按证据接受或拒绝。
-- [ ] `pnpm exec vitest run src/core src/app tools/engineering-boundaries.test.ts` 与 `pnpm check` 通过。
+- [x] AC-01：类型、读取器、序列化、事件比较与快照字段表与 D-01 一致；版本已递增，旧规则 replay 拒绝；既有不变量保持。
+- [x] AC-02 的 Core 部分：合格输入创建成功，缺失与跨输入不一致拒绝且不建半个世界；代表字段变化改变规范文本且样本 setupHash 改变；调用者后续修改不影响世界；新用途数值域按证据接受或拒绝。
+- [x] `pnpm exec vitest run src/core src/app tools/engineering-boundaries.test.ts` 与 `pnpm check` 通过。
 
 ## 验证方法
 
 - Node 测试的期望独立推导；limit 与 limit + 1；JSON 往返与旧版本拒绝。
 
 ## 完成证据
+
+- **实现（只有形状、读取、校验、序列化与版本，无规则行为）：**
+  - MW-01：`CreateWorldInput`/`ReplayContent` 增加 `mapGeometry`（`RULE_DATA_FIELDS` 末项，`CONTENT_INPUT_FIELDS` 随之；原版导入只接受 `data/hud/map-geometry`），由 `readMapGeometry` 严格读取、冻结脱离；[map-rule-data.ts](../../../../../src/core/world/map-rule-data.ts) 按 `0x49e74`/`0x3a41c`/`0x2b814` 算出 `WorldRuleData.map`，依次校验重绘间隔、光标起点与比例；[craft-info-input.ts](../../../../../src/core/world/craft-info-input.ts) 的 `checkPlayerWarp` 为第 4 项（数值对 ≥ 1、+0xA8 > 0、+0xB8 > 0、0 ≤ +0xA4 < 2²⁵，只查玩家记录）；四项在其他机型信息检查之前按此次序运行。setupHash 在 `aiPrograms` 之后写入 `mapGeometry` 的 ID 与全部内容。`startupRotations` 不在本项（归 14）。
+  - MW-02/03：`PlayerState.map`（光标初值为 `startPixel`）、`savedLeftPage`、`warp: WarpTransit | null`；`Entity.mapVisible`（分配时 false）；`WorldState.objectSets`、`mapIcons`；种类 25 的 `MarkerCombat`、`map-marker` 表现与名称、`MarkerMovementBlock`，实体表按分配器缺省校验。闭合分支的编译性改动：名称文本（不可达，故障）、运动阶段对 `marker` 的空分支、开发面板的名称与事件摘要。
+  - MW-04/05：原因码 `no-destination`、`insufficient-energy`；四个事件的封闭形状；比较器读取它们，前三个在请求处理中作为其命令唯一的附加事件，`warp-completed` 在新的 `warpCompletion` 阶段（停放更新之后、帧尾之前）且每 tick 至多一个；光标像素上界为 `MAP_SIDE_LIMIT − 1`。
+  - MW-11：`projection.ts` 的 `map` 分区换成 MW-11 的类型，仍为 `not-implemented`。MW-14：`CORE_LIMITS` 取值不变、注释更新；`RULES_VERSION` 4→5，快照格式 3→4，replay 格式不变。
+  - 应用：`ruleDataInputs` 增加 `mapGeometryInput(groups)` 的结果，任务所有者、运行时与 `replay-check` 经 `CONTENT_INPUT_FIELDS` 透传；`RECORDING_MAX_BYTES` 按推导改为 534,251,135（最长事件变为带到达的 `warp-completed`，924 字节含分隔符）。合成包的玩家 +0xA8 改为正值（Core 与 original-data 的测试支持）。
+- **测试：** [map-rule-data.test.ts](../../../../../src/core/world/map-rule-data.test.ts)（输入结构、读取器错误、生产 ID 门禁、冻结脱离、手算的几何与比例、`wppX` 取未舍入双精度的倒数（s = 45 时 2000 而非 F(1/F(a)) 的倒数）、重绘间隔与起点的边界及次序、setupHash 随每个字段变化且与键序无关）；create-world（玩家 Warp 字段的拒绝与边界、与地图检查及其他机型检查的次序）；entity-table（标记的分配与 9 种拒绝、`mapVisible`）；snapshot（键表、版本 4/5、新状态逐叶改变规范文本、列表次序）；compare（4 个事件的往返、差异、边界与 limit + 1、次序拒绝 21 例）；replay（旧规则版本 4 拒绝、`mapGeometry` 缺失与伪造拒绝、MW-01 检查在 content 路径）；domain-events、player-state、projection 类型、事件总线、事件日志、mission-input、replay-check 尺寸推导。
+- **检查：** `pnpm exec vitest run src/core src/app tools/engineering-boundaries.test.ts tools/replay-check.test.ts src/ui/dev src/original-data src/workers`：188 文件 5,746 项通过；`pnpm check`（typecheck、lint、284 文件 8,536 项测试、build）通过。
+- **rubber-duck：** 采纳 2 项——MW-01 的检查移到既有机型信息检查之前（并加次序测试）；`warp-destination-set` 的像素上界由 i16 收紧为地图边长上限。未采纳 1 项：要求 `left-page-changed`（`commandIndex` 为 null）与 `warp-started`/`warp-completed` 成对相邻——无命令的页面事件按 P3-07 起的约定不排序，比较器无法把它归属到 Warp，强制相邻会拒绝合法序列（如页面未变时没有该事件）。simplify：合并像素写入器、抽出 `readIcon`、标记的冻结常量、`MAP_SIDE_LIMIT` 移到 Core 的地图规则数据、`ruleDataInputs` 两个返回共享字段；跳过需改范围外文件（`render/map` 的同名 `PixelRect`）或改变契约形状的建议。
+- **文档影响（范围外，交 26）：** `docs/engineering/modules/core.md`（创建输入与 MW-01 检查、新状态/事件/原因码、标记种类、`RULES_VERSION` 5 与快照版本 4）、`docs/engineering/modules/app.md`（`CONTENT_INPUT_FIELDS` 列表）、`docs/engineering/modules/content.md`（应用侧规则数据输入表加 `mapGeometry`）、`docs/guides/tools.md`（`RECORDING_MAX_BYTES` 534,251,135，事件行每项 924 字节，最长事件为 `warp-completed`）、`docs/engineering/source-structure.md`（新文件 `map-rule-data.ts`）。
+

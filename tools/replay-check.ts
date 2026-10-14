@@ -89,7 +89,7 @@ export type ReplayCheckOptions = PackageCheckOptions;
  * version with SHA-256 manifest and source fingerprints. The test pins this value to the derivation, so a change to a
  * Core capacity or format changes it on purpose, together with the tool guide.
  */
-export const RECORDING_MAX_BYTES = 427_820_671;
+export const RECORDING_MAX_BYTES = 534_251_135;
 
 /** The longest JSON text of a finite number in [-1, 1]: the longest of any finite number. */
 const LONGEST_NUMBER = -0.0000012345678901234567;
@@ -190,6 +190,28 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     type: 'energy-allocation-changed', tick: LAST_TICK, entityId: SAFE, shieldLevel: 3, chargeLevel: 3, commandIndex: CORE_LIMITS.commandsPerTick - 1,
   },
   'left-page-changed': { type: 'left-page-changed', tick: LAST_TICK, page: 6, previousPage: 6, commandIndex: null },
+  // P3-09's events (docs/plan/p3/02/spec.md, MW-05): a three-digit view mode, a three-digit pixel, a created marker and
+  // an arrival are each the longer of their forms.
+  'map-toggled': {
+    type: 'map-toggled', tick: LAST_TICK, open: false, viewMode: 0xff, previousViewMode: 0xff, commandIndex: CORE_LIMITS.commandsPerTick - 1,
+  },
+  'warp-destination-set': {
+    type: 'warp-destination-set', tick: LAST_TICK, playerEntityId: SAFE, destination: LONGEST_VECTOR, pixel: { column: 479, row: 479 },
+    icon: { entityId: SAFE, kindBit: 31 }, marker: { type: 'created', entityId: SAFE }, commandIndex: CORE_LIMITS.commandsPerTick - 1,
+  },
+  'warp-started': {
+    type: 'warp-started', tick: LAST_TICK, playerEntityId: SAFE, serial: SAFE, origin: LONGEST_VECTOR, destination: LONGEST_VECTOR,
+    distance: LONGEST_NUMBER, check: { cost: LONGEST_I32, energy: LONGEST_I32 }, transitLength: LONGEST_NUMBER, fromViewMode: 0xff,
+    commandIndex: CORE_LIMITS.commandsPerTick - 1,
+  },
+  'warp-completed': {
+    type: 'warp-completed', tick: LAST_TICK, serial: SAFE, viewMode: 0xff, previousViewMode: 1,
+    arrival: {
+      playerEntityId: SAFE, origin: LONGEST_VECTOR, destination: LONGEST_VECTOR, position: LONGEST_VECTOR,
+      orientation: Array.from({ length: 9 }, () => LONGEST_NUMBER) as unknown as Matrix3, error: LONGEST_NUMBER, snapped: SAFE,
+      charge: { distance: LONGEST_I32, cost: LONGEST_I32, energyBefore: LONGEST_I32, energyAfter: LONGEST_I32 }, warpClock: SAFE, hostileNear: false,
+    },
+  },
 };
 
 /** The content identity of every package the production import job converts. */

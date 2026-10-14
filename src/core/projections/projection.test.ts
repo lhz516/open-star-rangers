@@ -5,6 +5,7 @@ import { constructWorld } from '../world/world.ts';
 import {
   addPlayerEntity, entityInit, expectFault, stillEntityInit, testState, thrownBy, tickInput, TEST_ORIENTATION,
 } from '../world/world.test-support.ts';
+import type { SteeredMovementBlock } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import {
   PLAYER_SPEED_LIMIT_STATUS,
@@ -14,6 +15,11 @@ import {
   type CommunicationsReady,
   type FlightCombat,
   type FlightResourceName,
+  type MapContact,
+  type MapInformationRow,
+  type MapOpen,
+  type MapPartition,
+  type MapPlayer,
   type MapReady,
   type MotionPlayer,
   type MotionReady,
@@ -22,6 +28,7 @@ import {
   type ResultReady,
   type SpeedLimitStatus,
   type WeaponListReading,
+  type WarpRequestReading,
   type WeaponRecordReference,
 } from './projection.ts';
 
@@ -40,7 +47,7 @@ function assistedState(): WorldState {
   addPlayerEntity(state).state = 'active';
   const target = state.entities.allocate(stillEntityInit(7, { position: { x: 100, y: 2, z: 3 } }));
   target.state = 'active';
-  target.movement!.speed = 20;
+  (target.movement as SteeredMovementBlock).speed = 20;
   // P3-07 selects targets; until then a test sets it.
   state.player.target = target.id;
   return state;
@@ -226,6 +233,18 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       readonly combat: NotImplementedPartition | CombatReady;
     }>();
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
+    // P3-09 MW-11: the map partition's shapes replace the `never` placeholders; it stays not implemented until 19.
+    expectTypeOf<MapPartition>().toEqualTypeOf<NotImplementedPartition | MapReady>();
+    expectTypeOf<MapReady['player']>().toEqualTypeOf<MapPlayer | null>();
+    expectTypeOf<MapPlayer['state']>().toEqualTypeOf<'closed' | 'open'>();
+    expectTypeOf<keyof MapOpen>().toEqualTypeOf<
+      | 'state' | 'openedFromBase' | 'geometry' | 'cursor' | 'contacts' | 'zoomMembers' | 'information' | 'labels' | 'line' | 'destination'
+      | 'cursorCost' | 'markerEntityId' | 'warpRequest'
+    >();
+    expectTypeOf<MapContact['class']>().toEqualTypeOf<'player' | 'friendly' | 'hostile'>();
+    expectTypeOf<MapInformationRow['type']>().toEqualTypeOf<'unit-name' | 'unit-values' | 'count'>();
+    expectTypeOf<Extract<WarpRequestReading, { accepted: false }>['reason']>()
+      .toEqualTypeOf<'player-unavailable' | 'wrong-context' | 'no-destination' | 'cooldown' | 'insufficient-energy'>();
     expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();

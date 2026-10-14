@@ -46,6 +46,10 @@ const EVENT_TYPES = {
   'energy-depleted': true,
   'energy-allocation-changed': true,
   'left-page-changed': true,
+  'map-toggled': true,
+  'warp-destination-set': true,
+  'warp-started': true,
+  'warp-completed': true,
 } as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {
