@@ -76,7 +76,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [04-wingman-commands-research.md](./subtasks/04-wingman-commands-research.md) | — | completed |
 | [05-parked-sets-departure-research.md](./subtasks/05-parked-sets-departure-research.md) | — | completed |
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | completed |
-| [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | in-progress |
+| [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | in-progress |

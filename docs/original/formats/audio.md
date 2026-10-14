@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-14
 related: [U-004, U-016, U-027]
 ---
 
@@ -145,7 +145,7 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 | 10463 | Map click `0x2b9bc` | A Warp destination is set |
 | 10401 | Warp start `0x2be00` | As above |
 | 10181 | Warp end `0x2bf08` | Arrival |
-| 10055 | `0x38780` | A transponder-kind object (`0x4000`) is created at run time ([allocator paths](./executable.md#two-allocator-paths-native-inputs-and-profile-comparison)); whether the slice reaches it is Unconfirmed |
+| 10055 | `0x38780` | A transponder-kind object (`0x4000`) is created at run time by an **active** creator, i.e. only by the flight key `b`; the wingman's parked drop creates the object without the sound (Confirmed, code, P3-08/06; [X2](./executable.md#x2-constructor-0x38780source--confirmed-code)). Reachable in normal play when `b` is (Likely, [key map](../input/key-map.md)) |
 | 10167 | Docking `0x38ff4`, sub-commands 1 and 2 | The two selection keys of the base interior |
 | 10169 | Docking `0x38ff4`, sub-command 3 | Enter, the selected base action |
 

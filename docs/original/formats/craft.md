@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-11
+updated: 2026-10-14
 related: [U-001, U-008, U-022, U-026, U-027]
 ---
 
@@ -265,16 +265,16 @@ What the combat code does with each value (Confirmed, code, from native instruct
 | Gun | +0x24 | Projectile lifetime from its first update | [H2](./executable.md#h2-gun-projectiles--confirmed-code) |
 | Gun | +0x28 | Firing type: 0 fixed, 1 aimed, 2 automatic; non-zero: the projectile takes the launch message's rows | [W6](./executable.md#w6-gun-shot-0x2e5e8handle-clock-state--confirmed-code), [W9](./executable.md#w9-automatic-mounts--confirmed-code), [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
 | Gun | +0x2C | Automatic-mount burst length | [W9](./executable.md#w9-automatic-mounts--confirmed-code) |
-| Missile | +0x0C, +0x10 | Range (parked missile choice, strict) and lock range² (strict) | [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
+| Missile | +0x0C, +0x10 | Range (parked missile choice, strict) and lock range² (strict); +0x0C is also the AI lock's range test (strict, P3-08/03) | [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [A13](./executable.md#a13-ai-missile-readiness-and-the-ai-lock-0x5dfec--confirmed-code-corrects-w8w10-and-h5) |
 | Missile | +0x18 | Guidance: 0 unguided; non-zero requires a target at launch and runs the lock; with launch byte ≥ 2, 1 selects the heat-seeking built-in program and any other value the other homing program | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
 | Missile | +0x1C | Launch cooldown (signed, fires at equality) | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
 | Missile | +0x20 | Non-zero: random launch rotation | [W11](./executable.md#w11-launch-message-8-and-the-two-constructors--confirmed-code) |
-| Missile | +0x28, +0x2C | Cosine of the lock half-angle (strict); its arc cosine (load) is read only by AI code. Neither is read in flight | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
-| Missile | +0x30–+0x40 | Lock delay to level 1, stage duration (also the HUD progress divisor), grace interval, aspect-test switch and threshold | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code) |
+| Missile | +0x28, +0x2C | Cosine of the lock half-angle (strict); its arc cosine (load) is read only by AI code. Neither is read in flight; the AI lock `0x5dfec` compares the steering angles with +0x2C (P3-08/03) | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked), [A13](./executable.md#a13-ai-missile-readiness-and-the-ai-lock-0x5dfec--confirmed-code-corrects-w8w10-and-h5) |
+| Missile | +0x30–+0x40 | Lock delay to level 1, stage duration (also the HUD progress divisor), grace interval, aspect-test switch and threshold; the AI lock uses only +0x34, halved (SAR 1), as its stage duration and skips the +0x30 stage and the grace (P3-08/03) | [W8](./executable.md#w8-missile-launch-0x2e86c-and-the-missile-lock-0x2ddbc--confirmed-code), [A13](./executable.md#a13-ai-missile-readiness-and-the-ai-lock-0x5dfec--confirmed-code-corrects-w8w10-and-h5) |
 | Missile | +0x44–+0x58 | Lifetime, arming delay, fuse radius and its square, proximity detonation delay, fuse check interval | [H5](./executable.md#h5-missiles--confirmed-code-unless-marked) |
 | Missile | +0x5C–+0x64 | Blast damage (also the damage of a parked missile), full-damage radius, zero-damage radius | [H5](./executable.md#h5-missiles--confirmed-code-unless-marked), [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code) |
 | Craft | +0x08 | Shown × 0.001 on the right display (meaning Unconfirmed) | [T7](./executable.md#t7-right-target-display-confirmed-code) |
-| Craft | +0x0C | Engagement radius of the multi-target parked engagement (squared, strict) | [E2](./executable.md#e2-multi-target-engagement-0x2ffecobject-elapsed--confirmed-code) |
+| Craft | +0x0C | Engagement radius of the multi-target parked engagement (squared, strict); also the parked AI search's range and the coverage radius of the wingman's Xpon drop (P3-08/05) | [E2](./executable.md#e2-multi-target-engagement-0x2ffecobject-elapsed--confirmed-code), [D3](./executable.md#d3-candidate-choice-0x62760o-set-mask-p--confirmed-code-and-data), [D4](./executable.md#d4-the-wingmans-xpon-drop-0x62aa0c--confirmed-code) |
 | Craft | +0x10 (shape +0x00) | Radius subtracted from the parked engagement's L1 distance; not read by the hit or collision tests | [E3](./executable.md#e3-engagement-rule-0x30150self-elapsed-divisor--confirmed-code), [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code) |
 | Craft | +0x14 (shape +0x04) | r²: collision point tests (non-strict), missile contact fuse (strict), forward-target lateral limit | [H7](./executable.md#h7-point-tests--confirmed-code), [H5](./executable.md#h5-missiles--confirmed-code-unless-marked), [T2](./executable.md#t2-selection-helpers-confirmed-code) |
 | Craft | +0x18–+0x2C (shape +0x08–+0x1C) | Unrotated world-axis box of the projectile segment test | [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code) |

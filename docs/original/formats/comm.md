@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-09
+updated: 2026-10-14
 related: [U-001]
 ---
 
@@ -61,11 +61,13 @@ The object list built by `0x2c9d0` holds the objects of the chosen kinds; each e
 
 | TABL | +0x04 | Use | Evidence |
 |---|---|---|---|
-| 2003, 2005, 2013 | u32 command code; 0 for the last item | The chosen entry's value goes to `0x2c7fc`, which posts a message of type 0x100 with the code at +0x10 to the target. The message dispatcher stores it at the target's +0x184 (`0x21353`). A value of 0 posts nothing and closes the menu. Code 9 also calls `0x333b4` ([cut-scenes and loop transitions](./executable.md#cut-scenes-and-loop-transitions-p3-0108)) | 32-bit loads and stores throughout. The base handler `0x3bed0` compares +0x184 unsigned (above 6, below 8, equal to 9). The AI handler `0x61f20` dispatches codes 1–7 through a jump table with an unsigned bound (`JA`) |
+| 2003, 2005, 2013 | u32 command code; 0 for the last item | The chosen entry's value goes to `0x2c7fc`, which posts a message of type 0x100 with the code at +0x10 to the target. The message dispatcher stores it at the target's +0x184 (`0x21353`). A value of 0 posts nothing and closes the menu. Code 9 also calls `0x333b4` ([cut-scenes and loop transitions](./executable.md#cut-scenes-and-loop-transitions-p3-0108)) | 32-bit loads and stores throughout. The base handler `0x3bed0` compares +0x184 unsigned (above 6, below 8, equal to 9). The wingman's active consumer `0x614a8` dispatches codes 1–8 through a jump table (`0x61488`) with an unsigned bound and ignores 0; its parked consumer `0x61f20` dispatches codes 1–7 (`0x61f04`) with an unsigned bound (`JA`) (P3-08/04) |
 | 2007 | u32 kind mask; 0 for the last item | `0x2c850` passes each non-zero mask to `0x2c9d0` and leaves a category out of the menu when its object list is empty; the chosen entry's mask goes to `0x2c9d0` again. `0x2c9d0` walks the objects of every kind in the mask (`0x5261c`, lowest set bit first) | Bit iteration and masking only |
 | 2009 | Not read | `0x2c9d0` reads only +0x00 of item 0 | Zero in the baseline |
 
-**Observed (Confirmed, data):** every command code other than the last item's has bit 31 clear. Every 2007 mask other than the last item's is non-zero, uses only bits 0–19 (the 20 kind bits) and shares no bit with the other masks.
+**Observed (Confirmed, data):** every command code other than the last item's has bit 31 clear. TABL 2013 (the wingman menu) has 8 items: items 0–6 carry codes 1–7 in that order and item 7 code 0 (P3-08/04, counts and codes only).
+
+**Wingman commands (Confirmed, code; P3-08/04):** `0x2c7fc` is the only poster of type 0x100 and the communications handler `0x27b44` its only caller; the dispatcher also stores the sender (the player) at the target's +0x188, which no rule reads. +0x184 is a single slot: a later message overwrites an unconsumed code, and an overwritten command is never executed or answered. The wingman consumes it at its next due AI update — through `0x614a8` while active (called by the wingman handler `0x610c8`) or `0x61f20` while parked (called only by the parked handler `0x62250`) — and clears it after the effect and the reply; while the friendly-fire accumulator exceeds the AICO threshold (and, for the active consumer, while there is no player) the code is kept, not refused. The effects of codes 1–7, which differ between the two consumers, and the replies are in [executable](./executable.md#wingman-commands-and-the-friendly-fire-accumulator-p3-0804). The base handler `0x3bed0` reads and clears +0x184 for bases (P3-10). Every 2007 mask other than the last item's is non-zero, uses only bits 0–19 (the 20 kind bits) and shares no bit with the other masks.
 
 ## 4. Text rules (Confirmed)
 
