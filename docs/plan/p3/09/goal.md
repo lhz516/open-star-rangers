@@ -58,7 +58,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | S-09 | 18 | 18：进度、完成、到达随机与中断的 Node 测试 |
 | S-10 | 19 | 19：页 6 读数、指示灯与 Render State 的消费者测试 |
 | S-11 | 01–07、09、10、24、25、28、29 | 01–07、28、29：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；24：正式原版运行；25：R-13 至 R-16 的结论 |
-| S-12 | 21、22、26 | 21：桥接与诊断接线测试；22：实际应用浏览器验证；26：文档与交接；27：链接与元数据 |
+| S-12 | 21、22、26、31 | 21：桥接与诊断接线测试；22：实际应用浏览器验证；26：文档与交接；27：链接与元数据 |
 | AC-01 | 08、12 | 12：边界测试、版本拒绝、旧断言随批准更新；27：`pnpm check` |
 | AC-02 | 11、12 | 11：转换、校验、缓存、本机核对；12：Core 输入与 setupHash |
 | AC-03 | 13 | 13：开图/关图后的命令、同 tick 开关、select→Warp→select、轴与清键 |
@@ -74,7 +74,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | AC-13 | 23 | 23：真实内容两种僚机配置的私有核对 |
 | AC-14 | 01–07、28、29 | 07、29：事实与 U 项；27：`pnpm check:compliance` 与 git 审阅 |
 | AC-15 | 09、10、24、25 | 10：判据获批；24：≥2 次合格运行；25：单次转移与连续行为的结论 |
-| AC-16 | 26 | 26：文档与交接；27：`pnpm check`、链接与 `updated:` |
+| AC-16 | 26、31 | 26：文档与交接；27：`pnpm check`、链接与 `updated:` |
 
 ## 子任务跟踪
 
@@ -111,7 +111,8 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
 | [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | completed |
-| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30 | pending |
+| [31-docs-follow-up.md](./subtasks/31-docs-follow-up.md) | 22, 26 | in-progress |
+| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
