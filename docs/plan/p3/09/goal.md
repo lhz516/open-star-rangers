@@ -90,7 +90,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | completed |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | in-progress |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | completed |
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
@@ -145,6 +145,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 21 已集成：** 桥接关键事实增加地图开/关/无玩家、已提交目的地与标记、`warpRequest` 结果与原因、视角 1 与 Warp 过程序号；悬停仍按采样；事件日志补全四个 P3-09 事件的全部字段。交 22：可开始任务的合成机型能量为 −100，`request-warp` 恒为 `insufficient-energy`，AC-12 的“按 w 开始并完成”需要 e2e 合成包给玩家正能量。交 26：`docs/engineering/modules/ui.md` 与 `docs/engineering/README.md`（约第 389 行）的桥接关键事实。完整 e2e 中 F-13（`failure-storage-lifecycle`）一次失败、单独重跑通过，判为负载敏感，与本变更无关。
 - **2026-10-14 — 26 已集成：** `core.md` 新增“地图与 Warp（P3-09）”一节并同步流水线、状态、事件、原因码、projection、版本、上限、已批准差异（MW-12 1–9，CR-11 差异 1、8）与交接（P3-04/05/08/10/11/12/13/14/15）；更正视角切换置重绘的旧表述（只涉及视角 6）与既有文档中过时的规则/replay 版本。遗留：`src/core/systems/area.ts` 第 13 行模块注释仍说玩家 Warp 期间的区域中心“在标记处接入”，实际已在 `rules/active-area.ts` 的 `activeAreaCentre` 实现，交 27 判定是否需要修复。
 - **2026-10-14 — 22 已集成：** 实际应用 E2E 覆盖开图、`p` 暂停、Esc 关图、开发命令编辑器 select、`w` 开始并完成、菜单与页面隐藏后无补跑无重复扣费、生产包无开发编辑器；完整 `pnpm test:e2e` 226 通过。合成包玩家机型改为可完成 Warp（`productionCraftInfo()`）。DOM 尚无地图事实（P3-13），桥接状态经 React fiber 只读读取 UI store 作为证据，协调者接受。
+- **2026-10-14 — 09 已集成：** 基准运行只用配方输入，没有用户操作；m-01、t2-01、w2-02 完整，w-01、w2-01 因配方规划错误由操作者取消（部分读数只作观察，排除理由在私有 `run-notes.md`）。与 P3-08、P3-10 共用基准环境，按协调者安排轮流。结论：历史探索不保留得到运行佐证（R-14）；地图读取间隔、键盘取样、光标世界点、读数、可见标志、Warp 时长、到达偏移、扣费与 +0xC8 均与代码结论一致；本任务中 f = 1 在世界内不可达；E = 0 的地图读数在基准 DOSBox-X 中显示 1 且游戏继续（模拟器是否送达未屏蔽 x87 异常未确认），MW-12 差异 4 维持。未取得（交 24）：Warp 中救援与 `inWarp`、其他 Q-10 分支、基地作揭示来源、揭示中来源被毁。
 
 ## 审批
 
