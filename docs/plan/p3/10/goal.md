@@ -85,9 +85,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | pending |
-| [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | pending |
-| [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | pending |
+| [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | in-progress |
+| [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | in-progress |
+| [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | in-progress |
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | pending |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | pending |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | pending |
