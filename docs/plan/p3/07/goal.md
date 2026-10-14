@@ -124,7 +124,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
-| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | in-progress |
+| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | completed |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
@@ -239,6 +239,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-14 — Subtask 27 resumed:** 41 已完成，阻塞前提满足；以 `final5` 恢复 27 的结论。
 - **2026-10-14 — Subtask 27 completed:** `final5`（36 个 complete 原版运行，候选 `src/` 树 `13a62b95…`）中，D-02 六类均一致，所有原版成立窗口都有配对；单次转移 812 个样本，没有不一致，spec 的逐项最低覆盖均由可判定样本满足。操作数不全的样本按协调者决定列为不可判定，不豁免。不需要修复子任务。
 - **2026-10-14 — Subtask 36 started.**
+- **2026-10-14 — Subtask 36 completed:** core.md 的已知差异写入 25、27 的结论与身份绑定。
+- **2026-10-14 — Subtask 29 started（final alignment）.**
 
 ## 审批
 
