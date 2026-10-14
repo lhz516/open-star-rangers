@@ -89,7 +89,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [05-warp-energy-start-research.md](./subtasks/05-warp-energy-start-research.md) | — | completed |
 | [06-warp-progress-arrival-research.md](./subtasks/06-warp-progress-arrival-research.md) | — | completed |
 | [07-numerics-stages-original-docs.md](./subtasks/07-numerics-stages-original-docs.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | in-progress |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | in-progress |
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | pending |
@@ -123,6 +123,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 05 的结论中 D-01 须处理的点：** Warp 开始时原版不置 `statusDisplay` 重绘；开始消息经 `0x3f158`→`0x50188` 还写玩家位姿、速度 0、指令速度为参考最大值，并在表现路径上至少抽取 60 次共享随机数；开始只检查消耗，完成时按起点→到达点距离扣 ⌈c×(1+s/2)⌉ 并钳 0（s 由渲染路径逐帧递增，取值归 06）；+0xC8 在完成时写为将来时刻；开始不锁定目的地（同帧 `w` 后的选择会改变到达点）；`0x1864c8` 是开始位置而不是目的地；能量为 0 时地图读数可能除零（后果未确认，交 09）；指示灯严格比较、开始检查非严格。
 - **2026-10-14 — 06 的结论中 D-01 须处理的点：** spec 中“目的地 `0x1864c8`”有误（那是开始位置）；隧道路径、转向偏移、30° 锥、居中与误差 s 都是规则状态（影响位姿、到达点与扣费），须作为 Core 的 frame-end 状态并使用世界随机数（开始 20 次、每段 2 次），不只是“进度”；原版的误差增量依赖帧率，须定 tick 映射；途中被毁或能量救援后 `inWarp` 保持 1 直到下一次完成的 Warp（复现或批准差异）；无误差到达吸附到目的地上方 600；完成后玩家状态 +0x29 为 1。
 - **2026-10-14 — 07 对账：** 玩家状态 +0 由玩家实例化 `0x67b53` 清零（02 成立，01 的未确认关闭）；`0x1864c8` 为 Warp 出发点（更正 04 与 spec 的“目的地”）；随机数普查：开始恰好 60 次（20 规则、40 表现），每段 2、完成 2、首次选点 1，效果例程另有表现抽取；模式 1 帧绘制中 `0x50508` 先于仪表 `0x49b2c`。另：`docs/engineering/modules/core.md` 要求视角切换置 `statusDisplay.redraw`，原版只在进出基地时置位，列入 08 的冲突表。交 08 的契约依据与冲突表见 07 的完成证据。
+- **2026-10-14 — 08 D-01 定稿（按预先授权由 agent 定稿，待用户事后审阅）：** P3-02 新增 MW-01 至 MW-16，P3-03 修订 2（地图几何）；P3-09 spec 按研究更正；MW-12 列出 8 项已批准差异（含 Warp 每 tick 一步、能量为 0 时读数百分比为 null）；P3-05 右键交接已同步，P3-04/06/07 只加交接注记。定稿指出两项前置静态研究：R-A（`0x568b0` 的 64 项启动旋转表 `0x1b0a10` 的构造、精度及与播种的先后，阻塞标记创建与到达旋转）与 R-B（隧道路径 `0x513e0`、样条 `0x517f4` 与 `0x51618` 参数及控制点存储，阻塞 Warp 开始位姿与 Warp 步进）。`docs/engineering/modules/core.md` 关于视角切换置重绘的表述交 26 更正。
 
 ## 审批
 

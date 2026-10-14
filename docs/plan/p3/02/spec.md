@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-13
+updated: 2026-10-14
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -922,6 +922,361 @@ type Attacker =
 - **`select-number`：** D-04 中“普通飞行的 `select-number`（n 等于原版 Shift+n 的速度档位）”由 `speed-preset` 取代。`select-number` 的默认飞行处理不再改变速度，结果为 `ignored`/`wrong-context`；尚未实现的基地、地图等处理仍为 `rejected`/`not-implemented`；它在通讯菜单与基地中的含义不变，菜单优先级由 P3-10 在 Core 中加入。输入层按物理修饰键选择命令，不读取通讯 projection 来决定数字键产生哪个命令；`speed-preset` 与菜单数字保持不同的命令。
 - **版本：** 命令解释与录制允许的输入形状都改变，`rulesVersion` 与 replay 格式版本（`GAME_REPLAY_VERSION`）相对实际集成基线各递增一次（P3-05 分支上为 P3-06 集成后的 2 与 1；合入 main 时 P3-07 已把 `rulesVersion` 递增为 3，合入后为 4 与 2，见[审批](#审批)的合入说明）；D-07 的“replay 格式版本不变”只描述 P3-06 的修订。snapshot 形状不变、不递增其格式版本，但绑定新的 `rulesVersion`。旧录制在任何 tick 执行前因版本不符被拒绝，不迁移、不解释成新绑定。
 
+### P3-09 的契约修订（D-01）
+
+本节由 P3-09 的子任务 08 加入（2026-10-14），定稿 [P3-09 spec](../09/spec.md#实施关卡) 的关卡 D-01 中属于本 spec 的部分（内容输入的部分在 [P3-03 的修订 2](../03/spec.md#p3-09-的修订地图几何修订-2)）。它建立在 P3-06、P3-07 与 P3-05 的修订之上，那些修订已定的项不变；前文与本节不一致时以本节为准。
+
+原版事实只记在 [executable 的 Strategic map and Warp (P3-09)](../../../original/formats/executable.md#strategic-map-and-warp-p3-09) 各小节，下文以“地图模式”“光标与标记”“接触点”“放大窗口”“Warp 开始”“Warp 过程”“数值与阶段”指代其六个子节与 07 的汇总节，不重复。定稿依据是 P3-09 子任务 01 至 07 的完成证据，尤其是 [07 交 08 的汇总表](../09/subtasks/07-numerics-stages-original-docs.md#完成证据)（下文“07 表”）。编号 MW-01 至 MW-16 只供引用本节。
+
+**记法与通则：** 沿用 [P3-07 的修订](#p3-07-的契约修订d-01d-03)的记法（f32、i32、时钟、`EntityId`、故障、快照与“不持久”“静态”）。新增状态都由 Core 拥有。
+
+**与并行任务：** P3-08、P3-10 若在各自分支上修订本 spec 的同一阶段或字段，合入时 `object-sets` 阶段、地图可见标志与两个集合、地图与 Warp 状态以本节为唯一定义，对方复用，不另建（[P3-09 spec 的可见性与迷雾](../09/spec.md#可见性与迷雾)）；版本号相对实际集成基线各递增一次。
+
+#### MW-01 世界创建输入与静态规则数据
+
+- **输入：** `CreateWorldInput`、录制入口与 `ReplayContent` 增加必需的 `mapGeometry: { id: AssetId; content: unknown }`（与 CR-01 的规则输入相同：`content` 是调用边界上未经信任的解码结果，只经读取器进入世界；读取后的规范形状是 P3-03 修订 2 的 `MapGeometry`，没有其他字段）：同一经 `validatePackage` 验证的包中角色 `map-geometry` 的 Asset（`data/hud/map-geometry`，[P3-03 修订 2](../03/spec.md#p3-09-的修订地图几何修订-2)），由内容读取器 `readMapGeometry` 严格读取，冻结并与输入脱离。外层字段错误为 `CoreInputError`，Asset ID 或内容错误保留读取器的 `ContentContractError`；错误不回显导入值。
+- **语义检查（`CoreInputError`，按此次序）：** 记矩形为 {x0, y0, x1, y1}（含末像素），s = y1 − y0 + 1。
+  1. **重绘间隔：** `redrawInterval` 为 0 或小于 `clockUnitsPerTick`，使每个 tick 的帧尾都执行地图步（MW-07）。原版发行记录每帧绘制（[cockpit 的 10 型记录](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)）；其他取值下仪表调度器的首次绘制时刻未研究，属切片外。
+  2. **起点：** h = (s − 1) >> 1（带符号截断，从画面原点量起）满足 x0 ≤ h < x0 + s 且 y0 ≤ h < y0 + s（地图模式；发行数据满足）。
+  3. **比例：** 按“光标与标记”的 `0x49e74` 算出的 ppX、ppY、wppX、wppY 与放大窗口的两个比例都是有限正 f32。
+  4. **玩家机型的 Warp 字段**（只检查种类位 0 的声明所绑定的机型记录；原版只有玩家记录到达这些路径，其余记录不读也不拒绝，07 表最后一行）：数值对至少一对（原版计数 ≤ 0 时读数组之前的字，未定义）；+0xA8 > 0（为 0 时进度的 1 ÷ L 除零）；+0xB8 > 0（进度的除数）；0 ≤ +0xA4 < 2²⁵（`SHL 6` 不溢出；负值的 u32 回绕不复现，与 CR-01 对负时长的处理相同）。f × +0xA8 ≤ 1 是原版合法分支（Warp 在开始的同一 tick 完成），保留；代价的 `IMUL` 按 i32 回绕实现，不拒绝。
+- **静态规则数据（`WorldRuleData.map`，冻结，不进快照）：** 创建时按“光标与标记”的 `0x49e74`、`0x3a41c` 与 `0x2b814` 计算一次：
+
+  ```ts
+  interface MapPixel { column: number; row: number }      // 光标像素：主地图内相对其原点的整数，0 ≤ column、row < s
+  interface MapPoint { column: number; row: number }      // 投影像素：相对主地图（或放大窗口）原点的整数，[−32768, 32767]（原版 i16）；
+                                                          // 可以等于 s 或落在矩形之外（世界最大值上的对象、世界外的玩家与僚机、错开后的像素）
+  interface PixelRect { x: number; y: number; width: number; height: number } // 画面像素；x ≤ px < x + width，y 同理
+  interface MapRuleData {
+    side: number;                                // s
+    main: PixelRect;                             // (x0, y0, s, s)
+    information: PixelRect;                      // (x0 + s, y0, x1 − (x0 + s), s >> 1)
+    zoom: PixelRect;                             // (x0 + s, y0 + (s >> 1), x1 − (x0 + s), s >> 1)
+    startPixel: MapPixel;                        // (h − x0, h − y0)：每次打开地图时的光标
+    world: { minX: number; minY: number; maxX: number; maxY: number }; // i32 运行时单位：±7500 × 扇区数
+    pixelsPerUnit: { x: number; y: number };     // f32 ppX、ppY（0x186464、0x186468）
+    unitsPerPixel: { x: number; y: number };     // f32 wppX、wppY（0x18646c、0x186470），取未舍入双精度的倒数
+    zoomExtent: { x: number; y: number };        // 整数运行时单位：trunc(运行时比例 15000) 与其两倍（0x18648c、0x186490）
+    zoomPixelsPerUnit: { x: number; y: number }; // f32（0x186494、0x186498），由放大窗口尺寸 ÷ zoomExtent
+    informationLineHeight: number;               // 导入的字体 1 字形高度
+    informationCapacity: number;                 // i32：(s >> 1) ÷ informationLineHeight，带符号整除
+  }
+  ```
+
+  另有 `startupRotations: readonly Matrix3[]`（恰 64 项，f32 行，原版 `0x1b0a10`）：静态、不进快照，生成方式见 MW-12 的前置研究 R-A。
+- **setupHash：** 在 CR-01 的 `aiPrograms` 之后覆盖 `mapGeometry` 的 ID 与完整内容（三个字段都是规则数据）。
+- **记录 +0x7C（始终在地图上显示）不进入 `MissionSetup`：** 对象记录读取器已把 +0x7C 列为保留字，非零时以 `unsupported-payload` 拒绝导入（[scenario §3](../../../original/formats/scenario.md#3-132-byte-object-record-structure-confirmed-fields-partly-likely)；切片的 9 条记录与 5 条僚机记录都为 0）。所以由内容实例化的机体的地图可见基础值恒为 false，Core 不需要该字段。运行中创建的机体（`0x4000`，P3-10）原版 +0x190 为 0，读到的值没有读者（接触点），基础值同样取 false。将来支持非零 +0x7C 时，须同时修订 P3-03 的对象记录与本节。
+
+#### MW-02 玩家状态与世界状态
+
+`PlayerState` 增加：
+
+```ts
+map: {
+  cursor: MapPixel;          // 0x1a98ec 的点减主地图原点，0 ≤ column、row < s。创建时与每次打开地图时为 startPixel；
+                             // hover 与 select 写入。光标世界点（ps +0x04）与放大范围由它派生（0x4c4c0、0x2bc30），不另存
+  destination: Vec3 | null;  // ps +0x10–+0x18（f32）；null ⇔ ps +0x00 = 0。创建与玩家实例化时为 null，只由 select 写入
+};
+savedLeftPage: LeftPage;     // 0x187020：Warp 开始保存当前页，离开视角 1 时恢复（MW-09）。初值 0，首次保存之前没有读者
+warp: WarpTransit | null;    // Warp 过程的全局量。本世界首次 Warp 开始之前为 null；每次开始整体重置；完成与放弃都不清除
+                             // （原版全局保留旧值，只在视角 1 中被读取）
+
+interface WarpTransit {      // “Warp 过程”的全局表
+  serial: number;            // 本世界中第几次 Warp 开始，从 1 起；关联 warp-started 与 warp-completed
+  origin: Vec3;              // 0x1864c8，f32：开始时玩家的位置（出发点，不是目的地）；完成时的扣费距离从它量起
+  length: number;            // L（0x175fcc），f32 > 0
+  segments: number;          // n（0x175fd0），f32，开始时 1.0，每完成一段加 1
+  fraction: number;          // u（0x175fc8），f32，[0, 1)
+  error: number;             // s（0x175fdc），f32，[0, 1]
+  angle: number;             // a（0x175fd8），f32，[0, 1]
+  centring: number;          // c（0x175fd4），f32，[0, 1]
+  frame: { position: Vec3; orientation: Matrix3 };  // G：上一次路径位姿，f32
+  path: readonly Vec3[];     // 隧道路径（0x1a9f70），恰 15 个控制点，私有坐标系；分量为 f32（与 Warp 过程的其他全局一致，高概率；由 R-B 核实）
+}
+```
+
+- **ps +0x00（选择资格）：** 由 `destination !== null` 派生，不另存布尔值（光标与标记：只由首次选点置 1，只由玩家实例化清 0）。原版未选择时的存储点 (0, 0, 0) 从不被当作目的地，Core 以 null 表示。
+- **光标：** 打开地图时重置；关图保留但没有读者。光标世界点与放大范围在地图步与 projection 中按 MW-07 由 `cursor` 计算，与原版每帧由鼠标块的点重算一致（地图模式的状态表）。
+- **字段的生命周期：**
+
+  | 字段 | 写入者（阶段） | 关闭地图 | 再次打开 | 玩家实体移除 | 救援 | 重试 |
+  |---|---|---|---|---|---|---|
+  | `map.cursor` | 打开、hover、select（请求处理） | 保留 | 重置为起点 | 保留（无读者） | 保留 | 新世界 |
+  | `map.destination` | 玩家实例化（null）、select（请求处理） | 保留 | 保留 | 保留 | 保留 | 新世界 |
+  | `savedLeftPage` | Warp 开始（请求处理） | — | — | 保留 | 保留（视角切换按 MW-09 恢复页面） | 新世界 |
+  | `warp` | Warp 开始；帧尾的 Warp 步 | — | — | 保留 | 保留 | 新世界 |
+
+`Entity` 增加 `mapVisible: boolean`（+0xD4）：只对机体种类（位 0–19）由 `object-sets` 与揭示写入（MW-06），其他种类恒为 false；分配时为 false（原版分配器不初始化它，但在下一次重建之前没有读者）。
+
+`WorldState` 增加：
+
+```ts
+objectSets: { friendly: readonly EntityId[]; hostile: readonly EntityId[] }; // 0x174b74、0x174b78；创建时都为空
+mapIcons: readonly MapIcon[];   // 0x1a34e0 的图标列表：视角 8 的帧尾建立；其他视角的帧尾清空
+
+interface MapIcon {             // 一项 100 字节记录中规则读取的部分
+  entityId: EntityId;
+  kindBit: number;              // 记录 +0x24；选点只排除位 0（玩家）
+  position: Vec3;               // 记录 +0x00–+0x08，f32：建立列表时的位置；选点的 z 读它
+  pixel: MapPoint;              // 记录 +0x0C/+0x0E：0x4c524 的主地图像素（i32 的低 16 位按带符号 i16），再经 0x4b3a8 错开
+  inWorld: boolean;             // 记录 +0x28：0x4c524 的结果（含端点）
+}
+```
+
+- **两个集合**每个 tick 重建，并在揭示中移除失效的 ID（保持次序）；僚机 AI 在下一 tick 的对象更新中读取上一次重建的集合（P3-08），所以两者与每个实体的 `mapVisible` 都跨 tick 保留并进快照（接触点；07 表）。
+- **图标列表**只由帧尾的地图步写入，选点在下一 tick 的请求处理中读取（数值与阶段）。原版关图后保留最后一次地图帧的列表；Core 在视角不是 8 的帧尾把它清空。两者只在同一 tick 先打开再选点时可区分（原版不可达，MW-12 的差异 1）。放大窗口坐标、覆盖半径、友方标志等其他记录字段在 projection 中由列表、状态与静态数据派生，不另存。
+
+#### MW-03 种类 25 的地图标记
+
+- **战斗状态：** `combatTypeOf(25)` 为 `'marker'`，`EntityCombat` 增加 `MarkerCombat = { type: 'marker' }`（无战斗字段）。
+- **表现：** `EntityPresentation` 增加 `{ type: 'map-marker' }`。原版场景步跳过标记（没有 3D 表现），渲染器不为它绘制 3D 对象；它仍在 Render State 中列出。
+- **名称：** `NameReference` 增加 `{ type: 'map-marker' }`，消费者解析为 `hud-text` 的 `mapMarkerName`（EXE `0x171860`，T7 已确认作为目标名称绘制）。不硬编码原版文字，不经名称分配。
+- **移动块：** `MovementBlock` 增加 `MarkerMovementBlock = { readonly mode: 'marker'; readonly speed: 0 }`（原版模式 4：`0x21794` 清零移动块 +4–+0xA3，所以 +8 的速度为 0）。运动阶段不积分它（原版 `0x221fc` 对模式 4 没有积分）；读 `speed` 的规则（速度匹配、目标读数）得到 0。原版复制到块 +0x0C 的创建位置没有读者，不存。
+- **P3-06 字段与其他：** 取分配器缺省（`ai` 为模式 5、目标为空、零向量；`formation` 为 null；`lastParkedUpdateClock`、`warpClock` 为 0；`inWarp` 为 false）；`maximumSpeed` 为 0；`ruleInputs` 为 0；`source`、`side` 为 null；`baseInteraction` 为 false；`mapVisible` 为 false。
+- **创建：** 只由 select 在请求处理中、且应用前 `destination` 为 null 时创建（光标与标记的 `0x3cb80`）。次序：分配（状态“表现就绪”，活动），位置为新的目的地，**1 次世界抽取**：姿态 := `startupRotations[rand % 64]`。不发 `object-instantiated`（它只表示任务实例化），由 `warp-destination-set` 的 `marker.type: 'created'` 报告。本世界至多一个标记：已有标记时再创建为 Core 故障。
+- **移动：** `destination` 非 null 时的 select 取种类 25 表的第一个实体，把位置改为新的目的地（不看状态与活动），放置序号加 1。没有标记时（高概率不可达）照常写目的地、z 与事件，`marker.type` 为 `'missing'`，不重新创建（ps +0x00 已为 1）。
+- **生命周期：** 沿用 P3-02 的通用转换：创建的下一 tick 在自身更新中请求活动，同 tick 的请求处理中进入状态 7。不参与碰撞、能量、对象集合、地图接触点、停放更新与区域检查（各自的种类掩码不含位 25；区域检查 `0x1fffffe` 也不含，所以从不停放或移除）。雷达在其状态 7 起给出 `marker` 类接触点；友方目标掩码 `0x206c87e` 使它成为友方候选；Warp 完成的最近对象搜索包含它。只在任务拆除时移除（高概率，P3-11）。
+- **须同步的封闭分支：** 实体表的种类与字段校验、快照写入器、Render State、运动筛选、目标读数（`CombatTarget` 的 `shield` 为 null、`speed` 为 0）、雷达（已有 `marker` 类）、P3-07 的锁定计数 `0x2ddbc`（友方种类 `0x206c87f` 含位 25，实现须不读机型记录）。P3-08 的 `0x5db12` 对标记目标以 0 代替记录 +0x10。
+
+#### MW-04 命令、原因码与内部请求
+
+- **原因码：** `COMMAND_RESULT_REASONS` 增加 `no-destination` 与 `insufficient-energy`。三种命令未被接受时一律为 `ignored`（原版的拒绝都无提示、无音效，Warp 开始）。
+- **有效上下文：** 命令批次开始时，有效视角与有效上一视角取已提交的值；每个被接受的 `toggle-map` 与 `request-warp` 按下文更新它们。有效目的地取本批次中最后一个被接受的 select 的点，没有时取已提交的 `destination`。**每条命令**（含 P3-06、P3-07 的命令）都按判定时的有效视角推出交互上下文；P3-06 的轴在命令循环之后按最终的有效上下文处理（map、base 为 0）。CR-05 的共同前置判定不变。
+- **`toggle-map`（地图模式）：**
+  1. 有效上下文为 `map` → `accepted`（关闭），**不检查玩家是否可用**（项目决定，07 表：原版玩家被毁时视角已被被毁视角取代，不会在地图中；P3-11 接入前 Core 可能出现被毁仍在地图中，不能因此关不掉地图）；
+  2. 玩家不可用（CR-05：实体不存在、已被毁、状态不是 7 或待移除；活动为停靠的玩家可以通过）→ `player-unavailable`；
+  3. 有效上下文为 `warp` → `wrong-context`（Warp 的按键上下文没有 `m`）；
+  4. `flight` 或 `base` → `accepted`（打开）。原版只在战役中打开（`0x33504`）；Core 只运行战役切片，练习模式在创建时就不存在，所以这一条恒满足，不建对应原因码。
+
+  接受后有效视角按打开（上一视角 := 有效视角，视角 := 8）或关闭（交换）更新，并投递请求 `map-toggle`。通讯菜单对 `m` 的占用（≥ 22 项的对象列表菜单）由 P3-10 加在第 1 步之前。
+- **`map-point`：** 玩家不可用 → `player-unavailable`；有效上下文不是 `map` → `wrong-context`；否则 `accepted`，在判定时量化：column = min(⌊right × s⌋, s − 1)，row = min(⌊down × s⌋, s − 1)，投递 `map-point` 请求。
+- **`request-warp`（Warp 开始的门禁表，次序如下）：**
+  1. 玩家不可用 → `player-unavailable`；
+  2. 有效上下文为 `warp` 或 `base` → `wrong-context`；
+  3. 有效上下文为 `map` 且有效上一视角为 6（从基地打开的地图）→ `wrong-context`；
+  4. 有效目的地为 null → `no-destination`；
+  5. `warpClock` ≠ 0 且 `warpClock` + 64 × +0xA4 > 时钟 → `cooldown`（相等时通过）；
+  6. c > E → `insufficient-energy`，其中 E 为玩家的 `combat.energy`，c = `0x30d2c`(trunc(`0x56b14`(玩家位置, 有效目的地)))（Warp 开始的第 4、5 步）；c ≤ E 通过（恰够通过）；
+  7. 否则 `accepted`：有效上一视角 := 有效视角，有效视角 := 1，投递 `warp-start` 请求。
+
+  零距离（c = 0）照常接受；标记是否有效不影响门禁（原版从不读标记）。同一 tick 的第二个 `request-warp` 在 `warp` 上下文中为 `wrong-context`，不会两次开始或扣费。通讯菜单对 `w` 的占用（≥ 32 项）由 P3-10 加在第 1 步之前。
+- **地图上下文中的其他命令：** `select-number`、`confirm-selection`、`navigate-selection` 改为 `ignored`/`wrong-context`；P3-06、P3-07 的命令已是 `wrong-context`；`communications`、`launch` 仍为 `not-implemented`（P3-10）。Warp 上下文中 `toggle-map`、`map-point`、`request-warp` 为 `wrong-context`。
+- **内部请求：** P3-02 的 `Request` 联合增加：
+
+  ```ts
+  | { type: 'map-toggle'; commandIndex: number }
+  | { type: 'map-point'; operation: 'hover' | 'select'; pixel: MapPixel; commandIndex: number }
+  | { type: 'warp-start'; commandIndex: number }
+  ```
+
+  它们在请求处理中按投递次序应用，应用时不再判定。玩家位于种类遍历之首，它的请求只排在任务流程投递的请求之后；其前没有能改变上述判定输入（时钟、`warpClock`、玩家位置与能量、目的地）的请求，所以判定结果等于原版在消息处理时的结果。早先投递的 `control`、`launch`、`select-target` 请求按投递次序在它们之前或之后应用，不被追溯改写。
+- **应用：**
+  - **`map-toggle`：** 已提交的视角为 8 时关闭：视角 := 上一视角，上一视角 := 8；否则打开：上一视角 := 视角，视角 := 8，`map.cursor` := `startPixel`。两者都不写左显示屏、`statusDisplay.redraw` 与玩家目标；关回基地不清目标（地图模式）。视角变化经 MW-09 的视角切换函数（地图本身没有规则副作用，6 的副作用归 P3-10）。发出 `map-toggled`。
+  - **`map-point`：** `map.cursor` := `pixel`。hover 到此为止，不发事件。select 继续：`destination` := `0x4c4c0`(pixel)（z = +0.0）；按 MW-07 的选点在 `mapIcons` 中找图标，命中时 z := 该图标记录的 `position.z`，否则 +0.0（ps +0x8C 在此路径上恒存在）；随后按 MW-03 创建或移动标记；发出 `warp-destination-set`。坐标不变的 select 照常重写并发事件。
+  - **`warp-start`**（Warp 开始的提交、派发器的视角写入、`0x3f158(1, old)` 与 `0x50188`，次序如下）：
+    1. `warp.origin` := 玩家位置；`inWarp` := true；玩家目标 := null（不发 `target-changed`，CR-09）；移动块模式 := `'warp'`；L := F(f × +0xA8)（Warp 过程的 `0x50068`，f 由 R(d) 与扇区尺寸得出）；
+    2. 上一视角 := 视角，视角 := 1；`savedLeftPage` := 当前页，页 := 6；
+    3. 路径设立：15 个控制点，点 5–14 各 **2 次世界抽取**（共 20 次，先 x 后 y）；位姿 := 路径在第 1 段、参数 0 处的值，写入玩家的位置与姿态，放置序号加 1；移动块 `atCommandedSpeed` := false、`speed` := 0、`commandedSpeed` := 机型 +0xB8；G := 同一位姿；s、a、c := 0，n := 1，u := 0；`serial` 加 1；
+    4. 发出 `warp-started`，随后在页面改变时发出 `commandIndex` 为 null 的 `left-page-changed`。
+
+    不写能量、`warpClock` 与 `statusDisplay.redraw`（Warp 开始：原版不置重绘；P3-09 spec 原先列入的重绘按此更正）。原版设立中另有 40 次表现抽取，不在 Core 中（MW-12）。
+- **自动选敌：** P3-07 的自动选敌在命令批次之后读**已提交**的视角（请求尚未应用），与原版同帧读取开始前的视角一致；它投递的 `select-target` 排在本 tick 的 `map-toggle`、`warp-start` 之后应用。
+
+#### MW-05 领域事件
+
+```ts
+| { type: 'map-toggled'; tick; open: boolean; viewMode: number; previousViewMode: number; commandIndex: number }
+| { type: 'warp-destination-set'; tick; playerEntityId: EntityId; destination: Vec3; pixel: MapPixel;
+    icon: { entityId: EntityId; kindBit: number } | null;
+    marker: { type: 'created' | 'moved'; entityId: EntityId } | { type: 'missing' }; commandIndex: number }
+| { type: 'warp-started'; tick; playerEntityId: EntityId; serial: number; origin: Vec3; destination: Vec3;
+    distance: number;                       // R(d)：f32 的开始距离
+    check: { cost: number; energy: number }; // 门禁第 6 步的 c 与 E（i32）；是检查量，不是扣费
+    transitLength: number; fromViewMode: number; commandIndex: number }
+| { type: 'warp-completed'; tick; serial: number; viewMode: number; previousViewMode: 1;
+    arrival: WarpArrival | null }           // 玩家实体不存在时为 null（只恢复视角与页面）
+
+interface WarpArrival {
+  playerEntityId: EntityId; origin: Vec3; destination: Vec3; position: Vec3; orientation: Matrix3;
+  error: number;                            // 完成时的 s
+  snapped: EntityId | null;                 // 最近对象吸附所取的对象（可能是玩家自身或标记）；未吸附为 null
+  charge: { distance: number; cost: number; energyBefore: number; energyAfter: number }; // trunc(D)、c、扣费前后的 E（i32）
+  warpClock: number;                        // 新的 +0xC8
+  hostileNear: boolean;                     // 0x3c040：某个种类在 0x93780 中、未被毁、状态 ≥ 7 或为 4 的对象与到达点的距离严格小于玩家机型 +0x0C；供 P3-14 的到达音 10181
+}
+```
+
+| 事件 | 发出时机与语义 |
+|---|---|
+| `map-toggled` | 请求处理中应用 `map-toggle` 时。地图本身没有原版音效 |
+| `warp-destination-set` | 请求处理中应用每个 select 时，坐标不变也发出：对应原版每次左键读取的点击音效 10463（P3-14）。hover 不发 |
+| `warp-started` | 请求处理中应用 `warp-start` 时，在其 `left-page-changed` 之前。对应开始音效 10401 与音频状态切换（P3-14）。`check` 是开始时的门禁量，实际扣费只在完成时 |
+| `warp-completed` | `warp-completion` 阶段完成时，每次 Warp 恰一次，在恢复页面的 `left-page-changed` 之前。耗尽不在此发出：扣费到 0 时由下一次到期的能量更新发出 `energy-depleted`（Warp 过程第 8 步） |
+
+- 字段沿用 CR-06 的通则：脱离世界的快照，不另带 `clock`（时钟恒为 tick × `clockUnitsPerTick`），位置为有限运行时 `Vec3`。同一次 Warp 的开始与完成用 `serial` 关联。
+- **没有取消或中断事件：** 原版没有取消；被毁或救援只是放弃 Warp（MW-09），由 P3-11 的被毁与救援事实表达，Warp 一侧不另造事件。
+- **一个 tick 内的次序：** 请求处理中按请求次序；`warp-completed` 在 `warp-completion` 阶段；比较器的事件字段表随之扩展。
+
+#### MW-06 对象集合与地图可见标志（`object-sets` 阶段）
+
+- **每个 tick 重建**（接触点的 `0x2ede0`）：原版的节流分支只在程序的第一遍执行，Core 每个 tick 都重建，没有刷新历史状态。按种类表次序遍历种类位 0–19（不看状态、活动、被毁与 Warp）：先令 `mapVisible` := false（MW-01：基础值），再把实体 ID 加入 `hostile`（种类在 `0x93780` 中）或 `friendly`（其余）。玩家是 `friendly` 的第一项。
+- **揭示**（`0x2ee60`）是 Core 的一个共享规则函数：`object-sets` 在已提交的视角为 8 时于重建之后调用它；P3-08 的僚机 AI 在任何视角以上一次重建的集合调用同一函数（不另建）。规则按“接触点”：逐个友方 ID（失效的移除，次序不变）置 `mapVisible` := true，r = 其机型 +0x0C；每个 `mapVisible` 为 false 的敌方（失效的移除）在严格的平面距离 D(D(dx²) + D(dy²)) < D(F(r)²) 内（无序比较算在内）时置 true；本次揭示的数目等于敌方集合大小时立即返回。
+- **读者：** 地图步（MW-07）、揭示自身与僚机的目标搜索（P3-08）。目标候选、雷达、碰撞、伤害、停放更新、能量与区域检查都不读它们；不给这些系统加全局迷雾门禁。
+- **没有探索历史**（接触点，已确认，代码；运行佐证交 P3-09/09）：覆盖只来自当前接触点，不存网格或历史。
+
+#### MW-07 帧尾：地图步与 Warp 步
+
+`frame-end` 阶段内的次序：P3-09 的地图步（已提交的视角为 8）或 Warp 步（视角为 1 且玩家实体存在；两者互斥）→ CR-10 的驾驶舱显示步（视角集合不含 8）。
+
+- **地图步**（原版相机步中的 `0x2b8ec` 与帧渲染中的地图绘制 `0x49f8c`）：
+  1. **接触点：** 按种类表次序遍历种类位 0–19：敌方种类（`0x93780`）且 `mapVisible` 为 false 的跳过（友方种类不看可见标志）；`inWarp` 或状态为待移除（6）的跳过；在世界矩形内（含端点，无序算在外）或种类位为 0、1 时保留。
+  2. **图标列表：** 每个接触点一项（MW-02 的 `MapIcon`），位置取当前位置，像素与 `inWorld` 按 `0x4c524`；然后按 `0x4b3a8` 错开重合像素（放大窗口），结果替换 `mapIcons`。错开的次序是规则的一部分（它改变下一 tick 选点命中的图标与 z）：每项有自己的计数 k，开始时为 0；第 0 项从不移动；对 i = 1 … 项数 − 1，从 j = 0 起依次检查 j ≠ i 且第 j 项 `inWorld` 为真的项，第 i 项的像素等于第 j 项时，第 i 项按自身计数的下一步移动、k 加 1，并从 j = 0 重新检查；相对原像素的累计偏移在 k = 0…7 时依次为 (+3, +3)、(−3, +3)、(−3, −3)、(+3, −3)、(+3, 0)、(0, +3)、(−3, 0)、(0, −3)（column、row），k = 8 时回到原像素并结束第 i 项的检查；`inWorld` 不重算。放大窗口的同类错开 `0x4b56c` 只影响绘制，在 projection 中按同一规则计算。
+  3. 光标世界点与放大范围由 `map.cursor` 派生，不写状态。
+- **其他视角的帧尾：** `mapIcons` := 空。
+- **选点**（`0x4c310`，供 MW-04 的 select）：候选为 `inWorld` 且 `kindBit` ≠ 0 的图标，其像素与点击像素在每轴 ±3（含端点）之内；按整数 d = Δcolumn² + Δrow² 取最小，并列取先出现者；没有候选为未命中。
+- **Warp 步**（Warp 过程的 `0x50508` 与 `0x50a28`，每个 tick 一次）：δ = 移动块速度 × 本 tick 的步长（与运动阶段的 `motionStep` 相同）；u、n、路径平移（每完成一段 **2 次世界抽取**）、路径求值、横向偏移、30° 锥、居中 c、误差 s（只在 0.05 < (n + u) ÷ L < 0.95 内累加）、撞墙与钳 1，最后写玩家的位置与姿态（不改放置序号：位姿连续）、G 与 `warp` 的各字段。帧率相关的增量按每 tick 一次执行（MW-12 的差异 3）。
+- **进度：** p = F((n + u) × F(1 ÷ L))，不小于 1 时为 1.0；不存储，由读者计算（原版 `0x509c0` 亦然）。
+
+#### MW-08 Warp 完成（`warp-completion` 阶段）
+
+- **触发：** 已提交的视角为 1，且以 `warp` 当前值算得的 p 为 1.0。它读的是上一次帧尾留下的进度，或同一 tick 开始时复位的进度（f × +0xA8 ≤ 1 时在开始的 tick 完成）；完成检查自身不推进进度（数值与阶段）。原版的视角 2 分支没有发送者，不实现。
+- **写入**（Warp 过程完成的第 2–9 步）：
+  1. v := 上一视角（8 改为 0xC）；上一视角 := 1；视角 := v；经 MW-09 恢复 `savedLeftPage`（5 改为 0）；页面改变时的 `left-page-changed`（`commandIndex` 为 null）在 `warp-completed` 之后发出（MW-05）。
+  2. 以下只在玩家实体存在时：玩家位置 := 目的地；X 先向扇区角拉近（`0x3a6e8`，扇区角偏移为半个扇区，高概率）再加 ±k（k = F((组 + 1) × 5000)，**第 1 次世界抽取** rand % 2 定号）；按种类表次序在种类位 0–25 的全部实体中（不看状态、活动、被毁与种类）找 F(dx² + dy² + dz²) 最小者，严格小于 360000 时 X := 其位置 + (0, 0, 600)；玩家位置 := X，放置序号加 1；**第 2 次世界抽取**：姿态 := `startupRotations[rand % 64]`。
+  3. `warpClock` := 时钟 + t（+0xA4 ≠ 0 时 t = trunc(64 × +0xA4 × min(1, D × (1 ÷ 30000)))，不大于 0x280 时取 0x280；+0xA4 = 0 时 t = 0），D = F(`0x56b14`(X, origin))；移动块模式 := `'craft'`、`atCommandedSpeed` := true、`speed` 与 `commandedSpeed` := `maximumSpeed`。
+  4. 扣费：E := max(trunc(E − (c + c × s × 0.5)), 0)，c = `0x30d2c`(trunc(D))。不调用耗尽处理，不改 P3-07 的 `depleted` 锁存。
+  5. `inWarp` := false；按 `0x3c040` 求 `hostileNear`（敌方类种类 `0x93780`、未被毁、状态 ≥ 7 或为 4，与 X 的距离严格小于**玩家**机型的 +0x0C；Warp 过程第 9 步）；发出 `warp-completed`。
+- **不写：** 目的地、标记、玩家目标与 `warp` 的各字段（下一次开始重置）。区域检查在同一 tick 之后运行，已用到达位置。
+- **CR-11 差异 1 的适用：** 最近对象搜索看不到归表现层的效果对象；对照只按该差异的原批准范围披露。
+
+#### MW-09 视角切换与其他写入者
+
+- **视角切换函数：** Core 提供一个内部静态函数 `switchView(world, newMode, oldMode)`，对应 `0x3f158` 中有规则效果的部分：进入 1 时保存页并设页 6（只由 `warp-start` 调用，随后的路径设立在 MW-04 中）；离开 1 时恢复 `savedLeftPage`（5 改为 0）；涉及 6 时的 `0x4cd68`（置 `statusDisplay.redraw` 并重新应用页面）由 P3-10 在同一函数中实现；地图（8）没有规则副作用。改变视角的规则（本任务的开关、开始与完成，P3-10 的停靠与离港，P3-11 的被毁与救援）都调用它，不各自复制页面规则。
+- **被毁视角取代地图与 Warp**（地图模式；P3-09 spec 原先“视角已是 8 则不切换”的读法按此更正）：P3-11 的 `0x32d74` 从地图或 Warp 进入 0x11/子模式 8，上一视角为 8 或 1。从 Warp 被毁或救援时 Warp 被**放弃**：不到达、不扣费、`warpClock` 不变，`inWarp` 保持 true 直到下一次完成的 Warp（**照原版复现**：区域中心仍为目的地，P3-08 的 AI 目标选择继续排除玩家；下一次开始不检查 `inWarp`）。
+- **能量耗尽：** 模式 3 中能量锁定不起作用，Warp 继续；完成照常扣费并钳 0。
+- **停靠与暂停：** 停靠在视角 0 与 1 中被拒（P3-10）；暂停只停 Runtime，继续后接着同一 Warp，不补跑。
+
+#### MW-10 区域检查的中心
+
+`activeAreaCentre`：玩家实体存在且 `inWarp` 为 true 时为 `map.destination`（此时必非 null，否则 Core 故障）；其余按 P3-06。
+
+#### MW-11 Projection 与 Render State
+
+- **`map` 分区**（取代 `MapMarkerClass`、`MapVisibility` 的 `never` 占位与原 `MapReady` 形状）：
+
+  ```ts
+  type MapPartition = NotImplementedPartition | { readiness: 'ready'; player: MapPlayer | null }; // 无玩家实体时 null
+  type MapPlayer =                                  // 已提交的视角为 8 时 open，否则 closed
+    | { state: 'closed'; destination: Vec3 | null; markerEntityId: EntityId | null; warpRequest: WarpRequestReading }
+    | MapOpen;
+  interface MapOpen {
+    state: 'open';
+    openedFromBase: boolean;                        // 上一视角为 6
+    geometry: { main: PixelRect; information: PixelRect; zoom: PixelRect;
+                pixelsPerUnit: { x: number; y: number }; unitsPerPixel: { x: number; y: number };
+                zoomPixelsPerUnit: { x: number; y: number }; world: { minX: number; minY: number; maxX: number; maxY: number } };
+    cursor: { pixel: MapPixel; world: Vec3; zoomBounds: { left: number; right: number; top: number; bottom: number } }; // f32；z 为 0
+    contacts: readonly MapContact[];               // mapIcons 的次序
+    zoomMembers: readonly MapZoomMember[];         // 0x4c5ec 为 1 的项，同一次序
+    information: { capacity: number; rows: readonly MapInformationRow[] }; // 行号 ≥ capacity 的计数行原版画在区域之外
+    labels: readonly MapLabel[];
+    line: { from: MapPoint; to: MapPixel };        // 玩家的投影像素（可在主地图外，绘制时裁剪）→ 光标像素（0x4c674）
+    destination: { position: Vec3; pixel: MapPoint; inWorld: boolean; cost: MapCostReading } | null;
+    cursorCost: MapCostReading;
+    markerEntityId: EntityId | null;
+    warpRequest: WarpRequestReading;
+  }
+  interface MapContact {
+    entityId: EntityId; kindBit: number; name: NameReference; position: Vec3; pixel: MapPoint; inWorld: boolean;
+    class: 'player' | 'friendly' | 'hostile';     // 位 0；种类在 0x6c87f 中；其余（即 0x93780）
+    target: boolean;                               // 是玩家目标（原版画在最上层）
+    coverage: { radius: number; style: 'disc' | 'ring' } | null; // trunc(D(F(+0x0C) × F(ppX)))；0 时 null；player/friendly 为 disc
+  }
+  interface MapZoomMember { entityId: EntityId; pixel: MapPoint;  // 相对放大窗口原点的像素，经 0x4b56c 错开
+    boxed: boolean;                                // 选中方框：目的地非 null 且三轴 |trunc(D(位置 − 目的地))| < 1000
+    distance: number | null }                      // 0x4b98c 的编号值：到玩家的 trunc(三维距离)；玩家自身为 null
+  type MapInformationRow =
+    | { type: 'unit-name'; entityId: EntityId; kindBit: number; name: NameReference }
+    | { type: 'unit-values'; entityId: EntityId; shield: ResourceReading; hull: ResourceReading; energy: ResourceReading }
+    | { type: 'count'; kindBit: 7 | 8 | 9 | 10 | 19 | 13 | 14 | 16 | 12; count: number };  // 原版次序
+  interface MapLabel { entityId: EntityId; name: NameReference; pixel: MapPoint; playerOrWingman: boolean }
+  interface MapCostReading { cost: number; energy: number; percent: number | null } // c、E（i32）；percent = max(trunc(c ÷ E × 100), 1)，E = 0 时 null
+  type WarpRequestReading = { accepted: true }
+    | { accepted: false; reason: 'player-unavailable' | 'wrong-context' | 'no-destination' | 'cooldown' | 'insufficient-energy' };
+  ```
+
+  - **规则来源：** 接触点、覆盖与类按“接触点”；放大窗口、信息行（单位行：种类在 `0x6c87f` 中且不是 `0x4000`，先名称行，容量允许时再数值行；其余计入 9 个按种类的计数；单位行达到容量后不再列出也不计数；计数行不受容量限制）、编号、标签（种类在 `0x6887f` 中且 `inWorld`，逐单位，不分组）与连线按“放大窗口”；读数按“Warp 开始”的地图读数，用玩家的图标位置与光标世界点或目的地（含 z）。`warpRequest` 是以已提交的状态判定一个 `request-warp` 的结果（MW-04 的门禁表），读者不会因此改变状态。
+  - **信息边界：** 地图关闭时只给出目的地、标记与 `warpRequest`，不给接触点与覆盖。目标、雷达与 Render State 保留 P3-07 的独立规则。没有探索/可见性网格。所选目标没有连线或范围（原版只有覆盖圆盘与敌方圆环）。
+  - **数值读数而非百分比：** 信息行给出 `{ current, maximum }`，百分比的 `%.0f` 格式与 `maximum` 为 0 时的处理归 P3-13（原版对容量 0 不设防，会触发 x87 异常，可达性未查）。颜色阈值（≥ 100、67–99）由 P3-13 按 `percent` 判定。
+  - **编号开关不在 Core：** 右键的编号开关与去抖没有规则读者（放大窗口），归 P3-13 的呈现状态；Core 只给出编号的数值。
+- **`flight.combat`：** `CombatPlayer` 增加
+
+  ```ts
+  warp: {
+    indicator: boolean;   // 12 型 Warp 指示灯：warpClock = 0，或 warpClock + 64 × +0xA4 < 时钟（严格）；战役门禁恒成立
+    page: { angle: number; error: number; completion: number; centring: number } | null; // 视角 1 时的 a、s、p、c（f32，[0, 1]）；其他视角 null
+  }
+  ```
+
+  页 6 的三条带标签读数与轨迹的数值来源都在 `page` 中，轨迹的历史与刷新周期 0x10 归 P3-13。标记作为目标时沿用 `CombatTarget`（种类 25、名称 `map-marker`、`speed` 0、`shield` null），T7 的标记分支由 P3-13 绘制。
+- **Render State：** 增加 `warp: { serial: number; progress: number; segments: number; fraction: number; length: number; path: readonly Vec3[] } | null`：视角为 1 时给出，供 P3-12 的隧道效果；其余为 null。标记以 `map-marker` 表现列出。放置序号在 Warp 开始、到达与标记移动时加 1。
+
+#### MW-12 随机数、前置研究与已批准的差异
+
+- **世界抽取**（数值与阶段；都按原版的 rand 映射 `rand % n`）：首次 select 1 次（标记姿态，请求处理）；每次 Warp 开始 20 次（路径点 5–14，请求处理）；每完成一段 2 次（帧尾）；每次完成 2 次（号与姿态，`warp-completion`）。拒绝的请求不抽取。
+- **前置研究（实现依赖它的规则之前须写入 executable 并达到已确认（代码））：**
+  - **R-A 启动旋转表：** `0x568b0` 生成 `0x1b0a10` 的 64 个旋转（≥ 128 次抽取，前向行来自 `0x56b8c`，R0/R1 以闭式补全）的完整构造、存储精度，以及它相对 `0x257a0` 播种的先后。形状已定：`startupRotations` 恰 64 个 f32 行矩阵，静态、不进快照。若在播种之前（C 库的缺省序列），表是确定的，Core 作为代码规则重现；若在播种之后，Core 在世界创建时以由 `seed` 派生、与世界 RNG 分开的启动流生成（差异 6）。阻塞标记的创建（MW-03）与到达姿态（MW-08）。
+  - **R-B 隧道路径：** `0x51618` 的参数（0.8、2000、300）与控制点的存储类型、`0x513e0` 与样条 `0x517f4` 的求值及由切线得出的行。形状已定（MW-02）。阻塞 Warp 开始的位姿（MW-04）与 Warp 步（MW-07）。
+
+  两项都是原版代码事实，不由运行读数或默认值代替；研究之前相应实现保持阻塞。
+- **已批准的差异**（写入 Core 模块说明与对照结论；对照时进入配对条件）：
+  1. **有序命令模型（07 表）：** 同一 tick 中首次 select 之后的 `request-warp` 被接受（原版按键时就因 ps +0x00 为 0 拒绝）；`request-warp` 或关闭地图之后的 `map-point` 为 `wrong-context`（原版同帧按住的左键在开始或关闭之后仍改写目的地）；同一 tick 先打开再 select 时图标列表为空（原版不可达）。
+  2. **表现随机不进世界 RNG（扩展 CR-11 差异 2）：** 开始时的 40 次表现抽取与效果例程的抽取不在 Core 中；原版规则抽取与表现抽取在同一生成器中的交错次序不复现。
+  3. **帧率相关的规则按每 tick 一次（tick 映射）：** 原版的 Warp 步每个渲染帧执行一次，误差 s 的增量、撞墙惩罚与每段丢弃的超出量都按帧计，不按时间缩放。Core 每个 tick 执行一次，等于原版在每帧 `clockUnitsPerTick` 个时钟单位（默认 32 帧/秒）下的结果；与原版实际帧率下的时长与误差的偏离由 D-02 的判据与 P3-09/24 的运行对照判定。
+  4. **E = 0 的地图读数：** 原版对 c ÷ E 触发未屏蔽的 x87 异常，后果未确认（交 P3-09/09 的运行核对）；Core 的 `percent` 为 null，不复现异常。若运行证实原版有确定的可见结果，作为本差异披露，改变须另行批准。
+  5. **图标列表不设项目截断：** 原版的列表数组无上界检查（256 项触及计数字），切片不可达（高概率）；Core 不复现越界，列表受实体上限约束（MW-14）。
+  6. **启动旋转表的来源**（仅当 R-A 证实它在播种之后生成）：每个世界一张，由独立的启动流生成，而原版每次运行程序一张、跨任务共用；单次到达的姿态分布相同。
+  7. **能量不足被拒时不写出发点：** 原版拒绝前已写 `0x1864c8`，但下一次被接受的开始会重写它，之前没有读者；Core 原子拒绝。
+  8. **地图开关在玩家不可用时仍可关闭**（MW-04），以及重绘间隔不是每 tick 时拒绝创建（MW-01）：两者都是原版不可达或切片外的状态。
+- 尚未确认的运行事实（时长、误差取值、到达分布、E = 0 读数的后果、历史探索的运行佐证）由 P3-09/09、24 的运行取得，不在本节以默认值定稿。
+
+#### MW-13 系统流水线
+
+阶段表不变（数值与阶段确认原有位置）。各阶段中 P3-09 的部分：
+
+| 阶段 | P3-09 的部分 |
+|---|---|
+| `object-update` | 玩家的命令批次按有效上下文判定（MW-04）；轴按最终有效上下文；标记的首次自身更新 |
+| `request-handling` | `map-toggle`、`map-point`（含标记的创建与移动）、`warp-start`（含路径设立） |
+| `movement` | 玩家在 Warp 中按 P3-06 的模式 3 积分；跳过 `marker` 模式 |
+| `object-sets` | MW-06 |
+| `warp-completion` | MW-08 |
+| `area-check` | MW-10 |
+| `frame-end` | 地图步或 Warp 步，在 CR-10 的显示步之前（MW-07） |
+
+#### MW-14 容量、快照与版本
+
+- **容量：** 每 tick 新增的事件至多 64（`map-toggled` 与 `warp-destination-set` 合计不超过命令数）+ 1 + 1 + 2（两次 `left-page-changed`），请求至多 64 + 1；与 CR-14 的合计分别为 8,328 与 3,588，仍在 `eventsPerTick`、`requestsPerTick` 之内。标记至多 1 个；图标列表与两个集合的项数不超过机体数，因而不超过 `entities`。快照新增的图标列表在实体上限下至多 2,048 项、每项约 170 字符（约 0.35 MiB），两个集合合计至多 2,048 个 ID（约 12 KiB），`warp` 约 1 KiB；与 CR-14 的约 10.5 MiB 合计约 10.9 MiB，仍在 `canonicalTextLength` 之内。`CORE_LIMITS` 的取值不变，注释随之更新。
+- **快照：** 覆盖 MW-02、MW-03 的全部新状态（`player.map`、`savedLeftPage`、`warp`、实体的 `mapVisible`、`objectSets`、`mapIcons`，以及标记的战斗、移动块、表现与名称变体）。静态的 `WorldRuleData.map` 与 `startupRotations` 不进快照。
+- **版本：** `RULES_VERSION` 与快照格式版本相对实现时的当前值各递增一次（由首个实现共享形状的子任务，P3-09/12）；replay 记录的形状不变（`mapGeometry` 是调用输入，经 setupHash 与内容身份绑定），replay 格式版本不变。旧规则版本的记录一律拒绝。
+
+#### MW-15 消费者接线
+
+比较器的事件字段表（四个新事件）、快照显式字段表、录制入口与 replay 的 `mapGeometry` 输入校验、开发事件日志与命令反馈（两个新原因码）、UI 桥接的关键状态（地图开/关与就绪、目的地、`warpRequest` 的结果与原因、视角 1 与 `serial`）随实现同步更新；地图页只消费 `map` 分区。纯读取不回写世界。
+
+#### MW-16 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-08 | 复用 MW-06 的集合、`mapVisible` 与揭示函数；僚机 AI 的 `0x62250`/`0x62760`；AI 对 ps +0x00 与目的地的读取（`0x61740` 等）；`inWarp`（含卡住时）对 AI 目标选择的排除；AI 的 Warp 离开消息 |
+| P3-10 | 通讯菜单对 `m`、`w` 的占用优先于 MW-04 的判定；地图标签按对象 +0x17C 闪烁（`0x3bed0` 写入）时在 `MapLabel` 中加入该状态；从基地打开的地图期间基地帧例程不运行（视角不是 6）而自动选敌照常；离港把视角设为 max(上一视角, 0xC)；从地图停靠（视角 6、上一视角 8、清目标）；涉及 6 的 `0x4cd68` 在 MW-09 的函数中实现；同帧停靠的边缘情形 |
+| P3-11 | 被毁与救援经 MW-09 改变视角；放弃 Warp 时 `inWarp` 保持；视角 1 期间推迟结算；拆除时移除标记 |
+| P3-12 | Render State 的 `warp`（路径、进度）与标记的表现；隧道效果用自己的随机源；放置序号 |
+| P3-13 | `map` 分区与 `flight.combat.warp` 的绘制；编号开关与去抖（P3-05 的右键）；信息行的百分比格式与容量 0；E = 0 读数的显示；页 6 轨迹的历史；指示灯 |
+| P3-14 | 10463 对每个 `warp-destination-set`；10401 与音频状态切换对 `warp-started`；10181 只在 `hostileNear` 时；完成时的音频状态恢复 |
+| P3-05 | 右键编号不需要 Core 命令（[P3-05 审批](../05/spec.md#审批)的交接按此同步） |
+| 工程文档 | [Core 模块说明](../../../engineering/modules/core.md#交接)中“视角切换（`0x4cd68`）须置 `statusDisplay.redraw`”只适用于进出基地，不适用于飞行与地图之间以及 Warp 开始；由 P3-09/26 更正 |
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -1104,3 +1459,23 @@ type Attacker =
 **2026-10-10 修订（P3-05 的速度档位命令）：** 用户于 2026-10-10 在 P3-05 goal 执行中明确批准本修订（对 P3-05 协调者“是否批准这两份 spec 修订？”（P3-02 与 P3-06）选择“批准修订”）。修订只新增“P3-05 的契约修订（速度档位命令）”一节与本条记录：命令联合新增 `speed-preset`，普通飞行的档位从 `select-number` 改接到它，`rulesVersion` 与 replay 格式版本各递增一次。没有新增 S/AC 编号，其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。
 
 **2026-10-13 说明（P3-05 合入 main）：** P3-05 与 P3-07 在各自分支上都把 `RULES_VERSION` 从 2 递增为 3。合入时按“相对实际集成基线各递增一次”取 4；replay 格式版本为 2（只由 P3-05 递增），快照格式版本为 3（只由 P3-07 递增）。只改“P3-05 的契约修订（速度档位命令）”的版本一项的措辞，行为、契约与验收要求不变，未重跑 review-spec。
+
+**2026-10-14 修订（P3-09 的 D-01，按用户 2026-10-14 的预先授权由 agent 定稿，待用户事后审阅）：**
+
+- **范围：** 只新增“P3-09 的契约修订（D-01）”一节（MW-01 至 MW-16）与本条记录，并改了 front matter 的日期。前文各节与 P3-05、P3-06、P3-07 的修订已定的项不变；本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **授权出处：** [P3-09 goal 的审批节](../09/goal.md#审批)记录了用户 2026-10-14 的原话与协调者据此作出的预先授权：关卡 08（D-01）由 agent 按研究证据取推荐方案定稿，如实记为“按预先授权由 agent 定稿、待用户事后审阅”。这不是用户本人对本修订的批准；用户审阅时如有异议，按正常流程修订本 spec 与受影响的实现。授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们：表现随机不进 Core 正是[总计划 §5](../../master-plan.md#5-状态管理与通信约定)的要求，与原版不同之处都作为已批准差异披露（MW-12）。
+- **定稿依据：** P3-09 子任务 01 至 07 的完成证据与 [07 交 08 的汇总表](../09/subtasks/07-numerics-stages-original-docs.md#完成证据)；原版事实在 [executable 的 P3-09 节](../../../original/formats/executable.md#strategic-map-and-warp-p3-09)。
+- **所选方案与理由；被排除的方案：**
+  1. **三种命令经内部请求在请求处理中提交，判定用有效上下文（MW-04）。** 原版在玩家更新中轮询、在消息循环中应用，自动选敌读开始前的视角；按请求提交保留这一次序，有效上下文满足 P3-09 spec 的有序门禁。被排除：判定时立即写视角（自动选敌会看到新视角，与原版不同）；在循环外缓存入口上下文（P3-09 spec 明确禁止）。
+  2. **选择资格由 `destination !== null` 派生，标记 ID 由种类表查得（MW-02、MW-03）。** 原版只有首次选点置 ps +0x00、只有实例化清零，与目的地同生共死。被排除：另存布尔值与标记 ID（同一事实两份）。
+  3. **Core 拥有并序列化图标列表，含错开（MW-02、MW-07）。** 选点读的是上一帧绘制留下的列表，错开会改变命中与 z。被排除：选点时按当前实体重新查询（与原版的帧次不同）；由渲染器提供（违反 Core 的所有权）。
+  4. **集合与可见标志跨 tick 保留并进快照，揭示是共享函数（MW-06）。** 僚机 AI 在下一帧重建之前读取它们。被排除：每次需要时临时派生（读到的不是上一次重建的集合）；等 P3-08 建设（P3-09 spec 要求本任务交付）。
+  5. **隧道路径、转向、误差等全部 Warp 过程量为规则状态，用世界 RNG，每 tick 一次（MW-02、MW-07、MW-12 的差异 3）。** 它们决定位姿、到达与扣费。被排除：只把进度移入 Core（P3-09 spec 原方向，研究证明不足）；按时间缩放误差增量（发明原版没有的规则）。
+  6. **`inWarp` 在被毁或救援放弃 Warp 后保持（MW-09）。** 这是已确认的原版行为，影响区域中心与 AI。被排除：放弃时清除（无依据的差异）。
+  7. **到达不另存锁定的目的地（MW-08）。** 原版开始不锁定目的地；项目中 Warp 期间没有能改写目的地的命令，读实时值与原版等价。被排除：开始时冻结一份目的地（同一事实两份）。
+  8. **E = 0 的地图读数给出 null（MW-11、MW-12 的差异 4）。** 原版的后果未确认，交运行核对。被排除：沿用原版异常（会让 Core 故障）；给出任意百分比（发明数值）。
+  9. **地图几何以 `{ id, content }` 输入，静态派生量进 `WorldRuleData`（MW-01）。** 与 CR-01 的规则输入一致；三个字段都是规则数据，setupHash 覆盖完整内容。被排除：调用者先提取比例再传入（setupHash 不再绑定导入内容）。
+  10. **记录 +0x7C 不导入（MW-01）。** 对象记录读取器已拒绝其非零值，切片全为 0，基础值恒为 false。被排除：本次加入任务内容（没有切片需要，徒增 schema 变化）。
+  11. **编号开关不进 Core（MW-11）。** 研究穷举后它没有规则读者。被排除：P3-05 原先交接的新 Core 命令。
+  12. **地图开关在地图中先于玩家可用性判定（MW-04）。** 原版被毁时被毁视角已取代地图；P3-11 接入前避免地图关不掉。被排除：沿用 CR-05 的次序。
+- **前置研究：** MW-12 的 R-A（启动旋转表）与 R-B（隧道路径的求值）是执行 07 后仍未读到的原版代码事实，形状已定，依赖它们的实现须等研究写入 executable 后再开始；这一阻塞交 P3-09 的协调者安排。
