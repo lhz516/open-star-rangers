@@ -1130,7 +1130,7 @@ interface WarpArrival {
 
 - **地图步**（原版相机步中的 `0x2b8ec` 与帧渲染中的地图绘制 `0x49f8c`）：
   1. **接触点：** 按种类表次序遍历种类位 0–19：敌方种类（`0x93780`）且 `mapVisible` 为 false 的跳过（友方种类不看可见标志）；`inWarp` 或状态为待移除（6）的跳过；在世界矩形内（含端点，无序算在外）或种类位为 0、1 时保留。
-  2. **图标列表：** 每个接触点一项（MW-02 的 `MapIcon`），位置取当前位置，像素与 `inWorld` 按 `0x4c524`；然后按 `0x4b3a8` 错开重合像素（放大窗口），结果替换 `mapIcons`。错开的次序是规则的一部分（它改变下一 tick 选点命中的图标与 z）：每项有自己的计数 k，开始时为 0；第 0 项从不移动；对 i = 1 … 项数 − 1，从 j = 0 起依次检查 j ≠ i 且第 j 项 `inWorld` 为真的项，第 i 项的像素等于第 j 项时，第 i 项按自身计数的下一步移动、k 加 1，并从 j = 0 重新检查；相对原像素的累计偏移在 k = 0…7 时依次为 (+3, +3)、(−3, +3)、(−3, −3)、(+3, −3)、(+3, 0)、(0, +3)、(−3, 0)、(0, −3)（column、row），k = 8 时回到原像素并结束第 i 项的检查；`inWorld` 不重算。放大窗口的同类错开 `0x4b56c` 只影响绘制，在 projection 中按同一规则计算。
+  2. **图标列表：** 每个接触点一项（MW-02 的 `MapIcon`），位置取当前位置，像素与 `inWorld` 按 `0x4c524`；然后按 `0x4b3a8` 错开重合像素（放大窗口），结果替换 `mapIcons`。错开的次序是规则的一部分（它改变下一 tick 选点命中的图标与 z）：每项有自己的计数 k，开始时为 0；第 0 项从不移动；对 i = 1 … 项数 − 1，从 j = 0 起依次检查 j ≠ i 且第 j 项 `inWorld` 为真的项，第 i 项的像素等于第 j 项时，第 i 项按自身计数的下一步移动、k 加 1，并从 j = 0 重新检查；相对原像素的累计偏移在 k = 0…7 时依次为 (+3, +3)、(−3, +3)、(−3, −3)、(+3, −3)、(+3, 0)、(0, +3)、(−3, 0)、(0, −3)（column、row），k = 8 时回到原像素并结束第 i 项的检查；`inWorld` 不重算。放大窗口的同类错开 `0x4b56c` 按 HUD 图标记录（`0x1a98e0`，按种类）的宽高错开，只影响绘制，没有规则读者，由 P3-13 在绘制中实现；projection 给出未错开的像素（2026-10-14 执行中按预先授权更正，审批第 14 项）。
   3. 光标世界点与放大范围由 `map.cursor` 派生，不写状态。
 - **其他视角的帧尾：** `mapIcons` := 空。
 - **选点**（`0x4c310`，供 MW-04 的 select）：候选为 `inWorld` 且 `kindBit` ≠ 0 的图标，其像素与点击像素在每轴 ±3（含端点）之内；按整数 d = Δcolumn² + Δrow² 取最小，并列取先出现者；没有候选为未命中。
@@ -1180,7 +1180,7 @@ interface WarpArrival {
     zoomMembers: readonly MapZoomMember[];         // 0x4c5ec 为 1 的项，同一次序
     information: { capacity: number; rows: readonly MapInformationRow[] }; // 行号 ≥ capacity 的计数行原版画在区域之外
     labels: readonly MapLabel[];
-    line: { from: MapPoint; to: MapPixel };        // 玩家的投影像素（可在主地图外，绘制时裁剪）→ 光标像素（0x4c674）
+    line: { from: MapPoint; to: MapPixel };        // 玩家的投影像素（可在主地图外，绘制时裁剪）→ 光标像素（0x4c674）；玩家没有图标时（P3-11 接入前不可达）取玩家当前位置的投影，读数也从当前位置计算，放大窗口距离为 null（项目规则，审批第 14 项）
     destination: { position: Vec3; pixel: MapPoint; inWorld: boolean; cost: MapCostReading } | null;
     cursorCost: MapCostReading;
     markerEntityId: EntityId | null;
@@ -1192,7 +1192,7 @@ interface WarpArrival {
     target: boolean;                               // 是玩家目标（原版画在最上层）
     coverage: { radius: number; style: 'disc' | 'ring' } | null; // trunc(D(F(+0x0C) × F(ppX)))；0 时 null；player/friendly 为 disc
   }
-  interface MapZoomMember { entityId: EntityId; pixel: MapPoint;  // 相对放大窗口原点的像素，经 0x4b56c 错开
+  interface MapZoomMember { entityId: EntityId; pixel: MapPoint;  // 相对放大窗口原点的像素，即 0x4c5ec 的结果；0x4b56c 的错开由 P3-13 绘制
     boxed: boolean;                                // 选中方框：目的地非 null 且三轴 |trunc(D(位置 − 目的地))| < 1000
     distance: number | null }                      // 0x4b98c 的编号值：到玩家的 trunc(三维距离)；玩家自身为 null
   type MapInformationRow =
@@ -1480,4 +1480,5 @@ interface WarpArrival {
   11. **编号开关不进 Core（MW-11）。** 研究穷举后它没有规则读者。被排除：P3-05 原先交接的新 Core 命令。
   12. **地图开关在地图中先于玩家可用性判定（MW-04）。** 原版被毁时被毁视角已取代地图；P3-11 接入前避免地图关不掉。被排除：沿用 CR-05 的次序。
   13. **`warp-start` 排在同批的玩家控制与发射之后（MW-04、MW-12 的差异 9；2026-10-14 执行中由 P3-09 协调者按同一预先授权补定）。** P3-09/17 发现按投递次序时 `[速度归零, request-warp]` 使 Core 故障；所选次序等于原版按键分帧的结果。被排除：保留故障；在控制路径按模式跳过（见差异 9）。
+  14. **放大窗口像素不含 `0x4b56c` 的错开；玩家没有图标时的读数（MW-11；2026-10-14 执行中由 P3-09 协调者按同一预先授权补定）。** P3-09/19 发现 `0x4b56c` 依赖 Core 没有的 HUD 图标尺寸且没有规则读者，与编号开关同属呈现，交 P3-13；所选方案不改变 P3-03 的输入与版本。被排除：把图标尺寸加入地图规则数据并在 Core 中错开（增加输入与版本，只为绘制）。玩家没有图标只在 P3-11 的被毁/放弃 Warp 状态出现，原版研究表明玩家总有图标；连线与读数改用玩家当前位置，放大窗口距离为 null，P3-11 接入时复核。被排除：把连线与读数改为可空（为不可达状态扩大消费者分支）。
 - **前置研究：** MW-12 的 R-A（启动旋转表）与 R-B（隧道路径的求值）是执行 07 后仍未读到的原版代码事实，形状已定，依赖它们的实现须等研究写入 executable 后再开始；这一阻塞交 P3-09 的协调者安排。
