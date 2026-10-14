@@ -44,6 +44,10 @@ updated: 2026-10-14
 - `e2e/support/**`：合成包版本同步（如需）。
 - `docs/engineering/modules/content.md`、`docs/guides/local-import.md`、`docs/guides/tools.md`：导入、版本与工具用法。
 - `local/research/p3-09/import-check/**`：私有核对输出（被忽略）。
+- `src/app/import/import-pipeline.test.ts`、`e2e/import-worker.spec.ts`：转换器版本、资产数量与映射次序的固定断言（协调者 2026-10-14 扩大范围）。
+- `src/original-data/source-error.ts`：仪表记录数量的专用限值名（同上）。
+- `src/original-data/source-mapping.ts`、`src/original-data/source-mapping.test.ts`：`data` 类来源允许 CCKD（同上）。
+- `docs/engineering/modules/workers.md`、`docs/engineering/modules/original-data.md`：新来源类型与版本的说明（同上）。
 
 ## 验收标准
 
