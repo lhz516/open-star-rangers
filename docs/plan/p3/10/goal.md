@@ -86,7 +86,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
 | [01-menus-delivery-research.md](./subtasks/01-menus-delivery-research.md) | — | completed |
-| [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | in-progress |
+| [02-radio-incoming-research.md](./subtasks/02-radio-incoming-research.md) | — | completed |
 | [03-reactions-reports-research.md](./subtasks/03-reactions-reports-research.md) | — | completed |
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | in-progress |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | in-progress |
@@ -117,6 +117,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-14 — 研究结论冲突，交 06 闭合：** 03 认定 `0x3c91c` 头像分配不可达、非僚机说话者声部恒为 0；02 发现分配器 `0x520d4` 把 +0x180 写为 −1，首次说话必经 `0x3c91c` 抽取头像（rand % 3 或 5，`0x3bed0` 中也在档案检查之前）。两者都已入各自完成证据。06 须以原生指令复核分配器写入并统一结论，同时修正 03 的抽取计数与 executable C2；07、08 以 06 的统一结论为准。
 
 ## 审批
 
