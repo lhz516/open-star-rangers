@@ -36,6 +36,7 @@ updated: 2026-10-14
 
 - `e2e/mission-flow.development.spec.ts`、`e2e/mission-flow.production.spec.ts`
 - `e2e/support/**`：观察与合成包辅助。
+- `src/original-data/conversion/production-rule-data.test-support.ts`（只改 `productionCraftInfo()` 的玩家记录，使合成包可完成 Warp）与 `src/ui/dev/mission-diagnostics.test.ts`（随之改变的期望）（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 
