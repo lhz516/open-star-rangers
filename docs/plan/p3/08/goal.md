@@ -72,7 +72,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 |---|---|---|
 | [01-selection-closure-research.md](./subtasks/01-selection-closure-research.md) | — | in-progress |
 | [02-interpreter-scripts-research.md](./subtasks/02-interpreter-scripts-research.md) | — | in-progress |
-| [03-piloting-targeting-firing-research.md](./subtasks/03-piloting-targeting-firing-research.md) | — | in-progress |
+| [03-piloting-targeting-firing-research.md](./subtasks/03-piloting-targeting-firing-research.md) | — | completed |
 | [04-wingman-commands-research.md](./subtasks/04-wingman-commands-research.md) | — | pending |
 | [05-parked-sets-departure-research.md](./subtasks/05-parked-sets-departure-research.md) | — | pending |
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | pending |
