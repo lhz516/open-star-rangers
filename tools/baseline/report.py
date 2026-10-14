@@ -76,9 +76,10 @@ def _passed(value, where):
 
 
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
-                 cleanup, cancelled=False, failures=(), stimuli=None):
+                 cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None):
     """The report dict. `run_end` None marks an unfinished run (the state a report is first written in). `stimuli`,
-    the records of the stimuli applied or attempted, is reported only for a recipe that declares stimuli."""
+    the records of the stimuli applied or attempted, is reported only for a recipe that declares stimuli;
+    `skipped_hits`, the breakpoint hits stop conditions rejected, only for a recipe with a stop condition."""
     if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("report-invalid", "runId")
     tool = _section(tool, "tool")
@@ -117,6 +118,10 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         "requiredQualified": sum(sample.qualified and (sample.pause, sample.field) in required for sample in samples),
     }
     extra = {}
+    if any(pause.stop.when is not None for pause in recipe.pauses):
+        if type(skipped_hits) is not int or skipped_hits < 0:
+            raise BaselineError("report-invalid", "skippedHits")
+        counts["skippedHits"] = skipped_hits
     if recipe.stimuli:
         records = _plain(list(stimuli or ()), "stimuli")
         if any(type(record) is not dict for record in records):

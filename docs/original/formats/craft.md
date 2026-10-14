@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-10
+updated: 2026-10-11
 related: [U-001, U-008, U-022, U-026, U-027]
 ---
 
@@ -291,6 +291,19 @@ What the combat code does with each value (Confirmed, code, from native instruct
 | Craft | +0xCC, +0xD4, +0xDC | Mount lists 0 (main weapons, channel 0), 1 (missiles, channel 1) and 2 (channel 2, AI only) | [W2](./executable.md#w2-the-three-mount-lists--confirmed-code-slice-contents-confirmed-data) |
 | DEBRIS | +0x00–+0x08 | Negated weights of the source's rows for the fragment's offset and launch direction | [X6](./executable.md#x6-discriminator-3-fragments-mode-3--confirmed-code) |
 | DEBRIS | +0x5C | ≠ 0: durability 1200, a hitting projectile is always removed, half contact damage within the per-frame limit; = 0: durability 4000, a hit ricochets with probability 1/4, full bounce damage. 19 of the 67 records are non-zero after the load transform | [X6](./executable.md#x6-discriminator-3-fragments-mode-3--confirmed-code), [H3](./executable.md#h3-projectile-hit-test-0x28450--confirmed-code), [H6](./executable.md#h6-collision-passes--confirmed-code-collision-helper-spot-checked) |
+
+**Runtime (Confirmed, P3-07/26, selected mission at fixed 40000 only):** the formal runs found these roles consumed
+as listed for the records they exercised: the player's gun records 0 and 1 (+0x14 cooldown, +0x18 charge per shot,
++0x24 lifetime); the player's missile records 0, 1 and 3 (+0x44 lifetime, +0x48 arming delay, +0x58 fuse check
+interval, halved on the unguided path in this configuration), missile 3's +0x30 and +0x34 (lock stages) and +0x5C
+(the full blast damage at a contact); the player's craft record +0x74 and +0x78–+0x84 (charge capacity and refill
+per level, at the charge-limited updates) and +0x88 and +0x8C (speed cost at both speed ranges); and a start enemy's
+gun record (+0x14 cooldown, +0x1C damage per hit on the player). The shield recharge terms (craft +0x60–+0x70; no
+judged update had the shield below its capacity), missile 3's grace interval (+0x38), proximity radius and delay
+(+0x4C, +0x54) and falloff radii (missile +0x60, +0x64), the wingman's
+and the enemies' missile and resource fields, and the records the runs did not exercise (bases, kind 0x100, other
+missions) remain code-only. Statistics are in [B-009](../behavior/B-009-combat-rules.md#测量结果) and the
+[runtime check](./executable.md#runtime-check-p3-0726).
 
 ## 4. DEBRIS TABL 4501
 

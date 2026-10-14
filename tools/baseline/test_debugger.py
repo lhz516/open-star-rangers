@@ -175,5 +175,27 @@ class PortTests(unittest.TestCase):
         self.assertEqual(self.debugger.breakpoint_list(), [])
 
 
+    def test_alternative_breakpoints(self):
+        self.debugger.run_until_stop("VRT", 5)
+        self.fake.scenario["hits"] = [{"site": 1, "registers": {"EBX": 0x1234}}]
+        offsets = (CODE_SITE + 0x10, CODE_SITE + 0x20)
+        registers, proof = self.debugger.run_to_breakpoint(0x258, offsets, 5)
+        self.assertEqual((registers.eip, registers.values["EBX"]), (CODE_SITE + 0x20, 0x1234))
+        registration = proof["registration"]
+        self.assertEqual(registration["offsets"], [f"{offset:08x}" for offset in offsets])
+        self.assertNotIn("offset", registration)
+        self.assertEqual(sorted(registration["listed"]), [f"0258:{offset:08x}" for offset in offsets])
+        self.assertEqual(self.debugger.breakpoint_list(), [])
+        self.assertEqual(sum(write.startswith(b"BP ") for write in self.transport.writes), 2)
+        self.fake.scenario["bp_list_extra"] = [(0x258, CODE_SITE)]  # the native list must hold exactly the set
+        with self.assertRaises(BaselineError) as caught:
+            self.debugger.arm(0x258, offsets)
+        self.assertEqual(caught.exception.code, "breakpoint-unconfirmed")
+        self.fake.scenario.pop("bp_list_extra")
+        self.fake.scenario["run"] = "wrong"
+        with self.assertRaises(BaselineError) as caught:
+            self.debugger.run_to_breakpoint(0x258, offsets, 5)
+        self.assertEqual(caught.exception.code, "breakpoint-wrong-hit")
+
 if __name__ == "__main__":
     unittest.main()

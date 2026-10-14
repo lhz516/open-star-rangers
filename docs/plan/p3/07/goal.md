@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "07"
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-011, U-021, U-022, U-027, U-031]
 ---
 
@@ -64,7 +64,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | S-08 | 16、23 | 16：能量、档位、页面、命令与速度消耗（读 P3-06 的指令速度）的 Node 测试；23：战斗组资源读数 |
 | S-09 | 21、35 | 21：`0x30150` 规则的 Node 测试；35：停放更新接线 |
 | S-10 | 18、12 | 18：爆炸生命周期、判别值 3 碎片与到期的 Node 测试；12：EXPL 帧数一致性的载入检查（EXPL 选择、额外爆炸与判别值 1/2 碎片归表现层，CR-11） |
-| S-11 | 01–07、09、10、26、27、30、31、37 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；37：对照工具与新版连续运行；27：R-06 至 R-10 的结论 |
+| S-11 | 01–07、09、10、26、27、30、31、37、38 | 01–07：Q-01 至 Q-12 写入 `docs/original/`；09、10：D-02；26：正式原版运行；38：手动＋自动补采全部覆盖缺口；37：对照工具与新版连续运行；27：R-06 至 R-10 的结论 |
 | S-12 | 28、36 | 28：Core 模块说明、源码结构与交接；36：25、27 的结论；29：链接与元数据 |
 | AC-01 | 08、11 | 11：边界测试、合成测试不改、版本拒绝；29：`pnpm check` |
 | AC-02 | 12、34 | 12：创建与每类拒绝、limit/limit+1、setupHash 规范文本 |
@@ -80,8 +80,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | AC-12 | 18、12 | 18：创建与移除时刻、判别值 3 碎片与逃生舱；12：EXPL 帧数一致性的载入检查 |
 | AC-13 | 24 | 24：连锁、单次死亡、归因、待处理状态、快照完整、replay 与上限 |
 | AC-14 | 25 | 25：本地真实内容两种僚机配置的私有核对 |
-| AC-15 | 01–07、26、30、31 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26：运行时确认；29：`pnpm check:compliance`、git 审阅 |
-| AC-16 | 09、10、26、27、37 | 10：判据获批；26：≥2 次合格运行；37：对照工具；27：单次转移与连续行为的结论 |
+| AC-15 | 01–07、26、30、31、38 | 01–07：事实与 U 项；30、31：08 补取的事实与引信间隔读数；26、38：运行时确认；29：`pnpm check:compliance`、git 审阅 |
+| AC-16 | 09、10、26、27、37、38 | 10：判据获批；26：≥2 次合格运行；38：补齐覆盖下限与预算所需样本；37：对照工具；27：单次转移与连续行为的结论 |
 | AC-17 | 28、33、36 | 28：模块说明与交接；36：核对结论的已知差异；29：`pnpm check`、链接与 `updated:` |
 
 ## 子任务跟踪
@@ -115,8 +115,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [23-combat-partition.md](./subtasks/23-combat-partition.md) | 13, 14, 15, 16 | completed |
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
-| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | in-progress |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37 | pending |
+| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | completed |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -124,9 +124,13 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [33-main-merge-p3-04-integration.md](./subtasks/33-main-merge-p3-04-integration.md) | 12, 16 | completed |
 | [34-ai-program-inputs.md](./subtasks/34-ai-program-inputs.md) | 12, 32, 33 | completed |
 | [35-joint-wiring-without-missiles.md](./subtasks/35-joint-wiring-without-missiles.md) | 13, 14, 15, 16, 17, 18, 19, 21 | completed |
-| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | pending |
+| [36-comparison-differences-docs.md](./subtasks/36-comparison-differences-docs.md) | 25, 27, 28 | completed |
 | [37-comparison-tooling.md](./subtasks/37-comparison-tooling.md) | 09, 10, 24, 25 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37 | pending |
+| [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
+| [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
+| [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | completed |
+| [41-coverage-resampling.md](./subtasks/41-coverage-resampling.md) | 40 | completed |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -187,6 +191,57 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-10 — 暂停（用户重启电脑）：** 用户于 18:1x 要求保存进度并停止，之后以 execute-goal 继续。26 已完成 3 次正式运行（`q2-a-01`、`l-a-01`、`q1-a-01`），进行中的 `d-a-01` 被中断并排除；其余配方（da、lb、oa、pa、lc、db、q2b、q1b）已含 37 的读数补充。26 的状态改为 `pending`，恢复时重新派发，沿用已完成的运行，不重做。worker 会话 “P3-07 · 26 worker”（分支 `p3-07-26-worker`，没有提交）在恢复时归档。给 26、27、36、29 的交接说明在被忽略的 `local/research/p3-07/coordinator-handoff.md`。
 - **2026-10-10 — 恢复执行：** 用户重启后再次调用 execute-goal。26 改为 `in-progress`，沿用原 worker 会话 “P3-07 · 26 worker”（分支 `p3-07-26-worker`，仍无提交）以保留其运行上下文，不另行归档重派；从 `d-a-02` 起按原队列继续，与 P3-06、P3-05 轮流使用基线。
 - **2026-10-11 — 暂停原版运行（用户决定）：** 用户要求 P3-07 暂停，等 P3-06 的正式采集完成后再继续。26 已完成 6 次正式运行（`q2-a-01`、`l-a-01`、`q1-a-01`、`d-a-02`、`l-b-01`、`o-a-01`），停止时没有进行中的运行；剩余 pa、lc、db、q2b、q1b。26 保持 `in-progress`，worker 会话与分支 `p3-07-26-worker`（无提交）保留待恢复；P3-06 会在不再需要基线时通知协调者。
+
+- **2026-10-11 — 26 自动采集集成与补采拆分（用户决定）：** 集成 worker 提交 `c5ff00f6`；16 次合格运行，取消与失败各 1 次且排除。ob、ps、pc、pb 均一次完成；已取得敌方射击、玩家受伤与玩家被毁序列。按用户要求把所有失败或缺失覆盖交新增 38（手动＋自动），接近完成且属偶然故障时由协调者评估至多重跑一次，远未达到目标的不盲目重跑。26 的验收职责明确拆成自动采集与完整缺口清单，38 承接未满足的覆盖与预算；不改 spec、D-02 或数量下限。AC-16 尚未通过，27 新增依赖 38，29 同步依赖。表现层闪光缺口单独记录交 P3-12/P3-14，不冒充 R-10 的通过证据。
+
+- **2026-10-12 — 38 部分进展与改为顺序执行（用户决定）：** 38 的准备与自动补采由 worker 完成，集成为 `b483c4d2`（baseline 工具增量与合成测试，182 项通过）与 `767f29a7`（B-009 的 C 覆盖与剩余链）。自动补采 A3、A1、A2、B 均完成；手动补采 `a38-cr-01` 完成，`a38-c-01` 应用户要求取消，`a38-cx-01` 因配方暂停顺序错误中止；两次中止运行均排除，不计入验收。仍缺：第 4 项机体/基地碰撞 ×2（C2）、第 5 项被毁源与爆炸的释放/移除/离开及碎片交接到离开的链、第 7 项 `+0x8C` 分支（高概率无合法路线，记为未满足，不降低验收）。用户要求改为 `--sequential` 并关闭 38 worker：会话已归档、分支已删除；38 保持 `in-progress`，由本会话继续。
+- **2026-10-12 — 38 的 C2 与毁伤链补采：** `a38-cx2-01` 完整取得 kind `0x100` 被毁的毁伤时间链（缺口 5 关闭）；`a38-c2s-02`、`a38-c2s-03` 各取得一次玩家/基地接触，两次的输入时机、回交状态与接近方向不同，按 D-02 计为两个独立窗口（缺口 4 关闭）。三次都为 `complete`，保护与清理通过。`a38-c2r-01` 与 `a38-c2s-01` 中止并排除。结论写入 B-009。
+- **2026-10-12 — Subtask 38 blocked:** 停放交战的领队 `+0x8C` 分支（38 工作范围第 7 项）没有合法路线：领队 AI 模式 +0xC4 的唯一写入者 `0x5e710` 需要操作码 1102，任何 AISTUFF 脚本中都没有；停放领队保持模式 0。其余补采项都已取得。
+  Evidence: 被忽略的 `run-notes.md` 中的 C3 结论（写入者覆盖、全部脚本的操作码扫描、`0x62250` 模式 5 的可达条件）；自动补采 B 的 27 次领队分支都是 +0xC4 = 0；B-009 的“38 的后续补采”。
+  Affected acceptance: AC-16（停放交战的分支覆盖）；38 的第一、三项验收。27、36、29 依赖 38，因此暂停。
+  Resume when: 找到并在合格运行中取得 `+0x8C` 分支的合法路线，或用户决定对该分支的处理（例如以代码证据加 Node 独立期望核对、不作原版运行时对照），并按需修订 spec 与 38 的验收。
+- **2026-10-12 — 38 unblocked 并完成（用户决定）：** 用户选择对 `+0x8C` 分支“改为代码证据加 Node 独立期望核对，不做原版运行时对照；修订 spec 和 38 的验收，记为已知限制，然后继续 27→36→29”。spec 的审批节记录该修订，采样覆盖下限的停放交战一行加注；38 的第 7 项与 B-009 同步。38 的其余项都已取得，状态改为 completed。27 须把该分支列为已知限制，不标为已运行对照。
+
+- **2026-10-12 — Subtask 27 blocked:** 在 HEAD 候选上对 24 次合格运行运行 37 的工具，没有判为不一致的样本或窗口。主炮射击节奏、导弹锁定、能量护盾与充能三类判为一致；毁伤时间链、弹丸寿命与射程、导弹飞行与制导节奏三类没有结论，因为原版窗口缺少读数：碎片没有在同一窗口内读齐到期与逐帧转动，导弹没有逐帧读目标有效性，弹丸没有命中后的完整窗口。另外，新版一侧还没有 kind 0x100 被毁窗口与弹丸命中窗口。按推荐方案（用户已授权）新增 39 补采原版窗口。新版一侧的场景（经玩家输入飞近 kind 8 机体、命中弹丸）在 27 恢复时于其写入范围内补上，不改契约。
+  Evidence: 27 的完成证据，以及被忽略的 `local/research/p3-07/comparison/out/final/`（report.json、single-report.json）。
+  Affected acceptance: AC-16（单次转移与连续行为两项）；27 的前两项验收。
+  Resume when: 39 完成，或其阻塞项另有用户决定。
+- **2026-10-13 — Subtask 39 blocked:** 第 1、2、4 项已在合格运行中取得（`a39-f2-01`、`a39-mb-01`、`a39-mc-01`、`a39-k-01`）；第 3 项只取得反弹分支（`a39-h2-01`）。移除分支在该次运行中出现 7 次，但配方只有一个命中暂停，这些弹丸没有绑定的命中读数，不计入。按预先设定的“修正后只再试一次”，没有再重跑。
+  Evidence: 39 的完成证据；B-009 的“39 的连续窗口补采”；被忽略的 run-notes 与 `analysis-a39-h2-01.txt`。
+  Affected acceptance: 39 的第一项验收；D-02 弹丸寿命与射程“两种分支都出现时各至少 1 枚”；27、36、29 因依赖 39 而等待。
+  Resume when: 已满足——用户于 2026-10-13 批准一次带可多次触发、逐弹丸绑定命中暂停的新配方运行。
+- **2026-10-13 — Subtask 39 resumed (user authorization):** 按新授权运行一个修正配方以取得弹丸移除分支；不得降低 D-02 判据。协调者可在本目标剩余范围内自行处理后续阻塞决策。
+- **2026-10-13 — Subtask 39 completed:** `a39-h4-01` 在单窗口取得弹丸经 `0x25f48` 移除并离开的链；现有补采合计满足 39 的四项。baseline 合成测试 184 项、链接检查、comparison 自检均通过。
+- **2026-10-13 — Subtask 27 resumed:** 39 已完成，取得碎片单窗口、导弹有效性逐帧读数、导弹/弹丸命中链补采；新版对应场景仍待在 27 中运行与核对。
+- **2026-10-13 — Subtask 27 blocked:** 最新对照确认四类一致，但毁伤时间链因新版没有合法 kind 0x100 对照窗口、导弹飞行与制导节奏因原版 missile 1 没有完整终点窗口而无结论。d-c 的 30000 tick 实内容尝试未发射/击毁；kind 0x100 停放目标需 P3-08 AI 激活，不能通过传送或篡改状态制造。27 的 AC-16 两项保持未勾选；D-02 未改。新增 40 先补 missile 1 原版完整终点窗口，随后重跑 27；毁伤类须待合法新版 kind 0x100 窗口可达后再判。
+  Evidence: 27 的完成证据与被忽略的 `local/research/p3-07/comparison/out/final-2026-10-13/report.json`；d-c 的事件、输入哈希见 27 完成证据。
+  Affected acceptance: AC-16 单次转移与连续行为；27 的前两项。
+  Resume when: 40 完成，且新版有不违反架构边界的 kind 0x100 正式 World.step 对照窗口。
+- **2026-10-13 — Subtask 40 started:** 补采原版 missile 1 的完整 D-02 终点窗口；判据与采样配置不变。
+- **2026-10-13 — Subtask 40 blocked:** 协调者批准的唯一 `a40-m1-04` run 在 `poll-select-m3` 前因运行器拒绝基准工具的仓库相对 confirmation path 而安全取消；0/20,078 samples、3/7 stimuli，无导弹选择、目标门禁或 Space。报告 `cancelled`，原版保护完整性与进程清理通过，事后无 DOSBox-X、`SessionLock` 空闲。Mocks 未覆盖规范化 run root 与共享 `local` symlink 显示路径的组合；不得绕过 guard，依预定单次尝试限制不再重跑。
+  Evidence: `local/research/p3-07/runtime/runs/a40-m1-04/report.json`；B-009 与 subtask 40 记录具体路径错配与验证。
+  Affected acceptance: 40 的完整 missile-1 终点窗口及 D-02 导弹飞行/制导结论；27、36、29 仍受依赖阻塞。
+  Resume when: 获得一项经真实规范化路径端到端覆盖的修正协议与测试，并在单独复核后明确授权新的采集尝试。
+- **2026-10-13 — Subtask 40 resumed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。runner 改为按规范化父目录比较 confirmation signal，新增真实文件系统 symlink 测试（runner 24/24、gate 52/52），经复核后运行 `a40-m1-05`。该次门禁两次通过并发射导弹 1，但配方 `runSeconds` 3600 远小于 534 个暂停所需（约 17.6 秒/帧），于 m1-178 以 `run-timeout` 结束（`failed`，不计入；完整性与清理通过）。这是确定性的配方预算错误，不是游戏结果；仅把 `runSeconds` 改为 86400 生成 `a40-m1-long.json`，经单独 rubber-duck 复核无阻塞问题后授权唯一一次修正运行 `a40-m1-06`。
+- **2026-10-13 — Subtask 40 completed:** `a40-m1-06` 为 `complete`（20,078/20,078 samples，required 6,422/6,422，刺激 7/7；完整性与清理通过）。导弹 1 从发射、阶段 0 首个 state 7 回调、解保、37 次引信检查到寿命到期失效（state 6）及下一帧离开，帧连续、逐帧读到目标有效性；Φ 判为 holds，含 d = 2 后重排与 s ≠ 2。27 的读取器已消费该窗口；比较中该窗口（寿命 384、无制导、fizzle）在现有新版场景中无配对（新版导弹 1 都以近炸结束），由 27 恢复时补新版场景。
+  Evidence: `local/research/p3-07/runtime/runs/a40-m1-06/report.json`；被忽略的 `comparison/out/a40-2026-10-13/report.json`；B-009 与 40 的完成证据。
+
+- **2026-10-13 — Subtask 41 started (coordinator, delegated authority):** 以 40 完成后重跑的 `final3-2026-10-13` 为准，27 的毁伤时间链仍缺原版 kind 0x80 与 0x100 各一次完整被毁链（`missingKindBits` 7、8），雷达只有 2 个操作数齐全的帧，接触缺基地姿态与伙伴操作数。新增 41 补采并补读取器；27 与 29 增加对 41 的依赖。D-02 与 spec 不变。
+- **2026-10-14 — Subtask 41 blocked:** 自动部分已完成：`a41-f-03`（`complete`）读齐一次 kind 0x80 被毁的全链（5 个碎片，列表已证完整），`final4-2026-10-14` 中该被毁、主爆炸与全部碎片窗口都成立，kind bit 7 完整；雷达达到 3 帧。剩余两项只能由用户在 DOSBox-X 中驾驶取得：首个 kind 0x100 被毁需按 a38-cr 路线飞到 c-check 守卫并交战；机体/基地接触需按 c2s 路线两次手动接触。协调者不能替用户操作，也不能以篡改内存或宿主输入制造事件。
+  Evidence: 41 的完成证据；被忽略的 `run-notes.md`（a41-f-02、a41-f-03）与 `comparison/out/final4-2026-10-14/report.json`（`missingKindBits` [8]；contact `not-evaluable:operands:base-orientation` ×2）。
+  Affected acceptance: 41 的前两项（kind 0x100 被毁链；接触两个窗口）；D-02 毁伤时间链最低条件；27、36、29 因依赖而等待。
+  Resume when: 用户在 DOSBox-X 中完成 `a41-ux1`（×1，`run_manual.py cx2 … a41-ux1.json`，SHA-256 `cbeed99a…62fa`）与 `a41-ux2`（×2，`run_manual.py c2s … a41-ux2.json`，两次手动时机有记录的差异），且三次报告均为 `complete`、保护与清理通过；随后接入 ux1 读取器、重跑对照并恢复 27。
+
+- **2026-10-14 — Subtask 27 仍阻塞（依赖 41）：** 以 40、41 的新运行重跑 `final4-2026-10-14`（新版 `42dbfc89`，32 个原版运行）：无窗口不一致，原版成立窗口全部配对，导弹类缺口已闭合，新版有 kind 0x100 被毁窗口；唯一 D-02 覆盖缺口为原版 kind 0x100 完整被毁链，接触单次样本仍缺操作数。见 27 完成证据“当前状态”。
+  Resume when: 41 完成。
+- **2026-10-14 — Subtask 41 resumed and completed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。原定由用户驾驶的 `a41-ux1`/`a41-ux2` 改为预先声明刺激的全自动配方（ax1、ax2a、ax2b），加种子守卫与交接/帧守卫；运行中无未声明输入。`a41-ax1-07`、`a41-ax2a-01`、`a41-ax2b-01` 为 `complete`（ax1-06 被种子守卫拒绝，不计入）。分析中发现并修正读取器错误：链表尾可能是 `0x23fdc` 的额外爆炸（+0x104 = 0），主爆炸应取源种类匹配者；ax1-05 的“激活滞后”与碎片 `fails-original` 由此撤销。`final5` 中 kind bit 7、8 的被毁链都完整，contact 2 个一致，单次转移 `differing` 0。
+  Evidence: 41 的完成证据；被忽略的 `run-notes.md` a41-ax* 节与 `comparison/out/final5/`。
+- **2026-10-14 — Subtask 27 resumed:** 41 已完成，阻塞前提满足；以 `final5` 恢复 27 的结论。
+- **2026-10-14 — Subtask 27 completed:** `final5`（36 个 complete 原版运行，候选 `src/` 树 `13a62b95…`）中，D-02 六类均一致，所有原版成立窗口都有配对；单次转移 812 个样本，没有不一致，spec 的逐项最低覆盖均由可判定样本满足。操作数不全的样本按协调者决定列为不可判定，不豁免。不需要修复子任务。
+- **2026-10-14 — Subtask 36 started.**
+- **2026-10-14 — Subtask 36 completed:** core.md 的已知差异写入 25、27 的结论与身份绑定。
+- **2026-10-14 — Subtask 29 started（final alignment）.**
+- **2026-10-14 — Subtask 29 completed; goal complete:** 最终对齐通过，没有发现缺口。全部子任务为 completed；`pnpm check`、合规检查与 baseline 工具测试通过。证据见 29。
 
 ## 审批
 

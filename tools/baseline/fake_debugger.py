@@ -5,7 +5,8 @@ full-screen redraws in the installed debugger's layout: register pane, data view
 footer, code view, output area and input line. Its memory is a `synthetic.FakeProcess` holding a code-generated LE
 image at per-object bases. `FakeTransport` serves it in-process on a virtual clock; running this module as a script
 serves it on its own terminal (a real PTY) in real time, so process launch, ownership and reclaim can be tested end to
-end. Scenario knobs inject the failures the tests need.
+end. Scenario knobs inject the failures the tests need; `hits` scripts the breakpoint hits in order (each
+{"site": index into the armed breakpoints, "registers": {name: value}}; hits past the list stop at the first one).
 """
 import json
 import os
@@ -52,6 +53,7 @@ class FakeDebugger:
         self.stop_at = None
         self.stop_kind = None
         self.vrt_count = 0
+        self.hit_count = 0
         self.mode, self.cs, self.eip = REAL
         self.data_view = 0
         self.commands = 0
@@ -163,8 +165,12 @@ class FakeDebugger:
                 self.eip = CODE_SITE if step == "site" else int(step)
         elif kind == "hit":
             armed = [offset for selector, offset in self.breakpoints if selector == SEL_CS]
+            hits = self.scenario.get("hits", ())
+            hit = hits[self.hit_count] if self.hit_count < len(hits) else {}
+            self.hit_count += 1
+            self.registers.update(hit.get("registers", {}))
             self.mode, self.cs = "Pr32", SEL_CS
-            self.eip = armed[0] if armed else CODE_SITE
+            self.eip = armed[hit.get("site", 0)] if armed else CODE_SITE
         elif kind == "wrong":
             self.mode, self.cs, self.eip = "Pr32", SEL_CS, CODE_SITE + 0x40
         self.pending = b""  # the debugger discards typed-ahead input on re-entry

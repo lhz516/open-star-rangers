@@ -286,7 +286,7 @@ def prove_mapping(image, window, match, read, space, owner):
 def check_recipe_image(recipe, image):
     """Recipe locations against the verified LE image, before any session side effect."""
     for field in recipe.fields.values():
-        if field.address.object is None:  # register-relative: located at the stop; `low`: bounded when parsed
+        if field.address.object is None:  # register or bound: located at the stop; `low`: bounded when parsed
             continue
         obj = image.object(field.address.object)
         first = 4 if field.address.pointers else field.size
@@ -296,11 +296,11 @@ def check_recipe_image(recipe, image):
         if device.object is not None and device.offset + device.size > image.object(device.object).virtual_size:
             raise BaselineError("location-outside-object", device.id)
     for pause in recipe.pauses:
-        if pause.stop.site is not None:
-            obj = image.object(pause.stop.site.object)
+        for site in pause.stop.sites:
+            obj = image.object(site.object)
             if not obj.executable:
                 raise BaselineError("object-not-executable", pause.id)
-            if pause.stop.site.offset >= obj.virtual_size:
+            if site.offset >= obj.virtual_size:
                 raise BaselineError("location-outside-object", pause.id)
     code = recipe.code_window
     if not image.object(code.object).executable:

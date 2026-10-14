@@ -423,30 +423,36 @@ class Debugger:
         if not any("Breakpoints deleted." in line for line in response) or self.breakpoint_list():
             raise BaselineError("breakpoint-unconfirmed", "delete")
 
-    def arm(self, selector, offset):
-        """Deletes all breakpoints and registers one code breakpoint; acknowledgement and the native list must match
-        exactly. Returns the registration proof."""
+    def arm(self, selector, offsets):
+        """Deletes all breakpoints and registers one code breakpoint at `offsets` (an int), or one at each of the
+        alternative offsets (a tuple); every acknowledgement and the native list must match the set exactly.
+        Returns the registration proof."""
+        wanted = (offsets,) if type(offsets) is int else tuple(offsets)
         self.clear_breakpoints()
-        response = self.command(f"BP {selector:04X}:{offset:08X}")
-        acks = [(int(m[1], 16), int(m[2], 16)) for line in response for m in [_BP_ACK.search(line)] if m]
-        if acks != [(selector, offset)]:
-            raise BaselineError("breakpoint-unconfirmed", "acknowledgement")
+        for offset in wanted:
+            response = self.command(f"BP {selector:04X}:{offset:08X}")
+            acks = [(int(m[1], 16), int(m[2], 16)) for line in response for m in [_BP_ACK.search(line)] if m]
+            if acks != [(selector, offset)]:
+                raise BaselineError("breakpoint-unconfirmed", "acknowledgement")
         listed = self.breakpoint_list()
-        if listed != [(selector, offset)]:
+        if sorted(listed) != sorted((selector, offset) for offset in wanted):
             raise BaselineError("breakpoint-unconfirmed", "list")
-        return {"selector": f"{selector:04x}", "offset": f"{offset:08x}", "acknowledged": True,
+        sites = {"offset": f"{offsets:08x}"} if type(offsets) is int else {"offsets": [f"{o:08x}" for o in wanted]}
+        return {"selector": f"{selector:04x}", **sites, "acknowledged": True,
                 "listed": [f"{s:04x}:{o:08x}" for s, o in listed]}
 
-    def run_to_breakpoint(self, selector, offset, limit, poll=None, before_run=None):
-        """Registers one breakpoint, runs (at most `limit` seconds) to the next stop, requires that stop to be at the
-        breakpoint and deletes it again. Returns (registers at the hit, proof)."""
-        registration = self.arm(selector, offset)
+    def run_to_breakpoint(self, selector, offsets, limit, poll=None, before_run=None):
+        """Registers the breakpoint(s) (see `arm`), runs (at most `limit` seconds) to the next stop, requires that
+        stop to be at one of them and deletes them again. Returns (registers at the hit, proof)."""
+        registration = self.arm(selector, offsets)
+        wanted = (offsets,) if type(offsets) is int else tuple(offsets)
         if before_run is not None:
             before_run()
         waited = self.run_until_stop("RUN", limit, poll=poll)
         registers = self.fresh_registers()
-        if (registers.cs, registers.eip) != (selector, offset):
-            raise BaselineError("breakpoint-wrong-hit", f"{selector:04x}:{offset:08x}")
+        if registers.cs != selector or registers.eip not in wanted:
+            raise BaselineError("breakpoint-wrong-hit", f"{selector:04x}:{wanted[0]:08x}" if len(wanted) == 1
+                                else f"{selector:04x}:alternatives")
         self.clear_breakpoints()
         return registers, {"registration": registration, "waitedSeconds": round(waited, 3)}
 

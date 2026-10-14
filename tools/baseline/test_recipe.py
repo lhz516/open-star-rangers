@@ -1,11 +1,12 @@
 import access_guard  # noqa: F401  (installs the no-original-access guard first)
 
 import copy
+import hashlib
 import json
 import unittest
 
 from reasons import REASON_SET, BaselineError
-from recipe import CEILINGS, exe_fingerprint, parse_recipe, verify_source
+from recipe import CEILINGS, MAX_RECIPE_BYTES, exe_fingerprint, parse_recipe, verify_source
 from synthetic import FIELD_LAYOUT, scenario_recipe
 
 SHA = exe_fingerprint(b"synthetic image")
@@ -130,7 +131,11 @@ class RecipeTests(unittest.TestCase):
         self.assertRejected("recipe-json-invalid", text(scenario_recipe(SHA))[:-1] + ', "recipeId": "again"}')
         self.assertRejected("recipe-json-invalid", text(scenario_recipe(SHA)).replace('"runSeconds": 60',
                                                                                       '"runSeconds": NaN'))
-        self.assertRejected("recipe-too-large", " " * (64 * 1024 + 1))
+        self.assertRejected("recipe-too-large", " " * (MAX_RECIPE_BYTES + 1))
+        padded = text(scenario_recipe(SHA))
+        padded = padded[:-1] + " " * (MAX_RECIPE_BYTES - len(padded.encode("utf-8"))) + "}"
+        self.assertEqual(len(padded.encode("utf-8")), MAX_RECIPE_BYTES)
+        parse_recipe(padded)
 
     def test_unknown_keys_and_commands_rejected(self):
         self.assertRejected("recipe-key-unknown", self.mutated(lambda d: d.update(command="BPDEL *")))
@@ -257,6 +262,25 @@ class RecipeTests(unittest.TestCase):
                             self.mutated(lambda d: d["correlation"]["code"].update(size=100)))
         self.assertRejected("recipe-limit-invalid",
                             self.mutated(lambda d: d["correlation"]["data"].update(size=4096)))
+
+    def test_long_recipe_ceilings(self):
+        self.assertEqual((MAX_RECIPE_BYTES, CEILINGS["maxPauses"], CEILINGS["maxLogBytes"]),
+                         (256 * 1024, 2048, 4 << 30))
+
+        def many(count):
+            def change(d):
+                template = d["pauses"][-1]
+                for k in range(count - len(d["pauses"])):
+                    extra = copy.deepcopy(template)
+                    extra["id"] = f"extra-{k}"
+                    extra.pop("stimuli", None)
+                    d["pauses"].append(extra)
+                d["limits"].update(maxPauses=count, maxLogBytes=CEILINGS["maxLogBytes"], runSeconds=24 * 3600,
+                                   maxReadBytes=CEILINGS["maxReadBytes"])
+            return change
+        self.assertEqual(len(parse_recipe(text(self.mutated(many(CEILINGS["maxPauses"])))).pauses), CEILINGS["maxPauses"])
+        self.assertRejected("recipe-limit-invalid",
+                            self.mutated(lambda d: d["limits"].update(maxPauses=CEILINGS["maxPauses"] + 1)))
 
     def test_budgets(self):
         self.assertRejected("recipe-budget-exceeded", self.mutated(lambda d: d["limits"].update(maxPauses=1)))
@@ -409,6 +433,199 @@ class RecipeTests(unittest.TestCase):
         for address in ({"low": 0x2C, "register": "ESI"}, {"low": 0x2C, "register": "ESI", "offset": 0x10}):
             with self.subTest(address=address):
                 self.assertRejected("recipe-key-unknown", self.register_field(add_low("start", address)))
+
+    def selection(self, change=None):
+        """The scenario plus a conditional pause at alternative sites and a field bound to a `start` reading."""
+        def build(d):
+            when = {"register": "EBX", "in": [{"pause": "start", "field": "count"}, 7]}
+            d["pauses"].insert(1, {"id": "pick", "stop": {"kind": "breakpoint", "object": 2,
+                                                          "offsets": [0x1F90, 0x1FA0], "when": when}})
+            d["fields"].append({"id": "node", "address": {"bound": {"pause": "start", "field": "ticks"}, "offset": -4,
+                                                          "pointers": [8]}, "type": "u16", "unit": "count"})
+            d["pauses"][2]["fields"].append("node")
+            if change is not None:
+                change(d)
+        return self.mutated(build)
+
+    def test_old_recipe_fingerprint_is_unchanged(self):
+        recipe = parse_recipe(text(scenario_recipe(SHA)))
+        canonical = json.dumps(scenario_recipe(SHA), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        self.assertEqual(recipe.fingerprint, "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest())
+        self.assertTrue(recipe.fingerprint.startswith("sha256:1797bd67b3d26a6e"))  # the value before this feature
+        self.assertEqual(recipe.pause("start").stop.sites, (recipe.pause("start").stop.site,))
+        self.assertEqual((recipe.pause("start").stop.alternatives, recipe.pause("start").stop.when), ((), None))
+        self.assertEqual(recipe.pause("end").stop.sites, ())
+        self.assertEqual(recipe.limits.max_skipped_hits, 100_000)
+        limited = parse_recipe(text(self.mutated(lambda d: d["limits"].update(maxSkippedHits=0))))
+        self.assertEqual(limited.limits.max_skipped_hits, 0)
+        self.assertNotEqual(limited.fingerprint, recipe.fingerprint)
+        for value in (CEILINGS["maxSkippedHits"] + 1, -1):
+            self.assertRejected("recipe-limit-invalid",
+                                self.mutated(lambda d: d["limits"].update(maxSkippedHits=value)))
+
+    def test_alternative_sites_condition_and_bound_field(self):
+        recipe = parse_recipe(text(self.selection()))
+        stop = recipe.pause("pick").stop
+        self.assertEqual([(site.object, site.offset) for site in stop.sites], [(2, 0x1F90), (2, 0x1FA0)])
+        self.assertEqual(stop.site, stop.sites[0])
+        self.assertEqual((stop.when.register, stop.when.include), ("EBX", True))
+        self.assertEqual(stop.when.values[1], 7)
+        self.assertEqual((stop.when.values[0].pause, stop.when.values[0].field), ("start", "count"))
+        node = recipe.fields["node"].address
+        self.assertEqual((node.object, node.register, node.low, node.offset, node.pointers),
+                         (None, None, False, -4, (8,)))
+        self.assertEqual((node.bound.pause, node.bound.field), ("start", "ticks"))
+        self.assertEqual(stop.when.to_json([0xFFFF, 7]), {"register": "EBX", "in": ["ffff", "7"]})
+        self.assertNotIn(None, recipe.objects())
+
+        def chain(d):  # a bound field may name a bound field's reading at an earlier pause
+            d["fields"].append({"id": "next", "address": {"bound": {"pause": "pick", "field": "node"}, "offset": 0},
+                                "type": "u32", "unit": "raw"})
+            d["pauses"][1]["fields"] = ["scenario", "node"]  # identity check fields are read at every pause
+            d["pauses"][2]["fields"].append("next")
+        self.assertEqual(parse_recipe(text(self.selection(chain))).fields["next"].address.bound.field, "node")
+
+        def single(d):  # a condition at a single site, excluding values, at a pause without fields
+            d["pauses"][1]["stop"] = {"kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                                      "when": {"register": "EAX", "notIn": [0, 0xFFFFFFFF]}}
+        stop = parse_recipe(text(self.selection(single))).pause("pick").stop
+        self.assertEqual((stop.alternatives, stop.when.include, stop.when.values), ((), False, (0, 0xFFFFFFFF)))
+
+        def limited(d):  # a condition limited to one of the alternative sites
+            d["pauses"][1]["stop"]["when"]["at"] = [0x1FA0]
+        recipe = parse_recipe(text(self.selection(limited)))
+        stop = recipe.pause("pick").stop
+        self.assertEqual(stop.when.sites, (stop.sites[1],))
+        self.assertEqual((stop.when.applies(stop.sites[0]), stop.when.applies(stop.sites[1])), (False, True))
+        self.assertEqual(stop.when.to_json([7]), {"register": "EBX", "in": ["7"], "at": ["1fa0"]})
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.selection())).fingerprint)
+        self.assertTrue(parse_recipe(text(self.selection())).pause("pick").stop.when.applies(stop.sites[0]))
+
+    def test_alternative_sites_and_condition_rejections(self):
+        def stop(**changes):
+            def change(d):
+                d["pauses"][1]["stop"].update(changes)
+                for key in [key for key, value in changes.items() if value is None]:
+                    del d["pauses"][1]["stop"][key]
+            return change
+
+        def when(value):
+            return stop(when=value)
+
+        ref = {"pause": "start", "field": "count"}
+        cases = [
+            ("recipe-key-missing", stop(offsets=None)),
+            ("recipe-address-invalid", stop(offset=0x1F90)),
+            ("recipe-type-invalid", stop(offsets=0x1F90)),
+            ("recipe-value-invalid", stop(offsets=[0x1F90])),
+            ("recipe-value-invalid", stop(offsets=[1, 2, 3, 4, 5])),
+            ("recipe-value-invalid", stop(offsets=[0x1F90, 0x1F90])),
+            ("recipe-value-invalid", stop(offsets=[])),
+            ("recipe-type-invalid", stop(offsets=[0x1F90, "0x1FA0"])),
+            ("recipe-address-invalid", stop(offsets=[0x1F90, -1])),
+            ("recipe-key-unknown", lambda d: d["pauses"][2]["stop"].update(when={"register": "EBX", "in": [1]})),
+            ("recipe-key-unknown", lambda d: d["pauses"][2]["stop"].update(offsets=[1, 2])),
+            ("recipe-key-unknown", when({"register": "EBX", "in": [1], "other": 1})),
+            ("recipe-key-missing", when({"in": [1]})),
+            ("recipe-key-missing", when({"register": "EBX"})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "notIn": [2]})),
+            ("recipe-type-invalid", when({"register": 3, "in": [1]})),
+            ("recipe-value-invalid", when({"register": "EIP", "in": [1]})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": 1})),
+            ("recipe-empty", when({"register": "EBX", "notIn": []})),
+            ("recipe-budget-exceeded", when({"register": "EBX", "in": list(range(17))})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [-1]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1 << 32]})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": ["1"]})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": [True]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": [0x1F90, 0x1FA0]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": [0x1F80]})),
+            ("recipe-value-invalid", when({"register": "EBX", "in": [1], "at": []})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": [1], "at": 0x1F90})),
+            ("recipe-type-invalid", when({"register": "EBX", "in": [1], "at": ["1f90"]})),
+            ("recipe-key-unknown", lambda d: d["pauses"][1].update(stop={
+                "kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                "when": {"register": "EBX", "in": [1], "at": [0x1F90]}})),  # `at` needs alternative sites
+            ("recipe-key-unknown", when({"register": "EBX", "in": [{**ref, "offset": 0}]})),
+            ("recipe-key-missing", when({"register": "EBX", "in": [{"pause": "start"}]})),
+            ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "end", "field": "ticks"}]})),
+            ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "pick", "field": "node"}]})),
+            ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "missing", "field": "ticks"}]})),
+            ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "start", "field": "node"}]})),
+            ("recipe-reference-invalid", when({"register": "EBX", "in": [{"pause": "start", "field": "speed"}]})),
+        ]
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.selection(change))
+
+    def test_bound_field_rejections(self):
+        def address(**changes):
+            def change(d):
+                d["fields"][-1]["address"].update(changes)
+                for key in [key for key, value in changes.items() if value is None]:
+                    del d["fields"][-1]["address"][key]
+            return change
+
+        def listed_at(index):
+            def change(d):
+                d["pauses"][2]["fields"].remove("node")
+                d["pauses"][index]["fields"] = d["pauses"][index].get("fields", ["scenario"]) + ["node"]
+            return change
+
+        cases = [
+            ("recipe-key-missing", address(offset=None)),
+            ("recipe-key-unknown", address(object=4)),
+            ("recipe-key-unknown", address(register="ESI")),
+            ("recipe-type-invalid", address(offset="0")),
+            ("recipe-address-invalid", address(offset=0x10000)),
+            ("recipe-address-invalid", address(offset=-0x10001)),
+            ("recipe-key-unknown", address(bound={"pause": "start", "field": "ticks", "offset": 0})),
+            ("recipe-key-missing", address(bound={"field": "ticks"})),
+            ("recipe-type-invalid", address(bound="start")),
+            ("recipe-reference-invalid", address(bound={"pause": "missing", "field": "ticks"})),
+            ("recipe-reference-invalid", address(bound={"pause": "start", "field": "speed"})),  # f32
+            ("recipe-reference-invalid", address(bound={"pause": "end", "field": "ticks"})),  # its own pause
+            ("recipe-reference-invalid", address(bound={"pause": "pick", "field": "ticks"})),  # not listed there
+            ("recipe-reference-invalid", listed_at(0)),  # read at the referenced pause itself
+            ("recipe-reference-invalid", lambda d: d["pauses"][2]["fields"].remove("node")),  # a field no pause lists
+        ]
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.selection(change))
+        parse_recipe(text(self.selection(listed_at(1))))  # a breakpoint pause after the referenced one
+
+    def test_register_references(self):
+        def refer(when_ref, bound_ref):
+            def change(d):
+                d["pauses"][1]["stop"]["when"] = {"register": "EBX", "notIn": [when_ref]}
+                d["fields"][-1]["address"]["bound"] = bound_ref
+            return change
+
+        recipe = parse_recipe(text(self.selection(refer({"pause": "start", "register": "ESI"},
+                                                        {"pause": "pick", "register": "EDI"}))))
+        value = recipe.pause("pick").stop.when.values[0]
+        self.assertEqual((value.pause, value.field, value.register), ("start", None, "ESI"))
+        bound = recipe.fields["node"].address.bound
+        self.assertEqual((bound.pause, bound.field, bound.register), ("pick", None, "EDI"))  # a fieldless pause
+
+        good = {"pause": "start", "register": "ESI"}
+        cases = [
+            ("recipe-reference-invalid", {"pause": "end", "register": "ESI"}, good),  # a VRT pause
+            ("recipe-reference-invalid", {"pause": "pick", "register": "ESI"}, good),  # its own pause
+            ("recipe-reference-invalid", {"pause": "missing", "register": "ESI"}, good),
+            ("recipe-reference-invalid", good, {"pause": "end", "register": "ESI"}),  # its own VRT pause
+            ("recipe-value-invalid", {"pause": "start", "field": "count", "register": "ESI"}, good),
+            ("recipe-value-invalid", good, {"pause": "start", "field": "ticks", "register": "ESI"}),
+            ("recipe-key-missing", {"pause": "start"}, good),
+            ("recipe-value-invalid", {"pause": "start", "register": "EIP"}, good),
+            ("recipe-value-invalid", good, {"pause": "start", "register": "esi"}),
+            ("recipe-type-invalid", {"pause": "start", "register": 6}, good),
+            ("recipe-key-unknown", {"pause": "start", "register": "ESI", "offset": 0}, good),
+            ("recipe-key-unknown", good, {"pause": "start", "register": "ESI", "offset": 0}),
+        ]
+        for code, when_ref, bound_ref in cases:
+            with self.subTest(code=code, when=when_ref, bound=bound_ref):
+                self.assertRejected(code, self.selection(refer(when_ref, bound_ref)))
 
     def test_source_verification(self):
         recipe = parse_recipe(text(scenario_recipe(SHA)))
