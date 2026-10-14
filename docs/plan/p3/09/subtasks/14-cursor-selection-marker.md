@@ -41,7 +41,7 @@ updated: 2026-10-14
 - `src/core/rules/startup-rotations.ts`、`src/core/rules/startup-rotations.test.ts`：计划新增，MW-12 的启动旋转表（按 28/29 的 R-A 判定）。
 - `src/core/world/create-world.ts`、`src/core/world/rule-data.ts` 及其测试：`startupRotations` 的世界创建接入。
 - `src/core/rules/firing.ts`、`src/core/rules/firing.test.ts`：P3-07 锁定计数对标记不读机型记录（MW-03）。（以上为协调者 2026-10-14 扩大范围）
-- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`、`src/core/systems/commands.ts`、`src/core/systems/commands.test.ts`、`src/core/world/world.test.ts`：`map-point` 的内部请求、有效目的地、帧尾地图步的接入与命令路由（协调者 2026-10-14 扩大范围；MW-07 第 1 步的接触谓词由本项在 `map-icons.ts` 实现，15 复用）。
+- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`、`src/core/systems/commands.ts`、`src/core/systems/commands.test.ts`、`src/core/world/world.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`：`map-point` 的内部请求、有效目的地、帧尾地图步的接入与命令路由（协调者 2026-10-14 扩大范围；MW-07 第 1 步的接触谓词由本项在 `map-icons.ts` 实现，15 复用）。
 
 ## 验收标准
 
