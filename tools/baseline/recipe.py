@@ -8,8 +8,11 @@ BIOS data area), scalar types, unit labels and run limits, plus the few allowlis
 subtask 22): at a named pause, one keystroke, BIOS shift-flag bits or a value in a declared input-device field
 (`inputs.py`). A breakpoint stop may name alternative sites in one LE object and a condition on a register at the
 hit (literal values or readings of earlier pauses); a field may be addressed from an integer reading of an earlier
-pause (`bound`). Every key is known, every value has a fixed JSON type and every string is a restricted token, so a
-recipe cannot carry expressions, debugger commands or shell strings.
+pause (`bound`). Reading tests (P3-10 subtask 09) let a recipe wait and branch on the current run: a breakpoint stop's
+`until` takes only a hit whose probe readings pass the test, and a stimulus's `if` applies it only when the readings
+of its pause (or earlier pauses) pass. A test is a fixed list of comparisons of one reading with a literal or with
+another reading plus a constant, combined by `all` or `any`. Every key is known, every value has a fixed JSON type
+and every string is a restricted token, so a recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
 import json
@@ -36,6 +39,10 @@ REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a regi
 ALTERNATIVE_SITES = (2, 4)  # offsets of a breakpoint stop with alternative sites
 CONDITION_VALUES = (1, 16)  # values of a stop condition
 DEFAULT_SKIPPED_HITS = 100_000
+TEST_OPERATORS = ("lt", "le", "gt", "ge", "eq", "ne")
+TEST_CLAUSES = (1, 16)  # comparisons of one reading test
+TEST_NUMBER = 1 << 53  # bound of a test's literals and offsets (exact in a JSON number)
+UNTIL_EVERY = (1, 10_000)  # an `until` stop probes the 1st, (n+1)th, ... hit that passes its register condition
 # Bytes one stimulus reads and writes, for the static budget check: key: buffer pointers and bounds, then the slot
 # and the tail each read before, written and read back; shift: the flags, then the same three; device: three times.
 KEY_STIMULUS_BYTES = 4 + 4 + 3 * (2 + 2)
@@ -130,11 +137,99 @@ class Condition:
 
 
 @dataclass(frozen=True)
+class Operand:
+    """The right side of a comparison: a literal number, or a reading (`pause` None: the reading being judged, i.e.
+    the probe at an `until` hit or the stimulus's own pause; otherwise an earlier pause's agreed reading) plus
+    `offset`."""
+    literal: object = None
+    field: object = None
+    pause: object = None
+    offset: object = 0
+
+    def resolve(self, current, earlier):
+        if self.field is None:
+            return self.literal
+        value = current.get(self.field) if self.pause is None else earlier.get((self.pause, self.field))
+        return None if value is None else value + self.offset
+
+    def to_json(self):
+        if self.field is None:
+            return self.literal
+        out = {"field": self.field}
+        if self.pause is not None:
+            out = {"pause": self.pause, **out}
+        if self.offset:
+            out["offset"] = self.offset
+        return out
+
+
+_COMPARE = {"lt": lambda a, b: a < b, "le": lambda a, b: a <= b, "gt": lambda a, b: a > b,
+            "ge": lambda a, b: a >= b, "eq": lambda a, b: a == b, "ne": lambda a, b: a != b}
+
+
+@dataclass(frozen=True)
+class Clause:
+    field: str  # a reading of the judged context (probe or own pause)
+    op: str
+    operand: Operand
+
+    def evaluate(self, current, earlier):
+        """True, False, or None when a reading it names is unavailable."""
+        left, right = current.get(self.field), self.operand.resolve(current, earlier)
+        return None if left is None or right is None else _COMPARE[self.op](left, right)
+
+
+@dataclass(frozen=True)
+class Test:
+    """Comparisons combined by `all` (any_of False) or `any` (any_of True), in three-valued logic: an unavailable
+    reading makes its comparison unknown; `all` is False when one comparison is False, `any` True when one is True,
+    otherwise an unknown makes the test unknown (None)."""
+    any_of: bool
+    clauses: tuple
+
+    def fields(self):
+        """Field IDs read in the judged context, in first-use order."""
+        names = dict.fromkeys(name for clause in self.clauses
+                              for name in (clause.field, clause.operand.field if clause.operand.pause is None else None))
+        names.pop(None, None)
+        return tuple(names)
+
+    def references(self):
+        """(pause, field) of every earlier reading the test names."""
+        return tuple((clause.operand.pause, clause.operand.field) for clause in self.clauses
+                     if clause.operand.pause is not None)
+
+    def evaluate(self, current, earlier):
+        """`current`: field ID -> typed reading of the judged context; `earlier`: (pause, field) -> typed reading."""
+        results = [clause.evaluate(current, earlier) for clause in self.clauses]
+        decisive = self.any_of
+        if decisive in results:
+            return decisive
+        return None if None in results else not decisive
+
+    def to_json(self):
+        return {"any" if self.any_of else "all": [{"field": clause.field, clause.op: clause.operand.to_json()}
+                                                  for clause in self.clauses]}
+
+
+@dataclass(frozen=True)
+class Until:
+    """A breakpoint stop's reading test: of the hits that pass its register condition, the 1st, (n+1)th, ... are
+    probed (`every` n); the first probed hit whose readings pass the test is the pause."""
+    every: int
+    test: Test
+
+    def to_json(self):
+        return {"every": self.every, **self.test.to_json()}
+
+
+@dataclass(frozen=True)
 class Stop:
     kind: str
     site: object  # Location for a breakpoint (the first alternative of `offsets`), None for a VRT stop
     alternatives: tuple = ()  # every Location of a breakpoint stop declared with `offsets`; empty for `offset`
     when: object = None  # Condition of a breakpoint stop, or None
+    until: object = None  # Until of a breakpoint stop, or None
 
     @property
     def sites(self):
@@ -172,6 +267,7 @@ class Stimulus:
     flags: tuple = ()  # (shift-flag name, set) pairs
     device: object = None  # Device ID
     value: object = None  # device value
+    test: object = None  # Test (recipe key `if`): applied only when the readings pass it; None: unconditional
 
     def budget(self, devices):
         if self.kind == "key":
@@ -369,7 +465,7 @@ def _recipe(document):
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
     devices = _devices(document["devices"]) if "devices" in document else {}
-    stimuli = _stimuli(document["stimuli"], pauses, devices) if "stimuli" in document else ()
+    stimuli = _stimuli(document["stimuli"], pauses, devices, fields) if "stimuli" in document else ()
     if devices.keys() - {stimulus.device for stimulus in stimuli}:
         raise BaselineError("recipe-reference-invalid", "devices")
     identity = _identity(document["identity"], fields, pauses)
@@ -391,9 +487,14 @@ def _recipe(document):
         _int(data["offset"], "correlation.data.offset", 0, UINT32_END - data_size, "recipe-address-invalid"),
         data_size)
 
-    worst = code_size + data_size + limits.repeat_reads * sum(
-        POINTER_SIZE * len(fields[field].address.pointers) + fields[field].size
-        for pause in pauses for field in pause.fields) + sum(stimulus.budget(devices) for stimulus in stimuli)
+    def reads(names):
+        return limits.repeat_reads * sum(POINTER_SIZE * len(fields[name].address.pointers) + fields[name].size
+                                         for name in names)
+
+    worst = code_size + data_size + sum(reads(pause.fields) for pause in pauses) + sum(
+        stimulus.budget(devices) for stimulus in stimuli)
+    worst += sum(code_size + data_size + reads(pause.stop.until.test.fields())  # one probe of each `until` stop
+                 for pause in pauses if pause.stop.until is not None)
     if worst > limits.max_read_bytes:
         raise BaselineError("recipe-budget-exceeded", "limits.maxReadBytes")
 
@@ -526,6 +627,8 @@ def _pauses(value, fields, limits):
                 _reference(address.bound, fields, listed_at, f"{path}.fields[{slot}]")
             names.append(name)
         used.update(names)
+        if stop.until is not None:
+            used.update(stop.until.test.fields())
         listed_at[pause_id] = (stop.kind, tuple(names))
         pauses.append(Pause(pause_id, stop, tuple(names)))
     for field_id in fields:
@@ -536,8 +639,8 @@ def _pauses(value, fields, limits):
 
 def _stop(stop, path, fields, listed_at):
     """A VRT stop, or a breakpoint stop at one `offset` or at alternative `offsets` in one LE object, optionally with
-    a register condition `when`."""
-    _object(stop, path, ("kind",), ("object", "offset", "offsets", "when"))
+    a register condition `when` and a reading test `until`."""
+    _object(stop, path, ("kind",), ("object", "offset", "offsets", "when", "until"))
     kind = stop["kind"]
     if type(kind) is not str:
         raise BaselineError("recipe-type-invalid", path + ".kind")
@@ -546,7 +649,7 @@ def _stop(stop, path, fields, listed_at):
     if kind == "vrt":
         _object(stop, path, ("kind",))
         return Stop(kind, None)
-    _object(stop, path, ("kind", "object"), ("offset", "offsets", "when"))
+    _object(stop, path, ("kind", "object"), ("offset", "offsets", "when", "until"))
     number = _int(stop["object"], path + ".object", 1, MAX_OBJECT_NUMBER, "recipe-address-invalid")
     if "offset" in stop and "offsets" in stop:
         raise BaselineError("recipe-address-invalid", path)
@@ -566,7 +669,75 @@ def _stop(stop, path, fields, listed_at):
     else:
         raise BaselineError("recipe-key-missing", path + ".offset")
     when = _condition(stop["when"], path + ".when", fields, listed_at, alternatives) if "when" in stop else None
-    return Stop(kind, site, alternatives, when)
+    until = _until(stop["until"], path + ".until", fields, listed_at) if "until" in stop else None
+    return Stop(kind, site, alternatives, when, until)
+
+
+def _until(value, path, fields, listed_at):
+    """{"every": n (optional), "all"|"any": [comparison, ...]}: the probe reads the test's own fields at the hit."""
+    _object(value, path, (), ("every", "all", "any"))
+    every = _int(value["every"], path + ".every", *UNTIL_EVERY, "recipe-value-invalid") if "every" in value else 1
+    test = _test({key: item for key, item in value.items() if key != "every"}, path, fields, listed_at)
+    for name in test.fields():
+        address = fields[name].address
+        if address.bound is not None:
+            _reference(address.bound, fields, listed_at, path)
+    return Until(every, test)
+
+
+def _test(value, path, fields, listed_at, own=None):
+    """A reading test {"all"|"any": [{"field": F, "<op>": operand}, ...]}. Operands are a literal number,
+    {"field": G[, "offset": c]} (a reading of the judged context) or {"pause": P, "field": G[, "offset": c]} (an
+    earlier pause's agreed reading). `own`: the fields the judged context reads (a stimulus's pause), or None for a
+    probe, which reads whatever declared fields the test names."""
+    _object(value, path, (), ("all", "any"))
+    if ("all" in value) == ("any" in value):
+        raise BaselineError("recipe-key-missing" if "all" not in value else "recipe-value-invalid", path)
+    key = "any" if "any" in value else "all"
+    items = _list(value[key], f"{path}.{key}")
+    if len(items) > TEST_CLAUSES[1]:
+        raise BaselineError("recipe-budget-exceeded", f"{path}.{key}")
+    clauses = []
+    for slot, item in enumerate(items):
+        where = f"{path}.{key}[{slot}]"
+        _object(item, where, ("field",), TEST_OPERATORS)
+        operators = [name for name in TEST_OPERATORS if name in item]
+        if len(operators) != 1:
+            raise BaselineError("recipe-key-missing" if not operators else "recipe-value-invalid", where)
+        op = operators[0]
+        name = _test_field(item["field"], where + ".field", fields, own)
+        operand = item[op]
+        if type(operand) is dict:
+            _object(operand, f"{where}.{op}", ("field",), ("pause", "offset"))
+            offset = _test_number(operand.get("offset", 0), f"{where}.{op}.offset")
+            if "pause" in operand:
+                pause = _identifier(operand["pause"], f"{where}.{op}.pause")
+                other = _identifier(operand["field"], f"{where}.{op}.field")
+                if pause not in listed_at or other not in listed_at[pause][1]:
+                    raise BaselineError("recipe-reference-invalid", f"{where}.{op}")
+                operand = Operand(field=other, pause=pause, offset=offset)
+            else:
+                operand = Operand(field=_test_field(operand["field"], f"{where}.{op}.field", fields, own),
+                                  offset=offset)
+        else:
+            operand = Operand(literal=_test_number(operand, f"{where}.{op}"))
+        clauses.append(Clause(name, op, operand))
+    return Test(key == "any", tuple(clauses))
+
+
+def _test_field(value, path, fields, own):
+    name = _identifier(value, path)
+    if name not in fields or (own is not None and name not in own):
+        raise BaselineError("recipe-reference-invalid", path)
+    return name
+
+
+def _test_number(value, path):
+    if type(value) not in (int, float):
+        raise BaselineError("recipe-type-invalid", path)
+    if not math.isfinite(value) or abs(value) > TEST_NUMBER:
+        raise BaselineError("recipe-value-invalid", path)
+    return value
 
 
 def _condition(value, path, fields, listed_at, alternatives=()):
@@ -680,18 +851,20 @@ def _devices(value):
     return devices
 
 
-def _stimuli(value, pauses, devices):
+def _stimuli(value, pauses, devices, fields):
     items = _list(value, "stimuli")
     if len(items) > CEILINGS["stimuli"]:
         raise BaselineError("recipe-budget-exceeded", "stimuli")
     stops = {pause.id: pause.stop.kind for pause in pauses}
     order = {pause.id: index for index, pause in enumerate(pauses)}
+    before = {pause.id: {earlier.id: (earlier.stop.kind, earlier.fields) for earlier in pauses[:index]}
+              for index, pause in enumerate(pauses)}  # the pauses a stimulus's test may name
     stimuli = []
     seen = set()
     keyed = set()
     for index, item in enumerate(items):
         path = f"stimuli[{index}]"
-        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value"))
+        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value", "if"))
         stimulus_id = _identifier(item["id"], path + ".id")
         if stimulus_id in seen:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -706,16 +879,20 @@ def _stimuli(value, pauses, devices):
             raise BaselineError("recipe-type-invalid", path + ".kind")
         if kind not in STIMULUS_KINDS:
             raise BaselineError("recipe-value-invalid", path + ".kind")
+        test = None
+        if "if" in item:
+            own = pauses[order[pause]].fields
+            test = _test(item["if"], path + ".if", fields, before[pause], own)
         if kind == "key":
-            _object(item, path, ("id", "pause", "kind", "ascii", "scan"))
+            _object(item, path, ("id", "pause", "kind", "ascii", "scan"), ("if",))
             if pause in keyed:  # the game takes one key per poll and discards the rest
                 raise BaselineError("recipe-value-invalid", path + ".pause")
             keyed.add(pause)
             key = tuple(_int(item[name], f"{path}.{name}", 0, 0xFF, "recipe-value-invalid")
                         for name in ("ascii", "scan"))
-            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key, test=test))
         elif kind == "shift":
-            _object(item, path, ("id", "pause", "kind", "flags"))
+            _object(item, path, ("id", "pause", "kind", "flags"), ("if",))
             flags = item["flags"]
             if type(flags) is not dict:
                 raise BaselineError("recipe-type-invalid", path + ".flags")
@@ -725,15 +902,15 @@ def _stimuli(value, pauses, devices):
                 raise BaselineError("recipe-key-unknown", path + ".flags")
             if any(type(on) is not bool for on in flags.values()):
                 raise BaselineError("recipe-type-invalid", path + ".flags")
-            stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items())))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items()), test=test))
         else:
-            _object(item, path, ("id", "pause", "kind", "device", "value"))
+            _object(item, path, ("id", "pause", "kind", "device", "value"), ("if",))
             name = _identifier(item["device"], path + ".device")
             device = devices.get(name)
             if device is None or (device.register is not None and stops[pause] != "breakpoint"):
                 raise BaselineError("recipe-reference-invalid", path + ".device")
             value = _int(item["value"], path + ".value", *SCALAR_RANGES[device.type], "recipe-value-invalid")
-            stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value, test=test))
     return tuple(stimuli)
 
 

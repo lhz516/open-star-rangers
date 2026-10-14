@@ -93,7 +93,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | blocked |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
-| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | in-progress |
+| [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11 | pending |
@@ -130,6 +130,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
   Evidence: spec 的 [D-03 定稿草案](./spec.md#d-03-定稿草案待用户批准)；06 入档的 RQ7（原版没有关闭媒体的设置，档案打不开时停靠必定超时）。
   Affected acceptance: AC-05、AC-16、AC-17（07 的验收 1–3）；依赖链 08、10、11–28 等待。
   Resume when: 用户明确批准 D-03 草案（或给出修改意见）以及 P3-03 修订 2；或者授权 agent 直接批准推荐方案（P3-07 先例），协调者把 07、08、10 改为“自动”并记录授权原话。
+
+- **2026-10-14 — 09 的交叉核对待复核：** 09 的 `rt-a2-01` 读数中，离港位姿与“对停靠时玩家位姿应用 DK3”的结果不符，看来跟随基地位姿。executable DK2/DK3 把保存位姿的来源记为已确认（代码）；08 在定稿离港字段之前，须以原生指令复核 `0x38ff4` 保存的是哪个位姿，必要时更正 executable 与 B-004。05 的 P1–P8 与运行读数一致（`local/research/p3-10/runtime/report.md`）。
 
 ## 审批
 

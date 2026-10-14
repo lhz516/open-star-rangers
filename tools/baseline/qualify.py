@@ -185,7 +185,12 @@ def collect_pause(recipe, pause_id, mapping, port, budget, registers=None, bindi
     unsigned 32-bit reading or register value of an earlier pause) resolves bound fields.
     """
     pause = recipe.pause(pause_id)
-    fields = [recipe.fields[name] for name in pause.fields]
+    return collect_fields(recipe, pause.id, pause.fields, mapping, port, budget, registers, bindings)
+
+
+def collect_fields(recipe, label, names, mapping, port, budget, registers=None, bindings=None):
+    """`collect_pause` for the named fields (a pause's, or an `until` stop's probe fields); `label` names the reads."""
+    fields = [recipe.fields[name] for name in names]
     static = set()
     for item in fields:
         size = POINTER_SIZE if item.address.pointers else item.size
@@ -199,7 +204,7 @@ def collect_pause(recipe, pause_id, mapping, port, budget, registers=None, bindi
     touched = frozenset(page for reads in passes for walk in reads.values() for hop in walk.hops
                         for page in page_range(hop.linear, hop.size))
     after = port.state(touched)
-    return PauseReads(pause.id, before, after, passes)
+    return PauseReads(label, before, after, passes)
 
 
 def safe_ref(value, where):
@@ -248,26 +253,10 @@ def _decode(kind, data):
     return value, kind != "f32" or math.isfinite(value)
 
 
-def judge_pause(recipe, mapping, evidence):
-    """Samples for one pause, in the pause's field order."""
-    reads = evidence.reads
-    pause = recipe.pause(reads.pause)
-    if type(evidence.refs) is not dict or set(evidence.refs) != set(REF_KEYS):
-        raise BaselineError("proof-ref-invalid", pause.id)
-    refs = {key: safe_ref(evidence.refs[key], f"{pause.id}.{key}") for key in REF_KEYS}
-    proof = {"mapping": refs["mapping"], "stop": safe_ref(evidence.stop.ref, f"{pause.id}.stop"),
-             "identity": refs["identity"], "readability": refs["reads"], "repeat": refs["reads"]}
-
-    common = set()
-    if evidence.stop.verified is not True:
-        common.add("stop-unverified")
-    if not reads.before.owner == reads.after.owner == mapping.owner:
-        common.add("owner-changed")
-    if not (_same(evidence.mission, recipe.identity.mission) and _same(evidence.config, recipe.identity.config)):
-        common.add("identity-mismatch")
-
+def _judge_fields(recipe, names, reads, common):
+    """[field, value, reasons] for each named field of the collected reads; `common` holds the context's reasons."""
     judged = []
-    for name in pause.fields:
+    for name in names:
         item = recipe.fields[name]
         walks = [passed[name] for passed in reads.passes if name in passed]
         reasons = set(common)
@@ -291,7 +280,37 @@ def judge_pause(recipe, mapping, evidence):
             if not finite:
                 reasons.add("value-nonfinite")
         judged.append([item, value, reasons])
+    return judged
 
+
+def judge_probe(recipe, mapping, reads, names):
+    """The probe readings of an `until` stop's hit: field ID -> (value or None, ordered reasons). The same per-field
+    qualification as a pause's samples (complete, agreeing, mapped reads by the same owner), without the operator's
+    identity: a probe only selects the hit, and the pause it selects is read and judged in full."""
+    common = set() if reads.before.owner == reads.after.owner == mapping.owner else {"owner-changed"}
+    return {item.id: (None if reasons else value, ordered(reasons))
+            for item, value, reasons in _judge_fields(recipe, names, reads, common)}
+
+
+def judge_pause(recipe, mapping, evidence):
+    """Samples for one pause, in the pause's field order."""
+    reads = evidence.reads
+    pause = recipe.pause(reads.pause)
+    if type(evidence.refs) is not dict or set(evidence.refs) != set(REF_KEYS):
+        raise BaselineError("proof-ref-invalid", pause.id)
+    refs = {key: safe_ref(evidence.refs[key], f"{pause.id}.{key}") for key in REF_KEYS}
+    proof = {"mapping": refs["mapping"], "stop": safe_ref(evidence.stop.ref, f"{pause.id}.stop"),
+             "identity": refs["identity"], "readability": refs["reads"], "repeat": refs["reads"]}
+
+    common = set()
+    if evidence.stop.verified is not True:
+        common.add("stop-unverified")
+    if not reads.before.owner == reads.after.owner == mapping.owner:
+        common.add("owner-changed")
+    if not (_same(evidence.mission, recipe.identity.mission) and _same(evidence.config, recipe.identity.config)):
+        common.add("identity-mismatch")
+
+    judged = _judge_fields(recipe, pause.fields, reads, common)
     values = {item.id: (value, reasons) for item, value, reasons in judged}
     for check in recipe.identity.checks:
         value, reasons = values[check.field]

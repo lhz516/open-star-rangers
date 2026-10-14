@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-13
+updated: 2026-10-14
 related: [U-021, B-006]
 ---
 
@@ -65,13 +65,13 @@ related: [U-021, B-006]
 | `source` | `baselineVersion` 与 `exeSha256`，照抄 `measure.py baseline-version` 的输出 |
 | `identity` | `mission` 与 `config`：所选任务与配置的身份，各 1–16 个键，值为布尔、整数或受限记号。`checks`：每个暂停点都必须读到且等于给定值的字段列表，用读数证实身份 |
 | `correlation` | `code`：`object`、`size`（64–512，16 的倍数），可选 `offset`；`data`：`object`、`offset`、`size`（16–512）。用于在每个进程中建立 LE 对象与线性地址的对应 |
-| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
+| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)，以及读数等待 `until`，见[读数检验：等待与分支](#读数检验等待与分支)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
 | `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），或 `bound`、`offset`（较早暂停点的一个整数读数加偏移，见[绑定读数](#备选位置停止条件与绑定读数)），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；或 `{"low": n}`：线性页 0 中的地址（实模式中断向量表与 BIOS 数据区，0 ≤ n 且 n + 字段大小 ≤ 0x1000），按线性地址直接读取，不能带指针；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
 | `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes`；可选 `maxSkippedHits`（0–1000000，默认 100000） |
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
 | `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
-| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入) |
+| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入)；可选 `if`：只在读数通过检验时施加，见[读数检验](#读数检验等待与分支) |
 
 形状示意（尖括号处换成实际值；地址取自 `docs/original/` 记录的 LE 对象与偏移）：
 
@@ -120,6 +120,29 @@ related: [U-021, B-006]
 - 条件是配方声明的选择，与操作者的 `skip` 不同：`skip` 是操作者对一次已确认停止的判断（工具会等待下一份应答），条件则由工具按寄存器值自动筛选。
 - 条件引用的读数或寄存器值不可用（该暂停点没有字段读数、样本不合格、各遍读数不一致或值缺失）时，运行以 `binding-unavailable` 失败；绑定字段在读取时找不到读数，则只有该样本不合格，原因码同为 `binding-unavailable`，运行照常继续。
 - `stop.json` 的记录：单一位置照旧写 `site`；备选位置写全部 `sites`（对象与十六进制偏移）与命中的 `hitOffset`（十六进制对象偏移），登记证明中为 `offsets`。带条件时另写 `when`（寄存器、解析后的十六进制值，限定位置时另有 `at`）与 `skippedHits`（本次停止前跳过的命中数，没有则为 0）。配方带条件时，报告 `counts` 另有整次运行的 `skippedHits`。
+
+### 读数检验：等待与分支
+
+固定配方无法应对逐次变化的场景，例如起始布局、Warp 出口与自动驾驶停点不同，所以到达目标所需的轮询数也不同（P3-10/05 的运行）。读数检验（P3-10/09）让配方等待本次运行的读数，或按读数选择输入。不使用它们的配方解析、运行与指纹都和以前完全相同。
+
+- **检验：** `{"all": [比较, …]}` 或 `{"any": [比较, …]}`，1–16 个比较。比较为 `{"field": F, "<运算>": 操作数}`，运算恰好一个：`lt`、`le`、`gt`、`ge`、`eq`、`ne`。操作数是数字字面量（整数或有限小数，绝对值至多 2⁵³），或 `{"field": G}`（被检验的同一组读数），或 `{"pause": P, "field": G}`（较早暂停点 P 的一致读数，P 必须列出 G）；两种读数操作数都可加 `"offset": c`（数字，比较 F 与 G + c）。没有其他运算或嵌套：检验是声明的比较，不是表达式。
+- **取值：** 整数字段按其类型解码（`i*` 有符号），`f32` 按浮点；比较在 Python 数值上进行（整数精确，含小数时为双精度）。检验只用于选择停止与输入，不是测量结论；结论仍取自暂停点的样本。
+- **三值逻辑：** 读数不可用（样本不合格、该暂停点没有这个字段的合格读数）时，涉及它的比较为“未知”。`all` 只要有一个比较为假即为假，`any` 只要有一个为真即为真；否则有未知时整个检验为未知。例如目标指针可能为空时，可写 `{"any": [{"field": "target-handle", "eq": 0}, {"field": "target-kind", "ne": 131072}]}`。
+
+**等待：断点停止的 `until`。** `{"every": n, "all"|"any": […]}`（`every` 1–10000，默认 1），只能用于断点停止，可与 `when` 同用。
+
+- 通过寄存器条件（若有）的命中依次编号，工具在第 1、n+1、2n+1… 个命中处探测：重新核对 CODE/DATA 对应，按 `repeatReads` 重复读取检验涉及的字段，并按[读数的合格条件](#读数的合格条件)判定（完整、一致、页查找与所有者不变；不涉及操作者身份）。检验为真的那次命中才是暂停点，之后照常确认、读数与施加刺激。
+- 未被探测的命中与检验为假或未知的命中都**不是暂停点**：与停止条件一样不等确认、不读字段、不施加刺激，计入 `skippedHits` 与 `maxSkippedHits`；`waitSeconds` 限制整个等待。
+- 探测字段不必列在任何暂停点的 `fields` 中（可用寄存器寻址：读停止时的寄存器）；探测读取计入 `maxReadBytes`（每次一对 CODE/DATA 窗口加字段读取，解析时只按一次估算）与 `maxLogBytes`。每次探测要多条调试器命令，实测一个读字段的暂停点约 2–4 秒，所以轮询位置每帧都命中时用 `every` 拉开探测间隔。
+- 检验引用的较早读数，或探测字段的 `bound` 所需的较早读数与寄存器值，在开始等待时就不可用，运行以 `binding-unavailable` 失败（它永远选不出停止）。探测读完后寄存器须不变，否则该次探测为未知（`stop-unverified`）；检验为真时若已超过 `waitSeconds`，仍以 `wait-timeout` 失败。
+- `stop.json` 另写 `until`：检验、`every`、`probes`（本次探测数）、`unavailableProbes`（检验未知的探测数）与 `probeReasons`（其原因码），以及被接受那次的 `accepted`（探测读数与所引用的较早读数）；`skippedHits` 同停止条件。报告 `counts` 另有整次运行的 `probes` 与 `skippedHits`。
+
+**分支：刺激的 `if`。** 刺激可带一个检验：同名字段（`{"field": …}` 与比较左侧）是本暂停点的读数，必须列在本暂停点的 `fields` 中；`{"pause": …}` 只能引用更早的暂停点。比较的左侧总是本暂停点的读数，所以不读字段的暂停点不能带 `if`。
+
+- 刺激在其暂停点按顺序施加，轮到带 `if` 的刺激时先检验：为真照常施加；为假则什么也不写，状态记为 `condition-false`；未知时以 `stimulus-rejected`（`detail` 为 `binding-unavailable`）结束运行，因为配方声明的分支无法判定。
+- 记录另有 `if`：检验、`readings`（本暂停点的读数，不可用为 null）、`references`（较早读数）与 `result`。
+- `condition-false` 的刺激在完整性上算作按配方完成（报告不因它记 `stimuli-missing`）；`counts` 另有 `stimuliConditionFalse`，`stimuliApplied` 只计实际施加的刺激。同一暂停点仍至多声明一个按键。
+- 配方作者要保证后续暂停点与所选分支一致，例如未按键的分支不能紧跟只有按键后才命中的暂停点。
 
 ### 限值与预算
 
@@ -277,7 +300,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 
 报告的 `stimuli` 与 `pauses/<id>/stimuli.json` 逐条记录：
 
-- `id`、`pause`、`kind`、`status`、`utc`，以及该暂停点的 `emulatedMs` 与 `cycleCount`。`status` 为 `applied`；或为结束运行的原因码，另有 `detail`；或为 `written`：已写入并回读，但同一暂停点后面的刺激或寄存器核对失败，所以不算已施加；
+- `id`、`pause`、`kind`、`status`、`utc`，以及该暂停点的 `emulatedMs` 与 `cycleCount`。`status` 为 `applied`；或为 `condition-false`（`if` 为假，未写入，见[读数检验](#读数检验等待与分支)）；或为结束运行的原因码，另有 `detail`；或为 `written`：已写入并回读，但同一暂停点后面的刺激或寄存器核对失败，所以不算已施加；
 - 每次写入的 `channel`、`linear`、`before`、`written`、`readback` 与 `pages`；
 - 按键另记 `key` 与写入前的缓冲指针和边界，换档记 `flags`，设备记 `device` 与 `value`。
 
@@ -285,7 +308,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 
 刺激失败即结束运行：
 
-- `stimulus-rejected`：施加前的条件不满足。`detail` 为 `pause-<原因码>`（暂停点不合格）、`key-buffer-busy`（缓冲非空）、`key-buffer-invalid`、`mapping-not-identity`、`mapping-unverified`、`device-out-of-range`、`context-unqualified`，或读数错误码。
+- `stimulus-rejected`：施加前的条件不满足。`detail` 为 `pause-<原因码>`（暂停点不合格）、`key-buffer-busy`（缓冲非空）、`key-buffer-invalid`、`mapping-not-identity`、`mapping-unverified`、`device-out-of-range`、`context-unqualified`、`binding-unavailable`（`if` 未知），或读数错误码。
 - `stimulus-unverified`：调试器没有确认写入（`write-unacknowledged`）、回读不一致（`readback-mismatch`）、页查找改变（`mapping-changed`）或寄存器改变（`registers-changed`）。
 
 刺激没有全部施加时，报告另有 `stimuli-missing`。
@@ -348,7 +371,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 只有同时满足以下条件，报告才是 `complete`：
 
 - 计划的样本全部按顺序取得，且每个必需样本都合格；
-- 配方声明的刺激全部按顺序施加并回读一致（只适用于声明了刺激的配方）；
+- 配方声明的刺激全部按顺序施加并回读一致，`if` 为假的除外（只适用于声明了刺激的配方）；
 - 文件保护与进程回收都通过；
 - 运行正常结束，未取消。
 
@@ -420,7 +443,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | `run` | `start` 与 `end`（UTC、`elapsedSeconds`、`endedBy`） |
 | `samples` | 每个样本：暂停点、字段、`status`、类型、单位、`required`、值、原因码与证明引用 |
 | `stimuli` | 只在配方声明了刺激时出现：施加或尝试过的每个刺激，见[刺激记录](#刺激记录) |
-| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`；带停止条件时另有 `skippedHits` |
+| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`，有带 `if` 的刺激时另有 `stimuliConditionFalse`；带停止条件或 `until` 时另有 `skippedHits`，带 `until` 时另有 `probes` |
 | `integrity` | 保护核对结果与 `privateCopyWrites` |
 | `cleanup` | 回收结果，见下 |
 
