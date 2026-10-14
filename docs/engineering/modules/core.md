@@ -136,7 +136,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-006, B-007, B-008, B-009, U-008, U-009
   默认之外的步长只用于 Node 校准测试。32 Hz 是项目的固定步长选择，不是原版帧时序（[已知差异](#已知差异)）。
 - **动作输入**（[tick-input.ts](../../../src/core/contracts/tick-input.ts)）：`TickInput` 为 `{ axes, commands }`。
   - `axes` 为 `{ pitch, yaw, roll }`，各为 [−1, 1] 内的有限数；正方向分别为抬头、机头右转、从驾驶员向前看顺时针滚转，不支持的直接操纵保持 0。P3-06 把三个轴解释为原版整数操纵路径上的数字摇杆（[飞行控制、运动与停放](#飞行控制运动与停放)）。
-  - `commands` 是至多 `commandsPerTick` 个 `Command` 的有序数组，每项在本 tick 按数组顺序处理一次。`Command` 是 16 个变体的封闭判别联合（`COMMAND_TYPES`），每个变体只接受自己的字段，字段与取值按 spec 的[命令形状表](../../plan/p3/02/spec.md#输入与命令)：`fire`、`speed`、`select-number`、`navigate-selection`、`confirm-selection`、`target`、`cycle-main-weapon`、`select-missile`、`toggle-map`、`map-point`、`request-warp`、`communications`、`launch`、`energy`、`damage-report`、`cockpit-front`。
+  - `commands` 是至多 `commandsPerTick` 个 `Command` 的有序数组，每项在本 tick 按数组顺序处理一次。`Command` 是 17 个变体的封闭判别联合（`COMMAND_TYPES`），每个变体只接受自己的字段，字段与取值按 spec 的[命令形状表](../../plan/p3/02/spec.md#输入与命令)及 [P3-05 的契约修订](../../plan/p3/02/spec.md#p3-05-的契约修订速度档位命令)：`fire`、`speed`、`speed-preset`、`select-number`、`navigate-selection`、`confirm-selection`、`target`、`cycle-main-weapon`、`select-missile`、`toggle-map`、`map-point`、`request-warp`、`communications`、`launch`、`energy`、`damage-report`、`cockpit-front`。
   - `readTickInput(value)`：只接受普通对象与无空位、无额外字段的普通数组；每个值只经属性描述符读取一次，不运行访问器；先查命令数再读元素。结果按规范字段次序新建并深度冻结，−0 变为 0，所以等价的动作得到相同的记录。错误为 `CoreInputError`，路径以 `tickInput` 开头，不回显未知键或值。
 - **领域事件**（[domain-events.ts](../../../src/core/contracts/domain-events.ts)）：`step()` 按发出顺序返回可序列化的纯数据，不含对象引用（[ADR-0006](../../decisions/ADR-0006-core-returns-events.md)）。`DomainEvent` 是 P3-02、P3-06 的六个变体与 P3-07 的 13 个变体的封闭联合，基础字段为 `DomainEventBase<Type>` 的 `{ type, tick }`，`tick` 是发出它的 step 的编号：
   - `command-result`：`{ type, tick, commandIndex, commandType, outcome, reason }`。每个结构合法的命令恰有一个。`outcome` 取自 `COMMAND_OUTCOMES`：`accepted` 时 `reason` 为 null，`rejected` 或 `ignored` 时为 `COMMAND_RESULT_REASONS` 中的封闭原因码，其他规则任务可沿用：
@@ -256,8 +256,8 @@ P3-06 的系统在 [systems/](../../../src/core/systems/) 中，由各自的阶�
 
 - **可用的玩家**（`availablePlayer`）：玩家实体存在、未被毁且状态为 `active`（原版状态 7）。可用玩家缺少控制状态为 `flight-control.player-control` 故障。
 - **次序**（D-08、CR-07）：玩家可用时，先清除不能解析的玩家目标，再经 `PlayerUpdateOutput.lockMissiles` 运行 P3-07 的导弹锁定（`0x2ddbc`），然后运行速度辅助；然后判定命令批次，最后做轴的变化检测。请求在末尾按产生次序投递，辅助的恢复请求在最前。`updatePlayer` 返回它所针对的可用玩家（否则为 null）；流水线随后释放玩家开火命令延后的发射请求，再对该玩家运行 P3-07 的自动选敌（`0x2799c`，见[战斗规则](#战斗规则p3-07)）。
-- **命令判定**：P3-06 处理 `speed` 的六种操作、`select-number` 与 `confirm-selection`。依次判定：本上下文中不归 P3-06 的命令（全部其他命令，以及基地与地图上下文中的 `select-number`、`confirm-selection`）经 `PlayerUpdateOutput.judge` 交给 `judgeCommand`（P3-07 的命令由其规则判定，其余为 `rejected`/`not-implemented`）；玩家不可用为 `ignored`/`player-unavailable`；不在飞行上下文（Warp、基地、地图中的速度命令，Warp 中的 `select-number`、`confirm-selection`）为 `ignored`/`wrong-context`，因为原版只有飞行上下文的按键处理 `0x264a0` 处理这些键；其余为 `accepted`。
-  - `increase`/`decrease`：读回（`throttleReadback`，`0x21ca8`）加或减 `THROTTLE_STEP`，增加不超过满油门，减少不低于 0；`zero` 为 0，`maximum` 为 `FULL_THROTTLE`；`select-number` n 为原版 Shift+n 的档位（`presetThrottle`）。每条这样的命令投递一个携带其油门的 `control` 请求，油门不保存为状态。
+- **命令判定**：P3-06 处理 `speed` 的六种操作、`speed-preset`、`select-number` 与 `confirm-selection`。依次判定：本上下文中不归 P3-06 的命令（全部其他命令，以及基地与地图上下文中的 `select-number`、`confirm-selection`）经 `PlayerUpdateOutput.judge` 交给 `judgeCommand`（P3-07 的命令由其规则判定，其余为 `rejected`/`not-implemented`）；玩家不可用为 `ignored`/`player-unavailable`；不在飞行上下文（Warp、基地、地图中的速度命令与 `speed-preset`，Warp 中的 `select-number`、`confirm-selection`）为 `ignored`/`wrong-context`，因为原版只有飞行上下文的按键处理 `0x264a0` 处理这些键；飞行中的 `select-number`（未按 Shift 的数字）通过同样的门禁但没有效果，也为 `ignored`/`wrong-context`（P3-05）；其余为 `accepted`。
+  - `increase`/`decrease`：读回（`throttleReadback`，`0x21ca8`）加或减 `THROTTLE_STEP`，增加不超过满油门，减少不低于 0；`zero` 为 0，`maximum` 为 `FULL_THROTTLE`；`speed-preset` n 为原版 Shift+n 的档位（`presetThrottle`，n = 1 与 `zero` 相同）。每条这样的命令投递一个携带其油门的 `control` 请求，油门不保存为状态。
   - 每次读回都从移动块当前的指令速度出发（含本 tick 辅助的直接写入，以及同一批次中先判定的 P3-07 档位键经 `0x21d88` 的改写），按当前最高速度与请求应用相同的规则折算本 tick 已投递的油门与匹配请求（`pendingCommandedSpeed`：`control` 请求在锁定时不改变指令速度；匹配不受锁定影响），后一条命令从折算值读回（P3-07/16 的修正）。
   - `match-target` 与飞行中的 `confirm-selection`（原版 Enter）：玩家目标为空或没有移动块为 `ignored`/`no-target`，否则 `accepted` 并投递 `match-speed` 请求。
   - `toggle-auto-match`（原版 Ctrl+Enter）：翻转速度辅助开关，开启时到期时刻归 0、清除“已匹配”，关闭时两者不变；紧随其结果发出 `speed-assist-toggled`。
@@ -520,7 +520,7 @@ P3-07 的系统在 [systems/](../../../src/core/systems/) 中，以静态调用�
   - 油门表索引越出表时钳到表内（原版在上限降低后的 `−` 可读到表外的未定义内存）；
   - 停放 Warp 的计时按精确整数计算：负的 +0xA8 或 +0xA8 + +0xA4 使过境在首次检查时结束、不推迟 Warp；原版对绝对计数器的 u32 样本按无符号比较，只在计数器小于该持续时间的绝对值时回绕而不同。切片的机型记录没有负值；
   - 玩家的控制状态在实例化时建立，原版在下一帧的首次回调中建立；状态 7 之前没有读者，可观察结果相同（项目映射，高概率）；
-  - 通讯菜单打开时 `select-number` 归菜单（P3-10 加入优先级），原版的档位键在菜单打开时仍有效（除非菜单占用该码）。
+  - 通讯菜单打开时 `select-number` 归菜单（P3-10 加入优先级）；档位是独立的 `speed-preset`，菜单打开时照常生效，与原版档位键一致（菜单只占用数字与字母，见键位表的[通讯菜单与能量页](../../original/input/key-map.md#通讯菜单与能量页)）。
 - **分阶段接入（消费者已交付，写入者尚未接入；P3-05 已交付游戏输入消费者，Core 规则仍按后续任务接入）：** 以下不是对应规则的替代，也不能写成已与原版对照：
   - 最高速度在实例化与档位改变时按实时的能量状态重算（P3-07，`speedLimitStatus` 为 `'live'`）；救援的重算归 P3-11，受损与修理不重算（D6）；
   - 非玩家飞行器在 P3-08 交付前按实例化时的移动块运动（沿第三行直线前进）；停放对象按实例化时的 AI 状态行进，AI 程序对 AI 状态的改变、对象目标与 Warp 离场请求归 P3-08；
@@ -605,16 +605,16 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
   - **来自 P3-06（[操纵](../../plan/p3/06/spec.md#操纵)）：**
     - 轴的语义已定：`pitch`、`yaw`、`roll` 对应原版第 1、2、3 轴，正方向是原版设备的正偏转（代码链已确认，画面含义高概率，由 P3-06 的原版运行核对）；三个轴是原版整数路径上的数字摇杆，±1 为满偏，非整数轴值 × 128 向零截断，绝对值不足 1/128 的非零值等于 0；偏航与横滚可同时非零。按键产生 ±1 即可，Core 只在偏转变化时应用，按住期间不需要重复。
     - 原版没有键盘操纵，方向键与小键盘是视角键：项目的操纵键由 P3-05 选取，不与原版视角键冲突，并记为项目选择。
-    - 普通飞行中的 `select-number` n 是原版 Shift+n 的速度档位（Shift+0 由 `maximum` 表达），未按 Shift 的数字在飞行中无作用。
+    - 普通飞行中的 `speed-preset` n 是原版 Shift+n 的速度档位（Shift+0 由 `maximum` 表达）；未按 Shift 的数字是 `select-number`，在飞行中无作用（`ignored`/`wrong-context`，P3-05 的契约修订）。
     - `a`（自动驾驶，G-09）与 F11（飞行中切换灵敏度，G-10）按缺省清单拦截并标注；Core 没有对应命令。
     - 按住 `+`/`−` 如何产生命令由 P3-05 决定：Core 每 tick 处理收到的每条命令，不按 DOS 轮询丢弃；同 tick 多条命令的读回依次累计。
     - 地图与基地中的手动轴归零已在 Core 中实现；P3-05 自己的地图模式清键仍按其范围进行。
   - **来自 P3-07：**
-    - 现在判定的命令与原版键（绑定归 P3-05，物理键研究 U-011）：`target` 的 `enemy`、`friendly`、`next`、`previous`、`forward` 对应 `t`、`f`、`r`、`y`、`u`（T3 的原生比较，`u` 已确认；[键位表](../../original/input/key-map.md#目标模式代码确认)仍把 `u` 写为高概率，由 P3-05 对齐）；`cycle-main-weapon` 为 `/`，`select-missile` 的 `next` 为 `.` 与 `>`、`previous` 为 `,` 与 `<`（W3；手册的 `?` 高概率是该键的上档图例，DOS 读到的键码归 U-011）；`energy` 的 `open` 为 `e`，`shield-increase`、`shield-decrease`、`gun-increase`、`gun-decrease` 为 `S`、`s`、`G`、`g`（只在能量页有效，D10），`damage-report` 为 `d`（D15）；`fire` 的 `primary` 为 Alt 或摇杆按钮的电平（列表 0），`secondary` 为空格或按钮的单次请求（列表 1，W2、Q-10）。大写 `T`（消息 0x800，作用未追踪）不是 P3-07 的命令。
+    - 现在判定的命令与原版键（绑定归 P3-05，物理键研究 U-011）：`target` 的 `enemy`、`friendly`、`next`、`previous`、`forward` 对应 `t`、`f`、`r`、`y`、`u`（T3 的原生比较，`u` 已确认，[键位表](../../original/input/key-map.md#目标模式代码确认)已由 P3-05 对齐）；`cycle-main-weapon` 为 `/`，`select-missile` 的 `next` 为 `.` 与 `>`、`previous` 为 `,` 与 `<`（W3；手册的 `?` 即 Shift+`/`，飞行处理中无作用，P3-05/01 已确认）；`energy` 的 `open` 为 `e`，`shield-increase`、`shield-decrease`、`gun-increase`、`gun-decrease` 为 `S`、`s`、`G`、`g`（只在能量页有效，D10），`damage-report` 为 `d`（D15）；`fire` 的 `primary` 为 Alt 或摇杆按钮的电平（列表 0），`secondary` 为空格或按钮的单次请求（列表 1，W2、Q-10）。大写 `T`（消息 0x800）是仅作弊的击杀事件（P3-05/01），不是 P3-07 的命令。
     - 开火采样：按住主炮期间每个采样的 tick 一个 `fire primary`（Runtime 的 `primaryFire` 意图已送达 Core），两次采样之间的短按也保留一次；`secondary` 每次按下一个命令。Core 不保存跨 tick 的扳机电平，射速由挂点的冷却决定，冷却未到为 `cooldown` 且不累积。
     - 非飞行上下文中的开火屏蔽（CR-11 的差异 8）：Core 在地图、Warp 与基地上下文中把开火、选目标、选武器与能量命令判为 `wrong-context`，原版在这些上下文中仍按最后读到的主扳机电平开火。P3-05 不必在这些上下文中送出开火命令；送出时只得到 `wrong-context`。
     - 通讯菜单与对象列表菜单在飞行键上下文中先于这些键得到按键，并可能占用 `f`、`r`、`t`、`u`、`y` 等字母（T3）；这一优先级随 P3-10 的通讯菜单加入。
-- **P3-06（已交付）：** `movement`、`parked-update`（含离开世界）与 `area-check` 阶段；`speed` 命令、普通飞行的 `select-number` 与 `confirm-selection`，以及轴的效果；`flight` 分区的运动组；玩家起飞初始状态；实例化扩展点中的最高速度、AI 初态、两个计时与初始移动块。自动驾驶 `a` 不进入 P3（G-09）。见上文各节与 [P3-06 goal](../../plan/p3/06/goal.md)。
+- **P3-06（已交付）：** `movement`、`parked-update`（含离开世界）与 `area-check` 阶段；`speed` 与 `speed-preset` 命令（`speed-preset` 由 P3-05 从 `select-number` 改接）、普通飞行的 `confirm-selection`，以及轴的效果；`flight` 分区的运动组；玩家起飞初始状态；实例化扩展点中的最高速度、AI 初态、两个计时与初始移动块。自动驾驶 `a` 不进入 P3（G-09）。见上文各节与 [P3-06 goal](../../plan/p3/06/goal.md)。
   - **来自 P3-07**（CR-03、CR-09）：
     - `MovementBlock` 现为三种变体的封闭联合：P3-07 的 `linear`、`spinning` 已加入实体表的校验与复制、快照写入器与 `moveEntity` 的分派（`moveLinear` 后接注入的弹丸命中检测，`spinFragment`）。P3-06 自己的读取者须按 `mode` 收窄到 steered 块（`craftMovement`、`motionPlayer` 已如此，后者遇到非 steered 块为 `projection.motion` 故障）；冲量、定时旋转、锁定与扰动只在 steered 块中，碰撞响应写到碎片的块时不写字段而抽取照常。
     - P3-07 调用的 P3-06 函数：`craftMovementBlock`（`0x21794` 的模式 0，导弹构造按油门 0 或满油门）、`applyFloatControl`（`0x21fd8`，导弹的 `steer` 与无制导导弹阶段 0 的直接调用）、`applyRecomputedMaximum`（`0x21d88`，档位改变之后）、`playerMaximumSpeed`（`0x30e0c`，经 `craftMaximumSpeed` 在 `0x3060c` 与档位改变时以实时的 E、T 与字段 2 调用）、`integrateCraft`（导弹以弹体记录）、`rotateRows`、`motionStep` 与 `squaredDistance`（`0x56b50`）。`initialMaximumSpeed` 已没有生产调用者；受损不重算最高速度（D6）。
@@ -646,7 +646,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
   - **来自 P3-06：**
     - `warpClock`、`inWarp` 已在实例化中写入（玩家与僚机以外 1 次抽取）并由停放路径读写；玩家 Warp 与 Warp 完成复用同一字段。
     - Warp 开始把玩家移动块就地切换为 `warp` 模式（积分为 `integrateWarp`）并清除玩家目标，Warp 完成切回 `craft`；Warp 期间的区域中心在 `activeAreaCentre` 中加入。
-    - 地图上下文中的手动轴归零与速度命令的 `wrong-context` 已在 Core 中；地图中的 `select-number`、`confirm-selection` 仍为 `not-implemented`，由 P3-09 接入。
+    - 地图上下文中的手动轴归零与速度命令、`speed-preset` 的 `wrong-context` 已在 Core 中；地图中的 `select-number`、`confirm-selection` 仍为 `not-implemented`，由 P3-09 接入。
     - 种类 25 的地图标记没有机型记录：世界创建拒绝投递种类 25 实例的内容（所有原版任务都没有），运行时创建的标记若带移动块并通过运动筛选，会在 `movement.record` 处故障，因此须按扩展规则为其模式 4 加入不需要机型记录的变体（与 P3-13）。
   - **来自 P3-07：**
     - `inWarp` 由 P3-09 写入（玩家 Warp），P3-07 只读：目标候选、导弹起爆的受击者与停放单目标交战的门禁排除 Warp 中的对象，帧尾的右显示屏以 `warp` 原因清除在 Warp 中的玩家目标；雷达、弹丸命中、碰撞与停放多目标的收集不看 Warp。
@@ -656,7 +656,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
     - 地图上下文中 P3-07 的命令为 `wrong-context`（CR-11 的差异 8）；自动选敌在地图中照常运行（T3）。种类 25 的标记在友方掩码 `0x206c87e` 中，并在雷达中为 `marker` 类；它须有移动块并处于活动状态才会成为候选或接触点（见上一条）。
 - **P3-10：** `communications-reply` 与 `base-interior` 阶段，以及 `mission-flow` 中的停靠子状态；`communications`、`launch`、`select-number`、`navigate-selection`、`confirm-selection` 在通讯与基地上下文中的解释，僚机命令经菜单转给 P3-08；`communications` 分区。扩展点：`0x38cd4`（敌方类对象实例化时的僚机报告）。
   - **来自 P3-06：**
-    - 通讯菜单打开时 `select-number` 归菜单的优先级（原版档位键此时仍有效，是已知差异）；基地上下文中的 `select-number`、`confirm-selection` 仍为 `not-implemented`。
+    - 通讯菜单打开时 `select-number` 归菜单的优先级（档位是独立的 `speed-preset`，不受影响）；基地上下文中的 `select-number`、`confirm-selection` 仍为 `not-implemented`。
     - 基地修理 `0x398ec` 清除操纵锁定与扰动，完全修理 `0x39820`（停靠与离港等调用）清除扰动。
     - 停放行进中的僚机到达基地报告 `0x39820` 与靠近基地报告 `0x3c3b0`，位置已在 [area.ts](../../../src/core/systems/area.ts) 中以注释标出。
     - 停靠的实体保留移动块并参与运动，离开活动区域时也会停放；基地上下文中的手动轴归零已在 Core 中。

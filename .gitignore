@@ -19,6 +19,8 @@ coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Environment and secrets
 .env
