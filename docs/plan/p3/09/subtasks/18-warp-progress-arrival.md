@@ -42,6 +42,7 @@ updated: 2026-10-14
 - `src/core/systems/displays.ts`、`src/core/systems/displays.test.ts`：frame-end 中的次序。
 - `src/core/rules/warp-path.ts`、`src/core/rules/warp-path.test.ts`：计划新增，MW-02/MW-04/MW-07 的隧道路径（按 28/29 的 R-B）。
 - `src/core/systems/view-switch.ts`、`src/core/systems/view-switch.test.ts`：进入/离开视角 1 的部分。（以上为协调者 2026-10-14 扩大范围）
+- `src/core/systems/movement.ts`、`src/core/systems/movement.test.ts`、`src/core/world/world.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`：Warp 期间的运动分派与既有整体期望（协调者 2026-10-14 扩大范围）。
 
 ## 验收标准
 
