@@ -92,7 +92,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 07 | in-progress |
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
-| [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | pending |
+| [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | in-progress |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | pending |
 | [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | pending |
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29 | pending |
@@ -108,7 +108,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | pending |
-| [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | pending |
+| [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | in-progress |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
 | [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29 | pending |
 
