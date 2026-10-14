@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "07"
-updated: 2026-10-13
+updated: 2026-10-14
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-011, U-021, U-022, U-027, U-031]
 ---
 
@@ -116,7 +116,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [24-chains-replay-limits.md](./subtasks/24-chains-replay-limits.md) | 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 24 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 10 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40 | blocked |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 24, 26, 37, 38, 39, 40, 41 | blocked |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 24, 33 | completed |
 | [30-contract-facts.md](./subtasks/30-contract-facts.md) | 08 | completed |
 | [31-fuse-interval-reading.md](./subtasks/31-fuse-interval-reading.md) | 09 | completed |
@@ -129,7 +129,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 | [38-assisted-original-runs.md](./subtasks/38-assisted-original-runs.md) | 26 | completed |
 | [39-continuous-window-resampling.md](./subtasks/39-continuous-window-resampling.md) | 38 | completed |
 | [40-missile1-terminal-window.md](./subtasks/40-missile1-terminal-window.md) | 39 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 | pending |
+| [41-coverage-resampling.md](./subtasks/41-coverage-resampling.md) | 40 | blocked |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -224,6 +225,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-005, B-006, U-008, U-009, U-
 - **2026-10-13 — Subtask 40 resumed (coordinator, delegated authority):** 用户授权协调者决定本目标其余事项。runner 改为按规范化父目录比较 confirmation signal，新增真实文件系统 symlink 测试（runner 24/24、gate 52/52），经复核后运行 `a40-m1-05`。该次门禁两次通过并发射导弹 1，但配方 `runSeconds` 3600 远小于 534 个暂停所需（约 17.6 秒/帧），于 m1-178 以 `run-timeout` 结束（`failed`，不计入；完整性与清理通过）。这是确定性的配方预算错误，不是游戏结果；仅把 `runSeconds` 改为 86400 生成 `a40-m1-long.json`，经单独 rubber-duck 复核无阻塞问题后授权唯一一次修正运行 `a40-m1-06`。
 - **2026-10-13 — Subtask 40 completed:** `a40-m1-06` 为 `complete`（20,078/20,078 samples，required 6,422/6,422，刺激 7/7；完整性与清理通过）。导弹 1 从发射、阶段 0 首个 state 7 回调、解保、37 次引信检查到寿命到期失效（state 6）及下一帧离开，帧连续、逐帧读到目标有效性；Φ 判为 holds，含 d = 2 后重排与 s ≠ 2。27 的读取器已消费该窗口；比较中该窗口（寿命 384、无制导、fizzle）在现有新版场景中无配对（新版导弹 1 都以近炸结束），由 27 恢复时补新版场景。
   Evidence: `local/research/p3-07/runtime/runs/a40-m1-06/report.json`；被忽略的 `comparison/out/a40-2026-10-13/report.json`；B-009 与 40 的完成证据。
+
+- **2026-10-13 — Subtask 41 started (coordinator, delegated authority):** 以 40 完成后重跑的 `final3-2026-10-13` 为准，27 的毁伤时间链仍缺原版 kind 0x80 与 0x100 各一次完整被毁链（`missingKindBits` 7、8），雷达只有 2 个操作数齐全的帧，接触缺基地姿态与伙伴操作数。新增 41 补采并补读取器；27 与 29 增加对 41 的依赖。D-02 与 spec 不变。
+- **2026-10-14 — Subtask 41 blocked:** 自动部分已完成：`a41-f-03`（`complete`）读齐一次 kind 0x80 被毁的全链（5 个碎片，列表已证完整），`final4-2026-10-14` 中该被毁、主爆炸与全部碎片窗口都成立，kind bit 7 完整；雷达达到 3 帧。剩余两项只能由用户在 DOSBox-X 中驾驶取得：首个 kind 0x100 被毁需按 a38-cr 路线飞到 c-check 守卫并交战；机体/基地接触需按 c2s 路线两次手动接触。协调者不能替用户操作，也不能以篡改内存或宿主输入制造事件。
+  Evidence: 41 的完成证据；被忽略的 `run-notes.md`（a41-f-02、a41-f-03）与 `comparison/out/final4-2026-10-14/report.json`（`missingKindBits` [8]；contact `not-evaluable:operands:base-orientation` ×2）。
+  Affected acceptance: 41 的前两项（kind 0x100 被毁链；接触两个窗口）；D-02 毁伤时间链最低条件；27、36、29 因依赖而等待。
+  Resume when: 用户在 DOSBox-X 中完成 `a41-ux1`（×1，`run_manual.py cx2 … a41-ux1.json`，SHA-256 `cbeed99a…62fa`）与 `a41-ux2`（×2，`run_manual.py c2s … a41-ux2.json`，两次手动时机有记录的差异），且三次报告均为 `complete`、保护与清理通过；随后接入 ux1 读取器、重跑对照并恢复 27。
+
+- **2026-10-14 — Subtask 27 仍阻塞（依赖 41）：** 以 40、41 的新运行重跑 `final4-2026-10-14`（新版 `42dbfc89`，32 个原版运行）：无窗口不一致，原版成立窗口全部配对，导弹类缺口已闭合，新版有 kind 0x100 被毁窗口；唯一 D-02 覆盖缺口为原版 kind 0x100 完整被毁链，接触单次样本仍缺操作数。见 27 完成证据“当前状态”。
+  Resume when: 41 完成。
 
 ## 审批
 
