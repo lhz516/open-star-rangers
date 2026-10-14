@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-10
+updated: 2026-10-12
 ---
 
 # 文档索引与写作约定
@@ -24,7 +24,7 @@ updated: 2026-10-10
 | [engineering/](./engineering/README.md) | 本项目代码的结构、命令、检查规则与测试约定 | 参考类 | 中文 |
 | [engineering/source-structure.md](./engineering/source-structure.md) | 当前源码目录、职责边界、后续扩展落点与历史路径迁移；决定见 ADR-0015 | 参考类 | 中文 |
 | [engineering/modules/](./engineering/source-structure.md#模块说明) | 源码结构指南的模块分册：各模块已交付代码的当前 API 与契约要点 | 参考类 | 中文 |
-| [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 本项目当前构建的按键（目前只有项目界面按键，原版键位由 P3-05 加入）、平台键盘源的通用规则、焦点/拦截/清键约定与尚未实现的键盘能力；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
+| [engineering/keyboard-input.md](./engineering/keyboard-input.md) | 当前游戏绑定与项目界面按键、平台键盘源、焦点/拦截/清键与能力生命周期、地图输入和实机证据边界；原版键位事实仍在 `original/input/` | 参考类 | 中文 |
 | [engineering/slice-gaps.md](./engineering/slice-gaps.md) | 当前构建中已在界面标注的切片缺省项（G ID）：呈现方式、页面位置与代码位置，以及 G-02 不计时与基准设置的差异；不是任务状态表，G 项的定义在 P3-01 spec | 参考类，随实现更新 | 中文 |
 | [engineering/agent-workflow.md](./engineering/agent-workflow.md) | Spec → review → goal → execute 的路径、审批、进度分工与安全边界 | 参考类 | 中文 |
 | [guides/](./guides/) | 操作指南：环境搭建、工具用法 | 参考类 | 中文 |

@@ -112,7 +112,7 @@ describe('throttle readback 0x21ca8 and the throttle keys (P3-06 AC-04, M-04)', 
     expect(decreasedThrottle(readback)).toBe(down);
   });
 
-  it('gives select-number n the original Shift+n preset 14(n − 1)', () => {
+  it('gives speed-preset level n the original Shift+n preset 14(n − 1)', () => {
     expect([1, 2, 3, 4, 5, 6, 7, 8, 9].map(presetThrottle)).toEqual([0, 14, 28, 42, 56, 70, 84, 98, 112]);
     for (const value of [0, 10, 1.5]) expectFault(() => presetThrottle(value), 'invariant-violated', 'flight-control.preset');
   });

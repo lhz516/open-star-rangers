@@ -51,7 +51,7 @@ const speed = (operation: 'increase' | 'decrease' | 'zero' | 'maximum' | 'match-
 
 /** Same-tick commands at tick 20 (two toggles of the assist and a manual match among them), zero throttle at 22, a match without a target at 62. */
 const COMMANDS: Readonly<Record<number, readonly Command[]>> = {
-  20: [speed('decrease'), speed('decrease'), { type: 'select-number', value: 4 }, speed('match-target'), speed('toggle-auto-match'), speed('toggle-auto-match'), { type: 'fire', channel: 'primary' }],
+  20: [speed('decrease'), speed('decrease'), { type: 'speed-preset', level: 4 }, speed('match-target'), speed('toggle-auto-match'), speed('toggle-auto-match'), { type: 'fire', channel: 'primary' }],
   22: [speed('zero')],
   62: [{ type: 'confirm-selection' }],
 };
@@ -105,7 +105,7 @@ function replayFlight(record: unknown): ReplayResult {
 /** Every checkpoint: a state difference shows at the tick it starts. */
 const RECORDING = recordFlight(1);
 
-type MutableRecord = { rulesVersion: unknown; ticks: { axes: Record<string, number>; commands: unknown[] }[] };
+type MutableRecord = { version: unknown; rulesVersion: unknown; ticks: { axes: Record<string, number>; commands: unknown[] }[] };
 
 /** A JSON copy of the record, changed by `change`. */
 function recordWith(change: (record: MutableRecord) => void): unknown {
@@ -169,12 +169,24 @@ describe('motion replay (P3-06 S-08, AC-08)', () => {
     expect(compareReplayResults(RECORDING.result, replayRecord(roundTrip(RECORDING.record), CONTENT))).toEqual({ match: false, tick: 3, kind: 'events' });
   });
 
-  it.each([1, RULES_VERSION + 1])('rejects the record under rules version %i before running anything', (rulesVersion) => {
-    const record = recordWith((value) => { value.rulesVersion = rulesVersion; });
+  // Rules version 1 is before P3-06; rules version 2 and format version 1 are before P3-05's speed-preset (the current
+  // versions are pinned in recording.test.ts and snapshot.test.ts).
+  it.each([
+    ['rules version 1', { rulesVersion: 1 }, 'record.rulesVersion'],
+    ['rules version 2', { rulesVersion: 2 }, 'record.rulesVersion'],
+    ['the next rules version', { rulesVersion: RULES_VERSION + 1 }, 'record.rulesVersion'],
+    ['format version 1', { version: 1 }, 'record.version'],
+    ['both versions before speed-preset', { version: 1, rulesVersion: 2 }, 'record.version'],
+  ])('rejects the record under %s before running anything', (_, versions, path) => {
+    // As the code before the speed preset recorded the preset at tick 20.
+    const record = recordWith((value) => {
+      Object.assign(value, versions);
+      value.ticks[19].commands[2] = { type: 'select-number', value: 4 };
+    });
     for (const replay of [() => replayFlight(record), () => replayRecord(record, CONTENT)]) {
       const error = thrownBy(replay);
       expect(error).toBeInstanceOf(CoreInputError);
-      expect(error).toMatchObject({ path: 'record.rulesVersion' });
+      expect(error).toMatchObject({ path });
     }
   });
 });

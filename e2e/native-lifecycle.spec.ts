@@ -36,7 +36,7 @@ function state() {
     placeholder: document.querySelector<HTMLElement>('[data-testid="mission-placeholder"]')?.dataset.status ?? null,
     frames: probe.frames.pending, timers: probe.timers.pending.length,
     leaveGuards: probe.listeners.filter(entry => entry.active && entry.type === 'beforeunload' && entry.group === 'other').length,
-    owned: probe.listeners.filter(entry => entry.active && ['keyboard', 'session', 'render'].includes(entry.group)).map(entry => `${entry.group}:${entry.type}`).sort(),
+    owned: probe.listeners.filter(entry => entry.active && ['keyboard', 'fullscreen', 'pointer-lock', 'session', 'render'].includes(entry.group)).map(entry => `${entry.group}:${entry.type}`).sort(),
     visibilityEvents: window.osrNativeVisibility,
     errors: ['cleanup-failure', 'open-mission-failure', 'mission-open-failure', 'mission-action-error', 'mission-placeholder-failure', 'mission-start-failure']
       .filter(name => document.querySelector(`[data-testid="${name}"]`)),
@@ -74,6 +74,11 @@ function stopWatchingResume() {
 
 /** The session's lifecycle listeners, which the mission owner holds from its creation to its release. */
 const SESSION = ['session:pagehide', 'session:pageshow', 'session:visibilitychange'];
+const INPUT_PAGE = [
+  'fullscreen:fullscreenchange', 'fullscreen:fullscreenerror',
+  'keyboard:blur', 'keyboard:focus', 'keyboard:pagehide', 'keyboard:pageshow', 'keyboard:visibilitychange',
+  'pointer-lock:mousedown', 'pointer-lock:mousemove', 'pointer-lock:mouseup', 'pointer-lock:pointerlockchange', 'pointer-lock:pointerlockerror',
+];
 /** One tick of the formal Runtime's default step, 64 ÷ 2 = 32 Hz. */
 const TICK_MS = 1000 / 32;
 
@@ -136,7 +141,7 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     // Hidden during the departure hold: its timer is revoked while hidden, and ending it on return leaves the run paused.
     await app.press('Start mission');
     const intro = await until(read, value => value.position === 'intro' && value.timers === 1, 'Introduction placeholder');
-    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: SESSION });
+    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: [...INPUT_PAGE, ...SESSION] });
     await app.press('Skip');
     await until(read, value => value.position === 'config', 'Start page');
     await app.press('Start');

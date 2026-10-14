@@ -5,13 +5,15 @@ import { CORE_LIMITS } from './limits.ts';
 import { COMMAND_TYPES, readTickInput, type Command, type TickInput } from './tick-input.ts';
 
 const ZERO_AXES = { pitch: 0, yaw: 0, roll: 0 };
+const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 /** Every distinct command of the spec's command table, written out independently of the module under test. */
 const ALL_COMMANDS: readonly Command[] = [
   { type: 'fire', channel: 'primary' },
   { type: 'fire', channel: 'secondary' },
   ...(['increase', 'decrease', 'zero', 'maximum', 'match-target', 'toggle-auto-match'] as const).map((operation) => ({ type: 'speed', operation }) as const),
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((value) => ({ type: 'select-number', value }) as const),
+  ...DIGITS.map((level) => ({ type: 'speed-preset', level }) as const),
+  ...DIGITS.map((value) => ({ type: 'select-number', value }) as const),
   { type: 'navigate-selection', direction: 'previous' },
   { type: 'navigate-selection', direction: 'next' },
   { type: 'confirm-selection' },
@@ -64,9 +66,9 @@ function tracked<T>(value: T, log: string[], path = 'input'): T {
 describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
   it('accepts every command of the closed union and covers each command type', () => {
     expect(new Set(ALL_COMMANDS.map((command) => command.type))).toEqual(new Set(COMMAND_TYPES));
-    expect(COMMAND_TYPES).toHaveLength(16);
-    // 42 distinct commands, counting map-point once per operation; all fit into one tick.
-    expect(ALL_COMMANDS).toHaveLength(42);
+    expect(COMMAND_TYPES).toHaveLength(17);
+    // 51 distinct commands, counting map-point once per operation; all fit into one tick.
+    expect(ALL_COMMANDS).toHaveLength(51);
     expect(CORE_LIMITS.commandsPerTick).toBeGreaterThanOrEqual(ALL_COMMANDS.length);
     const read = readTickInput(tick(ALL_COMMANDS, { pitch: -1, yaw: 0.5, roll: 1 }));
     expect(read).toEqual({ axes: { pitch: -1, yaw: 0.5, roll: 1 }, commands: ALL_COMMANDS });
@@ -164,6 +166,10 @@ describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
     ['a command without type', tick([{ channel: 'primary' }]), 'tickInput.commands[0].type', 'is required'],
     ['a command with too many fields', tick([{ type: 'map-point', operation: 'hover', right: 0, down: 0, extra: 0 }]), 'tickInput.commands[0]', 'contains unknown fields'],
     ['a field of another variant', tick([{ type: 'confirm-selection', value: 1 }]), 'tickInput.commands[0]', 'contains unknown fields'],
+    ['a speed preset without its level', tick([{ type: 'speed-preset' }]), 'tickInput.commands[0].level', 'is required'],
+    ['a speed preset with a selection number', tick([{ type: 'speed-preset', value: 3 }]), 'tickInput.commands[0].level', 'is required'],
+    ['a speed preset with an extra field', tick([{ type: 'speed-preset', level: 3, value: 3 }]), 'tickInput.commands[0]', 'contains unknown fields'],
+    ['a selection number with a level', tick([{ type: 'select-number', level: 3 }]), 'tickInput.commands[0].value', 'is required'],
     ['a missing command field', tick([{ type: 'fire' }]), 'tickInput.commands[0].channel', 'is required'],
     ['a misplaced command field', tick([{ type: 'fire', operation: 'increase' }]), 'tickInput.commands[0].channel', 'is required'],
     ['a fire channel outside the union', tick([{ type: 'fire', channel: 'tertiary' }]), 'tickInput.commands[0].channel', 'must be one of primary, secondary'],
@@ -192,6 +198,16 @@ describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
     expectInputError(tick([{ type: 'select-number', value }]), 'tickInput.commands[0].value', 'must be an integer from 1 to 9');
   });
 
+  it.each([0, 10, -0, -1, 1.5, 9.000001, Number.NaN, Infinity, -Infinity, '1', null, true])('rejects the speed preset level %s', (level) => {
+    expectInputError(tick([{ type: 'speed-preset', level }]), 'tickInput.commands[0].level', 'must be an integer from 1 to 9');
+  });
+
+  it('accepts the speed preset levels 1 and 9 as their own variant, in canonical field order', () => {
+    const read = readTickInput(tick([{ level: 1, type: 'speed-preset' }, { level: 9, type: 'speed-preset' }]));
+    expect(read.commands).toEqual([{ type: 'speed-preset', level: 1 }, { type: 'speed-preset', level: 9 }]);
+    expect(JSON.stringify(read.commands)).toBe('[{"type":"speed-preset","level":1},{"type":"speed-preset","level":9}]');
+  });
+
   it.each([-0.001, 1.001, Number.NaN, Infinity, -Infinity, '0.5', null])('rejects the map fraction %s', (value) => {
     expectInputError(tick([{ type: 'map-point', operation: 'hover', right: value, down: 0 }]), 'tickInput.commands[0].right', 'must be a number from 0 to 1');
     expectInputError(tick([{ type: 'map-point', operation: 'hover', right: 0, down: value }]), 'tickInput.commands[0].down', 'must be a number from 0 to 1');
@@ -208,15 +224,17 @@ describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
 });
 
 function checkTypes(input: TickInput) {
-  const valid: Command[] = [{ type: 'select-number', value: 3 }, { type: 'confirm-selection' }, { type: 'map-point', operation: 'select', right: 0, down: 1 }];
+  const valid: Command[] = [{ type: 'select-number', value: 3 }, { type: 'speed-preset', level: 3 }, { type: 'confirm-selection' }, { type: 'map-point', operation: 'select', right: 0, down: 1 }];
   // @ts-expect-error Each variant requires its own fields.
   const missing: Command = { type: 'fire' };
   // @ts-expect-error A variant accepts no field of another variant.
   const foreign: Command = { type: 'confirm-selection', value: 1 };
+  // @ts-expect-error The speed preset is not a selection number.
+  const preset: Command = { type: 'speed-preset', value: 1 };
   // @ts-expect-error Choices are closed.
   const choice: Command = { type: 'fire', channel: 'tertiary' };
   // @ts-expect-error The result is read-only.
   input.axes.pitch = 1;
-  return [valid, missing, foreign, choice];
+  return [valid, missing, foreign, preset, choice];
 }
 void checkTypes;

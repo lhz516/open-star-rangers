@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { TickInput } from '../src/core/contracts/tick-input.ts';
 import { compareReplayResults } from '../src/core/replay/compare.ts';
 import type * as CompareModule from '../src/core/replay/compare.ts';
-import { createRecordingSession } from '../src/core/replay/recording.ts';
+import { createRecordingSession, GAME_REPLAY_VERSION } from '../src/core/replay/recording.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import type * as ReplayModule from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
@@ -24,7 +24,7 @@ const CHECKPOINT_INTERVAL = 16;
 
 /** A fixed input script: commands on some ticks, P3-06's throttle presets and speed assist switch among them, steering on others. */
 function scripted(tick: number): TickInput {
-  if (tick % 5 === 0) return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [{ type: 'fire', channel: 'primary' }, { type: 'select-number', value: (tick % 9) + 1 }] };
+  if (tick % 5 === 0) return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [{ type: 'fire', channel: 'primary' }, { type: 'speed-preset', level: (tick % 9) + 1 }] };
   if (tick % 7 === 0) return { axes: { pitch: -0, yaw: 0.5, roll: -1 }, commands: [{ type: 'map-point', operation: 'hover', right: 0.25, down: 1 }] };
   if (tick % 11 === 0) return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [{ type: 'speed', operation: 'toggle-auto-match' }] };
   return { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [] };
@@ -53,6 +53,10 @@ test('the browser replays a formal Core record like Node and rejects records of 
   for (let tick = 1; tick <= TICKS; tick++) session.step(scripted(tick));
   const recording = session.exportRecording();
   const record = plain(recording.record);
+  expect(record.version).toBe(GAME_REPLAY_VERSION);
+  expect(record.rulesVersion).toBe(RULES_VERSION);
+  expect(record.ticks.some(({ commands }) => commands.some(command => command.type === 'speed-preset')))
+    .toBe(true);
   // Every content input of world creation (P3-07's rule-data inputs too); replay takes the run from the record.
   const content: ReplayContent = plain(Object.fromEntries(CONTENT_INPUT_FIELDS.map(field => [field, input[field]])) as ReplayContent);
   const reference = replayRecord(record, content);
@@ -64,11 +68,14 @@ test('the browser replays a formal Core record like Node and rejects records of 
     ...reference,
     checkpoints: reference.checkpoints.map(checkpoint => (checkpoint.tick === 2 * CHECKPOINT_INTERVAL ? { ...checkpoint, hash: flipped(checkpoint.hash) } : checkpoint)),
   };
-  // Records of another format, version or rules version, or of other content or setup, each with what replay throws.
+  // Records of another format, version or rules version (the next ones, and those before P3-05's speed-preset), or of
+  // other content or setup, each with what replay throws.
   const cases: readonly { readonly record: Record<string, unknown>; readonly message: string }[] = [
     { record: { ...record, format: 'osr-synthetic-replay' }, message: 'record.format must be osr-game-replay' },
-    { record: { ...record, version: 2 }, message: 'record.version must be 1' },
+    { record: { ...record, version: GAME_REPLAY_VERSION + 1 }, message: `record.version must be ${GAME_REPLAY_VERSION}` },
+    { record: { ...record, version: 1 }, message: `record.version must be ${GAME_REPLAY_VERSION}` },
     { record: { ...record, rulesVersion: RULES_VERSION + 1 }, message: `record.rulesVersion must be ${RULES_VERSION}, the rules version of this code` },
+    { record: { ...record, rulesVersion: 2 }, message: `record.rulesVersion must be ${RULES_VERSION}, the rules version of this code` },
     {
       record: { ...record, content: { ...record.content, converterVersion: 'synthetic-converter.2' } },
       message: 'record.content must be the identity of the replayed content',

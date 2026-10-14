@@ -4,20 +4,22 @@ import { openMission, toFlight } from '../../app/mission/mission.test-support.ts
 import { TICK_MS } from '../../app/runtime/game-runtime.test-support.ts';
 import { COMMAND_TYPES, type Command } from '../../core/contracts/tick-input.ts';
 import type { DomainEvent } from '../../core/contracts/domain-events.ts';
+import { RECENT_RESULT_LIMIT } from '../game/game-store.ts';
 import { commandDraft, editDraft, readDraft } from './command-draft.ts';
 import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-support.ts';
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
 /**
- * Results of the drafted commands that P3-06's and P3-07's rules handle in flight with an active player and no target:
- * a throttle step, a preset, a manual match that needs a target, and P3-07's below. Every other one is not implemented
- * yet.
+ * Results of the drafted commands that P3-06's and P3-07's rules judge in flight with an active player and no target:
+ * a throttle step, a preset, a digit without effect in flight, a manual match that needs a target, and P3-07's below.
+ * Every other one is not implemented yet.
  */
 const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
   // P3-07: the gun starts without charge; target selection, weapon selection, and the energy and damage report pages.
   fire: ['ignored', 'insufficient-charge'],
   speed: ['accepted', null],
-  'select-number': ['accepted', null],
+  'speed-preset': ['accepted', null],
+  'select-number': ['ignored', 'wrong-context'],
   'confirm-selection': ['ignored', 'no-target'],
   target: ['accepted', null],
   'cycle-main-weapon': ['accepted', null],
@@ -173,12 +175,13 @@ describe('mission diagnostics', () => {
     // The first tick instantiates the player and the second activates it; P3-06's speed commands need it active.
     next(2, 200);
     expect(readDraft(editDraft(commandDraft('select-number'), 'value', '10')).valid).toBe(false);
+    expect(readDraft(editDraft(commandDraft('speed-preset'), 'level', '10')).valid).toBe(false);
     const ids = COMMAND_TYPES.map((type) => {
       const reading = readDraft(commandDraft(type));
       if (!reading.valid) throw new Error(reading.reason);
       return submit(setup, reading.command);
     });
-    expect(ids).toEqual(Array.from({ length: 16 }, (_, index) => index + 1));
+    expect(ids).toEqual(Array.from({ length: 17 }, (_, index) => index + 1));
     next(1, 200);
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
@@ -193,8 +196,9 @@ describe('mission diagnostics', () => {
     ]);
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
     expect(pendingCommands).toEqual([]);
+    const recent = COMMAND_TYPES.length - RECENT_RESULT_LIMIT;
     expect(recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason]))
-      .toEqual(COMMAND_TYPES.slice(6).map((type, index) => [index + 7, type, ...outcomeOf(type)]));
+      .toEqual(COMMAND_TYPES.slice(recent).map((type, index) => [recent + index + 1, type, ...outcomeOf(type)]));
   });
 
   it('keeps the 10 most recent command results of 11', async () => {

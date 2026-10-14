@@ -14,6 +14,9 @@
  * - `seeds`: comma-separated uint32 values the mission's seed source draws in order, one per world creation attempt
  *   (P3-04 S-09); once they are used up, it draws from `crypto.getRandomValues` as in production. Values outside uint32
  *   are drawn as they are, so the owner reports them as a failed start.
+ * - `fullscreen`, `keyboardLock` and `pointerLock`: `unsupported`, `pending`, `rejected` or `failed` to exercise the
+ *   corresponding capability states. `pointerLock` also accepts `target-mismatch`.
+ * - `platform`: `mac`, `windows`, `linux` or `other`, for the Alt+F4 notice.
  *
  * The profile is published as `window.osrTestEntry.profile` for tests that seed the cache, and the held results as
  * `window.osrTestEntry.cache`: `held(operation)` counts the results waiting and `release(operation)` delivers them.
@@ -32,6 +35,9 @@ import { App } from './App.tsx';
 import { createBrowserPorts } from './browser-ports.ts';
 import type { AppPorts } from './ports.ts';
 import type { ResourceCachePort } from './resources/resource-holder.ts';
+import type { FullscreenPort, FullscreenRequestResult, FullscreenExitResult, KeyboardLockResult } from '../platform/browser/fullscreen.ts';
+import type { PlatformFamily } from '../platform/browser/platform-family.ts';
+import type { PointerLockPort } from '../platform/input/pointer-lock.ts';
 import './app.css';
 
 declare global {
@@ -58,6 +64,14 @@ function importPort(): AppPorts['createImportPort'] {
 
 type HeldOperation = 'commit' | 'list' | 'restore';
 const HELD_OPERATIONS: readonly HeldOperation[] = ['commit', 'list', 'restore'];
+type CapabilityFault = 'unsupported' | 'pending' | 'rejected' | 'failed';
+type PointerLockFault = CapabilityFault | 'target-mismatch';
+const CAPABILITY_FAULTS: readonly CapabilityFault[] = ['unsupported', 'pending', 'rejected', 'failed'];
+const POINTER_LOCK_FAULTS: readonly PointerLockFault[] = [...CAPABILITY_FAULTS, 'target-mismatch'];
+const PLATFORM_FAMILIES: readonly PlatformFamily[] = ['mac', 'windows', 'linux', 'other'];
+function option<T extends string>(value: string | null, values: readonly T[]): T | null {
+  return values.find(candidate => candidate === value) ?? null;
+}
 const holding = new Set((query.get('hold') ?? '').split(',').filter((name): name is HeldOperation => (HELD_OPERATIONS as readonly string[]).includes(name)));
 const waiting: Record<HeldOperation, (() => void)[]> = { commit: [], list: [], restore: [] };
 
@@ -116,8 +130,62 @@ function audio(): AppPorts['audio'] {
 /** The browser seed source after the query's `seeds`, drawn in order. */
 function missionPorts(): AppPorts['mission'] {
   const seeds = (query.get('seeds') ?? '').split(',').filter(value => value !== '').map(Number);
-  if (seeds.length === 0) return browser.mission;
-  return Object.freeze({ ...browser.mission, seed: () => seeds.shift() ?? browser.mission.seed() });
+  const platformFamily = option(query.get('platform'), PLATFORM_FAMILIES);
+  const fullscreen = option(query.get('fullscreen'), CAPABILITY_FAULTS);
+  const keyboardLock = option(query.get('keyboardLock'), CAPABILITY_FAULTS);
+  const pointerLock = option(query.get('pointerLock'), POINTER_LOCK_FAULTS);
+  return Object.freeze({
+    ...browser.mission,
+    ...(seeds.length > 0 ? { seed: () => seeds.shift() ?? browser.mission.seed() } : {}),
+    ...(platformFamily ? { platformFamily: () => platformFamily } : {}),
+    createFullscreen: () => testFullscreen(browser.mission.createFullscreen(), fullscreen, keyboardLock),
+    createPointerLock: (target: () => HTMLElement | null) => testPointerLock(browser.mission.createPointerLock(target), pointerLock),
+  });
+}
+
+function testFullscreen(actual: FullscreenPort | null, fullscreen: CapabilityFault | null, keyboardLock: CapabilityFault | null): FullscreenPort | null {
+  if (!actual || (!fullscreen && !keyboardLock)) return actual;
+  return Object.freeze({
+    support: () => {
+      const support = actual.support();
+      return Object.freeze({
+        fullscreen: fullscreen ? fullscreen !== 'unsupported' : support.fullscreen,
+        keyboardLock: keyboardLock ? keyboardLock !== 'unsupported' : support.keyboardLock,
+      });
+    },
+    read: () => actual.read(),
+    connect: (sink: Parameters<FullscreenPort['connect']>[0]) => actual.connect(sink),
+    requestFullscreen: (): Promise<FullscreenRequestResult> => {
+      if (fullscreen === 'pending') return new Promise(() => undefined);
+      if (fullscreen === 'rejected') return Promise.resolve({ status: 'failed', reason: 'rejected' });
+      if (fullscreen === 'failed') return Promise.resolve({ status: 'failed', reason: 'failed' });
+      return actual.requestFullscreen();
+    },
+    exitFullscreen: (): Promise<FullscreenExitResult> => actual.exitFullscreen(),
+    lockKeys: (codes: readonly string[]): Promise<KeyboardLockResult> => {
+      if (keyboardLock === 'pending') return new Promise(() => undefined);
+      if (keyboardLock === 'rejected') return Promise.resolve({ status: 'failed', reason: 'denied' });
+      if (keyboardLock === 'failed') return Promise.resolve({ status: 'failed', reason: 'failed' });
+      return actual.lockKeys(codes);
+    },
+    unlockKeys: () => actual.unlockKeys(),
+  });
+}
+
+function testPointerLock(actual: PointerLockPort, mode: PointerLockFault | null): PointerLockPort {
+  if (!mode) return actual;
+  return Object.freeze({
+    supported: () => mode === 'unsupported' ? false : mode !== null || actual.supported(),
+    locked: () => actual.locked(),
+    connect: (sink: Parameters<PointerLockPort['connect']>[0]) => actual.connect(sink),
+    request: (): ReturnType<PointerLockPort['request']> => {
+      if (mode === 'pending') return new Promise(() => undefined);
+      if (mode === 'target-mismatch') return Promise.resolve({ status: 'failed', reason: 'target-mismatch' });
+      if (mode === 'rejected' || mode === 'failed') return Promise.resolve({ status: 'failed', reason: 'rejected' });
+      return actual.request();
+    },
+    exit: () => actual.exit(),
+  });
 }
 
 const ports: AppPorts = Object.freeze({

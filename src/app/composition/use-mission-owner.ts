@@ -17,6 +17,12 @@ import type { MissionDiagnostics } from '../../ui/dev/mission-diagnostics.ts';
 import { createGameCommandFeedback, type GameCommandFeedback } from '../../ui/game/game-command-feedback.ts';
 import { createGameSessionBridge } from '../../ui/game/game-session-bridge.ts';
 import { createGameStore, type GameStoreWriter } from '../../ui/game/game-store.ts';
+import { GAME_INPUT_BINDINGS, KEYBOARD_LOCK_CODES } from '../../ui/game-input/bindings.ts';
+import { createInputConsumer, type GameInputConsumer } from '../../ui/game-input/input-consumer.ts';
+import { MAP_INPUT_POLICY } from '../../ui/game-input/map-input-policy.ts';
+import { createBrowserMapCursor } from '../../render/map/browser-map-cursor.ts';
+import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
+import type { MapInputGeometryPort } from '../../render/map/map-input-geometry.ts';
 import { appProducer } from '../app-version.ts';
 import type { MissionSlot } from './mission-slot.ts';
 import type { MissionFlowState } from '../mission/mission-flow.ts';
@@ -31,6 +37,9 @@ export interface MissionScreenParts {
   readonly owner: MissionOwner;
   readonly store: GameStoreWriter<MissionFlowState>;
   readonly feedback: GameCommandFeedback;
+  readonly input: GameInputConsumer<HTMLElement>;
+  /** Supplies the mounted game's input zone to the keyboard and Pointer Lock ports. */
+  readonly bindInputZone: (zone: HTMLElement | null) => void;
   /** Development builds only. */
   readonly diagnostics: MissionDiagnostics | null;
 }
@@ -59,6 +68,30 @@ interface Assembly {
 function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHolder): Assembly {
   let ui: Pick<MissionScreenParts, 'store' | 'feedback'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
+  let mapCursor: MapCursorDrawer | null = null;
+  const inputZone: { current: HTMLElement | null } = { current: null };
+  const mapGeometry: MapInputGeometryPort = Object.freeze({ read: () => null });
+  const input = createInputConsumer<HTMLElement>({
+    keyboard: ports.createKeyboardSource,
+    bindings: GAME_INPUT_BINDINGS,
+    feedback: () => ui?.feedback ?? null,
+    fullscreen: ports.createFullscreen,
+    pointerLock: () => ports.createPointerLock(() => inputZone.current),
+    keyLockCodes: KEYBOARD_LOCK_CODES,
+    map: {
+      policy: MAP_INPUT_POLICY,
+      geometry: mapGeometry,
+      cursor: () => mapCursor,
+      movementScale: () => 1,
+      userActivation: () => navigator.userActivation?.isActive ?? false,
+    },
+  });
+  const bindInputZone = (zone: HTMLElement | null): void => {
+    inputZone.current = zone;
+    input.bindZone(zone);
+    mapCursor?.dispose();
+    mapCursor = zone ? createBrowserMapCursor(zone, mapGeometry, input.mapCursor) : null;
+  };
   const uiConsumer: MissionOwnerConsumer = {
     stage: 'ui',
     connect({ ownerId, session }) {
@@ -81,14 +114,14 @@ function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHol
           ...base,
           host: timing.host,
           recording: developmentRecording(appProducer(import.meta.env.MODE)),
-          consumers: [uiConsumer, timing.consumer, diagnostics.consumer],
+          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer],
         };
       }
-      return { ...base, host, recording: null, consumers: [uiConsumer] };
+      return { ...base, host, recording: null, consumers: [input, uiConsumer] };
     },
     parts(owner) {
       if (!ui) throw new Error('The mission owner did not connect its UI consumer');
-      return Object.freeze({ owner, ...ui, diagnostics });
+      return Object.freeze({ owner, ...ui, input, bindInputZone, diagnostics });
     },
   };
 }

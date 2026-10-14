@@ -21,7 +21,7 @@ import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
 import { COMMAND_TYPES, readTickInput, type Command, type TickInput } from '../src/core/contracts/tick-input.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { compareReplayResults } from '../src/core/replay/compare.ts';
-import { createRecordingSession, type Recording } from '../src/core/replay/recording.ts';
+import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from '../src/core/replay/recording.ts';
 import { roundTrip } from '../src/core/replay/replay.test-support.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
@@ -80,12 +80,13 @@ async function writeDisc(into: string): Promise<string[]> {
 }
 
 /**
- * A fixed script of steering and commands: one Core answers `not-implemented`, and P3-06's throttle step and speed
- * assist switch, which add their own events.
+ * A fixed script of steering and commands: one Core answers `not-implemented`, and P3-06's throttle step, preset and
+ * speed assist switch, the switch adding its own events.
  */
 function script(tick: number): TickInput {
   const commands: Command[] = [];
   if (tick % 4 === 0) commands.push({ type: 'fire', channel: 'primary' }, { type: 'speed', operation: 'increase' });
+  if (tick % 6 === 0) commands.push({ type: 'speed-preset', level: (tick % 9) + 1 });
   if (tick % 8 === 0) commands.push({ type: 'speed', operation: 'toggle-auto-match' });
   return { axes: { pitch: tick % 3 === 0 ? -0.5 : 0, yaw: 0.25, roll: tick % 5 === 0 ? 1 : 0 }, commands };
 }
@@ -184,6 +185,7 @@ describe('replay check', () => {
     // The run spawned craft, answered commands, switched the speed assist and selected a target automatically, so events
     // and checkpoints are both compared.
     expect(new Set(recording.result.events.map(({ type }) => type))).toEqual(new Set(['object-instantiated', 'command-result', 'speed-assist-toggled', 'target-changed']));
+    expect(recording.result.events).toContainEqual(expect.objectContaining({ type: 'command-result', commandType: 'speed-preset', outcome: 'accepted' }));
     const text = JSON.stringify(recording);
     const path = file(text);
     const report = await runReplayCheck(path, disc, { catalog });
@@ -282,8 +284,10 @@ describe('replay check', () => {
     });
 
     it.each([
-      ['another format version', (value: { record: Record<string, unknown> }) => { value.record.version = 2; }, 'record.version'],
+      ['another format version', (value: { record: Record<string, unknown> }) => { value.record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
+      ['the format version before the speed preset', (value: { record: Record<string, unknown> }) => { value.record.version = 1; }, 'record.version'],
       ['another rules version', (value: { record: Record<string, unknown> }) => { value.record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
+      ['the rules version before the speed preset', (value: { record: Record<string, unknown> }) => { value.record.rulesVersion = 2; }, 'record.rulesVersion'],
       ['a malformed setup hash', (value: { record: Record<string, unknown> }) => { value.record.setupHash = 'not-a-hash'; }, 'record.setupHash'],
       ['an axis out of range', (value: { record: Record<string, unknown> }) => { (value.record.ticks as TickInput[])[3] = { axes: { pitch: 2, yaw: 0, roll: 0 }, commands: [] }; }, 'record.ticks[3].axes.pitch'],
       ['an extra field', (value: { record: Record<string, unknown> }) => { value.record.extra = true; }, 'record'],

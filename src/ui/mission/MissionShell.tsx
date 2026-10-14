@@ -4,17 +4,30 @@
  * the phase, the pause reason, why resume is unavailable and the missing music (G-01); pause, resume and mission menu
  * controls; and, once the run faulted or stopped, its reason without imported content, with restart (unless a cleanup
  * failed) and the way back. Focus starts on the heading.
+ *
+ * With the mission input (docs/plan/p3/05/spec.md: 输入区与焦点, 全屏与 Keyboard Lock), the game view holds the one game
+ * input zone and the shell adds the input's notices and a full screen button for the whole page. Right after the
+ * departure ended or Continue resumed the run, focus starts on the zone instead when `useShellFocus` allows.
  */
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
-import { useFocusOnMount } from '../pages/use-focus-on-mount.ts';
-import { describeStructure, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
+import { GameInputZone } from './GameInputZone.tsx';
+import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
+import { InputNotices, type MissionInputView } from './InputNotices.tsx';
+import { describeStructure, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { SLICE_GAPS } from './slice-gaps-copy.ts';
+import { useShellFocus } from './use-input-focus.ts';
 
 export interface MissionShellProps {
   readonly snapshot: MissionOwnerSnapshot;
   readonly owner: Pick<MissionOwner, 'pause' | 'resume' | 'openMenu' | 'restart'>;
   readonly onReturn: () => void;
+  /** The mission input; without one the game view has no input zone and focus always starts on the heading. */
+  readonly input?: MissionInputView | null;
+  /** The flow change that showed the shell, after which focus may start on the input zone. */
+  readonly entry?: InputFocusEntry | null;
+  /** The G-item notice to show now. */
+  readonly gap?: GapNotice | null;
 }
 
 function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'snapshot' | 'owner' | 'onReturn'>) {
@@ -42,19 +55,23 @@ function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'sna
   );
 }
 
-export function MissionShell({ snapshot, owner, onReturn }: MissionShellProps) {
-  const heading = useFocusOnMount<HTMLHeadingElement>();
+export function MissionShell({ snapshot, owner, onReturn, input = null, entry = null, gap = null }: MissionShellProps) {
   const { session, flow, actionError } = snapshot;
+  const running = session.phase === 'running';
+  const focus = useShellFocus(entry, running, input?.bindZone);
   const paused = pauseText(session);
   const blocked = resumeBlockedText(session);
   const inFlight = flow.position === 'flight';
+  const fullscreenButton = input ? fullscreenButtonState(input.fullscreen.status) : 'hidden';
+  const view = <p>Game view: the flight view, cockpit and HUD are not implemented yet.</p>;
   return (
     <section aria-labelledby="mission-shell-heading" data-testid="mission-shell">
-      <h2 id="mission-shell-heading" ref={heading} tabIndex={-1}>Mission</h2>
+      <h2 id="mission-shell-heading" ref={focus.heading} tabIndex={-1}>Mission</h2>
       <SkeletonNote />
       <div className="mission-view" data-testid="mission-view">
-        <p>Game view: the flight view, cockpit and HUD are not implemented yet.</p>
+        {input ? <GameInputZone zoneRef={focus.zone}>{view}</GameInputZone> : view}
       </div>
+      {input && <InputNotices input={input} gap={gap} running={inFlight && running} />}
       <div className="mission-status-bar" data-testid="mission-status" data-phase={session.phase} data-pause={session.pauseReason ?? ''}>
         <span>Phase: {phaseText(session.phase)}</span>
         {paused && <span>{paused}</span>}
@@ -79,6 +96,11 @@ export function MissionShell({ snapshot, owner, onReturn }: MissionShellProps) {
           <button type="button" disabled={session.phase !== 'running' && session.phase !== 'paused'} onClick={() => { owner.openMenu(); }}>
             Mission menu
           </button>
+          {input && fullscreenButton !== 'hidden' && (
+            <button type="button" disabled={fullscreenButton === 'disabled'} onClick={() => { input.fullscreen.request(); }}>
+              {FULLSCREEN_BUTTON}
+            </button>
+          )}
         </p>
       )}
       <ActionErrorAlert error={actionError} />

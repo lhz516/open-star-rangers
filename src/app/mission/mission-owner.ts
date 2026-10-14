@@ -17,6 +17,10 @@
  *   owner-level consumers by stage, and one leave-page guard while a run exists. Release order: input and timers,
  *   session, UI bridge and diagnostics, leave guard, then picture, audio and the like; every step is attempted and any
  *   failure latches. An asynchronous close joins the slot's close barrier.
+ * - **Input control (P3-04 spec as revised for P3-05, 消费者接线与释放):** `input` consumers alone get a port whose calls
+ *   bind one run: they clear the run's input, toggle its pause and open the mission menu through the owner's own
+ *   actions, and are refused once the owner is released or the run is no longer the session's. The toggle and the menu
+ *   are intents, refused too inside another intent or a callback of the session.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import { contentIdentityKey, type ContentIdentity } from '../../content/content-identity.ts';
@@ -27,12 +31,12 @@ import { missionFailureOf, type MissionFailure } from '../resources/mission-diag
 import { craftInfoInput, missionInput, ruleDataInputs, runModelInputs, type RuleDataInputs } from '../resources/mission-input.ts';
 import type { HeldPackage, ResourceHolder } from '../resources/resource-holder.ts';
 import {
-  createGameSession, type DepartureTransition, type GameRunSpec, type GameSession, type GameSessionControl, type GameSessionRun,
-  type GameSessionStatus,
+  createGameSession, type ClearInputReason, type DepartureTransition, type GameRunSpec, type GameSession, type GameSessionControl,
+  type GameSessionRun, type GameSessionStatus,
 } from '../session/game-session.ts';
 import { RollbackError } from '../session/rollback-error.ts';
 import { GameSessionError } from '../session/session-errors.ts';
-import type { SessionHost } from '../session/session-host.ts';
+import type { SessionHost, SessionLifecycleEvent } from '../session/session-host.ts';
 import { missionEligibility, type MissionEligibility } from './mission-eligibility.ts';
 import {
   INITIAL_MISSION_FLOW, nextMissionFlow, preselectWingman, type ConfirmedSelection, type MissionFlowInput, type MissionFlowState,
@@ -52,6 +56,7 @@ export const developmentRecording = (producer: string): RecordingOptions => Obje
 /** When an owner-level resource is released, in this order between the session and the leave guard. */
 export type MissionOwnerStage = 'input' | 'ui' | 'media';
 const STAGES: readonly MissionOwnerStage[] = ['input', 'ui', 'media'];
+const CLEAR_INPUT_REASONS: readonly ClearInputReason[] = ['focus-loss', 'pointer-lock-exit'];
 
 /** What owner-level consumers see of the session: no control, frame or Core access beyond the public run handle. */
 export type MissionSessionView = Pick<GameSession, 'status' | 'currentRun' | 'onStatus'>;
@@ -64,6 +69,40 @@ export interface MissionOwnerContext {
    * when a close failed, which latched the slot. A consumer that recreates such a resource waits for it.
    */
   readonly previousClosed: Promise<boolean>;
+}
+
+/**
+ * The input control port of one owner (docs/plan/p3/04/spec.md: 消费者接线与释放): no start, exit or step. Every call
+ * through an owner that began its release, or for a run that is no longer its session's, throws a GameSessionError of
+ * kind `invalid-state` and touches nothing, so it never reaches a later run.
+ */
+export interface MissionInputControl {
+  /** The port of run `runId`, which must be the session's run: a run consumer takes it when its run is wired. */
+  forRun(runId: number): MissionRunInputControl;
+}
+
+/** The input control of one run. */
+export interface MissionRunInputControl {
+  /**
+   * Sends the session one `clear-input` while the run is running; pausing, holding, stopping and faulting cleared it
+   * already, so elsewhere it does nothing. Throws what that control throws: the session refuses it in a status or
+   * cancellation notification and applies it after a frame's notification.
+   */
+  clearInput(reason: ClearInputReason): void;
+  /**
+   * In flight, the owner's `pause` while running and its `resume` while paused by the user or a hidden page, with their
+   * feedback: a resume the hidden page refuses keeps the run paused. Nothing in the menu, the departure or a run that
+   * ended. As an intent it is for event handlers: while the owner applies another intent, or the session delivers a
+   * frame, a page lifecycle event or this port's `clear-input`, it throws `invalid-state` and changes nothing.
+   */
+  togglePause(): void;
+  /** The owner's `openMenu`, with its conditions and feedback; refused where `togglePause` is. */
+  openMenu(): void;
+}
+
+/** What a consumer at the `input` stage connects with: the owner context and the input control port. */
+export interface MissionInputContext extends MissionOwnerContext {
+  readonly control: MissionInputControl;
 }
 
 export interface MissionRunContext {
@@ -88,10 +127,14 @@ export interface MissionConsumerConnection {
   onSessionError?(error: GameSessionError): void;
 }
 
-export interface MissionOwnerConsumer {
-  readonly stage: MissionOwnerStage;
-  /** Called once while the owner is created; throwing fails the creation, which releases what was acquired before. */
-  connect(context: MissionOwnerContext): MissionConsumerConnection;
+/**
+ * An owner-level consumer at stage `S`: `connect` is called once while the owner is created, and throwing fails the
+ * creation, which releases what was acquired before. Only a consumer at the `input` stage gets the input control port,
+ * which `MissionOwnerConsumer<'input'>` types.
+ */
+export interface MissionOwnerConsumer<S extends MissionOwnerStage = MissionOwnerStage> {
+  readonly stage: S;
+  connect(context: S extends 'input' ? MissionInputContext : MissionOwnerContext): MissionConsumerConnection;
 }
 
 /** What the app gives each owner. */
@@ -288,8 +331,28 @@ class Owner implements MissionOwner {
   #cleanupFailure: { readonly cause: unknown } | null = null;
   #lastNow = -Infinity;
   #acting = false;
+  /** Above zero while the session runs a frame or lifecycle callback of its host, or the port's `clear-input`. */
+  #inSession = 0;
   #released: MissionOwnerRelease | null = null;
   #snapshot!: MissionOwnerSnapshot;
+  /** The port `input` consumers connect with; each run's port checks its owner and run before every call. */
+  readonly #inputControl: MissionInputControl = Object.freeze({
+    forRun: (runId: number): MissionRunInputControl => {
+      this.#guard('forRun', runId, false);
+      return Object.freeze({
+        clearInput: (reason: ClearInputReason) => { this.#clearInput(runId, reason); },
+        togglePause: () => {
+          // The owner's actions apply only in flight; elsewhere they do nothing.
+          if (this.#guard('togglePause', runId, true) === 'running') this.pause();
+          else this.resume();
+        },
+        openMenu: () => {
+          this.#guard('openMenu', runId, true);
+          this.openMenu();
+        },
+      });
+    },
+  });
 
   constructor(setup: MissionOwnerSetup, link: MissionOwnerLink) {
     this.ownerId = link.ownerId;
@@ -321,7 +384,15 @@ class Owner implements MissionOwner {
     for (const consumer of consumers) {
       if (!STAGES.includes(consumer.stage) || typeof consumer.connect !== 'function') throw new TypeError('A mission consumer needs a stage and connect()');
     }
-    const session = createGameSession(setup.host, this.#onSessionError);
+    const { host } = setup;
+    // The same host, marking where the session runs its callbacks, so the input control port can refuse intents there.
+    const session = createGameSession(Object.freeze({
+      requestFrame: (callback: (nowMs: number) => undefined) => host.requestFrame((nowMs) => this.#within(() => callback(nowMs))),
+      cancelFrame: (handle: number) => host.cancelFrame(handle),
+      readVisibility: () => host.readVisibility(),
+      subscribeLifecycle: (listener: (event: SessionLifecycleEvent) => undefined) =>
+        host.subscribeLifecycle((event) => this.#within(() => listener(event))),
+    }), this.#onSessionError);
     this.#session = session;
     try {
       this.#stopStatus = session.onStatus(this.#onStatus);
@@ -335,8 +406,9 @@ class Owner implements MissionOwner {
         }),
         previousClosed: link.previousClosed,
       });
+      const inputContext: MissionInputContext = Object.freeze({ ...context, control: this.#inputControl });
       for (const consumer of consumers) {
-        const connection = consumer.connect(context);
+        const connection = consumer.stage === 'input' ? consumer.connect(inputContext) : consumer.connect(context);
         if (typeof connection?.release !== 'function') throw new TypeError('A mission consumer connection needs release()');
         this.#connections.push({ stage: consumer.stage, connection });
       }
@@ -402,6 +474,29 @@ class Owner implements MissionOwner {
 
   restart(): void {
     if (this.#ready('flight', 'menu', 'ended')) this.#act(() => { this.#restart(); });
+  }
+
+  /**
+   * Throws `invalid-state` once the owner began its release, or unless `runId` is the session's run; returns the
+   * session's phase. An `intent` is refused while the owner applies another or the session runs a callback, where
+   * wiring a run's port stays allowed.
+   */
+  #guard(operation: string, runId: number, intent: boolean): GameSessionStatus['phase'] {
+    const { phase, runId: current } = this.#session.status();
+    let reason: string | null = null;
+    if (this.#released) reason = 'the mission owner is released';
+    else if (current === null || runId !== current) reason = "requires the session's current run";
+    else if (intent && (this.#acting || this.#inSession > 0)) reason = 'unavailable during a session notification or another intent';
+    if (reason !== null) throw new GameSessionError({ kind: 'invalid-state', operation, phase, runId: current, reason });
+    return phase;
+  }
+
+  /** Not an intent: the session's control under the port's guard, so its refusals reach the caller. */
+  #clearInput(runId: number, reason: ClearInputReason): void {
+    if (!CLEAR_INPUT_REASONS.includes(reason)) {
+      throw new GameSessionError({ kind: 'invalid-argument', path: 'clearInput.reason', reason: "must be 'focus-loss' or 'pointer-lock-exit'" });
+    }
+    if (this.#guard('clearInput', runId, false) === 'running') this.#within(() => { this.#session.control({ type: 'clear-input', reason }); });
   }
 
   release(): MissionOwnerRelease {
@@ -747,6 +842,16 @@ class Owner implements MissionOwner {
     }
     return undefined;
   };
+
+  /** Runs `action` as the session's own processing, during which the input control port refuses intents. */
+  #within(action: () => undefined): undefined {
+    this.#inSession += 1;
+    try {
+      return action();
+    } finally {
+      this.#inSession -= 1;
+    }
+  }
 
   readonly #onSessionError = (error: GameSessionError): undefined => {
     for (const { connection } of this.#connections) {

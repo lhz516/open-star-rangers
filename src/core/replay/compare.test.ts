@@ -76,6 +76,19 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       expect(compareReplayResults(run(12, 4), actual)).toEqual({ match: false, tick: 3, kind: 'events' });
     });
 
+    it('reads a speed-preset command result and tells it from a select-number one at its tick (P3-05 S-06)', () => {
+      const judged = (commandType: string, outcome: string, reason: string | null): Result => {
+        const result = run(12, 4);
+        Object.assign(eventAt(result, 5), { commandType, outcome, reason });
+        return result;
+      };
+      const preset = judged('speed-preset', 'accepted', null);
+      expect(compareReplayResults(preset, JSON.parse(JSON.stringify(preset)))).toEqual({ match: true });
+      for (const other of [judged('select-number', 'accepted', null), judged('select-number', 'ignored', 'wrong-context')]) {
+        expect(compareReplayResults(preset, other)).toEqual({ match: false, tick: 5, kind: 'events' });
+      }
+    });
+
     it('reports an event moved to a later tick at the earlier one', () => {
       const actual = run(12, 4);
       const moved = eventAt(actual, 6, 'object-instantiated');

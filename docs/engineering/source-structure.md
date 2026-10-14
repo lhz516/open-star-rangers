@@ -300,7 +300,9 @@ src/
       file-save.ts
     input/
       browser-keyboard-source.ts
+      browser-pointer-lock.ts
       keyboard-input.ts
+      pointer-lock.ts
       keyboard-source.ts
     storage/
       browser-resource-cache.ts
@@ -310,6 +312,10 @@ src/
       worker-port.ts
       browser-import-worker.ts
   render/
+    map/
+      browser-map-cursor.ts
+      map-cursor.ts
+      map-input-geometry.ts
     scene/
       cleanup.ts
       render-surface.ts
@@ -342,6 +348,17 @@ src/
       game-session-bridge.ts
       game-store.ts
       use-game.ts
+    game-input/
+      bindings.ts
+      capabilities.ts
+      input-action.ts
+      input-consumer.ts
+      input-state.ts
+      input-status.ts
+      key-repeat.ts
+      map-input.ts
+      map-input-policy.ts
+      page-intercept.ts
     import/
       FailureNotice.tsx
       ImportPage.tsx
@@ -349,15 +366,19 @@ src/
       failure-copy.ts
       resource-copy.ts
     mission/
+      GameInputZone.tsx
+      InputNotices.tsx
       MissionMenuPage.tsx
       MissionPage.tsx
       MissionParts.tsx
       MissionShell.tsx
       PlaceholderPage.tsx
       StartConfigPage.tsx
+      input-notices.ts
       mission-copy.ts
       page-keys.ts
       slice-gaps-copy.ts
+      use-input-focus.ts
     pages/
       MainMenuPage.tsx
       use-focus-on-mount.ts
@@ -391,7 +412,7 @@ src/
 
 ## 职责与依赖
 
-P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按住轴、源端口与监听管理；它的合成五键消费者已随合成演示退役（[R6](#r6-合成-ui-层)），当前构建没有游戏键消费者，[browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts) 暂无导入者，留给 P3-05 的原版键位。平台层不识别游戏动作；输入消费者不导入浏览器连接、不调度 tick，经任务所有者以 `input` 阶段登记，经会话的运行句柄设置意图与提交命令，失焦与退出 Pointer Lock 时调用会话的 `clear-input`。当前构建的项目界面按键与平台键盘源的通用规则见独立[键位文档](./keyboard-input.md)，不代表原版操控或系统快捷键拦截。
+P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按住轴、源端口与监听管理；它的合成五键消费者已随合成演示退役（[R6](#r6-合成-ui-层)）。P3-05 的 [ui/game-input/](../../src/ui/game-input/) 是正式任务键位消费者，接入平台键盘源、能力生命周期与地图输入；平台层不识别游戏动作。消费者不导入浏览器连接、不调度 tick，经任务所有者以 `input` 阶段登记，经会话的运行句柄设置意图与提交命令。running 状态的失焦/退出 Pointer Lock 清键只能调用 `GameInputConsumer.clear(reason)`，再由它通知 session 的 `clear-input`；消费者外不得绕过它清会话输入。地图输入使用 `render/map/` 的纯 CSS 像素几何与光标，地图规则仍归 Core/后续规则任务。绑定、上下文与证据见独立[键位文档](./keyboard-input.md)，不代表原版操控或系统快捷键拦截。
 
 | 模块 | 拥有的职责 | 不应承担 |
 |---|---|---|
@@ -399,6 +420,8 @@ P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按�
 | [app/runtime/](../../src/app/runtime/) | 固定步长、连续意图与按住开火、命令队列与每 tick 批次、调用 Core、帧后事件、同 tick 读模型与两帧 Render State、开发录制 | DOM 监听、第二条游戏循环、UI 成功状态 |
 | [app/session/](../../src/app/session/) | 控制通道、唯一帧调度许可、运行身份、出发保持与停止、通知边界、运行级消费者与清理 | 重复模拟世界、媒体/Worker 空实现 |
 | [app/mission/](../../src/app/mission/) | 开始资格、任务流程、占位计时、运行创建、重开与返回、所有者级资源与离页保护的所有权（DOM-free，宿主能力经端口） | React、DOM、规则判定、运行中的 Core 衔接 |
+| [ui/game-input/](../../src/ui/game-input/) | 生产键位表、上下文解析、游戏输入消费者、宿主能力与地图输入；通过 app 所有者 input 阶段使用运行句柄 | 平台事件采集、Core 规则实现、第二条调度循环 |
+| [render/map/](../../src/render/map/) | 地图输入与显示共用的纯 CSS 像素几何、地图光标绘制 | 地图规则、DOM 事件采集、游戏调度 |
 | [core/](../../src/core/) | 权威状态、规则、step、纯投影、确定性、纯 replay/存档模型 | 宿主时间/随机、异步、UI、渲染、平台 I/O |
 | [original-data/](../../src/original-data/) | 原版字节/格式、版本识别、解析与规范化转换 | Three.js 对象、IndexedDB、正式运行世界 |
 | `content/` | 内部内容契约、Asset ID、内容版本、任务与逻辑定义 | 原版资源文件、浏览器加载/GPU/存储实现 |
@@ -526,7 +549,7 @@ P3-04 以正式 Runtime、游戏会话与任务流程取代 P1 合成演示（[s
 
 - **删除前的提交：** 最后一个包含全部这些路径的提交是 `84a3f454`（`docs(p3-04): claim subtask 13`）；这些路径最后一次内容修改在 `87690599`（`feat(p2-11): add the on-demand viewer renderer and 2D items`）。查看原文用 `git show 84a3f454:<路径>`，列出删除前的目录用 `git ls-tree -r --name-only 84a3f454 -- <目录>`。
 - **历史文档：** P1、P2 与 P3-02 的任务文档、评审与 ADR 记录的是交付当时的代码，文字、命令与结论保持原样；其中指向下列路径的链接由 P3-04/16 改指向本节对应的条目，本节只提供稳定的锚点。各条目的契约仍以原任务的 spec 为准。
-- **不在删除范围内：** 测试用的合成内容与 fixture（[synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts)、[synthetic.test-support.ts](../../src/original-data/synthetic.test-support.ts)、[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 等）仍被内容、导入、查看器、任务流程与 E2E 使用；`platform/input/` 的通用键盘源（包括现在没有导入者的 [browser-keyboard-source.ts](../../src/platform/input/browser-keyboard-source.ts)）留给 P3-05；`render/scene/`、`render/viewport/`、`render/webgl/` 的共用渲染设施由查看器使用。测试中仍以字符串出现的 `osr-synthetic-snapshot`、`osr-synthetic-replay` 是被拒绝的格式名，不是模块引用；[production-preview.spec.ts](../../e2e/production-preview.spec.ts) 以否定正则确认这些退役路径不出现在生产 source map 中。
+- **不在删除范围内：** 测试用的合成内容与 fixture（[synthetic-content.test-support.ts](../../src/content/synthetic-content.test-support.ts)、[synthetic.test-support.ts](../../src/original-data/synthetic.test-support.ts)、[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts) 等）仍被内容、导入、查看器、任务流程与 E2E 使用；`platform/input/` 的通用键盘源由 P3-05 的 `ui/game-input/` 正式消费；`render/scene/`、`render/viewport/`、`render/webgl/` 的共用渲染设施由查看器使用。测试中仍以字符串出现的 `osr-synthetic-snapshot`、`osr-synthetic-replay` 是被拒绝的格式名，不是模块引用；[production-preview.spec.ts](../../e2e/production-preview.spec.ts) 以否定正则确认这些退役路径不出现在生产 source map 中。
 
 ### R1 合成 Core
 
@@ -589,7 +612,7 @@ P3-04 以正式 Runtime、游戏会话与任务流程取代 P1 合成演示（[s
 | `synthetic-session-bridge.ts` | 合成会话到 store 的桥接与 10 Hz 采样 | [game-session-bridge.ts](../../src/ui/game/game-session-bridge.ts) |
 | `synthetic-command-feedback.ts` | marker 命令的提交与结果反馈 | [game-command-feedback.ts](../../src/ui/game/game-command-feedback.ts) |
 | `synthetic-game-controls.ts` | 开发面板与键盘共用的控件可用性 | 任务所有者的意图（[mission-owner.ts](../../src/app/mission/mission-owner.ts)）与任务页面按会话状态推导的控件（[ui/mission/](../../src/ui/mission/)） |
-| `synthetic-keyboard-input.ts` | 合成五键（方向键、`N`、`X`、`P`）的键盘消费者 | 无：当前构建没有游戏键位，原版键位由 P3-05 加入，见[键位文档](./keyboard-input.md) |
+| `synthetic-keyboard-input.ts` | 合成五键（方向键、`N`、`X`、`P`）的键盘消费者 | [P3-05 游戏输入消费者](../../src/ui/game-input/input-consumer.ts)，见[键位文档](./keyboard-input.md) |
 | `use-synthetic-game.ts` | React selector hook | [use-game.ts](../../src/ui/game/use-game.ts) |
 | `synthetic-ui.test-support.ts` | 真实会话、`ControlledHost` 与可控时钟的测试组合 | [game-ui.test-support.ts](../../src/ui/game/game-ui.test-support.ts) |
 | `synthetic-command-feedback.test.ts`、`synthetic-command-outcomes.test.ts`、`synthetic-game-controls.test.ts`、`synthetic-game-replay.test.ts`、`synthetic-game-store.test.ts`、`synthetic-keyboard-input.test.ts`、`synthetic-session-bridge.test.ts` | 上述模块的测试 | `game-store.test.ts`、`game-session-bridge.test.ts`、`game-command-feedback{,-fault}.test.ts` |
@@ -600,7 +623,7 @@ P3-04 以正式 Runtime、游戏会话与任务流程取代 P1 合成演示（[s
 |---|---|---|
 | `src/ui/pages/SyntheticDemoPage.tsx` | 合成演示画面（主菜单的 `Start synthetic demo` 入口） | 主菜单的 `Start mission` 与任务页面：[MissionPage.tsx](../../src/ui/mission/MissionPage.tsx) 及 [ui/mission/](../../src/ui/mission/) 的占位、开始配置、任务壳与任务菜单 |
 | `src/ui/dev/SyntheticDevPanel.tsx` | 合成开发面板（会话控件、marker 命令、渲染诊断） | 只在开发构建中出现的 [MissionDevPanel.tsx](../../src/ui/dev/MissionDevPanel.tsx)，见[开发诊断与录制导出](./README.md#开发诊断与录制导出) |
-| `src/ui/render/SyntheticRenderView.tsx`（`src/ui/render/` 随之删除） | 合成画面容器、合成键位的输入区与渲染状态文字 | 任务壳中的游戏区域（`mission-view`，尚无画布，P3-12、P3-13 填充）；输入区由 P3-05 建立 |
+| `src/ui/render/SyntheticRenderView.tsx`（`src/ui/render/` 随之删除） | 合成画面容器、合成键位的输入区与渲染状态文字 | 任务壳中的游戏区域（`mission-view`，尚无完整画布，P3-12、P3-13 填充）；正式输入区由 P3-05 建立 |
 
 ### R8 E2E 演示观察
 

@@ -10,7 +10,7 @@ import {
 } from '../world/create-world.test-support.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
-import type { Recording } from './recording.ts';
+import { GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
 import { contentOf, longInput, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
@@ -71,6 +71,23 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       expect(compareReplayResults(RECORDING.result, tampered)).toEqual({ match: false, tick: 40, kind: 'events' });
     });
 
+    it('tells a speed preset from the same digit: the preset is accepted, the digit has no effect in flight', () => {
+      // Tick 10's script: fire (P3-07: the gun starts without charge), speed-preset 2 and select-number 2.
+      const recording = recordScript(INPUT, 10, 5);
+      const commandResults = (result: Recording['result'], tick: number) =>
+        result.events.flatMap((event) => (event.type === 'command-result' && event.tick === tick ? [[event.commandType, event.outcome, event.reason]] : []));
+      expect(commandResults(recording.result, 10)).toEqual([
+        ['fire', 'ignored', 'insufficient-charge'], ['speed-preset', 'accepted', null], ['select-number', 'ignored', 'wrong-context'],
+      ]);
+      const swapped = replayRecord(recordWith(({ ticks }) => {
+        ticks[9] = tickInput([{ type: 'fire', channel: 'primary' }, { type: 'select-number', value: 2 }, { type: 'speed-preset', level: 2 }]) as never;
+      }, recording), CONTENT);
+      expect(compareReplayResults(recording.result, swapped)).toEqual({ match: false, tick: 10, kind: 'events' });
+      expect(commandResults(swapped, 10)).toEqual([
+        ['fire', 'ignored', 'insufficient-charge'], ['select-number', 'ignored', 'wrong-context'], ['speed-preset', 'accepted', null],
+      ]);
+    });
+
     it('finds no difference for an input change without an observable effect', () => {
       // Below one deflection step (1/128), every axis truncates to 0 and applies nothing (P3-06 checkpoint A).
       const steered = recordWith(({ ticks }) => { ticks[10] = { axes: { pitch: 0.005, yaw: -0.0075, roll: 0.0039 }, commands: [] }; });
@@ -110,12 +127,15 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
   describe('rejection', () => {
     it.each([
       ['an unknown format', (record: Mutable) => { record.format = 'osr-synthetic-replay'; }, 'record.format'],
-      ['an unknown version', (record: Mutable) => { record.version = 2; }, 'record.version'],
-      ['another version with other fields', (record: Mutable) => { record.version = 2; record.frames = []; }, 'record.version'],
+      ['an unknown version', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
+      ['another version with other fields', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; record.frames = []; }, 'record.version'],
+      ['the format version before P3-05\'s speed-preset', (record: Mutable) => { record.version = 1; }, 'record.version'],
       ['another rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['the rules version before P3-06', (record: Mutable) => { record.rulesVersion = 1; }, 'record.rulesVersion'],
-      // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14); the record shape and format version are unchanged.
+      // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14), then P3-05's speed-preset once more.
       ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = 2; }, 'record.rulesVersion'],
+      ['the rules version before P3-05\'s speed-preset', (record: Mutable) => { record.rulesVersion = 3; }, 'record.rulesVersion'],
+      ['a speed preset out of range', (record: Mutable & { ticks: Mutable[] }) => { record.ticks[4] = tickInput([{ type: 'speed-preset', level: 0 }]) as never; }, 'record.ticks[4].commands[0].level'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],
       ['an empty producer', (record: Mutable) => { record.producer = ''; }, 'record.producer'],

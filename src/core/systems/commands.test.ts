@@ -28,9 +28,10 @@ const COMBAT_COMMANDS: readonly Command[] = [
   { type: 'damage-report' },
 ];
 
-/** P3-06's commands, which the player's update judges itself in flight: throttle, and Enter's speed match. */
+/** P3-06's commands, which the player's update judges itself in flight: throttle and presets, the digit, and Enter's speed match. */
 const P3_06_COMMANDS: readonly Command[] = [
   { type: 'speed', operation: 'increase' },
+  { type: 'speed-preset', level: 3 },
   { type: 'select-number', value: 3 },
   { type: 'confirm-selection' },
 ];

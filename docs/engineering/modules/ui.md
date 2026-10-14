@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/ui/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-当前 `src/ui/` 中已交付：P3-04 的游戏 store、会话桥接与命令反馈（`ui/game/`）、任务页面与缺省标注文字（`ui/mission/`）与只在开发构建出现的诊断（`ui/dev/`）；P1-08 起的主菜单与页面焦点 helper（`ui/pages/`）；P2-11 的导入页面与失败文案（`ui/import/`）、资源查看器页面（`ui/viewer/`）。菜单与任务页面都是项目的网页界面，不是原版界面或飞行 HUD；任务画面是正式运行骨架，没有飞行画面、驾驶舱、HUD、游戏键位、规则或音效。P1 的合成 UI 层、开发面板与画面组件已于 P3-04 退役，见[退役记录](../source-structure.md#p3-04-合成演示退役记录)。React 接线、焦点与测试 ID 见[工程约定](../README.md#页面流转与任务生命周期)。
+当前 `src/ui/` 中已交付：P3-04 的游戏 store、会话桥接与命令反馈（`ui/game/`）、P3-05 的任务输入消费者与能力/地图输入（`ui/game-input/`）、任务页面与缺省标注文字（`ui/mission/`）与只在开发构建出现的诊断（`ui/dev/`）；P1-08 起的主菜单与页面焦点 helper（`ui/pages/`）；P2-11 的导入页面与失败文案（`ui/import/`）、资源查看器页面（`ui/viewer/`）。菜单与任务页面都是项目的网页界面，不是原版界面或飞行 HUD；任务画面已连接键盘输入区与地图输入，但仍是逐步填充的正式运行骨架，缺少完整飞行画面、驾驶舱、HUD、部分规则与音效。P1 的合成 UI 层、开发面板与画面组件已于 P3-04 退役，见[退役记录](../source-structure.md#p3-04-合成演示退役记录)。React 接线、焦点与测试 ID 见[工程约定](../README.md#页面流转与任务生命周期)。
 
 ## 游戏 store、桥接与命令反馈
 
@@ -30,6 +30,8 @@ related: [ADR-0015]
 - **缺省标注文字：** [slice-gaps-copy.ts](../../../src/ui/mission/slice-gaps-copy.ts) 的 `SLICE_GAPS` 以 G ID 为键（`G-01`、`G-02/1`、`G-02/2`、`G-04`、`G-06`、`G-07`），每项为 `{ title, text }`；`MISSION_OBJECTIVES` 是 G-04 开始配置页的目标与限制（项目文字、事实来源与置信度、本构建尚未实现这些规则），代码注释链接权威来源，P3-11 接入规则时复核。同一 G 项的文字只在这里；各项的呈现与位置见[切片缺省清单](../slice-gaps.md)。
 - **其他文字：** [mission-copy.ts](../../../src/ui/mission/mission-copy.ts) 为构建状态说明 `MISSION_SKELETON`、`eligibilityReason`（入口不可用的原因）、`wingmanLabel`（僚机名字只作纯文本：无候选为项目编号，多候选列出全部，不在 UI 中提前抽取）、`startFailureText` 与 `startRetryable`、状态栏的 `phaseText`/`pauseText`/`resumeBlockedText`，以及 `describeStructure`：只列错误类名与结构字段（kind、code、site、stage、operation、phase、path、reason）及其嵌套，不含消息文本，避免把导入内容带进页面。
 - **按键：** [page-keys.ts](../../../src/ui/mission/page-keys.ts) 的 `placeholderKeyAction` 把占位范围内新的 Enter、Space、Esc 判为跳过，repeat 一律只阻止默认行为，带 Control/Alt/Meta 或输入法组合的新按下留给浏览器；`isHeldActivation` 判定 Enter/Space 的 repeat，供主菜单入口阻止重复激活。键位说明见[键位文档](../keyboard-input.md)。
+- **游戏输入消费者：** [ui/game-input/](../../../src/ui/game-input/) 组合绑定表、上下文解析、键盘本地状态、按帧重复、命令反馈与宿主能力。`createInputConsumer` 是任务所有者的 `input` 阶段消费者，使用完整最新 projection 而非采样 store；连续轴/主炮电平通过运行句柄设置，离散动作经 `GameCommandFeedback` 排队。地图指针由独立 map input 路径解析，地图策略为生产显式注入。全屏、Keyboard Lock、Pointer Lock 的状态只在浏览器确认后变为 active；清除运行输入必须由 `GameInputConsumer.clear(reason)` 单一入口发起。逐组合契约及实机证据见[键位文档](../keyboard-input.md)。
+- **焦点提示槽：** `InputNotices` 中的焦点提示 DOM 常驻并只视觉隐藏，CSS 稳定预留提示位，避免失焦/聚焦时页面布局跳动（P3-05/29）；G-08 至 G-10 缺省动作及能力/地图提示不夺焦、不暂停。
 - **主菜单：** [MainMenuPage.tsx](../../../src/ui/pages/MainMenuPage.tsx) 的 `Start mission` 按开始资格启用或禁用，并说明原因与构建状态。
 
 ## 开发诊断

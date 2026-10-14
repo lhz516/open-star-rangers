@@ -4,12 +4,16 @@ import type { MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import { describeStructure, MISSION_SKELETON } from './mission-copy.ts';
 import { SLICE_GAPS, type SliceGapId } from './slice-gaps-copy.ts';
 
+/** A slice gap's text, labelled with its G ID; any ID, so copy the caller holds works too. */
+export function GapText({ id, title, text }: { readonly id: string; readonly title: string; readonly text: string }) {
+  return <><strong>{title} ({id}).</strong> {text}</>;
+}
+
 /** One slice gap, labelled with its G ID. */
 export function GapNote({ id }: { readonly id: SliceGapId }) {
-  const { title, text } = SLICE_GAPS[id];
   return (
     <p className="slice-gap" data-gap={id}>
-      <strong>{title} ({id}).</strong> {text}
+      <GapText id={id} {...SLICE_GAPS[id]} />
     </p>
   );
 }

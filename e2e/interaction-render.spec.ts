@@ -10,15 +10,15 @@ import { openHeldViewer } from './support/version-4.ts';
 import { viewerDiagnostics } from './support/viewer-observations.ts';
 
 // Native controls and same-owner resize, in the development and production projects. P3-04 (docs/plan/p3/04/spec.md,
-// 合成演示退役) retires the synthetic demo's key bindings, mover and marker picture and marker commands with it: this
-// build has no game key bindings (P3-05) and no flight view (P3-12). What stays generic moves to the mission screen: the
-// whole flow runs by keyboard on its native controls, keys elsewhere act on nothing, and a window resize keeps the same
-// mission owner and run; the resize of a WebGL picture moves to the resource viewer, the one screen that draws one. The
-// startable mission package is seeded into the test's own context and restored first.
+// 合成演示退役) retires the synthetic demo's mover and marker picture/commands with it: P3-05 supplies production input
+// bindings, but no flight view exists yet (P3-12). The mission flow runs by keyboard on its native controls and game
+// input zone, unbound keys act on nothing, and a window resize keeps the same mission owner and run; the resize of a
+// WebGL picture moves to the resource viewer, the one screen that draws one. The startable mission package is seeded
+// into the test's own context and restored first.
 
 const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
-/** The P1 demo's game keys and arrows; none is bound in this build. */
-const UNBOUND = ['n', 'x', 'p', 'ArrowLeft', 'ArrowRight'];
+/** Keys that are not in P3-05's production binding table. */
+const UNBOUND = ['b', 'h', 'i', 'n', 'o', 'v'];
 
 /** Moves focus with Tab (or Shift+Tab) until `target` has it; fails after `limit` presses. */
 async function tabTo(page: Page, target: Locator, key: 'Tab' | 'Shift+Tab' = 'Tab', limit = 20): Promise<void> {
@@ -27,6 +27,16 @@ async function tabTo(page: Page, target: Locator, key: 'Tab' | 'Shift+Tab' = 'Ta
     await page.keyboard.press(key);
   }
   await expect(target).toBeFocused();
+}
+
+async function activeInputListenerCounts(page: Page): Promise<{ readonly keyboard: number; readonly pointerLock: number }> {
+  return page.evaluate(() => {
+    const active = window.osrProbe.snapshot().listeners.filter(listener => listener.active);
+    return {
+      keyboard: active.filter(listener => listener.group === 'keyboard').length,
+      pointerLock: active.filter(listener => listener.group === 'pointer-lock').length,
+    };
+  });
 }
 
 /** Seeds the startable mission package, restores it through the real menu and waits until it is held. */
@@ -42,6 +52,7 @@ async function restoreMission(page: Page): Promise<void> {
 
 test('native controls run the mission flow by keyboard alone, unbound keys act on nothing, and a resize keeps the same owner and run', async ({ page }, testInfo) => {
   await restoreMission(page);
+  const inputListenersAtMenu = await activeInputListenerCounts(page);
 
   // The menu: the mission entry is the first entry; keys on it other than activation do nothing.
   await tabTo(page, missionEntry(page), 'Shift+Tab');
@@ -67,7 +78,9 @@ test('native controls run the mission flow by keyboard alone, unbound keys act o
 
   // Flight: no key outside a control is bound; the run keeps running.
   await waitForFrame(page, frame => frame.position === 'flight');
-  await expect(page.getByRole('heading', { name: 'Mission', exact: true })).toBeFocused();
+  await expect(page.getByTestId('game-input-zone')).toBeFocused();
+  await page.keyboard.press('F2');
+  await expect(page.getByTestId('input-gap-notice')).toHaveAttribute('data-gap', 'G-08');
   const status = page.getByTestId('mission-status');
   for (const key of UNBOUND) await page.keyboard.press(key);
   await expect(status).toHaveAttribute('data-phase', 'running');
@@ -103,6 +116,7 @@ test('native controls run the mission flow by keyboard alone, unbound keys act o
   await expect(missionEntry(page)).toBeFocused();
   expect(await missionFrame(page)).toBeNull();
   expect(await leaveGuards(page)).toBe(0);
+  expect(await activeInputListenerCounts(page)).toEqual(inputListenersAtMenu);
   for (const key of UNBOUND) await page.keyboard.press(key);
   await expect(missionEntry(page)).toBeFocused();
   expect(await missionFrame(page)).toBeNull();

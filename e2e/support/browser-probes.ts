@@ -1,4 +1,4 @@
-export type ListenerGroup = 'keyboard' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
+export type ListenerGroup = 'keyboard' | 'fullscreen' | 'pointer-lock' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
 /**
  * One message a Worker sent to the page: its `type` and `stage` when they are protocol tokens, its `jobId` when a safe
  * integer, otherwise null; `at` is the probe sequence when it arrived. Nothing else of the message is kept.
@@ -102,9 +102,12 @@ export function installBrowserProbes(): void {
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
     if (/\/@(?:vite\/client|react-refresh)/.test(new Error().stack ?? '')) return 'vite';
     if (!application()) return 'test';
-    // The mission screen's input area (P3-05) is the keyboard's; React DOM registers its own element listeners before
-    // the element joins the document, so they never match.
-    if (target instanceof Element && target.closest('[data-testid="mission-screen"]')) return 'keyboard';
+    if (['fullscreenchange', 'fullscreenerror'].includes(type)) return 'fullscreen';
+    // The Pointer Lock port (P3-05): its lock events on the document and pointer events on its target.
+    if (['pointerlockchange', 'pointerlockerror', 'mousemove', 'mousedown', 'mouseup'].includes(type)) return 'pointer-lock';
+    // The mission screen's input area (P3-05), or the input zone of a test entry without one, is the keyboard's; React
+    // DOM registers its own element listeners before the element joins the document, so they never match.
+    if (target instanceof Element && target.closest('[data-testid="mission-screen"], [data-testid="game-input-zone"]')) return 'keyboard';
     if ((target === window && ['focus', 'blur'].includes(type))) return 'keyboard';
     if ((target === document && type === 'visibilitychange') || (target === window && ['pagehide', 'pageshow'].includes(type))) {
       // Session registers first; the input source registers the second distinct callback.

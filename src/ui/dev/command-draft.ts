@@ -30,13 +30,15 @@ type FormOf<Type extends CommandType> = { readonly [Field in FieldName<Type>]: F
 const choice = <const Options extends readonly string[]>(...options: Options) =>
   ({ kind: 'choice', options: Object.fromEntries(options.map((option) => [option, true])) }) as ChoiceSpec<Options[number]>;
 const FRACTION: NumberSpec = { kind: 'number', min: 0, max: 1, integer: false };
+const DIGIT: NumberSpec = { kind: 'number', min: 1, max: 9, integer: true };
 const PREVIOUS_NEXT = choice('previous', 'next');
 
 /** One entry per command variant with its fields in canonical order; the type requires every variant and field. */
 const FORMS: { readonly [Type in CommandType]: FormOf<Type> } = {
   fire: { channel: choice('primary', 'secondary') },
   speed: { operation: choice('increase', 'decrease', 'zero', 'maximum', 'match-target', 'toggle-auto-match') },
-  'select-number': { value: { kind: 'number', min: 1, max: 9, integer: true } },
+  'speed-preset': { level: DIGIT },
+  'select-number': { value: DIGIT },
   'navigate-selection': { direction: PREVIOUS_NEXT },
   'confirm-selection': {},
   target: { operation: choice('enemy', 'friendly', 'next', 'previous', 'forward') },

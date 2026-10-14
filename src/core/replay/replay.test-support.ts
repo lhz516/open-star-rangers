@@ -23,9 +23,12 @@ export function contentOf(input: CreateWorldInput): ReplayContent {
   return { mission, craftTypes, wingmanRoster, craftInfo, debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms, identity };
 }
 
-/** A fixed input script: commands on some ticks, steering on others, -0 included. */
+/** A fixed input script: commands on some ticks (a speed preset and a digit, which has no effect in flight), steering on others, -0 included. */
 export function scriptedInput(tick: number): TickInput {
-  if (tick % 5 === 0) return tickInput([{ type: 'fire', channel: 'primary' }, { type: 'select-number', value: (tick % 9) + 1 }]);
+  if (tick % 5 === 0) {
+    const digit = (tick % 9) + 1;
+    return tickInput([{ type: 'fire', channel: 'primary' }, { type: 'speed-preset', level: digit }, { type: 'select-number', value: digit }]);
+  }
   if (tick % 7 === 0) return { axes: { pitch: -0, yaw: 0.5, roll: -1 }, commands: [{ type: 'map-point', operation: 'hover', right: 0.25, down: 1 }] };
   return tickInput();
 }

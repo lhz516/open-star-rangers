@@ -3,6 +3,10 @@ import type { RenderSurface, RenderSurfaceOptions } from '../render/scene/render
 import type { ExpectedPackageProfile } from '../workers/production-package.ts';
 import type { ImportWorkerPortFactory } from './import/import-worker-port.ts';
 import type { FileSave, LeaveGuard, MonotonicClock, OneShotTimer, SeedSource } from './mission/mission-ports.ts';
+import type { PlatformFamily } from '../platform/browser/platform-family.ts';
+import type { FullscreenPort } from '../platform/browser/fullscreen.ts';
+import type { KeyboardSource, KeyboardZoneBinding } from '../platform/input/keyboard-input.ts';
+import type { PointerLockPort } from '../platform/input/pointer-lock.ts';
 import type { ResourceCachePort } from './resources/resource-holder.ts';
 import type { SessionHost } from './session/session-host.ts';
 
@@ -20,6 +24,14 @@ export interface MissionPorts {
   readonly createSessionHost: () => SessionHost;
   /** Creates the file save of each owner's development diagnostics; null in production builds, which have none. */
   readonly createFileSave: (() => FileSave) | null;
+  /** Creates the browser keyboard source shared by all runs of this owner. */
+  readonly createKeyboardSource: () => KeyboardSource & KeyboardZoneBinding<HTMLElement>;
+  /** Creates the owner's document fullscreen and keyboard-lock port, or null when unavailable. */
+  readonly createFullscreen: () => FullscreenPort | null;
+  /** Creates a pointer-lock port whose target follows the input zone as it mounts and unmounts. */
+  readonly createPointerLock: (target: () => HTMLElement | null) => PointerLockPort;
+  /** The host's platform family, used only for the Alt+F4 notice. */
+  readonly platformFamily: () => PlatformFamily;
 }
 
 /**

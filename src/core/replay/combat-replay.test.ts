@@ -8,7 +8,7 @@ import {
 } from '../world/create-world.test-support.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
-import { createRecordingSession, type Recording } from './recording.ts';
+import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
 import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
@@ -174,8 +174,8 @@ describe('combat replay (P3-07 AC-13, CR-14)', () => {
 
   describe('rejection', () => {
     it.each([
-      ['an unknown version', (record: Mutable) => { record.version = 2; }, 'record.version'],
-      ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = RULES_VERSION - 1; }, 'record.rulesVersion'],
+      ['an unknown version', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
+      ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = 2; }, 'record.rulesVersion'],
       ['a later rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['a fire command of an unknown channel', (record: Mutable & { ticks: Mutable[] }) => {
         record.ticks[2] = tickInput([{ type: 'fire', channel: 'tertiary' } as never]) as never;

@@ -3,6 +3,7 @@ import { variantLabel } from '../src/ui/viewer/viewer-copy.ts';
 import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { button, filePayloads, importFiles, openTestEntry, sliceFiles, smallFile } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
+import { tabTo } from './support/keyboard-input.ts';
 import { expect, test } from './support/browser-test.ts';
 import { connectedCanvases, documentMark, jobOwners, markDocument, viewerOwner, withEdits } from './support/fast-refresh.ts';
 import {
@@ -143,8 +144,10 @@ test('three round trips through menu, import with a job, viewer and mission leav
     await enterMission(page);
     await endPlaceholder(page, 'G-02/1', 'button');
     await fly(page);
-    await button(page, 'Mission menu').click();
-    await button(page, 'Return to main menu').click();
+    await tabTo(page, button(page, 'Mission menu'));
+    await page.keyboard.press('Enter');
+    await tabTo(page, button(page, 'Return to main menu'));
+    await page.keyboard.press('Space');
     await expect(missionEntry(page)).toBeFocused();
     await expect.poll(state, { message: `round ${round}` }).toEqual(baseline);
   }
@@ -171,15 +174,32 @@ async function missionResources(page: Page) {
   const snapshot = await frameWindow(page);
   return {
     session: snapshot.listeners.filter(entry => entry.active && entry.group === 'session').map(({ addedAt }) => addedAt),
+    ...inputCapabilities(snapshot),
     leaveGuards: snapshot.listeners.filter(entry => entry.active && entry.type === 'beforeunload' && entry.group === 'other').length,
     timers: snapshot.timers,
     frames: snapshot.frames.maximum,
   };
 }
 
+function inputCapabilities(snapshot: Awaited<ReturnType<typeof frameWindow>>) {
+  const active = (group: string) => snapshot.listeners.filter(entry => entry.active && entry.group === group).map(({ type }) => type).sort();
+  return { keyboard: active('keyboard'), fullscreen: active('fullscreen'), pointerLock: active('pointer-lock') };
+}
+
+type InputCapabilities = ReturnType<typeof inputCapabilities>;
+
 /** No mission resource is left: no session listener, leave guard, pending timer or game frame. */
 function expectReleased(resources: Awaited<ReturnType<typeof missionResources>>, what: string): void {
-  expect({ ...resources, timers: resources.timers.pending }, what).toEqual({ session: [], leaveGuards: 0, timers: [], frames: 0 });
+  expect({
+    ...resources, timers: resources.timers.pending, keyboard: resources.keyboard, fullscreen: resources.fullscreen, pointerLock: resources.pointerLock,
+  }, what).toEqual({ session: [], keyboard: [], fullscreen: [], pointerLock: [], leaveGuards: 0, timers: [], frames: 0 });
+}
+
+/** The owner's keyboard, Fullscreen and Pointer Lock listeners are connected exactly once before any run. */
+function expectInputCapabilities(capabilities: InputCapabilities, zoneBound: boolean, what: string): void {
+  expect(capabilities.keyboard, `${what}: keyboard source`).toHaveLength(zoneBound ? 9 : 5);
+  expect(capabilities.fullscreen, `${what}: Fullscreen port`).toEqual(['fullscreenchange', 'fullscreenerror']);
+  expect(capabilities.pointerLock, `${what}: Pointer Lock port`).toHaveLength(5);
 }
 
 test('a Fast Refresh of the mission owner hook and of the mission screen replaces the owner, clearing its timer and keeping the package and the confirmed wingman (AC-09, AC-14)', async ({ page }, testInfo) => {
@@ -192,6 +212,7 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
   await chooseWingman(page, 3);
   await fly(page);
   let flying = await missionResources(page);
+  expectInputCapabilities(flying, true, 'the running input zone listeners');
   expect(flying).toMatchObject({ leaveGuards: 1, timers: { pending: [] }, frames: 1 });
   const mark = await markDocument(page);
   /** After a refresh: a new owner, one more than the last, at the introduction of the same document. */
@@ -208,6 +229,7 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
       await edit(1);
       await newOwner(`${file} edited in flight`);
       const probe = await page.evaluate(() => window.osrProbe.snapshot());
+      expectInputCapabilities(inputCapabilities(probe), false, `${file} edited`);
       const session = probe.listeners.filter(entry => entry.active && entry.group === 'session').map(({ addedAt }) => addedAt);
       expect(session, `${file} edited: one owner's session listeners`).toHaveLength(3);
       expect(Math.min(...session), `${file} edited: listeners of the new owner`).toBeGreaterThan(Math.max(...flying.session));
@@ -220,6 +242,7 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
     // fire, and the next owner holds only its own.
     await newOwner(`${file} restored at the introduction`);
     const resources = await missionResources(page);
+    expectInputCapabilities(resources, false, `${file} restored`);
     expect(resources.timers.cleared, `${file} restored: the old introduction timer was cleared`).toContain(introduction);
     expect(resources.timers.fired, `${file} restored: the old introduction timer did not fire`).not.toContain(introduction);
     expect(resources.timers.pending, `${file} restored: only the new introduction's timer`).toHaveLength(1);
@@ -232,8 +255,10 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
     await fly(page);
     flying = await missionResources(page);
   }
-  await button(page, 'Mission menu').click();
-  await button(page, 'Return to main menu').click();
+  await tabTo(page, button(page, 'Mission menu'));
+  await page.keyboard.press('Enter');
+  await tabTo(page, button(page, 'Return to main menu'));
+  await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();
   await balance.check('after the Fast Refreshes');
   await balance.attach();

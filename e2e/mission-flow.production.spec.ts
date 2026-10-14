@@ -3,6 +3,7 @@ import { SLICE_GAPS } from '../src/ui/mission/slice-gaps-copy.ts';
 import { PREVIEW_CONTENT_SECURITY_POLICY } from '../tools/preview-csp.ts';
 import { button } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
+import { tabTo } from './support/keyboard-input.ts';
 import {
   checkedWingman, chooseWingman, endPlaceholder, enterMission, expectAdvancingTick, expectGaps, expectStableTick, holdKey, leaveGuards,
   missionEntry, missionFrame, stopWatchingPositions, waitForFrame, watchPositions,
@@ -79,7 +80,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expectGaps(page, ['G-02/2']);
   expect(await leaveGuards(page)).toBe(1);
   await endPlaceholder(page, 'G-02/2', 'button');
-  await expect(page.getByRole('heading', { name: 'Mission', exact: true })).toBeFocused();
+  await expect(page.getByTestId('game-input-zone')).toBeFocused();
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   await expectAdvancingTick(page);
   expect(await leaveGuards(page)).toBe(1);
@@ -92,7 +93,8 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expect(status(page)).toHaveAttribute('data-phase', 'paused');
   await expect(status(page)).toHaveAttribute('data-pause', 'user');
   const paused = await expectStableTick(page, 800);
-  await button(page, 'Resume').click();
+  await expect(button(page, 'Resume')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(paused);
 
@@ -106,7 +108,8 @@ test('the whole production flow from a restored cache, with and without a wingma
   expect(await expectStableTick(page)).toBe(held);
   expect(await missionFrame(page)).toEqual({ owner, run: 1, tick: held, position: 'menu' });
   expect(await leaveGuards(page)).toBe(1);
-  await button(page, 'Continue').click();
+  await tabTo(page, button(page, 'Continue'));
+  await page.keyboard.press('Space');
   await waitForFrame(page, candidate => candidate.position === 'flight');
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(held);
@@ -114,7 +117,8 @@ test('the whole production flow from a restored cache, with and without a wingma
   // Restart: a new introduction ended by a held Enter whose repeats and keyup start nothing, the remembered choice
   // preselected, then a new run without a wingman whose departure a held Space ends without pausing the flight.
   await button(page, 'Mission menu').click();
-  await button(page, 'Restart mission').click();
+  await tabTo(page, button(page, 'Restart mission'));
+  await page.keyboard.press('Enter');
   frame = await waitForFrame(page, candidate => candidate.position === 'intro');
   expect(frame).toEqual({ owner, run: null, tick: null, position: 'intro' });
   expect(await leaveGuards(page)).toBe(0);
@@ -133,7 +137,7 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expect(button(page, 'Skip')).toBeFocused();
   await holdKey(page, ' ', async () => {
     await waitForFrame(page, candidate => candidate.position === 'flight');
-    await expect(page.getByRole('heading', { name: 'Mission', exact: true })).toBeFocused();
+    await expect(page.getByTestId('game-input-zone')).toBeFocused();
   });
   await expect(status(page)).toHaveAttribute('data-phase', 'running');
   await expectAdvancingTick(page);
@@ -141,7 +145,8 @@ test('the whole production flow from a restored cache, with and without a wingma
 
   // Return: focus on the mission entry, no run or leave guard left.
   await button(page, 'Mission menu').click();
-  await button(page, 'Return to main menu').click();
+  await tabTo(page, button(page, 'Return to main menu'));
+  await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();
   expect(await missionFrame(page)).toBeNull();
   expect(await leaveGuards(page)).toBe(0);
@@ -165,7 +170,8 @@ test('the whole production flow from a restored cache, with and without a wingma
   await expectAdvancingTick(page);
   await expectNoDiagnostics(page);
   await button(page, 'Mission menu').click();
-  await button(page, 'Return to main menu').click();
+  await tabTo(page, button(page, 'Return to main menu'));
+  await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();
   expect(await violations(page)).toEqual([]);
 });
