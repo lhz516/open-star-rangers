@@ -71,7 +71,7 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
   it('implements only the stages P3-02, P3-06, P3-07 and P3-09 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
       'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
-      'parked-update', 'warp-completion', 'area-check', 'frame-end', 'commit',
+      'object-sets', 'parked-update', 'warp-completion', 'area-check', 'frame-end', 'commit',
     ]);
   });
 

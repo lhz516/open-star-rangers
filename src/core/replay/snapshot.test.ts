@@ -6,7 +6,7 @@ import { fnv1a64 } from '../determinism/fnv1a64.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
-import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
+import { ALL_KINDS, type Entity, type SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import {
@@ -359,5 +359,34 @@ describe('the map state a select leaves (P3-09/14; docs/plan/p3/02/spec.md, MW-1
     const snapshot = JSON.parse(text) as { state: { mapIcons: unknown[]; player: { map: unknown } } };
     expect(snapshot.state.mapIcons).toHaveLength(state.mapIcons.length);
     expect(snapshot.state.player.map).toMatchObject({ destination: state.player.map.destination });
+  });
+});
+
+describe('the object sets and map visibility flags the stage leaves (P3-09/15; docs/plan/p3/02/spec.md, MW-06, MW-14)', () => {
+  /** A created slice world with the first wingman, stepped until its player is available, then `mapTicks` ticks in the map. */
+  function sliceInMap(mapTicks: number): WorldState {
+    const state = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
+    const world = constructWorld(state);
+    for (let tick = 0; tick < 3; tick++) world.step(tickInput());
+    world.step(tickInput([{ type: 'toggle-map' }]));
+    for (let tick = 1; tick < mapTicks; tick++) world.step(tickInput());
+    return state;
+  }
+
+  it('writes both sets in order and every flag, survives a JSON round trip, and is the same for equal runs', () => {
+    const state = sliceInMap(2);
+    expect(state.player.viewMode).toBe(8);
+    expect(state.objectSets.friendly[0]).toBe(state.player.entityId);
+    expect(state.objectSets.hostile.length).toBeGreaterThan(0);
+    const text = stateText(state);
+    const snapshot = JSON.parse(text) as { state: { objectSets: unknown; entities: { id: number; mapVisible: boolean }[] } };
+    expect(snapshot.state.objectSets).toEqual(state.objectSets);
+    expect(snapshot.state.entities.map(({ id, mapVisible }) => [id, mapVisible])).toEqual(
+      [...state.entities.walk(ALL_KINDS)].sort((a, b) => a.id - b.id).map(({ id, mapVisible }) => [id, mapVisible]),
+    );
+    // The player and its wingman are friendly members, which the reveal always makes visible.
+    expect(snapshot.state.entities.filter(({ mapVisible }) => mapVisible).length).toBeGreaterThanOrEqual(2);
+    expect(snapshotText(roundTrip(JSON.parse(text)) as GameSnapshot)).toBe(text);
+    expect(stateText(sliceInMap(2))).toBe(text);
   });
 });

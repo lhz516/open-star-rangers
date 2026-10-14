@@ -29,6 +29,7 @@ import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlReque
 import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
+import { updateObjectSets } from './object-sets.ts';
 import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
@@ -518,9 +519,9 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   ruleStage('delayed-player-explosion', () => delayedPlayerExplosionStage),
   // 0x30590 (P3-07).
   ruleStage('energy', () => energyStage),
-  // 0x2ede0 rebuilds the friendly and hostile craft sets through 0x2f028 and the map visibility flag, for the map
-  // (P3-09, P3-13) and the parked AI handler (P3-08, the suggested owner); no P3-06 rule reads them.
-  stage('object-sets', null),
+  // 0x2ede0 (object-sets.ts): rebuilds the friendly and hostile craft sets and the map visibility flags, then reveals
+  // in the map, for the map step and P3-08's wingman AI; no other rule reads them.
+  stage('object-sets', updateObjectSets),
   stage('parked-update', updateParkedObjects),
   // 0x2bf08 (warp.ts).
   stage('warp-completion', completeWarp),
