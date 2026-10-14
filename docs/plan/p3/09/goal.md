@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [10-criteria-gate.md](./subtasks/10-criteria-gate.md) | 09 | pending |
 | [11-map-geometry-import.md](./subtasks/11-map-geometry-import.md) | 08 | completed |
 | [12-core-contract-foundation.md](./subtasks/12-core-contract-foundation.md) | 08, 11 | completed |
-| [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | pending |
+| [13-ordered-gates-map-mode.md](./subtasks/13-ordered-gates-map-mode.md) | 12 | in-progress |
 | [14-cursor-selection-marker.md](./subtasks/14-cursor-selection-marker.md) | 13, 29, 30 | pending |
 | [15-visibility-object-sets.md](./subtasks/15-visibility-object-sets.md) | 09, 12 | pending |
 | [16-warp-energy-rule.md](./subtasks/16-warp-energy-rule.md) | 12 | pending |
@@ -110,7 +110,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | pending |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
-| [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | pending |
+| [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | in-progress |
 | [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
