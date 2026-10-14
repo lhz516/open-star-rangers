@@ -110,7 +110,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | pending |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | pending |
-| [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | in-progress |
+| [30-direction-table-constants.md](./subtasks/30-direction-table-constants.md) | 28 | completed |
 | [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -131,6 +131,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 28 完成：** R-A 取 MW-12 的代码规则分支：启动旋转表在播种之前、恰在缺省序列的 1000 次抽取之后构造（第 1001–1128 次），差异 6 不适用；R-B 读到逐位可实现的程度（开始位姿为常量，点 1 与点 0 重合，基数 Hermite 曲线 k=0.8）。事实草稿在 `local/research/p3-09/warp-path/findings.md`，由 29 写入 executable（含对 06“每点 z +2000”的更正）。
 - **2026-10-14 — 28 发现既有方向表偏差，新增修复 30：** 现有 `src/core/rules/random-direction.ts` 用 `Math.PI` 与 `1/180` 构造方向表，而原版映像中的两个常数分别是略大于 π 的十进制 π 与 1/180 减一个 ulp，361 项中 256 项（348 个分量）与原版不同；executable 中“每个分量非负”对 38 个分量不成立。启动旋转表的前向行来自此表，P3-06/07 的既有读者也继承该偏差。按用户的预先授权取推荐方案 (a)：新增 30，把方向表改为映像常数并复核 P3-06/07 的测试与金样，事实更正随 29 写入；14 依赖 30；27 依赖 30。排除 (b) 在 14 中另建私有表（同一原版表两份实现，偏差保留）与 (c) 接受偏差（启动旋转表无法重现）。这会改变既有规则输出，规则版本随 12 的递增一并覆盖；合入其他也读取方向表的分支（如 P3-08）时须重跑其回归。
 - **2026-10-14 — 12 已集成：** `RULES_VERSION` 4→5、快照格式 3→4（replay 格式不变）；30 的方向表修复同属这一版。12 范围外须由 26 同步的文档：`docs/engineering/modules/core.md`（`mapGeometry` 输入与 MW-01 校验、新状态/事件/原因码、标记种类、版本）、`docs/engineering/modules/app.md`（`CONTENT_INPUT_FIELDS`）、`docs/engineering/modules/content.md`（应用侧规则数据输入表）、`docs/guides/tools.md`（`RECORDING_MAX_BYTES` 现为 534,251,135，事件行 924 字节/项）、`docs/engineering/source-structure.md`（新文件 `src/core/world/map-rule-data.ts`）。
+- **2026-10-14 — 30 已集成：** 方向表改为映像常数（`0x17210c`、`0x172114` 的位模式），整表散列与 28 的独立复算一致；既有读者与 replay 期望无需改动（只有 area 测试所用的第 205 项 z 变化，其期望由函数导出）；不另递增规则版本，随 12 的 5。另见 `steering.ts` 使用另一对常数 `0x17232c`、`0x172334`，交 29 在 executable 中一并核对记载。
 
 ## 审批
 

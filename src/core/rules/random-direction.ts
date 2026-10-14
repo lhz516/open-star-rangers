@@ -11,12 +11,27 @@ import type { RandSource } from './original-random.ts';
 /** The table's angles, in degrees: 0, 5, …, 90 for both. */
 const ANGLE_STEP_DEGREES = 5;
 const ANGLE_STEPS = 90 / ANGLE_STEP_DEGREES + 1;
-/** f64 π × f64 1/180, the original's constants `0x17210c` and `0x172114`, multiplied in that order. */
-const radians = (degrees: number): number => degrees * Math.PI * (1 / 180);
+/** The f64 whose IEEE 754 bit pattern is `bits`. */
+function f64FromBits(bits: bigint): number {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setBigUint64(0, bits);
+  return view.getFloat64(0);
+}
+
+/**
+ * The image's angle constants (P3-09/28): `0x17210c` is the double nearest the decimal 3.1415927, slightly above π, and
+ * `0x172114` is one ulp below the double nearest 1/180. Neither equals `Math.PI` or `1 / 180`.
+ */
+export const PI_CONSTANT = f64FromBits(0x400921fb5a7ed197n);
+export const ONE_180TH_CONSTANT = f64FromBits(0x3f76c16c16c16c16n);
+/** Degrees × `0x17210c`, then × `0x172114`, each product rounded to double, as the original multiplies them. */
+const radians = (degrees: number): number => degrees * PI_CONSTANT * ONE_180TH_CONSTANT;
 
 /**
  * Entry 19a + b, for azimuth a × 5° and polar angle b × 5°, is (f32(cos a · sin b), f32(sin a · sin b), f32(cos b)):
- * unit length up to rounding, every component non-negative. sin and cos come from Math.sin and Math.cos (spec, 数值).
+ * unit length up to rounding. Because the 90° angle lies just beyond π/2, its cosine is a tiny negative number: x is
+ * negative (or −0 at polar angle 0) at azimuth 90° and z is negative at polar angle 90°; y is never negative. sin and cos
+ * come from Math.sin and Math.cos (spec, 数值), which give the original's f32 bits for every entry (P3-09/28).
  */
 export const DIRECTION_TABLE: readonly Vec3[] = (() => {
   const table: Vec3[] = [];
