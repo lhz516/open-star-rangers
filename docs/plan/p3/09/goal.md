@@ -104,7 +104,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [20-replay-limits-retry.md](./subtasks/20-replay-limits-retry.md) | 15, 18, 19 | completed |
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | completed |
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | in-progress |
-| [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | in-progress |
+| [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | completed |
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | pending |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | completed |
