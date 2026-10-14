@@ -77,7 +77,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [05-parked-sets-departure-research.md](./subtasks/05-parked-sets-departure-research.md) | — | completed |
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | completed |
 | [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | in-progress |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | blocked |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | in-progress |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | pending |
@@ -108,6 +108,10 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-14 — 研究发现与 spec 的冲突（01）：** 原版在实例化扩展点 `0x20990` 只做程序选择，控制器安装与处理器模式 0 的工作（及其抽取）发生在对象首次回调的 object-update 阶段（Warp 中转测试之后）；spec 行为表第 1 行与“程序选择与安装·位置”把安装放在扩展点。按 spec 的研究推翻方向规则，由 07 汇总、08（D-01，连同 P3-02 CR-07）提出修订并取得用户批准后，15 才能开始。证据见子任务 01 的完成证据。
 - **2026-10-14 — 10 的基准运行：** 沿用 P3-07 子任务 26 的做法，由协调者授权 10 的 worker 自行用 `measure.py` 运行原版（Computer Use 仍只由协调者操作）。基准环境与 P3-09、P3-10 的执行共用，由工具在 `local/research/` 上的会话锁与 DOSBox 进程检查串行；遇到 `session-busy` 或 `emulator-already-running` 时等待重试，不结束他人的进程。
 - **2026-10-14 — 研究汇总完成（07）：** Q-01 至 Q-13 全部达到门槛，无阻塞。07 的完成证据列出 spec 的八项修订（①–⑧，含 01 发现的安装位置冲突）及交 08、09、10 的输入；这些修订由 08 一并写入并请用户重新批准。
+- **2026-10-14 — Subtask 08 blocked:** D-01 的定稿须由用户明确批准，本 goal 没有授权 agent 代批；执行期间用户不可用（ask_user 无应答）。
+  Evidence: D-01 草案已写成协调者 checkout 中未提交的改动——P3-02 spec 新节“P3-08 的契约修订（D-01）”（CR-15–CR-25，带“草案，待用户批准”标注，并在 CR-02/05/06/07/14 加待定说明）与 P3-08 spec 的修订 ①–⑧（① 推翻已批准的安装位置方向）；`node tools/task-state.ts p3/08` 无计划问题，链接检查 0 处问题，`pnpm check:compliance` 通过，rubber-duck 的 5 项阻塞已修正。待用户决定的事项：①–⑧ 的重新批准；基地自动挂点每次更新都重选与 Warp 离场的一帧表现差异；replay 格式 2→3（`b` 的新命令，沿用 P3-05 先例）；放宽已批准字段（运行时 +0xE0 可写、AI 写导弹锁定字段、`lastParkedUpdateClock` 下限 −0x80）。
+  Affected acceptance: 08 全部验收；经依赖影响 12 起的全部实现子任务与 AC-01–AC-12、AC-14、AC-16、AC-17。09 与 08 写入范围重叠，在 08 解决前不开始。
+  Resume when: 用户明确批准（或给出修改意见后批准）该 D-01 草案；协调者把批准原话写入 P3-02 与 P3-08 spec 的审批节并完成 08。
 
 ## 审批
 
