@@ -104,9 +104,9 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | completed |
 | [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | completed |
 | [19-comm-projection.md](./subtasks/19-comm-projection.md) | 13, 14, 17 | completed |
-| [20-replay-limits.md](./subtasks/20-replay-limits.md) | 15, 18, 19 | in-progress |
+| [20-replay-limits.md](./subtasks/20-replay-limits.md) | 15, 18, 19 | completed |
 | [21-runtime-transition-hold.md](./subtasks/21-runtime-transition-hold.md) | 11, 18 | completed |
-| [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | pending |
+| [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | in-progress |
 | [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | pending |
 | [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | pending |
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | in-progress |
