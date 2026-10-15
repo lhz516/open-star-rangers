@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "27"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 27 — 对照结论
@@ -18,7 +18,7 @@ updated: 2026-10-14
 
 - 按 11 批准的判据，把 26 的原版样本与新版候选（记录 `src/` 树与内容身份）对照：单次转移、连续时间链与编队/机动观测分别判定；包括 P3-07 留下的基地自动挂点连续节奏与僚机 AI 发射。
 - 任一样本不满足即为“不一致”：回到研究或实现，由协调者加修复子任务并在修复后重新对照，不放宽判据。不可达分支记“不适用”并附证据；可达未采到记未完成。
-- 结论写入 `docs/original/behavior/B-010-ai-wingman.md` 的测量结果与验收容差节；新发现的原版事实写入格式文档，U 项随之更新；跨任务未集成项（P3-09 地图分支、P3-10 菜单）与 U-021 前提逐项列出。
+- 结论写入 `docs/original/behavior/B-011-ai-wingman.md` 的测量结果与验收容差节；新发现的原版事实写入格式文档，U 项随之更新；跨任务未集成项（P3-09 地图分支、P3-10 菜单）与 U-021 前提逐项列出。
 
 ## 不包含
 
@@ -26,12 +26,12 @@ updated: 2026-10-14
 
 ## 关键文件与契约
 
-- 11 新建的 B-010；26 的私有报告。
+- 11 新建的 B-011；26 的私有报告。
 - 计划新增：`local/research/p3-08/comparison/`（被忽略）。
 
 ## 写入范围
 
-- `docs/original/behavior/B-010-ai-wingman.md`：测量结果与结论。
+- `docs/original/behavior/B-011-ai-wingman.md`：测量结果与结论。
 - `docs/original/formats/ai.md`：新发现的事实。
 - `docs/original/formats/executable.md`：新发现的事实。
 - `docs/original/unknowns.md`：U 项状态。

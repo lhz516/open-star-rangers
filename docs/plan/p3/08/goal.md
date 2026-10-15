@@ -23,7 +23,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 ## 代码现状与前提
 
 - **已有实现：** 实例化扩展中 `0x20990` 的留空位置在 [spawn.ts](../../../../src/core/systems/spawn.ts)；AI 初态与 `AiState`/`AiMode` 在 [initial-ai.ts](../../../../src/core/rules/initial-ai.ts)、[entity-table.ts](../../../../src/core/world/entity-table.ts)；[pipeline.ts](../../../../src/core/systems/pipeline.ts) 的 `object-sets` 阶段为空，`updateObject` 对机体只做通用生命周期，`Request` 的 `steer` 只接受导弹（[missiles.ts](../../../../src/core/systems/missiles.ts)）；停放行进与交战在 [area.ts](../../../../src/core/systems/area.ts)；AI 开火入口在 [weapons.ts](../../../../src/core/systems/weapons.ts)；`data/ai-programs` 的完整内容由 [rule-data.ts](../../../../src/core/world/rule-data.ts) 读入并受 setupHash 绑定，规则只读内置记录 1、2；内容契约在 [ai-programs.ts](../../../../src/content/rule-data/ai-programs.ts)（payload schema 1，[rule-data-payload.ts](../../../../src/content/rule-data/rule-data-payload.ts)）；`RULES_VERSION` 为 4（[rules-version.ts](../../../../src/core/replay/rules-version.ts)）。
-- **计划新增：** `src/core/rules/` 下的 `ai-support.ts`、`ai-parameters.ts`、`ai-selection.ts`、`ai-script.ts`、`ai-interpreter.ts`、`ai-piloting.ts`、`ai-targeting.ts`、`ai-firing.ts`、`ai-wingman.ts`、`ai-commands.ts`、`ai-parked.ts`；`src/core/systems/` 下的 `ai.ts`、`object-sets.ts`、`xpon.ts`；各自相邻的测试；`docs/original/behavior/B-010-ai-wingman.md`。名称可在实现时调整，职责与落点不变。
+- **计划新增：** `src/core/rules/` 下的 `ai-support.ts`、`ai-parameters.ts`、`ai-selection.ts`、`ai-script.ts`、`ai-interpreter.ts`、`ai-piloting.ts`、`ai-targeting.ts`、`ai-firing.ts`、`ai-wingman.ts`、`ai-commands.ts`、`ai-parked.ts`；`src/core/systems/` 下的 `ai.ts`、`object-sets.ts`、`xpon.ts`；各自相邻的测试；`docs/original/behavior/B-011-ai-wingman.md`。名称可在实现时调整，职责与落点不变。
 - **任务前提：** P3-06、P3-07 已完成（`node tools/task-state.ts p3/06`、`p3/07` 报告 `done`）。P3-09、P3-10、P3-11 尚未开始：地图可见性分支、菜单到命令的正式 replay、救援重置的联合验证按 spec 交接给它们，本 goal 只验证不依赖它们的生产路径并明确记录未集成项。
 - **用户关卡：** 08（D-01）、09（D-03）、11（D-02）须由用户明确批准定稿内容，本 goal 没有预先授权由 agent 代批；在批准之前，依赖它们的子任务不开始。
 - **原版证据：** 研究用主 worktree `local/` 下的原版文件与只读 Ghidra；运行时对照用 `tools/baseline/measure.py`（[运行时测量](../../../guides/runtime-measurement.md)）。DOSBox-X 同一时间只有一个会话，由协调者调度；需要游戏输入时先写成配方刺激，配方不能表达的最小操作才请用户在私有副本中完成。结果受 U-021（cycles 未冻结）约束。
@@ -80,7 +80,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | completed |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
-| [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | in-progress |
+| [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | completed |
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | in-progress |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | pending |
@@ -119,6 +119,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — P3-09、P3-10 已合入本分支：** 合并提交 `3b1bfcd8` 合入 `p3-09-strategic-map-spec`（`17e507c8`），随后的合并提交合入 `p3-10-comms-base-resupply-spec`（`4142452c`）。冲突两边都保留；共享契约的衔接（命令视图即有效视角、`0x4cd68` 并入 `switchView`、节的次序）与版本取值（`RULES_VERSION` 6、快照格式 5、replay 格式 2、切片定义 6、`ConverterVersion` `graphics-5.logic-3`）见 [P3-02 spec 的合并说明](../02/spec.md#审批)与 [P3-03 的合并说明](../03/spec.md#合并说明2026-10-15p3-09-与-p3-10-的修订-2)。CR-19 与 MW-06 的对象集合重复定义按 [P3-08 一节的合并说明](../02/spec.md#p3-08-的契约修订d-01)留给 09（D-03）。`pnpm check` 与 `tools/baseline` 的测试通过。合并评审发现停靠/离港与 `request-warp` 的两种同 tick 交互以 Core 故障结束，须修订 MW-04 或 CB-07 才能定，记在 P3-02 合并说明的“未决”一条，合并没有作决定。
 - **2026-10-15 — 09 完成（D-03，agent 依用户授权批准）：** 关键字表经 P3-03 修订 3 导入（`ai-programs` schema 2，logic-4）；友伤累计取方案 1，写入留在 P3-10（CB-12），本任务只读；命令经 P3-10 的 `deliver-command`、回复经 `queueLine`，菜单到回复的联合测试归本任务（CR-28）；对象集合与地图可见标志由 P3-09 的 MW-06 唯一定义，CR-19 的重复撤回，本任务复用并承担联合测试 1–7（CR-29）；`b` 纳入，`KeyB` 写入 P3-05 绑定表。协调者据此更新阶段索引的责任描述，修正子任务 19、20、21 的范围与写入范围（不再新建 `object-sets.ts`，不在伤害中写友伤累计）。P3-09 × P3-10 合并留下的两个联合故障（停靠倒计时与 Warp 请求同 tick、同批 `launch` 与 `request-warp`）属于 P3-09/P3-10 的契约（MW-04 或 CB-07），记在 P3-02 的合并说明中，不在本 goal 内修复。
 - **2026-10-15 — 12 完成：** 共享形状在合并后的基础上实现：`RULES_VERSION` 6→7、快照格式 5→6；replay 格式（2→3）随 22 加入 `drop-transponder` 命令时递增，22 的写入范围加入 `src/core/replay/recording.ts`。尚未接入的请求（`ai-match-speed`、`warp-departure`、`create-transponder`）投递即故障（`pipeline.request-unwired`），由 17、21、22 接入时移除。交 23：所有数值取最长时（P3-07 的 18 挂点战斗状态 + 最长控制器 + 内容上限的解析缓存）估计约 16.6 MiB，略超 `canonicalTextLength` 16 MiB，须在 23 的容量推导中处理。交 28：`docs/engineering/modules/core.md` 的版本与请求清单已过时。
+- **2026-10-15 — 11 完成（D-02，agent 依用户授权批准）：** 判据 K-01–K-10 写入 spec 的“D-02 连续行为判据”，方法写入新的 B-011（B-010 已被 P3-09 的战略地图与 Warp 占用，ID 不复用，goal 与子任务 11、26、27 的引用已同步）。编队以独立规则模型核对并沿用 P3-06 的 R-04c 步长预算；僚机按三个抽取/控制流类采样；三项已批准差异（基地保持值、摆动相位、Xpon 首次回调表现）单独报告；正式采样至少 8 次完整运行，正式采样后仍缺的项逐项记录决定，不自动降级。
 
 ## 审批
 
