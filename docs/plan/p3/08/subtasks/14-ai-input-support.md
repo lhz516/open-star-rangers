@@ -42,6 +42,8 @@ updated: 2026-10-14
 - `src/core/rules/ai-support.test.ts`：测试（新建）。
 - `src/core/rules/ai-parameters.ts`：参数检查（新建）。
 - `src/core/rules/ai-parameters.test.ts`：测试（新建）。
+- `src/original-data/conversion/production-rule-data.test-support.ts`：合成生产 AI 内容符合 CR-15 的支持范围。
+- `src/core/systems/spawn.test.ts`：显式绑定种类 14 的测试任务。
 
 ## 验收标准
 
