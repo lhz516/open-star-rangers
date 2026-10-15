@@ -33,6 +33,7 @@ updated: 2026-10-14
 - `src/app/runtime/**`：帧屏障与帧报告。
 - `src/app/session/**`：保持、取消、凭证与竞态。
 - `src/app/mission/**`：占位序列与 transitionId。
+- `src/ui/game/game-ui.test-support.ts`、`src/ui/mission/MissionParts.tsx`：`FrameReport` 新字段与 `complete-transition` 操作标签（仅编译所需的一行改动）。
 
 ## 验收标准
 
