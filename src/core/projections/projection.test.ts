@@ -53,7 +53,7 @@ function assistedState(): WorldState {
 }
 
 describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-05)', () => {
-  it('has the clock, mission and player partitions and both flight groups ready, the other rule partitions not implemented', () => {
+  it('has the clock, mission, player and communications partitions and both flight groups ready, map and result not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -82,7 +82,8 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
         combat: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id }) },
       },
       map: NOT_IMPLEMENTED,
-      communications: NOT_IMPLEMENTED,
+      // P3-10 CB-14; its readings have their own tests (communications.test.ts).
+      communications: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id, menu: null, incoming: null, base: null }) },
       result: NOT_IMPLEMENTED,
     });
   });

@@ -1,12 +1,12 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
  * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
- * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts). map, communications and result fix the
- * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a
- * fully visible map or a victory. communications has its final shape (docs/plan/p3/02/spec.md, CB-14), which P3-10's
- * subtask 19 makes ready. The projection gives only what the original shows or a rule needs, never the list of
- * all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the
- * spec (扩展规则) before its partition can become ready.
+ * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts), and so is communications
+ * (docs/plan/p3/02/spec.md, CB-14; P3-10, communications.ts). map and result fix the boundary their owners fill; until a
+ * rule makes one ready it is `not-implemented`, never an empty list, a zero value, a fully visible map or a victory. The
+ * projection gives only what the original shows or a rule needs, never the list of all entities. Fields the spec leaves
+ * to an owner's research are `never` here: the owner defines them by revising the spec (扩展规则) before its partition
+ * can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { MapAxis } from '../../content/logic/logic-content.ts';
@@ -26,6 +26,7 @@ import {
 } from '../world/player-state.ts';
 import type { MessageIdentity, MissionStatus, MissionSubState, SpeakerSnapshot, WorldState } from '../world/world-state.ts';
 import { projectCombat } from './combat.ts';
+import { projectCommunications } from './communications.ts';
 
 export interface ClockProjection {
   readonly tick: number;
@@ -236,6 +237,7 @@ export interface MenuContentReference {
 
 /** An option at its display position, with its key byte and its value: a source item, an object or the exit. */
 export interface CommunicationsOption {
+  /** 1 first, the position a generated key stands for (comm §7.3). */
   readonly position: number;
   readonly key: number;
   readonly value: CategoryValue | ObjectValue | CommandValue | MenuExit;
@@ -256,6 +258,7 @@ export interface IncomingView {
   readonly speaker: SpeakerSnapshot | null;
   readonly frame: number;
   readonly frameCount: number;
+  /** Whether page 5 shows the message now. */
   readonly shown: boolean;
 }
 
@@ -370,7 +373,7 @@ export function projectWorld(world: WorldState): Projection {
     }),
     flight: flightProjection(world),
     map: NOT_IMPLEMENTED,
-    communications: NOT_IMPLEMENTED,
+    communications: projectCommunications(world),
     result: NOT_IMPLEMENTED,
   });
 }
