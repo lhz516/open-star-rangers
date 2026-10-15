@@ -46,6 +46,8 @@ updated: 2026-10-14
 - `e2e/import-worker.spec.ts`：转换器版本断言。
 - `src/workers/production-package.test.ts`：规则数据份额的基线观测。
 - `src/app/resources/resource-holder-cache.test.ts`：被取代的旧版本不恢复。
+- `src/original-data/source-error.ts`：关键字表的上限名称。
+- `src/workers/import-protocol.test.ts`：上限名称的穷举清单。
 - `src/original-data/conversion/**`：转换、映射、版本与合成辅助及其测试。
 - `src/original-data/synthetic.test-support.ts`：合成 LE 区域（需要时）。
 - `src/content/rule-data/**`：内容契约、payload schema、合成辅助与测试。
