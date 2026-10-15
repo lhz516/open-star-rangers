@@ -14,6 +14,12 @@
  * The map and base contexts read no stick in the original, which keeps the steering applied before; Core takes their
  * manual axes as 0 instead, a deliberate difference (spec 技术决定 10). Core keeps no key or command across ticks.
  *
+ * The batch judges every command in the context of its effective view (docs/plan/p3/02/spec.md, CB-07, CB-17 decision
+ * 8; P3-09's MW-04): the committed view and previous view at the start of the update, which an accepted `launch`
+ * changes for the commands after it, as the original's next key already sees the view the launch message set. The axes
+ * follow the batch's final effective context. P3-06's and P3-10's commands read it; P3-07's commands still read the
+ * committed view until P3-09's MW-04 lands and unifies them.
+ *
  * Before the commands, the update drops a target that no longer resolves, runs P3-07's missile lock and then the speed
  * assist (`0x27f68`), whose match writes the block directly and whose restoring request goes before the commands'
  * requests (匹配速度与速度辅助).
@@ -60,15 +66,22 @@ export interface MatchSpeedRequest {
 /** A request the player's update posts. */
 export type PlayerRequest = ControlRequest | MatchSpeedRequest;
 
+/** The batch's effective view and previous view (module comment), which an accepted `launch` writes. */
+export interface EffectiveView {
+  viewMode: number;
+  previousViewMode: number;
+}
+
 /**
  * Where the player's update sends what it produces, the tick's events and its requests (`control` and `match-speed`),
- * the judgement of every command it does not handle itself (commands.ts), which emits that command's one result and
- * posts its own requests, and P3-07's missile lock `0x2ddbc` on the available player (weapons.ts; CR-07).
+ * the judgement of every command it does not handle itself (commands.ts), which emits that command's one result, posts
+ * its own requests and may change the batch's effective view, and P3-07's missile lock `0x2ddbc` on the available
+ * player (weapons.ts; CR-07).
  */
 export interface PlayerUpdateOutput {
   emit(event: DomainEvent): void;
   post(request: PlayerRequest): void;
-  judge(command: Command, commandIndex: number): void;
+  judge(command: Command, commandIndex: number, view: EffectiveView): void;
   lockMissiles(player: Entity): void;
 }
 
@@ -162,11 +175,12 @@ function pendingCommandedSpeed(world: WorldState, player: Entity, record: CraftR
 }
 
 /**
- * Judges the commands in array order. P3-10's commands, the digits among them, go to `judge` (flightAction). A P3-06 command
- * needs an available player and the flight context, the only one whose key handler (`0x264a0`) takes the throttle
- * keys, the presets, Enter and Ctrl+Enter. `+` and `−` read back the commanded speed as the requests posted before them
- * leave it (pendingCommandedSpeed). A match needs a target with a block, else it is `no-target`. Every other command
- * goes to `judge` in its place in the order.
+ * Judges the commands in array order, each in the context of the effective view as the commands before it left it.
+ * P3-10's commands, the digits among them, go to `judge` (flightAction). A P3-06 command needs an available player and
+ * the flight context, the only one whose key handler (`0x264a0`) takes the throttle keys, the presets, Enter and
+ * Ctrl+Enter. `+` and `−` read back the commanded speed as the requests posted before them leave it
+ * (pendingCommandedSpeed). A match needs a target with a block, else it is `no-target`. Every other command goes to
+ * `judge` in its place in the order.
  */
 function judgeCommands(
   world: WorldState,
@@ -174,16 +188,17 @@ function judgeCommands(
   tick: number,
   player: Entity | null,
   control: PlayerControl | null,
+  view: EffectiveView,
   requests: PlayerRequest[],
   emit: PlayerUpdateOutput['emit'],
   judge: PlayerUpdateOutput['judge'],
 ): void {
-  const context = interactionContext(world.player.viewMode);
   const record = player === null ? undefined : world.craftInfo.content.craft[player.kindBit];
   for (const [commandIndex, command] of commands.entries()) {
+    const context = interactionContext(view.viewMode);
     const action = flightAction(command, context);
     if (action === undefined) {
-      judge(command, commandIndex);
+      judge(command, commandIndex, view);
       continue;
     }
     if (player === null || control === null) {
@@ -219,11 +234,11 @@ function judgeCommands(
 
 /**
  * The deflections of the axes that changed since their last read, which they become; null when none changed. The map
- * and base contexts take every manual axis as 0, so entering them switches a held turn off and leaving them with neutral
- * input restores nothing. The flight and Warp contexts take the tick's axes.
+ * and base contexts (of the batch's final effective view) take every manual axis as 0, so entering them switches a held
+ * turn off and leaving them with neutral input restores nothing. The flight and Warp contexts take the tick's axes.
  */
-function changedAxes(world: WorldState, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
-  const context = interactionContext(world.player.viewMode);
+function changedAxes(viewMode: number, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
+  const context = interactionContext(viewMode);
   const manual = context !== 'map' && context !== 'base';
   const changes: Record<RotationAxis, number | null> = { pitch: null, yaw: null, roll: null };
   let changed = false;
@@ -281,8 +296,9 @@ export function updatePlayer(world: WorldState, input: TickInput, tick: number, 
     if (restoring !== null) post(restoring);
   }
   const requests: PlayerRequest[] = [];
-  judgeCommands(world, input, tick, player, control, requests, emit, judge);
-  const axes = control && changedAxes(world, control, input.axes);
+  const view: EffectiveView = { viewMode: world.player.viewMode, previousViewMode: world.player.previousViewMode };
+  judgeCommands(world, input, tick, player, control, view, requests, emit, judge);
+  const axes = control && changedAxes(view.viewMode, control, input.axes);
   if (player !== null && axes !== null) {
     const last = requests.at(-1);
     if (last?.type === 'control') requests[requests.length - 1] = { ...last, axes };

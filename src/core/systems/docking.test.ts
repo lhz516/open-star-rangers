@@ -8,8 +8,8 @@ import { COCKPIT_VIEW_MODE as FLIGHT } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { expectFault, stillEntityInit, TEST_BASE_MAXIMUM_SPEED, TEST_MAXIMUM_SPEED, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { dock } from './docking.ts';
-import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
+import { depart, dock } from './docking.ts';
+import { PIPELINE, registerTick, type RequestOf, type TickContext } from './pipeline.ts';
 import { addActive, BASE_KIND_BIT, DOCKING_REPLY, pageChanged, radioItem, radioScene, snapshotOf, WINGMAN_KIND_BIT, type RadioScene } from './radio.test-support.ts';
 
 const open: Command = { type: 'communications', operation: 'open' };
@@ -202,16 +202,23 @@ describe('the wait checks in mission flow (CB-02; DK1, DK5)', () => {
     expect(posted).toEqual([{ type: 'dock', entityId: player.id }]);
   });
 
-  it('keeps sub-state 5 with a valid object, and leaves the invalid object\'s automatic launch to P3-10/18', () => {
+  it('keeps sub-state 5 with a valid object, and posts the automatic launch for an invalid one: sub-state 0, no release, no flush', () => {
     const scene = radioScene();
-    const { state } = scene;
+    const { state, player } = scene;
     const base = addBase(scene);
     waiting(scene, 5, base, 0);
     expect(run(state, [[], []]).flat()).toEqual([]);
     base.state = 'pending-removal';
-    run(state, [[]]);
-    expect(state.flow.subState).toBe(5);
-    expect(state.player.dockingObject).toBe(base.id);
+    state.player.leftDisplay.page = 1;
+    state.communications.queue.push(radioItem({ table: 20011, face: 0, index: 1 }, 1e9));
+    const context = beforeRequests(state);
+    expect(context.events).toEqual([]);
+    expect([state.flow.subState, state.player.dockingObject, state.player.leftDisplay.page]).toEqual([0, base.id, 1]);
+    expect(state.communications.queue).toHaveLength(1);
+    const posted: unknown[] = [];
+    context.requests.handle((request) => void posted.push(request));
+    // The base's own update follows mission flow with its leave request.
+    expect(posted).toEqual([{ type: 'depart', entityId: player.id, origin: 'automatic', commandIndex: null }, { type: 'leave', entityId: base.id }]);
   });
 
   it('checks nothing without a player entity, and takes a null docking object in sub-states 3–5 as Core\'s fault', () => {
@@ -397,5 +404,164 @@ describe('docking in request handling (CB-10 dock; DK2)', () => {
     const context = runDock(scene.state);
     expect(context.events).toEqual([]);
     expect([scene.state.flow.subState, scene.state.player.dockingObject, scene.player.activity]).toEqual([5, scene.base.id, 'active']);
+  });
+});
+
+describe('the launch in request handling (CB-10 depart; DK3)', () => {
+  /** Units of the launch's pose: the base's (300, −400, 120) and rows (1, 0, 0), (0, 0, −1), (0, 1, 0) give these. */
+  const LAUNCH_POSITION = Object.freeze({ x: 1300, y: -400, z: 120 });
+  const LAUNCH_ORIENTATION = Object.freeze([-0, -1, -0, 0, 0, -1, 1, 0, 0]);
+
+  /**
+   * A player docked by the formal step at tick 1 (clock 2) at a base off the origin, from view `viewMode`, with a
+   * wingman within range of the base; the player's field 2 (record 7) is at 2 and field 3 (record 9) at 1.
+   */
+  function docked(viewMode = FLIGHT) {
+    const scene = radioScene();
+    const { state, player } = scene;
+    const base = addBase(scene, { position: { x: 300, y: -400, z: 120 }, orientation: BASE_ORIENTATION });
+    const wingman = addActive(scene, WINGMAN_KIND_BIT, { position: { x: 900, y: 0, z: 0 } });
+    if (player.combat.type !== 'craft') throw new Error('the test player is a craft');
+    player.combat.subsystems = player.combat.subsystems.map((value, field) => (field === 2 ? 2 : field === 3 ? 1 : value));
+    state.player.viewMode = viewMode;
+    waiting(scene, 4, base, 0);
+    const world = constructWorld(state);
+    const step = (commands: readonly Command[] = []): DomainEvent[] => [...world.step(tickInput(commands))];
+    expect(step()).toContainEqual(expect.objectContaining({ type: 'docked', tick: 1, wingmanEntityId: wingman.id }));
+    return { ...scene, base, wingman, step };
+  }
+
+  const departed = (tick: number, origin: { origin: 'command'; commandIndex: number } | { origin: 'automatic'; commandIndex: null }, fields: object): DomainEvent[] => [
+    { type: 'departed', tick, playerEntityId: expect.any(Number) as number, ...origin, ...fields } as DomainEvent,
+    { type: 'transition', tick, gap: 'G-02/4' },
+  ];
+
+  /** Calls `depart` in a context as request handling makes it, and returns that context. */
+  function runDepart(state: WorldState, request: RequestOf<'depart'>): TickContext {
+    const context = registerTick(state, readTickInput(tickInput()));
+    depart(context, request);
+    return context;
+  }
+
+  it('launches on l in the base: active, the previous view back, the base service gone, the wingman active, placed 1000 units out', () => {
+    const { state, player, base, wingman, step } = docked();
+    const serial = player.placementSerial;
+    const wingmanPosition = wingman.position;
+    const events = step([{ type: 'launch' }]);
+    expect(events).toEqual([
+      { type: 'command-result', tick: 2, commandIndex: 0, commandType: 'launch', outcome: 'accepted', reason: null },
+      ...departed(2, { origin: 'command', commandIndex: 0 }, {
+        viewMode: FLIGHT, previousViewMode: 6, position: LAUNCH_POSITION, orientation: LAUNCH_ORIENTATION, wingmanEntityId: wingman.id,
+      }),
+    ]);
+    expect([player.activity, wingman.activity, wingman.position]).toEqual(['active', 'active', wingmanPosition]);
+    expect(player.placementSerial).toBe(serial + 1);
+    expect(player.orientation).toEqual(LAUNCH_ORIENTATION);
+    expect(state.player.docking.savedPose).toEqual({ position: LAUNCH_POSITION, orientation: LAUNCH_ORIENTATION });
+    expect(state.player).toMatchObject({ viewMode: FLIGHT, previousViewMode: 6, dockingObject: null, target: null });
+    expect([state.flow.subState, state.baseService, base.activity]).toEqual([0, null, 'active']);
+  });
+
+  it('places the player and leaves its movement block as it was: speed, commanded speed and turns go on', () => {
+    const { state, player, step } = docked();
+    step();
+    const block = player.movement;
+    if (block?.mode !== 'craft') throw new Error('the test player has a craft block');
+    Object.assign(block, { speed: 17, commandedSpeed: 33, atCommandedSpeed: false });
+    Object.assign(block.steering.yaw, { rate: 0.25, enabled: true });
+    const before = structuredClone(block);
+    state.player.statusDisplay.redraw = false;
+    const context = runDepart(state, { type: 'depart', entityId: player.id, origin: 'command', commandIndex: 4 });
+    expect(context.events[0]).toMatchObject({ type: 'departed', origin: 'command', commandIndex: 4, position: LAUNCH_POSITION });
+    expect(player.position).toEqual(LAUNCH_POSITION);
+    // Leaving view 6 rebuilds the cockpit (`0x4cd68`).
+    expect(state.player.statusDisplay.redraw).toBe(true);
+    expect(player.movement).toBe(block);
+    expect(block).toEqual(before);
+  });
+
+  it('restores the view the player docked from, and 0xC from a lower one', () => {
+    const from0xD = docked(0xd);
+    from0xD.step([{ type: 'launch' }]);
+    expect([from0xD.state.player.viewMode, from0xD.state.player.previousViewMode]).toEqual([0xd, 6]);
+    const fromLow = docked(0xb);
+    fromLow.step([{ type: 'launch' }]);
+    expect([fromLow.state.player.viewMode, fromLow.state.player.previousViewMode]).toEqual([0xc, 6]);
+  });
+
+  it('launches automatically when the base goes in sub-state 5, in the tick whose mission flow sees it, without a flush', () => {
+    const { state, player, base, wingman, step } = docked();
+    state.player.leftDisplay.page = 1;
+    state.communications.queue.push(radioItem({ table: 20011, face: 0, index: 1 }, 1e9));
+    state.entities.remove(base);
+    const events = step();
+    expect(events).toEqual(departed(2, { origin: 'automatic', commandIndex: null }, {
+      viewMode: FLIGHT, previousViewMode: 6, position: LAUNCH_POSITION, orientation: LAUNCH_ORIENTATION, wingmanEntityId: wingman.id,
+    }));
+    expect([player.activity, state.flow.subState, state.player.dockingObject, state.baseService]).toEqual(['active', 0, null, null]);
+    expect([state.player.leftDisplay.page, state.communications.queue.length]).toEqual([1, 1]);
+  });
+
+  it('launches automatically from an open map to 0xC, not the view before docking, and leaves the previous view at 8', () => {
+    const { state, base, step } = docked(0xd);
+    // The map opened in the base (P3-09's toggle, set as it leaves the views: view 8, previous 6).
+    Object.assign(state.player, { viewMode: 8, previousViewMode: 6 });
+    base.state = 'presentation-ready';
+    const events = step();
+    expect(events[0]).toMatchObject({ type: 'departed', origin: 'automatic', viewMode: 0xc, previousViewMode: 8 });
+    expect([state.player.viewMode, state.player.previousViewMode]).toEqual([0xc, 8]);
+  });
+
+  it('applies a second launch in the same tick again: the automatic one, then l, each with its transition (CB-17 decision 6)', () => {
+    const { state, player, base, wingman, step } = docked();
+    const serial = player.placementSerial;
+    state.entities.remove(base);
+    const events = step([{ type: 'launch' }]);
+    // The second launch reads previous view 6 → 0xC, turns the pose another quarter and moves 1000 along the new row 1 (−r3).
+    const secondPosition = { x: 1300, y: -1400, z: 120 };
+    const secondOrientation = [-1, -0, -0, 0, 0, -1, -0, -1, -0];
+    expect(events).toEqual([
+      { type: 'command-result', tick: 2, commandIndex: 0, commandType: 'launch', outcome: 'accepted', reason: null },
+      ...departed(2, { origin: 'automatic', commandIndex: null }, {
+        viewMode: FLIGHT, previousViewMode: 6, position: LAUNCH_POSITION, orientation: LAUNCH_ORIENTATION, wingmanEntityId: wingman.id,
+      }),
+      ...departed(2, { origin: 'command', commandIndex: 0 }, {
+        viewMode: 0xc, previousViewMode: 0xc, position: secondPosition, orientation: secondOrientation, wingmanEntityId: null,
+      }),
+    ]);
+    expect(player.placementSerial).toBe(serial + 2);
+    expect(state.player.docking.savedPose).toEqual({ position: secondPosition, orientation: secondOrientation });
+    expect([state.flow.subState, state.player.dockingObject, player.activity, wingman.activity]).toEqual([0, null, 'active', 'active']);
+  });
+
+  it('neither completes nor rolls back a partly done service: what it did stays, the rest is left', () => {
+    const { state, player, step } = docked();
+    if (player.combat.type !== 'craft') throw new Error('the test player is a craft');
+    const { combat } = player;
+    combat.energy = 0;
+    // The repair step at clock 516 (tick 258) repairs record 7 (field 2); record 9 (field 3) is next.
+    while (state.tick < 258) step();
+    const energy = combat.energy;
+    expect([combat.subsystems[2], combat.subsystems[3]]).toEqual([0, 1]);
+    expect(energy).toBeGreaterThan(0);
+    expect(energy).toBeLessThan(1000);
+    const context = beforeRequests(state, [{ type: 'launch' }]);
+    context.requests.handle((request) => {
+      if (request.type === 'depart') depart(context, request);
+    });
+    expect([combat.subsystems[2], combat.subsystems[3], combat.energy, state.baseService]).toEqual([0, 1, energy, null]);
+    // No service step runs after the launch; the energy update resumes for the active player (D14).
+    while (state.tick < 300) step();
+    expect(combat.subsystems[3]).toBe(1);
+  });
+
+  it('does nothing without a player entity, and takes a launch without a saved pose as Core\'s fault', () => {
+    const { state, player } = docked();
+    const before = { view: state.player.viewMode, activity: player.activity, subState: state.flow.subState };
+    state.player.entityId = null;
+    expect(runDepart(state, { type: 'depart', entityId: player.id, origin: 'automatic', commandIndex: null }).events).toEqual([]);
+    expect({ view: state.player.viewMode, activity: player.activity, subState: state.flow.subState }).toEqual(before);
+    const scene = radioScene();
+    expectFault(() => runDepart(scene.state, { type: 'depart', entityId: scene.player.id, origin: 'automatic', commandIndex: null }), 'invariant-violated', 'docking.saved-pose');
   });
 });

@@ -4,11 +4,11 @@
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
  * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-10's base
- * keys (`navigate-selection`, `confirm-selection`) of an available player in the base context to judgeBaseKey here and
- * the rest of P3-10's to communications.ts (`communications`, `select-number`, `launch`, and the other contexts'
- * `navigate-selection` and `confirm-selection`; CB-07); every other type is
- * rejected/not-implemented until its rule task routes it. A module emits a command's additional events right after its
- * result.
+ * keys (`navigate-selection`, `confirm-selection`, `launch`) of an available player in the base context of the batch's
+ * effective view (flight-control.ts) to judgeBaseKey here and the rest of P3-10's to communications.ts
+ * (`communications`, `select-number`, and the other contexts' `navigate-selection`, `confirm-selection` and `launch`;
+ * CB-07); every other type is rejected/not-implemented until its rule task routes it. A module emits a command's
+ * additional events right after its result.
  */
 import type { CommandResultReason } from '../contracts/domain-events.ts';
 import type { Command, CommandType } from '../contracts/tick-input.ts';
@@ -17,7 +17,8 @@ import { interactionContext } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { judgeCommunicationsCommand } from './communications.ts';
 import { judgeEnergyCommand } from './energy.ts';
-import { availablePlayer } from './flight-control.ts';
+import { launchViewMode } from '../rules/docking.ts';
+import { availablePlayer, type EffectiveView } from './flight-control.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
 import { judgeWeaponCommand } from './weapons.ts';
@@ -56,21 +57,39 @@ export function combatCommandPlayer(world: WorldState): Entity | 'player-unavail
 }
 
 /**
- * Judges a base key when an available player is in the base context: accepted, with its request posted. Returns false,
- * judging nothing, otherwise: communications.ts then judges it by its other contexts and never sees it in the base.
+ * Judges a base key (`0x271e0`) when an available player is in the base context of the effective view: accepted, with
+ * its request posted at once (CB-08). An accepted `launch` also leaves the base for the rest of the batch: the
+ * effective previous view becomes the effective view, and that the old previous view raised to 0xC (CB-07 §3), what
+ * request handling's `depart` will commit. Returns false, judging nothing, otherwise: communications.ts then judges it
+ * by its other contexts and never sees it in the base.
  */
-export function judgeBaseKey(context: TickContext, command: CommandOf<'navigate-selection' | 'confirm-selection'>, commandIndex: number): boolean {
+export function judgeBaseKey(context: TickContext, command: CommandOf<'navigate-selection' | 'confirm-selection' | 'launch'>, commandIndex: number, view: EffectiveView): boolean {
   const { world, requests } = context;
   const player = availablePlayer(world);
-  if (player === null || interactionContext(world.player.viewMode) !== 'base') return false;
+  if (player === null || interactionContext(view.viewMode) !== 'base') return false;
   emitCommandResult(context, command, commandIndex, { outcome: 'accepted', reason: null });
-  if (command.type === 'navigate-selection') requests.post({ type: 'base-navigate', entityId: player.id, direction: command.direction, commandIndex });
-  else requests.post({ type: 'base-confirm', entityId: player.id, commandIndex });
-  return true;
+  switch (command.type) {
+    case 'navigate-selection':
+      requests.post({ type: 'base-navigate', entityId: player.id, direction: command.direction, commandIndex });
+      return true;
+    case 'confirm-selection':
+      requests.post({ type: 'base-confirm', entityId: player.id, commandIndex });
+      return true;
+    case 'launch': {
+      requests.post({ type: 'depart', entityId: player.id, origin: 'command', commandIndex });
+      const viewMode = launchViewMode(view.previousViewMode);
+      view.previousViewMode = view.viewMode;
+      view.viewMode = viewMode;
+      return true;
+    }
+  }
 }
 
-/** Judges the command at `commandIndex` by its type; the player's update calls it for every command it does not judge. */
-export function judgeCommand(context: TickContext, command: Command, commandIndex: number): void {
+/**
+ * Judges the command at `commandIndex` by its type in the batch's effective `view`; the player's update calls it for
+ * every command it does not judge.
+ */
+export function judgeCommand(context: TickContext, command: Command, commandIndex: number, view: EffectiveView): void {
   switch (command.type) {
     case 'target':
       judgeTargetCommand(context, command, commandIndex);
@@ -86,12 +105,12 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
       return;
     case 'navigate-selection':
     case 'confirm-selection':
-      if (!judgeBaseKey(context, command, commandIndex)) judgeCommunicationsCommand(context, command, commandIndex);
+    case 'launch':
+      if (!judgeBaseKey(context, command, commandIndex, view)) judgeCommunicationsCommand(context, command, commandIndex, view);
       return;
     case 'communications':
     case 'select-number':
-    case 'launch':
-      judgeCommunicationsCommand(context, command, commandIndex);
+      judgeCommunicationsCommand(context, command, commandIndex, view);
       return;
     default:
       rejectNotImplemented(context, command, commandIndex);

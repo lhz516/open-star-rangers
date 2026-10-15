@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import type { EntityInit, ObjectState } from '../world/entity-table.ts';
+import type { EntityInit, Matrix3, ObjectState } from '../world/entity-table.ts';
 import { stillEntityInit, testState } from '../world/world.test-support.ts';
 import {
-  dockingWaitStep, findDockingBase, findDockingWingman, isDockingSubState, isValidDockingObject, type DockingSubState, serviceRows, serviceState, setUpBaseService, withinDockingRange,
+  dockingWaitStep, findDockingBase, findDockingWingman, isDockingSubState, isValidDockingObject, launchPose, launchViewMode, type DockingSubState, serviceRows,
+  serviceState, setUpBaseService, wingmanHead, withinDockingRange,
 } from './docking.ts';
 
 const ORIGIN: Vec3 = Object.freeze({ x: 0, y: 0, z: 0 });
@@ -183,5 +184,46 @@ describe('the service set-up 0x39664 (BS2, BS3)', () => {
       flags: { repairsComplete: false, energyAndMissilesFull: false, hullFull: false },
     });
     expect(setUpBaseService(0, { at9C: 59, at54: 0 }, [0], fields({})).rates).toEqual({ hull: 0, energy: 0 });
+  });
+});
+
+describe('the launch view (DK3 step 4)', () => {
+  it.each([[6, 0xc], [8, 0xc], [0, 0xc], [1, 0xc], [0xb, 0xc], [0xc, 0xc], [0xd, 0xd], [0x13, 0x13]])('restores previous view %i as %i', (previous, view) => {
+    expect(launchViewMode(previous)).toBe(view);
+  });
+});
+
+describe('the launch pose (DK3 step 7, DK5)', () => {
+  /** Rows r1 = (1, 0, 0), r2 = (0, 0, −1), r3 = (0, 1, 0): a base turned about row 1. */
+  const BASE_ROWS = Object.freeze([1, 0, 0, 0, 0, -1, 0, 1, 0]) as unknown as Matrix3;
+  const determinant = ([a, b, c, d, e, f, g, h, i]: Matrix3): number => a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+
+  it('leaves 1000 units along the saved row 1, facing along it: row 1 −r3, row 2 r2, row 3 r1', () => {
+    const pose = launchPose({ position: { x: 300, y: -400, z: 120 }, orientation: BASE_ROWS });
+    expect(pose).toEqual({ position: { x: 1300, y: -400, z: 120 }, orientation: [-0, -1, -0, 0, 0, -1, 1, 0, 0] });
+    // A quarter turn about row 2 keeps a rotation a rotation.
+    expect(determinant(pose.orientation)).toBe(1);
+    expect(Object.isFrozen(pose) && Object.isFrozen(pose.position) && Object.isFrozen(pose.orientation)).toBe(true);
+  });
+
+  it('turns another quarter on a second launch, now leaving along −r3', () => {
+    const twice = launchPose(launchPose({ position: { x: 0, y: 0, z: 0 }, orientation: BASE_ROWS }));
+    expect(twice).toEqual({ position: { x: 1000, y: -1000, z: 0 }, orientation: [-1, -0, -0, 0, 0, -1, -0, -1, -0] });
+  });
+
+  it('stores the product to f32 before the sum, and the sum to f32', () => {
+    // r1x × 1000 = −995.787918567657…: F(p + F(product)) is 1627.012939453125, not the 1627.0128173828125 of one rounding.
+    const pose = launchPose({ position: { x: 2622.80078125, y: 0.1, z: 0 }, orientation: [-0.9957879185676575, 0, 0, 0, 1, 0, 0, 0, 1] });
+    expect(pose.position).toEqual({ x: 1627.012939453125, y: Math.fround(0.1), z: 0 });
+  });
+});
+
+describe('the wingman list\'s head', () => {
+  it('is the first wingman in allocation order whatever its activity and state, or none', () => {
+    expect(wingmanHead(entities([17, {}]).table)).toBeNull();
+    const { table, allocated: [, first] } = entities([17, {}], [1, {}], [1, {}]);
+    first.activity = 'docked';
+    first.state = 'pending-removal';
+    expect(wingmanHead(table)).toBe(first);
   });
 });

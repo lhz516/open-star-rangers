@@ -211,11 +211,12 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(state.rngState).toBe(rng);
   });
 
-  // In the base context, confirm-selection and navigate-selection are P3-10/17's base keys and launch is 18's; P3-09
-  // owns the map's Enter.
+  // In the base context, confirm-selection, launch and navigate-selection are P3-10's base keys; the accepted launch
+  // leaves the base for the rest of the batch, so navigate-selection after it is judged in flight. P3-09 owns the map's
+  // Enter.
   it.each([
     ['Warp', WARP, ['ignored', 'wrong-context'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
-    ['base', BASE, ['accepted', null], ['rejected', 'not-implemented'], ['accepted', null]],
+    ['base', BASE, ['accepted', null], ['accepted', null], ['ignored', 'wrong-context']],
     ['map', MAP, ['rejected', 'not-implemented'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
   ] as const)('ignores speed commands, presets and select-number as wrong-context in the %s context', (_, viewMode, confirmResult, launchResult, navigateResult) => {
     const [state, player] = withPlayer();
@@ -239,9 +240,40 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [11, ...navigateResult],
     ]);
     // The base keys' requests are applied in request handling, after every result.
-    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'base-navigated'] : []);
+    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'departed', 'transition'] : []);
     expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(state.player.control).toEqual(control);
+  });
+
+  it('judges the P3-06 commands after an accepted launch in flight, and the axes in the batch\'s final context (CB-07; MW-04)', () => {
+    const [state, player] = withPlayer();
+    enterBaseView(state);
+    const target = state.entities.allocate(entityInit(7));
+    target.state = 'active';
+    state.player.target = target.id;
+    const axes = { pitch: 1, yaw: 0, roll: 0 };
+    const commands = [speed('zero'), { type: 'launch' }, speed('zero'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
+    const context = registerTick(state, input(commands, axes));
+    for (const stage of PIPELINE) {
+      if (stage.id === 'request-handling') break;
+      stage.run?.(context);
+    }
+    expect(results(context.events)).toEqual([[0, 'ignored', 'wrong-context'], [1, 'accepted', null], [2, 'accepted', null], [3, 'accepted', null]]);
+    // The launch's request is posted at judgement, the update's own after the loop, the axes in a request of their own.
+    const posted: unknown[] = [];
+    context.requests.handle((request) => void posted.push(request));
+    const unchanged = { pitch: null, yaw: null, roll: null };
+    expect(posted).toEqual([
+      { type: 'depart', entityId: player.id, origin: 'command', commandIndex: 1 },
+      { type: 'control', entityId: player.id, throttle: 0, axes: unchanged },
+      { type: 'match-speed', entityId: player.id, targetEntityId: target.id, commandIndex: 3 },
+      { type: 'control', entityId: player.id, throttle: null, axes: { ...unchanged, pitch: 128 } },
+    ]);
+    // Without the launch the base context takes the axes as 0.
+    const [still] = withPlayer();
+    enterBaseView(still);
+    stepControls(still, [], axes);
+    expect(still.player.control!.lastAxes.pitch).toBe(0);
   });
 
   it('reports player-unavailable before wrong-context', () => {

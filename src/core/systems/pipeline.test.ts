@@ -436,9 +436,12 @@ describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)',
   it.each([
     { type: 'depart', entityId: 1, origin: 'command', commandIndex: 0 },
     { type: 'depart', entityId: 1, origin: 'automatic', commandIndex: null },
-  ] as Request[])('treats a $type request as a broken invariant, as no rule posts one until P3-10 handles it', (request) => {
+  ] as Request[])('hands a $origin depart request to request handling, which does nothing without a player entity (DK3)', (request) => {
     const [state] = withEntities([0], [15]);
-    expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', `requests.${request.type}`);
+    const [idle] = withEntities([0], [15]);
+    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) })).toEqual([]);
+    runTickWith(idle);
+    expect(stateText(state)).toBe(stateText(idle));
   });
 
   it('clears the docking object, the menu, the partner and the menu\'s saved page with the player entity, and keeps the rest', () => {

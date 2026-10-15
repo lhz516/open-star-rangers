@@ -25,7 +25,7 @@ import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
 import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
 import { deliverCommand } from './communications.ts';
-import { checkDockingWait, dock } from './docking.ts';
+import { checkDockingWait, depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
@@ -112,11 +112,6 @@ export type Request =
   | { readonly type: 'base-navigate'; readonly entityId: EntityId; readonly direction: 'previous' | 'next'; readonly commandIndex: number }
   /** Sub-command 3: the base page's confirmation. */
   | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
-
-/** P3-10's request types (CB-08) whose handling P3-10's subtask 18 adds; until then no rule posts them. */
-const COMMUNICATIONS_REQUESTS = ['depart'] as const satisfies readonly Request['type'][];
-type CommunicationsRequest = RequestOf<(typeof COMMUNICATIONS_REQUESTS)[number]>;
-const isCommunicationsRequest = (request: Request): request is CommunicationsRequest => (COMMUNICATIONS_REQUESTS as readonly string[]).includes(request.type);
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -253,7 +248,7 @@ function updatePlayerControls(context: TickContext): void {
   const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
-    judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+    judge: (command, commandIndex, view) => judgeCommand(context, command, commandIndex, view),
     lockMissiles: (entity) => updateMissileLock(context, entity),
   });
   // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
@@ -374,15 +369,17 @@ function expire(context: TickContext, entity: Entity, request: RequestOf<'expire
 
 function handleRequest(context: TickContext, request: Request): void {
   const { world } = context;
-  // No rule posts P3-10's requests until their handling is in place, so one reaching here is Core's fault.
-  if (isCommunicationsRequest(request)) throw new CoreFaultError('invariant-violated', `requests.${request.type}`);
   if (request.type === 'deliver-command') {
     deliverCommand(context, request);
     return;
   }
-  // Sub-command 0 reads the player's entity, not the request's subject (DK2).
+  // Sub-commands 0 and 4 read the player's entity, not the request's subject (DK2, DK3).
   if (request.type === 'dock') {
     dock(context);
+    return;
+  }
+  if (request.type === 'depart') {
+    depart(context, request);
     return;
   }
   // Sub-commands 1–3 read the player's entity and the base service (BS4).

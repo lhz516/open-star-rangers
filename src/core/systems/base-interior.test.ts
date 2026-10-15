@@ -9,7 +9,7 @@ import { constructWorld } from '../world/world.ts';
 import { expectFault, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { confirmBase, fullRepair, navigateBase } from './base-interior.ts';
-import { idleBaseService } from './base-interior.test-support.ts';
+import { BASE_VIEW_SAVED_POSE, enterBaseView, idleBaseService } from './base-interior.test-support.ts';
 import { registerTick, type TickContext } from './pipeline.ts';
 import { addActive, BASE_KIND_BIT, radioScene, WINGMAN_KIND_BIT, type RadioScene } from './radio.test-support.ts';
 
@@ -240,5 +240,11 @@ describe('the base view helper for other rules\' tests', () => {
       rows: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], cursor: 0, dues: { repair: 10, hull: 10, energy: 10 }, rates: { hull: 0, energy: 0 },
       flags: { repairsComplete: false, energyAndMissilesFull: false, hullFull: false },
     });
+  });
+
+  it('enters view 6 with that service and a saved pose, as only docking enters it', () => {
+    const { state } = radioScene();
+    enterBaseView(state);
+    expect([state.player.viewMode, state.baseService, state.player.docking.savedPose]).toEqual([6, idleBaseService(), BASE_VIEW_SAVED_POSE]);
   });
 });

@@ -411,7 +411,7 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
   it.each([
     ['Warp', 2, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, 'wrong-context'], [launch, 'wrong-context']]],
     ['map', 8, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, 'wrong-context'], [launch, 'wrong-context']]],
-    ['base', 6, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, null], [launch, 'not-implemented']]],
+    ['base', 6, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, null], [launch, null]]],
     ['flight', FLIGHT, [[navigate, 'wrong-context'], [launch, 'wrong-context']]],
   ] as const)('judges P3-10\'s commands in the %s context (view %i) by its gate, changing nothing', (_, viewMode, rows) => {
     const [judged, idle] = [scene(), scene()];
@@ -423,10 +423,31 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
       world.state.player.communications.partner = 2;
     }
     const events = judgeTick(judged.state, rows.map(([command]) => command)).events;
-    // The base context's navigate-selection is P3-10/17's base key (commands.ts), its launch still 18's.
-    expect(events).toEqual(rows.map(([command, reason], index) => result(index, command, reason === null ? 'accepted' : reason === 'not-implemented' ? 'rejected' : 'ignored', reason)));
+    // The base context's navigate-selection and launch are base keys (commands.ts), whose requests are not handled here.
+    expect(events).toEqual(rows.map(([command, reason], index) => result(index, command, reason === null ? 'accepted' : 'ignored', reason)));
     judgeTick(idle.state, []);
     expect(stateText(judged.state)).toBe(stateText(idle.state));
+  });
+
+  it('judges the commands after an accepted launch in flight, the batch\'s effective view (CB-07 §3, CB-17 decision 8)', () => {
+    const world = scene();
+    add(world, 17);
+    enterBaseView(world.state);
+    const commands = [open, launch, navigate, launch, open];
+    const context = judgeTick(world.state, commands);
+    expect(context.events).toEqual([
+      result(0, open, 'ignored', 'wrong-context'),
+      result(1, launch, 'accepted', null),
+      result(2, navigate, 'ignored', 'wrong-context'),
+      result(3, launch, 'ignored', 'wrong-context'),
+      result(4, open, 'accepted', null),
+      page(0, 2, 4),
+    ]);
+    // The view itself changes only in request handling.
+    expect([world.state.player.viewMode, world.state.player.communications.menu?.level]).toEqual([6, 2]);
+    const posted: Request['type'][] = [];
+    context.requests.handle((request) => void posted.push(request.type));
+    expect(posted).toEqual(['depart']);
   });
 
   it('keeps a menu through the base context and uses it again once back in flight (comm §7.6)', () => {

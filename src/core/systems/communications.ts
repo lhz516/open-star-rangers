@@ -4,14 +4,14 @@
  * hands P3-10's commands to judgeCommand before its own flight actions, as the original's flight key handler `0x264a0`
  * calls the menu handler `0x27b44` before its compare tree; commands.ts routes them here. Each gets exactly one result,
  * and what it writes (menu, page, communications partner, docking wait) is what the next command of the batch reads
- * (CB-17 decision 8).
+ * (CB-17 decision 8). The context, and the near-menu gate's view, are those of the batch's effective view
+ * (flight-control.ts), so the commands after an accepted `launch` are judged in flight.
  *
  * 1. Without an available player, `player-unavailable`.
  * 2. Outside the flight context, `wrong-context`: the base, map and Warp keys never reach `0x27b44`, and a menu there is
  *    kept as it is, shown again when its page returns (comm §7.6). So are `navigate-selection` and `launch` in flight.
- *    commands.ts judges an available player's base keys `navigate-selection` and `confirm-selection` before this module
- *    (P3-10/17); the base context's `launch` (P3-10/18) and the map's `confirm-selection` (P3-09) stay not implemented
- *    here, after the player gate.
+ *    commands.ts judges an available player's base keys `navigate-selection`, `confirm-selection` and `launch` before
+ *    this module; the map's `confirm-selection` (P3-09) stays not implemented here, after the player gate.
  * 3. On a menu page (2–4), `select-number n` is the key n and `communications close` the key `x`; the first item whose
  *    folded key matches is chosen, otherwise `no-candidate`; `communications open` is `no-change` (the original's `c`
  *    matches no item and falls through to the flight tree). A chosen item releases the menu (`menu` := null), then:
@@ -37,7 +37,7 @@ import type { Entity, EntityId } from '../world/entity-table.ts';
 import { interactionContext, type CategoryValue, type CommandValue, type LeftPage, type MenuItem, type ObjectValue } from '../world/player-state.ts';
 import { emitCommandResult, rejectNotImplemented, type CommandOf, type CommandOutcome } from './commands.ts';
 import { writeLeftPage } from './displays.ts';
-import { availablePlayer } from './flight-control.ts';
+import { availablePlayer, type EffectiveView } from './flight-control.ts';
 import { emit, type RequestOf, type TickContext } from './pipeline.ts';
 
 /** P3-10's commands (CB-07), with `confirm-selection` outside flight, where it is not the manual speed match. */
@@ -52,9 +52,10 @@ const DOCKING_CODE = 9;
 /** Clock units the docking wait gives a reply (`0x333b4`): sub-state 3's deadline. */
 const DOCKING_REPLY_PERIOD = 0x780;
 
-/** One command's judgement: its context, the available player and its index. */
+/** One command's judgement: its context, the batch's effective view, the available player and its index. */
 interface Judgement {
   readonly context: TickContext;
+  readonly view: EffectiveView;
   readonly player: Entity;
   readonly commandIndex: number;
 }
@@ -71,8 +72,8 @@ function close(judgement: Judgement): void {
 }
 
 /** What the near-menu gate reads of the world (CD5). */
-function nearMenuView({ context: { world }, player }: Judgement): NearMenuView {
-  return { position: player.position, viewMode: world.player.viewMode, flow: world.flow };
+function nearMenuView({ context: { world }, view, player }: Judgement): NearMenuView {
+  return { position: player.position, viewMode: view.viewMode, flow: world.flow };
 }
 
 /** The partner becomes `partner` and its command menu is built: page 4, or a close when it no longer resolves. */
@@ -217,19 +218,19 @@ export function deliverCommand(context: TickContext, request: RequestOf<'deliver
   });
 }
 
-/** Judges one of P3-10's commands in its place in the order (module comment). */
-export function judgeCommunicationsCommand(context: TickContext, command: CommunicationsCommand, commandIndex: number): void {
+/** Judges one of P3-10's commands in its place in the order, in the batch's effective `view` (module comment). */
+export function judgeCommunicationsCommand(context: TickContext, command: CommunicationsCommand, commandIndex: number, view: EffectiveView): void {
   const { world } = context;
   const player = availablePlayer(world);
   if (player === null) {
     emitCommandResult(context, command, commandIndex, ignored('player-unavailable'));
     return;
   }
-  const interaction = interactionContext(world.player.viewMode);
+  const interaction = interactionContext(view.viewMode);
   const selection = command.type === 'navigate-selection' || command.type === 'launch';
-  // The base context's launch (P3-10/18) and the map's `confirm-selection` (P3-09) have no rule here yet; commands.ts
-  // judges the base keys of an available player before this module.
-  if ((interaction === 'base' && selection) || command.type === 'confirm-selection') {
+  // Only the map's `confirm-selection` (P3-09) reaches here: the player's update takes Enter in flight and Warp, and
+  // commands.ts the base keys of an available player.
+  if (command.type === 'confirm-selection') {
     rejectNotImplemented(context, command, commandIndex);
     return;
   }
@@ -237,7 +238,7 @@ export function judgeCommunicationsCommand(context: TickContext, command: Commun
     emitCommandResult(context, command, commandIndex, ignored('wrong-context'));
     return;
   }
-  const judgement: Judgement = { context, player, commandIndex };
+  const judgement: Judgement = { context, view, player, commandIndex };
   const { page } = world.player.leftDisplay;
   if (isMenuPage(page)) judgeMenuKey(judgement, command, page);
   else judgeWithoutMenu(judgement, command, page);

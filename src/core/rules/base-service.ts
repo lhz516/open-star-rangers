@@ -12,20 +12,13 @@ import { CoreFaultError } from '../errors.ts';
 import type { MovementBlock, SubsystemState } from '../world/entity-table.ts';
 import type { BaseService } from '../world/world-state.ts';
 import type { CraftEntity } from './combat-init.ts';
-import { serviceState } from './docking.ts';
+import { SERVICE_GROUPS, SERVICE_PERIODS, serviceState } from './docking.ts';
 import { advanceWalk, refillMissileChain, resetDisturbance } from './full-repair.ts';
 import { listStatus, repairListMounts } from './mounts.ts';
 import type { RandSource } from './original-random.ts';
 
-/** The periods the service steps re-arm with, in clock units (BS1); rules/docking.ts arms the first dues with the same. */
-const PERIODS = Object.freeze({ repair: 0x200, hull: 0x40, energy: 4 });
 /** The hull step adds rand % 100 to its rate (BS6). */
 const HULL_SPREAD = 100;
-/** The fields the group selectors 33 (0x21) and 34 (0x22) clear (BS6), those rules/docking.ts's state query folds. */
-const GROUP_FIELDS: ReadonlyMap<number, readonly number[]> = new Map([
-  [0x21, [15, 16, 17, 18]],
-  [0x22, [10, 11, 12, 13, 14]],
-]);
 /** The selectors with their own repair: list-1 mounts (5), the steering (7) and list-0 mounts (8). */
 const MISSILE_MOUNTS = 5;
 const STEERING = 7;
@@ -82,7 +75,7 @@ function withFields(subsystems: readonly SubsystemState[], fields: readonly numb
  */
 export function repairStep(service: BaseService, sample: number, player: CraftEntity, craft: CraftRecord, selectors: readonly number[]): void {
   if (!(sample > service.dues.repair)) return;
-  service.dues.repair = rearm(sample, PERIODS.repair);
+  service.dues.repair = rearm(sample, SERVICE_PERIODS.repair);
   const { combat } = player;
   const { rows } = service;
   const selector = selectors[rows[0]];
@@ -95,7 +88,7 @@ export function repairStep(service: BaseService, sample: number, player: CraftEn
     repairListMounts(combat.weapons, craft, list, false);
     combat.subsystems = withFields(combat.subsystems, [selector], listStatus(combat.weapons, craft, list));
   } else {
-    combat.subsystems = withFields(combat.subsystems, GROUP_FIELDS.get(selector) ?? [selector], 0);
+    combat.subsystems = withFields(combat.subsystems, SERVICE_GROUPS.get(selector) ?? [selector], 0);
     if (selector === STEERING) releaseSteering(player.movement);
   }
   if (serviceState(combat.subsystems, selector) === 0) rows.push(rows.shift()!);
@@ -104,7 +97,7 @@ export function repairStep(service: BaseService, sample: number, player: CraftEn
 /** Step 2, the hull: one draw whatever the hull; hull := min(hull + rate + rand % 100, c9C) (i32), `hullFull` at c9C. */
 export function hullStep(service: BaseService, sample: number, player: CraftEntity, craft: CraftRecord, rand: RandSource): void {
   if (!(sample > service.dues.hull)) return;
-  service.dues.hull = rearm(sample, PERIODS.hull);
+  service.dues.hull = rearm(sample, SERVICE_PERIODS.hull);
   const { combat } = player;
   combat.hull = Math.min((combat.hull + service.rates.hull + (rand.next() % HULL_SPREAD)) | 0, craft.at9C);
   if (combat.hull === craft.at9C) service.flags.hullFull = true;
@@ -119,7 +112,7 @@ export function hullStep(service: BaseService, sample: number, player: CraftEnti
  */
 export function energyStep(service: BaseService, sample: number, player: CraftEntity, craft: CraftRecord): void {
   if (!(sample > service.dues.energy)) return;
-  service.dues.energy = rearm(sample, PERIODS.energy);
+  service.dues.energy = rearm(sample, SERVICE_PERIODS.energy);
   const { combat } = player;
   const { weapons } = combat;
   const full = combat.energy === craft.at54;
