@@ -19,6 +19,7 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { updateController } from './ai.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
 import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
@@ -323,7 +324,11 @@ function updatePlayerControls(context: TickContext): void {
  * it.
  */
 export function updateLifecycle(context: TickContext, entity: Entity): void {
-  if (isHeldInWarpTransit(context.world, entity)) return;
+  if (!isHeldInWarpTransit(context.world, entity)) requestNextState(context, entity);
+}
+
+/** The generic part `0x20ae4` after the Warp-transit check: the request for the entity's next state, if any. */
+function requestNextState(context: TickContext, entity: Entity): void {
   switch (entity.state) {
     case 'new':
       // Only a parked entity has no presentation; an active one counted its presentation ready when it got it.
@@ -345,15 +350,18 @@ export function updateLifecycle(context: TickContext, entity: Entity): void {
 /**
  * An entity's own update: the kind callbacks of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-07: missiles
  * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part. A
- * craft's generic part ends in state 7 with P3-10's answer to a delivered command (`0x3bed0`, base-response.ts), where
- * P3-08's AI step will precede it (CB-12).
+ * craft's callback `0x20c18` stops for a Warp transit in states 0–3; otherwise P3-08's controller part (ai.ts: the
+ * install, the removal or the AI step, CR-23) precedes the generic part, and in state 7 P3-10's answer to a delivered
+ * command (`0x3bed0`, base-response.ts) follows the AI step (CB-12).
  */
 function updateObject(context: TickContext, entity: Entity): void {
   const { combat } = entity;
   switch (combat.type) {
     case 'craft':
     case 'marker':
-      updateLifecycle(context, entity);
+      if (isHeldInWarpTransit(context.world, entity)) return;
+      updateController(context, entity);
+      requestNextState(context, entity);
       answerCommand(context, entity);
       return;
     case 'missile':

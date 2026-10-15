@@ -315,11 +315,12 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // A null in a nullable object field (a region, a source, a group membership, a movement block, a formation, a timed
     // rotation about an axis, an impulse, a disturbance, a craft's references, a missile's guidance and homing state, a
     // projectile's expiry, the player's destination and Warp transit, a pending command, a radio item's speaker, a
-    // transponder state) cannot become 0; the same fields hold objects elsewhere in this state or in P3-08's test below,
+    // transponder state, an AI program's controller before its install) cannot become 0; the same fields hold objects elsewhere in this state or in P3-08's test below,
     // whose members are leaves themselves.
     const nullableObjects = new Set([
       'region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance',
       'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry', 'destination', 'warp', 'speaker', 'pendingCommand', 'transponder',
+      'controller',
     ]);
     const baseline = textOf(state);
     let changes = 0;

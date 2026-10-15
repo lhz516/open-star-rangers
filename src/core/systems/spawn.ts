@@ -7,9 +7,10 @@
  * Draws, in the original's order: a request's placement draws (each group member's layout cycle placing its anchor
  * first), then each instantiation's own: name fallbacks, then those of the extension point (docs/plan/p3/06/spec.md,
  * 实例化扩展; docs/plan/p3/02/spec.md, CR-07): P3-07's first energy update `0x3060c`, P3-06's initial AI state
- * `0x68050` and Warp timer +0xC8, and P3-10's `0x38cd4` (comm-reactions.ts) for an active hostile. The other rule
- * tasks add theirs at the marked places: `0x20990` (P3-08). Every draw steps the world's generator directly, so a
- * report that draws itself interleaves in the original's order.
+ * `0x68050` and Warp timer +0xC8, P3-08's program selection `0x20990` (one or two starts, rules/ai-selection.ts; the
+ * controller installs at the object's first callback, ai.ts), and P3-10's `0x38cd4` (comm-reactions.ts) for an active
+ * hostile. Every draw steps the world's generator directly, so a report that draws itself interleaves in the original's
+ * order.
  *
  * The original's resource test `0x6a0b8` after allocation, whose failure conditions were not established, always
  * passes here (a disclosed difference).
@@ -20,6 +21,7 @@ import { isDue } from '../contracts/time.ts';
 import { CoreFaultError } from '../errors.ts';
 import { initialiseCraftCombat, type CraftEntity } from '../rules/combat-init.ts';
 import { initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
+import { selectionSubject, selectProgram } from '../rules/ai-selection.ts';
 import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
 import { assignName } from '../rules/name-assignment.ts';
 import { HOSTILE_KINDS } from '../rules/comm-reactions.ts';
@@ -157,7 +159,9 @@ function instantiate(context: TickContext, record: RuntimeRecord, source: Entity
   entity.ai = initialAiState(world.entities, entity, aiCandidates(record, world.spawn, world.setup), world.spawn.frame, rand);
   entity.lastParkedUpdateClock = world.clock;
   entity.warpClock = initialWarpClock(kindBit, world.clock, rand);
-  // `0x20990` (P3-08) goes here.
+  // `0x20990`: only the program selection, its draws here; the first callback installs the controller (CR-23).
+  const { ruleData } = world;
+  entity.ai.program = selectProgram(selectionSubject(entity), ruleData.ai.tablePrograms, ruleData.inputs.aiPrograms.content.builtInPrograms, rand);
   const player = kindBit === PLAYER_KIND_BIT;
   // An object other than the player starts active only inside the active area (`0x3a540`), the area check's test.
   if (player || isWithinActiveArea(activeAreaCentre(world), position)) {

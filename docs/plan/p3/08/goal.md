@@ -84,7 +84,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
-| [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | in-progress |
+| [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | pending |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | pending |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
@@ -127,6 +127,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 新增 30：** 修复合并 P3-09、P3-10 后停靠中 `toggle-map` 被接受的回归（e2e 的 base-interaction development 一项）；29 加入对 30 的依赖。
 - **2026-10-15 — 15 的处理器接入方式（协调者决定）：** 14 在创建时接受全部四个处理器身份，而处理器分别由 16、18、19、21 实现。15 用静态的 `WIRED_HANDLERS` 集合（15 之后为空）：未接入的处理器不执行安装（控制器保持 null，不调用处理器，不抽取），选择、程序槽、首次回调的判定与安装值照常实现并测试；各处理器子任务把自己的处理器加入集合，并在其测试中覆盖安装的同一调用更新体与抽取（AC-03 与重装抽取的端到端证据随之交接）。被排除：未接入即故障（所有含 AI 机体的世界在 tick 1 故障）；调整子任务次序。
 - **2026-10-15 — 30 完成：** 两份契约一致（MW-04 第 2、4 步与 P3-10 spec 的范围一节），Core 未改；修正 e2e 的过时期望与基地页 `M` 的文案，加 Core 回归用例。e2e 中 `launch()` 在 257 次按键后立即清日志，偶有竞态（只见一次），留作已知的测试脆弱点。
+- **2026-10-15 — 15 完成：** 第 13 步选择、对象更新中的控制器分派（`src/core/systems/ai.ts`）与 `HANDLERS` 接入规则；16、18、19、21 各自把处理器加入 `HANDLERS`，并覆盖安装同一调用的更新体与抽取，以及停放/恢复/被毁/移除后的重装抽取；21 用导出的 `installController`/`removeController` 处理 Warp 离场。交 28：core.md 补选择、控制器分派与接入规则。
 
 ## 审批
 
