@@ -33,6 +33,9 @@ updated: 2026-10-15
 - `src/core/systems/commands.ts`：地图开关的门禁。
 - `src/core/systems/commands.test.ts`：回归测试。
 - `e2e/base-interaction.development.spec.ts`：仅当契约证明测试期望过时。
+- `src/ui/mission/slice-gaps-copy.ts`：基地页 `M` 的状态与说明。
+- `src/ui/mission/base-page.test.ts`：键状态断言。
+- `docs/engineering/slice-gaps.md`：G-05 行。
 
 ## 验收标准
 
