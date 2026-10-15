@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/docked-systems.test.ts`：计划新增。
 - `src/core/systems/commands*.ts`、`src/core/systems/flight-control*.ts`：基地上下文 `launch` 投递 depart 与批内生效视角（CB-07 §3；13 只给出门禁）。
 - `src/core/rules/base-service.ts`、`src/core/rules/base-service.test.ts`：与 rules/docking.ts 重复的周期与组字段常量去重（17 交接）。
+- `src/core/systems/communications.ts`、`src/core/systems/communications.test.ts`：批内生效视角传入通讯判定（CB-07、CB-17 决定 8）与基地 `launch` 的断言。
 
 ## 验收标准
 

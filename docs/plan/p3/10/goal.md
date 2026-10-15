@@ -158,6 +158,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 
 - **2026-10-14 — 17 完成：** 基地按键在基地上下文由 `commands.ts` 的 `judgeBaseKey` 接受（CB-07 §3）；`fullRepair(context, entity, inRequestHandling)`（systems/base-interior.ts）是 `0x39820` 的共享入口，供停靠僚机、僚机到达，以及 P3-11 救援与 P3-08 调用。AC-09 按 D-01 ② 以单一数组验证。视角 6 必须有基地服务状态。rules/docking.ts 与 rules/base-service.ts 的周期与组字段常量重复，由 18 去重。
 
+- **2026-10-14 — 批内生效视角的范围（18 的问题，协调者选推荐方案 B）：** flight-control.ts 每批持有的生效视角也传入通讯判定，P3-10 的全部命令（`c`、数字、`x`、基地上下键、Enter 与 `launch`）按 CB-07 与 CB-17 决定 8 判定；P3-07 的命令仍等待 P3-09 的 MW-04 统一。
+
 ## 审批
 
 用户于 2026-10-14 明确批准本 goal（“approve the goal and commit”）。批准范围：上述 28 个子任务及其依赖、写入范围与执行方式。这不代表实现完成，也不替代 spec 批准。
