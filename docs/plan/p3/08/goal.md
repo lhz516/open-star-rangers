@@ -78,10 +78,10 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | completed |
 | [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
-| [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
+| [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | in-progress |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | pending |
-| [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | pending |
+| [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | in-progress |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | pending |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | pending |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | pending |
