@@ -35,6 +35,7 @@ updated: 2026-10-14
 - `src/core/systems/base-interior*.ts`：离港对服务的中断。
 - `src/core/systems/pipeline*.ts`：自动离港。
 - `src/core/systems/docked-systems.test.ts`：计划新增。
+- `src/core/systems/commands*.ts`、`src/core/systems/flight-control*.ts`：基地上下文 `launch` 投递 depart 与批内生效视角（CB-07 §3；13 只给出门禁）。
 
 ## 验收标准
 

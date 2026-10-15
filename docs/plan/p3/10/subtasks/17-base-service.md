@@ -36,6 +36,7 @@ updated: 2026-10-14
 - `src/core/rules/mounts*.ts`：必要时导出复用的辅助（不改语义）。
 - `src/core/systems/pipeline*.ts`：`base-interior` 阶段接入。
 - `src/core/systems/docking*.ts`：停靠时对完全修理的调用。
+- `src/core/systems/commands*.ts`：基地上下文 `navigate-selection`、`confirm-selection` 投递 base-navigate、base-confirm（CB-07 §3；13 只给出门禁）。
 
 ## 验收标准
 
