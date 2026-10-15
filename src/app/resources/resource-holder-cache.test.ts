@@ -61,10 +61,13 @@ describe('cache listing', () => {
     expect(restorableEntry([entryFor(production)], PRODUCTION_PACKAGE)).toEqual(entryFor(production));
   });
 
-  // P3-03 bumped every component; the P3-09 map geometry bumped the graphics component again (P3-03 spec, P3-09 的修订).
+  // P3-03 bumped every component; the P3-09 map geometry bumped the graphics component again (P3-03 spec, P3-09 的修订)
+  // and P3-10's comm-messages the logic component (P3-03 revision 2), each on its own branch before their merge.
   it.each([
     ['before P3-03', 'osr-import.graphics-3.logic-1.audio-1.models-3'],
     ['of P3-03, before the map geometry', 'osr-import.graphics-4.logic-2.audio-2.models-4'],
+    ['of P3-09 alone', 'osr-import.graphics-5.logic-2.audio-2.models-4'],
+    ['of P3-10 alone', 'osr-import.graphics-4.logic-3.audio-2.models-4'],
   ])('never offers a production package of the converter version %s, which users import again', (_name, version) => {
     const previous = readConverterVersion(version);
     expect(previous).not.toBe(PRODUCTION_PACKAGE.converterVersion);

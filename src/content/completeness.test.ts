@@ -79,7 +79,10 @@ describe('group completeness', () => {
     ['a duplicate dependency', input => {
       input.manifest.assets[3].dependencies = [{ id: 'image/synthetic-hull', kind: 'image' }, { id: 'image/synthetic-hull', kind: 'image' }];
     }, ['duplicate-dependency@manifest.assets[3].dependencies[1]']],
-    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 4; },
+    // Version 5 is either branch's alone, P3-09's map geometry or P3-10's comm-messages, before their merge as 6.
+    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 5; },
+      ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
+    ['definition version 4', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 4; },
       ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
     ['definition version 3', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 3; },
       ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],

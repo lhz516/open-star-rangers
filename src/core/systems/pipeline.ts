@@ -196,12 +196,13 @@ export class RequestQueue {
 }
 
 /**
- * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04): the committed view mode and previous
- * view mode at the start of the command batch, which each accepted view command (`toggle-map`, `request-warp`) moves on
- * at once while its request commits the change only in request handling. Every command's interaction context derives from it, and
- * the player's axes from its value after the last command. Its destination is the point of the batch's last accepted
- * select, or the committed destination before one, which `request-warp` is judged on. Nothing else reads it: the
- * automatic target selection and every later stage read the committed view.
+ * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04; P3-10's effective view, CB-07): the
+ * committed view mode and previous view mode at the start of the command batch, which each accepted view command
+ * (`toggle-map`, `request-warp`, `launch`) moves on at once while its request commits the change only in request
+ * handling. Every command's interaction context derives from it, and the player's axes from its value after the last
+ * command. Its destination is the point of the batch's last accepted select, or the committed destination before one,
+ * which `request-warp` is judged on. Nothing else reads it: the automatic target selection and every later stage read
+ * the committed view.
  */
 export interface CommandView {
   viewMode: number;

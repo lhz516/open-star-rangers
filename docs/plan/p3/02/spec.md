@@ -2446,3 +2446,7 @@ interface BaseServiceView {
 - **命令视图：** MW-04 的命令视图就是 CB-07 的批内有效视角，只有一份（`TickContext.commandView`）：`toggle-map`、`request-warp` 与 `launch` 都改写它，P3-07 的命令也按它判定。地图上下文中的 `confirm-selection` 按 MW-04 为 `wrong-context`，CB-07 中“地图的 Enter 归 P3-09、暂不实现”随之落地。
 - **视角切换：** CB-10 的 `0x4cd68`（新旧视角之一为 6 时置 `statusDisplay.redraw`，页不变）在 MW-09 的 `switchView` 中实现，停靠与离港经它切换视角；从基地打开或关闭地图因此也置重绘。
 - **容量：** CR-14、MW-14 与 CB-16 合计每 tick 事件约 8,968、请求约 3,719，快照约 11.8 MiB，都在既有 `CORE_LIMITS` 之内，取值不变。
+- **未决（合并评审发现，须修订 MW-04 或 CB-07 才能定，合并未作决定）：** 两节各自成立，合在一起出现两种原版不可达或未研究的同 tick 交互，现均以 Core 故障结束：
+  1. 停靠倒计时在 `mission-flow` 中到期（子状态 4 → 5，投递 `dock`）的同一 tick，`request-warp` 仍按已提交的飞行视角通过 MW-04 的门禁，延后的 `warp-start` 在 `dock` 之后应用：玩家停靠且进入 Warp（视角 1、上一视角 6），基地因区域中心移到目的地而离开活动区域；下一 tick 子状态 5 自动离港，`switchView` 离开视角 1 时恢复页面，停靠的视角切换以 `docking.view-switch` 故障。
+  2. 同一批中被接受的 `launch` 把命令视图改为飞行，其后的 `request-warp` 按停靠位置判定能量并通过；请求处理先应用 `depart`（玩家移到约 1000 单位外的离港位姿），`warp-start` 按新位置重算的消耗可能超过能量，以 `warp.start-check` 故障。
+  候选方案（待定）：在 `request-warp` 的门禁中加入子状态 5（含同批已接受的 `launch`）时拒绝，或按离港位姿判定；以及离开视角 1 的停靠视角切换是否发出 `left-page-changed`。原版每次轮询只取一键，第 2 种只在 Core 的批量命令中出现。
