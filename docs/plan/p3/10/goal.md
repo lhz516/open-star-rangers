@@ -108,7 +108,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [21-runtime-transition-hold.md](./subtasks/21-runtime-transition-hold.md) | 11, 18 | completed |
 | [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | in-progress |
 | [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | pending |
-| [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | pending |
+| [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | in-progress |
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | in-progress |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
 | [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | pending |
