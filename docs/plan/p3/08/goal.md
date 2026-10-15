@@ -83,7 +83,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | completed |
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
-| [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | in-progress |
+| [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | pending |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | pending |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | pending |
@@ -122,6 +122,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 11 完成（D-02，agent 依用户授权批准）：** 判据 K-01–K-10 写入 spec 的“D-02 连续行为判据”，方法写入新的 B-011（B-010 已被 P3-09 的战略地图与 Warp 占用，ID 不复用，goal 与子任务 11、26、27 的引用已同步）。编队以独立规则模型核对并沿用 P3-06 的 R-04c 步长预算；僚机按三个抽取/控制流类采样；三项已批准差异（基地保持值、摆动相位、Xpon 首次回调表现）单独报告；正式采样至少 8 次完整运行，正式采样后仍缺的项逐项记录决定，不自动降级。
 - **2026-10-15 — 13 完成：** 关键字表导入 `data/ai-programs`（schema 2），生产转换器版本 `graphics-5.logic-4.audio-2.models-4`，旧缓存不恢复；本机真实镜像 package-check 通过，摘要与独立的 LE fixup 解码一致。合成光盘的填充由 2 MiB 提到 4 MiB（每个小 EXE 区域读取一个原始扇区）。协调者接受一项偏差：转换器不区分 fixup 的 16 位目标偏移编码（`RegionFixup` 没有目标宽度字段，两种编码载入结果相同，真实镜像的编码已由独立解码器确认）。协调者随集成更新 U-001 与工具指南的包核对输出说明。
 - **2026-10-15 — 14 执行中的契约修订（协调者依用户授权批准）：** 真实内容的一个可达脚本带负延时，CR-15 的 `negative-delay` 会使生产内容无法创建世界。改为已批准的差异（P3-02 CR-24 决定 16）：负延时等同于 0，期限存为 max(时钟 + 延时, 0)，由 16 实现；CR-15 撤销该拒绝。同时澄清 `missing-transponder` 的判定：只能来自任务中种类 14 的声明或选项。ai §12 的相应说明交 28。14 的写入范围加入合成生产内容与 `spawn.test.ts`。
+- **2026-10-15 — 14 完成：** 支持闭包与创建时检查；真实内容的六种运行配置都能创建世界，闭包与 ai §10 一致。合成生产 AI 内容改为符合支持范围（合成光盘中对象 2 的填充不再覆盖其他 Asset）。交 28：ai §12 的数据核对补“可达脚本含负的 1001 数值”，core.md 的规则数据与世界创建说明已过时。合并 P3-09 与 P3-10 后 `e2e/base-interaction`（development）的“停靠并两次离港”一项失败（期望 `toggle-map` 被拒绝，实际被接受），在 14 之前的 d3313738 上同样失败，与 14 无关；由新增的 30 修复。
 
 ## 审批
 

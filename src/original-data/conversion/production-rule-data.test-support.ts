@@ -41,25 +41,45 @@ const DECOYS = Object.freeze({ craftInfo: 4_039, script: 6_047, parameters: 6_04
 /** The second face archive, which the production plan never reads (P3-10 D-03). */
 export const COMMFAC2_NOB = 'MAIN/COMMFAC2.NOB';
 
-/** Script entries of varying shapes, made up. */
+/**
+ * Script entries of varying shapes, made up, whose opcodes and arguments world creation supports (P3-02 CR-15), since
+ * the synthetic mission reaches them: a test that branches over a wait, or a boolean test and a float action.
+ */
 const scripts = (count: number, seed: number) => Array.from({ length: count }, (_, index) => ((seed + index) % 2 === 0
-  ? script()
-  : script([scriptItem(1_101, text(2 + index)), scriptItem(10_000, text(1))])));
+  ? script([scriptItem(240, String(10 + index), 2), scriptItem(1_000, '[16 64]'), scriptItem(10_000)])
+  : script([scriptItem(200, 'Y', 2), scriptItem(104, `0.${index + 1}`), scriptItem(10_000, '1')])));
+
+/** A record every object of its kinds selects fully: any +0xDC is at most +0x0C, any |+0xE0| at least 0. */
+const ALWAYS = Object.freeze({ at0C: 0x7fff_ffff, at10: 0 });
+/** The wingman's and the bases' handler identities in LE object 2 (core/rules/ai-support.ts, AI_HANDLER_IDENTITIES). */
+const WINGMAN_HANDLER = 0x41_0c8;
+const BASE_HANDLER = 0x42_c10;
 
 /**
  * AI programs whose three table programs each name their own parameter entry, which reaches its install script and its
- * state lists: 3 parameter entries and 22 scripts in first-reach order, as many as the production plan maps. The ten
- * built-in programs' names are one byte shorter than the production name regions, which hold them with their NUL.
+ * state lists: 3 parameter entries and 22 scripts in first-reach order, as many as the production plan maps. Records 0
+ * and 1 select kinds 0x80 and 0x100, record 2 kind 0x10, which the mission never instantiates. The ten built-in
+ * programs' names are one byte shorter than the production name regions, which hold them with their NUL; records 4 and
+ * 5 are the wingman's and record 6 the bases', with the handlers Core implements, as in the production table (ai.md
+ * §10.3). Eight AICO elements cover the synthetic roster's +0x70 of 3 to 7.
  */
 function productionAiPrograms(): AiPrograms {
   const plain = syntheticAiPrograms();
-  plain.programs = [tableProgram(0), tableProgram(9, { kindMask: null, at2C: null }), tableProgram(17, { name: text(1) })];
+  plain.globals.elements = Array.from({ length: 8 }, (_, index) => [1 - index / 16, 0.5 + index / 32, 0, 0]);
+  plain.programs = [
+    tableProgram(0, { kindMask: 0x180, ...ALWAYS }), tableProgram(9, { kindMask: null, at2C: null }),
+    tableProgram(17, { name: text(1), kindMask: 0x10 }),
+  ];
   plain.entries = [
     parameterEntry(1, { state1: [2, 3], state2: [4], state3: [5, 2], state5: [6], state4: [7], state6: [8] }), ...scripts(8, 0),
     parameterEntry(10, { state1: [11, 12], state2: [13], state3: [14], state5: [15], state4: [16] }), ...scripts(7, 1),
     parameterEntry(18, { state1: [19, 20], state2: [21], state3: [22], state5: [23], state4: [24, 18] }), ...scripts(7, 0),
   ] as typeof plain.entries;
-  plain.builtInPrograms = PLAN.aiPrograms.builtInNames.map(({ length }, index) => builtInProgram(0x100 + index * 0x40, { name: text(length - 1) }));
+  const builtInRoles: Readonly<Record<number, Record<string, unknown>>> = {
+    4: { kindMask: 0x2, ...ALWAYS }, 5: { kindMask: 0x2, ...ALWAYS }, 6: { kindMask: 0x20000, ...ALWAYS },
+  };
+  const handlerOf = (index: number) => (index === 4 || index === 5 ? WINGMAN_HANDLER : index === 6 ? BASE_HANDLER : 0x100 + index * 0x40);
+  plain.builtInPrograms = PLAN.aiPrograms.builtInNames.map(({ length }, index) => builtInProgram(handlerOf(index), { name: text(length - 1), ...builtInRoles[index] }));
   const names = PLAN.aiPrograms.keywordNames.map(({ length }, index) => `${text(length - 2)}${String.fromCharCode(0x41 + index)}`);
   const [first, second, third] = keywordNameIndexes();
   const table = (indexes: readonly number[], seed: number) => indexes.map((name, index) => keyword(names[name], index === 1 ? -seed : seed + index));
@@ -281,8 +301,9 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
     { object: PLAN.aiPrograms.builtIn.object, offset: PLAN.aiPrograms.builtIn.offset, bytes: table },
     ...contents['ai-programs'].builtInPrograms.map(({ name }, index) => ({ object: names[index].object, offset: names[index].offset, bytes: regionText(name) })),
     ...(Object.keys(messages) as (keyof FlightMessages)[]).map(key => ({ ...PLAN.flightMessages[key], bytes: regionText(messages[key]) })),
-    // The handler targets lie in object 2; a fixup must target a position inside its object.
-    { object: 2, offset: 0, bytes: new Uint8Array(handlersEnd).fill(0xcc) },
+    // The handler targets lie in object 2; a fixup must target a position inside its object. Only the object's end is
+    // written, so the regions of other Assets in object 2 keep their bytes.
+    { object: 2, offset: handlersEnd - 4, bytes: new Uint8Array(4).fill(0xcc) },
     ...keywordWrites,
   ];
 

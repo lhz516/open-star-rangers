@@ -7,7 +7,7 @@ import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
 import {
   asCreateInput, craftInfoContent, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, sliceMission,
-  worldInput, type MissionDraft, type WorldInputParts,
+  transponderBinding, worldInput, type MissionDraft, type WorldInputParts,
 } from '../world/create-world.test-support.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
@@ -196,18 +196,20 @@ describe('spawn enable flag and queue queries (P3-02 AC-05; P3-11 interfaces)', 
 
   it('posts nothing for a non-positive request count, and a group template the build leaves at probability 0 never fires', () => {
     const m = playerOnlyMission();
+    // Record 2 binds kind 0x4000 (CR-15) and requests none either.
     m.declarations.push(
       stored(1, 7, 0, 400, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) }),
-      declaration(2, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 } }),
-      declaration(3, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
-      declaration(4, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
-      declaration(6, { origins: ['group-member'], craftType: 8, memberOf: 2 }),
+      transponderBinding(2),
+      declaration(3, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 } }),
+      declaration(4, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(5, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(6, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+      declaration(7, { origins: ['group-member'], craftType: 8, memberOf: 2 }),
     );
     m.groups = [
-      { template: 2, members: [3], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [5], spawnCount: 0xffffffff, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [6], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 3, members: [4], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [6], spawnCount: 0xffffffff, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     const { state, world } = setUp({ mission: m });
     expect(instantiated(world.step(tickInput())).map(({ source }) => source.index)).toEqual([0]);
@@ -221,20 +223,22 @@ describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => 
   const runtime = (value: number) => float32OfDouble(value * Q, 'nearest');
 
   /**
-   * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 a member
-   * reachable only through group 0. Record 3, reachable only through group 1, is its template at p, unconverted.
+   * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 binds kind
+   * 0x4000 (CR-15) and requests nothing; record 3 a member reachable only through group 0. Record 4, reachable only
+   * through group 1, is its template at p, unconverted, with member 5.
    */
   function aliasMission(): MissionDraft {
     const m = playerOnlyMission();
     m.declarations.push(
       declaration(1, { origins: ['object', 'group-template'], craftType: 7, position: { ...p } }),
-      declaration(2, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
-      declaration(3, { origins: ['group-template'], position: { ...p }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-      declaration(4, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+      transponderBinding(2),
+      declaration(3, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(4, { origins: ['group-template'], position: { ...p }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
     );
     m.groups = [
-      { template: 1, members: [2, 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }] },
-      { template: 3, members: [4], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 1, members: [3, 3], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }] },
+      { template: 4, members: [5], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     return m;
   }
@@ -246,11 +250,11 @@ describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => 
     const once = { x: runtime(p.x), y: runtime(p.y), z: runtime(p.z) };
     expect(at(1)).toEqual(once);
     expect(once.x).not.toBe(runtime(runtime(p.x)));
-    expect(at(2, 0)).toEqual(once);
-    expect(at(2, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
-    expect(at(4)).toEqual(p);
+    expect(at(3, 0)).toEqual(once);
+    expect(at(3, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
+    expect(at(5)).toEqual(p);
     // The build fills section-1 records only: the group-only member keeps its source values.
-    expect(state.entities.get(events.find(({ source }) => source.index === 2)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+    expect(state.entities.get(events.find(({ source }) => source.index === 3)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
     expect(state.entities.get(events.find(({ source }) => source.index === 1)!.entityId)!.ruleInputs).toMatchObject({ percentB: 100, aiValueA: 3, aiValueB: 3 });
   });
 });
@@ -365,18 +369,19 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
 
 describe('activity and the player at instantiation (P3-02 AC-05, Q-07)', () => {
   /**
-   * The player stored above the origin; group-only templates at exact runtime points, each with one member of kind
-   * bit 8. The player's height does not count: the radius reads x and y only.
+   * The player stored above the origin and the binding of kind 0x4000 (CR-15), which requests nothing; group-only
+   * templates at exact runtime points, each with one member of kind bit 8. The player's height does not count: the
+   * radius reads x and y only.
    */
   function activityMission(points: readonly [number, number][], playerSpawnTime = 0): MissionDraft {
     const m = missionFrame();
-    m.declarations.push(declaration(0, { craftType: 0, spawnTime: playerSpawnTime, position: { x: 0, y: 0, z: 1 } }));
+    m.declarations.push(declaration(0, { craftType: 0, spawnTime: playerSpawnTime, position: { x: 0, y: 0, z: 1 } }), transponderBinding(1));
     points.forEach(([x, y], group) => {
       m.declarations.push(
-        declaration(1 + group * 2, { origins: ['group-template'], position: { x, y, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-        declaration(2 + group * 2, { origins: ['group-member'], craftType: 8, memberOf: group }),
+        declaration(2 + group * 2, { origins: ['group-template'], position: { x, y, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+        declaration(3 + group * 2, { origins: ['group-member'], craftType: 8, memberOf: group }),
       );
-      m.groups.push({ template: 1 + group * 2, members: [2 + group * 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] });
+      m.groups.push({ template: 2 + group * 2, members: [3 + group * 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] });
     });
     return m;
   }

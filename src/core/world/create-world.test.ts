@@ -9,7 +9,8 @@ import { createWorld, initialWorldState, instantiableModelIds } from './create-w
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
   asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, mapGeometryContent, MARKER, menuText, missionFrame, modelOf,
-  originalImportIdentity, playerOnlyMission, reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft,
+  originalImportIdentity, playerOnlyMission, reversedKeys, ruleInputs, sliceMission, transponderBinding, worldInput, type CraftInfoDraft, type MissionDraft,
+  type RosterDraft,
   type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
@@ -415,20 +416,22 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
   });
 
   it('does not check kinds whose queue entries post no request: no requests, or a template that never fires', () => {
-    // A record of -1 requests, a group of 0, and a group whose template the build does not fill (probability source 0).
+    // A record of -1 requests, a group of 0, and a group whose template the build does not fill (probability source 0);
+    // record 2 binds kind 0x4000 (CR-15) and requests none either.
     const never = withKind(25, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) });
-    never.declarations.push(declaration(2, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
-    never.declarations.push(declaration(3, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
-    never.declarations.push(declaration(4, { origins: ['group-template'] }));
-    never.declarations.push(declaration(5, { origins: ['group-member'], craftType: 13, memberOf: 1 }));
+    never.declarations.push(transponderBinding(2));
+    never.declarations.push(declaration(3, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    never.declarations.push(declaration(4, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
+    never.declarations.push(declaration(5, { origins: ['group-template'] }));
+    never.declarations.push(declaration(6, { origins: ['group-member'], craftType: 13, memberOf: 1 }));
     never.groups = [
-      { template: 2, members: [3], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [5], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 3, members: [4], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [6], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     const craftInfo = craftInfoWithContent((info) => void (info.craft[13].at0C = 0));
-    expect(create({ mission: never, craftInfo }).spawn.queue.map(({ requests }) => requests)).toEqual([1, -1, 0, 3]);
+    expect(create({ mission: never, craftInfo }).spawn.queue.map(({ requests }) => requests)).toEqual([1, -1, -1, 0, 3]);
     const fired = structuredClone(never);
-    fired.declarations[4].ruleInputs.percentA = 100;
+    fired.declarations[5].ruleInputs.percentA = 100;
     expectRejected(worldInput({ mission: fired, craftInfo }), `${CRAFT_INFO}.craft[13].at0C`, 'at least 1');
   });
 
@@ -450,6 +453,10 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       for (const kind of [0, 7, 8, 14, 17]) {
         Object.assign(info.craft[kind], { atA0: 0, atA4: 0, atA8: 0, atAC: 0, atB0: 0, atB4: 0, atB8: 0, atBC: 0, atC0: 0 });
       }
+      // Except the AI's divisors (CR-15): the turn rates of opcodes 1001–1003, which kinds 7 and 8 run, and the top
+      // speed of kind 0x4000, which `b` constructs.
+      for (const kind of [7, 8]) Object.assign(info.craft[kind], { atAC: 0.75, atB0: 0.5, atB4: 0.25 });
+      info.craft[14].atB8 = 64;
       // The player's Warp divides by its +0xA8 and +0xB8 (MW-01 check 4); only the player's are checked.
       Object.assign(info.craft[0], { atA8: 1, atB8: Math.fround(1e-30), at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
     });
@@ -552,12 +559,13 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
     m.declarations.push(declaration(1, { craftType: 7, ruleInputs: ruleInputs({ craftCount }) }));
     return m;
   };
-  /** The player and a group of `members` copies of a member record, `spawnCount` requests. */
+  /** The player, the binding of kind 0x4000 and a group of `members` copies of a member record, `spawnCount` requests. */
   const withGroup = (spawnCount: number, members: number) => {
     const m = playerOnlyMission();
-    m.declarations.push(declaration(1, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
-    m.declarations.push(declaration(2, { origins: ['group-member'], craftType: 7, memberOf: 0 }));
-    m.groups = [{ template: 1, members: Array(members).fill(2), spawnCount, layout: [{ x: 0, y: 0, z: 0 }] }];
+    m.declarations.push(transponderBinding(1));
+    m.declarations.push(declaration(2, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    m.declarations.push(declaration(3, { origins: ['group-member'], craftType: 7, memberOf: 0 }));
+    m.groups = [{ template: 2, members: Array(members).fill(3), spawnCount, layout: [{ x: 0, y: 0, z: 0 }] }];
     if (members === 0) {
       m.declarations.pop();
     }
@@ -565,7 +573,8 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
   };
 
   it('takes up to 1024 instances, the player included, and rejects 1025 at the record that passes the limit', () => {
-    expect(create({ mission: withRecord(1023) }).spawn.queue).toHaveLength(2);
+    // The third entry is the binding of kind 0x4000 (transponderBinding), which requests none.
+    expect(create({ mission: withRecord(1023) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withRecord(1024) }), `${MISSION}.declarations[1].ruleInputs.craftCount`, 'spawnExpansion');
     expect(create({ mission: withRecord(0xffffffff) }).spawn.queue[1].requests).toBe(-1);
   });
@@ -577,18 +586,18 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
       m.declarations = [declaration(0, { craftType: 7, ruleInputs: ruleInputs({ craftCount }) }), declaration(1, { craftType: 0 })];
       return m;
     };
-    expect(create({ mission: recordFirst(1022), run: { wingman: 0 } }).spawn.queue).toHaveLength(3);
+    expect(create({ mission: recordFirst(1022), run: { wingman: 0 } }).spawn.queue).toHaveLength(4);
     expectRejected(worldInput({ mission: recordFirst(1023), run: { wingman: 0 } }), 'input.run.wingman', 'spawnExpansion');
     expectRejected(worldInput({ mission: withRecord(1023), run: { wingman: 0 } }), `${MISSION}.declarations[1].ruleInputs.craftCount`, 'spawnExpansion');
   });
 
   it('counts requests × members of a group, an empty group\'s requests once each, without overflowing', () => {
-    expect(create({ mission: withGroup(341, 3) }).spawn.queue).toHaveLength(2);
+    expect(create({ mission: withGroup(341, 3) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withGroup(342, 3) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
     expectRejected(worldInput({ mission: withGroup(0x7fffffff, 64) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
-    expect(create({ mission: withGroup(1023, 0) }).spawn.queue).toHaveLength(2);
+    expect(create({ mission: withGroup(1023, 0) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withGroup(1024, 0) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
-    expect(create({ mission: withGroup(0xffffffff, 64) }).spawn.queue[1].requests).toBe(-1);
+    expect(create({ mission: withGroup(0xffffffff, 64) }).spawn.queue[2].requests).toBe(-1);
   });
 });
 
@@ -721,7 +730,8 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
         (input) => void builtIn(input).push(structuredClone(builtIn(input)[0])),
         (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
         (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
-        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
+        // A script no reachable program names (CR-15: its semantics are not checked).
+        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[5].items![0].argument = 'x'),
         // The keyword tables (P3-03 revision 3): a value, a name and the pair order.
         (input) => void (keywordTables(input)[1][0].value = 9),
         (input) => void (keywordTables(input)[3][2].name = `${keywordTables(input)[3][2].name}!`),

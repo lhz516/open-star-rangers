@@ -10,9 +10,9 @@
  *   animation reference;
  * - `explosionAnimations` `{ id, content }[]`: each read strictly with readExplosionAnimation; Core keeps the frame count;
  * - `models` `{ id, content }[]`: model payload content; Core reads only `kind` and the length of part list 1;
- * - `aiPrograms` `{ id, content }`: `data/ai-programs`, read strictly with readAiPrograms; the rules read only built-in
- *   program records 1 and 2's +0x14, +0x24 and +0x2C, the homing missiles' programs (steering.ts). P3-08 extends its
- *   reading of the same input;
+ * - `aiPrograms` `{ id, content }`: `data/ai-programs`, read strictly with readAiPrograms; built-in program records 1
+ *   and 2's +0x14, +0x24 and +0x2C are the homing missiles' programs (steering.ts), and the part of the content the run
+ *   can execute is checked and prepared by ai-support.ts (docs/plan/p3/02/spec.md, CR-15);
  * - `mapGeometry` `{ id, content }`: `data/hud/map-geometry`, read strictly with readMapGeometry (docs/plan/p3/02/spec.md,
  *   MW-01); the map's static rule data (map-rule-data.ts) derives from it;
  * - `commMenus` `{ id, content }`: `data/comm-menus`, read strictly with readCommMenus;
@@ -22,13 +22,14 @@
  *
  * Core checks the limits before it copies, freezes what it keeps and keeps nothing of the input. The two lists are in
  * strictly ascending Asset ID order, and each is exactly the set the rules read: the animations the explosion table
- * names, and the models the instantiable craft are bound to (setup-check.ts, instantiableRecords). Craft-info and DEBRIS
+ * names, and the models the instantiable craft are bound to (setup-check.ts, instantiableRecords) together with the model
+ * of kind 0x4000, which `b` can construct in any run (CR-15, CR-20). Craft-info and DEBRIS
  * records the run cannot reach are neither read nor rejected; built-in program records 1 and 2 are always checked, since
  * whether a missile homes depends on its launch.
  *
  * The static rule data (CR-01) is computed once from them and the craft info, in the original's storage types
- * (load-transforms.ts), for the reachable records only, with the two homing programs; it is never part of a snapshot,
- * as setupHash binds its inputs.
+ * (load-transforms.ts), for the reachable records only, with the two homing programs and the AI support closure
+ * (ai-support.ts); it is never part of a snapshot, as setupHash binds its inputs.
  *
  * Errors, before any world exists: a missing or extra field, a wrong kind or role and every semantic failure are
  * CoreInputError at a structural path with a fixed reason; a malformed Asset ID and the content readers' failures keep
@@ -49,8 +50,10 @@ import { readCommMenus, type CommMenus } from '../../content/rule-data/comm-menu
 import { readCommMessages, type CommMessages } from '../../content/rule-data/comm-messages.ts';
 import { readDebrisParameters, type DebrisParameters } from '../../content/rule-data/debris-parameters.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
+import type { MissionSetup } from '../mission/load-mission.ts';
 import { readDataRecord, readExactRecord, readList, readNumber } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
+import { aiRuleData, type AiRuleData } from '../rules/ai-support.ts';
 import type { CollisionShape, ShapeBox } from '../rules/collision-shapes.ts';
 import { initialHull, resourceArithmetic } from '../rules/combat-init.ts';
 import { INITIAL_ALLOCATION } from '../rules/flight-state.ts';
@@ -65,7 +68,7 @@ import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { STARTUP_ROTATIONS } from '../rules/startup-rotations.ts';
 import type { SteeringProgram } from '../rules/steering.ts';
 import type { CommunicationsRuleData } from './comm-input.ts';
-import type { Level, Matrix3 } from './entity-table.ts';
+import { TRANSPONDER_KIND_BIT, type Level, type Matrix3 } from './entity-table.ts';
 import type { MapRuleData } from './map-rule-data.ts';
 import type { InstantiableRecord } from './setup-check.ts';
 
@@ -149,6 +152,8 @@ export interface WorldRuleData {
   readonly craft: readonly (CraftRuleData | null)[];
   /** Built-in program records 1 and 2's +0x14, +0x24 and +0x2C, copied from `inputs.aiPrograms`. */
   readonly homingPrograms: HomingPrograms;
+  /** The AI programs the run can execute, checked and prepared (CR-15). */
+  readonly ai: AiRuleData;
   /** The strategic map's geometry and scales (MW-01), from `inputs.mapGeometry` and the mission's world. */
   readonly map: MapRuleData;
   /**
@@ -279,14 +284,30 @@ function explosionFrames(inputs: RuleDataInputs, missileMount: boolean): WorldRu
   return Object.freeze({ lists12: common([0, 1], 0) as number, list3: counts[2].length === 0 ? null : common([2], 2) });
 }
 
-/** The models of the instantiable records, exactly (CR-01): part list 1's count of each kind's model. */
-function modelParts(inputs: RuleDataInputs, records: readonly InstantiableRecord[]): Map<AssetId, { readonly parts: number; readonly index: number }> {
+/**
+ * The model kind 0x4000 is bound to in the setup, which `b` constructs in any run (CR-15, CR-20), or null when no
+ * declaration or wingman option has the kind; loadMission gives every kind one model.
+ */
+export function transponderModel(setup: MissionSetup): AssetId | null {
+  return [...setup.declarations, ...setup.wingmanOptions].find(({ craftType }) => craftType === TRANSPONDER_KIND_BIT)?.model ?? null;
+}
+
+/**
+ * The models of the instantiable records and of kind 0x4000, exactly (CR-01, CR-15): part list 1's count of each
+ * kind's model. A missing binding, a non-positive top speed +0xB8 or a missing model of kind 0x4000 is
+ * `missing-transponder`.
+ */
+function modelParts(inputs: RuleDataInputs, info: CraftInfo, records: readonly InstantiableRecord[], transponder: AssetId | null): Map<AssetId, { readonly parts: number; readonly index: number }> {
   const models = new Map(inputs.models.map(({ id, parts }, index) => [id, { parts, index }] as const));
   const bound = new Set<AssetId>();
   for (const { model, path } of records) {
     if (!models.has(model)) throw new CoreInputError(`${path}.craftType`, 'binds a model missing from input.models');
     bound.add(model);
   }
+  if (transponder === null) throw new CoreInputError('input.craftTypes.content.entries', 'missing-transponder');
+  if (!(info.craft[TRANSPONDER_KIND_BIT].atB8 > 0)) throw new CoreInputError(`${CRAFT_INFO}.craft[${TRANSPONDER_KIND_BIT}].atB8`, 'missing-transponder');
+  if (!models.has(transponder)) throw new CoreInputError(`${INPUT}.models`, 'missing-transponder');
+  bound.add(transponder);
   inputs.models.forEach(({ id }, index) => {
     if (!bound.has(id)) throw new CoreInputError(`${INPUT}.models[${index}].id`, 'is not the model of an instantiable craft');
   });
@@ -388,21 +409,23 @@ function reachableWeapons(info: CraftInfo, kinds: Iterable<number>): { guns: Set
 }
 
 /**
- * The checks of CR-01 that need the setup, and the static rule data: see the module comment. `records` are the run's
- * instantiable records (setup-check.ts); `info` is the craft info as read; `map` the map's rule data, built from
- * `inputs.mapGeometry` (map-rule-data.ts); `communications` was checked and derived by
- * communicationsRuleData.
+ * The checks of CR-01 and CR-15 that need the setup, and the static rule data: see the module comment. `records` are the
+ * run's instantiable records (setup-check.ts); `transponder` the model of kind 0x4000 (transponderModel); `info` is
+ * the craft info as read; `map` the map's rule data, built from `inputs.mapGeometry` (map-rule-data.ts);
+ * `communications` was checked and derived by communicationsRuleData. Kind 0x4000 counts as instantiable, as `b` can
+ * construct one in any run.
  */
 export function buildRuleData(
   inputs: RuleDataInputs,
   info: CraftInfo,
   records: readonly InstantiableRecord[],
+  transponder: AssetId | null,
   map: MapRuleData,
   communications: CommunicationsRuleData,
 ): WorldRuleData {
-  const models = modelParts(inputs, records);
+  const models = modelParts(inputs, info, records, transponder);
   const kinds = new Map<number, { readonly parts: number; readonly modelIndex: number }>();
-  for (const { kindBit, model } of records) {
+  for (const { kindBit, model } of [...records, { kindBit: TRANSPONDER_KIND_BIT, model: transponder as AssetId }]) {
     const { parts, index } = models.get(model) as { parts: number; index: number };
     if (!kinds.has(kindBit)) kinds.set(kindBit, { parts, modelIndex: index });
   }
@@ -469,6 +492,7 @@ export function buildRuleData(
     missiles: Object.freeze(missiles),
     craft: Object.freeze(craft),
     homingPrograms: homingPrograms(inputs.aiPrograms.content),
+    ai: aiRuleData(inputs.aiPrograms.content, info, records),
     map,
     startupRotations: STARTUP_ROTATIONS,
     communications,
