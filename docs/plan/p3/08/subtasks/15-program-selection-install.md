@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "15"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 15 — 程序选择、安装与控制器调度
@@ -42,6 +42,8 @@ updated: 2026-10-14
 - `src/core/systems/area.ts`：停放切换时的重装。
 - `src/core/systems/area.test.ts`：停放测试。
 - `src/core/systems/pipeline.ts`：对象更新中的静态调用。
+- `src/core/replay/snapshot.test.ts`：可为 null 的控制器。
+- `src/core/replay/combat-replay.test.ts`：选择抽取改变 RNG 次序后的期望。
 
 ## 验收标准
 
