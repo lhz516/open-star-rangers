@@ -70,7 +70,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | AC-09 | 18 | 18：阶段边界、复原、随机映射、CR-11 差异与中断 |
 | AC-10 | 19 | 19：驾驶舱读数与 Render State |
 | AC-11 | 20 | 20：快照完整、JSON 往返 replay、坏输入拒绝、上限与重试 |
-| AC-12 | 21、22 | 22：`pnpm test:e2e` 实际应用用例（browser-testing） |
+| AC-12 | 21、22、34 | 22：`pnpm test:e2e` 实际应用用例（browser-testing） |
 | AC-13 | 23 | 23：真实内容两种僚机配置的私有核对 |
 | AC-14 | 01–07、28、29 | 07、29：事实与 U 项；27：`pnpm check:compliance` 与 git 审阅 |
 | AC-15 | 09、10、24、25 | 10：判据获批；24：≥2 次合格运行；25：单次转移与连续行为的结论 |
@@ -114,7 +114,8 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [31-docs-follow-up.md](./subtasks/31-docs-follow-up.md) | 22, 26 | completed |
 | [32-sector-boundary-test-wording.md](./subtasks/32-sector-boundary-test-wording.md) | 29 | completed |
 | [33-workers-doc-metadata.md](./subtasks/33-workers-doc-metadata.md) | 11 | completed |
-| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33 | in-progress |
+| [34-e2e-import-save-race.md](./subtasks/34-e2e-import-save-race.md) | 22 | in-progress |
+| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -154,6 +155,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 24 已集成：** 四次完整运行 v1-01、v2-01、w2-01、w1-03（两种布局；w1-01 由操作者取消、w1-02 DOSBox-X SIGSEGV，均排除）。两个完整逐帧 Warp 窗口与独立 Φ 逐位一致。按 2026-10-14 的 D-02 补定（spec“采样覆盖的补充与不可达分支”与审批），停放敌机的阶段对齐跨越计入下限；基地、来源被毁、Warp 中断与零距离/失效标记分支改为代码证据加 Node 期望，逐项披露并交 P3-10/P3-11/P3-15 联合复验。与 P3-08、P3-10 轮流使用基准环境。
 - **2026-10-14 — 25 已集成：** R-13 至 R-16 判为一致（只对固定 cycles 40000 成立，U-021 未冻结，不豁免）。单次转移层对 24 的原版前态逐位一致（含两个完整逐帧窗口的 774 个 pass）；连续层在真实内容上 4 次正式 `World.step` 运行中，16 次 Warp 每 tick 等于 Φ(S_new, 2)，地图期间推进与可见判定全部一致；10 个合格原版窗口均配对成功。U-025 改为已确认，U-026 改为已确认（E = 0 的 x87 残留按 MW-12 差异 4）。未经运行对照而只由代码加 Node 覆盖的分支在 B-010 中逐项披露。
 - **2026-10-14 — 27 首次核对：** 覆盖、关卡时序（D-01 早于 11；D-02 早于 24；两次 D-02 补定与 MW-04/MW-11 补定都早于依赖它们的工作）、Core 纯度、目标/雷达/Render State 无迷雾过滤、候选 `src/` 树（25 用的 `6c5edd70` 即当前树；23 之后 `src/` 只有 UI、测试与一处注释）均通过；`vitest run src/core src/content src/original-data tools/engineering-boundaries.test.ts` 194 文件 6330 通过；mission-flow 两个 e2e 文件单独运行 11/11 通过（完整套件一次因负载在任务启动处超时 225/226，单独重跑通过）。唯一缺口：`docs/engineering/modules/workers.md` 被 11 修改而 `updated:` 未更新。27 回到 pending，新增修复 33。
+- **2026-10-14 — 27 第二次核对：** 33 已修复元数据。完整 `pnpm test:e2e` 两次运行都只有 22 的“a real hidden page during a Warp …”在 `Startable mission` 处超时（225/226），单独运行通过；该用例导入后未等待“Saved in this browser”就返回菜单（`keyboard-input` 的同类流程会等待），判为测试竞态而非负载。27 回到 pending，新增修复 34。
 
 ## 审批
 
