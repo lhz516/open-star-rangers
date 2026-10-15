@@ -205,8 +205,10 @@ describe('the menu levels in one batch (CB-07; comm §7.2, §7.7)', () => {
   it('chooses TABL 2003 only at the near gate: distance 1000 passes, the next f32 does not, and a sub-state other than 0 fails it', () => {
     const tables = [{ x: 1000, sub: 0 }, { x: Math.fround(1000.0001), sub: 0 }, { x: 10, sub: 3 }].map(({ x, sub }) => {
       const world = scene();
-      add(world, 17, { position: { x, y: 0, z: 0 } });
-      world.state.flow.subState = sub as 0 | 3;
+      const base = add(world, 17, { position: { x, y: 0, z: 0 } });
+      // A wait in sub-state 3 has its docking object and a deadline still ahead (CB-02).
+      Object.assign(world.state.flow, { subState: sub as 0 | 3, dockingDeadline: 1e9 });
+      world.state.player.dockingObject = sub === 0 ? null : base.id;
       constructWorld(world.state).step(tickInput([open, digit(1)]));
       return world.state.player.communications.menu?.table;
     });
@@ -303,6 +305,7 @@ describe('choosing a command (CB-07 page 4, CB-02 row 1; CD1)', () => {
     // The near menu is built at sub-state 0; at sub-state 5 its docking item is still there (comm §7.5).
     judgeTick(world.state, [open, digit(1)]);
     world.state.flow.subState = 5;
+    world.state.player.dockingObject = base.id;
     const context = judgeTick(world.state, [digit(2)]);
     const deadlineClock = world.state.clock + 0x780;
     expect(context.events).toEqual([

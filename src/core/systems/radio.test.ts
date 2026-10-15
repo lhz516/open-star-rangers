@@ -136,9 +136,12 @@ describe('the presentation sub-step (CB-09; D-03 item 3; RQ5, RQ8)', () => {
   });
 
   it('shows no page 5 in the Warp view (1) but still ends and runs the docking reply\'s callback', () => {
-    const { state, world } = loaded('docking-reply');
+    const scene = loaded('docking-reply');
+    const { state, world } = scene;
     state.player.viewMode = 1;
-    state.flow.subState = 3;
+    // A wait in sub-state 3 has its docking object and a deadline still ahead (CB-02).
+    Object.assign(state.flow, { subState: 3, dockingDeadline: 5000 });
+    state.player.dockingObject = addActive(scene, BASE_KIND_BIT).id;
     expect(world.step(tickInput())).toEqual([
       { type: 'incoming-started', tick: 1, message: STATUS, speaker: null, frameDurations: [5, 8, 5], shown: false },
     ]);
@@ -152,12 +155,14 @@ describe('the presentation sub-step (CB-09; D-03 item 3; RQ5, RQ8)', () => {
 
   it('runs the docking reply\'s callback only in sub-state 3: a late reply after a cancel moves nothing', () => {
     for (const subState of [0, 4, 5] as const) {
-      const { state, world } = loaded('docking-reply');
-      state.flow.subState = subState;
-      state.flow.dockingDeadline = 77;
+      const scene = loaded('docking-reply');
+      const { state, world } = scene;
+      // Sub-states 4 and 5 have their docking object (CB-02); 4's due lies beyond the reply's end.
+      Object.assign(state.flow, { subState, dockingDeadline: 5000 });
+      if (subState !== 0) state.player.dockingObject = addActive(scene, BASE_KIND_BIT).id;
       stepQuietly(world, 72);
       expect(world.step(tickInput()).at(-1)).toMatchObject({ type: 'incoming-ended', countdownStarted: false });
-      expect(state.flow).toEqual({ mainState: 3, subState, dockingDeadline: 77 });
+      expect(state.flow).toEqual({ mainState: 3, subState, dockingDeadline: 5000 });
     }
   });
 

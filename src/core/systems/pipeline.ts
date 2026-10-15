@@ -24,6 +24,7 @@ import { collisionStage } from './collision.ts';
 import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
 import { deliverCommand } from './communications.ts';
+import { checkDockingWait, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
@@ -111,8 +112,8 @@ export type Request =
   /** Sub-command 3: the base page's confirmation. */
   | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
 
-/** P3-10's request types (CB-08) other than `deliver-command`, handled by P3-10's subtasks 16 and 18; until then no rule posts them. */
-const COMMUNICATIONS_REQUESTS = ['dock', 'depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
+/** P3-10's request types (CB-08) whose handling P3-10's subtasks 17 and 18 add; until then no rule posts them. */
+const COMMUNICATIONS_REQUESTS = ['depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
 type CommunicationsRequest = RequestOf<(typeof COMMUNICATIONS_REQUESTS)[number]>;
 const isCommunicationsRequest = (request: Request): request is CommunicationsRequest => (COMMUNICATIONS_REQUESTS as readonly string[]).includes(request.type);
 
@@ -378,6 +379,11 @@ function handleRequest(context: TickContext, request: Request): void {
     deliverCommand(context, request);
     return;
   }
+  // Sub-command 0 reads the player's entity, not the request's subject (DK2).
+  if (request.type === 'dock') {
+    dock(context);
+    return;
+  }
   if (request.type === 'spawn') {
     dispatchSpawn(world, request, (event) => emit(context, event));
     return;
@@ -483,8 +489,8 @@ const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage =
  */
 export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('input-registration', registerInput),
-  // 0x3266c, reading the previous clock: P3-11 (flow, result, rescue), P3-10 (docking sub-states).
-  stage('mission-flow', null),
+  // 0x3266c, reading the previous clock: P3-10's docking sub-states (docking.ts); P3-11 adds flow, result and rescue.
+  stage('mission-flow', checkDockingWait),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
   // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).
