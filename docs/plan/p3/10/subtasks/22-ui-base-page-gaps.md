@@ -36,6 +36,7 @@ updated: 2026-10-14
 - `src/ui/game/**`：桥接（如需要）。
 - `src/ui/game-input/**`：焦点与基地上下文的输入区（如需要）。
 - `docs/engineering/slice-gaps.md`：G 项记录。
+- `src/app/app.css`：基地页面的项目样式（新增 `.base-page*` 规则）。
 
 ## 验收标准
 
