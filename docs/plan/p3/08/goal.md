@@ -84,7 +84,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
-| [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | pending |
+| [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | in-progress |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | pending |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | pending |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
@@ -98,7 +98,8 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | pending |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 | pending |
+| [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | in-progress |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -123,6 +124,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 13 完成：** 关键字表导入 `data/ai-programs`（schema 2），生产转换器版本 `graphics-5.logic-4.audio-2.models-4`，旧缓存不恢复；本机真实镜像 package-check 通过，摘要与独立的 LE fixup 解码一致。合成光盘的填充由 2 MiB 提到 4 MiB（每个小 EXE 区域读取一个原始扇区）。协调者接受一项偏差：转换器不区分 fixup 的 16 位目标偏移编码（`RegionFixup` 没有目标宽度字段，两种编码载入结果相同，真实镜像的编码已由独立解码器确认）。协调者随集成更新 U-001 与工具指南的包核对输出说明。
 - **2026-10-15 — 14 执行中的契约修订（协调者依用户授权批准）：** 真实内容的一个可达脚本带负延时，CR-15 的 `negative-delay` 会使生产内容无法创建世界。改为已批准的差异（P3-02 CR-24 决定 16）：负延时等同于 0，期限存为 max(时钟 + 延时, 0)，由 16 实现；CR-15 撤销该拒绝。同时澄清 `missing-transponder` 的判定：只能来自任务中种类 14 的声明或选项。ai §12 的相应说明交 28。14 的写入范围加入合成生产内容与 `spawn.test.ts`。
 - **2026-10-15 — 14 完成：** 支持闭包与创建时检查；真实内容的六种运行配置都能创建世界，闭包与 ai §10 一致。合成生产 AI 内容改为符合支持范围（合成光盘中对象 2 的填充不再覆盖其他 Asset）。交 28：ai §12 的数据核对补“可达脚本含负的 1001 数值”，core.md 的规则数据与世界创建说明已过时。合并 P3-09 与 P3-10 后 `e2e/base-interaction`（development）的“停靠并两次离港”一项失败（期望 `toggle-map` 被拒绝，实际被接受），在 14 之前的 d3313738 上同样失败，与 14 无关；由新增的 30 修复。
+- **2026-10-15 — 新增 30：** 修复合并 P3-09、P3-10 后停靠中 `toggle-map` 被接受的回归（e2e 的 base-interaction development 一项）；29 加入对 30 的依赖。
 
 ## 审批
 
