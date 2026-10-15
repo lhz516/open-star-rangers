@@ -1,11 +1,11 @@
 import {
-  readAiPrograms, type AiParameterEntry, type AiPrograms, type AiScriptEntry, type BuiltInProgram,
+  readAiPrograms, type AiParameterEntry, type AiPrograms, type AiScriptEntry, type BuiltInProgram, type KeywordTables,
 } from '../../content/rule-data/ai-programs.ts';
 import { syntheticAiPrograms } from '../../content/rule-data/rule-data.test-support.ts';
 import type { ExecutableRegion } from '../source-mapping.ts';
 import { syntheticLeExecutable } from '../synthetic.test-support.ts';
 import { AI_LAYOUT, type AiProgramSources } from './ai.ts';
-import type { RegionFixup } from './le-executable.ts';
+import type { ObjectPosition, RegionFixup } from './le-executable.ts';
 import { entryRead, type SyntheticBlock } from './formats.test-support.ts';
 
 // Code-generated synthetic AISTUFF entries and EXE built-in table regions for P3-03 tests; they never hold original data,
@@ -19,9 +19,14 @@ export const SYNTHETIC_AI_IDS = Object.freeze({ globals: 7_101, table: 7_103, en
 /** Diagnostic locations of the synthetic regions, standing for their source mapping paths. */
 export const BUILT_IN_LOCATION = 'aiPrograms.regions[0]';
 export const nameLocation = (index: number): string => `aiPrograms.regions[${index + 1}]`;
+export const keywordTableLocation = (index: number): string => `aiPrograms.keywordTables[${index}]`;
+export const keywordNameLocation = (index: number): string => `aiPrograms.keywordNames[${index}]`;
 
 /** The synthetic object and first offset of the built-in names. */
 const BUILT_IN_NAMES_AT = Object.freeze({ object: 3, offset: 0x235 });
+/** The synthetic object and offset of the first keyword table, and the first offset of the keyword names (in object 4). */
+const KEYWORD_TABLES_AT = Object.freeze({ object: 2, offset: 0x1a8 });
+const KEYWORD_NAMES_AT = Object.freeze({ object: AI_LAYOUT.keywordNameObject, offset: 0x13b });
 
 /** The typed content of the rule-data tests' synthetic AI programs, or of `plain` content. */
 export const aiContent = (plain: unknown = syntheticAiPrograms()): AiPrograms => readAiPrograms(plain);
@@ -203,6 +208,49 @@ export function syntheticBuiltIn(programs: readonly BuiltInProgram[], namesAt = 
   return { bytes: block.toBlock().bytes, fixups, names };
 }
 
+/** Four keyword table regions with the fixups the loader applies, and one region per distinct name. */
+export interface SyntheticKeywordTables {
+  tables: { region: ExecutableRegion; bytes: Uint8Array; fixups: RegionFixup[] }[];
+  names: { region: ExecutableRegion; bytes: Uint8Array }[];
+}
+
+/**
+ * The keyword tables (ai.md §5.3): consecutive regions from `tablesAt`, each its {name pointer, i32 value} pairs and a
+ * null pair. Equal names share one name region; the name regions follow one another from `namesAt` with a filler byte
+ * after every other one, so that some start at odd offsets. Each pair's name word holds its fixup's target offset.
+ */
+export function syntheticKeywordTables(
+  tables: KeywordTables, tablesAt: ObjectPosition = KEYWORD_TABLES_AT, namesAt: ObjectPosition = KEYWORD_NAMES_AT,
+): SyntheticKeywordTables {
+  const size = AI_LAYOUT.keywordEntryBytes;
+  const names: SyntheticKeywordTables['names'] = [];
+  const nameOffsets = new Map<string, number>();
+  let nameOffset = namesAt.offset;
+  let tableOffset = tablesAt.offset;
+  const regions = tables.map(entries => {
+    const block = new Block();
+    block.alloc((entries.length + 1) * size);
+    const fixups: RegionFixup[] = [];
+    entries.forEach(({ name, value }, index) => {
+      let offset = nameOffsets.get(name);
+      if (offset === undefined) {
+        offset = nameOffset;
+        nameOffsets.set(name, offset);
+        const bytes = Uint8Array.from({ length: name.length + 1 }, (_, at) => (at < name.length ? name.charCodeAt(at) : 0));
+        names.push({ region: { object: namesAt.object, offset, length: bytes.length }, bytes });
+        nameOffset += bytes.length + (names.length % 2);
+      }
+      fixups.push({ at: index * size, object: namesAt.object, offset });
+      block.u32(index * size, offset).u32(index * size + 4, value);
+    });
+    const bytes = block.toBlock().bytes;
+    const region = { object: tablesAt.object, offset: tableOffset, length: bytes.length };
+    tableOffset += bytes.length;
+    return { region, bytes, fixups };
+  });
+  return { tables: regions, names };
+}
+
 /** The synthetic sources of `content`, as blocks and regions that a test may corrupt before wrapping them with `aiSources`. */
 export interface SyntheticAiSources {
   globals: { id: number; block: SyntheticBlock };
@@ -210,6 +258,7 @@ export interface SyntheticAiSources {
   /** In `content.entries` order. */
   entries: { id: number; type: string; block: SyntheticBlock }[];
   builtIn: SyntheticBuiltIn;
+  keywords: SyntheticKeywordTables;
 }
 
 export function syntheticAiSources(content: AiPrograms = aiContent(), aico: AicoOptions = {}): SyntheticAiSources {
@@ -221,17 +270,20 @@ export function syntheticAiSources(content: AiPrograms = aiContent(), aico: Aico
       ? { id: ids[index], type: 'DFPG', block: syntheticParameters(entry, ids) }
       : { id: ids[index], type: 'TABL', block: syntheticScript(entry) }),
     builtIn: syntheticBuiltIn(content.builtInPrograms),
+    keywords: syntheticKeywordTables(content.keywordTables),
   };
 }
 
-/** The parser's sources for `synthetic`, with the given entries in reverse order to show the order is free. */
-export function aiSources({ globals, table, entries, builtIn }: SyntheticAiSources): AiProgramSources {
+/** The parser's sources for `synthetic`, with the given entries and keyword names in reverse order to show the order is free. */
+export function aiSources({ globals, table, entries, builtIn, keywords }: SyntheticAiSources): AiProgramSources {
   return {
     globals: entryRead(globals.id, 'AICO', globals.block),
     table: entryRead(table.id, 'TABL', table.block),
     entries: entries.map(({ id, type, block }) => entryRead(id, type, block)).reverse(),
     builtIn: { bytes: builtIn.bytes, fixups: builtIn.fixups, location: BUILT_IN_LOCATION },
     builtInNames: builtIn.names.map((name, index) => ({ ...name, location: nameLocation(index) })),
+    keywordTables: keywords.tables.map((table, index) => ({ ...table, location: keywordTableLocation(index) })) as unknown as AiProgramSources['keywordTables'],
+    keywordNames: keywords.names.map((name, index) => ({ ...name, location: keywordNameLocation(index) })).reverse(),
   };
 }
 
@@ -270,5 +322,27 @@ export function syntheticBuiltInExecutable(builtIn: SyntheticBuiltIn, tableAt = 
     file: syntheticLeExecutable({ objects, fixups }),
     table: { object: 4, offset: tableAt, length: builtIn.bytes.length } satisfies ExecutableRegion,
     names: builtIn.names.map(({ region }) => region),
+  };
+}
+
+/**
+ * An LE file holding `keywords`: object 1 is filler, object 2 the tables, object 3 filler and object 4 the names, all
+ * within one page each. `record` writes each name fixup's record, by default a non-additive internal 32-bit offset.
+ */
+export function syntheticKeywordExecutable(
+  keywords: SyntheticKeywordTables,
+  record: (offset: number, object: number, target: number) => number[] = fixupRecord,
+) {
+  const filled = (length: number, seed: number) => Uint8Array.from({ length }, (_, index) => (index * 11 + seed) & 0xff);
+  const end = (regions: readonly { region: ExecutableRegion }[]) => regions.reduce((last, { region }) => Math.max(last, region.offset + region.length), 0);
+  const tables = filled(end(keywords.tables) + 5, 2);
+  const names = filled(end(keywords.names) + 3, 4);
+  for (const { region, bytes } of keywords.tables) tables.set(bytes, region.offset);
+  for (const { region, bytes } of keywords.names) names.set(bytes, region.offset);
+  const fixups: Record<number, number[]> = { 2: keywords.tables.flatMap(({ region, fixups: list }) => list.flatMap(({ at, object, offset }) => record(region.offset + at, object, offset))) };
+  return {
+    file: syntheticLeExecutable({ objects: [{ bytes: filled(64, 1) }, { bytes: tables }, { bytes: filled(64, 3) }, { bytes: names }], fixups }),
+    tables: keywords.tables.map(({ region }) => region),
+    names: keywords.names.map(({ region }) => region),
   };
 }

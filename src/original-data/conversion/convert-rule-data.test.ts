@@ -28,6 +28,14 @@ import {
 
 const ROLES: readonly RuleDataRole[] = ['ai-programs', 'base-repair-items', 'comm-menus', 'comm-messages', 'craft-info', 'debris-parameters', 'flight-messages'];
 const part = (mapping: number, index: number) => `sources.mappings[${mapping}].parts[${index}].alternatives[0]`;
+/**
+ * The ai-programs region parts after its 8 entry parts: the keyword tables in object 2, the built-in names in object 3,
+ * then in object 4 the built-in table and the keyword names after it (rule-data.test-support.ts).
+ */
+const KEYWORD_TABLES = 8;
+const BUILT_IN_NAMES = 12;
+const BUILT_IN_TABLE = 15;
+const KEYWORD_NAMES = 16;
 /** Synthetic AI entry IDs: AICO, the program table, then the content entries in first-reach order (ai.test-support.ts). */
 const AI = Object.freeze({ globals: 7_101, table: 7_103, entries: [7_201, 7_203, 7_205, 7_207, 7_209, 7_211] });
 /** The synthetic COMMFACE and name list IDs of the default fixture (comm-face.test-support.ts). */
@@ -114,7 +122,7 @@ describe('rule-data conversion', () => {
     const { partition } = result;
     expect(partition.group).toBe('logic');
     expect(partition.assets.map(({ id, kind, role, group, dependencies, payloadIdentity }) => ({ id, kind, role, group, dependencies, schemaVersion: payloadIdentity.schemaVersion })))
-      .toEqual(ROLES.map(role => ({ id: `data/${role}`, kind: 'data', role, group: 'logic', dependencies: [], schemaVersion: 1 })));
+      .toEqual(ROLES.map(role => ({ id: `data/${role}`, kind: 'data', role, group: 'logic', dependencies: [], schemaVersion: role === 'ai-programs' ? 2 : 1 })));
     expect(partition.payloads.map(({ id }) => id)).toEqual(ROLES.map(role => `data/${role}`));
     expect(decoded(result)).toEqual(fixture.contents);
     expect(partition.sources).toEqual({
@@ -308,13 +316,13 @@ describe('rule-data structural limits', () => {
     const names: Run = {
       sources: plan => ({ ...plan, aiPrograms: { ...plan.aiPrograms, builtInNames: plan.aiPrograms.builtInNames.map((name, index) => (index === 1 ? { ...name, length: 66 } : name)) } }),
     };
-    expect(await failure(names)).toEqual({ code: 'limit-exceeded', location: part(0, 9), limit: { name: 'textBytes', limit: 64, observed: 65 } });
+    expect(await failure(names)).toEqual({ code: 'limit-exceeded', location: part(0, BUILT_IN_NAMES + 1), limit: { name: 'textBytes', limit: 64, observed: 65 } });
     const table: Run = {
       sources: plan => ({ ...plan, aiPrograms: { ...plan.aiPrograms, builtIn: { ...plan.aiPrograms.builtIn, length: 33 * 0x54 + 4 } } }),
     };
     // A region structure path, which the archive location grammar does not cover; the diagnostic holds no value.
     await expect(convert(table)).rejects.toMatchObject({
-      name: 'SourceError', code: 'limit-exceeded', location: `${part(0, 11)}/programs`, limit: { name: 'aiProgramRecords', limit: 32, observed: 33 },
+      name: 'SourceError', code: 'limit-exceeded', location: `${part(0, BUILT_IN_TABLE)}/programs`, limit: { name: 'aiProgramRecords', limit: 32, observed: 33 },
     });
   });
 
@@ -322,7 +330,44 @@ describe('rule-data structural limits', () => {
     const run: Run = {
       sources: plan => ({ ...plan, aiPrograms: { ...plan.aiPrograms, builtInNames: plan.aiPrograms.builtInNames.map((name, index) => (index === 0 ? { ...name, length: name.length + 1 } : name)) } }),
     };
-    expect(await failure(run)).toEqual({ code: 'invalid-payload', location: part(0, 8), limit: null });
+    expect(await failure(run)).toEqual({ code: 'invalid-payload', location: part(0, BUILT_IN_NAMES), limit: null });
+  });
+});
+
+describe('keyword tables (P3-03 AC-23)', () => {
+  type Ai = RuleDataSources['aiPrograms'];
+  const withAi = (change: (ai: Ai) => Partial<Ai>): Run => ({ sources: plan => ({ ...plan, aiPrograms: { ...plan.aiPrograms, ...change(plan.aiPrograms) } }) });
+
+  it('maps the four tables and the distinct names in region order and converts them', async () => {
+    const fixture = syntheticRuleData();
+    const { keywordTables, keywordNames } = fixture.sources.aiPrograms;
+    expect([keywordTables.length, keywordNames.length]).toEqual([4, 9]);
+    const { result } = await convert({ fixture });
+    expect((decoded(result)['ai-programs'] as { keywordTables: unknown }).keywordTables).toEqual(fixture.contents['ai-programs'].keywordTables);
+    const mapped = ruleDataMappings(fixture.sources).mappings[0].parts.map(({ alternatives: [locator] }) => locator.subresource);
+    expect(mapped.slice(KEYWORD_TABLES, KEYWORD_TABLES + 4)).toEqual(keywordTables.map(({ object, offset, length }) => `le/${object}/0x${offset.toString(16)}/${length}`));
+    expect(mapped.slice(KEYWORD_NAMES)).toEqual(keywordNames.map(({ object, offset, length }) => `le/${object}/0x${offset.toString(16)}/${length}`));
+  });
+
+  it('judges the table and name regions by their lengths before reading them', async () => {
+    const pairs = withAi(ai => ({ keywordTables: ai.keywordTables.map((table, index) => (index === 1 ? { ...table, length: 18 * 8 } : table)) as unknown as Ai['keywordTables'] }));
+    await expect(convert(pairs)).rejects.toMatchObject({
+      code: 'limit-exceeded', location: `${part(0, KEYWORD_TABLES + 1)}/entries`, limit: { name: 'aiKeywordEntries', limit: 16, observed: 17 },
+    });
+    const names = withAi(() => ({ keywordNames: Array.from({ length: 33 }, (_, index) => ({ object: 4, offset: 0x8000 + index * 2, length: 2 })) }));
+    expect(await failure(names)).toEqual({ code: 'limit-exceeded', location: part(0, KEYWORD_NAMES + 32), limit: { name: 'aiKeywordNames', limit: 32, observed: 33 } });
+    const bytes = withAi(ai => ({ keywordNames: [...ai.keywordNames.slice(0, -1), { ...ai.keywordNames.at(-1)!, length: 257 - ai.keywordNames.slice(0, -1).reduce((total, { length }) => total + length, 0) }] }));
+    expect(await failure(bytes)).toEqual({ code: 'limit-exceeded', location: part(0, KEYWORD_NAMES + 8), limit: { name: 'aiKeywordNameBytes', limit: 256, observed: 257 } });
+    const long = withAi(ai => ({ keywordNames: ai.keywordNames.map((name, index) => (index === 2 ? { ...name, length: 66 } : name)) }));
+    expect(await failure(long)).toEqual({ code: 'limit-exceeded', location: part(0, KEYWORD_NAMES + 2), limit: { name: 'textBytes', limit: 64, observed: 65 } });
+  });
+
+  it('reports a mapped name region no pair names, and a pair naming an unmapped region, as subresource-mismatch', async () => {
+    // The tail of the first name, a valid text and NUL that no pair names; it sorts right after that name.
+    const extra = withAi(ai => ({ keywordNames: [...ai.keywordNames, { ...ai.keywordNames[0], offset: ai.keywordNames[0].offset + 1, length: ai.keywordNames[0].length - 1 }] }));
+    expect(await failure(extra)).toEqual({ code: 'subresource-mismatch', location: part(0, KEYWORD_NAMES + 1), limit: null });
+    const missing = withAi(ai => ({ keywordNames: ai.keywordNames.slice(1) }));
+    await expect(convert(missing)).rejects.toMatchObject({ code: 'subresource-mismatch', location: `${part(0, KEYWORD_TABLES)}/entries[0]/name` });
   });
 });
 

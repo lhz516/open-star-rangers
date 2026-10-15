@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-14
+updated: 2026-10-15
 related: [U-001, U-022]
 ---
 
@@ -264,6 +264,14 @@ Confirmed (code); `0x5eb64` dispatches by the class table above.
   | 304 / 305 | 0x20 | f32, f32, i32 boolean / f32, f32, i32 boolean₁, i32 boolean₂ |
 
 - **Keyword tables (Confirmed, code and fixups):** four code-side tables in object 2 — `0x5ea40` (3 names; opcodes 230, 231), `0x5ea60` (6; 300), `0x5ea98` (5; 301), `0x5eac8` (3; 403) — each terminated by a null pair. Exactly 17 LE fixups patch `0x5ea40`–`0x5eae7`, all source type 7, internal, object 4, 16-bit target offset, one at +0 of every non-null pair; the value words are not patched and the stored words equal the target offsets, as in the [built-in table](#33-built-in-program-table-0x1762f8). The 14 distinct names lie at `0x1723a8`–`0x172427` (object 4), each NUL-terminated, starting 4-byte aligned, 111 bytes with their NULs; within a table the names are distinct even case-insensitively; the values are distinct small non-negative integers (value sets {0, 1, 2}, {0 … 5}, {0 … 4}, {0, 1, 2}); tables `0x5ea40` and `0x5eac8` have identical name targets and values. **Disposition:** the names are original text, so the tables are imported (pair order, i32 values, name bytes with NUL, the null terminator, fixup identity, regions covering exactly text + NUL, and the identity of the first and fourth tables); the delimiter sets and the numeric constants are code syntax and constants (P3-08/09, D-03). The slice needs `0x5ea40`, `0x5ea60` and `0x5ea98` (§10.2).
+- **Name regions (Confirmed, P3-08/13):** the regions the import maps, in address order, each exactly a name and its NUL (lengths include the NUL); every pair's fixup targets the start of one, and tables `0x5ea40` and `0x5eac8` name the same three. The gaps between them are padding to the next 4-byte boundary.
+
+  | Region | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | Address | `0x1723a8` | `0x1723b0` | `0x1723bc` | `0x1723c4` | `0x1723cc` | `0x1723d8` | `0x1723e0` | `0x1723e8` | `0x1723f4` | `0x172400` | `0x172408` | `0x172410` | `0x172418` | `0x172424` |
+  | Bytes | 8 | 10 | 8 | 5 | 9 | 7 | 8 | 11 | 12 | 6 | 6 | 7 | 10 | 4 |
+
+  A local LE fixup decoder independent of the product (lengths, flags and counts only) and the production import job on the baseline image agree: 17 fixups, all source type 7 with a 16-bit internal target offset into object 4, pairs 3, 6, 5 and 3, and the same digest of the tables (P3-08/13 completion evidence).
 
 ### 5.4 Executor `0x5f4f4`
 
@@ -335,6 +343,7 @@ Dispositions follow the P3-03 field rules ([spec](../../plan/p3/03/spec.md#字�
 | Script items +0x08, +0x0C, +0x10 | Written by parsing and release at run time | Not converted, and must be zero: the parser reads +0x10, and for an item it does not parse (no-argument opcodes, an integer opcode without text) the stored +0x08 and +0x0C survive and are read by the executor (opcodes 9999 and 10000 return +0x08) and by the release `0x5eb1c` (frees +0x08 when +0x0C is set) |
 | Script text | Parsed per opcode at run time, with random draws, scaling and in-place trimming | Not performed at import; the text is kept as stored (rule 8) |
 | Built-in +0x00, +0x18 | LE fixups | Code pointer (+0x18): opaque {object, offset} from the fixup record (rule 4). Name (+0x00): text read at the fixup target (rule 8) |
+| Keyword table pairs (§5.3) | Name word: LE fixup; value word: none; read in place by `0x60894` | Imported into `data/ai-programs` (schema 2, P3-03 revision 3): the four tables in address order, pairs in stored order without the null pair, the name as the text at the fixup target (rule 8), the i32 value as stored. The null pair, the fixup set, the region boundaries and the case-folded distinctness within a table are checked at conversion, not carried |
 
 Zero as "none" (Confirmed): DFPG +0x38 = 0, a list with count 0, script +0x04 = 0 and script +0x14 = 0. Other zeros (flags, the DFPG +0x04 timer value) are values the code tests, not absence markers.
 
@@ -364,6 +373,7 @@ Counted on the group-0 closure the slice loads (TABL 6003, its 25 entries, AICO 
 | Scripts (22) | 100–1217 bytes, 4838 in total; 4–40 items including the terminator, 157 in total; 1–30 texts per script, 103 in total; text length 1–37 bytes; 1–50 relocations; at most 20 branching items per script; 32 distinct opcodes, all in the classes of §5 |
 | References | 5 program records → 3 distinct DFPGs; 33 list slots and 3 +0x38 IDs → 22 distinct scripts |
 | Built-in table | 10 records; names 4–16 bytes; 20 fixups, 8 distinct handler targets |
+| Keyword tables (EXE) | 4 tables, 168 bytes with their null pairs; 3, 6, 5 and 3 pairs (6 at most); 17 fixups; 14 distinct names of 3–11 bytes, 111 bytes with their NULs (§5.3) |
 
 Across all of `AISTUFF.NOB` the script maxima are the same, a DFPG list holds at most 1, 6, 1, 2, 2, 5 IDs, and the tables of groups 1 and 2 have 6 and 5 records.
 

@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { syntheticFileDisc, type SyntheticFileContent } from '../src/original-data/disc/disc.test-support.ts';
 import { defaultScenarioSpec, MARKER, syntheticScenario } from '../src/original-data/formats/formats.test-support.ts';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
-import { sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
+import { PADDING, sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
 import { main, runLogicCheck } from './logic-check.ts';
 
 const DIRECTORY_MARKER = 'PRIVATE-MARKER-logic-check';
@@ -15,7 +15,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 /** Writes a disc of `files` plus unread padding as a CloneCD file set and returns its paths and whitelist. */
 async function writeDisc(name: string, files: Record<string, SyntheticFileContent>) {
-  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) } });
+  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': PADDING });
   const paths = [join(directory, `${name}-${MARKER}.ccd`), join(directory, `${name}-${MARKER}.img`)];
   writeFileSync(paths[0], await disc.descriptor.read(0, disc.descriptor.byteLength));
   writeFileSync(paths[1], await disc.image.read(0, disc.image.byteLength));

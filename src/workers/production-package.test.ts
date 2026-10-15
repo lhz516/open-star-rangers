@@ -34,11 +34,12 @@ describe('production package profile', () => {
   // dimension. The observations are the counts the local derivation (local/research/p3-03/shares/) recorded on the
   // baseline image with unlimited limits (P3-03/19 and P3-03/26 completion evidence); the usage of the flight graphics,
   // and of the HUD text, is the graphics step's usage with them less its usage without them. The rule-data usage
-  // includes `data/comm-messages` (P3-10/29 completion evidence, local/research/p3-10/comm-messages/).
+  // includes `data/comm-messages` (P3-10/29 completion evidence, local/research/p3-10/comm-messages/) and the keyword
+  // tables of `data/ai-programs` (P3-08/13 completion evidence, local/research/p3-08/import/).
   const BASELINE_USAGE = {
     flightGraphics: { assets: 205, dependencyEdges: 204, paletteEntries: 256, imagePixels: 1_870_336, payloadBytes: 2_078_499 },
     hudText: { assets: 1, payloadBytes: 2_018 },
-    ruleData: { assets: 7, payloadBytes: 98_237 },
+    ruleData: { assets: 7, payloadBytes: 98_757 },
     flightData: { assets: 20, dependencyEdges: 222, payloadBytes: 11_895 },
   };
   const derived = (observed: Partial<BudgetRecord>): BudgetRecord => Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => {

@@ -9,7 +9,7 @@ import { DEBRIS_PARAMETERS_LIMITS } from './debris-parameters.ts';
 import { FLIGHT_MESSAGES_LIMITS } from './flight-messages.ts';
 import { decodeRuleDataPayload, readRuleDataContent, type RuleDataRole } from './rule-data-payload.ts';
 import {
-  absentMessage, box, builtInProgram, commandItem, craft, debrisRecord, gun, missile, missileBody, mount, parameterEntry, script, scriptItem,
+  absentMessage, box, builtInProgram, commandItem, craft, debrisRecord, gun, keyword, missile, missileBody, mount, parameterEntry, script, scriptItem,
   message, syntheticAiPrograms, syntheticBaseRepairItems, syntheticCommMenus, syntheticCommMessages, syntheticCraftInfo,
   syntheticDebrisParameters, syntheticFlightMessages, syntheticRuleDataAsset, tableProgram, text,
 } from './rule-data.test-support.ts';
@@ -134,6 +134,14 @@ const LIMIT_CASES: Readonly<Record<string, LimitCase>> = {
     role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.scriptTextBytes, path: 'aiPrograms.entries[3].items[0].argument',
     build: aiPrograms((content, count) => { content.entries[3] = script([scriptItem(AI_SCRIPT_END_OPCODE, text(count))]); }),
   },
+  'ai-programs keyword entries': {
+    role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.keywordEntries, path: 'aiPrograms.keywordTables[2]',
+    build: aiPrograms((content, count) => { content.keywordTables[2] = times(count, index => keyword(text(1 + index), index)); }),
+  },
+  'ai-programs keyword name bytes': {
+    role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.keywordNameBytes, path: 'aiPrograms.keywordTables[1][4].name',
+    build: aiPrograms((content, count) => { content.keywordTables[1][4] = keyword(text(count), 4); }),
+  },
   'comm-menus items': {
     role: 'comm-menus', limit: COMM_MENUS_LIMITS.items, path: 'commMenus.otherTargetCommands',
     build: count => ({ ...syntheticCommMenus(), otherTargetCommands: [...times(count - 1, index => commandItem(index + 1)), commandItem(0)] }),
@@ -194,8 +202,11 @@ describe('rule-data structural limits', () => {
     expect(DEBRIS_PARAMETERS_LIMITS).toEqual({ records: derive(8), boxes: derive(1) });
     expect(AI_PROGRAMS_LIMITS).toEqual({
       programRecords: derive(10), programNameBytes: derive(20), globalElements: derive(5), entries: derive(25),
-      stateScriptItems: derive(6), scriptItems: derive(40), scriptTextBytes: derive(37),
+      stateScriptItems: derive(6), scriptItems: derive(40), scriptTextBytes: derive(37), keywordEntries: derive(6),
+      // A keyword name is held to a program name's limit, above the 11 bytes observed.
+      keywordNameBytes: AI_PROGRAMS_LIMITS.programNameBytes,
     });
+    expect(AI_PROGRAMS_LIMITS.keywordNameBytes).toBeGreaterThanOrEqual(derive(11));
     expect(COMM_MENUS_LIMITS).toEqual({ items: derive(8), textBytes: derive(15) });
     expect(FLIGHT_MESSAGES_LIMITS).toEqual({ textBytes: derive(45) });
     expect(COMM_MESSAGES_LIMITS).toEqual({
@@ -230,6 +241,8 @@ describe('rule-data format counts', () => {
       count => ({ byCraftType: times(count, () => []) })],
     ['group triple values', 'ai-programs', AI_PROGRAMS_COUNTS.triple, 'aiPrograms.groupTriple',
       aiPrograms((content, count) => { content.groupTriple = times(count, () => 1); })],
+    ['keyword tables', 'ai-programs', AI_PROGRAMS_COUNTS.keywordTables, 'aiPrograms.keywordTables',
+      aiPrograms((content, count) => { content.keywordTables = times(count, index => content.keywordTables[index % 4]); })],
     ['element values', 'ai-programs', AI_PROGRAMS_COUNTS.elementValues, 'aiPrograms.globals.elements[1]',
       aiPrograms((content, count) => { content.globals.elements[1] = times(count, () => 1); })],
     ['base repair items', 'base-repair-items', BASE_REPAIR_ITEM_COUNT, 'baseRepairItems.subsystemSelectors',

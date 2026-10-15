@@ -37,7 +37,8 @@ export interface RuleDataSources {
   /**
    * AICO with the candidate group's triple, that group's program table and the DFPG and script TABL entries its ID chain
    * names, all in `archive`; then the EXE built-in table (its records and count word) and one region per name it points
-   * to, each exactly the name and its NUL.
+   * to, each exactly the name and its NUL; then the four EXE keyword tables in address order, each its pairs and null
+   * pair, and one region per distinct name they point to, each exactly the name and its NUL.
    */
   readonly aiPrograms: {
     readonly archive: DiscPath;
@@ -47,6 +48,8 @@ export interface RuleDataSources {
     readonly scripts: readonly number[];
     readonly builtIn: ExecutableRegion;
     readonly builtInNames: readonly ExecutableRegion[];
+    readonly keywordTables: readonly [ExecutableRegion, ExecutableRegion, ExecutableRegion, ExecutableRegion];
+    readonly keywordNames: readonly ExecutableRegion[];
   };
   /** The five menu tables in `archive`, by the content key the selecting condition names. */
   readonly commMenus: { readonly archive: DiscPath; readonly tables: { readonly [K in keyof CommMenus]: number } };
@@ -102,6 +105,8 @@ export function ruleDataLocators(sources: RuleDataSources) {
       entries: Object.freeze([...ai.parameters.map(id => entry(ai.archive, id, 'DFPG')), ...ai.scripts.map(id => entry(ai.archive, id, 'TABL'))]),
       builtIn: region(ai.builtIn),
       builtInNames: Object.freeze(ai.builtInNames.map(region)),
+      keywordTables: Object.freeze(ai.keywordTables.map(region)),
+      keywordNames: Object.freeze(ai.keywordNames.map(region)),
     }),
     commMenus: mapValues(commMenus.tables, id => entry(commMenus.archive, id, 'TABL')),
     baseRepairItems: Object.freeze({ table: entry(baseRepairItems.archive, baseRepairItems.table, 'TABL', BASE_REPAIR_SUBRESOURCE) }),
@@ -137,6 +142,7 @@ const MAPPING_FACTS: Readonly<Record<RuleDataRole, { readonly confidence: Source
     evidence: [
       'docs/original/formats/ai.md#1-loading-the-id-chain-and-the-group-0-closure-confirmed',
       'docs/original/formats/ai.md#33-built-in-program-table-0x1762f8',
+      'docs/original/formats/ai.md#53-argument-parser-p3-0802',
     ],
   },
   'comm-menus': {
@@ -171,7 +177,7 @@ function partsOf(locators: RuleDataLocators): Readonly<Record<RuleDataRole, read
   return {
     'craft-info': [craftInfo.table, craftInfo.craftInfo],
     'debris-parameters': [debrisParameters.table],
-    'ai-programs': [ai.globals, ai.table, ...ai.entries, ai.builtIn, ...ai.builtInNames],
+    'ai-programs': [ai.globals, ai.table, ...ai.entries, ai.builtIn, ...ai.builtInNames, ...ai.keywordTables, ...ai.keywordNames],
     'comm-menus': Object.values(commMenus),
     'base-repair-items': [baseRepairItems.table],
     'flight-messages': Object.values(flightMessages),
@@ -202,7 +208,8 @@ const regionAt = executableRegionOf;
 /**
  * The production sources: the slice candidate's selections (group 0, slot 1); TABL 4003 and CINF 4037 (craft.md §1–§2);
  * DEBRIS TABL 4501 (craft.md §4); AICO 6001, TABL 6003 and the 3 DFPGs and 22 scripts of the group-0 closure (ai.md §1),
- * the built-in table at `0x1762f8` with its count word and its 10 names (ai.md §3.3); the COMM tables by selecting
+ * the built-in table at `0x1762f8` with its count word and its 10 names (ai.md §3.3), the four keyword tables at
+ * `0x5ea40`–`0x5eae7` and their 14 names (ai.md §5.3; lengths include the NUL); the COMM tables by selecting
  * condition (comm.md §2); TABL 10165 (hud.md); the seven flight message regions (executable.md, flight message
  * strings); and the COMMFACE face tables 20011, 20019 and 20985, the direct list 20983, the 13 sub-tables the face
  * tables name and the 481 CMOVs, every odd ID from 20021 to 20981, that the sub-tables and the direct list name
@@ -225,6 +232,11 @@ export const PRODUCTION_RULE_DATA_SOURCES: RuleDataSources = Object.freeze({
     builtInNames: Object.freeze(([
       [0x17_22b4, 10], [0x17_22c0, 12], [0x17_22cc, 11], [0x17_22d8, 17], [0x17_22ec, 8],
       [0x17_22f4, 13], [0x17_2304, 5], [0x17_230c, 8], [0x17_2314, 8], [0x17_231c, 5],
+    ] as const).map(([address, length]) => regionAt(address, length))),
+    keywordTables: Object.freeze([regionAt(0x5_ea40, 32), regionAt(0x5_ea60, 56), regionAt(0x5_ea98, 48), regionAt(0x5_eac8, 32)] as const),
+    keywordNames: Object.freeze(([
+      [0x17_23a8, 8], [0x17_23b0, 10], [0x17_23bc, 8], [0x17_23c4, 5], [0x17_23cc, 9], [0x17_23d8, 7], [0x17_23e0, 8],
+      [0x17_23e8, 11], [0x17_23f4, 12], [0x17_2400, 6], [0x17_2408, 6], [0x17_2410, 7], [0x17_2418, 10], [0x17_2424, 4],
     ] as const).map(([address, length]) => regionAt(address, length))),
   }),
   commMenus: Object.freeze({
@@ -258,6 +270,7 @@ export const PRODUCTION_RULE_DATA_MAPPINGS: SourceMappingTable = ruleDataMapping
 
 /**
  * The budget share the rule-data Assets add to the logic step (spec, 限值与预算): twice each dimension of their conversion
- * usage on the baseline, rounded up to a power of two (observations in the P3-03/19 and P3-10/29 completion evidence).
+ * usage on the baseline, rounded up to a power of two (observations in the P3-03/19, P3-10/29 and P3-08/13 completion
+ * evidence).
  */
 export const PRODUCTION_RULE_DATA_SHARE: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE, assets: 16, payloadBytes: 262_144 });

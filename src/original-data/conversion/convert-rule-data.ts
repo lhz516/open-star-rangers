@@ -11,7 +11,9 @@ import { sha256Fingerprint } from '../../content/sha256.ts';
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
 import type { ImfatEntry } from '../archive/imfat-rules.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
-import { AI_LAYOUT, AI_SOURCE_LIMITS, parseAiPrograms, type AiRegionRead } from '../formats/ai.ts';
+import {
+  AI_LAYOUT, AI_SOURCE_LIMITS, checkKeywordNameRegions, keywordTableEntries, parseAiPrograms, type AiProgramSources, type AiRegionRead,
+} from '../formats/ai.ts';
 import { BASE_REPAIR_ENTRY_BYTES, parseBaseRepairItems } from '../formats/base-repair.ts';
 import { COMM_MENU_ENTRY_BYTES, COMM_NAME_LIST_ENTRY_BYTES, parseCommMenus, type CommMenuReads } from '../formats/comm.ts';
 import { COMM_FACE_SOURCE_LIMITS, parseCommMessages } from '../formats/comm-face.ts';
@@ -20,7 +22,8 @@ import { DEBRIS_ENTRY_BYTES, parseDebrisParameters } from '../formats/debris.ts'
 import { parseFlightMessages, type FlightMessageRegions } from '../formats/executable-text.ts';
 import { requireEntryBytes } from '../formats/payload-block.ts';
 import {
-  assetSourceStates, compareLocators, executableRegion, readSourceMappingTable, type ArchiveEntryLocator, type OriginalAssetLocator,
+  assetSourceStates, compareLocators, executableRegion, readSourceMappingTable, type ArchiveEntryLocator, type ExecutableRegionLocator,
+  type OriginalAssetLocator,
   type SourceMappingTable,
 } from '../source-mapping.ts';
 import { SourceError } from '../source-error.ts';
@@ -106,17 +109,32 @@ async function parseRuleData(source: VerifiedSource, sources: RuleDataSources): 
     throw new SourceError('limit-exceeded', `${aiAt(ai.builtIn)}/programs`, 'the structure exceeds its payload limit',
       { name: 'aiProgramRecords', limit: AI_PROGRAMS_LIMITS.programRecords, observed: records });
   }
-  for (const locator of ai.builtInNames) {
-    const observed = executableRegion(locator).length - 1;
-    const limit = AI_PROGRAMS_LIMITS.programNameBytes;
-    if (observed > limit) throw new SourceError('limit-exceeded', aiAt(locator), 'the text exceeds its payload limit', { name: 'textBytes', limit, observed });
-  }
+  const nameLimit = (locators: readonly ExecutableRegionLocator[], limit: number) => {
+    for (const locator of locators) {
+      const observed = executableRegion(locator).length - 1;
+      if (observed > limit) throw new SourceError('limit-exceeded', aiAt(locator), 'the text exceeds its payload limit', { name: 'textBytes', limit, observed });
+    }
+  };
+  nameLimit(ai.builtInNames, AI_PROGRAMS_LIMITS.programNameBytes);
+  for (const locator of ai.keywordTables) keywordTableEntries(executableRegion(locator).length, aiAt(locator));
+  checkKeywordNameRegions(ai.keywordNames.map(locator => ({ length: executableRegion(locator).length, location: aiAt(locator) })));
+  nameLimit(ai.keywordNames, AI_PROGRAMS_LIMITS.keywordNameBytes);
+  const readNames = async (locators: readonly ExecutableRegionLocator[]) => {
+    const names: AiRegionRead[] = [];
+    for (const locator of locators) {
+      const location = aiAt(locator);
+      names.push({ region: executableRegion(locator), bytes: await readRegion(locator, location), location });
+    }
+    return names;
+  };
   const builtIn = await readFixedUp(ai.builtIn, aiAt(ai.builtIn));
-  const builtInNames: AiRegionRead[] = [];
-  for (const locator of ai.builtInNames) {
+  const builtInNames = await readNames(ai.builtInNames);
+  const keywordTables = [];
+  for (const locator of ai.keywordTables) {
     const location = aiAt(locator);
-    builtInNames.push({ region: executableRegion(locator), bytes: await readRegion(locator, location), location });
+    keywordTables.push({ region: executableRegion(locator), ...await readFixedUp(locator, location), location });
   }
+  const keywordNames = await readNames(ai.keywordNames);
   const entries = [];
   for (const locator of ai.entries) entries.push(await readEntry(locator));
   // The parser requires the given entries to be exactly those the ID chain names: a part more or less is a mismatch.
@@ -126,6 +144,8 @@ async function parseRuleData(source: VerifiedSource, sources: RuleDataSources): 
     entries,
     builtIn: { ...builtIn, location: aiAt(ai.builtIn) },
     builtInNames,
+    keywordTables: Object.freeze(keywordTables) as AiProgramSources['keywordTables'],
+    keywordNames,
   }, sources.candidate.campaignGroup).content;
 
   const { table: repairTable } = parts.baseRepairItems;

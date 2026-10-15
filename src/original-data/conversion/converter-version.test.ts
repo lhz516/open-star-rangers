@@ -9,8 +9,9 @@ import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from './convert
 
 describe('production converter version', () => {
   it('is osr-import followed by the packaged converters\' components in stage order', () => {
-    // P3-09 incremented graphics (map geometry) and P3-10 logic (comm-messages): distinct components, both kept.
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-3.audio-2.models-4');
+    // P3-09 incremented graphics (map geometry) and P3-10 logic (comm-messages): distinct components, both kept; P3-08
+    // incremented logic again for the keyword tables (P3-03 revision 3).
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
     expect(PRODUCTION_CONVERTER_VERSION.split('.').slice(1))
       .toEqual([GRAPHICS_CONVERTER_COMPONENT, LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT, MODEL_CONVERTER_COMPONENT]);
   });

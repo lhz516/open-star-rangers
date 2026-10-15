@@ -7,7 +7,7 @@ import { readDebrisParameters } from '../../content/rule-data/debris-parameters.
 import { readFlightMessages, type FlightMessages } from '../../content/rule-data/flight-messages.ts';
 import { encodeRuleDataPayload, type RuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import {
-  builtInProgram, parameterEntry, script, scriptItem, syntheticAiPrograms, syntheticBaseRepairItems, tableProgram, text,
+  builtInProgram, keyword, parameterEntry, script, scriptItem, syntheticAiPrograms, syntheticBaseRepairItems, tableProgram, text,
 } from '../../content/rule-data/rule-data.test-support.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { AI_LAYOUT } from '../formats/ai.ts';
@@ -16,6 +16,7 @@ import { COMM_MENU_IDS, defaultCommMenus, syntheticCommTables } from '../formats
 import { generatedCommMessages, layoutCommFace } from '../formats/comm-face.test-support.ts';
 import { craftTableCell, defaultCraftInfo, syntheticCraftInfoBlock, syntheticCraftTable } from '../formats/craft.test-support.ts';
 import { defaultDebrisParameters, syntheticDebrisBlock } from '../formats/debris.test-support.ts';
+import type { ExecutableRegion } from '../source-mapping.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { ruleDataIncrement } from './convert-rule-data.ts';
 import type { PositionedFixup, RegionWrite } from './production-graphics.test-support.ts';
@@ -28,7 +29,8 @@ import { baseRepairBlock, entryOf, type RuleDataContents } from './rule-data.tes
 // content, shaped only as far as the production plan requires: three table programs with a parameter entry each, the 22
 // scripts they reach, ten built-in programs whose names fill the production name regions, flight messages that fill
 // the production message regions, and communications messages whose 13 sub-tables and 481 CMOVs take the production IDs
-// in a made-up assignment. Every archive also holds entries the plan does not name, and the disc a second face archive,
+// in a made-up assignment, and keyword tables of the production pair counts whose 14 distinct names fill the production
+// name regions, the fourth table naming the first one's. Every archive also holds entries the plan does not name, and the disc a second face archive,
 // which no job may read.
 
 const PLAN = PRODUCTION_RULE_DATA_SOURCES;
@@ -58,7 +60,20 @@ function productionAiPrograms(): AiPrograms {
     parameterEntry(18, { state1: [19, 20], state2: [21], state3: [22], state5: [23], state4: [24, 18] }), ...scripts(7, 0),
   ] as typeof plain.entries;
   plain.builtInPrograms = PLAN.aiPrograms.builtInNames.map(({ length }, index) => builtInProgram(0x100 + index * 0x40, { name: text(length - 1) }));
+  const names = PLAN.aiPrograms.keywordNames.map(({ length }, index) => `${text(length - 2)}${String.fromCharCode(0x41 + index)}`);
+  const [first, second, third] = keywordNameIndexes();
+  const table = (indexes: readonly number[], seed: number) => indexes.map((name, index) => keyword(names[name], index === 1 ? -seed : seed + index));
+  plain.keywordTables = [table(first, 0), table(second, 10), table(third, 20), table(first, 0)];
   return readAiPrograms(plain);
+}
+
+/**
+ * The name region each pair of the first three production keyword tables names, in region order: the tables take the 14
+ * regions in turn, as many as their pairs; the fourth table names the first one's.
+ */
+function keywordNameIndexes(): readonly (readonly number[])[] {
+  let next = 0;
+  return PLAN.aiPrograms.keywordTables.slice(0, 3).map(({ length }) => Array.from({ length: length / AI_LAYOUT.keywordEntryBytes - 1 }, () => next++));
 }
 
 /** Flight messages that fill the production message regions with their NULs. */
@@ -189,9 +204,9 @@ export interface ProductionRuleData {
   readonly archives: Readonly<Record<string, Uint8Array>>;
   /** The `MAIN/SR.NOB` entry of the plan, TABL 10165, to add to that archive. */
   readonly srEntries: readonly SyntheticEntry[];
-  /** The executable regions: the flight messages, the built-in table and its names, and filler for the handler targets. */
+  /** The executable regions: the flight messages, the built-in table and its names, filler for the handler targets, and the keyword tables and their names. */
   readonly writes: readonly RegionWrite[];
-  /** The built-in table's name and handler fixups. */
+  /** The built-in table's name and handler fixups, and the keyword tables' name fixups. */
   readonly fixups: readonly PositionedFixup[];
   /** The rule-data conversion's usage on these sources. */
   readonly usage: BudgetRecord;
@@ -240,6 +255,26 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
     const target: PositionedFixup['target'] = name ?? { object, offset };
     return { object: PLAN.aiPrograms.builtIn.object, offset: PLAN.aiPrograms.builtIn.offset + at, target: { object: target.object, offset: target.offset } };
   });
+  // The keyword tables at their production regions, each pair naming the production region of its name.
+  const keywordNameAt = new Map<string, ExecutableRegion>();
+  const keywordWrites: RegionWrite[] = [];
+  const keywordFixups: PositionedFixup[] = [];
+  contents['ai-programs'].keywordTables.forEach((entries, index) => {
+    const region = PLAN.aiPrograms.keywordTables[index];
+    const bytes = new Uint8Array(region.length);
+    entries.forEach(({ name, value }, pair) => {
+      const target = keywordNameAt.get(name) ?? PLAN.aiPrograms.keywordNames[keywordNameAt.size];
+      if (!keywordNameAt.has(name)) {
+        keywordNameAt.set(name, target);
+        keywordWrites.push({ object: target.object, offset: target.offset, bytes: regionText(name) });
+      }
+      word(bytes).setUint32(pair * AI_LAYOUT.keywordEntryBytes, target.offset, true);
+      word(bytes).setInt32(pair * AI_LAYOUT.keywordEntryBytes + 4, value, true);
+      keywordFixups.push({ object: region.object, offset: region.offset + pair * AI_LAYOUT.keywordEntryBytes, target: { object: target.object, offset: target.offset } });
+    });
+    keywordWrites.push({ object: region.object, offset: region.offset, bytes });
+  });
+  if (keywordNameAt.size !== PLAN.aiPrograms.keywordNames.length) throw new Error('the keyword names do not fill the production name regions');
   const handlersEnd = Math.max(...contents['ai-programs'].builtInPrograms.map(({ handler }) => handler.offset)) + 4;
   const messages = contents['flight-messages'];
   const writes: RegionWrite[] = [
@@ -248,6 +283,7 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
     ...(Object.keys(messages) as (keyof FlightMessages)[]).map(key => ({ ...PLAN.flightMessages[key], bytes: regionText(messages[key]) })),
     // The handler targets lie in object 2; a fixup must target a position inside its object.
     { object: 2, offset: 0, bytes: new Uint8Array(handlersEnd).fill(0xcc) },
+    ...keywordWrites,
   ];
 
   const usage = (Object.entries(contents) as [RuleDataPayload['role'], unknown][]).reduce(
@@ -259,7 +295,7 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
     archives,
     srEntries: [entryOf(PLAN.baseRepairItems.table, 'TABL', baseRepairBlock(contents['base-repair-items'].subsystemSelectors))],
     writes,
-    fixups,
+    fixups: [...fixups, ...keywordFixups],
     usage,
   };
 }

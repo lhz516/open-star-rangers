@@ -33,8 +33,8 @@ import type { ImportJob } from '../src/workers/import-host.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
 import { IMPORT_STAGES } from '../src/workers/import-protocol.ts';
 import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
-import { sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
-import { main, runPackageCheck, type PackageCheckReport } from './package-check.ts';
+import { PADDING, sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
+import { keywordTablesDigest, main, runPackageCheck, type PackageCheckReport } from './package-check.ts';
 
 const DIRECTORY_MARKER = 'PRIVATE-MARKER-package-check';
 const directory = mkdtempSync(join(tmpdir(), `osr-package-check-${DIRECTORY_MARKER}-`));
@@ -43,7 +43,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 /** Writes a disc of `files` plus unread padding as a CloneCD file set and returns its paths and whitelist. */
 async function writeDisc(name: string, files: Record<string, SyntheticFileContent>) {
-  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) } });
+  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': PADDING });
   const paths = [join(directory, `${name}-${MARKER}.ccd`), join(directory, `${name}-${MARKER}.img`)];
   writeFileSync(paths[0], await disc.descriptor.read(0, disc.descriptor.byteLength));
   writeFileSync(paths[1], await disc.image.read(0, disc.image.byteLength));
@@ -113,7 +113,13 @@ describe('package check', () => {
     const ai = contents['ai-programs'];
     expect(roles.get('ai-programs')!.counts).toMatchObject({
       programs: ai.programs.length, builtInPrograms: 10, entries: 25, parameterEntries: 3, scriptEntries: 22, globalElements: ai.globals.elements.length,
+      // The production structure: 3, 6, 5 and 3 pairs naming 14 distinct names of 111 bytes with their NULs (ai.md §5.3).
+      keywordPairs0: 3, keywordPairs1: 6, keywordPairs2: 5, keywordPairs3: 3, keywordNames: 14, keywordNameBytes: 111,
     });
+    // Only the ai-programs role reports a digest of its keyword tables, the one an independent read reproduces.
+    expect(report.roles.filter(({ digests }) => digests !== undefined).map(({ role }) => role)).toEqual(['ai-programs']);
+    expect(roles.get('ai-programs')!.digests).toEqual({ keywordTables: keywordTablesDigest(ai.keywordTables) });
+    expect(keywordTablesDigest([[{ name: '\x80a', value: -1 }]])).toBe(sha256Fingerprint(new TextEncoder().encode('0 0 -1 8061\n')));
     expect(roles.get('comm-menus')!.counts).toMatchObject({ menus: 5 });
     expect(roles.get('base-repair-items')!.counts).toEqual({ selectors: 11 });
     expect(roles.get('flight-messages')!.counts).toEqual({ texts: 7, textBytes: sum(Object.values(contents['flight-messages']).map(text => text.length)) });

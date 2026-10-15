@@ -344,6 +344,7 @@ describe('error code grammar', () => {
     effectRecords: true, missileTypes: true, ringSegments: true, executableObjects: true, executablePages: true, executableRegion: true,
     cockpitSlots: true, cockpitElements: true, cockpitInstruments: true, mfdRecords: true, tableRecords: true, snipFrames: true, diagStartupMessages: true, diagTextBytes: true,
     aiProgramRecords: true, aiScriptItems: true, aiEntries: true, commMenuItems: true, animFrameBytes: true, commTableItems: true, commNames: true,
+    aiKeywordEntries: true, aiKeywordNames: true, aiKeywordNameBytes: true,
   };
 
   it.each([

@@ -124,7 +124,8 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
   - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
-  - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`；
+  - P3-08/13 起 `ai-programs` 另报关键字表的计数（`keywordPairs0`–`keywordPairs3`、`keywordNames`、`keywordNameBytes`）与摘要 `digests.keywordTables`（其他角色没有 `digests`）；
+  - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`（含 `ai-programs.keywordEntries`、`ai-programs.keywordNameBytes`）；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
 
   摘要为 `sha256:`，按 Asset ID 顺序覆盖每个 Asset 的 `<Asset ID> <payload 指纹>` 行。不输出名称、文字、字段值、像素、采样、宿主路径或宿主错误文本。测试可注入合成白名单（`runPackageCheck(paths, { catalog })`）。

@@ -43,8 +43,10 @@ import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 // Local package check (P3-03 S-16, AC-19): runs the production import job the Worker runs on a CloneCD file set,
 // validates the whole package against the slice definition, decodes every Asset of the roles P3-03 added or extended with
 // its role's reader and loads the mission in Core. The P3-09 map geometry is also compared with an independent read of
-// its source record (`mapGeometrySource`), which shares no code with the converter. Output holds only verdicts, Asset IDs, counts, limits, read amounts and
-// hashes: never names, texts, field values, pixels, samples, host paths or host error text.
+// its source record (`mapGeometrySource`), which shares no code with the converter. The P3-08 keyword tables of
+// `ai-programs` are reported as counts and a digest (`keywordTablesDigest`) for comparison with an independent local read.
+// Output holds only verdicts, Asset IDs, counts, limits, read amounts and hashes: never names, texts, field values,
+// pixels, samples, host paths or host error text.
 
 export interface PackageCheckOptions {
   /** A synthetic whitelist for tests; otherwise the product entry identifies the source. */
@@ -75,6 +77,8 @@ export interface RoleReport {
   readonly digest: string;
   /** Records, frames, texts, sounds and pixels; never a value. */
   readonly counts: Readonly<Record<string, number>>;
+  /** `sha256:` digests of parts of the content that an independent read can compare, by name; only roles that have them. */
+  readonly digests?: Readonly<Record<string, string>>;
 }
 
 export interface GroupReport {
@@ -147,6 +151,7 @@ interface PackageAsset {
 interface Measured {
   readonly counts: Readonly<Record<string, number>>;
   readonly limits: readonly LimitCheck[];
+  readonly digests?: Readonly<Record<string, string>>;
 }
 
 /** What a measure may consult besides its Asset: other Assets by ID, and the map geometry read independently from the disc. */
@@ -180,12 +185,21 @@ function decoded<P extends { readonly role: string; readonly content: unknown }>
   return <R extends P['role']>(role: R, measure: (content: ContentOf<P, R>) => Measured): Measure => ({ descriptor, bytes }) => {
     const payload = decode(bytes, descriptor);
     if (payload.role !== role) throw new CheckStop('role-mismatch', `roles.${role}`);
-    const { counts, limits } = measure(payload.content as ContentOf<P, R>);
-    return { counts, limits: [...limits, limit(`${role}.payloadBytes`, bytes.length, payloadBytes)] };
+    const { counts, limits, digests } = measure(payload.content as ContentOf<P, R>);
+    return { counts, limits: [...limits, limit(`${role}.payloadBytes`, bytes.length, payloadBytes)], ...(digests && { digests }) };
   };
 }
 
 const ruleData = decoded<RuleDataPayload>(decodeRuleDataPayload, LOGIC_LIMITS.payloadBytes);
+
+/**
+ * `sha256:` of the keyword tables as lines `<table> <pair> <i32 value> <name bytes in hex>` in table and pair order, the
+ * form an independent read of the executable regions can reproduce without printing a name or a value.
+ */
+export function keywordTablesDigest(tables: readonly (readonly { readonly name: string; readonly value: number }[])[]): string {
+  const hex = (name: string) => Array.from(name, character => character.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+  return sha256Fingerprint(new TextEncoder().encode(tables.flatMap((pairs, table) => pairs.map(({ name, value }, index) => `${table} ${index} ${value} ${hex(name)}\n`)).join('')));
+}
 const flightData = decoded<FlightDataPayload>(decodeFlightDataPayload, FLIGHT_DATA_LIMITS.payloadBytes);
 
 /**
@@ -260,12 +274,17 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
     const stateLists = ai.entries.flatMap(entry => (entry.kind === 'parameters' ? Object.values(entry.stateScripts) : []));
     const names = [...ai.programs, ...ai.builtInPrograms].map(({ name }) => name.length);
     const argumentBytes = scripts.flat().flatMap(({ argument }) => (argument === null ? [] : [argument.length]));
+    const keywordNames = [...new Set(ai.keywordTables.flat().map(({ name }) => name))].map(name => name.length);
+    const keywordPairs = ai.keywordTables.map(table => table.length);
     return {
       counts: {
         programs: ai.programs.length, builtInPrograms: ai.builtInPrograms.length, entries: ai.entries.length,
         parameterEntries: ai.entries.length - scripts.length, scriptEntries: scripts.length, scriptItems: sum(scripts.map(items => items.length)),
         globalElements: ai.globals.elements.length, texts: names.length + argumentBytes.length, textBytes: sum([...names, ...argumentBytes]),
+        ...Object.fromEntries(keywordPairs.map((pairs, table) => [`keywordPairs${table}`, pairs])),
+        keywordNames: keywordNames.length, keywordNameBytes: sum(keywordNames.map(length => length + 1)),
       },
+      digests: { keywordTables: keywordTablesDigest(ai.keywordTables) },
       limits: [
         limit('ai-programs.programRecords', largest([ai.programs.length, ai.builtInPrograms.length]), AI_PROGRAMS_LIMITS.programRecords),
         limit('ai-programs.programNameBytes', largest(names), AI_PROGRAMS_LIMITS.programNameBytes),
@@ -274,6 +293,8 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
         limit('ai-programs.stateScriptItems', largest(stateLists.map(list => list.length)), AI_PROGRAMS_LIMITS.stateScriptItems),
         limit('ai-programs.scriptItems', largest(scripts.map(items => items.length)), AI_PROGRAMS_LIMITS.scriptItems),
         limit('ai-programs.scriptTextBytes', largest(argumentBytes), AI_PROGRAMS_LIMITS.scriptTextBytes),
+        limit('ai-programs.keywordEntries', largest(keywordPairs), AI_PROGRAMS_LIMITS.keywordEntries),
+        limit('ai-programs.keywordNameBytes', largest(keywordNames), AI_PROGRAMS_LIMITS.keywordNameBytes),
       ],
     };
   }) },
@@ -405,20 +426,28 @@ async function readMapGeometrySource(files: readonly ImportFile[]): Promise<MapG
 function combine(measured: readonly Measured[]): Measured {
   const counts: Record<string, number> = {};
   const limits = new Map<string, LimitCheck>();
+  const digests: Record<string, string> = {};
   for (const item of measured) {
     for (const [name, value] of Object.entries(item.counts)) counts[name] = (counts[name] ?? 0) + value;
+    // Only single-Asset roles report digests.
+    Object.assign(digests, item.digests);
     for (const check of item.limits) {
       const seen = limits.get(check.name);
       if (!seen || check.observed > seen.observed) limits.set(check.name, check);
     }
   }
-  return { counts, limits: [...limits.values()] };
+  return { counts, limits: [...limits.values()], ...(Object.keys(digests).length > 0 && { digests }) };
 }
 
-/** A role's report from its Assets and their summed counts. */
-function roleReport(role: string, group: ResourceGroup, members: readonly PackageAsset[], counts: Readonly<Record<string, number>>): RoleReport {
+/** A role's report from its Assets, their summed counts and their digests, if any. */
+function roleReport(
+  role: string, group: ResourceGroup, members: readonly PackageAsset[], counts: Readonly<Record<string, number>>, digests?: Readonly<Record<string, string>>,
+): RoleReport {
   const descriptors = members.map(({ descriptor }) => descriptor);
-  return { role, group, assets: members.length, payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)), digest: digestOf(descriptors), counts };
+  return {
+    role, group, assets: members.length, payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)), digest: digestOf(descriptors), counts,
+    ...(digests && { digests }),
+  };
 }
 
 /** The only Asset of logic role `role`, decoded with the logic payload reader. */
@@ -570,7 +599,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
       if (members.length === 0) throw new CheckStop('missing-asset', `roles.${role}`);
       if (members.some(({ descriptor }) => descriptor.group !== group)) throw new CheckStop('group-mismatch', `roles.${role}`);
       const measured = combine(await Promise.all(members.map(asset => measure(asset, context))));
-      roles.push(roleReport(role, group, members, measured.counts));
+      roles.push(roleReport(role, group, members, measured.counts, measured.digests));
       limits.push(...measured.limits);
     }
     limits.push(...budgetLimits(usage));

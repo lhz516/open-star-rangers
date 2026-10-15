@@ -64,9 +64,9 @@ describe('production rule-data mappings', () => {
     });
   });
 
-  it('name AICO 6001, TABL 6003 and the 25 entries of the group-0 closure, then the built-in table and its 10 names', () => {
+  it('name AICO 6001, TABL 6003 and the 25 entries of the group-0 closure, the built-in table and its 10 names, and the keyword tables and their 14 names', () => {
     const ai = parts('data/ai-programs');
-    expect(ai).toHaveLength(2 + 25 + 1 + 10);
+    expect(ai).toHaveLength(2 + 25 + 1 + 10 + 4 + 14);
     expect(ai[0]).toBe('MAIN/AISTUFF.NOB#6001.AICO/group-0');
     expect(ai.filter(part => part.endsWith('.DFPG/null'))).toHaveLength(3);
     expect(ai.filter(part => part.endsWith('.TABL/null'))).toHaveLength(23);
@@ -87,6 +87,23 @@ describe('production rule-data mappings', () => {
       expect(length - 1).toBeLessThanOrEqual(Math.min(16, AI_PROGRAMS_LIMITS.programNameBytes));
     }
     names.slice(1).forEach((name, index) => expect(name.offset).toBeGreaterThanOrEqual(names[index].offset + names[index].length));
+
+    // ai.md §5.3: four consecutive tables of 3, 6, 5 and 3 pairs and a null pair each, 0x5ea40–0x5eae7 in object 2, and
+    // 14 names 4-byte aligned from 0x1723a8 to 0x172427 in object 4, 111 bytes with their NULs.
+    expect(regions.keywordTables.map(executableRegion)).toEqual([[0x5_ea40, 4], [0x5_ea60, 7], [0x5_ea98, 6], [0x5_eac8, 4]]
+      .map(([address, pairs]) => ({ ...objectOffset(address), length: pairs * 8 })));
+    expect(objectOffset(0x5_ea40).object).toBe(2);
+    const keywordNames = regions.keywordNames.map(executableRegion);
+    expect(keywordNames).toHaveLength(14);
+    expect(keywordNames.reduce((total, { length }) => total + length, 0)).toBe(111);
+    for (const { object, offset, length } of keywordNames) {
+      expect(object).toBe(4);
+      expect(offset % 4).toBe(0);
+      expect(offset).toBeGreaterThanOrEqual(objectOffset(0x17_23a8).offset);
+      expect(offset + length).toBeLessThanOrEqual(objectOffset(0x17_2428).offset);
+      expect(length - 1).toBeLessThanOrEqual(AI_PROGRAMS_LIMITS.keywordNameBytes);
+    }
+    keywordNames.slice(1).forEach((name, index) => expect(name.offset).toBeGreaterThanOrEqual(keywordNames[index].offset + keywordNames[index].length));
   });
 
   it('name the seven documented flight message regions, each within the text limit', () => {

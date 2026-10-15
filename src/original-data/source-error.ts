@@ -65,6 +65,11 @@ export type SourceErrorCode =
  *   direct list's messages.
  * - `commNames`: the names of one COMM name list, before its null pointer.
  *
+ * Revision 3 (the keyword tables of `data/ai-programs`) reuses `textBytes` for each keyword name, and adds:
+ * - `aiKeywordEntries`: the pairs of one EXE keyword table before its null pair.
+ * - `aiKeywordNames`: the EXE name regions the keyword tables point to.
+ * - `aiKeywordNameBytes`: the bytes of those name regions together, NULs included.
+ *
  * Counts the format fixes, such as the 20 kind bits, the 18 × 3 TABL 4003 pairs and the 3 EXIC lists, are format
  * rules rather than limits.
  */
@@ -103,6 +108,9 @@ export type SourceLimitName =
   | 'animFrameBytes'
   | 'commTableItems'
   | 'commNames'
+  | 'aiKeywordEntries'
+  | 'aiKeywordNames'
+  | 'aiKeywordNameBytes'
   | BudgetDimension;
 
 export interface SourceLimit {

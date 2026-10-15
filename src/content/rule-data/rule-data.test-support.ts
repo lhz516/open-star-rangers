@@ -1,6 +1,6 @@
 export { deepFrozen } from '../logic/logic-content.test-support.ts';
 import { syntheticGroup } from '../synthetic-content.test-support.ts';
-import { encodeRuleDataPayload, type RuleDataPayload, type RuleDataRole } from './rule-data-payload.ts';
+import { encodeRuleDataPayload, RULE_DATA_SCHEMA_VERSIONS, type RuleDataPayload, type RuleDataRole } from './rule-data-payload.ts';
 
 // Code-generated synthetic rule-data content for tests; it never holds original data. Builders return fresh mutable plain
 // data that a test may corrupt. Texts carry MARKER so privacy assertions can prove they never reach diagnostics, and bytes
@@ -122,6 +122,8 @@ export const parameterEntry = (installScript: number | null, scripts: Record<str
   at30: 0.25, at34: 1, installScript, stateScripts: stateScripts(scripts),
 });
 
+export const keyword = (name: string, value: number) => ({ name, value });
+
 export const scriptItem = (opcode: number, argument: string | null = null, branch: number | null = null) => ({ opcode, argument, branch });
 
 export const script = (items = [scriptItem(109, text(37)), scriptItem(9000, null, 0), scriptItem(10000)]) => ({ kind: 'script', items });
@@ -147,7 +149,23 @@ export function syntheticAiPrograms() {
       script(),
     ],
     builtInPrograms: [builtInProgram(0x100), builtInProgram(0xfffffff0, { name: text(4) })],
+    keywordTables: syntheticKeywordTables(),
   };
+}
+
+/**
+ * Keyword tables of made-up names and values: the first and fourth tables are equal (they share their names), names
+ * repeat across tables, and the values include 0, negative values and the sign bit. Names within a table differ even
+ * with A–Z folded, and two of them differ only in a byte outside A–Z that a fold would not change.
+ */
+export function syntheticKeywordTables() {
+  const first = [keyword(text(5), 0), keyword(`${text(3)}Q`, -1), keyword(text(11), 0x7fffffff)];
+  return [
+    first,
+    [keyword(text(1), 3), keyword(`${text(3)}q\xc4`, 2), keyword(`${text(3)}q\xe4`, 1), keyword(text(7), -0x80000000), keyword(text(5), 4), keyword(text(2), 5)],
+    [keyword(text(9), 0), keyword(text(1), 1)],
+    first.map(entry => ({ ...entry })),
+  ];
 }
 
 export const commandItem = (command: number, length = 10) => ({ text: text(length), command });
@@ -206,6 +224,6 @@ export const SYNTHETIC_RULE_DATA: Readonly<Record<RuleDataRole, () => unknown>> 
 /** The canonical bytes and a matching mutable descriptor for one role's synthetic content. */
 export function syntheticRuleDataAsset(role: RuleDataRole, content: unknown = SYNTHETIC_RULE_DATA[role]()) {
   const bytes = encodeRuleDataPayload({ role, content } as RuleDataPayload);
-  const [descriptor] = syntheticGroup('logic', [{ id: `data/${role}`, role, bytes }]).manifest.assets;
+  const [descriptor] = syntheticGroup('logic', [{ id: `data/${role}`, role, bytes, schemaVersion: RULE_DATA_SCHEMA_VERSIONS[role] }]).manifest.assets;
   return { bytes, descriptor };
 }

@@ -38,7 +38,8 @@ import {
 import type { MissionSetup, ResolvedDeclaration } from '../mission/load-mission.ts';
 import type { DebrisCollisionShape, DebrisParameters, DebrisRecord } from '../../content/rule-data/debris-parameters.ts';
 import type {
-  AiEntry, AiGlobals, AiParameterEntry, AiPrograms, AiScriptEntry, BuiltInProgram, CodeIdentity, ScriptItem, StateScripts, TableProgram,
+  AiEntry, AiGlobals, AiParameterEntry, AiPrograms, AiScriptEntry, BuiltInProgram, CodeIdentity, KeywordEntry, ScriptItem, StateScripts,
+  TableProgram,
 } from '../../content/rule-data/ai-programs.ts';
 import type { BaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
 import type { CategoryItem, CommandItem, CommMenus } from '../../content/rule-data/comm-menus.ts';
@@ -215,6 +216,7 @@ const aiPrograms = object<AiPrograms>({
   programs: list(tableProgram),
   entries: list((entry: AiEntry) => (entry.kind === 'parameters' ? parameterEntry(entry) : scriptEntry(entry))),
   builtInPrograms: list(builtInProgram),
+  keywordTables: list(list(object<KeywordEntry>({ name: scalar, value: scalar }))),
 });
 
 // The communications contents' types belong to P3-03, as the craft info's does. Texts are byte strings, written by the

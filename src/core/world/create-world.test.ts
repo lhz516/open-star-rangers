@@ -684,6 +684,7 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     const builtIn = (input: Record<string, Item>) => input.aiPrograms.content.builtInPrograms as { at14: number; at24: number; at28: number; at2C: number; handler: { offset: number } }[];
     const commands = (input: Record<string, Item>, table: string) => input.commMenus.content[table] as { text: string; command: number }[];
     const faceTables = (input: Record<string, Item>) => input.commMessages.content.faceTables as { present: boolean; frameDurations?: number[] }[][][];
+    const keywordTables = (input: Record<string, Item>) => input.aiPrograms.content.keywordTables as { name: string; value: number }[][];
 
     it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts, part counts and AI programs', () => {
       const hash = hashOf();
@@ -721,6 +722,10 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
         (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
         (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
         (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
+        // The keyword tables (P3-03 revision 3): a value, a name and the pair order.
+        (input) => void (keywordTables(input)[1][0].value = 9),
+        (input) => void (keywordTables(input)[3][2].name = `${keywordTables(input)[3][2].name}!`),
+        (input) => void keywordTables(input)[2].reverse(),
         // The communications inputs (CB-01): the IDs and the complete contents, texts beyond the keys included.
         (input) => void (input.commMenus.id = 'data/other-comm-menus'),
         (input) => void (commands(input, 'gatedTargetCommands')[0].text = menuText('2')),

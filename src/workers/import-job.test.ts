@@ -285,7 +285,7 @@ describe('logic conversion', () => {
     const { drafts, models: bindings } = captured!;
     expect(manifests[0].identity).toEqual({ ...basis, manifestIdentity: deriveManifestIdentity(basis, [...drafts, ...groups.slice(1).map(sentDraft)]) });
     expect(manifests.every(({ identity }) => identity.manifestIdentity === manifests[0].identity.manifestIdentity)).toBe(true);
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-3.audio-2.models-4');
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
 
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);

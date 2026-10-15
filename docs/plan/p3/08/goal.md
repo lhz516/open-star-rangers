@@ -82,7 +82,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | completed |
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
-| [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | in-progress |
+| [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | pending |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | pending |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | pending |
@@ -120,6 +120,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 09 完成（D-03，agent 依用户授权批准）：** 关键字表经 P3-03 修订 3 导入（`ai-programs` schema 2，logic-4）；友伤累计取方案 1，写入留在 P3-10（CB-12），本任务只读；命令经 P3-10 的 `deliver-command`、回复经 `queueLine`，菜单到回复的联合测试归本任务（CR-28）；对象集合与地图可见标志由 P3-09 的 MW-06 唯一定义，CR-19 的重复撤回，本任务复用并承担联合测试 1–7（CR-29）；`b` 纳入，`KeyB` 写入 P3-05 绑定表。协调者据此更新阶段索引的责任描述，修正子任务 19、20、21 的范围与写入范围（不再新建 `object-sets.ts`，不在伤害中写友伤累计）。P3-09 × P3-10 合并留下的两个联合故障（停靠倒计时与 Warp 请求同 tick、同批 `launch` 与 `request-warp`）属于 P3-09/P3-10 的契约（MW-04 或 CB-07），记在 P3-02 的合并说明中，不在本 goal 内修复。
 - **2026-10-15 — 12 完成：** 共享形状在合并后的基础上实现：`RULES_VERSION` 6→7、快照格式 5→6；replay 格式（2→3）随 22 加入 `drop-transponder` 命令时递增，22 的写入范围加入 `src/core/replay/recording.ts`。尚未接入的请求（`ai-match-speed`、`warp-departure`、`create-transponder`）投递即故障（`pipeline.request-unwired`），由 17、21、22 接入时移除。交 23：所有数值取最长时（P3-07 的 18 挂点战斗状态 + 最长控制器 + 内容上限的解析缓存）估计约 16.6 MiB，略超 `canonicalTextLength` 16 MiB，须在 23 的容量推导中处理。交 28：`docs/engineering/modules/core.md` 的版本与请求清单已过时。
 - **2026-10-15 — 11 完成（D-02，agent 依用户授权批准）：** 判据 K-01–K-10 写入 spec 的“D-02 连续行为判据”，方法写入新的 B-011（B-010 已被 P3-09 的战略地图与 Warp 占用，ID 不复用，goal 与子任务 11、26、27 的引用已同步）。编队以独立规则模型核对并沿用 P3-06 的 R-04c 步长预算；僚机按三个抽取/控制流类采样；三项已批准差异（基地保持值、摆动相位、Xpon 首次回调表现）单独报告；正式采样至少 8 次完整运行，正式采样后仍缺的项逐项记录决定，不自动降级。
+- **2026-10-15 — 13 完成：** 关键字表导入 `data/ai-programs`（schema 2），生产转换器版本 `graphics-5.logic-4.audio-2.models-4`，旧缓存不恢复；本机真实镜像 package-check 通过，摘要与独立的 LE fixup 解码一致。合成光盘的填充由 2 MiB 提到 4 MiB（每个小 EXE 区域读取一个原始扇区）。协调者接受一项偏差：转换器不区分 fixup 的 16 位目标偏移编码（`RegionFixup` 没有目标宽度字段，两种编码载入结果相同，真实镜像的编码已由独立解码器确认）。协调者随集成更新 U-001 与工具指南的包核对输出说明。
 
 ## 审批
 

@@ -4,6 +4,7 @@ import type { AssetId } from '../../content/asset-id.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import type { ExplosionTable } from '../../content/flight/flight-data-content.ts';
 import { LOGIC_IDS, syntheticMission, syntheticRoster } from '../../content/logic/logic-content.test-support.ts';
+import type { AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { syntheticCraftInfo } from '../../content/rule-data/rule-data.test-support.ts';
 import { loadMission } from '../../core/mission/load-mission.ts';
@@ -11,6 +12,7 @@ import { thrownBy } from '../../core/world/world.test-support.ts';
 import { missionGroups } from '../mission/mission.test-support.ts';
 import { imported, logicGroupInput, packageCraftTypes } from './resource-holder.test-support.ts';
 import { SYNTHETIC_MAP_GEOMETRY } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { productionRuleData } from '../../original-data/conversion/production-rule-data.test-support.ts';
 import { craftInfoInput, mapGeometryInput, missionInput, modelInputs, ruleDataInputs, type PackageGroup } from './mission-input.ts';
 
 // The mission input shared by the mission diagnostics and the mission owner (P3-04 subtask 05): the three logic Assets
@@ -74,6 +76,9 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     const inputs = ruleDataInputs(groups);
     expect(inputs.debrisParameters?.id).toBe('data/debris-parameters');
     expect(inputs.aiPrograms).toMatchObject({ id: 'data/ai-programs', content: { builtInPrograms: expect.any(Array) } });
+    // The complete content, keyword tables included (P3-03 revision 3): nothing is extracted for Core.
+    expect(inputs.aiPrograms?.content).toEqual(productionRuleData().contents['ai-programs']);
+    expect((inputs.aiPrograms?.content as AiPrograms).keywordTables).toHaveLength(4);
     expect(inputs.commMenus).toMatchObject({ id: 'data/comm-menus', content: { categories: expect.any(Array) } });
     expect(inputs.baseRepairItems).toMatchObject({ id: 'data/base-repair-items', content: { subsystemSelectors: expect.any(Array) } });
     expect(inputs.commMessages).toMatchObject({ id: 'data/comm-messages', content: { names2001: expect.any(Array) } });

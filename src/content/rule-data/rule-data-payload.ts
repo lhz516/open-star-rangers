@@ -39,7 +39,8 @@ interface RoleFormat<R extends RuleDataRole> {
 const FORMATS: { readonly [R in RuleDataRole]: RoleFormat<R> } = Object.freeze({
   'craft-info': { schemaVersion: 1, read: readCraftInfo },
   'debris-parameters': { schemaVersion: 1, read: readDebrisParameters },
-  'ai-programs': { schemaVersion: 1, read: readAiPrograms },
+  // Schema 2 adds the keyword tables (P3-03 spec, revision 3).
+  'ai-programs': { schemaVersion: 2, read: readAiPrograms },
   'comm-menus': { schemaVersion: 1, read: readCommMenus },
   'base-repair-items': { schemaVersion: 1, read: readBaseRepairItems },
   'flight-messages': { schemaVersion: 1, read: readFlightMessages },
