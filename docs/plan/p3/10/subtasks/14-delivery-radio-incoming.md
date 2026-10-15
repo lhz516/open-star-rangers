@@ -36,6 +36,7 @@ updated: 2026-10-14
 - `src/core/systems/communications*.ts`：投递后的菜单关闭与事件。
 - `src/core/systems/pipeline*.ts`：阶段与请求处理接入。
 - `src/core/rules/displays*.ts`、`src/core/systems/displays*.ts`：页 5 的保存与恢复。
+- `src/core/systems/energy.test.ts`：页 5 的测试前置条件随 CB-09 更新（仅测试）。
 
 ## 验收标准
 
