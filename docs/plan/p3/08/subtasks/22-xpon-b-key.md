@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "22"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 22 — Xpon 与 b 键
@@ -45,6 +45,8 @@ updated: 2026-10-14
 - `src/core/contracts/domain-events.ts`：无声明来源的形状。
 - `src/ui/game-input/**`：绑定与输入测试。
 - `docs/engineering/keyboard-input.md`：绑定说明。
+- `src/core/replay/recording.ts`：`drop-transponder` 加入后 `GAME_REPLAY_VERSION` 2→3（CR-25）。
+- `src/core/replay/recording.test.ts`：版本与旧录制拒绝的测试。
 
 ## 验收标准
 
