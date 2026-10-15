@@ -105,7 +105,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [21-bridge-diagnostics-wiring.md](./subtasks/21-bridge-diagnostics-wiring.md) | 19 | completed |
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | completed |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | completed |
-| [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | in-progress |
+| [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | completed |
 | [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | completed |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
@@ -150,6 +150,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — D-02 与新版连续结果的先后：** 按计划依赖，23（真实内容本地核对，Core 对独立模型）在 10 之前完成；其报告只以判定与计数到达协调者（例如每次运行 331 个 Warp 步、0 个超出容差），没有与原版对照的数值。协调者在 10 的启动说明中要求只用 09 的预实验数据，不读取 `local/research/p3-09/real-content/out` 或任何新版连续输出；`local/research/p3-09/comparison/` 尚不存在。27 据此核对“D-02 早于看到新版的连续行为结果”。
 - **2026-10-14 — 10 已集成（D-02 按预先授权由 agent 定稿，待用户事后审阅）：** spec 审批节记录“D-02 定稿”，B-010 写定原版一侧方案。Φ 按原版逐帧步长与新版 2 单位精确合成，差异 3 的跨版本差值由双方步长解释并披露；新增区分情形：到达中至少 1 次吸附与 1 次 0 < s < 1；只有 Q-02 的另一种 z 门禁状态改为代码证据加 Node 期望；f = 1 与 s = 0 不是覆盖要求、也不豁免；24 须逐帧暂停取得 Warp 爬升段/完整窗口与可见跨越前后每次的读数，并读出吸附对象。交 29：executable 中“SCEN 3019 内 f = 1 与 f = 0.5 都可达”与 09 的运行观察矛盾（f = 1 需玩家在世界矩形外），一并更正。
 - **2026-10-14 — 29 已集成：** R-A/R-B、方向表更正、17/18/23/30 的实现者事实与 f = 1 的更正已写入 executable，并在私有只读 Ghidra 副本中逐条复核；U-009 新增注记、状态不变；R-A 为代码规则分支，MW-12 差异 6 不适用。**更正“18 已集成”一条：** F(1/15000) 略大于 1/15000，x = 15000 或 30000 落在从该点开始的扇区，与精确除法相同（不是“前一扇区”）；该边界两扇区给出同一角点，规则行为不受影响，Core 的 `sectorIndex` 正确。`src/core/rules/warp-arrival.test.ts` 的测试名与注释重复了错误说法，新增修复 32 更正。
+- **2026-10-14 — 24 已集成：** 四次完整运行 v1-01、v2-01、w2-01、w1-03（两种布局；w1-01 由操作者取消、w1-02 DOSBox-X SIGSEGV，均排除）。两个完整逐帧 Warp 窗口与独立 Φ 逐位一致。按 2026-10-14 的 D-02 补定（spec“采样覆盖的补充与不可达分支”与审批），停放敌机的阶段对齐跨越计入下限；基地、来源被毁、Warp 中断与零距离/失效标记分支改为代码证据加 Node 期望，逐项披露并交 P3-10/P3-11/P3-15 联合复验。与 P3-08、P3-10 轮流使用基准环境。
 
 ## 审批
 
