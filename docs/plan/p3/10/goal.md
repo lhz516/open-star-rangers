@@ -101,7 +101,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | completed |
 | [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | completed |
 | [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | completed |
-| [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | in-progress |
+| [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | completed |
 | [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | pending |
 | [19-comm-projection.md](./subtasks/19-comm-projection.md) | 13, 14, 17 | pending |
 | [20-replay-limits.md](./subtasks/20-replay-limits.md) | 15, 18, 19 | pending |
@@ -155,6 +155,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 僚机到达的完全修理归 17（15 的问题，协调者选推荐方案 A）：** `limits.wingmanArrivalRepair` 与 `fullRepair` 的调用由 17 在 `area.ts` 中接入，不建桩、不重复实现；15 做其余反应与报告。
 
 - **2026-10-14 — 15 完成：** P3-08 交付之前，尾随检查的攻击者条件恒为假（CB-17 决定 11）：`checkTail` 不遍历种类 0x780，`warnTail`（`0x38c30`）已导出并单独测试，遍历与调用由 P3-08 加入。`limits.wingmanArrivalRepair` 在 17 之前不写。负载下 `pnpm check` 的 5 秒超时以 `vitest --testTimeout=60000` 全量通过为准。
+
+- **2026-10-14 — 17 完成：** 基地按键在基地上下文由 `commands.ts` 的 `judgeBaseKey` 接受（CB-07 §3）；`fullRepair(context, entity, inRequestHandling)`（systems/base-interior.ts）是 `0x39820` 的共享入口，供停靠僚机、僚机到达，以及 P3-11 救援与 P3-08 调用。AC-09 按 D-01 ② 以单一数组验证。视角 6 必须有基地服务状态。rules/docking.ts 与 rules/base-service.ts 的周期与组字段常量重复，由 18 去重。
 
 ## 审批
 

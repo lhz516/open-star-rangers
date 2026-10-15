@@ -21,6 +21,7 @@ import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState }
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
+import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
 import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
 import { deliverCommand } from './communications.ts';
@@ -112,8 +113,8 @@ export type Request =
   /** Sub-command 3: the base page's confirmation. */
   | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
 
-/** P3-10's request types (CB-08) whose handling P3-10's subtasks 17 and 18 add; until then no rule posts them. */
-const COMMUNICATIONS_REQUESTS = ['depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
+/** P3-10's request types (CB-08) whose handling P3-10's subtask 18 adds; until then no rule posts them. */
+const COMMUNICATIONS_REQUESTS = ['depart'] as const satisfies readonly Request['type'][];
 type CommunicationsRequest = RequestOf<(typeof COMMUNICATIONS_REQUESTS)[number]>;
 const isCommunicationsRequest = (request: Request): request is CommunicationsRequest => (COMMUNICATIONS_REQUESTS as readonly string[]).includes(request.type);
 
@@ -384,6 +385,15 @@ function handleRequest(context: TickContext, request: Request): void {
     dock(context);
     return;
   }
+  // Sub-commands 1–3 read the player's entity and the base service (BS4).
+  if (request.type === 'base-navigate') {
+    navigateBase(context, request);
+    return;
+  }
+  if (request.type === 'base-confirm') {
+    confirmBase(context, request);
+    return;
+  }
   if (request.type === 'spawn') {
     dispatchSpawn(context, request);
     return;
@@ -510,8 +520,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('parked-update', updateParkedObjects),
   // 0x2bf08 (P3-09).
   stage('warp-completion', null),
-  // 0x398ec, view mode 6 (P3-10).
-  stage('base-interior', null),
+  // 0x398ec, view mode 6 (P3-10, base-interior.ts).
+  stage('base-interior', serviceBase),
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),

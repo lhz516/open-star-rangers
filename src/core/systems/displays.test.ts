@@ -6,6 +6,7 @@ import { blankCraftCombat, SUBSYSTEM_COUNT, type CraftCombat, type Entity, type 
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { idleBaseService } from './base-interior.test-support.ts';
 import type { TickContext } from './pipeline.ts';
 import type * as Targeting from './targeting.ts';
 
@@ -42,6 +43,8 @@ function displayState(viewMode = 0x0c, combat: Partial<CraftCombat> = {}): [Worl
   });
   player.state = 'active';
   state.player.viewMode = viewMode;
+  // The base view always has a base service (CB-11).
+  if (viewMode === 6) state.baseService = idleBaseService();
   return [state, player];
 }
 

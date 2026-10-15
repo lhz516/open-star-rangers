@@ -9,8 +9,9 @@
  * 1. Without an available player, `player-unavailable`.
  * 2. Outside the flight context, `wrong-context`: the base, map and Warp keys never reach `0x27b44`, and a menu there is
  *    kept as it is, shown again when its page returns (comm §7.6). So are `navigate-selection` and `launch` in flight.
- *    The base context's `navigate-selection`, `confirm-selection` and `launch` belong to the base rules (P3-10/17, 18)
- *    and the map's `confirm-selection` to P3-09: they stay not implemented here, after the player gate.
+ *    commands.ts judges an available player's base keys `navigate-selection` and `confirm-selection` before this module
+ *    (P3-10/17); the base context's `launch` (P3-10/18) and the map's `confirm-selection` (P3-09) stay not implemented
+ *    here, after the player gate.
  * 3. On a menu page (2–4), `select-number n` is the key n and `communications close` the key `x`; the first item whose
  *    folded key matches is chosen, otherwise `no-candidate`; `communications open` is `no-change` (the original's `c`
  *    matches no item and falls through to the flight tree). A chosen item releases the menu (`menu` := null), then:
@@ -226,7 +227,8 @@ export function judgeCommunicationsCommand(context: TickContext, command: Commun
   }
   const interaction = interactionContext(world.player.viewMode);
   const selection = command.type === 'navigate-selection' || command.type === 'launch';
-  // The base context's keys (P3-10/17, 18) and the map's `confirm-selection` (P3-09) have no rule here yet.
+  // The base context's launch (P3-10/18) and the map's `confirm-selection` (P3-09) have no rule here yet; commands.ts
+  // judges the base keys of an available player before this module.
   if ((interaction === 'base' && selection) || command.type === 'confirm-selection') {
     rejectNotImplemented(context, command, commandIndex);
     return;

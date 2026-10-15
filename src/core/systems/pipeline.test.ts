@@ -72,7 +72,7 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
       'input-registration', 'mission-flow', 'clock', 'object-update', 'communications-reply', 'spawn-queue-check', 'request-handling', 'movement', 'collision',
       'delayed-player-explosion', 'energy',
-      'parked-update', 'area-check', 'frame-end', 'commit',
+      'parked-update', 'base-interior', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
@@ -436,8 +436,6 @@ describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)',
   it.each([
     { type: 'depart', entityId: 1, origin: 'command', commandIndex: 0 },
     { type: 'depart', entityId: 1, origin: 'automatic', commandIndex: null },
-    { type: 'base-navigate', entityId: 1, direction: 'previous', commandIndex: 0 },
-    { type: 'base-confirm', entityId: 1, commandIndex: 0 },
   ] as Request[])('treats a $type request as a broken invariant, as no rule posts one until P3-10 handles it', (request) => {
     const [state] = withEntities([0], [15]);
     expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', `requests.${request.type}`);

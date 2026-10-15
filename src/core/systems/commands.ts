@@ -3,9 +3,10 @@
  * `command-result`, in command order, from the rule module of its type. The player's update (flight-control.ts) is the
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
- * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-10's
- * to communications.ts (`communications`, `select-number`, `navigate-selection`, `launch`, and `confirm-selection` in the
- * base and map contexts; CB-07); every other type is
+ * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-10's base
+ * keys (`navigate-selection`, `confirm-selection`) of an available player in the base context to judgeBaseKey here and
+ * the rest of P3-10's to communications.ts (`communications`, `select-number`, `launch`, and the other contexts'
+ * `navigate-selection` and `confirm-selection`; CB-07); every other type is
  * rejected/not-implemented until its rule task routes it. A module emits a command's additional events right after its
  * result.
  */
@@ -16,6 +17,7 @@ import { interactionContext } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { judgeCommunicationsCommand } from './communications.ts';
 import { judgeEnergyCommand } from './energy.ts';
+import { availablePlayer } from './flight-control.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
 import { judgeWeaponCommand } from './weapons.ts';
@@ -53,6 +55,20 @@ export function combatCommandPlayer(world: WorldState): Entity | 'player-unavail
   return interactionContext(viewMode) === 'flight' ? player : 'wrong-context';
 }
 
+/**
+ * Judges a base key when an available player is in the base context: accepted, with its request posted. Returns false,
+ * judging nothing, otherwise: communications.ts then judges it by its other contexts and never sees it in the base.
+ */
+export function judgeBaseKey(context: TickContext, command: CommandOf<'navigate-selection' | 'confirm-selection'>, commandIndex: number): boolean {
+  const { world, requests } = context;
+  const player = availablePlayer(world);
+  if (player === null || interactionContext(world.player.viewMode) !== 'base') return false;
+  emitCommandResult(context, command, commandIndex, { outcome: 'accepted', reason: null });
+  if (command.type === 'navigate-selection') requests.post({ type: 'base-navigate', entityId: player.id, direction: command.direction, commandIndex });
+  else requests.post({ type: 'base-confirm', entityId: player.id, commandIndex });
+  return true;
+}
+
 /** Judges the command at `commandIndex` by its type; the player's update calls it for every command it does not judge. */
 export function judgeCommand(context: TickContext, command: Command, commandIndex: number): void {
   switch (command.type) {
@@ -68,11 +84,13 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
     case 'damage-report':
       judgeEnergyCommand(context, command, commandIndex);
       return;
+    case 'navigate-selection':
+    case 'confirm-selection':
+      if (!judgeBaseKey(context, command, commandIndex)) judgeCommunicationsCommand(context, command, commandIndex);
+      return;
     case 'communications':
     case 'select-number':
-    case 'navigate-selection':
     case 'launch':
-    case 'confirm-selection':
       judgeCommunicationsCommand(context, command, commandIndex);
       return;
     default:

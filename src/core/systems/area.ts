@@ -10,14 +10,16 @@
  *
  * None of them bounds an active object: it may fly anywhere, and only parking hands it to the parked update. Until
  * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel. A
- * hostile's position write inside the active area ends with P3-10's report `0x3c3b0` (comm-reactions.ts); the
- * wingman's arrival repair (P3-10) and the area centre during the player's Warp (P3-09) join at the marked places.
+ * hostile's position write inside the active area ends with P3-10's report `0x3c3b0` (comm-reactions.ts) and the
+ * wingman's arrival at a base starts with P3-10's full repair (base-interior.ts); the area centre during the player's
+ * Warp (P3-09) joins at the marked place.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import { activeAreaCentre, isOutsideExitBounds, isRemovedOnLeaving, isWithinActiveArea } from '../rules/active-area.ts';
-import { HOSTILE_KINDS } from '../rules/comm-reactions.ts';
+import { rearm } from '../rules/base-service.ts';
+import { BASE_KINDS, HOSTILE_KINDS } from '../rules/comm-reactions.ts';
 import { initialMovementBlock } from '../rules/flight-state.ts';
 import { RandStream, type RandSource } from '../rules/original-random.ts';
 import {
@@ -43,6 +45,7 @@ import { hasKind } from '../rules/radio.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { isActiveState, setActivity, ZERO_VECTOR, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { fullRepair } from './base-interior.ts';
 import { reportParkedEnemy } from './comm-reactions.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
@@ -50,6 +53,9 @@ import { emit, type TickContext } from './pipeline.ts';
 const AREA_CHECK_KINDS = 0x1fffffe;
 /** Kinds the parked update walks: every craft kind, `0xfffff`. */
 const PARKED_UPDATE_KINDS = 0xfffff;
+
+/** The wingman's arrival repair waits 0x780 clock units before it repeats (RX6). */
+const WINGMAN_ARRIVAL_REPAIR_INTERVAL = 0x780;
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `area.${site}`);
 
@@ -150,14 +156,27 @@ function recordGoal(world: WorldState, { source }: Entity, rand: RandSource): Ve
 }
 
 /**
- * The arrival branch of `0x2f314`, which writes no position: the entity's own target offset is cleared when there is
- * a target, an entity without a leader in AI mode 4 takes a new goal, it is no longer in Warp, and an entity other than
- * the wingman whose subject stands outside the inset world rectangle leaves the world: pending removal at once and one
- * `object-left-world`; its own update asks for the removal at the next tick.
+ * The first step of the arrival branch (RX6, CB-12): the wingman (kind exactly 2) arriving at a travel target of the
+ * base kinds is fully repaired when the sample is strictly past the one limit all kind-2 objects share, which is then
+ * re-armed 0x780 later. No message and no draw; the repair runs after the message loop, so it announces nothing.
+ */
+function repairArrivingWingman(context: TickContext, entity: Entity, target: Entity | null): void {
+  const { limits } = context.world.communications;
+  const { clock } = context.time;
+  if (entity.kindBit !== WINGMAN_KIND_BIT || target === null || !hasKind(BASE_KINDS, target.kindBit) || !(clock > limits.wingmanArrivalRepair)) return;
+  limits.wingmanArrivalRepair = rearm(clock, WINGMAN_ARRIVAL_REPAIR_INTERVAL, 'area.wingman-arrival-repair');
+  fullRepair(context, entity, false);
+}
+
+/**
+ * The arrival branch of `0x2f314`, which writes no position: the wingman's arrival repair first; then the entity's own
+ * target offset is cleared when there is a target, an entity without a leader in AI mode 4 takes a new goal, it is no
+ * longer in Warp, and an entity other than the wingman whose subject stands outside the inset world rectangle leaves the
+ * world: pending removal at once and one `object-left-world`; its own update asks for the removal at the next tick.
  */
 function arrive(context: TickContext, entity: Entity, subject: Entity, leader: Entity | null, target: Entity | null, rand: RandSource): void {
   const { world } = context;
-  // P3-10: the wingman's base-arrival report 0x39820 comes first.
+  repairArrivingWingman(context, entity, target);
   if (target !== null) entity.ai.targetOffset = ZERO_VECTOR;
   if (leader === null && entity.ai.mode === 4) entity.ai.goal = recordGoal(world, entity, rand);
   entity.inWarp = false;

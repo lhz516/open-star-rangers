@@ -8,6 +8,7 @@ import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 
 // Expectations are written out from docs/plan/p3/06/spec.md (操纵, 速度与油门, 行为与边界; checkpoint A) and the original
@@ -210,17 +211,18 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(state.rngState).toBe(rng);
   });
 
-  // In the base context, P3-10/17 and 18 own confirm-selection, launch and navigate-selection; P3-09 the map's Enter.
+  // In the base context, confirm-selection and navigate-selection are P3-10/17's base keys and launch is 18's; P3-09
+  // owns the map's Enter.
   it.each([
-    ['Warp', WARP, 'wrong-context', 'wrong-context'],
-    ['base', BASE, 'not-implemented', 'not-implemented'],
-    ['map', MAP, 'not-implemented', 'wrong-context'],
-  ] as const)('ignores speed commands, presets and select-number as wrong-context in the %s context; confirm-selection there: %s', (_, viewMode, confirmReason, baseKeyReason) => {
+    ['Warp', WARP, ['ignored', 'wrong-context'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
+    ['base', BASE, ['accepted', null], ['rejected', 'not-implemented'], ['accepted', null]],
+    ['map', MAP, ['rejected', 'not-implemented'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
+  ] as const)('ignores speed commands, presets and select-number as wrong-context in the %s context', (_, viewMode, confirmResult, launchResult, navigateResult) => {
     const [state, player] = withPlayer();
-    state.player.viewMode = viewMode;
+    if (viewMode === BASE) enterBaseView(state);
+    else state.player.viewMode = viewMode;
     state.player.target = state.entities.allocate(entityInit(7)).id;
     const control = structuredClone(state.player.control);
-    const confirm = confirmReason === 'wrong-context' ? 'ignored' : 'rejected';
     const events = stepControls(state, [...P3_06_COMMANDS, ...OTHERS]);
     expect(results(events)).toEqual([
       [0, 'ignored', 'wrong-context'],
@@ -230,13 +232,14 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [4, 'ignored', 'wrong-context'],
       [5, 'ignored', 'wrong-context'],
       [6, 'ignored', 'wrong-context'],
-      [7, confirm, confirmReason],
+      [7, ...confirmResult],
       [8, 'ignored', 'wrong-context'],
-      [9, baseKeyReason === 'wrong-context' ? 'ignored' : 'rejected', baseKeyReason],
+      [9, ...launchResult],
       [10, 'rejected', 'not-implemented'],
-      [11, baseKeyReason === 'wrong-context' ? 'ignored' : 'rejected', baseKeyReason],
+      [11, ...navigateResult],
     ]);
-    expect(events.every(({ type }) => type === 'command-result')).toBe(true);
+    // The base keys' requests are applied in request handling, after every result.
+    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'base-navigated'] : []);
     expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(state.player.control).toEqual(control);
   });

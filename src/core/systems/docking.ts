@@ -11,8 +11,8 @@
  *
  * `dock` in request handling (`0x38ff4` sub-command 0) does nothing without a player entity. The execution search
  * must find the docking object itself; otherwise `0x3340c` releases it, sub-state 0, `docking-cancelled` (`gate`), and
- * nothing else. Then, in DK2's order: the base's pose saved bit for bit; the player docked; the wingman docked when it
- * qualifies; one discarded world draw for the background (`0x4f480`); the base view, clearing the player's target
+ * nothing else. Then, in DK2's order: the base's pose saved bit for bit; the player docked; the wingman docked and fully
+ * repaired (`0x39820`, base-interior.ts) when it qualifies; one discarded world draw for the background (`0x4f480`); the base view, clearing the player's target
  * without an event; the base service; `docked` and `transition` (G-02/3). Sub-state 5 and the docking object stay. The
  * request does not read the sub-state: a code-9 command in the same tick restarts the wait before it, and it docks all
  * the same when it names the same base (DK1 races).
@@ -24,6 +24,7 @@ import { BASE_VIEW_MODE, dockingWaitStep, findDockingBase, findDockingWingman, i
 import type { Entity, EntityId } from '../world/entity-table.ts';
 import type { Pose } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { fullRepair } from './base-interior.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { flushRadio } from './radio.ts';
 
@@ -122,8 +123,12 @@ export function dock(context: TickContext): void {
   world.player.docking.savedPose = savedPose;
   player.activity = 'docked';
   const wingman = findDockingWingman(world.entities, savedPose.position);
-  // The docked wingman's full repair `0x39820` (not in the message loop) is P3-10/17's, here.
-  if (wingman !== null) wingman.activity = 'docked';
+  // The wingman's full repair `0x39820`, outside the message loop by CB-10; it posts nothing for a craft other than
+  // the player.
+  if (wingman !== null) {
+    wingman.activity = 'docked';
+    fullRepair(context, wingman, false);
+  }
   // `0x4f480` draws rand % 3 for the background, a presentation choice, from the generator the rules share (D-03 item 5).
   const stream = new RandStream(world.rngState);
   stream.next();

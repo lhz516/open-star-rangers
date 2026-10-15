@@ -8,6 +8,7 @@ import type { CraftRuleData } from '../world/rule-data.ts';
 import { constructWorld } from '../world/world.ts';
 import { expectFault, stateText, stillEntityInit, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import { PIPELINE, registerTick, type Request, type TickContext } from './pipeline.ts';
 import { AUTOMATIC_TARGET_INTERVAL, clearRightDisplayTarget, selectAutomaticTarget } from './targeting.ts';
 
@@ -180,7 +181,7 @@ describe('target commands (AC-03; CR-05, T2–T4)', () => {
     ['a destroyed player', (_: WorldState, player: Entity) => void (player.destroyed = true), 'player-unavailable'],
     ['a player not active', (_: WorldState, player: Entity) => void (player.state = 'presentation-ready'), 'player-unavailable'],
     ['the map', (state: WorldState) => void (state.player.viewMode = 8), 'wrong-context'],
-    ['the base', (state: WorldState) => void (state.player.viewMode = 6), 'wrong-context'],
+    ['the base', (state: WorldState) => enterBaseView(state), 'wrong-context'],
     ['a Warp', (state: WorldState) => void (state.player.viewMode = 2), 'wrong-context'],
   ])('are ignored with %s, changing nothing', (_, change, reason) => {
     const prepare = (): WorldState => {

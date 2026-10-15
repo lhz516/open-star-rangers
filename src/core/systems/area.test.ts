@@ -644,3 +644,53 @@ describe('the parked enemy report 0x3c3b0 after the travel (P3-10 CB-12, RX6)', 
     }
   });
 });
+
+describe('the wingman\'s arrival repair at a base (P3-10 CB-12, RX6; BS9)', () => {
+  // The mover stands on its goal, its target's position plus its own offset, so its parked update arrives; the only
+  // draw is the update's cadence. The kind-bit-1 and 7 records have c9C 12 and c54 1000.
+  function arrival(kindBit: number, targetKindBit: number) {
+    const state = worldWith();
+    const target = state.entities.allocate(entityInit(targetKindBit, { position: { x: 500, y: 0, z: 0 } }));
+    target.state = 'active';
+    const mover = parked(state, kindBit, { position: { x: 510, y: 0, z: 0 } });
+    mover.ai = { ...mover.ai, mode: 0, target: target.id, targetOffset: { x: 10, y: 0, z: 0 } };
+    return { state, mover };
+  }
+
+  /** Damages the mover and puts its offset back, which each arrival clears. */
+  function damage(mover: Entity): void {
+    if (mover.combat.type !== 'craft') throw new Error('not a craft');
+    mover.ai.targetOffset = { x: 10, y: 0, z: 0 };
+    Object.assign(mover.combat, { hull: 3, energy: 7, subsystems: Object.freeze(mover.combat.subsystems.map(() => 2)) });
+  }
+
+  const resources = (mover: Entity) => (mover.combat.type === 'craft' ? [mover.combat.hull, mover.combat.energy, mover.combat.subsystems[0]] : null);
+
+  it('fully repairs the wingman once the sample is strictly past the shared limit, then waits 0x780, with no message or draw', () => {
+    const { state, mover } = arrival(1, 17);
+    damage(mover);
+    const expected = stateAfter(state, 1);
+    const context = contextAt(state, 200);
+    updateParked(context, () => {});
+    expect(resources(mover)).toEqual([12, 1000, 0]);
+    expect(state.communications.limits.wingmanArrivalRepair).toBe(200 + 0x780);
+    expect([context.events, state.communications.queue, state.rngState]).toEqual([[], [], expected]);
+    damage(mover);
+    parkedUpdate(state, 200 + 0x780);
+    expect(resources(mover)).toEqual([3, 7, 2]);
+    mover.ai.targetOffset = { x: 10, y: 0, z: 0 };
+    parkedUpdate(state, 2400);
+    expect(resources(mover)).toEqual([12, 1000, 0]);
+    expect(state.communications.limits.wingmanArrivalRepair).toBe(2400 + 0x780);
+  });
+
+  it('does not repair another kind arriving at a base, or the wingman arriving at another kind', () => {
+    for (const [kindBit, targetKindBit] of [[7, 17], [1, 7]] as const) {
+      const { state, mover } = arrival(kindBit, targetKindBit);
+      damage(mover);
+      due(state);
+      expect(resources(mover)).toEqual([3, 7, 2]);
+      expect(state.communications.limits.wingmanArrivalRepair).toBe(0);
+    }
+  });
+});

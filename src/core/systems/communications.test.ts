@@ -7,6 +7,7 @@ import type { CommunicationsMenu, LeftPage } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, expectFault, stateText, stillEntityInit, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import { PIPELINE, registerTick, type Request, type RequestOf, type TickContext } from './pipeline.ts';
 
 // Expectations written out from docs/plan/p3/02/spec.md CB-02 (row 1), CB-03, CB-07 and CB-09 and from comm.md §7, not
@@ -397,7 +398,7 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
       (world: Scene) => void (world.state.player.entityId = null),
       (world: Scene) => void (world.player.destroyed = true),
       (world: Scene) => void (world.player.state = 'pending-removal'),
-      (world: Scene) => { world.player.destroyed = true; world.state.player.viewMode = 6; },
+      (world: Scene) => { world.player.destroyed = true; enterBaseView(world.state); },
     ]) {
       const world = scene();
       add(world, 17);
@@ -410,7 +411,7 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
   it.each([
     ['Warp', 2, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, 'wrong-context'], [launch, 'wrong-context']]],
     ['map', 8, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, 'wrong-context'], [launch, 'wrong-context']]],
-    ['base', 6, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, 'not-implemented'], [launch, 'not-implemented']]],
+    ['base', 6, [[open, 'wrong-context'], [digit(1), 'wrong-context'], [close, 'wrong-context'], [navigate, null], [launch, 'not-implemented']]],
     ['flight', FLIGHT, [[navigate, 'wrong-context'], [launch, 'wrong-context']]],
   ] as const)('judges P3-10\'s commands in the %s context (view %i) by its gate, changing nothing', (_, viewMode, rows) => {
     const [judged, idle] = [scene(), scene()];
@@ -422,7 +423,8 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
       world.state.player.communications.partner = 2;
     }
     const events = judgeTick(judged.state, rows.map(([command]) => command)).events;
-    expect(events).toEqual(rows.map(([command, reason], index) => result(index, command, reason === 'not-implemented' ? 'rejected' : 'ignored', reason)));
+    // The base context's navigate-selection is P3-10/17's base key (commands.ts), its launch still 18's.
+    expect(events).toEqual(rows.map(([command, reason], index) => result(index, command, reason === null ? 'accepted' : reason === 'not-implemented' ? 'rejected' : 'ignored', reason)));
     judgeTick(idle.state, []);
     expect(stateText(judged.state)).toBe(stateText(idle.state));
   });
@@ -451,12 +453,13 @@ describe('player, context and subsystem gates (CB-07 rules 1, 3 and 4)', () => {
     expectFault(() => constructWorld(opened.state).step(tickInput([open])), 'invariant-violated', 'communications.menu-page');
   });
 
-  it('gives confirm-selection in the base and map contexts player-unavailable first, and not-implemented to an available player', () => {
+  it('gives confirm-selection player-unavailable first, then accepts it as the base key in the base and keeps the map\'s not-implemented', () => {
     const enter: Command = { type: 'confirm-selection' };
-    for (const viewMode of [6, 8]) {
+    for (const [viewMode, outcome, reason] of [[6, 'accepted', null], [8, 'rejected', 'not-implemented']] as const) {
       const world = scene();
-      world.state.player.viewMode = viewMode;
-      expect(judgeTick(world.state, [enter]).events).toEqual([result(0, enter, 'rejected', 'not-implemented')]);
+      if (viewMode === 6) enterBaseView(world.state);
+      else world.state.player.viewMode = viewMode;
+      expect(judgeTick(world.state, [enter]).events).toEqual([result(0, enter, outcome, reason)]);
       world.player.destroyed = true;
       expect(judgeTick(world.state, [enter]).events).toEqual([result(0, enter, 'ignored', 'player-unavailable', 2)]);
     }
@@ -474,7 +477,8 @@ describe('the menu page handler at frame end (CB-09 item 1; comm §7.5)', () => 
     for (const { page: shownPage, viewMode, field, expected } of cases) {
       const world = scene();
       world.state.player.leftDisplay.page = shownPage;
-      world.state.player.viewMode = viewMode;
+      if (viewMode === 6) enterBaseView(world.state);
+      else world.state.player.viewMode = viewMode;
       setCommunicationsField(world, field);
       const events = constructWorld(world.state).step(tickInput());
       expect(events.filter(({ type }) => type === 'left-page-changed')).toEqual(expected === shownPage ? [] : [page(shownPage, 0, null)]);
