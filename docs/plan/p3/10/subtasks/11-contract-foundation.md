@@ -38,6 +38,9 @@ updated: 2026-10-14
 - `src/core/replay/**`：快照、比较器、版本与测试。
 - `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`：请求类型的联合与校验。
 - `src/core/systems/commands.test.ts`：已批准变化的断言。
+- `src/app/runtime/game-event-bus.ts`、`src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：事件类型的穷举表。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：最长事件形式与录制上限的推导。
+- `src/core/rules/initial-ai.test.ts`、`src/core/rules/combat-init.test.ts`、`src/core/systems/spawn.test.ts`：`AiState.pendingCommand` 的期望字面量。
 
 ## 验收标准
 
