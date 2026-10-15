@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/flight-control*.ts`、`src/core/systems/commands*.ts`：路由与断言。
 - `src/core/rules/displays*.ts`、`src/core/systems/displays*.ts`：左页 2–4 的写入。
 - `src/core/world/world.test.ts`：命令结果断言的更新。
+- `src/core/systems/energy.test.ts`、`src/ui/game/game-command-feedback.test.ts`、`src/ui/game/game-command-feedback-fault.test.ts`、`src/ui/dev/mission-diagnostics.test.ts`：仅测试期望随 CB-07/CB-09 更新。
 
 ## 验收标准
 
