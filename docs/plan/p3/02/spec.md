@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-13
+updated: 2026-10-14
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -407,7 +407,7 @@ Core 目前只有两部分代码：P1 的合成场景、快照与 replay（[core
 
 | `combat.type` | 种类位 | 构造者 |
 |---|---|---|
-| `craft` | 0–19（`0xfffff`） | 实例化扩展点（CR-07）。P3-10 的种类 `0x4000` 由其修订另行接入 |
+| `craft` | 0–19（`0xfffff`） | 实例化扩展点（CR-07）。运行时构造的种类 `0x4000`（`0x38780`：`b` 与 AI 投放）由 P3-08 的修订接入（P3-10 D-01 的移交，见 CB-18） |
 | `missile` | 20 | 发射请求（CR-05） |
 | `projectile` | 21 | 发射请求 |
 | `explosion` | 22 | 爆炸构造（CR-08） |
@@ -914,6 +914,499 @@ type Attacker =
 - **快照：** 覆盖 CR-02 至 CR-04 的全部新状态（实体的 `combat`、移动块的新变体、表现选择器、玩家状态的新字段）；静态规则数据不进快照。快照格式版本与 `RULES_VERSION` 相对实现时的当前值各递增一次，不硬编码数字；P3-07 的 goal 在其分支上由首个实现共享形状的子任务递增，此后该 goal 内的规则变化沿用这一版本。
 - **replay：** 新输入经 setupHash 绑定，`ReplayContent` 是调用输入而不是记录字段，所以 replay 记录形状不变，格式版本不变。旧规则版本的记录一律拒绝。
 
+### P3-10 的契约修订（D-01）
+
+本节由 P3-10 的子任务 08 加入（2026-10-14），定稿 [P3-10 spec](../10/spec.md#实施关卡) 的关卡 D-01 中属于本 spec 的部分；Runtime 与会话的部分在 [P3-04 的运行中衔接](../04/spec.md#运行中衔接p3-10-的修订)。它建立在 P3-06、P3-07 与 P3-05 的修订之上，那些修订已定的项不变；前文与本节不一致时以本节为准。编号 CB-01 至 CB-19 只供引用本节（不与 P3-08 草案的 CR-15 起、P3-09 的 MW 编号重叠）。
+
+原版事实只记在 executable 的 [Communications, docking and base service (P3-10)](../../../original/formats/executable.md#communications-docking-and-base-service-p3-10)（下文以 CD、RQ、RX、DK、BS 标签引用）与 [comm §7–§8](../../../original/formats/comm.md#7-menu-state-machine-p3-1001)，不重复。定稿依据是 P3-10 子任务 01 至 07 与 09 的完成证据，尤其是 [06 交 07、08 的输入](../10/subtasks/06-original-facts.md#完成证据)（下文“冲突 n”指其清单 ①–⑳）与已批准的 [D-03 定稿](../10/spec.md#d-03-定稿已批准)（下文“D-03 第 n 条”）。
+
+**记法与通则：** 沿用 [P3-07 的修订](#p3-07-的契约修订d-01d-03)的记法（f32、i32、时钟、`EntityId`、故障、快照与“不持久”“静态”）。另外：
+
+- 种类照原版文档写作掩码：“种类 2”是种类位 1 的僚机，`0x68000` 是基地类，`0x6807c`、`0x87c`、`0x93780` 等同理；Core 的 `kindBit` 是位序号。
+- **取样**指本 tick 的 `world.clock`；`mission-flow` 阶段在时钟阶段之前，读到的是上一 tick 的时钟（C3）。原版的 u32 回绕不复现：到期、期限与时戳都是安全整数时钟，与时钟之差超过 2³² − 1 为 Core 故障（约 777 天，不可达）。原版以 0 表示“未盖戳”的对象与玩家字段在 Core 中为 null：Core 的规则从 tick 1 起执行、时钟 ≥ 2，写入的时戳不会为 0，两者等价（RX7）。
+- **玩家可用**：玩家实体存在、未被毁、状态为 `active` 且不待移除（CR-05 的共同前置）；活动为停靠的玩家可用。
+- **有效视角**：P3-09 MW-04 的命令批次内的有效视角与有效上一视角，本节沿用并在 CB-07 中扩展。
+- 新状态都由 Core 拥有，进入快照规范文本与状态哈希；静态规则数据不进快照。
+
+**与并行任务的对齐：** P3-08（D-01 草案，CR-15 至 CR-25，待用户批准）与 P3-09（MW-01 至 MW-16）在各自分支上修订本 spec。重叠处只有一份定义：
+
+| 项 | 本节的定义 | 对方 |
+|---|---|---|
+| 对象命令单槽 +0x184 | `AiState.pendingCommand`（CB-04），名称与形状同 P3-08 草案 CR-18 | P3-08 消费僚机的命令；`0x3bed0` 的消费归本任务 |
+| 命令投递（消息 0x100） | 请求 `deliver-command`（CB-08）；唯一的投递者是通讯菜单（CD1） | P3-08 草案 CR-21 的 `wingman-command` 即此请求（字段相同，本节另加 `commandIndex` 供事件关联）；接收者也可能是基地，P3-08 定稿时改用本名 |
+| 友伤累计 | `WorldState.ai.friendlyFire`（CB-05），名称与形状同 P3-08 草案 CR-19；唯一写入点是 `0x3c208` 第 1 步的 `0x38f20`，按 CR-13 由本任务的调用点实现 | P3-08 经 `0x38fd8` 读取，并在 `WorldState.ai` 中加入其他字段；若其 D-03 要接管写入，须修订本条 |
+| 视角切换 | P3-09 MW-09 的 `switchView`，本节在其中实现涉及视角 6 的部分（CB-10） | — |
+| 左显示屏的保存页 | 菜单与来电各有自己的保存页（CB-03），与 P3-09 的 `savedLeftPage`（Warp）三者分开（RQ8） | — |
+| 种类 `0x4000` | 运行时构造移交 P3-08（CB-18） | P3-08 草案 CR-20 |
+| 菜单占用的按键 | 所选内容的菜单只用数字与 `x`（CB-01 检查 1），所以 P3-09 MW-04 的 `m`、`w` 与 P3-08 草案 CR-20 的 `b` 在切片中从不被菜单占用，不实现这些分支 | — |
+
+各方的 `RULES_VERSION` 与格式版本相对实际集成基线各递增一次（CB-16）。
+
+#### CB-01 世界创建输入、语义检查与静态规则数据
+
+- **输入：** `CreateWorldInput`、录制入口与 `ReplayContent` 在现有规则输入之后增加三项必需输入。外层规则同 CR-01：缺字段或多字段为 `CoreInputError`；校验 Asset ID 的 kind 与角色；`original-import` 只接受唯一切片的对应 Asset；错误只带结构路径与稳定原因，不回显导入值。
+
+  ```ts
+  commMenus: { id: AssetId; content: unknown };        // data/comm-menus，readCommMenus 严格读取（P3-03 S-06）
+  baseRepairItems: { id: AssetId; content: unknown };  // data/base-repair-items，readBaseRepairItems
+  commMessages: { id: AssetId; content: unknown };     // data/comm-messages，P3-03 修订 2 的读取器（P3-10/29 实现）
+  ```
+
+  读取结果冻结并与输入脱离。三项与其他规则输入来自同一经 `validatePackage` 验证的包，由调用者保证。`CONTENT_INPUT_FIELDS`、Core 与 app 的 `RuleDataInputs`、任务所有者的运行创建、[replay-check.ts](../../../../tools/replay-check.ts) 与 `e2e/support/` 的合成包同步；不为旧调用者补默认数据。
+- **语义检查（`CoreInputError`，按此次序，只检查本任务会读到的部分）：** “折叠”只把 A–Z 映射为 a–z；菜单项的数据键是项文字的第 1 字节（comm §7.2）。
+  1. **菜单键：** 三张命令表（TABL 2003、2005、2013）的每一项、TABL 2007 的最后一项与 TABL 2009 的文字至少 2 字节。三张命令表与类别表中，最后一项（值 0）的键折叠后为 `x`，且是该表中第一个折叠后为 `x` 的项；三张命令表的其余每一项的键为 `1`–`9`（`select-number` 只能表达这些键）。TABL 2009 的键折叠后为 `x`。重复的键不拒绝，首匹配次序保留。类别与对象列表的其余项按位置生成键，不读数据键。
+  2. **生成键上界：** 可显示的类别数与每个类别的对象数（都不含退出项）的保守上界都 ≤ 9。类别的对象数上界是有效僚机配置下，所有可实例化来源（直接与延迟声明、编组每次请求的每个成员、所选僚机）中种类在该类别掩码内的实例数之和；掩码含运行时构造的种类位（14 与 20–25）时上界无限，拒绝。可显示类别数的上界是对象数上界 > 0 的类别数。沿用现有的生成范围检查，不建通用的任务分析器。所选任务为 2 与 4（comm §8），8 项的僚机命令菜单不受此项约束。
+  3. **服务选择值：** 11 个选择值都在 {0, …, 18, 33, 34} 内（33 = 0x21 对应字段 15–18，34 = 0x22 对应 10–14，BS3）。19–31 会读写 Core 没有的子系统字段，32 与 > 34 越出原版的 32 项槽表（BS10），都拒绝。
+  4. **基地速率：** 玩家机型的 c54 ≥ 0（c9C > 0 已由 CR-01 检查 5 保证）。原版以无符号 `DIV` 求速率，负值的 u32 解释不复现；24 个 CINF 都满足（BS10）。
+  5. **消息元数据：** 结构（帧数 ≥ 1、时长非负、限值）由读取器保证，Core 不另拒绝。查找失败（头像超出子表数、序号越界、条目为 0）是原版的合法分支（RQ4），按“没有消息”处理。
+- **静态规则数据（`WorldRuleData.communications`，冻结，不进快照）：**
+
+  ```ts
+  interface CommunicationsRuleData {
+    menus: {                                              // 键为原始字节，判定时再折叠
+      categories: readonly { key: number; kindMask: number }[];             // TABL 2007，含最后一项（kindMask 0）
+      objectListExitKey: number;                                            // TABL 2009
+      commands: Readonly<Record<MenuCommandTable, readonly { key: number; code: number }[]>>;
+    };
+    serviceSelectors: readonly number[];                  // 恰 11 项：记录 0–10 的选择值 +0x6C
+    messages: {                                           // RQ4 的四张表；null 为条目 0，否则为各帧时长（i32，1/8 秒）
+      faceTables: Readonly<Record<20011 | 20019 | 20985, readonly (readonly (readonly number[] | null)[])[]>>; // [头像][序号]
+      direct: readonly (readonly number[] | null)[];      // 20983
+    };
+    nameIndexes: NameIndexTable;                          // 见下
+  }
+  type MenuCommandTable = 'gated' | 'other' | 'kind2';    // TABL 2003、2005、2013（comm §7.3）
+  ```
+
+  - **名称序号（RX1，D-03 第 4 条）：** 对每个可能的 `NameReference`（每个声明的每个候选、名称池的每一项、Core 可分配的每个种类名，以及 `none` 即空字节串），按字节相等分别在 `names2001`、`names2011` 中取第一个相等项的位置，得到 `{ in2001: number | null; in2011: number | null }`。规则按实体的 `NameReference` 查表，运行中不比较字符串。
+- **setupHash：** 在现有规则输入之后（P3-09 合入后在 `mapGeometry` 之后）依次覆盖三项的 ID 与完整内容：键在菜单文字之内，名单决定名称序号，没有只影响外观而值得排除的字段。
+- **建造期抽取：** 无。头像占用标志在创建时都为 false（任务构建的 `0x3bda4`）。
+
+#### CB-02 任务流程与停靠子状态
+
+`WorldState.missionStatus`（`0x1b46fc`）不变。`WorldState` 增加：
+
+```ts
+flow: {
+  mainState: 3;                 // 0x1863ac：本构建中世界只存在于任务进行中；P3-11 加入它的主流程状态
+  subState: MissionSubState;    // 0x186881
+  dockingDeadline: number;      // 0x186824，时钟：子状态 3 的期限与 4 的到期共用；初值 0，只在子状态 3、4 中被读
+};
+type MissionSubState = 0 | 3 | 4 | 5;  // 0 正常；3 停靠请求待回复；4 回复后的倒计时；5 停靠已投递或基地交互中。P3-11 加入 1、2、6
+```
+
+`PlayerState` 增加 `dockingObject: EntityId | null`（玩家对象 +0x194），初值 null。
+
+- **扩展方式：** 本任务建立 `mainState` 与 `subState` 的封闭联合，P3-11 在同一字段上加入它的取值并按扩展规则修订本节，不另建竞争的流程状态（[P3-10 技术决定 7](../10/spec.md#技术决定)）。
+- **谓词：** `inMission`：`mainState` 为 3。`0x3336c`（无线电取出的门禁）：3 且子状态 ≠ 2。`0x33390`（近处菜单的流程门禁）：3 且子状态为 0。P3-11 接入前子状态 2 不出现，但这些谓词照原条件实现，不写成常真。
+- **停靠对象：** 只由 `0x52914` 的各调用点写入：命令码 9 的选择（写通讯对象）；子状态 3、4 的失效取消、停靠门禁失败与离港（写 null）；P3-11 的 `0x32d74`（写 null）。玩家实体移除时清为 null。
+- **有效性（DK1）：** 停靠对象可解析且状态为 `active` 或 `projectile-hit`（≥ 7）；不看活动、被毁标志、距离与种类。子状态 3–5 中停靠对象为 null 是 Core 故障（决定 3）。
+- **写入：**
+
+  | 写入者 | 阶段 | 效果 |
+  |---|---|---|
+  | 命令码 9 的选择（`0x333b4`，CB-07） | `object-update` 的命令判定 | 停靠对象 := 通讯对象（即使不可解析、没有投递命令）；子状态 := 3（不看当前子状态，comm §7.5）；期限 := 取样 + 0x780；发出 `docking-requested` |
+  | `docking-reply` 回调（`0x333d4`） | `frame-end` 的通讯呈现子步（CB-09） | `inMission` 且子状态为 3 时：子状态 := 4，期限 := 取样 + 0x200；不核对回复者（DK1） |
+  | `0x3266c`，子状态 3 | `mission-flow`，c′ 为上一 tick 的时钟 | 失效 → 停靠对象 := null，清空无线电（CB-06，原因 `docking-cancel`），子状态 := 0，`docking-cancelled`（`invalid-object`）；否则 c′ ≥ 期限 → 只把子状态设为 0（不清空、不释放），`docking-cancelled`（`timeout`） |
+  | 子状态 4 | `mission-flow` | 失效 → 同上；否则 c′ ≥ 期限 → 投递 `dock`（CB-08），子状态 := 5 |
+  | 子状态 5 | `mission-flow` | 失效 → 投递 `depart`（`automatic`），子状态 := 0（不释放、不清空：离港的 `0x3340c` 释放）；有效 → 无 |
+  | 门禁失败、离港（`0x3340c`） | `request-handling` | 停靠对象 := null，子状态 := 0 |
+
+  本任务在 `mission-flow` 中的部分只在 `inMission` 时按子状态分派（`0x3266c` 的跳转表）；子状态 0 的部分（任务状态、僚机损失计时）归 P3-11。期限比较为 c′ ≥ 期限（DK5 的无符号非严格）。
+
+#### CB-03 玩家状态
+
+`PlayerState` 增加以下字段，都在创建世界时取初值：
+
+```ts
+communications: {
+  menu: CommunicationsMenu | null;  // 控制器 +0x19C：唯一的已建菜单，关闭后为 null；初值 null
+  partner: EntityId | null;         // 控制器 +0x1A0：其命令菜单正在或最近一次被建立的通讯对象；初值 null
+  menuSavedPage: LeftPage;          // 控制器 +0x1A4：`c` 打开菜单时的页（只可能是 0、1、5）；初值 0
+  incomingSavedPage: LeftPage;      // 0x175efc：来电可见时保存的页；初值 0
+  limits: { friendlyHit: number | null; friendlyKill: number | null }; // ps +0x78、+0x7C：时戳，null 为未盖
+  thanks: number;                   // ps +0x60：感谢计数，非负 i32；初值 0
+};
+docking: { savedPose: Pose | null };  // 0x186af0–0x186b1c：停靠时写入、离港时改写；首次停靠之前为 null
+interface Pose { position: Vec3; orientation: Matrix3 }   // f32，逐位复制
+
+type CommunicationsMenu =
+  | { level: 2; table: 'categories'; items: readonly MenuItem<CategoryValue>[] }
+  | { level: 3; table: 'objects'; items: readonly MenuItem<ObjectValue>[] }
+  | { level: 4; table: MenuCommandTable; items: readonly MenuItem<CommandValue>[] };
+interface MenuItem<Value> { key: number; value: Value | { type: 'exit' } }  // key：原始字节，生成键为 ASCII 数字；退出项在最后
+type CategoryValue = { type: 'category'; source: number; kindMask: number };  // source：TABL 2007 的项序号
+type ObjectValue = { type: 'object'; entityId: EntityId; kindBit: number; name: NameReference; tone: 'active' | 'threatened' | 'other' };
+type CommandValue = { type: 'command'; source: number; code: number };         // code：非 0 的 u32
+```
+
+- **菜单项：** 显示位置（下标）与键分开给出；身份是源项序号或对象 ID，不是会变动的行号。对象项的种类、名称与 `tone` 在建立时取得（原版在建立时复制名称并写颜色字节：活动 → `active`；否则 +0x17C 有戳 → `threatened`；否则 `other`，comm §7.3），只供 P3-13 绘制，规则不读；对象之后被移除，项仍可显示。
+- **左显示屏页 2–5 的写入者（D15、RQ8）：** 菜单的打开、层级变化、关闭与投递（CB-07）；来电可见、来电结束与清空（CB-06、CB-09）；左显示屏处理器（CB-09）。页 6 归 P3-09。写页发出 `left-page-changed`：菜单命令的写页对应原版消息 0x100000（伴随 SND 10485，P3-14），总是发出且 `commandIndex` 为命令序号；直接写页（清空、来电、处理器）只在页改变时发出，`commandIndex` 为 null、没有音效。
+- **生命周期：**
+
+  | 字段 | 写入者 | 清空 | 救援 | 玩家实体移除 |
+  |---|---|---|---|---|
+  | `menu`、`partner`、`menuSavedPage` | 命令判定（CB-07） | 关闭与投递只清 `menu`；`partner` 只由下一次 `c` 清 | 保留（菜单休眠，comm §7.6） | 清为 null、null、0 |
+  | `incomingSavedPage` | 来电可见（CB-09） | — | 保留 | 保留 |
+  | `limits.friendlyHit`、`limits.friendlyKill` | `0x3c208` 第 2 步、`0x3c0f4` 第 4 步 | P3-11 的救援（战役分支、救援次数 < 2）调用本任务的清除入口（CB-12）；新任务是新世界 | 见左 | 保留 |
+  | `thanks` | `0x3c4e4`（加 1） | P3-11 的统计重置 `0x3b734` | 保留 | 保留 |
+  | `docking.savedPose` | 停靠、离港（CB-10） | — | 保留 | 保留 |
+
+- 菜单在清空、基地、地图与 Warp 之后仍保存（休眠），是否可见只由页决定（comm §7.6）。新的 `c` 直接替换它；原版不释放旧菜单的引用，对规则没有影响。
+
+#### CB-04 实体
+
+`Entity` 增加（分配时取初值；运行时种类也有，但没有写入者）：
+
+```ts
+communications: {
+  face: number | null;         // +0x180：头像，null 为未分配（分配器写 −1）。只对种类 0x87c、0x68000 由 0x3c894 写入一次（RQ4）
+  threatStamp: number | null;  // +0x17C：时钟，null 为未盖（分配器写 0）
+};
+```
+
+`AiState` 增加（与 P3-08 草案 CR-18 同名同形）：
+
+```ts
+pendingCommand: { code: number; issuedTick: number } | null;  // +0x184：null ⇔ 0；code 为 u32，1 ≤ code < 2³²；issuedTick 为写入它的 tick（项目字段，规则不读）
+```
+
+- **`pendingCommand`：** 只由 `deliver-command` 在请求处理中写入，后写覆盖先写，不校验接收者的种类、状态或活动（CD2）。消费：种类在 `0x6807c` 中、状态为 `active` 的对象由 `0x3bed0` 在对象更新中读取，任何非 0 的码处理后清为 null（CB-12）；僚机由 P3-08 的 `0x61f20`、`0x614a8` 消费并清除；其他对象保留到被覆盖或移除（CD3）。原版同时存的发送者 +0x188 没有规则读者，不存。实例化与分配器写 null；停放、恢复与救援不清；随实体移除消失。
+- **`threatStamp`：** 写入者为 `0x3c208` 第 3 步、`0x3c3b0` 与 `0x3bed0` 的状态查询；清除者为 `0x3c4e4`（感谢）与 `0x3bed0`（威胁消失）；另有对象列表的颜色（CB-03）与 P3-09、P3-13 的绘制读取（RX7）。
+- **`face`：** 规则见 CB-12。种类 2（僚机）的头像不存于此，是 `ruleInputs.aiValueA` − 1（RX1）。
+
+#### CB-05 世界状态
+
+`WorldState` 增加：
+
+```ts
+communications: {
+  queue: readonly RadioItem[];          // 0x174b3c，按次序；项目上限 CORE_LIMITS.radioQueueItems（CB-16）
+  channel: IncomingChannel;             // 来电通道（D-03 第 2 条），初值 idle
+  facePools: { craft: readonly boolean[]; base: readonly boolean[] };  // 0x186bd4（3 项）、0x186be0（5 项），true 为已占用
+  limits: {                             // 时钟，初值 0，比较为“取样 > 值”（RX8）
+    wingmanLowHull: number;             // 0x174e10
+    enemyAppears: number;               // 0x174e0c
+    tailWarning: number;                // 0x174e08
+    wingmanArrivalRepair: number;       // 0x174b84
+  };
+  tailCheck: { dueClock: number; attackerOnTail: boolean; missileIncoming: boolean }; // 0x175f34、0x175f10、0x175f14；初值 0、false、false
+};
+ai: { friendlyFire: { accumulated: number; windowEnd: number } }; // 0x174dfc（i32）、0x174e00（时钟），初值 0、0；P3-08 加入 WorldState.ai 的其他字段
+baseService: BaseService | null;       // CB-11，初值 null
+
+type MessageIdentity =                  // 入队的消息都已查到（CB-12），所以头像 < 该表的子表数、序号 < 子表长度（commMessages 的内容）
+  | { table: 20011 | 20019 | 20985; face: number; index: number }  // 头像子表；所选内容为 5 × 5、3 × 22、5 × 61（RQ4）
+  | { table: 20983; face: null; index: number };                  // 直接列表，85 项
+interface SpeakerSnapshot { entityId: EntityId; kindBit: number; name: NameReference }  // 项目字段：入队时的说话者，规则不读
+interface RadioItem {
+  message: MessageIdentity;
+  due: number;                          // 时钟：入队时的取样（所有入队的延迟都是 0，RQ3）
+  callback: RadioCallback;
+  speaker: SpeakerSnapshot | null;      // 按 RX10 的说话者列；没有说话者为 null
+}
+type RadioCallback = 'none' | 'docking-reply' | 'music-step' | 'music-reset';
+  // 原版的单一回调槽：无、0x333d4、0x2c6cc（0x561f0(1, 0)）、0x2c6dc（0x561f0(0, 1)）。只有 docking-reply 是规则回调；
+  // 两个音乐回调是 D-03 第 2 条的表现标记，只供 P3-14（G-01），规则不读
+type IncomingChannel =
+  | { phase: 'idle' }
+  | { phase: 'loading'; item: RadioItem; readyTick: number }
+  | { phase: 'playing'; item: RadioItem; startClock: number; frameDurations: readonly number[] };
+```
+
+- **入队（`0x2c740`，入口见 CB-06）：** `docking-reply` 插在队首；其他项插在第一个 `due` 大于它的项之前，相等时先进先出。原版以有符号 i32 比较，Core 按数值比较：两者只在到期 ≥ 2³¹（约 388 天）后不同，记为已批准的差异（CB-17 决定 16）。超出 `radioQueueItems` 为 Core 故障（`budget-exhausted`），不丢弃。
+- **说话者快照：** 说话者之后被移除，消息仍可显示（[P3-10 规则输入与读模型边界](../10/spec.md#规则输入与读模型边界)）。
+- **头像池：** 由 `0x3c91c` 抽取并占用；同一世界内不清。
+- **友伤累计与各限频：** 写入者与读者见 RX7。任务期间不重置：救援与僚机损失都不清。原版的击杀台词戳 `0x174e04` 只写无读者，不存。
+- **生命周期：** 都随世界存在；队列与通道只由入队、取出、呈现子步与清空改变；救援经 P3-11 调用清空（CB-06）。
+
+#### CB-06 无线电：入队、取出与清空
+
+- **取出（`communications-reply` 阶段，`0x2cd60`，每 tick 至多一次）：** 只看队首。队首存在、取样 ≥ `due`、通道为 `idle`、`0x3336c` 成立时：移出队首，通道 := `loading`，`readyTick` := 本 tick + 1，发出 `radio-taken`。不执行回调（RQ3）。
+- **清空 `flushRadio(context, cause)`（`0x2cd20`）：** 移除全部项；通道为 `playing` 时停止，此时页为 5 则恢复 `incomingSavedPage`；为 `loading` 时取消，不执行回调；然后页 := 0；按写入次序发出 `left-page-changed`，最后发出 `radio-flushed`。调用者：本任务的停靠失效取消（`docking-cancel`）；P3-11 的被毁 `0x32d74`、信标到期、主流程切换与任务开始，其原因取值由 P3-11 的修订加入。停靠超时不清空（RQ3、DK1）。
+- **入队入口（本任务实现，其他任务调用，不另建队列）：**
+  - `queueRadio(context, message, callback, speaker)`：CB-05 的插入，发出 `radio-queued`。
+  - `queueLine(context, speaker, type)`（`0x38d54`，RX1）：说话者不可解析或头像不在 0–4 时不抽取、返回 false；否则按类型抽取、查找表 20985，查到时入队（原类型为 8 时回调为 `music-step`，否则为 `none`）并返回 true。P3-08 的 AI 回复经它入队。
+  - P3-11 的僚机损失消息（`0x3c4bc`：表 20983 序号 6，无说话者、无抽取、无限频）经 `queueRadio` 入队。
+
+#### CB-07 命令判定
+
+在 `flight-control.ts` 的唯一命令循环中按数组次序判定，每条恰一个 `command-result`。本条直接写入的菜单、页、通讯对象与停靠状态由后续条目读取（决定 8）。被接受的 `launch` 把有效上一视角设为有效视角、有效视角设为 max(原有效上一视角, 0xC)，与 MW-04 的有效视角一起维护。
+
+1. **共同前置：** 玩家不可用 → `ignored`/`player-unavailable`。
+2. **飞行上下文（有效视角的上下文为 `flight`）：** 菜单判定先于 P3-06、P3-07 的飞行动作（`0x27b44` 在 `0x264a0` 的比较树之前）。
+   - **页在 2–4：** `select-number n` 的键是 ASCII 数字 n，`communications close` 的键是 `x`；取 `menu.items` 中第一个折叠后相等的项（`0x27e10`）。
+     - **页 2：** `menu` := null；选中退出 → 关闭；否则建立该掩码的对象列表：为空 → 关闭；恰 1 个对象 → `partner` := 它并建立命令菜单，成功 → 页 4，失败 → 关闭；多于 1 个 → 页 3。
+     - **页 3：** 选中退出 → 关闭；否则 `partner` := 该对象并建立命令菜单，成功 → 页 4，失败 → 关闭。
+     - **页 4：** `menu` := null；码不为 0 时，`partner` 可解析则投递 `deliver-command`，否则不投递（`0x2c7fc`）；然后码为 9 时开始停靠等待（CB-02），无论是否投递；最后页 := `menuSavedPage`。
+     - **关闭：** `menu` := null，页 := `menuSavedPage`。
+
+     以上都是 `accepted`，每条恰一次 `left-page-changed`（随结果发出）。没有匹配：`select-number` → `ignored`/`no-candidate`；`communications open` → `ignored`/`no-change`（原版的 `c` 在页 2–4 不打开菜单）。
+   - **页不在 2–4：** `communications open`：玩家子系统 13 为 2 → `ignored`/`subsystem-disabled`（原版不消费 `c`）；否则建立类别菜单，没有可显示的类别 → `ignored`/`no-candidate`（原版消费 `c`，页与音效不变）；否则 `partner` := null、`menuSavedPage` := 页、`menu` := 类别菜单、页 := 2，`accepted`。`communications close` → `ignored`/`no-change`。`select-number` 保持 P3-05 的 `ignored`/`wrong-context`。
+   - 菜单打开时，其他命令按各自规则判定：`confirm-selection` 仍是手动匹配速度，`speed-preset` 不被占用。切片的菜单只有数字与 `x`，P3-07 的按键、P3-09 的 `m`/`w` 与 P3-08 的 `b` 都不被占用。
+3. **基地上下文（`0x271e0`）：** `navigate-selection` → `accepted`，投递 `base-navigate`；`confirm-selection` → `accepted`，投递 `base-confirm`；`launch` → `accepted`，投递 `depart`（`command`）并更新有效视角。`communications`、`select-number` → `ignored`/`wrong-context`。
+4. **其他：** 飞行上下文中的 `navigate-selection`、`launch`，地图与 Warp 上下文中的 `communications`、`select-number`、`navigate-selection`、`launch` → `ignored`/`wrong-context`（地图中的 `confirm-selection` 按 MW-04）。P3-10 的命令不再有 `not-implemented`。
+
+**建立（只在判定时，之后不刷新，comm §7.5）：**
+
+- **类别菜单（`0x2c850`）：** 按 TABL 2007 的次序，非零掩码的对象列表非空时列出该类别，生成键为它在列出项中的位置（`1` 起），最后为退出项（数据键）；只有退出项时不建立。
+- **对象列表（`0x2c9d0`）：** 按种类遍历次序（种类位升序、同种类按分配次序）取掩码内可解析且状态 ≥ 7 的实体（活动、停放与停靠都算），生成键为位置，最后为退出项（TABL 2009 的键）。
+- **命令菜单（`0x2cbb4`）：** 对象不可解析 → 失败。种类恰为 2 → `kind2`；种类在 `0x68000` 中且近处门禁 `0x394c4`（CD5：有效视角不为 0、1，对象活动为 `active`，按 CD5 的 f32/x87 形式的距离平方 ≤ f32 1,000,000）与 `0x33390` 都成立 → `gated`；否则 `other`。
+- **通讯对象的身份（决定 1）：** 菜单项与 `partner` 保存 `EntityId`，对象被移除后不可解析，判为失效。
+
+**原因码：** `COMMAND_RESULT_REASONS` 增加 `subsystem-disabled`（命令所需的玩家子系统为状态 2）。`no-candidate` 的含义扩展为“没有满足条件的对象或菜单项”。其余沿用。
+
+#### CB-08 内部请求
+
+`Request` 联合增加：
+
+```ts
+| { type: 'deliver-command'; receiver: EntityId; code: number; sender: EntityId; commandIndex: number } // 消息 0x100（CD1、CD2）；code 为 u32 且 ≥ 1
+| { type: 'dock'; entityId: EntityId }                              // 消息 0x400000 子命令 0；entityId 为玩家
+| { type: 'depart'; entityId: EntityId; origin: 'command' | 'automatic'; commandIndex: number | null } // 子命令 4；automatic 时 commandIndex 为 null
+| { type: 'base-navigate'; entityId: EntityId; direction: 'previous' | 'next'; commandIndex: number }  // 子命令 1、2
+| { type: 'base-confirm'; entityId: EntityId; commandIndex: number }                                 // 子命令 3
+```
+
+| 请求 | 投递 | 处理（请求处理阶段，按投递次序） |
+|---|---|---|
+| `deliver-command` | 命令判定 | 接收者不可解析 → 无作用；否则 `receiver.ai.pendingCommand` := `{ code, issuedTick: tick }`，发出 `command-delivered` |
+| `dock` | `mission-flow`（子状态 4 到期） | CB-10 |
+| `depart` | 命令判定；`mission-flow`（子状态 5 失效） | CB-10 |
+| `base-navigate`、`base-confirm` | 命令判定 | CB-11 |
+
+子命令 0–4 都在玩家实体不存在时无作用（`0x38ff4` 在 ps 或玩家句柄为 0 时返回）。命令判定中投递的请求立即入队（不经 `defer`），所以排在同一玩家更新中 P3-06 的 `control`/`match-speed` 与 P3-07 的玩家发射之前；它们改变的状态互不重叠。
+
+#### CB-09 帧尾：左显示屏处理器、尾随警告与通讯呈现子步
+
+`frame-end` 阶段内的次序依原版帧渲染 `0x3ee58`（仪表按记录次序，`0x4e308` 在末尾）：P3-09 的地图步或 Warp 步 → CR-10 的驾驶舱显示步（类型 7、6，其中左显示屏的部分按下面第 1 条扩展）→ 尾随警告（类型 9）→ 通讯呈现子步。
+
+1. **左显示屏处理器（类型 6，CR-10 的视角集合 0xC、0xD、1、6）：** 玩家实体存在且当前页所属子系统（页 2–5 为字段 13，D15）不为 2 时：页在 2–4 而 `menu` 为 null → 页 := 0（`0x4da28`）；页为 5 而通道不是 `playing` → 页 := 0（D-03 第 3 条第 4 点，省略原版三次绘制失败的中间调用）。都发出 `left-page-changed`（null）。字段 13 为 1 时原版按表现随机切换干扰画面，Core 不复现（决定 12）。
+2. **尾随警告（类型 9，`0x4edf4`，同一视角集合）：** 玩家实体存在且取样 > `tailCheck.dueClock` 时依次：
+   - `attackerOnTail` := `0x4ef9c`：玩家子系统 12 为 0，且存在种类在 `0x780` 中、活动为 `active`、状态 ≥ 7、`ai.objectTarget` 为玩家、P3-08 的 AI 处理器私有状态中攻击航线字节（原版 (+0xF4)+0x24）为 3 或 4 的对象，取遍历中的第一个。实体没有 P3-08 的处理器状态时最后一个条件不成立（决定 11）。
+   - `missileIncoming` := `0x4f000`：玩家子系统 12 为 0 或 1，且存在种类位 20、活动为 `active`、状态 ≥ 7、`combat.target` 为玩家的导弹。
+   - `dueClock` := 取样 + （两者任一为真时 0x40，否则 0x80）。
+   - `attackerOnTail` 为真时调用 `0x38c30(player, 该对象)`（RX5）：僚机活动、状态 ≥ 7，取样 > `limits.tailWarning`，两者第 3 行的点积按 RX8 的形式 > f64 0.707 时 `queueLine(W, 0xA)`（不抽取），`limits.tailWarning` := 取样 + 0x640。
+3. **通讯呈现子步（`0x4e308`/`0x4e5a0`，每个 tick、任何视角，D-03 第 3 条）：**
+   - `loading` 且 `readyTick` 为本 tick → `playing`，`startClock` := 取样，`frameDurations` := 该消息的各帧时长；视角不是 1 时 `incomingSavedPage` := 页、页 := 5；发出 `left-page-changed`（若写页）与 `incoming-started`。
+   - `playing`（含刚转为 `playing` 的）：e = ((取样 − `startClock`) × 8 mod 2³²) >> 6，单位 1/8 秒；e ≥ 各帧时长之和（i32，有符号比较，即 RQ5 逐帧消耗的累计形式；基准运行的 5 + 8 + 5 在 144 单位处结束）时结束：通道 := `idle`；页为 5 时页 := `incomingSavedPage`；然后执行回调（`docking-reply` 按 CB-02）；发出 `left-page-changed`（若写页）与 `incoming-ended`。
+   - 所以取出在 tick N，可见在 N + 1；回调改变的子状态在下一 tick 的 `mission-flow` 才被读取。
+
+#### CB-10 停靠、离港与视角切换
+
+- **视角切换：** 在 P3-09 MW-09 的 `switchView(world, newMode, oldMode)` 中，新旧视角之一为 6 时置 `statusDisplay.redraw`（`0x4cd68`），页不变（comm §7.6）。改变视角的写入（视角 := 新值、上一视角 := 旧值，`0x3104c`）由各调用者按 MW-09 进行。
+- **`dock`（DK2，次序如下）：**
+  1. 执行搜索 `0x3959c`：已提交的视角不是 0 或 1 时，取种类遍历中第一个种类在 `0x68000`、活动为 `active`、与玩家的距离平方按 DK5 的形式 < f32 1,000,000 的实体；不看状态、被毁与 Warp。
+  2. **门禁：** 结果不是停靠对象（含没有结果）→ `0x3340c`（CB-02 的最后一行），发出 `docking-cancelled`（`gate`），结束。
+  3. `docking.savedPose` := **停靠对象（基地）**的位置与三行姿态，逐位复制（P3-10/08 以原生指令复核：源是玩家 +0x194 所指的对象，不是玩家）。
+  4. 玩家活动 := 停靠（只写活动；状态、移动块与其他字段不变）。
+  5. **僚机：** 种类 2 遍历的第一个实体存在、活动为 `active`、与保存的位置（基地的位置）的距离平方 < f32 1,000,000 时：活动 := 停靠，并对它完全修理（`fullRepair`，不在消息循环内，CB-11）。不看状态、被毁、Warp 与命令。
+  6. 资源与背景：**1 次世界抽取**（`0x4f480` 的 rand % 3，结果属于表现而丢弃，D-03 第 5 条）。
+  7. **视角：** 上一视角 := 视角，视角 := 6，经 `switchView`；玩家目标非 null 时清为 null（`0x3104c`，不发 `target-changed`，CR-06）。
+  8. **服务列表：** `0x39664`（CB-11）。
+  9. 子状态保持 5，停靠对象保持。发出 `docked`，随后 `transition`（`G-02/3`）。原版的 `LANDING` 过场阻塞在第 5 与第 6 步之间，其用时计入下一帧的步长；Core 按 P3-02 技术决定 2 不计时。
+- **`depart`（DK3，次序如下）：**
+  1. 玩家活动 := `active`。
+  2. **视角：** 新视角 := max(上一视角, 0xC)（无符号字节比较），上一视角 := 视角，经 `switchView`。不写目标。
+  3. `baseService` := null。
+  4. 种类 2 遍历的第一个实体活动为停靠时改为 `active`，位置与姿态不变。
+  5. **玩家位姿：** 记保存的三行为 r1、r2、r3、位置为 p：第 1 行 := −r3，第 2 行 := r2，第 3 行 := r1；位置每轴 := F(pᵢ + F(r1ᵢ × 1000.0))（f64 常量）；`docking.savedPose` := 新位姿；放置序号加 1（项目字段，供渲染器不跨此插值；原版没有对应计数）。移动块不变：速度、指令速度与转动沿用停靠期间的值。
+  6. `0x3340c`（CB-02 的最后一行）。
+  7. 发出 `departed`，随后 `transition`（`G-02/4`）。原版的 `LAUNCH` 过场阻塞在第 1 步之前，Core 不计时。
+  
+  同一 tick 可以有两个 `depart`（子状态 5 的自动离港与基地中的 `l`），第二个照原版再应用一次（视角 0xC、位姿再转四分之一周、再一次 `transition`），见决定 6。
+- **完全修理 `fullRepair(context, entity, inRequestHandling)`（`0x39820`，BS9）：** 字段 0–18 := 0；列表 0、1 的全部受损挂点恢复为 0 级（P3-07 的挂点修理，“全部”语义）；船体 := c9C，能量 := c54（实体自身的机型记录）；所经各 +0x18 链上弹药 < 挂点 +0x0C 的导弹状态补满；扰动 := 0（P3-06 的扰动函数，0 级不抽取）；两张列表的选择从当前项起逐项前进一整圈（P3-07 的 `0x2d6dc`，不提前停止、列表 1 不多前进），回到起点，每次在列表 1 上前进都清除锁定等级。实体为玩家且 `inRequestHandling` 为真时，每次前进发出 `commandIndex` 为 null 的 `weapon-selected`（原版的消息类型 4 只在消息循环内被处理）。不改：字段 19 以后、列表 2、护盾、充能、档位、剩余功率、最高速度、冷却、控制锁定、指令速度、能量更新时钟、`depleted` 锁存、子状态、击杀与射击计数、目标与被毁标志。调用者：停靠（僚机）、僚机到达基地（CB-12）、P3-11 的救援、P3-08 的 `0x61bd0`。
+
+#### CB-11 基地服务
+
+```ts
+interface BaseService {          // 原版全局，入港时由 0x39664 重建，离港时长度置 0（Core 为 null）
+  rows: readonly number[];       // 0x186a70：恰为 0–10 的一个排列；既是服务队列也是显示次序（BS5）
+  cursor: number;                // 0x186b20：行号，0–10
+  dues: { repair: number; hull: number; energy: number };    // 0x174e34、0x174e38、0x174e3c：时钟
+  rates: { hull: number; energy: number };                   // 0x174e40、0x174e44：入港时的 trunc(c9C ÷ 60)、trunc(c54 ÷ 240)
+  flags: { repairsComplete: boolean; energyAndMissilesFull: boolean; hullFull: boolean }; // 0x174e48、0x174e4c、0x174e50
+}
+```
+
+周期 0x200、0x40、4 是常量，原版存入的 `0x174e28`–`0x174e30` 不另存；`0x174e20`、`0x174e24` 没有读者，不存。速率与上限取玩家机型记录（BS1：同一记录，高概率）。
+
+- **状态查询 `serviceState(v)`（`0x39cb4`，BS3）：** 读玩家实体已存的子系统字段，不查挂点列表。v = 33：acc := 0，对字段 15–18 依次在字段 > acc 时 acc += 1；v = 34：字段 10–14 同理；其他 v：字段 v。
+- **建立（`0x39664`，`dock` 第 8 步，BS2）：** `rows` := [0]，再对记录 i = 1..10 插在第一个 `serviceState` 严格低于记录 i 的行之前，否则追加；`cursor` := 0；`dues` := 取样 + 0x200、+ 0x40、+ 4；`rates`；`flags` 全为 false。不抽取。
+- **按键（请求处理，BS4）：** `base-navigate`：`previous` 时 `cursor` := max(`cursor` − 1, 0)，`next` 时 := min(`cursor` + 1, 10)；`base-confirm`：第 `cursor` 行的 `serviceState` ≠ 0 时把该行移到第 0 行、其上各行下移一行，`cursor` 不变；都不改计时。每个请求都发出 `base-navigated` 或 `base-confirmed`（原版每次都有音效 SND 10167/10169，端点与不需服务时也有）。`baseService` 为 null 时（同一 tick 先处理了离港）不改状态，事件照常发出、`row` 为 null。
+- **服务步（`base-interior` 阶段，`0x398ec`，BS6）：** 玩家实体存在、已提交的视角为 6 时执行；此时 `baseService` 为 null 是 Core 故障。不看活动、被毁、停靠对象与基地的任何状态（BS8）。三步各自至多一次，依次：
+  1. **修理：** 取样 > `dues.repair` 时先令 `dues.repair` := 取样 + 0x200；队首的 `serviceState` 为 0 → `repairsComplete` := true，结束本步；否则按队首的选择值 v：5、8 → P3-07 的挂点修理“修一个”（列表 1、0），然后写回该列表的状态到字段 5、8；7 → 字段 7 := 0，扰动与控制锁定复位（P3-06 的函数）；33、34 → 字段 15–18、10–14 := 0；其他 → 字段 v := 0。随后队首的 `serviceState` 为 0 时轮转（第 1 行起上移，原队首到最后一行）。
+  2. **船体：** 取样 > `dues.hull` 时 `dues.hull` := 取样 + 0x40；**1 次世界抽取**（船体已满也抽）；船体 := min(船体 + `rates.hull` + rand % 100, c9C)（有符号）；船体等于 c9C 时 `hullFull` := true。
+  3. **能量与导弹：** 取样 > `dues.energy` 时 `dues.energy` := 取样 + 4；能量等于 c54 → `energyAndMissilesFull` := true；否则能量 := min(能量 + `rates.energy`, c54)，`energyAndMissilesFull` := false。然后按 BS6 的导弹遍历补弹并移动两张列表的选择（列表 1 每次完整遍历多前进一位，每次在列表 1 上前进清除锁定等级）。原版遍历中的选择音效消息在消息循环之后投递、从不处理（BS7），Core 不发事件。
+- **门禁与中断（BS8）：** 地图打开（视角 8）时整步不执行，计时保持；关闭后每个逾期的步骤在第一次执行时做一次并从该取样重新计时，不补做。入港与离港的 tick 没有服务步。离港后行次序、光标、计时与标志不保留；对实体的改变（修理、船体、能量、弹药、列表选择与清除的锁定等级）保留。护盾与充能不在基地补充，停靠期间也没有能量更新（D14），离港后第一次能量更新的 dt 覆盖整个停靠期。
+
+#### CB-12 通讯反应、报告与回复的调用点
+
+下列调用都是固定位置的静态调用，不经事件回放（CR-13）；抽取都用世界 RNG，条件与次序按 RX9。
+
+| 原版调用 | 位置 | 规则 |
+|---|---|---|
+| `0x3bed0` | `object-update`：种类在 `0x6807c` 中、状态为 `active`（7）的对象的自身更新中，在 P3-08 的 AI 步之后（P3-08 接入前就在该位置）；活动不限（停放与停靠也执行） | RQ1、RQ2：码 7 的状态回复、码 9 的停靠回复（队首、`docking-reply`）、其他非 0 码只清除；没有命令时的威胁重报 `0x3c208(0x93780, 0, 自身, 0)` |
+| `0x3c208` | P3-07 的伤害入口，护盾结算后、攻击者不为 `none` 时；`0x2a5fc` 结算后船体 ≥ 0 时（攻击者种类 0） | RX2。攻击者种类：`shooter` 为 1 << `kindBit`，`lost-shooter` 为 `0x93780`，`none` 为 0；来源为发射者或无。第 1 步 `0x38f20`：W 为种类 2 遍历的第一个实体（不看状态），攻击者种类为 1 时写友伤累计（原始伤害，i32 加法），否则为船体低于三成的报告 |
+| `0x3c0f4` | 被毁：置被毁标志之后、对象事件之前；`0x2a5fc` 结算后船体 < 0 时 | RX3（第 3 步的感谢使 `thanks` 加 1） |
+| `0x38cd4` | 实例化扩展点中初始移动块之后、玩家状态之前（P3-06 的次序表），种类在 `0x93780` 中的活动对象，用放置的位置 | RX5 |
+| `0x3c3b0` | P3-06 的停放行进提交（`0x2fc0a`）：写入了位置、新位置在活动区域内、行进者种类在 `0x93780` 中 | RX6 第 1–2 步；第 3 步的音乐步属于 G-01，不实现 |
+| 僚机到达基地 | P3-06 停放行进 `0x2f314` 的到达分支第一步：行进者种类恰为 2、行进目标非空且种类在 `0x68000` 中、取样 > `limits.wingmanArrivalRepair` | `limits.wingmanArrivalRepair` := 取样 + 0x780，`fullRepair(僚机, false)`；没有消息、没有抽取（RX6） |
+| `0x38c30` | `frame-end` 的尾随警告（CB-09） | RX5 |
+
+- **头像 `0x3c894(e)`（RQ4）：** e 不可解析 → 无（−1）；种类 2 → `aiValueA` − 1；种类在 `0x87c` 或 `0x68000` 中 → `communications.face`，为 null 时先经 `0x3c91c` 分配（机体池 3 项或基地池 5 项：f := rand % n，f 已占用时取第一个未占用项，全部占用时 f := rand % n 再抽一次；占用 f）；其他种类 → 0。
+- **查找 `0x3c618(table, face, index)`：** 头像为无或 < 0、头像不小于该表的子表数、序号越界或条目为 null → 无消息；否则为该条消息的帧时长。模型中档案恒为已打开（D-03 第 1 条）。
+- **给其他任务的入口：** `flushRadio`、`queueRadio`、`queueLine`（CB-06）；`fullRepair`（CB-10）；`clearCommunicationLimits`（清 `limits.friendlyHit` 与 `friendlyKill`，P3-11 的救援调用）。感谢计数的重置由 P3-11 的统计重置直接写 `thanks` := 0。
+
+#### CB-13 领域事件与次序
+
+字段沿用 CR-06 的通则：脱离世界的快照，不另带 `clock`，不含名称原文或内容字节。
+
+```ts
+| { type: 'command-delivered'; tick; receiverEntityId: EntityId; receiverKindBit: number; code: number;
+    senderEntityId: EntityId; commandIndex: number }
+| { type: 'radio-queued'; tick; message: MessageIdentity; callback: RadioCallback;
+    speaker: SpeakerSnapshot | null; position: 'head' | 'sorted'; length: number }
+| { type: 'radio-taken'; tick; message: MessageIdentity; speaker: SpeakerSnapshot | null }
+| { type: 'incoming-started'; tick; message: MessageIdentity; speaker: SpeakerSnapshot | null;
+    frameDurations: readonly number[]; shown: boolean }        // shown：页 5 已显示（视角不是 1）
+| { type: 'incoming-ended'; tick; message: MessageIdentity; speaker: SpeakerSnapshot | null;
+    callback: RadioCallback; countdownStarted: boolean } // countdownStarted：回调把子状态 3 改为 4
+| { type: 'radio-flushed'; tick; cause: 'docking-cancel'; removed: number; interrupted: 'none' | 'loading' | 'playing' } // P3-11 扩展 cause
+| { type: 'docking-requested'; tick; playerEntityId: EntityId; dockingObject: EntityId; previousSubState: MissionSubState;
+    deadlineClock: number; commandIndex: number }
+| { type: 'docking-cancelled'; tick; playerEntityId: EntityId; dockingObject: EntityId; cause: 'timeout' | 'invalid-object' | 'gate' }
+| { type: 'docked'; tick; playerEntityId: EntityId; baseEntityId: EntityId; wingmanEntityId: EntityId | null; previousViewMode: number }
+| { type: 'departed'; tick; playerEntityId: EntityId; origin: 'command' | 'automatic'; commandIndex: number | null;
+    viewMode: number; previousViewMode: number; position: Vec3; orientation: Matrix3; wingmanEntityId: EntityId | null }
+| { type: 'transition'; tick; gap: 'G-02/3' | 'G-02/4' }
+| { type: 'base-navigated'; tick; direction: 'previous' | 'next'; row: number | null; moved: boolean; commandIndex: number }
+| { type: 'base-confirmed'; tick; row: number | null; record: number | null; moved: boolean; commandIndex: number }
+```
+
+| 事件 | 发出时机与语义 |
+|---|---|
+| `command-delivered` | 请求处理中实际写入 `pendingCommand` 时；接收者已失效则不发。它不表示接收者已执行（僚机的消费事实归 P3-08） |
+| `radio-queued` | 每次入队；`length` 为入队后的队列长度 |
+| `radio-taken` | `communications-reply` 取出时（通道转为 `loading`） |
+| `incoming-started`、`incoming-ended` | 通讯呈现子步：可见与结束（含回调）。G-03 的项目文字与 P3-13、P3-14 以它们与 `communications` 分区为准；没有媒体时也照常发出 |
+| `radio-flushed` | 清空时，在其 `left-page-changed` 之后 |
+| `docking-requested` | 命令码 9 的选择，随所属命令的结果之后 |
+| `docking-cancelled` | 三种取消（DK1、DK2）；原版没有任何反馈，G-03 不为它显示文字（决定 9） |
+| `docked`、`departed` | 请求处理中成功的停靠与离港；门禁失败只有 `docking-cancelled` |
+| `transition` | 紧随 `docked`（`G-02/3`）或每个 `departed`（`G-02/4`）。每 tick 至多 2 个（CB-16）；Runtime 据此截断帧并进入保持（[P3-04](../04/spec.md#运行中衔接p3-10-的修订)） |
+| `base-navigated`、`base-confirmed` | 请求处理中每个基地键请求一次（P3-14 的 SND 10167、10169）；`moved` 为光标或行是否改变 |
+
+**一个 tick 内的次序：** `mission-flow`（`docking-cancelled`、`radio-flushed` 与其页事件）→ 对象更新：命令结果按命令序号，各命令的 `left-page-changed`、`docking-requested` 紧随其结果；`0x3bed0` 与实例化的 `radio-queued` 按遍历次序 → `communications-reply`（`radio-taken`）→ 请求处理按请求次序（`command-delivered`、`docked`/`departed` 与 `transition`、基地键事件、门禁的 `docking-cancelled`）→ 伤害与停放阶段的 `radio-queued` → `frame-end`：左显示屏处理器的页事件、尾随警告的 `radio-queued`、通讯呈现子步的页事件与 `incoming-started`/`incoming-ended`。比较器的事件字段表随之扩展。
+
+#### CB-14 Projection 与 Render State
+
+`communications` 分区就绪，取代原占位的 `MenuContentReference`、`OptionUnavailableReason` 与 `CommunicationsReady`：
+
+```ts
+type CommunicationsProjection = { readiness: 'ready'; player: CommunicationsPlayer | null }; // 没有玩家实体时为 null；已被毁的玩家照常给出
+interface CommunicationsPlayer {
+  entityId: EntityId;
+  page: LeftPage;
+  subsystem: SubsystemState;            // 字段 13：为 2 时不能打开菜单
+  menu: CommunicationsMenuView | null;  // 页在 2–4 且菜单非 null 时；休眠的菜单不公开
+  incoming: IncomingView | null;        // 通道为 playing 时
+  docking: { subState: MissionSubState; dockingObject: EntityId | null; docked: boolean }; // docked：玩家活动为停靠
+  base: BaseServiceView | null;         // 已提交的视角为 6 时
+  warnings: { attackerOnTail: boolean; missileIncoming: boolean };  // 类型 9 仪表的两个指示灯（P3-13）
+}
+type MenuContentReference = { asset: AssetId; table: 'categories' | 'objects' | MenuCommandTable }; // asset 为 commMenus 的 Asset ID
+interface CommunicationsMenuView {
+  menu: MenuContentReference;
+  level: 2 | 3 | 4;
+  partnerEntityId: EntityId | null;
+  options: readonly CommunicationsOption[];   // 按显示位置
+}
+interface CommunicationsOption { position: number; key: number; value: CategoryValue | ObjectValue | CommandValue | { type: 'exit' } }
+interface IncomingView { message: MessageIdentity; speaker: SpeakerSnapshot | null; frame: number; frameCount: number; shown: boolean }
+interface BaseServiceView {
+  baseEntityId: EntityId | null;        // 停靠对象
+  rows: readonly { record: number; selector: number; state: number }[]; // 按行；state 为 serviceState（字段 0–3，组 0–4）
+  cursor: number;
+  flags: { repairsComplete: boolean; energyAndMissilesFull: boolean; hullFull: boolean };
+}
+```
+
+- 原版的菜单没有不可用的项，所以不设 `OptionUnavailableReason`。`frame` 由 e 与各帧时长按 CB-09 的方式算出，是 P3-13 的绘制与 P3-14 的帧音效的依据，规则不读。
+- 不公开：无线电队列、停靠期限与倒计时、基地计时与速率（原版不可见；开发诊断经快照读取）。资源与弹药读数沿用 `flight.combat`（基地视角的驾驶舱含这些仪表）。
+- 读取不改变状态、不抽取。
+- **Render State：** 形状不变。离港的放置使玩家的放置序号加 1；停靠的实体照常列出，视角 6 中不绘制三维世界归 P3-12。
+
+#### CB-15 系统流水线
+
+阶段表不变。各阶段中 P3-10 的部分：
+
+| 阶段 | P3-10 的部分 |
+|---|---|
+| `mission-flow` | 子状态 3、4、5 的检查（CB-02），在 P3-11 的部分所在的同一跳转之内 |
+| `object-update` | 玩家的命令判定（CB-07）；种类 `0x6807c` 的 `0x3bed0`（CB-12）；实例化扩展点的 `0x38cd4` |
+| `communications-reply` | 取出（CB-06） |
+| `request-handling` | `deliver-command`、`dock`、`depart`、`base-navigate`、`base-confirm` |
+| 伤害所在的阶段（`movement`、`collision` 等） | `0x3c208`、`0x3c0f4`（CB-12） |
+| `parked-update` | `0x3c3b0` 与僚机到达基地（CB-12） |
+| `base-interior` | 服务步（CB-11） |
+| `frame-end` | 左显示屏处理器的扩展、尾随警告、通讯呈现子步（CB-09） |
+
+#### CB-16 容量、快照与版本
+
+- **事件：** 按 CR-14 的切片规模（机体 32、命令 64），每 tick 新增至多：`radio-queued` 约 300（`0x3c208` 受三种限频约束为 1 + 1 + 每个受害者 2 共 66；`0x3c0f4` 的击杀台词与“僚机附近的友方被毁”各 32、感谢 32、玩家击毁友方 1、友方被毁每次至多 2 共 64；回复至多 32；`0x3c3b0` 每座基地 1 共 32；敌方出现与尾随各 1，以及 P3-08、P3-11 的少量入队）；`command-delivered`、`docking-requested`、`base-navigated`、`base-confirmed` 与菜单的 `left-page-changed` 各不超过命令数 64；非命令的 `left-page-changed` ≤ 8（两次清空各 2、处理器 1、来电开始与结束各 1）；`radio-taken`、`incoming-started`、`incoming-ended`、`docked` 各 ≤ 1；`departed`、`transition`、`docking-cancelled`、`radio-flushed` 各 ≤ 2。合计约 600，与 CR-14、MW-14 的 8,328 相加约 8,930，仍远在 `eventsPerTick`（32,768）之内。
+- **`transition` 的上界：** 每 tick 至多 2 个：`dock` 只由子状态 4 投递，至多 1 个；`depart` 至多 2 个（子状态 5 的自动离港与一个 `launch` 命令；批次中被接受的 `launch` 使有效上下文离开基地，第二个 `launch` 为 `wrong-context`）；`dock` 与自动离港来自互斥的子状态，同一 tick 至多一个 `dock` 加一个命令离港（冲突 ⑰ 的竞态）。
+- **请求：** 新增至多 64 + 1 + 2 + 64；与 CR-14、MW-14 的合计约 3,720，在 `requestsPerTick` 之内。
+- **`CORE_LIMITS` 新增 `radioQueueItems` = 4,096：** 原版无界，这是项目的防失控预算，超出为 Core 故障（不静默丢弃），测试覆盖 limit 与 limit + 1。依据：
+  - 不受限频约束的规则入队都由被毁触发（每次被毁至多约 4 条），被毁对象总数受 `spawnExpansion`（1,024）约束；受限频约束的报告每个周期至多一条。
+  - 可以无限重复的是对命令的回复：每次状态查询或停靠请求至少要 3 个菜单键（`c`、对象或类别、命令），每个对象每 tick 至多回复一次。队列每次取出一条，最短的基地回复约 2.3 秒（RQ5）。按原版每次轮询读一键、人以每秒 4 键持续查询，队列净增约每秒 0.9 条，到上限需 1 小时以上；开发录制的 tick 上限为 68 分钟（`recordedTicks`）。
+  - 所以 4,096 是有意的失控阈值：合法的人工输入要持续上述时长才会到达，到达时故障而不丢消息。合成测试可以用整批命令更快地到达，这正是 limit + 1 的用例。
+  其他上限不变。
+- **快照：** 覆盖 CB-02 至 CB-05 与 CB-11 的全部新状态（`flow`、`dockingObject`、玩家的 `communications` 与 `docking`、实体的 `communications` 与 `ai.pendingCommand`、世界的 `communications`、`ai.friendlyFire` 与 `baseService`）；静态的 `WorldRuleData.communications` 不进快照。队列在上限下约 0.8 MiB，每个实体增加约 60 字符；与 MW-14 的约 10.9 MiB 合计约 11.8 MiB，在 `canonicalTextLength` 之内。
+- **版本：** `RULES_VERSION` 与快照格式版本相对实现时的当前值各递增一次，由首个实现共享形状的子任务（P3-10/11）递增，此后本 goal 内不再递增。replay 记录的形状不变（三项新输入是调用输入，经 setupHash 与内容身份绑定；命令联合不变），replay 格式版本不变。旧规则版本的记录在任何 tick 之前拒绝。
+
+#### CB-17 定稿的决定与已批准的差异
+
+依据用户的授权（见[审批](#审批)的 P3-10 修订记录）按推荐方案定稿。每条写明所选、理由与被排除的方案；“差异”写入 Core 模块说明的已知差异与 R-17 至 R-19 的对照结论。
+
+1. **通讯对象用稳定身份（差异，冲突 ④）：** 原版的通讯对象不计引用，对象移除后节点可能被下一个新对象复用，命令与停靠因此转向新对象（comm §7.4，运行中出现未确认）。Core 以 `EntityId` 表示，移除即失效。被排除：模拟节点池与复用次序，它属于内存管理而不是规则，且需要把节点分配器带进 Core。
+2. **码 9 照原版先进入等待（冲突 ③）：** 对象已失效时不投递命令，但仍进入子状态 3，下一 tick 的检查以清空取消。P3-10 spec 中“目标失效则无作用”只对 `pendingCommand` 成立。被排除：判定时直接拒绝，会少一次清空并改变页与队列。
+3. **子状态 3–5 中停靠对象为 null 是故障（差异，冲突 ⑭）：** 原版把 null 当作有效，但正常流程中不可达（DK1）。被排除：照原版把 null 视为有效，它会让玩家在没有基地时停留在等待中且无法测试来源。
+4. **菜单不刷新、停靠项在建立时固定（冲突 ②）：** 照原版，`0x333b4` 不看当前子状态。被排除：选择时再检查门禁，原版没有。P3-11 接入子状态 1、2、6 后，这一覆盖照原版发生（交接）。
+5. **离港的放置（冲突 ⑮，并经本子任务复核更正）：** 原版保存的是停靠对象（基地）的位姿，离港把玩家放在基地位置沿基地第 1 行 1000 单位处并朝该方向；移动块不重建。放置序号加 1 是项目字段。被排除：沿用 P3-10 spec 原先的“按保存的玩家位姿放置”。
+6. **同 tick 两次离港照原版（冲突 ⑯⑰）：** 第二次再应用位姿并再给一次 `G-02/4`；Runtime 以有限序列处理（P3-04）。被排除：每 tick 至多一次离港，那会丢弃原版可达的转移。
+7. **停靠中的漂移照原版（冲突 ⑯）：** 停靠的玩家按其移动块继续运动，活动区域中心随之移动，可导致基地停放与自动离港；速度辅助的满油门同理。被排除：停靠时冻结运动，它与 DK4 的代码事实不符。运行观察交 P3-10/25。
+8. **同一批次中逐条判定：** 原版每次轮询只读一个键，菜单字段立即改变、页在同一帧的消息循环中改变，下一个键已看到两者。Core 在判定时立即写入菜单、页与停靠等待，后续命令读到写入后的值；离港请求在请求处理中应用，以有效视角使后续命令按飞行判定。被排除：整批开始时的快照，或页的写入延到请求处理（同批的后一个数字会读到旧页）。
+9. **取消没有反馈（冲突 ①⑭）：** 三种取消都不入队、不播放；Core 发出 `docking-cancelled` 供诊断与 UI 状态，G-03 不显示文字。被排除：显示项目的“停靠取消”文字，原版没有。
+10. **显示次序即服务队列（冲突 ⑲）：** 照原版只有一个数组，Enter 与轮转都改变显示次序，光标是行号。P3-10 spec 中“显示排序与执行队列为不同概念”与 AC-09 的“Enter 不改动显示排序”按研究推翻（P3-10 spec 的 D-01 定稿一节）。
+11. **尾随警告的 AI 条件与节奏（差异）：** 攻击航线字节属于 P3-08 的处理器状态；P3-08 接入前没有处理器，该条件不成立，这是没有 AI 时的真实结果，不是空回调。原版只在仪表记录到期时调用类型 9 的处理器（记录的调度字段未研究，U-029），Core 在视角集合中每 tick 判定、由内部计时 `0x175f34` 门控，与 CR-11 差异 4 同类。视角集合按 [cockpit 的槽内仪表类型](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)收窄为 0xC、0xD、1、6（类型 9 只在布局 0、5 中），比 D-03 第 3 条按 `0x49b2c` 的外层门禁列出的集合更窄。
+12. **页 2–5 的干扰闪烁不复现（差异）：** 字段 13 为 1 时原版以表现随机数切换干扰画面并暂停该页的处理器；玩家的字段 13 至多为 1（D6）。与 CR-11 差异 2、4 同类。
+13. **载入延迟固定一 tick、不支持 LO：** D-03 已批准的差异，本节沿用。
+14. **基地内部的 RNG 与持久效果：** 每个船体步 1 次抽取、入港 1 次抽取都保留；列表选择与清除的锁定等级在离港后保留（冲突 ⑳）。被排除：省去结果被丢弃的入港抽取，它会改变之后的随机序列。
+15. **种类 `0x4000` 移交 P3-08：** 见 CB-18。
+16. **队列的到期按数值排序（差异）：** 原版以有符号 i32 比较到期，只在到期 ≥ 2³¹ 时钟单位（约 388 天）后与数值比较不同。被排除：在 Core 中模拟 32 位有符号比较，它只影响不可达的时长，却要求时钟另有一种语义。
+
+#### CB-18 种类 `0x4000` 的责任移交
+
+- **决定（推荐方案，依授权批准）：** 运行时构造种类 `0x4000`（Xpon）的 `0x38780` 及其两个调用者，即玩家 `b` 键的命令与内部请求（消息 0x200000、调度器 `0x2148b`）和 AI 的投放，统一归 P3-08；种类 `0x4000` 的回调 `0x3897c` 本来就归 P3-08。输入接线（命令、物理绑定的交接 P3-05）与验收一并归 P3-08。
+- **接收方的契约：** 用户于 2026-10-14 批准的 P3-08 spec（在分支 `p3-08-ai-wingman-spec` 上，尚未合入本分支）的 S-12 与 AC-10 已把 Xpon 的回调、`b` 的命令与构造列入其范围与验收，所以责任在移交时已有获批的接收方。字段级的形状（命令、请求、`transponder` 状态与事件）由 P3-08 自己的 D-01 定稿（其草案 CR-20、CR-21），在 P3-08 实现它们之前另行批准；本节不定义它们，也不留下由 P3-10 实现的部分。依据：两条调用路径共用同一构造（[two allocator paths](../../../original/formats/executable.md#two-allocator-paths-native-inputs-and-profile-comparison)），回调与 AI 都在 P3-08，`b` 与通讯无关的说法不是理由。
+- **对 CR-02 的修订：** CR-02 构造者一栏的“P3-10 的种类 `0x4000` 由其修订另行接入”改为由 P3-08 的修订接入（已在 CR-02 中改写）。由内容实例化的种类 `0x4000`（所选任务的记录中有 35 个，comm §8）仍按 CR-07 的实例化扩展点构造。
+- **P3-10 的保留部分：** 种类 `0x4000` 不在任何通讯类别中（comm §8），本任务对它没有规则；CB-01 检查 2 拒绝含种类位 14 的类别掩码。
+- **被排除的方案：** 留在 P3-10，并补齐其构造、`b` 命令与验收。它把 Xpon 的构造与其回调、AI 投放分到两个任务，需要两边共同维护同一构造。
+- **阶段索引：** P3-08 的范围说明由协调者修改（阶段 `tasks.md` 只由协调者修改）。
+
+#### CB-19 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-08 | `ai.pendingCommand` 的消费（`0x61f20`、`0x614a8`）与清除；`deliver-command` 即其草案的 `wingman-command`；`queueLine` 入队 AI 回复；友伤累计的读取（`0x38fd8`）；`fullRepair` 供 `0x61bd0` 调用；尾随警告读其处理器状态中的攻击航线字节（请提供只读谓词）；种类 `0x4000` 的构造与 `b`（CB-18）；`0x3bed0` 在 AI 步之后的位置 |
+| P3-09 | `switchView` 中涉及 6 的部分由本任务实现；地图标签按 `communications.threatStamp` 闪烁；从基地打开地图时服务步停止（视角 8）；地图打开时自动离港的视角为 0xC；菜单从不占用 `m`、`w` |
+| P3-11 | `flow` 的主流程状态与子状态 1、2、6 的扩展；`flushRadio` 的调用与原因；`clearCommunicationLimits` 与 `thanks` 的重置；僚机损失消息经 `queueRadio`；救援复用 `fullRepair`；子状态 3–5 期间任务成功与僚机损失消息延后（DK1）；停靠中被毁后玩家与僚机的活动可能保持停靠（DK4，交 U-031）；`0x333b4` 可覆盖子状态 1（comm §7.5） |
+| P3-12 | 离港的放置序号；视角 6 不绘制三维世界 |
+| P3-13 | `communications` 分区的菜单、来电页、基地页与两个指示灯；对象项的 `tone` |
+| P3-14 | `left-page-changed`（`commandIndex` 非 null 时 SND 10485）、`base-navigated`/`base-confirmed`（10167、10169）、来电的帧音效与两个音乐回调 |
+| P3-04 | 运行中衔接（[P3-04 的修订](../04/spec.md#运行中衔接p3-10-的修订)） |
+
 ### P3-05 的契约修订（速度档位命令）
 
 本节由 [P3-05 子任务 10](../05/subtasks/10-speed-preset-spec-sync.md) 加入（2026-10-10，经用户批准，见[审批](#审批)），落实已批准的 [P3-05 速度档位命令](../05/spec.md#速度档位命令)。单一的 `select-number` 不能同时表达原版的两种数字键：未按 Shift 的数字在通讯菜单或基地中选择项目、在普通飞行中无作用；Shift+数字在普通飞行中选择速度档位，在通讯菜单打开时可能仍然有效。前文（含[输入与命令](#输入与命令)的命令表与 [P3-06 的契约修订](#p3-06-的契约修订检查点-a) D-04）与本节不一致时以本节为准；P3-02 与 P3-06 既有的 goal 与 subtask 是历史记录，不改写。
@@ -1104,3 +1597,10 @@ type Attacker =
 **2026-10-10 修订（P3-05 的速度档位命令）：** 用户于 2026-10-10 在 P3-05 goal 执行中明确批准本修订（对 P3-05 协调者“是否批准这两份 spec 修订？”（P3-02 与 P3-06）选择“批准修订”）。修订只新增“P3-05 的契约修订（速度档位命令）”一节与本条记录：命令联合新增 `speed-preset`，普通飞行的档位从 `select-number` 改接到它，`rulesVersion` 与 replay 格式版本各递增一次。没有新增 S/AC 编号，其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。
 
 **2026-10-13 说明（P3-05 合入 main）：** P3-05 与 P3-07 在各自分支上都把 `RULES_VERSION` 从 2 递增为 3。合入时按“相对实际集成基线各递增一次”取 4；replay 格式版本为 2（只由 P3-05 递增），快照格式版本为 3（只由 P3-07 递增）。只改“P3-05 的契约修订（速度档位命令）”的版本一项的措辞，行为、契约与验收要求不变，未重跑 review-spec。
+
+**2026-10-14 修订（P3-10 的 D-01，依用户授权，由 P3-10 的子任务 08 定稿）：**
+
+- **范围：** 新增“P3-10 的契约修订（D-01）”一节（CB-01 至 CB-19），改写 CR-02 构造者一栏中种类 `0x4000` 的一句，并记录本条。P3-06、P3-07 与 P3-05 已定的项不变；本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **授权出处与用户原话：** 用户于 2026-10-14 授权 agent 直接批准 P3-10 关卡 07、08、10 的推荐方案：“i authorize you to approve the recommended options for gates 07, 08 and 10”（记于 [P3-10 goal 的审批](../10/goal.md#审批)）。授权不涵盖总计划与 ADR 中的冻结决定，也不放宽阶段退出条件；本修订没有改变它们。
+- **所选方案与理由；被排除的方案：** 见 CB-17 的决定 1 至 16 与 CB-18（每条写明所选、理由与被排除的方案）。要点：通讯对象用稳定身份而不模拟节点复用；码 9 照原版先进入等待；子状态 3–5 中停靠对象为 null 视为故障；菜单不刷新；离港按停靠时保存的基地位姿放置（本子任务以原生指令复核了保存位姿的来源）；同 tick 两次离港照原版；停靠中的漂移照原版；同批命令逐条读写；取消无反馈；显示次序即服务队列；尾随警告的 AI 条件归 P3-08、节奏每 tick 判定；页 2–5 的干扰闪烁不复现；种类 `0x4000` 移交 P3-08（被排除：留在 P3-10 并补齐范围与验收）。与 P3-08、P3-09 重叠的字段按本节开头的对齐表只有一份定义。
+- 本修订对 P3-10 spec 方向的改动记在 [P3-10 spec 的 D-01 定稿](../10/spec.md#d-01-定稿已批准)；Runtime 与会话的部分记在 [P3-04 的运行中衔接](../04/spec.md#运行中衔接p3-10-的修订)。

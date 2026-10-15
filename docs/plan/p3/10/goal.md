@@ -92,7 +92,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | in-progress |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
@@ -137,6 +137,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — Subtask 07 恢复：** 用户授权批准关卡推荐方案（见审批），07 的 `Resume when` 已满足，行改回 in-progress。
 
 - **2026-10-14 — 07 完成，新增子任务 29：** D-03 依授权批准，P3-03 修订 2 同时批准。29 实现修订（`data/comm-messages`、白名单加入 `COMMFACE.NOB`、切片定义版本 5），12、14、15 与最终对齐加入对它的依赖；12 的工作范围加入 `commMessages` 输入。
+
+- **2026-10-14 — 08 完成：** D-01 依授权批准（P3-02 CB-01–CB-19、P3-04 运行中衔接、P3-10 方向修订 ①–⑨）。离港位姿复核：`0x38ff4` 保存的是所停靠基地的位姿（与 09 的 `rt-a2-01` 一致），executable 与 B-004 的更正由协调者另行提交。种类 `0x4000` 移交 P3-08（不新增本任务子任务），阶段索引随之修改。15–19、21 的验收措辞须按 D-01 的方向修订执行（见 08 的完成证据）。
 
 ## 审批
 
