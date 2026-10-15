@@ -140,6 +140,9 @@ describe('opening the menu (CB-07 rule 2, page not 2–4; comm §7.2)', () => {
     const world = scene();
     add(world, 17);
     world.state.player.leftDisplay.page = 5;
+    // A message plays on page 5, which otherwise the frame-end handler would leave for page 0 (CB-09).
+    const item = { message: { table: 20983, face: null, index: 0 }, due: 0, callback: 'none', speaker: null } as const;
+    world.state.communications.channel = { phase: 'playing', item, startClock: 0, frameDurations: [1000] };
     world.state.player.communications.menu = { level: 4, table: 'other', items: [{ key: key('x'), value: { type: 'exit' } }] };
     expect(constructWorld(world.state).step(tickInput([open, close]))).toEqual([accepted(0, open), page(5, 2, 0), accepted(1, close), page(2, 5, 1)]);
     expect(world.state.player.communications.menuSavedPage).toBe(5);
@@ -268,7 +271,7 @@ describe('the menu levels in one batch (CB-07; comm §7.2, §7.7)', () => {
 });
 
 describe('choosing a command (CB-07 page 4, CB-02 row 1; CD1)', () => {
-  it('posts deliver-command to the partner and returns to the saved page; the formal step then reaches request handling with it', () => {
+  it('posts deliver-command to the partner and returns to the saved page; request handling then writes it into the partner', () => {
     const world = scene();
     const base = add(world, 17);
     const commands = [open, digit(1), digit(1)];
@@ -277,10 +280,12 @@ describe('choosing a command (CB-07 page 4, CB-02 row 1; CD1)', () => {
     expect(shown(world)).toEqual({ page: 0, menu: null });
     expect(world.state.flow).toEqual({ mainState: 3, subState: 0, dockingDeadline: 0 });
     expect(deliveries(context)).toEqual([{ type: 'deliver-command', receiver: base.id, code: 7, sender: world.player.id, commandIndex: 2 }]);
-    // Until P3-10/14 handles the request, the formal step's request handling takes it as a fault.
     const formal = scene();
-    add(formal, 17);
-    expectFault(() => constructWorld(formal.state).step(tickInput(commands)), 'invariant-violated', 'requests.deliver-command');
+    const receiver = add(formal, 17);
+    expect(constructWorld(formal.state).step(tickInput(commands)).at(-1)).toEqual({
+      type: 'command-delivered', tick: 1, receiverEntityId: receiver.id, receiverKindBit: 17, code: 7, senderEntityId: formal.player.id, commandIndex: 2,
+    });
+    expect(receiver.ai.pendingCommand).toEqual({ code: 7, issuedTick: 1 });
   });
 
   it('posts before the update\'s control requests, so a same-tick throttle follows it', () => {

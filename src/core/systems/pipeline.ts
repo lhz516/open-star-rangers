@@ -21,7 +21,9 @@ import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState }
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
+import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
+import { deliverCommand } from './communications.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
@@ -31,6 +33,7 @@ import { moveEntities } from './movement.ts';
 import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
+import { takeRadio } from './radio.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
 
@@ -108,8 +111,8 @@ export type Request =
   /** Sub-command 3: the base page's confirmation. */
   | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
 
-/** P3-10's request types (CB-08), handled by P3-10's subtasks 14, 16 and 18; until then no rule posts them. */
-const COMMUNICATIONS_REQUESTS = ['deliver-command', 'dock', 'depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
+/** P3-10's request types (CB-08) other than `deliver-command`, handled by P3-10's subtasks 16 and 18; until then no rule posts them. */
+const COMMUNICATIONS_REQUESTS = ['dock', 'depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
 type CommunicationsRequest = RequestOf<(typeof COMMUNICATIONS_REQUESTS)[number]>;
 const isCommunicationsRequest = (request: Request): request is CommunicationsRequest => (COMMUNICATIONS_REQUESTS as readonly string[]).includes(request.type);
 
@@ -286,13 +289,16 @@ export function updateLifecycle(context: TickContext, entity: Entity): void {
 
 /**
  * An entity's own update: the kind callbacks of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-07: missiles
- * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part.
+ * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part. A
+ * craft's generic part ends in state 7 with P3-10's answer to a delivered command (`0x3bed0`, base-response.ts), where
+ * P3-08's AI step will precede it (CB-12).
  */
 function updateObject(context: TickContext, entity: Entity): void {
   const { combat } = entity;
   switch (combat.type) {
     case 'craft':
       updateLifecycle(context, entity);
+      answerCommand(context, entity);
       return;
     case 'missile':
       updateMissile(context, entity, combat);
@@ -368,6 +374,10 @@ function handleRequest(context: TickContext, request: Request): void {
   const { world } = context;
   // No rule posts P3-10's requests until their handling is in place, so one reaching here is Core's fault.
   if (isCommunicationsRequest(request)) throw new CoreFaultError('invariant-violated', `requests.${request.type}`);
+  if (request.type === 'deliver-command') {
+    deliverCommand(context, request);
+    return;
+  }
   if (request.type === 'spawn') {
     dispatchSpawn(world, request, (event) => emit(context, event));
     return;
@@ -477,8 +487,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('mission-flow', null),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
-  // Dispatcher 0x20d10. A due communications reply (0x2cd60): P3-10.
-  stage('communications-reply', null),
+  // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).
+  stage('communications-reply', takeRadio),
   stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
   // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
@@ -499,8 +509,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),
-  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09) and P3-07's cockpit display step
-  // (CR-10); never waits for a rendered frame.
+  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09), P3-07's cockpit display step
+  // (CR-10) and P3-10's communications presentation sub-step (CB-09); never waits for a rendered frame.
   ruleStage('frame-end', () => frameEndStage),
   stage('commit', commit),
 ]);

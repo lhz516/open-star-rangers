@@ -49,6 +49,18 @@ export function clearsMenuPage(page: LeftPage, hasMenu: boolean, subsystems: rea
   return isMenuPage(page) && !hasMenu && subsystems[COMMUNICATIONS_FIELD] !== 2;
 }
 
+/** The incoming message's page (RQ8). */
+export const INCOMING_PAGE = 5;
+
+/**
+ * Whether the page-5 handler `0x4dc50` leaves page 5 for page 0: page 5 shows, field 13 is not 2 and no message plays,
+ * as after a menu opened on page 5 closes (D-03 item 3 point 4; CB-09). The original gets there after three failed
+ * draws; Core sets page 0 at once, which only the presentation sees.
+ */
+export function clearsIncomingPage(page: LeftPage, playing: boolean, subsystems: readonly SubsystemState[]): boolean {
+  return page === INCOMING_PAGE && !playing && subsystems[COMMUNICATIONS_FIELD] !== 2;
+}
+
 /** Field 10, whose state 2 replaces the status page by its interference animation (D15). */
 const STATUS_PAGE_FIELD = 10;
 

@@ -290,6 +290,11 @@ describe('the energy and damage-report commands (AC-10; CR-05, D10, D15)', () =>
       state.player.leftDisplay.page = page;
       // A menu page shows its built menu; without one the frame-end handler would set page 0 (P3-10 CB-09).
       state.player.communications.menu = MENU_OF_PAGE[page] ?? null;
+      // Page 5 shows a playing message; without one the frame-end handler would set page 0 (P3-10 CB-09, D-03).
+      if (page === 5) {
+        const item = { message: { table: 20983, face: null, index: 0 }, due: 0, callback: 'none', speaker: null } as const;
+        state.communications.channel = { phase: 'playing', item, startClock: 0, frameDurations: [1000] };
+      }
       return state;
     };
     const [judged, idle] = [prepare(), prepare()];

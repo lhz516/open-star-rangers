@@ -26,7 +26,8 @@
  *
  * Every accepted command writes the page once and emits `left-page-changed` with its command index right after its
  * result (message 0x100000), then `docking-requested` for code 9. Requests are posted at once, ahead of the update's
- * control requests (CB-08). The menu is built only here and never refreshed (comm §7.5).
+ * control requests (CB-08); request handling then writes the delivered command into its receiver (deliverCommand). The
+ * menu is built only here and never refreshed (comm §7.5).
  */
 import { CoreFaultError } from '../errors.ts';
 import { buildCategoryMenu, buildCommandMenu, buildObjectList, CLOSE_KEY, digitKey, matchItem, type NearMenuView } from '../rules/comm-menus.ts';
@@ -36,7 +37,7 @@ import { interactionContext, type CategoryValue, type CommandValue, type LeftPag
 import { emitCommandResult, rejectNotImplemented, type CommandOf, type CommandOutcome } from './commands.ts';
 import { writeLeftPage } from './displays.ts';
 import { availablePlayer } from './flight-control.ts';
-import { emit, type TickContext } from './pipeline.ts';
+import { emit, type RequestOf, type TickContext } from './pipeline.ts';
 
 /** P3-10's commands (CB-07), with `confirm-selection` outside flight, where it is not the manual speed match. */
 export type CommunicationsCommand = CommandOf<'communications' | 'select-number' | 'navigate-selection' | 'launch' | 'confirm-selection'>;
@@ -197,6 +198,22 @@ function judgeWithoutMenu(judgement: Judgement, command: CommunicationsCommand, 
   }
   emitCommandResult(context, command, commandIndex, ACCEPTED);
   writePage(judgement, 2);
+}
+
+/**
+ * `deliver-command` in request handling (message 0x100, CD2): the receiver's pending command is the code, whatever it
+ * held, with `command-delivered`; a receiver removed before then gets nothing. Kind, state, activity and the destroyed
+ * flag are not read. That the receiver acts on it is the consumer's fact (`0x3bed0`, P3-08's wingman handlers).
+ */
+export function deliverCommand(context: TickContext, request: RequestOf<'deliver-command'>): void {
+  const { world, time } = context;
+  const receiver = world.entities.get(request.receiver);
+  if (receiver === undefined) return;
+  receiver.ai.pendingCommand = Object.freeze({ code: request.code, issuedTick: time.tick });
+  emit(context, {
+    type: 'command-delivered', tick: time.tick, receiverEntityId: receiver.id, receiverKindBit: receiver.kindBit, code: request.code,
+    senderEntityId: request.sender, commandIndex: request.commandIndex,
+  });
 }
 
 /** Judges one of P3-10's commands in its place in the order (module comment). */

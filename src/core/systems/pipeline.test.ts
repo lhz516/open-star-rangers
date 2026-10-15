@@ -68,9 +68,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06, P3-07 and P3-10 own so far and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
+      'input-registration', 'clock', 'object-update', 'communications-reply', 'spawn-queue-check', 'request-handling', 'movement', 'collision',
+      'delayed-player-explosion', 'energy',
       'parked-update', 'area-check', 'frame-end', 'commit',
     ]);
   });
@@ -433,7 +434,6 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
 
 describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)', () => {
   it.each([
-    { type: 'deliver-command', receiver: 2, code: 9, sender: 1, commandIndex: 0 },
     { type: 'dock', entityId: 1 },
     { type: 'depart', entityId: 1, origin: 'command', commandIndex: 0 },
     { type: 'depart', entityId: 1, origin: 'automatic', commandIndex: null },
