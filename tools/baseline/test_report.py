@@ -222,6 +222,25 @@ class ReportTests(unittest.TestCase):
             with self.assertRaises(BaselineError) as caught:
                 self.build(recipe=recipe, samples=self.samples(recipe), stimuli=records)
             self.assertEqual(caught.exception.code, "report-invalid")
+        conditional = self.parse(lambda d: (declare(d), d["stimuli"][1].update(
+            {"if": {"pause": "start", "field": "scenario", "equals": 1}})))
+        evidence = {"pause": "start", "field": "scenario", "equals": "1", "reading": "1092"}
+        unselected = [applied[0], {**applied[1], "status": "not-selected", "condition": evidence}]
+        report = self.build(recipe=conditional, samples=self.samples(conditional), stimuli=unselected)
+        self.assertEqual((report["status"], report["counts"]["stimuliApplied"], report["counts"]["stimuliNotSelected"]),
+                         ("complete", 1, 1))
+        broken = (
+            (recipe, unselected),  # an unconditional stimulus is never left unselected
+            (conditional, [applied[0], {**applied[1], "status": "not-selected"}]),  # no condition evidence
+            (conditional, [applied[0], {**unselected[1], "condition": {**evidence, "field": "ticks"}}]),
+            (conditional, [applied[0], {**unselected[1], "condition": {**evidence, "reading": "1"}}]),  # contradicts
+            (conditional, [applied[0], {**unselected[1], "condition": {**evidence, "reading": "x"}}]),
+            (conditional, [applied[0], {**applied[1], "condition": evidence}]),  # applied although the reading differs
+        )
+        for index, (which, records) in enumerate(broken):
+            with self.subTest(index=index), self.assertRaises(BaselineError) as caught:
+                self.build(recipe=which, samples=self.samples(which), stimuli=records)
+            self.assertEqual(caught.exception.code, "report-invalid")
         plain = self.build(stimuli=applied)  # a recipe without stimuli reports none
         self.assertNotIn("stimuli", plain)
         self.assertNotIn("stimuliPlanned", plain["counts"])

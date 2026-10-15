@@ -75,6 +75,26 @@ def _passed(value, where):
     return section, section.get("passed") is True
 
 
+def _check_condition(record, only_if):
+    """A settled stimulus record agrees with its recipe condition: an unconditional stimulus is never `not-selected`;
+    a conditional one carries its `condition` evidence, and the recorded reading decides its status."""
+    condition = record.get("condition")
+    if only_if is None:
+        if record["status"] == "not-selected" or condition is not None:
+            raise BaselineError("report-invalid", "stimuli")
+        return
+    binding, expected = only_if
+    if type(condition) is not dict or condition.get("pause") != binding.pause or \
+            condition.get("field") != binding.field or condition.get("equals") != f"{expected:x}":
+        raise BaselineError("report-invalid", "stimuli")
+    try:
+        reading = int(condition.get("reading"), 16)
+    except (TypeError, ValueError):
+        raise BaselineError("report-invalid", "stimuli") from None
+    if (reading == expected) != (record["status"] == "applied"):
+        raise BaselineError("report-invalid", "stimuli")
+
+
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
                  cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None):
     """The report dict. `run_end` None marks an unfinished run (the state a report is first written in). `stimuli`,
@@ -126,10 +146,17 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         records = _plain(list(stimuli or ()), "stimuli")
         if any(type(record) is not dict for record in records):
             raise BaselineError("report-invalid", "stimuli")
-        applied = [(record.get("id"), record.get("pause")) for record in records if record.get("status") == "applied"]
-        if applied != [(stimulus.id, stimulus.pause) for stimulus in recipe.stimuli]:
+        settled = [record for record in records if record.get("status") in ("applied", "not-selected")]
+        if [(record.get("id"), record.get("pause")) for record in settled] != \
+                [(stimulus.id, stimulus.pause) for stimulus in recipe.stimuli]:
             reasons.add("stimuli-missing")
-        counts.update(stimuliPlanned=len(recipe.stimuli), stimuliApplied=len(applied))
+        conditions = {(stimulus.id, stimulus.pause): stimulus.only_if for stimulus in recipe.stimuli}
+        for record in settled:
+            _check_condition(record, conditions.get((record.get("id"), record.get("pause"))))
+        applied = sum(record["status"] == "applied" for record in settled)
+        counts.update(stimuliPlanned=len(recipe.stimuli), stimuliApplied=applied)
+        if len(settled) > applied:
+            counts["stimuliNotSelected"] = len(settled) - applied
         extra["stimuli"] = records
 
     integrity, integrity_passed = _passed(integrity, "integrity")

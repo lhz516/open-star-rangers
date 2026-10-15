@@ -330,6 +330,36 @@ class RecipeTests(unittest.TestCase):
             {"id": "minus", "pause": "start", "kind": "key", "ascii": 45, "scan": 12}])))
         self.assertEqual((only_keys.devices, len(only_keys.stimuli)), ({}, 2))
 
+    def test_conditional_stimuli(self):
+        """`if` selects a stimulus by an earlier (or the same pause's) integer reading (P3-08/10)."""
+        def branch(d):
+            d["stimuli"][3].update({"if": {"pause": "start", "field": "scenario", "equals": 4242}})
+            d["stimuli"].append({"id": "latch-b", "pause": "end", "kind": "device", "device": "latch", "value": 7,
+                                 "if": {"pause": "end", "field": "scenario", "equals": -1}})
+        recipe = parse_recipe(text(self.stimuli(change=branch)))
+        latch, other = recipe.stimuli[3:]
+        self.assertEqual((latch.only_if[0].pause, latch.only_if[0].field, latch.only_if[1]), ("start", "scenario", 4242))
+        self.assertEqual(other.only_if[1], 0xFFFFFFFF)  # compared as unsigned 32-bit values
+        self.assertIsNone(recipe.stimuli[0].only_if)
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.stimuli())).fingerprint)
+        cases = (
+            ("recipe-key-unknown", lambda c: c.update(register="EAX")),
+            ("recipe-key-missing", lambda c: c.pop("equals")),
+            ("recipe-reference-invalid", lambda c: c.update(pause="missing")),
+            ("recipe-reference-invalid", lambda c: c.update(pause="end", field="flag")),  # not read at that pause
+            ("recipe-reference-invalid", lambda c: c.update(field="speed")),  # f32
+            ("recipe-value-invalid", lambda c: c.update(equals=1 << 31)),  # outside the i32 field range
+            ("recipe-type-invalid", lambda c: c.update(equals="4242")),
+        )
+        for code, change in cases:
+            with self.subTest(code=code):
+                def broken(d, change=change):
+                    branch(d)
+                    change(d["stimuli"][3]["if"])
+                self.assertRejected(code, self.stimuli(change=broken))
+        self.assertRejected("recipe-reference-invalid", self.stimuli(change=lambda d: d["stimuli"][1].update(
+            {"if": {"pause": "end", "field": "scenario", "equals": 1}})))  # a later pause's reading
+
     def test_stimulus_rejections(self):
         cases = (
             ("recipe-key-unknown", lambda d: d["stimuli"][0].update(command="SM 0:0 0")),

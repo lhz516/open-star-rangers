@@ -15,7 +15,7 @@ from fake_debugger import CODE_SITE
 from reasons import REASON_SET
 from recipe import exe_fingerprint, parse_recipe
 from sandbox import SETTINGS, Sandbox
-from synthetic import BASES, HEAP, bios_keyboard
+from synthetic import BASES, FIELD_VALUES, HEAP, bios_keyboard
 
 DATA = BASES[4]
 TICKS = DATA + 0x800
@@ -535,6 +535,56 @@ class SessionTests(unittest.TestCase):
         report = self.assertStimulusFailed(box, "stimulus-unverified", "registers-changed")
         stop = json.loads((box.run_dir / "pauses/gate/stop.json").read_text())
         self.assertFalse(stop["registersUnchangedAfterStimuli"])
+
+    def test_conditional_stimuli_select_a_branch(self):
+        """Two exclusive branches at one pause: only the stimulus whose condition matches this run's reading writes;
+        the other is `not-selected`, and the run is complete (P3-08/10)."""
+        def branch(d, equals=FIELD_VALUES["scenario"]):
+            d["stimuli"][3].update({"if": {"pause": "start", "field": "scenario", "equals": equals}})
+            d["stimuli"].append({"id": "latch-b", "pause": "end", "kind": "device", "device": "latch", "value": 7,
+                                 "if": {"pause": "start", "field": "scenario", "equals": 1}})
+        box = self.stimulus_box(change=branch)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual((report["counts"]["stimuliPlanned"], report["counts"]["stimuliApplied"],
+                          report["counts"]["stimuliNotSelected"]), (5, 4, 1))
+        self.assertEqual(box.debugger.process.peek(LATCH, 2), struct.pack("<H", 513))
+        records = {record["id"]: record for record in report["stimuli"]}
+        self.assertEqual(records["latch-b"]["status"], "not-selected")
+        self.assertNotIn("writes", records["latch-b"])
+        self.assertEqual(records["latch"]["condition"],
+                         {"pause": "start", "field": "scenario", "equals": f"{FIELD_VALUES['scenario']:x}",
+                          "reading": f"{FIELD_VALUES['scenario']:x}"})
+        box = self.stimulus_box(change=lambda d: branch(d, equals=2))  # neither branch matches: nothing written
+        latch_before = box.debugger.process.peek(LATCH, 2)
+        self.assertEqual(box.run(), 0)
+        self.assertEqual(box.report()["counts"]["stimuliNotSelected"], 2)
+        self.assertEqual(box.debugger.process.peek(LATCH, 2), latch_before)
+        stop = json.loads((box.run_dir / "pauses/end/stop.json").read_text())
+        self.assertNotIn("registersUnchangedAfterStimuli", stop)  # nothing written, nothing to verify
+
+    def test_conditional_stimuli_failures(self):
+        def mixed(d):  # at `start`: ctrl unselected, deflect selected through the pause's own reading
+            d["stimuli"].pop(0)
+            d["stimuli"][0].update({"if": {"pause": "start", "field": "scenario", "equals": 1}})
+            d["stimuli"][1].update({"if": {"pause": "start", "field": "scenario", "equals": FIELD_VALUES["scenario"]}})
+
+        def move_registers(fake, text):
+            if text.startswith("SMV "):
+                fake.registers["EAX"] += 1
+        box = self.stimulus_box(change=mixed, scenario={"on_command": move_registers})
+        report = self.assertStimulusFailed(box, "stimulus-unverified", "registers-changed", "deflect")
+        records = {record["id"]: record for record in report["stimuli"]}
+        self.assertEqual(records["ctrl"]["status"], "not-selected")  # kept: the unselected branch wrote nothing
+
+        def unavailable(d):  # the condition's reading is unqualified (identity mismatch at `start`)
+            d["stimuli"] = [d["stimuli"][0], {**d["stimuli"][3], "if": {"pause": "start", "field": "scenario",
+                                                                          "equals": FIELD_VALUES["scenario"]}}]
+            d["devices"].pop(0)
+        box = self.stimulus_box(change=unavailable, scenario={"on_command": after_bp(
+            lambda fake: fake.process.poke(SCENARIO, struct.pack("<i", 7)))})
+        self.assertStimulusFailed(box, "stimulus-rejected", "binding-unavailable", "latch", ("enter",))
 
     def test_stimulus_writes_count_against_the_budget(self):
         used = []

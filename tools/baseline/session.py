@@ -728,17 +728,27 @@ class Run:
         stop["stimuli"] = ref
         records = []
         try:
-            if context is None and unqualified is None:
-                context = self.context(debugger)
             for stimulus in stimuli:
                 record = {"id": stimulus.id, "pause": pause.id, "kind": stimulus.kind, "status": "pending",
                           "utc": _utc(), "emulatedMs": registers.emulated_ms, "cycleCount": registers.cycle_count}
                 records.append(record)
                 self.stimuli.append(record)
+                if stimulus.only_if is not None:  # decided first: an unselected stimulus needs no write context
+                    binding, expected = stimulus.only_if
+                    reading = self.bindings.get(binding)
+                    if reading is None:
+                        raise BaselineError("stimulus-rejected", "binding-unavailable")
+                    record["condition"] = {"pause": binding.pause, "field": binding.field,
+                                           "equals": f"{expected:x}", "reading": f"{reading:x}"}
+                    if reading != expected:
+                        record["status"] = "not-selected"  # the recipe's other branch applies; nothing is written
+                        continue
                 if unqualified is not None:
                     raise BaselineError("stimulus-rejected", f"pause-{unqualified}")
                 if context is None:
-                    raise BaselineError("stimulus-rejected", "context-unqualified")
+                    context = self.context(debugger)
+                    if context is None:
+                        raise BaselineError("stimulus-rejected", "context-unqualified")
                 device = self.recipe.devices.get(stimulus.device)
                 if device is not None and device.object is not None and mapping is None:
                     mapping = self.reverify(port, context, startup, budget)
@@ -759,15 +769,17 @@ class Run:
                     if after != write.data:
                         raise BaselineError("stimulus-unverified", "readback-mismatch")
                 record["status"] = "written"
-            unchanged = debugger.fresh_registers().values == registers.values
-            stop["registersUnchangedAfterStimuli"] = unchanged
-            if not unchanged:
-                raise BaselineError("stimulus-unverified", "registers-changed")
+            if any(record["status"] == "written" for record in records):  # all unselected: nothing to verify
+                unchanged = debugger.fresh_registers().values == registers.values
+                stop["registersUnchangedAfterStimuli"] = unchanged
+                if not unchanged:
+                    raise BaselineError("stimulus-unverified", "registers-changed")
             for record in records:
-                record["status"] = "applied"
+                if record["status"] == "written":
+                    record["status"] = "applied"
         except BaselineError as error:
             for record in records:
-                if record["status"] == "pending" or error.where == "registers-changed":
+                if record["status"] == "pending" or (error.where == "registers-changed" and record["status"] == "written"):
                     record.update(status=error.code, detail=error.where)
             raise
         finally:

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-13
+updated: 2026-10-15
 related: [U-021, B-006]
 ---
 
@@ -71,7 +71,7 @@ related: [U-021, B-006]
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
 | `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
-| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入) |
+| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，可选条件 `if`，见[模拟器内输入](#模拟器内输入)与[条件刺激](#条件刺激) |
 
 形状示意（尖括号处换成实际值；地址取自 `docs/original/` 记录的 LE 对象与偏移）：
 
@@ -273,11 +273,21 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 - 设备字段在设备读取之后、变化比较之前写入，原版才把它当作新的设备值。原版只在设备值变化时应用；保持偏转与回到零各需要怎样的写入或读取，以相应的原版文档为准。
 - 写入时模拟时间不前进。刺激只改变输入，不改变游戏状态；后续暂停点的读数要证明原版按自己的路径处理了它，例如键处理函数入口的 AL、已经清空的缓冲，以及按预期变化的状态字段。
 
+### 条件刺激
+
+刺激可带 `"if": {"pause": "<暂停点>", "field": "<字段>", "equals": n}`（P3-08/10）：只有本次运行中该暂停点该整数字段的一致读数等于 n（按无符号 32 位比较，与停止条件和绑定读数相同）时才施加，否则什么也不写，记为 `not-selected`。
+
+- 被引用的暂停点须是刺激所在的暂停点或更早的暂停点，并列出该字段；字段须为整数类型，n 在该类型的取值范围内。同一暂停点的读数先于刺激，所以可以引用。
+- 用途是在一份配方中按运行时才知道的条件选择输入分支，例如按启动布局选择地图点击的坐标：为每个布局写一组刺激，各带互斥的条件。不满足任何分支时，这些刺激都记为 `not-selected`；配方应以守卫或身份读数保证至少一个分支成立。
+- 被引用的读数不可用（暂停点没有合格的一致读数）时，以 `stimulus-rejected`（`binding-unavailable`）结束运行。
+- 条件先于其他检查判定：未选中的刺激不需要该暂停点合格，也不读写任何输入通道；被选中的刺激照常要求暂停点合格，读前、写入、回读，并参加寄存器不变的核对（一个暂停点的刺激全部未选中时不做这项核对）。
+- 报告核对条件证据：条件刺激的记录须带 `condition`，读数与期望相等者为 `applied`、不等者为 `not-selected`；无条件刺激不能是 `not-selected`。
+
 ### 刺激记录
 
 报告的 `stimuli` 与 `pauses/<id>/stimuli.json` 逐条记录：
 
-- `id`、`pause`、`kind`、`status`、`utc`，以及该暂停点的 `emulatedMs` 与 `cycleCount`。`status` 为 `applied`；或为结束运行的原因码，另有 `detail`；或为 `written`：已写入并回读，但同一暂停点后面的刺激或寄存器核对失败，所以不算已施加；
+- `id`、`pause`、`kind`、`status`、`utc`，以及该暂停点的 `emulatedMs` 与 `cycleCount`。条件刺激另记 `condition`（暂停点、字段、期望值与读数，十六进制）。`status` 为 `applied`；或为 `not-selected`（条件不成立，未写入）；或为结束运行的原因码，另有 `detail`；或为 `written`：已写入并回读，但同一暂停点后面的刺激或寄存器核对失败，所以不算已施加；
 - 每次写入的 `channel`、`linear`、`before`、`written`、`readback` 与 `pages`；
 - 按键另记 `key` 与写入前的缓冲指针和边界，换档记 `flags`，设备记 `device` 与 `value`。
 
@@ -288,7 +298,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 - `stimulus-rejected`：施加前的条件不满足。`detail` 为 `pause-<原因码>`（暂停点不合格）、`key-buffer-busy`（缓冲非空）、`key-buffer-invalid`、`mapping-not-identity`、`mapping-unverified`、`device-out-of-range`、`context-unqualified`，或读数错误码。
 - `stimulus-unverified`：调试器没有确认写入（`write-unacknowledged`）、回读不一致（`readback-mismatch`）、页查找改变（`mapping-changed`）或寄存器改变（`registers-changed`）。
 
-刺激没有全部施加时，报告另有 `stimuli-missing`。
+刺激没有全部施加（或按条件记为 `not-selected`）时，报告另有 `stimuli-missing`；报告的 `counts` 在有未选中的条件刺激时另有 `stimuliNotSelected`。
 
 ### agent 独自运行
 
@@ -348,7 +358,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 只有同时满足以下条件，报告才是 `complete`：
 
 - 计划的样本全部按顺序取得，且每个必需样本都合格；
-- 配方声明的刺激全部按顺序施加并回读一致（只适用于声明了刺激的配方）；
+- 配方声明的刺激全部按顺序施加并回读一致，条件不成立的条件刺激记为 `not-selected`（只适用于声明了刺激的配方）；
 - 文件保护与进程回收都通过；
 - 运行正常结束，未取消。
 
@@ -420,7 +430,7 @@ mv "$d/.<暂停点>-<n>.tmp" "$d/<暂停点>-<n>.json"
 | `run` | `start` 与 `end`（UTC、`elapsedSeconds`、`endedBy`） |
 | `samples` | 每个样本：暂停点、字段、`status`、类型、单位、`required`、值、原因码与证明引用 |
 | `stimuli` | 只在配方声明了刺激时出现：施加或尝试过的每个刺激，见[刺激记录](#刺激记录) |
-| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`；带停止条件时另有 `skippedHits` |
+| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`（有未选中的条件刺激时另有 `stimuliNotSelected`）；带停止条件时另有 `skippedHits` |
 | `integrity` | 保护核对结果与 `privateCopyWrites` |
 | `cleanup` | 回收结果，见下 |
 

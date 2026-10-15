@@ -172,6 +172,7 @@ class Stimulus:
     flags: tuple = ()  # (shift-flag name, set) pairs
     device: object = None  # Device ID
     value: object = None  # device value
+    only_if: object = None  # (Binding to an integer field reading, expected value): apply only when they agree
 
     def budget(self, devices):
         if self.kind == "key":
@@ -369,7 +370,7 @@ def _recipe(document):
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
     devices = _devices(document["devices"]) if "devices" in document else {}
-    stimuli = _stimuli(document["stimuli"], pauses, devices) if "stimuli" in document else ()
+    stimuli = _stimuli(document["stimuli"], pauses, devices, fields) if "stimuli" in document else ()
     if devices.keys() - {stimulus.device for stimulus in stimuli}:
         raise BaselineError("recipe-reference-invalid", "devices")
     identity = _identity(document["identity"], fields, pauses)
@@ -680,7 +681,18 @@ def _devices(value):
     return devices
 
 
-def _stimuli(value, pauses, devices):
+def _stimulus_condition(value, path, listed_at, fields):
+    """`"if": {"pause": P, "field": F, "equals": n}`: the stimulus is applied only when this run's agreed reading of
+    the integer field F at pause P (the stimulus' own pause or an earlier one; readings precede stimuli) equals n,
+    compared as unsigned 32-bit values like stop conditions and bound readings."""
+    _object(value, path, ("pause", "field", "equals"))
+    binding = _reference(Binding(_identifier(value["pause"], path + ".pause"),
+                                 field=_identifier(value["field"], path + ".field")), fields, listed_at, path)
+    kind = fields[binding.field].type
+    return binding, _int(value["equals"], path + ".equals", *SCALAR_RANGES[kind], "recipe-value-invalid") & 0xFFFFFFFF
+
+
+def _stimuli(value, pauses, devices, fields):
     items = _list(value, "stimuli")
     if len(items) > CEILINGS["stimuli"]:
         raise BaselineError("recipe-budget-exceeded", "stimuli")
@@ -691,7 +703,7 @@ def _stimuli(value, pauses, devices):
     keyed = set()
     for index, item in enumerate(items):
         path = f"stimuli[{index}]"
-        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value"))
+        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value", "if"))
         stimulus_id = _identifier(item["id"], path + ".id")
         if stimulus_id in seen:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -706,16 +718,20 @@ def _stimuli(value, pauses, devices):
             raise BaselineError("recipe-type-invalid", path + ".kind")
         if kind not in STIMULUS_KINDS:
             raise BaselineError("recipe-value-invalid", path + ".kind")
+        only_if = None
+        if "if" in item:  # the pauses up to this one: its own readings precede its stimuli
+            listed_at = {p.id: (p.stop.kind, set(p.fields)) for p in pauses[:order[pause] + 1]}
+            only_if = _stimulus_condition(item["if"], path + ".if", listed_at, fields)
         if kind == "key":
-            _object(item, path, ("id", "pause", "kind", "ascii", "scan"))
+            _object(item, path, ("id", "pause", "kind", "ascii", "scan"), ("if",))
             if pause in keyed:  # the game takes one key per poll and discards the rest
                 raise BaselineError("recipe-value-invalid", path + ".pause")
             keyed.add(pause)
             key = tuple(_int(item[name], f"{path}.{name}", 0, 0xFF, "recipe-value-invalid")
                         for name in ("ascii", "scan"))
-            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key, only_if=only_if))
         elif kind == "shift":
-            _object(item, path, ("id", "pause", "kind", "flags"))
+            _object(item, path, ("id", "pause", "kind", "flags"), ("if",))
             flags = item["flags"]
             if type(flags) is not dict:
                 raise BaselineError("recipe-type-invalid", path + ".flags")
@@ -725,15 +741,15 @@ def _stimuli(value, pauses, devices):
                 raise BaselineError("recipe-key-unknown", path + ".flags")
             if any(type(on) is not bool for on in flags.values()):
                 raise BaselineError("recipe-type-invalid", path + ".flags")
-            stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items())))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items()), only_if=only_if))
         else:
-            _object(item, path, ("id", "pause", "kind", "device", "value"))
+            _object(item, path, ("id", "pause", "kind", "device", "value"), ("if",))
             name = _identifier(item["device"], path + ".device")
             device = devices.get(name)
             if device is None or (device.register is not None and stops[pause] != "breakpoint"):
                 raise BaselineError("recipe-reference-invalid", path + ".device")
             value = _int(item["value"], path + ".value", *SCALAR_RANGES[device.type], "recipe-value-invalid")
-            stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value, only_if=only_if))
     return tuple(stimuli)
 
 

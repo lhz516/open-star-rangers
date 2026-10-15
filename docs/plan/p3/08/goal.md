@@ -79,7 +79,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | blocked |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
-| [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | in-progress |
+| [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | pending |
 | [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | pending |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | pending |
@@ -113,6 +113,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
   Affected acceptance: 08 全部验收；经依赖影响 12 起的全部实现子任务与 AC-01–AC-12、AC-14、AC-16、AC-17。09 与 08 写入范围重叠，在 08 解决前不开始。
   Resume when: 用户明确批准（或给出修改意见后批准）该 D-01 草案；协调者把批准原话写入 P3-02 与 P3-08 spec 的审批节并完成 08。
 - **2026-10-14 — D-01 草案与 P3-10 已批准的 D-01 对齐：** P3-10 的 D-01（其分支 `p3-10-comms-base-resupply-spec`，CB-01–CB-19）已获批。未提交的 D-01 草案改为消费 P3-10 的 `deliver-command`（CB-08）与 `queueLine`（CB-06），删去本任务的命令请求与回复事件；`ai.pendingCommand`、`WorldState.ai.friendlyFire` 与 CB-04/CB-05 同名同形；新增只读查询 `isClosingMissileLock`；CR-20 引用 CB-18（种类 0x4000 归本任务）。友伤累计的写入归属与 P3-02 CR-13、P3-10 CB-12 冲突，留作 09（D-03）的用户决定（推荐：保留 CB-12，本任务只读）。合并 P3-10 分支时 P3-02 的 CR-02 行与审批节两侧都保留。
+- **2026-10-15 — 10 完成：** 预实验以 w-01、w2-01（僚机）、e-04（敌机）、b-09（基地开火）等完整运行覆盖各类观测量，误差预算草案交 11；`tools/baseline` 新增条件刺激（`if`），按开局布局选择输入；26 的基地开火路线（各布局的地图点击与自动驾驶航段、在开火点等待首发）记在 10 的完成证据。未在预实验中观察、留给 26 的项目同样列在其中。基准环境与 P3-09、P3-10 轮流使用，按协调者之间约定的轮次进行。
 
 ## 审批
 
