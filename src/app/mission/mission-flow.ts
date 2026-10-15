@@ -9,10 +9,11 @@ import type { GameSessionPhase } from '../session/session-errors.ts';
 
 /**
  * `intro` is the G-02/1 placeholder, `config` the start page (G-04, G-07), `departure` the G-02/2 placeholder over the
- * held run, `flight` the running or paused run, `menu` the pausing mission menu (G-07), and `ended` a run that faulted
- * or stopped, or a restart whose cleanup failed.
+ * held run, `flight` the running or paused run, `transition` the G-02/3 or G-02/4 placeholders over a run held after a
+ * transition tick (P3-10), `menu` the pausing mission menu (G-07), and `ended` a run that faulted or stopped, or a
+ * restart whose cleanup failed.
  */
-export type MissionFlowPosition = 'intro' | 'config' | 'departure' | 'flight' | 'menu' | 'ended';
+export type MissionFlowPosition = 'intro' | 'config' | 'departure' | 'flight' | 'transition' | 'menu' | 'ended';
 
 /** Why `ended`: the session faulted or stopped, or exiting the run for a restart failed to clean up (latched). */
 export type MissionEndReason = 'faulted' | 'stopped' | 'cleanup-failed';
@@ -52,6 +53,10 @@ export type MissionFlowInput =
   | { readonly type: 'start-failed'; readonly failure: MissionStartFailure }
   | { readonly type: 'started'; readonly runId: number }
   | { readonly type: 'departure-ended' }
+  /** The running run entered a hold at a transition tick. */
+  | { readonly type: 'transition-held' }
+  /** The hold's last item ended; the run runs or waits paused. */
+  | { readonly type: 'transition-ended' }
   | { readonly type: 'menu-opened' }
   | { readonly type: 'menu-closed' }
   | { readonly type: 'run-ended'; readonly reason: MissionEndReason }
@@ -68,11 +73,12 @@ export const FLOW_SESSION_PHASES: Readonly<Record<MissionFlowPosition, readonly 
   config: Object.freeze(['idle']),
   departure: Object.freeze(['transition']),
   flight: Object.freeze(['running', 'paused']),
+  transition: Object.freeze(['transition']),
   menu: Object.freeze(['paused']),
   ended: Object.freeze(['faulted', 'stopped', 'idle']),
 } satisfies Record<MissionFlowPosition, readonly GameSessionPhase[]>);
 
-const RUN_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['departure', 'flight', 'menu']);
+const RUN_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['departure', 'flight', 'transition', 'menu']);
 const RESTART_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['flight', 'menu', 'ended']);
 
 /** Returns the next state, or the same object when the input does not apply where the flow is. */
@@ -93,6 +99,12 @@ export function nextMissionFlow(state: MissionFlowState, input: MissionFlowInput
       return Object.freeze({ ...state, position: 'departure', startFailure: null, runId: input.runId });
     case 'departure-ended':
       if (position !== 'departure') return state;
+      return Object.freeze({ ...state, position: 'flight' });
+    case 'transition-held':
+      if (position !== 'flight') return state;
+      return Object.freeze({ ...state, position: 'transition' });
+    case 'transition-ended':
+      if (position !== 'transition') return state;
       return Object.freeze({ ...state, position: 'flight' });
     case 'menu-opened':
       if (position !== 'flight') return state;

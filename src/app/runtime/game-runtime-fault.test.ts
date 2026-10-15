@@ -210,7 +210,7 @@ describe('GameRuntime failure frames', () => {
     // Nothing was executed for the queued rest; the Runtime itself has not faulted.
     expect(runtime.clearIntent()).toEqual(ids(64, 100));
     runtime.clearSubscriptions();
-    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null });
+    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [] });
   });
 
   it('a recording refusal stops after delivering the earlier ticks: the refused tick changes nothing and the recording exports', () => {
@@ -219,7 +219,7 @@ describe('GameRuntime failure frames', () => {
     runtime.on('command-result', () => { refused ??= thrownBy(() => runtime.setIntent({ axes: NEUTRAL_AXES, primaryFire: false })); });
     const cause = new CoreInputError('recording', 'would exceed 131072 recorded ticks');
     injection.arm('step', 3, () => { throw cause; });
-    expect(runtime.frame(5 * TICK_MS)).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity' });
+    expect(runtime.frame(5 * TICK_MS)).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [] });
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
     expect(delivered.filter((event) => event.type === 'command-result')).toHaveLength(128);
     expect(refused).toMatchObject({ kind: 'recording-capacity', cause });

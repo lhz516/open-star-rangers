@@ -207,7 +207,7 @@ describe('initial departure hold', () => {
     expect(session.status()).toMatchObject({ phase: 'running', transition: null, resumeRequired: false });
     expect(host.pending.size).toBe(1);
     host.deliver(5000);
-    expect(frames).toEqual([expect.objectContaining({ runId: 1, phase: 'running', report: { ticks: 0, capped: false, stop: null } })]);
+    expect(frames).toEqual([expect.objectContaining({ runId: 1, phase: 'running', report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [] } })]);
     expect(tickOf(run)).toBe(0);
     host.deliver(5000 + TICK_MS);
     expect(tickOf(run)).toBe(1); expect(events.length).toBeGreaterThan(0);

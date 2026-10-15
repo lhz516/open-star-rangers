@@ -11,8 +11,13 @@
  * delivered and reported with `stop: 'recording-capacity'`, and the recording stays exportable. A faulted Runtime
  * reads nothing new from Core: projection() and renderFrame() keep the last complete read model, which may predate the
  * fault, and snapshot() and exportRecording() throw the fault.
+ *
+ * Running transitions (docs/plan/p3/04/spec.md, 运行中衔接（P3-10 的修订）): a successful step whose events include
+ * `transition` is the frame's last tick. The frame reports the cut and that tick's transitions, raises a barrier that
+ * refuses input and frames, and only then delivers its events as usual; the Session releases the barrier when its hold
+ * ends. Nothing is checked per tick from outside.
  */
-import type { DomainEvent } from '../../core/contracts/domain-events.ts';
+import type { DomainEvent, TransitionEvent } from '../../core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../../core/contracts/limits.ts';
 import { readTickInput, type Command, type TickAxes, type TickInput } from '../../core/contracts/tick-input.ts';
 import { CLOCK_UNITS_PER_SECOND } from '../../core/contracts/time.ts';
@@ -52,11 +57,22 @@ export interface RenderFrame {
   readonly alpha: number;
 }
 
+/** One `transition` event of the tick that cut a frame. */
+export interface FrameTransition {
+  readonly gap: TransitionEvent['gap'];
+  readonly tick: number;
+}
+
 /** `ticks` counts successful steps only. */
 export interface FrameReport {
   readonly ticks: number;
+  /** The clock dropped due ticks beyond MAX_TICKS_PER_FRAME; false in a cut frame. */
   readonly capped: boolean;
   readonly stop: 'recording-capacity' | null;
+  /** `transition` when a tick with transition events ended the frame early: it ran to that tick, and the run is healthy. */
+  readonly cut: 'transition' | null;
+  /** That tick's transition events in event order, as frozen copies taken from the step's output; empty without a cut. */
+  readonly transitions: readonly FrameTransition[];
 }
 
 export interface GameRuntime {
@@ -64,14 +80,17 @@ export interface GameRuntime {
    * Advances by the ticks due at `nowMs` (monotonic milliseconds; the first call only anchors), at most
    * MAX_TICKS_PER_FRAME, then delivers the frame's events. Throws invalid-argument for a non-finite, backward or
    * unconvertible time, changing nothing; reentrant-call during the frame; listener-failed after the whole delivery;
-   * faulted (see the module comment) and, once stopped, recording-capacity.
+   * faulted (see the module comment), once stopped recording-capacity, and transition-hold behind the barrier.
    */
   frame(nowMs: number): FrameReport;
-  /** Keeps `intent` from the next tick on, until set again or cleared. Allowed in delivery; rejected once faulted or stopped. */
+  /**
+   * Keeps `intent` from the next tick on, until set again or cleared. Allowed in delivery; rejected once faulted or
+   * stopped, and with transition-hold behind the barrier (from the cut frame's delivery on), changing nothing.
+   */
   setIntent(intent: GameIntent): void;
   /**
    * Queues a copy of `command` and returns its ID, from 1 up. Throws invalid-argument for a command outside Core's
-   * contract and command-queue-full at COMMAND_QUEUE_LIMIT pending, changing nothing; rejected once faulted or stopped.
+   * contract and command-queue-full at COMMAND_QUEUE_LIMIT pending, changing nothing; rejected as setIntent is.
    * Running out of IDs faults the Runtime.
    */
   submitCommand(command: Command): number;
@@ -93,6 +112,8 @@ export interface GameRuntime {
   /** previous = current, alpha = 0. */
   foldRenderState(): void;
   clearSubscriptions(): void;
+  /** Lowers the barrier a cut frame raised; input and frames are accepted again. */
+  releaseTransitionBarrier(): void;
 }
 
 export const MAX_TICKS_PER_FRAME = 5;
@@ -149,6 +170,15 @@ function deliveryId(event: DomainEvent, ids: readonly (number | null)[]): number
 
 const submitted = (ids: readonly (number | null)[]): number[] => ids.filter((id): id is number => id !== null);
 
+const NO_TRANSITIONS: readonly FrameTransition[] = Object.freeze([]);
+
+/** Frozen copies of a tick's `transition` events, in event order; most ticks have none and allocate nothing. */
+function transitionsOf(events: readonly DomainEvent[]): readonly FrameTransition[] {
+  let found: FrameTransition[] | null = null;
+  for (const event of events) if (event.type === 'transition') (found ??= []).push(Object.freeze({ gap: event.gap, tick: event.tick }));
+  return found ? Object.freeze(found) : NO_TRANSITIONS;
+}
+
 class Runtime implements GameRuntime {
   readonly #world: World;
   readonly #recording: RecordingSession | null;
@@ -164,6 +194,8 @@ class Runtime implements GameRuntime {
   #current: RenderState;
   #renderFrame: RenderFrame;
   #inFrame = false;
+  /** Raised by a cut frame before its delivery; only the Session lowers it. */
+  #barrier = false;
   #stop: GameRuntimeError | null = null;
   #fault: GameRuntimeError | null = null;
 
@@ -177,6 +209,8 @@ class Runtime implements GameRuntime {
   }
 
   frame(nowMs: number): FrameReport {
+    // A receiver of the cut frame meets the barrier first.
+    if (this.#inFrame && this.#barrier) throw new GameRuntimeError({ kind: 'transition-hold' });
     this.#requireOutsideFrame();
     this.#requireRunnable();
     const timing = this.#clock.advance(nowMs);
@@ -185,9 +219,19 @@ class Runtime implements GameRuntime {
       const pending: PendingDelivery[] = [];
       const undelivered: number[] = [];
       let ticks = 0;
-      while (ticks < timing.ticks && this.#tick(pending, undelivered)) ticks++;
+      let transitions = NO_TRANSITIONS;
+      while (ticks < timing.ticks) {
+        const events = this.#tick(pending, undelivered);
+        if (events === null) break;
+        ticks++;
+        transitions = transitionsOf(events);
+        if (transitions.length > 0) break;
+      }
+      const cut = transitions.length > 0;
+      // Before the delivery, so no receiver adds input behind the transition tick.
+      if (cut) this.#barrier = true;
       if (this.#stop) this.#previous = this.#current;
-      this.#renderFrame = this.#publish(this.#stop ? 0 : timing.alpha);
+      this.#renderFrame = this.#publish(this.#stop || cut ? 0 : timing.alpha);
       // Only running out of command IDs in a receiver can fault the Runtime during delivery; that fault outranks the
       // receiver failures it causes.
       if (pending.length > 0) {
@@ -198,7 +242,10 @@ class Runtime implements GameRuntime {
         }
       }
       if (this.#fault) throw this.#fault;
-      return Object.freeze({ ticks, capped: timing.capped, stop: this.#stop ? 'recording-capacity' : null });
+      return Object.freeze({
+        ticks, capped: timing.capped && !cut, stop: this.#stop ? 'recording-capacity' : null, cut: cut ? 'transition' : null,
+        transitions,
+      });
     } finally {
       this.#inFrame = false;
     }
@@ -285,11 +332,17 @@ class Runtime implements GameRuntime {
     this.#bus.clear();
   }
 
+  releaseTransitionBarrier(): void {
+    this.#requireOutsideFrame();
+    this.#barrier = false;
+  }
+
   /**
    * Runs one tick and collects its deliveries; `undelivered` gathers the IDs this frame's successful ticks executed.
-   * Returns false when the recording refused the tick (the Runtime has stopped); throws the fault otherwise.
+   * Returns the tick's events, or null when the recording refused the tick (the Runtime has stopped); throws the fault
+   * otherwise.
    */
-  #tick(pending: PendingDelivery[], undelivered: number[]): boolean {
+  #tick(pending: PendingDelivery[], undelivered: number[]): readonly DomainEvent[] | null {
     const batch = this.#batch();
     let events: readonly DomainEvent[];
     try {
@@ -297,7 +350,7 @@ class Runtime implements GameRuntime {
     } catch (cause) {
       if (this.#recording && cause instanceof CoreInputError && cause.path === 'recording') {
         this.#stop = new GameRuntimeError({ kind: 'recording-capacity', cause });
-        return false;
+        return null;
       }
       // A CoreInputError leaves the world unchanged, so its batch provably never ran and stays queued; any other
       // failure may have run part of it, so it leaves the queue as unconfirmed.
@@ -318,7 +371,7 @@ class Runtime implements GameRuntime {
     } catch (cause) {
       throw this.#failRun(cause, undelivered);
     }
-    return true;
+    return events;
   }
 
   /** Automatic primary fire first, then queued commands in FIFO order, CORE_LIMITS.commandsPerTick in all. */
@@ -355,6 +408,7 @@ class Runtime implements GameRuntime {
   #requireRunnable(): void {
     if (this.#fault) throw this.#fault;
     if (this.#stop) throw this.#stop;
+    if (this.#barrier) throw new GameRuntimeError({ kind: 'transition-hold' });
   }
 }
 

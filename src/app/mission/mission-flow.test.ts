@@ -14,6 +14,8 @@ const INPUTS: readonly MissionFlowInput[] = [
   { type: 'start-failed', failure: { kind: 'package-changed' } },
   { type: 'started', runId: 1 },
   { type: 'departure-ended' },
+  { type: 'transition-held' },
+  { type: 'transition-ended' },
   { type: 'menu-opened' },
   { type: 'menu-closed' },
   { type: 'run-ended', reason: 'faulted' },
@@ -27,14 +29,16 @@ const APPLIES: Readonly<Record<MissionFlowInput['type'], readonly MissionFlowPos
   'start-failed': ['config'],
   started: ['config'],
   'departure-ended': ['departure'],
+  'transition-held': ['flight'],
+  'transition-ended': ['transition'],
   'menu-opened': ['flight'],
   'menu-closed': ['menu'],
-  'run-ended': ['departure', 'flight', 'menu'],
+  'run-ended': ['departure', 'flight', 'transition', 'menu'],
   restarted: ['flight', 'menu', 'ended'],
 };
 
 describe('mission flow', () => {
-  it('goes from the introduction through the start page, departure, flight and menu, and restarts at the introduction', () => {
+  it('goes from the introduction through the start page, departure, flight, a running hold and menu, and restarts at the introduction', () => {
     let state = INITIAL_MISSION_FLOW;
     expect(state).toEqual({ position: 'intro', selection: null, startFailure: null, runId: null, ended: null });
     const steps: [MissionFlowInput, Partial<MissionFlowState>][] = [
@@ -43,6 +47,8 @@ describe('mission flow', () => {
       [{ type: 'start-failed', failure: { kind: 'seed', cause: 'x' } }, { startFailure: { kind: 'seed', cause: 'x' } }],
       [{ type: 'started', runId: 4 }, { position: 'departure', startFailure: null, runId: 4 }],
       [{ type: 'departure-ended' }, { position: 'flight' }],
+      [{ type: 'transition-held' }, { position: 'transition', runId: 4 }],
+      [{ type: 'transition-ended' }, { position: 'flight', runId: 4 }],
       [{ type: 'menu-opened' }, { position: 'menu' }],
       [{ type: 'menu-closed' }, { position: 'flight' }],
       [{ type: 'run-ended', reason: 'stopped' }, { position: 'ended', ended: 'stopped' }],
@@ -83,7 +89,7 @@ describe('mission flow', () => {
 
   it('pairs each position with the session phases it runs beside', () => {
     expect(FLOW_SESSION_PHASES).toEqual({
-      intro: ['idle'], config: ['idle'], departure: ['transition'], flight: ['running', 'paused'], menu: ['paused'],
+      intro: ['idle'], config: ['idle'], departure: ['transition'], flight: ['running', 'paused'], transition: ['transition'], menu: ['paused'],
       ended: ['faulted', 'stopped', 'idle'],
     });
   });
