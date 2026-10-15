@@ -85,13 +85,13 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
-| [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | pending |
+| [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | in-progress |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | pending |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | pending |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | pending |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | pending |
-| [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | pending |
+| [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | in-progress |
 | [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | pending |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | pending |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | pending |
