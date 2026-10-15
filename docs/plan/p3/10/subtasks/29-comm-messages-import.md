@@ -46,6 +46,7 @@ updated: 2026-10-14
 - `src/original-data/**`：白名单、解析、转换、映射、限值与合成光盘。
 - `src/workers/**`：作业步骤与生产包配置。
 - `src/app/resources/**`、`src/platform/storage/**`：仅限切片版本或白名单变化所需的测试与适配。
+- `src/app/import/import-pipeline.test.ts`：转换器版本字面量随 logic 组件递增。
 - `e2e/**`：合成包与夹具。
 - `tools/package-check*.ts`、`tools/nob-check*.ts`、`tools/logic-check*.ts`、`tools/nob/**`：本地核对。
 - `docs/engineering/modules/content.md`、`docs/engineering/modules/original-data.md`、`docs/engineering/modules/workers.md`、`docs/engineering/source-structure.md`、`docs/guides/local-import.md`、`docs/guides/tools.md`、`docs/original/formats/imfat.md`、`docs/original/formats/comm.md`：文档同步。
