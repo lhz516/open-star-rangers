@@ -33,6 +33,7 @@ updated: 2026-10-14
 - `local/research/p3-10/runtime/**`：正式方案、配方与运行目录（被忽略）。
 - `tools/baseline/**`：增量扩展与合成测试。
 - `docs/guides/runtime-measurement.md`：工具能力变化时同步。
+- `docs/guides/tools.md`：`measure.py` 能力摘要随工具变化同步。
 
 ## 验收标准
 
