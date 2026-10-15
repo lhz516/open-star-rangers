@@ -5,8 +5,8 @@
  * - the projection on the session's existing frame notifications, sampled every 100 ms and never twice for the same
  *   owner, run and tick; it creates no session, host, animation frame or timer;
  * - at the end of the frame, without waiting for the sample, a change of `mission.status`, `player.interactionContext`,
- *   a partition's readiness (each of the flight partition's motion and combat groups on its own) or the result's
- *   content, compared by those fields rather than by object identity;
+ *   a partition's readiness (each of the flight partition's motion and combat groups on its own), the base page's
+ *   selection or order (P3-10, G-05) or the result's content, compared by those fields rather than by object identity;
  * - what run consumers settle at the end of a frame (command results), together with the frame-end projection.
  * The sampling clock must give finite, non-decreasing milliseconds. As in P1-06, attaching a running run reads it to
  * start the sample (other phases start it on the first frame, which only anchors); a failed or invalid read throws
@@ -21,7 +21,7 @@ import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import type { Projection } from '../../core/projections/projection.ts';
 import { attemptAll } from '../../render/scene/cleanup.ts';
-import type { GameChange, GameRunStore, UiCommandSettlement } from './game-store.ts';
+import { projectedBase, type GameChange, type GameRunStore, type UiCommandSettlement } from './game-store.ts';
 
 /** 10 Hz, the lower end of the master plan's 10–20 Hz for React-facing data, as in P1-06. */
 export const PROJECTION_SAMPLE_INTERVAL_MS = 100;
@@ -107,17 +107,22 @@ interface KeyFacts {
   readonly map: Projection['map']['readiness'];
   readonly communications: Projection['communications']['readiness'];
   readonly result: Projection['result']['readiness'];
+  /** The base page's selection and order (P3-10, G-05): the cursor row and the rows' records; null outside the base view. */
+  readonly baseSelection: string | null;
   readonly outcome: unknown;
   readonly reason: unknown;
   readonly message: unknown;
 }
 
-function keyFacts({ mission, player, flight, map, communications, result }: Projection): KeyFacts {
+function keyFacts(projection: Projection): KeyFacts {
+  const { mission, player, flight, map, communications, result } = projection;
   const ready = result.readiness === 'ready';
+  const base = projectedBase(projection);
   return {
     missionStatus: mission.status, interactionContext: player.interactionContext,
     motion: flight.motion.readiness, combat: flight.combat.readiness, map: map.readiness, communications: communications.readiness,
     result: result.readiness,
+    baseSelection: base && `${base.cursor}:${base.rows.map(({ record }) => record).join(',')}`,
     outcome: ready ? result.outcome : null,
     reason: ready && 'reason' in result ? result.reason : null,
     message: ready && 'message' in result ? result.message : null,

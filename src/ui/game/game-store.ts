@@ -12,7 +12,7 @@ import type { CancelReason, GameSessionStatus } from '../../app/session/game-ses
 import type { GameSessionError } from '../../app/session/session-errors.ts';
 import type { AcceptedCommandResult, UnacceptedCommandResult } from '../../core/contracts/domain-events.ts';
 import type { CommandType } from '../../core/contracts/tick-input.ts';
-import type { Projection } from '../../core/projections/projection.ts';
+import type { BaseServiceView, Projection } from '../../core/projections/projection.ts';
 
 /** Display retention for settled commands (as P1-06), not a game rule. */
 export const RECENT_RESULT_LIMIT = 10;
@@ -176,3 +176,7 @@ export const selectOwnerId = (state: GameUiState) => state.ownerId;
 export const selectPhase = (state: GameUiState) => state.status?.phase ?? null;
 export const selectRunId = (state: GameUiState) => state.status?.runId ?? null;
 export const selectTick = (state: GameUiState) => state.projection?.clock.tick ?? null;
+
+/** The base service the projection shows in the base view (P3-10, G-05); null outside it or without the partition. */
+export const projectedBase = ({ communications }: Projection): BaseServiceView | null =>
+  (communications.readiness === 'ready' ? communications.player?.base ?? null : null);

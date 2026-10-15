@@ -1,7 +1,8 @@
 /**
- * The mission screen's page (docs/plan/p3/04/spec.md: 应用流程, 衔接占位, 任务开始配置, 任务菜单、暂停与退出): it shows the
- * current mission owner where its flow is, the G-02/1 introduction, the start page, the G-02/2 departure, the flight
- * shell or the mission menu, and below them the development panel the app passes in development builds. The owner is
+ * The mission screen's page (docs/plan/p3/04/spec.md: 应用流程, 衔接占位, 任务开始配置, 任务菜单、暂停与退出, 运行中衔接（P3-10
+ * 的修订）): it shows the current mission owner where its flow is, the G-02/1 introduction, the start page, the G-02/2
+ * departure, the flight shell, the G-02/3 or G-02/4 placeholder of a running hold, or the mission menu, and below them
+ * the development panel the app passes in development builds. The owner is
  * created and released outside this component; the page renders its snapshot and calls its intents from event
  * handlers. The screen carries the owner, its run and the latest sampled Core tick as read-only data attributes for
  * lifecycle evidence; nothing here holds a world reference. The mission input, when the app passes one, reaches the
@@ -57,19 +58,20 @@ function OwnerPages({ owner, game, devPanel, onReturn, input = null }: Omit<Miss
 }) {
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
   const { position } = snapshot.flow;
-  const { placeholder } = snapshot;
+  const { placeholder, transitionPlaceholder } = snapshot;
   const entry = useInputFocusEntry(position);
   const gap = useGapNotice(input?.gap ?? null);
   let page: ReactNode = null;
-  if ((position === 'intro' || position === 'departure') && placeholder) {
+  const shown = position === 'transition' ? transitionPlaceholder : (position === 'intro' || position === 'departure') ? placeholder : null;
+  if (shown) {
     // Keyed by placeholder, so each one mounts afresh and takes focus.
-    page = <PlaceholderPage key={placeholder.id} placeholder={placeholder} onSkip={id => { owner.skip(id); }} onReturn={onReturn} />;
+    page = <PlaceholderPage key={shown.id} placeholder={shown} onSkip={id => { owner.skip(id); }} onReturn={onReturn} />;
   } else if (position === 'config') {
     page = <StartConfigPage snapshot={snapshot} owner={owner} onReturn={onReturn} startWithFullscreen={input?.fullscreen.requestOnStart} />;
   } else if (position === 'menu') {
     page = <MissionMenuPage snapshot={snapshot} owner={owner} onReturn={onReturn} />;
   } else if (position === 'flight' || position === 'ended') {
-    page = <MissionShell snapshot={snapshot} owner={owner} onReturn={onReturn} input={input} entry={entry} gap={gap} />;
+    page = <MissionShell snapshot={snapshot} owner={owner} onReturn={onReturn} input={input} entry={entry} gap={gap} game={game} />;
   }
   return (
     <RunFrame ownerId={owner.ownerId} game={game} position={position}>

@@ -101,7 +101,7 @@ describe('mission page copy', () => {
 
 describe('slice gap copy (G IDs)', () => {
   it('keys each marked gap by its G ID, with a title and a text', () => {
-    expect(Object.keys(SLICE_GAPS)).toEqual(['G-01', 'G-02/1', 'G-02/2', 'G-04', 'G-06', 'G-07', 'G-08', 'G-09', 'G-10']);
+    expect(Object.keys(SLICE_GAPS)).toEqual(['G-01', 'G-02/1', 'G-02/2', 'G-02/3', 'G-02/4', 'G-03', 'G-04', 'G-05', 'G-06', 'G-07', 'G-08', 'G-09', 'G-10']);
     for (const [id, copy] of Object.entries(SLICE_GAPS)) {
       expect(copy.title.length, id).toBeGreaterThan(0);
       expect(copy.text.length, id).toBeGreaterThan(0);

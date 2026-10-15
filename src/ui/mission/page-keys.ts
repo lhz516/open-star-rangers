@@ -32,3 +32,20 @@ export function placeholderKeyAction({ key, repeat, ctrlKey, altKey, metaKey, is
 
 /** A repeat of Enter or Space, which would activate a focused button again: its default is to be prevented. */
 export const isHeldActivation = ({ key, repeat }: Pick<PageKey, 'key' | 'repeat'>): boolean => repeat && (key === 'Enter' || key === ' ');
+
+/** What a placeholder page knows as it mounts or fails. */
+export interface PlaceholderFocusFacts {
+  /** It is the placeholder of a running hold (G-02/3, G-02/4), shown in place of the flight shell. */
+  readonly hold: boolean;
+  /** Focus rests on nothing: the element that had it, such as the input zone, left with the page that ended. */
+  readonly focusDropped: boolean;
+  readonly visible: boolean;
+}
+
+/**
+ * Whether a placeholder moves focus to its button. The flow's own pages always do, as before P3-10. A running hold's
+ * placeholder does only on a visible page whose focus was dropped, so it takes no focus the user put on another
+ * control, such as the diagnostics panel, and none from a hidden page.
+ */
+export const placeholderTakesFocus = ({ hold, focusDropped, visible }: PlaceholderFocusFacts): boolean =>
+  !hold || (focusDropped && visible);

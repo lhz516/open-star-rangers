@@ -55,9 +55,12 @@ button:focus-visible {
 }
 
 /* P3-04 mission pages. The game view area stays empty until the flight view arrives (P3-12, P3-13); the status bar is
-   project UI outside it. */
+   project UI outside it. P3-10: the view keeps its 4:3 box whatever it holds; with visible overflow an aspect-ratio box
+   grows to its content. */
 .mission-view {
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  overflow: hidden;
   place-items: center;
   aspect-ratio: 4 / 3;
   max-width: 40rem;
@@ -68,11 +71,91 @@ button:focus-visible {
   text-align: center;
 }
 
-/* P3-05: the game input zone fills the game view; its focus ring stays inside, so it shows on the view's edge. */
+/* P3-05: the game input zone fills the game view; its focus ring stays inside, so it shows on the view's edge. P3-10: it
+   scrolls a page taller than the view, such as the base page. */
 .game-input-zone {
   place-self: stretch;
   display: grid;
   place-items: center;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* P3-10 G-05: the base page, a compact project page inside the game view. States and the selection are words; the
+   outline and weight only repeat them. */
+.base-page {
+  place-self: stretch;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.base-page h3,
+.base-page p {
+  margin: 0.25rem 0;
+}
+
+.base-page .slice-gap {
+  font-size: 0.75rem;
+}
+
+.base-service {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.base-service caption {
+  caption-side: bottom;
+  padding-top: 0.25rem;
+  text-align: left;
+  font-size: 0.75rem;
+}
+
+.base-service th,
+.base-service td {
+  padding: 0.1rem 0.35rem;
+  border-bottom: 1px solid #5e5c64;
+  text-align: left;
+  font-weight: normal;
+}
+
+.base-service thead th {
+  font-weight: bold;
+}
+
+.base-service-row[data-in-service="true"] {
+  font-weight: bold;
+}
+
+.base-service-row[aria-current="true"] {
+  outline: 2px solid #99c1f1;
+  outline-offset: -2px;
+}
+
+.base-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.base-readings > div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.base-readings dt::after {
+  content: ":";
+}
+
+.base-readings dd {
+  margin: 0;
+}
+
+.base-keys {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
 }
 
 .game-input-zone:focus {
