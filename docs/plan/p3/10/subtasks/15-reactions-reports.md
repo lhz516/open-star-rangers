@@ -35,6 +35,7 @@ updated: 2026-10-14
 - `src/core/systems/damage.ts`、`src/core/systems/damage.test.ts`、`src/core/systems/destruction.ts`、`src/core/systems/destruction.test.ts`、`src/core/systems/spawn.ts`、`src/core/systems/spawn.test.ts`、`src/core/systems/area.ts`、`src/core/systems/area.test.ts`：调用点。
 - `src/core/systems/combat-chains.test.ts`、`src/core/systems/combat-wiring.test.ts`、`src/core/replay/combat-replay.test.ts`：已批准变化的断言更新。
 - `src/core/systems/base-response.ts`、`src/core/systems/base-response.test.ts`：`0x3bed0` 无命令分支的威胁再通报（调用 `0x3c208` 第 3 步，14 留空）。
+- `src/core/systems/displays.ts`、`src/core/systems/displays.test.ts`：帧末子步中尾随警告的调用（CB-09 第 2 项）。
 
 ## 验收标准
 

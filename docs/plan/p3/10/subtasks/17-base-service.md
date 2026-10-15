@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/pipeline*.ts`：`base-interior` 阶段接入。
 - `src/core/systems/docking*.ts`：停靠时对完全修理的调用。
 - `src/core/systems/commands*.ts`：基地上下文 `navigate-selection`、`confirm-selection` 投递 base-navigate、base-confirm（CB-07 §3；13 只给出门禁）。
+- `src/core/systems/area.ts`、`src/core/systems/area.test.ts`：停放僚机到达基地的限频完全修理（RX6、CB-12；15 留空）。
 
 ## 验收标准
 
