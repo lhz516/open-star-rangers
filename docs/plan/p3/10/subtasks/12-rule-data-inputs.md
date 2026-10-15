@@ -40,7 +40,7 @@ updated: 2026-10-14
 - `src/core/world/comm-input.ts`、`src/core/world/comm-input.test.ts`：计划新增。
 - `src/core/replay/replay*.ts`：`ReplayContent` 的另供内容。
 - `src/app/resources/mission-input*.ts`、`src/app/mission/mission-owner*.ts`、`src/app/mission/mission.test-support.ts`、`src/app/runtime/game-runtime.test-support.ts`、`src/app/session/game-session.test-support.ts`：运行创建与测试辅助。
-- `tools/replay-check*.ts`：另供内容。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：另供内容。
 - `e2e/support/**`：合成包含两份输入（如需要）。
 
 ## 验收标准
