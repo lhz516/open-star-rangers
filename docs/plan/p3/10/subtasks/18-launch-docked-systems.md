@@ -36,6 +36,7 @@ updated: 2026-10-14
 - `src/core/systems/pipeline*.ts`：自动离港。
 - `src/core/systems/docked-systems.test.ts`：计划新增。
 - `src/core/systems/commands*.ts`、`src/core/systems/flight-control*.ts`：基地上下文 `launch` 投递 depart 与批内生效视角（CB-07 §3；13 只给出门禁）。
+- `src/core/rules/base-service.ts`、`src/core/rules/base-service.test.ts`：与 rules/docking.ts 重复的周期与组字段常量去重（17 交接）。
 
 ## 验收标准
 

@@ -102,8 +102,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | completed |
 | [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | completed |
 | [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | completed |
-| [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | pending |
-| [19-comm-projection.md](./subtasks/19-comm-projection.md) | 13, 14, 17 | pending |
+| [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | in-progress |
+| [19-comm-projection.md](./subtasks/19-comm-projection.md) | 13, 14, 17 | in-progress |
 | [20-replay-limits.md](./subtasks/20-replay-limits.md) | 15, 18, 19 | pending |
 | [21-runtime-transition-hold.md](./subtasks/21-runtime-transition-hold.md) | 11, 18 | pending |
 | [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | pending |
