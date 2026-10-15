@@ -91,7 +91,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
-| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | blocked |
+| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | in-progress |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
@@ -133,8 +133,12 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 
 - **2026-10-14 — 09 的交叉核对待复核：** 09 的 `rt-a2-01` 读数中，离港位姿与“对停靠时玩家位姿应用 DK3”的结果不符，看来跟随基地位姿。executable DK2/DK3 把保存位姿的来源记为已确认（代码）；08 在定稿离港字段之前，须以原生指令复核 `0x38ff4` 保存的是哪个位姿，必要时更正 executable 与 B-004。05 的 P1–P8 与运行读数一致（`local/research/p3-10/runtime/report.md`）。
 
+- **2026-10-14 — Subtask 07 恢复：** 用户授权批准关卡推荐方案（见审批），07 的 `Resume when` 已满足，行改回 in-progress。
+
 ## 审批
 
 用户于 2026-10-14 明确批准本 goal（“approve the goal and commit”）。批准范围：上述 28 个子任务及其依赖、写入范围与执行方式。这不代表实现完成，也不替代 spec 批准。
 
 07、08、10 的执行方式保持“需用户”：spec 规定 D-01 至 D-03 的定稿由用户明确批准，用户批准本 goal 时没有给出预先授权。以后若用户授权 agent 直接批准推荐方案（P3-07 的先例），协调者把这三项改为“自动”并记录授权原话。
+
+2026-10-14，用户在再次调用 `/execute-goal` 时授权 agent 直接批准 07、08、10 的推荐方案（“i authorize you to approve the recommended options for gates 07, 08 and 10”）。协调者据此把三项的执行方式改为“自动”；各关卡的定稿仍写明推荐方案与被排除的方案，批准记录注明依据此授权。07 的阻塞恢复条件由此满足。
