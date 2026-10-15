@@ -42,6 +42,7 @@ updated: 2026-10-14
 - `src/app/resources/mission-input*.ts`、`src/app/mission/mission-owner*.ts`、`src/app/mission/mission.test-support.ts`、`src/app/runtime/game-runtime.test-support.ts`、`src/app/session/game-session.test-support.ts`：运行创建与测试辅助。
 - `tools/replay-check.ts`、`tools/replay-check.test.ts`：另供内容。
 - `e2e/support/**`：合成包含两份输入（如需要）。
+- `src/original-data/conversion/production-rule-data.test-support.ts`：合成生产规则数据改为能通过创建时检查的内容（读取器的边界样本留在 `src/content`）。
 
 ## 验收标准
 
