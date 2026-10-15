@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-13
+updated: 2026-10-15
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -441,7 +441,7 @@ interface CraftCombat {                   // 原版对象 +0x20–+0x47、+0xD0�
 
 interface WeaponBlock {
   selections: readonly [ListSelection, ListSelection, ListSelection]; // 列表 0、1、2（+0x100–+0x114）
-  lock: MissileLock;            // +0x118–+0x128。锁定机只为玩家运行（W8），其他对象保持初值
+  lock: MissileLock;            // +0x118–+0x128。锁定机只为玩家运行（W8），其他对象保持初值（P3-08 的修订（CR-16）：AI 也写入）
   mounts: readonly MountState[]; // +0x154/+0x158：每个机型挂点一项，按挂点次序；没有挂点的机型为空数组（原版无数组）
 }
 interface ListSelection {
@@ -462,7 +462,7 @@ interface MountState {
   burst: number;                // +0x20，i32。自动挂点的连发计数
   aim: Matrix3;                 // +0x24–+0x44，f32 行。自动挂点的瞄准姿态，初值全零
   autoTarget: EntityId | null;  // +0x48。自动挂点的目标（P3-08 选择）
-  retargetClock: number;        // +0x4C。P3-08 原样写入的保持值（W9），初值 0
+  retargetClock: number;        // +0x4C。P3-08 原样写入的保持值（W9），初值 0；基地的绝对保持值的判定见 CR-24 决定 3（P3-08 的修订）
 }
 ```
 
@@ -664,6 +664,7 @@ statusDisplay: { blink: 0 | 1; blinkDueClock: number; redraw: boolean };
   - 发射请求在开火判定处投递，保存当时的挂点、通道与命令身份，弥补消息 8 不带这些身份的缺口（冲突 31）。
   - **开火读取的目标：** 瞄准炮的瞄准、制导导弹的目标要求与导弹请求保存的 `target`，都取该命令处的参照目标。对玩家，与 `target` 命令的参照目标相同（本 tick 先前命令投递而尚未应用的选择优先，否则为玩家目标）；对 AI 机体，为其 `ai.objectTarget`。导弹构造时取请求中的 `target`。原版的扳机读旧目标、构造读消息 2 应用后的新目标（T3、W11），两者只在同一帧既选目标又开火时不同；原版键盘每次轮询至多处理一个键，Core 按命令次序处理，已产生的请求不被后续命令改写（冲突 35 的推荐）。
   - 发射请求与事件 `0x10` 一样受任务流程门禁 `0x339cc` 约束：该门禁的状态由 P3-11 加入，此前总是通过。
+  - P3-08 的修订（CR-21）：`steer` 的主体扩展到 AI 机体，并新增 `ai-match-speed`、`warp-departure` 与 `create-transponder`（僚机命令沿用 P3-10 的 `deliver-command`，CB-08）；命令联合新增 `drop-transponder`（CR-20）。
 
 #### CR-06 领域事件与次序（D-01）
 
@@ -716,6 +717,8 @@ type Attacker =
 | `energy-depleted` | 能量更新进入耗尽分支且 `depleted` 锁存为 false 时发出并置锁存；之后以能量 > 0 结束的更新清除锁存。原版每次耗尽更新都重复施加锁定与钳 0（D14），事件只在转换时 |
 | `energy-allocation-changed`、`left-page-changed` | 紧随被接受的命令的结果发出，对应原版消息 0x100000 的音效 10485 |
 
+P3-08 的修订（CR-22）：新事件 `wingman-command-consumed` 与 `transponder-deployed` 见 CR-22。
+
 **一个 tick 内的次序：** 玩家更新中，命令结果按命令序号发出，`weapon-selected`、`energy-allocation-changed`、`left-page-changed` 紧随所属命令的结果。请求处理中，事件按请求的处理次序发出；一次导弹起爆依次为 `missile-ended`，再按遍历次序为每个受击者发出 `hit`（与可能的 `object-destroyed`）。移动阶段按弹丸的遍历次序发出命中事件。碰撞阶段按两遍的对次序发出，能量阶段按遍历次序。停放交战的事件位于 P3-06 对同一对象的 `object-left-world` 之后。`target-cleared` 在帧尾。同一次伤害中 `hit` 先于 `object-destroyed`。
 
 #### CR-07 实例化扩展与系统流水线（D-01、D-03）
@@ -741,7 +744,7 @@ type Attacker =
   | `parked-update` | `0x2f1b0` | P3-06 的停放遍历对每个本次更新的对象，在离开世界（`0x2f314`）之后调用 P3-07 的一个入口（CR-09） |
   | `frame-end` | 帧渲染中的规则推进 | 驾驶舱显示步（CR-10），在 P3-09 以后加入的项之后、按原版仪表的绘制次序 |
 
-- **对象集合（`0x2ede0`）：** P3-07 的规则不读（C4），维持 P3-06 修订的说明。
+- **对象集合（`0x2ede0`）：** P3-07 的规则不读（C4），维持 P3-06 修订的说明。P3-08 的修订（CR-23）：P3-08 接入其重建、实例化扩展点的选择与对象更新中的 AI 控制器，见 CR-23。
 
 #### CR-08 直接创建与对象生命周期（D-01）
 
@@ -921,6 +924,448 @@ type Attacker =
 - **命令联合：** 新增 `{ type: 'speed-preset', level: 1–9 的整数 }`，即原版 Shift+n 的第 n 个固定档位（Shift+1 等同归零；原版 Shift+0 仍由 `speed maximum` 表达）。校验与其他变体相同：字段缺失或多余、非整数、NaN/Infinity、越界均为 `CoreInputError`，世界与录制不变。效果由 P3-06 的档位规则给出，门禁与结果同速度命令（飞行上下文处理；Warp、基地、地图为 `ignored`/`wrong-context`；玩家不可用为 `ignored`/`player-unavailable`）。通讯菜单打开时是否生效按 P3-05 Q-04 的原版结论。
 - **`select-number`：** D-04 中“普通飞行的 `select-number`（n 等于原版 Shift+n 的速度档位）”由 `speed-preset` 取代。`select-number` 的默认飞行处理不再改变速度，结果为 `ignored`/`wrong-context`；尚未实现的基地、地图等处理仍为 `rejected`/`not-implemented`；它在通讯菜单与基地中的含义不变，菜单优先级由 P3-10 在 Core 中加入。输入层按物理修饰键选择命令，不读取通讯 projection 来决定数字键产生哪个命令；`speed-preset` 与菜单数字保持不同的命令。
 - **版本：** 命令解释与录制允许的输入形状都改变，`rulesVersion` 与 replay 格式版本（`GAME_REPLAY_VERSION`）相对实际集成基线各递增一次（P3-05 分支上为 P3-06 集成后的 2 与 1；合入 main 时 P3-07 已把 `rulesVersion` 递增为 3，合入后为 4 与 2，见[审批](#审批)的合入说明）；D-07 的“replay 格式版本不变”只描述 P3-06 的修订。snapshot 形状不变、不递增其格式版本，但绑定新的 `rulesVersion`。旧录制在任何 tick 执行前因版本不符被拒绝，不迁移、不解释成新绑定。
+
+### P3-08 的契约修订（D-01）
+
+**状态：已获用户批准（2026-10-15，D-01）。**
+
+本节由 P3-08 的子任务 08 起草（2026-10-14），定稿 [P3-08 spec](../08/spec.md#实施关卡) 的关卡 D-01（共享 Core 契约）。它建立在 P3-06 检查点 A、P3-07 的 CR-01 至 CR-14 与 P3-05 的修订之上：那些修订已定的项不变，本节只增补 P3-08 的部分；前文与本节不一致时以本节为准。编号 CR-15 至 CR-25 只供引用本节，接续 P3-07 的编号。
+
+原版事实只记在 [ai](../../../original/formats/ai.md) 与 [executable 的 AI (P3-08) 一节](../../../original/formats/executable.md#ai-p3-08)等 original 文档中，下文用其小节标签（ai §1.1、A12、WB2、D5、X2 等）引用，不重复。定稿依据是 P3-08 子任务 01 至 07 的完成证据，尤其是 [07 的“交 08（D-01）的输入”](../08/subtasks/07-research-consolidation.md#完成证据)。
+
+**不在本节（D-03，P3-08 的子任务 09）：** 友伤累计的写入责任（见 CR-19 的待决事项）、关键字表等解析数据的导入（P3-03）、`b` 的物理绑定（P3-05）、地图可见性例程 `0x2ee60` 的实现归属（P3-09）。本节只定稿它们依赖的 Core 形状（CR-19 的累计与集合字段、CR-18 的命令单槽、CR-20 的命令），并在相应位置写明前向引用。
+
+**与 P3-10 的 D-01 对齐：** P3-10 的“P3-10 的契约修订（D-01）”（CB-01 至 CB-19）已获用户批准，在分支 `p3-10-comms-base-resupply-spec`（提交 55c90ffe）上，尚未合入本分支；下文按名称引用其 CB 条目，合入后即存在。重叠处只有一份定义，本节依赖它们：
+
+| 项 | 定义所在 | 本节的部分 |
+|---|---|---|
+| 命令投递（消息 0x100） | CB-08 的请求 `deliver-command` {receiver, code, sender, commandIndex}（接收者也可能是基地），与 CB-13 的 `command-delivered` | 不另建请求；P3-08 只消费僚机的单槽（CR-18、CR-22） |
+| 命令单槽 +0x184 | CB-04 的 `AiState.pendingCommand`（与 CR-18 同名同形）；基地的消费 `0x3bed0` 归 P3-10（CB-12） | 僚机的消费 `0x614a8`、`0x61f20`（CR-18） |
+| 友伤累计 | CB-05 的 `WorldState.ai.friendlyFire`（与 CR-19 同名同形）；CB-12 让 P3-10 在 `0x3c208` 第 1 步实现写入 `0x38f20` | 读取 `0x38fd8`（CR-19）；写入归属待 D-03 决定 |
+| 回复 `0x38d54` | CB-06 的 `queueLine(context, speaker, type)`：抽取、查表、入队并发出 `radio-queued` | 消费者在原版的回复位置调用它（CR-22），不另建回复事件 |
+| 完全修理 `0x39820` | CB-10 的 `fullRepair(context, entity, inRequestHandling)` | 僚机行为 3 的到达 `0x61bd0` 以 `inRequestHandling` = false 调用（CR-23） |
+| 尾随警告 `0x4ef9c` 的 AI 条件 | CB-09、CB-17 决定 11 | CR-16 的只读查询 `isClosingMissileLock` |
+| 种类 `0x4000` 的运行时构造 | CB-18 移交 P3-08，并改写 CR-02 的 `craft` 行 | CR-20 |
+
+**依赖：** P3-08 实现命令消费、回复、友伤读取与 Xpon 构造的子任务须在 P3-10 的 D-01 合入后进行，或在合入前以同名同形的类型实现、合入时去重；不得各留一份定义。
+
+**记法与通则（沿用 P3-07 一节的记法）：**
+
+- f32 字段都是 `Math.fround` 的不动点且有限；i32 字段为 [−2³¹, 2³¹) 内的整数，运算按原版 i32 语义（ai §12、executable 的 [Numbers and draws on the AI paths](../../../original/formats/executable.md#numbers-and-draws-on-the-ai-paths-p3-08-q-12)）。
+- **时钟字段**是任务时钟单位（1/64 秒）的安全整数，原版为 u32。原版的期限相加按 32 位回绕，游戏中不可达；Core 不复现回绕（P3-02 的时钟契约），期限与时钟之差超过 2³² − 1 时为 Core 故障（约 777 天，不可达）。比较的有无符号与严格性逐条按 Q-12 的汇总，不统一套用。创建时检查保证切片支持集中的加数非负（CR-15），因此 Core 的期限都 ≥ 0，例外在字段处注明。
+- **采样**指本 tick 的 `world.clock`（原版每帧的时钟采样 `0x186414`）。Core 的规则从 tick 1 起执行，此时时钟 ≥ 2，因此以 0 为初值的“每采样一次”缓存不会误命中（原版采样在任务中远大于 0）。
+- 实体引用都是 `EntityId`，被移除后按 ID 查不到，即原版的无效句柄；原版的“计数引用”不阻止移除，Core 不另建引用计数。访问器“查不到即清空字段”的原版行为（WA1 的 `0x62144`/`0x62194`、A3 的重读）在读取点照原样执行，快照保存未清空的原值。
+- 违反类型或约束的值为 Core 故障。新状态都由 Core 拥有，进入快照规范文本与状态哈希；标为“静态”的由 setupHash 绑定的输入决定，不进快照；标为“不持久”的只在一次调用内存在。
+- **f32 任务时间 t：** AI 路径中唯一读取浮点秒的是僚机攻击航线 `0x63c00` 的摆动（第 1 阶段的尾部，[WA7](../../../original/formats/executable.md#wa7-attack-pass-0x63c00-wingman-b-01-opcode-1101--confirmed-code)）：行 1 的值 := F(值 + cos(t × 2.0 × 3.1415927 ÷ P) × M)，钳到 [−1, 1]。原版的 t 是 `0x25894` 每帧写入的 `0x18641c` = F(原始计数 × 1/64)，即**绝对**采样的秒数，不是控制器或攻击航线的相对时钟（[时间基准](../../../original/formats/executable.md#simulation-time-base-p3-0106)）。Core 读 P3-06 已有的同一个值：`MotionStep.time` = `Math.fround(world.clock / 64)`（本 tick 的时钟，在 `clock` 阶段之后、对象更新之前已确定；时钟 ÷ 64 在 2⁵³ 内精确，唯一的舍入点是 f32 写回），单位为秒，不另存状态、不进快照。余弦参数由 f32 的 t、P 与代码常量在 x87 双精度中形成，FCOS 后乘 M、与 f32 的值相加，再 F 写回并钳位；中间舍入点按 WA7 的原生指令逐项实现。原点不同的后果与取舍见 CR-24 决定 15。
+- 置信度：形状所依赖的事实为已确认（代码或代码与数据），除非标注“高概率”。
+
+#### CR-15 AI 输入、支持范围与创建时检查（D-01）
+
+- **输入：** 仍是 CR-01 的 `aiPrograms`（`data/ai-programs`，setupHash 已覆盖完整内容），不另建输入。D-03 在同一 Asset 中加入关键字表（形状由 09 定稿）；Core 只按本节的规则读取。另外读取 `MissionSetup`（声明、编组、僚机选项）与 `craftInfo`。原版还读两个当前逻辑内容没有的字段：选择 flag 与份额的波次模式字都是 SCEN 头部 +0x0C（切片为 0），对象集合的 +0xD4 基值是源记录 +0x7C（CR-19）。D-01 的形状按“头部 +0x0C = 0”定稿；由 09（D-03）核对既有导入是否已拒绝非 0 的头部 +0x0C，否则补入字段或拒绝，并补入源记录 +0x7C。补入之前，P3-08 不得以默认值放行 +0xD4 的读者。
+- **定稿的支持范围**（[ai §10](../../../original/formats/ai.md#10-support-closure-of-the-slice-p3-0801)，已确认，代码与数据）：
+  - 组表程序记录：TABL 6003 的记录 {0, 1, 2}；记录 3、4 只会部分匹配且任一起点都先遇到完全匹配，对切片的每个对象都不可达。
+  - 执行的 DFPG：{6031（记录 0、1），6013（记录 2）}；6025 只被记录 4 引用，载入但从不安装或执行。
+  - 执行的脚本：上述两个 DFPG 的 +0x38 与六份列表所引用的 17 个脚本（ai §10.2 的清单），100 个条目。
+  - 支持的操作码（25 种）：100、104、106、107、111、200、210、211、222、231、232、240、300、301、400、401、402、1000、1001、1002、1003、1101、9500、9999、10000。
+  - 关键字表（3 张）：操作码 231 的 `0x5ea40`、300 的 `0x5ea60`、301 的 `0x5ea98`；403 的 `0x5eac8` 不需要。
+  - 内置记录：AI 选择可达 {4, 5}（僚机）与 {6}（基地）；{1, 2} 为追踪导弹，已由 P3-07 实现，行为不变。记录 0（自动驾驶，G-09，P4）不属于 AI 闭包；记录 3、7、8、9 不可达。
+  - 处理器：表程序的解释器 `0x64cb8`、僚机 `0x610c8`、基地 `0x62c10`，以及停放处理器 `0x62250`（不是记录的处理器，由停放分派调用）。
+- **处理器身份：** 内置记录的处理器是 CR-01 已有的不透明 `CodeIdentity`。Core 持有“支持的身份 → 实现”的代码常量映射：`0x610c8` → `wingman`，`0x62c10` → `base`（以及 P3-07 已有的导弹处理器）；身份按 LE 对象号与偏移相等比较，不从数值推导规则。表记录的处理器在载入时被改写为 `0x64cb8`（ai §6），Core 不读其存储值，一律分派到 `interpreter`。`0x62250` 是代码常量，不出现在内容中。
+- **运行可达性（创建时计算，不抽取随机数）：** 只对本次世界配置计算有限的保守闭包：
+  1. **对象来源：** 直接与延迟的声明、编组成员和配置所选的僚机选项（不选择的僚机不计入；交付验证仍分别覆盖五个名单项与无僚机，P3-08 的 AC-02）。
+  2. **选择：** 对每个来源，用其缺省后的种类、运行时 +0xDC 与 \|+0xE0\| 和 flag（SCEN 头部 +0x0C），按 `0x5dbc8`/`0x5de18` 枚举**全部**起点 s ∈ [0, count) 的结果，取并集。依据：选择对每个对象只发生一次，+0xDC 只由分配器与实例化写，+0xE0 只在选择之后由 `0x5e4d0` 改写，停放/恢复/救援的重装沿用同一 +0x10 而不重选（ai §1 的 *Once per object* 与 *Removal and reinstallation*）。不在选择掩码中的种类（玩家、种类 `0x4000`、运行时种类）没有程序。
+  3. **运行时创建：** 种类 `0x4000`（`b` 与僚机投放，CR-20）不安装程序；导弹只经 `0x2ab00` 得到记录 1、2（P3-07）。
+  4. **闭包：** 可达表记录的 DFPG，其 +0x38 与全部六份列表的全部脚本（不按状态可达性再筛），以及这些脚本中直到首个 10000 的全部条目的操作码；可达内置记录的处理器身份。
+- **创建时的语义检查（`CoreInputError`，路径为结构路径，原因为下列稳定字符串之一，不回显导入值）：** 只检查上述闭包，闭包外的内容仍经 CR-01 与内容读取器的完整结构检查，但不要求可执行语义。
+
+  | 原因 | 条件 | 路径 | 原版后果 |
+  |---|---|---|---|
+  | `unsupported-handler` | 可达内置记录的处理器身份不在映射中 | `input.aiPrograms.content.builtInPrograms[r].handler` | — |
+  | `unsupported-opcode` | 闭包脚本中有支持集外的操作码（含 9000–9002、203–205、305、403、1102、2000–2303） | `…entries[e].items[i].opcode` | — |
+  | `missing-argument` | 布尔、关键字或多值类没有文本 | `…items[i].argument` | 读地址 0 或解析失败 |
+  | `invalid-boolean` | 首个非空格字符不是 N/F/n/f/Y/T/y/t | 同上 | 解析失败 |
+  | `unknown-keyword` | 去掉尾随空格后在 D-03 导入的对应表中查不到（ASCII 不区分大小写，首个匹配） | 同上 | 解析失败 |
+  | `unterminated-range` | 区间缺少 `]` | 同上 | 解析失败 |
+  | `invalid-number` | 数值文本未被相应语法完全读完（整数：可选符号与十进制数字，结果在 i32 内；浮点：可选符号、数字与至多一个 `.`、可选指数，至多 15 位有效数字且 \|指数\| ≤ 22）；区间的符号记号既不为空也不是以 `+`/`-` 开头的单个记号 | 同上 | 原版忽略尾随文本、截断或回绕；切片数据中没有这些情形，拒绝以免复现 `atoi`/`strtod` 的容错路径与陈旧字节（ai §5.3） |
+  | `zero-range` | 整数区间 hi − lo + 1 按 i32 回绕为 0 | 同上 | #DE |
+  | `negative-delay` | 操作码 1000、1001–1003 的数值或区间可取负值 | 同上 | u32 回绕使恢复时刻因原点而异 |
+  | `zero-rate` | AI 路径上作除数的转向块值可为 0：速度上限 S+0x4C = F(机型 +0xB8 × 速度比例)、转向速率 S+0x54/+0x58/+0x5C = F(机型 +0xAC/+0xB4/+0xB0 × 转向比例)。按到达该种类的全部比例来源判定：`0x5c530` 的 1.0、`0x5e4d0` 的 v1、v2（下限 0.65、0.5）、记录 +0x34 ≠ 0 时 `0x5c768` 的原值 R+0x40、R+0x3C（在 `0x5e4d0` 之后写入、无下限）、僚机的 AICO 元素 +0x00、+0x04。用到的除数：1001–1003（S+0x54、+0x58、+0x5C）；攻击航线 `0x63c00`、`0x640d8`、`0x64474`（S+0x4C、S+0x58），可达于僚机与脚本含 1101 的表程序 | `input.craftInfo.content.craft[k]`、`…programs[p]`、`…globals.elements[i]` | x87 除零（未屏蔽） |
+  | `zero-divisor` | 可达表记录 +0x50 ≠ 0 而 +0x0C = 0；有对象要选择而组表或（组表无匹配时的）内置表的记录数为 0 | `…programs[p]`、`…programs`、`…builtInPrograms` | #DE |
+  | `negative-period` | 可达记录的 +0x14 < 0，或 +0x50 ≠ 0 而 +0x14 > 0x2AAAAAAA（`0x5e4d0` 的 3 × 周期按 i32 回绕为负）；可达 DFPG 的 +0x04 < 0（交战计时的重设为采样 + 负周期） | `…programs[p]`、`…builtInPrograms[r]`、`…entries[e].at04` | 期限回绕，处理器或交战计时长期不到期 |
+  | `element-out-of-range` | 所选僚机的运行时 +0xDC − 1 不在 AICO 元素数组内 | `setup.wingmanOptions[i]` | 越界读取 |
+  | `zero-craft-divisor` | 配置了僚机而种类 2 的机型 +0x9C 为 0（状态回复的商）；攻击航线可达时，摆动周期的区间 [AICO +0x3C, +0x40] 含 0 | `input.craftInfo.content.craft[1]`、`…globals` | #DE 或 x87 除零 |
+  | `missing-transponder` | 种类 `0x4000` 没有机型记录、+0xB8 ≤ 0，或其模型不在 `models` 中（CR-20：`b` 恒可达） | `input.craftInfo…`、`input.models` | — |
+
+  其中“可取负值”“为 0”都按可取值的全集判定（区间按端点，随机符号按两种符号），不能因本次种子避开而放行。CR-01 的集合完整规则扩展：`models` 必须包含种类 `0x4000` 绑定的模型（在 `MissionSetup.craftTypes` 中查到；查不到为 `missing-transponder`），因为 `b` 在任何配置下都可达。
+
+- **运行时故障（`CoreFaultError`，不伪装成创建时已证明安全）：** 执行预算超限（CR-25）；Xpon 油门的表索引越界（X2 第 9 步，数据核对表明在玩家机型最高速度以内不越界，速度更高时为故障）；任何违反本节类型约束的写入。ai §12 的其余原版崩溃在创建时都已拒绝：第 9 次压栈与无让出的死循环由“9001/9002 不在支持集”与执行预算覆盖。
+- **静态 AI 数据（`WorldRuleData.ai`，冻结，不进快照）：** 支持闭包内的程序记录（表记录的载入变换：+0x08 为 0 取 0x380，+0x2C 为 ±0 取 1.0，ai §6；内置记录不经变换，ai §3.3）与由它派生的控制器配置（CR-16 的 `limits`）；DFPG 的 F(+0x08²)；按脚本条目预先校验过的解析计划（每个条目的类别、无抽取的值、区间端点与符号许可），关键字值在创建时按导入的表解析为 i32；处理器映射。它们由 setupHash 绑定的输入决定，没有抽取，不形成第二份可变事实。实际的随机解析仍在载入时按原次序抽取（CR-19）。
+
+#### CR-16 实体的 AI 程序槽与控制器（D-01）
+
+`AiState` 增加 `program`（对象 +0x10 与 +0x14），为封闭联合；`program.type` 与种类不符为 Core 故障。玩家、种类 `0x4000` 与 P3-07 的运行时种类恒为 `none`（导弹的追踪程序仍是 CR-02 的 `HomingState`，不在此联合中）。
+
+```ts
+type AiProgramSlot =                                  // +0x10 所选记录与 +0x14 控制器
+  | { type: 'none' }                                  // +0x10 = 0：不选择的种类，或两张表都不匹配
+  | { type: 'table'; record: number; controller: TableController | null }        // TABL 6003 的记录序号
+  | { type: 'built-in'; record: number; controller: BuiltInController | null };  // 内置表的记录序号
+// controller 为 null ⇔ +0x14 = 0：选择后、首次回调安装前，状态 5/6 移除后、下次状态 0–3 回调安装前
+
+type TableController = AiControllerCommon & (
+  | { handler: 'interpreter'; interpreter: InterpreterState }  // 活动或停靠时安装（CR-17）
+  | { handler: 'parked' });                                    // 停放时安装 0x62250
+type BuiltInController = AiControllerCommon & (
+  | { handler: 'wingman'; wingman: WingmanState }
+  | { handler: 'base'; base: BaseState }
+  | { handler: 'parked' });
+
+interface AiControllerCommon {             // 0x16C 字节的控制器 C（ai §1.1），+0x00 即实体本身，不另存
+  nextUpdateClock: number;                 // +0xF0，时钟
+  period: number;                          // +0xF4，i32
+  limits: ControllerLimits;                // +0x100–+0x118（由记录派生；表记录先经载入变换）
+  triggers: readonly [ChannelTrigger, ChannelTrigger, ChannelTrigger]; // +0x120–+0x134，通道 0、1、2
+  aiLock: boolean;                         // +0x138
+  missileReady: boolean;                   // +0x13C
+  automaticMounts: boolean;                // +0x140
+  engagement: EngagementTimer;             // +0x144–+0x14C
+  attackPass: AttackPass;                  // +0x150–+0x15C
+  steering: SteeringBlock;                 // +0x04–+0xEF（S）
+}
+interface ControllerLimits {
+  turn: number;               // a = F(D(D(记录 +0x24 × f64 0x17232c) × f64 0x172334))；+0x104 = a，+0x100 = −a（取负精确）
+  speed: number;              // b：同上由 +0x28；+0x10C/+0x108，`0x5e4d0` 改写
+  saturation: number;         // +0x114 = 记录 +0x2C 的位拷贝，+0x110 = −sat
+  rollMatchThreshold: number; // +0x118 = 记录 +0x30 的位拷贝
+}
+interface ChannelTrigger { pressed: boolean; holdDeadline: number } // 值 +0x120+4k（只取 0、1）；按住期限 +0x12C+4k
+interface EngagementTimer {
+  dueClock: number;           // +0x144：0 = 未启用，否则为时钟
+  period: number;             // +0x148，i32
+  mask: number;               // +0x14C，u32 种类掩码（0 被写成 0xfbfff）
+}
+interface AttackPass {        // 攻击航线 0x63c00（WA7）
+  phase: 0 | 1 | 2;           // +0x150
+  deadline: number;           // +0x154，时钟
+  savedSizeClass: number;     // +0x158，u8
+  savedLeadMode: number;      // +0x15C，u8
+}
+```
+
+**转向块 S（`AiControllerCommon.steering`，A1）：** S+0x00（主体）、S+0x04（指向限值）与 S+0x08（主体机型记录）由实体与静态数据确定，不存。
+
+```ts
+interface SteeringBlock {
+  targetValid: boolean;        // S+0x0C
+  target: EntityId | null;     // S+0x10：点转向（0x5c658）时 targetValid 为 true 而 target 为 null
+  targetSample: number;        // S+0x14：上次 0x5c8b0 的采样（每采样一次的缓存）
+  relativeSample: number;      // S+0x18：上次 0x5cc6c 的采样
+  point: Vec3;                 // S+0x1C–+0x24，f32
+  distance: number;            // S+0x28（C+0x2C），f32
+  targetSpeed: number;         // S+0x2C，f32
+  offset: { enabled: boolean; frame: 0 | 1; vector: Vec3 }; // S+0x30、+0x34、+0x38–+0x40
+  sizeClass: number;           // S+0x44，u8
+  approachRadius: number;      // S+0x48（C+0x4C），f32
+  speedLimit: number;          // S+0x4C（C+0x50），f32
+  halfSpeedLimit: number;      // S+0x50，f32
+  turnRates: readonly [number, number, number]; // S+0x54、+0x58、+0x5C，f32
+  leadMode: number;            // S+0x60，u8
+  leadConstant: number;        // S+0x64，f32
+  relativeFlags: number;       // S+0x68，0–7（位 0–2）
+  relative: Vec3;              // S+0x6C–+0x74，L，f32
+  reverseFlags: number;        // S+0x78，0–7
+  reverse: Vec3;               // S+0x7C–+0x84，f32
+  angles: readonly [number, number]; // S+0x88、+0x8C（C+0x8C、C+0x90），A、B，f32
+  control: ControlBlock;       // S+0x90–+0xBC（CB），CR-05 的形状
+  coneBits: 0 | 1 | 2 | 3;     // S+0xC0（C+0xC4；与对象 +0xC4 的 AI 模式不同）
+  speedFraction: number;       // S+0xC8，f32
+  turnFraction: number;        // S+0xCC，f32
+  rollMatch: boolean;          // S+0xD0 = 0
+  throttleNoise: { enabled: boolean; low: number; high: number };  // S+0xD4–+0xDC
+  steeringNoise: { enabled: boolean; low: number; high: number };  // S+0xE0–+0xE8
+}
+```
+
+- **CB 的持久性：** CB 在两次步之间保留；噪声 `0x5d490`/`0x5d6a8` 在 S 中的 CB 上就地修改后投递，`0x5d014` 投递“CB 如留下的那样”，`0x5d274` 读取 `0x5cd1c` 的结果，所以全部行的 `{clear, set, value}` 都进快照（`set` 为 false 的行也保留 `value`）。速度标志为 0 时 `speedFactor` 为 null：原版留下的旧系数此时没有读者（只有 `0x5d0ec`、`0x5d41c` 置标志，并同时写系数）。
+- **每采样一次的缓存：** `targetSample`/`relativeSample` 等于采样时 `0x5c8b0`/`0x5cc6c` 立即返回。规避 `0x5d374` 在栈上复制 S（不持久），复制品保留 `targetSample`，因此同一采样内先运行过 `0x5c8b0` 时，转弯按当前目标而非威胁计算（A7 的怪癖）。Core 照原样复现（CR-24 决定 6）。
+
+**原版偏移与字段（只列代码事实）：**
+
+| 偏移 | 字段 | 偏移 | 字段 |
+|---|---|---|---|
+| 对象 +0x10 | `program.record`（与 `type`） | C+0x120/+0x124/+0x128 | `triggers[k].pressed` |
+| 对象 +0x14 | `program.controller` | C+0x12C/+0x130/+0x134 | `triggers[k].holdDeadline` |
+| C+0x00 | 实体本身 | C+0x138、+0x13C | `aiLock`、`missileReady` |
+| C+0x04–+0xEF | `steering`（S = C+4，S+k = C+k+4） | C+0x140 | `automaticMounts` |
+| C+0xF0、+0xF4 | `nextUpdateClock`、`period` | C+0x144、+0x148、+0x14C | `engagement.dueClock`、`.period`、`.mask` |
+| C+0xF8 | `program.record` | C+0x150、+0x154 | `attackPass.phase`、`.deadline` |
+| C+0xFC | `handler`（由记录与停放分派决定） | C+0x158、+0x15C | `attackPass.savedSizeClass`、`.savedLeadMode` |
+| C+0x100–+0x114 | `limits.turn`、`.speed`、`.saturation` | C+0x160 | 不存：每条路径都写 0，恢复分支是死代码（WA7） |
+| C+0x118 | `limits.rollMatchThreshold` | C+0x11C、+0x164 | 不存：只清零，无读者（ai §1.1） |
+| C+0x168 | `interpreter`/`wingman`/`base`（CR-17） | — | — |
+
+**字段的范围与生命周期：** 控制器的全部字段由安装（CR-23）的 `0x5dc0c` 清零后写配置、`0x5c530` 初始化 S、处理器的模式 0 写其余；随控制器在状态 5/6 的移除而消失（`controller := null`），没有其他重置；停放与恢复之间不保留任何控制器字段（WA2、ai §1）。
+
+| 字段 | 类型与范围 | 初值（安装） | 更新者 | 读者 |
+|---|---|---|---|---|
+| `nextUpdateClock` | 时钟 | 处理器入口写（解释器：采样 + `period`；`0x62250`：采样 + 0x40） | 处理器（ai §1 *Scheduling*：`0x64cb8`、`0x60f80`、`0x610c8`、`0x62c10`、`0x63c00`、`0x62250`、`0x62578`、`0x62714`） | AI 步（无符号严格 `>`） |
+| `period` | i32，≥ 0（CR-15） | 记录 +0x14 | `0x5e4d0`（×3/2 或 ×2/3，向零取整） | 处理器、`0x5e4d0`、`0x61740`、`0x63c00`、`0x64d58` |
+| `limits.turn`、`.saturation`、`.rollMatchThreshold` | f32 | 记录 +0x24、+0x2C、+0x30（载入变换后） | 不变 | `0x5cd1c` |
+| `limits.speed` | f32 | 记录 +0x28 | `0x5e4d0` 第 5 步 | `0x5cd1c` |
+| `triggers[k]` | 布尔、时钟（0 表示按住 0） | false、0 | 按下 `0x5df20`（只在未按下时：期限 = 0、采样 + 0x7D00 或采样 + 按住）、松开 `0x5df84`、AI 步的释放 | AI 步 |
+| `aiLock` | 布尔 | false | `0x5e1b0`、`0x5e4d0`（置 true）、`0x5e1d4`、`0x5dfec`（置 false） | AI 步、`0x640d8` |
+| `missileReady` | 布尔 | false | AI 步：通道 1 的任何尝试清除；AI 锁定更新写入 `0x5dfec` 的结果 | `0x5e154` |
+| `automaticMounts` | 布尔 | false | 基地安装 `0x5e1f4` | AI 步 |
+| `engagement` | 时钟（0 未启用）、i32（≥ 0，CR-15）、u32 | 0、0、0 | `0x63250`、`0x63600`、`0x63744` | `0x63600`、`0x63744`、`0x632a4` |
+| `attackPass` | 见类型 | 0、0、0、0 | `0x63c00`、`0x640d8` | `0x63c00` |
+| `steering.*` | 见类型；`turnRates`、`speedLimit` 等由 `0x5c768` 以 f32 写回 | `0x5c530`：清零、尺寸类 2、提前量模式 0、`approachRadius` 0、`0x5c768(1.0, 1.0, 0)` | A1、A2 的写入者（`0x5c584`、`0x5c658`、`0x5c8b0`、`0x5cc6c`、`0x5cd1c`、`0x5c768`、`0x5c7e8`、`0x5c878`、`0x5c73c`、`0x5c6d4`/`0x5c6fc`/`0x5c72c`、`0x5dab0`、噪声、`0x63c00`）；`0x5e4d0` 第 5 步重做 `0x5c530` | 同左、执行器、`0x610c8`、`0x61a88`、`0x640d8`、`0x64474`、`0x64d58`、`0x5dfa4`、`0x5dfec` |
+
+- **AI 对实体其他字段的写入（本修订改变既有字段的可变性或写入者）：**
+  - **运行时 +0xE0（`ruleInputs.aiValueB`）改为可变。** 唯一的运行时写入者是 `0x5e4d0`（安装第 2 步；操作码 305 在支持集外）：值为负时写回 −值（i32 取负，−2³¹ 保持不变），并关闭本次的 AI 锁定门（ai §11.2 第 1 步）。该写回可被观察：P3-07 的停放交战只在 +0xE0 ≥ 0 时选择导弹，重装时的下一次 `0x5e4d0` 读到写回后的值。其他读者（选择、份额、`0x62760`）不变；切片中没有负的运行时 +0xE0，写回在切片中不发生（ai §11.2 的 *Group 0*）。`EntityRuleInputs` 的其余五项仍不可变。
+  - **AI 写入 `combat.weapons.lock`（修订 CR-02 的“锁定机只为玩家运行，其他对象保持初值”，A13）：** `0x5dfec`（AI 锁定更新）：无列表 1 状态 → 只关 `aiLock`；导弹无制导 → 就绪，不写锁定；目标无效、未活动或无弹药 → `level` := 0；采样 < `nextUpdateClock`（无符号）→ 不变；否则几何不合格 → `level` := 0，合格时 0 → 2（`stageDueClock` := 采样 + (导弹 +0x34 SAR 1)）、2 → 3（采样 ≥ `stageDueClock` 时，重设同上）、3 → 4（采样 ≥ `stageDueClock`），1 与 4 不变；最后 `nextUpdateClock` := 采样 + 0x40。`0x5e1b0`（及 `0x5e4d0` 中的同一启用）：`nextUpdateClock` := 0、`level` := 0；`0x5e1d4`：`level` := 0；`0x5c584` 在目标改变为有效句柄时 `level` := 0。AI 不写 `losing` 与 `graceDueClock`，不经过等级 1。玩家的锁定机 `0x2ddbc` 不变；发射时 P3-07 的 `0x2e86c` 对非玩家照旧清零。因此 AI 制导发射的 `launchByte` 通常为 4（受损挂点为 3），P3-07 的 W8 注释由修订 ⑦ 更正。
+- **只读查询（供 P3-10 的尾随警告 `0x4ef9c`，CB-09）：**
+
+  ```ts
+  function isClosingMissileLock(entity: Entity): boolean; // combat.type 为 craft 且 combat.weapons.lock.level ∈ {3, 4}
+  ```
+
+  - **输入：** 一个已解析的实体（P3-10 先按种类 `0x780`、活动、状态 ≥ 7 与 `ai.objectTarget` 为玩家筛选）。**输出：** 布尔。不写状态、不抽取，可在任何阶段调用。
+  - **所读的状态：** 原版的字节 (+0xF4)+0x24 是武器块（对象 +0xF4 起，[W1](../../../original/formats/executable.md#w1-per-object-weapon-block-and-mount-states--confirmed-code)）的 +0x24，即对象 +0x118 的导弹锁定等级 `combat.weapons.lock.level`（CR-02），不是控制器 C+0xF4（周期）或攻击航线 C+0x150–C+0x15C（ai §1.1）。对 AI 机体，等级 3、4 只由上一条的 AI 锁定更新 `0x5dfec` 写入（等级 2 → 3 → 4 的阶段），所以该条件的含义是“AI 正在完成对目标的导弹锁定”。
+  - **与 CB-09 的一致性：** CB-09 与 CB-17 决定 11 把该字节称为 P3-08 处理器私有状态中的攻击航线字节，并规定没有处理器状态时条件不成立。按上述偏移，它是 P3-07 的锁定等级；不过可达情形下结果相同：P3-08 接入前 AI 机体的等级恒为初值 0，接入后没有控制器的种类 `0x780` 对象（尚未安装、已移除或被毁）不满足“状态 ≥ 7 且活动”或其等级仍为 0（玩家的锁定机不作用于它们，停放、恢复不重置武器块但重装先于状态 7）。该措辞的更正交 P3-10 在合入时处理（不改其行为）。
+
+#### CR-17 处理器的私有状态（D-01）
+
+```ts
+interface InterpreterState {      // 表程序：C+0x168 指向的 0x18 字节 I（ai §11.1）
+  state: 0 | 1 | 2 | 3 | 4 | 5 | 6;     // I+0x00，u8；0 = 尚无
+  execution: ExecutionState | null;     // I+0x04：当前脚本的执行状态；null 只在 state 为 0（首次状态机在规则 1 返回）或状态 3 的列表为空时
+  lastRunEnded: boolean;                // I+0x08：上次执行器运行的结果（0 让出，1 结束）；换脚本时不清
+  steadyClock: number;                  // I+0x0C，时钟：锥位为 3 的每次更新后 := 采样
+  stateDeadline: number;                // I+0x10，时钟：从 {3, 4, 5} 之外进入 3、4、5 时 := 采样 + D+0x1C
+  state4Deadline: number;               // I+0x14，时钟，0 = 未设
+}
+interface ExecutionState {        // 每次载入脚本的 0x60 字节 X（ai §5.1）
+  script: number;                       // 脚本条目序号（X+0x24 的首条目）
+  item: number;                         // X+0x28：当前条目序号，< 该脚本的条目数
+  variables: readonly [number, number, number, number];  // X+0x04–+0x10，i32
+  timers: readonly [number, number, number, number];     // X+0x14–+0x20，时钟
+  returnStack: readonly number[];       // X+0x2C–+0x48：条目序号，长度即深度 X+0x4C，0–8
+  wait: { active: boolean; until: number };  // X+0x50、+0x54
+  hold: { active: boolean; until: number };  // X+0x58、+0x5C
+}
+interface WingmanState {          // 僚机：C+0x168 指向的 0x14 字节 B（WA1）
+  behaviour: 0 | 1 | 2 | 3 | 4 | 5;     // B+0x00，b
+  doNotAttack: EntityId | null;         // B+0x04
+  attackTarget: EntityId | null;        // B+0x08
+  nextGunSwitchClock: number;           // B+0x0C，时钟
+  nextEngageSearchClock: number;        // B+0x10，时钟
+}
+interface BaseState {             // 基地：C+0x168 存的种类掩码（A14）
+  targetMask: 0x93780 | 0x6c87f;        // 基地（种类 0x20000）得 0x93780
+}
+// 停放处理器 0x62250 没有私有状态：只用 nextUpdateClock，C+0x168 保持 0。
+```
+
+| 字段 | 初值 | 更新 | 重置与释放 |
+|---|---|---|---|
+| `interpreter.*` | 安装第 6 步分配并清零（ai §11.2），随后同一调用的状态机与执行器写入 | 状态机 `0x64d58` 的 13 条规则（ai §11.3）；`steadyClock` 由 `0x64cb8` 第 5 步 | 处理器模式 2：释放 `execution`（CR-19 的计数减 1）后丢弃 |
+| `execution` | 载入（CR-19）后由 `0x5e9d8` 复位：变量、计时、深度、等待与保持清零，`item` 为 0 | 执行器 `0x5f4f4`（ai §5.4）；状态规则 11 的“重置”只调用 `0x5e9d8`，不重解析、不抽取 | 换脚本（规则 12）与移除时释放 |
+| `variables`、`timers`、`returnStack` | 0、0、空 | 只由 2000–2003、2200–2203、9001/9002/9500 写入；前两组在定稿的支持集外，因此恒为初值，`returnStack` 只会被 9500 清空 | 同上 |
+| `wingman.*` | `0x60f80` 的模式 0 清零后由 `0x61d64` 按 +0xC4/+0x90 写 `behaviour` 与 `attackTarget`（WA2） | `0x614a8`、`0x61a88`、`0x61740`、`0x610c8`（WA1） | 模式 2 释放；停放丢失 b、B+4 与两个计时，恢复时由 `0x61d64` 重建 |
+| `base.targetMask` | `0x62b60` 的模式 0 | 不变 | 随控制器 |
+
+- **执行状态与解析缓存的分工：** 解析值在世界级缓存中按脚本共享（CR-19），执行状态（游标、变量、计时、栈、等待与保持）每次载入一份，属于该控制器，不共享。安装脚本的执行状态只在安装调用内存在（不持久），不进快照；它在该调用中使该脚本的计数多 1。
+- **退出值** X+0x00 没有读者，不存（ai §5.1）。
+
+#### CR-18 AI 模式与待处理命令（D-01）
+
+- **`AiMode` 不变**（0 | 1 | 2 | 4 | 5）。切片中 +0xC4 的写入者与取值见 [D2 的 *Mode values in the slice*](../../../original/formats/executable.md#d2-target-search-0x62578c-set-mask-p-and-0x62714--confirmed-code)：敌方领队 0/4、跟随者 0、基地 1、僚机 0/2/5 与命令效果、种类 `0x2000`/`0x4000` 为 5。模式 3 只由 `0x5e710(C, 0)` 写入，其唯一调用者是支持集外的操作码 1102，因此不加入；支持集扩展时按扩展规则修订。僚机的“愤怒”是私有行为字节 b = 5（`WingmanState.behaviour`），不是对象的 AI 模式；镜像 `0x61dfc` 此时写 +0xC4 := 0。
+- **待处理命令单槽：** `AiState` 增加
+
+  ```ts
+  pendingCommand: { code: number; issuedTick: number } | null; // +0x184：null ⇔ 0。code 为 u32，1 ≤ code < 2³²；issuedTick 为写入它的 tick
+  ```
+
+  - **写入：** 只由 P3-10 的 `deliver-command` 请求（CB-08）在请求处理中写入，后写覆盖先写（WB2）；本节不另建投递请求。`issuedTick` 是项目字段，供 CR-22 的结果事实关联 P3-10 同一 tick 的菜单 `command-result`；规则不读它。原版同时存发送者 +0x188（计数引用），它没有规则读者，Core 不存。
+  - **消费：** 活动或停靠的僚机由 `0x614a8` 消费（处理器的每次到期更新与每次安装），停放的由 `0x61f20` 消费（停放步）；两表语义不同（WB3、WB4）。基地的 +0x184 处理器 `0x3bed0` 归 P3-10（D-03）。
+  - **三种结果：** **阻塞待处理**（活动：玩家实体为空或累计值 > AICO +0x28；停放：累计值 > AICO +0x28）——保留，不清除、不回复、不发事件；**已消费**——按码执行效果与回复后清为 null，发出 CR-22 的结果事实（码 7、≥ 8 等无效果的码同样清除）；**被覆盖**——旧码永不执行、永无事实与回复。命令本身只带码：玩家目标、玩家、ps +0/+0x10–+0x18 与船体在**消费时**读取，消费前玩家换目标会改变命令的对象（WB2）。
+  - **生命周期：** 实例化与分配器写 null；停放、恢复与重装不清除（重装的安装会消费它）；救援不清除（Q4）；实体移除时随之消失。在请求处理与消费之间被移除：命令随实体消失，无事实。
+
+#### CR-19 世界级 AI 状态与可见性历史（D-01）
+
+`WorldState` 增加 `ai: WorldAiState`，实体增加 `mapVisible`：
+
+```ts
+interface WorldAiState {
+  parseCache: readonly ParsedScript[];    // 按脚本条目序号升序；只含计数 > 0 的脚本
+  friendlyFire: { accumulated: number; windowEnd: number };  // acc 0x174dfc（i32）、wend 0x174e00（时钟）；与 P3-10 的 CB-05 同一字段，合入后只保留一份定义
+  objectSets: { friendly: readonly EntityId[]; hostile: readonly EntityId[] }; // 0x174b74、0x174b78
+}
+interface ParsedScript {
+  script: number;                          // 脚本条目序号（ai-programs 的 entries 下标）
+  uses: number;                            // 正整数：存活的执行状态数
+  items: readonly ParsedArgument[];        // 恰为该脚本直到首个 10000 的条目数，按条目次序
+}
+type ParsedArgument =                      // 条目的 +0x08/+0x0C 槽，按 ai §5 的类别
+  | { type: 'none' }                       // 无参数类（106、107、9500）
+  | { type: 'integer'; value: number }     // i32：整数、布尔与关键字类；整数类无文本时为 0
+  | { type: 'float'; value: number }       // f32：浮点、度数（×两个常量）与余弦类
+  | { type: 'optional-floats'; values: readonly [OptionalFloat, OptionalFloat, OptionalFloat, OptionalFloat] } // 100
+  | { type: 'floats'; values: readonly number[] };          // 111 的 3 个 f32（105 的 2 个在支持集外）
+interface OptionalFloat { present: boolean; value: number } // 以 x/X 开头的记号为缺省；空记号为存在的 0.0
+// Entity：
+mapVisible: boolean;                       // +0xD4，机体种类（0–19）的地图可见标志；其他种类恒为 false
+```
+
+- **解析缓存（ai §5.2）：** 以脚本级计数代替原版的条目级计数，二者在“解析失败已在创建时拒绝、分配与 i32 计数不会失败”下完全等价（ai §5.2 的 *Script-level count equivalence*，已确认）。载入（安装脚本、状态机规则 13）使计数 0 → 1 时按条目次序、条目内按记号次序解析全部条目并在此刻抽取（区间 1 次，符号记号允许时再 1 次；ai §12），计数 > 0 时共享、不抽取；释放（规则 12、模式 2、安装脚本运行后）使计数 1 → 0 时删除该项，下次载入重新解析并重新抽取，同一任务内也是如此。不同 DFPG 引用同一脚本时共享。无抽取的值可取自静态 AI 数据，结果相同。新世界从空缓存开始；两个世界不共享。上界：项数 ≤ 支持闭包的脚本数（内容上限 64），`uses` ≤ 带表程序控制器的实体数 + 1。
+- **友伤累计（WB6）：** 字段 `WorldState.ai.friendlyFire` 与 P3-10 的 CB-05 同名同形，由 Core 拥有、进入快照；`WorldState.ai` 的其他字段（`parseCache`、`objectSets`）由本节加入。**待决（待 D-03 决定，子任务 09）：** 写入 `0x38f20` 的实现归属与已批准的两份文件冲突——P3-08 spec 的 D-03 方向是把写入移入 P3-08，而 CR-13 与 P3-10 已批准的 CB-12（及 CB-05）让 P3-10 在 `0x3c208` 第 1 步实现它。选项：(1) 写入留在 P3-10（CB-12），P3-08 只读，并修订 P3-08 spec 的 D-03 方向——**推荐**：它已获批准，且只有一个调用点，不会重复累计；(2) 修订 CB-12/CB-05，把写入移入 P3-08。D-01 不解决这一归属，下面的规则只描述共享状态的语义，由实际写入者照此实现。规则：伤害入口在有效性校验之后、船体伤害之前以原始伤害调用；W = 走查次序中第一个种类 2 的对象（不筛状态）；受击者为 W 且攻击者种类为 1 时，若采样 > `windowEnd`（无符号严格）则 `accumulated` := 0、`windowEnd` := 采样 + 0x780，然后 `accumulated` += 原始伤害（i32 回绕加法）。读者只有 `0x38fd8`：`accumulated` > AICO +0x28（i32，有符号，等号不阻塞）。初值：`accumulated` = 0（任务构建 `0x38bec`），`windowEnd` = 0（CR-24 决定 4）。任务期间没有任何重置：不衰减、救援与僚机损失都不清，无僚机的世界保持 0。其他攻击者分支的船体低告警期限 `0x174e10` 是 P3-10 拥有的 `communications.limits.wingmanLowHull`（CB-05），不在本节。
+- **对象集合与 +0xD4（D5、[对象集合](../../../original/formats/executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)）：**
+  - **成员与次序：** `friendly` 为种类 `0xfffff` 中不在 `0x93780` 的机体，`hostile` 为种类在 `0x93780` 的机体，都按走查次序，包含停放、停靠、Warp 中、被毁源与待移除的机体。
+  - **重建：** 每个 tick 的 `object-sets` 阶段无条件重建两个集合，并把每个成员的 `mapVisible` 写为源记录 +0x7C ≠ 0（运行时 Xpon 没有源记录，写 false：原版读线性地址 0x7C，而友方的 +0xD4 没有读者，不可观察）。原版的限速分支只在程序的第一遍执行，此后每遍都重建，因此无条件重建与原版完全等价（CR-24 决定 2）。视角模式 8 时随后调用地图显露例程 `0x2ee60`（CR-23 的调用点，实现归属按 D-03）。
+  - **采样时机与读者：** 第 N 个 tick 的走查读取第 N − 1 个 tick 重建的集合与 `mapVisible`；集合不随本 tick 的新建实体更新（僚机在走查中投放的 Xpon 在下次重建前不是成员）。读者：停放处理器 `0x62250` 的目标搜索（集合次序决定并列与随机挑选）与 `0x62760`（只有种类 2 的搜索者读 `mapVisible`），以及 P3-09 的地图列表。僚机停放步中调用的 `0x2ee60` 只改本次搜索所见的 `mapVisible`，在下一次重建前没有其他读者（D5）。
+  - **初值：** 世界创建时两个集合为空；实例化的机体 `mapVisible` 为 false（分配器清零）。第一次 AI 决策总在一次重建之后（D5 的 *First build*），空集合按原版的空集合处理。
+  - **失效句柄：** 集合中的 ID 在读取时一律按有效性检查；原版中集合成员在 AI 读取时总是有效（移除只发生在请求处理，先于 `object-sets`），所以“失效 ID”没有原版触发，只作为不变式测试（P3-08 的修订 ④）。
+- **快照：** 三组字段与 `mapVisible` 全部进入快照。集合在 tick 边界虽可由实体表重算，但 `mapVisible` 依赖重建时的位置与视角，而停放更新在重建之后移动停放对象，不能在读者处重算；集合与它一起保存，使读者不依赖“哪些量可重算”的推理。
+
+#### CR-20 动态 Xpon 与 `b`（D-01）
+
+- **责任：** 运行时构造种类 `0x4000`（`0x38780` 及其两个调用者：`b` 的命令与消息 0x200000，僚机的投放）由 P3-10 已批准的 CB-18 移交 P3-08，与本条一致；CB-18 同时改写 CR-02 的 `craft` 行，本节不另改该行。
+- **`b` 的结论：** 高概率为正常玩法（[X5](../../../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)）：纳入，代码注释与对照结论标注“高概率”。绑定事实与物理键归 D-03（P3-05）。
+- **命令：** 命令联合增加无字段的 `{ type: 'drop-transponder' }`。判定在玩家更新的命令批次中按次序进行：CR-05 的共同前置判定（玩家不可用 → `ignored`/`player-unavailable`；交互上下文不是 `flight` → `ignored`/`wrong-context`；通讯菜单打开时的优先级由 P3-10 加入，原版的 `b` 此时是菜单第 11 项）；否则 `accepted`，并投递 `create-transponder` 请求（CR-21）。没有次数、能量、冷却或状态门禁（X2），不新增原因码。每条被接受的命令各投递一次；“每次键盘轮询至多一次”由输入层（D-03）保证。
+- **种类 `0x4000` 的状态：** 种类位 14 的实体增加
+
+  ```ts
+  transponder: {
+    creator: 'declaration' | 'player' | 'wingman';   // 实例化 / b / 僚机投放
+    callback: { phase: 'none' } | { phase: 'first-update' } | { phase: 'tumbling'; since: number };
+  };                                                  // 其他种类为 null
+  ```
+
+  - `callback` 对应对象 +0x14 的复用：`first-update` 是 `b` 创建的首次更新标记（+0x14 = 1，只在来源活动时），`tumbling.since` 是 4 字节块中的 F₀（时钟），`none` 是 +0x14 = 0。初值：实例化与投放为 `none`，`b` 为 `first-update`。回调 `0x3897c`（X3）在状态 0–3 遇到 `first-update` 时翻滚（2 次抽取，先行 3 后行 1）并改为 `tumbling`；状态 7 且采样 > `since` + 0x80（无符号严格）时稳定并改为 `none`；状态 5/6 时（`0x20ae4`）把非 `none` 改为 `none`。
+  - **来源变体：** 不新增 `EntitySource` 变体，`source` 仍为 null：`source` 只表示声明（`object-instantiated`、P3-11 的对象事件与生成计数按它计数，而原版对象事件对无源记录的 Xpon 不起作用，X6）。`creator` 是种类 `0x4000` 的创建路径变体，供校验（`combat.type` 为 `craft` 而 `source` 为 null 的实体必须是 `creator` 不为 `declaration` 的种类 `0x4000`）、CR-22 的事件与 P3-09 的显露来源使用；规则不按它分支。
+- **构造 `0x38780`（X2，`b` 与投放共用）：** 依次：
+  1. 分配种类位 14（实体上限内；原版没有规则上限，只受内存限制）。`source` null，`name` 为 `none`，`side` null，`baseInteraction` false，表现为 `MissionSetup.craftTypes` 中种类 14 绑定的模型，`ruleInputs` 六项为 0，`ai` 为分配器的 AI 状态（模式 5、两个目标为空、零向量）、`program` 为 `none`、`pendingCommand` null，`mapVisible` false，`formation` null，`warpClock` 0，`inWarp` false。
+  2. 活动跟随来源：来源 `activity` 为 `active` → `active` 并有移动块；否则（停放或停靠）→ `parked`，无移动块。
+  3. 战斗状态：`0x3060c`(新对象, 种类 14 的机型记录, 100, 0, 0)：能量满、护盾 0、充能 0、档位 0、E/T、`lastEnergyClock` 与 `nextEnergyClock`（1 次抽取）；船体不写（0）；子系统 0；武器块为分配器的空块（种类 14 的机型没有挂点）。`maximumSpeed` := 机型 +0xB8。
+  4. `lastParkedUpdateClock` := 创建时钟（P3-06 的交接；X4 证明 +0x18 的初值不可观察，CR-24 决定 9）。
+  5. 位姿：来源的行；位置按 X2 第 7 步逐轴 f32 写回（沿 −行 2 一个单位、沿 −行 3 十五个单位）。来源有移动块时，`0x218e8` 刷新**来源**移动块的 +0x70 := 机型 +0xB8 与 +0x74 := F(速度 ÷ +0x70)（P3-06 的写入者，X2 第 6 步）。
+  6. 活动时的移动块：油门 t := trunc(D(D(D(v × 0.75) ÷ D(F(新 +0x78))) × 128.0))（`0x74518`），v 为来源的当前速度（无块为 0）；`0x21794` 按模式 0 建块，速度 = 指令速度 = F(表[64 + (t SAR 1)] × +0x78)，块 +0x78 := 1。表索引越界为 Core 故障（CR-15）。
+  7. `transponder` 按上文写入。
+  抽取：构造 1 次（能量期限）；`b` 的首次更新 2 次。
+- **创建时刻与首次更新：** `b`：玩家更新中判定命令（第 N 个 tick），同一 tick 的请求处理中构造（状态为“表现就绪”，本 tick 不运动），第 N + 1 个 tick 的走查中首次回调（翻滚，在玩家与僚机之后，种类位 14）。僚机投放：在走查中由僚机的停放步直接创建（不经请求，CR-08 的直接创建扩展到对象更新中的这一路径），因种类位 14 高于 1，在**同一遍**走查中首次回调（状态“新建”→ 请求活动；停放的 Xpon 没有移动块，保持 CB 无效果、无抽取）。
+- **生命周期：** 与其他机体相同地停放与恢复；AI 模式 5 使它不离开世界；被毁或拆除时移除。没有对象事件、计数、名称池或 SCEN 访问。被毁时 P3-07 的 `object-destroyed` 照常发出（`source` 为 null）；P3-11 不得把它计入对象事件。
+
+#### CR-21 内部请求（D-01）
+
+`Request` 联合增加下列封闭变体，并放宽 `steer` 的主体：
+
+```ts
+| { type: 'steer'; entityId: EntityId; control: ControlBlock }      // 既有变体；主体可为导弹（P3-07）或机体（AI，0x40000 的 AI 形式）
+| { type: 'ai-match-speed'; entityId: EntityId; targetEntityId: EntityId;
+    a: number; lo: number; hi: number }                              // 消息 0x80000 的 AI 形式（A5 的 0x5d090），三个值为 f32
+| { type: 'warp-departure'; entityId: EntityId }                     // 消息 0x800000：目标为投递者自身，无载荷（D6）
+| { type: 'create-transponder'; entityId: EntityId }                 // 消息 0x200000：主体为玩家（X1）
+```
+
+| 请求 | 投递者与位置 | 处理（请求处理阶段，按投递次序） | 处理时复检 |
+|---|---|---|---|
+| `steer`（机体） | AI 的移动助手 `0x5d014`、`0x5d0ec`、`0x5d1ac`、`0x5d274`、`0x5d41c`（A5），在对象更新中 | P3-06 的 `0x21fd8` 作用于机体移动块（含其扰动抽取）；导弹仍按 P3-07 | 主体查不到 → 丢弃。`0x21fd8` 自身的门禁（有移动块、机型记录、未锁定）不满足 → 无效果。主体既不是机体也不是导弹为故障 |
+| `ai-match-speed` | `0x5d090`、`0x5d080`（S+0x10 为空时不投递） | P3-06 的玩家变体 `match-speed`（带 `commandIndex` 与事件）保留；两者经同一个推广后的 `0x21adc(subject, target, a, lo, hi)`，玩家取 (0, 0, 1)：v = D(D(a + 1) × 目标速度)，下限 F(最高速度 × lo)（v 的双精度与之比较），上限 F(最高速度 × hi)（F(v) 与之比较）；不发事件 | 主体查不到 → 丢弃；目标查不到、任一方没有移动块或主体没有机型记录 → `0x21adc` 失败，不写 |
+| `deliver-command`（P3-10 的 CB-08，不由本节定义） | P3-10 的通讯菜单（`0x2c7fc`）；码 0 不投递 | 按 CB-08：`receiver.ai.pendingCommand := { code, issuedTick: tick }`，不校验种类，`sender` 与 `commandIndex` 不存入单槽；P3-08 只消费僚机的单槽（CR-18） | `receiver` 查不到 → 无作用 |
+| `warp-departure` | `0x5e6cc`：份额 `0x632a4` 第 7 步、僚机 `0x61740` b 3/4 与 `0x61a88` 情形 3/4（D6）；全部在对象更新中 | 成功：状态 := 区域切换、`inWarp` := true、`warpClock` := 0、`lastParkedUpdateClock` := 时钟 − 0x80；其后的移除、停放、立即安装 `0x62250` 与停放 Warp 跳跃按既有生命周期跨 tick 完成（D6），不在同一 tick 强行完成 | 主体查不到 → 丢弃；完整重做 `0x2fef8`（活动 1、不在 Warp、参照点在活动区域外、`0x2ff98`）与活动 = 1，不满足 → 静默丢弃（状态 ≥ 7 只由投递者 `0x5e6cc` 检查）。同一对象的第二个请求因第一个已置 `inWarp` 而失败（幂等） |
+| `create-transponder` | 玩家更新中被接受的 `drop-transponder` 命令 | `0x38780`（CR-20）；活动创建发出 `transponder-deployed`（CR-22） | 主体查不到 → 丢弃（玩家实体只在拆除时移除，晚于请求处理，Core 中不可达） |
+
+- `lastParkedUpdateClock` 的范围扩展为 ≥ −0x80 的安全整数：任务开头时钟 < 0x80 时它为负，经过时间 = 时钟 − 该值 = 0x80，与原版的 u32 差值相同。
+- **请求生效点与 RNG 交接：** AI 的请求全部在对象更新中投递，在同一 tick 的请求处理中按投递次序生效（P3-02 的消息循环）；原版没有在请求处理之后投递的 AI 请求（D6），晚请求丢弃的语义不变，不以第二次排空或跨 tick 存放补救。`steer` 的扰动抽取在请求处理中、晚于本 tick 全部控制器抽取。
+- **计数：** 全部计入 `requestsPerTick`（CR-25；`deliver-command` 计入 P3-10 的 CB-16）。新请求都不进入 `TickInput` 或 replay 记录。P3-10 的菜单接入前，`deliver-command` 只由 Node 内部契约测试经既有 `TickContext`/`RequestQueue` 投递（P3-08 spec 的僚机命令一节），不增加生产注入 API。
+
+#### CR-22 领域事件与次序（D-01）
+
+只加入有消费者的事实；字段为脱离世界的快照，不含名称原文或内容字节，消费者不能依赖按 ID 再查实体。共用 `{ type, tick }`，不另带 `clock`（CR-06）。
+
+```ts
+type WingmanCommandOutcome = 'applied' | 'fallback' | 'refused' | 'acknowledged' | 'status' | 'unknown-code';
+| { type: 'wingman-command-consumed'; tick; wingmanEntityId: EntityId; code: number; issuedTick: number;
+    path: 'active' | 'parked'; outcome: WingmanCommandOutcome; replyLine: number | null }  // replyLine：调用回复时请求的线号，不调用为 null
+| { type: 'transponder-deployed'; tick; entityId: EntityId; creatorEntityId: EntityId; position: Vec3; orientation: Matrix3 }
+```
+
+| 事件 | 发出时机与语义 | 消费者 |
+|---|---|---|
+| `wingman-command-consumed` | 僚机消费 `pendingCommand` 时（对象更新中，僚机的走查位置），效果与回复调用之后、清除单槽时发出一次。阻塞待处理与被覆盖的命令永不发出。它与 P3-10 判定菜单操作的 `command-result` 是两个事实：后者在输入 tick 内对每条命令恰一次，前者在消费时，`issuedTick` 关联前者的 tick | P3-10（菜单状态）、P3-13（诊断与呈现） |
+| `transponder-deployed` | `create-transponder` 构造出**活动**的 Xpon 时发出（原版只在活动创建时投递创建表现项与 SND 10055）；投放的停放 Xpon 不发出 | P3-12（创建表现）、P3-14（SND 10055） |
+
+- **回复：** 消费者在原版的回复位置调用 P3-10 的 `queueLine(context, 僚机, 线号)`（CB-06，即 `0x38d54`）：声音索引越界或说话者不可解析时不抽取；否则按线号抽取（WB5）、查表，查到时入队并发出 P3-10 的 `radio-queued`。抽取与入队都在 P3-10 的函数中，本节不另建回复事件；`wingman-command-consumed.replyLine` 记录请求的线号，抽取后的线号与消息身份见同一 tick 的 `radio-queued`。
+
+**结果映射（WB3、WB4；“回复”列为 `replyLine`）：**
+
+| 码 | 活动（`0x614a8`） | 停放（`0x61f20`） |
+|---|---|---|
+| 1 | 玩家目标可解析且无 `0x206c07f` 的位：`applied`（应用返回 1，回复 0x10）或 `fallback`（返回 0，已退回编队，回复 0）；否则 `refused`（0） | 玩家与玩家目标可解析：`applied`（0x10）；否则 `refused`（0） |
+| 2 | 玩家目标可解析且不是僚机：`applied`（记录“不攻击”，回复 3）；否则 `refused`（0） | 同左可解析：`acknowledged`（无状态变化，3）；否则 `refused`（0） |
+| 3 | `applied`（0xE） | 玩家非空：`applied`（0xE）；否则 `refused`，**不回复**（`replyLine` 为 null） |
+| 4 | `applied`（0x14）或 `fallback`（0） | 同码 3 |
+| 5 | `applied`（0x12）或 `fallback`（0） | 有种类 `0x68000` 的对象：`applied`（0x12）；否则 `refused`（0） |
+| 6 | `applied`（0x12）或 `fallback`（0x15） | 玩家非空且 ps +0 ≠ 0：`applied`（0x12）；否则 `refused`（0x15） |
+| 7 | `status`（0xB–0xD，按船体百分比） | 同左 |
+| ≥ 8 | `unknown-code`（3） | 同左 |
+
+- **比较器：** 事件字段表随之扩展：`wingman-command-consumed` 比较全部字段；`transponder-deployed` 比较全部字段（`position`、`orientation` 为 f32）。
+- **一个 tick 内的次序：** 对象更新中，事件按实体的走查次序；同一僚机消费命令时依次为回复的 `radio-queued`（若入队，P3-10）与 `wingman-command-consumed`。`transponder-deployed` 在请求处理中按请求次序发出。AI 的开火仍是 P3-07 的 `shot-fired`，`trigger` 保持 `{ type: 'ai', channel }`（列表开火）与 `{ type: 'automatic' }`（自动挂点），没有 `commandIndex`。
+- **不加事件的事实：** AI 的速度匹配（只有玩家的 HUD 闪烁需要 `speed-matched`）；AI 的 Warp 离场（原版的移除表现项归 P3-12，Core 在离场后下一 tick 停放该实体、不再呈现，见 CR-24 决定 11）；控制器的安装、移除与状态机转换（只用于诊断，经快照读取）。
+
+#### CR-23 阶段与时序（D-01）
+
+本条修订 CR-07 与 P3-06 的 D-08 中 P3-08 的位置；阶段次序不变。
+
+- **实例化扩展点 `0x20990`（第 13 步）：** 只做**选择**：在 Warp 计时 +0xC8 的抽取之后、`0x38cd4` 之前，对选择掩码内的种类按 `0x5dbc8` 抽取 1 次（组表有完全或部分匹配）或 2 次（组表起点，再内置表起点），把结果写入 `program`（`controller` 为 null）；其他种类为 `none`，不抽取。**不安装控制器**（P3-08 的修订 ①；原版在此先设种类回调，Core 的回调分派由种类决定，不存状态）。
+- **对象更新（第 4 行），机体的通用回调 `0x20c18`：** 按对象状态（Core 的状态名见“实体与生命周期”）：
+  - **状态 0–3（新建、表现就绪、等待表现）：** 先做 Warp 过境检查，过境中直接返回（不安装，也不推进状态）；否则当 `program` 不为 `none` 且 `controller` 为 null 时**安装**：`0x5dc0c` 清零并写配置、`0x5c530`、`aiLock` := false；然后按此刻的活动：停放 → `0x62250(0)`（`nextUpdateClock` := 采样 + 0x40，无抽取），活动或停靠 → 记录处理器的模式 0，它在同一调用中运行一次更新体及其抽取（解释器：安装与首次状态机/执行器运行；僚机：`0x60f80` 后的命令消费与完整更新；基地：`0x62b60` 后的挂点循环）。最后照常执行 `0x20ae4` 的通用部分（请求活动）。已有控制器时不重复安装。
+  - **状态 4：** 无回调（控制器既不运行也不移除）。
+  - **状态 5、6（区域切换、待移除）：** `controller` 不为 null 时**移除**：停放 → `0x62250(2)`，否则处理器的模式 2（释放私有状态与执行状态；切片的处理器在此不抽取），`controller` := null；然后照常请求离开。
+  - **状态 7：** `controller` 不为 null 时运行 **AI 步** `0x5dcd4`：
+    - 停放：采样 > `nextUpdateClock`（无符号严格）时 `0x62250(1)`；没有扳机循环与自动挂点。
+    - 活动或停靠：通道 0、1、2 依次：已按下 → P3-07 的 `fireAiChannel`（`0x2d578`），通道 1 的尝试使 `missileReady` := false；然后通道 1 总是、通道 0/2 在采样 > `holdDeadline` 时松开。其后 `automaticMounts` 时 `fireAutomatic`（`0x2dad0`）；其后采样 > `nextUpdateClock` 时处理器的模式 1；其后（不论处理器是否到期）`aiLock` 时 `missileReady` := `0x5dfec`（A12、ai §1）。因此处理器的按下在**下一次** AI 步开火。
+  - **种类 `0x4000`：** 回调 `0x3897c`（CR-20），没有 AI 与过境检查。玩家与 P3-07 的运行时种类不变。
+- **P3-10 的固定调用点（CB-12）：** 种类 `0x6807c`（基地等）的自身更新中，P3-10 的 `0x3bed0` 在 AI 步之后读取并清除其单槽；僚机行为 3 的到达 `0x61bd0` 调用 P3-10 的 `fullRepair(context, 僚机, false)`（CB-10，对象更新中，不在消息循环内）；回复经 `queueLine`（CB-06）。
+- **停放的 AI 与停放行进是两个调度器：** 停放控制器只在对象更新中运行；第 13 阶段 `parked-update` 保持 P3-06/P3-07 的节奏抽取、行进与交战，读取控制器写下的 AI 模式、AI 目标、对象目标与目标点，不再运行控制器。一遍中全部控制器抽取先于全部停放更新的抽取（D1；阶段次序已保证）。
+- **对象集合（第 12 阶段 `object-sets`）：** 由 P3-08 实现 CR-19 的无条件重建与 +0xD4 基值；随后在视角模式 8 时调用地图显露例程 `0x2ee60`（P3-09 的调用点）。`0x2ee60` 还由僚机的停放步（`0x62250` 的种类 2 分支）在对象更新中调用；两个调用点共用同一个 Core 规则函数，其实现归属由 D-03 定稿，P3-08 与 P3-09 不各建一份。
+- **新建实体的首次更新：** `b` 的 Xpon 在下一 tick 首次回调；僚机投放的 Xpon 与 AI 范围伤害创建的爆炸一样，在同一遍走查中首次回调（CR-08）。
+- **RNG 交接（一 tick 内的抽取次序）：** 实例化的选择抽取随请求处理中的实例化（第 13 步）；对象更新中按走查次序，每个对象的安装或 AI 步内依次为扳机循环的开火抽取（W12）、自动挂点（W9）、处理器的抽取（executable 的 *Draws per call* 表）；请求处理中 `steer` 的扰动抽取与开火构造；停放更新的抽取在 `object-sets` 之后（E4）。
+
+#### CR-24 定稿的决定与已批准的差异（D-01）
+
+依“最忠于原版且与已批准 spec 一致”的原则选择；以下每项列出所选方案与被排除的方案。
+
+1. **安装在首次回调（P3-08 spec 的修订 ①）。** 原版在实例化只选择，安装与首次更新在对象首次回调中（ai §1）。被排除：在 `0x20990` 安装（已批准 spec 的原方向）——会把安装抽取与首次更新的请求提前到请求处理中，改变抽取次序与首次开火时刻，且与 Warp 过境中推迟安装的原版行为矛盾。
+2. **对象集合无条件重建（修订 ③）。** 被排除：保留无效果的限速门禁——要把从不再改变的记忆模式 `0x174b7c` 加入快照，却没有任何可观察差别（D5）。
+3. **基地自动挂点的绝对保持值。** 原版把 0x140 或 0–0x1C0 原样存入挂点 +0x4C，与绝对采样比较，而任务中的采样恒大于 0x1C0（高概率，A14），所以每次基地更新都对每个空闲挂点重选。Core 照原样写 `MountState.retargetClock`，而在 `0x2dabc` 判定这些保持值时视为已到期；这是已批准的差异（2026-10-15，随 D-01；理由同 CR-11 已批准的差异 9），记入 Core 模块说明与对照结论，D-02 核对。被排除：按 Core 的时钟原点 0 直接比较——开局 5–7 秒内基地不重选，与原版的可观察行为相反；给 Core 时钟加原点偏移——改变所有时钟语义。
+4. **`windowEnd` 的初值为 0，原点为 Core 任务时钟。** 原版首个任务的 wend 为载入时的 0，此后跨任务保留；Core 的世界彼此独立，首个 tick 的时钟 ≥ 2 > 0，所以第一次友伤即重置窗口，与原版首个任务相同。被排除：携带上一任务的 wend（Core 没有跨世界状态）；用 null 哨兵（与 0 的严格比较等价，多一个分支）。跨任务的残留窗口（高概率在游戏中不出现）记为差异。
+5. **照原样复现阻塞待处理、愤怒持续与累计不衰减（WB2、WA5、WB6）。** 被排除：拒绝时清除命令或回复拒绝、按时间衰减累计——都没有原版依据。
+6. **规避 `0x5d374` 的每采样缓存怪癖照原样复现（A7）。** 被排除：“转离威胁”的直观实现。
+7. **动态 Xpon 用 `source: null` 加 `transponder.creator`（CR-20）。** 被排除：为 `EntitySource` 增加运行时变体——会让 `object-instantiated`、对象事件与生成计数的消费者把它当作声明；只用 null 而无创建路径——无法校验“无声明的机体只能是构造出的 Xpon”，事件也无从区分。
+8. **纳入 `b`（高概率），命令名 `drop-transponder`、无字段，结果与原因码沿用既有集合。** 被排除：不纳入（X5 的依据支持正常玩法，省去它会改变地图的信息可见性）；带参数的命令（原版无参数）。
+9. **动态 Xpon 的 `lastParkedUpdateClock` 取创建时钟。** X4 证明 +0x18 的初值对任何可观察量都没有影响，与 P3-06 已批准的交接一致。
+10. **脚本级解析计数**（CR-19），按 ai §5.2 的等价条件；被排除：逐条目计数（同样正确，状态更大）。
+11. **AI 的 Warp 离场不加事件。** 原版在处理离场时投递移除表现项，Core 的实体在下一 tick 停放后才不再呈现：Render State 多列出一个 tick，记为交 P3-12 的已批准表现差异（随 D-01）。被排除：为此加事件（规则没有消费者，P3-12 尚未提出需要）。
+12. **`AiMode` 不加 3、扳机值存为布尔、C+0x11C/+0x160/+0x164 与退出值不存**：这些原版字段或取值在切片中没有写入者或读者（CR-16 至 CR-18）。
+13. **数值文本的创建时严格校验（CR-15 的 `invalid-number`）**：切片数据没有尾随文本或超出精度的数，拒绝它们免去复现 `atoi`/`strtod` 的容错路径与陈旧字节怪癖；被排除：完整复现 C 库的容错解析。
+14. **执行预算超限为故障，不添加隐式让出或截断**（CR-25）。
+15. **攻击航线摆动的 f32 任务时间以 Core 的任务时钟为原点（已批准的差异，随 D-01）。** 原版的 t 来自程序启动时取 `rand() % 30000` 的原始计数，此后经片头、简报与载入持续增加（暂停时扣除），所以任务中的 t 是一个与墙钟和菜单用时相关的、每次运行不同的大值；Core 的 t = F(时钟 ÷ 64) 从世界创建时的 0 起。于是摆动的余弦**相位**相差一个未知常数，f32 量化也不同（原版的 t 更大，分辨率更粗；任务内的量级下差异远小于一个 tick）；周期 P、幅度 M、抽取次数与次序、触发窗口都不受影响。这与 P3-06 已批准的“定时旋转按任务时钟换算的 f32 秒判定”相同（[P3-06 spec](../06/spec.md#运动阶段与积分) 的定时旋转一项），以及本条决定 3、4 的时钟原点取舍一致。D-02 不得逐点比较摆动相位，只比较周期、幅度、窗口与抽取；记入 Core 模块说明与对照结论。被排除：(a) 给 t 加一个固定偏移（例如 30000 ÷ 64 秒或典型菜单用时）——没有依据，仍不能重现原版每次不同的相位；(b) 在世界创建时用世界 RNG 抽一个原点——多一次原版没有的抽取，改变全部后续序列，也不能对上原版；(c) 把摆动改为相对攻击航线开始的时间——改变规则的相位语义，偏离原版。
+
+#### CR-25 容量、快照与版本（D-01）
+
+- **执行预算（`CORE_LIMITS` 新增；项目的防失控预算，原版没有上限）：**
+  - `aiDispatchesPerRun` = 1,024：一次执行器运行（`0x5f4f4` 从入口到让出或结束）分派的条目数。依据：支持集中没有 9001/9002，栈深恒为 0；内容的脚本条目上限为 128（`AI_PROGRAMS_LIMITS.scriptItems`），无环脚本的一次运行至多分派 128 个条目；预算允许每个条目在一次运行中被重复分派 8 次，留给经由测试分支退出的环路。组 0 闭包的最大值为 18（ai §12；执行闭包是其子集，不超过此值），约为其 57 倍。
+  - `aiDispatchesPerTick` = 131,072：一个 tick 内全部运行的分派总数。依据：每个对象每 tick 至多 2 次运行（安装时的安装脚本运行与首次更新，ai §12），实体上限 2,048 × 2 × 18 = 73,728 在其之内，所以切片内容在任何实体数下都不触发；它防止 2,048 个对象都运行病态脚本时一个 tick 卡住。
+  - 都在分派**之前**检查（`fitsLimit`）；第 limit 次分派允许、第 limit + 1 次为 `CoreFaultError('budget-exhausted', …)`，两项的位置分别为 `ai.dispatches-per-run` 与 `ai.dispatches-per-tick`，以合成的环路脚本分别断言。不靠宿主时间，不静默截断、假装结束或额外让出。
+- **结构上界（不另设上限，以不变式断言）：** 返回栈 ≤ 8（原版的槽数；支持集中恒为 0）；存活执行状态 ≤ 带表程序控制器的实体数（每个控制器至多一份）加安装调用中的 1 份不持久状态；解析缓存项数 ≤ 支持闭包的脚本数（内容上限 64），每项条目数 ≤ 128，`uses` ≤ 实体上限 + 1。
+- **请求：** `requestsPerTick` 由 16,384 改为 32,768。依据（CR-14 的切片规模，32 个 AI 机体都按最坏的表程序计）：每个机体每 tick 至多 2 次执行器运行（安装时的安装脚本运行与首次更新），每次运行每个分派的条目至多投递 3 个请求（操作码 1101 的攻击航线：油门与规避的两个；操作码 100 为 2 个），入口的保持步 2 个，状态机规则 1 的规避 2 个，份额的离场请求 1 个：2 × (3 × 18 + 2 + 2 + 1) = 118（僚机每次更新与基地安装都少于此）；`create-transponder` ≤ `commandsPerTick`（`deliver-command` 计入 P3-10 的 CB-16）。AI 合计 32 × 118 + 64 = 3,840，加 CR-14 的 3,523 为 7,363；再加 P3-10 CB-16 的新增 131 为 7,494，新上限约为其 4.4 倍（不改时只有 2.2 倍）。
+- **事件：** `eventsPerTick` 不变（32,768）。新增项：`wingman-command-consumed` ≤ 种类 2 的实体数（切片 ≤ 32），`transponder-deployed` ≤ `commandsPerTick`（64）；合计 96，总计 8,356（回复的 `radio-queued` 计入 P3-10 的 CB-16）；与 P3-10 CB-16 的约 600 及 P3-09 的新增合计仍约在 9,000 以内，上限约为其 3.6 倍以上。
+- **快照：** 覆盖 CR-16 至 CR-20 的全部新状态（`ai.program` 含控制器与私有状态、`ai.pendingCommand`、`mapVisible`、`transponder`，以及 `WorldAiState` 的解析缓存、友伤累计与两个集合）；静态 AI 数据不进快照。规范文本：集合按走查次序、解析缓存按脚本序号、其他列表按语义次序。长度：每个带控制器的机体约增加 2 KiB，解析缓存至多约 0.5 MiB，实体上限下合计约 13 MiB，仍在 `canonicalTextLength`（16 MiB）之内，不改上限。
+- **版本：** 相对实现时的实际集成基线各递增一次，不硬编码：`RULES_VERSION`（当前为 4，预计为 5：AI 抽取、行为与 `steer`/速度匹配的接受范围改变既有结果）；快照格式版本（当前为 3，预计为 4：状态形状改变）；**replay 格式版本**（`GAME_REPLAY_VERSION`，当前为 2，预计为 3）也递增：命令联合加入 `drop-transponder` 改变了录制允许的输入形状，依 P3-05 的先例（本 spec 的“P3-05 的契约修订”）。replay 记录的字段与结构不变，内容输入仍经 setupHash 绑定；旧记录在执行前因版本不符被拒绝，不迁移。P3-08 的 goal 在其分支上由首个实现共享形状的子任务递增，此后沿用。
+
+**对前文各节的修订（只列变化，均随本节获批）：** CR-02 的 `craft` 行由 P3-10 的 CB-18 改写（合入后），与 CR-20 一致，本节不改该行；CR-02 中 `lock` 的“其他对象保持初值”改为 AI 也写入（CR-16），`MountState.retargetClock` 的判定见 CR-24 决定 3；P3-02 的“实体与生命周期”中由缺省得到的运行时规则输入，+0xE0 改为可由 `0x5e4d0` 写回（CR-16）；P3-06 检查点 A（D-02）把 `lastParkedUpdateClock` 定为非负，本节放宽为 ≥ −0x80（CR-21）；CR-05 的 `steer` 主体与新请求见 CR-21；CR-06 的新事件见 CR-22；CR-07 的实例化扩展点、对象更新与“对象集合（`0x2ede0`）”一项见 CR-23；CR-01 的 `models` 集合完整规则与 `aiPrograms` 的扩展读取见 CR-15；CR-14 的请求上限、版本与快照见 CR-25。
 
 ### 原版研究
 
@@ -1104,3 +1549,12 @@ type Attacker =
 **2026-10-10 修订（P3-05 的速度档位命令）：** 用户于 2026-10-10 在 P3-05 goal 执行中明确批准本修订（对 P3-05 协调者“是否批准这两份 spec 修订？”（P3-02 与 P3-06）选择“批准修订”）。修订只新增“P3-05 的契约修订（速度档位命令）”一节与本条记录：命令联合新增 `speed-preset`，普通飞行的档位从 `select-number` 改接到它，`rulesVersion` 与 replay 格式版本各递增一次。没有新增 S/AC 编号，其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。
 
 **2026-10-13 说明（P3-05 合入 main）：** P3-05 与 P3-07 在各自分支上都把 `RULES_VERSION` 从 2 递增为 3。合入时按“相对实际集成基线各递增一次”取 4；replay 格式版本为 2（只由 P3-05 递增），快照格式版本为 3（只由 P3-07 递增）。只改“P3-05 的契约修订（速度档位命令）”的版本一项的措辞，行为、契约与验收要求不变，未重跑 review-spec。
+
+**2026-10-15 修订（P3-08 的 D-01，经用户明确批准）：**
+
+- **批准与用户原话：** 用户于 2026-10-15 明确批准（“approve D-01 and continue working. i authorize you to make decision to approve future decisions.”）。同一原话给 agent 的常设授权记在 [P3-08 spec 的审批](../08/spec.md#审批)；本条是用户本人的批准，不依赖该授权。
+- **范围：** 新增“[P3-08 的契约修订（D-01）](#p3-08-的契约修订d-01)”一节（CR-15 至 CR-25）与本条记录，以及前文 CR-02、CR-05、CR-06、CR-07 中指向它的说明和 CR-25 对 CR-14 预算的修订（见该节末尾“对前文各节的修订”）。包括 CR-24 的全部决定，其中决定 3（基地自动挂点的绝对保持值在判定时视为已到期）、决定 11（AI 的 Warp 离场在 Render State 中多列出一个 tick）与决定 15（攻击航线摆动的 f32 任务时间以 Core 的任务时钟为原点）作为已批准的差异；版本按实际集成基线各递增一次：replay 格式版本 2 → 3、`RULES_VERSION` 4 → 5、快照格式版本 3 → 4（CR-25）；放宽其他任务已批准的字段：运行时 +0xE0 可由 `0x5e4d0` 写回、AI 写入导弹锁定字段（CR-02 的 `lock`）、`lastParkedUpdateClock` 的下界放宽为 −0x80（P3-06 的 D-02）。P3-08 spec 中的方向修订 ①–⑧ 随本条重新获批。
+- **与 P3-10 的对齐：** 本节按名称引用 P3-10 已获批准的 CB 条目（CB-04、CB-05、CB-06、CB-08、CB-09、CB-10、CB-12、CB-13、CB-16、CB-17、CB-18），重叠处只有一份定义；它们在本分支合入前不另建定义。
+- **不在范围：** 友伤累计 `0x38f20` 的写入归属不由本条决定，留给 D-03（P3-08 的子任务 09，见 CR-19 的待决事项）；关键字表的导入、`b` 的绑定与 `0x2ee60` 的实现归属同属 D-03。
+- **所选方案与被排除的方案：** 见 [CR-24](#cr-24-定稿的决定与已批准的差异d-01)，此处不重复。
+- 本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。

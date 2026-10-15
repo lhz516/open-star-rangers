@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "08"
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021, U-022, U-025]
 ---
 
@@ -77,7 +77,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [05-parked-sets-departure-research.md](./subtasks/05-parked-sets-departure-research.md) | — | completed |
 | [06-xpon-crosstask-research.md](./subtasks/06-xpon-crosstask-research.md) | — | completed |
 | [07-research-consolidation.md](./subtasks/07-research-consolidation.md) | 01, 02, 03, 04, 05, 06 | completed |
-| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | blocked |
+| [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | pending |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | pending |
@@ -114,7 +114,8 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
   Resume when: 用户明确批准（或给出修改意见后批准）该 D-01 草案；协调者把批准原话写入 P3-02 与 P3-08 spec 的审批节并完成 08。
 - **2026-10-14 — D-01 草案与 P3-10 已批准的 D-01 对齐：** P3-10 的 D-01（其分支 `p3-10-comms-base-resupply-spec`，CB-01–CB-19）已获批。未提交的 D-01 草案改为消费 P3-10 的 `deliver-command`（CB-08）与 `queueLine`（CB-06），删去本任务的命令请求与回复事件；`ai.pendingCommand`、`WorldState.ai.friendlyFire` 与 CB-04/CB-05 同名同形；新增只读查询 `isClosingMissileLock`；CR-20 引用 CB-18（种类 0x4000 归本任务）。友伤累计的写入归属与 P3-02 CR-13、P3-10 CB-12 冲突，留作 09（D-03）的用户决定（推荐：保留 CB-12，本任务只读）。合并 P3-10 分支时 P3-02 的 CR-02 行与审批节两侧都保留。
 - **2026-10-15 — 10 完成：** 预实验以 w-01、w2-01（僚机）、e-04（敌机）、b-09（基地开火）等完整运行覆盖各类观测量，误差预算草案交 11；`tools/baseline` 新增条件刺激（`if`），按开局布局选择输入；26 的基地开火路线（各布局的地图点击与自动驾驶航段、在开火点等待首发）记在 10 的完成证据。未在预实验中观察、留给 26 的项目同样列在其中。基准环境与 P3-09、P3-10 轮流使用，按协调者之间约定的轮次进行。
+- **2026-10-15 — Subtask 08 resumed and completed:** 恢复条件已满足：用户明确批准 D-01（“approve D-01 and continue working. i authorize you to make decision to approve future decisions.”）。协调者把草案改为已批准状态并记入 P3-02 与本任务 spec 的审批节。用户同时授权 agent 批准后续决定：09（D-03）与 11（D-02）不再等待用户，由协调者按推荐方案定稿并逐项记录批准范围；08、09、11 的执行方式改为自动。
 
 ## 审批
 
-用户于 2026-10-14 明确批准本 goal（“approve the goal and commit”）。批准范围为 29 个子任务的拆分、依赖、写入范围与执行方式，以及验收覆盖。这不代表实现完成，不替代 spec 批准，也不批准 D-01 至 D-03 的定稿内容：08、09、11 仍须用户分别明确批准。
+用户于 2026-10-14 明确批准本 goal（“approve the goal and commit”）。批准范围为 29 个子任务的拆分、依赖、写入范围与执行方式，以及验收覆盖。这不代表实现完成，不替代 spec 批准，也不批准 D-01 至 D-03 的定稿内容：08、09、11 仍须用户分别明确批准。2026-10-15 用户批准 D-01，并授权 agent 批准此后的决定（含 D-02、D-03）。
