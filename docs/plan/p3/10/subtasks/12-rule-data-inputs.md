@@ -10,13 +10,13 @@ updated: 2026-10-14
 # 12 — 规则数据输入与创建时语义检查
 
 **契约来源：** [spec](../spec.md) 的 S-01、AC-02；[规则输入与读模型边界](../spec.md#规则输入与读模型边界)、[通讯菜单](../spec.md#通讯菜单)的“按键与可达性检查”。
-**依赖：** 01, 05, 11。
+**依赖：** 01, 05, 11, 29。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
 
-- 在 `CreateWorldInput` 加入 `commMenus` 与 `baseRepairItems` 两份 `LogicAssetInput`，沿用严格解码、字段白名单、ID/身份核对与冻结副本；同步 `CONTENT_INPUT_FIELDS`、Core 的 `RuleDataInputs` 与 setupHash。
+- 在 `CreateWorldInput` 加入 `commMenus`、`baseRepairItems` 与 `commMessages`（29 交付的 `comm-messages`，[D-03](../spec.md#d-03-定稿已批准) 第 4 条：名称序号在创建时由名单与任务对象名逐字节比较得出，受 setupHash 绑定）三份 `LogicAssetInput`，沿用严格解码、字段白名单、ID/身份核对与冻结副本；同步 `CONTENT_INPUT_FIELDS`、Core 的 `RuleDataInputs` 与 setupHash。
 - 创建时语义检查（结构化 `CoreInputError`，不建半个世界，先预算后分配）：
   - 菜单：数据键文本足够长，命令项键可由 `select-number`（1–9）与 `communications close`（折叠后的 `x`）表达，命令码在已支持语义内，退出键与零值项相符；保留首匹配次序，不擅自去重；
   - 类别数与各类别对象数的保守上界（按有效僚机配置、声明/编组展开、延迟与条件生成、运行时构造）均 ≤ 9，退出项不计；上界不能证明有限时拒绝；

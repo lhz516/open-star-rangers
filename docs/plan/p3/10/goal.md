@@ -48,7 +48,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 | --- | --- | --- |
-| S-01 | 08、11、12 | 08：P3-02/P3-04 修订获批；11：类型、序列化、比较器与版本的 Node 测试；12：输入接线；28：契约一致 |
+| S-01 | 08、11、12、29 | 08：P3-02/P3-04 修订获批；11：类型、序列化、比较器与版本的 Node 测试；12：输入接线；28：契约一致 |
 | S-02 | 13、19 | 13：菜单与路由的正式 step 测试；19：分区；23：浏览器 |
 | S-03 | 14 | 14：投递与基地回应的 Node 测试 |
 | S-04 | 14、15 | 14：队列与来电页；15：反应与报告的 Node 测试 |
@@ -91,15 +91,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [04-docking-launch-research.md](./subtasks/04-docking-launch-research.md) | — | completed |
 | [05-base-service-research.md](./subtasks/05-base-service-research.md) | — | completed |
 | [06-original-facts.md](./subtasks/06-original-facts.md) | 01, 02, 03, 04, 05 | completed |
-| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | in-progress |
+| [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
-| [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11 | pending |
+| [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | pending |
 | [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | pending |
-| [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13 | pending |
-| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14 | pending |
+| [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | pending |
+| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | pending |
 | [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | pending |
 | [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | pending |
 | [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | pending |
@@ -112,7 +112,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | pending |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
 | [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | pending |
-| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 | pending |
+| [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | pending |
+| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -127,13 +128,15 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 06 统一结论：02 正确。** 分配器 `0x520d4` 在 `0x52209` 把 +0x180 写为 −1（经 +0x20 的基址，03 的 0x180 位移扫描因此漏掉），`0x3c91c` 可达：每个 `0x87c` 机体或基地第一次说话时抽 1 次（该类头像用完时 2 次），在档案检查之前；所选任务至多 4 次（每座基地 1 次）。03 的抽取计数与 executable C2 已更正，07、08 以 executable RQ4/RX9 为准。
 
 - **2026-10-14 — Subtask 07 blocked:** D-03 已起草，但须由用户明确批准，且需要 P3-03 修订 2（导入 `COMMFACE.NOB` 时长元数据与 COMM TABL 2001/2011 名单）。用户在本次执行中无法回应，goal 审批没有预先授权关卡。
-  Evidence: spec 的 [D-03 定稿草案](./spec.md#d-03-定稿草案待用户批准)；06 入档的 RQ7（原版没有关闭媒体的设置，档案打不开时停靠必定超时）。
+  Evidence: spec 的 [D-03 定稿草案](./spec.md#d-03-定稿已批准)；06 入档的 RQ7（原版没有关闭媒体的设置，档案打不开时停靠必定超时）。
   Affected acceptance: AC-05、AC-16、AC-17（07 的验收 1–3）；依赖链 08、10、11–28 等待。
   Resume when: 用户明确批准 D-03 草案（或给出修改意见）以及 P3-03 修订 2；或者授权 agent 直接批准推荐方案（P3-07 先例），协调者把 07、08、10 改为“自动”并记录授权原话。
 
 - **2026-10-14 — 09 的交叉核对待复核：** 09 的 `rt-a2-01` 读数中，离港位姿与“对停靠时玩家位姿应用 DK3”的结果不符，看来跟随基地位姿。executable DK2/DK3 把保存位姿的来源记为已确认（代码）；08 在定稿离港字段之前，须以原生指令复核 `0x38ff4` 保存的是哪个位姿，必要时更正 executable 与 B-004。05 的 P1–P8 与运行读数一致（`local/research/p3-10/runtime/report.md`）。
 
 - **2026-10-14 — Subtask 07 恢复：** 用户授权批准关卡推荐方案（见审批），07 的 `Resume when` 已满足，行改回 in-progress。
+
+- **2026-10-14 — 07 完成，新增子任务 29：** D-03 依授权批准，P3-03 修订 2 同时批准。29 实现修订（`data/comm-messages`、白名单加入 `COMMFACE.NOB`、切片定义版本 5），12、14、15 与最终对齐加入对它的依赖；12 的工作范围加入 `commMessages` 输入。
 
 ## 审批
 
