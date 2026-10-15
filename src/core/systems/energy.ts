@@ -73,7 +73,7 @@ function steeredBlock({ movement }: Entity): SteeredMovementBlock | null {
 export function judgeEnergyCommand(context: TickContext, command: CommandOf<'energy' | 'damage-report'>, commandIndex: number): void {
   const { world } = context;
   const tick = context.time.tick;
-  const player = combatCommandPlayer(world);
+  const player = combatCommandPlayer(context);
   if (typeof player === 'string') {
     emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: player });
     return;

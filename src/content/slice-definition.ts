@@ -2,7 +2,7 @@ import type { AssetKind } from './asset-id.ts';
 import { RESOURCE_GROUPS, type ResourceGroup } from './asset-contract.ts';
 import { SLICE_ID, type SliceDefinitionVersion, type SliceId } from './content-identity.ts';
 
-export const SLICE_DEFINITION_VERSION = 4;
+export const SLICE_DEFINITION_VERSION = 5;
 
 export type SliceRole =
   | 'mission'
@@ -34,7 +34,8 @@ export type SliceRole =
   | 'view-labels'
   | 'hud-text'
   | 'event-sound'
-  | 'hud-sound';
+  | 'hud-sound'
+  | 'map-geometry';
 
 /**
  * Structural campaign selector from the approved spec selection record.
@@ -100,7 +101,8 @@ function requirement(
  * messages P2-07 imports. Core sounds allow several sample clips (U-004/U-027). Version 4 (P3-03 spec, 切片定义版本 4)
  * requires exactly one Asset for each root of the rule-data and flight-data closure, and for the HUD text its revision 1
  * adds, and exactly the eight event and three HUD sounds; the explosion animations and frames, the nebula images and
- * their palettes are required through the dependency closure of those roots, not as roles.
+ * their palettes are required through the dependency closure of those roots, not as roles. Version 5 (P3-03 spec, P3-09
+ * 的修订：地图几何（修订 2）) requires exactly one map geometry Asset.
  */
 const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
   sliceId: SLICE_ID,
@@ -139,6 +141,7 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
     requirement('hud-text', 'cockpit-hud-map', ['data'], 1, 1),
     requirement('event-sound', 'audio', ['sound'], 8, 8),
     requirement('hud-sound', 'audio', ['sound'], 3, 3),
+    requirement('map-geometry', 'cockpit-hud-map', ['data'], 1, 1),
   ]),
 };
 

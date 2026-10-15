@@ -19,16 +19,16 @@ export interface ExpectedPackageProfile {
  * component, the production catalog or an approved share changes; update the constants with it.
  */
 export const PRODUCTION_PACKAGE: ExpectedPackageProfile = Object.freeze({
-  converterVersion: readConverterVersion('osr-import.graphics-4.logic-2.audio-2.models-4', 'PRODUCTION_PACKAGE.converterVersion'),
+  converterVersion: readConverterVersion('osr-import.graphics-5.logic-2.audio-2.models-4', 'PRODUCTION_PACKAGE.converterVersion'),
   sourceFingerprint: readSourceFingerprint(
     'source:sha256:fd97bcea3c3aee835c9058419469786587a4580e96b431bb9ce9c127ff2181be',
     'PRODUCTION_PACKAGE.sourceFingerprint',
   ),
   limits: readBudgetRecord({
-    assets: 812,
+    assets: 813,
     dependencyEdges: 1408,
     sourceReadBytes: 0,
-    payloadBytes: 16_568_320,
+    payloadBytes: 16_568_576,
     vertices: 8192,
     triangles: 8192,
     imagePixels: 5_373_952,

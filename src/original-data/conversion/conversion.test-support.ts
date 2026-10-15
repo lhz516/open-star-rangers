@@ -183,34 +183,52 @@ function blockLayout(start: number): (length: number) => number {
   };
 }
 
+/** A CCKD slot's layout number and 48-byte instrument records for `cockpitLayoutBlock`. */
+export interface SyntheticInstruments {
+  readonly layout: number;
+  readonly records: readonly Uint8Array[];
+}
+
+/** A 48-byte CCKD instrument record: type, the inclusive rectangle, nonzero filler at +0x14, the redraw interval, filler. */
+export function instrumentRecord(type: number, [x0, y0, x1, y1]: readonly [number, number, number, number], redrawInterval = 0): Uint8Array {
+  return new ByteWriter().u32(type, x0, y0, x1, y1, 0x5a5a_5a5a, redrawInterval, 0x1234_5678, 0, 0x7777_7777, 0, 0).toBytes();
+}
+
 /**
  * A CCKD entry (cockpit §1): the font directory pointer at 0x00 and the group directory pointer at 0x08, the font
- * directory, one 32-byte directory record per slot, the 52-byte element arrays, the font tables, the slot palettes and
- * then each element record's data under block-relative pointers. A slot with a palette (768 DATA-format bytes) points
- * to it at +0x04 with its length at +0x08; both are 0 otherwise. The unexplained directory fields are nonzero filler,
+ * directory, one 32-byte directory record per slot, the 52-byte element arrays, the font tables, the slot palettes,
+ * the instrument record arrays and then each element record's data under block-relative pointers. A slot with a
+ * palette (768 DATA-format bytes) points to it at +0x04 with its length at +0x08; both are 0 otherwise. A slot with
+ * `instruments` carries its layout number at +0x00 and its records at +0x18 with their count at +0x1C. The unexplained
+ * directory fields, and the layout number and instrument fields of a slot without `instruments`, are nonzero filler,
  * and an empty slot's element pointer lies past the block because it addresses nothing.
  */
 export function cockpitLayoutBlock(
   groups: readonly (readonly SyntheticElement[])[],
   fonts: readonly Uint8Array[] = hudFontTables(),
   palettes: readonly (Uint8Array | null)[] = [],
+  instruments: readonly (SyntheticInstruments | null)[] = [],
 ): Uint8Array {
   const directory = 16 + fonts.length * 8;
   const take = blockLayout(directory + groups.length * 32);
   const arrays = groups.map(elements => take(elements.length * 52));
   const tables = fonts.map(table => take(table.length));
   const paletteAt = groups.map((_, slot) => (palettes[slot] ? take(palettes[slot].length) : 0));
+  const instrumentAt = groups.map((_, slot) => take((instruments[slot]?.records.length ?? 0) * 48));
   const data = groups.map(elements => elements.map(({ record }) => take(record.length - 36)));
   const writer = new ByteWriter().u32(16, fonts.length, directory, groups.length);
   fonts.forEach((table, index) => writer.u32(tables[index], table.length));
   groups.forEach((elements, slot) => {
-    writer.u32(0xa5a5_a5a5, paletteAt[slot], palettes[slot]?.length ?? 0, 0xffff_ffff, elements.length ? arrays[slot] : 0xffff_fff0, elements.length, 0xc3c3_c3c3, 7);
+    const slotInstruments = instruments[slot];
+    writer.u32(slotInstruments?.layout ?? 0xa5a5_a5a5, paletteAt[slot], palettes[slot]?.length ?? 0, 0xffff_ffff, elements.length ? arrays[slot] : 0xffff_fff0, elements.length);
+    writer.u32(...(slotInstruments ? [instrumentAt[slot], slotInstruments.records.length] : [0xc3c3_c3c3, 7]));
   });
   groups.forEach((elements, slot) => elements.forEach(({ record, x, y, flags = [0, 0] }, index) => {
     writer.raw(movedRecordHeader(record, data[slot][index])).u32(x, y, ...flags);
   }));
   fonts.forEach(table => writer.raw(table));
   palettes.forEach(palette => palette && writer.raw(palette));
+  groups.forEach((_, slot) => instruments[slot]?.records.forEach(record => writer.raw(record)));
   groups.forEach(elements => elements.forEach(({ record }) => writer.raw(record.subarray(36))));
   return writer.toBytes();
 }

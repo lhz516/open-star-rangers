@@ -122,6 +122,31 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     checkActiveArea(state);
     expect(near.state).toBe('active');
   });
+
+  // P3-09 MW-10 (docs/plan/p3/02/spec.md): while the player entity is in Warp (+0xCC) 0x3a540 centres on the
+  // destination ps +0x10–+0x18, also when an abandoned Warp left the flag set (MW-09).
+  it('centres on the Warp destination while the player entity is in Warp', () => {
+    const state = worldWith();
+    const player = addPlayer(state, { x: 0, y: 0, z: 10000 });
+    const destination = { x: -30000, y: 20000, z: 300 };
+    state.player.map.destination = destination;
+    player.inWarp = true;
+    expect(activeAreaCentre(state)).toBe(destination);
+    const nearDestination = state.entities.allocate(entityInit(7, { position: { x: -30000 + 7000, y: 20000, z: 0 } }));
+    const nearPlayer = state.entities.allocate(entityInit(7, { position: { x: 0, y: 0, z: 0 } }));
+    nearDestination.state = 'active';
+    nearPlayer.state = 'active';
+    checkActiveArea(state);
+    expect([nearDestination.state, nearPlayer.state]).toEqual(['active', 'area-switch']);
+    player.inWarp = false;
+    expect(activeAreaCentre(state)).toBe(player.position);
+  });
+
+  it('faults on a player in Warp without a destination', () => {
+    const state = worldWith();
+    addPlayer(state).inWarp = true;
+    expect(() => activeAreaCentre(state)).toThrow('active-area.warp-destination');
+  });
 });
 
 describe('parking switch, message 0x20 (P3-06 AC-06, D-02, D-03)', () => {

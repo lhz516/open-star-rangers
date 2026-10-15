@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P2
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0008, ADR-0012]
 ---
 
@@ -69,7 +69,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - 页面刷新后先回到菜单，只列出缓存元数据。`Saved resources found in this browser, not yet verified.` 不代表资源已恢复；点击 `Open saved resources` 才会读取 payload、重新校验并载入任务。成功后再用 `View resources`。
 - 缓存属于同一浏览器 profile 和同一源（协议、主机、端口）。`localhost` 与 `127.0.0.1`、不同端口或无痕窗口不能当作同一份缓存。缓存不是备份，浏览器可能清除它。
 - 保存失败时查看原因，可在菜单或导入结果中用 `Save again` 重试。若页面尚持有完整包、但浏览器已清除缓存，返回菜单后的重新检查会改为仅内存并报告 `not-found`，仍可查看及重新保存；若已刷新且缓存不存在，就重新选择文件导入。
-- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。 不要把“没有可恢复条目”误认为旧记录必然已被删除。
+- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`，P3-09 加入地图几何后又递增为 `osr-import.graphics-5.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。P3-09 又把切片定义递增为版本 5（新增必需的地图几何资源），版本 4 的包同样报 `cache-incompatible`，须重新导入；新增的资源只有几十字节，空间需求几乎不变。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。 不要把“没有可恢复条目”误认为旧记录必然已被删除。
 - 同键保存是原子替换；不提供删除、迁移或缓存管理界面，也不申请持久存储。不要为本指南随意清除用户其他站点或浏览器数据。
 
 ## 查看器操作与限制
@@ -78,7 +78,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - 模型可选 `Part list` 0、1、2，页面显示用途与置信度；效果可选记录、导弹类型或有/无贴图碎片的 `Effect view`。导弹贴图只用旋转 0，没有映射旋转选择控件。含跨接缝面的项标注 `Seam interpolation unconfirmed`，不是导入失败；原版依据见 [executable](../original/formats/executable.md#effect-texture-mappings-p2-1115-research)。
 - `Turn left/right/up/down`、`Zoom in/out`、`Reset view` 操作三维视角。Tab 到画面区域后可用方向键旋转、`+`/`=` 与 `-` 缩放、`0` 复位；焦点在列表或按钮上时不改变画面。步长、限制与键位说明见[键位文档](../engineering/keyboard-input.md#资源查看器的诊断键p2-11)。按钮可用 Tab、Enter/Space 操作。
 - 图像、调色板、布局与字库由查看渲染显示；透明处是棋盘格，字形表是黑底白字。没有游戏循环，空闲不持续绘制。`Refresh diagnostics` 只刷新诊断计数。
-- **P3-03 新增的图像：** `Images` 中另有 186 个爆炸帧（`image/explosion/<动画>/<帧>`，角色 `explosion-frame`，透明处为棋盘格）、15 个星云背景（`image/nebula/<nn>`）、受击闪烁贴图（`image/hit-shimmer`）与目标显示屏背景（`image/hud/target-display/background`，`Palettes` 中另有它的调色板）。受击闪烁贴图的存储值是受击条带的阈值，不是颜色，查看器显示的颜色不代表游戏画面（[textures](../original/formats/textures.md#tex-11069-hit-shimmer-band-map-confirmed)）。新增的机型、碎片、AI、通讯菜单、基地修理项目、飞行消息、场景设置、爆炸表、爆炸动画、星云列表、视角标签与 HUD 文字等 `data` 资源不在查看器列表中；它们的数量、字节与哈希可用[包核对](./tools.md#包核对)在本地报告。
+- **P3-03 新增的图像：** `Images` 中另有 186 个爆炸帧（`image/explosion/<动画>/<帧>`，角色 `explosion-frame`，透明处为棋盘格）、15 个星云背景（`image/nebula/<nn>`）、受击闪烁贴图（`image/hit-shimmer`）与目标显示屏背景（`image/hud/target-display/background`，`Palettes` 中另有它的调色板）。受击闪烁贴图的存储值是受击条带的阈值，不是颜色，查看器显示的颜色不代表游戏画面（[textures](../original/formats/textures.md#tex-11069-hit-shimmer-band-map-confirmed)）。新增的机型、碎片、AI、通讯菜单、基地修理项目、飞行消息、场景设置、爆炸表、爆炸动画、星云列表、视角标签与 HUD 文字等 `data` 资源，以及 P3-09 的地图几何（`data/hud/map-geometry`），不在查看器列表中；它们的数量、字节与哈希可用[包核对](./tools.md#包核对)在本地报告。
 - `Sounds` 中每个声音列出 Asset ID 与角色：点击 `Play` 解锁音频并按声音的循环方式播放，`Stop` 停止该声音，`Stop all sounds` 停止全部。多数声音播放一次；循环声音（如引擎声与 HUD 循环音）一直播放到按 `Stop`；`repeat` 声音连续播放规定的遍数后自然结束，例如 P3-03 新增的 `sound/event/warp-arrival` 播放 8 遍，结束前也可用 `Stop` 提前停止。P3-03 另加入 8 个 `event-sound` 与 3 个 `hud-sound`。页面隐藏或返回菜单会停止；返回菜单会释放音频与画布，但保留资源包。短音效可能在按停止前自然结束。
 - 任务区只显示结构计数、引用校验与载入结果，不显示原版任务名、简报或消息文字。
 - **呈现限制：** P2-12 已逐行判定呈现约定，结论与置信度见[源码结构：资源查看渲染](../engineering/modules/render.md#资源查看渲染)。

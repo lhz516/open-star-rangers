@@ -6,7 +6,7 @@ import { deriveManifestIdentity, type GroupDraft } from '../content/manifest-ide
 import { readPayloadRecords } from '../content/payload.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
 import { readSoundPayload } from '../content/sound-payload.ts';
-import { syntheticSourceGroup, VERSION_4_ROLES } from '../content/synthetic-content.test-support.ts';
+import { syntheticSourceGroup, VERSION_4_ROLES, VERSION_5_ROLES } from '../content/synthetic-content.test-support.ts';
 import { PRODUCTION_LOGIC_SHARE } from '../original-data/conversion/convert-logic.ts';
 import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from '../original-data/conversion/converter-version.ts';
 import { UNLIMITED_BUDGET, withMeshReads } from '../original-data/conversion/conversion.test-support.ts';
@@ -20,7 +20,7 @@ import { PRODUCTION_EFFECT_USAGE } from '../original-data/conversion/production-
 import { PRODUCTION_FLIGHT_DATA_DECLARATIONS, PRODUCTION_FLIGHT_DATA_MAPPINGS } from '../original-data/conversion/production-flight-data.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS, PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from '../original-data/conversion/production-flight-graphics.ts';
 import { PRODUCTION_GRAPHICS_DECLARATIONS, PRODUCTION_GRAPHICS_MAPPINGS, PRODUCTION_GRAPHICS_SHARE } from '../original-data/conversion/production-graphics.ts';
-import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE } from '../original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_HUD_TEXT_MAPPINGS } from '../original-data/conversion/production-hud-text.ts';
 import { HUD_TEXT_USAGE } from '../original-data/conversion/production-hud-text.test-support.ts';
 import {
@@ -244,11 +244,11 @@ describe('production conversion', () => {
     const flightModels = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'models').length;
     expect(readGroupManifest(sentGroup(messages, 'models').input.manifest).assets).toHaveLength(1 + MODEL_TEXTURE_USAGE.assets + flightModels);
     expect(validateGroup(CLASSIC_P2_SLICE, sentGroup(messages, 'models').input).status).toBe('incomplete');
-    // The P2-05 palette and fonts with the production cockpit, HUD and map Assets, the flight graphics of the group and
-    // the HUD text fill every role of the group.
+    // The P2-05 palette and fonts with the production cockpit, HUD and map Assets, the flight graphics of the group, the
+    // HUD text and the map geometry fill every role of the group.
     const cockpit = sentGroup(messages, 'cockpit-hud-map').input;
     const cockpitIds = PRODUCTION_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').map(({ asset }) => asset.id).sort();
-    expect(cockpitIds).toHaveLength(4 + COCKPIT_HUD_MAP_USAGE.assets + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length - flightModels + HUD_TEXT_USAGE.assets);
+    expect(cockpitIds).toHaveLength(4 + COCKPIT_HUD_MAP_USAGE.assets + PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.length - flightModels + HUD_TEXT_USAGE.assets + MAP_GEOMETRY_USAGE.assets);
     expect(readGroupManifest(cockpit.manifest).assets.map(({ id }) => id)).toEqual(cockpitIds);
     expect(validateGroup(CLASSIC_P2_SLICE, cockpit)).toMatchObject({ status: 'group-complete', group: 'cockpit-hud-map', externalRequirements: [] });
   });
@@ -284,7 +284,7 @@ describe('logic conversion', () => {
     const { drafts, models: bindings } = captured!;
     expect(manifests[0].identity).toEqual({ ...basis, manifestIdentity: deriveManifestIdentity(basis, [...drafts, ...groups.slice(1).map(sentDraft)]) });
     expect(manifests.every(({ identity }) => identity.manifestIdentity === manifests[0].identity.manifestIdentity)).toBe(true);
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-4.logic-2.audio-2.models-4');
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-2.audio-2.models-4');
 
     const readUsage = source!.usage();
     expect(counts.at(-1)).toBe(readUsage.sourceReadBytes);
@@ -349,7 +349,7 @@ describe('logic conversion', () => {
   });
 });
 
-describe('production package (P3-03 slice definition version 4)', () => {
+describe('production package (P3-03 slice definition version 4, and version 5 of the P3-09 revision)', () => {
   /**
    * The production job on the slice disc, logging each archive entry read and each `offset+length` read of a non-archive
    * file, such as the executable, with the stage it falls in.
@@ -429,16 +429,17 @@ describe('production package (P3-03 slice definition version 4)', () => {
     return { opening, regions: reads, regionBytes };
   }
 
-  it('sends four complete groups that form a complete version 4 package with every new role', async () => {
+  it('sends four complete groups that form a complete version 5 package with every new role', async () => {
     const { groups } = await loggedOnce();
     expect(groups.map(input => readGroupManifest(input.manifest).group)).toEqual(['logic', 'models', 'cockpit-hud-map', 'audio']);
     const result = validatePackage(CLASSIC_P2_SLICE, groups);
     if (result.status !== 'complete') throw new Error(`expected a complete package, got ${JSON.stringify(result)}`);
-    expect(result.identity).toMatchObject({ sliceDefinitionVersion: 4, converterVersion: PRODUCTION_CONVERTER_VERSION });
+    expect(result.identity).toMatchObject({ sliceDefinitionVersion: 5, converterVersion: PRODUCTION_CONVERTER_VERSION });
     const roles = new Map<string, number>();
     for (const { role } of groups.flatMap(input => readGroupManifest(input.manifest).assets)) roles.set(role, (roles.get(role) ?? 0) + 1);
-    expect(Object.fromEntries(VERSION_4_ROLES.map(role => [role, roles.get(role)]))).toEqual({
-      ...Object.fromEntries(VERSION_4_ROLES.map(role => [role, 1])), 'event-sound': 8, 'hud-sound': 3,
+    const newRoles = [...VERSION_4_ROLES, ...VERSION_5_ROLES];
+    expect(Object.fromEntries(newRoles.map(role => [role, roles.get(role)]))).toEqual({
+      ...Object.fromEntries(newRoles.map(role => [role, 1])), 'event-sound': 8, 'hud-sound': 3,
     });
     // The dependency closure of the explosion table and nebula list: 17 animations of 186 frames and 15 nebula images.
     expect([roles.get('explosion-animation'), roles.get('explosion-frame'), roles.get('nebula-background')]).toEqual([17, 186, 15]);
@@ -616,12 +617,13 @@ describe('audio conversion', () => {
     };
     const [withCockpit, withoutCockpit] = (await Promise.all([audioJob(), audioJob({ graphics })])).map(({ messages }) => messages);
     // Without the cockpit-hud-map flight palette, the three fonts, the cockpit, HUD and map Assets, and the flight
-    // graphics and HUD text of that group.
+    // graphics, HUD text and map geometry of that group.
     const flightCockpit = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
     expect(withoutCockpit.at(-1)).toMatchObject({
       type: 'finished', groups: ['models', 'cockpit-hud-map', 'audio'],
       usage: {
-        assets: GRAPHICS_CONVERSION_USAGE.assets - 4 - COCKPIT_HUD_MAP_USAGE.assets - flightCockpit - HUD_TEXT_USAGE.assets + AUDIO_CONVERSION_USAGE.assets,
+        assets: GRAPHICS_CONVERSION_USAGE.assets - 4 - COCKPIT_HUD_MAP_USAGE.assets - flightCockpit - HUD_TEXT_USAGE.assets - MAP_GEOMETRY_USAGE.assets
+          + AUDIO_CONVERSION_USAGE.assets,
         glyphs: 0,
       },
     });

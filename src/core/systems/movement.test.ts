@@ -7,7 +7,7 @@ import { referenceFrame } from '../rules/flight-motion.test-support.ts';
 import { FLOAT32_MAX } from '../rules/float32.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput, type CraftInfoDraft } from '../world/create-world.test-support.ts';
-import type { Activity, Entity, LinearMovementBlock, Matrix3, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
+import { markerInit, type Activity, type Entity, type LinearMovementBlock, type Matrix3, type ObjectState, type SteeredMovementBlock } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -193,6 +193,20 @@ describe('P3-07\'s modes 1 and 2 (P3-07 CR-03, H1, H3)', () => {
     expect(short.orientation.slice(0, 3)).toEqual([1, 0, 0]);
     expect(short.orientation).not.toEqual(IDENTITY);
     expect(long.orientation).toEqual(short.orientation);
+  });
+});
+
+describe('the map marker\'s mode 4 (P3-09 MW-03)', () => {
+  it('passes the filter in state 7 but is never integrated and reads no craft record', () => {
+    const state = testState();
+    const marker = state.entities.allocate(markerInit({ x: 100, y: -200, z: 3 }, IDENTITY));
+    marker.state = 'active';
+    // The synthetic craft info has no record for kind 25: reading one would fault (movement.record).
+    expect(state.craftInfo.content.craft[25]).toBeUndefined();
+    expect(movesThisTick(marker)).toBe(true);
+    moveEntities(state, noHitTest);
+    expect(poseOf(marker)).toEqual({ position: { x: 100, y: -200, z: 3 }, orientation: IDENTITY, movement: { mode: 'marker', speed: 0 } });
+    expect(marker.placementSerial).toBe(0);
   });
 });
 

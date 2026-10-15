@@ -5,6 +5,7 @@ import { GRAPHICS_LIMITS, readPaletteReference, readReference, requireInteger as
 import type { ImageDisplay } from '../../content/graphics/image-payload.ts';
 import { layoutFrame, type LayoutFrame } from '../../content/graphics/layout-payload.ts';
 import { HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_ROLE, type HudTextKey } from '../../content/hud/hud-text-payload.ts';
+import { MAP_GEOMETRY_ROLE } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_ROLE } from '../../content/hud/view-labels-payload.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
@@ -16,7 +17,10 @@ import { SourceError } from '../source-error.ts';
 // plain data paired one to one with source mappings but without locators. Non-default choices (nearest display, colour
 // keys, reversed rows and character map ranges) need evidence linked from the Asset's mapping.
 
-/** The kinds the graphics step converts; its `data` Assets are the status display messages, the view labels and the HUD text. */
+/**
+ * The kinds the graphics step converts; its `data` Assets are the status display messages, the view labels, the HUD text
+ * and the map geometry.
+ */
 export type GraphicsKind = 'palette' | 'image' | 'font' | 'layout' | 'data';
 
 interface DeclarationBase<Kind extends GraphicsKind> {
@@ -58,13 +62,13 @@ export interface FontDeclaration extends DeclarationBase<'font'> {
 }
 
 /** The roles a graphics `data` Asset may have, each with the source type it converts from (convert-graphics.ts). */
-export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 'view-labels' | 'hud-text'>> = Object.freeze({
-  [STATUS_MESSAGES_ROLE]: 'status-messages', [VIEW_LABELS_ROLE]: 'view-labels', [HUD_TEXT_ROLE]: 'hud-text',
+export const GRAPHICS_DATA_SOURCES: Readonly<Record<string, 'status-messages' | 'view-labels' | 'hud-text' | 'map-geometry'>> = Object.freeze({
+  [STATUS_MESSAGES_ROLE]: 'status-messages', [VIEW_LABELS_ROLE]: 'view-labels', [HUD_TEXT_ROLE]: 'hud-text', [MAP_GEOMETRY_ROLE]: 'map-geometry',
 });
 
 /**
- * The status display messages, whose format comes from the source (P2-07 spec, status display messages), or the view
- * labels (P3-03 spec, S-08); the role selects which.
+ * The status display messages, whose format comes from the source (P2-07 spec, status display messages), the view
+ * labels (P3-03 spec, S-08) or the map geometry (P3-03 spec, P3-09 的修订); the role selects which.
  */
 export type DataDeclaration = DeclarationBase<'data'>;
 
@@ -168,7 +172,7 @@ function readDeclaration(value: unknown, path: string): GraphicsDeclaration {
   const base = { asset, role: readRole(record.role, `${path}.role`), group: readResourceGroup(record.group, `${path}.group`) };
   if (!CLASSIC_P2_SLICE.groupKinds[base.group].includes(asset.kind)) fail('kind-mismatch', `${path}.group`, 'must own the Asset kind');
   if (asset.kind === 'data' && !Object.hasOwn(GRAPHICS_DATA_SOURCES, base.role)) {
-    fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages, view labels or HUD text role');
+    fail('invalid-record', `${path}.role`, 'a data Asset must have the status messages, view labels, HUD text or map geometry role');
   }
   if (asset.kind === 'data' && base.role === HUD_TEXT_ROLE) {
     return Object.freeze({ ...base as DataDeclaration, regions: readHudTextRegions(record.regions, `${path}.regions`) });

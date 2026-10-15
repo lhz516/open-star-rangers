@@ -1,7 +1,7 @@
 import { readAssetDescriptor, type AssetDescriptor } from '../../content/asset-contract.ts';
 import type { AssetId } from '../../content/asset-id.ts';
 import { chargeBudget, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
-import { compareText } from '../../content/contract-validation.ts';
+import { ContentContractError, compareText } from '../../content/contract-validation.ts';
 import { encodeFontPayload, fontPayloadLength, type CharMapEntry } from '../../content/graphics/font-payload.ts';
 import { imagePalettes, layoutImages } from '../../content/graphics/graphics-binding.ts';
 import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics/graphics-format.ts';
@@ -9,6 +9,7 @@ import { encodeImagePayload, imagePayloadLength, maskStride } from '../../conten
 import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement } from '../../content/graphics/layout-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { HUD_TEXT_SCHEMA_VERSION, encodeHudTextPayload, type HudText } from '../../content/hud/hud-text-payload.ts';
+import { MAP_GEOMETRY_SCHEMA_VERSION, encodeMapGeometryPayload } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_SCHEMA_VERSION, encodeStatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_SCHEMA_VERSION, encodeViewLabelsPayload } from '../../content/hud/view-labels-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
@@ -26,15 +27,15 @@ import {
 } from './graphics-declarations.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, decodeSnipFrame, mfdRecordOffset, readCockpitFont, readCockpitGroup,
-  readCockpitGroupPalette, readDataPalette, readEmbeddedPalette, readImageRecordHeader, readSnipFrames, tableRecordOffset, type SourceImage,
+  readCockpitGroupPalette, readCockpitInstrument, readDataPalette, readEmbeddedPalette, readImageRecordHeader, readSnipFrames, tableRecordOffset, type SourceImage,
 } from './source-graphics.ts';
 import { readStatusMessages } from './source-messages.ts';
 
 /**
  * The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. Version 4
- * adds the P3-03 flight images and view labels.
+ * adds the P3-03 flight images and view labels, version 5 the map geometry (P3-03 spec, P3-09 的修订：地图几何（修订 2））.
  */
-export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-4';
+export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-5';
 
 /**
  * An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`), an MFDD list record
@@ -121,6 +122,18 @@ interface ViewLabelsSource {
   readonly read: ArchiveEntryRead;
 }
 
+interface MapGeometrySource {
+  /**
+   * The `layouts/<layout>/instruments/type-<instrumentType>` and `fonts/<font>` subresources of one CCKD entry: the
+   * instrument record's rectangle and redraw interval and the font's glyph height (P3-03 spec, P3-09 的修订).
+   */
+  readonly type: 'map-geometry';
+  readonly block: Uint8Array;
+  readonly layout: number;
+  readonly instrumentType: number;
+  readonly font: number;
+}
+
 interface HudTextSource {
   /** The HUD text, already read from the mapping's EXE regions and checked against the schema (`parseHudText`). */
   readonly type: 'hud-text';
@@ -133,7 +146,8 @@ interface HudTextSource {
  * regions.
  */
 export type GraphicsSource =
-  | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource | HudTextSource;
+  | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource | HudTextSource
+  | MapGeometrySource;
 
 export interface ConvertedGraphic {
   readonly descriptor: AssetDescriptor;
@@ -343,6 +357,23 @@ class Conversion {
     this.#add(declaration, [], bytes, 'palette', HUD_TEXT_SCHEMA_VERSION);
   }
 
+  /**
+   * The map geometry from its CCKD instrument record and font. The encoder reads it strictly before it is charged and
+   * allocated; content the reader rejects is `unsupported-payload` at the reader's structural path.
+   */
+  mapGeometry(declaration: DataDeclaration, { block, layout, instrumentType, font }: MapGeometrySource): void {
+    const at = `graphics[${declaration.asset.id}]`;
+    const content = { ...readCockpitInstrument(block, layout, instrumentType, at), informationLineHeight: readCockpitFont(block, font, at).height };
+    let bytes: Uint8Array;
+    try {
+      bytes = encodeMapGeometryPayload(content, payloadBytes => this.#charge(declaration, { payloadBytes }));
+    } catch (error) {
+      if (error instanceof ContentContractError) throw new SourceError('unsupported-payload', `${at}.${error.path}`, error.reason);
+      throw error;
+    }
+    this.#add(declaration, [], bytes, 'palette', MAP_GEOMETRY_SCHEMA_VERSION);
+  }
+
   /** A layout of checked elements; the element images themselves are converted as images. */
   layout(declaration: LayoutDeclaration, elements: readonly LayoutElement[]): void {
     const at = `graphics[${declaration.asset.id}]`;
@@ -372,7 +403,7 @@ function reverseRows(rows: Uint8Array, rowBytes: number, height: number): Uint8A
 
 /**
  * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, data (status messages,
- * view labels and the HUD text, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
+ * view labels, the HUD text and the map geometry, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
  * checked against their groups before anything is converted, so an element the group lacks
  * is reported as the layout's count mismatch rather than as its image's missing record. Every Asset is charged against
  * `limits` on top of `usage`, the conversion usage of earlier steps (never source reads), before anything sized by it
@@ -409,6 +440,7 @@ export function convertGraphics(
     else if (declaration.asset.kind === 'font') conversion.font(declaration as FontDeclaration, source as FontSource);
     else if (source.type === 'view-labels') conversion.viewLabels(declaration as DataDeclaration, source);
     else if (source.type === 'hud-text') conversion.hudText(declaration as DataDeclaration, source);
+    else if (source.type === 'map-geometry') conversion.mapGeometry(declaration as DataDeclaration, source);
     else conversion.messages(declaration as DataDeclaration, source as MessagesSource);
   }
   layouts.forEach((declaration, index) => conversion.layout(declaration, layoutElements[index]));

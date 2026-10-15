@@ -36,12 +36,12 @@ const P3_06_COMMANDS: readonly Command[] = [
   { type: 'confirm-selection' },
 ];
 
+/** P3-09's commands, judged in map.test.ts and warp.test.ts. */
+const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }, { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 }, { type: 'request-warp' }];
+
 /** One command of every other type. */
 const OTHER_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
-  { type: 'toggle-map' },
-  { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 },
-  { type: 'request-warp' },
   { type: 'communications', operation: 'open' },
   { type: 'launch' },
   { type: 'cockpit-front' },
@@ -64,7 +64,7 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
+    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...P3_09_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
   it('gives every other command exactly one rejected/not-implemented result each, in order, and changes nothing else', () => {
@@ -77,7 +77,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   });
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[5]];
+    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[3]];
     const [state] = flightState();
     expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
@@ -94,12 +94,15 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   });
 });
 
+/** The common pre-judgement in a tick registered on `state`, whose command view is the committed view. */
+const preJudged = (state: WorldState) => combatCommandPlayer(registerTick(state, readTickInput(tickInput())));
+
 describe('the common pre-judgement of P3-07\'s commands (CR-05)', () => {
   it('gives the player entity when it is active in flight', () => {
     const [state, player] = flightState();
-    expect(combatCommandPlayer(state)).toBe(player);
+    expect(preJudged(state)).toBe(player);
     state.player.viewMode = 0x11;
-    expect(combatCommandPlayer(state)).toBe(player);
+    expect(preJudged(state)).toBe(player);
   });
 
   it.each([
@@ -112,13 +115,23 @@ describe('the common pre-judgement of P3-07\'s commands (CR-05)', () => {
   ])('is player-unavailable with %s, before the context', (_, change) => {
     const [state, player] = flightState();
     change(state, player);
-    expect(combatCommandPlayer(state)).toBe('player-unavailable');
+    expect(preJudged(state)).toBe('player-unavailable');
   });
 
   it.each([[0, 'Warp'], [3, 'Warp'], [6, 'the base'], [8, 'the map']] as const)('is wrong-context in view mode %i (%s)', (viewMode, _) => {
     const [state] = flightState();
     state.player.viewMode = viewMode;
-    expect(combatCommandPlayer(state)).toBe('wrong-context');
+    expect(preJudged(state)).toBe('wrong-context');
+  });
+
+  it('reads the context of the command view, not the committed view (MW-04)', () => {
+    const [state, player] = flightState();
+    const context = registerTick(state, readTickInput(tickInput()));
+    context.commandView.viewMode = 8;
+    expect(combatCommandPlayer(context)).toBe('wrong-context');
+    state.player.viewMode = 8;
+    context.commandView.viewMode = 0x0c;
+    expect(combatCommandPlayer(context)).toBe(player);
   });
 });
 

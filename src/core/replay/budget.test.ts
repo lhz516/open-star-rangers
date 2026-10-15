@@ -3,10 +3,14 @@ import { readAssetId } from '../../content/asset-id.ts';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command, type TickInput } from '../contracts/tick-input.ts';
-import { registerTick, runTick, type Request } from '../systems/pipeline.ts';
-import type { Entity, EntityInit, SteeredMovementBlock } from '../world/entity-table.ts';
-import { addPlayerEntity, entityInit, stillEntityInit, testState } from '../world/world.test-support.ts';
+import { registerTick, RequestQueue, runTick, type Request } from '../systems/pipeline.ts';
+import type { Entity, EntityInit, Matrix3, SteeredMovementBlock } from '../world/entity-table.ts';
+import { initialPlayerControl } from '../world/player-state.ts';
+import { constructWorld, type World } from '../world/world.ts';
+import { addPlayerEntity, entityInit, expectFault, stillEntityInit, testState, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { recordState } from './recording.ts';
+import { PRODUCER } from './replay.test-support.ts';
 import { snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
 
 // The capacity accounting of docs/plan/p3/06/spec.md (容量核算; D-08) tested on actual ticks and snapshots at the
@@ -17,14 +21,19 @@ const { commandsPerTick: K, entities: ENTITIES, spawnExpansion, eventsPerTick, c
 const EVENT_BOUND = K + K + 1 + spawnExpansion + ENTITIES;
 const REQUEST_BOUND = ENTITIES + spawnExpansion + K + 2;
 
-/** Runs one tick through the real pipeline and returns its events and every request posted in it. */
+/** Runs one tick through the real pipeline and returns its events and every request posted or deferred in it. */
 function countedTick(state: WorldState, input: TickInput): { readonly events: readonly DomainEvent[]; readonly requests: readonly Request[] } {
   const context = registerTick(state, readTickInput(input));
   const requests: Request[] = [];
   const post = context.requests.post.bind(context.requests);
+  const defer = context.requests.defer.bind(context.requests);
   context.requests.post = (request) => {
     requests.push(request);
     post(request);
+  };
+  context.requests.defer = (request) => {
+    requests.push(request);
+    defer(request);
   };
   return { events: runTick(context), requests };
 }
@@ -93,6 +102,105 @@ describe('per-tick budget (P3-06 AC-08, 容量核算)', () => {
       expect(events.length).toBeLessThanOrEqual(EVENT_BOUND);
       expect(requests.length).toBeLessThanOrEqual(REQUEST_BOUND);
     }
+  });
+});
+
+const FLIGHT = 0x0c;
+const MAP = 8;
+const commandsOf = (count: number, command: (index: number) => Command): Command[] => Array.from({ length: count }, (_, index) => command(index));
+const select = (index: number): Command => ({ type: 'map-point', operation: 'select', right: index / K, down: 0.5 });
+
+/**
+ * An available player in `viewMode` whose record's Warp costs nothing, has no interval and lasts L = F(0.5 × 1) ≤ 1, so
+ * that a Warp completes in the tick it starts (MW-08), the automatic selection not due.
+ */
+function mapState(viewMode: number): WorldState {
+  const base = testState();
+  const { content } = base.craftInfo;
+  const craft = content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, pairs: [{ at00: 1000, at04: 0 }], atA4: 0, atA8: 1, atB8: 64 } : record));
+  const state: WorldState = { ...base, craftInfo: { ...base.craftInfo, content: { ...content, craft } } };
+  addPlayerEntity(state).state = 'active';
+  state.player.control = initialPlayerControl(1);
+  state.player.targeting!.autoTargetDueClock = 1e9;
+  state.player.viewMode = viewMode;
+  state.player.previousViewMode = FLIGHT;
+  return state;
+}
+
+describe('per-tick budget of the map and the Warp (P3-09 AC-11; docs/plan/p3/02/spec.md, MW-14)', () => {
+  // MW-14's terms: map-toggled and warp-destination-set at most K together, warp-started, warp-completed and two page
+  // changes; requests K + 1, a bound: each command posts at most one request, the deferred warp-start included.
+  it(`fans out at most ${K} map events, 4 Warp events and ${K} requests at ${K} commands, within MW-14's terms`, () => {
+    // Every command but the last a select (the first creates the marker, the others move it), then a Warp request that
+    // starts and completes in the tick, each with its page change.
+    const warp = countedTick(mapState(MAP), { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commandsOf(K - 1, select), { type: 'request-warp' }] });
+    expect(countOf(warp.events)).toEqual({ 'command-result': K, 'warp-destination-set': K - 1, 'warp-started': 1, 'left-page-changed': 2, 'warp-completed': 1 });
+    expect(countOf(warp.requests)).toEqual({ 'map-point': K - 1, 'warp-start': 1 });
+    // Every command a toggle, opening and closing in turn.
+    const toggles = countedTick(mapState(FLIGHT), { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: commandsOf(K, () => ({ type: 'toggle-map' })) });
+    expect(countOf(toggles.events)).toEqual({ 'command-result': K, 'map-toggled': K });
+    expect(countOf(toggles.requests)).toEqual({ 'map-toggle': K });
+  });
+
+  it(`refuses ${K + 1} map commands in a tick as input, before anything runs`, () => {
+    const state = mapState(MAP);
+    const before = snapshotText(takeSnapshot(state));
+    const error = thrownBy(() => constructWorld(state).step(tickInput(commandsOf(K + 1, select))));
+    expect(error).toMatchObject({ path: 'tickInput.commands' });
+    expect(snapshotText(takeSnapshot(state))).toBe(before);
+  });
+
+  it('counts a deferred warp-start against requestsPerTick like a posted request', () => {
+    const queue = new RequestQueue();
+    for (let count = 0; count < CORE_LIMITS.requestsPerTick - 1; count++) queue.post({ type: 'map-toggle', commandIndex: 0 });
+    queue.defer({ type: 'warp-start', commandIndex: 0 });
+    expectFault(() => queue.defer({ type: 'warp-start', commandIndex: 1 }), 'budget-exhausted', 'pipeline.requests');
+  });
+});
+
+/**
+ * A world in the map with `count` entities: the player and still friendly craft of kind 1 on a grid of distinct map
+ * pixels (64 columns 1300 apart, rows 2700 apart), every one inside some friendly's coverage, so every one is revealed.
+ */
+function crowdedMap(count: number): WorldState {
+  const state = mapState(MAP);
+  for (let index = 1; index < count; index++) {
+    const position = { x: -44_000 + (index % 64) * 1300, y: -44_000 + Math.floor(index / 64) * 2700, z: 0 };
+    state.entities.allocate(stillEntityInit(1, { position })).state = 'active';
+  }
+  return state;
+}
+
+function expectLatched(world: World, fault: unknown): void {
+  for (const call of [() => world.step(tickInput()), () => world.snapshot(), () => world.projection(), () => world.renderState()]) expect(thrownBy(call)).toBe(fault);
+}
+
+describe('the map lists and the marker at the entity limit (P3-09 AC-11; MW-02, MW-03, MW-14)', { timeout: 30_000 }, () => {
+  it(`lists ${ENTITIES} icons and object-set members at the limit, and creates the marker as the ${ENTITIES}th entity`, () => {
+    const state = crowdedMap(ENTITIES - 1);
+    const world = constructWorld(state);
+    world.step(tickInput());
+    expect(state.mapIcons).toHaveLength(ENTITIES - 1);
+    world.step(tickInput([select(1)]));
+    expect(state.entities.size).toBe(ENTITIES);
+    expect([...state.entities.walk(1 << 25)]).toHaveLength(1);
+    // The marker is no craft: the lists stay at the craft.
+    expect([state.mapIcons.length, state.objectSets.friendly.length, state.objectSets.hostile.length]).toEqual([ENTITIES - 1, ENTITIES - 1, 0]);
+    expect(snapshotText(world.snapshot()).length).toBeLessThanOrEqual(canonicalTextLength);
+
+    const full = crowdedMap(ENTITIES);
+    constructWorld(full).step(tickInput());
+    expect([full.mapIcons.length, full.objectSets.friendly.length]).toEqual([ENTITIES, ENTITIES]);
+    expect(new Set(full.mapIcons.map(({ entityId }) => entityId)).size).toBe(ENTITIES);
+    expect([...full.entities.byId()].every(({ mapVisible }) => mapVisible)).toBe(true);
+  });
+
+  it('faults at a marker beyond the limit, latching the recording and its world', () => {
+    const session = recordState(crowdedMap(ENTITIES), { producer: PRODUCER, checkpointInterval: 1 });
+    session.step(tickInput());
+    const fault = expectFault(() => session.step(tickInput([select(1)])), 'budget-exhausted', 'entities.count');
+    expectLatched(session, fault);
+    expect(thrownBy(() => session.exportRecording())).toBe(fault);
   });
 });
 
@@ -181,5 +289,31 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     expect(full.length).toBeLessThanOrEqual(canonicalTextLength);
     // Half the text limit is the 4 KiB an entity it rests on.
     expect(ENTITIES * 4096).toBeLessThanOrEqual(canonicalTextLength / 2);
+
+    // P3-09's state at its bounds (docs/plan/p3/02/spec.md, MW-14): an icon for every entity, every entity in the
+    // object sets, and the longest destination and Warp transit.
+    const icon = { entityId: LONG_ID, kindBit: 19, position: longVector(LONG_F32), pixel: { column: -32768, row: -32768 }, inWorld: false };
+    state.mapIcons = Array.from({ length: ENTITIES }, () => icon);
+    state.objectSets = { friendly: Array.from({ length: ENTITIES / 2 }, () => LONG_ID), hostile: Array.from({ length: ENTITIES / 2 }, () => LONG_ID) };
+    const rows = Array.from({ length: 9 }, () => LONG_F32) as unknown as Matrix3;
+    Object.assign(state.player, {
+      map: { cursor: { column: 399, row: 399 }, destination: longVector(LONG_F32) },
+      savedLeftPage: 5,
+      warp: {
+        serial: LONG_ID, origin: longVector(LONG_F32), length: LONG_F32, segments: LONG_F32, fraction: LONG_F32, error: LONG_F32, angle: LONG_F32,
+        centring: LONG_F32, frame: { position: longVector(LONG_F32), orientation: rows }, path: Array.from({ length: 15 }, () => longVector(LONG_F32)),
+      },
+    });
+    const mapped = snapshotText(withLongIds(takeSnapshot(state)));
+    // The canonical text writes an icon's members in this order, as JSON does.
+    const iconText = JSON.stringify(icon);
+    expect(mapped).toContain(`"mapIcons":[${iconText},${iconText},`);
+    const warpText = mapped.slice(mapped.indexOf('"warp":{'), mapped.indexOf('},"objectSets"'));
+    // At the longest numbers 200 characters an icon (MW-14's 170 is a typical one), 17 an object-set member with its
+    // comma, and about 2 KiB the transit: about 0.43 MiB in all.
+    expect(iconText.length).toBe(200);
+    expect(warpText.length).toBeLessThanOrEqual(2176);
+    expect(mapped.length - full.length).toBeLessThanOrEqual(ENTITIES * (iconText.length + 1 + 17) + 2176 + 256);
+    expect(mapped.length).toBeLessThanOrEqual(canonicalTextLength);
   });
 });

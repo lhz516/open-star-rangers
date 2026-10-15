@@ -5,6 +5,7 @@ import type { GroupDraft } from '../../content/manifest-identity.ts';
 import { readAssetDescriptors } from '../../content/manifest.ts';
 import { readPayloadRecords, type PayloadRecord } from '../../content/payload.ts';
 import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '../../content/source-state.ts';
+import { MAP_GEOMETRY_ROLE } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_LIMITS } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_FORMAT } from '../../content/hud/view-labels-payload.ts';
 import { ANIM_LIMITS } from '../formats/anim.ts';
@@ -84,6 +85,8 @@ const INDEX = '(0|[1-9][0-9]*)';
 const FONT_SUBRESOURCE = new RegExp(`^fonts/${INDEX}$`);
 const GROUP_SUBRESOURCE = new RegExp(`^groups/${INDEX}$`);
 const GROUP_PALETTE_SUBRESOURCE = new RegExp(`^groups/${INDEX}/palette$`);
+/** The one instrument record of a type in the slot of a layout number (P3-03 spec, P3-09 的修订：地图几何（修订 2）). */
+const INSTRUMENT_SUBRESOURCE = new RegExp(`^layouts/${INDEX}/instruments/type-${INDEX}$`);
 const ELEMENT_SUBRESOURCE = new RegExp(`^groups/${INDEX}/elements/${INDEX}(/palette)?$`);
 const MFD_SUBRESOURCE = new RegExp(`^lists/${INDEX}/records/${INDEX}(/palette)?$`);
 const TABLE_SUBRESOURCE = new RegExp(`^records/${INDEX}(/palette)?$`);
@@ -208,6 +211,23 @@ async function hudTextSource(
 }
 
 /**
+ * The map geometry from its mapping, whose parts must be exactly `fonts/<f>` and then `layouts/<l>/instruments/type-<t>`
+ * of the same CCKD entry, in canonical locator order; the entry is read once through the step's entry reader, shared
+ * with the fonts and layouts.
+ */
+async function mapGeometrySource({ id }: GraphicsDeclaration['asset'], mapping: SourceMapping, readEntry: EntryReader): Promise<GraphicsSource> {
+  const [font, instrument] = mapping.parts.map(({ alternatives: [locator] }) => (isRegionLocator(locator) ? null : locator));
+  const record = instrument?.entry.type === 'CCKD' ? INSTRUMENT_SUBRESOURCE.exec(instrument.subresource ?? '') : null;
+  const table = font ? FONT_SUBRESOURCE.exec(font.subresource ?? '') : null;
+  if (mapping.parts.length !== 2 || !instrument || !font || !record || !table
+    || compareLocators({ ...font, subresource: null }, { ...instrument, subresource: null }) !== 0) {
+    throw new SourceError('invalid-declaration', `graphics[${id}].messages`, 'the mapping must name an instrument record and a font of one CCKD entry');
+  }
+  const { bytes } = await readEntry(instrument);
+  return { type: 'map-geometry', block: bytes, layout: Number(record[1]), instrumentType: Number(record[2]), font: Number(table[1]) };
+}
+
+/**
  * Requires element i of every layout to be mapped to `groups/<s>/elements/<i>` of the layout's own CCKD entry and slot,
  * so the layout and its element images describe the same records.
  */
@@ -249,8 +269,9 @@ function graphicsEntryReader(source: VerifiedSource, table: SourceMappingTable):
  * Runs the graphics conversion step: verifies the mapping table, pairs each declaration with its mapping, requires
  * each layout's element images to be mapped to that layout's group elements, converts the Assets from step-shared
  * entry and region reads (ANIM and view label entries limited by their directory size first; the HUD text from its EXE
- * regions, read like the SNIP colour table and the DIAG format), and only then marks their mappings, including
- * subresource and region ones such as ANIM frames, the view label and the HUD text, verified.
+ * regions, read like the SNIP colour table and the DIAG format; the map geometry from an instrument record and a font
+ * of the cockpit entry), and only then marks their mappings, including subresource and region ones such as ANIM frames,
+ * the view label, the HUD text and the map geometry, verified.
  * Returns frozen locator-free results by resource group. Any failure rejects the whole step without results; read
  * failures keep their P2-02/P2-03 layer, code and location, and reads already issued stay charged to the source.
  */
@@ -274,9 +295,12 @@ export async function runGraphicsStep(
   const sources = new Map<string, GraphicsSource>();
   for (const declaration of checked) {
     const mapping = mappingById.get(declaration.asset.id)!;
+    const isMapGeometry = declaration.asset.kind === 'data' && declaration.role === MAP_GEOMETRY_ROLE;
     sources.set(declaration.asset.id, isHudTextDeclaration(declaration)
       ? await hudTextSource(declaration, mapping, table.mappings.indexOf(mapping), readRegion)
-      : await graphicsSource(declaration.asset, mapping, readEntry, readRegion));
+      : isMapGeometry
+        ? await mapGeometrySource(declaration.asset, mapping, readEntry)
+        : await graphicsSource(declaration.asset, mapping, readEntry, readRegion));
   }
   checkLayoutElements(checked, mappingById);
   const conversion = convertGraphics(checked, sources, limits, usage);

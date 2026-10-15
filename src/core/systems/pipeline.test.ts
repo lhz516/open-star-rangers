@@ -68,10 +68,10 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02, P3-06 and P3-07 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06, P3-07 and P3-09 own and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
       'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
-      'parked-update', 'area-check', 'frame-end', 'commit',
+      'object-sets', 'parked-update', 'warp-completion', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
@@ -164,6 +164,22 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
     expect(seen).toEqual({ 'object-update': 0, 'communications-reply': 2, commit: 2 });
     expect(events.map(({ type }) => type)).toEqual(['command-result', 'command-result']);
     expect(deepFrozen(events)).toBe(true);
+  });
+
+  it('starts the command view from the view committed at the object update, and commits a toggle in request handling (MW-04)', () => {
+    const state = testState();
+    const player = addPlayerEntity(state);
+    player.state = 'active';
+    const seen: [string, number, number][] = [];
+    const record = (stage: string) => ({ world, commandView }: TickContext) => void seen.push([stage, world.player.viewMode, commandView.viewMode]);
+    runTickWith(state, {
+      // A view change before the object update, as P3-11's mission flow may make, is where the batch starts.
+      'mission-flow': ({ world }) => void (world.player.viewMode = 8),
+      'communications-reply': record('communications-reply'),
+      movement: record('movement'),
+    }, [{ type: 'toggle-map' }]);
+    expect(seen).toEqual([['communications-reply', 8, 0x0c], ['movement', 0x0c, 0x0c]]);
+    expect(state.player.previousViewMode).toBe(8);
   });
 
   it('handles requests in posting order: mission flow, object updates, then the spawn queue check', () => {
@@ -318,8 +334,8 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   const stageRun = (id: string) => PIPELINE.find((stage) => stage.id === id)!.run;
 
   it('reads the runs of its stages from their rule modules', () => {
-    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy'), stageRun('frame-end')])
-      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage, frameEndStage]);
+    expect([stageRun('collision'), stageRun('delayed-player-explosion'), stageRun('energy')])
+      .toEqual([collisionStage, delayedPlayerExplosionStage, energyStage]);
     expect([typeof collisionStage, typeof delayedPlayerExplosionStage, typeof energyStage, typeof frameEndStage]).toEqual(['function', 'function', 'function', 'function']);
   });
 

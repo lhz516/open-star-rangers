@@ -14,6 +14,8 @@ import {
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
   type TargetChangedEvent,
+  type WarpCompletedEvent,
+  type WarpDestinationSetEvent,
   type WeaponSelectedEvent,
 } from './domain-events.ts';
 import { COMMAND_TYPES, type CommandType } from './tick-input.ts';
@@ -56,6 +58,21 @@ const combatEvents: DomainEvent[] = [
   { type: 'left-page-changed', tick: 9, page: 1, previousPage: 0, commandIndex: null },
 ];
 
+// P3-09's events (docs/plan/p3/02/spec.md, MW-05), with both forms of the marker change and the arrival.
+const mapWarpEvents: DomainEvent[] = [
+  { type: 'map-toggled', tick: 10, open: true, viewMode: 8, previousViewMode: 0xc, commandIndex: 0 },
+  { type: 'warp-destination-set', tick: 11, playerEntityId: 1, destination: { x: -45000, y: 2250, z: 0 }, pixel: { column: 0, row: 210 }, icon: null,
+    marker: { type: 'created', entityId: 13 }, commandIndex: 0 },
+  { type: 'warp-destination-set', tick: 12, playerEntityId: 1, destination: at, pixel: { column: 3, row: 4 }, icon: { entityId: 5, kindBit: 7 },
+    marker: { type: 'missing' }, commandIndex: 1 },
+  { type: 'warp-started', tick: 13, playerEntityId: 1, serial: 1, origin: at, destination: at, distance: 0, check: { cost: 0, energy: 1000 },
+    transitLength: 0.5, fromViewMode: 8, commandIndex: 0 },
+  { type: 'warp-completed', tick: 14, serial: 1, viewMode: 0xc, previousViewMode: 1, arrival: null },
+  { type: 'warp-completed', tick: 20, serial: 2, viewMode: 0xc, previousViewMode: 1, arrival: { playerEntityId: 1, origin: at, destination: at, position: at,
+    orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], error: 0.25, snapped: 13, charge: { distance: 0, cost: 0, energyBefore: 1000, energyAfter: 1000 },
+    warpClock: 1280, hostileNear: true } },
+];
+
 describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06; P3-07 CR-05, CR-06)', () => {
   it('has closed, frozen outcome and reason lists', () => {
     expect(COMMAND_OUTCOMES).toEqual(['accepted', 'rejected', 'ignored']);
@@ -63,12 +80,14 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
       // P3-07 (CR-05).
       'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+      // P3-09 (MW-04).
+      'no-destination', 'insufficient-energy',
     ]);
     expect(Object.isFrozen(COMMAND_OUTCOMES) && Object.isFrozen(COMMAND_RESULT_REASONS)).toBe(true);
   });
 
   it('is plain data that survives a JSON round trip unchanged', () => {
-    const events: DomainEvent[] = [rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents];
+    const events: DomainEvent[] = [rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
     expect(Object.keys(instantiated)).toEqual(['type', 'tick', 'entityId', 'kindBit', 'source', 'position']);
@@ -79,8 +98,12 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'command-result' | 'object-instantiated' | 'speed-assist-toggled' | 'speed-matched' | 'speed-assist-released' | 'object-left-world'
       | 'target-changed' | 'target-cleared' | 'weapon-selected' | 'shot-fired' | 'hit' | 'object-destroyed' | 'explosion-started' | 'missile-ended'
       | 'fragment-expired' | 'source-released' | 'energy-depleted' | 'energy-allocation-changed' | 'left-page-changed'
+      | 'map-toggled' | 'warp-destination-set' | 'warp-started' | 'warp-completed'
     >();
     expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
+    expect(new Set(mapWarpEvents.map(({ type }) => type)).size).toBe(4);
+    expectTypeOf<WarpDestinationSetEvent['marker']['type']>().toEqualTypeOf<'created' | 'moved' | 'missing'>();
+    expectTypeOf<WarpCompletedEvent['previousViewMode']>().toEqualTypeOf<1>();
     expectTypeOf<Attacker['type']>().toEqualTypeOf<'shooter' | 'lost-shooter' | 'none'>();
     expectTypeOf<ShotTrigger['type']>().toEqualTypeOf<'command' | 'ai' | 'automatic'>();
     expectTypeOf<HitEvent['cause']>().toEqualTypeOf<'projectile' | 'missile' | 'collision' | 'area' | 'parked'>();
@@ -126,9 +149,15 @@ function checkTypes(): unknown[] {
   const assistWithCommand: SpeedMatchedEvent = { type: 'speed-matched', tick: 1, targetEntityId: 2, origin: 'assist', commandIndex: 0 };
   // @ts-expect-error A source that left is a snapshot or null, never omitted.
   const omittedSource: ObjectLeftWorldEvent = { type: 'object-left-world', tick: 1, entityId: 2, kindBit: 7 };
+  // @ts-expect-error A missing marker has no entity.
+  const missingWithEntity: WarpDestinationSetEvent['marker'] = { type: 'missing', entityId: 3 };
+  // @ts-expect-error A completion always leaves view mode 1.
+  const completedFromMap: WarpCompletedEvent = { type: 'warp-completed', tick: 1, serial: 1, viewMode: 0xc, previousViewMode: 8, arrival: null };
+  const noDestination: CommandResultEvent = { ...rejected, outcome: 'ignored', reason: 'no-destination' };
   // @ts-expect-error Events are read-only.
   instantiated.position.x = 0;
   return [
+    missingWithEntity, completedFromMap, noDestination,
     accepted, ignored, wingman, acceptedWithReason, rejectedWithoutReason, unknownReason, unknownCommand, unknownCollection, omittedGroup, noTarget,
     commandWithDifference, assistWithCommand, omittedSource, cooldown, commandWithoutIndex, automaticWithIndex, lostWithEntity, automaticWithChannel,
   ];

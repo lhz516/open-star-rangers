@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResultEvent, DomainEvent, ObjectInstantiatedEvent } from '../../core/contracts/domain-events.ts';
-import { COMBAT_EVENTS } from '../../app/runtime/combat-events.test-support.ts';
+import { COMBAT_EVENTS, MAP_WARP_EVENTS } from '../../app/runtime/combat-events.test-support.ts';
 import { EVENT_LOG_LIMIT, EventLog, summarizeEvent } from './event-log.ts';
 
 // P3-04 AC-22, the event log window (docs/plan/p3/04/spec.md: 开发诊断, 事件日志): the latest 500 structured summaries,
@@ -82,6 +82,38 @@ describe('event log', () => {
       .find(([name]) => name === 'trigger')).toEqual(['trigger', 'ai 2']);
     expect(summary({ ...(COMBAT_EVENTS[3] as Extract<DomainEvent, { type: 'shot-fired' }>), trigger: { type: 'automatic' } })
       .find(([name]) => name === 'trigger')).toEqual(['trigger', 'automatic']);
+  });
+
+  it('summarizes P3-09\'s map and Warp events by every field, in a fixed order', () => {
+    const summaries = MAP_WARP_EVENTS.map((event) => summarizeEvent(event, NO_COMMAND, 1).fields);
+    expect(summaries).toEqual([
+      [['open', true], ['viewMode', 8], ['previousViewMode', 0xc], ['commandIndex', 0]],
+      [
+        ['playerEntityId', 1], ['column', 0], ['row', 210], ['iconEntityId', 14], ['iconKindBit', 7], ['marker', 'created'], ['markerEntityId', 30],
+        ['commandIndex', 1], ['x', -45000], ['y', 2250], ['z', 3],
+      ],
+      [
+        ['playerEntityId', 1], ['serial', 1], ['distance', 45100.5], ['cost', 90], ['energy', 1000], ['transitLength', 3.5], ['fromViewMode', 8],
+        ['commandIndex', 0], ['originX', 1], ['originY', 2], ['originZ', 3], ['destinationX', -45000], ['destinationY', 2250], ['destinationZ', 3],
+      ],
+      [['serial', 1], ['viewMode', 0xc], ['previousViewMode', 1], ['arrived', false]],
+    ]);
+    const destinationSet = MAP_WARP_EVENTS[1] as Extract<DomainEvent, { type: 'warp-destination-set' }>;
+    expect(summarizeEvent({ ...destinationSet, icon: null, marker: { type: 'missing' } }, NO_COMMAND, 1).fields.slice(3, 7)).toEqual([
+      ['iconEntityId', null], ['iconKindBit', null], ['marker', 'missing'], ['markerEntityId', null],
+    ]);
+    const completed = MAP_WARP_EVENTS[3] as Extract<DomainEvent, { type: 'warp-completed' }>;
+    const arrival = {
+      playerEntityId: 1, origin: { x: 0, y: 0, z: 0 }, destination: { x: 9, y: 9, z: 0 }, position: { x: 9, y: 9, z: 600 },
+      orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const, error: 0.25, snapped: 30,
+      charge: { distance: 12, cost: 3, energyBefore: 1000, energyAfter: 996 }, warpClock: 640, hostileNear: true,
+    };
+    expect(summarizeEvent({ ...completed, arrival }, NO_COMMAND, 1).fields).toEqual([
+      ['serial', 1], ['viewMode', 0xc], ['previousViewMode', 1], ['arrived', true], ['playerEntityId', 1], ['error', 0.25], ['snapped', 30],
+      ['chargeDistance', 12], ['chargeCost', 3], ['energyBefore', 1000], ['energyAfter', 996], ['warpClock', 640], ['hostileNear', true],
+      ['x', 9], ['y', 9], ['z', 600], ['orientation', '1 0 0 0 1 0 0 0 1'], ['originX', 0], ['originY', 0], ['originZ', 0],
+      ['destinationX', 9], ['destinationY', 9], ['destinationZ', 0],
+    ]);
   });
 
   it('keeps 500 events untruncated and drops the oldest of 501', () => {

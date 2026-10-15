@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "03"
-updated: 2026-10-09
+updated: 2026-10-14
 related: [ADR-0007, ADR-0015, U-001, U-004, U-008, U-018, U-020, U-022, U-026, U-027, U-028, U-030]
 reviewed: sha256:dc6bc0cbc39a
 ---
@@ -376,6 +376,37 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 - 旧记录保留在浏览器中，不迁移也不清理（P5）。包变大后存储需求增加，建议性的空间预检照常工作；[本地导入指南](../../../guides/local-import.md#缓存与重新导入)补充重新导入的说明。
 - 不涉及玩家存档；规范数据与 `MissionSetup` 都不是存档格式。
 
+### P3-09 的修订：地图几何（修订 2）
+
+本节由 P3-09 的子任务 08 加入（2026-10-14），定稿 [P3-09 spec](../09/spec.md#地图几何的内容输入) 的关卡 D-01 中内容输入的部分；Core 一侧的输入、校验与 setupHash 在 [P3-02 的 MW-01](../02/spec.md#mw-01-世界创建输入与静态规则数据)。前文各节与本节不一致时以本节为准；其他导入项、限值与错误不变。原版依据：[cockpit 的 10 型记录](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)、[地图鼠标](../../../original/formats/executable.md#map-mouse-input-p3-0503)、[光标与标记中的 `0x49e74`](../../../original/formats/executable.md#cursor-destination-and-marker-p3-0902)、[放大窗口与信息小窗](../../../original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904)与 [hud §1 的字体表](../../../original/formats/hud.md#1-bitmap-fonts-confirmed)。
+
+- **Asset 与角色：**
+
+  | Asset ID | kind / 角色 | 内容 | 依赖 | 来源部件 | 映射置信度 |
+  |---|---|---|---|---|---|
+  | `data/hud/map-geometry` | data / `map-geometry` | 地图仪表记录的含末像素矩形与重绘间隔，以及字体 1 的字形高度 | 无 | `SR.NOB` CCKD 10103：布局号为 6 的目录槽中类型为 10 的唯一仪表记录（子资源）与头部字体表第 1 项（子资源） | `confirmed` |
+
+  只导入规则需要的这三个字段：Core 用它们得出主地图、信息小窗与放大窗口的像素矩形、两组换算比例、光标起点与信息行容量；P3-13 通过 Core 的 `map` 分区取得同一几何，不重新解释原版记录。CCKD 10101（LO 套件）、10097 与其他仪表记录不导入；记录的 +0x14、+0x24 与运行时的 +0x1C 不导入（地图处理程序不读，[cockpit](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)）。
+- **切片定义版本 5：** `SLICE_DEFINITION_VERSION` 由 4 递增为 5，新增必需角色 `map-geometry`（组 `cockpit-hud-map`，kind `data`，恰为 1）。切片 ID、候选、配置、组与其他角色不变。
+- **规范 payload（schema 1，`MAP_GEOMETRY_SCHEMA_VERSION`）：** 沿用 HUD data payload 的规范 ASCII JSON（与 `view-labels`、`hud-text` 相同的规则）：
+
+  ```ts
+  interface MapGeometry {
+    rectangle: { x0: number; y0: number; x1: number; y1: number }; // 记录 +0x04–+0x10（i32），画面像素，含末像素
+    redrawInterval: number;                                          // 记录 +0x18（u32），时钟单位
+    informationLineHeight: number;                                   // 字体表第 1 项头部 +3（u8），像素
+  }
+  ```
+
+  - **读取器 `readMapGeometry`**（`src/content/hud/`）：严格读取，结果冻结并与输入隔离；字段恰为上述三个。约束：0 ≤ x0 ≤ x1 ≤ 639，0 ≤ y0 ≤ y1 ≤ 479；s = y1 − y0 + 1 ≥ 2（信息小窗与放大窗口各高 s >> 1 ≥ 1）；x0 + s < x1（右侧条带宽 x1 − (x0 + s) ≥ 1）；`redrawInterval` 为 u32；`informationLineHeight` 为 1–8 的整数（与字体读取器的高度上限相同）。不满足的为 `invalid-flight-data-payload`（与其他 HUD data payload 相同），诊断只有结构路径与原因。跨输入的检查（起点在主地图内、比例为有限正数、重绘间隔与步长）在 Core（P3-02 MW-01）。
+  - **限值：** `payloadBytes` 256（三个字段的规范编码远小于此，2 的幂）。
+- **来源与核验：** 生成 `cockpit-hud-map` 组的图形步骤在读取 CCKD 10103 的同一次读取中：先按目录核对头部与目录范围，找到 +0x00 等于 6 的目录槽（恰一个，否则 `unsupported-payload`）；核对其仪表记录数组（+0x18 指针、+0x1C 数量、48 字节步长）完整位于条目之内，数量不超过 32（基准每槽至多 11 个，按 2 倍取整到 2 的幂），然后才读取；类型为 10 的记录恰为一个（否则 `unsupported-payload`）；字体表第 1 项沿用既有字体读取器。子资源在转换器从同一次读取中解析出后升为 `verified`，写法沿用现有转换器的约定。读取越界为 `invalid-payload`，计数超限为 `limit-exceeded`；诊断不回显数值。
+- **预算：** 图形步骤的份额增加 1 个 Asset 与该 payload 的字节数（按限值），其余维度不变；`PRODUCTION_PACKAGE.limits` 随之更新。
+- **包身份与转换器版本：** 图形转换器的组件由 `graphics-4` 递增为 `graphics-5`（若并行任务合入时已先递增，则相对实际集成基线再递增一次），`PRODUCTION_CONVERTER_VERSION` 随之改变；内容 schema 仍为 1，导入协议版本不变（阶段集合与消息形状不变）。
+- **持久化与兼容：** 旧转换器版本与切片定义版本 4 的缓存不再恢复，用户须重新导入（切片定义版本不符报 `cache-incompatible`）；IndexedDB 的数据库版本、记录格式与缓存键结构不变；取消、坏输入、配额不足或事务失败沿用既有事务，不留半包，不覆盖已有有效包；旧记录不迁移也不清理（P5）。
+- **应用与 Core：** 应用从同一经 `validatePackage` 验证的包中按角色解码该 Asset，作为 `createWorld`、录制入口与 `ReplayContent` 的 `mapGeometry: { id, content }`（P3-02 MW-01）；setupHash 覆盖其 ID 与完整内容。实际任务不再依赖渲染器存在才取得地图几何。
+- **任务记录 +0x7C 不在本修订中：** 对象记录读取器已把它列为保留字并拒绝非零值；切片全为 0，Core 的地图可见基础值恒为 false（P3-02 MW-01）。
+
 ## 技术决定
 
 用户指示按推荐答案决定需要澄清的问题（2026-10-09）。以下选择据此确定，批准时一并确认。冻结决定未改变，不需要 ADR。
@@ -485,3 +516,17 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 
 - **改动的部分：** 问题与目标、S-05、S-08、S-13、不包含、涉及模块、当前实现与依据、导入项表、字段处理规则 8 与 10、Asset 与角色、切片定义版本 4、规范 payload（含新增的“声音 payload schema 2”一节）、来源映射与核验、限值的取值、错误、持久化与兼容、技术决定 9 与 14–16、验证策略的针对性检查，以及 AC-05、AC-06、AC-07、AC-10、AC-11、AC-17、AC-20。其余契约与原批准范围相同。
 - **批准：** 修订后的契约经审阅后，用户于 2026-10-09 明确批准（“Approve the revised spec (revision 1); then add the remediation subtasks to the goal”）。批准范围为修订后的完整契约，含技术决定 14 至 16 与改动后的 AC。已完成子任务的证据保留，受影响的验收由 goal 新增的修复子任务承担。
+
+### 修订 2（2026-10-14，P3-09 的 D-01；按用户 2026-10-14 的预先授权由 agent 定稿，待用户事后审阅）
+
+P3-09 的关卡 D-01 要求把地图几何的内容输入作为本 spec 的增量修订定稿（[P3-09 spec 的地图几何的内容输入](../09/spec.md#地图几何的内容输入)）。
+
+- **改动的部分：** 只新增“P3-09 的修订：地图几何（修订 2）”一节与本条记录，并改了 front matter 的日期。没有新增或改动 S/AC 编号；其他导入项、字段处理规则、限值、错误与持久化规则不变；已完成子任务的证据不改写。修订后未重跑 review-spec。
+- **授权：** [P3-09 goal 的审批节](../09/goal.md#审批)记录的预先授权：关卡 08（D-01）由 agent 按研究证据取推荐方案定稿，如实记为“按预先授权由 agent 定稿、待用户事后审阅”。这不是用户本人对本修订的批准。授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们。
+- **所选方案与理由：** 新增 `cockpit-hud-map` 组的 data 角色 `map-geometry`，只含 10 型记录的矩形、重绘间隔与字体 1 的高度。原版每次进入地图都只从该矩形导出主地图与右侧两块区域（`0x49e74`），信息行容量是区域高度除以字体 1 的高度，调度器读重绘间隔；三者都影响规则（光标起点与量化、换算、命中、信息行），所以作为 setupHash 绑定的规则数据导入。
+- **被排除的方案：**
+  1. **扩展既有的 `layout` payload：** 改变图像布局的 schema，并让规则数据依赖只供绘制的布局资源。
+  2. **只导入矩形，信息行容量由 P3-13 计算：** 计数行的生成取决于容量，Core 就无法给出完整的信息行，P3-13 要重新实现规则。
+  3. **导入全部仪表记录或 LO 套件：** 超出 P3-09 spec S-02 的最小范围。
+  4. **在 Core 中硬编码矩形：** 违反不硬编码原版数据的规则。
+  5. **同时导入记录 +0x7C：** 读取器已拒绝其非零值，切片没有需要（见[地图几何的修订](#p3-09-的修订地图几何修订-2)末条）。

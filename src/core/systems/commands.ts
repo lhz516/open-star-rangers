@@ -3,18 +3,22 @@
  * `command-result`, in command order, from the rule module of its type. The player's update (flight-control.ts) is the
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
- * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`); every other
- * type is rejected/not-implemented until its rule task routes it. A module emits a command's additional events right
- * after its result.
+ * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-09's
+ * `toggle-map` and `map-point` to map.ts and `request-warp` to warp.ts; every other type is rejected/not-implemented until its rule task routes it. A module emits a
+ * command's additional events right after its result.
+ *
+ * Every command is judged in the interaction context of the tick's command view (pipeline.ts; MW-04), which the
+ * accepted view commands before it have moved on, never in the context the batch started with.
  */
 import type { CommandResultReason } from '../contracts/domain-events.ts';
 import type { Command, CommandType } from '../contracts/tick-input.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { interactionContext } from '../world/player-state.ts';
-import type { WorldState } from '../world/world-state.ts';
 import { judgeEnergyCommand } from './energy.ts';
+import { judgeMapPoint, judgeToggleMap } from './map.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
+import { judgeRequestWarp } from './warp.ts';
 import { judgeWeaponCommand } from './weapons.ts';
 
 /** The command variants of one or more types. */
@@ -40,19 +44,48 @@ export function rejectNotImplemented(context: TickContext, command: Command, com
 /**
  * The common pre-judgement of P3-07's commands (CR-05), in order: without a player entity, or with one that is
  * destroyed or not active (state 7), `player-unavailable`, as the original polls no keys then; in an interaction
- * context other than flight, `wrong-context`, as only the flight key context `0x264a0` handles these keys. Otherwise
- * the player's entity, which the rule modules judge the command on.
+ * context of the command view other than flight, `wrong-context`, as only the flight key context `0x264a0` handles
+ * these keys. Otherwise the player's entity, which the rule modules judge the command on.
  */
-export function combatCommandPlayer(world: WorldState): Entity | 'player-unavailable' | 'wrong-context' {
-  const { entityId, viewMode } = world.player;
+export function combatCommandPlayer({ world, commandView }: TickContext): Entity | 'player-unavailable' | 'wrong-context' {
+  const { entityId } = world.player;
   const player = entityId === null ? undefined : world.entities.get(entityId);
   if (player === undefined || player.destroyed || player.state !== 'active') return 'player-unavailable';
-  return interactionContext(viewMode) === 'flight' ? player : 'wrong-context';
+  return interactionContext(commandView.viewMode) === 'flight' ? player : 'wrong-context';
+}
+
+/**
+ * The selection commands in the map context (MW-04): after the common pre-judgement's `player-unavailable`, ignored as
+ * `wrong-context`, as the map's keys have no digits, Enter or menu navigation. Elsewhere they belong to the base and
+ * communications menus (P3-10) and stay not implemented; P3-06 judges `select-number` and `confirm-selection` in
+ * flight and in the Warp context itself (flight-control.ts).
+ */
+function judgeSelectionCommand(context: TickContext, command: CommandOf<'select-number' | 'confirm-selection' | 'navigate-selection'>, commandIndex: number): void {
+  if (interactionContext(context.commandView.viewMode) !== 'map') {
+    rejectNotImplemented(context, command, commandIndex);
+    return;
+  }
+  const player = combatCommandPlayer(context);
+  emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: player === 'player-unavailable' ? player : 'wrong-context' });
 }
 
 /** Judges the command at `commandIndex` by its type; the player's update calls it for every command it does not judge. */
 export function judgeCommand(context: TickContext, command: Command, commandIndex: number): void {
   switch (command.type) {
+    case 'toggle-map':
+      judgeToggleMap(context, command, commandIndex);
+      return;
+    case 'map-point':
+      judgeMapPoint(context, command, commandIndex);
+      return;
+    case 'request-warp':
+      judgeRequestWarp(context, command, commandIndex);
+      return;
+    case 'select-number':
+    case 'confirm-selection':
+    case 'navigate-selection':
+      judgeSelectionCommand(context, command, commandIndex);
+      return;
     case 'target':
       judgeTargetCommand(context, command, commandIndex);
       return;

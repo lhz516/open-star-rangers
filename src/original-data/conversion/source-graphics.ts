@@ -1,13 +1,14 @@
 import { GRAPHICS_LIMITS } from '../../content/graphics/graphics-format.ts';
+import type { MapRectangle } from '../../content/hud/map-geometry-payload.ts';
 import { isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
 import { SourceError, type SourceLimitName } from '../source-error.ts';
 
 // Source structure of DATA palettes, 36-byte image records, MFDD record lists, bitmap font tables, CCKD group
-// directories, TABL image lists and SNIP frames (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
+// directories and instrument records, TABL image lists and SNIP frames (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
 // it allocates anything sized by the source, copies its result into new buffers the caller owns and throws a
-// SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`, `frames`,
-// `colours`) under the caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
+// SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`, `instruments`,
+// `frames`, `colours`) under the caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
 
 const IMAGE_RECORD_BYTES = 36;
 const DATA_PALETTE_BYTES = 768;
@@ -16,14 +17,17 @@ const CCKD_FONT_COUNT = 3;
 /** CCKD directory records and elements (cockpit §1): an element is an image record, i32 x and y, and two u32 flags. */
 const COCKPIT_GROUP_BYTES = 32;
 const COCKPIT_ELEMENT_BYTES = 52;
+/** CCKD instrument records (cockpit §1): u32 type, the inclusive i32 rectangle at +0x04–+0x10, the u32 redraw interval at +0x18. */
+const COCKPIT_INSTRUMENT_BYTES = 48;
 
 /**
  * Approved safety caps on container counts above the largest baseline counts (docs/plan/p2/07/spec.md, limits): CCKD
  * directory slots (1–8), elements per slot (0–16, the layout element cap), records per MFDD list (0–16), records per
- * TABL image list (1–64) and SNIP frames (1–16).
+ * TABL image list (1–64) and SNIP frames (1–16); and instrument records in the slot the map geometry reads (0–32: at
+ * most 11 per baseline slot, doubled and rounded up to a power of two; P3-03 spec, P3-09 的修订：地图几何（修订 2）).
  */
 export const CONTAINER_LIMITS = Object.freeze({
-  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64, snipFrames: 16,
+  cockpitSlots: 8, cockpitElements: GRAPHICS_LIMITS.layoutElements, mfdRecords: 16, tableRecords: 64, snipFrames: 16, cockpitInstruments: 32,
 });
 
 /** The SNIP colour table: one palette index per 2-bit pixel value (hud, SNIP 10487). */
@@ -54,6 +58,14 @@ export interface SourceImage {
   readonly indices: Uint8Array<ArrayBuffer>;
   /** Null for raw images; otherwise the canonical packed mask: bit 7 leftmost, rows padded with 0 bits, 1 = opaque. */
   readonly mask: Uint8Array<ArrayBuffer> | null;
+}
+
+/** The fields of one CCKD instrument record the map geometry imports (cockpit §1, instrument types per slot). */
+export interface CockpitInstrument {
+  /** Inclusive screen rectangle, +0x04–+0x10 (i32). */
+  readonly rectangle: MapRectangle;
+  /** Redraw interval in clock units, +0x18 (u32). */
+  readonly redrawInterval: number;
 }
 
 /** One CCKD element in stored order. */
@@ -333,19 +345,24 @@ export function decodeSnipFrame(entry: RelocatedBlock, index: number, colours: U
   return Object.freeze({ width, height, indices, mask: null });
 }
 
+/** The block offsets of the CCKD directory records, after the header and the directory are checked to lie inside the block. */
+function cockpitDirectory(block: Uint8Array, path: string): readonly number[] {
+  const groups = fieldAt(path, 'groups');
+  if (!fits(block, 0, 16)) invalid(groups, 'the CCKD header extends past the block');
+  const [directory, count] = [u32(block, 8), u32(block, 12)];
+  withinLimit(count, 'cockpitSlots', CONTAINER_LIMITS.cockpitSlots, groups);
+  if (!fits(block, directory, count * COCKPIT_GROUP_BYTES)) invalid(groups, 'the CCKD group directory extends past the block');
+  return Array.from({ length: count }, (_, slot) => directory + slot * COCKPIT_GROUP_BYTES);
+}
+
 /**
  * Every CCKD directory slot's elements in stored order. An empty slot has no elements and its pointer addresses
  * nothing; every other element array must lie inside the block, and each element's two flag fields must be 0 or 1
  * (their meaning is unconfirmed, U-029). Counts are checked before anything they size is read.
  */
 export function readCockpitGroups(block: Uint8Array, path = ''): readonly (readonly CockpitElement[])[] {
-  const [groups, elements] = [fieldAt(path, 'groups'), fieldAt(path, 'elements')];
-  if (!fits(block, 0, 16)) invalid(groups, 'the CCKD header extends past the block');
-  const [directory, count] = [u32(block, 8), u32(block, 12)];
-  withinLimit(count, 'cockpitSlots', CONTAINER_LIMITS.cockpitSlots, groups);
-  if (!fits(block, directory, count * COCKPIT_GROUP_BYTES)) invalid(groups, 'the CCKD group directory extends past the block');
-  return Object.freeze(Array.from({ length: count }, (_, slot) => {
-    const at = directory + slot * COCKPIT_GROUP_BYTES;
+  const elements = fieldAt(path, 'elements');
+  return Object.freeze(cockpitDirectory(block, path).map(at => {
     const [array, length] = [u32(block, at + 16), u32(block, at + 20)];
     withinLimit(length, 'cockpitElements', CONTAINER_LIMITS.cockpitElements, elements, 0);
     if (length > 0 && !fits(block, array, length * COCKPIT_ELEMENT_BYTES)) invalid(elements, 'a CCKD element array extends past the block');
@@ -388,6 +405,29 @@ export function cockpitElementRecordOffset(block: Uint8Array, slot: number, inde
   const elements = readCockpitGroup(block, slot, path);
   if (!isIndex(index, elements.length)) notFound(fieldAt(path, 'elements'), 'the CCKD group has no such element');
   return elements[index].recordOffset;
+}
+
+/**
+ * The one instrument record of type `type` in the CCKD directory slot whose layout number (+0x00, i32) is `layout`, the
+ * `layouts/<layout>/instruments/type-<type>` subresource (cockpit §1). The header and directory must lie inside the
+ * block; exactly one slot must carry the layout number and exactly one of its instrument records the type, otherwise
+ * `unsupported-payload`. The slot's instrument count (+0x1C) is checked against its limit, then its array (+0x18, 48-byte
+ * records) must lie inside the block before any record is read.
+ */
+export function readCockpitInstrument(block: Uint8Array, layout: number, type: number, path = ''): CockpitInstrument {
+  const [groups, instruments] = [fieldAt(path, 'groups'), fieldAt(path, 'instruments')];
+  const slots = cockpitDirectory(block, path).filter(at => i32(block, at) === layout);
+  if (slots.length !== 1) throw new SourceError('unsupported-payload', groups, 'exactly one CCKD directory slot must carry the layout number');
+  const [array, count] = [u32(block, slots[0] + 0x18), u32(block, slots[0] + 0x1c)];
+  withinLimit(count, 'cockpitInstruments', CONTAINER_LIMITS.cockpitInstruments, instruments, 0);
+  if (count > 0 && !fits(block, array, count * COCKPIT_INSTRUMENT_BYTES)) invalid(instruments, 'the CCKD instrument array extends past the block');
+  const records = Array.from({ length: count }, (_, index) => array + index * COCKPIT_INSTRUMENT_BYTES).filter(at => u32(block, at) === type);
+  if (records.length !== 1) throw new SourceError('unsupported-payload', instruments, 'exactly one instrument record of the slot must have the type');
+  const [record] = records;
+  return Object.freeze({
+    rectangle: Object.freeze({ x0: i32(block, record + 0x04), y0: i32(block, record + 0x08), x1: i32(block, record + 0x0c), y1: i32(block, record + 0x10) }),
+    redrawInterval: u32(block, record + 0x18),
+  });
 }
 
 /**

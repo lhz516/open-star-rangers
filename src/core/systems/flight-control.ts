@@ -11,8 +11,11 @@
  * when it is a `control` request, or go in a request of their own, so a tick with at most one speed command posts as
  * many requests as the original posts messages. Request handling applies them in posting order (`0x21dd0`).
  *
- * The map and base contexts read no stick in the original, which keeps the steering applied before; Core takes their
- * manual axes as 0 instead, a deliberate difference (spec 技术决定 10). Core keeps no key or command across ticks.
+ * Each command is judged in the interaction context of the command view (pipeline.ts, CommandView; docs/plan/p3/02/
+ * spec.md, MW-04), which an accepted `toggle-map` before it in the batch has already moved, and the axes in the context
+ * the view has after the last command. The map and base contexts read no stick in the original, which keeps the
+ * steering applied before; Core takes their manual axes as 0 instead, a deliberate difference (spec 技术决定 10). Core
+ * keeps no key or command across ticks.
  *
  * Before the commands, the update drops a target that no longer resolves, runs P3-07's missile lock and then the speed
  * assist (`0x27f68`), whose match writes the block directly and whose restoring request goes before the commands'
@@ -41,6 +44,7 @@ import { applySpeedMatch, isAssistKind, nextAssistDue, speedDifferenceExceeded, 
 import { ROTATION_AXES, type Entity, type EntityId, type RotationAxis, type SteeredMovementBlock } from '../world/entity-table.ts';
 import { interactionContext, type InteractionContext, type PlayerControl, type SpeedAssist } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import type { CommandView } from './pipeline.ts';
 
 /** Message 0x20000 (`0x21dd0`): the integer control path on an entity, with the values it had when posted. */
 export interface ControlRequest extends IntegerControl {
@@ -164,25 +168,27 @@ function pendingCommandedSpeed(world: WorldState, player: Entity, record: CraftR
 }
 
 /**
- * Judges the commands in array order. A P3-06 command needs an available player and the flight context, the only one
- * whose key handler (`0x264a0`) takes the throttle keys, the presets, Enter and Ctrl+Enter. `select-number` passes the
- * same gates but has no effect, so it is `wrong-context` in flight as well. `+` and `−` read back the commanded speed
- * as the requests posted before them leave it (pendingCommandedSpeed). A match needs a target with a block, else it is
- * `no-target`. Every other command goes to `judge` in its place in the order.
+ * Judges the commands in array order, each in the context of the command view as the commands before it left it. A
+ * P3-06 command needs an available player and the flight context, the only one whose key handler (`0x264a0`) takes the
+ * throttle keys, the presets, Enter and Ctrl+Enter. `select-number` passes the same gates but has no effect, so it is
+ * `wrong-context` in flight as well. `+` and `−` read back the commanded speed as the requests posted before them leave
+ * it (pendingCommandedSpeed). A match needs a target with a block, else it is `no-target`. Every other command goes to
+ * `judge` in its place in the order.
  */
 function judgeCommands(
   world: WorldState,
   { commands }: TickInput,
   tick: number,
+  view: Readonly<CommandView>,
   player: Entity | null,
   control: PlayerControl | null,
   requests: PlayerRequest[],
   emit: PlayerUpdateOutput['emit'],
   judge: PlayerUpdateOutput['judge'],
 ): void {
-  const context = interactionContext(world.player.viewMode);
   const record = player === null ? undefined : world.craftInfo.content.craft[player.kindBit];
   for (const [commandIndex, command] of commands.entries()) {
+    const context = interactionContext(view.viewMode);
     const action = flightAction(command, context);
     if (action === undefined) {
       judge(command, commandIndex);
@@ -222,10 +228,11 @@ function judgeCommands(
 /**
  * The deflections of the axes that changed since their last read, which they become; null when none changed. The map
  * and base contexts take every manual axis as 0, so entering them switches a held turn off and leaving them with neutral
- * input restores nothing. The flight and Warp contexts take the tick's axes.
+ * input restores nothing. The flight and Warp contexts take the tick's axes. The context is the command view's after
+ * the tick's last command.
  */
-function changedAxes(world: WorldState, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
-  const context = interactionContext(world.player.viewMode);
+function changedAxes(view: Readonly<CommandView>, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
+  const context = interactionContext(view.viewMode);
   const manual = context !== 'map' && context !== 'base';
   const changes: Record<RotationAxis, number | null> = { pitch: null, yaw: null, roll: null };
   let changed = false;
@@ -268,10 +275,18 @@ function runSpeedAssist(world: WorldState, player: Entity, assist: SpeedAssist, 
 /**
  * The player's update in the object update stage (spec D-08): the invalid-target drop, P3-07's missile lock, the speed
  * assist, the commands and the axes, in that order, then the requests in the order they were made, the assist's first.
- * Returns the available player it ran for, or null; P3-07's automatic target selection (`0x2799c`), which ends the
- * original's update, follows the release of the fire commands' launches (pipeline.ts; CR-07).
+ * `view` is the tick's command view, which starts as the committed view and which `judge` moves on for an accepted
+ * view command (MW-04). Returns the available player it ran for, or null; P3-07's automatic target selection
+ * (`0x2799c`), which ends the original's update, follows the release of the fire commands' launches (pipeline.ts;
+ * CR-07).
  */
-export function updatePlayer(world: WorldState, input: TickInput, tick: number, { emit, post, judge, lockMissiles }: PlayerUpdateOutput): Entity | null {
+export function updatePlayer(
+  world: WorldState,
+  input: TickInput,
+  tick: number,
+  { emit, post, judge, lockMissiles }: PlayerUpdateOutput,
+  view: Readonly<CommandView>,
+): Entity | null {
   const player = availablePlayer(world);
   const control = player && world.player.control;
   if (player !== null && control === null) throw new CoreFaultError('invariant-violated', 'flight-control.player-control');
@@ -283,8 +298,8 @@ export function updatePlayer(world: WorldState, input: TickInput, tick: number, 
     if (restoring !== null) post(restoring);
   }
   const requests: PlayerRequest[] = [];
-  judgeCommands(world, input, tick, player, control, requests, emit, judge);
-  const axes = control && changedAxes(world, control, input.axes);
+  judgeCommands(world, input, tick, view, player, control, requests, emit, judge);
+  const axes = control && changedAxes(view, control, input.axes);
   if (player !== null && axes !== null) {
     const last = requests.at(-1);
     if (last?.type === 'control') requests[requests.length - 1] = { ...last, axes };

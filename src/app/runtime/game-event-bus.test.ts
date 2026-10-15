@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import { createWorld } from '../../core/world/create-world.ts';
 import { asCreateInput, worldInput } from '../../core/world/create-world.test-support.ts';
-import { COMBAT_EVENTS } from './combat-events.test-support.ts';
+import { COMBAT_EVENTS, MAP_WARP_EVENTS } from './combat-events.test-support.ts';
 import { GameEventBus, type GameEventListener, type PendingDelivery } from './game-event-bus.ts';
 import { GameRuntimeError } from './runtime-errors.ts';
 
@@ -142,6 +142,13 @@ describe('GameEventBus', () => {
     bus.dispatch(COMBAT_EVENTS.map((event) => ({ event, commandId: null })));
     expect(calls).toEqual(COMBAT_EVENTS.map(({ type }) => `${type}:null`));
     expect(new Set(calls).size).toBe(13);
+  });
+
+  it('accepts P3-09\'s map and Warp event types and filters by each', () => {
+    const bus = new GameEventBus(), calls: string[] = [];
+    for (const { type } of MAP_WARP_EVENTS) bus.on(type, (event, delivery) => { calls.push(`${event.type}:${delivery.commandId}`); });
+    bus.dispatch([...COMBAT_EVENTS, ...MAP_WARP_EVENTS].map((event) => ({ event, commandId: null })));
+    expect(calls).toEqual(['map-toggled:null', 'warp-destination-set:null', 'warp-started:null', 'warp-completed:null']);
   });
 
   it('clears every subscription, and rejects unknown types and non-function receivers', () => {

@@ -1,20 +1,21 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
  * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
- * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts). map, communications and result fix the
- * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a
- * fully visible map or a victory. The projection gives only what the original shows or a rule needs, never the list of
+ * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts), and so is map (P3-09, map.ts).
+ * communications and result fix the boundary their owners fill; until a rule makes one ready it is `not-implemented`,
+ * never an empty list, a zero value or a victory. The projection gives only what the original shows or a rule needs, never the list of
  * all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the
  * spec (扩展规则) before its partition can become ready.
  */
 import type { AssetId } from '../../content/asset-id.ts';
-import type { MapAxis } from '../../content/logic/logic-content.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
+import type { MapPixel, MapPoint, PixelRect, WorldRectangle } from '../world/map-rule-data.ts';
 import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
 import type { MissionStatus, WorldState } from '../world/world-state.ts';
 import { projectCombat } from './combat.ts';
+import { projectMap } from './map.ts';
 
 export interface ClockProjection {
   readonly tick: number;
@@ -126,6 +127,18 @@ export interface CombatPlayer {
   /** The SUBSYSTEM_COUNT two-bit fields. */
   readonly subsystems: readonly SubsystemState[];
   readonly leftPage: LeftPage;
+  readonly warp: CombatWarpReading;
+}
+
+/**
+ * The cockpit's Warp readings (MW-11): the type-12 Warp indicator and, in view mode 1, the values of left page 6's three
+ * labelled readouts and trace (`0x4dcec`); the trace's history and refresh period are P3-13's.
+ */
+export interface CombatWarpReading {
+  /** `0x4f2a0`, `0x4f3e4`: +0xC8 = 0, or +0xC8 + 64 × +0xA4 < clock (strict); the campaign gate always holds. */
+  readonly indicator: boolean;
+  /** f32 a, s, p, c in [0, 1] in view mode 1; null in every other view. */
+  readonly page: { readonly angle: number; readonly error: number; readonly completion: number; readonly centring: number } | null;
 }
 
 /**
@@ -179,40 +192,108 @@ export interface FlightProjection {
   readonly combat: FlightCombat;
 }
 
-/** The strategic map frame converted to runtime units. */
-export interface MapFrameProjection {
-  readonly rightAxis: MapAxis;
-  readonly upAxis: MapAxis;
-  readonly center: { readonly right: number; readonly up: number };
-  readonly halfExtent: number;
-}
+// The strategic map partition (docs/plan/p3/02/spec.md, MW-11), ready since P3-09 (map.ts).
 
-/** A contact's marker class: P3-09. */
-export type MapMarkerClass = never;
-/** Explored and currently visible areas with their spatial unit and indexing; not presumed to be a grid: P3-09. */
-export type MapVisibility = never;
+/** A Warp request's gate (MW-04) judged on the committed state: the reading never changes the state. */
+export type WarpRequestReading =
+  | { readonly accepted: true }
+  | { readonly accepted: false; readonly reason: 'player-unavailable' | 'wrong-context' | 'no-destination' | 'cooldown' | 'insufficient-energy' };
+
+/** A cost readout: c and E (i32); percent = max(trunc(c ÷ E × 100), 1), null when E = 0. */
+export interface MapCostReading {
+  readonly cost: number;
+  readonly energy: number;
+  readonly percent: number | null;
+}
 
 export interface MapContact {
-  readonly id: EntityId;
-  readonly position: Vec3;
+  readonly entityId: EntityId;
+  readonly kindBit: number;
   readonly name: NameReference;
-  readonly marker: MapMarkerClass;
-}
-
-export interface MapDestination {
   readonly position: Vec3;
-  readonly energyRequired: number;
-  readonly executable: boolean;
+  readonly pixel: MapPoint;
+  readonly inWorld: boolean;
+  /** Bit 0; a kind in `0x6c87f`; the rest (that is, `0x93780`). */
+  readonly class: 'player' | 'friendly' | 'hostile';
+  /** The player's target, which the original draws on top. */
+  readonly target: boolean;
+  /** trunc(D(F(+0x0C) × F(ppX))); null for 0; a disc for the player and friendly craft. */
+  readonly coverage: { readonly radius: number; readonly style: 'disc' | 'ring' } | null;
 }
 
-/** Strategic map data (P3-09): only contacts that pass the visibility rules. */
+export interface MapZoomMember {
+  readonly entityId: EntityId;
+  /** Relative to the zoom window's origin: `0x4c5ec`'s pixel; the spacing `0x4b56c` is P3-13's drawing (MW-11). */
+  readonly pixel: MapPoint;
+  /** The selection box: a destination exists and |trunc(D(position − destination))| < 1000 on all three axes. */
+  readonly boxed: boolean;
+  /** `0x4b98c`'s number: the truncated 3D distance to the player; null for the player itself. */
+  readonly distance: number | null;
+}
+
+/** The information window's rows, in the original's order. */
+export type MapInformationRow =
+  | { readonly type: 'unit-name'; readonly entityId: EntityId; readonly kindBit: number; readonly name: NameReference }
+  | { readonly type: 'unit-values'; readonly entityId: EntityId; readonly shield: ResourceReading; readonly hull: ResourceReading; readonly energy: ResourceReading }
+  | { readonly type: 'count'; readonly kindBit: 7 | 8 | 9 | 10 | 19 | 13 | 14 | 16 | 12; readonly count: number };
+
+export interface MapLabel {
+  readonly entityId: EntityId;
+  readonly name: NameReference;
+  readonly pixel: MapPoint;
+  readonly playerOrWingman: boolean;
+}
+
+/** The open map: everything the map view shows. */
+export interface MapOpen {
+  readonly state: 'open';
+  /** The previous view mode is 6. */
+  readonly openedFromBase: boolean;
+  readonly geometry: {
+    readonly main: PixelRect;
+    readonly information: PixelRect;
+    readonly zoom: PixelRect;
+    readonly pixelsPerUnit: { readonly x: number; readonly y: number };
+    readonly unitsPerPixel: { readonly x: number; readonly y: number };
+    readonly zoomPixelsPerUnit: { readonly x: number; readonly y: number };
+    readonly world: WorldRectangle;
+  };
+  /** f32; the world point's z is 0. */
+  readonly cursor: {
+    readonly pixel: MapPixel;
+    readonly world: Vec3;
+    readonly zoomBounds: { readonly left: number; readonly right: number; readonly top: number; readonly bottom: number };
+  };
+  /** In map icon list order. */
+  readonly contacts: readonly MapContact[];
+  /** The entries `0x4c5ec` puts in the zoom window, in the same order. */
+  readonly zoomMembers: readonly MapZoomMember[];
+  /** Count rows at or past the capacity are drawn outside the window by the original. */
+  readonly information: { readonly capacity: number; readonly rows: readonly MapInformationRow[] };
+  readonly labels: readonly MapLabel[];
+  /**
+   * The player's projected pixel (possibly outside the main map; drawing clips it) to the cursor pixel (`0x4c674`); from
+   * the player's live position when it has no icon (MW-11, a project rule unreachable before P3-11).
+   */
+  readonly line: { readonly from: MapPoint; readonly to: MapPixel };
+  readonly destination: { readonly position: Vec3; readonly pixel: MapPoint; readonly inWorld: boolean; readonly cost: MapCostReading } | null;
+  readonly cursorCost: MapCostReading;
+  readonly markerEntityId: EntityId | null;
+  readonly warpRequest: WarpRequestReading;
+}
+
+/** Open while the committed view mode is 8; closed, it gives only the destination, the marker and the Warp gate. */
+export type MapPlayer =
+  | { readonly state: 'closed'; readonly destination: Vec3 | null; readonly markerEntityId: EntityId | null; readonly warpRequest: WarpRequestReading }
+  | MapOpen;
+
+/** Null without a player entity. */
 export interface MapReady {
   readonly readiness: 'ready';
-  readonly frame: MapFrameProjection;
-  readonly contacts: readonly MapContact[];
-  readonly visibility: MapVisibility;
-  readonly destination: MapDestination | null;
+  readonly player: MapPlayer | null;
 }
+
+export type MapPartition = NotImplementedPartition | MapReady;
 
 /** The current menu's content: P3-03 imports menus, P3-10 fixes the reference. */
 export type MenuContentReference = never;
@@ -251,7 +332,7 @@ export interface Projection {
   readonly mission: MissionProjection;
   readonly player: PlayerProjection;
   readonly flight: FlightProjection;
-  readonly map: NotImplementedPartition | MapReady;
+  readonly map: MapPartition;
   readonly communications: NotImplementedPartition | CommunicationsReady;
   readonly result: NotImplementedPartition | ResultReady;
 }
@@ -311,7 +392,7 @@ export function projectWorld(world: WorldState): Projection {
       interactionContext: interactionContext(player.viewMode),
     }),
     flight: flightProjection(world),
-    map: NOT_IMPLEMENTED,
+    map: projectMap(world),
     communications: NOT_IMPLEMENTED,
     result: NOT_IMPLEMENTED,
   });

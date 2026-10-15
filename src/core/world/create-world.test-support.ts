@@ -153,9 +153,19 @@ export function eventMission() {
 export function craftInfoContent() {
   const info = syntheticCraftInfo();
   for (const record of info.craft) Object.assign(record, { at0C: 250, at54: 1000 });
+  // The player's Warp fields within MW-01's check 4: +0xA8 positive (the builder's is negative).
+  info.craft[0].atA8 = 14;
   for (const gun of info.guns) gun.at14 = 7;
   info.craft[0].mounts[1].at1C = null;
   return info;
+}
+
+/**
+ * Map geometry content (P3-03 修订 2), the values of the synthetic production cockpit's map record: a main map of side
+ * 400 at (21, 45), whose cursor starts at (178, 154), information and zoom windows 190 × 200, capacity 25 lines.
+ */
+export function mapGeometryContent() {
+  return { rectangle: { x0: 21, y0: 45, x1: 611, y1: 444 }, redrawInterval: 0, informationLineHeight: 8 };
 }
 
 /** DEBRIS parameters with records for some kinds (syntheticDebrisParameters): (kind bit mod 3) + 1, none for 13 and 14. */
@@ -240,6 +250,8 @@ export interface WorldInputParts {
   readonly models?: unknown;
   /** Defaults to aiProgramsContent(). */
   readonly aiPrograms?: unknown;
+  /** Defaults to mapGeometryContent(). */
+  readonly mapGeometry?: unknown;
   readonly identity?: Record<string, unknown>;
   readonly run?: Record<string, unknown>;
 }
@@ -300,6 +312,7 @@ export function worldInput(parts: WorldInputParts = {}) {
     explosionAnimations: parts.explosionAnimations ?? animationsContent(),
     models: parts.models ?? modelsFor(instantiableModels(base), debris as ReturnType<typeof debrisContent>),
     aiPrograms: { id: readAssetId(PRODUCTION_RULE_DATA.aiPrograms), content: parts.aiPrograms ?? aiProgramsContent() },
+    mapGeometry: { id: readAssetId(PRODUCTION_RULE_DATA.mapGeometry), content: parts.mapGeometry ?? mapGeometryContent() },
     identity,
     run,
   };

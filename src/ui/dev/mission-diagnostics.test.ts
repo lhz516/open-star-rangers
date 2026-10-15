@@ -11,8 +11,8 @@ import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDi
 
 /**
  * Results of the drafted commands that P3-06's and P3-07's rules judge in flight with an active player and no target:
- * a throttle step, a preset, a digit without effect in flight, a manual match that needs a target, and P3-07's below.
- * Every other one is not implemented yet.
+ * a throttle step, a preset, a digit without effect in flight, a manual match that needs a target, P3-07's and P3-09's
+ * below. Every other one is not implemented yet.
  */
 const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
   // P3-07: the gun starts without charge; target selection, weapon selection, and the energy and damage report pages.
@@ -24,8 +24,13 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   target: ['accepted', null],
   'cycle-main-weapon': ['accepted', null],
   'select-missile': ['accepted', null],
-  energy: ['accepted', null],
-  'damage-report': ['accepted', null],
+  // P3-09: toggle-map opens the map, so the energy and damage report commands after it are judged in the map context,
+  // where map-point is accepted; the drafted hover selects no Warp destination.
+  'toggle-map': ['accepted', null],
+  'map-point': ['accepted', null],
+  'request-warp': ['ignored', 'no-destination'],
+  energy: ['ignored', 'wrong-context'],
+  'damage-report': ['ignored', 'wrong-context'],
 };
 const outcomeOf = (type: Command['type']) => OUTCOMES[type] ?? ['rejected', 'not-implemented'];
 
@@ -186,19 +191,56 @@ describe('mission diagnostics', () => {
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
       .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...outcomeOf(type)]));
-    // P3-07's events of the accepted commands reach the log by their own fields; the automatic target selection, which
-    // sees no actual target yet, follows the command's (CR-07).
-    const combat = setup.state().log.entries.filter(({ type }) => ['target-changed', 'weapon-selected', 'left-page-changed'].includes(type));
+    // The accepted commands' events reach the log by their own fields: P3-07's, then in request handling the target
+    // selection, the map's opening and the automatic target selection, which sees no actual target yet (CR-07, MW-04).
+    const combat = setup.state().log.entries.filter(({ type }) => ['target-changed', 'weapon-selected', 'left-page-changed', 'map-toggled'].includes(type));
     expect(combat.map(({ type, fields }) => [type, fields.find(([name]) => name === 'commandIndex')?.[1]])).toEqual([
       ['weapon-selected', COMMAND_TYPES.indexOf('cycle-main-weapon')], ['weapon-selected', COMMAND_TYPES.indexOf('select-missile')],
-      ['left-page-changed', COMMAND_TYPES.indexOf('energy')], ['left-page-changed', COMMAND_TYPES.indexOf('damage-report')],
-      ['target-changed', COMMAND_TYPES.indexOf('target')], ['target-changed', null],
+      ['target-changed', COMMAND_TYPES.indexOf('target')], ['map-toggled', COMMAND_TYPES.indexOf('toggle-map')], ['target-changed', null],
     ]);
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
     expect(pendingCommands).toEqual([]);
     const recent = COMMAND_TYPES.length - RECENT_RESULT_LIMIT;
     expect(recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason]))
       .toEqual(COMMAND_TYPES.slice(recent).map((type, index) => [recent + index + 1, type, ...outcomeOf(type)]));
+  });
+
+  it('submits the map\'s point and Warp request from the editor, and shows Core\'s Warp gate reasons', async () => {
+    const setup = await openDiagnostics();
+    toFlight(setup.owner);
+    const next = frames(setup);
+    next();
+    next(2, 200);
+    const drafted = (type: Command['type'], values: Readonly<Record<string, string>> = {}) => {
+      const reading = readDraft(Object.entries(values).reduce((draft, [field, text]) => editDraft(draft, field, text), commandDraft(type)));
+      if (!reading.valid) throw new Error(reading.reason);
+      return submit(setup, reading.command);
+    };
+    drafted('request-warp');
+    drafted('toggle-map');
+    next(1, 200);
+    const { map } = setup.run()!.projection();
+    const open = map.readiness === 'ready' && map.player?.state === 'open' ? map.player : null;
+    if (open === null) throw new Error('The map is not open');
+    // The player's own map pixel, whose centre selects it.
+    const { pixel } = open.contacts.find((contact) => contact.class === 'player')!;
+    const { width, height } = open.geometry.main;
+    drafted('map-point', { operation: 'select', right: String((pixel.column + 0.5) / width), down: String((pixel.row + 0.5) / height) });
+    next(1, 200);
+    drafted('request-warp');
+    next(1, 200);
+    // The synthetic player affords the short Warp to its own pixel's icon, so the gate that refused it now accepts it.
+    expect(setup.ui().store.reader.getState().recentResults.map(({ commandId, commandType, outcome, reason }) => [commandId, commandType, outcome, reason])).toEqual([
+      [1, 'request-warp', 'ignored', 'no-destination'], [2, 'toggle-map', 'accepted', null], [3, 'map-point', 'accepted', null],
+      [4, 'request-warp', 'accepted', null],
+    ]);
+    const player = setup.run()!.projection().player.entityId;
+    // The log lists every field (event-log.test.ts checks their order).
+    const set = setup.state().log.entries.find((entry) => entry.type === 'warp-destination-set')!;
+    expect(set.fields).toHaveLength(11);
+    expect(set).toMatchObject({ commandId: null, fields: expect.arrayContaining([
+      ['playerEntityId', player], ['column', pixel.column], ['row', pixel.row], ['iconEntityId', expect.any(Number)], ['marker', 'created'], ['commandIndex', 0],
+    ]) });
   });
 
   it('keeps the 10 most recent command results of 11', async () => {

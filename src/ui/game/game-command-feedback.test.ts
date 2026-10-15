@@ -202,14 +202,14 @@ describe('game command feedback: refusals and cancellations', () => {
 
   it('settles a cancellation without publishing the projection, so the sample window is undisturbed', () => {
     const { reader, feedback, session, frame, clock } = setup();
-    frame(1, 100);
-    frame(1, 150);
+    // Ticks 1 and 2 give the map a player and change its Warp gate, key facts the bridge publishes at once.
+    frame(2, 100);
     const log = projectionLog(reader, clock);
     feedback.submit(launch);
     clock.now = 160;
     session.control({ type: 'clear-input', reason: 'focus-loss' });
     expect(outcomes(reader.getState())).toEqual([[1, 'cancelled', 'focus-loss']]);
-    expect(reader.getState().projection?.clock.tick).toBe(1);
+    expect(reader.getState().projection?.clock.tick).toBe(2);
     expect(log).toEqual([]);
     frame(1, 199);
     expect(log).toEqual([]);

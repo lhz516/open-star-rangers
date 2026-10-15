@@ -1,5 +1,6 @@
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
+import { MAP_GEOMETRY_LIMITS, MAP_GEOMETRY_ROLE } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
 import { readGraphicsDeclarations, type CharMapRange, type GraphicsDeclaration } from './graphics-declarations.ts';
@@ -17,7 +18,8 @@ import {
 // research-confirmed effect images with their embedded palettes (docs/plan/p2/06/spec.md), and the P2-07 front cockpit
 // and map frame layouts with their element images, the map palette, the HUD and map image families, the left display's
 // interference frames and the status display messages (docs/plan/p2/07/spec.md, production Assets and sources), the
-// P3-03 flight images and view labels of production-flight-graphics.ts, and the HUD text of production-hud-text.ts.
+// P3-03 flight images and view labels of production-flight-graphics.ts, the HUD text of production-hud-text.ts, and the
+// map geometry of the P3-09 revision of the P3-03 spec.
 // Entry IDs, slots, record indices and executable addresses come from the local structure checks and research recorded
 // in P2-05/06, P2-06/04, P2-06/11, P2-07/07–09, P2-07/19, P3-03/05 and P3-03/24; they stay in original-data and never
 // enter canonical content.
@@ -63,6 +65,13 @@ const TABLE_EVIDENCE = [...HUD_PATH_EVIDENCE, 'docs/original/formats/hud.md#tabl
 const ZOOM_ICON_EVIDENCE = [...TABLE_EVIDENCE, 'docs/original/formats/hud.md#zoom-window-icons-by-craft-type-r8'];
 const INTERFERENCE_EVIDENCE = ['docs/original/formats/hud.md#snip-10487-confirmed-structure-p2-1227'];
 const STATUS_MESSAGES_EVIDENCE = ['docs/original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision'];
+const MAP_GEOMETRY_EVIDENCE = [
+  'docs/original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730',
+  'docs/original/formats/executable.md#cursor-destination-and-marker-p3-0902',
+  'docs/original/formats/executable.md#map-mouse-input-p3-0503',
+  'docs/original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904',
+  'docs/original/formats/hud.md#1-bitmap-fonts-confirmed',
+];
 
 const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
 const NEAREST_EVIDENCE = 'docs/original/formats/textures.md#nearest-colour-metric-and-tie-rule-confirmed';
@@ -211,6 +220,26 @@ const COCKPIT_HUD_MAP_ASSETS: readonly CockpitAsset[] = [
   ),
 ];
 
+/**
+ * The map geometry's sources in the HI cockpit set (P3-03 spec, P3-09 的修订：地图几何（修订 2）): the one type-10 record
+ * of the slot carrying layout 6, the map (cockpit §1), and font table 1, whose glyph height the information window's
+ * lines use.
+ */
+export const MAP_GEOMETRY_SOURCE = Object.freeze({ layout: 6, instrumentType: 10, font: 1 });
+
+const MAP_GEOMETRY_ID = 'data/hud/map-geometry';
+
+/**
+ * The map geometry: two subresource parts of the one CCKD entry in canonical locator order, the font and then the
+ * instrument record, verified only after conversion parses them.
+ */
+const mapGeometryMapping = () => {
+  const { layout, instrumentType, font } = MAP_GEOMETRY_SOURCE;
+  const base = mapping(MAP_GEOMETRY_ID, 'CCKD', HI_COCKPIT_ENTRY, `fonts/${font}`, [], MAP_GEOMETRY_EVIDENCE);
+  const instrument = { discPath: ARCHIVE, entry: { id: HI_COCKPIT_ENTRY, type: 'CCKD' }, subresource: `layouts/${layout}/instruments/type-${instrumentType}` };
+  return { ...base, parts: [...base.parts, { alternatives: [instrument] }] };
+};
+
 /** The codes hud §1.1 records per table: printable ASCII whose glyph is that character, and space. */
 export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = readGraphicsDeclarations([
   palette('models'),
@@ -222,6 +251,7 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
   ...COCKPIT_HUD_MAP_ASSETS.map(({ declaration }) => declaration),
   ...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS,
   ...PRODUCTION_HUD_TEXT_DECLARATIONS,
+  { asset: { id: MAP_GEOMETRY_ID, kind: 'data' }, role: MAP_GEOMETRY_ROLE, group: 'cockpit-hud-map' },
 ]);
 
 /** Each TEX image maps to its whole record; its palette, the embedded BGR palette, is confirmed. */
@@ -243,6 +273,7 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
     ...COCKPIT_HUD_MAP_ASSETS.map(asset => asset.mapping),
     ...PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings,
     ...PRODUCTION_HUD_TEXT_MAPPINGS.mappings,
+    mapGeometryMapping(),
   ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
 });
 
@@ -261,12 +292,21 @@ export const PRODUCTION_COCKPIT_HUD_MAP_SHARE: BudgetRecord = Object.freeze({
 });
 
 /**
+ * The approved map geometry share (P3-03 spec, P3-09 的修订：地图几何（修订 2））: one Asset and its payload at the byte
+ * limit.
+ */
+export const PRODUCTION_MAP_GEOMETRY_SHARE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE, assets: 1, payloadBytes: MAP_GEOMETRY_LIMITS.payloadBytes,
+});
+
+/**
  * The approved budget share of these Assets: the P2-05 share plus the P2-06 slice texture, P2-07 cockpit, HUD and map,
- * P3-03 flight graphics and HUD text shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural
+ * P3-03 flight graphics and HUD text, and map geometry shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural
  * limits; source reads keep the P2-02 default limit, so no share adds any.
  */
 export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = [
   PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE, PRODUCTION_HUD_TEXT_SHARE,
+  PRODUCTION_MAP_GEOMETRY_SHARE,
 ].reduce(
   (total, share) => addBudgets(total, share, 'share'),
   Object.freeze({

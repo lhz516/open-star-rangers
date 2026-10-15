@@ -18,6 +18,7 @@ import {
   type EntitySource,
   type GroupMembership,
   type HitEvent,
+  type MapToggledEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
   type ShotTrigger,
@@ -26,6 +27,11 @@ import {
   type SpeedMatchedEvent,
   type TargetChangedEvent,
   type Vec3,
+  type WarpArrival,
+  type WarpCompletedEvent,
+  type WarpDestinationSetEvent,
+  type WarpMarkerChange,
+  type WarpStartedEvent,
 } from '../contracts/domain-events.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import { COMMAND_TYPES } from '../contracts/tick-input.ts';
@@ -41,13 +47,18 @@ import {
 } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
 import type { Level, Matrix3 } from '../world/entity-table.ts';
+import { MAP_SIDE_LIMIT, type MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage } from '../world/player-state.ts';
 import { readHash, type ReplayCheckpoint, type ReplayResult } from './recording.ts';
+
+/** P3-09's events (docs/plan/p3/02/spec.md, MW-05). */
+type MapWarpEvent = MapToggledEvent | WarpDestinationSetEvent | WarpStartedEvent | WarpCompletedEvent;
 
 /** P3-07's events (docs/plan/p3/02/spec.md, CR-06). */
 type CombatEvent = Exclude<
   DomainEvent,
-  CommandResultEvent | ObjectInstantiatedEvent | SpeedAssistToggledEvent | SpeedMatchedEvent | SpeedAssistReleasedEvent | ObjectLeftWorldEvent
+  | CommandResultEvent | ObjectInstantiatedEvent | SpeedAssistToggledEvent | SpeedMatchedEvent | SpeedAssistReleasedEvent | ObjectLeftWorldEvent
+  | MapWarpEvent
 >;
 
 /** Difference data, not an error. */
@@ -79,6 +90,12 @@ const EVENT_FIELDS = {
   'energy-depleted': ['type', 'tick', 'entityId', 'kindBit', 'position'],
   'energy-allocation-changed': ['type', 'tick', 'entityId', 'shieldLevel', 'chargeLevel', 'commandIndex'],
   'left-page-changed': ['type', 'tick', 'page', 'previousPage', 'commandIndex'],
+  'map-toggled': ['type', 'tick', 'open', 'viewMode', 'previousViewMode', 'commandIndex'],
+  'warp-destination-set': ['type', 'tick', 'playerEntityId', 'destination', 'pixel', 'icon', 'marker', 'commandIndex'],
+  'warp-started': [
+    'type', 'tick', 'playerEntityId', 'serial', 'origin', 'destination', 'distance', 'check', 'transitLength', 'fromViewMode', 'commandIndex',
+  ],
+  'warp-completed': ['type', 'tick', 'serial', 'viewMode', 'previousViewMode', 'arrival'],
 } as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
@@ -101,6 +118,11 @@ const AI_CHANNEL = integerIn(0, 2);
 const FACE = integerIn(0, 5);
 /** A list's index: −1 for an empty list. */
 const LIST_INDEX = integerIn(-1, 0x7fffffff);
+/** View modes are the original's byte ps +0x28. */
+const VIEW_MODE = integerIn(0, 0xff);
+/** A cursor pixel lies in the main map. */
+const MAP_PIXEL = integerIn(0, MAP_SIDE_LIMIT - 1);
+const SERIAL = integerIn(1, Number.MAX_SAFE_INTEGER);
 
 function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== 'boolean') throw new CoreInputError(path, 'must be a boolean');
@@ -264,6 +286,107 @@ function readHit(event: Record<string, unknown>, path: string, tick: number): Hi
   };
 }
 
+function readMapPixel(value: unknown, path: string): MapPixel {
+  const { column, row } = readExactRecord(value, path, ['column', 'row']);
+  return { column: readNumber(column, `${path}.column`, MAP_PIXEL), row: readNumber(row, `${path}.row`, MAP_PIXEL) };
+}
+
+function readMarkerChange(value: unknown, path: string): WarpMarkerChange {
+  const marker = readDataRecord(value, path, 2);
+  const type = readChoice(marker.type, `${path}.type`, ['created', 'moved', 'missing']);
+  if (type === 'missing') {
+    requireExactFields(marker, path, ['type']);
+    return { type };
+  }
+  requireExactFields(marker, path, ['type', 'entityId']);
+  return { type, entityId: readEntityId(marker.entityId, `${path}.entityId`) };
+}
+
+function readIcon(value: unknown, path: string): WarpDestinationSetEvent['icon'] {
+  if (value === null) return null;
+  const { entityId, kindBit } = readExactRecord(value, path, ['entityId', 'kindBit']);
+  return { entityId: readEntityId(entityId, `${path}.entityId`), kindBit: readKindBit(kindBit, `${path}.kindBit`) };
+}
+
+function readArrival(value: unknown, path: string): WarpArrival | null {
+  if (value === null) return null;
+  const arrival = readExactRecord(value, path, [
+    'playerEntityId', 'origin', 'destination', 'position', 'orientation', 'error', 'snapped', 'charge', 'warpClock', 'hostileNear',
+  ]);
+  const at = (field: string): string => `${path}.${field}`;
+  const charge = readExactRecord(arrival.charge, at('charge'), ['distance', 'cost', 'energyBefore', 'energyAfter']);
+  return {
+    playerEntityId: readEntityId(arrival.playerEntityId, at('playerEntityId')),
+    origin: readVector(arrival.origin, at('origin')),
+    destination: readVector(arrival.destination, at('destination')),
+    position: readVector(arrival.position, at('position')),
+    orientation: readMatrix(arrival.orientation, at('orientation')),
+    error: readNumber(arrival.error, at('error'), COORDINATE),
+    snapped: readNullableEntityId(arrival.snapped, at('snapped')),
+    charge: {
+      distance: readNumber(charge.distance, at('charge.distance'), INT32),
+      cost: readNumber(charge.cost, at('charge.cost'), INT32),
+      energyBefore: readNumber(charge.energyBefore, at('charge.energyBefore'), INT32),
+      energyAfter: readNumber(charge.energyAfter, at('charge.energyAfter'), INT32),
+    },
+    warpClock: readNumber(arrival.warpClock, at('warpClock'), INDEX),
+    hostileNear: readBoolean(arrival.hostileNear, at('hostileNear')),
+  };
+}
+
+/** Reads the fields of a P3-09 event (docs/plan/p3/02/spec.md, MW-05) after its type and field list. */
+function readMapWarpEvent(event: Record<string, unknown>, path: string, tick: number, type: MapWarpEvent['type']): MapWarpEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'map-toggled':
+      return {
+        type,
+        tick,
+        open: readBoolean(event.open, at('open')),
+        viewMode: readNumber(event.viewMode, at('viewMode'), VIEW_MODE),
+        previousViewMode: readNumber(event.previousViewMode, at('previousViewMode'), VIEW_MODE),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    case 'warp-destination-set':
+      return {
+        type,
+        tick,
+        playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+        destination: readVector(event.destination, at('destination')),
+        pixel: readMapPixel(event.pixel, at('pixel')),
+        icon: readIcon(event.icon, at('icon')),
+        marker: readMarkerChange(event.marker, at('marker')),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    case 'warp-started': {
+      const check = readExactRecord(event.check, at('check'), ['cost', 'energy']);
+      return {
+        type,
+        tick,
+        playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+        serial: readNumber(event.serial, at('serial'), SERIAL),
+        origin: readVector(event.origin, at('origin')),
+        destination: readVector(event.destination, at('destination')),
+        distance: readNumber(event.distance, at('distance'), COORDINATE),
+        check: { cost: readNumber(check.cost, at('check.cost'), INT32), energy: readNumber(check.energy, at('check.energy'), INT32) },
+        transitLength: readNumber(event.transitLength, at('transitLength'), COORDINATE),
+        fromViewMode: readNumber(event.fromViewMode, at('fromViewMode'), VIEW_MODE),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    }
+    case 'warp-completed':
+      if (event.previousViewMode !== 1) throw new CoreInputError(at('previousViewMode'), 'must be 1');
+      return {
+        type,
+        tick,
+        serial: readNumber(event.serial, at('serial'), SERIAL),
+        viewMode: readNumber(event.viewMode, at('viewMode'), VIEW_MODE),
+        previousViewMode: 1,
+        arrival: readArrival(event.arrival, at('arrival')),
+      };
+  }
+}
+
 /** Reads the fields of a P3-07 event (docs/plan/p3/02/spec.md, CR-06) after its type and field list. */
 function readCombatEvent(event: Record<string, unknown>, path: string, tick: number, type: CombatEvent['type']): CombatEvent {
   const at = (field: string): string => `${path}.${field}`;
@@ -409,6 +532,11 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
       return { type, tick };
     case 'object-left-world':
       return readObjectLeftWorld(event, path, tick);
+    case 'map-toggled':
+    case 'warp-destination-set':
+    case 'warp-started':
+    case 'warp-completed':
+      return readMapWarpEvent(event, path, tick, type);
     default:
       return readCombatEvent(event, path, tick, type);
   }
@@ -419,11 +547,12 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
  * (docs/plan/p3/06/spec.md, 领域事件; docs/plan/p3/02/spec.md, CR-06): the speed assist and then the commands in the
  * player's update; the other objects' updates, the first place damage can happen; a manual match, an applied
  * selection, a shot, an explosion's activation, a missile's or fragment's expiry and a source's release in request
- * handling; an energy depletion in the energy stage; a world exit in the parked update; the right display's clearing
- * at the end of the frame. `hit` and `object-destroyed` happen from the object updates on, in several stages;
- * `object-instantiated` and a selection or page change without a command are not ordered against the stages.
+ * handling, and P3-09's map toggle, destination and Warp start there too (MW-05); an energy depletion in the energy
+ * stage; a world exit in the parked update; a Warp's completion in its stage; the right display's clearing at the end
+ * of the frame. `hit` and `object-destroyed` happen from the object updates on, in several stages; `object-instantiated`
+ * and a selection or page change without a command are not ordered against the stages.
  */
-const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, energy: 4, parked: 5, frameEnd: 6 });
+const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, energy: 4, parked: 5, warpCompletion: 6, frameEnd: 7 });
 
 /**
  * The order of one tick's events, reset for each tick: the stages never go back; command results numbered 0, 1, … in
@@ -432,7 +561,8 @@ const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, e
  * `speed-matched`, a command's `target-changed` and a command's shots after their command's result; at most one
  * additional event per command, shots aside; a missile's hits after its detonation; an `object-destroyed` after a
  * `hit` of the same entity, once, and no `hit` of it after (a destroyed victim takes no hit, CR-06); at most one
- * `target-cleared`.
+ * `target-cleared`; `map-toggled`, `warp-destination-set` and `warp-started` after their command's result, as its one
+ * additional event; at most one `warp-completed`.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
@@ -440,6 +570,7 @@ class TickOrder {
   #commands = 0;
   #assisted = false;
   #cleared = false;
+  #completed = false;
   readonly #extended = new Set<number>();
   readonly #detonated = new Set<number>();
   readonly #hit = new Set<number>();
@@ -451,6 +582,7 @@ class TickOrder {
     this.#commands = 0;
     this.#assisted = false;
     this.#cleared = false;
+    this.#completed = false;
     this.#extended.clear();
     this.#detonated.clear();
     this.#hit.clear();
@@ -531,6 +663,17 @@ class TickOrder {
         this.#enter(STAGE.frameEnd, path);
         if (this.#cleared) throw new CoreInputError(path, 'must not be a second target-cleared of the tick');
         this.#cleared = true;
+        return false;
+      case 'map-toggled':
+      case 'warp-destination-set':
+      case 'warp-started':
+        this.#followCommand(event.commandIndex, path);
+        this.#extend(event.commandIndex, path);
+        return false;
+      case 'warp-completed':
+        this.#enter(STAGE.warpCompletion, path);
+        if (this.#completed) throw new CoreInputError(path, 'must not be a second warp-completed of the tick');
+        this.#completed = true;
         return false;
       case 'object-instantiated':
         return false;

@@ -65,7 +65,9 @@ export type NameReference =
   | { readonly type: 'none' }
   | { readonly type: 'candidate'; readonly declaration: DeclarationReference; readonly candidate: number }
   | { readonly type: 'pool'; readonly index: number }
-  | { readonly type: 'craft-type'; readonly kindBit: number };
+  | { readonly type: 'craft-type'; readonly kindBit: number }
+  /** The kind-25 map marker's (MW-03): consumers resolve it to `hud-text`'s `mapMarkerName`; never assigned from a pool. */
+  | { readonly type: 'map-marker' };
 
 /** The three explosion variants Core creates (mb +0xF0 = 0, 2, 3); variant 1 is the presentation layer's (CR-11). */
 export type ExplosionVariant = 'large' | 'other' | 'missile';
@@ -74,15 +76,17 @@ export type ExplosionVariant = 'large' | 'other' | 'missile';
  * What a renderer draws, a closed union fixed at allocation (docs/plan/p3/02/spec.md, CR-02): the model Asset of a
  * craft; a missile record, whose look the presentation layer resolves from content; a projectile-visuals record; an
  * explosion variant, whose EXPL list and item the presentation layer selects (CR-11); one part of the first part list
- * of a source model, or for a kind 1 or 2 source's part 0 its parts 0–2. Model Asset IDs, craft-type slots and
- * record indexes are never merged into one number.
+ * of a source model, or for a kind 1 or 2 source's part 0 its parts 0–2; the kind-25 map marker, which has no 3D
+ * visual but is still listed (docs/plan/p3/02/spec.md, MW-03). Model Asset IDs, craft-type slots and record indexes are
+ * never merged into one number.
  */
 export type EntityPresentation =
   | { readonly type: 'model'; readonly model: AssetId }
   | { readonly type: 'missile'; readonly missile: number }
   | { readonly type: 'projectile'; readonly visuals: AssetId; readonly record: number }
   | { readonly type: 'explosion'; readonly variant: ExplosionVariant }
-  | { readonly type: 'fragment'; readonly model: AssetId; readonly part: number; readonly display: 'part' | 'parts-0-2' };
+  | { readonly type: 'fragment'; readonly model: AssetId; readonly part: number; readonly display: 'part' | 'parts-0-2' }
+  | { readonly type: 'map-marker' };
 
 /**
  * A 3×3 matrix in row order: the original's three attitude rows (object +0x48, +0x54, +0x60), the third of which
@@ -151,10 +155,10 @@ export type Disturbance = { readonly level: 1 } | { readonly level: 2; readonly 
 /**
  * The movement block (object +8) of an active or docked entity; null while parked or removed. A closed union
  * discriminated by `mode` (docs/plan/p3/02/spec.md, CR-03): P3-06's steered variant of the original's modes 0 and 3
- * (craft and missiles), and P3-07's linear (mode 1: projectiles and explosions) and spinning (mode 2: fragments)
- * variants. Every variant has `speed` (+8), which aiming, speed matching and `0x218e8` read.
+ * (craft and missiles), P3-07's linear (mode 1: projectiles and explosions) and spinning (mode 2: fragments) variants,
+ * and P3-09's map marker (mode 4, MW-03). Every variant has `speed` (+8), which aiming, speed matching and `0x218e8` read.
  */
-export type MovementBlock = SteeredMovementBlock | LinearMovementBlock | SpinningMovementBlock;
+export type MovementBlock = SteeredMovementBlock | LinearMovementBlock | SpinningMovementBlock | MarkerMovementBlock;
 
 /**
  * The block of the original's modes 0 (`craft`) and 3 (`warp`), which share their fields; the Warp start and completion
@@ -204,6 +208,17 @@ export interface SpinningMovementBlock {
   /** +0x6C: the row rotation it applies, 2 → `0x228cc`, 1 → `0x22a50`, 0 → `0x22990`. */
   spinAxis: 0 | 1 | 2;
 }
+
+/**
+ * The original's mode 4, the kind-25 map marker's (MW-03): `0x21794` clears block +4–+0xA3, so the speed is 0, and
+ * movement never integrates it. The creation position the original copies to +0x0C has no reader and is not kept.
+ */
+export interface MarkerMovementBlock {
+  readonly mode: 'marker';
+  readonly speed: 0;
+}
+
+const MARKER_MOVEMENT: MarkerMovementBlock = Object.freeze({ mode: 'marker', speed: 0 });
 
 /** AI modes (+0xC4) with the original values that instantiation writes; P3-08 adds the others through the extension rules. */
 export type AiMode = 0 | 1 | 2 | 4 | 5;
@@ -265,6 +280,8 @@ export const MISSILE_KIND_BIT = 20;
 export const PROJECTILE_KIND_BIT = 21;
 export const EXPLOSION_KIND_BIT = 22;
 export const FRAGMENT_KIND_BIT = 24;
+/** The map/Warp marker, kind `0x2000000` (MW-03). */
+export const MARKER_KIND_BIT = 25;
 const CRAFT_KIND_BITS = 20;
 
 /** A two-bit subsystem field: damage writes 0–2, and only other writers 3. */
@@ -468,8 +485,15 @@ export interface FragmentCombat {
   handOff: EntityId | null;
 }
 
+/** The map marker's (MW-03): it has no combat fields. */
+export interface MarkerCombat {
+  readonly type: 'marker';
+}
+
+const MARKER_COMBAT: MarkerCombat = Object.freeze({ type: 'marker' });
+
 /** An entity's combat state, a closed union by runtime kind (CR-02); its type must match the entity's kind bit. */
-export type EntityCombat = CraftCombat | MissileCombat | ProjectileCombat | ExplosionCombat | FragmentCombat;
+export type EntityCombat = CraftCombat | MissileCombat | ProjectileCombat | ExplosionCombat | FragmentCombat | MarkerCombat;
 export type CombatType = EntityCombat['type'];
 
 /** The combat type an entity of `kindBit` must have; null for a kind no task has given one (CR-02). */
@@ -484,6 +508,8 @@ export function combatTypeOf(kindBit: number): CombatType | null {
       return 'explosion';
     case FRAGMENT_KIND_BIT:
       return 'fragment';
+    case MARKER_KIND_BIT:
+      return 'marker';
     default:
       return null;
   }
@@ -555,6 +581,11 @@ export interface Entity {
   warpClock: number;
   /** +0xCC: in Warp. */
   inWarp: boolean;
+  /**
+   * +0xD4, the map visibility flag (MW-02, MW-06): only the `object-sets` stage and the reveal write it, for craft kinds
+   * (bits 0–19); false for every other kind and at allocation.
+   */
+  mapVisible: boolean;
   /** Present exactly while the entity is not parked: instantiation and resuming build it, parking releases it. */
   movement: MovementBlock | null;
   ai: AiState;
@@ -586,6 +617,34 @@ export interface EntityInit {
   readonly formation: Formation | null;
   /** Of the type combatTypeOf(kindBit) gives. */
   readonly combat: EntityCombat;
+}
+
+const NO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+
+/**
+ * The map marker `0x3cb80` allocates (MW-03) at `position` with `orientation`: kind 25, its own name and presentation,
+ * active (allocated presentation-ready), the mode-4 block and otherwise the allocator's defaults: no source, side,
+ * interaction or rule inputs, a maximum speed of 0, no Warp or formation. It has no craft record (`0x2d2d8` gives null
+ * beyond the craft count), so nothing may read one for it.
+ */
+export function markerInit(position: Vec3, orientation: Matrix3): EntityInit {
+  return {
+    kindBit: MARKER_KIND_BIT,
+    source: null,
+    name: Object.freeze({ type: 'map-marker' }),
+    side: null,
+    baseInteraction: false,
+    presentation: Object.freeze({ type: 'map-marker' }),
+    position,
+    orientation,
+    activity: 'active',
+    ruleInputs: NO_RULE_INPUTS,
+    maximumSpeed: 0,
+    lastParkedUpdateClock: 0,
+    ...allocatorFlightState(),
+    movement: MARKER_MOVEMENT,
+    combat: MARKER_COMBAT,
+  };
 }
 
 /** The state an entity starts in on `activity`, at allocation and whenever its parking switches. */
@@ -641,7 +700,8 @@ function copyName(name: NameReference): NameReference {
   return Object.freeze({ type: 'candidate', declaration: Object.freeze({ collection, index }), candidate });
 }
 
-const frozenVec = ({ x, y, z }: Vec3): Vec3 => Object.freeze({ x, y, z });
+/** A frozen copy of a vector. */
+export const frozenVec = ({ x, y, z }: Vec3): Vec3 => Object.freeze({ x, y, z });
 const isFloat32Vec = ({ x, y, z }: Vec3): boolean => isFiniteFloat32(x) && isFiniteFloat32(y) && isFiniteFloat32(z);
 const isClock = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 const AI_MODES: readonly number[] = [0, 1, 2, 4, 5];
@@ -668,6 +728,8 @@ function isValidMovement(block: MovementBlock): boolean {
       return isFiniteFloat32(block.speed) && isFloat32Vec(block.velocity) && isFloat32Vec(block.previousPosition) && isBoolean(block.hitTest);
     case 'spinning':
       return isFiniteFloat32(block.speed) && isFloat32Vec(block.velocity) && isFiniteFloat32(block.spin) && SPIN_AXES.includes(block.spinAxis);
+    case 'marker':
+      return block.speed === 0;
     default:
       return false;
   }
@@ -675,7 +737,8 @@ function isValidMovement(block: MovementBlock): boolean {
 
 /**
  * Whether an entity with `combat` moves with `block`'s variant (CR-03, H1): a craft steered (modes 0 and 3), a missile
- * in mode 0, a projectile linear with its hit test, an explosion linear without, a fragment spinning.
+ * in mode 0, a projectile linear with its hit test, an explosion linear without, a fragment spinning, a map marker in
+ * mode 4 (MW-03).
  */
 function movementFits(block: MovementBlock, combat: EntityCombat): boolean {
   switch (combat.type) {
@@ -689,6 +752,8 @@ function movementFits(block: MovementBlock, combat: EntityCombat): boolean {
       return block.mode === 'linear' && block.hitTest === false;
     case 'fragment':
       return block.mode === 'spinning';
+    case 'marker':
+      return block.mode === 'marker';
   }
 }
 
@@ -707,11 +772,13 @@ const isZeroVec = ({ x, y, z }: Vec3): boolean => x === 0 && y === 0 && z === 0;
  * The fields a runtime kind (CR-02) takes from the allocator rather than a declaration and keeps: created active; no
  * source, side, name or interaction; zero rule inputs; the allocator's AI state with its object target null, as the
  * runtime kinds keep their +0x8C in their combat state; no formation, parked-update clock or Warp; and a maximum speed
- * of 0 but for a missile, whose body record's +0xB8 the missile constructor checks.
+ * of 0 but for a missile, whose body record's +0xB8 the missile constructor checks. The map marker's name is its own
+ * (MW-03); every other runtime kind has none.
  */
 function hasRuntimeKindDefaults(init: EntityInit): boolean {
   const { ruleInputs: inputs, ai } = init;
-  return init.activity === 'active' && init.source === null && init.side === null && init.name.type === 'none' && !init.baseInteraction
+  return init.activity === 'active' && init.source === null && init.side === null && !init.baseInteraction
+    && init.name.type === (init.combat.type === 'marker' ? 'map-marker' : 'none')
     && [inputs.percentB, inputs.percentC, inputs.percentD, inputs.aiValueA, inputs.aiValueB, inputs.aiValueC].every((value) => value === 0)
     && ai.mode === ALLOCATOR_AI_MODE && ai.target === null && ai.objectTarget === null && isZeroVec(ai.goal) && isZeroVec(ai.targetOffset)
     && init.formation === null && init.lastParkedUpdateClock === 0 && init.warpClock === 0 && !init.inWarp
@@ -728,6 +795,8 @@ function copyMovementBlock(block: MovementBlock): MovementBlock {
       return { mode: 'linear', speed: block.speed, velocity: frozenVec(block.velocity), previousPosition: frozenVec(block.previousPosition), hitTest: block.hitTest };
     case 'spinning':
       return { mode: 'spinning', speed: block.speed, velocity: frozenVec(block.velocity), spin: block.spin, spinAxis: block.spinAxis };
+    case 'marker':
+      return MARKER_MOVEMENT;
   }
 }
 
@@ -832,6 +901,8 @@ function isValidCombat(combat: EntityCombat): boolean {
         && (isEscapePod(combat.sourceKindBit, combat.part) ? combat.debris === null : combat.debris !== null && isIndex(combat.debris))
         && isInt32(combat.durability) && isBoolean(combat.explodeOnExpiry) && isNullableId(combat.handOff)
         && (combat.expiry.type === 'pending' || combat.expiry.type === 'never' || (combat.expiry.type === 'at' && isClock(combat.expiry.clock)));
+    case 'marker':
+      return true;
     default:
       return false;
   }
@@ -850,6 +921,8 @@ function presentationFits(presentation: EntityPresentation, combat: EntityCombat
       return combat.type === 'explosion' && presentation.variant === combat.variant;
     case 'fragment':
       return combat.type === 'fragment' && presentation.part === combat.part && presentation.display === (isEscapePod(combat.sourceKindBit, combat.part) ? 'parts-0-2' : 'part');
+    case 'map-marker':
+      return combat.type === 'marker';
     default:
       return false;
   }
@@ -867,6 +940,8 @@ function copyPresentation(presentation: EntityPresentation): EntityPresentation 
       return Object.freeze({ type: 'explosion', variant: presentation.variant });
     case 'fragment':
       return Object.freeze({ type: 'fragment', model: presentation.model, part: presentation.part, display: presentation.display });
+    case 'map-marker':
+      return Object.freeze({ type: 'map-marker' });
   }
 }
 
@@ -961,6 +1036,8 @@ function copyCombat(combat: EntityCombat): EntityCombat {
       const { sourceKindBit, part, debris, durability, explodeOnExpiry, expiry, handOff } = combat;
       return { type: 'fragment', sourceKindBit, part, debris, durability, explodeOnExpiry, expiry: copyFragmentExpiry(expiry), handOff };
     }
+    case 'marker':
+      return MARKER_COMBAT;
   }
 }
 
@@ -997,6 +1074,7 @@ export class EntityTable {
     }
     if (combat.type !== combatTypeOf(kindBit) || !isValidCombat(combat)) throw new CoreFaultError('invariant-violated', 'entities.combat');
     if (!presentationFits(init.presentation, combat)) throw new CoreFaultError('invariant-violated', 'entities.presentation');
+    if (combat.type === 'craft' && init.name.type === 'map-marker') throw new CoreFaultError('invariant-violated', 'entities.name');
     if ((activity === 'parked') !== (movement === null) || (movement !== null && !movementFits(movement, combat))) {
       throw new CoreFaultError('invariant-violated', 'entities.movement');
     }
@@ -1025,6 +1103,7 @@ export class EntityTable {
       lastParkedUpdateClock: init.lastParkedUpdateClock,
       warpClock: init.warpClock,
       inWarp: init.inWarp,
+      mapVisible: false,
       movement: movement && copyMovementBlock(movement),
       ai: { mode: ai.mode, target: ai.target, goal: frozenVec(ai.goal), targetOffset: frozenVec(ai.targetOffset), objectTarget: ai.objectTarget },
       formation: formation && Object.freeze({ leader: formation.leader, offset: frozenVec(formation.offset) }),
