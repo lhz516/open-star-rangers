@@ -107,7 +107,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [20-replay-limits.md](./subtasks/20-replay-limits.md) | 15, 18, 19 | completed |
 | [21-runtime-transition-hold.md](./subtasks/21-runtime-transition-hold.md) | 11, 18 | completed |
 | [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | completed |
-| [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | in-progress |
+| [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | completed |
 | [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | completed |
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | in-progress |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
@@ -163,6 +163,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 18 完成：** 离港、自动离港与停靠中的系统按 D-01 实现（基地保存位姿、不重建移动块、`placementSerial` 为项目字段、同 tick 两次离港各自生效）。每批生效视角已传入 P3-06 与 P3-10 的命令；P3-07 的命令等待 MW-04。只测试入口、尚未接线的：P3-11 的 `0x32d74`、P3-08 的 AI 候选搜索与 P3-09 的地图开关。
 
 - **2026-10-14 — 24 完成：** 私有真实内容核对 4 次正式 World 运行全部通过。未覆盖、交公共测试与 25/26：船体补给（碰撞只损及护盾与子系统）、僚机停靠与恢复分支（P3-08 之前僚机停放）、1000 门禁边界附近。
+
+- **2026-10-14 — 23 完成：** 新增合成场景 `mission-docking`（基地在 1000 门禁内、菜单含状态 7 与停靠 9）；用例文件名为 `e2e/base-interaction.development.spec.ts`（测试入口只在开发构建中，配置按后缀分配项目）。菜单协议只经测试读模型验证，不宣称生产通讯画面通过。
 
 ## 审批
 

@@ -199,7 +199,9 @@ export type MissionScenarioOutcome =
 /**
  * The P3-04 mission scenarios (docs/plan/p3/04/spec.md, 合成任务包), by Worker name: the whole production job on the
  * mission disc, a slice disc whose mission is the production slice mission (`mission/first-campaign`, group 0 / slot 1)
- * with a five-option roster, and three scenarios that each differ from it in one place.
+ * with a five-option roster, and three scenarios that each differ from it in one place; and P3-10's docking disc, that
+ * disc with the base beside a still player and communications menus that reach the docking request
+ * (`dockingRuleDataContents`).
  */
 export const MISSION_SCENARIOS = Object.freeze({
   'mission-startable': Object.freeze({ stage: 'world' }),
@@ -217,6 +219,7 @@ export const MISSION_SCENARIOS = Object.freeze({
     stage: 'create-world',
     failure: Object.freeze({ path: 'input.mission.content.declarations[0].ruleInputs.craftCount', reason: 'must give the player one request' }),
   }),
+  'mission-docking': Object.freeze({ stage: 'world' }),
 } satisfies Readonly<Record<string, MissionScenarioOutcome>>);
 
 export type MissionScenario = keyof typeof MISSION_SCENARIOS;
@@ -309,6 +312,7 @@ export const IMPORT_SCENARIOS: Readonly<Record<string, () => ImportJob>> = Objec
   'mission-load-failed': () => createImportJob(scenarioOpen('mission-startable'), undefined, PLAYER_WINGMAN_LOGIC),
   /** P3-04 S-09: the whole production job on the mission disc whose player record requests two craft. */
   'mission-create-rejected': () => createImportJob(scenarioOpen('mission-create-rejected')),
+  'mission-docking': () => createImportJob(scenarioOpen('mission-docking')),
 });
 
 /** The part of a Worker scope a protocol script uses. */
