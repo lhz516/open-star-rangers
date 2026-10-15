@@ -106,7 +106,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [22-browser-app-verification.md](./subtasks/22-browser-app-verification.md) | 20, 21 | completed |
 | [23-real-content-check.md](./subtasks/23-real-content-check.md) | 20 | completed |
 | [24-original-formal-runs.md](./subtasks/24-original-formal-runs.md) | 10 | completed |
-| [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | pending |
+| [25-comparison-conclusions.md](./subtasks/25-comparison-conclusions.md) | 20, 23, 24 | in-progress |
 | [26-docs-handoff.md](./subtasks/26-docs-handoff.md) | 20, 21 | completed |
 | [28-warp-path-rotation-research.md](./subtasks/28-warp-path-rotation-research.md) | 08 | completed |
 | [29-warp-path-original-docs.md](./subtasks/29-warp-path-original-docs.md) | 28 | completed |
