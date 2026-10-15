@@ -1,7 +1,7 @@
 /**
  * World creation, the formal Core entry (docs/plan/p3/02/spec.md, 运行配置与世界创建; 技术决定 7, 8). Input: the
- * three logic Assets, the craft info (docs/plan/p3/06/spec.md, D-01), the six rule-data inputs (rule-data.ts;
- * docs/plan/p3/02/spec.md, CR-01), the package's ContentIdentity and the run configuration. Creation corresponds to the original's mission build: it validates, converts coordinates, fills the
+ * three logic Assets, the craft info (docs/plan/p3/06/spec.md, D-01), the nine rule-data inputs (rule-data.ts;
+ * docs/plan/p3/02/spec.md, CR-01 and CB-01), the package's ContentIdentity and the run configuration. Creation corresponds to the original's mission build: it validates, converts coordinates, fills the
  * records' defaults (drawing only the +0x78 defaults) and orders the spawn queue, and returns a world at tick 0 with
  * clock 0, no entities, view mode 0xC and mission status built. It returns no events: spawns due at time 0 are
  * instantiated by the first step.
@@ -18,6 +18,7 @@ import { readExactRecord } from '../contracts/validation.ts';
 import { loadMission, type LogicAssetInput } from '../mission/load-mission.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { buildSpawnState } from '../rules/spawn-schedule.ts';
+import { communicationsRuleData } from './comm-input.ts';
 import { checkCraftInfo, readCraftInfoInput } from './craft-info-input.ts';
 import { difficultyGroup, readRunConfig, type RunConfig } from './run-config.ts';
 import { buildRuleData, readRuleDataInputs, RULE_DATA_FIELDS } from './rule-data.ts';
@@ -44,6 +45,12 @@ export interface CreateWorldInput {
   readonly models: readonly LogicAssetInput[];
   /** `data/ai-programs` of the same package (rule-data.ts). */
   readonly aiPrograms: LogicAssetInput;
+  /** `data/comm-menus` of the same package (rule-data.ts; comm-input.ts). */
+  readonly commMenus: LogicAssetInput;
+  /** `data/base-repair-items` of the same package. */
+  readonly baseRepairItems: LogicAssetInput;
+  /** `data/comm-messages` of the same package. */
+  readonly commMessages: LogicAssetInput;
   /** The identity of the validated package every Asset above was decoded from (P3-04, local checks). */
   readonly identity: ContentIdentity;
   readonly run: RunConfig;
@@ -69,7 +76,8 @@ export function initialWorldState(value: CreateWorldInput): WorldState {
   const rand = new RandStream(run.seed);
   const spawn = buildSpawnState(setup, geometry, { group, wingman: run.wingman }, rand);
   checkCraftInfo(craftInfo.content, setup, spawn);
-  const ruleData = buildRuleData(ruleInputs, craftInfo.content, instantiableRecords(setup, spawn));
+  const communications = communicationsRuleData(ruleInputs, craftInfo.content, setup, spawn);
+  const ruleData = buildRuleData(ruleInputs, craftInfo.content, instantiableRecords(setup, spawn), communications);
   const config = { content, mission: setup.mission, setupHash: setupHash(setup, craftInfo, ruleInputs), group, slot: setup.campaign.slot, ...run };
   return createWorldState(config, setup, craftInfo, ruleData, spawn, rand.state);
 }

@@ -1,6 +1,7 @@
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { readAiPrograms, type AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readBaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
+import { readCommMenus, type CommandItem, type CommMenus } from '../../content/rule-data/comm-menus.ts';
 import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { readDebrisParameters } from '../../content/rule-data/debris-parameters.ts';
 import { readFlightMessages, type FlightMessages } from '../../content/rule-data/flight-messages.ts';
@@ -76,7 +77,7 @@ function productionFlightMessages(): FlightMessages {
 function productionCraftInfo() {
   const info = defaultCraftInfo();
   const craft = info.craft.map(record => ({ ...record, at0C: 250 }));
-  craft[0] = { ...craft[0], mounts: craft[0].mounts.map((mount, index) => (index === 1 ? { ...mount, at1C: null } : mount)) };
+  craft[0] = { ...craft[0], at54: 1000, mounts: craft[0].mounts.map((mount, index) => (index === 1 ? { ...mount, at1C: null } : mount)) };
   return readCraftInfo({ ...info, craft, guns: info.guns.map(gun => ({ ...gun, at14: 7 })) });
 }
 
@@ -103,12 +104,35 @@ function productionDebrisParameters() {
   });
 }
 
+/** Replaces byte 1, a menu item's key, keeping byte 0 and the rest. */
+const keyed = (text: string, key: string): string => `${text.slice(0, 1) || '\x80'}${key}${text.slice(2)}`;
+
+/**
+ * The format support's made-up menus with keys world creation accepts (P3-02 CB-01 check 1): a command item's key is
+ * its position, every exit's `x`.
+ */
+function productionCommMenus(): CommMenus {
+  const menus = defaultCommMenus();
+  const commands = (items: readonly CommandItem[]) => items.map(({ text, command }, index) => ({ text: keyed(text, command === 0 ? 'x' : String(index + 1)), command }));
+  return readCommMenus({
+    gatedTargetCommands: commands(menus.gatedTargetCommands),
+    otherTargetCommands: commands(menus.otherTargetCommands),
+    categories: menus.categories.map(({ text, kindMask }) => ({ text: kindMask === 0 ? keyed(text, 'x') : text, kindMask })),
+    objectListLastEntry: keyed(menus.objectListLastEntry, 'x'),
+    kind2TargetCommands: commands(menus.kind2TargetCommands),
+  });
+}
+
+/** The format support's made-up selectors within the domain world creation accepts (CB-01 check 3): 19–31 become 18. */
+const productionBaseRepairItems = () =>
+  readBaseRepairItems({ subsystemSelectors: syntheticBaseRepairItems().subsystemSelectors.map((selector) => (selector > 18 && selector < 32 ? 18 : selector)) });
+
 /** The canonical content of each rule-data role on the production structure. */
 export function productionRuleDataContents(): RuleDataContents {
   return {
     'ai-programs': productionAiPrograms(),
-    'base-repair-items': readBaseRepairItems(syntheticBaseRepairItems()),
-    'comm-menus': defaultCommMenus(),
+    'base-repair-items': productionBaseRepairItems(),
+    'comm-menus': productionCommMenus(),
     'craft-info': productionCraftInfo(),
     'debris-parameters': productionDebrisParameters(),
     'flight-messages': productionFlightMessages(),

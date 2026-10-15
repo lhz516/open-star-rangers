@@ -8,7 +8,7 @@ import { loadMission } from '../mission/load-mission.ts';
 import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, menuText, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
   reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
@@ -639,6 +639,8 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     const records = (input: Record<string, Item>) => input.projectileVisuals.content.records as { selector: number; width: number; length: number; colour: number[] }[];
     const partsOf = (model: Item) => (model.content.partLists as unknown[][])[1];
     const builtIn = (input: Record<string, Item>) => input.aiPrograms.content.builtInPrograms as { at14: number; at24: number; at28: number; at2C: number; handler: { offset: number } }[];
+    const commands = (input: Record<string, Item>, table: string) => input.commMenus.content[table] as { text: string; command: number }[];
+    const faceTables = (input: Record<string, Item>) => input.commMessages.content.faceTables as { present: boolean; frameDurations?: number[] }[][][];
 
     it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts, part counts and AI programs', () => {
       const hash = hashOf();
@@ -676,6 +678,21 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
         (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
         (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
         (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
+        // The communications inputs (CB-01): the IDs and the complete contents, texts beyond the keys included.
+        (input) => void (input.commMenus.id = 'data/other-comm-menus'),
+        (input) => void (commands(input, 'gatedTargetCommands')[0].text = menuText('2')),
+        (input) => void (commands(input, 'gatedTargetCommands')[0].text = `${menuText('1')}!`),
+        (input) => void (commands(input, 'kind2TargetCommands')[6].command = 0x8000_0000),
+        (input) => void ((input.commMenus.content.categories as { kindMask: number }[])[2].kindMask = 0x80000),
+        (input) => void (input.commMenus.content.objectListLastEntry = menuText('x')),
+        (input) => void (input.baseRepairItems.id = 'data/other-base-repair-items'),
+        (input) => void ((input.baseRepairItems.content.subsystemSelectors as number[])[10] = 10),
+        (input) => void (input.commMessages.id = 'data/other-comm-messages'),
+        (input) => void (faceTables(input)[1][0][1].frameDurations![1] = 2),
+        (input) => void (faceTables(input)[2][0][0] = { present: true, frameDurations: [0] }),
+        (input) => void (input.commMessages.content.direct as unknown[]).pop(),
+        (input) => void ((input.commMessages.content.names2001 as string[])[1] = `${MARKER}-pool-0`),
+        (input) => void (input.commMessages.content.names2011 as string[]).reverse(),
       ];
       const hashes = changes.map((change) => changedHash(change));
       for (const changed of hashes) expect(changed).not.toBe(hash);
@@ -698,7 +715,9 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('does not depend on the key order of the rule-data inputs', () => {
       expect(changedHash((input) => {
-        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms'] as const) input[field].content = reversedKeys(input[field].content);
+        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms', 'commMenus', 'baseRepairItems', 'commMessages'] as const) {
+          input[field].content = reversedKeys(input[field].content);
+        }
         input.models = input.models.map(reversedKeys) as never;
       })).toBe(hashOf());
     });

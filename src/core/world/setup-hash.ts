@@ -12,6 +12,9 @@
  * | `explosionAnimations` | each ID and frame count, in ID order | frame images |
  * | `models` | each ID and part list 1's part count, in ID order | geometry, textures, colours, part flags, sounds |
  * | `aiPrograms` | the ID and the complete content | — |
+ * | `commMenus` | the ID and the complete content: the keys are inside the texts | — |
+ * | `baseRepairItems` | the ID and the complete content | — |
+ * | `commMessages` | the ID and the complete content: the name lists decide the name indexes | — |
  *
  * It binds a world, a snapshot or a replay to the initial data actually read, which `ContentIdentity` only declares. A
  * consistency check, not a proof of origin and not free of collisions. Core writes the event triggers here but does
@@ -35,6 +38,9 @@ import type { DebrisCollisionShape, DebrisParameters, DebrisRecord } from '../..
 import type {
   AiEntry, AiGlobals, AiParameterEntry, AiPrograms, AiScriptEntry, BuiltInProgram, CodeIdentity, ScriptItem, StateScripts, TableProgram,
 } from '../../content/rule-data/ai-programs.ts';
+import type { BaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
+import type { CategoryItem, CommandItem, CommMenus } from '../../content/rule-data/comm-menus.ts';
+import type { CommMessage, CommMessages } from '../../content/rule-data/comm-messages.ts';
 import type { WorldCraftInfo } from './craft-info-input.ts';
 import type { RuleDataInputs } from './rule-data.ts';
 
@@ -209,6 +215,29 @@ const aiPrograms = object<AiPrograms>({
   builtInPrograms: list(builtInProgram),
 });
 
+// The communications contents' types belong to P3-03, as the craft info's does. Texts are byte strings, written by the
+// canonical text's string rule.
+const commands = list(object<CommandItem>({ text: scalar, command: scalar }));
+
+const commMenus = object<CommMenus>({
+  gatedTargetCommands: commands,
+  otherTargetCommands: commands,
+  categories: list(object<CategoryItem>({ text: scalar, kindMask: scalar })),
+  objectListLastEntry: scalar,
+  kind2TargetCommands: commands,
+});
+
+const commMessage = (message: CommMessage): CanonicalValue => (message.present
+  ? canonicalObject([['present', true], ['frameDurations', [...message.frameDurations]]])
+  : canonicalObject([['present', false]]));
+
+const commMessages = object<CommMessages>({
+  faceTables: list(list(list(commMessage))),
+  direct: list(commMessage),
+  names2001: list(scalar),
+  names2011: list(scalar),
+});
+
 const ruleData = object<RuleDataInputs>({
   debrisParameters,
   projectileVisuals: object<RuleDataInputs['projectileVisuals']>({ id: scalar, lengths: numbers }),
@@ -216,6 +245,9 @@ const ruleData = object<RuleDataInputs>({
   explosionAnimations: list(object<RuleDataInputs['explosionAnimations'][number]>({ id: scalar, frames: scalar })),
   models: list(object<RuleDataInputs['models'][number]>({ id: scalar, parts: scalar })),
   aiPrograms: object<RuleDataInputs['aiPrograms']>({ id: scalar, content: aiPrograms }),
+  commMenus: object<RuleDataInputs['commMenus']>({ id: scalar, content: commMenus }),
+  baseRepairItems: object<RuleDataInputs['baseRepairItems']>({ id: scalar, content: object<BaseRepairItems>({ subsystemSelectors: numbers }) }),
+  commMessages: object<RuleDataInputs['commMessages']>({ id: scalar, content: commMessages }),
 });
 
 /** 16 lowercase hex digits: the setup first, then the craft info, then the rule-data inputs. */

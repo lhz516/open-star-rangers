@@ -95,8 +95,8 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     expect(typedState.ruleData).toEqual(before);
   });
 
-  it('requires the six fields, each exactly { id, content }', () => {
-    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms'] as const) {
+  it('requires the nine fields, each exactly { id, content }', () => {
+    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms', 'commMenus', 'baseRepairItems', 'commMessages'] as const) {
       expectRejected(inputWith((input) => void Reflect.deleteProperty(input, field)), `input.${field}`, 'is required');
     }
     expectRejected(inputWith((input) => void (input.extra = {})), 'input', 'contains unknown fields');
