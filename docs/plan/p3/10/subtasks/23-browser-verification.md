@@ -33,6 +33,7 @@ updated: 2026-10-14
 
 - `e2e/**`：新增用例与支持代码。
 - `local/research/p3-10/browser/**`：截图与日志（被忽略）。
+- `src/workers/synthetic-import.test-support.ts`、`src/workers/import-scenarios.test-support.ts`、`src/workers/mission-scenarios.test.ts`：可停靠的合成场景 `mission-docking`（仅测试数据）。
 
 ## 验收标准
 
