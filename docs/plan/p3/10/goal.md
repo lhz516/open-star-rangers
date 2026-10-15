@@ -99,8 +99,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | completed |
 | [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | completed |
 | [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | completed |
-| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | pending |
-| [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | pending |
+| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | in-progress |
+| [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | in-progress |
 | [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | pending |
 | [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | pending |
 | [19-comm-projection.md](./subtasks/19-comm-projection.md) | 13, 14, 17 | pending |

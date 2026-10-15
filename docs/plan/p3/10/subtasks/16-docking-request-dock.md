@@ -32,8 +32,8 @@ updated: 2026-10-14
 
 ## 写入范围
 
-- `src/core/rules/docking*.ts`、`src/core/systems/docking*.ts`：计划新增。
-- `src/core/systems/pipeline*.ts`：`mission-flow` 阶段与请求处理接入。
+- `src/core/rules/docking.ts`、`src/core/rules/docking.test.ts`、`src/core/systems/docking.ts`、`src/core/systems/docking.test.ts`：计划新增。
+- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`：`mission-flow` 阶段与请求处理接入。
 
 ## 验收标准
 
