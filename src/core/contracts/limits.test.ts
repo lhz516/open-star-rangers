@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AI_PROGRAMS_LIMITS } from '../../content/rule-data/ai-programs.ts';
 import { CORE_LIMITS, fitsLimit, productFitsLimit, type CoreLimitName } from './limits.ts';
 
 const names = Object.keys(CORE_LIMITS) as CoreLimitName[];
@@ -6,7 +7,7 @@ const names = Object.keys(CORE_LIMITS) as CoreLimitName[];
 describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
   it('covers every budget the spec names with a frozen positive safe integer', () => {
     expect(names).toEqual([
-      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick', 'requestsPerTick', 'radioQueueItems',
+      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick', 'requestsPerTick', 'aiDispatchesPerRun', 'aiDispatchesPerTick', 'radioQueueItems',
       'recordedTicks', 'recordedCommands', 'recordedEvents', 'recordedCheckpoints', 'canonicalTextLength',
     ]);
     expect(Object.isFrozen(CORE_LIMITS)).toBe(true);
@@ -39,8 +40,8 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     const mapWarpEvents = commandsPerTick + 1 + 1 + 2;
     const mapWarpRequests = commandsPerTick + 1;
     expect([combatEvents + otherEvents + mapWarpEvents, combatRequests + mapWarpRequests]).toEqual([8328, 3588]);
-    // About four times each sum, as runaway budgets (CR-14).
-    expect([eventsPerTick, requestsPerTick]).toEqual([32_768, 16_384]);
+    // About four times each sum, as runaway budgets (CR-14); P3-08 doubled the request budget (CR-25).
+    expect([eventsPerTick, requestsPerTick]).toEqual([32_768, 32_768]);
     expect(eventsPerTick).toBeGreaterThan(3.9 * (combatEvents + otherEvents + mapWarpEvents));
     expect(requestsPerTick).toBeGreaterThan(4.5 * (combatRequests + mapWarpRequests));
     // P3-10's additions at the same slice (CB-16): radio-queued, five per-command events, page changes without a command,
@@ -53,8 +54,20 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     const allEvents = combatEvents + otherEvents + mapWarpEvents + communicationsEvents;
     const allRequests = combatRequests + mapWarpRequests + communicationsRequests;
     expect([allEvents, allRequests]).toEqual([8968, 3719]);
-    expect(eventsPerTick).toBeGreaterThan(3.6 * allEvents);
-    expect(requestsPerTick).toBeGreaterThan(4.4 * allRequests);
+    // P3-08's (CR-25), with all 32 craft at the worst table program: 2 executor runs per craft and tick, each of at
+    // most 18 dispatches posting 3 requests, plus the hold step's 2, state rule 1's 2 and one departure; one
+    // create-transponder per command. Events: one consumed command per wingman, one deployment per command.
+    const dispatchesPerRun = 18;
+    const aiRequests = craft * 2 * (3 * dispatchesPerRun + 2 + 2 + 1) + commandsPerTick;
+    const aiEvents = craft + commandsPerTick;
+    expect([aiRequests, allRequests + aiRequests, aiEvents, allEvents + aiEvents]).toEqual([3840, 7559, 96, 9064]);
+    expect(eventsPerTick).toBeGreaterThan(3.6 * (allEvents + aiEvents));
+    expect(requestsPerTick).toBeGreaterThan(4.3 * (allRequests + aiRequests));
+    // The executor budgets: 8 dispatches of every item of the longest script (AI_PROGRAMS_LIMITS.scriptItems) in one
+    // run, and two runs of the group-0 closure's longest at the entity limit within one tick.
+    expect(CORE_LIMITS.aiDispatchesPerRun).toBe(8 * AI_PROGRAMS_LIMITS.scriptItems);
+    expect(CORE_LIMITS.aiDispatchesPerRun).toBeGreaterThan(50 * dispatchesPerRun);
+    expect(CORE_LIMITS.aiDispatchesPerTick).toBeGreaterThanOrEqual(entities * 2 * dispatchesPerRun);
     // The radio queue's runaway threshold: at about 0.9 items a second of legal input it takes over an hour, longer
     // than a recording at the default 32 ticks a second.
     expect(radioQueueItems).toBe(4096);

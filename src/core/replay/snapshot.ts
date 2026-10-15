@@ -1,6 +1,6 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 5, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 6, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
@@ -10,7 +10,9 @@
  * map cursor, destination, saved page and Warp transit, each entity's map visibility flag, the object sets and the map
  * icon list (docs/plan/p3/02/spec.md, MW-14). P3-10 adds the mission flow, the player's docking object, communications
  * state and saved docking pose, each entity's communications fields and pending command, and the world's
- * communications, friendly-fire and base service state (CB-16). Names are held by the entities that carry them. The
+ * communications, friendly-fire and base service state (CB-16). P3-08 adds each entity's AI program slot with its
+ * controller and the handler's private state, the transponder state, and the world's parse cache (CR-25); the static AI
+ * data is not copied. Names are held by the entities that carry them. The
  * static MissionSetup and rule data are not copied: setupHash binds them. A snapshot is a diagnostic and a checkpoint
  * source, not a save: Core restores no world from one.
  *
@@ -28,13 +30,23 @@ import {
   canonicalObject,
   canonicalScalar as scalar,
   canonicalText,
+  type CanonicalMembers,
   type CanonicalWriter as Writer,
 } from '../contracts/canonical-text.ts';
 import type { EntitySource, GroupMembership, Vec3 } from '../contracts/domain-events.ts';
 import type { RuntimeFrame } from '../rules/coordinates.ts';
+import type { AxisControl, ControlBlock } from '../systems/pipeline.ts';
 import {
   ALL_KINDS,
+  type AiController,
+  type AiControllerCommon,
+  type AiHandler,
   type AiState,
+  type AiProgramSlot,
+  type AttackPass,
+  type BaseState,
+  type ChannelTrigger,
+  type ControllerLimits,
   type CraftCombat,
   type DeclarationReference,
   type Disturbance,
@@ -44,12 +56,15 @@ import {
   type EntityId,
   type EntityPresentation,
   type EntityRuleInputs,
+  type EngagementTimer,
+  type ExecutionState,
   type ExplosionCombat,
   type Formation,
   type FragmentCombat,
   type FragmentExpiry,
   type HomingState,
   type Impulse,
+  type InterpreterState,
   type LinearMovementBlock,
   type ListSelection,
   type MarkerCombat,
@@ -60,13 +75,19 @@ import {
   type MountState,
   type MovementBlock,
   type NameReference,
+  type NoiseSettings,
   type PendingCommand,
+  type ScriptDeadline,
   type ProjectileCombat,
   type SpinningMovementBlock,
   type SteeredMovementBlock,
   type SteeringAxis,
+  type SteeringBlock,
   type TimedRotation,
+  type TransponderCallback,
+  type TransponderState,
   type WeaponBlock,
+  type WingmanState,
 } from '../world/entity-table.ts';
 import type { MapPixel, MapPoint } from '../world/map-rule-data.ts';
 import type {
@@ -96,6 +117,9 @@ import type {
   MissionFlow,
   MissionStatus,
   ObjectSets,
+  OptionalFloat,
+  ParsedArgument,
+  ParsedScript,
   RadioItem,
   SpeakerSnapshot,
   WorldAi,
@@ -106,7 +130,7 @@ import type {
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 5;
+export const GAME_SNAPSHOT_VERSION = 6;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -301,6 +325,105 @@ const movement: Writer<MovementBlock> = (value) => {
   }
 };
 
+// P3-08's controller (docs/plan/p3/02/spec.md, CR-16, CR-17).
+const axisControl = object<AxisControl>({ clear: scalar, set: scalar, value: scalar });
+const noise = object<NoiseSettings>({ enabled: scalar, low: scalar, high: scalar });
+
+const steeringBlock = object<SteeringBlock>({
+  targetValid: scalar,
+  target: scalar,
+  targetSample: scalar,
+  relativeSample: scalar,
+  point: vector,
+  distance: scalar,
+  targetSpeed: scalar,
+  offset: object<SteeringBlock['offset']>({ enabled: scalar, frame: scalar, vector }),
+  sizeClass: scalar,
+  approachRadius: scalar,
+  speedLimit: scalar,
+  halfSpeedLimit: scalar,
+  turnRates: list(scalar),
+  leadMode: scalar,
+  leadConstant: scalar,
+  relativeFlags: scalar,
+  relative: vector,
+  reverseFlags: scalar,
+  reverse: vector,
+  angles: list(scalar),
+  control: object<ControlBlock>({ scale: scalar, axes: list(axisControl), speedFactor: scalar }),
+  coneBits: scalar,
+  speedFraction: scalar,
+  turnFraction: scalar,
+  rollMatch: scalar,
+  throttleNoise: noise,
+  steeringNoise: noise,
+});
+
+const controllerCommon = {
+  nextUpdateClock: scalar,
+  period: scalar,
+  limits: object<ControllerLimits>({ turn: scalar, speed: scalar, saturation: scalar, rollMatchThreshold: scalar }),
+  triggers: list(object<ChannelTrigger>({ pressed: scalar, holdDeadline: scalar })),
+  aiLock: scalar,
+  missileReady: scalar,
+  automaticMounts: scalar,
+  engagement: object<EngagementTimer>({ dueClock: scalar, period: scalar, mask: scalar }),
+  attackPass: object<AttackPass>({ phase: scalar, deadline: scalar, savedSizeClass: scalar, savedLeadMode: scalar }),
+  steering: steeringBlock,
+} as const satisfies CanonicalMembers<AiControllerCommon>;
+
+const deadline = object<ScriptDeadline>({ active: scalar, until: scalar });
+
+const interpreter = object<InterpreterState>({
+  state: scalar,
+  execution: nullable(object<ExecutionState>({
+    script: scalar,
+    item: scalar,
+    variables: list(scalar),
+    timers: list(scalar),
+    returnStack: list(scalar),
+    wait: deadline,
+    hold: deadline,
+  })),
+  lastRunEnded: scalar,
+  steadyClock: scalar,
+  stateDeadline: scalar,
+  state4Deadline: scalar,
+});
+
+const wingman = object<WingmanState>({
+  behaviour: scalar,
+  doNotAttack: scalar,
+  attackTarget: scalar,
+  nextGunSwitchClock: scalar,
+  nextEngageSearchClock: scalar,
+});
+
+type ControllerOf<Handler extends AiHandler> = Extract<AiController, { readonly handler: Handler }>;
+
+// One writer per handler: the common members, then the handler and its private state.
+const interpreterController = object<ControllerOf<'interpreter'>>({ ...controllerCommon, handler: scalar, interpreter });
+const wingmanController = object<ControllerOf<'wingman'>>({ ...controllerCommon, handler: scalar, wingman });
+const baseController = object<ControllerOf<'base'>>({ ...controllerCommon, handler: scalar, base: object<BaseState>({ targetMask: scalar }) });
+const parkedController = object<ControllerOf<'parked'>>({ ...controllerCommon, handler: scalar });
+
+const controller: Writer<AiController> = (value) => {
+  switch (value.handler) {
+    case 'interpreter':
+      return interpreterController(value);
+    case 'wingman':
+      return wingmanController(value);
+    case 'base':
+      return baseController(value);
+    case 'parked':
+      return parkedController(value);
+  }
+};
+
+const program: Writer<AiProgramSlot> = (value) => (value.type === 'none'
+  ? canonicalObject([['type', value.type]])
+  : canonicalObject([['type', value.type], ['record', value.record], ['controller', value.controller === null ? null : controller(value.controller)]]));
+
 const ai = object<AiState>({
   mode: scalar,
   target: scalar,
@@ -308,7 +431,11 @@ const ai = object<AiState>({
   targetOffset: vector,
   objectTarget: scalar,
   pendingCommand: nullable(object<PendingCommand>({ code: scalar, issuedTick: scalar })),
+  program,
 });
+
+const transponderCallback: Writer<TransponderCallback> = (value) =>
+  canonicalObject(value.phase === 'tumbling' ? [['phase', value.phase], ['since', value.since]] : [['phase', value.phase]]);
 
 const clockReference = nullable(object<{ readonly entity: EntityId; readonly clock: number }>({ entity: scalar, clock: scalar }));
 const listSelection = object<ListSelection>({ index: scalar, mount: scalar });
@@ -448,6 +575,7 @@ const entity = object<SnapshotEntity>({
   formation: nullable(object<Formation>({ leader: scalar, offset: vector })),
   combat,
   communications: object<EntityCommunications>({ face: scalar, threatStamp: scalar }),
+  transponder: nullable(object<TransponderState>({ creator: scalar, callback: transponderCallback })),
 });
 
 const record = object<SnapshotRecord>({
@@ -567,6 +695,23 @@ const baseService = object<Readonly<BaseService>>({
   flags: object<BaseService['flags']>({ repairsComplete: scalar, energyAndMissilesFull: scalar, hullFull: scalar }),
 });
 
+// P3-08's parse cache (CR-19).
+const optionalFloat = object<OptionalFloat>({ present: scalar, value: scalar });
+
+const parsedArgument: Writer<ParsedArgument> = (value) => {
+  switch (value.type) {
+    case 'none':
+      return canonicalObject([['type', value.type]]);
+    case 'integer':
+    case 'float':
+      return canonicalObject([['type', value.type], ['value', value.value]]);
+    case 'optional-floats':
+      return canonicalObject([['type', value.type], ['values', value.values.map(optionalFloat)]]);
+    case 'floats':
+      return canonicalObject([['type', value.type], ['values', value.values]]);
+  }
+};
+
 const state = object<SnapshotState>({
   config,
   tick: scalar,
@@ -606,7 +751,10 @@ const state = object<SnapshotState>({
   objectSets: object<ObjectSets>({ friendly: list(scalar), hostile: list(scalar) }),
   mapIcons: list(mapIcon),
   communications: worldCommunications,
-  ai: object<WorldAi>({ friendlyFire: object<WorldAi['friendlyFire']>({ accumulated: scalar, windowEnd: scalar }) }),
+  ai: object<WorldAi>({
+    friendlyFire: object<WorldAi['friendlyFire']>({ accumulated: scalar, windowEnd: scalar }),
+    parseCache: list(object<ParsedScript>({ script: scalar, uses: scalar, items: list(parsedArgument) })),
+  }),
   baseService: nullable(baseService),
 });
 

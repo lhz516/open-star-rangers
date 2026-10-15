@@ -6,13 +6,16 @@ import { fnv1a64 } from '../determinism/fnv1a64.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
-import { ALL_KINDS, type Entity, type SteeredMovementBlock } from '../world/entity-table.ts';
+import {
+  ALL_KINDS, allocatorFlightState, clearedControllerCommon, TRANSPONDER_KIND_BIT, type AiControllerCommon, type Entity, type TableController,
+  type SteeredMovementBlock,
+} from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { initialPlayerControl, type CommunicationsMenu } from '../world/player-state.ts';
 import {
   addPlayerEntity, busyCombat, entityInit, stateText, stillEntityInit, TEST_ORIENTATION, testState, thrownBy, tickInput, withEveryKindBound,
 } from '../world/world.test-support.ts';
-import type { RadioItem, WorldState } from '../world/world-state.ts';
+import type { ParsedScript, RadioItem, WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, snapshotHash, snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
@@ -31,7 +34,8 @@ type Mutable = Record<string | number, unknown>;
  * saved pose set; the unnamed craft has P3-10's communications fields and a pending command; the world has object sets,
  * map icons and a map-visible craft (MW-02), and is in the docking countdown with two radio items (one per message
  * variant, with and without a speaker), a playing message, taken portraits, stamped limits, a friendly-fire total and a
- * base service.
+ * base service. P3-08's: the unnamed craft has a table program whose interpreter runs a script with every part of its
+ * execution state set, and the world's parse cache holds one script with every argument variant (CR-16, CR-17, CR-19).
  */
 function richState(): WorldState {
   const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } }))));
@@ -44,6 +48,8 @@ function richState(): WorldState {
   block.disturbance = { level: 2, biases: [1, -2, 3] };
   Object.assign(runtime.ai, { target: 1, objectTarget: 2, pendingCommand: { code: 0xffffffff, issuedTick: 1 } });
   Object.assign(runtime.communications, { face: 4, threatStamp: 9 });
+  runtime.ai.program = { type: 'table', record: 2, controller: interpreterController() };
+  state.ai.parseCache.push(PARSED_SCRIPT);
   for (const kindBit of RUNTIME_KIND_BITS) state.entities.allocate(entityInit(kindBit, { combat: busyCombat(kindBit) }));
   Object.assign(state.player, { targeting: { mode: 'friendly', autoTargetDueClock: 5 }, followedEntity: 3, delayedExplosionClock: 7, dockingObject: 4 });
   state.spawn.namePoolUses[1] = 1;
@@ -92,6 +98,65 @@ const SPOKEN_ITEM: RadioItem = {
 };
 const DIRECT_ITEM: RadioItem = { message: { table: 20983, face: null, index: 6 }, due: 1, callback: 'music-step', speaker: null };
 
+/** A controller with every common field away from its cleared value (CR-16). */
+function busyControllerCommon(): AiControllerCommon {
+  const common = clearedControllerCommon();
+  const axis = (value: number) => ({ clear: true, set: false, value });
+  return {
+    ...common,
+    nextUpdateClock: 30,
+    period: 12,
+    limits: { turn: 0.5, speed: 2, saturation: 0.25, rollMatchThreshold: 0.75 },
+    triggers: [{ pressed: true, holdDeadline: 40 }, { pressed: false, holdDeadline: 0 }, { pressed: true, holdDeadline: 7 }],
+    aiLock: true,
+    missileReady: true,
+    automaticMounts: true,
+    engagement: { dueClock: 50, period: 64, mask: 0xfbfff },
+    attackPass: { phase: 2, deadline: 60, savedSizeClass: 3, savedLeadMode: 1 },
+    steering: {
+      ...common.steering,
+      targetValid: true, target: 3, targetSample: 8, relativeSample: 6, point: { x: 1, y: -2, z: 3 }, distance: 100, targetSpeed: 40,
+      offset: { enabled: true, frame: 1, vector: { x: 0, y: 5, z: -5 } }, sizeClass: 2, approachRadius: 250, speedLimit: 96, halfSpeedLimit: 48,
+      turnRates: [1.5, 2.5, 3.5], leadMode: 1, leadConstant: 0.5, relativeFlags: 5, relative: { x: 7, y: 8, z: 9 }, reverseFlags: 3,
+      reverse: { x: -7, y: -8, z: -9 }, angles: [0.125, -0.25], control: { scale: 1, axes: [axis(0.5), axis(-1), axis(2)], speedFactor: 0.75 },
+      coneBits: 3, speedFraction: 0.5, turnFraction: 0.25, rollMatch: true,
+      throttleNoise: { enabled: true, low: -0.5, high: 0.5 }, steeringNoise: { enabled: true, low: -1, high: 1 },
+    },
+  };
+}
+
+function interpreterController(): Extract<TableController, { handler: 'interpreter' }> {
+  return {
+    ...busyControllerCommon(),
+    handler: 'interpreter',
+    interpreter: {
+      state: 4,
+      execution: {
+        script: 5, item: 2, variables: [1, -2, 3, -4], timers: [10, 11, 12, 13], returnStack: [3, 1], wait: { active: true, until: 14 },
+        hold: { active: true, until: 15 },
+      },
+      lastRunEnded: true,
+      steadyClock: 16,
+      stateDeadline: 17,
+      state4Deadline: 18,
+    },
+  };
+}
+
+/** A cached script with each argument variant (CR-19). */
+const PARSED_SCRIPT: ParsedScript = {
+  script: 5,
+  uses: 2,
+  items: [
+    { type: 'none' }, { type: 'integer', value: -3 }, { type: 'float', value: 0.5 },
+    {
+      type: 'optional-floats',
+      values: [{ present: true, value: 1 }, { present: false, value: 0 }, { present: true, value: 0 }, { present: true, value: -2.5 }],
+    },
+    { type: 'floats', values: [1, 2, 3] },
+  ],
+};
+
 /** P3-07's runtime kinds, missile, projectile, explosion and fragment, and P3-09's map marker. */
 const RUNTIME_KIND_BITS = [20, 21, 22, 24, 25];
 
@@ -135,8 +200,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07), then P3-07 (docs/plan/p3/02/spec.md, CR-14); P3-05's
     // speed-preset only the rules version (docs/plan/p3/05/spec.md, 持久化与兼容). P3-09/12 and P3-10/11 each incremented
     // both from 3 and 4 on their branches (MW-14, CB-16); their merge increments both once more, so that neither branch's
-    // snapshots share a version with the merged state.
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 5, 6]);
+    // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25).
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 6, 7]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual([
       'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'flow', 'player', 'objectSets', 'mapIcons',
@@ -171,7 +236,9 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       limits: { wingmanLowHull: 0, enemyAppears: 0, tailWarning: 0, wingmanArrivalRepair: 0 },
       tailCheck: { dueClock: 0, attackerOnTail: false, missileIncoming: false },
     });
-    expect(state.ai).toEqual({ friendlyFire: { accumulated: 0, windowEnd: 0 } });
+    // P3-08's: an empty parse cache, and no program before the selection (CR-19, CR-23).
+    expect(state.ai).toEqual({ friendlyFire: { accumulated: 0, windowEnd: 0 }, parseCache: [] });
+    expect(state.entities.every(({ ai, transponder }) => ai.program.type === 'none' && transponder === null)).toBe(true);
     expect(state.baseService).toBeNull();
     expect(state.spawn.records).toHaveLength(9);
     expect(state.spawn.wingman?.declaration).toEqual({ collection: 'wingman', index: 3 });
@@ -247,11 +314,12 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     ];
     // A null in a nullable object field (a region, a source, a group membership, a movement block, a formation, a timed
     // rotation about an axis, an impulse, a disturbance, a craft's references, a missile's guidance and homing state, a
-    // projectile's expiry, the player's destination and Warp transit, a pending command, a radio item's speaker) cannot
-    // become 0; the same fields hold objects elsewhere in this state, whose members are leaves themselves.
+    // projectile's expiry, the player's destination and Warp transit, a pending command, a radio item's speaker, a
+    // transponder state) cannot become 0; the same fields hold objects elsewhere in this state or in P3-08's test below,
+    // whose members are leaves themselves.
     const nullableObjects = new Set([
       'region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance',
-      'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry', 'destination', 'warp', 'speaker', 'pendingCommand',
+      'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry', 'destination', 'warp', 'speaker', 'pendingCommand', 'transponder',
     ]);
     const baseline = textOf(state);
     let changes = 0;
@@ -268,8 +336,11 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
         }
         holder[key] = original;
         if (text instanceof CoreInputError) {
-          // Another movement mode or channel phase is no variant, like another `type`, which leafPaths skips.
-          expect(nullableObjects.has(String([key, ...path].at(-1))) || name === 'movement.mode' || name === 'communications.channel.phase', name).toBe(true);
+          // Another movement mode, channel phase or controller handler is no variant, like another `type`, which leafPaths skips.
+          expect(
+            nullableObjects.has(String([key, ...path].at(-1))) || ['movement.mode', 'communications.channel.phase', 'ai.program.controller.handler'].includes(name),
+            name,
+          ).toBe(true);
           continue;
         }
         expect(text, name).not.toBe(baseline);
@@ -318,6 +389,54 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     state.baseService = null;
     texts.add(textOf(state));
     expect(texts.size).toBe(5);
+  });
+
+  it('writes every leaf of P3-08\'s other controller variants, its unset parts and a transponder state (CR-16, CR-17, CR-20)', () => {
+    const state = richState();
+    const runtime = [...state.entities.walk(1 << 19)].find(({ ai }) => ai.program.type === 'table')!;
+    const transponder = state.entities.allocate(entityInit(TRANSPONDER_KIND_BIT, {
+      ...allocatorFlightState(), name: { type: 'none' }, side: null, ruleInputs: { percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 },
+      transponder: { creator: 'player', callback: { phase: 'first-update' } },
+    }));
+    transponder.transponder!.callback = { phase: 'tumbling', since: 21 };
+    const variants: (readonly [Mutable, string, unknown])[] = [
+      [runtime.ai as unknown as Mutable, 'program', { type: 'built-in', record: 4, controller: {
+        ...busyControllerCommon(), handler: 'wingman', wingman: { behaviour: 5, doNotAttack: 3, attackTarget: 4, nextGunSwitchClock: 19, nextEngageSearchClock: 20 },
+      } }],
+      [runtime.ai as unknown as Mutable, 'program', { type: 'built-in', record: 6, controller: { ...busyControllerCommon(), handler: 'base', base: { targetMask: 0x93780 } } }],
+      [runtime.ai as unknown as Mutable, 'program', { type: 'table', record: 1, controller: { ...busyControllerCommon(), handler: 'parked' } }],
+      [transponder as unknown as Mutable, 'transponder', { creator: 'player', callback: { phase: 'tumbling', since: 21 } }],
+    ];
+    for (const [holder, key, variant] of variants) {
+      holder[key] = variant;
+      const baseline = textOf(state);
+      for (const path of leafPaths(variant).filter((leaf) => !['handler', 'phase', 'creator'].includes(String(leaf.at(-1))))) {
+        holder[key] = withChangedLeaf(variant, path);
+        expect(textOf(state), [key, ...path].join('.')).not.toBe(baseline);
+      }
+      holder[key] = variant;
+    }
+    // The creator and callback variants, no execution, a selected record without a controller, no program and an
+    // empty parse cache each write their own text.
+    const texts = new Set([textOf(state)]);
+    for (const callback of [{ phase: 'first-update' }, { phase: 'none' }] as const) {
+      transponder.transponder!.callback = callback;
+      texts.add(textOf(state));
+    }
+    (transponder as unknown as { transponder: object }).transponder = { creator: 'wingman', callback: { phase: 'none' } };
+    texts.add(textOf(state));
+    const installed = interpreterController();
+    runtime.ai.program = { type: 'table', record: 2, controller: installed };
+    texts.add(textOf(state));
+    Object.assign(installed.interpreter, { state: 0, execution: null });
+    texts.add(textOf(state));
+    runtime.ai.program = { type: 'table', record: 2, controller: null };
+    texts.add(textOf(state));
+    runtime.ai.program = { type: 'none' };
+    texts.add(textOf(state));
+    state.ai.parseCache.length = 0;
+    texts.add(textOf(state));
+    expect(texts.size).toBe(9);
   });
 
   it('includes the next entity ID, which an allocation advances even after the entity is gone', () => {
@@ -386,7 +505,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":5,"rulesVersion":6,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":6,"rulesVersion":7,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

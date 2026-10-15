@@ -787,5 +787,106 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
     });
   });
-});
 
+  describe('P3-08 wingman command and transponder events (docs/plan/p3/02/spec.md, CR-22)', () => {
+    const consumed = (tick: number, overrides: Mutable = {}): Mutable => ({
+      type: 'wingman-command-consumed', tick, wingmanEntityId: 2, code: 1, issuedTick: 1, path: 'active', outcome: 'applied', replyLine: 0x10, ...overrides,
+    });
+    const deployed = (tick: number, overrides: Mutable = {}): Mutable => ({
+      type: 'transponder-deployed', tick, entityId: 9, creatorEntityId: 1, position: { x: 1, y: -15, z: 2 }, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      ...overrides,
+    });
+    const accepted = (tick: number, commandIndex: number): Mutable => commandResult(tick, commandIndex, { outcome: 'accepted', reason: null });
+
+    /**
+     * Two ticks in the contract's order. Tick 1: the delivery's command and its delivery in request handling. Tick 2:
+     * two commands, the wingman consuming the command in the object updates after its reply's queuing, a second
+     * wingman's parked consumption, and one transponder deployment in request handling.
+     */
+    function aiRun(): Result {
+      const events = [
+        accepted(1, 0),
+        { type: 'command-delivered', tick: 1, receiverEntityId: 2, receiverKindBit: 1, code: 1, senderEntityId: 1, commandIndex: 0 },
+        accepted(2, 0),
+        accepted(2, 1),
+        { type: 'radio-queued', tick: 2, message: { table: 20985, face: 1, index: 4 }, callback: 'none', speaker: null, position: 'sorted', length: 1 },
+        consumed(2),
+        consumed(2, { wingmanEntityId: 3, code: 3, path: 'parked', outcome: 'refused', replyLine: null }),
+        deployed(2),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches both types in the contract\'s order, after a JSON round trip, and compares every field', () => {
+      expect(compareReplayResults(aiRun(), JSON.parse(JSON.stringify(aiRun())))).toEqual({ match: true });
+      const changes: [number, (event: Mutable) => void][] = [
+        [5, (event) => { event.wingmanEntityId = 4; }],
+        [5, (event) => Object.assign(event, { path: 'parked' })],
+        [6, (event) => Object.assign(event, { code: 4 })],
+        [6, (event) => Object.assign(event, { outcome: 'applied', replyLine: 0xe })],
+        [7, (event) => { event.entityId = 10; }],
+        [7, (event) => { event.creatorEntityId = 2; }],
+        [7, (event) => { (event.position as Mutable).y = -16; }],
+        [7, (event) => { (event.orientation as number[])[8] = -1; }],
+      ];
+      for (const [index, change] of changes) {
+        const actual = aiRun();
+        change(actual.events[index]);
+        expect(compareReplayResults(aiRun(), actual)).toEqual({ match: false, tick: 2, kind: 'events' });
+      }
+      // The issuing tick is compared too.
+      const later = { ...aiRun(), finalTick: 3, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 3, hash: hashOf(3) }] };
+      for (const event of later.events) if (event.tick === 2) event.tick = 3;
+      const issued = structuredClone(later);
+      issued.events[5].issuedTick = 2;
+      expect(compareReplayResults(later, issued)).toEqual({ match: false, tick: 3, kind: 'events' });
+    });
+
+    // The outcomes and reply lines of WB3 and WB4, as CR-22's table gives them.
+    it.each([
+      ['active', 1, 'applied', 0x10], ['active', 1, 'fallback', 0], ['active', 1, 'refused', 0],
+      ['active', 2, 'applied', 3], ['active', 2, 'refused', 0], ['active', 3, 'applied', 0xe],
+      ['active', 4, 'applied', 0x14], ['active', 4, 'fallback', 0], ['active', 5, 'applied', 0x12], ['active', 5, 'fallback', 0],
+      ['active', 6, 'applied', 0x12], ['active', 6, 'fallback', 0x15],
+      ['parked', 1, 'applied', 0x10], ['parked', 1, 'refused', 0], ['parked', 2, 'acknowledged', 3], ['parked', 2, 'refused', 0],
+      ['parked', 3, 'applied', 0xe], ['parked', 3, 'refused', null], ['parked', 4, 'applied', 0x14], ['parked', 4, 'refused', null],
+      ['parked', 5, 'applied', 0x12], ['parked', 5, 'refused', 0], ['parked', 6, 'applied', 0x12], ['parked', 6, 'refused', 0x15],
+      ['active', 7, 'status', 0xb], ['parked', 7, 'status', 0xd], ['active', 8, 'unknown-code', 3], ['parked', 0xffffffff, 'unknown-code', 3],
+    ] as const)('accepts %s code %d %s with reply line %s', (path, code, outcome, replyLine) => {
+      const result = aiRun();
+      Object.assign(result.events[5], { path, code, outcome, replyLine });
+      expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a command code of 0', (result) => { result.events[5].code = 0; }, '.events[5].code'],
+      ['an unknown path', (result) => { result.events[5].path = 'docked'; }, '.events[5].path'],
+      ['an unknown outcome', (result) => { result.events[5].outcome = 'ignored'; }, '.events[5].outcome'],
+      ['a reply line beyond a byte', (result) => { result.events[5].replyLine = 0x100; }, '.events[5].replyLine'],
+      ['an active fallback of code 2', (result) => void Object.assign(result.events[5], { code: 2, outcome: 'fallback', replyLine: 0 }), '.events[5].outcome'],
+      ['an active acknowledgement', (result) => void Object.assign(result.events[5], { code: 2, outcome: 'acknowledged', replyLine: 3 }), '.events[5].outcome'],
+      ['an active refusal without a reply', (result) => void Object.assign(result.events[5], { code: 3, outcome: 'refused', replyLine: null }), '.events[5].outcome'],
+      ['another reply line', (result) => { result.events[5].replyLine = 0x11; }, '.events[5].outcome'],
+      ['a parked fallback', (result) => void Object.assign(result.events[6], { code: 4, outcome: 'fallback', replyLine: 0 }), '.events[6].outcome'],
+      ['a status of another code', (result) => void Object.assign(result.events[5], { outcome: 'status', replyLine: 0xb }), '.events[5].outcome'],
+      ['a status line outside 0xB–0xD', (result) => void Object.assign(result.events[5], { code: 7, outcome: 'status', replyLine: 0xe }), '.events[5].outcome'],
+      ['code 7 applied', (result) => void Object.assign(result.events[5], { code: 7, replyLine: 0xb }), '.events[5].outcome'],
+      ['an unknown code with another line', (result) => void Object.assign(result.events[5], { code: 9, outcome: 'unknown-code', replyLine: 0 }), '.events[5].outcome'],
+      ['a command issued in its tick', (result) => { result.events[5].issuedTick = 2; }, '.events[5].issuedTick'],
+      ['a command issued at tick 0', (result) => { result.events[5].issuedTick = 0; }, '.events[5].issuedTick'],
+      ['a second consumption of a wingman', (result) => { result.events[6].wingmanEntityId = 2; }, '.events[6].wingmanEntityId'],
+      ['a consumption in request handling', (result) => void result.events.splice(5, 3, result.events[7], result.events[5], result.events[6]), '.events[6]'],
+      ['a deployment before any command result', (result) => void result.events.splice(2, 0, deployed(2)), '.events[2]'],
+      ['a deployment before a command result', (result) => void result.events.splice(3, 0, deployed(2)), '.events[4]'],
+      ['more deployments than command results', (result) => void result.events.push(deployed(2, { entityId: 10 }), deployed(2, { entityId: 11 })), '.events[9]'],
+      ['a deployment without a creator', (result) => { result.events[7].creatorEntityId = null; }, '.events[7].creatorEntityId'],
+      ['a deployment with an orientation of 8 rows', (result) => { (result.events[7].orientation as number[]).pop(); }, '.events[7].orientation'],
+      ['a deployment at a position that is not an f32', (result) => { (result.events[7].position as Mutable).z = 0.1; }, '.events[7].position.z'],
+      ['a deployment with an orientation that is not an f32', (result) => { (result.events[7].orientation as number[])[4] = 0.1; }, '.events[7].orientation[4]'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(aiRun, change, path);
+    });
+  });
+});

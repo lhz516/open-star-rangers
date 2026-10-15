@@ -32,14 +32,14 @@ describe('0x68050, fixed kinds and the world goal (P3-06 S-07, AC-07)', () => {
   it.each([[13, 5], [14, 5], [15, 1], [16, 1], [17, 1], [18, 1]])('gives kind bit %i only mode %i, without a search or a draw', (kindBit, mode) => {
     const { table, all } = tableOf([kindBit, ORIGIN], [0, at(10)]);
     const rand = scriptedRand([]);
-    expect(initialAiState(table, all[0], search([0]), FRAME, rand)).toEqual({ mode, target: null, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
+    expect(initialAiState(table, all[0], search([0]), FRAME, rand)).toEqual({ mode, target: null, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program: { type: 'none' } });
   });
 
   it('draws a whole-world goal point, x then y, in mode 4 when the record names no candidates', () => {
     const { table, all } = tableOf([0, ORIGIN], [7, at(10)]);
     const rand = scriptedRand([0, 32767]);
     expect(initialAiState(table, all[0], search([]), FRAME, rand)).toEqual({
-      mode: 4, target: null, goal: { x: expectedWorld(6, 0), y: expectedWorld(6, 32767), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null,
+      mode: 4, target: null, goal: { x: expectedWorld(6, 0), y: expectedWorld(6, 32767), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program: { type: 'none' },
     });
     expect(rand.used).toBe(2);
   });
@@ -56,7 +56,7 @@ describe('0x68050, the nearest candidate (P3-06 S-07, AC-07)', () => {
   it('targets the nearest of the same side in mode 2 without a draw, however far', () => {
     const { table, all } = tableOf([0, ORIGIN], [1, at(900_000)], [1, at(800_000)]);
     const rand = scriptedRand([]);
-    expect(initialAiState(table, all[0], search([1]), FRAME, rand)).toEqual({ mode: 2, target: all[2].id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
+    expect(initialAiState(table, all[0], search([1]), FRAME, rand)).toEqual({ mode: 2, target: all[2].id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program: { type: 'none' } });
   });
 
   it('targets the nearest of the other side in mode 0 within three sectors, the distance included', () => {
@@ -112,7 +112,7 @@ describe('0x68050, a random candidate (P3-06 S-07, AC-07)', () => {
   ])('draws %i and takes the matching candidate, with the mode of its side', (draw, picked, mode) => {
     const { table, all } = far();
     const rand = scriptedRand([draw]);
-    expect(initialAiState(table, all[0], search([1, 7, 8, 13]), FRAME, rand)).toEqual({ mode, target: all[picked].id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
+    expect(initialAiState(table, all[0], search([1, 7, 8, 13]), FRAME, rand)).toEqual({ mode, target: all[picked].id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program: { type: 'none' } });
     expect(rand.used).toBe(1);
   });
 

@@ -39,12 +39,16 @@ import {
   type SpeedMatchedEvent,
   type TargetChangedEvent,
   type TransitionEvent,
+  type TransponderDeployedEvent,
   type Vec3,
   type WarpArrival,
   type WarpCompletedEvent,
   type WarpDestinationSetEvent,
   type WarpMarkerChange,
   type WarpStartedEvent,
+  isWingmanCommandReply,
+  type WingmanCommandConsumedEvent,
+  WINGMAN_COMMAND_OUTCOMES,
 } from '../contracts/domain-events.ts';
 import { COMM_MESSAGES_LIMITS } from '../../content/rule-data/comm-messages.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
@@ -60,6 +64,7 @@ import {
   type NumberRule,
 } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
+import { isFiniteFloat32 } from '../rules/float32.ts';
 import type { Level, Matrix3, NameReference } from '../world/entity-table.ts';
 import { MAP_SIDE_LIMIT, type MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage } from '../world/player-state.ts';
@@ -74,12 +79,16 @@ type CommunicationsEvent =
   | CommandDeliveredEvent | RadioQueuedEvent | RadioTakenEvent | IncomingStartedEvent | IncomingEndedEvent | RadioFlushedEvent
   | DockingRequestedEvent | DockingCancelledEvent | DockedEvent | DepartedEvent | TransitionEvent | BaseNavigatedEvent | BaseConfirmedEvent;
 
+/** P3-08's events (docs/plan/p3/02/spec.md, CR-22). */
+type AiEvent = WingmanCommandConsumedEvent | TransponderDeployedEvent;
+
 /** P3-07's events (docs/plan/p3/02/spec.md, CR-06). */
 type CombatEvent = Exclude<
   DomainEvent,
   | CommandResultEvent | ObjectInstantiatedEvent | SpeedAssistToggledEvent | SpeedMatchedEvent | SpeedAssistReleasedEvent | ObjectLeftWorldEvent
   | MapWarpEvent
   | CommunicationsEvent
+  | AiEvent
 >;
 
 /** Difference data, not an error. */
@@ -130,6 +139,8 @@ const EVENT_FIELDS = {
   transition: ['type', 'tick', 'gap'],
   'base-navigated': ['type', 'tick', 'direction', 'row', 'moved', 'commandIndex'],
   'base-confirmed': ['type', 'tick', 'row', 'record', 'moved', 'commandIndex'],
+  'wingman-command-consumed': ['type', 'tick', 'wingmanEntityId', 'code', 'issuedTick', 'path', 'outcome', 'replyLine'],
+  'transponder-deployed': ['type', 'tick', 'entityId', 'creatorEntityId', 'position', 'orientation'],
 } as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
@@ -144,6 +155,8 @@ const ENTITY_ID = integerIn(1, Number.MAX_SAFE_INTEGER);
 const KIND_BIT = integerIn(0, 31);
 const COMMAND_INDEX = integerIn(0, CORE_LIMITS.commandsPerTick - 1);
 const COORDINATE: NumberRule = [Number.isFinite, 'must be a finite number'];
+/** P3-08's transponder pose (CR-22) is f32. */
+const F32: NumberRule = [isFiniteFloat32, 'must be a finite f32'];
 const INT32 = integerIn(-0x80000000, 0x7fffffff);
 const LEVEL = integerIn(0, 3);
 const LEFT_PAGE = integerIn(0, 6);
@@ -179,9 +192,9 @@ function readBoolean(value: unknown, path: string): boolean {
   return value;
 }
 
-function readVector(value: unknown, path: string): Vec3 {
+function readVector(value: unknown, path: string, rule = COORDINATE): Vec3 {
   const { x, y, z } = readExactRecord(value, path, ['x', 'y', 'z']);
-  return { x: readNumber(x, `${path}.x`, COORDINATE), y: readNumber(y, `${path}.y`, COORDINATE), z: readNumber(z, `${path}.z`, COORDINATE) };
+  return { x: readNumber(x, `${path}.x`, rule), y: readNumber(y, `${path}.y`, rule), z: readNumber(z, `${path}.z`, rule) };
 }
 
 function readGroup(value: unknown, path: string): GroupMembership | null {
@@ -248,8 +261,8 @@ const readKindBit = (value: unknown, path: string): number => readNumber(value, 
 const readNullableEntityId = (value: unknown, path: string): number | null => (value === null ? null : readEntityId(value, path));
 const readNullableCommandIndex = (value: unknown, path: string): number | null => (value === null ? null : readNumber(value, path, COMMAND_INDEX));
 
-function readMatrix(value: unknown, path: string): Matrix3 {
-  const rows = readList(value, path, 9, (item, at) => readNumber(item, at, COORDINATE));
+function readMatrix(value: unknown, path: string, rule = COORDINATE): Matrix3 {
+  const rows = readList(value, path, 9, (item, at) => readNumber(item, at, rule));
   if (rows.length !== 9) throw new CoreInputError(path, 'must have 9 items');
   return rows as unknown as Matrix3;
 }
@@ -745,6 +758,40 @@ function readCommunicationsEvent(event: Record<string, unknown>, path: string, t
   }
 }
 
+/** Reads the fields of a P3-08 event (docs/plan/p3/02/spec.md, CR-22) after its type and field list. */
+function readAiEvent(event: Record<string, unknown>, path: string, tick: number, type: AiEvent['type']): AiEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'wingman-command-consumed': {
+      const code = readNumber(event.code, at('code'), COMMAND_CODE);
+      const route = readChoice(event.path, at('path'), ['active', 'parked']);
+      const outcome = readChoice(event.outcome, at('outcome'), WINGMAN_COMMAND_OUTCOMES);
+      const replyLine = event.replyLine === null ? null : readNumber(event.replyLine, at('replyLine'), integerIn(0, 0xff));
+      if (!isWingmanCommandReply(route, code, outcome, replyLine)) throw new CoreInputError(at('outcome'), 'must be an outcome and reply line of the code on its path');
+      return {
+        type,
+        tick,
+        wingmanEntityId: readEntityId(event.wingmanEntityId, at('wingmanEntityId')),
+        code,
+        // The delivery is handled after the object updates, where commands are consumed: always in an earlier tick.
+        issuedTick: readNumber(event.issuedTick, at('issuedTick'), integerIn(1, tick - 1)),
+        path: route,
+        outcome,
+        replyLine,
+      };
+    }
+    case 'transponder-deployed':
+      return {
+        type,
+        tick,
+        entityId: readEntityId(event.entityId, at('entityId')),
+        creatorEntityId: readEntityId(event.creatorEntityId, at('creatorEntityId')),
+        position: readVector(event.position, at('position'), F32),
+        orientation: readMatrix(event.orientation, at('orientation'), F32),
+      };
+  }
+}
+
 /** Validates one event against the DomainEvent union, reading each field once, and returns a detached, unfrozen copy. */
 function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEvent {
   const event = readDataRecord(value, path, MAX_EVENT_FIELDS);
@@ -787,18 +834,22 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     case 'base-navigated':
     case 'base-confirmed':
       return readCommunicationsEvent(event, path, tick, type);
+    case 'wingman-command-consumed':
+    case 'transponder-deployed':
+      return readAiEvent(event, path, tick, type);
     default:
       return readCombatEvent(event, path, tick, type);
   }
 }
 
 /**
- * The pipeline stages that emit command results, P3-06's events and the fixed-stage events of P3-07, P3-09 and P3-10,
- * in tick order (docs/plan/p3/06/spec.md, 领域事件; docs/plan/p3/02/spec.md, CR-06, MW-05, CB-13): P3-10's docking
- * checks in the mission flow; the speed assist and then the commands in the player's update; the other objects'
- * updates, the first place damage can happen; the radio's take in the communications reply; a manual match, an applied
- * selection, a shot, an explosion's activation, a missile's or fragment's expiry, a source's release, P3-09's map
- * toggle, destination and Warp start, a delivery, a docking, a launch and a base key in request handling; an energy
+ * The pipeline stages that emit command results, P3-06's events and the fixed-stage events of P3-07, P3-09, P3-10 and
+ * P3-08, in tick order (docs/plan/p3/06/spec.md, 领域事件; docs/plan/p3/02/spec.md, CR-06, MW-05, CB-13, CR-22): P3-10's
+ * docking checks in the mission flow; the speed assist and then the commands in the player's update; the other objects'
+ * updates, the first place damage can happen and where a wingman consumes its command; the radio's take in the
+ * communications reply; a manual match, an applied selection, a shot, an explosion's activation, a missile's or
+ * fragment's expiry, a source's release, P3-09's map toggle, destination and Warp start, a delivery, a docking, a
+ * launch, a base key and a transponder's deployment in request handling; an energy
  * depletion in the energy stage; a world exit in the parked update; a Warp's completion in its stage; the right
  * display's clearing at the end of the frame, and last the incoming message's presentation sub-step. `hit` and
  * `object-destroyed` happen from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a
@@ -830,7 +881,8 @@ interface PendingTransition {
  * launches and two transitions, each `docked` and `departed` followed at once by its `transition`; at most one take, and
  * then no incoming message starts or ends in the tick; at most one start and one end, the start not after the end, and a
  * message that starts and ends in one tick has frames of no time; the invalid-object cancellation right after a flush,
- * of which there are at most two; at most one cancellation in the mission flow and one at the docking gate.
+ * of which there are at most two; at most one cancellation in the mission flow and one at the docking gate. P3-08's
+ * (CR-22): at most one consumed command per wingman, and no more transponder deployments than command results before.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
@@ -846,6 +898,8 @@ class TickOrder {
   readonly #detonated = new Set<number>();
   readonly #hit = new Set<number>();
   readonly #destroyed = new Set<number>();
+  readonly #consumed = new Set<number>();
+  #deployed = 0;
   /** Event types or causes of which a tick has at most a given number, counted. */
   readonly #counts = new Map<CountedEvent, number>();
 
@@ -868,6 +922,8 @@ class TickOrder {
     this.#detonated.clear();
     this.#hit.clear();
     this.#destroyed.clear();
+    this.#consumed.clear();
+    this.#deployed = 0;
     this.#counts.clear();
   }
 
@@ -963,6 +1019,16 @@ class TickOrder {
         return false;
       case 'object-instantiated':
       case 'radio-queued':
+        return false;
+      case 'wingman-command-consumed':
+        this.#enter(STAGE.objects, path);
+        if (this.#consumed.has(event.wingmanEntityId)) throw new CoreInputError(`${path}.wingmanEntityId`, 'must not consume a second command in the tick');
+        this.#consumed.add(event.wingmanEntityId);
+        return false;
+      case 'transponder-deployed':
+        this.#enter(STAGE.requests, path);
+        // Each comes from an accepted drop-transponder command of the tick, so no more than its command results.
+        if (++this.#deployed > this.#commands) throw new CoreInputError(path, 'must not outnumber the command results before it');
         return false;
       default:
         this.#readCommunications(event, previous, path);

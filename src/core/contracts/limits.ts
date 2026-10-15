@@ -32,8 +32,9 @@ export const CORE_LIMITS = Object.freeze({
    * the per-command `command-delivered`, `docking-requested`, `base-navigated`, `base-confirmed` and menu
    * `left-page-changed` 64 each, 8 page changes without a command, one each of `radio-taken`, `incoming-started`,
    * `incoming-ended` and `docked`, and two each of `departed`, `transition`, `docking-cancelled` and `radio-flushed`:
-   * 640, 8,968 in all. This is about 3.6 times that. At the entity limit the quadratic terms have no fixed bound, and
-   * exceeding the budget is a fault.
+   * 640, 8,968 in all. P3-08 (CR-25) adds at most one `wingman-command-consumed` per wingman (32) and one
+   * `transponder-deployed` per command (64): 9,064, which this is about 3.6 times. At the entity limit the quadratic
+   * terms have no fixed bound, and exceeding the budget is a fault.
    */
   eventsPerTick: 32_768,
   /**
@@ -43,9 +44,26 @@ export const CORE_LIMITS = Object.freeze({
    * release and leave, a part-0 fragment's hand-off and expiry) 2 × 896, `steer` 64, and P3-02's and P3-06's spawn
    * requests 1,024 and speed requests 66: 3,523; P3-09's `map-toggle`, `map-point` and `warp-start` requests (one per
    * command, MW-14) make 3,588, and P3-10's 64 `deliver-command`, one `dock`, two `depart` and 64 base key requests
-   * (CB-16) 3,719. This is about 4.4 times that.
+   * (CB-16) 3,719. P3-08's AI (CR-25), with all 32 craft at the worst table program: at most 2 executor runs per craft
+   * and tick (the installation's script and the first update), each dispatched item posting at most 3 requests (opcode
+   * 1101's attack pass) over at most 18 dispatches, 2 for the entry's hold step, 2 for state rule 1's evasion and 1
+   * departure, 2 × (3 × 18 + 2 + 2 + 1) = 118 each, plus one `create-transponder` per command: 32 × 118 + 64 = 3,840,
+   * 7,559 in all. This is about 4.3 times that.
    */
-  requestsPerTick: 16_384,
+  requestsPerTick: 32_768,
+  /**
+   * Item dispatches of one executor run (`0x5f4f4` from its entry to a yield or the end; CR-25), a runaway budget: the
+   * original has none. Without 9001/9002 in the supported closure the stack stays empty and an acyclic script dispatches
+   * at most its item count, at most 128 (AI_PROGRAMS_LIMITS.scriptItems); this lets every item run 8 times in one run,
+   * for loops that leave through a test. The group-0 closure's most is 18 (ai §12), about 57 times below it.
+   */
+  aiDispatchesPerRun: 1024,
+  /**
+   * Item dispatches of all runs in one tick (CR-25): at most 2 runs per object and tick (ai §12), so the slice's content
+   * dispatches at most entities × 2 × 18 = 73,728 at the entity limit, within it; it stops 2,048 pathological scripts
+   * from stalling one tick.
+   */
+  aiDispatchesPerTick: 131_072,
   /**
    * Items of the radio queue (docs/plan/p3/02/spec.md, CB-16), unbounded in the original: a runaway threshold, and
    * exceeding it is a fault rather than a dropped message. Unthrottled rule queuing comes from destructions (about 4
@@ -68,7 +86,10 @@ export const CORE_LIMITS = Object.freeze({
    * P3-09's state (MW-14) adds at most `entities` map icons of about 170 characters (0.35 MiB; 200 at the longest
    * numbers, 0.4 MiB), `entities` IDs in the object sets (12 KiB; 34 KiB at 16 digits) and the Warp transit (1 KiB; about
    * 2 KiB at the longest numbers): about 10.9 MiB, 11 MiB at the longest (budget.test.ts). P3-10 adds about 60
-   * characters per entity and about 0.8 MiB for a full radio queue (CB-16): about 11.8 MiB in all.
+   * characters per entity and about 0.8 MiB for a full radio queue (CB-16): about 11.8 MiB in all. P3-08 (CR-25) adds
+   * about 2 KiB per craft with a controller, of which instantiation makes at most spawnExpansion (2 MiB; 2.9 KiB and
+   * 2.8 MiB at the longest numbers), and about 0.5 MiB of parse cache for real content (2 MiB with every entry at the
+   * content limits): about 14.3 MiB in all.
    */
   canonicalTextLength: 16_777_216,
 });

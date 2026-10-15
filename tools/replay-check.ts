@@ -96,6 +96,8 @@ export const RECORDING_MAX_BYTES = 534_251_135;
 const LONGEST_NUMBER = -0.0000012345678901234567;
 /** The same without the sign, in [0, 1]. */
 const LONGEST_FRACTION = 0.0000012345678901234567;
+/** An f32 whose JSON text is as long as LONGEST_NUMBER's, 25 characters. */
+const LONGEST_F32 = Math.fround(-0.0000011822337455669185);
 const SAFE = Number.MAX_SAFE_INTEGER;
 const LAST_TICK = CORE_LIMITS.recordedTicks;
 const HASH = 'f'.repeat(16);
@@ -255,6 +257,17 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
   transition: { type: 'transition', tick: LAST_TICK, gap: 'G-02/3' },
   'base-navigated': { type: 'base-navigated', tick: LAST_TICK, direction: 'previous', row: null, moved: false, commandIndex: LAST_COMMAND },
   'base-confirmed': { type: 'base-confirmed', tick: LAST_TICK, row: null, record: null, moved: false, commandIndex: LAST_COMMAND },
+  // P3-08's events (CR-22): the largest code is an unknown one, whose outcome is the longest and whose reply line is 3;
+  // a command is consumed after the tick that delivered it.
+  'wingman-command-consumed': {
+    type: 'wingman-command-consumed', tick: LAST_TICK, wingmanEntityId: SAFE, code: 0xffffffff, issuedTick: LAST_TICK - 1, path: 'parked',
+    outcome: 'unknown-code', replyLine: 3,
+  },
+  // Its pose is f32 (CR-22), whose longest text is as long as a double's.
+  'transponder-deployed': {
+    type: 'transponder-deployed', tick: LAST_TICK, entityId: SAFE, creatorEntityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
+    orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3,
+  },
 };
 
 /** The content identity of every package the production import job converts. */

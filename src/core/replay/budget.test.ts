@@ -4,11 +4,14 @@ import type { DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command, type TickInput } from '../contracts/tick-input.ts';
 import { registerTick, RequestQueue, runTick, type Request } from '../systems/pipeline.ts';
-import type { Entity, EntityInit, Matrix3, SteeredMovementBlock } from '../world/entity-table.ts';
+import { AI_PROGRAMS_LIMITS } from '../../content/rule-data/ai-programs.ts';
+import {
+  clearedControllerCommon, RETURN_STACK_DEPTH, type Entity, type EntityInit, type Matrix3, type SteeredMovementBlock, type TableController,
+} from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld, type World } from '../world/world.ts';
 import { addPlayerEntity, entityInit, expectFault, stillEntityInit, testState, thrownBy, tickInput } from '../world/world.test-support.ts';
-import type { RadioItem, WorldState } from '../world/world-state.ts';
+import type { ParsedArgument, ParsedScript, RadioItem, WorldState } from '../world/world-state.ts';
 import { recordState } from './recording.ts';
 import { PRODUCER } from './replay.test-support.ts';
 import { snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
@@ -229,7 +232,10 @@ function longestEntity(state: WorldState): Entity {
     maximumSpeed: LONG_F32,
     lastParkedUpdateClock: LONG_ID,
     warpClock: LONG_ID,
-    ai: { mode: 5, target: LONG_ID, goal: longVector(LONG_F32), targetOffset: longVector(LONG_F32), objectTarget: LONG_ID, pendingCommand: null },
+    ai: {
+      mode: 5, target: LONG_ID, goal: longVector(LONG_F32), targetOffset: longVector(LONG_F32), objectTarget: LONG_ID, pendingCommand: null,
+      program: { type: 'none' },
+    },
     formation: { leader: LONG_ID, offset: longVector(LONG_F32) },
   };
   const entity = state.entities.allocate(init);
@@ -247,6 +253,45 @@ function longestEntity(state: WorldState): Entity {
   block.disturbance = { level: 2, biases: [-LONG_ID, -LONG_ID, -LONG_ID] };
   Object.assign(entity, { state: 'awaiting-presentation', activity: 'docked', placementSerial: LONG_ID });
   return entity;
+}
+
+/** P3-08's longest controller (CR-16, CR-17): an interpreter with every number at its longest and a full return stack. */
+function longestController(): TableController {
+  const common = clearedControllerCommon();
+  const axis = { clear: false, set: false, value: LONG_F32 };
+  const trigger = { pressed: false, holdDeadline: LONG_ID };
+  return {
+    nextUpdateClock: LONG_ID,
+    period: 2 ** 31 - 1,
+    limits: { turn: LONG_F32, speed: LONG_F32, saturation: LONG_F32, rollMatchThreshold: LONG_F32 },
+    triggers: [trigger, trigger, trigger],
+    aiLock: false,
+    missileReady: false,
+    automaticMounts: false,
+    engagement: { dueClock: LONG_ID, period: 2 ** 31 - 1, mask: 0xffffffff },
+    attackPass: { phase: 0, deadline: LONG_ID, savedSizeClass: 255, savedLeadMode: 255 },
+    steering: {
+      ...common.steering,
+      targetValid: false, target: LONG_ID, targetSample: LONG_ID, relativeSample: LONG_ID, point: longVector(LONG_F32), distance: LONG_F32,
+      targetSpeed: LONG_F32, offset: { enabled: false, frame: 0, vector: longVector(LONG_F32) }, sizeClass: 255, approachRadius: LONG_F32,
+      speedLimit: LONG_F32, halfSpeedLimit: LONG_F32, turnRates: [LONG_F32, LONG_F32, LONG_F32], leadMode: 255, leadConstant: LONG_F32,
+      relativeFlags: 7, relative: longVector(LONG_F32), reverseFlags: 7, reverse: longVector(LONG_F32), angles: [LONG_F32, LONG_F32],
+      control: { scale: LONG_F32, axes: [axis, axis, axis], speedFactor: LONG_F32 }, coneBits: 3, speedFraction: LONG_F32, turnFraction: LONG_F32,
+      rollMatch: false, throttleNoise: { enabled: false, low: LONG_F32, high: LONG_F32 }, steeringNoise: { enabled: false, low: LONG_F32, high: LONG_F32 },
+    },
+    handler: 'interpreter',
+    interpreter: {
+      state: 6,
+      execution: {
+        script: LONG_ID, item: LONG_ID, variables: [LONG_I32, LONG_I32, LONG_I32, LONG_I32], timers: [LONG_ID, LONG_ID, LONG_ID, LONG_ID],
+        returnStack: Array.from({ length: RETURN_STACK_DEPTH }, () => LONG_ID), wait: { active: false, until: LONG_ID }, hold: { active: false, until: LONG_ID },
+      },
+      lastRunEnded: false,
+      steadyClock: LONG_ID,
+      stateDeadline: LONG_ID,
+      state4Deadline: LONG_ID,
+    },
+  };
 }
 
 /**
@@ -280,16 +325,19 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     const entityText = one.slice(one.lastIndexOf('{"id":'), one.indexOf('],"kindOrder"'));
     // P3-07's combat state rests on its own basis (docs/plan/p3/02/spec.md, CR-14: about 8.5 KiB a craft with 18
     // mounts), which P3-07 accounts for; P3-06's terms are the fields before it. P3-10's communications fields close the
-    // entity: CB-16 counts about 60 characters, 69 at their longest.
+    // entity but for P3-08's transponder state, null for this kind: CB-16 counts about 60 characters, 69 at their longest.
     const combatStart = entityText.indexOf(',"combat":');
     const combatEnd = entityText.lastIndexOf(',"communications":');
-    expect(entityText.length - 1 - combatEnd).toBeLessThanOrEqual(72);
+    const transponderStart = entityText.lastIndexOf(',"transponder":');
+    expect(transponderStart - combatEnd).toBeLessThanOrEqual(72);
+    expect(entityText.slice(transponderStart)).toBe(',"transponder":null}');
     const flightText = entityText.slice(entityText.indexOf('"maximumSpeed"'), combatStart);
     expect(flightText.startsWith('"maximumSpeed"') && flightText.endsWith('}}')).toBe(true);
-    // P3-10's pending command in the AI state is P3-10's term (CB-16), not P3-06's.
+    // P3-10's pending command in the AI state is P3-10's term (CB-16), P3-08's program slot P3-08's (CR-25), not P3-06's.
     const pendingCommand = `,"pendingCommand":{"code":4294967295,"issuedTick":${LONG_ID}}`;
-    expect(flightText).toContain(pendingCommand);
-    expect(flightText.length - pendingCommand.length).toBeLessThanOrEqual(1536);
+    const noProgram = ',"program":{"type":"none"}';
+    expect(flightText).toContain(pendingCommand + noProgram);
+    expect(flightText.length - pendingCommand.length - noProgram.length).toBeLessThanOrEqual(1536);
     expect(perEntity - (combatEnd - combatStart)).toBeLessThanOrEqual(4096);
 
     while (state.entities.size < ENTITIES) longestEntity(state);
@@ -336,5 +384,25 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     const queued = snapshotText(withLongIds(takeSnapshot(state)));
     expect(queued.length - mapped.length).toBeLessThanOrEqual(radioQueueItems * 320);
     expect(queued.length).toBeLessThanOrEqual(canonicalTextLength);
+
+    // P3-08's state at its bounds (docs/plan/p3/02/spec.md, CR-25), on top of all the above: as many craft as
+    // instantiation can make (spawnExpansion; the player and constructed transponders have no program) with the longest
+    // controller, an interpreter with a full return stack (CR-25 counts about 2 KiB a controller, 2.9 KiB at the longest numbers), and
+    // a parse cache of AI_PROGRAMS_LIMITS.entries scripts (every entry) of AI_PROGRAMS_LIMITS.scriptItems items, each the longest
+    // argument (CR-25 counts at most about 0.5 MiB for real content; 2 MiB at these bounds).
+    const controller = longestController();
+    for (const entity of [...state.entities.walk(1 << 19)].slice(0, spawnExpansion)) entity.ai.program = { type: 'table', record: LONG_ID, controller };
+    const controlled = snapshotText(withLongIds(takeSnapshot(state)));
+    const controllerText = (controlled.length - queued.length) / spawnExpansion;
+    expect(Number.isInteger(controllerText)).toBe(true);
+    expect(controllerText).toBeLessThanOrEqual(3072);
+    const absent = { present: false, value: LONG_F32 };
+    const argument: ParsedArgument = { type: 'optional-floats', values: [absent, absent, absent, absent] };
+    state.ai.parseCache.push(...Array.from({ length: AI_PROGRAMS_LIMITS.entries }, (_, script): ParsedScript => ({
+      script, uses: LONG_ID, items: Array.from({ length: AI_PROGRAMS_LIMITS.scriptItems }, () => argument),
+    })));
+    const cached = snapshotText(withLongIds(takeSnapshot(state)));
+    expect(cached.length - controlled.length).toBeLessThanOrEqual(AI_PROGRAMS_LIMITS.entries * (AI_PROGRAMS_LIMITS.scriptItems * 256 + 64));
+    expect(cached.length).toBeLessThanOrEqual(canonicalTextLength);
   });
 });

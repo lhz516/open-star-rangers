@@ -153,6 +153,17 @@ describe('event log', () => {
     ]);
   });
 
+  it('summarizes P3-08\'s wingman command and transponder events by their own scalar fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    expect([
+      { type: 'wingman-command-consumed', tick: 6, wingmanEntityId: 2, code: 3, issuedTick: 5, path: 'parked', outcome: 'refused', replyLine: null },
+      { type: 'transponder-deployed', tick: 6, entityId: 9, creatorEntityId: 1, position: { x: 1, y: -15, z: 2 }, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+    ].map((event) => summary(event as DomainEvent))).toEqual([
+      [['wingmanEntityId', 2], ['code', 3], ['issuedTick', 5], ['path', 'parked'], ['outcome', 'refused'], ['replyLine', null]],
+      [['entityId', 9], ['creatorEntityId', 1], ['x', 1], ['y', -15], ['z', 2]],
+    ]);
+  });
+
   it('keeps 500 events untruncated and drops the oldest of 501', () => {
     const log = new EventLog();
     for (let tick = 1; tick <= EVENT_LOG_LIMIT; tick++) log.append(result(tick), NO_COMMAND);

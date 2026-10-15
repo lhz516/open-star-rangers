@@ -183,7 +183,7 @@ describe('the runtime kinds (CR-02)', () => {
       source: null, name: { type: 'none' }, side: null, baseInteraction: false, activity: 'active',
       ruleInputs: { percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 },
       lastParkedUpdateClock: 0, warpClock: 0, inWarp: false,
-      ai: { mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null, pendingCommand: null },
+      ai: { mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null, pendingCommand: null, program: { type: 'none' } },
       formation: null,
     });
     const table = new EntityTable();

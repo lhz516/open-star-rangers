@@ -131,9 +131,49 @@ export interface WorldCommunications {
   readonly tailCheck: { dueClock: number; attackerOnTail: boolean; missileIncoming: boolean };
 }
 
-/** The friendly-fire total `0x174dfc` (i32) and its window end `0x174e00` (a clock); P3-08 adds the other AI fields. */
+/**
+ * The world's AI state (docs/plan/p3/02/spec.md, CR-19): the friendly-fire total `0x174dfc` (i32) and its window end
+ * `0x174e00` (a clock), the same field as P3-10's CB-05, which P3-10's `0x3c208` writes and P3-08 reads; and the script
+ * parse cache. The object sets are WorldState.objectSets (MW-06).
+ */
 export interface WorldAi {
   readonly friendlyFire: { accumulated: number; windowEnd: number };
+  /**
+   * The parsed arguments of every script with a live execution state (ai §5.2), in ascending script order. A load that
+   * takes a script's count from 0 to 1 parses it and draws then; one that finds it shares it without drawing; the
+   * release to 0 drops it, so the next load parses and draws again. A count per script stands for the original's count
+   * per item. Empty in a new world.
+   */
+  readonly parseCache: ParsedScript[];
+}
+
+/** A cached script (CR-19). */
+export interface ParsedScript {
+  /** The script's entry index in the AI programs. */
+  readonly script: number;
+  /** Positive: the live execution states of the script. */
+  uses: number;
+  /** One per item up to the script's first 10000, in item order. */
+  readonly items: readonly ParsedArgument[];
+}
+
+/** An item's parsed argument, its +0x08/+0x0C slots, by its opcode's class (ai §5). */
+export type ParsedArgument =
+  /** Opcodes without an argument (106, 107, 9500). */
+  | { readonly type: 'none' }
+  /** i32: integer, boolean and keyword classes; an integer class without text is 0. */
+  | { readonly type: 'integer'; readonly value: number }
+  /** f32: the float, degree (times two constants) and cosine classes. */
+  | { readonly type: 'float'; readonly value: number }
+  /** Opcode 100's four optional values. */
+  | { readonly type: 'optional-floats'; readonly values: readonly [OptionalFloat, OptionalFloat, OptionalFloat, OptionalFloat] }
+  /** Opcode 111's three f32. */
+  | { readonly type: 'floats'; readonly values: readonly number[] };
+
+/** A token starting with x or X is absent; an empty token is a present 0.0. */
+export interface OptionalFloat {
+  readonly present: boolean;
+  readonly value: number;
 }
 
 /**
@@ -199,7 +239,8 @@ export function createWorldCommunications(): WorldCommunications {
 /**
  * The state of a world just created: tick 0, clock 0, no entities, view mode 0xC, with the spawn state and the RNG
  * state the build's defaults left (spawn-schedule.ts), the map cursor at its start pixel, empty object sets and no map
- * icons; the mission running in sub-state 0, with P3-10's state at its creation values (CB-02, CB-05, CB-11).
+ * icons; the mission running in sub-state 0, with P3-10's state at its creation values (CB-02, CB-05, CB-11) and an
+ * empty parse cache (CR-19).
  */
 export function createWorldState(
   config: WorldConfig,
@@ -226,7 +267,7 @@ export function createWorldState(
     mapIcons: Object.freeze([]),
     flow: { mainState: 3, subState: 0, dockingDeadline: 0 },
     communications: createWorldCommunications(),
-    ai: { friendlyFire: { accumulated: 0, windowEnd: 0 } },
+    ai: { friendlyFire: { accumulated: 0, windowEnd: 0 }, parseCache: [] },
     baseService: null,
   };
 }

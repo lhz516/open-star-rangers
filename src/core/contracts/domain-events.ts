@@ -7,7 +7,8 @@
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
  * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
  * map and Warp events and reasons (MW-04, MW-05), then P3-10's communications, docking and base events and reason
- * (CB-07, CB-13). New event types or reasons are added by revising the spec, not by consumers.
+ * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22). New event types or reasons are added by
+ * revising the spec, not by consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
 import type { MapPixel } from '../world/map-rule-data.ts';
@@ -502,6 +503,69 @@ export interface BaseConfirmedEvent extends DomainEventBase<'base-confirmed'> {
   readonly commandIndex: number;
 }
 
+// P3-08's events (docs/plan/p3/02/spec.md, CR-22): detached fact snapshots like P3-07's and P3-10's.
+
+export const WINGMAN_COMMAND_OUTCOMES = Object.freeze(['applied', 'fallback', 'refused', 'acknowledged', 'status', 'unknown-code'] as const);
+export type WingmanCommandOutcome = (typeof WINGMAN_COMMAND_OUTCOMES)[number];
+
+/** The status reply's lines, by hull percentage (WB3, WB4). */
+const STATUS_LINES: readonly number[] = [0xb, 0xc, 0xd];
+
+/**
+ * The outcomes and reply lines each path gives codes 1–6 (CR-22's 结果映射, WB3, WB4): outcome → line, null for no
+ * reply. Code 7 is `status` with a status line and every higher code `unknown-code` with line 3, on both paths.
+ */
+const WINGMAN_REPLIES: Readonly<Record<'active' | 'parked', readonly Partial<Record<WingmanCommandOutcome, number | null>>[]>> = {
+  active: [
+    { applied: 0x10, fallback: 0, refused: 0 },
+    { applied: 3, refused: 0 },
+    { applied: 0xe },
+    { applied: 0x14, fallback: 0 },
+    { applied: 0x12, fallback: 0 },
+    { applied: 0x12, fallback: 0x15 },
+  ],
+  parked: [
+    { applied: 0x10, refused: 0 },
+    { acknowledged: 3, refused: 0 },
+    { applied: 0xe, refused: null },
+    { applied: 0x14, refused: null },
+    { applied: 0x12, refused: 0 },
+    { applied: 0x12, refused: 0x15 },
+  ],
+};
+
+/** Whether a consumption of `code` on `path` may have `outcome` with `replyLine` (CR-22); `code` is a u32 from 1. */
+export function isWingmanCommandReply(path: 'active' | 'parked', code: number, outcome: WingmanCommandOutcome, replyLine: number | null): boolean {
+  if (!Number.isInteger(code) || code < 1) return false;
+  if (code === 7) return outcome === 'status' && replyLine !== null && STATUS_LINES.includes(replyLine);
+  if (code > 7) return outcome === 'unknown-code' && replyLine === 3;
+  return WINGMAN_REPLIES[path][code - 1][outcome] === replyLine;
+}
+
+/**
+ * A wingman consumed its pending command (`0x614a8` active, `0x61f20` parked), once, after the effect and the reply
+ * call and as the slot is cleared; a blocked or overwritten command has none. `issuedTick` is the tick of the
+ * delivery's `command-delivered`; `replyLine` is the line the reply call asked for (the drawn line and the message are
+ * in its `radio-queued`), null when the parked refusal of codes 3 and 4 does not reply.
+ */
+export interface WingmanCommandConsumedEvent extends DomainEventBase<'wingman-command-consumed'> {
+  readonly wingmanEntityId: EntityId;
+  /** A u32 from 1. */
+  readonly code: number;
+  readonly issuedTick: number;
+  readonly path: 'active' | 'parked';
+  readonly outcome: WingmanCommandOutcome;
+  readonly replyLine: number | null;
+}
+
+/** A `create-transponder` request constructed an active transponder (CR-20); a parked one, or a wingman's drop, has none. */
+export interface TransponderDeployedEvent extends DomainEventBase<'transponder-deployed'> {
+  readonly entityId: EntityId;
+  readonly creatorEntityId: EntityId;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+}
+
 export type DomainEvent =
   | CommandResultEvent
   | ObjectInstantiatedEvent
@@ -538,4 +602,6 @@ export type DomainEvent =
   | DepartedEvent
   | TransitionEvent
   | BaseNavigatedEvent
-  | BaseConfirmedEvent;
+  | BaseConfirmedEvent
+  | WingmanCommandConsumedEvent
+  | TransponderDeployedEvent;

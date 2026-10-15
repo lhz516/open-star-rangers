@@ -18,6 +18,10 @@ import {
   type WarpCompletedEvent,
   type WarpDestinationSetEvent,
   type WeaponSelectedEvent,
+  type WingmanCommandConsumedEvent,
+  type WingmanCommandOutcome,
+  isWingmanCommandReply,
+  WINGMAN_COMMAND_OUTCOMES,
 } from './domain-events.ts';
 import { COMMAND_TYPES, type CommandType } from './tick-input.ts';
 
@@ -94,6 +98,13 @@ const communicationsEvents: DomainEvent[] = [
   { type: 'base-confirmed', tick: 14, row: 3, record: 7, moved: true, commandIndex: 2 },
 ];
 
+// P3-08's events (docs/plan/p3/02/spec.md, CR-22), one of each type and a consumption without a reply.
+const aiEvents: DomainEvent[] = [
+  { type: 'wingman-command-consumed', tick: 15, wingmanEntityId: 2, code: 6, issuedTick: 14, path: 'active', outcome: 'fallback', replyLine: 0x15 },
+  { type: 'wingman-command-consumed', tick: 16, wingmanEntityId: 2, code: 3, issuedTick: 14, path: 'parked', outcome: 'refused', replyLine: null },
+  { type: 'transponder-deployed', tick: 16, entityId: 20, creatorEntityId: 1, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+];
+
 describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06; P3-07 CR-05, CR-06)', () => {
   it('has closed, frozen outcome and reason lists', () => {
     expect(COMMAND_OUTCOMES).toEqual(['accepted', 'rejected', 'ignored']);
@@ -107,11 +118,17 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       'subsystem-disabled',
     ]);
     expect(Object.isFrozen(COMMAND_OUTCOMES) && Object.isFrozen(COMMAND_RESULT_REASONS)).toBe(true);
+    // P3-08 (CR-22) adds no command reason; a wingman's consumption has its own closed outcomes.
+    expect(WINGMAN_COMMAND_OUTCOMES).toEqual(['applied', 'fallback', 'refused', 'acknowledged', 'status', 'unknown-code']);
+    expect(Object.isFrozen(WINGMAN_COMMAND_OUTCOMES)).toBe(true);
+    // The outcome table itself is exercised through the comparator (compare.test.ts); a code below 1 has no outcome.
+    expect([isWingmanCommandReply('active', 1, 'applied', 0x10), isWingmanCommandReply('active', 0, 'refused', 0)]).toEqual([true, false]);
   });
 
   it('is plain data that survives a JSON round trip unchanged', () => {
     const events: DomainEvent[] = [
       rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents, ...communicationsEvents,
+      ...aiEvents,
     ];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
@@ -126,6 +143,7 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'map-toggled' | 'warp-destination-set' | 'warp-started' | 'warp-completed'
       | 'command-delivered' | 'radio-queued' | 'radio-taken' | 'incoming-started' | 'incoming-ended' | 'radio-flushed' | 'docking-requested'
       | 'docking-cancelled' | 'docked' | 'departed' | 'transition' | 'base-navigated' | 'base-confirmed'
+      | 'wingman-command-consumed' | 'transponder-deployed'
     >();
     expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
     expect(new Set(mapWarpEvents.map(({ type }) => type)).size).toBe(4);
@@ -133,6 +151,10 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
     expectTypeOf<WarpCompletedEvent['previousViewMode']>().toEqualTypeOf<1>();
     expect(new Set(communicationsEvents.map(({ type }) => type)).size).toBe(13);
     expectTypeOf<DepartedEvent['origin']>().toEqualTypeOf<'command' | 'automatic'>();
+    expect(new Set(aiEvents.map(({ type }) => type)).size).toBe(2);
+    expectTypeOf<WingmanCommandConsumedEvent['path']>().toEqualTypeOf<'active' | 'parked'>();
+    expectTypeOf<WingmanCommandConsumedEvent['outcome']>().toEqualTypeOf<WingmanCommandOutcome>();
+    expectTypeOf<WingmanCommandConsumedEvent['replyLine']>().toEqualTypeOf<number | null>();
     expectTypeOf<Attacker['type']>().toEqualTypeOf<'shooter' | 'lost-shooter' | 'none'>();
     expectTypeOf<ShotTrigger['type']>().toEqualTypeOf<'command' | 'ai' | 'automatic'>();
     expectTypeOf<HitEvent['cause']>().toEqualTypeOf<'projectile' | 'missile' | 'collision' | 'area' | 'parked'>();

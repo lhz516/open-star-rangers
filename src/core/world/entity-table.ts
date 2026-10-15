@@ -19,6 +19,7 @@ import { fitsLimit } from '../contracts/limits.ts';
 import { CoreFaultError } from '../errors.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
+import type { ControlBlock } from '../systems/pipeline.ts';
 
 /** Positive safe integer, allocated from 1 in creation order and never reused within a world. */
 export type EntityId = number;
@@ -220,7 +221,10 @@ export interface MarkerMovementBlock {
 
 const MARKER_MOVEMENT: MarkerMovementBlock = Object.freeze({ mode: 'marker', speed: 0 });
 
-/** AI modes (+0xC4) with the original values that instantiation writes; P3-08 adds the others through the extension rules. */
+/**
+ * AI modes (+0xC4) with their original values. P3-08 keeps the set (docs/plan/p3/02/spec.md, CR-18): mode 3 has no
+ * writer in the supported closure, and the wingman's anger is its private behaviour 5, not an object mode.
+ */
 export type AiMode = 0 | 1 | 2 | 4 | 5;
 
 /**
@@ -247,6 +251,11 @@ export interface AiState {
    * allocator and instantiation write null; P3-10's `0x3bed0` and P3-08's wingman handlers consume and clear it.
    */
   pendingCommand: PendingCommand | null;
+  /**
+   * +0x10 and +0x14, the AI program slot (CR-16). The allocator and every constructor leave `none`; instantiation's
+   * selection (`0x20990`) writes the selected record, and the first callback installs its controller.
+   */
+  program: AiProgramSlot;
 }
 
 /** A delivered command: `code` is a u32 from 1; `issuedTick` is the tick that wrote it, a project field no rule reads. */
@@ -254,6 +263,308 @@ export interface PendingCommand {
   readonly code: number;
   readonly issuedTick: number;
 }
+
+/**
+ * The AI program slot (CR-16): +0x10 is the selected record, +0x14 the controller. `none` is +0x10 = 0, for the kinds
+ * the selection skips (the player, kind 0x4000 and the runtime kinds) or when neither table matched. A null controller
+ * is +0x14 = 0: selected but not yet installed, or removed in state 5 or 6 until the next state 0–3 callback installs
+ * it again.
+ */
+export type AiProgramSlot =
+  | { readonly type: 'none' }
+  /** A record of TABL 6003. */
+  | { readonly type: 'table'; readonly record: number; controller: TableController | null }
+  /** A record of the built-in table. */
+  | { readonly type: 'built-in'; readonly record: number; controller: BuiltInController | null };
+
+/** The installed controller of a table record: the interpreter while active or docked, `0x62250` while parked. */
+export type TableController = AiControllerCommon & ({ readonly handler: 'interpreter'; readonly interpreter: InterpreterState } | { readonly handler: 'parked' });
+
+/** The installed controller of a built-in record (wingman `0x610c8`, base `0x62c10`), or `0x62250` while parked. */
+export type BuiltInController = AiControllerCommon & (
+  | { readonly handler: 'wingman'; readonly wingman: WingmanState }
+  | { readonly handler: 'base'; readonly base: BaseState }
+  | { readonly handler: 'parked' }
+);
+
+export type AiController = TableController | BuiltInController;
+export type AiHandler = AiController['handler'];
+
+/**
+ * The 0x16C-byte controller C (ai §1.1; CR-16) but for the entity itself (+0x00) and the handler's private state
+ * (+0x168). Clocks are mission clock units; the installation (`0x5dc0c`, `0x5c530`, the handler's mode 0) writes the
+ * initial values and the removal in state 5 or 6 discards the controller, with no other reset.
+ */
+export interface AiControllerCommon {
+  /** +0xF0, a clock: the AI step runs the handler when the sample is above it (unsigned, strict). */
+  nextUpdateClock: number;
+  /** +0xF4, i32 ≥ 0: the record's +0x14, scaled by `0x5e4d0`. */
+  period: number;
+  /** +0x100–+0x118, from the record (a table record after the load transform). */
+  readonly limits: ControllerLimits;
+  /** +0x120–+0x134: channels 0, 1 and 2. */
+  readonly triggers: readonly [ChannelTrigger, ChannelTrigger, ChannelTrigger];
+  /** +0x138. */
+  aiLock: boolean;
+  /** +0x13C. */
+  missileReady: boolean;
+  /** +0x140: set by the base's installation `0x5e1f4`. */
+  automaticMounts: boolean;
+  /** +0x144–+0x14C. */
+  readonly engagement: EngagementTimer;
+  /** +0x150–+0x15C, the attack pass `0x63c00` (WA7). */
+  readonly attackPass: AttackPass;
+  /** +0x04–+0xEF, the steering block S (A1). */
+  readonly steering: SteeringBlock;
+}
+
+/** +0x100–+0x118, f32 each; the original also stores −turn, −speed and −saturation, which follow from these. */
+export interface ControllerLimits {
+  /** +0x104, a = F(D(D(record +0x24 × f64 0x17232c) × f64 0x172334)). */
+  turn: number;
+  /** +0x10C, likewise from record +0x28; `0x5e4d0` rewrites it. */
+  speed: number;
+  /** +0x114, a bit copy of record +0x2C. */
+  saturation: number;
+  /** +0x118, a bit copy of record +0x30. */
+  rollMatchThreshold: number;
+}
+
+/** One trigger channel: pressed (+0x120 + 4k, only 0 or 1) and its hold deadline (+0x12C + 4k, a clock; 0 holds 0). */
+export interface ChannelTrigger {
+  pressed: boolean;
+  holdDeadline: number;
+}
+
+/** The engagement timer (+0x144–+0x14C). */
+export interface EngagementTimer {
+  /** +0x144: 0 when off, otherwise a clock. */
+  dueClock: number;
+  /** +0x148, i32 ≥ 0. */
+  period: number;
+  /** +0x14C, a u32 kind mask (a 0 is written as 0xfbfff). */
+  mask: number;
+}
+
+/** The attack pass (`0x63c00`, WA7). */
+export interface AttackPass {
+  /** +0x150. */
+  phase: 0 | 1 | 2;
+  /** +0x154, a clock. */
+  deadline: number;
+  /** +0x158, u8. */
+  savedSizeClass: number;
+  /** +0x15C, u8. */
+  savedLeadMode: number;
+}
+
+/** A noise routine's parameters (`0x5d490`, `0x5d6a8`): S+0xD4–+0xDC and S+0xE0–+0xE8, the bounds f32. */
+export interface NoiseSettings {
+  enabled: boolean;
+  low: number;
+  high: number;
+}
+
+/**
+ * The steering block S = C+4 (A1; CR-16). S+0x00 (the subject), S+0x04 (the pointing limit) and S+0x08 (the subject's
+ * craft record) follow from the entity and the static data and are not kept. Floats are f32.
+ */
+export interface SteeringBlock {
+  /** S+0x0C. */
+  targetValid: boolean;
+  /** S+0x10: null with `targetValid` for point steering (`0x5c658`). */
+  target: EntityId | null;
+  /** S+0x14, a clock: the sample of the last `0x5c8b0`, a once-per-sample cache. */
+  targetSample: number;
+  /** S+0x18, a clock: the sample of the last `0x5cc6c`. */
+  relativeSample: number;
+  /** S+0x1C–+0x24. */
+  point: Vec3;
+  /** S+0x28. */
+  distance: number;
+  /** S+0x2C. */
+  targetSpeed: number;
+  /** S+0x30, S+0x34 and S+0x38–+0x40. */
+  offset: { readonly enabled: boolean; readonly frame: 0 | 1; readonly vector: Vec3 };
+  /** S+0x44, u8. */
+  sizeClass: number;
+  /** S+0x48. */
+  approachRadius: number;
+  /** S+0x4C. */
+  speedLimit: number;
+  /** S+0x50. */
+  halfSpeedLimit: number;
+  /** S+0x54, +0x58, +0x5C. */
+  turnRates: readonly [number, number, number];
+  /** S+0x60, u8. */
+  leadMode: number;
+  /** S+0x64. */
+  leadConstant: number;
+  /** S+0x68, bits 0–2. */
+  relativeFlags: number;
+  /** S+0x6C–+0x74. */
+  relative: Vec3;
+  /** S+0x78, bits 0–2. */
+  reverseFlags: number;
+  /** S+0x7C–+0x84. */
+  reverse: Vec3;
+  /** S+0x88, +0x8C. */
+  angles: readonly [number, number];
+  /**
+   * S+0x90–+0xBC, the control block CB: it persists between steps, since the noise routines change it in place and
+   * `0x5d014` posts it as left, so every axis keeps its `value` even while `set` is false.
+   */
+  control: ControlBlock;
+  /** S+0xC0 (C+0xC4, not the object's AI mode +0xC4). */
+  coneBits: 0 | 1 | 2 | 3;
+  /** S+0xC8. */
+  speedFraction: number;
+  /** S+0xCC. */
+  turnFraction: number;
+  /** S+0xD0. */
+  rollMatch: boolean;
+  /** S+0xD4–+0xDC. */
+  readonly throttleNoise: NoiseSettings;
+  /** S+0xE0–+0xE8. */
+  readonly steeringNoise: NoiseSettings;
+}
+
+/** The interpreter's private state, the 0x18-byte I at C+0x168 (ai §11.1; CR-17). */
+export interface InterpreterState {
+  /** I+0x00, u8: 0 until the state machine first chooses. */
+  state: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  /** I+0x04: the current script's execution; null only in state 0 or state 3 with an empty list. */
+  execution: ExecutionState | null;
+  /** I+0x08: whether the last executor run ended (true) or yielded (false); not cleared by a script change. */
+  lastRunEnded: boolean;
+  /** I+0x0C, a clock: the sample after each update with cone bits 3. */
+  steadyClock: number;
+  /** I+0x10, a clock: set on entering state 3, 4 or 5 from outside them. */
+  stateDeadline: number;
+  /** I+0x14, a clock; 0 when unset. */
+  state4Deadline: number;
+}
+
+/**
+ * The execution state of one loaded script, the 0x60-byte X (ai §5.1; CR-17): every load has its own, while the
+ * parsed arguments are shared in WorldAiState.parseCache. The exit value X+0x00 has no reader and is not kept.
+ */
+export interface ExecutionState {
+  /** The script's entry index in the AI programs (X+0x24's first entry). */
+  readonly script: number;
+  /** X+0x28: the current item, below the script's item count. */
+  item: number;
+  /** X+0x04–+0x10, i32. */
+  variables: readonly [number, number, number, number];
+  /** X+0x14–+0x20, clocks. */
+  timers: readonly [number, number, number, number];
+  /** X+0x2C–+0x48: item indexes; the length is the depth X+0x4C, 0–8. */
+  returnStack: readonly number[];
+  /** X+0x50, X+0x54. */
+  wait: ScriptDeadline;
+  /** X+0x58, X+0x5C. */
+  hold: ScriptDeadline;
+}
+
+/** A script's wait or hold: whether it is set, and its clock. */
+export interface ScriptDeadline {
+  readonly active: boolean;
+  readonly until: number;
+}
+
+/** The deepest return stack: the original's eight slots X+0x2C–+0x48. */
+export const RETURN_STACK_DEPTH = 8;
+
+/** The wingman's private state, the 0x14-byte B at C+0x168 (WA1; CR-17). */
+export interface WingmanState {
+  /** B+0x00, the behaviour b; 5 is its anger. */
+  behaviour: 0 | 1 | 2 | 3 | 4 | 5;
+  /** B+0x04. */
+  doNotAttack: EntityId | null;
+  /** B+0x08. */
+  attackTarget: EntityId | null;
+  /** B+0x0C, a clock. */
+  nextGunSwitchClock: number;
+  /** B+0x10, a clock. */
+  nextEngageSearchClock: number;
+}
+
+/** The base's private state: the kind mask stored at C+0x168 (A14; CR-17); a base (kind 0x20000) gets 0x93780. */
+export interface BaseState {
+  readonly targetMask: 0x93780 | 0x6c87f;
+}
+
+/** The slot every entity is allocated with. */
+export const NO_AI_PROGRAM: AiProgramSlot = Object.freeze({ type: 'none' });
+
+/**
+ * The common controller fields as the installation's clearing (`0x5dc0c`) leaves them, before it writes the record's
+ * configuration and `0x5c530` initialises the steering block: every number 0, every flag false, no target and no
+ * speed factor. Not a state any rule reads; the installation overwrites what it uses.
+ */
+export function clearedControllerCommon(): AiControllerCommon {
+  const zero = ZERO_VECTOR;
+  const axis = Object.freeze({ clear: false, set: false, value: 0 });
+  const trigger = (): ChannelTrigger => ({ pressed: false, holdDeadline: 0 });
+  return {
+    nextUpdateClock: 0,
+    period: 0,
+    limits: { turn: 0, speed: 0, saturation: 0, rollMatchThreshold: 0 },
+    triggers: [trigger(), trigger(), trigger()],
+    aiLock: false,
+    missileReady: false,
+    automaticMounts: false,
+    engagement: { dueClock: 0, period: 0, mask: 0 },
+    attackPass: { phase: 0, deadline: 0, savedSizeClass: 0, savedLeadMode: 0 },
+    steering: {
+      targetValid: false,
+      target: null,
+      targetSample: 0,
+      relativeSample: 0,
+      point: zero,
+      distance: 0,
+      targetSpeed: 0,
+      offset: Object.freeze({ enabled: false, frame: 0, vector: zero }),
+      sizeClass: 0,
+      approachRadius: 0,
+      speedLimit: 0,
+      halfSpeedLimit: 0,
+      turnRates: Object.freeze([0, 0, 0] as const),
+      leadMode: 0,
+      leadConstant: 0,
+      relativeFlags: 0,
+      relative: zero,
+      reverseFlags: 0,
+      reverse: zero,
+      angles: Object.freeze([0, 0] as const),
+      control: Object.freeze({ scale: 0, axes: Object.freeze([axis, axis, axis] as const), speedFactor: null }),
+      coneBits: 0,
+      speedFraction: 0,
+      turnFraction: 0,
+      rollMatch: false,
+      throttleNoise: { enabled: false, low: 0, high: 0 },
+      steeringNoise: { enabled: false, low: 0, high: 0 },
+    },
+  };
+}
+
+/** The kind bit of kind 0x4000, the transponder (Xpon; CR-20). */
+export const TRANSPONDER_KIND_BIT = 14;
+
+/**
+ * Kind 0x4000's own state (CR-20); null for every other kind. `creator` is the creation path: a declaration, the
+ * player's `b` or a wingman's drop. `callback` is the reuse of object +0x14 by the callback `0x3897c`: `first-update`
+ * (+0x14 = 1) marks a `b` transponder created active, `tumbling.since` is the clock F₀ of its 4-byte block, `none` is 0.
+ */
+export interface TransponderState {
+  readonly creator: 'declaration' | 'player' | 'wingman';
+  callback: TransponderCallback;
+}
+
+export type TransponderCallback =
+  | { readonly phase: 'none' }
+  | { readonly phase: 'first-update' }
+  | { readonly phase: 'tumbling'; readonly since: number };
 
 /**
  * An object's communications fields (CB-04), allocated unset for every kind; runtime kinds have no writer. The
@@ -274,7 +585,9 @@ const ALLOCATOR_AI_MODE = 5;
  * of runtime entities that never run it (P3-07's projectiles and others).
  */
 export function allocatorAiState(): AiState {
-  return { mode: ALLOCATOR_AI_MODE, target: null, goal: ZERO_VECTOR, targetOffset: ZERO_VECTOR, objectTarget: null, pendingCommand: null };
+  return {
+    mode: ALLOCATOR_AI_MODE, target: null, goal: ZERO_VECTOR, targetOffset: ZERO_VECTOR, objectTarget: null, pendingCommand: null, program: NO_AI_PROGRAM,
+  };
 }
 
 export const ZERO_VECTOR: Vec3 = Object.freeze({ x: 0, y: 0, z: 0 });
@@ -359,7 +672,7 @@ export interface CraftCombat {
 export interface WeaponBlock {
   /** Lists 0, 1 and 2 (+0x100–+0x114). */
   selections: readonly [ListSelection, ListSelection, ListSelection];
-  /** +0x118–+0x128; the lock runs only for the player (W8), every other object keeps its initial values. */
+  /** +0x118–+0x128: the player's lock machine (W8) and, for AI craft, the AI lock update `0x5dfec` write it (CR-16). */
   lock: MissileLock;
   /** +0x154/+0x158: one per craft mount, in mount order; empty for a craft without mounts. */
   mounts: readonly MountState[];
@@ -587,7 +900,11 @@ export interface Entity {
   orientation: Matrix3;
   /** 0 at allocation; the rules add 1 at every discontinuous move (Warp arrival, rescue, launch) so renderers do not interpolate across it. */
   placementSerial: number;
-  readonly ruleInputs: EntityRuleInputs;
+  /**
+   * Replaced as a whole, never changed in place: only `0x5e4d0` rewrites one input, a negative +0xE0 (`aiValueB`) as
+   * its i32 negation (CR-16); the other five never change.
+   */
+  ruleInputs: EntityRuleInputs;
   state: ObjectState;
   activity: Activity;
   /** The original dead flag +0xD8, written by the rules. Destroyed is not removed: the rescue reuses the player's entity. */
@@ -597,7 +914,10 @@ export interface Entity {
    * instantiation; recomputed by P3-07 and P3-11.
    */
   maximumSpeed: number;
-  /** +0x18, clock units: the last parked update; the instantiation clock until the parked update rewrites it. */
+  /**
+   * +0x18, clock units: the last parked update; the instantiation clock until the parked update rewrites it. At least
+   * −0x80: a Warp departure (CR-21) sets it to clock − 0x80, which is negative early in a mission.
+   */
   lastParkedUpdateClock: number;
   /** +0xC8, clock units, 0 when unset: postpones Warps and times a Warp transit (P3-06 parked path, P3-09). */
   warpClock: number;
@@ -616,6 +936,8 @@ export interface Entity {
   readonly combat: EntityCombat;
   /** P3-10's fields (CB-04), unset at allocation. */
   readonly communications: EntityCommunications;
+  /** Kind 0x4000's state (CR-20), null for every other kind. */
+  readonly transponder: TransponderState | null;
 }
 
 /**
@@ -644,6 +966,11 @@ export interface EntityInit {
   readonly formation: Formation | null;
   /** Of the type combatTypeOf(kindBit) gives. */
   readonly combat: EntityCombat;
+  /**
+   * Kind 0x4000's state for a transponder the rules construct (`creator` `player` or `wingman`, CR-20). Omitted
+   * otherwise: a declared kind-0x4000 entity gets `{ creator: 'declaration', callback: none }`, every other kind null.
+   */
+  readonly transponder?: TransponderState;
 }
 
 const NO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
@@ -786,13 +1113,13 @@ function movementFits(block: MovementBlock, combat: EntityCombat): boolean {
 
 /**
  * The flight state's invariants (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约): f32 values, clocks and modes; no
- * command pending, as the allocator and instantiation write none (CB-04).
+ * command pending and no AI program, as the allocator and instantiation write none (CB-04, CR-16).
  */
 function isValidFlightState(init: EntityInit): boolean {
   const { movement, ai, formation } = init;
   return isFiniteFloat32(init.maximumSpeed) && isClock(init.lastParkedUpdateClock) && isClock(init.warpClock)
     && (movement === null || isValidMovement(movement))
-    && AI_MODES.includes(ai.mode) && isFloat32Vec(ai.goal) && isFloat32Vec(ai.targetOffset) && ai.pendingCommand === null
+    && AI_MODES.includes(ai.mode) && isFloat32Vec(ai.goal) && isFloat32Vec(ai.targetOffset) && ai.pendingCommand === null && ai.program.type === 'none'
     && (formation === null || isFloat32Vec(formation.offset));
 }
 
@@ -936,6 +1263,130 @@ function isValidCombat(combat: EntityCombat): boolean {
     default:
       return false;
   }
+}
+
+// P3-08's AI state (docs/plan/p3/02/spec.md, CR-16 to CR-18, CR-20).
+
+const isNonNegativeInt32 = (value: number): boolean => isInt32(value) && value >= 0;
+
+function isValidControlBlock({ scale, axes, speedFactor }: ControlBlock): boolean {
+  return isFiniteFloat32(scale) && axes.length === 3
+    && axes.every(({ clear, set, value }) => isBoolean(clear) && isBoolean(set) && isFiniteFloat32(value))
+    && (speedFactor === null || isFiniteFloat32(speedFactor));
+}
+
+const isValidNoise = ({ enabled, low, high }: NoiseSettings): boolean => isBoolean(enabled) && isFiniteFloat32(low) && isFiniteFloat32(high);
+
+function isValidSteeringBlock(block: SteeringBlock): boolean {
+  const { offset } = block;
+  return isBoolean(block.targetValid) && isNullableId(block.target) && isClock(block.targetSample) && isClock(block.relativeSample)
+    && isFloat32Vec(block.point) && isBoolean(offset.enabled) && (offset.frame === 0 || offset.frame === 1) && isFloat32Vec(offset.vector)
+    && isUpTo(block.sizeClass, 0xff) && isUpTo(block.leadMode, 0xff) && isUpTo(block.relativeFlags, 7) && isUpTo(block.reverseFlags, 7)
+    && isFloat32Vec(block.relative) && isFloat32Vec(block.reverse)
+    && [
+      block.distance, block.targetSpeed, block.approachRadius, block.speedLimit, block.halfSpeedLimit, block.leadConstant, block.speedFraction,
+      block.turnFraction,
+    ].every(isFiniteFloat32)
+    && block.turnRates.length === 3 && block.turnRates.every(isFiniteFloat32) && block.angles.length === 2 && block.angles.every(isFiniteFloat32)
+    && isValidControlBlock(block.control) && isUpTo(block.coneBits, 3) && isBoolean(block.rollMatch)
+    && isValidNoise(block.throttleNoise) && isValidNoise(block.steeringNoise);
+}
+
+function isValidControllerCommon(controller: AiControllerCommon): boolean {
+  const { limits, triggers, engagement, attackPass } = controller;
+  return isClock(controller.nextUpdateClock) && isNonNegativeInt32(controller.period)
+    && [limits.turn, limits.speed, limits.saturation, limits.rollMatchThreshold].every(isFiniteFloat32)
+    && triggers.length === 3 && triggers.every(({ pressed, holdDeadline }) => isBoolean(pressed) && isClock(holdDeadline))
+    && [controller.aiLock, controller.missileReady, controller.automaticMounts].every(isBoolean)
+    && isClock(engagement.dueClock) && isNonNegativeInt32(engagement.period) && isUpTo(engagement.mask, 0xffffffff)
+    && isUpTo(attackPass.phase, 2) && isClock(attackPass.deadline) && isUpTo(attackPass.savedSizeClass, 0xff) && isUpTo(attackPass.savedLeadMode, 0xff)
+    && isValidSteeringBlock(controller.steering);
+}
+
+function isValidExecution(execution: ExecutionState): boolean {
+  const { variables, timers, returnStack, wait, hold } = execution;
+  return isIndex(execution.script) && isIndex(execution.item)
+    && variables.length === 4 && variables.every(isInt32) && timers.length === 4 && timers.every(isClock)
+    && returnStack.length <= RETURN_STACK_DEPTH && returnStack.every(isIndex)
+    && isBoolean(wait.active) && isClock(wait.until) && isBoolean(hold.active) && isClock(hold.until);
+}
+
+function isValidInterpreter(interpreter: InterpreterState): boolean {
+  const { state, execution } = interpreter;
+  return isUpTo(state, 6) && (execution === null ? state === 0 || state === 3 : isValidExecution(execution))
+    && isBoolean(interpreter.lastRunEnded) && [interpreter.steadyClock, interpreter.stateDeadline, interpreter.state4Deadline].every(isClock);
+}
+
+function isValidWingman(wingman: WingmanState): boolean {
+  return isUpTo(wingman.behaviour, 5) && isNullableId(wingman.doNotAttack) && isNullableId(wingman.attackTarget)
+    && isClock(wingman.nextGunSwitchClock) && isClock(wingman.nextEngageSearchClock);
+}
+
+/** The handlers each slot type may install: a table record runs the interpreter, a built-in record its own handler. */
+function isValidController(type: 'table' | 'built-in', controller: AiController): boolean {
+  if (!isValidControllerCommon(controller)) return false;
+  switch (controller.handler) {
+    case 'parked':
+      return true;
+    case 'interpreter':
+      return type === 'table' && isValidInterpreter(controller.interpreter);
+    case 'wingman':
+      return type === 'built-in' && isValidWingman(controller.wingman);
+    case 'base':
+      return type === 'built-in' && (controller.base.targetMask === 0x93780 || controller.base.targetMask === 0x6c87f);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether `program` is a valid AI program slot for an entity of `kindBit` (CR-16): the player, kind 0x4000 and the
+ * runtime kinds have none; a selected record is an index; an installed controller has the handler its slot type allows
+ * and every field in its range. A rule that writes the slot checks it with this and faults otherwise.
+ */
+export function isValidAiProgram(kindBit: number, program: AiProgramSlot): boolean {
+  if (program.type === 'none') return true;
+  if (!isCraftKindBit(kindBit) || kindBit === 0 || kindBit === TRANSPONDER_KIND_BIT) return false;
+  if (program.type !== 'table' && program.type !== 'built-in') return false;
+  return isIndex(program.record) && (program.controller === null || isValidController(program.type, program.controller));
+}
+
+const NO_TRANSPONDER_CALLBACK: TransponderCallback = Object.freeze({ phase: 'none' });
+
+/**
+ * The transponder state an allocation gives (CR-20), or undefined when `init` breaks its rules: kind 0x4000 has one
+ * and every other kind none. Without a supplied state it is the declaration's, with no callback. A supplied one is a
+ * construction's (`0x38780`): no source and the allocator's other fields; the player's `b` follows its source's activity,
+ * starting at `first-update` exactly while active, and a wingman drops one only from its parked step, parked and with no
+ * callback.
+ *
+ * CR-20 also makes every craft without a source a constructed transponder; the table does not check that yet, since
+ * the shared test entities (world.test-support.ts) are sourceless craft of every kind.
+ */
+function transponderOf(init: EntityInit): TransponderState | null | undefined {
+  const { transponder } = init;
+  if (init.kindBit !== TRANSPONDER_KIND_BIT) return transponder === undefined ? null : undefined;
+  if (transponder === undefined) return { creator: 'declaration', callback: NO_TRANSPONDER_CALLBACK };
+  const { creator, callback } = transponder;
+  const active = init.activity === 'active';
+  const path = creator === 'player'
+    ? (callback.phase === 'first-update' && active) || (callback.phase === 'none' && !active)
+    : creator === 'wingman' && callback.phase === 'none' && !active;
+  const fits = init.source === null && path && hasConstructedTransponderDefaults(init);
+  return fits ? { creator, callback: Object.freeze({ ...callback }) } : undefined;
+}
+
+/**
+ * The fields `0x38780` gives a transponder it constructs (CR-20 step 1), as the allocator leaves them: no name, side,
+ * interaction or rule inputs, the allocator's AI state, no formation and no Warp. The model, activity, maximum speed,
+ * parked-update clock and combat state are its own.
+ */
+function hasConstructedTransponderDefaults(init: EntityInit): boolean {
+  const { ruleInputs: inputs, ai } = init;
+  return init.name.type === 'none' && init.side === null && !init.baseInteraction
+    && [inputs.percentB, inputs.percentC, inputs.percentD, inputs.aiValueA, inputs.aiValueB, inputs.aiValueC].every((value) => value === 0)
+    && ai.mode === ALLOCATOR_AI_MODE && ai.target === null && ai.objectTarget === null && isZeroVec(ai.goal) && isZeroVec(ai.targetOffset)
+    && init.formation === null && init.warpClock === 0 && !init.inWarp;
 }
 
 /** Whether `presentation` is the variant of `combat`'s type and names the same record, variant or part (CR-02). */
@@ -1110,6 +1561,8 @@ export class EntityTable {
     }
     if (!isValidFlightState(init)) throw new CoreFaultError('invariant-violated', 'entities.flight');
     if (combat.type !== 'craft' && !hasRuntimeKindDefaults(init)) throw new CoreFaultError('invariant-violated', 'entities.runtime-kind');
+    const transponder = transponderOf(init);
+    if (transponder === undefined) throw new CoreFaultError('invariant-violated', 'entities.transponder');
     if (!fitsLimit('entities', this.#byId.size, 1)) throw new CoreFaultError('budget-exhausted', 'entities.count');
     const id = this.#nextId;
     if (!Number.isSafeInteger(id + 1)) throw new CoreFaultError('budget-exhausted', 'entities.id');
@@ -1136,11 +1589,18 @@ export class EntityTable {
       mapVisible: false,
       movement: movement && copyMovementBlock(movement),
       ai: {
-        mode: ai.mode, target: ai.target, goal: frozenVec(ai.goal), targetOffset: frozenVec(ai.targetOffset), objectTarget: ai.objectTarget, pendingCommand: null,
+        mode: ai.mode,
+        target: ai.target,
+        goal: frozenVec(ai.goal),
+        targetOffset: frozenVec(ai.targetOffset),
+        objectTarget: ai.objectTarget,
+        pendingCommand: null,
+        program: NO_AI_PROGRAM,
       },
       formation: formation && Object.freeze({ leader: formation.leader, offset: frozenVec(formation.offset) }),
       combat: copyCombat(combat),
       communications: { face: null, threatStamp: null },
+      transponder,
     };
     this.#nextId = id + 1;
     this.#byId.set(id, entity);

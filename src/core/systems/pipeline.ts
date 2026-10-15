@@ -99,7 +99,10 @@ export type Request =
     readonly type: 'launch'; readonly family: 'missile'; readonly shooter: EntityId; readonly missile: number; readonly mount: number;
     readonly offset: Vec3; readonly launchByte: 0 | 1 | 2 | 3 | 4; readonly target: EntityId | null; readonly trigger: ShotTrigger;
   }
-  /** Message 0x40000: applied in request handling through P3-06's `0x21fd8`. */
+  /**
+   * Message 0x40000: applied in request handling through P3-06's `0x21fd8`. The subject is a missile (P3-07's homing)
+   * or, from P3-08's AI movement helpers, a craft (CR-21).
+   */
   | { readonly type: 'steer'; readonly entityId: EntityId; readonly control: ControlBlock }
   /** Message 0x10000: a projectile's `0x25f48`, a missile's `0x2b408` or a fragment's `0x256e4`. */
   | { readonly type: 'expire'; readonly entityId: EntityId }
@@ -120,7 +123,26 @@ export type Request =
   /** Sub-commands 1 and 2: the base page's cursor. */
   | { readonly type: 'base-navigate'; readonly entityId: EntityId; readonly direction: 'previous' | 'next'; readonly commandIndex: number }
   /** Sub-command 3: the base page's confirmation. */
-  | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
+  | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number }
+  // P3-08's requests (docs/plan/p3/02/spec.md, CR-21); the AI posts them in object updates.
+  /**
+   * Message 0x80000 in its AI form (`0x5d090`, `0x5d080`): P3-06's speed match generalised to f32 (a, lo, hi); no
+   * event. Not posted without a target.
+   */
+  | {
+    readonly type: 'ai-match-speed'; readonly entityId: EntityId; readonly targetEntityId: EntityId;
+    readonly a: number; readonly lo: number; readonly hi: number;
+  }
+  /** Message 0x800000 (`0x5e6cc`, D6): the poster's own Warp departure, checked again in full when handled. */
+  | { readonly type: 'warp-departure'; readonly entityId: EntityId }
+  /** Message 0x200000 (X1): an accepted `drop-transponder` constructs a transponder (`0x38780`) at the player (`entityId`). */
+  | { readonly type: 'create-transponder'; readonly entityId: EntityId };
+
+/**
+ * Request types whose handler is not wired yet: posting one is a fault, never a silent drop. The P3-08 subtask that
+ * implements a handler removes its type here.
+ */
+const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['ai-match-speed', 'warp-departure', 'create-transponder']);
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -136,8 +158,8 @@ export type RequestOf<Type extends Request['type']> = Extract<Request, { readonl
  * in its lifetime; the player's update posts at most one request per speed command and two more (the speed assist's
  * restoring request and one carrying only the axes), and an available player posts no lifecycle request
  * (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the limits. CR-14's bound
- * covers it together with P3-07's requests. A rule whose requests fan out further derives its own bound and revises
- * CoreLimits.
+ * covers it together with P3-07's requests, and CR-25's together with P3-08's AI requests. A rule whose requests fan
+ * out further derives its own bound and revises CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -149,7 +171,7 @@ export class RequestQueue {
   readonly #deferred: Request[] = [];
 
   post(request: Request): void {
-    this.#count();
+    this.#count(request);
     if (!this.#handled) this.#requests.push(request);
   }
 
@@ -160,7 +182,7 @@ export class RequestQueue {
    * difference 9). Commands after a `request-warp` are judged in the Warp context, so no launch follows it.
    */
   defer(request: Request): void {
-    this.#count();
+    this.#count(request);
     this.#deferred.push(request);
   }
 
@@ -169,7 +191,8 @@ export class RequestQueue {
     for (const request of this.#deferred.splice(0)) if (!this.#handled) this.#requests.push(request);
   }
 
-  #count(): void {
+  #count(request: Request): void {
+    if (UNWIRED_REQUESTS.has(request.type)) throw new CoreFaultError('invariant-violated', 'pipeline.request-unwired');
     if (!fitsLimit('requestsPerTick', this.#posted, 1)) throw new CoreFaultError('budget-exhausted', 'pipeline.requests');
     this.#posted++;
   }

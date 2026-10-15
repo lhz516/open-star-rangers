@@ -193,6 +193,14 @@ function fieldsOf(event: DomainEvent): Fields {
       return [['direction', event.direction], ['row', event.row], ['moved', event.moved], ['commandIndex', event.commandIndex]];
     case 'base-confirmed':
       return [['row', event.row], ['record', event.record], ['moved', event.moved], ['commandIndex', event.commandIndex]];
+    // P3-08's (docs/plan/p3/02/spec.md, CR-22).
+    case 'wingman-command-consumed':
+      return [
+        ['wingmanEntityId', event.wingmanEntityId], ['code', event.code], ['issuedTick', event.issuedTick], ['path', event.path], ['outcome', event.outcome],
+        ['replyLine', event.replyLine],
+      ];
+    case 'transponder-deployed':
+      return [['entityId', event.entityId], ['creatorEntityId', event.creatorEntityId], ...positionOf(event.position)];
   }
 }
 

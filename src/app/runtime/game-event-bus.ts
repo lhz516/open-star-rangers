@@ -63,6 +63,8 @@ const EVENT_TYPES = {
   transition: true,
   'base-navigated': true,
   'base-confirmed': true,
+  'wingman-command-consumed': true,
+  'transponder-deployed': true,
 } as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {

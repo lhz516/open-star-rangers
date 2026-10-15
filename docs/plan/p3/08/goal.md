@@ -81,7 +81,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [09-cross-task-gate.md](./subtasks/09-cross-task-gate.md) | 07 | completed |
 | [10-original-pilot-runs.md](./subtasks/10-original-pilot-runs.md) | 01, 03, 04, 05 | completed |
 | [11-comparison-criteria-gate.md](./subtasks/11-comparison-criteria-gate.md) | 10 | in-progress |
-| [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | in-progress |
+| [12-contract-foundation.md](./subtasks/12-contract-foundation.md) | 08 | completed |
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | in-progress |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | pending |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | pending |
@@ -118,6 +118,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 以 P3-09、P3-10 为实现基础（协调者决定，依用户授权）：** P3-09 已完成，P3-10 的实现子任务（11–24）已完成，二者都改写了本任务要扩展的 Core 文件（流水线、快照、世界状态、容量、版本），且 D-03 的方向是本任务消费它们的共享状态（对象集合与可见性、`deliver-command`、`queueLine`、`friendlyFire`）。在 12 之前把 `p3-09-strategic-map-spec`（17e507c8）与 `p3-10-comms-base-resupply-spec`（4142452c）合并进本分支并解决冲突、通过 `pnpm check`；P3-10 之后的提交（25–28）按需再次合并。09、11、12 在合并完成后开始。版本号按 CR-25 相对合并后的值递增。
 - **2026-10-15 — P3-09、P3-10 已合入本分支：** 合并提交 `3b1bfcd8` 合入 `p3-09-strategic-map-spec`（`17e507c8`），随后的合并提交合入 `p3-10-comms-base-resupply-spec`（`4142452c`）。冲突两边都保留；共享契约的衔接（命令视图即有效视角、`0x4cd68` 并入 `switchView`、节的次序）与版本取值（`RULES_VERSION` 6、快照格式 5、replay 格式 2、切片定义 6、`ConverterVersion` `graphics-5.logic-3`）见 [P3-02 spec 的合并说明](../02/spec.md#审批)与 [P3-03 的合并说明](../03/spec.md#合并说明2026-10-15p3-09-与-p3-10-的修订-2)。CR-19 与 MW-06 的对象集合重复定义按 [P3-08 一节的合并说明](../02/spec.md#p3-08-的契约修订d-01)留给 09（D-03）。`pnpm check` 与 `tools/baseline` 的测试通过。合并评审发现停靠/离港与 `request-warp` 的两种同 tick 交互以 Core 故障结束，须修订 MW-04 或 CB-07 才能定，记在 P3-02 合并说明的“未决”一条，合并没有作决定。
 - **2026-10-15 — 09 完成（D-03，agent 依用户授权批准）：** 关键字表经 P3-03 修订 3 导入（`ai-programs` schema 2，logic-4）；友伤累计取方案 1，写入留在 P3-10（CB-12），本任务只读；命令经 P3-10 的 `deliver-command`、回复经 `queueLine`，菜单到回复的联合测试归本任务（CR-28）；对象集合与地图可见标志由 P3-09 的 MW-06 唯一定义，CR-19 的重复撤回，本任务复用并承担联合测试 1–7（CR-29）；`b` 纳入，`KeyB` 写入 P3-05 绑定表。协调者据此更新阶段索引的责任描述，修正子任务 19、20、21 的范围与写入范围（不再新建 `object-sets.ts`，不在伤害中写友伤累计）。P3-09 × P3-10 合并留下的两个联合故障（停靠倒计时与 Warp 请求同 tick、同批 `launch` 与 `request-warp`）属于 P3-09/P3-10 的契约（MW-04 或 CB-07），记在 P3-02 的合并说明中，不在本 goal 内修复。
+- **2026-10-15 — 12 完成：** 共享形状在合并后的基础上实现：`RULES_VERSION` 6→7、快照格式 5→6；replay 格式（2→3）随 22 加入 `drop-transponder` 命令时递增，22 的写入范围加入 `src/core/replay/recording.ts`。尚未接入的请求（`ai-match-speed`、`warp-departure`、`create-transponder`）投递即故障（`pipeline.request-unwired`），由 17、21、22 接入时移除。交 23：所有数值取最长时（P3-07 的 18 挂点战斗状态 + 最长控制器 + 内容上限的解析缓存）估计约 16.6 MiB，略超 `canonicalTextLength` 16 MiB，须在 23 的容量推导中处理。交 28：`docs/engineering/modules/core.md` 的版本与请求清单已过时。
 
 ## 审批
 
