@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/base-response.ts`、`src/core/systems/base-response.test.ts`：`0x3bed0` 无命令分支的威胁再通报（调用 `0x3c208` 第 3 步，14 留空）。
 - `src/core/systems/displays.ts`、`src/core/systems/displays.test.ts`：帧末子步中尾随警告的调用（CB-09 第 2 项）。
 - `src/core/systems/missiles.test.ts`：受害者首次说话的头像抽取使抽取数变化（RX9 第 4 行；仅断言）。
+- `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`：`dispatchSpawn` 与 `updateParked` 改为接收 TickContext（仅调用行）。
 
 ## 验收标准
 
