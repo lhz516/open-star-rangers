@@ -231,10 +231,10 @@ test('test entry identifies production-sized synthetic files and transfers four 
   await openHarness(page);
   await startImport(page, 'synthetic', 'production-sized');
   await settled(page);
-  // The generated disc holds the eight whitelisted paths at their production sizes, checked against the catalog itself.
+  // The generated disc holds the nine whitelisted paths at their production sizes, checked against the catalog itself.
   const covered = await page.evaluate(() => window.osrImport.covered);
   expect(covered.sort()).toEqual(PRODUCTION_CATALOG.files.map(({ path, byteLength }) => [path, byteLength]).sort());
-  expect(covered).toHaveLength(8);
+  expect(covered).toHaveLength(9);
   expect(await probe(page)).toEqual({
     workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'synthetic', posts: 1, terminations: 1 }],
     activeListeners: 0, listeners: 3,
@@ -336,7 +336,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-5.logic-2.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-5.logic-3.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);

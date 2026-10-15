@@ -12,7 +12,7 @@ describe('player state (P3-02 S-05, 实体与生命周期)', () => {
 
   // P3-07 CR-04: no targeting before a player entity, no pod, no pending explosion, no kills or shots, heavy damage
   // unknown, the damage report page, and a status display due at once that must be drawn.
-  it('starts with P3-07\'s and P3-09\'s creation values', () => {
+  it('starts with P3-07\'s, P3-09\'s and P3-10\'s creation values', () => {
     const state = createPlayerState(START);
     expect(state).toEqual({
       entityId: null, viewMode: 0x0c, previousViewMode: 0x0c, subMode: 0, target: null, control: null,
@@ -21,11 +21,16 @@ describe('player state (P3-02 S-05, 实体与生命周期)', () => {
       statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true },
       // P3-09 (MW-02): the cursor at the start pixel, no destination, saved page 0 and no Warp transit.
       map: { cursor: START, destination: null }, savedLeftPage: 0, warp: null,
+      // P3-10 CB-02, CB-03: no docking object, no menu, partner or stamps, the saved pages and the thanks at 0, no pose.
+      dockingObject: null,
+      communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 0, limits: { friendlyHit: null, friendlyKill: null }, thanks: 0 },
+      docking: { savedPose: null },
     });
     expect(state.map.cursor).not.toBe(START);
     expect(Object.keys(state.kills).map(Number)).toEqual([...KILL_KIND_BITS]);
     expect(Object.isFrozen(state.kills)).toBe(true);
-    for (const part of ['shots', 'leftDisplay', 'statusDisplay'] as const) expect(state[part]).not.toBe(createPlayerState(START)[part]);
+    for (const part of ['shots', 'leftDisplay', 'statusDisplay', 'communications', 'docking'] as const) expect(state[part]).not.toBe(createPlayerState(START)[part]);
+    expect(state.communications.limits).not.toBe(createPlayerState(START).communications.limits);
   });
 
   it('gives a new player entity the enemy mode with the automatic selection due at once', () => {

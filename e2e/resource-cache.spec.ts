@@ -633,7 +633,7 @@ test('keeps the old package or the whole new one when the browser closes during 
 const ORIGINAL_KEY = { originType: 'original-import', originToken: 'source:synthetic-disc', converterVersion: 'synthetic-converter.1' } as const;
 type Corruption = 'missing field' | 'key mismatch' | 'count mismatch' | 'payload missing' | 'payload extra' | 'payload rewritten'
   | 'payload length' | 'source unverified' | 'unknown format' | 'format version 2' | 'content schema 2' | 'slice definition version 1'
-  | 'slice definition version 3';
+  | 'slice definition version 3' | 'slice definition version 4';
 
 test('refuses damaged or incompatible stored records without deleting or changing them', async ({ page }) => {
   await loadCacheModules(page);
@@ -680,6 +680,8 @@ test('refuses damaged or incompatible stored records without deleting or changin
         'slice definition version 1': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 1; })),
         // The P3-02 slice, before P3-03's version 4 (AC-15).
         'slice definition version 3': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 3; })),
+        // The P3-03 slice before revision 2 added the communications messages.
+        'slice definition version 4': () => updatePackage(everyGroup(identity => { identity.sliceDefinitionVersion = 4; })),
       };
       changes[name]();
       await new Promise(resolve => { tx.oncomplete = resolve; });
@@ -717,6 +719,7 @@ test('refuses damaged or incompatible stored records without deleting or changin
     'content schema 2': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: ['unsupported-schema'] },
     'slice definition version 1': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
     'slice definition version 3': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
+    'slice definition version 4': { code: 'cache-incompatible', listed: 'incompatible', diagnostics: [] },
   };
   for (const [name, { code, listed, diagnostics }] of Object.entries(expected) as [Corruption, typeof expected[Corruption]][]) {
     const observed = await corrupt(name);

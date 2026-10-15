@@ -7,7 +7,7 @@ import { inLocationGrammar } from '../source-error.test-support.ts';
 import { PRODUCTION_CATALOG, readSourceCatalog, sourceFingerprint, type SourceCatalog } from './source-catalog.ts';
 import { catalogFor } from './source.test-support.ts';
 
-const PRODUCTION_FINGERPRINT = 'source:sha256:fd97bcea3c3aee835c9058419469786587a4580e96b431bb9ce9c127ff2181be';
+const PRODUCTION_FINGERPRINT = 'source:sha256:67391efbb13ceda3e264f18ae0905d1ba39909ef36b002491ffa33076a35ddeb';
 const DIGEST = `sha256:${'ab'.repeat(32)}`;
 
 function rejected(value: unknown): Pick<SourceErrorData, 'code' | 'location'> {
@@ -32,10 +32,10 @@ function nodeFingerprint({ files }: SourceCatalog): string {
 }
 
 describe('PRODUCTION_CATALOG', () => {
-  it('covers exactly the eight baseline files in ASCII order under one frozen version', () => {
+  it('covers exactly the nine baseline files in ASCII order under one frozen version, the HI face archive but not the LO one', () => {
     expect(PRODUCTION_CATALOG.versionId).toBe('star-rangers-1995-cd');
     expect(PRODUCTION_CATALOG.files.map(({ path }) => path)).toEqual([
-      'MAIN/AISTUFF.NOB', 'MAIN/COMM.NOB', 'MAIN/CRAFT.NOB', 'MAIN/DEBRIS.NOB',
+      'MAIN/AISTUFF.NOB', 'MAIN/COMM.NOB', 'MAIN/COMMFACE.NOB', 'MAIN/CRAFT.NOB', 'MAIN/DEBRIS.NOB',
       'MAIN/OPTIONS.NOB', 'MAIN/SCENARIO.NOB', 'MAIN/SR.NOB', 'MAIN/SRANGERS.EXE',
     ]);
     expect(Object.isFrozen(PRODUCTION_CATALOG) && Object.isFrozen(PRODUCTION_CATALOG.files) && PRODUCTION_CATALOG.files.every(Object.isFrozen)).toBe(true);

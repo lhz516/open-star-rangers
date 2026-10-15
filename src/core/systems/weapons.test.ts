@@ -11,6 +11,7 @@ import type { WorldRuleData } from '../world/rule-data.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import { registerTick, type Request } from './pipeline.ts';
 import { acquireAutomatic, fireAiChannel, fireAutomatic, updateMissileLock } from './weapons.ts';
 
@@ -130,7 +131,7 @@ describe('the common pre-judgement of the weapon commands (CR-05)', () => {
   it.each([
     ['player-unavailable for a destroyed player', (state: WorldState, player: Entity) => { player.destroyed = true; return state; }, 'player-unavailable'],
     ['wrong-context in the map', (state: WorldState) => { state.player.viewMode = 8; return state; }, 'wrong-context'],
-    ['wrong-context in the base', (state: WorldState) => { state.player.viewMode = 6; return state; }, 'wrong-context'],
+    ['wrong-context in the base', (state: WorldState) => { enterBaseView(state); return state; }, 'wrong-context'],
   ] as const)('ignores every weapon command with %s and changes nothing', (_, change, reason) => {
     const commands = [FIRE_PRIMARY, FIRE_SECONDARY, CYCLE, missileStep('next')];
     const [state, player] = flightWorld();

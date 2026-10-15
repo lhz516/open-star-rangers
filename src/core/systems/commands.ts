@@ -4,17 +4,24 @@
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
  * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-09's
- * `toggle-map` and `map-point` to map.ts and `request-warp` to warp.ts; every other type is rejected/not-implemented until its rule task routes it. A module emits a
- * command's additional events right after its result.
+ * `toggle-map` and `map-point` to map.ts and `request-warp` to warp.ts, P3-10's base keys (`navigate-selection`,
+ * `confirm-selection`, `launch`) of an available player in the base context of the command view to judgeBaseKey here
+ * and the rest of P3-10's to communications.ts (`communications`, `select-number`, and the other contexts'
+ * `navigate-selection`, `confirm-selection` and `launch`; CB-07), which also gives the map context's selection keys
+ * their `wrong-context` (MW-04); every other type is rejected/not-implemented until its rule task routes it. A module
+ * emits a command's additional events right after its result.
  *
- * Every command is judged in the interaction context of the tick's command view (pipeline.ts; MW-04), which the
- * accepted view commands before it have moved on, never in the context the batch started with.
+ * Every command is judged in the interaction context of the tick's command view, the batch's effective view (pipeline.ts;
+ * MW-04, CB-07), which the accepted view commands before it have moved on, never in the context the batch started with.
  */
 import type { CommandResultReason } from '../contracts/domain-events.ts';
 import type { Command, CommandType } from '../contracts/tick-input.ts';
+import { launchViewMode } from '../rules/docking.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { interactionContext } from '../world/player-state.ts';
+import { judgeCommunicationsCommand } from './communications.ts';
 import { judgeEnergyCommand } from './energy.ts';
+import { availablePlayer, type EffectiveView } from './flight-control.ts';
 import { judgeMapPoint, judgeToggleMap } from './map.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
@@ -55,22 +62,39 @@ export function combatCommandPlayer({ world, commandView }: TickContext): Entity
 }
 
 /**
- * The selection commands in the map context (MW-04): after the common pre-judgement's `player-unavailable`, ignored as
- * `wrong-context`, as the map's keys have no digits, Enter or menu navigation. Elsewhere they belong to the base and
- * communications menus (P3-10) and stay not implemented; P3-06 judges `select-number` and `confirm-selection` in
- * flight and in the Warp context itself (flight-control.ts).
+ * Judges a base key (`0x271e0`) when an available player is in the base context of the effective view: accepted, with
+ * its request posted at once (CB-08). An accepted `launch` also leaves the base for the rest of the batch: the
+ * effective previous view becomes the effective view, and that the old previous view raised to 0xC (CB-07 §3), what
+ * request handling's `depart` will commit. Returns false, judging nothing, otherwise: communications.ts then judges it
+ * by its other contexts and never sees it in the base.
  */
-function judgeSelectionCommand(context: TickContext, command: CommandOf<'select-number' | 'confirm-selection' | 'navigate-selection'>, commandIndex: number): void {
-  if (interactionContext(context.commandView.viewMode) !== 'map') {
-    rejectNotImplemented(context, command, commandIndex);
-    return;
+export function judgeBaseKey(context: TickContext, command: CommandOf<'navigate-selection' | 'confirm-selection' | 'launch'>, commandIndex: number, view: EffectiveView): boolean {
+  const { world, requests } = context;
+  const player = availablePlayer(world);
+  if (player === null || interactionContext(view.viewMode) !== 'base') return false;
+  emitCommandResult(context, command, commandIndex, { outcome: 'accepted', reason: null });
+  switch (command.type) {
+    case 'navigate-selection':
+      requests.post({ type: 'base-navigate', entityId: player.id, direction: command.direction, commandIndex });
+      return true;
+    case 'confirm-selection':
+      requests.post({ type: 'base-confirm', entityId: player.id, commandIndex });
+      return true;
+    case 'launch': {
+      requests.post({ type: 'depart', entityId: player.id, origin: 'command', commandIndex });
+      const viewMode = launchViewMode(view.previousViewMode);
+      view.previousViewMode = view.viewMode;
+      view.viewMode = viewMode;
+      return true;
+    }
   }
-  const player = combatCommandPlayer(context);
-  emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: player === 'player-unavailable' ? player : 'wrong-context' });
 }
 
-/** Judges the command at `commandIndex` by its type; the player's update calls it for every command it does not judge. */
-export function judgeCommand(context: TickContext, command: Command, commandIndex: number): void {
+/**
+ * Judges the command at `commandIndex` by its type in the batch's effective `view`; the player's update calls it for
+ * every command it does not judge.
+ */
+export function judgeCommand(context: TickContext, command: Command, commandIndex: number, view: EffectiveView): void {
   switch (command.type) {
     case 'toggle-map':
       judgeToggleMap(context, command, commandIndex);
@@ -80,11 +104,6 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
       return;
     case 'request-warp':
       judgeRequestWarp(context, command, commandIndex);
-      return;
-    case 'select-number':
-    case 'confirm-selection':
-    case 'navigate-selection':
-      judgeSelectionCommand(context, command, commandIndex);
       return;
     case 'target':
       judgeTargetCommand(context, command, commandIndex);
@@ -97,6 +116,15 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
     case 'energy':
     case 'damage-report':
       judgeEnergyCommand(context, command, commandIndex);
+      return;
+    case 'navigate-selection':
+    case 'confirm-selection':
+    case 'launch':
+      if (!judgeBaseKey(context, command, commandIndex, view)) judgeCommunicationsCommand(context, command, commandIndex, view);
+      return;
+    case 'communications':
+    case 'select-number':
+      judgeCommunicationsCommand(context, command, commandIndex, view);
       return;
     default:
       rejectNotImplemented(context, command, commandIndex);

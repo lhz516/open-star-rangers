@@ -34,7 +34,7 @@ describe('map geometry input (P3-09 AC-02, MW-01)', () => {
   it('is a content input after the AI programs, which replay takes too', () => {
     expect(CONTENT_INPUT_FIELDS).toEqual([
       'mission', 'craftTypes', 'wingmanRoster', 'craftInfo', 'debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models',
-      'aiPrograms', 'mapGeometry', 'identity',
+      'aiPrograms', 'mapGeometry', 'commMenus', 'baseRepairItems', 'commMessages', 'identity',
     ]);
   });
 

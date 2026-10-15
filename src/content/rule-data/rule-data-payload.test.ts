@@ -27,6 +27,7 @@ const FIRST_KEYS: Readonly<Record<RuleDataRole, readonly [string, string]>> = {
   'comm-menus': ['gatedTargetCommands', 'otherTargetCommands'],
   'base-repair-items': ['subsystemSelectors', 'subsystemSelectors'],
   'flight-messages': ['missionComplete', 'beacon'],
+  'comm-messages': ['faceTables', 'direct'],
 };
 
 /** The reader path of each role's content. */
@@ -37,12 +38,13 @@ const ROOTS: Readonly<Record<RuleDataRole, string>> = {
   'comm-menus': 'commMenus',
   'base-repair-items': 'baseRepairItems',
   'flight-messages': 'flightMessages',
+  'comm-messages': 'commMessages',
 };
 
 describe('rule-data payload encoding', () => {
-  it('has a schema 1 for each of the six logic group roles', () => {
-    expect(RULE_DATA_ROLES).toEqual(['craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages']);
-    expect(Object.values(RULE_DATA_SCHEMA_VERSIONS)).toEqual([1, 1, 1, 1, 1, 1]);
+  it('has a schema 1 for each of the seven logic group roles', () => {
+    expect(RULE_DATA_ROLES).toEqual(['craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages', 'comm-messages']);
+    expect(Object.values(RULE_DATA_SCHEMA_VERSIONS)).toEqual([1, 1, 1, 1, 1, 1, 1]);
     expect(Object.isFrozen(RULE_DATA_ROLES) && Object.isFrozen(RULE_DATA_SCHEMA_VERSIONS)).toBe(true);
   });
 

@@ -4,6 +4,7 @@ import type { Vec3 } from '../contracts/domain-events.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { buildMapIcons, pickMapIcon } from '../rules/map-icons.ts';
 import { snapshotHash } from '../replay/snapshot.ts';
+import { enterBaseView } from '../systems/base-interior.test-support.ts';
 import type { CraftCombat, Entity, EntityInit } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld, type World } from '../world/world.ts';
@@ -316,7 +317,7 @@ describe('map partition (MW-11)', () => {
     ['accepts a request with a destination in flight', () => undefined, { accepted: true }],
     ['refuses without a destination', (state) => void (state.player.map.destination = null), { accepted: false, reason: 'no-destination' }],
     ['refuses an unavailable player', (_, player) => void (player.destroyed = true), { accepted: false, reason: 'player-unavailable' }],
-    ['refuses in the base', (state) => void (state.player.viewMode = BASE), { accepted: false, reason: 'wrong-context' }],
+    ['refuses in the base', (state) => enterBaseView(state), { accepted: false, reason: 'wrong-context' }],
     ['refuses in a Warp', (state) => void (state.player.viewMode = WARP), { accepted: false, reason: 'wrong-context' }],
     ['refuses until the interval has passed', (state, player) => void (player.warpClock = state.clock - INTERVAL + 1), { accepted: false, reason: 'cooldown' }],
     ['passes at the interval\'s end', (state, player) => void (player.warpClock = state.clock - INTERVAL), { accepted: true }],

@@ -64,7 +64,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', () => {
       expect(typesOf(RECORDING).has(type), type).toBe(true);
     }
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION });
-    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([2, 5]);
+    // Merged with P3-10, whose own increment also took 5 (CB-16): the merge took 6.
+    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([2, 6]);
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {

@@ -186,6 +186,50 @@ export function aiProgramsContent() {
   return programs;
 }
 
+/** A menu item text whose key, byte 1, is `key`; byte 0 is never read and MARKER follows the key. */
+export const menuText = (key: string): string => `\x80${key}${MARKER}`;
+const command = (key: string, code: number) => ({ text: menuText(key), command: code });
+const category = (key: string, kindMask: number) => ({ text: menuText(key), kindMask });
+
+/**
+ * Menus shaped like the selected mission's (comm.md §5, §8) for the slice-shaped mission: the wingman category (kind bit
+ * 1), the base category (kind bit 17, four objects) and a category of kind bit 18, which nothing instantiates; command
+ * menus of 2, 1 and 7 commands with keys equal to their positions, the kind-2 menu 8 items with the exit. Exit keys are
+ * `x` or `X`, both folding to `x`.
+ */
+export function commMenusContent() {
+  return {
+    gatedTargetCommands: [command('1', 7), command('2', 9), command('X', 0)],
+    otherTargetCommands: [command('1', 7), command('x', 0)],
+    categories: [category('W', 0x2), category('B', 0x20000), category('N', 0x40000), category('x', 0)],
+    objectListLastEntry: menuText('X'),
+    kind2TargetCommands: [...[1, 2, 3, 4, 5, 6, 7].map((code) => command(String(code), code)), command('x', 0)],
+  };
+}
+
+/** Eleven service selectors within Core's domain: subsystem fields, both groups and the largest field 18. */
+export const baseRepairItemsContent = () => ({ subsystemSelectors: [0, 33, 34, 5, 7, 8, 1, 2, 18, 3, 9] });
+
+const frames = (...frameDurations: number[]) => ({ present: true, frameDurations });
+const absent = () => ({ present: false });
+
+/**
+ * Communications messages: three face tables of 2, 1 and 2 faces and a direct table, with absent entries; TABL 2001
+ * names base candidate 2 twice and pool name 1, TABL 2011 base candidate 0 and a name nothing holds.
+ */
+export function commMessagesContent() {
+  return {
+    faceTables: [
+      [[frames(3, 9), absent()], [frames(6)]],
+      [[absent(), frames(1, 1)]],
+      [[absent()], [frames(4, 0, 5)]],
+    ],
+    direct: [frames(5), absent(), frames(0)],
+    names2001: [`${MARKER}-base-2`, `${MARKER}-pool-1`, `${MARKER}-base-2`],
+    names2011: [`${MARKER}-other`, `${MARKER}-base-0`],
+  };
+}
+
 /** Projectile visuals with one record per length, in the effect content's shape; Core reads only the lengths. */
 export function projectileVisualsContent(lengths: readonly number[] = [1.5, 6]) {
   return {
@@ -252,6 +296,10 @@ export interface WorldInputParts {
   readonly aiPrograms?: unknown;
   /** Defaults to mapGeometryContent(). */
   readonly mapGeometry?: unknown;
+  /** Default to commMenusContent(), baseRepairItemsContent() and commMessagesContent(). */
+  readonly commMenus?: unknown;
+  readonly baseRepairItems?: unknown;
+  readonly commMessages?: unknown;
   readonly identity?: Record<string, unknown>;
   readonly run?: Record<string, unknown>;
 }
@@ -313,6 +361,9 @@ export function worldInput(parts: WorldInputParts = {}) {
     models: parts.models ?? modelsFor(instantiableModels(base), debris as ReturnType<typeof debrisContent>),
     aiPrograms: { id: readAssetId(PRODUCTION_RULE_DATA.aiPrograms), content: parts.aiPrograms ?? aiProgramsContent() },
     mapGeometry: { id: readAssetId(PRODUCTION_RULE_DATA.mapGeometry), content: parts.mapGeometry ?? mapGeometryContent() },
+    commMenus: { id: readAssetId(PRODUCTION_RULE_DATA.commMenus), content: parts.commMenus ?? commMenusContent() },
+    baseRepairItems: { id: readAssetId(PRODUCTION_RULE_DATA.baseRepairItems), content: parts.baseRepairItems ?? baseRepairItemsContent() },
+    commMessages: { id: readAssetId(PRODUCTION_RULE_DATA.commMessages), content: parts.commMessages ?? commMessagesContent() },
     identity,
     run,
   };

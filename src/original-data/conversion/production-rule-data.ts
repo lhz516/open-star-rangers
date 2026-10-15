@@ -13,9 +13,10 @@ import {
 } from '../source-mapping.ts';
 import { executableRegionOf, regionLocator } from './production-executable.ts';
 
-// The production sources of the six rule-data Assets of the `logic` group (P3-03 spec, Asset 与角色 and 来源映射与核验),
-// their source mapping table and the budget share they add. Entry IDs, addresses and lengths are structural facts of
-// docs/original (craft.md, ai.md, comm.md, hud.md and executable.md); only they are here, never the bytes they hold.
+// The production sources of the seven rule-data Assets of the `logic` group (P3-03 spec, Asset 与角色 and 来源映射与核验,
+// revision 2), their source mapping table and the budget share they add. Entry IDs, addresses and lengths are structural
+// facts of docs/original (craft.md, ai.md, comm.md, hud.md, imfat.md and executable.md); only they are here, never the
+// bytes they hold.
 
 /** The Asset of each rule-data role: `data/<role>`, a `data` Asset. */
 export const RULE_DATA_ASSETS: Readonly<Record<RuleDataRole, AssetReference>> = Object.freeze(Object.fromEntries(
@@ -53,6 +54,20 @@ export interface RuleDataSources {
   readonly baseRepairItems: { readonly archive: DiscPath; readonly table: number };
   /** One EXE region per message, each exactly the string and its NUL. */
   readonly flightMessages: { readonly [K in keyof FlightMessages]: ExecutableRegion };
+  /**
+   * The COMMFACE tables in `archive`: the three face tables in content order, the direct list, every sub-table the face
+   * tables name and every CMOV the sub-tables and the direct list name; and the two name lists in `namesArchive`.
+   */
+  readonly commMessages: {
+    readonly archive: DiscPath;
+    readonly faceTables: readonly [number, number, number];
+    readonly direct: number;
+    readonly subTables: readonly number[];
+    readonly messages: readonly number[];
+    readonly namesArchive: DiscPath;
+    readonly names2001: number;
+    readonly names2011: number;
+  };
 }
 
 /** TABL 4003's sub-resource: the pair of `candidate`, named as the SCCT slot is (row = slot, column = group). */
@@ -61,6 +76,8 @@ const craftTableSubresource = ({ campaignGroup, campaignSlot }: SliceCandidate):
 const aiGroupSubresource = ({ campaignGroup }: SliceCandidate): string => `group-${campaignGroup}`;
 /** TABL 10165's sub-resource: the subsystem selector field of its records (+0x6C). */
 const BASE_REPAIR_SUBRESOURCE = 'records/subsystem-selector';
+/** A CMOV's sub-resource: its frame count and each frame's duration (RQ9), never its text, image or sound. */
+export const CMOV_SUBRESOURCE = 'frames/durations';
 
 const entry = (discPath: DiscPath, id: number, type: string, subresource: string | null = null): ArchiveEntryLocator =>
   Object.freeze({ discPath, entry: Object.freeze({ id, type }), subresource });
@@ -72,7 +89,7 @@ const mapValues = <T, U>(record: T, map: (value: T[keyof T]) => U): { readonly [
 
 /** The locators of `sources`' parts by the role the converter reads each in; the AI entries are the DFPGs, then the scripts. */
 export function ruleDataLocators(sources: RuleDataSources) {
-  const { candidate, craftInfo, debrisParameters, aiPrograms: ai, commMenus, baseRepairItems, flightMessages } = sources;
+  const { candidate, craftInfo, debrisParameters, aiPrograms: ai, commMenus, baseRepairItems, flightMessages, commMessages: comm } = sources;
   return Object.freeze({
     craftInfo: Object.freeze({
       table: entry(craftInfo.archive, craftInfo.table, 'TABL', craftTableSubresource(candidate)),
@@ -89,12 +106,20 @@ export function ruleDataLocators(sources: RuleDataSources) {
     commMenus: mapValues(commMenus.tables, id => entry(commMenus.archive, id, 'TABL')),
     baseRepairItems: Object.freeze({ table: entry(baseRepairItems.archive, baseRepairItems.table, 'TABL', BASE_REPAIR_SUBRESOURCE) }),
     flightMessages: mapValues(flightMessages, region),
+    commMessages: Object.freeze({
+      faceTables: Object.freeze(comm.faceTables.map(id => entry(comm.archive, id, 'TABL'))),
+      direct: entry(comm.archive, comm.direct, 'TABL'),
+      subTables: Object.freeze(comm.subTables.map(id => entry(comm.archive, id, 'TABL'))),
+      messages: Object.freeze(comm.messages.map(id => entry(comm.archive, id, 'CMOV', CMOV_SUBRESOURCE))),
+      names2001: entry(comm.namesArchive, comm.names2001, 'TABL'),
+      names2011: entry(comm.namesArchive, comm.names2011, 'TABL'),
+    }),
   });
 }
 
 export type RuleDataLocators = ReturnType<typeof ruleDataLocators>;
 
-/** Research confidence, U items and evidence of each mapping (spec, Asset 与角色); only flight messages are confirmed. */
+/** Research confidence, U items and evidence of each mapping (spec, Asset 与角色); flight and comm messages are confirmed. */
 const MAPPING_FACTS: Readonly<Record<RuleDataRole, { readonly confidence: SourceConfidence; readonly unknowns: readonly string[]; readonly evidence: readonly string[] }>> = {
   'craft-info': {
     confidence: 'likely',
@@ -129,11 +154,20 @@ const MAPPING_FACTS: Readonly<Record<RuleDataRole, { readonly confidence: Source
     unknowns: [],
     evidence: ['docs/original/formats/executable.md#flight-message-strings-and-the-rens-header-p3-0304'],
   },
+  'comm-messages': {
+    confidence: 'confirmed',
+    unknowns: [],
+    evidence: [
+      'docs/original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code',
+      'docs/original/formats/executable.md#rq9-cmov-structure--confirmed-code-and-data',
+      'docs/original/formats/executable.md#rx1-helpers--confirmed-code-and-data',
+    ],
+  },
 };
 
 /** Every part of each role's Asset; a mapping lists them in canonical locator order. */
 function partsOf(locators: RuleDataLocators): Readonly<Record<RuleDataRole, readonly OriginalAssetLocator[]>> {
-  const { craftInfo, debrisParameters, aiPrograms: ai, commMenus, baseRepairItems, flightMessages } = locators;
+  const { craftInfo, debrisParameters, aiPrograms: ai, commMenus, baseRepairItems, flightMessages, commMessages: comm } = locators;
   return {
     'craft-info': [craftInfo.table, craftInfo.craftInfo],
     'debris-parameters': [debrisParameters.table],
@@ -141,6 +175,7 @@ function partsOf(locators: RuleDataLocators): Readonly<Record<RuleDataRole, read
     'comm-menus': Object.values(commMenus),
     'base-repair-items': [baseRepairItems.table],
     'flight-messages': Object.values(flightMessages),
+    'comm-messages': [...comm.faceTables, comm.direct, ...comm.subTables, ...comm.messages, comm.names2001, comm.names2011],
   };
 }
 
@@ -168,8 +203,10 @@ const regionAt = executableRegionOf;
  * The production sources: the slice candidate's selections (group 0, slot 1); TABL 4003 and CINF 4037 (craft.md §1–§2);
  * DEBRIS TABL 4501 (craft.md §4); AICO 6001, TABL 6003 and the 3 DFPGs and 22 scripts of the group-0 closure (ai.md §1),
  * the built-in table at `0x1762f8` with its count word and its 10 names (ai.md §3.3); the COMM tables by selecting
- * condition (comm.md §2); TABL 10165 (hud.md); and the seven flight message regions (executable.md, flight message
- * strings).
+ * condition (comm.md §2); TABL 10165 (hud.md); the seven flight message regions (executable.md, flight message
+ * strings); and the COMMFACE face tables 20011, 20019 and 20985, the direct list 20983, the 13 sub-tables the face
+ * tables name and the 481 CMOVs, every odd ID from 20021 to 20981, that the sub-tables and the direct list name
+ * (executable.md RQ4; imfat.md), with the COMM name lists TABL 2001 and 2011 (comm.md §9).
  */
 export const PRODUCTION_RULE_DATA_SOURCES: RuleDataSources = Object.freeze({
   candidate: CLASSIC_P2_SLICE.candidate,
@@ -204,6 +241,16 @@ export const PRODUCTION_RULE_DATA_SOURCES: RuleDataSources = Object.freeze({
     joystickSensitivity2: regionAt(0x17_0df8, 26),
     joystickSensitivity0: regionAt(0x17_0e14, 25),
   }),
+  commMessages: Object.freeze({
+    archive: 'MAIN/COMMFACE.NOB' as DiscPath,
+    faceTables: Object.freeze([20_011, 20_019, 20_985] as const),
+    direct: 20_983,
+    subTables: Object.freeze([20_001, 20_003, 20_005, 20_007, 20_009, 20_013, 20_015, 20_017, 20_987, 20_989, 20_991, 20_993, 20_995]),
+    messages: Object.freeze(Array.from({ length: 481 }, (_, index) => 20_021 + index * 2)),
+    namesArchive: 'MAIN/COMM.NOB' as DiscPath,
+    names2001: 2_001,
+    names2011: 2_011,
+  }),
 });
 
 /** The declared production mappings of the rule-data Assets. */
@@ -211,6 +258,6 @@ export const PRODUCTION_RULE_DATA_MAPPINGS: SourceMappingTable = ruleDataMapping
 
 /**
  * The budget share the rule-data Assets add to the logic step (spec, 限值与预算): twice each dimension of their conversion
- * usage on the baseline, rounded up to a power of two (observations in the P3-03/19 completion evidence).
+ * usage on the baseline, rounded up to a power of two (observations in the P3-03/19 and P3-10/29 completion evidence).
  */
 export const PRODUCTION_RULE_DATA_SHARE: BudgetRecord = Object.freeze({ ...EMPTY_BUDGET_USAGE, assets: 16, payloadBytes: 262_144 });

@@ -79,7 +79,8 @@ export function sourceFingerprint(catalog: SourceCatalog): SourceFingerprint {
 
 /**
  * The only production whitelist: the baseline Star Rangers CD (docs/original/manifest.md), covering every game data
- * archive P2 may convert and the main program. Communication face archives and FLICS/ belong to P4; DOS4G.EXE,
+ * archive P2 may convert and the main program, and `MAIN/COMMFACE.NOB`, whose message tables and frame durations P3-03
+ * revision 2 imports. `MAIN/COMMFAC2.NOB` (the LO face archive, P3-10 D-03) and FLICS/ belong to P4; DOS4G.EXE,
  * README.TXT and SETSOUND.BAT carry no content. Changing it changes the source fingerprint.
  */
 export const PRODUCTION_CATALOG: SourceCatalog = readSourceCatalog({
@@ -87,6 +88,7 @@ export const PRODUCTION_CATALOG: SourceCatalog = readSourceCatalog({
   files: [
     { path: 'MAIN/AISTUFF.NOB', byteLength: 13_147, sha256: 'sha256:3c33f120b17376d0111780ea9197a0814624f248b1555069a667d528a8464539' },
     { path: 'MAIN/COMM.NOB', byteLength: 1_301, sha256: 'sha256:9f1ad9db8c8f757ef85339a1a05e1b80f01d3983c1f5a63da258d1ddcb2d05aa' },
+    { path: 'MAIN/COMMFACE.NOB', byteLength: 37_462_634, sha256: 'sha256:00482e5884e1e69115a0b25ac66b575b28dffbee6aa8b832c058d38e1df3f95a' },
     { path: 'MAIN/CRAFT.NOB', byteLength: 483_304, sha256: 'sha256:85cfd6b5e480a034272bc753f9977696fdc9cc35930bcecea4bc38c5b6fc2952' },
     { path: 'MAIN/DEBRIS.NOB', byteLength: 8_600, sha256: 'sha256:2a86eaa77ac76345f0101808046fded7ae0deabaf78b776e7e093acd90a5f124' },
     { path: 'MAIN/OPTIONS.NOB', byteLength: 7_051_150, sha256: 'sha256:01311c160d32566446c49d65f05aec761a0848141d7a4a917c1e3dd3fc7d08db' },

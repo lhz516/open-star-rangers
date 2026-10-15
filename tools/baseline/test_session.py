@@ -500,6 +500,191 @@ class SessionTests(unittest.TestCase):
         self.assertFailed(box, "debugger-unparsed")
         self.assertFalse((box.run_dir / "pauses/pick").exists())
 
+    # -- reading tests (P3-10 subtask 09) ----------------------------------------------------------------------------
+    def until_box(self, until, scenario=None, fields=None, change=None):
+        """The scenario plus a breakpoint pause "wait" between `start` and `end` whose `until` test selects the hit;
+        it reads `fields` (default: the identity check field and `ticks`)."""
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario=scenario)
+        document = box.document
+        document["pauses"].insert(1, {"id": "wait", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                                                             "until": until},
+                                      "fields": fields or ["scenario", "ticks"]})
+        if change is not None:
+            change(document)
+        box.write_recipe(document)
+        return box
+
+    @staticmethod
+    def ticking(also=None):
+        """An on_command hook that advances `ticks` by one at every run to a breakpoint (then calls `also`)."""
+        count = [0]
+
+        def hook(fake, text):
+            if text == "RUN":
+                count[0] += 1
+                fake.process.poke_u32(TICKS, struct.unpack("<I", fake.process.peek(TICKS, 4))[0] + 1)
+                if also is not None:
+                    also(fake, count[0])
+        return hook
+
+    def test_until_waits_for_the_readings(self):
+        until = {"every": 2, "all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks", "offset": 3}}]}
+        box = self.until_box(until, scenario={"on_command": self.ticking()})
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual((report["counts"]["skippedHits"], report["counts"]["probes"]), (2, 2))
+        values = {(item["pause"], item["field"]): item["value"] for item in report["samples"]}
+        self.assertEqual((values[("start", "ticks")], values[("wait", "ticks")]), (123457, 123460))
+        stop = json.loads((box.run_dir / "pauses/wait/stop.json").read_text())
+        # hits 1 and 3 are probed (123458 < 123460, then 123460), hit 2 is passed over without reading
+        self.assertEqual(stop["until"], {**until, "probes": 2, "unavailableProbes": 0, "probeReasons": [],
+                                         "accepted": {"readings": {"ticks": 123460},
+                                                      "references": {"start/ticks": 123457}}})
+        self.assertEqual(stop["skippedHits"], 2)
+        self.assertNotIn("when", stop)
+        self.assertEqual(sum(write == b"RUN\n" for write in box.transport.writes), 4)
+        self.assertTrue((box.run_dir / "operator/wait-0.json").is_file())  # probed hits are no pauses
+        self.assertFalse((box.run_dir / "operator/wait-1.json").exists())
+        self.assertEqual([status.get("pause") for status in box.statuses
+                          if status["phase"] == "awaiting-confirmation"], ["start", "wait", "end"])
+        self.assertTrue(box.unchanged_outside_run())
+        self.assertTerminalSafe(box)
+        plain = self.box()
+        self.assertEqual(plain.run(), 0)
+        self.assertNotIn("probes", plain.report()["counts"])
+
+    def test_until_with_a_register_condition_and_unavailable_probes(self):
+        saved = []
+
+        def break_chain(fake, count):  # the chained pointer is null during the second run only
+            if count == 1:
+                saved.append(fake.process.peek(CHAIN, 4))
+            fake.process.poke(CHAIN, bytes(4) if count == 2 else saved[0])
+
+        until = {"any": [{"field": "chained", "eq": 99}]}
+        box = self.until_box(until, scenario={"on_command": self.ticking(break_chain)})
+        self.assertEqual(box.run(), 0)
+        stop = json.loads((box.run_dir / "pauses/wait/stop.json").read_text())
+        self.assertEqual({key: stop["until"][key] for key in ("probes", "unavailableProbes", "probeReasons")},
+                         {"probes": 2, "unavailableProbes": 1, "probeReasons": ["pointer-null"]})
+        self.assertEqual(stop["until"]["accepted"], {"readings": {"chained": 99}, "references": {}})
+
+        hits = [{"site": 0}, {"site": 0, "registers": {"EBX": 7}}, {"site": 0, "registers": {"EBX": 1}},
+                {"site": 0, "registers": {"EBX": 7}}]
+        until = {"all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks", "offset": 2}}]}
+        box = self.until_box(until, scenario={"hits": hits, "on_command": self.ticking()},
+                             change=lambda d: d["pauses"][1]["stop"].update(when={"register": "EBX", "in": [7]}))
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["counts"]["skippedHits"], report["counts"]["probes"]), (2, 2))
+        stop = json.loads((box.run_dir / "pauses/wait/stop.json").read_text())
+        self.assertEqual((stop["when"], stop["until"]["probes"], stop["skippedHits"]),
+                         ({"register": "EBX", "in": ["7"]}, 2, 2))  # the EBX 1 hit is never probed
+        self.assertEqual(stop["until"]["accepted"]["readings"], {"ticks": 123460})
+
+    def test_until_failures(self):
+        never = {"all": [{"field": "ticks", "lt": 0}]}
+        report = self.assertFailed(self.until_box(never), "wait-timeout")
+        self.assertGreater(report["counts"]["probes"], 1)
+        report = self.assertFailed(self.until_box(never, change=lambda d: d["limits"].update(maxSkippedHits=3)),
+                                   "skip-budget-exceeded")
+        self.assertEqual((report["counts"]["skippedHits"], report["counts"]["probes"]), (4, 4))
+
+        def bump_count(fake):
+            fake.process.poke(DATA + 0x810, struct.pack("<H", fake.process.peek(DATA + 0x810, 2)[0] + 1))
+
+        late = {"all": [{"field": "ticks", "ge": {"pause": "start", "field": "count"}}]}
+        box = self.until_box(late, scenario={"on_command": on_dv(DATA + 0x810, bump_count)})
+        report = self.assertFailed(box, "binding-unavailable")  # `count` at start has no agreed reading
+        self.assertEqual(report["counts"]["probes"], 0)
+        self.assertFalse((box.run_dir / "pauses/wait").exists())
+
+        def register_field(document):
+            document["fields"].append({"id": "subject", "address": {"register": "ESI", "offset": 0x10,
+                                                                    "pointers": [8]}, "type": "u32", "unit": "count"})
+        box = self.until_box({"all": [{"field": "subject", "eq": 99}]}, change=register_field)
+        box.debugger.registers["ESI"] = HEAP
+        self.assertEqual(box.run(), 0)  # a register-addressed probe field reads the hit's register
+        box = self.until_box({"all": [{"field": "subject", "eq": 99}]}, change=register_field)
+        box.debugger.hide_registers = {"ESI"}
+        self.assertFailed(box, "debugger-unparsed")
+
+        def bound_field(document):  # a probe field bound to an earlier reading that has no agreed value
+            document["fields"].append({"id": "node", "address": {"bound": {"pause": "start", "field": "count"},
+                                                                 "offset": 0}, "type": "u32", "unit": "raw"})
+        box = self.until_box({"all": [{"field": "node", "eq": 1}]}, change=bound_field,
+                             scenario={"on_command": on_dv(DATA + 0x810, bump_count)})
+        report = self.assertFailed(box, "binding-unavailable")
+        self.assertEqual(report["counts"]["probes"], 0)
+
+    def during_wait_probe(self, box, action):
+        """Calls `action(fake)` at the first read of `ticks` after the second run (the first `wait` probe)."""
+        state = {"runs": 0, "done": False}
+
+        def hook(fake, text):
+            if text == "RUN":
+                state["runs"] += 1
+            elif text == f"DV {TICKS:08X}" and state["runs"] >= 2 and not state["done"]:
+                state["done"] = True
+                action(fake)
+        box.debugger.scenario["on_command"] = hook
+
+    def test_until_probe_verification_and_deadline(self):
+        until = {"all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks"}}]}
+        box = self.until_box(until)
+        self.during_wait_probe(box, lambda fake: fake.registers.update(EAX=fake.registers.get("EAX", 0) + 1))
+        self.assertEqual(box.run(), 0)
+        stop = json.loads((box.run_dir / "pauses/wait/stop.json").read_text())
+        self.assertEqual({key: stop["until"][key] for key in ("probes", "unavailableProbes", "probeReasons")},
+                         {"probes": 2, "unavailableProbes": 1, "probeReasons": ["stop-unverified"]})
+        box = self.until_box(until)
+        self.during_wait_probe(box, lambda fake: box.clock.sleep(120))  # the probe ends after waitSeconds (60)
+        report = self.assertFailed(box, "wait-timeout")
+        self.assertEqual(report["counts"]["probes"], 1)
+        self.assertFalse((box.run_dir / "pauses/wait").exists())
+
+    def test_conditional_stimuli(self):
+        def tests(document):
+            stimuli = document["stimuli"]
+            stimuli[1]["if"] = {"all": [{"field": "neg", "lt": -1000}]}  # -70000: applied
+            stimuli[2]["if"] = {"any": [{"field": "count", "lt": {"field": "delta"}}]}  # 65535 < -5: not applied
+            stimuli[3]["if"] = {"all": [{"field": "ticks", "eq": {"pause": "start", "field": "ticks"}}]}
+
+        box = self.stimulus_box(change=tests)
+        stick = box.debugger.process.peek(STICK, 4)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual({key: report["counts"][key] for key in ("stimuliPlanned", "stimuliApplied",
+                                                                  "stimuliConditionFalse")},
+                         {"stimuliPlanned": 4, "stimuliApplied": 3, "stimuliConditionFalse": 1})
+        self.assertEqual([record["status"] for record in report["stimuli"]],
+                         ["applied", "applied", "condition-false", "applied"])
+        enter, ctrl, deflect, latch = report["stimuli"]
+        self.assertNotIn("if", enter)
+        self.assertEqual(ctrl["if"], {"all": [{"field": "neg", "lt": -1000}], "readings": {"neg": -70000},
+                                      "references": {}, "result": True})
+        self.assertEqual((deflect["if"]["readings"], deflect["if"]["result"]), ({"count": 65535, "delta": -5}, False))
+        self.assertNotIn("writes", deflect)
+        self.assertEqual(box.debugger.process.peek(STICK, 4), stick)  # nothing written for the false branch
+        self.assertEqual((latch["if"]["references"], latch["if"]["result"]), ({"start/ticks": 123456}, True))
+        stop = json.loads((box.run_dir / "pauses/start/stop.json").read_text())
+        self.assertTrue(stop["registersUnchangedAfterStimuli"])
+        recorded = json.loads((box.run_dir / "pauses/start/stimuli.json").read_text())
+        self.assertEqual([item["status"] for item in recorded["stimuli"]], ["applied", "condition-false"])
+        plain = self.stimulus_box()
+        self.assertEqual(plain.run(), 0)
+        self.assertNotIn("stimuliConditionFalse", plain.report()["counts"])
+        self.assertTerminalSafe(box)
+
+        def bump_count(fake):
+            fake.process.poke(DATA + 0x810, struct.pack("<H", fake.process.peek(DATA + 0x810, 2)[0] + 1))
+        box = self.stimulus_box(scenario={"on_command": on_dv(DATA + 0x810, bump_count)}, change=tests)
+        report = self.assertStimulusFailed(box, "stimulus-rejected", "binding-unavailable", "deflect", ("enter",),
+                                           ("ctrl",))  # `count` has no agreed reading: the branch is undecided
+        self.assertIsNone(report["stimuli"][2]["if"]["result"])
+
     def test_stimulus_rejections_end_the_run(self):
         box = self.stimulus_box(head=0x1E, tail=0x20)
         self.assertStimulusFailed(box, "stimulus-rejected", "key-buffer-busy")

@@ -8,10 +8,11 @@
  * player object +0x14 (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约; D-03). Neither keeps a throttle: the
  * original's is a value pending for one frame, and the commanded speed of the movement block persists instead. P3-07
  * adds the targeting, combat records and cockpit display state (docs/plan/p3/02/spec.md, CR-04). P3-09 adds the map
- * cursor and destination, the saved left page and the Warp transit (docs/plan/p3/02/spec.md, MW-02).
+ * cursor and destination, the saved left page and the Warp transit (docs/plan/p3/02/spec.md, MW-02); P3-10 the docking
+ * object, the communications state and the saved docking pose (CB-02, CB-03).
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
-import type { EntityId, Matrix3, RotationAxis } from './entity-table.ts';
+import type { EntityId, Matrix3, NameReference, RotationAxis } from './entity-table.ts';
 import type { MapPixel } from './map-rule-data.ts';
 
 /** The forward cockpit view (F1). */
@@ -62,7 +63,10 @@ export interface PlayerState {
   readonly shots: ShotCounts;
   /** `0x176710`: −1 initially; damage writes it at its thresholds; the rescue keeps it; P3-11's success summary reads it. */
   heavyDamage: -1 | 0 | 1;
-  /** `0x1a9dc8`. P3-07 switches between pages 0 and 1; P3-09 and P3-10 add pages 2–6 and the saved page. */
+  /**
+   * `0x1a9dc8`. P3-07 switches between pages 0 and 1; P3-10 writes pages 2–5 (CB-03), P3-09 page 6. The saved pages
+   * are the menu's and the incoming message's in `communications` and P3-09's Warp page, three apart.
+   */
   readonly leftDisplay: { page: LeftPage };
   /**
    * The status display's blink phase and timer (`0x4d0e0`) and the player object's redraw flag +0xF0, which the
@@ -78,6 +82,14 @@ export interface PlayerState {
    * the completion nor an abandoned Warp clears it, as the original keeps the old values, read only in view mode 1.
    */
   warp: WarpTransit | null;
+  /**
+   * P3-10's player state (docs/plan/p3/02/spec.md, CB-02, CB-03), from here on. Player object +0x194: the object a
+   * docking request named, written only by the writers of `0x52914` (CB-02) and cleared when the player entity goes.
+   */
+  dockingObject: EntityId | null;
+  readonly communications: PlayerCommunications;
+  /** `0x186af0`–`0x186b1c`: written at docking and launch (CB-10), null before the first docking. */
+  readonly docking: { savedPose: Pose | null };
 }
 
 /** The map part of the player state (MW-02). */
@@ -118,6 +130,74 @@ export interface WarpTransit {
   path: readonly Vec3[];
 }
 
+/** A pose copied bit for bit (f32). */
+export interface Pose {
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+}
+
+/** The communications menu's command tables: TABL 2003, 2005 and 2013 (comm §7.3). */
+export type MenuCommandTable = 'gated' | 'other' | 'kind2';
+
+/** A category of TABL 2007; `source` is its item number there. */
+export interface CategoryValue {
+  readonly type: 'category';
+  readonly source: number;
+  readonly kindMask: number;
+}
+
+/**
+ * An object of a category, with the kind, name and colour taken when the list was built; only P3-13 draws them, no rule
+ * reads them, and the item stays displayable after the object is removed.
+ */
+export interface ObjectValue {
+  readonly type: 'object';
+  readonly entityId: EntityId;
+  readonly kindBit: number;
+  readonly name: NameReference;
+  /** Active → `active`; otherwise a threat stamp (+0x17C) → `threatened`; otherwise `other`. */
+  readonly tone: 'active' | 'threatened' | 'other';
+}
+
+/** A command item of a command table; `code` is a non-zero u32. */
+export interface CommandValue {
+  readonly type: 'command';
+  readonly source: number;
+  readonly code: number;
+}
+
+export interface MenuExit {
+  readonly type: 'exit';
+}
+
+/** A menu item: `key` is the raw key byte (a generated key is an ASCII digit); the exit item comes last. */
+export interface MenuItem<Value> {
+  readonly key: number;
+  readonly value: Value | MenuExit;
+}
+
+/** The one built menu (controller +0x19C): levels 2–4, never refreshed after it is built (comm §7.5). */
+export type CommunicationsMenu =
+  | { readonly level: 2; readonly table: 'categories'; readonly items: readonly MenuItem<CategoryValue>[] }
+  | { readonly level: 3; readonly table: 'objects'; readonly items: readonly MenuItem<ObjectValue>[] }
+  | { readonly level: 4; readonly table: MenuCommandTable; readonly items: readonly MenuItem<CommandValue>[] };
+
+/** The player's communications state (CB-03). */
+export interface PlayerCommunications {
+  /** Controller +0x19C: null once closed; a dormant menu stays until the next `c` replaces it. */
+  menu: CommunicationsMenu | null;
+  /** Controller +0x1A0: the object whose command menu is or was last built; only the next `c` clears it. */
+  partner: EntityId | null;
+  /** Controller +0x1A4: the page `c` opened the menu on (only 0, 1 or 5). */
+  menuSavedPage: LeftPage;
+  /** `0x175efc`: the page an incoming message replaced, apart from the menu's and P3-09's Warp page (RQ8). */
+  incomingSavedPage: LeftPage;
+  /** ps +0x78, +0x7C: clocks, null when unstamped; P3-11's rescue clears them through clearCommunicationLimits. */
+  readonly limits: { friendlyHit: number | null; friendlyKill: number | null };
+  /** ps +0x60: the thanks counter, a non-negative i32; P3-11's statistics reset clears it. */
+  thanks: number;
+}
+
 /** Which kinds the player's target commands and automatic selection look at. */
 export type TargetMode = 'enemy' | 'friendly';
 
@@ -146,8 +226,8 @@ export interface ShotCounts {
  * The player state of a new world. The previous view mode is read only when a view is restored (closing the map, the
  * launch, the end of a Warp), which needs the instantiated player, and the player's instantiation writes it too; the
  * sub-mode is read only in view mode 0x11, whose entry from another mode clears it. Neither creation value is
- * therefore observable by a rule; they are 0xC and 0. P3-07's fields take their creation values (CR-04), and P3-09's
- * (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit.
+ * therefore observable by a rule; they are 0xC and 0. P3-07's and P3-10's fields take their creation values (CR-04,
+ * CB-02, CB-03), and P3-09's (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit.
  */
 export function createPlayerState(startPixel: MapPixel): PlayerState {
   return {
@@ -168,6 +248,16 @@ export function createPlayerState(startPixel: MapPixel): PlayerState {
     map: { cursor: Object.freeze({ column: startPixel.column, row: startPixel.row }), destination: null },
     savedLeftPage: 0,
     warp: null,
+    dockingObject: null,
+    communications: {
+      menu: null,
+      partner: null,
+      menuSavedPage: 0,
+      incomingSavedPage: 0,
+      limits: { friendlyHit: null, friendlyKill: null },
+      thanks: 0,
+    },
+    docking: { savedPose: null },
   };
 }
 

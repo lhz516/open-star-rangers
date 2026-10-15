@@ -6,6 +6,7 @@ import { blankCraftCombat, SUBSYSTEM_COUNT, type CraftCombat, type Entity, type 
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { idleBaseService } from './base-interior.test-support.ts';
 import type { TickContext } from './pipeline.ts';
 import type * as Targeting from './targeting.ts';
 
@@ -42,6 +43,8 @@ function displayState(viewMode = 0x0c, combat: Partial<CraftCombat> = {}): [Worl
   });
   player.state = 'active';
   state.player.viewMode = viewMode;
+  // The base view always has a base service (CB-11).
+  if (viewMode === 6) state.baseService = idleBaseService();
   return [state, player];
 }
 
@@ -83,6 +86,20 @@ describe('the frame-end cockpit display step (CR-10)', () => {
     expect(state.player.target).toBe(target.id);
     expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 0, redraw: true });
     expect(subsystems(player)).toEqual(fields({ 1: 3 }));
+  });
+});
+
+describe('the tail warning (P3-10 CB-09 item 2; cockpit.md, type 9)', () => {
+  it.each([0x0c, 0x0d, 1, 6])('checks in view mode %i: due again 0x80 units later with neither warning lit', (viewMode) => {
+    const [state] = displayState(viewMode);
+    constructWorld(state).step(tickInput());
+    expect(state.communications.tailCheck).toEqual({ dueClock: 2 + 0x80, attackerOnTail: false, missileIncoming: false });
+  });
+
+  it.each([0, 2, 8, 0x0e, 0x11, 0x12, 0x13])('does not check in view mode %i', (viewMode) => {
+    const [state] = displayState(viewMode);
+    constructWorld(state).step(tickInput());
+    expect(state.communications.tailCheck).toEqual({ dueClock: 0, attackerOnTail: false, missileIncoming: false });
   });
 });
 

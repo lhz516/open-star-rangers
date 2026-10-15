@@ -86,6 +86,9 @@ export interface RuleDataInputs {
   readonly explosionAnimations: readonly LogicAssetInput[];
   readonly aiPrograms: LogicAssetInput | undefined;
   readonly mapGeometry: LogicAssetInput | undefined;
+  readonly commMenus: LogicAssetInput | undefined;
+  readonly baseRepairItems: LogicAssetInput | undefined;
+  readonly commMessages: LogicAssetInput | undefined;
 }
 
 /** The projectile visuals' effect payload, read strictly and checked against its descriptor. */
@@ -106,12 +109,13 @@ const groupOf = (groups: readonly PackageGroup[], name: ResourceGroup): PackageG
 
 /**
  * The run-independent rule-data inputs of world creation (docs/plan/p3/02/spec.md, CR-01) from a package's groups:
- * the logic group's `debris-parameters` and `ai-programs` Assets (decodeRuleDataPayload); the models group's `explosion-table` Asset and
- * the explosion animations its lists name, once each in ascending ID order (decodeFlightDataPayload); and its only
- * `data` Asset of role `projectile`, the projectile visuals (readEffectPayload). A complete package has exactly one Asset
- * of each of the first three roles. The map geometry is mapGeometryInput's. An Asset the package lacks, or a projectile
- * `data` Asset that is not the only one, stays undefined or out of the list, which world creation rejects at its input
- * position. A decoding error keeps its code and reason at `<group>[<Asset ID>].<path>`.
+ * the logic group's `debris-parameters`, `ai-programs`, `comm-menus`, `base-repair-items` and `comm-messages` Assets
+ * (decodeRuleDataPayload; CB-01); the models group's `explosion-table` Asset and the explosion animations its lists
+ * name, once each in ascending ID order (decodeFlightDataPayload); and its only `data` Asset of role `projectile`, the
+ * projectile visuals (readEffectPayload). A complete package has exactly one Asset of each of the logic roles and of
+ * `explosion-table`. The map geometry is mapGeometryInput's. An Asset the package lacks, or a projectile `data` Asset
+ * that is not the only one, stays undefined or out of the list, which world creation rejects at its input position. A
+ * decoding error keeps its code and reason at `<group>[<Asset ID>].<path>`.
  */
 export function ruleDataInputs(groups: readonly PackageGroup[]): RuleDataInputs {
   const logic = groupOf(groups, 'logic');
@@ -120,9 +124,14 @@ export function ruleDataInputs(groups: readonly PackageGroup[]): RuleDataInputs 
     const { assets, asset } = groupAssets(group);
     return asset(assets.find((descriptor) => descriptor.role === role), decode);
   };
-  const debrisParameters = only(logic, 'debris-parameters', decodeRuleDataPayload);
-  const aiPrograms = only(logic, 'ai-programs', decodeRuleDataPayload);
-  const unmodelled = { debrisParameters, aiPrograms, mapGeometry: mapGeometryInput(groups) };
+  const unmodelled = {
+    debrisParameters: only(logic, 'debris-parameters', decodeRuleDataPayload),
+    aiPrograms: only(logic, 'ai-programs', decodeRuleDataPayload),
+    commMenus: only(logic, 'comm-menus', decodeRuleDataPayload),
+    baseRepairItems: only(logic, 'base-repair-items', decodeRuleDataPayload),
+    commMessages: only(logic, 'comm-messages', decodeRuleDataPayload),
+    mapGeometry: mapGeometryInput(groups),
+  };
   const models = groupOf(groups, 'models');
   if (!models) return Object.freeze({ ...unmodelled, projectileVisuals: undefined, explosions: undefined, explosionAnimations: Object.freeze([]) });
   const { assets, asset } = groupAssets(models);

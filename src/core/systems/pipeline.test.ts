@@ -68,10 +68,11 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02, P3-06, P3-07 and P3-09 own and fakes no rule system', () => {
+  it('implements only the stages P3-02, P3-06, P3-07, P3-09 and P3-10 own so far and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
-      'input-registration', 'clock', 'object-update', 'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'energy',
-      'object-sets', 'parked-update', 'warp-completion', 'area-check', 'frame-end', 'commit',
+      'input-registration', 'mission-flow', 'clock', 'object-update', 'communications-reply', 'spawn-queue-check', 'request-handling', 'movement', 'collision',
+      'delayed-player-explosion', 'energy',
+      'object-sets', 'parked-update', 'warp-completion', 'base-interior', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
@@ -444,6 +445,39 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     player.state = 'pending-removal';
     expect(runTickWith(state)).toEqual([]);
     expect(state.player).toMatchObject({ entityId: null, target: null, targeting: null });
+  });
+});
+
+describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)', () => {
+  it.each([
+    { type: 'depart', entityId: 1, origin: 'command', commandIndex: 0 },
+    { type: 'depart', entityId: 1, origin: 'automatic', commandIndex: null },
+  ] as Request[])('hands a $origin depart request to request handling, which does nothing without a player entity (DK3)', (request) => {
+    const [state] = withEntities([0], [15]);
+    const [idle] = withEntities([0], [15]);
+    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) })).toEqual([]);
+    runTickWith(idle);
+    expect(stateText(state)).toBe(stateText(idle));
+  });
+
+  it('clears the docking object, the menu, the partner and the menu\'s saved page with the player entity, and keeps the rest', () => {
+    const [state, [player, base]] = withEntities([0], [15]);
+    const menu = { level: 3, table: 'objects', items: [{ key: 0x78, value: { type: 'exit' } }] } as const;
+    const pose = { position: { x: 1, y: 2, z: 3 }, orientation: TEST_ORIENTATION };
+    Object.assign(state.player, { entityId: player.id, dockingObject: base.id, viewMode: 0x13 });
+    Object.assign(state.player.communications, {
+      menu, partner: base.id, menuSavedPage: 5, incomingSavedPage: 1, limits: { friendlyHit: 3, friendlyKill: 4 }, thanks: 2,
+    });
+    state.player.docking.savedPose = pose;
+    base.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.player).toMatchObject({ dockingObject: base.id, communications: { menu, partner: base.id, menuSavedPage: 5 } });
+    player.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.player).toMatchObject({
+      entityId: null, dockingObject: null, docking: { savedPose: pose },
+      communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 1, limits: { friendlyHit: 3, friendlyKill: 4 }, thanks: 2 },
+    });
   });
 });
 

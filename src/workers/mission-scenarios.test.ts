@@ -9,8 +9,13 @@ import type { MissionContent, WingmanRoster } from '../content/logic/logic-conte
 import { decodeLogicPayload } from '../content/logic/logic-payload.ts';
 import { readGroupManifest } from '../content/manifest.ts';
 import { readPayloadRecords } from '../content/payload.ts';
+import type { CommMenus } from '../content/rule-data/comm-menus.ts';
+import type { CommMessages } from '../content/rule-data/comm-messages.ts';
+import type { CraftInfo } from '../content/rule-data/craft-info.ts';
 import { decodeRuleDataPayload } from '../content/rule-data/rule-data-payload.ts';
 import { CLASSIC_P2_SLICE } from '../content/slice-definition.ts';
+import type { DomainEvent } from '../core/contracts/domain-events.ts';
+import type { Command } from '../core/contracts/tick-input.ts';
 import { DEFAULT_CLOCK_UNITS_PER_TICK } from '../core/contracts/time.ts';
 import { CoreInputError } from '../core/errors.ts';
 import { createWorld, type CreateWorldInput } from '../core/world/create-world.ts';
@@ -22,6 +27,7 @@ import {
   IMPORT_SCENARIOS, MISSION_SCENARIOS, scenarioEntryProfile, scenarioGroups, type MissionScenario, type ScenarioGroup,
 } from './import-scenarios.test-support.ts';
 import { PRODUCTION_PACKAGE } from './production-package.ts';
+import { DOCKING_BASE_KIND_MASK, DOCKING_COMMAND_CODES, DOCKING_STILL_KINDS, DOCKING_STILL_SPEEDS } from './synthetic-import.test-support.ts';
 
 // P3-04 subtask 01 (S-09): each mission scenario runs its production import job in Node; the groups it sends are kept
 // as the import job owner and resource holder keep them (complete groups only, in slice definition order), judged as a
@@ -103,6 +109,7 @@ describe('P3-04 mission scenarios (S-09)', () => {
     expect(profiles.get('mission-partial')).toEqual(startable);
     expect(profiles.get('mission-load-failed')).toEqual(startable);
     expect(profiles.get('mission-create-rejected')!.sourceFingerprint).not.toBe(startable!.sourceFingerprint);
+    expect(profiles.get('mission-docking')!.sourceFingerprint).not.toBe(startable!.sourceFingerprint);
   });
 
   it('mission-startable: a complete package whose mission creates a world under the production run configuration', async () => {
@@ -164,6 +171,43 @@ describe('P3-04 mission scenarios (S-09)', () => {
       const error = thrownBy(() => createWorld(productionRun(held, assets, identity, wingman)));
       expect(error, String(wingman)).toBeInstanceOf(CoreInputError);
       expect({ path: (error as CoreInputError).path, reason: (error as CoreInputError).reason }).toEqual(MISSION_SCENARIOS['mission-create-rejected'].failure);
+    }
+  });
+
+  // P3-10 subtask 23: the disc the browser docking flow imports. `c`, 2 (the base category, whose one base opens its
+  // command menu at once) and 2 (the docking request) dock under any seed, as the base starts within the docking range
+  // of a still player and each of its five possible faces has a docking reply.
+  it('mission-docking: a complete package whose base answers the menu\'s docking request under any seed', async () => {
+    const { held, completeness, mission } = await imported('mission-docking');
+    const identity = complete(completeness);
+    expect(mission.status).toBe('loaded');
+    const assets = logicAssets(held);
+    const menus = assets.commMenus!.content as CommMenus;
+    expect(menus.categories.map(({ kindMask }) => kindMask)).toEqual([1, DOCKING_BASE_KIND_MASK, 0]);
+    expect(menus.gatedTargetCommands.map(({ command }) => command)).toEqual([DOCKING_COMMAND_CODES.status, DOCKING_COMMAND_CODES.docking, 0]);
+    // The base pool's five faces each have the docking reply (index 0) and the status reply (index 1) of TABL 20011.
+    const [baseFaces] = (assets.commMessages!.content as CommMessages).faceTables;
+    expect(baseFaces.map(subTable => [subTable[0]?.present, subTable[1]?.present])).toEqual(Array.from({ length: 5 }, () => [true, true]));
+    expect(DOCKING_STILL_KINDS.map(kindBit => (assets.craftInfo.content as CraftInfo).craft[kindBit].atB8)).toEqual(DOCKING_STILL_SPEEDS);
+
+    const request: readonly Command[] = [
+      { type: 'communications', operation: 'open' }, { type: 'select-number', value: 2 }, { type: 'select-number', value: 2 },
+    ];
+    const input = productionRun(held, assets, identity, null);
+    for (const seed of [0x0eed_0001, 0x0eed_0002, 0x0eed_0003, SEED]) {
+      const label = seed.toString(16);
+      const world = createWorld({ ...input, run: { ...input.run, seed } });
+      const events: DomainEvent[] = [];
+      for (let tick = 1; tick <= 1_000; tick++) {
+        const stepped = world.step(tickInput(tick === 60 ? request : []));
+        events.push(...stepped);
+        if (stepped.some(({ type }) => type === 'docked')) break;
+      }
+      const types = events.map(({ type }) => type);
+      expect(types, label).toContain('docking-requested');
+      expect(types, label).not.toContain('docking-cancelled');
+      expect(types.at(-1), label).toBe('transition');
+      expect(events.find(event => event.type === 'docked'), label).toMatchObject({ baseEntityId: expect.any(Number), wingmanEntityId: null });
     }
   });
 });

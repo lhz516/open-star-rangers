@@ -26,6 +26,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'data/synthetic-ai-programs', role: 'ai-programs' },
     { id: 'data/synthetic-base-repair', role: 'base-repair-items' },
     { id: 'data/synthetic-comm-menus', role: 'comm-menus' },
+    { id: 'data/synthetic-comm-messages', role: 'comm-messages' },
     { id: 'data/synthetic-craft-info', role: 'craft-info' },
     { id: 'data/synthetic-debris-parameters', role: 'debris-parameters' },
     { id: 'data/synthetic-flight-messages', role: 'flight-messages' },
@@ -135,14 +136,19 @@ export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
   'hud-sound',
 ]);
 
-/** The role slice definition version 5 added (P3-03 spec, P3-09 的修订：地图几何（修订 2）). */
-export const VERSION_5_ROLES: readonly SliceRole[] = Object.freeze(['map-geometry']);
+/**
+ * The roles slice definition version 6 added, in definition order: P3-09's map geometry (P3-03 spec, P3-09 的修订：地图几何
+ * （修订 2）) and P3-10's communications messages (P3-03 spec, revision 2), each version 5 on its own branch.
+ */
+export const VERSION_6_ROLES: readonly SliceRole[] = Object.freeze(['map-geometry', 'comm-messages']);
+
+/** The roles P3-03 added to the slice: those of versions 4 and 6, in definition order. */
+export const P3_ROLES: readonly SliceRole[] = Object.freeze([...VERSION_4_ROLES, ...VERSION_6_ROLES]);
 
 /**
  * `CLASSIC_P2_SLICE` with only the roles version 3 required, for tests of a step whose group lacks the Assets P3-03
  * and P3-09 steps add to it.
  */
 export const P2_ROLES_SLICE: SliceDefinition = Object.freeze({
-  ...CLASSIC_P2_SLICE,
-  roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !VERSION_4_ROLES.includes(role) && !VERSION_5_ROLES.includes(role))),
+  ...CLASSIC_P2_SLICE, roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !P3_ROLES.includes(role))),
 });

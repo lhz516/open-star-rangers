@@ -11,17 +11,23 @@ import {
   PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
   type CombatPlayer,
+  type BaseServiceView,
   type CombatReady,
   type CombatWarpReading,
-  type CommunicationsReady,
+  type CommunicationsMenuView,
+  type CommunicationsOption,
+  type CommunicationsPlayer,
+  type CommunicationsProjection,
   type FlightCombat,
   type FlightResourceName,
+  type IncomingView,
   type MapContact,
   type MapInformationRow,
   type MapOpen,
   type MapPartition,
   type MapPlayer,
   type MapReady,
+  type MenuContentReference,
   type MotionPlayer,
   type MotionReady,
   type NotImplementedPartition,
@@ -55,7 +61,7 @@ function assistedState(): WorldState {
 }
 
 describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-05)', () => {
-  it('has the clock, mission, player and map partitions and both flight groups ready, the other rule partitions not implemented', () => {
+  it('has the clock, mission, player, map and communications partitions and both flight groups ready, result not implemented', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -85,7 +91,8 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       },
       // A closed map; the player entity is not active yet.
       map: { readiness: 'ready', player: { state: 'closed', destination: null, markerEntityId: null, warpRequest: { accepted: false, reason: 'player-unavailable' } } },
-      communications: NOT_IMPLEMENTED,
+      // P3-10 CB-14; its readings have their own tests (communications.test.ts).
+      communications: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id, menu: null, incoming: null, base: null }) },
       result: NOT_IMPLEMENTED,
     });
   });
@@ -247,7 +254,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     expectTypeOf<MapInformationRow['type']>().toEqualTypeOf<'unit-name' | 'unit-values' | 'count'>();
     expectTypeOf<Extract<WarpRequestReading, { accepted: false }>['reason']>()
       .toEqualTypeOf<'player-unavailable' | 'wrong-context' | 'no-destination' | 'cooldown' | 'insufficient-energy'>();
-    expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
+    expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsProjection>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
     // P3-07 CR-12: the combat group is the flight partition's, ready with the player's readings or null without one.
@@ -267,6 +274,19 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     >();
     expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
     expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
+    // P3-10 CB-14: the communications partition's final shape, ready with the player's readings or null without one;
+    // no option is unavailable, and the radio queue, deadlines and base timers are not shown.
+    expectTypeOf<CommunicationsProjection['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<CommunicationsProjection['player']>().toEqualTypeOf<CommunicationsPlayer | null>();
+    expectTypeOf<keyof CommunicationsPlayer>().toEqualTypeOf<'entityId' | 'page' | 'subsystem' | 'menu' | 'incoming' | 'docking' | 'base' | 'warnings'>();
+    expectTypeOf<CommunicationsPlayer['menu']>().toEqualTypeOf<CommunicationsMenuView | null>();
+    expectTypeOf<CommunicationsPlayer['incoming']>().toEqualTypeOf<IncomingView | null>();
+    expectTypeOf<CommunicationsPlayer['base']>().toEqualTypeOf<BaseServiceView | null>();
+    expectTypeOf<keyof CommunicationsMenuView>().toEqualTypeOf<'menu' | 'level' | 'partnerEntityId' | 'options'>();
+    expectTypeOf<keyof CommunicationsOption>().toEqualTypeOf<'position' | 'key' | 'value'>();
+    expectTypeOf<CommunicationsOption['value']['type']>().toEqualTypeOf<'category' | 'object' | 'command' | 'exit'>();
+    expectTypeOf<MenuContentReference['table']>().toEqualTypeOf<'categories' | 'objects' | 'gated' | 'other' | 'kind2'>();
+    expectTypeOf<keyof BaseServiceView>().toEqualTypeOf<'baseEntityId' | 'rows' | 'cursor' | 'flags'>();
   });
 
   it('reports the player\'s maximum speed as live, which P3-07 recomputes from the live energy state (CR-09)', () => {

@@ -43,7 +43,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 /** Writes a disc of `files` plus unread padding as a CloneCD file set and returns its paths and whitelist. */
 async function writeDisc(name: string, files: Record<string, SyntheticFileContent>) {
-  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) } });
+  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) } });
   const paths = [join(directory, `${name}-${MARKER}.ccd`), join(directory, `${name}-${MARKER}.img`)];
   writeFileSync(paths[0], await disc.descriptor.read(0, disc.descriptor.byteLength));
   writeFileSync(paths[1], await disc.image.read(0, disc.image.byteLength));
@@ -78,15 +78,15 @@ describe('package check', () => {
     expect(report).toMatchObject({ format: 'osr-package-check', version: 1, passed: true, error: null });
     expect(report.identity).toEqual({ versionId: 'synthetic-test', fingerprint: expect.stringMatching(/^source:sha256:[0-9a-f]{64}$/) });
     expect(report.package).toMatchObject({
-      status: 'complete', sliceDefinitionVersion: 5, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
+      status: 'complete', sliceDefinitionVersion: 6, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
     });
-    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 9], ['models', 266], ['cockpit-hud-map', 105], ['audio', 29]]);
+    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 10], ['models', 266], ['cockpit-hud-map', 105], ['audio', 29]]);
     expect(report.package!.groups.every(({ digest, payloadBytes }) => HASH.test(digest) && payloadBytes > 0)).toBe(true);
 
     const roles = new Map(report.roles.map(role => [role.role, role]));
     expect(report.roles.map(({ role, group, assets }) => [role, group, assets])).toEqual([
       ['mission', 'logic', 1], ['craft-info', 'logic', 1], ['debris-parameters', 'logic', 1], ['ai-programs', 'logic', 1], ['comm-menus', 'logic', 1],
-      ['base-repair-items', 'logic', 1], ['flight-messages', 'logic', 1],
+      ['base-repair-items', 'logic', 1], ['flight-messages', 'logic', 1], ['comm-messages', 'logic', 1],
       ['scene-settings', 'models', 1], ['explosion-table', 'models', 1], ['explosion-animation', 'models', 17], ['explosion-frame', 'models', 186],
       ['nebula-backgrounds', 'models', 1], ['nebula-background', 'models', 15], ['hit-shimmer', 'models', 1],
       ['target-display', 'cockpit-hud-map', 1], ['view-labels', 'cockpit-hud-map', 1], ['hud-text', 'cockpit-hud-map', 1],
@@ -117,6 +117,15 @@ describe('package check', () => {
     expect(roles.get('comm-menus')!.counts).toMatchObject({ menus: 5 });
     expect(roles.get('base-repair-items')!.counts).toEqual({ selectors: 11 });
     expect(roles.get('flight-messages')!.counts).toEqual({ texts: 7, textBytes: sum(Object.values(contents['flight-messages']).map(text => text.length)) });
+    const comm = contents['comm-messages'];
+    const tableCounts = comm.faceTables.map(table => [table.length, sum(table.map(sub => sub.length))]);
+    const present = [...comm.faceTables.flat(2), ...comm.direct].flatMap(item => (item.present ? [item.frameDurations.length] : []));
+    expect(roles.get('comm-messages')!.counts).toEqual({
+      faces20011: tableCounts[0][0], messages20011: tableCounts[0][1], faces20019: tableCounts[1][0], messages20019: tableCounts[1][1],
+      faces20985: tableCounts[2][0], messages20985: tableCounts[2][1], messages20983: comm.direct.length, present: 481, frames: sum(present),
+      names2001: comm.names2001.length, names2011: comm.names2011.length, nameBytes: sum([...comm.names2001, ...comm.names2011].map(name => name.length)),
+    });
+    expect(tableCounts.map(([faces]) => faces)).toEqual([4, 4, 5]);
     expect(roles.get('scene-settings')!.counts).toEqual({ screenFlashes: 3 });
     expect(roles.get('explosion-table')!.counts).toEqual({ lists: 3, entries: PRODUCTION_LISTS.flat().length });
     expect(roles.get('explosion-animation')!.counts).toEqual({ frames: roles.get('explosion-frame')!.assets });

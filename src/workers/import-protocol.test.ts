@@ -343,7 +343,7 @@ describe('error code grammar', () => {
     payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
     effectRecords: true, missileTypes: true, ringSegments: true, executableObjects: true, executablePages: true, executableRegion: true,
     cockpitSlots: true, cockpitElements: true, cockpitInstruments: true, mfdRecords: true, tableRecords: true, snipFrames: true, diagStartupMessages: true, diagTextBytes: true,
-    aiProgramRecords: true, aiScriptItems: true, aiEntries: true, commMenuItems: true, animFrameBytes: true,
+    aiProgramRecords: true, aiScriptItems: true, aiEntries: true, commMenuItems: true, animFrameBytes: true, commTableItems: true, commNames: true,
   };
 
   it.each([

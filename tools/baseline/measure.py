@@ -31,6 +31,12 @@
       hits that fail it are resumed without confirmation and counted as `skippedHits` (stop.json, report counts).
       With alternative sites, "at": [offset, ...] (a strict subset of "offsets") limits the condition to hits at those
       sites; a hit at another alternative is the pause unconditionally.
+      Reading tests wait and branch on this run's readings: a test is {"all"|"any": [{"field": F, "lt"|"le"|"gt"|"ge"|
+      "eq"|"ne": n | {"field": G, "offset": c} | {"pause": P, "field": G, "offset": c}}, ...]}. A breakpoint stop's
+      "until": {"every": n, "all"|"any": [...]} probes every n-th hit (that passes "when") by reading the test's fields
+      and takes the first hit whose test passes; the others count as skippedHits (stop.json `until`, report `probes`).
+      A stimulus's "if" (same test over its pause's readings and earlier pauses') applies it only when true; a false
+      test records `condition-false`, an unknown one (unqualified reading) rejects the stimulus.
       Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
       to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
       the baseline installation and the private copy stay fully protected.

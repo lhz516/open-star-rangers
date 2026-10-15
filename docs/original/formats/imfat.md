@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-09
+updated: 2026-10-14
 related: [U-001, U-020]
 ---
 
@@ -87,9 +87,9 @@ Each data block is a serialized C struct graph. Pointer fields are stored as off
 | SCEN / SCCT | Missions (52) / campaign table | Structure Confirmed, field meanings partly Unconfirmed | [scenario](./scenario.md) |
 | CINF | Craft info: gun, missile, craft and missile-body records, chosen by `CRAFT.NOB` TABL 4003 per campaign slot and group | Structure Confirmed (P3-03/02, all 24 entries); field types Confirmed except a few Likely from the data (craft §3); field meanings mostly Unconfirmed | [craft](./craft.md#3-cinf), [executable](./executable.md#weapon-records-and-the-first-missions-shooters-p2-1230) |
 | MESC | Menu scene | Unconfirmed (large; in `OPTIONS`) | |
-| CMOV | Comm-screen face animation | Unconfirmed (file name `COMMFACE`; the two files may hold two resolutions) | |
+| CMOV | Comm-screen message: text, frame records with per-frame durations, images and sounds | Structure Confirmed ([executable RQ9](./executable.md#rq9-cmov-structure--confirmed-code-and-data)); COMMFACE serves GAMEHIRES true and COMMFAC2 false ([RQ7](./executable.md#rq7-archive-choice-and-the-absence-of-a-media-off-path--confirmed-code-durations-confirmed-data)); meaning as a face animation with voice Likely; P3-03 revision 2 imports the frame counts and durations of COMMFACE's CMOVs | [executable RQ4, RQ9](./executable.md#rq9-cmov-structure--confirmed-code-and-data) |
 | DFPG / AICO | AI program parameters and script lists / global AI parameters; `AISTUFF.NOB` TABL 6003/6005/6007 are per-group AI program tables naming DFPG entries, whose lists name the TABL scripts | Structure and field types Confirmed (P3-03/03); meanings Unconfirmed | [ai](./ai.md) |
-| TABL | Generic container: ID lists, HUD image groups, fonts, and other tables, depending on the entry | Per entry: `SR.NOB` entries in hud; `CRAFT.NOB` 4003 and `DEBRIS.NOB` 4501 in craft; `AISTUFF.NOB` program tables and scripts in ai; `COMM.NOB` menus in comm | [hud](./hud.md) §2, [craft](./craft.md), [ai](./ai.md), [comm](./comm.md) |
+| TABL | Generic container: ID lists, HUD image groups, fonts, and other tables, depending on the entry | Per entry: `SR.NOB` entries in hud; `CRAFT.NOB` 4003 and `DEBRIS.NOB` 4501 in craft; `AISTUFF.NOB` program tables and scripts in ai; `COMM.NOB` menus and name lists in comm; `COMMFACE.NOB` face and message ID lists in executable RQ4 | [hud](./hud.md) §2, [craft](./craft.md), [ai](./ai.md), [comm](./comm.md), [executable RQ4](./executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) |
 | M2ID / NEBC / EXIC | ID lists: craft type → MODL / nebula BITMs / explosion EXPLs | Confirmed structure | [hud](./hud.md) §3 |
 
 ## 6. Observed maxima against the reader's limits (Confirmed)
@@ -102,6 +102,16 @@ The P2-03 reader limits are product constraints from [the P2-03 spec](../../plan
 | Data block size | 827,089 bytes (`SR.NOB`) | 4,194,304 bytes |
 | Relocations per entry | 445 (`OPTIONS.NOB`) | at most block size / 4 (format rule) |
 | Archive file size | 37,462,634 bytes (`COMMFACE.NOB`) | none of its own; each read is bounded by the entry limits |
+
+**`COMMFACE.NOB` message tables (Confirmed, data; P3-10/29 survey of the baseline, counts and sizes only).** The ID chain of [executable RQ4](./executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) names 13 distinct sub-tables and 481 distinct CMOVs, every CMOV of the archive once; no listed ID is 0, and no TABL has a relocation. P3-03 revision 2 derives its limits from these maxima (twice, rounded up to a power of two):
+
+| Quantity | Baseline maximum | Import limit |
+|---|---:|---:|
+| COMMFACE TABL entry size | 340 bytes (TABL 20983) | 1,024 bytes |
+| Faces per face table / messages per sub-table / direct messages | 5 / 61 / 85 | 16 / 128 / 256 |
+| CMOV entry size | 137,556 bytes | 524,288 bytes |
+| Frames per CMOV | 4 (every listed CMOV has 3 or 4) | 8 |
+| Frame durations | none negative or zero | non-negative i32 |
 
 ## 7. Open questions
 

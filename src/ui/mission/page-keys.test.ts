@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isHeldActivation, placeholderKeyAction, type PageKey } from './page-keys.ts';
+import { isHeldActivation, placeholderKeyAction, placeholderTakesFocus, type PageKey } from './page-keys.ts';
 
 const press = (key: string, overrides: Partial<PageKey> = {}): PageKey =>
   ({ key, repeat: false, ctrlKey: false, altKey: false, metaKey: false, isComposing: false, ...overrides });
@@ -31,5 +31,16 @@ describe('mission page keys (P3-04 衔接占位, 任务开始配置)', () => {
     expect(isHeldActivation(press(' ', { repeat: true }))).toBe(true);
     expect(isHeldActivation(press('Enter'))).toBe(false);
     expect(isHeldActivation(press('Escape', { repeat: true }))).toBe(false);
+  });
+});
+
+describe('placeholder focus (P3-10 缺省与标注)', () => {
+  it('always for the flow\'s own placeholders; for a running hold\'s only on a visible page whose focus was dropped', () => {
+    for (const focusDropped of [true, false]) {
+      for (const visible of [true, false]) {
+        expect(placeholderTakesFocus({ hold: false, focusDropped, visible })).toBe(true);
+        expect(placeholderTakesFocus({ hold: true, focusDropped, visible })).toBe(focusDropped && visible);
+      }
+    }
   });
 });

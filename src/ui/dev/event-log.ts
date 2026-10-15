@@ -6,7 +6,8 @@
  */
 import type { EventDelivery } from '../../app/runtime/game-event-bus.ts';
 import type { Attacker, DomainEvent, ShotTrigger, Vec3 } from '../../core/contracts/domain-events.ts';
-import { describeSource } from './entity-inspection.ts';
+import type { MessageIdentity, SpeakerSnapshot } from '../../core/world/world-state.ts';
+import { describeName, describeSource } from './entity-inspection.ts';
 
 export const EVENT_LOG_LIMIT = 500;
 
@@ -54,6 +55,15 @@ function describeTrigger(trigger: ShotTrigger): string {
       return 'automatic';
   }
 }
+
+/** `20011/2#3` (table, portrait, index) or `20983#6` for the direct list. */
+function describeMessage({ table, face, index }: MessageIdentity): string {
+  return face === null ? `${table}#${index}` : `${table}/${face}#${index}`;
+}
+
+/** `entity 4 kind 15 pool [1]`, or null without a speaker. */
+const describeSpeaker = (speaker: SpeakerSnapshot | null): string | null =>
+  (speaker === null ? null : `entity ${speaker.entityId} kind ${speaker.kindBit} ${describeName(speaker.name)}`);
 
 function fieldsOf(event: DomainEvent): Fields {
   switch (event.type) {
@@ -139,6 +149,50 @@ function fieldsOf(event: DomainEvent): Fields {
         ['orientation', arrival.orientation.join(' ')], ...namedPosition('origin', arrival.origin), ...namedPosition('destination', arrival.destination),
       ];
     }
+    case 'command-delivered':
+      return [
+        ['receiverEntityId', event.receiverEntityId], ['receiverKindBit', event.receiverKindBit], ['code', event.code], ['senderEntityId', event.senderEntityId],
+        ['commandIndex', event.commandIndex],
+      ];
+    case 'radio-queued':
+      return [
+        ['message', describeMessage(event.message)], ['callback', event.callback], ['speaker', describeSpeaker(event.speaker)], ['position', event.position],
+        ['length', event.length],
+      ];
+    case 'radio-taken':
+      return [['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)]];
+    case 'incoming-started':
+      return [
+        ['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)], ['frameDurations', event.frameDurations.join(' ')],
+        ['shown', event.shown],
+      ];
+    case 'incoming-ended':
+      return [
+        ['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)], ['callback', event.callback],
+        ['countdownStarted', event.countdownStarted],
+      ];
+    case 'radio-flushed':
+      return [['cause', event.cause], ['removed', event.removed], ['interrupted', event.interrupted]];
+    case 'docking-requested':
+      return [
+        ['dockingObject', event.dockingObject], ['previousSubState', event.previousSubState], ['deadlineClock', event.deadlineClock],
+        ['commandIndex', event.commandIndex],
+      ];
+    case 'docking-cancelled':
+      return [['dockingObject', event.dockingObject], ['cause', event.cause]];
+    case 'docked':
+      return [['baseEntityId', event.baseEntityId], ['wingmanEntityId', event.wingmanEntityId], ['previousViewMode', event.previousViewMode]];
+    case 'departed':
+      return [
+        ['origin', event.origin], ['commandIndex', event.commandIndex], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode],
+        ['wingmanEntityId', event.wingmanEntityId], ...positionOf(event.position),
+      ];
+    case 'transition':
+      return [['gap', event.gap]];
+    case 'base-navigated':
+      return [['direction', event.direction], ['row', event.row], ['moved', event.moved], ['commandIndex', event.commandIndex]];
+    case 'base-confirmed':
+      return [['row', event.row], ['record', event.record], ['moved', event.moved], ['commandIndex', event.commandIndex]];
   }
 }
 

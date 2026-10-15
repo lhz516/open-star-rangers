@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 项目进度
@@ -43,6 +43,7 @@ updated: 2026-10-14
      - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 MW-01 至 MW-16、[P3-03 spec](./plan/p3/03/spec.md#审批) 修订 2）与 D-02 按用户的预先授权由 agent 定稿，待用户事后审阅。
      - 与原版的对照见 [B-010](./original/behavior/B-010-map-warp.md)：R-13 至 R-16 一致（fixed 40000 cycles，受 U-021 约束）；只由代码证据覆盖的分支已披露并交 P3-10、P3-11、P3-15 联合复验。地图画面、Warp 效果与音效归 P3-12 至 P3-14。
      - 合入 main 前须与同期的 P3-08、P3-10 分支核对共享契约（P3-02 spec、`object-sets` 阶段、方向表常数的更正）与规则版本。
+     - 2026-10-15 与 P3-10（实现子任务至 24）一起合入 P3-08 的分支 `p3-08-ai-wingman-spec`，作为 P3-08 实现的基础（尚未合入 main）：共享契约的衔接见 [P3-02 spec 的合并说明](./plan/p3/02/spec.md#审批)；合并后 `RULES_VERSION` 为 6、快照格式 5、切片定义 6，`ConverterVersion` 为 `osr-import.graphics-5.logic-3.audio-2.models-4`。
 2. P2 已完成：P2-01 至 P2-13 全部完成，[P2 退出评审](./reviews/P2-exit.md)于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露）。生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，导入协议版本 5；P3 可消费的内容、适配与遗留责任见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)，各任务的交付见 [P2 tasks](./plan/p2/tasks.md)。
 3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 4. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。

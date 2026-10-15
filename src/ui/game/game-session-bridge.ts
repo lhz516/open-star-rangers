@@ -5,11 +5,11 @@
  * - the projection on the session's existing frame notifications, sampled every 100 ms and never twice for the same
  *   owner, run and tick; it creates no session, host, animation frame or timer;
  * - at the end of the frame, without waiting for the sample, a change of `mission.status`, `player.interactionContext`,
- *   a partition's readiness (each of the flight partition's motion and combat groups on its own), the result's content,
- *   or the map's key state (docs/plan/p3/09/spec.md, 地图 projection; docs/plan/p3/02/spec.md, MW-15): the map open,
- *   closed or without a player, the committed destination and marker, the `warpRequest` result and reason, view mode 1
- *   and its Warp transit's serial, compared by those fields rather than by object identity. A hover only moves the
- *   cursor and its readings, which are sampled;
+ *   a partition's readiness (each of the flight partition's motion and combat groups on its own), the base page's
+ *   selection or order (P3-10, G-05), the result's content, or the map's key state (docs/plan/p3/09/spec.md, 地图
+ *   projection; docs/plan/p3/02/spec.md, MW-15): the map open, closed or without a player, the committed destination
+ *   and marker, the `warpRequest` result and reason, view mode 1 and its Warp transit's serial, compared by those fields
+ *   rather than by object identity. A hover only moves the cursor and its readings, which are sampled;
  * - what run consumers settle at the end of a frame (command results), together with the frame-end projection.
  * The sampling clock must give finite, non-decreasing milliseconds. As in P1-06, attaching a running run reads it to
  * start the sample (other phases start it on the first frame, which only anchors); a failed or invalid read throws
@@ -26,7 +26,7 @@ import type { MapPlayer, Projection, WarpRequestReading } from '../../core/proje
 import type { RenderState } from '../../core/projections/render-state.ts';
 import { WARP_VIEW_MODE } from '../../core/systems/view-switch.ts';
 import { attemptAll } from '../../render/scene/cleanup.ts';
-import type { GameChange, GameRunStore, UiCommandSettlement } from './game-store.ts';
+import { projectedBase, type GameChange, type GameRunStore, type UiCommandSettlement } from './game-store.ts';
 
 /** 10 Hz, the lower end of the master plan's 10–20 Hz for React-facing data, as in P1-06. */
 export const PROJECTION_SAMPLE_INTERVAL_MS = 100;
@@ -112,6 +112,8 @@ interface KeyFacts {
   readonly map: Projection['map']['readiness'];
   readonly communications: Projection['communications']['readiness'];
   readonly result: Projection['result']['readiness'];
+  /** The base page's selection and order (P3-10, G-05): the cursor row and the rows' records; null outside the base view. */
+  readonly baseSelection: string | null;
   readonly outcome: unknown;
   readonly reason: unknown;
   readonly message: unknown;
@@ -133,15 +135,18 @@ interface KeyFacts {
 /** The serial of the Warp transit `render` shows, or null. */
 const warpSerialOf = (render: RenderState): number | null => render.warp?.serial ?? null;
 
-function keyFacts({ mission, player, flight, map, communications, result }: Projection, warpSerial: number | null): KeyFacts {
+function keyFacts(projection: Projection, warpSerial: number | null): KeyFacts {
+  const { mission, player, flight, map, communications, result } = projection;
   const ready = result.readiness === 'ready';
   const mapPlayer = map.readiness === 'ready' ? map.player : null;
   const destination = mapPlayer === null ? null : mapPlayer.state === 'open' ? mapPlayer.destination?.position ?? null : mapPlayer.destination;
   const request = mapPlayer?.warpRequest ?? null;
+  const base = projectedBase(projection);
   return {
     missionStatus: mission.status, interactionContext: player.interactionContext,
     motion: flight.motion.readiness, combat: flight.combat.readiness, map: map.readiness, communications: communications.readiness,
     result: result.readiness,
+    baseSelection: base && `${base.cursor}:${base.rows.map(({ record }) => record).join(',')}`,
     outcome: ready ? result.outcome : null,
     reason: ready && 'reason' in result ? result.reason : null,
     message: ready && 'message' in result ? result.message : null,

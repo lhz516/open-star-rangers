@@ -11,11 +11,13 @@
  * when it is a `control` request, or go in a request of their own, so a tick with at most one speed command posts as
  * many requests as the original posts messages. Request handling applies them in posting order (`0x21dd0`).
  *
- * Each command is judged in the interaction context of the command view (pipeline.ts, CommandView; docs/plan/p3/02/
- * spec.md, MW-04), which an accepted `toggle-map` before it in the batch has already moved, and the axes in the context
- * the view has after the last command. The map and base contexts read no stick in the original, which keeps the
- * steering applied before; Core takes their manual axes as 0 instead, a deliberate difference (spec 技术决定 10). Core
- * keeps no key or command across ticks.
+ * Each command is judged in the interaction context of the command view, the batch's effective view (pipeline.ts,
+ * CommandView; docs/plan/p3/02/spec.md, MW-04, CB-07, CB-17 decision 8): the committed view and previous view at the
+ * start of the update, which an accepted `toggle-map`, `request-warp` or `launch` before it in the batch has already
+ * moved, as the original's next key already sees the view the message set. Every command type reads it, and the axes
+ * follow the context the view has after the last command. The map and base contexts read no stick in the original,
+ * which keeps the steering applied before; Core takes their manual axes as 0 instead, a deliberate difference (spec
+ * 技术决定 10). Core keeps no key or command across ticks.
  *
  * Before the commands, the update drops a target that no longer resolves, runs P3-07's missile lock and then the speed
  * assist (`0x27f68`), whose match writes the block directly and whose restoring request goes before the commands'
@@ -65,14 +67,21 @@ export interface MatchSpeedRequest {
 export type PlayerRequest = ControlRequest | MatchSpeedRequest;
 
 /**
+ * The batch's effective view (module comment): the tick's command view (pipeline.ts, MW-04), which an accepted
+ * `toggle-map`, `request-warp` or `launch` (CB-07) writes.
+ */
+export type EffectiveView = CommandView;
+
+/**
  * Where the player's update sends what it produces, the tick's events and its requests (`control` and `match-speed`),
- * the judgement of every command it does not handle itself (commands.ts), which emits that command's one result and
- * posts its own requests, and P3-07's missile lock `0x2ddbc` on the available player (weapons.ts; CR-07).
+ * the judgement of every command it does not handle itself (commands.ts), which emits that command's one result, posts
+ * its own requests and may change the batch's effective view, and P3-07's missile lock `0x2ddbc` on the available
+ * player (weapons.ts; CR-07).
  */
 export interface PlayerUpdateOutput {
   emit(event: DomainEvent): void;
   post(request: PlayerRequest): void;
-  judge(command: Command, commandIndex: number): void;
+  judge(command: Command, commandIndex: number, view: EffectiveView): void;
   lockMissiles(player: Entity): void;
 }
 
@@ -94,22 +103,20 @@ function craftMovement({ movement }: Entity): SteeredMovementBlock | null {
 
 const UNCHANGED_AXES: AxisDeflections = Object.freeze({ pitch: null, yaw: null, roll: null });
 
-/**
- * What P3-06 does for a command in the flight context: a throttle or a step from the readback, a match or a toggle;
- * `none` for one it judges but that has no effect there.
- */
-type FlightAction = number | 'increase' | 'decrease' | 'match' | 'toggle-assist' | 'none';
+/** What P3-06 does for a command in the flight context: a throttle or a step from the readback, a match or a toggle. */
+type FlightAction = number | 'increase' | 'decrease' | 'match' | 'toggle-assist';
 
 /**
- * The action of a command that P3-06 judges in the current context; `undefined` when it does not. `select-number` and
- * `confirm-selection` belong to their context's own rule in the base and map contexts (P3-10, P3-09); in flight,
- * `confirm-selection` is the manual match (Enter), while `select-number`, an unshifted digit, has no effect: the presets
- * are `speed-preset` (Shift+n), and a communications menu's claim on the digits is P3-10's.
+ * The action of a command that P3-06 judges in the current context; `undefined` when it does not. `select-number` is
+ * P3-10's in every context (docs/plan/p3/02/spec.md, CB-07): `0x264a0` hands every key to the menu handler `0x27b44`
+ * before its own compare tree, so the digit goes to its rule before any flight action, and one no menu takes changes no
+ * speed (the presets are `speed-preset`, Shift+n). `confirm-selection` belongs to its context's own rule in the base and
+ * map contexts (P3-10, P3-09); elsewhere it is the manual match (Enter), also while a communications menu is open, whose
+ * items take only digits and `x`.
  */
 function flightAction(command: Command, context: InteractionContext): FlightAction | undefined {
-  const own = context !== 'base' && context !== 'map';
-  if (command.type === 'select-number') return own ? 'none' : undefined;
-  if (command.type === 'confirm-selection') return own ? 'match' : undefined;
+  if (command.type === 'select-number') return undefined;
+  if (command.type === 'confirm-selection') return context !== 'base' && context !== 'map' ? 'match' : undefined;
   if (command.type === 'speed-preset') return presetThrottle(command.level);
   if (command.type !== 'speed') return undefined;
   switch (command.operation) {
@@ -168,10 +175,10 @@ function pendingCommandedSpeed(world: WorldState, player: Entity, record: CraftR
 }
 
 /**
- * Judges the commands in array order, each in the context of the command view as the commands before it left it. A
- * P3-06 command needs an available player and the flight context, the only one whose key handler (`0x264a0`) takes the
- * throttle keys, the presets, Enter and Ctrl+Enter. `select-number` passes the same gates but has no effect, so it is
- * `wrong-context` in flight as well. `+` and `−` read back the commanded speed as the requests posted before them leave
+ * Judges the commands in array order, each in the context of the command view (the batch's effective view) as the
+ * commands before it left it. P3-10's commands, the digits among them, go to `judge` (flightAction). A P3-06 command
+ * needs an available player and the flight context, the only one whose key handler (`0x264a0`) takes the throttle keys,
+ * the presets, Enter and Ctrl+Enter. `+` and `−` read back the commanded speed as the requests posted before them leave
  * it (pendingCommandedSpeed). A match needs a target with a block, else it is `no-target`. Every other command goes to
  * `judge` in its place in the order.
  */
@@ -179,9 +186,9 @@ function judgeCommands(
   world: WorldState,
   { commands }: TickInput,
   tick: number,
-  view: Readonly<CommandView>,
   player: Entity | null,
   control: PlayerControl | null,
+  view: EffectiveView,
   requests: PlayerRequest[],
   emit: PlayerUpdateOutput['emit'],
   judge: PlayerUpdateOutput['judge'],
@@ -191,14 +198,14 @@ function judgeCommands(
     const context = interactionContext(view.viewMode);
     const action = flightAction(command, context);
     if (action === undefined) {
-      judge(command, commandIndex);
+      judge(command, commandIndex, view);
       continue;
     }
     if (player === null || control === null) {
       emit(commandResult(tick, commandIndex, command, 'ignored', 'player-unavailable'));
       continue;
     }
-    if (context !== 'flight' || action === 'none') {
+    if (context !== 'flight') {
       emit(commandResult(tick, commandIndex, command, 'ignored', 'wrong-context'));
       continue;
     }
@@ -231,8 +238,8 @@ function judgeCommands(
  * input restores nothing. The flight and Warp contexts take the tick's axes. The context is the command view's after
  * the tick's last command.
  */
-function changedAxes(view: Readonly<CommandView>, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
-  const context = interactionContext(view.viewMode);
+function changedAxes(viewMode: number, control: PlayerControl, axes: TickAxes): AxisDeflections | null {
+  const context = interactionContext(viewMode);
   const manual = context !== 'map' && context !== 'base';
   const changes: Record<RotationAxis, number | null> = { pitch: null, yaw: null, roll: null };
   let changed = false;
@@ -285,7 +292,7 @@ export function updatePlayer(
   input: TickInput,
   tick: number,
   { emit, post, judge, lockMissiles }: PlayerUpdateOutput,
-  view: Readonly<CommandView>,
+  view: EffectiveView,
 ): Entity | null {
   const player = availablePlayer(world);
   const control = player && world.player.control;
@@ -298,8 +305,8 @@ export function updatePlayer(
     if (restoring !== null) post(restoring);
   }
   const requests: PlayerRequest[] = [];
-  judgeCommands(world, input, tick, view, player, control, requests, emit, judge);
-  const axes = control && changedAxes(view, control, input.axes);
+  judgeCommands(world, input, tick, player, control, view, requests, emit, judge);
+  const axes = control && changedAxes(view.viewMode, control, input.axes);
   if (player !== null && axes !== null) {
     const last = requests.at(-1);
     if (last?.type === 'control') requests[requests.length - 1] = { ...last, axes };

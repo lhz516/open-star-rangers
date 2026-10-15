@@ -22,13 +22,14 @@ import { HUD_TEXT_USAGE, syntheticHudTextSource } from '../original-data/convers
 import {
   COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_GRAPHICS_REGION_WRITES, productionCockpitBlock, productionGraphicsFiles, regionExecutable,
 } from '../original-data/conversion/production-graphics.test-support.ts';
-import { productionRuleData } from '../original-data/conversion/production-rule-data.test-support.ts';
+import { productionRuleData, productionRuleDataContents } from '../original-data/conversion/production-rule-data.test-support.ts';
+import type { RuleDataContents } from '../original-data/conversion/rule-data.test-support.ts';
 import { PRODUCTION_SOUND_USAGE, productionSoundEntries } from '../original-data/conversion/production-sounds.test-support.ts';
 import { productionEffectRegionWrites } from '../original-data/conversion/production-effects.test-support.ts';
 import { productionSliceEntries } from '../original-data/conversion/production-models.test-support.ts';
 import {
   defaultCampaignSpec, defaultScenarioSpec, fiveWingmanCampaignSpec, syntheticCampaign, syntheticScenario, syntheticScenarioArchive,
-  twoPlayerRequestsScenarioSpec,
+  twoPlayerRequestsScenarioSpec, type ScenarioSpec,
 } from '../original-data/formats/formats.test-support.ts';
 import { buildImfat, syntheticSnd } from '../original-data/synthetic.test-support.ts';
 import type { ImportJob } from './import-host.ts';
@@ -43,8 +44,11 @@ export { MARKER };
 
 const CHUNK = 1 << 20;
 
-/** An unread file that raises the default read budget, which equals the input size, above a small disc's reads. */
-export const PADDING: SyntheticFileContent = { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) };
+/**
+ * An unread file that raises the default read budget, which equals the input size, above a small disc's reads, such as
+ * the 498 small entries of the COMMFACE plan, a sector each.
+ */
+export const PADDING: SyntheticFileContent = { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) };
 
 interface SyntheticImport {
   /** The `.ccd` and `.img` Files, whose names contain `MARKER`. */
@@ -146,21 +150,84 @@ let sliceExecutable: Uint8Array | undefined;
  * production-structure CRAFT, DEBRIS, AISTUFF and COMM archives of the rule data; and `MAIN/SRANGERS.EXE`, a synthetic
  * LE executable with the effect, graphics and rule-data regions at their production addresses. `campaign` replaces the
  * default campaign table and its wingman roster. `corruptMesh` breaks the mesh five models share, which the model step
- * rejects as `invalid-payload`.
+ * rejects as `invalid-payload`. `ruleData` replaces the production rule-data contents.
  */
-export function sliceCoveredFiles({ scenario = syntheticScenario(defaultScenarioSpec()), campaign = syntheticCampaign(defaultCampaignSpec()), corruptMesh = false }: {
+export function sliceCoveredFiles({ scenario = syntheticScenario(defaultScenarioSpec()), campaign = syntheticCampaign(defaultCampaignSpec()), corruptMesh = false, ruleData }: {
   readonly scenario?: ReturnType<typeof syntheticScenario>;
   readonly campaign?: ReturnType<typeof syntheticCampaign>;
   readonly corruptMesh?: boolean;
+  readonly ruleData?: RuleDataContents;
 } = {}): Record<string, Uint8Array> {
-  const ruleData = productionRuleData();
-  sliceExecutable ??= regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...ruleData.writes], ruleData.fixups);
+  const sources = productionRuleData(ruleData);
+  const build = () => regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...sources.writes], sources.fixups);
+  // Only the default rule data's executable is cached.
+  const executable = ruleData === undefined ? (sliceExecutable ??= build()) : build();
   return {
     'MAIN/SCENARIO.NOB': syntheticScenarioArchive(campaign, scenario),
     'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
-    ...ruleData.archives,
-    'MAIN/SRANGERS.EXE': sliceExecutable.slice(),
+    ...sources.archives,
+    'MAIN/SRANGERS.EXE': executable.slice(),
   };
+}
+
+/** The kind bit of the base the docking mission places (record 7). */
+export const DOCKING_BASE_KIND = 17;
+/** The kind bits without speed in the docking mission: the player's and the base's. */
+export const DOCKING_STILL_KINDS: readonly number[] = Object.freeze([0, DOCKING_BASE_KIND]);
+/**
+ * Their +0xB8: the base's 0; the player's the smallest positive f32 (2^-149), positive as P3-09's Warp check requires
+ * (docs/plan/p3/02/spec.md, MW-01 check 4), whose movement in a tick rounds to 0.
+ */
+export const DOCKING_STILL_SPEEDS: readonly number[] = Object.freeze([2 ** -149, 0]);
+/** The base kind as a category's kind mask. */
+export const DOCKING_BASE_KIND_MASK = 1 << DOCKING_BASE_KIND;
+/** The communications command codes of the base status request and the docking request (P3-10). */
+export const DOCKING_COMMAND_CODES = Object.freeze({ status: 7, docking: 9 });
+
+/**
+ * The production rule-data contents for P3-10's browser docking flow (docs/plan/p3/10/subtasks/23-browser-verification.md):
+ * the category menu lists the player's kind, then the base kind 17, then the exit, so `c` then 2 chooses the base
+ * category; the gated base menu holds the status request at key 1 and the docking request at key 2 before its exit; the
+ * base face table (TABL 20011) has as many faces as the base face pool, 5, by taking a face of TABL 20985, so whichever
+ * face the base draws has its docking reply (index 0) and status reply (index 1); and the player and base craft have no
+ * speed (+0xB8 0), so the base stays within the docking range. Made-up values only.
+ */
+export function dockingRuleDataContents(): RuleDataContents {
+  const contents = productionRuleDataContents();
+  const menus = contents['comm-menus'];
+  const [player, other, exit] = menus.categories;
+  const [status, docking, leave] = menus.gatedTargetCommands;
+  const messages = contents['comm-messages'];
+  const [baseFaces, craftFaces, [moved, ...otherFaces]] = messages.faceTables;
+  const info = contents['craft-info'];
+  return {
+    ...contents,
+    'comm-messages': { ...messages, faceTables: [[...baseFaces, moved], craftFaces, otherFaces] },
+    'comm-menus': {
+      ...menus,
+      categories: [player, { ...other, kindMask: DOCKING_BASE_KIND_MASK }, exit],
+      gatedTargetCommands: [
+        { ...status, command: DOCKING_COMMAND_CODES.status }, { ...docking, command: DOCKING_COMMAND_CODES.docking }, leave,
+      ],
+    },
+    'craft-info': {
+      ...info,
+      craft: info.craft.map((record, kindBit) => {
+        const still = DOCKING_STILL_KINDS.indexOf(kindBit);
+        return still < 0 ? record : { ...record, atB8: DOCKING_STILL_SPEEDS[still] };
+      }),
+    },
+  };
+}
+
+/**
+ * The slice-shaped mission with the player (record 0) and the base (record 7, kind 17) placed in one small shared
+ * rectangle, region 2 shrunk to 40 × 20 mission units, so the base starts within the docking range of the player.
+ */
+export function dockingScenarioSpec(): ScenarioSpec {
+  const spec = defaultScenarioSpec();
+  spec.regions![2] = [-20, -20, 20, 0];
+  return spec;
 }
 
 /** The rule-data conversion usage on `sliceCoveredFiles()`. */
@@ -482,6 +549,12 @@ export const SCENARIO_SOURCES = Object.freeze({
   }),
   'mission-create-rejected': (): ScenarioSource => ({
     covered: sliceCoveredFiles({ campaign: syntheticCampaign(fiveWingmanCampaignSpec()), scenario: syntheticScenario(twoPlayerRequestsScenarioSpec()) }),
+    versionId: 'synthetic-mission',
+  }),
+  'mission-docking': (): ScenarioSource => ({
+    covered: sliceCoveredFiles({
+      campaign: syntheticCampaign(fiveWingmanCampaignSpec()), scenario: syntheticScenario(dockingScenarioSpec()), ruleData: dockingRuleDataContents(),
+    }),
     versionId: 'synthetic-mission',
   }),
 });

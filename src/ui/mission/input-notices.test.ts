@@ -9,19 +9,22 @@ import { ALT_F4_TIP, FULLSCREEN_BUTTON, INPUT_FOCUS_HINT, INPUT_ZONE_LABEL } fro
 
 // P3-05 S-07, S-09, S-12 and S-13 (界面部分), AC-10 and AC-15 (组件部分): the shell's input decisions, read without a DOM.
 
-const POSITIONS: readonly MissionFlowPosition[] = ['intro', 'config', 'departure', 'flight', 'menu', 'ended'];
+const POSITIONS: readonly MissionFlowPosition[] = ['intro', 'config', 'departure', 'flight', 'transition', 'menu', 'ended'];
 
 describe('focus moves to the input zone', () => {
-  it('only when the departure ends or Continue resumes the run, never for another change or none', () => {
+  it('only when the departure or a running hold ends or Continue resumes the run, never for another change or none', () => {
     const entries = POSITIONS.flatMap(previous => POSITIONS.map(next => [previous, next, inputFocusEntry(previous, next)] as const))
       .filter(([, , entry]) => entry !== null);
-    expect(entries).toEqual([['departure', 'flight', 'departure-ended'], ['menu', 'flight', 'menu-continued']]);
+    expect(entries).toEqual([
+      ['departure', 'flight', 'departure-ended'], ['transition', 'flight', 'transition-ended'], ['menu', 'flight', 'menu-continued'],
+    ]);
   });
 
   it('only while running, visible and focused; focus the user put on another control stays there', () => {
     const facts: ShellFocusFacts = { entry: 'departure-ended', zone: true, running: true, visible: true, windowFocused: true, focusElsewhere: false };
     expect(shellFocusTarget(facts)).toBe('zone');
     expect(shellFocusTarget({ ...facts, entry: 'menu-continued' })).toBe('zone');
+    expect(shellFocusTarget({ ...facts, entry: 'transition-ended' })).toBe('zone');
     expect(shellFocusTarget({ ...facts, focusElsewhere: true })).toBe('none');
     expect(shellFocusTarget({ ...facts, focusElsewhere: true, visible: false })).toBe('none');
     // A hidden page, an unfocused window or a run the hidden page paused: the heading, where focus waits for the user.

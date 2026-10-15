@@ -474,6 +474,27 @@ describe('game session bridge: key facts published at the end of their frame', (
     expect(log).toEqual([[2, 1010], [5, 1110]]);
   });
 
+  it('publishes a change of the base page\'s selection or order at once, and samples its other readings (P3-10, G-05)', () => {
+    const { log, deliver, base } = doubles();
+    const flags = Object.freeze({ repairsComplete: false, energyAndMissilesFull: false, hullFull: false });
+    const row = (record: number, state: number) => Object.freeze({ record, selector: record, state });
+    // A double of the base view: only the fields the bridge reads are typed.
+    const atBase = (cursor: number, rows: readonly ReturnType<typeof row>[]): Partial<Omit<Projection, 'clock'>> => ({
+      communications: Object.freeze({
+        readiness: 'ready' as const,
+        player: Object.freeze({ base: Object.freeze({ baseEntityId: 7, rows: Object.freeze(rows), cursor, flags }) }),
+      }) as unknown as Projection['communications'],
+    });
+    deliver(1010, atBase(0, [row(0, 2), row(1, 1)]));
+    // The same selection and order, a new state: sampled.
+    deliver(1020, atBase(0, [row(0, 1), row(1, 1)]));
+    deliver(1030, atBase(1, [row(0, 1), row(1, 1)]));
+    deliver(1040, atBase(1, [row(1, 1), row(0, 1)]));
+    deliver(1050, atBase(1, [row(1, 0), row(0, 1)]));
+    deliver(1060, { communications: base.communications });
+    expect(log).toEqual([[2, 1010], [4, 1030], [5, 1040], [7, 1060]]);
+  });
+
   it('publishes a change of result content inside a ready result', () => {
     const { log, deliver } = doubles();
     const inProgress = Object.freeze({ readiness: 'ready' as const, outcome: 'in-progress' as const });

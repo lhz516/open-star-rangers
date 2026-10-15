@@ -170,6 +170,29 @@ export const syntheticFlightMessages = () => ({
   joystickSensitivity2: text(25), joystickSensitivity0: text(0),
 });
 
+/** A COMMFACE table entry of 0. */
+export const absentMessage = () => ({ present: false });
+/** A COMMFACE table entry naming a CMOV whose frames last `frameDurations`, in 1/8 s. */
+export const message = (...frameDurations: number[]) => ({ present: true, frameDurations });
+
+/**
+ * Communications messages of made-up shape: face tables of 2, 1 and 3 faces with sub-tables of 1 to 3 messages, absent
+ * entries, 1 to 4 frames, durations 0 and 2³¹−1, and name lists whose names carry MARKER, 0x80 and 0xFF. No list is
+ * empty, as an archive entry cannot be.
+ */
+export function syntheticCommMessages() {
+  return {
+    faceTables: [
+      [[message(3, 9, 2), absentMessage(), message(0, 1, 7, 0x7fffffff)], [message(6)]],
+      [[absentMessage(), message(10, 1, 1)]],
+      [[absentMessage()], [message(4, 12, 5), message(2, 2, 2, 2)], [message(9, 9, 9)]],
+    ],
+    direct: [message(13, 1, 8), absentMessage(), message(5, 7, 3, 1)],
+    names2001: [text(9), text(1), text(32)],
+    names2011: [text(17)],
+  };
+}
+
 export const SYNTHETIC_RULE_DATA: Readonly<Record<RuleDataRole, () => unknown>> = Object.freeze({
   'craft-info': syntheticCraftInfo,
   'debris-parameters': syntheticDebrisParameters,
@@ -177,6 +200,7 @@ export const SYNTHETIC_RULE_DATA: Readonly<Record<RuleDataRole, () => unknown>> 
   'comm-menus': syntheticCommMenus,
   'base-repair-items': syntheticBaseRepairItems,
   'flight-messages': syntheticFlightMessages,
+  'comm-messages': syntheticCommMessages,
 });
 
 /** The canonical bytes and a matching mutable descriptor for one role's synthetic content. */

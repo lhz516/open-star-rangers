@@ -6,7 +6,8 @@ import type { Command, TickInput } from '../contracts/tick-input.ts';
 import { CoreInputError } from '../errors.ts';
 import { createWorld } from '../world/create-world.ts';
 import {
-  aiProgramsContent, craftInfoContent, eventMission, mapGeometryContent, MARKER, originalImportIdentity, worldInput, type CraftInfoDraft, type MissionDraft,
+  aiProgramsContent, commMenusContent, craftInfoContent, eventMission, mapGeometryContent, MARKER, menuText, originalImportIdentity, worldInput,
+  type CraftInfoDraft, type MissionDraft,
 } from '../world/create-world.test-support.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
@@ -135,8 +136,10 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14), then P3-05's speed-preset once more.
       ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = 2; }, 'record.rulesVersion'],
       ['the rules version before P3-05\'s speed-preset', (record: Mutable) => { record.rulesVersion = 3; }, 'record.rulesVersion'],
-      // P3-09/12 incremented it once more (docs/plan/p3/02/spec.md, MW-14); the replay format is unchanged.
-      ['the rules version before P3-09', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
+      // P3-09/12 and P3-10/11 each incremented it from 4 on their branches (MW-14, CB-16), to 5; their merge takes 6, so
+      // a record of either branch alone is rejected too. The replay format is unchanged.
+      ['the rules version before P3-09 and P3-10', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
+      ['the rules version of P3-09 or P3-10 alone', (record: Mutable) => { record.rulesVersion = 5; }, 'record.rulesVersion'],
       ['a speed preset out of range', (record: Mutable & { ticks: Mutable[] }) => { record.ticks[4] = tickInput([{ type: 'speed-preset', level: 0 }]) as never; }, 'record.ticks[4].commands[0].level'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],
@@ -221,6 +224,12 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
         ({ mapGeometry }) => void ((mapGeometry.content.rectangle as { x1: number }).x1 = 610),
         ({ mapGeometry }) => void (mapGeometry.content.informationLineHeight = 7),
         ({ mapGeometry }) => void (mapGeometry.id = 'data/other-map'),
+        // The communications inputs (P3-10 AC-02, CB-01).
+        ({ commMenus }) => void ((commMenus.content.gatedTargetCommands as { command: number }[])[0].command = 8),
+        ({ commMenus }) => void (commMenus.id = 'data/other-comm-menus'),
+        ({ baseRepairItems }) => void ((baseRepairItems.content.subsystemSelectors as number[])[0] = 1),
+        ({ commMessages }) => void (commMessages.content.names2011 as string[]).reverse(),
+        ({ commMessages }) => void ((commMessages.content.direct as { frameDurations?: number[] }[])[0].frameDurations![0] = 6),
       ];
       for (const forge of forgeries) {
         const forged = longInput();
@@ -241,7 +250,10 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
     it('rejects malformed content at the content, keeping a content contract error', () => {
       expectRejected(() => replayRecord(RECORDING.record, { ...CONTENT, extra: 1 } as never), 'content');
       expectRejected(() => replayRecord(RECORDING.record, { ...CONTENT, craftInfo: undefined } as never), 'content.craftInfo');
-      for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms', 'mapGeometry'] as const) {
+      for (const field of [
+        'debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms', 'mapGeometry', 'commMenus', 'baseRepairItems',
+        'commMessages',
+      ] as const) {
         const without: Record<string, unknown> = { ...CONTENT };
         delete without[field];
         expectRejected(() => replayRecord(RECORDING.record, without as never), `content.${field}`, 'is required');
@@ -255,6 +267,8 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
         'content.mapGeometry.content.redrawInterval');
       const noPair = longInput({ craftInfo: { ...craftInfoContent(), craft: craftInfoContent().craft.map((record, kind) => (kind === 0 ? { ...record, pairs: [] } : record)) } });
       expectRejected(() => replayRecord(RECORDING.record, contentOf(noPair)), 'content.craftInfo.content.craft[0].pairs');
+      const unkeyed = longInput({ commMenus: { ...commMenusContent(), otherTargetCommands: [{ text: menuText('x'), command: 3 }, { text: menuText('x'), command: 0 }] } });
+      expectRejected(() => replayRecord(RECORDING.record, contentOf(unkeyed)), 'content.commMenus.content.otherTargetCommands[0].text');
       const unchecked = longInput({ craftInfo: { ...craftInfoContent(), craft: craftInfoContent().craft.map((record, kind) => (kind === 0 ? { ...record, at88: 0 } : record)) } });
       expectRejected(() => replayRecord(RECORDING.record, contentOf(unchecked)), 'content.craftInfo.content.craft[0].at88');
       const malformed = longInput({ craftInfo: { ...craftInfoContent(), hitDamageScale: Number.NaN } });

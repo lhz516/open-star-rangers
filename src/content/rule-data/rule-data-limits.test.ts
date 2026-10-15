@@ -3,14 +3,15 @@ import { expectContractError } from '../graphics/graphics.test-support.ts';
 import { AI_PROGRAMS_COUNTS, AI_PROGRAMS_LIMITS, AI_SCRIPT_END_OPCODE } from './ai-programs.ts';
 import { BASE_REPAIR_ITEM_COUNT } from './base-repair-items.ts';
 import { COMM_MENUS_LIMITS } from './comm-menus.ts';
+import { COMM_MESSAGES_LIMITS } from './comm-messages.ts';
 import { CRAFT_INFO_COUNTS, CRAFT_INFO_LIMITS } from './craft-info.ts';
 import { DEBRIS_PARAMETERS_LIMITS } from './debris-parameters.ts';
 import { FLIGHT_MESSAGES_LIMITS } from './flight-messages.ts';
 import { decodeRuleDataPayload, readRuleDataContent, type RuleDataRole } from './rule-data-payload.ts';
 import {
-  box, builtInProgram, commandItem, craft, debrisRecord, gun, missile, missileBody, mount, parameterEntry, script, scriptItem,
-  syntheticAiPrograms, syntheticBaseRepairItems, syntheticCommMenus, syntheticCraftInfo, syntheticDebrisParameters,
-  syntheticFlightMessages, syntheticRuleDataAsset, tableProgram, text,
+  absentMessage, box, builtInProgram, commandItem, craft, debrisRecord, gun, missile, missileBody, mount, parameterEntry, script, scriptItem,
+  message, syntheticAiPrograms, syntheticBaseRepairItems, syntheticCommMenus, syntheticCommMessages, syntheticCraftInfo,
+  syntheticDebrisParameters, syntheticFlightMessages, syntheticRuleDataAsset, tableProgram, text,
 } from './rule-data.test-support.ts';
 
 // AC-14 (structural limits): every limit passes exactly at its value and fails one above it, before any item is read.
@@ -141,6 +142,42 @@ const LIMIT_CASES: Readonly<Record<string, LimitCase>> = {
     role: 'comm-menus', limit: COMM_MENUS_LIMITS.textBytes, path: 'commMenus.objectListLastEntry',
     build: count => ({ ...syntheticCommMenus(), objectListLastEntry: text(count) }),
   },
+  'comm-messages faces': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.faces, path: 'commMessages.faceTables[1]',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.faceTables[1] = times(count, () => [absentMessage()]);
+      return content;
+    },
+  },
+  'comm-messages face messages': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.faceMessages, path: 'commMessages.faceTables[2][1]',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.faceTables[2][1] = times(count, index => message(index + 1));
+      return content;
+    },
+  },
+  'comm-messages direct messages': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.directMessages, path: 'commMessages.direct',
+    build: count => ({ ...syntheticCommMessages(), direct: times(count, index => (index % 3 ? message(index, 2, 1) : absentMessage())) }),
+  },
+  'comm-messages frames': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.frames, path: 'commMessages.direct[2].frameDurations',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.direct[2] = message(...times(count, index => index * 3));
+      return content;
+    },
+  },
+  'comm-messages names': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.names, path: 'commMessages.names2011',
+    build: count => ({ ...syntheticCommMessages(), names2011: times(count, index => text(1 + (index % 20))) }),
+  },
+  'comm-messages name bytes': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.nameBytes, path: 'commMessages.names2001[0]',
+    build: count => ({ ...syntheticCommMessages(), names2001: [text(count)] }),
+  },
   'flight-messages text bytes': {
     role: 'flight-messages', limit: FLIGHT_MESSAGES_LIMITS.textBytes, path: 'flightMessages.speedAssistOff',
     build: count => ({ ...syntheticFlightMessages(), speedAssistOff: text(count) }),
@@ -161,6 +198,9 @@ describe('rule-data structural limits', () => {
     });
     expect(COMM_MENUS_LIMITS).toEqual({ items: derive(8), textBytes: derive(15) });
     expect(FLIGHT_MESSAGES_LIMITS).toEqual({ textBytes: derive(45) });
+    expect(COMM_MESSAGES_LIMITS).toEqual({
+      faces: derive(5), faceMessages: derive(61), directMessages: derive(85), frames: derive(4), names: derive(20), nameBytes: derive(11),
+    });
     // The menu builders copy a text with its NUL into a 48-byte field, so the derived limit stays inside the format's.
     expect(COMM_MENUS_LIMITS.textBytes).toBeLessThanOrEqual(47);
   });

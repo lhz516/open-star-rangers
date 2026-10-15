@@ -69,11 +69,14 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
       return { ...group, manifest: { ...manifest, assets: change(manifest.assets) } };
     });
 
-  it('decodes the DEBRIS table, the AI programs, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
+  it('decodes the DEBRIS table, the AI programs, the communications inputs, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
     const groups = await groupsOf();
     const inputs = ruleDataInputs(groups);
     expect(inputs.debrisParameters?.id).toBe('data/debris-parameters');
     expect(inputs.aiPrograms).toMatchObject({ id: 'data/ai-programs', content: { builtInPrograms: expect.any(Array) } });
+    expect(inputs.commMenus).toMatchObject({ id: 'data/comm-menus', content: { categories: expect.any(Array) } });
+    expect(inputs.baseRepairItems).toMatchObject({ id: 'data/base-repair-items', content: { subsystemSelectors: expect.any(Array) } });
+    expect(inputs.commMessages).toMatchObject({ id: 'data/comm-messages', content: { names2001: expect.any(Array) } });
     expect(inputs.projectileVisuals).toMatchObject({ id: 'data/projectile-visuals', content: { kind: 'projectile' } });
     expect(inputs.explosions?.id).toBe('data/explosions');
     // P3-09 (MW-01): the map geometry, as mapGeometryInput decodes it.
@@ -89,16 +92,24 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     const groups = await groupsOf();
     expect(ruleDataInputs(groups.filter(({ group }) => group !== 'models'))).toEqual({
       debrisParameters: expect.objectContaining({ id: 'data/debris-parameters' }), projectileVisuals: undefined, explosions: undefined, explosionAnimations: [],
-      aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }), mapGeometry: expect.objectContaining({ id: 'data/hud/map-geometry' }),
+      aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }),
+      mapGeometry: expect.objectContaining({ id: 'data/hud/map-geometry' }),
+      commMenus: expect.objectContaining({ id: 'data/comm-menus' }),
+      baseRepairItems: expect.objectContaining({ id: 'data/base-repair-items' }),
+      commMessages: expect.objectContaining({ id: 'data/comm-messages' }),
     });
     expect(ruleDataInputs(groups.filter(({ group }) => group !== 'cockpit-hud-map')).mapGeometry).toBeUndefined();
-    const withoutAi = groups.map((group) => {
+    const without = (role: string) => groups.map((group) => {
       if (group.group !== 'logic') return group;
       const manifest = group.manifest as { assets: AssetDescriptor[] };
-      return { ...group, manifest: { ...manifest, assets: manifest.assets.filter(({ role }) => role !== 'ai-programs') } };
+      return { ...group, manifest: { ...manifest, assets: manifest.assets.filter((descriptor) => descriptor.role !== role) } };
     });
-    expect(ruleDataInputs(withoutAi).aiPrograms).toBeUndefined();
-    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'logic'))).toMatchObject({ debrisParameters: undefined, aiPrograms: undefined });
+    for (const [role, field] of [['ai-programs', 'aiPrograms'], ['comm-menus', 'commMenus'], ['base-repair-items', 'baseRepairItems'], ['comm-messages', 'commMessages']] as const) {
+      expect(ruleDataInputs(without(role))[field]).toBeUndefined();
+    }
+    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'logic'))).toMatchObject({
+      debrisParameters: undefined, aiPrograms: undefined, commMenus: undefined, baseRepairItems: undefined, commMessages: undefined,
+    });
     const twice = withModelsManifest(groups, (assets) => [...assets, { ...assets.find(({ id }) => id === 'data/projectile-visuals')!, id: 'data/projectile-copy' as AssetId }]
       .sort((left, right) => (left.id < right.id ? -1 : 1)));
     expect(ruleDataInputs(twice).projectileVisuals).toBeUndefined();

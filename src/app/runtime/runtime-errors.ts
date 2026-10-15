@@ -7,6 +7,11 @@ export type GameRuntimeErrorDetails =
   /** The formal Runtime stopped because its recording could not hold another tick; the cause is Core's refusal. */
   | { readonly kind: 'recording-capacity'; readonly cause: unknown }
   /**
+   * The formal Runtime cut its frame at a transition tick and holds until the Session releases the barrier: no input
+   * and no frame meanwhile; nothing changed.
+   */
+  | { readonly kind: 'transition-hold' }
+  /**
    * `unconfirmed` (formal Runtime only): FIFO command IDs taken into a batch whose result was never delivered, because
    * the failing step may have run part of it or the fault withheld the frame's events.
    */
@@ -27,6 +32,7 @@ export class GameRuntimeError extends Error {
       case 'reentrant-call': message = 'Cannot advance a frame during event delivery'; break;
       case 'command-queue-full': message = 'The pending command queue is full'; break;
       case 'recording-capacity': message = 'Runtime stopped: the recording cannot hold another tick'; break;
+      case 'transition-hold': message = 'Runtime holds at a transition until the session releases it'; break;
       case 'faulted': message = 'Runtime is faulted; create a new session to recover'; break;
     }
     super(message, 'cause' in details ? { cause: details.cause } : undefined);

@@ -9,6 +9,7 @@ import type { CraftCombat, Entity, SteeredMovementBlock } from '../world/entity-
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, expectFault, stateText, testState } from '../world/world.test-support.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 import { switchView } from './view-switch.ts';
@@ -61,7 +62,9 @@ function setUp({ viewMode = FLIGHT, previousViewMode = FLIGHT, energy = COST, de
   combat(player).energy = energy;
   state.player.control = initialPlayerControl(1);
   state.player.targeting!.autoTargetDueClock = 1e9;
-  state.player.viewMode = viewMode;
+  // View 6 has P3-10's base service and saved pose, as only docking enters it (CB-10, CB-11).
+  if (viewMode === BASE) enterBaseView(state);
+  else state.player.viewMode = viewMode;
   state.player.previousViewMode = previousViewMode;
   state.player.map.destination = destination;
   return { state, player };

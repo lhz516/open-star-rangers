@@ -9,8 +9,8 @@
  * - The map (8) has no rule effect: opening or closing it from or to a flight view sets no redraw and keeps the page.
  * - Entering the Warp view (1) saves the left page and shows page 6; leaving it restores the saved page, 5 (the
  *   incoming-message page) as 0.
- * - A switch from or to the base interior (6) also runs `0x4cd68`, which sets `statusDisplay.redraw` and re-applies the
- *   page. That part is P3-10's and is not implemented here: Core has no writer of view 6 before P3-10.
+ * - A switch from or to the base interior (6) also runs `0x4cd68`, which sets `statusDisplay.redraw`; the page stays
+ *   (P3-10, CB-10; comm §7.6).
  */
 import type { LeftPage } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -47,6 +47,6 @@ export function switchView(world: WorldState, newMode: number, oldMode: number):
   } else if (oldMode === WARP_VIEW_MODE && newMode !== WARP_VIEW_MODE) {
     leftDisplay.page = player.savedLeftPage === MESSAGE_PAGE ? 0 : player.savedLeftPage;
   }
-  // P3-10 adds 0x4cd68 here for a switch from or to BASE_VIEW_MODE.
+  if (newMode === BASE_VIEW_MODE || oldMode === BASE_VIEW_MODE) player.statusDisplay.redraw = true;
   return leftDisplay.page === previousPage ? null : { page: leftDisplay.page, previousPage };
 }

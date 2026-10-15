@@ -13,7 +13,8 @@ import type { ImfatEntry } from '../archive/imfat-rules.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { AI_LAYOUT, AI_SOURCE_LIMITS, parseAiPrograms, type AiRegionRead } from '../formats/ai.ts';
 import { BASE_REPAIR_ENTRY_BYTES, parseBaseRepairItems } from '../formats/base-repair.ts';
-import { COMM_MENU_ENTRY_BYTES, parseCommMenus, type CommMenuReads } from '../formats/comm.ts';
+import { COMM_MENU_ENTRY_BYTES, COMM_NAME_LIST_ENTRY_BYTES, parseCommMenus, type CommMenuReads } from '../formats/comm.ts';
+import { COMM_FACE_SOURCE_LIMITS, parseCommMessages } from '../formats/comm-face.ts';
 import { CRAFT_INFO_ENTRY_BYTES, CRAFT_TABLE_FORMAT, parseCraftInfo, parseCraftTable } from '../formats/craft.ts';
 import { DEBRIS_ENTRY_BYTES, parseDebrisParameters } from '../formats/debris.ts';
 import { parseFlightMessages, type FlightMessageRegions } from '../formats/executable-text.ts';
@@ -31,7 +32,7 @@ import {
 } from './production-rule-data.ts';
 import { stepEntryReader, stepRegionReaders } from './step-entry-reader.ts';
 
-// The conversion of the six rule-data Assets of the `logic` group (P3-03 spec S-03 to S-08, 来源映射与核验 and 限值与预算):
+// The conversion of the seven rule-data Assets of the `logic` group (P3-03 spec S-03 to S-08 and S-18, 来源映射与核验 and 限值与预算):
 // their mappings are verified with step-local reads of one verified source, the parsers of formats/ turn the mapped parts
 // into canonical content, the ID chains are checked against the mapping, and each payload is charged before it is
 // allocated. The result is a partition of the logic group that the job merges with the logic step's draft.
@@ -49,7 +50,7 @@ export const ruleDataIncrement = (payloadBytes: number): Partial<BudgetRecord> =
 const entryKey = (discPath: string, { id, type }: Pick<ImfatEntry, 'id' | 'type'>): string => `${discPath}\u0000${type}\u0000${id}`;
 
 /** The payload size limit of each mapped entry, by the parser that reads it; an entry mapped twice gets the smaller. */
-function entryLimits({ craftInfo, debrisParameters, aiPrograms, commMenus, baseRepairItems }: RuleDataLocators): ReadonlyMap<string, number> {
+function entryLimits({ craftInfo, debrisParameters, aiPrograms, commMenus, baseRepairItems, commMessages }: RuleDataLocators): ReadonlyMap<string, number> {
   const limits = new Map<string, number>();
   const limit = ({ discPath, entry }: ArchiveEntryLocator, bytes: number) => {
     const key = entryKey(discPath, entry);
@@ -65,6 +66,9 @@ function entryLimits({ craftInfo, debrisParameters, aiPrograms, commMenus, baseR
   }
   for (const locator of Object.values(commMenus)) limit(locator, COMM_MENU_ENTRY_BYTES);
   limit(baseRepairItems.table, BASE_REPAIR_ENTRY_BYTES);
+  for (const locator of [...commMessages.faceTables, commMessages.direct, ...commMessages.subTables]) limit(locator, COMM_FACE_SOURCE_LIMITS.tableEntryBytes);
+  for (const locator of commMessages.messages) limit(locator, COMM_FACE_SOURCE_LIMITS.messageEntryBytes);
+  for (const locator of [commMessages.names2001, commMessages.names2011]) limit(locator, COMM_NAME_LIST_ENTRY_BYTES);
   return limits;
 }
 
@@ -78,9 +82,10 @@ const partPath = (table: SourceMappingTable, asset: AssetReference, locator: Ori
 /**
  * Verifies the mappings built from `sources` against `source` and parses their parts, in Asset ID order. A step-local
  * reader checks each entry's size against its parser's limit before reading it and shares the read with verification.
- * The parsers resolve the sub-resources (the candidate's TABL 4003 pair and AICO triple, the TABL 10165 selector field)
- * and the regions from those reads; the selected pair must name the mapped CINF part, and the AI ID chain exactly the
- * mapped DFPG and script parts, otherwise `subresource-mismatch`. The readers and their caches end with this call.
+ * The parsers resolve the sub-resources (the candidate's TABL 4003 pair and AICO triple, the TABL 10165 selector field,
+ * each CMOV's frames) and the regions from those reads; the selected pair must name the mapped CINF part, the AI ID
+ * chain exactly the mapped DFPG and script parts, and the COMMFACE ID chain exactly the mapped sub-table and CMOV parts,
+ * otherwise `subresource-mismatch`. The readers and their caches end with this call.
  */
 async function parseRuleData(source: VerifiedSource, sources: RuleDataSources): Promise<{ readonly bound: SourceMappingTable; readonly payloads: readonly RuleDataPayload[] }> {
   const parts = ruleDataLocators(sources);
@@ -144,12 +149,29 @@ async function parseRuleData(source: VerifiedSource, sources: RuleDataSources): 
     .map(([key, locator]) => [key, { locator, path: at(RULE_DATA_ASSETS['flight-messages'], locator) }])) as FlightMessageRegions;
   const flightMessages = await parseFlightMessages(messageRegions, readRegion);
 
+  const comm = parts.commMessages;
+  const readAll = async (locators: readonly ArchiveEntryLocator[]) => {
+    const reads: ArchiveEntryRead[] = [];
+    for (const locator of locators) reads.push(await readEntry(locator));
+    return reads;
+  };
+  // The parser requires the given sub-tables and CMOVs to be exactly those the ID chain names.
+  const commMessages = parseCommMessages(comm.direct.discPath, comm.names2001.discPath, {
+    faceTables: await readAll(comm.faceTables),
+    direct: await readEntry(comm.direct),
+    subTables: await readAll(comm.subTables),
+    messages: await readAll(comm.messages),
+    names2001: await readEntry(comm.names2001),
+    names2011: await readEntry(comm.names2011),
+  });
+
   return {
     bound,
     payloads: [
       { role: 'ai-programs', content: aiPrograms },
       { role: 'base-repair-items', content: baseRepairItems },
       { role: 'comm-menus', content: commMenus },
+      { role: 'comm-messages', content: commMessages },
       { role: 'craft-info', content: craftInfo },
       { role: 'debris-parameters', content: debrisParameters },
       { role: 'flight-messages', content: flightMessages },

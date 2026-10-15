@@ -7,9 +7,14 @@
  *
  * With the mission input (docs/plan/p3/05/spec.md: 输入区与焦点, 全屏与 Keyboard Lock), the game view holds the one game
  * input zone and the shell adds the input's notices and a full screen button for the whole page. Right after the
- * departure ended or Continue resumed the run, focus starts on the zone instead when `useShellFocus` allows.
+ * departure or a running hold ended or Continue resumed the run, focus starts on the zone instead when `useShellFocus`
+ * allows. While the sampled projection shows the base view, the game view holds the G-05 base page (P3-10).
  */
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
+import type { GameStoreReader } from '../game/game-store.ts';
+import { useGame } from '../game/use-game.ts';
+import { selectBaseShown } from './base-page.ts';
+import { BasePage } from './BasePage.tsx';
 import { GameInputZone } from './GameInputZone.tsx';
 import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
 import { InputNotices, type MissionInputView } from './InputNotices.tsx';
@@ -28,6 +33,15 @@ export interface MissionShellProps {
   readonly entry?: InputFocusEntry | null;
   /** The G-item notice to show now. */
   readonly gap?: GapNotice | null;
+  /** The owner's UI store. */
+  readonly game: GameStoreReader;
+}
+
+/** The game view's content: the base page in the base view, otherwise the note that the flight view is still missing. */
+function GameView({ game }: { readonly game: GameStoreReader }) {
+  return useGame(game, selectBaseShown)
+    ? <BasePage game={game} />
+    : <p>Game view: the flight view, cockpit and HUD are not implemented yet.</p>;
 }
 
 function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'snapshot' | 'owner' | 'onReturn'>) {
@@ -55,7 +69,7 @@ function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'sna
   );
 }
 
-export function MissionShell({ snapshot, owner, onReturn, input = null, entry = null, gap = null }: MissionShellProps) {
+export function MissionShell({ snapshot, owner, onReturn, input = null, entry = null, gap = null, game }: MissionShellProps) {
   const { session, flow, actionError } = snapshot;
   const running = session.phase === 'running';
   const focus = useShellFocus(entry, running, input?.bindZone);
@@ -63,7 +77,7 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
   const blocked = resumeBlockedText(session);
   const inFlight = flow.position === 'flight';
   const fullscreenButton = input ? fullscreenButtonState(input.fullscreen.status) : 'hidden';
-  const view = <p>Game view: the flight view, cockpit and HUD are not implemented yet.</p>;
+  const view = <GameView game={game} />;
   return (
     <section aria-labelledby="mission-shell-heading" data-testid="mission-shell">
       <h2 id="mission-shell-heading" ref={focus.heading} tabIndex={-1}>Mission</h2>

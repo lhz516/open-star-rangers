@@ -10,6 +10,7 @@ import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld, type World } from '../world/world.ts';
 import { addPlayerEntity, entityInit, stillEntityInit, testState } from '../world/world.test-support.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { PIPELINE, registerTick } from './pipeline.ts';
 
@@ -47,7 +48,9 @@ function setUp(viewMode = FLIGHT): { state: WorldState; world: World; player: En
   player.state = 'active';
   state.player.control = initialPlayerControl(1);
   state.player.targeting!.autoTargetDueClock = 1e9;
-  state.player.viewMode = viewMode;
+  // View 6 has P3-10's base service and saved pose, as only docking enters it (CB-10, CB-11).
+  if (viewMode === BASE) enterBaseView(state);
+  else state.player.viewMode = viewMode;
   state.player.previousViewMode = FLIGHT;
   return { state, world: constructWorld(state), player };
 }
@@ -111,11 +114,15 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
 
   it('opens from and closes into a base (synthetic pre-state view 6), keeping the base as the previous view', () => {
     const { state, world } = setUp(BASE);
+    state.player.statusDisplay.redraw = false;
     let events = step(world, [toggle]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null]]);
     expect(others(events)).toEqual([toggled(1, true, MAP, BASE, 0)]);
     expect(view(state)).toEqual([MAP, BASE]);
     expect(state.player.map.cursor).toEqual(START);
+    // Leaving or entering view 6 runs 0x4cd68 in the view switch (P3-10, CB-10): the redraw flag, the page unchanged.
+    // View 8 has no cockpit display step to consume it.
+    expect([state.player.statusDisplay.redraw, state.player.leftDisplay.page]).toEqual([true, 0]);
     // From the base, P3-06's commands are wrong-context after the close as before the open.
     events = step(world, [toggle, zero]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'speed', 'ignored', 'wrong-context']]);
@@ -273,9 +280,9 @@ describe('ordered command gates in one tick (MW-04)', () => {
     let events = step(world, [confirm, { type: 'communications', operation: 'open' }, { type: 'launch' }, { type: 'map-point', operation: 'hover', right: 0.5, down: 0.5 }, { type: 'request-warp' }]);
     expect(results(events)).toEqual([
       [0, 'confirm-selection', 'ignored', 'wrong-context'],
-      // P3-10's commands are not implemented yet; the Warp request has no destination (warp.test.ts).
-      [1, 'communications', 'rejected', 'not-implemented'],
-      [2, 'launch', 'rejected', 'not-implemented'],
+      // P3-10's menu and launch keys never reach the map (CB-07); the Warp request has no destination (warp.test.ts).
+      [1, 'communications', 'ignored', 'wrong-context'],
+      [2, 'launch', 'ignored', 'wrong-context'],
       [3, 'map-point', 'accepted', null],
       [4, 'request-warp', 'ignored', 'no-destination'],
     ]);

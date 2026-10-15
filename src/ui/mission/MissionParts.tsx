@@ -35,7 +35,7 @@ export function SkeletonNote() {
 
 const OPERATION: Readonly<Record<NonNullable<MissionOwnerSnapshot['actionError']>['operation'], string>> = Object.freeze({
   pause: 'Pausing', resume: 'Resuming', 'open-menu': 'Opening the mission menu', continue: 'Continuing', restart: 'Restarting',
-  'complete-departure': 'Ending the departure',
+  'complete-departure': 'Ending the departure', 'complete-transition': 'Ending the transition',
 });
 
 /** The owner's last failed action, if any, without any message text. */

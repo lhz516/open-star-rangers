@@ -70,7 +70,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 - **核对内容：**
   - 经产品入口 `openVerifiedSource` 打开镜像并用生产白名单识别版本；
   - 经已验证来源打开每个覆盖范围内的 `.NOB`，读取并校验全部条目；
-  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFACE.NOB` 与 `MAIN/COMMFAC2.NOB`；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
+  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFAC2.NOB`（`MAIN/COMMFACE.NOB` 自 P3-03 修订 2 起在白名单中，只作为覆盖封包检查一次）；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
   - 任何识别、封包或条目失败都结束核对。
 - **输出：** stdout 为一份 `osr-source-check`/1 JSON，包含：
   - `passed`；`error`（结束核对的首个失败，只含 code 与位置）；`closeFailures`；
@@ -123,7 +123,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
-  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；
+  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
   - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
 
@@ -173,7 +173,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 `tools/baseline/measure.py` 在开发者本地的基准环境中运行原版并读取运行时字段（[P3-01](../plan/p3/01/spec.md#运行时测量) 的 S-05）。配方、操作者协议、读数的合格条件、计时、原版文件保护与证据存放见[运行时测量指南](./runtime-measurement.md)，这里只列要点。
 
-- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–4 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；刺激可带条件 `if`，只在本次运行同一暂停点或较早暂停点的整数读数等于给定值时施加，否则记为 `not-selected`，用于按启动布局选择分支（见[条件刺激](./runtime-measurement.md#条件刺激)）；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
+- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–4 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；配方还可按本次运行的读数等待与分支（读数检验：断点停止的 `until` 只在探测读数通过比较时才停，刺激的 `if` 只在本暂停点读数通过时施加，否则记为 `condition-false`；见[读数检验](./runtime-measurement.md#读数检验等待与分支)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；刺激的 `if` 也可用等值形式 `{pause, field, equals}`，只在本次运行同一暂停点或较早暂停点的整数读数等于给定值时施加，否则记为 `not-selected`，用于按启动布局选择分支（见[条件刺激](./runtime-measurement.md#条件刺激)）；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
 - **输出：** 报告、调试器日志与证明文件都写在 `local/research/` 下的新运行目录中，不覆盖已有文件。运行期间 `local/research/` 的既有文件不得改变；其他会话同时在别处写入时，`--evidence` 把这一检查缩小到包含运行目录的主题目录（保证随之变窄，`local/StarRang/` 的保护不变）。终端只有阶段、原因码、计数与相对路径，不输出读数、原版内容或私人绝对路径。
 - **退出码：** `complete` 为 0；失败为 1；运行前拒绝为 2（什么也不写）；取消为 3。
 - **测试：** `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`，不属于 `pnpm check`；测试只用合成数据与临时目录，不读取 `local/` 或原版文件。

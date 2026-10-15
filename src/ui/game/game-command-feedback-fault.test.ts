@@ -47,14 +47,14 @@ const injection = vi.hoisted(() => {
 
 afterEach(() => { injection.reset(); });
 
-const launch = Object.freeze({ type: 'launch' as const });
+const cockpitFront = Object.freeze({ type: 'cockpit-front' as const });
 const ids = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
 const settled = (state: GameUiState, outcome: string) => state.recentResults.filter((result) => result.outcome === outcome).map((result) => result.commandId);
 
 /** A run anchored at 0 with `queued` commands submitted through the feedback (IDs 1…queued), 64 taken per tick. */
 function prepared(queued: number, recording = false) {
   const context = startedFeedback({}, { recording: recording ? recordingOptions(1) : null });
-  for (let index = 0; index < queued; index++) context.feedback.submit(launch);
+  for (let index = 0; index < queued; index++) context.feedback.submit(cockpitFront);
   return context;
 }
 

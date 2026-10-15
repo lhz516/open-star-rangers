@@ -15,7 +15,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 /** Writes a disc of `files` plus unread padding as a CloneCD file set and returns its paths and whitelist. */
 async function writeDisc(name: string, files: Record<string, SyntheticFileContent>) {
-  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) } });
+  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) } });
   const paths = [join(directory, `${name}-${MARKER}.ccd`), join(directory, `${name}-${MARKER}.img`)];
   writeFileSync(paths[0], await disc.descriptor.read(0, disc.descriptor.byteLength));
   writeFileSync(paths[1], await disc.image.read(0, disc.image.byteLength));
@@ -61,6 +61,7 @@ describe('logic check', () => {
       ['data/ai-programs', 'ai-programs', true, true],
       ['data/base-repair-items', 'base-repair-items', true, true],
       ['data/comm-menus', 'comm-menus', true, true],
+      ['data/comm-messages', 'comm-messages', true, true],
       ['data/craft-info', 'craft-info', true, true],
       ['data/craft-types', 'craft-types', true, true],
       ['data/debris-parameters', 'debris-parameters', true, true],

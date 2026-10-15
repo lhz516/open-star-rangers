@@ -21,7 +21,11 @@ import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState }
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
+import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
+import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
+import { deliverCommand } from './communications.ts';
+import { checkDockingWait, depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
@@ -33,6 +37,7 @@ import { updateObjectSets } from './object-sets.ts';
 import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
+import { takeRadio } from './radio.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
 import { applyWarpStart, completeWarp, runWarpStep, type WarpStartRequest } from './warp.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
@@ -101,7 +106,21 @@ export type Request =
   /** Message 0x40 (`0x24424`): the held source becomes pending removal. */
   | { readonly type: 'release-held'; readonly entityId: EntityId }
   /** Message 0x2000000 (`0x2574c`): `entityId` is the source a part-0 fragment hands off. */
-  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId };
+  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId }
+  // P3-10's requests (docs/plan/p3/02/spec.md, CB-08); request handling takes them in posting order.
+  /** Message 0x100 (CD1, CD2): the communications menu delivers a command; `code` is a u32 from 1. */
+  | {
+    readonly type: 'deliver-command'; readonly receiver: EntityId; readonly code: number; readonly sender: EntityId; readonly commandIndex: number;
+  }
+  /** Message 0x400000 sub-command 0: sub-state 4's countdown docks the player (`entityId`). */
+  | { readonly type: 'dock'; readonly entityId: EntityId }
+  /** Sub-command 4: the player's launch command, or sub-state 5's automatic launch, which has no command. */
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'command'; readonly commandIndex: number }
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'automatic'; readonly commandIndex: null }
+  /** Sub-commands 1 and 2: the base page's cursor. */
+  | { readonly type: 'base-navigate'; readonly entityId: EntityId; readonly direction: 'previous' | 'next'; readonly commandIndex: number }
+  /** Sub-command 3: the base page's confirmation. */
+  | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -263,7 +282,7 @@ function updatePlayerControls(context: TickContext): void {
   const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
-    judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+    judge: (command, commandIndex, view) => judgeCommand(context, command, commandIndex, view),
     lockMissiles: (entity) => updateMissileLock(context, entity),
   }, commandView);
   // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000,
@@ -301,7 +320,9 @@ export function updateLifecycle(context: TickContext, entity: Entity): void {
 
 /**
  * An entity's own update: the kind callbacks of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-07: missiles
- * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part.
+ * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part. A
+ * craft's generic part ends in state 7 with P3-10's answer to a delivered command (`0x3bed0`, base-response.ts), where
+ * P3-08's AI step will precede it (CB-12).
  */
 function updateObject(context: TickContext, entity: Entity): void {
   const { combat } = entity;
@@ -309,6 +330,7 @@ function updateObject(context: TickContext, entity: Entity): void {
     case 'craft':
     case 'marker':
       updateLifecycle(context, entity);
+      answerCommand(context, entity);
       return;
     case 'missile':
       updateMissile(context, entity, combat);
@@ -342,16 +364,22 @@ function updateObjects(context: TickContext): void {
  * those of the kinds removed on leaving included, is removed. Removal of the player's entity clears the player-state
  * reference to it (the original clears it for kind 1, the player's) together with the player's target and control
  * state, which exist only with a player entity (P3-06 D-03), and its targeting state, which goes with the player's
- * entity (CR-04). Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts
- * keep counting spawns, and a name becomes free because no entity holds it any more (Q-08).
+ * entity (CR-04), and P3-10's docking object, menu, communications partner and menu's saved page (CB-02, CB-03).
+ * Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting
+ * spawns, and a name becomes free because no entity holds it any more (Q-08).
  */
 function leave(world: WorldState, entity: Entity): void {
   if (switchParking(world, entity)) return;
-  if (world.player.entityId === entity.id) {
-    world.player.entityId = null;
-    world.player.target = null;
-    world.player.control = null;
-    world.player.targeting = null;
+  const { player } = world;
+  if (player.entityId === entity.id) {
+    player.entityId = null;
+    player.target = null;
+    player.control = null;
+    player.targeting = null;
+    player.dockingObject = null;
+    player.communications.menu = null;
+    player.communications.partner = null;
+    player.communications.menuSavedPage = 0;
   }
   world.entities.remove(entity);
 }
@@ -376,8 +404,30 @@ function expire(context: TickContext, entity: Entity, request: RequestOf<'expire
 
 function handleRequest(context: TickContext, request: Request): void {
   const { world } = context;
+  if (request.type === 'deliver-command') {
+    deliverCommand(context, request);
+    return;
+  }
+  // Sub-commands 0 and 4 read the player's entity, not the request's subject (DK2, DK3).
+  if (request.type === 'dock') {
+    dock(context);
+    return;
+  }
+  if (request.type === 'depart') {
+    depart(context, request);
+    return;
+  }
+  // Sub-commands 1–3 read the player's entity and the base service (BS4).
+  if (request.type === 'base-navigate') {
+    navigateBase(context, request);
+    return;
+  }
+  if (request.type === 'base-confirm') {
+    confirmBase(context, request);
+    return;
+  }
   if (request.type === 'spawn') {
-    dispatchSpawn(world, request, (event) => emit(context, event));
+    dispatchSpawn(context, request);
     return;
   }
   // The launch's constructors themselves handle a shooter that is no longer valid (W11).
@@ -454,7 +504,7 @@ function move(context: TickContext): void {
  * parked engagement after each object's parked travel (CR-09).
  */
 function updateParkedObjects(context: TickContext): void {
-  updateParked(context.world, (event) => emit(context, event), (entity, elapsed) => engageParked(context, entity, elapsed));
+  updateParked(context, (entity, elapsed) => engageParked(context, entity, elapsed));
 }
 
 /** Stage `area-check` (`0x3a468`, area.ts). */
@@ -504,12 +554,12 @@ const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage =
  */
 export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('input-registration', registerInput),
-  // 0x3266c, reading the previous clock: P3-11 (flow, result, rescue), P3-10 (docking sub-states).
-  stage('mission-flow', null),
+  // 0x3266c, reading the previous clock: P3-10's docking sub-states (docking.ts); P3-11 adds flow, result and rescue.
+  stage('mission-flow', checkDockingWait),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
-  // Dispatcher 0x20d10. A due communications reply (0x2cd60): P3-10.
-  stage('communications-reply', null),
+  // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).
+  stage('communications-reply', takeRadio),
   stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
   // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
@@ -525,13 +575,14 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('parked-update', updateParkedObjects),
   // 0x2bf08 (warp.ts).
   stage('warp-completion', completeWarp),
-  // 0x398ec, view mode 6 (P3-10).
-  stage('base-interior', null),
+  // 0x398ec, view mode 6 (P3-10, base-interior.ts).
+  stage('base-interior', serviceBase),
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),
   // Rule progress the original makes in its camera step and frame render: P3-09's map step (0x2b8ec, 0x49f8c) or
-  // Warp step (0x50508), then P3-07's cockpit display step (CR-10); never waits for a rendered frame.
+  // Warp step (0x50508), then P3-07's cockpit display step (CR-10) and P3-10's communications presentation sub-step
+  // (CB-09); never waits for a rendered frame.
   stage('frame-end', runFrameEnd),
   stage('commit', commit),
 ]);

@@ -33,11 +33,12 @@ describe('production package profile', () => {
   // P3-03 spec 限值与预算: each P3-03 share is twice the baseline usage of its Assets, rounded up to a power of two, per
   // dimension. The observations are the counts the local derivation (local/research/p3-03/shares/) recorded on the
   // baseline image with unlimited limits (P3-03/19 and P3-03/26 completion evidence); the usage of the flight graphics,
-  // and of the HUD text, is the graphics step's usage with them less its usage without them.
+  // and of the HUD text, is the graphics step's usage with them less its usage without them. The rule-data usage
+  // includes `data/comm-messages` (P3-10/29 completion evidence, local/research/p3-10/comm-messages/).
   const BASELINE_USAGE = {
     flightGraphics: { assets: 205, dependencyEdges: 204, paletteEntries: 256, imagePixels: 1_870_336, payloadBytes: 2_078_499 },
     hudText: { assets: 1, payloadBytes: 2_018 },
-    ruleData: { assets: 6, payloadBytes: 77_198 },
+    ruleData: { assets: 7, payloadBytes: 98_237 },
     flightData: { assets: 20, dependencyEdges: 222, payloadBytes: 11_895 },
   };
   const derived = (observed: Partial<BudgetRecord>): BudgetRecord => Object.fromEntries(BUDGET_DIMENSIONS.map(dimension => {

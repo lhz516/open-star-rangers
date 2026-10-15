@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0015]
 ---
 
@@ -51,14 +51,14 @@ related: [ADR-0015]
   - **注入点：** `open` 默认是产品入口 `openVerifiedSource`，不传 `limits`，沿用 P2-02 的默认预算。`graphics`（`GraphicsStepInput`：映射、声明与份额）默认是[生产图形](./original-data.md#图形转换)的声明、映射与份额。`logic`（`LogicStepInput`：`convert` 与份额）默认是导出的 `PRODUCTION_LOGIC_STEP`，即上述 `convertLogic` 与 `convertRuleData` 的合并，以及两者份额之和；`convert` 返回 `{ drafts, usage, models }`。`audio`（`AudioStageInput`：音效表、SND 规则与可选限值）默认是生产音效表与规则。`models`（`ModelStepInput`：由绑定一并生成映射与声明的 `inputs`、查找表、效果的映射与声明 `effects`、飞行数据的映射与声明 `flightData` 与份额）默认是[生产模型](./original-data.md#生产模型)的 `productionModelMappings` 与 `productionModelDeclarations`、`PRODUCTION_MODEL_REFERENCES`、[效果步骤](./original-data.md#效果步骤)的生产映射与声明、`PRODUCTION_FLIGHT_DATA_MAPPINGS` 与 `PRODUCTION_FLIGHT_DATA_DECLARATIONS`，以及 `PRODUCTION_MODEL_SHARE` 与 `PRODUCTION_FLIGHT_DATA_SHARE` 之和。限值与用量用 `addBudgets` 逐维相加。只有测试传入其他打开函数或步骤输入，用合成白名单识别。
 - **生产包配置（P2-11）：** [workers/production-package.ts](../../../src/workers/production-package.ts) 导出预期包配置的类型 `ExpectedPackageProfile`（`converterVersion`、`sourceFingerprint`、`limits`）与冻结的生产常量 `PRODUCTION_PACKAGE`，供主线程筛选缓存条目并核算提交与恢复（[P2-11 包预算与生产身份](../../plan/p2/11/spec.md#包预算与生产身份)）。
   - 值以常量写出，模块只导入 `content/`，因此主线程不会载入转换器与生产表；它虽在 `workers/` 中，lint 与依赖图都按消费者禁止它到达 `original-data`。
-  - `converterVersion` 为 `osr-import.graphics-5.logic-2.audio-2.models-4`（P3-03/19；P3-09/11 的地图几何把图形组件递增为 `graphics-5`）。
-  - `limits` 是图形、逻辑、模型三个阶段的已批准份额与 `AUDIO_BUDGET_LIMITS` 经 `addBudgets` 的逐维之和，`sourceReadBytes` 为 0。P3-03 之后为 812 个 Asset、1,408 条依赖边、16,568,320 字节 payload（P3-09/11 的地图几何份额再加 1 个 Asset 与 256 字节，为 813 与 16,568,576）、5,373,952 个像素、3,072 个调色板项，`vertices`、`triangles` 各 8,192、`glyphs` 768、`audioSamples` 4,194,304、`missionObjects` 256、`missionReferences` 4,096（P3-03 之前为 218、384 与 12,075,008 字节）。P3-03 的三个新份额由基准观测值按“2 倍，向上取整到 2 的幂”推导（[原版数据](./original-data.md#图形转换)的飞行图形与 HUD 文字份额，[规则数据](./original-data.md#规则数据转换)与[飞行数据](./original-data.md#飞行数据步骤)的份额）；logic 步骤（3 个 Asset、8 条边、7,593 字节、14 个对象、41 个引用）与 29 个声音（29 个 Asset、470,861 字节、304,035 个采样点）的基准观测在既有份额与音频限值之内，不调整。基准上的完整生产包用量为 408 个 Asset、611 条依赖边、3,783,074 字节，在限值之内（P3-03/26）。作业读取上限仍是上文的输入总字节，不另设。
+  - `converterVersion` 为 `osr-import.graphics-5.logic-3.audio-2.models-4`（P3-03/19；P3-09/11 的地图几何把图形组件递增为 `graphics-5`，P3-10/29 按 P3-03 修订 2 把逻辑组件递增为 `logic-3`，两者是不同组件，合并后都保留）。`sourceFingerprint` 随生产白名单加入 `MAIN/COMMFACE.NOB` 而改变。
+  - `limits` 是图形、逻辑、模型三个阶段的已批准份额与 `AUDIO_BUDGET_LIMITS` 经 `addBudgets` 的逐维之和，`sourceReadBytes` 为 0。P3-03 之后为 812 个 Asset、1,408 条依赖边、16,568,320 字节 payload（P3-09/11 的地图几何份额再加 1 个 Asset 与 256 字节，为 813 与 16,568,576）、5,373,952 个像素、3,072 个调色板项，`vertices`、`triangles` 各 8,192、`glyphs` 768、`audioSamples` 4,194,304、`missionObjects` 256、`missionReferences` 4,096（P3-03 之前为 218、384 与 12,075,008 字节）。P3-03 的三个新份额由基准观测值按“2 倍，向上取整到 2 的幂”推导（[原版数据](./original-data.md#图形转换)的飞行图形与 HUD 文字份额，[规则数据](./original-data.md#规则数据转换)与[飞行数据](./original-data.md#飞行数据步骤)的份额）；logic 步骤（3 个 Asset、8 条边、7,593 字节、14 个对象、41 个引用）与 29 个声音（29 个 Asset、470,861 字节、304,035 个采样点）的基准观测在既有份额与音频限值之内，不调整。基准上的完整生产包用量为 408 个 Asset、611 条依赖边、3,783,074 字节，在限值之内（P3-03/26）；加入 `data/comm-messages` 后为 409 个 Asset、3,804,113 字节，规则数据份额不变（P3-10/29，测于 P3-09 的地图几何合入之前）。作业读取上限仍是上文的输入总字节，不另设。
   - 相邻 Node 测试从 `original-data` 派生三个值并逐一比较；转换器组件、生产白名单或任一份额改变时测试失败，须同步常量。测试还记录 P3-03 份额推导所用的基准观测值，由规则重算各份额，并核对 logic 与音频的观测值在现有限值之内。
   - 在开发者自己的数据上，`tools/package-check.ts` 用同一作业模块转换并对照这些限值，见[包核对](../../guides/tools.md#包核对)。
 - **生产入口：** [workers/import-worker.ts](../../../src/workers/import-worker.ts) 把 `self` 断言为 `ImportHostEndpoint`，再用 `createImportJob()` 调用 `runImportHost`，不含其他逻辑。页面程序没有 WebWorker 类型，所以不另设类型程序。
 - **测试支持：** [synthetic-import.test-support.ts](../../../src/workers/synthetic-import.test-support.ts) 的 `syntheticImport(covered, versionId)` 在 Node 与浏览器中都可用。
   - `SCENARIO_SOURCES` 列出会识别光盘的测试 Worker 场景各自的合成光盘与白名单版本 ID，Worker 测试入口与 P2-11 的应用测试入口共用它；`scenarioProfile(scenario)` 给出该场景所发资源包的预期包配置（白名单指纹；`synthetic` 用内容测试支持的转换器版本，其余用生产转换器版本；生产包预算），Node 测试证明它与场景实际发出的身份一致。
-  - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 1 MiB 填充文件，以免默认预算被耗尽），按块读出为名称含 `MARKER` 的 `File`。
+  - 它用 `syntheticFileDisc` 生成光盘（另含一个不读取的 2 MiB 填充文件 `PADDING`，以免默认预算被近 500 次小条目读取的 COMMFACE 计划耗尽），按块读出为名称含 `MARKER` 的 `File`。
   - 同时返回一个打开函数：用底层的 `openDiscImage` 与 `identifySource`，按 `catalogFor(covered)` 识别。
   - 同文件的 `syntheticGroupsJob(open, groups)` 先经注入的打开函数识别，以 `NO_GRAPHICS`、`NO_LOGIC`、`NO_AUDIO` 与 `NO_MODELS`（都不转换任何 Asset）运行转换阶段，丢弃作业自己的空 `models`、`cockpit-hud-map` 与 `audio` 组，再发送 `groups(指纹)` 给出的组，供只关心识别与组转移的测试使用；默认的 `boundGroups` 是绑定已识别指纹的四个合成组。
   - **合成光盘：** 生产图形的合成光盘由 [production-graphics.test-support.ts](../../../src/original-data/conversion/production-graphics.test-support.ts) 的 `productionGraphicsFiles(blocks, extra)` 生成，可替换或省略条目，也可加入其他条目；`productionGraphicsEntries` 给出同样的图形条目。

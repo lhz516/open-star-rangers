@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
 ---
 
@@ -150,6 +150,39 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 - **时间与隐藏保护：** 接纳 [P3-02 技术决定 2](../02/spec.md#技术决定)，出发占位保持 tick 0，结束不补计时间。只省去媒体用时，不声称与开启原版过场时的生成原点相同；差异写入 G-02 并链接 Core 的[已知差异](../../../engineering/modules/core.md#已知差异)。出发期间发生 hidden/pagehide，或运行在隐藏状态创建时，锁存 `resumeRequired`；之后即使已经 visible，计时结束或跳过也只进入 paused（hidden），必须再显式继续，不能因自动倒计时绕过隐藏保护。
 - **本任务的保持接口：** 只支持创建时的 G-02/2，形状为 `{ gap: 'G-02/2', variant: 'solo' | 'wingman' }`，变体与有效运行配置一致。保持期间禁止游戏输入；所有者以绑定当前 ownerId、runId 的完成凭证结束一次。释放或重开使凭证失效，重复完成不重启模拟。介绍没有世界，只属于应用页面流程。
 - **下游衔接边界：** 当前 Core 没有运行中媒体请求或播放完成动作。P3-10/P3-11 须先按 [P3-02 扩展规则](../02/spec.md#扩展规则)确定规则状态、输出、继续条件及 replay 语义，再共同修订本 spec 的运行中衔接。这里不提供“每 tick 调外部检测器”的生产 API，不猜测停靠/救援应该在 tick 中间还是之后暂停，不以完成占位直接写 Core 状态。下游可复用占位显示与计时，而非尚未存在的规则闭环。
+
+### 运行中衔接（P3-10 的修订）
+
+本节由 P3-10 的子任务 08 加入（2026-10-14），定稿 [P3-10 spec 的运行中衔接](../10/spec.md#运行中衔接)，是 P3-10 关卡 D-01 中属于本 spec 的部分；Core 的输出见 [P3-02 的 CB-10、CB-13](../02/spec.md#p3-10-的契约修订d-01)。它只覆盖入港 G-02/3 与离港 G-02/4；P3-11 可复用这些设施，但其救援与终态的衔接须在自己的契约中核实，不由本节预先批准。前文（包括[会话](#会话)表中“`transition` 只用于初始出发”与[衔接占位](#衔接占位)的“下游衔接边界”）与本节不一致时以本节为准。
+
+- **Core 的输出：** 成功的停靠与每次离港在请求处理中发出 `transition` 事件 `{ type, tick, gap: 'G-02/3' | 'G-02/4' }`（P3-02 CB-13），每 tick 至多 2 个（CB-16），按发出次序。Core 不保存宿主等待状态，也不接受“占位结束”命令；停靠倒计时、无线电与服务照常按规则时间推进，跳过不能跳过它们。接纳 P3-02 技术决定 2：只省略媒体用时。
+- **Runtime 的帧屏障：**
+  - `frame()` 在每次成功 step 之后检查该 tick 的事件；含 `transition` 时，这个 tick 是本帧的最后一个，不再 step，余下的宿主时间丢弃（保持结束时重锚，不补跑）。该 tick 的读模型照常缓存。
+  - `FrameReport` 增加 `cut: 'transition' | null` 与 `transitions: readonly { gap: 'G-02/3' | 'G-02/4'; tick: number }[]`：本帧因衔接提前结束时 `cut` 为 `'transition'`，`transitions` 按事件次序列出该 tick 的全部 `transition` 事件（冻结的副本，由 Runtime 在 step 返回后直接从该 tick 的事件中取出，不经 Event Bus 订阅，监听器失败不影响它）；否则 `cut` 为 null、`transitions` 为空。`ticks` 为实际执行数，截断时 `capped` 为 false。它与 `stop: 'recording-capacity'` 不同：前者执行到衔接 tick 为止且运行仍健康，后者是录制容量拒绝了下一个 tick。
+  - 截断后、帧后派发之前先立起屏障：之后的 `setIntent` 与 `submitCommand`（包括帧后监听器的调用）以 `GameRuntimeError` 的新类别 `transition-hold` 拒绝，不改变意图、队列或 ID；`frame()` 同样拒绝。然后按原有规则派发本帧所有 tick 的事件与 `{ commandId }`，已执行命令的结果照常送达。屏障只由会话在通知边界之外调用新的生命周期操作 `releaseTransitionBarrier()` 解除；监听器不能重入 `clearIntent`、`resetClock` 或该操作（`reentrant-call`）。
+  - 同一帧中较早的 tick 故障时没有衔接；衔接 tick 之后不再 step，所以截断与录制容量停止不会出现在同一帧。
+- **会话的保持：**
+  - 帧消费者收到带 `cut` 的帧报告之后，会话在通知边界的安全点进入 `transition`（若同一通知中已排有 exit，或运行已故障，则按既有优先级处理，不进入保持）。进入时依次：`clearIntent()`，把返回的未执行 ID 经 `onCommandsCancelled` 以 `transition` 原因通知一次；折叠两帧 Render State（previous = current、alpha = 0）；发布 `report = null` 的静止帧与状态。保持期间没有 step、没有游戏输入、没有游戏 rAF。
+  - 状态的 `transition` 字段改为 `SessionTransition | null`：
+
+    ```ts
+    type SessionTransition = DepartureTransition | RunningTransition;   // DepartureTransition 为既有的 { gap: 'G-02/2', variant }
+    interface RunningTransition {
+      gap: 'G-02/3' | 'G-02/4';
+      transitionId: number;   // 会话控制器内单调递增，从 1 起，跨运行不复用；不进入 Core、录制或 replay
+      tick: number;           // 产生它的 Core tick
+      index: number;          // 在同一 tick 的序列中的序号，从 0 起
+      count: number;          // 该序列的长度，1 或 2
+    }
+    ```
+
+  - **有限序列：** 帧报告的 `transitions` 按次序组成一个序列，逐项保持，每项有自己的 `transitionId`。全部结束之前不恢复模拟。一个 tick 多于 2 个是违反 Core 契约，会话以故障结束，不截断。
+  - **完成：** 控制 `{ type: 'complete-transition', runId, transitionId }` 只在 `transition` 阶段、对当前运行的当前项生效一次；其他情形以 `invalid-state` 拒绝，不影响当前项。完成后转到下一项（新的 `transitionId`）；最后一项完成后：`releaseTransitionBarrier()`、`resetClock()`，页面可见且没有 `resumeRequired` 时为 running，否则为 paused（hidden）。不补跑。初始出发仍用既有的 `complete-departure`。
+  - **竞态：** 保持期间 hidden/pagehide 锁存 `resumeRequired`，之后即使已经 visible 且占位自然结束，也只进入 paused（hidden），须显式继续；用户暂停与任务菜单在保持期间不可用（同初始出发）。exit、dispose 与新运行使整个序列失效，旧凭证、旧计时器与重复 skip 都不能结束下一项或下一次运行的占位。故障按既有锁存优先：故障后不继续播放占位、也不重启模拟。保持结束后呈现 Core 的最终状态（基地页或飞行），不强制切换到与它矛盾的页面。
+- **任务所有者与界面：** 所有者为每一项显示可跳过的占位，沿用[衔接占位](#衔接占位)的页面、3,000 ms 可见时长与按钮/新的 Enter、Space、Esc 提前结束，以 `data-gap` 区分 G-02/3 与 G-02/4；计时器与完成请求绑定 ownerId、runId 与 transitionId。可见且用户未主动移焦时，最后一项结束后焦点回到游戏输入区；隐藏时不抢焦点。UI 桥接立即发布保持的进入、换项与结束。
+- **replay：** 录制只含 tick 输入；保持、`transitionId` 与取消的命令都不进入录制，所以 replay 与占位显示多久、是否跳过无关。
+- **不做：** 不在 tick 中间暂停；完成占位不写 Core 状态；不提供外部每 tick 检测器。
+- **验证：** 由 P3-10 的子任务 21 按 [P3-10 的 AC-13](../10/spec.md#验收标准) 以 Runtime、Session 与所有者的故障与竞态矩阵验证，23 在浏览器中验证；本 spec 的既有验收与历史证据不改写。
 
 ### Runtime
 
@@ -410,3 +443,5 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 **2026-10-10 修订（P3-05 的共享契约同步）：** 用户于 2026-10-10 在 P3-05 goal 执行中明确批准本修订（对“是否批准这项 P3-04 spec 修订？”选择“批准修订”）。修订由 [P3-05 子任务 09](../05/subtasks/09-p3-04-spec-sync.md) 起草，落实已批准的 [P3-05 spec](../05/spec.md) 中的焦点转移与输入控制端口，只涉及：[任务开始配置](#任务开始配置)“用户激活与焦点”的焦点例外（进入飞行与 Continue 成功后移入游戏输入区）；[会话](#会话)“控制通道”中 `p` 在被毁序列期间仍有效的 P3-05 决定；[任务菜单、暂停与退出](#任务菜单暂停与退出)中 `p`/Esc 经输入控制端口调用所有者动作；[消费者接线与释放](#消费者接线与释放)新增“输入控制端口”；[数据模型与契约](#数据模型与契约)新增对应一行。没有新增 S/AC 编号，其他范围、行为与验收要求不变；P3-04 goal 与子任务的历史证据不改写，这些新行为的实现与验证属于 P3-05。
 
 **2026-10-14 交接注记（P3-09 的 D-01）：** 不改变本 spec 的范围、行为、验收与历史证据。[P3-02 的 MW-01](../02/spec.md#mw-01-世界创建输入与静态规则数据)给 `createWorld`、录制入口与 `ReplayContent` 增加必需的 `mapGeometry` 输入（`data/hud/map-geometry`，[P3-03 修订 2](../03/spec.md#p3-09-的修订地图几何修订-2)）：会话组合与重试须从同一经验证的包中解码它，与其他规则输入一起传入；新切片定义版本使旧缓存须重新导入。地图打开时 Core 不暂停，`p` 与任务菜单仍只由 Runtime 控制；暂停、隐藏与菜单不取消已开始的 Warp，继续后接着同一 Warp，不补跑。实现与验证归 P3-09 的子任务 12、21、22。
+
+**2026-10-14 修订（P3-10 的 D-01：运行中衔接，依用户授权，由 P3-10 的子任务 08 定稿）：** 只新增“运行中衔接（P3-10 的修订）”一节与本条记录，并改了 front matter 的日期：Core 的 `transition` 事件、Runtime 的帧屏障与 `FrameReport` 的 `cut`、`transitions`、错误类别 `transition-hold` 与生命周期操作 `releaseTransitionBarrier()`、会话的 `RunningTransition` 与有限序列、`complete-transition` 控制与 owner/run/transition 凭证、竞态与 replay。授权出处为用户 2026-10-14 的原话“i authorize you to approve the recommended options for gates 07, 08 and 10”（[P3-10 goal 的审批](../10/goal.md#审批)），不涵盖冻结决定。所选方案：Core 照常完成整个 tick，Runtime 在该 tick 之后截断、先立屏障再派发，会话在通知边界外保持，每次衔接各有凭证，同 tick 的多个衔接为有限序列。被排除的方案：在 tick 中间暂停 Core（违背固定流水线与 replay 不含宿主等待）；由 Event Bus 订阅者在派发中调用 `clearIntent`/`resetClock`（重入生命周期）；只以 runId 作凭证（同一运行的第二次停靠会被旧凭证结束）；每 tick 至多一个衔接（丢弃原版可达的双重离港）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-10 的子任务 21 至 23。修订后未重跑 review-spec。

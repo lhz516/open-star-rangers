@@ -7,14 +7,19 @@ import type { MissionFlowPosition } from '../../app/mission/mission-flow.ts';
 import type { GameSessionPhase } from '../../app/session/session-errors.ts';
 import type { PlatformFamily } from '../../platform/browser/platform-family.ts';
 
-/** The two flow changes after which focus may move to the input zone: the departure ended, or Continue resumed the run. */
-export type InputFocusEntry = 'departure-ended' | 'menu-continued';
+/**
+ * The flow changes after which focus may move to the input zone: the departure ended, a running hold's last placeholder
+ * ended (P3-10), or Continue resumed the run.
+ */
+export type InputFocusEntry = 'departure-ended' | 'transition-ended' | 'menu-continued';
+
+const FOCUS_ENTRIES: Partial<Readonly<Record<MissionFlowPosition, InputFocusEntry>>> = Object.freeze({
+  departure: 'departure-ended', transition: 'transition-ended', menu: 'menu-continued',
+});
 
 /** The entry a change of flow position makes; null for every other change, and for no change. */
 export function inputFocusEntry(previous: MissionFlowPosition, next: MissionFlowPosition): InputFocusEntry | null {
-  if (next !== 'flight') return null;
-  if (previous === 'departure') return 'departure-ended';
-  return previous === 'menu' ? 'menu-continued' : null;
+  return next === 'flight' ? FOCUS_ENTRIES[previous] ?? null : null;
 }
 
 export interface ShellFocusFacts {

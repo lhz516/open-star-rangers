@@ -7,6 +7,7 @@ import { IMFAT_HEADER_BYTES } from '../archive/imfat-rules.ts';
 import type { DiscFile } from '../disc/disc-image.ts';
 import { syntheticAiSources } from '../formats/ai.test-support.ts';
 import { COMM_NOB } from '../formats/comm.test-support.ts';
+import { COMMFACE_NOB, idTable, syntheticCmov } from '../formats/comm-face.test-support.ts';
 import { CRAFT_NOB } from '../formats/craft.test-support.ts';
 import { DEBRIS_NOB } from '../formats/debris.test-support.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
@@ -17,17 +18,20 @@ import { UNLIMITED_BUDGET } from './conversion.test-support.ts';
 import { convertRuleData, ruleDataIncrement, type RuleDataConversion } from './convert-rule-data.ts';
 import { ruleDataMappings, type RuleDataSources } from './production-rule-data.ts';
 import {
-  AISTUFF_NOB, MARKER, SR_NOB, SYNTHETIC_RULE_DATA_IDS as IDS, ruleDataFiles, syntheticRuleData, type SyntheticRuleData,
+  AISTUFF_NOB, COMMFAC2_NOB, MARKER, SR_NOB, SYNTHETIC_RULE_DATA_IDS as IDS, ruleDataFiles, syntheticRuleData, type SyntheticRuleData,
 } from './rule-data.test-support.ts';
 
 // P3-03 AC-03 to AC-06 (conversion parts), AC-13, AC-14 (share metering) and AC-18: code-generated archives and an LE file
-// only. The mapping table orders the Assets ai-programs, base-repair-items, comm-menus, craft-info, debris-parameters and
-// flight-messages; within a mapping, entry parts come by type and ID, then regions by object and offset.
+// only; P3-10/29 adds the revision 2 comm-messages parts (P3-03 AC-22). The mapping table orders the Assets ai-programs,
+// base-repair-items, comm-menus, comm-messages, craft-info, debris-parameters and flight-messages; within a mapping, entry
+// parts come by type and ID, then regions by object and offset.
 
-const ROLES: readonly RuleDataRole[] = ['ai-programs', 'base-repair-items', 'comm-menus', 'craft-info', 'debris-parameters', 'flight-messages'];
+const ROLES: readonly RuleDataRole[] = ['ai-programs', 'base-repair-items', 'comm-menus', 'comm-messages', 'craft-info', 'debris-parameters', 'flight-messages'];
 const part = (mapping: number, index: number) => `sources.mappings[${mapping}].parts[${index}].alternatives[0]`;
 /** Synthetic AI entry IDs: AICO, the program table, then the content entries in first-reach order (ai.test-support.ts). */
 const AI = Object.freeze({ globals: 7_101, table: 7_103, entries: [7_201, 7_203, 7_205, 7_207, 7_209, 7_211] });
+/** The synthetic COMMFACE and name list IDs of the default fixture (comm-face.test-support.ts). */
+const FACE = syntheticRuleData().sources.commMessages;
 const HIDDEN = new RegExp(`${MARKER}|\\b(?:${[IDS.craftTable, IDS.craftInfo, IDS.otherCraftInfo, IDS.debris, IDS.baseRepair, ...AI.entries].join('|')})\\b`);
 
 interface Run {
@@ -104,7 +108,7 @@ function withEntryBytes(archive: string, id: number, length: number): SyntheticR
 }
 
 describe('rule-data conversion', () => {
-  it('converts the synthetic sources into the six rule-data payloads with fingerprinted, verified source states', async () => {
+  it('converts the synthetic sources into the seven rule-data payloads with fingerprinted, verified source states', async () => {
     const fixture = syntheticRuleData();
     const { source, result } = await convert({ fixture });
     const { partition } = result;
@@ -119,6 +123,7 @@ describe('rule-data conversion', () => {
         { id: 'data/ai-programs', state: 'verified', unknowns: ['U-001', 'U-022'] },
         { id: 'data/base-repair-items', state: 'verified', unknowns: ['U-030'] },
         { id: 'data/comm-menus', state: 'verified', unknowns: ['U-001'] },
+        { id: 'data/comm-messages', state: 'verified', unknowns: [] },
         { id: 'data/craft-info', state: 'verified', unknowns: ['U-001', 'U-008', 'U-026'] },
         { id: 'data/debris-parameters', state: 'verified', unknowns: ['U-001', 'U-027'] },
         { id: 'data/flight-messages', state: 'verified', unknowns: [] },
@@ -144,9 +149,11 @@ describe('rule-data conversion', () => {
       ...once(CRAFT_NOB, `TABL#${IDS.craftTable}`, `CINF#${IDS.craftInfo}`),
       ...once(DEBRIS_NOB, `TABL#${IDS.debris}`),
       ...once(AISTUFF_NOB, `AICO#${AI.globals}`, `TABL#${AI.table}`, ...AI.entries.map((id, index) => `${[0, 4].includes(index) ? 'DFPG' : 'TABL'}#${id}`)),
-      ...once(COMM_NOB, 'TABL#2003', 'TABL#2005', 'TABL#2007', 'TABL#2009', 'TABL#2013'),
+      ...once(COMM_NOB, 'TABL#2003', 'TABL#2005', 'TABL#2007', 'TABL#2009', 'TABL#2013', `TABL#${FACE.names2001}`, `TABL#${FACE.names2011}`),
       ...once(SR_NOB, `TABL#${IDS.baseRepair}`),
+      ...once(COMMFACE_NOB, ...[...FACE.faceTables, FACE.direct, ...FACE.subTables].map(id => `TABL#${id}`), ...FACE.messages.map(id => `CMOV#${id}`)),
     });
+    expect(Object.keys(await counts()).filter(label => label.startsWith(COMMFAC2_NOB))).toEqual([]);
   });
 
   it('leaves the sub-resource and region mappings declared until the conversion has parsed them', async () => {
@@ -157,6 +164,7 @@ describe('rule-data conversion', () => {
       'data/ai-programs': 'declared',
       'data/base-repair-items': 'declared',
       'data/comm-menus': 'verified',
+      'data/comm-messages': 'declared',
       'data/craft-info': 'declared',
       'data/debris-parameters': 'verified',
       'data/flight-messages': 'declared',
@@ -173,7 +181,7 @@ describe('rule-data conversion', () => {
 describe('rule-data ID chains and selections', () => {
   it('reports a CINF part other than the one the selected pair names as subresource-mismatch at the table part', async () => {
     expect(await failure({ sources: plan => ({ ...plan, craftInfo: { ...plan.craftInfo, craftInfo: IDS.otherCraftInfo } }) }))
-      .toEqual({ code: 'subresource-mismatch', location: part(3, 1), limit: null });
+      .toEqual({ code: 'subresource-mismatch', location: part(4, 1), limit: null });
   });
 
   it('reports a slice candidate slot outside TABL 4003 as subresource-mismatch', async () => {
@@ -208,16 +216,66 @@ describe('rule-data ID chains and selections', () => {
   });
 });
 
+describe('comm-messages ID chain', () => {
+  const at = (id: number, path = '') => `archive:/${COMMFACE_NOB}#${id}${path}`;
+  /** The fixture with the COMMFACE entry `id`'s block replaced. */
+  function withFaceEntry(id: number, block: { bytes: Uint8Array; relocations: number[] }): SyntheticRuleData {
+    const fixture = syntheticRuleData();
+    const entries = fixture.archives[COMMFACE_NOB];
+    const index = entries.findIndex(entry => entry.id === id);
+    entries[index] = { ...entries[index], data: block.bytes, relocations: block.relocations };
+    return fixture;
+  }
+
+  it.each<[string, (comm: RuleDataSources['commMessages']) => Partial<RuleDataSources['commMessages']>, string]>([
+    ['an extra sub-table part no face table names', comm => ({ subTables: [...comm.subTables, IDS.faceDecoyTable] }), at(IDS.faceDecoyTable)],
+    ['an extra CMOV part no table names', comm => ({ messages: [...comm.messages, IDS.faceDecoyMessage] }), at(IDS.faceDecoyMessage)],
+    ['a missing sub-table part', comm => ({ subTables: comm.subTables.slice(1) }), at(FACE.faceTables[0], '/faces[0]')],
+    ['a missing CMOV part', comm => ({ messages: comm.messages.slice(1) }), at(FACE.subTables[0], '/messages[0]')],
+  ])('reports %s as subresource-mismatch', async (_, change, location) => {
+    expect(await failure({ sources: plan => ({ ...plan, commMessages: { ...plan.commMessages, ...change(plan.commMessages) } }) }))
+      .toEqual({ code: 'subresource-mismatch', location, limit: null });
+  });
+
+  it('reports a table naming an entry outside the mapping as subresource-mismatch without reading it', async () => {
+    const fixture = withFaceEntry(FACE.direct, idTable([IDS.faceDecoyMessage]));
+    const { counts, conversion } = await start({ fixture });
+    expect(await sourceFailure(() => conversion, HIDDEN)).toEqual({ code: 'subresource-mismatch', location: at(FACE.direct, '/messages[0]'), limit: null });
+    expect(await counts()).not.toHaveProperty([`${COMMFACE_NOB} CMOV#${IDS.faceDecoyMessage}`]);
+  });
+
+  it.each<[string, (cmov: ReturnType<typeof syntheticCmov>) => void, string, string]>([
+    ['no frames', cmov => { new DataView(cmov.bytes.buffer).setInt32(8, 0, true); }, 'unsupported-payload', '/frames'],
+    ['a negative duration', cmov => { new DataView(cmov.bytes.buffer).setInt32(cmov.headers[2], -8, true); }, 'unsupported-payload', '/frames[2]/duration'],
+    ['frame records cut off', cmov => { new DataView(cmov.bytes.buffer).setUint32(4, cmov.bytes.length - 8, true); }, 'invalid-payload', '/frames'],
+  ])('rejects a CMOV with %s', async (_, corrupt, code, path) => {
+    const cmov = syntheticCmov([2, 3, 4]);
+    corrupt(cmov);
+    expect(await failure({ fixture: withFaceEntry(FACE.messages[1], cmov) })).toEqual({ code, location: at(FACE.messages[1], path), limit: null });
+  });
+
+  it('rejects a CMOV over the frame limit before reading its frames', async () => {
+    const cmov = syntheticCmov([2, 3, 4]);
+    new DataView(cmov.bytes.buffer).setInt32(8, 9, true);
+    expect(await failure({ fixture: withFaceEntry(FACE.messages[0], cmov) }))
+      .toEqual({ code: 'limit-exceeded', location: at(FACE.messages[0], '/frames'), limit: { name: 'payloadItems', limit: 8, observed: 9 } });
+  });
+});
+
 describe('rule-data structural limits', () => {
   it.each<[string, string, string, number, number, string]>([
-    ['TABL 4003', CRAFT_NOB, 'TABL', IDS.craftTable, 432, part(3, 1)],
-    ['the CINF', CRAFT_NOB, 'CINF', IDS.craftInfo, 65_536, part(3, 0)],
-    ['DEBRIS TABL 4501', DEBRIS_NOB, 'TABL', IDS.debris, 32_768, part(4, 0)],
+    ['TABL 4003', CRAFT_NOB, 'TABL', IDS.craftTable, 432, part(4, 1)],
+    ['the CINF', CRAFT_NOB, 'CINF', IDS.craftInfo, 65_536, part(4, 0)],
+    ['DEBRIS TABL 4501', DEBRIS_NOB, 'TABL', IDS.debris, 32_768, part(5, 0)],
     ['AICO', AISTUFF_NOB, 'AICO', AI.globals, 512, part(0, 0)],
     ['a DFPG', AISTUFF_NOB, 'DFPG', AI.entries[4], 512, part(0, 2)],
     ['the program table', AISTUFF_NOB, 'TABL', AI.table, 4_096, part(0, 3)],
     ['a script', AISTUFF_NOB, 'TABL', AI.entries[5], 4_096, part(0, 7)],
     ['a COMM menu table', COMM_NOB, 'TABL', 2_007, 512, part(2, 2)],
+    ['a COMM name list', COMM_NOB, 'TABL', FACE.names2011, 512, part(3, 1)],
+    // The name lists, then the CMOVs, then the COMMFACE TABLs by ID (31_101, 31_103, …).
+    ['a face table', COMMFACE_NOB, 'TABL', FACE.faceTables[0], 1_024, part(3, 2 + FACE.messages.length + 1)],
+    ['a CMOV', COMMFACE_NOB, 'CMOV', FACE.messages[0], 524_288, part(3, 2)],
     ['TABL 10165', SR_NOB, 'TABL', IDS.baseRepair, 262_144, part(1, 0)],
   ])('rejects %s one byte over its parser limit before reading it', async (_, archive, type, id, limit, location) => {
     const { counts, conversion } = await start({ fixture: withEntryBytes(archive, id, limit + 1) });
@@ -229,21 +287,21 @@ describe('rule-data structural limits', () => {
   it('accepts an entry at exactly its limit as far as the parser reads it', async () => {
     // TABL 10165 padded to its limit still has its records first, so the conversion succeeds.
     const { result } = await convert({ fixture: withEntryBytes(SR_NOB, IDS.baseRepair, 262_144) });
-    expect(result.partition.assets).toHaveLength(6);
+    expect(result.partition.assets).toHaveLength(7);
   });
 
   it('judges a flight message region longer than the text limit before reading it', async () => {
     const run: Run = {
       sources: plan => ({ ...plan, flightMessages: { ...plan.flightMessages, beacon: { ...plan.flightMessages.beacon, length: 130 } } }),
     };
-    expect(await failure(run)).toEqual({ code: 'limit-exceeded', location: part(5, 1), limit: { name: 'textBytes', limit: 128, observed: 129 } });
+    expect(await failure(run)).toEqual({ code: 'limit-exceeded', location: part(6, 1), limit: { name: 'textBytes', limit: 128, observed: 129 } });
   });
 
   it('rejects a flight message region that is not exactly its string and NUL', async () => {
     const run: Run = {
       sources: plan => ({ ...plan, flightMessages: { ...plan.flightMessages, speedAssistOn: { ...plan.flightMessages.speedAssistOn, length: 15 } } }),
     };
-    expect(await failure(run)).toEqual({ code: 'invalid-payload', location: part(5, 2), limit: null });
+    expect(await failure(run)).toEqual({ code: 'invalid-payload', location: part(6, 2), limit: null });
   });
 
   it('judges the built-in table and name regions by their lengths before reading them', async () => {
@@ -274,7 +332,7 @@ describe('rule-data budget', () => {
   it('charges one Asset and its payload bytes each, exactly the independently computed usage, on top of earlier usage', async () => {
     const alone = (await convert()).result;
     expect(alone.usage).toEqual(independentUsage(alone));
-    expect(alone.usage.assets).toBe(6);
+    expect(alone.usage.assets).toBe(7);
     const limits = addBudgets(prior, alone.usage);
     const { result } = await convert({ limits, usage: prior });
     expect(result.usage).toEqual(limits);
@@ -285,16 +343,16 @@ describe('rule-data budget', () => {
     const alone = (await convert()).result;
     const limits = addBudgets(prior, { ...alone.usage, payloadBytes: alone.usage.payloadBytes - 1 });
     expect(await failure({ limits, usage: prior })).toEqual({
-      code: 'budget-exceeded', location: part(5, 0), limit: { name: 'payloadBytes', limit: limits.payloadBytes, observed: limits.payloadBytes + 1 },
+      code: 'budget-exceeded', location: part(6, 0), limit: { name: 'payloadBytes', limit: limits.payloadBytes, observed: limits.payloadBytes + 1 },
     });
   });
 
   it('rejects the Asset one over the budget and leaves the caller\'s usage unchanged', async () => {
     const alone = (await convert()).result;
-    const limits = addBudgets(prior, { ...alone.usage, assets: 5 });
+    const limits = addBudgets(prior, { ...alone.usage, assets: 6 });
     const usage = { ...prior };
     expect(await failure({ limits, usage })).toEqual({
-      code: 'budget-exceeded', location: part(5, 0), limit: { name: 'assets', limit: 10, observed: 11 },
+      code: 'budget-exceeded', location: part(6, 0), limit: { name: 'assets', limit: 11, observed: 12 },
     });
     expect(usage).toEqual(prior);
     expect((await convert({ limits: addBudgets(prior, alone.usage), usage })).result.usage).toEqual(addBudgets(prior, alone.usage));

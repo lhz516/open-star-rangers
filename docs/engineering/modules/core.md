@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-006, B-007, B-008, B-009, U-008, U-009, U-011, U-021, U-026]
 ---
 
@@ -517,11 +517,11 @@ P3-06、P3-07 的命令在地图与 Warp 上下文中已是 `wrong-context`；`c
 
 ### 快照、录制、replay 与比较
 
-- **快照**（[snapshot.ts](../../../src/core/replay/snapshot.ts)）：`World.snapshot()` 返回深度冻结、脱离世界的 `GameSnapshot { format: 'osr-game-snapshot', version: 4, rulesVersion, state }`（`GAME_SNAPSHOT_FORMAT`、`GAME_SNAPSHOT_VERSION`；P3-06 由 1 递增为 2，P3-07 由 2 递增为 3，P3-09 由 3 递增为 4）。
-  - `SnapshotState` 是除静态 `setup`、`craftInfo` 与 `ruleData` 外的全部权威状态：`config`（完整内容身份、任务、setupHash、原始难度、组、槽位、僚机、种子、每 tick 单位）、`tick`、`clock`、`rngState`、`nextEntityId`、`entities`（按 ID，含每个实体的飞行状态：最高速度、两个计时、`inWarp`、移动块、AI 初态与编队；P3-07 的战斗状态与表现选择器；P3-09 的 `mapVisible` 与标记的战斗、移动块、表现与名称变体）、`kindOrder`（全种类遍历的 ID 次序）、`spawn`（`SnapshotSpawn`：缺省后的记录及其声明引用，即别名关系、僚机记录、编组的布局/计数/首成员、队列、开关、池计数）、`missionStatus`、`player`（含目标与控制状态，P3-07 的 `targeting`、战斗记录与驾驶舱显示状态，以及 P3-09 的 `map`、`savedLeftPage` 与 `warp`），以及 P3-09 的 `objectSets` 与 `mapIcons`（MW-14）。静态的 `WorldRuleData.map` 与 `startupRotations` 不进快照。名称占用由持有名称的实体表示。
+- **快照**（[snapshot.ts](../../../src/core/replay/snapshot.ts)）：`World.snapshot()` 返回深度冻结、脱离世界的 `GameSnapshot { format: 'osr-game-snapshot', version: 5, rulesVersion, state }`（`GAME_SNAPSHOT_FORMAT`、`GAME_SNAPSHOT_VERSION`；P3-06 由 1 递增为 2，P3-07 由 2 递增为 3，P3-09 与 P3-10 在各自分支上都由 3 递增为 4，二者合入 P3-08 的分支时为 5，见 [P3-02 的合并说明](../../plan/p3/02/spec.md#审批)）。
+  - `SnapshotState` 是除静态 `setup`、`craftInfo` 与 `ruleData` 外的全部权威状态：`config`（完整内容身份、任务、setupHash、原始难度、组、槽位、僚机、种子、每 tick 单位）、`tick`、`clock`、`rngState`、`nextEntityId`、`entities`（按 ID，含每个实体的飞行状态：最高速度、两个计时、`inWarp`、移动块、AI 初态与编队；P3-07 的战斗状态与表现选择器；P3-09 的 `mapVisible` 与标记的战斗、移动块、表现与名称变体）、`kindOrder`（全种类遍历的 ID 次序）、`spawn`（`SnapshotSpawn`：缺省后的记录及其声明引用，即别名关系、僚机记录、编组的布局/计数/首成员、队列、开关、池计数）、`missionStatus`、`player`（含目标与控制状态，P3-07 的 `targeting`、战斗记录与驾驶舱显示状态，以及 P3-09 的 `map`、`savedLeftPage` 与 `warp`），以及 P3-09 的 `objectSets` 与 `mapIcons`（MW-14）；P3-10 另加 `flow`、玩家的 `dockingObject`、`communications` 与 `docking`、实体的 `communications` 与 `ai.pendingCommand`，以及世界的 `communications`、`ai`（友伤累计）与 `baseService`（CB-16）。静态的 `WorldRuleData.map` 与 `startupRotations` 不进快照。名称占用由持有名称的实体表示。
   - `snapshotText(snapshot)` 与 `snapshotHash(snapshot)`：规范文本按每个类型的显式成员写入器输出，实体按 ID 排序，其余列表保持次序；状态哈希是整个快照（含版本）规范文本的 fnv1a64。写入器的映射类型要求 `SnapshotState` 等类型的每个成员恰好写一次，因此给世界状态或实体加字段而不更新写入器时 `pnpm typecheck` 失败。移动块每个变体一个写入器，战斗状态、表现选择器、碎片到期等联合同样按判别字段分派；增加变体的任务同时加入分派。
   - 快照是诊断与检查点的来源，不是存档；Core 不提供从快照恢复世界的接口（P4）。`takeSnapshot` 为内部函数。
-- **`RULES_VERSION`**（[rules-version.ts](../../../src/core/replay/rules-version.ts)，当前为 5：P3-06 由 1 递增为 2，P3-07 由 2 递增为 3，P3-05 合入主线时由 3 递增为 4，P3-09 由 4 递增为 5）：由代码持有，快照与录制只声明制作时的版本，replay 只接受当前版本。凡同一配置、内容与 tick 输入可能得到不同结果的修改都必须递增它：流水线的阶段或次序、数值语义、RNG 抽取或其次序、动作的解释、规则发出的事件或保存的状态。快照或 replay 记录的结构变化递增各自的格式版本；两者都变时都递增。旧组合一律拒绝，不做迁移。P3-06 对规则版本与快照格式版本各递增一次，相对其合入基线计，与并行任务合并时相对主线复核（[P3-06 的 D-07](../../plan/p3/06/spec.md#对-p3-02-契约的增量)）。P3-07 按 CR-14 同样各递增一次（P3-07/11 由首个实现共享形状的子任务递增，此后该 goal 内的规则变化沿用这一版本）；P3-07 合入主线时相对主线复核。P3-09 按 MW-14 由首个实现共享形状的子任务（P3-09/12）把规则版本与快照格式版本各递增一次，P3-09/30 的方向表修复同属这一规则版本；合入主线时同样相对主线复核。
+- **`RULES_VERSION`**（[rules-version.ts](../../../src/core/replay/rules-version.ts)，当前为 6：P3-06 由 1 递增为 2，P3-07 由 2 递增为 3，P3-05 合入主线时由 3 递增为 4，P3-09 与 P3-10 在各自分支上都由 4 递增为 5，二者合入 P3-08 的分支时为 6）：由代码持有，快照与录制只声明制作时的版本，replay 只接受当前版本。凡同一配置、内容与 tick 输入可能得到不同结果的修改都必须递增它：流水线的阶段或次序、数值语义、RNG 抽取或其次序、动作的解释、规则发出的事件或保存的状态。快照或 replay 记录的结构变化递增各自的格式版本；两者都变时都递增。旧组合一律拒绝，不做迁移。P3-06 对规则版本与快照格式版本各递增一次，相对其合入基线计，与并行任务合并时相对主线复核（[P3-06 的 D-07](../../plan/p3/06/spec.md#对-p3-02-契约的增量)）。P3-07 按 CR-14 同样各递增一次（P3-07/11 由首个实现共享形状的子任务递增，此后该 goal 内的规则变化沿用这一版本）；P3-07 合入主线时相对主线复核。P3-09 按 MW-14 由首个实现共享形状的子任务（P3-09/12）把规则版本与快照格式版本各递增一次，P3-09/30 的方向表修复同属这一规则版本；合入主线时同样相对主线复核。
 - **录制**（[recording.ts](../../../src/core/replay/recording.ts)）：`createRecordingSession(input, { producer, checkpointInterval })` 与 `createWorld` 一样创建世界（输入同样包含 `craftInfo` 与七项规则数据输入），返回同时是 `World` 的 `RecordingSession`。
   - 会话记录每个成功 tick 实际交给 `step` 的规范输入、全部事件与检查点：tick 0、`checkpointInterval` 的每个正整数倍，以及导出时补上的最后一个 tick（去重）。`producer` 为 1–128（`PRODUCER_MAX_LENGTH`）个 UTF-16 码元的字符串，只作诊断；间隔为正安全整数。
   - `exportRecording()` 返回深度冻结、脱离的 `Recording { record, result }`：`ReplayRecord { format: 'osr-game-replay', version: 2, rulesVersion, producer, content, mission, setupHash, run, checkpointInterval, ticks }`（`ticks[k]` 是 tick k + 1 的输入，稠密数组，`run` 是 `EffectiveRunConfig`）与 `ReplayResult { events, checkpoints, finalTick }`（`ReplayCheckpoint { tick, hash }`）。之后的 tick 不改变已导出的数据。

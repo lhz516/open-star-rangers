@@ -6,7 +6,7 @@ const names = Object.keys(CORE_LIMITS) as CoreLimitName[];
 describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
   it('covers every budget the spec names with a frozen positive safe integer', () => {
     expect(names).toEqual([
-      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick', 'requestsPerTick',
+      'commandsPerTick', 'entities', 'spawnExpansion', 'eventsPerTick', 'requestsPerTick', 'radioQueueItems',
       'recordedTicks', 'recordedCommands', 'recordedEvents', 'recordedCheckpoints', 'canonicalTextLength',
     ]);
     expect(Object.isFrozen(CORE_LIMITS)).toBe(true);
@@ -14,7 +14,9 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
   });
 
   it('keeps the relations its documented basis relies on', () => {
-    const { commandsPerTick, entities, spawnExpansion, eventsPerTick, requestsPerTick, recordedTicks, recordedCommands, recordedEvents, recordedCheckpoints } = CORE_LIMITS;
+    const {
+      commandsPerTick, entities, spawnExpansion, eventsPerTick, requestsPerTick, radioQueueItems, recordedTicks, recordedCommands, recordedEvents, recordedCheckpoints,
+    } = CORE_LIMITS;
     // P3-02 and P3-06's derived bounds of one tick at the entity limit (docs/plan/p3/06/spec.md, 容量核算).
     const events = commandsPerTick + commandsPerTick + 1 + spawnExpansion + entities;
     const requests = entities + spawnExpansion + commandsPerTick + 2;
@@ -41,6 +43,23 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     expect([eventsPerTick, requestsPerTick]).toEqual([32_768, 16_384]);
     expect(eventsPerTick).toBeGreaterThan(3.9 * (combatEvents + otherEvents + mapWarpEvents));
     expect(requestsPerTick).toBeGreaterThan(4.5 * (combatRequests + mapWarpRequests));
+    // P3-10's additions at the same slice (CB-16): radio-queued, five per-command events, page changes without a command,
+    // four events at most once and four at most twice; deliveries, a dock, two launches and base keys.
+    const communicationsEvents = 300 + 5 * commandsPerTick + 8 + 4 * 1 + 4 * 2;
+    const communicationsRequests = commandsPerTick + 1 + 2 + commandsPerTick;
+    expect([communicationsEvents, combatEvents + otherEvents + communicationsEvents]).toEqual([640, 8900]);
+    expect(combatRequests + communicationsRequests).toBe(3654);
+    // P3-09's and P3-10's additions together.
+    const allEvents = combatEvents + otherEvents + mapWarpEvents + communicationsEvents;
+    const allRequests = combatRequests + mapWarpRequests + communicationsRequests;
+    expect([allEvents, allRequests]).toEqual([8968, 3719]);
+    expect(eventsPerTick).toBeGreaterThan(3.6 * allEvents);
+    expect(requestsPerTick).toBeGreaterThan(4.4 * allRequests);
+    // The radio queue's runaway threshold: at about 0.9 items a second of legal input it takes over an hour, longer
+    // than a recording at the default 32 ticks a second.
+    expect(radioQueueItems).toBe(4096);
+    expect(radioQueueItems / 0.9).toBeGreaterThan(3600);
+    expect(radioQueueItems / 0.9).toBeGreaterThan(recordedTicks / 32);
     expect(spawnExpansion).toBeLessThanOrEqual(entities);
     expect(recordedCheckpoints).toBe(recordedTicks + 1);
     expect(recordedCommands).toBeGreaterThanOrEqual(recordedTicks);

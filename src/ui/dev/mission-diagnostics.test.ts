@@ -10,9 +10,9 @@ import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-su
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
 /**
- * Results of the drafted commands that P3-06's and P3-07's rules judge in flight with an active player and no target:
- * a throttle step, a preset, a digit without effect in flight, a manual match that needs a target, P3-07's and P3-09's
- * below. Every other one is not implemented yet.
+ * Results of the drafted commands that P3-06's, P3-07's, P3-09's and P3-10's rules judge in flight with an active
+ * player and no target: a throttle step, a preset, a digit without a menu, a manual match that needs a target, and the
+ * others below. Every other one is not implemented yet.
  */
 const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
   // P3-07: the gun starts without charge; target selection, weapon selection, and the energy and damage report pages.
@@ -24,11 +24,15 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   target: ['accepted', null],
   'cycle-main-weapon': ['accepted', null],
   'select-missile': ['accepted', null],
-  // P3-09: toggle-map opens the map, so the energy and damage report commands after it are judged in the map context,
-  // where map-point is accepted; the drafted hover selects no Warp destination.
+  // P3-10: navigate-selection belongs to the base. P3-09: toggle-map opens the map, so the commands after it are judged
+  // in the map context, where map-point is accepted and the drafted hover selects no Warp destination; there P3-10's
+  // communications and launch keys, and the energy and damage report keys, are wrong-context (MW-04, CB-07).
+  'navigate-selection': ['ignored', 'wrong-context'],
   'toggle-map': ['accepted', null],
   'map-point': ['accepted', null],
   'request-warp': ['ignored', 'no-destination'],
+  communications: ['ignored', 'wrong-context'],
+  launch: ['ignored', 'wrong-context'],
   energy: ['ignored', 'wrong-context'],
   'damage-report': ['ignored', 'wrong-context'],
 };
@@ -91,14 +95,14 @@ describe('mission diagnostics', () => {
     expect(setup.state()).toMatchObject({ runId: 1, phase: 'running' });
     const next = frames(setup);
     next();
-    const id = submit(setup, { type: 'launch' });
+    const id = submit(setup, { type: 'cockpit-front' });
     next(3, 200);
     const { log } = setup.state();
     expect(log.total).toBe(probe.events.length);
     expect(log.entries.map(({ tick, type, commandId }) => ({ tick, type, commandId })))
       .toEqual(probe.events.map(({ event, commandId }) => ({ tick: event.tick, type: event.type, commandId })));
     expect(log.entries.find((entry) => entry.commandId === id)?.fields).toEqual([
-      ['commandIndex', 0], ['commandType', 'launch'], ['outcome', 'rejected'], ['reason', 'not-implemented'],
+      ['commandIndex', 0], ['commandType', 'cockpit-front'], ['outcome', 'rejected'], ['reason', 'not-implemented'],
     ]);
     expect(log.entries.filter((entry) => entry.type === 'object-instantiated').map((entry) => entry.fields.find(([name]) => name === 'source')?.[1]))
       .toContain('wingman#0');
@@ -248,10 +252,10 @@ describe('mission diagnostics', () => {
     toFlight(setup.owner);
     const next = frames(setup);
     next();
-    for (let index = 0; index < 10; index++) submit(setup, { type: 'launch' });
+    for (let index = 0; index < 10; index++) submit(setup, { type: 'cockpit-front' });
     next();
     expect(setup.ui().store.reader.getState().recentResults.map((result) => result.commandId)).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-    submit(setup, { type: 'launch' });
+    submit(setup, { type: 'cockpit-front' });
     next();
     expect(setup.ui().store.reader.getState().recentResults.map((result) => result.commandId)).toEqual(Array.from({ length: 10 }, (_, index) => index + 2));
   });
@@ -328,7 +332,7 @@ describe('mission diagnostics', () => {
     toFlight(setup.owner);
     const next = frames(setup);
     next();
-    submit(setup, { type: 'launch' });
+    submit(setup, { type: 'cockpit-front' });
     next(1, 200);
     setup.diagnostics.refreshSnapshot();
     setup.saves.clickFailure = new Error('click');

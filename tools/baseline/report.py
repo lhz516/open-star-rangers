@@ -96,10 +96,12 @@ def _check_condition(record, only_if):
 
 
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
-                 cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None):
+                 cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None, probes=None):
     """The report dict. `run_end` None marks an unfinished run (the state a report is first written in). `stimuli`,
     the records of the stimuli applied or attempted, is reported only for a recipe that declares stimuli;
-    `skipped_hits`, the breakpoint hits stop conditions rejected, only for a recipe with a stop condition."""
+    `skipped_hits`, the breakpoint hits stop conditions or reading tests rejected, only for a recipe with either;
+    `probes`, the hits whose readings `until` stops tested, only for a recipe with an `until` stop. A stimulus whose
+    `if` was false in this run (`condition-false`) counts as done in its place: the recipe declared that branch."""
     if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("report-invalid", "runId")
     tool = _section(tool, "tool")
@@ -138,15 +140,20 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         "requiredQualified": sum(sample.qualified and (sample.pause, sample.field) in required for sample in samples),
     }
     extra = {}
-    if any(pause.stop.when is not None for pause in recipe.pauses):
+    if any(pause.stop.when is not None or pause.stop.until is not None for pause in recipe.pauses):
         if type(skipped_hits) is not int or skipped_hits < 0:
             raise BaselineError("report-invalid", "skippedHits")
         counts["skippedHits"] = skipped_hits
+    if any(pause.stop.until is not None for pause in recipe.pauses):
+        if type(probes) is not int or probes < 0:
+            raise BaselineError("report-invalid", "probes")
+        counts["probes"] = probes
     if recipe.stimuli:
         records = _plain(list(stimuli or ()), "stimuli")
         if any(type(record) is not dict for record in records):
             raise BaselineError("report-invalid", "stimuli")
-        settled = [record for record in records if record.get("status") in ("applied", "not-selected")]
+        settled = [record for record in records
+                   if record.get("status") in ("applied", "not-selected", "condition-false")]
         if [(record.get("id"), record.get("pause")) for record in settled] != \
                 [(stimulus.id, stimulus.pause) for stimulus in recipe.stimuli]:
             reasons.add("stimuli-missing")
@@ -155,8 +162,11 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
             _check_condition(record, conditions.get((record.get("id"), record.get("pause"))))
         applied = sum(record["status"] == "applied" for record in settled)
         counts.update(stimuliPlanned=len(recipe.stimuli), stimuliApplied=applied)
-        if len(settled) > applied:
-            counts["stimuliNotSelected"] = len(settled) - applied
+        not_selected = sum(record["status"] == "not-selected" for record in settled)
+        if not_selected:
+            counts["stimuliNotSelected"] = not_selected
+        if any(stimulus.test is not None for stimulus in recipe.stimuli):
+            counts["stimuliConditionFalse"] = sum(record["status"] == "condition-false" for record in settled)
         extra["stimuli"] = records
 
     integrity, integrity_passed = _passed(integrity, "integrity")
