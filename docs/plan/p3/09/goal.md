@@ -114,8 +114,8 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 | [31-docs-follow-up.md](./subtasks/31-docs-follow-up.md) | 22, 26 | completed |
 | [32-sector-boundary-test-wording.md](./subtasks/32-sector-boundary-test-wording.md) | 29 | completed |
 | [33-workers-doc-metadata.md](./subtasks/33-workers-doc-metadata.md) | 11 | completed |
-| [34-e2e-import-save-race.md](./subtasks/34-e2e-import-save-race.md) | 22 | in-progress |
-| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34 | pending |
+| [34-e2e-import-save-race.md](./subtasks/34-e2e-import-save-race.md) | 22 | completed |
+| [27-final-alignment.md](./subtasks/27-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34 | in-progress |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -156,6 +156,7 @@ related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-006, U-007,
 - **2026-10-14 — 25 已集成：** R-13 至 R-16 判为一致（只对固定 cycles 40000 成立，U-021 未冻结，不豁免）。单次转移层对 24 的原版前态逐位一致（含两个完整逐帧窗口的 774 个 pass）；连续层在真实内容上 4 次正式 `World.step` 运行中，16 次 Warp 每 tick 等于 Φ(S_new, 2)，地图期间推进与可见判定全部一致；10 个合格原版窗口均配对成功。U-025 改为已确认，U-026 改为已确认（E = 0 的 x87 残留按 MW-12 差异 4）。未经运行对照而只由代码加 Node 覆盖的分支在 B-010 中逐项披露。
 - **2026-10-14 — 27 首次核对：** 覆盖、关卡时序（D-01 早于 11；D-02 早于 24；两次 D-02 补定与 MW-04/MW-11 补定都早于依赖它们的工作）、Core 纯度、目标/雷达/Render State 无迷雾过滤、候选 `src/` 树（25 用的 `6c5edd70` 即当前树；23 之后 `src/` 只有 UI、测试与一处注释）均通过；`vitest run src/core src/content src/original-data tools/engineering-boundaries.test.ts` 194 文件 6330 通过；mission-flow 两个 e2e 文件单独运行 11/11 通过（完整套件一次因负载在任务启动处超时 225/226，单独重跑通过）。唯一缺口：`docs/engineering/modules/workers.md` 被 11 修改而 `updated:` 未更新。27 回到 pending，新增修复 33。
 - **2026-10-14 — 27 第二次核对：** 33 已修复元数据。完整 `pnpm test:e2e` 两次运行都只有 22 的“a real hidden page during a Warp …”在 `Startable mission` 处超时（225/226），单独运行通过；该用例导入后未等待“Saved in this browser”就返回菜单（`keyboard-input` 的同类流程会等待），判为测试竞态而非负载。27 回到 pending，新增修复 34。
+- **2026-10-14 — 34 已集成：** 原因确认为布局竞态而非负载：保存未完成时导入页显示禁用的 “Save again”，保存完成后 “Return to menu” 上移约 81 px，CDP 坐标点击落空。该用例改为同时等待 “Saved in this browser”，leave-confirmation 用例的同类潜在竞态一并修复；不放宽断言、不改超时。worker 的完整 `pnpm test:e2e` 226/226 通过。
 
 ## 审批
 

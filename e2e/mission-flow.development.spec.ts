@@ -352,6 +352,8 @@ const downloadResources = (page: Page) => page.evaluate(() => ({
 test('the native leave confirmation shows only while a run exists; dismissing it keeps the run, whose downloaded recording replays in Node', async ({ page, browser }, testInfo) => {
   await page.addInitScript(installObjectUrlProbe);
   await importScenario(page, 'mission-startable', [LEAVE_SEED]);
+  // The reloads below restore this save, so it must have finished first.
+  await expect(page.getByTestId('resource-statuses')).toContainText(/Saved in this browser \(saved in /);
   expect(await leaveGuards(page)).toBe(0);
 
   // The introduction and the start page hold no run: a real reload asks nothing, after a trusted click on the entry.
@@ -840,7 +842,10 @@ test('a real hidden page during a Warp pauses it; after visible and an explicit 
     await until(() => native.evaluate(() => document.querySelector('#import-files') !== null), Boolean, 'Import page');
     await native.setInputFiles('#import-files', paths);
     await native.press('Start import');
-    await until(() => native.evaluate(() => document.querySelector('[data-testid="import-statuses"]')?.textContent ?? ''), text => text.includes('Mission loads into Core'), 'Synthetic mission import', 60_000);
+    // Until the save finishes, a disabled "Save again" sits above "Return to menu"; its removal would move the button
+    // between the press's settled position and its click.
+    await until(() => native.evaluate(() => document.querySelector('[data-testid="import-statuses"]')?.textContent ?? ''),
+      text => text.includes('Mission loads into Core') && text.includes('Saved in this browser'), 'Synthetic mission import', 60_000);
     await native.press('Return to menu');
     await until(() => native.evaluate(() => document.querySelector('button[data-eligibility]')?.getAttribute('data-eligibility')),
       eligibility => eligibility === 'eligible', 'Startable mission');
