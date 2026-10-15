@@ -38,6 +38,7 @@ updated: 2026-10-14
 - `src/core/systems/docking*.ts`：停靠时对完全修理的调用。
 - `src/core/systems/commands*.ts`：基地上下文 `navigate-selection`、`confirm-selection` 投递 base-navigate、base-confirm（CB-07 §3；13 只给出门禁）。
 - `src/core/systems/area.ts`、`src/core/systems/area.test.ts`：停放僚机到达基地的限频完全修理（RX6、CB-12；15 留空）。
+- `src/core/systems/communications.ts`（仅注释）、`src/core/systems/communications.test.ts`、`src/core/systems/flight-control.test.ts`、`src/core/systems/displays.test.ts`、`src/core/systems/targeting.test.ts`、`src/core/systems/weapons.test.ts`：视角 6 需要基地服务状态（CB-11）与基地按键已接受后的测试前置与期望。
 
 ## 验收标准
 
