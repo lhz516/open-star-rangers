@@ -94,8 +94,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
-| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | pending |
-| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | pending |
+| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | in-progress |
+| [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | in-progress |
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | pending |
 | [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | pending |
 | [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | pending |
