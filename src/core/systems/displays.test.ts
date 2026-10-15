@@ -86,6 +86,20 @@ describe('the frame-end cockpit display step (CR-10)', () => {
   });
 });
 
+describe('the tail warning (P3-10 CB-09 item 2; cockpit.md, type 9)', () => {
+  it.each([0x0c, 0x0d, 1, 6])('checks in view mode %i: due again 0x80 units later with neither warning lit', (viewMode) => {
+    const [state] = displayState(viewMode);
+    constructWorld(state).step(tickInput());
+    expect(state.communications.tailCheck).toEqual({ dueClock: 2 + 0x80, attackerOnTail: false, missileIncoming: false });
+  });
+
+  it.each([0, 2, 8, 0x0e, 0x11, 0x12, 0x13])('does not check in view mode %i', (viewMode) => {
+    const [state] = displayState(viewMode);
+    constructWorld(state).step(tickInput());
+    expect(state.communications.tailCheck).toEqual({ dueClock: 0, attackerOnTail: false, missileIncoming: false });
+  });
+});
+
 describe('the status display (CR-10, D9)', () => {
   it.each([
     ['the energy page', (state: WorldState) => void (state.player.leftDisplay.page = 1)],

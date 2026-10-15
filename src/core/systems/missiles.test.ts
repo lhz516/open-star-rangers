@@ -480,13 +480,17 @@ describe('the expire request (0x2b408)', () => {
 
   it('leaves a victim of a kind in 0xf9c7c unshaken and draws only for its damage', () => {
     const state = world();
-    state.rngState = seedWhere(1, ([value]) => (value & 0xff) >= 0x32);
+    // Without a shooter the attacker is the hostile mask 0x93780, so P3-10's 0x3c208 first draws the active kind-3
+    // (0x87c) victim's face at its first speech (rand % 3, executable RX9 row 4), and stamps it; the missile's forced
+    // roll then takes the second draw.
+    state.rngState = seedWhere(2, ([, forced]) => (forced & 0xff) >= 0x32);
     const seed = state.rngState;
     const victim = craftAt(state, EXEMPT, at(0, 0, 1));
     const before = structuredClone(blockOf(victim));
     const entity = missileAt(state, UNGUIDED, at(0, 0, 0), { detonate: true, guidance: guidanceOf({ phase: 4 }) });
     expect(emitted(state, expire(entity))).toMatchObject([{ type: 'missile-ended' }, { type: 'hit', victimEntityId: victim.id, damage: DAMAGE }]);
     expect(blockOf(victim)).toEqual(before);
-    expect(state.rngState).toBe(rngStateAfter(seed, 1));
+    expect(victim.communications.face).toBe(randValues(seed, 1)[0] % 3);
+    expect(state.rngState).toBe(rngStateAfter(seed, 2));
   });
 });

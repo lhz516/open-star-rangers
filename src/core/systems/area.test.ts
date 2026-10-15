@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
+import { readTickInput } from '../contracts/tick-input.ts';
 import { activeAreaCentre } from '../rules/active-area.ts';
 import { randomDirection } from '../rules/random-direction.ts';
 import { randValues, rngStateAfter, scriptedRand } from '../rules/rand.test-support.ts';
@@ -10,6 +11,7 @@ import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, stillEntityInit, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
+import { registerTick, type TickContext } from './pipeline.ts';
 
 // Expectations are written out from docs/original/formats/executable.md, world boundary, active area, parking and
 // autopilot (P3-06/04) and docs/plan/p3/06/spec.md, 活动区域、停放与世界边界: radius 7500 and the inset world rectangle
@@ -48,13 +50,21 @@ const predicted = (state: WorldState, count: number): number[] => randValues(sta
 /** The world RNG state after `count` more draws. */
 const stateAfter = (state: WorldState, count: number) => rngStateAfter(state.rngState, count);
 
+/** A context for the tick at `clock` (tick clock ÷ 2) after its clock stage, the world's tick and clock set to it. */
+function contextAt(state: WorldState, clock: number): TickContext {
+  state.clock = clock - 2;
+  state.tick = Math.floor(clock / 2) - 1;
+  const context = registerTick(state, readTickInput(tickInput()));
+  state.clock = clock;
+  state.tick = context.time.tick;
+  return context;
+}
+
 /** Runs the parked update stage at `clock`, without P3-07's engagement, and returns its events. */
 function parkedUpdate(state: WorldState, clock: number): ObjectLeftWorldEvent[] {
-  const events: ObjectLeftWorldEvent[] = [];
-  state.clock = clock;
-  state.tick = Math.floor(clock / 2);
-  updateParked(state, (event) => events.push(event), () => {});
-  return events;
+  const context = contextAt(state, clock);
+  updateParked(context, () => {});
+  return context.events.filter((event): event is ObjectLeftWorldEvent => event.type === 'object-left-world');
 }
 
 /** One parked update at clock 200, when every entity last updated at 0 is due. */
@@ -324,8 +334,7 @@ describe('parked update 0x2f1b0: selection and cadence (P3-06 AC-06)', () => {
     parked(state, 7, { warpClock: 50, inWarp: true });
     const start = state.rngState;
     const calls: [number, number, typeof start][] = [];
-    state.clock = 200;
-    updateParked(state, () => {}, (entity, elapsed) => {
+    updateParked(contextAt(state, 200), (entity, elapsed) => {
       calls.push([entity.id, elapsed, state.rngState]);
       // A stand-in engagement that draws once from the world RNG.
       state.rngState = rngStateAfter(state.rngState, 1);
@@ -597,5 +606,41 @@ describe('active objects and the world rectangle (P3-06 AC-06, M-07)', () => {
     expect([craft.activity, craft.state, craft.placementSerial]).toEqual(['active', 'active', 0]);
     expect(craft.position).not.toEqual(before);
     expect(Math.abs(craft.position.x)).toBeGreaterThan(45000);
+  });
+});
+
+describe('the parked enemy report 0x3c3b0 after the travel (P3-10 CB-12, RX6)', () => {
+  // A hostile of kind 7 travels from x −1000 toward x 4000: its due check and six jitter draws, landing near x −800,
+  // where an active base (kind 17, radius 250) stands. The base's first speech draws its face (rand % 5).
+  function travelScene(kindBit: number, withPlayer: boolean) {
+    const state = worldWith((info) => void (info.craft[kindBit].atA4 = 0));
+    if (withPlayer) addPlayer(state);
+    const mover = parked(state, kindBit, { position: { x: -1000, y: 50, z: 7 } });
+    mover.ai.goal = { x: 4000, y: 50, z: 7 };
+    const base = state.entities.allocate(entityInit(17, { position: { x: -800, y: 50, z: 7 } }));
+    base.state = 'active';
+    return { state, base };
+  }
+
+  it('reports a hostile that moved inside the active area before its engagement: the base stamps and draws its face', () => {
+    const { state, base } = travelScene(7, true);
+    const draws = predicted(state, 8);
+    const start = state.rngState;
+    const engaged: (typeof start)[] = [];
+    const context = contextAt(state, 200);
+    updateParked(context, () => void engaged.push(state.rngState));
+    expect(base.communications).toEqual({ face: draws[7] % 5, threatStamp: 200 });
+    expect(engaged).toEqual([rngStateAfter(start, 8)]);
+    expect(state.rngState).toEqual(rngStateAfter(start, 8));
+  });
+
+  it('does not report outside the active area (no player) or for a mover outside the hostile set', () => {
+    for (const [kindBit, withPlayer] of [[7, false], [2, true]] as const) {
+      const { state, base } = travelScene(kindBit, withPlayer);
+      const expected = stateAfter(state, 7);
+      due(state);
+      expect(base.communications).toEqual({ face: null, threatStamp: null });
+      expect(state.rngState).toEqual(expected);
+    }
   });
 });

@@ -385,7 +385,7 @@ function handleRequest(context: TickContext, request: Request): void {
     return;
   }
   if (request.type === 'spawn') {
-    dispatchSpawn(world, request, (event) => emit(context, event));
+    dispatchSpawn(context, request);
     return;
   }
   // The launch's constructors themselves handle a shooter that is no longer valid (W11).
@@ -449,7 +449,7 @@ function move(context: TickContext): void {
  * parked engagement after each object's parked travel (CR-09).
  */
 function updateParkedObjects(context: TickContext): void {
-  updateParked(context.world, (event) => emit(context, event), (entity, elapsed) => engageParked(context, entity, elapsed));
+  updateParked(context, (entity, elapsed) => engageParked(context, entity, elapsed));
 }
 
 /** Stage `area-check` (`0x3a468`, area.ts). */

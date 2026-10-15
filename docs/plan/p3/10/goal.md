@@ -99,7 +99,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | completed |
 | [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | completed |
 | [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | completed |
-| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | in-progress |
+| [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | completed |
 | [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | completed |
 | [17-base-service.md](./subtasks/17-base-service.md) | 05, 16 | pending |
 | [18-launch-docked-systems.md](./subtasks/18-launch-docked-systems.md) | 04, 17 | pending |
@@ -153,6 +153,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — `0x3bed0` 无命令分支的归属（14 的问题，协调者选推荐方案 A）：** 14 实现 `0x3bed0` 的其余部分与 RQ2 威胁检测；无命令分支的威胁再通报（RQ1，最后调用 `0x3c208` 第 3 步）归 15，15 的写入范围加入 `base-response*.ts`。
 
 - **2026-10-14 — 僚机到达的完全修理归 17（15 的问题，协调者选推荐方案 A）：** `limits.wingmanArrivalRepair` 与 `fullRepair` 的调用由 17 在 `area.ts` 中接入，不建桩、不重复实现；15 做其余反应与报告。
+
+- **2026-10-14 — 15 完成：** P3-08 交付之前，尾随检查的攻击者条件恒为假（CB-17 决定 11）：`checkTail` 不遍历种类 0x780，`warnTail`（`0x38c30`）已导出并单独测试，遍历与调用由 P3-08 加入。`limits.wingmanArrivalRepair` 在 17 之前不写。负载下 `pnpm check` 的 5 秒超时以 `vitest --testTimeout=60000` 全量通过为准。
 
 ## 审批
 

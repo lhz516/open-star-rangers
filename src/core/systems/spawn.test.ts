@@ -475,6 +475,34 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
   });
 });
 
+describe('the enemy-appears report at instantiation (P3-10 CB-12, RX5)', () => {
+  // The player at its stored position, wingman option 0 (face aiValueA − 1 = 2) and record 1 of hostile kind 7 at 1 s,
+  // 750 units from the player: active at its instantiation in tick 33 (clock 66), when W is active in state 7 and well
+  // within 3500 of it. W's line of type 8 draws once (8 + rand % 2) and stamps the limit at 66 + 0x280.
+  function run(blocked: boolean, wingman: number | null = 0) {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { spawnTime: 1 }));
+    const { state, world } = setUp({ mission: m, run: { wingman } });
+    stepTo(world, state, 32);
+    if (blocked) state.communications.limits.enemyAppears = 1e9;
+    const events = stepTo(world, state, 33);
+    return { state, events };
+  }
+
+  it('lets an active W report an active hostile placed within 3500: one draw more than with the limit blocked, and the limit stamped', () => {
+    const reported = run(false);
+    const blocked = run(true);
+    expect(reported.events.map(({ kindBit }) => kindBit)).toEqual([7]);
+    expect(reported.state.entities.get(2)).toMatchObject({ kindBit: 1, activity: 'active', state: 'active' });
+    expect(reported.state.communications.limits.enemyAppears).toBe(66 + 0x280);
+    expect(reported.state.rngState).toBe(rngStateAfter(blocked.state.rngState, 1));
+  });
+
+  it('reports nothing without a wingman', () => {
+    expect(run(false, null).state.communications.limits.enemyAppears).toBe(0);
+  });
+});
+
 describe('names in a running world (P3-02 AC-07, Q-05)', () => {
   it('frees a candidate when its holder is removed; while it is held and the pool is empty, the next gets no name', () => {
     const named = (removeFirst: boolean) => {

@@ -9,7 +9,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { threatened } from './base-response.ts';
 import { PIPELINE, registerTick } from './pipeline.ts';
 import {
-  addActive, BASE_KIND_BIT, CRAFT_KIND_BIT, DOCKING_REPLY, HOSTILE_KIND_BIT, pageChanged, radioScene, snapshotOf, WINGMAN_KIND_BIT, type RadioScene,
+  addActive, BASE_KIND_BIT, CRAFT_KIND_BIT, DOCKING_REPLY, HOSTILE_KIND_BIT, pageChanged, radioScene, snapshotOf, TEST_MESSAGES, WINGMAN_KIND_BIT, type RadioScene,
 } from './radio.test-support.ts';
 
 // Expectations written out from docs/plan/p3/02/spec.md CB-04, CB-07, CB-08, CB-12 and CB-13 and from
@@ -245,5 +245,69 @@ describe('the status reply\'s threat stamp (RQ1, RQ2 `0x3c040`)', () => {
     const { state, base, enemy } = threat(0);
     Object.assign(enemy, { position: { x: Number.NaN, y: 0, z: 0 } });
     expect(threatened(state, base)).toBe(true);
+  });
+});
+
+describe('the threat re-announce without a command (RQ1, RX2 step 3, RX4)', () => {
+  // The sample is 10002: the stamp is re-tested once stamp + 0xB40 < 10002 and re-announced once stamp + 0x2D00 < 10002.
+  // Pool name 0 is TABL 2001 position 2, so the base's re-announce is 20983 index 0x1A + 2, then index rand % 4.
+  const SAMPLE = 10002;
+  const MESSAGES = { ...TEST_MESSAGES, direct: Object.freeze(Array.from({ length: 40 }, (_, index) => Object.freeze([index + 1]))) };
+
+  /** A base at x = 100 with `stamp`, named pool 0 when `named`, and a hostile at x = 150 when `threat`. */
+  function reannounce(stamp: number, threat: boolean, named = true) {
+    const radio = radioScene();
+    const { communications } = radio.state.ruleData;
+    const pool = Object.freeze([{ in2001: 2, in2011: null }]);
+    const state: WorldState = { ...radio.state, ruleData: { ...radio.state.ruleData, communications: { ...communications, messages: MESSAGES, nameIndexes: { ...communications.nameIndexes, pool } } } };
+    const scene = { state, player: radio.player };
+    const base = addActive(scene, BASE_KIND_BIT, named ? { name: { type: 'pool', index: 0 } } : {});
+    base.communications.threatStamp = stamp;
+    if (threat) addActive(scene, HOSTILE_KIND_BIT, { position: { x: 150, y: 0, z: 0 } });
+    state.clock = SAMPLE - 2;
+    return { state, base, queued: () => constructWorld(state).step(tickInput()).filter(({ type }) => type === 'radio-queued') };
+  }
+
+  it('leaves a stamp no older than 0xB40 alone, threat or not', () => {
+    const { base, queued } = reannounce(SAMPLE - 0xb40, false);
+    expect(queued()).toEqual([]);
+    expect(base.communications.threatStamp).toBe(SAMPLE - 0xb40);
+  });
+
+  it('clears an older stamp once no threat is left, without a message', () => {
+    const { state, base, queued } = reannounce(SAMPLE - 0xb40 - 1, false);
+    const rngState = state.rngState;
+    expect(queued()).toEqual([]);
+    expect(base.communications.threatStamp).toBeNull();
+    expect(state.rngState).toBe(rngState);
+  });
+
+  it('keeps a threatened stamp no older than 0x2D00', () => {
+    const { base, queued } = reannounce(SAMPLE - 0x2d00, true);
+    expect(queued()).toEqual([]);
+    expect(base.communications.threatStamp).toBe(SAMPLE - 0x2d00);
+  });
+
+  it('re-announces an older threatened stamp through 0x3c208 step 3 and stamps the sample again', () => {
+    const { state, base, queued } = reannounce(SAMPLE - 0x2d00 - 1, true);
+    const rand = new RandStream(state.rngState);
+    const second = rand.next() % 4;
+    const speaker = snapshotOf(base);
+    expect(queued()).toEqual([
+      { type: 'radio-queued', tick: 1, message: { table: 20983, face: null, index: 0x1a + 2 }, callback: 'none', speaker, position: 'sorted', length: 1 },
+      { type: 'radio-queued', tick: 1, message: { table: 20983, face: null, index: second }, callback: 'none', speaker, position: 'sorted', length: 2 },
+    ]);
+    expect(state.rngState).toBe(rand.state);
+    expect(base.communications.threatStamp).toBe(SAMPLE);
+  });
+
+  it('leaves the stamp cleared for a base named in neither list, and does nothing outside state 7', () => {
+    const nameless = reannounce(SAMPLE - 0x2d00 - 1, true, false);
+    expect(nameless.queued()).toEqual([]);
+    expect(nameless.base.communications.threatStamp).toBeNull();
+    const waiting = reannounce(SAMPLE - 0x2d00 - 1, true);
+    waiting.base.state = 'area-switch';
+    expect(waiting.queued()).toEqual([]);
+    expect(waiting.base.communications.threatStamp).toBe(SAMPLE - 0x2d00 - 1);
   });
 });

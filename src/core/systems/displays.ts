@@ -11,6 +11,8 @@
  *    or `redraw` is set, the player's fields 1 (hull), 5 (list-1 mounts) and 8 (list-0 mounts) are written and
  *    `redraw` is cleared; on a menu page without a menu, or on page 5 while no message plays, page 0 (P3-10, CB-09).
  *
+ * 3. the tail warning (type 9, comm-reactions.ts's `checkTail`), in the same views.
+ *
  * The communications presentation sub-step (radio.ts) follows in every view mode (CB-09).
  *
  * The original runs these per gauge period and pauses the status page in random flashes at field 10 = 1; Core runs
@@ -20,6 +22,7 @@ import { CoreFaultError } from '../errors.ts';
 import { advanceBlink, clearsIncomingPage, clearsMenuPage, COCKPIT_DISPLAY_VIEW_MODES, hullField, showsStatusPage, withStatusFields } from '../rules/displays.ts';
 import { listStatus } from '../rules/mounts.ts';
 import type { LeftPage } from '../world/player-state.ts';
+import { checkTail } from './comm-reactions.ts';
 import { emit, type PipelineStage, type TickContext } from './pipeline.ts';
 import { presentIncoming } from './radio.ts';
 import { clearRightDisplayTarget } from './targeting.ts';
@@ -69,13 +72,14 @@ function updateLeftDisplay(context: TickContext): void {
 }
 
 /**
- * The `frame-end` stage: the cockpit display step in the views that have it, then in every view the communications
- * presentation sub-step (radio.ts), last as the original's `0x4e308` ends its frame render (CB-09).
+ * The `frame-end` stage: the cockpit display step and the tail warning in the views that have them, then in every view
+ * the communications presentation sub-step (radio.ts), last as the original's `0x4e308` ends its frame render (CB-09).
  */
 function runFrameEnd(context: TickContext): void {
   if (COCKPIT_DISPLAY_VIEW_MODES.has(context.world.player.viewMode)) {
     clearRightDisplayTarget(context);
     updateLeftDisplay(context);
+    checkTail(context);
   }
   presentIncoming(context);
 }
