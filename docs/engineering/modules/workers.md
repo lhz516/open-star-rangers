@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0015]
 ---
 
