@@ -98,7 +98,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | pending |
-| [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | in-progress |
+| [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -126,6 +126,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 14 完成：** 支持闭包与创建时检查；真实内容的六种运行配置都能创建世界，闭包与 ai §10 一致。合成生产 AI 内容改为符合支持范围（合成光盘中对象 2 的填充不再覆盖其他 Asset）。交 28：ai §12 的数据核对补“可达脚本含负的 1001 数值”，core.md 的规则数据与世界创建说明已过时。合并 P3-09 与 P3-10 后 `e2e/base-interaction`（development）的“停靠并两次离港”一项失败（期望 `toggle-map` 被拒绝，实际被接受），在 14 之前的 d3313738 上同样失败，与 14 无关；由新增的 30 修复。
 - **2026-10-15 — 新增 30：** 修复合并 P3-09、P3-10 后停靠中 `toggle-map` 被接受的回归（e2e 的 base-interaction development 一项）；29 加入对 30 的依赖。
 - **2026-10-15 — 15 的处理器接入方式（协调者决定）：** 14 在创建时接受全部四个处理器身份，而处理器分别由 16、18、19、21 实现。15 用静态的 `WIRED_HANDLERS` 集合（15 之后为空）：未接入的处理器不执行安装（控制器保持 null，不调用处理器，不抽取），选择、程序槽、首次回调的判定与安装值照常实现并测试；各处理器子任务把自己的处理器加入集合，并在其测试中覆盖安装的同一调用更新体与抽取（AC-03 与重装抽取的端到端证据随之交接）。被排除：未接入即故障（所有含 AI 机体的世界在 tick 1 故障）；调整子任务次序。
+- **2026-10-15 — 30 完成：** 两份契约一致（MW-04 第 2、4 步与 P3-10 spec 的范围一节），Core 未改；修正 e2e 的过时期望与基地页 `M` 的文案，加 Core 回归用例。e2e 中 `launch()` 在 257 次按键后立即清日志，偶有竞态（只见一次），留作已知的测试脆弱点。
 
 ## 审批
 

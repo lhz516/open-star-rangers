@@ -259,7 +259,7 @@ export const BASE_PAGE = Object.freeze({
     Object.freeze({ keys: 'Up, Down', status: 'wired', text: 'Move the selection.' }),
     Object.freeze({ keys: 'Enter', status: 'wired', text: 'Move the selected item to the top of the service order if it still needs service.' }),
     Object.freeze({ keys: 'L', status: 'wired', text: 'Launch.' }),
-    Object.freeze({ keys: 'M', status: 'later', text: 'Strategic map: this build refuses it until the map arrives (P3-09).' }),
+    Object.freeze({ keys: 'M', status: 'wired', text: 'Open the strategic map; M or Esc in the map closes it back into the base.' }),
     Object.freeze({ keys: 'P', status: 'project', text: 'Pause or resume.' }),
     Object.freeze({ keys: 'Esc', status: 'project', text: 'Mission menu, in place of the original options page (G-07).' }),
   ] satisfies readonly { readonly keys: string; readonly status: BaseKeyStatus; readonly text: string }[]),

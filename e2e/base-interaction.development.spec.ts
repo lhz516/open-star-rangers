@@ -220,10 +220,19 @@ test('docks and launches twice through the input zone, with real service, single
     expect(eventsOf(events, 'base-confirmed')[0].text).toContain('row=1 ');
     await expect(page.getByTestId('base-last-command')).toHaveText('Last base command: confirm-selection: accepted');
 
-    // A refusal is visible: M asks for the strategic map, which this build does not have.
-    await pressOnce(page, 'm', 'toggle-map', 'rejected');
-    await expect(page.getByTestId('base-last-command')).toHaveText('Last base command: toggle-map: rejected (not-implemented)');
+    // M opens the strategic map over the base and M again closes it back into the base (P3-02 spec MW-04: the base
+    // accepts toggle-map and a docked player passes; P3-10 spec: the base's map is P3-09's, its previous view stays 6).
+    await clearLog(page);
+    await pressOnce(page, 'm', 'toggle-map', 'accepted');
+    expect(eventsOf(await loggedEvents(page), 'map-toggled').at(-1)!.text).toContain('open=true · viewMode=8 · previousViewMode=6 ');
+    await expect(page.getByTestId('base-page')).toHaveCount(0);
+    await expect(zone(page)).toBeFocused();
+    await pressOnce(page, 'm', 'toggle-map', 'accepted');
+    expect(eventsOf(await loggedEvents(page), 'map-toggled').at(-1)!.text).toContain('open=false · viewMode=6 · previousViewMode=8 ');
+    await expect(page.getByTestId('base-page')).toBeVisible();
+    await expect(page.getByTestId('base-page')).toHaveAttribute('data-cursor', '1');
     await expect(page.getByTestId('base-command-error')).toHaveCount(0);
+    await expect(zone(page)).toBeFocused();
 
     // Tab leaves the zone: base keys then submit nothing and the page stays.
     await clearLog(page);

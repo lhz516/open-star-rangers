@@ -90,11 +90,11 @@ describe('the base page view (G-05)', () => {
 });
 
 describe('the base keys (G-05)', () => {
-  it('lists the wired base keys apart from the project controls and the map that awaits P3-09', () => {
+  it('lists the wired base keys, the strategic map (P3-09) among them, apart from the project controls', () => {
     expect(BASE_PAGE.keys.map(({ keys, status }) => [keys, status])).toEqual([
-      ['Up, Down', 'wired'], ['Enter', 'wired'], ['L', 'wired'], ['M', 'later'], ['P', 'project'], ['Esc', 'project'],
+      ['Up, Down', 'wired'], ['Enter', 'wired'], ['L', 'wired'], ['M', 'wired'], ['P', 'project'], ['Esc', 'project'],
     ]);
-    expect(BASE_PAGE.keys.find(({ keys }) => keys === 'M')!.text).toMatch(/P3-09/);
+    expect(BASE_PAGE.keys.find(({ keys }) => keys === 'M')!.text).toMatch(/strategic map.*back into the base/i);
   });
 });
 
