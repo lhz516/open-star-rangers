@@ -1,14 +1,16 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 3, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 4, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
  * state (P3-07, CR-02 to CR-04), the spawn state (queue, enable flag, the records after the build's defaults with their
  * aliasing by declaration, the record and group counts, the group leaders, the name pool counters), the mission status
- * and the player state with its target, control, targeting, combat records and cockpit display state. Names are held by
- * the entities that carry them. The static MissionSetup is not copied: setupHash binds it. A snapshot is a diagnostic
- * and a checkpoint source, not a save: Core restores no world from one.
+ * and the player state with its target, control, targeting, combat records and cockpit display state. P3-10 adds the
+ * mission flow, the player's docking object, communications state and saved docking pose, each entity's
+ * communications fields and pending command, and the world's communications, friendly-fire and base service state
+ * (CB-16). Names are held by the entities that carry them. The static MissionSetup and rule data are not copied:
+ * setupHash binds them. A snapshot is a diagnostic and a checkpoint source, not a save: Core restores no world from one.
  *
  * The canonical text writes every object's members in the order listed here, never in an object's own key order; the
  * entities are a set written in ascending ID order, every other list keeps its order. The state hash is fnv1a64 of the
@@ -36,6 +38,7 @@ import {
   type Disturbance,
   type Entity,
   type EntityCombat,
+  type EntityCommunications,
   type EntityId,
   type EntityPresentation,
   type EntityRuleInputs,
@@ -53,6 +56,7 @@ import {
   type MountState,
   type MovementBlock,
   type NameReference,
+  type PendingCommand,
   type ProjectileCombat,
   type SpinningMovementBlock,
   type SteeredMovementBlock,
@@ -60,13 +64,40 @@ import {
   type TimedRotation,
   type WeaponBlock,
 } from '../world/entity-table.ts';
-import type { KillCounts, PlayerControl, PlayerState, PlayerTargeting, ShotCounts, SpeedAssist } from '../world/player-state.ts';
+import type {
+  CategoryValue,
+  CommandValue,
+  CommunicationsMenu,
+  KillCounts,
+  MenuExit,
+  MenuItem,
+  ObjectValue,
+  PlayerCommunications,
+  PlayerControl,
+  PlayerState,
+  PlayerTargeting,
+  Pose,
+  ShotCounts,
+  SpeedAssist,
+} from '../world/player-state.ts';
 import type { GroupState, RecordRuleInputs, RuntimeRecord, SpawnEntry } from '../world/spawn-state.ts';
-import type { MissionStatus, WorldConfig, WorldState } from '../world/world-state.ts';
+import type {
+  BaseService,
+  IncomingChannel,
+  MessageIdentity,
+  MissionFlow,
+  MissionStatus,
+  RadioItem,
+  SpeakerSnapshot,
+  WorldAi,
+  WorldCommunications,
+  WorldConfig,
+  WorldState,
+} from '../world/world-state.ts';
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 3;
+export const GAME_SNAPSHOT_VERSION = 4;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -96,7 +127,11 @@ export interface SnapshotState {
   readonly kindOrder: readonly EntityId[];
   readonly spawn: SnapshotSpawn;
   readonly missionStatus: MissionStatus;
+  readonly flow: Readonly<MissionFlow>;
   readonly player: Readonly<PlayerState>;
+  readonly communications: Readonly<WorldCommunications>;
+  readonly ai: WorldAi;
+  readonly baseService: Readonly<BaseService> | null;
 }
 
 export interface GameSnapshot {
@@ -117,7 +152,7 @@ function frozenCopy<Value>(value: Value): Value {
 
 /** For World.snapshot(): reads the state without changing it and returns a deeply frozen, detached snapshot. */
 export function takeSnapshot(world: WorldState): GameSnapshot {
-  const { config, tick, clock, rngState, entities, spawn, missionStatus, player } = world;
+  const { config, tick, clock, rngState, entities, spawn, missionStatus, flow, player, communications, ai, baseService } = world;
   return frozenCopy({
     format: GAME_SNAPSHOT_FORMAT,
     version: GAME_SNAPSHOT_VERSION,
@@ -132,7 +167,11 @@ export function takeSnapshot(world: WorldState): GameSnapshot {
       kindOrder: Array.from(entities.walk(ALL_KINDS), ({ id }) => id),
       spawn,
       missionStatus,
+      flow,
       player,
+      communications,
+      ai,
+      baseService,
     },
   });
 }
@@ -242,7 +281,14 @@ const movement: Writer<MovementBlock> = (value) => {
   }
 };
 
-const ai = object<AiState>({ mode: scalar, target: scalar, goal: vector, targetOffset: vector, objectTarget: scalar });
+const ai = object<AiState>({
+  mode: scalar,
+  target: scalar,
+  goal: vector,
+  targetOffset: vector,
+  objectTarget: scalar,
+  pendingCommand: nullable(object<PendingCommand>({ code: scalar, issuedTick: scalar })),
+});
 
 const clockReference = nullable(object<{ readonly entity: EntityId; readonly clock: number }>({ entity: scalar, clock: scalar }));
 const listSelection = object<ListSelection>({ index: scalar, mount: scalar });
@@ -378,6 +424,7 @@ const entity = object<SnapshotEntity>({
   ai,
   formation: nullable(object<Formation>({ leader: scalar, offset: vector })),
   combat,
+  communications: object<EntityCommunications>({ face: scalar, threatStamp: scalar }),
 });
 
 const record = object<SnapshotRecord>({
@@ -411,6 +458,74 @@ const spawn = object<SnapshotSpawn>({
   namePoolUses: list(scalar),
 });
 
+// P3-10's state (docs/plan/p3/02/spec.md, CB-02 to CB-05, CB-11).
+const pose = object<Pose>({ position: vector, orientation: list(scalar) });
+
+const menuValue: Writer<CategoryValue | ObjectValue | CommandValue | MenuExit> = (value) => {
+  switch (value.type) {
+    case 'category':
+      return canonicalObject([['type', value.type], ['source', value.source], ['kindMask', value.kindMask]]);
+    case 'object':
+      return canonicalObject([['type', value.type], ['entityId', value.entityId], ['kindBit', value.kindBit], ['name', name(value.name)], ['tone', value.tone]]);
+    case 'command':
+      return canonicalObject([['type', value.type], ['source', value.source], ['code', value.code]]);
+    case 'exit':
+      return canonicalObject([['type', value.type]]);
+  }
+};
+
+const menu = object<CommunicationsMenu>({
+  level: scalar,
+  table: scalar,
+  items: list(object<MenuItem<CategoryValue | ObjectValue | CommandValue>>({ key: scalar, value: menuValue })),
+});
+
+const playerCommunications = object<PlayerCommunications>({
+  menu: nullable(menu),
+  partner: scalar,
+  menuSavedPage: scalar,
+  incomingSavedPage: scalar,
+  limits: object<PlayerCommunications['limits']>({ friendlyHit: scalar, friendlyKill: scalar }),
+  thanks: scalar,
+});
+
+const radioItem = object<RadioItem>({
+  message: object<MessageIdentity>({ table: scalar, face: scalar, index: scalar }),
+  due: scalar,
+  callback: scalar,
+  speaker: nullable(object<SpeakerSnapshot>({ entityId: scalar, kindBit: scalar, name })),
+});
+
+// One writer per channel phase.
+const channel: Writer<IncomingChannel> = (value) => {
+  switch (value.phase) {
+    case 'idle':
+      return canonicalObject([['phase', value.phase]]);
+    case 'loading':
+      return canonicalObject([['phase', value.phase], ['item', radioItem(value.item)], ['readyTick', value.readyTick]]);
+    case 'playing':
+      return canonicalObject([
+        ['phase', value.phase], ['item', radioItem(value.item)], ['startClock', value.startClock], ['frameDurations', value.frameDurations],
+      ]);
+  }
+};
+
+const worldCommunications = object<Readonly<WorldCommunications>>({
+  queue: list(radioItem),
+  channel,
+  facePools: object<WorldCommunications['facePools']>({ craft: list(scalar), base: list(scalar) }),
+  limits: object<WorldCommunications['limits']>({ wingmanLowHull: scalar, enemyAppears: scalar, tailWarning: scalar, wingmanArrivalRepair: scalar }),
+  tailCheck: object<WorldCommunications['tailCheck']>({ dueClock: scalar, attackerOnTail: scalar, missileIncoming: scalar }),
+});
+
+const baseService = object<Readonly<BaseService>>({
+  rows: list(scalar),
+  cursor: scalar,
+  dues: object<BaseService['dues']>({ repair: scalar, hull: scalar, energy: scalar }),
+  rates: object<BaseService['rates']>({ hull: scalar, energy: scalar }),
+  flags: object<BaseService['flags']>({ repairsComplete: scalar, energyAndMissilesFull: scalar, hullFull: scalar }),
+});
+
 const state = object<SnapshotState>({
   config,
   tick: scalar,
@@ -421,6 +536,7 @@ const state = object<SnapshotState>({
   kindOrder: list(scalar),
   spawn,
   missionStatus: scalar,
+  flow: object<Readonly<MissionFlow>>({ mainState: scalar, subState: scalar, dockingDeadline: scalar }),
   player: object<Readonly<PlayerState>>({
     entityId: scalar,
     viewMode: scalar,
@@ -439,7 +555,13 @@ const state = object<SnapshotState>({
     heavyDamage: scalar,
     leftDisplay: object<PlayerState['leftDisplay']>({ page: scalar }),
     statusDisplay: object<PlayerState['statusDisplay']>({ blink: scalar, blinkDueClock: scalar, redraw: scalar }),
+    dockingObject: scalar,
+    communications: playerCommunications,
+    docking: object<PlayerState['docking']>({ savedPose: nullable(pose) }),
   }),
+  communications: worldCommunications,
+  ai: object<WorldAi>({ friendlyFire: object<WorldAi['friendlyFire']>({ accumulated: scalar, windowEnd: scalar }) }),
+  baseService: nullable(baseService),
 });
 
 const snapshotValue = object<GameSnapshot>({ format: scalar, version: scalar, rulesVersion: scalar, state });

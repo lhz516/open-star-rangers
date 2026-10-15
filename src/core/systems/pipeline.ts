@@ -92,7 +92,26 @@ export type Request =
   /** Message 0x40 (`0x24424`): the held source becomes pending removal. */
   | { readonly type: 'release-held'; readonly entityId: EntityId }
   /** Message 0x2000000 (`0x2574c`): `entityId` is the source a part-0 fragment hands off. */
-  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId };
+  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId }
+  // P3-10's requests (docs/plan/p3/02/spec.md, CB-08); request handling takes them in posting order.
+  /** Message 0x100 (CD1, CD2): the communications menu delivers a command; `code` is a u32 from 1. */
+  | {
+    readonly type: 'deliver-command'; readonly receiver: EntityId; readonly code: number; readonly sender: EntityId; readonly commandIndex: number;
+  }
+  /** Message 0x400000 sub-command 0: sub-state 4's countdown docks the player (`entityId`). */
+  | { readonly type: 'dock'; readonly entityId: EntityId }
+  /** Sub-command 4: the player's launch command, or sub-state 5's automatic launch, which has no command. */
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'command'; readonly commandIndex: number }
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'automatic'; readonly commandIndex: null }
+  /** Sub-commands 1 and 2: the base page's cursor. */
+  | { readonly type: 'base-navigate'; readonly entityId: EntityId; readonly direction: 'previous' | 'next'; readonly commandIndex: number }
+  /** Sub-command 3: the base page's confirmation. */
+  | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number };
+
+/** P3-10's request types (CB-08), handled by P3-10's subtasks 14, 16 and 18; until then no rule posts them. */
+const COMMUNICATIONS_REQUESTS = ['deliver-command', 'dock', 'depart', 'base-navigate', 'base-confirm'] as const satisfies readonly Request['type'][];
+type CommunicationsRequest = RequestOf<(typeof COMMUNICATIONS_REQUESTS)[number]>;
+const isCommunicationsRequest = (request: Request): request is CommunicationsRequest => (COMMUNICATIONS_REQUESTS as readonly string[]).includes(request.type);
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -307,16 +326,22 @@ function updateObjects(context: TickContext): void {
  * those of the kinds removed on leaving included, is removed. Removal of the player's entity clears the player-state
  * reference to it (the original clears it for kind 1, the player's) together with the player's target and control
  * state, which exist only with a player entity (P3-06 D-03), and its targeting state, which goes with the player's
- * entity (CR-04). Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts
- * keep counting spawns, and a name becomes free because no entity holds it any more (Q-08).
+ * entity (CR-04), and P3-10's docking object, menu, communications partner and menu's saved page (CB-02, CB-03).
+ * Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting
+ * spawns, and a name becomes free because no entity holds it any more (Q-08).
  */
 function leave(world: WorldState, entity: Entity): void {
   if (switchParking(world, entity)) return;
-  if (world.player.entityId === entity.id) {
-    world.player.entityId = null;
-    world.player.target = null;
-    world.player.control = null;
-    world.player.targeting = null;
+  const { player } = world;
+  if (player.entityId === entity.id) {
+    player.entityId = null;
+    player.target = null;
+    player.control = null;
+    player.targeting = null;
+    player.dockingObject = null;
+    player.communications.menu = null;
+    player.communications.partner = null;
+    player.communications.menuSavedPage = 0;
   }
   world.entities.remove(entity);
 }
@@ -341,6 +366,8 @@ function expire(context: TickContext, entity: Entity, request: RequestOf<'expire
 
 function handleRequest(context: TickContext, request: Request): void {
   const { world } = context;
+  // No rule posts P3-10's requests until their handling is in place, so one reaching here is Core's fault.
+  if (isCommunicationsRequest(request)) throw new CoreFaultError('invariant-violated', `requests.${request.type}`);
   if (request.type === 'spawn') {
     dispatchSpawn(world, request, (event) => emit(context, event));
     return;

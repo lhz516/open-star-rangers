@@ -132,9 +132,10 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       ['the format version before P3-05\'s speed-preset', (record: Mutable) => { record.version = 1; }, 'record.version'],
       ['another rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['the rules version before P3-06', (record: Mutable) => { record.rulesVersion = 1; }, 'record.rulesVersion'],
-      // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14), then P3-05's speed-preset once more.
+      // P3-07 incremented it once (docs/plan/p3/02/spec.md, CR-14), then P3-05's speed-preset once more, then P3-10 (CB-16).
       ['the rules version before P3-07', (record: Mutable) => { record.rulesVersion = 2; }, 'record.rulesVersion'],
       ['the rules version before P3-05\'s speed-preset', (record: Mutable) => { record.rulesVersion = 3; }, 'record.rulesVersion'],
+      ['the rules version before P3-10', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
       ['a speed preset out of range', (record: Mutable & { ticks: Mutable[] }) => { record.ticks[4] = tickInput([{ type: 'speed-preset', level: 0 }]) as never; }, 'record.ticks[4].commands[0].level'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],

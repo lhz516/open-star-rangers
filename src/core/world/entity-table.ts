@@ -227,6 +227,28 @@ export interface AiState {
    * stays null; the runtime kinds keep their +0x8C in their combat state, so theirs is always null (CR-02).
    */
   objectTarget: EntityId | null;
+  /**
+   * +0x184 (docs/plan/p3/02/spec.md, CB-04): the command a `deliver-command` request wrote last, null for 0. The
+   * allocator and instantiation write null; P3-10's `0x3bed0` and P3-08's wingman handlers consume and clear it.
+   */
+  pendingCommand: PendingCommand | null;
+}
+
+/** A delivered command: `code` is a u32 from 1; `issuedTick` is the tick that wrote it, a project field no rule reads. */
+export interface PendingCommand {
+  readonly code: number;
+  readonly issuedTick: number;
+}
+
+/**
+ * An object's communications fields (CB-04), allocated unset for every kind; runtime kinds have no writer. The
+ * original's allocator writes −1 and 0 for them.
+ */
+export interface EntityCommunications {
+  /** +0x180: the portrait `0x3c894` assigns once, only to kinds in 0x87c and 0x68000. */
+  face: number | null;
+  /** +0x17C: a clock, the threat stamp of `0x3c208` step 3, `0x3c3b0` and `0x3bed0`. */
+  threatStamp: number | null;
 }
 
 /** AI mode 5, the allocator's default and the mode of kinds 0x2000 and 0x4000. */
@@ -237,7 +259,7 @@ const ALLOCATOR_AI_MODE = 5;
  * of runtime entities that never run it (P3-07's projectiles and others).
  */
 export function allocatorAiState(): AiState {
-  return { mode: ALLOCATOR_AI_MODE, target: null, goal: ZERO_VECTOR, targetOffset: ZERO_VECTOR, objectTarget: null };
+  return { mode: ALLOCATOR_AI_MODE, target: null, goal: ZERO_VECTOR, targetOffset: ZERO_VECTOR, objectTarget: null, pendingCommand: null };
 }
 
 export const ZERO_VECTOR: Vec3 = Object.freeze({ x: 0, y: 0, z: 0 });
@@ -561,9 +583,14 @@ export interface Entity {
   formation: Formation | null;
   /** Fixed in type at allocation; its contents change by the rules of CR-02. */
   readonly combat: EntityCombat;
+  /** P3-10's fields (CB-04), unset at allocation. */
+  readonly communications: EntityCommunications;
 }
 
-/** What instantiation supplies; the table assigns the ID, the state, the placement serial and the destroyed flag. */
+/**
+ * What instantiation supplies; the table assigns the ID, the state, the placement serial, the destroyed flag and the
+ * unset communications fields.
+ */
 export interface EntityInit {
   readonly kindBit: number;
   readonly source: EntitySource | null;
@@ -692,12 +719,15 @@ function movementFits(block: MovementBlock, combat: EntityCombat): boolean {
   }
 }
 
-/** The flight state's invariants (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约): f32 values, clocks and modes. */
+/**
+ * The flight state's invariants (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约): f32 values, clocks and modes; no
+ * command pending, as the allocator and instantiation write none (CB-04).
+ */
 function isValidFlightState(init: EntityInit): boolean {
   const { movement, ai, formation } = init;
   return isFiniteFloat32(init.maximumSpeed) && isClock(init.lastParkedUpdateClock) && isClock(init.warpClock)
     && (movement === null || isValidMovement(movement))
-    && AI_MODES.includes(ai.mode) && isFloat32Vec(ai.goal) && isFloat32Vec(ai.targetOffset)
+    && AI_MODES.includes(ai.mode) && isFloat32Vec(ai.goal) && isFloat32Vec(ai.targetOffset) && ai.pendingCommand === null
     && (formation === null || isFloat32Vec(formation.offset));
 }
 
@@ -1026,9 +1056,12 @@ export class EntityTable {
       warpClock: init.warpClock,
       inWarp: init.inWarp,
       movement: movement && copyMovementBlock(movement),
-      ai: { mode: ai.mode, target: ai.target, goal: frozenVec(ai.goal), targetOffset: frozenVec(ai.targetOffset), objectTarget: ai.objectTarget },
+      ai: {
+        mode: ai.mode, target: ai.target, goal: frozenVec(ai.goal), targetOffset: frozenVec(ai.targetOffset), objectTarget: ai.objectTarget, pendingCommand: null,
+      },
       formation: formation && Object.freeze({ leader: formation.leader, offset: frozenVec(formation.offset) }),
       combat: copyCombat(combat),
+      communications: { face: null, threatStamp: null },
     };
     this.#nextId = id + 1;
     this.#byId.set(id, entity);

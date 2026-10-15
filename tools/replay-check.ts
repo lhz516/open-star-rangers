@@ -23,6 +23,7 @@ import {
 } from '../src/core/replay/recording.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
+import { COMM_MESSAGES_LIMITS } from '../src/content/rule-data/comm-messages.ts';
 import type { Matrix3 } from '../src/core/world/entity-table.ts';
 import { productionIdentityBasis } from '../src/original-data/conversion/converter-version.ts';
 import { DiscReadError } from '../src/original-data/disc/disc-error.ts';
@@ -109,6 +110,17 @@ const LONGEST_ATTACKER = { type: 'shooter', entityId: SAFE, kindBit: 31 } as con
 /** The longest entity source: a wingman group member with safe-integer indexes. */
 const LONGEST_SOURCE = { collection: 'wingman', index: SAFE, group: { index: SAFE, request: SAFE, member: SAFE } } as const;
 
+/**
+ * P3-10's longest message and speaker: a direct-list message (its `null` portrait is longer than any portrait number the
+ * comm-messages reader admits, its index as long), and a candidate-named wingman with safe-integer identities.
+ */
+const LONGEST_MESSAGE = { table: 20983, face: null, index: COMM_MESSAGES_LIMITS.directMessages - 1 } as const;
+const LONGEST_SPEAKER = {
+  entityId: SAFE, kindBit: 31, name: { type: 'candidate', declaration: { collection: 'wingman', index: SAFE }, candidate: SAFE },
+} as const;
+const LONGEST_VIEW_MODE = 0xff;
+const LAST_COMMAND = CORE_LIMITS.commandsPerTick - 1;
+
 /** The longest form of every command variant, so a new variant does not compile until it is added here. */
 const LONGEST_COMMANDS: { readonly [Type in CommandType]: Extract<Command, { readonly type: Type }> } = {
   fire: { type: 'fire', channel: 'secondary' },
@@ -190,6 +202,37 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     type: 'energy-allocation-changed', tick: LAST_TICK, entityId: SAFE, shieldLevel: 3, chargeLevel: 3, commandIndex: CORE_LIMITS.commandsPerTick - 1,
   },
   'left-page-changed': { type: 'left-page-changed', tick: LAST_TICK, page: 6, previousPage: 6, commandIndex: null },
+  // P3-10's events (CB-13): a null where a number of at most 3 digits is the alternative, a docking reply at the head
+  // (as long as a music callback in due order), the comparator's 32 frames of the largest i32 duration.
+  'command-delivered': {
+    type: 'command-delivered', tick: LAST_TICK, receiverEntityId: SAFE, receiverKindBit: 31, code: 0xffffffff, senderEntityId: SAFE, commandIndex: LAST_COMMAND,
+  },
+  'radio-queued': {
+    type: 'radio-queued', tick: LAST_TICK, message: LONGEST_MESSAGE, callback: 'docking-reply', speaker: LONGEST_SPEAKER, position: 'head',
+    length: CORE_LIMITS.radioQueueItems,
+  },
+  'radio-taken': { type: 'radio-taken', tick: LAST_TICK, message: LONGEST_MESSAGE, speaker: LONGEST_SPEAKER },
+  'incoming-started': {
+    type: 'incoming-started', tick: LAST_TICK, message: LONGEST_MESSAGE, speaker: LONGEST_SPEAKER, frameDurations: Array.from({ length: 32 }, () => 2 ** 31 - 1),
+    shown: false,
+  },
+  'incoming-ended': {
+    type: 'incoming-ended', tick: LAST_TICK, message: LONGEST_MESSAGE, speaker: LONGEST_SPEAKER, callback: 'docking-reply', countdownStarted: false,
+  },
+  'radio-flushed': { type: 'radio-flushed', tick: LAST_TICK, cause: 'docking-cancel', removed: CORE_LIMITS.radioQueueItems, interrupted: 'loading' },
+  'docking-requested': {
+    type: 'docking-requested', tick: LAST_TICK, playerEntityId: SAFE, dockingObject: SAFE, previousSubState: 0, deadlineClock: SAFE, commandIndex: LAST_COMMAND,
+  },
+  'docking-cancelled': { type: 'docking-cancelled', tick: LAST_TICK, playerEntityId: SAFE, dockingObject: SAFE, cause: 'invalid-object' },
+  docked: { type: 'docked', tick: LAST_TICK, playerEntityId: SAFE, baseEntityId: SAFE, wingmanEntityId: SAFE, previousViewMode: LONGEST_VIEW_MODE },
+  departed: {
+    type: 'departed', tick: LAST_TICK, playerEntityId: SAFE, origin: 'automatic', commandIndex: null, viewMode: LONGEST_VIEW_MODE,
+    previousViewMode: LONGEST_VIEW_MODE, position: LONGEST_VECTOR, orientation: Array.from({ length: 9 }, () => LONGEST_NUMBER) as unknown as Matrix3,
+    wingmanEntityId: SAFE,
+  },
+  transition: { type: 'transition', tick: LAST_TICK, gap: 'G-02/3' },
+  'base-navigated': { type: 'base-navigated', tick: LAST_TICK, direction: 'previous', row: null, moved: false, commandIndex: LAST_COMMAND },
+  'base-confirmed': { type: 'base-confirmed', tick: LAST_TICK, row: null, record: null, moved: false, commandIndex: LAST_COMMAND },
 };
 
 /** The content identity of every package the production import job converts. */

@@ -26,8 +26,12 @@ export const CORE_LIMITS = Object.freeze({
    * 32 + 2 × 32 + 256 + 2 × 24 × 32 + 32 × 32 + 32 = 5,472, `shot-fired` 512, `explosion-started` 353,
    * `fragment-expired` and `source-released` 256 each, `object-destroyed`, `energy-depleted` and `missile-ended` 32
    * each, `target-changed` 65 and `target-cleared` 1, the per-command `weapon-selected`, `energy-allocation-changed`
-   * and `left-page-changed` 64: 7,075. This is about four times the total of 8,260. At the entity limit the quadratic
-   * terms have no fixed bound, and exceeding the budget is a fault.
+   * and `left-page-changed` 64: 7,075. This is about four times the total of 8,260. P3-10 adds at the same slice
+   * (docs/plan/p3/02/spec.md, CB-16) `radio-queued` 300, the per-command `command-delivered`, `docking-requested`,
+   * `base-navigated`, `base-confirmed` and menu `left-page-changed` 64 each, 8 page changes without a command, one each
+   * of `radio-taken`, `incoming-started`, `incoming-ended` and `docked`, and two each of `departed`, `transition`,
+   * `docking-cancelled` and `radio-flushed`: 640, 8,900 in all. At the entity limit the quadratic terms have no fixed
+   * bound, and exceeding the budget is a fault.
    */
   eventsPerTick: 32_768,
   /**
@@ -35,9 +39,18 @@ export const CORE_LIMITS = Object.freeze({
    * spawnExpansion spawn requests + commandsPerTick speed command requests + 2 control requests = 3,138 at the entity
    * limit. At the slice above: `select-target` 65, launches 512, at most 2 per live object's own update (an explosion's
    * release and leave, a part-0 fragment's hand-off and expiry) 2 × 896, `steer` 64, and P3-02's and P3-06's spawn
-   * requests 1,024 and speed requests 66: 3,523. This is about 4.6 times that.
+   * requests 1,024 and speed requests 66: 3,523. This is about 4.6 times that. P3-10 adds 64 `deliver-command`, one
+   * `dock`, two `depart` and 64 base key requests (CB-16): 3,654.
    */
   requestsPerTick: 16_384,
+  /**
+   * Items of the radio queue (docs/plan/p3/02/spec.md, CB-16), unbounded in the original: a runaway threshold, and
+   * exceeding it is a fault rather than a dropped message. Unthrottled rule queuing comes from destructions (about 4
+   * each), bounded by spawnExpansion; throttled reports add one per period. Only replies repeat without limit, at least
+   * 3 menu keys each and at most one per object and tick; with one key per poll at 4 keys per second the queue grows
+   * about 0.9 items per second, so legal input takes over an hour to reach it, beyond recordedTicks.
+   */
+  radioQueueItems: 4096,
   /** Ticks of one recording or replay: 68 minutes at the default rate, several times a slice mission. */
   recordedTicks: 131_072,
   /** Commands of one recording: 2 per tick on average, e.g. fire held every tick plus one more action. */
@@ -49,6 +62,7 @@ export const CORE_LIMITS = Object.freeze({
   /**
    * Characters of one canonical text. A snapshot at the entity limit is about 10.5 MiB with P3-07's combat state
    * (CR-14): at most spawnExpansion craft at about 8.5 KiB each with 18 mounts, about 2 KiB for every other entity.
+   * P3-10 adds about 60 characters per entity and about 0.8 MiB for a full radio queue (CB-16).
    */
   canonicalTextLength: 16_777_216,
 });

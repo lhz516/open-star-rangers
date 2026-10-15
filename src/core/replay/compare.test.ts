@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
+import { COMM_MESSAGES_LIMITS } from '../../content/rule-data/comm-messages.ts';
 import { COMMAND_RESULT_REASONS } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { CoreInputError } from '../errors.ts';
@@ -486,6 +487,184 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       result.events.splice(result.events.indexOf(eventAt(result, 1, 'target-cleared')), 0, { ...hit(1), victimEntityId: 8, cause: 'parked', sourceEntityId: null,
         impact: null, projectile: null }, { ...destroyed(1), entityId: 8, activity: 'parked', outcome: 'removed' });
       result.events.splice(result.events.indexOf(eventAt(result, 1, 'missile-ended')) + 1, 0, { ...hit(1), cause: 'missile', sourceEntityId: 11, projectile: null });
+      expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
+    });
+  });
+
+  describe('P3-10 communications, docking and base events (docs/plan/p3/02/spec.md, CB-13)', () => {
+    const accepted = (tick: number, commandIndex: number, commandType: string): Mutable =>
+      commandResult(tick, commandIndex, { commandType, outcome: 'accepted', reason: null });
+    const pageChanged = (tick: number, commandIndex: number | null): Mutable => ({ type: 'left-page-changed', tick, page: 0, previousPage: 4, commandIndex });
+    const speaker = (): Mutable => ({ entityId: 4, kindBit: 15, name: { type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 1 } });
+    const reply = (): Mutable => ({ table: 20011, face: 2, index: 3 });
+    const departed = (tick: number, commandIndex: number | null): Mutable => ({
+      type: 'departed', tick, playerEntityId: 1, origin: commandIndex === null ? 'automatic' : 'command', commandIndex, viewMode: 0xc, previousViewMode: 6,
+      position: { x: 1, y: 2, z: 3 }, orientation: [0, 0, -1, 0, 1, 0, 1, 0, 0], wingmanEntityId: null,
+    });
+    const transition = (tick: number, gap: string): Mutable => ({ type: 'transition', tick, gap });
+    const cancelled = (tick: number, cause: string): Mutable => ({ type: 'docking-cancelled', tick, playerEntityId: 1, dockingObject: 4, cause });
+    const queued = (tick: number, overrides: Mutable = {}): Mutable => ({
+      type: 'radio-queued', tick, message: reply(), callback: 'docking-reply', speaker: speaker(), position: 'head', length: 1, ...overrides,
+    });
+    const docked = (tick: number): Mutable => ({ type: 'docked', tick, playerEntityId: 1, baseEntityId: 4, wingmanEntityId: 2, previousViewMode: 0xc });
+    const started = (tick: number, frameDurations = [5, 8, 5]): Mutable =>
+      ({ type: 'incoming-started', tick, message: reply(), speaker: speaker(), frameDurations, shown: true });
+    const ended = (tick: number): Mutable =>
+      ({ type: 'incoming-ended', tick, message: reply(), speaker: speaker(), callback: 'docking-reply', countdownStarted: true });
+
+    /**
+     * Three ticks in the contract's order. Tick 1: the mission flow's flush with its page write and the invalid-object
+     * cancellation; in the player's update a menu selection with its page write and docking request, a launch and two
+     * base keys; a reply queued in the object updates and taken in the communications reply; in request handling the
+     * delivery, the commanded launch with its transition, the base keys and the automatic launch with its transition;
+     * a tail warning queued at the end of the frame. Tick 2: the timeout in the mission flow, a docking with its
+     * transition and the taken message's start. Tick 3: a gate cancellation, a queued direct message and the message's
+     * end.
+     */
+    function communicationsRun(): Result {
+      const events = [
+        pageChanged(1, null),
+        { type: 'radio-flushed', tick: 1, cause: 'docking-cancel', removed: 1, interrupted: 'loading' },
+        cancelled(1, 'invalid-object'),
+        accepted(1, 0, 'select-number'),
+        pageChanged(1, 0),
+        { type: 'docking-requested', tick: 1, playerEntityId: 1, dockingObject: 4, previousSubState: 0, deadlineClock: 0x782, commandIndex: 0 },
+        accepted(1, 1, 'launch'),
+        accepted(1, 2, 'navigate-selection'),
+        accepted(1, 3, 'confirm-selection'),
+        queued(1),
+        { type: 'radio-taken', tick: 1, message: reply(), speaker: speaker() },
+        { type: 'command-delivered', tick: 1, receiverEntityId: 4, receiverKindBit: 15, code: 9, senderEntityId: 1, commandIndex: 0 },
+        departed(1, 1),
+        transition(1, 'G-02/4'),
+        { type: 'base-navigated', tick: 1, direction: 'next', row: null, moved: false, commandIndex: 2 },
+        { type: 'base-confirmed', tick: 1, row: 3, record: 7, moved: true, commandIndex: 3 },
+        departed(1, null),
+        transition(1, 'G-02/4'),
+        queued(1, { callback: 'none', position: 'sorted', length: 2 }),
+        cancelled(2, 'timeout'),
+        docked(2),
+        transition(2, 'G-02/3'),
+        started(2),
+        cancelled(3, 'gate'),
+        queued(3, { message: { table: 20983, face: null, index: 6 }, callback: 'music-step', speaker: null, position: 'sorted' }),
+        ended(3),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 3, hash: hashOf(3) }], finalTick: 3 };
+    }
+
+    it('accepts and matches every type in the contract\'s order, after a JSON round trip', () => {
+      const types = new Set(communicationsRun().events.map(({ type }) => type));
+      expect(types.size).toBe(13 + 2);
+      expect(compareReplayResults(communicationsRun(), JSON.parse(JSON.stringify(communicationsRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['flush', 1, (event: Mutable) => { event.removed = 2; }],
+      ['docking deadline', 5, (event: Mutable) => { event.deadlineClock = 0x784; }],
+      ['queued speaker name', 9, (event: Mutable) => { ((event.speaker as Mutable).name as Mutable).candidate = 0; }],
+      ['taken message', 10, (event: Mutable) => { (event.message as Mutable).index = 4; }],
+      ['delivered code', 11, (event: Mutable) => { event.code = 7; }],
+      ['launch orientation', 12, (event: Mutable) => { (event.orientation as number[])[2] = 1; }],
+      ['base row', 14, (event: Mutable) => { event.row = 0; }],
+      ['docked wingman', 20, (event: Mutable) => { event.wingmanEntityId = null; }],
+      ['frame durations', 22, (event: Mutable) => { (event.frameDurations as number[])[1] = 7; }],
+      ['cancelled docking object', 23, (event: Mutable) => { event.dockingObject = 5; }],
+      ['countdown', 25, (event: Mutable) => { event.countdownStarted = false; }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = communicationsRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(communicationsRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a command code of 0', (result) => { result.events[11].code = 0; }, '.events[11].code'],
+      ['a command code beyond u32', (result) => { result.events[11].code = 2 ** 32; }, '.events[11].code'],
+      ['a queue length of 0', (result) => { result.events[9].length = 0; }, '.events[9].length'],
+      ['a queue longer than its limit', (result) => { result.events[9].length = CORE_LIMITS.radioQueueItems + 1; }, '.events[9].length'],
+      ['an unknown callback', (result) => { result.events[9].callback = 'music'; }, '.events[9].callback'],
+      ['an unknown queue position', (result) => { result.events[9].position = 'tail'; }, '.events[9].position'],
+      ['a docking reply queued in due order', (result) => { result.events[9].position = 'sorted'; }, '.events[9].position'],
+      ['another item queued at the head', (result) => { result.events[18].position = 'head'; }, '.events[18].position'],
+      ['an unknown message table', (result) => { result.events[10].message = { ...reply(), table: 20012 }; }, '.events[10].message.table'],
+      ['a direct message with a portrait', (result) => { (result.events[24].message as Mutable).face = 0; }, '.events[24].message.face'],
+      ['a portrait message without a portrait', (result) => { result.events[10].message = { ...reply(), face: null }; }, '.events[10].message.face'],
+      ['a portrait beyond the reader\'s limit', (result) => { result.events[10].message = { ...reply(), face: COMM_MESSAGES_LIMITS.faces }; }, '.events[10].message.face'],
+      ['a portrait message beyond the reader\'s limit', (result) => { result.events[10].message = { ...reply(), index: COMM_MESSAGES_LIMITS.faceMessages }; },
+        '.events[10].message.index'],
+      ['a direct message beyond the reader\'s limit', (result) => { (result.events[24].message as Mutable).index = COMM_MESSAGES_LIMITS.directMessages; },
+        '.events[24].message.index'],
+      ['a speaker of an unknown name type', (result) => { result.events[10].speaker = { ...speaker(), name: { type: 'text' } }; }, '.events[10].speaker.name.type'],
+      ['a speaker without a kind', (result) => { result.events[10].speaker = { entityId: 4, name: { type: 'none' } }; }, '.events[10].speaker.kindBit'],
+      ['a message without frames', (result) => { result.events[22].frameDurations = []; }, '.events[22].frameDurations'],
+      ['a negative frame duration', (result) => { (result.events[22].frameDurations as number[])[0] = -1; }, '.events[22].frameDurations[0]'],
+      ['a message of 33 frames', (result) => { result.events[22].frameDurations = Array.from({ length: 33 }, () => 1); }, '.events[22].frameDurations'],
+      ['a countdown without a docking reply', (result) => { result.events[25].callback = 'none'; }, '.events[25].countdownStarted'],
+      ['a flush for an unknown cause', (result) => { result.events[1].cause = 'rescue'; }, '.events[1].cause'],
+      ['a flush removing more than the queue holds', (result) => { result.events[1].removed = CORE_LIMITS.radioQueueItems + 1; }, '.events[1].removed'],
+      ['a docking request from sub-state 2', (result) => { result.events[5].previousSubState = 2; }, '.events[5].previousSubState'],
+      ['a cancellation for an unknown cause', (result) => { result.events[23].cause = 'refused'; }, '.events[23].cause'],
+      ['a view mode beyond a byte', (result) => { result.events[20].previousViewMode = 0x100; }, '.events[20].previousViewMode'],
+      ['an automatic launch with a command', (result) => { result.events[16].commandIndex = 0; }, '.events[16].commandIndex'],
+      ['a commanded launch without a command', (result) => { result.events[12].commandIndex = null; }, '.events[12].commandIndex'],
+      ['an unknown transition', (result) => { result.events[13].gap = 'G-02/2'; }, '.events[13].gap'],
+      ['a base row of 11', (result) => { result.events[14].row = 11; }, '.events[14].row'],
+      ['a confirmed row without its record', (result) => { result.events[15].record = null; }, '.events[15].record'],
+      ['a docking request away from its command\'s page change', (result) => void result.events.splice(6, 0, result.events.splice(5, 1)[0]), '.events[6].commandIndex'],
+      ['a docking request after another command\'s page change', (result) => { result.events[5].commandIndex = 1; }, '.events[5].commandIndex'],
+      ['a delivery before its command\'s result', (result) => { result.events[11].commandIndex = 5; }, '.events[11].commandIndex'],
+      ['a second request event of a command', (result) => { result.events[14].commandIndex = 0; }, '.events[14].commandIndex'],
+      ['a docking followed by another event than its transition', (result) => void result.events.splice(21, 1), '.events[21]'],
+      ['a launch without its transition at the end of its tick', (result) => void result.events.splice(17, 2), '.events[16]'],
+      ['a transition without a docking or launch', (result) => void result.events.splice(19, 0, transition(2, 'G-02/3')), '.events[19]'],
+      ['a transition of the other gap', (result) => { result.events[13].gap = 'G-02/3'; }, '.events[13]'],
+      ['an event between a launch and its transition', (result) => void result.events.splice(13, 0, instantiated(1, 9)), '.events[13]'],
+      ['a third launch', (result) => void result.events.splice(18, 0, departed(1, null), transition(1, 'G-02/4')), '.events[18]'],
+      ['a third transition', (result) => void result.events.splice(18, 0, docked(1), transition(1, 'G-02/3')), '.events[19]'],
+      ['a second docking', (result) => void result.events.splice(22, 0, docked(2), transition(2, 'G-02/3')), '.events[22]'],
+      ['a take after request handling', (result) => void result.events.splice(11, 0, result.events.splice(10, 1)[0]), '.events[11]'],
+      ['a second take', (result) => void result.events.splice(11, 0, { ...result.events[10] }), '.events[11]'],
+      ['a start in the tick of a take', (result) => void result.events.splice(19, 0, started(1)), '.events[19]'],
+      ['an end in the tick of a take', (result) => void result.events.splice(19, 0, ended(1)), '.events[19]'],
+      ['a start after the end', (result) => void result.events.splice(22, 0, ended(2)), '.events[23]'],
+      ['an end of a message that started in its tick with frames that take time', (result) => void result.events.splice(23, 0, ended(2)), '.events[23]'],
+      ['an end of another message than the one started in its tick', (result) => {
+        (result.events[22].frameDurations as number[]).fill(0);
+        result.events.splice(23, 0, { ...ended(2), message: { table: 20011, face: 1, index: 3 } });
+      }, '.events[23]'],
+      ['a second end', (result) => void result.events.splice(26, 0, ended(3)), '.events[26]'],
+      ['a clearing after an incoming message', (result) => void result.events.splice(23, 0, { type: 'target-cleared', tick: 2, playerEntityId: 1, previousTarget: 4,
+        cause: 'base-view' }), '.events[23]'],
+      ['a third flush', (result) => void result.events.splice(2, 0, { ...result.events[1] }, { ...result.events[1] }), '.events[3]'],
+      ['an invalid-object cancellation without its flush', (result) => void result.events.splice(1, 1), '.events[1]'],
+      ['a flush after the commands', (result) => void result.events.splice(2, 0, ...result.events.splice(1, 2)), '.events[2]'],
+      ['a second cancellation in the mission flow', (result) => void result.events.splice(20, 0, cancelled(2, 'timeout')), '.events[20]'],
+      ['a mission-flow cancellation after the commands', (result) => void result.events.splice(4, 0, cancelled(1, 'timeout')), '.events[4]'],
+      ['a second gate cancellation', (result) => void result.events.splice(24, 0, cancelled(3, 'gate')), '.events[24]'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(communicationsRun, change, path);
+    });
+
+    it('accepts two flushes, a message of 32 frames, and a message of frames without time that starts and ends in one tick', () => {
+      const result = communicationsRun();
+      result.events.splice(2, 0, { ...result.events[1] });
+      // 23 after the insertion: the start of tick 2.
+      result.events[23].frameDurations = Array.from({ length: 32 }, () => 0x7fffffff);
+      const instant = communicationsRun();
+      instant.events[22].frameDurations = [0, 0, 0];
+      instant.events.splice(23, 0, { ...ended(2), callback: 'none', countdownStarted: false });
+      instant.events.pop();
+      for (const run of [result, instant]) expect(compareReplayResults(run, structuredClone(run))).toEqual({ match: true });
+      // The comm-messages reader never gives a message more frames than an event may carry.
+      expect(COMM_MESSAGES_LIMITS.frames).toBeLessThanOrEqual(32);
+    });
+
+    it('leaves queuing unordered, in every stage', () => {
+      const result = communicationsRun();
+      result.events.unshift(queued(1, { length: 3 }));
+      result.events.splice(result.events.indexOf(eventAt(result, 1, 'radio-taken')) + 1, 0, queued(1, { length: 4 }));
       expect(compareReplayResults(result, structuredClone(result))).toEqual({ match: true });
     });
   });

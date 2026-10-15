@@ -548,14 +548,14 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     expect(player.movement).toEqual({ mode: 'craft', speed: 64, commandedSpeed: 64, atCommandedSpeed: true, speedRatio: 1, ...quiet });
     // 0x68050 never writes the player's target; the player record names no candidates, so a world goal in mode 4, after
     // the first energy update's draw (r[2]).
-    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[3]), y: expectedWorld(6, r[4]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[3]), y: expectedWorld(6, r[4]), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
     expect(state.player).toMatchObject({ entityId: 1, target: null, control: { lastAxes: { pitch: 0, yaw: 0, roll: 0 }, speedAssist: { enabled: true, dueClock: 0, engaged: false } } });
     // Record 3's first craft (kind bit 7), anchored on the player: placement, its first energy update, its AI goal,
     // then its Warp timer.
     const next = state.entities.get(2)!;
     expect(next.position).toEqual(near(player.position, r.slice(5, 11)));
     expect(next).toMatchObject({ activity: 'active', maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 2 + (r[14] % 0x2d00), inWarp: false });
-    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
     expect(next.movement).toEqual(player.movement);
     expect(next.movement).not.toBe(player.movement);
   });
@@ -609,8 +609,8 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     world.step(tickInput());
     const [, first, second, fourth] = entities(state);
     expect(first.ai).toMatchObject({ mode: 4, target: null });
-    expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
-    expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
+    expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
+    expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null });
     expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[6] % 0x2d00), 2 + (r[8] % 0x2d00), 2 + (r[10] % 0x2d00)]);
     expect(state.rngState).toBe(rngStateAfter(before, 11));
   });

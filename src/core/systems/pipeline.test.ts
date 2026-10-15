@@ -431,6 +431,40 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
   });
 });
 
+describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)', () => {
+  it.each([
+    { type: 'deliver-command', receiver: 2, code: 9, sender: 1, commandIndex: 0 },
+    { type: 'dock', entityId: 1 },
+    { type: 'depart', entityId: 1, origin: 'command', commandIndex: 0 },
+    { type: 'depart', entityId: 1, origin: 'automatic', commandIndex: null },
+    { type: 'base-navigate', entityId: 1, direction: 'previous', commandIndex: 0 },
+    { type: 'base-confirm', entityId: 1, commandIndex: 0 },
+  ] as Request[])('treats a $type request as a broken invariant, as no rule posts one until P3-10 handles it', (request) => {
+    const [state] = withEntities([0], [15]);
+    expectFault(() => runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }), 'invariant-violated', `requests.${request.type}`);
+  });
+
+  it('clears the docking object, the menu, the partner and the menu\'s saved page with the player entity, and keeps the rest', () => {
+    const [state, [player, base]] = withEntities([0], [15]);
+    const menu = { level: 3, table: 'objects', items: [{ key: 0x78, value: { type: 'exit' } }] } as const;
+    const pose = { position: { x: 1, y: 2, z: 3 }, orientation: TEST_ORIENTATION };
+    Object.assign(state.player, { entityId: player.id, dockingObject: base.id, viewMode: 0x13 });
+    Object.assign(state.player.communications, {
+      menu, partner: base.id, menuSavedPage: 5, incomingSavedPage: 1, limits: { friendlyHit: 3, friendlyKill: 4 }, thanks: 2,
+    });
+    state.player.docking.savedPose = pose;
+    base.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.player).toMatchObject({ dockingObject: base.id, communications: { menu, partner: base.id, menuSavedPage: 5 } });
+    player.state = 'pending-removal';
+    runTickWith(state);
+    expect(state.player).toMatchObject({
+      entityId: null, dockingObject: null, docking: { savedPose: pose },
+      communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 1, limits: { friendlyHit: 3, friendlyKill: 4 }, thanks: 2 },
+    });
+  });
+});
+
 describe('pending requests (P3-07 CR-05)', () => {
   const request = (entityId: number): Request => ({ type: 'leave', entityId });
   const isLeave = (posted: Request): posted is Extract<Request, { type: 'leave' }> => posted.type === 'leave';

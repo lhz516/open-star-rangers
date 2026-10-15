@@ -5,11 +5,13 @@
  * object-instantiated. The speed and world-exit events are P3-06's (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约):
  * the player update emits the speed assist's events before the tick's command results and `speed-assist-toggled` right
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
- * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06). New event
- * types or reasons are added by revising the spec, not by consumers.
+ * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-10's
+ * communications, docking and base events and reason (CB-07, CB-13). New event types or reasons are added by revising
+ * the spec, not by consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
 import type { LeftPage, TargetMode } from '../world/player-state.ts';
+import type { MessageIdentity, MissionSubState, RadioCallback, SpeakerSnapshot } from '../world/world-state.ts';
 import type { CommandType } from './tick-input.ts';
 
 /** Fields every domain event has. */
@@ -45,10 +47,14 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];
  * - `cooldown`: the mount's interval has not passed;
  * - `misfire`: the damaged mount's draw failed;
  * - `out-of-arc`: an aimed gun has no solution towards its target.
+ * P3-10's (CB-07):
+ * - `subsystem-disabled`: a player subsystem the command needs is in state 2;
+ * `no-candidate` also covers a communications menu without a qualifying object or item.
  */
 export const COMMAND_RESULT_REASONS = Object.freeze([
   'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
   'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+  'subsystem-disabled',
 ] as const);
 export type CommandResultReason = (typeof COMMAND_RESULT_REASONS)[number];
 
@@ -294,11 +300,128 @@ export interface EnergyAllocationChangedEvent extends DomainEventBase<'energy-al
   readonly commandIndex: number;
 }
 
-/** Right after an accepted page command's result. */
+/**
+ * Right after an accepted page command's result, including every communications menu command (CB-03); a page write
+ * without a command (a flush, an incoming message, the left display handler) emits it only when the page changes.
+ */
 export interface LeftPageChangedEvent extends DomainEventBase<'left-page-changed'> {
   readonly page: LeftPage;
   readonly previousPage: LeftPage;
   readonly commandIndex: number | null;
+}
+
+// P3-10's events (docs/plan/p3/02/spec.md, CB-13): detached fact snapshots like P3-07's, without a clock, names or
+// content bytes.
+
+/** Request handling wrote the receiver's pending command; it does not say the receiver acted on it. */
+export interface CommandDeliveredEvent extends DomainEventBase<'command-delivered'> {
+  readonly receiverEntityId: EntityId;
+  readonly receiverKindBit: number;
+  /** A u32 from 1. */
+  readonly code: number;
+  readonly senderEntityId: EntityId;
+  readonly commandIndex: number;
+}
+
+/** Every queuing; `length` is the queue's after it. */
+export interface RadioQueuedEvent extends DomainEventBase<'radio-queued'> {
+  readonly message: MessageIdentity;
+  readonly callback: RadioCallback;
+  readonly speaker: SpeakerSnapshot | null;
+  /** A docking reply goes to the head, every other item in due order. */
+  readonly position: 'head' | 'sorted';
+  readonly length: number;
+}
+
+/** The `communications-reply` stage took the queue's head: the channel is loading. */
+export interface RadioTakenEvent extends DomainEventBase<'radio-taken'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+}
+
+/** The presentation sub-step started playing a message. */
+export interface IncomingStartedEvent extends DomainEventBase<'incoming-started'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+  /** i32, in 1/8 s. */
+  readonly frameDurations: readonly number[];
+  /** Page 5 shows it: the view mode is not 1. */
+  readonly shown: boolean;
+}
+
+/** The presentation sub-step ended a message and ran its callback. */
+export interface IncomingEndedEvent extends DomainEventBase<'incoming-ended'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+  readonly callback: RadioCallback;
+  /** The callback moved sub-state 3 to 4. */
+  readonly countdownStarted: boolean;
+}
+
+/** A flush, after its `left-page-changed`; P3-11 adds its causes. */
+export interface RadioFlushedEvent extends DomainEventBase<'radio-flushed'> {
+  readonly cause: 'docking-cancel';
+  readonly removed: number;
+  readonly interrupted: 'none' | 'loading' | 'playing';
+}
+
+/** Command code 9's selection started the docking wait, after its command's result. */
+export interface DockingRequestedEvent extends DomainEventBase<'docking-requested'> {
+  readonly playerEntityId: EntityId;
+  readonly dockingObject: EntityId;
+  readonly previousSubState: MissionSubState;
+  readonly deadlineClock: number;
+  readonly commandIndex: number;
+}
+
+/** One of the three cancellations (DK1, DK2); the original gives no feedback. */
+export interface DockingCancelledEvent extends DomainEventBase<'docking-cancelled'> {
+  readonly playerEntityId: EntityId;
+  readonly dockingObject: EntityId;
+  readonly cause: 'timeout' | 'invalid-object' | 'gate';
+}
+
+/** A docking request handling applied; a gate failure has only its `docking-cancelled`. */
+export interface DockedEvent extends DomainEventBase<'docked'> {
+  readonly playerEntityId: EntityId;
+  readonly baseEntityId: EntityId;
+  readonly wingmanEntityId: EntityId | null;
+  readonly previousViewMode: number;
+}
+
+interface DepartedFields extends DomainEventBase<'departed'> {
+  readonly playerEntityId: EntityId;
+  readonly viewMode: number;
+  readonly previousViewMode: number;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  readonly wingmanEntityId: EntityId | null;
+}
+
+/** A launch request handling applied: the player's `l`, or sub-state 5's automatic launch. */
+export type DepartedEvent =
+  | (DepartedFields & { readonly origin: 'command'; readonly commandIndex: number })
+  | (DepartedFields & { readonly origin: 'automatic'; readonly commandIndex: null });
+
+/** Right after `docked` (G-02/3) or each `departed` (G-02/4): Runtime cuts the frame after this tick and holds. */
+export interface TransitionEvent extends DomainEventBase<'transition'> {
+  readonly gap: 'G-02/3' | 'G-02/4';
+}
+
+/** One per base navigation request; `row` is the cursor after it, null without a base service. */
+export interface BaseNavigatedEvent extends DomainEventBase<'base-navigated'> {
+  readonly direction: 'previous' | 'next';
+  readonly row: number | null;
+  readonly moved: boolean;
+  readonly commandIndex: number;
+}
+
+/** One per base confirmation request; `record` is the confirmed row's record, null without a base service. */
+export interface BaseConfirmedEvent extends DomainEventBase<'base-confirmed'> {
+  readonly row: number | null;
+  readonly record: number | null;
+  readonly moved: boolean;
+  readonly commandIndex: number;
 }
 
 export type DomainEvent =
@@ -320,4 +443,17 @@ export type DomainEvent =
   | SourceReleasedEvent
   | EnergyDepletedEvent
   | EnergyAllocationChangedEvent
-  | LeftPageChangedEvent;
+  | LeftPageChangedEvent
+  | CommandDeliveredEvent
+  | RadioQueuedEvent
+  | RadioTakenEvent
+  | IncomingStartedEvent
+  | IncomingEndedEvent
+  | RadioFlushedEvent
+  | DockingRequestedEvent
+  | DockingCancelledEvent
+  | DockedEvent
+  | DepartedEvent
+  | TransitionEvent
+  | BaseNavigatedEvent
+  | BaseConfirmedEvent;

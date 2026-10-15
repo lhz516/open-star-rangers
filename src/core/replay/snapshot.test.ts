@@ -7,9 +7,10 @@ import { CoreInputError } from '../errors.ts';
 import { createWorld, initialWorldState } from '../world/create-world.ts';
 import { asCreateInput, reversedKeys, SYNTHETIC_RUN, worldInput } from '../world/create-world.test-support.ts';
 import type { Entity, SteeredMovementBlock } from '../world/entity-table.ts';
+import type { CommunicationsMenu } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { busyCombat, entityInit, stateText, thrownBy, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
-import type { WorldState } from '../world/world-state.ts';
+import type { RadioItem, WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, snapshotHash, snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
@@ -23,7 +24,11 @@ type Mutable = Record<string | number, unknown>;
  * the rules would create at run time: a craft named from the pool; an unnamed craft whose flight and combat state has
  * every optional part other tasks write (a formation, a timed rotation, an impulse, a disturbance, AI targets, mounts,
  * references); and one of each of P3-07's runtime kinds with every optional part of its combat state and its own
- * movement block variant. The player state has P3-07's targeting and references set.
+ * movement block variant. The player state has P3-07's targeting and references set, and P3-10's docking object, open
+ * command menu, partner, saved pages, stamps, thanks and saved pose; the unnamed craft has P3-10's communications
+ * fields and a pending command; the world is in the docking countdown with two radio items (one per message variant,
+ * with and without a speaker), a playing message, taken portraits, stamped limits, a friendly-fire total and a base
+ * service.
  */
 function richState(): WorldState {
   const state = withEveryKindBound(initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } }))));
@@ -34,12 +39,40 @@ function richState(): WorldState {
   Object.assign(block.timedRotation, { pitch: { rate: 0.5, decay: -0.25, end: 3 }, yaw: { rate: -1, decay: 0.5, end: 4 }, roll: { rate: 2, decay: -1, end: 5 } });
   block.impulse = { direction: { x: 0, y: 1, z: 0 }, magnitude: 5 };
   block.disturbance = { level: 2, biases: [1, -2, 3] };
-  Object.assign(runtime.ai, { target: 1, objectTarget: 2 });
+  Object.assign(runtime.ai, { target: 1, objectTarget: 2, pendingCommand: { code: 0xffffffff, issuedTick: 1 } });
+  Object.assign(runtime.communications, { face: 4, threatStamp: 9 });
   for (const kindBit of RUNTIME_KIND_BITS) state.entities.allocate(entityInit(kindBit, { combat: busyCombat(kindBit) }));
-  Object.assign(state.player, { targeting: { mode: 'friendly', autoTargetDueClock: 5 }, followedEntity: 3, delayedExplosionClock: 7 });
+  Object.assign(state.player, { targeting: { mode: 'friendly', autoTargetDueClock: 5 }, followedEntity: 3, delayedExplosionClock: 7, dockingObject: 4 });
   state.spawn.namePoolUses[1] = 1;
+  Object.assign(state.player.communications, {
+    menu: COMMAND_MENU, partner: 4, menuSavedPage: 1, incomingSavedPage: 5, limits: { friendlyHit: 11, friendlyKill: 12 }, thanks: 2,
+  });
+  state.player.docking.savedPose = { position: { x: 1, y: -2, z: 3 }, orientation: [0, 0, -1, 0, 1, 0, 1, 0, 0] };
+  Object.assign(state.flow, { subState: 4, dockingDeadline: 0x204 });
+  const { communications } = state;
+  communications.queue.push(DIRECT_ITEM, { ...SPOKEN_ITEM, due: 3 });
+  communications.channel = { phase: 'playing', item: SPOKEN_ITEM, startClock: 2, frameDurations: [5, 8, 5] };
+  communications.facePools.craft[1] = true;
+  communications.facePools.base[4] = true;
+  Object.assign(communications.limits, { wingmanLowHull: 13, enemyAppears: 14, tailWarning: 15, wingmanArrivalRepair: 16 });
+  Object.assign(communications.tailCheck, { dueClock: 17, attackerOnTail: true, missileIncoming: true });
+  Object.assign(state.ai.friendlyFire, { accumulated: -40, windowEnd: 18 });
+  state.baseService = {
+    rows: [3, 0, 1, 2, 4, 5, 6, 7, 8, 9, 10], cursor: 2, dues: { repair: 19, hull: 20, energy: 21 }, rates: { hull: 22, energy: 23 },
+    flags: { repairsComplete: true, energyAndMissilesFull: false, hullFull: true },
+  };
   return state;
 }
+
+// P3-10's state (docs/plan/p3/02/spec.md, CB-03, CB-05): a command menu and two radio items.
+const COMMAND_MENU: CommunicationsMenu = {
+  level: 4, table: 'kind2', items: [{ key: 0x31, value: { type: 'command', source: 0, code: 9 } }, { key: 0x78, value: { type: 'exit' } }],
+};
+const SPOKEN_ITEM: RadioItem = {
+  message: { table: 20985, face: 2, index: 7 }, due: 2, callback: 'docking-reply',
+  speaker: { entityId: 4, kindBit: 15, name: { type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 1 } },
+};
+const DIRECT_ITEM: RadioItem = { message: { table: 20983, face: null, index: 6 }, due: 1, callback: 'music-step', speaker: null };
 
 /** P3-07's runtime kinds: missile, projectile, explosion and fragment. */
 const RUNTIME_KIND_BITS = [20, 21, 22, 24];
@@ -82,10 +115,13 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(Object.keys(snapshot)).toEqual(['format', 'version', 'rulesVersion', 'state']);
     expect(snapshot).toMatchObject({ format: GAME_SNAPSHOT_FORMAT, version: GAME_SNAPSHOT_VERSION, rulesVersion: RULES_VERSION });
     // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07), then P3-07 (docs/plan/p3/02/spec.md, CR-14); P3-05's
-    // speed-preset only the rules version (docs/plan/p3/05/spec.md, 持久化与兼容).
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 3, 4]);
+    // speed-preset only the rules version (docs/plan/p3/05/spec.md, 持久化与兼容); then P3-10 both (CB-16).
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 4, 5]);
     const { state } = snapshot;
-    expect(Object.keys(state)).toEqual(['config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'player']);
+    expect(Object.keys(state)).toEqual([
+      'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'flow', 'player', 'communications', 'ai',
+      'baseService',
+    ]);
     expect(state.config).toEqual({
       content: syntheticIdentity(),
       mission: 'mission/first-campaign',
@@ -102,8 +138,19 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0, target: null, control: null, targeting: null, followedEntity: null,
       delayedExplosionClock: null, kills: { 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 16: 0, 19: 0 },
       shots: { projectilesFired: 0, projectileHits: 0, missilesFired: 0, missileHits: 0 }, heavyDamage: -1, leftDisplay: { page: 0 },
-      statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true },
+      statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true }, dockingObject: null,
+      communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 0, limits: { friendlyHit: null, friendlyKill: null }, thanks: 0 },
+      docking: { savedPose: null },
     });
+    // P3-10's creation values (CB-02, CB-05, CB-11).
+    expect(state.flow).toEqual({ mainState: 3, subState: 0, dockingDeadline: 0 });
+    expect(state.communications).toEqual({
+      queue: [], channel: { phase: 'idle' }, facePools: { craft: [false, false, false], base: [false, false, false, false, false] },
+      limits: { wingmanLowHull: 0, enemyAppears: 0, tailWarning: 0, wingmanArrivalRepair: 0 },
+      tailCheck: { dueClock: 0, attackerOnTail: false, missileIncoming: false },
+    });
+    expect(state.ai).toEqual({ friendlyFire: { accumulated: 0, windowEnd: 0 } });
+    expect(state.baseService).toBeNull();
     expect(state.spawn.records).toHaveLength(9);
     expect(state.spawn.wingman?.declaration).toEqual({ collection: 'wingman', index: 3 });
     // Seven declared entries and the wingman's.
@@ -152,7 +199,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
   it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', () => {
     const state = richState();
     // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
-    expect(Object.keys(state).sort()).toEqual(['clock', 'config', 'craftInfo', 'entities', 'missionStatus', 'player', 'rngState', 'ruleData', 'setup', 'spawn', 'tick']);
+    expect(Object.keys(state).sort()).toEqual([
+      'ai', 'baseService', 'clock', 'communications', 'config', 'craftInfo', 'entities', 'flow', 'missionStatus', 'player', 'rngState', 'ruleData', 'setup',
+      'spawn', 'tick',
+    ]);
     // Every entity is written by the same writer, so one entity of each shape stands for the rest: by collection,
     // group membership, name variant and combat type: the player, the wingman, a candidate-named record, a group
     // member, a pool name, an unnamed craft and the four runtime kinds, whose movement blocks are the other variants.
@@ -167,16 +217,17 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const representatives = new Set(shapes.values());
     for (const entity of [...state.entities.byId()]) if (!representatives.has(entity)) state.entities.remove(entity);
     const holders: (readonly [Mutable, string])[] = [
-      ...['config', 'tick', 'clock', 'rngState', 'missionStatus', 'player', 'spawn'].map((key) => [state as unknown as Mutable, key] as const),
+      ...['config', 'tick', 'clock', 'rngState', 'missionStatus', 'player', 'spawn', 'flow', 'communications', 'ai', 'baseService']
+        .map((key) => [state as unknown as Mutable, key] as const),
       ...[...shapes.values()].flatMap((entity) => Object.keys(entity).map((key) => [entity as unknown as Mutable, key] as const)),
     ];
     // A null in a nullable object field (a region, a source, a group membership, a movement block, a formation, a timed
     // rotation about an axis, an impulse, a disturbance, a craft's references, a missile's guidance and homing state, a
-    // projectile's expiry) cannot become 0; the same fields hold objects elsewhere in this state, whose members are
-    // leaves themselves.
+    // projectile's expiry, a pending command, a radio item's speaker) cannot become 0; the same fields hold objects elsewhere in this state,
+    // whose members are leaves themselves.
     const nullableObjects = new Set([
       'region', 'source', 'group', 'movement', 'formation', 'pitch', 'yaw', 'roll', 'impulse', 'disturbance',
-      'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry',
+      'proximity', 'lastVictim', 'lastAttacker', 'guidance', 'homing', 'expiry', 'speaker', 'pendingCommand',
     ]);
     const baseline = textOf(state);
     let changes = 0;
@@ -193,8 +244,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
         }
         holder[key] = original;
         if (text instanceof CoreInputError) {
-          // Another movement mode is no variant, like another `type`, which leafPaths skips.
-          expect(nullableObjects.has(String([key, ...path].at(-1))) || name === 'movement.mode', name).toBe(true);
+          // Another movement mode or channel phase is no variant, like another `type`, which leafPaths skips.
+          expect(nullableObjects.has(String([key, ...path].at(-1))) || name === 'movement.mode' || name === 'communications.channel.phase', name).toBe(true);
           continue;
         }
         expect(text, name).not.toBe(baseline);
@@ -204,6 +255,45 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(textOf(state)).toBe(baseline);
     // Ten entities of 30 and more values each, and every record, group, queue entry and counter.
     expect(changes).toBeGreaterThan(10 * 30 + 9 * 20);
+  });
+
+  it('writes every leaf of P3-10\'s other menu and channel variants and its unset parts (CB-03, CB-05)', () => {
+    const state = richState();
+    const objects: CommunicationsMenu = {
+      level: 3, table: 'objects', items: [
+        { key: 0x31, value: { type: 'object', entityId: 4, kindBit: 15, name: { type: 'pool', index: 1 }, tone: 'threatened' } },
+        { key: 0x78, value: { type: 'exit' } },
+      ],
+    };
+    const categories: CommunicationsMenu = {
+      level: 2, table: 'categories', items: [{ key: 0x31, value: { type: 'category', source: 3, kindMask: 0x68000 } }, { key: 0x58, value: { type: 'exit' } }],
+    };
+    const variants: (readonly [Mutable, string, unknown])[] = [
+      [state.player.communications as unknown as Mutable, 'menu', objects],
+      [state.player.communications as unknown as Mutable, 'menu', categories],
+      [state.communications as unknown as Mutable, 'channel', { phase: 'loading', item: SPOKEN_ITEM, readyTick: 3 }],
+    ];
+    for (const [holder, key, variant] of variants) {
+      holder[key] = variant;
+      const baseline = textOf(state);
+      // A channel's phase is its variant, like a `type`.
+      for (const path of leafPaths(variant).filter((leaf) => leaf.at(-1) !== 'phase')) {
+        holder[key] = withChangedLeaf(variant, path);
+        expect(textOf(state), [key, ...path].join('.')).not.toBe(baseline);
+      }
+      holder[key] = variant;
+    }
+    // The idle channel, a closed menu, no saved pose and no base service each write their own text.
+    const texts = new Set([textOf(state)]);
+    state.communications.channel = { phase: 'idle' };
+    texts.add(textOf(state));
+    state.player.communications.menu = null;
+    texts.add(textOf(state));
+    state.player.docking.savedPose = null;
+    texts.add(textOf(state));
+    state.baseService = null;
+    texts.add(textOf(state));
+    expect(texts.size).toBe(5);
   });
 
   it('includes the next entity ID, which an allocation advances even after the entity is gone', () => {
@@ -268,7 +358,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":3,"rulesVersion":4,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":4,"rulesVersion":5,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

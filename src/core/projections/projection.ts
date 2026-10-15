@@ -3,7 +3,8 @@
  * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
  * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts). map, communications and result fix the
  * boundary their owners fill; until a rule makes one ready it is `not-implemented`, never an empty list, a zero value, a
- * fully visible map or a victory. The projection gives only what the original shows or a rule needs, never the list of
+ * fully visible map or a victory. communications has its final shape (docs/plan/p3/02/spec.md, CB-14), which P3-10's
+ * subtask 19 makes ready. The projection gives only what the original shows or a rule needs, never the list of
  * all entities. Fields the spec leaves to an owner's research are `never` here: the owner defines them by revising the
  * spec (扩展规则) before its partition can become ready.
  */
@@ -12,8 +13,18 @@ import type { MapAxis } from '../../content/logic/logic-content.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
-import { interactionContext, type InteractionContext, type LeftPage, type TargetMode } from '../world/player-state.ts';
-import type { MissionStatus, WorldState } from '../world/world-state.ts';
+import {
+  interactionContext,
+  type CategoryValue,
+  type CommandValue,
+  type InteractionContext,
+  type LeftPage,
+  type MenuCommandTable,
+  type MenuExit,
+  type ObjectValue,
+  type TargetMode,
+} from '../world/player-state.ts';
+import type { MessageIdentity, MissionStatus, MissionSubState, SpeakerSnapshot, WorldState } from '../world/world-state.ts';
 import { projectCombat } from './combat.ts';
 
 export interface ClockProjection {
@@ -214,22 +225,69 @@ export interface MapReady {
   readonly destination: MapDestination | null;
 }
 
-/** The current menu's content: P3-03 imports menus, P3-10 fixes the reference. */
-export type MenuContentReference = never;
-/** Why an option is unavailable: P3-10. */
-export type OptionUnavailableReason = never;
+/**
+ * The current menu's content (docs/plan/p3/02/spec.md, CB-14): `asset` is the commMenus Asset ID and `table` the menu
+ * table; the original's menus have no unavailable items, so an option has no availability.
+ */
+export interface MenuContentReference {
+  readonly asset: AssetId;
+  readonly table: 'categories' | 'objects' | MenuCommandTable;
+}
 
-export type CommunicationsOption =
-  | { readonly index: number; readonly available: true }
-  | { readonly index: number; readonly available: false; readonly reason: OptionUnavailableReason };
+/** An option at its display position, with its key byte and its value: a source item, an object or the exit. */
+export interface CommunicationsOption {
+  readonly position: number;
+  readonly key: number;
+  readonly value: CategoryValue | ObjectValue | CommandValue | MenuExit;
+}
 
-/** Communications menu data (P3-10); no portraits or GPU objects. */
-export interface CommunicationsReady {
-  readonly readiness: 'ready';
-  readonly partnerEntityId: EntityId | null;
+/** An open menu: shown only on pages 2–4 with a menu built; a dormant menu is not shown. */
+export interface CommunicationsMenuView {
   readonly menu: MenuContentReference;
-  readonly level: number;
+  readonly level: 2 | 3 | 4;
+  readonly partnerEntityId: EntityId | null;
+  /** In display order. */
   readonly options: readonly CommunicationsOption[];
+}
+
+/** A playing message; `frame` follows from the elapsed time and the frame durations as CB-09 consumes them. */
+export interface IncomingView {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+  readonly frame: number;
+  readonly frameCount: number;
+  readonly shown: boolean;
+}
+
+/** The base page while the committed view mode is 6; `state` is the row's service state (fields 0–3, groups 0–4). */
+export interface BaseServiceView {
+  /** The docking object. */
+  readonly baseEntityId: EntityId | null;
+  readonly rows: readonly { readonly record: number; readonly selector: number; readonly state: number }[];
+  readonly cursor: number;
+  readonly flags: { readonly repairsComplete: boolean; readonly energyAndMissilesFull: boolean; readonly hullFull: boolean };
+}
+
+/** The player's communications readings (CB-14); not the radio queue, docking deadlines or base timers. */
+export interface CommunicationsPlayer {
+  readonly entityId: EntityId;
+  readonly page: LeftPage;
+  /** Field 13: at 2 the menu cannot open. */
+  readonly subsystem: SubsystemState;
+  readonly menu: CommunicationsMenuView | null;
+  /** While the channel plays. */
+  readonly incoming: IncomingView | null;
+  /** `docked`: the player's activity is docked. */
+  readonly docking: { readonly subState: MissionSubState; readonly dockingObject: EntityId | null; readonly docked: boolean };
+  readonly base: BaseServiceView | null;
+  /** The two lights of the type-9 instrument (P3-13). */
+  readonly warnings: { readonly attackerOnTail: boolean; readonly missileIncoming: boolean };
+}
+
+/** Communications, docking and base data (P3-10): null without a player entity; a destroyed player is still given. */
+export interface CommunicationsProjection {
+  readonly readiness: 'ready';
+  readonly player: CommunicationsPlayer | null;
 }
 
 /** A final result's rule reason and its content message: P3-11. */
@@ -252,7 +310,7 @@ export interface Projection {
   readonly player: PlayerProjection;
   readonly flight: FlightProjection;
   readonly map: NotImplementedPartition | MapReady;
-  readonly communications: NotImplementedPartition | CommunicationsReady;
+  readonly communications: NotImplementedPartition | CommunicationsProjection;
   readonly result: NotImplementedPartition | ResultReady;
 }
 

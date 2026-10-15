@@ -169,7 +169,9 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
   }
 
   it('gives allocator defaults that runtime-kind constructors share: AI mode 5, no targets, zero vectors, no Warp, no formation', () => {
-    expect(allocatorAiState()).toEqual({ mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null });
+    expect(allocatorAiState()).toEqual({
+      mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null, pendingCommand: null,
+    });
     expect(allocatorAiState()).not.toBe(allocatorAiState());
     expect(allocatorFlightState()).toEqual({ warpClock: 0, inWarp: false, ai: allocatorAiState(), formation: null });
   });
@@ -177,7 +179,7 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
   it('copies the flight state detached: a mutable block and AI state, frozen vectors, a frozen formation', () => {
     const init = entityInit(7, {
       maximumSpeed: 70, lastParkedUpdateClock: 6, warpClock: 900, inWarp: true, movement: busyBlock(),
-      ai: { mode: 2, target: 4, goal: { x: 1, y: 2, z: 3 }, targetOffset: { x: -1, y: 0, z: 0 }, objectTarget: 5 },
+      ai: { mode: 2, target: 4, goal: { x: 1, y: 2, z: 3 }, targetOffset: { x: -1, y: 0, z: 0 }, objectTarget: 5, pendingCommand: null },
       formation: { leader: 3, offset: { x: 1, y: 2, z: 3 } },
     }) as unknown as { movement: SteeredMovementBlock; ai: { goal: { x: number } }; formation: { offset: { x: number } } };
     const entity = new EntityTable().allocate(init as unknown as EntityInit);
@@ -276,6 +278,9 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
     ['AI mode 3', ai({ mode: 3 })],
     ['a non-f32 AI goal', ai({ goal: { x: 0.1, y: 0, z: 0 } })],
     ['a non-finite AI target offset', ai({ targetOffset: { x: 0, y: Number.NaN, z: 0 } })],
+    // P3-10 CB-04: the allocator and instantiation write no pending command.
+    ['a pending command', ai({ pendingCommand: { code: 7, issuedTick: 0 } })],
+    ['no pending command field', ai({ pendingCommand: undefined })],
     ['a non-finite formation offset', { formation: { leader: 1, offset: { x: 0, y: 0, z: Number.POSITIVE_INFINITY } } }],
   ] as [string, Partial<EntityInit>][])('rejects %s as a broken invariant', (_, overrides) => {
     const table = new EntityTable();
@@ -483,5 +488,24 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
       expect(table.allocate(entityInit(kindBit)).maximumSpeed).toBe(0);
       expectFault(() => table.allocate(entityInit(kindBit, { maximumSpeed: 64 })), 'invariant-violated', 'entities.runtime-kind');
     }
+  });
+});
+
+describe('communications fields of an entity (P3-10 CB-04)', () => {
+  it('allocates every kind with no portrait, no threat stamp and no pending command, which the rules write in place', () => {
+    const table = new EntityTable();
+    for (const kindBit of [0, 2, 7, 15, 20, 21, 22, 24]) {
+      const entity = table.allocate(entityInit(kindBit));
+      expect(entity.communications).toEqual({ face: null, threatStamp: null });
+      expect(entity.ai.pendingCommand).toBeNull();
+      expect(Object.isFrozen(entity.communications)).toBe(false);
+    }
+    const [first, second] = [table.allocate(entityInit(7)), table.allocate(entityInit(7))];
+    expect(first.communications).not.toBe(second.communications);
+    first.communications.face = 2;
+    first.communications.threatStamp = 40;
+    first.ai.pendingCommand = { code: 0xffffffff, issuedTick: 3 };
+    expect(second.communications).toEqual({ face: null, threatStamp: null });
+    expect(second.ai.pendingCommand).toBeNull();
   });
 });

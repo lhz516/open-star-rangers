@@ -10,11 +10,17 @@ import {
   PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
   type CombatPlayer,
+  type BaseServiceView,
   type CombatReady,
-  type CommunicationsReady,
+  type CommunicationsMenuView,
+  type CommunicationsOption,
+  type CommunicationsPlayer,
+  type CommunicationsProjection,
   type FlightCombat,
   type FlightResourceName,
+  type IncomingView,
   type MapReady,
+  type MenuContentReference,
   type MotionPlayer,
   type MotionReady,
   type NotImplementedPartition,
@@ -226,7 +232,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       readonly combat: NotImplementedPartition | CombatReady;
     }>();
     expectTypeOf<Projection['map']>().toEqualTypeOf<NotImplementedPartition | MapReady>();
-    expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsReady>();
+    expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsProjection>();
     expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
     // P3-07 CR-12: the combat group is the flight partition's, ready with the player's readings or null without one.
@@ -245,6 +251,19 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     >();
     expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
     expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
+    // P3-10 CB-14: the communications partition's final shape, ready with the player's readings or null without one;
+    // no option is unavailable, and the radio queue, deadlines and base timers are not shown.
+    expectTypeOf<CommunicationsProjection['readiness']>().toEqualTypeOf<'ready'>();
+    expectTypeOf<CommunicationsProjection['player']>().toEqualTypeOf<CommunicationsPlayer | null>();
+    expectTypeOf<keyof CommunicationsPlayer>().toEqualTypeOf<'entityId' | 'page' | 'subsystem' | 'menu' | 'incoming' | 'docking' | 'base' | 'warnings'>();
+    expectTypeOf<CommunicationsPlayer['menu']>().toEqualTypeOf<CommunicationsMenuView | null>();
+    expectTypeOf<CommunicationsPlayer['incoming']>().toEqualTypeOf<IncomingView | null>();
+    expectTypeOf<CommunicationsPlayer['base']>().toEqualTypeOf<BaseServiceView | null>();
+    expectTypeOf<keyof CommunicationsMenuView>().toEqualTypeOf<'menu' | 'level' | 'partnerEntityId' | 'options'>();
+    expectTypeOf<keyof CommunicationsOption>().toEqualTypeOf<'position' | 'key' | 'value'>();
+    expectTypeOf<CommunicationsOption['value']['type']>().toEqualTypeOf<'category' | 'object' | 'command' | 'exit'>();
+    expectTypeOf<MenuContentReference['table']>().toEqualTypeOf<'categories' | 'objects' | 'gated' | 'other' | 'kind2'>();
+    expectTypeOf<keyof BaseServiceView>().toEqualTypeOf<'baseEntityId' | 'rows' | 'cursor' | 'flags'>();
   });
 
   it('reports the player\'s maximum speed as live, which P3-07 recomputes from the live energy state (CR-09)', () => {

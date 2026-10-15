@@ -417,16 +417,33 @@ describe('recording size limit', () => {
       'command-result', 'energy-allocation-changed', 'energy-depleted', 'explosion-started', 'fragment-expired', 'hit', 'left-page-changed',
       'missile-ended', 'object-destroyed', 'object-instantiated', 'object-left-world', 'shot-fired', 'source-released', 'speed-assist-released',
       'speed-assist-toggled', 'speed-matched', 'target-changed', 'target-cleared', 'weapon-selected',
-    ]);
+      // P3-10's.
+      'base-confirmed', 'base-navigated', 'command-delivered', 'departed', 'docked', 'docking-cancelled', 'docking-requested', 'incoming-ended',
+      'incoming-started', 'radio-flushed', 'radio-queued', 'radio-taken', 'transition',
+    ].sort());
     // In a tick's order (compare.ts): one speed assist event first, the command results with the switch right after its
     // command's, then request handling, the hit and destruction, the energy, parked and frame-end stages; the selection and
     // page changes without a command anywhere. The other speed assist event and the level change of the last command,
     // which may follow its result alone, go in the tick before.
-    const before = (event: (typeof events)[keyof typeof events]) => ({ ...event, tick: checkpoint.tick - 1 });
+    const before = (event: (typeof events)[keyof typeof events], ticks = 1) => ({ ...event, tick: checkpoint.tick - ticks });
+    // P3-10's (CB-13) in two earlier ticks: the message starts three ticks before; two ticks before, the flush and its
+    // cancellation in the mission flow, the last command's page change and docking request, a queuing and the take,
+    // then in request handling the delivery, base keys of two other commands, a docking and a launch with their
+    // transitions. The message ends at the end of the tick before, apart from the take.
+    const communications = [
+      before(events['incoming-started'], 3),
+      ...[
+        events['radio-flushed'], events['docking-cancelled'], ...earlier, events['command-result'],
+        { ...events['left-page-changed'], commandIndex: CORE_LIMITS.commandsPerTick - 1 }, events['docking-requested'], events['radio-queued'],
+        events['radio-taken'], events['command-delivered'], { ...events['base-navigated'], commandIndex: 0 }, { ...events['base-confirmed'], commandIndex: 1 },
+        events.docked, events.transition, events.departed, { ...events.transition, gap: 'G-02/4' as const },
+      ].map((event) => before(event, 2)),
+    ];
     const result = {
       events: [
-        before(events['speed-assist-released']), ...earlier.map(before), before(events['command-result']), before(events['energy-allocation-changed']),
-        events['speed-matched'], ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'],
+        ...communications,
+        before(events['speed-assist-released']), ...earlier.map((event) => before(event)), before(events['command-result']), before(events['energy-allocation-changed']),
+        before(events['incoming-ended']), events['speed-matched'], ...earlier, events['command-result'], events['speed-assist-toggled'], events['object-instantiated'],
         events['weapon-selected'], events['left-page-changed'], events['target-changed'], events['shot-fired'], events['missile-ended'],
         events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit, events['object-destroyed'],
         events['energy-depleted'], events['object-left-world'], events['target-cleared'],

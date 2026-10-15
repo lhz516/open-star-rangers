@@ -6,13 +6,13 @@ import { readTickInput, type Command, type TickInput } from '../contracts/tick-i
 import { registerTick, runTick, type Request } from '../systems/pipeline.ts';
 import type { Entity, EntityInit, SteeredMovementBlock } from '../world/entity-table.ts';
 import { addPlayerEntity, entityInit, stillEntityInit, testState } from '../world/world.test-support.ts';
-import type { WorldState } from '../world/world-state.ts';
+import type { RadioItem, WorldState } from '../world/world-state.ts';
 import { snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
 
 // The capacity accounting of docs/plan/p3/06/spec.md (容量核算; D-08) tested on actual ticks and snapshots at the
 // entity limit, with synthetic states: CORE_LIMITS stays as it is.
 
-const { commandsPerTick: K, entities: ENTITIES, spawnExpansion, eventsPerTick, canonicalTextLength } = CORE_LIMITS;
+const { commandsPerTick: K, entities: ENTITIES, spawnExpansion, eventsPerTick, canonicalTextLength, radioQueueItems } = CORE_LIMITS;
 /** The derived bounds of one tick at the limits: P3-02's terms with P3-06's. */
 const EVENT_BOUND = K + K + 1 + spawnExpansion + ENTITIES;
 const REQUEST_BOUND = ENTITIES + spawnExpansion + K + 2;
@@ -121,10 +121,13 @@ function longestEntity(state: WorldState): Entity {
     maximumSpeed: LONG_F32,
     lastParkedUpdateClock: LONG_ID,
     warpClock: LONG_ID,
-    ai: { mode: 5, target: LONG_ID, goal: longVector(LONG_F32), targetOffset: longVector(LONG_F32), objectTarget: LONG_ID },
+    ai: { mode: 5, target: LONG_ID, goal: longVector(LONG_F32), targetOffset: longVector(LONG_F32), objectTarget: LONG_ID, pendingCommand: null },
     formation: { leader: LONG_ID, offset: longVector(LONG_F32) },
   };
   const entity = state.entities.allocate(init);
+  // P3-10's (CB-04): a u32 command code, an i32 portrait (a wingman's is its rule input − 1) and a clock.
+  entity.ai.pendingCommand = { code: 0xffffffff, issuedTick: LONG_ID };
+  Object.assign(entity.communications, { face: LONG_I32, threatStamp: LONG_ID });
   const block = entity.movement as SteeredMovementBlock;
   const timed = () => ({ rate: LONG_F32, decay: LONG_F32, end: LONG_F32 });
   Object.assign(block, { speed: LONG_F32, commandedSpeed: LONG_F32, speedRatio: LONG_F32, atCommandedSpeed: false, locked: false });
@@ -167,13 +170,19 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     // The entity's object in the entity list, its ID in the walk order and the two separating commas.
     const perEntity = one.length - empty;
     const entityText = one.slice(one.lastIndexOf('{"id":'), one.indexOf('],"kindOrder"'));
-    // P3-07's combat state closes the entity and rests on its own basis (docs/plan/p3/02/spec.md, CR-14: about 8.5 KiB
-    // a craft with 18 mounts), which P3-07 accounts for; P3-06's terms are the fields before it.
+    // P3-07's combat state rests on its own basis (docs/plan/p3/02/spec.md, CR-14: about 8.5 KiB a craft with 18
+    // mounts), which P3-07 accounts for; P3-06's terms are the fields before it. P3-10's communications fields close the
+    // entity: CB-16 counts about 60 characters, 69 at their longest.
     const combatStart = entityText.indexOf(',"combat":');
+    const combatEnd = entityText.lastIndexOf(',"communications":');
+    expect(entityText.length - 1 - combatEnd).toBeLessThanOrEqual(72);
     const flightText = entityText.slice(entityText.indexOf('"maximumSpeed"'), combatStart);
     expect(flightText.startsWith('"maximumSpeed"') && flightText.endsWith('}}')).toBe(true);
-    expect(flightText.length).toBeLessThanOrEqual(1536);
-    expect(perEntity - (entityText.length - 1 - combatStart)).toBeLessThanOrEqual(4096);
+    // P3-10's pending command in the AI state is P3-10's term (CB-16), not P3-06's.
+    const pendingCommand = `,"pendingCommand":{"code":4294967295,"issuedTick":${LONG_ID}}`;
+    expect(flightText).toContain(pendingCommand);
+    expect(flightText.length - pendingCommand.length).toBeLessThanOrEqual(1536);
+    expect(perEntity - (combatEnd - combatStart)).toBeLessThanOrEqual(4096);
 
     while (state.entities.size < ENTITIES) longestEntity(state);
     const full = snapshotText(withLongIds(takeSnapshot(state)));
@@ -181,5 +190,15 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     expect(full.length).toBeLessThanOrEqual(canonicalTextLength);
     // Half the text limit is the 4 KiB an entity it rests on.
     expect(ENTITIES * 4096).toBeLessThanOrEqual(canonicalTextLength / 2);
+
+    // A full radio queue (CB-16: about 0.8 MiB), here with every number at its longest, still within the text limit.
+    const item: RadioItem = {
+      message: { table: 20985, face: LONG_ID, index: LONG_ID }, due: LONG_ID, callback: 'docking-reply',
+      speaker: { entityId: LONG_ID, kindBit: 31, name: { type: 'candidate', declaration: { collection: 'wingman', index: LONG_ID }, candidate: LONG_ID } },
+    };
+    state.communications.queue.push(...Array.from({ length: radioQueueItems }, () => item));
+    const queued = snapshotText(withLongIds(takeSnapshot(state)));
+    expect(queued.length - full.length).toBeLessThanOrEqual(radioQueueItems * 320);
+    expect(queued.length).toBeLessThanOrEqual(canonicalTextLength);
   });
 });

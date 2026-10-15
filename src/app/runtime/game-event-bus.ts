@@ -46,6 +46,19 @@ const EVENT_TYPES = {
   'energy-depleted': true,
   'energy-allocation-changed': true,
   'left-page-changed': true,
+  'command-delivered': true,
+  'radio-queued': true,
+  'radio-taken': true,
+  'incoming-started': true,
+  'incoming-ended': true,
+  'radio-flushed': true,
+  'docking-requested': true,
+  'docking-cancelled': true,
+  docked: true,
+  departed: true,
+  transition: true,
+  'base-navigated': true,
+  'base-confirmed': true,
 } as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {

@@ -13,20 +13,34 @@ import {
   COMMAND_OUTCOMES,
   COMMAND_RESULT_REASONS,
   type Attacker,
+  type BaseConfirmedEvent,
+  type BaseNavigatedEvent,
+  type CommandDeliveredEvent,
   type CommandResultEvent,
+  type DepartedEvent,
+  type DockedEvent,
+  type DockingCancelledEvent,
+  type DockingRequestedEvent,
   type DomainEvent,
   type EntitySource,
   type GroupMembership,
   type HitEvent,
+  type IncomingEndedEvent,
+  type IncomingStartedEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  type RadioFlushedEvent,
+  type RadioQueuedEvent,
+  type RadioTakenEvent,
   type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
   type TargetChangedEvent,
+  type TransitionEvent,
   type Vec3,
 } from '../contracts/domain-events.ts';
+import { COMM_MESSAGES_LIMITS } from '../../content/rule-data/comm-messages.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import { COMMAND_TYPES } from '../contracts/tick-input.ts';
 import {
@@ -40,14 +54,21 @@ import {
   type NumberRule,
 } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
-import type { Level, Matrix3 } from '../world/entity-table.ts';
+import type { Level, Matrix3, NameReference } from '../world/entity-table.ts';
 import type { LeftPage } from '../world/player-state.ts';
+import type { MessageIdentity, MissionSubState, SpeakerSnapshot } from '../world/world-state.ts';
 import { readHash, type ReplayCheckpoint, type ReplayResult } from './recording.ts';
+
+/** P3-10's events (docs/plan/p3/02/spec.md, CB-13). */
+type CommunicationsEvent =
+  | CommandDeliveredEvent | RadioQueuedEvent | RadioTakenEvent | IncomingStartedEvent | IncomingEndedEvent | RadioFlushedEvent
+  | DockingRequestedEvent | DockingCancelledEvent | DockedEvent | DepartedEvent | TransitionEvent | BaseNavigatedEvent | BaseConfirmedEvent;
 
 /** P3-07's events (docs/plan/p3/02/spec.md, CR-06). */
 type CombatEvent = Exclude<
   DomainEvent,
-  CommandResultEvent | ObjectInstantiatedEvent | SpeedAssistToggledEvent | SpeedMatchedEvent | SpeedAssistReleasedEvent | ObjectLeftWorldEvent
+  | CommandResultEvent | ObjectInstantiatedEvent | SpeedAssistToggledEvent | SpeedMatchedEvent | SpeedAssistReleasedEvent | ObjectLeftWorldEvent
+  | CommunicationsEvent
 >;
 
 /** Difference data, not an error. */
@@ -56,7 +77,7 @@ export type ReplayComparison =
   | { readonly match: false; readonly tick: number; readonly kind: 'events' | 'checkpoint' | 'length' };
 
 // Keyed by every event type, and `speed-matched` by every origin, so a new DomainEvent variant does not compile until
-// it is read here. `target-changed` has the same fields for both origins.
+// it is read here. `target-changed` and `departed` have the same fields for both origins.
 const EVENT_FIELDS = {
   'command-result': ['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason'],
   'object-instantiated': ['type', 'tick', 'entityId', 'kindBit', 'source', 'position'],
@@ -79,6 +100,19 @@ const EVENT_FIELDS = {
   'energy-depleted': ['type', 'tick', 'entityId', 'kindBit', 'position'],
   'energy-allocation-changed': ['type', 'tick', 'entityId', 'shieldLevel', 'chargeLevel', 'commandIndex'],
   'left-page-changed': ['type', 'tick', 'page', 'previousPage', 'commandIndex'],
+  'command-delivered': ['type', 'tick', 'receiverEntityId', 'receiverKindBit', 'code', 'senderEntityId', 'commandIndex'],
+  'radio-queued': ['type', 'tick', 'message', 'callback', 'speaker', 'position', 'length'],
+  'radio-taken': ['type', 'tick', 'message', 'speaker'],
+  'incoming-started': ['type', 'tick', 'message', 'speaker', 'frameDurations', 'shown'],
+  'incoming-ended': ['type', 'tick', 'message', 'speaker', 'callback', 'countdownStarted'],
+  'radio-flushed': ['type', 'tick', 'cause', 'removed', 'interrupted'],
+  'docking-requested': ['type', 'tick', 'playerEntityId', 'dockingObject', 'previousSubState', 'deadlineClock', 'commandIndex'],
+  'docking-cancelled': ['type', 'tick', 'playerEntityId', 'dockingObject', 'cause'],
+  docked: ['type', 'tick', 'playerEntityId', 'baseEntityId', 'wingmanEntityId', 'previousViewMode'],
+  departed: ['type', 'tick', 'playerEntityId', 'origin', 'commandIndex', 'viewMode', 'previousViewMode', 'position', 'orientation', 'wingmanEntityId'],
+  transition: ['type', 'tick', 'gap'],
+  'base-navigated': ['type', 'tick', 'direction', 'row', 'moved', 'commandIndex'],
+  'base-confirmed': ['type', 'tick', 'row', 'record', 'moved', 'commandIndex'],
 } as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
@@ -101,6 +135,23 @@ const AI_CHANNEL = integerIn(0, 2);
 const FACE = integerIn(0, 5);
 /** A list's index: −1 for an empty list. */
 const LIST_INDEX = integerIn(-1, 0x7fffffff);
+// P3-10's (CB-13).
+const COMMAND_CODE = integerIn(1, 0xffffffff);
+const VIEW_MODE = integerIn(0, 0xff);
+const SERVICE_ROW = integerIn(0, 10);
+const FRAME_DURATION = integerIn(0, 0x7fffffff);
+/**
+ * The most frames of a message an event may carry: eight times the 3 or 4 of every message (RQ9), and few enough that
+ * `incoming-started` is never the longest event of a recording. The comm-messages reader admits fewer
+ * (COMM_MESSAGES_LIMITS.frames).
+ */
+const MESSAGE_FRAMES = 32;
+const MESSAGE_TABLES: readonly number[] = [20011, 20019, 20985, 20983];
+const FACE_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.faces - 1);
+const FACE_MESSAGE_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.faceMessages - 1);
+const DIRECT_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.directMessages - 1);
+const SUB_STATES: readonly number[] = [0, 3, 4, 5];
+const RADIO_CALLBACKS = ['none', 'docking-reply', 'music-step', 'music-reset'] as const;
 
 function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== 'boolean') throw new CoreInputError(path, 'must be a boolean');
@@ -386,6 +437,192 @@ function readCombatEvent(event: Record<string, unknown>, path: string, tick: num
   }
 }
 
+function readName(value: unknown, path: string): NameReference {
+  const name = readDataRecord(value, path, 3);
+  const type = readChoice(name.type, `${path}.type`, ['none', 'candidate', 'pool', 'craft-type']);
+  switch (type) {
+    case 'none':
+      requireExactFields(name, path, ['type']);
+      return { type };
+    case 'candidate': {
+      requireExactFields(name, path, ['type', 'declaration', 'candidate']);
+      const { collection, index } = readExactRecord(name.declaration, `${path}.declaration`, ['collection', 'index']);
+      return {
+        type,
+        declaration: {
+          collection: readChoice(collection, `${path}.declaration.collection`, ['mission', 'wingman']),
+          index: readNumber(index, `${path}.declaration.index`, INDEX),
+        },
+        candidate: readNumber(name.candidate, `${path}.candidate`, INDEX),
+      };
+    }
+    case 'pool':
+      requireExactFields(name, path, ['type', 'index']);
+      return { type, index: readNumber(name.index, `${path}.index`, INDEX) };
+    case 'craft-type':
+      requireExactFields(name, path, ['type', 'kindBit']);
+      return { type, kindBit: readKindBit(name.kindBit, `${path}.kindBit`) };
+  }
+}
+
+/** A message inside the bounds the comm-messages reader admits; queued messages were all found in the content (CB-05). */
+function readMessage(value: unknown, path: string): MessageIdentity {
+  const { table, face, index } = readExactRecord(value, path, ['table', 'face', 'index']);
+  const read = readNumber(table, `${path}.table`, [(item) => MESSAGE_TABLES.includes(item), `must be one of ${MESSAGE_TABLES.join(', ')}`]);
+  if (read === 20983) {
+    if (face !== null) throw new CoreInputError(`${path}.face`, 'must be null for the direct list');
+    return { table: read, face: null, index: readNumber(index, `${path}.index`, DIRECT_INDEX) };
+  }
+  return { table: read as 20011 | 20019 | 20985, face: readNumber(face, `${path}.face`, FACE_INDEX), index: readNumber(index, `${path}.index`, FACE_MESSAGE_INDEX) };
+}
+
+function readSpeaker(value: unknown, path: string): SpeakerSnapshot | null {
+  if (value === null) return null;
+  const { entityId, kindBit, name } = readExactRecord(value, path, ['entityId', 'kindBit', 'name']);
+  return { entityId: readEntityId(entityId, `${path}.entityId`), kindBit: readKindBit(kindBit, `${path}.kindBit`), name: readName(name, `${path}.name`) };
+}
+
+function readFrameDurations(value: unknown, path: string): readonly number[] {
+  const durations = readList(value, path, MESSAGE_FRAMES, (item, at) => readNumber(item, at, FRAME_DURATION));
+  if (durations.length === 0) throw new CoreInputError(path, 'must not be empty');
+  return durations;
+}
+
+function readDeparted(event: Record<string, unknown>, path: string, tick: number): DepartedEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  const fields = {
+    type: 'departed',
+    tick,
+    playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+    viewMode: readNumber(event.viewMode, at('viewMode'), VIEW_MODE),
+    previousViewMode: readNumber(event.previousViewMode, at('previousViewMode'), VIEW_MODE),
+    position: readVector(event.position, at('position')),
+    orientation: readMatrix(event.orientation, at('orientation')),
+    wingmanEntityId: readNullableEntityId(event.wingmanEntityId, at('wingmanEntityId')),
+  } as const;
+  const origin = readChoice(event.origin, at('origin'), ['command', 'automatic']);
+  if (origin === 'command') return { ...fields, origin, commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX) };
+  if (event.commandIndex !== null) throw new CoreInputError(at('commandIndex'), 'must be null for an automatic launch');
+  return { ...fields, origin, commandIndex: null };
+}
+
+const readNullableRow = (value: unknown, path: string): number | null => (value === null ? null : readNumber(value, path, SERVICE_ROW));
+
+function readBaseConfirmed(event: Record<string, unknown>, path: string, tick: number): BaseConfirmedEvent {
+  const row = readNullableRow(event.row, `${path}.row`);
+  const record = readNullableRow(event.record, `${path}.record`);
+  if ((row === null) !== (record === null)) throw new CoreInputError(`${path}.record`, 'must be null exactly when the row is');
+  return {
+    type: 'base-confirmed',
+    tick,
+    row,
+    record,
+    moved: readBoolean(event.moved, `${path}.moved`),
+    commandIndex: readNumber(event.commandIndex, `${path}.commandIndex`, COMMAND_INDEX),
+  };
+}
+
+/** Reads the fields of a P3-10 event (docs/plan/p3/02/spec.md, CB-13) after its type and field list. */
+function readCommunicationsEvent(event: Record<string, unknown>, path: string, tick: number, type: CommunicationsEvent['type']): CommunicationsEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'command-delivered':
+      return {
+        type,
+        tick,
+        receiverEntityId: readEntityId(event.receiverEntityId, at('receiverEntityId')),
+        receiverKindBit: readKindBit(event.receiverKindBit, at('receiverKindBit')),
+        code: readNumber(event.code, at('code'), COMMAND_CODE),
+        senderEntityId: readEntityId(event.senderEntityId, at('senderEntityId')),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    case 'radio-queued': {
+      const callback = readChoice(event.callback, at('callback'), RADIO_CALLBACKS);
+      const position = readChoice(event.position, at('position'), ['head', 'sorted']);
+      // A docking reply goes to the head, every other item in due order (CB-05).
+      if ((position === 'head') !== (callback === 'docking-reply')) throw new CoreInputError(at('position'), 'must be head exactly for a docking reply');
+      return {
+        type,
+        tick,
+        message: readMessage(event.message, at('message')),
+        callback,
+        speaker: readSpeaker(event.speaker, at('speaker')),
+        position,
+        length: readNumber(event.length, at('length'), integerIn(1, CORE_LIMITS.radioQueueItems)),
+      };
+    }
+    case 'radio-taken':
+      return { type, tick, message: readMessage(event.message, at('message')), speaker: readSpeaker(event.speaker, at('speaker')) };
+    case 'incoming-started':
+      return {
+        type,
+        tick,
+        message: readMessage(event.message, at('message')),
+        speaker: readSpeaker(event.speaker, at('speaker')),
+        frameDurations: readFrameDurations(event.frameDurations, at('frameDurations')),
+        shown: readBoolean(event.shown, at('shown')),
+      };
+    case 'incoming-ended': {
+      const callback = readChoice(event.callback, at('callback'), RADIO_CALLBACKS);
+      const countdownStarted = readBoolean(event.countdownStarted, at('countdownStarted'));
+      if (countdownStarted && callback !== 'docking-reply') throw new CoreInputError(at('countdownStarted'), 'must be false without a docking reply');
+      return { type, tick, message: readMessage(event.message, at('message')), speaker: readSpeaker(event.speaker, at('speaker')), callback, countdownStarted };
+    }
+    case 'radio-flushed':
+      return {
+        type,
+        tick,
+        cause: readChoice(event.cause, at('cause'), ['docking-cancel']),
+        removed: readNumber(event.removed, at('removed'), integerIn(0, CORE_LIMITS.radioQueueItems)),
+        interrupted: readChoice(event.interrupted, at('interrupted'), ['none', 'loading', 'playing']),
+      };
+    case 'docking-requested':
+      return {
+        type,
+        tick,
+        playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+        dockingObject: readEntityId(event.dockingObject, at('dockingObject')),
+        previousSubState: readNumber(event.previousSubState, at('previousSubState'), [
+          (item) => SUB_STATES.includes(item), `must be one of ${SUB_STATES.join(', ')}`,
+        ]) as MissionSubState,
+        deadlineClock: readNumber(event.deadlineClock, at('deadlineClock'), INDEX),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    case 'docking-cancelled':
+      return {
+        type,
+        tick,
+        playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+        dockingObject: readEntityId(event.dockingObject, at('dockingObject')),
+        cause: readChoice(event.cause, at('cause'), ['timeout', 'invalid-object', 'gate']),
+      };
+    case 'docked':
+      return {
+        type,
+        tick,
+        playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+        baseEntityId: readEntityId(event.baseEntityId, at('baseEntityId')),
+        wingmanEntityId: readNullableEntityId(event.wingmanEntityId, at('wingmanEntityId')),
+        previousViewMode: readNumber(event.previousViewMode, at('previousViewMode'), VIEW_MODE),
+      };
+    case 'departed':
+      return readDeparted(event, path, tick);
+    case 'transition':
+      return { type, tick, gap: readChoice(event.gap, at('gap'), ['G-02/3', 'G-02/4']) };
+    case 'base-navigated':
+      return {
+        type,
+        tick,
+        direction: readChoice(event.direction, at('direction'), ['previous', 'next']),
+        row: readNullableRow(event.row, at('row')),
+        moved: readBoolean(event.moved, at('moved')),
+        commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
+      };
+    case 'base-confirmed':
+      return readBaseConfirmed(event, path, tick);
+  }
+}
+
 /** Validates one event against the DomainEvent union, reading each field once, and returns a detached, unfrozen copy. */
 function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEvent {
   const event = readDataRecord(value, path, MAX_EVENT_FIELDS);
@@ -409,21 +646,48 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
       return { type, tick };
     case 'object-left-world':
       return readObjectLeftWorld(event, path, tick);
+    case 'command-delivered':
+    case 'radio-queued':
+    case 'radio-taken':
+    case 'incoming-started':
+    case 'incoming-ended':
+    case 'radio-flushed':
+    case 'docking-requested':
+    case 'docking-cancelled':
+    case 'docked':
+    case 'departed':
+    case 'transition':
+    case 'base-navigated':
+    case 'base-confirmed':
+      return readCommunicationsEvent(event, path, tick, type);
     default:
       return readCombatEvent(event, path, tick, type);
   }
 }
 
 /**
- * The pipeline stages that emit command results, P3-06's events and P3-07's fixed-stage events, in tick order
- * (docs/plan/p3/06/spec.md, 领域事件; docs/plan/p3/02/spec.md, CR-06): the speed assist and then the commands in the
- * player's update; the other objects' updates, the first place damage can happen; a manual match, an applied
- * selection, a shot, an explosion's activation, a missile's or fragment's expiry and a source's release in request
- * handling; an energy depletion in the energy stage; a world exit in the parked update; the right display's clearing
- * at the end of the frame. `hit` and `object-destroyed` happen from the object updates on, in several stages;
- * `object-instantiated` and a selection or page change without a command are not ordered against the stages.
+ * The pipeline stages that emit command results, P3-06's events and the fixed-stage events of P3-07 and P3-10, in tick
+ * order (docs/plan/p3/06/spec.md, 领域事件; docs/plan/p3/02/spec.md, CR-06, CB-13): P3-10's docking checks in the
+ * mission flow; the speed assist and then the commands in the player's update; the other objects' updates, the first
+ * place damage can happen; the radio's take in the communications reply; a manual match, an applied selection, a shot,
+ * an explosion's activation, a missile's or fragment's expiry, a source's release, a delivery, a docking, a launch and
+ * a base key in request handling; an energy depletion in the energy stage; a world exit in the parked update; the
+ * right display's clearing at the end of the frame, and last the incoming message's presentation sub-step. `hit` and
+ * `object-destroyed` happen from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a
+ * selection or page change without a command are not ordered against the stages.
  */
-const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, energy: 4, parked: 5, frameEnd: 6 });
+const STAGE = Object.freeze({
+  missionFlow: 0, assist: 1, commands: 2, objects: 3, reply: 4, requests: 5, energy: 6, parked: 7, frameEnd: 8, presentation: 9,
+});
+
+/** What TickOrder counts: P3-10's event types, and the two places a docking is cancelled. */
+type CountedEvent = CommunicationsEvent['type'] | 'gate' | 'flow-cancellation';
+
+/** A docking or launch whose `transition` must come next. */
+interface PendingTransition {
+  readonly gap: 'G-02/3' | 'G-02/4';
+  readonly path: string;
+}
 
 /**
  * The order of one tick's events, reset for each tick: the stages never go back; command results numbered 0, 1, … in
@@ -432,35 +696,58 @@ const STAGE = Object.freeze({ assist: 0, commands: 1, objects: 2, requests: 3, e
  * `speed-matched`, a command's `target-changed` and a command's shots after their command's result; at most one
  * additional event per command, shots aside; a missile's hits after its detonation; an `object-destroyed` after a
  * `hit` of the same entity, once, and no `hit` of it after (a destroyed victim takes no hit, CR-06); at most one
- * `target-cleared`.
+ * `target-cleared`. P3-10's (CB-13, CB-16): `docking-requested` right after its command's `left-page-changed`; at most
+ * one delivery or base key event per command, after its result; at most one docking, two launches and two transitions,
+ * each `docked` and `departed` followed at once by its `transition`; at most one take, and then no incoming message
+ * starts or ends in the tick; at most one start and one end, the start not after the end, and a message that starts
+ * and ends in one tick has frames of no time; the invalid-object cancellation right after a flush, of which there are
+ * at most two; at most one cancellation in the mission flow and one at the docking gate.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
-  #stage: number = STAGE.assist;
+  #stage: number = STAGE.missionFlow;
   #commands = 0;
   #assisted = false;
   #cleared = false;
+  #pendingTransition: PendingTransition | null = null;
+  #started: IncomingStartedEvent | null = null;
   readonly #extended = new Set<number>();
+  readonly #requested = new Set<number>();
   readonly #detonated = new Set<number>();
   readonly #hit = new Set<number>();
   readonly #destroyed = new Set<number>();
+  /** Event types or causes of which a tick has at most a given number, counted. */
+  readonly #counts = new Map<CountedEvent, number>();
+
+  /** Ends the tick: a docking or launch still waiting for its transition is an error. */
+  finish(): void {
+    if (this.#pendingTransition !== null) throw new CoreInputError(this.#pendingTransition.path, 'must be followed by its transition');
+  }
 
   reset(): void {
     this.#previous = null;
-    this.#stage = STAGE.assist;
+    this.#stage = STAGE.missionFlow;
     this.#commands = 0;
     this.#assisted = false;
     this.#cleared = false;
+    this.#pendingTransition = null;
+    this.#started = null;
     this.#extended.clear();
+    this.#requested.clear();
     this.#detonated.clear();
     this.#hit.clear();
     this.#destroyed.clear();
+    this.#counts.clear();
   }
 
   /** Checks `event`, the next of the tick, and returns whether it is a command result. */
   read(event: DomainEvent, path: string): boolean {
     const previous = this.#previous;
     this.#previous = event;
+    const pending = this.#pendingTransition;
+    if (pending !== null && (event.type !== 'transition' || event.gap !== pending.gap)) {
+      throw new CoreInputError(path, `must be the ${pending.gap} transition of the event before`);
+    }
     switch (event.type) {
       case 'command-result':
         this.#enter(STAGE.commands, path);
@@ -533,8 +820,87 @@ class TickOrder {
         this.#cleared = true;
         return false;
       case 'object-instantiated':
+      case 'radio-queued':
+        return false;
+      default:
+        this.#readCommunications(event, previous, path);
         return false;
     }
+  }
+
+  /** P3-10's events but `radio-queued` (CB-13). */
+  #readCommunications(event: Exclude<CommunicationsEvent, RadioQueuedEvent>, previous: DomainEvent | null, path: string): void {
+    switch (event.type) {
+      case 'radio-flushed':
+        this.#enter(STAGE.missionFlow, path);
+        this.#count(event.type, 2, path);
+        return;
+      case 'docking-cancelled':
+        if (event.cause === 'gate') {
+          this.#enter(STAGE.requests, path);
+          this.#count('gate', 1, path);
+          return;
+        }
+        this.#enter(STAGE.missionFlow, path);
+        this.#count('flow-cancellation', 1, path);
+        if (event.cause === 'invalid-object' && previous?.type !== 'radio-flushed') {
+          throw new CoreInputError(path, 'must come right after its radio-flushed');
+        }
+        return;
+      case 'docking-requested':
+        this.#enter(STAGE.commands, path);
+        if (previous?.type !== 'left-page-changed' || previous.commandIndex !== event.commandIndex) {
+          throw new CoreInputError(`${path}.commandIndex`, 'must be the command whose left-page-changed comes right before');
+        }
+        return;
+      case 'radio-taken':
+        this.#enter(STAGE.reply, path);
+        this.#count(event.type, 1, path);
+        return;
+      case 'command-delivered':
+      case 'base-navigated':
+      case 'base-confirmed':
+        this.#request(event.commandIndex, path);
+        return;
+      case 'docked':
+        this.#enter(STAGE.requests, path);
+        this.#count(event.type, 1, path);
+        this.#pendingTransition = { gap: 'G-02/3', path };
+        return;
+      case 'departed':
+        if (event.origin === 'command') this.#request(event.commandIndex, path);
+        else this.#enter(STAGE.requests, path);
+        this.#count(event.type, 2, path);
+        this.#pendingTransition = { gap: 'G-02/4', path };
+        return;
+      case 'transition':
+        if (this.#pendingTransition === null) throw new CoreInputError(path, 'must come right after a docked or departed');
+        this.#pendingTransition = null;
+        this.#count(event.type, 2, path);
+        return;
+      case 'incoming-started':
+        this.#incoming(path);
+        if (this.#counts.has('incoming-ended')) throw new CoreInputError(path, 'must not follow the end of an incoming message');
+        this.#count(event.type, 1, path);
+        this.#started = event;
+        return;
+      case 'incoming-ended': {
+        this.#incoming(path);
+        this.#count(event.type, 1, path);
+        // A message started in this tick ends at once only when its frames take no time (CB-09).
+        const started = this.#started;
+        if (started !== null && (!same(started.message, event.message) || !same(started.speaker, event.speaker) || started.frameDurations.some((frame) => frame !== 0))) {
+          throw new CoreInputError(path, 'must end the message started in this tick, whose frames take no time');
+        }
+        return;
+      }
+    }
+  }
+
+  /** The presentation sub-step: a message taken in this tick is still loading, so none starts or ends (CB-06, CB-09). */
+  #incoming(path: string): void {
+    this.#enter(STAGE.presentation, path);
+    if (this.#counts.has('radio-taken')) throw new CoreInputError(path, 'must not share its tick with a radio-taken');
   }
 
   #enter(stage: number, path: string): void {
@@ -565,6 +931,19 @@ class TickOrder {
   #extend(commandIndex: number, path: string): void {
     if (this.#extended.has(commandIndex)) throw new CoreInputError(`${path}.commandIndex`, 'must not have a second additional event');
     this.#extended.add(commandIndex);
+  }
+
+  /** A P3-10 event of a command's request (a delivery, a base key, a launch): at most one per command. */
+  #request(commandIndex: number, path: string): void {
+    this.#followCommand(commandIndex, path);
+    if (this.#requested.has(commandIndex)) throw new CoreInputError(`${path}.commandIndex`, 'must not have a second request event');
+    this.#requested.add(commandIndex);
+  }
+
+  #count(name: CountedEvent, most: number, path: string): void {
+    const count = (this.#counts.get(name) ?? 0) + 1;
+    if (count > most) throw new CoreInputError(path, `must not be one of more than ${most} such events of the tick`);
+    this.#counts.set(name, count);
   }
 
   #assist(path: string): void {
@@ -609,6 +988,7 @@ function readResult(value: unknown, root: string): ReplayResult {
     const path = `${root}.events[${index}]`;
     if (event.tick < tick) throw new CoreInputError(`${path}.tick`, 'must not be below the previous event tick');
     if (event.tick > tick) {
+      order.finish();
       tick = event.tick;
       tickEvents = 0;
       order.reset();
@@ -619,6 +999,7 @@ function readResult(value: unknown, root: string): ReplayResult {
     if (!fitsLimit('recordedCommands', commands, 1)) throw new CoreInputError(path, `must not be one of more than ${CORE_LIMITS.recordedCommands} command results`);
     commands++;
   });
+  order.finish();
   return { events, checkpoints, finalTick };
 }
 
