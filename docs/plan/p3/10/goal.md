@@ -94,7 +94,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [07-media-model-gate.md](./subtasks/07-media-model-gate.md) | 02, 03, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-original-pilot-runs.md](./subtasks/09-original-pilot-runs.md) | 02, 04, 05 | completed |
-| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | in-progress |
+| [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | completed |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | in-progress |
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | pending |
 | [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | pending |
@@ -141,6 +141,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 08 完成：** D-01 依授权批准（P3-02 CB-01–CB-19、P3-04 运行中衔接、P3-10 方向修订 ①–⑨）。离港位姿复核：`0x38ff4` 保存的是所停靠基地的位姿（与 09 的 `rt-a2-01` 一致），executable 与 B-004 的更正由协调者另行提交。种类 `0x4000` 移交 P3-08（不新增本任务子任务），阶段索引随之修改。15–19、21 的验收措辞须按 D-01 的方向修订执行（见 08 的完成证据）。
 
 - **2026-10-14 — 29 完成：** 生产白名单加入 `MAIN/COMMFACE.NOB`（来源指纹改变），logic 转换器组件为 `logic-3`，切片定义版本 5；用户须重新导入。`comm-messages` 每条消息至多 8 帧（`COMM_MESSAGES_LIMITS.frames`），Core 比较器对 `incoming-started.frameDurations` 的上界 32 不小于它（11 的决定）。
+
+- **2026-10-14 — 10 完成：** D-02 依授权批准（spec 的 D-02 连续行为判据与审批；B-004 的原版运行时测量）。不批准静态例外；25 按 D-02 第 5 条的配方族预算执行（主链 6、无僚机 2、受损服务 4、交战 6、档案不可用变体 2 次启动）。期限取消的原版样本改用 RQ7 的档案不可用配置，须由 `tools/baseline` 在既有契约内支持私有副本不含 `COMMFACE.NOB`，否则该行阻塞。executable BS11 与 B-004 基地内部的“运行核对待 09”措辞已过时（09 已取得读数），由 26 或 27 更新。
 
 ## 审批
 
