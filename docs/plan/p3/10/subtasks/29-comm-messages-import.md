@@ -49,6 +49,7 @@ updated: 2026-10-14
 - `src/app/import/import-pipeline.test.ts`：转换器版本字面量随 logic 组件递增。
 - `e2e/**`：合成包与夹具。
 - `tools/package-check*.ts`、`tools/nob-check*.ts`、`tools/logic-check*.ts`、`tools/nob/**`：本地核对。
+- `tools/source-check.ts`、`tools/source-check.test.ts`：`COMMFACE.NOB` 进入白名单后移出研究档案列表。
 - `docs/engineering/modules/content.md`、`docs/engineering/modules/original-data.md`、`docs/engineering/modules/workers.md`、`docs/engineering/source-structure.md`、`docs/guides/local-import.md`、`docs/guides/tools.md`、`docs/original/formats/imfat.md`、`docs/original/formats/comm.md`：文档同步。
 - `local/research/p3-10/comm-messages/**`：本地核对输出（被忽略）。
 
