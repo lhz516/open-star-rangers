@@ -34,6 +34,7 @@ updated: 2026-10-14
 
 - `src/core/rules/docking.ts`、`src/core/rules/docking.test.ts`、`src/core/systems/docking.ts`、`src/core/systems/docking.test.ts`：计划新增。
 - `src/core/systems/pipeline.ts`、`src/core/systems/pipeline.test.ts`：`mission-flow` 阶段与请求处理接入。
+- `src/core/systems/communications.test.ts`、`src/core/systems/radio.test.ts`：子状态 3/5 场景补上有效的停靠对象与期限（仅测试前置条件）。
 
 ## 验收标准
 
