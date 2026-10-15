@@ -112,6 +112,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
   Evidence: D-01 草案已写成协调者 checkout 中未提交的改动——P3-02 spec 新节“P3-08 的契约修订（D-01）”（CR-15–CR-25，带“草案，待用户批准”标注，并在 CR-02/05/06/07/14 加待定说明）与 P3-08 spec 的修订 ①–⑧（① 推翻已批准的安装位置方向）；`node tools/task-state.ts p3/08` 无计划问题，链接检查 0 处问题，`pnpm check:compliance` 通过，rubber-duck 的 5 项阻塞已修正。待用户决定的事项：①–⑧ 的重新批准；基地自动挂点每次更新都重选与 Warp 离场的一帧表现差异；replay 格式 2→3（`b` 的新命令，沿用 P3-05 先例）；放宽已批准字段（运行时 +0xE0 可写、AI 写导弹锁定字段、`lastParkedUpdateClock` 下限 −0x80）。
   Affected acceptance: 08 全部验收；经依赖影响 12 起的全部实现子任务与 AC-01–AC-12、AC-14、AC-16、AC-17。09 与 08 写入范围重叠，在 08 解决前不开始。
   Resume when: 用户明确批准（或给出修改意见后批准）该 D-01 草案；协调者把批准原话写入 P3-02 与 P3-08 spec 的审批节并完成 08。
+- **2026-10-14 — D-01 草案与 P3-10 已批准的 D-01 对齐：** P3-10 的 D-01（其分支 `p3-10-comms-base-resupply-spec`，CB-01–CB-19）已获批。未提交的 D-01 草案改为消费 P3-10 的 `deliver-command`（CB-08）与 `queueLine`（CB-06），删去本任务的命令请求与回复事件；`ai.pendingCommand`、`WorldState.ai.friendlyFire` 与 CB-04/CB-05 同名同形；新增只读查询 `isClosingMissileLock`；CR-20 引用 CB-18（种类 0x4000 归本任务）。友伤累计的写入归属与 P3-02 CR-13、P3-10 CB-12 冲突，留作 09（D-03）的用户决定（推荐：保留 CB-12，本任务只读）。合并 P3-10 分支时 P3-02 的 CR-02 行与审批节两侧都保留。
 
 ## 审批
 
