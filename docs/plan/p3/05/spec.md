@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "05"
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0018, B-001, B-004, B-005, U-011, U-012, U-029]
 reviewed: sha256:f9eb03b02240
 ---
@@ -190,6 +190,7 @@ Q-01 至 Q-06 是研究交付，不因审阅而完成。绑定表中依赖 Q-01�
 | `KeyS` / `KeyG` | 无 | 飞行 | `energy shield-decrease` / `gun-decrease` | 是 | P3-07 D10 已确认（代码），Core 只在能量页接受 |
 | `KeyS` / `KeyG` | Shift | 飞行 | `energy shield-increase` / `gun-increase` | 是 | 同上 |
 | `KeyD` | 无 | 飞行 | `damage-report` | — | 原版 |
+| `KeyB` | 无（无 Shift、无 Ctrl） | 飞行 | `drop-transponder` | 是 | 原版（键位表“飞行”：键码 0x62 只在飞行上下文，Shift、Ctrl、Alt 形式不到达；正常玩法为高概率，[X5](../../../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)）；经 P3-08 的 D-03 加入 |
 | `KeyM` | 无 | 飞行、地图、基地（战役） | `toggle-map` | — | 原版（基地中仅战役） |
 | `KeyW` | 无或 Shift | 飞行、地图 | `request-warp` | — | 原版（地图中受原版状态门禁约束） |
 | `KeyC` / `KeyX` | 无 | 飞行 | `communications open` / `close` | — | 原版 |
@@ -205,6 +206,13 @@ Q-01 至 Q-06 是研究交付，不因审阅而完成。绑定表中依赖 Q-01�
 | 鼠标移动；左键新按下与按住 | — | 地图 | `map-point hover` / `select` | 左键按住时按地图读取节奏重复（见[战略地图输入](#战略地图输入)，不用键盘重复节奏） | 原版（Q-03 已确认，代码；起点与左键时机经检查点 K 定稿） |
 
 - `Numpad1`–`Numpad9` 仅在 NumLock 与 Shift 状态不同的组合下代表数字；其中 `Numpad1`–`Numpad9` 在普通飞行/基地无动作，通讯菜单捕获相应数字时才提交 `select-number`。NumLock 与 Shift 状态相同的 `Numpad7`/`9`/`4`/`5`/`6`/`2` 是飞行暂缺视角；`Numpad8` 是前视别名，并在基地分别作为上导航。`Numpad1`/`3`/`0`/`Decimal` 的 End/PgDn/Ins/Del 码无动作。平台报告的 NumLock 与原版状态无法对应时，不猜测数字或视角；Ctrl 加小键盘导航别名不匹配项目绑定，保持未绑定 Ctrl 组合的浏览器原生处理。
+- **`KeyB`（P3-08 的 D-03）：** 命令 `drop-transponder` 由 [P3-02 的 CR-20](../02/spec.md#cr-20-动态-xpon-与-bd-01) 定义（无字段；Core 按飞行命令的共同门禁判定，非飞行上下文为 `ignored`/`wrong-context`，没有次数、能量或冷却门禁），输入侧见 [CR-30](../02/spec.md#cr-30-b-的输入侧d-03)。
+  - **修饰键：** 只匹配无 Shift、无有效 Ctrl；CapsLock 按[修饰键与布局](#修饰键与布局)的既有规则。Alt 是项目的独立开火修饰：Alt+`b` 在项目中仍投放，而原版按住 Alt 时只有空格起作用——沿用检查点 K（键盘）裁定 4 已列出的 Alt 差异，不另立例外。
+  - **重复：** 原版按住时靠 BIOS 重复、每次轮询至多一次；项目按[离散命令与重复](#离散命令与重复)的可重复规则（首次立即，32/16 时钟单位的项目节奏，每帧每键至多一次），与其他可重复键相同地记入[对照](#对照r-23)的节奏差异。
+  - **菜单捕获：** 输入层不读取通讯菜单状态（检查点 K 规则 5）。原版对象列表的第 11 项占用 `b`，而所选内容的菜单只用数字与 `x`，按位置生成键的列表至多 9 项（[P3-02 的 CB-01](../02/spec.md#cb-01-世界创建输入语义检查与静态规则数据) 检查 1、2，CB-07），所以切片中 `b` 从不被菜单占用，菜单打开时仍提交 `drop-transponder`，由 Core 按 CB-07 的优先级判定。
+  - **其他上下文：** Warp、地图与基地中没有动作（绑定只在飞行生效），页面层拦截按[页面层拦截](#页面层拦截)；暂停与非 running 时不提交；失焦、上下文切换与暂停清键同其他可重复键。
+  - **锁键：** `KeyB` 随绑定表进入 Keyboard Lock 的 code 集合（AC-14 只锁表中列出的 `code`）。
+  - **验证：** 绑定矩阵、重复与清键的 Node 测试，以及经 Runtime 到 Core 的实体与事件断言，由 P3-08 goal 的子任务 22 完成；浏览器中以合成包触发由其子任务 24 完成（P3-08 spec 的 AC-10）。P3-05 已完成的证据不改写，AC-02、AC-05、AC-06、AC-11、AC-14 的既有结论不因本行重开。
 - 表中未列的键与组合没有游戏动作，也不拦截（Alt 组合见[页面层拦截](#页面层拦截)）。绑定在不生效的上下文中同样没有动作，但仍按页面层拦截处理。
 - 一次新按下至多提交一个离散命令或宿主动作；修饰键状态变化可以同时重算连续意图。同一上下文的 `code`、Shift、有效 Ctrl 与适用 NumLock 组合没有竞争的离散绑定，由测试保证。
 - 项目操纵改用 `BracketRight`、`Semicolon`、`Backquote`、`Quote`：Q-01/Q-04 的完整按键记录中，这些标点在飞行、Warp、地图、基地及通讯菜单均没有非作弊原版动作；它们不属于通讯菜单的数字/字母按键生成范围。原版物理键到宿主 `code` 的映射仍未确认，项目按 `code` 识别，不把本选择写成原版键位。
@@ -335,6 +343,7 @@ R-23 按[离散](../01/spec.md#对照方式与判定)方式对照：
 - [slice-gaps](../../../engineering/slice-gaps.md)：加入 G-08、G-09、G-10 的呈现位置。
 - 实施前同步 P3-01 的 G-08、P3-02/P3-06 的档位命令与版本、P3-04 的焦点/输入控制端口；各自记录真实批准来源。重新验证受影响的 goal/subtask 覆盖，不改历史证据。本次 review 只编辑 P3-05 spec。
 - [platform](../../../engineering/modules/platform.md#键盘源)、[ui](../../../engineering/modules/ui.md)、[app](../../../engineering/modules/app.md#任务所有者)、[core](../../../engineering/modules/core.md) 模块说明、[源码结构指南](../../../engineering/source-structure.md)与[工程约定](../../../engineering/README.md#键盘源与输入区)。
+- **P3-08 的 D-03（`KeyB`）：** [键位文档](../../../engineering/keyboard-input.md)的绑定表加入 `KeyB`（飞行；投放 Xpon；原版绑定，正常玩法为高概率），对照差异写明 BIOS 重复与 Alt 的说明；由 P3-08 的子任务 22 随实现同步。[键位表](../../../original/input/key-map.md)冲突表中该行的“待测”列在实机核对后补。
 
 ## 数据模型与契约
 
@@ -483,3 +492,10 @@ R-23 按[离散](../01/spec.md#对照方式与判定)方式对照：
 据此对齐 K 的分项前提、放行与重开，修正小键盘别名/G-08/NumLock 的矛盾，明确菜单优先级接入边界、select-number 的默认飞行与未实现上下文反馈，并同步 AC。只修改本 spec；没有代为完成研究、批准完整契约或生成 goal，状态仍为 draft。
 
 **2026-10-14 交接同步（P3-09 的 D-01，按用户 2026-10-14 的预先授权由 agent 定稿，待用户事后审阅）：** 上文检查点 K（地图）定稿中的“右键：……接通它需要新的 Core 命令与地图状态”与[对照](#对照r-23)的已知差异中“原版右键的放大窗口编号开关未接通（交 P3-09、P3-13）”的交接，按 P3-09 的研究同步如下：编号开关、去抖计数与编号都没有规则读者（[放大窗口](../../../original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904)，已确认，代码），所以**不新增 Core 命令或地图状态**；开关是 P3-13 的呈现状态，编号的数值由 Core 的 `map` 分区给出（[P3-02 的 MW-11](../02/spec.md#mw-11-projection-与-render-state)）。右键的生产绑定、按住时的切换节奏（原版每 20 次 `0x2b9bc` 调用切换一次，按调用而不是时间计数）与相应的批准差异由 P3-13 定稿；在此之前 P3-05 的右键仍不产生游戏动作。本条只同步交接，不改变本 spec 的范围、行为、验收与历史证据。授权出处见 [P3-09 goal 的审批](../09/goal.md#审批)。
+
+**2026-10-15 修订（P3-08 的 D-03：`KeyB`；由 agent 依用户 2026-10-15 的授权批准）：** 由 P3-08 的子任务 09 定稿，由 agent 依用户 2026-10-15 的授权（原话：“approve D-01 and continue working. i authorize you to make decision to approve future decisions.”，记在 [P3-08 spec 的审批](../08/spec.md#审批)）批准；这不是用户本人对本修订的批准，授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们。
+
+- **改动的部分：** 只在[绑定表](#绑定表)新增 `KeyB` 一行及其说明、在[文档影响](#文档影响)中加入键位文档的同步、改了 front matter 的日期，并记录本条；没有新增 S/AC 编号，没有改 `status`。
+- **所选方案与依据：** 纳入：`KeyB`，无 Shift、无 Ctrl，只在飞行上下文，可重复（按项目节奏），菜单在切片中不占用，每次新按下至多一个命令。依据为[键位表](../../../original/input/key-map.md)“飞行”节的绑定事实（P3-08/06）与 [X5](../../../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)（正常玩法为高概率，已标注）。BIOS 重复节奏与 Alt+`b` 的两项差异沿用本 spec 已批准的同类差异。
+- **被排除的方案：** 不纳入 `b`（X5 支持正常玩法，省去它会改变地图的视野来源）；不可重复（原版按住时靠 BIOS 重复投放）；为 Alt+`b` 另立不投放的例外（与检查点 K 裁定 4 的 Alt 政策不一致）。
+- **实现与范围：** 实现与验证归 P3-08 goal 的子任务 22、24；P3-05 的历史证据不改写。命令 `drop-transponder` 与其版本递增属 P3-02 的 CR-20、CR-25（P3-08 的 D-01，已由用户批准），不由本修订批准。修订后未重跑 review-spec。

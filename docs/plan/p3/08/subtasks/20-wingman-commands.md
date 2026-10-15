@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "20"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 20 — 僚机命令
@@ -17,7 +17,7 @@ updated: 2026-10-14
 ## 工作范围
 
 - 计划新增 `src/core/rules/ai-commands.ts`：`0x61f20` 对码 1–7 的效果、拒绝与查询，由活动（`0x610c8`）与停放（`0x62250`）两条路径调用。
-- [pipeline.ts](../../../../../src/core/systems/pipeline.ts) 的请求处理接入僚机命令请求（消息 0x100），写入待处理命令单槽；覆盖、同 tick 重复、消费前僚机或目标失效与玩家换目标按 08 定稿。
+- 僚机命令请求（消息 0x100）由 P3-10 的 `deliver-command`（[P3-02 CB-08](../../02/spec.md)）在请求处理中写入待处理命令单槽，已实现；本子任务只实现僚机对单槽的消费（活动 `0x614a8`、停放 `0x61f20`）、结果事实与经 P3-10 `queueLine` 的回复，并按 [CR-28](../../02/spec.md#cr-28-僚机命令与回复的接口d-03) 承担菜单到回复的联合测试；覆盖、同 tick 重复、消费前僚机或目标失效与玩家换目标按 08 定稿。
 - 按 08 定稿发出僚机命令的结果与回复事实（与菜单的 `command-result` 分开），在原版回复位置交出，跨 tick 关联不读已移除实体；[domain-events.ts](../../../../../src/core/contracts/domain-events.ts)、[compare.ts](../../../../../src/core/replay/compare.ts)、[game-event-bus.ts](../../../../../src/app/runtime/game-event-bus.ts) 如需同步，在此完成。
 - 测试：在既有 `TickContext`/`RequestQueue` 上模拟投递，经真实请求处理与 AI 消费；不增加生产注入 API，测试不作为标准 replay 证据。
 
