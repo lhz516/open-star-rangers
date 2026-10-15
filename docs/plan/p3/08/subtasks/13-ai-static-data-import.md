@@ -48,6 +48,9 @@ updated: 2026-10-14
 - `src/app/resources/resource-holder-cache.test.ts`：被取代的旧版本不恢复。
 - `src/original-data/source-error.ts`：关键字表的上限名称。
 - `src/workers/import-protocol.test.ts`：上限名称的穷举清单。
+- `src/workers/synthetic-import.test-support.ts`：合成光盘的读取余量。
+- `tools/package-check.test.ts`：合成光盘余量与新表的报告断言。
+- `tools/logic-check.test.ts`：合成光盘余量。
 - `src/original-data/conversion/**`：转换、映射、版本与合成辅助及其测试。
 - `src/original-data/synthetic.test-support.ts`：合成 LE 区域（需要时）。
 - `src/content/rule-data/**`：内容契约、payload schema、合成辅助与测试。
