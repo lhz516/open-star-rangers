@@ -61,6 +61,8 @@ updated: 2026-10-14
 - `src/core/replay/budget.test.ts`：快照尾部字段与 CR-25 的大小核对。
 - `src/core/replay/map-warp-replay.test.ts`：规则版本断言。
 - `src/core/systems/pipeline.test.ts`：未接入请求类型的拒绝。
+- `tools/replay-check.ts`：录制大小上界中新事件的最长形式。
+- `tools/replay-check.test.ts`：同上的测试。
 
 ## 验收标准
 
