@@ -53,6 +53,14 @@ updated: 2026-10-14
 - `src/core/replay/replay.test.ts`：旧版本拒绝。
 - `src/app/runtime/game-event-bus.ts`：事件类型清单。
 - `src/app/runtime/game-event-bus.test.ts`：清单测试。
+- `src/ui/dev/event-log.ts`：新事件的诊断字段。
+- `src/ui/dev/event-log.test.ts`：诊断字段测试。
+- `src/core/rules/initial-ai.test.ts`：`program` 初值随 CR-16 改变的断言。
+- `src/core/systems/spawn.test.ts`：同上。
+- `src/core/rules/combat-init.test.ts`：同上。
+- `src/core/replay/budget.test.ts`：快照尾部字段与 CR-25 的大小核对。
+- `src/core/replay/map-warp-replay.test.ts`：规则版本断言。
+- `src/core/systems/pipeline.test.ts`：未接入请求类型的拒绝。
 
 ## 验收标准
 
