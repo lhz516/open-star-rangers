@@ -38,6 +38,14 @@ updated: 2026-10-14
 
 - `src/original-data/formats/ai.ts`：新区域读取。
 - `src/original-data/formats/ai.test.ts`：读取测试。
+- `src/original-data/formats/ai.test-support.ts`：合成 AI 来源中的关键字表区域、fixup 与名称区域。
+- `src/core/world/setup-hash.ts`：setupHash 覆盖新表。
+- `src/core/world/create-world.test.ts`：setupHash 覆盖测试。
+- `src/app/import/import-pipeline.test.ts`：转换器版本断言。
+- `src/workers/import-job.test.ts`：转换器版本断言。
+- `e2e/import-worker.spec.ts`：转换器版本断言。
+- `src/workers/production-package.test.ts`：规则数据份额的基线观测。
+- `src/app/resources/resource-holder-cache.test.ts`：被取代的旧版本不恢复。
 - `src/original-data/conversion/**`：转换、映射、版本与合成辅助及其测试。
 - `src/original-data/synthetic.test-support.ts`：合成 LE 区域（需要时）。
 - `src/content/rule-data/**`：内容契约、payload schema、合成辅助与测试。
