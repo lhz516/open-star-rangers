@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P2
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0008, ADR-0012]
 ---
 
@@ -69,7 +69,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - 页面刷新后先回到菜单，只列出缓存元数据。`Saved resources found in this browser, not yet verified.` 不代表资源已恢复；点击 `Open saved resources` 才会读取 payload、重新校验并载入任务。成功后再用 `View resources`。
 - 缓存属于同一浏览器 profile 和同一源（协议、主机、端口）。`localhost` 与 `127.0.0.1`、不同端口或无痕窗口不能当作同一份缓存。缓存不是备份，浏览器可能清除它。
 - 保存失败时查看原因，可在菜单或导入结果中用 `Save again` 重试。若页面尚持有完整包、但浏览器已清除缓存，返回菜单后的重新检查会改为仅内存并报告 `not-found`，仍可查看及重新保存；若已刷新且缓存不存在，就重新选择文件导入。
-- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。 不要把“没有可恢复条目”误认为旧记录必然已被删除。
+- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。**P3-03 修订 2（由 P3-10 子任务 29 实现）再次要求重新导入：** 逻辑组件递增为 `osr-import.graphics-4.logic-3.audio-2.models-4`，切片定义递增为版本 5（新增 `data/comm-messages`），生产白名单加入 `MAIN/COMMFACE.NOB`，来源指纹随之改变；版本 4 的旧包报 `cache-incompatible`。导入因此还要读取光盘上的 `MAIN/COMMFACE.NOB`（约 36 MiB，用于识别与通讯消息的帧时长），耗时相应增加；`MAIN/COMMFAC2.NOB` 不读取。不要把“没有可恢复条目”误认为旧记录必然已被删除。
 - 同键保存是原子替换；不提供删除、迁移或缓存管理界面，也不申请持久存储。不要为本指南随意清除用户其他站点或浏览器数据。
 
 ## 查看器操作与限制

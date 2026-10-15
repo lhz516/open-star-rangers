@@ -70,7 +70,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 - **核对内容：**
   - 经产品入口 `openVerifiedSource` 打开镜像并用生产白名单识别版本；
   - 经已验证来源打开每个覆盖范围内的 `.NOB`，读取并校验全部条目；
-  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFACE.NOB` 与 `MAIN/COMMFAC2.NOB`；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
+  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFAC2.NOB`（`MAIN/COMMFACE.NOB` 自 P3-03 修订 2 起在白名单中，只作为覆盖封包检查一次）；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
   - 任何识别、封包或条目失败都结束核对。
 - **输出：** stdout 为一份 `osr-source-check`/1 JSON，包含：
   - `passed`；`error`（结束核对的首个失败，只含 code 与位置）；`closeFailures`；
@@ -122,7 +122,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
-  - `roles`：扩展的 `mission` 与 P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；
+  - `roles`：扩展的 `mission` 与 P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
   - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
 

@@ -14,7 +14,7 @@ import { CANARY_TEXT } from '../src/workers/canary.test-support.ts';
 import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 import { MARKER } from '../src/workers/synthetic-import.test-support.ts';
 import { PREVIEW_CONTENT_SECURITY_POLICY } from '../tools/preview-csp.ts';
-import { button, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
+import { button, chooserInput, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { expect, test, type Audit } from './support/audited-test.ts';
 import {
@@ -372,7 +372,7 @@ const workers = (page: Page) => page.evaluate(() => window.osrProbe.snapshot().w
 async function failIdentification(page: Page, files: readonly FilePayload[], records: ResponsivenessRecord[]): Promise<void> {
   expect(await workers(page)).toEqual([]);
   await button(page, 'Import original game data').click();
-  await page.locator('#import-files').setInputFiles([...files]);
+  await page.locator('#import-files').setInputFiles(await chooserInput(files));
   const failure = page.getByTestId('import-failure');
   records.push(await measureResponsiveness(page, 'identification', async () => {
     await button(page, 'Start import').click();

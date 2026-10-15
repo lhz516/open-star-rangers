@@ -43,8 +43,11 @@ export { MARKER };
 
 const CHUNK = 1 << 20;
 
-/** An unread file that raises the default read budget, which equals the input size, above a small disc's reads. */
-export const PADDING: SyntheticFileContent = { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) };
+/**
+ * An unread file that raises the default read budget, which equals the input size, above a small disc's reads, such as
+ * the 498 small entries of the COMMFACE plan, a sector each.
+ */
+export const PADDING: SyntheticFileContent = { byteLength: 2 << 20, read: (_, length) => new Uint8Array(length) };
 
 interface SyntheticImport {
   /** The `.ccd` and `.img` Files, whose names contain `MARKER`. */

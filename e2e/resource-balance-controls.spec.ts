@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { test as pure } from '@playwright/test';
 import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 import { productionSizedFiles } from '../src/workers/synthetic-import.test-support.ts';
-import { button, discFiles, type FilePayload } from './support/app-entry.ts';
+import { button, chooserInput, discFiles, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { expect, test } from './support/browser-test.ts';
 import type { ProbeSnapshot } from './support/browser-probes.ts';
@@ -145,7 +145,7 @@ let productionSized: Promise<FilePayload[]> | undefined;
 async function failIdentification(page: Page): Promise<void> {
   const files = await (productionSized ??= discFiles(productionSizedFiles()));
   await button(page, 'Import original game data').click();
-  await page.locator('#import-files').setInputFiles([...files]);
+  await page.locator('#import-files').setInputFiles(await chooserInput(files));
   await button(page, 'Start import').click();
   await expect(page.getByTestId('import-failure').locator('dd').nth(1)).toHaveText('unsupported-version');
   await button(page, 'Return to menu').click();

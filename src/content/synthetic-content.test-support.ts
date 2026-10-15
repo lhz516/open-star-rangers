@@ -26,6 +26,7 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
     { id: 'data/synthetic-ai-programs', role: 'ai-programs' },
     { id: 'data/synthetic-base-repair', role: 'base-repair-items' },
     { id: 'data/synthetic-comm-menus', role: 'comm-menus' },
+    { id: 'data/synthetic-comm-messages', role: 'comm-messages' },
     { id: 'data/synthetic-craft-info', role: 'craft-info' },
     { id: 'data/synthetic-debris-parameters', role: 'debris-parameters' },
     { id: 'data/synthetic-flight-messages', role: 'flight-messages' },
@@ -134,10 +135,16 @@ export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
   'hud-sound',
 ]);
 
+/** The roles slice definition version 5 added (P3-03 spec, revision 2), in definition order. */
+export const VERSION_5_ROLES: readonly SliceRole[] = Object.freeze(['comm-messages']);
+
+/** The roles P3-03 added to the slice: those of versions 4 and 5, in definition order. */
+export const P3_ROLES: readonly SliceRole[] = Object.freeze([...VERSION_4_ROLES, ...VERSION_5_ROLES]);
+
 /**
  * `CLASSIC_P2_SLICE` with only the roles version 3 required, for tests of a step whose group lacks the Assets P3-03
  * steps add to it.
  */
 export const P2_ROLES_SLICE: SliceDefinition = Object.freeze({
-  ...CLASSIC_P2_SLICE, roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !VERSION_4_ROLES.includes(role))),
+  ...CLASSIC_P2_SLICE, roles: Object.freeze(CLASSIC_P2_SLICE.roles.filter(({ role }) => !P3_ROLES.includes(role))),
 });

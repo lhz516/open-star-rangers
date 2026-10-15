@@ -12,6 +12,7 @@ import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import { AI_LAYOUT } from '../formats/ai.ts';
 import { SYNTHETIC_AI_IDS, syntheticAiSources, syntheticBuiltIn } from '../formats/ai.test-support.ts';
 import { COMM_MENU_IDS, defaultCommMenus, syntheticCommTables } from '../formats/comm.test-support.ts';
+import { generatedCommMessages, layoutCommFace } from '../formats/comm-face.test-support.ts';
 import { craftTableCell, defaultCraftInfo, syntheticCraftInfoBlock, syntheticCraftTable } from '../formats/craft.test-support.ts';
 import { defaultDebrisParameters, syntheticDebrisBlock } from '../formats/debris.test-support.ts';
 import { buildImfat, type SyntheticEntry } from '../synthetic.test-support.ts';
@@ -20,17 +21,22 @@ import type { PositionedFixup, RegionWrite } from './production-graphics.test-su
 import { PRODUCTION_RULE_DATA_SOURCES } from './production-rule-data.ts';
 import { baseRepairBlock, entryOf, type RuleDataContents } from './rule-data.test-support.ts';
 
-// Code-generated sources of the six rule-data Assets in the production structure, generated in code; never original
+// Code-generated sources of the seven rule-data Assets in the production structure, generated in code; never original
 // data. The entries sit at the production entry IDs and the executable regions at the production addresses of
 // `PRODUCTION_RULE_DATA_SOURCES`, so the production job converts them; their content is the format supports' made-up
 // content, shaped only as far as the production plan requires: three table programs with a parameter entry each, the 22
-// scripts they reach, ten built-in programs whose names fill the production name regions, and flight messages that fill
-// the production message regions. Every archive also holds entries the plan does not name, which no job may read.
+// scripts they reach, ten built-in programs whose names fill the production name regions, flight messages that fill
+// the production message regions, and communications messages whose 13 sub-tables and 481 CMOVs take the production IDs
+// in a made-up assignment. Every archive also holds entries the plan does not name, and the disc a second face archive,
+// which no job may read.
 
 const PLAN = PRODUCTION_RULE_DATA_SOURCES;
 
-/** Archive entries outside the production plan: another CINF, a script and a DFPG of other groups, and COMM tables of G-03. */
-const DECOYS = Object.freeze({ craftInfo: 4_039, script: 6_047, parameters: 6_049, comm: Object.freeze([2_001, 2_011]) });
+/** Archive entries outside the production plan: another CINF, a script and a DFPG of other groups, and a COMM table. */
+const DECOYS = Object.freeze({ craftInfo: 4_039, script: 6_047, parameters: 6_049, comm: Object.freeze([2_015]) });
+
+/** The second face archive, which the production plan never reads (P3-10 D-03). */
+export const COMMFAC2_NOB = 'MAIN/COMMFAC2.NOB';
 
 /** Script entries of varying shapes, made up. */
 const scripts = (count: number, seed: number) => Array.from({ length: count }, (_, index) => ((seed + index) % 2 === 0
@@ -106,6 +112,7 @@ export function productionRuleDataContents(): RuleDataContents {
     'craft-info': productionCraftInfo(),
     'debris-parameters': productionDebrisParameters(),
     'flight-messages': productionFlightMessages(),
+    'comm-messages': generatedCommMessages(PLAN.commMessages.subTables.length, PLAN.commMessages.messages.length),
   };
 }
 
@@ -151,7 +158,7 @@ const regionText = (value: string): Uint8Array => Uint8Array.from(`${value}\0`, 
 /** Rule-data sources in the production structure. */
 export interface ProductionRuleData {
   readonly contents: RuleDataContents;
-  /** The CRAFT, DEBRIS, AISTUFF and COMM archives by disc path. */
+  /** The CRAFT, DEBRIS, AISTUFF, COMM, COMMFACE and COMMFAC2 archives by disc path. */
   readonly archives: Readonly<Record<string, Uint8Array>>;
   /** The `MAIN/SR.NOB` entry of the plan, TABL 10165, to add to that archive. */
   readonly srEntries: readonly SyntheticEntry[];
@@ -176,6 +183,10 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
   const craftTable = syntheticCraftTable((row, pair) => (row === campaignSlot && pair === campaignGroup ? [PLAN.craftInfo.craftInfo, hitDamageScale] : craftTableCell(row, pair)));
   const craftInfo = syntheticCraftInfoBlock(info);
   const commTables = syntheticCommTables(contents['comm-menus']);
+  const comm = PLAN.commMessages;
+  // The CMOV IDs in descending order, so the assignment of IDs to messages is made up.
+  const face = layoutCommFace(contents['comm-messages'], { ...comm, messages: [...comm.messages].reverse() });
+  const faceEntries = () => [...face.faceTables, face.direct, ...face.subTables, ...face.messages].map(entry => ({ ...entry }));
   const archive = (entries: SyntheticEntry[]) => buildImfat(0, entries.sort((left, right) => left.id - right.id));
   const archives = {
     [PLAN.craftInfo.archive]: archive([
@@ -186,7 +197,10 @@ function buildRuleData(contents: RuleDataContents): ProductionRuleData {
     [PLAN.commMenus.archive]: archive([
       ...(Object.keys(COMM_MENU_IDS) as (keyof typeof COMM_MENU_IDS)[]).map(key => entryOf(PLAN.commMenus.tables[key], 'TABL', commTables[key])),
       ...DECOYS.comm.map(id => entryOf(id, 'TABL', commTables.categories)),
+      face.names2001, face.names2011,
     ]),
+    [comm.archive]: archive(faceEntries()),
+    [COMMFAC2_NOB]: archive(faceEntries()),
   };
 
   // The built-in table at its production region, each name at its production region and each name fixup retargeted.

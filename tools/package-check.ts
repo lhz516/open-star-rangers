@@ -18,6 +18,7 @@ import { readGroupManifest, type GroupManifest } from '../src/content/manifest.t
 import { readPayloadRecords, type PayloadRecord } from '../src/content/payload.ts';
 import { AI_PROGRAMS_LIMITS } from '../src/content/rule-data/ai-programs.ts';
 import { COMM_MENUS_LIMITS } from '../src/content/rule-data/comm-menus.ts';
+import { COMM_MESSAGES_LIMITS } from '../src/content/rule-data/comm-messages.ts';
 import { CRAFT_INFO_LIMITS } from '../src/content/rule-data/craft-info.ts';
 import { DEBRIS_PARAMETERS_LIMITS } from '../src/content/rule-data/debris-parameters.ts';
 import { FLIGHT_MESSAGES_LIMITS } from '../src/content/rule-data/flight-messages.ts';
@@ -280,6 +281,28 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
   { role: 'flight-messages', group: 'logic', measure: ruleData('flight-messages', messages => {
     const texts = Object.values(messages).map(text => text.length);
     return { counts: { texts: texts.length, textBytes: sum(texts) }, limits: [limit('flight-messages.textBytes', largest(texts), FLIGHT_MESSAGES_LIMITS.textBytes)] };
+  }) },
+  { role: 'comm-messages', group: 'logic', measure: ruleData('comm-messages', ({ faceTables, direct, names2001, names2011 }) => {
+    // Face tables 20011, 20019 and 20985 in content order, then the direct list 20983 (executable.md RQ4).
+    const [first, second, third] = faceTables.map(table => ({ faces: table.length, messages: sum(table.map(sub => sub.length)) }));
+    const messages = [...faceTables.flat(2), ...direct];
+    const frames = messages.flatMap(item => (item.present ? [item.frameDurations.length] : []));
+    const names = [...names2001, ...names2011].map(name => name.length);
+    return {
+      counts: {
+        faces20011: first.faces, messages20011: first.messages, faces20019: second.faces, messages20019: second.messages,
+        faces20985: third.faces, messages20985: third.messages, messages20983: direct.length, present: frames.length, frames: sum(frames),
+        names2001: names2001.length, names2011: names2011.length, nameBytes: sum(names),
+      },
+      limits: [
+        limit('comm-messages.faces', largest(faceTables.map(table => table.length)), COMM_MESSAGES_LIMITS.faces),
+        limit('comm-messages.faceMessages', largest(faceTables.flat().map(sub => sub.length)), COMM_MESSAGES_LIMITS.faceMessages),
+        limit('comm-messages.directMessages', direct.length, COMM_MESSAGES_LIMITS.directMessages),
+        limit('comm-messages.frames', largest(frames), COMM_MESSAGES_LIMITS.frames),
+        limit('comm-messages.names', largest([names2001.length, names2011.length]), COMM_MESSAGES_LIMITS.names),
+        limit('comm-messages.nameBytes', largest(names), COMM_MESSAGES_LIMITS.nameBytes),
+      ],
+    };
   }) },
   { role: 'scene-settings', group: 'models', measure: flightData('scene-settings', ({ screenFlashes }) => ({ counts: { screenFlashes: screenFlashes.length }, limits: [] })) },
   { role: 'explosion-table', group: 'models', measure: flightData('explosion-table', ({ lists }) => ({

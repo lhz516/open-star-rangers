@@ -55,10 +55,10 @@ updated: 2026-10-14
 
 ## 验收标准
 
-- [ ] P3-03 AC-22 的 Node 部分全部通过：正向、ID 链、拒绝、切片版本 5、白名单与读取日志。
-- [ ] 读取器满足 P3-03 AC-11 的通用要求：往返逐字节相同、非规范与未知字段拒绝、冻结隔离。
-- [ ] 本地核对得到版本 5 的 `complete` 包，计数与 RQ4 一致；仓库中没有原版的数值、文字或字节。
-- [ ] 文档同步，`updated:` 更新，链接有效；`pnpm check` 与 `pnpm test:e2e` 通过。
+- [x] P3-03 AC-22 的 Node 部分全部通过：正向、ID 链、拒绝、切片版本 5、白名单与读取日志。
+- [x] 读取器满足 P3-03 AC-11 的通用要求：往返逐字节相同、非规范与未知字段拒绝、冻结隔离。
+- [x] 本地核对得到版本 5 的 `complete` 包，计数与 RQ4 一致；仓库中没有原版的数值、文字或字节。
+- [x] 文档同步，`updated:` 更新，链接有效；`pnpm check` 与 `pnpm test:e2e` 通过。
 
 ## 验证方法
 
@@ -67,3 +67,12 @@ updated: 2026-10-14
 - 完成前按 execute-goal 做一次 rubber-duck 审查，并以本项写入范围调用 [simplify](../../../../../.agents/skills/simplify/SKILL.md)。
 
 ## 完成证据
+
+- **内容契约：** [comm-messages.ts](../../../../../src/content/rule-data/comm-messages.ts) 的 `readCommMessages`、`COMM_MESSAGES_LIMITS`（16 / 128 / 256 / 8 / 64 / 32，由观测 5 / 61 / 85 / 4 / 20 / 11 按“2 倍取整到 2 的幂”推导）、`COMM_FACE_TABLES`、`ABSENT_MESSAGE`；`rule-data-payload.ts` 加入第 7 个角色（schema 1）；`SLICE_DEFINITION_VERSION` 为 5，新增 `comm-messages`（logic、data、恰为 1）。AC-11：`rule-data-payload.test.ts` 的逐角色往返逐字节、冻结隔离、字段顺序/空白/-0/未知字段拒绝覆盖新角色；`rule-data-content.test.ts` 与 `rule-data-limits.test.ts` 覆盖形状拒绝（第 4 张表、0 帧、负时长、超 i32、空名等）与六项限值的 limit/limit+1。
+- **原版数据：** [comm-face.ts](../../../../../src/original-data/formats/comm-face.ts) 的 `parseCommMessages`（u32 ID 表、CMOV 只读 +4/+8 与各帧头部首个 i32），[comm.ts](../../../../../src/original-data/formats/comm.ts) 的 `parseCommNames`（名单，名称数在读取第 65 个指针前判定）；`PRODUCTION_CATALOG` 加入 `MAIN/COMMFACE.NOB`（37,462,634 字节，sha256 与 manifest 一致），新指纹 `source:sha256:67391efb…`；`PRODUCTION_RULE_DATA_SOURCES.commMessages` 为 3 张头像表、20983、13 张子表、481 个 CMOV（子资源 `frames/durations`）与 COMM 2001/2011；`SOURCE_ENTRY_TYPES.data` 加入 CMOV；限值名 `commTableItems`、`commNames`；`LOGIC_CONVERTER_COMPONENT` 为 `logic-3`；`PRODUCTION_PACKAGE` 的转换器版本与指纹更新，`limits` 不变。
+- **AC-22（Node）：** `comm-face.test.ts`（54 项，含 3 与 4 帧、多头像、条目 0、128–255 字节名单、ID 链六种不一致、0 帧/负帧数/负时长、帧/头像/子表/直接列表/名单/名称字节的 limit 与 limit+1、截断与重定位错误、条目大小上限）；`convert-rule-data.test.ts` 的 comm-messages ID 链（多出/缺少子表与 CMOV 部件、表指向映射之外的条目且不读取它）、CMOV 拒绝与条目上限、读取日志（每个映射条目恰读一次，`MAIN/COMMFAC2.NOB` 零读取）；`production-rule-data.test.ts`（映射 2 + 4 + 13 + 481 个部件、无 COMMFAC2）；`completeness.test.ts`（版本 5 完整、缺 `comm-messages` 为 `role-cardinality`、版本 4/3 为 `definition-version-mismatch`）；`import-job.test.ts`（生产结构合成光盘得到版本 5 完整包，读取日志不含 COMMFAC2）；`source-catalog.test.ts`（9 个文件，固定指纹）。合成数据只由代码生成（`comm-face.test-support.ts`、`generatedCommMessages` 的 4/4/5 头像分配与倒序 CMOV ID）。合成光盘的不读取填充由 1 MiB 增至 2 MiB，以容纳近 500 次小条目读取。
+- **本地核对（基准镜像，输出在被忽略的 `local/research/p3-10/comm-messages/`）：** `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` 为 `passed`，版本 5 `complete`，转换器 `osr-import.graphics-4.logic-3.audio-2.models-4`；`comm-messages` 计数 faces/messages 为 20011 5/25、20019 3/66、20985 5/305，20983 为 85，存在 481，名单 20/19，与 RQ4、RX1 一致；规则数据用量 7 个 Asset、98,237 字节，份额（16、262,144）不变（`production-package.test.ts` 记录新观测）；整包 409 个 Asset、3,804,113 字节；读取共 109,785,075 字节。`tools/logic-check.ts` 同样通过。白名单不含 `COMMFAC2.NOB`，任何读取都会以 `path-not-covered` 失败，完整包即证明未读取它。仓库只记录计数、大小、哈希与条目 ID。
+- **检查：** `pnpm check`（typecheck、lint、8,454 项 Vitest、build）通过；`pnpm test:e2e` 全量运行后，因生产尺寸合成光盘超过 Playwright 50 MB 缓冲上限而失败的 4 个 spec 改用 `e2e/support/app-entry.ts` 的 `chooserInput`（超限时写入测试输出目录按路径传入）后重跑全部通过（30 项），其余 216 项首轮已通过；`check:compliance` 与 `check:original` 通过。
+- **审查：** rubber-duck 指出名单数量限值在读取越界指针之后才判定（已修复并加测试）、误生成的 `.eslintcache`（已删除），以及 `tools/source-check.ts` 仍把 `COMMFACE.NOB` 列为研究封包而读取两次（范围扩大后已修复：`RESEARCH_ARCHIVES` 只含 `COMMFAC2.NOB`，测试中 COMMFACE 作为覆盖封包只报告一次，`docs/guides/tools.md` 同步；基准上 `node tools/source-check.ts` 通过，9 个覆盖文件，COMMFACE 为 `verified`、COMMFAC2 为 `research`，各一次）。simplify：复用 `COMM_NOB`、共享 `ABSENT_MESSAGE`、合并解析缓存与 ID 链集合、删除孤立注释；未采纳把 CMOV 改为逐条流式读取（需改共用的步骤读取器缓存，峰值约 37 MB 仅在 logic 步骤内存在）与改用懒读取接口（与“先核验、共用读取”的既定设计冲突）。
+- **文档：** content、original-data、workers 分册，source-structure，local-import（版本 5 与重新导入）、tools（包核对的通讯计数），imfat（CMOV 行链接 RQ9、COMMFACE 观测最大值），comm（§9 名单结构，已确认：代码 `0x3c7bc`/`0x3c828` 与数据）；`updated:` 已更新。STATUS 与 phase tasks 无需改动。
+

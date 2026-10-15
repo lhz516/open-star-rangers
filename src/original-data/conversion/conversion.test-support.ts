@@ -319,7 +319,8 @@ export function graphicsMapping(id: string, type: string, entry: number, subreso
  * reads by entry ID. Uncovered padding raises the default read budget, which equals the input size, above rereads.
  */
 export async function countedVerifiedSource(files: Readonly<Record<string, SyntheticFileContent>>): Promise<{ source: VerifiedSource; reads: Map<number, number> }> {
-  const padding = { byteLength: 1 << 20, read: (_: number, length: number) => new Uint8Array(length) };
+  // Raises the read budget, the input size, above reads of many small entries such as the 498 of the COMMFACE plan.
+  const padding = { byteLength: 2 << 20, read: (_: number, length: number) => new Uint8Array(length) };
   const disc = syntheticFileDisc({ ...files, 'DEMO/PAD.DAT': padding });
   const source = await identifySource(await openDiscImage(disc.files), catalogFor(files));
   const reads = new Map<number, number>();

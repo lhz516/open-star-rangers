@@ -1,4 +1,6 @@
-import { expect, type Page } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
 import { MISSION_SKELETON } from '../../src/ui/mission/mission-copy.ts';
 import type { ExpectedPackageProfile } from '../../src/workers/production-package.ts';
 import { sliceCoveredFiles, syntheticImport } from '../../src/workers/synthetic-import.test-support.ts';
@@ -94,6 +96,24 @@ export const filePayloads = (files: readonly File[]): Promise<FilePayload[]> =>
 /** The CloneCD files of a synthetic disc holding `covered`, whose names contain the file-name marker. */
 export async function discFiles(covered: Parameters<typeof syntheticImport>[0]): Promise<FilePayload[]> {
   return filePayloads((await syntheticImport(covered)).files);
+}
+
+/** Playwright's limit on the buffers of one `setInputFiles` call. */
+const INPUT_BUFFER_LIMIT = 50 * 1024 * 1024;
+
+/**
+ * `files` as file chooser input: the payloads themselves, or, when together they exceed Playwright's buffer limit (such
+ * as a production-sized disc, which holds the 36 MiB face archive), each written to the running test's output directory
+ * and passed by path.
+ */
+export async function chooserInput(files: readonly FilePayload[]): Promise<readonly FilePayload[] | readonly string[]> {
+  if (files.reduce((total, { buffer }) => total + buffer.byteLength, 0) <= INPUT_BUFFER_LIMIT) return files;
+  return Promise.all(files.map(async ({ name, buffer }) => {
+    const path = test.info().outputPath('input', name);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, buffer);
+    return path;
+  }));
 }
 
 let slice: Promise<FilePayload[]> | undefined;

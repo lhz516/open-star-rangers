@@ -38,6 +38,7 @@ describe('production rule-data mappings', () => {
       { asset: { id: 'data/ai-programs', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-022'], resolution: 'declared' },
       { asset: { id: 'data/base-repair-items', kind: 'data' }, confidence: 'likely', unknowns: ['U-030'], resolution: 'declared' },
       { asset: { id: 'data/comm-menus', kind: 'data' }, confidence: 'likely', unknowns: ['U-001'], resolution: 'declared' },
+      { asset: { id: 'data/comm-messages', kind: 'data' }, confidence: 'confirmed', unknowns: [], resolution: 'declared' },
       { asset: { id: 'data/craft-info', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-008', 'U-026'], resolution: 'declared' },
       { asset: { id: 'data/debris-parameters', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-027'], resolution: 'declared' },
       { asset: { id: 'data/flight-messages', kind: 'data' }, confidence: 'confirmed', unknowns: [], resolution: 'declared' },
@@ -101,6 +102,20 @@ describe('production rule-data mappings', () => {
     expect(Object.values(flightMessages).every(locator => executableRegion(locator).length - 1 <= FLIGHT_MESSAGES_LIMITS.textBytes)).toBe(true);
   });
 
+  it('name the COMM name lists, the four COMMFACE tables, the 13 sub-tables and the 481 CMOVs by their frames, and no COMMFAC2 entry', () => {
+    const comm = parts('data/comm-messages');
+    expect(comm).toHaveLength(2 + 4 + 13 + 481);
+    expect(comm.slice(0, 2)).toEqual(['MAIN/COMM.NOB#2001.TABL/null', 'MAIN/COMM.NOB#2011.TABL/null']);
+    // imfat.md: COMMFACE holds 481 CMOV and 17 TABL entries; the CMOVs take every odd ID from 20021 to 20981.
+    expect(comm.slice(2, 483)).toEqual(Array.from({ length: 481 }, (_, index) => `MAIN/COMMFACE.NOB#${20_021 + index * 2}.CMOV/frames/durations`));
+    expect(comm.slice(483).map(part => part.replace(/^MAIN\/COMMFACE\.NOB#(\d+)\.TABL\/null$/, '$1')).map(Number)).toEqual([
+      20_001, 20_003, 20_005, 20_007, 20_009, 20_011, 20_013, 20_015, 20_017, 20_019, 20_983, 20_985, 20_987, 20_989, 20_991, 20_993, 20_995,
+    ]);
+    expect(table.mappings.flatMap(({ parts: mapped }) => mapped.map(({ alternatives: [first] }) => first.discPath))).not.toContain('MAIN/COMMFAC2.NOB');
+    expect(PRODUCTION_RULE_DATA_SOURCES.commMessages.faceTables).toEqual([20_011, 20_019, 20_985]);
+    expect(PRODUCTION_RULE_DATA_SOURCES.commMessages.direct).toBe(20_983);
+  });
+
   it('are built from their sources alone', () => {
     expect(ruleDataMappings(PRODUCTION_RULE_DATA_SOURCES)).toEqual(PRODUCTION_RULE_DATA_MAPPINGS);
     expect(Object.isFrozen(PRODUCTION_RULE_DATA_MAPPINGS) && Object.isFrozen(PRODUCTION_RULE_DATA_SOURCES)).toBe(true);
@@ -120,10 +135,11 @@ describe('production rule-data sources in the production structure', () => {
     expect(partition.assets.map((descriptor, index) => decodeRuleDataPayload(partition.payloads[index].bytes, descriptor)))
       .toEqual(partition.assets.map(({ role }) => ({ role, content: synthetic.contents[role as keyof typeof synthetic.contents] })));
     expect(partition.sources?.states.every(({ state }) => state === 'verified')).toBe(true);
-    const { aiPrograms, craftInfo, debrisParameters, commMenus, baseRepairItems } = PRODUCTION_RULE_DATA_SOURCES;
+    const { aiPrograms, craftInfo, debrisParameters, commMenus, baseRepairItems, commMessages } = PRODUCTION_RULE_DATA_SOURCES;
     const mapped = [
       craftInfo.table, craftInfo.craftInfo, debrisParameters.table, aiPrograms.globals, aiPrograms.table, ...aiPrograms.parameters, ...aiPrograms.scripts,
-      ...Object.values(commMenus.tables), baseRepairItems.table,
+      ...Object.values(commMenus.tables), baseRepairItems.table, commMessages.names2001, commMessages.names2011, ...commMessages.faceTables,
+      commMessages.direct, ...commMessages.subTables, ...commMessages.messages,
     ];
     expect([...reads.keys()].sort()).toEqual([...mapped].sort());
     expect([...reads.values()].every(count => count === 1)).toBe(true);

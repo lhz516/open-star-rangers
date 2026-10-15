@@ -10,7 +10,7 @@ related: [U-001]
 
 Container format: [IMFAT](./imfat.md). Confidence labels as defined in the IMFAT doc. Structure, counts and addresses only; no original text or field values.
 
-`COMM.NOB` holds seven TABL entries ([imfat](./imfat.md#5-entry-types)). This document covers the five menu tables the flight loop loads ([data closure](./executable.md#data-loaded-by-the-loop-p3-0110), item 24): 2003, 2005, 2007, 2009 and 2013. TABL 2001 and 2011 are name lists for the communications faces, which the P3-01 closure leaves out of the slice (G-03); they are not described here. All five menu entries have directory flags 0x50, so they are loaded when the archive opens and never released ([imfat](./imfat.md#2-directory-entry-36-bytes-confirmed-flags-meaning-unconfirmed)).
+`COMM.NOB` holds seven TABL entries ([imfat](./imfat.md#5-entry-types)). This document covers the five menu tables the flight loop loads ([data closure](./executable.md#data-loaded-by-the-loop-p3-0110), item 24): 2003, 2005, 2007, 2009 and 2013. TABL 2001 and 2011 are name lists whose positions give the communications name indices ([RX1](./executable.md#rx1-helpers--confirmed-code-and-data)); P3-03 revision 2 imports them into `data/comm-messages`, and [§9](#9-name-lists-tabl-2001-and-2011-p3-1029) gives their structure. All five menu entries have directory flags 0x50, so they are loaded when the archive opens and never released ([imfat](./imfat.md#2-directory-entry-36-bytes-confirmed-flags-meaning-unconfirmed)).
 
 Research of P3-03 [subtask 04](../../plan/p3/03/subtasks/04-comm-hud-text-research.md), 2026-10-09: read-only static analysis on a private copy of the Ghidra project (`-noanalysis -readOnly`), and a survey of the five entries read through the verified source chain that prints only offsets, lengths, counts and byte classes.
 
@@ -199,3 +199,12 @@ Confirmed (code and data). Selected mission: SCEN 3019, every wingman selector. 
 - **Spec-time record (archived):** the bounded check made while drafting the P3-10 spec (`local/research/p3-10/spec/comm-probe.ts` and `.out`) used the project's COMM parser and the totals of [scenario](./scenario.md) and found category hits of 1, 4 and 0 objects and the command codes of the three command tables. The independent reading above reproduces those numbers and adds runtime construction, every selector, member records and key classes; subtask 06 compared the two outputs again (`local/research/p3-10/spec/review-06.md`). The record needs no correction.
 
 Evidence (ignored): `local/research/p3-10/menus/` (`ghidra_scripts/MenuProbe.java`, `probe.sh`, `out/d1`–`out/d35`, `out/s1`–`out/s2`, `out/b1`; `closure.ts` with `out/closure.out`).
+
+## 9. Name lists TABL 2001 and 2011 (P3-10/29)
+
+Read by `0x3c7bc` (TABL 2001) and `0x3c828` (TABL 2011), which load the entry on first use and return the position of the speaking object's name (+0x15C) in it, or −1 ([RX1](./executable.md#rx1-helpers--confirmed-code-and-data)).
+
+- **Layout (Confirmed, code and data):** an array of u32 pointers from offset 0, ended by the first null pointer; each pointer is relocated and names a NUL-terminated name. The helpers walk the array 4 bytes at a time, compare each name with `0x7535e` (`strcmp`) and stop at the null pointer; the position counts from 0. There is no header or count field.
+- **Data (Confirmed, data; P3-10/29 survey, counts only):** TABL 2001 holds 20 names and TABL 2011 19 (as RX1). Entry sizes 219 and 229 bytes. In both, every non-null pointer is relocated, the names start right after the null pointer, names are 1–11 bytes long and contain no byte of 0x80 or above.
+- **Import:** `data/comm-messages` keeps both lists as byte strings in list order (P3-03 S-18). Limits: twice the observed maxima rounded up to a power of two, 64 names per list, 32 bytes per name and 512 bytes per entry; an empty name, which the baseline lacks and `strcmp` could match, is unsupported.
+

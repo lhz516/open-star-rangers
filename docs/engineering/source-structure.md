@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-10
+updated: 2026-10-14
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -201,6 +201,7 @@ src/
       comm-menus.ts
       base-repair-items.ts
       flight-messages.ts
+      comm-messages.ts
       rule-data-payload.ts
     flight/
       flight-data-content.ts
@@ -241,6 +242,7 @@ src/
       debris.ts
       ai.ts
       comm.ts
+      comm-face.ts
       base-repair.ts
       executable-text.ts
       rens-header.ts

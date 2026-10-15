@@ -112,7 +112,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | pending |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
 | [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | pending |
-| [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | in-progress |
+| [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -139,6 +139,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 07 完成，新增子任务 29：** D-03 依授权批准，P3-03 修订 2 同时批准。29 实现修订（`data/comm-messages`、白名单加入 `COMMFACE.NOB`、切片定义版本 5），12、14、15 与最终对齐加入对它的依赖；12 的工作范围加入 `commMessages` 输入。
 
 - **2026-10-14 — 08 完成：** D-01 依授权批准（P3-02 CB-01–CB-19、P3-04 运行中衔接、P3-10 方向修订 ①–⑨）。离港位姿复核：`0x38ff4` 保存的是所停靠基地的位姿（与 09 的 `rt-a2-01` 一致），executable 与 B-004 的更正由协调者另行提交。种类 `0x4000` 移交 P3-08（不新增本任务子任务），阶段索引随之修改。15–19、21 的验收措辞须按 D-01 的方向修订执行（见 08 的完成证据）。
+
+- **2026-10-14 — 29 完成：** 生产白名单加入 `MAIN/COMMFACE.NOB`（来源指纹改变），logic 转换器组件为 `logic-3`，切片定义版本 5；用户须重新导入。`comm-messages` 每条消息至多 8 帧（`COMM_MESSAGES_LIMITS.frames`），Core 比较器对 `incoming-started.frameDurations` 的上界 32 不小于它（11 的决定）。
 
 ## 审批
 

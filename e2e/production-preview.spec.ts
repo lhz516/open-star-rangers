@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { Page } from '@playwright/test';
-import { button, discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
+import { button, chooserInput, discFiles, expectNoPlayClaim, type FilePayload } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
 import { test, expect } from './support/browser-test.ts';
 import { test as audited } from './support/audited-test.ts';
@@ -54,7 +54,7 @@ let productionSized: Promise<FilePayload[]> | undefined;
 async function importFiles(page: Page): Promise<void> {
   const files = await (productionSized ??= discFiles(productionSizedFiles()));
   await page.getByRole('button', { name: 'Import original game data', exact: true }).click();
-  await page.locator('#import-files').setInputFiles([...files]);
+  await page.locator('#import-files').setInputFiles(await chooserInput(files));
   await page.getByRole('button', { name: 'Start import', exact: true }).click();
 }
 

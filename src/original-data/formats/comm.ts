@@ -1,4 +1,5 @@
 import { COMM_MENUS_LIMITS, type CategoryItem, type CommandItem, type CommMenus } from '../../content/rule-data/comm-menus.ts';
+import { COMM_MESSAGES_LIMITS } from '../../content/rule-data/comm-messages.ts';
 import type { ByteString } from '../../content/rule-data/rule-data-fields.ts';
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
@@ -12,20 +13,22 @@ import { PayloadBlock } from './payload-block.ts';
 /** Entry limit of a COMM menu table: twice the largest, 166 bytes (comm.md §5), rounded up to a power of two. */
 export const COMM_MENU_ENTRY_BYTES = 512;
 
+/** Entry limit of a COMM name list, TABL 2001 or 2011: twice the larger, 229 bytes (comm.md §9), rounded up to a power of two. */
+export const COMM_NAME_LIST_ENTRY_BYTES = 512;
+
 const ITEM_BYTES = 8;
 
 /** The entry read of each menu table, keyed by the condition that selects it (comm.md §2); the caller pairs them. */
 export type CommMenuReads = { readonly [K in keyof CommMenus]: ArchiveEntryRead };
 
 /**
- * The NUL-terminated text the pointer at `offset` names, as a byte string of at most `textBytes` bytes kept as stored; at
+ * The NUL-terminated text the pointer at `offset` names, as a byte string of at most `limit` bytes kept as stored; at
  * most one byte past the limit is examined, and no relocation may overlap the text or its NUL. Field rule 4: the pointer
  * must target a text, which lies past the `listBytes` of the item list.
  */
-function readText(block: PayloadBlock, bytes: Uint8Array, offset: number, listBytes: number, path: string): ByteString {
+function readText(block: PayloadBlock, bytes: Uint8Array, offset: number, listBytes: number, path: string, limit = COMM_MENUS_LIMITS.textBytes): ByteString {
   const start = block.target(offset, 1, path);
   if (start < listBytes) block.unsupported(path, 'the pointer targets the item list');
-  const limit = COMM_MENUS_LIMITS.textBytes;
   const scanned = bytes.subarray(start, Math.min(bytes.length, start + limit + 1));
   const length = scanned.indexOf(0);
   if (length === -1) {
@@ -74,4 +77,29 @@ export function parseCommMenus(archive: DiscPath, reads: CommMenuReads): CommMen
     objectListLastEntry: objectListLastEntry(archive, reads.objectListLastEntry),
     kind2TargetCommands: commands(archive, reads.kind2TargetCommands),
   });
+}
+
+/**
+ * A COMM name list, TABL 2001 or 2011 (comm.md §9): relocated pointers from offset 0 up to the first null pointer, each
+ * naming a NUL-terminated name past the list, kept as stored. The list length is checked before each name is read; an
+ * empty name, which the baseline lacks and the name index could match, is unsupported.
+ */
+export function parseCommNames(archive: DiscPath, read: ArchiveEntryRead): readonly ByteString[] {
+  const block = new PayloadBlock(archive, read, COMM_NAME_LIST_ENTRY_BYTES);
+  const limit = COMM_MESSAGES_LIMITS.names;
+  let count = 0;
+  for (; count < limit; count++) if (block.pointer(count * 4, `/names[${count}]`) === null) break;
+  if (count === limit) {
+    // Past the limit only the terminator may follow; anything else is one name too many, judged before it is read.
+    const at = limit * 4;
+    block.require(at, 4, `/names[${limit}]`);
+    if (block.isRelocated(at) || block.hasNonZero(at, 4, `/names[${limit}]`)) block.limit('/names', 'commNames', limit, limit + 1);
+  }
+  const listBytes = (count + 1) * 4;
+  return Object.freeze(Array.from({ length: count }, (_, index) => {
+    const path = `/names[${index}]`;
+    const name = readText(block, read.bytes, index * 4, listBytes, path, COMM_MESSAGES_LIMITS.nameBytes);
+    if (name.length === 0) block.unsupported(path, 'the name is empty');
+    return name;
+  }));
 }

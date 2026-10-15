@@ -59,6 +59,12 @@ export type SourceErrorCode =
  * - `commMenuItems`: the 8-byte items of one COMM menu, up to and including its last item.
  * - `animFrameBytes`: the encoded data bytes of one ANIM frame (frame record +32).
  *
+ * Revision 2 (`data/comm-messages`) reuses `payloadEntryBytes` for the COMMFACE TABL and CMOV entries and the COMM name
+ * lists, `payloadItems` for a CMOV's frame records and `textBytes` for the names, and adds:
+ * - `commTableItems`: the u32 entry IDs of one COMMFACE TABL: a face table's faces, a sub-table's messages or the
+ *   direct list's messages.
+ * - `commNames`: the names of one COMM name list, before its null pointer.
+ *
  * Counts the format fixes, such as the 20 kind bits, the 18 × 3 TABL 4003 pairs and the 3 EXIC lists, are format
  * rules rather than limits.
  */
@@ -94,6 +100,8 @@ export type SourceLimitName =
   | 'aiEntries'
   | 'commMenuItems'
   | 'animFrameBytes'
+  | 'commTableItems'
+  | 'commNames'
   | BudgetDimension;
 
 export interface SourceLimit {

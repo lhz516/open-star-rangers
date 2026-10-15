@@ -11,6 +11,7 @@ import { AI_LAYOUT } from '../formats/ai.ts';
 import { aiContent, syntheticAiSources, syntheticBuiltIn } from '../formats/ai.test-support.ts';
 import { BASE_REPAIR_RECORD } from '../formats/base-repair.ts';
 import { COMM_MENU_IDS, COMM_NOB, defaultCommMenus, syntheticCommTables } from '../formats/comm.test-support.ts';
+import { COMMFACE_NOB, defaultCommMessages, syntheticCommFace } from '../formats/comm-face.test-support.ts';
 import { CRAFT_NOB, craftTableCell, defaultCraftInfo, syntheticCraftInfoBlock, syntheticCraftTable } from '../formats/craft.test-support.ts';
 import { DEBRIS_NOB, defaultDebrisParameters, syntheticDebrisBlock } from '../formats/debris.test-support.ts';
 import type { SyntheticBlock } from '../formats/formats.test-support.ts';
@@ -19,16 +20,19 @@ import { buildImfat, syntheticLeExecutable, type SyntheticEntry } from '../synth
 import { PRODUCTION_EXECUTABLE } from './production-executable.ts';
 import type { RuleDataSources } from './production-rule-data.ts';
 
-// Code-generated synthetic archives and an LE executable holding the six rule-data Assets' sources, with the mapping plan
-// that names them, for P3-03 conversion tests. They never hold original data: their entry IDs, offsets and values are
-// arbitrary synthetic ones (only the COMM table IDs are the comm support's), and texts carry the content support's MARKER.
-// Every archive also holds entries no mapping names, which a conversion must never read.
+// Code-generated synthetic archives and an LE executable holding the seven rule-data Assets' sources, with the mapping
+// plan that names them, for P3-03 conversion tests. They never hold original data: their entry IDs, offsets and values are
+// arbitrary synthetic ones (only the COMM menu table IDs are the comm support's), and texts carry the content support's
+// MARKER. Every archive also holds entries no mapping names, and the disc a second face archive, which a conversion must
+// never read.
 
 export { MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 
 export const AISTUFF_NOB = 'MAIN/AISTUFF.NOB' as DiscPath;
 export const SR_NOB = 'MAIN/SR.NOB' as DiscPath;
 export const EXECUTABLE = PRODUCTION_EXECUTABLE as DiscPath;
+/** The second face archive, which the conversion never reads (P3-10 D-03). */
+export const COMMFAC2_NOB = 'MAIN/COMMFAC2.NOB' as DiscPath;
 
 /** Synthetic entry IDs of the mapped entries and of the decoys beside them. */
 export const SYNTHETIC_RULE_DATA_IDS = Object.freeze({
@@ -40,8 +44,11 @@ export const SYNTHETIC_RULE_DATA_IDS = Object.freeze({
   /** A script and a DFPG in the AI archive outside the ID chain. */
   aiDecoyScript: 7_301,
   aiDecoyParameters: 7_303,
-  /** The COMM tables this task does not import (G-03). */
-  commDecoys: Object.freeze([2_001, 2_011]),
+  /** COMM tables no mapping names. */
+  commDecoys: Object.freeze([2_015, 2_017]),
+  /** A COMMFACE TABL and CMOV no table names. */
+  faceDecoyTable: 31_301,
+  faceDecoyMessage: 31_303,
   baseRepair: 11_165,
   srDecoy: 11_167,
 });
@@ -60,6 +67,7 @@ export function defaultRuleDataContents(): RuleDataContents {
     'craft-info': defaultCraftInfo(),
     'debris-parameters': defaultDebrisParameters(),
     'flight-messages': readFlightMessages(syntheticFlightMessages()),
+    'comm-messages': defaultCommMessages(),
   };
 }
 
@@ -157,6 +165,7 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
   const decoyParameters = ai.entries.find(({ type }) => type === 'DFPG')!.block;
 
   const commTables = syntheticCommTables(contents['comm-menus']);
+  const face = syntheticCommFace(contents['comm-messages']);
   const messages = contents['flight-messages'];
   const messageKeys = Object.keys(messages) as (keyof typeof messages)[];
   const executable = syntheticExecutable(contents['ai-programs'].builtInPrograms, messageKeys.map(key => messages[key]));
@@ -177,7 +186,18 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
     commMenus: { archive: COMM_NOB, tables: COMM_MENU_IDS },
     baseRepairItems: { archive: SR_NOB, table: ids.baseRepair },
     flightMessages: Object.fromEntries(messageKeys.map((key, index) => [key, executable.messages[index]])) as RuleDataSources['flightMessages'],
+    commMessages: {
+      archive: COMMFACE_NOB,
+      faceTables: face.ids.faceTables,
+      direct: face.ids.direct,
+      subTables: face.ids.subTables,
+      messages: face.ids.messages,
+      namesArchive: COMM_NOB,
+      names2001: face.ids.names2001,
+      names2011: face.ids.names2011,
+    },
   };
+  const faceEntries = [...face.faceTables, face.direct, ...face.subTables, ...face.messages];
   const archives: Record<string, SyntheticEntry[]> = {
     [CRAFT_NOB]: [
       entryOf(ids.craftTable, 'TABL', craftTable), entryOf(ids.craftInfo, 'CINF', craftInfo), entryOf(ids.otherCraftInfo, 'CINF', craftInfo),
@@ -191,7 +211,14 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
     [COMM_NOB]: [
       ...(Object.keys(COMM_MENU_IDS) as (keyof typeof COMM_MENU_IDS)[]).map(key => entryOf(COMM_MENU_IDS[key], 'TABL', commTables[key])),
       ...ids.commDecoys.map(id => entryOf(id, 'TABL', commTables.categories)),
+      face.names2001, face.names2011,
     ],
+    [COMMFACE_NOB]: [
+      ...faceEntries,
+      { ...face.subTables[0], id: ids.faceDecoyTable }, { ...face.messages[0], id: ids.faceDecoyMessage },
+    ],
+    // Every entry of the face archive again: a conversion that read it would find the same structure.
+    [COMMFAC2_NOB]: faceEntries.map(entry => ({ ...entry })),
     [SR_NOB]: [
       entryOf(ids.baseRepair, 'TABL', baseRepairBlock(contents['base-repair-items'].subsystemSelectors)),
       entryOf(ids.srDecoy, 'TABL', baseRepairBlock([1, 2, 3])),

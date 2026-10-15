@@ -25,9 +25,10 @@ import { LOGIC_ASSETS, logicEntryReader, verifyLogicSources } from './logic-sour
 
 /**
  * This converter's `ConverterVersion` component; any change to its output for the same source increments it. Version 2
- * writes the mission's event triggers (logic payload schema 2) and adds the P3-03 rule-data Assets to the logic group.
+ * writes the mission's event triggers (logic payload schema 2) and adds the P3-03 rule-data Assets to the logic group;
+ * version 3 adds `data/comm-messages` (P3-03 spec, revision 2).
  */
-export const LOGIC_CONVERTER_COMPONENT = 'logic-2';
+export const LOGIC_CONVERTER_COMPONENT = 'logic-3';
 
 /**
  * The approved budget share of the logic step; the job adds it to its read limits and the other steps' shares

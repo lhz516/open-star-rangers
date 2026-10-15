@@ -3,7 +3,7 @@ import { RESOURCE_GROUPS } from './asset-contract.ts';
 import { SLICE_ID } from './content-identity.ts';
 import { CLASSIC_P2_SLICE, SLICE_DEFINITION_VERSION } from './slice-definition.ts';
 
-// Oracle of the P2-01 spec S-03 roles and the P3-03 version 4 additions: [role, group, allowed kinds, min, max].
+// Oracle of the P2-01 spec S-03 roles and the P3-03 version 4 and 5 additions: [role, group, allowed kinds, min, max].
 const S03_ROLES = [
   ['mission', 'logic', ['mission'], 1, 1],
   ['player-ship', 'models', ['model'], 1, 1],
@@ -35,6 +35,7 @@ const S03_ROLES = [
   ['hud-text', 'cockpit-hud-map', ['data'], 1, 1],
   ['event-sound', 'audio', ['sound'], 8, 8],
   ['hud-sound', 'audio', ['sound'], 3, 3],
+  ['comm-messages', 'logic', ['data'], 1, 1],
 ] as const;
 
 describe('classic-p2-slice definition', () => {
@@ -43,8 +44,8 @@ describe('classic-p2-slice definition', () => {
     expect(CLASSIC_P2_SLICE.version).toBe(SLICE_DEFINITION_VERSION);
     // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group; version 3
     // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data; version 4 (P3-03) adds the rule-data,
-    // flight-data, HUD text, event and HUD sound roles.
-    expect(SLICE_DEFINITION_VERSION).toBe(4);
+    // flight-data, HUD text, event and HUD sound roles; version 5 (P3-03 revision 2) adds the communications messages.
+    expect(SLICE_DEFINITION_VERSION).toBe(5);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });
     const serialized = JSON.stringify(CLASSIC_P2_SLICE);
