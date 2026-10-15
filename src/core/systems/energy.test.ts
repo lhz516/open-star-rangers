@@ -9,7 +9,7 @@ import {
   blankCraftCombat, SUBSYSTEM_COUNT, type Activity, type CraftCombat, type Entity, type EntityInit, type Level, type ObjectState,
   type SteeredMovementBlock, type SubsystemState,
 } from '../world/entity-table.ts';
-import type { LeftPage } from '../world/player-state.ts';
+import type { CommunicationsMenu, LeftPage } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, stateText, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -276,12 +276,20 @@ describe('the energy and damage-report commands (AC-10; CR-05, D10, D15)', () =>
     expect(state.player.leftDisplay.page).toBe(0);
   });
 
+  const MENU_OF_PAGE: Partial<Record<LeftPage, CommunicationsMenu>> = {
+    2: { level: 2, table: 'categories', items: [] },
+    3: { level: 3, table: 'objects', items: [] },
+    4: { level: 4, table: 'other', items: [] },
+  };
+
   it.each([2, 3, 4, 5, 6] as const)('leave page %i alone as wrong-context, the level keys included', (page) => {
     const commands = [energy('open'), DAMAGE_REPORT, energy('shield-increase'), energy('gun-decrease')];
     const prepare = (): WorldState => {
       const state = energyState();
       addPlayer(state);
       state.player.leftDisplay.page = page;
+      // A menu page shows its built menu; without one the frame-end handler would set page 0 (P3-10 CB-09).
+      state.player.communications.menu = MENU_OF_PAGE[page] ?? null;
       return state;
     };
     const [judged, idle] = [prepare(), prepare()];

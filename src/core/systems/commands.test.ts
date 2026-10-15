@@ -36,14 +36,18 @@ const P3_06_COMMANDS: readonly Command[] = [
   { type: 'confirm-selection' },
 ];
 
-/** One command of every other type. */
-const OTHER_COMMANDS: readonly Command[] = [
+/** P3-10's commands other than select-number (CB-07), which communications.test.ts judges. */
+const P3_10_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
+  { type: 'communications', operation: 'close' },
+  { type: 'launch' },
+];
+
+/** One command of every type no rule handles yet. */
+const OTHER_COMMANDS: readonly Command[] = [
   { type: 'toggle-map' },
   { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 },
   { type: 'request-warp' },
-  { type: 'communications', operation: 'open' },
-  { type: 'launch' },
   { type: 'cockpit-front' },
 ];
 
@@ -64,7 +68,7 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
+    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...P3_10_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
   it('gives every other command exactly one rejected/not-implemented result each, in order, and changes nothing else', () => {
@@ -77,7 +81,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   });
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[5]];
+    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], P3_10_COMMANDS[1], OTHER_COMMANDS[3]];
     const [state] = flightState();
     expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
@@ -88,7 +92,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
         : type === 'target' ? { outcome: 'ignored', reason: 'no-candidate' }
         // The player's craft record mounts gun 0 on list 0, and its charge is 0.
         : type === 'fire' ? { outcome: 'ignored', reason: 'insufficient-charge' }
-        : type === 'damage-report' ? { outcome: 'ignored', reason: 'no-change' }
+        : type === 'damage-report' || type === 'communications' ? { outcome: 'ignored', reason: 'no-change' }
         : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
   });

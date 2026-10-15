@@ -3,15 +3,18 @@
  * `command-result`, in command order, from the rule module of its type. The player's update (flight-control.ts) is the
  * one command loop (CR-07): it judges P3-06's throttle, speed match and speed assist commands itself and hands every
  * other command to judgeCommand in its place in the order. P3-07's six command types go to targeting.ts (`target`),
- * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`); every other
- * type is rejected/not-implemented until its rule task routes it. A module emits a command's additional events right
- * after its result.
+ * weapons.ts (`fire`, `cycle-main-weapon`, `select-missile`) and energy.ts (`energy`, `damage-report`), P3-10's
+ * to communications.ts (`communications`, `select-number`, `navigate-selection`, `launch`, and `confirm-selection` in the
+ * base and map contexts; CB-07); every other type is
+ * rejected/not-implemented until its rule task routes it. A module emits a command's additional events right after its
+ * result.
  */
 import type { CommandResultReason } from '../contracts/domain-events.ts';
 import type { Command, CommandType } from '../contracts/tick-input.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { interactionContext } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { judgeCommunicationsCommand } from './communications.ts';
 import { judgeEnergyCommand } from './energy.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
@@ -64,6 +67,13 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
     case 'energy':
     case 'damage-report':
       judgeEnergyCommand(context, command, commandIndex);
+      return;
+    case 'communications':
+    case 'select-number':
+    case 'navigate-selection':
+    case 'launch':
+    case 'confirm-selection':
+      judgeCommunicationsCommand(context, command, commandIndex);
       return;
     default:
       rejectNotImplemented(context, command, commandIndex);

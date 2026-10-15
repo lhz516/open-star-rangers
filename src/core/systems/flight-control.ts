@@ -90,22 +90,20 @@ function craftMovement({ movement }: Entity): SteeredMovementBlock | null {
 
 const UNCHANGED_AXES: AxisDeflections = Object.freeze({ pitch: null, yaw: null, roll: null });
 
-/**
- * What P3-06 does for a command in the flight context: a throttle or a step from the readback, a match or a toggle;
- * `none` for one it judges but that has no effect there.
- */
-type FlightAction = number | 'increase' | 'decrease' | 'match' | 'toggle-assist' | 'none';
+/** What P3-06 does for a command in the flight context: a throttle or a step from the readback, a match or a toggle. */
+type FlightAction = number | 'increase' | 'decrease' | 'match' | 'toggle-assist';
 
 /**
- * The action of a command that P3-06 judges in the current context; `undefined` when it does not. `select-number` and
- * `confirm-selection` belong to their context's own rule in the base and map contexts (P3-10, P3-09); in flight,
- * `confirm-selection` is the manual match (Enter), while `select-number`, an unshifted digit, has no effect: the presets
- * are `speed-preset` (Shift+n), and a communications menu's claim on the digits is P3-10's.
+ * The action of a command that P3-06 judges in the current context; `undefined` when it does not. `select-number` is
+ * P3-10's in every context (docs/plan/p3/02/spec.md, CB-07): `0x264a0` hands every key to the menu handler `0x27b44`
+ * before its own compare tree, so the digit goes to its rule before any flight action, and one no menu takes changes no
+ * speed (the presets are `speed-preset`, Shift+n). `confirm-selection` belongs to its context's own rule in the base and
+ * map contexts (P3-10, P3-09); elsewhere it is the manual match (Enter), also while a communications menu is open, whose
+ * items take only digits and `x`.
  */
 function flightAction(command: Command, context: InteractionContext): FlightAction | undefined {
-  const own = context !== 'base' && context !== 'map';
-  if (command.type === 'select-number') return own ? 'none' : undefined;
-  if (command.type === 'confirm-selection') return own ? 'match' : undefined;
+  if (command.type === 'select-number') return undefined;
+  if (command.type === 'confirm-selection') return context !== 'base' && context !== 'map' ? 'match' : undefined;
   if (command.type === 'speed-preset') return presetThrottle(command.level);
   if (command.type !== 'speed') return undefined;
   switch (command.operation) {
@@ -164,11 +162,11 @@ function pendingCommandedSpeed(world: WorldState, player: Entity, record: CraftR
 }
 
 /**
- * Judges the commands in array order. A P3-06 command needs an available player and the flight context, the only one
- * whose key handler (`0x264a0`) takes the throttle keys, the presets, Enter and Ctrl+Enter. `select-number` passes the
- * same gates but has no effect, so it is `wrong-context` in flight as well. `+` and `−` read back the commanded speed
- * as the requests posted before them leave it (pendingCommandedSpeed). A match needs a target with a block, else it is
- * `no-target`. Every other command goes to `judge` in its place in the order.
+ * Judges the commands in array order. P3-10's commands, the digits among them, go to `judge` (flightAction). A P3-06 command
+ * needs an available player and the flight context, the only one whose key handler (`0x264a0`) takes the throttle
+ * keys, the presets, Enter and Ctrl+Enter. `+` and `−` read back the commanded speed as the requests posted before them
+ * leave it (pendingCommandedSpeed). A match needs a target with a block, else it is `no-target`. Every other command
+ * goes to `judge` in its place in the order.
  */
 function judgeCommands(
   world: WorldState,
@@ -192,7 +190,7 @@ function judgeCommands(
       emit(commandResult(tick, commandIndex, command, 'ignored', 'player-unavailable'));
       continue;
     }
-    if (context !== 'flight' || action === 'none') {
+    if (context !== 'flight') {
       emit(commandResult(tick, commandIndex, command, 'ignored', 'wrong-context'));
       continue;
     }

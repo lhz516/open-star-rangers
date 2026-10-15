@@ -178,10 +178,9 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
 describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const THROTTLE_COMMANDS = [speed('increase'), speed('decrease'), speed('zero'), speed('maximum'), preset(5)];
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
-  // select-number passes P3-06's gates outside the base and map contexts, but has no effect (P3-05 S-06).
+  // select-number is P3-10's (CB-07): without a menu it changes no speed and is wrong-context (P3-05 S-06).
   const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS, selectNumber(5)];
   const OTHERS = [{ type: 'launch' }, { type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
-
   type Unavailable = (state: WorldState, player: Entity) => void;
   const inState = (objectState: ObjectState): [string, Unavailable] => [`in state ${objectState}`, (_, player) => void (player.state = objectState)];
 
@@ -200,7 +199,8 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     const events = stepControls(state, [...P3_06_COMMANDS, ...OTHERS], { pitch: 1, yaw: 1, roll: 1 });
     expect(results(events)).toEqual([
       ...P3_06_COMMANDS.map((_, index) => [index, 'ignored', 'player-unavailable']),
-      ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
+      // launch and navigate-selection are P3-10's, which gates the player first; toggle-map has no rule yet.
+      [9, 'ignored', 'player-unavailable'], [10, 'rejected', 'not-implemented'], [11, 'ignored', 'player-unavailable'],
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
     // A player in area-switch parks in request handling, which releases its block (area.ts).
@@ -210,16 +210,17 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(state.rngState).toBe(rng);
   });
 
+  // In the base context, P3-10/17 and 18 own confirm-selection, launch and navigate-selection; P3-09 the map's Enter.
   it.each([
-    ['Warp', WARP, 'wrong-context'],
-    ['base', BASE, 'not-implemented'],
-    ['map', MAP, 'not-implemented'],
-  ] as const)('ignores speed commands and presets as wrong-context in the %s context; select-number and confirm-selection there: %s', (_, viewMode, selectionReason) => {
+    ['Warp', WARP, 'wrong-context', 'wrong-context'],
+    ['base', BASE, 'not-implemented', 'not-implemented'],
+    ['map', MAP, 'not-implemented', 'wrong-context'],
+  ] as const)('ignores speed commands, presets and select-number as wrong-context in the %s context; confirm-selection there: %s', (_, viewMode, confirmReason, baseKeyReason) => {
     const [state, player] = withPlayer();
     state.player.viewMode = viewMode;
     state.player.target = state.entities.allocate(entityInit(7)).id;
     const control = structuredClone(state.player.control);
-    const selection = selectionReason === 'wrong-context' ? 'ignored' : 'rejected';
+    const confirm = confirmReason === 'wrong-context' ? 'ignored' : 'rejected';
     const events = stepControls(state, [...P3_06_COMMANDS, ...OTHERS]);
     expect(results(events)).toEqual([
       [0, 'ignored', 'wrong-context'],
@@ -229,9 +230,11 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [4, 'ignored', 'wrong-context'],
       [5, 'ignored', 'wrong-context'],
       [6, 'ignored', 'wrong-context'],
-      [7, selection, selectionReason],
-      [8, selection, selectionReason],
-      ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
+      [7, confirm, confirmReason],
+      [8, 'ignored', 'wrong-context'],
+      [9, baseKeyReason === 'wrong-context' ? 'ignored' : 'rejected', baseKeyReason],
+      [10, 'rejected', 'not-implemented'],
+      [11, baseKeyReason === 'wrong-context' ? 'ignored' : 'rejected', baseKeyReason],
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
     expect(craftBlock(player).commandedSpeed).toBe(48);
@@ -245,7 +248,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(results(stepControls(state, [speed('zero'), preset(1), selectNumber(1)]))).toEqual([
       [0, 'ignored', 'player-unavailable'],
       [1, 'ignored', 'player-unavailable'],
-      [2, 'rejected', 'not-implemented'],
+      [2, 'ignored', 'player-unavailable'],
     ]);
   });
 
@@ -262,9 +265,9 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(throttles(update(state, [speed('decrease'), selectNumber(1), speed('decrease')]))).toEqual([116, 104]);
   });
 
-  it('leaves every command of other tasks not implemented in flight', () => {
+  it('leaves the commands of other tasks to them in flight', () => {
     const [state, player] = withPlayer();
-    expect(results(stepControls(state, OTHERS))).toEqual(OTHERS.map((_, index) => [index, 'rejected', 'not-implemented']));
+    expect(results(stepControls(state, OTHERS))).toEqual([[0, 'ignored', 'wrong-context'], [1, 'rejected', 'not-implemented'], [2, 'ignored', 'wrong-context']]);
     expect(craftBlock(player).commandedSpeed).toBe(48);
   });
 

@@ -10,9 +10,9 @@ import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-su
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
 /**
- * Results of the drafted commands that P3-06's and P3-07's rules judge in flight with an active player and no target:
- * a throttle step, a preset, a digit without effect in flight, a manual match that needs a target, and P3-07's below.
- * Every other one is not implemented yet.
+ * Results of the drafted commands that P3-06's, P3-07's and P3-10's rules judge in flight with an active player and no
+ * target: a throttle step, a preset, a digit without a menu, a manual match that needs a target, P3-07's and P3-10's
+ * below. Every other one is not implemented yet.
  */
 const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]>> = {
   // P3-07: the gun starts without charge; target selection, weapon selection, and the energy and damage report pages.
@@ -24,8 +24,13 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   target: ['accepted', null],
   'cycle-main-weapon': ['accepted', null],
   'select-missile': ['accepted', null],
-  energy: ['accepted', null],
-  'damage-report': ['accepted', null],
+  // P3-10: navigate-selection and launch belong to the base; communications open shows the category menu on page 2,
+  // where the energy and damage-report keys that follow it are wrong-context (CB-07, D15).
+  'navigate-selection': ['ignored', 'wrong-context'],
+  communications: ['accepted', null],
+  launch: ['ignored', 'wrong-context'],
+  energy: ['ignored', 'wrong-context'],
+  'damage-report': ['ignored', 'wrong-context'],
 };
 const outcomeOf = (type: Command['type']) => OUTCOMES[type] ?? ['rejected', 'not-implemented'];
 
@@ -86,14 +91,14 @@ describe('mission diagnostics', () => {
     expect(setup.state()).toMatchObject({ runId: 1, phase: 'running' });
     const next = frames(setup);
     next();
-    const id = submit(setup, { type: 'launch' });
+    const id = submit(setup, { type: 'cockpit-front' });
     next(3, 200);
     const { log } = setup.state();
     expect(log.total).toBe(probe.events.length);
     expect(log.entries.map(({ tick, type, commandId }) => ({ tick, type, commandId })))
       .toEqual(probe.events.map(({ event, commandId }) => ({ tick: event.tick, type: event.type, commandId })));
     expect(log.entries.find((entry) => entry.commandId === id)?.fields).toEqual([
-      ['commandIndex', 0], ['commandType', 'launch'], ['outcome', 'rejected'], ['reason', 'not-implemented'],
+      ['commandIndex', 0], ['commandType', 'cockpit-front'], ['outcome', 'rejected'], ['reason', 'not-implemented'],
     ]);
     expect(log.entries.filter((entry) => entry.type === 'object-instantiated').map((entry) => entry.fields.find(([name]) => name === 'source')?.[1]))
       .toContain('wingman#0');
@@ -186,12 +191,12 @@ describe('mission diagnostics', () => {
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))
       .toEqual(COMMAND_TYPES.map((type, index) => [index + 1, type, ...outcomeOf(type)]));
-    // P3-07's events of the accepted commands reach the log by their own fields; the automatic target selection, which
+    // P3-07's and P3-10's events of the accepted commands reach the log by their own fields; the automatic target selection, which
     // sees no actual target yet, follows the command's (CR-07).
     const combat = setup.state().log.entries.filter(({ type }) => ['target-changed', 'weapon-selected', 'left-page-changed'].includes(type));
     expect(combat.map(({ type, fields }) => [type, fields.find(([name]) => name === 'commandIndex')?.[1]])).toEqual([
       ['weapon-selected', COMMAND_TYPES.indexOf('cycle-main-weapon')], ['weapon-selected', COMMAND_TYPES.indexOf('select-missile')],
-      ['left-page-changed', COMMAND_TYPES.indexOf('energy')], ['left-page-changed', COMMAND_TYPES.indexOf('damage-report')],
+      ['left-page-changed', COMMAND_TYPES.indexOf('communications')],
       ['target-changed', COMMAND_TYPES.indexOf('target')], ['target-changed', null],
     ]);
     const { recentResults, pendingCommands } = setup.ui().store.reader.getState();
@@ -206,10 +211,10 @@ describe('mission diagnostics', () => {
     toFlight(setup.owner);
     const next = frames(setup);
     next();
-    for (let index = 0; index < 10; index++) submit(setup, { type: 'launch' });
+    for (let index = 0; index < 10; index++) submit(setup, { type: 'cockpit-front' });
     next();
     expect(setup.ui().store.reader.getState().recentResults.map((result) => result.commandId)).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-    submit(setup, { type: 'launch' });
+    submit(setup, { type: 'cockpit-front' });
     next();
     expect(setup.ui().store.reader.getState().recentResults.map((result) => result.commandId)).toEqual(Array.from({ length: 10 }, (_, index) => index + 2));
   });
@@ -286,7 +291,7 @@ describe('mission diagnostics', () => {
     toFlight(setup.owner);
     const next = frames(setup);
     next();
-    submit(setup, { type: 'launch' });
+    submit(setup, { type: 'cockpit-front' });
     next(1, 200);
     setup.diagnostics.refreshSnapshot();
     setup.saves.clickFailure = new Error('click');

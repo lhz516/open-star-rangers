@@ -97,7 +97,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [10-tolerance-gate.md](./subtasks/10-tolerance-gate.md) | 07, 09 | completed |
 | [11-contract-foundation.md](./subtasks/11-contract-foundation.md) | 08 | completed |
 | [12-rule-data-inputs.md](./subtasks/12-rule-data-inputs.md) | 01, 05, 11, 29 | completed |
-| [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | in-progress |
+| [13-comm-menus-routing.md](./subtasks/13-comm-menus-routing.md) | 12 | completed |
 | [14-delivery-radio-incoming.md](./subtasks/14-delivery-radio-incoming.md) | 02, 07, 13, 29 | pending |
 | [15-reactions-reports.md](./subtasks/15-reactions-reports.md) | 03, 14, 29 | pending |
 | [16-docking-request-dock.md](./subtasks/16-docking-request-dock.md) | 04, 14 | pending |
@@ -147,6 +147,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 11 完成：** 写入范围扩至事件总线、事件日志、replay-check 与三处 `AiState` 测试字面量。快照格式 3→4、`RULES_VERSION` 4→5、replay 格式不变；Core 比较器每条消息至多 32 帧，29 的读取上限 8 在其内（有测试）。Core 模块分册的版本、上限、请求、事件、原因码与分区说明由 27 更新。
 
 - **2026-10-14 — CB-07 §3 的归属（13 的问题，协调者选推荐方案 A）：** 13 实现全部菜单路由、CB-07 的上下文/玩家/子系统门禁、码 9 的停靠等待开始与 deliver-command 投递；基地上下文的 navigate/confirm 投递归 17，launch 与批内生效视角归 18，二者写入范围加入 `commands*.ts`（18 另加 `flight-control*.ts`）。P3-09 的 MW-04 生效视角不在本分支，18 只覆盖 flight-control 判定的命令，P3-07 的命令在合并 MW-04 后统一。
+
+- **2026-10-14 — 13 完成，交 28 核对：** CB-07 只在成功分支列出 `c` 对伙伴、菜单保存页与菜单的写入，而 comm §7.2（已确认，代码）在检查菜单之前写入三者；13 按原版实现（无类别时 `c` 仍清除伙伴并丢弃休眠菜单，结果 no-candidate，页不变）。28 可改写 CB-07 的措辞。在 14 接入之前，正式 step 对 `deliver-command` 在请求处理中报故障（中间状态）。
 
 ## 审批
 
