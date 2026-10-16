@@ -122,21 +122,6 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
     expectFault(() => queue.post(request(0)), 'budget-exhausted', 'pipeline.requests');
   });
 
-  // P3-08's requests (docs/plan/p3/02/spec.md, CR-21): their handlers belong to later subtasks, so posting one faults
-  // rather than being dropped; neither post nor defer counts or queues it.
-  it.each([
-    { type: 'warp-departure', entityId: 2 },
-  ] as Request[])('refuses to post or defer $type until its handler is wired', (unwired) => {
-    const queue = new RequestQueue();
-    expectFault(() => queue.post(unwired), 'invariant-violated', 'pipeline.request-unwired');
-    expectFault(() => queue.defer(unwired), 'invariant-violated', 'pipeline.request-unwired');
-    queue.post(request(1));
-    queue.release();
-    const handled: number[] = [];
-    queue.handle((posted) => handled.push(subject(posted)));
-    expect(handled).toEqual([1]);
-  });
-
   it('emits a deeply frozen copy, detached from what the event was built from', () => {
     const state = testState();
     const context = registerTick(state, readTickInput(tickInput()));

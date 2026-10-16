@@ -12,32 +12,33 @@
  * State 4 gets no callback, so a destroyed active object's controller is neither stepped nor removed until its
  * explosion sets state 6; the rescue reaches none of this (ai §1).
  *
- * The handlers are static calls into their rule modules (CR-07), wired by the subtasks that implement them: the
+ * The handlers are static calls into their rule modules (CR-07): the
  * interpreter `0x64cb8` (rules/ai-interpreter.ts), the base `0x62c10` (rules/ai-firing.ts), the wingman `0x610c8`
- * (rules/ai-wingman.ts) and the parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller
- * stays unset, no handler runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a
- * program.
+ * (rules/ai-wingman.ts) and the parked handler `0x62250` (rules/ai-parked.ts), one for each handler CR-15 supports.
  *
- * The interpreter's item dispatches are counted per tick (CORE_LIMITS.aiDispatchesPerTick, CR-25) in a count this module
- * keeps for each tick context; a Warp departure an AI rule asks for goes through requestWarpDeparture (`0x5e6cc`).
+ * The interpreter's item dispatches are counted per tick (CORE_LIMITS.aiDispatchesPerTick, CR-25) in the tick context; a
+ * Warp departure an AI rule asks for goes through requestWarpDeparture (`0x5e6cc`), and request handling applies it
+ * through applyWarpDeparture (CR-21, D6).
  *
  * A handler draws from the world's RNG through one RandStream per call, which the world continues after; its requests
  * are posted at once, as the original posts its messages in the subject's own update.
  */
 import { CoreFaultError } from '../errors.ts';
 import { firingDataOf, installBase, runTriggerLoop, updateAiLock, updateBase } from '../rules/ai-firing.ts';
-import { installInterpreter, removeInterpreter, updateInterpreter, type DispatchCount, type InterpreterCall } from '../rules/ai-interpreter.ts';
+import { installInterpreter, removeInterpreter, updateInterpreter, type InterpreterCall } from '../rules/ai-interpreter.ts';
+import { installParked, updateParked, type ParkedCall } from '../rules/ai-parked.ts';
 import { installedController, isControllerDue, type ControllerRecord } from '../rules/ai-selection.ts';
 import { installWingman, updateWingman, type WingmanCall } from '../rules/ai-wingman.ts';
 import type { BuiltInHandler } from '../rules/ai-support.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
-import { RandStream } from '../rules/original-random.ts';
+import { RandStream, type RandSource } from '../rules/original-random.ts';
 import { isWarpAllowed } from '../rules/parked-travel.ts';
 import { isActiveState, isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import type { TickContext } from './pipeline.ts';
 import { fireAiChannel, fireAutomatic } from './weapons.ts';
+import { constructTransponder } from './xpon.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `ai.${site}`);
 
@@ -105,19 +106,22 @@ export function requestWarpDeparture(context: TickContext, entity: Entity): bool
   return true;
 }
 
-/**
- * The interpreter's dispatches in each tick so far, by tick context (CR-25): a stand-in for a per-tick count on the
- * TickContext itself, which the pipeline creates afresh for every tick.
- */
-const DISPATCHES = new WeakMap<TickContext, DispatchCount>();
+/** Clock units before the clock that the departure's last parked update is set to, so that the next one is due at once. */
+const DEPARTURE_PARKED_LEAD = 0x80;
 
-function dispatchesOf(context: TickContext): DispatchCount {
-  let count = DISPATCHES.get(context);
-  if (count === undefined) {
-    count = { dispatches: 0 };
-    DISPATCHES.set(context, count);
-  }
-  return count;
+/**
+ * Message 0x800000's handling (`0x214a4`, D6; CR-21), in request handling: mayDepartByWarp again, and on success the
+ * area switch, in Warp, the Warp timer 0 and the last parked update clock − 0x80; otherwise nothing. The following ticks
+ * finish the departure through the lifecycle: the state-5 callback removes the controller and asks to leave, message
+ * 0x20 parks the entity, its next callback (no transit with the timer 0) installs the parked handler, and its parked
+ * update, due at once, starts the Warp jump (area.ts). A second request for the same entity fails on its Warp flag.
+ */
+export function applyWarpDeparture(world: WorldState, entity: Entity): void {
+  if (!mayDepartByWarp(world, entity)) return;
+  entity.state = 'area-switch';
+  entity.inWarp = true;
+  entity.warpClock = 0;
+  entity.lastParkedUpdateClock = world.clock - DEPARTURE_PARKED_LEAD;
 }
 
 /** What every handler call on `entity` in its object update gets: the world, its draws from `rand`, its posts and `0x5e6cc`. */
@@ -132,7 +136,7 @@ const handlerCall = (context: TickContext, entity: Entity, rand: RandStream): Wi
 /** An interpreter call on `entity` in its object update, drawing from `rand`. */
 const interpreterCall = (context: TickContext, entity: Entity, rand: RandStream): InterpreterCall => ({
   ...handlerCall(context, entity, rand),
-  tick: dispatchesOf(context),
+  tick: context.aiDispatches,
 });
 
 /** The table-program interpreter `0x64cb8` (rules/ai-interpreter.ts). */
@@ -160,11 +164,41 @@ const WINGMAN_HANDLER: HandlerModes = Object.freeze({
   remove: () => {},
 });
 
-/** The wired handlers; each handler subtask adds its own (module comment). */
-const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({
+/** Draws from the world's RNG one at a time, so that a constructor drawing from the world itself continues after them. */
+const worldRand = (world: WorldState): RandSource => ({
+  next: () => {
+    const rand = new RandStream(world.rngState);
+    const value = rand.next();
+    world.rngState = rand.state;
+    return value;
+  },
+});
+
+/** A parked handler call on `entity` in its object update: its Xpon drop constructs in the walk (`0x38780`, CR-20). */
+const parkedCall = (context: TickContext, entity: Entity): ParkedCall => ({
+  world: context.world,
+  subject: asCraft(entity),
+  rand: worldRand(context.world),
+  depart: () => requestWarpDeparture(context, entity),
+  dropTransponder: () => void constructTransponder(context, entity, 'wingman'),
+});
+
+/** The parked handler `0x62250` (rules/ai-parked.ts): modes 0 and 2 only set the deadline, without a draw (D1). */
+const PARKED_HANDLER: HandlerModes = Object.freeze({
+  install: (context: TickContext, _entity: Entity, common: AiControllerCommon) => installParked(common, context.time.clock),
+  update: (context: TickContext, entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'parked') throw fault('parked');
+    updateParked(parkedCall(context, entity), controller);
+  },
+  remove: () => {},
+});
+
+/** Every supported handler's modes (module comment). */
+const HANDLERS: { readonly [Handler in AiHandler]: HandlerModes } = Object.freeze({
   base: BASE_HANDLER,
   interpreter: INTERPRETER_HANDLER,
   wingman: WINGMAN_HANDLER,
+  parked: PARKED_HANDLER,
 });
 
 /** The states in which `0x20c18` installs (0–3), removes (5, 6) and steps (7). */
@@ -228,13 +262,9 @@ function selectedProgram(entity: Entity): SelectedProgram {
   return program;
 }
 
-/**
- * The install (`0x20c18` in states 0–3, and the Warp departure's immediate one, P3-08/21): `0x5dc0c` on the selected
- * record and the craft's record, then the handler's mode 0. Nothing happens while the handler is not wired.
- */
-export function installController(context: TickContext, entity: Entity, handler: AiHandler): void {
+/** The install (`0x20c18` in states 0–3): `0x5dc0c` on the selected record and the craft's record, then the handler's mode 0. */
+function installController(context: TickContext, entity: Entity, handler: AiHandler): void {
   const modes = HANDLERS[handler];
-  if (modes === undefined) return;
   const { world } = context;
   const program = selectedProgram(entity);
   const craft = world.craftInfo.content.craft[entity.kindBit];
@@ -244,17 +274,12 @@ export function installController(context: TickContext, entity: Entity, handler:
   setController(entity, program, controller);
 }
 
-/**
- * The removal `0x5ddd4` (`0x20c18` in states 5 and 6, and the Warp departure's, P3-08/21): the installing handler's mode
- * 2, then no controller; the slot keeps its record.
- */
-export function removeController(context: TickContext, entity: Entity): void {
+/** The removal `0x5ddd4` (`0x20c18` in states 5 and 6): the installing handler's mode 2, then no controller; the slot keeps its record. */
+function removeController(context: TickContext, entity: Entity): void {
   const program = selectedProgram(entity);
   const { controller } = program;
   if (controller === null) return;
-  const modes = HANDLERS[controller.handler];
-  if (modes === undefined) throw fault('unwired');
-  modes.remove(context, entity, controller);
+  HANDLERS[controller.handler].remove(context, entity, controller);
   setController(entity, program, null);
 }
 
@@ -268,7 +293,6 @@ function stepController(context: TickContext, entity: Entity, controller: AiCont
   // Install and removal use the same dispatch, and the activity changes between parked and not only after a removal.
   if ((controller.handler === 'parked') !== (entity.activity === 'parked')) throw fault('dispatch');
   const modes = HANDLERS[controller.handler];
-  if (modes === undefined) throw fault('unwired');
   const { world, time: { clock } } = context;
   if (controller.handler !== 'parked') {
     runTriggerLoop(controller, clock, (channel) => fireAiChannel(context, entity, channel));

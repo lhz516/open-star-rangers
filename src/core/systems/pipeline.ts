@@ -19,7 +19,8 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { updateController } from './ai.ts';
+import type { DispatchCount } from '../rules/ai-interpreter.ts';
+import { applyWarpDeparture, updateController } from './ai.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
 import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
@@ -140,12 +141,6 @@ export type Request =
   /** Message 0x200000 (X1): an accepted `drop-transponder` constructs a transponder (`0x38780`) at the player (`entityId`). */
   | { readonly type: 'create-transponder'; readonly entityId: EntityId };
 
-/**
- * Request types whose handler is not wired yet: posting one is a fault, never a silent drop. The P3-08 subtask that
- * implements a handler removes its type here.
- */
-const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['warp-departure']);
-
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
 
@@ -173,7 +168,7 @@ export class RequestQueue {
   readonly #deferred: Request[] = [];
 
   post(request: Request): void {
-    this.#count(request);
+    this.#count();
     if (!this.#handled) this.#requests.push(request);
   }
 
@@ -184,7 +179,7 @@ export class RequestQueue {
    * difference 9). Commands after a `request-warp` are judged in the Warp context, so no launch follows it.
    */
   defer(request: Request): void {
-    this.#count(request);
+    this.#count();
     this.#deferred.push(request);
   }
 
@@ -193,8 +188,7 @@ export class RequestQueue {
     for (const request of this.#deferred.splice(0)) if (!this.#handled) this.#requests.push(request);
   }
 
-  #count(request: Request): void {
-    if (UNWIRED_REQUESTS.has(request.type)) throw new CoreFaultError('invariant-violated', 'pipeline.request-unwired');
+  #count(): void {
     if (!fitsLimit('requestsPerTick', this.#posted, 1)) throw new CoreFaultError('budget-exhausted', 'pipeline.requests');
     this.#posted++;
   }
@@ -246,6 +240,8 @@ export interface TickContext {
   readonly requests: RequestQueue;
   /** The committed view until the player's update starts the command batch from it again. */
   readonly commandView: CommandView;
+  /** The AI interpreter's item dispatches in this tick so far (CORE_LIMITS.aiDispatchesPerTick, CR-25; ai.ts). */
+  readonly aiDispatches: DispatchCount;
 }
 
 /** The view mode and previous view mode the player state holds now. */
@@ -263,7 +259,7 @@ export function registerTick(world: WorldState, input: TickInput): TickContext {
   if (!Number.isSafeInteger(world.entities.nextId + CORE_LIMITS.entities)) {
     throw new CoreInputError('tickInput', 'would allocate entity IDs past the safe integer range');
   }
-  return { world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world) };
+  return { world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world), aiDispatches: { dispatches: 0 } };
 }
 
 /** A deeply frozen copy of plain data, so that no later change to what an event was built from reaches it. */
@@ -525,6 +521,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'create-transponder':
       createTransponder(context, entity);
+      return;
+    case 'warp-departure':
+      applyWarpDeparture(world, entity);
       return;
   }
 }

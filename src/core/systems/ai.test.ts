@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mount, parameterEntry, script, scriptItem } from '../../content/rule-data/rule-data.test-support.ts';
-import type { DomainEvent } from '../contracts/domain-events.ts';
+import type { DomainEvent, Vec3 } from '../contracts/domain-events.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
 import { enableAiLock, pressChannel } from '../rules/ai-firing.ts';
 import { installedController } from '../rules/ai-selection.ts';
@@ -10,19 +10,20 @@ import { initialWorldState } from '../world/create-world.ts';
 import {
   aiProgramsContent, asCreateInput, craftInfoContent, declaration, missionFrame, rosterContent, ruleInputs, wingmanOption, worldInput, type WorldInputParts,
 } from '../world/create-world.test-support.ts';
-import { ALL_KINDS, type Activity, type AiController, type Entity, type ObjectState, type TableController } from '../world/entity-table.ts';
+import { initialMovementBlock } from '../rules/flight-state.ts';
+import { ALL_KINDS, setActivity, type Activity, type AiController, type Entity, type EntityId, type ObjectState, type TableController } from '../world/entity-table.ts';
 import { constructWorld, type World } from '../world/world.ts';
-import { entityInit, thrownBy, tickInput } from '../world/world.test-support.ts';
+import { entityInit, stateText, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { controllerCall, installedHandler, requestWarpDeparture, updateController } from './ai.ts';
 import { applyShotHit } from './damage.ts';
-import { registerTick, type Request, type TickContext } from './pipeline.ts';
+import { PIPELINE, registerTick, type Request, type TickContext } from './pipeline.ts';
 
 // The controller part of `0x20c18` (docs/plan/p3/02/spec.md, CR-23; docs/original/formats/ai.md ยง1). Expectations
 // follow ai ยง1's callback table: states 0โ€“3 install after the Warp-transit test, 4 nothing, 5 and 6 remove, 7 step; the
 // parked handler while parked, otherwise the record's. Each handler's subtask covers its install's update body and draws
-// (P3-08/15's handoff): the base's (P3-08/18), the interpreter's (P3-08/16) and the wingman's (P3-08/19) are below; the
-// parked handler is not wired yet.
+// (P3-08/15's handoff): the base's (P3-08/18), the interpreter's (P3-08/16), the wingman's (P3-08/19) and the parked
+// handler's (P3-08/21) are below.
 
 function setUp(parts: WorldInputParts = { run: { wingman: 0 } }): { readonly state: WorldState; readonly world: World } {
   const state = initialWorldState(asCreateInput(worldInput(parts)));
@@ -99,23 +100,7 @@ describe('the call `0x20c18` makes by state and activity (AC-03)', () => {
   });
 });
 
-describe('the controller part while a handler is not wired (P3-08/15; CR-23)', () => {
-  it('leaves the install of an unwired handler undone: no controller, no draw, no event, no request, and the slot keeps its record', () => {
-    const { state, world } = setUp();
-    world.step(tickInput());
-    const context = registerTick(state, readTickInput(tickInput()));
-    const before = state.rngState;
-    // The base (kind 17, P3-08/18), the table programs (kind 7, P3-08/16) and the wingman (kind 1, P3-08/19) are wired.
-    const wired = new Set([17, 7, 1]);
-    for (const entity of entities(state).filter(({ kindBit }) => !wired.has(kindBit))) {
-      const program = entity.ai.program;
-      updateController(context, entity);
-      expect(entity.ai.program).toBe(program);
-    }
-    expect(state.rngState).toBe(before);
-    expect(context.events).toEqual([]);
-  });
-
+describe('the controller part over the lifecycle (P3-08/15; CR-23)', () => {
   it('never reselects: over parking, resuming and removal every object keeps the record instantiation selected', () => {
     const { state, world } = setUp();
     world.step(tickInput());
@@ -133,16 +118,15 @@ describe('the controller part while a handler is not wired (P3-08/15; CR-23)', (
     expect(activities.length).toBeGreaterThan(3);
   });
 
-  it('faults rather than skip a step or removal of a controller whose handler is not wired, or a step through the wrong dispatch', () => {
+  it('faults on a step through the wrong dispatch: a parked controller on an object no longer parked, or the reverse', () => {
     const { state, world } = setUp();
     world.step(tickInput());
     const context = registerTick(state, readTickInput(tickInput()));
     const craft = firstOf(state, 7);
-    const parked = installed(state, craft, 'parked');
-    const step = { ...parked, state: 'active' as const, activity: 'parked' as const };
-    expect(thrownBy(() => updateController(context, step))).toMatchObject({ code: 'invariant-violated', site: 'ai.unwired' });
-    expect(thrownBy(() => updateController(context, { ...parked, state: 'area-switch' }))).toMatchObject({ site: 'ai.unwired' });
-    expect(thrownBy(() => updateController(context, { ...step, activity: 'active' }))).toMatchObject({ site: 'ai.dispatch' });
+    const parked = { ...installed(state, craft, 'parked'), state: 'active' as const };
+    expect(thrownBy(() => updateController(context, { ...parked, activity: 'active' }))).toMatchObject({ code: 'invariant-violated', site: 'ai.dispatch' });
+    const active = { ...installed(state, craft, 'interpreter'), state: 'active' as const };
+    expect(thrownBy(() => updateController(context, { ...active, activity: 'parked' }))).toMatchObject({ site: 'ai.dispatch' });
   });
 });
 
@@ -231,13 +215,18 @@ describe('the base 0x62c10 and the AI step 0x5dcd4 (P3-08/18; AC-03, AC-06; A12โ
     let before = state.rngState;
     updateController(tickOf(state).context, base);
     expect(base.ai.program).toEqual({ type: 'built-in', record: 4, controller: null });
-    // Parked, the install goes to the parked handler, which is not wired yet (P3-08/21).
+    // Parked, the install goes to the parked handler `0x62250`: the deadline sample + 0x40 and no draw (D1).
     base.activity = 'parked';
     base.state = 'new';
+    const parkedTick = tickOf(state).context;
+    updateController(parkedTick, base);
+    expect(base.ai.program).toMatchObject({ type: 'built-in', record: 4, controller: { handler: 'parked', nextUpdateClock: parkedTick.time.clock + 0x40 } });
+    base.state = 'area-switch';
     updateController(tickOf(state).context, base);
     expect(base.ai.program).toEqual({ type: 'built-in', record: 4, controller: null });
     expect(state.rngState).toEqual(before);
     // Resumed with the bursts fired off: the install draws once per idle mount again.
+    base.state = 'new';
     base.activity = 'active';
     for (const mount of base.combat.weapons.mounts) mount.burst = 0;
     before = state.rngState;
@@ -481,8 +470,11 @@ describe('the interpreter 0x64cb8 in the object update (P3-08/16; AC-03, AC-04, 
     first.ai.target = 9999;
     expect(requestWarpDeparture(context, first)).toBe(false);
     first.ai.target = null;
-    // Allowed, it posts `warp-departure`, whose handling P3-08/21 wires: until then the post itself is a fault.
-    expect(thrownBy(() => requestWarpDeparture(context, first))).toMatchObject({ code: 'invariant-violated', site: 'pipeline.request-unwired' });
+    // Allowed, it posts `warp-departure` to the poster itself (area.test.ts follows its handling).
+    expect(requestWarpDeparture(context, first)).toBe(true);
+    const posted: Request[] = [];
+    context.requests.handle((request) => void posted.push(request));
+    expect(posted).toEqual([{ type: 'warp-departure', entityId: first.id }]);
   });
 });
 
@@ -571,12 +563,15 @@ describe('the wingman 0x610c8 in the object update (P3-08/19; AC-03, AC-07; WA2โ
     const before = state.rngState;
     updateController(tickOf(state).context, wingman);
     expect(wingman.ai.program).toEqual({ type: 'built-in', record: 3, controller: null });
-    // Parked, the install goes to the parked handler, which is not wired yet (P3-08/21).
+    // Parked, the install goes to the parked handler, without a draw (D1); its removal draws nothing either.
     Object.assign(wingman, { state: 'new', activity: 'parked' });
+    updateController(tickOf(state).context, wingman);
+    expect(wingman.ai.program).toMatchObject({ type: 'built-in', record: 3, controller: { handler: 'parked' } });
+    wingman.state = 'area-switch';
     updateController(tickOf(state).context, wingman);
     expect(wingman.ai.program).toEqual({ type: 'built-in', record: 3, controller: null });
     expect(state.rngState).toEqual(before);
-    wingman.activity = 'active';
+    Object.assign(wingman, { state: 'new', activity: 'active' });
     updateController(tickOf(state).context, wingman);
     expect(state.rngState).toEqual(rngStateAfter(before, 1));
     // B+4 and B+0x0C are lost; b comes back from the mirror (+0xC4 2, +0x90 the player): the formation.
@@ -653,5 +648,416 @@ describe('the wingman 0x610c8 in the object update (P3-08/19; AC-03, AC-07; WA2โ
     expect(entities(state).filter(({ kindBit }) => kindBit === 1)).toEqual([]);
     expect(entities(state).some(({ ai: { program } }) => program.type !== 'none' && program.controller?.handler === 'wingman')).toBe(false);
     expect(state.ai.friendlyFire).toEqual({ accumulated: 0, windowEnd: 0 });
+  });
+});
+
+describe('the parked handler 0x62250 in the object update (P3-08/21; AC-09; D1, E4, CR-23)', () => {
+  /**
+   * The player at the origin, a kind-7 leader (record 1) and a kind-17 base (record 2) 37500 to either side, both
+   * parked, after instantiation; with `wingman`, roster option 0 too. No record names preferred kinds.
+   */
+  function parkedWorld(wingman: number | null = null) {
+    const mission = missionFrame();
+    mission.declarations = [
+      declaration(0, { craftType: 0, position: { x: 0, y: 0, z: 0 } }),
+      declaration(1, { craftType: 7, position: { x: 20_000, y: 0, z: 0 } }),
+      declaration(2, { craftType: 17, position: { x: -20_000, y: 0, z: 0 } }),
+    ];
+    const state = initialWorldState(asCreateInput(worldInput({ mission, run: { wingman } })));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    return { state, world, player: firstOf(state, 0), leader: firstOf(state, 7) as CraftEntity, base: firstOf(state, 17) as CraftEntity };
+  }
+
+  it('installs in the first callback of a parked object with the deadline sample + 0x40, without a draw, request or event', () => {
+    const { state, leader, base } = parkedWorld();
+    expect([leader.activity, leader.state, base.activity, base.state]).toEqual(['parked', 'new', 'parked', 'new']);
+    const context = registerTick(state, readTickInput(tickInput()));
+    state.clock = context.time.clock;
+    const before = state.rngState;
+    updateController(context, leader);
+    updateController(context, base);
+    expect(state.rngState).toEqual(before);
+    expect(parkedOf(leader).nextUpdateClock).toBe(context.time.clock + 0x40);
+    expect(base.ai.program).toMatchObject({ type: 'built-in', record: 4, controller: { handler: 'parked', nextUpdateClock: context.time.clock + 0x40 } });
+    const posted: Request[] = [];
+    context.requests.handle((request) => void posted.push(request));
+    expect(posted).toEqual([]);
+    expect(context.events).toEqual([]);
+  });
+
+  it('steps only when due, in the object update; its draws precede every parked-update draw, whose travel follows its decision', () => {
+    const { state, world, player, leader, base } = parkedWorld();
+    world.step(tickInput());
+    const [leaderController, baseController] = [parkedOf(leader), parkedOf(base)];
+    expect(leaderController.nextUpdateClock).toBe(baseController.nextUpdateClock);
+    // Until due, the object update draws nothing (the player draws nothing without commands).
+    while (!(state.clock + 2 > leaderController.nextUpdateClock)) {
+      const before = state.rngState;
+      runStages(state, tickInput(), { 'object-update': () => expect(state.rngState).toEqual(before) });
+    }
+    // The due tick, with the leader's parked update due too, and the player back at the origin: the leader's nearest
+    // friendly within three sectors, so no random pick.
+    leader.lastParkedUpdateClock = state.clock + 2 - 0x80;
+    player.position = { x: 0, y: 0, z: 0 };
+    const start = leader.position;
+    const before = state.rngState;
+    const values = randValues(before, 2);
+    let afterControllers: unknown = null;
+    let beforeParked = state.rngState;
+    const { context } = runStages(state, tickInput(), {
+      'object-update': () => {
+        // Walk order: the leader (kind bit 7) before the base (17), one draw each, rand % 64 last.
+        expect(state.rngState).toEqual(rngStateAfter(before, 2));
+        const clock = state.clock;
+        // The leader's friendly set holds the base, so no shortcut: the nearest of 0x6c87f, the player (D2, D3).
+        expect(leader.ai).toMatchObject({ mode: 0, target: player.id, targetOffset: { x: 0, y: 0, z: 0 } });
+        expect(leaderController.nextUpdateClock).toBe(clock + 0x280 + (values[0] % 64));
+        expect(base.ai.mode).toBe(1);
+        expect(baseController.nextUpdateClock).toBe(clock + 0xf00 + (values[1] % 64));
+        afterControllers = structuredClone([leaderController, baseController, leader.ai.mode, base.ai.mode]);
+      },
+      'object-sets': () => void (beforeParked = state.rngState),
+    });
+    // The parked update draws after them, and travels toward the target the step chose, with a random offset; it does
+    // not run the controller again.
+    expect(beforeParked).not.toEqual(state.rngState);
+    const { targetOffset } = leader.ai;
+    expect(targetOffset).not.toEqual({ x: 0, y: 0, z: 0 });
+    const goal = { x: player.position.x + targetOffset.x, y: player.position.y + targetOffset.y };
+    const towards = (position: Vec3) => Math.hypot(position.x - goal.x, position.y - goal.y);
+    expect(towards(leader.position)).toBeLessThan(towards(start));
+    expect(structuredClone([leaderController, baseController, leader.ai.mode, base.ai.mode])).toEqual(afterControllers);
+    expect(context.events.filter(({ type }) => type !== 'command-result')).toEqual([]);
+  });
+
+  it('removes in states 5 and 6 without a draw, and the next callback installs by the activity then', () => {
+    const { state, world, leader } = parkedWorld();
+    world.step(tickInput());
+    const before = state.rngState;
+    leader.state = 'area-switch';
+    const context = registerTick(state, readTickInput(tickInput()));
+    updateController(context, leader);
+    expect(leader.ai.program).toEqual({ type: 'table', record: 0, controller: null });
+    expect(state.rngState).toEqual(before);
+    leader.state = 'new';
+    updateController(context, leader);
+    expect(parkedOf(leader).nextUpdateClock).toBe(context.time.clock + 0x40);
+    expect(state.rngState).toEqual(before);
+  });
+
+  /** A wingman world after its first step whose wingman is parked far from the player, its parked handler installed. */
+  function parkedWingmanWorld() {
+    const parts = parkedWorld(0);
+    const { state, world } = parts;
+    const wingman = firstOf(state, 1) as CraftEntity;
+    Object.assign(wingman, { position: { x: 30_000, y: 1000, z: 0 }, state: 'area-switch' });
+    world.step(tickInput());
+    world.step(tickInput());
+    expect(wingman).toMatchObject({ activity: 'parked', state: 'active' });
+    return { ...parts, wingman, controller: parkedOf(wingman) };
+  }
+
+  it('the wingman\'s drop creates a parked Xpon in the walk, whose first callback follows in the same walk (AC-10, CR-20, D4)', () => {
+    const { state, world, wingman, controller } = parkedWingmanWorld();
+    const kind14 = () => entities(state).filter(({ kindBit }) => kindBit === 14);
+    expect(kind14()).toEqual([]);
+    controller.nextUpdateClock = state.clock;
+    // No parked update is due in this tick, nor the new Xpon's: each parked craft draws only its due check.
+    for (const entity of entities(state)) if (entity.activity === 'parked') entity.lastParkedUpdateClock = state.clock + 2;
+    expect(wingman.state).toBe('active');
+    const before = state.rngState;
+    const values = randValues(before, 2);
+    let beforeParked = state.rngState;
+    const { context, events } = runStages(state, tickInput(), {
+      'object-update': (tick) => {
+        const [xpon] = kind14();
+        expect(xpon).toMatchObject({
+          source: null, activity: 'parked', movement: null, state: 'new', transponder: { creator: 'wingman', callback: { phase: 'none' } },
+          lastParkedUpdateClock: state.clock,
+        });
+        // Its first callback ran in this walk: the generic part's request to become active.
+        expect(tick.requests.findLastPending((request): request is Request => request.type === 'set-state' && request.entityId === xpon.id)).toBeDefined();
+        // The construction's one draw (the energy update) precedes the handler's last one; the Xpon itself draws nothing.
+        expect(state.rngState).toEqual(rngStateAfter(before, 2));
+        expect(xpon.combat).toMatchObject({ nextEnergyClock: state.clock + 0x80 + (values[0] % 64) });
+        // The far leader is the only hostile and is not map-visible: no choice with p 0 (sample + 0x3C0).
+        expect(controller.nextUpdateClock).toBe(state.clock + 0x3c0 + (values[1] % 64));
+        expect(wingman.ai).toMatchObject({ mode: 4, target: null });
+        // Not a member before the next rebuild.
+        expect(state.objectSets.friendly).not.toContain(xpon.id);
+      },
+      'object-sets': () => {
+        expect(state.objectSets.friendly).toContain(kind14()[0].id);
+        beforeParked = state.rngState;
+      },
+      'parked-update': () => {
+        // This tick's parked update selects the active-state parked craft: the leader, the base, the wingman and the new Xpon.
+        expect(state.rngState).toEqual(rngStateAfter(beforeParked, 4));
+      },
+    });
+    expect(kind14()[0].state).toBe('active');
+    expect(events.some(({ type }) => type === 'transponder-deployed')).toBe(false);
+    expect(context.events).toBe(events);
+    // Each new Xpon covers its own drop point, so the next due step drops none.
+    controller.nextUpdateClock = state.clock;
+    world.step(tickInput());
+    expect(kind14()).toHaveLength(1);
+  });
+
+  it('a wingman in b 4 whose destination lies outside the active area departs by Warp through the parked handler (WA5, D6)', () => {
+    const { state, world } = parkedWorld(0);
+    const wingman = firstOf(state, 1) as CraftEntity;
+    world.step(tickInput());
+    const { program } = wingman.ai;
+    if (program.type !== 'built-in' || program.controller?.handler !== 'wingman') throw new Error('the wingman handler');
+    state.player.map.destination = { x: 30_000, y: 0, z: 0 };
+    Object.assign(wingman.ai, { target: null, objectTarget: null, goal: state.player.map.destination, mode: 2 });
+    program.controller.wingman.behaviour = 4;
+    wingman.warpClock = 0;
+    let departed: number | null = null;
+    for (let tick = 0; tick < 200 && departed === null; tick++) {
+      world.step(tickInput());
+      if (wingman.inWarp) departed = state.clock;
+    }
+    expect(departed).not.toBeNull();
+    expect(wingman).toMatchObject({ state: 'area-switch', activity: 'active', inWarp: true, warpClock: 0, lastParkedUpdateClock: departed! - 0x80 });
+    world.step(tickInput());
+    expect(wingman).toMatchObject({ activity: 'parked', state: 'new' });
+    expect(wingman.ai.program).toMatchObject({ controller: null });
+    world.step(tickInput());
+    expect(parkedOf(wingman).nextUpdateClock).toBe(state.clock + 0x40);
+    expect(wingman).toMatchObject({ state: 'active', inWarp: true, warpClock: state.clock, lastParkedUpdateClock: state.clock });
+  });
+});
+
+/** The installed parked controller of `entity`. */
+function parkedOf(entity: Entity): Extract<AiController, { handler: 'parked' }> {
+  const { program } = entity.ai;
+  if (program.type === 'none' || program.controller?.handler !== 'parked') throw new Error('an installed parked controller');
+  return program.controller;
+}
+
+/** Registers a tick for `state`, runs every stage in order and calls `after[stage]` after it; the tick's context and events. */
+function runStages(state: WorldState, input = tickInput(), after: Partial<Record<string, (context: TickContext) => void>> = {}) {
+  const context = registerTick(state, readTickInput(input));
+  for (const { id, run } of PIPELINE) {
+    run?.(context);
+    after[id]?.(context);
+  }
+  return { context, events: context.events };
+}
+
+describe('the object sets and map visibility as the parked wingman reads them: CR-29 joint tests 1โ€“7 (P3-08/21; AC-09, MW-06)', () => {
+  /** The wingman's position W, far outside the active area; its craft +0x0C (reveal range) is 250. */
+  const W = { x: 30_000, y: 1000, z: 0 };
+  const from = (dx: number): Vec3 => ({ x: W.x + dx, y: W.y, z: 0 });
+  const NEAR = from(100);
+  const OUTSIDE = from(1000);
+  const AWAY = from(5000);
+
+  /**
+   * The player at the origin, two kind-7 hostiles H1 and H2 and a kind-17 base, all far away and parked; the wingman
+   * (option 0) moved to W and parked, its parked handler installed. `wingman` null: no wingman.
+   */
+  function mapWorld(wingman: number | null = 0) {
+    const mission = missionFrame();
+    mission.declarations = [
+      declaration(0, { craftType: 0, position: { x: 0, y: 0, z: 0 } }),
+      declaration(1, { craftType: 7, position: { x: 20_000, y: 2000, z: 0 } }),
+      declaration(2, { craftType: 7, position: { x: 20_000, y: -2000, z: 0 } }),
+      declaration(3, { craftType: 17, position: { x: -20_000, y: 0, z: 0 } }),
+    ];
+    const state = initialWorldState(asCreateInput(worldInput({ mission, run: { wingman } })));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    const [h1, h2] = entities(state).filter(({ kindBit }) => kindBit === 7);
+    const flier = wingman === null ? null : firstOf(state, 1);
+    if (flier !== null) Object.assign(flier, { position: W, state: 'area-switch' });
+    world.step(tickInput());
+    world.step(tickInput());
+    return { state, world, h1, h2, wingman: flier, player: firstOf(state, 0) };
+  }
+
+  type MapWorld = ReturnType<typeof mapWorld>;
+
+  interface Step {
+    /** Gives the `toggle-map` command. */
+    readonly toggleMap?: boolean;
+    readonly due?: boolean;
+    readonly h1?: Vec3;
+    readonly h2?: Vec3;
+    /** Runs after the object update, before the object sets are rebuilt. */
+    readonly afterWalk?: () => void;
+  }
+
+  /**
+   * One tick with H1 and H2 at the given positions and no parked update due (so nothing travels or engages); with `due`
+   * the wingman's step runs, from mode 0 without targets (a p-0 search). Returns what the search saw and chose, after
+   * the object update, and the flags after the tick.
+   */
+  function step(env: MapWorld, { toggleMap = false, due = false, h1, h2, afterWalk }: Step = {}) {
+    const { state, wingman } = env;
+    if (h1 !== undefined) env.h1.position = h1;
+    if (h2 !== undefined) env.h2.position = h2;
+    for (const entity of entities(state)) if (entity.activity === 'parked') entity.lastParkedUpdateClock = state.clock + 2;
+    if (wingman !== null) {
+      parkedOf(wingman).nextUpdateClock = due ? state.clock : state.clock + 10_000;
+      if (due) Object.assign(wingman.ai, { mode: 0, target: null, objectTarget: null });
+    }
+    let during: { readonly target: EntityId | null; readonly visible: readonly boolean[] } | null = null;
+    runStages(state, tickInput(toggleMap ? [{ type: 'toggle-map' }] : []), {
+      'object-update': () => {
+        during = { target: wingman?.ai.target ?? null, visible: [env.h1.mapVisible, env.h2.mapVisible] };
+        afterWalk?.();
+      },
+    });
+    return { during: during!, after: [env.h1.mapVisible, env.h2.mapVisible], icons: state.mapIcons.map(({ entityId }) => entityId) };
+  }
+
+  /**
+   * MW-06 recomputed from the current positions: the sets by kind in walk order; with the map open, each friendly in set
+   * order becomes visible and reveals the hostiles within its +0x0C on the plane, until as many hostiles as the set holds
+   * are revealed (later friendlies keep the base value).
+   */
+  function recomputed(state: WorldState) {
+    const craft = [...state.entities.walk(0xfffff)];
+    const isHostile = ({ kindBit }: Entity) => ((0x93780 >>> kindBit) & 1) === 1;
+    const friendly = craft.filter((entity) => !isHostile(entity));
+    const hostile = craft.filter(isHostile);
+    const visible = new Set<Entity>();
+    let revealed = 0;
+    for (const source of friendly) {
+      if (revealed === hostile.length && revealed > 0) break;
+      visible.add(source);
+      const range = state.craftInfo.content.craft[source.kindBit].at0C;
+      for (const target of hostile) {
+        if (visible.has(target) || !((source.position.x - target.position.x) ** 2 + (source.position.y - target.position.y) ** 2 < range * range)) continue;
+        visible.add(target);
+        revealed++;
+      }
+    }
+    return { sets: { friendly: friendly.map(({ id }) => id), hostile: hostile.map(({ id }) => id) }, visible: craft.map((entity) => visible.has(entity)) };
+  }
+
+  it('1. map closed: the step\'s own reveal lets it find a hostile it covers, but neither the map step nor the next rebuild sees it', () => {
+    const env = mapWorld();
+    const { during, after, icons } = step(env, { due: true, h1: NEAR, h2: AWAY, afterWalk: () => void (env.h1.position = OUTSIDE) });
+    expect(during).toEqual({ target: env.h1.id, visible: [true, false] });
+    expect(after).toEqual([false, false]);
+    expect(icons).toEqual([]);
+    expect(env.wingman!.mapVisible).toBe(false);
+    // With the map open the same tick's map step lists the friendlies only: the rebuild reset the step's reveal.
+    step(env, { toggleMap: true, h1: AWAY });
+    expect(env.state.player.viewMode).toBe(8);
+    const open = step(env, { due: true, h1: NEAR, afterWalk: () => void (env.h1.position = OUTSIDE) });
+    expect(open.during.target).toBe(env.h1.id);
+    expect(open.after).toEqual([false, false]);
+    expect(open.icons).toContain(env.wingman!.id);
+    expect(open.icons).not.toContain(env.h1.id);
+  });
+
+  it('2. map opened at tick N: the search of N + 1 reads N\'s reveal and adds its own on top', () => {
+    const env = mapWorld();
+    const opened = step(env, { toggleMap: true, h1: NEAR, h2: AWAY });
+    expect(env.state.player.viewMode).toBe(8);
+    expect(opened.after).toEqual([true, false]);
+    // H1 has left every friendly's range since; H2 has come within the wingman's.
+    const next = step(env, { due: true, h1: OUTSIDE, h2: NEAR });
+    expect(next.during).toEqual({ target: env.h2.id, visible: [true, true] });
+    expect(next.after).toEqual([false, true]);
+    // A hostile only N's reveal shows is found too.
+    step(env, { h1: NEAR, h2: AWAY });
+    expect(step(env, { due: true, h1: OUTSIDE }).during).toEqual({ target: env.h1.id, visible: [true, false] });
+  });
+
+  it('3. map closed at tick M: the rebuild of M reveals nothing, so the search of M + 1 has only the base value and its own reveal', () => {
+    const env = mapWorld();
+    step(env, { toggleMap: true, h1: NEAR, h2: AWAY });
+    const closed = step(env, { toggleMap: true, h1: NEAR });
+    expect(env.state.player.viewMode).not.toBe(8);
+    expect(closed.after).toEqual([false, false]);
+    const next = step(env, { due: true, h1: OUTSIDE });
+    expect(next.during).toEqual({ target: null, visible: [false, false] });
+    expect(parkedOf(env.wingman!).nextUpdateClock - env.state.clock).toBeGreaterThanOrEqual(0x3c0);
+  });
+
+  it('4. consecutive map frames: each tick\'s sets and flags follow only from the current positions; the snapshot holds them', () => {
+    const env = mapWorld();
+    step(env, { toggleMap: true });
+    const positions = [[NEAR, AWAY], [OUTSIDE, NEAR], [OUTSIDE, AWAY], [NEAR, NEAR], [AWAY, OUTSIDE]] as const;
+    for (const [index, [h1, h2]] of positions.entries()) {
+      step(env, { due: index % 2 === 0, h1, h2 });
+      const expected = recomputed(env.state);
+      expect(env.state.objectSets, `${index}`).toEqual(expected.sets);
+      expect([...env.state.entities.walk(0xfffff)].map(({ mapVisible }) => mapVisible), `${index}`).toEqual(expected.visible);
+      const snapshot = env.world.snapshot().state;
+      expect(snapshot.objectSets).toEqual(expected.sets);
+      expect(snapshot.entities.filter(({ kindBit }) => kindBit < 20).map(({ id, mapVisible }) => [id, mapVisible]))
+        .toEqual([...env.state.entities.byId()].filter(({ kindBit }) => kindBit < 20).map(({ id, mapVisible }) => [id, mapVisible]));
+    }
+  });
+
+  it('5. destroyed, docked, parked and Warping craft stay members and can be chosen; the Xpon dropped in the walk is not one yet', () => {
+    const env = mapWorld();
+    const { h1, h2 } = env;
+    // H1 docked (its parked controller removed, as a docking would), destroyed and in Warp; H2 a destroyed source.
+    h1.ai.program = { ...h1.ai.program, controller: null } as typeof h1.ai.program;
+    setActivity(h1, 'docked', initialMovementBlock(h1.maximumSpeed, env.state.craftInfo.content.craft[7].atB8));
+    Object.assign(h1, { state: 'active', destroyed: true, inWarp: true });
+    h2.state = 'destroyed-source';
+    step(env, { h1: AWAY, h2: AWAY });
+    expect(env.state.objectSets.hostile).toEqual([h1.id, h2.id]);
+    let dropped: EntityId | undefined;
+    const first = step(env, {
+      due: true,
+      h1: AWAY,
+      h2: NEAR,
+      afterWalk: () => {
+        dropped = entities(env.state).find(({ kindBit }) => kindBit === 14)?.id;
+        expect(env.state.objectSets.friendly).not.toContain(dropped);
+      },
+    });
+    expect(first.during.target).toBe(h2.id);
+    expect(dropped).toBeDefined();
+    expect(env.state.objectSets.friendly).toContain(dropped);
+    expect(step(env, { due: true, h1: NEAR, h2: AWAY }).during.target).toBe(h1.id);
+  });
+
+  it('6. without a wingman nothing reveals outside the map; without a player the wingman still searches; the first decision follows a rebuild', () => {
+    const created = initialWorldState(asCreateInput(worldInput({ run: { wingman: 0 } })));
+    expect(created.objectSets).toEqual({ friendly: [], hostile: [] });
+    const alone = mapWorld(null);
+    const leaderStep = parkedOf(alone.h1).nextUpdateClock;
+    expect(alone.state.objectSets.hostile).toEqual([alone.h1.id, alone.h2.id]);
+    let stepped = false;
+    for (let tick = 0; tick < 60; tick++) {
+      alone.world.step(tickInput());
+      stepped ||= parkedOf(alone.h1).nextUpdateClock !== leaderStep;
+      expect(entities(alone.state).some(({ mapVisible }) => mapVisible)).toBe(false);
+    }
+    expect(stepped).toBe(true);
+    const env = mapWorld();
+    env.player.state = 'pending-removal';
+    step(env);
+    expect(env.state.player.entityId).toBeNull();
+    expect(env.state.objectSets.friendly).not.toContain(env.player.id);
+    expect(step(env, { due: true, h1: NEAR, h2: AWAY }).during).toEqual({ target: env.h1.id, visible: [true, false] });
+  });
+
+  it('7. two worlds share no sets or flags, and the same content, seed and input give the same states', () => {
+    const one = mapWorld();
+    const other = mapWorld();
+    step(one, { toggleMap: true, h1: NEAR });
+    step(other, { h1: NEAR });
+    expect(one.h1.mapVisible).toBe(true);
+    expect(other.h1.mapVisible).toBe(false);
+    expect(other.state.objectSets).not.toBe(one.state.objectSets);
+    const run = () => {
+      const env = mapWorld();
+      for (let tick = 0; tick < 40; tick++) env.world.step(tickInput(tick === 5 || tick === 20 ? [{ type: 'toggle-map' }] : []));
+      return stateText(env.state);
+    };
+    expect(run()).toBe(run());
   });
 });
