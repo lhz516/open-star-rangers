@@ -286,7 +286,9 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(snapshotText(world.snapshot())).not.toBe(text);
   });
 
-  it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', () => {
+  // One snapshot and text per leaf, and P3-08 added a table program with a busy interpreter controller and a parsed
+  // script to the rich state, each with many leaves: 2 s alone, 22 s with two full runs at load 52.
+  it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', { timeout: 60_000 }, () => {
     const state = richState();
     // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
     expect(Object.keys(state).sort()).toEqual([
@@ -392,7 +394,8 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(texts.size).toBe(5);
   });
 
-  it('writes every leaf of P3-08\'s other controller variants, its unset parts and a transponder state (CR-16, CR-17, CR-20)', () => {
+  // One snapshot and text per leaf, like the test above: 1 s alone, 15 s with two full runs at load 52.
+  it('writes every leaf of P3-08\'s other controller variants, its unset parts and a transponder state (CR-16, CR-17, CR-20)', { timeout: 60_000 }, () => {
     const state = richState();
     const runtime = [...state.entities.walk(1 << 19)].find(({ ai }) => ai.program.type === 'table')!;
     const transponder = state.entities.allocate(entityInit(TRANSPONDER_KIND_BIT, {

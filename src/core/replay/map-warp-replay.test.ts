@@ -58,7 +58,8 @@ const withCommands = (tick: number, commands: readonly unknown[]) => recordWith(
 
 const typesOf = (recording: Recording) => new Set(recording.result.events.map(({ type }) => type));
 
-describe('map and Warp replay (P3-09 AC-11; MW-14)', () => {
+// Whole runs recorded and replayed: 0.5–1.7 s per case alone, up to 6.8 s in full runs at load 50.
+describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => {
   it('has the whole chain in the recorded run', () => {
     for (const type of ['map-toggled', 'warp-destination-set', 'target-changed', 'warp-started', 'left-page-changed', 'warp-completed', 'object-destroyed'] as const) {
       expect(typesOf(RECORDING).has(type), type).toBe(true);

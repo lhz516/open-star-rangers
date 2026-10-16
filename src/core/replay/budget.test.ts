@@ -310,7 +310,8 @@ function withLongIds(snapshot: GameSnapshot): GameSnapshot {
 }
 
 describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
-  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity before its combat state, of which the flight state takes at most 1.5 KiB', () => {
+  // Writes the text of a world at the entity limit: 2 s alone, 23 s with two full runs at load 52.
+  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity before its combat state, of which the flight state takes at most 1.5 KiB', { timeout: 60_000 }, () => {
     expect([LONG_DOUBLE, LONG_F32, LONG_ID, LONG_I32].map((value) => JSON.stringify(value).length)).toEqual([25, 25, 16, 11]);
     const state = testState();
     addPlayerEntity(state);

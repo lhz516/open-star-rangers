@@ -759,7 +759,8 @@ describe('package transfer check', () => {
   });
 });
 
-describe('app test entry profiles', () => {
+// Builds and identifies the synthetic disc of every scenario: 0.7–1.8 s alone, 15 s with two full runs at load 52.
+describe('app test entry profiles', { timeout: 60_000 }, () => {
   // P2-11 technical decision 7: the development test entry expects the profile of the package its Worker scenario sends.
   it('names the fingerprint each scenario identifies', async () => {
     for (const scenario of Object.keys(SCENARIO_SOURCES) as IdentifyingScenario[]) {

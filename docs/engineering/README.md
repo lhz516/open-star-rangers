@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -134,7 +134,7 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
 ## 测试
 
 - Vitest 用两个项目运行全部 `src/**/*.test.ts` 与 `tools/**/*.test.ts`（[vite.config.ts](../../vite.config.ts)）。顶层调用 `vi.mock(` 替换模块的文件进入 isolated 项目，各自拥有模块图；其余文件在 shared 项目中关闭隔离（`isolate: false`），同一 worker 复用模块图，免去每个文件重新启动与导入，这原是全量测试的主要耗时。配置启动时扫描文件自动分组，新增 mock 文件无需登记。`restoreMocks` 在每个用例后还原 spy；shared 项目中的测试不得依赖其他文件留下或改动的模块级状态。
-- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。机器负载很高（load 约 12–30，多个会话并行检查）时，单独运行不足 1 s 的 CPU 密集用例在全量并行运行中曾超过 Vitest 默认的 5 s：规范文本的上限用例（每次扫描 16 M 码元）与首个构建真实 Node 程序的边界用例。因此前者所在的用例组声明 30 s deadline，Node 程序改由一个限时 30 s 的 `beforeAll` 构建，两处都在代码旁写明实测依据（[P3-02 子任务 13](../plan/p3/02/subtasks/13-heavy-test-timeouts.md)）。正式 Core 的录制与比较也各有一组按上限规模运行的用例（[recording.test.ts](../../src/core/replay/recording.test.ts) 的 `limit-sized recordings`：录满 tick 与命令容量；[compare.test.ts](../../src/core/replay/compare.test.ts) 的 `limit-sized results`：26 万余事件的结果），同样声明 30 s deadline 并旁注实测依据（[P3-02 子任务 08](../plan/p3/02/subtasks/08-snapshot-replay.md)）。其余用例沿用默认值。
+- worker 数为 CPU 的 50%，为集成测试启动的构建工具和其他并行检查留出余量；不设全局 timeout。回归由 [engineering-boundaries.test.ts](../../tools/engineering-boundaries.test.ts) 保护：每个测试文件恰属一个项目，只有 mock 文件被隔离，且不覆盖 deadline。机器负载很高（load 约 12–30，多个会话并行检查）时，单独运行不足 1 s 的 CPU 密集用例在全量并行运行中曾超过 Vitest 默认的 5 s：规范文本的上限用例（每次扫描 16 M 码元）与首个构建真实 Node 程序的边界用例。因此前者所在的用例组声明 30 s deadline，Node 程序改由一个限时 30 s 的 `beforeAll` 构建，两处都在代码旁写明实测依据（[P3-02 子任务 13](../plan/p3/02/subtasks/13-heavy-test-timeouts.md)）。正式 Core 的录制与比较也各有一组按上限规模运行的用例（[recording.test.ts](../../src/core/replay/recording.test.ts) 的 `limit-sized recordings`：录满 tick 与命令容量；[compare.test.ts](../../src/core/replay/compare.test.ts) 的 `limit-sized results`：26 万余事件的结果），同样声明 30 s deadline 并旁注实测依据（[P3-02 子任务 08](../plan/p3/02/subtasks/08-snapshot-replay.md)）。随世界状态增长，又有一批用例在全量并行运行中超过 5 s（单独 0.1–2.2 s，两个全量运行并行、load 约 52 时最多 23 s），同样各自声明 deadline 并旁注实测依据：快照的全字段变化与 P3-08 控制器变体、快照文本预算、应用测试入口的场景配置为 60 s；图像 payload 往返、任务场景、地图与 Warp replay，以及边界测试中遍历真实应用程序的三项（SliceDefinition 构造、低层能力边界、原版数据消费者）为 30 s（[P3-08 子任务 31](../plan/p3/08/subtasks/31-long-test-timeouts.md)）。其余用例沿用默认值。
 - 集成测试只为真实接线启动构建与子进程，其余在进程内覆盖：合规 CLI 回归只跑一次真实聚合构建，原版扫描各作用域与 inventory 校验分别由 [scan.test.ts](../../tools/compliance/scan.test.ts)、[distribution.test.ts](../../tools/compliance/distribution.test.ts) 覆盖；构建插件回归在首次真实审计后复用其结果做失败构建。
 
 - 单元测试与源码放在同一目录，命名为 `*.test.ts`，用 Vitest 在 Node 环境运行。

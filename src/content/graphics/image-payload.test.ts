@@ -60,11 +60,12 @@ describe('image payload schema 1', () => {
     expect(input.mask[1] & 0x3f).toBe(0x3f);
   });
 
+  // The 640×480 case compares 300 K indices: 0.5 s alone, 7 s with two full runs at load 52.
   it.each([
     ['1×1 opaque', { width: 1, height: 1, indices: new Uint8Array([7]), mask: null }],
     ['640×480 masked', { width: 640, height: 480, indices: new Uint8Array(640 * 480), mask: new Uint8Array(80 * 480) }],
     ['a nearest target equal to its palette', { display: { nearest: PALETTE } }],
-  ])('round-trips %s', (_, overrides) => {
+  ])('round-trips %s', { timeout: 30_000 }, (_, overrides) => {
     const input = { ...opaqueImage(), ...overrides };
     expect(readImagePayload(encodeImagePayload(input), 1)).toEqual({ kind: 'image', ...input });
   });

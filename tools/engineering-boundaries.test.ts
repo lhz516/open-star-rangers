@@ -977,7 +977,8 @@ describe('content slice definition boundary', () => {
     });
   });
 
-  it('constructs the only SliceDefinition in its owner module', () => {
+  // Checks every type assertion of the real app program: 0.5 s alone, 7.5 s with two full runs at load 52.
+  it('constructs the only SliceDefinition in its owner module', { timeout: 30_000 }, () => {
     const compilation = sharedAppProgram();
     const production = compilation.getRootFileNames().filter(fileName => !fileName.endsWith('.test-support.ts'));
     expect(definitionAssertions(compilation, root, production).map(entry => entry.replace(/:\d+$/, ''))).toEqual([owner]);
@@ -1473,11 +1474,13 @@ describe('original-data dependency boundary', () => {
     });
   });
 
-  it('keeps every production module within the low-level capability boundary', () => {
+  // Walks the real app program: 0.3 s alone, 5.9 s with two full runs at load 52.
+  it('keeps every production module within the low-level capability boundary', { timeout: 30_000 }, () => {
     expect(capabilityViolations(sharedAppProgram(), root)).toEqual([]);
   });
 
-  it('keeps every production consumer away from original-data', () => {
+  // Walks the real app program: 0.3 s alone, 5.1 s with two full runs at load 52.
+  it('keeps every production consumer away from original-data', { timeout: 30_000 }, () => {
     expect(originalDataReach(sharedAppProgram(), root)).toEqual([]);
   });
 

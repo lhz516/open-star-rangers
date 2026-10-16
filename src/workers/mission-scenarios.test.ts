@@ -96,7 +96,9 @@ const complete = (result: PackageCompletenessResult): ContentIdentity => {
   return result.identity;
 };
 
-describe('P3-04 mission scenarios (S-09)', () => {
+// Each case imports a whole synthetic package, and mission-docking also runs four worlds: 0.1–0.3 s alone, up to 6.6 s
+// with two full runs at load 52.
+describe('P3-04 mission scenarios (S-09)', { timeout: 30_000 }, () => {
   it('registers each as a Worker scenario under a test entry name, with the production profile of its disc', () => {
     const profiles = new Map(Object.keys(MISSION_SCENARIOS).map(name => [name, scenarioEntryProfile(name)]));
     for (const [name, profile] of profiles) {
