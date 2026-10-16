@@ -86,7 +86,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | completed |
-| [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | in-progress |
+| [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | completed |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | pending |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | pending |
@@ -131,6 +131,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 22 完成：** `drop-transponder`、`create-transponder`、`0x3897c` 与 `KeyB` 已实现，replay 格式 2→3；`create-transponder` 已从 UNWIRED_REQUESTS 移除。僚机投放（`0x62aa0`）的调用点交 21：调用导出的 `constructTransponder(context, 僚机, 'wingman')`，并测试同一遍走查中的首次回调、RNG 次序与该 tick 的停放更新选择（AC-10 的僚机部分）。交 24：飞行中按 `b`，断言 `transponder-deployed` 与 `creator: 'player'` 的种类 14 实体。交 28：core.md 的命令、请求、事件与 replay 格式版本清单；executable X3 的 f32 常量。D13 的能量时钟算式在 xpon.ts 与 combat-init.ts 中重复，统一需改 combat-init.ts，留作已知的重复。
 - **2026-10-15 — 17 完成：** AI 驾驶经 `steer`（接受机体）与 `ai-match-speed`（P3-06 速度匹配一般化为 (a, lo, hi)，(0, 0, 1) 位一致）；UNWIRED_REQUESTS 只剩 `warp-departure`。交 18：`ai.ts` 的 `stepController` 注释把 `0x5dfec` 的 AI 锁定更新归 17，实为开火逻辑（A13），由 18 实现并更正注释。交 28：core.md 的请求清单、AI 转向库与 ai-piloting.ts。
 - **2026-10-15 — 26 重新规划（协调者依用户授权批准）：** 用户要求“重新规划subtask 26，尽可能减少dosbox”。正式样本集改为 26 的 e-02（进行中）与一次新的组合僚机运行 W-ii（至多因偶发失败重做一次），加上按 D-02 不变的资格复用的 10 的 w-01、w2-01、e-04、b-09（只按其记录的字段判定）；W-i、W-iii、第二次 E 与两次 B 不再运行，DOSBox 用时约为 e-02 剩余 2 小时、W-ii 3.5 小时（重做至多再 3.5 小时），原计划至少 8 次、每次 1–4 小时。D-02 的数量改为目标；僚机导弹发射、愤怒与拒绝、状态 6 与记录 2、0x100 敌机的 K-01、僚机类 (i)/(iii)、基地布局 C 与冷却读数、W-ii 未取得的命令码等由代码证据与 Node 独立期望核对，27 逐项列为运行时覆盖的已知限制（不是行为差异），判定规则不变。spec（AC-15、正式采样计划、新增已知限制清单、取不到时的处理、审批）、B-011、26、27 随之修订，子任务跟踪表不变。P3-08 的最后一次基准运行结束后，协调者通知 P3-10。
+- **2026-10-15 — 18 完成：** 目标、开火、AI 锁定与基地处理器（记录 6）。按原生 `0x5dcd4` 更正 CR-23：AI 锁定 `0x5dfec` 只在处理器到期的同一分支内执行（ai §1 与 executable A12 同步，A9、A15 补代码事实）。离场请求 `0x5e6cc` 以 `depart()` 回调交给 16、21：协调者决定 16 的回调投递 `warp-departure` 请求（最终行为），由 21 接入其处理；在 21 之前若测试触发未接入故障，16 报告协调者。已知限制：列表 1 的当前挂点为 +0x18 ≠ 0 的炮时 `updateAiLock` 故障（原版越过炮记录读取），切片中没有这种组合。交 28：core.md 的 AI 步、基地处理器与 ai-targeting/ai-firing。
 
 ## 审批
 

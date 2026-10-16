@@ -4349,6 +4349,8 @@ Copies S (0x3B dwords) to the stack, sets the copy's lead mode 0 and offset off,
 
 ##### A9. Engagement share `0x632a4`(C) (difficulty path 5) — Confirmed (code)
 
+`0x38bb0` tests only the first kind-2 object in the list, not the first eligible one (Confirmed, code; P3-08/18; same as P3-10's use).
+
 1. P null → return 0, no change. When the global mode word `[[0x1766fc]+0x0C]` (SCEN header +0x0C, wave mode) ≠ 0 → target P.
 2. P in Warp (+0xCC = 1) → return 0. W = `0x38bb0`: the first kind-2 object in walk order that is active and in state ≥ 7, else null; W in Warp → null.
 3. **Attacker first:** subject +0xA4 valid, not on the subject's side (side test of [ai §11.3](./ai.md#113-state-machine-0x64d58)) and sample − +0xA8 < C+0x148 (unsigned, strict) → target the attacker, return.
@@ -4376,6 +4378,7 @@ Walks `0x5261c`(mask) in walk order. An object equal to the target held by the p
 - **`0x5dcd4`(C)**, parked subject (+2 = 0): only `0x62250`(1, C) when sample > C+0xF0 (unsigned, strict); **no trigger loop and no automatic mounts**.
 - **Active or docked:** for channels k = 0, 1, 2: v = C+0x120+4k; v ≠ 0 → `0x2d578`(subject, k, v); k = 1 and v ≠ 0 → **C+0x13C := 0** (the missile-ready flag is consumed by any channel-1 attempt); then for k = 1 always, and for k = 0, 2 when sample > C+0x12C+4k (unsigned, strict): C+0x120+4k := 0 and `0x2d578`(subject, k, 0) (stores 0 and returns). Then `0x2dad0` when C+0x140 ≠ 0. Then, when sample > C+0xF0, the handler C+0xFC with mode 1, and afterwards, when C+0x138 ≠ 0, C+0x13C := `0x5dfec`(C).
 - **Timing:** a press made by a handler fires in the **next** AI step (the loop precedes the handler); a channel-1 press fires exactly once; automatic bursts loaded by an acquisition fire from the next step.
+- **AI lock timing (P3-08/18):** `0x5dfec` is called only inside the "sample > C+0xF0" branch, after the handler in mode 1, so the AI lock updates only on steps where the handler is due — Confirmed (code).
 - **`0x5df20`(C, channel, hold)** acts only when the value is 0: value := 1, deadline := 0 (hold 0), sample + 0x7D00 (hold < 0) or sample + hold (32-bit add). A pressed channel is not re-pressed and its deadline does not move. **`0x5df84`(C, channel)**: value := 0 and `0x2d578`(subject, channel, 0); callers opcode 403 and the wingman (×3). **`0x5dfa4`(C, channel)** = `0x2dd54` succeeded and its range > C+0x2C (strict).
 - **The 14 press sites:**
 
@@ -4421,6 +4424,8 @@ Walks `0x5261c`(mask) in walk order. An object equal to the target held by the p
 - W9's four behaviours: `0x62bce` is inside `0x62b60`, `0x62c28` inside `0x62c10`; `0x6307c` inside `0x62d34` (record 7) and `0x64914` inside `0x648fc` (record 8), both unreachable in the slice.
 
 ##### A15. AI reads of the P3-07 records — Confirmed (code)
+
+Clearance `0x2d37c` = F(d² − r²(other)), with r²(own) subtracted first when the own kind ≠ 0 (r² = shape +0x14) — Confirmed (code; P3-08/18).
 
 | Field | Readers | Use |
 |---|---|---|

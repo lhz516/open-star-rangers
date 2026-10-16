@@ -13,18 +13,39 @@
  * explosion sets state 6; the rescue reaches none of this (ai §1).
  *
  * The handlers are static calls into their rule modules (CR-07), wired by the subtasks that implement them: the
- * interpreter `0x64cb8` (P3-08/16), the base `0x62c10` (P3-08/18), the wingman `0x610c8` (P3-08/19) and the parked
- * handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller stays unset, no handler
- * runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a program.
+ * interpreter `0x64cb8` (P3-08/16), the base `0x62c10` (rules/ai-firing.ts), the wingman `0x610c8` (P3-08/19) and the
+ * parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller stays unset, no
+ * handler runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a program.
+ *
+ * A handler draws from the world's RNG through one RandStream per call, which the world continues after; its requests
+ * are posted at once, as the original posts its messages in the subject's own update.
  */
 import { CoreFaultError } from '../errors.ts';
+import { firingDataOf, installBase, runTriggerLoop, updateAiLock, updateBase } from '../rules/ai-firing.ts';
 import { installedController, isControllerDue, type ControllerRecord } from '../rules/ai-selection.ts';
 import type { BuiltInHandler } from '../rules/ai-support.ts';
+import type { CraftEntity } from '../rules/combat-init.ts';
+import { RandStream } from '../rules/original-random.ts';
 import { isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import type { TickContext } from './pipeline.ts';
+import { fireAiChannel, fireAutomatic } from './weapons.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `ai.${site}`);
+
+/** An AI subject: kind bits 0–19 carry the craft combat state the handlers read. */
+function asCraft(entity: Entity): CraftEntity {
+  if (entity.combat.type !== 'craft') throw fault('subject');
+  return entity as CraftEntity;
+}
+
+/** Runs `work` with draws from the world's RNG, which then continues after them. */
+function withRand<Result>(world: WorldState, work: (rand: RandStream) => Result): Result {
+  const rand = new RandStream(world.rngState);
+  const result = work(rand);
+  world.rngState = rand.state;
+  return result;
+}
 
 /** A selected program: a table or built-in record. */
 type SelectedProgram = Exclude<AiProgramSlot, { readonly type: 'none' }>;
@@ -39,8 +60,19 @@ interface HandlerModes {
   readonly remove: (context: TickContext, entity: Entity, controller: AiController) => void;
 }
 
+/** The base `0x62c10` (A14): mode 0 installs and runs the update body; mode 2 returns at once. */
+const BASE_HANDLER: HandlerModes = Object.freeze({
+  install: (context: TickContext, entity: Entity, common: AiControllerCommon) =>
+    withRand(context.world, (rand) => installBase(context.world, asCraft(entity), common, rand, (request) => context.requests.post(request))),
+  update: (context: TickContext, entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'base') throw fault('base');
+    updateBase(context.world, asCraft(entity), controller);
+  },
+  remove: () => {},
+});
+
 /** The wired handlers; each handler subtask adds its own (module comment). */
-const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({});
+const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({ base: BASE_HANDLER });
 
 /** The states in which `0x20c18` installs (0–3), removes (5, 6) and steps (7). */
 const INSTALL_STATES: ReadonlySet<ObjectState> = new Set(['new', 'presentation-ready', 'awaiting-presentation']);
@@ -134,16 +166,26 @@ export function removeController(context: TickContext, entity: Entity): void {
 }
 
 /**
- * The AI step `0x5dcd4` of an installed controller. Parked, only the parked handler's mode 1 when due. Active or docked:
- * P3-08/18 adds the trigger channels 0, 1 and 2 and the automatic mounts before the handler, and P3-08/17 the AI lock
- * update after it, whether or not the handler was due.
+ * The AI step `0x5dcd4` of an installed controller (A12). Parked, only the parked handler's mode 1 when due. Active or
+ * docked: the trigger loop (channels 0, 1 and 2 through P3-07's `0x2d578`), the automatic mounts `0x2dad0` while they
+ * are on, then, only when the controller is due, the handler's mode 1 followed by the AI lock update `0x5dfec` while
+ * the AI lock is on, whose result becomes the missile-ready flag. A handler's press therefore fires in the next step.
  */
 function stepController(context: TickContext, entity: Entity, controller: AiController): void {
   // Install and removal use the same dispatch, and the activity changes between parked and not only after a removal.
   if ((controller.handler === 'parked') !== (entity.activity === 'parked')) throw fault('dispatch');
   const modes = HANDLERS[controller.handler];
   if (modes === undefined) throw fault('unwired');
-  if (isControllerDue(controller, context.time.clock)) modes.update(context, entity, controller);
+  const { world, time: { clock } } = context;
+  if (controller.handler !== 'parked') {
+    runTriggerLoop(controller, clock, (channel) => fireAiChannel(context, entity, channel));
+    if (controller.automaticMounts) fireAutomatic(context, entity);
+  }
+  if (!isControllerDue(controller, clock)) return;
+  modes.update(context, entity, controller);
+  if (controller.handler !== 'parked' && controller.aiLock) {
+    controller.missileReady = updateAiLock(firingDataOf(world), asCraft(entity), controller, (id) => world.entities.get(id), clock);
+  }
 }
 
 /** The controller part of `0x20c18` for a craft (module comment); pipeline.ts calls it after the Warp-transit check. */

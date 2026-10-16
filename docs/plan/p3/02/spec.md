@@ -1318,7 +1318,7 @@ type WingmanCommandOutcome = 'applied' | 'fallback' | 'refused' | 'acknowledged'
   - **状态 5、6（区域切换、待移除）：** `controller` 不为 null 时**移除**：停放 → `0x62250(2)`，否则处理器的模式 2（释放私有状态与执行状态；切片的处理器在此不抽取），`controller` := null；然后照常请求离开。
   - **状态 7：** `controller` 不为 null 时运行 **AI 步** `0x5dcd4`：
     - 停放：采样 > `nextUpdateClock`（无符号严格）时 `0x62250(1)`；没有扳机循环与自动挂点。
-    - 活动或停靠：通道 0、1、2 依次：已按下 → P3-07 的 `fireAiChannel`（`0x2d578`），通道 1 的尝试使 `missileReady` := false；然后通道 1 总是、通道 0/2 在采样 > `holdDeadline` 时松开。其后 `automaticMounts` 时 `fireAutomatic`（`0x2dad0`）；其后采样 > `nextUpdateClock` 时处理器的模式 1；其后（不论处理器是否到期）`aiLock` 时 `missileReady` := `0x5dfec`（A12、ai §1）。因此处理器的按下在**下一次** AI 步开火。
+    - 活动或停靠：通道 0、1、2 依次：已按下 → P3-07 的 `fireAiChannel`（`0x2d578`），通道 1 的尝试使 `missileReady` := false；然后通道 1 总是、通道 0/2 在采样 > `holdDeadline` 时松开。其后 `automaticMounts` 时 `fireAutomatic`（`0x2dad0`）；其后采样 > `nextUpdateClock` 时处理器的模式 1；其后在同一“采样 > `nextUpdateClock`”分支内（处理器到期时才执行；2026-10-15 执行中按原生 `0x5dcd4` 更正，P3-08/18）`aiLock` 时 `missileReady` := `0x5dfec`（A12、ai §1）。因此处理器的按下在**下一次** AI 步开火。
   - **种类 `0x4000`：** 回调 `0x3897c`（CR-20），没有 AI 与过境检查。玩家与 P3-07 的运行时种类不变。
 - **P3-10 的固定调用点（CB-12）：** 种类 `0x6807c`（基地等）的自身更新中，P3-10 的 `0x3bed0` 在 AI 步之后读取并清除其单槽；僚机行为 3 的到达 `0x61bd0` 调用 P3-10 的 `fullRepair(context, 僚机, false)`（CB-10，对象更新中，不在消息循环内）；回复经 `queueLine`（CB-06）。
 - **停放的 AI 与停放行进是两个调度器：** 停放控制器只在对象更新中运行；第 13 阶段 `parked-update` 保持 P3-06/P3-07 的节奏抽取、行进与交战，读取控制器写下的 AI 模式、AI 目标、对象目标与目标点，不再运行控制器。一遍中全部控制器抽取先于全部停放更新的抽取（D1；阶段次序已保证）。
