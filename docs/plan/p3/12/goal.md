@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "12"
-updated: 2026-10-15
+updated: 2026-10-16
 related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-018, U-021, U-027, U-028]
 ---
 
@@ -87,9 +87,9 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-camera-visibility-research.md](./subtasks/01-camera-visibility-research.md) | — | pending |
-| [02-lighting-flags-research.md](./subtasks/02-lighting-flags-research.md) | — | pending |
-| [03-draw-order-sprite-research.md](./subtasks/03-draw-order-sprite-research.md) | — | pending |
+| [01-camera-visibility-research.md](./subtasks/01-camera-visibility-research.md) | — | in-progress |
+| [02-lighting-flags-research.md](./subtasks/02-lighting-flags-research.md) | — | in-progress |
+| [03-draw-order-sprite-research.md](./subtasks/03-draw-order-sprite-research.md) | — | in-progress |
 | [04-nebula-flash-research.md](./subtasks/04-nebula-flash-research.md) | — | pending |
 | [05-shimmer-effect-geometry-research.md](./subtasks/05-shimmer-effect-geometry-research.md) | — | pending |
 | [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | pending |
