@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "07"
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # 07 — 证据缺口评估与最小补证
@@ -41,6 +41,7 @@ updated: 2026-10-15
 
 - [ ] AC-21：每项新运行都有理由、受影响 AC、最小配方、停止条件与输出清单，并记录配置、配方指纹与运行 ID；可复用的项没有重跑。
 - [ ] 零次新增运行时，必需项的证据来源清单完整；无法取得的项列为 blocked 并有恢复条件。
+- [ ] 01 至 06 按 goal 执行记录“研究缺口交 07”移交的缺口（如 01 的 G-01 像素行取整）逐项闭合到 spec 所需置信度，或按 spec 记为 blocked 并有恢复条件。
 - [ ] 改动 `tools/baseline/` 时，`python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'` 通过。
 
 ## 验证方法
