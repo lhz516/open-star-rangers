@@ -87,7 +87,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | completed |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | completed |
-| [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
+| [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | in-progress |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | pending |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | pending |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | pending |
