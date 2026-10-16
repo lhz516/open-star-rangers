@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "28"
-updated: 2026-10-14
+updated: 2026-10-16
 ---
 
 # 28 — 文档与交接
@@ -35,6 +35,8 @@ updated: 2026-10-14
 - `docs/engineering/modules/ui.md`：输入。
 - `docs/engineering/source-structure.md`：新文件落点。
 - `docs/guides/tools.md`：工具用法。
+- `docs/original/formats/ai.md`：执行记录中交 28 的代码事实（如 §12 的负延时数据事实）。
+- `docs/original/formats/executable.md`：执行记录中交 28 的代码事实（WA5、WA6、X3、D3/D6、16 的代码事实等）。
 
 ## 验收标准
 
