@@ -93,7 +93,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | completed |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
 | [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | completed |
-| [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | in-progress |
+| [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | in-progress |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
@@ -143,6 +143,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 20 完成：** 僚机命令的两个消费者（活动 `0x614a8`、停放 `0x61f20`）经 19、21 的接缝接入；回复经 P3-10 的 `queueLine`；菜单到回复的联合运行以未修改的 `replayRecord` 重放通过。`queueLine` 在处理器调用中从 `world.rngState` 抽取，所以僚机处理器改为逐次抽取（`worldRand`），与停放处理器一致。12 的 `WINGMAN_REPLIES` 中停放码 4 的回复线号由 0x14 更正为 0xE（WB4、CR-22）。交 28：core.md 的消费者接入、回复与逐次抽取的原因、码 4 的更正。
 - **2026-10-15 — 快照文本上限（23，协调者依用户授权决定）：** 实测最坏情形（32 挂点、所有数值最长）约 25.7 MiB，P3-07 至 P3-10 的状态在 32 挂点时本身已超 16 MiB。`canonicalTextLength` 提高到 32 MiB，budget 测试断言严格最坏情形在其内；P3-02 CR-25 已更正。
 - **2026-10-15 — 23 完成：** AC-11 的标准录制不含替身（敌机、基地、僚机、P3-10 菜单码 1 与 6、`b`、Warp 停放与重装、解析缓存的脚本切换）；AC-17 的 Node 部分在世界层面（每 tick 分派恰好 131,072 通过、下一次故障；每次运行 1,024 次分派后停止；AI 与 `b` 触及请求与实体上限；会话的暂停、隐藏、恢复、重试、两个会话与经 Runtime 显示的 AI 故障）。`canonicalTextLength` 为 2²⁵，严格最坏情形已实测。录制中僚机奉命攻击但 420 tick 内未射击（断言其目标）。交 28：core.md 的上限表。
+- **2026-10-15 — 24 完成：** 浏览器回归 `e2e/ai-wingman.development.spec.ts`：AC-10 的 `b` 与 Node 重放（`creator: 'player'`）、AC-14 的 schema 2/logic-4 导入与恢复且旧 logic-3 缓存不提供、AC-17 的 AI 推进、暂停、真实隐藏、故障显示与退出重进。协调者接受一项已知限制：在当前转换器键下放入 schema 1 的 `data/ai-programs` payload（只能由篡改或非发布包产生）恢复时显示为已验证，开始任务时由世界创建以明确的内容诊断拒绝，不开始运行；真实旧缓存使用 logic-3 键，不会被提供。高负载下有两项既有 e2e 偶发失败，单独重跑通过。
 
 ## 审批
 
