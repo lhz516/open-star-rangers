@@ -102,7 +102,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [31-long-test-timeouts.md](./subtasks/31-long-test-timeouts.md) | — | completed |
 | [32-share-departure-target-test.md](./subtasks/32-share-departure-target-test.md) | — | completed |
 | [33-contract-records.md](./subtasks/33-contract-records.md) | — | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -156,6 +156,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-16 — 28 完成：** core.md、app.md、ui.md、source-structure.md、工具指南与 `docs/original` 中交 28 的各项已写入。P3-10 自身的工程文档同步（其命令、请求、事件与上限）不在本 goal，留给 P3-10 的文档子任务；`limits.ts` 中 `commandsPerTick` 注释的命令数由协调者以单独提交更正（42 → 52）。
 - **2026-10-16 — 29 的首次核对未通过（回到 pending）：** 实现与验证证据完整、特有不变量在代码中成立、没有原版内容；缺口只在契约与批准记录：两个运行时故障（`ai-firing.lock-gun`、`ai-piloting.main-weapon`）未入已批准契约；P3-02 与 P3-08 的审批节缺 2026-10-15/16 执行中决定的条目；P3-09×P3-10 的两个联合故障在合并后没有持久记录；另有若干过时表述。新增 33 补齐，29 加入对 33 的依赖。
 - **2026-10-16 — 33 完成：** 两个运行时故障记入 CR-15 并以 CR-24 决定 18 批准；P3-02 与 P3-08 的审批节补记 2026-10-15/16 执行中的各项决定（含 wii-01 改为修正短运行的重做、K-07 静止窗口措辞在对照之后改写的说明）；CR-25 注明合并后的实际版本；P3-09×P3-10 的两个联合故障记入 core.md 的已知差异（负责 MW-04 或 CB-07）；26 的过时表述加取代说明，B-011 补跨任务项。
+- **2026-10-16 — 29 完成，goal 完成：** 重新核对通过（见 29 的完成证据）；全部行为 completed，没有遗留的 worker 分支或 worktree。
 
 ## 审批
 
