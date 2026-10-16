@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "23"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 23 — 自主 AI 的 replay、容量与运行生命周期
@@ -37,6 +37,7 @@ updated: 2026-10-14
 - `src/core/systems/ai-limits.test.ts`：容量测试（新建）。
 - `src/core/contracts/limits.ts`：预算的必要修正。
 - `src/app/session/**`：生命周期测试与必要修正。
+- `src/core/contracts/limits.test.ts`：`canonicalTextLength` 提高后的断言。
 
 ## 验收标准
 
