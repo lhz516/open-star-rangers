@@ -39,6 +39,7 @@ updated: 2026-10-15
 - `src/core/systems/area.test.ts`：测试。
 - `src/core/systems/ai.ts`：停放分派。
 - `src/core/systems/ai.test.ts`：集成测试（含 CR-29 的联合测试）。
+- `src/core/systems/pipeline.test.ts`：删除已接入的 `warp-departure` 拒绝用例。
 
 ## 验收标准
 
