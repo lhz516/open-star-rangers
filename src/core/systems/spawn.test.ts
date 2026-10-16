@@ -467,8 +467,9 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     const wingman = state.entities.get(2)!;
     // Where it was instantiated; it has moved since.
     expect(events[1].position).toEqual({ x: 100 * Q + offset(r[3], r[4]), y: 200 * Q + offset(r[5], r[6]), z: offset(r[7], r[8]) });
-    // Like the player, the wingman draws no Warp timer.
-    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 } } });
+    // Like the player, the wingman draws no Warp timer. Its install (P3-08/19) mirrors the formation into +0xC4 and +0x90
+    // (WA4): mode 2 at the player; the goal instantiation drew stays.
+    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 2, target: 1, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 } } });
     expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });
     expect([wingman.side, wingman.baseInteraction]).toEqual(['friendly', false]);
     expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });

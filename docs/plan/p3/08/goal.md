@@ -88,7 +88,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | completed |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | completed |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | completed |
-| [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | in-progress |
+| [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | completed |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | pending |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | pending |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
@@ -136,6 +136,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 16 完成：** 解释器 `0x64cb8`（安装、状态机 13 条规则、25 种操作码的执行器）、脚本级解析缓存、攻击航线 `0x63c00`（`ai-attack-pass.ts`，19 复用）、反向视角 `0x5cc6c`、CR-25 的分派预算；`HANDLERS` 加入解释器；`steering.forwardDot` 改为导出。`0x5e6cc` 为 `systems/ai.ts` 的 `requestWarpDeparture`，`0x2fef8` 为导出的 `mayDepartByWarp`，交 21 接入 `warp-departure` 并复用复检；没有单元或 e2e 测试走到未接入的离场请求。每 tick 的分派计数暂存在以 `TickContext` 为键的 WeakMap（`pipeline.ts` 不在 16 的范围），21 接入时可改为字段。e2e 在高负载下有两项偶发失败，单独重跑通过。交 28：16 的完成证据列出的代码事实写入 `docs/original`，以及 core.md 的解释器、解析缓存、预算与离场请求。
 - **2026-10-15 — e-02 的处置：** e-02 在 98% 处因模拟器自行退出而失败（完整性与清理通过）。不补跑；结束前已完整走完的窗口按样本资格计入正式样本集，未走完的窗口不计入（spec 正式采样计划已记录）。W-ii（wii-01）随后开始。
 - **2026-10-15 — 19 执行中的决定：** 编队停止的速度测试遇到已不存在的目标时取速度 0，记为 P3-02 CR-24 决定 17（已批准的差异）；19 的写入范围加入 `spawn.test.ts`（僚机安装镜像改变实例化后 40 tick 的 AI 状态期望）。
+- **2026-10-15 — 19 完成：** 僚机处理器 `0x610c8` 与友伤后的“愤怒”（只读 P3-10 写入的累计）；`HANDLERS` 加入僚机。交 20：第 2 步在周期行为之前调用 `call.consumeCommand?.(call, controller)`，`ai.ts` 尚未传入消费者。交 21：`ai.ts` 的 `handlerCall` 可供停放处理器使用；僚机的 b 3（停放基地）与 b 4（目的地在活动区外）经 `requestWarpDeparture` 投递尚未接入的 `warp-departure`，21 接入前这样的世界不能运行。交 28：core.md 的僚机处理器与接缝；executable WA5 补“无序距离视为到达”；WA6 引用 CR-24 决定 17。
 
 ## 审批
 

@@ -7,19 +7,22 @@ import { installedController } from '../rules/ai-selection.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
-import { aiProgramsContent, asCreateInput, craftInfoContent, declaration, missionFrame, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
+import {
+  aiProgramsContent, asCreateInput, craftInfoContent, declaration, missionFrame, rosterContent, ruleInputs, wingmanOption, worldInput, type WorldInputParts,
+} from '../world/create-world.test-support.ts';
 import { ALL_KINDS, type Activity, type AiController, type Entity, type ObjectState, type TableController } from '../world/entity-table.ts';
 import { constructWorld, type World } from '../world/world.ts';
-import { thrownBy, tickInput } from '../world/world.test-support.ts';
+import { entityInit, thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { controllerCall, installedHandler, requestWarpDeparture, updateController } from './ai.ts';
+import { applyShotHit } from './damage.ts';
 import { registerTick, type Request, type TickContext } from './pipeline.ts';
 
 // The controller part of `0x20c18` (docs/plan/p3/02/spec.md, CR-23; docs/original/formats/ai.md §1). Expectations
 // follow ai §1's callback table: states 0–3 install after the Warp-transit test, 4 nothing, 5 and 6 remove, 7 step; the
 // parked handler while parked, otherwise the record's. Each handler's subtask covers its install's update body and draws
-// (P3-08/15's handoff): the base's (P3-08/18) and the interpreter's (P3-08/16) are below; the wingman and parked handler
-// are not wired yet.
+// (P3-08/15's handoff): the base's (P3-08/18), the interpreter's (P3-08/16) and the wingman's (P3-08/19) are below; the
+// parked handler is not wired yet.
 
 function setUp(parts: WorldInputParts = { run: { wingman: 0 } }): { readonly state: WorldState; readonly world: World } {
   const state = initialWorldState(asCreateInput(worldInput(parts)));
@@ -102,8 +105,9 @@ describe('the controller part while a handler is not wired (P3-08/15; CR-23)', (
     world.step(tickInput());
     const context = registerTick(state, readTickInput(tickInput()));
     const before = state.rngState;
-    // The base (kind 17, P3-08/18) and the table programs (kind 7, P3-08/16) are wired.
-    for (const entity of entities(state).filter(({ kindBit }) => kindBit !== 17 && kindBit !== 7)) {
+    // The base (kind 17, P3-08/18), the table programs (kind 7, P3-08/16) and the wingman (kind 1, P3-08/19) are wired.
+    const wired = new Set([17, 7, 1]);
+    for (const entity of entities(state).filter(({ kindBit }) => !wired.has(kindBit))) {
       const program = entity.ai.program;
       updateController(context, entity);
       expect(entity.ai.program).toBe(program);
@@ -479,5 +483,175 @@ describe('the interpreter 0x64cb8 in the object update (P3-08/16; AC-03, AC-04, 
     first.ai.target = null;
     // Allowed, it posts `warp-departure`, whose handling P3-08/21 wires: until then the post itself is a fault.
     expect(thrownBy(() => requestWarpDeparture(context, first))).toMatchObject({ code: 'invariant-violated', site: 'pipeline.request-unwired' });
+  });
+});
+
+describe('the wingman 0x610c8 in the object update (P3-08/19; AC-03, AC-07; WA2–WA9, WB6)', () => {
+  /**
+   * The synthetic content with an armed wingman (kind 1): mounts 0 a gun (gun 0: speed 100) on list 0 and 1 a guided
+   * missile (missile 0: two rounds, stage time 8, lock cosine 0.5) on list 1. Roster entry 0 takes AICO element
+   * `element` (+0xDC); element 1 (0.75, 0.5, 0.25, 0) has throttle noise, element 2 (0.5, 0.5, 0, 0) none. The wingman's
+   * record has period 70 and the limits 30°, 30° and saturation 1; the friendly-fire threshold AICO +0x28 is 4.
+   */
+  function wingmanWorld(element = 3): { readonly state: WorldState; readonly world: World; readonly wingman: CraftEntity; readonly player: Entity } {
+    const info = craftInfoContent();
+    Object.assign(info.guns[0], { at08: 100, at24: 3200 });
+    Object.assign(info.missiles[0], { at18: 1, at34: 8, at44: 16_000 });
+    info.craft[1].mounts = [mount({ weapon: 0, at20: 0, at34: 0 }), mount({ at10: 1, weapon: 0, at0C: 2, at20: 0 })];
+    info.craft[1].mountLists = [[0], [1], []];
+    const roster = rosterContent();
+    roster.options[0] = wingmanOption(0, { ruleInputs: ruleInputs({ aiValueA: element }) });
+    // Steering limits that turn towards the target: 30° and saturation 1 (the builder's saturation is negative).
+    const aiPrograms = aiProgramsContent();
+    aiPrograms.builtInPrograms[3] = { ...aiPrograms.builtInPrograms[3], at24: 30, at28: 30, at2C: 1 };
+    const { state, world } = setUp({ run: { wingman: 0 }, craftInfo: info, roster, aiPrograms });
+    world.step(tickInput());
+    return { state, world, wingman: firstOf(state, 1) as CraftEntity, player: firstOf(state, 0) };
+  }
+
+  /** A registered tick whose clock stage has run, and the requests its updates post. */
+  function tickOf(state: WorldState): { readonly context: TickContext; readonly posted: () => Request[] } {
+    const context = registerTick(state, readTickInput(tickInput()));
+    state.clock = context.time.clock;
+    return {
+      context,
+      posted: () => {
+        const requests: Request[] = [];
+        context.requests.handle((request) => void requests.push(request));
+        return requests;
+      },
+    };
+  }
+
+  const wingmanOf = (entity: Entity): Extract<AiController, { handler: 'wingman' }> => {
+    const { program } = entity.ai;
+    if (program.type !== 'built-in' || program.controller?.handler !== 'wingman') throw new Error('an installed wingman controller');
+    return program.controller;
+  };
+
+  /** Steps until the wingman's controller has just run (its deadline moved). */
+  function stepToUpdate(world: World, wingman: Entity): DomainEvent[] {
+    const events: DomainEvent[] = [];
+    const deadline = wingmanOf(wingman).nextUpdateClock;
+    while (wingmanOf(wingman).nextUpdateClock === deadline) events.push(...world.step(tickInput()));
+    return events;
+  }
+
+  /** Puts the wingman 2000 above the player: far from its formation point, so it flies there at full throttle. */
+  const farFromFormation = (wingman: Entity, player: Entity) => void (wingman.position = { ...player.position, z: player.position.z + 2000 });
+
+  it('installs in the first callback and runs the update body with its draws in the same call: the formation at full throttle', () => {
+    const { state, wingman, player } = wingmanWorld(2);
+    expect(wingman.ai.program).toEqual({ type: 'built-in', record: 3, controller: null });
+    farFromFormation(wingman, player);
+    const { context, posted } = tickOf(state);
+    const before = state.rngState;
+    updateController(context, wingman);
+    // The steering post (no speed factor, no steering noise), then full throttle with one throttle-noise draw.
+    expect(state.rngState).toEqual(rngStateAfter(before, 1));
+    expect(wingmanOf(wingman)).toMatchObject({
+      nextUpdateClock: context.time.clock + 70, aiLock: true, wingman: { behaviour: 2 },
+      steering: { target: player.id, offset: { enabled: true, frame: 0, vector: { x: 125, y: 3, z: 25 } } },
+    });
+    expect(posted()).toMatchObject([
+      { type: 'steer', entityId: wingman.id, control: { speedFactor: null } },
+      { type: 'steer', entityId: wingman.id, control: { axes: [{ set: false }, { set: false }, { set: false }] } },
+    ]);
+    expect(wingman.ai).toMatchObject({ mode: 2, target: player.id });
+    expect(context.events).toEqual([]);
+  });
+
+  it('removes without a draw and installs again with its draws after parking and resuming; the private block is rebuilt', () => {
+    const { state, wingman, player } = wingmanWorld(2);
+    farFromFormation(wingman, player);
+    updateController(tickOf(state).context, wingman);
+    const controller = wingmanOf(wingman);
+    Object.assign(controller.wingman, { doNotAttack: player.id, nextGunSwitchClock: 999 });
+    wingman.state = 'area-switch';
+    const before = state.rngState;
+    updateController(tickOf(state).context, wingman);
+    expect(wingman.ai.program).toEqual({ type: 'built-in', record: 3, controller: null });
+    // Parked, the install goes to the parked handler, which is not wired yet (P3-08/21).
+    Object.assign(wingman, { state: 'new', activity: 'parked' });
+    updateController(tickOf(state).context, wingman);
+    expect(wingman.ai.program).toEqual({ type: 'built-in', record: 3, controller: null });
+    expect(state.rngState).toEqual(before);
+    wingman.activity = 'active';
+    updateController(tickOf(state).context, wingman);
+    expect(state.rngState).toEqual(rngStateAfter(before, 1));
+    // B+4 and B+0x0C are lost; b comes back from the mirror (+0xC4 2, +0x90 the player): the formation.
+    expect(wingmanOf(wingman).wingman).toMatchObject({ behaviour: 2, doNotAttack: null, nextGunSwitchClock: 0 });
+  });
+
+  it('resumes b 5 as 0 against B+8, which the same call\'s periodic update makes 5 again while the accumulator stays above', () => {
+    for (const [accumulated, behaviour] of [[5, 5], [0, 0]] as const) {
+      const { state, world, wingman, player } = wingmanWorld();
+      const hostile = firstOf(state, 7);
+      world.step(tickInput());
+      const controller = wingmanOf(wingman);
+      controller.wingman.attackTarget = hostile.id;
+      state.ai.friendlyFire.accumulated = 5;
+      stepToUpdate(world, wingman);
+      expect(controller.wingman.behaviour).toBe(5);
+      expect(wingman.ai).toMatchObject({ mode: 0, target: hostile.id, objectTarget: player.id });
+      wingman.state = 'area-switch';
+      updateController(tickOf(state).context, wingman);
+      state.ai.friendlyFire.accumulated = accumulated;
+      wingman.state = 'new';
+      updateController(tickOf(state).context, wingman);
+      expect(wingmanOf(wingman).wingman, `${accumulated}`).toMatchObject({ behaviour, attackTarget: hostile.id });
+      expect(wingman.ai.objectTarget).toBe(behaviour === 5 ? player.id : hostile.id);
+    }
+  });
+
+  it('becomes angry at the update after real hits by the player take the accumulator above AICO +0x28, and stays angry (CR-27)', () => {
+    const { state, world, wingman, player } = wingmanWorld();
+    world.step(tickInput());
+    const controller = wingmanOf(wingman);
+    Object.assign(wingman.combat, { shield: 0, hull: 1000 });
+    /** The player's projectile hits the wingman for `damage` through P3-07's damage entry, where P3-10's 0x38f20 counts it. */
+    const hit = (damage: number): void => {
+      const projectile = state.entities.allocate(entityInit(21, { combat: { type: 'projectile', gun: 0, shooter: player.id, expiry: null } }));
+      const { context } = tickOf(state);
+      applyShotHit(context, projectile, wingman, damage, null);
+      state.entities.remove(projectile);
+    };
+    hit(3);
+    hit(1);
+    // Each hit counts once, with its raw damage: 4, at the threshold, does not anger.
+    expect(state.ai.friendlyFire.accumulated).toBe(4);
+    stepToUpdate(world, wingman);
+    expect(controller.wingman.behaviour).toBe(2);
+    hit(1);
+    expect(state.ai.friendlyFire.accumulated).toBe(5);
+    stepToUpdate(world, wingman);
+    expect(controller.wingman.behaviour).toBe(5);
+    expect(controller.steering.target).toBe(player.id);
+    // A hit after the window end restarts the accumulator below the threshold; the anger stays.
+    state.clock = state.ai.friendlyFire.windowEnd + 1;
+    hit(1);
+    expect(state.ai.friendlyFire.accumulated).toBe(1);
+    stepToUpdate(world, wingman);
+    expect(controller.wingman.behaviour).toBe(5);
+  });
+
+  it('launches a guided missile at its target with lock byte 4 once the AI lock it turned on reaches level 4 (WA9, revision ⑦)', () => {
+    const { state, world, wingman, player } = wingmanWorld();
+    state.ai.friendlyFire.accumulated = 5;
+    let shot: Extract<DomainEvent, { type: 'shot-fired' }> | undefined;
+    for (let step = 0; step < 400 && shot === undefined; step++) {
+      shot = world.step(tickInput()).find((event): event is Extract<DomainEvent, { type: 'shot-fired' }> =>
+        event.type === 'shot-fired' && event.shooterEntityId === wingman.id && event.family === 'missile');
+    }
+    expect(shot).toMatchObject({ weapon: 0, mount: 1, trigger: { type: 'ai', channel: 1 } });
+    expect(state.entities.get(shot!.entityId)?.combat).toMatchObject({ type: 'missile', shooter: wingman.id, target: player.id, launchByte: 4, program: 'heat-seeker' });
+  });
+
+  it('without a wingman: no kind-1 entity or wingman controller, and the friendly-fire state keeps its initial values', () => {
+    const { state, world } = setUp({ run: { wingman: null } });
+    for (let tick = 0; tick < 40; tick++) world.step(tickInput());
+    expect(entities(state).filter(({ kindBit }) => kindBit === 1)).toEqual([]);
+    expect(entities(state).some(({ ai: { program } }) => program.type !== 'none' && program.controller?.handler === 'wingman')).toBe(false);
+    expect(state.ai.friendlyFire).toEqual({ accumulated: 0, windowEnd: 0 });
   });
 });

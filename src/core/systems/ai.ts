@@ -14,7 +14,7 @@
  *
  * The handlers are static calls into their rule modules (CR-07), wired by the subtasks that implement them: the
  * interpreter `0x64cb8` (rules/ai-interpreter.ts), the base `0x62c10` (rules/ai-firing.ts), the wingman `0x610c8`
- * (P3-08/19) and the parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller
+ * (rules/ai-wingman.ts) and the parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller
  * stays unset, no handler runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a
  * program.
  *
@@ -28,6 +28,7 @@ import { CoreFaultError } from '../errors.ts';
 import { firingDataOf, installBase, runTriggerLoop, updateAiLock, updateBase } from '../rules/ai-firing.ts';
 import { installInterpreter, removeInterpreter, updateInterpreter, type DispatchCount, type InterpreterCall } from '../rules/ai-interpreter.ts';
 import { installedController, isControllerDue, type ControllerRecord } from '../rules/ai-selection.ts';
+import { installWingman, updateWingman, type WingmanCall } from '../rules/ai-wingman.ts';
 import type { BuiltInHandler } from '../rules/ai-support.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
@@ -119,13 +120,18 @@ function dispatchesOf(context: TickContext): DispatchCount {
   return count;
 }
 
-/** An interpreter call on `entity` in its object update, drawing from `rand`. */
-const interpreterCall = (context: TickContext, entity: Entity, rand: RandStream): InterpreterCall => ({
+/** What every handler call on `entity` in its object update gets: the world, its draws from `rand`, its posts and `0x5e6cc`. */
+const handlerCall = (context: TickContext, entity: Entity, rand: RandStream): WingmanCall => ({
   world: context.world,
   subject: asCraft(entity),
   rand,
   post: (request) => context.requests.post(request),
   depart: () => requestWarpDeparture(context, entity),
+});
+
+/** An interpreter call on `entity` in its object update, drawing from `rand`. */
+const interpreterCall = (context: TickContext, entity: Entity, rand: RandStream): InterpreterCall => ({
+  ...handlerCall(context, entity, rand),
   tick: dispatchesOf(context),
 });
 
@@ -143,8 +149,23 @@ const INTERPRETER_HANDLER: HandlerModes = Object.freeze({
   },
 });
 
+/** The wingman `0x610c8` (rules/ai-wingman.ts): mode 2 only frees the private block, which the removal discards. */
+const WINGMAN_HANDLER: HandlerModes = Object.freeze({
+  install: (context: TickContext, entity: Entity, common: AiControllerCommon) =>
+    withRand(context.world, (rand) => installWingman(handlerCall(context, entity, rand), common)),
+  update: (context: TickContext, entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'wingman') throw fault('wingman');
+    withRand(context.world, (rand) => updateWingman(handlerCall(context, entity, rand), controller));
+  },
+  remove: () => {},
+});
+
 /** The wired handlers; each handler subtask adds its own (module comment). */
-const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({ base: BASE_HANDLER, interpreter: INTERPRETER_HANDLER });
+const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({
+  base: BASE_HANDLER,
+  interpreter: INTERPRETER_HANDLER,
+  wingman: WINGMAN_HANDLER,
+});
 
 /** The states in which `0x20c18` installs (0–3), removes (5, 6) and steps (7). */
 const INSTALL_STATES: ReadonlySet<ObjectState> = new Set(['new', 'presentation-ready', 'awaiting-presentation']);
