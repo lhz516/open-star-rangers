@@ -92,7 +92,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | completed |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | completed |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
-| [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | pending |
+| [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | in-progress |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | pending |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | pending |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
