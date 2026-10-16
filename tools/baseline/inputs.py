@@ -7,7 +7,9 @@ debugger, never through host input. There are three channels:
   DOSBox-X's DOS console and INT 16h take the next key; the buffer must be empty, so the next read gets this key;
 - **shift:** bits of the BIOS keyboard shift flags (`0x417`), which programs read directly;
 - **device:** a value in an input-device state field the recipe declares (an LE object location, or an offset from
-  a register at a breakpoint).
+  a register at a breakpoint);
+- **inject:** a value in one of the player-state fields of the damage injection (recipe `injections`, P3-10 subtask
+  25), relative to an integer reading; a subsystem write changes only the masked 2-bit fields.
 
 Given the bytes read at the pause, this module computes every write; it performs no I/O. A write outside these
 channels cannot be expressed.
@@ -29,14 +31,14 @@ REGISTERS = ("EAX", "EBX", "ECX", "EDX", "ESI", "EDI", "EBP", "ESP")
 
 @dataclass(frozen=True)
 class Write:
-    channel: str  # key-slot, key-tail, shift-flags or device
+    channel: str  # key-slot, key-tail, shift-flags, device or inject
     linear: int
     data: bytes
 
     @property
     def bios(self):
         """Writes into the BIOS data area, which must be identity-mapped to reach the BIOS and DOS readers."""
-        return self.channel != "device"
+        return self.channel not in ("device", "inject")
 
 
 def _key_buffer(pointers, bounds):
@@ -66,3 +68,12 @@ def shift_writes(current, flags):
     for name, on in flags:
         value = value | SHIFT_BITS[name] if on else value & ~SHIFT_BITS[name]
     return (Write("shift-flags", SHIFT_FLAGS, bytes((value,))),)
+
+
+def inject_write(linear, current, injection, value):
+    """The injection's new 32-bit value: the masked 2-bit fields replaced, every other bit as read (subsystem fields),
+    or the value itself."""
+    old = struct.unpack("<I", bytes(current))[0]
+    if injection.mask is not None:
+        value = (old & ~injection.mask & 0xFFFFFFFF) | value
+    return Write("inject", linear, struct.pack("<I" if injection.type == "u32" else "<i", value))

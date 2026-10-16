@@ -30,7 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from debugger import Debugger, DebuggerPort
-from inputs import KEY_BOUNDS, KEY_POINTERS, REGISTERS, SHIFT_FLAGS, Write, key_writes, shift_writes
+from disc import private_disc
+from inputs import KEY_BOUNDS, KEY_POINTERS, REGISTERS, SHIFT_FLAGS, Write, inject_write, key_writes, shift_writes
 from le_image import LeImage
 from locate import AddressSpace, WindowRead, check_recipe_image, correlate_code, data_address, prove_mapping
 from processes import TERM_GRACE, PtyTransport, emulators, process_names
@@ -179,6 +180,8 @@ def preflight(options, env):
     if exe_sha256 != manifest.exe_sha256:
         raise BaselineError("source-mismatch", "exe")
     verify_source(recipe, manifest.version, exe_sha256)
+    if any(path not in manifest.files for path in recipe.disc):
+        raise BaselineError("recipe-value-invalid", "disc.omit")
     image = LeImage(exe)
     check_recipe_image(recipe, image)
     if recipe.game_settings:
@@ -242,6 +245,7 @@ class Run:
         self.log = None
         self.protection = None
         self.copied = None
+        self.disc = None
         self.settings = {}
         self.ended_by = None
         self.started = None
@@ -395,9 +399,19 @@ class Run:
         verify_source(self.recipe, manifest.version, self.plan.exe_sha256)
         self.source = {"baselineVersion": manifest.version, "exeSha256": self.plan.exe_sha256}
         baseline = _read_bounded(env.baseline_config, 1 << 20, "private-copy-invalid")
+        disc = run_dir / "disc" if self.recipe.disc else None
         text, record = private_config(baseline.decode("utf-8", "replace"), env.install, run_dir / "install",
-                                      run_dir / "captures", env.cd_dir, self.recipe.emulator)
+                                      run_dir / "captures", env.cd_dir, self.recipe.emulator, disc)
         media = verify_media(manifest, record["media"], env.cd_dir)
+        if disc is not None:
+            if len(media["images"]) != 1:
+                raise BaselineError("source-mismatch", "media")
+            disc_record = {"directory": "disc", "image": media["images"][0], "omitted": list(self.recipe.disc),
+                           "state": "incomplete"}
+            self.environment["privateDisc"] = disc_record  # a failed copy leaves this state in the report
+            self.disc = private_disc(manifest, Path(env.cd_dir, media["images"][0]), disc, frozenset(self.recipe.disc),
+                                     self.check_deadline)
+            disc_record.update(state="verified", files=len(self.disc), links=0)
         write_new(self.paths, "dosbox-x.conf", text.encode("utf-8"))
         self.settings = record["settings"]
         self.environment["emulator"] = {
@@ -826,6 +840,8 @@ class Run:
                     record["writes"].append(entry)
                     before, pages = self.input_bytes(port, write.linear, len(write.data), budget, write.bios)
                     entry["before"] = before.hex()
+                    if write.channel == "inject" and before.hex() != record["injectionBefore"]:
+                        raise BaselineError("stimulus-unverified", "injection-changed")  # masked bits would be stale
                     budget.consume(len(write.data))
                     debugger.write_memory(write.linear, write.data)
                     after, pages_after = self.input_bytes(port, write.linear, len(write.data), budget, write.bios,
@@ -878,6 +894,8 @@ class Run:
             record["flags"] = dict(stimulus.flags)
             current, _ = self.input_bytes(port, SHIFT_FLAGS, 1, budget, True)
             return shift_writes(current, stimulus.flags)
+        if stimulus.kind == "inject":
+            return self.plan_injection(port, stimulus, context, budget, record)
         record.update(device=device.id, value=stimulus.value)
         if device.object is not None:
             linear = mapping.linear(device.object, device.offset, device.size)
@@ -886,6 +904,34 @@ class Run:
             if linear is None:
                 raise BaselineError("stimulus-rejected", "device-out-of-range")
         return (Write("device", linear, struct.pack(FORMATS[device.type], stimulus.value)),)
+
+    def plan_injection(self, port, stimulus, context, budget, record):
+        """An injected player-state value (P3-10 subtask 25): the declared field at the agreed reading plus offset, its
+        original value read first and recorded with the new one."""
+        injection = self.recipe.injections[stimulus.injection]
+        base, maximum = (None if binding is None else self.readings.get((binding.pause, binding.field))
+                         for binding in (injection.bound, injection.maximum))
+        if base is None or (injection.maximum is not None and maximum is None):
+            raise BaselineError("stimulus-rejected", "binding-unavailable")
+        address = (base & 0xFFFFFFFF) + injection.offset
+        linear = context.space.linear(address, 4) if 0 <= address <= 0xFFFFFFFC else None
+        if linear is None:
+            raise BaselineError("stimulus-rejected", "injection-out-of-range")
+        current, _ = self.input_bytes(port, linear, 4, budget, False)
+        write = inject_write(linear, current, injection, stimulus.value)
+        decode = "<I" if injection.type == "u32" else "<i"
+        before = struct.unpack(decode, current)[0]
+        if maximum is not None and not stimulus.value < maximum:  # below the capacity read in this run
+            raise BaselineError("stimulus-rejected", "injection-above-maximum")
+        if injection.purpose == "ammunition" and stimulus.value > before:  # mount damage only lowers it (W4)
+            raise BaselineError("stimulus-rejected", "injection-above-current")
+        record["injection"] = {"id": injection.id, "purpose": injection.purpose, "type": injection.type,
+                               "base": {"pause": injection.bound.pause, "field": injection.bound.field,
+                                        "value": base & 0xFFFFFFFF},
+                               "offset": injection.offset, "mask": injection.mask, "value": stimulus.value,
+                               "maximum": maximum, "before": before, "after": struct.unpack(decode, write.data)[0]}
+        record["injectionBefore"] = current.hex()  # the loop's pre-write read must equal it
+        return (write,)
 
     def input_bytes(self, port, linear, size, budget, bios, code="stimulus-rejected"):
         """Bytes of an input channel and the physical page of each page they lie in. Every page must have a lookup;
@@ -937,6 +983,12 @@ class Run:
             result["privateCopyWrites"] = copy_writes(self.copied, self.paths.run_dir / "install")
         if not result["passed"]:
             self.failures.add("original-changed")
+        if self.disc is not None:
+            writes = copy_writes(self.disc, self.paths.run_dir / "disc")
+            result["privateDiscWrites"] = writes
+            if writes["changed"] or writes["added"]:  # the mounted copy is read-only; any change voids the run
+                result["passed"] = False
+                self.failures.add("integrity-failed")
         return result
 
 

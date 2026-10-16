@@ -378,11 +378,12 @@ def _unquote(text):
     return text[1:-1] if len(text) >= 2 and text[0] == text[-1] == '"' else text
 
 
-def private_config(text, install, private_install, captures, cd_dir, emulator):
+def private_config(text, install, private_install, captures, cd_dir, emulator, disc=None):
     """The private configuration text and its record. Exactly one captures line and one C: mount of the baseline
     installation are redirected; exactly one read-only CD-ROM mount from the CD directory is kept (its media is
-    bound to the manifest by verify_media); `emulator` settings (only cycles) replace their single baseline line.
-    Any other mount or output-path setting is refused."""
+    bound to the manifest by verify_media), or, with `disc`, replaced by a read-only CD-ROM mount of that private disc
+    directory on the same drive (its files are copied from that media, disc.py); `emulator` settings (only cycles)
+    replace their single baseline line. Any other mount or output-path setting is refused."""
     lines = text.splitlines()
     section = None
     changes = {"captures": 0, "mount-c": 0, "cycles": 0}
@@ -417,6 +418,9 @@ def private_config(text, install, private_install, captures, cd_dir, emulator):
                     line = f"mount c {_quote(private_install)}{rest}"
                 elif kind == "imgmount" and rest.split() in (["-t", "cdrom"], ["-t", "iso"]):
                     media.append(Path(os.path.realpath(path)))  # read-only CD-ROM; bound to the manifest later
+                    if disc is not None:
+                        changes["disc"] = changes.get("disc", 0) + 1
+                        line = f"mount {mount[2]} {_quote(disc)} -t cdrom"
                 else:
                     raise BaselineError("private-copy-invalid", "config")
         output.append(line)

@@ -286,3 +286,80 @@ def establish(image, recipe, process, space=AddressSpace(0, 0xFFFFFFFF), owner="
     linear = data_address(match, recipe.data_window)
     read = WindowRead(linear, process.window(linear, recipe.data_window.size))
     return prove_mapping(image, recipe.data_window, match, read, space, owner)
+
+
+def _iso_record(name, extent, size, directory):
+    padding = b"\x00" if len(name) % 2 == 0 else b""
+    length = 33 + len(name) + len(padding)
+    return (bytes([length, 0]) + struct.pack("<I", extent) + struct.pack(">I", extent) + struct.pack("<I", size)
+            + struct.pack(">I", size) + bytes(7) + bytes([2 if directory else 0, 0, 0]) + struct.pack("<H", 1)
+            + struct.pack(">H", 1) + bytes([len(name)]) + name + padding)
+
+
+def iso_image(files, raw=True, extra_names=()):
+    """A small ISO9660 image (one primary volume descriptor, 2048-byte blocks) holding `files` (relative path ->
+    bytes, upper-case 8.3 names in directories); `raw` wraps every block in a MODE1/2352 sector with the sync
+    pattern. `extra_names` adds versioned file identifiers that point at the first file (name collisions)."""
+    tree = {}
+    for path, data in files.items():
+        *parents, leaf = path.split("/")
+        node = tree
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[leaf] = data
+    blocks = {}
+    next_block = [18]
+
+    def allocate(count):
+        start = next_block[0]
+        next_block[0] += max(1, count)
+        return start
+
+    def place(node):
+        """Lays out a directory (and below); returns (extent, size)."""
+        children = {}
+        for name, value in sorted(node.items()):
+            if isinstance(value, dict):
+                children[name] = (*place(value), True)
+            else:
+                extent = allocate((len(value) + 2047) // 2048)
+                for index in range(0, max(1, len(value)), 2048):
+                    blocks[extent + index // 2048] = value[index:index + 2048].ljust(2048, b"\x00")
+                children[name] = (extent, len(value), False)
+        records = []
+        for name, (child, size, directory) in children.items():
+            identifier = name.encode("ascii") + (b"" if directory else b";1")
+            records.append(_iso_record(identifier, child, size, directory))
+        files_here = [value for value in children.values() if not value[2]]
+        if files_here:
+            records += [_iso_record(identifier, *files_here[0][:2], False) for identifier in extra_names]
+        packed, current = [], b"\x00" * 68  # room for "." and ".." (34 bytes each); records never cross a block
+        for record in records:
+            if len(current) + len(record) > 2048:
+                packed.append(current)
+                current = b""
+            current += record
+        packed.append(current)
+        extent = allocate(len(packed))
+        size = 2048 * len(packed)
+        packed[0] = _iso_record(b"\x00", extent, size, True) + _iso_record(b"\x01", extent, size, True) + packed[0][68:]
+        for index, data in enumerate(packed):
+            blocks[extent + index] = data.ljust(2048, b"\x00")
+        return extent, size
+
+    root_extent, root_size = place(tree)
+    pvd = bytearray(2048)
+    pvd[0:7] = b"\x01CD001\x01"
+    pvd[80:88] = struct.pack("<I", next_block[0]) + struct.pack(">I", next_block[0])
+    pvd[128:132] = struct.pack("<H", 2048) + struct.pack(">H", 2048)
+    pvd[156:190] = _iso_record(b"\x00", root_extent, root_size, True)
+    blocks[16] = bytes(pvd)
+    blocks[17] = b"\xffCD001\x01".ljust(2048, b"\x00")
+    image = bytearray()
+    for lba in range(next_block[0]):
+        block = blocks.get(lba, bytes(2048))
+        if raw:
+            image += b"\x00" + b"\xff" * 10 + b"\x00" + bytes(3) + b"\x01" + block + bytes(288)
+        else:
+            image += block
+    return bytes(image)

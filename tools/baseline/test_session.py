@@ -247,6 +247,56 @@ class SessionTests(unittest.TestCase):
         self.assertEqual((box.run_dir / "install" / SETTINGS).read_bytes(), b"SOUND_LEVEL=100\r\n")
         self.assertTerminalSafe(box)
 
+    def test_private_disc_without_omitted_files(self):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), iso=True)
+        box.document["disc"] = {"omit": ["MAIN/ONDISC.BIN"]}
+        box.write_recipe(box.document)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        emulator = report["environment"]["emulator"]
+        self.assertEqual(emulator["changes"], {"captures": 1, "mount-c": 1, "disc": 1})
+        self.assertEqual(emulator["media"]["images"], ["DISC.img"])
+        self.assertEqual(report["environment"]["privateDisc"], {"directory": "disc", "image": "DISC.img", "files": 2,
+                                                               "omitted": ["MAIN/ONDISC.BIN"], "links": 0,
+                                                               "state": "verified"})
+        config = (box.run_dir / "dosbox-x.conf").read_text()
+        self.assertIn(f"mount d {box.run_dir / 'disc'} -t cdrom\n", config)
+        self.assertNotIn("imgmount", config)
+        self.assertEqual((box.run_dir / "disc" / "MAIN/GAME.EXE").read_bytes(), box.exe)
+        self.assertFalse((box.run_dir / "disc" / "MAIN/ONDISC.BIN").exists())
+        self.assertEqual(report["integrity"]["privateDiscWrites"], {"changed": [], "added": []})
+        without = {key: value for key, value in box.document.items() if key != "disc"}
+        self.assertNotEqual(report["recipe"]["fingerprint"], parse_recipe(json.dumps(without)).fingerprint)
+        self.assertTrue(box.unchanged_outside_run())
+        self.assertTerminalSafe(box)
+
+    def test_private_disc_rejections(self):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), iso=True)
+        box.document["disc"] = {"omit": ["MAIN/ABSENT.BIN"]}  # not a manifest file
+        box.write_recipe(box.document)
+        self.assertRejected(box, "recipe-value-invalid")
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))  # the verified image is no readable disc
+        box.document["disc"] = {"omit": ["MAIN/ONDISC.BIN"]}
+        box.write_recipe(box.document)
+        report = self.assertFailed(box, "source-mismatch", launched=False)
+        self.assertEqual(report["environment"]["privateDisc"]["state"], "incomplete")
+        self.assertEqual(box.launches, [])
+        self.assertFalse((box.run_dir / "dosbox-x.conf").exists())
+
+    def test_a_changed_private_disc_voids_the_run(self):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), iso=True)
+        box.document["disc"] = {"omit": ["MAIN/ONDISC.BIN"]}
+        box.write_recipe(box.document)
+
+        def write(fake, box=box):
+            (box.run_dir / "disc" / "MAIN/DATA.BIN").write_bytes(b"changed")
+        box.debugger.scenario["on_command"] = after_bp(write)
+        report = self.assertFailed(box, "integrity-failed")
+        self.assertFalse(report["integrity"]["passed"])
+        self.assertEqual(report["integrity"]["privateDiscWrites"], {"changed": ["MAIN/DATA.BIN"], "added": []})
+        self.assertNotIn("original-changed", report["reasons"])
+
     def test_operator_skip_resumes_to_the_next_hit(self):
         box = self.box()
         box.answers = {"start": [{"action": "skip"}]}
@@ -344,6 +394,84 @@ class SessionTests(unittest.TestCase):
         self.assertIn(b"SMV 00000041E 00D 01C\n", box.transport.writes)
         self.assertTerminalSafe(box)
         self.assertTrue(box.unchanged_outside_run())
+
+    def inject_box(self, stimuli=None):
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))
+        document = box.document
+        document["fields"].append({"id": "obj", "address": {"object": 4, "offset": 0x820}, "type": "u32",
+                                   "unit": "pointer"})
+        document["pauses"][0]["fields"].append("obj")
+        bound = {"pause": "start", "field": "obj"}
+        guard = {"all": [{"field": "flag", "eq": 0}]}
+        document["injections"] = [
+            {"id": "sub", "purpose": "subsystem-fields", "address": {"bound": bound, "offset": 0xE8}, "type": "u32",
+             "mask": 0xF0},
+            {"id": "hull", "purpose": "hull", "address": {"bound": bound, "offset": 0xD0}, "type": "i32",
+             "maximum": {"pause": "start", "field": "ticks"}},
+            {"id": "ammo", "purpose": "ammunition", "address": {"bound": bound, "offset": 8}, "type": "i32",
+             "maximum": {"pause": "start", "field": "ticks"}}]
+        document["stimuli"] = stimuli or [
+            {"id": "sub-1", "pause": "start", "kind": "inject", "injection": "sub", "value": 0x60, "if": guard},
+            {"id": "ammo-1", "pause": "start", "kind": "inject", "injection": "ammo", "value": 3,
+             "if": {"all": [{"field": "flag", "eq": 0}]}},
+            {"id": "hull-1", "pause": "end", "kind": "inject", "injection": "hull", "value": 2100,
+             "if": {"all": [{"field": "scenario", "gt": 0}]}}]
+        box.write_recipe(document)
+        box.debugger.process.poke_u32(HEAP + 0xE8, 0xFFFF0003)
+        box.debugger.process.poke_u32(HEAP + 0xD0, 3500)
+        box.debugger.process.poke_u32(HEAP + 8, 5)
+        return box
+
+    def test_injections_write_only_the_declared_bits_and_mark_the_report(self):
+        box = self.inject_box()
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        process = box.debugger.process
+        self.assertEqual(process.peek(HEAP + 0xE8, 4), struct.pack("<I", 0xFFFF0063))
+        self.assertEqual(process.peek(HEAP + 0xD0, 4), struct.pack("<i", 2100))
+        self.assertEqual(process.peek(HEAP + 8, 4), struct.pack("<i", 3))
+        sub, ammo, hull = report["stimuli"]
+        self.assertEqual(sub["injection"], {"id": "sub", "purpose": "subsystem-fields", "type": "u32",
+                                            "base": {"pause": "start", "field": "obj", "value": HEAP},
+                                            "offset": 0xE8, "mask": 0xF0, "value": 0x60, "maximum": None,
+                                            "before": 0xFFFF0003, "after": 0xFFFF0063})
+        self.assertEqual((ammo["injection"]["before"], ammo["injection"]["after"], ammo["injection"]["maximum"]),
+                         (5, 3, 123456))
+        self.assertEqual((sub["writes"][0]["channel"], sub["writes"][0]["before"], sub["writes"][0]["readback"]),
+                         ("inject", "0300ffff", "6300ffff"))
+        self.assertEqual((hull["pause"], hull["injection"]["before"], hull["injection"]["after"]), ("end", 3500, 2100))
+        self.assertEqual(report["injection"], {"injected": True, "planned": 3, "written": ["sub-1", "ammo-1", "hull-1"],
+                                               "applied": ["sub-1", "ammo-1", "hull-1"]})
+        self.assertTrue(box.unchanged_outside_run())
+        self.assertTerminalSafe(box)
+        plain = self.box()
+        self.assertEqual(plain.run(), 0)
+        self.assertNotIn("injection", plain.report())
+
+    def test_injection_needs_its_reading(self):
+        box = self.inject_box()
+        box.debugger.process.poke_u32(BASES[4] + 0x820, 0xFFFFFFF0)  # base + offset leaves the address space
+        report = self.assertFailed(box, "stimulus-rejected")
+        records = {record["id"]: record for record in report["stimuli"]}
+        self.assertEqual((records["sub-1"]["status"], records["sub-1"]["detail"]),
+                         ("stimulus-rejected", "injection-out-of-range"))
+        self.assertEqual(report["injection"]["injected"], False)
+
+    def test_injection_value_limits_at_run_time(self):
+        cases = ((lambda p: p.poke_u32(HEAP + 8, 2), "ammo-1", "injection-above-current", ["sub-1"], []),
+                 (lambda p: p.poke_u32(BASES[4] + 0x800, 2100), "hull-1", "injection-above-maximum",
+                  ["sub-1", "ammo-1"], ["sub-1", "ammo-1"]))
+        for poke, failed, detail, written, applied in cases:
+            with self.subTest(detail=detail):
+                box = self.inject_box()
+                poke(box.debugger.process)
+                report = self.assertFailed(box, "stimulus-rejected")
+                records = {record["id"]: record for record in report["stimuli"]}
+                self.assertEqual((records[failed]["status"], records[failed]["detail"]), ("stimulus-rejected", detail))
+                # a write that preceded the failure still counts: the state was changed
+                self.assertEqual(report["injection"], {"injected": True, "planned": 3, "written": written,
+                                                       "applied": applied})
 
     def test_register_relative_fields_are_read_at_the_stop(self):
         box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name))

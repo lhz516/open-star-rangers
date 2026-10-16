@@ -119,6 +119,34 @@ class RecipeTests(unittest.TestCase):
             '"CURR_LEVEL": [100, 19]', '"CURR_LEVEL": [100, 19], "CURR_LEVEL": [0, 0]')
         self.assertEqual(self.assertRejected("recipe-json-invalid", duplicate).where, "CURR_LEVEL")
 
+    def test_disc_omissions(self):
+        base = parse_recipe(text(scenario_recipe(SHA)))
+        self.assertEqual(base.disc, ())
+        recipe = parse_recipe(text(self.mutated(lambda d: d.update(disc={"omit": ["MAIN/SPEECH.NOB"]}))))
+        self.assertEqual(recipe.disc, ("MAIN/SPEECH.NOB",))
+        self.assertNotEqual(recipe.fingerprint, base.fingerprint)
+        four = ["MAIN/A.NOB", "FLICS/B-C.SMK", "MAIN/C.TXT", "A/B/C/D.E"]
+        self.assertEqual(parse_recipe(text(self.mutated(lambda d: d.update(disc={"omit": four})))).disc, tuple(four))
+        cases = (
+            ("recipe-type-invalid", []),
+            ("recipe-type-invalid", "MAIN/SPEECH.NOB"),
+            ("recipe-key-missing", {}),
+            ("recipe-key-unknown", {"omit": ["MAIN/A.NOB"], "add": ["MAIN/B.NOB"]}),
+            ("recipe-type-invalid", {"omit": "MAIN/A.NOB"}),
+            ("recipe-value-invalid", {"omit": []}),
+            ("recipe-value-invalid", {"omit": four + ["MAIN/E.NOB"]}),
+            ("recipe-value-invalid", {"omit": ["MAIN/A.NOB", "MAIN/A.NOB"]}),
+            ("recipe-type-invalid", {"omit": [1]}),
+            ("recipe-type-invalid", {"omit": [None]}),
+        )
+        for code, value in cases:
+            with self.subTest(value=value):
+                self.assertRejected(code, self.mutated(lambda d: d.update(disc=value)))
+        for path in ("main/a.nob", "MAIN/../A.NOB", "/MAIN/A.NOB", "MAIN\\A.NOB", "MAIN/A", "MAIN/LONGNAME9.NOB",
+                     "MAIN/A.NOBS", "MAIN//A.NOB", "MAIN/A.NOB;1", "MAIN/*.NOB", "MAIN/A B.NOB", "C.TXT", ""):
+            with self.subTest(path=path):
+                self.assertRejected("recipe-value-invalid", self.mutated(lambda d: d.update(disc={"omit": [path]})))
+
     def test_unknown_or_missing_version(self):
         for version in (2, 0, "1", 1.0, True, None):
             self.assertRejected("recipe-version-unsupported", self.mutated(lambda d: d.update(schemaVersion=version)))
@@ -329,6 +357,104 @@ class RecipeTests(unittest.TestCase):
             {"id": "enter", "pause": "gate", "kind": "key", "ascii": 13, "scan": 28},
             {"id": "minus", "pause": "start", "kind": "key", "ascii": 45, "scan": 12}])))
         self.assertEqual((only_keys.devices, len(only_keys.stimuli)), ({}, 2))
+
+    def injected(self, change=None, stimuli=None):
+        def apply(d):
+            d["fields"].append({"id": "obj", "address": {"object": 4, "offset": 0x820}, "type": "u32", "unit": "ptr"})
+            d["pauses"][0]["fields"].append("obj")
+            d["injections"] = [
+                {"id": "sub", "purpose": "subsystem-fields", "address": {"bound": {"pause": "start", "field": "obj"},
+                                                                         "offset": 0xE8}, "type": "u32",
+                 "mask": 0xF0},
+                {"id": "hull", "purpose": "hull", "address": {"bound": {"pause": "start", "field": "obj"},
+                                                              "offset": 0xD0}, "type": "i32",
+                 "maximum": {"pause": "start", "field": "ticks"}}]
+            d["stimuli"] = stimuli if stimuli is not None else [
+                {"id": "sub-1", "pause": "start", "kind": "inject", "injection": "sub", "value": 0x60,
+                 "if": {"all": [{"field": "flag", "eq": 0}]}},
+                {"id": "hull-1", "pause": "end", "kind": "inject", "injection": "hull", "value": 2100,
+                 "if": {"all": [{"field": "ticks", "gt": 0}]}}]
+            if change:
+                change(d)
+        return self.mutated(apply)
+
+    def test_injections(self):
+        recipe = parse_recipe(text(self.injected()))
+        sub, hull = recipe.injections.values()
+        self.assertEqual((sub.purpose, sub.type, sub.mask, sub.offset, sub.bound.pause, sub.bound.field),
+                         ("subsystem-fields", "u32", 0xF0, 0xE8, "start", "obj"))
+        self.assertEqual((hull.purpose, hull.type, hull.mask, hull.maximum.field), ("hull", "i32", None, "ticks"))
+        self.assertEqual([(s.kind, s.injection, s.value) for s in recipe.stimuli],
+                         [("inject", "sub", 0x60), ("inject", "hull", 2100)])
+        self.assertIsNone(parse_recipe(text(scenario_recipe(SHA))).injections)
+        for purpose, offset, value in (("ammunition", 8, 0), ("energy", 0x28, 0), ("mount-state", 0xC, 2),
+                                       ("hull", 0xD0, 1)):
+            def change(d, purpose=purpose, offset=offset, value=value):
+                d["injections"][1].update(purpose=purpose)
+                d["injections"][1]["address"]["offset"] = offset
+                if purpose == "mount-state":
+                    d["injections"][1].pop("maximum")
+                d["stimuli"][1]["value"] = value
+            self.assertEqual(parse_recipe(text(self.injected(change))).stimuli[1].value, value)
+
+    def test_injection_rejections(self):
+        def inj(index, **update):
+            return lambda d: d["injections"][index].update(**update)
+
+        def stim(index, **update):
+            return lambda d: d["stimuli"][index].update(**update)
+        cases = (
+            ("recipe-key-unknown", inj(1, mask=3)),
+            ("recipe-key-missing", lambda d: d["injections"][1].pop("maximum")),
+            ("recipe-key-unknown", inj(0, maximum={"pause": "start", "field": "ticks"})),
+            ("recipe-reference-invalid", inj(1, maximum={"pause": "start", "field": "speed"})),
+            ("recipe-reference-invalid", inj(1, maximum={"pause": "start", "register": "ESI"})),
+            ("recipe-address-invalid", lambda d: d["injections"][1]["address"].update(offset=0x6C)),  # position
+            ("recipe-address-invalid", lambda d: d["injections"][0]["address"].update(offset=0xF0)),
+            ("recipe-key-missing", lambda d: d["stimuli"][0].pop("if")),
+            ("recipe-key-missing", lambda d: d["injections"][0].pop("mask")),
+            ("recipe-value-invalid", inj(0, purpose="position")),
+            ("recipe-value-invalid", inj(0, type="i32")),
+            ("recipe-value-invalid", inj(1, type="u16")),
+            ("recipe-value-invalid", inj(0, mask=0x10)),  # half a 2-bit field
+            ("recipe-value-invalid", inj(0, mask=0x18)),  # not aligned
+            ("recipe-value-invalid", inj(0, mask=0)),
+            ("recipe-address-invalid", inj(0, address={"bound": {"pause": "start", "register": "ESI"},
+                                                       "offset": 0})),
+            ("recipe-key-unknown", inj(0, address={"object": 4, "offset": 0x840})),
+            ("recipe-key-unknown", lambda d: d["injections"][0]["address"].update(pointers=[4])),
+            ("recipe-address-invalid", lambda d: d["injections"][0]["address"].update(offset=0x10000)),
+            ("recipe-address-invalid", lambda d: d["injections"][0]["address"].update(offset=0xE8 + 0x10)),
+            ("recipe-reference-invalid", lambda d: d["injections"][0]["address"]["bound"].update(field="speed")),
+            ("recipe-reference-invalid", lambda d: d["injections"][0]["address"]["bound"].update(pause="end")),
+            ("recipe-reference-invalid", lambda d: d["injections"].append(
+                {"id": "spare", "purpose": "energy", "address": {"bound": {"pause": "start", "field": "obj"},
+                                                                 "offset": 0x28}, "type": "i32",
+                 "maximum": {"pause": "start", "field": "ticks"}})),
+            ("recipe-reference-invalid", stim(0, injection="missing")),
+            ("recipe-id-duplicate", inj(1, id="sub")),
+            ("recipe-value-invalid", stim(0, value=0x100)),  # outside the mask
+            ("recipe-value-invalid", stim(0, value=0x30)),  # 2-bit state 3
+            ("recipe-value-invalid", stim(1, value=0)),  # hull must stay above 0
+            ("recipe-value-invalid", stim(1, value=-1)),
+            ("recipe-key-unknown", stim(1, device="stick")),
+            ("recipe-key-missing", lambda d: d["stimuli"][0].pop("injection")),
+            ("recipe-type-invalid", inj(0, purpose=1)),
+            ("recipe-type-invalid", stim(1, value=1.5)),
+        )
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.injected(change))
+        for purpose, offset, value in (("ammunition", 8, -1), ("energy", 0x28, -1), ("mount-state", 0xC, 3),
+                                       ("mount-state", 0xC, -1)):
+            def change(d, purpose=purpose, offset=offset, value=value):
+                d["injections"][1].update(purpose=purpose)
+                d["injections"][1]["address"]["offset"] = offset
+                if purpose == "mount-state":
+                    d["injections"][1].pop("maximum")
+                d["stimuli"][1]["value"] = value
+            with self.subTest(purpose=purpose, value=value):
+                self.assertRejected("recipe-value-invalid", self.injected(change))
 
     def test_stimulus_rejections(self):
         cases = (

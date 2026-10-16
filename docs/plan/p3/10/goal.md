@@ -109,7 +109,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | completed |
 | [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | completed |
 | [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | completed |
-| [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | in-progress |
+| [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | completed |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
 | [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | pending |
 | [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | completed |

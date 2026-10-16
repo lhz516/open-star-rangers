@@ -12,7 +12,7 @@ from fake_debugger import FakeClock, FakeDebugger, FakeTransport
 from protect import inventory, parse_manifest, sha256_file
 from recipe import exe_fingerprint
 from session import Environment, Options, execute
-from synthetic import noise, scenario_image, scenario_recipe
+from synthetic import iso_image, noise, scenario_image, scenario_recipe
 
 EXE = "MAIN/GAME.EXE"
 SETTINGS = "MAIN/GAME.CFG"
@@ -27,7 +27,7 @@ def manifest_text(rows, images):
 
 
 class Sandbox:
-    def __init__(self, root, scenario=None, reclaim_passes=True, recipe=None, smoke_identity=False):
+    def __init__(self, root, scenario=None, reclaim_passes=True, recipe=None, smoke_identity=False, iso=False):
         self.root = Path(root)
         repo = self.root / "repo"
         self.local = repo / "localroot"  # not "local": the access guard reads relative names against the cwd
@@ -43,11 +43,13 @@ class Sandbox:
                  "DRIVERS/SOUND.DRV": noise(10, 200)}
         for relative, data in files.items():
             (self.install / relative).write_bytes(data)
-        (self.cd / "DISC.img").write_bytes(noise(11, 5000))
-        (self.cd / "DISC.cue").write_text('FILE "DISC.img" BINARY\n')
-        rows = {relative: (len(data), exe_fingerprint(data)) for relative, data in files.items()
+        disc = {relative: data for relative, data in files.items()
                 if relative != SETTINGS and not relative.startswith("DRIVERS")}
-        rows["MAIN/ONDISC.BIN"] = (5, exe_fingerprint(b"other"))
+        disc["MAIN/ONDISC.BIN"] = b"other"
+        # `iso`: the image is a synthetic ISO9660 disc holding exactly the manifest files (for `disc.omit` runs).
+        (self.cd / "DISC.img").write_bytes(iso_image(disc) if iso else noise(11, 5000))
+        (self.cd / "DISC.cue").write_text('FILE "DISC.img" BINARY\n')
+        rows = {relative: (len(data), exe_fingerprint(data)) for relative, data in disc.items()}
         self.manifest = repo / "docs" / "manifest.md"
         self.manifest.write_text(manifest_text(rows, {"DISC.img": sha256_file(self.cd / "DISC.img")}))
         self.version = parse_manifest(self.manifest.read_text(), EXE).version

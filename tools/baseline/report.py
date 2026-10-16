@@ -141,6 +141,18 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         if any(stimulus.test is not None for stimulus in recipe.stimuli):
             counts["stimuliConditionFalse"] = sum(record.get("status") == "condition-false" for record in records)
         extra["stimuli"] = records
+        injected = [stimulus for stimulus in recipe.stimuli if stimulus.kind == "inject"]
+        if injected:  # P3-10 subtask 25: samples after an injection are injected-damage samples
+            declared = {stimulus.id for stimulus in injected}
+
+            def wrote(record):  # an inject write whose readback equals the written bytes: the state was changed
+                return any(type(entry) is dict and entry.get("channel") == "inject" and entry.get("written")
+                           and entry.get("readback") == entry.get("written") for entry in record.get("writes") or ())
+            written = [record.get("id") for record in records if record.get("id") in declared and wrote(record)]
+            applied = [record.get("id") for record in records
+                       if record.get("id") in written and record.get("status") == "applied"]
+            extra["injection"] = {"injected": bool(written), "planned": len(injected), "written": written,
+                                  "applied": applied}
 
     integrity, integrity_passed = _passed(integrity, "integrity")
     cleanup, cleanup_passed = _passed(cleanup, "cleanup")

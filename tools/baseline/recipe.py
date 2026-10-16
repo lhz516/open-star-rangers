@@ -11,7 +11,8 @@ hit (literal values or readings of earlier pauses); a field may be addressed fro
 pause (`bound`). Reading tests (P3-10 subtask 09) let a recipe wait and branch on the current run: a breakpoint stop's
 `until` takes only a hit whose probe readings pass the test, and a stimulus's `if` applies it only when the readings
 of its pause (or earlier pauses) pass. A test is a fixed list of comparisons of one reading with a literal or with
-another reading plus a constant, combined by `all` or `any`. Every key is known, every value has a fixed JSON type
+another reading plus a constant, combined by `all` or `any`. `disc.omit` (P3-10 subtask 25) names manifest files
+that the run's private disc copy leaves out (`disc.py`). Every key is known, every value has a fixed JSON type
 and every string is a restricted token, so a recipe cannot carry expressions, debugger commands or shell strings.
 """
 import hashlib
@@ -34,7 +35,19 @@ SCALAR_RANGES = {"u8": (0, 0xFF), "u16": (0, 0xFFFF), "u32": (0, 0xFFFFFFFF), "i
                  "i32": (-0x80000000, 0x7FFFFFFF)}
 POINTER_SIZE = 4
 STOP_KINDS = ("breakpoint", "vrt")
-STIMULUS_KINDS = ("key", "shift", "device")
+STIMULUS_KINDS = ("key", "shift", "device", "inject")
+# Damage injection (P3-10 subtask 25, spec revision 1): the only player-state fields an `inject` stimulus may write,
+# each relative to an integer reading (the player object or one of its mount states) and with a fixed type.
+INJECTION_TYPES = {"subsystem-fields": "u32", "mount-state": "i32", "hull": "i32", "ammunition": "i32",
+                   "energy": "i32"}
+INJECTION_MINIMUM = {"mount-state": 0, "hull": 1, "ammunition": 0, "energy": 0}
+# The only offsets each purpose may write (executable D6, W1, D14 and the hull field +0xD0): the subsystem words of
+# the player object, its hull and energy, and a mount state's ammunition and damage level.
+INJECTION_OFFSETS = {"subsystem-fields": (0xE8, 0xEC), "hull": (0xD0,), "energy": (0x28,), "ammunition": (0x08,),
+                     "mount-state": (0x0C,)}
+INJECTION_CAPPED = ("hull", "ammunition", "energy")  # need a `maximum` reading; the value stays below it
+MAX_MOUNT_STATE = 2
+MAX_SUBSYSTEM_STATE = 2
 REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register (or a bound reading)
 ALTERNATIVE_SITES = (2, 4)  # offsets of a breakpoint stop with alternative sites
 CONDITION_VALUES = (1, 16)  # values of a stop condition
@@ -66,11 +79,13 @@ DATA_WINDOW_SIZES = (16, 512)
 MAX_OBJECT_NUMBER = 255
 MAX_IDENTITY_KEYS = 16
 CYCLES_RANGE = (1000, 2_000_000)  # fixed DOSBox-X cycles a recipe may request for its private configuration
+MAX_DISC_OMIT = 4  # manifest files a private disc copy may leave out
 LEVEL_RANGE = (0, 100)  # each raw difficulty of CURR_LEVEL (practice, campaign), the range the game's parser keeps
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)*")
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:+-]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_DISC_PATH = re.compile(r"[A-Z0-9_-]{1,8}(?:/[A-Z0-9_-]{1,8})*/[A-Z0-9_-]{1,8}\.[A-Z0-9_-]{1,3}")
 _TOKEN_MAX = 64
 
 
@@ -268,13 +283,42 @@ class Stimulus:
     device: object = None  # Device ID
     value: object = None  # device value
     test: object = None  # Test (recipe key `if`): applied only when the readings pass it; None: unconditional
+    injection: object = None  # Injection ID (kind `inject`)
 
     def budget(self, devices):
         if self.kind == "key":
             return KEY_STIMULUS_BYTES
         if self.kind == "shift":
             return SHIFT_STIMULUS_BYTES
+        if self.kind == "inject":
+            return 4 * SCALAR_SIZES["u32"]  # planning read, pre-write read, write and readback
         return 3 * devices[self.device].size
+
+
+@dataclass(frozen=True)
+class Injection:
+    """A declared player-state field an `inject` stimulus may write: the integer reading `bound` plus `offset`, of the
+    purpose's fixed type; `mask` (subsystem fields only) limits the write to whole 2-bit fields."""
+    id: str
+    purpose: str
+    bound: Binding
+    offset: int
+    type: str
+    mask: object = None
+    maximum: object = None  # Binding of the capacity reading (hull, ammunition, energy): the value must stay below it
+
+    def check(self, value, path):
+        """The value is one the game can store: within the type, at least the purpose's minimum, a mount damage level
+        0-2, or 2-bit subsystem states 0-2 inside the mask."""
+        if self.mask is not None:
+            if value & ~self.mask or any((value >> shift) & 3 > MAX_SUBSYSTEM_STATE for shift in range(0, 32, 2)):
+                raise BaselineError("recipe-value-invalid", path)
+            return value
+        low = INJECTION_MINIMUM[self.purpose]
+        high = MAX_MOUNT_STATE if self.purpose == "mount-state" else SCALAR_RANGES[self.type][1]
+        if not low <= value <= high:
+            raise BaselineError("recipe-value-invalid", path)
+        return value
 
 
 @dataclass(frozen=True)
@@ -326,6 +370,8 @@ class Recipe:
     game_settings: dict  # recipe-preset game settings of the private copy, e.g. {"CURR_LEVEL": (100, 19)}
     devices: dict  # device ID -> Device, in declaration order
     stimuli: tuple  # in declaration order; applied in this order at their pauses
+    disc: tuple = ()
+    injections: object = None  # injection ID -> Injection (P3-10 subtask 25); None when the recipe declares none  # manifest files the private disc omits; empty: the verified image is mounted
 
     def pause(self, pause_id):
         for pause in self.pauses:
@@ -449,7 +495,8 @@ def _token(value, path):
 
 def _recipe(document):
     _object(document, "$", ("schemaVersion", "recipeId", "source", "identity", "correlation", "pauses", "fields",
-                            "limits"), ("emulator", "gameSettings", "devices", "stimuli"))
+                            "limits"), ("emulator", "gameSettings", "disc", "devices", "injections",
+                                      "stimuli"))
     version = document["schemaVersion"]
     if type(version) is not int or version != SCHEMA_VERSION:
         raise BaselineError("recipe-version-unsupported", "schemaVersion")
@@ -462,12 +509,16 @@ def _recipe(document):
     limits = _limits(document["limits"])
     emulator = _emulator(document.get("emulator", {}))
     game_settings = _game_settings(document.get("gameSettings", {}))
+    disc = _disc(document["disc"]) if "disc" in document else ()
     fields = _fields(document["fields"], limits)
     pauses = _pauses(document["pauses"], fields, limits)
     devices = _devices(document["devices"]) if "devices" in document else {}
-    stimuli = _stimuli(document["stimuli"], pauses, devices, fields) if "stimuli" in document else ()
+    injections = _injections(document["injections"]) if "injections" in document else {}
+    stimuli = _stimuli(document["stimuli"], pauses, devices, fields, injections) if "stimuli" in document else ()
     if devices.keys() - {stimulus.device for stimulus in stimuli}:
         raise BaselineError("recipe-reference-invalid", "devices")
+    if injections.keys() - {stimulus.injection for stimulus in stimuli}:
+        raise BaselineError("recipe-reference-invalid", "injections")
     identity = _identity(document["identity"], fields, pauses)
 
     correlation = _object(document["correlation"], "correlation", ("code", "data"))
@@ -501,7 +552,20 @@ def _recipe(document):
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
     return Recipe(recipe_id, baseline_version, exe_sha256, identity, code_window, data_window, pauses, fields, limits,
                   "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest(), emulator, game_settings,
-                  devices, stimuli)
+                  devices, stimuli, disc, injections or None)
+
+
+def _disc(value):
+    """Manifest game files (1-4 distinct paths such as MAIN/NAME.EXT) that the private disc copy leaves out; whether
+    each is a manifest file is checked against the manifest before any side effect."""
+    _object(value, "disc", ("omit",))
+    paths = _list(value["omit"], "disc.omit", "recipe-value-invalid")
+    if len(paths) > MAX_DISC_OMIT:
+        raise BaselineError("recipe-value-invalid", "disc.omit")
+    result = tuple(_string(path, f"disc.omit[{index}]", _DISC_PATH) for index, path in enumerate(paths))
+    if len(set(result)) != len(result):
+        raise BaselineError("recipe-value-invalid", "disc.omit")
+    return result
 
 
 def _emulator(value):
@@ -851,7 +915,58 @@ def _devices(value):
     return devices
 
 
-def _stimuli(value, pauses, devices, fields):
+def _injections(value):
+    items = _list(value, "injections")
+    if len(items) > CEILINGS["devices"]:
+        raise BaselineError("recipe-budget-exceeded", "injections")
+    injections = {}
+    for index, item in enumerate(items):
+        path = f"injections[{index}]"
+        _object(item, path, ("id", "purpose", "address", "type"), ("mask", "maximum"))
+        injection_id = _identifier(item["id"], path + ".id")
+        if injection_id in injections:
+            raise BaselineError("recipe-id-duplicate", path + ".id")
+        purpose = item["purpose"]
+        if type(purpose) is not str:
+            raise BaselineError("recipe-type-invalid", path + ".purpose")
+        if purpose not in INJECTION_TYPES:
+            raise BaselineError("recipe-value-invalid", path + ".purpose")
+        kind = item["type"]
+        if type(kind) is not str:
+            raise BaselineError("recipe-type-invalid", path + ".type")
+        if kind != INJECTION_TYPES[purpose]:
+            raise BaselineError("recipe-value-invalid", path + ".type")
+        where = path + ".address"
+        address = _object(item["address"], where, ("bound", "offset"))
+        binding = _binding(address["bound"], where + ".bound")
+        if binding.field is None:  # the base is a reading (the object or mount state), never a register
+            raise BaselineError("recipe-address-invalid", where + ".bound")
+        offset = _int(address["offset"], where + ".offset", *REGISTER_OFFSETS, "recipe-address-invalid")
+        if offset not in INJECTION_OFFSETS[purpose]:
+            raise BaselineError("recipe-address-invalid", where + ".offset")
+        maximum = None
+        if purpose in INJECTION_CAPPED:
+            if "maximum" not in item:
+                raise BaselineError("recipe-key-missing", path + ".maximum")
+            maximum = _binding(item["maximum"], path + ".maximum")
+            if maximum.field is None:
+                raise BaselineError("recipe-reference-invalid", path + ".maximum")
+        elif "maximum" in item:
+            raise BaselineError("recipe-key-unknown", path)
+        mask = None
+        if purpose == "subsystem-fields":
+            if "mask" not in item:
+                raise BaselineError("recipe-key-missing", path + ".mask")
+            mask = _int(item["mask"], path + ".mask", 1, 0xFFFFFFFF, "recipe-value-invalid")
+            if any((mask >> shift) & 3 not in (0, 3) for shift in range(0, 32, 2)):  # whole, aligned 2-bit fields
+                raise BaselineError("recipe-value-invalid", path + ".mask")
+        elif "mask" in item:
+            raise BaselineError("recipe-key-unknown", path)
+        injections[injection_id] = Injection(injection_id, purpose, binding, offset, kind, mask, maximum)
+    return injections
+
+
+def _stimuli(value, pauses, devices, fields, injections=None):
     items = _list(value, "stimuli")
     if len(items) > CEILINGS["stimuli"]:
         raise BaselineError("recipe-budget-exceeded", "stimuli")
@@ -864,7 +979,7 @@ def _stimuli(value, pauses, devices, fields):
     keyed = set()
     for index, item in enumerate(items):
         path = f"stimuli[{index}]"
-        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "value", "if"))
+        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "injection", "value", "if"))
         stimulus_id = _identifier(item["id"], path + ".id")
         if stimulus_id in seen:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -903,6 +1018,19 @@ def _stimuli(value, pauses, devices, fields):
             if any(type(on) is not bool for on in flags.values()):
                 raise BaselineError("recipe-type-invalid", path + ".flags")
             stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items()), test=test))
+        elif kind == "inject":
+            # The guard `if` is required: the recipe states, on this run's readings, the context it injects in.
+            _object(item, path, ("id", "pause", "kind", "injection", "value", "if"))
+            name = _identifier(item["injection"], path + ".injection")
+            injection = (injections or {}).get(name)
+            if injection is None:
+                raise BaselineError("recipe-reference-invalid", path + ".injection")
+            listed = {earlier.id: (earlier.stop.kind, earlier.fields) for earlier in pauses[:order[pause] + 1]}
+            for binding in filter(None, (injection.bound, injection.maximum)):  # this or an earlier pause's reading
+                _reference(binding, fields, listed, path + ".injection")
+            value = injection.check(_int(item["value"], path + ".value", *SCALAR_RANGES[injection.type],
+                                         "recipe-value-invalid"), path + ".value")
+            stimuli.append(Stimulus(stimulus_id, pause, kind, value=value, test=test, injection=name))
         else:
             _object(item, path, ("id", "pause", "kind", "device", "value"), ("if",))
             name = _identifier(item["device"], path + ".device")
