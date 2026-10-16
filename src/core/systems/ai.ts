@@ -20,15 +20,21 @@
  * Warp departure an AI rule asks for goes through requestWarpDeparture (`0x5e6cc`), and request handling applies it
  * through applyWarpDeparture (CR-21, D6).
  *
- * A handler draws from the world's RNG through one RandStream per call, which the world continues after; its requests
- * are posted at once, as the original posts its messages in the subject's own update.
+ * A handler draws from the world's RNG through one RandStream per call, which the world continues after; the wingman and
+ * parked handlers draw from the world one at a time instead, as their Xpon drop and command replies draw from the world
+ * within the call. Requests are posted at once, as the original posts its messages in the subject's own update.
+ *
+ * The wingman's command consumers (rules/ai-commands.ts, P3-08/20) run in its handlers: the active `0x614a8` at step 2
+ * of `0x610c8` and the parked `0x61f20` in the kind-2 step of `0x62250`. A consumption's reply goes through P3-10's
+ * `queueLine` and its fact is `wingman-command-consumed` (CR-22, CR-28).
  */
 import { CoreFaultError } from '../errors.ts';
+import { consumeActiveCommand, consumeParkedCommand, type CommandConsumption } from '../rules/ai-commands.ts';
 import { firingDataOf, installBase, runTriggerLoop, updateAiLock, updateBase } from '../rules/ai-firing.ts';
 import { installInterpreter, removeInterpreter, updateInterpreter, type InterpreterCall } from '../rules/ai-interpreter.ts';
 import { installParked, updateParked, type ParkedCall } from '../rules/ai-parked.ts';
 import { installedController, isControllerDue, type ControllerRecord } from '../rules/ai-selection.ts';
-import { installWingman, updateWingman, type WingmanCall } from '../rules/ai-wingman.ts';
+import { installWingman, updateWingman, type WingmanCall, type WingmanController } from '../rules/ai-wingman.ts';
 import type { BuiltInHandler } from '../rules/ai-support.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
@@ -36,7 +42,8 @@ import { RandStream, type RandSource } from '../rules/original-random.ts';
 import { isWarpAllowed } from '../rules/parked-travel.ts';
 import { isActiveState, isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
-import type { TickContext } from './pipeline.ts';
+import { emit, type TickContext } from './pipeline.ts';
+import { queueLine } from './radio.ts';
 import { fireAiChannel, fireAutomatic } from './weapons.ts';
 import { constructTransponder } from './xpon.ts';
 
@@ -125,7 +132,7 @@ export function applyWarpDeparture(world: WorldState, entity: Entity): void {
 }
 
 /** What every handler call on `entity` in its object update gets: the world, its draws from `rand`, its posts and `0x5e6cc`. */
-const handlerCall = (context: TickContext, entity: Entity, rand: RandStream): WingmanCall => ({
+const handlerCall = (context: TickContext, entity: Entity, rand: RandSource): WingmanCall => ({
   world: context.world,
   subject: asCraft(entity),
   rand,
@@ -153,18 +160,7 @@ const INTERPRETER_HANDLER: HandlerModes = Object.freeze({
   },
 });
 
-/** The wingman `0x610c8` (rules/ai-wingman.ts): mode 2 only frees the private block, which the removal discards. */
-const WINGMAN_HANDLER: HandlerModes = Object.freeze({
-  install: (context: TickContext, entity: Entity, common: AiControllerCommon) =>
-    withRand(context.world, (rand) => installWingman(handlerCall(context, entity, rand), common)),
-  update: (context: TickContext, entity: Entity, controller: AiController) => {
-    if (controller.handler !== 'wingman') throw fault('wingman');
-    withRand(context.world, (rand) => updateWingman(handlerCall(context, entity, rand), controller));
-  },
-  remove: () => {},
-});
-
-/** Draws from the world's RNG one at a time, so that a constructor drawing from the world itself continues after them. */
+/** Draws from the world's RNG one at a time, so that a constructor or reply drawing from the world itself continues after them. */
 const worldRand = (world: WorldState): RandSource => ({
   next: () => {
     const rand = new RandStream(world.rngState);
@@ -174,6 +170,40 @@ const worldRand = (world: WorldState): RandSource => ({
   },
 });
 
+/**
+ * A consumed command's reply and fact (CR-22, CR-28): the reply line through P3-10's `queueLine` (`0x38d54`, with its
+ * draws and `radio-queued`) at the consumer's reply position, then `wingman-command-consumed`.
+ */
+function replyTo(context: TickContext, entity: Entity): (line: number) => void {
+  return (line) => void queueLine(context, entity.id, line);
+}
+
+function emitConsumption(context: TickContext, entity: Entity, consumption: CommandConsumption): void {
+  emit(context, { type: 'wingman-command-consumed', tick: context.time.tick, wingmanEntityId: entity.id, ...consumption });
+}
+
+/** A wingman call on `entity` with the active command consumer `0x614a8` (rules/ai-commands.ts) at step 2. */
+const wingmanCall = (context: TickContext, entity: Entity): WingmanCall => ({
+  ...handlerCall(context, entity, worldRand(context.world)),
+  consumeCommand: (call: WingmanCall, controller: WingmanController) => {
+    const consumption = consumeActiveCommand(call, controller, replyTo(context, entity));
+    if (consumption !== null) emitConsumption(context, entity, consumption);
+  },
+});
+
+/**
+ * The wingman `0x610c8` (rules/ai-wingman.ts): mode 2 only frees the private block, which the removal discards. Its
+ * draws go to the world one at a time, as the command reply draws from the world in the same call.
+ */
+const WINGMAN_HANDLER: HandlerModes = Object.freeze({
+  install: (context: TickContext, entity: Entity, common: AiControllerCommon) => installWingman(wingmanCall(context, entity), common),
+  update: (context: TickContext, entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'wingman') throw fault('wingman');
+    updateWingman(wingmanCall(context, entity), controller);
+  },
+  remove: () => {},
+});
+
 /** A parked handler call on `entity` in its object update: its Xpon drop constructs in the walk (`0x38780`, CR-20). */
 const parkedCall = (context: TickContext, entity: Entity): ParkedCall => ({
   world: context.world,
@@ -181,6 +211,12 @@ const parkedCall = (context: TickContext, entity: Entity): ParkedCall => ({
   rand: worldRand(context.world),
   depart: () => requestWarpDeparture(context, entity),
   dropTransponder: () => void constructTransponder(context, entity, 'wingman'),
+  consumeCommand: (call: ParkedCall) => {
+    const consumed = consumeParkedCommand(call, replyTo(context, entity));
+    if (consumed === null) return false;
+    emitConsumption(context, entity, consumed.consumption);
+    return consumed.changed;
+  },
 });
 
 /** The parked handler `0x62250` (rules/ai-parked.ts): modes 0 and 2 only set the deadline, without a draw (D1). */

@@ -90,7 +90,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | completed |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | completed |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | completed |
-| [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | in-progress |
+| [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | completed |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
 | [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | pending |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | pending |
@@ -140,6 +140,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 19 完成：** 僚机处理器 `0x610c8` 与友伤后的“愤怒”（只读 P3-10 写入的累计）；`HANDLERS` 加入僚机。交 20：第 2 步在周期行为之前调用 `call.consumeCommand?.(call, controller)`，`ai.ts` 尚未传入消费者。交 21：`ai.ts` 的 `handlerCall` 可供停放处理器使用；僚机的 b 3（停放基地）与 b 4（目的地在活动区外）经 `requestWarpDeparture` 投递尚未接入的 `warp-departure`，21 接入前这样的世界不能运行。交 28：core.md 的僚机处理器与接缝；executable WA5 补“无序距离视为到达”；WA6 引用 CR-24 决定 17。
 - **2026-10-15 — 21 完成：** 停放处理器 `0x62250`（种类分派、`0x62578`/`0x62714`、`0x62760`、僚机揭示与投放 `0x62aa0`、离开指令 `0x5e710`）读取 P3-09 的集合与 `mapVisible`，不另建；`warp-departure` 已接入（处理时复检，跨两个 tick 停放、安装 `0x62250` 并跳跃），UNWIRED_REQUESTS 删除；每 tick 分派计数改为 `TickContext.aiDispatches`；`HANDLERS` 为全集。`0x61f20` 是 `ParkedCall.consumeCommand` 可选接缝，交 20 在 `ai.ts` 的 `parkedCall` 中传入。AC-10 的僚机投放部分已覆盖。集成时主机负载很高（load ≈ 20），`snapshot`、`budget`、`image-payload`、`mission-scenarios` 的长测试超过 5 秒默认时限；以 `--testTimeout=30000` 全量 9,967 项通过，typecheck、lint、build 通过。长测试的时限由新增的 31 处理。交 28：executable D3/D6 的常量（f32 `0x1724a8` = 3.0，D6 的 f64 ±1000），core.md 的停放处理器、离场处理与 `aiDispatches`。
 - **2026-10-15 — 31 完成：** 长测试有显式单项时限，测试内容不变（60 s：snapshot 两项、budget 文本预算、import-job 的场景配置组；30 s：image-payload 往返表、任务场景组、map-warp-replay 顶层组、engineering-boundaries 遍历真实应用的三项）；工程约定的测试规则已同步。只在两个全量测试并行（load ≈ 52）时超时的其他文件未改。
+- **2026-10-15 — 20 完成：** 僚机命令的两个消费者（活动 `0x614a8`、停放 `0x61f20`）经 19、21 的接缝接入；回复经 P3-10 的 `queueLine`；菜单到回复的联合运行以未修改的 `replayRecord` 重放通过。`queueLine` 在处理器调用中从 `world.rngState` 抽取，所以僚机处理器改为逐次抽取（`worldRand`），与停放处理器一致。12 的 `WINGMAN_REPLIES` 中停放码 4 的回复线号由 0x14 更正为 0xE（WB4、CR-22）。交 28：core.md 的消费者接入、回复与逐次抽取的原因、码 4 的更正。
 
 ## 审批
 

@@ -528,7 +528,7 @@ const WINGMAN_REPLIES: Readonly<Record<'active' | 'parked', readonly Partial<Rec
     { applied: 0x10, refused: 0 },
     { acknowledged: 3, refused: 0 },
     { applied: 0xe, refused: null },
-    { applied: 0x14, refused: null },
+    { applied: 0xe, refused: null },
     { applied: 0x12, refused: 0 },
     { applied: 0x12, refused: 0x15 },
   ],

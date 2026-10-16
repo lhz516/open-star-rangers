@@ -849,7 +849,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       ['active', 4, 'applied', 0x14], ['active', 4, 'fallback', 0], ['active', 5, 'applied', 0x12], ['active', 5, 'fallback', 0],
       ['active', 6, 'applied', 0x12], ['active', 6, 'fallback', 0x15],
       ['parked', 1, 'applied', 0x10], ['parked', 1, 'refused', 0], ['parked', 2, 'acknowledged', 3], ['parked', 2, 'refused', 0],
-      ['parked', 3, 'applied', 0xe], ['parked', 3, 'refused', null], ['parked', 4, 'applied', 0x14], ['parked', 4, 'refused', null],
+      ['parked', 3, 'applied', 0xe], ['parked', 3, 'refused', null], ['parked', 4, 'applied', 0xe], ['parked', 4, 'refused', null],
       ['parked', 5, 'applied', 0x12], ['parked', 5, 'refused', 0], ['parked', 6, 'applied', 0x12], ['parked', 6, 'refused', 0x15],
       ['active', 7, 'status', 0xb], ['parked', 7, 'status', 0xd], ['active', 8, 'unknown-code', 3], ['parked', 0xffffffff, 'unknown-code', 3],
     ] as const)('accepts %s code %d %s with reply line %s', (path, code, outcome, replyLine) => {
