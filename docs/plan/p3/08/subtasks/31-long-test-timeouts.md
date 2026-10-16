@@ -34,6 +34,10 @@ updated: 2026-10-15
 - `src/core/replay/budget.test.ts`：单项时限。
 - `src/content/graphics/image-payload.test.ts`：单项时限。
 - `src/workers/mission-scenarios.test.ts`：单项时限。
+- `docs/engineering/README.md`：测试规则中显式时限的清单。
+- `src/core/replay/map-warp-replay.test.ts`：单项时限。
+- `src/workers/import-job.test.ts`：单项时限。
+- `tools/engineering-boundaries.test.ts`：单项时限（仅当该文件对时限覆盖的守卫允许）。
 
 ## 验收标准
 
