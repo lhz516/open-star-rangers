@@ -85,7 +85,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [13-ai-static-data-import.md](./subtasks/13-ai-static-data-import.md) | 09 | completed |
 | [14-ai-input-support.md](./subtasks/14-ai-input-support.md) | 12, 13 | completed |
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
-| [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | in-progress |
+| [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | completed |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | pending |
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | pending |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | pending |
@@ -129,6 +129,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 30 完成：** 两份契约一致（MW-04 第 2、4 步与 P3-10 spec 的范围一节），Core 未改；修正 e2e 的过时期望与基地页 `M` 的文案，加 Core 回归用例。e2e 中 `launch()` 在 257 次按键后立即清日志，偶有竞态（只见一次），留作已知的测试脆弱点。
 - **2026-10-15 — 15 完成：** 第 13 步选择、对象更新中的控制器分派（`src/core/systems/ai.ts`）与 `HANDLERS` 接入规则；16、18、19、21 各自把处理器加入 `HANDLERS`，并覆盖安装同一调用的更新体与抽取，以及停放/恢复/被毁/移除后的重装抽取；21 用导出的 `installController`/`removeController` 处理 Warp 离场。交 28：core.md 补选择、控制器分派与接入规则。
 - **2026-10-15 — 22 完成：** `drop-transponder`、`create-transponder`、`0x3897c` 与 `KeyB` 已实现，replay 格式 2→3；`create-transponder` 已从 UNWIRED_REQUESTS 移除。僚机投放（`0x62aa0`）的调用点交 21：调用导出的 `constructTransponder(context, 僚机, 'wingman')`，并测试同一遍走查中的首次回调、RNG 次序与该 tick 的停放更新选择（AC-10 的僚机部分）。交 24：飞行中按 `b`，断言 `transponder-deployed` 与 `creator: 'player'` 的种类 14 实体。交 28：core.md 的命令、请求、事件与 replay 格式版本清单；executable X3 的 f32 常量。D13 的能量时钟算式在 xpon.ts 与 combat-init.ts 中重复，统一需改 combat-init.ts，留作已知的重复。
+- **2026-10-15 — 17 完成：** AI 驾驶经 `steer`（接受机体）与 `ai-match-speed`（P3-06 速度匹配一般化为 (a, lo, hi)，(0, 0, 1) 位一致）；UNWIRED_REQUESTS 只剩 `warp-departure`。交 18：`ai.ts` 的 `stepController` 注释把 `0x5dfec` 的 AI 锁定更新归 17，实为开火逻辑（A13），由 18 实现并更正注释。交 28：core.md 的请求清单、AI 转向库与 ai-piloting.ts。
 
 ## 审批
 

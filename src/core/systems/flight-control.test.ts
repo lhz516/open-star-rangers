@@ -7,7 +7,7 @@ import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } fr
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
+import { applyAiMatchRequest, availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
 import { enterBaseView } from './base-interior.test-support.ts';
 import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 
@@ -655,6 +655,46 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
     });
     expect(events).toEqual([accepted(1, 0, 'speed')]);
     expect(craftBlock(player).commandedSpeed).toBe(48);
+  });
+});
+
+describe('the AI\'s speed match request (P3-08 AC-05; docs/plan/p3/02/spec.md, CR-21)', () => {
+  /** An AI craft of kind 2 at full throttle (commanded speed 48, arrived) and a target of kind 7 at speed 20. */
+  function aiScene(): [WorldState, Entity, Entity] {
+    const state = testState();
+    const craft = state.entities.allocate(entityInit(2));
+    const target = state.entities.allocate(entityInit(7));
+    (target.movement as SteeredMovementBlock).speed = 20;
+    return [state, craft, target];
+  }
+  const request = (craft: Entity, target: number, a: number, lo: number, hi: number) =>
+    ({ type: 'ai-match-speed', entityId: craft.id, targetEntityId: target, a, lo, hi }) as const;
+
+  it('matches with its own (a, lo, hi) through 0x21adc, emitting nothing, also on a locked block', () => {
+    const [state, craft, target] = aiScene();
+    const block = craft.movement as SteeredMovementBlock;
+    block.locked = true;
+    applyAiMatchRequest(state, craft, request(craft, target.id, Math.fround(0.5), 0, 1));
+    expect([block.commandedSpeed, block.atCommandedSpeed]).toEqual([30, false]);
+    applyAiMatchRequest(state, craft, request(craft, target.id, 0, 0, 0.25));
+    expect(block.commandedSpeed).toBe(12);
+  });
+
+  it('writes nothing when the target no longer resolves or has no block', () => {
+    const [state, craft, target] = aiScene();
+    const before = structuredClone(craft.movement);
+    applyAiMatchRequest(state, craft, request(craft, 99, 0, 0, 1));
+    target.movement = null;
+    applyAiMatchRequest(state, craft, request(craft, target.id, 0, 0, 1));
+    expect(craft.movement).toEqual(before);
+  });
+
+  it('writes nothing for a subject without a craft record, such as the map marker', () => {
+    const [state, , target] = aiScene();
+    const marker = state.entities.allocate(entityInit(25));
+    const before = structuredClone(marker.movement);
+    applyAiMatchRequest(state, marker, request(marker, target.id, 0, 0, 1));
+    expect(marker.movement).toEqual(before);
   });
 });
 

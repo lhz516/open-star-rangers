@@ -362,10 +362,31 @@ describe('the steer request', () => {
     expect(blockOf(entity)).toEqual(before);
   });
 
-  it('faults for an entity that is no missile, as only missiles post it', () => {
+  it('applies a block on an AI craft through 0x21fd8 with its craft record\'s rates and its maximum speed (CR-21)', () => {
     const state = world();
     const craft = craftAt(state, PLAIN, at(0, 0, 0));
-    expectFault(() => applySteer(contextOf(state), craft, steer(craft.id, steering(1, 0, 0))), 'invariant-violated', 'missiles.steer');
+    applySteer(contextOf(state), craft, steer(craft.id, { ...steering(0.5, 0.25, -0.5), speedFactor: 0.5 }));
+    // The synthetic craft record's rates: +0xAC 0.75 (pitch), +0xB4 0.25 (yaw); the maximum TEST_MAXIMUM_SPEED.
+    expect(blockOf(craft).steering).toEqual({ pitch: { rate: f32(-0.09375), enabled: true }, yaw: { rate: 0.0625, enabled: true }, roll: { rate: 0, enabled: false } });
+    expect(blockOf(craft)).toMatchObject({ commandedSpeed: TEST_MAXIMUM_SPEED / 2, atCommandedSpeed: false });
+  });
+
+  it('changes nothing on a craft without a block or with a locked one', () => {
+    const state = world();
+    const parked = craftAt(state, PLAIN, at(0, 0, 0), { activity: 'parked', movement: null });
+    applySteer(contextOf(state), parked, steer(parked.id, steering(1, 1, 1)));
+    expect(parked.movement).toBe(null);
+    const locked = craftAt(state, PLAIN, at(0, 0, 0));
+    blockOf(locked).locked = true;
+    const before = structuredClone(blockOf(locked));
+    applySteer(contextOf(state), locked, steer(locked.id, { scale: 1, axes: [setTo(0.5), setTo(0), setTo(0.5)], speedFactor: 1 }));
+    expect(blockOf(locked)).toEqual(before);
+  });
+
+  it('faults for an entity that is neither a missile nor a craft', () => {
+    const state = world();
+    const marker = state.entities.allocate(entityInit(25));
+    expectFault(() => applySteer(contextOf(state), marker, steer(marker.id, steering(1, 0, 0))), 'invariant-violated', 'missiles.steer');
   });
 });
 

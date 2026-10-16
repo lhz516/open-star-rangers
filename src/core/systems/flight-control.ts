@@ -23,7 +23,8 @@
  * assist (`0x27f68`), whose match writes the block directly and whose restoring request goes before the commands'
  * requests (匹配速度与速度辅助).
  * A manual match (`match-target`, or `confirm-selection` in flight) is a `match-speed` request instead, applied in
- * request handling (message 0x80000), so that same-tick speed commands keep their array order.
+ * request handling (message 0x80000), so that same-tick speed commands keep their array order. P3-08's AI posts the same
+ * message as `ai-match-speed` with its own (a, lo, hi), applied through the same generalised `0x21adc` (CR-21).
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { CommandResultReason, DomainEvent } from '../contracts/domain-events.ts';
@@ -46,7 +47,7 @@ import { applySpeedMatch, isAssistKind, nextAssistDue, speedDifferenceExceeded, 
 import { ROTATION_AXES, type Entity, type EntityId, type RotationAxis, type SteeredMovementBlock } from '../world/entity-table.ts';
 import { interactionContext, type InteractionContext, type PlayerControl, type SpeedAssist } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
-import type { CommandView } from './pipeline.ts';
+import type { CommandView, RequestOf } from './pipeline.ts';
 
 /** Message 0x20000 (`0x21dd0`): the integer control path on an entity, with the values it had when posted. */
 export interface ControlRequest extends IntegerControl {
@@ -336,4 +337,18 @@ export function applyMatchRequest(world: WorldState, entity: Entity, request: Ma
   if (target === undefined) return;
   if (!applySpeedMatch(craftMovement(entity), world.craftInfo.content.craft[entity.kindBit], entity.maximumSpeed, target.movement)) return;
   emit({ type: 'speed-matched', tick, targetEntityId: target.id, origin: 'command', commandIndex: request.commandIndex });
+}
+
+/**
+ * Request handling of an `ai-match-speed` request (message 0x80000 from P3-08's `0x5d090`, docs/plan/p3/02/spec.md,
+ * CR-21) on its entity, which is still in the table: `0x21adc` with the request's (a, lo, hi), as for the player's match
+ * but without an event; nothing when the target no longer resolves, either has no block or the subject has no craft
+ * record. The lock does not stop it.
+ */
+export function applyAiMatchRequest(world: WorldState, entity: Entity, request: RequestOf<'ai-match-speed'>): void {
+  const target = world.entities.get(request.targetEntityId);
+  const record = world.craftInfo.content.craft[entity.kindBit];
+  // A subject without a craft record (a runtime kind) fails before its block is read.
+  if (target === undefined || record === undefined) return;
+  applySpeedMatch(craftMovement(entity), record, entity.maximumSpeed, target.movement, request);
 }

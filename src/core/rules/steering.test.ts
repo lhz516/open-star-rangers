@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../contracts/domain-events.ts';
-import { EntityTable, type Entity, type HomingState, type Matrix3, type SteeredMovementBlock } from '../world/entity-table.ts';
+import type { ControlBlock } from '../systems/pipeline.ts';
+import {
+  clearedControllerCommon, EntityTable, type ControllerLimits, type Entity, type EntityId, type HomingState, type Matrix3, type SteeredMovementBlock,
+  type SteeringBlock,
+} from '../world/entity-table.ts';
 import { entityInit, expectFault } from '../world/world.test-support.ts';
+import { RAND_SCALE } from './original-random.ts';
 import { scriptedRand } from './rand.test-support.ts';
 import {
-  homingDeadline, installHoming, isAhead, isHomingUpdateDue, leadTargetPoint, programRecord, rateControl, runHomingProgram, steeringControl,
-  steeringFractions, steeringLimits, throttleControl, vectorDistance, type HomingCall, type SteeringLimits,
+  approachRadius, clearTargetOffset, computeSteering, homingDeadline, installHoming, isAhead, isHomingUpdateDue, leadTargetPoint, programRecord,
+  rateControl, runHomingProgram, setLeadMode, setSizeClass, setSteeringFractions, setSteeringNoise, setTargetOffset, steerAtPoint, steerAtTarget,
+  steeringControl, steeringFractions, steeringLimits, steeringNoise, throttleControl, throttleNoise, updateTargetPoint, vectorDistance,
+  type AiSteeringScene, type HomingCall, type SteeringLimits,
 } from './steering.ts';
 
 // Expectations derived by hand from H5 (docs/original/formats/executable.md) and the native arithmetic recorded in
@@ -269,5 +276,361 @@ describe('the missile programs 0x60b84 and 0x60aa0', () => {
     const state = installHoming(RECORD);
     if (mode !== 0) runHomingProgram(state, RECORD, call({ ...setup(at(0, 0, 300)) }), scriptedRand([]));
     expect(() => runHomingProgram(state, RECORD, call({ ...setup(position, orientation), program, mode }), scriptedRand([]))).not.toThrow();
+  });
+});
+
+// The AI library (P3-08/17): expectations from executable A1–A7 and the native instruction order recorded in subtask 17's
+// evidence (the per-class radii of 0x5dab0, the store points of 0x5c8b0, the operand order of the roll-match value).
+
+/** The AI's craft record: turn rates +0xAC 0.75 (pitch), +0xB4 0.25 (yaw), +0xB0 0.5 (roll); maximum +0xB8 48. */
+const CRAFT = Object.freeze({ atAC: 0.75, atB0: 0.5, atB4: 0.25, atB8: 48 });
+/** a = 1.0 rad, the cone b = 0.5 rad, saturation 0.75, roll-match threshold 0.9. */
+const LIMITS: ControllerLimits = Object.freeze({ turn: 1, speed: 0.5, saturation: 0.75, rollMatchThreshold: f32(0.9) });
+const SAMPLE = 320;
+/** Every target's record +0x10. */
+const TARGET_RADIUS = 2.5;
+/** The gun of the subject's current list-0 mount. */
+const GUN_SPEED = 200;
+
+interface Pilot {
+  readonly table: EntityTable;
+  readonly subject: Entity;
+  readonly block: SteeringBlock;
+  readonly scene: AiSteeringScene;
+}
+
+/** An AI craft at the origin, unturned, with a fresh block (0x5c530: size class 2, 0x5c768(1.0, 1.0, 0)) at SAMPLE. */
+function pilot(overrides: Partial<AiSteeringScene> = {}): Pilot {
+  const table = new EntityTable();
+  const subject = body(table, 2, at(0, 0, 0), 10);
+  const block = clearedControllerCommon().steering;
+  block.sizeClass = 2;
+  setSteeringFractions(block, CRAFT, 1, 1, false);
+  const scene: AiSteeringScene = {
+    subject, craft: CRAFT, limits: LIMITS, clock: SAMPLE, resolve: (id: EntityId) => table.get(id), targetRadius: () => TARGET_RADIUS,
+    mainWeaponSpeed: () => GUN_SPEED, ...overrides,
+  };
+  return { table, subject, block, scene };
+}
+
+/** `subject` aims at a new craft at `position` through 0x5c584 and the cache is clear. */
+function aimed({ table, block, scene }: Pilot, position: Vec3, speed: number | null = 20, orientation: Matrix3 = IDENTITY): Entity {
+  const target = body(table, 7, position, speed, orientation);
+  expect(steerAtTarget(block, scene, target.id)).toBe(true);
+  return target;
+}
+
+describe('the AI setters (0x5c768, 0x5c7e8, 0x5c878)', () => {
+  it('sets both fractions, roll matching and the limits they scale', () => {
+    const { block } = pilot();
+    setSteeringFractions(block, CRAFT, f32(0.65), 0.5, true);
+    const speed = 48 * f32(0.65);
+    expect(block).toMatchObject({
+      speedFraction: f32(0.65), turnFraction: 0.5, rollMatch: true, speedLimit: f32(speed), halfSpeedLimit: f32(speed * 0.5),
+      turnRates: [0.375, 0.125, 0.25],
+    });
+    setSteeringFractions(block, CRAFT, 1, 1, false);
+    expect(block).toMatchObject({ rollMatch: false, speedLimit: 48, halfSpeedLimit: 24, turnRates: [0.75, 0.25, 0.5] });
+    expectFault(() => setSteeringFractions(block, CRAFT, 0.1, 1, false), 'invariant-violated', 'steering.argument');
+  });
+
+  it('enables a noise routine with bounds −v and v above 0 and otherwise disables it, leaving its bounds', () => {
+    const { block } = pilot();
+    setSteeringNoise(block, 0.25, 0);
+    expect([block.throttleNoise, block.steeringNoise]).toEqual([{ enabled: true, low: -0.25, high: 0.25 }, { enabled: false, low: 0, high: 0 }]);
+    setSteeringNoise(block, -1, 0.5);
+    expect([block.throttleNoise, block.steeringNoise]).toEqual([{ enabled: false, low: -0.25, high: 0.25 }, { enabled: true, low: -0.5, high: 0.5 }]);
+  });
+
+  it('takes the lead constant as given for modes 1 and 3, as the period ÷ 64 for 2 and 5, and keeps it otherwise', () => {
+    const { block } = pilot();
+    setLeadMode(block, 1, f32(0.3), 7);
+    expect([block.leadMode, block.leadConstant]).toEqual([1, f32(0.3)]);
+    setLeadMode(block, 2, 9, 32);
+    expect([block.leadMode, block.leadConstant]).toEqual([2, 0.5]);
+    setLeadMode(block, 4, 9, 64);
+    expect([block.leadMode, block.leadConstant]).toEqual([4, 0.5]);
+    setLeadMode(block, 5, 0, 0);
+    expect([block.leadMode, block.leadConstant]).toEqual([5, 0]);
+    setLeadMode(block, 0, 9, 9);
+    expect([block.leadMode, block.leadConstant]).toEqual([0, 0]);
+    expectFault(() => setLeadMode(block, 256, 0, 0), 'invariant-violated', 'steering.lead-mode');
+  });
+});
+
+describe('the approach radius (0x5dab0, 0x5c73c)', () => {
+  it('is fixed per class without a target and the target record\'s +0x10 plus a margin with one; class 3 is the default', () => {
+    expect([0, 1, 2, 3, 4, 5, 255].map((sizeClass) => approachRadius(sizeClass, null))).toEqual([1, 10, 30, 60, 375, 60, 60]);
+    expect([0, 1, 2, 3, 4, 9].map((sizeClass) => approachRadius(sizeClass, TARGET_RADIUS))).toEqual([12.5, 32.5, 82.5, 152.5, 277.5, 152.5]);
+    expect(approachRadius(2, f32(0.1))).toBe(f32(f32(0.1) + 80));
+  });
+
+  it('re-derives the radius for S+0x10 only while it resolves', () => {
+    const scene = pilot();
+    const target = aimed(scene, at(0, 0, 50));
+    setSizeClass(scene.block, scene.scene, 4);
+    expect([scene.block.sizeClass, scene.block.approachRadius]).toEqual([4, 277.5]);
+    scene.table.remove(target);
+    setSizeClass(scene.block, scene.scene, 1);
+    expect([scene.block.sizeClass, scene.block.approachRadius]).toEqual([1, 10]);
+  });
+});
+
+describe('aiming (0x5c584, 0x5c658)', () => {
+  it('aims at a valid target: S+0x10, the subject\'s +0x8C, the point, the offset off, the distance, the radius and lock level 0', () => {
+    const { table, subject, block, scene } = pilot();
+    if (subject.combat.type !== 'craft') throw new Error('craft');
+    subject.combat.weapons.lock.level = 3;
+    setTargetOffset(block, 1, at(1, 2, 3));
+    const target = body(table, 7, at(3, 4, 0), 20);
+    expect(steerAtTarget(block, scene, target.id)).toBe(true);
+    expect(block).toMatchObject({
+      targetValid: true, target: target.id, point: at(3, 4, 0), offset: { enabled: false, frame: 1, vector: at(1, 2, 3) }, distance: 5, approachRadius: 82.5,
+    });
+    expect([subject.ai.objectTarget, subject.combat.weapons.lock.level]).toEqual([target.id, 0]);
+  });
+
+  it('does nothing for the handle S+0x10 already holds, even when the subject\'s +0x8C moved on', () => {
+    const scene = pilot();
+    const target = aimed(scene, at(0, 0, 10));
+    scene.subject.ai.objectTarget = null;
+    scene.block.distance = 99;
+    expect(steerAtTarget(scene.block, scene.scene, target.id)).toBe(true);
+    expect([scene.block.distance, scene.subject.ai.objectTarget]).toEqual([99, null]);
+  });
+
+  it('marks an invalid target invalid and writes nothing else; a null one clears +0x8C and S+0x0C but keeps S+0x10', () => {
+    const scene = pilot();
+    const target = aimed(scene, at(0, 0, 10));
+    expect(steerAtTarget(scene.block, scene.scene, 99)).toBe(false);
+    expect([scene.block.targetValid, scene.block.target, scene.subject.ai.objectTarget]).toEqual([false, target.id, target.id]);
+    expect(steerAtTarget(scene.block, scene.scene, null)).toBe(true);
+    expect([scene.block.targetValid, scene.block.target, scene.subject.ai.objectTarget]).toEqual([false, target.id, null]);
+  });
+
+  it('steers at a point without a target', () => {
+    const scene = pilot();
+    aimed(scene, at(0, 0, 10));
+    steerAtPoint(scene.block, scene.scene, at(0, 6, 8));
+    expect(scene.block).toMatchObject({ targetValid: true, target: null, point: at(0, 6, 8), distance: 10, approachRadius: 30 });
+    expect(scene.subject.ai.objectTarget).toBe(null);
+  });
+});
+
+describe('the target point (0x5c8b0)', () => {
+  it('runs once per sample', () => {
+    const scene = pilot();
+    const target = aimed(scene, at(0, 0, 10));
+    scene.block.targetSample = SAMPLE;
+    target.position = at(0, 0, 20);
+    expect(updateTargetPoint(scene.block, scene.scene)).toBe(true);
+    expect(scene.block.point).toEqual(at(0, 0, 10));
+  });
+
+  it('follows the subject\'s +0x8C, and without a valid one clears S+0x10 and +0x8C', () => {
+    const scene = pilot();
+    aimed(scene, at(0, 0, 10));
+    const other = body(scene.table, 8, at(-3, 0, 4), 0);
+    scene.subject.ai.objectTarget = other.id;
+    expect(updateTargetPoint(scene.block, scene.scene)).toBe(true);
+    expect(scene.block).toMatchObject({ target: other.id, point: at(-3, 0, 4), distance: 5, relative: at(-3, 0, 4), relativeFlags: 4, targetSample: SAMPLE });
+    scene.table.remove(other);
+    const block = { ...scene.block, targetSample: 0 };
+    expect(updateTargetPoint(block, scene.scene)).toBe(false);
+    expect([block.targetValid, block.target, scene.subject.ai.objectTarget]).toEqual([false, null, null]);
+  });
+
+  it('leads modes 1 and 2 by the target speed times the constant along the target\'s row 3', () => {
+    const scene = pilot();
+    aimed(scene, at(0, 0, 100), 20, TURNED);
+    setLeadMode(scene.block, 1, f32(0.3), 0);
+    updateTargetPoint(scene.block, scene.scene);
+    // Row 3 of TURNED is (0, 0, 1); the lead F(20 × F(0.3)).
+    expect(scene.block.point).toEqual(at(0, 0, f32(100 + f32(20 * f32(0.3)))));
+    expect([scene.block.distance, scene.block.targetSpeed]).toEqual([100, 0]);
+  });
+
+  it('leads modes 3, 4 and 5 by F(((d ÷ v) + c) × w) with v the own speed, the craft maximum or the gun speed', () => {
+    for (const [mode, own] of [[3, 10], [4, 48], [5, GUN_SPEED], [9, 48]] as const) {
+      const scene = pilot();
+      aimed(scene, at(0, 0, 100), 20, REVERSED);
+      setLeadMode(scene.block, mode, 0.5, 0);
+      updateTargetPoint(scene.block, scene.scene);
+      const lead = f32((100 / own + (mode === 3 ? 0.5 : 0)) * 20);
+      expect(scene.block.point).toEqual(at(0, 0, f32(100 - lead)));
+      expect([scene.block.distance, scene.block.targetSpeed]).toEqual([100, 20]);
+    }
+  });
+
+  it('gives no lead when the own speed is ±0', () => {
+    const scene = pilot();
+    (scene.subject.movement as SteeredMovementBlock).speed = -0;
+    aimed(scene, at(0, 0, 100), 20, REVERSED);
+    setLeadMode(scene.block, 3, 0, 0);
+    updateTargetPoint(scene.block, scene.scene);
+    expect(scene.block.point).toEqual(at(0, 0, 100));
+  });
+
+  it('adds the offset along the target\'s rows in frame 0 and in world axes in frame 1, then measures to the moved point', () => {
+    const scene = pilot();
+    aimed(scene, at(0, 0, 10), 0, TURNED);
+    setTargetOffset(scene.block, 0, at(1, 2, 3));
+    updateTargetPoint(scene.block, scene.scene);
+    // 1 × (0, 1, 0) + 2 × (−1, 0, 0) + 3 × (0, 0, 1).
+    expect(scene.block.point).toEqual(at(-2, 1, 13));
+    expect(scene.block.distance).toBe(f32(Math.sqrt(4 + 1 + 169)));
+    setTargetOffset(scene.block, 1, at(1, 2, 3));
+    const block = { ...scene.block, targetSample: 0 };
+    updateTargetPoint(block, scene.scene);
+    expect(block.point).toEqual(at(1, 2, 13));
+    expect(block.relativeFlags).toBe(7);
+  });
+
+  it('adds the offset to a steered point again at every sample', () => {
+    const scene = pilot();
+    steerAtPoint(scene.block, scene.scene, at(0, 0, 10));
+    setTargetOffset(scene.block, 0, at(1, 0, 0));
+    updateTargetPoint(scene.block, scene.scene);
+    const later = pilot({ clock: SAMPLE + 1 });
+    updateTargetPoint(scene.block, { ...later.scene, subject: scene.subject });
+    expect(scene.block.point).toEqual(at(2, 0, 10));
+  });
+});
+
+describe('the steering block (0x5cd1c)', () => {
+  /** A pilot whose point lies at `local` in its frame. */
+  function viewing(local: Vec3): Pilot {
+    const scene = pilot();
+    aimed(scene, local);
+    updateTargetPoint(scene.block, scene.scene);
+    return scene;
+  }
+
+  it('changes nothing without S+0x0C', () => {
+    const { block, scene } = pilot();
+    const before = structuredClone(block);
+    computeSteering(block, scene);
+    expect(block).toEqual(before);
+  });
+
+  it('sets rows 1 and 2 to the fractions, clears all three, keeps row 3\'s value and sets the cone bit within ±b', () => {
+    const scene = viewing(at(0, 1, 1));
+    scene.block.control = { scale: 0, axes: [UNSET, UNSET, { clear: false, set: true, value: 0.25 }], speedFactor: 1 };
+    computeSteering(scene.block, scene.scene);
+    // A = π/4 is outside the cone b = 0.5, B = 0 inside it; fraction = F(F(angle) ÷ (a − (−a))).
+    const a = f32(Math.PI / 4);
+    expect(scene.block.angles).toEqual([a, 0]);
+    expect(scene.block.coneBits).toBe(2);
+    expect(scene.block.control).toEqual({
+      scale: 1, axes: [{ clear: true, set: true, value: f32(a / 2) }, { clear: true, set: true, value: 0 }, { clear: true, set: false, value: 0.25 }], speedFactor: null,
+    });
+  });
+
+  it('saturates beyond ±a without a cone bit, and turns +sat, −sat at L.z = ±0 with both angles π/2', () => {
+    const behind = viewing(at(-2, 3, 1));
+    computeSteering(behind.block, behind.scene);
+    expect(behind.block.control.axes.slice(0, 2).map(({ value }) => value)).toEqual([0.75, -0.75]);
+    expect(behind.block.coneBits).toBe(0);
+    const level = viewing(at(1, 1, 0));
+    computeSteering(level.block, level.scene);
+    expect(level.block.angles).toEqual([f32(Math.PI / 2), f32(Math.PI / 2)]);
+    expect(level.block.control.axes.slice(0, 2).map(({ value }) => value)).toEqual([0.75, -0.75]);
+  });
+
+  /** A target ahead whose row 2 is (0.6, 0.8, 0): dot 0.8 with the subject's (0, 1, 0). */
+  const ROLLED = Object.freeze([f32(0.8), f32(-0.6), 0, f32(0.6), f32(0.8), 0, 0, 0, 1]) as unknown as Matrix3;
+
+  function rolling(rollMatch: boolean, position = at(0, 0, 50)): Pilot {
+    const scene = pilot();
+    aimed(scene, position, 0, ROLLED);
+    scene.block.rollMatch = rollMatch;
+    updateTargetPoint(scene.block, scene.scene);
+    return scene;
+  }
+
+  it('matches the roll in the cone when the rows 2 are apart: row 3 := F(((t × o)·f)), unsaturated', () => {
+    const scene = rolling(true);
+    computeSteering(scene.block, scene.scene);
+    expect(scene.block.coneBits).toBe(3);
+    // t × o = (0, 0, F(0.6)) and f = (0, 0, 1).
+    expect(scene.block.control.axes[2]).toEqual({ clear: true, set: true, value: f32(0.6) });
+  });
+
+  it('does not match the roll when it is off, the rows are close enough or the target is outside the cone and far', () => {
+    const off = rolling(false);
+    computeSteering(off.block, off.scene);
+    expect(off.block.control.axes[2].set).toBe(false);
+    const close = rolling(true);
+    computeSteering(close.block, { ...close.scene, limits: { ...LIMITS, rollMatchThreshold: f32(0.8) } });
+    expect(close.block.control.axes[2].set).toBe(false);
+    const aside = rolling(true, at(0, 50, 1));
+    computeSteering(aside.block, aside.scene);
+    expect(aside.block.control.axes[2].set).toBe(false);
+  });
+
+  it('matches the roll outside the cone on an offset approach strictly nearer than 100', () => {
+    for (const [z, matched] of [[99, true], [100, false]] as const) {
+      const scene = pilot();
+      aimed(scene, at(0, 0, 0), 0, ROLLED);
+      scene.block.rollMatch = true;
+      setTargetOffset(scene.block, 1, at(0, z, 1));
+      updateTargetPoint(scene.block, scene.scene);
+      computeSteering(scene.block, scene.scene);
+      expect(scene.block.coneBits).not.toBe(3);
+      expect(scene.block.control.axes[2].set).toBe(matched);
+    }
+  });
+});
+
+const UNSET = { clear: false, set: false, value: 0 };
+const NOISE = Object.freeze({ enabled: true, low: -0.25, high: 0.25 });
+/** One draw over [−0.25, 0.25]: D(D(r × C) × 0.5) − 0.25. */
+const draw = (rand: number): number => rand * RAND_SCALE * 0.5 - 0.25;
+
+describe('the noise routines (0x5d490, 0x5d6a8)', () => {
+  it('adds a draw to each set row up to 1.0 and clamps it, makes an unset row a set draw, and leaves a row above 1.0', () => {
+    const rand = scriptedRand([32767, 0, 16384, 1000]);
+    const control: ControlBlock = {
+      scale: 0.5, axes: [{ clear: true, set: true, value: 1 }, { clear: true, set: true, value: -1 }, { clear: true, set: false, value: 7 }], speedFactor: 0.5,
+    };
+    expect(steeringNoise(NOISE, control, rand)).toEqual({
+      scale: 0.5, axes: [{ clear: true, set: true, value: 1 }, { clear: true, set: true, value: -1 }, { clear: true, set: true, value: f32(draw(16384)) }],
+      speedFactor: 0.5,
+    });
+    expect(rand.used).toBe(3);
+    const within = scriptedRand([1000]);
+    const above: ControlBlock = {
+      scale: 1, axes: [{ clear: false, set: true, value: f32(0.1) }, { clear: false, set: true, value: 1.5 }, { ...UNSET, set: true, value: 2 }], speedFactor: null,
+    };
+    const noisy = steeringNoise({ ...NOISE }, above, within);
+    expect(noisy.axes.map(({ value }) => value)).toEqual([f32(draw(1000) + f32(0.1)), 1.5, 2]);
+    expect(within.used).toBe(1);
+  });
+
+  it('draws nothing while the steering noise is off', () => {
+    const control: ControlBlock = { scale: 1, axes: [UNSET, UNSET, UNSET], speedFactor: null };
+    expect(steeringNoise({ ...NOISE, enabled: false }, control, scriptedRand([]))).toBe(control);
+  });
+
+  it('adds a draw to a speed factor up to 1.0, clamped to [0, 1.0]; without the flag or above 1.0 nothing', () => {
+    const axes: ControlBlock['axes'] = [UNSET, UNSET, UNSET];
+    expect(throttleNoise(NOISE, { scale: 0, axes, speedFactor: 0.5 }, scriptedRand([1000])).speedFactor).toBe(f32(draw(1000) + 0.5));
+    expect(throttleNoise(NOISE, { scale: 0, axes, speedFactor: 1 }, scriptedRand([32767])).speedFactor).toBe(1);
+    expect(throttleNoise(NOISE, { scale: 0, axes, speedFactor: 0 }, scriptedRand([0])).speedFactor).toBe(0);
+    for (const speedFactor of [null, 1.5]) {
+      const control: ControlBlock = { scale: 0, axes, speedFactor };
+      expect(throttleNoise(NOISE, control, scriptedRand([]))).toBe(control);
+    }
+    const control: ControlBlock = { scale: 0, axes, speedFactor: 0.5 };
+    expect(throttleNoise({ ...NOISE, enabled: false }, control, scriptedRand([]))).toBe(control);
+  });
+});
+
+describe('clearing the offset (0x5c72c)', () => {
+  it('switches it off and keeps the frame and vector', () => {
+    const { block } = pilot();
+    setTargetOffset(block, 0, at(1, 2, 3));
+    clearTargetOffset(block);
+    expect(block.offset).toEqual({ enabled: false, frame: 0, vector: at(1, 2, 3) });
   });
 });

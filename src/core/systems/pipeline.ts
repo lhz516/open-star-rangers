@@ -30,7 +30,7 @@ import { checkDockingWait, depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
-import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { applyAiMatchRequest, applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
@@ -144,7 +144,7 @@ export type Request =
  * Request types whose handler is not wired yet: posting one is a fault, never a silent drop. The P3-08 subtask that
  * implements a handler removes its type here.
  */
-const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['ai-match-speed', 'warp-departure']);
+const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['warp-departure']);
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -504,6 +504,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'match-speed':
       applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
+      return;
+    case 'ai-match-speed':
+      applyAiMatchRequest(world, entity, request);
       return;
     case 'select-target':
       applySelectTarget(context, entity, request);

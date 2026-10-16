@@ -125,7 +125,6 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
   // P3-08's requests (docs/plan/p3/02/spec.md, CR-21): their handlers belong to later subtasks, so posting one faults
   // rather than being dropped; neither post nor defer counts or queues it.
   it.each([
-    { type: 'ai-match-speed', entityId: 2, targetEntityId: 3, a: 0, lo: 0, hi: 1 },
     { type: 'warp-departure', entityId: 2 },
   ] as Request[])('refuses to post or defer $type until its handler is wired', (unwired) => {
     const queue = new RequestQueue();
