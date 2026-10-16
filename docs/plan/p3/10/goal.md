@@ -111,7 +111,7 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | completed |
 | [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | completed |
 | [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | completed |
-| [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | in-progress |
+| [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | completed |
 | [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 | pending |
 
@@ -171,6 +171,8 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-16 — spec 修订 2（用户选择）：** 25 的三个可达分支（停靠等待中对象失效的取消、活动僚机在距离外时的停靠、其余通讯反应分支）没有原版样本，改作未运行对照，由 26 以代码证据与 Node 独立期望作限定结论。交战族剩 2 次启动未用。
 
 - **2026-10-16 — spec 修订 3（用户选择）：** 26 判定已取得的样本全部一致，没有修复子任务。受攻击的状态查询的来电时间链与 RQ2 原版一侧的重算两项缺口，按修订 2 的做法改作限定结论。
+
+- **2026-10-16 — 27 完成：** 工程文档与交接已同步；顺带改正了两处 P3-10 之前的旧说法（replay 格式版本为 2；audio 中 11381 一行误写基地补给播放选择音效，按 BS7 改正）。
 
 ## 审批
 

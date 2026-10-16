@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-13
+updated: 2026-10-16
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 本文是当前构建的游戏输入与键位绑定权威说明。原版事实只在[原版键位冲突表](../original/input/key-map.md)维护；这里记录项目绑定、实现边界、浏览器能力、已知差异与验证状态。绑定契约见 [P3-05 spec](../plan/p3/05/spec.md)，源码落点见[源码结构指南](./source-structure.md)。
 
-> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。
+> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。P3-10 已接入通讯菜单（`c`、`x`、未修饰数字）与基地按键（上下导航、Enter、`l`）的 Core 规则，契约见 [P3-02 的 CB-07](../plan/p3/02/spec.md#cb-07-命令判定)；地图、Warp 与 F1 等仍待 P3-09 与 P3-13。
 
 ## 1. 适用范围
 
@@ -39,15 +39,15 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | `Space` | flight | 发射副武器；重复按下可重复提交 | 原版绑定 |
 | `Equal`、`NumpadAdd`（Shift 可并用）；`Minus`、`NumpadSubtract`（后者 Shift 可并用）；`Backslash`；`Backspace`；Shift+`Digit0` | flight | 速度增、减、归零、最大值 | 原版绑定 |
 | Shift+`Digit1`–`Digit9`；Shift 可有可无的 `NumpadMultiply` | flight | `speed-preset` 1–9；小键盘乘号为档位 8 | 原版绑定 |
-| 未修饰 `Digit1`–`Digit9`、数值态小键盘 `Numpad1`–`Numpad9` | flight | `select-number`，仅由通讯菜单按其实际菜单项捕获；普通飞行中不改速度 | 原版绑定 |
-| `Enter` / `NumpadEnter`（无 Ctrl，可带 Shift）；Ctrl 或 Ctrl+Shift+Enter | flight；前一组亦可在 base | 确认/匹配选择；Ctrl+Enter 切换速度辅助 | 原版绑定 |
-| `KeyT`、`KeyF`、`KeyR`、`KeyY`、`KeyU` | flight | 敌/友目标模式、下一个/上一个目标、前向目标 | 原版绑定；目标效果待 P3-07 合入 |
-| 未修饰 `Slash`；`NumpadDivide`（Shift 可并用）；`Comma` / `Period`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 前两项循环主武器；其余选择上一/下一导弹 | 原版绑定；武器效果待 P3-07 合入 |
-| `KeyE`；`KeyS` / `KeyG`（无 Shift 减、Shift 增）；`KeyD` | flight | 能量页；护盾/炮能量增减；损伤报告 | 原版绑定；规则效果待 P3-07 合入 |
-| `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定 |
+| 未修饰 `Digit1`–`Digit9`、数值态小键盘 `Numpad1`–`Numpad9` | flight | `select-number`：通讯菜单打开时由 Core 按菜单项捕获（P3-10），没有匹配为 `no-candidate`；菜单未打开时 `wrong-context`，不改速度 | 原版绑定 |
+| `Enter` / `NumpadEnter`（无 Ctrl，可带 Shift）；Ctrl 或 Ctrl+Shift+Enter | flight；前一组亦可在 base | 飞行中匹配目标速度（菜单打开时也是）；基地中把光标行移到服务队首（P3-10）；Ctrl+Enter 切换速度辅助 | 原版绑定 |
+| `KeyT`、`KeyF`、`KeyR`、`KeyY`、`KeyU` | flight | 敌/友目标模式、下一个/上一个目标、前向目标 | 原版绑定；P3-07 规则 |
+| 未修饰 `Slash`；`NumpadDivide`（Shift 可并用）；`Comma` / `Period`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 前两项循环主武器；其余选择上一/下一导弹 | 原版绑定；P3-07 规则 |
+| `KeyE`；`KeyS` / `KeyG`（无 Shift 减、Shift 增）；`KeyD` | flight | 能量页；护盾/炮能量增减；损伤报告 | 原版绑定；P3-07 规则 |
+| `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定；地图规则归 P3-09，现为 `not-implemented` |
 | `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；执行门禁归 P3-09 |
-| `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单 | 原版绑定；菜单行为归 P3-10 |
-| `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复） | 原版绑定；服务规则归 P3-10 |
+| `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单（`x` 也是各级菜单的退出键） | 原版绑定；P3-10 规则：子系统 13 为 2 时 `c` 为 `subsystem-disabled`，没有可显示的类别为 `no-candidate` |
+| `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复，在两端夹住） | 原版绑定；P3-10 规则 |
 | `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
 | `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
 | `KeyA`、`F11` | flight | G-09、G-10 标注，不提交命令 | 原版功能暂缺 |
@@ -59,6 +59,8 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 表格是生产绑定的高层索引；精确 modifier 状态、重复标志、动作对象与上下文按 [bindings.ts](../../src/ui/game-input/bindings.ts) 及其矩阵测试为准。`KEYBOARD_LOCK_CODES` 从实际绑定 code 与 Ctrl 修饰码推导，去除浏览器不能锁定的 Escape、Tab、Meta 与 F12。
 
 **小键盘与未绑定组合：** `Numpad1/3/0` 与小键盘导航/编辑扩展码按表处理，不根据键帽文字猜测。NumLock 与 Shift 不同才匹配通讯数字或 `NumpadDecimal` 导弹；状态相同匹配 `Numpad8` 前视/基地向上导航，以及 G-08 的 `Numpad7/9/4/5/6/2` 或基地向下导航。Ctrl+未绑定键、Shift+Slash（`?`）、作弊键和未列的小键盘组合没有游戏动作，保持浏览器行为。
+
+**通讯菜单与基地（P3-10）：** 菜单的捕获只在 Core 中判定（[CB-07](../plan/p3/02/spec.md#cb-07-命令判定)），输入层按物理键与修饰键选择命令，不读通讯 projection。所选任务的菜单只用数字与 `x`，世界创建拒绝会生成字母键的内容，所以菜单从不占用目标、武器、能量、地图或 Warp 的字母；菜单打开时 Shift+数字仍是速度档位，Enter 仍是速度匹配。基地页面（G-05）在游戏输入区之内，没有自己的按键绑定；同一批次中被接受的 `l` 之后的命令按飞行判定。原版事实见 [comm §7](../original/formats/comm.md#7-menu-state-machine-p3-1001) 与 executable 的 [CD、BS4](../original/formats/executable.md#communications-docking-and-base-service-p3-10)。
 
 **原版事实与项目选择：** 俯仰/偏航标点、Ctrl 横滚以及 Alt 可与其他项目动作并用，是项目方案，不是原版键位。检查点 K 排除 I/J/K/L，因为它们在原版处理或通讯菜单中有用途。Shift+Slash 不绑定；Slash 仅无修饰时循环主武器。键位冲突表链接 P3-07 的事实记录：目标 [T3](../original/formats/executable.md#t3-entry-points-contexts-and-timing-confirmed-code)、武器 [W3](../original/formats/executable.md#w3-selection--confirmed-code)、能量 [D10](../original/formats/executable.md#d10-energy-levels-keys-ssgg--confirmed-code)/[D15](../original/formats/executable.md#d15-left-display-pages--confirmed-code) 与 [P3-02 CR-05](../plan/p3/02/spec.md#p3-07-的契约修订d-01d-03)，不复制其事实。
 
@@ -113,7 +115,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 下游交接：
 
 - **P3-09：** 同 tick 打开地图时飞行命令门禁；地图状态与 `map-point` 的效果；飞行命令地图门禁、地图初始 Core 光标点、位置像素量化、按住 select 效果与音效。
-- **P3-10：** 通讯菜单对数字/命令的捕获优先级、菜单行为与基地服务队列/离港规则，并处理规则 5 的阻塞项；目前绑定只负责按码提交，不宣称该规则已实现。
+- **P3-10（已交付）：** 通讯菜单对数字与 `x` 的捕获优先级、菜单行为与基地服务队列/离港规则已在 Core 中实现，规则 5 的阻塞由“菜单只用数字与 `x`”的创建检查闭合；浏览器中的停靠、基地页面与离港由 P3-10/23 验证（`e2e/base-interaction.development.spec.ts`），正式通讯画面归 P3-13。
 - **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
 - **P3-15：** 真实任务完整地图路径及输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成和清键。
 

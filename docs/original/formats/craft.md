@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-11
+updated: 2026-10-16
 related: [U-001, U-008, U-022, U-026, U-027]
 ---
 
@@ -138,7 +138,7 @@ Craft records are indexed by kind bit (§1). Missile body records use the same l
 | +0x08 | f32 | Confirmed (code): `FLD` in `0x42d80` (display only) | convert |
 | +0x0C | f32 | Confirmed (code): float reads in `0x62aa0`, `0x62760`, `0x2ee60`, `0x2f314`, `0x2ffec`, `0x3c040`, `0x3c3b0`. Uses (P3-06/04): the parked Warp jump needs a squared goal distance above its square times the f32 constant `0x170fd4` (`0x2f314`); the random offset length of parked travel toward a target, in AI mode 2 without a valid +0x8C, is drawn from the target's value; the range of parked combat (`0x2ffec`) and of map visibility (`0x2ee60`, 2-D) ([parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
 | +0x10–+0x53 | collision shape (§3.5.1) | Confirmed (code) | see §3.5.1 |
-| +0x54 | i32 | Confirmed (code): signed divide in `0x3060c`, unsigned divide in `0x39664`; signed compare in `0x398ec`; `FILD` in `0x2b814` | convert |
+| +0x54 | i32 | Confirmed (code): signed divide in `0x3060c`, unsigned divide in `0x39664`; signed compare in `0x398ec`; `FILD` in `0x2b814`. Base service (P3-10/05): `0x39664` sets the rate trunc(+0x54 ÷ 240) and each energy step of `0x398ec` adds it, capped at +0x54 ([BS1](./executable.md#bs1-state--confirmed-code), [BS6](./executable.md#bs6-per-frame-service-0x398ec--confirmed-code)) | convert |
 | +0x58 | int32 | Confirmed (code, width): integer subtract in `0x3060c`, `0x30b20`, `0x30bc0`. Use (P3-06/03): the energy operand E = +0x58 − (+0x64[level 1] + +0x78[level 2]) of the player's maximum speed ([maximum speed](./executable.md#throttle-maximum-speed-and-speed-matching-p3-0603)); Likely the generator energy | convert |
 | +0x5C | i32 | Confirmed (code): integer multiply and divide in `0x3060c`; signed compares in `0x3071c`, `0x30994`; `FILD` in `0x434ce`, `0x44070` | convert |
 | +0x60 | i32 | Confirmed (code): signed divide in `0x3071c`, `0x30994` | convert |
@@ -150,7 +150,7 @@ Craft records are indexed by kind bit (§1). Missile body records use the same l
 | +0x90 | i32 | Confirmed (code): signed compare in `0x3071c`; zero in all 480 | convert |
 | +0x94 | pointer to pairs (§3.6) | Confirmed (code): `0x30d2c` | array; null when +0x98 is 0 |
 | +0x98 | i32 pair count | Confirmed (code): signed compare in `0x30d2c` | array length |
-| +0x9C | i32 | Confirmed (code): `FILD` in `0x67938`, `0x4f550`; signed compare in `0x398ec`; integer arithmetic in `0x38f20`, `0x39664`, `0x4d50c`, `0x614a8`, `0x61f20` | convert |
+| +0x9C | i32 | Confirmed (code): `FILD` in `0x67938`, `0x4f550`; signed compare in `0x398ec`; integer arithmetic in `0x38f20`, `0x39664`, `0x4d50c`, `0x614a8`, `0x61f20`. Base service (P3-10/05): `0x39664` sets the rate trunc(+0x9C ÷ 60) and each hull step of `0x398ec` adds it plus rand % 100, capped at +0x9C ([BS1](./executable.md#bs1-state--confirmed-code), [BS6](./executable.md#bs6-per-frame-service-0x398ec--confirmed-code)) | convert |
 | +0xA0 | f32 | Confirmed (code): float compare and multiply in `0x2f314`. Use (P3-06/04): the length cap of the parked Warp jump, applied when it is above a fixed lower bound and below the goal distance ([parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
 | +0xA4 | i32 | Confirmed (code): integer multiply in `0x2be00`; `!= 0` test and shift left in `0x2bf08`; signed `> 0` test (`TEST`, `JLE`) and integer add with +0xA8 in `0x2ff98`, the parked path's Warp eligibility (P3-06/04, [parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)); written only by `0x28110` (§1). Typed int32 until the signed test was found; every baseline value is non-negative, so the converted values do not change | convert |
 | +0xA8 | i32 | Confirmed (code): `FILD` in `0x50068`; integer add and shift in `0x2ff98` and shift in `0x2f298`: +0xA8 + +0xA4 seconds after +0xC8 a parked craft may Warp again, and +0xA8 seconds is the length of its Warp transit (P3-06/04, [parked update](./executable.md#world-boundary-active-area-parking-and-autopilot-p3-0604)) | convert |
