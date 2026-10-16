@@ -96,7 +96,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | completed |
-| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
+| [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | in-progress |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | pending |
 | [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | completed |
 | [31-long-test-timeouts.md](./subtasks/31-long-test-timeouts.md) | — | completed |
