@@ -725,6 +725,11 @@ P3-08 的系统在 [systems/ai.ts](../../../src/core/systems/ai.ts)（控制器�
   - 视角 1 而没有 Warp 过程不可达（只有开始进入视角 1），Warp 步与完成跳过它。
   - 地图标记缺失时（高概率不可达）select 照常写目的地并报告 `missing`，不重新创建（MW-03）。
 - **P3-09 依据的研究结论：** 实现依据的原版事实大多为已确认（代码），见 executable 的 [Strategic map and Warp](../../original/formats/executable.md#strategic-map-and-warp-p3-09)。运行事实（Warp 时长、误差取值、到达分布、E = 0 读数的后果与历史探索的运行佐证）由 P3-09/09、24 的原版运行取得，不以默认值定稿。被毁视角取代地图、放弃 Warp 时 `inWarp` 保持等跨任务边界照原版复现，由 P3-11 接入后联合验证。
+- **未决的 P3-09 × P3-10 联合故障（合并评审发现，未修复）：** MW-04 与 CB-07 各自成立，合在同一实现中出现两种原版不可达或未研究的同 tick 交互，现在都以 Core 故障结束（P3-02 spec [审批](../../plan/p3/02/spec.md#审批)中 2026-10-15 合并说明的“未决”一条）：
+  1. 停靠倒计时在 `mission-flow` 中到期（子状态 4 → 5，投递 `dock`）的同一 tick，`request-warp` 仍按已提交的飞行视角通过 MW-04 的门禁，延后的 `warp-start` 在 `dock` 之后应用：玩家停靠且进入 Warp（视角 1、上一视角 6）；下一 tick 子状态 5 自动离港，停靠的视角切换以 `docking.view-switch` 故障。
+  2. 同一批中被接受的 `launch` 之后的 `request-warp` 按停靠位置判定能量并通过，而 `warp-start` 在 `depart` 把玩家移到离港位姿之后按新位置重算消耗，可能超过能量，以 `warp.start-check` 故障。第 2 种只在 Core 的批量命令中出现（原版每次轮询只取一键）。
+
+  负责：修订 P3-09 的 MW-04 或 P3-10 的 CB-07，由 P3-10 的后续工作（或 P3-09 的修订）按扩展规则决定并加测试；P3-08 不修复（P3-08/33 记录）。候选方案（未定）：在 `request-warp` 的门禁中加入子状态 5（含同批已接受的 `launch`）时拒绝，或按离港位姿判定；以及离开视角 1 的停靠视角切换是否发出 `left-page-changed`。
 - **P3-08 的对照结论（[子任务 27](../../plan/p3/08/subtasks/27-comparison-conclusions.md#完成证据)、[B-011 的测量结果](../../original/behavior/B-011-ai-wingman.md#测量结果)、[子任务 25](../../plan/p3/08/subtasks/25-real-content-check.md#完成证据)）：**
   - **适用范围：** 原版为 DOSBox-X fixed 40000 cycles 下的正式样本集（26 的 e-02、wii-01、wii2-01 只计已完整走完的窗口中的合格样本，加按资格复用的 10 的 w-01、w2-01、e-04、b-09；U-021 未冻结，冻结配置不同时须重测）；新版为提交 `b8f35072`（`src` 树 `aab6ee47`）的正式录制会话，默认步长，只经正常 `TickInput` 驱动；内容为转换器 `graphics-5.logic-4.audio-2.models-4` 的本机真实导入（manifest `sha256:648bc29a…`、source `sha256:67391efb…`）。不推广到其他配置、内容或候选。
   - **连续行为（D-02 的 K-01 至 K-10）：** 正式样本集中每个计入的原版样本都满足判据，新版的每个链接与事件都满足判据，各类都有配对，没有发现新版与原版不一致，没有新增修复子任务。“一致”指在 D-02 的规则下一致：时间类在各自的步长下精确，编队按 Φ_F 与 P3-06 R-04c 的步长预算，不是逐帧重现。
@@ -744,7 +749,7 @@ P3-08 的系统在 [systems/ai.ts](../../../src/core/systems/ai.ts)（控制器�
   - 照原样复现的怪癖：规避 `0x5d374` 的每采样缓存（决定 6）、阻塞待处理的命令、愤怒持续与累计不衰减（决定 5）、攻击航线结束后提前量常数保持 0、分离时一次油门 0.0。
   - 不存原版字段或取值：`AiMode` 不加 3，扳机值存为布尔，C+0x11C/+0x160/+0x164 与退出值不存（决定 12）；脚本级的解析计数代替逐条目计数（决定 10）。
   - 数值文本在创建时严格校验（CR-15 的 `invalid-number`，决定 13），不复现 `atoi`/`strtod` 的容错路径。
-  - 运行中仍可能越界的情形是 Core 故障，不复现原版的越界读取或未屏蔽的异常：执行预算（决定 14）、Xpon 油门的表索引（`xpon.throttle`）、关键字值低字节 > 2（`ai-interpreter.channel`）、列表 1 当前为 +0x18 ≠ 0 的炮时的 AI 锁定（`ai-firing.lock-gun`）、提前量模式 5 而第 0 列表没有当前炮（`ai-piloting.main-weapon`）。切片内容都不触发。
+  - 运行中仍可能越界的情形是 Core 故障，不复现原版的越界读取或未屏蔽的异常：执行预算（决定 14）、Xpon 油门的表索引（`xpon.throttle`）、关键字值低字节 > 2（`ai-interpreter.channel`）、列表 1 当前为 +0x18 ≠ 0 的炮时的 AI 锁定（`ai-firing.lock-gun`）、提前量模式 5 而第 0 列表没有当前炮（`ai-piloting.main-weapon`；这两项为 CR-24 决定 18）。切片内容都不触发。
   - 动态 Xpon 用 `source: null` 加 `transponder.creator`（决定 7），`lastParkedUpdateClock` 取创建时钟（决定 9）；共享测试实体 `entityInit` 对各种类都建无来源机体，所以“无来源的机体只能是构造的 Xpon”只对种类 `0x4000` 强制（P3-08/12）。
   - 当前转换器键下 schema 1 的 `data/ai-programs` payload（只能由篡改或非发布包产生）在缓存恢复时显示为已验证，开始任务时由世界创建以明确的内容诊断拒绝（P3-08/24，协调者接受的已知限制，见 [app 模块说明](./app.md#应用资源持有者)）。
 - **P3-08 依据的研究结论：** 实现依据的原版事实大多为已确认（代码），见 ai 的 [§1](../../original/formats/ai.md#1-loading-the-id-chain-and-the-group-0-closure-confirmed)、[§10–§12](../../original/formats/ai.md#10-support-closure-of-the-slice-p3-0801) 与 executable 的 [AI (P3-08)](../../original/formats/executable.md#ai-p3-08)。高概率或范围有限的：`b` 属于正常玩法（X5，代码注释标为 Likely）；僚机 b 4 的到达分支不可达（WA5）；ps +0 与 +0x10–+0x18 是玩家的 Warp 目的地（WA4）。已知的代码重复：Xpon 构造与 combat-init.ts 的能量期限算式（D13）各有一份。
@@ -863,6 +868,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
     - 基地上下文中 `toggle-map` 已可打开地图（上一视角 6），关闭时回到基地且不清目标；从基地打开的地图中 `request-warp` 为 `wrong-context`。从基地打开的地图期间基地帧例程不运行（视角不是 6）而自动选敌照常；离港把视角设为 max(上一视角, 0xC)；从地图停靠（视角 6、上一视角 8、清目标）；同帧停靠的边缘情形。这些目前只以合成的基地前态测试，真实基地路径与 P3-15 联合验证。
     - 视角切换中涉及 6 的部分写在 `switchView` 中，调用者发出返回的页面变化；地图标签按对象 +0x17C 闪烁（`0x3bed0` 写入）时在 `MapLabel` 中加入该状态（按扩展规则修订 MW-11）。
     - 停靠在视角 0 与 1 中被拒（MW-09）。
+    - **未决的联合故障：** 停靠倒计时到期与 `request-warp` 同 tick（`docking.view-switch`），以及同批 `[launch, request-warp]`（`warp.start-check`）两种情形现在以 Core 故障结束，须修订 CB-07（或 P3-09 的 MW-04）决定，见[已知差异](#已知差异)中的“未决的 P3-09 × P3-10 联合故障”。
   - **来自 P3-08**（D-03 的 CR-27、CR-28，CB-04、CB-06、CB-08、CB-12、CB-18；P3-10 已合入本分支，下列衔接由 P3-08 实现并验证）：
     - **命令请求：** P3-10 的 `deliver-command` 只写单槽 `ai.pendingCommand`（后写覆盖，不校验种类）；种类 2 的单槽由 P3-08 的僚机消费者读取并清除（活动 `0x614a8`、停放 `0x61f20`），基地类的由 P3-10 的 `0x3bed0` 在 AI 步之后读取。阻塞的命令留在单槽中，不回复、没有事实（CR-24 决定 5）。
     - **回复事实：** 消费者以线号调用 P3-10 的 `queueLine`（CB-06），回复的抽取、入队与 `radio-queued` 都在 P3-10；随后 P3-08 发出 `wingman-command-consumed`（`replyLine` 是请求的线号，停放码 3、4 无玩家时为 null）。`queueLine` 在处理器调用中从世界抽取，所以僚机与停放处理器逐次抽取；P3-10 改变 `queueLine` 的抽取或入队次序时须重跑 P3-08 的 [ai-commands.test.ts](../../../src/core/systems/ai-commands.test.ts) 的孪生世界与联合录制测试。菜单 → 命令 → 回复的 Node 联合录制（码 1–8，活动与停放，经未修改的 `replayRecord` 重放）已由 P3-08/20 执行，P3-10 不需重复；生产菜单的浏览器闭环归 P3-15。
