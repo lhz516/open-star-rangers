@@ -44,6 +44,8 @@ updated: 2026-10-15
 - `src/core/rules/speed-match.ts`：速度匹配一般化为 (a, lo, hi)（修订 ⑧）。
 - `src/core/rules/speed-match.test.ts`：一般化与 (0, 0, 1) 位一致的测试。
 - `docs/original/formats/executable.md`：A2–A5 实现中核实的代码事实。
+- `src/core/systems/pipeline.ts`：接入 `ai-match-speed` 并移出 UNWIRED_REQUESTS。
+- `src/core/systems/pipeline.test.ts`：移除已接入的拒绝用例。
 
 ## 验收标准
 
