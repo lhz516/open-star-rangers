@@ -189,7 +189,7 @@ export function everyOpcodeScript(keywords = syntheticAiPrograms().keywordTables
   const keyword = (table: number, entry: number) => `${keywords[table][entry].name.toLowerCase()}  `;
   return script([
     scriptItem(100, '1 x [0.5 1.5 -] 2'), scriptItem(104, '0.75'), scriptItem(106), scriptItem(107), scriptItem(111, '1, 2, 3'),
-    scriptItem(200, 'Y'), scriptItem(210, '1.5'), scriptItem(211, '-2'), scriptItem(222, 'no'), scriptItem(231, keyword(0, 1)),
+    scriptItem(200, 'Y'), scriptItem(210, '1.5'), scriptItem(211, '-2'), scriptItem(222, 'no'), scriptItem(231, keyword(0, 0)),
     scriptItem(232, 'T'), scriptItem(240, '[10 20]'), scriptItem(300, keyword(1, 0)), scriptItem(301, keyword(2, 1)), scriptItem(400, '32'),
     scriptItem(401, '[1 4 +]'), scriptItem(402), scriptItem(1000, '[16 64]'), scriptItem(1001, '45'), scriptItem(1002, '[10 20]'),
     scriptItem(1003, '5'), ...(attackPass ? [scriptItem(1101, 'f')] : []), scriptItem(9500), scriptItem(9999, '1'), scriptItem(10000),

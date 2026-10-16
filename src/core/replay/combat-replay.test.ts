@@ -78,8 +78,8 @@ const TICKS = 120;
 const PLAYER = 1;
 const FIRST = 2;
 
-/** Seed 10: the fragments of the first kill strike the player (P3-08's selection draws moved the default seed's away). */
-const INPUT = combatInput({ run: { seed: 10 } });
+/** Seed 12: the fragments of the first kill strike the player (P3-08's selection and interpreter draws moved others' away). */
+const INPUT = combatInput({ run: { seed: 12 } });
 const CONTENT = contentOf(INPUT);
 
 /** The run with a checkpoint every tick, reading projection, Render State and snapshot after every step. */

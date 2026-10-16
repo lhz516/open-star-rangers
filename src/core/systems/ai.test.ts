@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mount } from '../../content/rule-data/rule-data.test-support.ts';
+import { mount, parameterEntry, script, scriptItem } from '../../content/rule-data/rule-data.test-support.ts';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
 import { enableAiLock, pressChannel } from '../rules/ai-firing.ts';
@@ -7,18 +7,19 @@ import { installedController } from '../rules/ai-selection.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
-import { asCreateInput, craftInfoContent, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
+import { aiProgramsContent, asCreateInput, craftInfoContent, declaration, missionFrame, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
 import { ALL_KINDS, type Activity, type AiController, type Entity, type ObjectState, type TableController } from '../world/entity-table.ts';
 import { constructWorld, type World } from '../world/world.ts';
 import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { controllerCall, installedHandler, updateController } from './ai.ts';
+import { controllerCall, installedHandler, requestWarpDeparture, updateController } from './ai.ts';
 import { registerTick, type Request, type TickContext } from './pipeline.ts';
 
 // The controller part of `0x20c18` (docs/plan/p3/02/spec.md, CR-23; docs/original/formats/ai.md §1). Expectations
 // follow ai §1's callback table: states 0–3 install after the Warp-transit test, 4 nothing, 5 and 6 remove, 7 step; the
 // parked handler while parked, otherwise the record's. Each handler's subtask covers its install's update body and draws
-// (P3-08/15's handoff): the base's are below (P3-08/18); the interpreter, wingman and parked handler are not wired yet.
+// (P3-08/15's handoff): the base's (P3-08/18) and the interpreter's (P3-08/16) are below; the wingman and parked handler
+// are not wired yet.
 
 function setUp(parts: WorldInputParts = { run: { wingman: 0 } }): { readonly state: WorldState; readonly world: World } {
   const state = initialWorldState(asCreateInput(worldInput(parts)));
@@ -101,8 +102,8 @@ describe('the controller part while a handler is not wired (P3-08/15; CR-23)', (
     world.step(tickInput());
     const context = registerTick(state, readTickInput(tickInput()));
     const before = state.rngState;
-    // The base (kind 17) is wired (P3-08/18).
-    for (const entity of entities(state).filter(({ kindBit }) => kindBit !== 17)) {
+    // The base (kind 17, P3-08/18) and the table programs (kind 7, P3-08/16) are wired.
+    for (const entity of entities(state).filter(({ kindBit }) => kindBit !== 17 && kindBit !== 7)) {
       const program = entity.ai.program;
       updateController(context, entity);
       expect(entity.ai.program).toBe(program);
@@ -333,5 +334,150 @@ describe('the base 0x62c10 and the AI step 0x5dcd4 (P3-08/18; AC-03, AC-06; A12�
     base.state = 'area-switch';
     expect(shotsBy(world.step(tickInput()), base)).toEqual([]);
     expect(base.ai.program).toMatchObject({ controller: null });
+  });
+});
+
+describe('the interpreter 0x64cb8 in the object update (P3-08/16; AC-03, AC-04, AC-17; CR-23, CR-25)', () => {
+  const keywords = aiProgramsContent().keywordTables;
+  /** The state script: a draw test of a drawn bound, then a wait of 100. */
+  const STATE_SCRIPT = [scriptItem(240, '[10 20]'), scriptItem(1000, '100'), scriptItem(10000)];
+
+  /**
+   * AI programs whose DFPG 0 arms the engagement timer (+0x04 50), installs with a draw-free script (lead mode 4) and
+   * lists `stateScript` for states 1 and 3; record 0 without noise or `0x5e4d0` (+0x44 = +0x50 = 0), period 70.
+   */
+  function content(stateScript = STATE_SCRIPT) {
+    const programs = aiProgramsContent();
+    programs.entries = [
+      { ...parameterEntry(1, { state1: [2], state3: [2] }), at04: 50, at10: 100, at14: 50 },
+      { kind: 'script', items: [scriptItem(300, keywords[1][4].name), scriptItem(10000)] },
+      { kind: 'script', items: stateScript },
+      parameterEntry(null, { state1: [4] }),
+      script(),
+    ] as typeof programs.entries;
+    programs.programs[0] = { ...programs.programs[0], at44: 0, at50: 0 };
+    programs.programs[2] = { ...programs.programs[2], parameters: 3 };
+    return programs;
+  }
+
+  /** The player and two kind-7 craft 112.5 and 225 above it, after instantiation. */
+  function interpreterWorld(stateScript = STATE_SCRIPT) {
+    const mission = missionFrame();
+    mission.declarations = [
+      declaration(0, { craftType: 0, position: { x: 100, y: 200, z: 0 } }),
+      declaration(1, { craftType: 7, position: { x: 100, y: 200, z: 60 } }),
+      declaration(2, { craftType: 7, position: { x: 100, y: 200, z: 120 } }),
+    ];
+    const state = initialWorldState(asCreateInput(worldInput({ mission, aiPrograms: content(stateScript) })));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    const [first, second] = entities(state).filter(({ kindBit }) => kindBit === 7);
+    return { state, world, first, second };
+  }
+
+  const contextOf = (state: WorldState): TickContext => {
+    const context = registerTick(state, readTickInput(tickInput()));
+    state.clock = context.time.clock;
+    return context;
+  };
+
+  it('installs in the first callback with the install script and the first update in the same call, and their draws', () => {
+    const { state, first } = interpreterWorld();
+    const context = contextOf(state);
+    const before = state.rngState;
+    const [engagement, , bound] = randValues(before, 4);
+    updateController(context, first);
+    // 0x63250 (rand % 50), the state-1 list (rand % 1), the parse of [10 20] and the 240 test.
+    expect(state.rngState).toEqual(rngStateAfter(before, 4));
+    const clock = context.time.clock;
+    const controller = first.ai.program.type === 'table' ? first.ai.program.controller : null;
+    expect(controller).toMatchObject({
+      handler: 'interpreter', nextUpdateClock: clock + 70, period: 70, engagement: { dueClock: clock + (engagement % 50), period: 50 },
+      steering: { leadMode: 4 }, interpreter: { state: 1, lastRunEnded: false, execution: { script: 2, item: 2, wait: { active: true, until: clock + 100 } } },
+    });
+    expect(state.ai.parseCache).toEqual([{ script: 2, uses: 1, items: [{ type: 'integer', value: 10 + (bound % 11) }, { type: 'integer', value: 100 }, { type: 'integer', value: 0 }] }]);
+    expect(context.events).toEqual([]);
+  });
+
+  it('shares the parse between two craft, releases it at each removal and parses again with new draws at the reinstall', () => {
+    const { state, first, second } = interpreterWorld();
+    const context = contextOf(state);
+    updateController(context, first);
+    let before = state.rngState;
+    updateController(context, second);
+    // The second install draws for the timer, its list and its 240, not for the cached parse.
+    expect(state.rngState).toEqual(rngStateAfter(before, 3));
+    expect(state.ai.parseCache.map(({ script, uses }) => [script, uses])).toEqual([[2, 2]]);
+    const items = state.ai.parseCache[0].items;
+    before = state.rngState;
+    first.state = 'area-switch';
+    updateController(context, first);
+    expect(state.ai.parseCache.map(({ script, uses }) => [script, uses])).toEqual([[2, 1]]);
+    second.state = 'pending-removal';
+    updateController(context, second);
+    expect(state.ai.parseCache).toEqual([]);
+    expect(state.rngState).toEqual(before);
+    expect(first.ai.program).toEqual({ type: 'table', record: 0, controller: null });
+    first.state = 'new';
+    updateController(context, first);
+    expect(state.rngState).toEqual(rngStateAfter(before, 4));
+    expect(state.ai.parseCache).toEqual([{ script: 2, uses: 1, items: [{ type: 'integer', value: 10 + (randValues(before, 3)[2] % 11) }, items[1], items[2]] }]);
+  });
+
+  it('keeps each world\'s parse cache to itself', () => {
+    const one = interpreterWorld();
+    const other = interpreterWorld();
+    updateController(contextOf(one.state), one.first);
+    expect(one.state.ai.parseCache).toHaveLength(1);
+    expect(other.state.ai.parseCache).toEqual([]);
+  });
+
+  it('runs the interpreter in the AI step only when due, the period after each run', () => {
+    const { state, world, first } = interpreterWorld();
+    let runs = 0;
+    let deadline: number | null = null;
+    for (let tick = 0; tick < 120; tick++) {
+      world.step(tickInput());
+      const { program } = first.ai;
+      const due = program.type === 'table' && program.controller !== null ? program.controller.nextUpdateClock : null;
+      if (deadline !== null && due !== deadline) {
+        // A run on the first sample past the deadline (2 units a tick), which it moves the period on.
+        expect(state.clock).toBe(deadline + 2);
+        expect(due).toBe(state.clock + 70);
+        runs++;
+      } else if (deadline !== null) {
+        expect(state.clock).toBeLessThanOrEqual(deadline);
+      }
+      deadline = due;
+    }
+    expect(runs).toBeGreaterThan(2);
+  });
+
+  it('latches a fault when a script never yields: the step publishes nothing, and every later call is refused with it (AC-17)', () => {
+    const { world } = interpreterWorld([scriptItem(104, '0.5', 0), scriptItem(10000)]);
+    const fault = thrownBy(() => world.step(tickInput()));
+    expect(fault).toMatchObject({ code: 'budget-exhausted', site: 'ai.dispatches-per-run' });
+    expect(thrownBy(() => world.step(tickInput()))).toBe(fault);
+    expect(thrownBy(() => world.snapshot())).toBe(fault);
+  });
+
+  it('asks for a Warp departure (0x5e6cc) only for an active object in state 7 whose reference point lies outside the active area', () => {
+    const { state, first } = interpreterWorld();
+    const context = contextOf(state);
+    Object.assign(first, { state: 'active', activity: 'active', inWarp: false, warpClock: 0 });
+    first.ai.target = null;
+    // The goal next to the player: inside the active area.
+    first.ai.goal = { x: 0, y: 0, z: 0 };
+    expect(requestWarpDeparture(context, first)).toBe(false);
+    first.ai.goal = { x: 30_000, y: 0, z: 0 };
+    for (const refused of [{ state: 'awaiting-presentation' }, { activity: 'parked' }, { inWarp: true }] as const) {
+      const entity = { ...first, ...refused } as Entity;
+      expect(requestWarpDeparture(context, entity)).toBe(false);
+    }
+    first.ai.target = 9999;
+    expect(requestWarpDeparture(context, first)).toBe(false);
+    first.ai.target = null;
+    // Allowed, it posts `warp-departure`, whose handling P3-08/21 wires: until then the post itself is a fault.
+    expect(thrownBy(() => requestWarpDeparture(context, first))).toMatchObject({ code: 'invariant-violated', site: 'pipeline.request-unwired' });
   });
 });

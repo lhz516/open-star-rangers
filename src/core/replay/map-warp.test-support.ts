@@ -1,7 +1,7 @@
 import { gun, mount } from '../../content/rule-data/rule-data.test-support.ts';
 import type { Command, TickInput } from '../contracts/tick-input.ts';
 import type { MapPixel } from '../world/map-rule-data.ts';
-import { asCreateInput, craftInfoContent, declaration, missionFrame, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
+import { aiProgramsContent, asCreateInput, craftInfoContent, declaration, missionFrame, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
 import { tickInput } from '../world/world.test-support.ts';
 
 // P3-09's synthetic map and Warp chain (docs/plan/p3/09/spec.md, AC-11; docs/plan/p3/02/spec.md, MW-02 to MW-08):
@@ -61,7 +61,18 @@ export function chainCraftInfo() {
   return info;
 }
 
-export const chainInput = (parts: WorldInputParts = {}) => asCreateInput(worldInput({ mission: chainMission(), craftInfo: chainCraftInfo(), ...parts }));
+/**
+ * The synthetic AI programs with every table record selecting only kind 0x10, which nothing instantiates, so that the
+ * hostiles get no program and hold still: the interpreter would otherwise steer and fire them (P3-08/16).
+ */
+export function chainAiPrograms() {
+  const programs = aiProgramsContent();
+  for (const program of programs.programs) program.kindMask = 0x10;
+  return programs;
+}
+
+export const chainInput = (parts: WorldInputParts = {}) =>
+  asCreateInput(worldInput({ mission: chainMission(), craftInfo: chainCraftInfo(), aiPrograms: chainAiPrograms(), ...parts }));
 
 /** The map's side and the world's minimum and units per pixel in this frame. */
 export const MAP_SIDE = 400;

@@ -13,20 +13,27 @@
  * explosion sets state 6; the rescue reaches none of this (ai §1).
  *
  * The handlers are static calls into their rule modules (CR-07), wired by the subtasks that implement them: the
- * interpreter `0x64cb8` (P3-08/16), the base `0x62c10` (rules/ai-firing.ts), the wingman `0x610c8` (P3-08/19) and the
- * parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller stays unset, no
- * handler runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a program.
+ * interpreter `0x64cb8` (rules/ai-interpreter.ts), the base `0x62c10` (rules/ai-firing.ts), the wingman `0x610c8`
+ * (P3-08/19) and the parked handler `0x62250` (P3-08/21). Until a handler is wired, nothing installs it: the controller
+ * stays unset, no handler runs and nothing draws, as before the AI existed; no stand-in handler pretends to run a
+ * program.
+ *
+ * The interpreter's item dispatches are counted per tick (CORE_LIMITS.aiDispatchesPerTick, CR-25) in a count this module
+ * keeps for each tick context; a Warp departure an AI rule asks for goes through requestWarpDeparture (`0x5e6cc`).
  *
  * A handler draws from the world's RNG through one RandStream per call, which the world continues after; its requests
  * are posted at once, as the original posts its messages in the subject's own update.
  */
 import { CoreFaultError } from '../errors.ts';
 import { firingDataOf, installBase, runTriggerLoop, updateAiLock, updateBase } from '../rules/ai-firing.ts';
+import { installInterpreter, removeInterpreter, updateInterpreter, type DispatchCount, type InterpreterCall } from '../rules/ai-interpreter.ts';
 import { installedController, isControllerDue, type ControllerRecord } from '../rules/ai-selection.ts';
 import type { BuiltInHandler } from '../rules/ai-support.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
+import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
 import { RandStream } from '../rules/original-random.ts';
-import { isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
+import { isWarpAllowed } from '../rules/parked-travel.ts';
+import { isActiveState, isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import type { TickContext } from './pipeline.ts';
 import { fireAiChannel, fireAutomatic } from './weapons.ts';
@@ -71,8 +78,73 @@ const BASE_HANDLER: HandlerModes = Object.freeze({
   remove: () => {},
 });
 
+/**
+ * `0x2fef8`: whether `entity` may leave by Warp (D6): active, not in Warp, its reference point (the AI target +0x90's
+ * position, the goal without one; an AI target that no longer resolves refuses) outside the active area (everything is
+ * without a player), and `0x2ff98`. No draw. The departure's handling checks it again (CR-21, P3-08/21).
+ */
+export function mayDepartByWarp(world: WorldState, entity: Entity): boolean {
+  if (entity.activity !== 'active' || entity.inWarp) return false;
+  const aiTarget = entity.ai.target === null ? null : world.entities.get(entity.ai.target);
+  if (aiTarget === undefined) return false;
+  const reference = aiTarget === null ? entity.ai.goal : aiTarget.position;
+  if (isWithinActiveArea(activeAreaCentre(world), reference)) return false;
+  const craft = world.craftInfo.content.craft[entity.kindBit];
+  if (craft === undefined) throw fault('craft');
+  return isWarpAllowed(entity.warpClock, craft, world.clock);
+}
+
+/**
+ * `0x5e6cc`(C): `entity`'s Warp departure request, from the AI rules in its object update: for an object in state 7 or
+ * above that mayDepartByWarp allows, `warp-departure` for request handling. Returns whether it posted.
+ */
+export function requestWarpDeparture(context: TickContext, entity: Entity): boolean {
+  if (!isActiveState(entity.state) || !mayDepartByWarp(context.world, entity)) return false;
+  context.requests.post({ type: 'warp-departure', entityId: entity.id });
+  return true;
+}
+
+/**
+ * The interpreter's dispatches in each tick so far, by tick context (CR-25): a stand-in for a per-tick count on the
+ * TickContext itself, which the pipeline creates afresh for every tick.
+ */
+const DISPATCHES = new WeakMap<TickContext, DispatchCount>();
+
+function dispatchesOf(context: TickContext): DispatchCount {
+  let count = DISPATCHES.get(context);
+  if (count === undefined) {
+    count = { dispatches: 0 };
+    DISPATCHES.set(context, count);
+  }
+  return count;
+}
+
+/** An interpreter call on `entity` in its object update, drawing from `rand`. */
+const interpreterCall = (context: TickContext, entity: Entity, rand: RandStream): InterpreterCall => ({
+  world: context.world,
+  subject: asCraft(entity),
+  rand,
+  post: (request) => context.requests.post(request),
+  depart: () => requestWarpDeparture(context, entity),
+  tick: dispatchesOf(context),
+});
+
+/** The table-program interpreter `0x64cb8` (rules/ai-interpreter.ts). */
+const INTERPRETER_HANDLER: HandlerModes = Object.freeze({
+  install: (context: TickContext, entity: Entity, common: AiControllerCommon) =>
+    withRand(context.world, (rand) => installInterpreter(interpreterCall(context, entity, rand), common)),
+  update: (context: TickContext, entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'interpreter') throw fault('interpreter');
+    withRand(context.world, (rand) => updateInterpreter(interpreterCall(context, entity, rand), controller));
+  },
+  remove: (context: TickContext, _entity: Entity, controller: AiController) => {
+    if (controller.handler !== 'interpreter') throw fault('interpreter');
+    removeInterpreter(context.world, controller);
+  },
+});
+
 /** The wired handlers; each handler subtask adds its own (module comment). */
-const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({ base: BASE_HANDLER });
+const HANDLERS: { readonly [Handler in AiHandler]?: HandlerModes } = Object.freeze({ base: BASE_HANDLER, interpreter: INTERPRETER_HANDLER });
 
 /** The states in which `0x20c18` installs (0–3), removes (5, 6) and steps (7). */
 const INSTALL_STATES: ReadonlySet<ObjectState> = new Set(['new', 'presentation-ready', 'awaiting-presentation']);

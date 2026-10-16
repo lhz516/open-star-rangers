@@ -23,8 +23,9 @@
  * - `0x5c8b0` (updateTargetPoint) with every lead mode, the offsets and the once-per-sample cache;
  * - `0x5cd1c` (computeSteering) with the cone bits and roll matching against C+0x118;
  * - the noise routines `0x5d490` (steeringNoise) and `0x5d6a8` (throttleNoise).
- * ai-piloting.ts builds the scene and posts the blocks. `0x5cc6c` (opcodes 203–205) is not reachable in the slice
- * (ai §10.2) and is not implemented.
+ * - `0x5cc6c` (updateReverseView), which the interpreter's state machine reaches on entering state 5 (opcodes 203–205,
+ *   its other callers, are not reachable in the slice: ai §10.2).
+ * ai-piloting.ts builds the scene and posts the blocks.
  *
  * Numbers follow the native instructions (53-bit precision, round to nearest): every arithmetic step is a JavaScript
  * double operation and every f32 store `Math.fround`; FPATAN and FSQRT are Math.atan2 and Math.sqrt, the continuous
@@ -241,8 +242,8 @@ const LOCK_BREAK_PERIODS = 4;
 const LOCK_BREAK_RATES = Object.freeze([0.5, 0, 0.5] as const);
 const LOCK_BREAK_THROTTLE = 1;
 
-/** The dot product of two row-3 vectors as `0x60aa0` forms it: (y·y′ + z·z′) + x·x′ in double. */
-function forwardDot(a: Entity, b: Entity): number {
+/** The dot product of two row-3 vectors as `0x60aa0`, `0x64474` and `0x64d58` form it: (y·y′ + z·z′) + x·x′ in double. */
+export function forwardDot(a: Entity, b: Entity): number {
   const p = rowOf(a.orientation, 2);
   const q = rowOf(b.orientation, 2);
   return p.y * q.y + p.z * q.z + p.x * q.x;
@@ -523,6 +524,25 @@ export function updateTargetPoint(block: SteeringBlock, scene: AiSteeringScene):
   block.point = point;
   block.relative = pointInFrame(subject.orientation, subject.position, point);
   block.relativeFlags = positiveFlags(block.relative);
+  return true;
+}
+
+/**
+ * `0x5cc6c`: the subject seen from the target point, once per sample (P3-08/16). When S+0x18 already holds the sample it
+ * returns true at once, changing nothing. Otherwise S+0x18 := the sample; without S+0x0C it returns false and leaves the
+ * view. Otherwise the subject's position in the frame of the target S+0x10's rows (the subject's own without a target)
+ * placed at the target point S+0x1C (`0x56dc0`) and its flags S+0x78 (as `0x5c8b0`'s); true. The handle is not checked
+ * again: its callers have just run `0x5c8b0` in the same sample.
+ */
+export function updateReverseView(block: SteeringBlock, scene: AiSteeringScene): boolean {
+  const { subject, clock } = scene;
+  if (block.relativeSample === clock) return true;
+  block.relativeSample = clock;
+  if (!block.targetValid) return false;
+  const frame = block.target === null ? subject : scene.resolve(block.target);
+  if (frame === undefined) throw fault('reverse-target');
+  block.reverse = pointInFrame(frame.orientation, block.point, subject.position);
+  block.reverseFlags = positiveFlags(block.reverse);
   return true;
 }
 

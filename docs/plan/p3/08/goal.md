@@ -87,7 +87,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [15-program-selection-install.md](./subtasks/15-program-selection-install.md) | 14 | completed |
 | [17-ai-piloting.md](./subtasks/17-ai-piloting.md) | 15 | completed |
 | [18-targeting-firing-base.md](./subtasks/18-targeting-firing-base.md) | 15, 17 | completed |
-| [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | in-progress |
+| [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | completed |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | pending |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | pending |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | pending |
@@ -133,6 +133,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 26 重新规划（协调者依用户授权批准）：** 用户要求“重新规划subtask 26，尽可能减少dosbox”。正式样本集改为 26 的 e-02（进行中）与一次新的组合僚机运行 W-ii（至多因偶发失败重做一次），加上按 D-02 不变的资格复用的 10 的 w-01、w2-01、e-04、b-09（只按其记录的字段判定）；W-i、W-iii、第二次 E 与两次 B 不再运行，DOSBox 用时约为 e-02 剩余 2 小时、W-ii 3.5 小时（重做至多再 3.5 小时），原计划至少 8 次、每次 1–4 小时。D-02 的数量改为目标；僚机导弹发射、愤怒与拒绝、状态 6 与记录 2、0x100 敌机的 K-01、僚机类 (i)/(iii)、基地布局 C 与冷却读数、W-ii 未取得的命令码等由代码证据与 Node 独立期望核对，27 逐项列为运行时覆盖的已知限制（不是行为差异），判定规则不变。spec（AC-15、正式采样计划、新增已知限制清单、取不到时的处理、审批）、B-011、26、27 随之修订，子任务跟踪表不变。P3-08 的最后一次基准运行结束后，协调者通知 P3-10。
 - **2026-10-15 — 18 完成：** 目标、开火、AI 锁定与基地处理器（记录 6）。按原生 `0x5dcd4` 更正 CR-23：AI 锁定 `0x5dfec` 只在处理器到期的同一分支内执行（ai §1 与 executable A12 同步，A9、A15 补代码事实）。离场请求 `0x5e6cc` 以 `depart()` 回调交给 16、21：协调者决定 16 的回调投递 `warp-departure` 请求（最终行为），由 21 接入其处理；在 21 之前若测试触发未接入故障，16 报告协调者。已知限制：列表 1 的当前挂点为 +0x18 ≠ 0 的炮时 `updateAiLock` 故障（原版越过炮记录读取），切片中没有这种组合。交 28：core.md 的 AI 步、基地处理器与 ai-targeting/ai-firing。
 - **2026-10-15 — 16 的范围扩大：** 解释器需要两个尚无实现的原语：反向视角 `0x5cc6c`（状态规则 3 在状态 5 入口调用，两个执行的 DFPG 都可达）与攻击航线 `0x63c00`（操作码 1101，敌机可达）。二者由 16 实现（`steering.ts` 增补、新建 `ai-attack-pass.ts`），19 复用攻击航线。
+- **2026-10-15 — 16 完成：** 解释器 `0x64cb8`（安装、状态机 13 条规则、25 种操作码的执行器）、脚本级解析缓存、攻击航线 `0x63c00`（`ai-attack-pass.ts`，19 复用）、反向视角 `0x5cc6c`、CR-25 的分派预算；`HANDLERS` 加入解释器；`steering.forwardDot` 改为导出。`0x5e6cc` 为 `systems/ai.ts` 的 `requestWarpDeparture`，`0x2fef8` 为导出的 `mayDepartByWarp`，交 21 接入 `warp-departure` 并复用复检；没有单元或 e2e 测试走到未接入的离场请求。每 tick 的分派计数暂存在以 `TickContext` 为键的 WeakMap（`pipeline.ts` 不在 16 的范围），21 接入时可改为字段。e2e 在高负载下有两项偶发失败，单独重跑通过。交 28：16 的完成证据列出的代码事实写入 `docs/original`，以及 core.md 的解释器、解析缓存、预算与离场请求。
 
 ## 审批
 

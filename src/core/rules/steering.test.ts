@@ -11,7 +11,7 @@ import { scriptedRand } from './rand.test-support.ts';
 import {
   approachRadius, clearTargetOffset, computeSteering, homingDeadline, installHoming, isAhead, isHomingUpdateDue, leadTargetPoint, programRecord,
   rateControl, runHomingProgram, setLeadMode, setSizeClass, setSteeringFractions, setSteeringNoise, setTargetOffset, steerAtPoint, steerAtTarget,
-  steeringControl, steeringFractions, steeringLimits, steeringNoise, throttleControl, throttleNoise, updateTargetPoint, vectorDistance,
+  steeringControl, steeringFractions, steeringLimits, steeringNoise, throttleControl, throttleNoise, updateReverseView, updateTargetPoint, vectorDistance,
   type AiSteeringScene, type HomingCall, type SteeringLimits,
 } from './steering.ts';
 
@@ -494,6 +494,31 @@ describe('the target point (0x5c8b0)', () => {
     const later = pilot({ clock: SAMPLE + 1 });
     updateTargetPoint(scene.block, { ...later.scene, subject: scene.subject });
     expect(scene.block.point).toEqual(at(2, 0, 10));
+  });
+});
+
+describe('the subject seen from the target point (0x5cc6c)', () => {
+  it('places the subject in the target\'s frame at the target point, once per sample, with the flags of 0x5c8b0', () => {
+    const scene = pilot();
+    aimed(scene, at(2, 0, 10), 0, TURNED);
+    updateTargetPoint(scene.block, scene.scene);
+    // Subject − point = (−2, 0, −10) along TURNED's rows (0, 1, 0), (−1, 0, 0), (0, 0, 1).
+    expect(updateReverseView(scene.block, scene.scene)).toBe(true);
+    expect(scene.block).toMatchObject({ reverse: at(0, 2, -10), reverseFlags: 2, relativeSample: SAMPLE });
+    scene.subject.position = at(0, 0, 50);
+    expect(updateReverseView(scene.block, scene.scene)).toBe(true);
+    expect(scene.block.reverse).toEqual(at(0, 2, -10));
+  });
+
+  it('uses the subject\'s own rows without a target, and without S+0x0C only stores the sample', () => {
+    const scene = pilot();
+    steerAtPoint(scene.block, scene.scene, at(0, -4, -10));
+    expect(updateReverseView(scene.block, scene.scene)).toBe(true);
+    expect(scene.block).toMatchObject({ reverse: at(0, 4, 10), reverseFlags: 6 });
+    const unset = pilot();
+    unset.block.reverseFlags = 5;
+    expect(updateReverseView(unset.block, unset.scene)).toBe(false);
+    expect(unset.block).toMatchObject({ reverse: at(0, 0, 0), reverseFlags: 5, relativeSample: SAMPLE });
   });
 });
 

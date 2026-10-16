@@ -84,7 +84,7 @@ export const firingDataOf = ({ craftInfo, ruleData }: WorldState): FiringData =>
  * `0x2dd54`(subject, channel): the range +0x0C of the weapon of the list's current mount; null without one, or for a
  * missile mount whose alternate chain has no ammunition (`0x2dd04` ≤ 0).
  */
-function channelRange(data: FiringData, shooter: CraftEntity, channel: MountList): number | null {
+export function channelRange(data: FiringData, shooter: CraftEntity, channel: MountList): number | null {
   const { weapons } = shooter.combat;
   const index = weapons.selections[channel].mount;
   if (index === null) return null;
