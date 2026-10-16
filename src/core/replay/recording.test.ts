@@ -16,7 +16,8 @@ import {
   requireRecordingCapacity,
   type RecordingSession,
 } from './recording.ts';
-import { longInput, PRODUCER, scriptedInput } from './replay.test-support.ts';
+import { replayRecord } from './replay.ts';
+import { contentOf, longInput, PRODUCER, recordScript, roundTrip, scriptedInput } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash } from './snapshot.ts';
 
@@ -55,8 +56,9 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
 
     expect(Object.keys(record)).toEqual(['format', 'version', 'rulesVersion', 'producer', 'content', 'mission', 'setupHash', 'run', 'checkpointInterval', 'ticks']);
     expect(record).toMatchObject({ format: GAME_REPLAY_FORMAT, version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION, producer: PRODUCER, checkpointInterval: 2 });
-    // P3-05's speed-preset incremented the format version once (docs/plan/p3/05/spec.md, 持久化与兼容).
-    expect([GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION]).toEqual(['osr-game-replay', 2]);
+    // P3-05's speed-preset incremented the format version once (docs/plan/p3/05/spec.md, 持久化与兼容), and P3-08's
+    // drop-transponder once more (docs/plan/p3/02/spec.md, CR-25).
+    expect([GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION]).toEqual(['osr-game-replay', 3]);
     expect(record.content).toEqual(syntheticIdentity());
     expect(record.mission).toBe('mission/first-campaign');
     expect(record.setupHash).toBe(session.snapshot().state.config.setupHash);
@@ -99,6 +101,17 @@ describe('recording session (P3-02 AC-12, 快照、哈希与 replay)', () => {
     // An earlier export keeps its own final checkpoint.
     expect(JSON.stringify(seven)).toBe(text);
     expect(new Set(hashes).size).toBe(hashes.length);
+  });
+
+  it('records drop-transponder in format 3, which replays it; a format-2 record is refused before it runs (CR-25)', () => {
+    const input = longInput();
+    const drop = (tick: number): TickInput => tickInput(tick === 3 ? [{ type: 'drop-transponder' }] : []);
+    const { record, result } = recordScript(input, 6, 2, drop);
+    expect(record.ticks[2]).toEqual(tickInput([{ type: 'drop-transponder' }]));
+    expect(result.events.filter(({ type }) => type === 'transponder-deployed').map(({ tick }) => tick)).toEqual([3]);
+    expect(replayRecord(roundTrip(record), contentOf(input))).toEqual(result);
+    const old = { ...(roundTrip(record) as Record<string, unknown>), version: 2 };
+    expect(thrownBy(() => replayRecord(old, contentOf(input)))).toMatchObject({ path: 'record.version', reason: 'must be 3' });
   });
 
   it('exports a run of no ticks with its tick 0 checkpoint', () => {

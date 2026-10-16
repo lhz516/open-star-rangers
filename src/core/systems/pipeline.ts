@@ -42,6 +42,7 @@ import { takeRadio } from './radio.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
 import { applyWarpStart, completeWarp, runWarpStep, type WarpStartRequest } from './warp.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
+import { createTransponder, updateTransponder } from './xpon.ts';
 
 /** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
 export interface AxisControl {
@@ -143,7 +144,7 @@ export type Request =
  * Request types whose handler is not wired yet: posting one is a fault, never a silent drop. The P3-08 subtask that
  * implements a handler removes its type here.
  */
-const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['ai-match-speed', 'warp-departure', 'create-transponder']);
+const UNWIRED_REQUESTS: ReadonlySet<Request['type']> = new Set(['ai-match-speed', 'warp-departure']);
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -352,13 +353,19 @@ function requestNextState(context: TickContext, entity: Entity): void {
  * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part. A
  * craft's callback `0x20c18` stops for a Warp transit in states 0–3; otherwise P3-08's controller part (ai.ts: the
  * install, the removal or the AI step, CR-23) precedes the generic part, and in state 7 P3-10's answer to a delivered
- * command (`0x3bed0`, base-response.ts) follows the AI step (CB-12).
+ * command (`0x3bed0`, base-response.ts) follows the AI step (CB-12). Kind 0x4000's callback `0x3897c` (xpon.ts, CR-20)
+ * replaces `0x20c18`: no Warp-transit check and no AI, then the generic part.
  */
 function updateObject(context: TickContext, entity: Entity): void {
-  const { combat } = entity;
+  const { combat, transponder } = entity;
   switch (combat.type) {
     case 'craft':
     case 'marker':
+      if (transponder !== null) {
+        updateTransponder(context, entity, transponder);
+        requestNextState(context, entity);
+        return;
+      }
       if (isHeldInWarpTransit(context.world, entity)) return;
       updateController(context, entity);
       requestNextState(context, entity);
@@ -512,6 +519,9 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'hand-off':
       handOff(context, entity, request);
+      return;
+    case 'create-transponder':
+      createTransponder(context, entity);
       return;
   }
 }

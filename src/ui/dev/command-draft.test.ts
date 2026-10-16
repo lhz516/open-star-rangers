@@ -16,9 +16,9 @@ function everyDraft(type: CommandType): CommandDraft[] {
 }
 
 describe('command draft', () => {
-  it('describes exactly the 17 Core command variants in Core\'s order', () => {
+  it('describes exactly the 18 Core command variants in Core\'s order', () => {
     expect(Object.keys(COMMAND_FORMS)).toEqual([...COMMAND_TYPES]);
-    expect(COMMAND_TYPES).toHaveLength(17);
+    expect(COMMAND_TYPES).toHaveLength(18);
     expect(COMMAND_FORMS['speed-preset']).toEqual([{ name: 'level', kind: 'number', min: 1, max: 9, integer: true }]);
     expect(COMMAND_FORMS['select-number']).toEqual([{ name: 'value', kind: 'number', min: 1, max: 9, integer: true }]);
     expect(COMMAND_FORMS['map-point']).toEqual([

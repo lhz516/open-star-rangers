@@ -26,7 +26,8 @@ import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, type GameSnapshot } from './snapshot.ts';
 
 export const GAME_REPLAY_FORMAT = 'osr-game-replay';
-export const GAME_REPLAY_VERSION = 2;
+/** 3 since P3-08's `drop-transponder` changed the inputs a record may hold (docs/plan/p3/02/spec.md, CR-25). */
+export const GAME_REPLAY_VERSION = 3;
 /** The longest producer label. */
 export const PRODUCER_MAX_LENGTH = 128;
 

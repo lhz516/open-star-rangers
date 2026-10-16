@@ -142,6 +142,7 @@ const LONGEST_COMMANDS: { readonly [Type in CommandType]: Extract<Command, { rea
   energy: { type: 'energy', operation: 'shield-increase' },
   'damage-report': { type: 'damage-report' },
   'cockpit-front': { type: 'cockpit-front' },
+  'drop-transponder': { type: 'drop-transponder' },
 };
 
 /** The longest form of every event variant, likewise. */

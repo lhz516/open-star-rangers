@@ -47,6 +47,9 @@ const P3_10_COMMANDS: readonly Command[] = [
   { type: 'launch' },
 ];
 
+/** P3-08's command (CR-20), which xpon.test.ts judges. */
+const P3_08_COMMANDS: readonly Command[] = [{ type: 'drop-transponder' }];
+
 /** One command of every type no rule handles yet. */
 const OTHER_COMMANDS: readonly Command[] = [
   { type: 'cockpit-front' },
@@ -69,7 +72,7 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...P3_09_COMMANDS, ...P3_10_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type)))
+    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...P3_09_COMMANDS, ...P3_10_COMMANDS, ...P3_08_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type)))
       .toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 

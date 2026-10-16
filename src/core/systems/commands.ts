@@ -8,8 +8,9 @@
  * `confirm-selection`, `launch`) of an available player in the base context of the command view to judgeBaseKey here
  * and the rest of P3-10's to communications.ts (`communications`, `select-number`, and the other contexts'
  * `navigate-selection`, `confirm-selection` and `launch`; CB-07), which also gives the map context's selection keys
- * their `wrong-context` (MW-04); every other type is rejected/not-implemented until its rule task routes it. A module
- * emits a command's additional events right after its result.
+ * their `wrong-context` (MW-04), and P3-08's `drop-transponder` to xpon.ts (CR-20); every other type is
+ * rejected/not-implemented until its rule task routes it. A module emits a command's additional events right after its
+ * result.
  *
  * Every command is judged in the interaction context of the tick's command view, the batch's effective view (pipeline.ts;
  * MW-04, CB-07), which the accepted view commands before it have moved on, never in the context the batch started with.
@@ -27,6 +28,7 @@ import { emit, type TickContext } from './pipeline.ts';
 import { judgeTargetCommand } from './targeting.ts';
 import { judgeRequestWarp } from './warp.ts';
 import { judgeWeaponCommand } from './weapons.ts';
+import { judgeDropTransponder } from './xpon.ts';
 
 /** The command variants of one or more types. */
 export type CommandOf<Type extends CommandType> = Extract<Command, { readonly type: Type }>;
@@ -125,6 +127,9 @@ export function judgeCommand(context: TickContext, command: Command, commandInde
     case 'communications':
     case 'select-number':
       judgeCommunicationsCommand(context, command, commandIndex, view);
+      return;
+    case 'drop-transponder':
+      judgeDropTransponder(context, command, commandIndex);
       return;
     default:
       rejectNotImplemented(context, command, commandIndex);

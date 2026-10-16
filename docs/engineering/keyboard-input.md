@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-14
+updated: 2026-10-15
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -47,6 +47,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定 |
 | `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；门禁由 Core 判定（[§6](#地图与-warp-上下文中的命令结果)） |
 | `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单 | 原版绑定；菜单行为归 P3-10 |
+| 未修饰 `KeyB`（无 Shift、无有效 Ctrl） | flight | 投放 Xpon（`drop-transponder`）；可重复 | 原版绑定，正常玩法为高概率（[X5](../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)）；P3-08 的 D-03 加入，门禁与效果由 Core 判定（[CR-20](../plan/p3/02/spec.md#cr-20-动态-xpon-与-bd-01)、[CR-30](../plan/p3/02/spec.md#cr-30-b-的输入侧d-03)） |
 | `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复） | 原版绑定；服务规则归 P3-10 |
 | `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
 | `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
@@ -71,7 +72,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 - 未修饰键以 `code` 匹配；Shift、有效 Ctrl 与 NumLock 按绑定表匹配。Ctrl、Alt、Meta 或输入法组合通常不产生绑定，保留原生快捷键；本项目明确绑定的 Ctrl 组合和 Ctrl 横滚除外。AltGraph 会抑制可能由它合成的 CtrlLeft；不确定左 Ctrl 来源时不执行横滚/快捷键。
 - 同一轴的正反键同时按下为 0。失去资格、上下文切换与清键后，repeat 不能重建已释放状态；恢复必须有新的非重复按下。
 
-只有绑定表中标为 repeatable 的离散命令重复：副武器、速度增减、目标下一个/上一个、导弹上一项/下一项、能量调整，以及基地列表导航。首次新按下立即提交；运行时钟到首次按下后 32 单位才重复，之后按观察到的重复时钟每 16 单位一次。只在 running 的帧观察、每个按键每帧最多一次，迟帧不补发；没有 timer、逐 tick 回调或第二条 rAF。速度档位、其他单次命令、G-08 标注与暂停控制不属于此重复器。该节奏是项目选择，不是 BIOS 延迟或 DOS 轮询周期。
+只有绑定表中标为 repeatable 的离散命令重复：副武器、速度增减、目标下一个/上一个、导弹上一项/下一项、能量调整、投放 Xpon（`b`），以及基地列表导航。首次新按下立即提交；运行时钟到首次按下后 32 单位才重复，之后按观察到的重复时钟每 16 单位一次。只在 running 的帧观察、每个按键每帧最多一次，迟帧不补发；没有 timer、逐 tick 回调或第二条 rAF。速度档位、其他单次命令、G-08 标注与暂停控制不属于此重复器。该节奏是项目选择，不是 BIOS 延迟或 DOS 轮询周期。
 
 ## 4. 活动界面与焦点
 
@@ -124,6 +125,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 下游交接：
 
 - **P3-09（已交付）：** 同 tick 打开地图时的飞行命令门禁、地图状态与 `map-point` 的效果、地图初始 Core 光标点与像素量化已在 Core 中（见上节）；按住 select 的每次读取都发出 `warp-destination-set`，其点击音效归 P3-14。实际应用中的浏览器验证归 P3-09/22。
+- **P3-08（`b`，已交付）：** Core 按飞行命令的共同门禁判定 `drop-transponder`（玩家不可用为 `player-unavailable`，非飞行上下文为 `wrong-context`；没有次数、能量或冷却门禁），在同一 tick 的请求处理中于玩家身后创建 Xpon 并发出 `transponder-deployed`。原版按住 `b` 靠 BIOS 重复、按住 Alt 时只有空格起作用；项目按上文的可重复节奏，Alt+`b` 仍投放，两项都归入本节已列的同类差异。切片中通讯菜单从不占用 `b`（菜单只用数字与 `x`），菜单打开时仍提交并由 Core 判定。Node 证据见 [P3-08 子任务 22](../plan/p3/08/subtasks/22-xpon-b-key.md#完成证据)，浏览器触发归其子任务 24。
 - **P3-10：** 通讯菜单对数字/命令的捕获优先级、菜单行为与基地服务队列/离港规则，并处理规则 5 的阻塞项；目前绑定只负责按码提交，不宣称该规则已实现。
 - **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
 - **P3-15：** 真实任务完整地图路径及输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成和清键。

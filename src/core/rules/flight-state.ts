@@ -160,10 +160,11 @@ export function initialMovementBlock(maximumSpeed: number, baseMaximumSpeed: num
 const THROTTLE_PER_RATIO = 128;
 
 /**
- * A craft block rebuilt from an old one (`0x218e8`, then `0x21794`), for P3-11's rescue and P3-08's kind 0x4000: the
- * throttle is trunc(f32 old speed ratio × 128), the ratio taken afresh from the old block's speed and the base. Without
- * an old block the original's cleared parameter record gives throttle 0. A throttle beyond i32 is a fault, as the
- * original's conversion raises its unmasked invalid-operation exception there.
+ * A craft block rebuilt from an old one (`0x218e8`, then `0x21794`), for P3-11's rescue: the throttle is
+ * trunc(f32 old speed ratio × 128), the ratio taken afresh from the old block's speed and the base. Kind 0x4000's
+ * constructor replaces this throttle with its own (X2 step 8, systems/xpon.ts). Without an old block the original's
+ * cleared parameter record gives throttle 0. A throttle beyond i32 is a fault, as the original's conversion raises its
+ * unmasked invalid-operation exception there.
  */
 export function rebuiltMovementBlock(oldBlock: Pick<MovementBlock, 'speed'> | null, maximumSpeed: number, baseMaximumSpeed: number): SteeredMovementBlock {
   const throttle = oldBlock === null ? 0 : Math.trunc(speedRatio(oldBlock.speed, baseMaximumSpeed) * THROTTLE_PER_RATIO);

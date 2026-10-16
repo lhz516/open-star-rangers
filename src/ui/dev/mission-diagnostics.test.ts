@@ -26,7 +26,8 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   'select-missile': ['accepted', null],
   // P3-10: navigate-selection belongs to the base. P3-09: toggle-map opens the map, so the commands after it are judged
   // in the map context, where map-point is accepted and the drafted hover selects no Warp destination; there P3-10's
-  // communications and launch keys, and the energy and damage report keys, are wrong-context (MW-04, CB-07).
+  // communications and launch keys, the energy and damage report keys, and P3-08's drop-transponder are wrong-context
+  // (MW-04, CB-07, CR-20).
   'navigate-selection': ['ignored', 'wrong-context'],
   'toggle-map': ['accepted', null],
   'map-point': ['accepted', null],
@@ -35,6 +36,7 @@ const OUTCOMES: Partial<Record<Command['type'], readonly [string, string | null]
   launch: ['ignored', 'wrong-context'],
   energy: ['ignored', 'wrong-context'],
   'damage-report': ['ignored', 'wrong-context'],
+  'drop-transponder': ['ignored', 'wrong-context'],
 };
 const outcomeOf = (type: Command['type']) => OUTCOMES[type] ?? ['rejected', 'not-implemented'];
 
@@ -190,7 +192,7 @@ describe('mission diagnostics', () => {
       if (!reading.valid) throw new Error(reading.reason);
       return submit(setup, reading.command);
     });
-    expect(ids).toEqual(Array.from({ length: 17 }, (_, index) => index + 1));
+    expect(ids).toEqual(Array.from({ length: 18 }, (_, index) => index + 1));
     next(1, 200);
     const results = setup.state().log.entries.filter((entry) => entry.type === 'command-result');
     expect(results.map((entry) => [entry.commandId, entry.fields[1][1], entry.fields[2][1], entry.fields[3][1]]))

@@ -919,6 +919,101 @@ async function mapping({ activation = true, supported = true } = {}) {
   };
 }
 
+// P3-08 AC-10 (Node part): the production `KeyB` binding through the consumer, Session and Runtime into Core
+// (docs/plan/p3/05/spec.md, 绑定表 `KeyB`; docs/plan/p3/02/spec.md, CR-20 and CR-30).
+describe('the transponder key b', () => {
+  /** Flight on the production bindings, recording each drop-transponder result and transponder-deployed tick. */
+  async function dropping() {
+    const f = await flying({ bindings: GAME_INPUT_BINDINGS });
+    const outcomes: (readonly [number, string, string | null])[] = [];
+    const deployed: number[] = [];
+    f.run.on('command-result', (event) => {
+      if (event.commandType === 'drop-transponder') outcomes.push([event.tick, event.outcome, event.reason]);
+      return undefined;
+    });
+    f.run.on('transponder-deployed', (event) => {
+      deployed.push(event.tick);
+      return undefined;
+    });
+    // The mission declares transponders of its own; `b` constructs the player's.
+    const transponders = () => f.run.snapshot().state.entities.filter(({ transponder }) => transponder?.creator === 'player');
+    // The player becomes active in the first step's request handling.
+    f.frame(3);
+    return { ...f, outcomes, deployed, transponders };
+  }
+
+  it('drops a transponder in Core at once and again at the repeat while held, each tumbling from the next tick', async () => {
+    const f = await dropping();
+    const { keyboard } = f;
+    expect(keyboard.press('KeyB')).toBe(true);
+    for (let frame = 0; frame < 16; frame += 1) f.frame();
+    keyboard.lift('KeyB');
+    for (let frame = 0; frame < 16; frame += 1) f.frame();
+    expect(f.submitted.map(({ type, clock }) => [type, clock])).toEqual([['drop-transponder', 6], ['drop-transponder', 38]]);
+    expect(f.outcomes).toEqual([[4, 'accepted', null], [20, 'accepted', null]]);
+    expect(f.deployed).toEqual([4, 20]);
+    const [first, second] = f.transponders();
+    expect([first.transponder, second.transponder]).toEqual([
+      // Each tumbles from its first callback, a tick after its construction, until 0x80 clock units after it (X3).
+      { creator: 'player', callback: { phase: 'tumbling', since: 10 } },
+      { creator: 'player', callback: { phase: 'tumbling', since: 42 } },
+    ]);
+    expect(first.source).toBeNull();
+  });
+
+  it('still drops one while the communications menu is open, which never takes b in the slice (CR-30)', async () => {
+    const f = await dropping();
+    const { keyboard } = f;
+    keyboard.press('KeyC');
+    keyboard.lift('KeyC');
+    f.frame();
+    expect(f.run.snapshot().state.player.communications.menu).not.toBeNull();
+    keyboard.press('KeyB');
+    keyboard.lift('KeyB');
+    f.frame();
+    expect(f.run.snapshot().state.player.communications.menu).not.toBeNull();
+    expect([f.outcomes, f.deployed]).toEqual([[[5, 'accepted', null]], [5]]);
+    expect(f.transponders()).toHaveLength(1);
+  });
+
+  it('takes no Shift or Ctrl and acts only in flight, and a focus loss or a pause ends its repeat', async () => {
+    const f = await dropping();
+    const { keyboard, tools } = f;
+    keyboard.press('KeyB', { shiftKey: true });
+    keyboard.lift('KeyB');
+    keyboard.press('KeyB', { ctrlKey: true });
+    keyboard.lift('KeyB');
+    tools.context = 'map';
+    f.frame();
+    keyboard.press('KeyB');
+    keyboard.lift('KeyB');
+    tools.context = null;
+    f.frame();
+    expect(f.submitted).toEqual([]);
+
+    keyboard.press('KeyB');
+    keyboard.signal('focusout', false);
+    keyboard.signal('focusin', true);
+    keyboard.press('KeyB', { repeat: true });
+    for (let frame = 0; frame < 20; frame += 1) f.frame();
+    // The press before the focus loss was cancelled with it, and nothing repeats or restores after.
+    expect(f.submitted.map(({ type }) => type)).toEqual(['drop-transponder']);
+    expect(f.cancelled.map(({ reason }) => reason)).toEqual(['focus-loss']);
+    expect([f.outcomes, f.deployed, f.transponders()]).toEqual([[], [], []]);
+
+    // A pause ends the repeat as well; resuming restores nothing until a new press.
+    keyboard.lift('KeyB');
+    keyboard.press('KeyB');
+    keyboard.press('KeyP');
+    keyboard.lift('KeyP');
+    expect(f.owner.getSnapshot().session).toMatchObject({ phase: 'paused' });
+    keyboard.press('KeyP');
+    keyboard.lift('KeyP');
+    for (let frame = 0; frame < 40; frame += 1) f.frame();
+    expect(f.submitted.map(({ type }) => type)).toEqual(['drop-transponder', 'drop-transponder']);
+  });
+});
+
 describe('strategic map input', () => {
   it('locks on opening the map, merges hovers, selects at once and repeats at c + 8 by the projection clock', async () => {
     const f = await mapping();

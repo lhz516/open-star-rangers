@@ -52,6 +52,7 @@ const FORMS: { readonly [Type in CommandType]: FormOf<Type> } = {
   energy: { operation: choice('open', 'shield-increase', 'shield-decrease', 'gun-increase', 'gun-decrease') },
   'damage-report': {},
   'cockpit-front': {},
+  'drop-transponder': {},
 };
 
 export type CommandFieldForm =

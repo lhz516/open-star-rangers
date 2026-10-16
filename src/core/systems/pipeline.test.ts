@@ -127,7 +127,6 @@ describe('request queue (P3-02 AC-09, 系统流水线)', () => {
   it.each([
     { type: 'ai-match-speed', entityId: 2, targetEntityId: 3, a: 0, lo: 0, hi: 1 },
     { type: 'warp-departure', entityId: 2 },
-    { type: 'create-transponder', entityId: 1 },
   ] as Request[])('refuses to post or defer $type until its handler is wired', (unwired) => {
     const queue = new RequestQueue();
     expectFault(() => queue.post(unwired), 'invariant-violated', 'pipeline.request-unwired');
