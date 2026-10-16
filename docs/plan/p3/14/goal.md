@@ -75,7 +75,7 @@ updated: 2026-10-16
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-trigger-voice-research.md](./subtasks/01-trigger-voice-research.md) | — | completed |
-| [02-spatial-mixer-research.md](./subtasks/02-spatial-mixer-research.md) | — | in-progress |
+| [02-spatial-mixer-research.md](./subtasks/02-spatial-mixer-research.md) | — | completed |
 | [03-hud-cue-research.md](./subtasks/03-hud-cue-research.md) | — | completed |
 | [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | in-progress |
 | [05-evidence-contract-baseline.md](./subtasks/05-evidence-contract-baseline.md) | 01, 02, 03, 04 | pending |
