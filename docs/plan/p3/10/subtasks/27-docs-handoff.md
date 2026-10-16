@@ -31,6 +31,9 @@ updated: 2026-10-14
 
 - `docs/engineering/modules/core.md`、`docs/engineering/modules/app.md`、`docs/engineering/modules/ui.md`：API 与交接。
 - `docs/engineering/keyboard-input.md`、`docs/engineering/source-structure.md`：接入与模块。
+- `docs/original/formats/executable.md`：BS11 改为运行已确认，以及 25、26 交来的原版事实（简报按钮丢键、长时间受攻击后停靠中的自动离港、基地只在远处失效）。
+- `docs/original/behavior/B-004-base-communications.md`：残留的“运行核对待 09”措辞。
+- `docs/original/formats/imfat.md`、`docs/original/formats/scenario.md`、`docs/original/formats/audio.md`、`docs/original/formats/craft.md`：06 列出的交叉引用（CMOV、SCCT +0x70、基地音效、基地速率）。
 
 ## 验收标准
 
