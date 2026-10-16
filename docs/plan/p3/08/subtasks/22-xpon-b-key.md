@@ -56,6 +56,7 @@ updated: 2026-10-15
 - `src/core/world/world.test.ts`：命令穷举的测试。
 - `src/core/replay/map-warp-replay.test.ts`：replay 与规则版本断言。
 - `e2e/interaction-render.spec.ts`：`b` 不再属于未绑定键。
+- `src/core/systems/pipeline.test.ts`：移除已接入的 `create-transponder` 拒绝用例。
 
 ## 验收标准
 
