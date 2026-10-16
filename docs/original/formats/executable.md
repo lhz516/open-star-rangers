@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-15
+updated: 2026-10-16
 related: [U-001, U-007, U-008, U-009, U-010, U-011, U-012, U-017, U-021, U-022, U-024, U-025, U-026, U-027, U-029, U-031, U-032]
 ---
 
@@ -4357,7 +4357,7 @@ Copies S (0x3B dwords) to the stack, sets the copy's lead mode 0 and offset off,
 4. Walk kinds `0x380` excluding the subject; count the valid, active, state ≥ 7, dead flag ≠ 1 objects whose +0x8C is null or valid (a non-null invalid +0x8C skips the object): n; nP of them target P, nW target W (W non-null), nO = n − nW.
 5. n = 0 or nP = 0 → target P.
 6. pP, pW, pO = ×100 then signed `IDIV` by n. T = the group's AICO triple ([ai §2](./ai.md#2-aico-6001-global-ai-parameters)); a = T0 − pP, b = T1 − pW, c = T2 − pO.
-7. When c > 0 and the subject's **AI target +0x90** is valid: go := c > T2 SAR 1, else **one draw**, go := rand % 96 < **subject +0xE4** (both signed). When go: an active (+2 = 1) +0x90 object of the other side → target it; a parked one → `0x5e6cc`(C) (Warp departure request, [parked](#parked-ai-handler-0x62250-object-sets-and-departure-p3-0805) D2); return 1 when that posts.
+7. When c > 0 and the subject's **AI target +0x90** is valid: go := c > T2 SAR 1, else **one draw**, go := rand % 96 < **subject +0xE4** (both signed). When go: an active (+2 = 1) +0x90 object of the other side → target it; any other activity → `0x5e6cc`(C) (Warp departure request, [parked](#parked-ai-handler-0x62250-object-sets-and-departure-p3-0805) D2); return 1 when that posts. The activity test comes first and is an equality: `0x63552` loads +2 zero-extended and `0x63555`/`0x63558` compare it with 1, so every value ≠ 1 — parked (0), docked (3) or any other — requests departure, whatever the object's side; only an active one reaches the side test (`0x63562`–`0x6357b`), and one of the subject's side falls through to step 8, as does a departure `0x5e6cc` refuses (P3-08/32).
 8. Otherwise target P, except W when W ≠ null, a ≤ T0 SAR 1 and (b > T1 SAR 1 or a < b).
 
 "Target X" is `0x5c584`(X, S, −1.0), whose result is returned. Callers: `0x63600` (state-machine rule 2, opcode 502) and opcode 501.

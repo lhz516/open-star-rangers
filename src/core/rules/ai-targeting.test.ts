@@ -299,6 +299,28 @@ describe('the engagement share 0x632a4 (A9; difficulty path 5)', () => {
     expect(refused.departures()).toBe(1);
     expect(parked.subject.ai.objectTarget).toBe(parked.player.id);
   });
+
+  it('asks to leave for every +0x90 activity other than active (+2 ≠ 1, 0x63555), before the side test', () => {
+    // T = [60, 30, 151]: c = 76 > 75 goes without a draw.
+    const cases = [
+      { activity: 'parked', kind: 17, departs: 1 },
+      { activity: 'docked', kind: 17, departs: 1 },
+      { activity: 'docked', kind: 12, departs: 1 },
+      { activity: 'active', kind: 17, departs: 0 },
+      { activity: 'active', kind: 12, departs: 0 },
+    ] as const;
+    for (const { activity, kind, departs } of cases) {
+      const scene = counted([60, 30, 151]);
+      const target = add(scene.state, kind, at(0, 0, 900));
+      target.activity = activity;
+      scene.subject.ai.target = target.id;
+      const share = call(scene, [], true);
+      engagementShare(share.call);
+      expect(share.departures(), `${activity} kind ${kind}`).toBe(departs);
+      const expected = departs === 1 ? null : kind === 17 ? target.id : scene.player.id;
+      expect(scene.subject.ai.objectTarget, `${activity} kind ${kind}`).toBe(expected);
+    }
+  });
 });
 
 describe('the engagement timer (A10)', () => {

@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "32"
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # 32 — 交战份额的离场条件
@@ -37,11 +37,17 @@ updated: 2026-10-15
 
 ## 验收标准
 
-- [ ] 原版条件有原生指令依据（已确认，代码），写入 A9。
-- [ ] Core 的条件与原版一致，有覆盖停放、停靠与活动目标的测试；`pnpm check` 通过。
+- [x] 原版条件有原生指令依据（已确认，代码），写入 A9。
+- [x] Core 的条件与原版一致，有覆盖停放、停靠与活动目标的测试；`pnpm check` 通过。
 
 ## 验证方法
 
 - 只读 Ghidra；`pnpm check`；git 审阅。
 
 ## 完成证据
+
+- **原生比较（已确认，代码）：** 私有项目副本（`local/research/p3-08/share-departure/`，`-noanalysis -readOnly`）的反汇编：`0x634e7`–`0x63500` 取主体 +0x90，为空或不再解析时到第 8 步；“去”成立后，`0x63552` 以零扩展读目标 +2，`0x63555`/`0x63558` 与 1 比较、不等即转 `0x635a3` 调用 `0x5e6cc`。因此 +2 ≠ 1 的任何取值（停放 0、停靠 3 等）都请求离场，且活动判断先于阵营判断（`0x63562`–`0x6357b` 只对活动目标执行）；`0x5e6cc` 返回 0 时转第 8 步。结果写入 [executable A9](../../../../original/formats/executable.md#a9-engagement-share-0x632a4c-difficulty-path-5--confirmed-code) 第 7 步。
+- **Core：** [ai-targeting.ts](../../../../../src/core/rules/ai-targeting.ts) 的 `aiTarget.activity !== 'active'` 与 `if (call.depart()) return true` 已与原版一致，未修改。
+- **测试：** [ai-targeting.test.ts](../../../../../src/core/rules/ai-targeting.test.ts) 新增“asks to leave for every +0x90 activity other than active”：停放、停靠（对方与本方阵营）各请求一次离场且不改 +0x8C；活动的对方目标被瞄准、活动的本方目标落到玩家，均不请求离场。把 Core 改为 `=== 'parked'` 时该测试失败（变异检查）；拒绝离场时落到第 8 步由已有测试覆盖。`pnpm check` 通过。
+- **rubber-duck：** 无问题。
+- **文档影响：** executable A9 已更新；unknowns 无相关条目；engineering、guides 与 STATUS 不受影响。实现代码未改，不需 simplify。
