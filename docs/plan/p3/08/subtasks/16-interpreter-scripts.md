@@ -43,6 +43,7 @@ updated: 2026-10-15
 - `src/core/rules/steering.test.ts`：同上的测试。
 - `src/core/rules/ai-attack-pass.ts`：攻击航线 `0x63c00`/`0x640d8`/`0x64474` 与“前方”判定 `0x5e844`（新建，供 19 复用）。
 - `src/core/rules/ai-attack-pass.test.ts`：同上的测试（新建）。
+- `src/core/rules/ai-firing.ts`：只导出既有的 `channelRange`（`0x2dd54`），行为不变。
 
 ## 验收标准
 
