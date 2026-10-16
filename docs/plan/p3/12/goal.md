@@ -87,7 +87,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 
 | 子任务 | 依赖 | 状态 |
 | --- | --- | --- |
-| [01-camera-visibility-research.md](./subtasks/01-camera-visibility-research.md) | — | in-progress |
+| [01-camera-visibility-research.md](./subtasks/01-camera-visibility-research.md) | — | completed |
 | [02-lighting-flags-research.md](./subtasks/02-lighting-flags-research.md) | — | in-progress |
 | [03-draw-order-sprite-research.md](./subtasks/03-draw-order-sprite-research.md) | — | in-progress |
 | [04-nebula-flash-research.md](./subtasks/04-nebula-flash-research.md) | — | pending |
