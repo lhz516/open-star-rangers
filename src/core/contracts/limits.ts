@@ -9,7 +9,7 @@
  * per second (2 clock units per tick).
  */
 export const CORE_LIMITS = Object.freeze({
-  /** Above the 42 distinct commands of the TickInput union (map-point counted once per operation), so all can be requested in one tick. */
+  /** Above the 52 distinct commands of the TickInput union (map-point counted once per operation; P3-05 speed presets and P3-08 drop-transponder included), so all can be requested in one tick. */
   commandsPerTick: 64,
   /** Live entities, including runtime-created projectiles, explosions and debris: over 50 times the selected mission's instances; at 1 KiB of state each, 2 MiB. */
   entities: 2048,
