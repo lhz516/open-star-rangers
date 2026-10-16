@@ -419,6 +419,8 @@ class SessionTests(unittest.TestCase):
         self.assertTrue((box.run_dir / "operator/pick-0.json").is_file())  # skipped hits are no pauses
         self.assertFalse((box.run_dir / "operator/pick-1.json").exists())
         self.assertEqual(sum(write == b"RUN\n" for write in box.transport.writes), 4)
+        # P3-08/26: skipped hits run on with the breakpoints still registered (one registration per pause)
+        self.assertEqual(sum(write.startswith(b"BP 0258:") for write in box.transport.writes), 1 + 2)
         self.assertEqual([status.get("pause") for status in box.statuses
                           if status["phase"] == "awaiting-confirmation"], ["start", "pick", "end"])
         self.assertTrue(box.unchanged_outside_run())
@@ -446,6 +448,63 @@ class SessionTests(unittest.TestCase):
         stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
         self.assertEqual((stop["hitOffset"], stop["skippedHits"]), ("1f90", 1))  # unconditional at 0x1F90
         self.assertEqual(stop["when"], {"register": "EBX", "in": ["ffff"], "at": ["1fa0"]})
+
+    def test_condition_list(self):
+        """P3-08/26: each condition of a `when` list applies at its own sites, and all that apply must pass."""
+        when = [{"register": "EBX", "in": [{"pause": "start", "field": "count"}], "at": [0x1F90]},
+                {"register": "ESI", "notIn": [0], "at": [0x1FA0]},
+                {"register": "EDI", "in": [5], "at": [0x1FA0]}]
+        hits = [{"site": 0}, {"site": 0, "registers": {"EBX": 1}},  # EBX fails at 0x1F90
+                {"site": 1, "registers": {"EBX": 1, "ESI": 0, "EDI": 5}},  # ESI fails at 0x1FA0
+                {"site": 1, "registers": {"ESI": 2, "EDI": 4}},  # EDI fails at 0x1FA0
+                {"site": 1, "registers": {"ESI": 2, "EDI": 5}}]  # both pass; EBX is not tested at 0x1FA0
+        box = self.selection_box(hits, when=when)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["skippedHits"]), ("complete", 3))
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual((stop["hitOffset"], stop["skippedHits"]), ("1fa0", 3))
+        self.assertEqual(stop["when"], [{"register": "EBX", "in": ["ffff"], "at": ["1f90"]},
+                                        {"register": "ESI", "notIn": ["0"], "at": ["1fa0"]},
+                                        {"register": "EDI", "in": ["5"], "at": ["1fa0"]}])
+        box = self.selection_box(hits, when=when)
+        box.debugger.hide_registers = {"EDI"}  # every listed register must be shown
+        self.assertFailed(box, "debugger-unparsed")
+
+    def test_resumed_hits_keep_the_registration(self):
+        """P3-08/26: skipped hits resume with the breakpoints still registered; the registration proof is the first
+        one, `waitedSeconds` the accepted hit's own run, and the breakpoints are deleted after the accepted stop. A
+        wrong site on a resumed run still fails the run."""
+        delays = {"n": 0}
+
+        def slower(fake, text):
+            if text == "RUN":
+                delays["n"] += 1
+                fake.scenario["run_delay"] = 0.05 * delays["n"]
+
+        when = [{"register": "EBX", "in": [{"pause": "start", "field": "count"}], "at": [0x1FA0]},
+                {"register": "ESI", "notIn": [0], "at": [0x1F90]}]
+        hits = [{"site": 0}, {"site": 1, "registers": {"EBX": 1, "ESI": 0}}, {"site": 0, "registers": {"ESI": 0}},
+                {"site": 1, "registers": {"EBX": 0xFFFF}}]
+        box = self.selection_box(hits, when=when, scenario={"on_command": slower})
+        self.assertEqual(box.run(), 0)
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        self.assertEqual((stop["hitOffset"], stop["skippedHits"]), ("1fa0", 2))
+        self.assertEqual(sorted(stop["registration"]["listed"]), [f"0258:{BASES[2] + o:08x}" for o in (0x1F90, 0x1FA0)])
+        # the accepted (fourth) run waits 0.2 s; the three runs of the pause together would wait 0.45 s
+        self.assertGreaterEqual(stop["waitedSeconds"], 0.2)
+        self.assertLess(stop["waitedSeconds"], 0.4)
+        self.assertEqual(sum(write.startswith(b"BP 0258:") for write in box.transport.writes), 1 + 2)
+        self.assertEqual(box.debugger.breakpoints, [])
+
+        def wrong_after_first(fake, text):
+            if text == "RUN":
+                delays["w"] = delays.get("w", 0) + 1
+                if delays["w"] == 3:  # start, then pick's first (skipped) hit, then the resumed run
+                    fake.scenario["run"] = "wrong"
+
+        box = self.selection_box(hits, when=when, scenario={"on_command": wrong_after_first})
+        self.assertFailed(box, "breakpoint-wrong-hit")
 
     def test_condition_failures(self):
         def bump_count(fake):

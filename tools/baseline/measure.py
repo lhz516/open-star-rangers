@@ -26,11 +26,12 @@
       "pointers": [...]}), e.g. the object a routine is handling at that stop, or from an earlier pause's agreed
       integer reading ({"bound": {"pause": "<earlier>", "field": "<id>"}, "offset": 0, "pointers": [...]}) or an
       earlier breakpoint pause's register value ({"bound": {"pause": "<earlier>", "register": "ESI"}, ...}).
-      A breakpoint stop may name alternative sites ("offsets": [n, ...], 2-4, the hit one is stop.json's `hitOffset`)
+      A breakpoint stop may name alternative sites ("offsets": [n, ...], 2-8, the hit one is stop.json's `hitOffset`)
       and a condition ("when": {"register": "EBX", "in"|"notIn": [n | {"pause": ..., "field"|"register": ...}, ...]});
       hits that fail it are resumed without confirmation and counted as `skippedHits` (stop.json, report counts).
       With alternative sites, "at": [offset, ...] (a strict subset of "offsets") limits the condition to hits at those
-      sites; a hit at another alternative is the pause unconditionally.
+      sites; a hit at another alternative is the pause unconditionally. "when" may also be a list of 1-8 such
+      conditions: a hit is the pause when every condition that applies at its site passes.
       Reading tests wait and branch on this run's readings: a test is {"all"|"any": [{"field": F, "lt"|"le"|"gt"|"ge"|
       "eq"|"ne": n | {"field": G, "offset": c} | {"pause": P, "field": G, "offset": c}}, ...]}. A breakpoint stop's
       "until": {"every": n, "all"|"any": [...]} probes every n-th hit (that passes "when") by reading the test's fields

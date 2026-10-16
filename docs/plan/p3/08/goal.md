@@ -95,7 +95,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | completed |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | completed |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | completed |
-| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
+| [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | completed |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | pending |
 | [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | completed |
@@ -149,6 +149,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 25 的观察核对与新增 32：** 只读核对确认 25 报告的两项 Core 观察都与原版一致（Xpon 恢复时以满油门重建移动块再按保持减速；编队跟随者经份额离场后在领队旁落位并很快重新活动）。核对发现一处未定的边缘：A9 写“目标停放时离场”，Core 以“目标不活动”判断（含停靠）。新增 32 读原生比较并对齐；29 加入对 32 的依赖。
 - **2026-10-16 — 32 完成：** `0x63552`–`0x63558` 以零扩展的 +2 与 1 比较，+2 ≠ 1（停放、停靠等）都请求离场，且先于阵营判断；Core 已一致，未改代码，加入停放/停靠/活动目标的测试；A9 第 7 步已更新。
 - **2026-10-16 — wii-01 的处置：** wii-01 因配方缺陷（`b` 的首次回调停止不可能触发）由操作者取消。已完成的窗口按样本资格计入；W-ii 唯一的重做改为约 1 小时的修正短运行，只走 `b`/Xpon、友伤与剩余命令阶段；之后不再做原版运行（spec 正式采样计划已记录）。
+- **2026-10-16 — 26 的结果与决定：** 正式运行 e-02、wii-01、wii2-01 都未得到 `complete`；按决定只计入已完整走完的窗口中的合格样本（wii2-01 排除僚机离场后 60 个 `pointer-null` 的必需样本）。没有合格样本的五项（解释器状态 4、友伤累计、K-02 的增援与重装、离开指令、规避的其余入口）逐项改为“代码证据加 Node 独立期望”，补入已知限制第 11–15 项。b-09 的启动布局更正为 C（已知限制第 6 项改为缺布局 A）。P3-08 不再使用基准环境，已通知 P3-10。e-01 的清理记录为失败（超出结束时限，进程约 1 分钟后退出）。
 
 ## 审批
 

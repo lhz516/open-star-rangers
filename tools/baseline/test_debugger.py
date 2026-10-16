@@ -197,5 +197,15 @@ class PortTests(unittest.TestCase):
             self.debugger.run_to_breakpoint(0x258, offsets, 5)
         self.assertEqual(caught.exception.code, "breakpoint-wrong-hit")
 
+    def test_eight_alternative_breakpoints(self):
+        """P3-08/26: the 50-row screen's output pane holds an eight-row breakpoint list with its acknowledgements."""
+        self.debugger.run_until_stop("VRT", 5)
+        offsets = tuple(CODE_SITE + 0x10 * (k + 1) for k in range(8))
+        self.fake.scenario["hits"] = [{"site": 7, "registers": {"EBX": 0x1234}}]
+        registers, proof = self.debugger.run_to_breakpoint(0x258, offsets, 5)
+        self.assertEqual(registers.eip, offsets[7])
+        self.assertEqual(sorted(proof["registration"]["listed"]), [f"0258:{offset:08x}" for offset in offsets])
+        self.assertEqual(self.debugger.breakpoint_list(), [])
+
 if __name__ == "__main__":
     unittest.main()

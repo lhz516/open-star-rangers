@@ -40,7 +40,7 @@ from protect import (EMULATOR_KEYS, EXE_PATH, GAME_CONFIG, TEXT_LIMIT, Protectio
 from qualify import (FORMATS, PauseEvidence, ReadBudget, Sample, StopProof, collect_fields, collect_pause, judge_pause,
                      judge_probe, page_range, read_error)
 from reasons import BaselineError, ordered
-from recipe import MAX_RECIPE_BYTES, SCALAR_RANGES, Binding, Window, exe_fingerprint, parse_recipe, verify_source
+from recipe import MAX_RECIPE_BYTES, SCALAR_RANGES, AllOf, Binding, Window, exe_fingerprint, parse_recipe, verify_source
 from report import build_report, serialize, summary
 from runfiles import (Log, ReportWriter, SessionLock, create_run_dir, read_signal, replace_file, resolve_evidence,
                       resolve_output, write_json, write_new)
@@ -580,12 +580,18 @@ class Run:
         end = self.env.clock() + limit  # the single-wait limit bounds the hits a condition skips, not each hit
         skipped = 0
         eligible = 0  # hits that passed the register condition, of which an `until` stop probes every n-th
+        armed = None  # the last skipped hit, while its breakpoints stay registered (P3-08/26)
         while True:
             remaining = end - self.env.clock()
             if remaining <= 0:
                 raise BaselineError("wait-timeout", pause.id)
-            registers, proof = debugger.run_to_breakpoint(startup.selector, target, remaining, self.poll_abort,
-                                                          announce if skipped == 0 else None)
+            if armed is None:
+                registers, proof = debugger.run_to_breakpoint(startup.selector, target, remaining, self.poll_abort,
+                                                              announce if skipped == 0 else None, keep=True)
+            else:  # a skipped hit: run on without registering the breakpoints again
+                registers, waited = debugger.resume_to_breakpoint(startup.selector, target, remaining,
+                                                                  self.poll_abort)
+                proof["waitedSeconds"] = round(waited, 3)
             if self.passes_when(stop, sites, registers, accepted):
                 if probe is None:
                     break
@@ -599,6 +605,8 @@ class Run:
             self.skipped_hits += 1
             if self.skipped_hits > self.recipe.limits.max_skipped_hits:
                 raise BaselineError("skip-budget-exceeded", pause.id)
+            armed = registers
+        debugger.clear_breakpoints()
         record = {"kind": "breakpoint", "credential": "registered-listed-and-hit"}
         if stop.alternatives:
             record["sites"] = [{"object": site.object, "offset": f"{site.offset:x}"} for site in stop.alternatives]
@@ -607,7 +615,8 @@ class Run:
             record["site"] = {"object": stop.site.object, "offset": f"{stop.site.offset:x}"}
         record.update(proof)
         if stop.when is not None:
-            record["when"] = stop.when.to_json(sorted(accepted))
+            resolved = [sorted(values) for values in accepted]
+            record["when"] = stop.when.to_json(resolved if isinstance(stop.when, AllOf) else resolved[0])
         if probe is not None:
             record["until"] = {**stop.until.to_json(), **probe}
         if stop.when is not None or probe is not None:
@@ -620,12 +629,16 @@ class Run:
         """Whether a hit passes the stop's register condition (always without one)."""
         if accepted is None:
             return True
-        if stop.alternatives and not stop.when.applies(sites.get(registers.eip)):
-            return True  # a hit at a site the condition is not limited to is the pause unconditionally
-        value = registers.values.get(stop.when.register)
-        if value is None:
-            raise BaselineError("debugger-unparsed", "registers")
-        return (value in accepted) == stop.when.include
+        site = sites.get(registers.eip)
+        for condition, values in zip(stop.when.parts(), accepted):
+            if stop.alternatives and not condition.applies(site):
+                continue  # a hit at a site the condition is not limited to is not tested by it
+            value = registers.values.get(condition.register)
+            if value is None:
+                raise BaselineError("debugger-unparsed", "registers")
+            if (value in values) != condition.include:
+                return False
+        return True
 
     def probe(self, debugger, startup, pause, registers, budget, record):
         """Reads an `until` stop's test fields at this hit, with the pause's qualification rules (correlation
@@ -670,16 +683,19 @@ class Run:
         return verdict is True
 
     def condition_values(self, pause):
-        """The values of the pause's stop condition, with each earlier pause's reading it names (fatal without one:
-        the stop could not be selected)."""
-        values = set()
-        for item in pause.stop.when.values:
-            if isinstance(item, Binding):
-                item = self.bindings.get(item)
-                if item is None:
-                    raise BaselineError("binding-unavailable", pause.id)
-            values.add(item)
-        return values
+        """The values of each of the pause's stop conditions, with each earlier pause's reading they name (fatal
+        without one: the stop could not be selected)."""
+        out = []
+        for condition in pause.stop.when.parts():
+            values = set()
+            for item in condition.values:
+                if isinstance(item, Binding):
+                    item = self.bindings.get(item)
+                    if item is None:
+                        raise BaselineError("binding-unavailable", pause.id)
+                values.add(item)
+            out.append(values)
+        return out
 
     def identity(self, mission, config):
         """Observed identity: the operator's declaration, with emulator settings taken from the private config."""
@@ -697,7 +713,7 @@ class Run:
         registers, stop = self.stop_at(debugger, startup, pause, budget)
         needed = self.field_registers(pause.fields)
         if pause.stop.when is not None:
-            needed.add(pause.stop.when.register)
+            needed.update(condition.register for condition in pause.stop.when.parts())
         needed.update(self.recipe.devices[item.device].register for item in stimuli if item.kind == "device")
         needed.update(self.referenced_registers(pause.id))
         if not needed - {None} <= registers.values.keys():
@@ -717,7 +733,8 @@ class Run:
         references = [address.bound for address in (field.address for field in self.recipe.fields.values())
                       if address.bound is not None]
         references += [item for pause in self.recipe.pauses if pause.stop.when is not None
-                       for item in pause.stop.when.values if isinstance(item, Binding)]
+                       for condition in pause.stop.when.parts() for item in condition.values
+                       if isinstance(item, Binding)]
         return {item.register for item in references if item.pause == pause_id and item.register is not None}
 
     def take_pause(self, debugger, startup, pause, budget):

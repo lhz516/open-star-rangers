@@ -29,7 +29,7 @@ from le_image import PAGE_SIZE
 from reasons import BaselineError
 
 SCHEMA_VERSION = 1
-MAX_RECIPE_BYTES = 256 * 1024
+MAX_RECIPE_BYTES = 1024 * 1024
 UINT32_END = 1 << 32
 
 SCALAR_SIZES = {"u8": 1, "u16": 2, "u32": 4, "i16": 2, "i32": 4, "f32": 4}
@@ -39,7 +39,8 @@ POINTER_SIZE = 4
 STOP_KINDS = ("breakpoint", "vrt")
 STIMULUS_KINDS = ("key", "shift", "device")
 REGISTER_OFFSETS = (-0x10000, 0xFFFF)  # a field or device addressed from a register (or a bound reading)
-ALTERNATIVE_SITES = (2, 4)  # offsets of a breakpoint stop with alternative sites
+ALTERNATIVE_SITES = (2, 8)  # offsets of a breakpoint stop with alternative sites
+CONDITION_LIST = (1, 8)  # conditions of a `when` list (all must pass where they apply)
 CONDITION_VALUES = (1, 16)  # values of a stop condition
 DEFAULT_SKIPPED_HITS = 100_000
 TEST_OPERATORS = ("lt", "le", "gt", "ge", "eq", "ne")
@@ -132,11 +133,28 @@ class Condition:
     def applies(self, site):
         return not self.sites or site in self.sites
 
+    def parts(self):
+        return (self,)
+
     def to_json(self, resolved):
         out = {"register": self.register, "in" if self.include else "notIn": [f"{value:x}" for value in resolved]}
         if self.sites:
             out["at"] = [f"{site.offset:x}" for site in self.sites]
         return out
+
+
+@dataclass(frozen=True)
+class AllOf:
+    """A `when` list (P3-08/26): a hit is the pause only when every condition that applies at its site passes, so
+    one stop can bind different sites to different registers, or test two registers at one site."""
+    conditions: tuple
+
+    def parts(self):
+        return self.conditions
+
+    def to_json(self, resolved):
+        """`resolved`: one sorted value list per condition, in order."""
+        return [condition.to_json(values) for condition, values in zip(self.conditions, resolved)]
 
 
 @dataclass(frozen=True)
@@ -672,7 +690,7 @@ def _stop(stop, path, fields, listed_at):
         site = alternatives[0]
     else:
         raise BaselineError("recipe-key-missing", path + ".offset")
-    when = _condition(stop["when"], path + ".when", fields, listed_at, alternatives) if "when" in stop else None
+    when = _when(stop["when"], path + ".when", fields, listed_at, alternatives) if "when" in stop else None
     until = _until(stop["until"], path + ".until", fields, listed_at) if "until" in stop else None
     return Stop(kind, site, alternatives, when, until)
 
@@ -742,6 +760,18 @@ def _test_number(value, path):
     if not math.isfinite(value) or abs(value) > TEST_NUMBER:
         raise BaselineError("recipe-value-invalid", path)
     return value
+
+
+def _when(value, path, fields, listed_at, alternatives):
+    """One condition object, or a list of 1-8 of them that must all pass where they apply (P3-08/26)."""
+    if type(value) is not list:
+        return _condition(value, path, fields, listed_at, alternatives)
+    if not value:
+        raise BaselineError("recipe-empty", path)
+    if len(value) > CONDITION_LIST[1]:
+        raise BaselineError("recipe-budget-exceeded", path)
+    return AllOf(tuple(_condition(item, f"{path}[{slot}]", fields, listed_at, alternatives)
+                       for slot, item in enumerate(value)))
 
 
 def _condition(value, path, fields, listed_at, alternatives=()):

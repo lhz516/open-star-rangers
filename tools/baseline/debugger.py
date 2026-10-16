@@ -441,20 +441,32 @@ class Debugger:
         return {"selector": f"{selector:04x}", **sites, "acknowledged": True,
                 "listed": [f"{s:04x}:{o:08x}" for s, o in listed]}
 
-    def run_to_breakpoint(self, selector, offsets, limit, poll=None, before_run=None):
+    def run_to_breakpoint(self, selector, offsets, limit, poll=None, before_run=None, keep=False):
         """Registers the breakpoint(s) (see `arm`), runs (at most `limit` seconds) to the next stop, requires that
-        stop to be at one of them and deletes them again. Returns (registers at the hit, proof)."""
+        stop to be at one of them and deletes them again (`keep`: leaves them registered for `resume_to_breakpoint`).
+        Returns (registers at the hit, proof)."""
         registration = self.arm(selector, offsets)
-        wanted = (offsets,) if type(offsets) is int else tuple(offsets)
         if before_run is not None:
             before_run()
+        registers, waited = self._run_to_hit(selector, offsets, limit, poll)
+        if not keep:
+            self.clear_breakpoints()
+        return registers, {"registration": registration, "waitedSeconds": round(waited, 3)}
+
+    def resume_to_breakpoint(self, selector, offsets, limit, poll=None):
+        """Runs on to the next hit with the breakpoints `run_to_breakpoint(keep=True)` left registered (P3-08/26): the
+        debugger's RUN executes the stopped instruction before it re-enables the breakpoints, so the current site does
+        not stop again. Returns (registers at the hit, seconds waited); the caller deletes the breakpoints."""
+        return self._run_to_hit(selector, offsets, limit, poll)
+
+    def _run_to_hit(self, selector, offsets, limit, poll):
+        wanted = (offsets,) if type(offsets) is int else tuple(offsets)
         waited = self.run_until_stop("RUN", limit, poll=poll)
         registers = self.fresh_registers()
         if registers.cs != selector or registers.eip not in wanted:
             raise BaselineError("breakpoint-wrong-hit", f"{selector:04x}:{wanted[0]:08x}" if len(wanted) == 1
                                 else f"{selector:04x}:alternatives")
-        self.clear_breakpoints()
-        return registers, {"registration": registration, "waitedSeconds": round(waited, 3)}
+        return registers, waited
 
     def write_memory(self, linear, data):
         """Writes bytes at a linear address of the paused guest (SMV) and requires the debugger's acknowledgement of

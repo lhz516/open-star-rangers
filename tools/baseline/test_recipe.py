@@ -265,7 +265,7 @@ class RecipeTests(unittest.TestCase):
 
     def test_long_recipe_ceilings(self):
         self.assertEqual((MAX_RECIPE_BYTES, CEILINGS["maxPauses"], CEILINGS["maxLogBytes"]),
-                         (256 * 1024, 2048, 4 << 30))
+                         (1024 * 1024, 2048, 4 << 30))
 
         def many(count):
             def change(d):
@@ -531,6 +531,46 @@ class RecipeTests(unittest.TestCase):
         self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.selection())).fingerprint)
         self.assertTrue(parse_recipe(text(self.selection())).pause("pick").stop.when.applies(stop.sites[0]))
 
+    def test_condition_list(self):
+        def listed(d):  # P3-08/26: one condition per site, and two registers at one site
+            d["pauses"][1]["stop"]["offsets"] = [0x1F90, 0x1FA0, 0x1FB0, 0x1FC0, 0x1FD0, 0x1FE0, 0x1FF0, 0x2000]
+            d["pauses"][1]["stop"]["when"] = [
+                {"register": "EBX", "in": [{"pause": "start", "field": "count"}], "at": [0x1F90]},
+                {"register": "ESI", "notIn": [0], "at": [0x1FA0, 0x1FB0]},
+                {"register": "EDI", "in": [5, {"pause": "start", "register": "ESI"}], "at": [0x1FA0]}]
+        recipe = parse_recipe(text(self.selection(listed)))
+        stop = recipe.pause("pick").stop
+        self.assertEqual(len(stop.sites), 8)
+        parts = stop.when.parts()
+        self.assertEqual([(part.register, part.include) for part in parts],
+                         [("EBX", True), ("ESI", False), ("EDI", True)])
+        self.assertEqual((parts[1].applies(stop.sites[0]), parts[1].applies(stop.sites[2]),
+                          parts[2].applies(stop.sites[2])), (False, True, False))
+        self.assertEqual(stop.when.to_json([[7], [0], [5, 0x1234]]), [
+            {"register": "EBX", "in": ["7"], "at": ["1f90"]}, {"register": "ESI", "notIn": ["0"], "at": ["1fa0", "1fb0"]},
+            {"register": "EDI", "in": ["5", "1234"], "at": ["1fa0"]}])
+        single = parse_recipe(text(self.selection())).pause("pick").stop.when
+        self.assertEqual(single.parts(), (single,))  # the object form is unchanged
+
+        def when(value):
+            return lambda d: d["pauses"][1]["stop"].update(when=value)
+
+        good = {"register": "EBX", "in": [1]}
+        for code, change in [("recipe-empty", when([])),
+                             ("recipe-budget-exceeded", when([good] * 9)),
+                             ("recipe-type-invalid", when([good, 3])),
+                             ("recipe-key-missing", when([good, {"in": [1]}])),
+                             ("recipe-value-invalid", when([good, {"register": "EBX", "in": [1],
+                                                                   "at": [0x1F90, 0x1FA0]}])),
+                             ("recipe-reference-invalid", when([good, {"register": "EBX", "in": [
+                                 {"pause": "end", "field": "ticks"}]}])),
+                             ("recipe-key-unknown", lambda d: d["pauses"][1].update(stop={
+                                 "kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                                 "when": [{"register": "EBX", "in": [1], "at": [0x1F90]}]}))]:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.selection(change))
+        self.assertEqual(len(parse_recipe(text(self.selection(when([good] * 8)))).pause("pick").stop.when.parts()), 8)
+
     def test_alternative_sites_and_condition_rejections(self):
         def stop(**changes):
             def change(d):
@@ -548,7 +588,7 @@ class RecipeTests(unittest.TestCase):
             ("recipe-address-invalid", stop(offset=0x1F90)),
             ("recipe-type-invalid", stop(offsets=0x1F90)),
             ("recipe-value-invalid", stop(offsets=[0x1F90])),
-            ("recipe-value-invalid", stop(offsets=[1, 2, 3, 4, 5])),
+            ("recipe-value-invalid", stop(offsets=list(range(1, 10)))),
             ("recipe-value-invalid", stop(offsets=[0x1F90, 0x1F90])),
             ("recipe-value-invalid", stop(offsets=[])),
             ("recipe-type-invalid", stop(offsets=[0x1F90, "0x1FA0"])),
