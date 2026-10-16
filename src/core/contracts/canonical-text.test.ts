@@ -142,8 +142,10 @@ describe('canonical text (P3-02 AC-11 rules, 快照、哈希与 replay)', () => 
           return Reflect.get(target, key, receiver);
         },
       });
-      expectInputError(() => canonicalText(endless), 'value[15]', `makes the canonical text longer than ${LIMIT} characters`);
-      expect(visited).toBe(16);
+      // One-MiB pieces: the one that would pass the limit is the last visited.
+      const pieces = LIMIT / 2 ** 20;
+      expectInputError(() => canonicalText(endless), `value[${pieces - 1}]`, `makes the canonical text longer than ${LIMIT} characters`);
+      expect(visited).toBe(pieces);
     });
   });
 

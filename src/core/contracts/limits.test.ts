@@ -77,6 +77,8 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     expect(recordedCheckpoints).toBe(recordedTicks + 1);
     expect(recordedCommands).toBeGreaterThanOrEqual(recordedTicks);
     expect(recordedEvents).toBeGreaterThanOrEqual(recordedCommands);
+    // The canonical text holds the strict worst snapshot (CR-25), about 25.7 MiB, which budget.test.ts measures.
+    expect(CORE_LIMITS.canonicalTextLength).toBe(2 ** 25);
   });
 
   it('keeps every sum and product of two limits a safe integer', () => {

@@ -92,7 +92,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | completed |
 | [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | completed |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
-| [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | in-progress |
+| [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | completed |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | pending |
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | pending |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | in-progress |
@@ -142,6 +142,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-15 — 31 完成：** 长测试有显式单项时限，测试内容不变（60 s：snapshot 两项、budget 文本预算、import-job 的场景配置组；30 s：image-payload 往返表、任务场景组、map-warp-replay 顶层组、engineering-boundaries 遍历真实应用的三项）；工程约定的测试规则已同步。只在两个全量测试并行（load ≈ 52）时超时的其他文件未改。
 - **2026-10-15 — 20 完成：** 僚机命令的两个消费者（活动 `0x614a8`、停放 `0x61f20`）经 19、21 的接缝接入；回复经 P3-10 的 `queueLine`；菜单到回复的联合运行以未修改的 `replayRecord` 重放通过。`queueLine` 在处理器调用中从 `world.rngState` 抽取，所以僚机处理器改为逐次抽取（`worldRand`），与停放处理器一致。12 的 `WINGMAN_REPLIES` 中停放码 4 的回复线号由 0x14 更正为 0xE（WB4、CR-22）。交 28：core.md 的消费者接入、回复与逐次抽取的原因、码 4 的更正。
 - **2026-10-15 — 快照文本上限（23，协调者依用户授权决定）：** 实测最坏情形（32 挂点、所有数值最长）约 25.7 MiB，P3-07 至 P3-10 的状态在 32 挂点时本身已超 16 MiB。`canonicalTextLength` 提高到 32 MiB，budget 测试断言严格最坏情形在其内；P3-02 CR-25 已更正。
+- **2026-10-15 — 23 完成：** AC-11 的标准录制不含替身（敌机、基地、僚机、P3-10 菜单码 1 与 6、`b`、Warp 停放与重装、解析缓存的脚本切换）；AC-17 的 Node 部分在世界层面（每 tick 分派恰好 131,072 通过、下一次故障；每次运行 1,024 次分派后停止；AI 与 `b` 触及请求与实体上限；会话的暂停、隐藏、恢复、重试、两个会话与经 Runtime 显示的 AI 故障）。`canonicalTextLength` 为 2²⁵，严格最坏情形已实测。录制中僚机奉命攻击但 420 tick 内未射击（断言其目标）。交 28：core.md 的上限表。
 
 ## 审批
 

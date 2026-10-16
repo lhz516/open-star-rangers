@@ -81,17 +81,16 @@ export const CORE_LIMITS = Object.freeze({
   /** Checkpoints of one recording: tick 0 and one per tick, so an interval of 1 always fits. */
   recordedCheckpoints: 131_073,
   /**
-   * Characters of one canonical text. A snapshot at the entity limit is about 10.5 MiB with P3-07's combat state
-   * (CR-14): at most spawnExpansion craft at about 8.5 KiB each with 18 mounts, about 2 KiB for every other entity.
-   * P3-09's state (MW-14) adds at most `entities` map icons of about 170 characters (0.35 MiB; 200 at the longest
-   * numbers, 0.4 MiB), `entities` IDs in the object sets (12 KiB; 34 KiB at 16 digits) and the Warp transit (1 KiB; about
-   * 2 KiB at the longest numbers): about 10.9 MiB, 11 MiB at the longest (budget.test.ts). P3-10 adds about 60
-   * characters per entity and about 0.8 MiB for a full radio queue (CB-16): about 11.8 MiB in all. P3-08 (CR-25) adds
-   * about 2 KiB per craft with a controller, of which instantiation makes at most spawnExpansion (2 MiB; 2.9 KiB and
-   * 2.8 MiB at the longest numbers), and about 0.5 MiB of parse cache for real content (2 MiB with every entry at the
-   * content limits): about 14.3 MiB in all.
+   * Characters of one canonical text: 2^25 (32 MiB), above the strict worst snapshot (CR-25, budget.test.ts measures it).
+   * With every number at its longest (f32 and doubles 25 characters, IDs and clocks 16 digits), at the entity limit:
+   * every entity's flight state 3.3 KiB (6.6 MiB), P3-09's icons, object sets and Warp transit (MW-14) 0.43 MiB, P3-10's
+   * full radio queue (CB-16) 1.2 MiB, P3-08's longest controller on the spawnExpansion craft instantiation can make and
+   * the player (2.9 KiB each, 2.8 MiB) and a parse cache at the content limits (1.9 MiB), and P3-07's combat state (CR-14)
+   * on those 1,025 craft with CRAFT_INFO_LIMITS.mounts (32) mounts of 396 characters each (12.4 MiB): about 25.7 MiB.
+   * CR-14's 10.5 MiB took typical numbers and 18 mounts, and was never a strict bound; 16 MiB did not hold the strict
+   * case even before P3-08. Exceeding it remains a fault.
    */
-  canonicalTextLength: 16_777_216,
+  canonicalTextLength: 33_554_432,
 });
 
 export type CoreLimitName = keyof typeof CORE_LIMITS;

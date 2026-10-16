@@ -5,8 +5,9 @@ import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command, type TickInput } from '../contracts/tick-input.ts';
 import { registerTick, RequestQueue, runTick, type Request } from '../systems/pipeline.ts';
 import { AI_PROGRAMS_LIMITS } from '../../content/rule-data/ai-programs.ts';
+import { CRAFT_INFO_LIMITS } from '../../content/rule-data/craft-info.ts';
 import {
-  clearedControllerCommon, RETURN_STACK_DEPTH, type Entity, type EntityInit, type Matrix3, type SteeredMovementBlock, type TableController,
+  clearedControllerCommon, RETURN_STACK_DEPTH, SUBSYSTEM_COUNT, type CraftCombat, type Entity, type EntityInit, type Matrix3, type MountState, type SteeredMovementBlock, type TableController,
 } from '../world/entity-table.ts';
 import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld, type World } from '../world/world.ts';
@@ -294,6 +295,26 @@ function longestController(): TableController {
   };
 }
 
+/** Gives the craft `entity` P3-07's combat state (CR-02, CR-14) with every number at its longest and `mounts` mounts. */
+function longestCombat(entity: Entity, mounts: number): void {
+  const longest = (): MountState => ({
+    lastShotClock: LONG_ID, ammunition: LONG_I32, damage: 2, burst: LONG_I32, aim: Array.from({ length: 9 }, () => LONG_F32) as unknown as Matrix3,
+    autoTarget: LONG_ID, retargetClock: LONG_ID,
+  });
+  const selection = { index: 2 ** 31 - 1, mount: mounts === 0 ? null : mounts - 1 };
+  Object.assign(entity.combat as CraftCombat, {
+    energy: LONG_I32, shield: LONG_I32, charge: LONG_I32, shieldLevel: 3, chargeLevel: 3, sparePower: LONG_I32, fullSpeedPower: LONG_I32,
+    lastEnergyClock: LONG_ID, nextEnergyClock: LONG_ID, depleted: false, hull: LONG_I32, subsystems: Array.from({ length: SUBSYSTEM_COUNT }, () => 3),
+    weapons: {
+      selections: [selection, selection, selection],
+      lock: { level: 4, stageDueClock: LONG_ID, losing: false, graceDueClock: LONG_ID, nextUpdateClock: LONG_ID },
+      mounts: Array.from({ length: mounts }, longest),
+    },
+    hitFeedbackClock: LONG_ID, proximity: { entity: LONG_ID, distanceSquared: LONG_F32 }, lastVictim: { entity: LONG_ID, clock: LONG_ID },
+    lastAttacker: { entity: LONG_ID, clock: LONG_ID },
+  });
+}
+
 /**
  * A mutable copy of `snapshot` whose entity IDs (the next one, the entities', the walk order's and the player's) are
  * 16-digit numbers; the longest entity's references already are.
@@ -310,8 +331,8 @@ function withLongIds(snapshot: GameSnapshot): GameSnapshot {
 }
 
 describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
-  // Writes the text of a world at the entity limit: 2 s alone, 23 s with two full runs at load 52.
-  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity before its combat state, of which the flight state takes at most 1.5 KiB', { timeout: 60_000 }, () => {
+  // Writes the texts of a world at the entity limit, the last about 26 MiB: about 5 s alone.
+  it('keeps the canonical text at the entity limit within canonicalTextLength, at most 4 KiB an entity before its combat state, of which the flight state takes at most 1.5 KiB', { timeout: 120_000 }, () => {
     expect([LONG_DOUBLE, LONG_F32, LONG_ID, LONG_I32].map((value) => JSON.stringify(value).length)).toEqual([25, 25, 16, 11]);
     const state = testState();
     addPlayerEntity(state);
@@ -405,5 +426,21 @@ describe('snapshot text budget (P3-06 AC-08, 容量核算)', () => {
     const cached = snapshotText(withLongIds(takeSnapshot(state)));
     expect(cached.length - controlled.length).toBeLessThanOrEqual(AI_PROGRAMS_LIMITS.entries * (AI_PROGRAMS_LIMITS.scriptItems * 256 + 64));
     expect(cached.length).toBeLessThanOrEqual(canonicalTextLength);
+
+    // The strict worst case (CR-25): on top of all the above, P3-07's combat state (CR-14) at its longest on every craft
+    // that can carry mounts, the player and the spawnExpansion craft instantiation makes, each with
+    // CRAFT_INFO_LIMITS.mounts mounts (constructed transponders have none).
+    const mounted = [state.entities.get(state.player.entityId!)!, ...[...state.entities.walk(1 << 19)].slice(0, spawnExpansion)];
+    expect(mounted).toHaveLength(spawnExpansion + 1);
+    for (const entity of mounted) longestCombat(entity, CRAFT_INFO_LIMITS.mounts);
+    const strict = snapshotText(withLongIds(takeSnapshot(state)));
+    // A mount writes 396 characters with its comma: 12.4 MiB on these craft, with their other combat fields 12.8 MiB.
+    const { mounts } = (mounted[0].combat as CraftCombat).weapons;
+    expect(JSON.stringify(mounts[0]).length + 1).toBe(396);
+    expect(strict.length - cached.length).toBeLessThanOrEqual(mounted.length * (CRAFT_INFO_LIMITS.mounts * 396 + 1024));
+    // About 25.7 MiB: beyond the 16 MiB the limit was before CR-25 raised it, within the 32 MiB it is now.
+    expect(strict.length).toBeGreaterThan(25.5 * 2 ** 20);
+    expect(strict.length).toBeLessThanOrEqual(26 * 2 ** 20);
+    expect(strict.length).toBeLessThanOrEqual(canonicalTextLength);
   });
 });
