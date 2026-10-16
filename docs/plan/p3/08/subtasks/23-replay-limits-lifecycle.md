@@ -38,6 +38,7 @@ updated: 2026-10-15
 - `src/core/contracts/limits.ts`：预算的必要修正。
 - `src/app/session/**`：生命周期测试与必要修正。
 - `src/core/contracts/limits.test.ts`：`canonicalTextLength` 提高后的断言。
+- `src/core/contracts/canonical-text.test.ts`：按上限推导的截断位置。
 
 ## 验收标准
 
