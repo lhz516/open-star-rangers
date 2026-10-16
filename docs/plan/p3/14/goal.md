@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "14"
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # P3-14：飞行音效触发 — Goal
@@ -74,10 +74,10 @@ updated: 2026-10-15
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-trigger-voice-research.md](./subtasks/01-trigger-voice-research.md) | — | pending |
-| [02-spatial-mixer-research.md](./subtasks/02-spatial-mixer-research.md) | — | pending |
-| [03-hud-cue-research.md](./subtasks/03-hud-cue-research.md) | — | pending |
-| [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | pending |
+| [01-trigger-voice-research.md](./subtasks/01-trigger-voice-research.md) | — | completed |
+| [02-spatial-mixer-research.md](./subtasks/02-spatial-mixer-research.md) | — | in-progress |
+| [03-hud-cue-research.md](./subtasks/03-hud-cue-research.md) | — | in-progress |
+| [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | in-progress |
 | [05-evidence-contract-baseline.md](./subtasks/05-evidence-contract-baseline.md) | 01, 02, 03, 04 | pending |
 | [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | pending |
 | [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | pending |
