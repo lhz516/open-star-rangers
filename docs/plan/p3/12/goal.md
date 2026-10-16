@@ -92,7 +92,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [03-draw-order-sprite-research.md](./subtasks/03-draw-order-sprite-research.md) | — | completed |
 | [04-nebula-flash-research.md](./subtasks/04-nebula-flash-research.md) | — | in-progress |
 | [05-shimmer-effect-geometry-research.md](./subtasks/05-shimmer-effect-geometry-research.md) | — | in-progress |
-| [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | in-progress |
+| [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | completed |
 | [07-evidence-gap-supplement.md](./subtasks/07-evidence-gap-supplement.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-original-records-comparison-plan.md](./subtasks/08-original-records-comparison-plan.md) | 01, 02, 03, 04, 05, 06, 07 | pending |
 | [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | pending |
@@ -123,6 +123,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 
 - **2026-10-16 — 主机适配：** 本主机不能在协调者指定的目录启动会话，worker 改在 app 从目标分支创建的 worktree 中运行，并把分支改名为 `exec-p3-12-NN` 作为认领标记（同 P3-08/09/10）。协调者只以 git 中实际存在的提交为准集成；曾收到声称已提交、但提交并不存在的 02、01、03 报告，均未采用。
 - **2026-10-16 — 研究缺口交 07（计划修正）：** 01 的第一项验收要求 Q-01 达到已确认，但像素行取整（01 的 G-01）只能靠 07 的运行时补证取得，而 07 依赖 01，形成死锁。依 spec 的[最小补证](./spec.md#原版证据途径与-dosbox-x-的使用)（“优先处理 Q-01/Q-10 的剩余缺口”）与 Q 表允许的补证方式，按用户“其他问题采用最推荐回答”的授权作如下解释：01 至 06 中要求“达到已确认”的验收项，在静态途径可达的部分已确认、剩余部分作为精确缺口连同最小补证写入 findings 并交 07 时，视为该研究子任务完成，勾选时注明缺口编号。相应 Q 项的最终置信度不放宽：由 07 闭合或按 spec 记为 blocked，08 写入原版文档，AC-18 与 29 核对。07 增加对应验收项。
+- **2026-10-16 — 研究交接（供 07、09、08）：** 06 发现 Warp 撞墙会触发第 1 类闪光（`0x50a28` → `0x48d64`），需要逐 tick 的 Core 事实“5–95% 窗口内的 Warp 撞墙”，而 P3-09 的 `RenderWarp` 不含撞墙或误差量，交 09 的 D-01 定稿考虑（`local/research/p3-12/warp-tunnel/findings.md`）。02 顺带观察到平面/Gouraud 光栅化的 16 位深度测试为“新值 ≤ 存储值时绘制”，可能闭合 03 的 G3，由 07 核对。03 与 06 发现星点层（`0x3fd60`/`0x3fbc0`）与速度尘埃层（`0x44f74`/`0x44f00`，Warp 中为条纹）出现在所有世界视角，但 spec 没有对应的 Q 项或范围项；这是范围问题，待用户决定。
 
 ## 审批
 
