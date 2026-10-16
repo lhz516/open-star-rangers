@@ -40,6 +40,7 @@ updated: 2026-10-15
 - `src/core/contracts/domain-events.ts`：事件（按 08 定稿）。
 - `src/core/replay/compare.ts`：事件字段。
 - `src/app/runtime/game-event-bus.ts`：事件类型清单。
+- `src/core/replay/compare.test.ts`：停放码 4 的回复线号（同码 3，WB4、CR-22）。
 
 ## 验收标准
 
