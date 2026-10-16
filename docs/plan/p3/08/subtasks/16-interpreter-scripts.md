@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "16"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 16 — 解释器与脚本
@@ -39,6 +39,10 @@ updated: 2026-10-14
 - `src/core/rules/ai-interpreter.test.ts`：测试（新建）。
 - `src/core/systems/ai.ts`：接入。
 - `src/core/systems/ai.test.ts`：集成测试。
+- `src/core/rules/steering.ts`：新增反向视角 `0x5cc6c`（`updateReverseView`），既有函数不变。
+- `src/core/rules/steering.test.ts`：同上的测试。
+- `src/core/rules/ai-attack-pass.ts`：攻击航线 `0x63c00`/`0x640d8`/`0x64474` 与“前方”判定 `0x5e844`（新建，供 19 复用）。
+- `src/core/rules/ai-attack-pass.test.ts`：同上的测试（新建）。
 
 ## 验收标准
 
