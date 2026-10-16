@@ -97,7 +97,7 @@ updated: 2026-10-16
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | pending |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | pending |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | pending |
-| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | pending |
+| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | blocked |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
@@ -108,6 +108,11 @@ updated: 2026-10-16
 并行以实际写入范围为准：01–04 可独立静态调查；06 之后 Core、内容、平台可分别推进；平台完成后分配账本与参数/HUD/事件映射可以并行；真实集成后 Node/replay、浏览器及私有参考工作按依赖汇合。06/07 的批准和 26 的人耳判断由协调者处理。共享平台文件及装配文件的重叠由调度器串行，不为写同一文件额外添加伪依赖。
 
 ## 执行记录
+
+- **2026-10-16 — Subtask 24 blocked:** 需要启动 DOSBox-X 取得原版运行时参考；按用户本次执行指示（“如果 subtask 需要启动 dosbox 就先改成 blocked，记录，然后跳过”）暂不运行。
+  Evidence: 05 的 V-06 基线（[完成证据](./subtasks/05-evidence-contract-baseline.md#完成证据)）列出的 R-01 至 R-18 全部是原版运行时观测，01–05 的静态研究已穷尽可静态闭合的项（Miles 自然结束状态、暂停保留位置、声像到交错声道均已静态确认）。
+  Affected acceptance: AC-01、AC-15；24 的三项验收，及依赖它的 25、26、27、28。
+  Resume when: 用户同意运行 DOSBox-X（基准配置、所选任务），由协调者按 05 的 R 清单合并成尽量少的会话，并与 P3-11/P3-12 已安排的原版运行合并。
 
 ## 审批
 
