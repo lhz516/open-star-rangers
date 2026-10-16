@@ -97,7 +97,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [25-real-content-check.md](./subtasks/25-real-content-check.md) | 23 | completed |
 | [26-original-formal-runs.md](./subtasks/26-original-formal-runs.md) | 07, 11 | completed |
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | completed |
-| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | in-progress |
+| [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | completed |
 | [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | completed |
 | [31-long-test-timeouts.md](./subtasks/31-long-test-timeouts.md) | — | completed |
 | [32-share-departure-target-test.md](./subtasks/32-share-departure-target-test.md) | — | completed |
@@ -152,6 +152,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 - **2026-10-16 — 26 的结果与决定：** 正式运行 e-02、wii-01、wii2-01 都未得到 `complete`；按决定只计入已完整走完的窗口中的合格样本（wii2-01 排除僚机离场后 60 个 `pointer-null` 的必需样本）。没有合格样本的五项（解释器状态 4、友伤累计、K-02 的增援与重装、离开指令、规避的其余入口）逐项改为“代码证据加 Node 独立期望”，补入已知限制第 11–15 项。b-09 的启动布局更正为 C（已知限制第 6 项改为缺布局 A）。P3-08 不再使用基准环境，已通知 P3-10。e-01 的清理记录为失败（超出结束时限，进程约 1 分钟后退出）。
 - **2026-10-16 — 27 的四项决定：** 接受窗口结束游戏状态的间接证据；K-07 静止窗口按 Φ_F 判定（spec 措辞已改）；未作运行时判定的子项补入已知限制第 16 项；接受 K-07/K-05 的独立静态操作数。
 - **2026-10-16 — 27 完成：** 正式样本集中所有计入的原版样本满足判据，新版的每个链接与事件满足判据，没有新版与原版不一致；四项已批准的差异单独报告；已知限制 1–16 项都有代码证据与 Node 独立期望。新发现的原版事实（A1/A4 锥角位的更正，Core 已符合；W9 炮记录 +0x14/+0x2C 的写入者；发射锁定字节 4 的观察）已写入 `docs/original`。
+- **2026-10-16 — 28 完成：** core.md、app.md、ui.md、source-structure.md、工具指南与 `docs/original` 中交 28 的各项已写入。P3-10 自身的工程文档同步（其命令、请求、事件与上限）不在本 goal，留给 P3-10 的文档子任务；`limits.ts` 中 `commandsPerTick` 注释的命令数由协调者以单独提交更正（42 → 52）。
 
 ## 审批
 

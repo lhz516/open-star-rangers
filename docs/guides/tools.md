@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # 工具用法
@@ -148,7 +148,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   | 检查点 | 131,073（`recordedCheckpoints`） | 42 | 5,505,066 |
   | 合计 | | | 534,251,135 |
 
-  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-09 的 `warp-completed`（[MW-05](../plan/p3/02/spec.md#mw-05-领域事件)，带到达位置、姿态与扣费的完整 `arrival`；此前为 P3-07 的 `hit`），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
+  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-09 的 `warp-completed`（[MW-05](../plan/p3/02/spec.md#mw-05-领域事件)，带到达位置、姿态与扣费的完整 `arrival`；此前为 P3-07 的 `hit`；P3-08 的 `drop-transponder` 命令与 `wingman-command-consumed`、`transponder-deployed` 事件都已有样本（位姿取 25 个字符的 f32），都不比它长，所以上限不变），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
 - **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01），再以任务所有者的 [mission-input.ts](../../src/app/resources/mission-input.ts)（`ruleDataInputs`、`runModelInputs`）解码规则数据输入（含 `cockpit-hud-map` 组的地图几何，[P3-09 MW-01](../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)），并按 Core 的 `instantiableModelIds` 为记录中的运行配置解码可实例化机体的模型（[P3-07 CR-01](../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）；Core 拒绝该运行配置时不解码模型，由重放在记录或内容路径上报告 → `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
 - **输出：** stdout 为一份报告 `{ format: 'osr-replay-check', version: 1, passed, error, identity, mission, setupHash, finalTick, events, checkpoints, comparison }`，每次都有全部字段：
   - `error` 为 `{ code, location }` 或 null；`passed` 只在 `comparison.match` 为 true 时为 true；
@@ -174,7 +174,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 `tools/baseline/measure.py` 在开发者本地的基准环境中运行原版并读取运行时字段（[P3-01](../plan/p3/01/spec.md#运行时测量) 的 S-05）。配方、操作者协议、读数的合格条件、计时、原版文件保护与证据存放见[运行时测量指南](./runtime-measurement.md)，这里只列要点。
 
-- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–4 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；配方还可按本次运行的读数等待与分支（读数检验：断点停止的 `until` 只在探测读数通过比较时才停，刺激的 `if` 只在本暂停点读数通过时施加，否则记为 `condition-false`；见[读数检验](./runtime-measurement.md#读数检验等待与分支)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；刺激的 `if` 也可用等值形式 `{pause, field, equals}`，只在本次运行同一暂停点或较早暂停点的整数读数等于给定值时施加，否则记为 `not-selected`，用于按启动布局选择分支（见[条件刺激](./runtime-measurement.md#条件刺激)）；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
+- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–8 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，单个条件或 1–8 个条件的列表，列表中适用于该位置的条件都须满足（P3-08/26），值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、保持断点登记直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；配方还可按本次运行的读数等待与分支（读数检验：断点停止的 `until` 只在探测读数通过比较时才停，刺激的 `if` 只在本暂停点读数通过时施加，否则记为 `condition-false`；见[读数检验](./runtime-measurement.md#读数检验等待与分支)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；刺激的 `if` 也可用等值形式 `{pause, field, equals}`，只在本次运行同一暂停点或较早暂停点的整数读数等于给定值时施加，否则记为 `not-selected`，用于按启动布局选择分支（见[条件刺激](./runtime-measurement.md#条件刺激)）；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
 - **输出：** 报告、调试器日志与证明文件都写在 `local/research/` 下的新运行目录中，不覆盖已有文件。运行期间 `local/research/` 的既有文件不得改变；其他会话同时在别处写入时，`--evidence` 把这一检查缩小到包含运行目录的主题目录（保证随之变窄，`local/StarRang/` 的保护不变）。终端只有阶段、原因码、计数与相对路径，不输出读数、原版内容或私人绝对路径。
 - **退出码：** `complete` 为 0；失败为 1；运行前拒绝为 2（什么也不写）；取消为 3。
 - **测试：** `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`，不属于 `pnpm check`；测试只用合成数据与临时目录，不读取 `local/` 或原版文件。
