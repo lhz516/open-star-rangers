@@ -90,7 +90,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [16-interpreter-scripts.md](./subtasks/16-interpreter-scripts.md) | 15, 17, 18 | completed |
 | [19-wingman-friendly-fire.md](./subtasks/19-wingman-friendly-fire.md) | 16, 18 | completed |
 | [21-parked-sets-departure.md](./subtasks/21-parked-sets-departure.md) | 16, 18 | completed |
-| [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | pending |
+| [20-wingman-commands.md](./subtasks/20-wingman-commands.md) | 19, 21 | in-progress |
 | [22-xpon-b-key.md](./subtasks/22-xpon-b-key.md) | 09, 15 | completed |
 | [23-replay-limits-lifecycle.md](./subtasks/23-replay-limits-lifecycle.md) | 16, 18, 19, 20, 21, 22 | pending |
 | [24-browser-regression.md](./subtasks/24-browser-regression.md) | 13, 22, 23 | pending |
@@ -99,7 +99,8 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-004, B-006, B-009, U-001, U-021
 | [27-comparison-conclusions.md](./subtasks/27-comparison-conclusions.md) | 23, 25, 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 13, 22, 23, 27 | pending |
 | [30-merge-regression-docked-map.md](./subtasks/30-merge-regression-docked-map.md) | — | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30 | pending |
+| [31-long-test-timeouts.md](./subtasks/31-long-test-timeouts.md) | — | in-progress |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
