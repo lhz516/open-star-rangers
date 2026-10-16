@@ -36,6 +36,7 @@ updated: 2026-10-15
 - `src/core/rules/ai-wingman.test.ts`：测试（新建）。
 - `src/core/systems/ai.ts`：接入。
 - `src/core/systems/ai.test.ts`：集成测试（含友伤完整链的联合验证）。
+- `src/core/systems/spawn.test.ts`：僚机安装镜像写入 +0xC4/+0x90 后的期望。
 
 ## 验收标准
 
