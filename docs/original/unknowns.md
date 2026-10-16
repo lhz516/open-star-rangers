@@ -2,7 +2,7 @@
 type: register
 status: active
 phase: all
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # 待确认事项登记表
@@ -73,4 +73,4 @@ updated: 2026-10-15
 | U-015 | 是否有拷贝保护（光盘检测、手册问答） | 部分确认 | 已确认：正常试玩中未观察到任何验证环节，仅限已试玩流程，不能据此断言整个游戏无拷贝保护。光盘检测仍未确认。研究计划：保留安装目录，用临时配置对比挂载与不挂载光盘时的启动、进入任务行为；若失败，区分资源缺失与保护检查 | 用户试玩反馈（2026-10-01）；当前基准配置自动挂载光盘，见 [baseline-environment](../guides/baseline-environment.md#运行原版) | P0 |
 | U-016 | 参考音乐设备 | 高概率为 OPL3 | 原安装的 Miles 配置为 `SBPRO2.MDI` | [baseline-environment](../guides/baseline-environment.md) | P0 |
 | U-017 | 是否存在官方补丁 | 未确认 | 安装版 EXE 与光盘逐字节一致 | [manifest](./manifest.md) | P0 |
-| U-021 | 基准 DOSBox-X cycles 值 | 进行中 | 初始值 `fixed 40000`，待根据流畅度校准后冻结。P3-01/07 线索（[B-006](./behavior/B-006-simulation-timing.md)，所选任务，40000 与 20000）：模拟器在两者下都保持实时。游戏时钟相对模拟器时间的速率依赖 cycles：基准慢 0.03%–3.2%，20000 慢约 4.3%。帧率与每帧步长也依赖 cycles（约 30 对 13 帧/秒）。相对宿主时间因分辨率不足未检测到依赖，但未被排除。以秒或帧计的原版计时对照须在冻结后的配置下核对适用性<br>**P3-06 依赖说明：** 原版的首几帧（实例化帧、首次运动帧、首次可操纵更新）的步长与停放更新的节奏都按帧计（停放更新每帧对每个停放对象各抽一次随机数），因此依赖 cycles；P3-06 的运动对照须在冻结后的配置下进行，见 [executable](./formats/executable.md#initial-flight-state-p3-0605)<br>**P3-07/26：** 战斗规则的全部正式运行都在 fixed 40000 下进行；B-009 的结论只适用于该值（[B-009 测量结果](./behavior/B-009-combat-rules.md#测量结果)）<br>**P3-09/24–25：** 地图与 Warp 的正式运行与新版对照都在 fixed 40000 下进行，结论只适用于该值；冻结值不同时按 P3-09 spec 的 D-02 重新满足各类样本（[B-010](./behavior/B-010-map-warp.md#新版对照结论p3-0925)） | [baseline-environment](../guides/baseline-environment.md)；[B-006](./behavior/B-006-simulation-timing.md) | P0 |
+| U-021 | 基准 DOSBox-X cycles 值 | 进行中 | 初始值 `fixed 40000`，待根据流畅度校准后冻结。P3-01/07 线索（[B-006](./behavior/B-006-simulation-timing.md)，所选任务，40000 与 20000）：模拟器在两者下都保持实时。游戏时钟相对模拟器时间的速率依赖 cycles：基准慢 0.03%–3.2%，20000 慢约 4.3%。帧率与每帧步长也依赖 cycles（约 30 对 13 帧/秒）。相对宿主时间因分辨率不足未检测到依赖，但未被排除。以秒或帧计的原版计时对照须在冻结后的配置下核对适用性<br>**P3-06 依赖说明：** 原版的首几帧（实例化帧、首次运动帧、首次可操纵更新）的步长与停放更新的节奏都按帧计（停放更新每帧对每个停放对象各抽一次随机数），因此依赖 cycles；P3-06 的运动对照须在冻结后的配置下进行，见 [executable](./formats/executable.md#initial-flight-state-p3-0605)<br>**P3-07/26：** 战斗规则的全部正式运行都在 fixed 40000 下进行；B-009 的结论只适用于该值（[B-009 测量结果](./behavior/B-009-combat-rules.md#测量结果)）<br>**P3-09/24–25：** 地图与 Warp 的正式运行与新版对照都在 fixed 40000 下进行，结论只适用于该值；冻结值不同时按 P3-09 spec 的 D-02 重新满足各类样本（[B-010](./behavior/B-010-map-warp.md#新版对照结论p3-0925)）<br>**P3-08/27：** AI 与僚机的原版正式样本集（P3-08/10 复用的 4 次与 P3-08/26 的 3 次运行）都在 fixed 40000 下取得，[B-011](./behavior/B-011-ai-wingman.md#测量结果) 的“一致”结论只适用于该值；D-02 判据只依赖每个链接记录的步长、与 cycles 无关，冻结值不是 40000 时须在冻结配置下重新满足各类的最少样本、独立性与区分情形 | [baseline-environment](../guides/baseline-environment.md)；[B-006](./behavior/B-006-simulation-timing.md) | P0 |

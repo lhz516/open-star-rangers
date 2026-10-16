@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-15
+updated: 2026-10-16
 related: [U-001, U-022]
 ---
 
@@ -31,9 +31,9 @@ All structs are packed; every pointer listed as "in-block" is relocated by the e
   - **Flag:** always `0x694e4()` = the current SCEN header +0x0C (0 in SCEN 3019, so records with +0x04 = 1 are skipped; none of the baseline's has it).
   - **`0x5de18(object, flag, table, count, &partial)`:** loads the kind, \|runtime +0xE0\| (`NEG`; 0x80000000 stays negative) and runtime +0xDC **before** drawing; then one rand, start s = rand mod count (signed `IDIV`; a count of 0 would fault). It scans records s … count − 1, then 0 … s − 1, and stops after the first full match. A record is a partial match when (flag ≠ 0 or record +0x04 ≠ 1), the kind shares a bit with record +0x08 and runtime +0xDC ≤ record +0x0C (signed); the partial pointer is written for **every** partial match in scan order, the full one included; it is full when also \|runtime +0xE0\| ≥ record +0x10 (signed). Runtime +0xDC/+0xE0 are the [SCEN record](./scenario.md#3-132-byte-object-record-structure-confirmed-fields-partly-likely) +0x70/+0x74.
   - **`0x5dbc8`:** the group table's full match, else its partial one (`0x64b1c`, group from `0x694f0`), else the built-in table's full, else its partial match, else 0.
-  - **Draws:** one rand when the group table yields a full or partial match, two (group start, then built-in start) otherwise; none elsewhere on the path. They come at [instantiation](./executable.md#instantiation-p3-0203) step 13, after the Warp-timer draw of step 12 and before `0x38cd4`'s possible draw.
+  - **Draws:** one rand when the group table yields a full or partial match, two (group start, then built-in start) otherwise; none elsewhere on the path. *Confirmed (runtime, P3-08/27, fixed 40000):* the generator states around the 50 selection calls of e-02's build counted 1 draw for each kind-0x80 and kind-0x100 object, 2 for each base (built-in record 6) and 0 for the kind-0x4000 objects and the player. They come at [instantiation](./executable.md#instantiation-p3-0203) step 13, after the Warp-timer draw of step 12 and before `0x38cd4`'s possible draw.
   - **Once per object:** no path repeats the selection. +0xDC is written only by the allocator and instantiation; +0xE0 also by `0x5e4d0` (§11.2: a negative value becomes its magnitude), after the selection. Every object of one record therefore draws from the same support.
-- **Installation (Confirmed, code; P3-08/01):** in the object's **first callback**, not at instantiation. The generic callback `0x20c18` (jump table `0x20bf8`: states 0–3 install, 4 nothing, 5 and 6 removal, 7 step) first calls the Warp-transit test `0x2f298` in states 0–3 and returns while a transit lasts; otherwise, when +0x10 ≠ 0 and +0x14 = 0, it takes a controller from pool `0x1832d4` (failure is the fatal exit), calls `0x5dc0c(handle, C, +0x10)`, stores C at +0x14 and posts its state message (`0x20ae4`). So the install happens in the `object-update` stage of the frame after instantiation (later during a Warp transit), and states 1–3 do not install again.
+- **Installation (Confirmed, code; P3-08/01):** in the object's **first callback**, not at instantiation. The generic callback `0x20c18` (jump table `0x20bf8`: states 0–3 install, 4 nothing, 5 and 6 removal, 7 step) first calls the Warp-transit test `0x2f298` in states 0–3 and returns while a transit lasts; otherwise, when +0x10 ≠ 0 and +0x14 = 0, it takes a controller from pool `0x1832d4` (failure is the fatal exit), calls `0x5dc0c(handle, C, +0x10)`, stores C at +0x14 and posts its state message (`0x20ae4`). So the install happens in the `object-update` stage of the frame after instantiation (later during a Warp transit), and states 1–3 do not install again. *Confirmed (runtime, P3-08/27):* all 14 installs read in e-02 (kinds 0x80, 0x100 and the bases, parked and active) came exactly one frame after their selection call.
   - **`0x5dc0c`:** memset of the 0x16C bytes; C+0 := handle; C+0xF4 := record +0x14; C+0xF8 := record; C+0xFC := record +0x18 (the handler); C+0x104 := F(x), C+0x100 := F(−x) with x = (record +0x24 × f64 `0x17232c`) × f64 `0x172334` (in that order); C+0x10C/C+0x108 likewise from +0x28; C+0x110 := −record +0x2C (FCHS), C+0x114 := bit copy of +0x2C, C+0x118 := bit copy of +0x30; `0x5c530` (steering block); C+0x138 := 0. Then, by the activity +2 **at this moment**: 0 → `0x62250(0, C)`, otherwise the record handler in mode 0. `0x5dc0c` draws nothing.
   - **Mode 0 runs an update body** in every slice handler: the interpreter `0x64cb8` installs and then runs the state machine and the executor in the same call (§11.1); the wingman's `0x60f80(0)` and the base's `0x62b60(0)` return 0, so `0x610c8`/`0x62c10` continue into their update ([wingman](./executable.md#wingman-ai-p3-0804), [bases](./executable.md#a14-bases-built-in-record-6-and-the-automatic-mount-behaviours--confirmed-code-selection-from-data)); `0x62250(0)` only writes the deadline. The install's draws are those of this first update.
   - **Spec note:** the approved P3-08 spec places the install at the instantiation extension point `0x20990`; the original only selects there (P3-08/01; the revision is P3-08/08's, D-01 with P3-02 CR-07).
@@ -442,6 +442,8 @@ Confirmed (code). The interpreter `0x64cb8` is the handler of every table record
 4. `0x64d58(C, I)` = 0 and I+4 ≠ 0 → I+8 := executor run of I+4 (through `0x5e9d0`).
 5. Steering status C+0xC4 = 3 → I+0x0C := sample.
 6. Return 1.
+
+**Install link (Confirmed, code; P3-08/27):** because step 1 runs before `0x5e4d0` (§11.2), the deadline written by the install uses the record's period, and the rewritten period applies from the first update on.
 
 **Mode 0 therefore runs steps 3–5 too:** an install is followed in the same call by a state-machine pass and, when a script was chosen, a first executor run.
 
