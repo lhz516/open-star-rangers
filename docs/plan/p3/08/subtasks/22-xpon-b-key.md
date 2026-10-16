@@ -47,6 +47,15 @@ updated: 2026-10-15
 - `docs/engineering/keyboard-input.md`：绑定说明。
 - `src/core/replay/recording.ts`：`drop-transponder` 加入后 `GAME_REPLAY_VERSION` 2→3（CR-25）。
 - `src/core/replay/recording.test.ts`：版本与旧录制拒绝的测试。
+- `src/core/rules/flight-state.ts`：`rebuiltMovementBlock` 注释的更正（只改注释）。
+- `src/ui/dev/command-draft.ts`：开发命令编辑器的穷举表。
+- `src/ui/dev/command-draft.test.ts`：同上的测试。
+- `src/ui/dev/mission-diagnostics.test.ts`：命令穷举的测试。
+- `tools/replay-check.ts`：录制大小核对的最长命令。
+- `tools/replay-check.test.ts`：同上的测试。
+- `src/core/world/world.test.ts`：命令穷举的测试。
+- `src/core/replay/map-warp-replay.test.ts`：replay 与规则版本断言。
+- `e2e/interaction-render.spec.ts`：`b` 不再属于未绑定键。
 
 ## 验收标准
 

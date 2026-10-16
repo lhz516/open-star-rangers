@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "08"
 subtask: "17"
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # 17 — AI 驾驶
@@ -41,6 +41,9 @@ updated: 2026-10-14
 - `src/core/systems/missiles.test.ts`：测试。
 - `src/core/systems/flight-control.ts`：AI 速度匹配。
 - `src/core/systems/flight-control.test.ts`：测试。
+- `src/core/rules/speed-match.ts`：速度匹配一般化为 (a, lo, hi)（修订 ⑧）。
+- `src/core/rules/speed-match.test.ts`：一般化与 (0, 0, 1) 位一致的测试。
+- `docs/original/formats/executable.md`：A2–A5 实现中核实的代码事实。
 
 ## 验收标准
 
