@@ -44,6 +44,9 @@ updated: 2026-10-15
 - `src/core/rules/ai-attack-pass.ts`：攻击航线 `0x63c00`/`0x640d8`/`0x64474` 与“前方”判定 `0x5e844`（新建，供 19 复用）。
 - `src/core/rules/ai-attack-pass.test.ts`：同上的测试（新建）。
 - `src/core/rules/ai-firing.ts`：只导出既有的 `channelRange`（`0x2dd54`），行为不变。
+- `src/core/world/create-world.test-support.ts`：合成脚本的通道关键字值。
+- `src/core/replay/map-warp.test-support.ts`：P3-09 的链路夹具使敌机不选程序。
+- `src/core/replay/combat-replay.test.ts`：解释器抽取改变 RNG 后的种子。
 
 ## 验收标准
 
