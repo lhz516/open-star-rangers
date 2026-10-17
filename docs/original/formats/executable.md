@@ -2,8 +2,8 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-16
-related: [U-001, U-006, U-007, U-008, U-009, U-010, U-011, U-012, U-017, U-018, U-021, U-022, U-024, U-025, U-026, U-027, U-028, U-029, U-031, U-032]
+updated: 2026-10-17
+related: [U-001, U-006, U-007, U-008, U-009, U-010, U-011, U-012, U-017, U-018, U-021, U-022, U-024, U-025, U-026, U-027, U-028, U-029, U-031, U-032, U-033]
 ---
 
 # Main executable (`SRANGERS.EXE`)
@@ -380,7 +380,7 @@ The energy-loss handler `0x33464`, the beacon wait, the all-clear wait and resul
 
 Several Ctrl combinations produce the same extended codes. P3-06/02 settled the open question of U-011: the cursor keys reach this handler in flight as view keys, no key context writes a steering field, and the original has no keyboard steering ([flight controls](#flight-controls-and-rotation-p3-0602)). The map handler `0x27118`, the Warp handler `0x27360` and the base handler `0x271e0` handle no view key, so the view keys do nothing in the map, during a Warp and in the base; the base handler's two selection keys are the Up and Down cursor keys. No key selects sub-mode 8. The other layouts are: Warp (mode 1) 0, base (mode 6) 0, map (mode 8) 6, teardown (0x13) none. `0x49848` selects the CCKD slot whose directory +0x00 equals the layout number ([cockpit](./cockpit.md#group-directory-confirmed-structure-on-all-three-entries)).
 
-**Confirmed (cameras and what each view draws):** the dispatcher calls `0x21584` once per pass, after its message loop; while the player state holds a player object (+0x8C), it calls `0x30ef0`. For mode 0x11 that takes a camera function from `0x174bdc` by sub-mode (nine entries; sub-mode 8 is `0x31bdc`); for mode 8 it runs `0x2b8ec` (Likely the map's visibility messages) and has no camera function; for every other mode it takes one from `0x174b88` by mode. Modes 0xC and 0xD use `0x31400`, which keeps the camera at the player craft's own position and orientation; modes 0xE, 0xF, 0x10 and 0x12 have their own functions (`0x31424`, `0x314ac`, `0x31524`, `0x315bc`; the first three reorder the craft's rows, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)); modes 0–0xB and 0x13 have none. Without a function the camera takes the craft's position and orientation as well, so at this step the Warp mode 1 places the camera exactly as F1 does; the render's Warp view then overwrites the camera and the player's pose ([C1](#c1-the-3d-camera-and-its-readers--confirmed-code)). The camera functions also store a 0–100 value at `0x1b0758`, the viewed object's speed as a share of the player craft's +0xB8, read only by the speed-dust layer `0x44f74` ([FC2](#fc2-layers-per-view-mode--confirmed-code)); it is 0 without a function. The frame render `0x3ee58` then draws by mode:
+**Confirmed (cameras and what each view draws):** the dispatcher calls `0x21584` once per pass, after its message loop; while the player state holds a player object (+0x8C), it calls `0x30ef0`. For mode 0x11 that takes a camera function from `0x174bdc` by sub-mode (nine entries; sub-mode 8 is `0x31bdc`); for mode 8 it runs `0x2b8ec` (Likely the map's visibility messages) and has no camera function; for every other mode it takes one from `0x174b88` by mode. Modes 0xC and 0xD use `0x31400`, which keeps the camera at the player craft's own position and orientation; modes 0xE, 0xF, 0x10 and 0x12 have their own functions (`0x31424`, `0x314ac`, `0x31524`, `0x315bc`; the first three reorder the craft's rows, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)); modes 0–0xB and 0x13 have none. Without a function the camera takes the craft's position and orientation as well, so at this step the Warp mode 1 places the camera exactly as F1 does; the render's Warp view then overwrites the camera and the player's pose ([C1](#c1-the-3d-camera-and-its-readers--confirmed-code)). The camera functions also report the viewed object's speed, from which the camera step stores a share of at most 100 at `0x1b0758`, read only by the speed-dust layer `0x44f74` ([FC2](#fc2-layers-per-view-mode--confirmed-code)); it is 0 without a function, and in mode 1 the Warp view replaces it ([SD4](#sd4-the-speed-share-0x1b0758--confirmed-code)). The frame render `0x3ee58` then draws by mode:
 
 | View mode | Drawn |
 |---|---|
@@ -4134,12 +4134,12 @@ Q-11: what the camera is and which rules read it, the communications reactions c
   | `0x2443c` | object update (an explosion's first callback) | screen gate and distance class (with the viewport) | decides whether the fragment events fire, hence whether discriminator-1/2 fragments and their draws exist (X5) |
   | `0x2409c` | request handling (activation) | variant-2 list switch by distance (X4) | one draw either way; with shipped data the release time does not change |
   | `0x24314` | request handling | flash | none (a presentation item) |
-  | `0x40c90`, `0x40d44` (radar plane offsets ps +0xA0–+0xA8 and projection), `0x3defc`, `0x3fd60`, `0x44d94`/`0x44f74`, `0x489d0`, `0x49004`, `0x505cc`, `0x55984` (sound volume and pan) | render | projection, HUD, sprites, Warp effect, audio | none; `0x44f74` (the speed-dust layer, [FC2](#fc2-layers-per-view-mode--confirmed-code)) and `0x505cc` (the Warp effect) draw rand themselves (`0x505cc`: exactly 60 per mode-1 frame, [WT9](#wt9-random-draws-during-a-warp--confirmed-code); `0x44f74`: 4 per respawned particle) |
+  | `0x40c90`, `0x40d44` (radar plane offsets ps +0xA0–+0xA8 and projection), `0x3defc`, `0x3fd60`, `0x44d94`/`0x44f74`, `0x489d0`, `0x49004`, `0x505cc`, `0x55984` (sound volume and pan) | render | projection, HUD, sprites, Warp effect, audio | none; `0x44f74` (the speed-dust layer, [FC2](#fc2-layers-per-view-mode--confirmed-code)) and `0x505cc` (the Warp effect) draw rand themselves (`0x505cc`: exactly 60 per mode-1 frame, [WT9](#wt9-random-draws-during-a-warp--confirmed-code); `0x44f74`: 150 after each dust reset, then 4 per respawned particle, [SD6](#sd6-random-draws--confirmed-code)) |
 
   No targeting, firing, AI, energy, area-check, spawn or main-flow routine reads the camera.
 - **Missile camera `0x174c0c`:** written only by `0x3118c` (at launch, when the shooter is the player: the missile handle, uncounted) and `0x3119c` (the player's missile expiring or detonating: impact position and orientation, a 0x100-unit impact view, handle cleared). Its only reader is the sub-mode 6 camera `0x318d0` (F10). Presentation only.
 - **Viewport `0x175200`** {left, top, right, bottom} (i32): written at display initialisation and by `0x3d324`(view mode) on every display switch; right is the screen width minus one and bottom depends on the view mode and resolution (F1's cockpit window is shorter than F2's full screen; values in [PV2](#pv2-display-size-and-the-viewport-rectangle-0x175200--confirmed-code)). The fragment gate of X5 therefore depends on the view and the resolution.
-- **`0x1b0758`:** min(100, trunc(100 × the viewed object's speed) ÷ the player craft's truncated +0xB8, cached at the first call), set by every camera function and by `0x50a28`; read only by the speed-dust layer `0x44f74` (particle count). Presentation.
+- **`0x1b0758`:** the speed share, an i16 set in every pass by the camera step from the speed its camera function reports and, in mode 1, by `0x50a28`; read only by the speed-dust layer `0x44f74`, which draws nothing while it is ≤ 1. Formulas, the per-view speeds and the destruction camera's cases are in [SD4](#sd4-the-speed-share-0x1b0758--confirmed-code) (P3-12/30). Presentation.
 
 ##### C2. Communications reactions `0x3c208` and `0x3c0f4` — Confirmed (code)
 
@@ -5013,9 +5013,9 @@ A kill in request handling (missile detonation `0x2b408`) happens before the pla
 
 State: position `0x1864e4`–`0x1864ec`, rows `0x186514` (R0), `0x186520` (R1), `0x18652c` (R2), distance `0x1864e0` (f32, −1 = unset), entry time `0x186538` (f32 seconds). Constants: −30.0 (f64 `0x171064`), 30.0 (f32 `0x171050`), 30.0 (f64 `0x171054`), 0.25 (f64 `0x17105c`). Entry (`0x31094`) always sets the distance to −1.
 
-- **Player-state +0x90 = 0 (before the explosion):** s = (`0x18641c` − entry) × −30.0 (x87); position := craft +0x6C… + s × R2 (per component, f32 stores); rows unchanged; HUD speed share `0x1b0758` := 30.0. In the entry pass s = 0.
-- **+0x90 ≠ 0 and the handle invalid** (`0x52680` ≠ 1): nothing is recomputed; the stored position and rows are written to the 3D camera again (**frozen camera**). Reachable when the area check removes the pod before its expiry clears +0x90 ([X7](#x7-fragment-lifecycle--confirmed-code) edge; Likely rare).
-- **Valid follow handle:** F = the fragment's position; speed share := `0x21c78`(fragment); R2 := F − position; if the distance is unset (< 0) it becomes |R2| (`FSQRT`); R2 := normalise(R2) (`0x56aa8`, which leaves a zero vector unchanged); R0 := normalise(R1 × R2); R1 := R2 × R0 (not normalised); distance := d − (d − 30)·0.25 when d > 30, else d + (30 − d)·0.25 (double, stored f32); position := F − distance × R2.
+- **Player-state +0x90 = 0 (before the explosion):** s = (`0x18641c` − entry) × −30.0 (x87); position := craft +0x6C… + s × R2 (per component, f32 stores); rows unchanged; the camera function reports the speed 30.0, from which the camera step computes the speed share `0x1b0758` ([SD4](#sd4-the-speed-share-0x1b0758--confirmed-code)). In the entry pass s = 0.
+- **+0x90 ≠ 0 and the handle invalid** (`0x52680` ≠ 1): nothing is recomputed; the stored position and rows are written to the 3D camera again (**frozen camera**), and no speed is reported, so the share is 0. Reachable when the area check removes the pod before its expiry clears +0x90 ([X7](#x7-fragment-lifecycle--confirmed-code) edge; Likely rare).
+- **Valid follow handle:** F = the fragment's position; the reported speed := `0x21c78`(fragment) (its movement-block speed); R2 := F − position; if the distance is unset (< 0) it becomes |R2| (`FSQRT`); R2 := normalise(R2) (`0x56aa8`, which leaves a zero vector unchanged); R0 := normalise(R1 × R2); R1 := R2 × R0 (not normalised); distance := d − (d − 30)·0.25 when d > 30, else d + (30 − d)·0.25 (double, stored f32); position := F − distance × R2.
 - **Degenerate cases (no special branch, no NaN):** camera exactly at F → R2 = 0 → R0 = 0 → R1 = 0; a new R2 equal or opposite to the old R1 → R0 = 0 → R1 = 0. Once R0 and R1 are zero they stay zero for the rest of the follow (R1 × R2 = 0) while R2 recovers. The game camera then holds zero rows (rule readers see x = y = 0); the library rejects the orientation ([PV5](#pv5-camera-and-object-frames-handedness--confirmed-code)) and keeps the **previous drawn orientation** while the position still updates. Reachability: the pod starts at the craft's position while the camera has receded for about three seconds (about 90 units) before the explosion, so coincidence or an exact 90° turn is Likely unreachable; not observed.
 
 #### Rasterisation rules (P3-12/07)
@@ -5171,8 +5171,8 @@ The dispatcher frees every presentation item of classes 1, 4, 8 and 0x10 at its 
 | 9 | `0x49a6c` | Cockpit-layout pre-pass: the +0x0C callback of every element of the current layout, P3-13 | none |
 | 10 | `0x48e6c` | Screen-flash step (VGA palette, not pixels) ([SF3](#sf3-the-update-0x48e6c--cadence-and-level--confirmed-code)) | — |
 | 11 | `0x489d0` | Draw the nebula images ([NB3](#nb3-projection-visibility-and-rotation-angle-0x489d0--confirmed-code)) | none |
-| 12 | `0x3fd60` | Draw the star field: up to `0x1752c0` direction vectors (16-byte entries at `0x18aeb0`: direction and colour byte) rotated by the camera rows only, one pixel each in the entry's colour, positions kept for step 4 | none |
-| 13 | `0x44f74` | Draw the speed dust: 50 particles (0x20-byte entries at `0x19b240`) in a camera-relative box, respawned with `rand` when out of range or behind, each a single pixel with a colour index clamped to 2–7 (from distance and the speed share; formula not researched); the count follows the speed share `0x1b0758`. It draws no HUD element | none |
+| 12 | `0x3fd60` | Draw the star field: the 500-entry direction table rotated by the camera rows only, one pixel each in the entry's colour, positions kept for step 4 ([SD3](#sd3-star-projection-0x3fd60-and-erase-0x3fd20--confirmed-code)) | none |
+| 13 | `0x44f74` | Draw the speed dust: 50 world-fixed particles respawned in a camera-relative box, single pixels of colour 2–7; once initialised, nothing at all while the speed share `0x1b0758` is ≤ 1 ([SD5](#sd5-the-speed-dust-reset-initialisation-pass-and-erase--confirmed-code)). It draws no HUD element | none |
 | 14 | `0x3d4e4`(mode) | Scene messages (create, pose, remove 3D visuals) and, for every mode except 8 and 0x13, the 3D render: camera `0x3defc`, render `0x7c2ac`(viewport `0x1751d8`, scene `0x1751cc`), device update `0x7f99c` | z-buffered ([FC4](#fc4-the-3d-device-has-a-16-bit-depth-buffer--confirmed-code)) |
 | 15 | `0x49004` | Explosion sprites: process the class-8 items, queue one sprite per drawable explosion, then `0x49330` sorts and draws them ([FC6](#fc6-explosion-sprite-items--confirmed-code)–[FC8](#fc8-sprite-queue-order-clipping-and-occlusion--confirmed-code-capacity-likely)) | tested, not written |
 | 16 | `0x45de0` | View label (only mode 0x11 draws text), P3-13 | none |
@@ -5185,7 +5185,7 @@ The dispatcher frees every presentation item of classes 1, 4, 8 and 0x10 at its 
 
 **Mode 6 (base):** `0x4f524`, `0x4f550` (base screens), `0x3d4e4(0x13)` (scene messages, no render), `0x49b2c`, `0x3f474`. **Mode 8 (map):** `0x599e8(0)`; in HI, `0x583fc` copies rows 0–0x1F of the buffer to video memory (purpose not examined); `0x48e6c`; `0x3d4e4(8)` (scene messages, no render); `0x49b2c`; `0x3f474`. **Mode 0x13:** `0x3d4e4(0x13)` only. **Modes 0, 2–5, 7, 9–0xB:** nothing (no writer sets them).
 
-The star field is generated once per program run by `0x3fbc0` (called from the flight initialiser at `0x3ed58`; 500 entries, two draws each, before the generator is seeded, [tunnel path](#start-up-rotations-and-the-warp-tunnel-path-p3-0928)); entry i has colour i % 6 + 1 ([WT1](#wt1-routines-state-and-order--confirmed-code)). The star and dust layers' drawing formulas beyond the facts above were not researched (Unconfirmed).
+The star field is generated once per program run by `0x3fbc0` (called from the flight initialiser at `0x3ed58`; 500 entries, two draws each, before the generator is seeded, [tunnel path](#start-up-rotations-and-the-warp-tunnel-path-p3-0928)); entry i has colour i % 6 + 1 ([WT1](#wt1-routines-state-and-order--confirmed-code)). The drawing rules of both layers are in [star field and speed dust](#star-field-and-speed-dust-p3-1230) (P3-12/30, which corrects the earlier reading that the dust's particle count follows the speed share).
 
 ##### FC3. A persistent frame buffer — Confirmed (code); equivalence Likely
 
@@ -5584,7 +5584,7 @@ Layers as in [FC2](#fc2-layers-per-view-mode--confirmed-code) (no nebula, no exp
 
 - **Stars:** `0x3fd60` rotates the star directions by the camera rows only, so the star field turns with the player's steering in the tunnel; colours 1–6 keep their layout-palette colours.
 - **3D world:** rendered through the library with the camera at the player's tunnel pose, in a private frame near (0, 0, 10000 + 2000·n) ([Warp progress](#warp-progress-completion-and-interruptions-p3-0906)). Every listed scene object is drawn where it is in world coordinates, so an object near that point within the back plane would be drawn, tested against depth that mode 1 never clears ([RS6](#rs6-clears--confirmed-code)). Whether any object ever appears there is Unconfirmed (no mission was checked; the two Warp frames below show none). The player's own model is not in the scene ([PV6](#pv6-renderer-items-model-visibility-and-the-player-model--confirmed-code)).
-- **Speed dust in mode 1:** native code selects the constants −100, 100, 1000, 250 in mode 1 (−30, 30, 300, 75 otherwise) and, in mode 1, draws a particle that was drawn in the previous pass as a line (`0x5ad00`) from its previous screen position, otherwise as a pixel (`0x5afe0`); a respawn draws 4 rands. That the constants are the camera-relative respawn box x, y ∈ [−100, 100] and z ∈ [0, 250] (60 % of respawns) or [250, 1000], and the range limit 1000, is Likely (from the decompiler); colour indices 2–7 (formula not researched). These are the grey streaks of the Warp captures.
+- **Speed dust in mode 1:** the box is ±100 with limit 1000 and near depth 250, and a particle drawn in the previous pass is drawn as a line (`0x5ad00`) from its previous screen position, otherwise as a pixel; colours 7 (within 250) and 2 ([SD5](#sd5-the-speed-dust-reset-initialisation-pass-and-erase--confirmed-code), P3-12/30, which confirms the constants read here before). These are the grey streaks of the Warp captures.
 - **Effect:** after the dust (WT4); then the cockpit (layout 0) with the left display's page 6 (P3-13).
 - **Appearance — Likely:** in `srangers_066.png` (HI, mission identity not recorded) every pure-green pixel of the world area is a level of the green ramp (WT3) under the capture's 6-to-8-bit expansion (v << 2) | (v >> 4), with no off-ramp pixel; 96 % of the green-ramp pixels touch a grey pixel of the same level (3-pixel lines, WT6); the ramp pixels span exactly columns 1–638 and rows 1–314; brightness falls toward the far end (WT4 step 3); and the cockpit band (rows 316–479) equals the F1 capture 065 except inside the display windows, so the static cockpit art is not visibly recoloured by the Warp palette. Frame 00750 of the reference video `-_Pj5jHSXBg` shows the same rails and rings, the tunnel bending to one side, grey dust streaks, cockpit layout 0 and page 6. Per-pixel line positions (which depend on the run's path draws and pose) and the flash phases were not compared.
 
@@ -5595,7 +5595,90 @@ Layers as in [FC2](#fc2-layers-per-view-mode--confirmed-code) (no nebula, no exp
 | Start-up entry 17, `0x4ff70` | 2000 (draws 1129–3128 of the default sequence) | presentation, deterministic |
 | `0x50188`, effect part | 40 (rand % 50), after the 20 path draws | presentation |
 | `0x505cc`, every mode-1 pass | **60** (rand % 10 < 5): slots 30, 20, 10 in that order, j = 0–19 each | presentation |
-| `0x44f74`, mode 1 | 4 per respawned dust particle (count state-dependent) | presentation |
+| `0x44f74`, mode 1 | 150 in the first pass after a dust reset (the switch into mode 1 resets it), then 4 per respawned dust particle while the speed share exceeds 1 ([SD6](#sd6-random-draws--confirmed-code)) | presentation |
+
+#### Star field and speed dust (P3-12/30)
+
+Q-14 of the P3-12 spec: FC2 steps 4, 5, 12 and 13 and their place in modes 0xC–0x12 and 1. Method as the rest of this section: read-only static analysis of native instructions on a private copy of the Ghidra project, raw scans for callers and data users, an independent transcription of the star table under the host libm and under V8, data verdicts on all 24 CINF, and exact-colour checks against local captures. No DOSBox-X run. Notation as in [flight scene rendering](#flight-scene-rendering-p3-12); *c* is the f32 constant at `0x171904`, F(1 ÷ 32767) (`0x38000100`); HI values unless noted.
+
+##### SD1. Routines, state and callers — Confirmed (code)
+
+| Routine | Role | Called from |
+|---|---|---|
+| `0x3fbc0` | Builds the star table, once per program run | the flight initialiser `0x3ec70` (`0x3ed58`, start-up entry 15) |
+| `0x3fd20` | Star erase (FC2 step 4): index 0 at each position stored by the last `0x3fd60` | `0x3ee58`, modes 0xC–0x12 and 1 |
+| `0x3fd60(bottom)` | Star draw (step 12); `bottom` is the viewport bottom from the render's copy of `0x175200` | `0x3ee58`, modes 0xC–0x12 and 1 |
+| `0x44edc` | Dust reset: clears the initialised flag `0x175980` and marks every particle "not drawn" | `0x3f158` (three sites), `0x3f500`, and `0x3f654` inside `0x3f630`, which no direct call, jump or stored pointer reaches (Likely unreachable) |
+| `0x44d94` | Dust initialisation | `0x44f74` only, while `0x175980` = 0 |
+| `0x44f00` | Dust erase (step 5) | `0x3ee58`, modes 0xC–0x12 (not mode 1, whose buffer is filled) |
+| `0x44f74` | Dust pass (step 13) | `0x3ee58`, modes 0xC–0x12 and 1 |
+| `0x52de0` / `0x52de8` | Setter (16-bit store) and sign-extending getter of the speed share `0x1b0758` | setter: `0x30ef0` (two sites), `0x50a28` (two sites); getter: `0x44f74` only |
+
+State: the star table `0x18aeb0` (500 entries of 16 bytes: f32 x, y, z and an i32 colour), its count `0x1752c0`, the constants S `0x192bb8` and K `0x192bb4` (also read by the nebula, [NB3](#nb3-projection-visibility-and-rotation-angle-0x489d0--confirmed-code)), the drawn-star list `0x187030` (i32 x, y per star) with its count `0x192bb0`, and the vertical offset `0x192bc0`; 50 dust particles of 0x20 bytes at `0x19b240`: +0x00–+0x08 the **world** position (f32), +0x0C/+0x10 the screen position of the last draw, +0x14/+0x18 the line start (i32, −1 = none), +0x1C "not drawn in the last pass". Raw scans of every one of these ranges find operands only in the routines above (and the nebula's reads of K and S); the start-up initialiser `0x52b30` stores 0 in `0x1b0758`.
+
+##### SD2. The star table `0x3fbc0` — Confirmed (code)
+
+The table is built from draws 1–1000 of the C library's default sequence ([tunnel path](#start-up-rotations-and-the-warp-tunnel-path-p3-0928)): entry i uses draws 2i + 1 (r₁) and 2i + 2 (r₂). With the f64 constants π′ = 3.1415927 (`0x171908`; not the double nearest π) and 2π′ = 6.2831854 (`0x171910`):
+
+1. θ := D(F(D(r₁ × c)) × π′); φ := D(D(r₂ × c) × 2π′) (no f32 store of D(r₂ × c)).
+2. x := F(D(cos φ × sin θ)), y := F(D(sin φ × sin θ)), z := F(cos θ).
+3. After all 500 entries, each is normalised: L := √D(D(y² + x²) + z²), inv := D(1 ÷ L), each component := F(D(component × inv)); the colour := i % 6 + 1.
+4. S := F(sin(atan 0.5)) ≈ 0.4472136 and K := F(cos(√2 · atan 0.5)) ≈ 0.7926233 (`FPATAN`, `FSQRT`, `FSIN`, `FCOS` with double intermediates); the drawn-star count := 0.
+
+An independent transcription gives the same table, bit for bit, under the host libm of the baseline (macOS arm64, [baseline emulator arithmetic](#baseline-emulator-arithmetic-p3-1207)) and under V8's `Math.sin`/`Math.cos`; no stored value changes when any sin or cos result of any entry moves by one ulp, and S and K are equally robust. The table is the same in every run and mission and depends on no game data.
+
+##### SD3. Star projection `0x3fd60` and erase `0x3fd20` — Confirmed (code)
+
+hd′ := (W − H + 2) >> 1 = 81 and hw := (W + 1) >> 1 = 320, with W = `0x1751f8` = 639 and H = `0x1751fc` = 479 (LO: 41 and 160). The count is set to 0, then for every entry in index order, with d = (x, y, z) and the display camera's rows R0–R2 (`0x52e90`; the position is not used):
+
+1. z′ := D(D(D(y·R2y) + D(x·R2x)) + D(z·R2z)). The entry is skipped unless z′ ≥ K (compared before any store; unordered skips).
+2. r := D(K ÷ F(z′)); a := D(D(D(y·R0y) + D(x·R0x)) + D(z·R0z)) and b likewise with R1; x′ := F(D(a · r)), y′ := F(D(b · r)).
+3. Skipped unless −S < x′ < S.
+4. With P := D(hw × D(1 ÷ S)) and N := D(−hw × D(1 ÷ S)): sxf := F(D(D(P · x′) + hw)) and syf := F(D(D(N · y′) + hw)). Skipped unless hd′ ≤ syf < bottom + hd′.
+5. sx := chop(D(sxf + 0.5)), sy := chop(D(syf + 0.5)) − hd′. The pixel (sx, sy) gets the entry's colour index through `0x5afe0` (no clipping, no transparency; a later entry overwrites an earlier one), and (sx, sy) is appended to the drawn-star list.
+
+So sx ≈ round(320 + 567.155 · x/z) and sy ≈ round(239 − 567.155 · y/z): the nebula's scale ([NB3](#nb3-projection-visibility-and-rotation-angle-0x489d0--confirmed-code)) but one row higher, and not the 3D projection ([PV3](#pv3-projection--confirmed-code)). Rows run 0 to `bottom` inclusive (315 in modes 0xC and 1, 479 in 0x11), columns 0–639; sx = 640 occurs only for x′ equal to the largest f32 below S, and the unclipped write then lands at column 0 of the next row (for sy = 479 in mode 0x11, just past the 640 × 480 frame buffer, so nothing visible). With the identity rows 57 stars are drawn in F1 and 68 in mode 0x11. The colours are the DATA indices 1–6, which the Warp palette does not replace ([WT8](#wt8-what-view-mode-1-draws--confirmed-code-unless-marked)). `0x3fd20` writes index 0 at the stored positions of the last draw.
+
+##### SD4. The speed share `0x1b0758` — Confirmed (code)
+
+An i16 written in every pass by the camera step and, in mode 1, by the Warp view; read only by the dust pass.
+
+- **Camera step `0x30ef0`** (the last call of every dispatcher pass while ps +0x8C is set, [C1](#c1-the-3d-camera-and-its-readers--confirmed-code)): when the view has a camera function, it sets a speed variable v := 0.0, passes its address to the function, and then stores share := min(100, chop(D(v × 100.0)) idiv K), where K = chop(+0xB8 of the player object's craft record (object +0x1C)) is computed at the first such call of the program run and kept in `0x174c20` (its only writer; never reset); the division is signed and truncating, and there is no lower clamp. Without a camera function (modes 1, 6, 8, 0x13 and the others without an entry), or when the function returns 0, it stores 0.
+  - The functions of modes 0xC and 0xD (`0x31400`), 0xE (`0x31424`), 0xF (`0x314ac`), 0x10 (`0x31524`) and 0x12 (`0x315bc`) set v := `0x21c78`(player), the player's movement-block speed (block +0x08; 0.0 without a block).
+  - The destruction camera `0x31bdc` (0x11, sub-mode 8; always returns 1): before the explosion (+0x90 = 0) v := 30.0, a constant **speed**; with a valid follow handle v := `0x21c78`(the followed fragment); with +0x90 set but invalid it does not write v, so the share is **0**.
+  - Sub-modes 0–7 of 0x11 (P4 views) set v from their own subjects (not traced).
+- **Warp view `0x50a28`** (render, mode 1, every pass, on both of its paths): share := min(100, chop(D(D(v × 100.0) ÷ B))) with v := `0x21c78`(player) and B the f32 +0xB8 of the player object's craft record (not truncated, not cached). It overwrites the camera step's 0 before the dust pass of the same pass.
+- **Data (all 24 CINF, verdicts only):** the player record's +0xB8 has a single value in every CINF and a positive integer part, so the cache equals each mission's own value, and min(100, 3000 idiv K) > 1.
+
+##### SD5. The speed dust: reset, initialisation, pass and erase — Confirmed (code)
+
+- **Reset `0x44edc`:** whenever `0x3f158(new, old)` runs with new ≠ old or new = 0x11 (every view switch: map, Warp start and end, docking, launch, destruction, rescue, teardown), on a resolution change (`0x3f500`), and in `0x3f630` (see SD1). Positions, screen positions and line starts stay; the erase then skips every particle.
+- **Initialisation `0x44d94`** (from the dust pass while the flag is clear, before the share test, then the flag is set): box half-width h and depth D by the view mode at that moment: h = 100, D = 1000 in mode 1, else h = 30, D = 300. For each of the 50 particles: x := F(D(D(r × c) × F(2h)) − h), y the same with the next draw, z := F(D(r × c) × D) (three draws; z uniform over [0, D]); "not drawn" := 1, line start x := −1, screen x := −1; the camera-relative point is then placed in the world: world := camera position + F(R0·x + R1·y + R2·z) per component (`0x56e34`).
+- **Pass `0x44f74`** (modes 0xC–0x12 and 1; the camera is the pass's display camera, `0x52e14`/`0x52e90`):
+  1. Nothing when ps +0x8C is 0. Initialisation as above when needed.
+  2. **share ≤ 1: nothing further** — no particle is tested, drawn or respawned and no number is drawn.
+  3. With the viewport {l, t, r, b} (the `0x175200` copy) and the view mode: cx := r >> 1, cy := b >> 1, scale := F(r) (639); accepted screen positions l + 1 ≤ sx ≤ r − 1, t + 1 ≤ sy ≤ b − 1 (columns 1–638; rows 1–314 in modes 0xC and 1, 1–478 in 0x11). bright := 7 in modes 0x11 and 1, else (5 × share) idiv 100 (0–5). Constants: mode 1 → box ±100, limit 1000, near 250; else ±30, 300, 75.
+  4. All 50 particles, every pass (the share does not change their number): q := the camera-space point (`0x56dc0`, each component F), dist := F(|Δy| + |Δx| + |Δz|) (the L1 distance between camera and particle, in that order). A particle is **respawned** when 0 > q.z, when dist ≥ limit, or when sx := chop(D(D(scale·q.x) · D(1 ÷ q.z))) + cx or sy := chop(D(D(−scale·q.y) · D(1 ÷ q.z))) + cy is outside the accepted positions. This is the event-0x10 gate's projection ([PV3](#pv3-projection--confirmed-code)), not the renderer's.
+  5. **Drawn:** k := chop(D(v × 0.004)) (f64 `0x171b08`) with v = dist in modes 0x11 and 1 and D(dist + 75) otherwise; colour := 2 + bright − bright·k, clamped to 2–7. Hence in modes 0xC–0x10 and 0x12 the colour is 2 + bright for dist < 175 and 2 beyond; in 0x11 and 1 it is 7 for dist < 250 and 2 beyond. In mode 1 a particle drawn in the previous pass becomes a line (`0x5ad00`) from its previous screen position to the new one, and that previous position becomes the line start; otherwise a single pixel (`0x5afe0`). The screen position is stored and "not drawn" := 0.
+  6. **Respawned:** x := F(D(D(r₁ × c) × F(2h)) − h), y likewise with r₂, then r₃: when r₃ % 100 < 60, z := F(D(r₄ × c) × near), otherwise z := F(D(D(r₄ × c) × (limit − near)) + near); the point is placed in the world as in the initialisation and marked "not drawn". It is not drawn in this pass; its screen position and line start keep their old values.
+- **Erase `0x44f00`:** for each particle drawn in the last pass, index 0 at its screen position when its line start x is negative, otherwise along the line from the line start to the screen position. After a reset nothing is erased (a switch to another mode also fills the frame buffer with index 0, `0x3f158`).
+- **Line `0x5ad00`:** both end points are plotted; the major axis is x when |dx| > |dy| (ties: y); the error starts at 2|d_minor| − |d_major|; per step: plot, stop at the end, if the error ≥ 0 step the minor axis and subtract 2|d_major|, add 2|d_minor|, step the major axis. No clipping (both ends lie inside the accepted rectangle).
+
+##### SD6. Random draws — Confirmed (code)
+
+The star table's 1000 draws precede the seeding (SD2). The dust draws only presentation numbers: 150 in the first pass after a reset (three per particle, also when the share is ≤ 1), then four per respawned particle while the share exceeds 1 (x, y, the 60 % selector, z). The selector uses rand % 100 with rand in 0–32767, so near is chosen with probability 19680/32768.
+
+##### SD7. Cadence — Confirmed (code)
+
+Both layers run once per render pass and read no clock. The stars are a pure function of the pass's camera rows and viewport bottom. The dust particles are fixed in the world; their screen motion comes from the camera, they change only by respawning, and the Warp streak joins the positions of two consecutive passes, so its length follows the per-pass camera motion (frame-rate dependent, [time base](#simulation-time-base-p3-0106)).
+
+##### SD8. Captures — stars Confirmed; dust Likely
+
+- **Stars, F1 — Confirmed:** in `srangers_058.png` (camera at the identity pose, [NB6](#nb6-capture-matching)), 50 of the 57 star pixels that SD2–SD3 predict for the identity rows have exactly the predicted DATA colour; the other 7 lie in rows 221–311 under cockpit art that `srangers_066.png` shows at the same pixels (drawn after the stars). Every control fails: the prediction shifted by one row or column, mirrored, with shifted colours, or projected with the 3D projection matches 0 pixels, and every other local capture matches at most 1.
+- **Stars, Warp — Confirmed:** `srangers_066.png` (at the constant start pose, [tunnel path](#start-up-rotations-and-the-warp-tunnel-path-p3-0928)) matches 43 of the 57; the rest lie under the same cockpit art or under tunnel lines.
+- **Dust — Likely:** in 058 the world area's other pixels of colours 1–7 are 42 isolated pixels of exactly colours 2 and 7, inside columns 77–555 and rows 2–298: at most 50 particles, the near colour 2 + 5 of the full share at mission start and the far colour 2, inside the accepted rectangle. Particle positions are random, so they are not compared. In 066 the flight greys 1–7 coincide with levels of the Warp grey ramp, so the streaks are not separable by colour; WT8's structural reading stands. No capture of the destruction view has a known camera.
+
+Evidence (ignored): `local/research/p3-12/stars-dust/` — `findings.md`; probes `probe.sh` and `ghidra_scripts/ImgProbe.java` with outputs `out/s1`–`out/s14`; `tools/stars.py`, `tools/stars-v8.mjs` and `tools/verify.py` (the independent transcription, hashes and one-ulp robustness); `tools/capture_stars.py`, `tools/capture_detail.py` and `tools/controls.py` (capture checks, counts only); `cinf-b8.ts` (CINF verdicts).
 
 ### Effect presentation sources
 

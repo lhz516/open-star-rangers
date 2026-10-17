@@ -117,7 +117,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | pending |
 | [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | pending |
-| [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | in-progress |
+| [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | pending |
 | [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | pending |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
