@@ -11,7 +11,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 
 ## 目标与来源
 
-实现用户于 2026-10-15 批准的 [spec](./spec.md) 中的 S-01 至 S-14 与 AC-01 至 AC-22：
+实现用户于 2026-10-15 批准、2026-10-17 修订的 [spec](./spec.md) 中的 S-01 至 S-15 与 AC-01 至 AC-23：
 
 - 原版研究 Q-01 至 Q-13，结论写入 `docs/original/`；证据缺口按最小补证处理（尽量不运行 DOSBox-X），并在看到新版画面之前冻结对照方案；
 - D-01 共享契约关卡：Render State 的观察字段、构造与转换事实、Runtime 帧后逐 tick 批次，研究之后定稿并取得批准；
@@ -44,7 +44,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 
 | Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
 | --- | --- | --- |
-| S-01 | 09、10、11 | 10、11：Node 契约测试；29：定稿与实现一致 |
+| S-01 | 09、10、11、32 | 10、11、32：Node 契约测试；29：定稿与实现一致 |
 | S-02 | 15、16、23 | 15、16：Node（记录表面）；25：浏览器 |
 | S-03 | 14、16 | 14、16：Node；25：浏览器 |
 | S-04 | 17 | 17：Node 独立期望；25：浏览器读回；26、27：原版配对与判定 |
@@ -56,8 +56,9 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | S-10 | 21 | 21：Node；25：浏览器 |
 | S-11 | 22 | 22：Node；25：实际 Warp 的浏览器读回 |
 | S-12 | 16、23 | 16、23：Node；25：浏览器 |
-| S-13 | 01–08、26、27 | 08：原版文档；27：V-01 至 V-03 判定 |
+| S-13 | 01–08、30、26、27 | 08、30：原版文档；27：V-01 至 V-03 判定 |
 | S-14 | 28 | 28：文档审阅；29：链接与元数据 |
+| S-15 | 30、31、32 | 31、32：Node 独立期望；25：浏览器读回；26、27：截图配对与判定 |
 | AC-01 | 09、10、11 | 10、11：0/1/5 tick、折叠、故障前缀、版本拒绝的 Node 测试 |
 | AC-02 | 15、23 | 15：Node；25：浏览器资源平衡与 GPU 计数 |
 | AC-03 | 15 | 15：Node 故障注入；25：上下文丢失与 WebGL 不可用 |
@@ -75,11 +76,12 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | AC-15 | 22 | 22：Node；25：实际 Warp |
 | AC-16 | 16、23 | 16、23：Node；25：指定像素与 DOM |
 | AC-17 | 24 | 24：Runtime/Session 集成与 replay |
-| AC-18 | 01–08 | 08：文档审阅与 `pnpm check:compliance` |
+| AC-18 | 01–08、30 | 08、30：文档审阅与 `pnpm check:compliance` |
 | AC-19 | 08、27 | 27：证据覆盖矩阵 |
 | AC-20 | 26 | 26：私有真实内容配对 |
 | AC-21 | 07 | 07：运行记录；29：核对 |
 | AC-22 | 25、28 | 25：浏览器回归与帧耗时；28：文档；29：`pnpm check` |
+| AC-23 | 31、32 | 31、32：Node（注入随机源）；25：浏览器读回；26、27：截图配对与判定 |
 
 ## 子任务跟踪
 
@@ -109,13 +111,16 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | pending |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | pending |
-| [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22 | pending |
+| [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | pending |
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | pending |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24 | pending |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | pending |
 | [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | pending |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 | pending |
+| [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | pending |
+| [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | pending |
+| [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -132,9 +137,12 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
   Affected acceptance: AC-01 及 09 的全部验收；10 至 29 都直接或间接依赖 09。
   Resume when: 用户批准 D-01 定稿（或给出修改意见），或授权 agent 按推荐方案定稿；协调者把批准原话转给 09 worker，由其写入批准记录并提交。
 - **2026-10-17 — Subtask 09 resumed:** 用户经协调者提问批准 D-01 定稿，选择“批准，全部按推荐方案”（含开放选择 A–F 的推荐：通用 `view-switched`、Warp 撞墙用事件、Core 持有 `modelShown`、`explosion-created` 不带行矩阵、GPU 预算按本地计数定值、接受两项新差异）。协调者把原话转给 09 worker 写入批准记录并提交。
+- **2026-10-17 — spec 修订后的计划修订：** 用户以回答协调者提问的方式决定把星点与速度尘埃加入 P3-12、实现第 0、1 类闪光的画面平移、星云固定按开启绘制（[spec 审批](./spec.md#审批)的 2026-10-17 修订）。据此新增 30（Q-14 研究、原版文档、对照方案附录与 FS-12 推荐定稿）、31（星点与速度尘埃的实现）与 32（速度尘埃所需的 D-01 补充 FS-12：用户批准方向并授权协调者按推荐方案定稿，32 写入 P3-02 并在 Core 实现），23 依赖 31，29 依赖 30、31、32；19、21、25、26、27 的范围与验收按修订补充。已完成的 01–09 不受影响；08 冻结的对照方案不改，星点与速度尘埃由 30 另行冻结附录。
 
 ## 审批
 
 用户于 2026-10-15 明确批准本 goal（“approve goal and commit”）。批准范围：上述 29 个子任务及其依赖、写入范围与执行方式，以及“代码现状与前提”中的跨任务前提。这不代表实现完成，也不替代 spec 批准。
 
 本次批准没有授权 agent 定稿 D-01，因此 09 的执行方式保持“需用户”：D-01 定稿后须由用户批准；用户以后若授权 agent 按推荐方案定稿，由协调者把 09 改为自动并记录授权出处。授权不涵盖冻结决定的变更或验收豁免。
+
+2026-10-17：spec 按用户决定修订后（新增 S-15、Q-14、AC-23，修订 S-10、AC-14），协调者在用户明确调用的 `/execute-goal` 下增补 30、31、32，并按修订补充 19、21、23、25、26、27、29 的范围、依赖与验收；该调用按 execute-goal 的规则批准修订后的完整 goal。增补不改变已完成子任务的证据。
