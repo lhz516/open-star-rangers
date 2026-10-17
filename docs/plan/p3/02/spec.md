@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-16
+updated: 2026-10-17
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -2270,6 +2270,209 @@ CR-20 的命令不变。物理绑定由 [P3-05 绑定表](../05/spec.md#绑定�
 
 **对前文的修订（只列变化，均随本节获批）：** CR-13 的 `0x3c208` 行（CR-27）；P3-08 的 D-01 一节开头的“不在本节”段、“与 P3-10 的 D-01 对齐”段、对齐表的“友伤累计”行、“依赖”段与“与 P3-09 的 D-01”段（CR-26 至 CR-30）；CR-15 的“输入”一条（CR-26、CR-29）；CR-18 中基地单槽的引用（CR-28）；CR-19 的开头、代码块（删去 `objectSets` 与 `mapVisible`）、“友伤累计”“对象集合与 +0xD4”与“快照”三条（CR-27、CR-29）；CR-20 的绑定与轮询两句（CR-30）；CR-21 的 `deliver-command` 行（CR-28）；CR-23 的对象集合一条（CR-29）；CR-25 的“快照”一条与“对前文各节的修订”中的对象集合一项（CR-29）。
 
+### P3-14 的契约修订（D-01）
+
+**状态：已获用户批准（2026-10-17，D-01）。** 用户的选择：“批准全部推荐方案（含三项差异）”。由 P3-14/06 起草；依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。
+
+本节定稿 [P3-14 spec](../14/spec.md#实施关卡) 的关卡 D-01 中属于本 spec 的部分：音效消费者读取的 Core 只读输出、两种事件的位姿快照、一个新的退场事件，以及 CB-09 尾随警告条件的更正。播放器的公开契约在 [P2-08 的修订](../../p2/08/spec.md#播放控制器的扩展p3-14-的修订)，任务所有者的接线在 [P3-04 的修订](../04/spec.md#任务音频接线p3-14-的修订)，已批准的决定列在 [P3-14 的 D-01 定稿](../14/spec.md#d-01-定稿已批准)（下文“D1-n”）。本节建立在 P3-06、P3-07、P3-05、P3-08、P3-09 与 P3-10 的修订之上，那些修订已定的项不变；批准后，前文与本节不一致时以本节为准。编号 FA-01 至 FA-09 只供引用本节。
+
+原版事实只记在 [audio 的 Flight sound presentation (P3-14)](../../../original/formats/audio.md#flight-sound-presentation-p3-14)，下文以其小节标签 A-01 至 A-10 引用，不重复。定稿依据是 [P3-14/05 的“06/07 输入”](../14/subtasks/05-evidence-contract-baseline.md#完成证据)。
+
+**记法与通则：** 沿用 [P3-07 的修订](#p3-07-的契约修订d-01d-03)的记法（f32、i32、时钟、`EntityId`、故障、快照与“不持久”“静态”）。另外：
+
+- **读取者**指 P3-14 goal 中已列出的子任务：08（Core 读模型）、13（空间与引擎参数）、14（HUD 读模型）、15（事件映射）、16（运行级消费者）。本节只为这些读取者增加字段；原版有而没有读取者的字段不输出。
+- 新增的 projection 与 Render State 字段是读取时从世界派生的冻结纯数据，不是新状态，不进入快照规范文本；读取不写状态、不抽取。
+- 音效消费者不读快照，不按 ID 回查已移除的实体，事件中不放实体引用（[Projection 与 Render State](#projection-与-render-state)的信息边界）。
+
+**与 P3-08、P3-09、P3-10 的对齐：** 重叠处只有一份定义。
+
+| 项 | 已有定义 | 本节 |
+|---|---|---|
+| 9 型仪表的两项警告 | CB-09 的 `tailCheck`（到期、雷达门禁与两项结果），CB-14 的 `communications.player.warnings` | 两项移到分区级的 `communications.warnings`，没有玩家实体时也保留；音效与 P3-13 都读它；不新增 P3-14 spec 计划的 `flight.combat.player.warnings`（FA-01） |
+| 攻击者条件 `0x4ef9c` | CB-09 写作“攻击航线字节”；CR-16 定义 `isClosingMissileLock`（锁定等级 3 或 4） | 以 CR-16 的谓词为准，更正 CB-09（FA-01） |
+| 玩家停靠 | CB-14 的 `communications.player.docking.docked`（玩家活动为停靠） | 直接读取，不新增（FA-07） |
+| 无命令的 `weapon-selected` | CR-06；CB-10 的 `fullRepair` 只在请求处理中对玩家发出；基地服务步不发（CB-11） | 更正语义，不加字段（FA-06） |
+| 地图、Warp、通讯、基地与 Xpon 的事实 | MW-05 的 `warp-destination-set`、`warp-started`、`warp-completed`；CB-13 的 `left-page-changed`、`base-navigated`、`base-confirmed`；CR-22 的 `transponder-deployed` | 原样消费，形状不变 |
+| Render State | 前文、MW-11 的 `warp`；CB-14 说明形状不变 | 每个实体增加 `state` 与 `speed`（FA-04） |
+| 对象退场 | P3-06 的 `object-left-world`（只有停放对象真正离开世界）；P3-07 的 `source-released`、`missile-ended`、`fragment-expired`、`object-destroyed`（各自只覆盖一部分） | 新增 `object-retired`，覆盖活动对象进入待移除或区域切换的每条路径（FA-07） |
+
+#### FA-01 威胁警告：来源与 CB-09 的更正
+
+- **来源：** 9 型仪表的警告音（[A-07](../../../original/formats/audio.md#instrument-9-warning-a-07)）与 P3-13 的两个指示灯读同一对 Core 标志 `missileIncoming` 与 `attackerOnTail`，即原版驱动指示灯与声部的同一对标志。它们已经是经过采样到期与子系统 12 门禁的结果，由 CB-09 作为规则状态 `WorldState.communications.tailCheck` 保存并进入快照。音效消费者与 HUD 表现读模型不再另做采样或雷达门禁，也不另存到期时钟，所以不会出现第二个状态机。
+- **不新增 `flight.combat.player.warnings`：** P3-14 spec 计划的 `ThreatWarnings` 是未经门禁的对象条件，由表现层自行采样。CB-09 已在 Core 中实现同一采样，而且 `0x38c30` 的入队这一规则副作用依赖它，所以表现层再采样会重复原版的一个状态机；这样的字段也就没有读取者。是否照此修订 P3-14 spec 的 S-06 与“共享契约修订”一节，由 D1-02 决定。
+- **形状（分区级，保留到没有玩家实体时）：** A-07 中没有玩家时两项标志保持原值，声部照旧按保留的标志处理。所以两项从 CB-14 的 `communications.player.warnings` 移到分区级，与 `player` 是否为 null 无关：
+
+  ```ts
+  type CommunicationsProjection = {
+    readiness: 'ready';
+    player: CommunicationsPlayer | null;                                  // CB-14，去掉其中的 warnings
+    warnings: { attackerOnTail: boolean; missileIncoming: boolean };     // FA-01：tailCheck 中最近一次采样的结果
+  };
+  ```
+
+  | 项 | 契约 |
+  |---|---|
+  | 类型与单位 | 两个布尔，无单位；值等于 `WorldState.communications.tailCheck` 的两项，即最近一次采样的结果，在两次采样之间与没有玩家实体时保持不变 |
+  | 初值 | 世界创建时两项为 false（`tailCheck` 的初值）；没有“未就绪”状态，因为 CB-09 已实现采样 |
+  | 生产者与读取者 | `communications.ts`；读取者为 P3-14/14（HUD 读模型）与 P3-13 的指示灯。CB-14 的 `player.warnings` 删去：它与本项是同一事实，而它的读取者 P3-13 尚未实现，所以“一事一处”不留别名 |
+  | 序列化与测试 | 纯投影，不递增版本；08 断言没有玩家实体时两项仍等于 `tailCheck`，并覆盖“标志为真 → 玩家实体消失 → 再出现”时读数不变 |
+
+  消费者不得把 `player` 为 null 解释为两项为 false。玩家实体在救援中复用而不移除，所以任务中 `player` 为 null 只出现在实例化之前与拆除中。**依赖 P3-11 而阻塞的部分：** 拆除时两项与声部的处理，以及原版跨任务不重置标志与到期（A-07 的“never reset”）在重开或重试时是否照原版，都等 P3-11 的结果与重试契约；在此之前，新世界从初值开始只是现状，不作为已批准的行为。
+- **CB-09 第 2 条的更正（规则变化，D1-03）：**
+  1. **攻击者条件：** 种类位 7–10（原版掩码 `0x780`）的实体按种类位升序、表内次序遍历，取第一个满足 `activity === 'active'`、`isActiveState(state)`、`ai.objectTarget` 为玩家且 `isClosingMissileLock(entity)` 的实体（CR-16：`combat.type` 为 `craft` 且 `combat.weapons.lock.level ∈ {3, 4}`）。A-07 已确认原版读的字节是武器块 +0x24（对象 +0x118）的锁定等级。CB-09 与 CB-17 决定 11 中的“P3-08 处理器私有状态中的攻击航线字节”与“没有处理器状态时不成立”一并撤销。
+  2. **次序与雷达门禁：** 玩家实体存在且取样 > `dueClock` 时，先做攻击者遍历。找到攻击者时调用 `0x38c30`，CB-09 原有的条件与限频不变，**与子系统 12 无关**。然后取 s = 玩家的子系统 12：s = 0 时 `attackerOnTail` := 是否找到，并做导弹遍历；s = 1 时 `attackerOnTail` := false，并做导弹遍历；s ≥ 2 时两项都为 false。导弹遍历与 `dueClock` 的规则不变。
+  3. **视角集合：** 按 A-07，类型 9 的回调每帧由全局回调列表调用，与驾驶舱槽位无关，所以在视角 1、6、8 与 0xC–0x12 中执行，不在 0x13 中执行。CB-17 决定 11 按槽内仪表类型把集合收窄为 0xC、0xD、1、6 的部分撤销。该决定所列“原版只在仪表记录到期时调用”的差异也随之撤销：原版每帧调用，与 Core 每 tick 判定相同。驾驶舱显示步其余部分（CB-09 第 1 条、CR-10）的视角集合不变，所以尾随警告从显示步中分出。它在 `frame-end` 中的位置不变：显示步之后，通讯呈现子步之前。
+- **解决的交接：** 本条解决 [Core 模块说明的交接](../../../engineering/modules/core.md#交接)中“CB-09 尾随警告的攻击者条件”一项，两处定义不再不一致；该说明由实现的子任务更新。
+- **可达性：** 所选任务中两项条件都不可达（A-07，高概率），所以切片内容上的结果不变。但规则变了（其他内容与合成输入下结果不同），所以递增 `RULES_VERSION`（FA-08）。快照形状不变：`tailCheck` 已含 `attackerOnTail`。
+- **测试（08）：** 合成世界逐项覆盖：种类位 6、7、10、11；活动；状态 6、7、8；`ai.objectTarget`；等级 2、3、4；升序取第一个；s = 0、1、2 下的标志与 `0x38c30` 的副作用；视角 8、0xE、0x11 与 0x13；到期的等号与 0x40/0x80。再以 CR-16 的 AI 锁定更新（等级 2 → 3 → 4）驱动一个合成 AI 攻击者，接到 `attackerOnTail` 与 `warnTail`，并以正式 replay 重放。
+
+#### FA-02 玩家目标的状态读数
+
+```ts
+interface CombatTarget {
+  // 既有字段不变
+  readonly activeState: boolean;   // FA-02：目标的 state 为 'active' 或 'projectile-hit'（原版 state ≥ 7）
+}
+```
+
+| 项 | 契约 |
+|---|---|
+| 类型与单位 | 布尔，无单位；与 [entity-table.ts](../../../../src/core/world/entity-table.ts) 的 `isActiveState` 同义 |
+| 缺失 | `flight.combat.player.target` 为 null 时没有这项读数；A-06 对 null 目标同样取 −1 |
+| 生产者 | `combat.ts` 的目标读数；不读目标的 activity（A-06 不检查） |
+| 读取者 | 14：锁定音的值（[A-06](../../../original/formats/audio.md#lock-tone-a-06)）在 `activeState` 为 false 时为 −1，否则为 `lock.progress` |
+| 序列化与测试 | 不进快照或录制；08 覆盖每个 `ObjectState`（`destroyed-source`、`pending-removal` 为 false，`projectile-hit` 为 true），读数冻结且与世界脱离 |
+
+- **选择的形状：** 锁定进度 `lock.progress` 是玩家武器块的 W8 值，与目标无关，P3-13 也照原样绘制。所以由 HUD 读模型组合两者，而不改写 `lock`；目标读数只增加一个布尔值，不公开目标的完整生命周期。
+
+#### FA-03 引擎的机型最高速度
+
+```ts
+interface MotionPlayer {
+  // 既有字段不变
+  readonly recordMaximumSpeed: number;   // FA-03：玩家机型记录的 +0xB8
+}
+```
+
+| 项 | 契约 |
+|---|---|
+| 类型与单位 | f32，运行时单位/秒：`craftInfo.content.craft[玩家 kindBit].atB8`（[craft §3.5](../../../original/formats/craft.md#35-craft-record-and-missile-body-record-236-bytes) 的 +0xB8） |
+| 与既有字段 | 不是 `maximumSpeed`（+0x78，随能量降低）。A-05 的指令速度 c 复用 `commandedSpeed`（块 +0x6C），A-04 的玩家当前速度 sₚ 复用 `speed`（块 +0x08），都不新增 |
+| 缺失与边界 | `motion.player` 为 null 时没有；静态值，由 setupHash 绑定的输入决定。内容不拒绝 0；读取者按 D1-06 处理 0 |
+| 生产者与读取者 | `projection.ts` 的运动读数；13：引擎变调（[A-05](../../../original/formats/audio.md#player-sources-and-the-engine-a-05)） |
+| 序列化与测试 | 无；08 断言它等于该机型记录的值，并且在能量降低最高速度时不变 |
+
+#### FA-04 Render State 的逐实体增补
+
+```ts
+interface RenderEntity {
+  // 既有字段不变
+  readonly state: ObjectState;   // FA-04：对象状态（原版字节 +3），entity-table 的封闭联合
+  readonly speed: number;        // FA-04：移动块 +0x08，f32，运行时单位/秒
+}
+```
+
+| 字段 | 读取者与用途 | 缺失与约束 |
+|---|---|---|
+| `state` | 16：持续声音的门禁（[A-01](../../../original/formats/audio.md#presentation-item-dispatch-a-01)：只有 `destroyed-source` 或 `isActiveState` 的实体有更新项；退场另由 FA-07 的事件给出）；13：爆炸与其他模型的参数 | 每个列出的实体都有，不缺失 |
+| `speed` | 13：非玩家来源的速率输入 sₛ（[A-04](../../../original/formats/audio.md#non-player-sources-a-04)） | 列出的实体都未停放，按实体表的不变式都有移动块；缺少时为 Core 故障 `render-state.movement`，不给 0 |
+
+- **不增加 activity：** Render State 已排除停放的实体，这就是 A-01 更新项的活动门禁（activity ≠ 0）；停靠时的跳过读玩家的停靠事实（FA-07）。
+- **不增加姿态：** `orientation` 已含第 3 行（下标 6–8，即对象 +0x60–+0x68）。
+- **信息边界：** 这两项是对象自身的呈现状态，原版音效对每个未停放对象都读它们。渲染器之外，只有音效消费者为 A-01、A-02、A-04 的逐对象声音读取它们；仍不得从 Render State 推导目标列表、地图标记或计数。
+- **序列化：** Render State 不进快照或 replay，所以没有版本影响。
+- **测试（08）：** 每个 `ObjectState` 的映射；`speed` 覆盖各移动块模式（`craft`、`warp`、`linear`、`spinning`、地图标记）；停放实体仍不列出；输出冻结且与世界脱离；缺少移动块的故障。
+
+#### FA-05 发射与受击事件的位姿快照
+
+```ts
+interface ShotFiredEvent {
+  // 既有字段不变
+  readonly shooterForward: Vec3;         // FA-05：发射者姿态第 3 行（+0x60–+0x68），f32 分量，无单位
+  readonly shooterSpeed: number | null;  // FA-05：发射者移动块 +0x08，f32，运行时单位/秒；没有移动块时为 null
+}
+interface HitEvent {
+  // 既有字段不变
+  readonly victimForward: Vec3;
+  readonly victimSpeed: number | null;
+}
+```
+
+- **取值时刻：** 与同一事件的 `shooterPosition`、`victimPosition` 相同，即发出时（CR-06 的通则）。没有移动块只发生在停放的受害者（停放交战），这条路径原版没有受击声音（A-01）。
+- **用途（D1-04）：** 原版在同一帧的渲染中读取来源的当前位姿与速度（A-02：射击与受击只在开始时参数化一次；A-04）。读取者 13、15 的规则是：来源的 ID 在本帧的 Render State 中时用帧末实体；不在时用这些快照。每帧一个 tick 时，帧末实体正是原版在那一帧渲染时读到的值；一帧折叠多个 tick 时与原版不同，作为待批准的差异。仅有现有的位置快照不足以计算速率，所以增加第 3 行与速度，不写近似的静止值。
+- **不改 `explosion-started`：** 爆炸声是爆炸对象自己的更新项（A-02），参数取其 Render State 实体；EXPL 的选择属 P3-12（D-02）。
+- **生产者：** P3-07 发出这两种事件的位置（射击与导弹的构造、伤害入口，含停放交战）。
+- **序列化与比较：** 事件形状改变，递增 `RULES_VERSION`（FA-08）。`compare.ts` 的事件字段表与读取器增加这四个字段：`Forward` 的三个分量与非 null 的 `Speed` 都按既有的 f32 规则（`isFiniteFloat32`，即 `F32`）校验，不用一般的有限数规则；`Speed` 可为 null。事件数不变，预算不变；`recordedEvents` 注释中每个事件约 120 字符的估算由实现的子任务按新形状更新。
+- **测试（08）：** 每种 `cause`，含停放的 null 速度；快照冻结且与世界脱离；比较器能检出新字段的差异；合成运行的正式 replay。
+
+#### FA-06 `weapon-selected` 的无命令来源
+
+- **原版（[A-10](../../../original/formats/audio.md#play-by-id-boundaries-and-reachability-a-10)）：** 11381 由每次武器键按下发出；救援的完全修理每前进一步发出一次，可以听到；基地补弹的选择在消息循环之后投递，从不播放。
+- **Core 现状：** 命令的选择带 `commandIndex`。`commandIndex: null` 只由 `fullRepair` 在 `inRequestHandling` 为真且实体为玩家时发出（CB-10）；切片中它唯一的此类调用者将是 P3-11 在请求处理中的救援。基地服务步的选择遍历什么也不发（CB-11），僚机的完全修理以 false 调用。所以现有事件已经区分“可听”与“不可听”：后者根本没有事件。
+- **决定（D1-01）：** 不加来源判别字段。`commandIndex: null` 的含义更正为“原版在消息循环中处理的无命令选择，即完全修理（P3-11 的救援）”。`domain-events.ts` 中“P3-10 的基地补给”的注释与 CR-06 的措辞由 08 更正；行为不变，不递增版本。P3-14 对每个 `weapon-selected` 都使用 11381。
+- **对 P3-11 的约束：** 若 P3-11 需要另一个原版不发声的无命令选择来源，先按[扩展规则](#扩展规则)加入判别字段（例如 `origin`）并递增 `RULES_VERSION`，不能复用 null 而让音效误播。
+- **测试（08）：** 基地服务步的补弹遍历不发事件；`fullRepair(玩家, true)` 每次前进发出一个 null 事件，`fullRepair(僚机, false)` 不发。
+
+#### FA-07 停靠事实与退场事件
+
+- **停靠（不新增）：** A-01 的跳过读玩家的活动，所以读 `communications.player.docking.docked`。不能用 `interactionContext` 或视角 6 推断，因为从基地打开地图时视角为 8 而活动仍为停靠。`communications.player` 为 null 时不跳过。
+- **为什么需要新事件（D1-05）：** 原版的移除项（代码 3）在对象于活动中退场时投递，然后 `0x55894` 停止该对象表中仍在跟踪的声部（A-01、[A-02](../../../original/formats/audio.md#per-object-sound-table-a-02)；种类 `0x3300000` 例外，由消费者处理）。它与同帧其他表现项一样带有投递次序。Runtime 一帧至多 5 个 tick，帧末 Render State 中的“消失”会丢掉 tick 与次序；P3-14 spec 也禁止依赖帧末缺失。既有事件都不覆盖全部路径：
+
+  | 退场路径（Core 写入处） | 现有事件 |
+  |---|---|
+  | 爆炸结束（`destruction.ts`，X4 的 `0x2409c`） | 无 |
+  | 爆炸放开所持来源（消息 0x40，`releaseHeld`） | 无 |
+  | 碎片交出来源（`0x2574c`） | `source-released`（有 `removed`） |
+  | 伤害直接移除（`outcome: 'removed'`） | `object-destroyed`（有 `outcome`） |
+  | 活动区域检查（`checkActiveArea`，原版 `0x3a4b0`）：区域切换或离开即移除的种类 | 无 |
+  | AI 的 Warp 离场（`applyWarpDeparture`，消息 0x800000，原版 `0x214a4`，派发器分支 `0x214cb` 高概率在其中） | 无 |
+  | 导弹熄火、碎片到期、弹丸移除 | `missile-ended`、`fragment-expired`；弹丸无。三者都在 `0x55894` 跳过的种类中 |
+  | 停放对象真正离开世界 | `object-left-world`（停放对象没有声音） |
+  | 拆除（原版对活动对象投递移除项） | 不在 Core 中：属 P3-11，**阻塞** |
+
+- **新增事件：**
+
+  ```ts
+  /** An active entity entered pending removal or the area switch: the original's removal item. */
+  interface ObjectRetiredEvent extends DomainEventBase<'object-retired'> {
+    readonly entityId: EntityId;
+    readonly kindBit: number;
+    readonly state: 'pending-removal' | 'area-switch';   // 进入的状态
+  }
+  ```
+
+  | 项 | 契约 |
+  |---|---|
+  | 发出时机 | 活动为 `active` 的实体由其他状态进入 `pending-removal` 或 `area-switch` 时，在写入状态的同一处立即发出，因此带 tick 与流水线中的发出次序。由一个共享的写入函数统一处理，取代上表中各处的直接赋值。已在两状态之一中的实体不重复发出；停放与停靠的实体不发出（原版 `0x21650` 只处理活动 1，区域检查只把活动对象移出） |
+  | 种类 | 所有种类都发出，`0x3300000` 的例外由消费者按 A-02 处理，Core 不复制音效规则 |
+  | 对应原版 | A-01 的三个投递者（`0x21650`、区域检查、派发器分支）都表现为活动对象进入这两个状态。08 须逐处核对上表写入处与原版投递者的对应；对 `0x55894` 不跳过的种类发现不对应时，先修订本条，不在消费者中补猜 |
+  | 读取者 | P3-14/15、16：按事件次序停止该来源已跟踪的声部，并清空其声音表 |
+  | 预算 | 每个实体每 tick 至多 2 个（区域切换后又待移除），即至多 2 × `entities` = 4,096；与 CR-14、MW-14、CB-16 等合计约 13,200，仍在 `eventsPerTick`（32,768）之内，`CORE_LIMITS` 不变 |
+  | 序列化与版本 | 新的事件种类：并入 FA-08 的同一次 `RULES_VERSION` 递增；`compare.ts` 的事件字段表与读取器增加 `object-retired`；快照与 replay 格式不变 |
+  | 测试（08） | 上表每条 Core 路径各发出恰一个、次序正确；已待移除的再写不发；停放与停靠不发；同一 tick 中区域切换后待移除发两个；预算的 limit 测试；合成运行的正式 replay |
+
+- **备选（未推荐）：** 用 FA-04 的 `state` 与帧末 Render State 中的消失推断退场。它不需要版本，但折叠帧中丢失 tick 与次序，且违反 P3-14 spec 的“不依赖帧末缺失”。Render State 的 `state` 仍用于持续声音的门禁。
+
+#### FA-08 版本、读取器、比较器与测试
+
+- **`RULES_VERSION`：** 相对实际集成基线（当前为 7）递增一次，由首个实现 FA-01、FA-05 或 FA-07 的子任务（P3-14/08）递增，此后本 goal 内不再递增。旧规则版本的记录在任何 tick 之前拒绝。与其他并行分支合入时，按既有的“相对实际集成基线各递增一次”处理。
+- **快照格式：** 不变（6）：没有新状态，`tailCheck` 的形状不变。
+- **replay 格式：** 不变（3）：命令联合与记录形状不变。
+- **纯 projection 与 Render State 增补**（FA-01 的分区级 `warnings`、FA-02、FA-03、FA-04）：不递增任何版本。
+- **读取器与比较器：** 更新 `compare.ts` 中 `shot-fired`、`hit` 的字段表与读取器（新字段按 f32 规则），新增 `object-retired`，以及事件的合成生产者；`CORE_LIMITS` 不变；`eventsPerTick` 的推导注释加入 FA-07 的项，budget 测试照旧通过。
+- **测试责任：** 08 负责 Core 的投影、Render State、事件与 CB-09 的契约测试；13–16 用合成读模型测试消费者；19 做规则集成；21 用真实 Runtime 与 Session 核对同一输入在音频启用与禁用时的事件与检查点（P3-14 AC-13）。
+- **文档：** Core 模块说明的“Projection 与 Render State”“已知差异”（撤销决定 11 中的差异部分）与“交接”，由 08 与 27 更新。
+
+#### FA-09 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-08 | `isClosingMissileLock` 由 CB-09 的攻击者遍历使用，由 P3-14/08 接入（FA-01），P3-08 的契约不变 |
+| P3-11 | 救援的完全修理须在请求处理中调用 `fullRepair(…, true)`，所选任务中发出 5 个 `weapon-selected`；新的无命令选择来源须先加判别（FA-06）。拆除须为活动对象发出 `object-retired`（FA-07）；没有玩家实体时 `communications.warnings` 的保留与重开时是否重置（FA-01）随结果与重试契约定稿。P3-14 需要的失利处理、结果延迟到期与停靠中被毁后的活动仍无契约（D1-10） |
+| P3-12 | Render State 的 `state` 与 `speed` 可供渲染器使用（不是必须）；听者与爆炸效果的接口属 D-02 |
+| P3-13 | 指示灯与警告音读同一对分区级标志 `communications.warnings`（不再是 `player.warnings`），闪烁仍归 P3-13 |
+| P3-15 | 联合 replay 的事件含 FA-05 的新字段与 `object-retired` |
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -2526,3 +2729,11 @@ CR-20 的命令不变。物理绑定由 [P3-05 绑定表](../05/spec.md#绑定�
 
 - CB-09 尾随警告的攻击者条件：CR-16 的只读查询 `isClosingMissileLock` 未实现；其谓词（锁定等级为 3 或 4）与 CB-09 的条件（攻击航线字节为 3 或 4）不一致，须先修订统一，接入时递增 `RULES_VERSION`。在此之前 `attackerOnTail` 恒为假。
 - 地图标签的威胁闪烁：MW-16 与 CB-19 都指向对方，`MapLabel` 尚无该状态，须按扩展规则修订 MW-11 后加入，供 P3-13。
+
+**2026-10-17 修订（P3-14 的 D-01，经用户明确批准）：**
+
+- **批准与用户原话：** 用户于 2026-10-17 明确批准，选择“批准全部推荐方案（含三项差异）”：P3-14 spec 的 [D-01 定稿](../14/spec.md#d-01-定稿已批准)中 D1-01 至 D1-17 的全部推荐方案，以及本 spec、P3-04、P2-08 与 P3-14 spec 中起草的契约各节。其中 D1-04（一次性声音在折叠帧中的位置输入）、D1-06（零距离、零最高速度与无玩家时跳过速率更新）与 D1-13（Web Audio 的重采样与浮点输出）作为已批准的差异。
+- **范围：** 新增“[P3-14 的契约修订（D-01）](#p3-14-的契约修订d-01)”一节（FA-01 至 FA-09）与本条记录。FA-01 修订 CB-09 第 2 条、撤销 CB-17 决定 11 中的差异部分，并把 CB-14 的 `player.warnings` 移到分区级的 `communications.warnings`；FA-06 更正 CR-06 中 `commandIndex: null` 的语义；FA-07 新增事件 `object-retired`。版本：`RULES_VERSION` 相对实际集成基线递增一次（当前 7 → 8），快照格式（6）与 replay 格式（3）不变（FA-08）。
+- **仍阻塞与移交：** 依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。
+- **所选方案与被排除的方案：** 见 P3-14 spec 的 D-01 定稿表，此处不重复。
+- 本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。

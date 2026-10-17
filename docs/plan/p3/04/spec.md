@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-15
+updated: 2026-10-17
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
 ---
 
@@ -250,6 +250,54 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 - **输入控制端口（2026-10-10 修订，供 P3-05）：** 所有者只向 `input` 阶段的消费者提供绑定当前 owner/run 的 `clearInput(reason: 'focus-loss' | 'pointer-lock-exit')`、`togglePause()`、`openMenu()`。`clearInput` 在 running 时发出一次 `clear-input`；`togglePause` 在 running 时以 user 暂停，在因 user 或 hidden 暂停且任务菜单未打开时继续（hidden 未解除时继续失败仍保持暂停），任务菜单打开、出发占位、停止或故障时无作用；`openMenu` 沿用所有者现有的打开条件与反馈。三者均沿用所有者现有的反馈与会话通知边界：`togglePause`、`openMenu` 复用相应的所有者动作，`clearInput` 由所有者在守卫下发出会话的 `clear-input` 控制；不暴露 start/exit/step，不旁路任务菜单状态；状态通知中不可递归调用；旧 owner/run 以 `GameSessionError` 的 `invalid-state` 拒绝，不迁移到新运行；所有者释放（`input` 阶段最先失效）后端口失效。
 - **本任务的验证：** 以 Node 中的测试消费者验证两级登记、释放顺序、释放失败锁存与跨运行不迁移；浏览器中验证本任务实际接入的消费者（UI 桥接、开发诊断、离页保护、占位计时器、会话宿主）。
 
+### 任务音频接线（P3-14 的修订）
+
+**状态：已获用户批准（2026-10-17，P3-14 的 D-01）。** 用户的选择：“批准全部推荐方案（含三项差异）”。由 P3-14/06 起草；依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。
+
+本节是 P3-14 关卡 D-01 中属于本 spec 的部分：任务所有者怎样拥有音频、在哪里调用需要用户激活的操作，以及音频怎样参与运行的结束与槽位的关闭屏障。依据是 P3-14 spec 的 S-08 与[模式与生命周期](../14/spec.md#模式与生命周期)。播放器的契约见 [P2-08 的修订](../../p2/08/spec.md#播放控制器的扩展p3-14-的修订)，Core 的输出见 [P3-02 的修订](../02/spec.md#p3-14-的契约修订d-01)，已批准的决定见 [P3-14 的 D-01 定稿](../14/spec.md#d-01-定稿已批准)。[消费者接线与释放](#消费者接线与释放)中“本任务不提前创建音频或空媒体适配器”由本节接续；批准后，前文与本节不一致时以本节为准。音效的规则（何时播放、停止或静音）属于 P3-14，不在本节。
+
+- **所有者级控制器：** 音频是一个 `media` 阶段的所有者级消费者，每个所有者至多一个 `AudioController`。
+  - `connect` 不创建控制器。`previousClosed` 兑现为 true 之后才创建控制器，并对所有者绑定的同一 holder 代际的包，把 `audio` 组的全部 sound 记录 `load` 一次；兑现之前声音状态为“等待关闭”。兑现为 false（槽位已锁存）时不创建，声音状态为“失败”。
+  - `load` 失败也是“失败”，经 `reportError` 报告。它们都不影响开始资格、会话或游戏规则。
+  - **代际守卫：** `connect` 时取得一个连接自己的存活凭证（绑定 ownerId 与所绑定包的 holder 代际）。`previousClosed` 兑现后的续体先核对凭证仍然有效、所有者未开始释放、包未被替换，任一不成立就不创建控制器、不 `load`，什么也不取得。`release()` 在返回之前先使凭证失效；包替换（`beforeReplace`）经所有者的释放同样使其失效。所以迟到的续体不会为已释放的所有者创建上下文，也不会从另一代包载入声音。
+- **可信激活：** 所有者在下列用户动作的处理函数内，**先完成**自己的会话控制，再同步调用 `media` 连接新增的可选钩子 `onActivation(cause)`。不推迟到 effect、Promise 或计时器。
+  - `'start'`：确认开始，世界创建成功之后。
+  - `'continue'`：任务菜单的 Continue。
+  - `'resume'`：暂停控件的继续，以及输入端口 `togglePause` 的继续分支（`p` 是可信的按键事件）。
+  - `'enable-sound'`：所有者新增的动作 `enableSound()`。它在出发与运行中衔接的保持、running、paused 与 stopped 中都可用，只调用钩子，不控制会话，不关闭任务菜单，也不恢复暂停的游戏。
+
+  钩子在同一调用栈中调用控制器的 `unlock()`；会话为 running 时再调用 `resume()` 打开任务暂停门禁。控制器还不存在时（关闭屏障未通过），这次激活不产生效果，屏障通过后须再取得一次可信激活。钩子抛错时经 `reportError` 报告，声音状态为“失败”；这不改变该用户动作的结果，也不是清理失败。
+- **任务暂停门禁：** 媒体消费者订阅 `session.onStatus`。
+  - 阶段变为 `paused`（user 或 hidden，包括任务菜单）时，在该通知中同步调用控制器的 `pause()`。
+  - 从 paused 回到 running 只能经所有者的 Continue、继续或 `togglePause`，它们都会调用 `onActivation('resume' | 'continue')`，由钩子调用 `resume()`。没有激活的 running 通知不打开门禁。
+  - 页面隐藏另由控制器的生命周期处理（释放全部发声）。
+  - 出发与运行中衔接的保持不关闭门禁；保持期间音效消费者不播放，保持入口是否停止声音由 P3-14 的模式规则决定。
+- **运行级消费者：** 音效消费者经 `attachRun` 接到每个运行，随运行结束（exit、故障、dispose）按既有逆序释放：以 `stopAll()` 停止全部发声，并失效声音表、待处理的事件与回调。此外，会话阶段变为 `stopped` 或 `faulted` 时（运行仍存在），消费者在该状态通知中立即同样失效，之后不再播放，不等到 exit。新运行从空状态开始，不继承句柄、提示节奏或事件。结果页的停止归 P3-11 的结果状态，本节不预先定义。
+- **释放与关闭屏障：**
+  - `media` 连接的 `release()` 依次：失效回调与订阅；同步调用控制器的 `dispose()`；返回一个 thenable。
+  - 该 thenable 在上下文的 `close()` 确认后兑现。关闭失败，或上下文未关闭，则为 rejected，槽位因此锁存。观察方式同[查看器所有者](../../../engineering/modules/app.md#查看器所有者)：包裹能力的 `close`。
+  - 从未创建上下文时立即兑现。
+  - 所有者的释放顺序不变（`media` 最后）；下一个所有者在确认关闭之前不创建控制器。
+- **所有者快照：** 增加 `sound: MissionSoundStatus`，状态改变时立即发布，供任务壳状态栏（P3-14 S-09）使用：
+
+  ```ts
+  type MissionSoundStatus =
+    | 'waiting-close'      // 上一所有者的关闭尚未确认
+    | 'needs-activation'   // 控制器 idle 或 locked：显示“启用声音”
+    | 'available'          // running
+    | 'paused'             // 任务暂停门禁关闭
+    | 'host-suspended'     // 隐藏、浏览器挂起或中断
+    | 'unavailable'        // 宿主没有可用的 Web Audio；游戏无声继续
+    | 'failed';            // 控制器失败、load 失败、钩子失败或关闭屏障失败
+  ```
+
+- **不做：** 不把声音状态写进会话或 Core；不另建循环；不排队播放；页面恢复可见或上下文自行恢复都不打开任务暂停门禁。
+- **验证：**
+  - P3-14/17 在 Node 中用假能力与真实会话验证：等待屏障、激活在处理函数内、暂停与继续的先后、暂停中隐藏、`stopped`/故障/exit 时的失效、`release()` 的兑现与 rejected、锁存。
+  - **必需用例：** `previousClosed` 尚未兑现时先释放所有者，或先替换资源包，然后再让它兑现为 true 与为 false：都不创建控制器与上下文，不调用 `load`，假能力的创建计数为 0，`release()` 不因续体而延迟或失败。
+  - P3-14/18 验证状态栏；22、23 在浏览器中验证。
+  - 本 spec 的既有测试与历史证据不改写。
+
 ### 离页保护
 
 - 任务所有者在拥有运行时登记一份 `beforeunload`：transition/running/paused，以及仍保有诊断或录制的 stopped/faulted；exit/dispose 才撤销。介绍、配置、主菜单没有运行，不登记。登记失败阻止开始并回滚，撤销失败锁存。会话仍只提供 DOM-free 状态，适配器在 `platform/browser/`，不在 Core 或模块导入时安装监听。
@@ -445,3 +493,5 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 **2026-10-14 交接注记（P3-09 的 D-01）：** 不改变本 spec 的范围、行为、验收与历史证据。[P3-02 的 MW-01](../02/spec.md#mw-01-世界创建输入与静态规则数据)给 `createWorld`、录制入口与 `ReplayContent` 增加必需的 `mapGeometry` 输入（`data/hud/map-geometry`，[P3-03 修订 2](../03/spec.md#p3-09-的修订地图几何修订-2)）：会话组合与重试须从同一经验证的包中解码它，与其他规则输入一起传入；新切片定义版本使旧缓存须重新导入。地图打开时 Core 不暂停，`p` 与任务菜单仍只由 Runtime 控制；暂停、隐藏与菜单不取消已开始的 Warp，继续后接着同一 Warp，不补跑。实现与验证归 P3-09 的子任务 12、21、22。
 
 **2026-10-14 修订（P3-10 的 D-01：运行中衔接，依用户授权，由 P3-10 的子任务 08 定稿）：** 只新增“运行中衔接（P3-10 的修订）”一节与本条记录，并改了 front matter 的日期：Core 的 `transition` 事件、Runtime 的帧屏障与 `FrameReport` 的 `cut`、`transitions`、错误类别 `transition-hold` 与生命周期操作 `releaseTransitionBarrier()`、会话的 `RunningTransition` 与有限序列、`complete-transition` 控制与 owner/run/transition 凭证、竞态与 replay。授权出处为用户 2026-10-14 的原话“i authorize you to approve the recommended options for gates 07, 08 and 10”（[P3-10 goal 的审批](../10/goal.md#审批)），不涵盖冻结决定。所选方案：Core 照常完成整个 tick，Runtime 在该 tick 之后截断、先立屏障再派发，会话在通知边界外保持，每次衔接各有凭证，同 tick 的多个衔接为有限序列。被排除的方案：在 tick 中间暂停 Core（违背固定流水线与 replay 不含宿主等待）；由 Event Bus 订阅者在派发中调用 `clearIntent`/`resetClock`（重入生命周期）；只以 runId 作凭证（同一运行的第二次停靠会被旧凭证结束）；每 tick 至多一个衔接（丢弃原版可达的双重离港）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-10 的子任务 21 至 23。修订后未重跑 review-spec。
+
+**2026-10-17 修订（P3-14 的 D-01：任务音频接线，经用户明确批准）：** 用户于 2026-10-17 明确批准，选择“批准全部推荐方案（含三项差异）”（P3-14 spec 的 [D-01 定稿](../14/spec.md#d-01-定稿已批准)，本 spec 相关的是 D1-16）。只新增“[任务音频接线（P3-14 的修订）](#任务音频接线p3-14-的修订)”一节与本条记录：`media` 阶段的控制器与屏障后的存活凭证、`onActivation` 钩子与所有者动作 `enableSound()`、任务暂停门禁的接线、`stopped`/故障/exit 时的运行级失效、`release()` 加入关闭屏障，以及所有者快照的 `MissionSoundStatus`。依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
